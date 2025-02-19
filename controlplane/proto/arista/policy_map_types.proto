@@ -1,0 +1,184 @@
+// Copyright (c) 2021 Arista Networks, Inc.  All rights reserved.
+// Arista Networks, Inc. Confidential and Proprietary.
+
+syntax = "proto3";
+
+option go_package = "arista/EosSdkRpc";
+
+package eos.remote;
+
+import "acl_types.proto";
+import "intf_types.proto";
+import "structured_filter_types.proto";
+
+message PolicyMap {
+   PolicyMapKey key = 1;
+   map<uint32, PolicyMapRule> rules = 2;
+}
+
+message PolicyMapAction {
+   PolicyActionType action_type = 1;
+   string nexthop_group_name = 2;
+   repeated bytes nexthops = 3;
+   string vrf = 4;
+   // Must be in range 0 to 255.
+   uint32 dscp = 5;
+   // Must be in range 0 to 255.
+   uint32 traffic_class = 6;
+}
+
+message PolicyMapKey {
+   string name = 1;
+   PolicyFeature feature = 2;
+}
+
+message PolicyMapRule {
+   PolicyMapKey class_map_key = 1;
+   oneof policy_map_rule_type_present {
+      // Default value is POLICY_RULE_TYPE_CLASSMAP.
+      PolicyMapRuleType policy_map_rule_type = 2;
+   }
+   AclRuleIp raw_rule = 3;
+   repeated PolicyMapAction actions = 4;
+}
+
+message PolicyMapHwStatuses {
+   repeated PolicyMapStatusValue status_values = 1;
+}
+
+message PolicyMapStatusValue {
+   PolicyMapHwStatusKey hw_status_key = 1;
+   PolicyMapStatus status = 2;
+}
+
+message PolicyMapHwStatusKey {
+   IntfId intf_id = 1;
+   AclDirection direction = 2;
+}
+
+/**
+ * A hardware feature a policy map can be used with.
+ */
+enum PolicyFeature {
+   POLICY_FEATURE_NULL = 0;
+   POLICY_FEATURE_PBR = 1;
+   POLICY_FEATURE_QOS = 2;
+   POLICY_FEATURE_TAP_AGG = 3;
+   POLICY_FEATURE_TRAFFIC_POLICY =4;   
+}
+
+/**
+ * The actions a policy map rule may apply to classified packets.
+ */
+enum PolicyActionType {
+   POLICY_ACTION_NULL = 0;
+   POLICY_ACTION_NONE = 1;
+   POLICY_ACTION_DROP = 2;
+   POLICY_ACTION_NEXTHOP = 3;
+   POLICY_ACTION_NEXTHOP_GROUP = 4;
+   POLICY_ACTION_DSCP = 5;
+   POLICY_ACTION_TRAFFIC_CLASS = 6;
+}
+
+enum PolicyMapRuleType {
+   POLICY_RULE_TYPE_NOT_SET = 0;
+   POLICY_RULE_TYPE_CLASSMAP = 1;
+   POLICY_RULE_TYPE_IPV4 = 2;
+   POLICY_RULE_TYPE_IPV6 = 3;
+}
+
+/**
+ * The policy map hardware status type.
+ */
+enum PolicyMapStatus {
+   POLICY_STATUS_NULL = 0;
+   POLICY_STATUS_NOT_FOUND = 1;
+   POLICY_STATUS_IN_PROGRESS = 2;
+   POLICY_STATUS_FAILED = 3;
+   POLICY_STATUS_SUCCESS = 4;
+}
+
+/**
+ * A traffic policy instance.
+ *
+ * EosSdk reference: eos::traffic_policy_t
+ */
+message TrafficPolicy {
+   string key = 1;
+   repeated string named_counters = 2;
+   map<uint32, TrafficPolicyRule> rules = 3;
+}
+
+/**
+ * A traffic policy rule, describing traffic match and actions.
+ *
+ * EosSdk reference: eos::traffic_policy_rule_t
+ */
+message TrafficPolicyRule {
+   string match_rule_name = 1;
+   TrafficPolicyRuleType traffic_policy_rule_type = 2;
+   TpRuleFilter raw_rule = 3;
+   repeated TrafficPolicyAction actions = 4;
+}
+
+/**
+ * A single traffic-policy action.
+ *
+ * EosSdk reference: eos::traffic_policy_action_t
+ */
+message TrafficPolicyAction {
+   TrafficPolicyActionType action_type = 1;
+   string counter_name = 2;
+   string goto_class_name = 3;
+   bool goto_next = 4;
+   uint32 dscp = 5;
+   uint32 traffic_class = 6;
+   string vrf = 7;
+   string mirror_session = 8;
+   uint64 police_rate = 9;
+   uint64 police_burst_size = 10;
+   PoliceRateUnit police_rate_unit = 11;
+   PoliceBurstUnit police_burst_unit = 12;
+   repeated string nexthop_groups = 13;
+   repeated bytes nexthops = 14;
+}
+
+enum TrafficPolicyActionType {
+   TRAFFIC_POLICY_ACTION_NULL = 0;
+   TRAFFIC_POLICY_ACTION_DROP = 1;
+   TRAFFIC_POLICY_ACTION_POLICE = 2;
+   TRAFFIC_POLICY_ACTION_COUNT = 3;
+   TRAFFIC_POLICY_ACTION_LOG = 4;
+   TRAFFIC_POLICY_ACTION_GOTO = 5;
+   TRAFFIC_POLICY_ACTION_DSCP = 6;
+   TRAFFIC_POLICY_ACTION_TRAFFIC_CLASS = 7;
+   TRAFFIC_POLICY_ACTION_SET_VRF = 8;
+   TRAFFIC_POLICY_ACTION_SET_VRF_SECONDARY = 9;
+   TRAFFIC_POLICY_ACTION_USE_VRF_SECONDARY = 10;
+   TRAFFIC_POLICY_ACTION_MIRROR = 11;
+   TRAFFIC_POLICY_ACTION_SFLOW = 12;
+   TRAFFIC_POLICY_ACTION_NEXTHOP = 13;
+   TRAFFIC_POLICY_ACTION_NEXTHOP_GROUP = 14;
+}
+
+enum PoliceRateUnit {
+   // NULL refers to the default unit in SDK (POLICE_RATE_UNIT_BPS)
+   POLICE_RATE_UNIT_NULL = 0;
+   POLICE_RATE_UNIT_BPS = 1;
+   POLICE_RATE_UNIT_KBPS = 2;
+   POLICE_RATE_UNIT_MBPS = 3;
+   POLICE_RATE_UNIT_GBPS = 4;
+}
+
+enum PoliceBurstUnit {
+   // NULL refers to the default unit in SDK (POLICE_BURST_UNIT_BYTES)
+   POLICE_BURST_UNIT_NULL = 0;
+   POLICE_BURST_UNIT_BYTES = 1;
+   POLICE_BURST_UNIT_KBYTES = 2;
+   POLICE_BURST_UNIT_MBYTES = 3;
+}
+
+enum TrafficPolicyDirection {
+   TRAFFIC_POLICY_DIRECTION_NULL = 0;
+   TRAFFIC_POLICY_DIRECTION_INPUT = 1;
+}

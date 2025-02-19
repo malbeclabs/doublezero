@@ -1,0 +1,61 @@
+// Copyright (c) 2023 Arista Networks, Inc.  All rights reserved.
+// Arista Networks, Inc. Confidential and Proprietary.
+
+syntax = "proto3";
+
+option go_package = "arista/EosSdkRpc";
+
+package eos.remote;
+
+import "ip_intf_types.proto";
+
+/**
+ * This type is used to store the configs of all match fields of a
+ * traffic-policy rule.
+ *
+ * EosSdk reference: eos::tp_rule_filter_t
+ */
+message TpRuleFilter {
+   repeated IpAddrMask src_addrs = 1;
+   repeated string src_addr_field_sets = 2;
+   repeated IpAddrMask dst_addrs = 3;
+   repeated string dst_addr_field_sets = 4;
+   message ProtocolValue {
+      Range protocol_range = 1;
+      ProtocolField protocol_field = 2;
+   };
+   repeated ProtocolValue protocol_values = 5;
+   TrafficPolicyRuleType filter_type = 6;
+}
+
+/**
+ * Field type used to configure the protocol ranges or protocol field-sets.
+ *
+ * EosSdk reference: eos::protocol_field_t
+ */
+message ProtocolField {
+   map<uint32, PortField> ports = 1;
+}
+
+/**
+ * Field type used to configure the port ranges or port field-sets.
+ *
+ * EosSdk reference: eos::port_field_t
+ */
+message PortField {
+   repeated Range src_ports = 1;
+   repeated Range dst_ports = 2;
+   repeated string src_port_field_sets = 3;
+   repeated string dst_port_field_sets = 4;
+}
+
+message Range {
+   uint32 range_start = 1;
+   uint32 range_end = 2;
+}
+
+enum TrafficPolicyRuleType {
+   TRAFFIC_POLICY_RULE_TYPE_NULL = 0;
+   TRAFFIC_POLICY_RULE_TYPE_IPV4 = 1;
+   TRAFFIC_POLICY_RULE_TYPE_IPV6 = 2;
+}

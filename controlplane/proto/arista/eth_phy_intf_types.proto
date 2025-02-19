@@ -1,0 +1,141 @@
+// Arista Networks, Inc. Confidential and Proprietary.
+
+syntax = "proto3";
+
+option go_package = "arista/EosSdkRpc";
+
+package eos.remote;
+
+enum EthPhyIntfLinkSpeed {
+   ETH_PHY_INTF_LINK_SPEED_UNKNOWN = 0;
+   ETH_PHY_INTF_LINK_SPEED_10MBPS = 1;
+   ETH_PHY_INTF_LINK_SPEED_100MBPS = 2;
+   ETH_PHY_INTF_LINK_SPEED_1GBPS = 3;
+   ETH_PHY_INTF_LINK_SPEED_2P5GBPS = 4;
+   ETH_PHY_INTF_LINK_SPEED_5GBPS = 5;
+   ETH_PHY_INTF_LINK_SPEED_10GBPS = 6;
+   ETH_PHY_INTF_LINK_SPEED_25GBPS = 7;
+   ETH_PHY_INTF_LINK_SPEED_40GBPS = 8;
+   ETH_PHY_INTF_LINK_SPEED_50GBPS = 9;
+   ETH_PHY_INTF_LINK_SPEED_100GBPS = 10;
+   ETH_PHY_INTF_LINK_SPEED_200GBPS = 11;
+   ETH_PHY_INTF_LINK_SPEED_400GBPS = 12;
+   ETH_PHY_INTF_LINK_SPEED_800GBPS = 13;
+   ETH_PHY_INTF_LINK_SPEED_UNEXPECTED = 14;
+}
+
+/**
+ * Ethernet interface counter.
+ *
+ * All of these attributes have the same meanings as the corresponding objects in
+ * the Ethernetlike (RFC3635) and RMON (RFC2819) MIBs.
+ */
+message EthPhyIntfCounters {
+   // Etherlike-MIB singleCollisionFrames counter.
+   uint64 single_collision_frames = 1;
+
+   // Etherlike-MIB multipleCollisionFrames counter.
+   uint64 multiple_collision_frames = 2;
+
+   // Etherlike-MIB fcsErrors counter.
+   uint64 fcs_errors = 3;
+
+   // Etherlike-MIB alignmentErrors counter.
+   uint64 alignment_errors = 4;
+
+   // Etherlike-MIB deferredTransmissions counter.
+   uint64 deferred_transmissions = 5;
+
+   // Etherlike-MIB lateCollisions counter.
+   uint64 late_collisions = 6;
+
+   // Etherlike-MIB excessiveCollisions counter.
+   uint64 excessive_collisions = 7;
+
+   // Etherlike-MIB internalMacTransmitErrors counter.
+   uint64 internal_mac_transmit_errors = 8;
+
+   // Etherlike-MIB carrierSenseErrors counter.
+   uint64 carrier_sense_errors = 9;
+
+   // Etherlike-MIB internalMacReceiveErrors counter.
+   uint64 internal_mac_receive_errors = 10;
+
+   // Etherlike-MIB frameTooShorts counter.
+   uint64 frame_too_shorts = 11;
+
+   // Etherlike-MIB frameTooLongs counter.
+   uint64 frame_too_longs = 12;
+
+   // Etherlike-MIB sqeTestErrors counter.
+   uint64 sqe_test_errors = 13;
+
+   // Etherlike-MIB symbolErrors counter.
+   uint64 symbol_errors = 14;
+
+   // Etherlike-MIB inUnknownOpcodes counter.
+   uint64 in_unknown_opcodes = 15;
+
+   // Etherlike-MIB outPauseFrames counter.
+   uint64 out_pause_frames = 16;
+
+   // Etherlike-MIB inPauseFrames counter.
+   uint64 in_pause_frames = 17;
+
+   // RMON-MIB fragments counter.
+   uint64 fragments = 18;
+
+   // RMON-MIB jabbers counter.
+   uint64 jabbers = 19;
+}
+
+/**
+ * Ethernet interface counters.
+ *
+ * All of these attributes have the same meanings as the corresponding objects in
+ * the Ethernetlike (RFC3635) and RMON (RFC2819) MIBs.
+ */
+message EthPhyIntfBinCounters {
+
+   // Input 64 octet frame counter.
+   uint64 in_64_octet_frames = 1;
+
+   // Input 65 to 127 octet frame counter.
+   uint64 in_65_to_127_octet_frames = 2;
+
+   // Input 128 to 255 octet frame counter.
+   uint64 in_128_to_255_octet_frames = 3;
+
+   // Input 256 to 511 octet frame counter.
+   uint64 in_256_to_511_octet_frames = 4;
+
+   // Input 512 to 1023 octet frame counter.
+   uint64 in_512_to_1023_octet_frames = 5;
+
+   // Input 1024 to 1522 octet frame counter.
+   uint64 in_1024_to_1522_octet_frames = 6;
+
+   // Input 1523 to max octet frame counter.
+   uint64 in_1523_to_max_octet_frames = 7;
+
+   // Output 64 octet frame counter.
+   uint64 out_64_octet_frames = 8;
+
+   // Output 65 to 127 octet frame counter.
+   uint64 out_65_to_127_octet_frames = 9;
+
+   // Output 128 to 255 octet frame counter.
+   uint64 out_128_to_255_octet_frames = 10;
+
+   // Output 256 to 511 octet frame counter.
+   uint64 out_256_to_511_octet_frames = 11;
+
+   // Output 512 to 1023 octet frame counter.
+   uint64 out_512_to_1023_octet_frames = 12;
+
+   // Output 1024 to 1522 octet frame counter.
+   uint64 out_1024_to_1522_octet_frames = 13;
+
+   // Output 1523 to max octet frame counter.
+   uint64 out_1523_to_max_octet_frames = 14;
+}

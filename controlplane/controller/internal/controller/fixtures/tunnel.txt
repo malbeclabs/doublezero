@@ -1,0 +1,140 @@
+!
+default interface Tunnel500
+interface Tunnel500
+   mtu 9216
+   ip address 169.254.0.0/31
+   tunnel mode gre
+   tunnel source 1.1.1.1
+   tunnel destination 2.2.2.2
+   tunnel path-mtu-discovery
+   tunnel ttl 32
+   no shutdown
+!
+default interface Tunnel501
+interface Tunnel501
+   mtu 9216
+   ip address 169.254.0.2/31
+   tunnel mode gre
+   tunnel source 3.3.3.3
+   tunnel destination 4.4.4.4
+   tunnel path-mtu-discovery
+   tunnel ttl 32
+   no shutdown
+!
+default interface Tunnel502
+interface Tunnel502
+   mtu 9216
+   ip address 169.254.0.4/31
+   tunnel mode gre
+   tunnel source 5.5.5.5
+   tunnel destination 6.6.6.6
+   tunnel path-mtu-discovery
+   tunnel ttl 32
+   no shutdown
+!
+router bgp 65342
+   no neighbor 169.254.0.1
+   neighbor 169.254.0.1 remote-as 65000
+   neighbor 169.254.0.1 passive
+   neighbor 169.254.0.1 description USER-500
+   neighbor 169.254.0.1 route-map RM-USER-500-IN in
+   neighbor 169.254.0.1 route-map RM-USER-500-OUT out
+   neighbor 169.254.0.1 maximum-routes 1
+   neighbor 169.254.0.1 maximum-accepted-routes 1
+   no neighbor 169.254.0.3
+   neighbor 169.254.0.3 remote-as 65000
+   neighbor 169.254.0.3 passive
+   neighbor 169.254.0.3 description USER-501
+   neighbor 169.254.0.3 route-map RM-USER-501-IN in
+   neighbor 169.254.0.3 route-map RM-USER-501-OUT out
+   neighbor 169.254.0.3 maximum-routes 1
+   neighbor 169.254.0.3 maximum-accepted-routes 1
+   no neighbor 169.254.0.5
+   neighbor 169.254.0.5 remote-as 65000
+   neighbor 169.254.0.5 passive
+   neighbor 169.254.0.5 description USER-502
+   neighbor 169.254.0.5 route-map RM-USER-502-IN in
+   neighbor 169.254.0.5 route-map RM-USER-502-OUT out
+   neighbor 169.254.0.5 maximum-routes 1
+   neighbor 169.254.0.5 maximum-accepted-routes 1
+!
+no route-map RM-USER-500-OUT
+route-map RM-USER-500-OUT permit 10
+   match ip address prefix-list PL-DZ_LAX_SUMMARY
+route-map RM-USER-500-OUT permit 20
+   match ip address prefix-list PL-DZ_EWR_SUMMARY
+route-map RM-USER-500-OUT permit 30
+   match ip address prefix-list PL-DZ_LHR_SUMMARY
+route-map RM-USER-500-OUT permit 40
+   match ip address prefix-list PL-DZ_FRA_SUMMARY
+route-map RM-USER-500-OUT permit 50
+   match ip address prefix-list PL-DZ_SIN_SUMMARY
+route-map RM-USER-500-OUT permit 60
+   match ip address prefix-list PL-DZ_TYO_SUMMARY
+route-map RM-USER-500-OUT permit 70
+   match ip address prefix-list PL-DZ_AMS_SUMMARY
+!
+no route-map RM-USER-501-OUT
+route-map RM-USER-501-OUT permit 10
+   match ip address prefix-list PL-DZ_LAX_SUMMARY
+route-map RM-USER-501-OUT permit 20
+   match ip address prefix-list PL-DZ_EWR_SUMMARY
+route-map RM-USER-501-OUT permit 30
+   match ip address prefix-list PL-DZ_LHR_SUMMARY
+route-map RM-USER-501-OUT permit 40
+   match ip address prefix-list PL-DZ_FRA_SUMMARY
+route-map RM-USER-501-OUT permit 50
+   match ip address prefix-list PL-DZ_SIN_SUMMARY
+route-map RM-USER-501-OUT permit 60
+   match ip address prefix-list PL-DZ_TYO_SUMMARY
+route-map RM-USER-501-OUT permit 70
+   match ip address prefix-list PL-DZ_AMS_SUMMARY
+!
+no route-map RM-USER-502-OUT
+route-map RM-USER-502-OUT permit 10
+   match ip address prefix-list PL-DZ_LAX_SUMMARY
+route-map RM-USER-502-OUT permit 20
+   match ip address prefix-list PL-DZ_EWR_SUMMARY
+route-map RM-USER-502-OUT permit 30
+   match ip address prefix-list PL-DZ_LHR_SUMMARY
+route-map RM-USER-502-OUT permit 40
+   match ip address prefix-list PL-DZ_FRA_SUMMARY
+route-map RM-USER-502-OUT permit 50
+   match ip address prefix-list PL-DZ_SIN_SUMMARY
+route-map RM-USER-502-OUT permit 60
+   match ip address prefix-list PL-DZ_TYO_SUMMARY
+route-map RM-USER-502-OUT permit 70
+   match ip address prefix-list PL-DZ_AMS_SUMMARY
+!
+ip prefix-list PL-DZ_EWR_SUMMARY seq 10 permit 64.86.249.80/29 le 32
+ip prefix-list PL-DZ_FRA_SUMMARY seq 10 permit 195.219.220.88/29 le 32
+ip prefix-list PL-DZ_LAX_SUMMARY seq 10 permit 207.45.216.136/29 le 32
+ip prefix-list PL-DZ_LHR_SUMMARY seq 10 permit 195.219.120.72/29 le 32
+ip prefix-list PL-DZ_SIN_SUMMARY seq 10 permit 180.87.102.104/29 le 32
+ip prefix-list PL-DZ_TYO_SUMMARY seq 10 permit 180.87.154.112/29 le 32
+ip prefix-list PL-DZ_AMS_SUMMARY seq 10 permit 195.219.138.56/29 le 32
+!
+no route-map RM-USER-500-IN
+route-map RM-USER-500-IN permit 10
+   match ip address prefix-list PL-USER-500
+   match as-path length = 1
+!
+no route-map RM-USER-501-IN
+route-map RM-USER-501-IN permit 10
+   match ip address prefix-list PL-USER-501
+   match as-path length = 1
+!
+no route-map RM-USER-502-IN
+route-map RM-USER-502-IN permit 10
+   match ip address prefix-list PL-USER-502
+   match as-path length = 1
+!
+no ip prefix-list PL-USER-500
+ip prefix-list PL-USER-500 seq 10 permit 100.0.0.0/32
+!
+no ip prefix-list PL-USER-501
+ip prefix-list PL-USER-501 seq 10 permit 100.0.0.1/32
+!
+no ip prefix-list PL-USER-502
+ip prefix-list PL-USER-502 seq 10 permit 100.0.0.2/32
+!

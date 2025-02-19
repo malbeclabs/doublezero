@@ -1,0 +1,229 @@
+// Copyright (c) 2021 Arista Networks, Inc.  All rights reserved.
+// Arista Networks, Inc. Confidential and Proprietary.
+
+syntax = "proto3";
+
+option go_package = "arista/EosSdkRpc";
+
+package eos.remote;
+
+import "ip_intf_types.proto";
+
+/**
+ * An ACL key is the combination of its name and ACL type.
+ *
+ * EosSdk reference: eos::acl_key_t
+ */
+message AclKey {
+   string acl_name = 1;
+   AclType acl_type = 2;
+}
+
+/**
+ * Contains common fields for ACL rules.
+ *
+ * EosSdk reference: eos::acl_rule_base_t
+ */
+message AclRuleBase {
+   reserved 3;
+   reserved "tracked";
+   oneof action_present {
+      // Default value is ACL_PERMIT.
+      AclAction action = 1;
+   }
+   bool log = 2;
+}
+
+/**
+ * An individual ACL rule for IPv4 or IPv6 ACLs.
+ *
+ * EosSdk reference: eos::acl_rule_ip_t
+ */
+message AclRuleIp {
+   AclRuleBase base_fields = 1;
+   // Must be in range 0 to 65535.
+   uint32 vlan = 2;
+   oneof vlan_mask_present {
+      // Must be in range 0 to 65535.
+      // Default value is 0xFFF.
+      uint32 vlan_mask = 3;
+   }
+   // Must be in range 0 to 65535.
+   uint32 inner_vlan = 4;
+   oneof inner_vlan_mask_present {
+      // Must be in range 0 to 65535.
+      // Default value is 0xFFF.
+      uint32 inner_vlan_mask = 5;
+   }
+   // Must be in range 0 to 255.
+   uint32 ip_protocol = 6;
+   AclTtlSpec ttl = 7;
+   IpAddrMask source_addr = 8;
+   IpAddrMask destination_addr = 9;
+   AclPortSpec source_port = 10;
+   AclPortSpec destination_port = 11;
+   string nexthop_group = 12;
+   // Bitmask of TCP flags. Bits should match the desired flag values defined in the
+   // enum AclTcpFlag. Must be in range 0 to 65535.
+   uint32 tcp_flags = 13;
+   oneof ip_type_present {
+      // Default value is ACL_IP_TYPE_ANY.
+      AclIpType ip_type = 14;
+   }
+   bool established = 15;
+   oneof icmp_type_present {
+      // Default value is 65535.
+      uint32 icmp_type = 16;
+   }
+   oneof icmp_code_present {
+      // Must be in range 0 to 65535.
+      // Default value is 65535.
+      uint32 icmp_code = 17;
+   }
+   // Must be in range 0 to 255.
+   uint32 priority_value = 18;
+   // Must be in range 0 to 255.
+   uint32 priority_mask = 19;
+   bool match_fragments = 20;
+   bool match_ip_priority = 21;
+}
+
+/**
+ * An Ethernet ACL rule which can be applied to Ethernet, Vlan and MLAG interfaces.
+ *
+ * EosSdk reference: eos::acl_rule_eth_t
+ */
+message AclRuleEth {
+   AclRuleBase base_fields = 1;
+   // Must be in range 0 to 65535.
+   uint32 vlan = 2;
+   oneof vlan_mask_present {
+      // Must be in range 0 to 65535.
+      // Default value is 0xFFF.
+      uint32 vlan_mask = 3;
+   }
+   // Must be in range 0 to 65535.
+   uint32 inner_vlan = 4;
+   oneof inner_vlan_mask_present {
+      // Must be in range 0 to 65535.
+      // Default value is 0xFFF.
+      uint32 inner_vlan_mask = 5;
+   }
+   bytes source_addr = 6;
+   bytes destination_addr = 7;
+   bytes source_mask = 8;
+   bytes destination_mask = 9;
+   oneof eth_protocol_present {
+      // Default value is 0xFFFFFFFF.
+      uint32 eth_protocol = 10;
+   }
+}
+
+/**
+ * A UDP or TCP port specifier.
+ *
+ * EosSdk reference: eos::acl_port_spec_t
+ */
+message AclPortSpec {
+   oneof oper_present {
+      // Default value is ACL_RANGE_ANY.
+      AclRangeOperator oper = 1;
+   }
+   // Must be in range 0 to 65535.
+   repeated uint32 ports = 2;
+}
+
+/**
+ * A TTL specifier, used in an IP ACL rule to define TTLs to match.
+ *
+ * EosSdk reference: eos::acl_ttl_spec_t
+ */
+message AclTtlSpec {
+   oneof oper_present {
+      // Default value is ACL_RANGE_ANY.
+      AclRangeOperator oper = 1;
+   }
+   // Must be in range 0 to 255.
+   uint32 ttl = 2;
+}
+
+/**
+ * The ACL type.
+ *
+ * EosSdk reference: eos::acl_type_t
+ */
+enum AclType {
+   ACL_TYPE_NULL = 0;
+   ACL_TYPE_IPV4 = 1;
+   ACL_TYPE_IPV6 = 2;
+   ACL_TYPE_ETH = 3;
+   ACL_TYPE_MPLS = 4;
+}
+
+/**
+ * The direction in which an ACL is applied. Can apply to both directions by
+ * specifying them in two separate calls.
+ *
+ * EosSdk reference: eos::acl_direction_t
+ */
+enum AclDirection {
+   ACL_DIRECTION_NULL = 0;
+   ACL_IN = 1;
+   ACL_OUT = 2;
+};
+
+/**
+ * The type of range operator for TTL and port specifications.
+ *
+ * EosSdk reference: eos::acl_range_operator_t
+ */
+enum AclRangeOperator {
+   ACL_RANGE_NULL = 0;
+   ACL_RANGE_ANY = 1;
+   ACL_RANGE_EQ = 2;
+   ACL_RANGE_GT = 3;
+   ACL_RANGE_LT = 4;
+   ACL_RANGE_NEQ = 5;
+   ACL_RANGE_BETWEEN = 6;
+}
+
+/**
+ * The action to take for an individual ACL rule.
+ *
+ * EosSdk reference: eos::acl_action_t
+ */
+enum AclAction {
+   ACL_ACTION_NULL = 0;
+   ACL_PERMIT = 1;
+   ACL_DENY = 2;
+}
+
+/**
+ * TCP flags used in IP rules to specify which TCP flags to match. Shows which bits
+ * correspond to which flags.
+ *
+ * EosSdk reference: eos::acl_tcp_flag_t
+ */
+enum AclTcpFlag {
+   ACL_TCP_NULL = 0;
+   ACL_TCP_FIN = 1;
+   ACL_TCP_SYN = 2;
+   ACL_TCP_RST = 4;
+   ACL_TCP_PSH = 8;
+   ACL_TCP_ACK = 16;
+   ACL_TCP_URG = 32;
+   ACL_TCP_ECE = 64;
+   ACL_TCP_CWR = 128;
+}
+
+/**
+ * IP traffic type to be matched.
+ *
+ * EosSdk reference: eos::acl_ip_type_t
+ */
+enum AclIpType {
+   ACL_IP_TYPE_NOT_SET = 0;
+   ACL_IP_TYPE_ANY = 1;
+   ACL_IP_TYPE_IP = 2;
+   ACL_IP_TYPE_MPLS = 3;
+}

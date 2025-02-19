@@ -1,0 +1,264 @@
+// Copyright (c) 2021 Arista Networks, Inc.  All rights reserved.
+// Arista Networks, Inc. Confidential and Proprietary.
+
+syntax = "proto3";
+
+option go_package = "arista/EosSdkRpc";
+
+import "rpc_types.proto";
+
+package eos.remote;
+
+service AgentService {
+   /**
+    * Subscription to monitor changes of the agent. This request
+    * stays active until it is cancelled from client side or the server is shut down.
+    * Supported events:
+    *    eos::agent_handler::on_agent_option:
+    *       Configuration option of the agent has changed.
+    *
+    * The events on_initialized and on_agent_enabled are out of rpc scope since
+    * they imply on creation and destruction of the RPC server itself.
+    *
+    * EosSdk reference: eos::agent_handler (class)
+    **/
+   rpc watch( WatchAgentRequest ) returns ( stream WatchAgentResponse );
+  
+   /**
+    * Queries for the unique numeric ID of the given agent.
+    *
+    * EosSdk reference: eos::agent_mgr::id
+    **/
+    rpc agent_id( AgentIdRequest ) returns ( AgentIdResponse );
+   
+   /**
+    * Queries whether the agent is enabled or not.
+    *
+    * EosSdk reference: eos::agent_mgr::enabled
+    **/
+   rpc enabled( AgentEnabledRequest ) returns ( AgentEnabledResponse );
+   
+   /**
+    * Queries for the configured value of the given agent option.
+    *
+    * EosSdk reference: eos:agent_mgr::agent_option
+    **/
+   rpc agent_option( AgentOptionRequest ) returns ( AgentOptionResponse );
+   
+   /**
+    * Queries whether the given option exists in the configuration or not.
+    *
+    * EosSdk reference: eos::agent_mgr::agent_option_exists
+    */
+   rpc agent_option_exists( AgentOptionExistsRequest ) returns ( AgentOptionExistsResponse );
+   
+   /**
+    * Enumerates all configured agent options.
+    *
+    * EosSdk reference: eos::agent::agent_option_iter
+    **/
+   rpc agent_options( AgentOptionsRequest ) returns ( stream AgentOptionsResponse );
+   
+   /**
+    * Queries for the last set value for the given status name.
+    *
+    * EosSdk reference: eos::agent::status
+    **/
+   rpc status( AgentStatusRequest ) returns ( AgentStatusResponse );
+   
+   /**
+    * Enumerates all status values set by this agent.
+    *
+    * EosSdk reference: eos::agent::status_iter
+    **/
+   rpc statuses( AgentStatusesRequest ) returns ( stream AgentStatusesResponse );
+   
+   /**
+    * Sets a status value for the given status name.
+    *
+    * EosSdk reference: eos::agent_mgr::status_set
+    **/
+   rpc status_set( AgentStatusSetRequest ) returns ( AgentStatusSetResponse );
+   
+   /**
+    * Sets multiple status name/value pairs at once for this agent.
+    *
+    * EosSdk reference: eos::agent_mgr::status_set
+    **/
+   rpc bulk_status_set( AgentBulkStatusSetRequest ) returns ( AgentBulkStatusSetResponse );
+   
+   /**
+    * Deletes the stored agent status for the given status name.
+    *
+    * EosSdk reference: eos::agent_mgr::status_del
+    **/
+   rpc status_del( AgentStatusDelRequest ) returns ( AgentStatusDelResponse );
+   
+   /**
+    * Deletes multiple statuses at once for each given status name.
+    *
+    * EosSdk reference: eos::agent_mgr::status_del
+    **/
+   rpc bulk_status_del( AgentBulkStatusDelRequest ) returns ( AgentBulkStatusDelResponse );
+   
+   /**
+    * Gets the time elapsed since the start of this agent.
+    *
+    * EosSdk reference: eos::agent_mgr::agent_uptime
+    **/
+   rpc agent_uptime( AgentUptimeRequest ) returns ( AgentUptimeResponse );
+
+   /**
+    * Causes EosSdkRpc agent to echo the payload and verify that the SDK thread is
+    * also responsive.
+    *
+    * This function is specific to RPC and does not match any EOS SDK function.
+    */
+    rpc ping( AgentPingRequest ) returns ( AgentPingResponse );
+}
+
+message WatchAgentRequest {
+   // Set to true when an ackowledgment is desired.
+   bool ack = 1;
+}
+
+message AgentOption {
+   // The name of the option for which the notification is received.
+   string name = 1;
+   // The new option value.
+   string value = 2;
+}
+
+/**
+ * Events are streamed as changes happen.
+ */
+message WatchAgentResponse {
+   oneof agent_event {
+      AgentOption option_event = 1;
+   }
+   // If true, this is not an event and the fields below are invalid.
+   bool ack = 2;
+}
+
+message AgentIdRequest {
+   // The name of the agent to query ID for.
+   string name = 1;
+}
+
+message AgentIdResponse {
+   // Numeric identifier for the agent.
+   uint32 id = 1;
+}
+
+message AgentEnabledRequest {}
+
+message AgentEnabledResponse {
+   // True if the agent is enabled, otherwise False.
+   bool enabled = 1;
+}
+
+message AgentOptionRequest {
+   // The name of the agent option to query for.
+   string name = 1;
+}
+
+message AgentOptionResponse {
+   // The value for the given option name.
+   string value = 1;
+}
+
+message AgentOptionExistsRequest {
+   // The name of the agent option to query for.
+   string name = 1;
+}
+
+message AgentOptionExistsResponse {
+   // True if the given option name exists, otherwise False.
+   bool exists = 1;
+}
+
+message AgentOptionsRequest {}
+
+message AgentOptionsResponse {
+   // Configured agent option name.
+   string name = 1;
+}
+
+message AgentStatusRequest {
+   // The status name to query for.
+   string name = 1;
+}
+
+message AgentStatusResponse {
+   // The last set status value.
+   string value = 1;
+}
+
+message AgentStatusesRequest {}
+
+message AgentStatusesResponse {
+   // Status value set by this agent.
+   string name = 1;
+}
+
+message AgentStatusSetRequest {
+   // The status name to set.
+   string name = 1;
+   // The corresponding status value to set.
+   string value = 2;
+}
+
+message AgentStatusSetResponse {}
+
+message AgentBulkStatusSetRequest {
+   // Array of AgentStatusSetRequest
+   repeated AgentStatusSetRequest requests = 1;
+}
+
+message AgentBulkStatusSetResponse {
+   // Number of successfully deleted statuses.
+   uint64 processed = 1;
+   // Success or error details in case of failure.
+   RpcResponseStatus status = 2;
+}
+
+message AgentStatusDelRequest {
+   string name = 1;
+}
+
+message AgentStatusDelResponse {}
+
+message AgentBulkStatusDelRequest {
+   // Array of AgentStatusDelRequest.
+   repeated AgentStatusDelRequest requests = 1;   
+}
+
+message AgentBulkStatusDelResponse {
+   // Number of successfully deleted statuses.
+   uint64 processed = 1;
+   // Success or error details in case of failure.
+   RpcResponseStatus status = 2;
+}
+
+message AgentUptimeRequest {}
+
+message AgentUptimeResponse {
+   // The elapsed time in seconds.
+   double seconds = 1;
+}
+
+message AgentPingRequest {
+   // A user-defined payload.
+   string payload = 1;
+}
+
+message AgentPingResponse {
+   // An echo of the request's payload.
+   string payload = 1;
+   // Wall-time timestamp when the request gets acknowledged by the
+   // RPC thread expressed in nanoseconds.
+   uint64 rpc_ack_timestamp = 2;
+   // Wall-time timestamp when the request gets acknowledged by the
+   // SDK thread, expressed in nanoseconds.
+   uint64 sdk_ack_timestamp = 3;
+}

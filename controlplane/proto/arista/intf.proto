@@ -1,0 +1,330 @@
+// Copyright (c) 2021 Arista Networks, Inc.  All rights reserved.
+// Arista Networks, Inc. Confidential and Proprietary.
+
+syntax = "proto3";
+
+option go_package = "arista/EosSdkRpc";
+
+package eos.remote;
+
+import "rpc_types.proto";
+import "intf_types.proto";
+
+service IntfMgrService {
+
+   /**
+    * Subscription to monitor changes on interface properties or status. This request
+    * stays active until it is cancelled from client side or the server is shut down.
+    * Making this request with all = false and no intf_id has no effect.
+    *
+    * EosSdk reference: eos::intf_handler (class)
+    */
+   rpc watch( WatchIntfRequest ) returns ( stream WatchIntfResponse ) {}
+
+   /**
+    * Enumerates the interfaces.
+    *
+    * EosSdk reference: eos::intf_mgr::intf_iter
+    */
+   rpc intfs( IntfsRequest ) returns ( stream IntfsResponse ) {}
+
+   /**
+    * Queries whether an interface exists or not.
+    *
+    * EosSdk reference: eos::intf_mgr::exists
+    */
+   rpc exists( IntfExistsRequest ) returns ( IntfExistsResponse ) {}
+
+   /**
+    * Queries the kernel device for a particular interface.
+    *
+    * EosSdk reference: eos::intf_mgr::kernel_intf_name
+    */
+   rpc kernel_intf_name( KernelIntfNameRequest ) returns ( KernelIntfNameResponse ) {}
+
+   /**
+    * Queries EOS interface name for a particular kernel device.
+    *
+    * EosSdk reference: eos::intf_mgr::eos_intf_name
+    */
+   rpc eos_intf_name( EosIntfNameRequest ) returns ( EosIntfNameResponse ) {}
+
+   /**
+    * Queries if an interface is configured to be enabled.
+    *
+    * EosSdk reference: eos::intf_mgr::admin_enabled
+    */
+   rpc admin_enabled( AdminEnabledRequest ) returns ( AdminEnabledResponse ) {}
+
+   /**
+    * Changes the enabled status of an interface.
+    *
+    * EosSdk reference: eos::intf_mgr::admin_enabled_is
+    */
+   rpc admin_enabled_is( AdminEnabledIsRequest ) returns ( AdminEnabledIsResponse ) {}
+
+   /**
+    * Changes the enabled status of multiple interfaces.
+    *
+    * EosSdk reference: eos::intf_mgr::admin_enabled_is
+    */
+   rpc bulk_admin_enabled_is( BulkAdminEnabledIsRequest ) returns ( BulkAdminEnabledIsResponse ) {}
+
+   /**
+    * Queries the description of an interface
+    *
+    * EosSdk reference: eos::intf_mgr::description
+    */
+   rpc description( DescriptionRequest ) returns ( DescriptionResponse ) {}
+
+   /**
+    * Changes the description of an interface
+    *
+    * EosSdk reference: eos::intf_mgr::description_is
+    */
+   rpc description_is( DescriptionIsRequest ) returns ( DescriptionIsResponse ) {}
+   /**
+    * Changes descriptions of multiple interfaces
+    *
+    * EosSdk reference: eos::intf_mgr::oper_description_is
+    */
+   rpc bulk_description_is( BulkDescriptionIsRequest ) returns ( BulkDescriptionIsResponse ) {}
+   /**
+    * Queries the current operational status of the given interface.
+    *
+    * EosSdk reference: eos::intf_mgr::oper_status
+    */
+   rpc oper_status( OperStatusRequest ) returns ( OperStatusResponse ) {}
+} 
+
+enum IntfWatchedField {
+   INTF_ALL_FIELDS = 0;
+   INTF_OPER_STATUS = 1;
+   INTF_ADMIN_ENABLED = 2;
+   INTF_DESCRIPTION = 3;
+}
+
+message IntfFieldsControl {
+   repeated IntfWatchedField fields = 1;
+}
+
+message WatchIntfRequest {
+   oneof overloads {
+      bool all_intfs = 1;
+      // Name of a particular interface to watch.
+      IntfId intf_id = 2;
+   }
+   // Set to true when an ackowledgment is desired.
+   bool ack = 3;
+   // Controls whether a dump of the existing state is performed and what data
+   // it contains. This dump takes place when the watcher starts up.
+   // At least one IntfWatchedField must be specified in order to perform a dump.
+   IntfFieldsControl dump_fields = 4;
+}
+
+enum IntfEvents {
+   EVENT_INTF_NO_CHANGES = 0;
+   EVENT_INTF_CREATED = 1;
+   EVENT_INTF_DELETED = 2;
+}
+
+/**
+ * Events are streamed as changes happen.
+ */
+message WatchIntfResponse {
+   // Interface whose status changed.
+   IntfId intf_id = 1;
+   oneof event_present {
+      // Interface has been added or removed.
+      IntfEvents event = 2;
+   }
+   oneof oper_status_present {
+      OperStatuses status = 3;
+   }
+   oneof admin_enabled_present {
+      // Enabled status has been changed.
+      bool admin_enabled = 4;
+   }
+   oneof description_present {
+      // Interface's description has changed.
+      string description = 5;
+   }
+   // If true, this is not an event and the fields below are invalid. It
+   // will be sent immediately if a dump is not being performed and an
+   // acknowledgement was requested. If a dump is taking place it will
+   // instead be sent at the end of the dump regardless of whether an
+   // acknowledgement was requested or not.
+   bool ack = 6;
+}
+
+message IntfsRequest {}
+
+message IntfsResponse {
+   // Name of the interface.
+   IntfId intf_id = 1; 
+}
+
+message IntfExistsRequest {
+   // Name of the interface.
+   IntfId intf_id = 1; 
+}
+
+message IntfExistsResponse {
+   // True if the interface is present, false otherwise.
+   bool exists = 1; 
+}
+
+message KernelIntfNameRequest {
+   // Name of the interface.
+   IntfId intf_id = 1; 
+}
+
+message KernelIntfNameResponse {
+   // Linux kernel device name for the interface.
+   string name = 1; 
+}
+
+message EosIntfNameRequest {
+   // Linux kernel device name for the interface.
+   string name = 1; 
+}
+
+message EosIntfNameResponse {
+   // Name of the interface.
+   IntfId intf_id = 1; 
+}
+
+message AdminEnabledRequest {
+   // Linux kernel device name for the interface.
+   IntfId intf_id = 1; 
+}
+
+message AdminEnabledResponse {
+   // True if interface is enabled, false otherwise.
+   bool enabled = 1; 
+}
+
+message AdminEnabledIsRequest {
+   // Name of the interface.
+   IntfId intf_id = 1;
+   // New enabled status for the interface.
+   bool enabled = 2;
+}
+
+message AdminEnabledIsResponse {}
+
+message BulkAdminEnabledIsRequest {
+   // Array of AdminEnabledIsRequest.
+   repeated AdminEnabledIsRequest requests = 1; 
+}
+
+message BulkAdminEnabledIsResponse {
+   // Number of successful requests.
+   uint64 processed = 1;
+   // Error details in case of failure.
+   RpcResponseStatus status = 2;
+}
+
+message DescriptionRequest {
+   // Name of the interface.
+   IntfId intf_id = 1; 
+}
+
+message DescriptionResponse {
+   // Description currently set for the interface.
+   string description = 1; 
+}
+
+message DescriptionIsRequest {
+   // Name of the interface.
+   IntfId intf_id = 1;
+   // New description for the interface.
+   string description = 2;
+}
+
+message DescriptionIsResponse {}
+
+message BulkDescriptionIsRequest {
+   // Array of DescriptionIsRequest.
+   repeated DescriptionIsRequest requests = 1; 
+}
+
+message BulkDescriptionIsResponse {
+   // Number of successful requests.
+   uint64 processed = 1;
+   // Error details in case of failure.
+   RpcResponseStatus status = 2;
+}
+
+message OperStatusRequest {
+   // Name of the interface.
+   IntfId intf_id = 1; 
+}
+
+message OperStatusResponse {
+   // Operational status of the interface.
+   OperStatuses status = 1; 
+}
+
+service IntfCounterMgrService {
+   /**
+    * Queries the given interface for the current counters.
+    *
+    * EosSdk reference: eos::intf_counter_mgr::counters
+    */
+   rpc intf_counters( IntfCountersRequest ) returns ( IntfCountersResponse ) {}
+
+   /**
+    * Queries the given interface for the current traffic rates.
+    *
+    * EosSdk reference: eos::intf_counter_mgr::traffic_rates
+    */
+   rpc intf_traffic_rates( IntfTrafficRatesRequest ) returns ( IntfTrafficRatesResponse ) {}
+
+   /*
+   * Streams traffic rate updates
+   */
+   rpc intf_traffic_rates_stream( IntfTrafficRatesStreamRequest ) returns (
+      stream IntfTrafficRatesStreamResponse ) {}
+}
+
+message IntfCountersRequest {
+   // Name of the interface.
+   IntfId intf_id = 1;
+}
+
+message IntfCountersResponse {
+   // The counters associated with the interface.
+   IntfCounters counters = 1;
+}
+
+message IntfTrafficRatesRequest {
+   // Name of the interface.
+   IntfId intf_id = 1;
+}
+
+message IntfTrafficRatesResponse {
+   // The traffic rates associated with the interface.
+   IntfTrafficRates rates = 1;
+}
+
+message IntfTrafficRatesStreamRequest {
+   // Set to true when an ackowledgment is desired.
+   bool ack = 1;
+   // Regular expression to report only interfaces with matching names.
+   // When empty, all interfaces are sent.
+   string intf_name_regex = 2;
+}
+
+message IntfTrafficRatesStreamResponse {
+   message DataEntry {
+      // Interface name
+      IntfId intf_id = 1;
+      // The traffic rates associated with the interface.
+      IntfTrafficRates rates = 2;
+   }
+   // If true the agent is now actively watching for events.
+   bool ack = 1;
+   // Traffic rates data
+   repeated DataEntry data = 2;
+}

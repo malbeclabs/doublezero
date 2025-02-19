@@ -1,0 +1,144 @@
+// Copyright (c) 2021 Arista Networks, Inc.  All rights reserved.
+// Arista Networks, Inc. Confidential and Proprietary.
+
+syntax = "proto3";
+
+option go_package = "arista/EosSdkRpc";
+
+package eos.remote;
+
+import "bgp_path_types.proto";
+import "ip_types.proto";
+
+service BgpPathMgrService {
+   /**
+    * Subscription to monitor changes to bgp paths. This request
+    * stays active until the client cancels or the server shuts down.
+    * When all = false and no version is specified, this request has no effect.
+    *
+    * EosSdk reference: eos::bgp_path_handler (class)
+    */
+   rpc watch( BgpPathWatchRequest ) returns ( stream BgpPathWatchResponse ) {}
+
+   /**
+    * Iterates through all IPv4 paths in adj-RIB-in that match the search criteria.
+    *
+    * EosSdk reference: eos::bgp_path_mgr::ipv4_unicast_path_iter
+    */
+   rpc ipv4_unicast_paths( Ipv4UnicastPathsRequest ) returns ( stream Ipv4UnicastPathsResponse ) {}
+
+   /**
+    * Queries a single path, given its key and search criteria.
+    *
+    * EosSdk reference: eos::bgp_path_mgr::ipv4_unicast_path
+    */
+   rpc ipv4_unicast_path( Ipv4UnicastPathRequest ) returns ( Ipv4UnicastPathResponse ) {}
+
+   /**
+    * Queries if IPv4 family has converged.
+    *
+    * EosSdk reference: eos::bgp_path_mgr::ipv4_unicast_bgp_convergence
+    */
+   rpc ipv4_unicast_bgp_convergence( Ipv4UnicastBgpConvergenceRequest ) returns ( Ipv4UnicastBgpConvergenceResponse ) {}
+
+   /**
+    * Iterates through adj-RIB-in for paths that match the criteria.
+    *
+    * EosSdk reference: eos::bgp_path_mgr::ipv6_unicast_path_iter
+    */
+   rpc ipv6_unicast_paths( Ipv6UnicastPathsRequest ) returns ( stream Ipv6UnicastPathsResponse ) {}
+
+   /**
+    * Queries a single path, given its key and search criteria.
+    *
+    * EosSdk reference: eos::bgp_path_mgr::ipv6_unicast_path
+    */
+   rpc ipv6_unicast_path( Ipv6UnicastPathRequest ) returns ( Ipv6UnicastPathResponse ) {}
+
+   /**
+    * Queries if IPv6 family has converged.
+    *
+    * EosSdk reference: eos::bgp_path_mgr::ipv6_unicast_bgp_convergence
+    */
+   rpc ipv6_unicast_bgp_convergence( Ipv6UnicastBgpConvergenceRequest ) returns ( Ipv6UnicastBgpConvergenceResponse ) {}
+}
+
+message BgpPathWatchRequest {
+   oneof overloads {
+      bool all_paths = 1;
+      // True if IPv4 unicast paths should be monitored.
+      bool ipv4_unicast_paths = 2;
+      // True if IPv6 unicast paths should be monitored.
+      bool ipv6_unicast_paths = 3;
+   }
+   // Set to true when an ackowledgment is desired.
+   bool ack = 4;
+}
+
+/**
+ * Events are streamed as changes happen.
+ */
+message BgpPathWatchResponse {
+   // IP family affected by the event.
+   IpVersion ip_version = 1;
+   oneof events {
+      // Path changed in adj-RIB-in.
+      BgpPathKey path_key = 2;
+      // BGP convergence changed for that IP family.
+      bool converged = 3;
+   }
+   // If true, this is not an event and the fields below are invalid.
+   bool ack = 4;
+}
+
+message Ipv4UnicastPathsRequest {
+   BgpPathOptions path_options = 1;
+}
+
+message Ipv4UnicastPathsResponse {
+   // List of paths that match the criteria.
+   BgpPath path = 1; 
+}
+
+message Ipv4UnicastPathRequest {
+   BgpPathKey path_key = 1;
+   BgpPathOptions path_options = 2;
+}
+
+message Ipv4UnicastPathResponse {
+   // Path matching criteria or empty if not found.
+   BgpPath path = 1; 
+}
+
+message Ipv4UnicastBgpConvergenceRequest {}
+
+message Ipv4UnicastBgpConvergenceResponse {
+   // True if IPv4 family has converged.
+   bool converged = 1; 
+}
+
+message Ipv6UnicastPathsRequest {
+   BgpPathOptions path_options = 2;
+}
+
+message Ipv6UnicastPathsResponse {
+   // A path that matches the criteria.
+   BgpPath path = 1; 
+}
+
+message Ipv6UnicastPathRequest {
+   BgpPathKey path_key = 1;
+   BgpPathOptions path_options = 2;
+}
+
+message Ipv6UnicastPathResponse {
+   // Path matching criteria or empty if not found.
+   BgpPath path = 1; 
+}
+
+message Ipv6UnicastBgpConvergenceRequest {}
+
+message Ipv6UnicastBgpConvergenceResponse {
+   // True if IPv6 family has converged.
+   bool converged = 1; 
+}

@@ -1,0 +1,63 @@
+// Copyright (c) 2021 Arista Networks, Inc.  All rights reserved.
+// Arista Networks, Inc. Confidential and Proprietary.
+
+syntax = "proto3";
+
+option go_package = "arista/EosSdkRpc";
+
+package eos.remote;
+
+/**
+ * An MPLS label, per RFC 3032.
+ *
+ * Valid labels must be in the range 0 to 1048575.
+ * The value 1048576  denotes the label is unset and therefore invalid.
+ * The default value of 0 is the explicit null label. LSRs receiving this label
+ * are expected to pop it and perform ultimate IP forwarding.
+ *
+ * EosSdk reference: eos::mpls_label_t
+ */
+message MplsLabel {
+   oneof label_present {
+      // Default value is 1048576 (invalid label).
+      uint32 label = 1;
+   }
+}
+
+/**
+ * The action to take for an MPLS route.
+ *
+ * EosSdk reference: eos::mpls_action_t
+ */
+enum MplsActions {
+   MPLS_ACTION_NULL = 0;
+   MPLS_ACTION_PUSH = 1;
+   MPLS_ACTION_POP = 2;
+   MPLS_ACTION_SWAP = 3;
+   MPLS_ACTION_FORWARD = 4;
+}
+
+/**
+ * The inner payload type.
+ * Used in a similar way to ethertype, as MPLS does not provide this in the packet.
+ *
+ * EosSdk reference: eos::mpls_payload_type_t
+ */
+enum MplsPayloadType {
+   MPLS_PAYLOAD_TYPE_NULL = 0;
+   MPLS_PAYLOAD_TYPE_MPLS = 1;
+   MPLS_PAYLOAD_TYPE_IPV4 = 2;
+   MPLS_PAYLOAD_TYPE_IPV6 = 3;
+   MPLS_PAYLOAD_TYPE_GUESS = 4;
+}
+
+/**
+ * Whether to use the pipe or uniform TTL inheritance mode.
+ *
+ * EosSdk reference: eos::mpls_ttl_mode_t
+ */
+enum MplsTtlMode {
+   MPLS_TTL_MODE_NULL = 0;
+   MPLS_TTL_MODE_PIPE = 1;
+   MPLS_TTL_MODE_UNIFORM = 2;
+}

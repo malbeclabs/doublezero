@@ -1,0 +1,160 @@
+// Copyright (c) 2024 Arista Networks, Inc.  All rights reserved.
+// Arista Networks, Inc. Confidential and Proprietary.
+
+syntax = "proto3";
+
+option go_package = "arista/EosSdkRpc";
+
+package eos.remote;
+
+import "class_map_types.proto";
+import "policy_map_types.proto";
+import "rpc_types.proto";
+
+service ClassMapMgrService {
+   /**
+   * Initiates a class map resync process. Starts a blank configuration to be
+   * applied once resync_complete is called.
+   *
+   * EosSdk reference: eos::class_map_mgr::resync_init
+   */
+   rpc resync_init( ClassMapResyncInitRequest ) returns (
+       ClassMapResyncInitResponse ) {}
+
+   /**
+   * Ends the current class map resync process.
+   *
+   * EosSdk reference: eos::class_map_mgr::resync_complete
+   */
+   rpc resync_complete( ClassMapResyncCompleteRequest ) returns (
+       ClassMapResyncCompleteResponse ) {}
+
+   /**
+   * Queries whether the specified class map is configured or not.
+   *
+   * EosSdk reference: eos::class_map_mgr::exists
+   */
+   rpc exists( ClassMapExistsRequest ) returns ( ClassMapExistsResponse ) {}
+
+   /**
+   * Queries a class map given its key.
+   *
+   * EosSdk reference: eos::class_map_mgr::class_map
+   */
+   rpc class_map( ClassMapRequest ) returns ( ClassMapResponse ) {}
+
+   /**
+   * Creates or updates a class map.
+   *
+   * EosSdk reference: eos::class_map_mgr::class_map_is
+   */
+   rpc class_map_is( ClassMapIsRequest ) returns ( ClassMapIsResponse ) {}
+
+   /**
+   * Creates or updates multiple class maps in a single call.
+   *
+   * EosSdk reference: eos::class_map_mgr::class_map_is
+   */
+   rpc bulk_class_map_is( BulkClassMapIsRequest ) returns (
+       BulkClassMapIsResponse ) {}
+
+   /**
+   * Deletes a class map.
+   *
+   * EosSdk reference: eos::class_map_mgr::class_map_del
+   */
+   rpc class_map_del( ClassMapDelRequest ) returns ( ClassMapDelResponse ) {}
+
+   /**
+   * Deletes multiple class maps in a single call.
+   *
+   * EosSdk reference: eos::class_map_mgr::class_map_del
+   */
+   rpc bulk_class_map_del( BulkClassMapDelRequest ) returns (
+       BulkClassMapDelResponse ) {}
+
+   /**
+   * Returns a list of the keys of the configured class maps for a 
+   * specified policy_feature
+   *
+   * EosSdk reference: eos::class_map_mgr::class_map_iter
+   */
+   rpc class_maps( ClassMapsRequest ) returns ( stream ClassMapsResponse ) {}
+}
+
+message ClassMapResyncInitRequest {}
+
+message ClassMapResyncInitResponse {}
+
+message ClassMapResyncCompleteRequest {}
+
+message ClassMapResyncCompleteResponse {}
+
+message ClassMapExistsRequest {
+   // The key of the class map to query.
+   PolicyMapKey key = 1;
+}
+
+message ClassMapExistsResponse {
+   // True if the class map is configured otherwise false.
+   bool exists = 1;
+}
+
+message ClassMapRequest {
+   // The key of the class map to query.
+   PolicyMapKey key = 1;
+}
+
+message ClassMapResponse {
+   // The class map corresponding to the key or empty if not found.
+   ClassMap class_map = 1;
+}
+
+message ClassMapIsRequest {
+   // The class map to create or update.
+   ClassMap class_map = 1;
+}
+
+message ClassMapIsResponse {}
+
+message BulkClassMapIsRequest {
+   // List of ClassMapIsRequests specifying the class maps to create.
+   repeated ClassMapIsRequest requests = 1;
+}
+
+message BulkClassMapIsResponse {
+   // Number of consecutive successful requests.
+   uint64 processed = 1;
+   // Success or error details in the case of failure.
+   RpcResponseStatus status = 2;
+}
+
+message ClassMapDelRequest {
+   // The key of the class map to delete.
+   PolicyMapKey key = 1;
+}
+
+message ClassMapDelResponse {}
+
+message BulkClassMapDelRequest {
+   // List of ClassMapDelRequests specifying the class maps to delete
+   repeated ClassMapDelRequest requests = 1;
+}
+
+message BulkClassMapDelResponse {
+   // Number of consecutive successful requests.
+   uint64 processed = 1;
+   // Success or error details in the case of failure.
+   RpcResponseStatus status = 2;
+}
+
+message ClassMapsRequest {
+   // The policy feature to list the configured class maps for
+   PolicyFeature feature = 1;
+}
+
+message ClassMapsResponse {
+   // The key of the feature's configured class maps.
+   PolicyMapKey key = 1;
+}
+

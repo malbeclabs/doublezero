@@ -1,0 +1,55 @@
+// Copyright (c) 2021 Arista Networks, Inc.  All rights reserved.
+// Arista Networks, Inc. Confidential and Proprietary.
+
+syntax = "proto3";
+
+option go_package = "arista/EosSdkRpc";
+
+package eos.remote;
+
+message IntfId{
+   string name=1;
+}
+
+message IntfCounters {
+   uint64 out_ucast_pkts = 1;
+   uint64 out_multicast_pkts = 2;
+   uint64 out_broadcast_pkts = 3;
+   uint64 in_ucast_pkts = 4;
+   uint64 in_multicast_pkts = 5;
+   uint64 in_broadcast_pkts = 6;
+   uint64 out_octets = 7;
+   uint64 in_octets = 8;
+   uint64 out_discards = 9;
+   uint64 out_errors = 10;
+   uint64 in_discards = 11;
+   uint64 in_errors = 12;
+   double sample_time = 13; 
+}
+
+message IntfTrafficRates {
+   double out_pkts_rate = 1;
+   double in_pkts_rate = 2;
+   double out_bits_rate = 3;
+   double in_bits_rate = 4;
+   double sample_time = 5;
+}
+
+enum InterfaceTypes{
+   INTF_TYPE_NULL = 0;
+   INTF_TYPE_OTHER = 1;
+   INTF_TYPE_ETH = 2;
+   INTF_TYPE_VLAN = 3;
+   INTF_TYPE_MANAGEMENT = 4;
+   INTF_TYPE_LOOPBACK = 5;
+   INTF_TYPE_LAG = 6;
+   INTF_TYPE_NULL0 = 7;
+   INTF_TYPE_CPU = 8;
+   INTF_TYPE_VXLAN = 9;
+}
+
+enum OperStatuses {
+   INTF_OPER_STATUS_NULL = 0;
+   INTF_OPER_STATUS_UP = 1;
+   INTF_OPER_STATUS_DOWN = 2;
+}

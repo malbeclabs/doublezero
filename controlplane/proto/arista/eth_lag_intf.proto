@@ -1,0 +1,717 @@
+// Copyright (c) 2022 Arista Networks, Inc.  All rights reserved.
+// Arista Networks, Inc. Confidential and Proprietary.
+
+syntax = "proto3";
+
+option go_package = "arista/EosSdkRpc";
+
+package eos.remote;
+
+import "rpc_types.proto";
+import "intf_types.proto";
+import "eth_lag_intf_types.proto";
+
+
+/**
+ * @exclude
+ * Functions marked as @deprecated in the original SDK shall not be ported
+ * to RPC calls.
+ */
+service EthLagIntfMgrService {
+   /**
+    * Subscription to monitor LAG interface events. This request
+    * stays active until the client cancels or the server shuts down.
+    * When all = false and no version is specified, this request has no effect.
+    * 
+    * EosSdk reference: eos::eth_lag_intf_handler (class)
+    */
+   rpc watch( EthLagIntfWatchRequest ) returns ( stream EthLagIntfWatchResponse ) {}
+
+   /**
+    * Returns a list of interfaces configured as members of any LAG interface in
+    * system.
+    *
+    * EosSdk reference:: eos::eth_lag_intf_mgr::eth_lag_intf_iter
+    */
+   rpc eth_lag_intfs( EthLagIntfsRequest ) returns ( stream EthLagIntfsResponse ) {}
+
+   /**
+    * Queries whether an ethernet LAG interface exists.
+    *
+    * EosSdk reference:: eos::eth_lag_intf_mgr::eth_lag_intf_exists
+    */
+   rpc exists( EthLagIntfExistsRequest ) returns ( EthLagIntfExistsResponse ) {}
+
+   /**
+    * Returns a list of physical interfaces configured as members of any LAG
+    * interface in the system.
+    *
+    * EosSdk reference:: eos::eth_lag_intf_mgr::eth_lag_intf_member_iter
+    */
+   rpc eth_lag_intf_members( EthLagIntfMembersRequest ) returns ( stream EthLagIntfMembersResponse ) {}
+
+   /**
+    * Creates a LAG interface.
+    *
+    * EosSdk reference:: eos::eth_lag_intf_mgr::eth_lag_intf_is
+    */
+   rpc eth_lag_intf_is( EthLagIntfIsRequest ) returns ( EthLagIntfIsResponse ) {}
+
+   /**
+    * Creates many LAG interfaces in a single request.
+    *
+    * EosSdk reference:: eos::eth_lag_intf_mgr::eth_lag_intf_is
+    */
+   rpc bulk_eth_lag_intf_is( BulkEthLagIntfIsRequest ) returns ( BulkEthLagIntfIsResponse ) {}
+
+   /**
+    * Returns the details for a LAG interface given its ID.
+    *
+    * EosSdk reference:: eos::eth_lag_intf_mgr::eth_lag_intf
+    */
+   rpc eth_lag_intf( EthLagIntfRequest ) returns ( EthLagIntfResponse ) {}
+
+   /**
+    * Deletes a LAG interface.
+    *
+    * EosSdk reference:: eos::eth_lag_intf_mgr::eth_lag_intf_del
+    */
+   rpc eth_lag_intf_del( EthLagIntfDelRequest ) returns ( EthLagIntfDelResponse ) {}
+
+   /**
+    * Deletes many LAG interfaces in a single request.
+    *
+    * EosSdk reference:: eos::eth_lag_intf_mgr::eth_lag_intf_del
+    */
+   rpc bulk_eth_lag_intf_del( BulkEthLagIntfDelRequest ) returns ( BulkEthLagIntfDelResponse ) {}
+
+    /**
+    * Returns the speed of a LAG interface, in Mbits/s.
+    *
+    * EosSdk reference:: eos::eth_lag_intf_mgr::speed
+    */
+   rpc speed( EthLagIntfSpeedRequest ) returns ( EthLagIntfSpeedResponse ) {}
+
+    /**
+    * Returns the minimum number of links that must be up for a LAG interface to be
+    * considered up too.
+    *
+    * EosSdk reference:: eos::eth_lag_intf_mgr::min_links
+    */
+   rpc min_links( EthLagIntfMinLinksRequest ) returns ( EthLagIntfMinLinksResponse ) {}
+
+    /**
+    * Sets min links values for a LAG interface.
+    *
+    * EosSdk reference:: eos::eth_lag_intf_mgr::eth_lag_intf_min_links_is
+    */
+   rpc min_links_is( EthLagIntfMinLinksIsRequest ) returns ( EthLagIntfMinLinksIsResponse ) {}
+
+   /**
+    * Sets min links values for many LAG interfaces.
+    *
+    * EosSdk reference:: eos::eth_lag_intf_mgr::eth_lag_intf_min_links_is
+    */
+   rpc bulk_min_links_is( BulkEthLagIntfMinLinksIsRequest ) returns ( BulkEthLagIntfMinLinksIsResponse ) {}
+
+   /**
+    * Sets the fallback type for a LAG interface.
+    *
+    * EosSdk reference: eth_lag_intf_mgr::fallback_type_is
+    */
+   rpc fallback_type_is( EthLagIntfFallbackTypeIsRequest ) returns ( EthLagIntfFallbackTypeIsResponse ) {}
+
+   /**
+    * Sets the fallback type for many LAG interfaces.
+    *
+    * EosSdk reference: eth_lag_intf_mgr::fallback_type_is
+    */
+   rpc bulk_fallback_type_is( BulkEthLagIntfFallbackTypeIsRequest ) returns ( BulkEthLagIntfFallbackTypeIsResponse ) {}
+
+   /**
+    * Returns the fallback mode for a LAG interface.
+    *
+    * EosSdk reference: eth_lag_intf_mgr::fallback_type
+    */
+   rpc fallback_type( EthLagIntfFallbackTypeRequest ) returns ( EthLagIntfFallbackTypeResponse ) {}
+
+   /**
+    * Sets the fallback timeout for a LAG interface, in seconds.
+    *
+    * EosSdk reference: eth_lag_intf_mgr::fallback_timeout_is
+    */
+   rpc fallback_timeout_is( EthLagIntfFallbackTimeoutIsRequest ) returns ( EthLagIntfFallbackTimeoutIsResponse ) {}
+
+   /**
+    * Sets fallback timeouts for multiple LAG interfaces, in seconds.
+    *
+    * EosSdk reference: eth_lag_intf_mgr::fallback_timeout_is
+    */
+   rpc bulk_fallback_timeout_is( BulkEthLagIntfFallbackTimeoutIsRequest ) returns ( BulkEthLagIntfFallbackTimeoutIsResponse ) {}
+
+   /**
+    * Returns the LACP active mode timeout value, in seconds.
+    *
+    * EosSdk reference: eth_lag_intf_mgr::fallback_timeout
+    */
+   rpc fallback_timeout( EthLagIntfFallbackTimeoutRequest ) returns ( EthLagIntfFallbackTimeoutResponse ) {}
+
+   /**
+    * Returns the default fallback timeout value, in seconds.
+    *
+    * EosSdk reference: eth_lag_intf_mgr::fallback_timeout_default
+    */
+   rpc fallback_timeout_default( EthLagIntfFallbackTimeoutDefaultRequest ) returns ( EthLagIntfFallbackTimeoutDefaultResponse ) {}
+
+   /**
+    * Adds a physical interface to a LAG interface.
+    *
+    * EosSdk reference: eth_lag_intf_mgr::membership_set
+    */
+   rpc membership_set( EthLagIntfMembershipSetRequest ) returns ( EthLagIntfMembershipSetResponse ) {}
+
+   /**
+    * Adds multiple physical interfaces to multiple LAG interfaces.
+    *
+    * EosSdk reference: eth_lag_intf_mgr::membership_set
+    */
+   rpc bulk_membership_set( BulkEthLagIntfMembershipSetRequest ) returns ( BulkEthLagIntfMembershipSetResponse ) {}
+
+   /**
+    * Removes an interface from a LAG interface.
+    *
+    * EosSdk reference: eth_lag_intf_mgr::membership_del
+    */
+   rpc membership_del( EthLagIntfMembershipDelRequest ) returns ( EthLagIntfMembershipDelResponse ) {}
+
+   /**
+    * Removes multiple interfaces from muliple LAG interfaces.
+    *
+    * EosSdk reference: eth_lag_intf_mgr::membership_del
+    */
+   rpc bulk_membership_del( BulkEthLagIntfMembershipDelRequest ) returns ( BulkEthLagIntfMembershipDelResponse ) {}
+
+   /**
+    * Returns the LAG interface ID to which the physical interface is configured
+    * to belong.
+    *
+    * EosSdk reference: eth_lag_intf_mgr::membership
+    */
+   rpc membership( EthLagIntfMembershipRequest ) returns ( EthLagIntfMembershipResponse ) {}
+
+   /**
+    * Returns the member interface's status details.
+    *
+    * EosSdk reference: eth_lag_intf_mgr::membership_status
+    */
+   rpc membership_status( EthLagIntfMembershipStatusRequest ) returns ( EthLagIntfMembershipStatusResponse ) {}
+
+   /**
+    * Sets the port LACP priority.
+    *
+    * EosSdk reference: eth_lag_intf_mgr::member_priority_is
+    */
+   rpc member_priority_is( EthLagIntfMemberPriorityIsRequest ) returns ( EthLagIntfMemberPriorityIsResponse ) {}
+
+   /**
+    * Sets LACP priorities of multiple ports.
+    *
+    * EosSdk reference: eth_lag_intf_mgr::member_priority_is
+    */
+   rpc bulk_member_priority_is( BulkEthLagIntfMemberPriorityIsRequest ) returns ( BulkEthLagIntfMemberPriorityIsResponse ) {}
+
+   /**
+    * Gets the interface's configured LACP priority.
+    *
+    * EosSdk reference: eth_lag_intf_mgr::member_priority
+    */
+   rpc member_priority( EthLagIntfMemberPriorityRequest ) returns ( EthLagIntfMemberPriorityResponse ) {}
+
+   /**
+    * Sets the mode of this member in a LAG interface.
+    *
+    * EosSdk reference: eth_lag_intf_mgr::member_mode_is
+    */
+   rpc member_mode_is( EthLagIntfMemberModeIsRequest ) returns ( EthLagIntfMemberModeIsResponse ) {}
+
+   /**
+    * Sets the modes of multiple members in LAG interfaces.
+    *
+    * EosSdk reference: eth_lag_intf_mgr::member_mode_is
+    */
+   rpc bulk_member_mode_is( BulkEthLagIntfMemberModeIsRequest ) returns ( BulkEthLagIntfMemberModeIsResponse ) {}
+
+   /**
+    * Returns the mode of this member in a LAG interface.
+    *
+    * EosSdk reference: eth_lag_intf_mgr::member_mode
+    */
+   rpc member_mode( EthLagIntfMemberModeRequest ) returns ( EthLagIntfMemberModeResponse ) {}
+
+   /**
+    * Sets the LACP timeout for a member in a LAG, in seconds.
+    *
+    * EosSdk reference: eth_lag_intf_mgr::member_timeout_is
+    */
+   rpc member_timeout_is( EthLagIntfMemberTimeoutIsRequest ) returns ( EthLagIntfMemberTimeoutIsResponse ) {}
+
+   /**
+    * Sets the LACP timeout for multiple members in LAG interfaces, in seconds.
+    *
+    * EosSdk reference: eth_lag_intf_mgr::member_timeout_is
+    */
+   rpc bulk_member_timeout_is( BulkEthLagIntfMemberTimeoutIsRequest ) returns ( BulkEthLagIntfMemberTimeoutIsResponse ) {}
+
+   /**
+    * Gets the configured LACP timeout for a member in a LAG, in seconds.
+    *
+    * EosSdk reference: eth_lag_intf_mgr::member_timeout
+    */
+   rpc member_timeout( EthLagIntfMemberTimeoutRequest ) returns ( EthLagIntfMemberTimeoutResponse ) {}
+
+   /**
+    * Returns whether this interface is active in a LAG.
+    *
+    * EosSdk reference: eth_lag_intf_mgr::member_active
+    */
+   rpc member_active( EthLagIntfMemberActiveRequest ) returns ( EthLagIntfMemberActiveResponse ) {}
+
+   /**
+    * Returns the time in seconds since reboot when this interface was last added 
+    * or removed as a member from a LAG.
+    *
+    * EosSdk reference: eth_lag_intf_mgr::member_time
+    */
+   rpc member_time( EthLagIntfMemberTimeRequest ) returns ( EthLagIntfMemberTimeResponse ) {}
+
+   /**
+    * Returns the reason this interface isn't active in a LAG.
+    *
+    * EosSdk reference: eth_lag_intf_mgr::member_reason
+    */
+   rpc member_reason( EthLagIntfMemberReasonRequest ) returns ( EthLagIntfMemberReasonResponse ) {}
+}
+
+enum EthLagIntfUpdateField {
+  ETH_LAG_INTF_ALL_FIELDS = 0;
+  ETH_LAG_INTF_FULL_MEMBER_LIST = 1;
+  ETH_LAG_INTF_SPEED = 2;
+}
+
+message EthLagIntfFieldsControl {
+  repeated EthLagIntfUpdateField fields = 1;
+}
+
+message EthLagIntfWatchRequest {
+   oneof overloads {
+      // Watch all LAG interfaces.
+      bool all_intfs = 1;
+      // Watch a single interface.
+      IntfId eth_lag_intf_id = 2;
+   }
+   // Set to true if acknowledgment is desired.
+   bool ack = 4;
+   // Specification of which fields to receive on dump.
+   EthLagIntfFieldsControl dump_fields = 5;
+}
+
+/**
+ * Possible events for LAG interfaces.
+ */
+enum EthLagIntfEvents {
+   ETH_LAG_INTF_EVENT_NONE = 0;
+   ETH_LAG_INTF_EVENT_CREATED = 1;
+   ETH_LAG_INTF_EVENT_DELETED = 2;
+   ETH_LAG_INTF_EVENT_MEMBER_SET = 3;
+   ETH_LAG_INTF_EVENT_MEMBER_DEL = 4;
+   ETH_LAG_INTF_EVENT_SPEED = 5;
+   // Dump message is not an actual event and gets prefixed as MESSAGE instead.
+   ETH_LAG_INTF_MESSAGE_DUMP = 6;
+}
+
+message EthLagIntfWatchResponse {
+   // Descriptor of the event.
+   EthLagIntfEvents event = 1;
+   // LAG interface that changed state.
+   IntfId eth_lag_intf_id = 2;
+   // Member interface (if event is member related)
+   IntfId member_intf_id = 3;
+   // LAG interface speed, in Mbits/s (if event is ETH_LAG_INTF_EVENT_SPEED).
+   oneof speed_present {
+      uint64 speed = 4;
+   }
+   // This message is merely an ack and not an event.
+   bool ack = 5;
+   oneof eth_lag_intf_present {
+      EthLagIntf eth_lag_intf = 6;
+   }
+   repeated IntfId all_member_intf_id = 7;
+}
+
+message EthLagIntfsRequest {}
+
+message EthLagIntfsResponse {
+   // Interface ID for the LAG interface.
+   IntfId eth_lag_intf_id = 1;
+}
+
+message EthLagIntfExistsRequest {
+   // Interface ID for the LAG interface.
+   IntfId eth_lag_intf_id = 1;
+}
+
+message EthLagIntfExistsResponse {
+   // True if LAG interface exists.
+   bool exists = 1;
+}
+
+message EthLagIntfMembersRequest {
+   // Interface ID for the LAG interface.
+   IntfId eth_lag_intf_id = 1;
+}
+
+message EthLagIntfMembersResponse {
+   // Interface ID for the member.
+   IntfId member_intf_id = 1;
+}
+
+message EthLagIntfIsRequest {
+   // Interface ID for the LAG interface.
+   IntfId eth_lag_intf_id = 1;
+}
+
+message EthLagIntfIsResponse {}
+
+message BulkEthLagIntfIsRequest {
+   // List of individual requests.
+   repeated EthLagIntfIsRequest requests = 1;
+}
+
+message BulkEthLagIntfIsResponse {
+   // Number of successful requests.
+   uint64 processed = 1;
+   // Cause of error (if any).
+   RpcResponseStatus status = 2;
+}
+
+message EthLagIntfRequest {
+   // Interface ID for the LAG interface.
+   IntfId eth_lag_intf_id = 1;
+}
+
+message EthLagIntfResponse {
+   // LAG interface parameters.
+   EthLagIntf response = 1;
+}
+
+message EthLagIntfDelRequest {
+   // Interface ID for the LAG interface.
+   IntfId eth_lag_intf_id = 1;
+}
+
+message EthLagIntfDelResponse {}
+
+message BulkEthLagIntfDelRequest {
+   // List of individual requests.
+   repeated EthLagIntfDelRequest requests = 1;
+}
+
+message BulkEthLagIntfDelResponse {
+   // Number of successful requests.
+   uint64 processed = 1;
+   // Cause of error (if any).
+   RpcResponseStatus status = 2;
+}
+
+message EthLagIntfSpeedRequest {
+   // Interface ID for the LAG interface.
+   IntfId eth_lag_intf_id = 1;
+}
+
+message EthLagIntfSpeedResponse {
+   // Interface speed, in Mbits/s.
+   uint64 speed = 1;
+}
+
+message EthLagIntfMinLinksIsRequest {
+   // Interface ID for the LAG interface.
+   IntfId eth_lag_intf_id = 1;
+   // Minimum number of links that need to be up for LAG to be considered up.
+   uint32 min_links = 2;
+}
+
+message EthLagIntfMinLinksIsResponse {}
+
+message BulkEthLagIntfMinLinksIsRequest {
+   // List of individual requests.
+   repeated EthLagIntfMinLinksIsRequest requests = 1;
+}
+
+message BulkEthLagIntfMinLinksIsResponse {
+   // Number of successful requests.
+   uint64 processed = 1;
+   // Cause of error (if any).
+   RpcResponseStatus status = 2;
+}
+
+message EthLagIntfMinLinksRequest {
+   // Interface ID for the LAG interface.
+   IntfId eth_lag_intf_id = 1;
+}
+
+message EthLagIntfMinLinksResponse {
+   // Minimum number of links that need to be up for LAG to be considered up.
+   uint32 min_links = 1;
+}
+
+message EthLagIntfFallbackTypeIsRequest {
+   // Interface ID for the LAG interface.
+   IntfId eth_lag_intf_id = 1;
+   EthLagIntfFallbackType fallback_type = 2;
+}
+
+message EthLagIntfFallbackTypeIsResponse {}
+
+message BulkEthLagIntfFallbackTypeIsRequest {
+   // List of individual requests.
+   repeated EthLagIntfFallbackTypeIsRequest requests = 1;
+}
+
+message BulkEthLagIntfFallbackTypeIsResponse {
+   // Number of successful requests.
+   uint64 processed = 1;
+   // Cause of error (if any).
+   RpcResponseStatus status = 2;
+}
+
+message EthLagIntfFallbackTypeRequest {
+   // Interface ID for the LAG interface.
+   IntfId eth_lag_intf_id = 1;
+}
+
+message EthLagIntfFallbackTypeResponse {
+   // LAG interface fallback type.
+   EthLagIntfFallbackType fallback_type = 1;
+}
+
+message EthLagIntfFallbackTimeoutIsRequest {
+   // Interface ID for the LAG interface.
+   IntfId eth_lag_intf_id = 1;
+   // Fallback timeout, in seconds.
+   uint32 fallback_timeout = 2;
+}
+
+message EthLagIntfFallbackTimeoutIsResponse {}
+
+message BulkEthLagIntfFallbackTimeoutIsRequest {
+   // List of individual requests.
+   repeated EthLagIntfFallbackTimeoutIsRequest requests = 1;
+}
+
+message BulkEthLagIntfFallbackTimeoutIsResponse {
+   // Number of successful requests.
+   uint64 processed = 1;
+   // Cause of error (if any).
+   RpcResponseStatus status = 2;
+}
+
+message EthLagIntfFallbackTimeoutRequest {
+   // Interface ID for the LAG interface.
+   IntfId eth_lag_intf_id = 1;
+}
+
+message EthLagIntfFallbackTimeoutResponse {
+   // LAG interface fallback timeout, in seconds.
+   uint32 fallback_timeout = 1;
+}
+
+message EthLagIntfFallbackTimeoutDefaultRequest {
+   // Interface ID for the LAG interface.
+   IntfId eth_lag_intf_id = 1;
+}
+
+message EthLagIntfFallbackTimeoutDefaultResponse {
+   // Default fallback timeout, in seconds.
+   uint32 fallback_timeout = 1;
+}
+
+message EthLagIntfMembershipSetRequest {
+   // Interface ID for the member.
+   IntfId member_intf_id = 1;
+   // Interface ID for the LAG interface.
+   IntfId eth_lag_intf_id = 2;
+   // LACP member mode for LAG interface.
+   EthLagIntfMemberLacpMode mode = 3;
+}
+
+message EthLagIntfMembershipSetResponse {}
+
+message BulkEthLagIntfMembershipSetRequest {
+   // List of individual requests.
+   repeated EthLagIntfMembershipSetRequest requests = 1;
+}
+
+message BulkEthLagIntfMembershipSetResponse {
+   // Number of successful requests.
+   uint64 processed = 1;
+   // Cause of error (if any).
+   RpcResponseStatus status = 2;
+}
+
+message EthLagIntfMembershipDelRequest {
+   // Interface ID for the member.
+   IntfId member_intf_id = 1;
+}
+
+message EthLagIntfMembershipDelResponse {}
+
+message BulkEthLagIntfMembershipDelRequest {
+   // List of individual requests.
+   repeated EthLagIntfMembershipDelRequest requests = 1;
+}
+
+message BulkEthLagIntfMembershipDelResponse {
+   // Number of successful requests.
+   uint64 processed = 1;
+   // Cause of error (if any).
+   RpcResponseStatus status = 2;
+}
+
+message EthLagIntfMembershipRequest {
+   // Interface ID for the member.
+   IntfId member_intf_id = 1;
+}
+
+message EthLagIntfMembershipResponse {
+   // Interface ID for the LAG interface.
+   IntfId eth_lag_intf_id = 1;
+}
+
+message EthLagIntfMembershipStatusRequest {
+   // Interface ID for the member.
+   IntfId member_intf_id = 1;
+}
+
+message EthLagIntfMembershipStatusResponse {
+   // membership details.
+   EthLagIntfMembership membership = 1;
+}
+
+message EthLagIntfMemberPriorityIsRequest {
+   // Interface ID for the member.
+   IntfId member_intf_id = 1;
+   // Member priority. Valid values from 0 to 65535
+   uint32 priority = 2;
+}
+
+message EthLagIntfMemberPriorityIsResponse {}
+
+message BulkEthLagIntfMemberPriorityIsRequest {
+   // List of individual requests.
+   repeated EthLagIntfMemberPriorityIsRequest requests = 1;
+}
+
+message BulkEthLagIntfMemberPriorityIsResponse {
+   // Number of successful requests.
+   uint64 processed = 1;
+   // Cause of error (if any).
+   RpcResponseStatus status = 2;
+}
+
+message EthLagIntfMemberPriorityRequest {
+   // Interface ID for the member.
+   IntfId member_intf_id = 1;
+}
+
+message EthLagIntfMemberPriorityResponse {
+   // Member priority.
+   uint32 priority = 1;
+}
+
+message EthLagIntfMemberModeIsRequest {
+   // Interface ID for the member.
+   IntfId member_intf_id = 1;
+   // LACP member mode for LAG interface.
+   EthLagIntfMemberLacpMode mode = 2;
+}
+
+message EthLagIntfMemberModeIsResponse {}
+
+message BulkEthLagIntfMemberModeIsRequest {
+   // List of individual requests.
+   repeated EthLagIntfMemberModeIsRequest requests = 1;
+}
+
+message BulkEthLagIntfMemberModeIsResponse {
+   // Number of successful requests.
+   uint64 processed = 1;
+   // Cause of error (if any).
+   RpcResponseStatus status = 2;
+}
+
+message EthLagIntfMemberModeRequest {
+   // Interface ID for the member.
+   IntfId member_intf_id = 1;
+}
+
+message EthLagIntfMemberModeResponse {
+   // LACP member mode for LAG interface.
+   EthLagIntfMemberLacpMode mode = 1;
+}
+
+message EthLagIntfMemberTimeoutIsRequest {
+   // Interface ID for member.
+   IntfId member_intf_id = 1;
+   // LACP timeout for member.
+   EthLagIntfMemberLacpTimeout timeout = 2;
+}
+
+message EthLagIntfMemberTimeoutIsResponse {}
+
+message BulkEthLagIntfMemberTimeoutIsRequest {
+   // List of individual requests.
+   repeated EthLagIntfMemberTimeoutIsRequest requests = 1;
+}
+
+message BulkEthLagIntfMemberTimeoutIsResponse {
+   // Number of successful requests.
+   uint64 processed = 1;
+   // Cause of error (if any).
+   RpcResponseStatus status = 2;
+}
+
+message EthLagIntfMemberTimeoutRequest {
+   // Interface ID for the member.
+   IntfId member_intf_id = 1;
+}
+
+message EthLagIntfMemberTimeoutResponse {
+   EthLagIntfMemberLacpTimeout response = 1;
+}
+
+message EthLagIntfMemberActiveRequest {
+   // Interface ID for the member.
+   IntfId member_intf_id = 1;
+}
+
+message EthLagIntfMemberActiveResponse {
+   bool active = 1;
+}
+
+message EthLagIntfMemberTimeRequest {
+   // Interface ID for the member.
+   IntfId member_intf_id = 1;
+}
+
+message EthLagIntfMemberTimeResponse {
+   double member_time = 1;
+}
+
+message EthLagIntfMemberReasonRequest {
+   // Interface ID for the member.
+   IntfId member_intf_id = 1;
+}
+
+message EthLagIntfMemberReasonResponse {
+   string member_reason = 1;
+}

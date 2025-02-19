@@ -1,0 +1,60 @@
+// Copyright (c) 2022 Arista Networks, Inc.  All rights reserved.
+// Arista Networks, Inc. Confidential and Proprietary.
+
+syntax = "proto3";
+
+option go_package = "arista/EosSdkRpc";
+
+package eos.remote;
+
+import "acl_types.proto";
+import "intf_types.proto";
+import "mpls_types.proto";
+
+/**
+ * Represents a forward equivalency class (FEC) for an MPLS route. One or more
+ * routes point to a FEC. The FEC corresponds to a set of MPLS vias that are
+ * programmed into hardware.
+ *
+ * EosSdk reference: eos::mpls_fec_id_t
+ */
+message MplsFecId {
+   uint64 id = 1;
+}
+
+/**
+ * An MPLS v4/v6 static route.
+ *
+ * EosSdk reference: eos::mpls_route_t
+ */
+message MplsRoute {
+   MplsRouteKey key = 1;
+}
+
+/**
+ * An MPLS route key. Used for MPLS RIB configuration.
+ *
+ * EosSdk reference: eos::mpls_route_key_t
+ */
+message MplsRouteKey {
+   repeated MplsLabel labels = 1;
+   // Must be in range 0 to 255.
+   uint32 metric = 2;
+}
+
+/**
+ * An MPLS route via, defining the action to take for a specified MPLS route.
+ *
+ * EosSdk reference: eos::mpls_route_via_t
+ */
+message MplsRouteVia {
+   MplsRouteKey route_key = 1;
+   bytes hop = 2;
+   IntfId intf = 3;
+   MplsLabel pushswap_label = 4;
+   MplsActions label_action = 5;
+   MplsTtlMode ttl_mode = 6;
+   MplsPayloadType payload_type = 7;
+   bool skip_egress_acl = 8;
+   string nexthop_group = 9;
+}

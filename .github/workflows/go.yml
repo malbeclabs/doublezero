@@ -3,12 +3,12 @@ on:
   push:
     paths:
       - "controlplane/**"
-      - "smartcontract/**"
+      - "smartcontract/sdk/go/**"
     branches: [ main ]
   pull_request:
     paths:
       - "controlplane/**"
-      - "smartcontract/**"
+      - "smartcontract/sdk/go/**"
     branches: [ main ]
 
 jobs:

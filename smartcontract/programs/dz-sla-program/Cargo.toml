@@ -1,0 +1,23 @@
+[package]
+name = "double-zero-sla-program"
+version = "0.1.0"
+edition = "2021"
+ 
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[profile.release]
+debug = false
+lto = true
+opt-level = "z"
+ 
+[dependencies]
+borsh = "1.5.3"
+eyre = "0.6.12"
+ipnetwork = "0.20.0"
+solana-program = "1.18.26"
+thiserror = "2.0.9"
+
+[dev-dependencies]
+solana-program-test = "1.18.26"
+solana-sdk = "1.18.26"

@@ -6,7 +6,7 @@ debug/
 target/
 test-ledger/
 
-controlplane/bin/*
+**/bin/*
 smartcontract/cli/config/*
 
 .vscode/*

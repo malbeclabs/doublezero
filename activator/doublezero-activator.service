@@ -1,0 +1,12 @@
+[Unit]
+Description=DoubleZero Activator
+After=network.target
+
+[Service]
+PermissionsStartOnly=True
+RuntimeDirectory=doublezero-activator
+RuntimeDirectoryMode=0775
+ExecStart=/usr/local/bin/doublezero-activator
+
+[Install]
+WantedBy=multi-user.target

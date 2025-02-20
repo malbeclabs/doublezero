@@ -1,0 +1,21 @@
+name: smartcontract-sdk-rust
+on:
+  push:
+    paths:
+      - "smartcontract/sdk/rs/**"
+    branches: [ main ]
+  pull_request:
+    paths:
+      - "smartcontract/sdk/rs/**"
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04-16c-64gb
+    defaults:
+      run:
+        working-directory: "smartcontract/sdk/rs/"
+    steps:
+      - uses: actions/checkout@v4
+      - name: test
+        run: cargo test --verbose

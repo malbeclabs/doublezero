@@ -1,0 +1,54 @@
+// Copyright (c) 2021 Arista Networks, Inc.  All rights reserved.
+// Arista Networks, Inc. Confidential and Proprietary.
+
+syntax = "proto3";
+
+option go_package = "arista/EosSdkRpc";
+
+import "intf_types.proto";
+import "ip_types.proto";
+import "rpc_types.proto";
+
+package eos.remote;
+
+message IpRouteKey {
+   Prefix prefix = 1;
+   oneof preference_present {
+      // Default value is 1.
+      uint32 preference = 2;
+   }
+}
+
+message IpRoute {
+   IpRouteKey key = 1;
+   uint32 tag = 2;
+   bool rib_bypass = 3;
+   string command_tag = 4;
+}
+
+enum IpRouteActions {
+   IP_ROUTE_ACTION_NULL = 0;
+   IP_ROUTE_ACTION_FORWARD = 1;
+   IP_ROUTE_ACTION_DROP = 2;
+   IP_ROUTE_ACTION_NEXTHOP_GROUP = 3;
+}
+
+message IpRouteVia {
+   IpRouteKey key = 1;
+   bytes hop_addr = 2;
+   IntfId intf_id = 3;
+   string nhg_name = 4;
+   oneof mpls_label_present {
+      // Default value is 1048576 (invalid label).
+      uint32 mpls_label = 5;
+   }
+   uint32 vni = 6;
+   bytes vtep_addr = 7;
+   bytes router_mac_eth_addr = 8;
+   string egress_vrf = 9;
+   uint32 metric = 10;
+   bool vtep_sip_validation = 11;
+   IntfId vxlan_intf_id = 12;
+   // Valid range of 1 - (2^24)-1, set to 0 if unused.
+   uint32 weight = 13;
+}

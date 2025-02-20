@@ -1,0 +1,48 @@
+// Copyright (c) 2023 Arista Networks, Inc.  All rights reserved.
+// Arista Networks, Inc. Confidential and Proprietary.
+
+syntax = "proto3";
+
+option go_package = "arista/EosSdkRpc";
+
+package eos.remote;
+
+import "policy_map_counters_types.proto";
+
+service PolicyMapCountersMgrService {
+   rpc watch_policy_map_counters( PolicyMapCountersWatchRequest ) 
+      returns ( stream PolicyMapCountersWatchResponse );
+}
+
+message PolicyMapCountersWatchRequest {
+   // When set to true, messages will mostly carry a short key that can be
+   // mapped to the descriptive key.
+   // Disabling compression is not supported, theferefore the default choice
+   // for this argument is `true`.
+   optional bool compress_keys = 1;
+}
+
+enum PolicyMapCountersOperation {
+  POLICY_MAP_COUNTERS_UPDATE = 0;
+  POLICY_MAP_COUNTERS_DELETE = 1;
+}
+
+message PolicyMapCounters {
+   // This is the compressed key allocated by the server
+   // if compress_keys is enabled (true), all subsequent counter updates
+   // will only provide the key_id 
+   uint64 key_id = 1;
+   // This is compound key. The client is responsible for 
+   // maintaining the association between key_name and the more efficient key_id
+   PolicyMapCountersKey key_name = 2;
+   PolicyMapRuleCounters counters = 3;
+   PolicyMapCountersAction policy_action = 4;
+   // Instructs whether this entry is updating counters or deleting entries from the
+   // counter table.
+   PolicyMapCountersOperation operation = 5;
+}
+
+message PolicyMapCountersWatchResponse {
+   repeated PolicyMapCounters counters = 1; 
+   bool stream_ready = 2;
+}

@@ -1,0 +1,564 @@
+// Copyright (c) 2022 Arista Networks, Inc.  All rights reserved.
+// Arista Networks, Inc. Confidential and Proprietary.
+
+syntax = "proto3";
+
+option go_package = "arista/EosSdkRpc";
+
+package eos.remote;
+
+import "acl_types.proto";
+import "intf_types.proto";
+import "rpc_types.proto";
+
+service AclMgrService {
+
+   /**
+    * Subscription to monitor ACL hardware synchronization events. This request stays
+    * active until the client cancels or the server shuts down.
+    *
+    * EosSdk reference: eos::acl_handler (class)
+    */
+   rpc watch( AclWatchRequest ) returns ( stream AclWatchResponse ) {}
+
+   /**
+    * Returns a list of the ACLs created by this application.
+    *
+    * EosSdk reference: eos::acl_mgr::acl_iter
+    */
+   rpc acls( AclsRequest ) returns ( stream AclsResponse ) {}
+
+   /**
+    * Returns a list of all the ACLs.
+    *
+    * EosSdk reference: eos::acl_mgr::acl_all_iter
+    */
+   rpc acls_all( AclsAllRequest ) returns ( stream AclsAllResponse ) {}
+
+   /**
+    * Returns a list of all the IP ACL rules created by this application for a
+    * specified ACL.
+    *
+    * EosSdk reference: eos::acl_mgr::acl_rule_ip_iter
+    */
+   rpc acl_rule_ips( AclRuleIpsRequest ) returns ( stream AclRuleIpsResponse ) {}
+
+   /**
+    * Returns a list of all the IP ACL rules for a specified ACL.
+    *
+    * EosSdk reference: eos::acl_mgr::acl_all_rule_ip_iter
+    */
+   rpc acl_all_rule_ips( AclAllRuleIpsRequest ) returns (
+       stream AclAllRuleIpsResponse ) {}
+
+   /**
+    * @exclude
+    * Note: Behavior differs from EosSdk version. BUG711262 does not apply to the
+    *       EosSdkRpc so "vlan_mask", "inner_vlan_mask", "source_addr" and
+    *       "destination_addr" will have their correct values returned.
+    */
+   /**
+    * Returns a list of all the ethernet ACL rules created by this application for a
+    * specified ACL.
+    *
+    * EosSdk reference: eos::acl_mgr::acl_rule_eth_iter
+    */
+   rpc acl_rule_eths( AclRuleEthsRequest ) returns ( stream AclRuleEthsResponse ) {}
+
+   /**
+    * @exclude
+    * Note: Behavior differs from EosSdk version. BUG711262 does not apply to the
+    *       EosSdkRpc so "vlan_mask", "inner_vlan_mask", "source_addr" and
+    *       "destination_addr" will have their correct values returned.
+    */
+   /**
+    * Returns a list of all the ethernet ACL rules for a specified ACL.
+    *
+    * EosSdk reference: eos::acl_mgr::acl_all_rule_eth_iter
+    */
+   rpc acl_all_rule_eths( AclAllRuleEthsRequest ) returns (
+       stream AclAllRuleEthsResponse ) {}
+
+   /**
+    * Queries whether the specified ACL has been configured in this application.
+    *
+    * EosSdk reference: eos::acl_mgr::acl_exists
+    */
+   rpc acl_exists( AclExistsRequest ) returns ( AclExistsResponse ) {}
+
+   /**
+    * Queries whether the specified ACL has been configured.
+    *
+    * EosSdk reference: eos::acl_mgr::acl_all_exists
+    */
+   rpc acl_all_exists( AclAllExistsRequest ) returns ( AclAllExistsResponse ) {}
+
+   /**
+    * Adds a rule to an ACL. If the specified ACL does not exist it is created.
+    * The type of the rule must be the same as the ACL's type.
+    *
+    * Note: Must call acl_commit for this change to take effect
+    * Note: An extremely large numbers of ACLs or rules per ACL can result in
+    *       undefined behavior, including a switch reload.
+    *
+    * EosSdk reference: eos::acl_mgr::acl_rule_set
+    */
+   rpc acl_rule_set( AclRuleSetRequest ) returns ( AclRuleSetResponse ) {}
+
+   /**
+    * Adds multiple rules to ACLs in a single call. Creates any ACLs that do not
+    * exist.
+    *
+    * Note: Must call acl_commit for this change to take effect.
+    *
+    * EosSdk reference: eos::acl_mgr::acl_rule_set
+    */
+   rpc bulk_acl_rule_set( BulkAclRuleSetRequest ) returns (
+       BulkAclRuleSetResponse ) {}
+
+   /**
+    * Removes a rule from an ACL. If the specified ACL does not exist or there is no
+    * rule at the specified sequence number no changes are made.
+    *
+    * Note: Must call acl_commit for this change to take effect.
+    *
+    * EosSdk reference: eos::acl_mgr::acl_rule_del
+    */
+   rpc acl_rule_del( AclRuleDelRequest ) returns ( AclRuleDelResponse ) {}
+
+   /**
+    * Removes multiple rules from ACLs in a single call.
+    *
+    * Note: Must call acl_commit for this change to take effect.
+    *
+    * EosSdk reference: eos::acl_mgr::acl_rule_del
+    */
+   rpc bulk_acl_rule_del( BulkAclRuleDelRequest ) returns (
+       BulkAclRuleDelResponse ) {}
+
+   /**
+    * Commits all rule and setting changes made to all ACLs.
+    *
+    * Pushes ACLs into Sysdb's active configuration. This commit cannot fail, but it
+    * can lead to a state where not all ACLs can be loaded into hardware. You will be
+    * notified via an on_acl_sync event when this commit and all other outstanding
+    * operations such as interface applications are loaded into hardware, or
+    * an on_acl_sync_fail event if the newly committed configuration can't be loaded.
+    * If there are no changes pending, you will get one of those events depending on
+    * whether the current state in Sysdb can be loaded into hardware or not.
+    *
+    * EosSdk reference: eos::acl_mgr::acl_commit
+    */
+   rpc acl_commit( AclCommitRequest ) returns ( AclCommitResponse ) {}
+
+   /**
+    * Deletes the specified ACL removing it from all interfaces and removing all of
+    * its rules. Any pending changes to the ACL are discarded. It is effective
+    * immediately (no commit needed and no watcher event is provided).
+    *
+    * EosSdk reference: eos::acl_mgr::acl_del
+    */
+   rpc acl_del( AclDelRequest ) returns ( AclDelResponse ) {}
+
+   /**
+    * Deletes multiple ACLs in a single call.
+    *
+    * EosSdk reference: eos::acl_mgr::acl_del
+    */
+   rpc bulk_acl_del( BulkAclDelRequest ) returns ( BulkAclDelResponse ) {}
+
+   /**
+    * Requests that an ACL be (un)applied on the given interface and direction.
+    *
+    * ACL is loaded into hardware asynchronously. Like acl_commit, this call
+    * results in a watcher event when we have applied, or failed to apply, this
+    * ACL configuration. That is, an event will not be sent per call but instead an
+    * event will be sent when everything is loaded into hardware, or when we notice
+    * problems.
+    *
+    * API call ordering note: any acl_rule_set or acl_rule_del calls must be
+    * followed by an acl_commit prior to calling this rpc otherwise this call
+    * will return an error.
+    *
+    * EosSdk reference: eos::acl_mgr::acl_apply
+    */
+   rpc acl_apply( AclApplyRequest ) returns ( AclApplyResponse ) {}
+
+   /**
+    * Apply or unapply multiple ACLs on the specified interfaces and directions in a
+    * single call.
+    *
+    * EosSdk reference: eos::acl_mgr::acl_apply
+    */
+   rpc bulk_acl_apply( BulkAclApplyRequest ) returns (
+       BulkAclApplyResponse ) {}
+
+   /**
+    * Enable or disable counters for the ACL.
+    *
+    * Note: Must call acl_commit before this setting takes effect.
+    *
+    * EosSdk reference: eos::acl_mgr::acl_counters_enabled_set
+    */
+   rpc acl_counters_enabled_set( AclCountersEnabledSetRequest ) returns (
+       AclCountersEnabledSetResponse ) {}
+
+   /**
+    * Enable or disable counters for multiple ACLs in a single call.
+    *
+    * Note: Must call acl_commit before this setting takes effect.
+    *
+    * EosSdk reference: eos::acl_mgr::acl_counters_enabled_set
+    */
+   rpc bulk_acl_counters_enabled_set( BulkAclCountersEnabledSetRequest ) returns (
+       BulkAclCountersEnabledSetResponse ) {}
+
+   /**
+    * Enable or disable fragments matching on the ACL.
+    *
+    * Note: Must call acl_commit before this setting takes effect.
+    *
+    * EosSdk reference: eos::acl_mgr::acl_fragments_enabled_set
+    */
+   rpc acl_fragments_enabled_set( AclFragmentsEnabledSetRequest ) returns (
+       AclFragmentsEnabledSetResponse ) {}
+
+   /**
+    * Enables or disables fragments matching on multiple ACLs in a single call.
+    *
+    * Note: Must call acl_commit before this setting takes effect.
+    *
+    * EosSdk reference: eos::acl_mgr::acl_fragments_enabled_set
+    */
+   rpc bulk_acl_fragments_enabled_set( BulkAclFragmentsEnabledSetRequest ) returns (
+       BulkAclFragmentsEnabledSetResponse ) {}
+
+   /**
+    * Check a connection against any applied ACL to determine if it should be
+    * dropped, incrementing the ACL counter if so. For use with SOCK_STREAM or
+    * SOCK_DGRAM.
+    *
+    * EosSdk reference: eos::acl_mgr::stream_allowed
+    */
+   rpc stream_allowed( StreamAllowedRequest ) returns ( StreamAllowedResponse ) {}
+
+   /**
+    * Check a packet against any applied ACL to determine if it should be dropped,
+    * incrementing the ACL counter if so. For use with SOCK_DGRAM only.
+    *
+    * EosSdk reference: eos::acl_mgr::dgram_allowed
+    */
+   rpc dgram_allowed( DgramAllowedRequest ) returns ( DgramAllowedResponse ) {}
+}
+
+message AclWatchRequest {
+   // Set to true if an immediate acknowledgment is desired.
+   bool ack = 1;
+}
+
+/**
+ *  Notification for when all pending transactions have been successfully committed
+ *  to hardware. May be called multiple times for a single transaction or only once
+ *  for a whole bunch of seperate updates. May also be called due to ACL updates
+ *  made using the CLI.
+ */
+message OnAclSync {}
+
+/**
+ *  Notification for when a problem has stopped ACL configuration from being
+ *  committed to hardware. The config must be modified in some way to get Sysdb and
+ *  hardware back in sync. The most common problem is too many ACLs or ACL entries.
+ *  It is up to the client to find and fix the issue. After committing the
+ *  required modifications an on_acl_sync notification will be sent if the problem is
+ *  fixed otherwsie another on_acl_sync_fail notification will be sent to indicate
+ *  there is still a problem.
+ *
+ *  Note: Multiple nofitications may be sent for a single problem and notifications
+ *        may be sent due to misconfigurations made using the CLI.
+ */
+message OnAclSyncFail {
+   // The linecard reporting the issue.
+   string linecard = 1;
+   // An error message describing the problem.
+   string message = 2;
+}
+
+message AclWatchResponse {
+   oneof acl_event {
+      // If true the agent is now actively watching for events.
+      bool ack = 1;
+      // All pending transactions have been successfully committed to hardware.
+      OnAclSync on_acl_sync = 2;
+      // A problem has stopped the ACL configuration from being committed to
+      // hardware.
+      OnAclSyncFail on_acl_sync_fail = 3;
+   }
+}
+
+message AclsRequest {}
+
+/**
+ * An acl that was created by this application.
+ */
+message AclsResponse {
+   AclKey key = 1;
+}
+
+message AclsAllRequest {}
+
+/**
+ * An acl that was created by this application.
+ */
+message AclsAllResponse {
+   AclKey key = 1;
+}
+
+message AclRuleIpsRequest {
+   // The key of ACL to get the IP rules for.
+   AclKey key = 1;
+}
+
+message AclRuleIpEntry {
+   uint32 sequence_number = 1;
+   AclRuleIp ip_rule = 2;
+}
+
+message AclRuleIpsResponse {
+   AclRuleIpEntry ip_rule = 1;
+}
+
+message AclAllRuleIpsRequest {
+   // The key of ACL to get the IP rules for.
+   AclKey key = 1;
+}
+
+message AclAllRuleIpsResponse {
+   AclRuleIpEntry ip_rule = 1;
+}
+
+message AclRuleEthsRequest {
+   // The key of ACL to get the ethernet rules for.
+   AclKey key = 1;
+}
+
+message AclRuleEthEntry {
+   uint32 sequence_number = 1;
+   AclRuleEth eth_rule = 2;
+}
+
+message AclRuleEthsResponse {
+   AclRuleEthEntry eth_rule = 1;
+}
+
+message AclAllRuleEthsRequest {
+   // The key of ACL to get the ethernet rules for.
+   AclKey key = 1;
+}
+
+message AclAllRuleEthsResponse {
+   AclRuleEthEntry eth_rule = 1;
+}
+
+message AclExistsRequest {
+   // The key of the ACL to query.
+   AclKey key = 1;
+}
+
+message AclExistsResponse {
+   // True if the ACL exists in the application's configuration otherwise false.
+   bool exists = 1;
+}
+
+message AclAllExistsRequest {
+   // The key of the ACL to query.
+   AclKey key = 1;
+}
+
+message AclAllExistsResponse {
+   // True if the ACL exists in any configuration in the device otherwise false.
+   bool exists = 1;
+}
+
+message AclRuleSetRequest {
+   // The key of the ACL to create or modify.
+   AclKey key = 1;
+   // The sequence number to add the rule at.
+   uint32 sequence_number = 2;
+   oneof acl_rule {
+      // IP ACL rule to add to the ACL.
+      AclRuleIp ip_rule = 3;
+      // Ethenet ACL rule to add to the ACL.
+      AclRuleEth eth_rule = 4;
+   }
+}
+
+message AclRuleSetResponse {}
+
+message BulkAclRuleSetRequest {
+   // List of AclRuleSetRequests.
+   repeated AclRuleSetRequest requests = 1;
+}
+
+message BulkAclRuleSetResponse {
+   // Number of consecutive successful requests.
+   uint64 processed = 1;
+   // Success or error details in the event of failure.
+   RpcResponseStatus status = 2;
+}
+
+message AclRuleDelRequest {
+   // The key of the ACL to modify.
+   AclKey key = 1;
+   // The sequence number at which to remove the rule.
+   uint32 sequence_number = 2;
+}
+
+message AclRuleDelResponse {}
+
+message BulkAclRuleDelRequest {
+   // List of AclRuleDelRequests.
+   repeated AclRuleDelRequest requests = 1;
+}
+
+message BulkAclRuleDelResponse {
+   // Number of consecutive successful requests.
+   uint64 processed = 1;
+   // Success or error details in the event of failure.
+   RpcResponseStatus status = 2;
+}
+
+message AclCommitRequest {}
+
+message AclCommitResponse {}
+
+message AclDelRequest {
+   // The key of the ACL to remove.
+   AclKey key = 1;
+}
+
+message AclDelResponse {}
+
+message BulkAclDelRequest {
+   // List of AclDelRequests.
+   repeated AclDelRequest requests = 1;
+}
+
+message BulkAclDelResponse {
+   // Number of consecutive successful requests.
+   uint64 processed = 1;
+   // Success or error details in the event of failure.
+   RpcResponseStatus status = 2;
+}
+
+message AclApplyRequest {
+   // The key of the ACL to [un]apply.
+   AclKey key = 1;
+   // The inteface ID of the the interface to [un]apply the ACL.
+   IntfId intf_id = 2;
+   // The direction in which to [un]apply the ACL.
+   AclDirection direction = 3;
+   // True if the ACL should be applied otherwise false if it should be
+   // unapplied.
+   bool apply = 4;
+}
+
+message AclApplyResponse {}
+
+message BulkAclApplyRequest {
+   // List of AclApplyRequests.
+   repeated AclApplyRequest requests = 1;
+}
+
+message BulkAclApplyResponse {
+   // Number of consecutive successful requests.
+   uint64 processed = 1;
+   // Success or error details in the event of failure.
+   RpcResponseStatus status = 2;
+}
+
+message AclCountersEnabledSetRequest {
+   // The key of the ACL to modify.
+   AclKey key = 1;
+   // True if counters should be enabled for the ACL otherwise false if they
+   // should be disabled.
+   bool enabled = 2;
+}
+
+message AclCountersEnabledSetResponse {}
+
+message BulkAclCountersEnabledSetRequest {
+   // List of AclCountersEnabledSetRequests.
+   repeated AclCountersEnabledSetRequest requests = 1;
+}
+
+message BulkAclCountersEnabledSetResponse {
+   // Number of consecutive successful requests.
+   uint64 processed = 1;
+   // Success or error details in the event of failure.
+   RpcResponseStatus status = 2;
+}
+
+message AclFragmentsEnabledSetRequest {
+   // The key of the ACL to modify.
+   AclKey key = 1;
+   // True if fragments matching should be enabled for the ACL otherwise false
+   // if it should be disabled.
+   bool enabled = 2;
+}
+
+message AclFragmentsEnabledSetResponse {}
+
+message BulkAclFragmentsEnabledSetRequest {
+   // List of AclFragmentsEnabledSetRequests.
+   repeated AclFragmentsEnabledSetRequest requests = 1;
+}
+
+message BulkAclFragmentsEnabledSetResponse {
+   // Number of consecutive successful requests.
+   uint64 processed = 1;
+   // Success or error details in the event of failure.
+   RpcResponseStatus status = 2;
+}
+
+message StreamAllowedRequest {
+   // The source IP address.
+   bytes source_addr = 1;
+   // The destination IP address.
+   bytes dest_addr = 2;
+   // Optional: The protocol. Must be in range 0 to 255.
+   uint32 protocol = 3;
+   // Optional: The source port. Must be in range 0 to 65535.
+   uint32 source_port = 4;
+   // Optional: The desitionation port. Must be in range 0 to 65535.
+   uint32 dest_port = 5;
+}
+
+message StreamAllowedResponse {
+   // True if the connection is allowed otherwise false if it should be dropped.
+   bool stream_allowed = 1;
+}
+
+message DgramAllowedRequest {
+   // The source IP address.
+   bytes source_addr = 1;
+   // The destination IP address.
+   bytes dest_addr = 2;
+   // The source port. Must be in range 0 to 65535.
+   uint32 source_port = 3;
+   // The desitionation port. Must be in range 0 to 65535.
+   uint32 dest_port = 4;
+   // Time to live if IPv4 otherwise hop limit if IPv6.
+   // Must be in range 0 to 255.
+   uint32 ttl = 5;
+   // Type of service if IPv4 othersiwe traffic class if IPv6.
+   // Must be in range 0 to 255
+   uint32 tos = 6;
+   // Recipient interface.
+   IntfId recipient_intf = 7;
+
+}
+
+message DgramAllowedResponse {
+   // True if packet is allowed otherwise false if it should be dropped.
+   bool dgram_allowed = 1;
+}

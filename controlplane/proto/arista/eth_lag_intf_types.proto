@@ -1,0 +1,62 @@
+// Copyright (c) 2022 Arista Networks, Inc.  All rights reserved.
+// Arista Networks, Inc. Confidential and Proprietary.
+
+syntax = "proto3";
+
+option go_package = "arista/EosSdkRpc";
+
+import "intf_types.proto";
+
+package eos.remote;
+
+message EthLagIntf {
+   // The ID of this lag interface.
+   IntfId intf = 1;
+   // The aggregated capacity of this LAG interface, in Mbits/s.
+   uint64 speed = 2;
+   // Number of required links to bring up this LAG interface.
+   uint32 min_links = 3;
+   // Fallback type for this LAG interface.
+   EthLagIntfFallbackType fallback_type = 4;
+   // The LACP active mode timeout value, in seconds.
+   uint32 fallback_timeout = 5;
+   // Default value for the timeout above, in seconds.
+   uint32 default_fallback_timeout = 6;
+}
+
+enum EthLagIntfFallbackType {
+   // Not a valid fallback type.
+   ETH_LAG_INTF_FALLBACK_NULL = 0;
+   // No fallback if no LACPDUs seen.
+   ETH_LAG_INTF_FALLBACK_NONE = 1;
+   // Fallback to static mode.
+   ETH_LAG_INTF_FALLBACK_STATIC = 2;
+   // Fallback to individual mode.
+   ETH_LAG_INTF_FALLBACK_INDIVIDUAL = 3;
+}
+
+enum EthLagIntfMemberLacpMode {
+   ETH_LAG_INTF_MEMBER_LACP_MODE_NULL = 0;
+   ETH_LAG_INTF_MEMBER_LACP_MODE_OFF = 1;
+   ETH_LAG_INTF_MEMBER_LACP_MODE_PASSIVE = 2;
+   ETH_LAG_INTF_MEMBER_LACP_MODE_ACTIVE = 3;
+}
+
+message EthLagIntfMembership {
+   // Interface ID for the LAG interface.
+   IntfId eth_lag_intf_id = 1;
+   // Indicates whether the interface is active in the LAG.
+   bool active = 2;
+   // If this interface is not in the LAG, the reason is stated here.
+   string reason = 3;
+   // Time this interface got added to or removed from a LAG.
+   double member_time = 4;
+   // The LACP mode this interface is configured in the LAG.
+   EthLagIntfMemberLacpMode mode = 5;
+}
+
+enum EthLagIntfMemberLacpTimeout {
+   ETH_LAG_INTF_MEMBER_LACP_TIMEOUT_NULL = 0;
+   ETH_LAG_INTF_MEMBER_LACP_TIMEOUT_SHORT = 1;
+   ETH_LAG_INTF_MEMBER_LACP_TIMEOUT_LONG = 2;
+}

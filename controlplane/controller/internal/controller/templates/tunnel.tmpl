@@ -1,0 +1,77 @@
+!
+{{- range .Tunnels }}
+default interface Tunnel{{ .Id }}
+{{- if eq true .Allocated }}
+interface Tunnel{{ .Id }}
+   mtu 9216
+   ip address {{ .OverlaySrcIP }}/31
+   tunnel mode gre
+   tunnel source {{ .UnderlaySrcIP }}
+   tunnel destination {{ .UnderlayDstIP }}
+   tunnel path-mtu-discovery
+   tunnel ttl 32
+   no shutdown
+{{- end }}
+!
+{{- end }}
+router bgp 65342
+{{- range .Tunnels }}
+{{- if eq true .Allocated }}
+   no neighbor {{ .OverlayDstIP }}
+   neighbor {{ .OverlayDstIP }} remote-as 65000
+   neighbor {{ .OverlayDstIP }} passive
+   neighbor {{ .OverlayDstIP }} description USER-{{ .Id  }}
+   neighbor {{ .OverlayDstIP }} route-map RM-USER-{{ .Id }}-IN in
+   neighbor {{ .OverlayDstIP }} route-map RM-USER-{{ .Id }}-OUT out
+   neighbor {{ .OverlayDstIP }} maximum-routes 1
+   neighbor {{ .OverlayDstIP }} maximum-accepted-routes 1
+{{- end }}
+{{- end }}
+{{- range .UnknownBgpPeers }}
+   no neighbor {{ . }}
+{{- end }}
+!
+{{- range .Tunnels }}
+no route-map RM-USER-{{ .Id }}-OUT
+{{- if eq true .Allocated }}
+route-map RM-USER-{{ .Id }}-OUT permit 10
+   match ip address prefix-list PL-DZ_LAX_SUMMARY
+route-map RM-USER-{{ .Id }}-OUT permit 20
+   match ip address prefix-list PL-DZ_EWR_SUMMARY
+route-map RM-USER-{{ .Id }}-OUT permit 30
+   match ip address prefix-list PL-DZ_LHR_SUMMARY
+route-map RM-USER-{{ .Id }}-OUT permit 40
+   match ip address prefix-list PL-DZ_FRA_SUMMARY
+route-map RM-USER-{{ .Id }}-OUT permit 50
+   match ip address prefix-list PL-DZ_SIN_SUMMARY
+route-map RM-USER-{{ .Id }}-OUT permit 60
+   match ip address prefix-list PL-DZ_TYO_SUMMARY
+route-map RM-USER-{{ .Id }}-OUT permit 70
+   match ip address prefix-list PL-DZ_AMS_SUMMARY
+{{- end }}
+!
+{{- end }}
+ip prefix-list PL-DZ_EWR_SUMMARY seq 10 permit 64.86.249.80/29 le 32
+ip prefix-list PL-DZ_FRA_SUMMARY seq 10 permit 195.219.220.88/29 le 32
+ip prefix-list PL-DZ_LAX_SUMMARY seq 10 permit 207.45.216.136/29 le 32
+ip prefix-list PL-DZ_LHR_SUMMARY seq 10 permit 195.219.120.72/29 le 32
+ip prefix-list PL-DZ_SIN_SUMMARY seq 10 permit 180.87.102.104/29 le 32
+ip prefix-list PL-DZ_TYO_SUMMARY seq 10 permit 180.87.154.112/29 le 32
+ip prefix-list PL-DZ_AMS_SUMMARY seq 10 permit 195.219.138.56/29 le 32
+!
+{{- range .Tunnels }}
+no route-map RM-USER-{{ .Id }}-IN
+{{- if eq true .Allocated }}
+route-map RM-USER-{{ .Id }}-IN permit 10
+   match ip address prefix-list PL-USER-{{ .Id }}
+   match as-path length = 1
+{{- end }}
+!
+{{- end }}
+{{- range .Tunnels }}
+no ip prefix-list PL-USER-{{ .Id }}
+{{- if eq true .Allocated }}
+ip prefix-list PL-USER-{{ .Id }} seq 10 permit {{ .DzIp }}/32
+{{- end }}
+!
+{{- end }}

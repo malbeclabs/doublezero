@@ -1,0 +1,207 @@
+!
+default interface Tunnel500
+interface Tunnel500
+   mtu 9216
+   ip address 169.254.0.0/31
+   tunnel mode gre
+   tunnel source 2.2.2.2
+   tunnel destination 1.1.1.1
+   tunnel path-mtu-discovery
+   tunnel ttl 32
+   no shutdown
+!
+default interface Tunnel501
+!
+default interface Tunnel502
+!
+default interface Tunnel503
+!
+default interface Tunnel504
+!
+default interface Tunnel505
+!
+default interface Tunnel506
+!
+default interface Tunnel507
+!
+default interface Tunnel508
+!
+default interface Tunnel509
+!
+default interface Tunnel510
+!
+default interface Tunnel511
+!
+default interface Tunnel512
+!
+default interface Tunnel513
+!
+default interface Tunnel514
+!
+default interface Tunnel515
+!
+default interface Tunnel516
+!
+default interface Tunnel517
+!
+default interface Tunnel518
+!
+default interface Tunnel519
+!
+router bgp 65342
+   no neighbor 169.254.0.1
+   neighbor 169.254.0.1 remote-as 65000
+   neighbor 169.254.0.1 passive
+   neighbor 169.254.0.1 description USER-500
+   neighbor 169.254.0.1 route-map RM-USER-500-IN in
+   neighbor 169.254.0.1 route-map RM-USER-500-OUT out
+   neighbor 169.254.0.1 maximum-routes 1
+   neighbor 169.254.0.1 maximum-accepted-routes 1
+   no neighbor 169.254.0.7
+!
+no route-map RM-USER-500-OUT
+route-map RM-USER-500-OUT permit 10
+   match ip address prefix-list PL-DZ_LAX_SUMMARY
+route-map RM-USER-500-OUT permit 20
+   match ip address prefix-list PL-DZ_EWR_SUMMARY
+route-map RM-USER-500-OUT permit 30
+   match ip address prefix-list PL-DZ_LHR_SUMMARY
+route-map RM-USER-500-OUT permit 40
+   match ip address prefix-list PL-DZ_FRA_SUMMARY
+route-map RM-USER-500-OUT permit 50
+   match ip address prefix-list PL-DZ_SIN_SUMMARY
+route-map RM-USER-500-OUT permit 60
+   match ip address prefix-list PL-DZ_TYO_SUMMARY
+route-map RM-USER-500-OUT permit 70
+   match ip address prefix-list PL-DZ_AMS_SUMMARY
+!
+no route-map RM-USER-501-OUT
+!
+no route-map RM-USER-502-OUT
+!
+no route-map RM-USER-503-OUT
+!
+no route-map RM-USER-504-OUT
+!
+no route-map RM-USER-505-OUT
+!
+no route-map RM-USER-506-OUT
+!
+no route-map RM-USER-507-OUT
+!
+no route-map RM-USER-508-OUT
+!
+no route-map RM-USER-509-OUT
+!
+no route-map RM-USER-510-OUT
+!
+no route-map RM-USER-511-OUT
+!
+no route-map RM-USER-512-OUT
+!
+no route-map RM-USER-513-OUT
+!
+no route-map RM-USER-514-OUT
+!
+no route-map RM-USER-515-OUT
+!
+no route-map RM-USER-516-OUT
+!
+no route-map RM-USER-517-OUT
+!
+no route-map RM-USER-518-OUT
+!
+no route-map RM-USER-519-OUT
+!
+ip prefix-list PL-DZ_EWR_SUMMARY seq 10 permit 64.86.249.80/29 le 32
+ip prefix-list PL-DZ_FRA_SUMMARY seq 10 permit 195.219.220.88/29 le 32
+ip prefix-list PL-DZ_LAX_SUMMARY seq 10 permit 207.45.216.136/29 le 32
+ip prefix-list PL-DZ_LHR_SUMMARY seq 10 permit 195.219.120.72/29 le 32
+ip prefix-list PL-DZ_SIN_SUMMARY seq 10 permit 180.87.102.104/29 le 32
+ip prefix-list PL-DZ_TYO_SUMMARY seq 10 permit 180.87.154.112/29 le 32
+ip prefix-list PL-DZ_AMS_SUMMARY seq 10 permit 195.219.138.56/29 le 32
+!
+no route-map RM-USER-500-IN
+route-map RM-USER-500-IN permit 10
+   match ip address prefix-list PL-USER-500
+   match as-path length = 1
+!
+no route-map RM-USER-501-IN
+!
+no route-map RM-USER-502-IN
+!
+no route-map RM-USER-503-IN
+!
+no route-map RM-USER-504-IN
+!
+no route-map RM-USER-505-IN
+!
+no route-map RM-USER-506-IN
+!
+no route-map RM-USER-507-IN
+!
+no route-map RM-USER-508-IN
+!
+no route-map RM-USER-509-IN
+!
+no route-map RM-USER-510-IN
+!
+no route-map RM-USER-511-IN
+!
+no route-map RM-USER-512-IN
+!
+no route-map RM-USER-513-IN
+!
+no route-map RM-USER-514-IN
+!
+no route-map RM-USER-515-IN
+!
+no route-map RM-USER-516-IN
+!
+no route-map RM-USER-517-IN
+!
+no route-map RM-USER-518-IN
+!
+no route-map RM-USER-519-IN
+!
+no ip prefix-list PL-USER-500
+ip prefix-list PL-USER-500 seq 10 permit 100.100.100.100/32
+!
+no ip prefix-list PL-USER-501
+!
+no ip prefix-list PL-USER-502
+!
+no ip prefix-list PL-USER-503
+!
+no ip prefix-list PL-USER-504
+!
+no ip prefix-list PL-USER-505
+!
+no ip prefix-list PL-USER-506
+!
+no ip prefix-list PL-USER-507
+!
+no ip prefix-list PL-USER-508
+!
+no ip prefix-list PL-USER-509
+!
+no ip prefix-list PL-USER-510
+!
+no ip prefix-list PL-USER-511
+!
+no ip prefix-list PL-USER-512
+!
+no ip prefix-list PL-USER-513
+!
+no ip prefix-list PL-USER-514
+!
+no ip prefix-list PL-USER-515
+!
+no ip prefix-list PL-USER-516
+!
+no ip prefix-list PL-USER-517
+!
+no ip prefix-list PL-USER-518
+!
+no ip prefix-list PL-USER-519
+!

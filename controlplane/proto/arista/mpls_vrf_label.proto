@@ -1,0 +1,143 @@
+// Copyright (c) 2023 Arista Networks, Inc.  All rights reserved.
+// Arista Networks, Inc. Confidential and Proprietary.
+
+syntax = "proto3";
+
+option go_package = "arista/EosSdkRpc";
+
+package eos.remote;
+
+import "mpls_types.proto";
+import "mpls_vrf_label_types.proto";
+import "rpc_types.proto";
+
+service MplsVrfLabelMgrService {
+
+   /**
+   * Initiates an MPLS VRF label resync proccess.
+   *
+   * EosSdk reference: eos::mpls_vrf_label_mgr::resync_init
+   */
+   rpc resync_init( MplsVrfLabelResyncInitRequest ) returns (
+      MplsVrfLabelResyncInitResponse ) {}
+
+   /**
+   * Ends the current MPLS VRF label resync process.
+   *
+   * EosSdk reference: eos::mpls_vrf_label_mgr::resync_complete
+   */
+   rpc resync_complete( MplsVrfLabelResyncCompleteRequest ) returns (
+      MplsVrfLabelResyncCompleteResponse ) {}
+
+   /**
+   * Returns a list of all the MPLS VRF labels currently configured.
+   *
+   * EosSdk reference: eos::mpls_vrf_label_mgr::mpls_vrf_label_iter
+   */
+   rpc mpls_vrf_labels( MplsVrfLabelsRequest ) returns ( 
+      stream MplsVrfLabelsResponse ) {}
+
+   /**
+   * Returns the current configuration of an MPLS VRF label.
+   *
+   * EosSdk reference: eos::mpls_vrf_label_mgr::mpls_vrf_label
+   */
+   rpc mpls_vrf_label( MplsVrfLabelRequest ) returns ( MplsVrfLabelResponse ) {}
+
+   /**
+   * Inserts or updates an MPLS VRF label in the switch config.
+   *
+   * EosSdk reference: eos::mpls_vrf_label_mgr::mpls_vrf_label_set
+   */
+   rpc mpls_vrf_label_set( MplsVrfLabelSetRequest ) returns ( 
+      MplsVrfLabelSetResponse ) {}
+
+   /**
+   * Inserts or updates multiple MPLS VRF labels in the switch config in a 
+   * single call.
+   *
+   * EosSdk reference: eos::mpls_vrf_label_mgr::mpls_vrf_label_set
+   */
+   rpc bulk_mpls_vrf_label_set( BulkMplsVrfLabelSetRequest ) returns (
+      BulkMplsVrfLabelSetResponse ) {}
+
+   /**
+   * Removes the MPLS VRF label from configuration.
+   *
+   * EosSdk reference: eos::mpls_vrf_label_mgr::mpls_vrf_label_del
+   */
+   rpc mpls_vrf_label_del( MplsVrfLabelDelRequest ) returns ( 
+      MplsVrfLabelDelResponse ) {}
+
+   /**
+   * Removes multiple MPLS VRF labels in a single call.
+   *
+   * EosSdk reference: eos::mpls_vrf_label_mgr::mpls_vrf_label_del
+   */
+   rpc bulk_mpls_vrf_label_del( BulkMplsVrfLabelDelRequest ) returns (
+      BulkMplsVrfLabelDelResponse ) {}
+
+}
+
+message MplsVrfLabelResyncInitRequest {}
+
+message MplsVrfLabelResyncInitResponse {}
+
+message MplsVrfLabelResyncCompleteRequest{}
+
+message MplsVrfLabelResyncCompleteResponse {}
+
+message MplsVrfLabelsRequest {}
+
+message MplsVrfLabelsResponse {
+   // The configured MPLS VRF labels.
+   MplsVrfLabel vrf_label = 1;
+}
+
+message MplsVrfLabelRequest {
+   // The MPLS label of the MPLS VRF label to search.
+   MplsLabel label = 1;
+}
+
+message MplsVrfLabelResponse {
+   // Current configuration of the MPLS VRF label.
+   MplsVrfLabel vrf_label = 1;
+}
+
+message MplsVrfLabelSetRequest {
+   // The MPLS VRF label to insert or update.
+   MplsVrfLabel vrf_label = 1;
+}
+
+message MplsVrfLabelSetResponse {}
+
+message BulkMplsVrfLabelSetRequest {
+   // List of MplsVrfLabelSetRequests.
+   repeated MplsVrfLabelSetRequest requests = 1;
+}
+
+message BulkMplsVrfLabelSetResponse {
+   // Number of consecutive successful requests.
+   uint64 processed = 1;
+   // Success or error details in the event of failure.
+   RpcResponseStatus status = 2;
+}
+
+message MplsVrfLabelDelRequest  {
+   // The MPLS label of the MPLS VRF label to remove.
+   MplsLabel label = 1;
+}
+
+message MplsVrfLabelDelResponse {}
+
+message BulkMplsVrfLabelDelRequest {
+   // List of MplsVrfLabelDelRequests.
+   repeated MplsVrfLabelDelRequest requests = 1;
+}
+
+message BulkMplsVrfLabelDelResponse {
+   // Number of consecutive successful requests.
+   uint64 processed = 1;
+   // Success or error details in the event of failure.
+   RpcResponseStatus status = 2;
+}

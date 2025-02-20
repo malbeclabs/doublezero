@@ -1,0 +1,266 @@
+// Arista Networks, Inc. Confidential and Proprietary.
+
+syntax = "proto3";
+
+option go_package = "arista/EosSdkRpc";
+
+package eos.remote;
+
+import "rpc_types.proto";
+import "intf_types.proto";
+import "eth_phy_intf_types.proto";
+
+service EthPhyIntfMgrService {
+   /**
+    * Subscription to monitor interface events. This request
+    * stays active until the client cancels or the server shuts down.
+    * When all = false and no version is specified, this request has no effect.
+    *
+    * EOS SDK reference:: eos::eth_phy_intf_handler (class)
+    */
+   rpc watch( EthPhyIntfWatchRequest ) returns ( stream EthPhyIntfWatchResponse );
+
+   /**
+    * Returns the list of interfaces.
+    *
+    * EOS SDK reference:: eos::eth_phy_intf_mgr::eth_phy_intf_iter
+    */
+   rpc eth_phy_intfs( EthPhyIntfsRequest ) returns ( stream EthPhyIntfsResponse );
+
+   /**
+    * Returns whether the given physical ethernet interface exists.
+    *
+    * If exists returns true, then this intf_id_t can be successfully
+    * passed into every method of the eth_intf_mgr. If not, then
+    * methods of the eth_intf_mgr can throw a no_such_interface_error
+    * exception.
+    *
+    * The exists method of all *intf_mgr classes that manage a given
+    * interface (ie intf_mgr, eth_intf_mgr, and eth_phy_intf_mgr for
+    * physical interfaces) are all guaranteed to return the same
+    * result.
+    *
+    * EOS SDK reference: : eos::eth_phy_intf_mgr::exists
+    */
+   rpc exists( EthPhyIntfExistsRequest ) returns ( EthPhyIntfExistsResponse );
+
+   /**
+    * Returns whether the underlying hardware for this interface is present.
+    *
+    * EOS SDK reference:: eos::eth_phy_intf_mgr::hardware_present
+    */
+   rpc hardware_present( EthPhyIntfHardwarePresentRequest ) returns ( EthPhyIntfHardwarePresentResponse );
+   
+   /**
+    * Returns the "burned in" address of the interface.
+    *
+    * EOS SDK reference:: eos::eth_phy_intf_mgr::burned_in_eth_addr
+    */
+   rpc burned_in_eth_addr( EthPhyIntfBurnedInEthAddrRequest ) returns ( EthPhyIntfBurnedInEthAddrResponse );
+
+   /**
+    * Returns the operational link speed.
+    *
+    * EOS SDK reference:: eos::eth_phy_intf_mgr::link_speed
+    */
+   rpc link_speed( EthPhyIntfLinkSpeedRequest ) returns ( EthPhyIntfLinkSpeedResponse );
+
+   /**
+    * Returns the presence of transceiver for the given interface
+    *
+    * EOS SDK reference:: eos::eth_phy_intf_mgr::transceiver_present
+    */
+   rpc transceiver_present( EthPhyIntfTransceiverPresentRequest ) returns ( EthPhyIntfTransceiverPresentResponse );
+}
+
+/**
+ * Notification when a physical ethernet interface is created.
+ *
+ * After on_eth_phy_intf_create is sent, the given intf_id is
+ * guaranteed to exist (ie eth_phy_intf_mgr::exists will return
+ * true). At that point, the intf_id can be used with all methods
+ * of the eth_phy_intf_mgr class.
+ *
+ * This also means that the intf_id can be used with all other
+ * relevant *intf_mgr classes (ie intf_mgr and eth_intf_mgr).
+ */
+message OnEthPhyIntfCreate {
+   IntfId intf_id = 1;
+}
+
+/**
+ * Notification when a physical ethernet interface is deleted.
+ * 
+ * After on_eth_phy_intf_delete is sent, the given intf_id is
+ * guaranteed to not exist (ie eth_phy_intf_mgr::exists will return
+ * false). At that point, the intf_id cannot be used with any
+ * methods in the eth_phy_intf_mgr class.
+ *
+ * This also means that the intf_id can no longer be used with all
+ * other relevant *intf_mgr classes (ie intf_mgr and eth_intf_mgr).
+ */
+message OnEthPhyIntfDelete {
+   IntfId intf_id = 1;
+}
+
+/**
+ * Notification when the presence of the underlying hardware for
+ * the physical ethernet interface changes.
+ *
+ * When a physical interface goes from not-present to present, only
+ * on_eth_phy_intf_hardware_present is sent even though
+ * other attributes (like the link_speed) of the eth_phy_intf may
+ * have changed. Similarly, when the physical interface hardware
+ * goes from present to not-present, attributes of the eth_phy_intf
+ * (like the link_speed) that are based on the underlying hardware
+ * will go back to their default values even though specific events
+ * for these changes are not sent. It is up to the user to handle
+ * the new values of those attributes upon reception of
+ * on_eth_phy_intf_hardware_present handler.
+ */
+message OnEthPhyIntfHardwarePresent {
+   IntfId intf_id = 1;
+   bool hardware_present = 2;
+}
+
+/**
+ * Notification when the operational link speed changes.
+ */
+message OnEthPhyIntfLinkSpeed {
+   IntfId intf_id = 1;
+   EthPhyIntfLinkSpeed link_speed = 2;
+}
+
+/**
+ * Notification when a transceiver insertion or removal is detected.
+ */
+message OnEthPhyIntfTransceiverPresent {
+   IntfId intf_id = 1;
+   bool transceiver_present = 2;
+}
+
+message EthPhyIntfWatchRequest {
+   // Set to true when instant acknowledgment is desired.
+   bool ack = 3;
+   oneof options {
+      // Subscribes events on all interfaces.
+      bool all_intfs = 1;
+      // Subscribes for events on a specified interface.
+      IntfId intf_id = 2;
+   }
+}
+
+/**
+ * ack = True if message is only an acknowledgment or possible combinations of
+ * events. Whenever multiple events are present in a single message, the event
+ * on_eth_phy_intf_created, if present, is always the first in the sequence
+ * and the event on_eth_intf_deleted, if present, is always the last one in
+ * the original sequence. The order of the remaining events is not relevant.
+ */
+message EthPhyIntfWatchResponse {
+   OnEthPhyIntfCreate on_eth_phy_intf_create = 1;
+   OnEthPhyIntfDelete on_eth_phy_intf_delete = 2;
+   OnEthPhyIntfHardwarePresent on_eth_phy_intf_hardware_present = 3;
+   OnEthPhyIntfLinkSpeed on_eth_phy_intf_link_speed = 4;
+   OnEthPhyIntfTransceiverPresent on_eth_phy_intf_transceiver_present = 5;
+   // Simple acknowledgment.
+   bool ack = 6;
+}
+
+message EthPhyIntfsRequest {}
+
+message EthPhyIntfsResponse {
+   // A present interface.
+   IntfId intf_id = 1;
+}
+
+message EthPhyIntfExistsRequest {
+   // Interface ID to be checked.
+   IntfId intf_id = 1;
+}
+
+message EthPhyIntfExistsResponse {
+   // True if the interface exists.
+   bool exists = 1;
+}
+
+message EthPhyIntfHardwarePresentRequest {
+   // Interface ID to be checked.
+   IntfId intf_id = 1;
+}
+
+message EthPhyIntfHardwarePresentResponse {
+   // True if hardware is present.
+   bool hardware_present = 1;
+}
+
+message EthPhyIntfBurnedInEthAddrRequest {
+   // Interface to be queried for.
+   IntfId intf_id = 1;
+}
+
+message EthPhyIntfBurnedInEthAddrResponse {
+   // Once hardware_present is true, burned_in_eth_addr is guaranteed
+   // to be available. Otherwise, the return is empty.
+   bytes eth_addr = 1;
+}
+
+message EthPhyIntfLinkSpeedRequest {
+   // Interface to be queried for.
+   IntfId intf_id = 1;
+}
+
+message EthPhyIntfLinkSpeedResponse {
+   // One of the value speeds or ETH_PHY_INTF_LINK_SPEED_UNKNOWN if the
+   // hardware is not present.
+   EthPhyIntfLinkSpeed link_speed = 1;
+}
+
+message EthPhyIntfTransceiverPresentRequest {
+   // Interface to be queried for.
+   IntfId intf_id = 1;
+}
+
+message EthPhyIntfTransceiverPresentResponse {
+   // True if the transceiver is present.
+   bool transceiver_present = 1;
+}
+
+/**
+ * Counter service.
+ */
+service EthPhyIntfCountersMgrService {
+   /**
+    * Gets the current counters of the given ethernet interface.
+    *
+    * EOS SDK reference: eos::eth_phy_intf_counter_mgr::counters
+    */
+   rpc counters( EthPhyIntfCountersRequest ) returns ( EthPhyIntfCountersResponse );
+   
+   /**
+    * Gets the current bin counters of the given ethernet interface.
+    *
+    * EOS SDK reference: eos::eth_phy_intf_counter_mgr::bin_counters
+    */
+   rpc bin_counters( EthPhyIntfBinCountersRequest ) returns ( EthPhyIntfBinCountersResponse );
+}
+
+message EthPhyIntfCountersRequest {
+   // Interface to query counters.
+   IntfId intf_id = 1;
+}
+
+message EthPhyIntfCountersResponse {
+   // Counters for the requested interface.
+   EthPhyIntfCounters counters = 1;
+}
+
+message EthPhyIntfBinCountersRequest {
+   // Interface to query counters.
+   IntfId intf_id = 1;
+}
+
+message EthPhyIntfBinCountersResponse {
+   // Counters for the requested interface.
+   EthPhyIntfBinCounters counters = 1;
+}

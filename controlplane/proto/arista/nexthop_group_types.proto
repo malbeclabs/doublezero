@@ -1,0 +1,92 @@
+// Copyright (c) 2021 Arista Networks, Inc.  All rights reserved.
+// Arista Networks, Inc. Confidential and Proprietary.
+
+syntax = "proto3";
+
+option go_package = "arista/EosSdkRpc";
+
+package eos.remote;
+
+import "intf_types.proto";
+import "mpls_types.proto";
+
+message NexthopGroupEntry {
+   NexthopGroupMplsAction mpls_action = 1;
+   bytes nexthop_ip = 2;
+   IntfId intf_id = 3;
+   string child_nexthop_group = 4;
+}
+
+message NexthopGroupMplsAction {
+   MplsActions action = 1;
+   repeated uint32 mpls_labels = 2;
+}
+
+enum NexthopGroupEncapTypes {
+   NEXTHOP_GROUP_ENCAP_TYPE_NULL = 0;
+   NEXTHOP_GROUP_ENCAP_IP_IN_IP = 1;
+   NEXTHOP_GROUP_ENCAP_GRE = 2;
+   NEXTHOP_GROUP_ENCAP_MPLS = 3;
+   NEXTHOP_GROUP_ENCAP_MPLS_OVER_GRE = 4;
+   NEXTHOP_GROUP_ENCAP_IP = 5;
+}
+
+enum NexthopGroupGreKeyTypes { 
+   NEXTHOP_GROUP_GRE_KEY_NULL = 0;
+   NEXTHOP_GROUP_GRE_KEY_INGRESS_INTF = 1;
+}
+
+enum NexthopGroupCounterState {
+   // Nexthop group entry counters are not enabled for this group.
+   NEXTHOP_GROUP_COUNTER_INACTIVE = 0;
+   // At least one nexthop group entry counter for this group has failed to be
+   // programmed.
+   //
+   // Confirm that the expected configuration fits within the hardware limits of the
+   // system and reconfigure all nexthop groups.
+   NEXTHOP_GROUP_COUNTER_PROGRAMMING_FAILED = 1;
+   // All nexthop group entry counters for this group have been successfully
+   // programmed.
+   NEXTHOP_GROUP_COUNTER_PROGRAMMING_COMPLETE = 2;
+}
+
+message NexthopGroup {
+   string name = 1;
+   NexthopGroupEncapTypes type = 2;
+   NexthopGroupGreKeyTypes gre_key_type = 3;
+   oneof ttl_present {
+      // Default value is 64.
+      uint32 ttl = 4;
+   }
+   bytes source_ip_addr = 5;
+   IntfId source_intf = 6;
+   bool autosize = 7;
+   // The numeric key corresponds to the nexthop index position for the entry.
+   map<uint32, NexthopGroupEntry> nexthops = 8;
+   map<uint32, bytes> destination_ips = 9;
+   bool counters_unshared = 10;
+   bool hierarchical_fecs_enabled = 11;
+   bool counters_persistent = 12;
+   // NOTE: this is actually a 16-bit value.
+   uint32 version_id = 13;
+   // The numeric key corresponds to the nexthop index position for the entry.
+   map<uint32, NexthopGroupEntry> backup_nexthops = 14;
+}
+
+message NexthopGroupCounter {
+   uint64 packets = 1;
+   uint64 bytes = 2;
+   bool valid = 3;
+   uint32 entry_id = 4;
+}
+
+enum NexthopGroupProgrammedHwState {
+   NEXTHOP_GROUP_HW_DROP = 0; 
+   NEXTHOP_GROUP_HW_PARTIALLY_PROGRAMMED = 1; 
+   NEXTHOP_GROUP_HW_ALL_PROGRAMMED = 2; 
+}
+
+message OnNexthopGroupProgrammed {
+   NexthopGroupProgrammedHwState hw_state = 1;
+   NexthopGroupCounterState counter_state = 2;
+}

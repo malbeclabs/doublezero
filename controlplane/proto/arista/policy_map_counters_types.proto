@@ -1,0 +1,44 @@
+// Copyright (c) 2023 Arista Networks, Inc.  All rights reserved.
+// Arista Networks, Inc. Confidential and Proprietary.
+
+syntax = "proto3";
+
+option go_package = "arista/EosSdkRpc";
+
+package eos.remote;
+
+import "policy_map_types.proto";
+
+message PolicyMapCountersKey {
+   PolicyMapKey policy_key = 1;
+   string class_name = 2;
+   string acl_rule = 3;
+}
+
+message PolicyMapRuleCounters {
+   uint64 packets_count = 1;
+   uint64 bytes_count = 2;
+   /// Last update timestamp, UTC, sub-second precision
+   double last_update_timestamp = 3;
+}
+
+message PolicyMapCountersOutAction {
+   message NexthopAction {
+      bool recursive = 1;
+      repeated bytes nexthop_addrs = 2;
+      string vrf = 3;
+   }
+
+  oneof nexthop {
+     NexthopAction nexthops = 1;
+     string nexthop_group = 2;
+  }
+  uint32 ttl = 3;
+}
+
+message PolicyMapCountersAction {
+  oneof action {
+      bool deny = 1;
+      PolicyMapCountersOutAction out_action = 2;
+  }
+}

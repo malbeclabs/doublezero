@@ -1,0 +1,21 @@
+// Copyright (c) 2024 Arista Networks, Inc.  All rights reserved.
+// Arista Networks, Inc. Confidential and Proprietary.
+
+syntax = "proto3";
+
+option go_package = "arista/EosSdkRpc";
+
+package eos.remote;
+
+import "acl_types.proto";
+import "policy_map_types.proto";
+
+message ClassMap {
+   PolicyMapKey key = 1;
+   map<uint32, ClassMapRule> rules = 2;
+}
+
+message ClassMapRule {
+   AclKey acl_key = 1;
+}
+

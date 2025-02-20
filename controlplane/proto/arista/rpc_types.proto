@@ -1,0 +1,45 @@
+// Copyright (c) 2021 Arista Networks, Inc.  All rights reserved.
+// Arista Networks, Inc. Confidential and Proprietary.
+
+syntax = "proto3";
+
+option go_package = "arista/EosSdkRpc";
+
+package eos.remote;
+
+/**
+ * The status codes below match gRPC StatusCodes
+ * in both naming and numeric values.
+ */
+enum RpcStatusCodes {
+   option allow_alias = true;
+   RPC_STATUS_OK = 0;
+   RPC_STATUS_CANCELLED = 1;
+   RPC_STATUS_UNKNOWN = 2;
+   RPC_STATUS_INVALID_ARGUMENT = 3;
+   RPC_STATUS_DEADLINE_EXCEEDED = 4;
+   RPC_STATUS_NOT_FOUND = 5;
+   RPC_STATUS_ALREDY_EXISTS = 6;
+   RPC_STATUS_ALREADY_EXISTS = 6;
+   RPC_STATUS_PERMISSION_DENIED = 7;
+   RPC_STATUS_UNAUTHENTICATED = 8;
+   RPC_STATUS_RESOURCE_EXHAUSTED = 9;
+   RPC_STATUS_FAILED_PRECONDITION = 10;
+   RPC_STATUS_ABORTED = 11;
+   RPC_STATUS_OUT_OF_RANGE = 12;
+   RPC_STATUS_UNIMPLEMENTED = 13;
+   RPC_STATUS_INTERNAL = 14;
+   RPC_STATUS_UNAVAILABLE = 15;
+   RPC_STATUS_DATA_LOSS = 16;
+   RPC_DO_NOT_USE = 17;
+}
+
+message RpcResponseStatus {
+   RpcStatusCodes status = 1;
+   string error_string = 2;
+}
+
+message BulkResponse {
+   uint64 processed = 1;
+   RpcResponseStatus status = 2;
+}

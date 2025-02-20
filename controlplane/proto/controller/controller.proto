@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package controller;
+
+option go_package = "github.com/malbeclabs/doublezero/controlplane/proto/controller";
+
+
+service Controller {
+    // Returns the latest configuration of a DoubleZero node based on on-chain data
+    rpc GetConfig (ConfigRequest) returns (ConfigResponse) {}
+}
+
+// Request for latest configuration of a DoubleZero node based on its public key
+message ConfigRequest {
+    string pubkey = 1;
+    repeated string bgp_peers = 2;
+    string hash = 3;
+}
+
+// Response containing the latest configuration of a DoubleZero node
+message ConfigResponse {
+    string config = 1;
+    string hash = 2;
+}

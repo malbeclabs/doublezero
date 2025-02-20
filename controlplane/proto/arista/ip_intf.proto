@@ -1,0 +1,228 @@
+// Copyright (c) 2021 Arista Networks, Inc.  All rights reserved.
+// Arista Networks, Inc. Confidential and Proprietary.
+
+syntax = "proto3";
+
+option go_package = "arista/EosSdkRpc";
+
+package eos.remote;
+
+import "rpc_types.proto";
+import "intf_types.proto";
+import "ip_intf_types.proto";
+
+service IpIntfMgrService {
+
+   /**
+    * Subscription to monitor changes on the IP addresses of interfaces. This request
+    * stays active until it is cancelled from client side or the server is shut down.
+    *
+    * EosSdk reference: eos::ip_intf_handler (class)
+    */
+   rpc watch( IpIntfWatchRequest ) returns ( stream IpIntfEvent ) {}
+
+   /**
+    * Queries whether the given interface exists and is able to have IP addresses.
+    *
+    * EosSdk reference: eos::ip_intf_mgr::exists
+    */
+   rpc exists( IpIntfExistsRequest ) returns ( IpIntfExistsResponse ) {}
+
+   /**
+    * Queries all IP addresses associated with an interface.
+    *
+    * EosSdk reference: eos::ip_intf_mgr::ip_addrs
+    */
+   rpc ip_addrs( IpIntfAddrsRequest ) returns ( IpIntfAddrsResponse ) {}
+
+   /**
+    * Sets IP addresses for an interface.
+    *
+    * EosSdk reference: eos::ip_intf_mgr::ip_addrs_is
+    */
+   rpc ip_addrs_is( IpIntfAddrsIsRequest ) returns ( IpIntfAddrsIsResponse ) {}
+
+   /**
+    * Sets IP addresses for multiple interfaces.
+    *
+    * EosSdk reference: eos::ip_intf_mgr::ip_addrs_is
+    */
+   rpc bulk_ip_addrs_is( BulkIpIntfAddrsIsRequest ) returns ( BulkIpIntfAddrsIsResponse ) {}
+
+   /**
+    * Adds or deletes one address to an interface.
+    *
+    * EosSdk references: eos::ip_intf_mgr::ip_addr_add and
+    * eos::ip_intf_mgr::ip_addr_del
+    */
+   rpc ip_addr_modify( IpIntfAddrModifyRequest ) returns ( IpIntfAddrModifyResponse ) {}
+
+   /**
+    * Applies multiple IP address changes in a single call.
+    *
+    * EosSdk references: eos::ip_intf_mgr::ip_addr_add and
+    * eos::ip_intf_mgr::ip_addr_del
+    */
+   rpc bulk_ip_addr_modify( BulkIpIntfAddrModifyRequest ) returns ( BulkIpIntfAddrModifyResponse ) {}
+   
+   /**
+    * Queries the IP address merge mode for an interface.
+    *
+    * EosSdk references: eos::ip_intf_mgr::ip_addr_merge_mode and
+    * eos::ip_intf_mgr::ip_addr_merge_mode_is
+    */
+   rpc ip_addr_merge_mode( IpIntfAddrMergeModeRequest ) returns ( IpIntfAddrMergeModeResponse ) {}
+
+   /**
+    * Updates the IP address merge mode for an interface.
+    *
+    * EosSdk reference: eos::ip_intf_mgr::ip_addr_merge_mode_is
+    */
+   rpc ip_addr_merge_mode_is( IpIntfAddrMergeModeIsRequest ) returns ( IpIntfAddrMergeModeIsResponse ) {}
+
+   /**
+    * Updates the IP address merge mode for multiple interfaces.
+    *
+    * EosSdk reference: eos::ip_intf_mgr::ip_addr_merge_mode_is
+    */
+   rpc bulk_ip_addr_merge_mode_is( BulkIpIntfAddrMergeModeIsRequest ) returns ( BulkIpIntfAddrMergeModeIsResponse ) {}
+
+   /**
+    * Queries the internal VLAN ID associated with an interface
+    *
+    * EosSdk reference: eos::ip_intf_mgr::internal_vlan_id
+    */
+   rpc internal_vlan_id( IpIntfInternalVlanIdRequest ) returns ( IpIntfInternalVlanIdResponse ) {}
+}
+
+/**
+ * Making this request with all = false and no intf_id has no effect.
+ */
+message IpIntfWatchRequest {
+   oneof overloads {
+      bool all_intfs = 1;
+      // Name of a particular interface to watch.
+      IntfId intf_id = 2;
+   }
+   // Set to true when an ackowledgment is desired.
+   bool ack = 4;
+}
+
+message IpIntfEvent {
+   // Name of the interface.
+   IntfId intf_id = 1;
+   oneof ip_intf_event {
+      // Notifies a change in the interface's addresses.
+      IpAddrEvent addr = 2;
+      // Change in the interface's VLAN ID has changed.
+      VlanId vlan_id = 3;
+   }
+   // If true, this is not an event and the fields below are invalid.
+   bool ack = 4;
+} 
+
+message IpIntfExistsRequest {
+   // Name of the interface.
+   IntfId intf_id = 1;
+}
+
+message IpIntfExistsResponse {
+   // True if the interface exists, false otherwise.
+   bool exists = 1;
+}
+
+message IpIntfAddrsRequest {
+   // Name of the interface.
+   IntfId intf_id = 1;
+}
+
+message IpIntfAddrsResponse {
+   // List of IP addresses wtih masks.
+   repeated IpAddrMask addrs = 1;
+}
+
+message IpIntfAddrsIsRequest {
+   // Name of the interface.
+   IntfId intf_id = 1;
+   // List of IP address with their masks.
+   repeated IpAddrMask ip_addr_mask = 2;
+}
+
+message IpIntfAddrsIsResponse {}
+
+message BulkIpIntfAddrsIsRequest {
+   // List of IpIntfAddrsRequest.
+   repeated IpIntfAddrsIsRequest requests = 1;
+}
+
+message BulkIpIntfAddrsIsResponse {
+   // Number of requests processed.
+   uint64 processed = 1;
+   // Success or error details in case of failure.
+   RpcResponseStatus status = 2;
+}
+
+message IpIntfAddrModifyRequest {
+   // IP_ADDR_OP_ADD or IP_ADDR_OP_DELETE.
+   IpAddrOperations operation = 1;
+   // Name of the interface.
+   IntfId intf_id = 2;
+   // IP address with mask.
+   IpAddrMask ip_addr_mask = 3;
+}
+
+message IpIntfAddrModifyResponse {}
+
+message BulkIpIntfAddrModifyRequest {
+   // List of IpIntfAddrModifyRequest.
+   repeated IpIntfAddrModifyRequest requests = 1;
+}
+
+message BulkIpIntfAddrModifyResponse {
+   // Number of requests processed.
+   uint64 processed = 1;
+   // Success or error details in case of failure.
+   RpcResponseStatus status = 2;
+}
+
+message IpIntfAddrMergeModeRequest {
+   // Name of the interface.
+   IntfId intf_id = 1;
+}
+
+message IpIntfAddrMergeModeResponse {
+   // True if configuration should be merged with configuration from
+   // other agents or false if it should be replaced by those.
+   bool merge_mode = 1;
+}
+
+message IpIntfAddrMergeModeIsRequest {
+   // Name of the interface.
+   IntfId intf_id = 1;
+   // New IP address merge mode for the interface.
+   bool merge_mode = 2;
+}
+
+message IpIntfAddrMergeModeIsResponse {}
+
+message BulkIpIntfAddrMergeModeIsRequest {
+   // List of IpIntfAddrMergeModeRequest.
+   repeated IpIntfAddrMergeModeIsRequest requests = 1;
+}
+
+message BulkIpIntfAddrMergeModeIsResponse {
+   // Number of requests processed.
+   uint64 processed = 1;
+   // Success or error details in case of failure.
+   RpcResponseStatus status = 2;
+}
+
+message IpIntfInternalVlanIdRequest {
+   // Name of the interface.
+   IntfId intf_id = 1;
+}
+
+message IpIntfInternalVlanIdResponse {
+   // Internal VLAN ID associated with the interface.
+   VlanId vlan_id = 1;
+}

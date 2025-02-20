@@ -1,0 +1,91 @@
+// Copyright (c) 2021 Arista Networks, Inc.  All rights reserved.
+// Arista Networks, Inc. Confidential and Proprietary.
+
+syntax = "proto3";
+
+option go_package = "arista/EosSdkRpc";
+
+package eos.remote;
+
+import "bgp_types.proto";
+
+service BgpMgrService {
+   /**
+    * Subscription to monitor changes to BGP peers. This request stays active
+    * until the client cancels or the server shuts down.
+    *
+    * EosSdk reference: eos::bgp_peer_handler (class)
+    */
+   rpc watch( BgpPeerWatchRequest ) returns ( stream BgpPeerWatchResponse ) {}
+
+   /**
+    * Queries whether a BGP peer exists or not.
+    *
+    * EosSdk reference: eos::bgp_mgr::exists.
+    */
+   rpc exists( BgpPeerExistsRequest ) returns ( BgpPeerExistsResponse ) {}
+
+   /**
+    * Queries the state of a peer session.
+    *
+    * EosSdk reference: eos::bgp_mgr::peer_state.
+    */
+   rpc peer_state( BgpPeerStateRequest ) returns ( BgpPeerStateResponse ) {}
+}
+
+message OnBgpPeerSet {
+   BgpPeerKey peer_key = 1;
+}
+
+message OnBgpPeerDel {
+   BgpPeerKey peer_key = 1;
+}
+
+message OnBgpPeerState {
+   BgpPeerKey peer_key = 1;
+   BgpPeerState peer_state = 2;
+}
+
+message BgpPeerWatchRequest {
+   // Set to true if an immediate acknowledgement is desired.
+   bool ack = 1;
+   oneof overload {
+      // True if all BGP peers should be watched.
+      bool all = 2;
+      // The peer key of a particular peer to watch.
+      BgpPeerKey peer_key = 3;
+   }
+}
+
+message BgpPeerWatchResponse {
+   // If true the agent is now actively watching for events.
+   bool ack = 1;
+   oneof peer_event {
+      // The specified BGP peer has been programmed by the BGP agent.
+      OnBgpPeerSet on_peer_set = 2;
+      // The specified BGP peer has been deleted from the BGP agent.
+      OnBgpPeerDel on_peer_del = 3;
+   }
+   // The specified BGP peer changed state.
+   OnBgpPeerState on_peer_state = 4;
+}
+
+message BgpPeerExistsRequest {
+   // The key of the BGP peer to query.
+   BgpPeerKey peer_key = 1;
+}
+
+message BgpPeerExistsResponse {
+   // True if the BGP peer exists otherwise false.
+   bool exists = 1;
+}
+
+message BgpPeerStateRequest {
+   // The key of the BGP peer to query.
+   BgpPeerKey peer_key = 1;
+}
+
+message BgpPeerStateResponse {
+   // State of the specified peer session.
+   BgpPeerState peer_state = 1;
+}

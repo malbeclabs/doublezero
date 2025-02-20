@@ -1,0 +1,46 @@
+// Copyright (c) 2021 Arista Networks, Inc.  All rights reserved.
+// Arista Networks, Inc. Confidential and Proprietary.
+
+syntax = "proto3";
+
+option go_package = "arista/EosSdkRpc";
+
+import "eapi_types.proto";
+
+package eos.remote;
+
+service EapiMgrService {
+   /**
+    * Queries for the output of a CLI show command.
+    *
+    * EosSdk reference: eos::eapi_mgr::run_show_cmd
+    **/
+   rpc run_show_cmd( RunShowCmdRequest ) returns ( RunShowCmdResponse ) {}
+
+   /**
+    * Executes one or more configuration commands.
+    *
+    * EosSdk reference: eos::eapi_mgr::run_config_cmds
+    **/
+   rpc run_config_cmds( RunConfigCmdsRequest ) returns ( RunConfigCmdsResponse ) {}
+}
+
+message RunShowCmdRequest {
+   // The show command to execute e.g "show version".
+   string command = 1;
+}
+
+message RunShowCmdResponse {
+   // EapiResponse, containing the output and/or any errors.
+   EapiResponse response = 1;
+}
+
+message RunConfigCmdsRequest {
+   // Array of configuration commands to execute.
+   repeated string commands = 1;
+}
+
+message RunConfigCmdsResponse {
+   // EapiResponse, containing any output and/or any errors.
+   EapiResponse response = 1;
+}

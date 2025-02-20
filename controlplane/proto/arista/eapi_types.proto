@@ -1,0 +1,16 @@
+// Copyright (c) 2021 Arista Networks, Inc.  All rights reserved.
+// Arista Networks, Inc. Confidential and Proprietary.
+
+syntax = "proto3";
+
+option go_package = "arista/EosSdkRpc";
+
+package eos.remote;
+
+message EapiResponse {
+   bool success = 1;
+   uint32 error_code = 2;
+   string error_message = 3;
+   repeated string responses = 4;
+   string raw_response = 5;
+}

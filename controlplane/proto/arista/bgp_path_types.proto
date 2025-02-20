@@ -1,0 +1,47 @@
+// Copyright (c) 2021 Arista Networks, Inc.  All rights reserved.
+// Arista Networks, Inc. Confidential and Proprietary.
+
+syntax = "proto3";
+
+option go_package = "arista/EosSdkRpc";
+
+package eos.remote;
+
+import "ip_types.proto";
+
+message BgpPathKey {
+   Prefix prefix = 1;
+   bytes peer_addr = 2;
+   string vrf_name = 3;
+}
+
+enum BgpReceiveRouteStages {
+   BGP_PATH_PRE_POLICY = 0;
+   BGP_PATH_POST_POLICY = 1;
+};
+
+message BgpPathAttrFields {
+   // Perform next hop lookup.
+   bool next_hop = 1;
+   // Perform community list lookup.
+   bool community_list = 2;
+}
+
+message BgpPathOptions {
+   // Either BGP_PATH_PRE_POLICY or BGP_PATH_POST_POLICY.
+   BgpReceiveRouteStages stage = 1;
+   BgpPathAttrFields attrs = 2;
+}
+
+message BgpPathAttrs {
+   bytes next_hop = 1;
+   int32 origin = 2;
+   uint32 med = 3;
+   uint32 local_pref = 4;
+   repeated uint32 community_list = 5;
+}
+
+message BgpPath {
+   BgpPathKey path_key = 1;
+   BgpPathAttrs path_attrs = 2;
+}

@@ -1,0 +1,122 @@
+// Copyright (c) 2021 Arista Networks, Inc.  All rights reserved.
+// Arista Networks, Inc. Confidential and Proprietary.
+
+syntax = "proto3";
+
+option go_package = "arista/EosSdkRpc";
+
+package eos.remote;
+
+import "intf_types.proto";
+
+message MacsecIntfStatus {
+   MacsecIntfKeyStatus key_status = 1;
+   MacsecIntfTrafficStatus traffic_status = 2;
+}
+
+message MacsecIntfCounters {
+   uint64 out_pkts_encrypted = 1;
+   uint64 out_octets_encrypted = 2;
+   uint64 in_pkts_decrypted = 3;
+   uint64 in_octets_decrypted = 4;
+   uint64 in_pkts_not_valid = 5;
+}
+
+message MacsecProfile {
+   string profile_name = 1;
+   MacsecKey primary_key = 2;
+   MacsecKey fallback_key = 3;
+   oneof key_server_priority_present {
+      // Default value is 16.
+      uint32 key_server_priority = 4;
+   }
+   uint32 rekey_period = 5;
+   oneof mka_life_time_present {
+      // Default value is 6.
+      uint32 mka_life_time = 6;
+   }
+   oneof cipher_present {
+      // Default value is GCM_AES_XPN_128.
+      MacsecCipherSuite cipher = 7;
+   }
+   bool dot1x = 8;
+   bool include_sci = 9;
+   // The field bypass_lldp is for reading back only. Setting it has no effect.
+   // Please use lldp_bypass_level instead.
+   bool bypass_lldp = 10;
+   MacsecBypass lldp_bypass_level = 11;
+   oneof traffic_policy_present {
+      // Default value is TRAFFIC_POLICY_ACTIVE_SAK.
+      MacsecProfileTrafficPolicy traffic_policy = 12;
+   }
+   // Deprecated. Please use traffic_policy instead.
+   // Only used if traffic_policy_present is not set.
+   bool allow_unprotected = 13;
+   oneof replay_protection_present {
+      // Default value is True.
+      bool replay_protection = 14;
+   }
+   uint32 replay_protection_window = 15;
+   bool key_retirement_immediate = 16;
+   // For reading back only. Setting it has no effect.
+   repeated IntfId intf_ids = 17;
+}
+
+message MacsecKey {
+   string cak = 1;
+   string ckn = 2;
+   bool encoded = 3;
+}
+
+/**
+ * Cipher suites used for MACsec.
+ */
+enum MacsecCipherSuite {
+   MACSEC_CIPHER_SUITE_CIPHER_NULL = 0;
+   MACSEC_CIPHER_SUITE_GCM_AES_128 = 1;
+   MACSEC_CIPHER_SUITE_GCM_AES_256 = 2;
+   MACSEC_CIPHER_SUITE_GCM_AES_XPN_128 = 3;
+   MACSEC_CIPHER_SUITE_GCM_AES_XPN_256 = 4;
+}
+
+/**
+ * Bypass level for a protocol.
+ */
+enum MacsecBypass {
+   MACSEC_BYPASS_NULL = 0;
+   MACSEC_BYPASS_AUTHORIZED = 1;
+   MACSEC_BYPASS_UNAUTHORIZED = 2;
+}
+
+/**
+ * Traffic policy on a profile.
+ */
+enum MacsecProfileTrafficPolicy {
+   MACSEC_PROFILE_TRAFFIC_POLICY_NULL = 0;
+   MACSEC_PROFILE_TRAFFIC_POLICY_ACTIVE_SAK = 1;
+   MACSEC_PROFILE_TRAFFIC_POLICY_UNPROTECTED = 2;
+   MACSEC_PROFILE_TRAFFIC_POLICY_BLOCKED = 3;
+}  
+
+/**
+ * Which key an interface is using if a profile is configured.
+ */
+enum MacsecIntfKeyStatus {
+   MACSEC_INTF_KEY_INVALID = 0;
+   MACSEC_INTF_KEY_NO_PROFILE = 1;
+   MACSEC_INTF_KEY_NONE = 2;
+   MACSEC_INTF_KEY_PRIMARY = 3;
+   MACSEC_INTF_KEY_FALLBACK = 4;
+   MACSEC_INTF_KEY_PRIMARY_CACHED = 5;
+   MACSEC_INTF_KEY_FALLBACK_CACHED = 6;
+}
+
+/**
+ * Traffic status on an interface.
+ */
+enum MacsecIntfTrafficStatus {
+   MACSEC_INTF_TRAFFIC_INVALID = 0;
+   MACSEC_INTF_TRAFFIC_PROTECTED = 1;
+   MACSEC_INTF_TRAFFIC_UNPROTECTED = 2;
+   MACSEC_INTF_TRAFFIC_BLOCKED = 3;
+}

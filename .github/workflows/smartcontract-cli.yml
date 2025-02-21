@@ -1,0 +1,22 @@
+name: smartcontract-cli
+on:
+  push:
+    paths:
+      - "client/doublezero/**"
+    branches: [ main ]
+  pull_request:
+    paths:
+      - "client/doublezero/**"
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-16c-64gb
+    defaults:
+      run:
+        working-directory: "client/doublezero/"
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+      - name: Test
+        run: cargo test --verbose

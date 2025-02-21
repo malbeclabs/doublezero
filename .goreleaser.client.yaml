@@ -1,0 +1,107 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema-pro.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 2
+
+monorepo:
+  tag_prefix: client/
+  dir: client/
+
+builds:
+  - id: doublezerod
+    main: doublezerod/cmd/doublezerod/main.go
+    binary: doublezerod
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+  - id: doublezero-cli
+    builder: rust
+    tool: cargo
+    binary: doublezero
+    targets:
+      - x86_64-unknown-linux-gnu
+    dir: client/doublezero
+    command: build
+    env:
+      - RUSTFLAGS=-C linker=x86_64-linux-gnu-gcc
+
+archives:
+  - id: doublezero_archive
+    format: tar.gz
+    builds:
+      - doublezero-cli
+      - doublezerod
+    # this name template makes the OS and Arch compatible with the results of `uname`.
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+
+nfpms:
+  - id: doublezero
+    package_name: doublezero
+    builds:
+      - doublezerod
+      - doublezero-cli
+    vendor: doublezero
+    homepage: doublezero.xyz
+    maintainer: steve <steve@malbeclabs.com>
+    description: |-
+      DoubleZero client and cli
+    license: Apache 2.0
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/bin
+    release: 1
+    section: default
+    contents:
+      - src: client/doublezerod/cmd/doublezerod/doublezerod.service
+        dst: /usr/lib/systemd/system/doublezerod.service
+    deb:
+      predepends:
+        - adduser
+    overrides:
+      deb:
+          scripts:
+            postinstall: client/packaging/scripts/doublezerod/deb/postinstall.sh
+            preremove: client/packaging/scripts/doublezerod/deb/preremove.sh
+            postremove: client/packaging/scripts/doublezerod/deb/postremove.sh
+      rpm:
+          scripts:
+            postinstall: client/packaging/scripts/doublezerod/rpm/postinstall.sh
+            preremove: client/packaging/scripts/doublezerod/rpm/preremove.sh
+            postremove: client/packaging/scripts/doublezerod/rpm/postremove.sh
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  github:
+    owner: malbeclabs
+    name: doublezero
+  draft: true
+  replace_existing_artifacts: true
+
+announce:
+  slack:
+    enabled: true
+    message_template: "DoubleZero {{.Tag}} has been released! Check it out at {{ .ReleaseURL }}"
+    channel: "#bots"
+
+cloudsmiths:
+  - organization: malbeclabs
+    repository: doublezero
+    distributions:
+      deb: "any-distro/any-version"
+      rpm: "any-distro/any-version"

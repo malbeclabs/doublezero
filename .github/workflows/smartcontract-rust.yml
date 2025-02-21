@@ -1,0 +1,21 @@
+name: smartcontract-rust
+on:
+  push:
+    paths:
+      - "smartcontract/programs/dz-sla-program/**"
+    branches: [ main ]
+  pull_request:
+    paths:
+      - "smartcontract/programs/dz-sla-program/**"
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04-16c-64gb
+    defaults:
+      run:
+        working-directory: "smartcontract/programs/dz-sla-program/"
+    steps:
+      - uses: actions/checkout@v4
+      - name: test
+        run: cargo test --verbose

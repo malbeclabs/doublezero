@@ -1,0 +1,23 @@
+name: smartcontract-activator-rust
+on:
+  push:
+    paths:
+      - "activator/**"
+    branches: [ main ]
+  pull_request:
+    paths:
+      - "activator/**"
+    branches: [ main ]
+
+jobs:
+  build_and_test:
+    runs-on: ubuntu-24.04-16c-64gb
+    defaults:
+      run:
+        working-directory: "activator/"
+    steps:
+      - uses: actions/checkout@v4
+      - name: build
+        run: cargo build --verbose
+      - name: test
+        run: cargo test --verbose

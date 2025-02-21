@@ -1,0 +1,57 @@
+use crate::helper::*;
+use crate::pda::*;
+use crate::state::user::*;
+
+use borsh::{BorshDeserialize, BorshSerialize};
+use solana_program::{
+    account_info::{next_account_info, AccountInfo},
+    entrypoint::ProgramResult,
+    msg,
+    program_error::ProgramError,
+    pubkey::Pubkey,
+};
+
+
+#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+pub struct UserDeactivateArgs {
+    pub index: u128,
+}
+
+pub fn process_deactivate_user(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    value: &UserDeactivateArgs,
+) -> ProgramResult {
+    let accounts_iter = &mut accounts.iter();
+
+    let pda_account = next_account_info(accounts_iter)?;
+    let owner_account = next_account_info(accounts_iter)?;
+    let _payer_account = next_account_info(accounts_iter)?;
+    let _system_program = next_account_info(accounts_iter)?;
+
+    #[cfg(test)]
+    msg!("process_delete_user({:?})", value);
+
+    let (expected_pda_account, _bump_seed) = get_user_pda(program_id, value.index);
+    assert_eq!(pda_account.key, &expected_pda_account, "Invalid User PubKey");
+ 
+    if pda_account.owner != program_id {
+        return Err(ProgramError::IncorrectProgramId);
+    }    
+
+    let user: User = User::from(&pda_account.try_borrow_data().unwrap()[..]);
+    if user.owner != *owner_account.key {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if user.status != UserStatus::Deleting {
+        msg!("{:?}", user);
+        return Err(solana_program::program_error::ProgramError::Custom(1));
+    }
+
+    account_close(pda_account, owner_account)?;
+
+    #[cfg(test)]
+    msg!("Deleted: {:?}", user);
+
+    Ok(())
+}

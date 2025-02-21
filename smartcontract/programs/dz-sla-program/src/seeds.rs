@@ -1,0 +1,9 @@
+pub const SEED_PREFIX: &[u8] = b"doublezero";
+pub const SEED_GLOBALSTATE: &[u8] = b"globalstate";
+pub const SEED_CONFIG: &[u8] = b"config";
+pub const SEED_LOCATION: &[u8] = b"location";
+pub const SEED_EXCHANGE: &[u8] = b"exchange";
+pub const SEED_DEVICE: &[u8] = b"device";
+pub const SEED_TUNNEL: &[u8] = b"tunnel";
+pub const SEED_USER: &[u8] = b"user";
+

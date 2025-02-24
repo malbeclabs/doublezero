@@ -818,11 +818,11 @@ dependencies = [
 
 [[package]]
 name = "borsh"
-version = "1.5.3"
+version = "1.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2506947f73ad44e344215ccd6403ac2ae18cd8e046e581a441bf8d199f257f03"
+checksum = "5430e3be710b68d984d1391c854eb431a9d548640711faa54eecb1df93db91cc"
 dependencies = [
- "borsh-derive 1.5.3",
+ "borsh-derive 1.5.5",
  "cfg_aliases",
 ]
 
@@ -854,9 +854,9 @@ dependencies = [
 
 [[package]]
 name = "borsh-derive"
-version = "1.5.3"
+version = "1.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2593a3b8b938bd68373196c9832f516be11fa487ef4ae745eb282e6a56a7244"
+checksum = "f8b668d39970baad5356d7c83a86fee3a539e6f93bf6764c97368243e17a0487"
 dependencies = [
  "once_cell",
  "proc-macro-crate 3.2.0",
@@ -1628,7 +1628,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
- "borsh 1.5.3",
+ "borsh 1.5.5",
  "ctrlc",
  "directories-next",
  "dirs-next",
@@ -1656,7 +1656,7 @@ dependencies = [
 name = "double-zero-sla-program"
 version = "0.1.0"
 dependencies = [
- "borsh 1.5.3",
+ "borsh 1.5.5",
  "eyre",
  "ipnetwork",
  "solana-program",
@@ -1672,7 +1672,7 @@ dependencies = [
  "actix-web",
  "awc",
  "bitvec",
- "borsh 1.5.3",
+ "borsh 1.5.5",
  "clap 4.5.23",
  "colored",
  "dirs",
@@ -4290,7 +4290,7 @@ dependencies = [
  "blake3",
  "borsh 0.10.4",
  "borsh 0.9.3",
- "borsh 1.5.3",
+ "borsh 1.5.5",
  "bs58",
  "bv",
  "bytemuck",
@@ -4509,7 +4509,7 @@ dependencies = [
  "base64 0.21.7",
  "bincode",
  "bitflags 2.6.0",
- "borsh 1.5.3",
+ "borsh 1.5.5",
  "bs58",
  "bytemuck",
  "byteorder",

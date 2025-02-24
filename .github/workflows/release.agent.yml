@@ -1,9 +1,9 @@
-name: releaser.eosagent
+name: releaser.agent
 
 on:
   push:
     tags:
-      - "eosagent/v*.*.*"
+      - "agent/v*.*.*"
 
 permissions:
   contents: write
@@ -28,7 +28,7 @@ jobs:
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser-pro
-          args: release -f .goreleaser.eosagent.yaml --clean
+          args: release -f .goreleaser.agent.yaml --clean
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_BOTS_WEBHOOK }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

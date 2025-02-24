@@ -3,16 +3,16 @@
 
 version: 2
 
-project_name: doublezero-eosagent
+project_name: doublezero-agent
 
 monorepo:
   tag_prefix: agent/
   dir: controlplane/agent
 
 builds:
-  - id: doublezero-eosagent
-    main: cmd/eosagent/main.go
-    binary: doublezero-eosagent
+  - id: doublezero-agent
+    main: cmd/agent/main.go
+    binary: doublezero-agent
     env:
       - CGO_ENABLED=0
     goos:
@@ -21,10 +21,10 @@ builds:
       - amd64
 
 archives:
-  - id: eosagent_archive
+  - id: agent_archive
     format: tar.gz
     builds:
-      - eosagent
+      - agent
     # this name template makes the OS and Arch compatible with the results of `uname`.
     name_template: >-
       {{ .ProjectName }}_
@@ -35,15 +35,15 @@ archives:
       {{- if .Arm }}v{{ .Arm }}{{ end }}
 
 nfpms:
-  - id: doublezero-eosagent
-    package_name: doublezero-eosagent
+  - id: doublezero-agent
+    package_name: doublezero-agent
     builds:
-      - doublezero-eosagent
+      - doublezero-agent
     vendor: doublezero
     homepage: doublezero.xyz
     maintainer: nik <nik@malbeclabs.com>
     description: |-
-      DoubleZero eosagent
+      DoubleZero agent
     license: Apache 2.0
     formats:
       - rpm
@@ -68,7 +68,7 @@ release:
 announce:
   slack:
     enabled: true
-    message_template: "DoubleZero EOS Agent {{.Tag}} has been released! Check it out at {{ .ReleaseURL }}"
+    message_template: "DoubleZero Agent {{.Tag}} has been released! Check it out at {{ .ReleaseURL }}"
     channel: "#bots"
 
 cloudsmiths:

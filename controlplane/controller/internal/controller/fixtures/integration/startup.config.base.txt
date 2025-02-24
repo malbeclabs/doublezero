@@ -5,8 +5,8 @@ no aaa root
 !
 username admin privilege 15 role network-admin secret sha512 $6$hb.8VFI7A9D/0zi2$sZady959HlXHgFdWU9r01VDwmbM2CrhDYIXBJzHb3scDP8/t/4ozwxpZbwEgDxbWL.mHYtie0rSO8fRSZ5D0T1
 !
-daemon doublezero-eosagent
-   exec /mnt/flash/doublezero-eosagent -controller host.docker.internal:7004 -pubkey 4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM
+daemon doublezero-agent
+   exec /mnt/flash/doublezero-agent -controller host.docker.internal:7004 -pubkey 4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM
    no shutdown
 !
 management api http-commands

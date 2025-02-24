@@ -15,9 +15,9 @@ COPY controlplane ./controlplane
 
 # RUN  /usr/local/go/bin/go mod download
 
-RUN CGO_ENABLED=0 GOOS=linux /usr/local/go/bin/go build -o doublezero-eosagent ./controlplane/cmd/eosagent/main.go
+RUN CGO_ENABLED=0 GOOS=linux /usr/local/go/bin/go build -o doublezero-agent ./controlplane/cmd/agent/main.go
 
-RUN cp doublezero-eosagent /mnt/flash/.
+RUN cp doublezero-agent /mnt/flash/.
 
 RUN cp $CONFIG /mnt/flash/startup-config
 

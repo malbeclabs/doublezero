@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/malbeclabs/doublezero/controlplane/agent/internal/eosagent"
+	agent "github.com/malbeclabs/doublezero/controlplane/agent/internal/agent"
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
 )
 
@@ -19,15 +19,15 @@ var (
 	device                     = flag.String("device", "127.0.0.1:9543", "IP Address and port of the Arist EOS API. Should always be the local switch at 127.0.0.1:9543.")
 	sleepIntervalInSeconds     = flag.Float64("sleep-interval-in-seconds", 5, "How long to sleep in between polls")
 	controllerTimeoutInSeconds = flag.Float64("controller-timeout-in-seconds", 2, "How long to wait for a response from the controller before giving up")
-	maxLockAge                 = flag.Int("max-lock-age-in-seconds", 3600, "If eosagent detects a config lock that older than the specified age, it will force unlock.")
+	maxLockAge                 = flag.Int("max-lock-age-in-seconds", 3600, "If agent detects a config lock that older than the specified age, it will force unlock.")
 	verbose                    = flag.Bool("verbose", false, "Enable verbose logging")
 )
 
 func pollControllerAndConfigureDevice(ctx context.Context, dzclient pb.ControllerClient, device *string, pubkey string, verbose *bool, maxLockAge int) error {
-	var eapiClient *eosagent.EapiClient
+	var eapiClient *agent.EapiClient
 	var err error
 
-	eapiClient, err = eosagent.NewEapiClient(*device, nil)
+	eapiClient, err = agent.NewEapiClient(*device, nil)
 	if err != nil {
 		return err
 	}
@@ -39,9 +39,9 @@ func pollControllerAndConfigureDevice(ctx context.Context, dzclient pb.Controlle
 	}
 
 	var configText string
-	configText, err = eosagent.GetConfigFromServer(ctx, dzclient, pubkey, neighborIpList, controllerTimeoutInSeconds)
+	configText, err = agent.GetConfigFromServer(ctx, dzclient, pubkey, neighborIpList, controllerTimeoutInSeconds)
 	if err != nil {
-		log.Printf("pollControllerAndConfigureDevice failed to call eosagent.GetConfigFromServer: %q", err)
+		log.Printf("pollControllerAndConfigureDevice failed to call agent.GetConfigFromServer: %q", err)
 		return err
 	}
 
@@ -69,15 +69,15 @@ func main() {
 
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile | log.Lmicroseconds)
 
-	log.Printf("Starting doublezero-eosagent\n")
-	log.Printf("doublezero-eosagent pubkey: %s\n", *localDevicePubkey)
-	log.Printf("doublezero-eosagent controller: %s\n", *controllerAddress)
-	log.Printf("doublezero-eosagent device: %s\n", *device)
-	log.Printf("doublezero-eosagent sleep-interval-in-seconds: %f\n", *sleepIntervalInSeconds)
-	log.Printf("doublezero-eosagent controller-timeout-in-seconds: %f\n", *controllerTimeoutInSeconds)
-	log.Printf("doublezero-eosagent max-lock-age-in-seconds: %d\n", *maxLockAge)
+	log.Printf("Starting doublezero-agent\n")
+	log.Printf("doublezero-agent pubkey: %s\n", *localDevicePubkey)
+	log.Printf("doublezero-agent controller: %s\n", *controllerAddress)
+	log.Printf("doublezero-agent device: %s\n", *device)
+	log.Printf("doublezero-agent sleep-interval-in-seconds: %f\n", *sleepIntervalInSeconds)
+	log.Printf("doublezero-agent controller-timeout-in-seconds: %f\n", *controllerTimeoutInSeconds)
+	log.Printf("doublezero-agent max-lock-age-in-seconds: %d\n", *maxLockAge)
 
-	dzclient, err := eosagent.GetDzClient(*controllerAddress)
+	dzclient, err := agent.GetDzClient(*controllerAddress)
 	if err != nil {
 		log.Fatalf("Call to GetDzClient failed: %q\n", err)
 	}

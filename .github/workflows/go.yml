@@ -4,6 +4,8 @@ on:
     paths:
       - "controlplane/**"
       - "smartcontract/sdk/go/**"
+      - "go.mod"
+      - "go.sum"
     branches: [ main ]
   pull_request:
     paths:
@@ -11,13 +13,31 @@ on:
       - "smartcontract/sdk/go/**"
     branches: [ main ]
 
+permissions:
+    contents: read
+    checks: write
+
 jobs:
-  build_and_test:
+  lint:
+    name: "go:lint"
     runs-on: ubuntu-24.04-16c-64gb
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.24.x
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.64.2
+          working-directory: controlplane
+  build_and_test:
+    name: "go:build/test"
+    needs: lint
+    runs-on: ubuntu-24.04-16c-64gb
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: 1.24.x
       - name: build

@@ -7,8 +7,8 @@ management api http-commands
    protocol http
    no shutdown
 !
-daemon doublezero-eosagent
-   exec /mnt/flash/doublezero-eosagent -controller host.docker.internal:7004 -pubkey 4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM
+daemon doublezero-agent
+   exec /mnt/flash/doublezero-agent -controller host.docker.internal:7004 -pubkey 4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM
    no shutdown
 !
 daemon foo

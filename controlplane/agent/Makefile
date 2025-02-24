@@ -12,5 +12,5 @@ lint:
 
 .PHONY: build
 build:
-	CGO_ENABLED=0 go build -v $(LDFLAGS) -o bin/doublezero-eosagent cmd/eosagent/main.go
+	CGO_ENABLED=0 go build -v $(LDFLAGS) -o bin/doublezero-agent cmd/agent/main.go
 

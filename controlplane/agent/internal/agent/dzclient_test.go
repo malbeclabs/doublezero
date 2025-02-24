@@ -1,4 +1,4 @@
-package eosagent
+package agent
 
 import (
 	"context"

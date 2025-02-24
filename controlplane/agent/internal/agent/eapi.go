@@ -1,4 +1,4 @@
-package eosagent
+package agent
 
 import (
 	"context"
@@ -28,7 +28,7 @@ type ShowBgpNeighborsResponse struct {
 	VRFs map[string]VRF `json:"vrfs"`
 }
 
-// show configuration sessions: [{ "sessions": { "doublezero-eosagent-12345678": { "state": "pending", "completedTime": 1736543591.7642765, "commitUser": "", "description": "", "instances": { "868": { "user": "root", "terminal": "vty5", "currentTerminal": false } } }, "blah1": { "state": "pending", "commitUser": "", "description": "", "instances": {} } }, "maxSavedSessions": 1, "maxOpenSessions": 5, "mergeOnCommit": false, "saveToStartupConfigOnCommit": false }]
+// show configuration sessions: [{ "sessions": { "doublezero-agent-12345678": { "state": "pending", "completedTime": 1736543591.7642765, "commitUser": "", "description": "", "instances": { "868": { "user": "root", "terminal": "vty5", "currentTerminal": false } } }, "blah1": { "state": "pending", "commitUser": "", "description": "", "instances": {} } }, "maxSavedSessions": 1, "maxOpenSessions": 5, "mergeOnCommit": false, "saveToStartupConfigOnCommit": false }]
 type Session struct {
 	State string `json:"state"`
 }
@@ -115,7 +115,7 @@ func (e *EapiClient) clearStaleConfigSessions(ctx context.Context) error {
 	}
 
 	for sessionName, session := range configSessionsOnSwitch.Sessions {
-		if strings.HasPrefix(sessionName, "doublezero-eosagent-") && session.State == "pending" {
+		if strings.HasPrefix(sessionName, "doublezero-agent-") && session.State == "pending" {
 			err = e.clearConfigSession(ctx, sessionName)
 			if err != nil {
 				log.Println("ClearConfigSession() failed: ", err)
@@ -221,7 +221,7 @@ func (e *EapiClient) startLock(ctx context.Context, maxLockAge int) error {
 func (e *EapiClient) startConfigSession(ctx context.Context, config string) ([]string, string, error) {
 	configSlice := strings.Split(config, "\n")
 	log.Printf("Received %d lines of configuration from controller", len(configSlice))
-	sessionName := fmt.Sprintf("doublezero-eosagent-%s", getEosConfigurationSessionDistinguisher())
+	sessionName := fmt.Sprintf("doublezero-agent-%s", getEosConfigurationSessionDistinguisher())
 	configSlice = append([]string{fmt.Sprintf("configure session %s", sessionName)}, configSlice...)
 	cmd := &arista.RunConfigCmdsRequest{
 		Commands: configSlice,

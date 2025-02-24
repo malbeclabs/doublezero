@@ -1,4 +1,4 @@
-package eosagent
+package agent
 
 import (
 	"context"
@@ -36,10 +36,10 @@ func (*mockAristaEapiMgr) RunShowCmd(ctx context.Context, req *pb.RunShowCmdRequ
 	case "show ip bgp neighbors":
 		resp = []string{string("{ \"vrfs\": { \"default\": { \"peerList\": [ { \"peerAddress\": \"192.168.1.1\", \"asn\": \"65432\", \"linkType\": \"internal\", \"routerId\": \"0.0.0.0\" }, { \"peerAddress\": \"192.168.1.1\", \"asn\": \"65432\", \"linkType\": \"internal\", \"routerId\": \"0.0.0.0\" } ] } } }")}
 	case "show configuration sessions":
-		resp = []string{string("{\"sessions\": {\"doublezero-eosagent-123456789000\": {\"state\": \"pending\", \"completedTime\": 1736543591.7917519, \"commitUser\": \"\", \"description\": \"\", \"instances\": {\"868\": {\"user\": \"root\", \"terminal\": \"vty5\", \"currentTerminal\": false}}}, \"blah1\": {\"state\": \"pending\", \"commitUser\": \"\", \"description\": \"\", \"instances\": {}}}, \"maxSavedSessions\": 1, \"maxOpenSessions\": 5, \"mergeOnCommit\": false, \"saveToStartupConfigOnCommit\": false}")}
+		resp = []string{string("{\"sessions\": {\"doublezero-agent-123456789000\": {\"state\": \"pending\", \"completedTime\": 1736543591.7917519, \"commitUser\": \"\", \"description\": \"\", \"instances\": {\"868\": {\"user\": \"root\", \"terminal\": \"vty5\", \"currentTerminal\": false}}}, \"blah1\": {\"state\": \"pending\", \"commitUser\": \"\", \"description\": \"\", \"instances\": {}}}, \"maxSavedSessions\": 1, \"maxOpenSessions\": 5, \"mergeOnCommit\": false, \"saveToStartupConfigOnCommit\": false}")}
 	case "show configuration lock":
 		resp = []string{string("{ \"userInfo\": { \"username\": \"root\", \"userTty\": \"vty4\", \"transactionName\": \"doublezero\", \"lockAcquireTime\": 5000.0 } }")}
-	case "configure session doublezero-eosagent-123456789000 abort":
+	case "configure session doublezero-agent-123456789000 abort":
 		resp = []string{string("{ }")}
 	default:
 		return nil, fmt.Errorf("Unknown RunShowCmd request \"%s\"", req)
@@ -199,7 +199,7 @@ func TestAddConfigToDevice(t *testing.T) {
 			}
 
 			// Using HasPrefix/HasSuffix instead of checking the whole string because the session name includes a random distinguisher
-			if !test.ExpectError && !strings.HasPrefix(configSlice[0], "configure session doublezero-eosagent-") {
+			if !test.ExpectError && !strings.HasPrefix(configSlice[0], "configure session doublezero-agent-") {
 				t.Fatal("Call to eapiClient.AddConfigToDevice did not prepend config session, instead got:", configSlice[0])
 			}
 

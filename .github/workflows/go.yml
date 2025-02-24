@@ -11,6 +11,8 @@ on:
     paths:
       - "controlplane/**"
       - "smartcontract/sdk/go/**"
+      - "go.mod"
+      - "go.sum"
     branches: [ main ]
 
 permissions:

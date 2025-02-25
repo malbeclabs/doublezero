@@ -19,7 +19,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: stable
+          go-version: 1.24.x
       - name: install rust for cli
         uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: install dependencies for rpm packaging
@@ -30,7 +30,7 @@ jobs:
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser-pro
-          args: release --clean
+          args: release -f .goreleaser.client.yaml --clean
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_BOTS_WEBHOOK }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

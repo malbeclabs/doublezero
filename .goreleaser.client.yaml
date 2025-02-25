@@ -3,6 +3,8 @@
 
 version: 2
 
+project_name: doublezero
+
 monorepo:
   tag_prefix: client/
   dir: client/

@@ -4,7 +4,7 @@ use std::path::Path;
 
 fn main() {
     // Obtén la versión desde una variable de entorno (o usa un valor predeterminado)
-    let version = env::var("VERSION").unwrap_or_else(|_| "unknown".to_string());
+    let version = env::var("CLIENT_VERSION").unwrap_or_else(|_| "unknown".to_string());
     let commit = env::var("COMMIT").unwrap_or_else(|_| "unknown".to_string());
     let date = env::var("DATE").unwrap_or_else(|_| "unknown".to_string());
     let os = env::var("OS").unwrap_or_else(|_| "unknown".to_string());

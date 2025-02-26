@@ -20,13 +20,15 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: 1.24.x
+      - name: Set env vars
+        run: ./scripts/env.sh >> $GITHUB_ENV
       - name: install rust for cli
         uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: install dependencies for rpm packaging
         run: |
           sudo apt update
           sudo apt-get install squashfs-tools rpm -y
-      - name: build release
+      - name: build client release
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser-pro

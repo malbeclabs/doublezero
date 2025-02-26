@@ -1,10 +1,11 @@
+use colored::Colorize;
 use double_zero_sdk::{networkv4_to_ipnetwork, NetworkV4};
 use ipnetwork::Ipv4Network;
 use bitvec::prelude::*;
 
 #[derive(Debug)]
 pub struct IPBlockAllocator {
-    base_block: Ipv4Network,
+    pub base_block: Ipv4Network,
     assigned_ips: BitVec,
     total_ips: usize,
 }
@@ -75,6 +76,15 @@ impl IPBlockAllocator {
         }
 
         None 
+    }
+
+    pub fn print_assigned_ips(&self) {
+        for (index, assigned) in self.assigned_ips.iter().enumerate() {
+            if *assigned {
+                let ip = self.index_to_ip(index);
+                print!("{} ", ip.to_string().red());
+            }
+        }
     }
 
     /// Converts an IP address to an index in the bit vector.

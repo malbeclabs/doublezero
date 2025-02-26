@@ -53,7 +53,7 @@ impl Activator {
     }
 
     pub async fn init(&mut self) -> eyre::Result<()> {
-        println!("Connected to\turl: {}\tws: {}\tprogram_id: {}", self.client.get_rpc().red(), self.client.get_ws().red(), self.client.get_program_id().to_string().red());
+        print!("Connected to\turl: {}\tws: {}\tprogram_id: {}", self.client.get_rpc().red(), self.client.get_ws().red(), self.client.get_program_id().to_string().red());
 
         // Fetch the list of tunnels, devices, and users from the client
         let devices = self.client.get_devices()?;
@@ -81,20 +81,38 @@ impl Activator {
             .for_each(|(_, user)| {
                 let device_state = self.devices.get_mut(&user.device_pk).unwrap();
                 device_state.register(user.dz_ip, user.tunnel_id);
+
+                self.user_tunnel_ips.assign_block(user.tunnel_net);
             });
+
+        println!("\tdevices: {}\ttunnels: {}\tusers: {}", devices.len().to_string().red(), tunnels.len().to_string().red(), users.len().to_string().red());
 
         Ok(())
     }
 
     fn add_device(&mut self, pubkey: &Pubkey, device: &Device) {
         if !self.devices.contains_key(pubkey) {
-            println!("Add Device: [{}] public_ip: [{}] dz_prefix: [{}] ", device.code, ipv4_to_string(&device.public_ip), networkv4_to_string(&device.dz_prefix));
-
             self.devices.insert(*pubkey, DeviceState::new(device));
         }
     }
 
     pub fn run(&mut self) -> eyre::Result<()> {
+
+
+
+        self.devices.iter().for_each(|(_pubkey,device)| {
+
+            print!("Device \tcode:{}\tpublic_ip:{}\tdz_prefix:{}\ttunnels:", device.device.code.red(), ipv4_to_string(&device.device.public_ip).red(), networkv4_to_string(&device.device.dz_prefix).red());            
+            device.tunnel_ids.assigned.iter().for_each(|tunnel_id| {
+                print!("{} ", tunnel_id.to_string().red());
+            });
+            println!(" ");
+        });
+
+        print!("tunnel_net: {} assigned: ", self.user_tunnel_ips.base_block.to_string().red());
+        self.user_tunnel_ips.print_assigned_ips();
+        println!("");
+
         self.client
             .gets_and_subscribe(|client, pubkey, data| {
                 match data {
@@ -141,6 +159,7 @@ impl Activator {
                     /**********************************************************************************************************************/
                     // TUNNEL
                     /**********************************************************************************************************************/
+                    /*
                     AccountData::Tunnel(tunnel) => {
                         match tunnel.status {
                             TunnelStatus::Pending => {
@@ -187,6 +206,7 @@ impl Activator {
                             _ => {}
                         }
                     }
+                    */
                     /**********************************************************************************************************************/
                     // USER
                     /**********************************************************************************************************************/

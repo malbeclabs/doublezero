@@ -1,5 +1,6 @@
 use crate::types::{IpV4, NetworkV4};
 use solana_program::pubkey::Pubkey;
+use std::mem::size_of;
 
 pub struct ByteReader<'a> {
     data: &'a [u8],

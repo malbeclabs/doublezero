@@ -1,7 +1,7 @@
 #[derive(Debug)]
 pub struct IDAllocator {
-    first: u16,
-    assigned: Vec<u16>,
+    pub first: u16,
+    pub assigned: Vec<u16>,
 }
 
 impl IDAllocator {

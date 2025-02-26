@@ -39,8 +39,6 @@ impl Activator {
             config = client.get_globalconfig();
         }
 
-
-
         let (_, config) = config.unwrap();
 
         Ok(Self {
@@ -159,7 +157,7 @@ impl Activator {
                     /**********************************************************************************************************************/
                     // TUNNEL
                     /**********************************************************************************************************************/
-                    /*
+                    
                     AccountData::Tunnel(tunnel) => {
                         match tunnel.status {
                             TunnelStatus::Pending => {
@@ -177,7 +175,7 @@ impl Activator {
                                             tunnel_net,
                                         ) {
                                             Ok(signature) => println!("Activated {}", signature),
-                                            Err(e) => println!("Error: {}", e),
+                                            Err(e) => println!("Error: activate_tunnel: {}", e),
                                         }
             
                                     },
@@ -188,7 +186,7 @@ impl Activator {
                                             tunnel.index, "Error: No available tunnel block".to_string()
                                         ) {
                                             Ok(signature) => println!("Rejected {}", signature),
-                                            Err(e) => println!("Error: {}", e),
+                                            Err(e) => println!("Error: reject_tunnel: {}", e),
                                         }
                                 },
                                 }                            
@@ -200,13 +198,13 @@ impl Activator {
     
                                 match client.deactivate_tunnel(tunnel.index, tunnel.owner) {
                                     Ok(signature) => println!("Deactivated {}", signature),
-                                    Err(e) => println!("Error: {}", e),
+                                    Err(e) => println!("Error: deactivate_tunnel: {}", e),
                                 }
                             },
                             _ => {}
                         }
                     }
-                    */
+                    
                     /**********************************************************************************************************************/
                     // USER
                     /**********************************************************************************************************************/

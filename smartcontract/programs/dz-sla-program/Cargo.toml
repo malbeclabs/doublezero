@@ -14,7 +14,7 @@ opt-level = "z"
 [dependencies]
 borsh = "1.5.5"
 eyre = "0.6.12"
-ipnetwork = "0.20.0"
+ipnetwork = "0.21.1"
 solana-program = "1.18.26"
 thiserror = "2.0.9"
 

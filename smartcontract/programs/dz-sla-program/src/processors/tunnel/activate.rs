@@ -8,7 +8,7 @@ use solana_program::{
 use crate::{helper::*, state::tunnel::*};
 use crate::pda::*;
 use crate::types::*;
-
+#[cfg(test)]
 use solana_program::msg;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
@@ -30,7 +30,7 @@ pub fn process_activate_tunnel(
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
-    
+    #[cfg(test)]
     msg!("process_activate_tunnel({:?})", value);
 
     let (expected_pda_account, bump_seed) = get_tunnel_pda(program_id, value.index);

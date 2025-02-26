@@ -51,7 +51,7 @@ impl Activator {
     }
 
     pub async fn init(&mut self) -> eyre::Result<()> {
-        print!("Connected to\turl: {}\tws: {}\tprogram_id: {}", self.client.get_rpc().red(), self.client.get_ws().red(), self.client.get_program_id().to_string().red());
+        print!("Connected to url: {} ws: {} program_id: {}", self.client.get_rpc().red(), self.client.get_ws().red(), self.client.get_program_id().to_string().red());
 
         // Fetch the list of tunnels, devices, and users from the client
         let devices = self.client.get_devices()?;
@@ -83,7 +83,7 @@ impl Activator {
                 self.user_tunnel_ips.assign_block(user.tunnel_net);
             });
 
-        println!("\tdevices: {}\ttunnels: {}\tusers: {}", devices.len().to_string().red(), tunnels.len().to_string().red(), users.len().to_string().red());
+        println!("devices: {} tunnels: {} users: {}", devices.len().to_string().red(), tunnels.len().to_string().red(), users.len().to_string().red());
 
         Ok(())
     }
@@ -100,7 +100,7 @@ impl Activator {
 
         self.devices.iter().for_each(|(_pubkey,device)| {
 
-            print!("Device \tcode:{}\tpublic_ip:{}\tdz_prefix:{}\ttunnels:", device.device.code.red(), ipv4_to_string(&device.device.public_ip).red(), networkv4_to_string(&device.device.dz_prefix).red());            
+            print!("Device code:{} public_ip:{} dz_prefix:{} tunnels:", device.device.code.red(), ipv4_to_string(&device.device.public_ip).red(), networkv4_to_string(&device.device.dz_prefix).red());            
             device.tunnel_ids.assigned.iter().for_each(|tunnel_id| {
                 print!("{} ", tunnel_id.to_string().red());
             });

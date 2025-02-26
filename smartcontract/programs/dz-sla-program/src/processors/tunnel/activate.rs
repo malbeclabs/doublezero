@@ -44,9 +44,6 @@ pub fn process_activate_tunnel(
     }
 
     let mut tunnel: Tunnel = Tunnel::from(&pda_account.try_borrow_data().unwrap()[..]);
-    if tunnel.owner != *payer_account.key {
-        return Err(solana_program::program_error::ProgramError::Custom(0));
-    }
     if tunnel.status != TunnelStatus::Pending {
         return Err(solana_program::program_error::ProgramError::Custom(1));
     }

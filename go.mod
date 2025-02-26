@@ -7,7 +7,7 @@ toolchain go1.23.3
 require (
 	github.com/aristanetworks/goeapi v1.0.0
 	github.com/davecgh/go-spew v1.1.1
-	github.com/docker/docker v27.4.1+incompatible
+	github.com/docker/docker v28.0.0+incompatible
 	github.com/docker/go-connections v0.5.0
 	github.com/gagliardetto/solana-go v1.12.0
 	github.com/google/go-cmp v0.6.0

@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, str::FromStr};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::pubkey::Pubkey;
 use crate::{bytereader::ByteReader, seeds::SEED_TUNNEL, types::*};
@@ -9,22 +9,34 @@ use super::accounttype::{AccountType, AccountTypeInfo};
 #[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
 #[borsh(use_discriminant=true)]
 pub enum TunnelTunnelType {
-    MPLSoverGRE = 1,
+    MPLSoGRE = 1,
 }
 
 impl From<u8> for TunnelTunnelType {
     fn from(value: u8) -> Self {
         match value {
-            1 => TunnelTunnelType::MPLSoverGRE,
-            _ => TunnelTunnelType::MPLSoverGRE, // Default case
+            1 => TunnelTunnelType::MPLSoGRE,
+            _ => TunnelTunnelType::MPLSoGRE, // Default case
         }
     }
 }
 
+impl FromStr for TunnelTunnelType {
+    type Err = String; 
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "MPLSoGRE" => Ok(TunnelTunnelType::MPLSoGRE),
+            _ => Err(format!("Invalid TunnelTunnelType: {}", s)),
+        }
+    }
+}
+
+
 impl fmt::Display for TunnelTunnelType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TunnelTunnelType::MPLSoverGRE => write!(f, "MPLSoverGRE"),
+            TunnelTunnelType::MPLSoGRE => write!(f, "MPLSoGRE"),
         }
     }
 }
@@ -131,7 +143,7 @@ mod tests {
             index: 123,
             side_a_pk: Pubkey::new_unique(),
             side_z_pk: Pubkey::new_unique(),
-            tunnel_type: TunnelTunnelType::MPLSoverGRE,
+            tunnel_type: TunnelTunnelType::MPLSoGRE,
             bandwidth: 1234,
             mtu: 1566,
             delay_ns: 1234,

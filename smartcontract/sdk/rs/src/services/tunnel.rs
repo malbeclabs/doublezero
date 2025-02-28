@@ -41,12 +41,12 @@ pub trait TunnelService {
     fn update_tunnel(
         &self,
         index: u128,
-        code: &str,
-        tunnel_type: TunnelTunnelType,
-        bandwidth: u64,
-        mtu: u32,
-        delay_ns: u64,
-        jitter_ns: u64,
+        code: Option<String>,
+        tunnel_type: Option<TunnelTunnelType>,
+        bandwidth: Option<u64>,
+        mtu: Option<u32>,
+        delay_ns: Option<u64>,
+        jitter_ns: Option<u64>
     ) -> eyre::Result<Signature>;
     fn activate_tunnel(
         &self,
@@ -179,19 +179,19 @@ impl TunnelService for DZClient {
     fn update_tunnel(
         &self,
         index: u128,
-        code: &str,
-        tunnel_type: TunnelTunnelType,
-        bandwidth: u64,
-        mtu: u32,
-        delay_ns: u64,
-        jitter_ns: u64,
+        code: Option<String>,
+        tunnel_type: Option<TunnelTunnelType>,
+        bandwidth: Option<u64>,
+        mtu: Option<u32>,
+        delay_ns: Option<u64>,
+        jitter_ns: Option<u64>,
     ) -> eyre::Result<Signature> {
         let (pda_pubkey, _) = get_tunnel_pda(&self.get_program_id(), index);
 
         self.execute_transaction(
             DoubleZeroInstruction::UpdateTunnel(TunnelUpdateArgs {
                 index,
-                code: code.to_string(),
+                code,
                 tunnel_type,
                 bandwidth,
                 mtu,

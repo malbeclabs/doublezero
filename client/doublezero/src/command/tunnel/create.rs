@@ -15,7 +15,7 @@ pub struct CreateTunnelArgs {
     #[arg(long)]
     pub side_z: String,
     #[arg(long)]
-    pub tunnel_type: u8,
+    pub tunnel_type: Option<String>,
     #[arg(long)]
     pub bandwidth: String,
     #[arg(long)]
@@ -55,7 +55,9 @@ impl CreateTunnelArgs {
             &self.code,
             side_a_pk,
             side_z_pk,
-            TunnelTunnelType::MPLSoverGRE,
+            self.tunnel_type.map(|t| 
+                t.parse().unwrap()
+            ).unwrap_or(TunnelTunnelType::MPLSoGRE),
             bandwidth_parse(&self.bandwidth),
             self.mtu,
             (self.delay_ms * 1000000.0) as u64,

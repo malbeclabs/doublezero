@@ -32,12 +32,12 @@ impl UpdateTunnelArgs {
             Ok(tunnel) => {
                 match client.update_tunnel(
                     tunnel.index,
-                    self.code,
-                    self.tunnel_type.map(|t|  t.parse().unwrap()),
-                    self.bandwidth.map(|b| bandwidth_parse(&b)),
-                    self.mtu,
-                    self.delay_ms.map(|delay_ms| (delay_ms * 1000000.0) as u64),
-                    self.jitter_ms.map(|jitter_ms| (jitter_ms * 1000000.0) as u64),
+                    Some(self.code),
+                    Some(TunnelTunnelType::MPLSoGRE),
+                    Some(bandwidth_parse(&self.bandwidth)),
+                    Some(self.mtu),
+                    Some((self.delay_ms * 1000000.0) as u64),
+                    Some((self.jitter_ms * 1000000.0) as u64),
                 ) {
                     Ok(_) => println!("Tunnel updated"),
                     Err(e) => print_error(e),

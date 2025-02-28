@@ -9,7 +9,13 @@ pub struct UpdateUserArgs {
     #[arg(long)]
     pub pubkey: String,
     #[arg(long)]
-    pub client_ip: String,
+    pub client_ip: Option<String>,
+    #[arg(long)]
+    pub dz_ip: Option<String>,
+    #[arg(long)]
+    pub tunnel_id: Option<String>,
+    #[arg(long)]
+    pub tunnel_net: Option<String>
 }
 
 
@@ -23,9 +29,12 @@ impl UpdateUserArgs {
             Ok(user) => {
                 match client.update_user(
                     user.index,             
-                    UserType::Server,
-                    UserCYOA::GREOverDIA, 
-                    ipv4_parse(&self.client_ip),
+                    None,
+                    None,
+                    self.client_ip.map(|client_ip| ipv4_parse(&client_ip)),
+                    self.dz_ip.map(|dz_ip| ipv4_parse(&dz_ip)),
+                    self.tunnel_id.map(|tunnel_id| u16::from_str(&tunnel_id).unwrap()),
+                    self.tunnel_net.map(|tunnel_net| networkv4_parse(&tunnel_net)),
                     
                 ) {
                     Ok(_) => println!("User updated"),

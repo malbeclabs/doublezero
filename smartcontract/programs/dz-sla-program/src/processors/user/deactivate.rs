@@ -1,3 +1,4 @@
+use crate::error::DoubleZeroError;
 use crate::helper::*;
 use crate::pda::*;
 use crate::state::user::*;
@@ -26,7 +27,8 @@ pub fn process_deactivate_user(
 
     let pda_account = next_account_info(accounts_iter)?;
     let owner_account = next_account_info(accounts_iter)?;
-    let _payer_account = next_account_info(accounts_iter)?;
+    let globalstate_account = next_account_info(accounts_iter)?;
+    let payer_account = next_account_info(accounts_iter)?;
     let _system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
@@ -38,6 +40,11 @@ pub fn process_deactivate_user(
     if pda_account.owner != program_id {
         return Err(ProgramError::IncorrectProgramId);
     }    
+
+    let globalstate = globalstate_get_next(globalstate_account)?;
+    if !globalstate.foundation_allowlist.contains(payer_account.key) {
+        return Err(DoubleZeroError::NotAllowed.into());
+    }
 
     let user: User = User::from(&pda_account.try_borrow_data().unwrap()[..]);
     if user.owner != *owner_account.key {

@@ -9,17 +9,17 @@ pub struct UpdateTunnelArgs {
     #[arg(long)]
     pub pubkey: String,
     #[arg(long)]
-    pub code: String,
+    pub code: Option<String>,
     #[arg(long)]
-    pub tunnel_type: u8,
+    pub tunnel_type: Option<String>,
     #[arg(long)]
-    pub bandwidth: String,
+    pub bandwidth: Option<String>,
     #[arg(long)]
-    pub mtu: u32,
+    pub mtu: Option<u32>,
     #[arg(long)]
-    pub delay_ms: f64,
+    pub delay_ms: Option<f64>,
     #[arg(long)]
-    pub jitter_ms: f64,
+    pub jitter_ms: Option<f64>,
 }
 
 impl UpdateTunnelArgs {
@@ -32,12 +32,12 @@ impl UpdateTunnelArgs {
             Ok(tunnel) => {
                 match client.update_tunnel(
                     tunnel.index,
-                    Some(self.code),
-                    Some(TunnelTunnelType::MPLSoGRE),
-                    Some(bandwidth_parse(&self.bandwidth)),
-                    Some(self.mtu),
-                    Some((self.delay_ms * 1000000.0) as u64),
-                    Some((self.jitter_ms * 1000000.0) as u64),
+                    self.code,
+                    self.tunnel_type.map(|t|  t.parse().unwrap()),
+                    self.bandwidth.map(|b| bandwidth_parse(&b)),
+                    self.mtu,
+                    self.delay_ms.map(|delay_ms| (delay_ms * 1000000.0) as u64),
+                    self.jitter_ms.map(|jitter_ms| (jitter_ms * 1000000.0) as u64),
                 ) {
                     Ok(_) => println!("Tunnel updated"),
                     Err(e) => print_error(e),

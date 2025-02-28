@@ -16,7 +16,7 @@ tokio = { version = "1.41.1", features = ["full"] }
 
 double-zero-sdk = { path = "../smartcontract/sdk/rs", version = "0.1.0" }
 dirs = "5.0.1"
-serde_json = "1.0.133"
+serde_json = "1.0.139"
 prettytable-rs = "0.10.0"
 serde_yaml = "0.9.34"
 serde = "1.0.215"

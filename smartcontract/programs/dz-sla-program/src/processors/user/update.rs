@@ -17,9 +17,12 @@ use solana_program::msg;
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
 pub struct UserUpdateArgs {
     pub index: u128,
-    pub user_type: UserType,
-    pub cyoa_type: UserCYOA,
-    pub client_ip: IpV4,
+    pub user_type: Option<UserType>,
+    pub cyoa_type: Option<UserCYOA>,
+    pub client_ip: Option<IpV4>,
+    pub dz_ip: Option<IpV4>, 
+    pub tunnel_id: Option<u16>,
+    pub tunnel_net: Option<NetworkV4>,
 }
 
 pub fn process_update_user(
@@ -30,6 +33,7 @@ pub fn process_update_user(
     let accounts_iter = &mut accounts.iter();
 
     let pda_account = next_account_info(accounts_iter)?;
+    let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -43,15 +47,31 @@ pub fn process_update_user(
         return Err(ProgramError::IncorrectProgramId);
     }
 
+    let globalstate = globalstate_get_next(globalstate_account)?;
+    if !globalstate.foundation_allowlist.contains(payer_account.key) {
+        return Err(DoubleZeroError::NotAllowed.into());
+    } 
+
     let mut user: User = User::from(&pda_account.try_borrow_data().unwrap()[..]);
-    if user.status != UserStatus::Activated {
-        return Err(DoubleZeroError::InvalidStatus.into());
+
+    if let Some(value) = value.dz_ip {
+        user.dz_ip = value;
     }
-
-    user.cyoa_type = value.cyoa_type;
-    user.client_ip = value.client_ip;
-    user.status = UserStatus::Pending;
-
+    if let Some(value) = value.tunnel_id {
+        user.tunnel_id = value;
+    }
+    if let Some(value) = value.tunnel_net {
+        user.tunnel_net = value;
+    }
+    if let Some(value) = value.user_type {
+        user.user_type = value;
+    }
+    if let Some(value) = value.cyoa_type {
+        user.cyoa_type = value;
+    }
+    if let Some(value) = value.client_ip {
+        user.client_ip = value;
+    }
     account_write(
         pda_account,
         &user,

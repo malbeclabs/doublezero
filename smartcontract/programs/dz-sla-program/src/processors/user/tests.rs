@@ -62,7 +62,7 @@ mod user_test {
             &payer,
         )
         .await;
-            
+
         /***********************************************************************************************************************************/
         println!("🟢 2. Create Location...");
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
@@ -188,7 +188,6 @@ mod user_test {
         assert_eq!(device_la.account_type, AccountType::Device);
         assert_eq!(device_la.status, DeviceStatus::Activated);
 
-
         println!("✅ Device activated successfully");
         /***********************************************************************************************************************************/
         // Device _la
@@ -308,13 +307,16 @@ mod user_test {
             program_id,
             DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
                 index: user.index,
-                client_ip: [10, 2, 3, 4],
-                user_type: UserType::Server,
-                cyoa_type: UserCYOA::GREOverPrivatePeering,
+                client_ip: Some([10, 2, 3, 4]),
+                user_type: Some(UserType::Server),
+                cyoa_type: Some(UserCYOA::GREOverPrivatePeering),
+                dz_ip: Some([200, 0, 0, 4]),
+                tunnel_id: Some(501),
+                tunnel_net: Some(([10, 1, 2, 4], 22)),
             }),
             vec![
                 AccountMeta::new(user_pubkey, false),
-                AccountMeta::new(device_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
             ],
             &payer,
         )
@@ -327,49 +329,20 @@ mod user_test {
         assert_eq!(user.account_type, AccountType::User);
         assert_eq!(user.client_ip, [10, 2, 3, 4]);
         assert_eq!(user.cyoa_type, UserCYOA::GREOverPrivatePeering);
-        assert_eq!(user.status, UserStatus::Pending);
-
-        println!("✅ User updated");
-        /***********************************************************************************************************************************/
-        println!("🟢 11. Testing User activation...");
-
-        execute_transaction(
-            &mut banks_client,
-            recent_blockhash,
-            program_id,
-            DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-                index: user.index,
-                tunnel_id: 501,
-                tunnel_net: ([10, 1, 2, 4], 22),
-                dz_ip: [200, 0, 0, 4],
-            }),
-            vec![
-                AccountMeta::new(user_pubkey, false),
-                AccountMeta::new(globalstate_pubkey, false),
-            ],
-            &payer,
-        )
-        .await;
-
-        let user = get_account_data(&mut banks_client, user_pubkey)
-            .await
-            .expect("Unable to get Account")
-            .get_user();
-        assert_eq!(user.account_type, AccountType::User);
-        assert_eq!(user.tunnel_id, 501);
-        assert_eq!(user.tunnel_net, ([10, 1, 2, 4], 22));
-        assert_eq!(user.dz_ip, [200, 0, 0, 4]);
         assert_eq!(user.status, UserStatus::Activated);
 
-        println!("✅ User activated successfully",);
+        println!("✅ User updated");
         /*****************************************************************************************************************************************************/
-        println!("🟢 12. Testing User deletion...");
+        println!("🟢 11. Testing User deletion...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::DeleteUser(UserDeleteArgs { index: user.index }),
-            vec![AccountMeta::new(user_pubkey, false)],
+            vec![
+                AccountMeta::new(user_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
             &payer,
         )
         .await;
@@ -386,7 +359,7 @@ mod user_test {
         println!("✅ Tunnel deleting");
 
         /*****************************************************************************************************************************************************/
-        println!("🟢 13. Testing User deactivation...");
+        println!("🟢 12. Testing User deactivation...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
@@ -395,6 +368,7 @@ mod user_test {
             vec![
                 AccountMeta::new(user_pubkey, false),
                 AccountMeta::new(user.owner, false),
+                AccountMeta::new(globalstate_pubkey, false),
             ],
             &payer,
         )

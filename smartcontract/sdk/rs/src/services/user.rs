@@ -6,7 +6,10 @@ use double_zero_sla_program::{
     instructions::DoubleZeroInstruction,
     pda::{get_globalconfig_pda, get_user_pda},
     processors::user::{
-        activate::UserActivateArgs, requestban::UserRequestBanArgs, ban::UserBanArgs, create::UserCreateArgs, deactivate::UserDeactivateArgs, delete::UserDeleteArgs, reactivate::UserReactivateArgs, reject::UserRejectArgs, suspend::UserSuspendArgs, update::UserUpdateArgs
+        activate::UserActivateArgs, ban::UserBanArgs, create::UserCreateArgs,
+        deactivate::UserDeactivateArgs, delete::UserDeleteArgs, reactivate::UserReactivateArgs,
+        reject::UserRejectArgs, requestban::UserRequestBanArgs, suspend::UserSuspendArgs,
+        update::UserUpdateArgs,
     },
     state::{
         accountdata::AccountData,
@@ -30,12 +33,16 @@ pub trait UserService {
         cyoa_type: UserCYOA,
         client_ip: IpV4,
     ) -> eyre::Result<(Signature, Pubkey)>;
+    #[allow(clippy::too_many_arguments)]
     fn update_user(
         &self,
         index: u128,
-        user_type: UserType,
-        cyoa_type: UserCYOA,
-        client_ip: IpV4,
+        user_type: Option<UserType>,
+        cyoa_type: Option<UserCYOA>,
+        client_ip: Option<IpV4>,
+        dz_ip: Option<IpV4>,
+        tunnel_id: Option<u16>,
+        tunnel_net: Option<NetworkV4>,
     ) -> eyre::Result<Signature>;
     fn activate_user(
         &self,
@@ -95,7 +102,6 @@ impl UserService for DZClient {
     ) -> eyre::Result<(Signature, Pubkey)> {
         match self.get_globalstate() {
             Ok((globalstate_pubkey, globalstate)) => {
-
                 if !globalstate.user_allowlist.contains(&self.get_payer()) {
                     return Err(eyre!("User not allowlisted"));
                 }
@@ -126,21 +132,39 @@ impl UserService for DZClient {
     fn update_user(
         &self,
         index: u128,
-        user_type: UserType,
-        cyoa_type: UserCYOA,
-        client_ip: IpV4,
+        user_type: Option<UserType>,
+        cyoa_type: Option<UserCYOA>,
+        client_ip: Option<IpV4>,
+        dz_ip: Option<IpV4>,
+        tunnel_id: Option<u16>,
+        tunnel_net: Option<NetworkV4>,
     ) -> eyre::Result<Signature> {
         let (pda_pubkey, _) = get_user_pda(&self.get_program_id(), index);
 
-        self.execute_transaction(
-            DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
-                index,
-                user_type,
-                cyoa_type,
-                client_ip,
-            }),
-            vec![AccountMeta::new(pda_pubkey, false)],
-        )
+        match self.get_globalstate() {
+            Ok((globalstate_pubkey, globalstate)) => {
+                if !globalstate.foundation_allowlist.contains(&self.get_payer()) {
+                    return Err(eyre!("User not allowlisted"));
+                }
+
+                self.execute_transaction(
+                    DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
+                        index,
+                        user_type,
+                        cyoa_type,
+                        client_ip,
+                        dz_ip,
+                        tunnel_id,
+                        tunnel_net,
+                    }),
+                    vec![
+                        AccountMeta::new(pda_pubkey, false),
+                        AccountMeta::new(globalstate_pubkey, false),
+                    ],
+                )
+            }
+            Err(e) => Err(e),
+        }
     }
 
     fn activate_user(
@@ -151,33 +175,50 @@ impl UserService for DZClient {
         dz_ip: IpV4,
     ) -> eyre::Result<Signature> {
         let (pda_pubkey, _) = get_user_pda(&self.get_program_id(), index);
-        let (pda_config, _) = get_globalconfig_pda(&self.get_program_id());
 
-        self.execute_transaction(
-            DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-                index,
-                tunnel_id,
-                tunnel_net,
-                dz_ip,
-            }),
-            vec![
-                AccountMeta::new(pda_pubkey, false),
-                AccountMeta::new(pda_config, false),
-            ],
-        )
+        match self.get_globalstate() {
+            Ok((globalstate_pubkey, globalstate)) => {
+                if !globalstate.foundation_allowlist.contains(&self.get_payer()) {
+                    return Err(eyre!("User not allowlisted"));
+                }
+
+                self.execute_transaction(
+                    DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+                        index,
+                        tunnel_id,
+                        tunnel_net,
+                        dz_ip,
+                    }),
+                    vec![
+                        AccountMeta::new(pda_pubkey, false),
+                        AccountMeta::new(globalstate_pubkey, false),
+                    ],
+                )
+            }
+            Err(e) => Err(e),
+        }
     }
 
     fn reject_user(&self, index: u128, error: String) -> eyre::Result<Signature> {
         let (pda_pubkey, _) = get_user_pda(&self.get_program_id(), index);
         let (pda_config, _) = get_globalconfig_pda(&self.get_program_id());
 
-        self.execute_transaction(
-            DoubleZeroInstruction::RejectUser(UserRejectArgs { index, error }),
-            vec![
-                AccountMeta::new(pda_pubkey, false),
-                AccountMeta::new(pda_config, false),
-            ],
-        )
+        match self.get_globalstate() {
+            Ok((globalstate_pubkey, globalstate)) => {
+                if !globalstate.foundation_allowlist.contains(&self.get_payer()) {
+                    return Err(eyre!("User not allowlisted"));
+                }
+                self.execute_transaction(
+                    DoubleZeroInstruction::RejectUser(UserRejectArgs { index, error }),
+                    vec![
+                        AccountMeta::new(pda_pubkey, false),
+                        AccountMeta::new(pda_config, false),
+                        AccountMeta::new(globalstate_pubkey, false),
+                    ],
+                )
+            }
+            Err(e) => Err(e),
+        }
     }
 
     fn suspend_user(&self, index: u128) -> eyre::Result<Signature> {
@@ -201,48 +242,82 @@ impl UserService for DZClient {
     fn delete_user(&self, index: u128) -> eyre::Result<Signature> {
         let (pda_pubkey, _) = get_user_pda(&self.get_program_id(), index);
 
-        self.execute_transaction(
-            DoubleZeroInstruction::DeleteUser(UserDeleteArgs { index }),
-            vec![AccountMeta::new(pda_pubkey, false)],
-        )
+        match self.get_globalstate() {
+            Ok((globalstate_pubkey, _globalstate)) => self.execute_transaction(
+                DoubleZeroInstruction::DeleteUser(UserDeleteArgs { index }),
+                vec![
+                    AccountMeta::new(pda_pubkey, false),
+                    AccountMeta::new(globalstate_pubkey, false),
+                ],
+            ),
+            Err(e) => Err(e),
+        }
     }
 
     fn deactivate_user(&self, index: u128, owner: Pubkey) -> eyre::Result<Signature> {
         let (pda_pubkey, _) = get_user_pda(&self.get_program_id(), index);
 
-        self.execute_transaction(
-            DoubleZeroInstruction::DeactivateUser(UserDeactivateArgs { index }),
-            vec![
-                AccountMeta::new(pda_pubkey, false),
-                AccountMeta::new(owner, false),
-            ],
-        )
+        match self.get_globalstate() {
+            Ok((globalstate_pubkey, globalstate)) => {
+                if !globalstate.foundation_allowlist.contains(&self.get_payer()) {
+                    return Err(eyre!("User not allowlisted"));
+                }
+
+                self.execute_transaction(
+                    DoubleZeroInstruction::DeactivateUser(UserDeactivateArgs { index }),
+                    vec![
+                        AccountMeta::new(pda_pubkey, false),
+                        AccountMeta::new(owner, false),
+                        AccountMeta::new(globalstate_pubkey, false),
+                    ],
+                )
+            }
+            Err(e) => Err(e),
+        }
     }
 
     fn request_ban_user(&self, index: u128) -> eyre::Result<Signature> {
         let (pda_pubkey, _) = get_user_pda(&self.get_program_id(), index);
         let (pda_config, _) = get_globalconfig_pda(&self.get_program_id());
 
-        self.execute_transaction(
-            DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs { index }),
-            vec![
-                AccountMeta::new(pda_pubkey, false),
-                AccountMeta::new(pda_config, false),
-            ],
-        )
+        match self.get_globalstate() {
+            Ok((globalstate_pubkey, globalstate)) => {
+                if !globalstate.foundation_allowlist.contains(&self.get_payer()) {
+                    return Err(eyre!("User not allowlisted"));
+                }
+
+                self.execute_transaction(
+                    DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs { index }),
+                    vec![
+                        AccountMeta::new(pda_pubkey, false),
+                        AccountMeta::new(pda_config, false),
+                        AccountMeta::new(globalstate_pubkey, false),
+                    ],
+                )
+            }
+            Err(e) => Err(e),
+        }
     }
 
     fn ban_user(&self, index: u128) -> eyre::Result<Signature> {
         let (pda_pubkey, _) = get_user_pda(&self.get_program_id(), index);
         let (pda_config, _) = get_globalconfig_pda(&self.get_program_id());
 
-        self.execute_transaction(
-            DoubleZeroInstruction::BanUser(UserBanArgs { index }),
-            vec![
-                AccountMeta::new(pda_pubkey, false),
-                AccountMeta::new(pda_config, false),
-            ],
-        )
+        match self.get_globalstate() {
+            Ok((globalstate_pubkey, globalstate)) => {
+                if !globalstate.foundation_allowlist.contains(&self.get_payer()) {
+                    return Err(eyre!("User not allowlisted"));
+                }
+                self.execute_transaction(
+                    DoubleZeroInstruction::BanUser(UserBanArgs { index }),
+                    vec![
+                        AccountMeta::new(pda_pubkey, false),
+                        AccountMeta::new(pda_config, false),
+                        AccountMeta::new(globalstate_pubkey, false),
+                    ],
+                )
+            }
+            Err(e) => Err(e),
+        }
     }
-
 }

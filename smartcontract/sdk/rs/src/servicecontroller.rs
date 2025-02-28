@@ -60,10 +60,11 @@ pub struct RemoveResponse {
 
 #[derive(Deserialize, Debug)]
 pub struct StatusResponse {
-    pub tunnel_name: String,
-    pub tunnel_src: String,
-    pub tunnel_dst: String,
-    pub doublezero_ip: String,
+    pub status: String,
+    pub tunnel_name: Option<String>,
+    pub tunnel_src: Option<String>,
+    pub tunnel_dst: Option<String>,
+    pub doublezero_ip: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]

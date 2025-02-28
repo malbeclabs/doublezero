@@ -27,6 +27,7 @@ pub fn process_reject_user(
 
     let pda_account = next_account_info(accounts_iter)?;
     let config_account = next_account_info(accounts_iter)?;
+    let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -42,6 +43,11 @@ pub fn process_reject_user(
     if config_account.owner != program_id {
         return Err(ProgramError::IncorrectProgramId);
     }
+
+    let globalstate = globalstate_get_next(globalstate_account)?;
+    if !globalstate.foundation_allowlist.contains(payer_account.key) {
+        return Err(DoubleZeroError::NotAllowed.into());
+    }     
 
     let mut user: User = User::from(&pda_account.try_borrow_data().unwrap()[..]);
     if user.status != UserStatus::Pending {

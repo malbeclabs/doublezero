@@ -12,12 +12,12 @@ use solana_program::msg;
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
 pub struct TunnelUpdateArgs {
     pub index: u128,
-    pub code: String,
-    pub tunnel_type: TunnelTunnelType, 
-    pub bandwidth: u64, 
-    pub mtu: u32,  
-    pub delay_ns: u64, 
-    pub jitter_ns: u64,
+    pub code: Option<String>,
+    pub tunnel_type: Option<TunnelTunnelType>, 
+    pub bandwidth: Option<u64>, 
+    pub mtu: Option<u32>,  
+    pub delay_ns: Option<u64>, 
+    pub jitter_ns: Option<u64>,
 }
 
 pub fn process_update_tunnel(
@@ -47,11 +47,24 @@ pub fn process_update_tunnel(
     }
 
     //tunnel.tunnel_type = value.tunnel_type;
-    tunnel.code = value.code.clone();
-    tunnel.bandwidth = value.bandwidth;
-    tunnel.mtu = value.mtu;
-    tunnel.delay_ns = value.delay_ns;
-    tunnel.jitter_ns = value.jitter_ns;
+    if let Some(code) = &value.code {
+        tunnel.code = code.clone();
+    }
+    if let Some(tunnel_type) = value.tunnel_type {
+        tunnel.tunnel_type = tunnel_type;
+    }
+    if let Some(bandwidth) = value.bandwidth {
+        tunnel.bandwidth = bandwidth;
+    }
+    if let Some(mtu) = value.mtu {
+        tunnel.mtu = mtu;
+    }
+    if let Some(delay_ns) = value.delay_ns {
+        tunnel.delay_ns = delay_ns;
+    }
+    if let Some(jitter_ns) = value.jitter_ns {
+        tunnel.jitter_ns = jitter_ns;
+    }
 
     account_write(
         pda_account,

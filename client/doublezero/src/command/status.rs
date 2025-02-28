@@ -21,8 +21,12 @@ impl StatusArgs {
         match controller.status().await {
             Ok(status) => {
                 println!(
-                    "Tunnel name: {}\nTunnel src: {}\nTunnel dst: {}\nDoublezero IP: {}",
-                    status.tunnel_name, status.tunnel_src, status.tunnel_dst, status.doublezero_ip
+                    "Tunnel status: {}\nName: {}\nTunnel src: {}\nTunnel dst: {}\nDoublezero IP: {}",
+                    status.status, 
+                    status.tunnel_name.unwrap_or_default(), 
+                    status.tunnel_src.unwrap_or_default(), 
+                    status.tunnel_dst.unwrap_or_default(), 
+                    status.doublezero_ip.unwrap_or_default()
                 );
             }
             Err(e) => {

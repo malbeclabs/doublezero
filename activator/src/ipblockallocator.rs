@@ -1,12 +1,12 @@
+use bitvec::prelude::*;
 use colored::Colorize;
 use double_zero_sdk::{networkv4_to_ipnetwork, NetworkV4};
 use ipnetwork::Ipv4Network;
-use bitvec::prelude::*;
 
 #[derive(Debug)]
 pub struct IPBlockAllocator {
     pub base_block: Ipv4Network,
-    assigned_ips: BitVec,
+    pub assigned_ips: BitVec,
     total_ips: usize,
 }
 
@@ -27,31 +27,43 @@ impl IPBlockAllocator {
     /// Updates the bit vector to reflect the assigned IPs.
     pub fn assign_block(&mut self, block: NetworkV4) {
         let block = networkv4_to_ipnetwork(&block);
-        let start_index = self.ip_to_index(block.ip());
-        let block_size = 2_usize.pow((32 - block.prefix()).into());
+        match self.ip_to_index(block.ip()) {
+            Ok(start_index) => {
+                let block_size = 2_usize.pow((32 - block.prefix()).into());
 
-        for i in start_index..start_index + block_size {
-            self.assigned_ips.set(i, true);
+                for i in start_index..start_index + block_size {
+                    self.assigned_ips.set(i, true);
+                }
+            }
+            Err(e) => {
+                print!(" {} ", e.red());
+            }
         }
     }
 
-        /// Marks the given block of IPs as assigned.
+    /// Marks the given block of IPs as assigned.
     /// Updates the bit vector to reflect the assigned IPs.
     pub fn unassign_block(&mut self, block: NetworkV4) {
         let block = networkv4_to_ipnetwork(&block);
-        let start_index = self.ip_to_index(block.ip());
-        let block_size = 2_usize.pow((32 - block.prefix()).into());
+        match self.ip_to_index(block.ip()) {
+            Ok(start_index) => {
+                let block_size = 2_usize.pow((32 - block.prefix()).into());
 
-        for i in start_index..start_index + block_size {
-            self.assigned_ips.set(i, false);
+                for i in start_index..start_index + block_size {
+                    self.assigned_ips.set(i, false);
+                }
+            }
+            Err(e) => {
+                print!(" {} ", e.red());
+            }
         }
     }
 
     /// Finds the next available block of IPs that can accommodate the given number of IPs.
     /// Returns an Ipv4Network representing the available block, or None if no block is available.
     pub fn next_available_block(&mut self, reserve: usize, ip_count: usize) -> Option<NetworkV4> {
-
-        let block_prefix = (32 - (ip_count as f32).log2().ceil() as u8).max(self.base_block.prefix());
+        let block_prefix =
+            (32 - (ip_count as f32).log2().ceil() as u8).max(self.base_block.prefix());
         let block_size = 2_usize.pow((32 - block_prefix).into());
 
         let mut start_index = reserve;
@@ -67,7 +79,7 @@ impl IPBlockAllocator {
                     self.assigned_ips.set(i, true);
                 }
                 let start_ip = self.index_to_ip(start_index);
-                
+
                 self.assign_block((start_ip.octets(), block_prefix));
                 return Some((start_ip.octets(), block_prefix));
             }
@@ -75,24 +87,28 @@ impl IPBlockAllocator {
             start_index += block_size;
         }
 
-        None 
+        None
     }
 
     pub fn print_assigned_ips(&self) {
         for (index, assigned) in self.assigned_ips.iter().enumerate() {
             if *assigned {
                 let ip = self.index_to_ip(index);
-                print!("{} ", ip.to_string().red());
+                print!("{},", ip.to_string().green());
             }
         }
     }
 
     /// Converts an IP address to an index in the bit vector.
-    fn ip_to_index(&self, ip: std::net::Ipv4Addr) -> usize {
+    fn ip_to_index(&self, ip: std::net::Ipv4Addr) -> Result<usize, &'static str> {
         let base_ip = u32::from(self.base_block.network());
         let ip_as_u32 = u32::from(ip);
 
-        (ip_as_u32 - base_ip) as usize
+        if base_ip <= ip_as_u32 {
+            Ok((ip_as_u32 - base_ip) as usize)
+        } else {
+            return Err("IP address is not in the base block");
+        }
     }
 
     fn index_to_ip(&self, index: usize) -> std::net::Ipv4Addr {
@@ -101,30 +117,30 @@ impl IPBlockAllocator {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_ipallocation() {
-
-
-        let block1 = IPBlockAllocator::new(([10,0,0,1], 24))
-            .next_available_block(1, 1).unwrap();
+        let block1 = IPBlockAllocator::new(([10, 0, 0, 1], 24))
+            .next_available_block(1, 1)
+            .unwrap();
         assert_eq!(block1, ([10, 0, 0, 1], 32));
 
-        let block1 = IPBlockAllocator::new(([10,0,0,1], 24))
-            .next_available_block(1, 2).unwrap();
+        let block1 = IPBlockAllocator::new(([10, 0, 0, 1], 24))
+            .next_available_block(1, 2)
+            .unwrap();
         assert_eq!(block1, ([10, 0, 0, 1], 31));
 
-        let block1 = IPBlockAllocator::new(([10,0,0,1], 24))
-            .next_available_block(1, 1).unwrap();
+        let block1 = IPBlockAllocator::new(([10, 0, 0, 1], 24))
+            .next_available_block(1, 1)
+            .unwrap();
         assert_eq!(block1, ([10, 0, 0, 1], 32));
 
-        let block1 = IPBlockAllocator::new(([10,0,0,1], 24))
-            .next_available_block(2, 4).unwrap();
+        let block1 = IPBlockAllocator::new(([10, 0, 0, 1], 24))
+            .next_available_block(2, 4)
+            .unwrap();
         assert_eq!(block1, ([10, 0, 0, 2], 30));
-
     }
 }

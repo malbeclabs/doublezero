@@ -44,11 +44,6 @@ impl CreateDeviceArgs {
             }
         };
 
-        println!(
-            "Creating device location_pk:{} / exchange_pk:{}",
-            location_pk, exchange_pk
-        );
-
         match client.create_device(
             &self.code,
             location_pk,

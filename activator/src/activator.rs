@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use colored::*;
+use colored::Colorize;
 
 use double_zero_sdk::*;
 use solana_sdk::pubkey::Pubkey;
@@ -51,7 +51,7 @@ impl Activator {
     }
 
     pub async fn init(&mut self) -> eyre::Result<()> {
-        print!("Connected to url: {} ws: {} program_id: {}", self.client.get_rpc().red(), self.client.get_ws().red(), self.client.get_program_id().to_string().red());
+        print!("Connected to url: {} ws: {} program_id: {} ", self.client.get_rpc().green(), self.client.get_ws().green(), self.client.get_program_id().to_string().green());
 
         // Fetch the list of tunnels, devices, and users from the client
         let devices = self.client.get_devices()?;
@@ -83,7 +83,7 @@ impl Activator {
                 self.user_tunnel_ips.assign_block(user.tunnel_net);
             });
 
-        println!("devices: {} tunnels: {} users: {}", devices.len().to_string().red(), tunnels.len().to_string().red(), users.len().to_string().red());
+        println!("devices: {} tunnels: {} users: {}", devices.len().to_string().green(), tunnels.len().to_string().green(), users.len().to_string().green());
 
         Ok(())
     }
@@ -95,21 +95,25 @@ impl Activator {
     }
 
     pub fn run(&mut self) -> eyre::Result<()> {
-
-
-
         self.devices.iter().for_each(|(_pubkey,device)| {
 
-            print!("Device code:{} public_ip:{} dz_prefix:{} tunnels:", device.device.code.red(), ipv4_to_string(&device.device.public_ip).red(), networkv4_to_string(&device.device.dz_prefix).red());            
+            print!("Device code: {} public_ip: {} dz_prefix: {} tunnels: ", device.device.code.green(), ipv4_to_string(&device.device.public_ip).green(), networkv4_to_string(&device.device.dz_prefix).green());            
+            
+            if device.tunnel_ids.assigned.len() == 0 {
+                print!("{},", "-".green());
+            }            
             device.tunnel_ids.assigned.iter().for_each(|tunnel_id| {
-                print!("{} ", tunnel_id.to_string().red());
+                print!("{},", tunnel_id.to_string().green());
             });
-            println!(" ");
+            println!("\x08 ");
         });
 
-        print!("tunnel_net: {} assigned: ", self.user_tunnel_ips.base_block.to_string().red());
+        print!("tunnel_net: {} assigned: ", self.user_tunnel_ips.base_block.to_string().green());
+        if self.user_tunnel_ips.assigned_ips.len() == 0 {
+            print!("{},", "-".green());
+        }
         self.user_tunnel_ips.print_assigned_ips();
-        println!("");
+        println!("\x08 ");
 
         self.client
             .gets_and_subscribe(|client, pubkey, data| {
@@ -124,28 +128,28 @@ impl Activator {
                                 print!("New Device [{}] ", device.code);
                                 match client.activate_device(device.index) {
                                     Ok(signature) => {
-                                        println!("Activated {}", signature);
+                                        println!("Activated {}", signature.to_string().green());
 
-                                        println!("Add Device: [{}] public_ip: [{}] dz_prefix: [{}] ", device.code, ipv4_to_string(&device.public_ip), networkv4_to_string(&device.dz_prefix));
+                                        println!("Add Device: {} public_ip: {} dz_prefix: {} ", device.code.green(), ipv4_to_string(&device.public_ip).green(), networkv4_to_string(&device.dz_prefix).green());
                                         self.devices.insert(*pubkey, DeviceState::new(device));
                             
                                     },
-                                    Err(e) => println!("Error: {}", e),
+                                    Err(e) => println!("Error: {}", e.to_string().red()),
                                 }
                             }
                             DeviceStatus::Activated => {
                                 if !self.devices.contains_key(pubkey) {
-                                    println!("Add Device: [{}] public_ip: [{}] dz_prefix: [{}] ", device.code, ipv4_to_string(&device.public_ip), networkv4_to_string(&device.dz_prefix));
+                                    println!("Add Device: {} public_ip: {} dz_prefix: {} ", device.code.green(), ipv4_to_string(&device.public_ip).green(), networkv4_to_string(&device.dz_prefix).green());
 
                                     self.devices
                                         .insert(*pubkey, DeviceState::new(device));
                                 }
                             }
                             DeviceStatus::Deleting => {
-                                print!("Deleting Device [{}] ", device.code);
+                                print!("Deleting Device {} ", device.code.green());
                                 match client.deactivate_device(device.index, device.owner) {
                                     Ok(signature) => {
-                                        println!("Deactivated {}", signature);
+                                        println!("Deactivated {}", signature.to_string().green());
                                         self.devices.remove(pubkey);
                                     },
                                     Err(e) => println!("Error: {}", e),
@@ -161,7 +165,7 @@ impl Activator {
                     AccountData::Tunnel(tunnel) => {
                         match tunnel.status {
                             TunnelStatus::Pending => {
-                                print!("New Tunnel [{}] ", tunnel.code);
+                                print!("New Tunnel {} ", tunnel.code.green());
     
                                 match self
                                     .tunnel_tunnel_ips
@@ -174,31 +178,32 @@ impl Activator {
                                             tunnel_id,
                                             tunnel_net,
                                         ) {
-                                            Ok(signature) => println!("Activated {}", signature),
-                                            Err(e) => println!("Error: activate_tunnel: {}", e),
+                                            Ok(signature) => println!("Activated {}", signature.to_string().green()),
+                                            Err(e) => println!("Error: activate_tunnel: {}", e.to_string().red()),
                                         }
             
                                     },
                                     None => { 
-                                        println!("Error: No available tunnel block");
+                                        println!("{}", "Error: No available tunnel block".red());
 
                                         match self.client.reject_tunnel(
                                             tunnel.index, "Error: No available tunnel block".to_string()
                                         ) {
-                                            Ok(signature) => println!("Rejected {}", signature),
-                                            Err(e) => println!("Error: reject_tunnel: {}", e),
+                                            Ok(signature) => println!("Rejected {}", signature.to_string().red()),
+                                            Err(e) => println!("Error: reject_tunnel: {}", e.to_string().red()),
                                         }
                                 },
                                 }                            
                             },
                             TunnelStatus::Deleting => {
-                                print!("Deleting Tunnel [{}] ", tunnel.code);
+                                print!("Deleting Tunnel {} ", tunnel.code.green());
+
                                 self.tunnel_tunnel_ids.unassign(tunnel.tunnel_id);
                                 self.tunnel_tunnel_ips.unassign_block(tunnel.tunnel_net);
     
                                 match client.deactivate_tunnel(tunnel.index, tunnel.owner) {
-                                    Ok(signature) => println!("Deactivated {}", signature),
-                                    Err(e) => println!("Error: deactivate_tunnel: {}", e),
+                                    Ok(signature) => println!("Deactivated {}", signature.to_string().green()),
+                                    Err(e) => println!("{}: {}", "Error: deactivate_tunnel:".red(), e.to_string().red()),
                                 }
                             },
                             _ => {}
@@ -213,80 +218,91 @@ impl Activator {
                         match user.status {
                             // Create User
                             UserStatus::Pending => {
-                                print!("Activating User [{}] ", ipv4_to_string(&user.client_ip));
+                                print!("Activating User   {} ", ipv4_to_string(&user.client_ip).green());
                                 // Load Device if not exists
                                 if !self.devices.contains_key(&user.device_pk) {
                                     match client.get_device(&user.device_pk) {
                                         Ok(device) => {
-                                            println!("Add Device: [{}] public_ip: [{}] dz_prefix: [{}] ", device.code, ipv4_to_string(&device.public_ip), networkv4_to_string(&device.dz_prefix));
+                                            println!("Add Device: {} public_ip: {} dz_prefix: {} ", device.code.green(), ipv4_to_string(&device.public_ip).green(), networkv4_to_string(&device.dz_prefix).green());
 
                                             self.devices
                                                 .insert(*pubkey, DeviceState::new(&device));
                                             }
                                         Err(e) => {
-                                            println!("Error: {}", e);
+                                            println!("Error: {}", e.to_string().red());
                                         }
                                     }
                                 }
 
-                                let device_state = self.devices.get_mut(&user.device_pk).unwrap();                            
-                                print!("for [{}] ", device_state.device.code);
+                                match self.devices.get_mut(&user.device_pk) {
+                                    Some(device_state) => {
+                                        print!("for {} ", device_state.device.code.green());
 
-                                match self
-                                    .user_tunnel_ips
-                                    .next_available_block(0, 2) {
-                                        Some(tunnel_net) => {
-
-                                            print!("tunnel_net: [{}] ", networkv4_to_string(&tunnel_net));
-                                            match device_state.get_next() {
-                                                Some((tunnel_id, dz_ip)) => {
-
-                                                    print!("tunnel_id: [{}] tunnel_id: [{}] ", tunnel_id, ipv4_to_string(&dz_ip));
-
-                                                    match client.activate_user(
-                                                        user.index,
-                                                        tunnel_id,
-                                                        tunnel_net,
-                                                        dz_ip,
-                                                    ) {
-                                                        Ok(signature) => println!("Activated {}", signature),
-                                                        Err(e) => println!("Error: {}", e),
-                                                    }        
-                                                },
-                                                None => {
-                                                    eprintln!("Error: No available tunnel block");   
-
-                                                    match client.reject_user(
-                                                        user.index,
-                                                        "Error: No available tunnel block".to_string()) {
-                                                        Ok(signature) => println!("Rejected {}", signature),
-                                                        Err(e) => println!("Error: {}", e),
-                                                    }        
-                                                }
-                                            }                                     
-                
-                                        }, 
-                                        None => { println!("Error: No available user block");
-
+                                        match self
+                                            .user_tunnel_ips
+                                            .next_available_block(0, 2) {
+                                                Some(tunnel_net) => {
+        
+                                                    print!("tunnel_net: {} ", networkv4_to_string(&tunnel_net).green());
+                                                    match device_state.get_next() {
+                                                        Some((tunnel_id, dz_ip)) => {
+        
+                                                            print!("tunnel_id: {} tunnel_id: {} ", tunnel_id.to_string().green(), ipv4_to_string(&dz_ip).green());
+        
+                                                            match client.activate_user(
+                                                                user.index,
+                                                                tunnel_id,
+                                                                tunnel_net,
+                                                                dz_ip,
+                                                            ) {
+                                                                Ok(signature) => println!("Activated   {}", signature.to_string().green()),
+                                                                Err(e) => println!("Error: {}", e.to_string().red()),
+                                                            }        
+                                                        },
+                                                        None => {
+                                                            eprintln!("{}", "Error: No available tunnel block".red());
+        
+                                                            match client.reject_user(
+                                                                user.index,
+                                                                "Error: No available tunnel block".to_string()) {
+                                                                Ok(signature) => println!("Rejected {}", signature.to_string().green()),
+                                                                Err(e) => println!("Error: {}", e.to_string().red()),
+                                                            }        
+                                                        }
+                                                    }                                     
+                        
+                                                }, 
+                                                None => { 
+                                                    println!("{}", "Error: No available user block".red());
+        
+                                                match client.reject_user(
+                                                    user.index,
+                                                    "Error: No available user block".to_string()) {
+                                                    Ok(signature) => println!("Rejected {}", signature.to_string().green()),
+                                                    Err(e) => println!("Error: {}", e.to_string().red()),
+                                                }                                            
+                                            }
+                                        }                                                
+                                    },
+                                    None => {
+                                        eprintln!("Error: Device not found {}", user.device_pk.to_string().red());
                                         match client.reject_user(
                                             user.index,
-                                            "Error: No available user block".to_string()) {
-                                            Ok(signature) => println!("Rejected {}", signature),
-                                            Err(e) => println!("Error: {}", e),
-                                        }                                            
+                                            "Error: Device not found".to_string()) {
+                                            Ok(signature) => println!("Rejected {}", signature.to_string().green()),
+                                            Err(e) => println!("Error: {}", e.to_string().red()),
+                                        }                                        
                                     }
-                                }
-                                
+                                }                                                            
                             },
                             // Delete User
                             UserStatus::Deleting | UserStatus::PendingBan => {
-                                print!("freeing up resources User [{}] ", ipv4_to_string(&user.client_ip));
+                                print!("Deactivating User {} ", ipv4_to_string(&user.client_ip).green());
 
                                 if let Some(device_state) = self.devices.get_mut(&user.device_pk) {
-                                    print!("for [{}] ", device_state.device.code);
+                                    print!("for {} ", device_state.device.code.green());
 
-                                    print!("tunnel_net: [{}] ", networkv4_to_string(&user.tunnel_net));
-                                    print!("tunnel_id: [{}] tunnel_id: [{}] ", user.tunnel_id, ipv4_to_string(&user.dz_ip));
+                                    print!("tunnel_net: {} tunnel_id: {} tunnel_id: {} ", networkv4_to_string(&user.tunnel_net).green(), user.tunnel_id.to_string().green(), ipv4_to_string(&user.dz_ip).green());
 
                                     if user.tunnel_id != 0 {
                                         self.tunnel_tunnel_ids.unassign(user.tunnel_id);
@@ -300,13 +316,13 @@ impl Activator {
 
                                     if user.status == UserStatus::Deleting {
                                         match client.deactivate_user(user.index, user.owner) {
-                                            Ok(signature) => println!("Deactivated {}", signature),
-                                            Err(e) => println!("Error: {}", e),
+                                            Ok(signature) => println!("Deactivated {}", signature.to_string().green()),
+                                            Err(e) => println!("Error: {}", e.to_string().red()),
                                         }
                                     } else if user.status == UserStatus::PendingBan {
                                         match client.ban_user(user.index) {
-                                            Ok(signature) => println!("Banned {}", signature),
-                                            Err(e) => println!("Error: {}", e),
+                                            Ok(signature) => println!("Banned {}", signature.to_string().green()),
+                                            Err(e) => println!("Error: {}", e.to_string().red()),
                                         }
                                     }
                                 }

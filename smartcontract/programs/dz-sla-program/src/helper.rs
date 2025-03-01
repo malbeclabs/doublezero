@@ -59,6 +59,7 @@ pub fn globalstate_write2<'a>(
 ) {
     let actual_len = account.data_len();
     let new_len = instance.size();
+
     {
         if actual_len != new_len {
             account
@@ -73,28 +74,31 @@ pub fn globalstate_write2<'a>(
     }
 
     if actual_len < new_len {
-        let rent = Rent::get().expect("Unable to read rent");
-        let required_lamports = rent.minimum_balance(new_len);
-        let payment = required_lamports - account.lamports();
+        let rent: Rent = Rent::get().expect("Unable to read rent");
+        let required_lamports: u64 = rent.minimum_balance(new_len);
 
-        #[cfg(test)]
-        msg!(
-            "Rent Required: {} Actual: {} Transfer: {}",
-            required_lamports,
-            account.lamports(),
-            payment
-        );
+        if required_lamports > account.lamports() {
+            let payment: u64 = required_lamports - account.lamports();
 
-        invoke_signed(
-            &system_instruction::transfer(payer_account.key, account.key, payment),
-            &[
-                account.clone(),
-                payer_account.clone(),
-                system_program.clone(),
-            ],
-            &[&[SEED_PREFIX, SEED_GLOBALSTATE, &[bump_seed]]],
-        )
-        .expect("Unable to pay rent");
+            #[cfg(test)]
+            msg!(
+                "Rent Required: {} Actual: {} Transfer: {}",
+                required_lamports,
+                account.lamports(),
+                payment
+            );
+
+            invoke_signed(
+                &system_instruction::transfer(payer_account.key, account.key, payment),
+                &[
+                    account.clone(),
+                    payer_account.clone(),
+                    system_program.clone(),
+                ],
+                &[&[SEED_PREFIX, SEED_GLOBALSTATE, &[bump_seed]]],
+            )
+            .expect("Unable to pay rent");
+        }
     }
 }
 
@@ -173,31 +177,34 @@ pub fn account_write<'a, T>(
     if actual_len < new_len {
         let rent = Rent::get().expect("Unble to read rent");
         let required_lamports = rent.minimum_balance(new_len);
-        let payment = required_lamports - account.lamports();
 
-        #[cfg(test)]
-        msg!(
-            "Rent Requered: {} Actual: {} Transfer: {}",
-            required_lamports,
-            account.lamports(),
-            payment
-        );
+        if required_lamports > account.lamports() {
+            let payment = required_lamports - account.lamports();
 
-        invoke_signed(
-            &system_instruction::transfer(payer_account.key, account.key, payment),
-            &[
-                account.clone(),
-                payer_account.clone(),
-                system_program.clone(),
-            ],
-            &[&[
-                SEED_PREFIX,
-                instance.seed(),
-                &instance.index().to_le_bytes(),
-                &[bump_seed],
-            ]],
-        )
-        .expect("Unable to pay rent");
+            #[cfg(test)]
+            msg!(
+                "Rent Requered: {} Actual: {} Transfer: {}",
+                required_lamports,
+                account.lamports(),
+                payment
+            );
+
+            invoke_signed(
+                &system_instruction::transfer(payer_account.key, account.key, payment),
+                &[
+                    account.clone(),
+                    payer_account.clone(),
+                    system_program.clone(),
+                ],
+                &[&[
+                    SEED_PREFIX,
+                    instance.seed(),
+                    &instance.index().to_le_bytes(),
+                    &[bump_seed],
+                ]],
+            )
+            .expect("Unable to pay rent");
+        }
     }
 }
 

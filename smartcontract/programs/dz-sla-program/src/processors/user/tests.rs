@@ -175,7 +175,7 @@ mod user_test {
             }),
             vec![
                 AccountMeta::new(device_pubkey, false),
-                AccountMeta::new(config_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
             ],
             &payer,
         )

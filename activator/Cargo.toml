@@ -12,7 +12,7 @@ solana-sdk = "1.18.26"
 solana-client = "1.18.26"
 solana-pubsub-client = "1.18.26"
 
-tokio = { version = "1.41.1", features = ["full"] }
+tokio = { version = "1.43.0", features = ["full"] }
 
 double-zero-sdk = { path = "../smartcontract/sdk/rs", version = "0.1.0" }
 dirs = "5.0.1"

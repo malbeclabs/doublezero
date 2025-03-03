@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use crate::{doublezeroclient::DoubleZeroClient, DZClient};
 use double_zero_sla_program::{
     instructions::DoubleZeroInstruction,
-    pda::{get_device_pda, get_globalconfig_pda},
+    pda::get_device_pda,
     processors::device::{
         activate::DeviceActivateArgs, create::DeviceCreateArgs, deactivate::DeviceDeactivateArgs,
         delete::DeviceDeleteArgs, reactivate::DeviceReactivateArgs, reject::DeviceRejectArgs,
@@ -94,7 +94,6 @@ impl DeviceService for DZClient {
     ) -> eyre::Result<(Signature, Pubkey)> {
         match self.get_globalstate() {
             Ok((globalstate_pubkey, globalstate)) => {
-
                 if !globalstate.device_allowlist.contains(&self.get_payer()) {
                     return Err(eyre!("Contributor not allowlisted"));
                 }
@@ -149,28 +148,44 @@ impl DeviceService for DZClient {
 
     fn activate_device(&self, index: u128) -> eyre::Result<Signature> {
         let (pda_pubkey, _) = get_device_pda(&self.get_program_id(), index);
-        let (pda_config, _) = get_globalconfig_pda(&self.get_program_id());
 
-        self.execute_transaction(
-            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { index }),
-            vec![
-                AccountMeta::new(pda_pubkey, false),
-                AccountMeta::new(pda_config, false),
-            ],
-        )
+        match self.get_globalstate() {
+            Ok((globalstate_pubkey, globalstate)) => {
+                if !globalstate.foundation_allowlist.contains(&self.get_payer()) {
+                    return Err(eyre!("User not allowlisted"));
+                }
+
+                self.execute_transaction(
+                    DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { index }),
+                    vec![
+                        AccountMeta::new(pda_pubkey, false),
+                        AccountMeta::new(globalstate_pubkey, false),
+                    ],
+                )
+            }
+            Err(e) => Err(e),
+        }
     }
 
     fn reject_device(&self, index: u128, error: String) -> eyre::Result<Signature> {
         let (pda_pubkey, _) = get_device_pda(&self.get_program_id(), index);
-        let (pda_config, _) = get_globalconfig_pda(&self.get_program_id());
 
-        self.execute_transaction(
-            DoubleZeroInstruction::RejectDevice(DeviceRejectArgs { index, error }),
-            vec![
-                AccountMeta::new(pda_pubkey, false),
-                AccountMeta::new(pda_config, false),
-            ],
-        )
+        match self.get_globalstate() {
+            Ok((globalstate_pubkey, globalstate)) => {
+                if !globalstate.foundation_allowlist.contains(&self.get_payer()) {
+                    return Err(eyre!("User not allowlisted"));
+                }
+
+                self.execute_transaction(
+                    DoubleZeroInstruction::RejectDevice(DeviceRejectArgs { index, error }),
+                    vec![
+                        AccountMeta::new(pda_pubkey, false),
+                        AccountMeta::new(globalstate_pubkey, false),
+                    ],
+                )
+            }
+            Err(e) => Err(e),
+        }
     }
 
     fn suspend_device(&self, index: u128) -> eyre::Result<Signature> {
@@ -203,12 +218,22 @@ impl DeviceService for DZClient {
     fn deactivate_device(&self, index: u128, owner: Pubkey) -> eyre::Result<Signature> {
         let (pda_pubkey, _) = get_device_pda(&self.get_program_id(), index);
 
-        self.execute_transaction(
-            DoubleZeroInstruction::DeactivateDevice(DeviceDeactivateArgs { index }),
-            vec![
-                AccountMeta::new(pda_pubkey, false),
-                AccountMeta::new(owner, false),
-            ],
-        )
+        match self.get_globalstate() {
+            Ok((globalstate_pubkey, globalstate)) => {
+                if !globalstate.foundation_allowlist.contains(&self.get_payer()) {
+                    return Err(eyre!("User not allowlisted"));
+                }
+
+                self.execute_transaction(
+                    DoubleZeroInstruction::DeactivateDevice(DeviceDeactivateArgs { index }),
+                    vec![
+                        AccountMeta::new(pda_pubkey, false),
+                        AccountMeta::new(owner, false),
+                        AccountMeta::new(globalstate_pubkey, false),
+                    ],
+                )
+            }
+            Err(e) => Err(e),
+        }
     }
 }

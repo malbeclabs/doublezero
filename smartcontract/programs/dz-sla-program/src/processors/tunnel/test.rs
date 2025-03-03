@@ -374,6 +374,7 @@ mod tunnel_test {
             vec![
                 AccountMeta::new(tunnel_pubkey, false),
                 AccountMeta::new(tunnel.owner, false),
+                AccountMeta::new(globalstate_pubkey, false),
             ],
             &payer,
         )

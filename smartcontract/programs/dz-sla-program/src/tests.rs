@@ -406,7 +406,7 @@ pub mod test {
             DoubleZeroInstruction::ActivateTunnel(tunnel_activate),
             vec![
                 AccountMeta::new(tunnel_la_ny_pubkey, false),
-                AccountMeta::new(globalconfig_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
                 AccountMeta::new(payer.pubkey(), false),
             ],
             &payer,

@@ -1,5 +1,4 @@
 use bitvec::prelude::*;
-use colored::Colorize;
 use double_zero_sdk::{networkv4_to_ipnetwork, NetworkV4};
 use ipnetwork::Ipv4Network;
 
@@ -36,7 +35,7 @@ impl IPBlockAllocator {
                 }
             }
             Err(e) => {
-                print!(" {} ", e.red());
+                print!(" {} ", e);
             }
         }
     }
@@ -54,7 +53,7 @@ impl IPBlockAllocator {
                 }
             }
             Err(e) => {
-                print!(" {} ", e.red());
+                print!(" {} ", e);
             }
         }
     }
@@ -94,7 +93,7 @@ impl IPBlockAllocator {
         for (index, assigned) in self.assigned_ips.iter().enumerate() {
             if *assigned {
                 let ip = self.index_to_ip(index);
-                print!("{},", ip.to_string().green());
+                print!("{},", ip.to_string());
             }
         }
     }

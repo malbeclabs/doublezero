@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use crate::{doublezeroclient::DoubleZeroClient, DZClient};
 use double_zero_sla_program::{
     instructions::DoubleZeroInstruction,
-    pda::{get_globalconfig_pda, get_tunnel_pda},
+    pda::get_tunnel_pda,
     processors::tunnel::{
         activate::TunnelActivateArgs, create::TunnelCreateArgs, deactivate::TunnelDeactivateArgs,
         delete::TunnelDeleteArgs, reactivate::TunnelReactivateArgs, reject::TunnelRejectArgs,
@@ -46,7 +46,7 @@ pub trait TunnelService {
         bandwidth: Option<u64>,
         mtu: Option<u32>,
         delay_ns: Option<u64>,
-        jitter_ns: Option<u64>
+        jitter_ns: Option<u64>,
     ) -> eyre::Result<Signature>;
     fn activate_tunnel(
         &self,
@@ -60,7 +60,6 @@ pub trait TunnelService {
     fn delete_tunnel(&self, index: u128) -> eyre::Result<Signature>;
     fn deactivate_tunnel(&self, index: u128, owner: Pubkey) -> eyre::Result<Signature>;
 }
-
 
 impl TunnelService for DZClient {
     fn get_tunnels(&self) -> eyre::Result<HashMap<Pubkey, Tunnel>> {
@@ -108,7 +107,6 @@ impl TunnelService for DZClient {
     ) -> eyre::Result<(Signature, Pubkey)> {
         match self.get_globalstate() {
             Ok((globalstate_pubkey, globalstate)) => {
-
                 if !globalstate.device_allowlist.contains(&self.get_payer()) {
                     return Err(eyre!("Contributor not allowlisted"));
                 }
@@ -148,32 +146,48 @@ impl TunnelService for DZClient {
         tunnel_net: NetworkV4,
     ) -> eyre::Result<Signature> {
         let (pda_pubkey, _) = get_tunnel_pda(&self.get_program_id(), index);
-        let (pda_config, _) = get_globalconfig_pda(&self.get_program_id());
 
-        self.execute_transaction(
-            DoubleZeroInstruction::ActivateTunnel(TunnelActivateArgs {
-                index,
-                tunnel_id,
-                tunnel_net,
-            }),
-            vec![
-                AccountMeta::new(pda_pubkey, false),
-                AccountMeta::new(pda_config, false),
-            ],
-        )
+        match self.get_globalstate() {
+            Ok((globalstate_pubkey, globalstate)) => {
+                if !globalstate.foundation_allowlist.contains(&self.get_payer()) {
+                    return Err(eyre!("User not allowlisted"));
+                }
+
+                self.execute_transaction(
+                    DoubleZeroInstruction::ActivateTunnel(TunnelActivateArgs {
+                        index,
+                        tunnel_id,
+                        tunnel_net,
+                    }),
+                    vec![
+                        AccountMeta::new(pda_pubkey, false),
+                        AccountMeta::new(globalstate_pubkey, false),
+                    ],
+                )
+            }
+            Err(e) => Err(e),
+        }
     }
 
     fn reject_tunnel(&self, index: u128, error: String) -> eyre::Result<Signature> {
         let (pda_pubkey, _) = get_tunnel_pda(&self.get_program_id(), index);
-        let (pda_config, _) = get_globalconfig_pda(&self.get_program_id());
 
-        self.execute_transaction(
-            DoubleZeroInstruction::RejectTunnel(TunnelRejectArgs { index, error }),
-            vec![
-                AccountMeta::new(pda_pubkey, false),
-                AccountMeta::new(pda_config, false),
-            ],
-        )
+        match self.get_globalstate() {
+            Ok((globalstate_pubkey, globalstate)) => {
+                if !globalstate.foundation_allowlist.contains(&self.get_payer()) {
+                    return Err(eyre!("User not allowlisted"));
+                }
+
+                self.execute_transaction(
+                    DoubleZeroInstruction::RejectTunnel(TunnelRejectArgs { index, error }),
+                    vec![
+                        AccountMeta::new(pda_pubkey, false),
+                        AccountMeta::new(globalstate_pubkey, false),
+                    ],
+                )
+            }
+            Err(e) => Err(e),
+        }
     }
 
     fn update_tunnel(
@@ -232,12 +246,22 @@ impl TunnelService for DZClient {
     fn deactivate_tunnel(&self, index: u128, owner: Pubkey) -> eyre::Result<Signature> {
         let (pda_pubkey, _) = get_tunnel_pda(&self.get_program_id(), index);
 
-        self.execute_transaction(
-            DoubleZeroInstruction::DeactivateTunnel(TunnelDeactivateArgs { index }),
-            vec![
-                AccountMeta::new(pda_pubkey, false),
-                AccountMeta::new(owner, false),
-            ],
-        )
+        match self.get_globalstate() {
+            Ok((globalstate_pubkey, globalstate)) => {
+                if !globalstate.foundation_allowlist.contains(&self.get_payer()) {
+                    return Err(eyre!("User not allowlisted"));
+                }
+
+                self.execute_transaction(
+                    DoubleZeroInstruction::DeactivateTunnel(TunnelDeactivateArgs { index }),
+                    vec![
+                        AccountMeta::new(pda_pubkey, false),
+                        AccountMeta::new(owner, false),
+                        AccountMeta::new(globalstate_pubkey, false),
+                    ],
+                )
+            }
+            Err(e) => Err(e),
+        }
     }
 }

@@ -5,7 +5,7 @@ use solana_program::{
     program_error::ProgramError,
     pubkey::Pubkey,
 };
-use crate::{helper::*, state::device::*};
+use crate::{error::DoubleZeroError, helper::*, state::device::*};
 use crate::pda::*;
 #[cfg(test)]
 use solana_program::msg;
@@ -25,7 +25,8 @@ pub fn process_deactivate_device(
  
     let pda_account = next_account_info(accounts_iter)?;
     let owner_account = next_account_info(accounts_iter)?;
-    let _payer_account = next_account_info(accounts_iter)?;
+    let globalstate_account = next_account_info(accounts_iter)?;
+    let payer_account = next_account_info(accounts_iter)?;
     let _system_program = next_account_info(accounts_iter)?;
  
     #[cfg(test)]
@@ -38,10 +39,16 @@ pub fn process_deactivate_device(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let device: Device = Device::from(&pda_account.try_borrow_data().unwrap()[..]);
-    if device.owner != *owner_account.key {
-        return Err(ProgramError::InvalidAccountData);
+    if globalstate_account.owner != program_id {
+        return Err(ProgramError::IncorrectProgramId);
     }
+
+    let globalstate = globalstate_get_next(globalstate_account)?;
+    if !globalstate.foundation_allowlist.contains(payer_account.key) {
+        return Err(DoubleZeroError::NotAllowed.into());
+    }   
+
+    let device: Device = Device::from(&pda_account.try_borrow_data().unwrap()[..]);
     if device.status != DeviceStatus::Deleting {
         #[cfg(test)]
         msg!("{:?}", device);

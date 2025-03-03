@@ -21,7 +21,7 @@ use solana_sdk::{
     pubkey::Pubkey,
     signature::{Keypair, Signature, Signer},
     system_program,
-    transaction::Transaction,
+    transaction::Transaction, transaction_context,
 };
 use solana_transaction_status::{
     option_serializer::OptionSerializer, EncodedTransaction, TransactionBinaryEncoding,
@@ -29,7 +29,9 @@ use solana_transaction_status::{
 };
 use std::collections::HashMap;
 use std::str::FromStr;
+use base64::{engine::general_purpose, Engine}
 
+use crate::dztransaction::DZTransaction;
 use crate::utils::*;
 use crate::{config::*, doublezeroclient::DoubleZeroClient, AccountData};
 
@@ -144,6 +146,46 @@ impl DoubleZeroClient for DZClient {
     fn get(&self, pubkey: Pubkey) -> eyre::Result<AccountData> {
         let data = self.client.get_account_data(&pubkey)?;
         Ok(AccountData::from(&data[..]))
+    }
+
+    fn get_transactions(&self, pubkey: Pubkey) -> eyre::Result<Vec<DZTransaction>> {
+        self.client
+            .get_signatures_for_address(&pubkey)
+            .map(|signatures| {
+                signatures.iter().map(|signature_info| {
+                    let signature = Signature::from_str(&signature_info.signature).unwrap();
+                    self.client
+                        .get_transaction(&signature, UiTransactionEncoding::Base64)
+                        .map(|enc_transaction| {
+
+                            let meta = enc_transaction.transaction.meta.unwrap();
+                            let trans = enc_transaction.transaction.transaction;
+
+                            match trans {
+                                EncodedTransaction::Binary(data, enc) => {
+                                    let data = general_purpose::STANDARD.decode(data).unwrap();
+                                    let instruction = DoubleZeroInstruction::from(data);
+
+                                    DZTransaction {
+                                        instruction,
+                                        accounts: enc_transaction.transaction.transaction.accounts.clone(),
+                                        signature,
+                                        log_messages: meta.log_messages.unwrap_or_default(),
+                                    }
+                                }
+                            }
+
+
+                        })
+                        .unwrap_or_else(|e| DZTransaction {
+                            instruction: DoubleZeroInstruction::InitGlobalState(),
+                            accounts: vec![],
+                            signature,
+                            log_messages: vec![e.to_string()],
+                        })
+                })
+            })
+            .collect()
     }
 }
 

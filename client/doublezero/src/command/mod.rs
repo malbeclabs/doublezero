@@ -2,6 +2,7 @@ use crate::command::init::InitArgs;
 use crate::command::globalconfig::GlobalConfigArgs;
 
 use crate::command::keygen::KeyGenArgs;
+use crate::command::getaccount::GetAccountArgs;
 use crate::command::address::AddressArgs;
 use crate::command::balance::BalanceArgs;
 use crate::command::exchange::ExchangeArgs;
@@ -24,6 +25,7 @@ pub mod keygen;
 pub mod balance;
 pub mod config;
 pub mod globalconfig;
+pub mod getaccount;
 pub mod device;
 pub mod exchange;
 pub mod export;
@@ -58,6 +60,8 @@ pub enum Command {
     Config(ConfigArgs),
     #[command(about = "Global network configuration", hide = false)]
     GlobalConfig(GlobalConfigArgs),
+    #[command(about = "Get Account", hide = false)]
+    Account(GetAccountArgs),
     #[command(about = "Manage locations", hide = false)]
     Location(LocationArgs),
     #[command(about = "Manage exchanges", hide = false)]

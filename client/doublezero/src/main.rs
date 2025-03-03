@@ -72,6 +72,9 @@ async fn main() -> eyre::Result<()> {
                 crate::command::globalconfig::allowlist::AllowlistCommands::Remove(args) => args.execute(&client).await,
             },
         },
+
+        Command::Account(args) => args.execute(&client).await,
+
         Command::Location(command) => match command.command {
             LocationCommands::Create(args) => args.execute(&client).await,
             LocationCommands::Update(args) => args.execute(&client).await,

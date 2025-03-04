@@ -124,6 +124,6 @@ type FlowSample struct {
 
 	// New enriched fields should be inserted below this comment.
 	// Fields above are the default fields sent via Goflow.
-	InputInterface  string `json:"in_interface"`
-	OutputInterface string `json:"out_interface"`
+	InputInterface  string `json:"in_ifname"`
+	OutputInterface string `json:"out_ifname"`
 }

@@ -38,7 +38,7 @@ func WithClickhouseCreds(user, password string) EnricherOption {
 	}
 }
 
-// WithClickhouseTLSEnabled disables TLS on the connection to clickhouse.
+// WithClickhouseTLSEnabled enables/disables TLS on the connection to clickhouse.
 func WithClickhouseTLSEnabled(enabled bool) EnricherOption {
 	return func(e *Enricher) {
 		e.chTLS = enabled
@@ -58,6 +58,13 @@ func WithRedpandaCreds(user, password string) EnricherOption {
 	return func(e *Enricher) {
 		e.rpUser = user
 		e.rpPass = password
+	}
+}
+
+// WithRedpandaTLSEnabled enables/disables TLS on the connection to redpanda.
+func WithRedpandaTLSEnabled(enabled bool) EnricherOption {
+	return func(e *Enricher) {
+		e.rpTLS = enabled
 	}
 }
 
@@ -91,6 +98,7 @@ type Enricher struct {
 	chTLS           bool
 	chConn          *sql.DB
 	rpBroker        string
+	rpTLS           bool
 	rpUser          string
 	rpPass          string
 	rpConsumerTopic string // topic to consume unenriched flow records
@@ -107,6 +115,7 @@ func NewEnricher(opts ...EnricherOption) *Enricher {
 		chPass:          "default",
 		chTLS:           true,
 		rpBroker:        "localhost:9000",
+		rpTLS:           true,
 		rpConsumerTopic: "flows_raw",
 		rpConsumerGroup: "enricher",
 		rpProducerTopic: "flows_enriched",
@@ -145,6 +154,9 @@ func (e *Enricher) Run(ctx context.Context) error {
 		kgo.ConsumerGroup(e.rpConsumerGroup),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
 	)
+	if e.rpTLS {
+		rpOpts = append(rpOpts, kgo.DialTLSConfig(new(tls.Config)))
+	}
 
 	client, err := kgo.NewClient(rpOpts...)
 	if err != nil {
@@ -196,7 +208,6 @@ func (e *Enricher) Run(ctx context.Context) error {
 				record.Topic = e.rpProducerTopic
 				record.Value = body
 				client.Produce(ctx, record, func(record *kgo.Record, err error) {
-					log.Printf("producing record: %v", flow)
 					if err != nil {
 						// TODO: metric
 						fmt.Printf("error producing message to redpanda: %v \n", err)

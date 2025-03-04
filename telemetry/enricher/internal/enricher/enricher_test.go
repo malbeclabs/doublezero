@@ -172,6 +172,7 @@ func TestFlowEnrichment(t *testing.T) {
 		WithClickhouseCreds(chUser, chPassword),
 		WithClickhouseTLSEnabled(false),
 		WithRedpandaBroker(rpBroker),
+		WithRedpandaTLSEnabled(false),
 		WithRedpandaCreds(rpUser, rpPassword),
 		WithRedpandaConsumerTopic(rpTopicRaw),
 		WithRedpandaConsumerGroup(rpConsumerGroup),

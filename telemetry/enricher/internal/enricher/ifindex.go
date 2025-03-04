@@ -68,7 +68,6 @@ func (i *IfNameAnnotator) Init(ctx context.Context, sql *sql.DB) error {
 	if err := i.populateCache(ctx); err != nil {
 		return fmt.Errorf("error populating initial ifname cache: %v", err)
 	}
-	log.Printf("cache: %v", i.cache)
 	go func() {
 		ticker := time.NewTicker(1 * time.Minute)
 		for {
@@ -105,7 +104,6 @@ func (i *IfNameAnnotator) Annotate(flow *FlowSample) error {
 
 	if flow.InputIfIndex != 0 {
 		flow.InputInterface = annotate(flow.SamplerAddress.String(), flow.InputIfIndex)
-		log.Printf("input: %s", flow.InputInterface)
 	}
 
 	if flow.OutputIfIndex != 0 {

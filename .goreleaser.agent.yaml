@@ -15,6 +15,8 @@ builds:
     binary: doublezero-agent
     env:
       - CGO_ENABLED=0
+    ldflags:
+      -X main.Build={{.Env.AGENT_VERSION}}
     goos:
       - linux
     goarch:

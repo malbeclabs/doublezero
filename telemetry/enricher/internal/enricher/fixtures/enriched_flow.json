@@ -61,6 +61,6 @@
     ],
     "ipv6_routing_header_addresses": [],
     "ipv6_routing_header_seg_left": 0,
-    "in_interface": "Switch1/1/2",
-    "out_interface": "Switch1/1/1"
+    "in_ifname": "Switch1/1/2",
+    "out_ifname": "Switch1/1/1"
 }

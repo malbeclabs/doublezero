@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -21,6 +22,9 @@ var (
 	controllerTimeoutInSeconds = flag.Float64("controller-timeout-in-seconds", 2, "How long to wait for a response from the controller before giving up")
 	maxLockAge                 = flag.Int("max-lock-age-in-seconds", 3600, "If agent detects a config lock that older than the specified age, it will force unlock.")
 	verbose                    = flag.Bool("verbose", false, "Enable verbose logging")
+
+	version = flag.Bool("version", false, "version info")
+	Build   string
 )
 
 func pollControllerAndConfigureDevice(ctx context.Context, dzclient pb.ControllerClient, device *string, pubkey string, verbose *bool, maxLockAge int) error {
@@ -67,9 +71,18 @@ func main() {
 
 	flag.Parse()
 
+	if Build == "" {
+		Build = "unknown"
+	}
+
+	if *version {
+		fmt.Printf("build: %s\n", Build)
+		os.Exit(0)
+	}
+
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile | log.Lmicroseconds)
 
-	log.Printf("Starting doublezero-agent\n")
+	log.Printf("Starting doublezero-agent version %s starting\n", Build)
 	log.Printf("doublezero-agent pubkey: %s\n", *localDevicePubkey)
 	log.Printf("doublezero-agent controller: %s\n", *controllerAddress)
 	log.Printf("doublezero-agent device: %s\n", *device)

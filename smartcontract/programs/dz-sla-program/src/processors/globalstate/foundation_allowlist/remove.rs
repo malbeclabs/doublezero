@@ -1,3 +1,5 @@
+use core::fmt;
+
 use crate::error::DoubleZeroError;
 use crate::helper::{globalstate_get, globalstate_write2};
 use crate::pda::*;
@@ -11,9 +13,15 @@ use solana_program::{
 use solana_program::msg;
 
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct RemoveFoundationAllowlistGlobalConfigArgs {
     pub pubkey: Pubkey,
+}
+
+impl fmt::Debug for RemoveFoundationAllowlistGlobalConfigArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "pubkey: {}", self.pubkey)
+    }
 }
 
 pub fn process_remove_foundation_allowlist_globalconfig(

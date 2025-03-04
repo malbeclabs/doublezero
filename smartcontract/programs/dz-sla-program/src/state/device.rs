@@ -1,13 +1,13 @@
-use std::fmt;
 use crate::{bytereader::ByteReader, seeds::SEED_DEVICE, types::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::pubkey::Pubkey;
+use std::fmt;
 
 use super::accounttype::{AccountType, AccountTypeInfo};
 
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
-#[borsh(use_discriminant=true)]
+#[borsh(use_discriminant = true)]
 pub enum DeviceType {
     Switch = 0,
 }
@@ -31,7 +31,7 @@ impl fmt::Display for DeviceType {
 
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
-#[borsh(use_discriminant=true)]
+#[borsh(use_discriminant = true)]
 pub enum DeviceStatus {
     Pending = 0,
     Activated = 1,
@@ -67,25 +67,41 @@ impl fmt::Display for DeviceStatus {
 
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 pub struct Device {
-    pub account_type: AccountType,  // 1
-    pub owner: Pubkey,              // 32
-    pub index: u128,                // 16
-    pub location_pk: Pubkey,        // 32
-    pub exchange_pk: Pubkey,        // 32
-    pub device_type: DeviceType,    // 1
-    pub public_ip: IpV4,            // 4
-    pub dz_prefix: NetworkV4,       // 5
-    pub status: DeviceStatus,       // 1
-    pub code: String,               // 4 + len
+    pub account_type: AccountType, // 1
+    pub owner: Pubkey,             // 32
+    pub index: u128,               // 16
+    pub location_pk: Pubkey,       // 32
+    pub exchange_pk: Pubkey,       // 32
+    pub device_type: DeviceType,   // 1
+    pub public_ip: IpV4,           // 4
+    pub dz_prefix: NetworkV4,      // 5
+    pub status: DeviceStatus,      // 1
+    pub code: String,              // 4 + len
+}
+
+impl fmt::Display for Device {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "account_type: {}, owner: {}, index: {}, location_pk: {}, exchange_pk: {}, device_type: {}, public_ip: {}, dz_prefix: {}, status: {}, code: {}",
+            self.account_type, self.owner, self.index, self.location_pk, self.exchange_pk, self.device_type, ipv4_to_string(&self.public_ip), networkv4_to_string(&self.dz_prefix), self.status, self.code
+        )
+    }
 }
 
 impl AccountTypeInfo for Device {
-    fn seed(&self) -> &[u8] { SEED_DEVICE }
-    fn size(&self) -> usize { 
+    fn seed(&self) -> &[u8] {
+        SEED_DEVICE
+    }
+    fn size(&self) -> usize {
         1 + 32 + 16 + 32 + 32 + 1 + 4 + 5 + 1 + 4 + self.code.len()
     }
-    fn index(&self) -> u128 { self.index }
-    fn owner(&self) -> Pubkey { self.owner }
+    fn index(&self) -> u128 {
+        self.index
+    }
+    fn owner(&self) -> Pubkey {
+        self.owner
+    }
 }
 
 impl From<&[u8]> for Device {
@@ -113,7 +129,6 @@ mod tests {
 
     #[test]
     fn test_state_exchange_serialization() {
-
         let val = Device {
             account_type: AccountType::Device,
             owner: Pubkey::new_unique(),
@@ -122,9 +137,9 @@ mod tests {
             device_type: DeviceType::Switch,
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
-            dz_prefix: ([10,0,0,1], 24),
+            dz_prefix: ([10, 0, 0, 1], 24),
             public_ip: ipv4_parse(&"1.2.3.4".to_string()),
-            status: DeviceStatus::Activated,    
+            status: DeviceStatus::Activated,
         };
 
         let data = borsh::to_vec(&val).unwrap();

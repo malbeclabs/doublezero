@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::error::DoubleZeroError;
 use crate::helper::*;
 use crate::pda::*;
@@ -5,24 +7,39 @@ use crate::state::user::*;
 use crate::types::*;
 
 use borsh::{BorshDeserialize, BorshSerialize};
+#[cfg(test)]
+use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     program_error::ProgramError,
     pubkey::Pubkey,
 };
-#[cfg(test)]
-use solana_program::msg;
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct UserUpdateArgs {
     pub index: u128,
     pub user_type: Option<UserType>,
     pub cyoa_type: Option<UserCYOA>,
     pub client_ip: Option<IpV4>,
-    pub dz_ip: Option<IpV4>, 
+    pub dz_ip: Option<IpV4>,
     pub tunnel_id: Option<u16>,
     pub tunnel_net: Option<NetworkV4>,
+}
+
+impl fmt::Debug for UserUpdateArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "user_type: {}, cyoa_type: {}, client_ip: {}, dz_ip: {}, tunnel_id: {}, tunnel_net: {}",
+            self.user_type.unwrap_or(UserType::None),
+            self.cyoa_type.unwrap_or(UserCYOA::None),
+            ipv4_to_string(&self.client_ip.unwrap_or_default()),
+            ipv4_to_string(&self.dz_ip.unwrap_or_default()),
+            self.tunnel_id.unwrap_or_default(),
+            networkv4_to_string(&self.tunnel_net.unwrap_or_default())
+        )
+    }
 }
 
 pub fn process_update_user(
@@ -41,7 +58,10 @@ pub fn process_update_user(
     msg!("process_update_user({:?})", value);
 
     let (expected_pda_account, bump_seed) = get_user_pda(program_id, value.index);
-    assert_eq!(pda_account.key, &expected_pda_account, "Invalid Device PubKey");
+    assert_eq!(
+        pda_account.key, &expected_pda_account,
+        "Invalid Device PubKey"
+    );
 
     if pda_account.owner != program_id {
         return Err(ProgramError::IncorrectProgramId);
@@ -50,7 +70,7 @@ pub fn process_update_user(
     let globalstate = globalstate_get_next(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
-    } 
+    }
 
     let mut user: User = User::from(&pda_account.try_borrow_data().unwrap()[..]);
 
@@ -72,16 +92,9 @@ pub fn process_update_user(
     if let Some(value) = value.client_ip {
         user.client_ip = value;
     }
-    account_write(
-        pda_account,
-        &user,
-        payer_account,
-        system_program,
-        bump_seed,
-    );
+    account_write(pda_account, &user, payer_account, system_program, bump_seed);
     #[cfg(test)]
     msg!("Updated: {:?}", user);
 
     Ok(())
 }
-

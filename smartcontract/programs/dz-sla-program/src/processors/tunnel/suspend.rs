@@ -1,3 +1,5 @@
+use core::fmt;
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -9,9 +11,15 @@ use solana_program::{
 use crate::{error::DoubleZeroError, helper::*, state::tunnel::*};
 use crate::pda::*;
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct TunnelSuspendArgs {
     pub index: u128,
+}
+
+impl fmt::Debug for TunnelSuspendArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "")
+    }
 }
 
 pub fn process_suspend_tunnel(

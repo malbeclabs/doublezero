@@ -1,3 +1,5 @@
+use core::fmt;
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -12,13 +14,23 @@ use crate::types::*;
 use solana_program::msg;
 
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct DeviceUpdateArgs {
     pub index: u128,
     pub code: String,
     pub device_type: DeviceType,
     pub public_ip: IpV4,
     pub dz_prefix: NetworkV4,
+}
+
+impl fmt::Debug for DeviceUpdateArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "code: {}, device_type: {:?}, public_ip: {}, dz_prefix: {}",
+            self.code, self.device_type, ipv4_to_string(&self.public_ip), networkv4_to_string(&self.dz_prefix)
+        )
+    }
 }
 
 pub fn process_update_device(

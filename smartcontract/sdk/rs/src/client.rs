@@ -1,5 +1,8 @@
 use async_trait::async_trait;
 use base64::prelude::*;
+use base64::{engine::general_purpose, Engine};
+use bincode::deserialize;
+use chrono::{DateTime, NaiveDateTime, Utc};
 use double_zero_sla_program::{
     instructions::*,
     pda::*,
@@ -21,7 +24,7 @@ use solana_sdk::{
     pubkey::Pubkey,
     signature::{Keypair, Signature, Signer},
     system_program,
-    transaction::Transaction, transaction_context,
+    transaction::Transaction,
 };
 use solana_transaction_status::{
     option_serializer::OptionSerializer, EncodedTransaction, TransactionBinaryEncoding,
@@ -29,7 +32,6 @@ use solana_transaction_status::{
 };
 use std::collections::HashMap;
 use std::str::FromStr;
-use base64::{engine::general_purpose, Engine}
 
 use crate::dztransaction::DZTransaction;
 use crate::utils::*;
@@ -144,48 +146,88 @@ impl DoubleZeroClient for DZClient {
     }
 
     fn get(&self, pubkey: Pubkey) -> eyre::Result<AccountData> {
-        let data = self.client.get_account_data(&pubkey)?;
-        Ok(AccountData::from(&data[..]))
+        match self.client.get_account(&pubkey) {
+            Ok(account) => {
+                if account.owner == self.program_id {
+                    let data = account.data;
+                    Ok(AccountData::from(&data[..]))
+                } else {
+                    Ok(AccountData::None)
+                }
+            }
+            Err(e) => Err(eyre!(e)),
+        }
     }
 
+    #[allow(deprecated)]
     fn get_transactions(&self, pubkey: Pubkey) -> eyre::Result<Vec<DZTransaction>> {
-        self.client
-            .get_signatures_for_address(&pubkey)
-            .map(|signatures| {
-                signatures.iter().map(|signature_info| {
-                    let signature = Signature::from_str(&signature_info.signature).unwrap();
-                    self.client
-                        .get_transaction(&signature, UiTransactionEncoding::Base64)
-                        .map(|enc_transaction| {
+        let mut transactions: Vec<DZTransaction> = Vec::new();
 
-                            let meta = enc_transaction.transaction.meta.unwrap();
-                            let trans = enc_transaction.transaction.transaction;
+        let signatures = self.client.get_signatures_for_address(&pubkey)?;
 
-                            match trans {
-                                EncodedTransaction::Binary(data, enc) => {
-                                    let data = general_purpose::STANDARD.decode(data).unwrap();
-                                    let instruction = DoubleZeroInstruction::from(data);
+        for signature_info in signatures.into_iter() {
+            let signature = Signature::from_str(&signature_info.signature).unwrap();
+            let enc_transaction = self
+                .client
+                .get_transaction(&signature, UiTransactionEncoding::Base64)?;
 
-                                    DZTransaction {
-                                        instruction,
-                                        accounts: enc_transaction.transaction.transaction.accounts.clone(),
-                                        signature,
-                                        log_messages: meta.log_messages.unwrap_or_default(),
-                                    }
-                                }
+            let time = enc_transaction.block_time.unwrap_or_default();
+
+            let time = match NaiveDateTime::from_timestamp_opt(time, 0) {
+                Some(dt) => DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc),
+                None => DateTime::<Utc>::from_timestamp_nanos(0),
+            };
+
+            let meta = enc_transaction.transaction.meta.unwrap();
+            let trans = enc_transaction.transaction.transaction;
+
+            match trans {
+                EncodedTransaction::Binary(data, _enc) => {
+                    let data: &[u8] = &general_purpose::STANDARD.decode(data).unwrap();
+
+                    let tx: Transaction = match deserialize(&data) {
+                        Ok(tx) => tx,
+                        Err(e) => {
+                            eprintln!("Error al deserializar la transacción: {:?}", e);
+                            panic!("");
+                        }
+                    };
+
+                    for instr in tx.message.instructions.iter() {
+                        let program_id = instr.program_id(&tx.message.account_keys);
+                        let account = instr.accounts[instr.accounts.len() - 2];
+                        let account = tx.message.account_keys[account as usize];
+
+                        let instruction = {
+                            if program_id == &self.program_id {
+                                DoubleZeroInstruction::unpack(&instr.data).unwrap()
+                            } else {
+                                DoubleZeroInstruction::InitGlobalState()
                             }
+                        };
 
+                        let log_messages = {
+                            if let OptionSerializer::Some(msgs) = &meta.log_messages {
+                                msgs.clone()
+                            } else {
+                                vec![]
+                            }
+                        };
 
-                        })
-                        .unwrap_or_else(|e| DZTransaction {
-                            instruction: DoubleZeroInstruction::InitGlobalState(),
-                            accounts: vec![],
+                        transactions.push(DZTransaction {
+                            time,
+                            account,
+                            instruction,
                             signature,
-                            log_messages: vec![e.to_string()],
-                        })
-                })
-            })
-            .collect()
+                            log_messages,
+                        });
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Ok(transactions)
     }
 }
 

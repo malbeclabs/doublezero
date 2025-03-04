@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::error::DoubleZeroError;
 use crate::helper::*;
 use crate::pda::*;
@@ -13,7 +15,7 @@ use solana_program::{
 #[cfg(test)]
 use solana_program::msg;
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct LocationCreateArgs {
     pub index: u128,
     pub code: String,
@@ -22,6 +24,13 @@ pub struct LocationCreateArgs {
     pub lat: f64,
     pub lng: f64,
     pub loc_id: u32,
+}
+
+impl fmt::Debug for LocationCreateArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "code: {}, name: {}, country: {}, lat: {}, lng: {}, loc_id: {}", 
+               self.code, self.name, self.country, self.lat, self.lng, self.loc_id)
+    }
 }
 
 pub fn process_create_location(

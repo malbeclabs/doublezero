@@ -48,6 +48,16 @@ pub struct Exchange {
     pub name: String,               // 4 + len
 }
 
+impl fmt::Display for Exchange {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "account_type: {}, owner: {}, index: {}, lat: {}, lng: {}, loc_id: {}, status: {}, code: {}, name: {}",
+            self.account_type, self.owner, self.index, self.lat, self.lng, self.loc_id, self.status, self.code, self.name
+        )
+    }
+}
+
 impl AccountTypeInfo for Exchange {
     fn seed(&self) -> &[u8] { SEED_EXCHANGE }
     fn size(&self) -> usize { 

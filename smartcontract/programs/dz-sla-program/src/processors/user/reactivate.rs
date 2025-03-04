@@ -1,3 +1,5 @@
+use core::fmt;
+
 use crate::helper::*;
 use crate::pda::*;
 use crate::state::user::*;
@@ -14,9 +16,15 @@ use solana_program::{
 use solana_program::msg;
 
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct UserReactivateArgs {
     pub index: u128,
+}
+
+impl fmt::Debug for UserReactivateArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "")
+    }
 }
 
 pub fn process_reactivate_user(

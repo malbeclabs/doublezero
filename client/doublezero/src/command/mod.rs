@@ -2,7 +2,7 @@ use crate::command::init::InitArgs;
 use crate::command::globalconfig::GlobalConfigArgs;
 
 use crate::command::keygen::KeyGenArgs;
-use crate::command::getaccount::GetAccountArgs;
+use crate::command::account::GetAccountArgs;
 use crate::command::address::AddressArgs;
 use crate::command::balance::BalanceArgs;
 use crate::command::exchange::ExchangeArgs;
@@ -25,7 +25,7 @@ pub mod keygen;
 pub mod balance;
 pub mod config;
 pub mod globalconfig;
-pub mod getaccount;
+pub mod account;
 pub mod device;
 pub mod exchange;
 pub mod export;

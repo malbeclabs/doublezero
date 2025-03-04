@@ -1,3 +1,5 @@
+use core::fmt;
+
 use crate::error::DoubleZeroError;
 use crate::helper::*;
 use crate::pda::*;
@@ -13,12 +15,18 @@ use solana_program::{
 };
 #[cfg(test)]
 use solana_program::msg;
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct UserActivateArgs {
     pub index: u128,
     pub tunnel_id: u16,
     pub tunnel_net: NetworkV4, 
     pub dz_ip: IpV4,
+}
+
+impl fmt::Debug for UserActivateArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "tunnel_id: {}, tunnel_net: {}, dz_ip: {}", self.tunnel_id, networkv4_to_string(&self.tunnel_net), ipv4_to_string(&self.dz_ip))
+    }
 }
 
 pub fn process_activate_user(

@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::helper::*;
 use crate::pda::*;
 use crate::state::user::*;
@@ -13,9 +15,15 @@ use solana_program::{
 use solana_program::msg;
 
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct UserSuspendArgs {
     pub index: u128,
+}
+
+impl fmt::Debug for UserSuspendArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "")
+    }
 }
 
 pub fn process_suspend_user(

@@ -1,7 +1,10 @@
+use std::fmt;
+
 use crate::pda::*;
+use crate::types::networkv4_to_string;
 use crate::{
     seeds::*,
-    state::{accounttype::AccountType, globalconfig::*},
+    state::{accounttype::AccountType, globalconfig::GlobalConfig},
     types::NetworkV4,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -16,12 +19,18 @@ use solana_program::{
 #[cfg(test)]
 use solana_program::msg;
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct SetGlobalConfigArgs {
     pub local_asn: u32,
     pub remote_asn: u32,
     pub tunnel_tunnel_block: NetworkV4,
     pub user_tunnel_block: NetworkV4,
+}
+
+impl fmt::Debug for SetGlobalConfigArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "local_asn: {}, remote_asn: {}, tunnel_block: {}, user _block: {}", self.local_asn, self.remote_asn, networkv4_to_string(&self.tunnel_tunnel_block), networkv4_to_string(&self.user_tunnel_block))
+    }
 }
 
 pub fn process_set_globalconfig(

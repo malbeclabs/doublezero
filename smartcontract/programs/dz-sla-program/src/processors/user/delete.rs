@@ -1,3 +1,5 @@
+use core::fmt;
+
 use crate::error::DoubleZeroError;
 use crate::helper::*;
 use crate::pda::*;
@@ -13,9 +15,15 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct UserDeleteArgs {
     pub index: u128,
+}
+
+impl fmt::Debug for UserDeleteArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "")
+    }
 }
 
 pub fn process_delete_user(

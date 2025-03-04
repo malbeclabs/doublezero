@@ -1,3 +1,5 @@
+use core::fmt;
+
 use super::accounttype::AccountType;
 use crate::bytereader::ByteReader;
 use borsh::BorshSerialize;
@@ -10,6 +12,16 @@ pub struct GlobalState {
     pub foundation_allowlist: Vec<Pubkey>, // 4 + 32 * len
     pub device_allowlist: Vec<Pubkey>,     // 4 + 32 * len
     pub user_allowlist: Vec<Pubkey>,       // 4 + 32 * len
+}
+
+impl fmt::Display for GlobalState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "account_type: {}, account_index: {}, foundation_allowlist: {:?}, device_allowlist: {:?}, user_allowlist: {:?}",
+            self.account_type, self.account_index, self.foundation_allowlist, self.device_allowlist, self.user_allowlist
+        )
+    }
 }
 
 impl GlobalState {

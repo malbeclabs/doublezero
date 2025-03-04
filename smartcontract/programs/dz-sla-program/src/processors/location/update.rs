@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::error::DoubleZeroError;
 use crate::helper::*;
 use crate::pda::*;
@@ -10,7 +12,7 @@ use solana_program::{
 };
 #[cfg(test)]
 use solana_program::msg;
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct LocationUpdateArgs {
     pub index: u128,
     pub code: Option<String>,
@@ -19,6 +21,14 @@ pub struct LocationUpdateArgs {
     pub lat: Option<f64>,
     pub lng: Option<f64>,
     pub loc_id: Option<u32>,
+}
+
+
+impl fmt::Debug for LocationUpdateArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "code: {:?}, name: {:?}, country: {:?}, lat: {:?}, lng: {:?}, loc_id: {:?}", 
+               self.code, self.name, self.country, self.lat, self.lng, self.loc_id)
+    }
 }
 
 pub fn process_update_location(

@@ -1,3 +1,5 @@
+use core::fmt;
+
 use crate::helper::*;
 use crate::pda::*;
 use crate::state::exchange::*;
@@ -10,9 +12,15 @@ use solana_program::{
 #[cfg(test)]
 use solana_program::msg;
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct ExchangeSuspendArgs {
     pub index: u128,
+}
+
+impl fmt::Debug for ExchangeSuspendArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "")
+    }
 }
 
 pub fn process_suspend_exchange(

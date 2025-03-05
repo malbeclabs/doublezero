@@ -52,6 +52,7 @@ func main() {
 		enricher.WithRedpandaConsumerTopic(*redpandaTopicRaw),
 		enricher.WithRedpandaConsumerGroup(*redpandaConsumerGroup),
 		enricher.WithRedpandaProducerTopic(*redpandaTopicEnriched),
+		enricher.WithRedpandaMetrics(true),
 	}
 	enricher := enricher.NewEnricher(opts...)
 	if err := enricher.Run(ctx); err != nil {

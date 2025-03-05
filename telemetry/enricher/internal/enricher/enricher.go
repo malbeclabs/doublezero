@@ -14,10 +14,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/sasl/scram"
+	"github.com/twmb/franz-go/plugin/kprom"
 )
 
 type EnricherOption func(*Enricher)
@@ -91,6 +93,14 @@ func WithRedpandaProducerTopic(topic string) EnricherOption {
 	}
 }
 
+// WithRedpandaMetrics enables prometheus metrics on production/consumption
+// via redpanda.
+func WithRedpandaMetrics(enabled bool) EnricherOption {
+	return func(e *Enricher) {
+		e.rpMetrics = enabled
+	}
+}
+
 type Enricher struct {
 	chAddr          string
 	chUser          string
@@ -104,6 +114,7 @@ type Enricher struct {
 	rpConsumerTopic string // topic to consume unenriched flow records
 	rpConsumerGroup string
 	rpProducerTopic string // topic to produce enriched flow records
+	rpMetrics       bool
 	rpConn          *kgo.Client
 	annotators      []Annotator
 }
@@ -119,6 +130,7 @@ func NewEnricher(opts ...EnricherOption) *Enricher {
 		rpConsumerTopic: "flows_raw",
 		rpConsumerGroup: "enricher",
 		rpProducerTopic: "flows_enriched",
+		rpMetrics:       false,
 	}
 
 	for _, opt := range opts {
@@ -156,6 +168,16 @@ func (e *Enricher) Run(ctx context.Context) error {
 	)
 	if e.rpTLS {
 		rpOpts = append(rpOpts, kgo.DialTLSConfig(new(tls.Config)))
+	}
+
+	if e.rpMetrics {
+		metrics := kprom.NewMetrics("kgo")
+		rpOpts = append(rpOpts, kgo.WithHooks(metrics))
+
+		go func() {
+			http.Handle("/metrics", metrics.Handler())
+			log.Fatal(http.ListenAndServe("localhost:8888", nil))
+		}()
 	}
 
 	client, err := kgo.NewClient(rpOpts...)

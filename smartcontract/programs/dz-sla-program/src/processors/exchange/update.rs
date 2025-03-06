@@ -1,3 +1,5 @@
+use core::fmt;
+
 use crate::helper::*;
 use crate::pda::*;
 use crate::state::exchange::*;
@@ -10,7 +12,7 @@ use solana_program::{
 #[cfg(test)]
 use solana_program::msg;
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct ExchangeUpdateArgs {
     pub index: u128,
     pub code: Option<String>,
@@ -18,6 +20,16 @@ pub struct ExchangeUpdateArgs {
     pub lat: Option<f64>,
     pub lng: Option<f64>,
     pub loc_id: Option<u32>,
+}
+
+impl fmt::Debug for ExchangeUpdateArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "code: {:?}, name: {:?}, lat: {:?}, lng: {:?}, loc_id: {:?}",
+            self.code, self.name, self.lat, self.lng, self.loc_id
+        )
+    }
 }
 
 pub fn process_update_exchange(

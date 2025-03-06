@@ -1,3 +1,5 @@
+use core::fmt;
+
 use crate::helper::*;
 use crate::pda::*;
 use crate::state::exchange::Exchange;
@@ -11,9 +13,15 @@ use solana_program::{
 use solana_program::msg;
 
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct ExchangeDeleteArgs {
     pub index: u128,
+}
+
+impl fmt::Debug for ExchangeDeleteArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "")
+    }
 }
 
 pub fn process_delete_exchange(

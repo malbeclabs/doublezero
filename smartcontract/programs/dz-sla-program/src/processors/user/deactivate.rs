@@ -1,3 +1,5 @@
+use core::fmt;
+
 use crate::error::DoubleZeroError;
 use crate::helper::*;
 use crate::pda::*;
@@ -13,9 +15,15 @@ use solana_program::{
 };
 
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct UserDeactivateArgs {
     pub index: u128,
+}
+
+impl fmt::Debug for UserDeactivateArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "")
+    }
 }
 
 pub fn process_deactivate_user(

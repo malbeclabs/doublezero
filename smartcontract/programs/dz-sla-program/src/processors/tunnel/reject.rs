@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::error::DoubleZeroError;
 use crate::helper::*;
 use crate::pda::*;
@@ -12,10 +14,16 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct TunnelRejectArgs {
     pub index: u128,
     pub error: String,
+}
+
+impl fmt::Debug for TunnelRejectArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "error: {}", self.error)
+    }
 }
 
 pub fn process_reject_tunnel(

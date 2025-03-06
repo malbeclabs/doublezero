@@ -1,3 +1,5 @@
+use core::fmt;
+
 use crate::error::DoubleZeroError;
 use crate::helper::*;
 use crate::pda::*;
@@ -15,13 +17,19 @@ use solana_program::{
 use solana_program::msg;
 
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct UserCreateArgs {
     pub index: u128,
     pub user_type: UserType,
     pub device_pk: Pubkey,
     pub cyoa_type: UserCYOA,
     pub client_ip: IpV4,
+}
+
+impl fmt::Debug for UserCreateArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "user_type: {}, device_pk: {}, cyoa_type: {}, client_ip: {}", self.user_type, self.device_pk, self.cyoa_type, ipv4_to_string(&self.client_ip))
+    }
 }
 
 pub fn process_create_user(

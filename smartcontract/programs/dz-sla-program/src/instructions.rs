@@ -33,7 +33,7 @@ use crate::processors::{
 };
 
 // Instructions that our program can execute
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
 pub enum DoubleZeroInstruction {
     InitGlobalState(),                    // variant 0
     SetGlobalConfig(SetGlobalConfigArgs), // variant 1
@@ -153,6 +153,109 @@ impl DoubleZeroInstruction {
             43 => Ok(Self::BanUser(from_slice::<UserBanArgs>(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
+        }
+    }
+
+    pub fn get_name(&self) -> String {
+        match self {
+            Self::InitGlobalState() => "InitGlobalState".to_string(),
+            Self::SetGlobalConfig(_) => "SetGlobalConfig".to_string(),
+
+            Self::CreateLocation(_) => "CreateLocation".to_string(),
+            Self::UpdateLocation(_) => "UpdateLocation".to_string(),
+            Self::SuspendLocation(_) => "SuspendLocation".to_string(),
+            Self::ReactivateLocation(_) => "ReactivateLocation".to_string(),
+            Self::DeleteLocation(_) => "DeleteLocation".to_string(),
+
+            Self::CreateExchange(_) => "CreateExchange".to_string(),
+            Self::UpdateExchange(_) => "UpdateExchange".to_string(),
+            Self::SuspendExchange(_) => "SuspendExchange".to_string(),
+            Self::ReactivateExchange(_) => "ReactivateExchange".to_string(),
+            Self::DeleteExchange(_) => "DeleteExchange".to_string(),
+
+            Self::CreateDevice(_) => "CreateDevice".to_string(),
+            Self::ActivateDevice(_) => "ActivateDevice".to_string(),
+            Self::UpdateDevice(_) => "UpdateDevice".to_string(),
+            Self::SuspendDevice(_) => "SuspendDevice".to_string(),
+            Self::ReactivateDevice(_) => "ReactivateDevice".to_string(),
+            Self::DeleteDevice(_) => "DeleteDevice".to_string(),
+
+            Self::CreateTunnel(_) => "CreateTunnel".to_string(),
+            Self::ActivateTunnel(_) => "ActivateTunnel".to_string(),
+            Self::UpdateTunnel(_) => "UpdateTunnel".to_string(),
+            Self::SuspendTunnel(_) => "SuspendTunnel".to_string(),
+            Self::ReactivateTunnel(_) => "ReactivateTunnel".to_string(),
+            Self::DeleteTunnel(_) => "DeleteTunnel".to_string(),
+
+            Self::CreateUser(_) => "CreateUser".to_string(),
+            Self::ActivateUser(_) => "ActivateUser".to_string(),
+            Self::UpdateUser(_) => "UpdateUser".to_string(),
+            Self::SuspendUser(_) => "SuspendUser".to_string(),
+            Self::ReactivateUser(_) => "ReactivateUser".to_string(),
+            Self::DeleteUser(_) => "DeleteUser".to_string(),
+
+            Self::DeactivateDevice(_) => "DeactivateDevice".to_string(),
+            Self::DeactivateTunnel(_) => "DeactivateTunnel".to_string(),
+            Self::DeactivateUser(_) => "DeactivateUser".to_string(),
+            _ => "Unknown".to_string(),
+        }
+    }
+
+    pub fn get_args(&self) -> String {
+        match self {
+            Self::InitGlobalState() => "".to_string(),
+            Self::SetGlobalConfig(args) => format!("{:?}", args),
+
+            Self::CreateLocation(args) => format!("{:?}", args),
+            Self::UpdateLocation(args) => format!("{:?}", args),
+            Self::SuspendLocation(args) => format!("{:?}", args),
+            Self::ReactivateLocation(args) => format!("{:?}", args),
+            Self::DeleteLocation(args) => format!("{:?}", args),
+
+            Self::CreateExchange(args) => format!("{:?}", args),
+            Self::UpdateExchange(args) => format!("{:?}", args),
+            Self::SuspendExchange(args) => format!("{:?}", args),
+            Self::ReactivateExchange(args) => format!("{:?}", args),
+            Self::DeleteExchange(args) => format!("{:?}", args),
+
+            Self::CreateDevice(args) => format!("{:?}", args),
+            Self::ActivateDevice(args) => format!("{:?}", args),
+            Self::UpdateDevice(args) => format!("{:?}", args),
+            Self::SuspendDevice(args) => format!("{:?}", args),
+            Self::ReactivateDevice(args) => format!("{:?}", args),
+            Self::DeleteDevice(args) => format!("{:?}", args),
+
+            Self::CreateTunnel(args) => format!("{:?}", args),
+            Self::ActivateTunnel(args) => format!("{:?}", args),
+            Self::UpdateTunnel(args) => format!("{:?}", args),
+            Self::SuspendTunnel(args) => format!("{:?}", args),
+            Self::ReactivateTunnel(args) => format!("{:?}", args),
+            Self::DeleteTunnel(args) => format!("{:?}", args),
+
+            Self::CreateUser(args) => format!("{:?}", args),
+            Self::ActivateUser(args) => format!("{:?}", args),
+            Self::UpdateUser(args) => format!("{:?}", args),
+            Self::SuspendUser(args) => format!("{:?}", args),
+            Self::ReactivateUser(args) => format!("{:?}", args),
+            Self::DeleteUser(args) => format!("{:?}", args),
+
+            Self::DeactivateDevice(args) => format!("{:?}", args),
+            Self::DeactivateTunnel(args) => format!("{:?}", args),
+            Self::DeactivateUser(args) => format!("{:?}", args),
+
+            Self::RejectDevice(args) => format!("{:?}", args),
+            Self::RejectTunnel(args) => format!("{:?}", args),
+            Self::RejectUser(args) => format!("{:?}", args),
+
+            Self::AddFoundationAllowlistGlobalConfig(args) => format!("{:?}", args),
+            Self::RemoveFoundationAllowlistGlobalConfig(args) => format!("{:?}", args),
+            Self::AddDeviceAllowlistGlobalConfig(args) => format!("{:?}", args),
+            Self::RemoveDeviceAllowlistGlobalConfig(args) => format!("{:?}", args),
+            Self::AddUserAllowlistGlobalConfig(args) => format!("{:?}", args),
+            Self::RemoveUserAllowlistGlobalConfig(args) => format!("{:?}", args),
+
+            Self::RequestBanUser(args) => format!("{:?}", args),
+            Self::BanUser(args) => format!("{:?}", args),            
         }
     }
 }

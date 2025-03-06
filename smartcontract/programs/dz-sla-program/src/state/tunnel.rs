@@ -95,6 +95,16 @@ pub struct Tunnel {
     pub code: String,                   // 4 + len
 }
 
+impl fmt::Display for Tunnel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "account_type: {}, owner: {}, index: {}, side_a_pk: {}, side_z_pk: {}, tunnel_type: {}, bandwidth: {}, mtu: {}, delay_ns: {}, jitter_ns: {}, tunnel_id: {}, tunnel_net: {}, status: {}, code: {}",
+            self.account_type, self.owner, self.index, self.side_a_pk, self.side_z_pk, self.tunnel_type, self.bandwidth, self.mtu, self.delay_ns, self.jitter_ns, self.tunnel_id, networkv4_to_string(&self.tunnel_net), self.status, self.code
+        )
+    }
+}
+
 impl AccountTypeInfo for Tunnel {
     fn seed(&self) -> &[u8] { SEED_TUNNEL }
     fn size(&self) -> usize { 

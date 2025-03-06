@@ -1,3 +1,5 @@
+use core::fmt;
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -11,11 +13,17 @@ use crate::types::*;
 #[cfg(test)]
 use solana_program::msg;
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct TunnelActivateArgs {
     pub index: u128,
     pub tunnel_id: u16,
     pub tunnel_net: NetworkV4, 
+}
+
+impl fmt::Debug for TunnelActivateArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "tunnel_id: {}, tunnel_net: {}", self.tunnel_id, networkv4_to_string(&self.tunnel_net))
+    }
 }
 
 pub fn process_activate_tunnel(

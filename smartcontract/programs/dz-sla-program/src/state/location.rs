@@ -48,6 +48,16 @@ pub struct Location {
     pub country: String,            // 4 + len
 }
 
+impl fmt::Display for Location {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "account_type: {}, owner: {}, index: {}, lat: {}, lng: {}, loc_id: {}, status: {}, code: {}, name: {}, country: {}",
+            self.account_type, self.owner, self.index, self.lat, self.lng, self.loc_id, self.status, self.code, self.name, self.country
+        )
+    }
+}
+
 impl AccountTypeInfo for Location {
     fn seed(&self) -> &[u8] { SEED_LOCATION }
     fn size(&self) -> usize { 

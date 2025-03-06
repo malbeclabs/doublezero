@@ -1,3 +1,5 @@
+use core::fmt;
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -9,7 +11,7 @@ use crate::{helper::*, state::tunnel::*};
 use crate::pda::*;
 #[cfg(test)]
 use solana_program::msg;
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct TunnelUpdateArgs {
     pub index: u128,
     pub code: Option<String>,
@@ -18,6 +20,16 @@ pub struct TunnelUpdateArgs {
     pub mtu: Option<u32>,  
     pub delay_ns: Option<u64>, 
     pub jitter_ns: Option<u64>,
+}
+
+impl fmt::Debug for TunnelUpdateArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "code: {:?}, tunnel_type: {:?}, bandwidth: {:?}, mtu: {:?}, delay_ns: {:?}, jitter_ns: {:?}",
+            self.code, self.tunnel_type, self.bandwidth, self.mtu, self.delay_ns, self.jitter_ns
+        )
+    }
 }
 
 pub fn process_update_tunnel(

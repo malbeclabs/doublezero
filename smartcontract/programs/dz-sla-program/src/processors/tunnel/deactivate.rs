@@ -1,3 +1,5 @@
+use std::fmt;
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -12,9 +14,15 @@ use solana_program::msg;
 
 
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct TunnelDeactivateArgs {
     pub index: u128,
+}
+
+impl fmt::Debug for TunnelDeactivateArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "")
+    }
 }
 
 pub fn process_deactivate_tunnel(

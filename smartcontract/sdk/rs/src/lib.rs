@@ -31,6 +31,7 @@ mod errors;
 mod servicecontroller;
 mod services;
 mod utils;
+mod dztransaction;
 
 pub use crate::client::DZClient;
 pub use crate::doublezeroclient::DoubleZeroClient;

@@ -1,3 +1,5 @@
+use core::fmt;
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -11,10 +13,17 @@ use crate::pda::*;
 use solana_program::msg;
 
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct DeviceSuspendArgs {
     pub index: u128,
 }
+
+impl fmt::Debug for DeviceSuspendArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "")
+    }
+}
+
 pub fn process_suspend_device(
     program_id: &Pubkey,
     accounts: &[AccountInfo],

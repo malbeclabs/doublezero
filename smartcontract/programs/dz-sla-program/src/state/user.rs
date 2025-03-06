@@ -126,6 +126,26 @@ pub struct User {
     pub status: UserStatus,        // 1
 }
 
+impl fmt::Display for User {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "account_type: {}, owner: {}, index: {}, user_type: {}, device_pk: {}, cyoa_type: {}, client_ip: {}, dz_ip: {}, tunnel_id: {}, tunnel_net: {}, status: {}",
+            self.account_type,
+            self.owner,
+            self.index,
+            self.user_type,
+            self.device_pk,
+            self.cyoa_type,
+            ipv4_to_string(&self.client_ip),
+            ipv4_to_string(&self.dz_ip),
+            self.tunnel_id,
+            networkv4_to_string(&self.tunnel_net),
+            self.status
+        )
+    }
+}
+
 impl AccountTypeInfo for User {
     fn seed(&self) -> &[u8] {
         SEED_USER

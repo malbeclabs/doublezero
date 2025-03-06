@@ -1,3 +1,5 @@
+use core::fmt;
+
 use crate::pda::*;
 use crate::{error::DoubleZeroError, helper::*, state::tunnel::*};
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -9,9 +11,15 @@ use solana_program::{
 };
 #[cfg(test)]
 use solana_program::msg;
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct TunnelReactivateArgs {
     pub index: u128,
+}
+
+impl fmt::Debug for TunnelReactivateArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "")
+    }
 }
 
 pub fn process_reactivate_tunnel(

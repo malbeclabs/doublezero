@@ -1,3 +1,5 @@
+use core::fmt;
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -10,7 +12,7 @@ use crate::pda::*;
 #[cfg(test)]
 use solana_program::msg;
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct TunnelCreateArgs {
     pub index: u128,
     pub code: String,
@@ -21,6 +23,16 @@ pub struct TunnelCreateArgs {
     pub mtu: u32,  
     pub delay_ns: u64, 
     pub jitter_ns: u64,
+}
+
+impl fmt::Debug for TunnelCreateArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "code: {}, side_a_pk: {}, side_z_pk: {}, tunnel_type: {:?}, bandwidth: {}, mtu: {}, delay_ns: {}, jitter_ns: {}",
+            self.code, self.side_a_pk, self.side_z_pk, self.tunnel_type, self.bandwidth, self.mtu, self.delay_ns, self.jitter_ns
+        )
+    }
 }
 
 pub fn process_create_tunnel(

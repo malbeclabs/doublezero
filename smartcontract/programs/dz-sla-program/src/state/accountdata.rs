@@ -16,6 +16,32 @@ pub enum AccountData {
 }
 
 impl AccountData {
+    pub fn get_name(&self) -> &str {
+        match self {
+            AccountData::None => "None",
+            AccountData::GlobalState(_) => "GlobalState",
+            AccountData::GlobalConfig(_) => "GlobalConfig",
+            AccountData::Location(_) => "Location",
+            AccountData::Exchange(_) => "Exchange",
+            AccountData::Device(_) => "Device",
+            AccountData::Tunnel(_) => "Tunnel",
+            AccountData::User(_) => "User",
+        }
+    }
+
+    pub fn get_args(&self) -> String {
+        match self {
+            AccountData::None => "".to_string(),
+            AccountData::GlobalState(global_state) => global_state.to_string(),
+            AccountData::GlobalConfig(global_config) => global_config.to_string(),
+            AccountData::Location(location) => location.to_string(),
+            AccountData::Exchange(exchange) => exchange.to_string(),
+            AccountData::Device(device) => device.to_string(),
+            AccountData::Tunnel(tunnel) => tunnel.to_string(),
+            AccountData::User(user) => user.to_string(),
+        }
+    }
+
     pub fn get_global_state(&self) -> GlobalState {
         if let AccountData::GlobalState(global_state) = self {
             global_state.clone()

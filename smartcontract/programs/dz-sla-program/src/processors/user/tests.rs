@@ -341,7 +341,7 @@ mod user_test {
             DoubleZeroInstruction::DeleteUser(UserDeleteArgs { index: user.index }),
             vec![
                 AccountMeta::new(user_pubkey, false),
-                AccountMeta::new(globalstate_pubkey, false),
+                //AccountMeta::new(globalstate_pubkey, false),
             ],
             &payer,
         )

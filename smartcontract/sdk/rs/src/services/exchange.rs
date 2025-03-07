@@ -5,17 +5,11 @@ use crate::{doublezeroclient::DoubleZeroClient, DZClient};
 use double_zero_sla_program::{
     instructions::DoubleZeroInstruction,
     pda::get_exchange_pda,
-    processors::
-        exchange::{
-            create::ExchangeCreateArgs, delete::ExchangeDeleteArgs,
-            reactivate::ExchangeReactivateArgs, suspend::ExchangeSuspendArgs,
-            update::ExchangeUpdateArgs,
-        },    
-    state::{
-        accountdata::AccountData,
-        accounttype::AccountType,
-        exchange::Exchange,
+    processors::exchange::{
+        create::ExchangeCreateArgs, delete::ExchangeDeleteArgs, reactivate::ExchangeReactivateArgs,
+        suspend::ExchangeSuspendArgs, update::ExchangeUpdateArgs,
     },
+    state::{accountdata::AccountData, accounttype::AccountType, exchange::Exchange},
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -92,7 +86,8 @@ impl ExchangeService for DZClient {
         loc_id: u32,
     ) -> eyre::Result<(Signature, Pubkey)> {
         let (globalstate_pubkey, globalstate) = self.get_globalstate()?;
-        let (pda_pubkey, _) = get_exchange_pda(&self.get_program_id(), globalstate.account_index + 1);
+        let (pda_pubkey, _) =
+            get_exchange_pda(&self.get_program_id(), globalstate.account_index + 1);
 
         self.execute_transaction(
             DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
@@ -120,19 +115,31 @@ impl ExchangeService for DZClient {
         lng: Option<f64>,
         loc_id: Option<u32>,
     ) -> eyre::Result<Signature> {
-        let (pda_pubkey, _) = get_exchange_pda(&self.get_program_id(), index);
+        match self.get_globalstate() {
+            Ok((globalstate_pubkey, globalstate)) => {
+                if !globalstate.foundation_allowlist.contains(&self.get_payer()) {
+                    return Err(eyre!("User not allowlisted"));
+                }
 
-        self.execute_transaction(
-            DoubleZeroInstruction::UpdateExchange(ExchangeUpdateArgs {
-                index,
-                code,
-                name,
-                lat,
-                lng,
-                loc_id,
-            }),
-            vec![AccountMeta::new(pda_pubkey, false)],
-        )
+                let (pda_pubkey, _) = get_exchange_pda(&self.get_program_id(), index);
+
+                self.execute_transaction(
+                    DoubleZeroInstruction::UpdateExchange(ExchangeUpdateArgs {
+                        index,
+                        code,
+                        name,
+                        lat,
+                        lng,
+                        loc_id,
+                    }),
+                    vec![
+                        AccountMeta::new(pda_pubkey, false),
+                        AccountMeta::new(globalstate_pubkey, false),
+                    ],
+                )
+            }
+            Err(e) => Err(e),
+        }
     }
 
     fn suspend_exchange(&self, index: u128) -> eyre::Result<Signature> {

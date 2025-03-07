@@ -181,49 +181,46 @@ impl DoubleZeroClient for DZClient {
             let meta = enc_transaction.transaction.meta.unwrap();
             let trans = enc_transaction.transaction.transaction;
 
-            match trans {
-                EncodedTransaction::Binary(data, _enc) => {
-                    let data: &[u8] = &general_purpose::STANDARD.decode(data).unwrap();
+            if let EncodedTransaction::Binary(data, _enc) = trans {
+                let data: &[u8] = &general_purpose::STANDARD.decode(data).unwrap();
 
-                    let tx: Transaction = match deserialize(&data) {
-                        Ok(tx) => tx,
-                        Err(e) => {
-                            eprintln!("Error al deserializar la transacción: {:?}", e);
-                            panic!("");
+                let tx: Transaction = match deserialize(data) {
+                    Ok(tx) => tx,
+                    Err(e) => {
+                        eprintln!("Error al deserializar la transacción: {:?}", e);
+                        panic!("");
+                    }
+                };
+
+                for instr in tx.message.instructions.iter() {
+                    let program_id = instr.program_id(&tx.message.account_keys);
+                    let account = instr.accounts[instr.accounts.len() - 2];
+                    let account = tx.message.account_keys[account as usize];
+
+                    let instruction = {
+                        if program_id == &self.program_id {
+                            DoubleZeroInstruction::unpack(&instr.data).unwrap()
+                        } else {
+                            DoubleZeroInstruction::InitGlobalState()
                         }
                     };
 
-                    for instr in tx.message.instructions.iter() {
-                        let program_id = instr.program_id(&tx.message.account_keys);
-                        let account = instr.accounts[instr.accounts.len() - 2];
-                        let account = tx.message.account_keys[account as usize];
+                    let log_messages = {
+                        if let OptionSerializer::Some(msgs) = &meta.log_messages {
+                            msgs.clone()
+                        } else {
+                            vec![]
+                        }
+                    };
 
-                        let instruction = {
-                            if program_id == &self.program_id {
-                                DoubleZeroInstruction::unpack(&instr.data).unwrap()
-                            } else {
-                                DoubleZeroInstruction::InitGlobalState()
-                            }
-                        };
-
-                        let log_messages = {
-                            if let OptionSerializer::Some(msgs) = &meta.log_messages {
-                                msgs.clone()
-                            } else {
-                                vec![]
-                            }
-                        };
-
-                        transactions.push(DZTransaction {
-                            time,
-                            account,
-                            instruction,
-                            signature,
-                            log_messages,
-                        });
-                    }
+                    transactions.push(DZTransaction {
+                        time,
+                        account,
+                        instruction,
+                        signature,
+                        log_messages,
+                    });
                 }
-                _ => {}
             }
         }
 

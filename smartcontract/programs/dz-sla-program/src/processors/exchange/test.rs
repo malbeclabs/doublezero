@@ -45,7 +45,8 @@ mod exchange_test {
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 0);
 
-        let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+        let (exchange_pubkey, _) =
+            get_exchange_pda(&program_id, globalstate_account.account_index + 1);
 
         execute_transaction(
             &mut banks_client,
@@ -68,9 +69,9 @@ mod exchange_test {
         .await;
 
         let exchange_la = get_account_data(&mut banks_client, exchange_pubkey)
-                .await
-                .expect("Unable to get Account")
-                .get_exchange();
+            .await
+            .expect("Unable to get Account")
+            .get_exchange();
         assert_eq!(exchange_la.account_type, AccountType::Exchange);
         assert_eq!(exchange_la.code, "la".to_string());
         assert_eq!(exchange_la.status, ExchangeStatus::Activated);
@@ -85,16 +86,18 @@ mod exchange_test {
             DoubleZeroInstruction::SuspendExchange(ExchangeSuspendArgs {
                 index: exchange_la.index,
             }),
-            vec![AccountMeta::new(exchange_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),],
+            vec![
+                AccountMeta::new(exchange_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
             &payer,
         )
         .await;
 
         let exchange_la = get_account_data(&mut banks_client, exchange_pubkey)
-                .await
-                .expect("Unable to get Account")
-                .get_exchange();
+            .await
+            .expect("Unable to get Account")
+            .get_exchange();
         assert_eq!(exchange_la.account_type, AccountType::Exchange);
         assert_eq!(exchange_la.status, ExchangeStatus::Suspended);
 
@@ -108,8 +111,10 @@ mod exchange_test {
             DoubleZeroInstruction::ReactivateExchange(ExchangeReactivateArgs {
                 index: exchange_la.index,
             }),
-            vec![AccountMeta::new(exchange_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),],
+            vec![
+                AccountMeta::new(exchange_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
             &payer,
         )
         .await;
@@ -136,17 +141,18 @@ mod exchange_test {
                 lng: Some(23.223),
                 loc_id: Some(1),
             }),
-            vec![AccountMeta::new(exchange_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),],
+            vec![
+                AccountMeta::new(exchange_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
             &payer,
         )
         .await;
 
-        let exchange_la =
-            get_account_data(&mut banks_client, exchange_pubkey)
-                .await
-                .expect("Unable to get Account")
-                .get_exchange();
+        let exchange_la = get_account_data(&mut banks_client, exchange_pubkey)
+            .await
+            .expect("Unable to get Account")
+            .get_exchange();
         assert_eq!(exchange_la.account_type, AccountType::Exchange);
         assert_eq!(exchange_la.code, "la2".to_string());
         assert_eq!(exchange_la.name, "Los Angeles - Los Angeles".to_string());
@@ -162,8 +168,10 @@ mod exchange_test {
             DoubleZeroInstruction::DeleteExchange(ExchangeDeleteArgs {
                 index: exchange_la.index,
             }),
-            vec![AccountMeta::new(exchange_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),],
+            vec![
+                AccountMeta::new(exchange_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
             &payer,
         )
         .await;

@@ -1,34 +1,37 @@
 use core::fmt;
 
+use crate::error::DoubleZeroError;
+use crate::pda::*;
+use crate::types::*;
+use crate::{helper::*, state::device::*};
 use borsh::{BorshDeserialize, BorshSerialize};
+#[cfg(test)]
+use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
-    program_error::ProgramError,
     pubkey::Pubkey,
 };
-use crate::{helper::*, state::device::*};
-use crate::pda::*;
-use crate::types::*;
-#[cfg(test)]
-use solana_program::msg;
-
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct DeviceUpdateArgs {
     pub index: u128,
-    pub code: String,
-    pub device_type: DeviceType,
-    pub public_ip: IpV4,
-    pub dz_prefix: NetworkV4,
+    pub code: Option<String>,
+    pub device_type: Option<DeviceType>,
+    pub public_ip: Option<IpV4>,
+    pub dz_prefix: Option<NetworkV4>,
 }
 
 impl fmt::Debug for DeviceUpdateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "code: {}, device_type: {:?}, public_ip: {}, dz_prefix: {}",
-            self.code, self.device_type, ipv4_to_string(&self.public_ip), networkv4_to_string(&self.dz_prefix)
+            "code: {:?}, device_type: {:?}, public_ip: {:?}, dz_prefix: {:?}",
+            self.code,
+            self.device_type,
+            self.public_ip.map(|public_ip| ipv4_to_string(&public_ip),),
+            self.dz_prefix
+                .map(|dz_prefix| networkv4_to_string(&dz_prefix),)
         )
     }
 }
@@ -39,19 +42,38 @@ pub fn process_update_device(
     value: &DeviceUpdateArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
- 
+
     let pda_account = next_account_info(accounts_iter)?;
+    let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
- 
+
     #[cfg(test)]
     msg!("process_update_device({:?})", value);
 
+    // Check the owner of the accounts
+    assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
+    assert_eq!(
+        globalstate_account.owner, program_id,
+        "Invalid GlobalState Account Owner"
+    );
+    assert_eq!(
+        *system_program.unsigned_key(),
+        solana_program::system_program::id(),
+        "Invalid System Program Account Owner"
+    );
+    // Check if the account is writable
+    assert!(pda_account.is_writable, "PDA Account is not writable");
+    // get the PDA pubkey and bump seed for the account location & check if it matches the account
     let (expected_pda_account, bump_seed) = get_device_pda(program_id, value.index);
-    assert_eq!(pda_account.key, &expected_pda_account, "Invalid Device PubKey");
- 
-    if pda_account.owner != program_id {
-        return Err(ProgramError::IncorrectProgramId);
+    assert_eq!(
+        pda_account.key, &expected_pda_account,
+        "Invalid Device PubKey"
+    );
+    // Parse the global state account & check if the payer is in the allowlist
+    let globalstate = globalstate_get(globalstate_account)?;
+    if !globalstate.foundation_allowlist.contains(payer_account.key) {
+        return Err(DoubleZeroError::NotAllowed.into());
     }
 
     let mut device: Device = Device::from(&pda_account.try_borrow_data().unwrap()[..]);
@@ -59,11 +81,18 @@ pub fn process_update_device(
         return Err(solana_program::program_error::ProgramError::Custom(0));
     }
 
-    device.code = value.code.clone();
-    device.device_type = value.device_type;
-    device.public_ip = value.public_ip;
-    device.dz_prefix = value.dz_prefix;
-    device.status = DeviceStatus::Activated;
+    if let Some(code) = &value.code {
+        device.code = code.clone();
+    }
+    if let Some(device_type) = value.device_type {
+        device.device_type = device_type;
+    }
+    if let Some(public_ip) = value.public_ip {
+        device.public_ip = public_ip;
+    }
+    if let Some(dz_prefix) = value.dz_prefix {
+        device.dz_prefix = dz_prefix;
+    }
 
     account_write(
         pda_account,
@@ -72,7 +101,7 @@ pub fn process_update_device(
         system_program,
         bump_seed,
     );
-    
+
     #[cfg(test)]
     msg!("Updated: {:?}", device);
 

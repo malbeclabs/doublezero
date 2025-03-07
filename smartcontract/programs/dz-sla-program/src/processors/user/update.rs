@@ -60,7 +60,7 @@ pub fn process_update_user(
     let (expected_pda_account, bump_seed) = get_user_pda(program_id, value.index);
     assert_eq!(
         pda_account.key, &expected_pda_account,
-        "Invalid Device PubKey"
+        "Invalid User PubKey"
     );
 
     if pda_account.owner != program_id {

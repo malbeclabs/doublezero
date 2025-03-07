@@ -1,5 +1,3 @@
-use eyre::eyre;
-use std::collections::HashMap;
 use crate::{doublezeroclient::*, DZClient};
 use double_zero_sla_program::{
     instructions::DoubleZeroInstruction,
@@ -10,7 +8,9 @@ use double_zero_sla_program::{
     },
     state::{accountdata::AccountData, accounttype::AccountType, location::Location},
 };
+use eyre::eyre;
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use std::collections::HashMap;
 
 pub trait LocationService {
     fn get_locations(&self) -> eyre::Result<HashMap<Pubkey, Location>>;
@@ -44,7 +44,6 @@ pub trait LocationService {
 }
 
 impl LocationService for DZClient {
-
     fn get_locations(&self) -> eyre::Result<HashMap<Pubkey, Location>> {
         Ok(self
             .gets(AccountType::Location)?
@@ -90,7 +89,8 @@ impl LocationService for DZClient {
         loc_id: u32,
     ) -> eyre::Result<(Signature, Pubkey)> {
         let (globalstate_pubkey, globalstate) = self.get_globalstate()?;
-        let (pda_pubkey, _) = get_location_pda(&self.get_program_id(), globalstate.account_index + 1);
+        let (pda_pubkey, _) =
+            get_location_pda(&self.get_program_id(), globalstate.account_index + 1);
         self.execute_transaction(
             DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
                 index: globalstate.account_index + 1,
@@ -119,20 +119,32 @@ impl LocationService for DZClient {
         lng: Option<f64>,
         loc_id: Option<u32>,
     ) -> eyre::Result<Signature> {
-        let (pda_pubkey, _) = get_location_pda(&self.get_program_id(), index);
+        match self.get_globalstate() {
+            Ok((globalstate_pubkey, globalstate)) => {
+                if !globalstate.foundation_allowlist.contains(&self.get_payer()) {
+                    return Err(eyre!("User not allowlisted"));
+                }
 
-        self.execute_transaction(
-            DoubleZeroInstruction::UpdateLocation(LocationUpdateArgs {
-                index,
-                code,
-                name,
-                country,
-                lat,
-                lng,
-                loc_id,
-            }),
-            vec![AccountMeta::new(pda_pubkey, false)],
-        )
+                let (pda_pubkey, _) = get_location_pda(&self.get_program_id(), index);
+
+                self.execute_transaction(
+                    DoubleZeroInstruction::UpdateLocation(LocationUpdateArgs {
+                        index,
+                        code,
+                        name,
+                        country,
+                        lat,
+                        lng,
+                        loc_id,
+                    }),
+                    vec![
+                        AccountMeta::new(pda_pubkey, false),
+                        AccountMeta::new(globalstate_pubkey, false),
+                    ],
+                )
+            }
+            Err(e) => Err(e),
+        }
     }
 
     fn suspend_location(&self, index: u128) -> eyre::Result<Signature> {

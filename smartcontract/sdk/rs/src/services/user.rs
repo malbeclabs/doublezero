@@ -243,11 +243,11 @@ impl UserService for DZClient {
         let (pda_pubkey, _) = get_user_pda(&self.get_program_id(), index);
 
         match self.get_globalstate() {
-            Ok((globalstate_pubkey, _globalstate)) => self.execute_transaction(
+            Ok((_globalstate_pubkey, _globalstate)) => self.execute_transaction(
                 DoubleZeroInstruction::DeleteUser(UserDeleteArgs { index }),
                 vec![
                     AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
+                    //AccountMeta::new(globalstate_pubkey, false),
                 ],
             ),
             Err(e) => Err(e),

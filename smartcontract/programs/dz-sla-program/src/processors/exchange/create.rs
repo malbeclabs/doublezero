@@ -61,6 +61,17 @@ pub fn process_create_exchange(
     );
     // Check if the account is writable
     assert!(pda_account.is_writable, "PDA Account is not writable");
+    // get the PDA pubkey and bump seed for the account location & check if it matches the account
+    let (expected_pda_account, _bump_seed) = get_exchange_pda(program_id, value.index);
+    assert_eq!(
+        pda_account.key, &expected_pda_account,
+        "Invalid Exchange PubKey"
+    );
+    // Parse the global state account & check if the payer is in the allowlist
+    let globalstate = globalstate_get_next(globalstate_account)?;
+    if !globalstate.user_allowlist.contains(payer_account.key) {
+        return Err(DoubleZeroError::NotAllowed.into());
+    }
 
     if !pda_account.data.borrow().is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);

@@ -16,3 +16,6 @@ dist/
 
 .devcontainer/
 smartcontract/.vscode/settings.json
+smartcontract/test/test-start.sh
+
+/log/

@@ -239,12 +239,15 @@ mod device_test {
             program_id,
             DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
                 index: device.index,
-                code: "la2".to_string(),
-                device_type: DeviceType::Switch,
-                public_ip: [10, 2, 2, 1],
-                dz_prefix: ([10, 1, 0, 0], 23),
+                code: Some("la2".to_string()),
+                device_type: Some(DeviceType::Switch),
+                public_ip: Some([10, 2, 2, 1]),
+                dz_prefix: Some(([10, 1, 0, 0], 23)),
             }),
-            vec![AccountMeta::new(device_pubkey, false)],
+            vec![
+                AccountMeta::new(device_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
             &payer,
         )
         .await;

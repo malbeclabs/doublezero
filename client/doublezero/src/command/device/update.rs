@@ -9,11 +9,11 @@ pub struct UpdateDeviceArgs {
     #[arg(long)]
     pub pubkey: String,
     #[arg(long)]
-    pub code: String,
+    pub code: Option<String>,
     #[arg(long)]
-    pub public_ip: String,
+    pub public_ip: Option<String>,
     #[arg(long)]
-    pub dz_prefix: String,
+    pub dz_prefix: Option<String>,
 }
 
 impl UpdateDeviceArgs {
@@ -27,10 +27,11 @@ impl UpdateDeviceArgs {
             Ok(device) => {
                 match client.update_device(
                     device.index,
-                    &self.code,
-                    DeviceType::Switch,
-                    ipv4_parse(&self.public_ip),
-                    networkv4_parse(&self.dz_prefix),
+                    self.code,
+                    Some(DeviceType::Switch),
+                    self.public_ip.map(|ip| ipv4_parse(&ip)),
+                    self.dz_prefix.map(|ip| networkv4_parse(&ip)),
+                    
                 ) {
                     Ok(_) => println!("Device updated"),
                     Err(e) => print_error(e),

@@ -37,10 +37,10 @@ pub trait DeviceService {
     fn update_device(
         &self,
         index: u128,
-        code: &str,
-        device_type: DeviceType,
-        public_ip: IpV4,
-        dz_prefix: NetworkV4,
+        code: Option<String>,
+        device_type: Option<DeviceType>,
+        public_ip: Option<IpV4>,
+        dz_prefix: Option<NetworkV4>,
     ) -> eyre::Result<Signature>;
     fn activate_device(&self, index: u128) -> eyre::Result<Signature>;
     fn reject_device(&self, index: u128, error: String) -> eyre::Result<Signature>;
@@ -127,23 +127,35 @@ impl DeviceService for DZClient {
     fn update_device(
         &self,
         index: u128,
-        code: &str,
-        device_type: DeviceType,
-        public_ip: IpV4,
-        dz_prefix: NetworkV4,
+        code: Option<String>,
+        device_type: Option<DeviceType>,
+        public_ip: Option<IpV4>,
+        dz_prefix: Option<NetworkV4>,
     ) -> eyre::Result<Signature> {
-        let (pda_pubkey, _) = get_device_pda(&self.get_program_id(), index);
+        match self.get_globalstate() {
+            Ok((globalstate_pubkey, globalstate)) => {
+                if !globalstate.foundation_allowlist.contains(&self.get_payer()) {
+                    return Err(eyre!("User not allowlisted"));
+                }
 
-        self.execute_transaction(
-            DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-                index,
-                code: code.to_owned(),
-                device_type,
-                public_ip,
-                dz_prefix,
-            }),
-            vec![AccountMeta::new(pda_pubkey, false)],
-        )
+                let (pda_pubkey, _) = get_device_pda(&self.get_program_id(), index);
+
+                self.execute_transaction(
+                    DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+                        index,
+                        code: code.to_owned(),
+                        device_type,
+                        public_ip,
+                        dz_prefix,
+                    }),
+                    vec![
+                        AccountMeta::new(pda_pubkey, false),
+                        AccountMeta::new(globalstate_pubkey, false),
+                    ],
+                )
+            }
+            Err(e) => Err(e),
+        }
     }
 
     fn activate_device(&self, index: u128) -> eyre::Result<Signature> {

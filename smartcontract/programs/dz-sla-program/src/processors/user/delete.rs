@@ -34,7 +34,7 @@ pub fn process_delete_user(
     let accounts_iter = &mut accounts.iter();
 
     let pda_account = next_account_info(accounts_iter)?;
-    let globalstate_account = next_account_info(accounts_iter)?;
+    //let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -53,9 +53,10 @@ pub fn process_delete_user(
 
     let mut user: User = User::from(&pda_account.try_borrow_data().unwrap()[..]);
 
-    let globalstate = globalstate_get_next(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key)
-        && user.owner != *payer_account.key
+    //let globalstate = globalstate_get_next(globalstate_account)?;
+    //if !globalstate.foundation_allowlist.contains(payer_account.key)
+    //    && user.owner != *payer_account.key
+    if user.owner != *payer_account.key 
     {
         return Err(DoubleZeroError::NotAllowed.into());
     }

@@ -74,10 +74,6 @@ pub fn process_update_exchange(
     }
 
     let mut exchange: Exchange = Exchange::from(&pda_account.try_borrow_data().unwrap()[..]);
-    if exchange.owner != *payer_account.key {
-        return Err(solana_program::program_error::ProgramError::Custom(0));
-    }
-
     if let Some(ref code) = value.code {
         exchange.code = code.clone();
     }

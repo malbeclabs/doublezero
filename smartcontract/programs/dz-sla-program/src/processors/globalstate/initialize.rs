@@ -6,8 +6,6 @@ use crate::seeds::{SEED_GLOBALSTATE, SEED_PREFIX};
 use crate::state::accounttype::AccountType;
 use crate::state::globalstate::GlobalState;
 use borsh::BorshSerialize;
-#[cfg(not(test))]
-use solana_program::program_error::ProgramError;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -34,14 +32,6 @@ pub fn initialize_global_state(program_id: &Pubkey, accounts: &[AccountInfo]) ->
         pda_account.key, &expected_pda_account,
         "Invalid GlobalState PubKey"
     );
-
-    // Exclude for tests
-    #[cfg(not(test))]
-    {
-        if payer_account.key != &doublezero_foundation::id() {
-            return Err(ProgramError::Custom(999));
-        }
-    }
 
     if !pda_account.data.borrow().is_empty() {
         let globalstate = globalstate_get(pda_account)?;

@@ -20,4 +20,4 @@ thiserror = "2.0.9"
 
 [dev-dependencies]
 solana-program-test = "1.18.26"
-solana-sdk = "1.18.26"
+solana-sdk = "2.0.25"

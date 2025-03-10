@@ -21,7 +21,7 @@ func UdpPing(ctx context.Context, d dzsdk.Device) LatencyResult {
 	addr := net.IP(d.PublicIp[:])
 	pinger, err := probing.NewPinger(addr.String())
 	if err != nil {
-		log.Printf("latency: error creating pinger for device %s: %v", addr, err)
+		log.Printf("latency: error creating pinger for device %s: %v\n", addr, err)
 		return LatencyResult{Device: d, Reachable: false}
 	}
 

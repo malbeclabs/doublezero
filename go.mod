@@ -11,7 +11,7 @@ require (
 	github.com/docker/docker v28.0.1+incompatible
 	github.com/docker/go-connections v0.5.0
 	github.com/gagliardetto/solana-go v1.12.0
-	github.com/google/go-cmp v0.6.0
+	github.com/google/go-cmp v0.7.0
 	github.com/jwhited/corebgp v0.8.5
 	github.com/mr-tron/base58 v1.2.0
 	github.com/near/borsh-go v0.3.1
@@ -23,6 +23,7 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/redpanda v0.35.0
 	github.com/twmb/franz-go v1.18.1
 	github.com/twmb/franz-go/pkg/kadm v1.15.0
+	github.com/twmb/franz-go/plugin/kprom v1.1.0
 	github.com/vishvananda/netlink v1.3.0
 	golang.org/x/sys v0.30.0
 	google.golang.org/grpc v1.71.0
@@ -97,7 +98,6 @@ require (
 	github.com/tklauser/go-sysconf v0.3.14 // indirect
 	github.com/tklauser/numcpus v0.9.0 // indirect
 	github.com/twmb/franz-go/pkg/kmsg v1.9.0 // indirect
-	github.com/twmb/franz-go/plugin/kprom v1.1.0 // indirect
 	github.com/vaughan0/go-ini v0.0.0-20130923145212-a98ad7ee00ec // indirect
 	github.com/vishvananda/netns v0.0.4 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect

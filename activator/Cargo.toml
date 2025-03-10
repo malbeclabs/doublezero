@@ -8,7 +8,7 @@ clap = { version = "4.5.21", features = ["derive"] }
 eyre = "0.6.12"
 borsh = "1.5.5"
 solana-program = "1.18.26"
-solana-sdk = "1.18.26"
+solana-sdk = "2.1.15"
 solana-client = "1.18.26"
 solana-pubsub-client = "1.18.26"
 

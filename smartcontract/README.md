@@ -1,6 +1,8 @@
 # Smart Contract on Solana
 
-This repository contains a smart contract written for the Solana blockchain. The smart contract is designed to [provide a brief description of what the smart contract does].
+This repository contains a smart contract written for the Solana blockchain. The smart contract is the **core permissionless component** that defines and manages the **logical layer** of the **DoubleZero** network. It allows both contributors and users to interact seamlessly—contributors can create and configure services, while users can connect to access and use them.
+
+By establishing accounts linked to each component, the smart contract **store** the necessary parameters, enabling client controllers and services to provision **network functions** and **network features** such as **deduplication, signature verification, and other**. This ensures a decentralized, automated, and efficient approach to network service management.
 
 ## Prerequisites
 

@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/malbeclabs/doublezero/controlplane/internal/pkg/controller"
+	"github.com/malbeclabs/doublezero/controlplane/controller/internal/controller"
 	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
 
 	"github.com/docker/docker/api/types"

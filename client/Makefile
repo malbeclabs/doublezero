@@ -14,5 +14,5 @@ lint:
 
 .PHONY: build
 build:
-	cargo build -v $(LDFLAGS) --manifest-path ./doublezero/Cargo.toml
+	cargo build -v $(LDFLAGS) --release --manifest-path ./doublezero/Cargo.toml
 	CGO_ENABLED=0 go build -v $(LDFLAGS) -o ./doublezerod/bin/doublezerod ./doublezerod/cmd/doublezerod/main.go

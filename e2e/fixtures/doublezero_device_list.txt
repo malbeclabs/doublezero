@@ -1,0 +1,9 @@
+ pubkey                                       | code      | location | exchange | device_type | public_ip      | dz_prefix         | status    | owner 
+ 8scDVeZ8aB1TRTkBqaZgzxuk7WwpARdF1a39wYA7nR3W | ny5-dz01  | ewr      | xewr     | switch      | 64.86.249.80   | 64.86.249.80/29   | activated | Dc3LFdWwKGJvJcVkXhAr14kh1HS6pN7oCWrvHfQtsHGe 
+ 3TD6MDfCo2mVeR9a71ukrdXBYVLyWz5cz8RLcNojVpcv | la2-dz01  | lax      | xlax     | switch      | 207.45.216.134 | 207.45.216.136/29 | activated | Dc3LFdWwKGJvJcVkXhAr14kh1HS6pN7oCWrvHfQtsHGe 
+ 6Nn23MqDrBETFXXohEvmP4mQJb2LWxBNFqx6Ye2zDUej | frk-dz01  | fra      | xfra     | switch      | 195.219.220.88 | 195.219.220.88/29 | activated | Dc3LFdWwKGJvJcVkXhAr14kh1HS6pN7oCWrvHfQtsHGe 
+ EhAqBmYSg2aT2dYwv5zz81mTJGgNe9zGZvLFup1D55bU | sg1-dz01  | sin      | xsin     | switch      | 180.87.102.104 | 180.87.102.104/29 | activated | Dc3LFdWwKGJvJcVkXhAr14kh1HS6pN7oCWrvHfQtsHGe 
+ Ejo8G43tLsV4Swp548K6UDX2dLFqmaRN4HKKFnVz9H3p | ams-dz001 | ams      | xams     | switch      | 195.219.138.50 | 195.219.138.56/29 | activated | Dc3LFdWwKGJvJcVkXhAr14kh1HS6pN7oCWrvHfQtsHGe 
+ 14LzRsGUMyGYJFHgJkAwPZHKJLnwPK8S1d1v7b3bAkqV | pit-dzd01 | pit      | xpit     | switch      | 204.16.241.243 | 204.16.243.243/32 | activated | Dc3LFdWwKGJvJcVkXhAr14kh1HS6pN7oCWrvHfQtsHGe 
+ FBUy8tzFWa8LhQmCfXbnWZMg1XUDQfudanoVK5NP4KGP | ld4-dz01  | lhr      | xlhr     | switch      | 195.219.120.72 | 195.219.120.72/29 | activated | Dc3LFdWwKGJvJcVkXhAr14kh1HS6pN7oCWrvHfQtsHGe 
+ Ai18RhhoWwwmLWq6LhUfro9sxLMxfrGuNGc5fuZssh9i | ty2-dz01  | tyo      | xtyo     | switch      | 180.87.154.112 | 180.87.154.112/29 | activated | Dc3LFdWwKGJvJcVkXhAr14kh1HS6pN7oCWrvHfQtsHGe 

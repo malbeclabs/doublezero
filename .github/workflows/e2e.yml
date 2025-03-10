@@ -1,0 +1,30 @@
+name: end-to-end
+on:
+  push:
+    paths-ignore:
+      - "telemetry/**"
+      - "scripts/**"
+    branches: [ main ]
+  pull_request:
+    paths-ignore:
+      - "telemetry/**"
+      - "scripts/**"
+    branches: [ main ]
+
+permissions:
+    contents: read
+    checks: write
+
+jobs:
+  end-to-end:
+    name: "end-to-end"
+    defaults:
+      run:
+        working-directory: "e2e/"
+    runs-on: ubuntu-24.04-16c-64gb
+    steps:
+      - uses: actions/checkout@v4
+      - name: build
+        run: make all
+      - name: test
+        run: make test

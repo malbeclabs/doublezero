@@ -47,7 +47,7 @@ func TestRun_EndToEnd(t *testing.T) {
 	sockFile := filepath.Join(rootPath, "doublezerod.sock")
 	go func() {
 		programId := ""
-		err := runtime.Run(ctx, sockFile, false, programId)
+		err := runtime.Run(ctx, sockFile, false, programId, "")
 		errChan <- err
 	}()
 
@@ -194,7 +194,7 @@ func TestRun_EndToEnd(t *testing.T) {
 	ctx, cancel = context.WithCancel(context.Background())
 	go func() {
 		programId := ""
-		err := runtime.Run(ctx, sockFile, false, programId)
+		err := runtime.Run(ctx, sockFile, false, programId, "")
 		errChan <- err
 	}()
 

@@ -47,7 +47,7 @@ func UdpPing(ctx context.Context, d dzsdk.Device) LatencyResult {
 	return results
 }
 
-type SmartContractorFunc func(context.Context, string) (*ContractData, error)
+type SmartContractorFunc func(context.Context, string, string) (*ContractData, error)
 
 type DeviceCache struct {
 	Devices []dzsdk.Device
@@ -103,14 +103,14 @@ func NewLatencyManager(s SmartContractorFunc, p ProberFunc) *LatencyManager {
 	}
 }
 
-func (l *LatencyManager) Start(ctx context.Context, programId string) error {
+func (l *LatencyManager) Start(ctx context.Context, programId string, rpcEndpoint string) error {
 
 	// start goroutine for fetching smartcontract devices
 	go func() {
 		fetch := func() {
 			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
-			contractData, err := l.SmartContractFunc(ctx, programId)
+			contractData, err := l.SmartContractFunc(ctx, programId, rpcEndpoint)
 			if err != nil {
 				log.Printf("latency: error fetching smart contract data: %v\n", err)
 				return

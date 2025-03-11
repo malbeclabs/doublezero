@@ -56,7 +56,7 @@ func TestLatencyManager(t *testing.T) {
 	}
 
 	sentContractData := make(chan struct{}, 1)
-	mockSmartContractFunc := func(context.Context, string) (*latency.ContractData, error) {
+	mockSmartContractFunc := func(context.Context, string, string) (*latency.ContractData, error) {
 		sentContractData <- struct{}{}
 		return &latency.ContractData{
 			Devices: []dzsdk.Device{
@@ -91,7 +91,7 @@ func TestLatencyManager(t *testing.T) {
 
 	go func() {
 		programId := "9i7v8m3i7W2qPGRonFi8mehN76SXUkDcpgk4tPQhEabc"
-		if err := manager.Start(ctx, programId); err != nil {
+		if err := manager.Start(ctx, programId, ""); err != nil {
 			log.Fatalf("error: %v", err)
 		}
 	}()
@@ -193,7 +193,7 @@ func TestLatencyManager(t *testing.T) {
 }
 
 func TestLatencyUdpPing(t *testing.T) {
-	mockSmartContractFunc := func(context.Context, string) (*latency.ContractData, error) {
+	mockSmartContractFunc := func(context.Context, string, string) (*latency.ContractData, error) {
 		return &latency.ContractData{
 			Devices: []dzsdk.Device{
 				{
@@ -233,7 +233,7 @@ func TestLatencyUdpPing(t *testing.T) {
 	defer cancel()
 	go func() {
 		programId := "9i7v8m3i7W2qPGRonFi8mehN76SXUkDcpgk4tPQhEabc"
-		if err := manager.Start(ctx, programId); err != nil {
+		if err := manager.Start(ctx, programId, ""); err != nil {
 			log.Fatalf("error: %v", err)
 		}
 	}()

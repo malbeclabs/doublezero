@@ -16,12 +16,15 @@ type ContractData struct {
 	Users     []dzsdk.User
 }
 
-func FetchContractData(ctx context.Context, programId string) (*ContractData, error) {
+func FetchContractData(ctx context.Context, programId string, rpcEndpoint string) (*ContractData, error) {
+	if rpcEndpoint == "" {
+		rpcEndpoint = rpc.DevNet_RPC
+	}
 	options := []dzsdk.Option{}
 	if programId != "" {
 		options = append(options, dzsdk.WithProgramId(programId))
 	}
-	client := dzsdk.New(rpc.DevNet_RPC, options...)
+	client := dzsdk.New(rpcEndpoint, options...)
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	if err := client.Load(ctx); err != nil {

@@ -18,6 +18,7 @@ var (
 	enableLatencyProbing = flag.Bool("latency-probing", true, "enable latency probing to doublezero nodes")
 	versionFlag          = flag.Bool("version", false, "build version")
 	programId            = flag.String("program-id", "", "override smartcontract program id to monitor")
+	rpcEndpoint          = flag.String("solana-rpc-endpoint", "", "override solana rpc endpoint url")
 
 	commit  = ""
 	version = ""
@@ -45,7 +46,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := runtime.Run(ctx, *sockFile, *enableLatencyProbing, *programId); err != nil {
+	if err := runtime.Run(ctx, *sockFile, *enableLatencyProbing, *programId, *rpcEndpoint); err != nil {
 		log.Fatalf("runtime error: %v", err)
 	}
 }

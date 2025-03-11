@@ -95,7 +95,7 @@ func NewControllerCommand() *ControllerCommand {
 	c.fs.StringVar(&c.listenAddr, "listen-addr", "localhost", "listening address for controller grpc server")
 	c.fs.StringVar(&c.listenPort, "listen-port", "443", "listening port for controller grpc server")
 	c.fs.StringVar(&c.programId, "program-id", "", "smartcontract program id to monitor")
-
+	c.fs.StringVar(&c.rpcEndpoint, "solana-rpc-endpoint", "", "override solana rpc endpoint (default: devnet)")
 	return c
 }
 
@@ -105,6 +105,7 @@ type ControllerCommand struct {
 	listenAddr  string
 	listenPort  string
 	programId   string
+	rpcEndpoint string
 }
 
 func (c *ControllerCommand) Fs() *flag.FlagSet {
@@ -131,6 +132,10 @@ func (c *ControllerCommand) Run() error {
 	options := []controller.Option{}
 	if c.programId != "" {
 		options = append(options, controller.WithProgramId(c.programId))
+	}
+
+	if c.rpcEndpoint != "" {
+		options = append(options, controller.WithRpcEndpoint(c.rpcEndpoint))
 	}
 
 	lis, err := net.Listen("tcp", net.JoinHostPort(c.listenAddr, c.listenPort))

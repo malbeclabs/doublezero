@@ -34,9 +34,10 @@ type Controller struct {
 	cache deviceCache
 	mu    sync.RWMutex
 	accountFetcher
-	listener   net.Listener
-	programId  string
-	updateDone chan struct{}
+	listener    net.Listener
+	programId   string
+	rpcEndpoint string
+	updateDone  chan struct{}
 }
 
 type Option func(*Controller)
@@ -66,7 +67,10 @@ func NewController(options ...Option) (*Controller, error) {
 			log.Printf("starting with smartcontract program id %s", controller.programId)
 			options = append(options, dzsdk.WithProgramId(controller.programId))
 		}
-		controller.accountFetcher = dzsdk.New(rpc.DevNet_RPC, options...)
+		if controller.rpcEndpoint == "" {
+			controller.rpcEndpoint = rpc.DevNet_RPC
+		}
+		controller.accountFetcher = dzsdk.New(controller.rpcEndpoint, options...)
 	}
 	return controller, nil
 }
@@ -80,6 +84,12 @@ func WithAccountFetcher(f accountFetcher) Option {
 func WithProgramId(programId string) Option {
 	return func(c *Controller) {
 		c.programId = programId
+	}
+}
+
+func WithRpcEndpoint(rpcEndpoint string) Option {
+	return func(c *Controller) {
+		c.rpcEndpoint = rpcEndpoint
 	}
 }
 

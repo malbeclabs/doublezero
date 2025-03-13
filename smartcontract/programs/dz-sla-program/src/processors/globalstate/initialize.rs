@@ -1,13 +1,8 @@
-use crate::addresses::doublezero_foundation;
-use crate::helper::globalstate_get;
 use crate::pda::*;
-use crate::processors::globalstate::foundation_allowlist::add::{process_add_foundation_allowlist_globalconfig, AddFoundationAllowlistGlobalConfigArgs};
 use crate::seeds::{SEED_GLOBALSTATE, SEED_PREFIX};
 use crate::state::accounttype::AccountType;
 use crate::state::globalstate::GlobalState;
 use borsh::BorshSerialize;
-#[cfg(not(test))]
-use solana_program::program_error::ProgramError;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -35,33 +30,12 @@ pub fn initialize_global_state(program_id: &Pubkey, accounts: &[AccountInfo]) ->
         "Invalid GlobalState PubKey"
     );
 
-    // Exclude for tests
-    #[cfg(not(test))]
-    {
-        if payer_account.key != &doublezero_foundation::id() {
-            return Err(ProgramError::Custom(999));
-        }
-    }
-
+    // Check if the account is already initialized
     if !pda_account.data.borrow().is_empty() {
-        let globalstate = globalstate_get(pda_account)?;
-
-        if !globalstate.foundation_allowlist.contains(&doublezero_foundation::id()) {
-            process_add_foundation_allowlist_globalconfig(
-                program_id,
-                accounts,
-                &AddFoundationAllowlistGlobalConfigArgs {
-                    pubkey: doublezero_foundation::id(),
-                },
-            )?;
-        }
-
-        #[cfg(test)]
-        msg!("{:?}", globalstate);
-
         return Ok(());
     }
 
+    // Create the GlobalState account
     let data = GlobalState {
         account_type: AccountType::GlobalState,
         account_index: 0,

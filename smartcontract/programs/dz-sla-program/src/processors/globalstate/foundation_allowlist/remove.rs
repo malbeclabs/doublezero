@@ -54,6 +54,7 @@ pub fn process_remove_foundation_allowlist_globalconfig(
     }
 
     assert_eq!(value.pubkey, *program_id, "Unable to remove the program id from the foundation allowlist");
+    assert!(globalstate.foundation_allowlist.len() == 1, "Unable to remove the last pubkey from the foundation allowlist");
 
     globalstate.foundation_allowlist.retain(|x| x != &value.pubkey);
 

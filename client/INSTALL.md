@@ -122,6 +122,6 @@ $ ./bin/doublezero latency
  9uhh2D5c14WJjbwgM7BudztdoPZYCjbvqcTPgEKtTMZE | sg1-dz01  | 180.87.102.98  | 257.16ms | 259.07ms | 258.22ms | true
 ```
 
-It is *highly* recommended to run the daemon as a systemd service, which happens by default if you use either of the deb/apt or rpm packages. If you would like to handle this yourself, feel free to read through and/or use our systemd unit file [here](https://github.com/malbeclabs/doublezero/blob/main/client/doublezerod/cmd/doublezerod/doublezerod.service) and deb/apt/rpm packaging scripts [here](https://github.com/malbeclabs/doublezero/tree/main/client/packaging/scripts/doublezerod) for inspiration.
+We highly recommend to run the daemon as a systemd service, which happens by default if you use either of the deb/apt or rpm packages. If you would like to handle this yourself, feel free to read through and/or use our systemd unit file [here](https://github.com/malbeclabs/doublezero/blob/main/client/doublezerod/cmd/doublezerod/doublezerod.service) and deb/apt/rpm packaging scripts [here](https://github.com/malbeclabs/doublezero/tree/main/client/packaging/scripts/doublezerod) for inspiration.
 
 Once running, refer to https://docs.malbeclabs.com/connect/ for the latest documentation on how to connect to DoubleZero.

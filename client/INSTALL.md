@@ -79,7 +79,7 @@ https://go.dev/doc/install
 
 ### Build DoubleZero CLI/Daemon
 ```
-# checkout the latest stable version - see https://docs.malbeclabs.com/connect/
+# Checkout the latest stable version. You can find the latest stable version here: https://docs.malbeclabs.com/connect/
 $ git checkout client/vX.X.X
 
 # build the doublezero cli

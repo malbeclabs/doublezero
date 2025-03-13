@@ -3,10 +3,14 @@ on:
   push:
     paths:
       - "smartcontract/sdk/rs/**"
+    paths-ignore:
+      - "**/**.md"
     branches: [ main ]
   pull_request:
     paths:
       - "smartcontract/sdk/rs/**"
+    paths-ignore:
+      - "**/**.md"
     branches: [ main ]
 
 jobs:

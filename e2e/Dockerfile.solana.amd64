@@ -1,0 +1,19 @@
+FROM ubuntu:22.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt update && apt install --no-install-recommends -y ca-certificates curl
+
+# install rust
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# install solana cli
+RUN sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+ENV PATH="/root/.local/share/solana/install/active_release/bin:${PATH}"
+
+FROM ubuntu:22.04
+
+COPY --from=builder /root/.local/share/solana/install/active_release/bin /usr/local/bin
+
+CMD ["ls", "/usr/local/bin"]

@@ -8,8 +8,7 @@ on:
       - "smartcontract/sdk/go/**"
       - "go.mod"
       - "go.sum"
-    paths-ignore:
-      - "**/**.md"
+      - "!**/**.md"
     branches: [ main ]
   pull_request:
     paths:
@@ -19,8 +18,7 @@ on:
       - "smartcontract/sdk/go/**"
       - "go.mod"
       - "go.sum"
-    paths-ignore:
-      - "**/**.md"
+      - "!**/**.md"
     branches: [ main ]
 
 permissions:

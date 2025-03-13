@@ -3,14 +3,12 @@ on:
   push:
     paths:
       - "smartcontract/programs/dz-sla-program/**"
-    paths-ignore:
-      - "**/**.md"
+      - "!**/**.md"
     branches: [ main ]
   pull_request:
     paths:
       - "smartcontract/programs/dz-sla-program/**"
-    paths-ignore:
-      - "**/**.md"
+      - "!**/**.md"
     branches: [ main ]
 
 jobs:

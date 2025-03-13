@@ -3,14 +3,12 @@ on:
   push:
     paths:
       - "client/doublezero/**"
-    paths-ignore:
-      - "**/**.md"
+      - "!**/**.md"
     branches: [ main ]
   pull_request:
     paths:
       - "client/doublezero/**"
-    paths-ignore:
-      - "**/**.md"
+      - "!**/**.md"
     branches: [ main ]
 
 jobs:

@@ -3,10 +3,12 @@ on:
   push:
     paths:
       - "activator/**"
+      - "!**/**.md"
     branches: [ main ]
   pull_request:
     paths:
       - "activator/**"
+      - "!**/**.md"
     branches: [ main ]
 
 jobs:

@@ -4,11 +4,13 @@ on:
     paths-ignore:
       - "telemetry/**"
       - "scripts/**"
+      - "**/**.md"
     branches: [ main ]
   pull_request:
     paths-ignore:
       - "telemetry/**"
       - "scripts/**"
+      - "**/**.md"
     branches: [ main ]
 
 permissions:

@@ -130,6 +130,7 @@ impl DoubleZeroClient for DZClient {
                 min_context_slot: None,
             },
             with_context: None,
+            sort_results: None,
         };
 
         let mut list: HashMap<Pubkey, AccountData> = HashMap::new();
@@ -337,6 +338,7 @@ impl DZClient {
                 min_context_slot: None,
             },
             with_context: None,
+            sort_results: None,
         };
 
         let mut list: HashMap<Pubkey, AccountData> = HashMap::new();
@@ -405,6 +407,7 @@ impl DZClient {
                     min_context_slot: None,
                 },
                 with_context: None,
+                sort_results: None,
             };
 
             let (mut _client, receiver) =

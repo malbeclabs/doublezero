@@ -15,7 +15,7 @@ solana-pubsub-client = "1.18.26"
 tokio = { version = "1.43.0", features = ["full"] }
 
 double-zero-sdk = { path = "../smartcontract/sdk/rs", version = "0.1.0" }
-dirs = "5.0.1"
+dirs = "6.0.0"
 serde_json = "1.0.133"
 prettytable-rs = "0.10.0"
 serde_yaml = "0.9.34"
@@ -31,4 +31,4 @@ rng = "0.1.0"
 rand = "0.8"
 ipnetwork = "0.21.1"
 bitvec = "1.0.1"
-colored = "3.0.0"
+colored = "2.2.0"

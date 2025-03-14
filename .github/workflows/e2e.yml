@@ -21,8 +21,10 @@ jobs:
         working-directory: "e2e/"
     runs-on: ubuntu-24.04-16c-64gb
     permissions:
-      packages: read
       contents: read
+      packages: write
+      attestations: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - name: Login to docker
@@ -31,7 +33,13 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: build
+      # TODO: insert action to pull the latest test image
+      - name: Pull latest test image
+        run: make pull
+      - name: Build image
         run: make build
-      - name: test
+      - name: Test
         run: make test
+      # TODO: make this only happen when pushing to main
+      - name: Update image
+        run: make push

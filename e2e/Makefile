@@ -31,3 +31,11 @@ endif
 .PHONY: test
 test:
 	docker run --privileged --rm $(TAG_PREFIX)/$(TAG):latest
+
+.PHONY: pull
+pull:
+	docker pull $(TAG_PREFIX)/$(TAG):latest
+
+.PHONY: push
+push:
+	docker push $(TAG_PREFIX)/$(TAG):latest

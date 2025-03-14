@@ -1,3 +1,4 @@
+#[cfg(any(target_arch = "bpf", test))]
 use crate::{
     instructions::*,
     processors::{
@@ -57,6 +58,7 @@ use solana_program::{
 };
 
 // Program entrypoint
+#[cfg(target_arch = "bpf")]
 entrypoint!(process_instruction);
 
 // Function to route instructions to the correct handler

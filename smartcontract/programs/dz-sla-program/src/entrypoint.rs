@@ -1,3 +1,4 @@
+#[cfg(target_arch = "bpf")]
 use crate::{
     instructions::*,
     processors::{
@@ -48,14 +49,17 @@ use crate::{
         },
     },
 };
+#[cfg(target_arch = "bpf")]
 use solana_program::{
     account_info::AccountInfo, entrypoint, entrypoint::ProgramResult, pubkey::Pubkey,
 };
 
 // Program entrypoint
+#[cfg(target_arch = "bpf")]
 entrypoint!(process_instruction);
 
 // Function to route instructions to the correct handler
+#[cfg(target_arch = "bpf")]
 pub fn process_instruction(
     program_id: &Pubkey,
     accounts: &[AccountInfo],

@@ -4,7 +4,7 @@ LDFLAGS=
 
 .PHONY: test
 test:
-	cargo test --manifest-path ./programs/dz-sla-program/Cargo.toml
+	cargo test --manifest-path ./programs/dz-sla-program/Cargo.toml -- --nocapture
 	cargo test --manifest-path ./sdk/rs/Cargo.toml
 	go test ./sdk/go/
 

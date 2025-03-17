@@ -56,7 +56,7 @@ pub fn process_delete_user(
     //let globalstate = globalstate_get_next(globalstate_account)?;
     //if !globalstate.foundation_allowlist.contains(payer_account.key)
     //    && user.owner != *payer_account.key
-    if user.owner != *payer_account.key 
+    if user.owner != *payer_account.key && *payer_account.key != crate::addresses::doublezero_foundation::id()
     {
         return Err(DoubleZeroError::NotAllowed.into());
     }

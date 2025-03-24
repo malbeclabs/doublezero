@@ -237,12 +237,12 @@ impl DZClient {
     ) -> eyre::Result<DZClient> {
         let (_, config) = read_doublezero_config();
 
-        let rpc_url = rpc_url.unwrap_or(config.json_rpc_url);
-        let rpc_ws_url = websocket_url.unwrap_or(
+        let rpc_url = convert_url_moniker(rpc_url.unwrap_or(config.json_rpc_url));
+        let rpc_ws_url = convert_ws_moniker(websocket_url.unwrap_or(
             config
                 .websocket_url
                 .unwrap_or(convert_url_to_ws(&rpc_url.to_string())),
-        );
+        ));
 
         let client = RpcClient::new_with_commitment(rpc_url.clone(), CommitmentConfig::confirmed());
 
@@ -261,7 +261,7 @@ impl DZClient {
                         .map_err(|_| eyre!("Invalid program ID"))?
                 }
             } else {
-                Pubkey::from_str(&program_id.unwrap()).map_err(|_| eyre!("Invalid program ID"))?
+                Pubkey::from_str(&convert_program_moniker(program_id.unwrap())).map_err(|_| eyre!("Invalid program ID"))?
             }
         };
 

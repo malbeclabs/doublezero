@@ -84,6 +84,7 @@ $ git checkout client/vX.X.X
 
 # build the doublezero cli
 $ cargo build --release --target-dir ./bin --manifest-path doublezero/Cargo.toml
+$ mv bin/release/doublezero bin/.
 
 # build the doublezero daemon
 $ CGO_ENABLED=0 go build -o bin/doublezerod doublezerod/cmd/doublezerod/main.go
@@ -101,9 +102,9 @@ $ sudo chown $USER:$USER /var/lib/doublezerod
 
 The DoubleZero daemon requires CAP_NET_ADMIN and CAP_NET_RAW capabilities. CAP_NET_ADMIN capability is for the ability to create tunnel interfaces, add IP addressing and add routes to the kernel routing table via netlink. CAP_NET_RAW capability is used for latency probing via raw sockets:
 ```
-$ sudo setcap cap_net_raw,cap_net_admin=+ep bin/doublezerod
+$ sudo setcap cap_net_raw,cap_net_admin=+ep ./bin/doublezerod
 
-$ getcap doublezerod
+$ getcap bin/doublezerod
 doublezerod cap_net_admin,cap_net_raw=ep
 ```
 

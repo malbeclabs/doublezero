@@ -24,6 +24,7 @@ pub use double_zero_sla_program::types::*;
 #[macro_use]
 extern crate lazy_static;
 
+mod consts;
 mod client;
 mod config;
 mod doublezeroclient;
@@ -40,7 +41,7 @@ pub use crate::services::{
     location::LocationService, tunnel::TunnelService, user::UserService,
 };
 
-pub use crate::config::convert_url_to_ws;
+pub use crate::config::{convert_url_moniker, convert_ws_moniker, convert_program_moniker, convert_url_to_ws};
 pub use crate::errors::*;
 pub use crate::servicecontroller::{
     service_controller_can_open, service_controller_check, ProvisioningRequest, RemoveTunnelArgs,

@@ -20,7 +20,7 @@ impl GetAccountArgs {
         match client.get(pubkey) {
             Ok(account) => {
                 println!("{} ({})", account.get_name().green(), account.get_args());
-                println!("");        
+                println!();        
 
                 match client.get_transactions(pubkey) {
                     Ok(trans) => {
@@ -28,13 +28,13 @@ impl GetAccountArgs {
                         for tran in trans {   
                             println!("{}: {} ({})\n\t\t\tpubkey: {}, signature: {}", 
                                 &tran.time.to_string(), tran.instruction.get_name().green(), 
-                                tran.instruction.get_args(), tran.account.to_string(), tran.signature.to_string());
+                                tran.instruction.get_args(), tran.account, tran.signature);
                 
                             if self.logs {
                                 for msg in tran.log_messages {
                                     println!("  - {}", msg);
                                 }
-                                println!("");
+                                println!();
                             }
                         }
                     },

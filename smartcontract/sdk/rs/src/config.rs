@@ -69,8 +69,38 @@ pub fn read_doublezero_config() -> (String, ClientConfig) {
     }
 }
 
+
+
+pub fn convert_url_moniker(url: String) -> String {
+    match url.as_str() {
+        "localhost" => crate::consts::LOCALHOST_URL.to_string(),
+        "devnet" => crate::consts::DEVNET_URL.to_string(),
+        "testnet" => crate::consts::TESTNET_URL.to_string(),
+        "mainnet" => crate::consts::MAINNET_BETA_URL.to_string(),
+        _ => url,
+    }
+}
+
+pub fn convert_ws_moniker(url: String) -> String {
+    match url.as_str() {
+        "localhost" => crate::consts::LOCALHOST_WS.to_string(),
+        "devnet" => crate::consts::DEVNET_WS.to_string(),
+        "testnet" => crate::consts::TESTNET_WS.to_string(),
+        "mainnet" => crate::consts::MAINNET_BETA_WS.to_string(),
+        _ => url,
+    }
+}
+
+pub fn convert_program_moniker(pubkey: String) -> String {
+    match pubkey.as_str() {
+        "devnet" => crate::devnet::program_id::id().to_string(),
+        "testnet" => crate::testnet::program_id::id().to_string(),
+        _ => pubkey,
+    }
+}
+
 pub fn convert_url_to_ws(url: &str) -> String {
-    let mut url = Url::parse(url).unwrap();
+    let mut url = Url::parse(url).map_err(|_| "Invalid URL").unwrap();
     if url.scheme() == "https" {
         url.set_scheme("wss").ok();
     } else {

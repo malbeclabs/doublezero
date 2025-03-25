@@ -85,7 +85,7 @@ init_doublezero() {
 
     doublezero --keypair $SOLANA_KEYPAIR config set --url $VALIDATOR_URL
     doublezero --keypair $SOLANA_KEYPAIR config set --ws $VALIDATOR_WS
-    doublezero --keypair $SOLANA_KEYPAIR config set --program $PROGRAM_ID
+    doublezero --keypair $SOLANA_KEYPAIR config set --program-id $PROGRAM_ID
 }
 
 start_doublezerod() {

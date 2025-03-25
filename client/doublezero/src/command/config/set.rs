@@ -1,27 +1,27 @@
 use clap::{ArgGroup, Args};
-use double_zero_sdk::{convert_url_to_ws, read_doublezero_config, write_doublezero_config, DZClient};
+use double_zero_sdk::{convert_program_moniker, convert_url_moniker, convert_url_to_ws, convert_ws_moniker, read_doublezero_config, write_doublezero_config, DZClient};
 
 #[derive(Args, Debug)]
 #[clap(group(
     ArgGroup::new("mandatory")
-        .args(&["url", "ws", "keypair", "program"])
+        .args(&["url", "ws", "keypair", "program_id"])
         .required(true)
         .multiple(true)
 ))]
 pub struct SetConfigArgs {
-    #[arg(long)]
+    #[arg(long, help = "URL of the JSON RPC endpoint (devnet, testnet, mainnet, localhost)")]
     url: Option<String>,
-    #[arg(long)]
+    #[arg(long, help = "URL of the WS RPC endpoint (devnet, testnet, mainnet, localhost)")]
     ws: Option<String>,
-    #[arg(long)]
+    #[arg(long, help = "Keypair of the user")]
     keypair: Option<String>,
-    #[arg(long)]
-    program: Option<String>,
+    #[arg(long, help = "Pubkey of the smart contract (devnet, testnet)")]
+    program_id: Option<String>,
 }
 
 impl SetConfigArgs {
     pub async fn execute(self, _: &DZClient) -> eyre::Result<()> {
-        if self.url.is_none() && self.ws.is_none() && self.keypair.is_none() && self.program.is_none() {
+        if self.url.is_none() && self.ws.is_none() && self.keypair.is_none() && self.program_id.is_none() {
             eprintln!("No arguments provided");
             return Ok(());
         }
@@ -29,6 +29,7 @@ impl SetConfigArgs {
         let (filename, mut config) = read_doublezero_config();
         if let Some(url) = self.url {
             config.json_rpc_url = convert_url_moniker(url);
+            config.websocket_url = None;
         }
         if let Some(ws) = self.ws {
             config.websocket_url = Some(convert_ws_moniker(ws));
@@ -36,7 +37,7 @@ impl SetConfigArgs {
         if let Some(keypair) = self.keypair {
             config.keypair_path = keypair;
         }
-        if let Some(program_id) = self.program {
+        if let Some(program_id) = self.program_id {
             config.program_id = Some(convert_program_moniker(program_id));
         }
 
@@ -50,34 +51,5 @@ impl SetConfigArgs {
             config.program_id.unwrap_or(format!("{} (computed)",  double_zero_sdk::testnet::program_id::id())));
 
         Ok(())
-    }
-}
-
-
-fn convert_url_moniker(url: String) -> String {
-    match url.as_str() {
-        "localhost" => "http://localhost:8899".to_string(),
-        "devnet" => "https://api.devnet.solana.com".to_string(),
-        "testnet" => "https://api.testnet.solana.com".to_string(),
-        "mainnet" => "https://api.mainnet-beta.solana.com".to_string(),
-        _ => url,
-    }
-}
-
-fn convert_ws_moniker(url: String) -> String {
-    match url.as_str() {
-        "localhost" => "ws://localhost:8899".to_string(),
-        "devnet" => "wss://api.devnet.solana.com".to_string(),
-        "testnet" => "wss://api.testnet.solana.com".to_string(),
-        "mainnet" => "wss://api.mainnet-beta.solana.com".to_string(),
-        _ => url,
-    }
-}
-
-fn convert_program_moniker(pubkey: String) -> String {
-    match pubkey.as_str() {
-        "devnet" => double_zero_sdk::devnet::program_id::id().to_string(),
-        "testnet" => double_zero_sdk::testnet::program_id::id().to_string(),
-        _ => pubkey,
     }
 }

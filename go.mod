@@ -5,7 +5,7 @@ go 1.23.0
 toolchain go1.24.1
 
 require (
-	github.com/ClickHouse/clickhouse-go/v2 v2.33.0
+	github.com/ClickHouse/clickhouse-go/v2 v2.33.1
 	github.com/aristanetworks/goeapi v1.0.0
 	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/docker v28.0.2+incompatible

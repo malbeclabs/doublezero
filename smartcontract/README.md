@@ -1,6 +1,8 @@
 # Smart Contract on Solana
 
-This repository contains a smart contract written for the Solana blockchain. The smart contract is designed to [provide a brief description of what the smart contract does].
+This repository contains a smart contract written for the Solana blockchain. The smart contract is the **core permissionless component** that defines and manages the **logical layer** of the **DoubleZero** network. It allows both contributors and users to interact seamlessly—contributors can create and configure services, while users can connect to access and use them.
+
+By establishing accounts linked to each component, the smart contract **store** the necessary parameters, enabling client controllers and services to provision **network functions** and **network features** such as **deduplication, signature verification, and other**. This ensures a decentralized, automated, and efficient approach to network service management.
 
 ## Prerequisites
 
@@ -69,11 +71,3 @@ Contributions are always welcome! Please follow these steps:
 4. Commit your changes (`git commit -m 'Add some feature'`).
 5. Push to the branch (`git push origin feature-branch`).
 6. Open a pull request.
-
-## License
-
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
-## Contact
-
-If you have any questions or feedback, please feel free to reach out at [your-email@example.com].

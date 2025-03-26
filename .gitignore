@@ -13,6 +13,5 @@ smartcontract/cli/config/*
 .vscode
 
 dist/
-
+**/log/*
 .devcontainer/
-smartcontract/.vscode/settings.json

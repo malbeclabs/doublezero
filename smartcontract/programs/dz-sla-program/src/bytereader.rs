@@ -159,6 +159,19 @@ impl<'a> ByteReader<'a> {
         value
     }
 
+    pub fn read_networkv4_vec(&mut self) -> Vec<NetworkV4> {
+        let mut list: Vec<NetworkV4> = Vec::new();
+
+        let length = self.read_u32() as usize;
+        if !self.has_no_space(length * 5) {
+            for _ in 0..length {
+                list.push(self.read_networkv4());
+            }
+        }
+
+        list
+    }
+
     pub fn read_string(&mut self) -> String {
         let length = self.read_u32() as usize;
         if self.has_no_space(length) {

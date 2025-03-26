@@ -19,19 +19,19 @@ pub struct DeviceUpdateArgs {
     pub code: Option<String>,
     pub device_type: Option<DeviceType>,
     pub public_ip: Option<IpV4>,
-    pub dz_prefix: Option<NetworkV4>,
+    pub dz_prefixes: Option<NetworkV4List>,
 }
 
 impl fmt::Debug for DeviceUpdateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "code: {:?}, device_type: {:?}, public_ip: {:?}, dz_prefix: {:?}",
+            "code: {:?}, device_type: {:?}, public_ip: {:?}, dz_prefixes: {:?}",
             self.code,
             self.device_type,
             self.public_ip.map(|public_ip| ipv4_to_string(&public_ip),),
-            self.dz_prefix
-                .map(|dz_prefix| networkv4_to_string(&dz_prefix),)
+            self.dz_prefixes.as_ref()
+                .map(networkv4_list_to_string)
         )
     }
 }
@@ -90,8 +90,8 @@ pub fn process_update_device(
     if let Some(public_ip) = value.public_ip {
         device.public_ip = public_ip;
     }
-    if let Some(dz_prefix) = value.dz_prefix {
-        device.dz_prefix = dz_prefix;
+    if let Some(dz_prefixes) = &value.dz_prefixes {
+        device.dz_prefixes = dz_prefixes.to_vec();
     }
 
     account_write(

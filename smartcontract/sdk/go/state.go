@@ -85,14 +85,16 @@ type Device struct {
 	AccountType    AccountType
 	Owner          [32]uint8
 	Index          Uint128
+	TenantPubKey   [32]uint8
 	LocationPubKey [32]uint8
 	ExchangePubKey [32]uint8
 	DeviceType     uint8
 	PublicIp       [4]uint8
-	DzPrefix       [5]uint8
+	DzPrefixes     [][5]uint8
 	Status         DeviceStatus
 	Code           string
-	PubKey         [32]byte
+	//DzPrefixes     [][5]uint8 // This is the new field that should be parsed if there is data in the array.
+	PubKey [32]byte
 }
 
 type TunnelTunnelType uint8

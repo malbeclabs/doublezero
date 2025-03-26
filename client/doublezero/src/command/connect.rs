@@ -208,7 +208,8 @@ impl ProvisioningArgs {
         let devices = client.get_devices()?;
         let prefixes = devices
             .values()
-            .map(|device| device.dz_prefix)
+            .map(|device| device.dz_prefixes.clone())
+            .flatten()
             .collect::<Vec<NetworkV4>>();
 
         spinner.set_message("Getting global-config...");

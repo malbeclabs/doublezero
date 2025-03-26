@@ -1,0 +1,31 @@
+DoubleZero Activator unknown
+Activator started
+Connected to url: http://127.0.0.1:8899 ws: ws://127.0.0.1:8900 program_id: 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX devices: 0 tunnels: 0 users: 0
+Initialized
+tunnel_net: 169.254.0.0/16 assigned:  
+New Device la2-dz01 Activated 4dkF9L5dsrG1d2BNijbpgycy4wU3FX6k2gcvo86GvkZrmfr2YDHHPzXTPuuePzv6KSqakDjPQb2tAbMq81Kjdkkw
+Add Device: la2-dz01 public_ip: 207.45.216.134 dz_prefixes: 207.45.216.136/29 
+New Device ny5-dz01 Activated 3Btw8djmzs1VA7rxkf4sb4MspD1g9ev9xwfXVSmumgnpbHmJhjHaTabX6c7D5LqotgqLPMwD931r1a7P6mBbxRAX
+Add Device: ny5-dz01 public_ip: 64.86.249.80 dz_prefixes: 64.86.249.80/29 
+New Device ld4-dz01 Activated 4YXQYQR3bpv76jKdi4i6xeWUdnVSafM362mtK2KmQWvKCtwqfStzte4Bzb3cXfXvRQwdp6YJMcLukCnAsNez7TRB
+Add Device: ld4-dz01 public_ip: 195.219.120.72 dz_prefixes: 195.219.120.72/32, 195.219.120.79/32 
+New Device frk-dz01 Activated 5s2uHWzypkLNxT5y74H7J7ks2qvyebBZArcsGYiGeE1UDR8biQeoSswfSd1EGJNEksx4dGHUihm4AV2Qtva8MhBo
+Add Device: frk-dz01 public_ip: 195.219.220.88 dz_prefixes: 195.219.220.88/29 
+New Device sg1-dz01 Activated 4CzzjwNZgC8Z9iJpY4mZ7ykVQuufkKUbGBcW9CniFNiKNHPuu3SQBWf8uX3FKS43BudXBcaTsLpRxvTcX8RtFai2
+Add Device: sg1-dz01 public_ip: 180.87.102.104 dz_prefixes: 180.87.102.104/29 
+New Device ty2-dz01 Activated 3j5zBw76UzAMJkVf2uuqNVK2jwW8RDuDnYe56fMf9Su7m3bkkTv97bUjCeAkRBZagL25hWGQyW1KbeDPuB3vQu1L
+Add Device: ty2-dz01 public_ip: 180.87.154.112 dz_prefixes: 180.87.154.112/29 
+New Device pit-dzd01 Activated 2VWTjfyvXBojNaSVeQZ2qs7cpJLDPvntVmY3RkhE8LnQoxgGzjEYX4SFMUDXK6Amm4uGAEfSngpbhz7ebF9djBKy
+Add Device: pit-dzd01 public_ip: 204.16.241.243 dz_prefixes: 204.16.243.243/32 
+New Device ams-dz001 Activated 5R4TVKdozkG4Y4wni88PWvqLEXicoeCk1GTVhESfvNTK8GDL7iwUp98RkAjD8G4K9P8rr1JaQpbBb8ReW577QSi1
+Add Device: ams-dz001 public_ip: 195.219.138.50 dz_prefixes: 195.219.138.56/29 
+New Tunnel la2-dz01:ny5-dz01 Activated 3ak4RZYu9C4z36QunYLt1nHvVebB9nKb3h4WefER3w4pZdCg7PYGKfuBzSG16Rymak77ZusKENkgZhto3V39CZY4
+New Tunnel ny5-dz01:ld4-dz01 Activated 2iV9zVniJrZdtung9njqsPBd1fKCWFhsehnWsGM5WmGVRHWsgLrwMqJ6eQmkNSPE2iSDjGixC1ucAz6Nd2nPJ3iB
+New Tunnel ld4-dz01:frk-dz01 Activated 5F2Af3EnBjHSXS3zSkqvdPWoDLpeh8XKZEJ6UX25U94qBcWYf7M7iXd9SGgnvZ4bj1pNdgbu1ZBiF6QXLD3w5dFC
+New Tunnel ld4-dz01:sg1-dz01 Activated 3KRtC59dkdw6SdsvrwdLMaJuBFTVp6TZAkUJDQnTziUEocFED6LWkkmJHP7AXuMT9vALaUzRrz1gDe9GuJtxMtAh
+New Tunnel sg1-dz01:ty2-dz01 Activated 3enYaS6W1v5F8dEQBw8RdMuxC4Gi458MZJozdYoPVWe6Dz1xSrgm8jkXHgkuLmP6C44ec295vfPQt4KqxfJBLAj8
+New Tunnel ty2-dz01:la2-dz01 Activated 3Yfj8Mcp3C3sctFLVRHtxDRN1Mrf4Gj9Dgw1NWQRAwzV5SJg7WTyoJrTcnbgeZBDfxi4LDd9DAWoidCQ8baRP1oK
+Activating User   1.2.3.4 for ld4-dz01 tunnel_net: 169.254.0.0/31 tunnel_id: 500 tunnel_id: 195.219.120.72 Activated   w5Q4P1aCuirnVMkps35UdC2jfcRPMUdgZ6FFSrMgBVpzB3GhsgrsvL9VsKJh81QrrPwVhV35111FFNKsQuF3Hds
+Activating User   2.3.4.5 for ld4-dz01 tunnel_net: 169.254.0.2/31 tunnel_id: 501 tunnel_id: 195.219.120.79 Activated   MCWnFvbzGf6RpuCd6E3yfjkcfKT3MAM3yEsg2Y8Tc2smdFzLATAiqgV5tWCWpgKqN4HnXHKYz7DtNLUHpQo8utM
+Error: No available tunnel block
+Activating User   2.3.4.6 for ld4-dz01 tunnel_net: 169.254.0.4/31 Rejected 41bQHbf8TfMU6PD8UBY4sfeTaswKRnDfrRrqTuM4vLUU4GQR4eyGTBuYom3bMscG6zpCNi6bf2eToGVkV2eaqMQC

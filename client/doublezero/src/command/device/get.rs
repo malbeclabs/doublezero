@@ -13,14 +13,14 @@ impl GetDeviceArgs {
         match client.find_device(|d| d.code == self.code) {
             Ok((pubkey, device)) => {
                 println!(
-                    "pubkey: {}\r\ncode: {}\r\nlocation: {}\r\nexchange: {}\r\ndevice_type: {}\r\npublic_ip: {}\r\ndz_prefix: {}\r\nstatus: {}\r\nowner: {}",
+                    "pubkey: {}\r\ncode: {}\r\nlocation: {}\r\nexchange: {}\r\ndevice_type: {}\r\npublic_ip: {}\r\ndz_prefixes: {}\r\nstatus: {}\r\nowner: {}",
                     pubkey,
                     device.code,
                     device.location_pk,
                     device.exchange_pk,
                     device.device_type,
                     ipv4_to_string(&device.public_ip),
-                    networkv4_to_string(&device.dz_prefix),
+                    networkv4_list_to_string(&device.dz_prefixes),
                     device.status,
                     device.owner
                 );

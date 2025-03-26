@@ -138,7 +138,7 @@ mod tunnel_test {
                 location_pk: location_pubkey,
                 exchange_pk: exchange_pubkey,
                 public_ip: [10, 0, 0, 1],
-                dz_prefix: ([10, 1, 0, 0], 23),
+                dz_prefixes: vec!(([10, 1, 0, 0], 23)),
             }),
             vec![
                 AccountMeta::new(device_a_pubkey, false),
@@ -170,7 +170,7 @@ mod tunnel_test {
                 location_pk: location_pubkey,
                 exchange_pk: exchange_pubkey,
                 public_ip: [11, 0, 0, 1],
-                dz_prefix: ([11, 1, 0, 0], 23),
+                dz_prefixes: vec!(([11, 1, 0, 0], 23)),
             }),
             vec![
                 AccountMeta::new(device_z_pubkey, false),

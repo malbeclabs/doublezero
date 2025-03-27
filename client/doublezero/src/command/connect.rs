@@ -257,7 +257,7 @@ impl ProvisioningArgs {
             .await
         {
             Ok(res) => {
-                spinner.println(format!("Provisioning: {:?}", res));
+                spinner.println(format!("Provisioning: status: {}", res.status));
                 spinner.finish_with_message("User Provisioned");
             }
             Err(e) => {

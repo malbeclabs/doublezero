@@ -142,6 +142,9 @@ impl Activator {
 
                                     self.devices
                                         .insert(*pubkey, DeviceState::new(device));
+                                } else {
+                                    let device_state = self.devices.get_mut(pubkey).unwrap();
+                                    device_state.update(device);
                                 }
                             }
                             DeviceStatus::Deleting => {

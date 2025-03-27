@@ -23,15 +23,12 @@ pub struct DeviceCreateArgs {
     pub device_type: DeviceType,
     pub public_ip: IpV4,
     pub dz_prefixes: NetworkV4List,
-    pub dz_prefixes: NetworkV4List,
 }
 
 impl fmt::Debug for DeviceCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "code: {}, location_pk: {}, exchange_pk: {}, device_type: {:?}, public_ip: {}, dz_prefixes: {}",
-            self.code, self.location_pk, self.exchange_pk, self.device_type, ipv4_to_string(&self.public_ip), networkv4_list_to_string(&self.dz_prefixes)
             "code: {}, location_pk: {}, exchange_pk: {}, device_type: {:?}, public_ip: {}, dz_prefixes: {}",
             self.code, self.location_pk, self.exchange_pk, self.device_type, ipv4_to_string(&self.public_ip), networkv4_list_to_string(&self.dz_prefixes)
         )

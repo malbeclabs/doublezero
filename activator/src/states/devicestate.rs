@@ -1,4 +1,4 @@
-use double_zero_sdk::{Device, IpV4};
+use double_zero_sdk::{ipv4_to_string, networkv4_list_to_string, Device, IpV4};
 use crate::{idallocator::IDAllocator, ipblockallocator::IPBlockAllocator};
 
 #[derive(Debug)]
@@ -15,6 +15,16 @@ impl DeviceState {
             device: device.clone(),
             dz_ips: device.dz_prefixes.iter().map(|b| IPBlockAllocator::new(*b)).collect(),
             tunnel_ids: IDAllocator::new(500, vec![]),
+        }
+    }
+
+    pub fn update(&mut self, device: &Device) {
+
+        if self.device.dz_prefixes != device.dz_prefixes {
+            self.device = device.clone();
+            self.dz_ips = device.dz_prefixes.iter().map(|b| IPBlockAllocator::new(*b)).collect();
+
+            println!("Update Device: {} public_ip: {} dz_prefixes: {} ", self.device.code, ipv4_to_string(&self.device.public_ip), networkv4_list_to_string(&self.device.dz_prefixes));
         }
     }
 

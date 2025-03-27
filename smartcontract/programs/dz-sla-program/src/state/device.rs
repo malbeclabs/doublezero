@@ -144,7 +144,6 @@ mod tests {
             exchange_pk: Pubkey::new_unique(),
             dz_prefixes: vec![([10, 0, 0, 1], 24), ([11, 0, 0, 1], 24)],
             public_ip: ipv4_parse(&"1.2.3.4".to_string()),
-            dz_prefixes: vec![([10, 0, 0, 1], 24), ([11, 0, 0, 1], 24)],
             status: DeviceStatus::Activated,
         };
 

@@ -47,15 +47,18 @@ c274b256290d40fdf914c
 var devicePayload = `
 050a3b74b3535cdeb34fd5e4cd7ea11
 33e55abc521c8850f6d08166d11e482
-89780f0000000000000000000000000
-0000028ae0a8eea9b48bff4a072e277
-9ab5f6c7025f71c22e20cd763f109c2
-7de0021895a3281cdcdf5d46ffb7a58
-c2af8f72fc20b6b06ef75e756171138
-c0f66e13a00cf2dd888cf2dd8881d01
-080000006c61322d647a30317830543
-f55840f9fa6f04948c0b2708d022b51
-c46f40772f345369cbb6e71889
+8978170000000000000000000000000
+0000000000000000000000000000000
+0000000000000000000000000000000
+0000000c80f67204801bfd72b1784ea
+0b097da12c3d23c1230abecce0e9399
+fa02ea097e950f4c60bfad5aff32b8f
+23df66186967b20e7381173d330afbb
+196b013e79900cc10f1f30109000000
+7069742d647a64303101000000cc10f
+3f32000db5869aeae2afff3ae7cedd7
+42bf2c76a97d421d93d56fc131c0448
+9115b50
 `
 
 var tunnelPayload = `
@@ -184,16 +187,16 @@ func TestRpcClient(t *testing.T) {
 				Devices: []Device{
 					{
 						AccountType:    DeviceType,
-						Index:          Uint128{High: 15, Low: 0},
+						Index:          Uint128{High: 23, Low: 0},
 						Owner:          getOwner(exchangePayload),
 						TenantPubKey:   getPubKeyOffset(devicePayload, 49, 81),
-						LocationPubKey: getPubKeyOffset(devicePayload, 49, 81),
-						ExchangePubKey: getPubKeyOffset(devicePayload, 81, 113),
+						LocationPubKey: getPubKeyOffset(devicePayload, 81, 113),
+						ExchangePubKey: getPubKeyOffset(devicePayload, 113, 145),
 						DeviceType:     0,
-						PublicIp:       [4]byte{0xcf, 0x2d, 0xd8, 0x88},
-						DzPrefixes:     [][5]byte{{0xcf, 0x2d, 0xd8, 0x88, 0x1d}},
+						PublicIp:       [4]byte{0xcc, 0x10, 0xf1, 0xf3},
 						Status:         1,
-						Code:           "la2-dz01",
+						Code:           "pit-dzd01",
+						DzPrefixes:     [][5]byte{{0xcc, 0x10, 0xf3, 0xf3, 0x20}},
 						PubKey:         getPubKey(devicePayload),
 					},
 				},

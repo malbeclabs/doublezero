@@ -90,11 +90,10 @@ type Device struct {
 	ExchangePubKey [32]uint8
 	DeviceType     uint8
 	PublicIp       [4]uint8
-	DzPrefixes     [][5]uint8
 	Status         DeviceStatus
 	Code           string
-	//DzPrefixes     [][5]uint8 // This is the new field that should be parsed if there is data in the array.
-	PubKey [32]byte
+	DzPrefixes     [][5]uint8
+	PubKey         [32]byte
 }
 
 type TunnelTunnelType uint8

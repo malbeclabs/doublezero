@@ -1,9 +1,10 @@
 use std::fmt;
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::pubkey::Pubkey;
+use serde::Serialize;
 
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
 #[borsh(use_discriminant=true)]
 pub enum AccountType {
     None = 0,

@@ -148,29 +148,65 @@ impl LocationService for DZClient {
     }
 
     fn suspend_location(&self, index: u128) -> eyre::Result<Signature> {
-        let (pda_pubkey, _) = get_location_pda(&self.get_program_id(), index);
+        match self.get_globalstate() {
+            Ok((globalstate_pubkey, globalstate)) => {
+                if !globalstate.foundation_allowlist.contains(&self.get_payer()) {
+                    return Err(eyre!("User not allowlisted"));
+                }
 
-        self.execute_transaction(
-            DoubleZeroInstruction::SuspendLocation(LocationSuspendArgs { index }),
-            vec![AccountMeta::new(pda_pubkey, false)],
-        )
+                let (pda_pubkey, _) = get_location_pda(&self.get_program_id(), index);
+
+                self.execute_transaction(
+                    DoubleZeroInstruction::SuspendLocation(LocationSuspendArgs { index }),
+                    vec![
+                        AccountMeta::new(pda_pubkey, false),
+                        AccountMeta::new(globalstate_pubkey, false),
+                    ],
+                )
+            }
+            Err(e) => Err(e),
+        }
     }
 
     fn reactivate_location(&self, index: u128) -> eyre::Result<Signature> {
-        let (pda_pubkey, _) = get_location_pda(&self.get_program_id(), index);
+        match self.get_globalstate() {
+            Ok((globalstate_pubkey, globalstate)) => {
+                if !globalstate.foundation_allowlist.contains(&self.get_payer()) {
+                    return Err(eyre!("User not allowlisted"));
+                }
 
-        self.execute_transaction(
-            DoubleZeroInstruction::ReactivateLocation(LocationReactivateArgs { index }),
-            vec![AccountMeta::new(pda_pubkey, false)],
-        )
+                let (pda_pubkey, _) = get_location_pda(&self.get_program_id(), index);
+
+                self.execute_transaction(
+                    DoubleZeroInstruction::ReactivateLocation(LocationReactivateArgs { index }),
+                    vec![
+                        AccountMeta::new(pda_pubkey, false),
+                        AccountMeta::new(globalstate_pubkey, false),
+                    ],
+                )
+            }
+            Err(e) => Err(e),
+        }
     }
 
     fn delete_location(&self, index: u128) -> eyre::Result<Signature> {
-        let (pda_pubkey, _) = get_location_pda(&self.get_program_id(), index);
+        match self.get_globalstate() {
+            Ok((globalstate_pubkey, globalstate)) => {
+                if !globalstate.foundation_allowlist.contains(&self.get_payer()) {
+                    return Err(eyre!("User not allowlisted"));
+                }
 
-        self.execute_transaction(
-            DoubleZeroInstruction::DeleteLocation(LocationDeleteArgs { index }),
-            vec![AccountMeta::new(pda_pubkey, false)],
-        )
+                let (pda_pubkey, _) = get_location_pda(&self.get_program_id(), index);
+
+                self.execute_transaction(
+                    DoubleZeroInstruction::DeleteLocation(LocationDeleteArgs { index }),
+                    vec![
+                        AccountMeta::new(pda_pubkey, false),
+                        AccountMeta::new(globalstate_pubkey, false),
+                    ],
+                )
+            }
+            Err(e) => Err(e),
+        }
     }
 }

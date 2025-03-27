@@ -143,29 +143,65 @@ impl ExchangeService for DZClient {
     }
 
     fn suspend_exchange(&self, index: u128) -> eyre::Result<Signature> {
-        let (pda_pubkey, _) = get_exchange_pda(&self.get_program_id(), index);
+        match self.get_globalstate() {
+            Ok((globalstate_pubkey, globalstate)) => {
+                if !globalstate.foundation_allowlist.contains(&self.get_payer()) {
+                    return Err(eyre!("User not allowlisted"));
+                }
 
-        self.execute_transaction(
-            DoubleZeroInstruction::SuspendExchange(ExchangeSuspendArgs { index }),
-            vec![AccountMeta::new(pda_pubkey, false)],
-        )
+                let (pda_pubkey, _) = get_exchange_pda(&self.get_program_id(), index);
+
+                self.execute_transaction(
+                    DoubleZeroInstruction::SuspendExchange(ExchangeSuspendArgs { index }),
+                    vec![
+                        AccountMeta::new(pda_pubkey, false),
+                        AccountMeta::new(globalstate_pubkey, false),
+                    ],
+                )
+            }
+            Err(e) => Err(e),
+        }
     }
 
     fn reactivate_exchange(&self, index: u128) -> eyre::Result<Signature> {
-        let (pda_pubkey, _) = get_exchange_pda(&self.get_program_id(), index);
+        match self.get_globalstate() {
+            Ok((globalstate_pubkey, globalstate)) => {
+                if !globalstate.foundation_allowlist.contains(&self.get_payer()) {
+                    return Err(eyre!("User not allowlisted"));
+                }
 
-        self.execute_transaction(
-            DoubleZeroInstruction::ReactivateExchange(ExchangeReactivateArgs { index }),
-            vec![AccountMeta::new(pda_pubkey, false)],
-        )
+                let (pda_pubkey, _) = get_exchange_pda(&self.get_program_id(), index);
+
+                self.execute_transaction(
+                    DoubleZeroInstruction::ReactivateExchange(ExchangeReactivateArgs { index }),
+                    vec![
+                        AccountMeta::new(pda_pubkey, false),
+                        AccountMeta::new(globalstate_pubkey, false),
+                    ],
+                )
+            }
+            Err(e) => Err(e),
+        }
     }
 
     fn delete_exchange(&self, index: u128) -> eyre::Result<Signature> {
-        let (pda_pubkey, _) = get_exchange_pda(&self.get_program_id(), index);
+        match self.get_globalstate() {
+            Ok((globalstate_pubkey, globalstate)) => {
+                if !globalstate.foundation_allowlist.contains(&self.get_payer()) {
+                    return Err(eyre!("User not allowlisted"));
+                }
 
-        self.execute_transaction(
-            DoubleZeroInstruction::DeleteExchange(ExchangeDeleteArgs { index }),
-            vec![AccountMeta::new(pda_pubkey, false)],
-        )
+                let (pda_pubkey, _) = get_exchange_pda(&self.get_program_id(), index);
+
+                self.execute_transaction(
+                    DoubleZeroInstruction::DeleteExchange(ExchangeDeleteArgs { index }),
+                    vec![
+                        AccountMeta::new(pda_pubkey, false),
+                        AccountMeta::new(globalstate_pubkey, false),
+                    ],
+                )
+            }
+            Err(e) => Err(e),
+        }
     }
 }

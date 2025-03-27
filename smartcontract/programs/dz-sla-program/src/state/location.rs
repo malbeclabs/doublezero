@@ -3,9 +3,10 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::pubkey::Pubkey;
 use crate::{bytereader::ByteReader, seeds::SEED_LOCATION};
 use super::accounttype::*;
+use serde::Serialize;
 
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
 #[borsh(use_discriminant=true)]
 pub enum LocationStatus {
     Pending = 0,
@@ -34,7 +35,7 @@ impl fmt::Display for LocationStatus {
     }
 }
 
-#[derive(BorshSerialize, Debug, PartialEq, Clone)]
+#[derive(BorshSerialize, Debug, PartialEq, Clone, Serialize)]
 pub struct Location {
     pub account_type: AccountType,  // 1
     pub owner: Pubkey,              // 32

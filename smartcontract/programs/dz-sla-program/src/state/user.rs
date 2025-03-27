@@ -3,11 +3,12 @@ use crate::{seeds::SEED_USER, types::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::pubkey::Pubkey;
 use std::fmt;
+use serde::Serialize;
 
 use super::accounttype::{AccountType, AccountTypeInfo};
 
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
 #[borsh(use_discriminant = true)]
 pub enum UserType {
     None = 0,
@@ -33,7 +34,7 @@ impl fmt::Display for UserType {
 }
 
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
 #[borsh(use_discriminant = true)]
 pub enum UserCYOA {
     None = 0,
@@ -71,7 +72,7 @@ impl fmt::Display for UserCYOA {
 }
 
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
 #[borsh(use_discriminant = true)]
 pub enum UserStatus {
     Pending = 0,
@@ -111,7 +112,7 @@ impl fmt::Display for UserStatus {
         }
     }
 }
-#[derive(BorshSerialize, Debug, PartialEq, Clone)]
+#[derive(BorshSerialize, Debug, PartialEq, Clone, Serialize)]
 pub struct User {
     pub account_type: AccountType, // 1
     pub owner: Pubkey,             // 32

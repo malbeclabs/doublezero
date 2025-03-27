@@ -16,7 +16,7 @@ pub struct CreateDeviceArgs {
     #[arg(long)]
     pub public_ip: String,
     #[arg(long)]
-    pub dz_prefix: String,
+    pub dz_prefixes: String,
 }
 
 impl CreateDeviceArgs {
@@ -50,7 +50,7 @@ impl CreateDeviceArgs {
             exchange_pk,
             DeviceType::Switch,
             ipv4_parse(&self.public_ip),
-            networkv4_parse(&self.dz_prefix),
+            networkv4_list_parse(&self.dz_prefixes),
         ) {
             Ok((_signature, pda_pubkey)) => println!("{}", pda_pubkey),
             Err(e) => print_error(e),

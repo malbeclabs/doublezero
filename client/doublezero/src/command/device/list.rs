@@ -19,7 +19,7 @@ impl ListDeviceArgs {
             "exchange",
             "device_type",
             "public_ip",
-            "dz_prefix",
+            "dz_prefixes",
             "status",
             "owner"
         ]);
@@ -44,7 +44,7 @@ impl ListDeviceArgs {
                 Cell::new(exch_name),
                 Cell::new(&data.device_type.to_string()),
                 Cell::new(&ipv4_to_string(&data.public_ip)),
-                Cell::new(&networkv4_to_string(&data.dz_prefix)),
+                Cell::new(&networkv4_list_to_string(&data.dz_prefixes)),
                 Cell::new(&data.status.to_string()),
                 Cell::new(&data.owner.to_string()),
             ]));

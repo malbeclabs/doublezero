@@ -85,13 +85,14 @@ type Device struct {
 	AccountType    AccountType
 	Owner          [32]uint8
 	Index          Uint128
+	TenantPubKey   [32]uint8
 	LocationPubKey [32]uint8
 	ExchangePubKey [32]uint8
 	DeviceType     uint8
 	PublicIp       [4]uint8
-	DzPrefix       [5]uint8
 	Status         DeviceStatus
 	Code           string
+	DzPrefixes     [][5]uint8
 	PubKey         [32]byte
 }
 

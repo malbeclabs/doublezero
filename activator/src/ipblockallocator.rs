@@ -1,5 +1,7 @@
+use std::net::Ipv4Addr;
+
 use bitvec::prelude::*;
-use double_zero_sdk::{networkv4_to_ipnetwork, NetworkV4};
+use double_zero_sdk::{networkv4_to_ipnetwork, IpV4, NetworkV4};
 use ipnetwork::Ipv4Network;
 
 #[derive(Debug)]
@@ -21,6 +23,20 @@ impl IPBlockAllocator {
             total_ips,
         }
     }
+
+
+    pub fn contains(&self, ip: IpV4) -> bool {
+        let ip  = Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3]);
+        let base_ip = u32::from(self.base_block.network());
+        let ip_as_u32 = u32::from(ip);
+
+        if base_ip <= ip_as_u32 && ip_as_u32 < base_ip + self.total_ips as u32 {
+            return true;
+        }
+
+        false
+    }
+
 
     /// Marks the given block of IPs as assigned.
     /// Updates the bit vector to reflect the assigned IPs.

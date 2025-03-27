@@ -13,7 +13,7 @@ pub struct UpdateDeviceArgs {
     #[arg(long)]
     pub public_ip: Option<String>,
     #[arg(long)]
-    pub dz_prefix: Option<String>,
+    pub dz_prefixes: Option<String>,
 }
 
 impl UpdateDeviceArgs {
@@ -30,7 +30,7 @@ impl UpdateDeviceArgs {
                     self.code,
                     Some(DeviceType::Switch),
                     self.public_ip.map(|ip| ipv4_parse(&ip)),
-                    self.dz_prefix.map(|ip| networkv4_parse(&ip)),
+                    self.dz_prefixes.map(|ip| networkv4_list_parse(&ip)),
                     
                 ) {
                     Ok(_) => println!("Device updated"),

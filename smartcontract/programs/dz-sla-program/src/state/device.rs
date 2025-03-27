@@ -70,7 +70,6 @@ pub struct Device {
     pub account_type: AccountType,  // 1
     pub owner: Pubkey,              // 32
     pub index: u128,                // 16
-    pub tenant_pk: Pubkey,          // 32
     pub location_pk: Pubkey,        // 32
     pub exchange_pk: Pubkey,        // 32
     pub device_type: DeviceType,    // 1
@@ -95,7 +94,7 @@ impl AccountTypeInfo for Device {
         SEED_DEVICE
     }
     fn size(&self) -> usize {
-        1 + 32 + 16 + 32 + 32 + 32 + 1 + 4 + 1 + 4 + self.code.len() + 4 + 5 * self.dz_prefixes.len()
+        1 + 32 + 16 + 32 + 32 + 1 + 4 + 1 + 4 + self.code.len() + 4 + 5 * self.dz_prefixes.len()
     }
     fn index(&self) -> u128 {
         self.index
@@ -113,7 +112,6 @@ impl From<&[u8]> for Device {
             account_type: parser.read_enum(),
             owner: parser.read_pubkey(),
             index: parser.read_u128(),
-            tenant_pk: parser.read_pubkey(),
             location_pk: parser.read_pubkey(),
             exchange_pk: parser.read_pubkey(),
             device_type: parser.read_enum(),
@@ -139,7 +137,6 @@ mod tests {
             index: 123,
             code: "test-321".to_string(),
             device_type: DeviceType::Switch,
-            tenant_pk: Pubkey::default(),
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             dz_prefixes: vec![([10, 0, 0, 1], 24), ([11, 0, 0, 1], 24)],

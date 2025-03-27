@@ -87,7 +87,6 @@ pub fn process_create_device(
         owner: *payer_account.key,
         index: globalstate.account_index,
         code: value.code.clone(),
-        tenant_pk: Pubkey::default(),
         location_pk: value.location_pk,
         exchange_pk: value.exchange_pk,
         device_type: value.device_type,

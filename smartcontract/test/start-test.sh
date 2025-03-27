@@ -16,6 +16,14 @@ cargo build --manifest-path ../../client/doublezero/Cargo.toml
 cp ../../client/doublezero/target/debug/doublezero ./target/
 
 
+# Configure to connect to localnet
+solana config set --url http://127.0.0.1:8899
+
+# configure doublezero to connect to local test cluster
+./target/doublezero config set --url http://127.0.0.1:8899
+./target/doublezero config set --program-id 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
+
+
 # start the solana test cluster
 echo "Start solana local test cluster"
 solana-test-validator --reset --bpf-program ./keypair.json ./target/double_zero_sla_program.so > ./logs/validator.log 2>&1 &
@@ -24,13 +32,6 @@ solana-test-validator --reset --bpf-program ./keypair.json ./target/double_zero_
 echo "Waiting 15 seconds to start the solana test cluster"
 sleep 15
 
-
-# Configure to connect to localnet
-solana config set --url http://127.0.0.1:8899
-
-# configure doublezero to connect to local test cluster
-./target/doublezero config set --url localnet
-./target/doublezero config set --program 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
 
 # initialice doublezero smart contract
 ./target/doublezero init 

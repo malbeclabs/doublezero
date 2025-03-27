@@ -85,7 +85,6 @@ type Device struct {
 	AccountType    AccountType
 	Owner          [32]uint8
 	Index          Uint128
-	TenantPubKey   [32]uint8
 	LocationPubKey [32]uint8
 	ExchangePubKey [32]uint8
 	DeviceType     uint8
@@ -159,6 +158,7 @@ type User struct {
 	Owner        [32]uint8
 	Index        Uint128
 	UserType     UserUserType
+	TenantPubKey [32]uint8
 	DevicePubKey [32]uint8
 	CyoaType     CyoaType
 	ClientIp     [4]uint8

@@ -48,17 +48,15 @@ var devicePayload = `
 050a3b74b3535cdeb34fd5e4cd7ea11
 33e55abc521c8850f6d08166d11e482
 8978170000000000000000000000000
-0000000000000000000000000000000
-0000000000000000000000000000000
-0000000c80f67204801bfd72b1784ea
-0b097da12c3d23c1230abecce0e9399
-fa02ea097e950f4c60bfad5aff32b8f
-23df66186967b20e7381173d330afbb
-196b013e79900cc10f1f30109000000
-7069742d647a64303101000000cc10f
-3f32000db5869aeae2afff3ae7cedd7
-42bf2c76a97d421d93d56fc131c0448
-9115b50
+00000c80f67204801bfd72b1784ea0b
+097da12c3d23c1230abecce0e9399fa
+02ea097e950f4c60bfad5aff32b8f23
+df66186967b20e7381173d330afbb19
+6b013e79900cc10f1f3010900000070
+69742d647a64303101000000cc10f3f
+32000db5869aeae2afff3ae7cedd742
+bf2c76a97d421d93d56fc131c044891
+15b50
 `
 
 var tunnelPayload = `
@@ -79,15 +77,17 @@ bf0759aff0100e40b54020000002823
 `
 
 var userPayload = `
-070a3b74b3535cdeb34fd5e4cd7ea1
-133e55abc521c8850f6d08166d11e4
-8289781c0000000000000000000000
-00000000014e87bc43fa1a87570633
-1a9365bcece0273faca423ea084280
-aba8289426385a0191284e70cc10f3
-f3f401a9fe00001f01fd7b849cb615
-09e9f63cb3081ab75c836c800c5bfb
-52bfcf3f4801719751291a
+070a3b74b3535cdeb34fd5e4cd7ea11
+33e55abc521c8850f6d08166d11e482
+89781f0000000000000000000000000
+0000001000000000000000000000000
+0000000000000000000000000000000
+000000000d2b30c6593b3dd99bbdde9
+c8e29eb9291adefbc11544a47f17d94
+72cae13fdfc010a000001c3db7849f4
+01a9fe00001f01fcef68d5d9eae991f
+d7d6284dad2f2d755ed5b09e8b5e76f
+5988360d7687fac6
 `
 
 type mockSolanaClient struct {
@@ -189,9 +189,8 @@ func TestRpcClient(t *testing.T) {
 						AccountType:    DeviceType,
 						Index:          Uint128{High: 23, Low: 0},
 						Owner:          getOwner(exchangePayload),
-						TenantPubKey:   getPubKeyOffset(devicePayload, 49, 81),
-						LocationPubKey: getPubKeyOffset(devicePayload, 81, 113),
-						ExchangePubKey: getPubKeyOffset(devicePayload, 113, 145),
+						LocationPubKey: getPubKeyOffset(devicePayload, 49, 81),
+						ExchangePubKey: getPubKeyOffset(devicePayload, 81, 113),
 						DeviceType:     0,
 						PublicIp:       [4]byte{0xcc, 0x10, 0xf1, 0xf3},
 						Status:         1,
@@ -240,15 +239,16 @@ func TestRpcClient(t *testing.T) {
 				Users: []User{
 					{
 						AccountType:  UserType,
-						Index:        Uint128{High: 28, Low: 0},
+						Index:        Uint128{High: 31, Low: 0},
 						Owner:        getOwner(userPayload),
 						UserType:     UserTypeServer,
-						DevicePubKey: getPubKeyOffset(userPayload, 50, 82),
+						TenantPubKey: getPubKeyOffset(userPayload, 50, 82),
+						DevicePubKey: getPubKeyOffset(userPayload, 82, 114),
 						CyoaType:     CyoaTypeGREOverDIA,
-						ClientIp:     [4]byte{0x91, 0x28, 0x4e, 0x70},
+						ClientIp:     [4]byte{0x0a, 0x00, 0x00, 0x01},
 						TunnelId:     500,
 						TunnelNet:    [5]byte{0xa9, 0xfe, 0x00, 0x00, 0x1f},
-						DzIp:         [4]byte{0xcc, 0x10, 0xf3, 0xf3},
+						DzIp:         [4]byte{0xc3, 0xdb, 0x78, 0x49},
 						Status:       UserStatusActivated,
 						PubKey:       getPubKey(userPayload),
 					},

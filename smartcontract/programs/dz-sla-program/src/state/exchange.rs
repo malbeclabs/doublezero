@@ -3,9 +3,10 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::pubkey::Pubkey;
 use crate::{bytereader::ByteReader, seeds::SEED_EXCHANGE};
 use super::accounttype::{AccountType, AccountTypeInfo};
+use serde::Serialize;
 
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
 #[borsh(use_discriminant=true)]
 pub enum ExchangeStatus {
     Pending = 0,
@@ -35,7 +36,7 @@ impl fmt::Display for ExchangeStatus {
 }
 
 
-#[derive(BorshSerialize, Debug, PartialEq, Clone)]
+#[derive(BorshSerialize, Debug, PartialEq, Clone, Serialize)]
 pub struct Exchange {
     pub account_type: AccountType,  // 1
     pub owner: Pubkey,              // 32

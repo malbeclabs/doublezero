@@ -1673,6 +1673,8 @@ dependencies = [
  "borsh 1.5.5",
  "eyre",
  "ipnetwork",
+ "serde",
+ "serde_json",
  "solana-program",
  "thiserror 2.0.9",
 ]

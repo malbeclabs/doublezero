@@ -2,11 +2,12 @@ use crate::{bytereader::ByteReader, seeds::SEED_DEVICE, types::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::pubkey::Pubkey;
 use std::fmt;
+use serde::Serialize;
 
 use super::accounttype::{AccountType, AccountTypeInfo};
 
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
 #[borsh(use_discriminant = true)]
 pub enum DeviceType {
     Switch = 0,
@@ -30,7 +31,7 @@ impl fmt::Display for DeviceType {
 }
 
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
 #[borsh(use_discriminant = true)]
 pub enum DeviceStatus {
     Pending = 0,
@@ -65,7 +66,7 @@ impl fmt::Display for DeviceStatus {
     }
 }
 
-#[derive(BorshSerialize, Debug, PartialEq, Clone)]
+#[derive(BorshSerialize, Debug, PartialEq, Clone, Serialize)]
 pub struct Device {
     pub account_type: AccountType,  // 1
     pub owner: Pubkey,              // 32

@@ -4,9 +4,10 @@ use solana_program::pubkey::Pubkey;
 use crate::{bytereader::ByteReader, seeds::SEED_TUNNEL, types::*};
 
 use super::accounttype::{AccountType, AccountTypeInfo};
+use serde::Serialize;
 
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
 #[borsh(use_discriminant=true)]
 pub enum TunnelTunnelType {
     MPLSoGRE = 1,
@@ -42,7 +43,7 @@ impl fmt::Display for TunnelTunnelType {
 }
 
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
 #[borsh(use_discriminant=true)]
 pub enum TunnelStatus {
     Pending = 0,
@@ -77,7 +78,7 @@ impl fmt::Display for TunnelStatus {
     }
 }
 
-#[derive(BorshSerialize, Debug, PartialEq, Clone)]
+#[derive(BorshSerialize, Debug, PartialEq, Clone, Serialize)]
 pub struct Tunnel {
     pub account_type: AccountType,      // 1
     pub owner: Pubkey,                  // 32

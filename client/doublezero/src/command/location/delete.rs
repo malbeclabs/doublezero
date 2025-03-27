@@ -15,9 +15,9 @@ impl DeleteLocationArgs {
 
         let pubkey = parse_pubkey(&self.pubkey).expect("Invalid pubkey");
 
-        let device = client.get_device(&pubkey)?;
-        match client.delete_device(device.index) {
-            Ok(_) => println!("Device deleted"),
+        let location = client.get_location(&pubkey)?;
+        match client.delete_location(location.index) {
+            Ok(_) => println!("Location deleted"),
             Err(e) => print_error(e),
         }
 

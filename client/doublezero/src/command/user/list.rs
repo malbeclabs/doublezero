@@ -5,11 +5,22 @@ use prettytable::{format, row, Cell, Row, Table};
 #[derive(Args, Debug)]
 pub struct ListUserArgs {
     #[arg(long)]
-    pub code: Option<String>,
+    pub code: Option<String>,    
+    #[arg(long)]
+    pub json: bool,
 }
 
 impl ListUserArgs {
     pub async fn execute<T:UserService + DeviceService>(self, client: &T) -> eyre::Result<()> {
+
+        if self.json {
+            println!("XX");
+            let users = client.get_users()?;
+            println!("{}", serde_json::to_string_pretty(&users)?);
+            return Ok(());
+        }
+
+
         let mut table = Table::new();
         table.add_row(row![
             "pubkey",

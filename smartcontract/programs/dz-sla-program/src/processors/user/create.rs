@@ -76,6 +76,7 @@ pub fn process_create_user(
         account_type: AccountType::User,
         owner: *payer_account.key,
         index: globalstate.account_index,
+        tenant_pk: Pubkey::default(),
         user_type: value.user_type,
         device_pk: value.device_pk,
         cyoa_type: value.cyoa_type,

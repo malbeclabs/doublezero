@@ -117,6 +117,7 @@ pub struct User {
     pub owner: Pubkey,             // 32
     pub index: u128,               // 16
     pub user_type: UserType,       // 1
+    pub tenant_pk: Pubkey,          // 32
     pub device_pk: Pubkey,         // 32
     pub cyoa_type: UserCYOA,       // 1
     pub client_ip: IpV4,           // 4
@@ -151,7 +152,7 @@ impl AccountTypeInfo for User {
         SEED_USER
     }
     fn size(&self) -> usize {
-        1 + 32 + 16 + 1 + 32 + 1 + 4 + 4 + 2 + 5 + 1
+        1 + 32 + 16 + 1 + 32 + 32 + 1 + 4 + 4 + 2 + 5 + 1
     }
     fn index(&self) -> u128 {
         self.index
@@ -170,6 +171,7 @@ impl From<&[u8]> for User {
             owner: parser.read_pubkey(),
             index: parser.read_u128(),
             user_type: parser.read_enum(),
+            tenant_pk: parser.read_pubkey(),
             device_pk: parser.read_pubkey(),
             cyoa_type: parser.read_enum(),
             client_ip: parser.read_ipv4(),
@@ -191,6 +193,7 @@ mod tests {
             account_type: AccountType::User,
             owner: Pubkey::new_unique(),
             index: 123,
+            tenant_pk: Pubkey::default(),
             user_type: UserType::Server,
             device_pk: Pubkey::new_unique(),
             cyoa_type: UserCYOA::GREOverDIA,

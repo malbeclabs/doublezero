@@ -4,6 +4,7 @@
 **/coverage.out
 debug/
 target/
+logs/
 test-ledger/
 
 **/bin/*
@@ -13,5 +14,5 @@ smartcontract/cli/config/*
 .vscode
 
 dist/
-**/log/*
+
 .devcontainer/

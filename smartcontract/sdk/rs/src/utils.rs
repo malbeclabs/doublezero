@@ -1,6 +1,19 @@
 use std::fs;
 use std::error::Error;
+use std::str::FromStr;
 use solana_sdk::signature::Keypair;
+use solana_sdk::pubkey::Pubkey;
+
+pub fn parse_pubkey(input: &str) -> Option<Pubkey> {
+    if input.len() < 43 || input.len() > 44 {
+        return None;
+    }
+
+    match Pubkey::from_str(input) {
+        Ok(pk) => Some(pk),
+        Err(_) => None,
+    }
+}
 
 
 pub fn read_keypair_from_file(file: String) -> eyre::Result<Keypair, Box<dyn Error>> {

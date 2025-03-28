@@ -1,0 +1,24 @@
+name: smartcontract-cli-admin
+on:
+  push:
+    paths:
+      - "contributor/doublezero-admin/**"
+      - "!**/**.md"
+    branches: [ main ]
+  pull_request:
+    paths:
+      - "contributor/doublezero-admin/**"
+      - "!**/**.md"
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-16c-64gb
+    defaults:
+      run:
+        working-directory: "contributor/doublezero-admin/"
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+      - name: Test
+        run: cargo test --verbose

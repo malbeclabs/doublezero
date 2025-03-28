@@ -77,15 +77,15 @@ pub struct Device {
     pub public_ip: IpV4,            // 4
     pub status: DeviceStatus,       // 1
     pub code: String,               // 4 + len
-    pub dz_prefixes: NetworkV4List, // 4 + 5 * len
+    pub dz_ef_pools: NetworkV4List, // 4 + 5 * len
 }
 
 impl fmt::Display for Device {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, index: {}, location_pk: {}, exchange_pk: {}, device_type: {}, public_ip: {}, dz_prefixes: {}, status: {}, code: {}",
-            self.account_type, self.owner, self.index, self.location_pk, self.exchange_pk, self.device_type, ipv4_to_string(&self.public_ip), networkv4_list_to_string(&self.dz_prefixes), self.status, self.code
+            "account_type: {}, owner: {}, index: {}, location_pk: {}, exchange_pk: {}, device_type: {}, public_ip: {}, dz_ef_pools: {}, status: {}, code: {}",
+            self.account_type, self.owner, self.index, self.location_pk, self.exchange_pk, self.device_type, ipv4_to_string(&self.public_ip), networkv4_list_to_string(&self.dz_ef_pools), self.status, self.code
         )
     }
 }
@@ -95,7 +95,7 @@ impl AccountTypeInfo for Device {
         SEED_DEVICE
     }
     fn size(&self) -> usize {
-        1 + 32 + 16 + 32 + 32 + 1 + 4 + 1 + 4 + self.code.len() + 4 + 5 * self.dz_prefixes.len()
+        1 + 32 + 16 + 32 + 32 + 1 + 4 + 1 + 4 + self.code.len() + 4 + 5 * self.dz_ef_pools.len()
     }
     fn index(&self) -> u128 {
         self.index
@@ -119,7 +119,7 @@ impl From<&[u8]> for Device {
             public_ip: parser.read_ipv4(),
             status: parser.read_enum(),
             code: parser.read_string(),
-            dz_prefixes: parser.read_networkv4_vec(),
+            dz_ef_pools: parser.read_networkv4_vec(),
         };
 
         device
@@ -140,7 +140,7 @@ mod tests {
             device_type: DeviceType::Switch,
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
-            dz_prefixes: vec![([10, 0, 0, 1], 24), ([11, 0, 0, 1], 24)],
+            dz_ef_pools: vec![([10, 0, 0, 1], 24), ([11, 0, 0, 1], 24)],
             public_ip: ipv4_parse(&"1.2.3.4".to_string()),
             status: DeviceStatus::Activated,
         };
@@ -151,11 +151,11 @@ mod tests {
         assert_eq!(val.size(), val2.size());
         assert_eq!(val.owner, val2.owner);
         assert_eq!(val.code, val2.code);
-        assert_eq!(val.dz_prefixes, val2.dz_prefixes);
+        assert_eq!(val.dz_ef_pools, val2.dz_ef_pools);
         assert_eq!(val.location_pk, val2.location_pk);
         assert_eq!(val.exchange_pk, val2.exchange_pk);
         assert_eq!(val.public_ip, val2.public_ip);
-        assert_eq!(val.dz_prefixes, val2.dz_prefixes);
+        assert_eq!(val.dz_ef_pools, val2.dz_ef_pools);
         assert_eq!(val.status, val2.status);
         assert_eq!(data.len(), val.size(), "Invalid Size");
     }

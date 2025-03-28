@@ -14,6 +14,7 @@ pub struct GlobalConfig {
     pub remote_asn: u32,                    // 4
     pub tunnel_tunnel_block: NetworkV4,     // 5
     pub user_tunnel_block: NetworkV4,       // 5
+    pub dz_unicast_pool: NetworkV4,       // 5
 }
 
 impl fmt::Display for GlobalConfig {
@@ -38,6 +39,7 @@ impl From<&[u8]> for GlobalConfig {
             remote_asn: parser.read_u32(),
             tunnel_tunnel_block: parser.read_networkv4(),
             user_tunnel_block: parser.read_networkv4(),
+            dz_unicast_pool: parser.read_networkv4(),
         }
     }
 }
@@ -61,6 +63,7 @@ mod tests {
             remote_asn: 456,
             tunnel_tunnel_block: ([10, 0, 0, 1], 24),
             user_tunnel_block: ([10, 0, 0, 2], 24),
+            dz_unicast_pool: ([10, 0, 0, 3], 24),
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -72,6 +75,7 @@ mod tests {
         assert_eq!(val.remote_asn, val2.remote_asn);
         assert_eq!(val.tunnel_tunnel_block, val2.tunnel_tunnel_block);
         assert_eq!(val.user_tunnel_block, val2.user_tunnel_block);
+        assert_eq!(val.dz_unicast_pool, val2.dz_unicast_pool);
         assert_eq!(data.len(), val.size(), "Invalid Size");
     }
 }

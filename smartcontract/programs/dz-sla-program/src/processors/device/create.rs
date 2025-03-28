@@ -22,15 +22,15 @@ pub struct DeviceCreateArgs {
     pub exchange_pk: Pubkey,
     pub device_type: DeviceType,
     pub public_ip: IpV4,
-    pub dz_prefixes: NetworkV4List,
+    pub dz_ef_pools: NetworkV4List,
 }
 
 impl fmt::Debug for DeviceCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "code: {}, location_pk: {}, exchange_pk: {}, device_type: {:?}, public_ip: {}, dz_prefixes: {}",
-            self.code, self.location_pk, self.exchange_pk, self.device_type, ipv4_to_string(&self.public_ip), networkv4_list_to_string(&self.dz_prefixes)
+            "code: {}, location_pk: {}, exchange_pk: {}, device_type: {:?}, public_ip: {}, dz_ef_pools: {}",
+            self.code, self.location_pk, self.exchange_pk, self.device_type, ipv4_to_string(&self.public_ip), networkv4_list_to_string(&self.dz_ef_pools)
         )
     }
 }
@@ -91,7 +91,7 @@ pub fn process_create_device(
         exchange_pk: value.exchange_pk,
         device_type: value.device_type,
         public_ip:  value.public_ip,
-        dz_prefixes: value.dz_prefixes.clone(),
+        dz_ef_pools: value.dz_ef_pools.clone(),
         status: DeviceStatus::Pending,
     };
 

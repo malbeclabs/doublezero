@@ -12,13 +12,17 @@ use super::accounttype::{AccountType, AccountTypeInfo};
 #[borsh(use_discriminant = true)]
 pub enum UserType {
     None = 0,
-    Server = 1,
+    BYOIP = 1,
+    DZIP = 2,
+    EF = 3,
 }
 
 impl From<u8> for UserType {
     fn from(value: u8) -> Self {
         match value {
-            1 => UserType::Server,
+            1 => UserType::BYOIP,
+            2 => UserType::DZIP,
+            3 => UserType::EF,
             _ => UserType::None,
         }
     }
@@ -28,7 +32,9 @@ impl fmt::Display for UserType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             UserType::None => write!(f, "none"),
-            UserType::Server => write!(f, "server"),
+            UserType::BYOIP => write!(f, "BYOIP"),
+            UserType::DZIP => write!(f, "DZIP"),
+            UserType::EF => write!(f, "EF"),
         }
     }
 }
@@ -38,21 +44,21 @@ impl fmt::Display for UserType {
 #[borsh(use_discriminant = true)]
 pub enum UserCYOA {
     None = 0,
-    GREOverDIA = 1,
-    GREOverFabric = 2,
-    GREOverPrivatePeering = 3,
-    GREOverPublicPeering = 4,
-    GREOverCable = 5,
+    GREoDIA = 1,
+    GREoFabric = 2,
+    GREoPrivatePeering = 3,
+    GREoPublicPeering = 4,
+    GREoCable = 5,
 }
 
 impl From<u8> for UserCYOA {
     fn from(value: u8) -> Self {
         match value {
-            1 => UserCYOA::GREOverDIA,
-            2 => UserCYOA::GREOverFabric,
-            3 => UserCYOA::GREOverPrivatePeering,
-            4 => UserCYOA::GREOverPublicPeering,
-            5 => UserCYOA::GREOverCable,
+            1 => UserCYOA::GREoDIA,
+            2 => UserCYOA::GREoFabric,
+            3 => UserCYOA::GREoPrivatePeering,
+            4 => UserCYOA::GREoPublicPeering,
+            5 => UserCYOA::GREoCable,
             _ => UserCYOA::None,
         }
     }
@@ -62,11 +68,11 @@ impl fmt::Display for UserCYOA {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             UserCYOA::None => write!(f, "none"),
-            UserCYOA::GREOverDIA => write!(f, "GREOverDIA"),
-            UserCYOA::GREOverFabric => write!(f, "GREOverFabric"),
-            UserCYOA::GREOverPrivatePeering => write!(f, "GREOverPrivatePeering"),
-            UserCYOA::GREOverPublicPeering => write!(f, "GREOverPublicPeering"),
-            UserCYOA::GREOverCable => write!(f, "GREOverCable"),
+            UserCYOA::GREoDIA => write!(f, "GREoDIA"),
+            UserCYOA::GREoFabric => write!(f, "GREoFabric"),
+            UserCYOA::GREoPrivatePeering => write!(f, "GREoPrivatePeering"),
+            UserCYOA::GREoPublicPeering => write!(f, "GREoPublicPeering"),
+            UserCYOA::GREoCable => write!(f, "GREoCable"),
         }
     }
 }
@@ -197,7 +203,7 @@ mod tests {
             tenant_pk: Pubkey::default(),
             user_type: UserType::Server,
             device_pk: Pubkey::new_unique(),
-            cyoa_type: UserCYOA::GREOverDIA,
+            cyoa_type: UserCYOA::GREoDIA,
             dz_ip: ipv4_parse(&"3.2.4.2".to_string()),
             client_ip: ipv4_parse(&"1.2.3.4".to_string()),
             tunnel_id: 0,

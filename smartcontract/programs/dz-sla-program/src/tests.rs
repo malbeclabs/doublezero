@@ -267,7 +267,7 @@ pub mod test {
             exchange_pk: exchange_la_pubkey,
             device_type: DeviceType::Switch,
             public_ip: [1, 0, 0, 1],
-            dz_prefixes: vec!(networkv4_parse(&"10.0.0.1/24".to_string())),
+            dz_ef_pools: vec!(networkv4_parse(&"10.0.0.1/24".to_string())),
         };
 
         println!("Testing Device LA initialization...");
@@ -312,7 +312,7 @@ pub mod test {
             exchange_pk: exchange_ny_pubkey,
             device_type: DeviceType::Switch,
             public_ip: [1, 0, 0, 2],
-            dz_prefixes: vec!(networkv4_parse(&"10.1.0.1/24".to_string())),
+            dz_ef_pools: vec!(networkv4_parse(&"10.1.0.1/24".to_string())),
         };
 
         execute_transaction(

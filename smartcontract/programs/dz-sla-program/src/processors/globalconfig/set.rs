@@ -25,6 +25,7 @@ pub struct SetGlobalConfigArgs {
     pub remote_asn: u32,
     pub tunnel_tunnel_block: NetworkV4,
     pub user_tunnel_block: NetworkV4,
+    pub dz_unicast_pool: NetworkV4,
 }
 
 impl fmt::Debug for SetGlobalConfigArgs {
@@ -60,6 +61,7 @@ pub fn process_set_globalconfig(
         remote_asn: value.remote_asn,
         tunnel_tunnel_block: value.tunnel_tunnel_block,
         user_tunnel_block: value.user_tunnel_block,
+        dz_unicast_pool: value.dz_unicast_pool,
     };
     // Size of our index account
     let account_space = data.size();

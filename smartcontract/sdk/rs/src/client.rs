@@ -313,6 +313,7 @@ impl DZClient {
         remote_asn: u32,
         device_tunnel_block: NetworkV4,
         user_tunnel_block: NetworkV4,
+        dz_unicast_pool: NetworkV4,
     ) -> eyre::Result<Signature> {
         let (pda_pubkey, _) = get_globalconfig_pda(&self.program_id);
 
@@ -322,6 +323,7 @@ impl DZClient {
                 remote_asn,
                 tunnel_tunnel_block: device_tunnel_block,
                 user_tunnel_block,
+                dz_unicast_pool,
             }),
             vec![AccountMeta::new(pda_pubkey, false)],
         )

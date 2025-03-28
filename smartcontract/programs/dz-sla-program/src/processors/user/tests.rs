@@ -143,7 +143,7 @@ mod user_test {
                 location_pk: location_pubkey,
                 exchange_pk: exchange_pubkey,
                 public_ip: [10, 0, 0, 1],
-                dz_prefixes: vec!(([10, 1, 0, 0], 23)),
+                dz_ef_pools: vec!(([10, 1, 0, 0], 23)),
             }),
             vec![
                 AccountMeta::new(device_pubkey, false),

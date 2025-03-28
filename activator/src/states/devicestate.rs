@@ -13,18 +13,18 @@ impl DeviceState {
     pub fn new(device: &Device) -> DeviceState {
         DeviceState {
             device: device.clone(),
-            dz_ips: device.dz_prefixes.iter().map(|b| IPBlockAllocator::new(*b)).collect(),
+            dz_ips: device.dz_ef_pools.iter().map(|b| IPBlockAllocator::new(*b)).collect(),
             tunnel_ids: IDAllocator::new(500, vec![]),
         }
     }
 
     pub fn update(&mut self, device: &Device) {
 
-        if self.device.dz_prefixes != device.dz_prefixes {
+        if self.device.dz_ef_pools != device.dz_ef_pools {
             self.device = device.clone();
-            self.dz_ips = device.dz_prefixes.iter().map(|b| IPBlockAllocator::new(*b)).collect();
+            self.dz_ips = device.dz_ef_pools.iter().map(|b| IPBlockAllocator::new(*b)).collect();
 
-            println!("Update Device: {} public_ip: {} dz_prefixes: {} ", self.device.code, ipv4_to_string(&self.device.public_ip), networkv4_list_to_string(&self.device.dz_prefixes));
+            println!("Update Device: {} public_ip: {} dz_ef_pools: {} ", self.device.code, ipv4_to_string(&self.device.public_ip), networkv4_list_to_string(&self.device.dz_ef_pools));
         }
     }
 

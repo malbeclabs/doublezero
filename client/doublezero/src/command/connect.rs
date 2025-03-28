@@ -3,7 +3,7 @@ use eyre;
 use indicatif::ProgressBar;
 use std::str::FromStr;
 
-use clap::Args;
+use clap::{ArgGroup, Args};
 use double_zero_sdk::{
     ipv4_parse, ipv4_to_string, networkv4_to_string, DZClient, DeviceService, IpV4, NetworkV4,
     ProvisioningRequest, ServiceController, User, UserCYOA, UserService, UserStatus, UserType,
@@ -20,7 +20,21 @@ use crate::{
 use super::helpers::init_command;
 
 #[derive(Args, Debug)]
+#[clap(group(
+    ArgGroup::new("mandatory")
+        .args(&["byoip", "dz_ip", "ef"])
+        .required(true)
+        .multiple(false)
+))]
 pub struct ProvisioningArgs {
+    #[arg(long)]
+    pub byoip: bool,
+    #[arg(long)]
+    pub dz_ip: bool,
+    #[arg(long)]
+    pub ef: bool,
+
+
     #[arg(long)]
     pub device: Option<String>,
     #[arg(long)]
@@ -153,9 +167,9 @@ impl ProvisioningArgs {
                 spinner.set_prefix("🔗 [3/4] User");
 
                 let pubkey = match client.create_user(
-                    UserType::Server,
+                    UserType::BYOIP,
                     device_pk,
-                    UserCYOA::GREOverDIA,
+                    UserCYOA::GREoDIA,
                     *client_ip,
                 ) {
                     Ok((_, pubkey)) => {
@@ -208,7 +222,7 @@ impl ProvisioningArgs {
         let devices = client.get_devices()?;
         let prefixes = devices
             .values()
-            .map(|device| device.dz_prefixes.clone())
+            .map(|device| device.dz_ef_pools.clone())
             .flatten()
             .collect::<Vec<NetworkV4>>();
 

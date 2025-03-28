@@ -33,6 +33,7 @@ mod servicecontroller;
 mod services;
 mod utils;
 mod dztransaction;
+pub mod cli;
 
 pub use crate::client::DZClient;
 pub use crate::doublezeroclient::DoubleZeroClient;
@@ -47,3 +48,7 @@ pub use crate::servicecontroller::{
     service_controller_can_open, service_controller_check, ProvisioningRequest, RemoveTunnelArgs,
     ServiceController,
 };
+
+pub use crate::cli::config::*;
+pub use crate::cli::config::get::*;
+pub use crate::cli::config::set::*;

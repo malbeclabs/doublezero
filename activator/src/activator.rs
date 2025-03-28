@@ -96,7 +96,7 @@ impl Activator {
     pub fn run(&mut self) -> eyre::Result<()> {
         self.devices.iter().for_each(|(_pubkey,device)| {
 
-            print!("Device code: {} public_ip: {} dz_prefixes: {} tunnels: ", device.device.code, ipv4_to_string(&device.device.public_ip), networkv4_list_to_string(&device.device.dz_prefixes));            
+            print!("Device code: {} public_ip: {} dz_ef_pools: {} tunnels: ", device.device.code, ipv4_to_string(&device.device.public_ip), networkv4_list_to_string(&device.device.dz_ef_pools));            
             
             if device.tunnel_ids.assigned.len() == 0 {
                 print!("{},", "-");
@@ -129,7 +129,7 @@ impl Activator {
                                     Ok(signature) => {
                                         println!("Activated {}", signature.to_string());
 
-                                        println!("Add Device: {} public_ip: {} dz_prefixes: {} ", device.code, ipv4_to_string(&device.public_ip), networkv4_list_to_string(&device.dz_prefixes));
+                                        println!("Add Device: {} public_ip: {} dz_ef_pools: {} ", device.code, ipv4_to_string(&device.public_ip), networkv4_list_to_string(&device.dz_ef_pools));
                                         self.devices.insert(*pubkey, DeviceState::new(device));
                             
                                     },
@@ -138,7 +138,7 @@ impl Activator {
                             }
                             DeviceStatus::Activated => {
                                 if !self.devices.contains_key(pubkey) {
-                                    println!("Add Device: {} public_ip: {} dz_prefixes: {} ", device.code, ipv4_to_string(&device.public_ip), networkv4_list_to_string(&device.dz_prefixes));
+                                    println!("Add Device: {} public_ip: {} dz_ef_pools: {} ", device.code, ipv4_to_string(&device.public_ip), networkv4_list_to_string(&device.dz_ef_pools));
 
                                     self.devices
                                         .insert(*pubkey, DeviceState::new(device));
@@ -223,7 +223,7 @@ impl Activator {
                                 if !self.devices.contains_key(&user.device_pk) {
                                     match client.get_device(&user.device_pk) {
                                         Ok(device) => {
-                                            println!("Add Device: {} public_ip: {} dz_prefixes: {} ", device.code, ipv4_to_string(&device.public_ip), networkv4_list_to_string(&device.dz_prefixes));
+                                            println!("Add Device: {} public_ip: {} dz_ef_pools: {} ", device.code, ipv4_to_string(&device.public_ip), networkv4_list_to_string(&device.dz_ef_pools));
 
                                             self.devices
                                                 .insert(*pubkey, DeviceState::new(&device));

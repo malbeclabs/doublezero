@@ -32,7 +32,7 @@ pub trait DeviceService {
         exchange_pk: Pubkey,
         device_type: DeviceType,
         public_ip: IpV4,
-        dz_prefixes: NetworkV4List,
+        dz_ef_pools: NetworkV4List,
     ) -> eyre::Result<(Signature, Pubkey)>;
     fn update_device(
         &self,
@@ -40,7 +40,7 @@ pub trait DeviceService {
         code: Option<String>,
         device_type: Option<DeviceType>,
         public_ip: Option<IpV4>,
-        dz_prefixes: Option<NetworkV4List>,
+        dz_ef_pools: Option<NetworkV4List>,
     ) -> eyre::Result<Signature>;
     fn activate_device(&self, index: u128) -> eyre::Result<Signature>;
     fn reject_device(&self, index: u128, error: String) -> eyre::Result<Signature>;
@@ -90,7 +90,7 @@ impl DeviceService for DZClient {
         exchange_pk: Pubkey,
         device_type: DeviceType,
         public_ip: IpV4,
-        dz_prefixes: NetworkV4List,
+        dz_ef_pools: NetworkV4List,
     ) -> eyre::Result<(Signature, Pubkey)> {
         match self.get_globalstate() {
             Ok((globalstate_pubkey, globalstate)) => {
@@ -109,7 +109,7 @@ impl DeviceService for DZClient {
                         exchange_pk,
                         device_type,
                         public_ip,
-                        dz_prefixes,
+                        dz_ef_pools,
                     }),
                     vec![
                         AccountMeta::new(pda_pubkey, false),
@@ -130,7 +130,7 @@ impl DeviceService for DZClient {
         code: Option<String>,
         device_type: Option<DeviceType>,
         public_ip: Option<IpV4>,
-        dz_prefixes: Option<NetworkV4List>,
+        dz_ef_pools: Option<NetworkV4List>,
     ) -> eyre::Result<Signature> {
         match self.get_globalstate() {
             Ok((globalstate_pubkey, globalstate)) => {
@@ -146,7 +146,7 @@ impl DeviceService for DZClient {
                         code: code.to_owned(),
                         device_type,
                         public_ip,
-                        dz_prefixes,
+                        dz_ef_pools,
                     }),
                     vec![
                         AccountMeta::new(pda_pubkey, false),

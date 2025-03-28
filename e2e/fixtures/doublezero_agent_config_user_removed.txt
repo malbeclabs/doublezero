@@ -1,4 +1,7 @@
 !
+vrf instance vrf1
+ip routing vrf vrf1
+!
 default interface Tunnel500
 !
 default interface Tunnel501
@@ -40,6 +43,11 @@ default interface Tunnel518
 default interface Tunnel519
 !
 router bgp 65342
+   vrf vrf1
+      rd 65342:1
+      route-target import vpn-ipv4 65342:1
+      route-target export vpn-ipv4 65432:1
+      router-id 64.86.249.80
 !
 no route-map RM-USER-500-OUT
 !

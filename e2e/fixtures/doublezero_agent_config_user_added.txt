@@ -1,7 +1,11 @@
 !
+vrf instance vrf1
+ip routing vrf vrf1
+!
 default interface Tunnel500
 interface Tunnel500
    mtu 9216
+   vrf vrf1
    ip address 169.254.0.0/31
    tunnel mode gre
    tunnel source 64.86.249.80
@@ -49,14 +53,19 @@ default interface Tunnel518
 default interface Tunnel519
 !
 router bgp 65342
-   no neighbor 169.254.0.1
-   neighbor 169.254.0.1 remote-as 65000
-   neighbor 169.254.0.1 passive
-   neighbor 169.254.0.1 description USER-500
-   neighbor 169.254.0.1 route-map RM-USER-500-IN in
-   neighbor 169.254.0.1 route-map RM-USER-500-OUT out
-   neighbor 169.254.0.1 maximum-routes 1
-   neighbor 169.254.0.1 maximum-accepted-routes 1
+   vrf vrf1
+      rd 65342:1
+      route-target import vpn-ipv4 65342:1
+      route-target export vpn-ipv4 65432:1
+      router-id 64.86.249.80
+      no neighbor 169.254.0.1
+      neighbor 169.254.0.1 remote-as 65000
+      neighbor 169.254.0.1 passive
+      neighbor 169.254.0.1 description USER-500
+      neighbor 169.254.0.1 route-map RM-USER-500-IN in
+      neighbor 169.254.0.1 route-map RM-USER-500-OUT out
+      neighbor 169.254.0.1 maximum-routes 1
+      neighbor 169.254.0.1 maximum-accepted-routes 1
 !
 no route-map RM-USER-500-OUT
 route-map RM-USER-500-OUT permit 10

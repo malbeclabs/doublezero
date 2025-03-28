@@ -242,12 +242,23 @@ func (e *EapiClient) startConfigSession(ctx context.Context, config string) ([]s
 // CheckConfigChanges determines whether any changes were made during the configuration session.
 func (e *EapiClient) CheckConfigChanges(sessionName string, diffCmd *exec.Cmd) (string, error) {
 	if diffCmd == nil {
-		diffCmd = exec.Command("/usr/bin/Cli", "-p", "15", "-c", fmt.Sprintf("show session-config named %s diffs", sessionName))
+		diffCmd = exec.Command("ip", "netns", "exec", "default", "/usr/bin/Cli", "-p", "15", "-c", fmt.Sprintf("show session-config named %s diffs", sessionName))
 	}
 
 	var out strings.Builder
 	diffCmd.Stdout = &out
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	diffCmd = exec.CommandContext(ctx, diffCmd.Path, diffCmd.Args[1:]...)
+	diffCmd.Stdout = &out
+
 	err := diffCmd.Run()
+
+	if ctx.Err() == context.DeadlineExceeded {
+		return "", fmt.Errorf("Could not get diff because /usr/bin/Cli command timed out after 60 seconds")
+	}
 
 	if err != nil {
 		return "", fmt.Errorf("could not get diff because \"show session-config named %s diffs\" failed with error: %v, output: %s", sessionName, err, out.String())

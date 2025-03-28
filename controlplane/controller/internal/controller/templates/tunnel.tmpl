@@ -1,9 +1,13 @@
 !
+vrf instance vrf1
+ip routing vrf vrf1
+!
 {{- range .Tunnels }}
 default interface Tunnel{{ .Id }}
 {{- if eq true .Allocated }}
 interface Tunnel{{ .Id }}
    mtu 9216
+   vrf vrf1
    ip address {{ .OverlaySrcIP }}/31
    tunnel mode gre
    tunnel source {{ .UnderlaySrcIP }}
@@ -15,20 +19,25 @@ interface Tunnel{{ .Id }}
 !
 {{- end }}
 router bgp 65342
+   vrf vrf1
+      rd 65342:1
+      route-target import vpn-ipv4 65342:1
+      route-target export vpn-ipv4 65432:1
+      router-id {{ .PublicIP }}
 {{- range .Tunnels }}
 {{- if eq true .Allocated }}
-   no neighbor {{ .OverlayDstIP }}
-   neighbor {{ .OverlayDstIP }} remote-as 65000
-   neighbor {{ .OverlayDstIP }} passive
-   neighbor {{ .OverlayDstIP }} description USER-{{ .Id  }}
-   neighbor {{ .OverlayDstIP }} route-map RM-USER-{{ .Id }}-IN in
-   neighbor {{ .OverlayDstIP }} route-map RM-USER-{{ .Id }}-OUT out
-   neighbor {{ .OverlayDstIP }} maximum-routes 1
-   neighbor {{ .OverlayDstIP }} maximum-accepted-routes 1
+      no neighbor {{ .OverlayDstIP }}
+      neighbor {{ .OverlayDstIP }} remote-as 65000
+      neighbor {{ .OverlayDstIP }} passive
+      neighbor {{ .OverlayDstIP }} description USER-{{ .Id  }}
+      neighbor {{ .OverlayDstIP }} route-map RM-USER-{{ .Id }}-IN in
+      neighbor {{ .OverlayDstIP }} route-map RM-USER-{{ .Id }}-OUT out
+      neighbor {{ .OverlayDstIP }} maximum-routes 1
+      neighbor {{ .OverlayDstIP }} maximum-accepted-routes 1
 {{- end }}
 {{- end }}
 {{- range .UnknownBgpPeers }}
-   no neighbor {{ . }}
+      no neighbor {{ . }}
 {{- end }}
 !
 ip community-list COMM-ALL_USERS permit 21682:1200

@@ -38,19 +38,37 @@ To deploy the smart contract to the Solana blockchain, follow these steps:
     solana config set --url https://api.devnet.solana.com
     ```
 
-2. Generate a new keypair or use an existing one:
+2. Generate a new keypair to pay gas fees (or use an existing one):
     ```sh
-    solana-keygen new --outfile ~/my-keypair.json
+    solana-keygen new --outfile /path/to/my-payer-keypair.json
     ```
 
-3. Airdrop some SOL to your account:
+3. Airdrop some SOL to your payer account if needed:
     ```sh
     solana airdrop 2 ~/my-keypair.json
     ```
 
-4. Deploy the smart contract:
+4. Generate a new keypair to deploy the program (or use an existing one): 
     ```sh
-    solana program deploy dist/program/your_smart_contract.so
+    solana-keygen new --outfile /path/to/my-deployer-keypair.json
+    ```
+
+5. Build the smart contract:
+    ```sh
+    cargo build-sbf --manifest-path smartcontract/programs/dz-sla-program/Cargo.toml
+    ```
+
+6. Deploy the smart contract:
+    Save the program ID displayed by this command for future reference.
+    ```sh
+    solana program deploy --fee-payer /path/to/my-payer-keypair.json -k /path/to/my-deployer-keypair.json ./smartcontract/programs/dz-sla-program/target/deploy/double_zero_sla_program.so
+    ```
+
+7. Initialize the smart contract using the program ID output by step 6:
+    ```sh
+    target/x86_64-unknown-linux-gnu/release/doublezero --program-id <Program ID> init 
+    ```
+GlobalConfig: GlobalState { account_type: GlobalState, account_index: 0, foundation_allowlist: [DZfHfcCXTLwgZeCRKQ1FL1UuwAwFAZM93g86NMYpfYan], device_allowlist: [DZfHfcCXTLwgZeCRKQ1FL1UuwAwFAZM93g86NMYpfYan], user_allowlist: [DZfHfcCXTLwgZeCRKQ1FL1UuwAwFAZM93g86NMYpfYan] }
     ```
 
 ## Usage

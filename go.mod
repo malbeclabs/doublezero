@@ -14,7 +14,6 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/jwhited/corebgp v0.8.5
 	github.com/mr-tron/base58 v1.2.0
-	github.com/near/borsh-go v0.3.1
 	github.com/osrg/gobgp v2.0.0+incompatible
 	github.com/prometheus-community/pro-bing v0.6.1
 	github.com/prometheus/client_golang v1.21.1

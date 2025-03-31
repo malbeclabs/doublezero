@@ -2,12 +2,10 @@ package dzsdk
 
 import (
 	"context"
-	"errors"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
-	"github.com/near/borsh-go"
 )
 
 /************************************************************************************************************/
@@ -75,51 +73,32 @@ func (e *Client) Load(ctx context.Context) error {
 			continue
 		}
 		data = append(data, element.Pubkey.Bytes()...)
+		reader := NewByteReader(data)
 
 		//fmt.Printf("HEX: %x\n", data)
 
 		switch account_type := data[0]; account_type {
 		case byte(ConfigType):
-			var config Config
-			err := borsh.Deserialize(&config, data)
-			if err != nil {
-				errs = errors.Join(errs, err)
-			}
-			e.Config = config
+			DeserializeConfig(reader, &e.Config)
 		case byte(LocationType):
 			var location Location
-			err = borsh.Deserialize(&location, data)
-			if err != nil {
-				errs = errors.Join(errs, err)
-			}
+			DeserializeLocation(reader, &location)
 			e.Locations = append(e.Locations, location)
 		case byte(ExchangeType):
 			var exchange Exchange
-			err = borsh.Deserialize(&exchange, data)
-			if err != nil {
-				errs = errors.Join(errs, err)
-			}
+			DeserializeExchange(reader, &exchange)
 			e.Exchanges = append(e.Exchanges, exchange)
 		case byte(DeviceType):
 			var device Device
-			err = borsh.Deserialize(&device, data)
-			if err != nil {
-				errs = errors.Join(errs, err)
-			}
+			DeserializeDevice(reader, &device)
 			e.Devices = append(e.Devices, device)
 		case byte(TunnelType):
 			var tunnel Tunnel
-			err = borsh.Deserialize(&tunnel, data)
-			if err != nil {
-				errs = errors.Join(errs, err)
-			}
+			DeserializeTunnel(reader, &tunnel)
 			e.Tunnels = append(e.Tunnels, tunnel)
 		case byte(UserType):
 			var user User
-			err = borsh.Deserialize(&user, data)
-			if err != nil {
-				errs = errors.Join(errs, err)
-			}
+			DeserializeUser(reader, &user)
 			e.Users = append(e.Users, user)
 		}
 	}

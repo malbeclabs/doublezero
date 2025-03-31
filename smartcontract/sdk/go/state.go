@@ -28,7 +28,7 @@ type Uint128 struct {
 
 type Config struct {
 	AccountType       AccountType
-	Owner             [32]uint8
+	Owner             [32]byte
 	Local_asn         uint32
 	Remote_asn        uint32
 	TunnelTunnelBlock [5]uint8

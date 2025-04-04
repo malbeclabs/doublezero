@@ -5,7 +5,7 @@ interface Tunnel500
    ip address 169.254.0.0/31
    tunnel mode gre
    tunnel source 64.86.249.80
-   tunnel destination 1.2.3.4
+   tunnel destination 64.86.249.86
    tunnel path-mtu-discovery
    tunnel ttl 32
    no shutdown

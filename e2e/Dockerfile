@@ -16,7 +16,7 @@ curl \
 build-essential \
 pkg-config \
 libudev-dev llvm libclang-dev \
-protobuf-compiler libssl-dev git iproute2
+protobuf-compiler libssl-dev git iproute2 iputils-ping tcpdump
 
 # install rust
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
@@ -83,7 +83,7 @@ FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt update && apt install --no-install-recommends -y iproute2
+RUN apt update && apt install --no-install-recommends -y iproute2 iputils-ping net-tools tcpdump curl
 
 WORKDIR /doublezero
 RUN mkdir bin
@@ -107,5 +107,7 @@ COPY --from=tests /doublezero/bin/doublezero_keypair.json /root/.config/solana/i
 COPY --from=tests /doublezero/bin/doublezero_keypair.json /root/.config/doublezero/id.json
 
 ENV PATH="/doublezero/bin:${PATH}"
+
+EXPOSE 7000
 
 CMD ["sh", "./bin/start_e2e.sh"]

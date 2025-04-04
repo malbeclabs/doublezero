@@ -1,0 +1,67 @@
+! Command: show running-config at line 1
+! device: c902832ee90b (cEOSLab, EOS-4.33.1F-39879738.4331F (engineering build))
+!
+no aaa root
+!
+username admin privilege 15 role network-admin secret sha512 $6$hb.8VFI7A9D/0zi2$sZady959HlXHgFdWU9r01VDwmbM2CrhDYIXBJzHb3scDP8/t/4ozwxpZbwEgDxbWL.mHYtie0rSO8fRSZ5D0T1
+!
+daemon doublezero-agent
+   exec /mnt/flash/doublezero-agent -controller 64.86.249.86:7000 -pubkey 8scDVeZ8aB1TRTkBqaZgzxuk7WwpARdF1a39wYA7nR3W
+   no shutdown
+!
+management api http-commands
+   protocol http
+   no shutdown
+!
+management api eos-sdk-rpc
+   transport grpc foo
+      localhost loopback
+      service all
+      no disabled
+!
+management api gnmi
+   transport grpc gnmi
+!
+no service interface inactive port-id allocation disabled
+!
+transceiver qsfp default-mode 4x10G
+!
+service routing protocols model multi-agent
+!
+agent PowerManager shutdown
+agent LedPolicy shutdown
+agent Thermostat shutdown
+agent PowerFuse shutdown
+agent StandbyCpld shutdown
+agent LicenseManager shutdown
+!
+hostname ny5-dz01
+!
+spanning-tree mode mstp
+!
+system l1
+   unsupported speed action error
+   unsupported error-correction action error
+!
+interface Loopback0
+!
+interface Ethernet1
+   no switchport
+   ip address 64.86.249.80/29
+!
+interface Management0
+   shutdown
+!
+ip routing
+!
+router bgp 65342
+   router-id 10.10.10.10
+!
+router multicast
+   ipv4
+      software-forwarding kernel
+   !
+   ipv6
+      software-forwarding kernel
+!
+end

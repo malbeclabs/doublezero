@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aristanetworks/goeapi"
+	"github.com/aristanetworks/goeapi/module"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	nl "github.com/vishvananda/netlink"
@@ -30,6 +32,8 @@ var (
 	controllerPort = os.Getenv("CONTROLLER_PORT")
 	agentPubKey    = os.Getenv("AGENT_PUBKEY")
 
+	// address for doublezero device
+	doublezeroDeviceAddr = "64.86.249.80"
 	// expected doublezero address to be allocated to client during test
 	doublezeroAddr = "64.86.249.81/32"
 	// expected link-local address to be allocated to the client during test
@@ -38,6 +42,36 @@ var (
 	//go:embed fixtures/*
 	fs embed.FS
 )
+
+type ShowIPBGPSummary struct {
+	VRFs map[string]VRF
+}
+
+type VRF struct {
+	RouterID string                        `json:"routerId"`
+	Peers    map[string]BGPNeighborSummary `json:"peers"`
+	VRF      string                        `json:"vrf"`
+	ASN      string                        `json:"asn"`
+}
+
+type BGPNeighborSummary struct {
+	MsgSent             int     `json:"msgSent"`
+	InMsgQueue          int     `json:"inMsgQueue"`
+	PrefixReceived      int     `json:"prefixReceived"`
+	UpDownTime          float64 `json:"upDownTime"`
+	Version             int     `json:"version"`
+	MsgReceived         int     `json:"msgReceived"`
+	PrefixAccepted      int     `json:"prefixAccepted"`
+	PeerState           string  `json:"peerState"`
+	PeerStateIdleReason string  `json:"peerStateIdleReason,omitempty"`
+	OutMsgQueue         int     `json:"outMsgQueue"`
+	UnderMaintenance    bool    `json:"underMaintenance"`
+	ASN                 string  `json:"asn,string"`
+}
+
+func (b *ShowIPBGPSummary) GetCmd() string {
+	return "show ip bgp summary"
+}
 
 // TestClientOutput is a set of tests to verify the output of the doublezero
 // CLI. These tests utilize golden files of expected output stored in the fixtures directory,
@@ -170,6 +204,38 @@ func TestConnect(t *testing.T) {
 
 		if diff := cmp.Diff(string(want), got.Config); diff != "" {
 			t.Fatalf("output mismatch: -(want), +(got): %s", diff)
+		}
+	})
+
+	t.Run("check_user_session_is_established", func(t *testing.T) {
+		dut, err := goeapi.Connect("http", doublezeroDeviceAddr, "admin", "admin", 80)
+		if err != nil {
+			t.Fatalf("error connecting to dut: %v", err)
+		}
+		handle, err := dut.GetHandle("json")
+		neighbors := &ShowIPBGPSummary{}
+		routes := &module.ShowIPRoute{}
+		handle.AddCommand(neighbors)
+		handle.AddCommand(routes)
+		if err := handle.Call(); err != nil {
+			t.Fatalf("error fetching neighbors from doublezero device: %v", err)
+		}
+
+		ip := strings.Split(linkLocalAddr, "/")[0]
+		peer, ok := neighbors.VRFs["default"].Peers[ip]
+		if !ok {
+			t.Fatalf("client ip %s missing from doublezero device\n", linkLocalAddr)
+		}
+		if peer.ASN != "65000" {
+			t.Fatalf("client asn should be 65000; got %s\n", peer.ASN)
+		}
+		if peer.PeerState != "Established" {
+			t.Fatalf("client state should be established; got %s\n", peer.PeerState)
+		}
+
+		_, ok = routes.VRFs["default"].Routes[doublezeroAddr]
+		if !ok {
+			t.Fatalf("expected client route of %s installed; got none\n", doublezeroAddr)
 		}
 	})
 }

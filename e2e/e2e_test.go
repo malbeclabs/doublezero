@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/aristanetworks/goeapi"
-	"github.com/aristanetworks/goeapi/module"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	nl "github.com/vishvananda/netlink"
@@ -72,7 +71,23 @@ type BGPNeighborSummary struct {
 }
 
 func (b *ShowIPBGPSummary) GetCmd() string {
-	return "show ip bgp summary"
+	return "show ip bgp summary vrf all"
+}
+
+type ShowIpRoute struct {
+	VRFs map[string]ShowIpRouteVRF
+}
+
+type ShowIpRouteVRF struct {
+	Routes map[string]IpRoute `json:"routes"`
+}
+
+type IpRoute struct {
+	RouteType string `json:"routeType"`
+}
+
+func (r *ShowIpRoute) GetCmd() string {
+	return "show ip route vrf all"
 }
 
 type ShowIPBGPSummary struct {
@@ -244,7 +259,7 @@ func TestConnect(t *testing.T) {
 		}
 		handle, err := dut.GetHandle("json")
 		neighbors := &ShowIPBGPSummary{}
-		routes := &module.ShowIPRoute{}
+		routes := &ShowIpRoute{}
 		handle.AddCommand(neighbors)
 		handle.AddCommand(routes)
 		if err := handle.Call(); err != nil {
@@ -252,7 +267,7 @@ func TestConnect(t *testing.T) {
 		}
 
 		ip := strings.Split(linkLocalAddr, "/")[0]
-		peer, ok := neighbors.VRFs["default"].Peers[ip]
+		peer, ok := neighbors.VRFs["vrf1"].Peers[ip]
 		if !ok {
 			t.Fatalf("client ip %s missing from doublezero device\n", linkLocalAddr)
 		}
@@ -263,7 +278,7 @@ func TestConnect(t *testing.T) {
 			t.Fatalf("client state should be established; got %s\n", peer.PeerState)
 		}
 
-		_, ok = routes.VRFs["default"].Routes[doublezeroAddr]
+		_, ok = routes.VRFs["vrf1"].Routes[doublezeroAddr]
 		if !ok {
 			t.Fatalf("expected client route of %s installed; got none\n", doublezeroAddr)
 		}

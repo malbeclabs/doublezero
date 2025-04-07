@@ -16,6 +16,7 @@ pub struct ProvisioningRequest {
     pub doublezero_prefixes: Vec<String>,
     pub bgp_local_asn: Option<u32>,
     pub bgp_remote_asn: Option<u32>,
+    pub user_type: String,
 }
 
 #[derive(Deserialize, Debug)]

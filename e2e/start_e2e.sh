@@ -52,7 +52,7 @@ main() {
     doublezero latency
 
     print_banner "Connecting user tunnel"
-    doublezero --keypair $SOLANA_KEYPAIR connect --client-ip 64.86.249.86
+    doublezero --keypair $SOLANA_KEYPAIR connect ibrl --client-ip 64.86.249.86 --allocate-addr
 
     print_banner "Wait for controller to pickup new user"
     sleep 30
@@ -65,7 +65,7 @@ main() {
 
     print_banner "Disconnecting user tunnel"
     doublezero --keypair $SOLANA_KEYPAIR disconnect --client-ip 64.86.249.86
-    
+
     print_banner "Wait for controller to pickup disconnected user"
     sleep 30
 

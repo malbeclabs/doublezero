@@ -43,6 +43,10 @@ impl DeviceState {
         None    
     }
 
+    pub fn get_next_tunnel_id(&mut self) -> Option<u16> {
+        Some(self.tunnel_ids.next_available())
+    }
+
     pub fn register(&mut self, dz_ip: IpV4, tunnel_id: u16) {
         for allocator in self.dz_ips.iter_mut() {
             if allocator.contains(dz_ip) {

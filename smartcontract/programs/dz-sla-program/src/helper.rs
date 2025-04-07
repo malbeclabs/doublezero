@@ -14,6 +14,7 @@ use solana_program::{
     system_instruction, system_program,
     sysvar::{rent::Rent, Sysvar},
 };
+use std::fmt;
 use std::fmt::Debug;
 use std::io::Result;
 
@@ -224,4 +225,31 @@ pub fn account_close(
     close_account.assign(&system_program::ID);
 
     Ok(())
+}
+
+pub fn format_option_with_formatter<T, F>(opt: Option<T>, formatter: F) -> String
+where
+    F: Fn(&T) -> String,
+{
+    match opt {
+        Some(value) => formatter(&value),
+        None => "None".to_string(),
+    }
+}
+
+pub fn format_option_displayable<T: fmt::Display>(opt: Option<T>) -> String {
+    match opt {
+        Some(value) => value.to_string(),
+        None => "None".to_string(),
+    }
+}
+
+#[macro_export]
+macro_rules! format_option {
+    ($opt:expr) => {
+        format_option_displayable($opt)
+    };
+    ($opt:expr, $formatter:expr) => {
+        format_option_with_formatter($opt, $formatter)
+    };
 }

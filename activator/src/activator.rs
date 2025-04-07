@@ -134,23 +134,33 @@ impl Activator {
         println!("\x08 ");
 
         self.client
-            .gets_and_subscribe(|client, pubkey, data| {
-                match data {
-                    AccountData::Device(device) => {
-                        process_device_event(client, pubkey, &mut self.devices, device);
-                    }
-                    AccountData::Tunnel(tunnel) => {
-                        process_tunnel_event(client, &mut self.tunnel_tunnel_ips, &mut self.tunnel_tunnel_ids, tunnel);
-                    }
-                    AccountData::User(user) => {
-                        let user_service: &dyn UserService = client;
-                        let device_service: &dyn DeviceService = client;
-                        process_user_event(user_service, device_service, pubkey, &mut self.devices, &mut self.user_tunnel_ips, &mut self.tunnel_tunnel_ids, user);
-                    }
-                    _ => {}
+            .gets_and_subscribe(|client, pubkey, data| match data {
+                AccountData::Device(device) => {
+                    process_device_event(client, pubkey, &mut self.devices, device);
                 }
-            })
-            ?;
+                AccountData::Tunnel(tunnel) => {
+                    process_tunnel_event(
+                        client,
+                        &mut self.tunnel_tunnel_ips,
+                        &mut self.tunnel_tunnel_ids,
+                        tunnel,
+                    );
+                }
+                AccountData::User(user) => {
+                    let user_service: &dyn UserService = client;
+                    let device_service: &dyn DeviceService = client;
+                    process_user_event(
+                        user_service,
+                        device_service,
+                        pubkey,
+                        &mut self.devices,
+                        &mut self.user_tunnel_ips,
+                        &mut self.tunnel_tunnel_ids,
+                        user,
+                    );
+                }
+                _ => {}
+            })?;
         Ok(())
     }
 }
@@ -293,36 +303,49 @@ fn process_user_event(
                     match user_tunnel_ips.next_available_block(0, 2) {
                         Some(tunnel_net) => {
                             print!("tunnel_net: {} ", networkv4_to_string(&tunnel_net));
-                            match device_state.get_next() {
-                                Some((tunnel_id, dz_ip)) => {
-                                    print!(
-                                        "tunnel_id: {} tunnel_id: {} ",
-                                        tunnel_id.to_string(),
-                                        ipv4_to_string(&dz_ip)
-                                    );
 
-                                    match user_service
-                                        .activate_user(user.index, tunnel_id, tunnel_net, dz_ip)
-                                    {
-                                        Ok(signature) => {
-                                            println!("Activated   {}", signature.to_string())
-                                        }
-                                        Err(e) => println!("Error: {}", e.to_string()),
-                                    }
-                                }
-                                None => {
-                                    eprintln!("{}", "Error: No available tunnel block");
+                            let mut tunnel_id: u16 = 0;
+                            let mut dz_ip: IpV4 = [0, 0, 0, 0];
 
-                                    match user_service.reject_user(
-                                        user.index,
-                                        "Error: No available tunnel block".to_string(),
-                                    ) {
-                                        Ok(signature) => {
-                                            println!("Rejected {}", signature.to_string())
-                                        }
-                                        Err(e) => println!("Error: {}", e.to_string()),
+                            if user.user_type == UserType::IBRLWithAllocatedIP
+                                || user.user_type == UserType::EdgeFiltering
+                            {
+                                match device_state.get_next() {
+                                    Some((xtunnel_id, xdz_ip)) => {
+                                        tunnel_id = xtunnel_id;
+                                        dz_ip = xdz_ip;
                                     }
+                                    None => {}
                                 }
+                            } else if user.user_type == UserType::IBRL {
+                                tunnel_id = device_state.get_next_tunnel_id().unwrap();
+                                dz_ip = user.client_ip;
+                            }
+
+                            if tunnel_id == 0 {
+                                eprintln!("{}", "Error: No available tunnel block");
+
+                                match user_service.reject_user(
+                                    user.index,
+                                    "Error: No available tunnel block".to_string(),
+                                ) {
+                                    Ok(signature) => println!("Rejected {}", signature.to_string()),
+                                    Err(e) => println!("Error: {}", e.to_string()),
+                                }
+                                return;
+                            }
+
+                            print!(
+                                "tunnel_id: {} dz_ip: {} ",
+                                tunnel_id.to_string(),
+                                ipv4_to_string(&dz_ip)
+                            );
+
+                            match user_service
+                                .activate_user(user.index, tunnel_id, tunnel_net, dz_ip)
+                            {
+                                Ok(signature) => println!("Activated   {}", signature.to_string()),
+                                Err(e) => println!("Error: {}", e.to_string()),
                             }
                         }
                         None => {
@@ -569,8 +592,10 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_process_user_event_pending_to_activated() {
+    fn do_test_process_user_event_pending_to_activated(
+        user_type: UserType,
+        expected_dz_ip: Option<IpV4>,
+    ) {
         let mut devices = HashMap::new();
         let mut user_tunnel_ips = IPBlockAllocator::new(([10, 0, 0, 0], 16));
         let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
@@ -582,7 +607,7 @@ mod tests {
             account_type: AccountType::User,
             owner: Pubkey::new_unique(),
             index: 0,
-            user_type: UserType::Server,
+            user_type: user_type,
             tenant_pk: Pubkey::new_unique(),
             device_pk: pubkey,
             cyoa_type: UserCYOA::GREOverDIA,
@@ -617,7 +642,7 @@ mod tests {
                 predicate::eq(user.index),
                 predicate::eq(500),
                 predicate::eq(([10, 0, 0, 0], 31)),
-                predicate::eq([10, 0, 0, 1]),
+                predicate::eq(expected_dz_ip.unwrap_or([10, 0, 0, 1])),
             )
             .returning(|_, _, _, _| Ok(Signature::new_unique()));
 
@@ -637,7 +662,22 @@ mod tests {
     }
 
     #[test]
-    fn test_process_user_event_pending_to_rejected() {
+    fn test_process_user_event_pending_to_activated_ibrl() {
+        do_test_process_user_event_pending_to_activated(UserType::IBRL, Some([192, 168, 1, 1]));
+    }
+
+    #[test]
+    fn test_process_user_event_pending_to_activated_ibrl_with_allocated_ip() {
+        do_test_process_user_event_pending_to_activated(UserType::IBRLWithAllocatedIP, None);
+    }
+
+    #[test]
+    fn test_process_user_event_pending_to_activated_edge_filtering() {
+        do_test_process_user_event_pending_to_activated(UserType::EdgeFiltering, None);
+    }
+
+    #[test]
+    fn test_process_user_event_pending_to_rejected_by_get_device() {
         let mut devices = HashMap::new();
         let mut user_tunnel_ips = IPBlockAllocator::new(([10, 0, 0, 0], 32));
         let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
@@ -649,7 +689,55 @@ mod tests {
             account_type: AccountType::User,
             owner: Pubkey::new_unique(),
             index: 0,
-            user_type: UserType::Server,
+            user_type: UserType::IBRLWithAllocatedIP,
+            tenant_pk: Pubkey::new_unique(),
+            device_pk: pubkey,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: [192, 168, 1, 1],
+            dz_ip: [0, 0, 0, 0],
+            tunnel_id: 0,
+            tunnel_net: ([0, 0, 0, 0], 0),
+            status: UserStatus::Pending,
+        };
+
+        device_service
+            .expect_get_device()
+            .with(predicate::eq(pubkey.clone()))
+            .returning(move |_| Err(eyre::Report::msg("Error: Device not found")));
+
+        user_service
+            .expect_reject_user()
+            .with(
+                predicate::eq(user.index),
+                predicate::eq("Error: Device not found".to_string()),
+            )
+            .returning(|_, _| Ok(Signature::new_unique()));
+
+        process_user_event(
+            &user_service,
+            &device_service,
+            &pubkey,
+            &mut devices,
+            &mut user_tunnel_ips,
+            &mut tunnel_tunnel_ids,
+            &user,
+        );
+    }
+
+    #[test]
+    fn test_process_user_event_pending_to_rejected_by_no_tunnel_block() {
+        let mut devices = HashMap::new();
+        let mut user_tunnel_ips = IPBlockAllocator::new(([10, 0, 0, 0], 32));
+        let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
+        let mut user_service = MockUserService::new();
+        let mut device_service = MockDeviceService::new();
+
+        let pubkey = Pubkey::new_unique();
+        let user = User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 0,
+            user_type: UserType::IBRLWithAllocatedIP,
             tenant_pk: Pubkey::new_unique(),
             device_pk: pubkey,
             cyoa_type: UserCYOA::GREOverDIA,
@@ -697,6 +785,70 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_process_user_event_pending_to_rejected_by_no_user_block() {
+        let mut devices = HashMap::new();
+        let mut user_tunnel_ips = IPBlockAllocator::new(([10, 0, 0, 0], 32));
+        let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
+        let mut user_service = MockUserService::new();
+        let mut device_service = MockDeviceService::new();
+
+        // eat a blocok
+        let _ = user_tunnel_ips.next_available_block(0, 2);
+
+        let pubkey = Pubkey::new_unique();
+        let user = User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 0,
+            user_type: UserType::IBRLWithAllocatedIP,
+            tenant_pk: Pubkey::new_unique(),
+            device_pk: pubkey,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: [192, 168, 1, 1],
+            dz_ip: [0, 0, 0, 0],
+            tunnel_id: 0,
+            tunnel_net: ([0, 0, 0, 0], 0),
+            status: UserStatus::Pending,
+        };
+
+        let device = Device {
+            account_type: AccountType::Device,
+            owner: Pubkey::new_unique(),
+            index: 0,
+            location_pk: Pubkey::new_unique(),
+            exchange_pk: Pubkey::new_unique(),
+            device_type: DeviceType::Switch,
+            public_ip: [192, 168, 1, 2],
+            status: DeviceStatus::Activated,
+            code: "TestDevice".to_string(),
+            dz_prefixes: vec![],
+        };
+
+        device_service
+            .expect_get_device()
+            .with(predicate::eq(pubkey.clone()))
+            .returning(move |_| Ok(device.clone()));
+
+        user_service
+            .expect_reject_user()
+            .with(
+                predicate::eq(user.index),
+                predicate::eq("Error: No available user block".to_string()),
+            )
+            .returning(|_, _| Ok(Signature::new_unique()));
+
+        process_user_event(
+            &user_service,
+            &device_service,
+            &pubkey,
+            &mut devices,
+            &mut user_tunnel_ips,
+            &mut tunnel_tunnel_ids,
+            &user,
+        );
+    }
+
     fn do_test_process_user_event_deleting_or_pending_ban<F>(user_status: UserStatus, func: F)
     where
         F: Fn(&mut MockUserService, &User) -> (),
@@ -713,7 +865,7 @@ mod tests {
             account_type: AccountType::User,
             owner: Pubkey::new_unique(),
             index: 0,
-            user_type: UserType::Server,
+            user_type: UserType::IBRLWithAllocatedIP,
             tenant_pk: Pubkey::new_unique(),
             device_pk: pubkey,
             cyoa_type: UserCYOA::GREOverDIA,

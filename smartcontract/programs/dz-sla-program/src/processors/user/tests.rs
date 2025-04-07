@@ -204,7 +204,7 @@ mod user_test {
             DoubleZeroInstruction::CreateUser(UserCreateArgs {
                 index: globalstate_account.account_index + 1,
                 client_ip: [100, 0, 0, 1],
-                user_type: UserType::Server,
+                user_type: UserType::IBRL,
                 device_pk: device_pubkey,
                 cyoa_type: UserCYOA::GREOverDIA,
             }),
@@ -308,7 +308,7 @@ mod user_test {
             DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
                 index: user.index,
                 client_ip: Some([10, 2, 3, 4]),
-                user_type: Some(UserType::Server),
+                user_type: Some(UserType::IBRL),
                 cyoa_type: Some(UserCYOA::GREOverPrivatePeering),
                 dz_ip: Some([200, 0, 0, 4]),
                 tunnel_id: Some(501),

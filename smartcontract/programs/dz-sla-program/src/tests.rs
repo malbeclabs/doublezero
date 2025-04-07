@@ -438,7 +438,7 @@ pub mod test {
             get_user_pda(&program_id, globalstate_account.account_index + 1);
         let user1: UserCreateArgs = UserCreateArgs {
             index: globalstate_account.account_index + 1,
-            user_type: UserType::Server,
+            user_type: UserType::IBRL,
             device_pk: device_la_pubkey,
             cyoa_type: UserCYOA::GREOverDIA,
             client_ip: user_ip.clone(),

@@ -8,6 +8,8 @@ pub struct CreateUserArgs {
     pub device: String,
     #[arg(long)]
     pub client_ip: String,
+    #[arg(short, long, default_value_t = false)]
+    pub allocate_addr: bool,
 }
 
 impl CreateUserArgs {
@@ -25,7 +27,11 @@ impl CreateUserArgs {
         };
 
         match client.create_user(
-            UserType::Server, 
+            if self.allocate_addr {
+                UserType::IBRLWithAllocatedIP
+            } else {
+                UserType::IBRL
+            },
             device_pk, 
             UserCYOA::GREOverDIA,
             ipv4_parse(&self.client_ip), 

@@ -13,10 +13,12 @@ type Plugin struct {
 	AdvertisedNLRI []NLRI
 	WriteChan      chan NLRI
 	RemoveChan     chan NLRI
+	// kernel routing table to target for writing/removing
+	RouteTable int
 }
 
-func NewBgpPlugin(writeChan, removeChan chan NLRI, advertised []NLRI) *Plugin {
-	return &Plugin{WriteChan: writeChan, RemoveChan: removeChan, AdvertisedNLRI: advertised}
+func NewBgpPlugin(writeChan, removeChan chan NLRI, advertised []NLRI, routeTable int) *Plugin {
+	return &Plugin{WriteChan: writeChan, RemoveChan: removeChan, AdvertisedNLRI: advertised, RouteTable: routeTable}
 }
 
 func (p *Plugin) GetCapabilities(c corebgp.PeerConfig) []corebgp.Capability {
@@ -61,7 +63,12 @@ func (p *Plugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.Notifi
 		// Nexthop is not included on a withdraw so we need to use the peer address upstream when writing to netlink.
 		// If we don't include a nexthop/gw to netlink, and there are multiple routes, the kernel will remove
 		// the first it finds.
-		p.RemoveChan <- NLRI{Prefix: route.Prefix.String(), PrefixLength: route.Length, NextHop: peer.RemoteAddress.String()}
+		p.RemoveChan <- NLRI{
+			Prefix:       route.Prefix.String(),
+			PrefixLength: route.Length,
+			NextHop:      peer.RemoteAddress.String(),
+			RouteTable:   p.RouteTable,
+		}
 	}
 	for _, attr := range update.PathAttributes {
 		switch attr.GetType() {
@@ -76,8 +83,13 @@ func (p *Plugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.Notifi
 
 	for _, prefix := range update.NLRI {
 		// If we get a prefix, we should write it to the kernel RIB
-		slog.Info("bgp: got nlri prefix", "prefix", prefix.String())
-		p.WriteChan <- NLRI{Prefix: prefix.Prefix.String(), PrefixLength: prefix.Length, NextHop: nexthop.String()}
+		slog.Info("bgp: got nlri prefix", "prefix", prefix.String(), "nexthop", nexthop.String())
+		p.WriteChan <- NLRI{
+			Prefix:       prefix.Prefix.String(),
+			PrefixLength: prefix.Length,
+			NextHop:      nexthop.String(),
+			RouteTable:   p.RouteTable,
+		}
 	}
 	return nil
 }

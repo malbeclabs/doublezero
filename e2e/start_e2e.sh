@@ -52,7 +52,7 @@ main() {
     doublezero latency
 
     print_banner "Connecting user tunnel"
-    doublezero --keypair $SOLANA_KEYPAIR connect --client-ip 1.2.3.4
+    doublezero --keypair $SOLANA_KEYPAIR connect --client-ip 64.86.249.86
 
     print_banner "Wait for controller to pickup new user"
     sleep 30
@@ -64,7 +64,7 @@ main() {
     e2e_test -test.v -test.run "^TestConnect$"
 
     print_banner "Disconnecting user tunnel"
-    doublezero --keypair $SOLANA_KEYPAIR disconnect --client-ip 1.2.3.4
+    doublezero --keypair $SOLANA_KEYPAIR disconnect --client-ip 64.86.249.86
     
     print_banner "Wait for controller to pickup disconnected user"
     sleep 30
@@ -98,7 +98,7 @@ start_doublezerod() {
 
 populate_data_onchain() {
     print_banner "Populate global configuration onchain"
-    doublezero global-config set --local-asn 65100 --remote-asn 65001 --tunnel-tunnel-block 172.16.0.0/16 --device-tunnel-block 169.254.0.0/16
+    doublezero global-config set --local-asn 65000 --remote-asn 65342 --tunnel-tunnel-block 172.16.0.0/16 --device-tunnel-block 169.254.0.0/16
     print_banner "Global configuration onchain"
     doublezero global-config get
 
@@ -139,9 +139,8 @@ populate_data_onchain() {
     print_banner "Device information onchain"
     doublezero device list
 
-    # print_banner "Populate device IPs as loopbacks for latency measurement.\n"
-    print_banner "Adding ny5-dz01 IP as loopback for latency testing; blackhole others."
-    ip addr add 64.86.249.80 dev lo
+    print_banner "Adding blackhole routes to test latency selection to ny5-dz01."
+    ip rule add priority 1 from 64.86.249.86/32 to all table main
     ip route add blackhole 207.45.216.134/32
     ip route add blackhole 195.219.120.72/32
     ip route add blackhole 195.219.220.88/32
@@ -149,9 +148,7 @@ populate_data_onchain() {
     ip route add blackhole 180.87.154.112/32
     ip route add blackhole 204.16.241.243/32
     ip route add blackhole 195.219.138.50/32
-
-    ip addr list dev lo
-    ip route list
+    ping -c 5 64.86.249.80
 
     print_banner "Populate tunnel information onchain"
     doublezero tunnel create --code "la2-dz01:ny5-dz01" --side-a la2-dz01 --side-z ny5-dz01 --tunnel-type MPLSoGRE --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3

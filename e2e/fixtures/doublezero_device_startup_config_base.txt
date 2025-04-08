@@ -35,7 +35,7 @@ agent PowerFuse shutdown
 agent StandbyCpld shutdown
 agent LicenseManager shutdown
 !
-hostname ny5-dz01
+hostname dut-dz01
 !
 spanning-tree mode mstp
 !

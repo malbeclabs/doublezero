@@ -138,7 +138,7 @@ func TestNetlinkManager_CreateTunnel(t *testing.T) {
 		ExpectError  bool
 		Tunnel       *netlink.Tunnel
 		AddrsAdded   []string
-		DoubleZeroIP string
+		DoubleZeroIP net.IP
 	}{
 		{
 			Name:        "tunnel_created_happy_path",
@@ -153,7 +153,7 @@ func TestNetlinkManager_CreateTunnel(t *testing.T) {
 				RemoteOverlay:  net.IPv4(10, 1, 1, 0),
 			},
 			AddrsAdded:   []string{"10.1.1.1/31", "10.0.0.0/32"},
-			DoubleZeroIP: "10.0.0.0",
+			DoubleZeroIP: net.IP{10, 0, 0, 0},
 		},
 	}
 	for _, test := range tests {
@@ -162,7 +162,7 @@ func TestNetlinkManager_CreateTunnel(t *testing.T) {
 		db := &MockDb{}
 		manager := netlink.NewNetlinkManager(m, b, db)
 		t.Run(test.Name, func(t *testing.T) {
-			err := manager.CreateTunnel(test.Tunnel, test.DoubleZeroIP)
+			err := manager.CreateTunnelWithIP(test.Tunnel, test.DoubleZeroIP)
 			if err != nil && !test.ExpectError {
 				t.Errorf("error: %v", err)
 			}
@@ -312,7 +312,7 @@ func TestNetlinkManager_Remove(t *testing.T) {
 		m := &MockNetlink{}
 		b := &MockBgpServer{}
 		manager := netlink.NewNetlinkManager(m, b, db)
-		manager.Tunnel = &netlink.Tunnel{
+		manager.UnicastTunnel = &netlink.Tunnel{
 			Name:           "doublezero0",
 			EncapType:      netlink.GRE,
 			LocalUnderlay:  net.IP{1, 1, 1, 1},
@@ -339,7 +339,7 @@ func TestNetlinkManager_Remove(t *testing.T) {
 		// we set these to nil on removal so we need to copy in the test
 		wantRules := manager.Rules
 		wantRoutes := manager.Routes
-		wantTunnel := manager.Tunnel
+		wantTunnel := manager.UnicastTunnel
 		if err := manager.Remove(); err != nil {
 			t.Fatalf("error when removing tunnel config: %v", err)
 		}

@@ -167,13 +167,15 @@ func TestHttpStatus(t *testing.T) {
 			TunnelSrc:    net.IP{1, 1, 1, 1},
 			TunnelDst:    net.IP{2, 2, 2, 2},
 			DoubleZeroIP: net.IP{3, 3, 3, 3},
+			UserType:     netlink.UserTypeEdgeFiltering,
 		}
 		provisionBody := `{
 					"tunnel_src": "1.1.1.1",
 					"tunnel_dst": "2.2.2.2",
 					"tunnel_net": "169.254.0.0/31",
 					"doublezero_ip": "3.3.3.3",
-					"doublezero_prefixes": ["3.0.0.0/24"]
+					"doublezero_prefixes": ["3.0.0.0/24"],
+					"user_type": "edge_filtering"
 				}`
 
 		req, err := http.NewRequest(http.MethodPost, "http://localhost/provision", strings.NewReader(provisionBody))
@@ -275,7 +277,8 @@ func TestNetlinkManager_HttpEndpoints(t *testing.T) {
 					"tunnel_dst": "2.2.2.2",
 					"tunnel_net": "10.1.1.0/31",
 					"doublezero_ip": "10.0.0.0",
-					"doublezero_prefixes": ["10.0.0.0/24"]
+					"doublezero_prefixes": ["10.0.0.0/24"],
+					"user_type": "edge_filtering"
 				}`,
 			Response: `{"status": "ok"}`,
 			Tunnel: &netlink.Tunnel{
@@ -372,7 +375,7 @@ func TestNetlinkManager_HttpEndpoints(t *testing.T) {
 			t.Errorf("Call to remove did not call Netlink.RouteDelete: %v", m.callLog)
 		}
 		// Make sure /remove actually removes the tunnels
-		if test.Endpoint == "/remove" && manager.Tunnel != nil {
+		if test.Endpoint == "/remove" && manager.UnicastTunnel != nil {
 			t.Errorf("Call to remove did not remove routes from netlink manager: %v", manager.Routes)
 		}
 		if test.Endpoint == "/remove" && !slices.Contains(m.callLog, "TunnelDelete") {

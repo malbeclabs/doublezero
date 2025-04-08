@@ -21,6 +21,7 @@ type PeerConfig struct {
 	LocalAs       uint32
 	RemoteAs      uint32
 	Port          int
+	RouteTable    int
 }
 
 type BgpServer struct {
@@ -52,7 +53,7 @@ func (b *BgpServer) AddPeer(p *PeerConfig, n []NLRI) error {
 	if p.Port != 0 {
 		peerOpts = append(peerOpts, corebgp.WithPort(p.Port))
 	}
-	plugin := NewBgpPlugin(b.addRouteChan, b.deleteRouteChan, n)
+	plugin := NewBgpPlugin(b.addRouteChan, b.deleteRouteChan, n, p.RouteTable)
 	err := b.server.AddPeer(corebgp.PeerConfig{
 		RemoteAddress: netip.MustParseAddr(p.RemoteAddress.String()),
 		LocalAS:       p.LocalAs,

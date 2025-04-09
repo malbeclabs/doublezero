@@ -116,6 +116,9 @@ func (n Netlink) RuleAdd(r *IPRule) error {
 	rule.Table = r.Table
 	rule.Src = r.SrcNet
 	rule.Dst = r.DstNet
+	// we mark these rules as kernel protocol to prevent systemd from purging on networkd restarts
+	// see https://github.com/malbeclabs/doublezero/issues/159
+	rule.Protocol = syscall.RTPROT_KERNEL
 	err := nl.RuleAdd(rule)
 	if err != nil && errors.Is(err, syscall.EEXIST) {
 		return ErrRuleExists
@@ -129,6 +132,9 @@ func (n Netlink) RuleDel(r *IPRule) error {
 	rule.Table = r.Table
 	rule.Src = r.SrcNet
 	rule.Dst = r.DstNet
+	// we mark these rules as kernel protocol to prevent systemd from purging on networkd restarts
+	// see https://github.com/malbeclabs/doublezero/issues/159
+	rule.Protocol = syscall.RTPROT_KERNEL
 	return nl.RuleDel(rule)
 }
 

@@ -1702,7 +1702,7 @@ dependencies = [
  "ipnetwork",
  "mockall",
  "prettytable-rs",
- "rand 0.8.5",
+ "rand 0.9.0",
  "rng",
  "serde",
  "serde_json",

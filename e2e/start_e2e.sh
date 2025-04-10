@@ -58,7 +58,7 @@ main() {
     sleep 30
 
     print_banner "Running command line output tests"
-    e2e_test -test.v -test.run "^TestClientOutput$"
+    e2e_test -test.v -test.run "^TestClientOutputAfterConnect$"
 
     print_banner "Running user connect tests"
     e2e_test -test.v -test.run "^TestConnect$"
@@ -68,6 +68,9 @@ main() {
     
     print_banner "Wait for controller to pickup disconnected user"
     sleep 30
+
+    print_banner "Running command line output tests"
+    e2e_test -test.v -test.run "^TestClientOutputAfterDisconnect$"
 
     doublezero user list
     print_banner "Running user disconnect tests"

@@ -9,7 +9,6 @@ use std::{
     path::PathBuf,
 };
 
-
 lazy_static! {
     /// The default path to the CLI configuration file.
     ///
@@ -68,8 +67,6 @@ pub fn read_doublezero_config() -> (String, ClientConfig) {
         ),
     }
 }
-
-
 
 pub fn convert_url_moniker(url: String) -> String {
     match url.as_str() {

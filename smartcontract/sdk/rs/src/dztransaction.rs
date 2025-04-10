@@ -2,7 +2,6 @@ use chrono::{DateTime, Utc};
 use double_zero_sla_program::instructions::DoubleZeroInstruction;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
-
 #[derive(Debug, Clone)]
 pub struct DZTransaction {
     pub time: DateTime<Utc>,
@@ -11,4 +10,3 @@ pub struct DZTransaction {
     pub log_messages: Vec<String>,
     pub signature: Signature,
 }
-

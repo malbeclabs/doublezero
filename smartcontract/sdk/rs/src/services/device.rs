@@ -1,4 +1,5 @@
 use eyre::eyre;
+use mockall::automock;
 use std::collections::HashMap;
 
 use crate::{doublezeroclient::DoubleZeroClient, DZClient};
@@ -19,12 +20,10 @@ use double_zero_sla_program::{
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
+#[automock]
 pub trait DeviceService {
     fn get_devices(&self) -> eyre::Result<HashMap<Pubkey, Device>>;
     fn get_device(&self, pubkey: &Pubkey) -> eyre::Result<Device>;
-    fn find_device<P>(&self, predicate: P) -> eyre::Result<(Pubkey, Device)>
-    where
-        P: Fn(&Device) -> bool + Send;
     fn create_device(
         &self,
         code: &str,
@@ -50,6 +49,13 @@ pub trait DeviceService {
     fn deactivate_device(&self, index: u128, owner: Pubkey) -> eyre::Result<Signature>;
 }
 
+pub trait DeviceFinder {
+    #![allow(dead_code)]
+    fn find_device<P>(&self, predicate: P) -> eyre::Result<(Pubkey, Device)>
+    where
+        P: Fn(&Device) -> bool + Send;
+}
+
 impl DeviceService for DZClient {
     fn get_devices(&self) -> eyre::Result<HashMap<Pubkey, Device>> {
         Ok(self
@@ -68,18 +74,6 @@ impl DeviceService for DZClient {
         match account {
             AccountData::Device(device) => Ok(device),
             _ => Err(eyre!("Invalid Account Type")),
-        }
-    }
-
-    fn find_device<P>(&self, predicate: P) -> eyre::Result<(Pubkey, Device)>
-    where
-        P: Fn(&Device) -> bool + Send,
-    {
-        let devices = self.get_devices()?;
-
-        match devices.into_iter().find(|(_, device)| predicate(device)) {
-            Some((pubkey, device)) => Ok((pubkey, device)),
-            None => Err(eyre!("Device not found")),
         }
     }
 
@@ -246,6 +240,20 @@ impl DeviceService for DZClient {
                 )
             }
             Err(e) => Err(e),
+        }
+    }
+}
+
+impl DeviceFinder for DZClient {
+    fn find_device<P>(&self, predicate: P) -> eyre::Result<(Pubkey, Device)>
+    where
+        P: Fn(&Device) -> bool + Send,
+    {
+        let devices = self.get_devices()?;
+
+        match devices.into_iter().find(|(_, device)| predicate(device)) {
+            Some((pubkey, device)) => Ok((pubkey, device)),
+            None => Err(eyre!("Device not found")),
         }
     }
 }

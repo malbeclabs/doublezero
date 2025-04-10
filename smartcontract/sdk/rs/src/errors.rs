@@ -1,7 +1,10 @@
 use {
-    solana_rpc_client_api::{request, response}, solana_sdk::{
+    solana_rpc_client_api::{request, response},
+    solana_sdk::{
         signature::SignerError, transaction::TransactionError, transport::TransportError,
-    }, std::io, thiserror::Error as ThisError
+    },
+    std::io,
+    thiserror::Error as ThisError,
 };
 
 #[derive(ThisError, Debug)]
@@ -39,7 +42,6 @@ impl ErrorKind {
         }
     }
 }
-
 
 impl From<TransportError> for ErrorKind {
     fn from(err: TransportError) -> Self {
@@ -84,7 +86,6 @@ impl Error {
         self.kind.get_transaction_error()
     }
 }
-
 
 impl From<Error> for TransportError {
     fn from(client_error: Error) -> Self {

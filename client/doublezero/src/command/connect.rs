@@ -5,8 +5,9 @@ use std::str::FromStr;
 
 use clap::Args;
 use double_zero_sdk::{
-    ipv4_parse, ipv4_to_string, networkv4_to_string, DZClient, DeviceService, IpV4, NetworkV4,
-    ProvisioningRequest, ServiceController, User, UserCYOA, UserService, UserStatus, UserType,
+    ipv4_parse, ipv4_to_string, networkv4_to_string, DZClient, DeviceFinder, DeviceService, IpV4,
+    NetworkV4, ProvisioningRequest, ServiceController, User, UserCYOA, UserFinder, UserService,
+    UserStatus, UserType,
 };
 use solana_sdk::pubkey::Pubkey;
 

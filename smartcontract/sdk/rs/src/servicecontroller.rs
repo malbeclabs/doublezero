@@ -73,7 +73,6 @@ pub struct ErrorResponse {
     pub description: String,
 }
 
-
 pub fn service_controller_check() -> bool {
     Path::new("/var/run/doublezerod/doublezerod.sock").exists()
 }
@@ -85,7 +84,7 @@ pub fn service_controller_can_open() -> bool {
         .open("/var/run/doublezerod/doublezerod.sock");
     match file {
         Ok(_) => true,
-        Err(e) => !matches!(e.kind(), std::io::ErrorKind::PermissionDenied)
+        Err(e) => !matches!(e.kind(), std::io::ErrorKind::PermissionDenied),
     }
 }
 
@@ -183,9 +182,11 @@ impl ServiceController {
 
         match client.request(req).await {
             Ok(res) => {
-
                 if res.status() != 200 {
-                    return Err(eyre!("Unable to connect to doublezero daemon: {}", res.status()));
+                    return Err(eyre!(
+                        "Unable to connect to doublezero daemon: {}",
+                        res.status()
+                    ));
                 }
 
                 let data = to_bytes(res.into_body())

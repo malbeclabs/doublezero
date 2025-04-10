@@ -1,4 +1,5 @@
 use eyre::eyre;
+use mockall::automock;
 use std::collections::HashMap;
 
 use crate::{doublezeroclient::DoubleZeroClient, DZClient};
@@ -19,12 +20,10 @@ use double_zero_sla_program::{
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
+#[automock]
 pub trait TunnelService {
     fn get_tunnels(&self) -> eyre::Result<HashMap<Pubkey, Tunnel>>;
     fn get_tunnel(&self, pubkey: &Pubkey) -> eyre::Result<Tunnel>;
-    fn find_tunnel<P>(&self, predicate: P) -> eyre::Result<(Pubkey, Tunnel)>
-    where
-        P: Fn(&Tunnel) -> bool + Send + Sync;
     #[allow(clippy::too_many_arguments)]
     fn create_tunnel(
         &self,
@@ -61,6 +60,13 @@ pub trait TunnelService {
     fn deactivate_tunnel(&self, index: u128, owner: Pubkey) -> eyre::Result<Signature>;
 }
 
+pub trait TunnelFinder {
+    #![allow(dead_code)]
+    fn find_tunnel<P>(&self, predicate: P) -> eyre::Result<(Pubkey, Tunnel)>
+    where
+        P: Fn(&Tunnel) -> bool + Send + Sync;
+}
+
 impl TunnelService for DZClient {
     fn get_tunnels(&self) -> eyre::Result<HashMap<Pubkey, Tunnel>> {
         Ok(self
@@ -79,18 +85,6 @@ impl TunnelService for DZClient {
         match account {
             AccountData::Tunnel(tunnel) => Ok(tunnel),
             _ => Err(eyre!("Invalid Account Type")),
-        }
-    }
-
-    fn find_tunnel<P>(&self, predicate: P) -> eyre::Result<(Pubkey, Tunnel)>
-    where
-        P: Fn(&Tunnel) -> bool + Send + Sync,
-    {
-        let tunnels = self.get_tunnels()?;
-
-        match tunnels.into_iter().find(|(_, tunnel)| predicate(tunnel)) {
-            Some((pubkey, tunnel)) => Ok((pubkey, tunnel)),
-            None => Err(eyre!("Tunnel not found")),
         }
     }
 
@@ -262,6 +256,20 @@ impl TunnelService for DZClient {
                 )
             }
             Err(e) => Err(e),
+        }
+    }
+}
+
+impl TunnelFinder for DZClient {
+    fn find_tunnel<P>(&self, predicate: P) -> eyre::Result<(Pubkey, Tunnel)>
+    where
+        P: Fn(&Tunnel) -> bool + Send + Sync,
+    {
+        let tunnels = self.get_tunnels()?;
+
+        match tunnels.into_iter().find(|(_, tunnel)| predicate(tunnel)) {
+            Some((pubkey, tunnel)) => Ok((pubkey, tunnel)),
+            None => Err(eyre!("Tunnel not found")),
         }
     }
 }

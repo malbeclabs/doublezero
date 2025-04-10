@@ -5,11 +5,14 @@ use double_zero_sla_program::{
     processors::globalstate::{
         device_allowlist::{
             add::AddDeviceAllowlistGlobalConfigArgs, remove::RemoveDeviceAllowlistGlobalConfigArgs,
-        }, foundation_allowlist ::{
-            add::AddFoundationAllowlistGlobalConfigArgs, remove::RemoveFoundationAllowlistGlobalConfigArgs,
-        }, user_allowlist::{
+        },
+        foundation_allowlist::{
+            add::AddFoundationAllowlistGlobalConfigArgs,
+            remove::RemoveFoundationAllowlistGlobalConfigArgs,
+        },
+        user_allowlist::{
             add::AddUserAllowlistGlobalConfigArgs, remove::RemoveUserAllowlistGlobalConfigArgs,
-        }
+        },
     },
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
@@ -24,7 +27,6 @@ pub trait AllowlistService {
 }
 
 impl AllowlistService for DZClient {
-
     fn add_foundation_allowlist(&self, pubkey: Pubkey) -> eyre::Result<Signature> {
         let (pda_pubkey, _) = get_globalstate_pda(&self.program_id);
 

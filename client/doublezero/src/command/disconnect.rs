@@ -1,7 +1,9 @@
 use color_eyre::owo_colors::OwoColorize;
 
 use clap::Args;
-use double_zero_sdk::{ipv4_parse, DZClient, RemoveTunnelArgs, ServiceController, UserService};
+use double_zero_sdk::{
+    ipv4_parse, DZClient, RemoveTunnelArgs, ServiceController, UserFinder, UserService,
+};
 
 use crate::{
     command::helpers::init_command,

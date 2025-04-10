@@ -56,8 +56,8 @@ impl IPBlockAllocator {
         }
     }
 
-    /// Marks the given block of IPs as assigned.
-    /// Updates the bit vector to reflect the assigned IPs.
+    /// Marks the given block of IPs as unassigned.
+    /// Updates the bit vector to reflect the unassigned IPs.
     pub fn unassign_block(&mut self, block: NetworkV4) {
         let block = networkv4_to_ipnetwork(&block);
         match self.ip_to_index(block.ip()) {

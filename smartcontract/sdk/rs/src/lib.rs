@@ -24,24 +24,28 @@ pub use double_zero_sla_program::types::*;
 #[macro_use]
 extern crate lazy_static;
 
-mod consts;
 mod client;
 mod config;
+mod consts;
 mod doublezeroclient;
+mod dztransaction;
 mod errors;
 mod servicecontroller;
 mod services;
 mod utils;
-mod dztransaction;
 
 pub use crate::client::DZClient;
 pub use crate::doublezeroclient::DoubleZeroClient;
 pub use crate::services::{
-    allowlist::AllowlistService, device::DeviceService, exchange::ExchangeService,
-    location::LocationService, tunnel::TunnelService, user::UserService,
+    allowlist::AllowlistService, device::DeviceFinder, device::DeviceService,
+    device::MockDeviceService, exchange::ExchangeService, location::LocationService,
+    tunnel::MockTunnelService, tunnel::TunnelFinder, tunnel::TunnelService, user::MockUserService,
+    user::UserFinder, user::UserService,
 };
 
-pub use crate::config::{convert_url_moniker, convert_ws_moniker, convert_program_moniker, convert_url_to_ws};
+pub use crate::config::{
+    convert_program_moniker, convert_url_moniker, convert_url_to_ws, convert_ws_moniker,
+};
 pub use crate::errors::*;
 pub use crate::servicecontroller::{
     service_controller_can_open, service_controller_check, ProvisioningRequest, RemoveTunnelArgs,

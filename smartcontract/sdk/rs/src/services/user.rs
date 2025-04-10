@@ -1,4 +1,5 @@
 use eyre::eyre;
+use mockall::automock;
 use std::collections::HashMap;
 
 use crate::{doublezeroclient::DoubleZeroClient, DZClient};
@@ -20,12 +21,10 @@ use double_zero_sla_program::{
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
+#[automock]
 pub trait UserService {
     fn get_users(&self) -> eyre::Result<HashMap<Pubkey, User>>;
     fn get_user(&self, pubkey: &Pubkey) -> eyre::Result<User>;
-    fn find_user<P>(&self, predicate: P) -> eyre::Result<(Pubkey, User)>
-    where
-        P: Fn(&User) -> bool + Send + Sync;
     fn create_user(
         &self,
         user_type: UserType,
@@ -60,6 +59,13 @@ pub trait UserService {
     fn ban_user(&self, index: u128) -> eyre::Result<Signature>;
 }
 
+pub trait UserFinder {
+    #![allow(dead_code)]
+    fn find_user<P>(&self, predicate: P) -> eyre::Result<(Pubkey, User)>
+    where
+        P: Fn(&User) -> bool + Send + Sync;
+}
+
 impl UserService for DZClient {
     fn get_users(&self) -> eyre::Result<HashMap<Pubkey, User>> {
         Ok(self
@@ -78,18 +84,6 @@ impl UserService for DZClient {
         match account {
             AccountData::User(user) => Ok(user),
             _ => Err(eyre!("Invalid Account Type")),
-        }
-    }
-
-    fn find_user<P>(&self, predicate: P) -> eyre::Result<(Pubkey, User)>
-    where
-        P: Fn(&User) -> bool + Send + Sync,
-    {
-        let users = self.get_users()?;
-
-        match users.into_iter().find(|(_, user)| predicate(user)) {
-            Some((pubkey, user)) => Ok((pubkey, user)),
-            None => Err(eyre!("User not found")),
         }
     }
 
@@ -318,6 +312,20 @@ impl UserService for DZClient {
                 )
             }
             Err(e) => Err(e),
+        }
+    }
+}
+
+impl UserFinder for DZClient {
+    fn find_user<P>(&self, predicate: P) -> eyre::Result<(Pubkey, User)>
+    where
+        P: Fn(&User) -> bool + Send + Sync,
+    {
+        let users = self.get_users()?;
+
+        match users.into_iter().find(|(_, user)| predicate(user)) {
+            Some((pubkey, user)) => Ok((pubkey, user)),
+            None => Err(eyre!("User not found")),
         }
     }
 }

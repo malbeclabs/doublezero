@@ -1,0 +1,5 @@
+Doublezero IP: 
+Name: 
+Tunnel dst: 
+Tunnel src: 
+Tunnel status: disconnected

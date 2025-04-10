@@ -73,7 +73,7 @@ func (b *ShowIPBGPSummary) GetCmd() string {
 	return "show ip bgp summary"
 }
 
-// TestClientOutput is a set of tests to verify the output of the doublezero
+// TestClientOutputAfterConnect is a set of tests to verify the output of the doublezero
 // CLI. These tests utilize golden files of expected output stored in the fixtures directory,
 // which are then compared against the std output of each command line call.
 //
@@ -82,7 +82,7 @@ func (b *ShowIPBGPSummary) GetCmd() string {
 // from test run to test run. Because of this, we treat desired and test generated output as
 // slices of strings and verify each line of the desired output is present in the test generated
 // output slice.
-func TestClientOutput(t *testing.T) {
+func TestClientOutputAfterConnect(t *testing.T) {
 	tests := []struct {
 		name       string
 		goldenFile string
@@ -98,22 +98,20 @@ func TestClientOutput(t *testing.T) {
 			goldenFile: "fixtures/doublezero_device_list.txt",
 			cmd:        []string{"doublezero", "device", "list"},
 		},
+		{
+			name:       "doublezero_status",
+			goldenFile: "fixtures/doublezero_status_connected.txt",
+			cmd:        []string{"doublezero", "status"},
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			want, err := fs.ReadFile(test.goldenFile)
+			diff, err := diffCliToGolden(test.goldenFile, test.cmd...)
 			if err != nil {
-				t.Fatalf("error reading golden file %s: %v", test.goldenFile, err)
+				t.Fatalf("error generating diff: %v", err)
 			}
-			got, err := exec.Command(test.cmd[0], test.cmd[1:]...).Output()
-			if err != nil {
-				t.Fatalf("error running cmd %s: %v", test.cmd, err)
-			}
-			opts := []cmp.Option{
-				cmpopts.SortSlices(func(a, b string) bool { return a < b }),
-			}
-			if diff := cmp.Diff(strings.Split(string(want), "\n"), strings.Split(string(got), "\n"), opts...); diff != "" {
+			if diff != "" {
 				t.Fatalf("output mismatch: -(want), +(got):%s", diff)
 			}
 		})
@@ -258,19 +256,12 @@ func TestDisconnect(t *testing.T) {
 
 	t.Run("check_user_contract_is_removed", func(t *testing.T) {
 		goldenFile := "fixtures/doublezero_user_list_user_removed.txt"
-		want, err := fs.ReadFile(goldenFile)
-		if err != nil {
-			t.Fatalf("error reading golden file %s: %v", goldenFile, err)
-		}
 		cmd := []string{"doublezero", "user", "list"}
-		got, err := exec.Command(cmd[0], cmd[1:]...).Output()
+		diff, err := diffCliToGolden(goldenFile, cmd...)
 		if err != nil {
-			t.Fatalf("error running cmd %s: %v", cmd, err)
+			t.Fatalf("error generating diff: %v", err)
 		}
-		opts := []cmp.Option{
-			cmpopts.SortSlices(func(a, b string) bool { return a < b }),
-		}
-		if diff := cmp.Diff(strings.Split(string(want), "\n"), strings.Split(string(got), "\n"), opts...); diff != "" {
+		if diff != "" {
 			t.Fatalf("output mismatch: -(want), +(got):%s", diff)
 		}
 	})
@@ -303,4 +294,50 @@ func TestDisconnect(t *testing.T) {
 			t.Fatalf("output mismatch: -(want), +(got): %s", diff)
 		}
 	})
+}
+
+func TestClientOutputAfterDisconnect(t *testing.T) {
+	tests := []struct {
+		name       string
+		goldenFile string
+		cmd        []string
+	}{
+		{
+			name:       "doublezero_user_list",
+			goldenFile: "fixtures/doublezero_user_list_user_removed.txt",
+			cmd:        []string{"doublezero", "user", "list"},
+		},
+		{
+			name:       "doublezero_status",
+			goldenFile: "fixtures/doublezero_status_disconnected.txt",
+			cmd:        []string{"doublezero", "status"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			diff, err := diffCliToGolden(test.goldenFile, test.cmd...)
+			if err != nil {
+				t.Fatalf("error generating diff: %v", err)
+			}
+			if diff != "" {
+				t.Fatalf("output mismatch: -(want), +(got):%s", diff)
+			}
+		})
+	}
+}
+
+func diffCliToGolden(goldenFile string, cmds ...string) (string, error) {
+	want, err := fs.ReadFile(goldenFile)
+	if err != nil {
+		return "", fmt.Errorf("error reading golden file %s: %v", goldenFile, err)
+	}
+	got, err := exec.Command(cmds[0], cmds[1:]...).Output()
+	if err != nil {
+		return "", fmt.Errorf("error running cmd %s: %v", cmds, err)
+	}
+	opts := []cmp.Option{
+		cmpopts.SortSlices(func(a, b string) bool { return a < b }),
+	}
+	return cmp.Diff(strings.Split(string(want), "\n"), strings.Split(string(got), "\n"), opts...), nil
 }

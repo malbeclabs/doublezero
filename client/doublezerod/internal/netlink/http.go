@@ -132,6 +132,7 @@ type StatusResponse struct {
 	TunnelSrc    net.IP `json:"tunnel_src"`
 	TunnelDst    net.IP `json:"tunnel_dst"`
 	DoubleZeroIP net.IP `json:"doublezero_ip"`
+	Status       string `json:"status"`
 }
 
 func (n *NetlinkManager) ServeStatus(w http.ResponseWriter, r *http.Request) {

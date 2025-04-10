@@ -405,5 +405,6 @@ func (n *NetlinkManager) Status() (*StatusResponse, error) {
 		TunnelSrc:    n.Tunnel.LocalUnderlay,
 		TunnelDst:    n.Tunnel.RemoteUnderlay,
 		DoubleZeroIP: n.DoubleZeroAddr,
+		Status:       "connected",
 	}, nil
 }

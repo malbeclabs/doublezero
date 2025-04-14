@@ -2,7 +2,7 @@
 
 # Build the program
 echo "Build the program"
-cargo build-sbf --manifest-path ../programs/dz-sla-program/Cargo.toml
+cargo build-sbf --manifest-path ../programs/dz-sla-program/Cargo.toml -- -Znext-lockfile-bump
 cp ../programs/dz-sla-program/target/deploy/double_zero_sla_program.so ./target/double_zero_sla_program.so
 
 #Build the activator
@@ -14,7 +14,6 @@ cp ../../activator/target/debug/doublezero-activator ./target/
 echo "Build the client"
 cargo build --manifest-path ../../client/doublezero/Cargo.toml 
 cp ../../client/doublezero/target/debug/doublezero ./target/
-
 
 # Configure to connect to localnet
 solana config set --url http://127.0.0.1:8899

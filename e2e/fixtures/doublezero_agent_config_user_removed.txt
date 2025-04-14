@@ -41,6 +41,8 @@ default interface Tunnel519
 !
 router bgp 65342
 !
+ip community-list COMM-ALL_USERS permit 21682:1200
+!
 no route-map RM-USER-500-OUT
 !
 no route-map RM-USER-501-OUT
@@ -80,8 +82,6 @@ no route-map RM-USER-517-OUT
 no route-map RM-USER-518-OUT
 !
 no route-map RM-USER-519-OUT
-!
-ip community-list COMM-ALL_USERS permit 21682:1200
 !
 no route-map RM-USER-500-IN
 !

@@ -307,20 +307,23 @@ fn process_user_event(
                             let mut tunnel_id: u16 = 0;
                             let mut dz_ip: IpV4 = [0, 0, 0, 0];
 
-                            if user.user_type == UserType::IBRLWithAllocatedIP
-                                || user.user_type == UserType::EdgeFiltering
-                            {
-                                match device_state.get_next() {
-                                    Some((xtunnel_id, xdz_ip)) => {
-                                        tunnel_id = xtunnel_id;
-                                        dz_ip = xdz_ip;
+                            match user.user_type {
+                                UserType::IBRLWithAllocatedIP | UserType::EdgeFiltering => {
+                                    match device_state.get_next() {
+                                        Some((xtunnel_id, xdz_ip)) => {
+                                            tunnel_id = xtunnel_id;
+                                            dz_ip = xdz_ip;
+                                        }
+                                        None => {}
                                     }
-                                    None => {}
-                                }
-                            } else if user.user_type == UserType::IBRL {
-                                tunnel_id = device_state.get_next_tunnel_id().unwrap();
-                                dz_ip = user.client_ip;
-                            }
+    
+                                },
+                                UserType::IBRL => {
+                                    tunnel_id = device_state.get_next_tunnel_id().unwrap();
+                                    dz_ip = user.client_ip;
+                                },
+                                UserType::Multicast => {}
+                            }                            
 
                             if tunnel_id == 0 {
                                 eprintln!("{}", "Error: No available tunnel block");

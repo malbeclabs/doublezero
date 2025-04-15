@@ -33,8 +33,6 @@ var (
 
 	// address for doublezero device
 	doublezeroDeviceAddr = "64.86.249.80"
-	// address for doublezero device
-	doublezeroDeviceAddr = "64.86.249.80"
 	// expected doublezero address to be allocated to client during test
 	doublezeroAddr = "64.86.249.81/32"
 	// expected link-local address to be allocated to the client during test
@@ -88,36 +86,6 @@ type IpRoute struct {
 
 func (r *ShowIpRoute) GetCmd() string {
 	return "show ip route vrf all"
-}
-
-type ShowIPBGPSummary struct {
-	VRFs map[string]VRF
-}
-
-type VRF struct {
-	RouterID string                        `json:"routerId"`
-	Peers    map[string]BGPNeighborSummary `json:"peers"`
-	VRF      string                        `json:"vrf"`
-	ASN      string                        `json:"asn"`
-}
-
-type BGPNeighborSummary struct {
-	MsgSent             int     `json:"msgSent"`
-	InMsgQueue          int     `json:"inMsgQueue"`
-	PrefixReceived      int     `json:"prefixReceived"`
-	UpDownTime          float64 `json:"upDownTime"`
-	Version             int     `json:"version"`
-	MsgReceived         int     `json:"msgReceived"`
-	PrefixAccepted      int     `json:"prefixAccepted"`
-	PeerState           string  `json:"peerState"`
-	PeerStateIdleReason string  `json:"peerStateIdleReason,omitempty"`
-	OutMsgQueue         int     `json:"outMsgQueue"`
-	UnderMaintenance    bool    `json:"underMaintenance"`
-	ASN                 string  `json:"asn,string"`
-}
-
-func (b *ShowIPBGPSummary) GetCmd() string {
-	return "show ip bgp summary"
 }
 
 // TestClientOutputAfterConnect is a set of tests to verify the output of the doublezero

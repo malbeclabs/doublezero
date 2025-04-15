@@ -76,7 +76,8 @@ impl DoubleZeroClient for DZClient {
             .payer
             .as_ref()
             .ok_or_eyre("No default signer found, run \"doublezero keygen\" to create a new one")?;
-        let data = borsh::to_vec(&instruction).unwrap();
+        //let data = borsh::to_vec(&instruction).unwrap();
+        let data = instruction.pack();
 
         let mut transaction = Transaction::new_with_payer(
             &[Instruction::new_with_bytes(

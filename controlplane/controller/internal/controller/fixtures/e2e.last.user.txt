@@ -42,6 +42,8 @@ default interface Tunnel519
 router bgp 65342
    no neighbor 169.254.0.13
 !
+ip community-list COMM-ALL_USERS permit 21682:1200
+!
 no route-map RM-USER-500-OUT
 !
 no route-map RM-USER-501-OUT
@@ -81,14 +83,6 @@ no route-map RM-USER-517-OUT
 no route-map RM-USER-518-OUT
 !
 no route-map RM-USER-519-OUT
-!
-ip prefix-list PL-DZ_EWR_SUMMARY seq 10 permit 64.86.249.80/29 le 32
-ip prefix-list PL-DZ_FRA_SUMMARY seq 10 permit 195.219.220.88/29 le 32
-ip prefix-list PL-DZ_LAX_SUMMARY seq 10 permit 207.45.216.136/29 le 32
-ip prefix-list PL-DZ_LHR_SUMMARY seq 10 permit 195.219.120.72/29 le 32
-ip prefix-list PL-DZ_SIN_SUMMARY seq 10 permit 180.87.102.104/29 le 32
-ip prefix-list PL-DZ_TYO_SUMMARY seq 10 permit 180.87.154.112/29 le 32
-ip prefix-list PL-DZ_AMS_SUMMARY seq 10 permit 195.219.138.56/29 le 32
 !
 no route-map RM-USER-500-IN
 !

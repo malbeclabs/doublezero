@@ -4,32 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-clap = { version = "4.5.21", features = ["derive"] }
+clap = { version = "4.5.36", features = ["derive"] }
 eyre = "0.6.12"
-borsh = "1.5.5"
-solana-program = "1.18.26"
-solana-sdk = "1.18.26"
-solana-client = "1.18.26"
-solana-pubsub-client = "1.18.26"
-
-tokio = { version = "1.43.0", features = ["full"] }
-
-double-zero-sdk = { path = "../smartcontract/sdk/rs", version = "0.1.0" }
-dirs = "6.0.0"
-serde_json = "1.0.133"
-prettytable-rs = "0.10.0"
-serde_yaml = "0.9.34"
-serde = "1.0.219"
-actix-web = "4.9.0"
-awc = "3.5.1"
-actix-tls = "3.4.0"
-futures = "0.3.31"
-actix-service = "2.0.2"
-http = "1.2.0"
-futures-util = "0.3.31"
-rng = "0.1.0"
-rand = "0.8"
+tokio = { version = "1.44.2", features = ["full"] }
 ipnetwork = "0.21.1"
 bitvec = "1.0.1"
-colored = "2.2.0"
 mockall = "^0.13"
+solana-sdk = "1.18.26"
+double-zero-sdk = { path = "../smartcontract/sdk/rs", version = "0.1.0" }

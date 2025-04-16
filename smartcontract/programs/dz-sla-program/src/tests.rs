@@ -68,7 +68,10 @@ pub mod test {
                 tunnel_tunnel_block: ([10, 0, 0, 0], 24),
                 user_tunnel_block: ([10, 0, 0, 0], 24),
             }),
-            vec![AccountMeta::new(globalconfig_pubkey, false)],
+            vec![
+                AccountMeta::new(globalconfig_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
             &payer,
         )
         .await;
@@ -108,11 +111,10 @@ pub mod test {
         )
         .await;
 
-        let location_la  =
-            get_account_data(&mut banks_client, location_la_pubkey)
-                .await
-                .expect("Unable to get Location")
-                .get_location();
+        let location_la = get_account_data(&mut banks_client, location_la_pubkey)
+            .await
+            .expect("Unable to get Location")
+            .get_location();
         assert_eq!(location_la.account_type, AccountType::Location);
         assert_eq!(location_la.code, location_la_code);
         assert_eq!(location_la.status, LocationStatus::Activated);
@@ -154,11 +156,10 @@ pub mod test {
         )
         .await;
 
-        let location_ny =
-            get_account_data(&mut banks_client, location_ny_pubkey)
-                .await
-                .expect("Unable to get Location")
-                .get_location();
+        let location_ny = get_account_data(&mut banks_client, location_ny_pubkey)
+            .await
+            .expect("Unable to get Location")
+            .get_location();
         assert_eq!(location_ny.account_type, AccountType::Location);
         assert_eq!(location_ny.code, location_ny_code);
         println!(
@@ -198,11 +199,10 @@ pub mod test {
         )
         .await;
 
-        let exchange_la =
-            get_account_data(&mut banks_client, exchange_la_pubkey)
-                .await
-                .expect("Unable to get Exchange")
-                .get_exchange();
+        let exchange_la = get_account_data(&mut banks_client, exchange_la_pubkey)
+            .await
+            .expect("Unable to get Exchange")
+            .get_exchange();
         assert_eq!(exchange_la.account_type, AccountType::Exchange);
         assert_eq!(exchange_la.code, exchange_la_code);
         println!(
@@ -241,9 +241,9 @@ pub mod test {
         .await;
 
         let exchange_ny = get_account_data(&mut banks_client, exchange_ny_pubkey)
-                .await
-                .expect("Unable to get Exchange")
-                .get_exchange();
+            .await
+            .expect("Unable to get Exchange")
+            .get_exchange();
         assert_eq!(exchange_ny.account_type, AccountType::Exchange);
         assert_eq!(exchange_ny.code, exchange_ny_code);
         println!(
@@ -267,7 +267,7 @@ pub mod test {
             exchange_pk: exchange_la_pubkey,
             device_type: DeviceType::Switch,
             public_ip: [1, 0, 0, 1],
-            dz_prefixes: vec!(networkv4_parse(&"10.0.0.1/24".to_string())),
+            dz_prefixes: vec![networkv4_parse(&"10.0.0.1/24".to_string())],
         };
 
         println!("Testing Device LA initialization...");
@@ -312,7 +312,7 @@ pub mod test {
             exchange_pk: exchange_ny_pubkey,
             device_type: DeviceType::Switch,
             public_ip: [1, 0, 0, 2],
-            dz_prefixes: vec!(networkv4_parse(&"10.1.0.1/24".to_string())),
+            dz_prefixes: vec![networkv4_parse(&"10.1.0.1/24".to_string())],
         };
 
         execute_transaction(
@@ -460,7 +460,7 @@ pub mod test {
         .await;
 
         // Check account data
-        let user1= get_account_data(&mut banks_client, user1_pubkey)
+        let user1 = get_account_data(&mut banks_client, user1_pubkey)
             .await
             .expect("Unable to get User")
             .get_user();
@@ -542,7 +542,10 @@ pub mod test {
         "".to_string()
     }
 
-    pub async fn get_account_data(banks_client: &mut BanksClient, pubkey: Pubkey) -> Option<AccountData> {
+    pub async fn get_account_data(
+        banks_client: &mut BanksClient,
+        pubkey: Pubkey,
+    ) -> Option<AccountData> {
         print!("⬅️  Read: ");
 
         match banks_client.get_account(pubkey).await {

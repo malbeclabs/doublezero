@@ -2,7 +2,7 @@
 
 # Build the program
 echo "Build the program"
-cargo build-sbf --manifest-path ../programs/dz-sla-program/Cargo.toml
+cargo build-sbf --manifest-path ../programs/dz-sla-program/Cargo.toml -- -Znext-lockfile-bump
 cp ../programs/dz-sla-program/target/deploy/double_zero_sla_program.so ./target/double_zero_sla_program.so
 
 #Build the activator

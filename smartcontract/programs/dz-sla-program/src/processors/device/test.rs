@@ -54,7 +54,10 @@ mod device_test {
                 tunnel_tunnel_block: ([10, 0, 0, 0], 24),
                 user_tunnel_block: ([10, 0, 0, 0], 24),
             }),
-            vec![AccountMeta::new(config_pubkey, false)],
+            vec![
+                AccountMeta::new(config_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
             &payer,
         )
         .await;
@@ -139,7 +142,7 @@ mod device_test {
                 location_pk: location_pubkey,
                 exchange_pk: exchange_pubkey,
                 public_ip: [10, 0, 0, 1],
-                dz_prefixes: vec!(([10, 1, 0, 0], 23)),
+                dz_prefixes: vec![([10, 1, 0, 0], 23)],
             }),
             vec![
                 AccountMeta::new(device_pubkey, false),
@@ -242,7 +245,7 @@ mod device_test {
                 code: Some("la2".to_string()),
                 device_type: Some(DeviceType::Switch),
                 public_ip: Some([10, 2, 2, 1]),
-                dz_prefixes: Some(vec!(([10, 1, 0, 0], 23))),
+                dz_prefixes: Some(vec![([10, 1, 0, 0], 23)]),
             }),
             vec![
                 AccountMeta::new(device_pubkey, false),

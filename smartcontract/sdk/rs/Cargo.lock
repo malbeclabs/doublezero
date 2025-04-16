@@ -1192,7 +1192,6 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "bincode",
- "borsh 1.5.5",
  "chrono",
  "ctrlc",
  "directories-next",

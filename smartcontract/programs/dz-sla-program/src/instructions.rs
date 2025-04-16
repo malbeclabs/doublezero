@@ -91,6 +91,9 @@ pub enum DoubleZeroInstruction {
 }
 
 impl DoubleZeroInstruction {
+    pub fn pack(&self) -> Vec<u8> {
+        borsh::to_vec(&self).unwrap()
+    }
     #[rustfmt::skip]
     pub fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
         let (&instruction, rest) = input

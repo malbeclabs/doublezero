@@ -3,7 +3,7 @@
     "doublezero_prefixes": [
         "7.0.0.0/8"
     ],
-    "user_type": "edge_filtering",
+    "user_type": "EdgeFiltering",
     "tunnel_src": "1.1.1.1",
     "tunnel_dst": "2.2.2.2",
     "doublezero_ip": "7.7.7.7",

@@ -1,7 +1,7 @@
 {
     "tunnel_net": "169.254.0.0/31",
     "doublezero_prefixes": [],
-    "user_type": "ibrl_with_allocated_ip",
+    "user_type": "IBRLWithAllocatedIP",
     "tunnel_src": "1.1.1.1",
     "tunnel_dst": "2.2.2.2",
     "doublezero_ip": "3.3.3.3",

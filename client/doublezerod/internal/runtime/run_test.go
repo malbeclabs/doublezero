@@ -51,7 +51,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 				"tunnel_dst":    "2.2.2.2",
 				"tunnel_net":    "169.254.0.0/31",
 				"doublezero_ip": "1.1.1.1",
-				"user_type":     "ibrl",
+				"user_type":     "IBRL",
 			},
 			goldenStateFile: "./fixtures/doublezerod.ibrl.json",
 		},
@@ -64,7 +64,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 				"tunnel_dst":    "2.2.2.2",
 				"tunnel_net":    "169.254.0.0/31",
 				"doublezero_ip": "3.3.3.3",
-				"user_type":     "ibrl_with_allocated_ip",
+				"user_type":     "IBRLWithAllocatedIP",
 			},
 			goldenStateFile: "./fixtures/doublezerod.ibrl.with.allocated.ip.json",
 		},
@@ -311,7 +311,7 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 					"tunnel_net": "169.254.0.0/31",
 					"doublezero_ip": "3.3.3.3",
 					"doublezero_prefixes": ["3.0.0.0/24"],
-					"user_type": "edge_filtering"
+					"user_type": "EdgeFiltering"
 				}`
 		req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(body))
 		if err != nil {

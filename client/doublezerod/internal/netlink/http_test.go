@@ -175,7 +175,7 @@ func TestHttpStatus(t *testing.T) {
 					"tunnel_net": "169.254.0.0/31",
 					"doublezero_ip": "3.3.3.3",
 					"doublezero_prefixes": ["3.0.0.0/24"],
-					"user_type": "edge_filtering"
+					"user_type": "EdgeFiltering"
 				}`
 
 		req, err := http.NewRequest(http.MethodPost, "http://localhost/provision", strings.NewReader(provisionBody))
@@ -278,7 +278,7 @@ func TestNetlinkManager_HttpEndpoints(t *testing.T) {
 					"tunnel_net": "10.1.1.0/31",
 					"doublezero_ip": "10.0.0.0",
 					"doublezero_prefixes": ["10.0.0.0/24"],
-					"user_type": "edge_filtering"
+					"user_type": "EdgeFiltering"
 				}`,
 			Response: `{"status": "ok"}`,
 			Tunnel: &netlink.Tunnel{

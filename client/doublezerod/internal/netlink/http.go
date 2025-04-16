@@ -19,21 +19,21 @@ const (
 
 func (u UserType) String() string {
 	return [...]string{
-		"unknown",
-		"ibrl",
-		"ibrl_with_allocated_ip",
-		"edge_filtering",
-		"multicast",
+		"Unknown",
+		"IBRL",
+		"IBRLWithAllocatedIP",
+		"EdgeFiltering",
+		"Multicast",
 	}[u]
 }
 
 func (u UserType) FromString(userType string) UserType {
 	return map[string]UserType{
-		"unknown":                UserTypeUnknown,
-		"ibrl":                   UserTypeIBRL,
-		"ibrl_with_allocated_ip": UserTypeIBRLWithAllocatedIP,
-		"edge_filtering":         UserTypeEdgeFiltering,
-		"multicast":              UserTypeMulticast,
+		"Unknown":             UserTypeUnknown,
+		"IBRL":                UserTypeIBRL,
+		"IBRLWithAllocatedIP": UserTypeIBRLWithAllocatedIP,
+		"EdgeFiltering":       UserTypeEdgeFiltering,
+		"Multicast":           UserTypeMulticast,
 	}[userType]
 }
 
@@ -124,7 +124,7 @@ func (p *ProvisionRequest) MarshalJSON() ([]byte, error) {
 ServeProvision handles local provisioning of a double zero tunnel. The following is an example payload:
 
 	`{
-		"user_type": "ibrl"						[required]
+		"user_type": "IBRL"						[required]
 		"tunnel_src": "1.1.1.1", 					[optional]
 		"tunnel_dst": "2.2.2.2", 					[required]
 		"tunnel_net": "10.1.1.0/31",					[required]

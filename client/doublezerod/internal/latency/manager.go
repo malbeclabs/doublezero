@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"sync"
@@ -21,7 +21,7 @@ func UdpPing(ctx context.Context, d dzsdk.Device) LatencyResult {
 	addr := net.IP(d.PublicIp[:])
 	pinger, err := probing.NewPinger(addr.String())
 	if err != nil {
-		log.Printf("latency: error creating pinger for device %s: %v\n", addr, err)
+		slog.Error("latency: error creating pinger for device", "device address", addr, "error", err)
 		return LatencyResult{Device: d, Reachable: false}
 	}
 
@@ -30,7 +30,7 @@ func UdpPing(ctx context.Context, d dzsdk.Device) LatencyResult {
 	pinger.SetPrivileged(true)
 
 	if err := pinger.Run(); err != nil {
-		log.Printf("latency: error while probing %s: %v", addr, err)
+		slog.Error("latency: error while probing", "address", addr, "error", err)
 		return LatencyResult{Device: d, Reachable: false}
 	}
 	stats := pinger.Statistics()
@@ -112,15 +112,15 @@ func (l *LatencyManager) Start(ctx context.Context, programId string, rpcEndpoin
 			defer cancel()
 			contractData, err := l.SmartContractFunc(ctx, programId, rpcEndpoint)
 			if err != nil {
-				log.Printf("latency: error fetching smart contract data: %v\n", err)
+				slog.Error("latency: error fetching smart contract data", "error", err)
 				return
 			}
 
 			if len(contractData.Devices) == 0 {
-				log.Printf("latency: smartcontract data contained 0 devices\n")
+				slog.Warn("latency: smartcontract data contained 0 devices")
 				return
 			}
-			log.Printf("latency: %d devices found; updating cache\n", len(contractData.Devices))
+			slog.Debug("latency: updating cache", "number of devices updated", len(contractData.Devices))
 			l.DeviceCache.Lock.Lock()
 			l.DeviceCache.Devices = contractData.Devices
 			l.DeviceCache.Lock.Unlock()
@@ -185,7 +185,7 @@ func (l *LatencyManager) Start(ctx context.Context, programId string, rpcEndpoin
 		}
 	}()
 	<-ctx.Done()
-	log.Println("latency: closing manager")
+	slog.Info("latency: closing manager")
 
 	return nil
 }

@@ -9,7 +9,7 @@ license = "MIT OR Apache-2.0"
 description = "Command line interface to interact with the DZ program."
 
 [dependencies]
-clap = { version = "4.5.21", features = ["derive"] }
+clap = { version = "4.5.36", features = ["derive"] }
 eyre = "0.6.12"
 borsh = "1.5.3"
 solana-program = "1.18.26"
@@ -31,7 +31,7 @@ awc = "3.5.1"
 actix-tls = "3.4.0"
 futures = "0.3.31"
 actix-service = "2.0.3"
-http = "1.2.0"
+http = "1.3.1"
 futures-util = "0.3.31"
 indicatif = "0.17.9"
 console = "0.15.10"

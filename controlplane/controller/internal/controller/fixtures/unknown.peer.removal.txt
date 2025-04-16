@@ -59,76 +59,37 @@ router bgp 65342
    neighbor 169.254.0.5 maximum-accepted-routes 1
    no neighbor 169.254.0.7
 !
+ip community-list COMM-ALL_USERS permit 21682:1200
+!
 no route-map RM-USER-500-OUT
 route-map RM-USER-500-OUT permit 10
-   match ip address prefix-list PL-DZ_LAX_SUMMARY
-route-map RM-USER-500-OUT permit 20
-   match ip address prefix-list PL-DZ_EWR_SUMMARY
-route-map RM-USER-500-OUT permit 30
-   match ip address prefix-list PL-DZ_LHR_SUMMARY
-route-map RM-USER-500-OUT permit 40
-   match ip address prefix-list PL-DZ_FRA_SUMMARY
-route-map RM-USER-500-OUT permit 50
-   match ip address prefix-list PL-DZ_SIN_SUMMARY
-route-map RM-USER-500-OUT permit 60
-   match ip address prefix-list PL-DZ_TYO_SUMMARY
-route-map RM-USER-500-OUT permit 70
-   match ip address prefix-list PL-DZ_AMS_SUMMARY
+   match community COMM-ALL_USERS
 !
 no route-map RM-USER-501-OUT
 route-map RM-USER-501-OUT permit 10
-   match ip address prefix-list PL-DZ_LAX_SUMMARY
-route-map RM-USER-501-OUT permit 20
-   match ip address prefix-list PL-DZ_EWR_SUMMARY
-route-map RM-USER-501-OUT permit 30
-   match ip address prefix-list PL-DZ_LHR_SUMMARY
-route-map RM-USER-501-OUT permit 40
-   match ip address prefix-list PL-DZ_FRA_SUMMARY
-route-map RM-USER-501-OUT permit 50
-   match ip address prefix-list PL-DZ_SIN_SUMMARY
-route-map RM-USER-501-OUT permit 60
-   match ip address prefix-list PL-DZ_TYO_SUMMARY
-route-map RM-USER-501-OUT permit 70
-   match ip address prefix-list PL-DZ_AMS_SUMMARY
+   match community COMM-ALL_USERS
 !
 no route-map RM-USER-502-OUT
 route-map RM-USER-502-OUT permit 10
-   match ip address prefix-list PL-DZ_LAX_SUMMARY
-route-map RM-USER-502-OUT permit 20
-   match ip address prefix-list PL-DZ_EWR_SUMMARY
-route-map RM-USER-502-OUT permit 30
-   match ip address prefix-list PL-DZ_LHR_SUMMARY
-route-map RM-USER-502-OUT permit 40
-   match ip address prefix-list PL-DZ_FRA_SUMMARY
-route-map RM-USER-502-OUT permit 50
-   match ip address prefix-list PL-DZ_SIN_SUMMARY
-route-map RM-USER-502-OUT permit 60
-   match ip address prefix-list PL-DZ_TYO_SUMMARY
-route-map RM-USER-502-OUT permit 70
-   match ip address prefix-list PL-DZ_AMS_SUMMARY
-!
-ip prefix-list PL-DZ_EWR_SUMMARY seq 10 permit 64.86.249.80/29 le 32
-ip prefix-list PL-DZ_FRA_SUMMARY seq 10 permit 195.219.220.88/29 le 32
-ip prefix-list PL-DZ_LAX_SUMMARY seq 10 permit 207.45.216.136/29 le 32
-ip prefix-list PL-DZ_LHR_SUMMARY seq 10 permit 195.219.120.72/29 le 32
-ip prefix-list PL-DZ_SIN_SUMMARY seq 10 permit 180.87.102.104/29 le 32
-ip prefix-list PL-DZ_TYO_SUMMARY seq 10 permit 180.87.154.112/29 le 32
-ip prefix-list PL-DZ_AMS_SUMMARY seq 10 permit 195.219.138.56/29 le 32
+   match community COMM-ALL_USERS
 !
 no route-map RM-USER-500-IN
 route-map RM-USER-500-IN permit 10
    match ip address prefix-list PL-USER-500
    match as-path length = 1
+   set community 21682:1200
 !
 no route-map RM-USER-501-IN
 route-map RM-USER-501-IN permit 10
    match ip address prefix-list PL-USER-501
    match as-path length = 1
+   set community 21682:1200
 !
 no route-map RM-USER-502-IN
 route-map RM-USER-502-IN permit 10
    match ip address prefix-list PL-USER-502
    match as-path length = 1
+   set community 21682:1200
 !
 no ip prefix-list PL-USER-500
 ip prefix-list PL-USER-500 seq 10 permit 100.0.0.0/32

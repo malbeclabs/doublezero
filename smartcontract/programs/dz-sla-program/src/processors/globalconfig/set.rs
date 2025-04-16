@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::error::DoubleZeroError;
+use crate::helper::globalstate_get;
 use crate::pda::*;
 use crate::types::networkv4_to_string;
 use crate::{
@@ -41,11 +43,21 @@ pub fn process_set_globalconfig(
     let accounts_iter = &mut accounts.iter();
 
     let pda_account = next_account_info(accounts_iter)?;
+    let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
     msg!("process_set_global_config({:?})", value);
+
+    if globalstate_account.data.borrow().is_empty() {
+        panic!("GlobalState account not initialized");
+    }
+    let globalstate = globalstate_get(globalstate_account)?;
+
+    if !globalstate.foundation_allowlist.contains(payer_account.key) {
+        return Err(DoubleZeroError::NotAllowed.into());
+    }
 
     let (expected_pda_account, expected_bump_seed) = get_globalconfig_pda(program_id);
     assert_eq!(

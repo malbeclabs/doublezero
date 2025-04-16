@@ -4,7 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -19,6 +19,7 @@ var (
 	versionFlag          = flag.Bool("version", false, "build version")
 	programId            = flag.String("program-id", "", "override smartcontract program id to monitor")
 	rpcEndpoint          = flag.String("solana-rpc-endpoint", "", "override solana rpc endpoint url")
+	enableVerboseLogging = flag.Bool("v", false, "enables verbose logging")
 
 	commit  = ""
 	version = ""
@@ -26,6 +27,16 @@ var (
 )
 
 func main() {
+	opts := &slog.HandlerOptions{}
+
+	if *enableVerboseLogging {
+		opts = &slog.HandlerOptions{
+			Level: slog.LevelDebug,
+		}
+	}
+
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, opts))
+	slog.SetDefault(logger)
 
 	flag.Parse()
 
@@ -39,7 +50,8 @@ func main() {
 	if *programId != "" {
 		_, err := solana.PublicKeyFromBase58(*programId)
 		if err != nil {
-			log.Fatalf("malformed smartcontract program-id: %v", err)
+			slog.Error("malformed smartcontract program-id", "error", err)
+			os.Exit(1)
 		}
 	}
 
@@ -47,6 +59,7 @@ func main() {
 	defer stop()
 
 	if err := runtime.Run(ctx, *sockFile, *enableLatencyProbing, *programId, *rpcEndpoint); err != nil {
-		log.Fatalf("runtime error: %v", err)
+		slog.Error("runtime error", "error", err)
+		os.Exit(1)
 	}
 }

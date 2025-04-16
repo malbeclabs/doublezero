@@ -1,7 +1,7 @@
 package bgp
 
 import (
-	"log"
+	"log/slog"
 	"net"
 	"net/netip"
 
@@ -30,34 +30,34 @@ func (p *Plugin) OnOpenMessage(peer corebgp.PeerConfig, routerID netip.Addr, cap
 }
 
 func (p *Plugin) OnEstablished(peer corebgp.PeerConfig, writer corebgp.UpdateMessageWriter) corebgp.UpdateMessageHandler {
-	log.Println("bgp: peer established")
+	slog.Info("bgp: peer established")
 	for _, nlri := range p.AdvertisedNLRI {
 		update, err := p.buildUpdate(nlri)
 		if err != nil {
-			log.Printf("bgp: error building update message: %v", err)
+			slog.Error("bgp: error building update message", "error", err)
 		}
 		// TODO: check if the generated update is malformed
 		if err := writer.WriteUpdate(update); err != nil {
-			log.Printf("bgp: error writing update to peer %s: %v", peer.RemoteAddress, err)
+			slog.Error("bgp: error writing update to peer", "remote address", peer.RemoteAddress, "error", err)
 		}
 	}
 	return p.handleUpdate
 }
 
 func (p *Plugin) OnClose(peer corebgp.PeerConfig) {
-	log.Println("bgp: peer closed")
+	slog.Info("bgp: peer closed")
 }
 
 func (p *Plugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.Notification {
 	update := gobgp.BGPUpdate{}
 	if err := update.DecodeFromBytes(u); err != nil {
 		// TODO: send back notification message
-		log.Printf("bgp: error decoding update message from %s: %v", peer.RemoteAddress, err)
+		slog.Error("bgp: error decoding update message", "remote address", peer.RemoteAddress, "error", err)
 		return nil
 	}
 	var nexthop net.IP
 	for _, route := range update.WithdrawnRoutes {
-		log.Printf("bgp: got withdraw for prefix %s, nh: %s", route.String(), peer.RemoteAddress.String())
+		slog.Info("bgp: got withdraw for prefix", "route", route.String(), "next_hop", peer.RemoteAddress.String())
 		// Nexthop is not included on a withdraw so we need to use the peer address upstream when writing to netlink.
 		// If we don't include a nexthop/gw to netlink, and there are multiple routes, the kernel will remove
 		// the first it finds.
@@ -69,14 +69,14 @@ func (p *Plugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.Notifi
 
 			nexthop = attr.(*gobgp.PathAttributeNextHop).Value
 			if nexthop == nil {
-				log.Printf("bgp: no nexthop found in update message\n")
+				slog.Info("bgp: no nexthop found in update message")
 			}
 		}
 	}
 
 	for _, prefix := range update.NLRI {
 		// If we get a prefix, we should write it to the kernel RIB
-		log.Printf("bgp: got nlri prefix: %s, nexthop\n", prefix.String())
+		slog.Info("bgp: got nlri prefix", "prefix", prefix.String())
 		p.WriteChan <- NLRI{Prefix: prefix.Prefix.String(), PrefixLength: prefix.Length, NextHop: nexthop.String()}
 	}
 	return nil

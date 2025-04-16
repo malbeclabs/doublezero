@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"net"
+	"os"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
 )
@@ -76,12 +78,12 @@ func (n *NetlinkManager) Provision(p ProvisionRequest) error {
 	}
 
 	// Apply IP Rules
-	log.Println("rules: creating ip rules")
+	slog.Info("rules: creating ip rules")
 	if err = n.CreateIPRules(p.DoubleZeroPrefixes); err != nil {
 		return fmt.Errorf("error creating IP rules: %v", err)
 	}
 
-	log.Println("routes: adding ip routes")
+	slog.Info("routes: adding ip routes")
 	if err = n.CreateRoutingTables(); err != nil {
 		return fmt.Errorf("error creating routing tables: %v", err)
 	}
@@ -99,7 +101,7 @@ func (n *NetlinkManager) Provision(p ProvisionRequest) error {
 	err = n.bgp.AddPeer(peer, []bgp.NLRI{nlri})
 	if err != nil {
 		if errors.Is(err, bgp.ErrBgpPeerExists) {
-			log.Printf("bgp: %s not added: %v", peer.LocalAddress, err)
+			slog.Error("bgp not added", "peer local address", peer.LocalAddress, "error", err)
 		} else {
 			return fmt.Errorf("error adding peer: %v", err)
 		}
@@ -121,7 +123,7 @@ func (n *NetlinkManager) Remove() error {
 	// Since we need to keep running, delete the bgp peer
 	err := n.bgp.DeletePeer(n.Tunnel.RemoteOverlay)
 	if errors.Is(err, bgp.ErrBgpPeerNotExists) {
-		log.Printf("bgp: peer %s does not exist", n.Tunnel.RemoteOverlay)
+		slog.Error("bgp: peer does not exist", "peer tunnel", n.Tunnel.RemoteOverlay)
 	} else if err != nil {
 		return fmt.Errorf("bgp: error while deleting peer: %v", err)
 	}
@@ -154,7 +156,7 @@ func (n *NetlinkManager) DiscoverTunnelSource(tunnelDst net.IP) (net.IP, error) 
 	for _, route := range routes {
 		if route.Src != nil {
 			// TODO: debug this log
-			log.Printf("tunnel: using route %s to derive tunnel src address\n", route)
+			slog.Info("tunnel: using route to derive tunnel src address", "route", route)
 			return route.Src, nil
 		}
 	}
@@ -174,18 +176,18 @@ func (n *NetlinkManager) CreateTunnel(tun *Tunnel, dzIp string) error {
 	if err != nil {
 		// if tunnel interface exists, it could be recovering from a crash so continue
 		if errors.Is(err, ErrTunnelExists) {
-			log.Printf("tunnel: tunnel %s already exists\n", tun.Name)
+			slog.Error("tunnel: tunnel already exists", "tunnel", tun.Name)
 		} else {
 			return fmt.Errorf("tunnel: could not add tunnel interface: %v", err)
 		}
 	}
 
 	// TODO: debug this log
-	log.Printf("tunnel: adding address %s to tunnel interface", tun.LocalOverlay)
+	slog.Info("tunnel: adding address to tunnel interface", "address", tun.LocalOverlay)
 	err = n.netlink.TunnelAddrAdd(tun, tun.LocalOverlay.String()+"/31")
 	if err != nil {
 		if errors.Is(err, ErrAddressExists) {
-			log.Printf("tunnel: address already present on tunnel")
+			slog.Error("tunnel: address already present on tunnel")
 		} else {
 			return fmt.Errorf("error adding addressing to tunnel: %v", err)
 		}
@@ -193,19 +195,20 @@ func (n *NetlinkManager) CreateTunnel(tun *Tunnel, dzIp string) error {
 
 	// TODO: temp add of dz client address to tunnel interface; this should probably
 	// be on a loopback.
-	log.Printf("tunnel: adding dz address %s to tunnel interface", dzIp+"/32")
+	slog.Info("tunnel: adding dz address to tunnel interface", "dz address", dzIp+"/32")
 	err = n.netlink.TunnelAddrAdd(tun, dzIp+"/32")
 	if err != nil {
 		if errors.Is(err, ErrAddressExists) {
-			log.Printf("tunnel: address already present on tunnel")
+			slog.Error("tunnel: address already present on tunnel")
 		} else {
 			return fmt.Errorf("error adding addressing to tunnel: %v", err)
 		}
 	}
 
-	log.Println("tunnel: bringing up tunnel interface")
+	slog.Info("tunnel: bringing up tunnel interface")
 	if err = n.netlink.TunnelUp(tun); err != nil {
-		log.Fatalf("tunnel: error bring up tunnel interface: %v", err)
+		slog.Error("tunnel: error bring up tunnel interface", "error", err)
+		os.Exit(1)
 	}
 	n.Tunnel = tun
 	// TODO: probably shouldn't be here
@@ -251,11 +254,11 @@ func (n *NetlinkManager) CreateIPRules(prefixes []*net.IPNet) error {
 	}
 
 	for _, rule := range rules {
-		log.Printf("rules: applying the following rule: %s", rule)
+		slog.Info("rules: applying the following rule", "rule", rule)
 		err := n.netlink.RuleAdd(rule)
 		if err != nil {
 			if errors.Is(err, ErrRuleExists) {
-				log.Printf("rules: rule %s already exists", rule)
+				slog.Error("rules: rule already exists", "rule", rule)
 				continue
 			}
 			return fmt.Errorf("error adding IP rules: %v", err)
@@ -307,17 +310,17 @@ func (n *NetlinkManager) FlushRoutes() error {
 func (n *NetlinkManager) Close() error {
 	var errFlushRules, errFlushRoutes, errRemoveTunnel error
 
-	log.Println("teardown: flushing rules")
+	slog.Info("teardown: flushing rules")
 	if err := n.FlushRules(); err != nil {
 		errFlushRules = fmt.Errorf("error flushing rules: %v", err)
 	}
 
-	log.Println("teardown: flushing routes")
+	slog.Info("teardown: flushing routes")
 	if err := n.FlushRoutes(); err != nil {
 		errFlushRoutes = fmt.Errorf("error flushing routes: %v", err)
 	}
 
-	log.Println("teardown: removing tunnel interface")
+	slog.Info("teardown: removing tunnel interface")
 	if err := n.RemoveTunnel(); err != nil {
 		errRemoveTunnel = fmt.Errorf("error removing tunnel interface: %v", err)
 	}
@@ -327,40 +330,40 @@ func (n *NetlinkManager) Close() error {
 
 func (n *NetlinkManager) Serve(ctx context.Context) error {
 	errCh := make(chan error)
-	log.Println("bgp: starting bgp fsm")
+	slog.Info("bgp: starting bgp fsm")
 
 	go func() {
 		err := n.bgp.Serve([]net.Listener{})
 		errCh <- err
 	}()
 
-	log.Println("routes: starting netlink writer thread")
+	slog.Info("routes: starting netlink writer thread")
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
-				log.Println("exiting netlink writer thread")
+				slog.Info("exiting netlink writer thread")
 				return
 			// TODO: implement some batching logic for writes via netlink
 			case p := <-n.bgp.AddRoute():
 				_, dzNet, err := net.ParseCIDR(fmt.Sprintf("%s/%d", p.Prefix, p.PrefixLength))
 				if err != nil {
-					log.Printf("routes: error parsing nlri from update: %v", err)
+					slog.Error("routes: error parsing nlri from update", "error", err)
 				}
 				route := &Route{Src: n.DoubleZeroAddr, Dst: dzNet, Table: RouteTableSpecific, NextHop: net.ParseIP(p.NextHop)}
-				log.Printf("routes: writing route to table %d (dz-specific): %s", RouteTableSpecific, route.String())
+				slog.Info("routes: writing route", "table", RouteTableSpecific, "dz route", route.String())
 				if err := n.WriteRoute(route); err != nil {
-					log.Printf("routes: error writing route to table %d (dz-specific): %v", RouteTableSpecific, err)
+					slog.Error("routes: error writing route", "table", RouteTableSpecific, "error", err)
 				}
 			case p := <-n.bgp.WithdrawRoute():
 				_, dzNet, err := net.ParseCIDR(fmt.Sprintf("%s/%d", p.Prefix, p.PrefixLength))
 				if err != nil {
-					log.Printf("routes: error parsing nlri from update: %v", err)
+					slog.Error("routes: error parsing nlri from update", "error", err)
 				}
 				route := &Route{Src: n.DoubleZeroAddr, Dst: dzNet, Table: RouteTableSpecific, NextHop: net.ParseIP(p.NextHop)}
-				log.Printf("routes: removing route from table %d (dz-specific): %s", RouteTableSpecific, route.String())
+				slog.Info("routes: removing route from table", "table", RouteTableSpecific, "dz route", route.String())
 				if err := n.RemoveRoute(route); err != nil {
-					log.Printf("routes: error removing route %s from table %d (dz-specific): %v", route.Dst.String(), RouteTableSpecific, err)
+					slog.Error("routes: error removing route", "route", route.Dst.String(), "table", RouteTableSpecific, "error", err)
 				}
 			}
 		}
@@ -368,12 +371,12 @@ func (n *NetlinkManager) Serve(ctx context.Context) error {
 
 	// attempt to recover from last provisioned state
 	if err := n.Recover(); err != nil {
-		log.Printf("netlink: error recovering provisioned state: %v", err)
+		slog.Error("netlink: error recovering provisioned state", "error", err)
 	}
 
 	select {
 	case <-ctx.Done():
-		log.Println("teardown: closing server")
+		slog.Info("teardown: closing server")
 		return nil
 	case err := <-errCh:
 		return fmt.Errorf("netlink: error from manager: %v", err)
@@ -386,7 +389,7 @@ func (n *NetlinkManager) Recover() error {
 	if state == nil {
 		return nil
 	}
-	log.Println("netlink: restoring previous provisioned state")
+	slog.Info("netlink: restoring previous provisioned state")
 	return n.Provision(*state)
 }
 

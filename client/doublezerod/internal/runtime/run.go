@@ -3,7 +3,7 @@ package runtime
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -32,7 +32,7 @@ func Run(ctx context.Context, sockFile string, enableLatencyProbing bool, progra
 	errCh := make(chan error)
 
 	// starting network manager will attempt to recover latest provisioned state
-	log.Println("network: starting network manager")
+	slog.Info("network: starting network manager")
 	go func() {
 		err := nlm.Serve(ctx)
 		errCh <- err
@@ -70,10 +70,10 @@ func Run(ctx context.Context, sockFile string, enableLatencyProbing bool, progra
 
 	err = os.Chmod(sockFile, 0666)
 	if err != nil {
-		log.Printf("error setting socket file perms: %v", err)
+		slog.Error("error setting socket file perms", "error", err)
 	}
 
-	log.Println("http: starting api manager")
+	slog.Info("http: starting api manager")
 	go func() {
 		err := api.Serve(lis)
 		errCh <- err
@@ -81,7 +81,7 @@ func Run(ctx context.Context, sockFile string, enableLatencyProbing bool, progra
 
 	select {
 	case <-ctx.Done():
-		log.Println("teardown: cleaning up and closing")
+		slog.Info("teardown: cleaning up and closing")
 		nlm.Close()
 		api.Close()
 		return nil

@@ -54,7 +54,7 @@ pub fn read_doublezero_config() -> (String, ClientConfig) {
         Err(_) => (
             filename.clone(),
             ClientConfig {
-                json_rpc_url: "https://api.devnet.solana.com".to_string(),
+                json_rpc_url: crate::consts::DOUBLEZERO_URL.to_string(),
                 websocket_url: None,
                 keypair_path: {
                     let mut keypair_path = dirs_next::home_dir().unwrap_or_default();
@@ -70,6 +70,7 @@ pub fn read_doublezero_config() -> (String, ClientConfig) {
 
 pub fn convert_url_moniker(url: String) -> String {
     match url.as_str() {
+        "doublezero" => crate::consts::DOUBLEZERO_URL.to_string(),
         "localhost" => crate::consts::LOCALHOST_URL.to_string(),
         "devnet" => crate::consts::DEVNET_URL.to_string(),
         "testnet" => crate::consts::TESTNET_URL.to_string(),
@@ -80,6 +81,7 @@ pub fn convert_url_moniker(url: String) -> String {
 
 pub fn convert_ws_moniker(url: String) -> String {
     match url.as_str() {
+        "doublezero" => crate::consts::DOUBLEZERO_WS.to_string(),
         "localhost" => crate::consts::LOCALHOST_WS.to_string(),
         "devnet" => crate::consts::DEVNET_WS.to_string(),
         "testnet" => crate::consts::TESTNET_WS.to_string(),

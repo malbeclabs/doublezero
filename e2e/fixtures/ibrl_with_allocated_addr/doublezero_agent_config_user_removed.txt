@@ -3,16 +3,6 @@ vrf instance vrf1
 ip routing vrf vrf1
 !
 default interface Tunnel500
-interface Tunnel500
-   mtu 9216
-   vrf vrf1
-   ip address 169.254.0.0/31
-   tunnel mode gre
-   tunnel source 2.2.2.2
-   tunnel destination 1.1.1.1
-   tunnel path-mtu-discovery
-   tunnel ttl 32
-   no shutdown
 !
 default interface Tunnel501
 !
@@ -57,22 +47,11 @@ router bgp 65342
       rd 65342:1
       route-target import vpn-ipv4 65342:1
       route-target export vpn-ipv4 65432:1
-      router-id 2.2.2.2
-      no neighbor 169.254.0.1
-      neighbor 169.254.0.1 remote-as 65000
-      neighbor 169.254.0.1 passive
-      neighbor 169.254.0.1 description USER-500
-      neighbor 169.254.0.1 route-map RM-USER-500-IN in
-      neighbor 169.254.0.1 route-map RM-USER-500-OUT out
-      neighbor 169.254.0.1 maximum-routes 1
-      neighbor 169.254.0.1 maximum-accepted-routes 1
-      no neighbor 169.254.0.7
+      router-id 64.86.249.80
 !
 ip community-list COMM-ALL_USERS permit 21682:1200
 !
 no route-map RM-USER-500-OUT
-route-map RM-USER-500-OUT permit 10
-   match community COMM-ALL_USERS
 !
 no route-map RM-USER-501-OUT
 !
@@ -113,10 +92,6 @@ no route-map RM-USER-518-OUT
 no route-map RM-USER-519-OUT
 !
 no route-map RM-USER-500-IN
-route-map RM-USER-500-IN permit 10
-   match ip address prefix-list PL-USER-500
-   match as-path length = 1
-   set community 21682:1200
 !
 no route-map RM-USER-501-IN
 !
@@ -157,7 +132,6 @@ no route-map RM-USER-518-IN
 no route-map RM-USER-519-IN
 !
 no ip prefix-list PL-USER-500
-ip prefix-list PL-USER-500 seq 10 permit 100.100.100.100/32
 !
 no ip prefix-list PL-USER-501
 !

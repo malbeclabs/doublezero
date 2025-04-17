@@ -7,7 +7,7 @@ import (
 	"log"
 	"log/slog"
 	"net"
-	"os"
+	"syscall"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
 )
@@ -40,13 +40,14 @@ type DbReaderWriter interface {
 }
 
 type NetlinkManager struct {
-	netlink        Netlinker
-	Routes         []*Route
-	Rules          []*IPRule
-	Tunnel         *Tunnel
-	DoubleZeroAddr net.IP
-	bgp            BgpReaderWriter
-	db             DbReaderWriter
+	netlink         Netlinker
+	Routes          []*Route
+	Rules           []*IPRule
+	UnicastTunnel   *Tunnel
+	MulticastTunnel *Tunnel
+	DoubleZeroAddr  net.IP
+	bgp             BgpReaderWriter
+	db              DbReaderWriter
 }
 
 func NewNetlinkManager(netlink Netlinker, bgp BgpReaderWriter, db DbReaderWriter) *NetlinkManager {
@@ -54,8 +55,116 @@ func NewNetlinkManager(netlink Netlinker, bgp BgpReaderWriter, db DbReaderWriter
 	return manager
 }
 
-func (n *NetlinkManager) Provision(p ProvisionRequest) error {
-	var err error
+// provisionIBRL handles the provisioning of a user IBRL connection. This supports
+// both IP reuse and DoubleZero allocated IP use cases.
+func (n *NetlinkManager) provisionIBRL(p ProvisionRequest) error {
+	tun, err := NewTunnel(p.TunnelSrc, p.TunnelDst, p.TunnelNet.String())
+	if err != nil {
+		return fmt.Errorf("error generating new tunnel: %v", err)
+	}
+
+	switch p.UserType {
+	// IBRL mode re-uses the user's public address so we don't need to bind
+	// the doublezero IP to the tunnel interface.
+	case UserTypeIBRL:
+		err = n.CreateTunnel(tun)
+	// If we allocate the user an IP in IBRL mode, we need to bind it to the
+	// tunnel interface.
+	case UserTypeIBRLWithAllocatedIP:
+		err = n.CreateTunnelWithIP(tun, p.DoubleZeroIP)
+	default:
+		return fmt.Errorf("unsupported tunnel type: %v\n", p)
+	}
+
+	if err != nil {
+		return fmt.Errorf("error creating tunnel interface: %v", err)
+	}
+
+	n.UnicastTunnel = tun
+	n.DoubleZeroAddr = p.DoubleZeroIP
+
+	peer := &bgp.PeerConfig{
+		RemoteAddress: n.UnicastTunnel.RemoteOverlay,
+		LocalAddress:  n.UnicastTunnel.LocalOverlay,
+		LocalAs:       p.BgpLocalAsn,
+		RemoteAs:      p.BgpRemoteAsn,
+		RouteTable:    syscall.RT_TABLE_MAIN,
+	}
+	nlri, err := bgp.NewNLRI([]uint32{peer.LocalAs}, n.UnicastTunnel.LocalOverlay.String(), p.DoubleZeroIP.String(), 32)
+	if err != nil {
+		return fmt.Errorf("error generating bgp nlri: %v", err)
+	}
+	err = n.bgp.AddPeer(peer, []bgp.NLRI{nlri})
+	if err != nil {
+		if errors.Is(err, bgp.ErrBgpPeerExists) {
+			slog.Error("bgp not added", "peer local address", peer.RemoteAddress, "error", err)
+		} else {
+			return fmt.Errorf("error adding peer: %v", err)
+		}
+	}
+
+	return nil
+}
+
+// provisionEdgeFiltering handles the provisioning of a user edge filtering connection.
+func (n *NetlinkManager) provisionEdgeFiltering(p ProvisionRequest) (err error) {
+	// TODO: have NewTunnel take a net.IPNet
+	tun, err := NewTunnel(p.TunnelSrc, p.TunnelDst, p.TunnelNet.String())
+	if err != nil {
+		return fmt.Errorf("error generating new tunnel: %v", err)
+	}
+
+	err = n.CreateTunnelWithIP(tun, p.DoubleZeroIP)
+	if err != nil {
+		return fmt.Errorf("error creating tunnel interface: %v", err)
+	}
+	n.UnicastTunnel = tun
+	n.DoubleZeroAddr = p.DoubleZeroIP
+
+	// Apply IP Rules
+	slog.Info("rules: creating ip rules")
+	if err = n.CreateIPRules(p.DoubleZeroPrefixes); err != nil {
+		return fmt.Errorf("error creating IP rules: %v", err)
+	}
+
+	slog.Info("routes: adding ip routes")
+	if err = n.CreateDefaultRoutingTable(); err != nil {
+		return fmt.Errorf("error creating routing tables: %v", err)
+	}
+
+	peer := &bgp.PeerConfig{
+		RemoteAddress: n.UnicastTunnel.RemoteOverlay,
+		LocalAddress:  n.UnicastTunnel.LocalOverlay,
+		LocalAs:       p.BgpLocalAsn,
+		RemoteAs:      p.BgpRemoteAsn,
+		RouteTable:    RouteTableSpecific,
+	}
+	nlri, err := bgp.NewNLRI([]uint32{peer.LocalAs}, n.UnicastTunnel.LocalOverlay.String(), p.DoubleZeroIP.String(), 32)
+	if err != nil {
+		return fmt.Errorf("error generating bgp nlri: %v", err)
+	}
+	err = n.bgp.AddPeer(peer, []bgp.NLRI{nlri})
+	if err != nil {
+		if errors.Is(err, bgp.ErrBgpPeerExists) {
+			slog.Error("bgp not added", "peer local address", peer.RemoteAddress, "error", err)
+		} else {
+			return fmt.Errorf("error adding peer: %v", err)
+		}
+	}
+
+	return nil
+}
+
+// provisionMulticast handles the provisioning of a user multicast connection.
+func (n *NetlinkManager) provisionMulticast(_ ProvisionRequest) error {
+	return fmt.Errorf("multicast mode is unimplemented")
+}
+
+// Provision is the entry point for all user tunnel provisioning. This currently
+// contains logic for IBRL, edge filtering and multicast use cases. After the user
+// tunnel is provisioned, the original request is saved to disk so we're able to
+// handle service restarts.
+func (n *NetlinkManager) Provision(p ProvisionRequest) (err error) {
 	if p.TunnelSrc == nil {
 		if p.TunnelSrc, err = n.DiscoverTunnelSource(p.TunnelDst); err != nil {
 			return fmt.Errorf("tunnel: error while finding tunnel source: %v", err)
@@ -65,49 +174,26 @@ func (n *NetlinkManager) Provision(p ProvisionRequest) error {
 		return fmt.Errorf("tunnel: no tunnel src addr specified or could be discovered")
 	}
 
-	// TODO: have NewTunnel take a net.IPNet
-	gre, err := NewTunnel(p.TunnelSrc, p.TunnelDst, p.TunnelNet.String())
-	if err != nil {
-		return fmt.Errorf("error generating new tunnel: %v", err)
+	if p.DoubleZeroIP == nil {
+		return fmt.Errorf("tunnel: no doublezero address specified")
 	}
 
-	// TODO: CreateTunnel should take a net.IP
-	err = n.CreateTunnel(gre, p.DoubleZeroIP.String())
+	switch p.UserType {
+	case UserTypeIBRL, UserTypeIBRLWithAllocatedIP:
+		err = n.provisionIBRL(p)
+	case UserTypeEdgeFiltering:
+		err = n.provisionEdgeFiltering(p)
+	case UserTypeMulticast:
+		err = n.provisionMulticast(p)
+	default:
+		return fmt.Errorf("unsupported user type: %s", p.UserType)
+	}
 	if err != nil {
-		return fmt.Errorf("error creating tunnel interface: %v", err)
-	}
-
-	// Apply IP Rules
-	slog.Info("rules: creating ip rules")
-	if err = n.CreateIPRules(p.DoubleZeroPrefixes); err != nil {
-		return fmt.Errorf("error creating IP rules: %v", err)
-	}
-
-	slog.Info("routes: adding ip routes")
-	if err = n.CreateRoutingTables(); err != nil {
-		return fmt.Errorf("error creating routing tables: %v", err)
-	}
-
-	peer := &bgp.PeerConfig{
-		RemoteAddress: n.Tunnel.RemoteOverlay,
-		LocalAddress:  n.Tunnel.LocalOverlay,
-		LocalAs:       p.BgpLocalAsn,
-		RemoteAs:      p.BgpRemoteAsn,
-	}
-	nlri, err := bgp.NewNLRI([]uint32{peer.LocalAs}, n.Tunnel.LocalOverlay.String(), p.DoubleZeroIP.String(), 32)
-	if err != nil {
-		return fmt.Errorf("error generating bgp nlri: %v", err)
-	}
-	err = n.bgp.AddPeer(peer, []bgp.NLRI{nlri})
-	if err != nil {
-		if errors.Is(err, bgp.ErrBgpPeerExists) {
-			slog.Error("bgp not added", "peer local address", peer.LocalAddress, "error", err)
-		} else {
-			return fmt.Errorf("error adding peer: %v", err)
-		}
+		return err
 	}
 
 	// finally store latest provisioned state
+	// TODO: this needs to be updated to support multiple provisioning requests when multicast is added
 	if err = n.db.SaveState(&p); err != nil {
 		return fmt.Errorf("error saving state: %v", err)
 	}
@@ -121,9 +207,9 @@ func (n *NetlinkManager) Remove() error {
 		return nil
 	}
 	// Since we need to keep running, delete the bgp peer
-	err := n.bgp.DeletePeer(n.Tunnel.RemoteOverlay)
+	err := n.bgp.DeletePeer(n.UnicastTunnel.RemoteOverlay)
 	if errors.Is(err, bgp.ErrBgpPeerNotExists) {
-		slog.Error("bgp: peer does not exist", "peer tunnel", n.Tunnel.RemoteOverlay)
+		slog.Error("bgp: peer does not exist", "peer tunnel", n.UnicastTunnel.RemoteOverlay)
 	} else if err != nil {
 		return fmt.Errorf("bgp: error while deleting peer: %v", err)
 	}
@@ -163,18 +249,14 @@ func (n *NetlinkManager) DiscoverTunnelSource(tunnelDst net.IP) (net.IP, error) 
 	return nil, nil
 }
 
-// CreateTunnel creates the tunnel interface, adds the interface addressing and brings the interface up.
-func (n *NetlinkManager) CreateTunnel(tun *Tunnel, dzIp string) error {
+// createBaseTunnel creates a tunnel interface, adds overlay addressing and brings up the interface.
+func (n *NetlinkManager) createBaseTunnel(tun *Tunnel) error {
 	if tun.LocalOverlay == nil {
 		return fmt.Errorf("missing tunnel local overlay addressing")
-	}
-	if dzIp == "" || net.ParseIP(dzIp) == nil {
-		return fmt.Errorf("invalid doublezero host")
 	}
 
 	err := n.netlink.TunnelAdd(tun)
 	if err != nil {
-		// if tunnel interface exists, it could be recovering from a crash so continue
 		if errors.Is(err, ErrTunnelExists) {
 			slog.Error("tunnel: tunnel already exists", "tunnel", tun.Name)
 		} else {
@@ -193,10 +275,29 @@ func (n *NetlinkManager) CreateTunnel(tun *Tunnel, dzIp string) error {
 		}
 	}
 
-	// TODO: temp add of dz client address to tunnel interface; this should probably
-	// be on a loopback.
-	slog.Info("tunnel: adding dz address to tunnel interface", "dz address", dzIp+"/32")
-	err = n.netlink.TunnelAddrAdd(tun, dzIp+"/32")
+	slog.Info("tunnel: bringing up tunnel interface")
+	if err = n.netlink.TunnelUp(tun); err != nil {
+		return fmt.Errorf("tunnel: error bring up tunnel interface: %v", err)
+	}
+
+	return nil
+}
+
+// CreateTunnel creates the tunnel interface, adds point to point addressing and brings the interface
+// up.
+func (n *NetlinkManager) CreateTunnel(tun *Tunnel) error {
+	return n.createBaseTunnel(tun)
+}
+
+// CreateTunnelWithIP creates the tunnel interface, adds point-to-point addressing, binds the doublezero IP
+// to the interface and brings the tunnel up.
+func (n *NetlinkManager) CreateTunnelWithIP(tun *Tunnel, dzIp net.IP) (err error) {
+	if err := n.createBaseTunnel(tun); err != nil {
+		return fmt.Errorf("error creating base tunnel: %v", err)
+	}
+
+	slog.Info("tunnel: adding dz address to tunnel interface", "dz address", dzIp.String()+"/32")
+	err = n.netlink.TunnelAddrAdd(tun, dzIp.String()+"/32")
 	if err != nil {
 		if errors.Is(err, ErrAddressExists) {
 			slog.Error("tunnel: address already present on tunnel")
@@ -205,25 +306,17 @@ func (n *NetlinkManager) CreateTunnel(tun *Tunnel, dzIp string) error {
 		}
 	}
 
-	slog.Info("tunnel: bringing up tunnel interface")
-	if err = n.netlink.TunnelUp(tun); err != nil {
-		slog.Error("tunnel: error bring up tunnel interface", "error", err)
-		os.Exit(1)
-	}
-	n.Tunnel = tun
-	// TODO: probably shouldn't be here
-	n.DoubleZeroAddr = net.ParseIP(dzIp)
 	return nil
 }
 
 func (n *NetlinkManager) RemoveTunnel() error {
-	if n.Tunnel == nil {
+	if n.UnicastTunnel == nil {
 		return nil
 	}
-	if err := n.netlink.TunnelDelete(n.Tunnel); err != nil {
+	if err := n.netlink.TunnelDelete(n.UnicastTunnel); err != nil {
 		return fmt.Errorf("tunnel: error while deleting tunnel: %v", err)
 	}
-	n.Tunnel = nil
+	n.UnicastTunnel = nil
 	return nil
 }
 
@@ -268,13 +361,13 @@ func (n *NetlinkManager) CreateIPRules(prefixes []*net.IPNet) error {
 	return nil
 }
 
-func (n *NetlinkManager) CreateRoutingTables() error {
+func (n *NetlinkManager) CreateDefaultRoutingTable() error {
 	_, defaultRt, err := net.ParseCIDR("0.0.0.0/0")
 	if err != nil {
 		return fmt.Errorf("routes: unable to parse default route: %v", err)
 	}
 	routes := []*Route{
-		{Dst: defaultRt, Src: n.DoubleZeroAddr, Table: dzTableDefault, NextHop: n.Tunnel.RemoteOverlay},
+		{Dst: defaultRt, Src: n.DoubleZeroAddr, Table: RouteTableDefault, NextHop: n.UnicastTunnel.RemoteOverlay},
 	}
 	for _, route := range routes {
 		if err := n.netlink.RouteAdd(route); err != nil {
@@ -345,23 +438,28 @@ func (n *NetlinkManager) Serve(ctx context.Context) error {
 				slog.Info("exiting netlink writer thread")
 				return
 			// TODO: implement some batching logic for writes via netlink
+			// TODO: pull table number from NLRI
 			case p := <-n.bgp.AddRoute():
 				_, dzNet, err := net.ParseCIDR(fmt.Sprintf("%s/%d", p.Prefix, p.PrefixLength))
 				if err != nil {
 					slog.Error("routes: error parsing nlri from update", "error", err)
 				}
-				route := &Route{Src: n.DoubleZeroAddr, Dst: dzNet, Table: RouteTableSpecific, NextHop: net.ParseIP(p.NextHop)}
-				slog.Info("routes: writing route", "table", RouteTableSpecific, "dz route", route.String())
+
+				route := &Route{Src: n.DoubleZeroAddr, Dst: dzNet, Table: p.RouteTable, NextHop: net.ParseIP(p.NextHop)}
+				slog.Info("routes: writing route", "table", p.RouteTable, "dz route", route.String())
 				if err := n.WriteRoute(route); err != nil {
-					slog.Error("routes: error writing route", "table", RouteTableSpecific, "error", err)
+					slog.Error("routes: error writing route", "table", p.RouteTable, "error", err)
 				}
+			// TODO: pull table number from NLRI
 			case p := <-n.bgp.WithdrawRoute():
 				_, dzNet, err := net.ParseCIDR(fmt.Sprintf("%s/%d", p.Prefix, p.PrefixLength))
 				if err != nil {
 					slog.Error("routes: error parsing nlri from update", "error", err)
 				}
-				route := &Route{Src: n.DoubleZeroAddr, Dst: dzNet, Table: RouteTableSpecific, NextHop: net.ParseIP(p.NextHop)}
-				slog.Info("routes: removing route from table", "table", RouteTableSpecific, "dz route", route.String())
+
+				route := &Route{Src: n.DoubleZeroAddr, Dst: dzNet, Table: p.RouteTable, NextHop: net.ParseIP(p.NextHop)}
+				slog.Info("routes: removing route from table", "table", p.RouteTable, "dz route", route.String())
+
 				if err := n.RemoveRoute(route); err != nil {
 					slog.Error("routes: error removing route", "route", route.Dst.String(), "table", RouteTableSpecific, "error", err)
 				}
@@ -399,14 +497,14 @@ func (n *NetlinkManager) Status() (*StatusResponse, error) {
 		return nil, nil
 	}
 
-	if n.Tunnel == nil {
+	if n.UnicastTunnel == nil {
 		return nil, fmt.Errorf("netlink: saved state is not programmed into client")
 	}
 
 	return &StatusResponse{
-		TunnelName:   n.Tunnel.Name,
-		TunnelSrc:    n.Tunnel.LocalUnderlay,
-		TunnelDst:    n.Tunnel.RemoteUnderlay,
+		TunnelName:   n.UnicastTunnel.Name,
+		TunnelSrc:    n.UnicastTunnel.LocalUnderlay,
+		TunnelDst:    n.UnicastTunnel.RemoteUnderlay,
 		DoubleZeroIP: n.DoubleZeroAddr,
 		Status:       "connected",
 	}, nil

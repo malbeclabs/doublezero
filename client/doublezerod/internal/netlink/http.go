@@ -7,7 +7,52 @@ import (
 	"net/http"
 )
 
+type UserType int
+
+const (
+	UserTypeUnknown UserType = iota
+	UserTypeIBRL
+	UserTypeIBRLWithAllocatedIP
+	UserTypeEdgeFiltering
+	UserTypeMulticast
+)
+
+func (u UserType) String() string {
+	return [...]string{
+		"Unknown",
+		"IBRL",
+		"IBRLWithAllocatedIP",
+		"EdgeFiltering",
+		"Multicast",
+	}[u]
+}
+
+func (u UserType) FromString(userType string) UserType {
+	return map[string]UserType{
+		"Unknown":             UserTypeUnknown,
+		"IBRL":                UserTypeIBRL,
+		"IBRLWithAllocatedIP": UserTypeIBRLWithAllocatedIP,
+		"EdgeFiltering":       UserTypeEdgeFiltering,
+		"Multicast":           UserTypeMulticast,
+	}[userType]
+}
+
+func (u UserType) MarshalJSON() ([]byte, error) {
+	return json.Marshal(u.String())
+}
+
+func (u *UserType) UnmarshalJSON(b []byte) error {
+	var s string
+	err := json.Unmarshal(b, &s)
+	if err != nil {
+		return err
+	}
+	*u = u.FromString(s)
+	return nil
+}
+
 type ProvisionRequest struct {
+	UserType           UserType     `json:"user_type"`
 	TunnelSrc          net.IP       `json:"tunnel_src"`
 	TunnelDst          net.IP       `json:"tunnel_dst"`
 	TunnelNet          *net.IPNet   `json:"tunnel_net"`
@@ -79,13 +124,14 @@ func (p *ProvisionRequest) MarshalJSON() ([]byte, error) {
 ServeProvision handles local provisioning of a double zero tunnel. The following is an example payload:
 
 	`{
-		"tunnel_src": "1.1.1.1", 				[optional]
-		"tunnel_dst": "2.2.2.2", 				[required]
-		"tunnel_net": "10.1.1.0/31",				[required]
-		"doublezero_ip": "10.0.0.0",				[required]
-		"doublezero_prefixes": ["10.0.0.0/24"], 		[required]
-		"bgp_local_asn": 65000,					[optional]
-		"bgp_remote_asn": 65001					[optional]
+		"user_type": "IBRL"						[required]
+		"tunnel_src": "1.1.1.1", 					[optional]
+		"tunnel_dst": "2.2.2.2", 					[required]
+		"tunnel_net": "10.1.1.0/31",					[required]
+		"doublezero_ip": "10.0.0.0",					[required]
+		"doublezero_prefixes": ["10.0.0.0/24"], 			[required]
+		"bgp_local_asn": 65000,						[optional]
+		"bgp_remote_asn": 65001						[optional]
 	}`,
 */
 func (n *NetlinkManager) ServeProvision(w http.ResponseWriter, r *http.Request) {

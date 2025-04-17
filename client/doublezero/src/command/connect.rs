@@ -3,7 +3,7 @@ use eyre;
 use indicatif::ProgressBar;
 use std::str::FromStr;
 
-use clap::Args;
+use clap::{Args, ValueEnum};
 use double_zero_sdk::{
     ipv4_parse, ipv4_to_string, networkv4_to_string, DZClient, DeviceFinder, DeviceService, IpV4,
     NetworkV4, ProvisioningRequest, ServiceController, User, UserCYOA, UserFinder, UserService,
@@ -20,14 +20,25 @@ use crate::{
 
 use super::helpers::init_command;
 
+#[derive(Clone, Debug, ValueEnum)]
+pub enum DzMode {
+    IBRL,
+    //EdgeFiltering,
+    //Multicast,
+}
+
 #[derive(Args, Debug)]
 pub struct ProvisioningArgs {
+    #[arg(value_enum)]
+    pub dz_mode: DzMode,
     #[arg(long)]
     pub device: Option<String>,
     #[arg(long)]
     pub client_ip: Option<String>,
     #[arg(short, long, default_value_t = false)]
-    verbose: bool,
+    pub allocate_addr: bool,
+    #[arg(short, long, default_value_t = false)]
+    pub verbose: bool,
 }
 
 impl ProvisioningArgs {
@@ -67,6 +78,20 @@ impl ProvisioningArgs {
 
         // Finish
         Ok(())
+    }
+
+    fn get_user_type(&self) -> UserType {
+        match self.dz_mode {
+            DzMode::IBRL => {
+                if self.allocate_addr {
+                    UserType::IBRLWithAllocatedIP
+                } else {
+                    UserType::IBRL
+                }
+            }
+            //DzMode::EdgeFiltering => UserType::EdgeFiltering,
+            //DzMode::Multicast => UserType::Multicast,
+        }
     }
 
     pub fn look_for_ip(&self, spinner: &ProgressBar) -> eyre::Result<IpV4> {
@@ -154,7 +179,7 @@ impl ProvisioningArgs {
                 spinner.set_prefix("🔗 [3/4] User");
 
                 let pubkey = match client.create_user(
-                    UserType::Server,
+                    self.get_user_type(),
                     device_pk,
                     UserCYOA::GREOverDIA,
                     *client_ip,
@@ -255,6 +280,7 @@ impl ProvisioningArgs {
                 doublezero_prefixes,
                 bgp_local_asn: Some(config.local_asn),
                 bgp_remote_asn: Some(config.remote_asn),
+                user_type: self.get_user_type().to_string(),
             })
             .await
         {

@@ -11,15 +11,20 @@ use super::accounttype::{AccountType, AccountTypeInfo};
 #[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
 #[borsh(use_discriminant = true)]
 pub enum UserType {
-    None = 0,
-    Server = 1,
+    IBRL = 0,
+    IBRLWithAllocatedIP = 1,
+    EdgeFiltering = 2,
+    Multicast = 3,
 }
 
 impl From<u8> for UserType {
     fn from(value: u8) -> Self {
         match value {
-            1 => UserType::Server,
-            _ => UserType::None,
+            0 => UserType::IBRL,
+            1 => UserType::IBRLWithAllocatedIP,
+            2 => UserType::EdgeFiltering,
+            3 => UserType::Multicast,
+            _ => panic!("Unknown UserType"),
         }
     }
 }
@@ -27,8 +32,10 @@ impl From<u8> for UserType {
 impl fmt::Display for UserType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            UserType::None => write!(f, "none"),
-            UserType::Server => write!(f, "server"),
+            UserType::IBRL => write!(f, "IBRL"),
+            UserType::IBRLWithAllocatedIP => write!(f, "IBRLWithAllocatedIP"),
+            UserType::EdgeFiltering => write!(f, "EdgeFiltering"),
+            UserType::Multicast => write!(f, "Multicast"),
         }
     }
 }
@@ -118,7 +125,7 @@ pub struct User {
     pub owner: Pubkey,             // 32
     pub index: u128,               // 16
     pub user_type: UserType,       // 1
-    pub tenant_pk: Pubkey,          // 32
+    pub tenant_pk: Pubkey,         // 32
     pub device_pk: Pubkey,         // 32
     pub cyoa_type: UserCYOA,       // 1
     pub client_ip: IpV4,           // 4
@@ -195,7 +202,7 @@ mod tests {
             owner: Pubkey::new_unique(),
             index: 123,
             tenant_pk: Pubkey::default(),
-            user_type: UserType::Server,
+            user_type: UserType::IBRL,
             device_pk: Pubkey::new_unique(),
             cyoa_type: UserCYOA::GREOverDIA,
             dz_ip: ipv4_parse(&"3.2.4.2".to_string()),

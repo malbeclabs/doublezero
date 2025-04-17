@@ -59,6 +59,7 @@ func TestGetConfig(t *testing.T) {
 							Allocated:     true,
 						},
 					},
+					PublicIP: net.IP{7, 7, 7, 7},
 				},
 			},
 			Pubkey: "abc123",

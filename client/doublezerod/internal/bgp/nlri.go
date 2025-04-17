@@ -7,6 +7,7 @@ type NLRI struct {
 	NextHop      string
 	Prefix       string
 	PrefixLength uint8
+	RouteTable   int
 }
 
 func NewNLRI(aspath []uint32, nexthop, prefix string, prefixlen uint8) (NLRI, error) {

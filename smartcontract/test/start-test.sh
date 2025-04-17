@@ -15,7 +15,6 @@ echo "Build the client"
 cargo build --manifest-path ../../client/doublezero/Cargo.toml 
 cp ../../client/doublezero/target/debug/doublezero ./target/
 
-
 # Configure to connect to localnet
 solana config set --url http://127.0.0.1:8899
 

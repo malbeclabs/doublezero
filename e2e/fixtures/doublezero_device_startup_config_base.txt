@@ -5,6 +5,9 @@ no aaa root
 !
 username admin privilege 15 role network-admin secret sha512 $6$hb.8VFI7A9D/0zi2$sZady959HlXHgFdWU9r01VDwmbM2CrhDYIXBJzHb3scDP8/t/4ozwxpZbwEgDxbWL.mHYtie0rSO8fRSZ5D0T1
 !
+vrf instance vrf1
+ip routing vrf vrf1
+!
 daemon doublezero-agent
    exec /mnt/flash/doublezero-agent -controller 64.86.249.86:7000 -pubkey 8scDVeZ8aB1TRTkBqaZgzxuk7WwpARdF1a39wYA7nR3W
    no shutdown
@@ -44,6 +47,8 @@ system l1
    unsupported error-correction action error
 !
 interface Loopback0
+  vrf vrf1
+  ip address 8.8.8.8/32
 !
 interface Ethernet1
    no switchport
@@ -56,6 +61,8 @@ ip routing
 !
 router bgp 65342
    router-id 10.10.10.10
+   vrf vrf1
+     network 8.8.8.8/32 route-map e2e
 !
 router multicast
    ipv4
@@ -63,5 +70,8 @@ router multicast
    !
    ipv6
       software-forwarding kernel
+!
+route-map e2e permit 10
+  set community 21682:1200
 !
 end

@@ -2,6 +2,7 @@ use std::fmt;
 
 use crate::error::DoubleZeroError;
 use crate::helper::*;
+use crate::format_option;
 use crate::pda::*;
 use crate::state::user::*;
 use crate::types::*;
@@ -32,12 +33,12 @@ impl fmt::Debug for UserUpdateArgs {
         write!(
             f,
             "user_type: {}, cyoa_type: {}, client_ip: {}, dz_ip: {}, tunnel_id: {}, tunnel_net: {}",
-            self.user_type.unwrap_or(UserType::None),
-            self.cyoa_type.unwrap_or(UserCYOA::None),
-            ipv4_to_string(&self.client_ip.unwrap_or_default()),
-            ipv4_to_string(&self.dz_ip.unwrap_or_default()),
-            self.tunnel_id.unwrap_or_default(),
-            networkv4_to_string(&self.tunnel_net.unwrap_or_default())
+            format_option!(self.user_type),
+            format_option!(self.cyoa_type),
+            format_option!(self.client_ip, ipv4_to_string),
+            format_option!(self.dz_ip, ipv4_to_string),
+            format_option!(self.tunnel_id),
+            format_option!(self.tunnel_net, networkv4_to_string),
         )
     }
 }
@@ -74,9 +75,7 @@ pub fn process_update_user(
 
     let mut user: User = User::from(&pda_account.try_borrow_data().unwrap()[..]);
 
-    if let Some(value) = value.dz_ip {
-        user.dz_ip = value;
-    }
+    user.dz_ip = value.dz_ip.unwrap_or([0,0,0,0]);
     if let Some(value) = value.tunnel_id {
         user.tunnel_id = value;
     }

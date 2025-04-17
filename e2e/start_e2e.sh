@@ -22,6 +22,15 @@ AGENT_DEVICE=ny5-dz01
 export AGENT_PUBKEY
 
 main() {
+    # WARNING: docker networks are connected unordered to containers in OSX. This can break
+    #          networking between the e2e container and the device container. The Arista
+    #          cEOS container requires at least two networks attached (a management network
+    #          and at least 1 front panel port network i.e. to the e2e container). Docker on OSX
+    #          will attach these in a random order which can cause the network facing the e2e container
+    #          to be incorrect from the perspective of the device container.
+    print_banner "Check networking to DoubleZero device\n(This can fail randomly on OSX; See comment in this script above.)"
+    ping -c 3 -q 64.86.249.80
+
     print_banner "Starting local validator w/ smartcontract program"
     solana-test-validator --reset --bpf-program ./bin/keypair.json ./bin/double_zero_sla_program.so > /tmp/solana.log 2>&1 &
     echo "Waiting 15 seconds to start the solana test cluster"
@@ -51,17 +60,28 @@ main() {
     print_banner "Latency results"
     doublezero latency
 
+    print_banner "Running IBRL tests"
+    test_ibrl
+
+    print_banner "Running IBRL w/ allocated address tests"
+    test_ibrl_with_allocated_addr
+}
+
+print_banner() {
+    echo "------------------------------------------------"
+    echo $*
+    echo "------------------------------------------------"
+}
+
+test_ibrl_with_allocated_addr() {
     print_banner "Connecting user tunnel"
-    doublezero --keypair $SOLANA_KEYPAIR connect ibrl --client-ip 64.86.249.86 --allocate-addr
+    doublezero --keypair $SOLANA_KEYPAIR connect ibrl --client-ip 64.86.249.86  --allocate-addr
 
     print_banner "Wait for controller to pickup new user"
     sleep 30
 
-    print_banner "Running command line output tests"
-    e2e_test -test.v -test.run "^TestClientOutputAfterConnect$"
-
-    print_banner "Running user connect tests"
-    e2e_test -test.v -test.run "^TestConnect$"
+    print_banner "Running post-connect tests"
+    e2e_test -test.v -test.run "^TestIBRLWithAllocatedAddress_Connect"
 
     print_banner "Disconnecting user tunnel"
     doublezero --keypair $SOLANA_KEYPAIR disconnect --client-ip 64.86.249.86
@@ -69,18 +89,28 @@ main() {
     print_banner "Wait for controller to pickup disconnected user"
     sleep 30
 
-    print_banner "Running command line output tests"
-    e2e_test -test.v -test.run "^TestClientOutputAfterDisconnect$"
-
-    doublezero user list
-    print_banner "Running user disconnect tests"
-    e2e_test -test.v -test.run "^TestDisconnect$"
+    print_banner "Running post-disconnect tests"
+    e2e_test -test.v -test.run "^TestIBRLWithAllocatedAddress_Disconnect"
 }
 
-print_banner() {
-    echo "------------------------------------------------"
-    echo $*
-    echo "------------------------------------------------"
+test_ibrl() {
+    print_banner "Connecting user tunnel"
+    doublezero --keypair $SOLANA_KEYPAIR connect ibrl --client-ip 64.86.249.86
+
+    print_banner "Wait for controller to pickup new user"
+    sleep 30
+
+    print_banner "Running post-connect tests"
+    e2e_test -test.v -test.run "^TestIBRL_Connect"
+
+    print_banner "Disconnecting user tunnel"
+    doublezero --keypair $SOLANA_KEYPAIR disconnect --client-ip 64.86.249.86
+
+    print_banner "Wait for controller to pickup disconnected user"
+    sleep 30
+
+    print_banner "Running post-disconnect tests"
+    e2e_test -test.v -test.run "^TestIBRL_Disconnect"
 }
 
 init_doublezero() {
@@ -151,7 +181,6 @@ populate_data_onchain() {
     ip route add blackhole 180.87.154.112/32
     ip route add blackhole 204.16.241.243/32
     ip route add blackhole 195.219.138.50/32
-    ping -c 5 64.86.249.80
 
     print_banner "Populate tunnel information onchain"
     doublezero tunnel create --code "la2-dz01:ny5-dz01" --side-a la2-dz01 --side-z ny5-dz01 --tunnel-type MPLSoGRE --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3

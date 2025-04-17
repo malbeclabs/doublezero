@@ -3,7 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"sync"
@@ -64,7 +64,7 @@ func NewController(options ...Option) (*Controller, error) {
 			if err != nil {
 				return nil, fmt.Errorf("invalid program id %s: %v", controller.programId, err)
 			}
-			log.Printf("starting with smartcontract program id %s", controller.programId)
+			slog.Info("starting with smartcontract", "program-id", controller.programId)
 			options = append(options, dzsdk.WithProgramId(controller.programId))
 		}
 		if controller.rpcEndpoint == "" {
@@ -124,7 +124,7 @@ func (c *Controller) updateDeviceCache(ctx context.Context) error {
 	}
 	users := c.accountFetcher.GetUsers()
 	if len(users) == 0 {
-		log.Println("0 users found on-chain")
+		slog.Debug("0 users found on-chain")
 	}
 	cache := make(deviceCache)
 
@@ -133,7 +133,7 @@ func (c *Controller) updateDeviceCache(ctx context.Context) error {
 		ip := net.IP(device.PublicIp[:])
 		if ip == nil {
 			// TODO: metric
-			log.Printf("invalid public ip for device %s", device.PubKey)
+			slog.Error("invalid public ip for device", "device pubkey", device.PubKey)
 			continue
 		}
 		devicePubKey := base58.Encode(device.PubKey[:])
@@ -152,19 +152,19 @@ func (c *Controller) updateDeviceCache(ctx context.Context) error {
 		validUser := func() bool {
 			if _, ok := cache[devicePubKey]; !ok {
 				// TODO: add metric
-				log.Printf("device %s could be found for activated user %s\n", devicePubKey, userPubKey)
+				slog.Error("device pubkey could be found for activated user pubkey", "device pubkey", devicePubKey, "user pubkey", userPubKey)
 				return false
 			}
 			if user.TunnelId == 0 {
-				log.Printf("tunnel id is not set for user %s\n", userPubKey)
+				slog.Error("tunnel id is not set for user", "user pubkey", userPubKey)
 				return false
 			}
 			if user.ClientIp == [4]byte{} {
-				log.Printf("client ip is not set for user %s\n", userPubKey)
+				slog.Error("client ip is not set for user", "user pubkey", userPubKey)
 				return false
 			}
 			if user.TunnelNet[4] != 31 {
-				log.Printf("tunnel network mask is %d, not 31\n", user.TunnelNet[4])
+				slog.Error("tunnel network mask is not 31\n", "tunnel network mask", user.TunnelNet[4])
 				return false
 			}
 			return true
@@ -176,7 +176,7 @@ func (c *Controller) updateDeviceCache(ctx context.Context) error {
 
 		tunnel := cache[devicePubKey].findTunnel(int(user.TunnelId))
 		if tunnel == nil {
-			log.Printf("unable to find tunnel slot %d on device %s for user %s\n", user.TunnelId, devicePubKey, userPubKey)
+			slog.Error("unable to find tunnel slot %d on device %s for user %s\n", "tunnel slot", user.TunnelId, "device pubkey", devicePubKey, "user pubkey", userPubKey)
 			continue
 		}
 		tunnel.UnderlayDstIP = net.IP(user.ClientIp[:])
@@ -198,7 +198,7 @@ func (c *Controller) updateDeviceCache(ctx context.Context) error {
 	}
 
 	// swap out device cache with new version
-	log.Printf("updating device cache: %+v\n", cache)
+	slog.Debug("updating device cache", "device cache", cache)
 	c.swapCache(cache)
 	return nil
 }
@@ -228,7 +228,7 @@ func (c *Controller) Run(ctx context.Context) error {
 	go func() {
 		if err := c.updateDeviceCache(ctx); err != nil {
 			cacheUpdateErrors.Inc()
-			log.Printf("error fetching accounts: %v", err)
+			slog.Error("error fetching accounts", "error", err)
 		}
 		cacheUpdateOps.Inc()
 		ticker := time.NewTicker(10 * time.Second)
@@ -237,10 +237,10 @@ func (c *Controller) Run(ctx context.Context) error {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				log.Println("updating device cache on clock tick")
+				slog.Debug("updating device cache on clock tick")
 				if err := c.updateDeviceCache(ctx); err != nil {
 					cacheUpdateErrors.Inc()
-					log.Printf("error fetching accounts: %v", err)
+					slog.Error("error fetching accounts", "error", err)
 				}
 				cacheUpdateOps.Inc()
 			}
@@ -293,7 +293,7 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 	for _, peer := range req.GetBgpPeers() {
 		ip := net.ParseIP(peer)
 		if ip == nil {
-			log.Printf("malformed peer ip: %s\n", peer)
+			slog.Error("malformed peer ip", "peer", peer)
 			continue
 		}
 		if !ip.IsLinkLocalUnicast() || peerFound(ip) {
@@ -303,7 +303,7 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 	}
 
 	if len(device.UnknownBgpPeers) != 0 {
-		log.Printf("device %s returned %d unknown peers: %+v", req.GetPubkey(), len(device.UnknownBgpPeers), device.UnknownBgpPeers)
+		slog.Error("device returned unknown peers", "device pubkey", req.GetPubkey(), "number of unknown peers", len(device.UnknownBgpPeers), "device", device.UnknownBgpPeers)
 	}
 
 	config, err := renderConfig(device)

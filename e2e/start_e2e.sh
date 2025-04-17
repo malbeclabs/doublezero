@@ -77,6 +77,9 @@ test_ibrl_with_allocated_addr() {
     print_banner "Connecting user tunnel"
     doublezero --keypair $SOLANA_KEYPAIR connect ibrl --client-ip 64.86.249.86  --allocate-addr
 
+    print_banner "Creating multiple users to exhaust the /30 and allocate from the /29, ie use both blocks"
+    create_multiple_users
+
     print_banner "Wait for controller to pickup new user"
     sleep 30
 
@@ -161,7 +164,7 @@ populate_data_onchain() {
 
 
     print_banner "Populate device information onchain - DO NOT SHUFFLE THESE AS THE PUBKEYS WILL CHANGE"
-    doublezero device create --code la2-dz01 --location lax --exchange xlax --public-ip "207.45.216.134" --dz-prefixes "207.45.216.136/29"
+    doublezero device create --code la2-dz01 --location lax --exchange xlax --public-ip "207.45.216.134" --dz-prefixes "207.45.216.136/30,200.12.12.12/29"
     doublezero device create --code ny5-dz01 --location ewr --exchange xewr --public-ip "64.86.249.80" --dz-prefixes "64.86.249.80/29"
     doublezero device create --code ld4-dz01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "195.219.120.72/29"
     doublezero device create --code frk-dz01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "195.219.220.88/29"
@@ -191,6 +194,18 @@ populate_data_onchain() {
     doublezero tunnel create --code "ty2-dz01:la2-dz01" --side-a ty2-dz01 --side-z la2-dz01 --tunnel-type MPLSoGRE --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 10
     print_banner "Tunnel information onchain"
     doublezero tunnel list
+
+}
+
+create_multiple_users() {
+    print_banner "Creating multiple users on a single device"
+    doublezero user create --device la2-dz01 --client-ip 1.2.3.4
+    doublezero user create --device la2-dz01 --client-ip 2.3.4.5
+    doublezero user create --device la2-dz01 --client-ip 3.4.5.6
+    doublezero user create --device la2-dz01 --client-ip 4.5.6.7
+    doublezero user create --device la2-dz01 --client-ip 5.6.7.8
+    print_banner "Multiple users created"
+
 }
 
 err() {

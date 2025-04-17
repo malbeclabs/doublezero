@@ -321,11 +321,6 @@ func TestIBRLWithAllocatedAddress_Disconnect_Output(t *testing.T) {
 		cmd        []string
 	}{
 		{
-			name:       "doublezero_user_list",
-			goldenFile: "fixtures/ibrl_with_allocated_addr/doublezero_user_list_user_removed.txt",
-			cmd:        []string{"doublezero", "user", "list"},
-		},
-		{
 			name:       "doublezero_status",
 			goldenFile: "fixtures/ibrl_with_allocated_addr/doublezero_status_disconnected.txt",
 			cmd:        []string{"doublezero", "status"},

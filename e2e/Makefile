@@ -23,7 +23,7 @@ else
 endif
 
 .PHONY: all
-all:
+all: eos
 ifeq ($(ARCH),arm64)
 	docker build -f Dockerfile.solana.arm64 -t $(TAG_PREFIX)/solana-arm64:latest .
 	docker build --build-arg PLATFORM_ARCH=arm64 -f Dockerfile -t $(TAG_PREFIX)/$(TAG):latest ../.

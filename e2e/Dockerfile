@@ -11,12 +11,12 @@ ENV DEBIAN_FRONTEND=noninteractive
 COPY --from=solana /usr/local/bin /usr/local/bin
 
 RUN apt update && apt install --no-install-recommends -y \
-ca-certificates \
-curl \
-build-essential \
-pkg-config \
-libudev-dev llvm libclang-dev \
-protobuf-compiler libssl-dev git iproute2 iputils-ping tcpdump
+    ca-certificates \
+    curl \
+    build-essential \
+    pkg-config \
+    libudev-dev llvm libclang-dev \
+    protobuf-compiler libssl-dev git iproute2 iputils-ping tcpdump
 
 # install rust
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y

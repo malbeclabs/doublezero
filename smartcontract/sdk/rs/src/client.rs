@@ -318,17 +318,29 @@ impl DZClient {
         device_tunnel_block: NetworkV4,
         user_tunnel_block: NetworkV4,
     ) -> eyre::Result<Signature> {
-        let (pda_pubkey, _) = get_globalconfig_pda(&self.program_id);
+        match self.get_globalstate() {
+            Ok((globalstate_pubkey, globalstate)) => {
+                if !globalstate.foundation_allowlist.contains(&self.get_payer()) {
+                    return Err(eyre!("User not allowlisted"));
+                }
 
-        self.execute_transaction(
-            DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
-                local_asn,
-                remote_asn,
-                tunnel_tunnel_block: device_tunnel_block,
-                user_tunnel_block,
-            }),
-            vec![AccountMeta::new(pda_pubkey, false)],
-        )
+                let (pda_pubkey, _) = get_globalconfig_pda(&self.program_id);
+
+                self.execute_transaction(
+                    DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
+                        local_asn,
+                        remote_asn,
+                        tunnel_tunnel_block: device_tunnel_block,
+                        user_tunnel_block,
+                    }),
+                    vec![
+                        AccountMeta::new(pda_pubkey, false),
+                        AccountMeta::new(globalstate_pubkey, false),
+                    ],
+                )
+            }
+            Err(e) => Err(e),
+        }
     }
 
     fn get_all(&self) -> eyre::Result<HashMap<Pubkey, AccountData>> {

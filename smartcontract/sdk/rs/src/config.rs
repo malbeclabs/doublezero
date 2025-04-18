@@ -54,7 +54,7 @@ pub fn read_doublezero_config() -> (String, ClientConfig) {
         Err(_) => (
             filename.clone(),
             ClientConfig {
-                json_rpc_url: crate::consts::DOUBLEZERO_URL.to_string(),
+                json_rpc_url: crate::consts::DEVNET_URL.to_string(),
                 websocket_url: None,
                 keypair_path: {
                     let mut keypair_path = dirs_next::home_dir().unwrap_or_default();

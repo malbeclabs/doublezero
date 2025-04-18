@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"log/slog"
 	"net"
 	"os"
@@ -73,7 +72,8 @@ func (a *AgentCommand) Run() error {
 	}
 	conn, err := grpc.NewClient(target, opts...)
 	if err != nil {
-		log.Fatalf("error creating controller client: %v", err)
+		slog.Error("error creating controller client", "error", err)
+		os.Exit(1)
 	}
 	defer conn.Close()
 	defer cancel()
@@ -81,7 +81,8 @@ func (a *AgentCommand) Run() error {
 	agent := pb.NewControllerClient(conn)
 	got, err := agent.GetConfig(ctx, &pb.ConfigRequest{Pubkey: a.pubkey})
 	if err != nil {
-		log.Fatalf("error while fetching config: %v\n", err)
+		slog.Error("error while fetching config", "error", err)
+		os.Exit(1)
 	}
 	fmt.Println(got.Config)
 	return nil
@@ -140,17 +141,20 @@ func (c *ControllerCommand) Run() error {
 
 	lis, err := net.Listen("tcp", net.JoinHostPort(c.listenAddr, c.listenPort))
 	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
+		slog.Error("failed to listen", "error", err)
+		os.Exit(1)
 	}
 	options = append(options, controller.WithListener(lis))
 	control, err := controller.NewController(options...)
 	if err != nil {
-		log.Fatalf("error creating controller: %v", err)
+		slog.Error("error creating controller", "error", err)
+		os.Exit(1)
 	}
 
 	slog.Log(ctx, slog.LevelInfo, fmt.Sprintf("starting controller on %s", net.JoinHostPort(c.listenAddr, c.listenPort)))
 	if err := control.Run(ctx); err != nil {
-		log.Fatalf("runtime error: %v", err)
+		slog.Error("runtime error", "error", err)
+		os.Exit(1)
 	}
 	return nil
 }
@@ -187,6 +191,11 @@ func root(args []string) error {
 }
 
 func main() {
+
+	opts := &slog.HandlerOptions{}
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, opts))
+	slog.SetDefault(logger)
+
 	if err := root(os.Args[1:]); err != nil {
 		fmt.Println(err)
 		flag.Usage()

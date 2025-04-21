@@ -101,7 +101,7 @@ func (m *mockSolanaClient) GetProgramAccounts(context.Context, solana.PublicKey)
 	}
 	return []*rpc.KeyedAccount{
 		{
-			Pubkey: solana.MustPublicKeyFromBase58(PROGRAM_ID),
+			Pubkey: solana.MustPublicKeyFromBase58(PROGRAM_ID_DEVNET),
 			Account: &rpc.Account{
 				Data: rpc.DataBytesOrJSONFromBytes(data),
 			},
@@ -311,7 +311,7 @@ func TestRpcClient(t *testing.T) {
 func TestNewClient(t *testing.T) {
 	t.Run("test_default_program_id", func(t *testing.T) {
 		client := New("endpoint")
-		want := solana.MustPublicKeyFromBase58(PROGRAM_ID)
+		want := solana.MustPublicKeyFromBase58(PROGRAM_ID_DEVNET)
 		if client.pubkey != want {
 			t.Fatalf("default client pubkey incorrect; got %s, wanted %s", client.pubkey, want)
 		}

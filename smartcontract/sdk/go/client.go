@@ -9,7 +9,8 @@ import (
 )
 
 /************************************************************************************************************/
-const PROGRAM_ID = "6i4v8m3i7W2qPGRonFi8mehN76SXUkDcpgk4tPQhE2J4"
+const PROGRAM_ID_TESTNET = "6i4v8m3i7W2qPGRonFi8mehN76SXUkDcpgk4tPQhE2J4"
+const PROGRAM_ID_DEVNET = "dev9yExnZ2hq9z24KbjGZNwujTfYHtE4CnaezLyPm8X"
 
 /************************************************************************************************************/
 
@@ -36,7 +37,7 @@ type Option func(*Client)
 func New(Endpoint string, options ...Option) *Client {
 	c := &Client{
 		endpoint: Endpoint,
-		pubkey:   solana.MustPublicKeyFromBase58(PROGRAM_ID),
+		pubkey:   solana.MustPublicKeyFromBase58(PROGRAM_ID_TESTNET),
 		client:   rpc.New(Endpoint),
 	}
 	for _, o := range options {
@@ -45,6 +46,9 @@ func New(Endpoint string, options ...Option) *Client {
 	return c
 }
 
+// Configure the program ID to use for the client
+// This is useful if you want to use a different program ID
+// than the default one.
 func WithProgramId(programId string) Option {
 	return func(c *Client) {
 		c.pubkey = solana.MustPublicKeyFromBase58(programId)

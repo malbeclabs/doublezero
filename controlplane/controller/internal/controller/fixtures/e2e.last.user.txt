@@ -46,7 +46,7 @@ router bgp 65342
    vrf vrf1
       rd 65342:1
       route-target import vpn-ipv4 65342:1
-      route-target export vpn-ipv4 65432:1
+      route-target export vpn-ipv4 65342:1
       router-id 2.2.2.2
       no neighbor 169.254.0.13
 !

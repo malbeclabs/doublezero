@@ -15,7 +15,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-// [{ "vrfs": { "default": { "peerList": [{"peerAddress": "192.168.1.1", "asn": "65432", "linkType": "internal", "routerId": "0.0.0.0", "vrf": "default"}]}}}]
+// [{ "vrfs": { "default": { "peerList": [{"peerAddress": "192.168.1.1", "asn": "65342", "linkType": "internal", "routerId": "0.0.0.0", "vrf": "default"}]}}}]
 type Peer struct {
 	PeerAddress string `json:"peerAddress"`
 }

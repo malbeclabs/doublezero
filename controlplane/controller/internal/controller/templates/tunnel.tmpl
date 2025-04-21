@@ -22,7 +22,7 @@ router bgp 65342
    vrf vrf1
       rd 65342:1
       route-target import vpn-ipv4 65342:1
-      route-target export vpn-ipv4 65432:1
+      route-target export vpn-ipv4 65342:1
       router-id {{ .PublicIP }}
 {{- range .Tunnels }}
 {{- if eq true .Allocated }}
@@ -46,7 +46,7 @@ ip community-list COMM-ALL_USERS permit 21682:1200
 no route-map RM-USER-{{ .Id }}-OUT
 {{- if eq true .Allocated }}
 route-map RM-USER-{{ .Id }}-OUT permit 10
-   match community COMM-ALL_USERS 
+   match community COMM-ALL_USERS
 {{- end }}
 !
 {{- end }}
@@ -56,7 +56,7 @@ no route-map RM-USER-{{ .Id }}-IN
 route-map RM-USER-{{ .Id }}-IN permit 10
    match ip address prefix-list PL-USER-{{ .Id }}
    match as-path length = 1
-   set community 21682:1200 
+   set community 21682:1200
 {{- end }}
 !
 {{- end }}

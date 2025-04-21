@@ -9,7 +9,7 @@ license = "MIT OR Apache-2.0"
 description = "Command line interface to interact with the DZ program."
 
 [dependencies]
-clap = { version = "4.5.36", features = ["derive"] }
+clap = { version = "4.5.37", features = ["derive"] }
 eyre = "0.6.12"
 solana-program = "1.18.26"
 solana-sdk = "1.18.26"

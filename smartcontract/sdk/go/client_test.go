@@ -311,7 +311,7 @@ func TestRpcClient(t *testing.T) {
 func TestNewClient(t *testing.T) {
 	t.Run("test_default_program_id", func(t *testing.T) {
 		client := New("endpoint")
-		want := solana.MustPublicKeyFromBase58(PROGRAM_ID_DEVNET)
+		want := solana.MustPublicKeyFromBase58(PROGRAM_ID_TESTNET)
 		if client.pubkey != want {
 			t.Fatalf("default client pubkey incorrect; got %s, wanted %s", client.pubkey, want)
 		}

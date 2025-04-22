@@ -109,7 +109,7 @@ impl From<&[u8]> for Device {
     fn from(data: &[u8]) -> Self {
         let mut parser = ByteReader::new(data);
 
-        let device = Self {
+        Self {
             account_type: parser.read_enum(),
             owner: parser.read_pubkey(),
             index: parser.read_u128(),
@@ -120,9 +120,7 @@ impl From<&[u8]> for Device {
             status: parser.read_enum(),
             code: parser.read_string(),
             dz_prefixes: parser.read_networkv4_vec(),
-        };
-
-        device
+        }
     }
 }
 

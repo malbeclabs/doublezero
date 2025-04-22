@@ -1,7 +1,7 @@
 use clap::Args;
 use double_zero_sdk::*;
-use solana_sdk::pubkey::Pubkey;
-use std::str::FromStr;
+use double_zero_sdk::commands::exchange::get::GetExchangeCommand;
+use double_zero_sdk::commands::exchange::update::UpdateExchangeCommand;
 
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 
@@ -25,22 +25,18 @@ impl UpdateExchangeArgs {
     pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
-        
-        let pubkey = Pubkey::from_str(&self.pubkey)?;
-        match client.get_exchange(&pubkey) {
-            Ok(exchange) => {
-                client.update_exchange(
-                    exchange.index,
-                    self.code,
-                    self.name,
-                    self.lat,
-                    self.lng,
-                    self.loc_id,
-                )?;
-                println!("Exchange updated");
-            }
-            Err(_) => println!("Exchange not found"),
-        }
+
+        let (_, exchange) = GetExchangeCommand{ pubkey_or_code: self.pubkey }.execute(client)?;
+        let _ = UpdateExchangeCommand {
+            index: exchange.index,
+            code: self.code,
+            name: self.name,
+            lat: self.lat,
+            lng: self.lng,
+            loc_id: self.loc_id,
+        }.execute(client)?;
+
+        println!("Exchange updated");
 
         Ok(())
     }

@@ -1,5 +1,6 @@
 use clap::Args;
 use double_zero_sdk::*;
+use double_zero_sdk::commands::exchange::list::ListExchangeCommand;
 use prettytable::{format, row, Cell, Row, Table};
 
 #[derive(Args, Debug)]
@@ -15,7 +16,9 @@ impl ListExchangeArgs {
             "pubkey", "code", "name", "lat", "lng", "loc_id", "status", "owner"
         ]);
 
-        for (pubkey, data) in client.get_exchanges()? {
+        let exchanges = ListExchangeCommand{}.execute(client)?;
+
+        for (pubkey, data) in exchanges {
             table.add_row(Row::new(vec![
                 Cell::new(&pubkey.to_string()),
                 Cell::new(&data.code),

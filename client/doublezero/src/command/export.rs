@@ -1,5 +1,12 @@
 use clap::Args;
 use double_zero_sdk::*;
+use double_zero_sdk::commands::location::list::ListLocationCommand;
+use double_zero_sdk::commands::exchange::list::ListExchangeCommand;
+use double_zero_sdk::commands::device::list::ListDeviceCommand;
+use double_zero_sdk::commands::tunnel::list::ListTunnelCommand;
+use double_zero_sdk::commands::user::list::ListUserCommand;
+
+
 use serde::{Deserialize, Serialize};
 use std::fs;
 
@@ -84,14 +91,14 @@ struct UserData {
 
 impl ExportArgs {
     pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
-        let locations = client.get_locations()?;
-        let exchanges = client.get_exchanges()?;
+        let locations = ListLocationCommand{}.execute(client)?;
+        let exchanges = ListExchangeCommand{}.execute(client)?;
 
-        let devices = client.get_devices()?;
-        let tunnels = client.get_tunnels()?;
-        let users = client.get_users()?;
+        let devices = ListDeviceCommand{}.execute(client)?;
+        let tunnels = ListTunnelCommand{}.execute(client)?;
+        let users = ListUserCommand{}.execute(client)?;
 
-        for (pubkey, data) in client.get_devices()? {
+        for (pubkey, data) in devices.clone() {
             let name = format!("{}/{}.yml", self.path, data.code);
 
             let location = locations
@@ -125,8 +132,8 @@ impl ExportArgs {
                         owner: exchange.owner.to_string(),
                     },
                     public_ip: ipv4_to_string(&data.public_ip),
-                    tunnels: tunnels
-                        .iter()
+                    tunnels: tunnels.clone()
+                        .into_iter()
                         .filter(|(_,tunnel)| tunnel.side_a_pk == pubkey || tunnel.side_z_pk == pubkey)
                         .map(|(key, tunnel)| {
                             

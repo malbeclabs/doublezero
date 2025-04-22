@@ -1,7 +1,7 @@
 use clap::Args;
 use double_zero_sdk::*;
-use solana_sdk::pubkey::Pubkey;
-use std::str::FromStr;
+use double_zero_sdk::commands::location::get::GetLocationCommand;
+use double_zero_sdk::commands::location::update::UpdateLocationCommand;
 
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 
@@ -28,22 +28,18 @@ impl UpdateLocationArgs {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let pubkey = Pubkey::from_str(&self.pubkey)?;
-        match client.get_location(&pubkey) {
-            Ok(location) => {
-                client.update_location(
-                    location.index,
-                    self.code,
-                    self.name,
-                    self.country,
-                    self.lat,
-                    self.lng,
-                    self.loc_id,
-                )?;
-                println!("Location updated");
-            }
-            Err(_) => println!("Location not found"),
-        }
+        let (_, location) = GetLocationCommand{ pubkey_or_code: self.pubkey }.execute(client)?;
+        let _ = UpdateLocationCommand {
+            index: location.index,
+            code: self.code,
+            name: self.name,
+            country: self.country,
+            lat: self.lat,
+            lng: self.lng,
+            loc_id: self.loc_id,
+        }.execute(client)?;
+
+        println!("Location updated");
 
         Ok(())
     }

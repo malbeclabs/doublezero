@@ -2,7 +2,7 @@ use color_eyre::owo_colors::OwoColorize;
 
 use clap::Args;
 use double_zero_sdk::{
-    ipv4_parse, DZClient, RemoveTunnelArgs, ServiceController, UserFinder, UserService,
+    ipv4_parse, DZClient, RemoveTunnelArgs, ServiceController, 
 };
 
 use crate::{
@@ -12,6 +12,9 @@ use crate::{
         check_requirements, CHECK_BALANCE, CHECK_DOUBLEZEROD, CHECK_ID_JSON, CHECK_USER_ALLOWLIST,
     },
 };
+
+use double_zero_sdk::commands::user::list::ListUserCommand;
+use double_zero_sdk::commands::user::delete::DeleteUserCommand;
 
 #[derive(Args, Debug)]
 pub struct DecommissioningArgs {
@@ -59,11 +62,14 @@ impl DecommissioningArgs {
 
         let controller = ServiceController::new(None);
 
+        let users = ListUserCommand {}.execute(client)?;
+
         let client_ip = ipv4_parse(&public_ip);
-        match client.find_user(|u| u.client_ip == client_ip) {
-            Ok((pubkey, user)) => {
+        match users.iter().find(|(_, u)| u.client_ip == client_ip) {
+            Some((pubkey, user)) => {
                 println!("🔍  Deleting User Account for: {}", pubkey);
-                match client.delete_user(user.index) {
+                let res = DeleteUserCommand { index: user.index }.execute(client);
+                match res {
                     Ok(_) => {
                         spinner.finish_with_message("🔍  User Account deleted");
                     }
@@ -72,7 +78,7 @@ impl DecommissioningArgs {
                     }
                 }
             }
-            Err(_) => {
+            None => {
                 println!("🔍  User Account deleted");
             }
         }

@@ -17,12 +17,12 @@ use solana_program::{
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct UserRejectArgs {
     pub index: u128,
-    pub error: String,
+    pub reason: String,
 }
 
 impl fmt::Debug for UserRejectArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "error: {}", self.error)
+        write!(f, "reason: {}", self.reason)
     }
 }
 
@@ -66,7 +66,7 @@ pub fn process_reject_user(
     user.tunnel_net = ([0,0,0,0], 0);
     user.dz_ip = [0,0,0,0];
     user.status = UserStatus::Rejected;
-    msg!("Error: {:?}", value.error);
+    msg!("Reason: {:?}", value.reason);
 
     account_write(
         pda_account,

@@ -4,6 +4,8 @@ use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_FOUNDATION_AL
 use clap::Args;
 use double_zero_sdk::*;
 use solana_sdk::pubkey::Pubkey;
+use double_zero_sdk::commands::user::get::GetUserCommand;
+use double_zero_sdk::commands::user::requestban::RequestBanUserCommand;
 
 #[derive(Args, Debug)]
 pub struct RequestBanUserArgs {
@@ -21,9 +23,12 @@ impl RequestBanUserArgs {
         )?;
 
         let pubkey = Pubkey::from_str(&self.pubkey)?;
-        let user = client.get_user(&pubkey)?;
-        client.request_ban_user(user.index)?;
+        let (_, user) = GetUserCommand{ pubkey: pubkey }.execute(client)?;
 
+        RequestBanUserCommand { index: user.index, }.execute(client)?;
+
+        println!("User {} requested to be banned", pubkey);
+        
         Ok(())
     }
 }

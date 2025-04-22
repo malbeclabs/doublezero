@@ -2,6 +2,7 @@ use std::str::FromStr;
 use clap::Args;
 use double_zero_sdk::*;
 use solana_sdk::pubkey::Pubkey;
+use double_zero_sdk::commands::allowlist::user::add::AddUserAllowlistCommand;
 
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 
@@ -24,7 +25,7 @@ impl AddAllowlistArgs {
             }
         };
 
-        client.add_user_allowlist(pubkey)?;
+        AddUserAllowlistCommand { pubkey }.execute(client)?;
         println!("Updated allowlist");
 
         Ok(())

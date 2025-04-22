@@ -1,21 +1,22 @@
 use clap::Args;
+use std::str::FromStr;
 use double_zero_sdk::*;
-
-use crate::helpers::print_error;
+use solana_sdk::pubkey::Pubkey;
+use double_zero_sdk::commands::user::get::GetUserCommand;
 
 #[derive(Args, Debug)]
 pub struct GetUserArgs {
     #[arg(long)]
-    pub client_ip: String,
+    pub pubkey: String,
 }
 
 impl GetUserArgs {
     pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
 
-        let client_ip = ipv4_parse(&self.client_ip);
+        let pubkey = Pubkey::from_str(&self.pubkey)?;
+        let (pubkey, user) = GetUserCommand{ pubkey: pubkey }.execute(client)?;
 
-        match client.find_user(|t| t.client_ip == client_ip) {
-            Ok((pubkey, user  )) => println!(
+        println!(
                 "pubkey: {} user_type: {} device: {} cyoa_type: {} client_ip: {} tunnel_net: {} dz_ip: {} status: {} owner: {}",
                 pubkey,
                 user.user_type,
@@ -26,9 +27,7 @@ impl GetUserArgs {
                 ipv4_to_string(&user.dz_ip),
                 user.status,
                 user.owner
-            ),
-            Err(e) => print_error(e),
-        }
+            );
 
         Ok(())
     }

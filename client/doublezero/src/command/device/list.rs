@@ -1,5 +1,8 @@
 use clap::Args;
 use double_zero_sdk::*;
+use double_zero_sdk::commands::location::list::ListLocationCommand;
+use double_zero_sdk::commands::exchange::list::ListExchangeCommand;
+use double_zero_sdk::commands::device::list::ListDeviceCommand;
 use prettytable::{format, row, Cell, Row, Table};
 
 #[derive(Args, Debug)]
@@ -8,9 +11,8 @@ pub struct ListDeviceArgs {
     pub code: Option<String>,
 }
 
-
 impl ListDeviceArgs {
-    pub async fn execute<T:DeviceService + LocationService + ExchangeService>(self, client: &T) -> eyre::Result<()> {
+    pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
         let mut table = Table::new();
         table.add_row(row![
             "pubkey",
@@ -24,10 +26,12 @@ impl ListDeviceArgs {
             "owner"
         ]);
 
-        let locations = client.get_locations()?;
-        let exchanges = client.get_exchanges()?;
+        let locations = ListLocationCommand{}.execute(client)?;
+        let exchanges = ListExchangeCommand{}.execute(client)?;
 
-        for (pubkey, data) in client.get_devices()? {
+        let devices = ListDeviceCommand{}.execute(client)?;
+
+        for (pubkey, data) in devices {
             let loc_name = match &locations.get(&data.location_pk) {
                 Some(location) => &location.code,
                 None => &data.location_pk.to_string(),

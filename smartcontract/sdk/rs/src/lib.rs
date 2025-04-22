@@ -31,18 +31,15 @@ mod doublezeroclient;
 mod dztransaction;
 mod errors;
 mod servicecontroller;
-mod services;
 mod utils;
+mod tests;
+
+pub mod commands;
 
 pub use crate::client::DZClient;
-pub use crate::doublezeroclient::DoubleZeroClient;
-pub use crate::services::{
-    allowlist::AllowlistService, device::DeviceFinder, device::DeviceService,
-    device::MockDeviceService, exchange::ExchangeService, location::LocationService,
-    tunnel::MockTunnelService, tunnel::TunnelFinder, tunnel::TunnelService, user::MockUserService,
-    user::UserFinder, user::UserService,
-};
 
+pub use crate::doublezeroclient::DoubleZeroClient;
+pub use crate::doublezeroclient::MockDoubleZeroClient;
 pub use crate::config::{
     convert_program_moniker, convert_url_moniker, convert_url_to_ws, convert_ws_moniker,
 };
@@ -51,3 +48,8 @@ pub use crate::servicecontroller::{
     service_controller_can_open, service_controller_check, ProvisioningRequest, RemoveTunnelArgs,
     ServiceController,
 };
+
+
+pub use crate::commands::accountdata::getglobalstate::GetGlobalStateCommand;
+pub use crate::commands::location::get::GetLocationCommand;
+pub use crate::commands::location::create::CreateLocationCommand;

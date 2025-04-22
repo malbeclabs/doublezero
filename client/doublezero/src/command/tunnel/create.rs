@@ -1,10 +1,9 @@
 use clap::Args;
 use double_zero_sdk::*;
-
-use crate::{
-    helpers::parse_pubkey,
-    requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON},
-};
+use double_zero_sdk::commands::tunnel::create::CreateTunnelCommand;
+use double_zero_sdk::commands::device::get::GetDeviceCommand;
+use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
+use crate::helpers::parse_pubkey;
 
 #[derive(Args, Debug)]
 pub struct CreateTunnelArgs {
@@ -27,15 +26,16 @@ pub struct CreateTunnelArgs {
 }
 
 impl CreateTunnelArgs {
-    pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
+     pub async fn execute(&self, client: &DZClient) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
         let side_a_pk = match parse_pubkey(&self.side_a) {
             Some(pk) => pk,
             None => {
-                let (pubkey, _) = client
-                    .find_device(|d| d.code == self.side_a)
+                let (pubkey, _) = GetDeviceCommand {
+                    pubkey_or_code: self.side_a.clone(),
+                }.execute(client)
                     .map_err(|_| eyre::eyre!("Device not found"))?;
                 pubkey
             }
@@ -44,28 +44,29 @@ impl CreateTunnelArgs {
         let side_z_pk = match parse_pubkey(&self.side_z) {
             Some(pk) => pk,
             None => {
-                let (pubkey, _) = client
-                    .find_device(|d| d.code == self.side_z)
+                let (pubkey, _) = GetDeviceCommand {
+                    pubkey_or_code: self.side_z.clone(),
+                }.execute(client)
                     .map_err(|_| eyre::eyre!("Device not found"))?;
                 pubkey
             }
         };
 
-        match client.create_tunnel(
-            &self.code,
+        let (_signature, pubkey) = CreateTunnelCommand {
+            code: self.code.clone(),
             side_a_pk,
             side_z_pk,
-            self.tunnel_type.map(|t| 
+            tunnel_type: self.tunnel_type.as_ref().map(|t| 
                 t.parse().unwrap()
             ).unwrap_or(TunnelTunnelType::MPLSoGRE),
-            bandwidth_parse(&self.bandwidth),
-            self.mtu,
-            (self.delay_ms * 1000000.0) as u64,
-            (self.jitter_ms * 1000000.0) as u64,
-        ) {
-            Ok((_, pubkey)) => println!("{}", pubkey),
-            Err(e) => eprintln!("Error: {}", e),
+            bandwidth: bandwidth_parse(&self.bandwidth),
+            mtu: self.mtu,
+            delay_ns: (self.delay_ms * 1000000.0) as u64,
+            jitter_ns: (self.jitter_ms * 1000000.0) as u64,
         }
+        .execute(client)?;
+
+        println!("{}", pubkey);
 
         Ok(())
     }

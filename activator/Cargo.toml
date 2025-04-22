@@ -12,3 +12,5 @@ bitvec = "1.0.1"
 mockall = "^0.13"
 solana-sdk = "1.18.26"
 double-zero-sdk = { path = "../smartcontract/sdk/rs", version = "0.1.0" }
+double-zero-sla-program = { path = "../smartcontract/programs/dz-sla-program", version = "0.1.0" }
+

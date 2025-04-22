@@ -1,6 +1,8 @@
+use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Keypair;
 use std::error::Error;
 use std::fs;
+use std::str::FromStr;
 
 pub fn read_keypair_from_file(file: String) -> eyre::Result<Keypair, Box<dyn Error>> {
     let file_content = fs::read_to_string(file)?;
@@ -10,6 +12,16 @@ pub fn read_keypair_from_file(file: String) -> eyre::Result<Keypair, Box<dyn Err
     Ok(keypair)
 }
 
+pub fn parse_pubkey(input: &str) -> Option<Pubkey> {
+    if input.len() < 40 || input.len() > 44 {
+        return None;
+    }
+
+    match Pubkey::from_str(input) {
+        Ok(pk) => Some(pk),
+        Err(_) => None,
+    }
+}
 /*
 pub fn create_transaction(program_id: Pubkey, instruction: DoubleZeroInstruction, accounts: Vec<AccountMeta>, payer: &Keypair) -> Transaction {
 

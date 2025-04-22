@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use base64::prelude::*;
 use base64::{engine::general_purpose, Engine};
 use bincode::deserialize;
@@ -54,7 +53,6 @@ impl DZClient {
     }
 }
 
-#[async_trait]
 impl DoubleZeroClient for DZClient {
     fn get_program_id(&self) -> Pubkey {
         self.program_id

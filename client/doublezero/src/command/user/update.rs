@@ -2,7 +2,10 @@ use clap::Args;
 use std::str::FromStr;
 use double_zero_sdk::*;
 use solana_sdk::pubkey::Pubkey;
-use crate::{helpers::print_error, requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON}};
+use double_zero_sdk::commands::user::get::GetUserCommand;
+use double_zero_sdk::commands::user::update::UpdateUserCommand;
+
+use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 
 #[derive(Args, Debug)]
 pub struct UpdateUserArgs {
@@ -18,32 +21,24 @@ pub struct UpdateUserArgs {
     pub tunnel_net: Option<String>
 }
 
-
 impl UpdateUserArgs {
     pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
         let pubkey = Pubkey::from_str(&self.pubkey)?;
-        match client.get_user(&pubkey) {
-            Ok(user) => {
-                match client.update_user(
-                    user.index,             
-                    None,
-                    None,
-                    self.client_ip.map(|client_ip| ipv4_parse(&client_ip)),
-                    self.dz_ip.map(|dz_ip| ipv4_parse(&dz_ip)),
-                    self.tunnel_id.map(|tunnel_id| u16::from_str(&tunnel_id).unwrap()),
-                    self.tunnel_net.map(|tunnel_net| networkv4_parse(&tunnel_net)),
-                    
-                ) {
-                    Ok(_) => println!("User updated"),
-                    Err(e) => print_error(e),
-                }
+        let (_, user) = GetUserCommand { pubkey: pubkey }.execute(client)?;
+        let _ = UpdateUserCommand {
+            index: user.index,             
+            user_type: None,
+            cyoa_type: None,
+            client_ip: self.client_ip.map(|client_ip| ipv4_parse(&client_ip)),
+            dz_ip: self.dz_ip.map(|dz_ip| ipv4_parse(&dz_ip)),
+            tunnel_id: self.tunnel_id.map(|tunnel_id| u16::from_str(&tunnel_id).unwrap()),
+            tunnel_net: self.tunnel_net.map(|tunnel_net| networkv4_parse(&tunnel_net)),
+        }.execute(client)?;
 
-            },
-            Err(_) => println!("User not found"),
-        }
+        println!("User updated");
 
         Ok(())
     }

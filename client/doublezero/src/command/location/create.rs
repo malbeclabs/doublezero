@@ -20,21 +20,21 @@ pub struct CreateLocationArgs {
 }
 
 impl CreateLocationArgs {
-    pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
+     pub async fn execute(&self, client: &DZClient) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        match client.create_location(
-            &self.code,
-            &self.name,
-            &self.country,
-            self.lat,
-            self.lng,
-            self.loc_id.unwrap_or(0),
-        ) {
-            Ok((_, pubkey)) => println!("{}", pubkey),
-            Err(e) => eprintln!("Error: {}", e),
+        let (_signature, pubkey) = CreateLocationCommand {
+            code: self.code.clone(),
+            name: self.name.clone(),
+            country: self.country.clone(),
+            lat: self.lat,
+            lng: self.lng,
+            loc_id: self.loc_id,
         }
+        .execute(client)?;
+
+        println!("{}", pubkey);
 
         Ok(())
     }

@@ -3,6 +3,7 @@ use std::str::FromStr;
 use clap::Args;
 use double_zero_sdk::*;
 use solana_sdk::pubkey::Pubkey;
+use double_zero_sdk::commands::allowlist::foundation::add::AddFoundationAllowlistCommand;
 
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 
@@ -25,7 +26,8 @@ impl AddAllowlistArgs {
             }
         };
 
-        client.add_foundation_allowlist(pubkey)?;
+        AddFoundationAllowlistCommand { pubkey: pubkey }.execute(client)?;
+
         println!("Updated allowlist");
 
         Ok(())

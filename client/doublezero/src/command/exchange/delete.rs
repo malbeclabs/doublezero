@@ -1,6 +1,8 @@
-use crate::{helpers::{parse_pubkey, print_error}, requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON}};
+use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 use clap::Args;
 use double_zero_sdk::*;
+use double_zero_sdk::commands::exchange::get::GetExchangeCommand;
+use double_zero_sdk::commands::exchange::delete::DeleteExchangeCommand;
 
 #[derive(Args, Debug)]
 pub struct DeleteExchangeArgs {
@@ -10,16 +12,12 @@ pub struct DeleteExchangeArgs {
 
 impl DeleteExchangeArgs {
     pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
-        let pubkey = parse_pubkey(&self.pubkey).expect("Invalid pubkey");
-
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let exchange = client.get_exchange(&pubkey)?;
-        match client.delete_exchange(exchange.index) {
-            Ok(_) => println!("Exchange deleted"),
-            Err(e) => print_error(e),
-        }
+        let (_, exchange) = GetExchangeCommand{ pubkey_or_code: self.pubkey }.execute(client)?;
+        let _ = DeleteExchangeCommand{ index: exchange.index }.execute(client)?;
+            println!("Exchange deleted");
 
         Ok(())
     }

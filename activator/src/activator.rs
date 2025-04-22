@@ -1,6 +1,23 @@
 use std::collections::HashMap;
 
-use double_zero_sdk::*;
+use double_zero_sdk::{
+    commands::{
+        device::{
+            activate::ActivateDeviceCommand, deactivate::DeactivateDeviceCommand,
+            get::GetDeviceCommand, list::ListDeviceCommand,
+        },
+        tunnel::{
+            activate::ActivateTunnelCommand, deactivate::DeactivateTunnelCommand,
+            list::ListTunnelCommand, reject::RejectTunnelCommand,
+        },
+        user::{
+            activate::ActivateUserCommand, ban::BanUserCommand, list::ListUserCommand,
+            reject::RejectUserCommand,
+        },
+    },
+    ipv4_to_string, networkv4_list_to_string, networkv4_to_string, AccountData, DZClient, Device,
+    DeviceStatus, DoubleZeroClient, IpV4, Tunnel, TunnelStatus, User, UserStatus, UserType,
+};
 use solana_sdk::pubkey::Pubkey;
 use std::thread;
 use std::time::Duration;
@@ -60,9 +77,9 @@ impl Activator {
         );
 
         // Fetch the list of tunnels, devices, and users from the client
-        let devices = self.client.get_devices()?;
-        let tunnels = self.client.get_tunnels()?;
-        let users = self.client.get_users()?;
+        let devices = ListDeviceCommand {}.execute(&self.client)?;
+        let tunnels = ListTunnelCommand {}.execute(&self.client)?;
+        let users = ListUserCommand {}.execute(&self.client)?;
 
         for (_, tunnel) in tunnels
             .iter()
@@ -147,11 +164,8 @@ impl Activator {
                     );
                 }
                 AccountData::User(user) => {
-                    let user_service: &dyn UserService = client;
-                    let device_service: &dyn DeviceService = client;
                     process_user_event(
-                        user_service,
-                        device_service,
+                        client,
                         pubkey,
                         &mut self.devices,
                         &mut self.user_tunnel_ips,
@@ -166,7 +180,7 @@ impl Activator {
 }
 
 fn process_device_event(
-    device_service: &dyn DeviceService,
+    client: &dyn DoubleZeroClient,
     pubkey: &Pubkey,
     devices: &mut DeviceMap,
     device: &Device,
@@ -174,7 +188,13 @@ fn process_device_event(
     match device.status {
         DeviceStatus::Pending => {
             print!("New Device {} ", device.code);
-            match device_service.activate_device(device.index) {
+
+            let res = ActivateDeviceCommand {
+                index: device.index,
+            }
+            .execute(client);
+
+            match res {
                 Ok(signature) => {
                     println!("Activated {}", signature.to_string());
 
@@ -206,7 +226,14 @@ fn process_device_event(
         }
         DeviceStatus::Deleting => {
             print!("Deleting Device {} ", device.code);
-            match device_service.deactivate_device(device.index, device.owner) {
+
+            let res = DeactivateDeviceCommand {
+                index: device.index,
+                owner: device.owner,
+            }
+            .execute(client);
+
+            match res {
                 Ok(signature) => {
                     println!("Deactivated {}", signature.to_string());
                     devices.remove(pubkey);
@@ -219,7 +246,7 @@ fn process_device_event(
 }
 
 fn process_tunnel_event(
-    tunnel_service: &dyn TunnelService,
+    client: &dyn DoubleZeroClient,
     tunnel_tunnel_ips: &mut IPBlockAllocator,
     tunnel_tunnel_ids: &mut IDAllocator,
     tunnel: &Tunnel,
@@ -232,7 +259,14 @@ fn process_tunnel_event(
                 Some(tunnel_net) => {
                     let tunnel_id = tunnel_tunnel_ids.next_available();
 
-                    match tunnel_service.activate_tunnel(tunnel.index, tunnel_id, tunnel_net) {
+                    let res = ActivateTunnelCommand {
+                        index: tunnel.index,
+                        tunnel_id: tunnel_id,
+                        tunnel_net: tunnel_net,
+                    }
+                    .execute(client);
+
+                    match res {
                         Ok(signature) => println!("Activated {}", signature.to_string()),
                         Err(e) => println!("Error: activate_tunnel: {}", e.to_string()),
                     }
@@ -240,9 +274,13 @@ fn process_tunnel_event(
                 None => {
                     println!("{}", "Error: No available tunnel block");
 
-                    match tunnel_service
-                        .reject_tunnel(tunnel.index, "Error: No available tunnel block".to_string())
-                    {
+                    let res = RejectTunnelCommand {
+                        index: tunnel.index,
+                        reason: "Error: No available tunnel block".to_string(),
+                    }
+                    .execute(client);
+
+                    match res {
                         Ok(signature) => println!("Rejected {}", signature.to_string()),
                         Err(e) => println!("Error: reject_tunnel: {}", e.to_string()),
                     }
@@ -255,7 +293,13 @@ fn process_tunnel_event(
             tunnel_tunnel_ids.unassign(tunnel.tunnel_id);
             tunnel_tunnel_ips.unassign_block(tunnel.tunnel_net);
 
-            match tunnel_service.deactivate_tunnel(tunnel.index, tunnel.owner) {
+            let res = DeactivateTunnelCommand {
+                index: tunnel.index,
+                owner: tunnel.owner,
+            }
+            .execute(client);
+
+            match res {
                 Ok(signature) => println!("Deactivated {}", signature.to_string()),
                 Err(e) => println!("{}: {}", "Error: deactivate_tunnel:", e.to_string()),
             }
@@ -265,8 +309,7 @@ fn process_tunnel_event(
 }
 
 fn process_user_event(
-    user_service: &dyn UserService,
-    device_service: &dyn DeviceService,
+    client: &dyn DoubleZeroClient,
     pubkey: &Pubkey,
     devices: &mut DeviceMap,
     user_tunnel_ips: &mut IPBlockAllocator,
@@ -279,8 +322,13 @@ fn process_user_event(
             print!("Activating User   {} ", ipv4_to_string(&user.client_ip));
             // Load Device if not exists
             if !devices.contains_key(&user.device_pk) {
-                match device_service.get_device(&user.device_pk) {
-                    Ok(device) => {
+                let res = GetDeviceCommand {
+                    pubkey_or_code: user.device_pk.to_string(),
+                }
+                .execute(client);
+
+                match res {
+                    Ok((_, device)) => {
                         println!(
                             "Add Device: {} public_ip: {} dz_prefixes: {} ",
                             device.code,
@@ -316,22 +364,24 @@ fn process_user_event(
                                         }
                                         None => {}
                                     }
-    
-                                },
+                                }
                                 UserType::IBRL => {
                                     tunnel_id = device_state.get_next_tunnel_id().unwrap();
                                     dz_ip = user.client_ip;
-                                },
+                                }
                                 UserType::Multicast => {}
-                            }                            
+                            }
 
                             if tunnel_id == 0 {
                                 eprintln!("{}", "Error: No available tunnel block");
 
-                                match user_service.reject_user(
-                                    user.index,
-                                    "Error: No available tunnel block".to_string(),
-                                ) {
+                                let res = RejectUserCommand {
+                                    index: user.index,
+                                    reason: "Error: No available tunnel block".to_string(),
+                                }
+                                .execute(client);
+
+                                match res {
                                     Ok(signature) => println!("Rejected {}", signature.to_string()),
                                     Err(e) => println!("Error: {}", e.to_string()),
                                 }
@@ -344,9 +394,15 @@ fn process_user_event(
                                 ipv4_to_string(&dz_ip)
                             );
 
-                            match user_service
-                                .activate_user(user.index, tunnel_id, tunnel_net, dz_ip)
-                            {
+                            let res = ActivateUserCommand {
+                                index: user.index,
+                                tunnel_id: tunnel_id,
+                                tunnel_net: tunnel_net,
+                                dz_ip: dz_ip,
+                            }
+                            .execute(client);
+
+                            match res {
                                 Ok(signature) => println!("Activated   {}", signature.to_string()),
                                 Err(e) => println!("Error: {}", e.to_string()),
                             }
@@ -354,10 +410,13 @@ fn process_user_event(
                         None => {
                             println!("{}", "Error: No available user block");
 
-                            match user_service.reject_user(
-                                user.index,
-                                "Error: No available user block".to_string(),
-                            ) {
+                            let res = RejectUserCommand {
+                                index: user.index,
+                                reason: "Error: No available user block".to_string(),
+                            }
+                            .execute(client);
+
+                            match res {
                                 Ok(signature) => println!("Rejected {}", signature.to_string()),
                                 Err(e) => println!("Error: {}", e.to_string()),
                             }
@@ -366,9 +425,14 @@ fn process_user_event(
                 }
                 None => {
                     eprintln!("Error: Device not found {}", user.device_pk.to_string());
-                    match user_service
-                        .reject_user(user.index, "Error: Device not found".to_string())
-                    {
+
+                    let res = RejectUserCommand {
+                        index: user.index,
+                        reason: "Error: Device not found".to_string(),
+                    }
+                    .execute(client);
+
+                    match res {
                         Ok(signature) => println!("Rejected {}", signature.to_string()),
                         Err(e) => println!("Error: {}", e.to_string()),
                     }
@@ -400,12 +464,20 @@ fn process_user_event(
                 }
 
                 if user.status == UserStatus::Deleting {
-                    match user_service.deactivate_user(user.index, user.owner) {
+                    let res = DeactivateDeviceCommand {
+                        index: user.index,
+                        owner: user.owner,
+                    }
+                    .execute(client);
+
+                    match res {
                         Ok(signature) => println!("Deactivated {}", signature.to_string()),
                         Err(e) => println!("Error: {}", e.to_string()),
                     }
                 } else if user.status == UserStatus::PendingBan {
-                    match user_service.ban_user(user.index) {
+                    let res = BanUserCommand { index: user.index }.execute(client);
+
+                    match res {
                         Ok(signature) => println!("Banned {}", signature.to_string()),
                         Err(e) => println!("Error: {}", e.to_string()),
                     }
@@ -418,16 +490,55 @@ fn process_user_event(
 
 #[cfg(test)]
 mod tests {
+    use double_zero_sdk::{
+        AccountType, DeviceType, MockDoubleZeroClient, TunnelTunnelType, UserCYOA,
+    };
+    use double_zero_sla_program::{
+        instructions::DoubleZeroInstruction,
+        pda::get_globalstate_pda,
+        processors::{
+            device::{activate::DeviceActivateArgs, deactivate::DeviceDeactivateArgs},
+            tunnel::reject::TunnelRejectArgs,
+            user::{activate::UserActivateArgs, ban::UserBanArgs, reject::UserRejectArgs},
+        },
+        state::globalstate::GlobalState,
+    };
     use mockall::predicate;
     use solana_sdk::signature::Signature;
 
     use super::*;
 
+    fn create_test_client() -> MockDoubleZeroClient {
+        let mut client = MockDoubleZeroClient::new();
+
+        // Program ID
+        let program_id = Pubkey::new_unique();
+        client.expect_get_program_id().returning(move || program_id);
+
+        // Global State
+        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+        let globalstate = GlobalState {
+            account_type: AccountType::GlobalState,
+            account_index: 0,
+            foundation_allowlist: vec![],
+            device_allowlist: vec![],
+            user_allowlist: vec![],
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(globalstate_pubkey))
+            .returning(move |_| Ok(AccountData::GlobalState(globalstate.clone())));
+        client
+            .expect_execute_transaction()
+            .returning(|_, _| Ok(Signature::new_unique()));
+        client
+    }
+
     #[test]
     fn test_process_device_event_pending_to_deleted() {
         let mut devices = HashMap::new();
-        let mut device_service = MockDeviceService::new();
-        let pubkey = Pubkey::new_unique();
+
+        let device_pubkey = Pubkey::new_unique();
         let mut device = Device {
             account_type: AccountType::Device,
             owner: Pubkey::new_unique(),
@@ -441,32 +552,60 @@ mod tests {
             dz_prefixes: vec![([10, 0, 0, 1], 24), ([10, 0, 1, 1], 24)],
         };
 
-        device_service
-            .expect_activate_device()
-            .with(predicate::eq(0))
-            .returning(|_| Ok(Signature::new_unique()));
+        let mut client = create_test_client();
+        client
+            .expect_get_program_id()
+            .returning(|| Pubkey::new_unique());
 
-        process_device_event(&device_service, &pubkey, &mut devices, &device);
+        let device2 = device.clone();
+        client
+            .expect_get()
+            .with(predicate::eq(device_pubkey.clone()))
+            .returning(move |_| Ok(AccountData::Device(device2.clone())));
 
-        assert!(devices.contains_key(&pubkey));
-        assert_eq!(devices.get(&pubkey).unwrap().device, device);
+        client
+            .expect_execute_transaction()
+            .with(
+                predicate::eq(DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {
+                    index: device.index,
+                })),
+                predicate::always(),
+            )
+            .returning(|_, _| Ok(Signature::new_unique()));
+
+        process_device_event(&client, &device_pubkey, &mut devices, &device);
+
+        assert!(devices.contains_key(&device_pubkey));
+        assert_eq!(devices.get(&device_pubkey).unwrap().device, device);
 
         device.status = DeviceStatus::Deleting;
 
-        device_service
-            .expect_deactivate_device()
-            .with(predicate::eq(0), predicate::eq(device.owner))
+        let mut client = create_test_client();
+        client
+            .expect_get_program_id()
+            .returning(|| Pubkey::new_unique());
+        client
+            .expect_execute_transaction()
+            .with(
+                predicate::eq(DoubleZeroInstruction::DeactivateDevice(
+                    DeviceDeactivateArgs {
+                        index: device.index,
+                    },
+                )),
+                predicate::always(),
+            )
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        process_device_event(&device_service, &pubkey, &mut devices, &device);
-        assert!(!devices.contains_key(&pubkey));
+        process_device_event(&client, &device_pubkey, &mut devices, &device);
+        assert!(!devices.contains_key(&device_pubkey));
     }
 
     #[test]
     fn test_process_device_event_activated() {
         let mut devices = HashMap::new();
-        let device_service = MockDeviceService::new();
+        let mut client = create_test_client();
         let pubkey = Pubkey::new_unique();
+
         let mut device = Device {
             account_type: AccountType::Device,
             owner: Pubkey::new_unique(),
@@ -480,13 +619,23 @@ mod tests {
             dz_prefixes: vec![([10, 0, 0, 1], 24)],
         };
 
-        process_device_event(&device_service, &pubkey, &mut devices, &device);
+        client
+            .expect_execute_transaction()
+            .with(
+                predicate::eq(DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {
+                    index: device.index,
+                })),
+                predicate::always(),
+            )
+            .returning(|_, _| Ok(Signature::new_unique()));
+
+        process_device_event(&client, &pubkey, &mut devices, &device);
 
         assert!(devices.contains_key(&pubkey));
         assert_eq!(devices.get(&pubkey).unwrap().device, device);
 
         device.dz_prefixes.push(([10, 0, 1, 1], 24));
-        process_device_event(&device_service, &pubkey, &mut devices, &device);
+        process_device_event(&client, &pubkey, &mut devices, &device);
 
         assert!(devices.contains_key(&pubkey));
         assert_eq!(devices.get(&pubkey).unwrap().device, device);
@@ -496,7 +645,7 @@ mod tests {
     fn test_process_tunnel_event_pending_to_deleted() {
         let mut tunnel_tunnel_ips = IPBlockAllocator::new(([10, 0, 0, 0], 16));
         let mut tunnel_tunnel_ids = IDAllocator::new(500, vec![500, 501, 503]);
-        let mut tunnel_service = MockTunnelService::new();
+        let mut client = create_test_client();
 
         let tunnel = Tunnel {
             account_type: AccountType::Tunnel,
@@ -515,17 +664,12 @@ mod tests {
             code: "TestTunnel".to_string(),
         };
 
-        tunnel_service
-            .expect_activate_tunnel()
-            .with(
-                predicate::eq(tunnel.index),
-                predicate::eq(502),
-                predicate::eq(([10, 0, 0, 0], 31)),
-            )
-            .returning(|_, _, _| Ok(Signature::new_unique()));
+        client
+            .expect_execute_transaction()
+            .returning(|_, _| Ok(Signature::new_unique()));
 
         process_tunnel_event(
-            &tunnel_service,
+            &client,
             &mut tunnel_tunnel_ips,
             &mut tunnel_tunnel_ids,
             &tunnel,
@@ -539,15 +683,14 @@ mod tests {
         tunnel.tunnel_id = 502;
         tunnel.tunnel_net = ([10, 0, 0, 0], 31);
 
-        tunnel_service
-            .expect_deactivate_tunnel()
-            .with(predicate::eq(tunnel.index), predicate::eq(tunnel.owner))
+        client
+            .expect_execute_transaction()
             .returning(|_, _| Ok(Signature::new_unique()));
 
         let assigned_ips = tunnel_tunnel_ips.assigned_ips.clone();
 
         process_tunnel_event(
-            &tunnel_service,
+            &client,
             &mut tunnel_tunnel_ips,
             &mut tunnel_tunnel_ids,
             &tunnel,
@@ -561,7 +704,7 @@ mod tests {
     fn test_process_tunnel_event_rejected() {
         let mut tunnel_tunnel_ips = IPBlockAllocator::new(([10, 0, 0, 0], 32));
         let mut tunnel_tunnel_ids = IDAllocator::new(500, vec![500, 501, 503]);
-        let mut tunnel_service = MockTunnelService::new();
+        let mut client = create_test_client();
 
         let tunnel = Tunnel {
             account_type: AccountType::Tunnel,
@@ -582,13 +725,19 @@ mod tests {
 
         let _ = tunnel_tunnel_ips.next_available_block(0, 2);
 
-        tunnel_service
-            .expect_reject_tunnel()
-            .with(predicate::eq(tunnel.index), predicate::always())
+        client
+            .expect_execute_transaction()
+            .with(
+                predicate::eq(DoubleZeroInstruction::RejectTunnel(TunnelRejectArgs {
+                    index: tunnel.index,
+                    reason: "Error: No available tunnel block".to_string(),
+                })),
+                predicate::always(),
+            )
             .returning(|_, _| Ok(Signature::new_unique()));
 
         process_tunnel_event(
-            &tunnel_service,
+            &client,
             &mut tunnel_tunnel_ips,
             &mut tunnel_tunnel_ids,
             &tunnel,
@@ -599,28 +748,11 @@ mod tests {
         user_type: UserType,
         expected_dz_ip: Option<IpV4>,
     ) {
-        let mut devices = HashMap::new();
         let mut user_tunnel_ips = IPBlockAllocator::new(([10, 0, 0, 0], 16));
         let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
-        let mut user_service = MockUserService::new();
-        let mut device_service = MockDeviceService::new();
+        let mut client = create_test_client();
 
-        let pubkey = Pubkey::new_unique();
-        let user = User {
-            account_type: AccountType::User,
-            owner: Pubkey::new_unique(),
-            index: 0,
-            user_type: user_type,
-            tenant_pk: Pubkey::new_unique(),
-            device_pk: pubkey,
-            cyoa_type: UserCYOA::GREOverDIA,
-            client_ip: [192, 168, 1, 1],
-            dz_ip: [0, 0, 0, 0],
-            tunnel_id: 0,
-            tunnel_net: ([0, 0, 0, 0], 0),
-            status: UserStatus::Pending,
-        };
-
+        let device_pubkey = Pubkey::new_unique();
         let device = Device {
             account_type: AccountType::Device,
             owner: Pubkey::new_unique(),
@@ -634,32 +766,63 @@ mod tests {
             dz_prefixes: vec![([10, 0, 0, 1], 24)],
         };
 
-        device_service
-            .expect_get_device()
-            .with(predicate::eq(pubkey.clone()))
-            .returning(move |_| Ok(device.clone()));
+        let user_pubkey = Pubkey::new_unique();
+        let user = User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 0,
+            user_type: user_type,
+            tenant_pk: Pubkey::new_unique(),
+            device_pk: device_pubkey,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: [192, 168, 1, 1],
+            dz_ip: [0, 0, 0, 0],
+            tunnel_id: 0,
+            tunnel_net: ([0, 0, 0, 0], 0),
+            status: UserStatus::Pending,
+        };
 
-        user_service
-            .expect_activate_user()
+        let device2 = device.clone();
+        client
+            .expect_get()
+            .with(predicate::eq(user_pubkey.clone()))
+            .returning(move |_| Ok(AccountData::Device(device2.clone())));
+
+        let device2 = device.clone();
+        client
+            .expect_gets()
+            .with(predicate::eq(AccountType::Device))
+            .returning(move |_| {
+                let mut devices = HashMap::new();
+                devices.insert(device_pubkey, AccountData::Device(device2.clone()));
+                Ok(devices)
+            });
+
+        client
+            .expect_execute_transaction()
             .with(
-                predicate::eq(user.index),
-                predicate::eq(500),
-                predicate::eq(([10, 0, 0, 0], 31)),
-                predicate::eq(expected_dz_ip.unwrap_or([10, 0, 0, 1])),
+                predicate::eq(DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+                    index: user.index,
+                    tunnel_id: 100,
+                    tunnel_net: ([10, 0, 0, 0], 31),
+                    dz_ip: expected_dz_ip.unwrap_or([0, 0, 0, 0]),
+                })),
+                predicate::always(),
             )
-            .returning(|_, _, _, _| Ok(Signature::new_unique()));
+            .returning(|_, _| Ok(Signature::new_unique()));
+
+        let mut devices = HashMap::new();
+        devices.insert(device_pubkey, DeviceState::new(&device));
 
         process_user_event(
-            &user_service,
-            &device_service,
-            &pubkey,
+            &client,
+            &user_pubkey,
             &mut devices,
             &mut user_tunnel_ips,
             &mut tunnel_tunnel_ids,
             &user,
         );
 
-        assert!(devices.contains_key(&pubkey));
         assert!(user_tunnel_ips.assigned_ips.len() > 0);
         assert!(tunnel_tunnel_ids.assigned.len() > 0);
     }
@@ -681,20 +844,32 @@ mod tests {
 
     #[test]
     fn test_process_user_event_pending_to_rejected_by_get_device() {
-        let mut devices = HashMap::new();
         let mut user_tunnel_ips = IPBlockAllocator::new(([10, 0, 0, 0], 32));
         let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
-        let mut user_service = MockUserService::new();
-        let mut device_service = MockDeviceService::new();
+        let mut client = create_test_client();
 
-        let pubkey = Pubkey::new_unique();
+        let device_pubkey = Pubkey::new_unique();
+        let device = Device {
+            account_type: AccountType::Device,
+            owner: Pubkey::new_unique(),
+            index: 0,
+            location_pk: Pubkey::new_unique(),
+            exchange_pk: Pubkey::new_unique(),
+            device_type: DeviceType::Switch,
+            public_ip: [192, 168, 1, 2],
+            status: DeviceStatus::Activated,
+            code: "TestDevice".to_string(),
+            dz_prefixes: vec![([10, 0, 0, 1], 24)],
+        };
+
+        let user_pubkey = Pubkey::new_unique();
         let user = User {
             account_type: AccountType::User,
             owner: Pubkey::new_unique(),
             index: 0,
             user_type: UserType::IBRLWithAllocatedIP,
             tenant_pk: Pubkey::new_unique(),
-            device_pk: pubkey,
+            device_pk: device_pubkey,
             cyoa_type: UserCYOA::GREOverDIA,
             client_ip: [192, 168, 1, 1],
             dz_ip: [0, 0, 0, 0],
@@ -703,23 +878,28 @@ mod tests {
             status: UserStatus::Pending,
         };
 
-        device_service
-            .expect_get_device()
-            .with(predicate::eq(pubkey.clone()))
+        client
+            .expect_get()
+            .with(predicate::eq(user_pubkey.clone()))
             .returning(move |_| Err(eyre::Report::msg("Error: Device not found")));
 
-        user_service
-            .expect_reject_user()
+        client
+            .expect_execute_transaction()
             .with(
-                predicate::eq(user.index),
-                predicate::eq("Error: Device not found".to_string()),
+                predicate::eq(DoubleZeroInstruction::RejectUser(UserRejectArgs {
+                    index: user.index,
+                    reason: "Error: Device not found".to_string(),
+                })),
+                predicate::always(),
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
+        let mut devices = HashMap::new();
+        devices.insert(device_pubkey, DeviceState::new(&device));
+
         process_user_event(
-            &user_service,
-            &device_service,
-            &pubkey,
+            &client,
+            &user_pubkey,
             &mut devices,
             &mut user_tunnel_ips,
             &mut tunnel_tunnel_ids,
@@ -729,28 +909,11 @@ mod tests {
 
     #[test]
     fn test_process_user_event_pending_to_rejected_by_no_tunnel_block() {
-        let mut devices = HashMap::new();
         let mut user_tunnel_ips = IPBlockAllocator::new(([10, 0, 0, 0], 32));
         let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
-        let mut user_service = MockUserService::new();
-        let mut device_service = MockDeviceService::new();
+        let mut client = create_test_client();
 
-        let pubkey = Pubkey::new_unique();
-        let user = User {
-            account_type: AccountType::User,
-            owner: Pubkey::new_unique(),
-            index: 0,
-            user_type: UserType::IBRLWithAllocatedIP,
-            tenant_pk: Pubkey::new_unique(),
-            device_pk: pubkey,
-            cyoa_type: UserCYOA::GREOverDIA,
-            client_ip: [192, 168, 1, 1],
-            dz_ip: [0, 0, 0, 0],
-            tunnel_id: 0,
-            tunnel_net: ([0, 0, 0, 0], 0),
-            status: UserStatus::Pending,
-        };
-
+        let device_pubkey = Pubkey::new_unique();
         let device = Device {
             account_type: AccountType::Device,
             owner: Pubkey::new_unique(),
@@ -761,26 +924,59 @@ mod tests {
             public_ip: [192, 168, 1, 2],
             status: DeviceStatus::Activated,
             code: "TestDevice".to_string(),
-            dz_prefixes: vec![],
+            dz_prefixes: vec![([10, 0, 0, 1], 24)],
         };
 
-        device_service
-            .expect_get_device()
-            .with(predicate::eq(pubkey.clone()))
-            .returning(move |_| Ok(device.clone()));
+        let user_pubkey = Pubkey::new_unique();
+        let user = User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 0,
+            user_type: UserType::IBRLWithAllocatedIP,
+            tenant_pk: Pubkey::new_unique(),
+            device_pk: user_pubkey,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: [192, 168, 1, 1],
+            dz_ip: [0, 0, 0, 0],
+            tunnel_id: 0,
+            tunnel_net: ([0, 0, 0, 0], 0),
+            status: UserStatus::Pending,
+        };
 
-        user_service
-            .expect_reject_user()
+        let device2 = device.clone();
+        client
+            .expect_get()
+            .with(predicate::eq(device_pubkey.clone()))
+            .returning(move |_| Ok(AccountData::Device(device2.clone())));
+
+        let device2 = device.clone();
+        client
+            .expect_gets()
+            .with(predicate::eq(AccountType::Device))
+            .returning(move |_| {
+                let mut devices = HashMap::new();
+                devices.insert(device_pubkey, AccountData::Device(device2.clone()));
+                Ok(devices)
+            });
+
+        client
+            .expect_execute_transaction()
             .with(
-                predicate::eq(user.index),
-                predicate::eq("Error: No available tunnel block".to_string()),
+                predicate::eq(DoubleZeroInstruction::RejectUser(UserRejectArgs {
+                    index: user.index,
+                    reason: "Error: No available tunnel block".to_string(),
+                })),
+                predicate::always(),
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
+        let mut devices = HashMap::new();
+        let device2 = device.clone();
+        devices.insert(device_pubkey, DeviceState::new(&device2));
+
         process_user_event(
-            &user_service,
-            &device_service,
-            &pubkey,
+            &client,
+            &user_pubkey,
             &mut devices,
             &mut user_tunnel_ips,
             &mut tunnel_tunnel_ids,
@@ -790,31 +986,14 @@ mod tests {
 
     #[test]
     fn test_process_user_event_pending_to_rejected_by_no_user_block() {
-        let mut devices = HashMap::new();
         let mut user_tunnel_ips = IPBlockAllocator::new(([10, 0, 0, 0], 32));
         let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
-        let mut user_service = MockUserService::new();
-        let mut device_service = MockDeviceService::new();
+        let mut client = create_test_client();
 
         // eat a blocok
         let _ = user_tunnel_ips.next_available_block(0, 2);
 
-        let pubkey = Pubkey::new_unique();
-        let user = User {
-            account_type: AccountType::User,
-            owner: Pubkey::new_unique(),
-            index: 0,
-            user_type: UserType::IBRLWithAllocatedIP,
-            tenant_pk: Pubkey::new_unique(),
-            device_pk: pubkey,
-            cyoa_type: UserCYOA::GREOverDIA,
-            client_ip: [192, 168, 1, 1],
-            dz_ip: [0, 0, 0, 0],
-            tunnel_id: 0,
-            tunnel_net: ([0, 0, 0, 0], 0),
-            status: UserStatus::Pending,
-        };
-
+        let device_pubkey = Pubkey::new_unique();
         let device = Device {
             account_type: AccountType::Device,
             owner: Pubkey::new_unique(),
@@ -825,25 +1004,48 @@ mod tests {
             public_ip: [192, 168, 1, 2],
             status: DeviceStatus::Activated,
             code: "TestDevice".to_string(),
-            dz_prefixes: vec![],
+            dz_prefixes: vec![([10, 0, 0, 1], 24)],
         };
 
-        device_service
-            .expect_get_device()
-            .with(predicate::eq(pubkey.clone()))
-            .returning(move |_| Ok(device.clone()));
+        let pubkey = Pubkey::new_unique();
+        let user = User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 0,
+            user_type: UserType::IBRLWithAllocatedIP,
+            tenant_pk: Pubkey::new_unique(),
+            device_pk: device_pubkey,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: [192, 168, 1, 1],
+            dz_ip: [0, 0, 0, 0],
+            tunnel_id: 0,
+            tunnel_net: ([0, 0, 0, 0], 0),
+            status: UserStatus::Pending,
+        };
 
-        user_service
-            .expect_reject_user()
+        let device2 = device.clone();
+        client
+            .expect_get()
+            .with(predicate::eq(pubkey.clone()))
+            .returning(move |_| Ok(AccountData::Device(device2.clone())));
+
+        client
+            .expect_execute_transaction()
             .with(
-                predicate::eq(user.index),
-                predicate::eq("Error: No available user block".to_string()),
+                predicate::eq(DoubleZeroInstruction::RejectUser(UserRejectArgs {
+                    index: user.index,
+                    reason: "Error: No available user block".to_string(),
+                })),
+                predicate::always(),
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
+        let mut devices = HashMap::new();
+        let device2 = device.clone();
+        devices.insert(device_pubkey, DeviceState::new(&device2));
+
         process_user_event(
-            &user_service,
-            &device_service,
+            &client,
             &pubkey,
             &mut devices,
             &mut user_tunnel_ips,
@@ -854,14 +1056,14 @@ mod tests {
 
     fn do_test_process_user_event_deleting_or_pending_ban<F>(user_status: UserStatus, func: F)
     where
-        F: Fn(&mut MockUserService, &User) -> (),
+        F: Fn(&mut MockDoubleZeroClient, &User) -> (),
     {
         assert!(user_status == UserStatus::Deleting || user_status == UserStatus::PendingBan);
 
         let mut devices = HashMap::new();
         let mut user_tunnel_ips = IPBlockAllocator::new(([10, 0, 0, 0], 16));
         let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
-        let mut user_service = MockUserService::new();
+        let mut client = create_test_client();
 
         let pubkey = Pubkey::new_unique();
         let user = User {
@@ -894,13 +1096,12 @@ mod tests {
 
         devices.insert(pubkey, DeviceState::new(&device));
 
-        func(&mut user_service, &user);
+        func(&mut client, &user);
 
         assert!(tunnel_tunnel_ids.assigned.contains(&102));
 
         process_user_event(
-            &user_service,
-            &MockDeviceService::new(),
+            &client,
             &pubkey,
             &mut devices,
             &mut user_tunnel_ips,
@@ -917,8 +1118,13 @@ mod tests {
             UserStatus::Deleting,
             |user_service, user| {
                 user_service
-                    .expect_deactivate_user()
-                    .with(predicate::eq(user.index), predicate::eq(user.owner))
+                    .expect_execute_transaction()
+                    .with(
+                        predicate::eq(DoubleZeroInstruction::DeactivateDevice(
+                            DeviceDeactivateArgs { index: user.index },
+                        )),
+                        predicate::always(),
+                    )
                     .returning(|_, _| Ok(Signature::new_unique()));
             },
         );
@@ -930,9 +1136,14 @@ mod tests {
             UserStatus::PendingBan,
             |user_service, user| {
                 user_service
-                    .expect_ban_user()
-                    .with(predicate::eq(user.index))
-                    .returning(|_| Ok(Signature::new_unique()));
+                    .expect_execute_transaction()
+                    .with(
+                        predicate::eq(DoubleZeroInstruction::BanUser(UserBanArgs {
+                            index: user.index,
+                        })),
+                        predicate::always(),
+                    )
+                    .returning(|_, _| Ok(Signature::new_unique()));
             },
         );
     }

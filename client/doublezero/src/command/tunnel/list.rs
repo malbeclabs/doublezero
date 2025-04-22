@@ -1,5 +1,7 @@
 use clap::Args;
 use double_zero_sdk::*;
+use double_zero_sdk::commands::device::list::ListDeviceCommand;
+use double_zero_sdk::commands::tunnel::list::ListTunnelCommand;
 use prettytable::{format, row, Cell, Row, Table};
 
 #[derive(Args, Debug)]
@@ -9,28 +11,26 @@ pub struct ListTunnelArgs {
 }
 
 impl ListTunnelArgs {
-    pub async fn execute<T:TunnelService + DeviceService>(self, client: &T) -> eyre::Result<()> {
+    pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
         let mut table = Table::new();
         table.add_row(row![
             "pubkey",
             "code",
-            "side_a",
-            "side_z",
-            "tunnel_type",
-            "bandwidth",
-            "mtu",
-            "delay",
-            "jitter",
-            "tunnel_id",
-            "tunnel_net",
+            "location",
+            "exchange",
+            "device_type",
+            "public_ip",
+            "dz_prefixes",
             "status",
             "owner"
         ]);
 
-        let devices = client.get_devices()?;
 
-        for (pubkey, data) in client.get_tunnels()? {
+        let devices = ListDeviceCommand{}.execute(client)?;
 
+        let tunnels = ListTunnelCommand{}.execute(client)?;
+
+        for (pubkey, data) in tunnels {
             let side_a_name = match &devices.get(&data.side_a_pk) {
                 Some(device) => &device.code,
                 None => &data.side_a_pk.to_string()

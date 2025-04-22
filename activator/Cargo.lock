@@ -1290,7 +1290,6 @@ dependencies = [
 name = "double-zero-sdk"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "base64 0.22.1",
  "bincode",
  "chrono",
@@ -1339,6 +1338,7 @@ dependencies = [
  "bitvec",
  "clap 4.5.37",
  "double-zero-sdk",
+ "double-zero-sla-program",
  "eyre",
  "ipnetwork",
  "mockall",

@@ -1,8 +1,9 @@
 use clap::Args;
-use std::str::FromStr;
 use double_zero_sdk::*;
-use solana_sdk::pubkey::Pubkey;
-use crate::{helpers::print_error, requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON}};
+use double_zero_sdk::commands::tunnel::get::GetTunnelCommand;
+use double_zero_sdk::commands::tunnel::update::UpdateTunnelCommand;
+
+use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 
 #[derive(Args, Debug)]
 pub struct UpdateTunnelArgs {
@@ -27,24 +28,18 @@ impl UpdateTunnelArgs {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let pubkey = Pubkey::from_str(&self.pubkey)?;
-        match client.get_tunnel(&pubkey) {
-            Ok(tunnel) => {
-                match client.update_tunnel(
-                    tunnel.index,
-                    self.code,
-                    self.tunnel_type.map(|t|  t.parse().unwrap()),
-                    self.bandwidth.map(|b| bandwidth_parse(&b)),
-                    self.mtu,
-                    self.delay_ms.map(|delay_ms| (delay_ms * 1000000.0) as u64),
-                    self.jitter_ms.map(|jitter_ms| (jitter_ms * 1000000.0) as u64),
-                ) {
-                    Ok(_) => println!("Tunnel updated"),
-                    Err(e) => print_error(e),
-                }                
-            },
-            Err(_) => println!("Tunnel not found"),
-        }
+        let (_, tunnel) = GetTunnelCommand{ pubkey_or_code: self.pubkey }.execute(client)?;
+        let _ = UpdateTunnelCommand {
+            index: tunnel.index,
+            code: self.code.clone(),
+            tunnel_type: self.tunnel_type.map(|t|  t.parse().unwrap()),
+            bandwidth: self.bandwidth.map(|b| bandwidth_parse(&b)),
+            mtu: self.mtu,
+            delay_ns: self.delay_ms.map(|delay_ms| (delay_ms * 1000000.0) as u64),
+            jitter_ns: self.jitter_ms.map(|jitter_ms| (jitter_ms * 1000000.0) as u64),
+        }.execute(client)?;
+
+        println!("Tunnel updated");
 
         Ok(())
     }

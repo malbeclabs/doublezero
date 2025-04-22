@@ -3,6 +3,7 @@ use std::str::FromStr;
 use clap::Args;
 use double_zero_sdk::*;
 use solana_sdk::pubkey::Pubkey;
+use double_zero_sdk::commands::allowlist::user::remove::RemoveUserAllowlistCommand;
 
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 
@@ -25,7 +26,7 @@ impl RemoveAllowlistArgs {
             }
         };
 
-        client.remove_user_allowlist(pubkey)?;
+        RemoveUserAllowlistCommand { pubkey, }.execute(client)?;
         println!("Updated allowlist");
 
         Ok(())

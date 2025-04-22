@@ -1,6 +1,5 @@
 use clap::Args;
 use clap::Subcommand;
-use request_ban::RequestBanUserArgs;
 
 use self::create::*;
 use self::update::*;
@@ -8,6 +7,7 @@ use self::list::*;
 use self::get::*;
 use self::delete::*;
 use self::allowlist::*;
+use self::request_ban::*;
 
 pub mod create;
 pub mod update;
@@ -17,7 +17,6 @@ pub mod delete;
 pub mod allowlist;
 pub mod request_ban;
 
-
 #[derive(Args, Debug)]
 pub struct UserArgs {
     #[command(subcommand)]
@@ -26,14 +25,12 @@ pub struct UserArgs {
 
 #[derive(Debug, Subcommand)]
 pub enum UserCommands {
-    #[command(about = "", hide = true)] 
     Create(CreateUserArgs),
     Update(UpdateUserArgs),
     List(ListUserArgs),
     Get(GetUserArgs),
-    #[command(about = "", hide = true)] 
     Delete(DeleteUserArgs),
     #[command(about = "allowlist", hide = false)]
     Allowlist(AllowlistArgs),
-    RequestBan(RequestBanUserArgs),
+    RequestBan(RequestBanUserArgs),    
 }

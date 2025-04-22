@@ -15,7 +15,6 @@ pub mod get;
 pub mod delete;
 pub mod allowlist;
 
-
 #[derive(Args, Debug)]
 pub struct DeviceArgs {
     #[command(subcommand)]

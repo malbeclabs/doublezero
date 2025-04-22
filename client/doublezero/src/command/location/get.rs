@@ -1,7 +1,6 @@
 use clap::Args;
 use double_zero_sdk::*;
-
-use crate::helpers::print_error;
+use double_zero_sdk::commands::location::get::GetLocationCommand;
 
 #[derive(Args, Debug)]
 pub struct GetLocationArgs {
@@ -12,8 +11,9 @@ pub struct GetLocationArgs {
 impl GetLocationArgs {
     pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
 
-        match client.find_location(|l| l.code == self.code) {
-            Ok((pubkey, location)) => println!(
+        let (pubkey, location) = GetLocationCommand{ pubkey_or_code: self.code }.execute(client)?;
+
+        println!(
                 "pubkey: {},\r\ncode: {}\r\nname: {}\r\ncountry: {}\r\nlat: {}\r\nlng: {}\r\nloc_id: {}\r\nstatus: {}\r\nowner: {}",
                 pubkey,
                 location.code,
@@ -24,9 +24,7 @@ impl GetLocationArgs {
                 location.loc_id,
                 location.status,
                 location.owner
-            ),
-            Err(e) => print_error(e),
-        }
+            );
 
         Ok(())
     }

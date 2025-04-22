@@ -1,7 +1,8 @@
-
+use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 use clap::Args;
 use double_zero_sdk::*;
-use crate::{helpers::{parse_pubkey, print_error}, requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON}};
+use double_zero_sdk::commands::device::get::GetDeviceCommand;
+use double_zero_sdk::commands::device::delete::DeleteDeviceCommand;
 
 #[derive(Args, Debug)]
 pub struct DeleteDeviceArgs {
@@ -14,13 +15,9 @@ impl DeleteDeviceArgs {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let pubkey = parse_pubkey(&self.pubkey).expect("Invalid pubkey");
-
-        let device = client.get_device(&pubkey)?;
-        match client.delete_device(device.index) {
-            Ok(_) => println!("Device deleted"),
-            Err(e) => print_error(e),
-        }
+        let (_, device) = GetDeviceCommand{ pubkey_or_code: self.pubkey }.execute(client)?;
+        let _ = DeleteDeviceCommand{ index: device.index }.execute(client)?;
+            println!("Device deleted");
 
         Ok(())
     }

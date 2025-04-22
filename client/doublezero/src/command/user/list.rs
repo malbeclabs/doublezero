@@ -1,26 +1,17 @@
 use clap::Args;
 use double_zero_sdk::*;
+use double_zero_sdk::commands::device::list::ListDeviceCommand;
+use double_zero_sdk::commands::user::list::ListUserCommand;
 use prettytable::{format, row, Cell, Row, Table};
 
 #[derive(Args, Debug)]
 pub struct ListUserArgs {
     #[arg(long)]
-    pub code: Option<String>,    
-    #[arg(long)]
-    pub json: bool,
+    pub code: Option<String>,
 }
 
 impl ListUserArgs {
-    pub async fn execute<T:UserService + DeviceService>(self, client: &T) -> eyre::Result<()> {
-
-        if self.json {
-            println!("XX");
-            let users = client.get_users()?;
-            println!("{}", serde_json::to_string_pretty(&users)?);
-            return Ok(());
-        }
-
-
+    pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
         let mut table = Table::new();
         table.add_row(row![
             "pubkey",
@@ -35,10 +26,11 @@ impl ListUserArgs {
             "owner"
         ]);
 
-        let devices = client.get_devices()?;
+        let devices = ListDeviceCommand{}.execute(client)?;
 
-        for (pubkey, data) in client.get_users()? {
+        let users = ListUserCommand{}.execute(client)?;
 
+        for (pubkey, data) in users {
             let device_name = match &devices.get(&data.device_pk) {
                 Some(device) => &device.code,
                 None => &data.device_pk.to_string()

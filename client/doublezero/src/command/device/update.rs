@@ -1,8 +1,9 @@
-use std::str::FromStr;
 use clap::Args;
 use double_zero_sdk::*;
-use solana_sdk::pubkey::Pubkey;
-use crate::{helpers::print_error, requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON}};
+use double_zero_sdk::commands::device::get::GetDeviceCommand;
+use double_zero_sdk::commands::device::update::UpdateDeviceCommand;
+
+use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 
 #[derive(Args, Debug)]
 pub struct UpdateDeviceArgs {
@@ -21,25 +22,16 @@ impl UpdateDeviceArgs {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let pubkey = Pubkey::from_str(&self.pubkey)?;
+        let (_, device) = GetDeviceCommand{ pubkey_or_code: self.pubkey }.execute(client)?;
+        let _ = UpdateDeviceCommand {
+            index: device.index,
+            code: self.code,
+            device_type: Some(DeviceType::Switch),
+            public_ip: self.public_ip.map(|ip| ipv4_parse(&ip)),
+            dz_prefixes: self.dz_prefixes.map(|ip| networkv4_list_parse(&ip)),
+        }.execute(client)?;
 
-        match client.get_device(&pubkey) {
-            Ok(device) => {
-                match client.update_device(
-                    device.index,
-                    self.code,
-                    Some(DeviceType::Switch),
-                    self.public_ip.map(|ip| ipv4_parse(&ip)),
-                    self.dz_prefixes.map(|ip| networkv4_list_parse(&ip)),
-                    
-                ) {
-                    Ok(_) => println!("Device updated"),
-                    Err(e) => print_error(e),
-                }
-
-            },
-            Err(_) => println!("Device not found"),
-        }
+        println!("Device updated");
 
         Ok(())
     }

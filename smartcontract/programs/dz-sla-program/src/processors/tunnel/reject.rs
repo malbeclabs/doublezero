@@ -17,12 +17,12 @@ use solana_program::{
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct TunnelRejectArgs {
     pub index: u128,
-    pub error: String,
+    pub reason: String,
 }
 
 impl fmt::Debug for TunnelRejectArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "error: {}", self.error)
+        write!(f, "reason: {}", self.reason)
     }
 }
 
@@ -63,7 +63,7 @@ pub fn process_reject_tunnel(
     tunnel.tunnel_id = 0;
     tunnel.tunnel_net = ([0,0,0,0], 0);
     tunnel.status = TunnelStatus::Rejected;
-    msg!("Error: {:?}", value.error);
+    msg!("Reason: {:?}", value.reason);
 
     account_write(
         pda_account,

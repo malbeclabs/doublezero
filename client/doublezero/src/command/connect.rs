@@ -133,6 +133,7 @@ impl ProvisioningArgs {
         Ok(client_ip)
     }
 
+    #[allow(unused_assignments)]
     pub async fn look_for_user(
         &self,
         client: &DZClient,

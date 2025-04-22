@@ -21,8 +21,9 @@ func (m *MockBgpServer) DeletePeer(ip net.IP) error {
 	m.deletedPeer = ip
 	return nil
 }
-func (m *MockBgpServer) AddRoute() <-chan bgp.NLRI      { return nil }
-func (m *MockBgpServer) WithdrawRoute() <-chan bgp.NLRI { return nil }
+func (m *MockBgpServer) AddRoute() <-chan bgp.NLRI        { return nil }
+func (m *MockBgpServer) WithdrawRoute() <-chan bgp.NLRI   { return nil }
+func (m *MockBgpServer) GetPeerStatus(net.IP) bgp.Session { return bgp.Session{} }
 
 type MockNetlink struct {
 	routes        []*netlink.Route

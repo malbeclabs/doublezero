@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
 )
 
 type UserType int
@@ -174,11 +176,11 @@ type StatusRequest struct {
 }
 
 type StatusResponse struct {
-	TunnelName   string `json:"tunnel_name"`
-	TunnelSrc    net.IP `json:"tunnel_src"`
-	TunnelDst    net.IP `json:"tunnel_dst"`
-	DoubleZeroIP net.IP `json:"doublezero_ip"`
-	Status       string `json:"status"`
+	TunnelName       string      `json:"tunnel_name"`
+	TunnelSrc        net.IP      `json:"tunnel_src"`
+	TunnelDst        net.IP      `json:"tunnel_dst"`
+	DoubleZeroIP     net.IP      `json:"doublezero_ip"`
+	DoubleZeroStatus bgp.Session `json:"doublezero_status"`
 }
 
 func (n *NetlinkManager) ServeStatus(w http.ResponseWriter, r *http.Request) {
@@ -191,7 +193,7 @@ func (n *NetlinkManager) ServeStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	if status == nil {
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status": "disconnected"}`))
+		_, _ = w.Write([]byte(`{"doublezero_status": {"session_status": "disconnected"}}`))
 		return
 	}
 	if err = json.NewEncoder(w).Encode(status); err != nil {

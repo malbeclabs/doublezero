@@ -934,7 +934,7 @@ mod tests {
             index: 0,
             user_type: UserType::IBRLWithAllocatedIP,
             tenant_pk: Pubkey::new_unique(),
-            device_pk: user_pubkey,
+            device_pk: device_pubkey,
             cyoa_type: UserCYOA::GREOverDIA,
             client_ip: [192, 168, 1, 1],
             dz_ip: [0, 0, 0, 0],

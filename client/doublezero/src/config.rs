@@ -1,11 +1,9 @@
 use clap::Args;
 use clap::Subcommand;
 
-use self::get::*;
-use self::set::*;
+use double_zero_cli::config::get::GetConfigArgs;
+use double_zero_cli::config::set::SetConfigArgs;
 
-pub mod get;
-pub mod set;
 
 #[derive(Args, Debug)]
 pub struct ConfigArgs {

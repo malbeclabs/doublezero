@@ -1,44 +1,26 @@
-use crate::command::init::InitArgs;
-use crate::command::globalconfig::GlobalConfigArgs;
-
-use crate::command::keygen::KeyGenArgs;
-use crate::command::account::GetAccountArgs;
-use crate::command::address::AddressArgs;
-use crate::command::balance::BalanceArgs;
-use crate::command::exchange::ExchangeArgs;
-use crate::command::location::LocationArgs;
-use crate::command::tunnel::TunnelArgs;
-use crate::command::user::UserArgs;
-use crate::command::export::ExportArgs;
-use crate::command::latency::LatencyArgs;
-use crate::command::connect::ProvisioningArgs;
-use crate::DeviceArgs;
-
 use clap::Subcommand;
-use config::ConfigArgs;
-use disconnect::DecommissioningArgs;
-use log::LogArgs;
-use status::StatusArgs;
 
-pub mod address;
-pub mod keygen;
-pub mod balance;
-pub mod config;
-pub mod globalconfig;
-pub mod account;
-pub mod device;
-pub mod exchange;
-pub mod export;
-pub mod init;
-pub mod latency;
-pub mod location;
-pub mod tunnel;
-pub mod user;
-pub mod connect;
-pub mod disconnect;
-pub mod log;
-pub mod status;
-pub mod helpers;
+use double_zero_cli::init::InitArgs;
+
+use double_zero_cli::keygen::KeyGenArgs;
+use double_zero_cli::account::GetAccountArgs;
+use double_zero_cli::address::AddressArgs;
+use double_zero_cli::balance::BalanceArgs;
+use double_zero_cli::export::ExportArgs;
+use double_zero_cli::latency::LatencyArgs;
+use double_zero_cli::status::StatusArgs;
+use double_zero_cli::connect::ProvisioningArgs;
+use double_zero_cli::disconnect::DecommissioningArgs;
+use double_zero_cli::log::LogArgs;
+
+use crate::config::ConfigArgs;
+use crate::device::DeviceArgs;
+use crate::exchange::ExchangeArgs;
+use crate::globalconfig::GlobalConfigArgs;
+use crate::location::LocationArgs;
+use crate::tunnel::TunnelArgs;
+use crate::user::UserArgs;
+
 
 #[derive(Subcommand, Debug)]
 pub enum Command {

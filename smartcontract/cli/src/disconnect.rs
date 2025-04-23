@@ -6,7 +6,7 @@ use double_zero_sdk::{
 };
 
 use crate::{
-    command::helpers::init_command,
+    helpers::init_command,
     helpers::get_public_ipv4,
     requirements::{
         check_requirements, CHECK_BALANCE, CHECK_DOUBLEZEROD, CHECK_ID_JSON, CHECK_USER_ALLOWLIST,

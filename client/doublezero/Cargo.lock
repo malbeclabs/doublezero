@@ -1656,6 +1656,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "double-zero-cli"
+version = "0.1.0"
+dependencies = [
+ "actix-service",
+ "actix-tls",
+ "actix-web",
+ "anyhow",
+ "awc",
+ "chrono",
+ "clap 4.5.37",
+ "color-eyre",
+ "colored",
+ "console",
+ "dirs",
+ "double-zero-sdk",
+ "eyre",
+ "futures",
+ "futures-util",
+ "http 1.3.1",
+ "indicatif",
+ "mockall",
+ "prettytable-rs",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "solana-client",
+ "solana-program",
+ "solana-pubsub-client",
+ "solana-sdk",
+ "tokio",
+]
+
+[[package]]
 name = "double-zero-sdk"
 version = "0.1.0"
 dependencies = [
@@ -1715,6 +1748,7 @@ dependencies = [
  "colored",
  "console",
  "dirs",
+ "double-zero-cli",
  "double-zero-sdk",
  "eyre",
  "futures",

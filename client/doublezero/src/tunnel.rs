@@ -1,17 +1,13 @@
 use clap::Args;
 use clap::Subcommand;
 
-use self::create::*;
-use self::update::*;
-use self::list::*;
-use self::get::*;
-use self::delete::*;
+use double_zero_cli::tunnel::create::*;
+use double_zero_cli::tunnel::update::*;
+use double_zero_cli::tunnel::list::*;
+use double_zero_cli::tunnel::get::*;
+use double_zero_cli::tunnel::delete::*;
 
-pub mod create;
-pub mod update;
-pub mod list;
-pub mod get;
-pub mod delete;
+
 
 
 #[derive(Args, Debug)]

@@ -1,20 +1,26 @@
-use crate::command::device::*;
-use crate::command::exchange::*;
-use crate::command::location::*;
-use crate::command::tunnel::*;
-use crate::command::user::*;
-
 use clap::Parser;
 use colored::Colorize;
-use command::config::ConfigCommands;
-use command::globalconfig::GlobalConfigCommands;
 
-use command::Command;
+use config::ConfigCommands;
+use device::DeviceCommands;
 use double_zero_sdk::DZClient;
 
 mod command;
-mod helpers;
-mod requirements;
+mod config;
+mod device;
+mod exchange;
+mod globalconfig;
+mod location;
+mod tunnel;
+mod user;
+
+use command::Command;
+use exchange::ExchangeCommands;
+use globalconfig::GlobalConfigCommands;
+use location::LocationCommands;
+use tunnel::TunnelCommands;
+use user::UserCommands;
+
 
 include!(concat!(env!("OUT_DIR"), "/version.rs"));
 
@@ -67,9 +73,9 @@ async fn main() -> eyre::Result<()> {
             GlobalConfigCommands::Set(args) => args.execute(&client).await,
             GlobalConfigCommands::Get(args) => args.execute(&client).await,
             GlobalConfigCommands::Allowlist(command) => match command.command {
-                crate::command::globalconfig::allowlist::AllowlistCommands::Get(args) => args.execute(&client).await,
-                crate::command::globalconfig::allowlist::AllowlistCommands::Add(args) => args.execute(&client).await,
-                crate::command::globalconfig::allowlist::AllowlistCommands::Remove(args) => args.execute(&client).await,
+                crate::globalconfig::AllowlistCommands::Get(args) => args.execute(&client).await,
+                crate::globalconfig::AllowlistCommands::Add(args) => args.execute(&client).await,
+                crate::globalconfig::AllowlistCommands::Remove(args) => args.execute(&client).await,
             },
         },
 
@@ -96,9 +102,9 @@ async fn main() -> eyre::Result<()> {
             DeviceCommands::Get(args) => args.execute(&client).await,
             DeviceCommands::Delete(args) => args.execute(&client).await,
             DeviceCommands::Allowlist(command) => match command.command {
-                crate::command::device::allowlist::AllowlistCommands::Get(args) => args.execute(&client).await,
-                crate::command::device::allowlist::AllowlistCommands::Add(args) => args.execute(&client).await,
-                crate::command::device::allowlist::AllowlistCommands::Remove(args) => args.execute(&client).await, 
+                crate::device::AllowlistCommands::Get(args) => args.execute(&client).await,
+                crate::device::AllowlistCommands::Add(args) => args.execute(&client).await,
+                crate::device::AllowlistCommands::Remove(args) => args.execute(&client).await, 
             }
         },
         Command::Tunnel(command) => match command.command {
@@ -115,9 +121,9 @@ async fn main() -> eyre::Result<()> {
             UserCommands::Get(args) => args.execute(&client).await,
             UserCommands::Delete(args) => args.execute(&client).await,
             UserCommands::Allowlist(command) => match command.command {
-                crate::command::user::allowlist::AllowlistCommands::Get(args) => args.execute(&client).await,
-                crate::command::user::allowlist::AllowlistCommands::Add(args) => args.execute(&client).await,
-                crate::command::user::allowlist::AllowlistCommands::Remove(args) => args.execute(&client).await,
+                crate::user::AllowlistCommands::Get(args) => args.execute(&client).await,
+                crate::user::AllowlistCommands::Add(args) => args.execute(&client).await,
+                crate::user::AllowlistCommands::Remove(args) => args.execute(&client).await,
             },
             UserCommands::RequestBan(args) => args.execute(&client).await,
         },

@@ -1,17 +1,12 @@
 use clap::Args;
 use clap::Subcommand;
 
-use self::create::*;
-use self::update::*;
-use self::list::*;
-use self::get::*;
-use self::delete::*;
+use double_zero_cli::exchange::create::*;
+use double_zero_cli::exchange::update::*;
+use double_zero_cli::exchange::list::*;
+use double_zero_cli::exchange::get::*;
+use double_zero_cli::exchange::delete::*;
 
-pub mod create;
-pub mod update;
-pub mod list;
-pub mod get;
-pub mod delete;
 
 
 #[derive(Args, Debug)]
@@ -28,3 +23,4 @@ pub enum ExchangeCommands {
     Get(GetExchangeArgs),
     Delete(DeleteExchangeArgs)
 }
+

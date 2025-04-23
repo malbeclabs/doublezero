@@ -27,7 +27,6 @@ impl ListTunnelArgs {
 
 
         let devices = ListDeviceCommand{}.execute(client)?;
-
         let tunnels = ListTunnelCommand{}.execute(client)?;
 
         for (pubkey, data) in tunnels {

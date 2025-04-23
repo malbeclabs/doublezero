@@ -1,18 +1,11 @@
 use clap::Args;
 use clap::Subcommand;
 
-use self::create::*;
-use self::update::*;
-use self::list::*;
-use self::get::*;
-use self::delete::*;
-
-pub mod create;
-pub mod update;
-pub mod list;
-pub mod get;
-pub mod delete;
-
+use double_zero_cli::location::create::*;
+use double_zero_cli::location::update::*;
+use double_zero_cli::location::list::*;
+use double_zero_cli::location::get::*;
+use double_zero_cli::location::delete::*;
 
 #[derive(Args, Debug)]
 pub struct LocationArgs {
@@ -28,3 +21,4 @@ pub enum LocationCommands {
     Get(GetLocationArgs),
     Delete(DeleteLocationArgs)
 }
+

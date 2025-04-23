@@ -1,15 +1,15 @@
 use clap::Args;
 use clap::Subcommand;
 
-use double_zero_cli::user::create::*;
-use double_zero_cli::user::update::*;
-use double_zero_cli::user::list::*;
-use double_zero_cli::user::get::*;
-use double_zero_cli::user::delete::*;
-use double_zero_cli::user::request_ban::*;
-use double_zero_cli::user::allowlist::get::GetAllowlistArgs;
-use double_zero_cli::user::allowlist::add::*;
-use double_zero_cli::user::allowlist::remove::*;
+use doublezero_cli::user::create::*;
+use doublezero_cli::user::update::*;
+use doublezero_cli::user::list::*;
+use doublezero_cli::user::get::*;
+use doublezero_cli::user::delete::*;
+use doublezero_cli::user::request_ban::*;
+use doublezero_cli::user::allowlist::get::GetAllowlistArgs;
+use doublezero_cli::user::allowlist::add::*;
+use doublezero_cli::user::allowlist::remove::*;
 
 #[derive(Args, Debug)]
 pub struct UserArgs {

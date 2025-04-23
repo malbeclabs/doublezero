@@ -1,6 +1,6 @@
 use clap::Args;
-use double_zero_sdk::*;
-use double_zero_sdk::commands::exchange::get::GetExchangeCommand;
+use doublezero_sdk::*;
+use doublezero_sdk::commands::exchange::get::GetExchangeCommand;
 
 #[derive(Args, Debug)]
 pub struct GetExchangeArgs {

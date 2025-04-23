@@ -1,5 +1,5 @@
 use clap::Args;
-use double_zero_sdk::*;
+use doublezero_sdk::*;
 
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 

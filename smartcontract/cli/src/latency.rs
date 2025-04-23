@@ -1,9 +1,9 @@
 use std::str::FromStr;
 use clap::Args;
-use double_zero_sdk::{DZClient, ServiceController};
+use doublezero_sdk::{DZClient, ServiceController};
 use prettytable::{format, row, Cell, Row, Table};
 use solana_sdk::pubkey::Pubkey;
-use double_zero_sdk::commands::device::list::ListDeviceCommand;
+use doublezero_sdk::commands::device::list::ListDeviceCommand;
 
 use crate::requirements::{check_requirements, CHECK_DOUBLEZEROD};
 

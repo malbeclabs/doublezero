@@ -1,12 +1,12 @@
 use clap::Args;
 use clap::Subcommand;
 
-use double_zero_cli::globalconfig::set::*;
-use double_zero_cli::globalconfig::get::*;
+use doublezero_cli::globalconfig::set::*;
+use doublezero_cli::globalconfig::get::*;
 
-use double_zero_cli::globalconfig::allowlist::get::*;
-use double_zero_cli::globalconfig::allowlist::add::*;
-use double_zero_cli::globalconfig::allowlist::remove::*;
+use doublezero_cli::globalconfig::allowlist::get::*;
+use doublezero_cli::globalconfig::allowlist::add::*;
+use doublezero_cli::globalconfig::allowlist::remove::*;
 
 
 

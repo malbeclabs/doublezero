@@ -1,5 +1,5 @@
 use clap::Args;
-use double_zero_sdk::DZClient;
+use doublezero_sdk::DZClient;
 use crate::helpers::parse_pubkey;
 
 #[derive(Args, Debug)]

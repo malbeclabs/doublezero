@@ -1,8 +1,8 @@
 use clap::Args;
 use crate::helpers::{parse_pubkey};
-use double_zero_sdk::*;
-use double_zero_sdk::commands::device::get::GetDeviceCommand;
-use double_zero_sdk::commands::user::create::CreateUserCommand;
+use doublezero_sdk::*;
+use doublezero_sdk::commands::device::get::GetDeviceCommand;
+use doublezero_sdk::commands::user::create::CreateUserCommand;
 
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 

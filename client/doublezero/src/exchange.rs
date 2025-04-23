@@ -1,11 +1,11 @@
 use clap::Args;
 use clap::Subcommand;
 
-use double_zero_cli::exchange::create::*;
-use double_zero_cli::exchange::update::*;
-use double_zero_cli::exchange::list::*;
-use double_zero_cli::exchange::get::*;
-use double_zero_cli::exchange::delete::*;
+use doublezero_cli::exchange::create::*;
+use doublezero_cli::exchange::update::*;
+use doublezero_cli::exchange::list::*;
+use doublezero_cli::exchange::get::*;
+use doublezero_cli::exchange::delete::*;
 
 
 

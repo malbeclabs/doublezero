@@ -1,11 +1,11 @@
 use clap::Args;
 use clap::Subcommand;
 
-use double_zero_cli::location::create::*;
-use double_zero_cli::location::update::*;
-use double_zero_cli::location::list::*;
-use double_zero_cli::location::get::*;
-use double_zero_cli::location::delete::*;
+use doublezero_cli::location::create::*;
+use doublezero_cli::location::update::*;
+use doublezero_cli::location::list::*;
+use doublezero_cli::location::get::*;
+use doublezero_cli::location::delete::*;
 
 #[derive(Args, Debug)]
 pub struct LocationArgs {

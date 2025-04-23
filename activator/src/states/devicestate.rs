@@ -1,4 +1,4 @@
-use double_zero_sdk::{ipv4_to_string, networkv4_list_to_string, Device, IpV4};
+use doublezero_sdk::{ipv4_to_string, networkv4_list_to_string, Device, IpV4};
 use crate::{idallocator::IDAllocator, ipblockallocator::IPBlockAllocator};
 
 #[derive(Debug)]

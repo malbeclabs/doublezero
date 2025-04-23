@@ -1656,70 +1656,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "double-zero-cli"
-version = "0.1.0"
-dependencies = [
- "actix-service",
- "actix-tls",
- "actix-web",
- "anyhow",
- "awc",
- "chrono",
- "clap 4.5.37",
- "color-eyre",
- "colored",
- "console",
- "dirs",
- "double-zero-sdk",
- "eyre",
- "futures",
- "futures-util",
- "http 1.3.1",
- "indicatif",
- "mockall",
- "prettytable-rs",
- "serde",
- "serde_json",
- "serde_yaml",
- "solana-client",
- "solana-program",
- "solana-pubsub-client",
- "solana-sdk",
- "tokio",
-]
-
-[[package]]
-name = "double-zero-sdk"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "bincode",
- "chrono",
- "ctrlc",
- "directories-next",
- "dirs-next",
- "double-zero-sla-program",
- "eyre",
- "futures",
- "hyper",
- "hyperlocal",
- "lazy_static",
- "mockall",
- "serde",
- "serde_json",
- "serde_yaml",
- "solana-account-decoder",
- "solana-client",
- "solana-program",
- "solana-pubsub-client",
- "solana-rpc-client-api",
- "solana-sdk",
- "solana-transaction-status",
- "thiserror 2.0.12",
- "tokio",
-]
-
-[[package]]
 name = "double-zero-sla-program"
 version = "0.1.0"
 dependencies = [
@@ -1748,8 +1684,8 @@ dependencies = [
  "colored",
  "console",
  "dirs",
- "double-zero-cli",
- "double-zero-sdk",
+ "doublezero_cli",
+ "doublezero_sdk",
  "eyre",
  "futures",
  "futures-util",
@@ -1764,6 +1700,70 @@ dependencies = [
  "solana-program",
  "solana-pubsub-client",
  "solana-sdk",
+ "tokio",
+]
+
+[[package]]
+name = "doublezero_cli"
+version = "0.1.0"
+dependencies = [
+ "actix-service",
+ "actix-tls",
+ "actix-web",
+ "anyhow",
+ "awc",
+ "chrono",
+ "clap 4.5.37",
+ "color-eyre",
+ "colored",
+ "console",
+ "dirs",
+ "doublezero_sdk",
+ "eyre",
+ "futures",
+ "futures-util",
+ "http 1.3.1",
+ "indicatif",
+ "mockall",
+ "prettytable-rs",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "solana-client",
+ "solana-program",
+ "solana-pubsub-client",
+ "solana-sdk",
+ "tokio",
+]
+
+[[package]]
+name = "doublezero_sdk"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "bincode",
+ "chrono",
+ "ctrlc",
+ "directories-next",
+ "dirs-next",
+ "double-zero-sla-program",
+ "eyre",
+ "futures",
+ "hyper",
+ "hyperlocal",
+ "lazy_static",
+ "mockall",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "solana-account-decoder",
+ "solana-client",
+ "solana-program",
+ "solana-pubsub-client",
+ "solana-rpc-client-api",
+ "solana-sdk",
+ "solana-transaction-status",
+ "thiserror 2.0.12",
  "tokio",
 ]
 

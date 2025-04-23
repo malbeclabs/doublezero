@@ -1,5 +1,5 @@
 use clap::Args;
-use double_zero_sdk::{get_doublezero_pubkey, DZClient};
+use doublezero_sdk::{get_doublezero_pubkey, DZClient};
 use solana_sdk::signer::Signer;
 
 use crate::requirements::{check_requirements, CHECK_ID_JSON};

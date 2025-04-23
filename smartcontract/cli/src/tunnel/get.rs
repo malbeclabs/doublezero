@@ -1,6 +1,6 @@
 use clap::Args;
-use double_zero_sdk::*;
-use double_zero_sdk::commands::tunnel::get::GetTunnelCommand;
+use doublezero_sdk::*;
+use doublezero_sdk::commands::tunnel::get::GetTunnelCommand;
 
 #[derive(Args, Debug)]
 pub struct GetTunnelArgs {

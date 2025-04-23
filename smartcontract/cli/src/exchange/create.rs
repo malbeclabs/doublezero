@@ -1,6 +1,6 @@
 use clap::Args;
-use double_zero_sdk::*;
-use double_zero_sdk::commands::exchange::create::CreateExchangeCommand;
+use doublezero_sdk::*;
+use doublezero_sdk::commands::exchange::create::CreateExchangeCommand;
 
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 

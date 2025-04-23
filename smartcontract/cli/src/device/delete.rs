@@ -1,8 +1,8 @@
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 use clap::Args;
-use double_zero_sdk::*;
-use double_zero_sdk::commands::device::get::GetDeviceCommand;
-use double_zero_sdk::commands::device::delete::DeleteDeviceCommand;
+use doublezero_sdk::*;
+use doublezero_sdk::commands::device::get::GetDeviceCommand;
+use doublezero_sdk::commands::device::delete::DeleteDeviceCommand;
 
 #[derive(Args, Debug)]
 pub struct DeleteDeviceArgs {

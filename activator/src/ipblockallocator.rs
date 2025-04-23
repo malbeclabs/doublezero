@@ -1,7 +1,7 @@
 use std::net::Ipv4Addr;
 
 use bitvec::prelude::*;
-use double_zero_sdk::{networkv4_to_ipnetwork, IpV4, NetworkV4};
+use doublezero_sdk::{networkv4_to_ipnetwork, IpV4, NetworkV4};
 use ipnetwork::Ipv4Network;
 
 #[derive(Debug)]

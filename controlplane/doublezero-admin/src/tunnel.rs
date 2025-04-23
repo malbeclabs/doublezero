@@ -1,11 +1,11 @@
 use clap::Args;
 use clap::Subcommand;
 
-use double_zero_cli::tunnel::create::*;
-use double_zero_cli::tunnel::update::*;
-use double_zero_cli::tunnel::list::*;
-use double_zero_cli::tunnel::get::*;
-use double_zero_cli::tunnel::delete::*;
+use doublezero_cli::tunnel::create::*;
+use doublezero_cli::tunnel::update::*;
+use doublezero_cli::tunnel::list::*;
+use doublezero_cli::tunnel::get::*;
+use doublezero_cli::tunnel::delete::*;
 
 
 

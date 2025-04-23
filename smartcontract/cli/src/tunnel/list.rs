@@ -1,7 +1,7 @@
 use clap::Args;
-use double_zero_sdk::*;
-use double_zero_sdk::commands::device::list::ListDeviceCommand;
-use double_zero_sdk::commands::tunnel::list::ListTunnelCommand;
+use doublezero_sdk::*;
+use doublezero_sdk::commands::device::list::ListDeviceCommand;
+use doublezero_sdk::commands::tunnel::list::ListTunnelCommand;
 use prettytable::{format, row, Cell, Row, Table};
 
 #[derive(Args, Debug)]

@@ -1,6 +1,6 @@
 use clap::Args;
-use double_zero_sdk::*;
-use double_zero_sdk::commands::exchange::list::ListExchangeCommand;
+use doublezero_sdk::*;
+use doublezero_sdk::commands::exchange::list::ListExchangeCommand;
 use prettytable::{format, row, Cell, Row, Table};
 
 #[derive(Args, Debug)]

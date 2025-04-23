@@ -1,8 +1,8 @@
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 use clap::Args;
-use double_zero_sdk::*;
-use double_zero_sdk::commands::tunnel::get::GetTunnelCommand;
-use double_zero_sdk::commands::tunnel::delete::DeleteTunnelCommand;
+use doublezero_sdk::*;
+use doublezero_sdk::commands::tunnel::get::GetTunnelCommand;
+use doublezero_sdk::commands::tunnel::delete::DeleteTunnelCommand;
 
 #[derive(Args, Debug)]
 pub struct DeleteTunnelArgs {

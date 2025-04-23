@@ -1,8 +1,8 @@
 use clap::Args;
-use double_zero_sdk::*;
-use double_zero_sdk::commands::location::get::GetLocationCommand;
-use double_zero_sdk::commands::exchange::get::GetExchangeCommand;
-use double_zero_sdk::commands::device::create::CreateDeviceCommand;
+use doublezero_sdk::*;
+use doublezero_sdk::commands::location::get::GetLocationCommand;
+use doublezero_sdk::commands::exchange::get::GetExchangeCommand;
+use doublezero_sdk::commands::device::create::CreateDeviceCommand;
 
 use crate::helpers::parse_pubkey;
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};

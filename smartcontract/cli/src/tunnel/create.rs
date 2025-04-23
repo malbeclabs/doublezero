@@ -1,7 +1,7 @@
 use clap::Args;
-use double_zero_sdk::*;
-use double_zero_sdk::commands::tunnel::create::CreateTunnelCommand;
-use double_zero_sdk::commands::device::get::GetDeviceCommand;
+use doublezero_sdk::*;
+use doublezero_sdk::commands::tunnel::create::CreateTunnelCommand;
+use doublezero_sdk::commands::device::get::GetDeviceCommand;
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 use crate::helpers::parse_pubkey;
 

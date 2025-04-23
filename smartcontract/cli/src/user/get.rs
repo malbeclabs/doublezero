@@ -1,8 +1,8 @@
 use clap::Args;
 use std::str::FromStr;
-use double_zero_sdk::*;
+use doublezero_sdk::*;
 use solana_sdk::pubkey::Pubkey;
-use double_zero_sdk::commands::user::get::GetUserCommand;
+use doublezero_sdk::commands::user::get::GetUserCommand;
 
 #[derive(Args, Debug)]
 pub struct GetUserArgs {

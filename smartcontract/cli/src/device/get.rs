@@ -1,6 +1,6 @@
 use clap::Args;
-use double_zero_sdk::*;
-use double_zero_sdk::commands::device::get::GetDeviceCommand;
+use doublezero_sdk::*;
+use doublezero_sdk::commands::device::get::GetDeviceCommand;
 
 #[derive(Args, Debug)]
 pub struct GetDeviceArgs {

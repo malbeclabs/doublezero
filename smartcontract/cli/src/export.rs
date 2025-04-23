@@ -1,11 +1,10 @@
 use clap::Args;
-use double_zero_sdk::*;
-use double_zero_sdk::commands::location::list::ListLocationCommand;
-use double_zero_sdk::commands::exchange::list::ListExchangeCommand;
-use double_zero_sdk::commands::device::list::ListDeviceCommand;
-use double_zero_sdk::commands::tunnel::list::ListTunnelCommand;
-use double_zero_sdk::commands::user::list::ListUserCommand;
-
+use doublezero_sdk::*;
+use doublezero_sdk::commands::location::list::ListLocationCommand;
+use doublezero_sdk::commands::exchange::list::ListExchangeCommand;
+use doublezero_sdk::commands::device::list::ListDeviceCommand;
+use doublezero_sdk::commands::tunnel::list::ListTunnelCommand;
+use doublezero_sdk::commands::user::list::ListUserCommand;
 
 use serde::{Deserialize, Serialize};
 use std::fs;

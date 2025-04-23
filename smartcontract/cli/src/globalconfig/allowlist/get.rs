@@ -1,5 +1,5 @@
 use clap::Args;
-use double_zero_sdk::*;
+use doublezero_sdk::*;
 
 #[derive(Args, Debug)]
 pub struct GetAllowlistArgs {}

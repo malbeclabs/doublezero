@@ -1,8 +1,8 @@
 use clap::Args;
-use double_zero_sdk::*;
-use double_zero_sdk::commands::location::list::ListLocationCommand;
-use double_zero_sdk::commands::exchange::list::ListExchangeCommand;
-use double_zero_sdk::commands::device::list::ListDeviceCommand;
+use doublezero_sdk::*;
+use doublezero_sdk::commands::location::list::ListLocationCommand;
+use doublezero_sdk::commands::exchange::list::ListExchangeCommand;
+use doublezero_sdk::commands::device::list::ListDeviceCommand;
 use prettytable::{format, row, Cell, Row, Table};
 
 #[derive(Args, Debug)]

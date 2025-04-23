@@ -1,5 +1,5 @@
 use clap::Args;
-use double_zero_sdk::{DZClient, ServiceController};
+use doublezero_sdk::{DZClient, ServiceController};
 
 use crate::{
     helpers::print_error,

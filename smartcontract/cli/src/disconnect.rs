@@ -1,7 +1,7 @@
 use color_eyre::owo_colors::OwoColorize;
 
 use clap::Args;
-use double_zero_sdk::{
+use doublezero_sdk::{
     ipv4_parse, DZClient, RemoveTunnelArgs, ServiceController, 
 };
 
@@ -13,8 +13,8 @@ use crate::{
     },
 };
 
-use double_zero_sdk::commands::user::list::ListUserCommand;
-use double_zero_sdk::commands::user::delete::DeleteUserCommand;
+use doublezero_sdk::commands::user::list::ListUserCommand;
+use doublezero_sdk::commands::user::delete::DeleteUserCommand;
 
 #[derive(Args, Debug)]
 pub struct DecommissioningArgs {

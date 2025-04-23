@@ -1,8 +1,8 @@
 use clap::Args;
 use clap::Subcommand;
 
-use double_zero_cli::config::get::GetConfigArgs;
-use double_zero_cli::config::set::SetConfigArgs;
+use doublezero_cli::config::get::GetConfigArgs;
+use doublezero_cli::config::set::SetConfigArgs;
 
 
 #[derive(Args, Debug)]

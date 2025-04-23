@@ -1,17 +1,17 @@
 use clap::Subcommand;
 
-use double_zero_cli::init::InitArgs;
+use doublezero_cli::init::InitArgs;
 
-use double_zero_cli::keygen::KeyGenArgs;
-use double_zero_cli::account::GetAccountArgs;
-use double_zero_cli::address::AddressArgs;
-use double_zero_cli::balance::BalanceArgs;
-use double_zero_cli::export::ExportArgs;
-use double_zero_cli::latency::LatencyArgs;
-use double_zero_cli::status::StatusArgs;
-use double_zero_cli::connect::ProvisioningArgs;
-use double_zero_cli::disconnect::DecommissioningArgs;
-use double_zero_cli::log::LogArgs;
+use doublezero_cli::keygen::KeyGenArgs;
+use doublezero_cli::account::GetAccountArgs;
+use doublezero_cli::address::AddressArgs;
+use doublezero_cli::balance::BalanceArgs;
+use doublezero_cli::export::ExportArgs;
+use doublezero_cli::latency::LatencyArgs;
+use doublezero_cli::status::StatusArgs;
+use doublezero_cli::connect::ProvisioningArgs;
+use doublezero_cli::disconnect::DecommissioningArgs;
+use doublezero_cli::log::LogArgs;
 
 use crate::config::ConfigArgs;
 use crate::device::DeviceArgs;

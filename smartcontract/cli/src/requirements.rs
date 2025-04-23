@@ -1,5 +1,5 @@
 use colored::Colorize;
-use double_zero_sdk::{
+use doublezero_sdk::{
     get_doublezero_pubkey, service_controller_can_open, service_controller_check, DZClient,
     DoubleZeroClient,
 };

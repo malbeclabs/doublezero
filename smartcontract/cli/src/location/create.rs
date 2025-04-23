@@ -1,5 +1,5 @@
 use clap::Args;
-use double_zero_sdk::*;
+use doublezero_sdk::*;
 
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 
@@ -20,10 +20,10 @@ pub struct CreateLocationArgs {
 }
 
 impl CreateLocationArgs {
-     pub async fn execute(&self, client: &DZClient) -> eyre::Result<()> {
+    pub async fn execute(&self, client: &DZClient) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
-
+        
         let (_signature, pubkey) = CreateLocationCommand {
             code: self.code.clone(),
             name: self.name.clone(),

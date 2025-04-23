@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use double_zero_sdk::{
+use doublezero_sdk::{
     commands::{
         device::{
             activate::ActivateDeviceCommand, deactivate::DeactivateDeviceCommand,
@@ -490,7 +490,7 @@ fn process_user_event(
 
 #[cfg(test)]
 mod tests {
-    use double_zero_sdk::{
+    use doublezero_sdk::{
         AccountType, DeviceType, MockDoubleZeroClient, TunnelTunnelType, UserCYOA,
     };
     use double_zero_sla_program::{

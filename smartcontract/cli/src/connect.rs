@@ -4,17 +4,17 @@ use indicatif::ProgressBar;
 use std::str::FromStr;
 
 use clap::{Args, ValueEnum};
-use double_zero_sdk::{
+use doublezero_sdk::{
     ipv4_parse, ipv4_to_string, networkv4_to_string, DZClient, IpV4,
     NetworkV4, ProvisioningRequest, ServiceController, User, UserCYOA, 
     UserStatus, UserType, 
 };
 
-use double_zero_sdk::commands::device::list::ListDeviceCommand;
-use double_zero_sdk::commands::device::get::GetDeviceCommand;
-use double_zero_sdk::commands::user::list::ListUserCommand;
-use double_zero_sdk::commands::user::create::CreateUserCommand;
-use double_zero_sdk::commands::user::get::GetUserCommand;
+use doublezero_sdk::commands::device::list::ListDeviceCommand;
+use doublezero_sdk::commands::device::get::GetDeviceCommand;
+use doublezero_sdk::commands::user::list::ListUserCommand;
+use doublezero_sdk::commands::user::create::CreateUserCommand;
+use doublezero_sdk::commands::user::get::GetUserCommand;
 
 use solana_sdk::pubkey::Pubkey;
 

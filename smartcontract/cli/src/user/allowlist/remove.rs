@@ -1,9 +1,9 @@
 use std::str::FromStr;
 
 use clap::Args;
-use double_zero_sdk::*;
+use doublezero_sdk::*;
 use solana_sdk::pubkey::Pubkey;
-use double_zero_sdk::commands::allowlist::user::remove::RemoveUserAllowlistCommand;
+use doublezero_sdk::commands::allowlist::user::remove::RemoveUserAllowlistCommand;
 
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 

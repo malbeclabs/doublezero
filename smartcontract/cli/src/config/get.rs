@@ -1,5 +1,5 @@
 use clap::Args;
-use double_zero_sdk::{convert_url_to_ws, read_doublezero_config, DZClient};
+use doublezero_sdk::{convert_url_to_ws, read_doublezero_config, DZClient};
 
 #[derive(Args, Debug)]
 pub struct GetConfigArgs {}
@@ -13,7 +13,7 @@ impl GetConfigArgs {
             config.json_rpc_url,
             config.websocket_url.unwrap_or(format!("{} (computed)", convert_url_to_ws(&config.json_rpc_url))),
             config.keypair_path,
-            config.program_id.unwrap_or(format!("{} (computed)", double_zero_sdk::testnet::program_id::id())));
+            config.program_id.unwrap_or(format!("{} (computed)", doublezero_sdk::testnet::program_id::id())));
 
         Ok(())
     }

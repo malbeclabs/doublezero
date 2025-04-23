@@ -3,7 +3,7 @@ use colored::Colorize;
 
 use config::ConfigCommands;
 use device::DeviceCommands;
-use double_zero_sdk::DZClient;
+use doublezero_sdk::DZClient;
 
 mod command;
 mod config;

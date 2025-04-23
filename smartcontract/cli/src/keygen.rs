@@ -1,6 +1,6 @@
 use clap::Args;
 use colored::Colorize;
-use double_zero_sdk::{create_new_pubkey_user, DZClient};
+use doublezero_sdk::{create_new_pubkey_user, DZClient};
 use solana_sdk::signer::Signer;
 
 #[derive(Args, Debug)]

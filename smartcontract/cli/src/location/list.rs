@@ -1,6 +1,6 @@
 use clap::Args;
-use double_zero_sdk::*;
-use double_zero_sdk::commands::location::list::ListLocationCommand;
+use doublezero_sdk::*;
+use doublezero_sdk::commands::location::list::ListLocationCommand;
 use prettytable::{format, row, Cell, Row, Table};
 
 #[derive(Args, Debug)]

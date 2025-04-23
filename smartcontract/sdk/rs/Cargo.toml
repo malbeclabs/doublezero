@@ -1,10 +1,10 @@
 [package]
-name = "double-zero-sdk"
+name = "doublezero_sdk"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "double_zero_sdk"
+name = "doublezero_sdk"
 
 [dependencies]
 solana-program = "1.18.26"

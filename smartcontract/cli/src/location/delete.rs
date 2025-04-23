@@ -1,8 +1,8 @@
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 use clap::Args;
-use double_zero_sdk::*;
-use double_zero_sdk::commands::location::get::GetLocationCommand;
-use double_zero_sdk::commands::location::delete::DeleteLocationCommand;
+use doublezero_sdk::*;
+use doublezero_sdk::commands::location::get::GetLocationCommand;
+use doublezero_sdk::commands::location::delete::DeleteLocationCommand;
 
 #[derive(Args, Debug)]
 pub struct DeleteLocationArgs {

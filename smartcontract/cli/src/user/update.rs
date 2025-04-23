@@ -27,7 +27,7 @@ impl UpdateUserArgs {
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
         let pubkey = Pubkey::from_str(&self.pubkey)?;
-        let (_, user) = GetUserCommand { pubkey: pubkey }.execute(client)?;
+        let (_, user) = GetUserCommand { pubkey }.execute(client)?;
         let _ = UpdateUserCommand {
             index: user.index,             
             user_type: None,

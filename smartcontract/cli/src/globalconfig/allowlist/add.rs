@@ -26,7 +26,7 @@ impl AddAllowlistArgs {
             }
         };
 
-        AddFoundationAllowlistCommand { pubkey: pubkey }.execute(client)?;
+        AddFoundationAllowlistCommand { pubkey }.execute(client)?;
 
         println!("Updated allowlist");
 

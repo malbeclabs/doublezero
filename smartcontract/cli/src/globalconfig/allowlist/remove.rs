@@ -26,7 +26,7 @@ impl RemoveAllowlistArgs {
             }
         };
 
-        RemoveDeviceAllowlistCommand { pubkey: pubkey }.execute(client)?;
+        RemoveDeviceAllowlistCommand { pubkey }.execute(client)?;
 
         println!("Updated allowlist");
 

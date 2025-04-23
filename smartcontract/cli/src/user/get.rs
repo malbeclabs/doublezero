@@ -14,7 +14,7 @@ impl GetUserArgs {
     pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
 
         let pubkey = Pubkey::from_str(&self.pubkey)?;
-        let (pubkey, user) = GetUserCommand{ pubkey: pubkey }.execute(client)?;
+        let (pubkey, user) = GetUserCommand{ pubkey }.execute(client)?;
 
         println!(
                 "pubkey: {} user_type: {} device: {} cyoa_type: {} client_ip: {} tunnel_net: {} dz_ip: {} status: {} owner: {}",

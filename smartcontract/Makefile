@@ -6,14 +6,17 @@ LDFLAGS=
 test:
 	cargo test --manifest-path ./programs/dz-sla-program/Cargo.toml
 	cargo test --manifest-path ./sdk/rs/Cargo.toml
+	cargo test --manifest-path ./cli/Cargo.toml
 	go test ./sdk/go/
 
 .PHONY: lint
 lint:
 	cargo clippy --manifest-path ./programs/dz-sla-program/Cargo.toml
 	cargo clippy --manifest-path ./sdk/rs/Cargo.toml
+	cargo clippy --manifest-path ./cli/Cargo.toml
 
 .PHONY: build
 build:
 	cargo build -v $(LDFLAGS) --manifest-path ./programs/dz-sla-program/Cargo.toml
 	cargo build -v $(LDFLAGS) --manifest-path ./sdk/rs/Cargo.toml
+	cargo build -v $(LDFLAGS) --manifest-path ./cli/Cargo.toml

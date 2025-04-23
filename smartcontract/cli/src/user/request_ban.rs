@@ -23,7 +23,7 @@ impl RequestBanUserArgs {
         )?;
 
         let pubkey = Pubkey::from_str(&self.pubkey)?;
-        let (_, user) = GetUserCommand{ pubkey: pubkey }.execute(client)?;
+        let (_, user) = GetUserCommand{ pubkey }.execute(client)?;
 
         RequestBanUserCommand { index: user.index, }.execute(client)?;
 

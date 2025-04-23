@@ -18,7 +18,7 @@ impl DeleteUserArgs {
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
         let pubkey = Pubkey::from_str(&self.pubkey)?;
-        let (_, user) = GetUserCommand{ pubkey: pubkey }.execute(client)?;
+        let (_, user) = GetUserCommand{ pubkey }.execute(client)?;
         let _ = DeleteUserCommand{ index: user.index }.execute(client)?;
             println!("User deleted");
 

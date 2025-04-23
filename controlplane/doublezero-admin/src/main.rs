@@ -26,7 +26,7 @@ include!(concat!(env!("OUT_DIR"), "/version.rs"));
 
 #[derive(Parser, Debug)]
 #[command(term_width = 0)]
-#[command(name = "DoubleZero")]
+#[command(name = "DoubleZeroAdmin")]
 #[command(version = APP_VERSION)]
 #[command(long_version = APP_LONG_VERSION)]
 #[command(about = "Double Zero contributor tool", long_about = None)]

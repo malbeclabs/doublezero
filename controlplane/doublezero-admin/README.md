@@ -6,14 +6,14 @@ The DoubleZero client allows you to interact with the on-chain smart contract, a
 
 ### Command line utility
 ```console
-doublezero --help
+doublezero-admin --help
 ```
 
 Output:
 ```
 Double Zero SLA client tool
 
-Usage: doublezero [OPTIONS] <COMMAND>
+Usage: doublezero-admin [OPTIONS] <COMMAND>
 
 Commands:
   location  
@@ -32,12 +32,12 @@ Options:
 
 ### Command user
 ```console
-doublezero user --help
+doublezero-admin user --help
 ```
 
 Output:
 ```
-Usage: doublezero user <COMMAND>
+Usage: doublezero-admin user <COMMAND>
 
 Commands:
   create    
@@ -51,12 +51,12 @@ Options:
 
 ### Command user create
 ```console
-doublezero user create --help
+doublezero-admin user create --help
 ```
 
 Output:
 ```
-Usage: doublezero user create --user-type <USER_TYPE> --device <DEVICE> --tunnel-type <TUNNEL_TYPE> --client-ip <CLIENT_IP>
+Usage: doublezero-admin user create --user-type <USER_TYPE> --device <DEVICE> --tunnel-type <TUNNEL_TYPE> --client-ip <CLIENT_IP>
 
 Options:
       --user-type <USER_TYPE>      
@@ -68,12 +68,12 @@ Options:
 
 ### Command user activate
 ```console
-doublezero user activate --help
+doublezero-admin user activate --help
 ```
 
 Output:
 ```
-Usage: doublezero user activate --client-ip <CLIENT_IP> --c-underlay-ip <C_UNDERLAY_IP> --dz-underlay-ip <DZ_UNDERLAY_IP>
+Usage: doublezero-admin user activate --client-ip <CLIENT_IP> --c-underlay-ip <C_UNDERLAY_IP> --dz-underlay-ip <DZ_UNDERLAY_IP>
 
 Options:
       --client-ip <CLIENT_IP>            
@@ -116,7 +116,7 @@ doublezero location create --code ny --name "New York" --country US --lat 40.780
 
 ### List Locations
 ```console
-doublezero location list
+doublezero-admin location list
 ```
 
 Output:
@@ -134,7 +134,7 @@ Exchanges are defined and created by the foundation with the following commands.
 
 Creation of a new Exchange with the code LA, name Los Angeles and with coordinates 34.04 -118.25:
 ```console
-doublezero exchange create --code xla --name "Los Angeles" --lat 40.049641274076464 --lng -118.25939642499903
+doublezero-admin exchange create --code xla --name "Los Angeles" --lat 40.049641274076464 --lng -118.25939642499903
 ```
 
 [5Hbdr6X5pBvAXdhVjMS3bkyqFmQoZHHAbZi7JMEd1UGR](https://explorer.solana.com/address/5Hbdr6X5pBvAXdhVjMS3bkyqFmQoZHHAbZi7JMEd1UGR?cluster=devnet)
@@ -143,7 +143,7 @@ doublezero exchange create --code xla --name "Los Angeles" --lat 40.049641274076
 
 Creation of a new Exchange with the code NY, name new York and with coordinates 40.78 -74.07:
 ```console
-doublezero exchange create --code xny --name "New York" --lat 40.780297071772125 --lng -74.07203003496925
+doublezero-admin exchange create --code xny --name "New York" --lat 40.780297071772125 --lng -74.07203003496925
 ```
 
 [FpGew6SbmrLXipUC2BLFdi3Fa3BGNXrU85ky4fuB3HLU](https://explorer.solana.com/address/FpGew6SbmrLXipUC2BLFdi3Fa3BGNXrU85ky4fuB3HLU?cluster=devnet)
@@ -151,7 +151,7 @@ doublezero exchange create --code xny --name "New York" --lat 40.780297071772125
 ### Lista Exchanges
 
 ```console
-doublezero exchange list
+doublezero-admin exchange list
 ```
 
 Output:
@@ -168,7 +168,7 @@ The following commands are executed by the Network Contributor to define its two
 ### New York Device
 
 ```console
-doublezero device create --code la2-dz01 --location la --exchange xla --public-ip "207.45.216.136"
+doublezero-admin device create --code la2-dz01 --location la --exchange xla --public-ip "207.45.216.136"
 ```
 
 [3mo8vSQJeCrP9eiUoEZkyYihTV9xkwDSp4ki9awfb575](https://explorer.solana.com/address/3mo8vSQJeCrP9eiUoEZkyYihTV9xkwDSp4ki9awfb575?cluster=devnet)
@@ -176,7 +176,7 @@ doublezero device create --code la2-dz01 --location la --exchange xla --public-i
 ### Los Angeles Device
 
 ```console
-doublezero device create --code ny5-dz01 --location ny --exchange xny --public-ip "64.86.249.80"
+doublezero-admin device create --code ny5-dz01 --location ny --exchange xny --public-ip "64.86.249.80"
 ```
 
 [J8AdFmRgHG1ADAH17WppbY9s79zYoBJc24yActMPkr8D](https://explorer.solana.com/address/J8AdFmRgHG1ADAH17WppbY9s79zYoBJc24yActMPkr8D?cluster=devnet)
@@ -184,7 +184,7 @@ doublezero device create --code ny5-dz01 --location ny --exchange xny --public-i
 ### Create tunner from Los Angeles to New York
 
 ```console
-doublezero tunnel create --code "la2-dz02:ny5-dz01" --side-a la2-dz01 --side-z ny5-dz01 --tunnel-type 1 --bandwidth 100 --mtu 9000 --delay 0 --jitter 0
+doublezero-admin tunnel create --code "la2-dz02:ny5-dz01" --side-a la2-dz01 --side-z ny5-dz01 --tunnel-type 1 --bandwidth 100 --mtu 9000 --delay 0 --jitter 0
 ```
 
 [FK5AN9sgfS56Du2UtPAZu54u1q15GiPdfkBH4v2H6FgR](https://explorer.solana.com/address/FK5AN9sgfS56Du2UtPAZu54u1q15GiPdfkBH4v2H6FgR?cluster=devnet)
@@ -192,7 +192,7 @@ doublezero tunnel create --code "la2-dz02:ny5-dz01" --side-a la2-dz01 --side-z n
 ### List Devices
 
 ```console
-doublezero device list
+doublezero-admin device list
 ```
 
 Output:
@@ -205,7 +205,7 @@ Output:
 ### List Tunnel
 
 ```console
-doublezero tunnel list
+doublezero-admin tunnel list
 ```
 
 Output:
@@ -218,7 +218,7 @@ Output:
 ### Create User
 
 ```console
-doublezero user create --user-type 1 --device ny5-dz01 --tunnel-type 1 --client-ip 186.158.137.96
+doublezero-admin user create --user-type 1 --device ny5-dz01 --tunnel-type 1 --client-ip 186.158.137.96
 ```
 
 [DGyGkcLZqdNWGbeBtLYdzVrgDi4VxemSwh6e6hG6qA2k](https://explorer.solana.com/address/DGyGkcLZqdNWGbeBtLYdzVrgDi4VxemSwh6e6hG6qA2k?cluster=devnet)
@@ -226,7 +226,7 @@ doublezero user create --user-type 1 --device ny5-dz01 --tunnel-type 1 --client-
 ### List User
 
 ```console
-doublezero user list
+doublezero-admin user list
 ```
 
 Output:
@@ -238,7 +238,7 @@ Output:
 ### Activate User
 
 ```console
-doublezero user activate --client-ip 186.158.137.96 --c-underlay-ip 10.0.0.1 --dz-underlay-ip 10.0.0.2
+doublezero-admin user activate --client-ip 186.158.137.96 --c-underlay-ip 10.0.0.1 --dz-underlay-ip 10.0.0.2
 ```
 
 [DGyGkcLZqdNWGbeBtLYdzVrgDi4VxemSwh6e6hG6qA2k](https://explorer.solana.com/address/DGyGkcLZqdNWGbeBtLYdzVrgDi4VxemSwh6e6hG6qA2k?cluster=devnet)
@@ -246,7 +246,7 @@ doublezero user activate --client-ip 186.158.137.96 --c-underlay-ip 10.0.0.1 --d
 ### List User
 
 ```console
-doublezero user list
+doublezero-admin user list
 ```
 
 Output:

@@ -14,20 +14,20 @@ use solana_program::{
 use solana_program::msg;
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct AddUserAllowlistGlobalConfigArgs {
+pub struct AddUserAllowlistArgs {
     pub pubkey: Pubkey,
 }
 
-impl fmt::Debug for AddUserAllowlistGlobalConfigArgs {
+impl fmt::Debug for AddUserAllowlistArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "pubkey: {}", self.pubkey)
     }
 }
 
-pub fn process_add_user_allowlist_globalconfig(
+pub fn process_add_user_allowlist(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &AddUserAllowlistGlobalConfigArgs,
+    value: &AddUserAllowlistArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -36,7 +36,7 @@ pub fn process_add_user_allowlist_globalconfig(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_add_user_allowlist_globalconfig({:?})", value);
+    msg!("process_add_user_allowlist({:?})", value);
 
     // Check the owner of the accounts
     assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");

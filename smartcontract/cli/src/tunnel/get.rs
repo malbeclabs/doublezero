@@ -1,6 +1,6 @@
 use clap::Args;
-use doublezero_sdk::*;
 use doublezero_sdk::commands::tunnel::get::GetTunnelCommand;
+use doublezero_sdk::*;
 
 #[derive(Args, Debug)]
 pub struct GetTunnelArgs {
@@ -9,13 +9,15 @@ pub struct GetTunnelArgs {
 }
 
 impl GetTunnelArgs {
-    pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
-
-        let (pubkey, tunnel) = GetTunnelCommand{ pubkey_or_code: self.code }.execute(client)?;
+    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
+        let (pubkey, tunnel) = GetTunnelCommand {
+            pubkey_or_code: self.code,
+        }
+        .execute(client)?;
 
         println!(
             "pubkey: {}\r\ncode: {}\r\nside_a: {}\r\nside_z: {}\r\ntunnel_type: {}\r\nbandwidth: {}\r\nmtu: {}\r\ndelay: {}ms\r\njitter: {}ms\r\ntunnel_net: {}\r\nstatus: {}\r\nowner: {}",
-            pubkey, 
+            pubkey,
             tunnel.code,
             tunnel.side_a_pk,
             tunnel.side_z_pk,

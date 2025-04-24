@@ -1,4 +1,4 @@
-use double_zero_sla_program::{
+use doublezero_sla_program::{
     instructions::DoubleZeroInstruction, pda::get_tunnel_pda,
     processors::tunnel::create::TunnelCreateArgs, state::tunnel::TunnelTunnelType,
 };
@@ -13,7 +13,7 @@ pub struct CreateTunnelCommand {
     pub tunnel_type: TunnelTunnelType,
     pub bandwidth: u64,
     pub mtu: u32,
-    pub  delay_ns: u64,
+    pub delay_ns: u64,
     pub jitter_ns: u64,
 }
 
@@ -29,22 +29,21 @@ impl CreateTunnelCommand {
             .execute_transaction(
                 DoubleZeroInstruction::CreateTunnel(TunnelCreateArgs {
                     index: globalstate.account_index + 1,
-                        code: self.code.to_string(),
-                        side_a_pk: self.side_a_pk,
-                        side_z_pk: self.side_z_pk,
-                        tunnel_type: self.tunnel_type,
-                        bandwidth: self.bandwidth,
-                        mtu: self.mtu,
-                        delay_ns: self.delay_ns,
-                        jitter_ns: self.jitter_ns,
-
-                    }),
-                    vec![
-                        AccountMeta::new(pda_pubkey, false),
-                        AccountMeta::new(self.side_a_pk, false),
-                        AccountMeta::new(self.side_z_pk, false),
-                        AccountMeta::new(globalstate_pubkey, false),
-                    ],
+                    code: self.code.to_string(),
+                    side_a_pk: self.side_a_pk,
+                    side_z_pk: self.side_z_pk,
+                    tunnel_type: self.tunnel_type,
+                    bandwidth: self.bandwidth,
+                    mtu: self.mtu,
+                    delay_ns: self.delay_ns,
+                    jitter_ns: self.jitter_ns,
+                }),
+                vec![
+                    AccountMeta::new(pda_pubkey, false),
+                    AccountMeta::new(self.side_a_pk, false),
+                    AccountMeta::new(self.side_z_pk, false),
+                    AccountMeta::new(globalstate_pubkey, false),
+                ],
             )
             .map(|sig| (sig, pda_pubkey))
     }

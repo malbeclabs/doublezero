@@ -1,6 +1,6 @@
-use double_zero_sla_program::{pda::get_globalstate_pda, state::accountdata::AccountData};
-use solana_sdk::pubkey::Pubkey;
+use doublezero_sla_program::{pda::get_globalstate_pda, state::accountdata::AccountData};
 use eyre::eyre;
+use solana_sdk::pubkey::Pubkey;
 
 use crate::DoubleZeroClient;
 

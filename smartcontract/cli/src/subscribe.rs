@@ -5,14 +5,12 @@ use doublezero_sdk::DZClient;
 pub struct SubscribeArgs {}
 
 impl SubscribeArgs {
-    pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
         println!("Waiting for events...");
 
-        client
-            .subscribe(|_, pubkey, account| {
-                println!("{} -> {:?}", pubkey, account);
-            })
-            ?;
+        client.subscribe(|_, pubkey, account| {
+            println!("{} -> {:?}", pubkey, account);
+        })?;
 
         Ok(())
     }

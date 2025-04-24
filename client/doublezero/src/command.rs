@@ -2,16 +2,16 @@ use clap::Subcommand;
 
 use doublezero_cli::init::InitArgs;
 
-use doublezero_cli::keygen::KeyGenArgs;
 use doublezero_cli::account::GetAccountArgs;
 use doublezero_cli::address::AddressArgs;
 use doublezero_cli::balance::BalanceArgs;
-use doublezero_cli::export::ExportArgs;
-use doublezero_cli::latency::LatencyArgs;
-use doublezero_cli::status::StatusArgs;
 use doublezero_cli::connect::ProvisioningArgs;
 use doublezero_cli::disconnect::DecommissioningArgs;
+use doublezero_cli::export::ExportArgs;
+use doublezero_cli::keygen::KeyGenArgs;
+use doublezero_cli::latency::LatencyArgs;
 use doublezero_cli::log::LogArgs;
+use doublezero_cli::status::StatusArgs;
 
 use crate::config::ConfigArgs;
 use crate::device::DeviceArgs;
@@ -21,16 +21,18 @@ use crate::location::LocationArgs;
 use crate::tunnel::TunnelArgs;
 use crate::user::UserArgs;
 
-
 #[derive(Subcommand, Debug)]
 pub enum Command {
-    #[command(about = "", hide = true)] 
+    #[command(about = "", hide = true)]
     Init(InitArgs),
     #[command(about = "Connect your server to a doublezero device", hide = false)]
     Connect(ProvisioningArgs),
     #[command(about = "Get the status of your service", hide = false)]
     Status(StatusArgs),
-    #[command(about = "Disconnect your server from the doublezero network", hide = false)]
+    #[command(
+        about = "Disconnect your server from the doublezero network",
+        hide = false
+    )]
     Disconnect(DecommissioningArgs),
     #[command(about = "Get device latencies", hide = false)]
     Latency(LatencyArgs),

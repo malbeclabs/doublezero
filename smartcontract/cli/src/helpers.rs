@@ -1,12 +1,12 @@
 use std::io::{Read, Write};
 use std::str;
 
-use std::str::FromStr;
-use std::time::Duration;
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 use solana_sdk::pubkey::Pubkey;
 use std::net::{TcpStream, ToSocketAddrs};
+use std::str::FromStr;
+use std::time::Duration;
 
 pub fn parse_pubkey(input: &str) -> Option<Pubkey> {
     if input.len() < 43 || input.len() > 44 {
@@ -57,7 +57,6 @@ pub fn get_public_ipv4() -> Result<String, Box<dyn std::error::Error>> {
 
     Err("Failed to extract the IP from the response".into())
 }
-
 
 pub fn init_command() -> ProgressBar {
     let spinner = ProgressBar::new_spinner();

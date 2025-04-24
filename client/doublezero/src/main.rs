@@ -22,9 +22,6 @@ use location::*;
 use tunnel::*;
 use user::*;
 
-
-
-
 include!(concat!(env!("OUT_DIR"), "/version.rs"));
 
 #[derive(Parser, Debug)]
@@ -107,8 +104,8 @@ async fn main() -> eyre::Result<()> {
             DeviceCommands::Allowlist(command) => match command.command {
                 DeviceAllowlistCommands::List(args) => args.execute(&client).await,
                 DeviceAllowlistCommands::Add(args) => args.execute(&client).await,
-                DeviceAllowlistCommands::Remove(args) => args.execute(&client).await, 
-            }
+                DeviceAllowlistCommands::Remove(args) => args.execute(&client).await,
+            },
         },
         Command::Tunnel(command) => match command.command {
             TunnelCommands::Create(args) => args.execute(&client).await,

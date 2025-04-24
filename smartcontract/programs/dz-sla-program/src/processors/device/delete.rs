@@ -1,5 +1,6 @@
 use core::fmt;
 
+use crate::error::DoubleZeroError;
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -32,6 +33,7 @@ pub fn process_delete_device(
     let accounts_iter = &mut accounts.iter();
  
     let pda_account = next_account_info(accounts_iter)?;
+    let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
  
@@ -46,10 +48,12 @@ pub fn process_delete_device(
     }
 
     let mut device: Device = Device::from(&pda_account.try_borrow_data().unwrap()[..]);
-    if device.owner != *payer_account.key {
-        #[cfg(test)]
-        msg!("{:?}", device);
-        return Err(solana_program::program_error::ProgramError::Custom(0));
+
+    let globalstate = globalstate_get_next(globalstate_account)?;
+    if !globalstate.foundation_allowlist.contains(payer_account.key)
+        && device.owner != *payer_account.key
+    {
+        return Err(DoubleZeroError::NotAllowed.into());
     }
 
     device.status = DeviceStatus::Deleting;

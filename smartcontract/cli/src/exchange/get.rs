@@ -1,6 +1,6 @@
 use clap::Args;
-use doublezero_sdk::*;
 use doublezero_sdk::commands::exchange::get::GetExchangeCommand;
+use doublezero_sdk::*;
 
 #[derive(Args, Debug)]
 pub struct GetExchangeArgs {
@@ -9,9 +9,11 @@ pub struct GetExchangeArgs {
 }
 
 impl GetExchangeArgs {
-    pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
-
-        let (pubkey, exchange) = GetExchangeCommand{ pubkey_or_code: self.code }.execute(client)?;
+    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
+        let (pubkey, exchange) = GetExchangeCommand {
+            pubkey_or_code: self.code,
+        }
+        .execute(client)?;
 
         println!(
                 "pubkey: {},\r\ncode: {}\r\nname: {}\r\nlat: {}\r\nlng: {}\r\nloc_id: {}\r\nstatus: {}\r\nowner: {}",

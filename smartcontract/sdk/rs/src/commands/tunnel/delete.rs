@@ -1,4 +1,4 @@
-use double_zero_sla_program::{
+use doublezero_sla_program::{
     instructions::DoubleZeroInstruction, pda::get_tunnel_pda,
     processors::tunnel::delete::TunnelDeleteArgs,
 };
@@ -16,16 +16,14 @@ impl DeleteTunnelCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, _) =
-            get_tunnel_pda(&client.get_program_id(), self.index);
-        client
-            .execute_transaction(
-                DoubleZeroInstruction::DeleteTunnel(TunnelDeleteArgs { index: self.index }),
-                vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ],
-            )
-            
+        let (pda_pubkey, _) = get_tunnel_pda(&client.get_program_id(), self.index);
+        client.execute_transaction(
+            DoubleZeroInstruction::DeleteTunnel(TunnelDeleteArgs { index: self.index }),
+            vec![
+                AccountMeta::new(pda_pubkey, false),
+                AccountMeta::new_readonly(globalstate_pubkey, true),	
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
+        )
     }
 }

@@ -1,7 +1,7 @@
 use clap::Args;
-use doublezero_sdk::*;
 use doublezero_sdk::commands::tunnel::get::GetTunnelCommand;
 use doublezero_sdk::commands::tunnel::update::UpdateTunnelCommand;
+use doublezero_sdk::*;
 
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 
@@ -24,20 +24,26 @@ pub struct UpdateTunnelArgs {
 }
 
 impl UpdateTunnelArgs {
-    pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let (_, tunnel) = GetTunnelCommand{ pubkey_or_code: self.pubkey }.execute(client)?;
+        let (_, tunnel) = GetTunnelCommand {
+            pubkey_or_code: self.pubkey,
+        }
+        .execute(client)?;
         let _ = UpdateTunnelCommand {
             index: tunnel.index,
             code: self.code.clone(),
-            tunnel_type: self.tunnel_type.map(|t|  t.parse().unwrap()),
+            tunnel_type: self.tunnel_type.map(|t| t.parse().unwrap()),
             bandwidth: self.bandwidth.map(|b| bandwidth_parse(&b)),
             mtu: self.mtu,
             delay_ns: self.delay_ms.map(|delay_ms| (delay_ms * 1000000.0) as u64),
-            jitter_ns: self.jitter_ms.map(|jitter_ms| (jitter_ms * 1000000.0) as u64),
-        }.execute(client)?;
+            jitter_ns: self
+                .jitter_ms
+                .map(|jitter_ms| (jitter_ms * 1000000.0) as u64),
+        }
+        .execute(client)?;
 
         println!("Tunnel updated");
 

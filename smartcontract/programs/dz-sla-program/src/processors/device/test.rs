@@ -19,7 +19,7 @@ mod device_test {
     async fn test_device() {
         let program_id = Pubkey::new_unique();
         let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
-            "double_zero_sla_program",
+            "doublezero_sla_program",
             program_id,
             processor!(process_instruction),
         )

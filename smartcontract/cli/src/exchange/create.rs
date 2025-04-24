@@ -1,6 +1,6 @@
 use clap::Args;
-use doublezero_sdk::*;
 use doublezero_sdk::commands::exchange::create::CreateExchangeCommand;
+use doublezero_sdk::*;
 
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 
@@ -19,11 +19,11 @@ pub struct CreateExchangeArgs {
 }
 
 impl CreateExchangeArgs {
-    pub async fn execute(&self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let (_signature, pubkey) = CreateExchangeCommand {
+        let (signature, _pubkey) = CreateExchangeCommand {
             code: self.code.clone(),
             name: self.name.clone(),
             lat: self.lat,
@@ -31,8 +31,7 @@ impl CreateExchangeArgs {
             loc_id: self.loc_id,
         }
         .execute(client)?;
-
-        println!("{}", pubkey);
+        println!("Signature: {}", signature);
 
         Ok(())
     }

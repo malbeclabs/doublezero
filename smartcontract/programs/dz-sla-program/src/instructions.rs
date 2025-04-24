@@ -4,16 +4,9 @@ use std::cmp::PartialEq;
 
 use crate::processors::{
     allowlist::{
-        device::{
-            add::AddDeviceAllowlistGlobalConfigArgs, remove::RemoveDeviceAllowlistGlobalConfigArgs,
-        },
-        foundation::{
-            add::AddFoundationAllowlistGlobalConfigArgs,
-            remove::RemoveFoundationAllowlistGlobalConfigArgs,
-        },
-        user::{
-            add::AddUserAllowlistGlobalConfigArgs, remove::RemoveUserAllowlistGlobalConfigArgs,
-        },
+        device::{add::AddDeviceAllowlistArgs, remove::RemoveDeviceAllowlistArgs},
+        foundation::{add::AddFoundationAllowlistArgs, remove::RemoveFoundationAllowlistArgs},
+        user::{add::AddUserAllowlistArgs, remove::RemoveUserAllowlistArgs},
     },
     device::{
         activate::DeviceActivateArgs, create::DeviceCreateArgs, deactivate::DeviceDeactivateArgs,
@@ -89,12 +82,13 @@ pub enum DoubleZeroInstruction {
     RejectTunnel(TunnelRejectArgs), // variant 34
     RejectUser(UserRejectArgs),     // variant 35
 
-    AddFoundationAllowlistGlobalConfig(AddFoundationAllowlistGlobalConfigArgs), // variant 36
-    RemoveFoundationAllowlistGlobalConfig(RemoveFoundationAllowlistGlobalConfigArgs), // variant 37
-    AddDeviceAllowlistGlobalConfig(AddDeviceAllowlistGlobalConfigArgs),         // variant 38
-    RemoveDeviceAllowlistGlobalConfig(RemoveDeviceAllowlistGlobalConfigArgs),   // variant 39
-    AddUserAllowlistGlobalConfig(AddUserAllowlistGlobalConfigArgs),             // variant 40
-    RemoveUserAllowlistGlobalConfig(RemoveUserAllowlistGlobalConfigArgs),       // variant 41
+    AddFoundationAllowlist(AddFoundationAllowlistArgs), // variant 36
+    RemoveFoundationAllowlist(RemoveFoundationAllowlistArgs), // variant 37
+    AddDeviceAllowlist(AddDeviceAllowlistArgs),         // variant 38
+    RemoveDeviceAllowlist(RemoveDeviceAllowlistArgs),   // variant 39
+
+    AddUserAllowlist(AddUserAllowlistArgs),       // variant 40
+    RemoveUserAllowlist(RemoveUserAllowlistArgs), // variant 41
 
     RequestBanUser(UserRequestBanArgs), // variant 42
     BanUser(UserBanArgs),               // variant 43
@@ -155,12 +149,12 @@ impl DoubleZeroInstruction {
             34 => Ok(Self::RejectTunnel(from_slice::<TunnelRejectArgs>(rest).unwrap())),
             35 => Ok(Self::RejectUser(from_slice::<UserRejectArgs>(rest).unwrap())),
 
-            36 => Ok(Self::AddFoundationAllowlistGlobalConfig(from_slice::<AddFoundationAllowlistGlobalConfigArgs>(rest).unwrap())),
-            37 => Ok(Self::RemoveFoundationAllowlistGlobalConfig(from_slice::<RemoveFoundationAllowlistGlobalConfigArgs>(rest).unwrap())),
-            38 => Ok(Self::AddDeviceAllowlistGlobalConfig(from_slice::<AddDeviceAllowlistGlobalConfigArgs>(rest).unwrap())),
-            39 => Ok(Self::RemoveDeviceAllowlistGlobalConfig(from_slice::<RemoveDeviceAllowlistGlobalConfigArgs>(rest).unwrap())),
-            40 => Ok(Self::AddUserAllowlistGlobalConfig(from_slice::<AddUserAllowlistGlobalConfigArgs>(rest).unwrap())),
-            41 => Ok(Self::RemoveUserAllowlistGlobalConfig(from_slice::<RemoveUserAllowlistGlobalConfigArgs>(rest).unwrap())),
+            36 => Ok(Self::AddFoundationAllowlist(from_slice::<AddFoundationAllowlistArgs>(rest).unwrap())),
+            37 => Ok(Self::RemoveFoundationAllowlist(from_slice::<RemoveFoundationAllowlistArgs>(rest).unwrap())),
+            38 => Ok(Self::AddDeviceAllowlist(from_slice::<AddDeviceAllowlistArgs>(rest).unwrap())),
+            39 => Ok(Self::RemoveDeviceAllowlist(from_slice::<RemoveDeviceAllowlistArgs>(rest).unwrap())),
+            40 => Ok(Self::AddUserAllowlist(from_slice::<AddUserAllowlistArgs>(rest).unwrap())),
+            41 => Ok(Self::RemoveUserAllowlist(from_slice::<RemoveUserAllowlistArgs>(rest).unwrap())),
 
             42 => Ok(Self::RequestBanUser(from_slice::<UserRequestBanArgs>(rest).unwrap())),
             43 => Ok(Self::BanUser(from_slice::<UserBanArgs>(rest).unwrap())),
@@ -171,104 +165,117 @@ impl DoubleZeroInstruction {
 
     pub fn get_name(&self) -> String {
         match self {
-            Self::InitGlobalState() => "InitGlobalState".to_string(),
-            Self::SetGlobalConfig(_) => "SetGlobalConfig".to_string(),
+            Self::InitGlobalState() => "InitGlobalState".to_string(), // variant 0
+            Self::SetGlobalConfig(_) => "SetGlobalConfig".to_string(), // variant 1
 
-            Self::CreateLocation(_) => "CreateLocation".to_string(),
-            Self::UpdateLocation(_) => "UpdateLocation".to_string(),
-            Self::SuspendLocation(_) => "SuspendLocation".to_string(),
-            Self::ReactivateLocation(_) => "ReactivateLocation".to_string(),
-            Self::DeleteLocation(_) => "DeleteLocation".to_string(),
+            Self::CreateLocation(_) => "CreateLocation".to_string(), // variant 2
+            Self::UpdateLocation(_) => "UpdateLocation".to_string(), // variant 3
+            Self::SuspendLocation(_) => "SuspendLocation".to_string(), // variant 4
+            Self::ReactivateLocation(_) => "ReactivateLocation".to_string(), // variant 5
+            Self::DeleteLocation(_) => "DeleteLocation".to_string(), // variant 6
 
-            Self::CreateExchange(_) => "CreateExchange".to_string(),
-            Self::UpdateExchange(_) => "UpdateExchange".to_string(),
-            Self::SuspendExchange(_) => "SuspendExchange".to_string(),
-            Self::ReactivateExchange(_) => "ReactivateExchange".to_string(),
-            Self::DeleteExchange(_) => "DeleteExchange".to_string(),
+            Self::CreateExchange(_) => "CreateExchange".to_string(), // variant 7
+            Self::UpdateExchange(_) => "UpdateExchange".to_string(), // variant 8
+            Self::SuspendExchange(_) => "SuspendExchange".to_string(), // variant 9
+            Self::ReactivateExchange(_) => "ReactivateExchange".to_string(), // variant 10
+            Self::DeleteExchange(_) => "DeleteExchange".to_string(), // variant 11
 
-            Self::CreateDevice(_) => "CreateDevice".to_string(),
-            Self::ActivateDevice(_) => "ActivateDevice".to_string(),
-            Self::UpdateDevice(_) => "UpdateDevice".to_string(),
-            Self::SuspendDevice(_) => "SuspendDevice".to_string(),
-            Self::ReactivateDevice(_) => "ReactivateDevice".to_string(),
-            Self::DeleteDevice(_) => "DeleteDevice".to_string(),
+            Self::CreateDevice(_) => "CreateDevice".to_string(), // variant 12
+            Self::ActivateDevice(_) => "ActivateDevice".to_string(), // variant 13
+            Self::UpdateDevice(_) => "UpdateDevice".to_string(), // variant 14
+            Self::SuspendDevice(_) => "SuspendDevice".to_string(), // variant 15
+            Self::ReactivateDevice(_) => "ReactivateDevice".to_string(), // variant 16
+            Self::DeleteDevice(_) => "DeleteDevice".to_string(), // variant 17
 
-            Self::CreateTunnel(_) => "CreateTunnel".to_string(),
-            Self::ActivateTunnel(_) => "ActivateTunnel".to_string(),
-            Self::UpdateTunnel(_) => "UpdateTunnel".to_string(),
-            Self::SuspendTunnel(_) => "SuspendTunnel".to_string(),
-            Self::ReactivateTunnel(_) => "ReactivateTunnel".to_string(),
-            Self::DeleteTunnel(_) => "DeleteTunnel".to_string(),
+            Self::CreateTunnel(_) => "CreateTunnel".to_string(), // variant 18
+            Self::ActivateTunnel(_) => "ActivateTunnel".to_string(), // variant 19
+            Self::UpdateTunnel(_) => "UpdateTunnel".to_string(), // variant 20
+            Self::SuspendTunnel(_) => "SuspendTunnel".to_string(), // variant 21
+            Self::ReactivateTunnel(_) => "ReactivateTunnel".to_string(), // variant 22
+            Self::DeleteTunnel(_) => "DeleteTunnel".to_string(), // variant 23
 
-            Self::CreateUser(_) => "CreateUser".to_string(),
-            Self::ActivateUser(_) => "ActivateUser".to_string(),
-            Self::UpdateUser(_) => "UpdateUser".to_string(),
-            Self::SuspendUser(_) => "SuspendUser".to_string(),
-            Self::ReactivateUser(_) => "ReactivateUser".to_string(),
-            Self::DeleteUser(_) => "DeleteUser".to_string(),
+            Self::CreateUser(_) => "CreateUser".to_string(), // variant 24
+            Self::ActivateUser(_) => "ActivateUser".to_string(), // variant 25
+            Self::UpdateUser(_) => "UpdateUser".to_string(), // variant 26
+            Self::SuspendUser(_) => "SuspendUser".to_string(), // variant 27
+            Self::ReactivateUser(_) => "ReactivateUser".to_string(), // variant 28
+            Self::DeleteUser(_) => "DeleteUser".to_string(), // variant 29
 
-            Self::DeactivateDevice(_) => "DeactivateDevice".to_string(),
-            Self::DeactivateTunnel(_) => "DeactivateTunnel".to_string(),
-            Self::DeactivateUser(_) => "DeactivateUser".to_string(),
-            _ => "Unknown".to_string(),
+            Self::DeactivateDevice(_) => "DeactivateDevice".to_string(), // variant 30
+            Self::DeactivateTunnel(_) => "DeactivateTunnel".to_string(), // variant 31
+            Self::DeactivateUser(_) => "DeactivateUser".to_string(),     // variant 32
+
+            Self::RejectDevice(_) => "RejectDevice".to_string(), // variant 33
+            Self::RejectTunnel(_) => "RejectTunnel".to_string(), // variant 34
+            Self::RejectUser(_) => "RejectUser".to_string(),     // variant 35
+
+            Self::AddFoundationAllowlist(_) => "AddFoundationAllowlist".to_string(), // variant 36
+            Self::RemoveFoundationAllowlist(_) => "RemoveFoundationAllowlist".to_string(), // variant 37
+            Self::AddDeviceAllowlist(_) => "AddDeviceAllowlist".to_string(), // variant 38
+            Self::RemoveDeviceAllowlist(_) => "RemoveDeviceAllowlist".to_string(), // variant 39
+            Self::AddUserAllowlist(_) => "AddUserAllowlist".to_string(),     // variant 40
+            Self::RemoveUserAllowlist(_) => "RemoveUserAllowlist".to_string(), // variant 41
+
+            Self::RequestBanUser(_) => "RequestBanUser".to_string(), // variant 42
+            Self::BanUser(_) => "BanUser".to_string(),               // variant 43
         }
     }
 
     pub fn get_args(&self) -> String {
         match self {
-            Self::InitGlobalState() => "".to_string(),
-            Self::SetGlobalConfig(args) => format!("{:?}", args),
+            Self::InitGlobalState() => "".to_string(), // variant 0
+            Self::SetGlobalConfig(args) => format!("{:?}", args), // variant 1
 
-            Self::CreateLocation(args) => format!("{:?}", args),
-            Self::UpdateLocation(args) => format!("{:?}", args),
-            Self::SuspendLocation(args) => format!("{:?}", args),
-            Self::ReactivateLocation(args) => format!("{:?}", args),
-            Self::DeleteLocation(args) => format!("{:?}", args),
+            Self::CreateLocation(args) => format!("{:?}", args), // variant 2
+            Self::UpdateLocation(args) => format!("{:?}", args), // variant 3
+            Self::SuspendLocation(args) => format!("{:?}", args), // variant 4
+            Self::ReactivateLocation(args) => format!("{:?}", args), // variant 5
+            Self::DeleteLocation(args) => format!("{:?}", args), // variant 6
 
-            Self::CreateExchange(args) => format!("{:?}", args),
-            Self::UpdateExchange(args) => format!("{:?}", args),
-            Self::SuspendExchange(args) => format!("{:?}", args),
-            Self::ReactivateExchange(args) => format!("{:?}", args),
-            Self::DeleteExchange(args) => format!("{:?}", args),
+            Self::CreateExchange(args) => format!("{:?}", args), // variant 7
+            Self::UpdateExchange(args) => format!("{:?}", args), // variant 8
+            Self::SuspendExchange(args) => format!("{:?}", args), // variant 9
+            Self::ReactivateExchange(args) => format!("{:?}", args), // variant 10
+            Self::DeleteExchange(args) => format!("{:?}", args), // variant 11
 
-            Self::CreateDevice(args) => format!("{:?}", args),
-            Self::ActivateDevice(args) => format!("{:?}", args),
-            Self::UpdateDevice(args) => format!("{:?}", args),
-            Self::SuspendDevice(args) => format!("{:?}", args),
-            Self::ReactivateDevice(args) => format!("{:?}", args),
-            Self::DeleteDevice(args) => format!("{:?}", args),
+            Self::CreateDevice(args) => format!("{:?}", args), // variant 12
+            Self::ActivateDevice(args) => format!("{:?}", args), // variant 13
+            Self::UpdateDevice(args) => format!("{:?}", args), // variant 14
+            Self::SuspendDevice(args) => format!("{:?}", args), // variant 15
+            Self::ReactivateDevice(args) => format!("{:?}", args), // variant 16
+            Self::DeleteDevice(args) => format!("{:?}", args), // variant 17
 
-            Self::CreateTunnel(args) => format!("{:?}", args),
-            Self::ActivateTunnel(args) => format!("{:?}", args),
-            Self::UpdateTunnel(args) => format!("{:?}", args),
-            Self::SuspendTunnel(args) => format!("{:?}", args),
-            Self::ReactivateTunnel(args) => format!("{:?}", args),
-            Self::DeleteTunnel(args) => format!("{:?}", args),
+            Self::CreateTunnel(args) => format!("{:?}", args), // variant 18
+            Self::ActivateTunnel(args) => format!("{:?}", args), // variant 19
+            Self::UpdateTunnel(args) => format!("{:?}", args), // variant 20
+            Self::SuspendTunnel(args) => format!("{:?}", args), // variant 21
+            Self::ReactivateTunnel(args) => format!("{:?}", args), // variant 22
+            Self::DeleteTunnel(args) => format!("{:?}", args), // variant 23
 
-            Self::CreateUser(args) => format!("{:?}", args),
-            Self::ActivateUser(args) => format!("{:?}", args),
-            Self::UpdateUser(args) => format!("{:?}", args),
-            Self::SuspendUser(args) => format!("{:?}", args),
-            Self::ReactivateUser(args) => format!("{:?}", args),
-            Self::DeleteUser(args) => format!("{:?}", args),
+            Self::CreateUser(args) => format!("{:?}", args), // variant 24
+            Self::ActivateUser(args) => format!("{:?}", args), // variant 25
+            Self::UpdateUser(args) => format!("{:?}", args), // variant 26
+            Self::SuspendUser(args) => format!("{:?}", args), // variant 27
+            Self::ReactivateUser(args) => format!("{:?}", args), // variant 28
+            Self::DeleteUser(args) => format!("{:?}", args), // variant 29
 
-            Self::DeactivateDevice(args) => format!("{:?}", args),
-            Self::DeactivateTunnel(args) => format!("{:?}", args),
-            Self::DeactivateUser(args) => format!("{:?}", args),
+            Self::DeactivateDevice(args) => format!("{:?}", args), // variant 30
+            Self::DeactivateTunnel(args) => format!("{:?}", args), // variant 31
+            Self::DeactivateUser(args) => format!("{:?}", args),   // variant 32
 
-            Self::RejectDevice(args) => format!("{:?}", args),
-            Self::RejectTunnel(args) => format!("{:?}", args),
-            Self::RejectUser(args) => format!("{:?}", args),
+            Self::RejectDevice(args) => format!("{:?}", args), // variant 33
+            Self::RejectTunnel(args) => format!("{:?}", args), // variant 34
+            Self::RejectUser(args) => format!("{:?}", args),   // variant 35
 
-            Self::AddFoundationAllowlistGlobalConfig(args) => format!("{:?}", args),
-            Self::RemoveFoundationAllowlistGlobalConfig(args) => format!("{:?}", args),
-            Self::AddDeviceAllowlistGlobalConfig(args) => format!("{:?}", args),
-            Self::RemoveDeviceAllowlistGlobalConfig(args) => format!("{:?}", args),
-            Self::AddUserAllowlistGlobalConfig(args) => format!("{:?}", args),
-            Self::RemoveUserAllowlistGlobalConfig(args) => format!("{:?}", args),
+            Self::AddFoundationAllowlist(args) => format!("{:?}", args), // variant 36
+            Self::RemoveFoundationAllowlist(args) => format!("{:?}", args), // variant 37
+            Self::AddDeviceAllowlist(args) => format!("{:?}", args),     // variant 38
+            Self::RemoveDeviceAllowlist(args) => format!("{:?}", args),  // variant 39
+            Self::AddUserAllowlist(args) => format!("{:?}", args),       // variant 40
+            Self::RemoveUserAllowlist(args) => format!("{:?}", args),    // variant 41
 
-            Self::RequestBanUser(args) => format!("{:?}", args),
-            Self::BanUser(args) => format!("{:?}", args),
+            Self::RequestBanUser(args) => format!("{:?}", args), // variant 42
+            Self::BanUser(args) => format!("{:?}", args),        // variant 43
         }
     }
 }

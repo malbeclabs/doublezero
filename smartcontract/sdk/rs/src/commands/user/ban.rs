@@ -1,6 +1,5 @@
-use double_zero_sla_program::{
-    instructions::DoubleZeroInstruction, pda::get_user_pda,
-    processors::user::ban::UserBanArgs,
+use doublezero_sla_program::{
+    instructions::DoubleZeroInstruction, pda::get_user_pda, processors::user::ban::UserBanArgs,
 };
 use solana_sdk::{instruction::AccountMeta, signature::Signature};
 
@@ -16,16 +15,13 @@ impl BanUserCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, _) =
-            get_user_pda(&client.get_program_id(), self.index);
-        client
-            .execute_transaction(
-                DoubleZeroInstruction::BanUser(UserBanArgs { index: self.index }),
-                vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ],
-            )
-            
+        let (pda_pubkey, _) = get_user_pda(&client.get_program_id(), self.index);
+        client.execute_transaction(
+            DoubleZeroInstruction::BanUser(UserBanArgs { index: self.index }),
+            vec![
+                AccountMeta::new(pda_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
+        )
     }
 }

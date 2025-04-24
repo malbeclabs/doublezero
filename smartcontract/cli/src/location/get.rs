@@ -1,6 +1,6 @@
 use clap::Args;
-use doublezero_sdk::*;
 use doublezero_sdk::commands::location::get::GetLocationCommand;
+use doublezero_sdk::*;
 
 #[derive(Args, Debug)]
 pub struct GetLocationArgs {
@@ -9,9 +9,11 @@ pub struct GetLocationArgs {
 }
 
 impl GetLocationArgs {
-    pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
-
-        let (pubkey, location) = GetLocationCommand{ pubkey_or_code: self.code }.execute(client)?;
+    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
+        let (pubkey, location) = GetLocationCommand {
+            pubkey_or_code: self.code,
+        }
+        .execute(client)?;
 
         println!(
                 "pubkey: {},\r\ncode: {}\r\nname: {}\r\ncountry: {}\r\nlat: {}\r\nlng: {}\r\nloc_id: {}\r\nstatus: {}\r\nowner: {}",

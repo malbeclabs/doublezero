@@ -16,18 +16,17 @@ pub struct SetGlobalConfigArgs {
 }
 
 impl SetGlobalConfigArgs {
-    pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
-                
+
         let signature = client.set_global_config(
             self.local_asn,
             self.remote_asn,
             networkv4_parse(&self.tunnel_tunnel_block),
             networkv4_parse(&self.device_tunnel_block),
         )?;
-        
-        println!("{}", signature);
+        println!("Signature: {}", signature);
 
         Ok(())
     }

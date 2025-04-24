@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::DoubleZeroClient;
-use double_zero_sla_program::state::{
+use doublezero_sla_program::state::{
     accountdata::AccountData, accounttype::AccountType, location::Location,
 };
 use solana_sdk::pubkey::Pubkey;
@@ -29,7 +29,7 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::{commands::location::list::ListLocationCommand, tests::tests::create_test_client};
-    use double_zero_sla_program::state::{
+    use doublezero_sla_program::state::{
         accountdata::AccountData,
         accounttype::AccountType,
         location::{Location, LocationStatus},
@@ -86,6 +86,5 @@ mod tests {
         let list = res.unwrap();
         assert!(list.len() == 2);
         assert!(list.contains_key(&location1_pubkey));
-
     }
 }

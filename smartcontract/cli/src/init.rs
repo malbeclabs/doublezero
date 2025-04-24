@@ -10,7 +10,7 @@ use crate::{
 pub struct InitArgs {}
 
 impl InitArgs {
-    pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
         match client.initialize_globalstate() {
             Ok((pubkey, _)) => println!("Global config initialized: {}", pubkey),

@@ -493,7 +493,7 @@ mod tests {
     use doublezero_sdk::{
         AccountType, DeviceType, MockDoubleZeroClient, TunnelTunnelType, UserCYOA,
     };
-    use double_zero_sla_program::{
+    use doublezero_sla_program::{
         instructions::DoubleZeroInstruction,
         pda::get_globalstate_pda,
         processors::{

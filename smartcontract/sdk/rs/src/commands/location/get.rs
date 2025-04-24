@@ -1,5 +1,5 @@
 use crate::{utils::parse_pubkey, DoubleZeroClient};
-use double_zero_sla_program::state::{
+use doublezero_sla_program::state::{
     accountdata::AccountData, accounttype::AccountType, location::Location,
 };
 use solana_sdk::pubkey::Pubkey;
@@ -41,7 +41,11 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::{commands::location::get::GetLocationCommand, tests::tests::create_test_client};
-    use double_zero_sla_program::state::{accountdata::AccountData, accounttype::AccountType, location::{Location, LocationStatus}};
+    use doublezero_sla_program::state::{
+        accountdata::AccountData,
+        accounttype::AccountType,
+        location::{Location, LocationStatus},
+    };
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
 
@@ -69,8 +73,8 @@ mod tests {
             .with(predicate::eq(location_pubkey))
             .returning(move |_| Ok(AccountData::Location(location2.clone())));
 
-            let location2 = location.clone();
-            client
+        let location2 = location.clone();
+        client
             .expect_gets()
             .with(predicate::eq(AccountType::Location))
             .returning(move |_| {
@@ -79,8 +83,7 @@ mod tests {
                 Ok(locations)
             });
 
-
-            // Search by pubkey
+        // Search by pubkey
         let res = GetLocationCommand {
             pubkey_or_code: location_pubkey.to_string(),
         }

@@ -10,17 +10,16 @@ pub struct KeyGenArgs {
 }
 
 impl KeyGenArgs {
-    pub async fn execute(self, _: &DZClient) -> eyre::Result<()> {
-
+    pub fn execute(self, _: &DZClient) -> eyre::Result<()> {
         match create_new_pubkey_user(self.force) {
-            Ok( keypair) => {
+            Ok(keypair) => {
                 println!("{}: {}", "Pubkey".green(), keypair.pubkey());
             }
             Err(e) => {
                 eprintln!("{}: {}", "Error".red(), e);
             }
         };
-        
+
         Ok(())
     }
 }

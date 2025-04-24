@@ -1,6 +1,6 @@
-use double_zero_sla_program::{
+use doublezero_sla_program::{
     instructions::DoubleZeroInstruction, pda::get_globalstate_pda,
-    processors::allowlist::user::remove::RemoveUserAllowlistGlobalConfigArgs,
+    processors::allowlist::user::remove::RemoveUserAllowlistArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -15,11 +15,10 @@ impl RemoveUserAllowlistCommand {
         let (pda_pubkey, _) = get_globalstate_pda(&client.get_program_id());
 
         client.execute_transaction(
-            DoubleZeroInstruction::RemoveUserAllowlistGlobalConfig(
-                RemoveUserAllowlistGlobalConfigArgs { pubkey: self.pubkey },
-            ),
+            DoubleZeroInstruction::RemoveUserAllowlist(RemoveUserAllowlistArgs {
+                pubkey: self.pubkey,
+            }),
             vec![AccountMeta::new(pda_pubkey, false)],
         )
-            
     }
 }

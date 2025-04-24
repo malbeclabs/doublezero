@@ -1,6 +1,6 @@
-use double_zero_sla_program::{
+use doublezero_sla_program::{
     instructions::DoubleZeroInstruction, pda::get_globalstate_pda,
-    processors::allowlist::device::remove::RemoveDeviceAllowlistGlobalConfigArgs,
+    processors::allowlist::device::add::AddDeviceAllowlistArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -14,15 +14,11 @@ impl AddDeviceAllowlistCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
         let (pda_pubkey, _) = get_globalstate_pda(&client.get_program_id());
 
-        client
-            .execute_transaction(
-                DoubleZeroInstruction::RemoveDeviceAllowlistGlobalConfig(
-                    RemoveDeviceAllowlistGlobalConfigArgs {
-                        pubkey: self.pubkey,
-                    },
-                ),
-                vec![AccountMeta::new(pda_pubkey, false)],
-            )
-            
+        client.execute_transaction(
+            DoubleZeroInstruction::AddDeviceAllowlist(AddDeviceAllowlistArgs {
+                pubkey: self.pubkey,
+            }),
+            vec![AccountMeta::new(pda_pubkey, false)],
+        )
     }
 }

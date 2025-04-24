@@ -1,14 +1,12 @@
 use clap::Args;
 use clap::Subcommand;
 
-use doublezero_cli::globalconfig::set::*;
 use doublezero_cli::globalconfig::get::*;
+use doublezero_cli::globalconfig::set::*;
 
-use doublezero_cli::allowlist::foundation::list::ListFoundationAllowlistArgs;
 use doublezero_cli::allowlist::foundation::add::AddFoundationAllowlistArgs;
+use doublezero_cli::allowlist::foundation::list::ListFoundationAllowlistArgs;
 use doublezero_cli::allowlist::foundation::remove::RemoveFoundationAllowlistArgs;
-
-
 
 #[derive(Args, Debug)]
 pub struct GlobalConfigArgs {
@@ -22,7 +20,6 @@ pub enum GlobalConfigCommands {
     Set(SetGlobalConfigArgs),
     Allowlist(FoundationAllowlistArgs),
 }
-
 
 #[derive(Args, Debug)]
 pub struct FoundationAllowlistArgs {

@@ -1,5 +1,8 @@
 use clap::{ArgGroup, Args};
-use doublezero_sdk::{convert_program_moniker, convert_url_moniker, convert_url_to_ws, convert_ws_moniker, read_doublezero_config, write_doublezero_config, DZClient};
+use doublezero_sdk::{
+    convert_program_moniker, convert_url_moniker, convert_url_to_ws, convert_ws_moniker,
+    read_doublezero_config, write_doublezero_config, DZClient,
+};
 
 #[derive(Args, Debug)]
 #[clap(group(
@@ -9,9 +12,15 @@ use doublezero_sdk::{convert_program_moniker, convert_url_moniker, convert_url_t
         .multiple(true)
 ))]
 pub struct SetConfigArgs {
-    #[arg(long, help = "URL of the JSON RPC endpoint (devnet, testnet, mainnet, localhost)")]
+    #[arg(
+        long,
+        help = "URL of the JSON RPC endpoint (devnet, testnet, mainnet, localhost)"
+    )]
     url: Option<String>,
-    #[arg(long, help = "URL of the WS RPC endpoint (devnet, testnet, mainnet, localhost)")]
+    #[arg(
+        long,
+        help = "URL of the WS RPC endpoint (devnet, testnet, mainnet, localhost)"
+    )]
     ws: Option<String>,
     #[arg(long, help = "Keypair of the user")]
     keypair: Option<String>,
@@ -20,8 +29,12 @@ pub struct SetConfigArgs {
 }
 
 impl SetConfigArgs {
-    pub async fn execute(self, _: &DZClient) -> eyre::Result<()> {
-        if self.url.is_none() && self.ws.is_none() && self.keypair.is_none() && self.program_id.is_none() {
+    pub fn execute(self, _: &DZClient) -> eyre::Result<()> {
+        if self.url.is_none()
+            && self.ws.is_none()
+            && self.keypair.is_none()
+            && self.program_id.is_none()
+        {
             eprintln!("No arguments provided");
             return Ok(());
         }
@@ -43,12 +56,20 @@ impl SetConfigArgs {
 
         write_doublezero_config(&config);
 
-        println!("Config File: {}\nRPC URL: {}\nWebSocket URL: {}\nKeypair Path: {}\nProgram ID: {}\n",
+        println!(
+            "Config File: {}\nRPC URL: {}\nWebSocket URL: {}\nKeypair Path: {}\nProgram ID: {}\n",
             filename,
             config.json_rpc_url,
-            config.websocket_url.unwrap_or(format!("{} (computed)", convert_url_to_ws(&config.json_rpc_url))),
+            config.websocket_url.unwrap_or(format!(
+                "{} (computed)",
+                convert_url_to_ws(&config.json_rpc_url)
+            )),
             config.keypair_path,
-            config.program_id.unwrap_or(format!("{} (computed)",  doublezero_sdk::testnet::program_id::id())));
+            config.program_id.unwrap_or(format!(
+                "{} (computed)",
+                doublezero_sdk::testnet::program_id::id()
+            ))
+        );
 
         Ok(())
     }

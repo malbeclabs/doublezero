@@ -1,7 +1,7 @@
 use clap::Args;
-use doublezero_sdk::*;
 use doublezero_sdk::commands::location::get::GetLocationCommand;
 use doublezero_sdk::commands::location::update::UpdateLocationCommand;
+use doublezero_sdk::*;
 
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 
@@ -24,11 +24,14 @@ pub struct UpdateLocationArgs {
 }
 
 impl UpdateLocationArgs {
-    pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let (_, location) = GetLocationCommand{ pubkey_or_code: self.pubkey }.execute(client)?;
+        let (_, location) = GetLocationCommand {
+            pubkey_or_code: self.pubkey,
+        }
+        .execute(client)?;
         let _ = UpdateLocationCommand {
             index: location.index,
             code: self.code,
@@ -37,7 +40,8 @@ impl UpdateLocationArgs {
             lat: self.lat,
             lng: self.lng,
             loc_id: self.loc_id,
-        }.execute(client)?;
+        }
+        .execute(client)?;
 
         println!("Location updated");
 

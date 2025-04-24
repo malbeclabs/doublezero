@@ -1,13 +1,18 @@
 use std::collections::HashMap;
 
 use crate::DoubleZeroClient;
-use double_zero_sla_program::state::{accountdata::AccountData, accounttype::AccountType, exchange::Exchange};
+use doublezero_sla_program::state::{
+    accountdata::AccountData, accounttype::AccountType, exchange::Exchange,
+};
 use solana_sdk::pubkey::Pubkey;
 
 pub struct ListExchangeCommand {}
 
 impl ListExchangeCommand {
-    pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<HashMap<Pubkey, Exchange>> {
+    pub fn execute(
+        &self,
+        client: &dyn DoubleZeroClient,
+    ) -> eyre::Result<HashMap<Pubkey, Exchange>> {
         Ok(client
             .gets(AccountType::Exchange)?
             .into_iter()

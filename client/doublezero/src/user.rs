@@ -1,15 +1,15 @@
 use clap::Args;
 use clap::Subcommand;
 
-use doublezero_cli::user::create::*;
-use doublezero_cli::user::update::*;
-use doublezero_cli::user::list::*;
-use doublezero_cli::user::get::*;
-use doublezero_cli::user::delete::*;
-use doublezero_cli::user::request_ban::*;
-use doublezero_cli::allowlist::user::list::ListUserAllowlistArgs;
 use doublezero_cli::allowlist::user::add::AddUserAllowlistArgs;
+use doublezero_cli::allowlist::user::list::ListUserAllowlistArgs;
 use doublezero_cli::allowlist::user::remove::RemoveUserAllowlistArgs;
+use doublezero_cli::user::create::*;
+use doublezero_cli::user::delete::*;
+use doublezero_cli::user::get::*;
+use doublezero_cli::user::list::*;
+use doublezero_cli::user::request_ban::*;
+use doublezero_cli::user::update::*;
 
 #[derive(Args, Debug)]
 pub struct UserArgs {
@@ -26,9 +26,8 @@ pub enum UserCommands {
     Delete(DeleteUserArgs),
     #[command(about = "allowlist", hide = false)]
     Allowlist(UserAllowlistArgs),
-    RequestBan(RequestBanUserArgs),    
+    RequestBan(RequestBanUserArgs),
 }
-
 
 #[derive(Args, Debug)]
 pub struct UserAllowlistArgs {

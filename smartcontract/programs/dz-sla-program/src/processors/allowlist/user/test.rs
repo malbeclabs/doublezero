@@ -3,8 +3,8 @@ mod device_test {
     use crate::entrypoint::*;
     use crate::instructions::*;
     use crate::pda::*;
-    use crate::processors::allowlist::user::add::AddUserAllowlistGlobalConfigArgs;
-    use crate::processors::allowlist::user::remove::RemoveUserAllowlistGlobalConfigArgs;
+    use crate::processors::allowlist::user::add::AddUserAllowlistArgs;
+    use crate::processors::allowlist::user::remove::RemoveUserAllowlistArgs;
     use crate::state::accounttype::AccountType;
     use crate::tests::test::*;
     use solana_program_test::*;
@@ -14,7 +14,7 @@ mod device_test {
     async fn user_allowlist_test() {
         let program_id = Pubkey::new_unique();
         let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
-            "double_zero_sla_program",
+            "doublezero_sla_program",
             program_id,
             processor!(process_instruction),
         )
@@ -46,8 +46,8 @@ mod device_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::AddUserAllowlistGlobalConfig(
-                AddUserAllowlistGlobalConfigArgs { pubkey: user1 },
+            DoubleZeroInstruction::AddUserAllowlist(
+                AddUserAllowlistArgs { pubkey: user1 },
             ),
             vec![AccountMeta::new(globalstate_pubkey, false)],
             &payer,
@@ -70,8 +70,8 @@ mod device_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::AddUserAllowlistGlobalConfig(
-                AddUserAllowlistGlobalConfigArgs { pubkey: user2 },
+            DoubleZeroInstruction::AddUserAllowlist(
+                AddUserAllowlistArgs { pubkey: user2 },
             ),
             vec![AccountMeta::new(globalstate_pubkey, false)],
             &payer,
@@ -95,8 +95,8 @@ mod device_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::RemoveUserAllowlistGlobalConfig(
-                RemoveUserAllowlistGlobalConfigArgs { pubkey: user1 },
+            DoubleZeroInstruction::RemoveUserAllowlist(
+                RemoveUserAllowlistArgs { pubkey: user1 },
             ),
             vec![AccountMeta::new(globalstate_pubkey, false)],
             &payer,
@@ -120,8 +120,8 @@ mod device_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::RemoveUserAllowlistGlobalConfig(
-                RemoveUserAllowlistGlobalConfigArgs { pubkey: user2 },
+            DoubleZeroInstruction::RemoveUserAllowlist(
+                RemoveUserAllowlistArgs { pubkey: user2 },
             ),
             vec![AccountMeta::new(globalstate_pubkey, false)],
             &payer,

@@ -35,4 +35,7 @@ console = "0.15.10"
 colored = "2.2.0"
 anyhow = "1.0.95"
 color-eyre = "0.6.3"
+
+[dev-dependencies]
 mockall = "^0.13"
+doublezero-sla-program = { path = "../programs/dz-sla-program", version = "0.1.0" }

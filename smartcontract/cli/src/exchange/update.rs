@@ -1,7 +1,7 @@
 use clap::Args;
-use doublezero_sdk::*;
 use doublezero_sdk::commands::exchange::get::GetExchangeCommand;
 use doublezero_sdk::commands::exchange::update::UpdateExchangeCommand;
+use doublezero_sdk::*;
 
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 
@@ -22,11 +22,14 @@ pub struct UpdateExchangeArgs {
 }
 
 impl UpdateExchangeArgs {
-    pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let (_, exchange) = GetExchangeCommand{ pubkey_or_code: self.pubkey }.execute(client)?;
+        let (_, exchange) = GetExchangeCommand {
+            pubkey_or_code: self.pubkey,
+        }
+        .execute(client)?;
         let _ = UpdateExchangeCommand {
             index: exchange.index,
             code: self.code,
@@ -34,7 +37,8 @@ impl UpdateExchangeArgs {
             lat: self.lat,
             lng: self.lng,
             loc_id: self.loc_id,
-        }.execute(client)?;
+        }
+        .execute(client)?;
 
         println!("Exchange updated");
 

@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
 use crate::DoubleZeroClient;
-use double_zero_sla_program::state::{accountdata::AccountData, accounttype::AccountType, device::Device};
+use doublezero_sla_program::state::{
+    accountdata::AccountData, accounttype::AccountType, device::Device,
+};
 use solana_sdk::pubkey::Pubkey;
 
 pub struct ListDeviceCommand {}

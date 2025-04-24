@@ -1,7 +1,7 @@
 use clap::Args;
-use doublezero_sdk::*;
 use doublezero_sdk::commands::device::list::ListDeviceCommand;
 use doublezero_sdk::commands::user::list::ListUserCommand;
+use doublezero_sdk::*;
 use prettytable::{format, row, Cell, Row, Table};
 
 #[derive(Args, Debug)]
@@ -11,7 +11,7 @@ pub struct ListUserArgs {
 }
 
 impl ListUserArgs {
-    pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
         let mut table = Table::new();
         table.add_row(row![
             "pubkey",
@@ -26,14 +26,14 @@ impl ListUserArgs {
             "owner"
         ]);
 
-        let devices = ListDeviceCommand{}.execute(client)?;
+        let devices = ListDeviceCommand {}.execute(client)?;
 
-        let users = ListUserCommand{}.execute(client)?;
+        let users = ListUserCommand {}.execute(client)?;
 
         for (pubkey, data) in users {
             let device_name = match &devices.get(&data.device_pk) {
                 Some(device) => &device.code,
-                None => &data.device_pk.to_string()
+                None => &data.device_pk.to_string(),
             };
 
             table.add_row(Row::new(vec![

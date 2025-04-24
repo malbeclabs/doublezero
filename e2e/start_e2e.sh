@@ -32,7 +32,7 @@ main() {
     ping -c 3 -q 64.86.249.80
 
     print_banner "Starting local validator w/ smartcontract program"
-    solana-test-validator --reset --bpf-program ./bin/keypair.json ./bin/double_zero_sla_program.so > /tmp/solana.log 2>&1 &
+    solana-test-validator --reset --bpf-program ./bin/keypair.json ./bin/doublezero_sla_program.so > /tmp/solana.log 2>&1 &
     echo "Waiting 15 seconds to start the solana test cluster"
     sleep 15
 

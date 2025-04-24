@@ -1,10 +1,10 @@
+pub mod activate;
+pub mod create;
+pub mod deactivate;
+pub mod delete;
 pub mod get;
 pub mod list;
-pub mod create;
-pub mod activate;
-pub mod reject;
-pub mod deactivate;
-pub mod suspend;
 pub mod reactivate;
+pub mod reject;
+pub mod suspend;
 pub mod update;
-pub mod delete;

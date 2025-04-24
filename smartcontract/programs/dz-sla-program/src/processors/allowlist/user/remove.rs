@@ -14,20 +14,20 @@ use solana_program::msg;
 
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct RemoveUserAllowlistGlobalConfigArgs {
+pub struct RemoveUserAllowlistArgs {
     pub pubkey: Pubkey,
 }
 
-impl fmt::Debug for RemoveUserAllowlistGlobalConfigArgs {
+impl fmt::Debug for RemoveUserAllowlistArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "pubkey: {}", self.pubkey)
     }
 }
 
-pub fn process_remove_user_allowlist_globalconfig(
+pub fn process_remove_user_allowlist(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &RemoveUserAllowlistGlobalConfigArgs,
+    value: &RemoveUserAllowlistArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -36,7 +36,7 @@ pub fn process_remove_user_allowlist_globalconfig(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_remove_user_allowlist_globalconfig({:?})", value);
+    msg!("process_remove_user_allowlist({:?})", value);
 
     // Check the owner of the accounts
     assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");

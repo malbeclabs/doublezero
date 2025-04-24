@@ -1,4 +1,4 @@
-use double_zero_sla_program::{
+use doublezero_sla_program::{
     instructions::DoubleZeroInstruction, pda::get_device_pda,
     processors::device::reactivate::DeviceReactivateArgs,
 };
@@ -16,16 +16,13 @@ impl ReactivateDeviceCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, _) =
-            get_device_pda(&client.get_program_id(), self.index);
-        client
-            .execute_transaction(
-                DoubleZeroInstruction::ReactivateDevice(DeviceReactivateArgs { index: self.index }),
-                vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ],
-            )
-            
+        let (pda_pubkey, _) = get_device_pda(&client.get_program_id(), self.index);
+        client.execute_transaction(
+            DoubleZeroInstruction::ReactivateDevice(DeviceReactivateArgs { index: self.index }),
+            vec![
+                AccountMeta::new(pda_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
+        )
     }
 }

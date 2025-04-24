@@ -1,5 +1,6 @@
-use double_zero_sla_program::{
-    instructions::DoubleZeroInstruction, pda::get_globalstate_pda, processors::allowlist::foundation::remove::RemoveFoundationAllowlistGlobalConfigArgs,
+use doublezero_sla_program::{
+    instructions::DoubleZeroInstruction, pda::get_globalstate_pda,
+    processors::allowlist::foundation::add::AddFoundationAllowlistArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -14,11 +15,10 @@ impl AddFoundationAllowlistCommand {
         let (pda_pubkey, _) = get_globalstate_pda(&client.get_program_id());
 
         client.execute_transaction(
-            DoubleZeroInstruction::RemoveFoundationAllowlistGlobalConfig(
-                RemoveFoundationAllowlistGlobalConfigArgs { pubkey: self.pubkey },
-            ),
+            DoubleZeroInstruction::AddFoundationAllowlist(AddFoundationAllowlistArgs {
+                pubkey: self.pubkey,
+            }),
             vec![AccountMeta::new(pda_pubkey, false)],
         )
-            
     }
 }

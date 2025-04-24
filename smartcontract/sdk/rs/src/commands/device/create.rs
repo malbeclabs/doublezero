@@ -1,6 +1,9 @@
-use double_zero_sla_program::{
-    instructions::DoubleZeroInstruction, pda::get_device_pda,
-    processors::device::create::DeviceCreateArgs, state::device::DeviceType, types::{IpV4, NetworkV4List},
+use doublezero_sla_program::{
+    instructions::DoubleZeroInstruction,
+    pda::get_device_pda,
+    processors::device::create::DeviceCreateArgs,
+    state::device::DeviceType,
+    types::{IpV4, NetworkV4List},
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 

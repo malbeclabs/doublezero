@@ -1,4 +1,4 @@
-use double_zero_sla_program::{
+use doublezero_sla_program::{
     instructions::DoubleZeroInstruction, pda::get_tunnel_pda,
     processors::tunnel::activate::TunnelActivateArgs, types::NetworkV4,
 };
@@ -19,18 +19,16 @@ impl ActivateTunnelCommand {
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
         let (pda_pubkey, _) = get_tunnel_pda(&client.get_program_id(), self.index);
-        client
-            .execute_transaction(
-                DoubleZeroInstruction::ActivateTunnel(TunnelActivateArgs {
-                    index: self.index,
-                    tunnel_id: self.tunnel_id,
-                    tunnel_net: self.tunnel_net,
-                }),
-                vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ],
-            )
-            
+        client.execute_transaction(
+            DoubleZeroInstruction::ActivateTunnel(TunnelActivateArgs {
+                index: self.index,
+                tunnel_id: self.tunnel_id,
+                tunnel_net: self.tunnel_net,
+            }),
+            vec![
+                AccountMeta::new(pda_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
+        )
     }
 }

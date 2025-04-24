@@ -1,6 +1,6 @@
 use clap::Args;
-use doublezero_sdk::*;
 use doublezero_sdk::commands::location::list::ListLocationCommand;
+use doublezero_sdk::*;
 use prettytable::{format, row, Cell, Row, Table};
 
 #[derive(Args, Debug)]
@@ -10,13 +10,13 @@ pub struct ListLocationArgs {
 }
 
 impl ListLocationArgs {
-    pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
         let mut table = Table::new();
         table.add_row(row![
             "pubkey", "code", "name", "country", "lat", "lng", "loc_id", "status", "owner"
         ]);
 
-        let locations = ListLocationCommand{}.execute(client)?;
+        let locations = ListLocationCommand {}.execute(client)?;
 
         for (pubkey, data) in locations {
             table.add_row(Row::new(vec![

@@ -4,8 +4,8 @@ LDFLAGS=
 
 .PHONY: test
 test:
-	cargo test --manifest-path ./programs/dz-sla-program/Cargo.toml
 	cargo test --manifest-path ./sdk/rs/Cargo.toml
+	cargo test --manifest-path ./programs/dz-sla-program/Cargo.toml
 	cargo test --manifest-path ./cli/Cargo.toml
 	go test ./sdk/go/
 

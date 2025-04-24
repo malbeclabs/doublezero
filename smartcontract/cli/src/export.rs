@@ -1,10 +1,10 @@
 use clap::Args;
-use doublezero_sdk::*;
-use doublezero_sdk::commands::location::list::ListLocationCommand;
-use doublezero_sdk::commands::exchange::list::ListExchangeCommand;
 use doublezero_sdk::commands::device::list::ListDeviceCommand;
+use doublezero_sdk::commands::exchange::list::ListExchangeCommand;
+use doublezero_sdk::commands::location::list::ListLocationCommand;
 use doublezero_sdk::commands::tunnel::list::ListTunnelCommand;
 use doublezero_sdk::commands::user::list::ListUserCommand;
+use doublezero_sdk::*;
 
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -59,10 +59,10 @@ struct TunnelData {
     pub code: String,
     pub side: TunnelSideData,
     pub tunnel_net: String,
-    pub tunnel_type: String, 
-    pub bandwidth: String,  
-    pub mtu: u32,  
-    pub delay_ms: f32, 
+    pub tunnel_type: String,
+    pub bandwidth: String,
+    pub mtu: u32,
+    pub delay_ms: f32,
     pub jitter_ms: f32,
     pub owner: String,
 }
@@ -89,13 +89,13 @@ struct UserData {
 }
 
 impl ExportArgs {
-    pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
-        let locations = ListLocationCommand{}.execute(client)?;
-        let exchanges = ListExchangeCommand{}.execute(client)?;
+    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
+        let locations = ListLocationCommand {}.execute(client)?;
+        let exchanges = ListExchangeCommand {}.execute(client)?;
 
-        let devices = ListDeviceCommand{}.execute(client)?;
-        let tunnels = ListTunnelCommand{}.execute(client)?;
-        let users = ListUserCommand{}.execute(client)?;
+        let devices = ListDeviceCommand {}.execute(client)?;
+        let tunnels = ListTunnelCommand {}.execute(client)?;
+        let users = ListUserCommand {}.execute(client)?;
 
         for (pubkey, data) in devices.clone() {
             let name = format!("{}/{}.yml", self.path, data.code);
@@ -131,42 +131,44 @@ impl ExportArgs {
                         owner: exchange.owner.to_string(),
                     },
                     public_ip: ipv4_to_string(&data.public_ip),
-                    tunnels: tunnels.clone()
+                    tunnels: tunnels
+                        .clone()
                         .into_iter()
-                        .filter(|(_,tunnel)| tunnel.side_a_pk == pubkey || tunnel.side_z_pk == pubkey)
+                        .filter(|(_, tunnel)| {
+                            tunnel.side_a_pk == pubkey || tunnel.side_z_pk == pubkey
+                        })
                         .map(|(key, tunnel)| {
-                            
                             let side_pubkey = if tunnel.side_a_pk == pubkey {
                                 tunnel.side_z_pk
                             } else {
                                 tunnel.side_a_pk
                             };
-                            let side_device = devices
-                            .get(&side_pubkey)
-                            .expect("could get Location");
-            
+                            let side_device =
+                                devices.get(&side_pubkey).expect("could get Location");
+
                             TunnelData {
-                            pubkey: key.to_string(),
-                            code: tunnel.code.clone(),
-                            tunnel_net: networkv4_to_string(&tunnel.tunnel_net),
-                            side: TunnelSideData {  
-                                name: side_device.code.clone(),
-                                pubkey: side_pubkey.to_string(),
-                                public_ip: ipv4_to_string(&side_device.public_ip),
-                                tunnel_id: tunnel.tunnel_id,
+                                pubkey: key.to_string(),
+                                code: tunnel.code.clone(),
                                 tunnel_net: networkv4_to_string(&tunnel.tunnel_net),
-                            },
-                            tunnel_type: tunnel.tunnel_type.to_string(),
-                            bandwidth: bandwidth_to_string(tunnel.bandwidth),
-                            mtu: tunnel.mtu,
-                            delay_ms: tunnel.delay_ns as f32 / 1000000.0,
-                            jitter_ms: tunnel.jitter_ns as f32 / 1000000.0,
-                            owner: tunnel.owner.to_string(),                            
-                        }})
+                                side: TunnelSideData {
+                                    name: side_device.code.clone(),
+                                    pubkey: side_pubkey.to_string(),
+                                    public_ip: ipv4_to_string(&side_device.public_ip),
+                                    tunnel_id: tunnel.tunnel_id,
+                                    tunnel_net: networkv4_to_string(&tunnel.tunnel_net),
+                                },
+                                tunnel_type: tunnel.tunnel_type.to_string(),
+                                bandwidth: bandwidth_to_string(tunnel.bandwidth),
+                                mtu: tunnel.mtu,
+                                delay_ms: tunnel.delay_ns as f32 / 1000000.0,
+                                jitter_ms: tunnel.jitter_ns as f32 / 1000000.0,
+                                owner: tunnel.owner.to_string(),
+                            }
+                        })
                         .collect(),
                     users: users
                         .iter()
-                        .filter(|(_,user)| user.device_pk == pubkey)
+                        .filter(|(_, user)| user.device_pk == pubkey)
                         .map(|(key, user)| UserData {
                             pubkey: key.to_string(),
                             user_type: user.user_type.to_string(),
@@ -183,7 +185,7 @@ impl ExportArgs {
             };
 
             let content = serde_yaml::to_string(&config)?;
-            fs::write(name, content)?; 
+            fs::write(name, content)?;
         }
 
         Ok(())

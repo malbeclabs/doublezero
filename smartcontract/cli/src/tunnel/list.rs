@@ -1,7 +1,7 @@
 use clap::Args;
-use doublezero_sdk::*;
 use doublezero_sdk::commands::device::list::ListDeviceCommand;
 use doublezero_sdk::commands::tunnel::list::ListTunnelCommand;
+use doublezero_sdk::*;
 use prettytable::{format, row, Cell, Row, Table};
 
 #[derive(Args, Debug)]
@@ -11,7 +11,7 @@ pub struct ListTunnelArgs {
 }
 
 impl ListTunnelArgs {
-    pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
         let mut table = Table::new();
         table.add_row(row![
             "pubkey",
@@ -25,18 +25,17 @@ impl ListTunnelArgs {
             "owner"
         ]);
 
-
-        let devices = ListDeviceCommand{}.execute(client)?;
-        let tunnels = ListTunnelCommand{}.execute(client)?;
+        let devices = ListDeviceCommand {}.execute(client)?;
+        let tunnels = ListTunnelCommand {}.execute(client)?;
 
         for (pubkey, data) in tunnels {
             let side_a_name = match &devices.get(&data.side_a_pk) {
                 Some(device) => &device.code,
-                None => &data.side_a_pk.to_string()
+                None => &data.side_a_pk.to_string(),
             };
             let side_z_name = match &devices.get(&data.side_z_pk) {
                 Some(device) => &device.code,
-                None => &data.side_z_pk.to_string()
+                None => &data.side_z_pk.to_string(),
             };
 
             table.add_row(Row::new(vec![

@@ -1,5 +1,6 @@
-use double_zero_sla_program::{
-    instructions::DoubleZeroInstruction, pda::get_globalstate_pda, processors::allowlist::device::remove::RemoveDeviceAllowlistGlobalConfigArgs,
+use doublezero_sla_program::{
+    instructions::DoubleZeroInstruction, pda::get_globalstate_pda,
+    processors::allowlist::device::remove::RemoveDeviceAllowlistArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -14,11 +15,10 @@ impl RemoveDeviceAllowlistCommand {
         let (pda_pubkey, _) = get_globalstate_pda(&client.get_program_id());
 
         client.execute_transaction(
-            DoubleZeroInstruction::RemoveDeviceAllowlistGlobalConfig(
-                RemoveDeviceAllowlistGlobalConfigArgs { pubkey: self.pubkey },
-            ),
+            DoubleZeroInstruction::RemoveDeviceAllowlist(RemoveDeviceAllowlistArgs {
+                pubkey: self.pubkey,
+            }),
             vec![AccountMeta::new(pda_pubkey, false)],
         )
-            
     }
 }

@@ -8,7 +8,7 @@ use crate::requirements::{check_requirements, CHECK_ID_JSON};
 pub struct AddressArgs {}
 
 impl AddressArgs {
-    pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON)?;
 

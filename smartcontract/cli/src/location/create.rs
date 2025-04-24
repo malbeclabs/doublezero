@@ -20,11 +20,11 @@ pub struct CreateLocationArgs {
 }
 
 impl CreateLocationArgs {
-    pub async fn execute(&self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
-        
-        let (_signature, pubkey) = CreateLocationCommand {
+
+        let (signature, _pubkey) = CreateLocationCommand {
             code: self.code.clone(),
             name: self.name.clone(),
             country: self.country.clone(),
@@ -33,9 +33,69 @@ impl CreateLocationArgs {
             loc_id: self.loc_id,
         }
         .execute(client)?;
-
-        println!("{}", pubkey);
+        println!("Signature: {}", signature);
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use doublezero_sdk::DoubleZeroClient;
+    use doublezero_sla_program::{
+        instructions::DoubleZeroInstruction,
+        pda::{get_globalstate_pda, get_location_pda},
+        processors::location::create::LocationCreateArgs,
+    };
+    use mockall::predicate;
+    use solana_sdk::{instruction::AccountMeta, signature::Signature, system_program};
+
+    use crate::{location::create::CreateLocationArgs, tests::tests::create_test_client};
+
+    #[test]
+    fn test_commands_location_create_command() {
+        let mut client = create_test_client();
+
+        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
+        let (pda_pubkey, _) = get_location_pda(&client.get_program_id(), 1);
+        let payer = client.get_payer();
+
+
+        client.
+            expect_get_balance()
+            .returning(|| Ok(150_000_000));
+
+        client
+            .expect_execute_transaction()
+            .with(
+                predicate::eq(DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
+                    index: 1,
+                    code: "test".to_string(),
+                    name: "Test Location".to_string(),
+                    country: "Test Country".to_string(),
+                    lat: 0.0,
+                    lng: 0.0,
+                    loc_id: 0,
+                })),
+                predicate::eq(vec![
+                    AccountMeta::new(pda_pubkey, false),
+                    AccountMeta::new(globalstate_pubkey, false),
+                    AccountMeta::new(payer, true),
+                    AccountMeta::new(system_program::id(), false),
+                ]),
+            )
+            .returning(|_, _| Ok(Signature::new_unique()));
+
+        let res = CreateLocationArgs {
+            code: "test".to_string(),
+            name: "Test Location".to_string(),
+            country: "Test Country".to_string(),
+            lat: 0.0,
+            lng: 0.0,
+            loc_id: None,
+        }
+        .execute(&client);
+
+        assert!(res.is_ok());
     }
 }

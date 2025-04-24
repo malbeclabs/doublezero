@@ -8,7 +8,7 @@ include!(concat!(env!("OUT_DIR"), "/version.rs"));
 
 #[derive(Parser, Debug)]
 #[command(term_width = 0)]
-#[command(name = "Double zero activator")]
+#[command(name = "Doublezero activator")]
 #[command(version = "1.0")]
 #[command(about = "Double Zero ", long_about = None)]
 struct AppArgs {

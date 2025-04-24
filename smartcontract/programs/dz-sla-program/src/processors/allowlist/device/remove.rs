@@ -14,11 +14,11 @@ use solana_program::msg;
 
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct RemoveDeviceAllowlistGlobalConfigArgs {
+pub struct RemoveDeviceAllowlistArgs {
     pub pubkey: Pubkey,
 }
 
-impl fmt::Debug for RemoveDeviceAllowlistGlobalConfigArgs {
+impl fmt::Debug for RemoveDeviceAllowlistArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "pubkey: {}", self.pubkey)
     }
@@ -27,7 +27,7 @@ impl fmt::Debug for RemoveDeviceAllowlistGlobalConfigArgs {
 pub fn process_remove_device_allowlist_globalconfig(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &RemoveDeviceAllowlistGlobalConfigArgs,
+    value: &RemoveDeviceAllowlistArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 

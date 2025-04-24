@@ -1,7 +1,5 @@
 use crate::DoubleZeroClient;
-use double_zero_sla_program::state::{
-    accountdata::AccountData, user::User,
-};
+use doublezero_sla_program::state::{accountdata::AccountData, user::User};
 use solana_sdk::pubkey::Pubkey;
 
 pub struct GetUserCommand {

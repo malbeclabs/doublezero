@@ -1,9 +1,8 @@
-use std::str::FromStr;
 use clap::Args;
+use doublezero_sdk::commands::allowlist::user::add::AddUserAllowlistCommand;
 use doublezero_sdk::*;
 use solana_sdk::pubkey::Pubkey;
-use doublezero_sdk::commands::allowlist::user::add::AddUserAllowlistCommand;
-use doublezero_sdk::commands::allowlist::user::list::ListUserAllowlistCommand;
+use std::str::FromStr;
 
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 
@@ -14,7 +13,7 @@ pub struct AddUserAllowlistArgs {
 }
 
 impl AddUserAllowlistArgs {
-    pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -29,11 +28,7 @@ impl AddUserAllowlistArgs {
         println!("Adding {} to user allowlist...", pubkey);
 
         let res = AddUserAllowlistCommand { pubkey }.execute(client)?;
-        println!("{:?}", res);
-
-        let list = ListUserAllowlistCommand { }.execute(client)?;
-        println!("{:?}", list);
-
+        println!("Signature: {}", res);
 
         Ok(())
     }

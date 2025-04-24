@@ -5,16 +5,15 @@ use std::str::FromStr;
 
 use clap::{Args, ValueEnum};
 use doublezero_sdk::{
-    ipv4_parse, ipv4_to_string, networkv4_to_string, DZClient, IpV4,
-    NetworkV4, ProvisioningRequest, ServiceController, User, UserCYOA, 
-    UserStatus, UserType, 
+    ipv4_parse, ipv4_to_string, networkv4_to_string, DZClient, IpV4, NetworkV4,
+    ProvisioningRequest, ServiceController, User, UserCYOA, UserStatus, UserType,
 };
 
-use doublezero_sdk::commands::device::list::ListDeviceCommand;
 use doublezero_sdk::commands::device::get::GetDeviceCommand;
-use doublezero_sdk::commands::user::list::ListUserCommand;
+use doublezero_sdk::commands::device::list::ListDeviceCommand;
 use doublezero_sdk::commands::user::create::CreateUserCommand;
 use doublezero_sdk::commands::user::get::GetUserCommand;
+use doublezero_sdk::commands::user::list::ListUserCommand;
 
 use solana_sdk::pubkey::Pubkey;
 
@@ -60,12 +59,10 @@ impl ProvisioningArgs {
             CHECK_ID_JSON | CHECK_BALANCE | CHECK_USER_ALLOWLIST | CHECK_DOUBLEZEROD,
         )?;
         // Get public IP
-        let client_ip = self.look_for_ip(&spinner)?;
+        let client_ip = self.look_for_ip(&spinner).await?;
 
         // Look for user
-        let (user_pubkey, user) = self
-            .look_for_user(client, &controller, &client_ip, &spinner)
-            .await?;
+        let (user_pubkey, user) = self.look_for_user(client, &controller, &client_ip, &spinner).await?;
 
         // Check user status
         match user.status {
@@ -76,7 +73,7 @@ impl ProvisioningArgs {
             }
             UserStatus::Rejected => {
                 // User is rejected
-                self.user_rejected(client, &user_pubkey, &spinner)?;
+                self.user_rejected(client, &user_pubkey, &spinner).await?;
             }
             _ => panic!("User status not expected"),
         }
@@ -95,13 +92,12 @@ impl ProvisioningArgs {
                 } else {
                     UserType::IBRL
                 }
-            }
-            //DzMode::EdgeFiltering => UserType::EdgeFiltering,
-            //DzMode::Multicast => UserType::Multicast,
+            } //DzMode::EdgeFiltering => UserType::EdgeFiltering,
+              //DzMode::Multicast => UserType::Multicast,
         }
     }
 
-    pub fn look_for_ip(&self, spinner: &ProgressBar) -> eyre::Result<IpV4> {
+    pub  async fn look_for_ip(&self, spinner: &ProgressBar) -> eyre::Result<IpV4> {
         spinner.println("🔗  Start Provisioning User...");
         spinner.set_prefix("1/4 Public IP");
 
@@ -144,12 +140,12 @@ impl ProvisioningArgs {
         spinner.set_message("Searching for user account...");
         spinner.set_prefix("2/4 User");
 
-        let users = ListUserCommand {} .execute(client)?;
-        let devices = ListDeviceCommand {} .execute(client)?;
+        let users = ListUserCommand {}.execute(client)?;
+        let devices = ListDeviceCommand {}.execute(client)?;
 
         let mut user_pubkey: Option<Pubkey> = None;
 
-        match users.iter().find(|(_,u)| u.client_ip == *client_ip) {
+        match users.iter().find(|(_, u)| u.client_ip == *client_ip) {
             Some((pubkey, _user)) => {
                 spinner.println(format!("    An account already exists Pubkey: {}", pubkey));
 
@@ -165,8 +161,11 @@ impl ProvisioningArgs {
                     Some(device) => match device.parse::<Pubkey>() {
                         Ok(pubkey) => pubkey,
                         Err(_) => {
-                            spinner.set_message("Searching for device account...");                            
-                            let (pubkey, _) = devices.iter().find(|(_,d)| d.code == *device).expect("Device not found");                            
+                            spinner.set_message("Searching for device account...");
+                            let (pubkey, _) = devices
+                                .iter()
+                                .find(|(_, d)| d.code == *device)
+                                .expect("Device not found");
                             *pubkey
                         }
                     },
@@ -183,7 +182,11 @@ impl ProvisioningArgs {
                     }
                 };
 
-                let (_, device) = GetDeviceCommand { pubkey_or_code: device_pk.to_string() }.execute(client).expect("Unable to get device");
+                let (_, device) = GetDeviceCommand {
+                    pubkey_or_code: device_pk.to_string(),
+                }
+                .execute(client)
+                .expect("Unable to get device");
 
                 spinner.println(format!(
                     "    The Device has been selected: {} ",
@@ -196,7 +199,8 @@ impl ProvisioningArgs {
                     device_pk,
                     cyoa_type: UserCYOA::GREOverDIA,
                     client_ip: *client_ip,
-                }.execute(client);
+                }
+                .execute(client);
 
                 match res {
                     Ok((_, pubkey)) => {
@@ -221,12 +225,19 @@ impl ProvisioningArgs {
             return Err(eyre::eyre!("Error creating user"));
         }
 
-
-        let (_, mut user) = GetUserCommand { pubkey: user_pubkey.unwrap()}.execute(client).expect("User not found");
+        let (_, mut user) = GetUserCommand {
+            pubkey: user_pubkey.unwrap(),
+        }
+        .execute(client)
+        .expect("User not found");
         while user.status != UserStatus::Activated && user.status != UserStatus::Rejected {
             spinner.set_message("Waiting for user activation...");
             std::thread::sleep(std::time::Duration::from_secs(5));
-            let (_, updated_user) = GetUserCommand { pubkey: user_pubkey.unwrap()}.execute(client).expect("User not found");
+            let (_, updated_user) = GetUserCommand {
+                pubkey: user_pubkey.unwrap(),
+            }
+            .execute(client)
+            .expect("User not found");
             user = updated_user.clone();
         }
 
@@ -249,7 +260,7 @@ impl ProvisioningArgs {
         spinner.set_prefix("3/4 Device");
         spinner.set_message("Reading devices...");
 
-        let devices = ListDeviceCommand{}.execute(client)?;
+        let devices = ListDeviceCommand {}.execute(client)?;
         let prefixes = devices
             .values()
             .flat_map(|device| device.dz_prefixes.clone())
@@ -314,7 +325,7 @@ impl ProvisioningArgs {
         Ok(())
     }
 
-    fn user_rejected(
+    async fn user_rejected(
         &self,
         client: &DZClient,
         user_pubkey: &Pubkey,

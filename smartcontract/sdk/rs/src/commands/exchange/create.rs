@@ -1,4 +1,4 @@
-use double_zero_sla_program::{
+use doublezero_sla_program::{
     instructions::DoubleZeroInstruction, pda::get_exchange_pda,
     processors::exchange::create::ExchangeCreateArgs,
 };

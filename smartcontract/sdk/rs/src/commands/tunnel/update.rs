@@ -1,8 +1,8 @@
-use double_zero_sla_program::{
+use doublezero_sla_program::{
     instructions::DoubleZeroInstruction, pda::get_tunnel_pda,
     processors::tunnel::update::TunnelUpdateArgs, state::tunnel::TunnelTunnelType,
 };
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use solana_sdk::{instruction::AccountMeta, signature::Signature};
 
 use crate::DoubleZeroClient;
 
@@ -17,21 +17,19 @@ pub struct UpdateTunnelCommand {
 }
 
 impl UpdateTunnelCommand {
-    pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
+    pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
         let (pda_pubkey, _) = get_tunnel_pda(&client.get_program_id(), self.index);
-        client
-            .execute_transaction(
-                DoubleZeroInstruction::UpdateTunnel(TunnelUpdateArgs {
-                    index: self.index,
-                    code: self.code.clone(),
-                    tunnel_type: self.tunnel_type,
-                    bandwidth: self.bandwidth,
-                    mtu: self.mtu,
-                    delay_ns: self.delay_ns,
-                    jitter_ns: self.jitter_ns,
-                }),
-                vec![AccountMeta::new(pda_pubkey, false)],
-            )
-            .map(|sig| (sig, pda_pubkey))
+        client.execute_transaction(
+            DoubleZeroInstruction::UpdateTunnel(TunnelUpdateArgs {
+                index: self.index,
+                code: self.code.clone(),
+                tunnel_type: self.tunnel_type,
+                bandwidth: self.bandwidth,
+                mtu: self.mtu,
+                delay_ns: self.delay_ns,
+                jitter_ns: self.jitter_ns,
+            }),
+            vec![AccountMeta::new(pda_pubkey, false)],
+        )
     }
 }

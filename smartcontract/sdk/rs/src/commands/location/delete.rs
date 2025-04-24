@@ -1,4 +1,4 @@
-use double_zero_sla_program::{
+use doublezero_sla_program::{
     instructions::DoubleZeroInstruction, pda::get_location_pda,
     processors::location::delete::LocationDeleteArgs,
 };
@@ -33,7 +33,7 @@ mod tests {
         commands::location::delete::DeleteLocationCommand, tests::tests::create_test_client,
         DoubleZeroClient,
     };
-    use double_zero_sla_program::{
+    use doublezero_sla_program::{
         instructions::DoubleZeroInstruction,
         pda::{get_globalstate_pda, get_location_pda},
         processors::location::delete::LocationDeleteArgs,

@@ -3,7 +3,6 @@ use crate::{
     state::{accounttype::*, globalstate::GlobalState},
 };
 use borsh::BorshSerialize;
-#[cfg(test)]
 use solana_program::msg;
 use solana_program::{
     account_info::AccountInfo,
@@ -61,20 +60,34 @@ pub fn globalstate_write2<'a>(
     let actual_len = account.data_len();
     let new_len = instance.size();
 
+    // Update the account
+    // Check if the account needs to be resized
+    // If so, realloc the account
     {
         if actual_len != new_len {
             account
                 .realloc(new_len, false)
                 .expect("Unable to realloc the account");
+
+            msg!(
+                "Realloc: {} -> {}",
+                actual_len,
+                new_len
+            );
         }
 
         let data = &mut account.data.borrow_mut();
         instance
             .serialize(&mut &mut data[..])
             .expect("Unable to serialize");
+
+        msg!( "Updated: {:?}", instance );
     }
 
-    if actual_len < new_len {
+    // Check is the account needs more rent for the new space
+    // If so, transfer the required lamports from the payer account
+    // to the account
+    if new_len > actual_len {
         let rent: Rent = Rent::get().expect("Unable to read rent");
         let required_lamports: u64 = rent.minimum_balance(new_len);
 

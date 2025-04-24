@@ -1,6 +1,9 @@
-use double_zero_sla_program::{
-    instructions::DoubleZeroInstruction, pda::get_user_pda,
-    processors::user::create::UserCreateArgs, state::user::{UserCYOA, UserType}, types::IpV4,
+use doublezero_sla_program::{
+    instructions::DoubleZeroInstruction,
+    pda::get_user_pda,
+    processors::user::create::UserCreateArgs,
+    state::user::{UserCYOA, UserType},
+    types::IpV4,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -19,8 +22,7 @@ impl CreateUserCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, _) =
-            get_user_pda(&client.get_program_id(), globalstate.account_index + 1);
+        let (pda_pubkey, _) = get_user_pda(&client.get_program_id(), globalstate.account_index + 1);
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateUser(UserCreateArgs {

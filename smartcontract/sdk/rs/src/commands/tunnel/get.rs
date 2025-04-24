@@ -1,5 +1,7 @@
 use crate::{utils::parse_pubkey, DoubleZeroClient};
-use double_zero_sla_program::state::{accountdata::AccountData, accounttype::AccountType, tunnel::Tunnel};
+use doublezero_sla_program::state::{
+    accountdata::AccountData, accounttype::AccountType, tunnel::Tunnel,
+};
 use solana_sdk::pubkey::Pubkey;
 
 pub struct GetTunnelCommand {
@@ -8,14 +10,13 @@ pub struct GetTunnelCommand {
 
 impl GetTunnelCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Pubkey, Tunnel)> {
-
         match parse_pubkey(&self.pubkey_or_code) {
             Some(pk) => match client.get(pk)? {
                 AccountData::Tunnel(tunnel) => Ok((pk, tunnel)),
                 _ => Err(eyre::eyre!("Invalid Account Type")),
             },
-            None => 
-                client.gets(AccountType::Tunnel)?
+            None => client
+                .gets(AccountType::Tunnel)?
                 .into_iter()
                 .find(|(_, v)| match v {
                     AccountData::Tunnel(tunnel) => tunnel.code == self.pubkey_or_code,
@@ -26,9 +27,11 @@ impl GetTunnelCommand {
                     _ => Err(eyre::eyre!("Invalid Account Type")),
                 })
                 .unwrap_or_else(|| {
-                    Err(eyre::eyre!("Tunnel with code {} not found", self.pubkey_or_code))
+                    Err(eyre::eyre!(
+                        "Tunnel with code {} not found",
+                        self.pubkey_or_code
+                    ))
                 }),
-            
         }
     }
 }

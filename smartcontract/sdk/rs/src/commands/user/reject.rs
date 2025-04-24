@@ -1,6 +1,6 @@
-use double_zero_sla_program::{
+use doublezero_sla_program::{
     instructions::DoubleZeroInstruction, pda::get_user_pda,
-    processors::user::reject::UserRejectArgs, 
+    processors::user::reject::UserRejectArgs,
 };
 use solana_sdk::{instruction::AccountMeta, signature::Signature};
 
@@ -18,17 +18,15 @@ impl RejectUserCommand {
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
         let (pda_pubkey, _) = get_user_pda(&client.get_program_id(), self.index);
-        client
-            .execute_transaction(
-                DoubleZeroInstruction::RejectUser(UserRejectArgs {
-                    index: self.index,
-                    reason: self.reason.clone(),
-                }),
-                vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ],
-            )
-            
+        client.execute_transaction(
+            DoubleZeroInstruction::RejectUser(UserRejectArgs {
+                index: self.index,
+                reason: self.reason.clone(),
+            }),
+            vec![
+                AccountMeta::new(pda_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
+        )
     }
 }

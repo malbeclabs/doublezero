@@ -7,7 +7,7 @@ pub mod tests {
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
-    use crate::MockDoubleZeroClient;
+    use doublezero_sdk::MockDoubleZeroClient;
 
     pub fn create_test_client() -> MockDoubleZeroClient {
         let mut client = MockDoubleZeroClient::new();

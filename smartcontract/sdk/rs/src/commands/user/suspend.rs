@@ -1,4 +1,4 @@
-use double_zero_sla_program::{
+use doublezero_sla_program::{
     instructions::DoubleZeroInstruction, pda::get_user_pda,
     processors::user::suspend::UserSuspendArgs,
 };
@@ -16,16 +16,13 @@ impl SuspendUserCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, _) =
-            get_user_pda(&client.get_program_id(), self.index);
-        client
-            .execute_transaction(
-                DoubleZeroInstruction::SuspendUser(UserSuspendArgs { index: self.index }),
-                vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ],
-            )
-            
+        let (pda_pubkey, _) = get_user_pda(&client.get_program_id(), self.index);
+        client.execute_transaction(
+            DoubleZeroInstruction::SuspendUser(UserSuspendArgs { index: self.index }),
+            vec![
+                AccountMeta::new(pda_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
+        )
     }
 }

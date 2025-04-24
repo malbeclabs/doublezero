@@ -1,9 +1,9 @@
-use std::str::FromStr;
 use clap::Args;
+use doublezero_sdk::commands::device::list::ListDeviceCommand;
 use doublezero_sdk::{DZClient, ServiceController};
 use prettytable::{format, row, Cell, Row, Table};
 use solana_sdk::pubkey::Pubkey;
-use doublezero_sdk::commands::device::list::ListDeviceCommand;
+use std::str::FromStr;
 
 use crate::requirements::{check_requirements, CHECK_DOUBLEZEROD};
 
@@ -25,7 +25,7 @@ impl LatencyArgs {
         ]);
 
         let controller = ServiceController::new(None);
-        let devices = ListDeviceCommand{}.execute(client)?;
+        let devices = ListDeviceCommand {}.execute(client)?;
 
         for data in controller.latency().await.map_err(|e| eyre::eyre!(e))? {
             let device_name =

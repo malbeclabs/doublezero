@@ -1,3 +1,4 @@
+use solana_program::msg;
 use crate::{
     instructions::*,
     processors::{
@@ -11,8 +12,8 @@ use crate::{
                 remove::process_remove_foundation_allowlist_globalconfig,
             },
             user::{
-                add::process_add_user_allowlist_globalconfig,
-                remove::process_remove_user_allowlist_globalconfig,
+                add::process_add_user_allowlist,
+                remove::process_remove_user_allowlist,
             },
         },
         device::{
@@ -62,6 +63,8 @@ pub fn process_instruction(
     data: &[u8],
 ) -> ProgramResult {
     let instruction = DoubleZeroInstruction::unpack(data)?;
+
+    msg!("Instruction: {:?}", instruction);
 
     match instruction {
         DoubleZeroInstruction::InitGlobalState() => initialize_global_state(program_id, accounts)?,
@@ -171,23 +174,23 @@ pub fn process_instruction(
         DoubleZeroInstruction::RejectUser(value) => {
             process_reject_user(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::AddFoundationAllowlistGlobalConfig(value) => {
+        DoubleZeroInstruction::AddFoundationAllowlist(value) => {
             process_add_foundation_allowlist_globalconfig(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::RemoveFoundationAllowlistGlobalConfig(value) => {
+        DoubleZeroInstruction::RemoveFoundationAllowlist(value) => {
             process_remove_foundation_allowlist_globalconfig(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::AddDeviceAllowlistGlobalConfig(value) => {
+        DoubleZeroInstruction::AddDeviceAllowlist(value) => {
             process_add_device_allowlist_globalconfig(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::RemoveDeviceAllowlistGlobalConfig(value) => {
+        DoubleZeroInstruction::RemoveDeviceAllowlist(value) => {
             process_remove_device_allowlist_globalconfig(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::AddUserAllowlistGlobalConfig(value) => {
-            process_add_user_allowlist_globalconfig(program_id, accounts, &value)?
+        DoubleZeroInstruction::AddUserAllowlist(value) => {
+            process_add_user_allowlist(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::RemoveUserAllowlistGlobalConfig(value) => {
-            process_remove_user_allowlist_globalconfig(program_id, accounts, &value)?
+        DoubleZeroInstruction::RemoveUserAllowlist(value) => {
+            process_remove_user_allowlist(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::RequestBanUser(value) => {
             process_request_ban_user(program_id, accounts, &value)?

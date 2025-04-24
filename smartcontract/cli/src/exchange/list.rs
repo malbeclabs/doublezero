@@ -1,6 +1,6 @@
 use clap::Args;
-use doublezero_sdk::*;
 use doublezero_sdk::commands::exchange::list::ListExchangeCommand;
+use doublezero_sdk::*;
 use prettytable::{format, row, Cell, Row, Table};
 
 #[derive(Args, Debug)]
@@ -10,13 +10,13 @@ pub struct ListExchangeArgs {
 }
 
 impl ListExchangeArgs {
-    pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
         let mut table = Table::new();
         table.add_row(row![
             "pubkey", "code", "name", "lat", "lng", "loc_id", "status", "owner"
         ]);
 
-        let exchanges = ListExchangeCommand{}.execute(client)?;
+        let exchanges = ListExchangeCommand {}.execute(client)?;
 
         for (pubkey, data) in exchanges {
             table.add_row(Row::new(vec![

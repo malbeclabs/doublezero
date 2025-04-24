@@ -1,8 +1,8 @@
 use clap::Args;
-use std::str::FromStr;
+use doublezero_sdk::commands::user::get::GetUserCommand;
 use doublezero_sdk::*;
 use solana_sdk::pubkey::Pubkey;
-use doublezero_sdk::commands::user::get::GetUserCommand;
+use std::str::FromStr;
 
 #[derive(Args, Debug)]
 pub struct GetUserArgs {
@@ -11,10 +11,9 @@ pub struct GetUserArgs {
 }
 
 impl GetUserArgs {
-    pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
-
+    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
         let pubkey = Pubkey::from_str(&self.pubkey)?;
-        let (pubkey, user) = GetUserCommand{ pubkey }.execute(client)?;
+        let (pubkey, user) = GetUserCommand { pubkey }.execute(client)?;
 
         println!(
                 "pubkey: {} user_type: {} device: {} cyoa_type: {} client_ip: {} tunnel_net: {} dz_ip: {} status: {} owner: {}",

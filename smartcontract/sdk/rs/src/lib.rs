@@ -50,6 +50,6 @@ pub use crate::servicecontroller::{
 };
 
 
-pub use crate::commands::accountdata::getglobalstate::GetGlobalStateCommand;
+pub use crate::commands::globalstate::get::GetGlobalStateCommand;
 pub use crate::commands::location::get::GetLocationCommand;
 pub use crate::commands::location::create::CreateLocationCommand;

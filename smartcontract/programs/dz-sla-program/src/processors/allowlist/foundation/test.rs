@@ -3,15 +3,15 @@ mod device_test {
     use crate::entrypoint::*;
     use crate::instructions::*;
     use crate::pda::*;
-    use crate::processors::globalstate::user_allowlist::add::AddUserAllowlistGlobalConfigArgs;
-    use crate::processors::globalstate::user_allowlist::remove::RemoveUserAllowlistGlobalConfigArgs;
+    use crate::processors::allowlist::foundation::add::AddFoundationAllowlistGlobalConfigArgs;
+    use crate::processors::allowlist::foundation::remove::RemoveFoundationAllowlistGlobalConfigArgs;
     use crate::state::accounttype::AccountType;
     use crate::tests::test::*;
     use solana_program_test::*;
     use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey};
 
     #[tokio::test]
-    async fn user_allowlist_test() {
+    async fn foundation_allowlist_test() {
         let program_id = Pubkey::new_unique();
         let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
             "double_zero_sla_program",
@@ -22,7 +22,7 @@ mod device_test {
         .await;
 
         /***********************************************************************************************************************************/
-        println!("🟢  Start user_allowlist_test");
+        println!("🟢  Start foundation_allowlist_test");
 
         let user1 = Pubkey::new_unique();
         let user2 = Pubkey::new_unique();
@@ -41,13 +41,13 @@ mod device_test {
         .await;
 
         /*****************************************************************************************************************************************************/
-        println!("🟢 2. Add user1 to user allowlist...");
+        println!("🟢 2. Add user1 to foundation allowlist...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::AddUserAllowlistGlobalConfig(
-                AddUserAllowlistGlobalConfigArgs { pubkey: user1 },
+            DoubleZeroInstruction::AddFoundationAllowlistGlobalConfig(
+                AddFoundationAllowlistGlobalConfigArgs { pubkey: user1 },
             ),
             vec![AccountMeta::new(globalstate_pubkey, false)],
             &payer,
@@ -60,18 +60,18 @@ mod device_test {
             .get_global_state();
 
         assert_eq!(state.account_type, AccountType::GlobalState);
-        assert_eq!(state.user_allowlist.len(), 2);
-        assert!(state.user_allowlist.contains(&user1));
+        assert_eq!(state.foundation_allowlist.len(), 2);
+        assert!(state.foundation_allowlist.contains(&user1));
         
         println!("✅ Allowlist is correct");
         /*****************************************************************************************************************************************************/
-        println!("🟢 3. Add user2 to user allowlist...");
+        println!("🟢 3. Add user2 to foundation allowlist...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::AddUserAllowlistGlobalConfig(
-                AddUserAllowlistGlobalConfigArgs { pubkey: user2 },
+            DoubleZeroInstruction::AddFoundationAllowlistGlobalConfig(
+                AddFoundationAllowlistGlobalConfigArgs { pubkey: user2 },
             ),
             vec![AccountMeta::new(globalstate_pubkey, false)],
             &payer,
@@ -84,19 +84,19 @@ mod device_test {
             .get_global_state();
 
         assert_eq!(state.account_type, AccountType::GlobalState);
-        assert_eq!(state.user_allowlist.len(), 3);
-        assert!(state.user_allowlist.contains(&user1));
-        assert!(state.user_allowlist.contains(&user2));
+        assert_eq!(state.foundation_allowlist.len(), 3);
+        assert!(state.foundation_allowlist.contains(&user1));
+        assert!(state.foundation_allowlist.contains(&user2));
 
         println!("✅ Allowlist is correct");
         /*****************************************************************************************************************************************************/
-        println!("🟢 4. Remove user1 to user allowlist...");
+        println!("🟢 4. Remove user1 to foundation allowlist...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::RemoveUserAllowlistGlobalConfig(
-                RemoveUserAllowlistGlobalConfigArgs { pubkey: user1 },
+            DoubleZeroInstruction::RemoveFoundationAllowlistGlobalConfig(
+                RemoveFoundationAllowlistGlobalConfigArgs { pubkey: user1 },
             ),
             vec![AccountMeta::new(globalstate_pubkey, false)],
             &payer,
@@ -109,19 +109,19 @@ mod device_test {
             .get_global_state();
 
         assert_eq!(state.account_type, AccountType::GlobalState);
-        assert_eq!(state.user_allowlist.len(), 2);
-        assert!(!state.user_allowlist.contains(&user1));
-        assert!(state.user_allowlist.contains(&user2));
+        assert_eq!(state.foundation_allowlist.len(), 2);
+        assert!(!state.foundation_allowlist.contains(&user1));
+        assert!(state.foundation_allowlist.contains(&user2));
 
         println!("✅ Allowlist is correct");
         /*****************************************************************************************************************************************************/
-        println!("🟢 5. Remove user2 to user allowlist...");
+        println!("🟢 5. Remove user2 to foundation allowlist...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::RemoveUserAllowlistGlobalConfig(
-                RemoveUserAllowlistGlobalConfigArgs { pubkey: user2 },
+            DoubleZeroInstruction::RemoveFoundationAllowlistGlobalConfig(
+                RemoveFoundationAllowlistGlobalConfigArgs { pubkey: user2 },
             ),
             vec![AccountMeta::new(globalstate_pubkey, false)],
             &payer,
@@ -134,9 +134,9 @@ mod device_test {
             .get_global_state();
 
         assert_eq!(state.account_type, AccountType::GlobalState);
-        assert_eq!(state.user_allowlist.len(), 1);
-        assert!(!state.user_allowlist.contains(&user1));
-        assert!(!state.user_allowlist.contains(&user2));
+        assert_eq!(state.foundation_allowlist.len(), 1);
+        assert!(!state.foundation_allowlist.contains(&user1));
+        assert!(!state.foundation_allowlist.contains(&user2));
 
         println!("✅ Allowlist is correct");
         /*****************************************************************************************************************************************************/

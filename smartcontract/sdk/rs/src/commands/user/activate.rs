@@ -6,7 +6,7 @@ use double_zero_sla_program::{
 };
 use solana_sdk::{instruction::AccountMeta, signature::Signature};
 
-use crate::{commands::accountdata::getglobalstate::GetGlobalStateCommand, DoubleZeroClient};
+use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 
 pub struct ActivateUserCommand {
     pub index: u128,

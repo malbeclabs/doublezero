@@ -3,6 +3,18 @@ use solana_program::program_error::ProgramError;
 use std::cmp::PartialEq;
 
 use crate::processors::{
+    allowlist::{
+        device::{
+            add::AddDeviceAllowlistGlobalConfigArgs, remove::RemoveDeviceAllowlistGlobalConfigArgs,
+        },
+        foundation::{
+            add::AddFoundationAllowlistGlobalConfigArgs,
+            remove::RemoveFoundationAllowlistGlobalConfigArgs,
+        },
+        user::{
+            add::AddUserAllowlistGlobalConfigArgs, remove::RemoveUserAllowlistGlobalConfigArgs,
+        },
+    },
     device::{
         activate::DeviceActivateArgs, create::DeviceCreateArgs, deactivate::DeviceDeactivateArgs,
         delete::DeviceDeleteArgs, reactivate::DeviceReactivateArgs, reject::DeviceRejectArgs,
@@ -13,11 +25,6 @@ use crate::processors::{
         suspend::ExchangeSuspendArgs, update::ExchangeUpdateArgs,
     },
     globalconfig::set::SetGlobalConfigArgs,
-    globalstate::{
-        device_allowlist::{
-            add::AddDeviceAllowlistGlobalConfigArgs, remove::RemoveDeviceAllowlistGlobalConfigArgs,
-        }, foundation_allowlist::{add::AddFoundationAllowlistGlobalConfigArgs, remove::RemoveFoundationAllowlistGlobalConfigArgs}, user_allowlist::{add::AddUserAllowlistGlobalConfigArgs, remove::RemoveUserAllowlistGlobalConfigArgs}
-    },
     location::{
         create::LocationCreateArgs, delete::LocationDeleteArgs, reactivate::LocationReactivateArgs,
         suspend::LocationSuspendArgs, update::LocationUpdateArgs,
@@ -28,7 +35,10 @@ use crate::processors::{
         suspend::TunnelSuspendArgs, update::TunnelUpdateArgs,
     },
     user::{
-        activate::UserActivateArgs, requestban::UserRequestBanArgs, ban::UserBanArgs, create::UserCreateArgs, deactivate::UserDeactivateArgs, delete::UserDeleteArgs, reactivate::UserReactivateArgs, reject::UserRejectArgs, suspend::UserSuspendArgs, update::UserUpdateArgs
+        activate::UserActivateArgs, ban::UserBanArgs, create::UserCreateArgs,
+        deactivate::UserDeactivateArgs, delete::UserDeleteArgs, reactivate::UserReactivateArgs,
+        reject::UserRejectArgs, requestban::UserRequestBanArgs, suspend::UserSuspendArgs,
+        update::UserUpdateArgs,
     },
 };
 
@@ -38,11 +48,11 @@ pub enum DoubleZeroInstruction {
     InitGlobalState(),                    // variant 0
     SetGlobalConfig(SetGlobalConfigArgs), // variant 1
 
-    CreateLocation(LocationCreateArgs),        // variant 2
-    UpdateLocation(LocationUpdateArgs),        // variant 3
-    SuspendLocation(LocationSuspendArgs),      // variant 4
+    CreateLocation(LocationCreateArgs),         // variant 2
+    UpdateLocation(LocationUpdateArgs),         // variant 3
+    SuspendLocation(LocationSuspendArgs),       // variant 4
     ReactivateLocation(LocationReactivateArgs), // variant 5
-    DeleteLocation(LocationDeleteArgs),        // variant 6
+    DeleteLocation(LocationDeleteArgs),         // variant 6
 
     CreateExchange(ExchangeCreateArgs),         // variant 7
     UpdateExchange(ExchangeUpdateArgs),         // variant 8
@@ -81,13 +91,13 @@ pub enum DoubleZeroInstruction {
 
     AddFoundationAllowlistGlobalConfig(AddFoundationAllowlistGlobalConfigArgs), // variant 36
     RemoveFoundationAllowlistGlobalConfig(RemoveFoundationAllowlistGlobalConfigArgs), // variant 37
-    AddDeviceAllowlistGlobalConfig(AddDeviceAllowlistGlobalConfigArgs), // variant 38
-    RemoveDeviceAllowlistGlobalConfig(RemoveDeviceAllowlistGlobalConfigArgs), // variant 39
-    AddUserAllowlistGlobalConfig(AddUserAllowlistGlobalConfigArgs),     // variant 40
-    RemoveUserAllowlistGlobalConfig(RemoveUserAllowlistGlobalConfigArgs), // variant 41
+    AddDeviceAllowlistGlobalConfig(AddDeviceAllowlistGlobalConfigArgs),         // variant 38
+    RemoveDeviceAllowlistGlobalConfig(RemoveDeviceAllowlistGlobalConfigArgs),   // variant 39
+    AddUserAllowlistGlobalConfig(AddUserAllowlistGlobalConfigArgs),             // variant 40
+    RemoveUserAllowlistGlobalConfig(RemoveUserAllowlistGlobalConfigArgs),       // variant 41
 
     RequestBanUser(UserRequestBanArgs), // variant 42
-    BanUser(UserBanArgs),  // variant 43
+    BanUser(UserBanArgs),               // variant 43
 }
 
 impl DoubleZeroInstruction {
@@ -258,7 +268,7 @@ impl DoubleZeroInstruction {
             Self::RemoveUserAllowlistGlobalConfig(args) => format!("{:?}", args),
 
             Self::RequestBanUser(args) => format!("{:?}", args),
-            Self::BanUser(args) => format!("{:?}", args),            
+            Self::BanUser(args) => format!("{:?}", args),
         }
     }
 }

@@ -7,9 +7,9 @@ use doublezero_cli::user::list::*;
 use doublezero_cli::user::get::*;
 use doublezero_cli::user::delete::*;
 use doublezero_cli::user::request_ban::*;
-use doublezero_cli::user::allowlist::get::GetAllowlistArgs;
-use doublezero_cli::user::allowlist::add::*;
-use doublezero_cli::user::allowlist::remove::*;
+use doublezero_cli::allowlist::user::get::GetAllowlistArgs;
+use doublezero_cli::allowlist::user::add::*;
+use doublezero_cli::allowlist::user::remove::*;
 
 #[derive(Args, Debug)]
 pub struct UserArgs {

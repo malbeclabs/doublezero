@@ -3,21 +3,21 @@ use std::str::FromStr;
 use clap::Args;
 use doublezero_sdk::*;
 use solana_sdk::pubkey::Pubkey;
-use doublezero_sdk::commands::allowlist::user::remove::RemoveUserAllowlistCommand;
+use doublezero_sdk::commands::allowlist::foundation::remove::RemoveFoundationAllowlistCommand;
 
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 
 #[derive(Args, Debug)]
-pub struct RemoveAllowlistArgs {
+pub struct RemoveFoundationAllowlistArgs {
     #[arg(long)]
     pub pubkey: String,
 }
 
-impl RemoveAllowlistArgs {
+impl RemoveFoundationAllowlistArgs {
     pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
-
+        
         let pubkey = {
             if self.pubkey.eq_ignore_ascii_case("me") {
                 client.get_payer()
@@ -26,7 +26,8 @@ impl RemoveAllowlistArgs {
             }
         };
 
-        RemoveUserAllowlistCommand { pubkey, }.execute(client)?;
+        RemoveFoundationAllowlistCommand { pubkey }.execute(client)?;
+
         println!("Updated allowlist");
 
         Ok(())

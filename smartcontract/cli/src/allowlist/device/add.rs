@@ -8,12 +8,12 @@ use doublezero_sdk::commands::allowlist::device::add::AddDeviceAllowlistCommand;
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 
 #[derive(Args, Debug)]
-pub struct AddAllowlistArgs {
+pub struct AddDeviceAllowlistArgs {
     #[arg(long)]
     pub pubkey: String,
 }
 
-impl AddAllowlistArgs {
+impl AddDeviceAllowlistArgs {
     pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;

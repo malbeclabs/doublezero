@@ -1,5 +1,5 @@
 use double_zero_sla_program::{
-    instructions::DoubleZeroInstruction, pda::get_globalstate_pda, processors::globalstate::foundation_allowlist::remove::RemoveFoundationAllowlistGlobalConfigArgs,
+    instructions::DoubleZeroInstruction, pda::get_globalstate_pda, processors::allowlist::foundation::remove::RemoveFoundationAllowlistGlobalConfigArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 

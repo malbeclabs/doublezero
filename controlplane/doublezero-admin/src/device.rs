@@ -6,9 +6,9 @@ use doublezero_cli::device::update::UpdateDeviceArgs;
 use doublezero_cli::device::list::ListDeviceArgs;
 use doublezero_cli::device::get::GetDeviceArgs;
 use doublezero_cli::device::delete::DeleteDeviceArgs;
-use doublezero_cli::device::allowlist::get::GetAllowlistArgs;
-use doublezero_cli::device::allowlist::add::AddAllowlistArgs;
-use doublezero_cli::device::allowlist::remove::RemoveAllowlistArgs;
+use doublezero_cli::allowlist::device::get::GetAllowlistArgs;
+use doublezero_cli::allowlist::device::add::AddAllowlistArgs;
+use doublezero_cli::allowlist::device::remove::RemoveAllowlistArgs;
 
 #[derive(Args, Debug)]
 pub struct DeviceArgs {

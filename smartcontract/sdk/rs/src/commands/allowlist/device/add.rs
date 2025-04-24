@@ -1,6 +1,6 @@
 use double_zero_sla_program::{
     instructions::DoubleZeroInstruction, pda::get_globalstate_pda,
-    processors::globalstate::device_allowlist::remove::RemoveDeviceAllowlistGlobalConfigArgs,
+    processors::allowlist::device::remove::RemoveDeviceAllowlistGlobalConfigArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 

@@ -20,4 +20,4 @@ pub mod status;
 pub mod helpers;
 pub mod subscribe;
 pub mod requirements;
-
+pub mod allowlist;

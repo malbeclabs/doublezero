@@ -1,4 +1,4 @@
-pub mod accountdata;
+pub mod globalstate;
 pub mod location;
 pub mod exchange;
 pub mod device;

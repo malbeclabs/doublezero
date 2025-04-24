@@ -6,9 +6,9 @@ use doublezero_cli::device::update::UpdateDeviceArgs;
 use doublezero_cli::device::list::ListDeviceArgs;
 use doublezero_cli::device::get::GetDeviceArgs;
 use doublezero_cli::device::delete::DeleteDeviceArgs;
-use doublezero_cli::device::allowlist::get::GetAllowlistArgs;
-use doublezero_cli::device::allowlist::add::AddAllowlistArgs;
-use doublezero_cli::device::allowlist::remove::RemoveAllowlistArgs;
+use doublezero_cli::allowlist::device::list::ListDeviceAllowlistArgs;
+use doublezero_cli::allowlist::device::add::AddDeviceAllowlistArgs;
+use doublezero_cli::allowlist::device::remove::RemoveDeviceAllowlistArgs;
 
 #[derive(Args, Debug)]
 pub struct DeviceArgs {
@@ -23,19 +23,19 @@ pub enum DeviceCommands {
     List(ListDeviceArgs),
     Get(GetDeviceArgs),
     Delete(DeleteDeviceArgs),
-    Allowlist(AllowlistArgs),
+    Allowlist(DeviceAllowlistArgs),
 }
 
 
 #[derive(Args, Debug)]
-pub struct AllowlistArgs {
+pub struct DeviceAllowlistArgs {
     #[command(subcommand)]
-    pub command: AllowlistCommands,
+    pub command: DeviceAllowlistCommands,
 }
 
 #[derive(Debug, Subcommand)]
-pub enum AllowlistCommands {
-    Get(GetAllowlistArgs),
-    Add(AddAllowlistArgs),
-    Remove(RemoveAllowlistArgs),
+pub enum DeviceAllowlistCommands {
+    List(ListDeviceAllowlistArgs),
+    Add(AddDeviceAllowlistArgs),
+    Remove(RemoveDeviceAllowlistArgs),
 }

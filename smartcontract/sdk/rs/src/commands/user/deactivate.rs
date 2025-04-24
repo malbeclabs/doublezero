@@ -4,7 +4,7 @@ use double_zero_sla_program::{
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
-use crate::{commands::accountdata::getglobalstate::GetGlobalStateCommand, DoubleZeroClient};
+use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 
 pub struct DeactivateDeviceCommand {
     pub index: u128,

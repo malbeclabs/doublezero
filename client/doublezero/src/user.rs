@@ -7,9 +7,9 @@ use doublezero_cli::user::list::*;
 use doublezero_cli::user::get::*;
 use doublezero_cli::user::delete::*;
 use doublezero_cli::user::request_ban::*;
-use doublezero_cli::user::allowlist::get::GetAllowlistArgs;
-use doublezero_cli::user::allowlist::add::*;
-use doublezero_cli::user::allowlist::remove::*;
+use doublezero_cli::allowlist::user::list::ListUserAllowlistArgs;
+use doublezero_cli::allowlist::user::add::AddUserAllowlistArgs;
+use doublezero_cli::allowlist::user::remove::RemoveUserAllowlistArgs;
 
 #[derive(Args, Debug)]
 pub struct UserArgs {
@@ -25,20 +25,20 @@ pub enum UserCommands {
     Get(GetUserArgs),
     Delete(DeleteUserArgs),
     #[command(about = "allowlist", hide = false)]
-    Allowlist(AllowlistArgs),
+    Allowlist(UserAllowlistArgs),
     RequestBan(RequestBanUserArgs),    
 }
 
 
 #[derive(Args, Debug)]
-pub struct AllowlistArgs {
+pub struct UserAllowlistArgs {
     #[command(subcommand)]
-    pub command: AllowlistCommands,
+    pub command: UserAllowlistCommands,
 }
 
 #[derive(Debug, Subcommand)]
-pub enum AllowlistCommands {
-    Get(GetAllowlistArgs),
-    Add(AddAllowlistArgs),
-    Remove(RemoveAllowlistArgs),
+pub enum UserAllowlistCommands {
+    List(ListUserAllowlistArgs),
+    Add(AddUserAllowlistArgs),
+    Remove(RemoveUserAllowlistArgs),
 }

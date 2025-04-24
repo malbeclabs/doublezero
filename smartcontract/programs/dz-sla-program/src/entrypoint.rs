@@ -1,6 +1,20 @@
 use crate::{
     instructions::*,
     processors::{
+        allowlist::{
+            device::{
+                add::process_add_device_allowlist_globalconfig,
+                remove::process_remove_device_allowlist_globalconfig,
+            },
+            foundation::{
+                add::process_add_foundation_allowlist_globalconfig,
+                remove::process_remove_foundation_allowlist_globalconfig,
+            },
+            user::{
+                add::process_add_user_allowlist_globalconfig,
+                remove::process_remove_user_allowlist_globalconfig,
+            },
+        },
         device::{
             activate::process_activate_device, create::process_create_device,
             deactivate::process_deactivate_device, delete::process_delete_device,
@@ -13,21 +27,7 @@ use crate::{
             update::process_update_exchange,
         },
         globalconfig::set::process_set_globalconfig,
-        globalstate::{
-            device_allowlist::{
-                add::process_add_device_allowlist_globalconfig,
-                remove::process_remove_device_allowlist_globalconfig,
-            },
-            foundation_allowlist::{
-                add::process_add_foundation_allowlist_globalconfig,
-                remove::process_remove_foundation_allowlist_globalconfig,
-            },
-            initialize::initialize_global_state,
-            user_allowlist::{
-                add::process_add_user_allowlist_globalconfig,
-                remove::process_remove_user_allowlist_globalconfig,
-            },
-        },
+        globalstate::initialize::initialize_global_state,
         location::{
             create::process_create_location, delete::process_delete_location,
             reactivate::process_reactivate_location, suspend::process_suspend_location,

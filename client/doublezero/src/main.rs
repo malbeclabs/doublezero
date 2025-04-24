@@ -14,12 +14,15 @@ mod location;
 mod tunnel;
 mod user;
 
-use command::Command;
-use exchange::ExchangeCommands;
-use globalconfig::GlobalConfigCommands;
-use location::LocationCommands;
-use tunnel::TunnelCommands;
-use user::UserCommands;
+use command::*;
+use device::*;
+use exchange::*;
+use globalconfig::*;
+use location::*;
+use tunnel::*;
+use user::*;
+
+
 
 
 include!(concat!(env!("OUT_DIR"), "/version.rs"));
@@ -73,9 +76,9 @@ async fn main() -> eyre::Result<()> {
             GlobalConfigCommands::Set(args) => args.execute(&client).await,
             GlobalConfigCommands::Get(args) => args.execute(&client).await,
             GlobalConfigCommands::Allowlist(command) => match command.command {
-                crate::globalconfig::AllowlistCommands::Get(args) => args.execute(&client).await,
-                crate::globalconfig::AllowlistCommands::Add(args) => args.execute(&client).await,
-                crate::globalconfig::AllowlistCommands::Remove(args) => args.execute(&client).await,
+                FoundationAllowlistCommands::List(args) => args.execute(&client).await,
+                FoundationAllowlistCommands::Add(args) => args.execute(&client).await,
+                FoundationAllowlistCommands::Remove(args) => args.execute(&client).await,
             },
         },
 
@@ -102,9 +105,9 @@ async fn main() -> eyre::Result<()> {
             DeviceCommands::Get(args) => args.execute(&client).await,
             DeviceCommands::Delete(args) => args.execute(&client).await,
             DeviceCommands::Allowlist(command) => match command.command {
-                crate::device::AllowlistCommands::Get(args) => args.execute(&client).await,
-                crate::device::AllowlistCommands::Add(args) => args.execute(&client).await,
-                crate::device::AllowlistCommands::Remove(args) => args.execute(&client).await, 
+                DeviceAllowlistCommands::List(args) => args.execute(&client).await,
+                DeviceAllowlistCommands::Add(args) => args.execute(&client).await,
+                DeviceAllowlistCommands::Remove(args) => args.execute(&client).await, 
             }
         },
         Command::Tunnel(command) => match command.command {
@@ -121,9 +124,9 @@ async fn main() -> eyre::Result<()> {
             UserCommands::Get(args) => args.execute(&client).await,
             UserCommands::Delete(args) => args.execute(&client).await,
             UserCommands::Allowlist(command) => match command.command {
-                crate::user::AllowlistCommands::Get(args) => args.execute(&client).await,
-                crate::user::AllowlistCommands::Add(args) => args.execute(&client).await,
-                crate::user::AllowlistCommands::Remove(args) => args.execute(&client).await,
+                UserAllowlistCommands::List(args) => args.execute(&client).await,
+                UserAllowlistCommands::Add(args) => args.execute(&client).await,
+                UserAllowlistCommands::Remove(args) => args.execute(&client).await,
             },
             UserCommands::RequestBan(args) => args.execute(&client).await,
         },

@@ -3,12 +3,12 @@ use eyre;
 use indicatif::ProgressBar;
 use std::str::FromStr;
 
+use crate::servicecontroller::{ProvisioningRequest, ServiceController};
 use clap::{Args, ValueEnum};
 use doublezero_sdk::{
-    ipv4_parse, ipv4_to_string, networkv4_to_string, DZClient, IpV4, NetworkV4,
-    User, UserCYOA, UserStatus, UserType,
+    ipv4_parse, ipv4_to_string, networkv4_to_string, DZClient, IpV4, NetworkV4, User, UserCYOA,
+    UserStatus, UserType,
 };
-use crate::servicecontroller::{ServiceController, ProvisioningRequest};
 
 use doublezero_sdk::commands::device::get::GetDeviceCommand;
 use doublezero_sdk::commands::device::list::ListDeviceCommand;
@@ -20,13 +20,11 @@ use solana_sdk::pubkey::Pubkey;
 
 use doublezero_cli::{
     helpers::get_public_ipv4,
-    requirements::{
-        check_requirements, CHECK_BALANCE, CHECK_ID_JSON, CHECK_USER_ALLOWLIST,
-    },
+    requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON, CHECK_USER_ALLOWLIST},
 };
 
-use doublezero_cli::helpers::init_command;
 use crate::requirements::check_doublezero;
+use doublezero_cli::helpers::init_command;
 
 #[derive(Clone, Debug, ValueEnum)]
 pub enum DzMode {
@@ -66,7 +64,9 @@ impl ProvisioningArgs {
         let client_ip = self.look_for_ip(&spinner).await?;
 
         // Look for user
-        let (user_pubkey, user) = self.look_for_user(client, &controller, &client_ip, &spinner).await?;
+        let (user_pubkey, user) = self
+            .look_for_user(client, &controller, &client_ip, &spinner)
+            .await?;
 
         // Check user status
         match user.status {
@@ -101,7 +101,7 @@ impl ProvisioningArgs {
         }
     }
 
-    pub  async fn look_for_ip(&self, spinner: &ProgressBar) -> eyre::Result<IpV4> {
+    pub async fn look_for_ip(&self, spinner: &ProgressBar) -> eyre::Result<IpV4> {
         spinner.println("🔗  Start Provisioning User...");
         spinner.set_prefix("1/4 Public IP");
 

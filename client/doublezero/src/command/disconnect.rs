@@ -3,17 +3,14 @@ use color_eyre::owo_colors::OwoColorize;
 use clap::Args;
 use doublezero_sdk::{ipv4_parse, DZClient};
 
+use crate::requirements::check_doublezero;
 use doublezero_cli::{
     helpers::get_public_ipv4,
     helpers::init_command,
-    requirements::{
-        check_requirements, CHECK_BALANCE, CHECK_ID_JSON, CHECK_USER_ALLOWLIST,
-    },
+    requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON, CHECK_USER_ALLOWLIST},
 };
-use crate::requirements::check_doublezero;
 
-use crate::servicecontroller::{ ServiceController, RemoveTunnelArgs};
-
+use crate::servicecontroller::{RemoveTunnelArgs, ServiceController};
 
 use doublezero_sdk::commands::user::delete::DeleteUserCommand;
 use doublezero_sdk::commands::user::list::ListUserCommand;

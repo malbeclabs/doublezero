@@ -9,18 +9,18 @@ use doublezero_cli::export::ExportArgs;
 use doublezero_cli::keygen::KeyGenArgs;
 use doublezero_cli::log::LogArgs;
 
-use crate::cli::globalconfig::GlobalConfigArgs;
 use crate::cli::config::ConfigArgs;
 use crate::cli::device::DeviceArgs;
 use crate::cli::exchange::ExchangeArgs;
+use crate::cli::globalconfig::GlobalConfigArgs;
 use crate::cli::location::LocationArgs;
 use crate::cli::tunnel::TunnelArgs;
 use crate::cli::user::UserArgs;
 
 use crate::command::connect::ProvisioningArgs;
 use crate::command::disconnect::DecommissioningArgs;
-use crate::command::status::StatusArgs;
 use crate::command::latency::LatencyArgs;
+use crate::command::status::StatusArgs;
 
 #[derive(Subcommand, Debug)]
 pub enum Command {

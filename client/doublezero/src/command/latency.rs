@@ -1,6 +1,6 @@
 use clap::Args;
 use doublezero_sdk::commands::device::list::ListDeviceCommand;
-use doublezero_sdk::{DZClient};
+use doublezero_sdk::DZClient;
 use prettytable::{format, row, Cell, Row, Table};
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;

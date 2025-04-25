@@ -1,27 +1,21 @@
 use clap::Parser;
 use colored::Colorize;
 
-mod requirements;
-mod servicecontroller;
 mod cli;
 mod command;
+mod requirements;
+mod servicecontroller;
 
 use doublezero_sdk::DZClient;
 
-
 use crate::cli::{
-    command::Command,
-    config::ConfigCommands,
-    device::DeviceCommands,
-    exchange::ExchangeCommands,
-    globalconfig::GlobalConfigCommands,
-    location::LocationCommands,
-    tunnel::TunnelCommands,
+    command::Command, config::ConfigCommands, device::DeviceCommands, exchange::ExchangeCommands,
+    globalconfig::GlobalConfigCommands, location::LocationCommands, tunnel::TunnelCommands,
     user::UserCommands,
 };
 
-use crate::cli::globalconfig::FoundationAllowlistCommands;
 use crate::cli::device::DeviceAllowlistCommands;
+use crate::cli::globalconfig::FoundationAllowlistCommands;
 use crate::cli::user::UserAllowlistCommands;
 
 include!(concat!(env!("OUT_DIR"), "/version.rs"));

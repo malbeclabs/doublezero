@@ -1,12 +1,10 @@
 use clap::Args;
-use doublezero_sdk::{DZClient};
+use doublezero_sdk::DZClient;
 
-use doublezero_cli::{
-    helpers::print_error,
-};
+use doublezero_cli::helpers::print_error;
 
-use doublezero_cli::helpers::init_command;
 use crate::requirements::check_doublezero;
+use doublezero_cli::helpers::init_command;
 
 use crate::servicecontroller::ServiceController;
 

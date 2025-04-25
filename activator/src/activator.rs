@@ -11,8 +11,9 @@ use doublezero_sdk::{
             list::ListTunnelCommand, reject::RejectTunnelCommand,
         },
         user::{
-            activate::ActivateUserCommand, ban::BanUserCommand, list::ListUserCommand,
-            reject::RejectUserCommand,
+            activate::ActivateUserCommand, ban::BanUserCommand, 
+            list::ListUserCommand, reject::RejectUserCommand, 
+            deactivate::DeactivateUserCommand,
         },
     },
     ipv4_to_string, networkv4_list_to_string, networkv4_to_string, AccountData, DZClient, Device,
@@ -464,7 +465,7 @@ fn process_user_event(
                 }
 
                 if user.status == UserStatus::Deleting {
-                    let res = DeactivateDeviceCommand {
+                    let res = DeactivateUserCommand {
                         index: user.index,
                         owner: user.owner,
                     }

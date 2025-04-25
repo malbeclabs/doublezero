@@ -49,10 +49,6 @@ pub fn process_deactivate_device(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    if globalstate_account.owner != program_id {
-        return Err(ProgramError::IncorrectProgramId);
-    }
-
     let globalstate = globalstate_get_next(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());

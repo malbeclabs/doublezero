@@ -1749,8 +1749,6 @@ dependencies = [
  "doublezero-sla-program",
  "eyre",
  "futures",
- "hyper",
- "hyperlocal",
  "lazy_static",
  "mockall",
  "serde",

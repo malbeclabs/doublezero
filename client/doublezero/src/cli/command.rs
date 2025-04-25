@@ -5,13 +5,9 @@ use doublezero_cli::init::InitArgs;
 use doublezero_cli::account::GetAccountArgs;
 use doublezero_cli::address::AddressArgs;
 use doublezero_cli::balance::BalanceArgs;
-use doublezero_cli::connect::ProvisioningArgs;
-use doublezero_cli::disconnect::DecommissioningArgs;
 use doublezero_cli::export::ExportArgs;
 use doublezero_cli::keygen::KeyGenArgs;
-use doublezero_cli::latency::LatencyArgs;
 use doublezero_cli::log::LogArgs;
-use doublezero_cli::status::StatusArgs;
 
 use crate::cli::globalconfig::GlobalConfigArgs;
 use crate::cli::config::ConfigArgs;
@@ -21,6 +17,10 @@ use crate::cli::location::LocationArgs;
 use crate::cli::tunnel::TunnelArgs;
 use crate::cli::user::UserArgs;
 
+use crate::command::connect::ProvisioningArgs;
+use crate::command::disconnect::DecommissioningArgs;
+use crate::command::status::StatusArgs;
+use crate::command::latency::LatencyArgs;
 
 #[derive(Subcommand, Debug)]
 pub enum Command {

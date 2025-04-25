@@ -4,8 +4,6 @@ use hyper::{Body, Client, Method, Request};
 use hyperlocal::{UnixConnector, Uri};
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use std::fs::File;
-use std::path::Path;
 
 #[derive(Serialize, Debug)]
 pub struct ProvisioningRequest {
@@ -72,21 +70,6 @@ pub struct StatusResponse {
 pub struct ErrorResponse {
     pub status: String,
     pub description: String,
-}
-
-pub fn service_controller_check() -> bool {
-    Path::new("/var/run/doublezerod/doublezerod.sock").exists()
-}
-
-pub fn service_controller_can_open() -> bool {
-    let file = File::options()
-        .read(true)
-        .write(true)
-        .open("/var/run/doublezerod/doublezerod.sock");
-    match file {
-        Ok(_) => true,
-        Err(e) => !matches!(e.kind(), std::io::ErrorKind::PermissionDenied),
-    }
 }
 
 pub struct ServiceController {

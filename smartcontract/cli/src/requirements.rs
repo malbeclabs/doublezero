@@ -1,6 +1,6 @@
 use colored::Colorize;
 use doublezero_sdk::{
-    get_doublezero_pubkey, service_controller_can_open, service_controller_check,
+    get_doublezero_pubkey,
     DoubleZeroClient, GetGlobalStateCommand,
 };
 use indicatif::ProgressBar;
@@ -10,7 +10,6 @@ pub const CHECK_BALANCE: u8 = 2;
 pub const CHECK_FOUNDATION_ALLOWLIST: u8 = 4;
 pub const CHECK_DEVICE_ALLOWLIST: u8 = 8;
 pub const CHECK_USER_ALLOWLIST: u8 = 16;
-pub const CHECK_DOUBLEZEROD: u8 = 32;
 
 pub fn check_requirements(
     client: &dyn DoubleZeroClient,
@@ -32,11 +31,6 @@ pub fn check_requirements(
         || checks & CHECK_USER_ALLOWLIST != 0
     {
         check_allowlist(client, spinner, checks)?;
-    }
-
-    // Check that the doublezerod is active
-    if checks & CHECK_DOUBLEZEROD != 0 {
-        check_doublezero(spinner)?;
     }
 
     Ok(())
@@ -120,28 +114,3 @@ pub fn check_allowlist(
     Ok(())
 }
 
-pub fn check_doublezero(spinner: Option<&ProgressBar>) -> eyre::Result<()> {
-    if !service_controller_check() {
-        if let Some(spinner) = spinner {
-            spinner.println("doublezero service is not accessible.");
-        } else {
-            eprintln!("doublezero service is not accessible.");
-        }
-
-        return Err(eyre::eyre!("Please start the doublezerod service."));
-    }
-
-    // Check that the doublezerod is accessible
-    if !service_controller_can_open() {
-        if let Some(spinner) = spinner {
-            spinner.println("doublezero service is not accessible.");
-        } else {
-            eprintln!("doublezero service is not accessible.");
-        }
-        return Err(eyre::eyre!(
-            "Please check the permissions of the doublezerod service."
-        ));
-    }
-
-    Ok(())
-}

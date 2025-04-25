@@ -1,7 +1,9 @@
 use clap::Parser;
 use colored::Colorize;
 
+mod requirements;
 mod cli;
+mod command;
 
 use doublezero_sdk::DZClient;
 

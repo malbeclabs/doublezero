@@ -1,23 +1,24 @@
 use clap::Args;
 use doublezero_sdk::{DZClient, ServiceController};
 
-use crate::{
+use doublezero_cli::{
     helpers::print_error,
-    requirements::{check_requirements, CHECK_DOUBLEZEROD},
 };
 
-use super::helpers::init_command;
+use doublezero_cli::helpers::init_command;
+use crate::requirements::check_doublezero;
 
 #[derive(Args, Debug)]
 pub struct StatusArgs {}
 
 impl StatusArgs {
-    pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub async fn execute(self, _client: &DZClient) -> eyre::Result<()> {
         let spinner = init_command();
         let controller = ServiceController::new(None);
 
         // Check requirements
-        check_requirements(client, Some(&spinner), CHECK_DOUBLEZEROD)?;
+        check_doublezero(Some(&spinner))?;
+
         match controller.status().await {
             Ok(status) => {
                 println!(

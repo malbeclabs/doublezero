@@ -17,14 +17,15 @@ use doublezero_sdk::commands::user::list::ListUserCommand;
 
 use solana_sdk::pubkey::Pubkey;
 
-use crate::{
+use doublezero_cli::{
     helpers::get_public_ipv4,
     requirements::{
-        check_requirements, CHECK_BALANCE, CHECK_DOUBLEZEROD, CHECK_ID_JSON, CHECK_USER_ALLOWLIST,
+        check_requirements, CHECK_BALANCE, CHECK_ID_JSON, CHECK_USER_ALLOWLIST,
     },
 };
 
-use super::helpers::init_command;
+use doublezero_cli::helpers::init_command;
+use crate::requirements::check_doublezero;
 
 #[derive(Clone, Debug, ValueEnum)]
 pub enum DzMode {
@@ -56,8 +57,10 @@ impl ProvisioningArgs {
         check_requirements(
             client,
             Some(&spinner),
-            CHECK_ID_JSON | CHECK_BALANCE | CHECK_USER_ALLOWLIST | CHECK_DOUBLEZEROD,
+            CHECK_ID_JSON | CHECK_BALANCE | CHECK_USER_ALLOWLIST,
         )?;
+
+        check_doublezero(Some(&spinner))?;
         // Get public IP
         let client_ip = self.look_for_ip(&spinner).await?;
 

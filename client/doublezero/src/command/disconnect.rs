@@ -3,13 +3,14 @@ use color_eyre::owo_colors::OwoColorize;
 use clap::Args;
 use doublezero_sdk::{ipv4_parse, DZClient, RemoveTunnelArgs, ServiceController};
 
-use crate::{
+use doublezero_cli::{
     helpers::get_public_ipv4,
     helpers::init_command,
     requirements::{
-        check_requirements, CHECK_BALANCE, CHECK_DOUBLEZEROD, CHECK_ID_JSON, CHECK_USER_ALLOWLIST,
+        check_requirements, CHECK_BALANCE, CHECK_ID_JSON, CHECK_USER_ALLOWLIST,
     },
 };
+use crate::requirements::check_doublezero;
 
 use doublezero_sdk::commands::user::delete::DeleteUserCommand;
 use doublezero_sdk::commands::user::list::ListUserCommand;
@@ -31,9 +32,9 @@ impl DecommissioningArgs {
         check_requirements(
             client,
             Some(&spinner),
-            CHECK_ID_JSON | CHECK_BALANCE | CHECK_USER_ALLOWLIST | CHECK_DOUBLEZEROD,
+            CHECK_ID_JSON | CHECK_BALANCE | CHECK_USER_ALLOWLIST,
         )?;
-
+        check_doublezero(Some(&spinner))?;
         // READY
         spinner.println("🔍  Decommissioning User");
 

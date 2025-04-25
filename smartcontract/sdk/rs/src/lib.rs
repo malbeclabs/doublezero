@@ -45,7 +45,7 @@ pub use crate::doublezeroclient::DoubleZeroClient;
 pub use crate::doublezeroclient::MockDoubleZeroClient;
 pub use crate::errors::*;
 pub use crate::servicecontroller::{
-    service_controller_can_open, service_controller_check, ProvisioningRequest, RemoveTunnelArgs,
+    ProvisioningRequest, RemoveTunnelArgs,
     ServiceController,
 };
 

@@ -5,14 +5,15 @@ use prettytable::{format, row, Cell, Row, Table};
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 
-use crate::requirements::{check_requirements, CHECK_DOUBLEZEROD};
+use crate::requirements::check_doublezero;
 
 #[derive(Args, Debug)]
 pub struct LatencyArgs {}
 
 impl LatencyArgs {
     pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
-        check_requirements(client, None, CHECK_DOUBLEZEROD)?;
+        check_doublezero(None)?;
+
         let mut table = Table::new();
         table.add_row(row![
             "pubkey",

@@ -2,6 +2,7 @@ use clap::Parser;
 use colored::Colorize;
 
 mod requirements;
+mod servicecontroller;
 mod cli;
 mod command;
 

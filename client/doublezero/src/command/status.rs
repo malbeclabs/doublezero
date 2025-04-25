@@ -1,5 +1,5 @@
 use clap::Args;
-use doublezero_sdk::{DZClient, ServiceController};
+use doublezero_sdk::{DZClient};
 
 use doublezero_cli::{
     helpers::print_error,
@@ -7,6 +7,8 @@ use doublezero_cli::{
 
 use doublezero_cli::helpers::init_command;
 use crate::requirements::check_doublezero;
+
+use crate::servicecontroller::ServiceController;
 
 #[derive(Args, Debug)]
 pub struct StatusArgs {}

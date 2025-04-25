@@ -30,7 +30,6 @@ mod consts;
 mod doublezeroclient;
 mod dztransaction;
 mod errors;
-mod servicecontroller;
 mod tests;
 mod utils;
 
@@ -44,10 +43,6 @@ pub use crate::config::{
 pub use crate::doublezeroclient::DoubleZeroClient;
 pub use crate::doublezeroclient::MockDoubleZeroClient;
 pub use crate::errors::*;
-pub use crate::servicecontroller::{
-    ProvisioningRequest, RemoveTunnelArgs,
-    ServiceController,
-};
 
 pub use crate::commands::globalstate::get::GetGlobalStateCommand;
 pub use crate::commands::location::create::CreateLocationCommand;

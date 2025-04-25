@@ -6,8 +6,9 @@ use std::str::FromStr;
 use clap::{Args, ValueEnum};
 use doublezero_sdk::{
     ipv4_parse, ipv4_to_string, networkv4_to_string, DZClient, IpV4, NetworkV4,
-    ProvisioningRequest, ServiceController, User, UserCYOA, UserStatus, UserType,
+    User, UserCYOA, UserStatus, UserType,
 };
+use crate::servicecontroller::{ServiceController, ProvisioningRequest};
 
 use doublezero_sdk::commands::device::get::GetDeviceCommand;
 use doublezero_sdk::commands::device::list::ListDeviceCommand;

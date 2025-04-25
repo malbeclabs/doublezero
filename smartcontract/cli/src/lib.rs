@@ -14,6 +14,6 @@ pub mod location;
 pub mod log;
 pub mod requirements;
 pub mod subscribe;
+pub mod tests;
 pub mod tunnel;
 pub mod user;
-pub mod tests;

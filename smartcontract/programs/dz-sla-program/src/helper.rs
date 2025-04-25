@@ -69,11 +69,7 @@ pub fn globalstate_write2<'a>(
                 .realloc(new_len, false)
                 .expect("Unable to realloc the account");
 
-            msg!(
-                "Realloc: {} -> {}",
-                actual_len,
-                new_len
-            );
+            msg!("Realloc: {} -> {}", actual_len, new_len);
         }
 
         let data = &mut account.data.borrow_mut();
@@ -81,7 +77,7 @@ pub fn globalstate_write2<'a>(
             .serialize(&mut &mut data[..])
             .expect("Unable to serialize");
 
-        msg!( "Updated: {:?}", instance );
+        msg!("Updated: {:?}", instance);
     }
 
     // Check is the account needs more rent for the new space

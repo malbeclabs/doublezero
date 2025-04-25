@@ -46,9 +46,9 @@ mod device_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::AddFoundationAllowlist(
-                AddFoundationAllowlistArgs { pubkey: user1 },
-            ),
+            DoubleZeroInstruction::AddFoundationAllowlist(AddFoundationAllowlistArgs {
+                pubkey: user1,
+            }),
             vec![AccountMeta::new(globalstate_pubkey, false)],
             &payer,
         )
@@ -62,7 +62,7 @@ mod device_test {
         assert_eq!(state.account_type, AccountType::GlobalState);
         assert_eq!(state.foundation_allowlist.len(), 2);
         assert!(state.foundation_allowlist.contains(&user1));
-        
+
         println!("✅ Allowlist is correct");
         /*****************************************************************************************************************************************************/
         println!("🟢 3. Add user2 to foundation allowlist...");
@@ -70,9 +70,9 @@ mod device_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::AddFoundationAllowlist(
-                AddFoundationAllowlistArgs { pubkey: user2 },
-            ),
+            DoubleZeroInstruction::AddFoundationAllowlist(AddFoundationAllowlistArgs {
+                pubkey: user2,
+            }),
             vec![AccountMeta::new(globalstate_pubkey, false)],
             &payer,
         )
@@ -95,9 +95,9 @@ mod device_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::RemoveFoundationAllowlist(
-                RemoveFoundationAllowlistArgs { pubkey: user1 },
-            ),
+            DoubleZeroInstruction::RemoveFoundationAllowlist(RemoveFoundationAllowlistArgs {
+                pubkey: user1,
+            }),
             vec![AccountMeta::new(globalstate_pubkey, false)],
             &payer,
         )
@@ -120,9 +120,9 @@ mod device_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::RemoveFoundationAllowlist(
-                RemoveFoundationAllowlistArgs { pubkey: user2 },
-            ),
+            DoubleZeroInstruction::RemoveFoundationAllowlist(RemoveFoundationAllowlistArgs {
+                pubkey: user2,
+            }),
             vec![AccountMeta::new(globalstate_pubkey, false)],
             &payer,
         )

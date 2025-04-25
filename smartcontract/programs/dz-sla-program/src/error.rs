@@ -23,7 +23,6 @@ pub enum DoubleZeroError {
     NotAllowed,
 }
 
-
 impl From<DoubleZeroError> for ProgramError {
     fn from(e: DoubleZeroError) -> Self {
         match e {
@@ -55,7 +54,6 @@ impl From<ProgramError> for DoubleZeroError {
                 _ => DoubleZeroError::Custom(e),
             },
             _ => DoubleZeroError::Custom(0),
-
         }
     }
 }

@@ -28,7 +28,7 @@ impl UpdateUserArgs {
 
         let pubkey = Pubkey::from_str(&self.pubkey)?;
         let (_, user) = GetUserCommand { pubkey }.execute(client)?;
-        let _ = UpdateUserCommand {
+        let signature = UpdateUserCommand {
             index: user.index,
             user_type: None,
             cyoa_type: None,
@@ -42,8 +42,7 @@ impl UpdateUserArgs {
                 .map(|tunnel_net| networkv4_parse(&tunnel_net)),
         }
         .execute(client)?;
-
-        println!("User updated");
+        println!("Signature: {}", signature);
 
         Ok(())
     }

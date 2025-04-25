@@ -15,12 +15,17 @@ impl DeleteDeviceArgs {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let (_, device) = GetDeviceCommand { pubkey_or_code: self.pubkey}
+        let (_, device) = GetDeviceCommand {
+            pubkey_or_code: self.pubkey,
+        }
         .execute(client)
         .map_err(|_| eyre::eyre!("Device not found"))?;
 
-        let res = DeleteDeviceCommand { index: device.index }.execute(client)?;
-        println!("{}", res);
+        let signature = DeleteDeviceCommand {
+            index: device.index,
+        }
+        .execute(client)?;
+        println!("Signature: {}", signature);
 
         Ok(())
     }

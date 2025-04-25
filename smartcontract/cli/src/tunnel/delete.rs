@@ -19,11 +19,11 @@ impl DeleteTunnelArgs {
             pubkey_or_code: self.pubkey,
         }
         .execute(client)?;
-        let _ = DeleteTunnelCommand {
+        let signature = DeleteTunnelCommand {
             index: tunnel.index,
         }
         .execute(client)?;
-        println!("Tunnel deleted");
+        println!("Signature: {}", signature);
 
         Ok(())
     }

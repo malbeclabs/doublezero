@@ -30,8 +30,7 @@ impl fmt::Debug for DeviceUpdateArgs {
             self.code,
             self.device_type,
             self.public_ip.map(|public_ip| ipv4_to_string(&public_ip),),
-            self.dz_prefixes.as_ref()
-                .map(networkv4_list_to_string)
+            self.dz_prefixes.as_ref().map(networkv4_list_to_string)
         )
     }
 }

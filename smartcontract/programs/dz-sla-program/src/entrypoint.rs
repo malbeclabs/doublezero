@@ -1,4 +1,3 @@
-use solana_program::msg;
 use crate::{
     instructions::*,
     processors::{
@@ -11,10 +10,7 @@ use crate::{
                 add::process_add_foundation_allowlist_globalconfig,
                 remove::process_remove_foundation_allowlist_globalconfig,
             },
-            user::{
-                add::process_add_user_allowlist,
-                remove::process_remove_user_allowlist,
-            },
+            user::{add::process_add_user_allowlist, remove::process_remove_user_allowlist},
         },
         device::{
             activate::process_activate_device, create::process_create_device,
@@ -49,6 +45,7 @@ use crate::{
         },
     },
 };
+use solana_program::msg;
 use solana_program::{
     account_info::AccountInfo, entrypoint, entrypoint::ProgramResult, pubkey::Pubkey,
 };

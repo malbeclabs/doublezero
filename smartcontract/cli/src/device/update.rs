@@ -26,7 +26,7 @@ impl UpdateDeviceArgs {
             pubkey_or_code: self.pubkey,
         }
         .execute(client)?;
-        let res = UpdateDeviceCommand {
+        let signature = UpdateDeviceCommand {
             index: device.index,
             code: self.code,
             device_type: Some(DeviceType::Switch),
@@ -34,7 +34,7 @@ impl UpdateDeviceArgs {
             dz_prefixes: self.dz_prefixes.map(|ip| networkv4_list_parse(&ip)),
         }
         .execute(client)?;
-        println!("{}", res);
+        println!("Signature: {}", signature);
 
         Ok(())
     }

@@ -14,7 +14,6 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct UserDeactivateArgs {
     pub index: u128,
@@ -43,11 +42,14 @@ pub fn process_deactivate_user(
     msg!("process_delete_user({:?})", value);
 
     let (expected_pda_account, _bump_seed) = get_user_pda(program_id, value.index);
-    assert_eq!(pda_account.key, &expected_pda_account, "Invalid User PubKey");
- 
+    assert_eq!(
+        pda_account.key, &expected_pda_account,
+        "Invalid User PubKey"
+    );
+
     if pda_account.owner != program_id {
         return Err(ProgramError::IncorrectProgramId);
-    }    
+    }
 
     let globalstate = globalstate_get_next(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {

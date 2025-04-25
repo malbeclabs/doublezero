@@ -5,13 +5,13 @@ use crate::helper::*;
 use crate::pda::*;
 use crate::state::location::*;
 use borsh::{BorshDeserialize, BorshSerialize};
+#[cfg(test)]
+use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     pubkey::Pubkey,
 };
-#[cfg(test)]
-use solana_program::msg;
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct LocationDeleteArgs {

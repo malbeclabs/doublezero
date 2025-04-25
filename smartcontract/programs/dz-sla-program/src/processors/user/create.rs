@@ -7,15 +7,14 @@ use crate::state::{accounttype::AccountType, user::*};
 use crate::types::*;
 
 use borsh::{BorshDeserialize, BorshSerialize};
+#[cfg(test)]
+use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     program_error::ProgramError,
     pubkey::Pubkey,
 };
-#[cfg(test)]
-use solana_program::msg;
-
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct UserCreateArgs {
@@ -28,7 +27,14 @@ pub struct UserCreateArgs {
 
 impl fmt::Debug for UserCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "user_type: {}, device_pk: {}, cyoa_type: {}, client_ip: {}", self.user_type, self.device_pk, self.cyoa_type, ipv4_to_string(&self.client_ip))
+        write!(
+            f,
+            "user_type: {}, device_pk: {}, cyoa_type: {}, client_ip: {}",
+            self.user_type,
+            self.device_pk,
+            self.cyoa_type,
+            ipv4_to_string(&self.client_ip)
+        )
     }
 }
 
@@ -55,22 +61,30 @@ pub fn process_create_user(
         panic!("GlobalState account not initialized");
     }
     let globalstate = globalstate_get_next(globalstate_account)?;
-    assert_eq!(value.index, globalstate.account_index, "Invalid Value Index");  
+    assert_eq!(
+        value.index, globalstate.account_index,
+        "Invalid Value Index"
+    );
 
     if !globalstate.user_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
     let (expected_pda_account, bump_seed) = get_user_pda(program_id, globalstate.account_index);
-    assert_eq!(pda_account.key, &expected_pda_account,"Invalid User PubKey");
+    assert_eq!(
+        pda_account.key, &expected_pda_account,
+        "Invalid User PubKey"
+    );
 
     // Check account Types
-    if device_account.data_is_empty() || device_account.data.borrow()[0] != AccountType::Device as u8 {
+    if device_account.data_is_empty()
+        || device_account.data.borrow()[0] != AccountType::Device as u8
+    {
         panic!("Invalid Device Pubkey");
     }
     if device_account.owner != program_id {
         return Err(ProgramError::IncorrectProgramId);
-    }     
+    }
 
     let user: User = User {
         account_type: AccountType::User,
@@ -81,7 +95,7 @@ pub fn process_create_user(
         device_pk: value.device_pk,
         cyoa_type: value.cyoa_type,
         client_ip: value.client_ip,
-        dz_ip: [0,0,0,0],
+        dz_ip: [0, 0, 0, 0],
         tunnel_id: 0,
         tunnel_net: ([0, 0, 0, 0], 0),
         status: UserStatus::Pending,
@@ -96,7 +110,6 @@ pub fn process_create_user(
         bump_seed,
     )?;
     globalstate_write(globalstate_account, &globalstate)?;
-    
+
     Ok(())
 }
-

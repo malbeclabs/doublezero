@@ -1,28 +1,33 @@
 use core::fmt;
 
+use crate::pda::*;
+use crate::types::*;
+use crate::{error::DoubleZeroError, helper::*, state::tunnel::*};
 use borsh::{BorshDeserialize, BorshSerialize};
+#[cfg(test)]
+use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     program_error::ProgramError,
     pubkey::Pubkey,
 };
-use crate::{error::DoubleZeroError, helper::*, state::tunnel::*};
-use crate::pda::*;
-use crate::types::*;
-#[cfg(test)]
-use solana_program::msg;
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct TunnelActivateArgs {
     pub index: u128,
     pub tunnel_id: u16,
-    pub tunnel_net: NetworkV4, 
+    pub tunnel_net: NetworkV4,
 }
 
 impl fmt::Debug for TunnelActivateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "tunnel_id: {}, tunnel_net: {}", self.tunnel_id, networkv4_to_string(&self.tunnel_net))
+        write!(
+            f,
+            "tunnel_id: {}, tunnel_net: {}",
+            self.tunnel_id,
+            networkv4_to_string(&self.tunnel_net)
+        )
     }
 }
 
@@ -42,7 +47,10 @@ pub fn process_activate_tunnel(
     msg!("process_activate_tunnel({:?})", value);
 
     let (expected_pda_account, bump_seed) = get_tunnel_pda(program_id, value.index);
-    assert_eq!(pda_account.key, &expected_pda_account, "Invalid Tunnel PubKey");
+    assert_eq!(
+        pda_account.key, &expected_pda_account,
+        "Invalid Tunnel PubKey"
+    );
 
     if pda_account.owner != program_id {
         return Err(ProgramError::IncorrectProgramId);
@@ -53,7 +61,7 @@ pub fn process_activate_tunnel(
     let globalstate = globalstate_get_next(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
-    }  
+    }
 
     let mut tunnel: Tunnel = Tunnel::from(&pda_account.try_borrow_data().unwrap()[..]);
     if tunnel.status != TunnelStatus::Pending {

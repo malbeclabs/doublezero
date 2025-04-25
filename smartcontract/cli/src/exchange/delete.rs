@@ -19,11 +19,11 @@ impl DeleteExchangeArgs {
             pubkey_or_code: self.pubkey,
         }
         .execute(client)?;
-        let _ = DeleteExchangeCommand {
+        let signature = DeleteExchangeCommand {
             index: exchange.index,
         }
         .execute(client)?;
-        println!("Exchange deleted");
+        println!("Signature: {}", signature);
 
         Ok(())
     }

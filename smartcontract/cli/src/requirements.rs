@@ -1,8 +1,5 @@
 use colored::Colorize;
-use doublezero_sdk::{
-    get_doublezero_pubkey,
-    DoubleZeroClient, GetGlobalStateCommand,
-};
+use doublezero_sdk::{get_doublezero_pubkey, DoubleZeroClient, GetGlobalStateCommand};
 use indicatif::ProgressBar;
 
 pub const CHECK_ID_JSON: u8 = 1;
@@ -113,4 +110,3 @@ pub fn check_allowlist(
 
     Ok(())
 }
-

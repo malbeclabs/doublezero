@@ -1,8 +1,8 @@
 use std::fmt;
 
 use crate::error::DoubleZeroError;
-use crate::helper::*;
 use crate::format_option;
+use crate::helper::*;
 use crate::pda::*;
 use crate::state::user::*;
 use crate::types::*;
@@ -75,7 +75,7 @@ pub fn process_update_user(
 
     let mut user: User = User::from(&pda_account.try_borrow_data().unwrap()[..]);
 
-    user.dz_ip = value.dz_ip.unwrap_or([0,0,0,0]);
+    user.dz_ip = value.dz_ip.unwrap_or([0, 0, 0, 0]);
     if let Some(value) = value.tunnel_id {
         user.tunnel_id = value;
     }

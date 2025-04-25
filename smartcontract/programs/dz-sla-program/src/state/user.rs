@@ -1,9 +1,9 @@
 use crate::bytereader::ByteReader;
 use crate::{seeds::SEED_USER, types::*};
 use borsh::{BorshDeserialize, BorshSerialize};
+use serde::Serialize;
 use solana_program::pubkey::Pubkey;
 use std::fmt;
-use serde::Serialize;
 
 use super::accounttype::{AccountType, AccountTypeInfo};
 

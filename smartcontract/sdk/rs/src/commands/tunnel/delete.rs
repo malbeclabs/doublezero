@@ -21,7 +21,6 @@ impl DeleteTunnelCommand {
             DoubleZeroInstruction::DeleteTunnel(TunnelDeleteArgs { index: self.index }),
             vec![
                 AccountMeta::new(pda_pubkey, false),
-                AccountMeta::new_readonly(globalstate_pubkey, true),	
                 AccountMeta::new(globalstate_pubkey, false),
             ],
         )

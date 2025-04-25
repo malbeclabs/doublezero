@@ -46,9 +46,7 @@ mod device_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::AddUserAllowlist(
-                AddUserAllowlistArgs { pubkey: user1 },
-            ),
+            DoubleZeroInstruction::AddUserAllowlist(AddUserAllowlistArgs { pubkey: user1 }),
             vec![AccountMeta::new(globalstate_pubkey, false)],
             &payer,
         )
@@ -62,7 +60,7 @@ mod device_test {
         assert_eq!(state.account_type, AccountType::GlobalState);
         assert_eq!(state.user_allowlist.len(), 2);
         assert!(state.user_allowlist.contains(&user1));
-        
+
         println!("✅ Allowlist is correct");
         /*****************************************************************************************************************************************************/
         println!("🟢 3. Add user2 to user allowlist...");
@@ -70,9 +68,7 @@ mod device_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::AddUserAllowlist(
-                AddUserAllowlistArgs { pubkey: user2 },
-            ),
+            DoubleZeroInstruction::AddUserAllowlist(AddUserAllowlistArgs { pubkey: user2 }),
             vec![AccountMeta::new(globalstate_pubkey, false)],
             &payer,
         )
@@ -95,9 +91,7 @@ mod device_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::RemoveUserAllowlist(
-                RemoveUserAllowlistArgs { pubkey: user1 },
-            ),
+            DoubleZeroInstruction::RemoveUserAllowlist(RemoveUserAllowlistArgs { pubkey: user1 }),
             vec![AccountMeta::new(globalstate_pubkey, false)],
             &payer,
         )
@@ -120,9 +114,7 @@ mod device_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::RemoveUserAllowlist(
-                RemoveUserAllowlistArgs { pubkey: user2 },
-            ),
+            DoubleZeroInstruction::RemoveUserAllowlist(RemoveUserAllowlistArgs { pubkey: user2 }),
             vec![AccountMeta::new(globalstate_pubkey, false)],
             &payer,
         )

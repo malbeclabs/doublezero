@@ -30,7 +30,7 @@ impl UpdateExchangeArgs {
             pubkey_or_code: self.pubkey,
         }
         .execute(client)?;
-        let _ = UpdateExchangeCommand {
+        let signature = UpdateExchangeCommand {
             index: exchange.index,
             code: self.code,
             name: self.name,
@@ -39,8 +39,7 @@ impl UpdateExchangeArgs {
             loc_id: self.loc_id,
         }
         .execute(client)?;
-
-        println!("Exchange updated");
+        println!("Signature: {}", signature);
 
         Ok(())
     }

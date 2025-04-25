@@ -32,7 +32,7 @@ impl UpdateTunnelArgs {
             pubkey_or_code: self.pubkey,
         }
         .execute(client)?;
-        let _ = UpdateTunnelCommand {
+        let signature = UpdateTunnelCommand {
             index: tunnel.index,
             code: self.code.clone(),
             tunnel_type: self.tunnel_type.map(|t| t.parse().unwrap()),
@@ -44,8 +44,7 @@ impl UpdateTunnelArgs {
                 .map(|jitter_ms| (jitter_ms * 1000000.0) as u64),
         }
         .execute(client)?;
-
-        println!("Tunnel updated");
+        println!("Signature: {}", signature);
 
         Ok(())
     }

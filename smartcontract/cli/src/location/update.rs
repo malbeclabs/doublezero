@@ -32,7 +32,7 @@ impl UpdateLocationArgs {
             pubkey_or_code: self.pubkey,
         }
         .execute(client)?;
-        let _ = UpdateLocationCommand {
+        let signature = UpdateLocationCommand {
             index: location.index,
             code: self.code,
             name: self.name,
@@ -42,8 +42,7 @@ impl UpdateLocationArgs {
             loc_id: self.loc_id,
         }
         .execute(client)?;
-
-        println!("Location updated");
+        println!("Signature: {}", signature);
 
         Ok(())
     }

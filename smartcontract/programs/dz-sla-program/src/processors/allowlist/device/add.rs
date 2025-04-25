@@ -4,14 +4,14 @@ use crate::error::DoubleZeroError;
 use crate::helper::{globalstate_get, globalstate_write2};
 use crate::pda::*;
 use borsh::{BorshDeserialize, BorshSerialize};
+#[cfg(test)]
+use solana_program::msg;
 use solana_program::program_error::ProgramError;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     pubkey::Pubkey,
 };
-#[cfg(test)]
-use solana_program::msg;
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct AddDeviceAllowlistArgs {
@@ -40,12 +40,19 @@ pub fn process_add_device_allowlist_globalconfig(
 
     // Check the owner of the accounts
     assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
-    assert_eq!(*system_program.unsigned_key(), solana_program::system_program::id(), "Invalid System Program Account Owner");
+    assert_eq!(
+        *system_program.unsigned_key(),
+        solana_program::system_program::id(),
+        "Invalid System Program Account Owner"
+    );
     // Check if the account is writable
     assert!(pda_account.is_writable, "PDA Account is not writable");
 
     let (expected_pda_account, bump_seed) = get_globalstate_pda(program_id);
-    assert_eq!(pda_account.key, &expected_pda_account, "Invalid GlobalState PubKey");
+    assert_eq!(
+        pda_account.key, &expected_pda_account,
+        "Invalid GlobalState PubKey"
+    );
 
     // Parse the global state account & check if the payer is in the allowlist
     let mut globalstate = globalstate_get(pda_account)?;
@@ -58,7 +65,13 @@ pub fn process_add_device_allowlist_globalconfig(
     }
     globalstate.device_allowlist.push(value.pubkey);
 
-    globalstate_write2(pda_account, &globalstate, payer_account, system_program, bump_seed);
+    globalstate_write2(
+        pda_account,
+        &globalstate,
+        payer_account,
+        system_program,
+        bump_seed,
+    );
     #[cfg(test)]
     msg!("Updated: {:?}", globalstate);
 

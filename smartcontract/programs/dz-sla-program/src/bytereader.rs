@@ -113,7 +113,8 @@ impl<'a> ByteReader<'a> {
             return Pubkey::default();
         }
         let value =
-            Pubkey::try_from(&self.data[self.position..self.position + size_of::<Pubkey>()]).unwrap_or_default();
+            Pubkey::try_from(&self.data[self.position..self.position + size_of::<Pubkey>()])
+                .unwrap_or_default();
         self.position += size_of::<Pubkey>();
 
         value

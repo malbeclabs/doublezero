@@ -19,8 +19,8 @@ impl DeleteUserArgs {
 
         let pubkey = Pubkey::from_str(&self.pubkey)?;
         let (_, user) = GetUserCommand { pubkey }.execute(client)?;
-        let _ = DeleteUserCommand { index: user.index }.execute(client)?;
-        println!("User deleted");
+        let signature = DeleteUserCommand { index: user.index }.execute(client)?;
+        println!("Signature: {}", signature);
 
         Ok(())
     }

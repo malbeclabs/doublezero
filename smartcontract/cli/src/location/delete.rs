@@ -19,11 +19,11 @@ impl DeleteLocationArgs {
             pubkey_or_code: self.pubkey,
         }
         .execute(client)?;
-        let _ = DeleteLocationCommand {
+        let signature = DeleteLocationCommand {
             index: location.index,
         }
         .execute(client)?;
-        println!("Location deleted");
+        println!("Signature: {}", signature);
 
         Ok(())
     }

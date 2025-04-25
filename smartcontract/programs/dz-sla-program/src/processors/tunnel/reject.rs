@@ -42,18 +42,21 @@ pub fn process_reject_tunnel(
     msg!("process_activate_tunnel({:?})", value);
 
     let (expected_pda_account, bump_seed) = get_tunnel_pda(program_id, value.index);
-    assert_eq!(pda_account.key, &expected_pda_account, "Invalid Device PubKey");
+    assert_eq!(
+        pda_account.key, &expected_pda_account,
+        "Invalid Device PubKey"
+    );
 
     if pda_account.owner != program_id {
         return Err(ProgramError::IncorrectProgramId);
-    }        
+    }
     if globalstate_account.owner != program_id {
         return Err(ProgramError::IncorrectProgramId);
     }
     let globalstate = globalstate_get_next(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
-    }  
+    }
 
     let mut tunnel: Tunnel = Tunnel::from(&pda_account.try_borrow_data().unwrap()[..]);
     if tunnel.status != TunnelStatus::Pending {
@@ -61,7 +64,7 @@ pub fn process_reject_tunnel(
     }
 
     tunnel.tunnel_id = 0;
-    tunnel.tunnel_net = ([0,0,0,0], 0);
+    tunnel.tunnel_net = ([0, 0, 0, 0], 0);
     tunnel.status = TunnelStatus::Rejected;
     msg!("Reason: {:?}", value.reason);
 
@@ -78,4 +81,3 @@ pub fn process_reject_tunnel(
 
     Ok(())
 }
-

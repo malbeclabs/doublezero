@@ -46,9 +46,7 @@ mod device_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::AddDeviceAllowlist(
-                AddDeviceAllowlistArgs { pubkey: user1 },
-            ),
+            DoubleZeroInstruction::AddDeviceAllowlist(AddDeviceAllowlistArgs { pubkey: user1 }),
             vec![AccountMeta::new(globalstate_pubkey, false)],
             &payer,
         )
@@ -62,7 +60,7 @@ mod device_test {
         assert_eq!(state.account_type, AccountType::GlobalState);
         assert_eq!(state.device_allowlist.len(), 2);
         assert!(state.device_allowlist.contains(&user1));
-        
+
         println!("✅ Allowlist is correct");
         /*****************************************************************************************************************************************************/
         println!("🟢 3. Add user2 to device allowlist...");
@@ -70,9 +68,7 @@ mod device_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::AddDeviceAllowlist(
-                AddDeviceAllowlistArgs { pubkey: user2 },
-            ),
+            DoubleZeroInstruction::AddDeviceAllowlist(AddDeviceAllowlistArgs { pubkey: user2 }),
             vec![AccountMeta::new(globalstate_pubkey, false)],
             &payer,
         )
@@ -95,9 +91,9 @@ mod device_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::RemoveDeviceAllowlist(
-                RemoveDeviceAllowlistArgs { pubkey: user1 },
-            ),
+            DoubleZeroInstruction::RemoveDeviceAllowlist(RemoveDeviceAllowlistArgs {
+                pubkey: user1,
+            }),
             vec![AccountMeta::new(globalstate_pubkey, false)],
             &payer,
         )
@@ -120,9 +116,9 @@ mod device_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::RemoveDeviceAllowlist(
-                RemoveDeviceAllowlistArgs { pubkey: user2 },
-            ),
+            DoubleZeroInstruction::RemoveDeviceAllowlist(RemoveDeviceAllowlistArgs {
+                pubkey: user2,
+            }),
             vec![AccountMeta::new(globalstate_pubkey, false)],
             &payer,
         )

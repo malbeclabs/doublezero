@@ -60,10 +60,7 @@ mod tests {
         let (pda_pubkey, _) = get_location_pda(&client.get_program_id(), 1);
         let payer = client.get_payer();
 
-
-        client.
-            expect_get_balance()
-            .returning(|| Ok(150_000_000));
+        client.expect_get_balance().returning(|| Ok(150_000_000));
 
         client
             .expect_execute_transaction()

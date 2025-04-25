@@ -274,7 +274,10 @@ mod device_test {
             DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs {
                 index: device_la.index,
             }),
-            vec![AccountMeta::new(device_pubkey, false)],
+            vec![
+                AccountMeta::new(device_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
             &payer,
         )
         .await;

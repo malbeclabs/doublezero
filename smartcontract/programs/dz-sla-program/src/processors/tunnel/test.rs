@@ -347,7 +347,10 @@ mod tunnel_test {
             DoubleZeroInstruction::DeleteTunnel(TunnelDeleteArgs {
                 index: tunnel_la.index,
             }),
-            vec![AccountMeta::new(tunnel_pubkey, false)],
+            vec![
+                AccountMeta::new(tunnel_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
             &payer,
         )
         .await;

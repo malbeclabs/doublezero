@@ -13,13 +13,14 @@ use doublezero_cli::latency::LatencyArgs;
 use doublezero_cli::log::LogArgs;
 use doublezero_cli::status::StatusArgs;
 
-use crate::config::ConfigArgs;
-use crate::device::DeviceArgs;
-use crate::exchange::ExchangeArgs;
-use crate::globalconfig::GlobalConfigArgs;
-use crate::location::LocationArgs;
-use crate::tunnel::TunnelArgs;
-use crate::user::UserArgs;
+use crate::cli::globalconfig::GlobalConfigArgs;
+use crate::cli::config::ConfigArgs;
+use crate::cli::device::DeviceArgs;
+use crate::cli::exchange::ExchangeArgs;
+use crate::cli::location::LocationArgs;
+use crate::cli::tunnel::TunnelArgs;
+use crate::cli::user::UserArgs;
+
 
 #[derive(Subcommand, Debug)]
 pub enum Command {

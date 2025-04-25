@@ -17,12 +17,12 @@ use solana_program::{
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct UserRejectArgs {
     pub index: u128,
-    pub error: String,
+    pub reason: String,
 }
 
 impl fmt::Debug for UserRejectArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "error: {}", self.error)
+        write!(f, "reason: {}", self.reason)
     }
 }
 
@@ -43,11 +43,14 @@ pub fn process_reject_user(
     msg!("process_reject_user({:?})", value);
 
     let (expected_pda_account, bump_seed) = get_user_pda(program_id, value.index);
-    assert_eq!(pda_account.key, &expected_pda_account, "Invalid User PubKey");
+    assert_eq!(
+        pda_account.key, &expected_pda_account,
+        "Invalid User PubKey"
+    );
 
     if pda_account.owner != program_id {
         return Err(ProgramError::IncorrectProgramId);
-    }        
+    }
     if config_account.owner != program_id {
         return Err(ProgramError::IncorrectProgramId);
     }
@@ -55,7 +58,7 @@ pub fn process_reject_user(
     let globalstate = globalstate_get_next(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
-    }     
+    }
 
     let mut user: User = User::from(&pda_account.try_borrow_data().unwrap()[..]);
     if user.status != UserStatus::Pending {
@@ -63,22 +66,15 @@ pub fn process_reject_user(
     }
 
     user.tunnel_id = 0;
-    user.tunnel_net = ([0,0,0,0], 0);
-    user.dz_ip = [0,0,0,0];
+    user.tunnel_net = ([0, 0, 0, 0], 0);
+    user.dz_ip = [0, 0, 0, 0];
     user.status = UserStatus::Rejected;
-    msg!("Error: {:?}", value.error);
+    msg!("Reason: {:?}", value.reason);
 
-    account_write(
-        pda_account,
-        &user,
-        payer_account,
-        system_program,
-        bump_seed,
-    );
+    account_write(pda_account, &user, payer_account, system_program, bump_seed);
 
     #[cfg(test)]
     msg!("Rejected: {:?}", user);
 
     Ok(())
 }
-

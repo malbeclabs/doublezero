@@ -7,25 +7,31 @@ use crate::state::user::*;
 use crate::types::*;
 
 use borsh::{BorshDeserialize, BorshSerialize};
+#[cfg(test)]
+use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     program_error::ProgramError,
     pubkey::Pubkey,
 };
-#[cfg(test)]
-use solana_program::msg;
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct UserActivateArgs {
     pub index: u128,
     pub tunnel_id: u16,
-    pub tunnel_net: NetworkV4, 
+    pub tunnel_net: NetworkV4,
     pub dz_ip: IpV4,
 }
 
 impl fmt::Debug for UserActivateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "tunnel_id: {}, tunnel_net: {}, dz_ip: {}", self.tunnel_id, networkv4_to_string(&self.tunnel_net), ipv4_to_string(&self.dz_ip))
+        write!(
+            f,
+            "tunnel_id: {}, tunnel_net: {}, dz_ip: {}",
+            self.tunnel_id,
+            networkv4_to_string(&self.tunnel_net),
+            ipv4_to_string(&self.dz_ip)
+        )
     }
 }
 
@@ -45,16 +51,19 @@ pub fn process_activate_user(
     msg!("process_activate_user({:?})", value);
 
     let (expected_pda_account, bump_seed) = get_user_pda(program_id, value.index);
-    assert_eq!(pda_account.key, &expected_pda_account, "Invalid Device PubKey");
+    assert_eq!(
+        pda_account.key, &expected_pda_account,
+        "Invalid Device PubKey"
+    );
 
     if pda_account.owner != program_id {
         return Err(ProgramError::IncorrectProgramId);
-    }        
+    }
 
     let globalstate = globalstate_get_next(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
-    }    
+    }
 
     let mut user: User = User::from(&pda_account.try_borrow_data().unwrap()[..]);
     if user.status != UserStatus::Pending {
@@ -66,17 +75,10 @@ pub fn process_activate_user(
     user.dz_ip = value.dz_ip;
     user.status = UserStatus::Activated;
 
-    account_write(
-        pda_account,
-        &user,
-        payer_account,
-        system_program,
-        bump_seed,
-    );
+    account_write(pda_account, &user, payer_account, system_program, bump_seed);
 
     #[cfg(test)]
     msg!("Activated: {:?}", user);
 
     Ok(())
 }
-

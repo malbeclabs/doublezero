@@ -1,17 +1,19 @@
 use color_eyre::owo_colors::OwoColorize;
 
 use clap::Args;
-use double_zero_sdk::{
-    ipv4_parse, DZClient, RemoveTunnelArgs, ServiceController, UserFinder, UserService,
+use doublezero_sdk::{ipv4_parse, DZClient};
+
+use crate::requirements::check_doublezero;
+use doublezero_cli::{
+    helpers::get_public_ipv4,
+    helpers::init_command,
+    requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON, CHECK_USER_ALLOWLIST},
 };
 
-use crate::{
-    command::helpers::init_command,
-    helpers::get_public_ipv4,
-    requirements::{
-        check_requirements, CHECK_BALANCE, CHECK_DOUBLEZEROD, CHECK_ID_JSON, CHECK_USER_ALLOWLIST,
-    },
-};
+use crate::servicecontroller::{RemoveTunnelArgs, ServiceController};
+
+use doublezero_sdk::commands::user::delete::DeleteUserCommand;
+use doublezero_sdk::commands::user::list::ListUserCommand;
 
 #[derive(Args, Debug)]
 pub struct DecommissioningArgs {
@@ -30,9 +32,9 @@ impl DecommissioningArgs {
         check_requirements(
             client,
             Some(&spinner),
-            CHECK_ID_JSON | CHECK_BALANCE | CHECK_USER_ALLOWLIST | CHECK_DOUBLEZEROD,
+            CHECK_ID_JSON | CHECK_BALANCE | CHECK_USER_ALLOWLIST,
         )?;
-
+        check_doublezero(Some(&spinner))?;
         // READY
         spinner.println("🔍  Decommissioning User");
 
@@ -59,11 +61,14 @@ impl DecommissioningArgs {
 
         let controller = ServiceController::new(None);
 
+        let users = ListUserCommand {}.execute(client)?;
+
         let client_ip = ipv4_parse(&public_ip);
-        match client.find_user(|u| u.client_ip == client_ip) {
-            Ok((pubkey, user)) => {
+        match users.iter().find(|(_, u)| u.client_ip == client_ip) {
+            Some((pubkey, user)) => {
                 println!("🔍  Deleting User Account for: {}", pubkey);
-                match client.delete_user(user.index) {
+                let res = DeleteUserCommand { index: user.index }.execute(client);
+                match res {
                     Ok(_) => {
                         spinner.finish_with_message("🔍  User Account deleted");
                     }
@@ -72,14 +77,14 @@ impl DecommissioningArgs {
                     }
                 }
             }
-            Err(_) => {
+            None => {
                 println!("🔍  User Account deleted");
             }
         }
 
         println!("🔍  Deprovisioning User");
 
-        controller.remove(RemoveTunnelArgs {}).await?;
+        let _ = controller.remove(RemoveTunnelArgs {}).await;
 
         Ok(())
     }

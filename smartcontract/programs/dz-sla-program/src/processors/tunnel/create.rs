@@ -1,27 +1,31 @@
 use core::fmt;
 
+use crate::pda::*;
+use crate::{
+    error::DoubleZeroError,
+    helper::*,
+    state::{accounttype::AccountType, tunnel::*},
+};
 use borsh::{BorshDeserialize, BorshSerialize};
+#[cfg(test)]
+use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     program_error::ProgramError,
     pubkey::Pubkey,
 };
-use crate::{error::DoubleZeroError, helper::*, state::{accounttype::AccountType, tunnel::*}};
-use crate::pda::*;
-#[cfg(test)]
-use solana_program::msg;
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct TunnelCreateArgs {
     pub index: u128,
     pub code: String,
-    pub side_a_pk: Pubkey,    
+    pub side_a_pk: Pubkey,
     pub side_z_pk: Pubkey,
-    pub tunnel_type: TunnelTunnelType, 
-    pub bandwidth: u64, 
-    pub mtu: u32,  
-    pub delay_ns: u64, 
+    pub tunnel_type: TunnelTunnelType,
+    pub bandwidth: u64,
+    pub mtu: u32,
+    pub delay_ns: u64,
     pub jitter_ns: u64,
 }
 
@@ -59,20 +63,30 @@ pub fn process_create_tunnel(
         panic!("GlobalState account not initialized");
     }
     let globalstate = globalstate_get_next(globalstate_account)?;
-    assert_eq!(value.index, globalstate.account_index, "Invalid Value Index");    
+    assert_eq!(
+        value.index, globalstate.account_index,
+        "Invalid Value Index"
+    );
 
     if !globalstate.device_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
- 
+
     let (expected_pda_account, bump_seed) = get_tunnel_pda(program_id, globalstate.account_index);
-    assert_eq!(pda_account.key, &expected_pda_account, "Invalid Location PubKey");
-    
+    assert_eq!(
+        pda_account.key, &expected_pda_account,
+        "Invalid Location PubKey"
+    );
+
     // Check account Types
-    if side_a_account.data_is_empty() || side_a_account.data.borrow()[0] != AccountType::Device as u8 {
+    if side_a_account.data_is_empty()
+        || side_a_account.data.borrow()[0] != AccountType::Device as u8
+    {
         return Err(DoubleZeroError::InvalidDeviceAPubkey.into());
     }
-    if side_z_account.data_is_empty() || side_z_account.data.borrow()[0] != AccountType::Device as u8 {
+    if side_z_account.data_is_empty()
+        || side_z_account.data.borrow()[0] != AccountType::Device as u8
+    {
         return Err(DoubleZeroError::InvalidDeviceZPubkey.into());
     }
 
@@ -102,7 +116,6 @@ pub fn process_create_tunnel(
         bump_seed,
     )?;
     globalstate_write(globalstate_account, &globalstate)?;
-    
+
     Ok(())
 }
-

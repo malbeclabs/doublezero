@@ -1,12 +1,12 @@
-pub mod create;
-pub mod update;
 pub mod activate;
-pub mod reject;
-pub mod suspend;
-pub mod reactivate;
-pub mod delete;
-pub mod deactivate;
-pub mod requestban;
 pub mod ban;
+pub mod create;
+pub mod deactivate;
+pub mod delete;
+pub mod reactivate;
+pub mod reject;
+pub mod requestban;
+pub mod suspend;
+pub mod update;
 
 pub mod tests;

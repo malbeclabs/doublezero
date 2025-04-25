@@ -1,13 +1,13 @@
-use std::fmt;
-use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::pubkey::Pubkey;
-use crate::{bytereader::ByteReader, seeds::SEED_LOCATION};
 use super::accounttype::*;
+use crate::{bytereader::ByteReader, seeds::SEED_LOCATION};
+use borsh::{BorshDeserialize, BorshSerialize};
 use serde::Serialize;
+use solana_program::pubkey::Pubkey;
+use std::fmt;
 
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
-#[borsh(use_discriminant=true)]
+#[borsh(use_discriminant = true)]
 pub enum LocationStatus {
     Pending = 0,
     Activated = 1,
@@ -37,16 +37,16 @@ impl fmt::Display for LocationStatus {
 
 #[derive(BorshSerialize, Debug, PartialEq, Clone, Serialize)]
 pub struct Location {
-    pub account_type: AccountType,  // 1
-    pub owner: Pubkey,              // 32
-    pub index: u128,                // 16
-    pub lat: f64,                   // 8
-    pub lng: f64,                   // 8
-    pub loc_id: u32,                // 4
-    pub status: LocationStatus,     // 1
-    pub code: String,               // 4 + len
-    pub name: String,               // 4 + len
-    pub country: String,            // 4 + len
+    pub account_type: AccountType, // 1
+    pub owner: Pubkey,             // 32
+    pub index: u128,               // 16
+    pub lat: f64,                  // 8
+    pub lng: f64,                  // 8
+    pub loc_id: u32,               // 4
+    pub status: LocationStatus,    // 1
+    pub code: String,              // 4 + len
+    pub name: String,              // 4 + len
+    pub country: String,           // 4 + len
 }
 
 impl fmt::Display for Location {
@@ -60,17 +60,33 @@ impl fmt::Display for Location {
 }
 
 impl AccountTypeInfo for Location {
-    fn seed(&self) -> &[u8] { SEED_LOCATION }
-    fn size(&self) -> usize { 
-        1 + 32 + 16 + 8 + 8 + 4 + 1 + 4 + self.code.len() + 4 + self.name.len() + 4 + self.country.len()
+    fn seed(&self) -> &[u8] {
+        SEED_LOCATION
     }
-    fn index(&self) -> u128 { self.index }
-    fn owner(&self) -> Pubkey { self.owner }
+    fn size(&self) -> usize {
+        1 + 32
+            + 16
+            + 8
+            + 8
+            + 4
+            + 1
+            + 4
+            + self.code.len()
+            + 4
+            + self.name.len()
+            + 4
+            + self.country.len()
+    }
+    fn index(&self) -> u128 {
+        self.index
+    }
+    fn owner(&self) -> Pubkey {
+        self.owner
+    }
 }
 
 impl From<&[u8]> for Location {
     fn from(data: &[u8]) -> Self {
-
         let mut parser = ByteReader::new(data);
 
         Self {
@@ -94,7 +110,6 @@ mod tests {
 
     #[test]
     fn test_state_location_serialization() {
-
         let val = Location {
             account_type: AccountType::Location,
             owner: Pubkey::new_unique(),
@@ -104,8 +119,8 @@ mod tests {
             loc_id: 1212121,
             code: "test-321".to_string(),
             name: "test-test-test".to_string(),
-            country: "US".to_string(),              
-            status: LocationStatus::Activated            
+            country: "US".to_string(),
+            status: LocationStatus::Activated,
         };
 
         let data = borsh::to_vec(&val).unwrap();

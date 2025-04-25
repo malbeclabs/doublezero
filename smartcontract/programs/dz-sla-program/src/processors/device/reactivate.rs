@@ -1,17 +1,16 @@
 use core::fmt;
 
+use crate::pda::*;
+use crate::{helper::*, state::device::*};
 use borsh::{BorshDeserialize, BorshSerialize};
+#[cfg(test)]
+use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     program_error::ProgramError,
     pubkey::Pubkey,
 };
-use crate::{helper::*, state::device::*};
-use crate::pda::*;
-#[cfg(test)]
-use solana_program::msg;
-
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct DeviceReactivateArgs {
@@ -30,17 +29,20 @@ pub fn process_reactivate_device(
     value: &DeviceReactivateArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
- 
+
     let pda_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
- 
+
     #[cfg(test)]
     msg!("process_reactivate_device({:?})", value);
 
     let (expected_pda_account, bump_seed) = get_device_pda(program_id, value.index);
-    assert_eq!(pda_account.key, &expected_pda_account, "Invalid Device PubKey");
- 
+    assert_eq!(
+        pda_account.key, &expected_pda_account,
+        "Invalid Device PubKey"
+    );
+
     if pda_account.owner != program_id {
         return Err(ProgramError::IncorrectProgramId);
     }
@@ -59,9 +61,9 @@ pub fn process_reactivate_device(
         system_program,
         bump_seed,
     );
- 
+
     #[cfg(test)]
     msg!("Suspended: {:?}", device);
- 
+
     Ok(())
 }

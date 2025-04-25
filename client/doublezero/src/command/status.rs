@@ -1,31 +1,32 @@
 use clap::Args;
-use double_zero_sdk::{DZClient, ServiceController};
+use doublezero_sdk::DZClient;
 
-use crate::{
-    helpers::print_error,
-    requirements::{check_requirements, CHECK_DOUBLEZEROD},
-};
+use doublezero_cli::helpers::print_error;
 
-use super::helpers::init_command;
+use crate::requirements::check_doublezero;
+use doublezero_cli::helpers::init_command;
+
+use crate::servicecontroller::ServiceController;
 
 #[derive(Args, Debug)]
 pub struct StatusArgs {}
 
 impl StatusArgs {
-    pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub async fn execute(self, _client: &DZClient) -> eyre::Result<()> {
         let spinner = init_command();
         let controller = ServiceController::new(None);
 
         // Check requirements
-        check_requirements(client, Some(&spinner), CHECK_DOUBLEZEROD)?;
+        check_doublezero(Some(&spinner))?;
+
         match controller.status().await {
             Ok(status) => {
                 println!(
                     "Tunnel status: {}\nName: {}\nTunnel src: {}\nTunnel dst: {}\nDoublezero IP: {}",
-                    status.status, 
-                    status.tunnel_name.unwrap_or_default(), 
-                    status.tunnel_src.unwrap_or_default(), 
-                    status.tunnel_dst.unwrap_or_default(), 
+                    status.status,
+                    status.tunnel_name.unwrap_or_default(),
+                    status.tunnel_src.unwrap_or_default(),
+                    status.tunnel_dst.unwrap_or_default(),
                     status.doublezero_ip.unwrap_or_default()
                 );
             }

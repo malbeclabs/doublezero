@@ -1,6 +1,17 @@
 use crate::{
     instructions::*,
     processors::{
+        allowlist::{
+            device::{
+                add::process_add_device_allowlist_globalconfig,
+                remove::process_remove_device_allowlist_globalconfig,
+            },
+            foundation::{
+                add::process_add_foundation_allowlist_globalconfig,
+                remove::process_remove_foundation_allowlist_globalconfig,
+            },
+            user::{add::process_add_user_allowlist, remove::process_remove_user_allowlist},
+        },
         device::{
             activate::process_activate_device, create::process_create_device,
             deactivate::process_deactivate_device, delete::process_delete_device,
@@ -13,21 +24,7 @@ use crate::{
             update::process_update_exchange,
         },
         globalconfig::set::process_set_globalconfig,
-        globalstate::{
-            device_allowlist::{
-                add::process_add_device_allowlist_globalconfig,
-                remove::process_remove_device_allowlist_globalconfig,
-            },
-            foundation_allowlist::{
-                add::process_add_foundation_allowlist_globalconfig,
-                remove::process_remove_foundation_allowlist_globalconfig,
-            },
-            initialize::initialize_global_state,
-            user_allowlist::{
-                add::process_add_user_allowlist_globalconfig,
-                remove::process_remove_user_allowlist_globalconfig,
-            },
-        },
+        globalstate::initialize::initialize_global_state,
         location::{
             create::process_create_location, delete::process_delete_location,
             reactivate::process_reactivate_location, suspend::process_suspend_location,
@@ -48,6 +45,7 @@ use crate::{
         },
     },
 };
+use solana_program::msg;
 use solana_program::{
     account_info::AccountInfo, entrypoint, entrypoint::ProgramResult, pubkey::Pubkey,
 };
@@ -62,6 +60,8 @@ pub fn process_instruction(
     data: &[u8],
 ) -> ProgramResult {
     let instruction = DoubleZeroInstruction::unpack(data)?;
+
+    msg!("Instruction: {:?}", instruction);
 
     match instruction {
         DoubleZeroInstruction::InitGlobalState() => initialize_global_state(program_id, accounts)?,
@@ -171,23 +171,23 @@ pub fn process_instruction(
         DoubleZeroInstruction::RejectUser(value) => {
             process_reject_user(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::AddFoundationAllowlistGlobalConfig(value) => {
+        DoubleZeroInstruction::AddFoundationAllowlist(value) => {
             process_add_foundation_allowlist_globalconfig(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::RemoveFoundationAllowlistGlobalConfig(value) => {
+        DoubleZeroInstruction::RemoveFoundationAllowlist(value) => {
             process_remove_foundation_allowlist_globalconfig(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::AddDeviceAllowlistGlobalConfig(value) => {
+        DoubleZeroInstruction::AddDeviceAllowlist(value) => {
             process_add_device_allowlist_globalconfig(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::RemoveDeviceAllowlistGlobalConfig(value) => {
+        DoubleZeroInstruction::RemoveDeviceAllowlist(value) => {
             process_remove_device_allowlist_globalconfig(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::AddUserAllowlistGlobalConfig(value) => {
-            process_add_user_allowlist_globalconfig(program_id, accounts, &value)?
+        DoubleZeroInstruction::AddUserAllowlist(value) => {
+            process_add_user_allowlist(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::RemoveUserAllowlistGlobalConfig(value) => {
-            process_remove_user_allowlist_globalconfig(program_id, accounts, &value)?
+        DoubleZeroInstruction::RemoveUserAllowlist(value) => {
+            process_remove_user_allowlist(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::RequestBanUser(value) => {
             process_request_ban_user(program_id, accounts, &value)?

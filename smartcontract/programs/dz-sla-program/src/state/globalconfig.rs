@@ -4,16 +4,19 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::pubkey::Pubkey;
 
 use super::accounttype::AccountType;
-use crate::{bytereader::ByteReader, types::{networkv4_to_string, NetworkV4}};
+use crate::{
+    bytereader::ByteReader,
+    types::{networkv4_to_string, NetworkV4},
+};
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
 pub struct GlobalConfig {
-    pub account_type: AccountType,          // 1
-    pub owner: Pubkey,                      // 32
-    pub local_asn: u32,                     // 4
-    pub remote_asn: u32,                    // 4
-    pub tunnel_tunnel_block: NetworkV4,     // 5
-    pub user_tunnel_block: NetworkV4,       // 5
+    pub account_type: AccountType,      // 1
+    pub owner: Pubkey,                  // 32
+    pub local_asn: u32,                 // 4
+    pub remote_asn: u32,                // 4
+    pub tunnel_tunnel_block: NetworkV4, // 5
+    pub user_tunnel_block: NetworkV4,   // 5
 }
 
 impl fmt::Display for GlobalConfig {
@@ -21,7 +24,8 @@ impl fmt::Display for GlobalConfig {
         write!(
             f,
             "account_type: {}, owner: {}, local_asn: {}, remote_asn: {}, tunnel_tunnel_block: {}, user_tunnel_block: {}",
-            self.account_type, self.owner, self.local_asn, self.remote_asn, networkv4_to_string(&self.tunnel_tunnel_block), 
+            self.account_type, self.owner, self.local_asn, self.remote_asn,
+            networkv4_to_string(&self.tunnel_tunnel_block),
             networkv4_to_string(&self.user_tunnel_block)
         )
     }

@@ -51,7 +51,7 @@ RUN make -C ./client build && \
 FROM builder AS smartcontract
 COPY smartcontract smartcontract
 RUN cargo build-sbf --manifest-path smartcontract/programs/dz-sla-program/Cargo.toml && \
-    cp smartcontract/programs/dz-sla-program/target/deploy/double_zero_sla_program.so ./bin/double_zero_sla_program.so && \
+    cp smartcontract/programs/dz-sla-program/target/deploy/doublezero_sla_program.so ./bin/doublezero_sla_program.so && \
     rm -rf smartcontract/programs/dz-sla-program/target
 
 # build the activator

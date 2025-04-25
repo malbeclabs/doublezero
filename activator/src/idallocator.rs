@@ -6,10 +6,7 @@ pub struct IDAllocator {
 
 impl IDAllocator {
     pub fn new(first: u16, assigned: Vec<u16>) -> Self {
-        Self {
-            first,
-            assigned,
-        }
+        Self { first, assigned }
     }
 
     pub fn assign(&mut self, id: u16) {

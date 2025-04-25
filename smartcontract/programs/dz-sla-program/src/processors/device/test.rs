@@ -19,7 +19,7 @@ mod device_test {
     async fn test_device() {
         let program_id = Pubkey::new_unique();
         let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
-            "double_zero_sla_program",
+            "doublezero_sla_program",
             program_id,
             processor!(process_instruction),
         )
@@ -274,7 +274,10 @@ mod device_test {
             DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs {
                 index: device_la.index,
             }),
-            vec![AccountMeta::new(device_pubkey, false)],
+            vec![
+                AccountMeta::new(device_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
             &payer,
         )
         .await;

@@ -10,6 +10,8 @@ use crate::{
     types::NetworkV4,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
+#[cfg(test)]
+use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -18,8 +20,6 @@ use solana_program::{
     system_instruction,
     sysvar::{rent::Rent, Sysvar},
 };
-#[cfg(test)]
-use solana_program::msg;
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct SetGlobalConfigArgs {
@@ -31,7 +31,14 @@ pub struct SetGlobalConfigArgs {
 
 impl fmt::Debug for SetGlobalConfigArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "local_asn: {}, remote_asn: {}, tunnel_block: {}, user _block: {}", self.local_asn, self.remote_asn, networkv4_to_string(&self.tunnel_tunnel_block), networkv4_to_string(&self.user_tunnel_block))
+        write!(
+            f,
+            "local_asn: {}, remote_asn: {}, tunnel_block: {}, user _block: {}",
+            self.local_asn,
+            self.remote_asn,
+            networkv4_to_string(&self.tunnel_tunnel_block),
+            networkv4_to_string(&self.user_tunnel_block)
+        )
     }
 }
 

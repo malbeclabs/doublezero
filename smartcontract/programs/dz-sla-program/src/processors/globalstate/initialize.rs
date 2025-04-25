@@ -3,6 +3,8 @@ use crate::seeds::{SEED_GLOBALSTATE, SEED_PREFIX};
 use crate::state::accounttype::AccountType;
 use crate::state::globalstate::GlobalState;
 use borsh::BorshSerialize;
+#[cfg(test)]
+use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -11,8 +13,6 @@ use solana_program::{
     system_instruction,
     sysvar::{rent::Rent, Sysvar},
 };
-#[cfg(test)]
-use solana_program::msg;
 
 pub fn initialize_global_state(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();

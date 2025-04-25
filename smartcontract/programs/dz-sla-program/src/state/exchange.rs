@@ -1,13 +1,13 @@
-use std::fmt;
-use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::pubkey::Pubkey;
-use crate::{bytereader::ByteReader, seeds::SEED_EXCHANGE};
 use super::accounttype::{AccountType, AccountTypeInfo};
+use crate::{bytereader::ByteReader, seeds::SEED_EXCHANGE};
+use borsh::{BorshDeserialize, BorshSerialize};
 use serde::Serialize;
+use solana_program::pubkey::Pubkey;
+use std::fmt;
 
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
-#[borsh(use_discriminant=true)]
+#[borsh(use_discriminant = true)]
 pub enum ExchangeStatus {
     Pending = 0,
     Activated = 1,
@@ -35,18 +35,17 @@ impl fmt::Display for ExchangeStatus {
     }
 }
 
-
 #[derive(BorshSerialize, Debug, PartialEq, Clone, Serialize)]
 pub struct Exchange {
-    pub account_type: AccountType,  // 1
-    pub owner: Pubkey,              // 32
-    pub index: u128,                // 16
-    pub lat: f64,                   // 8
-    pub lng: f64,                   // 8
-    pub loc_id: u32,                // 4
-    pub status: ExchangeStatus,     // 1
-    pub code: String,               // 4 + len
-    pub name: String,               // 4 + len
+    pub account_type: AccountType, // 1
+    pub owner: Pubkey,             // 32
+    pub index: u128,               // 16
+    pub lat: f64,                  // 8
+    pub lng: f64,                  // 8
+    pub loc_id: u32,               // 4
+    pub status: ExchangeStatus,    // 1
+    pub code: String,              // 4 + len
+    pub name: String,              // 4 + len
 }
 
 impl fmt::Display for Exchange {
@@ -60,12 +59,18 @@ impl fmt::Display for Exchange {
 }
 
 impl AccountTypeInfo for Exchange {
-    fn seed(&self) -> &[u8] { SEED_EXCHANGE }
-    fn size(&self) -> usize { 
-        1 + 32 +16 + 4 + self.code.len() + 4 + self.name.len() + 8 + 8 + 4 + 1
+    fn seed(&self) -> &[u8] {
+        SEED_EXCHANGE
     }
-    fn index(&self) -> u128 { self.index }
-    fn owner(&self) -> Pubkey { self.owner }
+    fn size(&self) -> usize {
+        1 + 32 + 16 + 4 + self.code.len() + 4 + self.name.len() + 8 + 8 + 4 + 1
+    }
+    fn index(&self) -> u128 {
+        self.index
+    }
+    fn owner(&self) -> Pubkey {
+        self.owner
+    }
 }
 
 impl From<&[u8]> for Exchange {
@@ -92,7 +97,6 @@ mod tests {
 
     #[test]
     fn test_state_exchange_serialization() {
-
         let val = Exchange {
             account_type: AccountType::Exchange,
             owner: Pubkey::new_unique(),
@@ -102,7 +106,7 @@ mod tests {
             loc_id: 1212121,
             code: "test-321".to_string(),
             name: "test-test-test".to_string(),
-            status: ExchangeStatus::Activated            
+            status: ExchangeStatus::Activated,
         };
 
         let data = borsh::to_vec(&val).unwrap();

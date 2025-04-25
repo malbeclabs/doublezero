@@ -3,14 +3,14 @@ use core::fmt;
 use crate::pda::*;
 use crate::{error::DoubleZeroError, helper::*, state::tunnel::*};
 use borsh::{BorshDeserialize, BorshSerialize};
+#[cfg(test)]
+use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     program_error::ProgramError,
     pubkey::Pubkey,
 };
-#[cfg(test)]
-use solana_program::msg;
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct TunnelReactivateArgs {
     pub index: u128,

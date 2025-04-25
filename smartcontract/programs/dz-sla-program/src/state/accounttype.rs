@@ -1,11 +1,11 @@
-use std::fmt;
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::pubkey::Pubkey;
 use serde::Serialize;
+use solana_program::pubkey::Pubkey;
+use std::fmt;
 
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
-#[borsh(use_discriminant=true)]
+#[borsh(use_discriminant = true)]
 pub enum AccountType {
     None = 0,
     GlobalState = 1,
@@ -14,7 +14,7 @@ pub enum AccountType {
     Exchange = 4,
     Device = 5,
     Tunnel = 6,
-    User = 7
+    User = 7,
 }
 
 impl From<u8> for AccountType {

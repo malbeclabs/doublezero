@@ -1,9 +1,8 @@
-use async_trait::async_trait;
 use base64::prelude::*;
 use base64::{engine::general_purpose, Engine};
 use bincode::deserialize;
 use chrono::{DateTime, NaiveDateTime, Utc};
-use double_zero_sla_program::{
+use doublezero_sla_program::{
     instructions::*,
     pda::*,
     processors::globalconfig::set::SetGlobalConfigArgs,
@@ -54,7 +53,6 @@ impl DZClient {
     }
 }
 
-#[async_trait]
 impl DoubleZeroClient for DZClient {
     fn get_program_id(&self) -> Pubkey {
         self.program_id
@@ -65,6 +63,12 @@ impl DoubleZeroClient for DZClient {
             Some(keypair) => keypair.pubkey(),
             None => Pubkey::default(),
         }
+    }
+
+    fn get_balance(&self) -> eyre::Result<u64> {
+        self.client
+            .get_balance(&self.get_payer())
+            .map_err(|e| eyre!(e))
     }
 
     fn execute_transaction(
@@ -258,7 +262,7 @@ impl DZClient {
         let program_id = {
             if program_id.is_none() {
                 if config.program_id.is_none() {
-                    double_zero_sla_program::addresses::testnet::program_id::id()
+                    doublezero_sla_program::addresses::testnet::program_id::id()
                 } else {
                     Pubkey::from_str(&config.program_id.unwrap())
                         .map_err(|_| eyre!("Invalid program ID"))?

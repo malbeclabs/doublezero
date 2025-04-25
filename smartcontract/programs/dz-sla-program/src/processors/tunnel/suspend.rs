@@ -1,5 +1,7 @@
 use core::fmt;
 
+use crate::pda::*;
+use crate::{error::DoubleZeroError, helper::*, state::tunnel::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -8,8 +10,6 @@ use solana_program::{
     program_error::ProgramError,
     pubkey::Pubkey,
 };
-use crate::{error::DoubleZeroError, helper::*, state::tunnel::*};
-use crate::pda::*;
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct TunnelSuspendArgs {
@@ -28,17 +28,20 @@ pub fn process_suspend_tunnel(
     value: &TunnelSuspendArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
- 
+
     let pda_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
- 
+
     #[cfg(test)]
     msg!("process_suspend_tunnel({:?})", value);
 
     let (expected_pda_account, bump_seed) = get_tunnel_pda(program_id, value.index);
-    assert_eq!(pda_account.key, &expected_pda_account, "Invalid Tunnel PubKey");
- 
+    assert_eq!(
+        pda_account.key, &expected_pda_account,
+        "Invalid Tunnel PubKey"
+    );
+
     if pda_account.owner != program_id {
         return Err(ProgramError::IncorrectProgramId);
     }
@@ -64,7 +67,6 @@ pub fn process_suspend_tunnel(
     );
 
     msg!("Suspended: {:?}", tunnel);
- 
+
     Ok(())
 }
-

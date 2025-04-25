@@ -1,17 +1,16 @@
 use core::fmt;
 
+use crate::pda::*;
+use crate::{error::DoubleZeroError, helper::*, state::device::*};
 use borsh::{BorshDeserialize, BorshSerialize};
+#[cfg(test)]
+use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     program_error::ProgramError,
     pubkey::Pubkey,
 };
-use crate::{error::DoubleZeroError, helper::*, state::device::*};
-use crate::pda::*;
-#[cfg(test)]
-use solana_program::msg;
-
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct DeviceActivateArgs {
@@ -40,7 +39,10 @@ pub fn process_activate_device(
     msg!("process_activate_device({:?})", value);
 
     let (expected_pda_account, bump_seed) = get_device_pda(program_id, value.index);
-    assert_eq!(pda_account.key, &expected_pda_account, "Invalid Device PubKey");
+    assert_eq!(
+        pda_account.key, &expected_pda_account,
+        "Invalid Device PubKey"
+    );
 
     if pda_account.owner != program_id {
         return Err(ProgramError::IncorrectProgramId);
@@ -52,7 +54,7 @@ pub fn process_activate_device(
     let globalstate = globalstate_get_next(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
-    }    
+    }
 
     let mut device: Device = Device::from(&pda_account.try_borrow_data().unwrap()[..]);
     if device.status != DeviceStatus::Pending {

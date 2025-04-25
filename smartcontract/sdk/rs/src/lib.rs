@@ -1,15 +1,15 @@
-pub use double_zero_sla_program::pda::{
+pub use doublezero_sla_program::pda::{
     get_device_pda, get_exchange_pda, get_location_pda, get_tunnel_pda,
 };
 
-pub use double_zero_sla_program::addresses::*;
+pub use doublezero_sla_program::addresses::*;
 
 pub use crate::config::{
     create_new_pubkey_user, get_doublezero_pubkey, read_doublezero_config, write_doublezero_config,
     ClientConfig,
 };
 
-pub use double_zero_sla_program::state::{
+pub use doublezero_sla_program::state::{
     accountdata::AccountData,
     accounttype::AccountType,
     device::{Device, DeviceStatus, DeviceType},
@@ -19,7 +19,7 @@ pub use double_zero_sla_program::state::{
     tunnel::{Tunnel, TunnelStatus, TunnelTunnelType},
     user::{User, UserCYOA, UserStatus, UserType},
 };
-pub use double_zero_sla_program::types::*;
+pub use doublezero_sla_program::types::*;
 
 #[macro_use]
 extern crate lazy_static;
@@ -30,24 +30,20 @@ mod consts;
 mod doublezeroclient;
 mod dztransaction;
 mod errors;
-mod servicecontroller;
-mod services;
+mod tests;
 mod utils;
 
+pub mod commands;
+
 pub use crate::client::DZClient;
-pub use crate::doublezeroclient::DoubleZeroClient;
-pub use crate::services::{
-    allowlist::AllowlistService, device::DeviceFinder, device::DeviceService,
-    device::MockDeviceService, exchange::ExchangeService, location::LocationService,
-    tunnel::MockTunnelService, tunnel::TunnelFinder, tunnel::TunnelService, user::MockUserService,
-    user::UserFinder, user::UserService,
-};
 
 pub use crate::config::{
     convert_program_moniker, convert_url_moniker, convert_url_to_ws, convert_ws_moniker,
 };
+pub use crate::doublezeroclient::DoubleZeroClient;
+pub use crate::doublezeroclient::MockDoubleZeroClient;
 pub use crate::errors::*;
-pub use crate::servicecontroller::{
-    service_controller_can_open, service_controller_check, ProvisioningRequest, RemoveTunnelArgs,
-    ServiceController,
-};
+
+pub use crate::commands::globalstate::get::GetGlobalStateCommand;
+pub use crate::commands::location::create::CreateLocationCommand;
+pub use crate::commands::location::get::GetLocationCommand;

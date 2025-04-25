@@ -17,12 +17,12 @@ use solana_program::{
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct DeviceRejectArgs {
     pub index: u128,
-    pub error: String,
+    pub reason: String,
 }
 
 impl fmt::Debug for DeviceRejectArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "error: {}", self.error)
+        write!(f, "reason: {}", self.reason)
     }
 }
 
@@ -65,7 +65,7 @@ pub fn process_reject_device(
     }
 
     device.status = DeviceStatus::Rejected;
-    msg!("Error: {:?}", value.error);
+    msg!("Reason: {:?}", value.reason);
 
     account_write(
         pda_account,

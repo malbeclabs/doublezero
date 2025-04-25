@@ -23,7 +23,7 @@ mod user_test {
     async fn test_user() {
         let program_id = Pubkey::new_unique();
         let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
-            "double_zero_sla_program",
+            "doublezero_sla_program",
             program_id,
             processor!(process_instruction),
         )
@@ -344,7 +344,7 @@ mod user_test {
             DoubleZeroInstruction::DeleteUser(UserDeleteArgs { index: user.index }),
             vec![
                 AccountMeta::new(user_pubkey, false),
-                //AccountMeta::new(globalstate_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
             ],
             &payer,
         )

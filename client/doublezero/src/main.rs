@@ -1,20 +1,22 @@
-use crate::command::device::*;
-use crate::command::exchange::*;
-use crate::command::location::*;
-use crate::command::tunnel::*;
-use crate::command::user::*;
-
 use clap::Parser;
 use colored::Colorize;
-use command::config::ConfigCommands;
-use command::globalconfig::GlobalConfigCommands;
 
-use command::Command;
-use double_zero_sdk::DZClient;
-
+mod cli;
 mod command;
-mod helpers;
 mod requirements;
+mod servicecontroller;
+
+use doublezero_sdk::DZClient;
+
+use crate::cli::{
+    command::Command, config::ConfigCommands, device::DeviceCommands, exchange::ExchangeCommands,
+    globalconfig::GlobalConfigCommands, location::LocationCommands, tunnel::TunnelCommands,
+    user::UserCommands,
+};
+
+use crate::cli::device::DeviceAllowlistCommands;
+use crate::cli::globalconfig::FoundationAllowlistCommands;
+use crate::cli::user::UserAllowlistCommands;
 
 include!(concat!(env!("OUT_DIR"), "/version.rs"));
 
@@ -51,79 +53,79 @@ async fn main() -> eyre::Result<()> {
     let client = DZClient::new(app.url, app.ws, app.program_id, app.keypair)?;
 
     let res = match app.command {
-        Command::Address(args) => args.execute(&client).await,
-        Command::Balance(args) => args.execute(&client).await,
+        Command::Address(args) => args.execute(&client),
+        Command::Balance(args) => args.execute(&client),
         Command::Connect(args) => args.execute(&client).await,
         Command::Status(args) => args.execute(&client).await,
         Command::Disconnect(args) => args.execute(&client).await,
         Command::Latency(args) => args.execute(&client).await,
 
-        Command::Init(args) => args.execute(&client).await,
+        Command::Init(args) => args.execute(&client),
         Command::Config(command) => match command.command {
-            ConfigCommands::Get(args) => args.execute(&client).await,
-            ConfigCommands::Set(args) => args.execute(&client).await,
+            ConfigCommands::Get(args) => args.execute(&client),
+            ConfigCommands::Set(args) => args.execute(&client),
         },
         Command::GlobalConfig(command) => match command.command {
-            GlobalConfigCommands::Set(args) => args.execute(&client).await,
-            GlobalConfigCommands::Get(args) => args.execute(&client).await,
+            GlobalConfigCommands::Set(args) => args.execute(&client),
+            GlobalConfigCommands::Get(args) => args.execute(&client),
             GlobalConfigCommands::Allowlist(command) => match command.command {
-                crate::command::globalconfig::allowlist::AllowlistCommands::Get(args) => args.execute(&client).await,
-                crate::command::globalconfig::allowlist::AllowlistCommands::Add(args) => args.execute(&client).await,
-                crate::command::globalconfig::allowlist::AllowlistCommands::Remove(args) => args.execute(&client).await,
+                FoundationAllowlistCommands::List(args) => args.execute(&client),
+                FoundationAllowlistCommands::Add(args) => args.execute(&client),
+                FoundationAllowlistCommands::Remove(args) => args.execute(&client),
             },
         },
 
-        Command::Account(args) => args.execute(&client).await,
+        Command::Account(args) => args.execute(&client),
 
         Command::Location(command) => match command.command {
-            LocationCommands::Create(args) => args.execute(&client).await,
-            LocationCommands::Update(args) => args.execute(&client).await,
-            LocationCommands::List(args) => args.execute(&client).await,
-            LocationCommands::Get(args) => args.execute(&client).await,
-            LocationCommands::Delete(args) => args.execute(&client).await,
+            LocationCommands::Create(args) => args.execute(&client),
+            LocationCommands::Update(args) => args.execute(&client),
+            LocationCommands::List(args) => args.execute(&client),
+            LocationCommands::Get(args) => args.execute(&client),
+            LocationCommands::Delete(args) => args.execute(&client),
         },
         Command::Exchange(command) => match command.command {
-            ExchangeCommands::Create(args) => args.execute(&client).await,
-            ExchangeCommands::Update(args) => args.execute(&client).await,
-            ExchangeCommands::List(args) => args.execute(&client).await,
-            ExchangeCommands::Get(args) => args.execute(&client).await,
-            ExchangeCommands::Delete(args) => args.execute(&client).await,
+            ExchangeCommands::Create(args) => args.execute(&client),
+            ExchangeCommands::Update(args) => args.execute(&client),
+            ExchangeCommands::List(args) => args.execute(&client),
+            ExchangeCommands::Get(args) => args.execute(&client),
+            ExchangeCommands::Delete(args) => args.execute(&client),
         },
         Command::Device(command) => match command.command {
-            DeviceCommands::Create(args) => args.execute(&client).await,
-            DeviceCommands::Update(args) => args.execute(&client).await,
-            DeviceCommands::List(args) => args.execute(&client).await,
-            DeviceCommands::Get(args) => args.execute(&client).await,
-            DeviceCommands::Delete(args) => args.execute(&client).await,
+            DeviceCommands::Create(args) => args.execute(&client),
+            DeviceCommands::Update(args) => args.execute(&client),
+            DeviceCommands::List(args) => args.execute(&client),
+            DeviceCommands::Get(args) => args.execute(&client),
+            DeviceCommands::Delete(args) => args.execute(&client),
             DeviceCommands::Allowlist(command) => match command.command {
-                crate::command::device::allowlist::AllowlistCommands::Get(args) => args.execute(&client).await,
-                crate::command::device::allowlist::AllowlistCommands::Add(args) => args.execute(&client).await,
-                crate::command::device::allowlist::AllowlistCommands::Remove(args) => args.execute(&client).await, 
-            }
+                DeviceAllowlistCommands::List(args) => args.execute(&client),
+                DeviceAllowlistCommands::Add(args) => args.execute(&client),
+                DeviceAllowlistCommands::Remove(args) => args.execute(&client),
+            },
         },
         Command::Tunnel(command) => match command.command {
-            TunnelCommands::Create(args) => args.execute(&client).await,
-            TunnelCommands::Update(args) => args.execute(&client).await,
-            TunnelCommands::List(args) => args.execute(&client).await,
-            TunnelCommands::Get(args) => args.execute(&client).await,
-            TunnelCommands::Delete(args) => args.execute(&client).await,
+            TunnelCommands::Create(args) => args.execute(&client),
+            TunnelCommands::Update(args) => args.execute(&client),
+            TunnelCommands::List(args) => args.execute(&client),
+            TunnelCommands::Get(args) => args.execute(&client),
+            TunnelCommands::Delete(args) => args.execute(&client),
         },
         Command::User(command) => match command.command {
-            UserCommands::Create(args) => args.execute(&client).await,
-            UserCommands::Update(args) => args.execute(&client).await,
-            UserCommands::List(args) => args.execute(&client).await,
-            UserCommands::Get(args) => args.execute(&client).await,
-            UserCommands::Delete(args) => args.execute(&client).await,
+            UserCommands::Create(args) => args.execute(&client),
+            UserCommands::Update(args) => args.execute(&client),
+            UserCommands::List(args) => args.execute(&client),
+            UserCommands::Get(args) => args.execute(&client),
+            UserCommands::Delete(args) => args.execute(&client),
             UserCommands::Allowlist(command) => match command.command {
-                crate::command::user::allowlist::AllowlistCommands::Get(args) => args.execute(&client).await,
-                crate::command::user::allowlist::AllowlistCommands::Add(args) => args.execute(&client).await,
-                crate::command::user::allowlist::AllowlistCommands::Remove(args) => args.execute(&client).await,
+                UserAllowlistCommands::List(args) => args.execute(&client),
+                UserAllowlistCommands::Add(args) => args.execute(&client),
+                UserAllowlistCommands::Remove(args) => args.execute(&client),
             },
-            UserCommands::RequestBan(args) => args.execute(&client).await,
+            UserCommands::RequestBan(args) => args.execute(&client),
         },
-        Command::Export(args) => args.execute(&client).await,
-        Command::Keygen(args) => args.execute(&client).await,
-        Command::Log(args) => args.execute(&client).await,
+        Command::Export(args) => args.execute(&client),
+        Command::Keygen(args) => args.execute(&client),
+        Command::Log(args) => args.execute(&client),
     };
 
     match res {

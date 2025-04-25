@@ -3,6 +3,8 @@
 package e2e_test
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"embed"
 	"fmt"
@@ -10,6 +12,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"reflect"
 	"slices"
 	"strings"
 	"syscall"
@@ -102,30 +105,34 @@ func (r *ShowIpRoute) GetCmd() string {
 // output slice.
 func TestIBRLWithAllocatedAddress_Connect_Output(t *testing.T) {
 	tests := []struct {
-		name       string
-		goldenFile string
-		cmd        []string
+		name           string
+		goldenFile     string
+		testOutputType string
+		cmd            []string
 	}{
 		{
-			name:       "doublezero_user_list",
-			goldenFile: "fixtures/ibrl_with_allocated_addr/doublezero_user_list_user_added.txt",
-			cmd:        []string{"doublezero", "user", "list"},
+			name:           "doublezero_user_list",
+			goldenFile:     "fixtures/ibrl_with_allocated_addr/doublezero_user_list_user_added.txt",
+			testOutputType: "table",
+			cmd:            []string{"doublezero", "user", "list"},
 		},
 		{
-			name:       "doublezero_device_list",
-			goldenFile: "fixtures/ibrl_with_allocated_addr/doublezero_device_list.txt",
-			cmd:        []string{"doublezero", "device", "list"},
+			name:           "doublezero_device_list",
+			goldenFile:     "fixtures/ibrl_with_allocated_addr/doublezero_device_list.txt",
+			testOutputType: "table",
+			cmd:            []string{"doublezero", "device", "list"},
 		},
 		{
-			name:       "doublezero_status",
-			goldenFile: "fixtures/ibrl_with_allocated_addr/doublezero_status_connected.txt",
-			cmd:        []string{"doublezero", "status"},
+			name:           "doublezero_status",
+			goldenFile:     "fixtures/ibrl_with_allocated_addr/doublezero_status_connected.txt",
+			testOutputType: "list",
+			cmd:            []string{"doublezero", "status"},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			diff, err := diffCliToGolden(test.goldenFile, test.cmd...)
+			diff, err := diffCliToGolden(test.goldenFile, test.testOutputType, test.cmd...)
 			if err != nil {
 				t.Fatalf("error generating diff: %v", err)
 			}
@@ -275,7 +282,7 @@ func TestIBRLWithAllocatedAddress_Disconnect_Networking(t *testing.T) {
 	t.Run("check_user_contract_is_removed", func(t *testing.T) {
 		goldenFile := "fixtures/ibrl_with_allocated_addr/doublezero_user_list_user_removed.txt"
 		cmd := []string{"doublezero", "user", "list"}
-		diff, err := diffCliToGolden(goldenFile, cmd...)
+		diff, err := diffCliToGolden(goldenFile, "", cmd...)
 		if err != nil {
 			t.Fatalf("error generating diff: %v", err)
 		}
@@ -316,20 +323,22 @@ func TestIBRLWithAllocatedAddress_Disconnect_Networking(t *testing.T) {
 
 func TestIBRLWithAllocatedAddress_Disconnect_Output(t *testing.T) {
 	tests := []struct {
-		name       string
-		goldenFile string
-		cmd        []string
+		name           string
+		goldenFile     string
+		testOutputType string
+		cmd            []string
 	}{
 		{
-			name:       "doublezero_status",
-			goldenFile: "fixtures/ibrl_with_allocated_addr/doublezero_status_disconnected.txt",
-			cmd:        []string{"doublezero", "status"},
+			name:           "doublezero_status",
+			goldenFile:     "fixtures/ibrl_with_allocated_addr/doublezero_status_disconnected.txt",
+			testOutputType: "list",
+			cmd:            []string{"doublezero", "status"},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			diff, err := diffCliToGolden(test.goldenFile, test.cmd...)
+			diff, err := diffCliToGolden(test.goldenFile, test.testOutputType, test.cmd...)
 			if err != nil {
 				t.Fatalf("error generating diff: %v", err)
 			}
@@ -342,14 +351,16 @@ func TestIBRLWithAllocatedAddress_Disconnect_Output(t *testing.T) {
 
 func TestIBRL_Connect_Output(t *testing.T) {
 	tests := []struct {
-		name       string
-		goldenFile string
-		cmd        []string
+		name           string
+		goldenFile     string
+		testOutputType string
+		cmd            []string
 	}{
 		{
-			name:       "doublezero_user_list",
-			goldenFile: "fixtures/ibrl/doublezero_user_list_user_added.txt",
-			cmd:        []string{"doublezero", "user", "list"},
+			name:           "doublezero_user_list",
+			goldenFile:     "fixtures/ibrl/doublezero_user_list_user_added.txt",
+			testOutputType: "table",
+			cmd:            []string{"doublezero", "user", "list"},
 		},
 		{
 			name:       "doublezero_status",
@@ -360,7 +371,7 @@ func TestIBRL_Connect_Output(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			diff, err := diffCliToGolden(test.goldenFile, test.cmd...)
+			diff, err := diffCliToGolden(test.goldenFile, test.testOutputType, test.cmd...)
 			if err != nil {
 				t.Fatalf("error generating diff: %v", err)
 			}
@@ -516,25 +527,28 @@ func TestIBRL_Connect_Networking(t *testing.T) {
 
 func TestIBRL_Disconnect_Output(t *testing.T) {
 	tests := []struct {
-		name       string
-		goldenFile string
-		cmd        []string
+		name           string
+		goldenFile     string
+		testOutputType string
+		cmd            []string
 	}{
 		{
-			name:       "doublezero_user_list",
-			goldenFile: "fixtures/ibrl/doublezero_user_list_user_removed.txt",
-			cmd:        []string{"doublezero", "user", "list"},
+			name:           "doublezero_user_list",
+			goldenFile:     "fixtures/ibrl/doublezero_user_list_user_removed.txt",
+			testOutputType: "table",
+			cmd:            []string{"doublezero", "user", "list"},
 		},
 		{
-			name:       "doublezero_status",
-			goldenFile: "fixtures/ibrl/doublezero_status_disconnected.txt",
-			cmd:        []string{"doublezero", "status"},
+			name:           "doublezero_status",
+			goldenFile:     "fixtures/ibrl/doublezero_status_disconnected.txt",
+			testOutputType: "list",
+			cmd:            []string{"doublezero", "status"},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			diff, err := diffCliToGolden(test.goldenFile, test.cmd...)
+			diff, err := diffCliToGolden(test.goldenFile, test.testOutputType, test.cmd...)
 			if err != nil {
 				t.Fatalf("error generating diff: %v", err)
 			}
@@ -563,8 +577,9 @@ func TestIBRL_Disconnect_Networking(t *testing.T) {
 
 	t.Run("check_user_contract_is_removed", func(t *testing.T) {
 		goldenFile := "fixtures/ibrl/doublezero_user_list_user_removed.txt"
+		testOutputType := "table"
 		cmd := []string{"doublezero", "user", "list"}
-		diff, err := diffCliToGolden(goldenFile, cmd...)
+		diff, err := diffCliToGolden(goldenFile, testOutputType, cmd...)
 		if err != nil {
 			t.Fatalf("error generating diff: %v", err)
 		}
@@ -603,8 +618,9 @@ func TestIBRL_Disconnect_Networking(t *testing.T) {
 	})
 }
 
-func diffCliToGolden(goldenFile string, cmds ...string) (string, error) {
+func diffCliToGolden(goldenFile string, testOutputType string, cmds ...string) (string, error) {
 	want, err := fs.ReadFile(goldenFile)
+
 	if err != nil {
 		return "", fmt.Errorf("error reading golden file %s: %v", goldenFile, err)
 	}
@@ -612,8 +628,79 @@ func diffCliToGolden(goldenFile string, cmds ...string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("error running cmd %s: %v", cmds, err)
 	}
+
+	switch testOutputType {
+	case "table":
+		diff := diffCliMapToGoldenMapTable(want, got)
+		fmt.Printf("equal: =======%v\n", reflect.DeepEqual(want, got))
+		fmt.Printf("table diff: =========%+v\n", diff)
+		// return diff, nil
+	case "list":
+		diff := diffCliMapToGoldenMapList(want, got)
+		fmt.Printf("equal: =======%v\n", reflect.DeepEqual(want, got))
+		fmt.Printf("list diff: =========%+v\n", diff)
+		// return diff, nil
+	}
 	opts := []cmp.Option{
 		cmpopts.SortSlices(func(a, b string) bool { return a < b }),
 	}
 	return cmp.Diff(strings.Split(string(want), "\n"), strings.Split(string(got), "\n"), opts...), nil
+
+}
+
+func diffCliMapToGoldenMapTable(want []byte, got []byte) string {
+	gotMap := mapFromTable(got)
+	wantMap := mapFromTable(want)
+
+	fmt.Printf("got table:=== %v\n", gotMap)
+	fmt.Printf("want table:=== %v\n", wantMap)
+
+	return cmp.Diff(gotMap, wantMap)
+}
+
+func diffCliMapToGoldenMapList(want []byte, got []byte) string {
+	gotMap := mapFromList(got)
+	wantMap := mapFromList(want)
+
+	fmt.Printf("got list:=== %v\n", gotMap)
+	fmt.Printf("want list:=== %v\n", wantMap)
+
+	return cmp.Diff(gotMap, wantMap)
+}
+
+func mapFromTable(output []byte) map[string]string {
+	formattedMap := make(map[string]string)
+
+	scanner := bufio.NewScanner(bytes.NewReader(output))
+	scanner.Scan()
+	header := scanner.Text()
+	split := strings.Split(header, "|")
+	trimmed_header := make([]string, len(split))
+	for i, key := range split {
+		trimmed_header[i] = strings.TrimSpace(key)
+	}
+
+	mapofMaps := make(map[int]map[string]string)
+
+	for i := 0; scanner.Scan(); i++ {
+		fmt.Printf("%d", i)
+		line := scanner.Text()
+		split := strings.Split(line, "|")
+		for i, key := range split {
+			formattedMap[trimmed_header[i]] = strings.TrimSpace(key)
+		}
+		mapofMaps[i] = formattedMap
+	}
+	return formattedMap
+}
+
+func mapFromList(output []byte) map[string]string {
+	formattedMap := make(map[string]string)
+	scanner := bufio.NewScanner(bytes.NewReader(output))
+	for i := 0; scanner.Scan(); i++ {
+		line := scanner.Text()
+		split := strings.Split(line, ":")
+		formattedMap[split[0]] = strings.TrimSpace(split[1])
+	}
+	return formattedMap
 }

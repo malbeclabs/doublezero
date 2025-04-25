@@ -102,11 +102,40 @@ func TestBgpServer(t *testing.T) {
 		log.Fatalf("error constructing listener: %v", err)
 	}
 
+	waitForPeerStatus := func(s bgp.SessionStatus) bool {
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			status := b.GetPeerStatus(net.IP{127, 0, 0, 1})
+			if status.SessionStatus == s {
+				return true
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+		return false
+	}
+
+	t.Run("validate_peer_status_is_pending", func(t *testing.T) {
+		if !waitForPeerStatus(bgp.SessionStatusPending) {
+			t.Fatal("timed out waiting for peer status of pending")
+		}
+	})
+
 	go func() {
 		if err := srv.Serve([]net.Listener{dlis}); err != nil {
 			errChan <- err
 		}
+		t.Run("validate_peer_status_is_initializing", func(t *testing.T) {
+			if !waitForPeerStatus(bgp.SessionStatusInitializing) {
+				t.Fatal("timed out waiting for peer status of initializing")
+			}
+		})
 	}()
+
+	t.Run("validate_peer_status_is_up", func(t *testing.T) {
+		if !waitForPeerStatus(bgp.SessionStatusUp) {
+			t.Fatal("timed out waiting for peer status of up")
+		}
+	})
 
 	// route withdraws are written to a blocking channel prior route adds
 	// so we need to check for withdraws first

@@ -23,11 +23,11 @@ impl StatusArgs {
             Ok(status) => {
                 println!(
                     "Tunnel status: {}\nName: {}\nTunnel src: {}\nTunnel dst: {}\nDoublezero IP: {}",
-                    status.status,
+                    status.doublezero_status.session_status,
                     status.tunnel_name.unwrap_or_default(),
                     status.tunnel_src.unwrap_or_default(),
                     status.tunnel_dst.unwrap_or_default(),
-                    status.doublezero_ip.unwrap_or_default()
+                    status.doublezero_ip.unwrap_or_default(),
                 );
             }
             Err(e) => {

@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+	"time"
 
 	"github.com/jwhited/corebgp"
 	gobgp "github.com/osrg/gobgp/pkg/packet/bgp"
@@ -13,21 +14,31 @@ type Plugin struct {
 	AdvertisedNLRI []NLRI
 	WriteChan      chan NLRI
 	RemoveChan     chan NLRI
+	PeerStatusChan chan SessionEvent
 	// kernel routing table to target for writing/removing
 	RouteTable int
 }
 
-func NewBgpPlugin(writeChan, removeChan chan NLRI, advertised []NLRI, routeTable int) *Plugin {
-	return &Plugin{WriteChan: writeChan, RemoveChan: removeChan, AdvertisedNLRI: advertised, RouteTable: routeTable}
+func NewBgpPlugin(writeChan, removeChan chan NLRI, advertised []NLRI, routeTable int, peerStatus chan SessionEvent) *Plugin {
+	return &Plugin{WriteChan: writeChan, RemoveChan: removeChan, AdvertisedNLRI: advertised, RouteTable: routeTable, PeerStatusChan: peerStatus}
 }
 
-func (p *Plugin) GetCapabilities(c corebgp.PeerConfig) []corebgp.Capability {
+func (p *Plugin) GetCapabilities(peer corebgp.PeerConfig) []corebgp.Capability {
 	caps := make([]corebgp.Capability, 0)
 	caps = append(caps, corebgp.NewMPExtensionsCapability(corebgp.AFI_IPV4, corebgp.SAFI_UNICAST))
+	p.PeerStatusChan <- SessionEvent{
+		PeerAddr: net.ParseIP(peer.RemoteAddress.String()),
+		Session:  Session{SessionStatus: SessionStatusPending, LastSessionUpdate: time.Now()},
+	}
 	return caps
 }
 
 func (p *Plugin) OnOpenMessage(peer corebgp.PeerConfig, routerID netip.Addr, capabilities []corebgp.Capability) *corebgp.Notification {
+	slog.Info("bgp: peer initializing")
+	p.PeerStatusChan <- SessionEvent{
+		PeerAddr: net.ParseIP(peer.RemoteAddress.String()),
+		Session:  Session{SessionStatus: SessionStatusInitializing, LastSessionUpdate: time.Now()},
+	}
 	return nil
 }
 
@@ -43,11 +54,19 @@ func (p *Plugin) OnEstablished(peer corebgp.PeerConfig, writer corebgp.UpdateMes
 			slog.Error("bgp: error writing update to peer", "remote address", peer.RemoteAddress, "error", err)
 		}
 	}
+	p.PeerStatusChan <- SessionEvent{
+		PeerAddr: net.ParseIP(peer.RemoteAddress.String()),
+		Session:  Session{SessionStatus: SessionStatusUp, LastSessionUpdate: time.Now()},
+	}
 	return p.handleUpdate
 }
 
 func (p *Plugin) OnClose(peer corebgp.PeerConfig) {
 	slog.Info("bgp: peer closed")
+	p.PeerStatusChan <- SessionEvent{
+		PeerAddr: net.ParseIP(peer.RemoteAddress.String()),
+		Session:  Session{SessionStatus: SessionStatusDown, LastSessionUpdate: time.Now()},
+	}
 }
 
 func (p *Plugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.Notification {

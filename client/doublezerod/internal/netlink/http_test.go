@@ -13,7 +13,9 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/netlink"
 	"golang.org/x/sys/unix"
 )
@@ -155,7 +157,7 @@ func TestHttpStatus(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("wanted 200 response; got %d\n", resp.StatusCode)
 		}
-		want := `{"status": "disconnected"}`
+		want := `{"doublezero_status": {"session_status": "disconnected"}}`
 		got, _ := io.ReadAll(resp.Body)
 		if diff := cmp.Diff(want, string(got)); diff != "" {
 			t.Fatalf("wrong response (-want +got): %s\n", diff)
@@ -167,7 +169,7 @@ func TestHttpStatus(t *testing.T) {
 			TunnelSrc:    net.IP{1, 1, 1, 1},
 			TunnelDst:    net.IP{2, 2, 2, 2},
 			DoubleZeroIP: net.IP{3, 3, 3, 3},
-			UserType:     netlink.UserTypeEdgeFiltering,
+			UserType:     netlink.UserTypeIBRL,
 		}
 		provisionBody := `{
 					"tunnel_src": "1.1.1.1",
@@ -175,7 +177,7 @@ func TestHttpStatus(t *testing.T) {
 					"tunnel_net": "169.254.0.0/31",
 					"doublezero_ip": "3.3.3.3",
 					"doublezero_prefixes": ["3.0.0.0/24"],
-					"user_type": "EdgeFiltering"
+					"user_type": "IBRL"
 				}`
 
 		req, err := http.NewRequest(http.MethodPost, "http://localhost/provision", strings.NewReader(provisionBody))
@@ -198,9 +200,9 @@ func TestHttpStatus(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("wanted 200 response; got %d", resp.StatusCode)
 		}
-		want := `{"tunnel_name":"doublezero0","tunnel_src":"1.1.1.1","tunnel_dst":"2.2.2.2","doublezero_ip":"3.3.3.3","status":"connected"}` + "\n"
+		want := `{"tunnel_name":"doublezero0","tunnel_src":"1.1.1.1","tunnel_dst":"2.2.2.2","doublezero_ip":"3.3.3.3","doublezero_status":{"session_status":"unknown","last_session_update":"0001-01-01T00:00:00Z"}}` + "\n"
 		got, _ := io.ReadAll(resp.Body)
-		if diff := cmp.Diff(want, string(got)); diff != "" {
+		if diff := cmp.Diff(want, string(got), cmpopts.IgnoreFields(bgp.Session{}, "LastSessionUpdate")); diff != "" {
 			t.Fatalf("Response body mismatch (-want +got): %s\n", diff)
 		}
 	})

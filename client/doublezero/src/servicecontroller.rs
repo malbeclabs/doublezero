@@ -59,11 +59,19 @@ pub struct RemoveResponse {
 
 #[derive(Deserialize, Debug)]
 pub struct StatusResponse {
-    pub status: String,
+    pub doublezero_status: DoubleZeroStatus,
     pub tunnel_name: Option<String>,
     pub tunnel_src: Option<String>,
     pub tunnel_dst: Option<String>,
     pub doublezero_ip: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct DoubleZeroStatus {
+    pub session_status: String,
+    // since this is a dynamic value, tests will fail becasue the fixtures are static
+    // will be fixed in https://github.com/malbeclabs/doublezero/issues/220
+    pub last_session_update: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -93,11 +101,11 @@ impl ServiceController {
 
         let data = to_bytes(res.into_body()).await?;
         match serde_json::from_slice::<Vec<LatencyRecord>>(&data) {
-            Ok(respose) => Ok(respose),
+            Ok(response) => Ok(response),
             Err(e) => match serde_json::from_slice::<ErrorResponse>(&data) {
-                Ok(respose) => {
-                    if respose.status == "error" {
-                        Err(eyre!(respose.description))
+                Ok(response) => {
+                    if response.status == "error" {
+                        Err(eyre!(response.description))
                     } else {
                         Err(eyre!("Unable to parse response: {}", e))
                     }
@@ -125,11 +133,11 @@ impl ServiceController {
             .await
             .map_err(|e| eyre!("Unable to connect to doublezero daemon: {}", e))?;
 
-        let respose = serde_json::from_slice::<ProvisioningResponse>(&data)?;
-        if respose.status == "error" {
-            Err(eyre!(respose.description.unwrap_or_default()))
+        let response = serde_json::from_slice::<ProvisioningResponse>(&data)?;
+        if response.status == "error" {
+            Err(eyre!(response.description.unwrap_or_default()))
         } else {
-            Ok(respose)
+            Ok(response)
         }
     }
 
@@ -148,11 +156,11 @@ impl ServiceController {
             .await
             .map_err(|e| eyre!("Unable to connect to doublezero daemon: {}", e))?;
 
-        let respose = serde_json::from_slice::<RemoveResponse>(&data)?;
-        if respose.status == "error" {
-            Err(eyre!(respose.description.unwrap_or_default()))
+        let response = serde_json::from_slice::<RemoveResponse>(&data)?;
+        if response.status == "error" {
+            Err(eyre!(response.description.unwrap_or_default()))
         } else {
-            Ok(respose)
+            Ok(response)
         }
     }
 
@@ -178,7 +186,7 @@ impl ServiceController {
                     .map_err(|e| eyre!("Unable to connect to doublezero daemon: {}", e))?;
 
                 match serde_json::from_slice::<StatusResponse>(&data) {
-                    Ok(respose) => Ok(respose),
+                    Ok(response) => Ok(response),
                     Err(e) => {
                         println!("Data: {:?}", data);
 
@@ -187,9 +195,9 @@ impl ServiceController {
                         }
 
                         match serde_json::from_slice::<ErrorResponse>(&data) {
-                            Ok(respose) => {
-                                if respose.status == "error" {
-                                    Err(eyre!(respose.description))
+                            Ok(response) => {
+                                if response.status == "error" {
+                                    Err(eyre!(response.description))
                                 } else {
                                     Err(eyre!("Unable to parse response: {}", e))
                                 }

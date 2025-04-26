@@ -290,6 +290,7 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		return false
 	}
 
+	unknownPeers := []net.IP{}
 	for _, peer := range req.GetBgpPeers() {
 		ip := net.ParseIP(peer)
 		if ip == nil {
@@ -299,14 +300,18 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		if !ip.IsLinkLocalUnicast() || peerFound(ip) {
 			continue
 		}
-		device.UnknownBgpPeers = append(device.UnknownBgpPeers, ip)
+		unknownPeers = append(unknownPeers, ip)
 	}
 
-	if len(device.UnknownBgpPeers) != 0 {
-		slog.Error("device returned unknown peers", "device pubkey", req.GetPubkey(), "number of unknown peers", len(device.UnknownBgpPeers), "device", device.UnknownBgpPeers)
+	if len(unknownPeers) != 0 {
+		slog.Error("device returned unknown peers", "device pubkey", req.GetPubkey(), "number of unknown peers", len(unknownPeers), "peers", unknownPeers)
 	}
 
-	config, err := renderConfig(device)
+	data := templateData{
+		Device:          device,
+		UnknownBgpPeers: unknownPeers,
+	}
+	config, err := renderConfig(data)
 	if err != nil {
 		getConfigRenderErrors.WithLabelValues(req.GetPubkey()).Inc()
 		err := status.Errorf(codes.Aborted, "config rendering for pubkey %s failed: %v", req.Pubkey, err)

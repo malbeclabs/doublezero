@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"text/tabwriter"
 	"time"
@@ -36,6 +37,7 @@ func NewAgentCommand() *AgentCommand {
 	a.fs.StringVar(&a.pubkey, "device-pubkey", "", "pubkey of device which to fetch config")
 	a.fs.StringVar(&a.controllerAddr, "controller-addr", "localhost", "listening address of controller")
 	a.fs.StringVar(&a.controllerPort, "controller-port", "443", "listening port of controller")
+	a.fs.StringVar(&a.unknownPeers, "unknown-peers", "", "comma separated list of unknown peers to remove from config")
 	return a
 }
 
@@ -45,6 +47,7 @@ type AgentCommand struct {
 	pubkey         string
 	controllerAddr string
 	controllerPort string
+	unknownPeers   string
 }
 
 func (a *AgentCommand) Fs() *flag.FlagSet {
@@ -78,8 +81,12 @@ func (a *AgentCommand) Run() error {
 	defer conn.Close()
 	defer cancel()
 
+	unknownPeers := []string{}
+	if a.unknownPeers != "" {
+		unknownPeers = append(unknownPeers, strings.Split(a.unknownPeers, ",")...)
+	}
 	agent := pb.NewControllerClient(conn)
-	got, err := agent.GetConfig(ctx, &pb.ConfigRequest{Pubkey: a.pubkey})
+	got, err := agent.GetConfig(ctx, &pb.ConfigRequest{Pubkey: a.pubkey, BgpPeers: unknownPeers})
 	if err != nil {
 		slog.Error("error while fetching config", "error", err)
 		os.Exit(1)

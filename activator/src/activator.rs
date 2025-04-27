@@ -5,16 +5,12 @@ use doublezero_sdk::{
         device::{
             activate::ActivateDeviceCommand, deactivate::DeactivateDeviceCommand,
             get::GetDeviceCommand, list::ListDeviceCommand,
-        },
-        tunnel::{
+        }, globalconfig::get::GetGlobalConfigCommand, tunnel::{
             activate::ActivateTunnelCommand, deactivate::DeactivateTunnelCommand,
             list::ListTunnelCommand, reject::RejectTunnelCommand,
-        },
-        user::{
-            activate::ActivateUserCommand, ban::BanUserCommand, 
-            list::ListUserCommand, reject::RejectUserCommand, 
-            deactivate::DeactivateUserCommand,
-        },
+        }, user::{
+            activate::ActivateUserCommand, ban::BanUserCommand, deactivate::DeactivateUserCommand, list::ListUserCommand, reject::RejectUserCommand
+        }
     },
     ipv4_to_string, networkv4_list_to_string, networkv4_to_string, AccountData, DZClient, Device,
     DeviceStatus, DoubleZeroClient, IpV4, Tunnel, TunnelStatus, User, UserStatus, UserType,
@@ -50,12 +46,13 @@ impl Activator {
     ) -> eyre::Result<Self> {
         let client = DZClient::new(rpc_url, websocket_url, program_id, kaypair)?;
 
-        let mut config = client.get_globalconfig();
-
+        // Wait for the global config to be available
+        // This is a workaround for the fact that the global config is not available immediately
+        let mut config = GetGlobalConfigCommand {}.execute(&client);
         while config.is_err() {
             println!("Waiting for config...");
             thread::sleep(Duration::from_secs(10));
-            config = client.get_globalconfig();
+            config = GetGlobalConfigCommand{}.execute(&client);
         }
 
         let (_, config) = config.unwrap();

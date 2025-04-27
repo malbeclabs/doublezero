@@ -4,10 +4,7 @@ use bincode::deserialize;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use doublezero_sla_program::{
     instructions::*,
-    pda::*,
-    processors::globalconfig::set::SetGlobalConfigArgs,
-    state::{accounttype::AccountType, globalconfig::GlobalConfig, globalstate::GlobalState},
-    types::*,
+    state::accounttype::AccountType, 
 };
 use eyre::{eyre, OptionExt};
 use solana_account_decoder::{UiAccountData, UiAccountEncoding};
@@ -290,63 +287,9 @@ impl DZClient {
             .map_err(|e| eyre!(e))
     }
 
-    pub fn get_globalstate(&self) -> eyre::Result<(Pubkey, GlobalState)> {
-        let (pubkey, _) = get_globalstate_pda(&self.program_id);
-
-        let account = self.get(pubkey)?;
-
-        match account {
-            AccountData::GlobalState(globalstate) => Ok((pubkey, globalstate)),
-            _ => Err(eyre!("Invalid global state")),
-        }
-    }
-
     /******************************************************************************************************************************************/
     /******************************************************************************************************************************************/
-
-    pub fn initialize_globalstate(&self) -> eyre::Result<(Pubkey, Signature)> {
-        let (pda_pubkey, _) = get_globalstate_pda(&self.program_id);
-
-        let signature = self.execute_transaction(
-            DoubleZeroInstruction::InitGlobalState(),
-            vec![AccountMeta::new(pda_pubkey, false)],
-        )?;
-
-        Ok((pda_pubkey, signature))
-    }
-
-    pub fn set_global_config(
-        &self,
-        local_asn: u32,
-        remote_asn: u32,
-        device_tunnel_block: NetworkV4,
-        user_tunnel_block: NetworkV4,
-    ) -> eyre::Result<Signature> {
-        match self.get_globalstate() {
-            Ok((globalstate_pubkey, globalstate)) => {
-                if !globalstate.foundation_allowlist.contains(&self.get_payer()) {
-                    return Err(eyre!("User not allowlisted"));
-                }
-
-                let (pda_pubkey, _) = get_globalconfig_pda(&self.program_id);
-
-                self.execute_transaction(
-                    DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
-                        local_asn,
-                        remote_asn,
-                        tunnel_tunnel_block: device_tunnel_block,
-                        user_tunnel_block,
-                    }),
-                    vec![
-                        AccountMeta::new(pda_pubkey, false),
-                        AccountMeta::new(globalstate_pubkey, false),
-                    ],
-                )
-            }
-            Err(e) => Err(e),
-        }
-    }
-
+    
     fn get_all(&self) -> eyre::Result<HashMap<Pubkey, AccountData>> {
         let config = RpcProgramAccountsConfig {
             filters: None,
@@ -370,16 +313,6 @@ impl DZClient {
         }
 
         Ok(list)
-    }
-
-    pub fn get_globalconfig(&self) -> eyre::Result<(Pubkey, GlobalConfig)> {
-        let (pubkey, _) = get_globalconfig_pda(&self.program_id);
-        let account = self.get(pubkey)?;
-
-        match account {
-            AccountData::GlobalConfig(config) => Ok((pubkey, config)),
-            _ => Err(eyre!("Invalid Account Type")),
-        }
     }
 
     pub fn gets_and_subscribe<F>(&self, mut action: F) -> eyre::Result<()>

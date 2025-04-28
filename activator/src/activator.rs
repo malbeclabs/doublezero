@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
+use doublezero_sdk::GetGlobalConfigCommand;
 use doublezero_sdk::{
     commands::{
         device::{
             activate::ActivateDeviceCommand, deactivate::DeactivateDeviceCommand,
             get::GetDeviceCommand, list::ListDeviceCommand,
         },
-        globalconfig::get::GetGlobalConfigCommand,
         tunnel::{
             activate::ActivateTunnelCommand, deactivate::DeactivateTunnelCommand,
             list::ListTunnelCommand, reject::RejectTunnelCommand,

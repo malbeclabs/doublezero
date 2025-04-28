@@ -12,7 +12,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"reflect"
 	"slices"
 	"strings"
 	"syscall"
@@ -21,7 +20,6 @@ import (
 
 	"github.com/aristanetworks/goeapi"
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 	nl "github.com/vishvananda/netlink"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -282,7 +280,7 @@ func TestIBRLWithAllocatedAddress_Disconnect_Networking(t *testing.T) {
 	t.Run("check_user_contract_is_removed", func(t *testing.T) {
 		goldenFile := "fixtures/ibrl_with_allocated_addr/doublezero_user_list_user_removed.txt"
 		cmd := []string{"doublezero", "user", "list"}
-		diff, err := diffCliToGolden(goldenFile, "", cmd...)
+		diff, err := diffCliToGolden(goldenFile, "table", cmd...)
 		if err != nil {
 			t.Fatalf("error generating diff: %v", err)
 		}
@@ -624,6 +622,7 @@ func diffCliToGolden(goldenFile string, testOutputType string, cmds ...string) (
 	if err != nil {
 		return "", fmt.Errorf("error reading golden file %s: %v", goldenFile, err)
 	}
+
 	got, err := exec.Command(cmds[0], cmds[1:]...).Output()
 	if err != nil {
 		return "", fmt.Errorf("error running cmd %s: %v", cmds, err)
@@ -632,28 +631,17 @@ func diffCliToGolden(goldenFile string, testOutputType string, cmds ...string) (
 	switch testOutputType {
 	case "table":
 		diff := diffCliMapToGoldenMapTable(want, got)
-		fmt.Printf("equal: =======%v\n", reflect.DeepEqual(want, got))
-		fmt.Printf("table diff: =========%+v\n", diff)
-		// return diff, nil
-	case "list":
+		return diff, nil
+		// "list" type is default
+	default:
 		diff := diffCliMapToGoldenMapList(want, got)
-		fmt.Printf("equal: =======%v\n", reflect.DeepEqual(want, got))
-		fmt.Printf("list diff: =========%+v\n", diff)
-		// return diff, nil
+		return diff, nil
 	}
-	opts := []cmp.Option{
-		cmpopts.SortSlices(func(a, b string) bool { return a < b }),
-	}
-	return cmp.Diff(strings.Split(string(want), "\n"), strings.Split(string(got), "\n"), opts...), nil
-
 }
 
 func diffCliMapToGoldenMapTable(want []byte, got []byte) string {
 	gotMap := mapFromTable(got)
 	wantMap := mapFromTable(want)
-
-	fmt.Printf("got table:=== %v\n", gotMap)
-	fmt.Printf("want table:=== %v\n", wantMap)
 
 	return cmp.Diff(gotMap, wantMap)
 }
@@ -662,14 +650,11 @@ func diffCliMapToGoldenMapList(want []byte, got []byte) string {
 	gotMap := mapFromList(got)
 	wantMap := mapFromList(want)
 
-	fmt.Printf("got list:=== %v\n", gotMap)
-	fmt.Printf("want list:=== %v\n", wantMap)
-
 	return cmp.Diff(gotMap, wantMap)
 }
 
-func mapFromTable(output []byte) map[string]string {
-	formattedMap := make(map[string]string)
+func mapFromTable(output []byte) []map[string]string {
+	var sliceOfMaps []map[string]string
 
 	scanner := bufio.NewScanner(bytes.NewReader(output))
 	scanner.Scan()
@@ -680,22 +665,26 @@ func mapFromTable(output []byte) map[string]string {
 		trimmed_header[i] = strings.TrimSpace(key)
 	}
 
-	mapofMaps := make(map[int]map[string]string)
-
 	for i := 0; scanner.Scan(); i++ {
-		fmt.Printf("%d", i)
+		formattedMap := make(map[string]string)
 		line := scanner.Text()
 		split := strings.Split(line, "|")
 		for i, key := range split {
 			formattedMap[trimmed_header[i]] = strings.TrimSpace(key)
 		}
-		mapofMaps[i] = formattedMap
+		sliceOfMaps = append(sliceOfMaps, formattedMap)
 	}
-	return formattedMap
+
+	slices.SortFunc(sliceOfMaps, func(a, b map[string]string) int {
+		return strings.Compare(strings.ToLower(a["pubkey"]), strings.ToLower(b["pubkey"]))
+	})
+
+	return sliceOfMaps
 }
 
 func mapFromList(output []byte) map[string]string {
 	formattedMap := make(map[string]string)
+
 	scanner := bufio.NewScanner(bytes.NewReader(output))
 	for i := 0; scanner.Scan(); i++ {
 		line := scanner.Text()

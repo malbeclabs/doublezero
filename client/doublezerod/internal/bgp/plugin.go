@@ -28,7 +28,7 @@ func (p *Plugin) GetCapabilities(peer corebgp.PeerConfig) []corebgp.Capability {
 	caps = append(caps, corebgp.NewMPExtensionsCapability(corebgp.AFI_IPV4, corebgp.SAFI_UNICAST))
 	p.PeerStatusChan <- SessionEvent{
 		PeerAddr: net.ParseIP(peer.RemoteAddress.String()),
-		Session:  Session{SessionStatus: SessionStatusPending, LastSessionUpdate: time.Now()},
+		Session:  Session{SessionStatus: SessionStatusPending, LastSessionUpdate: time.Now().Unix()},
 	}
 	return caps
 }
@@ -37,7 +37,7 @@ func (p *Plugin) OnOpenMessage(peer corebgp.PeerConfig, routerID netip.Addr, cap
 	slog.Info("bgp: peer initializing")
 	p.PeerStatusChan <- SessionEvent{
 		PeerAddr: net.ParseIP(peer.RemoteAddress.String()),
-		Session:  Session{SessionStatus: SessionStatusInitializing, LastSessionUpdate: time.Now()},
+		Session:  Session{SessionStatus: SessionStatusInitializing, LastSessionUpdate: time.Now().Unix()},
 	}
 	return nil
 }
@@ -56,7 +56,7 @@ func (p *Plugin) OnEstablished(peer corebgp.PeerConfig, writer corebgp.UpdateMes
 	}
 	p.PeerStatusChan <- SessionEvent{
 		PeerAddr: net.ParseIP(peer.RemoteAddress.String()),
-		Session:  Session{SessionStatus: SessionStatusUp, LastSessionUpdate: time.Now()},
+		Session:  Session{SessionStatus: SessionStatusUp, LastSessionUpdate: time.Now().Unix()},
 	}
 	return p.handleUpdate
 }
@@ -65,7 +65,7 @@ func (p *Plugin) OnClose(peer corebgp.PeerConfig) {
 	slog.Info("bgp: peer closed")
 	p.PeerStatusChan <- SessionEvent{
 		PeerAddr: net.ParseIP(peer.RemoteAddress.String()),
-		Session:  Session{SessionStatus: SessionStatusDown, LastSessionUpdate: time.Now()},
+		Session:  Session{SessionStatus: SessionStatusDown, LastSessionUpdate: time.Now().Unix()},
 	}
 }
 

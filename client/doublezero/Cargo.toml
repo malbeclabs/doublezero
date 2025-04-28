@@ -32,7 +32,7 @@ futures-util = "0.3.31"
 indicatif = "0.17.11"
 console = "0.15.10"
 colored = "2.2.0"
-anyhow = "1.0.95"
+anyhow = "1.0.98"
 color-eyre = "0.6.3"
 
 hyper = { version="0.14", features=["client", "http1", "tcp", "stream"] }

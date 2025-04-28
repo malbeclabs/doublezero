@@ -1,10 +1,8 @@
-use core::fmt;
-
 use crate::error::DoubleZeroError;
 use crate::helper::*;
-use crate::pda::*;
 use crate::state::user::*;
 use crate::types::*;
+use core::fmt;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
@@ -12,12 +10,12 @@ use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
-    program_error::ProgramError,
     pubkey::Pubkey,
 };
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct UserActivateArgs {
     pub index: u128,
+    pub bump_seed: u8,
     pub tunnel_id: u16,
     pub tunnel_net: NetworkV4,
     pub dz_ip: IpV4,
@@ -50,15 +48,19 @@ pub fn process_activate_user(
     #[cfg(test)]
     msg!("process_activate_user({:?})", value);
 
-    let (expected_pda_account, bump_seed) = get_user_pda(program_id, value.index);
+    // Check the owner of the accounts
+    assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
     assert_eq!(
-        pda_account.key, &expected_pda_account,
-        "Invalid Device PubKey"
+        globalstate_account.owner, program_id,
+        "Invalid GlobalState Account Owner"
     );
-
-    if pda_account.owner != program_id {
-        return Err(ProgramError::IncorrectProgramId);
-    }
+    assert_eq!(
+        *system_program.unsigned_key(),
+        solana_program::system_program::id(),
+        "Invalid System Program Account Owner"
+    );
+    // Check if the account is writable
+    assert!(pda_account.is_writable, "PDA Account is not writable");
 
     let globalstate = globalstate_get_next(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
@@ -66,6 +68,11 @@ pub fn process_activate_user(
     }
 
     let mut user: User = User::from(&pda_account.try_borrow_data().unwrap()[..]);
+    assert_eq!(user.index, value.index, "Invalid PDA Account Index");
+    assert_eq!(
+        user.bump_seed, value.bump_seed,
+        "Invalid PDA Account Bump Seed"
+    );
     if user.status != UserStatus::Pending {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
@@ -75,7 +82,7 @@ pub fn process_activate_user(
     user.dz_ip = value.dz_ip;
     user.status = UserStatus::Activated;
 
-    account_write(pda_account, &user, payer_account, system_program, bump_seed);
+    account_write(pda_account, &user, payer_account, system_program);
 
     #[cfg(test)]
     msg!("Activated: {:?}", user);

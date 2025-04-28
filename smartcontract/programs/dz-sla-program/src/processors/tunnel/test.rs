@@ -240,6 +240,7 @@ mod tunnel_test {
             program_id,
             DoubleZeroInstruction::ActivateTunnel(TunnelActivateArgs {
                 index: tunnel_la.index,
+                bump_seed: tunnel_la.bump_seed,
                 tunnel_id: 500,
                 tunnel_net: ([10, 0, 0, 0], 21),
             }),
@@ -269,6 +270,7 @@ mod tunnel_test {
             program_id,
             DoubleZeroInstruction::SuspendTunnel(TunnelSuspendArgs {
                 index: tunnel_la.index,
+                bump_seed: tunnel_la.bump_seed,
             }),
             vec![AccountMeta::new(tunnel_pubkey, false)],
             &payer,
@@ -291,6 +293,7 @@ mod tunnel_test {
             program_id,
             DoubleZeroInstruction::ReactivateTunnel(TunnelReactivateArgs {
                 index: tunnel_la.index,
+                bump_seed: tunnel_la.bump_seed,
             }),
             vec![AccountMeta::new(tunnel_pubkey, false)],
             &payer,
@@ -313,6 +316,7 @@ mod tunnel_test {
             program_id,
             DoubleZeroInstruction::UpdateTunnel(TunnelUpdateArgs {
                 index: tunnel.index,
+                bump_seed: tunnel.bump_seed,
                 code: Some("la2".to_string()),
                 tunnel_type: Some(TunnelTunnelType::MPLSoGRE),
                 bandwidth: Some(2000000000),
@@ -320,7 +324,10 @@ mod tunnel_test {
                 delay_ns: Some(15000),
                 jitter_ns: Some(5000),
             }),
-            vec![AccountMeta::new(tunnel_pubkey, false)],
+            vec![
+                AccountMeta::new(tunnel_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
             &payer,
         )
         .await;
@@ -346,6 +353,7 @@ mod tunnel_test {
             program_id,
             DoubleZeroInstruction::DeleteTunnel(TunnelDeleteArgs {
                 index: tunnel_la.index,
+                bump_seed: tunnel_la.bump_seed,
             }),
             vec![
                 AccountMeta::new(tunnel_pubkey, false),
@@ -376,6 +384,7 @@ mod tunnel_test {
             program_id,
             DoubleZeroInstruction::DeactivateTunnel(TunnelDeactivateArgs {
                 index: tunnel.index,
+                bump_seed: tunnel.bump_seed,
             }),
             vec![
                 AccountMeta::new(tunnel_pubkey, false),

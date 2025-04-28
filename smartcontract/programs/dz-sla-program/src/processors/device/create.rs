@@ -100,6 +100,7 @@ pub fn process_create_device(
         account_type: AccountType::Device,
         owner: *payer_account.key,
         index: globalstate.account_index,
+        bump_seed,
         code: value.code.clone(),
         location_pk: value.location_pk,
         exchange_pk: value.exchange_pk,
@@ -115,7 +116,6 @@ pub fn process_create_device(
         payer_account,
         system_program,
         program_id,
-        bump_seed,
     )?;
     globalstate_write(globalstate_account, &globalstate)?;
 

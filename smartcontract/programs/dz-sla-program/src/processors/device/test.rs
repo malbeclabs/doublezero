@@ -172,6 +172,7 @@ mod device_test {
             program_id,
             DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {
                 index: device.index,
+                bump_seed: device.bump_seed,
             }),
             vec![
                 AccountMeta::new(device_pubkey, false),
@@ -198,6 +199,7 @@ mod device_test {
             program_id,
             DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs {
                 index: device.index,
+                bump_seed: device.bump_seed,
             }),
             vec![AccountMeta::new(device_pubkey, false)],
             &payer,
@@ -220,6 +222,7 @@ mod device_test {
             program_id,
             DoubleZeroInstruction::ReactivateDevice(DeviceReactivateArgs {
                 index: device_la.index,
+                bump_seed: device_la.bump_seed,
             }),
             vec![AccountMeta::new(device_pubkey, false)],
             &payer,
@@ -242,6 +245,7 @@ mod device_test {
             program_id,
             DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
                 index: device.index,
+                bump_seed: device.bump_seed,
                 code: Some("la2".to_string()),
                 device_type: Some(DeviceType::Switch),
                 public_ip: Some([10, 2, 2, 1]),
@@ -273,6 +277,7 @@ mod device_test {
             program_id,
             DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs {
                 index: device_la.index,
+                bump_seed: device_la.bump_seed,
             }),
             vec![
                 AccountMeta::new(device_pubkey, false),
@@ -299,6 +304,7 @@ mod device_test {
             program_id,
             DoubleZeroInstruction::DeactivateDevice(DeviceDeactivateArgs {
                 index: device.index,
+                bump_seed: device.bump_seed,
             }),
             vec![
                 AccountMeta::new(device_pubkey, false),

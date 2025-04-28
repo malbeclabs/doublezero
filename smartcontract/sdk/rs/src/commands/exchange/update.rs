@@ -21,10 +21,11 @@ impl UpdateExchangeCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, _) = get_exchange_pda(&client.get_program_id(), self.index);
+        let (pda_pubkey, bump_seed) = get_exchange_pda(&client.get_program_id(), self.index);
         client.execute_transaction(
             DoubleZeroInstruction::UpdateExchange(ExchangeUpdateArgs {
                 index: self.index,
+                bump_seed,
                 code: self.code.to_owned(),
                 name: self.name.to_owned(),
                 lat: self.lat,

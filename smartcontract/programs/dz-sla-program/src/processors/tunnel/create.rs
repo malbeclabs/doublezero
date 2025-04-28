@@ -94,6 +94,7 @@ pub fn process_create_tunnel(
         account_type: AccountType::Tunnel,
         owner: *payer_account.key,
         index: globalstate.account_index,
+        bump_seed,
         code: value.code.clone(),
         side_a_pk: value.side_a_pk,
         side_z_pk: value.side_z_pk,
@@ -113,7 +114,6 @@ pub fn process_create_tunnel(
         payer_account,
         system_program,
         program_id,
-        bump_seed,
     )?;
     globalstate_write(globalstate_account, &globalstate)?;
 

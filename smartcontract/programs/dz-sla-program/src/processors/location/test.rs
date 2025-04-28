@@ -85,6 +85,7 @@ mod location_test {
             program_id,
             DoubleZeroInstruction::SuspendLocation(LocationSuspendArgs {
                 index: location_la.index,
+                bump_seed: location_la.bump_seed,
             }),
             vec![
                 AccountMeta::new(location_pubkey, false),
@@ -110,6 +111,7 @@ mod location_test {
             program_id,
             DoubleZeroInstruction::ReactivateLocation(LocationReactivateArgs {
                 index: location_la.index,
+                bump_seed: location_la.bump_seed,
             }),
             vec![
                 AccountMeta::new(location_pubkey, false),
@@ -135,6 +137,7 @@ mod location_test {
             program_id,
             DoubleZeroInstruction::UpdateLocation(LocationUpdateArgs {
                 index: location.index,
+                bump_seed: location.bump_seed,
                 code: Some("la2".to_string()),
                 name: Some("Los Angeles - Los Angeles".to_string()),
                 country: Some("CA".to_string()),
@@ -168,6 +171,7 @@ mod location_test {
             program_id,
             DoubleZeroInstruction::DeleteLocation(LocationDeleteArgs {
                 index: location_la.index,
+                bump_seed: location_la.bump_seed,
             }),
             vec![
                 AccountMeta::new(location_pubkey, false),

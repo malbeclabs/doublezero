@@ -38,6 +38,7 @@ pub fn initialize_global_state(program_id: &Pubkey, accounts: &[AccountInfo]) ->
     // Create the GlobalState account
     let data = GlobalState {
         account_type: AccountType::GlobalState,
+        bump_seed,
         account_index: 0,
         foundation_allowlist: vec![*payer_account.key],
         device_allowlist: vec![*payer_account.key],

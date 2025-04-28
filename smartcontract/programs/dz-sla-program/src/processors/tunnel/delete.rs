@@ -1,7 +1,5 @@
 use core::fmt;
-
 use crate::error::DoubleZeroError;
-use crate::pda::*;
 use crate::{helper::*, state::tunnel::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
@@ -9,13 +7,13 @@ use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
-    program_error::ProgramError,
     pubkey::Pubkey,
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct TunnelDeleteArgs {
     pub index: u128,
+    pub bump_seed: u8,
 }
 
 impl fmt::Debug for TunnelDeleteArgs {
@@ -39,17 +37,24 @@ pub fn process_delete_tunnel(
     #[cfg(test)]
     msg!("process_delete_tunnel({:?})", value);
 
-    let (expected_pda_account, bump_seed) = get_tunnel_pda(program_id, value.index);
+    // Check the owner of the accounts
+    assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
     assert_eq!(
-        pda_account.key, &expected_pda_account,
-        "Invalid Tunnel PubKey"
+        globalstate_account.owner, program_id,
+        "Invalid GlobalState Account Owner"
+    );
+    assert_eq!(
+        *system_program.unsigned_key(),
+        solana_program::system_program::id(),
+        "Invalid System Program Account Owner"
     );
 
-    if pda_account.owner != program_id {
-        return Err(ProgramError::IncorrectProgramId);
-    }
-
     let mut tunnel: Tunnel = Tunnel::from(&pda_account.try_borrow_data().unwrap()[..]);
+    assert_eq!(tunnel.index, value.index, "Invalid PDA Account Index");
+    assert_eq!(
+        tunnel.bump_seed, value.bump_seed,
+        "Invalid PDA Account Bump Seed"
+    );
 
     let globalstate = globalstate_get_next(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key)
@@ -60,13 +65,7 @@ pub fn process_delete_tunnel(
 
     tunnel.status = TunnelStatus::Deleting;
 
-    account_write(
-        pda_account,
-        &tunnel,
-        payer_account,
-        system_program,
-        bump_seed,
-    );
+    account_write(pda_account, &tunnel, payer_account, system_program);
 
     #[cfg(test)]
     msg!("Deleting: {:?}", tunnel);

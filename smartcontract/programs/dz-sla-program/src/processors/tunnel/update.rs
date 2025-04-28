@@ -1,6 +1,5 @@
 use core::fmt;
-
-use crate::pda::*;
+use crate::error::DoubleZeroError;
 use crate::{helper::*, state::tunnel::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
@@ -8,12 +7,12 @@ use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
-    program_error::ProgramError,
     pubkey::Pubkey,
 };
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct TunnelUpdateArgs {
     pub index: u128,
+    pub bump_seed: u8,
     pub code: Option<String>,
     pub tunnel_type: Option<TunnelTunnelType>,
     pub bandwidth: Option<u64>,
@@ -40,23 +39,39 @@ pub fn process_update_tunnel(
     let accounts_iter = &mut accounts.iter();
 
     let pda_account = next_account_info(accounts_iter)?;
+    let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
     msg!("process_update_tunnel({:?})", value);
 
-    let (expected_pda_account, bump_seed) = get_tunnel_pda(program_id, value.index);
+    // Check the owner of the accounts
+    assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
     assert_eq!(
-        pda_account.key, &expected_pda_account,
-        "Invalid Tunnel PubKey"
+        globalstate_account.owner, program_id,
+        "Invalid GlobalState Account Owner"
     );
-
-    if pda_account.owner != program_id {
-        return Err(ProgramError::IncorrectProgramId);
+    assert_eq!(
+        *system_program.unsigned_key(),
+        solana_program::system_program::id(),
+        "Invalid System Program Account Owner"
+    );
+    // Check if the account is writable
+    assert!(pda_account.is_writable, "PDA Account is not writable");
+    
+    let globalstate = globalstate_get(globalstate_account)?;
+    if !globalstate.foundation_allowlist.contains(payer_account.key) {
+        return Err(DoubleZeroError::NotAllowed.into());
     }
 
     let mut tunnel: Tunnel = Tunnel::from(&pda_account.try_borrow_data().unwrap()[..]);
+    assert_eq!(tunnel.index, value.index, "Invalid PDA Account Index");
+    assert_eq!(
+        tunnel.bump_seed, value.bump_seed,
+        "Invalid PDA Account Bump Seed"
+    );
+
     if tunnel.owner != *payer_account.key {
         return Err(solana_program::program_error::ProgramError::Custom(0));
     }
@@ -81,13 +96,7 @@ pub fn process_update_tunnel(
         tunnel.jitter_ns = jitter_ns;
     }
 
-    account_write(
-        pda_account,
-        &tunnel,
-        payer_account,
-        system_program,
-        bump_seed,
-    );
+    account_write(pda_account, &tunnel, payer_account, system_program);
 
     #[cfg(test)]
     msg!("Updated: {:?}", tunnel);

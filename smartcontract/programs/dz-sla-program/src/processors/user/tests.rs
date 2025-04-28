@@ -175,6 +175,7 @@ mod user_test {
             program_id,
             DoubleZeroInstruction::ActivateDevice(device::activate::DeviceActivateArgs {
                 index: device_la.index,
+                bump_seed: device_la.bump_seed,
             }),
             vec![
                 AccountMeta::new(device_pubkey, false),
@@ -239,6 +240,7 @@ mod user_test {
             program_id,
             DoubleZeroInstruction::ActivateUser(UserActivateArgs {
                 index: user.index,
+                bump_seed: user.bump_seed,
                 tunnel_id: 500,
                 tunnel_net: ([10, 1, 2, 3], 21),
                 dz_ip: [200, 0, 0, 1],
@@ -268,7 +270,10 @@ mod user_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::SuspendUser(UserSuspendArgs { index: user.index }),
+            DoubleZeroInstruction::SuspendUser(UserSuspendArgs {
+                index: user.index,
+                bump_seed: user.bump_seed,
+            }),
             vec![AccountMeta::new(user_pubkey, false)],
             &payer,
         )
@@ -288,7 +293,10 @@ mod user_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::ReactivateUser(UserReactivateArgs { index: user.index }),
+            DoubleZeroInstruction::ReactivateUser(UserReactivateArgs {
+                index: user.index,
+                bump_seed: user.bump_seed,
+            }),
             vec![AccountMeta::new(user_pubkey, false)],
             &payer,
         )
@@ -310,6 +318,7 @@ mod user_test {
             program_id,
             DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
                 index: user.index,
+                bump_seed: user.bump_seed,
                 client_ip: Some([10, 2, 3, 4]),
                 user_type: Some(UserType::IBRL),
                 cyoa_type: Some(UserCYOA::GREOverPrivatePeering),
@@ -341,7 +350,10 @@ mod user_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::DeleteUser(UserDeleteArgs { index: user.index }),
+            DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+                index: user.index,
+                bump_seed: user.bump_seed,
+            }),
             vec![
                 AccountMeta::new(user_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
@@ -367,7 +379,10 @@ mod user_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::DeactivateUser(UserDeactivateArgs { index: user.index }),
+            DoubleZeroInstruction::DeactivateUser(UserDeactivateArgs {
+                index: user.index,
+                bump_seed: user.bump_seed,
+            }),
             vec![
                 AccountMeta::new(user_pubkey, false),
                 AccountMeta::new(user.owner, false),

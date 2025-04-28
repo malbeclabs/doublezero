@@ -95,6 +95,7 @@ pub fn process_create_exchange(
         account_type: AccountType::Exchange,
         owner: *payer_account.key,
         index: globalstate.account_index,
+        bump_seed,
         code: value.code.clone(),
         name: value.name.clone(),
         lat: value.lat,
@@ -109,7 +110,6 @@ pub fn process_create_exchange(
         payer_account,
         system_program,
         program_id,
-        bump_seed,
     )?;
     globalstate_write(globalstate_account, &globalstate)?;
 

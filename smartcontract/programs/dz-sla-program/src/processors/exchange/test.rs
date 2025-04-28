@@ -85,6 +85,7 @@ mod exchange_test {
             program_id,
             DoubleZeroInstruction::SuspendExchange(ExchangeSuspendArgs {
                 index: exchange_la.index,
+                bump_seed: exchange_la.bump_seed,
             }),
             vec![
                 AccountMeta::new(exchange_pubkey, false),
@@ -110,6 +111,7 @@ mod exchange_test {
             program_id,
             DoubleZeroInstruction::ReactivateExchange(ExchangeReactivateArgs {
                 index: exchange_la.index,
+                bump_seed: exchange_la.bump_seed,
             }),
             vec![
                 AccountMeta::new(exchange_pubkey, false),
@@ -135,6 +137,7 @@ mod exchange_test {
             program_id,
             DoubleZeroInstruction::UpdateExchange(ExchangeUpdateArgs {
                 index: exchange.index,
+                bump_seed: exchange.bump_seed,
                 code: Some("la2".to_string()),
                 name: Some("Los Angeles - Los Angeles".to_string()),
                 lat: Some(3.433),
@@ -167,6 +170,7 @@ mod exchange_test {
             program_id,
             DoubleZeroInstruction::DeleteExchange(ExchangeDeleteArgs {
                 index: exchange_la.index,
+                bump_seed: exchange_la.bump_seed,
             }),
             vec![
                 AccountMeta::new(exchange_pubkey, false),

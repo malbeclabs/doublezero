@@ -84,6 +84,7 @@ pub fn process_create_location(
         account_type: AccountType::Location,
         owner: *payer_account.key,
         index: globalstate.account_index,
+        bump_seed,
         code: value.code.clone(),
         name: value.name.clone(),
         country: value.country.clone(),
@@ -99,7 +100,6 @@ pub fn process_create_location(
         payer_account,
         system_program,
         program_id,
-        bump_seed,
     )?;
     globalstate_write(globalstate_account, &globalstate)?;
 

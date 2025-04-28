@@ -17,10 +17,11 @@ impl RejectTunnelCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, _) = get_tunnel_pda(&client.get_program_id(), self.index);
+        let (pda_pubkey, bump_seed) = get_tunnel_pda(&client.get_program_id(), self.index);
         client.execute_transaction(
             DoubleZeroInstruction::RejectTunnel(TunnelRejectArgs {
                 index: self.index,
+                bump_seed,
                 reason: self.reason.clone(),
             }),
             vec![

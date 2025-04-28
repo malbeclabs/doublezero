@@ -43,7 +43,7 @@ pub mod test {
         /***********************************************************************************************************************************/
         println!("🟢  Start...");
 
-        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+        let (globalstate_pubkey, _globalstate_bump_seed) = get_globalstate_pda(&program_id);
 
         execute_transaction(
             &mut banks_client,
@@ -56,7 +56,7 @@ pub mod test {
         .await;
 
         /***********************************************************************************************************************************/
-        let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
+        let (globalconfig_pubkey, _globalconfig_bump_seed) = get_globalconfig_pda(&program_id);
 
         execute_transaction(
             &mut banks_client,
@@ -78,8 +78,6 @@ pub mod test {
 
         /***********************************************************************************************************************************/
         // Location _la
-
-        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
         println!("Testing Location LA initialization...");
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
@@ -395,6 +393,7 @@ pub mod test {
         let tunnel_net: NetworkV4 = networkv4_parse(&"10.31.0.0/31".to_string());
         let tunnel_activate: TunnelActivateArgs = TunnelActivateArgs {
             index: tunnel.index,
+            bump_seed: tunnel.bump_seed,
             tunnel_id: 1,
             tunnel_net,
         };
@@ -476,6 +475,7 @@ pub mod test {
 
         let update1: UserActivateArgs = UserActivateArgs {
             index: user1.index,
+            bump_seed: user1.bump_seed,
             tunnel_id: 1,
             tunnel_net,
             dz_ip,

@@ -16,9 +16,12 @@ impl SuspendDeviceCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, _) = get_device_pda(&client.get_program_id(), self.index);
+        let (pda_pubkey, bump_seed) = get_device_pda(&client.get_program_id(), self.index);
         client.execute_transaction(
-            DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs { index: self.index }),
+            DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs {
+                index: self.index,
+                bump_seed,
+            }),
             vec![
                 AccountMeta::new(pda_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),

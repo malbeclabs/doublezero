@@ -16,9 +16,12 @@ impl ReactivateUserCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, _) = get_user_pda(&client.get_program_id(), self.index);
+        let (pda_pubkey, bump_seed) = get_user_pda(&client.get_program_id(), self.index);
         client.execute_transaction(
-            DoubleZeroInstruction::ReactivateUser(UserReactivateArgs { index: self.index }),
+            DoubleZeroInstruction::ReactivateUser(UserReactivateArgs {
+                index: self.index,
+                bump_seed,
+            }),
             vec![
                 AccountMeta::new(pda_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),

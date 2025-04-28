@@ -82,6 +82,7 @@ pub struct Tunnel {
     pub account_type: AccountType,     // 1
     pub owner: Pubkey,                 // 32
     pub index: u128,                   // 16
+    pub bump_seed: u8,                 // 1
     pub side_a_pk: Pubkey,             // 32
     pub side_z_pk: Pubkey,             // 32
     pub tunnel_type: TunnelTunnelType, // 1
@@ -110,10 +111,13 @@ impl AccountTypeInfo for Tunnel {
         SEED_TUNNEL
     }
     fn size(&self) -> usize {
-        1 + 32 + 16 + 32 + 32 + 1 + 8 + 4 + 8 + 8 + 2 + 5 + 1 + 4 + self.code.len()
+        1 + 32 + 16 + 1 + 32 + 32 + 1 + 8 + 4 + 8 + 8 + 2 + 5 + 1 + 4 + self.code.len()
     }
     fn index(&self) -> u128 {
         self.index
+    }
+    fn bump_seed(&self) -> u8 {
+        self.bump_seed
     }
     fn owner(&self) -> Pubkey {
         self.owner
@@ -128,6 +132,7 @@ impl From<&[u8]> for Tunnel {
             account_type: parser.read_enum(),
             owner: parser.read_pubkey(),
             index: parser.read_u128(),
+            bump_seed: parser.read_u8(),
             side_a_pk: parser.read_pubkey(),
             side_z_pk: parser.read_pubkey(),
             tunnel_type: parser.read_enum(),
@@ -153,6 +158,7 @@ mod tests {
             account_type: AccountType::Tunnel,
             owner: Pubkey::new_unique(),
             index: 123,
+            bump_seed: 1,
             side_a_pk: Pubkey::new_unique(),
             side_z_pk: Pubkey::new_unique(),
             tunnel_type: TunnelTunnelType::MPLSoGRE,

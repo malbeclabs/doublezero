@@ -25,10 +25,11 @@ impl UpdateUserCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, _) = get_user_pda(&client.get_program_id(), self.index);
+        let (pda_pubkey, bump_seed) = get_user_pda(&client.get_program_id(), self.index);
         client.execute_transaction(
             DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
                 index: self.index,
+                bump_seed,
                 user_type: self.user_type,
                 cyoa_type: self.cyoa_type,
                 client_ip: self.client_ip,

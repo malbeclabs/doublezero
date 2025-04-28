@@ -1,7 +1,5 @@
 use core::fmt;
-
 use crate::error::DoubleZeroError;
-use crate::pda::*;
 use crate::types::*;
 use crate::{helper::*, state::device::*};
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -16,6 +14,7 @@ use solana_program::{
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct DeviceUpdateArgs {
     pub index: u128,
+    pub bump_seed: u8,
     pub code: Option<String>,
     pub device_type: Option<DeviceType>,
     pub public_ip: Option<IpV4>,
@@ -63,12 +62,6 @@ pub fn process_update_device(
     );
     // Check if the account is writable
     assert!(pda_account.is_writable, "PDA Account is not writable");
-    // get the PDA pubkey and bump seed for the account location & check if it matches the account
-    let (expected_pda_account, bump_seed) = get_device_pda(program_id, value.index);
-    assert_eq!(
-        pda_account.key, &expected_pda_account,
-        "Invalid Device PubKey"
-    );
     // Parse the global state account & check if the payer is in the allowlist
     let globalstate = globalstate_get(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
@@ -76,6 +69,8 @@ pub fn process_update_device(
     }
 
     let mut device: Device = Device::from(&pda_account.try_borrow_data().unwrap()[..]);
+    assert_eq!(device.index, value.index, "Invalid PDA Account Index");
+    assert_eq!(device.bump_seed, value.bump_seed, "Invalid PDA Account Bump Seed");
     if device.owner != *payer_account.key {
         return Err(solana_program::program_error::ProgramError::Custom(0));
     }
@@ -98,7 +93,6 @@ pub fn process_update_device(
         &device,
         payer_account,
         system_program,
-        bump_seed,
     );
 
     #[cfg(test)]

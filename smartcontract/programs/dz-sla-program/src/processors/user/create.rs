@@ -89,6 +89,7 @@ pub fn process_create_user(
     let user: User = User {
         account_type: AccountType::User,
         owner: *payer_account.key,
+        bump_seed,
         index: globalstate.account_index,
         tenant_pk: Pubkey::default(),
         user_type: value.user_type,
@@ -107,7 +108,6 @@ pub fn process_create_user(
         payer_account,
         system_program,
         program_id,
-        bump_seed,
     )?;
     globalstate_write(globalstate_account, &globalstate)?;
 

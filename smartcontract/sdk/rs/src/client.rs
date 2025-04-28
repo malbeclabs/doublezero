@@ -126,21 +126,22 @@ impl DoubleZeroClient for DZClient {
             0,
             MemcmpEncodedBytes::Bytes(vec![account_type]),
         ))];
-        let config = RpcProgramAccountsConfig {
+        let options = RpcProgramAccountsConfig {
             filters: Some(filters),
             account_config: RpcAccountInfoConfig {
                 encoding: Some(UiAccountEncoding::Base64),
                 data_slice: None,
-                commitment: None,
+                commitment: Some(CommitmentConfig::confirmed()),
                 min_context_slot: None,
             },
             with_context: None,
+            sort_results: None,
         };
 
         let mut list: HashMap<Pubkey, AccountData> = HashMap::new();
         let accounts = self
             .client
-            .get_program_accounts_with_config(&self.program_id, config)?;
+            .get_program_accounts_with_config(&self.get_program_id(), options)?;
 
         for (pubkey, account) in accounts {
             assert!(account.data[0] == account_type, "Invalid account type");
@@ -348,22 +349,23 @@ impl DZClient {
     }
 
     fn get_all(&self) -> eyre::Result<HashMap<Pubkey, AccountData>> {
-        let config = RpcProgramAccountsConfig {
+        let options = RpcProgramAccountsConfig {
             filters: None,
             account_config: RpcAccountInfoConfig {
                 encoding: Some(UiAccountEncoding::Base64),
                 data_slice: None,
-                commitment: None,
+                commitment: Some(CommitmentConfig::confirmed()),
                 min_context_slot: None,
             },
             with_context: None,
+            sort_results: None,
         };
 
         let mut list: HashMap<Pubkey, AccountData> = HashMap::new();
 
         let accounts = self
             .client
-            .get_program_accounts_with_config(&self.program_id, config)?;
+            .get_program_accounts_with_config(&self.program_id, options)?;
 
         for (pubkey, account) in accounts {
             list.insert(pubkey, AccountData::from(&account.data[..]));
@@ -414,10 +416,7 @@ impl DZClient {
     {
         loop {
             let options = RpcProgramAccountsConfig {
-                filters: None, /*Some(vec![RpcFilterType::Memcmp(Memcmp::new(
-                                   0,
-                                   MemcmpEncodedBytes::Bytes(vec![AccountType::User as u8]),
-                               ))]),*/
+                filters: None,
                 account_config: RpcAccountInfoConfig {
                     encoding: Some(UiAccountEncoding::Base64),
                     data_slice: None,
@@ -425,8 +424,8 @@ impl DZClient {
                     min_context_slot: None,
                 },
                 with_context: None,
+                sort_results: None,
             };
-
             let (mut _client, receiver) =
                 PubsubClient::program_subscribe(&self.rpc_ws_url, &self.program_id, Some(options))
                     .map_err(|_| eyre!("Unable to program_subscribe"))?;

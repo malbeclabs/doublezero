@@ -1,12 +1,13 @@
 use clap::Args;
 use doublezero_sdk::*;
+use doublezero_sdk::commands::globalconfig::get::GetGlobalConfigCommand;
 
 #[derive(Args, Debug)]
 pub struct GetGlobalConfigArgs {}
 
 impl GetGlobalConfigArgs {
     pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
-        let (_, config) = client.get_globalconfig()?;
+        let (_, config) = GetGlobalConfigCommand{}.execute(client)?;
 
         println!(
             "local-asn: {}\r\nremote-asn: {}\r\ndevice_tunnel_block: {}\r\nuser_tunnel_block: {}",

@@ -7,6 +7,7 @@ pub struct ListUserAllowlistArgs {}
 
 impl ListUserAllowlistArgs {
     pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
+
         let list = ListUserAllowlistCommand {}.execute(client)?;
 
         println!("allowlisted Pubkeys:");

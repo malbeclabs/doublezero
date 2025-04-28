@@ -1,6 +1,7 @@
 use core::fmt;
 
 use crate::error::DoubleZeroError;
+use crate::globalstate::globalstate_get;
 use crate::helper::*;
 use crate::pda::*;
 use crate::state::user::*;

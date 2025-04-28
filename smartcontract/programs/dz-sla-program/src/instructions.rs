@@ -282,20 +282,348 @@ impl DoubleZeroInstruction {
 
 #[cfg(test)]
 mod tests {
+    use solana_program::pubkey::Pubkey;
+    use crate::state::{device::DeviceType, user::{UserCYOA, UserType}, tunnel::TunnelTunnelType};
+
     use super::*;
 
-    fn serialize_deserialize(input: &DoubleZeroInstruction) -> DoubleZeroInstruction {
-        let mut data: Vec<u8> = vec![];
-        input.serialize(&mut data).unwrap();
-        let output = DoubleZeroInstruction::unpack(&data).unwrap();
-
-        output
+    fn test_instruction(instruction: DoubleZeroInstruction, expected_name: &str) {
+        let unpacked = DoubleZeroInstruction::unpack(&instruction.pack()).unwrap();
+        assert_eq!(instruction, unpacked, "Instruction mismatch");
+        assert_eq!(
+            expected_name,
+            unpacked.get_name(),
+            "Instruction name mismatch"
+        );
     }
 
     #[test]
-    fn test_doublesero_instruction() {
-        let a = DoubleZeroInstruction::InitGlobalState();
-        let b = serialize_deserialize(&a);
-        assert_eq!(a, b);
+    fn test_doublezero_instruction() {
+        test_instruction(DoubleZeroInstruction::InitGlobalState(), "InitGlobalState");
+        test_instruction(
+            DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
+                local_asn: 100,
+                remote_asn: 200,
+                tunnel_tunnel_block: ([1, 2, 3, 4], 1),
+                user_tunnel_block: ([1, 2, 3, 4], 1),
+            }),
+            "SetGlobalConfig",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
+                index: 123,
+                lat: 1.0,
+                lng: 2.0,
+                loc_id: 123,
+                code: "test".to_string(),
+                name: "test".to_string(),
+                country: "US".to_string(),
+            }),
+            "CreateLocation",
+        );
+        test_instruction(
+            DoubleZeroInstruction::UpdateLocation(LocationUpdateArgs {
+                index: 123,
+                lat: Some(1.0),
+                lng: Some(2.0),
+                loc_id: Some(123),
+                code: Some("test".to_string()),
+                name: Some("test".to_string()),
+                country: Some("US".to_string()),
+            }),
+            "UpdateLocation",
+        );
+        test_instruction(
+            DoubleZeroInstruction::SuspendLocation(LocationSuspendArgs {
+                index: 123,
+            }),
+            "SuspendLocation",
+        );
+        test_instruction(
+            DoubleZeroInstruction::ReactivateLocation(LocationReactivateArgs {
+                index: 123,
+            }),
+            "ReactivateLocation",
+        );
+        test_instruction(
+            DoubleZeroInstruction::DeleteLocation(LocationDeleteArgs {
+                index: 123,
+            }),
+            "DeleteLocation",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+                index: 123,
+                code: "test".to_string(),
+                name: "test".to_string(),
+                lat: 1.0,
+                lng: 2.0,
+                loc_id: 123,
+            }),
+            "CreateExchange",
+        );
+        test_instruction(
+            DoubleZeroInstruction::UpdateExchange(ExchangeUpdateArgs {
+                index: 123,
+                lat: Some(1.0),
+                lng: Some(2.0),
+                loc_id: Some(123),
+                code: Some("test".to_string()),
+                name: Some("test".to_string()),
+            }),
+            "UpdateExchange",
+        );
+        test_instruction(
+            DoubleZeroInstruction::SuspendExchange(ExchangeSuspendArgs {
+                index: 123,
+            }),
+            "SuspendExchange",
+        );
+        test_instruction(
+            DoubleZeroInstruction::ReactivateExchange(ExchangeReactivateArgs {
+                index: 123,
+            }),
+            "ReactivateExchange",
+        );
+        test_instruction(
+            DoubleZeroInstruction::DeleteExchange(ExchangeDeleteArgs {
+                index: 123,
+            }),
+            "DeleteExchange",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
+                index: 123,
+                code: "test".to_string(),
+                public_ip: [1, 2, 3, 4],
+                device_type: DeviceType::Switch,
+                dz_prefixes: vec![([1, 2, 3, 4], 1)],
+                location_pk: Pubkey::new_unique(),
+                exchange_pk: Pubkey::new_unique(),
+            }),
+            "CreateDevice",
+        );
+        test_instruction(
+            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {
+                index: 123,
+            }),
+            "ActivateDevice",
+        );
+        test_instruction(
+            DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+                index: 123,
+                code: Some("test".to_string()),
+                public_ip: Some([1, 2, 3, 4]),
+                device_type: Some(DeviceType::Switch),
+                dz_prefixes: Some(vec![([1, 2, 3, 4], 1)]),
+            }),
+            "UpdateDevice",
+        );
+        test_instruction(
+            DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs {
+                index: 123,
+            }),
+            "SuspendDevice",
+        );
+        test_instruction(
+            DoubleZeroInstruction::ReactivateDevice(DeviceReactivateArgs {
+                index: 123,
+            }),
+            "ReactivateDevice",
+        );
+        test_instruction(
+            DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs {
+                index: 123,
+            }),
+            "DeleteDevice",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CreateTunnel(TunnelCreateArgs {
+                index: 123,
+                code: "test".to_string(),
+                side_a_pk: Pubkey::new_unique(),
+                side_z_pk: Pubkey::new_unique(),
+                tunnel_type: TunnelTunnelType::MPLSoGRE,
+                bandwidth: 100,
+                mtu: 1500,
+                delay_ns: 1000,
+                jitter_ns: 100,
+            }),
+            "CreateTunnel",
+        );
+        test_instruction(
+            DoubleZeroInstruction::ActivateTunnel(TunnelActivateArgs {
+                index: 123,
+                tunnel_id: 1,
+                tunnel_net: ([1, 2, 3, 4], 1),
+            }),
+            "ActivateTunnel",
+        );
+        test_instruction(
+            DoubleZeroInstruction::UpdateTunnel(TunnelUpdateArgs {
+                index: 123,
+                code: Some("test".to_string()),
+                tunnel_type: Some(TunnelTunnelType::MPLSoGRE),
+                bandwidth: Some(100),
+                mtu: Some(1500),
+                delay_ns: Some(1000),
+                jitter_ns: Some(100),
+            }),
+            "UpdateTunnel",
+        );
+        test_instruction(
+            DoubleZeroInstruction::SuspendTunnel(TunnelSuspendArgs {
+                index: 123,
+            }),
+            "SuspendTunnel",
+        );
+        test_instruction(
+            DoubleZeroInstruction::ReactivateTunnel(TunnelReactivateArgs {
+                index: 123,
+            }),
+            "ReactivateTunnel",
+        );
+        test_instruction(
+            DoubleZeroInstruction::DeleteTunnel(TunnelDeleteArgs {
+                index: 123,
+            }),
+            "DeleteTunnel",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CreateUser(UserCreateArgs {
+                index: 123,
+                user_type: UserType::IBRL,
+                device_pk: Pubkey::new_unique(),
+                cyoa_type: UserCYOA::GREOverDIA,
+                client_ip: [1, 2, 3, 4],
+            }),
+            "CreateUser",
+        );
+        test_instruction(
+            DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+                index: 123,
+                tunnel_id: 1,
+                tunnel_net: ([1, 2, 3, 4], 1),
+                dz_ip: [1, 2, 3, 4],
+            }),
+            "ActivateUser",
+        );
+        test_instruction(
+            DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
+                index: 123,
+                user_type: Some(UserType::IBRL),
+                cyoa_type: Some(UserCYOA::GREOverDIA),
+                client_ip: Some([1, 2, 3, 4]),
+                dz_ip: Some([1, 2, 3, 4]),
+                tunnel_id: Some(1),
+                tunnel_net: Some(([1, 2, 3, 4], 1)),
+            }),
+            "UpdateUser",
+        );
+        test_instruction(
+            DoubleZeroInstruction::SuspendUser(UserSuspendArgs {
+                index: 123,
+            }),
+            "SuspendUser",
+        );
+        test_instruction(
+            DoubleZeroInstruction::ReactivateUser(UserReactivateArgs {
+                index: 123,
+            }),
+            "ReactivateUser",
+        );
+        test_instruction(
+            DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+                index: 123,
+            }),
+            "DeleteUser",
+        );
+        test_instruction(
+            DoubleZeroInstruction::DeactivateDevice(DeviceDeactivateArgs {
+                index: 123,
+            }),
+            "DeactivateDevice",
+        );
+        test_instruction(
+            DoubleZeroInstruction::DeactivateTunnel(TunnelDeactivateArgs {
+                index: 123,
+            }),
+            "DeactivateTunnel",
+        );
+        test_instruction(
+            DoubleZeroInstruction::DeactivateUser(UserDeactivateArgs {
+                index: 123,
+            }),
+            "DeactivateUser",
+        );
+        test_instruction(
+            DoubleZeroInstruction::RejectDevice(DeviceRejectArgs {
+                index: 123,
+                reason: "test".to_string(),
+            }),
+            "RejectDevice",
+        );
+        test_instruction(
+            DoubleZeroInstruction::RejectTunnel(TunnelRejectArgs {
+                index: 123,
+                reason: "test".to_string(),
+            }),
+            "RejectTunnel",
+        );
+        test_instruction(
+            DoubleZeroInstruction::RejectUser(UserRejectArgs {
+                index: 123,
+                reason: "test".to_string(),
+            }),
+            "RejectUser",
+        );
+        test_instruction(
+            DoubleZeroInstruction::AddFoundationAllowlist(AddFoundationAllowlistArgs {
+                pubkey: Pubkey::new_unique(),
+            }),
+            "AddFoundationAllowlist",
+        );
+        test_instruction(
+            DoubleZeroInstruction::RemoveFoundationAllowlist(RemoveFoundationAllowlistArgs {
+                pubkey: Pubkey::new_unique(),
+            }),
+            "RemoveFoundationAllowlist",
+        );
+        test_instruction(
+            DoubleZeroInstruction::AddDeviceAllowlist(AddDeviceAllowlistArgs {
+                pubkey: Pubkey::new_unique(),
+            }),
+            "AddDeviceAllowlist",
+        );
+        test_instruction(
+            DoubleZeroInstruction::RemoveDeviceAllowlist(RemoveDeviceAllowlistArgs {
+                pubkey: Pubkey::new_unique(),
+            }),
+            "RemoveDeviceAllowlist",
+        );
+        test_instruction(
+            DoubleZeroInstruction::AddUserAllowlist(AddUserAllowlistArgs {
+                pubkey: Pubkey::new_unique(),
+            }),
+            "AddUserAllowlist",
+        );
+        test_instruction(
+            DoubleZeroInstruction::RemoveUserAllowlist(RemoveUserAllowlistArgs {
+                pubkey: Pubkey::new_unique(),
+            }),
+            "RemoveUserAllowlist",
+        );
+        test_instruction(
+            DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs {
+                index: 123,
+            }),
+            "RequestBanUser",
+        );
+        test_instruction(
+            DoubleZeroInstruction::BanUser(UserBanArgs {
+                index: 123,
+            }),
+            "BanUser",
+        );
     }
 }

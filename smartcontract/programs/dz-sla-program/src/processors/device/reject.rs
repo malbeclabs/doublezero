@@ -1,6 +1,7 @@
 use core::fmt;
 
 use crate::error::DoubleZeroError;
+use crate::globalstate::globalstate_get;
 use crate::helper::*;
 use crate::pda::*;
 use crate::state::device::*;
@@ -54,7 +55,7 @@ pub fn process_reject_device(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let globalstate = globalstate_get_next(globalstate_account)?;
+    let globalstate = globalstate_get(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }

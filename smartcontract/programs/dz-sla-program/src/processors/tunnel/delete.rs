@@ -1,6 +1,7 @@
 use core::fmt;
 
 use crate::error::DoubleZeroError;
+use crate::globalstate::globalstate_get;
 use crate::pda::*;
 use crate::{helper::*, state::tunnel::*};
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -51,7 +52,7 @@ pub fn process_delete_tunnel(
 
     let mut tunnel: Tunnel = Tunnel::from(&pda_account.try_borrow_data().unwrap()[..]);
 
-    let globalstate = globalstate_get_next(globalstate_account)?;
+    let globalstate = globalstate_get(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key)
         && tunnel.owner != *payer_account.key
     {

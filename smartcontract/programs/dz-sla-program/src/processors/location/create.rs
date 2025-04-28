@@ -1,6 +1,7 @@
 use std::fmt;
-
 use crate::error::DoubleZeroError;
+use crate::globalstate::globalstate_get_next;
+use crate::globalstate::globalstate_write;
 use crate::helper::*;
 use crate::pda::*;
 use crate::state::{accounttype::AccountType, location::*};
@@ -91,6 +92,7 @@ pub fn process_create_location(
         lng: value.lng,
         loc_id: value.loc_id,
         status: LocationStatus::Activated,
+        device_count: 0,
     };
 
     account_create(

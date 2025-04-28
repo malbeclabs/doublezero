@@ -1,6 +1,8 @@
 use core::fmt;
 
 use crate::error::DoubleZeroError;
+use crate::globalstate::globalstate_get_next;
+use crate::globalstate::globalstate_write;
 use crate::helper::*;
 use crate::pda::*;
 use crate::state::{accounttype::AccountType, exchange::*};
@@ -69,6 +71,10 @@ pub fn process_create_exchange(
     );
     // Parse the global state account & check if the payer is in the allowlist
     let globalstate = globalstate_get_next(globalstate_account)?;
+    assert_eq!(
+        value.index, globalstate.account_index,
+        "Invalid Value Index"
+    );
     if !globalstate.user_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -76,11 +82,6 @@ pub fn process_create_exchange(
     if !pda_account.data.borrow().is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);
     }
-    let globalstate = globalstate_get_next(globalstate_account)?;
-    assert_eq!(
-        value.index, globalstate.account_index,
-        "Invalid Value Index"
-    );
 
     let (expected_pda_account, bump_seed) = get_exchange_pda(program_id, globalstate.account_index);
     assert_eq!(
@@ -101,6 +102,7 @@ pub fn process_create_exchange(
         lng: value.lng,
         loc_id: value.loc_id,
         status: ExchangeStatus::Activated,
+        device_count: 0,
     };
 
     account_create(

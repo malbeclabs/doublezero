@@ -1,5 +1,6 @@
 use core::fmt;
 
+use crate::globalstate::globalstate_get_next;
 use crate::pda::*;
 use crate::{error::DoubleZeroError, helper::*, state::device::*};
 use borsh::{BorshDeserialize, BorshSerialize};

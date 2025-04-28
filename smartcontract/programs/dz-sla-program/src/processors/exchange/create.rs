@@ -102,7 +102,6 @@ pub fn process_create_exchange(
         lng: value.lng,
         loc_id: value.loc_id,
         status: ExchangeStatus::Activated,
-        device_count: 0,
     };
 
     account_create(

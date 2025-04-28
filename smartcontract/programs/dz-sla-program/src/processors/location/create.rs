@@ -92,7 +92,6 @@ pub fn process_create_location(
         lng: value.lng,
         loc_id: value.loc_id,
         status: LocationStatus::Activated,
-        device_count: 0,
     };
 
     account_create(

@@ -108,8 +108,6 @@ pub fn process_create_device(
         public_ip: value.public_ip,
         dz_prefixes: value.dz_prefixes.clone(),
         status: DeviceStatus::Pending,
-        tunnel_count: 0,
-        user_count: 0,
     };
 
     account_create(

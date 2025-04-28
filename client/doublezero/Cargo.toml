@@ -36,7 +36,7 @@ anyhow = "1.0.95"
 color-eyre = "0.6.3"
 
 hyper = { version="0.14", features=["client", "http1", "tcp", "stream"] }
-hyperlocal = { version="0.8" }
+hyperlocal = { version="0.9" }
 
 
 doublezero_sdk = { path = "../../smartcontract/sdk/rs", version = "0.1.0" }

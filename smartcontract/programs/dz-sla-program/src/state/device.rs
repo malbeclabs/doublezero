@@ -78,14 +78,17 @@ pub struct Device {
     pub status: DeviceStatus,       // 1
     pub code: String,               // 4 + len
     pub dz_prefixes: NetworkV4List, // 4 + 5 * len
+    pub tunnel_count: u32,          // 4
+    pub user_count: u32,            // 4
 }
 
 impl fmt::Display for Device {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, index: {}, location_pk: {}, exchange_pk: {}, device_type: {}, public_ip: {}, dz_prefixes: {}, status: {}, code: {}",
-            self.account_type, self.owner, self.index, self.location_pk, self.exchange_pk, self.device_type, ipv4_to_string(&self.public_ip), networkv4_list_to_string(&self.dz_prefixes), self.status, self.code
+            "account_type: {}, owner: {}, index: {}, location_pk: {}, exchange_pk: {}, device_type: {}, public_ip: {}, dz_prefixes: {}, status: {}, code: {}, tunnel_count: {}, user_count: {}",
+            self.account_type, self.owner, self.index, self.location_pk, self.exchange_pk, self.device_type, ipv4_to_string(&self.public_ip), networkv4_list_to_string(&self.dz_prefixes), 
+            self.status, self.code,  self.tunnel_count, self.user_count
         )
     }
 }
@@ -95,7 +98,7 @@ impl AccountTypeInfo for Device {
         SEED_DEVICE
     }
     fn size(&self) -> usize {
-        1 + 32 + 16 + 32 + 32 + 1 + 4 + 1 + 4 + self.code.len() + 4 + 5 * self.dz_prefixes.len()
+        1 + 32 + 16 + 32 + 32 + 1 + 4 + 1 + 4 + self.code.len() + 4 + 5 * self.dz_prefixes.len() + 4 + 4
     }
     fn index(&self) -> u128 {
         self.index
@@ -120,6 +123,8 @@ impl From<&[u8]> for Device {
             status: parser.read_enum(),
             code: parser.read_string(),
             dz_prefixes: parser.read_networkv4_vec(),
+            tunnel_count: parser.read_u32(),
+            user_count: parser.read_u32(),
         }
     }
 }
@@ -141,6 +146,8 @@ mod tests {
             dz_prefixes: vec![([10, 0, 0, 1], 24), ([11, 0, 0, 1], 24)],
             public_ip: ipv4_parse(&"1.2.3.4".to_string()),
             status: DeviceStatus::Activated,
+            tunnel_count: 0,
+            user_count: 0,
         };
 
         let data = borsh::to_vec(&val).unwrap();

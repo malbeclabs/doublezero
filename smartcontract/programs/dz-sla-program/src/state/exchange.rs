@@ -46,14 +46,15 @@ pub struct Exchange {
     pub status: ExchangeStatus,    // 1
     pub code: String,              // 4 + len
     pub name: String,              // 4 + len
+    pub device_count: u32,         // 4
 }
 
 impl fmt::Display for Exchange {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, index: {}, lat: {}, lng: {}, loc_id: {}, status: {}, code: {}, name: {}",
-            self.account_type, self.owner, self.index, self.lat, self.lng, self.loc_id, self.status, self.code, self.name
+            "account_type: {}, owner: {}, index: {}, lat: {}, lng: {}, loc_id: {}, status: {}, code: {}, name: {}, device_count: {}",
+            self.account_type, self.owner, self.index, self.lat, self.lng, self.loc_id, self.status, self.code, self.name, self.device_count
         )
     }
 }
@@ -63,7 +64,7 @@ impl AccountTypeInfo for Exchange {
         SEED_EXCHANGE
     }
     fn size(&self) -> usize {
-        1 + 32 + 16 + 4 + self.code.len() + 4 + self.name.len() + 8 + 8 + 4 + 1
+        1 + 32 + 16 + 4 + self.code.len() + 4 + self.name.len() + 8 + 8 + 4 + 1 + 4
     }
     fn index(&self) -> u128 {
         self.index
@@ -87,6 +88,7 @@ impl From<&[u8]> for Exchange {
             status: parser.read_enum(),
             code: parser.read_string(),
             name: parser.read_string(),
+            device_count: parser.read_u32(),
         }
     }
 }
@@ -107,6 +109,7 @@ mod tests {
             code: "test-321".to_string(),
             name: "test-test-test".to_string(),
             status: ExchangeStatus::Activated,
+            device_count: 0,
         };
 
         let data = borsh::to_vec(&val).unwrap();

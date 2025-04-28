@@ -47,14 +47,15 @@ pub struct Location {
     pub code: String,              // 4 + len
     pub name: String,              // 4 + len
     pub country: String,           // 4 + len
+    pub device_count: u32,         // 4
 }
 
 impl fmt::Display for Location {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, index: {}, lat: {}, lng: {}, loc_id: {}, status: {}, code: {}, name: {}, country: {}",
-            self.account_type, self.owner, self.index, self.lat, self.lng, self.loc_id, self.status, self.code, self.name, self.country
+            "account_type: {}, owner: {}, index: {}, lat: {}, lng: {}, loc_id: {}, status: {}, code: {}, name: {}, country: {}, device_count: {}",
+            self.account_type, self.owner, self.index, self.lat, self.lng, self.loc_id, self.status, self.code, self.name, self.country, self.device_count
         )
     }
 }
@@ -76,6 +77,7 @@ impl AccountTypeInfo for Location {
             + self.name.len()
             + 4
             + self.country.len()
+            + 4
     }
     fn index(&self) -> u128 {
         self.index
@@ -100,6 +102,7 @@ impl From<&[u8]> for Location {
             code: parser.read_string(),
             name: parser.read_string(),
             country: parser.read_string(),
+            device_count: parser.read_u32(),
         }
     }
 }
@@ -121,6 +124,7 @@ mod tests {
             name: "test-test-test".to_string(),
             country: "US".to_string(),
             status: LocationStatus::Activated,
+            device_count: 0,
         };
 
         let data = borsh::to_vec(&val).unwrap();

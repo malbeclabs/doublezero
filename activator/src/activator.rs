@@ -551,6 +551,8 @@ mod tests {
             status: DeviceStatus::Pending,
             code: "TestDevice".to_string(),
             dz_prefixes: vec![([10, 0, 0, 1], 24), ([10, 0, 1, 1], 24)],
+            tunnel_count: 0,
+            user_count: 0,
         };
 
         let mut client = create_test_client();
@@ -618,6 +620,8 @@ mod tests {
             status: DeviceStatus::Activated,
             code: "TestDevice".to_string(),
             dz_prefixes: vec![([10, 0, 0, 1], 24)],
+            tunnel_count: 0,
+            user_count: 0,
         };
 
         client
@@ -765,6 +769,8 @@ mod tests {
             status: DeviceStatus::Activated,
             code: "TestDevice".to_string(),
             dz_prefixes: vec![([10, 0, 0, 1], 24)],
+            tunnel_count: 0,
+            user_count: 0,
         };
 
         let user_pubkey = Pubkey::new_unique();
@@ -861,6 +867,8 @@ mod tests {
             status: DeviceStatus::Activated,
             code: "TestDevice".to_string(),
             dz_prefixes: vec![([10, 0, 0, 1], 24)],
+            tunnel_count: 0,
+            user_count: 0,
         };
 
         let user_pubkey = Pubkey::new_unique();
@@ -926,6 +934,8 @@ mod tests {
             status: DeviceStatus::Activated,
             code: "TestDevice".to_string(),
             dz_prefixes: vec![([10, 0, 0, 1], 24)],
+            tunnel_count: 0,
+            user_count: 0,
         };
 
         let user_pubkey = Pubkey::new_unique();
@@ -1006,6 +1016,8 @@ mod tests {
             status: DeviceStatus::Activated,
             code: "TestDevice".to_string(),
             dz_prefixes: vec![([10, 0, 0, 1], 24)],
+            tunnel_count: 0,
+            user_count: 0,
         };
 
         let pubkey = Pubkey::new_unique();
@@ -1093,6 +1105,8 @@ mod tests {
             status: DeviceStatus::Activated,
             code: "TestDevice".to_string(),
             dz_prefixes: vec![([11, 0, 0, 0], 16)],
+            tunnel_count: 0,
+            user_count: 0,
         };
 
         devices.insert(pubkey, DeviceState::new(&device));

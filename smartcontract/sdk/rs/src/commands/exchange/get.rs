@@ -35,3 +35,77 @@ impl GetExchangeCommand {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use crate::{commands::exchange::get::GetExchangeCommand, tests::tests::create_test_client};
+    use doublezero_sla_program::state::{
+        accountdata::AccountData,
+        accounttype::AccountType,
+        exchange::{Exchange, ExchangeStatus},
+    };
+    use mockall::predicate;
+    use solana_sdk::pubkey::Pubkey;
+
+    #[test]
+    fn test_commands_exchange_get_command() {
+        let mut client = create_test_client();
+
+        let exchange_pubkey = Pubkey::new_unique();
+        let exchange = Exchange {
+            account_type: AccountType::Exchange,
+            index: 1,
+            code: "exchange_code".to_string(),
+            name: "exchange_name".to_string(),
+            lat: 1.0,
+            lng: 2.0,
+            loc_id: 3,
+            status: ExchangeStatus::Activated,
+            owner: Pubkey::new_unique(),
+        };
+
+        let exchange2 = exchange.clone();
+        client
+            .expect_get()
+            .with(predicate::eq(exchange_pubkey))
+            .returning(move |_| Ok(AccountData::Exchange(exchange2.clone())));
+
+        let exchange2 = exchange.clone();
+        client
+            .expect_gets()
+            .with(predicate::eq(AccountType::Exchange))
+            .returning(move |_| {
+                let mut exchanges = HashMap::new();
+                exchanges.insert(exchange_pubkey, AccountData::Exchange(exchange2.clone()));
+                Ok(exchanges)
+            });
+
+        // Search by pubkey
+        let res = GetExchangeCommand {
+            pubkey_or_code: exchange_pubkey.to_string(),
+        }
+        .execute(&client);
+
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap().1.code, "exchange_code".to_string());
+
+        // Search by code
+        let res = GetExchangeCommand {
+            pubkey_or_code: "exchange_code".to_string(),
+        }
+        .execute(&client);
+
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap().1.code, "exchange_code".to_string());
+
+        // Invalid search
+        let res = GetExchangeCommand {
+            pubkey_or_code: "ssssssssssss".to_string(),
+        }
+        .execute(&client);
+
+        assert!(!res.is_ok());
+    }
+}

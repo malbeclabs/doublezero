@@ -30,7 +30,6 @@ impl SuspendExchangeCommand {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use crate::{
@@ -39,7 +38,7 @@ mod tests {
     };
     use doublezero_sla_program::{
         instructions::DoubleZeroInstruction,
-        pda::{get_globalstate_pda, get_exchange_pda},
+        pda::{get_exchange_pda, get_globalstate_pda},
         processors::exchange::suspend::ExchangeSuspendArgs,
     };
     use mockall::predicate;
@@ -50,14 +49,17 @@ mod tests {
         let mut client = create_test_client();
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, _) = get_exchange_pda(&client.get_program_id(), 1);
+        let (pda_pubkey, bump_seed) = get_exchange_pda(&client.get_program_id(), 1);
         let payer = client.get_payer();
 
         client
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::SuspendExchange(
-                    ExchangeSuspendArgs { index: 1 },
+                    ExchangeSuspendArgs {
+                        index: 1,
+                        bump_seed,
+                    },
                 )),
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),

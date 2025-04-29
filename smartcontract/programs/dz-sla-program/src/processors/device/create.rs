@@ -21,6 +21,7 @@ use crate::{
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct DeviceCreateArgs {
     pub index: u128,
+    pub bump_seed: u8,
     pub code: String,
     pub location_pk: Pubkey,
     pub exchange_pk: Pubkey,
@@ -77,6 +78,7 @@ pub fn process_create_device(
         pda_account.key, &expected_pda_account,
         "Invalid Device PubKey"
     );
+    assert!(bump_seed == value.bump_seed, "Invalid Device Bump Seed");
 
     // Check account Types
     if location_account.data_is_empty()

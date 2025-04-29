@@ -24,12 +24,13 @@ impl CreateDeviceCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, _) =
+        let (pda_pubkey, bump_seed) =
             get_device_pda(&client.get_program_id(), globalstate.account_index + 1);
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
                     index: globalstate.account_index + 1,
+                    bump_seed,
                     code: self.code.clone(),
                     location_pk: self.location_pk,
                     exchange_pk: self.exchange_pk,

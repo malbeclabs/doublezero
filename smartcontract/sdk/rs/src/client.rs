@@ -305,8 +305,15 @@ impl DZClient {
             .client
             .get_program_accounts_with_config(&self.program_id, options)?;
 
-        for (pubkey, _account) in accounts {
-            print!("Deleting account: {}", pubkey);
+        for (pubkey, account) in accounts {
+            let account_type = AccountType::from(account.data[0]);
+
+            print!("Deleting {}: {}", account_type, pubkey);
+
+            if account_type == AccountType::GlobalState || account_type == AccountType::Config {
+                print!(" - Skipping");
+                continue;
+            }
 
             let signature = self.execute_transaction(
                 DoubleZeroInstruction::CloseAccount(CloseAccountArgs { pubkey: pubkey }),

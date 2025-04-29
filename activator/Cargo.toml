@@ -9,6 +9,11 @@ eyre = "0.6.12"
 tokio = { version = "1.44.2", features = ["full"] }
 ipnetwork = "0.21.1"
 bitvec = "1.0.1"
+influxdb2 = "0.5.2"
+influxdb2-structmap = "0.2"
+influxdb2-derive = "0.1.1"
+chrono = "0.4"
+
 
 solana-sdk = "2.2.2"
 doublezero_sdk = { path = "../smartcontract/sdk/rs", version = "0.1.0" }

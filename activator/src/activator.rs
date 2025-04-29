@@ -24,7 +24,10 @@ use std::thread;
 use std::time::Duration;
 
 use crate::{
-    idallocator::IDAllocator, ipblockallocator::IPBlockAllocator, states::devicestate::DeviceState,
+    idallocator::IDAllocator,
+    ipblockallocator::IPBlockAllocator,
+    metrics_service::{Metric, MetricsService},
+    states::devicestate::DeviceState,
 };
 
 pub type DeviceMap = HashMap<Pubkey, DeviceState>;
@@ -37,6 +40,7 @@ pub struct Activator {
 
     pub user_tunnel_ips: IPBlockAllocator,
     pub devices: DeviceMap,
+    metrics_service: Box<dyn MetricsService + Send + Sync>,
 }
 
 impl Activator {
@@ -47,6 +51,7 @@ impl Activator {
         websocket_url: Option<String>,
         program_id: Option<String>,
         kaypair: Option<String>,
+        metrics_service: Box<dyn MetricsService + Send + Sync>,
     ) -> eyre::Result<Self> {
         let client = DZClient::new(rpc_url, websocket_url, program_id, kaypair)?;
 
@@ -74,6 +79,7 @@ impl Activator {
             tunnel_tunnel_ids: IDAllocator::new(0, vec![]),
             user_tunnel_ips: IPBlockAllocator::new(config.user_tunnel_block),
             devices: HashMap::new(),
+            metrics_service: metrics_service,
         })
     }
 
@@ -155,14 +161,14 @@ impl Activator {
         self.client
             .gets_and_subscribe(|client, pubkey, data| match data {
                 AccountData::Device(device) => {
-                    process_device_event(client, pubkey, &mut self.devices, device);
+                    process_device_event(client, pubkey, &mut self.devices, &device);
                 }
                 AccountData::Tunnel(tunnel) => {
                     process_tunnel_event(
                         client,
                         &mut self.tunnel_tunnel_ips,
                         &mut self.tunnel_tunnel_ids,
-                        tunnel,
+                        &tunnel,
                     );
                 }
                 AccountData::User(user) => {
@@ -172,7 +178,7 @@ impl Activator {
                         &mut self.devices,
                         &mut self.user_tunnel_ips,
                         &mut self.tunnel_tunnel_ids,
-                        user,
+                        &user,
                     );
                 }
                 _ => {}

@@ -136,7 +136,10 @@ type Tunnel struct {
 type UserUserType uint8
 
 const (
-	UserTypeServer UserUserType = iota + 1
+	UserTypeIBRL = iota
+	UserTypeIBRLWithAllocatedIP
+	UserTypeEdgeFiltering
+	UserTypeMulticast
 )
 
 type CyoaType uint8

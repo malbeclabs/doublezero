@@ -45,7 +45,7 @@ mod exchange_test {
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 0);
 
-        let (exchange_pubkey, _) =
+        let (exchange_pubkey, bump_seed) =
             get_exchange_pda(&program_id, globalstate_account.account_index + 1);
 
         execute_transaction(
@@ -54,6 +54,7 @@ mod exchange_test {
             program_id,
             DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
                 index: globalstate_account.account_index + 1,
+                bump_seed,
                 code: "la".to_string(),
                 name: "Los Angeles".to_string(),
                 lat: 1.234,

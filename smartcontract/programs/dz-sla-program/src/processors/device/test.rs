@@ -43,7 +43,7 @@ mod device_test {
         .await;
 
         let (config_pubkey, _) = get_globalconfig_pda(&program_id);
-
+        println!("🟢 2. Set GlobalConfig...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
@@ -63,11 +63,11 @@ mod device_test {
         .await;
 
         /***********************************************************************************************************************************/
-        println!("🟢 2. Create Location...");
+        println!("🟢 3. Create Location...");
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 0);
 
-        let (location_pubkey, _) =
+        let (location_pubkey, bump_seed) =
             get_location_pda(&program_id, globalstate_account.account_index + 1);
 
         execute_transaction(
@@ -76,6 +76,7 @@ mod device_test {
             program_id,
             DoubleZeroInstruction::CreateLocation(location::create::LocationCreateArgs {
                 index: globalstate_account.account_index + 1,
+                bump_seed,
                 code: "la".to_string(),
                 name: "Los Angeles".to_string(),
                 country: "us".to_string(),
@@ -92,12 +93,12 @@ mod device_test {
         .await;
 
         /***********************************************************************************************************************************/
-        println!("🟢 3. Create Exchange...");
+        println!("🟢 4. Create Exchange...");
 
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 1);
 
-        let (exchange_pubkey, _) =
+        let (exchange_pubkey, bump_seed) =
             get_exchange_pda(&program_id, globalstate_account.account_index + 1);
 
         execute_transaction(
@@ -106,6 +107,7 @@ mod device_test {
             program_id,
             DoubleZeroInstruction::CreateExchange(exchange::create::ExchangeCreateArgs {
                 index: globalstate_account.account_index + 1,
+                bump_seed,
                 code: "la".to_string(),
                 name: "Los Angeles".to_string(),
                 lat: 1.234,
@@ -122,14 +124,15 @@ mod device_test {
 
         /***********************************************************************************************************************************/
         // Device _la
-        println!("🟢 4. Create Device...");
+        println!("🟢 5. Create Device...");
 
         let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 2);
 
-        let (device_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
+        let (device_pubkey, bump_seed) =
+            get_device_pda(&program_id, globalstate_account.account_index + 1);
 
         execute_transaction(
             &mut banks_client,
@@ -137,6 +140,7 @@ mod device_test {
             program_id,
             DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
                 index: globalstate_account.account_index + 1,
+                bump_seed,
                 code: "la".to_string(),
                 device_type: DeviceType::Switch,
                 location_pk: location_pubkey,
@@ -192,7 +196,7 @@ mod device_test {
 
         println!("✅ Tunnel updated");
         /*****************************************************************************************************************************************************/
-        println!("🟢 5. Suspend Device...");
+        println!("🟢 7. Suspend Device...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
@@ -215,7 +219,7 @@ mod device_test {
 
         println!("✅ Device suspended");
         /*****************************************************************************************************************************************************/
-        println!("🟢 6. Reactivate Device...");
+        println!("🟢 8. Reactivate Device...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
@@ -238,7 +242,7 @@ mod device_test {
 
         println!("✅ Device reactivated");
         /*****************************************************************************************************************************************************/
-        println!("🟢 7. Update Device...");
+        println!("🟢 9. Update Device...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
@@ -270,7 +274,7 @@ mod device_test {
 
         println!("✅ Device updated");
         /*****************************************************************************************************************************************************/
-        println!("🟢 8. Deleting Device...");
+        println!("🟢 10. Deleting Device...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
@@ -297,7 +301,7 @@ mod device_test {
         assert_eq!(device_la.status, DeviceStatus::Deleting);
 
         /*****************************************************************************************************************************************************/
-        println!("🟢 9. Deactivate Device...");
+        println!("🟢 11. Deactivate Device...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,

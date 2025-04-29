@@ -25,8 +25,6 @@ impl AddUserAllowlistArgs {
             }
         };
 
-        println!("Adding {} to user allowlist...", pubkey);
-
         let res = AddUserAllowlistCommand { pubkey }.execute(client)?;
         println!("Signature: {}", res);
 

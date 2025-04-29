@@ -2,10 +2,8 @@ use base64::prelude::*;
 use base64::{engine::general_purpose, Engine};
 use bincode::deserialize;
 use chrono::{DateTime, NaiveDateTime, Utc};
-use doublezero_sla_program::{
-    instructions::*,
-    state::accounttype::AccountType, 
-};
+use doublezero_sla_program::processors::globalstate::close::CloseAccountArgs;
+use doublezero_sla_program::{instructions::*, state::accounttype::AccountType};
 use eyre::{eyre, OptionExt};
 use solana_account_decoder::{UiAccountData, UiAccountEncoding};
 use solana_client::{
@@ -289,8 +287,40 @@ impl DZClient {
     }
 
     /******************************************************************************************************************************************/
+
+    pub fn reset(&self) -> eyre::Result<()> {
+        let options = RpcProgramAccountsConfig {
+            filters: None,
+            account_config: RpcAccountInfoConfig {
+                encoding: Some(UiAccountEncoding::Base64),
+                data_slice: None,
+                commitment: Some(CommitmentConfig::confirmed()),
+                min_context_slot: None,
+            },
+            with_context: None,
+            sort_results: None,
+        };
+
+        let accounts = self
+            .client
+            .get_program_accounts_with_config(&self.program_id, options)?;
+
+        for (pubkey, _account) in accounts {
+            print!("Deleting account: {}", pubkey);
+
+            let signature = self.execute_transaction(
+                DoubleZeroInstruction::CloseAccount(CloseAccountArgs { pubkey: pubkey }),
+                vec![AccountMeta::new(pubkey, false)],
+            )?;
+
+            println!(" - Done {}", signature);
+        }
+
+        Ok(())
+    }
+
     /******************************************************************************************************************************************/
-    
+
     fn get_all(&self) -> eyre::Result<HashMap<Pubkey, AccountData>> {
         let options = RpcProgramAccountsConfig {
             filters: None,

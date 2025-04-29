@@ -84,10 +84,11 @@ pub mod test {
         assert_eq!(globalstate_account.account_index, 0);
 
         let location_la_code = "la".to_string();
-        let (location_la_pubkey, _location_bump_seed) =
+        let (location_la_pubkey, bump_seed) =
             get_location_pda(&program_id, globalstate_account.account_index + 1);
         let location_la: LocationCreateArgs = LocationCreateArgs {
             index: globalstate_account.account_index + 1,
+            bump_seed,
             code: location_la_code.clone(),
             name: "Los Angeles".to_string(),
             country: "us".to_string(),
@@ -129,10 +130,11 @@ pub mod test {
         assert_eq!(globalstate_account.account_index, 1);
 
         let location_ny_code = "ny".to_string();
-        let (location_ny_pubkey, _location_bump_seed) =
+        let (location_ny_pubkey, bump_seed) =
             get_location_pda(&program_id, globalstate_account.account_index + 1);
         let location_ny: LocationCreateArgs = LocationCreateArgs {
             index: globalstate_account.account_index + 1,
+            bump_seed,
             code: location_ny_code.clone(),
             name: "New York".to_string(),
             country: "us".to_string(),
@@ -172,10 +174,11 @@ pub mod test {
         assert_eq!(globalstate_account.account_index, 2);
 
         let exchange_la_code = "la".to_string();
-        let (exchange_la_pubkey, _exchange_bump_seed) =
+        let (exchange_la_pubkey, bump_seed) =
             get_exchange_pda(&program_id, globalstate_account.account_index + 1);
         let exchange_la: ExchangeCreateArgs = ExchangeCreateArgs {
             index: globalstate_account.account_index + 1,
+            bump_seed,
             code: exchange_la_code.clone(),
             name: "Los Angeles".to_string(),
             lat: 1.234,
@@ -214,10 +217,11 @@ pub mod test {
         assert_eq!(globalstate_account.account_index, 3);
 
         let exchange_ny_code = "ny".to_string();
-        let (exchange_ny_pubkey, _exchange_bump_seed) =
+        let (exchange_ny_pubkey, bump_seed) =
             get_exchange_pda(&program_id, globalstate_account.account_index + 1);
         let exchange_ny: ExchangeCreateArgs = ExchangeCreateArgs {
             index: globalstate_account.account_index + 1,
+            bump_seed,
             code: exchange_ny_code.clone(),
             name: "New York".to_string(),
             lat: 1.234,
@@ -256,10 +260,11 @@ pub mod test {
 
         // Device _la
         let device_la_code = "la1".to_string();
-        let (device_la_pubkey, _exchange_bump_seed) =
+        let (device_la_pubkey, bump_seed) =
             get_device_pda(&program_id, globalstate_account.account_index + 1);
         let device_la: DeviceCreateArgs = DeviceCreateArgs {
             index: globalstate_account.account_index + 1,
+            bump_seed,
             code: device_la_code.clone(),
             location_pk: location_la_pubkey,
             exchange_pk: exchange_la_pubkey,
@@ -301,10 +306,11 @@ pub mod test {
         assert_eq!(globalstate_account.account_index, 5);
 
         let device_ny_code = "ny1".to_string();
-        let (device_ny_pubkey, _exchange_bump_seed) =
+        let (device_ny_pubkey, bump_seed) =
             get_device_pda(&program_id, globalstate_account.account_index + 1);
         let device_ny: DeviceCreateArgs = DeviceCreateArgs {
             index: globalstate_account.account_index + 1,
+            bump_seed,
             code: device_ny_code.clone(),
             location_pk: location_ny_pubkey,
             exchange_pk: exchange_ny_pubkey,
@@ -346,10 +352,11 @@ pub mod test {
         assert_eq!(globalstate_account.account_index, 6);
 
         let tunnel_la_ny_code = "la-ny1".to_string();
-        let (tunnel_la_ny_pubkey, _exchange_bump_seed) =
+        let (tunnel_la_ny_pubkey, bump_seed) =
             get_tunnel_pda(&program_id, globalstate_account.account_index + 1);
         let tunnel_la_ny: TunnelCreateArgs = TunnelCreateArgs {
             index: globalstate_account.account_index + 1,
+            bump_seed,
             code: tunnel_la_ny_code.clone(),
             side_a_pk: device_la_pubkey,
             side_z_pk: device_ny_pubkey,
@@ -433,10 +440,11 @@ pub mod test {
 
         // User 100.0.0.1
         let user_ip = [100, 0, 0, 1];
-        let (user1_pubkey, _user_bump_seed) =
+        let (user1_pubkey, bump_seed) =
             get_user_pda(&program_id, globalstate_account.account_index + 1);
         let user1: UserCreateArgs = UserCreateArgs {
             index: globalstate_account.account_index + 1,
+            bump_seed,
             user_type: UserType::IBRL,
             device_pk: device_la_pubkey,
             cyoa_type: UserCYOA::GREOverDIA,

@@ -9,19 +9,62 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
+	rt "runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/jwhited/corebgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/netlink"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/runtime"
 
 	nl "github.com/vishvananda/netlink"
+	"github.com/vishvananda/netns"
+
+	gobgp "github.com/osrg/gobgp/pkg/packet/bgp"
 )
+
+type dummyPlugin struct{}
+
+func (p *dummyPlugin) GetCapabilities(c corebgp.PeerConfig) []corebgp.Capability {
+	caps := make([]corebgp.Capability, 0)
+	return caps
+}
+
+func (p *dummyPlugin) OnOpenMessage(peer corebgp.PeerConfig, routerID netip.Addr, capabilities []corebgp.Capability) *corebgp.Notification {
+	return nil
+}
+
+func (p *dummyPlugin) OnEstablished(peer corebgp.PeerConfig, writer corebgp.UpdateMessageWriter) corebgp.UpdateMessageHandler {
+	origin := gobgp.NewPathAttributeOrigin(0)
+	nexthop := gobgp.NewPathAttributeNextHop("2.2.2.2")
+	param := gobgp.NewAs4PathParam(2, []uint32{65001})
+	aspath := gobgp.NewPathAttributeAsPath([]gobgp.AsPathParamInterface{param})
+	update := gobgp.NewBGPUpdateMessage(
+		[]*gobgp.IPAddrPrefix{gobgp.NewIPAddrPrefix(32, "4.4.4.4")},
+		[]gobgp.PathAttributeInterface{origin, nexthop, aspath},
+		[]*gobgp.IPAddrPrefix{gobgp.NewIPAddrPrefix(32, "3.3.3.3")})
+	buf, err := update.Body.Serialize()
+	if err != nil {
+		log.Printf("error serializing: %v", err)
+	}
+	if err := writer.WriteUpdate(buf); err != nil {
+		log.Printf("error writing update: %v", err)
+	}
+	return p.handleUpdate
+}
+
+func (p *dummyPlugin) OnClose(peer corebgp.PeerConfig) {}
+
+func (p *dummyPlugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.Notification {
+	return nil
+}
 
 func TestEndToEnd_IBRL(t *testing.T) {
 	rootPath, err := os.MkdirTemp("", "doublezerod")
@@ -37,71 +80,140 @@ func TestEndToEnd_IBRL(t *testing.T) {
 		t.Fatalf("error creating state dir: %v", err)
 	}
 
-	// rt.LockOSThread()
-	// defer rt.UnlockOSThread()
+	// TODO: create network namespace
+	cmd := exec.Command("ip", "netns", "add", "doublezero-peer")
+	if err = cmd.Run(); err != nil {
+		t.Fatalf("error creating network namespace: %v", err)
+	}
 
-	// TODO: start gobgp instance in network namespace
-	// go func() {
-	// 	rt.LockOSThread()
-	// 	defer rt.UnlockOSThread()
+	// TODO: create veth pair
+	cmd = exec.Command("ip", "link", "add", "veth0", "type", "veth", "peer", "name", "veth1")
+	if err = cmd.Run(); err != nil {
+		t.Fatalf("error creating veth pair: %v", err)
+	}
+	// TODO: move veth to doublezero-peer-test namespace
+	cmd = exec.Command("ip", "link", "set", "dev", "veth1", "netns", "doublezero-peer")
+	if err = cmd.Run(); err != nil {
+		t.Fatalf("error moving veth to namespace: %v", err)
+	}
 
-	// 	// origin, err := netns.Get()
-	// 	// if err != nil {
-	// 	// 	t.Logf("error getting namespace: %v", err)
-	// 	// 	return
-	// 	// }
+	// configure source end of veth
+	cmd = exec.Command("ip", "addr", "add", "10.0.0.0/31", "dev", "veth0")
+	if err = cmd.Run(); err != nil {
+		t.Fatalf("error configuring source end of veth: %v", err)
+	}
+	cmd = exec.Command("ip", "link", "set", "dev", "veth0", "up")
+	if err = cmd.Run(); err != nil {
+		t.Fatalf("error bringing up source end of veth: %v", err)
+	}
 
-	// 	ns, err := netns.NewNamed("doublezero")
-	// 	if err != nil {
-	// 		t.Logf("error creating namespace: %v", err)
-	// 		return
-	// 	}
-	// 	defer ns.Close()
+	cmd = exec.Command("ip", "netns", "exec", "doublezero-peer", "ip", "addr", "add", "10.0.0.1/31", "dev", "veth1")
+	if err = cmd.Run(); err != nil {
+		t.Fatalf("error configuring source end of veth: %v", err)
+	}
+	cmd = exec.Command("ip", "netns", "exec", "doublezero-peer", "ip", "link", "set", "dev", "veth1", "up")
+	if err = cmd.Run(); err != nil {
+		t.Fatalf("error bringing up source end of veth: %v", err)
+	}
 
-	// 	if err = nl.LinkAdd(&nl.Dummy{
-	// 		LinkAttrs: nl.LinkAttrs{
-	// 			Name: "dummy123",
-	// 		},
-	// 	}); err != nil {
-	// 		t.Logf("error adding dummy: %v", err)
-	// 	}
-	// 	nl.LinkSetUp(&nl.Dummy{
-	// 		LinkAttrs: nl.LinkAttrs{
-	// 			Name: "dummy123",
-	// 		},
-	// 	})
-	// 	// netns.Set(origin)
-	// }()
+	cmd = exec.Command("ip", "netns", "exec", "doublezero-peer", "ip", "tunnel", "add", "doublezero0", "mode", "gre", "local", "10.0.0.1", "remote", "10.0.0.0", "ttl", "64")
+	if err = cmd.Run(); err != nil {
+		t.Fatalf("error creating tunnel: %v", err)
+	}
+
+	cmd = exec.Command("ip", "netns", "exec", "doublezero-peer", "ip", "addr", "add", "169.254.0.0/31", "dev", "doublezero0")
+	if err = cmd.Run(); err != nil {
+		t.Fatalf("error configuring tunnel: %v", err)
+	}
+
+	cmd = exec.Command("ip", "netns", "exec", "doublezero-peer", "ip", "link", "set", "dev", "doublezero0", "up")
+	if err = cmd.Run(); err != nil {
+		t.Fatalf("error bringing up tunnel: %v", err)
+	}
+
+	cleanup := func() {
+		cmd = exec.Command("ip", "link", "del", "veth0")
+		if err = cmd.Run(); err != nil {
+			t.Fatalf("error deleting veth: %v", err)
+		}
+		cmd = exec.Command("ip", "netns", "del", "doublezero-peer")
+		if err = cmd.Run(); err != nil {
+			t.Fatalf("error deleting network namespace: %v", err)
+		}
+	}
+	defer cleanup()
+
+	// TODO: start corebgp instance in network namespace
+	srv, _ := corebgp.NewServer(netip.MustParseAddr("2.2.2.2"))
+	go func() {
+		rt.LockOSThread()
+		defer rt.UnlockOSThread()
+
+		peerNS, err := netns.GetFromName("doublezero-peer")
+		if err != nil {
+			t.Logf("error creating namespace: %v", err)
+			return
+		}
+		if err = netns.Set(peerNS); err != nil {
+			t.Logf("error setting namespace: %v", err)
+			return
+		}
+
+		// start bgp instance in network namespace
+		d := &dummyPlugin{}
+		err = srv.AddPeer(corebgp.PeerConfig{
+			RemoteAddress: netip.MustParseAddr("169.254.0.1"),
+			LocalAS:       65342,
+			RemoteAS:      65000,
+		}, d, corebgp.WithPassive())
+		if err != nil {
+			log.Fatalf("error creating dummy bgp server: %v", err)
+		}
+		dlc := &net.ListenConfig{}
+		dlis, err := dlc.Listen(context.Background(), "tcp", ":179")
+		if err != nil {
+			log.Fatalf("error constructing listener: %v", err)
+		}
+
+		if err := srv.Serve([]net.Listener{dlis}); err != nil {
+			t.Logf("error on remote peer bgp server: %v", err)
+		}
+		t.Log("here")
+	}()
 
 	tests := []struct {
 		name                string
 		userType            netlink.UserType
-		provisioningRequest map[string]string
+		provisioningRequest map[string]any
 		goldenStateFile     string
 	}{
 		{
 			name:     "test_ibrl",
 			userType: netlink.UserTypeIBRL,
-			provisioningRequest: map[string]string{
+			provisioningRequest: map[string]any{
 
-				"tunnel_src":    "1.1.1.1",
-				"tunnel_dst":    "2.2.2.2",
-				"tunnel_net":    "169.254.0.0/31",
-				"doublezero_ip": "1.1.1.1",
-				"user_type":     "IBRL",
+				"tunnel_src":     "10.0.0.0",
+				"tunnel_dst":     "10.0.0.1",
+				"tunnel_net":     "169.254.0.0/31",
+				"doublezero_ip":  "1.1.1.1",
+				"user_type":      "IBRL",
+				"bgp_local_asn":  65000,
+				"bgp_remote_asn": 65342,
 			},
 			goldenStateFile: "./fixtures/doublezerod.ibrl.json",
 		},
 		{
 			name:     "test_ibrl_with_allocated_ip",
 			userType: netlink.UserTypeIBRLWithAllocatedIP,
-			provisioningRequest: map[string]string{
+			provisioningRequest: map[string]any{
 
-				"tunnel_src":    "1.1.1.1",
-				"tunnel_dst":    "2.2.2.2",
-				"tunnel_net":    "169.254.0.0/31",
-				"doublezero_ip": "3.3.3.3",
-				"user_type":     "IBRLWithAllocatedIP",
+				"tunnel_src":     "10.0.0.0",
+				"tunnel_dst":     "10.0.0.1",
+				"tunnel_net":     "169.254.0.0/31",
+				"doublezero_ip":  "3.3.3.3",
+				"user_type":      "IBRLWithAllocatedIP",
+				"bgp_local_asn":  65000,
+				"bgp_remote_asn": 65342,
 			},
 			goldenStateFile: "./fixtures/doublezerod.ibrl.with.allocated.ip.json",
 		},
@@ -187,6 +299,18 @@ func TestEndToEnd_IBRL(t *testing.T) {
 				}
 				if diff := cmp.Diff(string(want), string(got)); diff != "" {
 					t.Fatalf("State mismatch (-want +got): %s\n", diff)
+				}
+			})
+
+			t.Run("verify_routes_flushed_on_session_down_event", func(t *testing.T) {
+				// TODO: in IBRL mode, delete peer to bring down session and verify route 4.4.4.4/32 is
+				// successfully flushed from the kernel routing table and re-add
+				if test.userType == netlink.UserTypeIBRLWithAllocatedIP {
+					t.Skip("we don't flush routes in IBRLWithAllocatedIP mode")
+				}
+				t.Logf("peers: %+v\n", srv.ListPeers())
+				if err := srv.DeletePeer(netip.AddrFrom4([4]byte{169, 254, 0, 1})); err != nil {
+					t.Fatalf("error deleting peer: %v", err)
 				}
 			})
 

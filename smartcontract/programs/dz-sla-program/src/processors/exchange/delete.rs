@@ -1,9 +1,10 @@
 use core::fmt;
 
 use crate::error::DoubleZeroError;
+use crate::globalstate::globalstate_get;
 use crate::helper::*;
-use crate::pda::*;
 use crate::state::exchange::Exchange;
+use crate::state::exchange::ExchangeStatus;
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
 use solana_program::msg;
@@ -16,6 +17,7 @@ use solana_program::{
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct ExchangeDeleteArgs {
     pub index: u128,
+    pub bump_seed: u8,
 }
 
 impl fmt::Debug for ExchangeDeleteArgs {
@@ -50,14 +52,8 @@ pub fn process_delete_exchange(
         solana_program::system_program::id(),
         "Invalid System Program Account Owner"
     );
-    // Check if the account is writable
     assert!(pda_account.is_writable, "PDA Account is not writable");
-    // get the PDA pubkey and bump seed for the account location & check if it matches the account
-    let (expected_pda_account, _bump_seed) = get_exchange_pda(program_id, value.index);
-    assert_eq!(
-        pda_account.key, &expected_pda_account,
-        "Invalid Exchange PubKey"
-    );
+
     // Parse the global state account & check if the payer is in the allowlist
     let globalstate = globalstate_get(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
@@ -65,10 +61,13 @@ pub fn process_delete_exchange(
     }
 
     let exchange: Exchange = Exchange::from(&pda_account.try_borrow_data().unwrap()[..]);
-    if exchange.owner != *payer_account.key {
-        #[cfg(test)]
-        msg!("{:?}", exchange);
-        return Err(solana_program::program_error::ProgramError::IncorrectProgramId);
+    assert_eq!(exchange.index, value.index, "Invalid PDA Account Index");
+    assert_eq!(
+        exchange.bump_seed, value.bump_seed,
+        "Invalid PDA Account Bump Seed"
+    );
+    if exchange.status != ExchangeStatus::Activated {
+        return Err(DoubleZeroError::InvalidStatus.into());
     }
 
     account_close(pda_account, payer_account)?;

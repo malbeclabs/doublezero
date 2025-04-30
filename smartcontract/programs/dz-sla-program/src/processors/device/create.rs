@@ -10,7 +10,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-use crate::pda::*;
+use crate::{globalstate::{globalstate_get_next, globalstate_write}, pda::*};
 use crate::types::*;
 use crate::{
     error::DoubleZeroError,
@@ -21,6 +21,7 @@ use crate::{
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct DeviceCreateArgs {
     pub index: u128,
+    pub bump_seed: u8,
     pub code: String,
     pub location_pk: Pubkey,
     pub exchange_pk: Pubkey,
@@ -77,6 +78,7 @@ pub fn process_create_device(
         pda_account.key, &expected_pda_account,
         "Invalid Device PubKey"
     );
+    assert!(bump_seed == value.bump_seed, "Invalid Device Bump Seed");
 
     // Check account Types
     if location_account.data_is_empty()
@@ -96,10 +98,12 @@ pub fn process_create_device(
         return Err(ProgramError::IncorrectProgramId);
     }
 
+
     let device: Device = Device {
         account_type: AccountType::Device,
         owner: *payer_account.key,
         index: globalstate.account_index,
+        bump_seed,
         code: value.code.clone(),
         location_pk: value.location_pk,
         exchange_pk: value.exchange_pk,
@@ -115,8 +119,8 @@ pub fn process_create_device(
         payer_account,
         system_program,
         program_id,
-        bump_seed,
     )?;
+
     globalstate_write(globalstate_account, &globalstate)?;
 
     Ok(())

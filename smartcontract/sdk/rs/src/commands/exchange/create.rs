@@ -20,12 +20,13 @@ impl CreateExchangeCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, _) =
+        let (pda_pubkey, bump_seed) =
             get_exchange_pda(&client.get_program_id(), globalstate.account_index + 1);
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
                     index: globalstate.account_index + 1,
+                    bump_seed,
                     code: self.code.clone(),
                     name: self.name.clone(),
                     lat: self.lat,
@@ -43,11 +44,11 @@ impl CreateExchangeCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::{tests::tests::create_test_client, DoubleZeroClient};
     use crate::commands::exchange::create::CreateExchangeCommand;
+    use crate::{tests::tests::create_test_client, DoubleZeroClient};
     use doublezero_sla_program::{
         instructions::DoubleZeroInstruction,
-        pda::{get_globalstate_pda, get_exchange_pda},
+        pda::{get_exchange_pda, get_globalstate_pda},
         processors::exchange::create::ExchangeCreateArgs,
     };
     use mockall::predicate;
@@ -58,7 +59,7 @@ mod tests {
         let mut client = create_test_client();
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, _) = get_exchange_pda(&client.get_program_id(), 1);
+        let (pda_pubkey, bump_seed) = get_exchange_pda(&client.get_program_id(), 1);
         let payer = client.get_payer();
 
         client
@@ -66,6 +67,7 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
                     index: 1,
+                    bump_seed,
                     code: "test".to_string(),
                     name: "Test Exchange".to_string(),
                     lat: 0.0,

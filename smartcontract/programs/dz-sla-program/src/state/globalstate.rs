@@ -8,6 +8,7 @@ use solana_program::pubkey::Pubkey;
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 pub struct GlobalState {
     pub account_type: AccountType,         // 1
+    pub bump_seed: u8,                     // 1
     pub account_index: u128,               // 16
     pub foundation_allowlist: Vec<Pubkey>, // 4 + 32 * len
     pub device_allowlist: Vec<Pubkey>,     // 4 + 32 * len
@@ -26,7 +27,8 @@ impl fmt::Display for GlobalState {
 
 impl GlobalState {
     pub fn size(&self) -> usize {
-        1 + 16
+        1 + 1
+            + 16
             + 4
             + (self.foundation_allowlist.len() * 32)
             + 4
@@ -42,6 +44,7 @@ impl From<&[u8]> for GlobalState {
 
         Self {
             account_type: parser.read_enum(),
+            bump_seed: parser.read_u8(),
             account_index: parser.read_u128(),
             foundation_allowlist: parser.read_pubkey_vec(),
             device_allowlist: parser.read_pubkey_vec(),
@@ -58,6 +61,7 @@ mod tests {
     fn test_state_location_serialization() {
         let val = GlobalState {
             account_type: AccountType::GlobalState,
+            bump_seed: 1,
             account_index: 123,
             foundation_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             device_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],

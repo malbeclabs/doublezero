@@ -1,6 +1,8 @@
 use core::fmt;
 
 use crate::error::DoubleZeroError;
+use crate::globalstate::globalstate_get_next;
+use crate::globalstate::globalstate_write;
 use crate::helper::*;
 use crate::pda::*;
 use crate::state::{accounttype::AccountType, user::*};
@@ -19,6 +21,7 @@ use solana_program::{
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct UserCreateArgs {
     pub index: u128,
+    pub bump_seed: u8,
     pub user_type: UserType,
     pub device_pk: Pubkey,
     pub cyoa_type: UserCYOA,
@@ -75,6 +78,7 @@ pub fn process_create_user(
         pda_account.key, &expected_pda_account,
         "Invalid User PubKey"
     );
+    assert_eq!(bump_seed, value.bump_seed, "Invalid User Bump Seed");
 
     // Check account Types
     if device_account.data_is_empty()
@@ -89,6 +93,7 @@ pub fn process_create_user(
     let user: User = User {
         account_type: AccountType::User,
         owner: *payer_account.key,
+        bump_seed,
         index: globalstate.account_index,
         tenant_pk: Pubkey::default(),
         user_type: value.user_type,
@@ -107,7 +112,6 @@ pub fn process_create_user(
         payer_account,
         system_program,
         program_id,
-        bump_seed,
     )?;
     globalstate_write(globalstate_account, &globalstate)?;
 

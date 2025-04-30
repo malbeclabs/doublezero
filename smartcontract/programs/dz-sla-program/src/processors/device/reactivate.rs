@@ -1,6 +1,5 @@
 use core::fmt;
 
-use crate::pda::*;
 use crate::{helper::*, state::device::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
@@ -15,6 +14,7 @@ use solana_program::{
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct DeviceReactivateArgs {
     pub index: u128,
+    pub bump_seed: u8,
 }
 
 impl fmt::Debug for DeviceReactivateArgs {
@@ -37,17 +37,13 @@ pub fn process_reactivate_device(
     #[cfg(test)]
     msg!("process_reactivate_device({:?})", value);
 
-    let (expected_pda_account, bump_seed) = get_device_pda(program_id, value.index);
-    assert_eq!(
-        pda_account.key, &expected_pda_account,
-        "Invalid Device PubKey"
-    );
-
     if pda_account.owner != program_id {
         return Err(ProgramError::IncorrectProgramId);
     }
 
     let mut device: Device = Device::from(&pda_account.try_borrow_data().unwrap()[..]);
+    assert_eq!(device.index, value.index, "Invalid PDA Account Index");
+    assert_eq!(device.bump_seed, value.bump_seed, "Invalid PDA Account Bump Seed");
     if device.owner != *payer_account.key {
         return Err(solana_program::program_error::ProgramError::Custom(0));
     }
@@ -59,7 +55,6 @@ pub fn process_reactivate_device(
         &device,
         payer_account,
         system_program,
-        bump_seed,
     );
 
     #[cfg(test)]

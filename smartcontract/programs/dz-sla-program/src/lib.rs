@@ -1,5 +1,6 @@
 #![allow(unexpected_cfgs)]
 
+mod globalstate;
 mod bytereader;
 mod entrypoint;
 mod helper;

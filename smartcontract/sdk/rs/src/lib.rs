@@ -44,6 +44,7 @@ pub use crate::doublezeroclient::DoubleZeroClient;
 pub use crate::doublezeroclient::MockDoubleZeroClient;
 pub use crate::errors::*;
 
+pub use crate::commands::globalconfig::get::GetGlobalConfigCommand;
 pub use crate::commands::globalstate::get::GetGlobalStateCommand;
 pub use crate::commands::location::create::CreateLocationCommand;
 pub use crate::commands::location::get::GetLocationCommand;

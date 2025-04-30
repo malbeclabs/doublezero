@@ -45,6 +45,7 @@ mod tests {
         let location1 = Location {
             account_type: AccountType::Location,
             index: 1,
+            bump_seed: 2,
             code: "location1_code".to_string(),
             name: "location1_name".to_string(),
             country: "US".to_string(),
@@ -59,6 +60,7 @@ mod tests {
         let location2 = Location {
             account_type: AccountType::Location,
             index: 1,
+            bump_seed: 2,
             code: "location2_code".to_string(),
             name: "location2_name".to_string(),
             country: "US".to_string(),

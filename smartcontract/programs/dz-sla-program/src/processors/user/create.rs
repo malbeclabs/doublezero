@@ -1,6 +1,8 @@
 use core::fmt;
 
 use crate::error::DoubleZeroError;
+use crate::globalstate::globalstate_get_next;
+use crate::globalstate::globalstate_write;
 use crate::helper::*;
 use crate::pda::*;
 use crate::state::{accounttype::AccountType, user::*};

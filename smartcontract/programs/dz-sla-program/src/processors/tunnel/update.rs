@@ -1,7 +1,8 @@
-use core::fmt;
 use crate::error::DoubleZeroError;
+use crate::globalstate::globalstate_get;
 use crate::{helper::*, state::tunnel::*};
 use borsh::{BorshDeserialize, BorshSerialize};
+use core::fmt;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -59,7 +60,7 @@ pub fn process_update_tunnel(
     );
     // Check if the account is writable
     assert!(pda_account.is_writable, "PDA Account is not writable");
-    
+
     let globalstate = globalstate_get(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());

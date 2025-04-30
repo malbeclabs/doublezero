@@ -1,4 +1,5 @@
 use crate::error::DoubleZeroError;
+use crate::globalstate::globalstate_get;
 use crate::helper::*;
 use crate::state::user::*;
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -53,7 +54,7 @@ pub fn process_deactivate_user(
     // Check if the account is writable
     assert!(pda_account.is_writable, "PDA Account is not writable");
 
-    let globalstate = globalstate_get_next(globalstate_account)?;
+    let globalstate = globalstate_get(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }

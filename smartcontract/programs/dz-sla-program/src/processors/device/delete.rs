@@ -1,6 +1,7 @@
 use core::fmt;
 
 use crate::error::DoubleZeroError;
+use crate::globalstate::globalstate_get;
 use crate::{helper::*, state::device::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
@@ -53,9 +54,12 @@ pub fn process_delete_device(
 
     let mut device: Device = Device::from(&pda_account.try_borrow_data().unwrap()[..]);
     assert_eq!(device.index, value.index, "Invalid PDA Account Index");
-    assert_eq!(device.bump_seed, value.bump_seed, "Invalid PDA Account Bump Seed");
+    assert_eq!(
+        device.bump_seed, value.bump_seed,
+        "Invalid PDA Account Bump Seed"
+    );
 
-    let globalstate = globalstate_get_next(globalstate_account)?;
+    let globalstate = globalstate_get(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key)
         && device.owner != *payer_account.key
     {
@@ -64,12 +68,7 @@ pub fn process_delete_device(
 
     device.status = DeviceStatus::Deleting;
 
-    account_write(
-        pda_account,
-        &device,
-        payer_account,
-        system_program,
-    );
+    account_write(pda_account, &device, payer_account, system_program);
 
     #[cfg(test)]
     msg!("Deleting: {:?}", device);

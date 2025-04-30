@@ -1,5 +1,6 @@
 use core::fmt;
 
+use crate::globalstate::globalstate_get_next;
 use crate::{error::DoubleZeroError, helper::*, state::device::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
@@ -53,7 +54,10 @@ pub fn process_deactivate_device(
 
     let device: Device = Device::from(&pda_account.try_borrow_data().unwrap()[..]);
     assert_eq!(device.index, value.index, "Invalid PDA Account Index");
-    assert_eq!(device.bump_seed, value.bump_seed, "Invalid PDA Account Bump Seed");
+    assert_eq!(
+        device.bump_seed, value.bump_seed,
+        "Invalid PDA Account Bump Seed"
+    );
 
     if device.status != DeviceStatus::Deleting {
         #[cfg(test)]

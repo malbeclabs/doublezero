@@ -10,7 +10,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-use crate::pda::*;
+use crate::{globalstate::{globalstate_get_next, globalstate_write}, pda::*};
 use crate::types::*;
 use crate::{
     error::DoubleZeroError,
@@ -98,6 +98,7 @@ pub fn process_create_device(
         return Err(ProgramError::IncorrectProgramId);
     }
 
+
     let device: Device = Device {
         account_type: AccountType::Device,
         owner: *payer_account.key,
@@ -119,6 +120,7 @@ pub fn process_create_device(
         system_program,
         program_id,
     )?;
+
     globalstate_write(globalstate_account, &globalstate)?;
 
     Ok(())

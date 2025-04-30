@@ -1,7 +1,7 @@
 use core::fmt;
 
 use crate::error::DoubleZeroError;
-use crate::helper::{globalstate_get, globalstate_write2};
+use crate::globalstate::{globalstate_get, globalstate_write_with_realloc};
 use crate::pda::*;
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
@@ -65,7 +65,7 @@ pub fn process_add_user_allowlist(
     }
     globalstate.user_allowlist.push(value.pubkey);
 
-    globalstate_write2(
+    globalstate_write_with_realloc(
         pda_account,
         &globalstate,
         payer_account,

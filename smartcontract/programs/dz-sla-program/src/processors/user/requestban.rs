@@ -1,4 +1,5 @@
 use crate::error::DoubleZeroError;
+use crate::globalstate::globalstate_get;
 use crate::helper::*;
 use crate::state::user::*;
 use borsh::{BorshDeserialize, BorshSerialize};

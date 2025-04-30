@@ -1,5 +1,6 @@
 use core::fmt;
 
+use crate::globalstate::{globalstate_get_next, globalstate_write};
 use crate::pda::*;
 use crate::{
     error::DoubleZeroError,

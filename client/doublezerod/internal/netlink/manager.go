@@ -31,6 +31,7 @@ type BgpReaderWriter interface {
 	DeletePeer(net.IP) error
 	AddRoute() <-chan bgp.NLRI
 	WithdrawRoute() <-chan bgp.NLRI
+	FlushRoutes() <-chan struct{}
 	GetPeerStatus(net.IP) bgp.Session
 }
 
@@ -463,6 +464,8 @@ func (n *NetlinkManager) Serve(ctx context.Context) error {
 				if err := n.RemoveRoute(route); err != nil {
 					slog.Error("routes: error removing route", "route", route.Dst.String(), "table", RouteTableSpecific, "error", err)
 				}
+			case <-n.bgp.FlushRoutes():
+				slog.Info("routes: flushing routes")
 			}
 		}
 	}()

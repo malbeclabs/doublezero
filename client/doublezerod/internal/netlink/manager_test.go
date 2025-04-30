@@ -23,6 +23,7 @@ func (m *MockBgpServer) DeletePeer(ip net.IP) error {
 }
 func (m *MockBgpServer) AddRoute() <-chan bgp.NLRI        { return nil }
 func (m *MockBgpServer) WithdrawRoute() <-chan bgp.NLRI   { return nil }
+func (m *MockBgpServer) FlushRoutes() <-chan struct{}     { return nil }
 func (m *MockBgpServer) GetPeerStatus(net.IP) bgp.Session { return bgp.Session{} }
 
 type MockNetlink struct {

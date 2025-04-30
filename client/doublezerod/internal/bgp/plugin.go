@@ -14,13 +14,21 @@ type Plugin struct {
 	AdvertisedNLRI []NLRI
 	WriteChan      chan NLRI
 	RemoveChan     chan NLRI
+	FlushChan      chan struct{}
 	PeerStatusChan chan SessionEvent
 	// kernel routing table to target for writing/removing
 	RouteTable int
 }
 
-func NewBgpPlugin(writeChan, removeChan chan NLRI, advertised []NLRI, routeTable int, peerStatus chan SessionEvent) *Plugin {
-	return &Plugin{WriteChan: writeChan, RemoveChan: removeChan, AdvertisedNLRI: advertised, RouteTable: routeTable, PeerStatusChan: peerStatus}
+func NewBgpPlugin(writeChan, removeChan chan NLRI, flushChan chan struct{}, advertised []NLRI, routeTable int, peerStatus chan SessionEvent) *Plugin {
+	return &Plugin{
+		WriteChan:      writeChan,
+		RemoveChan:     removeChan,
+		FlushChan:      flushChan,
+		AdvertisedNLRI: advertised,
+		RouteTable:     routeTable,
+		PeerStatusChan: peerStatus,
+	}
 }
 
 func (p *Plugin) GetCapabilities(peer corebgp.PeerConfig) []corebgp.Capability {
@@ -67,6 +75,9 @@ func (p *Plugin) OnClose(peer corebgp.PeerConfig) {
 		PeerAddr: net.ParseIP(peer.RemoteAddress.String()),
 		Session:  Session{SessionStatus: SessionStatusDown, LastSessionUpdate: time.Now()},
 	}
+	slog.Info("sending peer flush message")
+	p.FlushChan <- struct{}{}
+	slog.Info("send flush")
 }
 
 func (p *Plugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.Notification {

@@ -101,7 +101,7 @@ require (
 	github.com/tklauser/numcpus v0.10.0 // indirect
 	github.com/twmb/franz-go/pkg/kmsg v1.9.0 // indirect
 	github.com/vaughan0/go-ini v0.0.0-20130923145212-a98ad7ee00ec // indirect
-	github.com/vishvananda/netns v0.0.4 // indirect
+	github.com/vishvananda/netns v0.0.5 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.mongodb.org/mongo-driver v1.12.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect

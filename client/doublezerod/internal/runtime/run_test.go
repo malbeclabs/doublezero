@@ -36,6 +36,43 @@ func TestEndToEnd_IBRL(t *testing.T) {
 	if err := os.Mkdir(path, 0766); err != nil {
 		t.Fatalf("error creating state dir: %v", err)
 	}
+
+	// rt.LockOSThread()
+	// defer rt.UnlockOSThread()
+
+	// TODO: start gobgp instance in network namespace
+	// go func() {
+	// 	rt.LockOSThread()
+	// 	defer rt.UnlockOSThread()
+
+	// 	// origin, err := netns.Get()
+	// 	// if err != nil {
+	// 	// 	t.Logf("error getting namespace: %v", err)
+	// 	// 	return
+	// 	// }
+
+	// 	ns, err := netns.NewNamed("doublezero")
+	// 	if err != nil {
+	// 		t.Logf("error creating namespace: %v", err)
+	// 		return
+	// 	}
+	// 	defer ns.Close()
+
+	// 	if err = nl.LinkAdd(&nl.Dummy{
+	// 		LinkAttrs: nl.LinkAttrs{
+	// 			Name: "dummy123",
+	// 		},
+	// 	}); err != nil {
+	// 		t.Logf("error adding dummy: %v", err)
+	// 	}
+	// 	nl.LinkSetUp(&nl.Dummy{
+	// 		LinkAttrs: nl.LinkAttrs{
+	// 			Name: "dummy123",
+	// 		},
+	// 	})
+	// 	// netns.Set(origin)
+	// }()
+
 	tests := []struct {
 		name                string
 		userType            netlink.UserType

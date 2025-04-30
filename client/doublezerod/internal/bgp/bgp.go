@@ -75,6 +75,7 @@ type BgpServer struct {
 	server          *corebgp.Server
 	addRouteChan    chan NLRI
 	deleteRouteChan chan NLRI
+	flushRouteChan  chan struct{}
 	peerStatusChan  chan SessionEvent
 	peerStatus      map[string]Session
 }
@@ -89,6 +90,7 @@ func NewBgpServer(routerID net.IP) (*BgpServer, error) {
 		server:          srv,
 		addRouteChan:    make(chan NLRI),
 		deleteRouteChan: make(chan NLRI),
+		flushRouteChan:  make(chan struct{}),
 		peerStatusChan:  make(chan SessionEvent),
 		peerStatus:      make(map[string]Session),
 	}, nil
@@ -110,7 +112,7 @@ func (b *BgpServer) AddPeer(p *PeerConfig, advertised []NLRI) error {
 	if p.Port != 0 {
 		peerOpts = append(peerOpts, corebgp.WithPort(p.Port))
 	}
-	plugin := NewBgpPlugin(b.addRouteChan, b.deleteRouteChan, advertised, p.RouteTable, b.peerStatusChan)
+	plugin := NewBgpPlugin(b.addRouteChan, b.deleteRouteChan, b.flushRouteChan, advertised, p.RouteTable, b.peerStatusChan)
 	err := b.server.AddPeer(corebgp.PeerConfig{
 		RemoteAddress: netip.MustParseAddr(p.RemoteAddress.String()),
 		LocalAS:       p.LocalAs,
@@ -139,6 +141,10 @@ func (b *BgpServer) AddRoute() <-chan NLRI {
 
 func (b *BgpServer) WithdrawRoute() <-chan NLRI {
 	return b.deleteRouteChan
+}
+
+func (b *BgpServer) FlushRoutes() <-chan struct{} {
+	return b.flushRouteChan
 }
 
 func (b *BgpServer) GetStatusEvent() <-chan SessionEvent {

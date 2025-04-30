@@ -20,6 +20,7 @@ import (
 
 	"github.com/aristanetworks/goeapi"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	nl "github.com/vishvananda/netlink"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -655,7 +656,16 @@ func diffCliMapToGoldenMapKV(want []byte, got []byte) string {
 	gotMap := mapFromKV(got)
 	wantMap := mapFromKV(want)
 
-	return cmp.Diff(gotMap, wantMap)
+	ignoreKeys := []string{"Last Session Update"}
+
+	return cmp.Diff(gotMap, wantMap, cmpopts.IgnoreMapEntries(func(key string, _ string) bool {
+		for _, k := range ignoreKeys {
+			if key == k {
+				return true
+			}
+		}
+		return false
+	}))
 }
 
 // example table

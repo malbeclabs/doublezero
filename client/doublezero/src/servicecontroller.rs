@@ -71,7 +71,7 @@ pub struct DoubleZeroStatus {
     pub session_status: String,
     // since this is a dynamic value, tests will fail becasue the fixtures are static
     // will be fixed in https://github.com/malbeclabs/doublezero/issues/220
-    pub last_session_update: Option<String>,
+    pub last_session_update: Option<i64>,
 }
 
 #[derive(Deserialize, Debug)]

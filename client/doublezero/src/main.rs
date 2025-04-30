@@ -25,7 +25,7 @@ include!(concat!(env!("OUT_DIR"), "/version.rs"));
 #[command(name = "DoubleZero")]
 #[command(version = APP_VERSION)]
 #[command(long_version = APP_LONG_VERSION)]
-#[command(about = "Double Zero client tool", long_about = None)]
+#[command(about = "DoubleZero client tool", long_about = None)]
 struct App {
     #[command(subcommand)]
     command: Command,

@@ -7,7 +7,6 @@ import (
 	"log"
 	"net"
 	"net/netip"
-	"time"
 
 	"github.com/jwhited/corebgp"
 )
@@ -35,7 +34,7 @@ const (
 func (s *Session) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		SessionStatus     SessionStatus `json:"session_status"`
-		LastSessionUpdate time.Time     `json:"last_session_update"`
+		LastSessionUpdate int64         `json:"last_session_update"`
 	}{
 		SessionStatus:     s.SessionStatus,
 		LastSessionUpdate: s.LastSessionUpdate,
@@ -44,7 +43,7 @@ func (s *Session) MarshalJSON() ([]byte, error) {
 
 type Session struct {
 	SessionStatus     SessionStatus `json:"session_status"`
-	LastSessionUpdate time.Time     `json:"last_session_update"`
+	LastSessionUpdate int64         `json:"last_session_update"`
 }
 
 func (s SessionStatus) String() string {

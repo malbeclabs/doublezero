@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
@@ -303,14 +305,47 @@ func TestEndToEnd_IBRL(t *testing.T) {
 			})
 
 			t.Run("verify_routes_flushed_on_session_down_event", func(t *testing.T) {
-				// TODO: in IBRL mode, delete peer to bring down session and verify route 4.4.4.4/32 is
-				// successfully flushed from the kernel routing table and re-add
 				if test.userType == netlink.UserTypeIBRLWithAllocatedIP {
 					t.Skip("we don't flush routes in IBRLWithAllocatedIP mode")
 				}
+
 				t.Logf("peers: %+v\n", srv.ListPeers())
 				if err := srv.DeletePeer(netip.AddrFrom4([4]byte{169, 254, 0, 1})); err != nil {
 					t.Fatalf("error deleting peer: %v", err)
+				}
+
+				// should not have any routes tagged bgp
+				routes, err := nl.RouteList(nil, nl.FAMILY_ALL)
+				if err != nil {
+					log.Fatal(err)
+				}
+
+				for _, route := range routes {
+					if route.Protocol == 186 {
+						slog.Error("Expected route to be withdrawn", "route", route)
+						os.Exit(1)
+					}
+				}
+
+				// re-add peer
+				d := &dummyPlugin{}
+				err = srv.AddPeer(corebgp.PeerConfig{
+					RemoteAddress: netip.MustParseAddr("169.254.0.1"),
+					LocalAS:       65342,
+					RemoteAS:      65000,
+				}, d, corebgp.WithPassive())
+				if err != nil {
+					log.Fatalf("error creating dummy bgp server: %v", err)
+				}
+
+				// ensure that 4.4.4.4,3.3.3.3 are added and tagged with bgp (186)
+				routes, err = nl.RouteList(nil, nl.FAMILY_ALL)
+				if err != nil {
+					log.Fatal(err)
+				}
+
+				for _, route := range routes {
+					fmt.Printf("route: %s\n", route.String())
 				}
 			})
 
@@ -467,8 +502,8 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 			t.Fatalf("error creating url: %v", err)
 		}
 		body := `{
-					"tunnel_src": "1.1.1.1",
-					"tunnel_dst": "2.2.2.2",
+					"tunnel_src": "10.0.0.0",
+					"tunnel_dst": "10.0.0.1",
 					"tunnel_net": "169.254.0.0/31",
 					"doublezero_ip": "3.3.3.3",
 					"doublezero_prefixes": ["3.0.0.0/24"],

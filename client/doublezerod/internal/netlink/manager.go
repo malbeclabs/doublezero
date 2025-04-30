@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
+	nl "github.com/vishvananda/netlink"
 )
 
 type Netlinker interface {
@@ -446,7 +447,7 @@ func (n *NetlinkManager) Serve(ctx context.Context) error {
 					slog.Error("routes: error parsing nlri from update", "error", err)
 				}
 
-				route := &Route{Src: n.DoubleZeroAddr, Dst: dzNet, Table: p.RouteTable, NextHop: net.ParseIP(p.NextHop)}
+				route := &Route{Src: n.DoubleZeroAddr, Dst: dzNet, Table: p.RouteTable, NextHop: net.ParseIP(p.NextHop), Protocol: 186}
 				slog.Info("routes: writing route", "table", p.RouteTable, "dz route", route.String())
 				if err := n.WriteRoute(route); err != nil {
 					slog.Error("routes: error writing route", "table", p.RouteTable, "error", err)
@@ -465,7 +466,20 @@ func (n *NetlinkManager) Serve(ctx context.Context) error {
 					slog.Error("routes: error removing route", "route", route.Dst.String(), "table", RouteTableSpecific, "error", err)
 				}
 			case <-n.bgp.FlushRoutes():
-				slog.Info("routes: flushing routes")
+				targetProtocol := int(186) // bgp
+				// can we know the link? if so we can batch delete
+				routes, err := nl.RouteList(nil, nl.FAMILY_ALL)
+				if err != nil {
+					slog.Error("Failed to get routes")
+				}
+				for _, route := range routes {
+					if route.Protocol == nl.RouteProtocol(targetProtocol) {
+						if err := nl.RouteDel(&route); err != nil {
+							slog.Error("Error deleting route", "route", route)
+							continue
+						}
+					}
+				}
 			}
 		}
 	}()

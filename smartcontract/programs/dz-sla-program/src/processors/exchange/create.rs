@@ -19,6 +19,7 @@ use solana_program::{
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct ExchangeCreateArgs {
     pub index: u128,
+    pub bump_seed: u8,
     pub code: String,
     pub name: String,
     pub lat: f64,
@@ -64,11 +65,12 @@ pub fn process_create_exchange(
     // Check if the account is writable
     assert!(pda_account.is_writable, "PDA Account is not writable");
     // get the PDA pubkey and bump seed for the account location & check if it matches the account
-    let (expected_pda_account, _bump_seed) = get_exchange_pda(program_id, value.index);
+    let (expected_pda_account, bump_seed) = get_exchange_pda(program_id, value.index);
     assert_eq!(
         pda_account.key, &expected_pda_account,
-        "Invalid Exchange PubKey"
+        "Invalid Location PubKey"
     );
+    assert_eq!(bump_seed, value.bump_seed, "Invalid Location Bump Seed");
     // Parse the global state account & check if the payer is in the allowlist
     let globalstate = globalstate_get_next(globalstate_account)?;
     assert_eq!(
@@ -79,6 +81,7 @@ pub fn process_create_exchange(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
+    // Check if the account is already initialized
     if !pda_account.data.borrow().is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);
     }
@@ -96,6 +99,7 @@ pub fn process_create_exchange(
         account_type: AccountType::Exchange,
         owner: *payer_account.key,
         index: globalstate.account_index,
+        bump_seed,
         code: value.code.clone(),
         name: value.name.clone(),
         lat: value.lat,
@@ -110,7 +114,6 @@ pub fn process_create_exchange(
         payer_account,
         system_program,
         program_id,
-        bump_seed,
     )?;
     globalstate_write(globalstate_account, &globalstate)?;
 

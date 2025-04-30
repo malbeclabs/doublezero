@@ -29,6 +29,7 @@ type Uint128 struct {
 type Config struct {
 	AccountType       AccountType
 	Owner             [32]byte
+	Bump_seed         uint8
 	Local_asn         uint32
 	Remote_asn        uint32
 	TunnelTunnelBlock [5]uint8
@@ -40,6 +41,7 @@ type Location struct {
 	AccountType AccountType
 	Owner       [32]uint8
 	Index       Uint128
+	Bump_seed   uint8
 	Lat         float64
 	Lng         float64
 	LocId       uint32
@@ -63,6 +65,7 @@ type Exchange struct {
 	AccountType AccountType
 	Owner       [32]uint8
 	Index       Uint128
+	Bump_seed   uint8
 	Lat         float64
 	Lng         float64
 	LocId       uint32
@@ -85,6 +88,7 @@ type Device struct {
 	AccountType    AccountType
 	Owner          [32]uint8
 	Index          Uint128
+	Bump_seed      uint8
 	LocationPubKey [32]uint8
 	ExchangePubKey [32]uint8
 	DeviceType     uint8
@@ -114,6 +118,7 @@ type Tunnel struct {
 	AccountType AccountType
 	Owner       [32]uint8
 	Index       Uint128
+	Bump_seed   uint8
 	SideAPubKey [32]uint8
 	SideZPubKey [32]uint8
 	TunnelType  TunnelTunnelType
@@ -131,7 +136,10 @@ type Tunnel struct {
 type UserUserType uint8
 
 const (
-	UserTypeServer UserUserType = iota + 1
+	UserTypeIBRL = iota
+	UserTypeIBRLWithAllocatedIP
+	UserTypeEdgeFiltering
+	UserTypeMulticast
 )
 
 type CyoaType uint8
@@ -157,6 +165,7 @@ type User struct {
 	AccountType  AccountType
 	Owner        [32]uint8
 	Index        Uint128
+	Bump_seed    uint8
 	UserType     UserUserType
 	TenantPubKey [32]uint8
 	DevicePubKey [32]uint8

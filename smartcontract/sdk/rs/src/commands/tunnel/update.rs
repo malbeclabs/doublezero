@@ -18,10 +18,11 @@ pub struct UpdateTunnelCommand {
 
 impl UpdateTunnelCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (pda_pubkey, _) = get_tunnel_pda(&client.get_program_id(), self.index);
+        let (pda_pubkey, bump_seed) = get_tunnel_pda(&client.get_program_id(), self.index);
         client.execute_transaction(
             DoubleZeroInstruction::UpdateTunnel(TunnelUpdateArgs {
                 index: self.index,
+                bump_seed,
                 code: self.code.clone(),
                 tunnel_type: self.tunnel_type,
                 bandwidth: self.bandwidth,

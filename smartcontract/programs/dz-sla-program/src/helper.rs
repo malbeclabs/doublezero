@@ -24,7 +24,6 @@ pub fn account_create<'a, T>(
     payer_account: &AccountInfo<'a>,
     system_program: &AccountInfo<'a>,
     program_id: &Pubkey,
-    bump_seed: u8,
 ) -> ProgramResult
 where
     T: AccountTypeInfo + BorshSerialize + Debug,
@@ -53,7 +52,7 @@ where
             SEED_PREFIX,
             instance.seed(),
             &instance.index().to_le_bytes(),
-            &[bump_seed],
+            &[instance.bump_seed()],
         ]],
     )?;
 
@@ -71,7 +70,6 @@ pub fn account_write<'a, T>(
     instance: &T,
     payer_account: &AccountInfo<'a>,
     system_program: &AccountInfo<'a>,
-    bump_seed: u8,
 ) where
     T: AccountTypeInfo + BorshSerialize,
 {
@@ -116,7 +114,7 @@ pub fn account_write<'a, T>(
                     SEED_PREFIX,
                     instance.seed(),
                     &instance.index().to_le_bytes(),
-                    &[bump_seed],
+                    &[instance.bump_seed()],
                 ]],
             )
             .expect("Unable to pay rent");

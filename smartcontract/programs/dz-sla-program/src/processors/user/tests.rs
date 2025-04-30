@@ -71,7 +71,7 @@ mod user_test {
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 0);
 
-        let (location_pubkey, _) =
+        let (location_pubkey, bump_seed) =
             get_location_pda(&program_id, globalstate_account.account_index + 1);
 
         execute_transaction(
@@ -80,6 +80,7 @@ mod user_test {
             program_id,
             DoubleZeroInstruction::CreateLocation(location::create::LocationCreateArgs {
                 index: globalstate_account.account_index + 1,
+                bump_seed,
                 code: "la".to_string(),
                 name: "Los Angeles".to_string(),
                 country: "us".to_string(),
@@ -101,7 +102,7 @@ mod user_test {
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 1);
 
-        let (exchange_pubkey, _) =
+        let (exchange_pubkey, bump_seed) =
             get_exchange_pda(&program_id, globalstate_account.account_index + 1);
 
         execute_transaction(
@@ -110,6 +111,7 @@ mod user_test {
             program_id,
             DoubleZeroInstruction::CreateExchange(exchange::create::ExchangeCreateArgs {
                 index: globalstate_account.account_index + 1,
+                bump_seed,
                 code: "la".to_string(),
                 name: "Los Angeles".to_string(),
                 lat: 1.234,
@@ -133,7 +135,8 @@ mod user_test {
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 2);
 
-        let (device_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
+        let (device_pubkey, bump_seed) =
+            get_device_pda(&program_id, globalstate_account.account_index + 1);
 
         execute_transaction(
             &mut banks_client,
@@ -141,6 +144,7 @@ mod user_test {
             program_id,
             DoubleZeroInstruction::CreateDevice(device::create::DeviceCreateArgs {
                 index: globalstate_account.account_index + 1,
+                bump_seed,
                 code: "la".to_string(),
                 device_type: DeviceType::Switch,
                 location_pk: location_pubkey,
@@ -175,6 +179,7 @@ mod user_test {
             program_id,
             DoubleZeroInstruction::ActivateDevice(device::activate::DeviceActivateArgs {
                 index: device_la.index,
+                bump_seed: device_la.bump_seed,
             }),
             vec![
                 AccountMeta::new(device_pubkey, false),
@@ -198,7 +203,8 @@ mod user_test {
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 3);
 
-        let (user_pubkey, _) = get_user_pda(&program_id, globalstate_account.account_index + 1);
+        let (user_pubkey, bump_seed) =
+            get_user_pda(&program_id, globalstate_account.account_index + 1);
 
         execute_transaction(
             &mut banks_client,
@@ -206,6 +212,7 @@ mod user_test {
             program_id,
             DoubleZeroInstruction::CreateUser(UserCreateArgs {
                 index: globalstate_account.account_index + 1,
+                bump_seed,
                 client_ip: [100, 0, 0, 1],
                 user_type: UserType::IBRL,
                 device_pk: device_pubkey,
@@ -239,6 +246,7 @@ mod user_test {
             program_id,
             DoubleZeroInstruction::ActivateUser(UserActivateArgs {
                 index: user.index,
+                bump_seed: user.bump_seed,
                 tunnel_id: 500,
                 tunnel_net: ([10, 1, 2, 3], 21),
                 dz_ip: [200, 0, 0, 1],
@@ -268,7 +276,10 @@ mod user_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::SuspendUser(UserSuspendArgs { index: user.index }),
+            DoubleZeroInstruction::SuspendUser(UserSuspendArgs {
+                index: user.index,
+                bump_seed: user.bump_seed,
+            }),
             vec![AccountMeta::new(user_pubkey, false)],
             &payer,
         )
@@ -288,7 +299,10 @@ mod user_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::ReactivateUser(UserReactivateArgs { index: user.index }),
+            DoubleZeroInstruction::ReactivateUser(UserReactivateArgs {
+                index: user.index,
+                bump_seed: user.bump_seed,
+            }),
             vec![AccountMeta::new(user_pubkey, false)],
             &payer,
         )
@@ -310,6 +324,7 @@ mod user_test {
             program_id,
             DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
                 index: user.index,
+                bump_seed: user.bump_seed,
                 client_ip: Some([10, 2, 3, 4]),
                 user_type: Some(UserType::IBRL),
                 cyoa_type: Some(UserCYOA::GREOverPrivatePeering),
@@ -341,7 +356,10 @@ mod user_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::DeleteUser(UserDeleteArgs { index: user.index }),
+            DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+                index: user.index,
+                bump_seed: user.bump_seed,
+            }),
             vec![
                 AccountMeta::new(user_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
@@ -367,7 +385,10 @@ mod user_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::DeactivateUser(UserDeactivateArgs { index: user.index }),
+            DoubleZeroInstruction::DeactivateUser(UserDeactivateArgs {
+                index: user.index,
+                bump_seed: user.bump_seed,
+            }),
             vec![
                 AccountMeta::new(user_pubkey, false),
                 AccountMeta::new(user.owner, false),

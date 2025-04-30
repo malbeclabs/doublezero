@@ -1,7 +1,6 @@
 use core::fmt;
 
 use crate::globalstate::globalstate_get_next;
-use crate::pda::*;
 use crate::{error::DoubleZeroError, helper::*, state::device::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
@@ -9,13 +8,13 @@ use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
-    program_error::ProgramError,
     pubkey::Pubkey,
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct DeviceDeactivateArgs {
     pub index: u128,
+    pub bump_seed: u8,
 }
 
 impl fmt::Debug for DeviceDeactivateArgs {
@@ -40,15 +39,13 @@ pub fn process_deactivate_device(
     #[cfg(test)]
     msg!("process_deactivate_device({:?})", value);
 
-    let (expected_pda_account, _bump_seed) = get_device_pda(program_id, value.index);
+    // Check the owner of the accounts
+    assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
     assert_eq!(
-        pda_account.key, &expected_pda_account,
-        "Invalid Device PubKey"
+        globalstate_account.owner, program_id,
+        "Invalid GlobalState Account Owner"
     );
-
-    if pda_account.owner != program_id {
-        return Err(ProgramError::IncorrectProgramId);
-    }
+    assert!(pda_account.is_writable, "PDA Account is not writable");
 
     let globalstate = globalstate_get_next(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
@@ -56,6 +53,12 @@ pub fn process_deactivate_device(
     }
 
     let device: Device = Device::from(&pda_account.try_borrow_data().unwrap()[..]);
+    assert_eq!(device.index, value.index, "Invalid PDA Account Index");
+    assert_eq!(
+        device.bump_seed, value.bump_seed,
+        "Invalid PDA Account Bump Seed"
+    );
+
     if device.status != DeviceStatus::Deleting {
         #[cfg(test)]
         msg!("{:?}", device);

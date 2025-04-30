@@ -16,9 +16,12 @@ impl SuspendLocationCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, _) = get_location_pda(&client.get_program_id(), self.index);
+        let (pda_pubkey, bump_seed) = get_location_pda(&client.get_program_id(), self.index);
         client.execute_transaction(
-            DoubleZeroInstruction::SuspendLocation(LocationSuspendArgs { index: self.index }),
+            DoubleZeroInstruction::SuspendLocation(LocationSuspendArgs {
+                index: self.index,
+                bump_seed,
+            }),
             vec![
                 AccountMeta::new(pda_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
@@ -46,14 +49,17 @@ mod tests {
         let mut client = create_test_client();
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, _) = get_location_pda(&client.get_program_id(), 1);
+        let (pda_pubkey, bump_seed) = get_location_pda(&client.get_program_id(), 1);
         let payer = client.get_payer();
 
         client
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::SuspendLocation(
-                    LocationSuspendArgs { index: 1 },
+                    LocationSuspendArgs {
+                        index: 1,
+                        bump_seed,
+                    },
                 )),
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),

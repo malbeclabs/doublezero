@@ -31,6 +31,7 @@ type BgpReaderWriter interface {
 	DeletePeer(net.IP) error
 	AddRoute() <-chan bgp.NLRI
 	WithdrawRoute() <-chan bgp.NLRI
+	GetPeerStatus(net.IP) bgp.Session
 }
 
 type DbReaderWriter interface {
@@ -102,7 +103,6 @@ func (n *NetlinkManager) provisionIBRL(p ProvisionRequest) error {
 			return fmt.Errorf("error adding peer: %v", err)
 		}
 	}
-
 	return nil
 }
 
@@ -501,11 +501,12 @@ func (n *NetlinkManager) Status() (*StatusResponse, error) {
 		return nil, fmt.Errorf("netlink: saved state is not programmed into client")
 	}
 
+	peerStatus := n.bgp.GetPeerStatus(n.UnicastTunnel.RemoteOverlay)
 	return &StatusResponse{
-		TunnelName:   n.UnicastTunnel.Name,
-		TunnelSrc:    n.UnicastTunnel.LocalUnderlay,
-		TunnelDst:    n.UnicastTunnel.RemoteUnderlay,
-		DoubleZeroIP: n.DoubleZeroAddr,
-		Status:       "connected",
+		TunnelName:       n.UnicastTunnel.Name,
+		TunnelSrc:        n.UnicastTunnel.LocalUnderlay,
+		TunnelDst:        n.UnicastTunnel.RemoteUnderlay,
+		DoubleZeroIP:     n.DoubleZeroAddr,
+		DoubleZeroStatus: peerStatus,
 	}, nil
 }

@@ -68,7 +68,7 @@ mod tunnel_test {
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 0);
 
-        let (location_pubkey, _) =
+        let (location_pubkey, bump_seed) =
             get_location_pda(&program_id, globalstate_account.account_index + 1);
 
         execute_transaction(
@@ -77,6 +77,7 @@ mod tunnel_test {
             program_id,
             DoubleZeroInstruction::CreateLocation(location::create::LocationCreateArgs {
                 index: globalstate_account.account_index + 1,
+                bump_seed,
                 code: "la".to_string(),
                 name: "Los Angeles".to_string(),
                 country: "us".to_string(),
@@ -98,7 +99,7 @@ mod tunnel_test {
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 1);
 
-        let (exchange_pubkey, _) =
+        let (exchange_pubkey, bump_seed) =
             get_exchange_pda(&program_id, globalstate_account.account_index + 1);
 
         execute_transaction(
@@ -107,6 +108,7 @@ mod tunnel_test {
             program_id,
             DoubleZeroInstruction::CreateExchange(exchange::create::ExchangeCreateArgs {
                 index: globalstate_account.account_index + 1,
+                bump_seed,
                 code: "la".to_string(),
                 name: "Los Angeles".to_string(),
                 lat: 1.234,
@@ -127,7 +129,7 @@ mod tunnel_test {
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 2);
 
-        let (device_a_pubkey, _) =
+        let (device_a_pubkey, bump_seed) =
             get_device_pda(&program_id, globalstate_account.account_index + 1);
 
         execute_transaction(
@@ -136,6 +138,7 @@ mod tunnel_test {
             program_id,
             DoubleZeroInstruction::CreateDevice(device::create::DeviceCreateArgs {
                 index: globalstate_account.account_index + 1,
+                bump_seed,
                 code: "A".to_string(),
                 device_type: DeviceType::Switch,
                 location_pk: location_pubkey,
@@ -159,7 +162,7 @@ mod tunnel_test {
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 3);
 
-        let (device_z_pubkey, _) =
+        let (device_z_pubkey, bump_seed) =
             get_device_pda(&program_id, globalstate_account.account_index + 1);
 
         execute_transaction(
@@ -168,6 +171,7 @@ mod tunnel_test {
             program_id,
             DoubleZeroInstruction::CreateDevice(device::create::DeviceCreateArgs {
                 index: globalstate_account.account_index + 1,
+                bump_seed,
                 code: "Z".to_string(),
                 device_type: DeviceType::Switch,
                 location_pk: location_pubkey,
@@ -195,7 +199,8 @@ mod tunnel_test {
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 4);
 
-        let (tunnel_pubkey, _) = get_tunnel_pda(&program_id, globalstate_account.account_index + 1);
+        let (tunnel_pubkey, bump_seed) =
+            get_tunnel_pda(&program_id, globalstate_account.account_index + 1);
 
         execute_transaction(
             &mut banks_client,
@@ -203,6 +208,7 @@ mod tunnel_test {
             program_id,
             DoubleZeroInstruction::CreateTunnel(TunnelCreateArgs {
                 index: globalstate_account.account_index + 1,
+                bump_seed,
                 code: "la".to_string(),
                 tunnel_type: TunnelTunnelType::MPLSoGRE,
                 side_a_pk: device_a_pubkey,
@@ -240,6 +246,7 @@ mod tunnel_test {
             program_id,
             DoubleZeroInstruction::ActivateTunnel(TunnelActivateArgs {
                 index: tunnel_la.index,
+                bump_seed: tunnel_la.bump_seed,
                 tunnel_id: 500,
                 tunnel_net: ([10, 0, 0, 0], 21),
             }),
@@ -269,6 +276,7 @@ mod tunnel_test {
             program_id,
             DoubleZeroInstruction::SuspendTunnel(TunnelSuspendArgs {
                 index: tunnel_la.index,
+                bump_seed: tunnel_la.bump_seed,
             }),
             vec![AccountMeta::new(tunnel_pubkey, false)],
             &payer,
@@ -291,6 +299,7 @@ mod tunnel_test {
             program_id,
             DoubleZeroInstruction::ReactivateTunnel(TunnelReactivateArgs {
                 index: tunnel_la.index,
+                bump_seed: tunnel_la.bump_seed,
             }),
             vec![AccountMeta::new(tunnel_pubkey, false)],
             &payer,
@@ -313,6 +322,7 @@ mod tunnel_test {
             program_id,
             DoubleZeroInstruction::UpdateTunnel(TunnelUpdateArgs {
                 index: tunnel.index,
+                bump_seed: tunnel.bump_seed,
                 code: Some("la2".to_string()),
                 tunnel_type: Some(TunnelTunnelType::MPLSoGRE),
                 bandwidth: Some(2000000000),
@@ -320,7 +330,10 @@ mod tunnel_test {
                 delay_ns: Some(15000),
                 jitter_ns: Some(5000),
             }),
-            vec![AccountMeta::new(tunnel_pubkey, false)],
+            vec![
+                AccountMeta::new(tunnel_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
             &payer,
         )
         .await;
@@ -346,6 +359,7 @@ mod tunnel_test {
             program_id,
             DoubleZeroInstruction::DeleteTunnel(TunnelDeleteArgs {
                 index: tunnel_la.index,
+                bump_seed: tunnel_la.bump_seed,
             }),
             vec![
                 AccountMeta::new(tunnel_pubkey, false),
@@ -376,6 +390,7 @@ mod tunnel_test {
             program_id,
             DoubleZeroInstruction::DeactivateTunnel(TunnelDeactivateArgs {
                 index: tunnel.index,
+                bump_seed: tunnel.bump_seed,
             }),
             vec![
                 AccountMeta::new(tunnel_pubkey, false),

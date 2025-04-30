@@ -13,6 +13,7 @@ use crate::{
 pub struct GlobalConfig {
     pub account_type: AccountType,      // 1
     pub owner: Pubkey,                  // 32
+    pub bump_seed: u8,                  // 1
     pub local_asn: u32,                 // 4
     pub remote_asn: u32,                // 4
     pub tunnel_tunnel_block: NetworkV4, // 5
@@ -38,6 +39,7 @@ impl From<&[u8]> for GlobalConfig {
         Self {
             account_type: parser.read_enum(),
             owner: parser.read_pubkey(),
+            bump_seed: parser.read_u8(),
             local_asn: parser.read_u32(),
             remote_asn: parser.read_u32(),
             tunnel_tunnel_block: parser.read_networkv4(),
@@ -48,7 +50,7 @@ impl From<&[u8]> for GlobalConfig {
 
 impl GlobalConfig {
     pub fn size(&self) -> usize {
-        1 + 32 + 4 + 4 + 5 + 5
+        1 + 32 + 1 + 4 + 4 + 5 + 5
     }
 }
 
@@ -61,6 +63,7 @@ mod tests {
         let val = GlobalConfig {
             account_type: AccountType::Config,
             owner: Pubkey::new_unique(),
+            bump_seed: 1,
             local_asn: 123,
             remote_asn: 456,
             tunnel_tunnel_block: ([10, 0, 0, 1], 24),

@@ -9,11 +9,10 @@ var (
 )
 
 type Device struct {
-	PubKey          string
-	PublicIP        net.IP
-	Tunnels         []*Tunnel
-	TunnelSlots     int
-	UnknownBgpPeers []net.IP
+	PubKey      string
+	PublicIP    net.IP
+	Tunnels     []*Tunnel
+	TunnelSlots int
 }
 
 func NewDevice(ip net.IP, publicKey string) *Device {
@@ -27,11 +26,10 @@ func NewDevice(ip net.IP, publicKey string) *Device {
 		tunnels = append(tunnels, tunnel)
 	}
 	return &Device{
-		PublicIP:        ip,
-		PubKey:          publicKey,
-		Tunnels:         tunnels,
-		TunnelSlots:     maxTunnelSlots,
-		UnknownBgpPeers: []net.IP{},
+		PublicIP:    ip,
+		PubKey:      publicKey,
+		Tunnels:     tunnels,
+		TunnelSlots: maxTunnelSlots,
 	}
 }
 
@@ -53,4 +51,9 @@ type Tunnel struct {
 	DzIp          net.IP
 	PubKey        string
 	Allocated     bool
+}
+
+type templateData struct {
+	Device          *Device
+	UnknownBgpPeers []net.IP
 }

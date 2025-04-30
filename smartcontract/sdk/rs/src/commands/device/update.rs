@@ -23,10 +23,11 @@ impl UpdateDeviceCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, _) = get_device_pda(&client.get_program_id(), self.index);
+        let (pda_pubkey, bump_seed) = get_device_pda(&client.get_program_id(), self.index);
         client.execute_transaction(
             DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
                 index: self.index,
+                bump_seed,
                 code: self.code.clone(),
                 device_type: self.device_type,
                 public_ip: self.public_ip,

@@ -148,7 +148,7 @@ func TestDeviceCache(t *testing.T) {
 				{
 					AccountType:  dzsdk.AccountType(0),
 					Owner:        [32]uint8{},
-					UserType:     dzsdk.UserUserType(dzsdk.UserTypeServer),
+					UserType:     dzsdk.UserUserType(dzsdk.UserTypeIBRL),
 					DevicePubKey: [32]uint8{1},
 					CyoaType:     dzsdk.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{1, 1, 1, 1},
@@ -206,8 +206,7 @@ func TestDeviceCache(t *testing.T) {
 						{Id: 518},
 						{Id: 519},
 					},
-					TunnelSlots:     20,
-					UnknownBgpPeers: []net.IP{},
+					TunnelSlots: 20,
 				},
 			},
 		},
@@ -252,7 +251,7 @@ func TestEndToEnd(t *testing.T) {
 				{
 					AccountType:  dzsdk.AccountType(0),
 					Owner:        [32]uint8{},
-					UserType:     dzsdk.UserUserType(dzsdk.UserTypeServer),
+					UserType:     dzsdk.UserUserType(dzsdk.UserTypeIBRL),
 					DevicePubKey: [32]uint8{1},
 					CyoaType:     dzsdk.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{1, 1, 1, 1},
@@ -287,7 +286,7 @@ func TestEndToEnd(t *testing.T) {
 				{
 					AccountType:  dzsdk.AccountType(0),
 					Owner:        [32]uint8{},
-					UserType:     dzsdk.UserUserType(dzsdk.UserTypeServer),
+					UserType:     dzsdk.UserUserType(dzsdk.UserTypeIBRL),
 					DevicePubKey: [32]uint8{1},
 					CyoaType:     dzsdk.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{1, 1, 1, 1},

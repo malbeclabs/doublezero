@@ -9,8 +9,8 @@ import (
 )
 
 /************************************************************************************************************/
-const PROGRAM_ID_TESTNET = "6i4v8m3i7W2qPGRonFi8mehN76SXUkDcpgk4tPQhE2J4"
-const PROGRAM_ID_DEVNET = "dev9yExnZ2hq9z24KbjGZNwujTfYHtE4CnaezLyPm8X"
+const PROGRAM_ID_TESTNET = "DZtnuQ839pSaDMFG5q1ad2V95G82S5EC4RrB3Ndw2Heb"
+const PROGRAM_ID_DEVNET = "DZdnB7bhR9azxLAUEH7ZVtW168wRdreiDKhi4McDfKZt"
 
 /************************************************************************************************************/
 

@@ -20,6 +20,7 @@ use solana_program::{
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct TunnelCreateArgs {
     pub index: u128,
+    pub bump_seed: u8,
     pub code: String,
     pub side_a_pk: Pubkey,
     pub side_z_pk: Pubkey,
@@ -78,6 +79,7 @@ pub fn process_create_tunnel(
         pda_account.key, &expected_pda_account,
         "Invalid Location PubKey"
     );
+    assert!(bump_seed == value.bump_seed, "Invalid Location Bump Seed");
 
     // Check account Types
     if side_a_account.data_is_empty()
@@ -95,6 +97,7 @@ pub fn process_create_tunnel(
         account_type: AccountType::Tunnel,
         owner: *payer_account.key,
         index: globalstate.account_index,
+        bump_seed,
         code: value.code.clone(),
         side_a_pk: value.side_a_pk,
         side_z_pk: value.side_z_pk,
@@ -114,7 +117,6 @@ pub fn process_create_tunnel(
         payer_account,
         system_program,
         program_id,
-        bump_seed,
     )?;
     globalstate_write(globalstate_account, &globalstate)?;
 

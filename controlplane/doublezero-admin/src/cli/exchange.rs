@@ -2,12 +2,10 @@ use clap::Args;
 use clap::Subcommand;
 
 use doublezero_cli::exchange::create::*;
-use doublezero_cli::exchange::update::*;
-use doublezero_cli::exchange::list::*;
-use doublezero_cli::exchange::get::*;
 use doublezero_cli::exchange::delete::*;
-
-
+use doublezero_cli::exchange::get::*;
+use doublezero_cli::exchange::list::*;
+use doublezero_cli::exchange::update::*;
 
 #[derive(Args, Debug)]
 pub struct ExchangeArgs {
@@ -21,6 +19,5 @@ pub enum ExchangeCommands {
     Update(UpdateExchangeArgs),
     List(ListExchangeArgs),
     Get(GetExchangeArgs),
-    Delete(DeleteExchangeArgs)
+    Delete(DeleteExchangeArgs),
 }
-

@@ -40,6 +40,7 @@ pub struct Location {
     pub account_type: AccountType, // 1
     pub owner: Pubkey,             // 32
     pub index: u128,               // 16
+    pub bump_seed: u8,             // 1
     pub lat: f64,                  // 8
     pub lng: f64,                  // 8
     pub loc_id: u32,               // 4
@@ -53,8 +54,8 @@ impl fmt::Display for Location {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, index: {}, lat: {}, lng: {}, loc_id: {}, status: {}, code: {}, name: {}, country: {}",
-            self.account_type, self.owner, self.index, self.lat, self.lng, self.loc_id, self.status, self.code, self.name, self.country
+            "account_type: {}, owner: {}, index: {}, bump_seed:{}, code: {}, name: {}, country: {} lat: {}, lng: {}, loc_id: {}, status: {}",
+            self.account_type, self.owner, self.index, self.bump_seed, self.code, self.name, self.country, self.lat, self.lng, self.loc_id, self.status, 
         )
     }
 }
@@ -66,6 +67,7 @@ impl AccountTypeInfo for Location {
     fn size(&self) -> usize {
         1 + 32
             + 16
+            + 1
             + 8
             + 8
             + 4
@@ -80,6 +82,9 @@ impl AccountTypeInfo for Location {
     fn index(&self) -> u128 {
         self.index
     }
+    fn bump_seed(&self) -> u8 {
+        self.bump_seed
+    }
     fn owner(&self) -> Pubkey {
         self.owner
     }
@@ -93,6 +98,7 @@ impl From<&[u8]> for Location {
             account_type: parser.read_enum(),
             owner: parser.read_pubkey(),
             index: parser.read_u128(),
+            bump_seed: parser.read_u8(),
             lat: parser.read_f64(),
             lng: parser.read_f64(),
             loc_id: parser.read_u32(),
@@ -114,6 +120,7 @@ mod tests {
             account_type: AccountType::Location,
             owner: Pubkey::new_unique(),
             index: 123,
+            bump_seed: 1,
             lat: 123.45,
             lng: 345.678,
             loc_id: 1212121,

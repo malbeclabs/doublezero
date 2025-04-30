@@ -50,6 +50,13 @@ impl Activator {
     ) -> eyre::Result<Self> {
         let client = DZClient::new(rpc_url, websocket_url, program_id, kaypair)?;
 
+        print!(
+            "Connected to url: {} ws: {} program_id: {} ",
+            client.get_rpc(),
+            client.get_ws(),
+            client.get_program_id().to_string()
+        );
+
         // Wait for the global config to be available
         // This is a workaround for the fact that the global config is not available immediately
         let mut config = GetGlobalConfigCommand {}.execute(&client);
@@ -71,13 +78,6 @@ impl Activator {
     }
 
     pub async fn init(&mut self) -> eyre::Result<()> {
-        print!(
-            "Connected to url: {} ws: {} program_id: {} ",
-            self.client.get_rpc(),
-            self.client.get_ws(),
-            self.client.get_program_id().to_string()
-        );
-
         // Fetch the list of tunnels, devices, and users from the client
         let devices = ListDeviceCommand {}.execute(&self.client)?;
         let tunnels = ListTunnelCommand {}.execute(&self.client)?;

@@ -48,187 +48,6 @@ impl DZClient {
     }
 }
 
-impl DoubleZeroClient for DZClient {
-    fn get_program_id(&self) -> Pubkey {
-        self.program_id
-    }
-
-    fn get_payer(&self) -> Pubkey {
-        match self.payer.as_ref() {
-            Some(keypair) => keypair.pubkey(),
-            None => Pubkey::default(),
-        }
-    }
-
-    fn get_balance(&self) -> eyre::Result<u64> {
-        self.client
-            .get_balance(&self.get_payer())
-            .map_err(|e| eyre!(e))
-    }
-
-    fn execute_transaction(
-        &self,
-        instruction: DoubleZeroInstruction,
-        accounts: Vec<AccountMeta>,
-    ) -> eyre::Result<Signature> {
-        let payer = self
-            .payer
-            .as_ref()
-            .ok_or_eyre("No default signer found, run \"doublezero keygen\" to create a new one")?;
-        //let data = borsh::to_vec(&instruction).unwrap();
-        let data = instruction.pack();
-
-        let mut transaction = Transaction::new_with_payer(
-            &[Instruction::new_with_bytes(
-                self.program_id,
-                &data,
-                [
-                    accounts,
-                    vec![
-                        AccountMeta::new(payer.pubkey(), true),
-                        AccountMeta::new(system_program::id(), false),
-                    ],
-                ]
-                .concat(),
-            )],
-            Some(&payer.pubkey()),
-        );
-
-        let blockhash = self.client.get_latest_blockhash().map_err(|e| eyre!(e))?;
-
-        transaction.sign(&[&payer], blockhash);
-
-        let result = self
-            .client
-            .simulate_transaction(&transaction)
-            .map_err(|e| eyre!(e))?;
-        if result.value.err.is_some() {
-            println!("Program Logs:");
-            for log in result.value.logs.unwrap() {
-                println!("{}", log);
-            }
-            return Err(eyre!("Error in transaction"));
-        }
-
-        self.client
-            .send_and_confirm_transaction(&transaction)
-            .map_err(|e| eyre!(e))
-    }
-
-    fn gets(&self, account_type: AccountType) -> eyre::Result<HashMap<Pubkey, AccountData>> {
-        let account_type = account_type as u8;
-        let filters = vec![RpcFilterType::Memcmp(Memcmp::new(
-            0,
-            MemcmpEncodedBytes::Bytes(vec![account_type]),
-        ))];
-        let options = RpcProgramAccountsConfig {
-            filters: Some(filters),
-            account_config: RpcAccountInfoConfig {
-                encoding: Some(UiAccountEncoding::Base64),
-                data_slice: None,
-                commitment: Some(CommitmentConfig::confirmed()),
-                min_context_slot: None,
-            },
-            with_context: None,
-            sort_results: None,
-        };
-
-        let mut list: HashMap<Pubkey, AccountData> = HashMap::new();
-        let accounts = self
-            .client
-            .get_program_accounts_with_config(&self.get_program_id(), options)?;
-
-        for (pubkey, account) in accounts {
-            assert!(account.data[0] == account_type, "Invalid account type");
-            list.insert(pubkey, AccountData::from(&account.data[..]));
-        }
-
-        Ok(list)
-    }
-
-    fn get(&self, pubkey: Pubkey) -> eyre::Result<AccountData> {
-        match self.client.get_account(&pubkey) {
-            Ok(account) => {
-                if account.owner == self.program_id {
-                    let data = account.data;
-                    Ok(AccountData::from(&data[..]))
-                } else {
-                    Ok(AccountData::None)
-                }
-            }
-            Err(e) => Err(eyre!(e)),
-        }
-    }
-
-    #[allow(deprecated)]
-    fn get_transactions(&self, pubkey: Pubkey) -> eyre::Result<Vec<DZTransaction>> {
-        let mut transactions: Vec<DZTransaction> = Vec::new();
-
-        let signatures = self.client.get_signatures_for_address(&pubkey)?;
-
-        for signature_info in signatures.into_iter() {
-            let signature = Signature::from_str(&signature_info.signature).unwrap();
-            let enc_transaction = self
-                .client
-                .get_transaction(&signature, UiTransactionEncoding::Base64)?;
-
-            let time = enc_transaction.block_time.unwrap_or_default();
-
-            let time = match NaiveDateTime::from_timestamp_opt(time, 0) {
-                Some(dt) => DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc),
-                None => DateTime::<Utc>::from_timestamp_nanos(0),
-            };
-
-            let meta = enc_transaction.transaction.meta.unwrap();
-            let trans = enc_transaction.transaction.transaction;
-
-            if let EncodedTransaction::Binary(data, _enc) = trans {
-                let data: &[u8] = &general_purpose::STANDARD.decode(data).unwrap();
-
-                let tx: Transaction = match deserialize(data) {
-                    Ok(tx) => tx,
-                    Err(e) => {
-                        eprintln!("Error al deserializar la transacción: {:?}", e);
-                        panic!("");
-                    }
-                };
-
-                for instr in tx.message.instructions.iter() {
-                    let program_id = instr.program_id(&tx.message.account_keys);
-                    let account = instr.accounts[instr.accounts.len() - 2];
-                    let account = tx.message.account_keys[account as usize];
-
-                    let instruction = {
-                        if program_id == &self.program_id {
-                            DoubleZeroInstruction::unpack(&instr.data).unwrap()
-                        } else {
-                            DoubleZeroInstruction::InitGlobalState()
-                        }
-                    };
-
-                    let log_messages = {
-                        if let OptionSerializer::Some(msgs) = &meta.log_messages {
-                            msgs.clone()
-                        } else {
-                            vec![]
-                        }
-                    };
-
-                    transactions.push(DZTransaction {
-                        time,
-                        account,
-                        instruction,
-                        signature,
-                        log_messages,
-                    });
-                }
-            }
-        }
-
-        Ok(transactions)
-    }
-}
-
 impl DZClient {
     pub fn new(
         rpc_url: Option<String>,
@@ -446,5 +265,186 @@ impl DZClient {
         }
 
         Ok(errors)
+    }
+}
+
+impl DoubleZeroClient for DZClient {
+    fn get_program_id(&self) -> Pubkey {
+        self.program_id
+    }
+
+    fn get_payer(&self) -> Pubkey {
+        match self.payer.as_ref() {
+            Some(keypair) => keypair.pubkey(),
+            None => Pubkey::default(),
+        }
+    }
+
+    fn get_balance(&self) -> eyre::Result<u64> {
+        self.client
+            .get_balance(&self.get_payer())
+            .map_err(|e| eyre!(e))
+    }
+
+    fn execute_transaction(
+        &self,
+        instruction: DoubleZeroInstruction,
+        accounts: Vec<AccountMeta>,
+    ) -> eyre::Result<Signature> {
+        let payer = self
+            .payer
+            .as_ref()
+            .ok_or_eyre("No default signer found, run \"doublezero keygen\" to create a new one")?;
+        //let data = borsh::to_vec(&instruction).unwrap();
+        let data = instruction.pack();
+
+        let mut transaction = Transaction::new_with_payer(
+            &[Instruction::new_with_bytes(
+                self.program_id,
+                &data,
+                [
+                    accounts,
+                    vec![
+                        AccountMeta::new(payer.pubkey(), true),
+                        AccountMeta::new(system_program::id(), false),
+                    ],
+                ]
+                .concat(),
+            )],
+            Some(&payer.pubkey()),
+        );
+
+        let blockhash = self.client.get_latest_blockhash().map_err(|e| eyre!(e))?;
+
+        transaction.sign(&[&payer], blockhash);
+
+        let result = self
+            .client
+            .simulate_transaction(&transaction)
+            .map_err(|e| eyre!(e))?;
+        if result.value.err.is_some() {
+            println!("Program Logs:");
+            for log in result.value.logs.unwrap() {
+                println!("{}", log);
+            }
+            return Err(eyre!("Error in transaction"));
+        }
+
+        self.client
+            .send_and_confirm_transaction(&transaction)
+            .map_err(|e| eyre!(e))
+    }
+
+    fn gets(&self, account_type: AccountType) -> eyre::Result<HashMap<Pubkey, AccountData>> {
+        let account_type = account_type as u8;
+        let filters = vec![RpcFilterType::Memcmp(Memcmp::new(
+            0,
+            MemcmpEncodedBytes::Bytes(vec![account_type]),
+        ))];
+        let options = RpcProgramAccountsConfig {
+            filters: Some(filters),
+            account_config: RpcAccountInfoConfig {
+                encoding: Some(UiAccountEncoding::Base64),
+                data_slice: None,
+                commitment: Some(CommitmentConfig::confirmed()),
+                min_context_slot: None,
+            },
+            with_context: None,
+            sort_results: None,
+        };
+
+        let mut list: HashMap<Pubkey, AccountData> = HashMap::new();
+        let accounts = self
+            .client
+            .get_program_accounts_with_config(&self.get_program_id(), options)?;
+
+        for (pubkey, account) in accounts {
+            assert!(account.data[0] == account_type, "Invalid account type");
+            list.insert(pubkey, AccountData::from(&account.data[..]));
+        }
+
+        Ok(list)
+    }
+
+    fn get(&self, pubkey: Pubkey) -> eyre::Result<AccountData> {
+        match self.client.get_account(&pubkey) {
+            Ok(account) => {
+                if account.owner == self.program_id {
+                    let data = account.data;
+                    Ok(AccountData::from(&data[..]))
+                } else {
+                    Ok(AccountData::None)
+                }
+            }
+            Err(e) => Err(eyre!(e)),
+        }
+    }
+
+    #[allow(deprecated)]
+    fn get_transactions(&self, pubkey: Pubkey) -> eyre::Result<Vec<DZTransaction>> {
+        let mut transactions: Vec<DZTransaction> = Vec::new();
+
+        let signatures = self.client.get_signatures_for_address(&pubkey)?;
+
+        for signature_info in signatures.into_iter() {
+            let signature = Signature::from_str(&signature_info.signature).unwrap();
+            let enc_transaction = self
+                .client
+                .get_transaction(&signature, UiTransactionEncoding::Base64)?;
+
+            let time = enc_transaction.block_time.unwrap_or_default();
+
+            let time = match NaiveDateTime::from_timestamp_opt(time, 0) {
+                Some(dt) => DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc),
+                None => DateTime::<Utc>::from_timestamp_nanos(0),
+            };
+
+            let meta = enc_transaction.transaction.meta.unwrap();
+            let trans = enc_transaction.transaction.transaction;
+
+            if let EncodedTransaction::Binary(data, _enc) = trans {
+                let data: &[u8] = &general_purpose::STANDARD.decode(data).unwrap();
+
+                let tx: Transaction = match deserialize(data) {
+                    Ok(tx) => tx,
+                    Err(e) => {
+                        eprintln!("Error al deserializar la transacción: {:?}", e);
+                        panic!("");
+                    }
+                };
+
+                for instr in tx.message.instructions.iter() {
+                    let program_id = instr.program_id(&tx.message.account_keys);
+                    let account = instr.accounts[instr.accounts.len() - 2];
+                    let account = tx.message.account_keys[account as usize];
+
+                    let instruction = {
+                        if program_id == &self.program_id {
+                            DoubleZeroInstruction::unpack(&instr.data).unwrap()
+                        } else {
+                            DoubleZeroInstruction::InitGlobalState()
+                        }
+                    };
+
+                    let log_messages = {
+                        if let OptionSerializer::Some(msgs) = &meta.log_messages {
+                            msgs.clone()
+                        } else {
+                            vec![]
+                        }
+                    };
+
+                    transactions.push(DZTransaction {
+                        time,
+                        account,
+                        instruction,
+                        signature,
+                        log_messages,
+                    });
+                }
+            }
+        }
+
+        Ok(transactions)
     }
 }

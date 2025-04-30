@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
+use mockall::automock;
+
 pub type TagMap = HashMap<String, String>;
 pub type FieldMap = HashMap<String, f64>;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Metric {
     pub measurement: String,
     pub tags: TagMap,
@@ -30,6 +32,7 @@ impl Metric {
     }
 }
 
+#[automock]
 pub trait MetricsService: Send + Sync + 'static {
     #[allow(dead_code)]
     fn write_metric(&self, metric: &Metric);

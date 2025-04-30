@@ -2,6 +2,7 @@ use clap::Parser;
 use std::thread;
 
 mod activator;
+mod activator_metrics;
 mod idallocator;
 mod influxdb_metrics_service;
 mod ipblockallocator;
@@ -73,10 +74,13 @@ async fn main() -> eyre::Result<()> {
 
     // background blocking code so we can continue to run the metrics submitter in this async task
     thread::spawn(move || {
-        activator.run().unwrap_or_default();
+        println!("Acivator thread started");
+        activator.run().unwrap_or_default()
     });
 
+    println!("Activator metrics submitter started");
     metrics_submitter.run().await;
+    println!("Activator metrics submitter finished");
 
     Ok(())
 }

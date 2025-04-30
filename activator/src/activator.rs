@@ -7,6 +7,8 @@ use doublezero_sdk::{
             activate::ActivateDeviceCommand, deactivate::DeactivateDeviceCommand,
             get::GetDeviceCommand, list::ListDeviceCommand,
         },
+        exchange::list::ListExchangeCommand,
+        location::list::ListLocationCommand,
         tunnel::{
             activate::ActivateTunnelCommand, deactivate::DeactivateTunnelCommand,
             list::ListTunnelCommand, reject::RejectTunnelCommand,
@@ -17,16 +19,16 @@ use doublezero_sdk::{
         },
     },
     ipv4_to_string, networkv4_list_to_string, networkv4_to_string, AccountData, DZClient, Device,
-    DeviceStatus, DoubleZeroClient, IpV4, Tunnel, TunnelStatus, User, UserStatus, UserType,
+    DeviceStatus, DoubleZeroClient, Exchange, IpV4, Location, Tunnel, TunnelStatus, User,
+    UserStatus, UserType,
 };
 use solana_sdk::pubkey::Pubkey;
 use std::thread;
 use std::time::Duration;
 
 use crate::{
-    idallocator::IDAllocator,
-    ipblockallocator::IPBlockAllocator,
-    metrics_service::{Metric, MetricsService},
+    activator_metrics::ActivatorMetrics, idallocator::IDAllocator,
+    ipblockallocator::IPBlockAllocator, metrics_service::MetricsService,
     states::devicestate::DeviceState,
 };
 
@@ -40,7 +42,11 @@ pub struct Activator {
 
     pub user_tunnel_ips: IPBlockAllocator,
     pub devices: DeviceMap,
-    metrics_service: Box<dyn MetricsService + Send + Sync>,
+
+    locations: HashMap<Pubkey, Location>,
+    exchanges: HashMap<Pubkey, Exchange>,
+    metrics: ActivatorMetrics,
+    state_transitions: HashMap<&'static str, usize>,
 }
 
 impl Activator {
@@ -79,7 +85,10 @@ impl Activator {
             tunnel_tunnel_ids: IDAllocator::new(0, vec![]),
             user_tunnel_ips: IPBlockAllocator::new(config.user_tunnel_block),
             devices: HashMap::new(),
-            metrics_service: metrics_service,
+            metrics: ActivatorMetrics::new(metrics_service),
+            locations: HashMap::new(),
+            exchanges: HashMap::new(),
+            state_transitions: HashMap::new(),
         })
     }
 
@@ -88,6 +97,8 @@ impl Activator {
         let devices = ListDeviceCommand {}.execute(&self.client)?;
         let tunnels = ListTunnelCommand {}.execute(&self.client)?;
         let users = ListUserCommand {}.execute(&self.client)?;
+        self.locations = ListLocationCommand {}.execute(&self.client)?;
+        self.exchanges = ListExchangeCommand {}.execute(&self.client)?;
 
         for (_, tunnel) in tunnels
             .iter()
@@ -131,6 +142,13 @@ impl Activator {
     }
 
     pub fn run(&mut self) -> eyre::Result<()> {
+        self.metrics.record_metrics(
+            &self.devices,
+            &self.locations,
+            &self.exchanges,
+            &self.state_transitions,
+        );
+
         self.devices.iter().for_each(|(_pubkey, device)| {
             print!(
                 "Device code: {} public_ip: {} dz_prefixes: {} tunnels: ",
@@ -158,30 +176,45 @@ impl Activator {
         self.user_tunnel_ips.print_assigned_ips();
         println!("\x08 ");
 
+        // store these so we can move them into the below closure without making the borrow checker mad
+        let devices = &mut self.devices;
+        let tunnel_tunnel_ips = &mut self.tunnel_tunnel_ips;
+        let tunnel_tunnel_ids = &mut self.tunnel_tunnel_ids;
+        let user_tunnel_ips = &mut self.user_tunnel_ips;
+        let metrics = &self.metrics;
+        let locations = &self.locations;
+        let exchanges = &self.exchanges;
+        let state_transitions = &mut self.state_transitions;
+
         self.client
-            .gets_and_subscribe(|client, pubkey, data| match data {
-                AccountData::Device(device) => {
-                    process_device_event(client, pubkey, &mut self.devices, &device);
-                }
-                AccountData::Tunnel(tunnel) => {
-                    process_tunnel_event(
-                        client,
-                        &mut self.tunnel_tunnel_ips,
-                        &mut self.tunnel_tunnel_ids,
-                        &tunnel,
-                    );
-                }
-                AccountData::User(user) => {
-                    process_user_event(
-                        client,
-                        pubkey,
-                        &mut self.devices,
-                        &mut self.user_tunnel_ips,
-                        &mut self.tunnel_tunnel_ids,
-                        &user,
-                    );
-                }
-                _ => {}
+            .gets_and_subscribe(move |client, pubkey, data| {
+                match data {
+                    AccountData::Device(device) => {
+                        process_device_event(client, pubkey, devices, &device, state_transitions);
+                    }
+                    AccountData::Tunnel(tunnel) => {
+                        process_tunnel_event(
+                            client,
+                            tunnel_tunnel_ips,
+                            tunnel_tunnel_ids,
+                            &tunnel,
+                            state_transitions,
+                        );
+                    }
+                    AccountData::User(user) => {
+                        process_user_event(
+                            client,
+                            pubkey,
+                            devices,
+                            user_tunnel_ips,
+                            tunnel_tunnel_ids,
+                            &user,
+                            state_transitions,
+                        );
+                    }
+                    _ => {}
+                };
+                metrics.record_metrics(devices, locations, exchanges, state_transitions);
             })?;
         Ok(())
     }
@@ -192,6 +225,7 @@ fn process_device_event(
     pubkey: &Pubkey,
     devices: &mut DeviceMap,
     device: &Device,
+    state_transitions: &mut HashMap<&'static str, usize>,
 ) {
     match device.status {
         DeviceStatus::Pending => {
@@ -213,6 +247,9 @@ fn process_device_event(
                         networkv4_list_to_string(&device.dz_prefixes)
                     );
                     devices.insert(*pubkey, DeviceState::new(device));
+                    *state_transitions
+                        .entry("device-pending-to-activated")
+                        .or_insert(0) += 1;
                 }
                 Err(e) => println!("Error: {}", e.to_string()),
             }
@@ -245,6 +282,9 @@ fn process_device_event(
                 Ok(signature) => {
                     println!("Deactivated {}", signature.to_string());
                     devices.remove(pubkey);
+                    *state_transitions
+                        .entry("device-deleting-to-deactivated")
+                        .or_insert(0) += 1;
                 }
                 Err(e) => println!("Error: {}", e),
             }
@@ -258,6 +298,7 @@ fn process_tunnel_event(
     tunnel_tunnel_ips: &mut IPBlockAllocator,
     tunnel_tunnel_ids: &mut IDAllocator,
     tunnel: &Tunnel,
+    state_transitions: &mut HashMap<&'static str, usize>,
 ) {
     match tunnel.status {
         TunnelStatus::Pending => {
@@ -275,7 +316,12 @@ fn process_tunnel_event(
                     .execute(client);
 
                     match res {
-                        Ok(signature) => println!("Activated {}", signature.to_string()),
+                        Ok(signature) => {
+                            println!("Activated {}", signature.to_string());
+                            *state_transitions
+                                .entry("tunnel-pending-to-activated")
+                                .or_insert(0) += 1;
+                        }
                         Err(e) => println!("Error: activate_tunnel: {}", e.to_string()),
                     }
                 }
@@ -289,7 +335,12 @@ fn process_tunnel_event(
                     .execute(client);
 
                     match res {
-                        Ok(signature) => println!("Rejected {}", signature.to_string()),
+                        Ok(signature) => {
+                            println!("Rejected {}", signature.to_string());
+                            *state_transitions
+                                .entry("tunnel-pending-to-rejected")
+                                .or_insert(0) += 1;
+                        }
                         Err(e) => println!("Error: reject_tunnel: {}", e.to_string()),
                     }
                 }
@@ -308,7 +359,12 @@ fn process_tunnel_event(
             .execute(client);
 
             match res {
-                Ok(signature) => println!("Deactivated {}", signature.to_string()),
+                Ok(signature) => {
+                    println!("Deactivated {}", signature.to_string());
+                    *state_transitions
+                        .entry("tunnel-deleting-to-deactivated")
+                        .or_insert(0) += 1;
+                }
                 Err(e) => println!("{}: {}", "Error: deactivate_tunnel:", e.to_string()),
             }
         }
@@ -323,6 +379,7 @@ fn process_user_event(
     user_tunnel_ips: &mut IPBlockAllocator,
     tunnel_tunnel_ids: &mut IDAllocator,
     user: &User,
+    state_transitions: &mut HashMap<&'static str, usize>,
 ) {
     match user.status {
         // Create User
@@ -390,7 +447,12 @@ fn process_user_event(
                                 .execute(client);
 
                                 match res {
-                                    Ok(signature) => println!("Rejected {}", signature.to_string()),
+                                    Ok(signature) => {
+                                        println!("Rejected {}", signature.to_string());
+                                        *state_transitions
+                                            .entry("user-pending-to-rejected")
+                                            .or_insert(0) += 1;
+                                    }
                                     Err(e) => println!("Error: {}", e.to_string()),
                                 }
                                 return;
@@ -411,7 +473,12 @@ fn process_user_event(
                             .execute(client);
 
                             match res {
-                                Ok(signature) => println!("Activated   {}", signature.to_string()),
+                                Ok(signature) => {
+                                    println!("Activated   {}", signature.to_string());
+                                    *state_transitions
+                                        .entry("user-pending-to-activated")
+                                        .or_insert(0) += 1;
+                                }
                                 Err(e) => println!("Error: {}", e.to_string()),
                             }
                         }
@@ -425,7 +492,12 @@ fn process_user_event(
                             .execute(client);
 
                             match res {
-                                Ok(signature) => println!("Rejected {}", signature.to_string()),
+                                Ok(signature) => {
+                                    println!("Rejected {}", signature.to_string());
+                                    *state_transitions
+                                        .entry("user-pending-to-rejected")
+                                        .or_insert(0) += 1;
+                                }
                                 Err(e) => println!("Error: {}", e.to_string()),
                             }
                         }
@@ -441,7 +513,12 @@ fn process_user_event(
                     .execute(client);
 
                     match res {
-                        Ok(signature) => println!("Rejected {}", signature.to_string()),
+                        Ok(signature) => {
+                            println!("Rejected {}", signature.to_string());
+                            *state_transitions
+                                .entry("user-pending-to-rejected")
+                                .or_insert(0) += 1;
+                        }
                         Err(e) => println!("Error: {}", e.to_string()),
                     }
                 }
@@ -479,14 +556,24 @@ fn process_user_event(
                     .execute(client);
 
                     match res {
-                        Ok(signature) => println!("Deactivated {}", signature.to_string()),
+                        Ok(signature) => {
+                            println!("Deactivated {}", signature.to_string());
+                            *state_transitions
+                                .entry("user-deleting-to-deactivated")
+                                .or_insert(0) += 1;
+                        }
                         Err(e) => println!("Error: {}", e.to_string()),
                     }
                 } else if user.status == UserStatus::PendingBan {
                     let res = BanUserCommand { index: user.index }.execute(client);
 
                     match res {
-                        Ok(signature) => println!("Banned {}", signature.to_string()),
+                        Ok(signature) => {
+                            println!("Banned {}", signature.to_string());
+                            *state_transitions
+                                .entry("user-pending-ban-to-banned")
+                                .or_insert(0) += 1;
+                        }
                         Err(e) => println!("Error: {}", e.to_string()),
                     }
                 }
@@ -587,6 +674,8 @@ mod tests {
             dz_prefixes: vec![([10, 0, 0, 1], 24), ([10, 0, 1, 1], 24)],
         };
 
+        let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
+
         client
             .expect_execute_transaction()
             .times(1)
@@ -600,7 +689,13 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        process_device_event(&client, &device_pubkey, &mut devices, &device);
+        process_device_event(
+            &client,
+            &device_pubkey,
+            &mut devices,
+            &device,
+            &mut state_transitions,
+        );
 
         assert!(devices.contains_key(&device_pubkey));
         assert_eq!(devices.get(&device_pubkey).unwrap().device, device);
@@ -624,8 +719,17 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        process_device_event(&client, &device_pubkey, &mut devices, &device);
+        process_device_event(
+            &client,
+            &device_pubkey,
+            &mut devices,
+            &device,
+            &mut state_transitions,
+        );
         assert!(!devices.contains_key(&device_pubkey));
+        assert_eq!(state_transitions.len(), 2);
+        assert_eq!(state_transitions["device-pending-to-activated"], 1);
+        assert_eq!(state_transitions["device-deleting-to-deactivated"], 1);
     }
 
     #[test]
@@ -648,16 +752,32 @@ mod tests {
             dz_prefixes: vec![([10, 0, 0, 1], 24)],
         };
 
-        process_device_event(&client, &pubkey, &mut devices, &device);
+        let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
+
+        process_device_event(
+            &client,
+            &pubkey,
+            &mut devices,
+            &device,
+            &mut state_transitions,
+        );
 
         assert!(devices.contains_key(&pubkey));
         assert_eq!(devices.get(&pubkey).unwrap().device, device);
 
         device.dz_prefixes.push(([10, 0, 1, 1], 24));
-        process_device_event(&client, &pubkey, &mut devices, &device);
+        process_device_event(
+            &client,
+            &pubkey,
+            &mut devices,
+            &device,
+            &mut state_transitions,
+        );
 
         assert!(devices.contains_key(&pubkey));
         assert_eq!(devices.get(&pubkey).unwrap().device, device);
+
+        assert_eq!(state_transitions.len(), 0);
     }
 
     #[test]
@@ -700,11 +820,14 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
+        let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
+
         process_tunnel_event(
             &client,
             &mut tunnel_tunnel_ips,
             &mut tunnel_tunnel_ids,
             &tunnel,
+            &mut state_transitions,
         );
 
         assert!(tunnel_tunnel_ids.assigned.contains(&502_u16));
@@ -737,10 +860,15 @@ mod tests {
             &mut tunnel_tunnel_ips,
             &mut tunnel_tunnel_ids,
             &tunnel,
+            &mut state_transitions,
         );
 
         assert!(!tunnel_tunnel_ids.assigned.contains(&502_u16));
         assert_ne!(tunnel_tunnel_ips.assigned_ips, assigned_ips);
+
+        assert_eq!(state_transitions.len(), 2);
+        assert_eq!(state_transitions["tunnel-pending-to-activated"], 1);
+        assert_eq!(state_transitions["tunnel-deleting-to-deactivated"], 1);
     }
 
     #[test]
@@ -784,12 +912,18 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
+        let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
+
         process_tunnel_event(
             &client,
             &mut tunnel_tunnel_ips,
             &mut tunnel_tunnel_ids,
             &tunnel,
+            &mut state_transitions,
         );
+
+        assert_eq!(state_transitions.len(), 1);
+        assert_eq!(state_transitions["tunnel-pending-to-rejected"], 1);
     }
 
     fn do_test_process_user_event_pending_to_activated(
@@ -849,6 +983,8 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
+        let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
+
         let mut devices = HashMap::new();
         devices.insert(device_pubkey, DeviceState::new(&device));
 
@@ -859,10 +995,14 @@ mod tests {
             &mut user_tunnel_ips,
             &mut tunnel_tunnel_ids,
             &user,
+            &mut state_transitions,
         );
 
         assert!(user_tunnel_ips.assigned_ips.len() > 0);
         assert!(tunnel_tunnel_ids.assigned.len() > 0);
+
+        assert_eq!(state_transitions.len(), 1);
+        assert_eq!(state_transitions["user-pending-to-activated"], 1);
     }
 
     #[test]
@@ -933,6 +1073,8 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
+        let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
+
         let mut devices = HashMap::new();
 
         process_user_event(
@@ -942,7 +1084,11 @@ mod tests {
             &mut user_tunnel_ips,
             &mut tunnel_tunnel_ids,
             &user,
+            &mut state_transitions,
         );
+
+        assert_eq!(state_transitions.len(), 1);
+        assert_eq!(state_transitions["user-pending-to-rejected"], 1);
     }
 
     #[test]
@@ -998,6 +1144,8 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
+        let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
+
         let mut devices = HashMap::new();
         let device2 = device.clone();
         devices.insert(device_pubkey, DeviceState::new(&device2));
@@ -1015,7 +1163,11 @@ mod tests {
             &mut user_tunnel_ips,
             &mut tunnel_tunnel_ids,
             &user,
+            &mut state_transitions,
         );
+
+        assert_eq!(state_transitions.len(), 1);
+        assert_eq!(state_transitions["user-pending-to-rejected"], 1);
     }
 
     #[test]
@@ -1074,6 +1226,8 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
+        let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
+
         let mut devices = HashMap::new();
         let device2 = device.clone();
         devices.insert(device_pubkey, DeviceState::new(&device2));
@@ -1085,11 +1239,18 @@ mod tests {
             &mut user_tunnel_ips,
             &mut tunnel_tunnel_ids,
             &user,
+            &mut state_transitions,
         );
+
+        assert_eq!(state_transitions.len(), 1);
+        assert_eq!(state_transitions["user-pending-to-rejected"], 1);
     }
 
-    fn do_test_process_user_event_deleting_or_pending_ban<F>(user_status: UserStatus, func: F)
-    where
+    fn do_test_process_user_event_deleting_or_pending_ban<F>(
+        user_status: UserStatus,
+        func: F,
+        state_transition: &'static str,
+    ) where
         F: Fn(&mut MockDoubleZeroClient, &User, &mut Sequence) -> (),
     {
         assert!(user_status == UserStatus::Deleting || user_status == UserStatus::PendingBan);
@@ -1099,6 +1260,8 @@ mod tests {
         let mut user_tunnel_ips = IPBlockAllocator::new(([10, 0, 0, 0], 16));
         let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
         let mut client = create_test_client();
+
+        let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
 
         let pubkey = Pubkey::new_unique();
         let user = User {
@@ -1144,9 +1307,13 @@ mod tests {
             &mut user_tunnel_ips,
             &mut tunnel_tunnel_ids,
             &user,
+            &mut state_transitions,
         );
 
         assert!(!tunnel_tunnel_ids.assigned.contains(&102));
+
+        assert_eq!(state_transitions.len(), 1);
+        assert_eq!(state_transitions[state_transition], 1);
     }
 
     #[test]
@@ -1167,6 +1334,7 @@ mod tests {
                     )
                     .returning(|_, _| Ok(Signature::new_unique()));
             },
+            "user-deleting-to-deactivated",
         );
     }
 
@@ -1188,6 +1356,7 @@ mod tests {
                     )
                     .returning(|_, _| Ok(Signature::new_unique()));
             },
+            "user-pending-ban-to-banned",
         );
     }
 }

@@ -54,7 +54,7 @@ pub fn read_doublezero_config() -> (String, ClientConfig) {
         Err(_) => (
             filename.clone(),
             ClientConfig {
-                json_rpc_url: crate::consts::DEVNET_URL.to_string(),
+                json_rpc_url: crate::consts::DOUBLEZERO_URL.to_string(),
                 websocket_url: None,
                 keypair_path: {
                     let mut keypair_path = dirs_next::home_dir().unwrap_or_default();
@@ -99,6 +99,10 @@ pub fn convert_program_moniker(pubkey: String) -> String {
 }
 
 pub fn convert_url_to_ws(url: &str) -> String {
+    if url == crate::consts::DOUBLEZERO_URL {
+        return crate::consts::DOUBLEZERO_WS.to_string();
+    }
+
     let mut url = Url::parse(url).map_err(|_| "Invalid URL").unwrap();
     if url.scheme() == "https" {
         url.set_scheme("wss").ok();

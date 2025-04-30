@@ -1,22 +1,20 @@
-use core::fmt;
-
+use crate::error::DoubleZeroError;
 use crate::helper::*;
-use crate::pda::*;
 use crate::state::user::*;
-
 use borsh::{BorshDeserialize, BorshSerialize};
+use core::fmt;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
-    program_error::ProgramError,
     pubkey::Pubkey,
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct UserReactivateArgs {
     pub index: u128,
+    pub bump_seed: u8,
 }
 
 impl fmt::Debug for UserReactivateArgs {
@@ -39,24 +37,26 @@ pub fn process_reactivate_user(
     #[cfg(test)]
     msg!("process_reactivate_user({:?})", value);
 
-    let (expected_pda_account, bump_seed) = get_user_pda(program_id, value.index);
+    // Check the owner of the accounts
+    assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
     assert_eq!(
-        pda_account.key, &expected_pda_account,
-        "Invalid User PubKey"
+        *system_program.unsigned_key(),
+        solana_program::system_program::id(),
+        "Invalid System Program Account Owner"
     );
-
-    if pda_account.owner != program_id {
-        return Err(ProgramError::IncorrectProgramId);
-    }
+    // Check if the account is writable
+    assert!(pda_account.is_writable, "PDA Account is not writable");
 
     let mut user: User = User::from(&pda_account.try_borrow_data().unwrap()[..]);
+    assert_eq!(user.index, value.index, "Invalid PDA Account Index");
+    assert_eq!(user.bump_seed, value.bump_seed, "Invalid bump seed");
     if user.owner != *payer_account.key {
-        return Err(solana_program::program_error::ProgramError::Custom(0));
+        return Err(DoubleZeroError::NotAllowed.into());
     }
 
     user.status = UserStatus::Activated;
 
-    account_write(pda_account, &user, payer_account, system_program, bump_seed);
+    account_write(pda_account, &user, payer_account, system_program);
 
     #[cfg(test)]
     msg!("Suspended: {:?}", user);

@@ -18,6 +18,7 @@ use solana_program::msg;
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct LocationCreateArgs {
     pub index: u128,
+    pub bump_seed: u8,
     pub code: String,
     pub name: String,
     pub country: String,
@@ -69,6 +70,7 @@ pub fn process_create_location(
         pda_account.key, &expected_pda_account,
         "Invalid Location PubKey"
     );
+    assert_eq!(bump_seed, value.bump_seed, "Invalid Location Bump Seed");
     // Parse the global state account & check if the payer is in the allowlist
     let globalstate = globalstate_get_next(globalstate_account)?;
     if !globalstate.user_allowlist.contains(payer_account.key) {
@@ -84,6 +86,7 @@ pub fn process_create_location(
         account_type: AccountType::Location,
         owner: *payer_account.key,
         index: globalstate.account_index,
+        bump_seed,
         code: value.code.clone(),
         name: value.name.clone(),
         country: value.country.clone(),
@@ -99,7 +102,6 @@ pub fn process_create_location(
         payer_account,
         system_program,
         program_id,
-        bump_seed,
     )?;
     globalstate_write(globalstate_account, &globalstate)?;
 

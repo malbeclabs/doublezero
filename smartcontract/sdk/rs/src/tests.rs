@@ -20,9 +20,10 @@ pub mod tests {
         client.expect_get_program_id().returning(move || program_id);
 
         // Global State
-        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+        let (globalstate_pubkey, bump_seed) = get_globalstate_pda(&program_id);
         let globalstate = GlobalState {
             account_type: AccountType::GlobalState,
+            bump_seed,
             account_index: 0,
             foundation_allowlist: vec![],
             device_allowlist: vec![],

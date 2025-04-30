@@ -57,6 +57,7 @@ mod tests {
         let exchange = Exchange {
             account_type: AccountType::Exchange,
             index: 1,
+            bump_seed: 0,
             code: "exchange_code".to_string(),
             name: "exchange_name".to_string(),
             lat: 1.0,

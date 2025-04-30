@@ -4,7 +4,6 @@ use clap::Subcommand;
 use doublezero_cli::config::get::GetConfigArgs;
 use doublezero_cli::config::set::SetConfigArgs;
 
-
 #[derive(Args, Debug)]
 pub struct ConfigArgs {
     #[command(subcommand)]

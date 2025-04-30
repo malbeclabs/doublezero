@@ -57,6 +57,7 @@ mod tests {
         let location = Location {
             account_type: AccountType::Location,
             index: 1,
+            bump_seed: 2,
             code: "location_code".to_string(),
             name: "location_name".to_string(),
             country: "location_country".to_string(),

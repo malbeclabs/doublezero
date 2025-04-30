@@ -23,12 +23,13 @@ impl CreateTunnelCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, _) =
+        let (pda_pubkey, bump_seed) =
             get_tunnel_pda(&client.get_program_id(), globalstate.account_index + 1);
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateTunnel(TunnelCreateArgs {
                     index: globalstate.account_index + 1,
+                    bump_seed,
                     code: self.code.to_string(),
                     side_a_pk: self.side_a_pk,
                     side_z_pk: self.side_z_pk,

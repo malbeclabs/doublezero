@@ -13,81 +13,57 @@ import (
 )
 
 var configPayload = `
-020a3b74b3535cdeb34fd5e4cd7ea11
-33e55abc521c8850f6d08166d11e482
-89784cfe0000e9fd0000ac10000010a
-9fe0000100be181db23854a6598b9a4
-75753f210bc4f6e0bfeaf65125ab154
-9aa9a132d27
+020a3b74b3535cdeb34fd5e4cd7ea1133e55abc521c8850f6d0
+8166d11e4828978fd4cfe0000e9fd0000ac10000010a9fe0000
+10a2aa7d81b23bd270048af6aae3813deae93cdb4c7630e9600
+7cba72863408022
 `
 
 var locationPayload = `
-030a3b74b3535cdeb34fd5e4cd7ea11
-33e55abc521c8850f6d08166d11e482
-8978070000000000000000000000000
-000002c10d8adc0394440784baca051
-0054c000000000010200000070690a0
-0000050697474736275726768020000
-0055535c6804f55866ea7efca9377af
-0e077fd8849826ffd91c22cf8b42917
-9b9be0b7
+030a3b74b3535cdeb34fd5e4cd7ea1133e55abc521c8850f6d0
+8166d11e482897806000000000000000000000000000000fea2
+e3b2a599d54140b03f0a3a80786140000000000103000000747
+96f05000000546f6b796f020000004a5065483c031c496dd52f
+fd841907413a9259d8668196f939b255c274ee9fde6363
 `
 
 var exchangePayload = `
-040a3b74b3535cdeb34fd5e4cd7ea11
-33e55abc521c8850f6d08166d11e482
-89780a0000000000000000000000000
-00000f808debecac14940e4bdb30cff
-c1bebf000000000103000000786c640
-60000004c6f6e646f6e35328ae45eec
-91a7e0e53030b9fc5c4a480d51d9b87
-c274b256290d40fdf914c
+040a3b74b3535cdeb34fd5e4cd7ea1133e55abc521c8850f6d0
+8166d11e48289780c000000000000000000000000000000ff35
+71de7a8e0f494029845566ba482140000000000104000000786
+67261090000004672616e6b6675727456afd04ec486ee9054d1
+2e32370a06c9c9a7213a21c08df00dcc44358fbaa4d2
 `
 
 var devicePayload = `
-050a3b74b3535cdeb34fd5e4cd7ea11
-33e55abc521c8850f6d08166d11e482
-8978170000000000000000000000000
-00000c80f67204801bfd72b1784ea0b
-097da12c3d23c1230abecce0e9399fa
-02ea097e950f4c60bfad5aff32b8f23
-df66186967b20e7381173d330afbb19
-6b013e79900cc10f1f3010900000070
-69742d647a64303101000000cc10f3f
-32000db5869aeae2afff3ae7cedd742
-bf2c76a97d421d93d56fc131c044891
-15b50
+050a3b74b3535cdeb34fd5e4cd7ea1133e55abc521c8850f6d0
+8166d11e482897816000000000000000000000000000000ff65
+483c031c496dd52ffd841907413a9259d8668196f939b255c27
+4ee9fde636334e9df9b428bf14a9c4dbd07ca455b10aa67fbd9
+0d17007ee2ad45706bd9a5a000b4579a7001080000007479322
+d647a303101000000b4579a701d903a23e92446591b0bb98794
+f3e278aeafc84fd20ad064acb8cc2f8198607689
 `
 
 var tunnelPayload = `
-060a3b74b3535cdeb34fd5e4cd7ea11
-33e55abc521c8850f6d08166d11e482
-8978180000000000000000000000000
-000003caf7d29208fd201a140df6e9c
-463448e310b050ce66f55e9d290a472
-09627034b5f47695c4f6e3f087d7c44
-29eef8cd2cfaea3e823e43c40a49ae5
-bf0759aff0100e40b54020000002823
-000040787d010000000080969800000
-000000200ac1000021f01110000006c
-64342d647a30313a66726b2d647a303
-19469c73fef7f054a311597628e2a82
-646315badda4f4af612421cd24dff15
-671
+060a3b74b3535cdeb34fd5e4cd7ea1133e55abc521c8850f6d0
+8166d11e48289781e000000000000000000000000000000fb90
+3a23e92446591b0bb98794f3e278aeafc84fd20ad064acb8cc2
+f8198607689246e25c9403fba46e89122ff5d0fcc1febb51d4b
+4ce64f17ad56c47b3d1d7f3f0100e40b5402000000282300008
+0c3c9010000000080969800000000000500ac10000a1f011100
+00007479322d647a30313a6c61322d647a3031ad2570a0cf277
+61cab55a3f26d85fb2081f89e9285b8054ce53ae2a71cc6a7bd
 `
 
 var userPayload = `
-070a3b74b3535cdeb34fd5e4cd7ea11
-33e55abc521c8850f6d08166d11e482
-89781f0000000000000000000000000
-0000001000000000000000000000000
-0000000000000000000000000000000
-000000000d2b30c6593b3dd99bbdde9
-c8e29eb9291adefbc11544a47f17d94
-72cae13fdfc010a000001c3db7849f4
-01a9fe00001f01fcef68d5d9eae991f
-d7d6284dad2f2d755ed5b09e8b5e76f
-5988360d7687fac6
+070a3b74b3535cdeb34fd5e4cd7ea1133e55abc521c8850f6d0
+8166d11e482897820000000000000000000000000000000ff00
+000000000000000000000000000000000000000000000000000
+0000000000000d2b30c6593b3dd99bbdde9c8e29eb9291adefb
+c11544a47f17d9472cae13fdfc010a0000020a000002f501a9f
+e00021f01be15c51fbb99f0a8f5a8435593facfb691702e7c85
+e276a54a5566650216c345
 `
 
 type mockSolanaClient struct {
@@ -141,6 +117,7 @@ func TestRpcClient(t *testing.T) {
 				Config: Config{
 					AccountType:       ConfigType,
 					Owner:             getOwner(configPayload),
+					Bump_seed:         253,
 					Local_asn:         65100,
 					Remote_asn:        65001,
 					TunnelTunnelBlock: [5]byte{172, 16, 0, 0, 16},
@@ -162,14 +139,15 @@ func TestRpcClient(t *testing.T) {
 				Exchanges: []Exchange{
 					{
 						AccountType: ExchangeType,
-						Index:       Uint128{High: 10, Low: 0},
+						Index:       Uint128{High: 12, Low: 0},
+						Bump_seed:   255,
 						Owner:       getOwner(exchangePayload),
-						Lat:         51.513999803939384,
-						Lng:         -0.12014764843092213,
+						Lat:         50.1215356432098,
+						Lng:         8.642047117175098,
 						LocId:       0,
 						Status:      1,
-						Code:        "xld",
-						Name:        "London",
+						Code:        "xfra",
+						Name:        "Frankfurt",
 						PubKey:      getPubKey(exchangePayload),
 					},
 				},
@@ -187,15 +165,16 @@ func TestRpcClient(t *testing.T) {
 				Devices: []Device{
 					{
 						AccountType:    DeviceType,
-						Index:          Uint128{High: 23, Low: 0},
+						Index:          Uint128{High: 22, Low: 0},
+						Bump_seed:      255,
 						Owner:          getOwner(exchangePayload),
-						LocationPubKey: getPubKeyOffset(devicePayload, 49, 81),
-						ExchangePubKey: getPubKeyOffset(devicePayload, 81, 113),
+						LocationPubKey: getPubKeyOffset(devicePayload, 50, 82),
+						ExchangePubKey: getPubKeyOffset(devicePayload, 82, 114),
 						DeviceType:     0,
-						PublicIp:       [4]byte{0xcc, 0x10, 0xf1, 0xf3},
+						PublicIp:       [4]byte{0xb4, 0x57, 0x9a, 0x70},
 						Status:         1,
-						Code:           "pit-dzd01",
-						DzPrefixes:     [][5]byte{{0xcc, 0x10, 0xf3, 0xf3, 0x20}},
+						Code:           "ty2-dz01",
+						DzPrefixes:     [][5]byte{{0xb4, 0x57, 0x9a, 0x70, 0x1d}},
 						PubKey:         getPubKey(devicePayload),
 					},
 				},
@@ -213,15 +192,16 @@ func TestRpcClient(t *testing.T) {
 				Locations: []Location{
 					{
 						AccountType: LocationType,
-						Index:       Uint128{High: 7, Low: 0},
+						Index:       Uint128{High: 6, Low: 0},
+						Bump_seed:   254,
 						Owner:       getOwner(locationPayload),
-						Lat:         40.45119259881935,
-						Lng:         -80.00498215509094,
+						Lat:         35.66875144228767,
+						Lng:         139.76565267564501,
 						LocId:       0,
 						Status:      1,
-						Code:        "pi",
-						Name:        "Pittsburgh",
-						Country:     "US",
+						Code:        "tyo",
+						Name:        "Tokyo",
+						Country:     "JP",
 						PubKey:      getPubKey(locationPayload),
 					},
 				},
@@ -239,16 +219,17 @@ func TestRpcClient(t *testing.T) {
 				Users: []User{
 					{
 						AccountType:  UserType,
-						Index:        Uint128{High: 31, Low: 0},
+						Index:        Uint128{High: 32, Low: 0},
+						Bump_seed:    255,
 						Owner:        getOwner(userPayload),
-						UserType:     UserTypeServer,
-						TenantPubKey: getPubKeyOffset(userPayload, 50, 82),
-						DevicePubKey: getPubKeyOffset(userPayload, 82, 114),
+						UserType:     UserTypeIBRL,
+						TenantPubKey: getPubKeyOffset(userPayload, 51, 83),
+						DevicePubKey: getPubKeyOffset(userPayload, 83, 115),
 						CyoaType:     CyoaTypeGREOverDIA,
-						ClientIp:     [4]byte{0x0a, 0x00, 0x00, 0x01},
-						TunnelId:     500,
-						TunnelNet:    [5]byte{0xa9, 0xfe, 0x00, 0x00, 0x1f},
-						DzIp:         [4]byte{0xc3, 0xdb, 0x78, 0x49},
+						ClientIp:     [4]byte{0x0a, 0x00, 0x00, 0x02},
+						TunnelId:     501,
+						TunnelNet:    [5]byte{0xa9, 0xfe, 0x00, 0x02, 0x1f},
+						DzIp:         [4]byte{0x0a, 0x00, 0x00, 0x02},
 						Status:       UserStatusActivated,
 						PubKey:       getPubKey(userPayload),
 					},
@@ -267,19 +248,20 @@ func TestRpcClient(t *testing.T) {
 				Tunnels: []Tunnel{
 					{
 						AccountType: TunnelType,
-						Index:       Uint128{High: 24, Low: 0},
+						Index:       Uint128{High: 30, Low: 0},
+						Bump_seed:   251,
 						Owner:       getOwner(tunnelPayload),
-						SideAPubKey: getPubKeyOffset(tunnelPayload, 49, 81),
-						SideZPubKey: getPubKeyOffset(tunnelPayload, 81, 113),
+						SideAPubKey: getPubKeyOffset(tunnelPayload, 50, 82),
+						SideZPubKey: getPubKeyOffset(tunnelPayload, 82, 114),
 						TunnelType:  TunnelTunnelTypeMPLSoverGRE,
 						Bandwidth:   10000000000,
 						Mtu:         9000,
-						DelayNs:     25000000,
+						DelayNs:     30000000,
 						JitterNs:    10000000,
-						TunnelId:    2,
-						TunnelNet:   [5]byte{0xac, 0x10, 0x00, 0x02, 0x1f},
+						TunnelId:    5,
+						TunnelNet:   [5]byte{0xac, 0x10, 0x00, 0x0a, 0x1f},
 						Status:      TunnelStatusActivated,
-						Code:        "ld4-dz01:frk-dz01",
+						Code:        "ty2-dz01:la2-dz01",
 						PubKey:      getPubKey(tunnelPayload),
 					},
 				},

@@ -57,7 +57,7 @@ mod tests {
         let mut client = create_test_client();
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, _) = get_location_pda(&client.get_program_id(), 1);
+        let (pda_pubkey, bump_seed) = get_location_pda(&client.get_program_id(), 1);
         let payer = client.get_payer();
 
         client.expect_get_balance().returning(|| Ok(150_000_000));
@@ -67,6 +67,7 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
                     index: 1,
+                    bump_seed,
                     code: "test".to_string(),
                     name: "Test Location".to_string(),
                     country: "Test Country".to_string(),

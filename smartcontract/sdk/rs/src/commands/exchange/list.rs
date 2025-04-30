@@ -45,6 +45,7 @@ mod tests {
         let exchange1 = Exchange {
             account_type: AccountType::Exchange,
             index: 1,
+            bump_seed: 0,
             code: "exchange1_code".to_string(),
             name: "exchange1_name".to_string(),
             lat: 1.0,
@@ -58,6 +59,7 @@ mod tests {
         let exchange2 = Exchange {
             account_type: AccountType::Exchange,
             index: 1,
+            bump_seed: 0,
             code: "exchange2_code".to_string(),
             name: "exchange2_name".to_string(),
             lat: 3.0,

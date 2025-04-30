@@ -24,6 +24,7 @@ pub mod tests {
         let globalstate = GlobalState {
             account_type: AccountType::GlobalState,
             account_index: 0,
+            bump_seed: 0,
             foundation_allowlist: vec![],
             device_allowlist: vec![],
             user_allowlist: vec![],

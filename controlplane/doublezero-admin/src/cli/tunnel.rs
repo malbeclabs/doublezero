@@ -2,13 +2,10 @@ use clap::Args;
 use clap::Subcommand;
 
 use doublezero_cli::tunnel::create::*;
-use doublezero_cli::tunnel::update::*;
-use doublezero_cli::tunnel::list::*;
-use doublezero_cli::tunnel::get::*;
 use doublezero_cli::tunnel::delete::*;
-
-
-
+use doublezero_cli::tunnel::get::*;
+use doublezero_cli::tunnel::list::*;
+use doublezero_cli::tunnel::update::*;
 
 #[derive(Args, Debug)]
 pub struct TunnelArgs {
@@ -22,5 +19,5 @@ pub enum TunnelCommands {
     Update(UpdateTunnelArgs),
     List(ListTunnelArgs),
     Get(GetTunnelArgs),
-    Delete(DeleteTunnelArgs)
+    Delete(DeleteTunnelArgs),
 }

@@ -3,6 +3,8 @@
 package e2e_test
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"embed"
 	"fmt"
@@ -104,28 +106,34 @@ func TestIBRLWithAllocatedAddress_Connect_Output(t *testing.T) {
 	tests := []struct {
 		name       string
 		goldenFile string
-		cmd        []string
+		// example table file:  "fixtures/ibrl_with_allocated_addr/doublezero_user_list_user_added.txt"
+		// example kv file: "fixtures/ibrl_with_allocated_addr/doublezero_status_connected.txt"
+		testOutputType string
+		cmd            []string
 	}{
 		{
-			name:       "doublezero_user_list",
-			goldenFile: "fixtures/ibrl_with_allocated_addr/doublezero_user_list_user_added.txt",
-			cmd:        []string{"doublezero", "user", "list"},
+			name:           "doublezero_user_list",
+			goldenFile:     "fixtures/ibrl_with_allocated_addr/doublezero_user_list_user_added.txt",
+			testOutputType: "table",
+			cmd:            []string{"doublezero", "user", "list"},
 		},
 		{
-			name:       "doublezero_device_list",
-			goldenFile: "fixtures/ibrl_with_allocated_addr/doublezero_device_list.txt",
-			cmd:        []string{"doublezero", "device", "list"},
+			name:           "doublezero_device_list",
+			goldenFile:     "fixtures/ibrl_with_allocated_addr/doublezero_device_list.txt",
+			testOutputType: "table",
+			cmd:            []string{"doublezero", "device", "list"},
 		},
 		{
-			name:       "doublezero_status",
-			goldenFile: "fixtures/ibrl_with_allocated_addr/doublezero_status_connected.txt",
-			cmd:        []string{"doublezero", "status"},
+			name:           "doublezero_status",
+			goldenFile:     "fixtures/ibrl_with_allocated_addr/doublezero_status_connected.txt",
+			testOutputType: "kv",
+			cmd:            []string{"doublezero", "status"},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			diff, err := diffCliToGolden(test.goldenFile, test.cmd...)
+			diff, err := diffCliToGolden(test.goldenFile, test.testOutputType, test.cmd...)
 			if err != nil {
 				t.Fatalf("error generating diff: %v", err)
 			}
@@ -275,7 +283,7 @@ func TestIBRLWithAllocatedAddress_Disconnect_Networking(t *testing.T) {
 	t.Run("check_user_contract_is_removed", func(t *testing.T) {
 		goldenFile := "fixtures/ibrl_with_allocated_addr/doublezero_user_list_user_removed.txt"
 		cmd := []string{"doublezero", "user", "list"}
-		diff, err := diffCliToGolden(goldenFile, cmd...)
+		diff, err := diffCliToGolden(goldenFile, "table", cmd...)
 		if err != nil {
 			t.Fatalf("error generating diff: %v", err)
 		}
@@ -316,20 +324,22 @@ func TestIBRLWithAllocatedAddress_Disconnect_Networking(t *testing.T) {
 
 func TestIBRLWithAllocatedAddress_Disconnect_Output(t *testing.T) {
 	tests := []struct {
-		name       string
-		goldenFile string
-		cmd        []string
+		name           string
+		goldenFile     string
+		testOutputType string
+		cmd            []string
 	}{
 		{
-			name:       "doublezero_status",
-			goldenFile: "fixtures/ibrl_with_allocated_addr/doublezero_status_disconnected.txt",
-			cmd:        []string{"doublezero", "status"},
+			name:           "doublezero_status",
+			goldenFile:     "fixtures/ibrl_with_allocated_addr/doublezero_status_disconnected.txt",
+			testOutputType: "kv",
+			cmd:            []string{"doublezero", "status"},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			diff, err := diffCliToGolden(test.goldenFile, test.cmd...)
+			diff, err := diffCliToGolden(test.goldenFile, test.testOutputType, test.cmd...)
 			if err != nil {
 				t.Fatalf("error generating diff: %v", err)
 			}
@@ -342,25 +352,28 @@ func TestIBRLWithAllocatedAddress_Disconnect_Output(t *testing.T) {
 
 func TestIBRL_Connect_Output(t *testing.T) {
 	tests := []struct {
-		name       string
-		goldenFile string
-		cmd        []string
+		name           string
+		goldenFile     string
+		testOutputType string
+		cmd            []string
 	}{
 		{
-			name:       "doublezero_user_list",
-			goldenFile: "fixtures/ibrl/doublezero_user_list_user_added.txt",
-			cmd:        []string{"doublezero", "user", "list"},
+			name:           "doublezero_user_list",
+			goldenFile:     "fixtures/ibrl/doublezero_user_list_user_added.txt",
+			testOutputType: "table",
+			cmd:            []string{"doublezero", "user", "list"},
 		},
 		{
-			name:       "doublezero_status",
-			goldenFile: "fixtures/ibrl/doublezero_status_connected.txt",
-			cmd:        []string{"doublezero", "status"},
+			name:           "doublezero_status",
+			goldenFile:     "fixtures/ibrl/doublezero_status_connected.txt",
+			testOutputType: "kv",
+			cmd:            []string{"doublezero", "status"},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			diff, err := diffCliToGolden(test.goldenFile, test.cmd...)
+			diff, err := diffCliToGolden(test.goldenFile, test.testOutputType, test.cmd...)
 			if err != nil {
 				t.Fatalf("error generating diff: %v", err)
 			}
@@ -516,25 +529,28 @@ func TestIBRL_Connect_Networking(t *testing.T) {
 
 func TestIBRL_Disconnect_Output(t *testing.T) {
 	tests := []struct {
-		name       string
-		goldenFile string
-		cmd        []string
+		name           string
+		goldenFile     string
+		testOutputType string
+		cmd            []string
 	}{
 		{
-			name:       "doublezero_user_list",
-			goldenFile: "fixtures/ibrl/doublezero_user_list_user_removed.txt",
-			cmd:        []string{"doublezero", "user", "list"},
+			name:           "doublezero_user_list",
+			goldenFile:     "fixtures/ibrl/doublezero_user_list_user_removed.txt",
+			testOutputType: "table",
+			cmd:            []string{"doublezero", "user", "list"},
 		},
 		{
-			name:       "doublezero_status",
-			goldenFile: "fixtures/ibrl/doublezero_status_disconnected.txt",
-			cmd:        []string{"doublezero", "status"},
+			name:           "doublezero_status",
+			goldenFile:     "fixtures/ibrl/doublezero_status_disconnected.txt",
+			testOutputType: "kv",
+			cmd:            []string{"doublezero", "status"},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			diff, err := diffCliToGolden(test.goldenFile, test.cmd...)
+			diff, err := diffCliToGolden(test.goldenFile, test.testOutputType, test.cmd...)
 			if err != nil {
 				t.Fatalf("error generating diff: %v", err)
 			}
@@ -563,8 +579,9 @@ func TestIBRL_Disconnect_Networking(t *testing.T) {
 
 	t.Run("check_user_contract_is_removed", func(t *testing.T) {
 		goldenFile := "fixtures/ibrl/doublezero_user_list_user_removed.txt"
+		testOutputType := "table"
 		cmd := []string{"doublezero", "user", "list"}
-		diff, err := diffCliToGolden(goldenFile, cmd...)
+		diff, err := diffCliToGolden(goldenFile, testOutputType, cmd...)
 		if err != nil {
 			t.Fatalf("error generating diff: %v", err)
 		}
@@ -603,17 +620,101 @@ func TestIBRL_Disconnect_Networking(t *testing.T) {
 	})
 }
 
-func diffCliToGolden(goldenFile string, cmds ...string) (string, error) {
+func diffCliToGolden(goldenFile string, testOutputType string, cmds ...string) (string, error) {
 	want, err := fs.ReadFile(goldenFile)
+
 	if err != nil {
 		return "", fmt.Errorf("error reading golden file %s: %v", goldenFile, err)
 	}
+
 	got, err := exec.Command(cmds[0], cmds[1:]...).Output()
 	if err != nil {
 		return "", fmt.Errorf("error running cmd %s: %v", cmds, err)
 	}
-	opts := []cmp.Option{
-		cmpopts.SortSlices(func(a, b string) bool { return a < b }),
+
+	switch testOutputType {
+	case "table":
+		diff := diffCliMapToGoldenMapTable(want, got)
+		return diff, nil
+	case "kv":
+		diff := diffCliMapToGoldenMapKV(want, got)
+		return diff, nil
+	default:
+		return "", fmt.Errorf("unexepcted testOutputType: %s\n", testOutputType)
+
 	}
-	return cmp.Diff(strings.Split(string(want), "\n"), strings.Split(string(got), "\n"), opts...), nil
+}
+
+func diffCliMapToGoldenMapTable(want []byte, got []byte) string {
+	gotMap := mapFromTable(got)
+	wantMap := mapFromTable(want)
+
+	return cmp.Diff(gotMap, wantMap)
+}
+
+func diffCliMapToGoldenMapKV(want []byte, got []byte) string {
+	gotMap := mapFromKV(got)
+	wantMap := mapFromKV(want)
+
+	ignoreKeys := []string{"Last Session Update"}
+
+	return cmp.Diff(gotMap, wantMap, cmpopts.IgnoreMapEntries(func(key string, _ string) bool {
+		for _, k := range ignoreKeys {
+			if key == k {
+				return true
+			}
+		}
+		return false
+	}))
+}
+
+// example table
+// pubkey                                       | user_type           | device   | cyoa_type  | client_ip    | tunnel_id | tunnel_net      | dz_ip        | status    | owner
+// NR8fpCK7mqeFVJ3mUmhndX2JtRCymZzgQgGj5JNbGp8  | IBRL                | la2-dz01 | GREOverDIA | 1.2.3.4      | 500       | 169.254.0.2/31  | 1.2.3.4      | activated | Dc3LFdWwKGJvJcVkXhAr14kh1HS6pN7oCWrvHfQtsHGe
+// 5Rm8dp4dDzR5SE3HtrqGVpqHLaPvvxDEV3EotqPBBUgS | IBRL                | la2-dz01 | GREOverDIA | 5.6.7.8      | 504       | 169.254.0.10/31 | 5.6.7.8      | activated | Dc3LFdWwKGJvJcVkXhAr14kh1HS6pN7oCWrvHfQtsHGe
+func mapFromTable(output []byte) []map[string]string {
+	var sliceOfMaps []map[string]string
+
+	scanner := bufio.NewScanner(bytes.NewReader(output))
+	scanner.Scan()
+	header := scanner.Text()
+	split := strings.Split(header, "|")
+	trimmed_header := make([]string, len(split))
+	for i, key := range split {
+		trimmed_header[i] = strings.TrimSpace(key)
+	}
+
+	for i := 0; scanner.Scan(); i++ {
+		formattedMap := make(map[string]string)
+		line := scanner.Text()
+		split := strings.Split(line, "|")
+		for i, key := range split {
+			formattedMap[trimmed_header[i]] = strings.TrimSpace(key)
+		}
+		sliceOfMaps = append(sliceOfMaps, formattedMap)
+	}
+
+	slices.SortFunc(sliceOfMaps, func(a, b map[string]string) int {
+		return strings.Compare(strings.ToLower(a["pubkey"]), strings.ToLower(b["pubkey"]))
+	})
+
+	return sliceOfMaps
+}
+
+// example KV
+// Doublezero IP: 64.86.249.81
+// Name: doublezero0
+// Tunnel dst: 64.86.249.80
+// Tunnel src: 64.86.249.86
+// Tunnel status: up
+func mapFromKV(output []byte) map[string]string {
+	formattedMap := make(map[string]string)
+
+	scanner := bufio.NewScanner(bytes.NewReader(output))
+	for i := 0; scanner.Scan(); i++ {
+		line := scanner.Text()
+		split := strings.Split(line, ":")
+		formattedMap[split[0]] = strings.TrimSpace(split[1])
+	}
+	return formattedMap
 }

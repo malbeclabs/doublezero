@@ -45,7 +45,7 @@ mod exchange_test {
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 0);
 
-        let (exchange_pubkey, _) =
+        let (exchange_pubkey, bump_seed) =
             get_exchange_pda(&program_id, globalstate_account.account_index + 1);
 
         execute_transaction(
@@ -54,6 +54,7 @@ mod exchange_test {
             program_id,
             DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
                 index: globalstate_account.account_index + 1,
+                bump_seed,
                 code: "la".to_string(),
                 name: "Los Angeles".to_string(),
                 lat: 1.234,
@@ -85,6 +86,7 @@ mod exchange_test {
             program_id,
             DoubleZeroInstruction::SuspendExchange(ExchangeSuspendArgs {
                 index: exchange_la.index,
+                bump_seed: exchange_la.bump_seed,
             }),
             vec![
                 AccountMeta::new(exchange_pubkey, false),
@@ -110,6 +112,7 @@ mod exchange_test {
             program_id,
             DoubleZeroInstruction::ReactivateExchange(ExchangeReactivateArgs {
                 index: exchange_la.index,
+                bump_seed: exchange_la.bump_seed,
             }),
             vec![
                 AccountMeta::new(exchange_pubkey, false),
@@ -135,6 +138,7 @@ mod exchange_test {
             program_id,
             DoubleZeroInstruction::UpdateExchange(ExchangeUpdateArgs {
                 index: exchange.index,
+                bump_seed: exchange.bump_seed,
                 code: Some("la2".to_string()),
                 name: Some("Los Angeles - Los Angeles".to_string()),
                 lat: Some(3.433),
@@ -167,6 +171,7 @@ mod exchange_test {
             program_id,
             DoubleZeroInstruction::DeleteExchange(ExchangeDeleteArgs {
                 index: exchange_la.index,
+                bump_seed: exchange_la.bump_seed,
             }),
             vec![
                 AccountMeta::new(exchange_pubkey, false),

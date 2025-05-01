@@ -1,5 +1,6 @@
 use core::fmt;
 
+use crate::globalstate::globalstate_get_next;
 use crate::pda::*;
 use crate::{error::DoubleZeroError, helper::*, state::device::*};
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -15,6 +16,7 @@ use solana_program::{
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct DeviceActivateArgs {
     pub index: u128,
+    pub bump_seed: u8,
 }
 
 impl fmt::Debug for DeviceActivateArgs {
@@ -57,6 +59,10 @@ pub fn process_activate_device(
     }
 
     let mut device: Device = Device::from(&pda_account.try_borrow_data().unwrap()[..]);
+    assert_eq!(device.index, value.index, "Invalid PDA Account Index");
+    assert_eq!(device.bump_seed, value.bump_seed, "Invalid PDA Account Bump Seed");
+    assert!(device.bump_seed == bump_seed, "Invalid bump seed");
+
     if device.status != DeviceStatus::Pending {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
@@ -68,7 +74,6 @@ pub fn process_activate_device(
         &device,
         payer_account,
         system_program,
-        bump_seed,
     );
 
     #[cfg(test)]

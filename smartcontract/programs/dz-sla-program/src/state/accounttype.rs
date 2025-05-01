@@ -50,6 +50,7 @@ impl fmt::Display for AccountType {
 pub trait AccountTypeInfo {
     fn index(&self) -> u128;
     fn owner(&self) -> Pubkey;
+    fn bump_seed(&self) -> u8;
     fn size(&self) -> usize;
     fn seed(&self) -> &[u8];
 }

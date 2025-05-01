@@ -1,8 +1,8 @@
 use core::fmt;
 
 use crate::error::DoubleZeroError;
+use crate::globalstate::globalstate_get;
 use crate::helper::*;
-use crate::pda::*;
 use crate::state::device::*;
 
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -10,13 +10,13 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     msg,
-    program_error::ProgramError,
     pubkey::Pubkey,
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct DeviceRejectArgs {
     pub index: u128,
+    pub bump_seed: u8,
     pub reason: String,
 }
 
@@ -41,25 +41,30 @@ pub fn process_reject_device(
     #[cfg(test)]
     msg!("process_activate_device({:?})", value);
 
-    let (expected_pda_account, bump_seed) = get_device_pda(program_id, value.index);
+    // Check the owner of the accounts
+    assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
     assert_eq!(
-        pda_account.key, &expected_pda_account,
-        "Invalid Device PubKey"
+        globalstate_account.owner, program_id,
+        "Invalid GlobalState Account Owner"
     );
+    assert_eq!(
+        *system_program.unsigned_key(),
+        solana_program::system_program::id(),
+        "Invalid System Program Account Owner"
+    );
+    assert!(pda_account.is_writable, "PDA Account is not writable");
 
-    if pda_account.owner != program_id {
-        return Err(ProgramError::IncorrectProgramId);
-    }
-    if globalstate_account.owner != program_id {
-        return Err(ProgramError::IncorrectProgramId);
-    }
-
-    let globalstate = globalstate_get_next(globalstate_account)?;
+    let globalstate = globalstate_get(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
     let mut device: Device = Device::from(&pda_account.try_borrow_data().unwrap()[..]);
+    assert_eq!(device.index, value.index, "Invalid PDA Account Index");
+    assert_eq!(
+        device.bump_seed, value.bump_seed,
+        "Invalid PDA Account Bump Seed"
+    );
     if device.status != DeviceStatus::Pending {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
@@ -67,13 +72,7 @@ pub fn process_reject_device(
     device.status = DeviceStatus::Rejected;
     msg!("Reason: {:?}", value.reason);
 
-    account_write(
-        pda_account,
-        &device,
-        payer_account,
-        system_program,
-        bump_seed,
-    );
+    account_write(pda_account, &device, payer_account, system_program);
 
     #[cfg(test)]
     msg!("Rejectd: {:?}", device);

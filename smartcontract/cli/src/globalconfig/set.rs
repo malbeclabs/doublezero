@@ -2,6 +2,7 @@ use clap::Args;
 use doublezero_sdk::*;
 
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
+use doublezero_sdk::commands::globalconfig::set::SetGlobalConfigCommand;
 
 #[derive(Args, Debug)]
 pub struct SetGlobalConfigArgs {
@@ -20,12 +21,12 @@ impl SetGlobalConfigArgs {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let signature = client.set_global_config(
-            self.local_asn,
-            self.remote_asn,
-            networkv4_parse(&self.tunnel_tunnel_block),
-            networkv4_parse(&self.device_tunnel_block),
-        )?;
+        let signature = SetGlobalConfigCommand {
+            local_asn: self.local_asn,
+            remote_asn: self.remote_asn,
+            tunnel_tunnel_block: networkv4_parse(&self.tunnel_tunnel_block),
+            user_tunnel_block: networkv4_parse(&self.device_tunnel_block),
+        }.execute(client)?;
         println!("Signature: {}", signature);
 
         Ok(())

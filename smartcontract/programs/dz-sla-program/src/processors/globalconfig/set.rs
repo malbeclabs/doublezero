@@ -1,7 +1,7 @@
 use std::fmt;
 
 use crate::error::DoubleZeroError;
-use crate::helper::globalstate_get;
+use crate::globalstate::globalstate_get;
 use crate::pda::*;
 use crate::types::networkv4_to_string;
 use crate::{
@@ -66,7 +66,7 @@ pub fn process_set_globalconfig(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    let (expected_pda_account, expected_bump_seed) = get_globalconfig_pda(program_id);
+    let (expected_pda_account, bump_seed) = get_globalconfig_pda(program_id);
     assert_eq!(
         pda_account.key, &expected_pda_account,
         "Invalid GlobalConfig PubKey"
@@ -75,6 +75,7 @@ pub fn process_set_globalconfig(
     let data: GlobalConfig = GlobalConfig {
         account_type: AccountType::Config,
         owner: *payer_account.key,
+        bump_seed: bump_seed,
         local_asn: value.local_asn,
         remote_asn: value.remote_asn,
         tunnel_tunnel_block: value.tunnel_tunnel_block,
@@ -102,7 +103,7 @@ pub fn process_set_globalconfig(
                 payer_account.clone(),
                 system_program.clone(),
             ],
-            &[&[SEED_PREFIX, SEED_CONFIG, &[expected_bump_seed]]],
+            &[&[SEED_PREFIX, SEED_CONFIG, &[bump_seed]]],
         )?;
     }
 

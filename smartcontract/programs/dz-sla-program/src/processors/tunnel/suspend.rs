@@ -1,6 +1,4 @@
 use core::fmt;
-
-use crate::pda::*;
 use crate::{error::DoubleZeroError, helper::*, state::tunnel::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
@@ -14,6 +12,7 @@ use solana_program::{
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct TunnelSuspendArgs {
     pub index: u128,
+    pub bump_seed: u8,
 }
 
 impl fmt::Debug for TunnelSuspendArgs {
@@ -36,17 +35,20 @@ pub fn process_suspend_tunnel(
     #[cfg(test)]
     msg!("process_suspend_tunnel({:?})", value);
 
-    let (expected_pda_account, bump_seed) = get_tunnel_pda(program_id, value.index);
-    assert_eq!(
-        pda_account.key, &expected_pda_account,
-        "Invalid Tunnel PubKey"
-    );
-
-    if pda_account.owner != program_id {
-        return Err(ProgramError::IncorrectProgramId);
-    }
+        // Check the owner of the accounts
+        assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
+        assert_eq!(
+            *system_program.unsigned_key(),
+            solana_program::system_program::id(),
+            "Invalid System Program Account Owner"
+        );
+        // Check if the account is writable
+        assert!(pda_account.is_writable, "PDA Account is not writable");
 
     let mut tunnel: Tunnel = Tunnel::from(&pda_account.try_borrow_data().unwrap()[..]);
+    assert_eq!(tunnel.index, value.index, "Invalid PDA Account Index");
+    assert_eq!(tunnel.bump_seed, value.bump_seed, "Invalid PDA Account Bump Seed");
+
     if tunnel.owner != *payer_account.key {
         return Err(ProgramError::InvalidAccountOwner);
     }
@@ -63,7 +65,6 @@ pub fn process_suspend_tunnel(
         &tunnel,
         payer_account,
         system_program,
-        bump_seed,
     );
 
     msg!("Suspended: {:?}", tunnel);

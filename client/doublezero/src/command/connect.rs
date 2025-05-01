@@ -2,7 +2,7 @@ use colored::Colorize;
 use eyre;
 use indicatif::ProgressBar;
 use std::str::FromStr;
-
+use doublezero_sdk::commands::globalconfig::get::GetGlobalConfigCommand;
 use crate::servicecontroller::{ProvisioningRequest, ServiceController};
 use clap::{Args, ValueEnum};
 use doublezero_sdk::{
@@ -271,7 +271,7 @@ impl ProvisioningArgs {
             .collect::<Vec<NetworkV4>>();
 
         spinner.set_message("Getting global-config...");
-        let (_, config) = client.get_globalconfig().expect("Unable to get config");
+        let (_, config) = GetGlobalConfigCommand{}.execute(client).expect("Unable to get config");
 
         spinner.set_message("Getting user account...");
         let device = devices.get(&user.device_pk).expect("Device not found");

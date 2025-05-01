@@ -71,6 +71,7 @@ pub struct Device {
     pub account_type: AccountType,  // 1
     pub owner: Pubkey,              // 32
     pub index: u128,                // 16
+    pub bump_seed: u8,              // 1
     pub location_pk: Pubkey,        // 32
     pub exchange_pk: Pubkey,        // 32
     pub device_type: DeviceType,    // 1
@@ -98,7 +99,10 @@ impl AccountTypeInfo for Device {
         SEED_DEVICE
     }
     fn size(&self) -> usize {
-        1 + 32 + 16 + 32 + 32 + 1 + 4 + 1 + 4 + self.code.len() + 4 + 5 * self.dz_prefixes.len() + 4 + 4
+        1 + 32 + 16 + 1 + 32 + 32 + 1 + 4 + 1 + 4 + self.code.len() + 4 + 5 * self.dz_prefixes.len() + 4 + 4
+    }
+    fn bump_seed(&self) -> u8 {
+        self.bump_seed
     }
     fn index(&self) -> u128 {
         self.index
@@ -116,6 +120,7 @@ impl From<&[u8]> for Device {
             account_type: parser.read_enum(),
             owner: parser.read_pubkey(),
             index: parser.read_u128(),
+            bump_seed: parser.read_u8(),
             location_pk: parser.read_pubkey(),
             exchange_pk: parser.read_pubkey(),
             device_type: parser.read_enum(),
@@ -134,11 +139,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_state_exchange_serialization() {
+    fn test_state_device_serialization() {
         let val = Device {
             account_type: AccountType::Device,
             owner: Pubkey::new_unique(),
             index: 123,
+            bump_seed: 1,
             code: "test-321".to_string(),
             device_type: DeviceType::Switch,
             location_pk: Pubkey::new_unique(),

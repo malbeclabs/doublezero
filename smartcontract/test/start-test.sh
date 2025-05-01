@@ -48,9 +48,15 @@ sleep 15
 echo "Start the activator"
 ./target/doublezero-activator --program-id 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX  > ./logs/activator.log 2>&1 &
 
+echo "add allowlist"
+./target/doublezero global-config allowlist add --pubkey 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
+./target/doublezero device allowlist add --pubkey 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
+./target/doublezero user allowlist add --pubkey 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
+
+
 ### Initialice locations
 echo "creating locations"
-./target/doublezero location create --code lax --name "Los Angeles" --country US --lat 34.049641274076464 --lng -118.25939642499903
+./target/doublezero location create --code lax --name "XXXXXXX" --country US --lat 34.049641274076464 --lng -118.25939642499903
 ./target/doublezero location create --code ewr --name "New York" --country US --lat 40.780297071772125 --lng -74.07203003496925
 ./target/doublezero location create --code lhr --name "London" --country UK --lat 51.513999803939384 --lng -0.12014764843092213
 ./target/doublezero location create --code fra --name "Frankfurt" --country DE --lat 50.1215356432098 --lng 8.642047117175098
@@ -59,9 +65,12 @@ echo "creating locations"
 ./target/doublezero location create --code pit --name "Pittsburgh" --country US --lat 40.45119259881935 --lng -80.00498215509094
 ./target/doublezero location create --code ams --name "Amsterdam" --country US --lat 52.30085793004002 --lng 4.942241140085309
 
+echo "update locations"
+./target/doublezero location update --pubkey XEY7fFCJ8r1FM9xwyvMqZ3GEgEbKNBTw65N2ynGJXRD --name "Los Angeles"
+
 ### Initialice exchanges
 echo "creating exchanges"
-./target/doublezero exchange create --code xlax --name "Los Angeles" --lat 34.049641274076464 --lng -118.25939642499903
+./target/doublezero exchange create --code xlax --name "XXXXXXXX" --lat 34.049641274076464 --lng -118.25939642499903
 ./target/doublezero exchange create --code xewr --name "New York" --lat 40.780297071772125 --lng -74.07203003496925
 ./target/doublezero exchange create --code xlhr --name "London" --lat 51.513999803939384 --lng -0.12014764843092213
 ./target/doublezero exchange create --code xfra --name "Frankfurt" --lat 50.1215356432098 --lng 8.642047117175098
@@ -69,6 +78,9 @@ echo "creating exchanges"
 ./target/doublezero exchange create --code xtyo --name "Tokyo" --lat 35.66875144228767 --lng 139.76565267564501
 ./target/doublezero exchange create --code xpit --name "Pittsburgh" --lat 40.45119259881935 --lng -80.00498215509094
 ./target/doublezero exchange create --code xams --name "Amsterdam" --lat 52.30085793004002 --lng 4.942241140085309
+
+echo "update exchanges"
+./target/doublezero exchange update --pubkey EpE1QxRzUXFLSAPKcsGrHrdareBZ7hNsyJtTPw1iL7q8 --name "Los Angeles"
 
 ### Initialice devices
 echo "creating devices"
@@ -103,23 +115,25 @@ echo "########################################################################"
 
 
 echo "Delete users"
+./target/doublezero user delete --pubkey Do1iXv6tNMHRzF1yYHBcLNfNngCK6Yyr9izpLZc1rrwW
 ./target/doublezero user delete --pubkey J2MUYJeJvTfrHpxMm3tVYkcDhTwgAFFju2veS27WhByX
-./target/doublezero user delete --pubkey AA3fFZM1bJbNzCWhPydZrbQpswGkZx4PFhxd2bHaztyG
 
 echo "Delete tunnels"
-./target/doublezero tunnel delete --pubkey 2jH9iDKb8BjSgyQD7t7gfbtNDCPU9WDpngKbwpoUB8YC
-./target/doublezero tunnel delete --pubkey Cv2rR6dyRpjjTXQjqDrNA8j2HycthusJgihPrJJFj7pn
+./target/doublezero tunnel delete --pubkey 47Z31KgJW1A7HYar7XGrb6Ax8x2d53ZL3RmcY9ofViet
 ./target/doublezero tunnel delete --pubkey 8k1uzVNaUjiTvkYe7huBqUXgDvDYa5rEbes4sJBwRf9P
+./target/doublezero tunnel delete --pubkey 2jH9iDKb8BjSgyQD7t7gfbtNDCPU9WDpngKbwpoUB8YC
+
+./target/doublezero tunnel delete --pubkey Cv2rR6dyRpjjTXQjqDrNA8j2HycthusJgihPrJJFj7pn
+./target/doublezero tunnel delete --pubkey CeteLjdtNZW7EYVYNK7JEMB1dkgk5wqtEUCCiiic7egt
 
 echo "Delete devices"
-./target/doublezero device delete --pubkey 8scDVeZ8aB1TRTkBqaZgzxuk7WwpARdF1a39wYA7nR3W
-./target/doublezero device delete --pubkey 6Nn23MqDrBETFXXohEvmP4mQJb2LWxBNFqx6Ye2zDUej
-
+./target/doublezero device delete --pubkey 3TD6MDfCo2mVeR9a71ukrdXBYVLyWz5cz8RLcNojVpcv
+./target/doublezero device delete --pubkey FBUy8tzFWa8LhQmCfXbnWZMg1XUDQfudanoVK5NP4KGP
 
 echo "Delete exchanges"
-./target/doublezero exchange delete --pubkey 4ZZ3GjXdqFFphVvgeNtVTWUw68yr98VjPnY4B4yaveBH
-./target/doublezero exchange delete --pubkey EgzS5scyg4NWQSKfx68jLFmQ51zFYpYDmhe6TG8d3xkv
+./target/doublezero exchange delete --pubkey EXFf8KgN5C22EP3ufmscFGNmNzVtTm2HrppBMSn3sn3G
+./target/doublezero exchange delete --pubkey EpE1QxRzUXFLSAPKcsGrHrdareBZ7hNsyJtTPw1iL7q8
 
 echo "Delete locations"
-./target/doublezero location delete --pubkey ETxAPdPrpfprntzBhZwKRyUXCtczhn5yMofVEbyxNJRC
-./target/doublezero location delete --pubkey GUKEumtUvQQwNzDDa9RBjqjzve66fYtAVc3EBRum2VJo
+./target/doublezero location delete --pubkey XEY7fFCJ8r1FM9xwyvMqZ3GEgEbKNBTw65N2ynGJXRD
+./target/doublezero location delete --pubkey 3rHsZ8d3oSRfcz5S1MWGNk3hmaMKMKNGerTkWzuNpwu9

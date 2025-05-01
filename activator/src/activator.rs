@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use doublezero_sdk::GetGlobalConfigCommand;
 use doublezero_sdk::{
     commands::{
         device::{
@@ -11,9 +12,8 @@ use doublezero_sdk::{
             list::ListTunnelCommand, reject::RejectTunnelCommand,
         },
         user::{
-            activate::ActivateUserCommand, ban::BanUserCommand, 
-            list::ListUserCommand, reject::RejectUserCommand, 
-            deactivate::DeactivateUserCommand,
+            activate::ActivateUserCommand, ban::BanUserCommand, deactivate::DeactivateUserCommand,
+            list::ListUserCommand, reject::RejectUserCommand,
         },
     },
     ipv4_to_string, networkv4_list_to_string, networkv4_to_string, AccountData, DZClient, Device,
@@ -50,12 +50,20 @@ impl Activator {
     ) -> eyre::Result<Self> {
         let client = DZClient::new(rpc_url, websocket_url, program_id, kaypair)?;
 
-        let mut config = client.get_globalconfig();
+        print!(
+            "Connected to url: {} ws: {} program_id: {} ",
+            client.get_rpc(),
+            client.get_ws(),
+            client.get_program_id().to_string()
+        );
 
+        // Wait for the global config to be available
+        // This is a workaround for the fact that the global config is not available immediately
+        let mut config = GetGlobalConfigCommand {}.execute(&client);
         while config.is_err() {
             println!("Waiting for config...");
             thread::sleep(Duration::from_secs(10));
-            config = client.get_globalconfig();
+            config = GetGlobalConfigCommand {}.execute(&client);
         }
 
         let (_, config) = config.unwrap();
@@ -70,13 +78,6 @@ impl Activator {
     }
 
     pub async fn init(&mut self) -> eyre::Result<()> {
-        print!(
-            "Connected to url: {} ws: {} program_id: {} ",
-            self.client.get_rpc(),
-            self.client.get_ws(),
-            self.client.get_program_id().to_string()
-        );
-
         // Fetch the list of tunnels, devices, and users from the client
         let devices = ListDeviceCommand {}.execute(&self.client)?;
         let tunnels = ListTunnelCommand {}.execute(&self.client)?;
@@ -520,6 +521,7 @@ mod tests {
         let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
         let globalstate = GlobalState {
             account_type: AccountType::GlobalState,
+            bump_seed: 0,
             account_index: 0,
             foundation_allowlist: vec![],
             device_allowlist: vec![],
@@ -544,6 +546,7 @@ mod tests {
             account_type: AccountType::Device,
             owner: Pubkey::new_unique(),
             index: 0,
+            bump_seed: 0,
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             device_type: DeviceType::Switch,
@@ -571,6 +574,7 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {
                     index: device.index,
+                    bump_seed: device.bump_seed,
                 })),
                 predicate::always(),
             )
@@ -593,6 +597,7 @@ mod tests {
                 predicate::eq(DoubleZeroInstruction::DeactivateDevice(
                     DeviceDeactivateArgs {
                         index: device.index,
+                        bump_seed: device.bump_seed,
                     },
                 )),
                 predicate::always(),
@@ -613,6 +618,7 @@ mod tests {
             account_type: AccountType::Device,
             owner: Pubkey::new_unique(),
             index: 0,
+            bump_seed: 0,
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             device_type: DeviceType::Switch,
@@ -629,6 +635,7 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {
                     index: device.index,
+                    bump_seed: device.bump_seed,
                 })),
                 predicate::always(),
             )
@@ -656,6 +663,7 @@ mod tests {
             account_type: AccountType::Tunnel,
             owner: Pubkey::new_unique(),
             index: 0,
+            bump_seed: 0,
             side_a_pk: Pubkey::new_unique(),
             side_z_pk: Pubkey::new_unique(),
             tunnel_type: TunnelTunnelType::MPLSoGRE,
@@ -715,6 +723,7 @@ mod tests {
             account_type: AccountType::Tunnel,
             owner: Pubkey::new_unique(),
             index: 0,
+            bump_seed: 0,
             side_a_pk: Pubkey::new_unique(),
             side_z_pk: Pubkey::new_unique(),
             tunnel_type: TunnelTunnelType::MPLSoGRE,
@@ -735,6 +744,7 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::RejectTunnel(TunnelRejectArgs {
                     index: tunnel.index,
+                    bump_seed: tunnel.bump_seed,
                     reason: "Error: No available tunnel block".to_string(),
                 })),
                 predicate::always(),
@@ -762,6 +772,7 @@ mod tests {
             account_type: AccountType::Device,
             owner: Pubkey::new_unique(),
             index: 0,
+            bump_seed: 0,
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             device_type: DeviceType::Switch,
@@ -778,6 +789,7 @@ mod tests {
             account_type: AccountType::User,
             owner: Pubkey::new_unique(),
             index: 0,
+            bump_seed: 0,
             user_type: user_type,
             tenant_pk: Pubkey::new_unique(),
             device_pk: device_pubkey,
@@ -810,6 +822,7 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::ActivateUser(UserActivateArgs {
                     index: user.index,
+                    bump_seed: user.bump_seed,
                     tunnel_id: 100,
                     tunnel_net: ([10, 0, 0, 0], 31),
                     dz_ip: expected_dz_ip.unwrap_or([0, 0, 0, 0]),
@@ -860,6 +873,7 @@ mod tests {
             account_type: AccountType::Device,
             owner: Pubkey::new_unique(),
             index: 0,
+            bump_seed: 0,
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             device_type: DeviceType::Switch,
@@ -876,6 +890,7 @@ mod tests {
             account_type: AccountType::User,
             owner: Pubkey::new_unique(),
             index: 0,
+            bump_seed: 0,
             user_type: UserType::IBRLWithAllocatedIP,
             tenant_pk: Pubkey::new_unique(),
             device_pk: device_pubkey,
@@ -897,6 +912,7 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::RejectUser(UserRejectArgs {
                     index: user.index,
+                    bump_seed: user.bump_seed,
                     reason: "Error: Device not found".to_string(),
                 })),
                 predicate::always(),
@@ -927,6 +943,7 @@ mod tests {
             account_type: AccountType::Device,
             owner: Pubkey::new_unique(),
             index: 0,
+            bump_seed: 0,
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             device_type: DeviceType::Switch,
@@ -943,6 +960,7 @@ mod tests {
             account_type: AccountType::User,
             owner: Pubkey::new_unique(),
             index: 0,
+            bump_seed: 0,
             user_type: UserType::IBRLWithAllocatedIP,
             tenant_pk: Pubkey::new_unique(),
             device_pk: device_pubkey,
@@ -975,6 +993,7 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::RejectUser(UserRejectArgs {
                     index: user.index,
+                    bump_seed: user.bump_seed,
                     reason: "Error: No available tunnel block".to_string(),
                 })),
                 predicate::always(),
@@ -1009,6 +1028,7 @@ mod tests {
             account_type: AccountType::Device,
             owner: Pubkey::new_unique(),
             index: 0,
+            bump_seed: 0,
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             device_type: DeviceType::Switch,
@@ -1025,6 +1045,7 @@ mod tests {
             account_type: AccountType::User,
             owner: Pubkey::new_unique(),
             index: 0,
+            bump_seed: 0,
             user_type: UserType::IBRLWithAllocatedIP,
             tenant_pk: Pubkey::new_unique(),
             device_pk: device_pubkey,
@@ -1047,6 +1068,7 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::RejectUser(UserRejectArgs {
                     index: user.index,
+                    bump_seed: user.bump_seed,
                     reason: "Error: No available user block".to_string(),
                 })),
                 predicate::always(),
@@ -1083,6 +1105,7 @@ mod tests {
             account_type: AccountType::User,
             owner: Pubkey::new_unique(),
             index: 0,
+            bump_seed: 0,
             user_type: UserType::IBRLWithAllocatedIP,
             tenant_pk: Pubkey::new_unique(),
             device_pk: pubkey,
@@ -1098,6 +1121,7 @@ mod tests {
             account_type: AccountType::Device,
             owner: Pubkey::new_unique(),
             index: 0,
+            bump_seed: 0,
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             device_type: DeviceType::Switch,
@@ -1136,7 +1160,10 @@ mod tests {
                     .expect_execute_transaction()
                     .with(
                         predicate::eq(DoubleZeroInstruction::DeactivateDevice(
-                            DeviceDeactivateArgs { index: user.index },
+                            DeviceDeactivateArgs {
+                                index: user.index,
+                                bump_seed: user.bump_seed,
+                            },
                         )),
                         predicate::always(),
                     )
@@ -1155,6 +1182,7 @@ mod tests {
                     .with(
                         predicate::eq(DoubleZeroInstruction::BanUser(UserBanArgs {
                             index: user.index,
+                            bump_seed: user.bump_seed,
                         })),
                         predicate::always(),
                     )

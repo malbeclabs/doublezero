@@ -124,6 +124,7 @@ pub struct User {
     pub account_type: AccountType, // 1
     pub owner: Pubkey,             // 32
     pub index: u128,               // 16
+    pub bump_seed: u8,             // 1
     pub user_type: UserType,       // 1
     pub tenant_pk: Pubkey,         // 32
     pub device_pk: Pubkey,         // 32
@@ -160,10 +161,13 @@ impl AccountTypeInfo for User {
         SEED_USER
     }
     fn size(&self) -> usize {
-        1 + 32 + 16 + 1 + 32 + 32 + 1 + 4 + 4 + 2 + 5 + 1
+        1 + 32 + 16 + 1 + 1 + 32 + 32 + 1 + 4 + 4 + 2 + 5 + 1
     }
     fn index(&self) -> u128 {
         self.index
+    }
+    fn bump_seed(&self) -> u8 {
+        self.bump_seed
     }
     fn owner(&self) -> Pubkey {
         self.owner
@@ -178,6 +182,7 @@ impl From<&[u8]> for User {
             account_type: parser.read_enum(),
             owner: parser.read_pubkey(),
             index: parser.read_u128(),
+            bump_seed: parser.read_u8(),
             user_type: parser.read_enum(),
             tenant_pk: parser.read_pubkey(),
             device_pk: parser.read_pubkey(),
@@ -201,6 +206,7 @@ mod tests {
             account_type: AccountType::User,
             owner: Pubkey::new_unique(),
             index: 123,
+            bump_seed: 1,
             tenant_pk: Pubkey::default(),
             user_type: UserType::IBRL,
             device_pk: Pubkey::new_unique(),

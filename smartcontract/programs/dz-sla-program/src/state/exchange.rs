@@ -40,6 +40,7 @@ pub struct Exchange {
     pub account_type: AccountType, // 1
     pub owner: Pubkey,             // 32
     pub index: u128,               // 16
+    pub bump_seed: u8,             // 1
     pub lat: f64,                  // 8
     pub lng: f64,                  // 8
     pub loc_id: u32,               // 4
@@ -64,10 +65,13 @@ impl AccountTypeInfo for Exchange {
         SEED_EXCHANGE
     }
     fn size(&self) -> usize {
-        1 + 32 + 16 + 4 + self.code.len() + 4 + self.name.len() + 8 + 8 + 4 + 1 + 4
+        1 + 32 + 16 + 1 + 8 + 8 + 4 + 1 + 4 + self.code.len() + 4 + self.name.len() + 4
     }
     fn index(&self) -> u128 {
         self.index
+    }
+    fn bump_seed(&self) -> u8 {
+        self.bump_seed
     }
     fn owner(&self) -> Pubkey {
         self.owner
@@ -82,6 +86,7 @@ impl From<&[u8]> for Exchange {
             account_type: parser.read_enum(),
             owner: parser.read_pubkey(),
             index: parser.read_u128(),
+            bump_seed: parser.read_u8(),
             lat: parser.read_f64(),
             lng: parser.read_f64(),
             loc_id: parser.read_u32(),
@@ -103,6 +108,7 @@ mod tests {
             account_type: AccountType::Exchange,
             owner: Pubkey::new_unique(),
             index: 123,
+            bump_seed: 1,
             lat: 123.45,
             lng: 345.678,
             loc_id: 1212121,

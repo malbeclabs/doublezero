@@ -2,13 +2,8 @@ use base64::prelude::*;
 use base64::{engine::general_purpose, Engine};
 use bincode::deserialize;
 use chrono::{DateTime, NaiveDateTime, Utc};
-use doublezero_sla_program::{
-    instructions::*,
-    pda::*,
-    processors::globalconfig::set::SetGlobalConfigArgs,
-    state::{accounttype::AccountType, globalconfig::GlobalConfig, globalstate::GlobalState},
-    types::*,
-};
+use doublezero_sla_program::processors::globalstate::close::CloseAccountArgs;
+use doublezero_sla_program::{instructions::*, state::accounttype::AccountType};
 use eyre::{eyre, OptionExt};
 use solana_account_decoder::{UiAccountData, UiAccountEncoding};
 use solana_client::{
@@ -50,6 +45,226 @@ impl DZClient {
     }
     pub fn get_ws(&self) -> &String {
         &self.rpc_ws_url
+    }
+}
+
+impl DZClient {
+    pub fn new(
+        rpc_url: Option<String>,
+        websocket_url: Option<String>,
+        program_id: Option<String>,
+        kaypair: Option<String>,
+    ) -> eyre::Result<DZClient> {
+        let (_, config) = read_doublezero_config();
+
+        let rpc_url = convert_url_moniker(rpc_url.unwrap_or(config.json_rpc_url));
+        let rpc_ws_url = convert_ws_moniker(
+            websocket_url.unwrap_or(
+                config
+                    .websocket_url
+                    .unwrap_or(convert_url_to_ws(&rpc_url.to_string())),
+            ),
+        );
+
+        let client = RpcClient::new_with_commitment(rpc_url.clone(), CommitmentConfig::confirmed());
+
+        let payer: Option<solana_sdk::signature::Keypair> =
+            match read_keypair_from_file(kaypair.unwrap_or(config.keypair_path)) {
+                Ok(keypair) => Some(keypair),
+                Err(_) => None,
+            };
+
+        let program_id = {
+            if program_id.is_none() {
+                if config.program_id.is_none() {
+                    doublezero_sla_program::addresses::testnet::program_id::id()
+                } else {
+                    Pubkey::from_str(&config.program_id.unwrap())
+                        .map_err(|_| eyre!("Invalid program ID"))?
+                }
+            } else {
+                Pubkey::from_str(&convert_program_moniker(program_id.unwrap()))
+                    .map_err(|_| eyre!("Invalid program ID"))?
+            }
+        };
+
+        Ok(DZClient {
+            rpc_url,
+            client,
+            rpc_ws_url,
+            payer,
+            program_id,
+        })
+    }
+
+    /******************************************************************************************************************************************/
+
+    pub fn get_balance(&self) -> eyre::Result<u64> {
+        self.client
+            .get_balance(&self.payer.as_ref().unwrap().pubkey())
+            .map_err(|e| eyre!(e))
+    }
+
+    /******************************************************************************************************************************************/
+
+    pub fn reset(&self) -> eyre::Result<()> {
+        let options = RpcProgramAccountsConfig {
+            filters: None,
+            account_config: RpcAccountInfoConfig {
+                encoding: Some(UiAccountEncoding::Base64),
+                data_slice: None,
+                commitment: Some(CommitmentConfig::confirmed()),
+                min_context_slot: None,
+            },
+            with_context: None,
+            sort_results: None,
+        };
+
+        let accounts = self
+            .client
+            .get_program_accounts_with_config(&self.program_id, options)?;
+
+        for (pubkey, account) in accounts {
+            let account_type = AccountType::from(account.data[0]);
+
+            print!("Deleting {}: {}", account_type, pubkey);
+
+            if account_type == AccountType::GlobalState || account_type == AccountType::Config {
+                print!(" - Skipping");
+                continue;
+            }
+
+            let signature = self.execute_transaction(
+                DoubleZeroInstruction::CloseAccount(CloseAccountArgs { pubkey: pubkey }),
+                vec![AccountMeta::new(pubkey, false)],
+            )?;
+
+            println!(" - Done {}", signature);
+        }
+
+        Ok(())
+    }
+
+    /******************************************************************************************************************************************/
+
+    fn get_all(&self) -> eyre::Result<HashMap<Pubkey, AccountData>> {
+        let options = RpcProgramAccountsConfig {
+            filters: None,
+            account_config: RpcAccountInfoConfig {
+                encoding: Some(UiAccountEncoding::Base64),
+                data_slice: None,
+                commitment: Some(CommitmentConfig::confirmed()),
+                min_context_slot: None,
+            },
+            with_context: None,
+            sort_results: None,
+        };
+
+        let mut list: HashMap<Pubkey, AccountData> = HashMap::new();
+
+        let accounts = self
+            .client
+            .get_program_accounts_with_config(&self.program_id, options)?;
+
+        for (pubkey, account) in accounts {
+            list.insert(pubkey, AccountData::from(&account.data[..]));
+        }
+
+        Ok(list)
+    }
+
+    pub fn gets_and_subscribe<F>(&self, mut action: F) -> eyre::Result<()>
+    where
+        F: FnMut(&DZClient, &Pubkey, &AccountData),
+    {
+        loop {
+            match self.get_all() {
+                Ok(accounts) => {
+                    for (pubkey, account) in accounts {
+                        action(self, &pubkey, &account);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                }
+            }
+
+            match self.subscribe(&mut action) {
+                Ok(_) => {}
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                }
+            }
+        }
+    }
+
+    #[allow(clippy::collapsible_match)]
+    pub fn subscribe<F>(&self, mut action: F) -> eyre::Result<()>
+    where
+        F: FnMut(&DZClient, &Pubkey, &AccountData),
+    {
+        loop {
+            let options = RpcProgramAccountsConfig {
+                filters: None,
+                account_config: RpcAccountInfoConfig {
+                    encoding: Some(UiAccountEncoding::Base64),
+                    data_slice: None,
+                    commitment: Some(CommitmentConfig::confirmed()),
+                    min_context_slot: None,
+                },
+                with_context: None,
+                sort_results: None,
+            };
+            let (mut _client, receiver) =
+                PubsubClient::program_subscribe(&self.rpc_ws_url, &self.program_id, Some(options))
+                    .map_err(|_| eyre!("Unable to program_subscribe"))?;
+
+            for response in receiver {
+                let event = response.value;
+
+                if let UiAccountData::Binary(data, encoding) = event.account.data {
+                    if let UiAccountEncoding::Base64 = encoding {
+                        let pubkey = Pubkey::from_str(&event.pubkey)
+                            .map_err(|e| eyre!("Unable to parse Pubkey:{}", e))?;
+                        let bytes = BASE64_STANDARD
+                            .decode(data.clone())
+                            .map_err(|e| eyre!("Unable decode data: {}", e))?;
+                        let account = AccountData::from(&bytes[..]);
+
+                        action(self, &pubkey, &account);
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn get_logs(&self, pubkey: &Pubkey) -> eyre::Result<Vec<String>> {
+        let mut errors: Vec<String> = Vec::new();
+
+        let signatures = self.client.get_signatures_for_address(pubkey)?;
+
+        for signature_info in signatures {
+            let signature = Signature::from_str(&signature_info.signature).unwrap();
+
+            if let Ok(trans) = self
+                .client
+                .get_transaction(&signature, UiTransactionEncoding::Base64)
+            {
+                if let EncodedTransaction::Binary(_, base) = trans.transaction.transaction {
+                    if base == TransactionBinaryEncoding::Base64 {
+                        let meta = trans.transaction.meta.unwrap();
+
+                        if let OptionSerializer::Some(msgs) = meta.log_messages {
+                            for msg in msgs {
+                                errors.push(msg.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(errors)
     }
 }
 
@@ -126,21 +341,22 @@ impl DoubleZeroClient for DZClient {
             0,
             MemcmpEncodedBytes::Bytes(vec![account_type]),
         ))];
-        let config = RpcProgramAccountsConfig {
+        let options = RpcProgramAccountsConfig {
             filters: Some(filters),
             account_config: RpcAccountInfoConfig {
                 encoding: Some(UiAccountEncoding::Base64),
                 data_slice: None,
-                commitment: None,
+                commitment: Some(CommitmentConfig::confirmed()),
                 min_context_slot: None,
             },
             with_context: None,
+            sort_results: None,
         };
 
         let mut list: HashMap<Pubkey, AccountData> = HashMap::new();
         let accounts = self
             .client
-            .get_program_accounts_with_config(&self.program_id, config)?;
+            .get_program_accounts_with_config(&self.get_program_id(), options)?;
 
         for (pubkey, account) in accounts {
             assert!(account.data[0] == account_type, "Invalid account type");
@@ -230,252 +446,5 @@ impl DoubleZeroClient for DZClient {
         }
 
         Ok(transactions)
-    }
-}
-
-impl DZClient {
-    pub fn new(
-        rpc_url: Option<String>,
-        websocket_url: Option<String>,
-        program_id: Option<String>,
-        kaypair: Option<String>,
-    ) -> eyre::Result<DZClient> {
-        let (_, config) = read_doublezero_config();
-
-        let rpc_url = convert_url_moniker(rpc_url.unwrap_or(config.json_rpc_url));
-        let rpc_ws_url = convert_ws_moniker(
-            websocket_url.unwrap_or(
-                config
-                    .websocket_url
-                    .unwrap_or(convert_url_to_ws(&rpc_url.to_string())),
-            ),
-        );
-
-        let client = RpcClient::new_with_commitment(rpc_url.clone(), CommitmentConfig::confirmed());
-
-        let payer: Option<solana_sdk::signature::Keypair> =
-            match read_keypair_from_file(kaypair.unwrap_or(config.keypair_path)) {
-                Ok(keypair) => Some(keypair),
-                Err(_) => None,
-            };
-
-        let program_id = {
-            if program_id.is_none() {
-                if config.program_id.is_none() {
-                    doublezero_sla_program::addresses::testnet::program_id::id()
-                } else {
-                    Pubkey::from_str(&config.program_id.unwrap())
-                        .map_err(|_| eyre!("Invalid program ID"))?
-                }
-            } else {
-                Pubkey::from_str(&convert_program_moniker(program_id.unwrap()))
-                    .map_err(|_| eyre!("Invalid program ID"))?
-            }
-        };
-
-        Ok(DZClient {
-            rpc_url,
-            client,
-            rpc_ws_url,
-            payer,
-            program_id,
-        })
-    }
-
-    /******************************************************************************************************************************************/
-
-    pub fn get_balance(&self) -> eyre::Result<u64> {
-        self.client
-            .get_balance(&self.payer.as_ref().unwrap().pubkey())
-            .map_err(|e| eyre!(e))
-    }
-
-    pub fn get_globalstate(&self) -> eyre::Result<(Pubkey, GlobalState)> {
-        let (pubkey, _) = get_globalstate_pda(&self.program_id);
-
-        let account = self.get(pubkey)?;
-
-        match account {
-            AccountData::GlobalState(globalstate) => Ok((pubkey, globalstate)),
-            _ => Err(eyre!("Invalid global state")),
-        }
-    }
-
-    /******************************************************************************************************************************************/
-    /******************************************************************************************************************************************/
-
-    pub fn initialize_globalstate(&self) -> eyre::Result<(Pubkey, Signature)> {
-        let (pda_pubkey, _) = get_globalstate_pda(&self.program_id);
-
-        let signature = self.execute_transaction(
-            DoubleZeroInstruction::InitGlobalState(),
-            vec![AccountMeta::new(pda_pubkey, false)],
-        )?;
-
-        Ok((pda_pubkey, signature))
-    }
-
-    pub fn set_global_config(
-        &self,
-        local_asn: u32,
-        remote_asn: u32,
-        device_tunnel_block: NetworkV4,
-        user_tunnel_block: NetworkV4,
-    ) -> eyre::Result<Signature> {
-        match self.get_globalstate() {
-            Ok((globalstate_pubkey, globalstate)) => {
-                if !globalstate.foundation_allowlist.contains(&self.get_payer()) {
-                    return Err(eyre!("User not allowlisted"));
-                }
-
-                let (pda_pubkey, _) = get_globalconfig_pda(&self.program_id);
-
-                self.execute_transaction(
-                    DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
-                        local_asn,
-                        remote_asn,
-                        tunnel_tunnel_block: device_tunnel_block,
-                        user_tunnel_block,
-                    }),
-                    vec![
-                        AccountMeta::new(pda_pubkey, false),
-                        AccountMeta::new(globalstate_pubkey, false),
-                    ],
-                )
-            }
-            Err(e) => Err(e),
-        }
-    }
-
-    fn get_all(&self) -> eyre::Result<HashMap<Pubkey, AccountData>> {
-        let config = RpcProgramAccountsConfig {
-            filters: None,
-            account_config: RpcAccountInfoConfig {
-                encoding: Some(UiAccountEncoding::Base64),
-                data_slice: None,
-                commitment: None,
-                min_context_slot: None,
-            },
-            with_context: None,
-        };
-
-        let mut list: HashMap<Pubkey, AccountData> = HashMap::new();
-
-        let accounts = self
-            .client
-            .get_program_accounts_with_config(&self.program_id, config)?;
-
-        for (pubkey, account) in accounts {
-            list.insert(pubkey, AccountData::from(&account.data[..]));
-        }
-
-        Ok(list)
-    }
-
-    pub fn get_globalconfig(&self) -> eyre::Result<(Pubkey, GlobalConfig)> {
-        let (pubkey, _) = get_globalconfig_pda(&self.program_id);
-        let account = self.get(pubkey)?;
-
-        match account {
-            AccountData::GlobalConfig(config) => Ok((pubkey, config)),
-            _ => Err(eyre!("Invalid Account Type")),
-        }
-    }
-
-    pub fn gets_and_subscribe<F>(&self, mut action: F) -> eyre::Result<()>
-    where
-        F: FnMut(&DZClient, &Pubkey, &AccountData),
-    {
-        loop {
-            match self.get_all() {
-                Ok(accounts) => {
-                    for (pubkey, account) in accounts {
-                        action(self, &pubkey, &account);
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Error: {}", e);
-                }
-            }
-
-            match self.subscribe(&mut action) {
-                Ok(_) => {}
-                Err(e) => {
-                    eprintln!("Error: {}", e);
-                }
-            }
-        }
-    }
-
-    #[allow(clippy::collapsible_match)]
-    pub fn subscribe<F>(&self, mut action: F) -> eyre::Result<()>
-    where
-        F: FnMut(&DZClient, &Pubkey, &AccountData),
-    {
-        loop {
-            let options = RpcProgramAccountsConfig {
-                filters: None, /*Some(vec![RpcFilterType::Memcmp(Memcmp::new(
-                                   0,
-                                   MemcmpEncodedBytes::Bytes(vec![AccountType::User as u8]),
-                               ))]),*/
-                account_config: RpcAccountInfoConfig {
-                    encoding: Some(UiAccountEncoding::Base64),
-                    data_slice: None,
-                    commitment: Some(CommitmentConfig::confirmed()),
-                    min_context_slot: None,
-                },
-                with_context: None,
-            };
-
-            let (mut _client, receiver) =
-                PubsubClient::program_subscribe(&self.rpc_ws_url, &self.program_id, Some(options))
-                    .map_err(|_| eyre!("Unable to program_subscribe"))?;
-
-            for response in receiver {
-                let event = response.value;
-
-                if let UiAccountData::Binary(data, encoding) = event.account.data {
-                    if let UiAccountEncoding::Base64 = encoding {
-                        let pubkey = Pubkey::from_str(&event.pubkey)
-                            .map_err(|e| eyre!("Unable to parse Pubkey:{}", e))?;
-                        let bytes = BASE64_STANDARD
-                            .decode(data.clone())
-                            .map_err(|e| eyre!("Unable decode data: {}", e))?;
-                        let account = AccountData::from(&bytes[..]);
-
-                        action(self, &pubkey, &account);
-                    }
-                }
-            }
-        }
-    }
-
-    pub fn get_logs(&self, pubkey: &Pubkey) -> eyre::Result<Vec<String>> {
-        let mut errors: Vec<String> = Vec::new();
-
-        let signatures = self.client.get_signatures_for_address(pubkey)?;
-
-        for signature_info in signatures {
-            let signature = Signature::from_str(&signature_info.signature).unwrap();
-
-            if let Ok(trans) = self
-                .client
-                .get_transaction(&signature, UiTransactionEncoding::Base64)
-            {
-                if let EncodedTransaction::Binary(_, base) = trans.transaction.transaction {
-                    if base == TransactionBinaryEncoding::Base64 {
-                        let meta = trans.transaction.meta.unwrap();
-
-                        if let OptionSerializer::Some(msgs) = meta.log_messages {
-                            for msg in msgs {
-                                errors.push(msg.to_string());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(errors)
     }
 }

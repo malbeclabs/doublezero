@@ -17,10 +17,11 @@ impl RejectUserCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, _) = get_user_pda(&client.get_program_id(), self.index);
+        let (pda_pubkey, bump_seed) = get_user_pda(&client.get_program_id(), self.index);
         client.execute_transaction(
             DoubleZeroInstruction::RejectUser(UserRejectArgs {
                 index: self.index,
+                bump_seed,
                 reason: self.reason.clone(),
             }),
             vec![

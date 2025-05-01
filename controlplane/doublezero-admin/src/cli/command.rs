@@ -2,26 +2,28 @@ use clap::Subcommand;
 
 use doublezero_cli::init::InitArgs;
 
-use doublezero_cli::keygen::KeyGenArgs;
 use doublezero_cli::account::GetAccountArgs;
 use doublezero_cli::address::AddressArgs;
 use doublezero_cli::balance::BalanceArgs;
 use doublezero_cli::export::ExportArgs;
+use doublezero_cli::keygen::KeyGenArgs;
 use doublezero_cli::log::LogArgs;
 
-use crate::config::ConfigArgs;
-use crate::device::DeviceArgs;
-use crate::exchange::ExchangeArgs;
-use crate::globalconfig::GlobalConfigArgs;
-use crate::location::LocationArgs;
-use crate::tunnel::TunnelArgs;
-use crate::user::UserArgs;
-
+use crate::cli::config::ConfigArgs;
+use crate::cli::device::DeviceArgs;
+use crate::cli::exchange::ExchangeArgs;
+use crate::cli::globalconfig::GlobalConfigArgs;
+use crate::cli::location::LocationArgs;
+use crate::cli::tunnel::TunnelArgs;
+use crate::cli::user::UserArgs;
+use crate::command::reset::ResetCommand;
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
-    #[command(about = "", hide = true)] 
+    #[command(about = "", hide = true)]
     Init(InitArgs),
+    #[command(about = "", hide = true)]
+    Reset(ResetCommand),
     #[command(about = "Get your public key", hide = false)]
     Address(AddressArgs),
     #[command(about = "Get your balance", hide = false)]

@@ -22,11 +22,13 @@ impl CreateUserCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, _) = get_user_pda(&client.get_program_id(), globalstate.account_index + 1);
+        let (pda_pubkey, bump_seed) =
+            get_user_pda(&client.get_program_id(), globalstate.account_index + 1);
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateUser(UserCreateArgs {
                     index: globalstate.account_index + 1,
+                    bump_seed,
                     user_type: self.user_type,
                     device_pk: self.device_pk,
                     cyoa_type: self.cyoa_type,

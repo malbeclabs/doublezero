@@ -452,7 +452,6 @@ func (n *NetlinkManager) Serve(ctx context.Context) error {
 					slog.Error("routes: error parsing nlri from update", "error", err)
 				}
 
-				// protocol 186 is bgp
 				route := &Route{Src: n.DoubleZeroAddr, Dst: dzNet, Table: p.RouteTable, NextHop: net.ParseIP(p.NextHop), Protocol: 186}
 				slog.Info("routes: writing route", "table", p.RouteTable, "dz route", route.String())
 				if err := n.WriteRoute(route); err != nil {
@@ -476,6 +475,7 @@ func (n *NetlinkManager) Serve(ctx context.Context) error {
 					continue
 				}
 
+				// protocol 186 is bgp
 				protocol := 186
 				routes, err := n.netlink.RouteByDoubleZeroProtocol(protocol)
 				if err != nil {

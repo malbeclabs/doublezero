@@ -9,6 +9,7 @@ import (
 )
 
 /************************************************************************************************************/
+const URL_DOUBLEZERO = "https://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30"
 const PROGRAM_ID_TESTNET = "DZtnuQ839pSaDMFG5q1ad2V95G82S5EC4RrB3Ndw2Heb"
 const PROGRAM_ID_DEVNET = "DZdnB7bhR9azxLAUEH7ZVtW168wRdreiDKhi4McDfKZt"
 

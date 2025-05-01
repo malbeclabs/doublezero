@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
-	"github.com/gagliardetto/solana-go/rpc"
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
 	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
 	"github.com/mr-tron/base58"
@@ -68,7 +67,7 @@ func NewController(options ...Option) (*Controller, error) {
 			options = append(options, dzsdk.WithProgramId(controller.programId))
 		}
 		if controller.rpcEndpoint == "" {
-			controller.rpcEndpoint = rpc.DevNet_RPC
+			controller.rpcEndpoint = dzsdk.URL_DOUBLEZERO
 		}
 		controller.accountFetcher = dzsdk.New(controller.rpcEndpoint, options...)
 	}

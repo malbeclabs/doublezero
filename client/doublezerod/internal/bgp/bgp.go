@@ -90,7 +90,7 @@ func NewBgpServer(routerID net.IP) (*BgpServer, error) {
 		server:          srv,
 		addRouteChan:    make(chan NLRI),
 		deleteRouteChan: make(chan NLRI),
-		flushRouteChan:  make(chan struct{}),
+		flushRouteChan:  make(chan struct{}, 1), // TODO: this needs to be buffered to avoid deadlocking plugin handler; not great
 		peerStatusChan:  make(chan SessionEvent),
 		peerStatus:      make(map[string]Session),
 	}, nil
@@ -125,6 +125,9 @@ func (b *BgpServer) AddPeer(p *PeerConfig, advertised []NLRI) error {
 }
 
 func (b *BgpServer) DeletePeer(ip net.IP) error {
+	if ip == nil {
+		return fmt.Errorf("no peeer ip provided")
+	}
 	addr, ok := netip.AddrFromSlice(ip)
 	if !ok {
 		return fmt.Errorf("malformed peer address")

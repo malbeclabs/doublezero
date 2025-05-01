@@ -209,13 +209,7 @@ func (n *NetlinkManager) Remove() error {
 	if n.db.GetState() == nil {
 		return nil
 	}
-	// Since we need to keep running, delete the bgp peer
-	err := n.bgp.DeletePeer(n.UnicastTunnel.RemoteOverlay)
-	if errors.Is(err, bgp.ErrBgpPeerNotExists) {
-		slog.Error("bgp: peer does not exist", "peer tunnel", n.UnicastTunnel.RemoteOverlay)
-	} else if err != nil {
-		return fmt.Errorf("bgp: error while deleting peer: %v", err)
-	}
+
 	// Remove rules, routes, and tunnel
 	if err := n.Close(); err != nil {
 		return err
@@ -404,7 +398,7 @@ func (n *NetlinkManager) FlushRoutes() error {
 }
 
 func (n *NetlinkManager) Close() error {
-	var errFlushRules, errFlushRoutes, errRemoveTunnel error
+	var errFlushRules, errFlushRoutes, errRemoveTunnel, errRemovePeer error
 
 	slog.Info("teardown: flushing rules")
 	if err := n.FlushRules(); err != nil {
@@ -416,12 +410,23 @@ func (n *NetlinkManager) Close() error {
 		errFlushRoutes = fmt.Errorf("error flushing routes: %v", err)
 	}
 
+	if n.UnicastTunnel == nil {
+		return nil
+	}
+
+	err := n.bgp.DeletePeer(n.UnicastTunnel.RemoteOverlay)
+	if errors.Is(err, bgp.ErrBgpPeerNotExists) {
+		slog.Error("bgp: peer does not exist", "peer tunnel", n.UnicastTunnel.RemoteOverlay)
+	} else if err != nil {
+		errRemovePeer = fmt.Errorf("bgp: error while deleting peer: %v", err)
+	}
+
 	slog.Info("teardown: removing tunnel interface")
 	if err := n.RemoveTunnel(); err != nil {
 		errRemoveTunnel = fmt.Errorf("error removing tunnel interface: %v", err)
 	}
 
-	return errors.Join(errFlushRules, errFlushRoutes, errRemoveTunnel)
+	return errors.Join(errFlushRules, errFlushRoutes, errRemoveTunnel, errRemovePeer)
 }
 
 func (n *NetlinkManager) Serve(ctx context.Context) error {
@@ -473,7 +478,8 @@ func (n *NetlinkManager) Serve(ctx context.Context) error {
 
 				link, err := nl.LinkByName(linkName)
 				if err != nil {
-					log.Fatalf("Error getting link %s: %v", linkName, err)
+					slog.Error("routes: error getting tunnel prior to flush", "link", linkName, "error", err)
+					continue
 				}
 
 				routeFilter := &netlink.Route{
@@ -486,7 +492,6 @@ func (n *NetlinkManager) Serve(ctx context.Context) error {
 				if err != nil {
 					slog.Error("Failed to get routes")
 				}
-
 				if n.db.GetState().UserType == UserTypeIBRL {
 					for _, route := range routes {
 						if err := nl.RouteDel(&route); err != nil {
@@ -495,6 +500,7 @@ func (n *NetlinkManager) Serve(ctx context.Context) error {
 						}
 					}
 				}
+
 			}
 		}
 	}()

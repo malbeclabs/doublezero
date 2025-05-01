@@ -5,10 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log"
-	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
@@ -362,19 +360,15 @@ func TestEndToEnd_IBRL(t *testing.T) {
 				}
 				time.Sleep(10 * time.Second)
 				// should not have any routes tagged bgp
-				routes, err := nl.RouteList(nil, nl.FAMILY_ALL)
+				got, err := nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Protocol: 186}, nl.RT_FILTER_PROTOCOL)
 				if err != nil {
-					log.Fatal(err)
+					t.Fatalf("error fetching routes: %v", err)
+				}
+				if len(got) > 0 {
+					t.Fatalf("expected no routes, got %d, %+v\n", len(got), got)
 				}
 
-				for _, route := range routes {
-					if route.Protocol == 186 {
-						slog.Error("Expected route to be withdrawn", "route", route)
-						os.Exit(1)
-					}
-				}
-
-				// re-add peer
+				// 	// re-add peer
 				d := &dummyPlugin{}
 				err = srv.AddPeer(corebgp.PeerConfig{
 					RemoteAddress: netip.MustParseAddr("169.254.0.1"),
@@ -385,14 +379,46 @@ func TestEndToEnd_IBRL(t *testing.T) {
 					log.Fatalf("error creating dummy bgp server: %v", err)
 				}
 
+				time.Sleep(10 * time.Second)
 				// ensure that 4.4.4.4,3.3.3.3 are added and tagged with bgp (186)
-				routes, err = nl.RouteList(nil, nl.FAMILY_ALL)
+				got, err = nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Protocol: 186}, nl.RT_FILTER_PROTOCOL)
 				if err != nil {
-					log.Fatal(err)
+					t.Fatalf("error fetching routes: %v", err)
 				}
-
-				for _, route := range routes {
-					fmt.Printf("route: %s\n", route.Protocol)
+				tun, err := nl.LinkByName("doublezero0")
+				if err != nil {
+					t.Fatalf("error fetching tunnel info: %v", err)
+				}
+				want := []nl.Route{
+					{
+						LinkIndex: tun.Attrs().Index,
+						Table:     254,
+						Dst: &net.IPNet{
+							IP:   net.IP{4, 4, 4, 4},
+							Mask: net.IPv4Mask(255, 255, 255, 255),
+						},
+						Gw:       net.IP{169, 254, 0, 0},
+						Protocol: 186,
+						Src:      net.IP{10, 0, 0, 0},
+						Family:   nl.FAMILY_V4,
+						Type:     syscall.RTN_UNICAST,
+					},
+					{
+						LinkIndex: tun.Attrs().Index,
+						Table:     254,
+						Dst: &net.IPNet{
+							IP:   net.IP{5, 5, 5, 5},
+							Mask: net.IPv4Mask(255, 255, 255, 255),
+						},
+						Gw:       net.IP{169, 254, 0, 0},
+						Protocol: 186,
+						Src:      net.IP{10, 0, 0, 0},
+						Family:   nl.FAMILY_V4,
+						Type:     syscall.RTN_UNICAST,
+					},
+				}
+				if diff := cmp.Diff(want, got); diff != "" {
+					t.Fatalf("Route mismatch (-want +got): %s\n", diff)
 				}
 			})
 

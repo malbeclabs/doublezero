@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/jwhited/corebgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/netlink"
 )
@@ -25,6 +26,8 @@ func (m *MockBgpServer) AddRoute() <-chan bgp.NLRI        { return nil }
 func (m *MockBgpServer) WithdrawRoute() <-chan bgp.NLRI   { return nil }
 func (m *MockBgpServer) FlushRoutes() <-chan struct{}     { return nil }
 func (m *MockBgpServer) GetPeerStatus(net.IP) bgp.Session { return bgp.Session{} }
+func (m *MockBgpServer) Close()                           {}
+func (m *MockBgpServer) GetPeers() []corebgp.PeerConfig   { return []corebgp.PeerConfig{} }
 
 type MockNetlink struct {
 	routes        []*netlink.Route

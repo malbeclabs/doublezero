@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
+	"github.com/vishvananda/netlink"
 	nl "github.com/vishvananda/netlink"
 )
 
@@ -447,6 +448,7 @@ func (n *NetlinkManager) Serve(ctx context.Context) error {
 					slog.Error("routes: error parsing nlri from update", "error", err)
 				}
 
+				// protocol 186 is bgp
 				route := &Route{Src: n.DoubleZeroAddr, Dst: dzNet, Table: p.RouteTable, NextHop: net.ParseIP(p.NextHop), Protocol: 186}
 				slog.Info("routes: writing route", "table", p.RouteTable, "dz route", route.String())
 				if err := n.WriteRoute(route); err != nil {
@@ -466,14 +468,27 @@ func (n *NetlinkManager) Serve(ctx context.Context) error {
 					slog.Error("routes: error removing route", "route", route.Dst.String(), "table", RouteTableSpecific, "error", err)
 				}
 			case <-n.bgp.FlushRoutes():
-				targetProtocol := int(186) // bgp
+				protocol := 186 // bgp
+				linkName := "doublezero0"
+
+				link, err := nl.LinkByName(linkName)
+				if err != nil {
+					log.Fatalf("Error getting link %s: %v", linkName, err)
+				}
+
+				routeFilter := &netlink.Route{
+					LinkIndex: link.Attrs().Index,
+					Protocol:  nl.RouteProtocol(protocol),
+				}
+
 				// can we know the link? if so we can batch delete
-				routes, err := nl.RouteList(nil, nl.FAMILY_ALL)
+				routes, err := netlink.RouteListFiltered(netlink.FAMILY_ALL, routeFilter, netlink.RT_FILTER_OIF|netlink.RT_FILTER_PROTOCOL)
 				if err != nil {
 					slog.Error("Failed to get routes")
 				}
-				for _, route := range routes {
-					if route.Protocol == nl.RouteProtocol(targetProtocol) {
+
+				if n.db.GetState().UserType == UserTypeIBRL {
+					for _, route := range routes {
 						if err := nl.RouteDel(&route); err != nil {
 							slog.Error("Error deleting route", "route", route)
 							continue

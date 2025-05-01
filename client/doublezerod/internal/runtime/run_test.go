@@ -345,7 +345,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 				}
 
 				for _, route := range routes {
-					fmt.Printf("route: %s\n", route.String())
+					fmt.Printf("route: %s\n", route.Protocol)
 				}
 			})
 
@@ -502,8 +502,8 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 			t.Fatalf("error creating url: %v", err)
 		}
 		body := `{
-					"tunnel_src": "10.0.0.0",
-					"tunnel_dst": "10.0.0.1",
+					"tunnel_src": "1.1.1.1",
+					"tunnel_dst": "2.2.2.2",
 					"tunnel_net": "169.254.0.0/31",
 					"doublezero_ip": "3.3.3.3",
 					"doublezero_prefixes": ["3.0.0.0/24"],

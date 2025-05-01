@@ -33,8 +33,8 @@ func (*mockAristaEapiMgr) RunConfigCmds(ctx context.Context, req *pb.RunConfigCm
 func (*mockAristaEapiMgr) RunShowCmd(ctx context.Context, req *pb.RunShowCmdRequest) (*pb.RunShowCmdResponse, error) {
 	var resp []string
 	switch req.Command {
-	case "show ip bgp neighbors":
-		resp = []string{string("{ \"vrfs\": { \"default\": { \"peerList\": [ { \"peerAddress\": \"192.168.1.1\", \"asn\": \"65342\", \"linkType\": \"internal\", \"routerId\": \"0.0.0.0\" }, { \"peerAddress\": \"192.168.1.1\", \"asn\": \"65342\", \"linkType\": \"internal\", \"routerId\": \"0.0.0.0\" } ] } } }")}
+	case "show ip bgp neighbors vrf vrf1":
+		resp = []string{string("{ \"vrfs\": { \"vrf1\": { \"peerList\": [ { \"peerAddress\": \"192.168.1.1\", \"asn\": \"65342\", \"linkType\": \"internal\", \"routerId\": \"0.0.0.0\" }, { \"peerAddress\": \"192.168.1.1\", \"asn\": \"65342\", \"linkType\": \"internal\", \"routerId\": \"0.0.0.0\" } ] } } }")}
 	case "show configuration sessions":
 		resp = []string{string("{\"sessions\": {\"doublezero-agent-123456789000\": {\"state\": \"pending\", \"completedTime\": 1736543591.7917519, \"commitUser\": \"\", \"description\": \"\", \"instances\": {\"868\": {\"user\": \"root\", \"terminal\": \"vty5\", \"currentTerminal\": false}}}, \"blah1\": {\"state\": \"pending\", \"commitUser\": \"\", \"description\": \"\", \"instances\": {}}}, \"maxSavedSessions\": 1, \"maxOpenSessions\": 5, \"mergeOnCommit\": false, \"saveToStartupConfigOnCommit\": false}")}
 	case "show configuration lock":
@@ -255,17 +255,16 @@ func TestGetBgpNeighbors(t *testing.T) {
 				t.Errorf("Call to NewEapiClient failed with error %q", err)
 			} else {
 				resp, err := eapiClient.GetBgpNeighbors(test.Ctx)
-				if test.Want != nil && (test.Want[0] != resp[0]) {
-					t.Errorf("Expected peer 0 to be %s but instead got %s", test.Want[0], resp[0])
-				}
 				if test.ExpectError {
 					if err == nil {
 						t.Errorf("Should have failed to connect but no error was raised %q", err)
 					}
-				} else {
-					if err != nil {
-						t.Errorf("Call to eapiClient.GetBgpNeighbors failed with error: %q", err)
-					}
+				} else if err != nil {
+					t.Errorf("Call to eapiClient.GetBgpNeighbors failed with error: %q", err)
+				} else if len(resp) == 0 {
+					t.Fatalf("Call to eapiClient.GetBgpNeighbors returned empty response")
+				} else if test.Want != nil && (test.Want[0] != resp[0]) {
+					t.Errorf("Expected peer 0 to be %s but instead got %s", test.Want[0], resp[0])
 				}
 			}
 		})

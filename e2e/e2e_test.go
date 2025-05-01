@@ -74,7 +74,7 @@ type BGPNeighborSummary struct {
 }
 
 func (b *ShowIPBGPSummary) GetCmd() string {
-	return "show ip bgp summary vrf all"
+	return "show ip bgp summary vrf vrf1"
 }
 
 type ShowIpRoute struct {
@@ -90,7 +90,7 @@ type IpRoute struct {
 }
 
 func (r *ShowIpRoute) GetCmd() string {
-	return "show ip route vrf all"
+	return "show ip route vrf vrf1"
 }
 
 // TestIBRLWithAllocatedAddress_Connect_Output is a set of tests to verify the output of the doublezero
@@ -318,6 +318,23 @@ func TestIBRLWithAllocatedAddress_Disconnect_Networking(t *testing.T) {
 
 		if diff := cmp.Diff(string(want), got.Config); diff != "" {
 			t.Fatalf("output mismatch: -(want), +(got): %s", diff)
+		}
+
+		dut, err := goeapi.Connect("http", doublezeroDeviceAddr, "admin", "admin", 80)
+		if err != nil {
+			t.Fatalf("error connecting to dut: %v", err)
+		}
+		handle, err := dut.GetHandle("json")
+		neighbors := &ShowIPBGPSummary{}
+		handle.AddCommand(neighbors)
+		if err := handle.Call(); err != nil {
+			t.Fatalf("error fetching neighbors from doublezero device: %v", err)
+		}
+
+		ip := strings.Split(linkLocalAddr, "/")[0]
+		_, ok := neighbors.VRFs["vrf1"].Peers[ip]
+		if ok {
+			t.Fatalf("bgp neighbor %s has not been removed from doublezero device\n", linkLocalAddr)
 		}
 	})
 }
@@ -616,6 +633,23 @@ func TestIBRL_Disconnect_Networking(t *testing.T) {
 
 		if diff := cmp.Diff(string(want), got.Config); diff != "" {
 			t.Fatalf("output mismatch: -(want), +(got): %s", diff)
+		}
+
+		dut, err := goeapi.Connect("http", doublezeroDeviceAddr, "admin", "admin", 80)
+		if err != nil {
+			t.Fatalf("error connecting to dut: %v", err)
+		}
+		handle, err := dut.GetHandle("json")
+		neighbors := &ShowIPBGPSummary{}
+		handle.AddCommand(neighbors)
+		if err := handle.Call(); err != nil {
+			t.Fatalf("error fetching neighbors from doublezero device: %v", err)
+		}
+
+		ip := strings.Split(linkLocalAddr, "/")[0]
+		_, ok := neighbors.VRFs["vrf1"].Peers[ip]
+		if ok {
+			t.Fatalf("bgp neighbor %s has not been removed from doublezero device\n", linkLocalAddr)
 		}
 	})
 }

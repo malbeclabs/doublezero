@@ -335,7 +335,7 @@ func (e *EapiClient) AddConfigToDevice(ctx context.Context, config string, diffC
 // (The slice of strings return value is intended to be used only by unit tests)
 func (e *EapiClient) GetBgpNeighbors(ctx context.Context) ([]string, error) {
 	cmd := &arista.RunShowCmdRequest{
-		Command: "show ip bgp neighbors",
+		Command: "show ip bgp neighbors vrf vrf1",
 	}
 
 	resp, err := e.Client.RunShowCmd(ctx, cmd)

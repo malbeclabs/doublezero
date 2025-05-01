@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/gagliardetto/solana-go/rpc"
 	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
 )
 
@@ -18,7 +17,7 @@ type ContractData struct {
 
 func FetchContractData(ctx context.Context, programId string, rpcEndpoint string) (*ContractData, error) {
 	if rpcEndpoint == "" {
-		rpcEndpoint = rpc.DevNet_RPC
+		rpcEndpoint = dzsdk.URL_DOUBLEZERO
 	}
 	options := []dzsdk.Option{}
 	if programId != "" {

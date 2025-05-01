@@ -10,8 +10,6 @@ import (
 	"syscall"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
-	"github.com/vishvananda/netlink"
-	nl "github.com/vishvananda/netlink"
 )
 
 type Netlinker interface {
@@ -24,6 +22,7 @@ type Netlinker interface {
 	RouteGet(net.IP) ([]*Route, error)
 	RuleAdd(*IPRule) error
 	RuleDel(*IPRule) error
+	RouteByDoubleZeroProtocol(int) ([]*Route, error)
 }
 
 // I can't think of a better name for this
@@ -473,31 +472,19 @@ func (n *NetlinkManager) Serve(ctx context.Context) error {
 					slog.Error("routes: error removing route", "route", route.Dst.String(), "table", RouteTableSpecific, "error", err)
 				}
 			case <-n.bgp.FlushRoutes():
-				protocol := 186 // bgp
-				linkName := "doublezero0"
-
-				link, err := nl.LinkByName(linkName)
-				if err != nil {
-					slog.Error("routes: error getting tunnel prior to flush", "link", linkName, "error", err)
+				if n.db.GetState().UserType != UserTypeIBRL {
 					continue
 				}
 
-				routeFilter := &netlink.Route{
-					LinkIndex: link.Attrs().Index,
-					Protocol:  nl.RouteProtocol(protocol),
-				}
-
-				// can we know the link? if so we can batch delete
-				routes, err := netlink.RouteListFiltered(netlink.FAMILY_ALL, routeFilter, netlink.RT_FILTER_OIF|netlink.RT_FILTER_PROTOCOL)
+				protocol := 186
+				routes, err := n.netlink.RouteByDoubleZeroProtocol(protocol)
 				if err != nil {
-					slog.Error("Failed to get routes")
+					slog.Error("routes: error getting routes by protocol", "protocol", protocol)
 				}
-				if n.db.GetState().UserType == UserTypeIBRL {
-					for _, route := range routes {
-						if err := nl.RouteDel(&route); err != nil {
-							slog.Error("Error deleting route", "route", route)
-							continue
-						}
+				for _, route := range routes {
+					if err := n.netlink.RouteDelete(route); err != nil {
+						slog.Error("Error deleting route", "route", route)
+						continue
 					}
 				}
 

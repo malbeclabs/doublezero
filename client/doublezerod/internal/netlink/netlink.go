@@ -112,6 +112,29 @@ func (n Netlink) RouteGet(ip net.IP) ([]*Route, error) {
 	return routes, nil
 }
 
+func (n Netlink) RouteByDoubleZeroProtocol(protocol int) ([]*Route, error) {
+	routeFilter := &nl.Route{
+		Protocol: nl.RouteProtocol(protocol),
+	}
+
+	nlr, err := nl.RouteListFiltered(nl.FAMILY_V4, routeFilter, nl.RT_FILTER_PROTOCOL)
+	if err != nil {
+		return []*Route{}, err
+	}
+
+	routes := []*Route{}
+	for _, r := range nlr {
+		routes = append(routes, &Route{
+			Table:    r.Table,
+			Src:      r.Src,
+			Dst:      r.Dst,
+			NextHop:  r.Gw,
+			Protocol: int(r.Protocol),
+		})
+	}
+	return routes, nil
+}
+
 func (n Netlink) RuleAdd(r *IPRule) error {
 	rule := nl.NewRule()
 	rule.Priority = r.Priority

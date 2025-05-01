@@ -3,7 +3,7 @@ use core::fmt;
 use super::accounttype::AccountType;
 use crate::bytereader::ByteReader;
 use borsh::BorshSerialize;
-use solana_program::pubkey::Pubkey;
+use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 pub struct GlobalState {
@@ -50,6 +50,13 @@ impl From<&[u8]> for GlobalState {
             device_allowlist: parser.read_pubkey_vec(),
             user_allowlist: parser.read_pubkey_vec(),
         }
+    }
+}
+
+impl From<&AccountInfo<'_>> for GlobalState {
+    fn from(account: &AccountInfo) -> Self {
+        let data = account.try_borrow_data().unwrap();
+        Self::from(&data[..])
     }
 }
 

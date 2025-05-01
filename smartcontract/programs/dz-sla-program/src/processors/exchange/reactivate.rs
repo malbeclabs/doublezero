@@ -56,7 +56,7 @@ pub fn process_reactivate_exchange(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    let mut exchange: Exchange = Exchange::from(&pda_account.try_borrow_data().unwrap()[..]);
+    let mut exchange: Exchange = Exchange::from(pda_account);
     assert_eq!(exchange.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
         exchange.bump_seed, value.bump_seed,

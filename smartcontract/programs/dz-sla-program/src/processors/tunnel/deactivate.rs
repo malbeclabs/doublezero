@@ -59,7 +59,7 @@ pub fn process_deactivate_tunnel(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    let tunnel: Tunnel = Tunnel::from(&pda_account.try_borrow_data().unwrap()[..]);
+    let tunnel: Tunnel = Tunnel::from(pda_account);
     assert_eq!(tunnel.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
         tunnel.bump_seed, value.bump_seed,

@@ -59,7 +59,7 @@ pub fn process_deactivate_user(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    let user: User = User::from(&pda_account.try_borrow_data().unwrap()[..]);
+    let user: User = User::from(pda_account);
     assert_eq!(user.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
         user.bump_seed, value.bump_seed,

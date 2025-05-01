@@ -60,7 +60,7 @@ pub fn process_delete_exchange(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    let exchange: Exchange = Exchange::from(&pda_account.try_borrow_data().unwrap()[..]);
+    let exchange: Exchange = Exchange::from(pda_account);
     assert_eq!(exchange.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
         exchange.bump_seed, value.bump_seed,

@@ -2,6 +2,7 @@ use crate::bytereader::ByteReader;
 use crate::{seeds::SEED_USER, types::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::Serialize;
+use solana_program::account_info::AccountInfo;
 use solana_program::pubkey::Pubkey;
 use std::fmt;
 
@@ -193,6 +194,13 @@ impl From<&[u8]> for User {
             tunnel_net: parser.read_networkv4(),
             status: parser.read_enum(),
         }
+    }
+}
+
+impl From<&AccountInfo<'_>> for User {
+    fn from(account: &AccountInfo) -> Self {
+        let data = account.try_borrow_data().unwrap();
+        Self::from(&data[..])
     }
 }
 

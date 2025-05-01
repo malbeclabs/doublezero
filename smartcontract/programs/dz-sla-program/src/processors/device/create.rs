@@ -10,13 +10,16 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-use crate::{globalstate::{globalstate_get_next, globalstate_write}, pda::*};
-use crate::types::*;
 use crate::{
     error::DoubleZeroError,
     helper::*,
-    state::{accounttype::AccountType, device::*},
+    state::{accounttype::AccountType, device::*, location::Location},
 };
+use crate::{
+    globalstate::{globalstate_get_next, globalstate_write},
+    pda::*,
+};
+use crate::{state::exchange::Exchange, types::*};
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct DeviceCreateArgs {
@@ -98,6 +101,11 @@ pub fn process_create_device(
         return Err(ProgramError::IncorrectProgramId);
     }
 
+    let mut location = Location::from(pda_account);
+    let mut exchange = Exchange::from(exchange_account);
+
+    location.device_count += 1;
+    exchange.device_count += 1;
 
     let device: Device = Device {
         account_type: AccountType::Device,
@@ -122,6 +130,8 @@ pub fn process_create_device(
         system_program,
         program_id,
     )?;
+    account_write(location_account, &location, payer_account, system_program);
+    account_write(exchange_account, &exchange, payer_account, system_program);
 
     globalstate_write(globalstate_account, &globalstate)?;
 

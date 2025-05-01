@@ -45,7 +45,7 @@ pub fn process_suspend_device(
         );
         assert!(pda_account.is_writable, "PDA Account is not writable");
 
-    let mut device: Device = Device::from(&pda_account.try_borrow_data().unwrap()[..]);
+    let mut device: Device = Device::from(pda_account);
     assert_eq!(device.index, value.index, "Invalid PDA Account Index");
     assert_eq!(device.bump_seed, value.bump_seed, "Invalid PDA Account Bump Seed");
     if device.owner != *payer_account.key {

@@ -58,7 +58,7 @@ pub fn process_suspend_exchange(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    let mut exchange: Exchange = Exchange::from(&pda_account.try_borrow_data().unwrap()[..]);
+    let mut exchange: Exchange = Exchange::from(pda_account);
     assert_eq!(exchange.index, value.index, "Invalid PDA Account Index");
     assert_eq!(exchange.bump_seed, value.bump_seed, "Invalid PDA Account Bump Seed");
     if exchange.owner != *payer_account.key {

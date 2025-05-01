@@ -53,7 +53,7 @@ pub fn process_delete_user(
     // Check if the account is writable
     assert!(pda_account.is_writable, "PDA Account is not writable");
 
-    let mut user: User = User::from(&pda_account.try_borrow_data().unwrap()[..]);
+    let mut user: User = User::from(pda_account);
     assert_eq!(user.index, value.index, "Invalid PDA Account Index");
     assert_eq!(user.bump_seed, value.bump_seed, "Invalid bump seed");
 

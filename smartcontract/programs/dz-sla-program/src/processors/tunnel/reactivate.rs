@@ -42,7 +42,7 @@ pub fn process_reactivate_tunnel(
         "Invalid System Program Account Owner"
     );
 
-    let mut tunnel: Tunnel = Tunnel::from(&pda_account.try_borrow_data().unwrap()[..]);
+    let mut tunnel: Tunnel = Tunnel::from(pda_account);
     assert_eq!(tunnel.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
         tunnel.bump_seed, value.bump_seed,

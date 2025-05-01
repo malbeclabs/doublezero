@@ -1,7 +1,7 @@
 use std::fmt;
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::pubkey::Pubkey;
+use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 use super::accounttype::AccountType;
 use crate::{
@@ -45,6 +45,13 @@ impl From<&[u8]> for GlobalConfig {
             tunnel_tunnel_block: parser.read_networkv4(),
             user_tunnel_block: parser.read_networkv4(),
         }
+    }
+}
+
+impl From<&AccountInfo<'_>> for GlobalConfig {
+    fn from(account: &AccountInfo) -> Self {
+        let data = account.try_borrow_data().unwrap();
+        Self::from(&data[..])
     }
 }
 

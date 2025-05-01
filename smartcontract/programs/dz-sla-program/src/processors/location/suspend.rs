@@ -52,7 +52,7 @@ pub fn process_suspend_location(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    let mut location: Location = Location::from(&pda_account.try_borrow_data().unwrap()[..]);
+    let mut location: Location = Location::from(pda_account);
     assert_eq!(location.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
         location.bump_seed, value.bump_seed,

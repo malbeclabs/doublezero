@@ -52,7 +52,7 @@ pub fn process_deactivate_device(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    let device: Device = Device::from(&pda_account.try_borrow_data().unwrap()[..]);
+    let device: Device = Device::from(pda_account);
     assert_eq!(device.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
         device.bump_seed, value.bump_seed,

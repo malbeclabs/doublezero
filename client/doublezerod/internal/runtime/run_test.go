@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	rt "runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -45,13 +46,17 @@ func (p *dummyPlugin) OnOpenMessage(peer corebgp.PeerConfig, routerID netip.Addr
 
 func (p *dummyPlugin) OnEstablished(peer corebgp.PeerConfig, writer corebgp.UpdateMessageWriter) corebgp.UpdateMessageHandler {
 	origin := gobgp.NewPathAttributeOrigin(0)
-	nexthop := gobgp.NewPathAttributeNextHop("2.2.2.2")
+	nexthop := gobgp.NewPathAttributeNextHop("169.254.0.0")
 	param := gobgp.NewAs4PathParam(2, []uint32{65001})
 	aspath := gobgp.NewPathAttributeAsPath([]gobgp.AsPathParamInterface{param})
 	update := gobgp.NewBGPUpdateMessage(
-		[]*gobgp.IPAddrPrefix{gobgp.NewIPAddrPrefix(32, "4.4.4.4")},
+		[]*gobgp.IPAddrPrefix{},
 		[]gobgp.PathAttributeInterface{origin, nexthop, aspath},
-		[]*gobgp.IPAddrPrefix{gobgp.NewIPAddrPrefix(32, "3.3.3.3")})
+		[]*gobgp.IPAddrPrefix{
+			gobgp.NewIPAddrPrefix(32, "5.5.5.5"),
+			gobgp.NewIPAddrPrefix(32, "4.4.4.4"),
+		},
+	)
 	buf, err := update.Body.Serialize()
 	if err != nil {
 		log.Printf("error serializing: %v", err)
@@ -133,7 +138,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 		t.Fatalf("error bringing up tunnel: %v", err)
 	}
 
-	cleanup := func() {
+	t.Cleanup(func() {
 		cmd = exec.Command("ip", "link", "del", "veth0")
 		if err = cmd.Run(); err != nil {
 			t.Fatalf("error deleting veth: %v", err)
@@ -142,8 +147,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 		if err = cmd.Run(); err != nil {
 			t.Fatalf("error deleting network namespace: %v", err)
 		}
-	}
-	defer cleanup()
+	})
 
 	// TODO: start corebgp instance in network namespace
 	srv, _ := corebgp.NewServer(netip.MustParseAddr("2.2.2.2"))
@@ -197,7 +201,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 				"tunnel_src":     "10.0.0.0",
 				"tunnel_dst":     "10.0.0.1",
 				"tunnel_net":     "169.254.0.0/31",
-				"doublezero_ip":  "1.1.1.1",
+				"doublezero_ip":  "10.0.0.0",
 				"user_type":      "IBRL",
 				"bgp_local_asn":  65000,
 				"bgp_remote_asn": 65342,
@@ -212,7 +216,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 				"tunnel_src":     "10.0.0.0",
 				"tunnel_dst":     "10.0.0.1",
 				"tunnel_net":     "169.254.0.0/31",
-				"doublezero_ip":  "3.3.3.3",
+				"doublezero_ip":  "10.0.0.0",
 				"user_type":      "IBRLWithAllocatedIP",
 				"bgp_local_asn":  65000,
 				"bgp_remote_asn": 65342,
@@ -290,6 +294,49 @@ func TestEndToEnd_IBRL(t *testing.T) {
 				}
 			})
 
+			t.Run("verify_routes_are_installed", func(t *testing.T) {
+				time.Sleep(20 * time.Second)
+				got, err := nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Protocol: 186}, nl.RT_FILTER_PROTOCOL)
+				if err != nil {
+					t.Fatalf("error fetching routes: %v", err)
+				}
+				tun, err := nl.LinkByName("doublezero0")
+				if err != nil {
+					t.Fatalf("error fetching tunnel info: %v", err)
+				}
+				want := []nl.Route{
+					{
+						LinkIndex: tun.Attrs().Index,
+						Table:     254,
+						Dst: &net.IPNet{
+							IP:   net.IP{4, 4, 4, 4},
+							Mask: net.IPv4Mask(255, 255, 255, 255),
+						},
+						Gw:       net.IP{169, 254, 0, 0},
+						Protocol: 186,
+						Src:      net.IP{10, 0, 0, 0},
+						Family:   nl.FAMILY_V4,
+						Type:     syscall.RTN_UNICAST,
+					},
+					{
+						LinkIndex: tun.Attrs().Index,
+						Table:     254,
+						Dst: &net.IPNet{
+							IP:   net.IP{5, 5, 5, 5},
+							Mask: net.IPv4Mask(255, 255, 255, 255),
+						},
+						Gw:       net.IP{169, 254, 0, 0},
+						Protocol: 186,
+						Src:      net.IP{10, 0, 0, 0},
+						Family:   nl.FAMILY_V4,
+						Type:     syscall.RTN_UNICAST,
+					},
+				}
+				if diff := cmp.Diff(want, got); diff != "" {
+					t.Fatalf("Route mismatch (-want +got): %s\n", diff)
+				}
+			})
+
 			t.Run("verify_state_file_is_created", func(t *testing.T) {
 				got, err := os.ReadFile(filepath.Join(rootPath, "doublezerod", "doublezerod.json"))
 				if err != nil {
@@ -313,7 +360,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 				if err := srv.DeletePeer(netip.AddrFrom4([4]byte{169, 254, 0, 1})); err != nil {
 					t.Fatalf("error deleting peer: %v", err)
 				}
-
+				time.Sleep(10 * time.Second)
 				// should not have any routes tagged bgp
 				routes, err := nl.RouteList(nil, nl.FAMILY_ALL)
 				if err != nil {

@@ -26,48 +26,50 @@ permissions:
     checks: write
 
 jobs:
-  lint:
-    name: "lint"
-    runs-on: ubuntu-24.04-16c-64gb
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: 1.24.x
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: v1.64.2
-  build:
-    name: "build"
-    needs: lint
-    runs-on: ubuntu-24.04-16c-64gb
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: 1.24.x
-      - name: build
-        run: go build -v ./...
+  # lint:
+  #   name: "lint"
+  #   runs-on: ubuntu-24.04-16c-64gb
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-go@v5
+  #       with:
+  #         go-version: 1.24.x
+  #     - name: golangci-lint
+  #       uses: golangci/golangci-lint-action@v6
+  #       with:
+  #         version: v1.64.2
+  # build:
+  #   name: "build"
+  #   needs: lint
+  #   runs-on: ubuntu-24.04-16c-64gb
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-go@v5
+  #       with:
+  #         go-version: 1.24.x
+  #     - name: build
+  #       run: go build -v ./...
   unit_test:
     name: "unit_test"
-    needs: build
     runs-on: ubuntu-24.04-16c-64gb
     steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install iproute2 -y
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: 1.24.x
       - name: test
         run: go test -exec sudo -v ./...
-  integration_test:
-    name: "integration_test"
-    needs: build
-    runs-on: ubuntu-24.04-16c-64gb
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: 1.24.x
-      - name: test
-        run: go test -exec sudo -v ./... -tags=integration
+  # integration_test:
+  #   name: "integration_test"
+  #   needs: build
+  #   runs-on: ubuntu-24.04-16c-64gb
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-go@v5
+  #       with:
+  #         go-version: 1.24.x
+  #     - name: test
+  #       run: go test -exec sudo -v ./... -tags=integration

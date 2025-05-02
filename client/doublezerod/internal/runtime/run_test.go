@@ -102,7 +102,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 	execSysCommand(cmd, msg, t)
 
 	// configure source end of veth
-	cmd = []string{"ip", "addr", "add", "10.0.0.0/31", "dev", "veth0"}
+	cmd = []string{"ip", "addr", "add", "192.168.1.0/31", "dev", "veth0"}
 	msg = "error configuring source end of veth:"
 	execSysCommand(cmd, msg, t)
 
@@ -112,7 +112,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 	execSysCommand(cmd, msg, t)
 
 	// add IP to doublezero-peer
-	cmd = []string{"ip", "netns", "exec", "doublezero-peer", "ip", "addr", "add", "10.0.0.1/31", "dev", "veth1"}
+	cmd = []string{"ip", "netns", "exec", "doublezero-peer", "ip", "addr", "add", "192.168.1.1/31", "dev", "veth1"}
 	msg = "error configuring source end of veth:"
 	execSysCommand(cmd, msg, t)
 
@@ -120,7 +120,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 	msg = "error bringing up source end of veth:"
 	execSysCommand(cmd, msg, t)
 
-	cmd = []string{"ip", "netns", "exec", "doublezero-peer", "ip", "tunnel", "add", "doublezero0", "mode", "gre", "local", "10.0.0.1", "remote", "10.0.0.0", "ttl", "64"}
+	cmd = []string{"ip", "netns", "exec", "doublezero-peer", "ip", "tunnel", "add", "doublezero0", "mode", "gre", "local", "192.168.1.1", "remote", "192.168.1.0", "ttl", "64"}
 	msg = "error creating tunnel:"
 	execSysCommand(cmd, msg, t)
 
@@ -207,10 +207,10 @@ func TestEndToEnd_IBRL(t *testing.T) {
 			userType: netlink.UserTypeIBRL,
 			provisioningRequest: map[string]any{
 
-				"tunnel_src":     "10.0.0.0",
-				"tunnel_dst":     "10.0.0.1",
+				"tunnel_src":     "192.168.1.0",
+				"tunnel_dst":     "192.168.1.1",
 				"tunnel_net":     "169.254.0.0/31",
-				"doublezero_ip":  "10.0.0.0",
+				"doublezero_ip":  "192.168.1.0",
 				"user_type":      "IBRL",
 				"bgp_local_asn":  65000,
 				"bgp_remote_asn": 65342,
@@ -222,10 +222,10 @@ func TestEndToEnd_IBRL(t *testing.T) {
 			userType: netlink.UserTypeIBRLWithAllocatedIP,
 			provisioningRequest: map[string]any{
 
-				"tunnel_src":     "10.0.0.0",
-				"tunnel_dst":     "10.0.0.1",
+				"tunnel_src":     "192.168.1.0",
+				"tunnel_dst":     "192.168.1.1",
 				"tunnel_net":     "169.254.0.0/31",
-				"doublezero_ip":  "10.0.0.0",
+				"doublezero_ip":  "192.168.1.0",
 				"user_type":      "IBRLWithAllocatedIP",
 				"bgp_local_asn":  65000,
 				"bgp_remote_asn": 65342,
@@ -323,7 +323,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 						},
 						Gw:       net.IP{169, 254, 0, 0},
 						Protocol: 186,
-						Src:      net.IP{10, 0, 0, 0},
+						Src:      net.IP{192, 168, 1, 0},
 						Family:   nl.FAMILY_V4,
 						Type:     syscall.RTN_UNICAST,
 					},
@@ -336,7 +336,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 						},
 						Gw:       net.IP{169, 254, 0, 0},
 						Protocol: 186,
-						Src:      net.IP{10, 0, 0, 0},
+						Src:      net.IP{192, 168, 1, 0},
 						Family:   nl.FAMILY_V4,
 						Type:     syscall.RTN_UNICAST,
 					},
@@ -410,7 +410,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 						},
 						Gw:       net.IP{169, 254, 0, 0},
 						Protocol: 186,
-						Src:      net.IP{10, 0, 0, 0},
+						Src:      net.IP{192, 168, 1, 0},
 						Family:   nl.FAMILY_V4,
 						Type:     syscall.RTN_UNICAST,
 					},
@@ -423,7 +423,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 						},
 						Gw:       net.IP{169, 254, 0, 0},
 						Protocol: 186,
-						Src:      net.IP{10, 0, 0, 0},
+						Src:      net.IP{192, 168, 1, 0},
 						Family:   nl.FAMILY_V4,
 						Type:     syscall.RTN_UNICAST,
 					},

@@ -8,7 +8,7 @@ use ipnetwork::Ipv4Network;
 pub struct IPBlockAllocator {
     pub base_block: Ipv4Network,
     pub assigned_ips: BitVec,
-    total_ips: usize,
+    pub total_ips: usize,
 }
 
 impl IPBlockAllocator {

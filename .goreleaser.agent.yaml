@@ -24,9 +24,8 @@ builds:
 
 archives:
   - id: agent_archive
-    format: tar.gz
-    builds:
-      - agent
+    formats: ['tar.gz']
+    ids: [agent]
     # this name template makes the OS and Arch compatible with the results of `uname`.
     name_template: >-
       {{ .ProjectName }}_
@@ -39,8 +38,7 @@ archives:
 nfpms:
   - id: doublezero-agent
     package_name: doublezero-agent
-    builds:
-      - doublezero-agent
+    ids: [doublezero-agent]
     vendor: doublezero
     homepage: doublezero.xyz
     maintainer: nik <nik@malbeclabs.com>
@@ -64,7 +62,7 @@ release:
   github:
     owner: malbeclabs
     name: doublezero
-  draft: true
+  draft: false
   replace_existing_artifacts: true
 
 announce:

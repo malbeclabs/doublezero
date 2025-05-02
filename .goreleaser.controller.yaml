@@ -22,9 +22,8 @@ builds:
 
 archives:
   - id: controller_archive
-    format: tar.gz
-    builds:
-      - controller
+    formats: ['tar.gz']
+    ids: [controller]
     # this name template makes the OS and Arch compatible with the results of `uname`.
     name_template: >-
       {{ .ProjectName }}_
@@ -37,8 +36,7 @@ archives:
 nfpms:
   - id: doublezero-controller
     package_name: doublezero-controller
-    builds:
-      - doublezero-controller
+    ids: [doublezero-controller]
     vendor: doublezero
     homepage: doublezero.xyz
     maintainer: steve <steve@malbeclabs.com>
@@ -77,7 +75,7 @@ release:
   github:
     owner: malbeclabs
     name: doublezero
-  draft: true
+  draft: false
   replace_existing_artifacts: true
 
 announce:

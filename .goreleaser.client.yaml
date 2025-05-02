@@ -7,7 +7,7 @@ project_name: doublezero
 
 monorepo:
   tag_prefix: client/
-  dir: client/
+  dir: client
 
 builds:
   - id: doublezerod
@@ -32,10 +32,8 @@ builds:
 
 archives:
   - id: doublezero_archive
-    format: tar.gz
-    builds:
-      - doublezero-cli
-      - doublezerod
+    formats: ['tar.gz']
+    ids: [doublezero-cli, doublezerod]
     # this name template makes the OS and Arch compatible with the results of `uname`.
     name_template: >-
       {{ .ProjectName }}_
@@ -48,9 +46,7 @@ archives:
 nfpms:
   - id: doublezero
     package_name: doublezero
-    builds:
-      - doublezerod
-      - doublezero-cli
+    ids: [doublezerod, doublezero-cli]
     vendor: doublezero
     homepage: doublezero.xyz
     maintainer: steve <steve@malbeclabs.com>
@@ -92,7 +88,7 @@ release:
   github:
     owner: malbeclabs
     name: doublezero
-  draft: true
+  draft: false
   replace_existing_artifacts: true
 
 announce:

@@ -72,14 +72,11 @@ func (p *dummyPlugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.N
 }
 
 func TestEndToEnd_IBRL(t *testing.T) {
-	rootPath, err := os.MkdirTemp("", "doublezerod")
-	if err != nil {
-		t.Fatalf("error creating temp dir: %v", err)
-	}
+	teardown, err := setupTest(t)
+	rootPath := os.Getenv("XDG_STATE_HOME")
+
 	defer os.RemoveAll(rootPath)
 
-	t.Setenv("XDG_STATE_HOME", rootPath)
-	teardown, err := setupTest(rootPath, t)
 	if err != nil {
 		t.Fatalf("%v\n", err)
 	}
@@ -230,7 +227,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 			})
 
 			t.Run("verify_routes_are_installed", func(t *testing.T) {
-				time.Sleep(20 * time.Second)
+				time.Sleep(5 * time.Second)
 				got, err := nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Protocol: 186}, nl.RT_FILTER_PROTOCOL)
 				if err != nil {
 					t.Fatalf("error fetching routes: %v", err)
@@ -295,7 +292,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 				if err := srv.DeletePeer(netip.AddrFrom4([4]byte{169, 254, 0, 1})); err != nil {
 					t.Fatalf("error deleting peer: %v", err)
 				}
-				time.Sleep(10 * time.Second)
+				time.Sleep(5 * time.Second)
 				// should not have any routes tagged bgp
 				got, err := nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Protocol: 186}, nl.RT_FILTER_PROTOCOL)
 				if err != nil {
@@ -316,7 +313,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 					log.Fatalf("error creating dummy bgp server: %v", err)
 				}
 
-				time.Sleep(10 * time.Second)
+				time.Sleep(5 * time.Second)
 				// ensure that 4.4.4.4,3.3.3.3 are added and tagged with bgp (186)
 				got, err = nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Protocol: 186}, nl.RT_FILTER_PROTOCOL)
 				if err != nil {
@@ -795,7 +792,13 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 	// TODO: verify latency samples are returned
 }
 
-func setupTest(rootPath string, t *testing.T) (func(), error) {
+func setupTest(t *testing.T) (func(), error) {
+	rootPath, err := os.MkdirTemp("", "doublezerod")
+	if err != nil {
+		t.Fatalf("error creating temp dir: %v", err)
+	}
+
+	t.Setenv("XDG_STATE_HOME", rootPath)
 
 	path := filepath.Join(rootPath, "doublezerod")
 	if err := os.Mkdir(path, 0766); err != nil {
@@ -832,7 +835,6 @@ func setupTest(rootPath string, t *testing.T) (func(), error) {
 			t.Fatalf("%v\n", err)
 		}
 	}
-
 	return teardown, nil
 }
 

@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
+	"golang.org/x/sys/unix"
 )
 
 type Netlinker interface {
@@ -475,8 +476,7 @@ func (n *NetlinkManager) Serve(ctx context.Context) error {
 					continue
 				}
 
-				// protocol 186 is bgp
-				protocol := 186
+				protocol := unix.RTPROT_BGP // 186
 				routes, err := n.netlink.RouteByProtocol(protocol)
 				if err != nil {
 					slog.Error("routes: error getting routes by protocol", "protocol", protocol)

@@ -22,9 +22,8 @@ builds:
 
 archives:
   - id: activator_archive
-    format: tar.gz
-    builds:
-      - activator
+    formats: ['tar.gz']
+    ids: [activator]
     # this name template makes the OS and Arch compatible with the results of `uname`.
     name_template: >-
       {{ .ProjectName }}_
@@ -37,8 +36,7 @@ archives:
 nfpms:
   - id: doublezero-activator
     package_name: doublezero-activator
-    builds:
-      - doublezero-activator
+    ids: [doublezero-activator]
     vendor: doublezero
     homepage: doublezero.xyz
     maintainer: steve <steve@malbeclabs.com>
@@ -71,7 +69,7 @@ release:
   github:
     owner: malbeclabs
     name: doublezero
-  draft: true
+  draft: false
   replace_existing_artifacts: true
 
 announce:

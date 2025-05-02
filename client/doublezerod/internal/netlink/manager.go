@@ -453,7 +453,7 @@ func (n *NetlinkManager) Serve(ctx context.Context) error {
 					slog.Error("routes: error parsing nlri from update", "error", err)
 				}
 
-				route := &Route{Src: n.DoubleZeroAddr, Dst: dzNet, Table: p.RouteTable, NextHop: net.ParseIP(p.NextHop), Protocol: 186}
+				route := &Route{Src: n.DoubleZeroAddr, Dst: dzNet, Table: p.RouteTable, NextHop: net.ParseIP(p.NextHop), Protocol: unix.RTPROT_BGP}
 				slog.Info("routes: writing route", "table", p.RouteTable, "dz route", route.String())
 				if err := n.WriteRoute(route); err != nil {
 					slog.Error("routes: error writing route", "table", p.RouteTable, "error", err)

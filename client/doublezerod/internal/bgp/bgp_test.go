@@ -127,6 +127,7 @@ func TestBgpServer(t *testing.T) {
 
 	}()
 
+	// TODO: https://github.com/malbeclabs/doublezero/issues/267
 	// t.Run("validate_peer_status_is_initializing", func(t *testing.T) {
 	// 	if !waitForPeerStatus(bgp.SessionStatusInitializing) {
 	// 		t.Fatal("timed out waiting for peer status of initializing")

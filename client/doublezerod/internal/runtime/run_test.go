@@ -9,62 +9,150 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
+	rt "runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/jwhited/corebgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/netlink"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/runtime"
+	"golang.org/x/sys/unix"
 
 	nl "github.com/vishvananda/netlink"
+	"github.com/vishvananda/netns"
+
+	gobgp "github.com/osrg/gobgp/pkg/packet/bgp"
 )
 
-func TestEndToEnd_IBRL(t *testing.T) {
-	rootPath, err := os.MkdirTemp("", "doublezerod")
+type dummyPlugin struct{}
+
+func (p *dummyPlugin) GetCapabilities(c corebgp.PeerConfig) []corebgp.Capability {
+	caps := make([]corebgp.Capability, 0)
+	return caps
+}
+
+func (p *dummyPlugin) OnOpenMessage(peer corebgp.PeerConfig, routerID netip.Addr, capabilities []corebgp.Capability) *corebgp.Notification {
+	return nil
+}
+
+func (p *dummyPlugin) OnEstablished(peer corebgp.PeerConfig, writer corebgp.UpdateMessageWriter) corebgp.UpdateMessageHandler {
+	origin := gobgp.NewPathAttributeOrigin(0)
+	nexthop := gobgp.NewPathAttributeNextHop("169.254.0.0")
+	param := gobgp.NewAs4PathParam(2, []uint32{65001})
+	aspath := gobgp.NewPathAttributeAsPath([]gobgp.AsPathParamInterface{param})
+	update := gobgp.NewBGPUpdateMessage(
+		[]*gobgp.IPAddrPrefix{},
+		[]gobgp.PathAttributeInterface{origin, nexthop, aspath},
+		[]*gobgp.IPAddrPrefix{
+			gobgp.NewIPAddrPrefix(32, "5.5.5.5"),
+			gobgp.NewIPAddrPrefix(32, "4.4.4.4"),
+		},
+	)
+	buf, err := update.Body.Serialize()
 	if err != nil {
-		t.Fatalf("error creating temp dir: %v", err)
+		log.Printf("error serializing: %v", err)
 	}
+	if err := writer.WriteUpdate(buf); err != nil {
+		log.Printf("error writing update: %v", err)
+	}
+	return p.handleUpdate
+}
+
+func (p *dummyPlugin) OnClose(peer corebgp.PeerConfig) {}
+
+func (p *dummyPlugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.Notification {
+	return nil
+}
+
+func TestEndToEnd_IBRL(t *testing.T) {
+	teardown, err := setupTest(t)
+	rootPath := os.Getenv("XDG_STATE_HOME")
+
 	defer os.RemoveAll(rootPath)
 
-	t.Setenv("XDG_STATE_HOME", rootPath)
-
-	path := filepath.Join(rootPath, "doublezerod")
-	if err := os.Mkdir(path, 0766); err != nil {
-		t.Fatalf("error creating state dir: %v", err)
+	if err != nil {
+		t.Fatalf("%v\n", err)
 	}
+	t.Cleanup(teardown)
+
+	// TODO: start corebgp instance in network namespace
+	srv, _ := corebgp.NewServer(netip.MustParseAddr("2.2.2.2"))
+	go func() {
+		rt.LockOSThread()
+		defer rt.UnlockOSThread()
+
+		peerNS, err := netns.GetFromName("doublezero-peer")
+		if err != nil {
+			t.Logf("error creating namespace: %v", err)
+		}
+		if err = netns.Set(peerNS); err != nil {
+			t.Logf("error setting namespace: %v", err)
+		}
+
+		// start bgp instance in network namespace
+		d := &dummyPlugin{}
+		err = srv.AddPeer(corebgp.PeerConfig{
+			RemoteAddress: netip.MustParseAddr("169.254.0.1"),
+			LocalAS:       65342,
+			RemoteAS:      65000,
+		}, d, corebgp.WithPassive())
+		if err != nil {
+			log.Fatalf("error creating dummy bgp server: %v", err)
+		}
+		dlc := &net.ListenConfig{}
+		dlis, err := dlc.Listen(context.Background(), "tcp", ":179")
+		if err != nil {
+			log.Fatalf("error constructing listener: %v", err)
+		}
+
+		t.Log("starting bgp server")
+		if err := srv.Serve([]net.Listener{dlis}); err != nil {
+			t.Logf("error on remote peer bgp server: %v", err)
+		}
+		t.Log("here")
+	}()
+
 	tests := []struct {
 		name                string
 		userType            netlink.UserType
-		provisioningRequest map[string]string
+		provisioningRequest map[string]any
 		goldenStateFile     string
 	}{
 		{
 			name:     "test_ibrl",
 			userType: netlink.UserTypeIBRL,
-			provisioningRequest: map[string]string{
+			provisioningRequest: map[string]any{
 
-				"tunnel_src":    "1.1.1.1",
-				"tunnel_dst":    "2.2.2.2",
-				"tunnel_net":    "169.254.0.0/31",
-				"doublezero_ip": "1.1.1.1",
-				"user_type":     "IBRL",
+				"tunnel_src":     "192.168.1.0",
+				"tunnel_dst":     "192.168.1.1",
+				"tunnel_net":     "169.254.0.0/31",
+				"doublezero_ip":  "192.168.1.0",
+				"user_type":      "IBRL",
+				"bgp_local_asn":  65000,
+				"bgp_remote_asn": 65342,
 			},
 			goldenStateFile: "./fixtures/doublezerod.ibrl.json",
 		},
 		{
 			name:     "test_ibrl_with_allocated_ip",
 			userType: netlink.UserTypeIBRLWithAllocatedIP,
-			provisioningRequest: map[string]string{
+			provisioningRequest: map[string]any{
 
-				"tunnel_src":    "1.1.1.1",
-				"tunnel_dst":    "2.2.2.2",
-				"tunnel_net":    "169.254.0.0/31",
-				"doublezero_ip": "3.3.3.3",
-				"user_type":     "IBRLWithAllocatedIP",
+				"tunnel_src":     "192.168.1.0",
+				"tunnel_dst":     "192.168.1.1",
+				"tunnel_net":     "169.254.0.0/31",
+				"doublezero_ip":  "192.168.1.0",
+				"user_type":      "IBRLWithAllocatedIP",
+				"bgp_local_asn":  65000,
+				"bgp_remote_asn": 65342,
 			},
 			goldenStateFile: "./fixtures/doublezerod.ibrl.with.allocated.ip.json",
 		},
@@ -139,6 +227,49 @@ func TestEndToEnd_IBRL(t *testing.T) {
 				}
 			})
 
+			t.Run("verify_routes_are_installed", func(t *testing.T) {
+				time.Sleep(5 * time.Second)
+				got, err := nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Protocol: unix.RTPROT_BGP}, nl.RT_FILTER_PROTOCOL)
+				if err != nil {
+					t.Fatalf("error fetching routes: %v", err)
+				}
+				tun, err := nl.LinkByName("doublezero0")
+				if err != nil {
+					t.Fatalf("error fetching tunnel info: %v", err)
+				}
+				want := []nl.Route{
+					{
+						LinkIndex: tun.Attrs().Index,
+						Table:     254,
+						Dst: &net.IPNet{
+							IP:   net.IP{4, 4, 4, 4},
+							Mask: net.IPv4Mask(255, 255, 255, 255),
+						},
+						Gw:       net.IP{169, 254, 0, 0},
+						Protocol: unix.RTPROT_BGP,
+						Src:      net.IP{192, 168, 1, 0},
+						Family:   nl.FAMILY_V4,
+						Type:     syscall.RTN_UNICAST,
+					},
+					{
+						LinkIndex: tun.Attrs().Index,
+						Table:     254,
+						Dst: &net.IPNet{
+							IP:   net.IP{5, 5, 5, 5},
+							Mask: net.IPv4Mask(255, 255, 255, 255),
+						},
+						Gw:       net.IP{169, 254, 0, 0},
+						Protocol: unix.RTPROT_BGP,
+						Src:      net.IP{192, 168, 1, 0},
+						Family:   nl.FAMILY_V4,
+						Type:     syscall.RTN_UNICAST,
+					},
+				}
+				if diff := cmp.Diff(want, got); diff != "" {
+					t.Fatalf("Route mismatch (-want +got): %s\n", diff)
+				}
+			})
+
 			t.Run("verify_state_file_is_created", func(t *testing.T) {
 				got, err := os.ReadFile(filepath.Join(rootPath, "doublezerod", "doublezerod.json"))
 				if err != nil {
@@ -150,6 +281,79 @@ func TestEndToEnd_IBRL(t *testing.T) {
 				}
 				if diff := cmp.Diff(string(want), string(got)); diff != "" {
 					t.Fatalf("State mismatch (-want +got): %s\n", diff)
+				}
+			})
+
+			t.Run("verify_routes_flushed_on_session_down_event", func(t *testing.T) {
+				if test.userType == netlink.UserTypeIBRLWithAllocatedIP {
+					t.Skip("we don't flush routes in IBRLWithAllocatedIP mode")
+				}
+
+				t.Logf("peers: %+v\n", srv.ListPeers())
+				if err := srv.DeletePeer(netip.AddrFrom4([4]byte{169, 254, 0, 1})); err != nil {
+					t.Fatalf("error deleting peer: %v", err)
+				}
+				time.Sleep(5 * time.Second)
+				// should not have any routes tagged bgp
+				got, err := nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Protocol: unix.RTPROT_BGP}, nl.RT_FILTER_PROTOCOL)
+				if err != nil {
+					t.Fatalf("error fetching routes: %v", err)
+				}
+				if len(got) > 0 {
+					t.Fatalf("expected no routes, got %d, %+v\n", len(got), got)
+				}
+
+				// 	// re-add peer
+				d := &dummyPlugin{}
+				err = srv.AddPeer(corebgp.PeerConfig{
+					RemoteAddress: netip.MustParseAddr("169.254.0.1"),
+					LocalAS:       65342,
+					RemoteAS:      65000,
+				}, d, corebgp.WithPassive())
+				if err != nil {
+					log.Fatalf("error creating dummy bgp server: %v", err)
+				}
+
+				time.Sleep(5 * time.Second)
+				// ensure that 4.4.4.4,3.3.3.3 are added and tagged with bgp (unix.RTPROT_BGP)
+				got, err = nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Protocol: unix.RTPROT_BGP}, nl.RT_FILTER_PROTOCOL)
+				if err != nil {
+					t.Fatalf("error fetching routes: %v", err)
+				}
+				tun, err := nl.LinkByName("doublezero0")
+				if err != nil {
+					t.Fatalf("error fetching tunnel info: %v", err)
+				}
+				want := []nl.Route{
+					{
+						LinkIndex: tun.Attrs().Index,
+						Table:     254,
+						Dst: &net.IPNet{
+							IP:   net.IP{4, 4, 4, 4},
+							Mask: net.IPv4Mask(255, 255, 255, 255),
+						},
+						Gw:       net.IP{169, 254, 0, 0},
+						Protocol: unix.RTPROT_BGP,
+						Src:      net.IP{192, 168, 1, 0},
+						Family:   nl.FAMILY_V4,
+						Type:     syscall.RTN_UNICAST,
+					},
+					{
+						LinkIndex: tun.Attrs().Index,
+						Table:     254,
+						Dst: &net.IPNet{
+							IP:   net.IP{5, 5, 5, 5},
+							Mask: net.IPv4Mask(255, 255, 255, 255),
+						},
+						Gw:       net.IP{169, 254, 0, 0},
+						Protocol: unix.RTPROT_BGP,
+						Src:      net.IP{192, 168, 1, 0},
+						Family:   nl.FAMILY_V4,
+						Type:     syscall.RTN_UNICAST,
+					},
+				}
+				if diff := cmp.Diff(want, got); diff != "" {
+					t.Fatalf("Route mismatch (-want +got): %s\n", diff)
 				}
 			})
 
@@ -437,7 +641,7 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 			if err != nil {
 				t.Fatalf("error starting runtime: %v", err)
 			}
-		case <-time.After(5 * time.Second):
+		case <-time.After(10 * time.Second):
 		}
 	})
 
@@ -587,4 +791,60 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 	// case: latency endpoint
 	// TODO: call latency endpoint
 	// TODO: verify latency samples are returned
+}
+
+func setupTest(t *testing.T) (func(), error) {
+	rootPath, err := os.MkdirTemp("", "doublezerod")
+	if err != nil {
+		t.Fatalf("error creating temp dir: %v", err)
+	}
+
+	t.Setenv("XDG_STATE_HOME", rootPath)
+
+	path := filepath.Join(rootPath, "doublezerod")
+	if err := os.Mkdir(path, 0766); err != nil {
+		t.Fatalf("error creating state dir: %v", err)
+	}
+
+	cmds := [][]string{{"ip", "netns", "add", "doublezero-peer"}, {"ip", "link", "add", "veth0", "type", "veth", "peer", "name", "veth1"}, {"ip", "link", "set", "dev", "veth1", "netns", "doublezero-peer"},
+		{"ip", "addr", "add", "192.168.1.0/31", "dev", "veth0"},
+		{"ip", "link", "set", "dev", "veth0", "up"},
+		{"ip", "netns", "exec", "doublezero-peer", "ip", "addr", "add", "192.168.1.1/31", "dev", "veth1"},
+		{"ip", "netns", "exec", "doublezero-peer", "ip", "link", "set", "dev", "veth1", "up"},
+		{"ip", "netns", "exec", "doublezero-peer", "ip", "tunnel", "add", "doublezero0", "mode", "gre", "local", "192.168.1.1", "remote", "192.168.1.0", "ttl", "64"},
+		{"ip", "netns", "exec", "doublezero-peer", "ip", "addr", "add", "169.254.0.0/31", "dev", "doublezero0"},
+		{"ip", "netns", "exec", "doublezero-peer", "ip", "link", "set", "dev", "doublezero0", "up"},
+		{"ip", "addr", "list"}}
+
+	for _, cmd := range cmds {
+		_, err := execSysCommand(cmd, t)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	teardown := func() {
+		cmd := []string{"ip", "link", "del", "veth0"}
+		_, err := execSysCommand(cmd, t)
+		if err != nil {
+			t.Fatalf("%v\n", err)
+		}
+		cmd = []string{"ip", "netns", "del", "doublezero-peer"}
+
+		_, err = execSysCommand(cmd, t)
+		if err != nil {
+			t.Fatalf("%v\n", err)
+		}
+	}
+	return teardown, nil
+}
+
+func execSysCommand(cmdSlice []string, t *testing.T) ([]byte, error) {
+	cmd := exec.Command(cmdSlice[0], cmdSlice[1:]...)
+	stdout, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, err
+	}
+	t.Logf("%s output: %s", strings.Join(cmdSlice, " "), string(stdout))
+	return stdout, nil
 }

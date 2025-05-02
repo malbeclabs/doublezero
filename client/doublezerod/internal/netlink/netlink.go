@@ -75,10 +75,11 @@ func (n Netlink) TunnelUp(t *Tunnel) error {
 // RouteAdd adds a route to the kernel routing table via netlink.
 func (n Netlink) RouteAdd(r *Route) error {
 	return nl.RouteReplace(&nl.Route{
-		Table: r.Table,
-		Src:   r.Src,
-		Dst:   r.Dst,
-		Gw:    r.NextHop,
+		Table:    r.Table,
+		Src:      r.Src,
+		Dst:      r.Dst,
+		Gw:       r.NextHop,
+		Protocol: nl.RouteProtocol(r.Protocol),
 	})
 }
 
@@ -101,10 +102,34 @@ func (n Netlink) RouteGet(ip net.IP) ([]*Route, error) {
 	routes := []*Route{}
 	for _, r := range nlr {
 		routes = append(routes, &Route{
-			Table:   r.Table,
-			Src:     r.Src,
-			Dst:     r.Dst,
-			NextHop: r.Gw,
+			Table:    r.Table,
+			Src:      r.Src,
+			Dst:      r.Dst,
+			NextHop:  r.Gw,
+			Protocol: int(r.Protocol),
+		})
+	}
+	return routes, nil
+}
+
+func (n Netlink) RouteByProtocol(protocol int) ([]*Route, error) {
+	routeFilter := &nl.Route{
+		Protocol: nl.RouteProtocol(protocol),
+	}
+
+	nlr, err := nl.RouteListFiltered(nl.FAMILY_V4, routeFilter, nl.RT_FILTER_PROTOCOL)
+	if err != nil {
+		return []*Route{}, err
+	}
+
+	routes := []*Route{}
+	for _, r := range nlr {
+		routes = append(routes, &Route{
+			Table:    r.Table,
+			Src:      r.Src,
+			Dst:      r.Dst,
+			NextHop:  r.Gw,
+			Protocol: int(r.Protocol),
 		})
 	}
 	return routes, nil

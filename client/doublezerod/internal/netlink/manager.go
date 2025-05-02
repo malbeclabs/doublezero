@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
+	"golang.org/x/sys/unix"
 )
 
 type Netlinker interface {
@@ -22,6 +23,7 @@ type Netlinker interface {
 	RouteGet(net.IP) ([]*Route, error)
 	RuleAdd(*IPRule) error
 	RuleDel(*IPRule) error
+	RouteByProtocol(int) ([]*Route, error)
 }
 
 // I can't think of a better name for this
@@ -31,6 +33,7 @@ type BgpReaderWriter interface {
 	DeletePeer(net.IP) error
 	AddRoute() <-chan bgp.NLRI
 	WithdrawRoute() <-chan bgp.NLRI
+	FlushRoutes() <-chan struct{}
 	GetPeerStatus(net.IP) bgp.Session
 }
 
@@ -206,13 +209,7 @@ func (n *NetlinkManager) Remove() error {
 	if n.db.GetState() == nil {
 		return nil
 	}
-	// Since we need to keep running, delete the bgp peer
-	err := n.bgp.DeletePeer(n.UnicastTunnel.RemoteOverlay)
-	if errors.Is(err, bgp.ErrBgpPeerNotExists) {
-		slog.Error("bgp: peer does not exist", "peer tunnel", n.UnicastTunnel.RemoteOverlay)
-	} else if err != nil {
-		return fmt.Errorf("bgp: error while deleting peer: %v", err)
-	}
+
 	// Remove rules, routes, and tunnel
 	if err := n.Close(); err != nil {
 		return err
@@ -401,7 +398,7 @@ func (n *NetlinkManager) FlushRoutes() error {
 }
 
 func (n *NetlinkManager) Close() error {
-	var errFlushRules, errFlushRoutes, errRemoveTunnel error
+	var errFlushRules, errFlushRoutes, errRemoveTunnel, errRemovePeer error
 
 	slog.Info("teardown: flushing rules")
 	if err := n.FlushRules(); err != nil {
@@ -413,12 +410,23 @@ func (n *NetlinkManager) Close() error {
 		errFlushRoutes = fmt.Errorf("error flushing routes: %v", err)
 	}
 
+	if n.UnicastTunnel == nil {
+		return nil
+	}
+
+	err := n.bgp.DeletePeer(n.UnicastTunnel.RemoteOverlay)
+	if errors.Is(err, bgp.ErrBgpPeerNotExists) {
+		slog.Error("bgp: peer does not exist", "peer tunnel", n.UnicastTunnel.RemoteOverlay)
+	} else if err != nil {
+		errRemovePeer = fmt.Errorf("bgp: error while deleting peer: %v", err)
+	}
+
 	slog.Info("teardown: removing tunnel interface")
 	if err := n.RemoveTunnel(); err != nil {
 		errRemoveTunnel = fmt.Errorf("error removing tunnel interface: %v", err)
 	}
 
-	return errors.Join(errFlushRules, errFlushRoutes, errRemoveTunnel)
+	return errors.Join(errFlushRules, errFlushRoutes, errRemoveTunnel, errRemovePeer)
 }
 
 func (n *NetlinkManager) Serve(ctx context.Context) error {
@@ -445,7 +453,7 @@ func (n *NetlinkManager) Serve(ctx context.Context) error {
 					slog.Error("routes: error parsing nlri from update", "error", err)
 				}
 
-				route := &Route{Src: n.DoubleZeroAddr, Dst: dzNet, Table: p.RouteTable, NextHop: net.ParseIP(p.NextHop)}
+				route := &Route{Src: n.DoubleZeroAddr, Dst: dzNet, Table: p.RouteTable, NextHop: net.ParseIP(p.NextHop), Protocol: unix.RTPROT_BGP}
 				slog.Info("routes: writing route", "table", p.RouteTable, "dz route", route.String())
 				if err := n.WriteRoute(route); err != nil {
 					slog.Error("routes: error writing route", "table", p.RouteTable, "error", err)
@@ -463,6 +471,23 @@ func (n *NetlinkManager) Serve(ctx context.Context) error {
 				if err := n.RemoveRoute(route); err != nil {
 					slog.Error("routes: error removing route", "route", route.Dst.String(), "table", RouteTableSpecific, "error", err)
 				}
+			case <-n.bgp.FlushRoutes():
+				if n.db.GetState().UserType != UserTypeIBRL {
+					continue
+				}
+
+				protocol := unix.RTPROT_BGP // 186
+				routes, err := n.netlink.RouteByProtocol(protocol)
+				if err != nil {
+					slog.Error("routes: error getting routes by protocol", "protocol", protocol)
+				}
+				for _, route := range routes {
+					if err := n.netlink.RouteDelete(route); err != nil {
+						slog.Error("Error deleting route", "route", route)
+						continue
+					}
+				}
+
 			}
 		}
 	}()

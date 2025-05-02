@@ -22,7 +22,7 @@ type Netlinker interface {
 	RouteGet(net.IP) ([]*Route, error)
 	RuleAdd(*IPRule) error
 	RuleDel(*IPRule) error
-	RouteByDoubleZeroProtocol(int) ([]*Route, error)
+	RouteByProtocol(int) ([]*Route, error)
 }
 
 // I can't think of a better name for this
@@ -477,7 +477,7 @@ func (n *NetlinkManager) Serve(ctx context.Context) error {
 
 				// protocol 186 is bgp
 				protocol := 186
-				routes, err := n.netlink.RouteByDoubleZeroProtocol(protocol)
+				routes, err := n.netlink.RouteByProtocol(protocol)
 				if err != nil {
 					slog.Error("routes: error getting routes by protocol", "protocol", protocol)
 				}

@@ -112,7 +112,7 @@ func (n Netlink) RouteGet(ip net.IP) ([]*Route, error) {
 	return routes, nil
 }
 
-func (n Netlink) RouteByDoubleZeroProtocol(protocol int) ([]*Route, error) {
+func (n Netlink) RouteByProtocol(protocol int) ([]*Route, error) {
 	routeFilter := &nl.Route{
 		Protocol: nl.RouteProtocol(protocol),
 	}

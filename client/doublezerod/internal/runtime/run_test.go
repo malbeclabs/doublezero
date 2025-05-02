@@ -7,7 +7,6 @@ import (
 	"errors"
 	"io"
 	"log"
-	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
@@ -86,78 +85,11 @@ func TestEndToEnd_IBRL(t *testing.T) {
 		t.Fatalf("error creating state dir: %v", err)
 	}
 
-	// create network namespace
-	cmd := []string{"ip", "netns", "add", "doublezero-peer"}
-	msg := "error creating network namespace:"
-	execSysCommand(cmd, msg, t)
-
-	// create veth pair
-	cmd = []string{"ip", "link", "add", "veth0", "type", "veth", "peer", "name", "veth1"}
-	msg = "error creating veth pair:"
-	execSysCommand(cmd, msg, t)
-
-	// move veth to doublezero-peer-test namespace
-	cmd = []string{"ip", "link", "set", "dev", "veth1", "netns", "doublezero-peer"}
-	msg = "error moving veth to namespace:"
-	execSysCommand(cmd, msg, t)
-
-	// configure source end of veth
-	cmd = []string{"ip", "addr", "add", "192.168.1.0/31", "dev", "veth0"}
-	msg = "error configuring source end of veth:"
-	execSysCommand(cmd, msg, t)
-
-	// bring up veth
-	cmd = []string{"ip", "link", "set", "dev", "veth0", "up"}
-	msg = "error bringing up source end of veth:"
-	execSysCommand(cmd, msg, t)
-
-	// add IP to doublezero-peer
-	cmd = []string{"ip", "netns", "exec", "doublezero-peer", "ip", "addr", "add", "192.168.1.1/31", "dev", "veth1"}
-	msg = "error configuring source end of veth:"
-	execSysCommand(cmd, msg, t)
-
-	cmd = []string{"ip", "netns", "exec", "doublezero-peer", "ip", "link", "set", "dev", "veth1", "up"}
-	msg = "error bringing up source end of veth:"
-	execSysCommand(cmd, msg, t)
-
-	cmd = []string{"ip", "netns", "exec", "doublezero-peer", "ip", "tunnel", "add", "doublezero0", "mode", "gre", "local", "192.168.1.1", "remote", "192.168.1.0", "ttl", "64"}
-	msg = "error creating tunnel:"
-	execSysCommand(cmd, msg, t)
-
-	cmd = []string{"ip", "netns", "exec", "doublezero-peer", "ip", "addr", "add", "169.254.0.0/31", "dev", "doublezero0"}
-	msg = "error configuring tunnel:"
-	execSysCommand(cmd, msg, t)
-
-	cmd = []string{"ip", "netns", "exec", "doublezero-peer", "ip", "link", "set", "dev", "doublezero0", "up"}
-	msg = "error bringing up tunnel:"
-	execSysCommand(cmd, msg, t)
-
-	cmd = []string{"ip", "addr", "list"}
-	msg = "error bringing up tunnel:"
-	execSysCommand(cmd, msg, t)
-
-	t.Cleanup(func() {
-		slog.Info("----IP NETNS LIST")
-		cmd = []string{"ip", "netns", "list"}
-		msg = "error getting netns list:"
-		execSysCommand(cmd, msg, t)
-		slog.Info("----IP NETNS LIST")
-
-		slog.Info("----DZ ADDR LIST")
-		cmd = []string{"ip", "netns", "exec", "doublezero-peer", "ip", "addr", "list"}
-		msg = "error deleting getting doublezer-peer addr list:"
-		execSysCommand(cmd, msg, t)
-		slog.Info("----DZ ADDR LIST")
-
-		cmd = []string{"ip", "link", "del", "veth0"}
-		msg = "error deleting veth:"
-		execSysCommand(cmd, msg, t)
-
-		cmd = []string{"ip", "netns", "del", "doublezero-peer"}
-		msg = "error deleting network namespace:"
-		execSysCommand(cmd, msg, t)
-
-	})
+	teardown, err := setupTest(t)
+	if err != nil {
+		t.Fatalf("%v\n", err)
+	}
+	t.Cleanup(teardown)
 
 	// TODO: start corebgp instance in network namespace
 	srv, _ := corebgp.NewServer(netip.MustParseAddr("2.2.2.2"))
@@ -179,7 +111,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 			RemoteAddress: netip.MustParseAddr("169.254.0.1"),
 			LocalAS:       65342,
 			RemoteAS:      65000,
-		}, d)
+		}, d, corebgp.WithPassive())
 		if err != nil {
 			log.Fatalf("error creating dummy bgp server: %v", err)
 		}
@@ -869,11 +801,41 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 	// TODO: verify latency samples are returned
 }
 
-func execSysCommand(cmdSlice []string, msg string, t *testing.T) {
+func setupTest(t *testing.T) (func(), error) {
+	cmds := [][]string{{"ip", "netns", "add", "doublezero-peer"}, {"ip", "link", "add", "veth0", "type", "veth", "peer", "name", "veth1"}, {"ip", "link", "set", "dev", "veth1", "netns", "doublezero-peer"},
+		{"ip", "addr", "add", "192.168.1.0/31", "dev", "veth0"},
+		{"ip", "link", "set", "dev", "veth0", "up"},
+		{"ip", "netns", "exec", "doublezero-peer", "ip", "addr", "add", "192.168.1.1/31", "dev", "veth1"},
+		{"ip", "netns", "exec", "doublezero-peer", "ip", "link", "set", "dev", "veth1", "up"},
+		{"ip", "netns", "exec", "doublezero-peer", "ip", "tunnel", "add", "doublezero0", "mode", "gre", "local", "192.168.1.1", "remote", "192.168.1.0", "ttl", "64"},
+		{"ip", "netns", "exec", "doublezero-peer", "ip", "addr", "add", "169.254.0.0/31", "dev", "doublezero0"},
+		{"ip", "netns", "exec", "doublezero-peer", "ip", "link", "set", "dev", "doublezero0", "up"},
+		{"ip", "addr", "list"}}
+
+	for _, cmd := range cmds {
+		_, err := execSysCommand(cmd, t)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	teardown := func() {
+		cmd := []string{"ip", "link", "del", "veth0"}
+		execSysCommand(cmd, t)
+
+		cmd = []string{"ip", "netns", "del", "doublezero-peer"}
+		execSysCommand(cmd, t)
+	}
+
+	return teardown, nil
+}
+
+func execSysCommand(cmdSlice []string, t *testing.T) ([]byte, error) {
 	cmd := exec.Command(cmdSlice[0], cmdSlice[1:]...)
 	stdout, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("%s %v", msg, err)
+		return nil, err
 	}
 	t.Logf("%s output: %s", strings.Join(cmdSlice, " "), string(stdout))
+	return stdout, nil
 }

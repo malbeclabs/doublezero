@@ -81,7 +81,7 @@ func (m *MockNetlink) RuleDel(n *netlink.IPRule) error {
 	return nil
 }
 
-func (m *MockNetlink) RouteByDoubleZeroProtocol(protocol int) ([]*netlink.Route, error) {
+func (m *MockNetlink) RouteByProtocol(protocol int) ([]*netlink.Route, error) {
 	return m.routes, nil
 }
 

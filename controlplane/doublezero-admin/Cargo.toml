@@ -1,11 +1,9 @@
-[workspace]
-
 [package]
 name = "doublezero-admin"
 version = "0.1.0"
 edition = "2021"
 authors = ["Juan Olveira"]
-license = "MIT OR Apache-2.0"
+license = "Apache-2.0"
 description = "Command line interface to interact with the DZ program."
 
 [dependencies]

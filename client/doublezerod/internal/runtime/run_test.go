@@ -24,6 +24,7 @@ import (
 	"github.com/jwhited/corebgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/netlink"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/runtime"
+	"golang.org/x/sys/unix"
 
 	nl "github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
@@ -228,7 +229,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 
 			t.Run("verify_routes_are_installed", func(t *testing.T) {
 				time.Sleep(5 * time.Second)
-				got, err := nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Protocol: 186}, nl.RT_FILTER_PROTOCOL)
+				got, err := nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Protocol: unix.RTPROT_BGP}, nl.RT_FILTER_PROTOCOL)
 				if err != nil {
 					t.Fatalf("error fetching routes: %v", err)
 				}
@@ -245,7 +246,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 							Mask: net.IPv4Mask(255, 255, 255, 255),
 						},
 						Gw:       net.IP{169, 254, 0, 0},
-						Protocol: 186,
+						Protocol: unix.RTPROT_BGP,
 						Src:      net.IP{192, 168, 1, 0},
 						Family:   nl.FAMILY_V4,
 						Type:     syscall.RTN_UNICAST,
@@ -258,7 +259,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 							Mask: net.IPv4Mask(255, 255, 255, 255),
 						},
 						Gw:       net.IP{169, 254, 0, 0},
-						Protocol: 186,
+						Protocol: unix.RTPROT_BGP,
 						Src:      net.IP{192, 168, 1, 0},
 						Family:   nl.FAMILY_V4,
 						Type:     syscall.RTN_UNICAST,
@@ -294,7 +295,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 				}
 				time.Sleep(5 * time.Second)
 				// should not have any routes tagged bgp
-				got, err := nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Protocol: 186}, nl.RT_FILTER_PROTOCOL)
+				got, err := nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Protocol: unix.RTPROT_BGP}, nl.RT_FILTER_PROTOCOL)
 				if err != nil {
 					t.Fatalf("error fetching routes: %v", err)
 				}
@@ -314,8 +315,8 @@ func TestEndToEnd_IBRL(t *testing.T) {
 				}
 
 				time.Sleep(5 * time.Second)
-				// ensure that 4.4.4.4,3.3.3.3 are added and tagged with bgp (186)
-				got, err = nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Protocol: 186}, nl.RT_FILTER_PROTOCOL)
+				// ensure that 4.4.4.4,3.3.3.3 are added and tagged with bgp (unix.RTPROT_BGP)
+				got, err = nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Protocol: unix.RTPROT_BGP}, nl.RT_FILTER_PROTOCOL)
 				if err != nil {
 					t.Fatalf("error fetching routes: %v", err)
 				}
@@ -332,7 +333,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 							Mask: net.IPv4Mask(255, 255, 255, 255),
 						},
 						Gw:       net.IP{169, 254, 0, 0},
-						Protocol: 186,
+						Protocol: unix.RTPROT_BGP,
 						Src:      net.IP{192, 168, 1, 0},
 						Family:   nl.FAMILY_V4,
 						Type:     syscall.RTN_UNICAST,
@@ -345,7 +346,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 							Mask: net.IPv4Mask(255, 255, 255, 255),
 						},
 						Gw:       net.IP{169, 254, 0, 0},
-						Protocol: 186,
+						Protocol: unix.RTPROT_BGP,
 						Src:      net.IP{192, 168, 1, 0},
 						Family:   nl.FAMILY_V4,
 						Type:     syscall.RTN_UNICAST,
@@ -640,7 +641,7 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 			if err != nil {
 				t.Fatalf("error starting runtime: %v", err)
 			}
-		case <-time.After(5 * time.Second):
+		case <-time.After(10 * time.Second):
 		}
 	})
 

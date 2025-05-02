@@ -79,13 +79,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 	defer os.RemoveAll(rootPath)
 
 	t.Setenv("XDG_STATE_HOME", rootPath)
-
-	path := filepath.Join(rootPath, "doublezerod")
-	if err := os.Mkdir(path, 0766); err != nil {
-		t.Fatalf("error creating state dir: %v", err)
-	}
-
-	teardown, err := setupTest(t)
+	teardown, err := setupTest(rootPath, t)
 	if err != nil {
 		t.Fatalf("%v\n", err)
 	}
@@ -801,7 +795,13 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 	// TODO: verify latency samples are returned
 }
 
-func setupTest(t *testing.T) (func(), error) {
+func setupTest(rootPath string, t *testing.T) (func(), error) {
+
+	path := filepath.Join(rootPath, "doublezerod")
+	if err := os.Mkdir(path, 0766); err != nil {
+		t.Fatalf("error creating state dir: %v", err)
+	}
+
 	cmds := [][]string{{"ip", "netns", "add", "doublezero-peer"}, {"ip", "link", "add", "veth0", "type", "veth", "peer", "name", "veth1"}, {"ip", "link", "set", "dev", "veth1", "netns", "doublezero-peer"},
 		{"ip", "addr", "add", "192.168.1.0/31", "dev", "veth0"},
 		{"ip", "link", "set", "dev", "veth0", "up"},
@@ -821,10 +821,16 @@ func setupTest(t *testing.T) (func(), error) {
 
 	teardown := func() {
 		cmd := []string{"ip", "link", "del", "veth0"}
-		execSysCommand(cmd, t)
-
+		_, err := execSysCommand(cmd, t)
+		if err != nil {
+			t.Fatalf("%v\n", err)
+		}
 		cmd = []string{"ip", "netns", "del", "doublezero-peer"}
-		execSysCommand(cmd, t)
+
+		_, err = execSysCommand(cmd, t)
+		if err != nil {
+			t.Fatalf("%v\n", err)
+		}
 	}
 
 	return teardown, nil

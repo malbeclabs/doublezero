@@ -132,6 +132,10 @@ func TestEndToEnd_IBRL(t *testing.T) {
 	msg = "error bringing up tunnel:"
 	execSysCommand(cmd, msg, t)
 
+	cmd = []string{"ip", "addr", "list"}
+	msg = "error bringing up tunnel:"
+	execSysCommand(cmd, msg, t)
+
 	t.Cleanup(func() {
 		slog.Info("----IP NETNS LIST")
 		cmd = []string{"ip", "netns", "list"}
@@ -164,11 +168,9 @@ func TestEndToEnd_IBRL(t *testing.T) {
 		peerNS, err := netns.GetFromName("doublezero-peer")
 		if err != nil {
 			t.Logf("error creating namespace: %v", err)
-			return
 		}
 		if err = netns.Set(peerNS); err != nil {
 			t.Logf("error setting namespace: %v", err)
-			return
 		}
 
 		// start bgp instance in network namespace
@@ -177,7 +179,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 			RemoteAddress: netip.MustParseAddr("169.254.0.1"),
 			LocalAS:       65342,
 			RemoteAS:      65000,
-		}, d, corebgp.WithPassive())
+		}, d)
 		if err != nil {
 			log.Fatalf("error creating dummy bgp server: %v", err)
 		}
@@ -187,6 +189,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 			log.Fatalf("error constructing listener: %v", err)
 		}
 
+		t.Log("starting bgp server")
 		if err := srv.Serve([]net.Listener{dlis}); err != nil {
 			t.Logf("error on remote peer bgp server: %v", err)
 		}
@@ -868,7 +871,9 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 
 func execSysCommand(cmdSlice []string, msg string, t *testing.T) {
 	cmd := exec.Command(cmdSlice[0], cmdSlice[1:]...)
-	if err := cmd.Run(); err != nil {
+	stdout, err := cmd.CombinedOutput()
+	if err != nil {
 		t.Fatalf("%s %v", msg, err)
 	}
+	t.Logf("%s output: %s", strings.Join(cmdSlice, " "), string(stdout))
 }

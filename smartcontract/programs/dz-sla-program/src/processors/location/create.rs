@@ -1,4 +1,3 @@
-use std::fmt;
 use crate::error::DoubleZeroError;
 use crate::globalstate::globalstate_get_next;
 use crate::globalstate::globalstate_write;
@@ -12,6 +11,7 @@ use solana_program::{
     program_error::ProgramError,
     pubkey::Pubkey,
 };
+use std::fmt;
 
 #[cfg(test)]
 use solana_program::msg;
@@ -74,7 +74,7 @@ pub fn process_create_location(
     assert_eq!(bump_seed, value.bump_seed, "Invalid Location Bump Seed");
     // Parse the global state account & check if the payer is in the allowlist
     let globalstate = globalstate_get_next(globalstate_account)?;
-    if !globalstate.user_allowlist.contains(payer_account.key) {
+    if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 

@@ -32,21 +32,36 @@ impl ActivatorMetrics {
         metrics.push(metric);
 
         for (device_id, device) in devices.iter() {
-            let location = locations.get(&device.device.location_pk).unwrap();
-            let exchange = exchanges.get(&device.device.exchange_pk).unwrap();
+            let location = locations.get(&device.device.location_pk);
+            let exchange = exchanges.get(&device.device.exchange_pk);
             let (assigned, total_ips) = ip_count(device);
 
             let mut metric = Metric::new("activator_device");
             metric
                 .add_tag("device_pk", device_id.to_string().as_str())
                 .add_tag("code", &device.device.code)
-                .add_tag("location", &location.name)
-                .add_tag("location_code", &location.code)
-                .add_tag("location_country", &location.country)
-                .add_tag("exchange", &exchange.name)
-                .add_tag("exchange_code", &exchange.code)
                 .add_field("assigned_ips", assigned as f64)
                 .add_field("total_ips", total_ips as f64);
+
+            match location {
+                Some(location) => {
+                    metric
+                        .add_tag("location", &location.name)
+                        .add_tag("location_code", &location.code)
+                        .add_tag("location_country", &location.country);
+                }
+                None => {}
+            }
+
+            match exchange {
+                Some(exchange) => {
+                    metric
+                        .add_tag("exchange", &exchange.name)
+                        .add_tag("exchange_code", &exchange.code);
+                }
+                None => {}
+            }
+
             metrics.push(metric);
         }
 

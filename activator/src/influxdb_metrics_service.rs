@@ -32,6 +32,15 @@ pub fn create_influxdb_metrics_service(
 impl InfluxDBMetricsService {
     pub fn metric_to_line_proto(metric: &Metric) -> String {
         let ts = get_utc_nanoseconds_since_epoch();
+        if metric.tags.is_empty() {
+            return format!(
+                "{} {} {}\n",
+                metric.measurement,
+                kvpair_string(&metric.fields),
+                ts
+            );
+        }
+
         format!(
             "{},{} {} {}\n",
             metric.measurement,
@@ -69,14 +78,11 @@ impl InfluxDBMetricsSubmitter {
                 bucket: bucket.expect("Influx bucket required").to_string(),
                 receiver: receiver,
             },
-            None => {
-                println!("InfluxDB metrics disabled...");
-                InfluxDBMetricsSubmitter {
-                    client: None,
-                    bucket: "".to_owned(),
-                    receiver: receiver,
-                }
-            }
+            None => InfluxDBMetricsSubmitter {
+                client: None,
+                bucket: "".to_owned(),
+                receiver: receiver,
+            },
         }
     }
 

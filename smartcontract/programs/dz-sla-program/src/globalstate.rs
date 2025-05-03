@@ -3,7 +3,6 @@ use crate::{
     state::{accounttype::*, globalstate::GlobalState},
 };
 use borsh::BorshSerialize;
-use solana_program::msg;
 use solana_program::{
     account_info::AccountInfo,
     program::invoke_signed,

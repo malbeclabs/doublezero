@@ -77,7 +77,7 @@ pub fn process_create_exchange(
         value.index, globalstate.account_index,
         "Invalid Value Index"
     );
-    if !globalstate.user_allowlist.contains(payer_account.key) {
+    if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
@@ -91,9 +91,6 @@ pub fn process_create_exchange(
         pda_account.key, &expected_pda_account,
         "Invalid Exchange PubKey"
     );
-    if !globalstate.user_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
 
     let exchange: Exchange = Exchange {
         account_type: AccountType::Exchange,

@@ -3,6 +3,7 @@ use crate::{
     state::{accounttype::*, globalstate::GlobalState},
 };
 use borsh::BorshSerialize;
+#[cfg(test)]
 use solana_program::msg;
 use solana_program::{
     account_info::AccountInfo,
@@ -35,7 +36,11 @@ pub fn globalstate_write(
     globalstate_account: &AccountInfo,
     globalstate: &GlobalState,
 ) -> Result<()> {
-    assert_eq!(globalstate_account.data_len(), globalstate.size(), "Invalid GlobalState Account Size");
+    assert_eq!(
+        globalstate_account.data_len(),
+        globalstate.size(),
+        "Invalid GlobalState Account Size"
+    );
 
     // Update GlobalState
     let mut account_data = &mut globalstate_account.data.borrow_mut()[..];
@@ -65,16 +70,12 @@ pub fn globalstate_write_with_realloc<'a>(
             account
                 .realloc(new_len, false)
                 .expect("Unable to realloc the account");
-
-            msg!("Realloc: {} -> {}", actual_len, new_len);
         }
 
         let data = &mut account.data.borrow_mut();
         instance
             .serialize(&mut &mut data[..])
             .expect("Unable to serialize");
-
-        msg!("Updated: {:?}", instance);
     }
 
     // Check is the account needs more rent for the new space

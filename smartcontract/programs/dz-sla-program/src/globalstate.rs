@@ -35,7 +35,11 @@ pub fn globalstate_write(
     globalstate_account: &AccountInfo,
     globalstate: &GlobalState,
 ) -> Result<()> {
-    assert_eq!(globalstate_account.data_len(), globalstate.size(), "Invalid GlobalState Account Size");
+    assert_eq!(
+        globalstate_account.data_len(),
+        globalstate.size(),
+        "Invalid GlobalState Account Size"
+    );
 
     // Update GlobalState
     let mut account_data = &mut globalstate_account.data.borrow_mut()[..];
@@ -66,7 +70,7 @@ pub fn globalstate_write_with_realloc<'a>(
                 .realloc(new_len, false)
                 .expect("Unable to realloc the account");
 
-            msg!("Realloc: {} -> {}", actual_len, new_len);
+            //msg!("Realloc: {} -> {}", actual_len, new_len);
         }
 
         let data = &mut account.data.borrow_mut();
@@ -74,7 +78,7 @@ pub fn globalstate_write_with_realloc<'a>(
             .serialize(&mut &mut data[..])
             .expect("Unable to serialize");
 
-        msg!("Updated: {:?}", instance);
+        //msg!("Updated: {:?}", instance);
     }
 
     // Check is the account needs more rent for the new space

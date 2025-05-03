@@ -70,8 +70,6 @@ pub fn globalstate_write_with_realloc<'a>(
             account
                 .realloc(new_len, false)
                 .expect("Unable to realloc the account");
-
-            //msg!("Realloc: {} -> {}", actual_len, new_len);
         }
 
         let data = &mut account.data.borrow_mut();

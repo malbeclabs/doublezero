@@ -3,6 +3,8 @@ use crate::{
     state::{accounttype::*, globalstate::GlobalState},
 };
 use borsh::BorshSerialize;
+#[cfg(test)]
+use solana_program::msg;
 use solana_program::{
     account_info::AccountInfo,
     program::invoke_signed,
@@ -76,8 +78,6 @@ pub fn globalstate_write_with_realloc<'a>(
         instance
             .serialize(&mut &mut data[..])
             .expect("Unable to serialize");
-
-        //msg!("Updated: {:?}", instance);
     }
 
     // Check is the account needs more rent for the new space

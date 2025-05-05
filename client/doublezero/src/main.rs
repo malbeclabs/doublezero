@@ -52,6 +52,9 @@ async fn main() -> eyre::Result<()> {
 
     let client = DZClient::new(app.url, app.ws, app.program_id, app.keypair)?;
 
+    let stdout = std::io::stdout();
+    let mut handle = stdout.lock();
+
     let res = match app.command {
         Command::Address(args) => args.execute(&client),
         Command::Balance(args) => args.execute(&client),
@@ -106,7 +109,7 @@ async fn main() -> eyre::Result<()> {
         Command::Tunnel(command) => match command.command {
             TunnelCommands::Create(args) => args.execute(&client),
             TunnelCommands::Update(args) => args.execute(&client),
-            TunnelCommands::List(args) => args.execute(&client),
+            TunnelCommands::List(args) => args.execute(&client, &mut handle),
             TunnelCommands::Get(args) => args.execute(&client),
             TunnelCommands::Delete(args) => args.execute(&client),
         },

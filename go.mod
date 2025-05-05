@@ -13,7 +13,7 @@ require (
 	github.com/jwhited/corebgp v0.8.5
 	github.com/mr-tron/base58 v1.2.0
 	github.com/osrg/gobgp v2.0.0+incompatible
-	github.com/prometheus-community/pro-bing v0.6.1
+	github.com/prometheus-community/pro-bing v0.7.0
 	github.com/prometheus/client_golang v1.22.0
 	github.com/testcontainers/testcontainers-go v0.37.0
 	github.com/testcontainers/testcontainers-go/modules/clickhouse v0.37.0

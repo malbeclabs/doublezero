@@ -42,7 +42,7 @@ func (p *Plugin) GetCapabilities(peer corebgp.PeerConfig) []corebgp.Capability {
 }
 
 func (p *Plugin) OnOpenMessage(peer corebgp.PeerConfig, routerID netip.Addr, capabilities []corebgp.Capability) *corebgp.Notification {
-	slog.Info("bgp: peer initializing")
+	slog.Info("bgp: peer initializing", "peer", peer.RemoteAddress)
 	p.PeerStatusChan <- SessionEvent{
 		PeerAddr: net.ParseIP(peer.RemoteAddress.String()),
 		Session:  Session{SessionStatus: SessionStatusInitializing, LastSessionUpdate: time.Now().Unix()},
@@ -59,7 +59,7 @@ func (p *Plugin) OnEstablished(peer corebgp.PeerConfig, writer corebgp.UpdateMes
 		}
 		// TODO: check if the generated update is malformed
 		if err := writer.WriteUpdate(update); err != nil {
-			slog.Error("bgp: error writing update to peer", "remote address", peer.RemoteAddress, "error", err)
+			slog.Error("bgp: error writing update to peer", "peer", peer.RemoteAddress, "error", err)
 		}
 	}
 	p.PeerStatusChan <- SessionEvent{
@@ -70,14 +70,13 @@ func (p *Plugin) OnEstablished(peer corebgp.PeerConfig, writer corebgp.UpdateMes
 }
 
 func (p *Plugin) OnClose(peer corebgp.PeerConfig) {
-	slog.Info("bgp: peer closed")
+	slog.Info("bgp: peer closed", "peer", peer.RemoteAddress)
 	p.PeerStatusChan <- SessionEvent{
 		PeerAddr: net.ParseIP(peer.RemoteAddress.String()),
 		Session:  Session{SessionStatus: SessionStatusDown, LastSessionUpdate: time.Now().Unix()},
 	}
-	slog.Info("sending peer flush message")
+	slog.Info("bgp: sending peer flush message", "peer", peer.RemoteAddress)
 	p.FlushChan <- struct{}{}
-	slog.Info("send flush")
 }
 
 func (p *Plugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.Notification {

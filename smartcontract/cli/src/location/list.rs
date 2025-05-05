@@ -2,6 +2,7 @@ use clap::Args;
 use doublezero_sdk::commands::location::list::ListLocationCommand;
 use doublezero_sdk::*;
 use prettytable::{format, row, Cell, Row, Table};
+use solana_sdk::pubkey::Pubkey;
 
 #[derive(Args, Debug)]
 pub struct ListLocationArgs {
@@ -17,6 +18,12 @@ impl ListLocationArgs {
         ]);
 
         let locations = ListLocationCommand {}.execute(client)?;
+
+        let mut locations: Vec<(Pubkey, Location)> = locations.into_iter().collect();
+
+        locations.sort_by(|(_, a), (_, b)| {
+            a.owner.cmp(&b.owner)
+            });
 
         for (pubkey, data) in locations {
             table.add_row(Row::new(vec![

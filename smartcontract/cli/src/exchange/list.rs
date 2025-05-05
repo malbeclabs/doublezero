@@ -2,6 +2,7 @@ use clap::Args;
 use doublezero_sdk::commands::exchange::list::ListExchangeCommand;
 use doublezero_sdk::*;
 use prettytable::{format, row, Cell, Row, Table};
+use solana_sdk::pubkey::Pubkey;
 
 #[derive(Args, Debug)]
 pub struct ListExchangeArgs {
@@ -17,6 +18,11 @@ impl ListExchangeArgs {
         ]);
 
         let exchanges = ListExchangeCommand {}.execute(client)?;
+
+        let mut exchanges: Vec<(Pubkey, Exchange)> = exchanges.into_iter().collect();
+        exchanges.sort_by(|(_, a), (_, b)| {
+            a.owner.cmp(&b.owner)
+        });
 
         for (pubkey, data) in exchanges {
             table.add_row(Row::new(vec![

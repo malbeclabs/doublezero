@@ -3,6 +3,7 @@ use doublezero_sdk::commands::device::list::ListDeviceCommand;
 use doublezero_sdk::commands::user::list::ListUserCommand;
 use doublezero_sdk::*;
 use prettytable::{format, row, Cell, Row, Table};
+use solana_sdk::pubkey::Pubkey;
 
 #[derive(Args, Debug)]
 pub struct ListUserArgs {
@@ -29,6 +30,13 @@ impl ListUserArgs {
         let devices = ListDeviceCommand {}.execute(client)?;
 
         let users = ListUserCommand {}.execute(client)?;
+
+        let mut users: Vec<(Pubkey, User)> = users.into_iter().collect();
+             users.sort_by(|(_, a), (_, b)| {
+                 a.device_pk
+                     .cmp(&b.device_pk)
+                     .then(a.tunnel_id.cmp(&b.tunnel_id))
+             });
 
         for (pubkey, data) in users {
             let device_name = match &devices.get(&data.device_pk) {

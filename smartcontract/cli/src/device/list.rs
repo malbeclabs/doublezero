@@ -4,6 +4,7 @@ use doublezero_sdk::commands::exchange::list::ListExchangeCommand;
 use doublezero_sdk::commands::location::list::ListLocationCommand;
 use doublezero_sdk::*;
 use prettytable::{format, row, Cell, Row, Table};
+use solana_sdk::pubkey::Pubkey;
 
 #[derive(Args, Debug)]
 pub struct ListDeviceArgs {
@@ -30,6 +31,11 @@ impl ListDeviceArgs {
         let exchanges = ListExchangeCommand {}.execute(client)?;
 
         let devices = ListDeviceCommand {}.execute(client)?;
+
+        let mut  devices: Vec<(Pubkey, Device)> = devices.into_iter().collect();
+        devices.sort_by(|(_,a ), (_, b)| {
+            a.owner.cmp(&b.owner)
+            });
 
         for (pubkey, data) in devices {
             let loc_name = match &locations.get(&data.location_pk) {

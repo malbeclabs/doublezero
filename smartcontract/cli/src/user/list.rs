@@ -4,6 +4,7 @@ use doublezero_sdk::commands::user::list::ListUserCommand;
 use doublezero_sdk::*;
 use prettytable::{format, row, Cell, Row, Table};
 use solana_sdk::pubkey::Pubkey;
+use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct ListUserArgs {
@@ -12,7 +13,7 @@ pub struct ListUserArgs {
 }
 
 impl ListUserArgs {
-    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute<W: Write>(self, client: &DZClient, out: &mut W) -> eyre::Result<()> {
         let mut table = Table::new();
         table.add_row(row![
             "pubkey",
@@ -59,7 +60,7 @@ impl ListUserArgs {
         }
 
         table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
-        table.printstd();
+        table.print(out);
 
         Ok(())
     }

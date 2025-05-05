@@ -3,6 +3,7 @@ use doublezero_sdk::commands::exchange::list::ListExchangeCommand;
 use doublezero_sdk::*;
 use prettytable::{format, row, Cell, Row, Table};
 use solana_sdk::pubkey::Pubkey;
+use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct ListExchangeArgs {
@@ -11,7 +12,10 @@ pub struct ListExchangeArgs {
 }
 
 impl ListExchangeArgs {
-    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
+
+
+
+    pub fn execute<W: Write>(self, client: &DZClient, out: &mut W) -> eyre::Result<()> {
         let mut table = Table::new();
         table.add_row(row![
             "pubkey", "code", "name", "lat", "lng", "loc_id", "status", "owner"
@@ -38,7 +42,7 @@ impl ListExchangeArgs {
         }
 
         table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
-        table.printstd();
+        table.print(out);
 
         Ok(())
     }

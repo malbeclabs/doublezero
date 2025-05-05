@@ -5,6 +5,7 @@ use doublezero_sdk::commands::location::list::ListLocationCommand;
 use doublezero_sdk::*;
 use prettytable::{format, row, Cell, Row, Table};
 use solana_sdk::pubkey::Pubkey;
+use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct ListDeviceArgs {
@@ -13,7 +14,7 @@ pub struct ListDeviceArgs {
 }
 
 impl ListDeviceArgs {
-    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         let mut table = Table::new();
         table.add_row(row![
             "pubkey",
@@ -61,7 +62,7 @@ impl ListDeviceArgs {
         }
 
         table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
-        table.printstd();
+        table.print(out);
 
         Ok(())
     }

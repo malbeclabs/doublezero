@@ -3,11 +3,13 @@ on:
   push:
     paths:
       - "client/doublezero/**"
+      - "smartcontract/cli/**"
       - "!**/**.md"
     branches: [ main ]
   pull_request:
     paths:
       - "client/doublezero/**"
+      - "smartcontract/cli/**"
       - "!**/**.md"
     branches: [ main ]
 

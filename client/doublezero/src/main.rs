@@ -83,21 +83,21 @@ async fn main() -> eyre::Result<()> {
         Command::Location(command) => match command.command {
             LocationCommands::Create(args) => args.execute(&client),
             LocationCommands::Update(args) => args.execute(&client),
-            LocationCommands::List(args) => args.execute(&client),
+            LocationCommands::List(args) => args.execute(&client, &mut handle),
             LocationCommands::Get(args) => args.execute(&client),
             LocationCommands::Delete(args) => args.execute(&client),
         },
         Command::Exchange(command) => match command.command {
             ExchangeCommands::Create(args) => args.execute(&client),
             ExchangeCommands::Update(args) => args.execute(&client),
-            ExchangeCommands::List(args) => args.execute(&client),
+            ExchangeCommands::List(args) => args.execute(&client, &mut handle),
             ExchangeCommands::Get(args) => args.execute(&client),
             ExchangeCommands::Delete(args) => args.execute(&client),
         },
         Command::Device(command) => match command.command {
             DeviceCommands::Create(args) => args.execute(&client),
             DeviceCommands::Update(args) => args.execute(&client),
-            DeviceCommands::List(args) => args.execute(&client),
+            DeviceCommands::List(args) => args.execute(&client, &mut handle),
             DeviceCommands::Get(args) => args.execute(&client),
             DeviceCommands::Delete(args) => args.execute(&client),
             DeviceCommands::Allowlist(command) => match command.command {
@@ -116,7 +116,7 @@ async fn main() -> eyre::Result<()> {
         Command::User(command) => match command.command {
             UserCommands::Create(args) => args.execute(&client),
             UserCommands::Update(args) => args.execute(&client),
-            UserCommands::List(args) => args.execute(&client),
+            UserCommands::List(args) => args.execute(&client, &mut handle),
             UserCommands::Get(args) => args.execute(&client),
             UserCommands::Delete(args) => args.execute(&client),
             UserCommands::Allowlist(command) => match command.command {

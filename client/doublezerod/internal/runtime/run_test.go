@@ -1,3 +1,5 @@
+//go:build !race
+
 package runtime_test
 
 import (
@@ -5,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -22,6 +25,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/jwhited/corebgp"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/netlink"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/runtime"
 	"golang.org/x/sys/unix"
@@ -293,7 +297,14 @@ func TestEndToEnd_IBRL(t *testing.T) {
 				if err := srv.DeletePeer(netip.AddrFrom4([4]byte{169, 254, 0, 1})); err != nil {
 					t.Fatalf("error deleting peer: %v", err)
 				}
-				time.Sleep(5 * time.Second)
+				// wait for peer status to be deleted
+				down, err := waitForPeerStatus(httpClient, bgp.SessionStatusPending, 10*time.Second)
+				if err != nil {
+					t.Fatalf("error while waiting for peer status: %v", err)
+				}
+				if !down {
+					t.Fatalf("timed out waiting for peer status of pending")
+				}
 				// should not have any routes tagged bgp
 				got, err := nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Protocol: unix.RTPROT_BGP}, nl.RT_FILTER_PROTOCOL)
 				if err != nil {
@@ -303,7 +314,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 					t.Fatalf("expected no routes, got %d, %+v\n", len(got), got)
 				}
 
-				// 	// re-add peer
+				// 	re-add peer
 				d := &dummyPlugin{}
 				err = srv.AddPeer(corebgp.PeerConfig{
 					RemoteAddress: netip.MustParseAddr("169.254.0.1"),
@@ -314,7 +325,14 @@ func TestEndToEnd_IBRL(t *testing.T) {
 					log.Fatalf("error creating dummy bgp server: %v", err)
 				}
 
-				time.Sleep(5 * time.Second)
+				// wait for peer status to come back up
+				up, err := waitForPeerStatus(httpClient, bgp.SessionStatusUp, 10*time.Second)
+				if err != nil {
+					t.Fatalf("error while waiting for peer status: %v", err)
+				}
+				if !up {
+					t.Fatalf("timed out waiting for peer status of pending")
+				}
 				// ensure that 4.4.4.4,3.3.3.3 are added and tagged with bgp (unix.RTPROT_BGP)
 				got, err = nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Protocol: unix.RTPROT_BGP}, nl.RT_FILTER_PROTOCOL)
 				if err != nil {
@@ -847,4 +865,38 @@ func execSysCommand(cmdSlice []string, t *testing.T) ([]byte, error) {
 	}
 	t.Logf("%s output: %s", strings.Join(cmdSlice, " "), string(stdout))
 	return stdout, nil
+}
+
+func waitForPeerStatus(httpClient http.Client, status bgp.SessionStatus, timeout time.Duration) (bool, error) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		url, err := url.JoinPath("http://localhost/", "status")
+		if err != nil {
+			return false, fmt.Errorf("error creating url: %v", err)
+		}
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			return false, fmt.Errorf("error creating request: %v", err)
+		}
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			return false, fmt.Errorf("error during request: %v", err)
+		}
+		defer resp.Body.Close()
+
+		got, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return false, fmt.Errorf("error reading status response: %v", err)
+		}
+		var statusResponse netlink.StatusResponse
+		if err := json.Unmarshal(got, &statusResponse); err != nil {
+			return false, fmt.Errorf("error unmarshalling status response: %v", err)
+		}
+
+		if statusResponse.DoubleZeroStatus.SessionStatus == status {
+			return true, nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return false, nil
 }

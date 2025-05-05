@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/netip"
+	"sync"
 
 	"github.com/jwhited/corebgp"
 )
@@ -57,8 +58,28 @@ func (s SessionStatus) String() string {
 
 }
 
+func (s SessionStatus) FromString(sessionStatus string) SessionStatus {
+	return map[string]SessionStatus{
+		"unknown":      SessionStatusunknown,
+		"pending":      SessionStatusPending,
+		"initializing": SessionStatusInitializing,
+		"down":         SessionStatusDown,
+		"up":           SessionStatusUp,
+	}[sessionStatus]
+}
+
 func (s SessionStatus) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s.String())
+}
+
+func (s *SessionStatus) UnmarshalJSON(b []byte) error {
+	var n string
+	err := json.Unmarshal(b, &n)
+	if err != nil {
+		return err
+	}
+	*s = s.FromString(n)
+	return nil
 }
 
 type PeerConfig struct {
@@ -77,6 +98,7 @@ type BgpServer struct {
 	flushRouteChan  chan struct{}
 	peerStatusChan  chan SessionEvent
 	peerStatus      map[string]Session
+	peerStatusLock  sync.Mutex
 }
 
 func NewBgpServer(routerID net.IP) (*BgpServer, error) {
@@ -92,6 +114,7 @@ func NewBgpServer(routerID net.IP) (*BgpServer, error) {
 		flushRouteChan:  make(chan struct{}, 1), // TODO: this needs to be buffered to avoid deadlocking plugin handler; not great
 		peerStatusChan:  make(chan SessionEvent),
 		peerStatus:      make(map[string]Session),
+		peerStatusLock:  sync.Mutex{},
 	}, nil
 }
 
@@ -99,7 +122,9 @@ func (b *BgpServer) Serve(lis []net.Listener) error {
 	go func() {
 		for {
 			update := <-b.GetStatusEvent()
+			b.peerStatusLock.Lock()
 			b.peerStatus[update.PeerAddr.String()] = update.Session
+			b.peerStatusLock.Unlock()
 		}
 	}()
 	return b.server.Serve(lis)
@@ -154,6 +179,8 @@ func (b *BgpServer) GetStatusEvent() <-chan SessionEvent {
 }
 
 func (b *BgpServer) GetPeerStatus(ip net.IP) Session {
+	b.peerStatusLock.Lock()
+	defer b.peerStatusLock.Unlock()
 	if peerStatus, ok := b.peerStatus[ip.String()]; ok {
 		return peerStatus
 	}

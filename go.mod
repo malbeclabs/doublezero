@@ -19,9 +19,10 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/clickhouse v0.37.0
 	github.com/testcontainers/testcontainers-go/modules/redpanda v0.37.0
 	github.com/twmb/franz-go v1.18.1
-	github.com/twmb/franz-go/pkg/kadm v1.15.0
+	github.com/twmb/franz-go/pkg/kadm v1.16.0
 	github.com/twmb/franz-go/plugin/kprom v1.1.0
 	github.com/vishvananda/netlink v1.3.0
+	github.com/vishvananda/netns v0.0.5
 	golang.org/x/sys v0.32.0
 	google.golang.org/grpc v1.71.0
 	google.golang.org/protobuf v1.36.6
@@ -101,7 +102,6 @@ require (
 	github.com/tklauser/numcpus v0.10.0 // indirect
 	github.com/twmb/franz-go/pkg/kmsg v1.9.0 // indirect
 	github.com/vaughan0/go-ini v0.0.0-20130923145212-a98ad7ee00ec // indirect
-	github.com/vishvananda/netns v0.0.5 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.mongodb.org/mongo-driver v1.12.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect

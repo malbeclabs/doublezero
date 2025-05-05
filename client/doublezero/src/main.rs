@@ -52,7 +52,7 @@ async fn main() -> eyre::Result<()> {
 
     let client = DZClient::new(app.url, app.ws, app.program_id, app.keypair)?;
 
-        let stdout = std::io::stdout();
+    let stdout = std::io::stdout();
     let mut handle = stdout.lock();
 
     let res = match app.command {

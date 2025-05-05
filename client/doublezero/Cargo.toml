@@ -34,7 +34,7 @@ indicatif = "0.17.11"
 console = "0.15.11"
 colored = "3.0.0"
 anyhow = "1.0.98"
-color-eyre = "0.6.3"
+color-eyre = "0.6.4"
 
 hyper = { version="0.14", features=["client", "http1", "tcp", "stream"] }
 hyperlocal = { version="0.8" }

@@ -33,7 +33,7 @@ indicatif = "0.17.11"
 console = "0.15.10"
 colored = "3.0.0"
 anyhow = "1.0.95"
-color-eyre = "0.6.3"
+color-eyre = "0.6.4"
 doublezero_sdk = { path = "../sdk/rs", version = "0.1.0" }
 
 

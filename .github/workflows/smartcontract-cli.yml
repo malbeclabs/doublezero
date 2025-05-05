@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-24.04-16c-64gb
     defaults:
       run:
-        working-directory: "smarcontract/cli/"
+        working-directory: "smartcontract/cli/"
     steps:
       - name: Check out the repository
         uses: actions/checkout@v4

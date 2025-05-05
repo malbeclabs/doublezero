@@ -106,7 +106,7 @@ mod tests {
                 Ok(devices)
             });
 
-        let location1_pubkey = Pubkey::new_unique();
+        let location1_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
         let location1 = Location {
             account_type: AccountType::Location,
             owner: location1_pubkey,

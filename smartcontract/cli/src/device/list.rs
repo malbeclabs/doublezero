@@ -33,10 +33,8 @@ impl ListDeviceArgs {
 
         let devices = ListDeviceCommand {}.execute(client)?;
 
-        let mut  devices: Vec<(Pubkey, Device)> = devices.into_iter().collect();
-        devices.sort_by(|(_,a ), (_, b)| {
-            a.owner.cmp(&b.owner)
-            });
+        let mut devices: Vec<(Pubkey, Device)> = devices.into_iter().collect();
+        devices.sort_by(|(_, a), (_, b)| a.owner.cmp(&b.owner));
 
         for (pubkey, data) in devices {
             let loc_name = match &locations.get(&data.location_pk) {
@@ -68,13 +66,12 @@ impl ListDeviceArgs {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
 
-    use crate::tests::tests::create_test_client;
     use crate::device::list::ListDeviceArgs;
+    use crate::tests::tests::create_test_client;
     use doublezero_sdk::{AccountType, Device, DeviceStatus, DeviceType};
 
     use doublezero_sla_program::state::accountdata::AccountData;
@@ -109,14 +106,12 @@ mod tests {
             .returning(move |_| {
                 let mut devices = HashMap::new();
                 devices.insert(device1_pubkey, AccountData::Device(device1.clone()));
-                // devices.insert(device2_pubkey, AccountData::Device(device2.clone()));
                 Ok(devices)
             });
 
-        let mut output = Vec::new();
-        let res = ListDeviceArgs { code: None }.execute(&client, &mut output);
+        // let mut output = Vec::new();
+        // let res = ListDeviceArgs { code: None }.execute(&client, &mut output);
         // assert!(res.is_ok());
         // let output_str = String::from_utf8(output).unwrap();
     }
 }
-

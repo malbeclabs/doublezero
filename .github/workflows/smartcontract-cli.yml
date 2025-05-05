@@ -14,16 +14,16 @@ on:
     branches: [ main ]
 
 jobs:
-  # build:
-  #   runs-on: ubuntu-24.04-16c-64gb
-  #   defaults:
-  #     run:
-  #       working-directory: "client/doublezero/"
-  #   steps:
-  #     - name: Check out the repository
-  #       uses: actions/checkout@v4
-  #     - name: Test
-  #       run: cargo test --verbose
+  client:
+    runs-on: ubuntu-24.04-16c-64gb
+    defaults:
+      run:
+        working-directory: "client/doublezero/"
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+      - name: Test
+        run: cargo test
   cli:
     runs-on: ubuntu-24.04-16c-64gb
     defaults:
@@ -33,4 +33,4 @@ jobs:
       - name: Check out the repository
         uses: actions/checkout@v4
       - name: Test
-        run: cargo test --verbose
+        run: cargo test

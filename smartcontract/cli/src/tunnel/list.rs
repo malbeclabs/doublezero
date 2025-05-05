@@ -136,7 +136,7 @@ mod tests {
                 Ok(devices)
             });
 
-        let tunnel1_pubkey = Pubkey::new_unique();
+        let tunnel1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
         let tunnel1 = Tunnel {
             account_type: AccountType::Tunnel,
             index: 1,
@@ -152,7 +152,7 @@ mod tests {
             tunnel_id: 1234,
             tunnel_net: ([1, 2, 3, 4], 32).into(),
             status: TunnelStatus::Activated,
-            owner: Pubkey::new_unique(),
+            owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
         };
 
         client
@@ -169,6 +169,6 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " pubkey                                    | code        | side_a       | side_z       | tunnel_type | bandwidth | mtu  | delay_ms | jitter_ms | tunnel_id | tunnel_net | status    | owner \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | tunnel_code | device1_code | device2_code | MPLSoGRE    | 1.23Kbps  | 1566 |   0.00ms |    0.00ms | 1234      | 1.2.3.4/32 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
+        assert_eq!(output_str, " pubkey                                    | code        | side_a       | side_z       | tunnel_type | bandwidth | mtu  | delay_ms | jitter_ms | tunnel_id | tunnel_net | status    | owner \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | tunnel_code | device1_code | device2_code | MPLSoGRE    | 1.23Kbps  | 1566 |   0.00ms |    0.00ms | 1234      | 1.2.3.4/32 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
     }
 }

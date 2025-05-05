@@ -129,7 +129,7 @@ mod tests {
                 Ok(devices)
             });
 
-        let user1_pubkey = Pubkey::new_unique();
+        let user1_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
         let user1 = User {
             account_type: AccountType::User,
             index: 1,
@@ -137,7 +137,7 @@ mod tests {
             owner: user1_pubkey,
             user_type: IBRL,
             tenant_pk: Pubkey::new_unique(),
-            device_pk: Pubkey::new_unique(),
+            device_pk: Pubkey::from_str_const("11111116EPqoQskEM2Pddp8KTL9JdYEBZMGF3aq7V"),
             cyoa_type: GREOverDIA,
             client_ip: [1, 2, 3, 4],
             dz_ip: [2, 3, 4, 5],

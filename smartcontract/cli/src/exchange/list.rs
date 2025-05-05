@@ -105,7 +105,7 @@ mod tests {
                 Ok(devices)
             });
 
-        let exchange1_pubkey = Pubkey::new_unique();
+        let exchange1_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
         let exchange1 = Exchange {
             account_type: AccountType::Exchange,
             owner: exchange1_pubkey,

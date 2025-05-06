@@ -1,6 +1,5 @@
 use crate::helpers::parse_pubkey;
 use clap::Args;
-use colored::Colorize;
 use doublezero_sdk::*;
 
 #[derive(Args, Debug)]
@@ -18,7 +17,7 @@ impl GetAccountArgs {
 
         match client.get(pubkey) {
             Ok(account) => {
-                println!("{} ({})", account.get_name().green(), account.get_args());
+                println!("{} ({})", account.get_name(), account.get_args());
                 println!();
 
                 match client.get_transactions(pubkey) {
@@ -28,7 +27,7 @@ impl GetAccountArgs {
                             println!(
                                 "{}: {} ({})\n\t\t\tpubkey: {}, signature: {}",
                                 &tran.time.to_string(),
-                                tran.instruction.get_name().green(),
+                                tran.instruction.get_name(),
                                 tran.instruction.get_args(),
                                 tran.account,
                                 tran.signature

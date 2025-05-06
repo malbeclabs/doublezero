@@ -20,7 +20,7 @@ solana-transaction-status = "2.2.7"
 bincode = "1.3.3"
 chrono = "0.4.41"
 
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1.45.0", features = ["full"] }
 doublezero-sla-program = { path = "../../programs/dz-sla-program", version = "0.1.0" }
 serde_json = "1.0.140"
 serde_yaml = "0.9.34"

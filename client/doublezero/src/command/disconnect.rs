@@ -1,5 +1,3 @@
-use color_eyre::owo_colors::OwoColorize;
-
 use clap::Args;
 use doublezero_sdk::{ipv4_parse, DZClient};
 
@@ -50,7 +48,7 @@ impl DecommissioningArgs {
                     }
                     Err(e) => {
                         spinner.finish_with_message("Error getting public ip");
-                        eprintln!("\n{}: {:?}\n", "Error".red().bold(), e);
+                        eprintln!("\n{}: {:?}\n", "Error", e);
 
                         return Ok(());
                     }

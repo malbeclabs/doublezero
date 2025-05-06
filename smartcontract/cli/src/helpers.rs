@@ -1,7 +1,6 @@
 use std::io::{Read, Write};
 use std::str;
 
-use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 use solana_sdk::pubkey::Pubkey;
 use std::net::{TcpStream, ToSocketAddrs};
@@ -20,7 +19,7 @@ pub fn parse_pubkey(input: &str) -> Option<Pubkey> {
 }
 
 pub fn print_error(e: eyre::Report) {
-    eprintln!("\n{}: {:?}\n", "Error".red().bold(), e);
+    eprintln!("\n{}: {:?}\n", "Error", e);
 }
 
 pub fn get_public_ipv4() -> Result<String, Box<dyn std::error::Error>> {

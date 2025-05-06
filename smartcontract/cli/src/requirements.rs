@@ -1,4 +1,3 @@
-use colored::Colorize;
 use doublezero_sdk::{get_doublezero_pubkey, DoubleZeroClient, GetGlobalStateCommand};
 use indicatif::ProgressBar;
 
@@ -40,7 +39,7 @@ pub fn check_id(spinner: Option<&ProgressBar>) -> eyre::Result<()> {
             if let Some(spinner) = spinner {
                 spinner.println(format!(
                     "    {}: DoubleZero id.json not found (~/.config/doublezero/id.json)",
-                    "Error".red()
+                    "Error"
                 ));
             } else {
                 eprintln!("DoubleZero id.json not found (~/.config/doublezero/id.json)",);
@@ -101,7 +100,7 @@ pub fn check_allowlist(
         if let Some(spinner) = spinner {
             spinner.println("You are not in the allowlist");
         } else {
-            eprintln!("{}: You are not in the allowlist", "Error".red());
+            eprintln!("{}: You are not in the allowlist", "Error");
         }
         return Err(eyre::eyre!(
             "Please contact the DoubleZero Foundation to add you to the allowlist."

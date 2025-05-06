@@ -48,7 +48,49 @@ where
 {
     container
         .into_iter()
-        .map(|(k, v)| format!("{}={}", k, v))
+        .map(|(k, v)| format!("{}={}", k, escape_characters(v)))
         .collect::<Vec<String>>()
         .join(",")
+}
+
+fn escape_characters<T: std::fmt::Display>(value: &T) -> String {
+    let value_str = value.to_string();
+    value_str
+        .replace(' ', "\\ ")
+        .replace(',', "\\,")
+        .replace('=', "\\=")
+        .replace('"', "\\\"")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_kvpair_string() {
+        let map = std::collections::BTreeMap::from([("a", 1), ("b", 2), ("c", 3)]);
+
+        let result = kvpair_string(&map);
+        assert_eq!(result, "a=1,b=2,c=3");
+    }
+
+    #[test]
+    fn test_kvpair_string_with_special_characters() {
+        let map = std::collections::BTreeMap::from([
+            ("key1", "value with space"),
+            ("key2", "value\"with\"quotes"),
+            ("key3", "value,with,comma"),
+            ("key4", "value=with=equals"),
+        ]);
+
+        let result = kvpair_string(&map);
+        assert_eq!(result, "key1=value\\ with\\ space,key2=value\\\"with\\\"quotes,key3=value\\,with\\,comma,key4=value\\=with\\=equals");
+    }
+
+    #[test]
+    fn test_escape_characters() {
+        let input = "Hello, \"World!\"=";
+        let expected = "Hello\\,\\ \\\"World!\\\"\\=";
+        assert_eq!(escape_characters(&input), expected);
+    }
 }

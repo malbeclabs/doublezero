@@ -1,6 +1,4 @@
 use clap::Parser;
-use colored::Colorize;
-
 mod cli;
 mod command;
 mod requirements;
@@ -42,8 +40,6 @@ struct App {
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
-    color_eyre::install()?;
-
     let app = App::parse();
 
     if let Some(keypair) = &app.keypair {
@@ -132,7 +128,7 @@ async fn main() -> eyre::Result<()> {
     match res {
         Ok(_) => {}
         Err(e) => {
-            eprintln!("{}: {}", "Error".red(), e);
+            eprintln!("{}: {}", "Error", e);
             std::process::exit(1);
         }
     };

@@ -1,6 +1,5 @@
 use crate::helpers::parse_pubkey;
 use clap::Args;
-use colored::Colorize;
 use doublezero_sdk::*;
 use std::io::Write;
 
@@ -19,12 +18,7 @@ impl GetAccountArgs {
 
         match client.get(pubkey) {
             Ok(account) => {
-                writeln!(
-                    out,
-                    "{} ({})",
-                    account.get_name().green(),
-                    account.get_args()
-                )?;
+                writeln!(out, "{} ({})", account.get_name(), account.get_args())?;
                 writeln!(out, "")?;
 
                 match client.get_transactions(pubkey) {
@@ -35,7 +29,7 @@ impl GetAccountArgs {
                                 out,
                                 "{}: {} ({})\n\t\t\tpubkey: {}, signature: {}",
                                 &tran.time.to_string(),
-                                tran.instruction.get_name().green(),
+                                tran.instruction.get_name(),
                                 tran.instruction.get_args(),
                                 tran.account,
                                 tran.signature

@@ -1,4 +1,3 @@
-use colored::Colorize;
 use eyre;
 use indicatif::ProgressBar;
 use std::str::FromStr;
@@ -214,7 +213,7 @@ impl ProvisioningArgs {
                     }
                     Err(e) => {
                         spinner.finish_with_message("Error creating user");
-                        spinner.println(format!("\n{}: {:?}\n", "Error".red().bold(), e));
+                        spinner.println(format!("\n{}: {:?}\n", "Error", e));
 
                         return Err(eyre::eyre!("Error creating user"));
                     }
@@ -322,7 +321,7 @@ impl ProvisioningArgs {
             }
             Err(e) => {
                 spinner.finish_with_message("Error provisioning user");
-                spinner.println(format!("\n{}: {:?}\n", "Error".red().bold(), e));
+                spinner.println(format!("\n{}: {:?}\n", "Error", e));
             }
         };
 
@@ -335,7 +334,7 @@ impl ProvisioningArgs {
         user_pubkey: &Pubkey,
         spinner: &ProgressBar,
     ) -> eyre::Result<()> {
-        spinner.println(format!("    {}", "User rejected".red()));
+        spinner.println(format!("    {}", "User rejected"));
 
         spinner.set_message("Reading logs...");
         std::thread::sleep(std::time::Duration::from_secs(10));
@@ -343,7 +342,7 @@ impl ProvisioningArgs {
 
         for mut msg in msgs {
             if msg.starts_with("Program log: Error: ") {
-                spinner.println(format!("    {}", msg.split_off(20).red()));
+                spinner.println(format!("    {}", msg.split_off(20)));
             }
         }
 

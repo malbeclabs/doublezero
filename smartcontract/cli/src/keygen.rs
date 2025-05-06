@@ -1,5 +1,4 @@
 use clap::Args;
-use colored::Colorize;
 use doublezero_sdk::{create_new_pubkey_user, DoubleZeroClient};
 use solana_sdk::signer::Signer;
 use std::io::Write;
@@ -18,10 +17,10 @@ impl KeyGenArgs {
     ) -> eyre::Result<()> {
         match create_new_pubkey_user(self.force) {
             Ok(keypair) => {
-                writeln!(out, "{}: {}", "Pubkey".green(), keypair.pubkey())?;
+                writeln!(out, "{}: {}", "Pubkey", keypair.pubkey())?;
             }
             Err(e) => {
-                writeln!(out, "{}: {}", "Error".red(), e)?;
+                writeln!(out, "{}: {}", "Error", e)?;
             }
         };
 

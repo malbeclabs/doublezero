@@ -1,10 +1,5 @@
 use clap::Parser;
-use colored::Colorize;
-
 use doublezero_sdk::DZClient;
-
-mod cli;
-
 use cli::command::Command;
 use cli::config::ConfigCommands;
 use cli::device::{DeviceAllowlistCommands, DeviceCommands};
@@ -13,6 +8,8 @@ use cli::globalconfig::{FoundationAllowlistCommands, GlobalConfigCommands};
 use cli::location::LocationCommands;
 use cli::tunnel::TunnelCommands;
 use cli::user::{UserAllowlistCommands, UserCommands};
+
+mod cli;
 
 include!(concat!(env!("OUT_DIR"), "/version.rs"));
 
@@ -38,8 +35,6 @@ struct App {
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
-    color_eyre::install()?;
-
     let app = App::parse();
 
     if let Some(keypair) = &app.keypair {
@@ -123,7 +118,7 @@ async fn main() -> eyre::Result<()> {
     match res {
         Ok(_) => {}
         Err(e) => {
-            eprintln!("{}: {}", "Error".red(), e);
+            eprintln!("{}: {}", "Error", e);
             std::process::exit(1);
         }
     };

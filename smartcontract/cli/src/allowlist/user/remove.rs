@@ -1,9 +1,9 @@
-use std::str::FromStr;
-
 use clap::Args;
 use doublezero_sdk::commands::allowlist::user::remove::RemoveUserAllowlistCommand;
 use doublezero_sdk::*;
 use solana_sdk::pubkey::Pubkey;
+use std::io::Write;
+use std::str::FromStr;
 
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 
@@ -14,7 +14,7 @@ pub struct RemoveUserAllowlistArgs {
 }
 
 impl RemoveUserAllowlistArgs {
-    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -27,7 +27,7 @@ impl RemoveUserAllowlistArgs {
         };
 
         let res = RemoveUserAllowlistCommand { pubkey }.execute(client)?;
-        println!("Signature: {}", res);
+        writeln!(out, "Signature: {}", res)?;
 
         Ok(())
     }

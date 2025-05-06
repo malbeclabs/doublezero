@@ -1,7 +1,8 @@
 use clap::Args;
 use colored::Colorize;
-use doublezero_sdk::{create_new_pubkey_user, DZClient};
+use doublezero_sdk::{create_new_pubkey_user, DoubleZeroClient};
 use solana_sdk::signer::Signer;
+use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct KeyGenArgs {
@@ -10,13 +11,17 @@ pub struct KeyGenArgs {
 }
 
 impl KeyGenArgs {
-    pub fn execute(self, _: &DZClient) -> eyre::Result<()> {
+    pub fn execute<W: Write>(
+        self,
+        _client: &dyn DoubleZeroClient,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         match create_new_pubkey_user(self.force) {
             Ok(keypair) => {
-                println!("{}: {}", "Pubkey".green(), keypair.pubkey());
+                writeln!(out, "{}: {}", "Pubkey".green(), keypair.pubkey())?;
             }
             Err(e) => {
-                eprintln!("{}: {}", "Error".red(), e);
+                writeln!(out, "{}: {}", "Error".red(), e)?;
             }
         };
 

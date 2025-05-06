@@ -1,9 +1,9 @@
+use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 use clap::Args;
 use doublezero_sdk::commands::tunnel::get::GetTunnelCommand;
 use doublezero_sdk::commands::tunnel::update::UpdateTunnelCommand;
 use doublezero_sdk::*;
-
-use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
+use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct UpdateTunnelArgs {
@@ -24,7 +24,7 @@ pub struct UpdateTunnelArgs {
 }
 
 impl UpdateTunnelArgs {
-    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -44,7 +44,7 @@ impl UpdateTunnelArgs {
                 .map(|jitter_ms| (jitter_ms * 1000000.0) as u64),
         }
         .execute(client)?;
-        println!("Signature: {}", signature);
+        writeln!(out, "Signature: {}", signature)?;
 
         Ok(())
     }

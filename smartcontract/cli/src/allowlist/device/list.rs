@@ -1,18 +1,18 @@
 use clap::Args;
-use doublezero_sdk::*;
 use doublezero_sdk::commands::allowlist::device::list::ListDeviceAllowlistCommand;
+use doublezero_sdk::*;
+use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct ListDeviceAllowlistArgs {}
 
 impl ListDeviceAllowlistArgs {
-    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
+        let list = ListDeviceAllowlistCommand {}.execute(client)?;
 
-        let list = ListDeviceAllowlistCommand{}.execute(client)?;
-
-        println!("Pubkeys:");
+        writeln!(out, "Pubkeys:")?;
         for user in list {
-            println!("\t{}", user);
+            writeln!(out, "\t{}", user)?;
         }
 
         Ok(())

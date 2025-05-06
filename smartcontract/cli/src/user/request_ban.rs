@@ -8,6 +8,7 @@ use doublezero_sdk::commands::user::get::GetUserCommand;
 use doublezero_sdk::commands::user::requestban::RequestBanUserCommand;
 use doublezero_sdk::*;
 use solana_sdk::pubkey::Pubkey;
+use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct RequestBanUserArgs {
@@ -16,7 +17,7 @@ pub struct RequestBanUserArgs {
 }
 
 impl RequestBanUserArgs {
-    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         check_requirements(
             client,
@@ -27,9 +28,8 @@ impl RequestBanUserArgs {
         let pubkey = Pubkey::from_str(&self.pubkey)?;
         let (_, user) = GetUserCommand { pubkey }.execute(client)?;
 
-        RequestBanUserCommand { index: user.index }.execute(client)?;
-
-        println!("User {} requested to be banned", pubkey);
+        let signature = RequestBanUserCommand { index: user.index }.execute(client)?;
+        writeln!(out, "Signature: {}", signature)?;
 
         Ok(())
     }

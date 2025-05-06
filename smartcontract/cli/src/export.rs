@@ -5,9 +5,9 @@ use doublezero_sdk::commands::location::list::ListLocationCommand;
 use doublezero_sdk::commands::tunnel::list::ListTunnelCommand;
 use doublezero_sdk::commands::user::list::ListUserCommand;
 use doublezero_sdk::*;
-
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct ExportArgs {
@@ -90,7 +90,7 @@ struct UserData {
 }
 
 impl ExportArgs {
-    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         let locations = ListLocationCommand {}.execute(client)?;
         let exchanges = ListExchangeCommand {}.execute(client)?;
 
@@ -108,7 +108,7 @@ impl ExportArgs {
                 .get(&data.exchange_pk)
                 .expect("could get Location");
 
-            println!("{}", name);
+            writeln!(out, "{}", name)?;
 
             let config = Data {
                 device: DeviceData {

@@ -4,6 +4,7 @@ use clap::Args;
 use doublezero_sdk::commands::device::get::GetDeviceCommand;
 use doublezero_sdk::commands::tunnel::create::CreateTunnelCommand;
 use doublezero_sdk::*;
+use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct CreateTunnelArgs {
@@ -26,7 +27,7 @@ pub struct CreateTunnelArgs {
 }
 
 impl CreateTunnelArgs {
-    pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<()> {
+    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -69,7 +70,7 @@ impl CreateTunnelArgs {
             jitter_ns: (self.jitter_ms * 1000000.0) as u64,
         }
         .execute(client)?;
-        println!("Signature: {}", signature);
+        writeln!(out, "Signature: {}", signature)?;
 
         Ok(())
     }

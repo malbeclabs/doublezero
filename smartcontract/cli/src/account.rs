@@ -18,12 +18,7 @@ impl GetAccountArgs {
 
         match client.get(pubkey) {
             Ok(account) => {
-                writeln!(
-                    out,
-                    "{} ({})",
-                    account.get_name().green(),
-                    account.get_args()
-                )?;
+                writeln!(out, "{} ({})", account.get_name(), account.get_args())?;
                 writeln!(out, "")?;
 
                 match client.get_transactions(pubkey) {

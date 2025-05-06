@@ -3,6 +3,7 @@ use clap::Args;
 use doublezero_sdk::commands::tunnel::delete::DeleteTunnelCommand;
 use doublezero_sdk::commands::tunnel::get::GetTunnelCommand;
 use doublezero_sdk::*;
+use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct DeleteTunnelArgs {
@@ -11,7 +12,7 @@ pub struct DeleteTunnelArgs {
 }
 
 impl DeleteTunnelArgs {
-    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -23,7 +24,7 @@ impl DeleteTunnelArgs {
             index: tunnel.index,
         }
         .execute(client)?;
-        println!("Signature: {}", signature);
+        writeln!(out, "Signature: {}", signature)?;
 
         Ok(())
     }

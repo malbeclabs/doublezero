@@ -3,6 +3,7 @@ use clap::Args;
 use doublezero_sdk::commands::device::delete::DeleteDeviceCommand;
 use doublezero_sdk::commands::device::get::GetDeviceCommand;
 use doublezero_sdk::*;
+use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct DeleteDeviceArgs {
@@ -11,7 +12,7 @@ pub struct DeleteDeviceArgs {
 }
 
 impl DeleteDeviceArgs {
-    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -25,7 +26,7 @@ impl DeleteDeviceArgs {
             index: device.index,
         }
         .execute(client)?;
-        println!("Signature: {}", signature);
+        writeln!(out, "Signature: {}", signature)?;
 
         Ok(())
     }

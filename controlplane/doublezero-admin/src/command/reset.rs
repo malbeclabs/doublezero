@@ -6,7 +6,8 @@ use eyre;
 pub struct ResetCommand {}
 
 impl ResetCommand {
-    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
+
         client.reset()?;
 
         Ok(())

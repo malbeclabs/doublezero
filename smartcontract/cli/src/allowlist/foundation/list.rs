@@ -1,18 +1,18 @@
 use clap::Args;
-use doublezero_sdk::*;
 use doublezero_sdk::commands::allowlist::foundation::list::ListFoundationAllowlistCommand;
+use doublezero_sdk::*;
+use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct ListFoundationAllowlistArgs {}
 
 impl ListFoundationAllowlistArgs {
-    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
+        let list = ListFoundationAllowlistCommand {}.execute(client)?;
 
-        let list = ListFoundationAllowlistCommand{}.execute(client)?;
-
-        println!("Pubkeys:");
+        writeln!(out, "Pubkeys:")?;
         for user in list {
-            println!("\t{}", user);
+            writeln!(out, "\t{}", user)?;
         }
 
         Ok(())

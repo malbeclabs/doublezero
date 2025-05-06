@@ -1,6 +1,7 @@
 use clap::Args;
 use doublezero_sdk::commands::tunnel::get::GetTunnelCommand;
 use doublezero_sdk::*;
+use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct GetTunnelArgs {
@@ -9,13 +10,13 @@ pub struct GetTunnelArgs {
 }
 
 impl GetTunnelArgs {
-    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         let (pubkey, tunnel) = GetTunnelCommand {
             pubkey_or_code: self.code,
         }
         .execute(client)?;
 
-        println!(
+        writeln!(out, 
             "pubkey: {}\r\ncode: {}\r\nside_a: {}\r\nside_z: {}\r\ntunnel_type: {}\r\nbandwidth: {}\r\nmtu: {}\r\ndelay: {}ms\r\njitter: {}ms\r\ntunnel_net: {}\r\nstatus: {}\r\nowner: {}",
             pubkey,
             tunnel.code,
@@ -29,7 +30,7 @@ impl GetTunnelArgs {
             networkv4_to_string(&tunnel.tunnel_net),
             tunnel.status,
             tunnel.owner
-            );
+            )?;
 
         Ok(())
     }

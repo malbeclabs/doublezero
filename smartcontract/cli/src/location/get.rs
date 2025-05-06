@@ -17,7 +17,7 @@ impl GetLocationArgs {
         .execute(client)?;
 
         writeln!(out, 
-                "pubkey: {},\r\ncode: {}\r\nname: {}\r\ncountry: {}\r\nlat: {}\r\nlng: {}\r\nloc_id: {}\r\nstatus: {}\r\nowner: {}",
+                "account: {},\r\ncode: {}\r\nname: {}\r\ncountry: {}\r\nlat: {}\r\nlng: {}\r\nloc_id: {}\r\nstatus: {}\r\nowner: {}",
                 pubkey,
                 location.code,
                 location.name,

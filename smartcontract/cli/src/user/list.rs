@@ -16,7 +16,7 @@ impl ListUserArgs {
     pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         let mut table = Table::new();
         table.add_row(row![
-            "pubkey",
+            "account",
             "user_type",
             "device",
             "cyoa_type",
@@ -154,7 +154,6 @@ mod tests {
                 users.insert(user1_pubkey, AccountData::User(user1.clone()));
                 Ok(users)
             });
-
 
         let mut output = Vec::new();
         let res = ListUserArgs { code: None }.execute(&client, &mut output);

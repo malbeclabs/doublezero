@@ -17,7 +17,7 @@ impl ListTunnelArgs {
     pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         let mut table = Table::new();
         table.add_row(row![
-            "pubkey",
+            "account",
             "code",
             "side_a",
             "side_z",
@@ -36,10 +36,7 @@ impl ListTunnelArgs {
         let tunnels = ListTunnelCommand {}.execute(client)?;
 
         let mut tunnels: Vec<(Pubkey, Tunnel)> = tunnels.into_iter().collect();
-        tunnels.sort_by(|(_, a), (_, b)| {
-            a.owner.cmp(&b.owner)
-                .then(a.tunnel_id.cmp(&b.tunnel_id))
-        });
+        tunnels.sort_by(|(_, a), (_, b)| a.owner.cmp(&b.owner).then(a.tunnel_id.cmp(&b.tunnel_id)));
 
         for (pubkey, data) in tunnels {
             let side_a_name = match &devices.get(&data.side_a_pk) {

@@ -17,7 +17,7 @@ impl GetUserArgs {
         let (pubkey, user) = GetUserCommand { pubkey }.execute(client)?;
 
         writeln!(out, 
-                "pubkey: {} user_type: {} device: {} cyoa_type: {} client_ip: {} tunnel_net: {} dz_ip: {} status: {} owner: {}",
+                "account: {} user_type: {} device: {} cyoa_type: {} client_ip: {} tunnel_net: {} dz_ip: {} status: {} owner: {}",
                 pubkey,
                 user.user_type,
                 user.device_pk,

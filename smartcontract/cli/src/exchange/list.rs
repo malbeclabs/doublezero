@@ -15,15 +15,13 @@ impl ListExchangeArgs {
     pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         let mut table = Table::new();
         table.add_row(row![
-            "pubkey", "code", "name", "lat", "lng", "loc_id", "status", "owner"
+            "account", "code", "name", "lat", "lng", "loc_id", "status", "owner"
         ]);
 
         let exchanges = ListExchangeCommand {}.execute(client)?;
 
         let mut exchanges: Vec<(Pubkey, Exchange)> = exchanges.into_iter().collect();
-        exchanges.sort_by(|(_, a), (_, b)| {
-            a.owner.cmp(&b.owner)
-        });
+        exchanges.sort_by(|(_, a), (_, b)| a.owner.cmp(&b.owner));
 
         for (pubkey, data) in exchanges {
             table.add_row(Row::new(vec![
@@ -45,13 +43,12 @@ impl ListExchangeArgs {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
 
-    use crate::{exchange::list::ListExchangeArgs, tests::tests::create_test_client};
     use crate::exchange::list::ExchangeStatus::Activated;
+    use crate::{exchange::list::ListExchangeArgs, tests::tests::create_test_client};
     use doublezero_sdk::{AccountType, Device, DeviceStatus, DeviceType, Exchange};
     use doublezero_sla_program::state::accountdata::AccountData;
     use mockall::predicate;
@@ -127,7 +124,6 @@ mod tests {
                 exchanges.insert(exchange1_pubkey, AccountData::Exchange(exchange1.clone()));
                 Ok(exchanges)
             });
-
 
         let mut output = Vec::new();
         let res = ListExchangeArgs { code: None }.execute(&client, &mut output);

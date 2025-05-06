@@ -17,7 +17,7 @@ impl ListDeviceArgs {
     pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         let mut table = Table::new();
         table.add_row(row![
-            "pubkey",
+            "account",
             "code",
             "location",
             "exchange",

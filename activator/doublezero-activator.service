@@ -3,6 +3,7 @@ Description=DoubleZero Activator
 After=network.target
 
 [Service]
+User=ubuntu
 PermissionsStartOnly=True
 RuntimeDirectory=doublezero-activator
 RuntimeDirectoryMode=0775

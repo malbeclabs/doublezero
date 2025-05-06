@@ -14,6 +14,11 @@ solana-arm64:
 solana-amd64:
 	docker build --platform=linux/amd64 -f Dockerfile.solana.amd64 -t $(TAG_PREFIX)/solana-amd64:latest .
 
+.PHONY: base
+base:
+	docker build --build-arg PLATFORM_ARCH=arm64 -f Dockerfile.base -t $(TAG_PREFIX)/doublezero-base:latest ../.
+
+
 .PHONY: build
 build: eos
 ifeq ($(ARCH),arm64)
@@ -33,5 +38,5 @@ else
 endif
 
 .PHONY: test
-test:
+test: build
 	bash bootstrap.sh

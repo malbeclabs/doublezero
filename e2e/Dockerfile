@@ -1,34 +1,11 @@
 ARG PLATFORM_ARCH="amd64"
 
 # we need to pull in the correct build of solana tools based on amd64 vs. arm64
-FROM ghcr.io/malbeclabs/solana-${PLATFORM_ARCH}:latest AS solana
-
-FROM ubuntu:22.04 AS builder
-
-ENV DEBIAN_FRONTEND=noninteractive
-
-# install solana cli/tools
-COPY --from=solana /usr/local/bin /usr/local/bin
-
-RUN apt update && apt install --no-install-recommends -y \
-    ca-certificates \
-    curl \
-    build-essential \
-    pkg-config \
-    libudev-dev llvm libclang-dev \
-    protobuf-compiler libssl-dev git iproute2 iputils-ping tcpdump
-
-# install rust
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
-
-# install go
-COPY --from=golang:1.24-alpine /usr/local/go/ /usr/local/go/
-ENV PATH="/usr/local/go/bin:${PATH}"
+FROM ghcr.io/malbeclabs/doublezero-base:latest AS builder
 
 WORKDIR /doublezero
 COPY go.mod go.sum ./
-RUN mkdir bin/
+RUN mkdir -p bin/
 
 # Below creates a build stage for each component. Why is this needed?
 # Anytime a COPY command is used (COPY client client) and a single byte changes
@@ -79,14 +56,11 @@ COPY ./e2e/doublezero_keypair.json ./bin/doublezero_keypair.json
 RUN go test -c -o ./bin/e2e_test ./e2e/e2e_test.go
 
 # copy everything from the previous stages into the main stage
-FROM ubuntu:22.04
+FROM builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt update && apt install --no-install-recommends -y iproute2 iputils-ping net-tools tcpdump curl
-
 WORKDIR /doublezero
-RUN mkdir bin
 
 COPY --from=builder /usr/local/bin /usr/local/bin
 ENV PATH="/usr/local/bin:${PATH}"

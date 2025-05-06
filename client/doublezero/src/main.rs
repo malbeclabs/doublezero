@@ -77,9 +77,7 @@ async fn main() -> eyre::Result<()> {
                 FoundationAllowlistCommands::Remove(args) => args.execute(&client, &mut handle),
             },
         },
-
         Command::Account(args) => args.execute(&client, &mut handle),
-
         Command::Location(command) => match command.command {
             LocationCommands::Create(args) => args.execute(&client, &mut handle),
             LocationCommands::Update(args) => args.execute(&client, &mut handle),

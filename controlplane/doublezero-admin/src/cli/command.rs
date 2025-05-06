@@ -16,14 +16,11 @@ use crate::cli::globalconfig::GlobalConfigArgs;
 use crate::cli::location::LocationArgs;
 use crate::cli::tunnel::TunnelArgs;
 use crate::cli::user::UserArgs;
-use crate::command::reset::ResetCommand;
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
     #[command(about = "", hide = true)]
     Init(InitArgs),
-    #[command(about = "", hide = true)]
-    Reset(ResetCommand),
     #[command(about = "Get your public key", hide = false)]
     Address(AddressArgs),
     #[command(about = "Get your balance", hide = false)]

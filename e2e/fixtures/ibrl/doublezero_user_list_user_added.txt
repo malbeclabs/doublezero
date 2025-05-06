@@ -1,2 +1,2 @@
- pubkey                                       | user_type | device   | cyoa_type  | client_ip    | tunnel_id | tunnel_net     | dz_ip        | status    | owner 
+ account                                      | user_type | device   | cyoa_type  | client_ip    | tunnel_id | tunnel_net     | dz_ip        | status    | owner 
  J2MUYJeJvTfrHpxMm3tVYkcDhTwgAFFju2veS27WhByX | IBRL      | ny5-dz01 | GREOverDIA | 64.86.249.86 | 500       | 169.254.0.0/31 | 64.86.249.86 | activated | Dc3LFdWwKGJvJcVkXhAr14kh1HS6pN7oCWrvHfQtsHGe 

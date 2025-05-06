@@ -85,6 +85,7 @@ struct UserData {
     pub tunnel_id: u16,
     pub tunnel_net: String,
     pub dz_ip: String,
+    pub status: String,
     pub owner: String,
 }
 
@@ -177,6 +178,7 @@ impl ExportArgs {
                             tunnel_id: user.tunnel_id,
                             tunnel_net: networkv4_to_string(&user.tunnel_net),
                             dz_ip: ipv4_to_string(&user.dz_ip),
+                            status: user.status.to_string(),
                             owner: user.owner.to_string(),
                         })
                         .collect(),

@@ -160,6 +160,6 @@ mod tests {
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
 
-        assert_eq!(output_str, " pubkey                                    | user_type | device                                    | cyoa_type  | client_ip | tunnel_id | tunnel_net | dz_ip   | status    | owner \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | IBRL      | 11111116EPqoQskEM2Pddp8KTL9JdYEBZMGF3aq7V | GREOverDIA | 1.2.3.4   | 500       | 1.2.3.5/32 | 2.3.4.5 | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
+        assert_eq!(output_str, " account                                   | user_type | device                                    | cyoa_type  | client_ip | tunnel_id | tunnel_net | dz_ip   | status    | owner \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | IBRL      | 11111116EPqoQskEM2Pddp8KTL9JdYEBZMGF3aq7V | GREOverDIA | 1.2.3.4   | 500       | 1.2.3.5/32 | 2.3.4.5 | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
     }
 }

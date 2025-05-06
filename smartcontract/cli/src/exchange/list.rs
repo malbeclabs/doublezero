@@ -129,6 +129,6 @@ mod tests {
         let res = ListExchangeArgs { code: None }.execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " pubkey                                    | code      | name      | lat | lng | loc_id | status    | owner \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | some code | some name | 15  | 15  | 6      | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
+        assert_eq!(output_str, " account                                   | code      | name      | lat | lng | loc_id | status    | owner \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | some code | some name | 15  | 15  | 6      | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
     }
 }

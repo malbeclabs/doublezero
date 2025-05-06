@@ -729,7 +729,7 @@ func mapFromTable(output []byte) []map[string]string {
 	}
 
 	slices.SortFunc(sliceOfMaps, func(a, b map[string]string) int {
-		return strings.Compare(strings.ToLower(a["pubkey"]), strings.ToLower(b["pubkey"]))
+		return strings.Compare(strings.ToLower(a["account"]), strings.ToLower(b["account"]))
 	})
 
 	return sliceOfMaps

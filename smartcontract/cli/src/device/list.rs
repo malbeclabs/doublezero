@@ -72,7 +72,10 @@ mod tests {
 
     use crate::device::list::ListDeviceArgs;
     use crate::tests::tests::create_test_client;
-    use doublezero_sdk::{AccountType, Device, DeviceStatus, DeviceType};
+    use doublezero_sdk::{
+        AccountType, Device, DeviceStatus, DeviceType, Exchange, ExchangeStatus, Location,
+        LocationStatus,
+    };
 
     use doublezero_sla_program::state::accountdata::AccountData;
     use mockall::predicate;
@@ -82,10 +85,36 @@ mod tests {
     fn test_cli_device_list() {
         let mut client = create_test_client();
 
-        let location1_pubkey = Pubkey::new_unique();
-        let exchange1_pubkey = Pubkey::new_unique();
+        let location1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
+        let location1 = Location {
+            account_type: AccountType::Location,
+            index: 1,
+            bump_seed: 2,
+            code: "location1_code".to_string(),
+            name: "location1_name".to_string(),
+            country: "location1_country".to_string(),
+            lat: 1.0,
+            lng: 2.0,
+            loc_id: 3,
+            status: LocationStatus::Activated,
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR"),
+        };
 
-        let device1_pubkey = Pubkey::new_unique();
+        let exchange1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
+        let exchange1 = Exchange {
+            account_type: AccountType::Exchange,
+            index: 1,
+            bump_seed: 2,
+            code: "exchange1_code".to_string(),
+            name: "exchange1_name".to_string(),
+            lat: 1.0,
+            lng: 2.0,
+            loc_id: 3,
+            status: ExchangeStatus::Activated,
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA"),
+        };
+
+        let device1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
         let device1 = Device {
             account_type: AccountType::Device,
             index: 1,
@@ -97,8 +126,26 @@ mod tests {
             public_ip: [1, 2, 3, 4],
             dz_prefixes: vec![([1, 2, 3, 4], 32)],
             status: DeviceStatus::Activated,
-            owner: Pubkey::new_unique(),
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
         };
+
+        client
+            .expect_gets()
+            .with(predicate::eq(AccountType::Location))
+            .returning(move |_| {
+                let mut locations = HashMap::new();
+                locations.insert(location1_pubkey, AccountData::Location(location1.clone()));
+                Ok(locations)
+            });
+
+        client
+            .expect_gets()
+            .with(predicate::eq(AccountType::Exchange))
+            .returning(move |_| {
+                let mut exchanges = HashMap::new();
+                exchanges.insert(exchange1_pubkey, AccountData::Exchange(exchange1.clone()));
+                Ok(exchanges)
+            });
 
         client
             .expect_gets()
@@ -109,9 +156,13 @@ mod tests {
                 Ok(devices)
             });
 
-        // let mut output = Vec::new();
-        // let res = ListDeviceArgs { code: None }.execute(&client, &mut output);
-        // assert!(res.is_ok());
-        // let output_str = String::from_utf8(output).unwrap();
+        let mut output = Vec::new();
+        let res = ListDeviceArgs { code: None }.execute(&client, &mut output);
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+
+        assert_eq!(output_str, " pubkey                                    | code         | location       | exchange       | device_type | public_ip | dz_prefixes | status    | owner 
+ 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | device1_code | location1_code | exchange1_code | switch      | 1.2.3.4   | 1.2.3.4/32  | activated | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB 
+")
     }
 }

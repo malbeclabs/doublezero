@@ -5,6 +5,7 @@ use doublezero_sdk::commands::device::list::ListDeviceCommand;
 use doublezero_sdk::commands::tunnel::list::ListTunnelCommand;
 use doublezero_sdk::*;
 use prettytable::{format, row, Cell, Row, Table};
+use solana_sdk::pubkey::Pubkey;
 
 #[derive(Args, Debug)]
 pub struct ListTunnelArgs {
@@ -33,6 +34,12 @@ impl ListTunnelArgs {
 
         let devices = ListDeviceCommand {}.execute(client)?;
         let tunnels = ListTunnelCommand {}.execute(client)?;
+
+        let mut tunnels: Vec<(Pubkey, Tunnel)> = tunnels.into_iter().collect();
+        tunnels.sort_by(|(_, a), (_, b)| {
+            a.owner.cmp(&b.owner)
+                .then(a.tunnel_id.cmp(&b.tunnel_id))
+        });
 
         for (pubkey, data) in tunnels {
             let side_a_name = match &devices.get(&data.side_a_pk) {
@@ -129,7 +136,7 @@ mod tests {
                 Ok(devices)
             });
 
-        let tunnel1_pubkey = Pubkey::new_unique();
+        let tunnel1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
         let tunnel1 = Tunnel {
             account_type: AccountType::Tunnel,
             index: 1,
@@ -145,7 +152,7 @@ mod tests {
             tunnel_id: 1234,
             tunnel_net: ([1, 2, 3, 4], 32).into(),
             status: TunnelStatus::Activated,
-            owner: Pubkey::new_unique(),
+            owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
         };
 
         client
@@ -162,8 +169,6 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " pubkey                                    | code        | side_a       | side_z       | tunnel_type | bandwidth | mtu  | delay_ms | jitter_ms | tunnel_id | tunnel_net | status    | owner 
- 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | tunnel_code | device1_code | device2_code | MPLSoGRE    | 1.23Kbps  | 1566 |   0.00ms |    0.00ms | 1234      | 1.2.3.4/32 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 
-");
+        assert_eq!(output_str, " pubkey                                    | code        | side_a       | side_z       | tunnel_type | bandwidth | mtu  | delay_ms | jitter_ms | tunnel_id | tunnel_net | status    | owner \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | tunnel_code | device1_code | device2_code | MPLSoGRE    | 1.23Kbps  | 1566 |   0.00ms |    0.00ms | 1234      | 1.2.3.4/32 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
     }
 }

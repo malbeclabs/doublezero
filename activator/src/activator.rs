@@ -182,8 +182,8 @@ impl Activator {
         let tunnel_tunnel_ids = &mut self.tunnel_tunnel_ids;
         let user_tunnel_ips = &mut self.user_tunnel_ips;
         let metrics = &self.metrics;
-        let locations = &self.locations;
-        let exchanges = &self.exchanges;
+        let locations = &mut self.locations;
+        let exchanges = &mut self.exchanges;
         let state_transitions = &mut self.state_transitions;
 
         self.client
@@ -211,6 +211,12 @@ impl Activator {
                             &user,
                             state_transitions,
                         );
+                    }
+                    AccountData::Location(location) => {
+                        process_location_event(pubkey, locations, location);
+                    }
+                    AccountData::Exchange(exchange) => {
+                        process_exchange_event(pubkey, exchanges, exchange);
                     }
                     _ => {}
                 };
@@ -583,10 +589,27 @@ fn process_user_event(
     }
 }
 
+fn process_location_event(
+    pubkey: &Pubkey,
+    locations: &mut HashMap<Pubkey, Location>,
+    location: &Location,
+) {
+    locations.insert(pubkey.clone(), location.clone());
+}
+
+fn process_exchange_event(
+    pubkey: &Pubkey,
+    exchanges: &mut HashMap<Pubkey, Exchange>,
+    exchange: &Exchange,
+) {
+    exchanges.insert(pubkey.clone(), exchange.clone());
+}
+
 #[cfg(test)]
 mod tests {
     use doublezero_sdk::{
-        AccountType, DeviceType, MockDoubleZeroClient, TunnelTunnelType, UserCYOA,
+        AccountType, DeviceType, ExchangeStatus, LocationStatus, MockDoubleZeroClient,
+        TunnelTunnelType, UserCYOA,
     };
     use doublezero_sla_program::{
         instructions::DoubleZeroInstruction,
@@ -1358,5 +1381,52 @@ mod tests {
             },
             "user-pending-ban-to-banned",
         );
+    }
+
+    #[test]
+    fn test_process_location_event() {
+        let mut locations = HashMap::new();
+        let pubkey = Pubkey::new_unique();
+        let location = Location {
+            account_type: AccountType::Location,
+            owner: Pubkey::new_unique(),
+            index: 0,
+            bump_seed: 42,
+            lat: 50.0,
+            lng: 20.0,
+            loc_id: 1234,
+            status: LocationStatus::Activated,
+            code: "nyc".to_string(),
+            name: "New York".to_string(),
+            country: "USA".to_string(),
+        };
+
+        process_location_event(&pubkey, &mut locations, &location);
+
+        assert!(locations.contains_key(&pubkey));
+        assert_eq!(*locations.get(&pubkey).unwrap(), location);
+    }
+
+    #[test]
+    fn test_process_exchange_event() {
+        let mut exchanges = HashMap::new();
+        let pubkey = Pubkey::new_unique();
+        let exchange = Exchange {
+            account_type: AccountType::Exchange,
+            owner: Pubkey::new_unique(),
+            index: 0,
+            bump_seed: 42,
+            lat: 50.0,
+            lng: 20.0,
+            loc_id: 1234,
+            status: ExchangeStatus::Activated,
+            code: "TestExchange".to_string(),
+            name: "TestName".to_string(),
+        };
+
+        process_exchange_event(&pubkey, &mut exchanges, &exchange);
+
+        assert!(exchanges.contains_key(&pubkey));
+        assert_eq!(*exchanges.get(&pubkey).unwrap(), exchange);
     }
 }

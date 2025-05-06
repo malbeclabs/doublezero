@@ -1,14 +1,20 @@
 use clap::Args;
-use doublezero_sdk::{convert_url_to_ws, read_doublezero_config, DZClient};
+use doublezero_sdk::{convert_url_to_ws, read_doublezero_config, DoubleZeroClient};
+use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct GetConfigArgs {}
 
 impl GetConfigArgs {
-    pub fn execute(self, _: &DZClient) -> eyre::Result<()> {
+    pub fn execute<W: Write>(
+        self,
+        _client: &dyn DoubleZeroClient,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let (filename, config) = read_doublezero_config();
 
-        println!(
+        writeln!(
+            out,
             "Config File: {}\nRPC URL: {}\nWebSocket URL: {}\nKeypair Path: {}\nProgram ID: {}\n",
             filename,
             config.json_rpc_url,
@@ -21,7 +27,7 @@ impl GetConfigArgs {
                 "{} (computed)",
                 doublezero_sdk::testnet::program_id::id()
             ))
-        );
+        )?;
 
         Ok(())
     }

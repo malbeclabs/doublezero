@@ -1,8 +1,9 @@
 use clap::{ArgGroup, Args};
 use doublezero_sdk::{
     convert_program_moniker, convert_url_moniker, convert_url_to_ws, convert_ws_moniker,
-    read_doublezero_config, write_doublezero_config, DZClient,
+    read_doublezero_config, write_doublezero_config, DoubleZeroClient,
 };
+use std::io::Write;
 
 #[derive(Args, Debug)]
 #[clap(group(
@@ -29,13 +30,17 @@ pub struct SetConfigArgs {
 }
 
 impl SetConfigArgs {
-    pub fn execute(self, _: &DZClient) -> eyre::Result<()> {
+    pub fn execute<W: Write>(
+        self,
+        _client: &dyn DoubleZeroClient,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         if self.url.is_none()
             && self.ws.is_none()
             && self.keypair.is_none()
             && self.program_id.is_none()
         {
-            eprintln!("No arguments provided");
+            writeln!(out, "No arguments provided")?;
             return Ok(());
         }
 
@@ -56,7 +61,8 @@ impl SetConfigArgs {
 
         write_doublezero_config(&config);
 
-        println!(
+        writeln!(
+            out,
             "Config File: {}\nRPC URL: {}\nWebSocket URL: {}\nKeypair Path: {}\nProgram ID: {}\n",
             filename,
             config.json_rpc_url,
@@ -69,7 +75,7 @@ impl SetConfigArgs {
                 "{} (computed)",
                 doublezero_sdk::testnet::program_id::id()
             ))
-        );
+        )?;
 
         Ok(())
     }

@@ -1,6 +1,7 @@
 use crate::helpers::parse_pubkey;
 use clap::Args;
 use doublezero_sdk::*;
+use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct GetAccountArgs {
@@ -11,43 +12,49 @@ pub struct GetAccountArgs {
 }
 
 impl GetAccountArgs {
-    pub fn execute(self, client: &dyn DoubleZeroClient) -> eyre::Result<()> {
+    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         let pubkey = parse_pubkey(&self.pubkey).expect("Invalid pubkey");
 
         match client.get(pubkey) {
             Ok(account) => {
-                println!("{} ({})", account.get_name(), account.get_args());
-                println!();
+                writeln!(
+                    out,
+                    "{} ({})",
+                    account.get_name().green(),
+                    account.get_args()
+                )?;
+                writeln!(out, "")?;
 
                 match client.get_transactions(pubkey) {
                     Ok(trans) => {
-                        println!("Transactions:");
+                        writeln!(out, "Transactions:")?;
                         for tran in trans {
-                            println!(
+                            writeln!(
+                                out,
                                 "{}: {} ({})\n\t\t\tpubkey: {}, signature: {}",
                                 &tran.time.to_string(),
                                 tran.instruction.get_name(),
                                 tran.instruction.get_args(),
                                 tran.account,
                                 tran.signature
-                            );
+                            )?;
 
                             if self.logs {
                                 for msg in tran.log_messages {
-                                    println!("  - {}", msg);
+                                    writeln!(out, "  - {}", msg)?;
                                 }
-                                println!();
+                                writeln!(out, "")?;
                             }
                         }
                     }
                     Err(e) => {
-                        println!("Error: {}", e);
+                        writeln!(out, "Error: {}", e)?;
                     }
                 }
             }
             Err(e) => {
-                println!("Error: {}", e);
+                writeln!(out, "Error: {}", e)?;
             }
         }
 

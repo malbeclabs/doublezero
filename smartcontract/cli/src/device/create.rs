@@ -1,11 +1,11 @@
+use crate::helpers::parse_pubkey;
+use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 use clap::Args;
 use doublezero_sdk::commands::device::create::CreateDeviceCommand;
 use doublezero_sdk::commands::exchange::get::GetExchangeCommand;
 use doublezero_sdk::commands::location::get::GetLocationCommand;
 use doublezero_sdk::*;
-
-use crate::helpers::parse_pubkey;
-use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
+use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct CreateDeviceArgs {
@@ -22,7 +22,7 @@ pub struct CreateDeviceArgs {
 }
 
 impl CreateDeviceArgs {
-    pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<()> {
+    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -59,7 +59,7 @@ impl CreateDeviceArgs {
             dz_prefixes: networkv4_list_parse(&self.dz_prefixes),
         }
         .execute(client)?;
-        println!("Signature: {}", signature);
+        writeln!(out, "Signature: {}", signature)?;
 
         Ok(())
     }

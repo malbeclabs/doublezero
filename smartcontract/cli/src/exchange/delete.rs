@@ -3,6 +3,7 @@ use clap::Args;
 use doublezero_sdk::commands::exchange::delete::DeleteExchangeCommand;
 use doublezero_sdk::commands::exchange::get::GetExchangeCommand;
 use doublezero_sdk::*;
+use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct DeleteExchangeArgs {
@@ -11,7 +12,7 @@ pub struct DeleteExchangeArgs {
 }
 
 impl DeleteExchangeArgs {
-    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -23,7 +24,7 @@ impl DeleteExchangeArgs {
             index: exchange.index,
         }
         .execute(client)?;
-        println!("Signature: {}", signature);
+        writeln!(out, "Signature: {}", signature)?;
 
         Ok(())
     }

@@ -1,18 +1,18 @@
 use clap::Args;
 use doublezero_sdk::commands::allowlist::user::list::ListUserAllowlistCommand;
 use doublezero_sdk::*;
+use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct ListUserAllowlistArgs {}
 
 impl ListUserAllowlistArgs {
-    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
-
+    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         let list = ListUserAllowlistCommand {}.execute(client)?;
 
-        println!("allowlisted Pubkeys:");
+        writeln!(out, "allowlisted Pubkeys:")?;
         for user in list {
-            println!("\t{}", user);
+            writeln!(out, "\t{}", user)?;
         }
 
         Ok(())

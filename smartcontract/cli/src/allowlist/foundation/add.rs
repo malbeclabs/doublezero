@@ -1,9 +1,9 @@
-use std::str::FromStr;
-
 use clap::Args;
 use doublezero_sdk::commands::allowlist::foundation::add::AddFoundationAllowlistCommand;
 use doublezero_sdk::*;
 use solana_sdk::pubkey::Pubkey;
+use std::io::Write;
+use std::str::FromStr;
 
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 
@@ -14,7 +14,7 @@ pub struct AddFoundationAllowlistArgs {
 }
 
 impl AddFoundationAllowlistArgs {
-    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -27,7 +27,7 @@ impl AddFoundationAllowlistArgs {
         };
 
         let res = AddFoundationAllowlistCommand { pubkey }.execute(client)?;
-        println!("Signature: {}", res);
+        writeln!(out, "Signature: {}", res)?;
 
         Ok(())
     }

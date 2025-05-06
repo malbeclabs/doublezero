@@ -1,9 +1,9 @@
+use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 use clap::Args;
 use doublezero_sdk::commands::device::get::GetDeviceCommand;
 use doublezero_sdk::commands::device::update::UpdateDeviceCommand;
 use doublezero_sdk::*;
-
-use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
+use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct UpdateDeviceArgs {
@@ -18,7 +18,7 @@ pub struct UpdateDeviceArgs {
 }
 
 impl UpdateDeviceArgs {
-    pub fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -34,7 +34,7 @@ impl UpdateDeviceArgs {
             dz_prefixes: self.dz_prefixes.map(|ip| networkv4_list_parse(&ip)),
         }
         .execute(client)?;
-        println!("Signature: {}", signature);
+        writeln!(out, "Signature: {}", signature)?;
 
         Ok(())
     }

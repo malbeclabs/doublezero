@@ -1,8 +1,8 @@
+use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 use clap::Args;
 use doublezero_sdk::commands::exchange::create::CreateExchangeCommand;
 use doublezero_sdk::*;
-
-use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
+use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct CreateExchangeArgs {
@@ -19,7 +19,7 @@ pub struct CreateExchangeArgs {
 }
 
 impl CreateExchangeArgs {
-    pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<()> {
+    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -31,7 +31,7 @@ impl CreateExchangeArgs {
             loc_id: self.loc_id,
         }
         .execute(client)?;
-        println!("Signature: {}", signature);
+        writeln!(out, "Signature: {}", signature)?;
 
         Ok(())
     }

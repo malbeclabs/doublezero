@@ -17,7 +17,7 @@ impl GetExchangeArgs {
         .execute(client)?;
 
         writeln!(out, 
-                "pubkey: {},\r\ncode: {}\r\nname: {}\r\nlat: {}\r\nlng: {}\r\nloc_id: {}\r\nstatus: {}\r\nowner: {}",
+                "account: {},\r\ncode: {}\r\nname: {}\r\nlat: {}\r\nlng: {}\r\nloc_id: {}\r\nstatus: {}\r\nowner: {}",
                 pubkey,
                 exchange.code,
                 exchange.name,

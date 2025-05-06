@@ -17,7 +17,7 @@ impl ListDeviceArgs {
     pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         let mut table = Table::new();
         table.add_row(row![
-            "pubkey",
+            "account",
             "code",
             "location",
             "exchange",
@@ -161,7 +161,7 @@ mod tests {
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
 
-        assert_eq!(output_str, " pubkey                                    | code         | location       | exchange       | device_type | public_ip | dz_prefixes | status    | owner 
+        assert_eq!(output_str, " account                                   | code         | location       | exchange       | device_type | public_ip | dz_prefixes | status    | owner 
  1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | device1_code | location1_code | exchange1_code | switch      | 1.2.3.4   | 1.2.3.4/32  | activated | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB 
 ")
     }

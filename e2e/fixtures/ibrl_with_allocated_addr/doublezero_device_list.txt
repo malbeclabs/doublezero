@@ -1,4 +1,4 @@
- pubkey                                       | code      | location | exchange | device_type | public_ip      | dz_prefixes                        | status    | owner 
+ account                                      | code      | location | exchange | device_type | public_ip      | dz_prefixes                        | status    | owner 
  Ai18RhhoWwwmLWq6LhUfro9sxLMxfrGuNGc5fuZssh9i | ty2-dz01  | tyo      | xtyo     | switch      | 180.87.154.112 | 180.87.154.112/29                  | activated | Dc3LFdWwKGJvJcVkXhAr14kh1HS6pN7oCWrvHfQtsHGe 
  14LzRsGUMyGYJFHgJkAwPZHKJLnwPK8S1d1v7b3bAkqV | pit-dzd01 | pit      | xpit     | switch      | 204.16.241.243 | 204.16.243.243/32                  | activated | Dc3LFdWwKGJvJcVkXhAr14kh1HS6pN7oCWrvHfQtsHGe 
  3TD6MDfCo2mVeR9a71ukrdXBYVLyWz5cz8RLcNojVpcv | la2-dz01  | lax      | xlax     | switch      | 207.45.216.134 | 207.45.216.136/30, 200.12.12.12/29 | activated | Dc3LFdWwKGJvJcVkXhAr14kh1HS6pN7oCWrvHfQtsHGe 

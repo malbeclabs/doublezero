@@ -17,7 +17,7 @@ impl GetDeviceArgs {
         .execute(client)?;
 
         writeln!(out, 
-            "pubkey: {}\r\ncode: {}\r\nlocation: {}\r\nexchange: {}\r\ndevice_type: {}\r\npublic_ip: {}\r\ndz_prefixes: {}\r\nstatus: {}\r\nowner: {}",
+            "account: {}\r\ncode: {}\r\nlocation: {}\r\nexchange: {}\r\ndevice_type: {}\r\npublic_ip: {}\r\ndz_prefixes: {}\r\nstatus: {}\r\nowner: {}",
             pubkey,
             device.code,
             device.location_pk,

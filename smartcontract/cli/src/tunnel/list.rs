@@ -17,7 +17,7 @@ impl ListTunnelArgs {
     pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         let mut table = Table::new();
         table.add_row(row![
-            "pubkey",
+            "account",
             "code",
             "side_a",
             "side_z",
@@ -36,10 +36,7 @@ impl ListTunnelArgs {
         let tunnels = ListTunnelCommand {}.execute(client)?;
 
         let mut tunnels: Vec<(Pubkey, Tunnel)> = tunnels.into_iter().collect();
-        tunnels.sort_by(|(_, a), (_, b)| {
-            a.owner.cmp(&b.owner)
-                .then(a.tunnel_id.cmp(&b.tunnel_id))
-        });
+        tunnels.sort_by(|(_, a), (_, b)| a.owner.cmp(&b.owner).then(a.tunnel_id.cmp(&b.tunnel_id)));
 
         for (pubkey, data) in tunnels {
             let side_a_name = match &devices.get(&data.side_a_pk) {
@@ -169,6 +166,6 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " pubkey                                    | code        | side_a       | side_z       | tunnel_type | bandwidth | mtu  | delay_ms | jitter_ms | tunnel_id | tunnel_net | status    | owner \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | tunnel_code | device1_code | device2_code | MPLSoGRE    | 1.23Kbps  | 1566 |   0.00ms |    0.00ms | 1234      | 1.2.3.4/32 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
+        assert_eq!(output_str, " account                                   | code        | side_a       | side_z       | tunnel_type | bandwidth | mtu  | delay_ms | jitter_ms | tunnel_id | tunnel_net | status    | owner \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | tunnel_code | device1_code | device2_code | MPLSoGRE    | 1.23Kbps  | 1566 |   0.00ms |    0.00ms | 1234      | 1.2.3.4/32 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
     }
 }

@@ -1,1 +1,1 @@
- pubkey | user_type | device | cyoa_type | client_ip | tunnel_id | tunnel_net | dz_ip | status | owner 
+ account | user_type | device | cyoa_type | client_ip | tunnel_id | tunnel_net | dz_ip | status | owner 

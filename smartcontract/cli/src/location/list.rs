@@ -15,7 +15,7 @@ impl ListLocationArgs {
     pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         let mut table = Table::new();
         table.add_row(row![
-            "pubkey", "code", "name", "country", "lat", "lng", "loc_id", "status", "owner"
+            "account", "code", "name", "country", "lat", "lng", "loc_id", "status", "owner"
         ]);
 
         let locations = ListLocationCommand {}.execute(client)?;
@@ -49,9 +49,9 @@ impl ListLocationArgs {
 mod tests {
     use std::collections::HashMap;
 
-    use crate::tests::tests::create_test_client;
     use crate::location::list::ListLocationArgs;
     use crate::location::list::LocationStatus::Activated;
+    use crate::tests::tests::create_test_client;
     use doublezero_sdk::{AccountType, Device, DeviceStatus, DeviceType, Location};
 
     use doublezero_sla_program::state::accountdata::AccountData;
@@ -134,6 +134,6 @@ mod tests {
         let res = ListLocationArgs { code: None }.execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-         assert_eq!(output_str, " pubkey                                    | code      | name      | country      | lat | lng | loc_id | status    | owner \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | some code | some name | some country | 15  | 15  | 7      | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
+        assert_eq!(output_str, " account                                   | code      | name      | country      | lat | lng | loc_id | status    | owner \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | some code | some name | some country | 15  | 15  | 7      | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
     }
 }

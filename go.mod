@@ -10,6 +10,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1
 	github.com/gagliardetto/solana-go v1.12.0
 	github.com/google/go-cmp v0.7.0
+	github.com/google/gopacket v1.1.19
 	github.com/jwhited/corebgp v0.8.5
 	github.com/mr-tron/base58 v1.2.0
 	github.com/osrg/gobgp v2.0.0+incompatible

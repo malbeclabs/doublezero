@@ -2,42 +2,84 @@ use clap::Args;
 use doublezero_sdk::commands::exchange::list::ListExchangeCommand;
 use doublezero_sdk::*;
 use prettytable::{format, row, Cell, Row, Table};
+use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct ListExchangeArgs {
-    #[arg(long)]
-    pub code: Option<String>,
+    #[arg(long, default_value_t = false)]
+    pub json: bool,
+    #[arg(long, default_value_t = false)]
+    pub json_compact: bool,
+}
+
+#[derive(Serialize)]
+pub struct ExchangeDisplay {
+    #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    pub account: Pubkey,
+    pub code: String,
+    pub name: String,
+    pub lat: f64,
+    pub lng: f64,
+    pub loc_id: u32,
+    pub status: ExchangeStatus,
+    #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    pub owner: Pubkey,
 }
 
 impl ListExchangeArgs {
     pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
-        let mut table = Table::new();
-        table.add_row(row![
-            "account", "code", "name", "lat", "lng", "loc_id", "status", "owner"
-        ]);
-
         let exchanges = ListExchangeCommand {}.execute(client)?;
 
         let mut exchanges: Vec<(Pubkey, Exchange)> = exchanges.into_iter().collect();
         exchanges.sort_by(|(_, a), (_, b)| a.owner.cmp(&b.owner));
 
-        for (pubkey, data) in exchanges {
-            table.add_row(Row::new(vec![
-                Cell::new(&pubkey.to_string()),
-                Cell::new(&data.code),
-                Cell::new(&data.name),
-                Cell::new(&data.lat.to_string()),
-                Cell::new(&data.lng.to_string()),
-                Cell::new(&data.loc_id.to_string()),
-                Cell::new(&data.status.to_string()),
-                Cell::new(&data.owner.to_string()),
-            ]));
-        }
+        if self.json || self.json_compact {
+            let exchanges = exchanges
+                .into_iter()
+                .map(|(pubkey, tunnel)| ExchangeDisplay {
+                    account: pubkey,
+                    code: tunnel.code,
+                    name: tunnel.name,
+                    lat: tunnel.lat,
+                    lng: tunnel.lng,
+                    loc_id: tunnel.loc_id,
+                    status: tunnel.status,
+                    owner: tunnel.owner,
+                })
+                .collect::<Vec<_>>();
 
-        table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
-        let _ = table.print(out);
+            let json = {
+                if self.json_compact {
+                    serde_json::to_string(&exchanges)?
+                } else {
+                    serde_json::to_string_pretty(&exchanges)?
+                }
+            };
+            writeln!(out, "{}", json)?;
+        } else {
+            let mut table = Table::new();
+            table.add_row(row![
+                "account", "code", "name", "lat", "lng", "loc_id", "status", "owner"
+            ]);
+
+            for (pubkey, data) in exchanges {
+                table.add_row(Row::new(vec![
+                    Cell::new(&pubkey.to_string()),
+                    Cell::new(&data.code),
+                    Cell::new(&data.name),
+                    Cell::new(&data.lat.to_string()),
+                    Cell::new(&data.lng.to_string()),
+                    Cell::new(&data.loc_id.to_string()),
+                    Cell::new(&data.status.to_string()),
+                    Cell::new(&data.owner.to_string()),
+                ]));
+            }
+
+            table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
+            let _ = table.print(out);
+        }
 
         Ok(())
     }
@@ -126,9 +168,24 @@ mod tests {
             });
 
         let mut output = Vec::new();
-        let res = ListExchangeArgs { code: None }.execute(&client, &mut output);
+        let res = ListExchangeArgs {
+            json: false,
+            json_compact: false,
+        }
+        .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, " account                                   | code      | name      | lat | lng | loc_id | status    | owner \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | some code | some name | 15  | 15  | 6      | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
+
+        let mut output = Vec::new();
+        let res = ListExchangeArgs {
+            json: false,
+            json_compact: true,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
+
+        let output_str = String::from_utf8(output).unwrap();
+        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"code\":\"some code\",\"name\":\"some name\",\"lat\":15.0,\"lng\":15.0,\"loc_id\":6,\"status\":\"Activated\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
     }
 }

@@ -54,22 +54,21 @@ impl ListDeviceArgs {
             let devices = devices
                 .into_iter()
                 .map(|(pubkey, device)| {
-                    let location_code = match locations.get(&device.location_pk) {
-                        Some(location) => location.code.clone(),
-                        None => device.location_pk.to_string(),
+                    let (location_code, location_name) = match locations.get(&device.location_pk) {
+                        Some(location) => (location.code.clone(), location.name.clone()),
+                        None => (
+                            device.location_pk.to_string(),
+                            device.location_pk.to_string(),
+                        ),
                     };
-                    let location_name = match locations.get(&device.location_pk) {
-                        Some(location) => location.name.clone(),
-                        None => device.location_pk.to_string(),
+                    let (exchange_code, exchange_name) = match exchanges.get(&device.exchange_pk) {
+                        Some(exchange) => (exchange.code.clone(), exchange.name.clone()),
+                        None => (
+                            device.exchange_pk.to_string(),
+                            device.exchange_pk.to_string(),
+                        ),
                     };
-                    let exchange_code = match exchanges.get(&device.exchange_pk) {
-                        Some(exchange) => exchange.code.clone(),
-                        None => device.exchange_pk.to_string(),
-                    };
-                    let exchange_name = match exchanges.get(&device.exchange_pk) {
-                        Some(exchange) => exchange.name.clone(),
-                        None => device.exchange_pk.to_string(),
-                    };
+
                     DeviceDisplay {
                         account: pubkey,
                         code: device.code,

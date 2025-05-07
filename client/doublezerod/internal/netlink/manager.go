@@ -52,6 +52,7 @@ type NetlinkManager struct {
 	DoubleZeroAddr  net.IP
 	bgp             BgpReaderWriter
 	db              DbReaderWriter
+	closing         bool
 }
 
 func NewNetlinkManager(netlink Netlinker, bgp BgpReaderWriter, db DbReaderWriter) *NetlinkManager {
@@ -400,6 +401,9 @@ func (n *NetlinkManager) FlushRoutes() error {
 func (n *NetlinkManager) Close() error {
 	var errFlushRules, errFlushRoutes, errRemoveTunnel, errRemovePeer error
 
+	n.closing = true
+	defer func() { n.closing = false }()
+
 	slog.Info("teardown: flushing rules")
 	if err := n.FlushRules(); err != nil {
 		errFlushRules = fmt.Errorf("error flushing rules: %v", err)
@@ -438,71 +442,59 @@ func (n *NetlinkManager) Serve(ctx context.Context) error {
 		errCh <- err
 	}()
 
-	slog.Info("routes: starting netlink writer thread")
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				slog.Info("exiting netlink writer thread")
-				return
-			// TODO: implement some batching logic for writes via netlink
-			// TODO: pull table number from NLRI
-			case p := <-n.bgp.AddRoute():
-				_, dzNet, err := net.ParseCIDR(fmt.Sprintf("%s/%d", p.Prefix, p.PrefixLength))
-				if err != nil {
-					slog.Error("routes: error parsing nlri from update", "error", err)
-				}
-
-				route := &Route{Src: n.DoubleZeroAddr, Dst: dzNet, Table: p.RouteTable, NextHop: net.ParseIP(p.NextHop), Protocol: unix.RTPROT_BGP}
-				slog.Info("routes: writing route", "table", p.RouteTable, "dz route", route.String())
-				if err := n.WriteRoute(route); err != nil {
-					slog.Error("routes: error writing route", "table", p.RouteTable, "error", err)
-				}
-			// TODO: pull table number from NLRI
-			case p := <-n.bgp.WithdrawRoute():
-				_, dzNet, err := net.ParseCIDR(fmt.Sprintf("%s/%d", p.Prefix, p.PrefixLength))
-				if err != nil {
-					slog.Error("routes: error parsing nlri from update", "error", err)
-				}
-
-				route := &Route{Src: n.DoubleZeroAddr, Dst: dzNet, Table: p.RouteTable, NextHop: net.ParseIP(p.NextHop)}
-				slog.Info("routes: removing route from table", "table", p.RouteTable, "dz route", route.String())
-
-				if err := n.RemoveRoute(route); err != nil {
-					slog.Error("routes: error removing route", "route", route.Dst.String(), "table", RouteTableSpecific, "error", err)
-				}
-			case <-n.bgp.FlushRoutes():
-				if n.db.GetState().UserType != UserTypeIBRL {
-					continue
-				}
-
-				protocol := unix.RTPROT_BGP // 186
-				routes, err := n.netlink.RouteByProtocol(protocol)
-				if err != nil {
-					slog.Error("routes: error getting routes by protocol", "protocol", protocol)
-				}
-				for _, route := range routes {
-					if err := n.netlink.RouteDelete(route); err != nil {
-						slog.Error("Error deleting route", "route", route)
-						continue
-					}
-				}
-
-			}
-		}
-	}()
-
 	// attempt to recover from last provisioned state
 	if err := n.Recover(); err != nil {
 		slog.Error("netlink: error recovering provisioned state", "error", err)
 	}
 
-	select {
-	case <-ctx.Done():
-		slog.Info("teardown: closing server")
-		return nil
-	case err := <-errCh:
-		return fmt.Errorf("netlink: error from manager: %v", err)
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("teardown: closing server")
+			return nil
+		case err := <-errCh:
+			return fmt.Errorf("netlink: error from manager: %v", err)
+		// TODO: implement some batching logic for writes via netlink
+		case p := <-n.bgp.AddRoute():
+			_, dzNet, err := net.ParseCIDR(fmt.Sprintf("%s/%d", p.Prefix, p.PrefixLength))
+			if err != nil {
+				slog.Error("routes: error parsing nlri from update", "error", err)
+			}
+
+			route := &Route{Src: n.DoubleZeroAddr, Dst: dzNet, Table: p.RouteTable, NextHop: net.ParseIP(p.NextHop), Protocol: unix.RTPROT_BGP}
+			slog.Info("routes: writing route", "table", p.RouteTable, "dz route", route.String())
+			if err := n.WriteRoute(route); err != nil {
+				slog.Error("routes: error writing route", "table", p.RouteTable, "error", err)
+			}
+		case p := <-n.bgp.WithdrawRoute():
+			_, dzNet, err := net.ParseCIDR(fmt.Sprintf("%s/%d", p.Prefix, p.PrefixLength))
+			if err != nil {
+				slog.Error("routes: error parsing nlri from update", "error", err)
+			}
+
+			route := &Route{Src: n.DoubleZeroAddr, Dst: dzNet, Table: p.RouteTable, NextHop: net.ParseIP(p.NextHop)}
+			slog.Info("routes: removing route from table", "table", p.RouteTable, "dz route", route.String())
+
+			if err := n.RemoveRoute(route); err != nil {
+				slog.Error("routes: error removing route", "route", route.Dst.String(), "table", RouteTableSpecific, "error", err)
+			}
+		case <-n.bgp.FlushRoutes():
+			if n.db.GetState().UserType != UserTypeIBRL || n.closing || n.UnicastTunnel == nil {
+				continue
+			}
+
+			protocol := unix.RTPROT_BGP // 186
+			routes, err := n.netlink.RouteByProtocol(protocol)
+			if err != nil {
+				slog.Error("routes: error getting routes by protocol", "protocol", protocol)
+			}
+			for _, route := range routes {
+				if err := n.netlink.RouteDelete(route); err != nil {
+					slog.Error("Error deleting route", "route", route)
+					continue
+				}
+			}
+		}
 	}
 }
 

@@ -61,6 +61,16 @@ func TestPIMHelloPacket(t *testing.T) {
 		if diff := cmp.Diff(got, want, cmpopts.IgnoreFields(pim.PIMMessage{}, "BaseLayer")); diff != "" {
 			t.Errorf("PIMMessage mismatch (-got +want):\n%s", diff)
 		}
+
+		buf := gopacket.NewSerializeBuffer()
+		opts := gopacket.SerializeOptions{}
+		err := want.SerializeTo(buf, opts)
+		if err != nil {
+			t.Fatalf("Error serializing packet: %v", err)
+		}
+		if diff := cmp.Diff(buf.Bytes(), got.BaseLayer.Contents); diff != "" {
+			t.Errorf("Serialized packet mismatch (-got +want):\n%s", diff)
+		}
 	}
 	if got, ok := p.Layer(pim.HelloMessageType).(*pim.HelloMessage); ok {
 		want := &pim.HelloMessage{

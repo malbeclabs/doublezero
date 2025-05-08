@@ -13,7 +13,21 @@ import (
 var PIMMessageType = gopacket.RegisterLayerType(1666, gopacket.LayerTypeMetadata{Name: "PIM", Decoder: gopacket.DecodeFunc(decodePim)})
 var HelloMessageType = gopacket.RegisterLayerType(1667, gopacket.LayerTypeMetadata{Name: "PIMHelloMessage", Decoder: gopacket.DecodeFunc(decodePimHelloMessage)})
 
-func (p *PIMMessage) LayerType() gopacket.LayerType   { return PIMMessageType }
+func (p *PIMMessage) LayerType() gopacket.LayerType { return PIMMessageType }
+func (p *PIMMessage) SerializeTo(b gopacket.SerializeBuffer, opts gopacket.SerializeOptions) error {
+	bytes, err := b.PrependBytes(4)
+	if err != nil {
+		return err
+	}
+	var encoded uint32
+	encoded = uint32(p.Header.Version) << 28
+	encoded |= uint32(p.Header.Type) << 24
+	encoded |= uint32(p.Header.Reserved) << 16
+	encoded |= uint32(p.Header.Checksum)
+	binary.BigEndian.PutUint32(bytes, encoded)
+	return nil
+}
+
 func (p *HelloMessage) LayerType() gopacket.LayerType { return HelloMessageType }
 
 // func (p PIMMessage) LayerContents() []byte         { return p.Header }

@@ -3,7 +3,6 @@ package pim
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net"
 
@@ -12,8 +11,10 @@ import (
 )
 
 var PIMMessageType = gopacket.RegisterLayerType(1666, gopacket.LayerTypeMetadata{Name: "PIM", Decoder: gopacket.DecodeFunc(decodePim)})
+var HelloMessageType = gopacket.RegisterLayerType(1667, gopacket.LayerTypeMetadata{Name: "PIMHelloMessage", Decoder: gopacket.DecodeFunc(decodePimHelloMessage)})
 
-func (p PIMMessage) LayerType() gopacket.LayerType { return PIMMessageType }
+func (p *PIMMessage) LayerType() gopacket.LayerType   { return PIMMessageType }
+func (p *HelloMessage) LayerType() gopacket.LayerType { return HelloMessageType }
 
 // func (p PIMMessage) LayerContents() []byte         { return p.Header }
 // func (p PIMMessage) LayerPayload() []byte          { return nil }
@@ -76,8 +77,7 @@ func decodeEncodedUnicastAddr(data []byte) (net.IP, error) {
 }
 
 func decodePimHelloMessage(data []byte, p gopacket.PacketBuilder) error {
-	hello := &PIMMessage{BaseLayer: layers.BaseLayer{Contents: data}}
-	p.AddLayer(hello)
+	hello := &HelloMessage{BaseLayer: layers.BaseLayer{Contents: data}}
 	for len(data) > 0 {
 		if len(data) < 4 {
 			return errors.New("PIM Hello option is too short")
@@ -85,49 +85,22 @@ func decodePimHelloMessage(data []byte, p gopacket.PacketBuilder) error {
 		option := &HelloOption{}
 		option.Type = OptionType(binary.BigEndian.Uint16(data[0:2]))
 		option.Length = binary.BigEndian.Uint16(data[2:4])
+		option.Value = data[4 : 4+option.Length]
 		// TODO: bounds check based on the actual type of the option
-		// if option.Length < 4 {
-		// 	return errors.New("PIM Hello option length is too short")
-		// }
-		// if len(data[4:]) != int(option.Length) {
-		// 	return errors.New("PIM Hello option value is too short")
-		// }
-		fmt.Printf("------type%v--length---%d\n", option.Type, option.Length)
 		switch option.Type {
-
 		case OptionTypeHoldtime:
-
-			option.Value = data[4 : 4+option.Length]
-			// this option length offset seemed to be off
-			fmt.Printf("%[1]v\n", binary.BigEndian.Uint16(option.Value))
-			hello.Hello.Holdtime = binary.BigEndian.Uint16(option.Value)
-			option.Length = option.Length + 4
+			hello.Holdtime = binary.BigEndian.Uint16(option.Value)
 		case OptionTypeLANPruneDelay:
-			fmt.Printf("prune delay\n")
-			option.Value = data[4 : 4+option.Length]
-			hello.Hello.PropDelay = binary.BigEndian.Uint16(option.Value[0:2])
-			hello.Hello.OverrideeInterval = binary.BigEndian.Uint16(option.Value[2:4])
-
-			// for some reason these don't get picked up unless it's the integer
-			// per the pcap it's holdtime, gen id, then state refresh
-		case 19: // dr priority
-			option.Value = data[4 : 4+option.Length]
-			fmt.Printf("DR Priority: %[1]v\n", binary.BigEndian.Uint16(option.Value))
-			hello.Hello.DRPriority = binary.BigEndian.Uint32(option.Value[0:4])
-			option.Length = option.Length + 4
-		case 20: // gen id
-			option.Value = data[4 : 4+option.Length]
-			fmt.Printf("GEN ID: %[1]v\n", binary.BigEndian.Uint16(option.Value))
-			hello.Hello.GenerationID = binary.BigEndian.Uint32(option.Value)
-			option.Length = option.Length + 4
-
-		case 21: // state refresh
-			option.Value = data[4 : 4+option.Length]
-			fmt.Printf("State Refresh: %[1]v\n", binary.BigEndian.Uint16(option.Value))
-			hello.Hello.StateRefreshInterval = option.Value[1]
-			option.Length = option.Length + 6
+			hello.PropDelay = binary.BigEndian.Uint16(option.Value[0:2])
+			hello.OverrideeInterval = binary.BigEndian.Uint16(option.Value[2:4])
+		case OptionTypeDRPriority:
+			hello.DRPriority = binary.BigEndian.Uint32(option.Value[0:4])
+		case OptionTypeGenerationID:
+			hello.GenerationID = binary.BigEndian.Uint32(option.Value)
+		case OptionTypeStateRefresh:
+			hello.StateRefreshInterval = option.Value[1]
 		case OptionTypeAddressList:
-			hello.Hello.SecondaryAddress = make([]net.IP, 0)
+			hello.SecondaryAddress = make([]net.IP, 0)
 			encodedAddrHeaderLen := 2
 			addrLen := 0
 			for i := 0; i < len(data); i += addrLen {
@@ -139,13 +112,13 @@ func decodePimHelloMessage(data []byte, p gopacket.PacketBuilder) error {
 					return errors.New("Invalid address")
 				}
 
-				hello.Hello.SecondaryAddress = append(hello.Hello.SecondaryAddress, addr)
+				hello.SecondaryAddress = append(hello.SecondaryAddress, addr)
 				addrLen = len(addr) + encodedAddrHeaderLen
 			}
 		}
-		data = data[option.Length:]
+		data = data[4+option.Length:]
 	}
-
+	p.AddLayer(hello)
 	return nil
 }
 
@@ -212,6 +185,7 @@ type PIMMessage struct {
 */
 
 type HelloMessage struct {
+	layers.BaseLayer
 	Holdtime             uint16
 	PropDelay            uint16
 	OverrideeInterval    uint16
@@ -230,12 +204,12 @@ type HelloOption struct {
 type OptionType uint16
 
 const (
-	OptionTypeHoldtime      = 0x0001
-	OptionTypeLANPruneDelay = 0x0002
-	OptionTypeDRPriority    = 0x0019
-	OptionTypeGenerationID  = 0x0020
-	OptionTypeStateRefresh  = 0x0021
-	OptionTypeAddressList   = 0x0024
+	OptionTypeHoldtime      = 1
+	OptionTypeLANPruneDelay = 2
+	OptionTypeDRPriority    = 19
+	OptionTypeGenerationID  = 20
+	OptionTypeStateRefresh  = 21
+	OptionTypeAddressList   = 24
 )
 
 type Holdtime struct {

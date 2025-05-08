@@ -57,12 +57,20 @@ func TestPIMHelloPacket(t *testing.T) {
 				Type:     pim.Hello,
 				Checksum: 0x41fe,
 			},
-			Hello: pim.HelloMessage{
-				Holdtime: 0, // should be 105 but it's not being set
-			},
 		}
 		if diff := cmp.Diff(got, want, cmpopts.IgnoreFields(pim.PIMMessage{}, "BaseLayer")); diff != "" {
 			t.Errorf("PIMMessage mismatch (-got +want):\n%s", diff)
+		}
+	}
+	if got, ok := p.Layer(pim.HelloMessageType).(*pim.HelloMessage); ok {
+		want := &pim.HelloMessage{
+			Holdtime:             105,
+			DRPriority:           1,
+			GenerationID:         3614426332,
+			StateRefreshInterval: 0,
+		}
+		if diff := cmp.Diff(got, want, cmpopts.IgnoreFields(pim.HelloMessage{}, "BaseLayer")); diff != "" {
+			t.Errorf("HelloMessage mismatch (-got +want):\n%s", diff)
 		}
 	}
 }

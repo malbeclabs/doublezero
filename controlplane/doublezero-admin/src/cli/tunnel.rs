@@ -8,16 +8,16 @@ use doublezero_cli::tunnel::list::*;
 use doublezero_cli::tunnel::update::*;
 
 #[derive(Args, Debug)]
-pub struct TunnelArgs {
+pub struct TunnelCliCommand {
     #[command(subcommand)]
     pub command: TunnelCommands,
 }
 
 #[derive(Debug, Subcommand)]
 pub enum TunnelCommands {
-    Create(CreateTunnelArgs),
-    Update(UpdateTunnelArgs),
-    List(ListTunnelArgs),
-    Get(GetTunnelArgs),
-    Delete(DeleteTunnelArgs),
+    Create(CreateTunnelCliCommand),
+    Update(UpdateTunnelCliCommand),
+    List(ListTunnelCliCommand),
+    Get(GetTunnelCliCommand),
+    Delete(DeleteTunnelCliCommand),
 }

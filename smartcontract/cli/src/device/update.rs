@@ -6,7 +6,7 @@ use doublezero_sdk::*;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct UpdateDeviceArgs {
+pub struct UpdateDeviceCliCommand {
     #[arg(long)]
     pub pubkey: String,
     #[arg(long)]
@@ -17,7 +17,7 @@ pub struct UpdateDeviceArgs {
     pub dz_prefixes: Option<String>,
 }
 
-impl UpdateDeviceArgs {
+impl UpdateDeviceCliCommand {
     pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;

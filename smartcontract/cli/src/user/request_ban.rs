@@ -11,12 +11,12 @@ use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct RequestBanUserArgs {
+pub struct RequestBanUserCliCommand {
     #[arg(long)]
     pub pubkey: String,
 }
 
-impl RequestBanUserArgs {
+impl RequestBanUserCliCommand {
     pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         check_requirements(

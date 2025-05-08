@@ -4,9 +4,9 @@ use doublezero_sdk::*;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct ListUserAllowlistArgs {}
+pub struct ListUserAllowlistCliCommand {}
 
-impl ListUserAllowlistArgs {
+impl ListUserAllowlistCliCommand {
     pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         let list = ListUserAllowlistCommand {}.execute(client)?;
 

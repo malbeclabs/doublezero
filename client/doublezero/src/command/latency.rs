@@ -9,9 +9,9 @@ use crate::requirements::check_doublezero;
 use crate::servicecontroller::ServiceController;
 
 #[derive(Args, Debug)]
-pub struct LatencyArgs {}
+pub struct LatencyCliCommand {}
 
-impl LatencyArgs {
+impl LatencyCliCommand {
     pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
         check_doublezero(None)?;
 

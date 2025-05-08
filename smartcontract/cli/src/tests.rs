@@ -1,41 +1,37 @@
 #[cfg(test)]
 pub mod tests {
+    use doublezero_sdk::MockDoubleZeroClient;
     use doublezero_sla_program::{
         pda::get_globalstate_pda,
         state::{accountdata::AccountData, accounttype::AccountType, globalstate::GlobalState},
     };
     use mockall::predicate;
-    use solana_sdk::{pubkey::Pubkey, signature::Signature};
-
-    use doublezero_sdk::MockDoubleZeroClient;
+    use solana_sdk::pubkey::Pubkey;
 
     pub fn create_test_client() -> MockDoubleZeroClient {
         let mut client = MockDoubleZeroClient::new();
-
         // Payer
         let payer = Pubkey::new_unique();
         client.expect_get_payer().returning(move || payer);
         // Program ID
         let program_id = Pubkey::new_unique();
         client.expect_get_program_id().returning(move || program_id);
-
+        // Get Balance
+        client.expect_get_balance().returning(|| Ok(10));
         // Global State
         let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
         let globalstate = GlobalState {
             account_type: AccountType::GlobalState,
             account_index: 0,
             bump_seed: 0,
-            foundation_allowlist: vec![],
-            device_allowlist: vec![],
-            user_allowlist: vec![],
+            foundation_allowlist: vec![payer],
+            device_allowlist: vec![payer],
+            user_allowlist: vec![payer],
         };
         client
             .expect_get()
             .with(predicate::eq(globalstate_pubkey))
             .returning(move |_| Ok(AccountData::GlobalState(globalstate.clone())));
-        client
-            .expect_execute_transaction()
-            .returning(|_, _| Ok(Signature::new_unique()));
         client
     }
 }

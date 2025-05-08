@@ -100,7 +100,7 @@ pub fn check_allowlist(
         if let Some(spinner) = spinner {
             spinner.println("You are not in the allowlist");
         } else {
-            eprintln!("{}: You are not in the allowlist", "Error");
+            eprintln!("Error: You are not in the allowlist");
         }
         return Err(eyre::eyre!(
             "Please contact the DoubleZero Foundation to add you to the allowlist."

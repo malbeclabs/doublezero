@@ -9,7 +9,7 @@ use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct ListDeviceArgs {
+pub struct ListDeviceCliCommand {
     #[arg(long, default_value_t = false)]
     pub json: bool,
     #[arg(long, default_value_t = false)]
@@ -40,7 +40,7 @@ pub struct DeviceDisplay {
     pub owner: Pubkey,
 }
 
-impl ListDeviceArgs {
+impl ListDeviceCliCommand {
     pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         let locations = ListLocationCommand {}.execute(client)?;
         let exchanges = ListExchangeCommand {}.execute(client)?;
@@ -144,7 +144,7 @@ impl ListDeviceArgs {
 mod tests {
     use std::collections::HashMap;
 
-    use crate::device::list::ListDeviceArgs;
+    use crate::device::list::ListDeviceCliCommand;
     use crate::tests::tests::create_test_client;
     use doublezero_sdk::{
         AccountType, Device, DeviceStatus, DeviceType, Exchange, ExchangeStatus, Location,
@@ -231,7 +231,7 @@ mod tests {
             });
 
         let mut output = Vec::new();
-        let res = ListDeviceArgs {
+        let res = ListDeviceCliCommand {
             json: false,
             json_compact: false,
         }
@@ -241,7 +241,7 @@ mod tests {
         assert_eq!(output_str, " account                                   | code         | location       | exchange       | device_type | public_ip | dz_prefixes | status    | owner \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | device1_code | location1_code | exchange1_code | switch      | 1.2.3.4   | 1.2.3.4/32  | activated | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
 
         let mut output = Vec::new();
-        let res = ListDeviceArgs {
+        let res = ListDeviceCliCommand {
             json: false,
             json_compact: true,
         }

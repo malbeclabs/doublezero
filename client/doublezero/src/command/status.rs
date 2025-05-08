@@ -10,9 +10,9 @@ use doublezero_cli::helpers::init_command;
 use crate::servicecontroller::ServiceController;
 
 #[derive(Args, Debug)]
-pub struct StatusArgs {}
+pub struct StatusCliCommand {}
 
-impl StatusArgs {
+impl StatusCliCommand {
     pub async fn execute(self, _client: &DZClient) -> eyre::Result<()> {
         let spinner = init_command();
         let controller = ServiceController::new(None);

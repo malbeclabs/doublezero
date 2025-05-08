@@ -25,6 +25,7 @@ use doublezero_cli::{
 use crate::requirements::check_doublezero;
 use doublezero_cli::helpers::init_command;
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Debug, ValueEnum)]
 pub enum DzMode {
     IBRL,
@@ -33,7 +34,7 @@ pub enum DzMode {
 }
 
 #[derive(Args, Debug)]
-pub struct ProvisioningArgs {
+pub struct ProvisioningCliCommand {
     #[arg(value_enum)]
     pub dz_mode: DzMode,
     #[arg(long)]
@@ -46,7 +47,7 @@ pub struct ProvisioningArgs {
     pub verbose: bool,
 }
 
-impl ProvisioningArgs {
+impl ProvisioningCliCommand {
     pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
         let spinner = init_command();
         let controller = ServiceController::new(None);

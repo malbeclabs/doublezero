@@ -4,9 +4,9 @@ use doublezero_sdk::*;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct GetGlobalConfigArgs {}
+pub struct GetGlobalConfigCliCommand {}
 
-impl GetGlobalConfigArgs {
+impl GetGlobalConfigCliCommand {
     pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         let (_, config) = GetGlobalConfigCommand {}.execute(client)?;
 

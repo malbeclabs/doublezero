@@ -6,12 +6,12 @@ use std::io::Write;
 use std::str::FromStr;
 
 #[derive(Args, Debug)]
-pub struct GetUserArgs {
+pub struct GetUserCliCommand {
     #[arg(long)]
     pub pubkey: String,
 }
 
-impl GetUserArgs {
+impl GetUserCliCommand {
     pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         let pubkey = Pubkey::from_str(&self.pubkey)?;
         let (pubkey, user) = GetUserCommand { pubkey }.execute(client)?;

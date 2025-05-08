@@ -4,12 +4,12 @@ use doublezero_sdk::*;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct GetDeviceArgs {
+pub struct GetDeviceCliCommand {
     #[arg(long)]
     pub code: String,
 }
 
-impl GetDeviceArgs {
+impl GetDeviceCliCommand {
     pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         let (pubkey, device) = GetDeviceCommand {
             pubkey_or_code: self.code,

@@ -49,7 +49,7 @@ impl fmt::Display for LatencyRecord {
 }
 
 #[derive(Serialize, Debug)]
-pub struct RemoveTunnelArgs {}
+pub struct RemoveTunnelCliCommand {}
 
 #[derive(Deserialize, Debug)]
 pub struct RemoveResponse {
@@ -141,7 +141,7 @@ impl ServiceController {
         }
     }
 
-    pub async fn remove(&self, args: RemoveTunnelArgs) -> eyre::Result<RemoveResponse> {
+    pub async fn remove(&self, args: RemoveTunnelCliCommand) -> eyre::Result<RemoveResponse> {
         let client: Client<UnixConnector, Body> = Client::builder().build(UnixConnector);
 
         let req = Request::builder()

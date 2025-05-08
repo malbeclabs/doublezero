@@ -53,7 +53,7 @@ mod tests {
         processors::location::create::LocationCreateArgs,
     };
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, signature::Signature, system_program};
+    use solana_sdk::{instruction::AccountMeta, signature::Signature};
 
     #[test]
     fn test_commands_location_create_command() {
@@ -61,7 +61,6 @@ mod tests {
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
         let (pda_pubkey, bump_seed) = get_location_pda(&client.get_program_id(), 1);
-        let payer = client.get_payer();
 
         client
             .expect_execute_transaction()
@@ -79,8 +78,6 @@ mod tests {
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),
-                    AccountMeta::new(payer, true),
-                    AccountMeta::new(system_program::id(), false),
                 ]),
             )
             .returning(|_, _| Ok(Signature::new_unique()));

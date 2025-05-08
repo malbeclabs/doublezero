@@ -10,7 +10,7 @@ use std::fs;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct ExportArgs {
+pub struct ExportCliCommand {
     #[arg(long)]
     pub path: String,
 }
@@ -89,7 +89,7 @@ struct UserData {
     pub owner: String,
 }
 
-impl ExportArgs {
+impl ExportCliCommand {
     pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         let locations = ListLocationCommand {}.execute(client)?;
         let exchanges = ListExchangeCommand {}.execute(client)?;

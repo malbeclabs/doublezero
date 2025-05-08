@@ -1,66 +1,66 @@
 use clap::Subcommand;
 
-use doublezero_cli::init::InitArgs;
+use doublezero_cli::init::InitCliCommand;
 
-use doublezero_cli::account::GetAccountArgs;
-use doublezero_cli::address::AddressArgs;
-use doublezero_cli::balance::BalanceArgs;
-use doublezero_cli::export::ExportArgs;
-use doublezero_cli::keygen::KeyGenArgs;
-use doublezero_cli::log::LogArgs;
+use doublezero_cli::account::GetAccountCliCommand;
+use doublezero_cli::address::AddressCliCommand;
+use doublezero_cli::balance::BalanceCliCommand;
+use doublezero_cli::export::ExportCliCommand;
+use doublezero_cli::keygen::KeyGenCliCommand;
+use doublezero_cli::log::LogCliCommand;
 
-use crate::cli::config::ConfigArgs;
-use crate::cli::device::DeviceArgs;
-use crate::cli::exchange::ExchangeArgs;
-use crate::cli::globalconfig::GlobalConfigArgs;
-use crate::cli::location::LocationArgs;
-use crate::cli::tunnel::TunnelArgs;
-use crate::cli::user::UserArgs;
+use crate::cli::config::ConfigCliCommand;
+use crate::cli::device::DeviceCliCommand;
+use crate::cli::exchange::ExchangeCliCommand;
+use crate::cli::globalconfig::GlobalConfigCliCommand;
+use crate::cli::location::LocationCliCommand;
+use crate::cli::tunnel::TunnelCliCommand;
+use crate::cli::user::UserCliCommand;
 
-use crate::command::connect::ProvisioningArgs;
-use crate::command::disconnect::DecommissioningArgs;
-use crate::command::latency::LatencyArgs;
-use crate::command::status::StatusArgs;
+use crate::command::connect::ProvisioningCliCommand;
+use crate::command::disconnect::DecommissioningCliCommand;
+use crate::command::latency::LatencyCliCommand;
+use crate::command::status::StatusCliCommand;
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
     #[command(about = "", hide = true)]
-    Init(InitArgs),
+    Init(InitCliCommand),
     #[command(about = "Connect your server to a doublezero device", hide = false)]
-    Connect(ProvisioningArgs),
+    Connect(ProvisioningCliCommand),
     #[command(about = "Get the status of your service", hide = false)]
-    Status(StatusArgs),
+    Status(StatusCliCommand),
     #[command(
         about = "Disconnect your server from the doublezero network",
         hide = false
     )]
-    Disconnect(DecommissioningArgs),
+    Disconnect(DecommissioningCliCommand),
     #[command(about = "Get device latencies", hide = false)]
-    Latency(LatencyArgs),
+    Latency(LatencyCliCommand),
     #[command(about = "Get your public key", hide = false)]
-    Address(AddressArgs),
+    Address(AddressCliCommand),
     #[command(about = "Get your balance", hide = false)]
-    Balance(BalanceArgs),
+    Balance(BalanceCliCommand),
     #[command(about = "local configuration", hide = false)]
-    Config(ConfigArgs),
+    Config(ConfigCliCommand),
     #[command(about = "Global network configuration", hide = false)]
-    GlobalConfig(GlobalConfigArgs),
+    GlobalConfig(GlobalConfigCliCommand),
     #[command(about = "Get Account", hide = false)]
-    Account(GetAccountArgs),
+    Account(GetAccountCliCommand),
     #[command(about = "Manage locations", hide = false)]
-    Location(LocationArgs),
+    Location(LocationCliCommand),
     #[command(about = "Manage exchanges", hide = false)]
-    Exchange(ExchangeArgs),
+    Exchange(ExchangeCliCommand),
     #[command(about = "Manage devices", hide = false)]
-    Device(DeviceArgs),
+    Device(DeviceCliCommand),
     #[command(about = "Manage tunnels between devices", hide = false)]
-    Tunnel(TunnelArgs),
+    Tunnel(TunnelCliCommand),
     #[command(about = "Manage users", hide = false)]
-    User(UserArgs),
+    User(UserCliCommand),
     #[command(about = "Export all data to files", hide = false)]
-    Export(ExportArgs),
+    Export(ExportCliCommand),
     #[command(about = "Create a new user identity", hide = false)]
-    Keygen(KeyGenArgs),
+    Keygen(KeyGenCliCommand),
     #[command(about = "Get logs", hide = false)]
-    Log(LogArgs),
+    Log(LogCliCommand),
 }

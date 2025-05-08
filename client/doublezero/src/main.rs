@@ -128,7 +128,7 @@ async fn main() -> eyre::Result<()> {
     match res {
         Ok(_) => {}
         Err(e) => {
-            eprintln!("{}: {}", "Error", e);
+            eprintln!("Error: {}", e);
             std::process::exit(1);
         }
     };

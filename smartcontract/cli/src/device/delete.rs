@@ -6,12 +6,12 @@ use doublezero_sdk::*;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct DeleteDeviceArgs {
+pub struct DeleteDeviceCliCommand {
     #[arg(long)]
     pub pubkey: String,
 }
 
-impl DeleteDeviceArgs {
+impl DeleteDeviceCliCommand {
     pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;

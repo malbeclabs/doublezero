@@ -8,7 +8,7 @@ use std::io::Write;
 use std::str::FromStr;
 
 #[derive(Args, Debug)]
-pub struct UpdateUserArgs {
+pub struct UpdateUserCliCommand {
     #[arg(long)]
     pub pubkey: String,
     #[arg(long)]
@@ -21,7 +21,7 @@ pub struct UpdateUserArgs {
     pub tunnel_net: Option<String>,
 }
 
-impl UpdateUserArgs {
+impl UpdateUserCliCommand {
     pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;

@@ -8,16 +8,16 @@ use doublezero_cli::location::list::*;
 use doublezero_cli::location::update::*;
 
 #[derive(Args, Debug)]
-pub struct LocationArgs {
+pub struct LocationCliCommand {
     #[command(subcommand)]
     pub command: LocationCommands,
 }
 
 #[derive(Debug, Subcommand)]
 pub enum LocationCommands {
-    Create(CreateLocationArgs),
-    Update(UpdateLocationArgs),
-    List(ListLocationArgs),
-    Get(GetLocationArgs),
-    Delete(DeleteLocationArgs),
+    Create(CreateLocationCliCommand),
+    Update(UpdateLocationCliCommand),
+    List(ListLocationCliCommand),
+    Get(GetLocationCliCommand),
+    Delete(DeleteLocationCliCommand),
 }

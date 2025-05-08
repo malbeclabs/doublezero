@@ -4,14 +4,14 @@ use doublezero_sdk::*;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct GetAccountArgs {
+pub struct GetAccountCliCommand {
     #[arg(long)]
     pub pubkey: String,
     #[arg(long, action = clap::ArgAction::SetTrue)]
     pub logs: bool,
 }
 
-impl GetAccountArgs {
+impl GetAccountCliCommand {
     pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         let pubkey = parse_pubkey(&self.pubkey).expect("Invalid pubkey");
@@ -19,7 +19,7 @@ impl GetAccountArgs {
         match client.get(pubkey) {
             Ok(account) => {
                 writeln!(out, "{} ({})", account.get_name(), account.get_args())?;
-                writeln!(out, "")?;
+                writeln!(out)?;
 
                 match client.get_transactions(pubkey) {
                     Ok(trans) => {
@@ -39,7 +39,7 @@ impl GetAccountArgs {
                                 for msg in tran.log_messages {
                                     writeln!(out, "  - {}", msg)?;
                                 }
-                                writeln!(out, "")?;
+                                writeln!(out)?;
                             }
                         }
                     }

@@ -8,12 +8,12 @@ use std::str::FromStr;
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 
 #[derive(Args, Debug)]
-pub struct RemoveUserAllowlistArgs {
+pub struct RemoveUserAllowlistCliCommand {
     #[arg(long)]
     pub pubkey: String,
 }
 
-impl RemoveUserAllowlistArgs {
+impl RemoveUserAllowlistCliCommand {
     pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;

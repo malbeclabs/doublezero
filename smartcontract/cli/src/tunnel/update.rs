@@ -6,7 +6,7 @@ use doublezero_sdk::*;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct UpdateTunnelArgs {
+pub struct UpdateTunnelCliCommand {
     #[arg(long)]
     pub pubkey: String,
     #[arg(long)]
@@ -23,7 +23,7 @@ pub struct UpdateTunnelArgs {
     pub jitter_ms: Option<f64>,
 }
 
-impl UpdateTunnelArgs {
+impl UpdateTunnelCliCommand {
     pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;

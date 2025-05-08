@@ -10,7 +10,7 @@ use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct ListUserArgs {
+pub struct ListUserCliCommand {
     #[arg(long, default_value_t = false)]
     pub json: bool,
     #[arg(long, default_value_t = false)]
@@ -40,7 +40,7 @@ pub struct UserDisplay {
     pub owner: Pubkey,
 }
 
-impl ListUserArgs {
+impl ListUserCliCommand {
     pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         let devices = ListDeviceCommand {}.execute(client)?;
         let locations = ListLocationCommand {}.execute(client)?;
@@ -169,7 +169,7 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::tests::tests::create_test_client;
-    use crate::user::list::ListUserArgs;
+    use crate::user::list::ListUserCliCommand;
     use crate::user::list::UserCYOA::GREOverDIA;
     use crate::user::list::UserStatus::Activated;
     use crate::user::list::UserType::IBRL;
@@ -327,7 +327,7 @@ mod tests {
             });
 
         let mut output = Vec::new();
-        let res = ListUserArgs {
+        let res = ListUserCliCommand {
             json: false,
             json_compact: false,
         }
@@ -338,7 +338,7 @@ mod tests {
         assert_eq!(output_str, " account                                   | user_type | device                                    | location | cyoa_type  | client_ip | tunnel_id | tunnel_net | dz_ip   | status    | owner \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | IBRL      | 11111116EPqoQskEM2Pddp8KTL9JdYEBZMGF3aq7V |          | GREOverDIA | 1.2.3.4   | 500       | 1.2.3.5/32 | 2.3.4.5 | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
 
         let mut output = Vec::new();
-        let res = ListUserArgs {
+        let res = ListUserCliCommand {
             json: false,
             json_compact: true,
         }

@@ -4,12 +4,12 @@ use doublezero_sdk::*;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct GetTunnelArgs {
+pub struct GetTunnelCliCommand {
     #[arg(long)]
     pub code: String,
 }
 
-impl GetTunnelArgs {
+impl GetTunnelCliCommand {
     pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         let (pubkey, tunnel) = GetTunnelCommand {
             pubkey_or_code: self.code,

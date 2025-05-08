@@ -135,7 +135,7 @@ impl DZClient {
             }
 
             let signature = self.execute_transaction(
-                DoubleZeroInstruction::CloseAccount(CloseAccountArgs { pubkey: pubkey }),
+                DoubleZeroInstruction::CloseAccount(CloseAccountArgs { pubkey }),
                 vec![AccountMeta::new(pubkey, false)],
             )?;
 

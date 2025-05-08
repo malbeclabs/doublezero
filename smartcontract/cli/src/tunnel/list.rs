@@ -9,7 +9,7 @@ use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 
 #[derive(Args, Debug)]
-pub struct ListTunnelArgs {
+pub struct ListTunnelCliCommand {
     #[arg(long, default_value_t = false)]
     pub json: bool,
     #[arg(long, default_value_t = false)]
@@ -40,7 +40,7 @@ pub struct TunnelDisplay {
     pub owner: Pubkey,
 }
 
-impl ListTunnelArgs {
+impl ListTunnelCliCommand {
     pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         let devices = ListDeviceCommand {}.execute(client)?;
         let tunnels = ListTunnelCommand {}.execute(client)?;
@@ -146,7 +146,7 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::tests::tests::create_test_client;
-    use crate::tunnel::list::ListTunnelArgs;
+    use crate::tunnel::list::ListTunnelCliCommand;
     use doublezero_sdk::{
         Device, DeviceStatus, DeviceType, Tunnel, TunnelStatus, TunnelTunnelType,
     };
@@ -231,7 +231,7 @@ mod tests {
             });
 
         let mut output = Vec::new();
-        let res = ListTunnelArgs {
+        let res = ListTunnelCliCommand {
             json: false,
             json_compact: false,
         }
@@ -242,7 +242,7 @@ mod tests {
         assert_eq!(output_str, " account                                   | code        | side_a       | side_z       | tunnel_type | bandwidth | mtu  | delay_ms | jitter_ms | tunnel_id | tunnel_net | status    | owner \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | tunnel_code | device2_code | device2_code | MPLSoGRE    | 1.23Kbps  | 1566 |   0.00ms |    0.00ms | 1234      | 1.2.3.4/32 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
 
         let mut output = Vec::new();
-        let res = ListTunnelArgs {
+        let res = ListTunnelCliCommand {
             json: false,
             json_compact: true,
         }

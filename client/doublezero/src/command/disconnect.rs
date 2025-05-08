@@ -8,13 +8,13 @@ use doublezero_cli::{
     requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON, CHECK_USER_ALLOWLIST},
 };
 
-use crate::servicecontroller::{RemoveTunnelArgs, ServiceController};
+use crate::servicecontroller::{RemoveTunnelCliCommand, ServiceController};
 
 use doublezero_sdk::commands::user::delete::DeleteUserCommand;
 use doublezero_sdk::commands::user::list::ListUserCommand;
 
 #[derive(Args, Debug)]
-pub struct DecommissioningArgs {
+pub struct DecommissioningCliCommand {
     #[arg(long)]
     pub device: Option<String>,
     #[arg(long)]
@@ -23,7 +23,7 @@ pub struct DecommissioningArgs {
     verbose: bool,
 }
 
-impl DecommissioningArgs {
+impl DecommissioningCliCommand {
     pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
         let spinner = init_command();
         // Check that have your id.json
@@ -48,7 +48,7 @@ impl DecommissioningArgs {
                     }
                     Err(e) => {
                         spinner.finish_with_message("Error getting public ip");
-                        eprintln!("\n{}: {:?}\n", "Error", e);
+                        eprintln!("\nError: {:?}\n",  e);
 
                         return Ok(());
                     }
@@ -82,7 +82,7 @@ impl DecommissioningArgs {
 
         println!("🔍  Deprovisioning User");
 
-        let _ = controller.remove(RemoveTunnelArgs {}).await;
+        let _ = controller.remove(RemoveTunnelCliCommand {}).await;
 
         Ok(())
     }

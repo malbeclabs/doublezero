@@ -12,7 +12,7 @@ use std::io::Write;
         .required(true)
         .multiple(true)
 ))]
-pub struct SetConfigArgs {
+pub struct SetConfigCliCommand {
     #[arg(
         long,
         help = "URL of the JSON RPC endpoint (devnet, testnet, mainnet, localhost)"
@@ -29,7 +29,7 @@ pub struct SetConfigArgs {
     program_id: Option<String>,
 }
 
-impl SetConfigArgs {
+impl SetConfigCliCommand {
     pub fn execute<W: Write>(
         self,
         _client: &dyn DoubleZeroClient,

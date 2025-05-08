@@ -3,9 +3,9 @@ use doublezero_sdk::{convert_url_to_ws, read_doublezero_config, DoubleZeroClient
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct GetConfigArgs {}
+pub struct GetConfigCliCommand {}
 
-impl GetConfigArgs {
+impl GetConfigCliCommand {
     pub fn execute<W: Write>(
         self,
         _client: &dyn DoubleZeroClient,

@@ -7,7 +7,7 @@ use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct ListExchangeArgs {
+pub struct ListExchangeCliCommand {
     #[arg(long, default_value_t = false)]
     pub json: bool,
     #[arg(long, default_value_t = false)]
@@ -28,7 +28,7 @@ pub struct ExchangeDisplay {
     pub owner: Pubkey,
 }
 
-impl ListExchangeArgs {
+impl ListExchangeCliCommand {
     pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
         let exchanges = ListExchangeCommand {}.execute(client)?;
 
@@ -90,7 +90,7 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::exchange::list::ExchangeStatus::Activated;
-    use crate::{exchange::list::ListExchangeArgs, tests::tests::create_test_client};
+    use crate::{exchange::list::ListExchangeCliCommand, tests::tests::create_test_client};
     use doublezero_sdk::{AccountType, Device, DeviceStatus, DeviceType, Exchange};
     use doublezero_sla_program::state::accountdata::AccountData;
     use mockall::predicate;
@@ -168,7 +168,7 @@ mod tests {
             });
 
         let mut output = Vec::new();
-        let res = ListExchangeArgs {
+        let res = ListExchangeCliCommand {
             json: false,
             json_compact: false,
         }
@@ -178,7 +178,7 @@ mod tests {
         assert_eq!(output_str, " account                                   | code      | name      | lat | lng | loc_id | status    | owner \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | some code | some name | 15  | 15  | 6      | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
 
         let mut output = Vec::new();
-        let res = ListExchangeArgs {
+        let res = ListExchangeCliCommand {
             json: false,
             json_compact: true,
         }

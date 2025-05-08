@@ -74,14 +74,35 @@ func TestPIMHelloPacket(t *testing.T) {
 	}
 	if got, ok := p.Layer(pim.HelloMessageType).(*pim.HelloMessage); ok {
 		want := &pim.HelloMessage{
-			Holdtime:             105,
-			DRPriority:           1,
-			GenerationID:         3614426332,
-			StateRefreshInterval: 0,
+			Holdtime:     105,
+			DRPriority:   1,
+			GenerationID: 3614426332,
 		}
 		if diff := cmp.Diff(got, want, cmpopts.IgnoreFields(pim.HelloMessage{}, "BaseLayer")); diff != "" {
 			t.Errorf("HelloMessage mismatch (-got +want):\n%s", diff)
 		}
+	}
+
+	got := &pim.HelloMessage{
+		Holdtime:     30,
+		DRPriority:   1,
+		GenerationID: 3614426332,
+	}
+
+	var h = []byte{
+		0x00, 0x01, 0x00, 0x02, 0x00, 0x1e, // holdtime 30
+		0x00, 0x14, 0x00, 0x04, 0xd7, 0x6f, 0xc4, 0xdc, // generation id 3614426332
+		0x00, 0x13, 0x00, 0x04, 0x00, 0x00, 0x00, 0x01, // DR Priority 1
+	}
+	buf := gopacket.NewSerializeBuffer()
+	opts := gopacket.SerializeOptions{}
+	err := got.SerializeTo(buf, opts)
+	if err != nil {
+		t.Fatalf("Error serializing packet: %v", err)
+	}
+
+	if diff := cmp.Diff(buf.Bytes(), h); diff != "" {
+		t.Errorf("Serialized packet mismatch (-got +want):\n%s", diff)
 	}
 }
 

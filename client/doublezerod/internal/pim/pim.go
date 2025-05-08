@@ -30,8 +30,29 @@ func (p *PIMMessage) SerializeTo(b gopacket.SerializeBuffer, opts gopacket.Seria
 
 func (p *HelloMessage) LayerType() gopacket.LayerType { return HelloMessageType }
 
-// func (p PIMMessage) LayerContents() []byte         { return p.Header }
-// func (p PIMMessage) LayerPayload() []byte          { return nil }
+func (p *HelloMessage) SerializeTo(b gopacket.SerializeBuffer, opts gopacket.SerializeOptions) error {
+	holdtime := NewHoldtime(p.Holdtime)
+	bytes, err := b.PrependBytes(len(holdtime.Bytes()))
+	if err != nil {
+		return err
+	}
+	copy(bytes, holdtime.Bytes())
+
+	genId := NewGenerationID(p.GenerationID)
+	bytes, err = b.AppendBytes(len(genId.Bytes()))
+	if err != nil {
+		return err
+	}
+	copy(bytes, genId.Bytes())
+
+	drPriority := NewDRPriority(p.DRPriority)
+	bytes, err = b.AppendBytes(len(drPriority.Bytes()))
+	if err != nil {
+		return err
+	}
+	copy(bytes, drPriority.Bytes())
+	return nil
+}
 
 // Message Type                          Destination
 // ---------------------------------------------------------------------
@@ -87,7 +108,6 @@ func decodeEncodedUnicastAddr(data []byte) (net.IP, error) {
 	default:
 		return nil, errors.New("Unsupported address family")
 	}
-
 }
 
 func decodePimHelloMessage(data []byte, p gopacket.PacketBuilder) error {
@@ -96,7 +116,7 @@ func decodePimHelloMessage(data []byte, p gopacket.PacketBuilder) error {
 		if len(data) < 4 {
 			return errors.New("PIM Hello option is too short")
 		}
-		option := &HelloOption{}
+		option := HelloOption{}
 		option.Type = OptionType(binary.BigEndian.Uint16(data[0:2]))
 		option.Length = binary.BigEndian.Uint16(data[2:4])
 		option.Value = data[4 : 4+option.Length]
@@ -173,7 +193,6 @@ type PIMHeader struct {
 type PIMMessage struct {
 	layers.BaseLayer
 	Header PIMHeader
-	Hello  HelloMessage
 }
 
 /* PIM Hello Message
@@ -207,6 +226,7 @@ type HelloMessage struct {
 	GenerationID         uint32
 	SecondaryAddress     []net.IP
 	StateRefreshInterval uint8
+	Options              []HelloOption
 }
 
 type HelloOption struct {
@@ -226,31 +246,141 @@ const (
 	OptionTypeAddressList   = 24
 )
 
+//	0                   1                   2                   3
+//	0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+//
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |          Type = 1             |         Length = 2            |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |          Holdtime             |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 type Holdtime struct {
 	Type     uint16
 	Length   uint16
-	Holdtime uint8
+	Holdtime uint16
 }
 
+func NewHoldtime(holdtime uint16) Holdtime {
+	return Holdtime{
+		Type:     OptionTypeHoldtime,
+		Length:   2,
+		Holdtime: holdtime,
+	}
+}
+
+func (h Holdtime) Bytes() []byte {
+	bytes := make([]byte, 6)
+	binary.BigEndian.PutUint16(bytes[0:2], h.Type)
+	binary.BigEndian.PutUint16(bytes[2:4], h.Length)
+	binary.BigEndian.PutUint16(bytes[4:6], h.Holdtime)
+	return bytes
+}
+
+//	0                   1                   2                   3
+//	0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+//
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |          Type = 2             |          Length = 4           |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |T|      Propagation_Delay      |      Override_Interval        |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 type LANPruneDelay struct {
-	Type             uint16
-	Length           uint16
-	PropDelay        uint16
-	OverrideInterval uint16
+	Type                    uint16
+	Length                  uint16
+	JoinSuppressionDisabled bool
+	PropDelay               uint16
+	OverrideInterval        uint16
 }
 
+func NewLANPruneDelay(propDelay, overrideInterval uint16) LANPruneDelay {
+	return LANPruneDelay{
+		Type:                    OptionTypeLANPruneDelay,
+		Length:                  4,
+		JoinSuppressionDisabled: false,
+		PropDelay:               propDelay,
+		OverrideInterval:        overrideInterval,
+	}
+}
+
+func (l LANPruneDelay) Bytes() []byte {
+	bytes := make([]byte, 8)
+	binary.BigEndian.PutUint16(bytes[0:2], l.Type)
+	binary.BigEndian.PutUint16(bytes[2:4], l.Length)
+	if l.JoinSuppressionDisabled {
+		bytes[0] |= 0x80
+	}
+	binary.BigEndian.PutUint16(bytes[4:6], l.PropDelay)
+	binary.BigEndian.PutUint16(bytes[6:8], l.OverrideInterval)
+	return bytes
+}
+
+//	0                   1                   2                   3
+//	0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+//
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |          Type = 19            |          Length = 4           |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |                         DR Priority                           |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 type DRPriority struct {
 	Type       uint16
 	Length     uint16
 	DRPriority uint32
 }
 
+func NewDRPriority(drPriority uint32) DRPriority {
+	return DRPriority{
+		Type:       OptionTypeDRPriority,
+		Length:     4,
+		DRPriority: drPriority,
+	}
+}
+func (d DRPriority) Bytes() []byte {
+	bytes := make([]byte, 8)
+	binary.BigEndian.PutUint16(bytes[0:2], d.Type)
+	binary.BigEndian.PutUint16(bytes[2:4], d.Length)
+	binary.BigEndian.PutUint32(bytes[4:8], d.DRPriority)
+	return bytes
+}
+
+//	0                   1                   2                   3
+//	0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+//
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |          Type = 20            |          Length = 4           |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |                       Generation ID                           |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 type GenerationID struct {
 	Type         uint16
 	Length       uint16
 	GenerationID uint32
 }
 
+func NewGenerationID(genID uint32) GenerationID {
+	return GenerationID{
+		Type:         OptionTypeGenerationID,
+		Length:       4,
+		GenerationID: genID,
+	}
+}
+
+func (g GenerationID) Bytes() []byte {
+	bytes := make([]byte, 8)
+	binary.BigEndian.PutUint16(bytes[0:2], g.Type)
+	binary.BigEndian.PutUint16(bytes[2:4], g.Length)
+	binary.BigEndian.PutUint32(bytes[4:8], g.GenerationID)
+	return bytes
+}
+
+//	0                   1                   2                   3
+//	0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+//
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |           Type = 21           |           Length = 4          |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |  Version = 1  |   Interval    |            Reserved           |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 type StateRefreshInterval struct {
 	Type     uint16
 	Length   uint16
@@ -259,10 +389,71 @@ type StateRefreshInterval struct {
 	Reserved uint16
 }
 
+func NewStateRefreshInterval(interval uint8) StateRefreshInterval {
+	return StateRefreshInterval{
+		Type:     OptionTypeStateRefresh,
+		Length:   4,
+		Version:  1,
+		Interval: interval,
+	}
+}
+
+func (s StateRefreshInterval) Bytes() []byte {
+	bytes := make([]byte, 8)
+	binary.BigEndian.PutUint16(bytes[0:2], s.Type)
+	binary.BigEndian.PutUint16(bytes[2:4], s.Length)
+	bytes[4] = s.Version
+	bytes[5] = s.Interval
+	binary.BigEndian.PutUint16(bytes[6:8], s.Reserved)
+	return bytes
+}
+
+//	0                   1                   2                   3
+//	0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+//
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |          Type = 24            |      Length = <Variable>      |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |         Secondary Address 1 (Encoded-Unicast format)          |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//
+//	...
+//
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |         Secondary Address N (Encoded-Unicast format)          |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 type AddressList struct {
 	Type             uint16
 	Length           uint16
 	SecondaryAddress []net.IP
+}
+
+func (a AddressList) NewAddressList(addresses []net.IP) AddressList {
+	return AddressList{
+		Type:             OptionTypeAddressList,
+		Length:           uint16(len(addresses) * 4),
+		SecondaryAddress: addresses,
+	}
+}
+func (a AddressList) Bytes() []byte {
+	addrs := []byte{}
+	for _, addr := range a.SecondaryAddress {
+		addrs = append(addrs, serializeEncodedUnicastAddr(addr)...)
+	}
+	bytes := make([]byte, 4+len(addrs))
+	binary.BigEndian.PutUint16(bytes[0:2], a.Type)
+	binary.BigEndian.PutUint16(bytes[2:4], a.Length)
+	copy(bytes[4:], addrs)
+	return bytes
+}
+
+func serializeEncodedUnicastAddr(addr net.IP) []byte {
+	if len(addr) == 4 {
+		return append([]byte{1, 0}, addr...)
+	} else if len(addr) == 16 {
+		return append([]byte{2, 0}, addr...)
+	}
+	return nil
 }
 
 /*

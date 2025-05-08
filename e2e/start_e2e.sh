@@ -80,17 +80,11 @@ test_ibrl_with_allocated_addr() {
     print_banner "Creating multiple users to exhaust the /30 and allocate from the /29, ie use both blocks"
     create_multiple_users
 
-    print_banner "Wait for controller to pickup new user"
-    sleep 30
-
     print_banner "Running post-connect tests"
     e2e_test -test.v -test.run "^TestIBRLWithAllocatedAddress_Connect"
 
     print_banner "Disconnecting user tunnel"
     doublezero --keypair $SOLANA_KEYPAIR disconnect --client-ip 64.86.249.86
-
-    print_banner "Wait for controller to pickup disconnected user"
-    sleep 30
 
     print_banner "Running post-disconnect tests"
     e2e_test -test.v -test.run "^TestIBRLWithAllocatedAddress_Disconnect"
@@ -100,17 +94,14 @@ test_ibrl() {
     print_banner "Connecting user tunnel"
     doublezero --keypair $SOLANA_KEYPAIR connect ibrl --client-ip 64.86.249.86
 
-    print_banner "Wait for controller to pickup new user"
-    sleep 30
+    print_banner "Banning account J2MUYJeJvTfrHpxMm3tVYkcDhTwgAFFju2veS27WhByX"
+    doublezero user request-ban --pubkey J2MUYJeJvTfrHpxMm3tVYkcDhTwgAFFju2veS27WhByX
 
     print_banner "Running post-connect tests"
     e2e_test -test.v -test.run "^TestIBRL_Connect"
 
     print_banner "Disconnecting user tunnel"
     doublezero --keypair $SOLANA_KEYPAIR disconnect --client-ip 64.86.249.86
-
-    print_banner "Wait for controller to pickup disconnected user"
-    sleep 30
 
     print_banner "Running post-disconnect tests"
     e2e_test -test.v -test.run "^TestIBRL_Disconnect"

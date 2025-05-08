@@ -13,6 +13,7 @@ pub mod keygen;
 pub mod location;
 pub mod log;
 pub mod requirements;
+pub mod serializer;
 pub mod subscribe;
 pub mod tests;
 pub mod tunnel;

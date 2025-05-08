@@ -1,8 +1,8 @@
 #![allow(unexpected_cfgs)]
 
-mod globalstate;
 mod bytereader;
 mod entrypoint;
+mod globalstate;
 mod helper;
 
 pub mod addresses;

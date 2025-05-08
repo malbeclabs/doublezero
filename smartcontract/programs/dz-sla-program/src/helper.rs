@@ -1,7 +1,4 @@
-use crate::{
-    seeds::*,
-    state::accounttype::*,
-};
+use crate::{seeds::*, state::accounttype::*};
 use borsh::BorshSerialize;
 use solana_program::{
     account_info::AccountInfo,

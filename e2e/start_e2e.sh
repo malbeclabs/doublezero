@@ -94,6 +94,9 @@ test_ibrl() {
     print_banner "Connecting user tunnel"
     doublezero --keypair $SOLANA_KEYPAIR connect ibrl --client-ip 64.86.249.86
 
+    print_banner "Wait for controller to pickup new user"
+    sleep 30
+    
     print_banner "Banning account J2MUYJeJvTfrHpxMm3tVYkcDhTwgAFFju2veS27WhByX"
     doublezero user request-ban --pubkey J2MUYJeJvTfrHpxMm3tVYkcDhTwgAFFju2veS27WhByX
 

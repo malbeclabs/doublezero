@@ -103,14 +103,13 @@ func (r *ShowIpRoute) GetCmd() string {
 // slices of strings and verify each line of the desired output is present in the test generated
 // output slice.
 func TestIBRLWithAllocatedAddress_Connect_Output(t *testing.T) {
-	want, err := fs.ReadFile("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_added.txt")
+	config, err := fs.ReadFile("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_added.txt")
 	if err != nil {
 		t.Fatalf("error loading expected agent configuration from file: %v", err)
 	}
-	waitForController := waitForController(want)
 
 	t.Run("wait_for_controller_to_pick_up_new_user", func(t *testing.T) {
-		if !waitForController() {
+		if !waitForController(config) {
 			t.Fatal("timed out waiting for controller to pick up user for IBRL with allocated address")
 		}
 	})
@@ -279,14 +278,13 @@ func TestIBRLWithAllocatedAddress_Connect_Networking(t *testing.T) {
 // TestIBRLWithAllocatedAddress__Disconnect_Networking verifies the client and agent configuration after a
 // user has been disconnected.
 func TestIBRLWithAllocatedAddress_Disconnect_Networking(t *testing.T) {
-	want, err := fs.ReadFile("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_removed.txt")
+	config, err := fs.ReadFile("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_removed.txt")
 	if err != nil {
 		t.Fatalf("error loading expected agent configuration from file: %v", err)
 	}
-	waitForController := waitForController(want)
 
 	t.Run("wait_for_controller_to_pickup_disconnected_user", func(t *testing.T) {
-		if !waitForController() {
+		if !waitForController(config) {
 			t.Fatal("timed out waiting for controller to pick up disconnected user for IBRL with allocated address")
 		}
 	})
@@ -397,10 +395,8 @@ func TestIBRL_Connect_Output(t *testing.T) {
 		t.Fatalf("error loading expected agent configuration from file: %v", err)
 	}
 
-	waitForController := waitForController(want)
-
 	t.Run("wait_for_controller_to_pick_up_new_user", func(t *testing.T) {
-		if !waitForController() {
+		if !waitForController(want) {
 			t.Fatal("timed out waiting for controller to pick up user for IBRL")
 		}
 	})
@@ -622,9 +618,8 @@ func TestIBRL_Disconnect_Networking(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error loading expected agent configuration from file: %v", err)
 	}
-	waitForController := waitForController(want)
 	t.Run("wait_for_controller_to_pickup_disconnected_user", func(t *testing.T) {
-		if !waitForController() {
+		if !waitForController(want) {
 			t.Fatal("timed out waiting for controller to pick up disconnected user for IBRL")
 		}
 	})
@@ -740,12 +735,7 @@ func diffCliMapToGoldenMapKV(want []byte, got []byte) string {
 	ignoreKeys := []string{"Last Session Update"}
 
 	return cmp.Diff(gotMap, wantMap, cmpopts.IgnoreMapEntries(func(key string, _ string) bool {
-		for _, k := range ignoreKeys {
-			if key == k {
-				return true
-			}
-		}
-		return false
+		return slices.Contains(ignoreKeys, key)
 	}))
 }
 
@@ -800,10 +790,9 @@ func mapFromKV(output []byte) map[string]string {
 	return formattedMap
 }
 
-func waitForController(want []byte) func() bool {
+func waitForController(config []byte) bool {
 	target := net.JoinHostPort(controllerAddr, controllerPort)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	}
@@ -815,24 +804,17 @@ func waitForController(want []byte) func() bool {
 	defer cancel()
 
 	agent := pb.NewControllerClient(conn)
-	waitForController := func() bool {
-		deadline := time.Now().Add(30 * time.Second)
-		for time.Now().Before(deadline) {
-			got, err := agent.GetConfig(ctx, &pb.ConfigRequest{Pubkey: agentPubKey})
-			if err != nil {
-				log.Fatalf("error while fetching config: %v\n", err)
-			}
-
-			diff := cmp.Diff(string(want), got.Config)
-			if diff == "" {
-				return true
-			}
-			time.Sleep(500 * time.Millisecond)
-
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		got, err := agent.GetConfig(ctx, &pb.ConfigRequest{Pubkey: agentPubKey})
+		if err != nil {
+			log.Fatalf("error while fetching config: %v\n", err)
 		}
-		return false
+		diff := cmp.Diff(string(config), got.Config)
+		if diff == "" {
+			return true
+		}
+		time.Sleep(500 * time.Millisecond)
 	}
-
-	return waitForController
-
+	return false
 }

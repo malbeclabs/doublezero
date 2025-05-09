@@ -16,8 +16,11 @@ solana-amd64:
 
 .PHONY: base
 base:
-	docker build --build-arg PLATFORM_ARCH=arm64 -f Dockerfile.base -t $(TAG_PREFIX)/doublezero-base:latest ../.
-
+ifeq ($(ARCH),arm64)
+	docker build --build-arg PLATFORM_ARCH=arm64 --platform linux/arm64 -f Dockerfile.base -t $(TAG_PREFIX)/doublezero-base:latest ../.
+else
+	docker build --build-arg PLATFORM_ARCH=amd64 --platform linux/amd64 -f Dockerfile.base -t $(TAG_PREFIX)/doublezero-base:latest ../.
+endif
 
 .PHONY: build
 build: eos

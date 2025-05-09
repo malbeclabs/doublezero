@@ -19,7 +19,7 @@ jobs:
     defaults:
       run:
         working-directory: "e2e/"
-    runs-on: ubuntu-24.04-16c-64gb
+    runs-on: self-hosted
     permissions:
       packages: read
       contents: read

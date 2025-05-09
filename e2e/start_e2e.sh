@@ -80,6 +80,9 @@ test_ibrl_with_allocated_addr() {
     print_banner "Creating multiple users to exhaust the /30 and allocate from the /29, ie use both blocks"
     create_multiple_users
 
+    print_banner "Waiting for client tunnel to be up before starting tests"
+    e2e_test -test.v -test.run "^TestWaitForClientTunnelUp"
+
     print_banner "Running post-connect tests"
     e2e_test -test.v -test.run "^TestIBRLWithAllocatedAddress_Connect"
 
@@ -87,7 +90,8 @@ test_ibrl_with_allocated_addr() {
     doublezero --keypair $SOLANA_KEYPAIR disconnect --client-ip 64.86.249.86
 
     print_banner "Running post-disconnect tests"
-    e2e_test -test.v -test.run "^TestIBRLWithAllocatedAddress_Disconnect"
+    e2e_test -test.v -test.run "^TestIBRLWithAllocatedAddress_Disconnect_Networking"
+    e2e_test -test.v -test.run "^TestIBRLWithAllocatedAddress_Disconnect_Output"
 }
 
 test_ibrl() {
@@ -97,6 +101,9 @@ test_ibrl() {
     print_banner "Banning account J2MUYJeJvTfrHpxMm3tVYkcDhTwgAFFju2veS27WhByX"
     doublezero user request-ban --pubkey J2MUYJeJvTfrHpxMm3tVYkcDhTwgAFFju2veS27WhByX
 
+    print_banner "Waiting for client tunnel to be up before starting tests"
+    e2e_test -test.v -test.run "^TestWaitForClientTunnelUp"
+
     print_banner "Running post-connect tests"
     e2e_test -test.v -test.run "^TestIBRL_Connect"
 
@@ -104,7 +111,8 @@ test_ibrl() {
     doublezero --keypair $SOLANA_KEYPAIR disconnect --client-ip 64.86.249.86
 
     print_banner "Running post-disconnect tests"
-    e2e_test -test.v -test.run "^TestIBRL_Disconnect"
+    e2e_test -test.v -test.run "TestIBRL_Disconnect_Networking"
+    e2e_test -test.v -test.run "TestIBRL_Disconnect_Output"
 }
 
 init_doublezero() {
@@ -166,15 +174,15 @@ populate_data_onchain() {
     print_banner "Device information onchain"
     doublezero device list
 
-    print_banner "Adding blackhole routes to test latency selection to ny5-dz01."
+    print_banner "Adding null routes to test latency selection to ny5-dz01."
     ip rule add priority 1 from 64.86.249.86/32 to all table main
-    ip route add blackhole 207.45.216.134/32
-    ip route add blackhole 195.219.120.72/32
-    ip route add blackhole 195.219.220.88/32
-    ip route add blackhole 180.87.102.104/32
-    ip route add blackhole 180.87.154.112/32
-    ip route add blackhole 204.16.241.243/32
-    ip route add blackhole 195.219.138.50/32
+    ip route add 207.45.216.134/32 dev lo proto static scope host
+    ip route add 195.219.120.72/32 dev lo proto static scope host
+    ip route add 195.219.220.88/32 dev lo proto static scope host
+    ip route add 180.87.102.104/32 dev lo proto static scope host
+    ip route add 180.87.154.112/32 dev lo proto static scope host
+    ip route add 204.16.241.243/32 dev lo proto static scope host
+    ip route add 195.219.138.50/32 dev lo proto static scope host
 
     print_banner "Populate tunnel information onchain"
     doublezero tunnel create --code "la2-dz01:ny5-dz01" --side-a la2-dz01 --side-z ny5-dz01 --tunnel-type MPLSoGRE --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3

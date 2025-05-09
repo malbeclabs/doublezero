@@ -170,7 +170,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 			sockFile := filepath.Join(rootPath, "doublezerod.sock")
 			go func() {
 				programId := ""
-				err := runtime.Run(ctx, sockFile, false, programId, "")
+				err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
 				errChan <- err
 			}()
 
@@ -390,7 +390,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 			ctx, cancel = context.WithCancel(context.Background())
 			go func() {
 				programId := ""
-				err := runtime.Run(ctx, sockFile, false, programId, "")
+				err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
 				errChan <- err
 			}()
 
@@ -499,7 +499,7 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 	sockFile := filepath.Join(rootPath, "doublezerod.sock")
 	go func() {
 		programId := ""
-		err := runtime.Run(ctx, sockFile, false, programId, "")
+		err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
 		errChan <- err
 	}()
 
@@ -647,7 +647,7 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 	ctx, cancel = context.WithCancel(context.Background())
 	go func() {
 		programId := ""
-		err := runtime.Run(ctx, sockFile, false, programId, "")
+		err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
 		errChan <- err
 	}()
 

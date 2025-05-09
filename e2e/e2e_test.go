@@ -121,6 +121,30 @@ func TestWaitForLatencyResults(t *testing.T) {
 	t.Fatalf("timed out waiting for latency results")
 }
 
+func TestWaitForClientTunnelUp(t *testing.T) {
+	deadline := time.Now().Add(60 * time.Second)
+	for time.Now().Before(deadline) {
+		buf, err := fetchClientEndpoint("/status")
+		if err != nil {
+			t.Fatalf("error fetching status: %v", err)
+		}
+		status := map[string]any{}
+		if err := json.Unmarshal(buf, &status); err != nil {
+			t.Fatalf("error unmarshaling latency data: %v", err)
+		}
+
+		if session, ok := status["doublezero_status"]; ok {
+			if sessionStatus, ok := session.(map[string]any)["session_status"]; ok {
+				if sessionStatus == "up" {
+					return
+				}
+			}
+		}
+		time.Sleep(1 * time.Second)
+	}
+	t.Fatalf("timed out waiting for up status")
+}
+
 // TestIBRLWithAllocatedAddress_Connect_Output is a set of tests to verify the output of the doublezero
 // CLI. These tests utilize golden files of expected output stored in the fixtures directory,
 // which are then compared against the std output of each command line call.
@@ -374,18 +398,27 @@ func TestIBRLWithAllocatedAddress_Disconnect_Networking(t *testing.T) {
 		if err != nil {
 			t.Fatalf("error connecting to dut: %v", err)
 		}
-		handle, err := dut.GetHandle("json")
-		neighbors := &ShowIPBGPSummary{}
-		handle.AddCommand(neighbors)
-		if err := handle.Call(); err != nil {
-			t.Fatalf("error fetching neighbors from doublezero device: %v", err)
-		}
+		deadline := time.Now().Add(30 * time.Second)
+		for time.Now().Before(deadline) {
+			handle, err := dut.GetHandle("json")
+			if err != nil {
+				t.Fatalf("error getting handle: %v", err)
+			}
+			neighbors := &ShowIPBGPSummary{}
+			handle.AddCommand(neighbors)
+			if err := handle.Call(); err != nil {
+				t.Fatalf("error fetching neighbors from doublezero device: %v", err)
+			}
 
-		ip := strings.Split(linkLocalAddr, "/")[0]
-		_, ok := neighbors.VRFs["vrf1"].Peers[ip]
-		if ok {
-			t.Fatalf("bgp neighbor %s has not been removed from doublezero device\n", linkLocalAddr)
+			ip := strings.Split(linkLocalAddr, "/")[0]
+			_, ok := neighbors.VRFs["vrf1"].Peers[ip]
+			if !ok {
+				return
+
+			}
+			time.Sleep(1 * time.Second)
 		}
+		t.Fatalf("bgp neighbor %s has not been removed from doublezero device\n", linkLocalAddr)
 	})
 }
 
@@ -710,18 +743,27 @@ func TestIBRL_Disconnect_Networking(t *testing.T) {
 		if err != nil {
 			t.Fatalf("error connecting to dut: %v", err)
 		}
-		handle, err := dut.GetHandle("json")
-		neighbors := &ShowIPBGPSummary{}
-		handle.AddCommand(neighbors)
-		if err := handle.Call(); err != nil {
-			t.Fatalf("error fetching neighbors from doublezero device: %v", err)
-		}
+		deadline := time.Now().Add(30 * time.Second)
+		for time.Now().Before(deadline) {
+			handle, err := dut.GetHandle("json")
+			if err != nil {
+				t.Fatalf("error getting handle: %v", err)
+			}
+			neighbors := &ShowIPBGPSummary{}
+			handle.AddCommand(neighbors)
+			if err := handle.Call(); err != nil {
+				t.Fatalf("error fetching neighbors from doublezero device: %v", err)
+			}
 
-		ip := strings.Split(linkLocalAddr, "/")[0]
-		_, ok := neighbors.VRFs["vrf1"].Peers[ip]
-		if ok {
-			t.Fatalf("bgp neighbor %s has not been removed from doublezero device\n", linkLocalAddr)
+			ip := strings.Split(linkLocalAddr, "/")[0]
+			_, ok := neighbors.VRFs["vrf1"].Peers[ip]
+			if !ok {
+				return
+
+			}
+			time.Sleep(1 * time.Second)
 		}
+		t.Fatalf("bgp neighbor %s has not been removed from doublezero device\n", linkLocalAddr)
 	})
 }
 

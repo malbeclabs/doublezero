@@ -38,7 +38,7 @@ impl RequestBanUserCliCommand {
 #[cfg(test)]
 mod tests {
     use crate::doublezerocommand::CliCommand;
-    use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
+    use crate::requirements::{CHECK_BALANCE, CHECK_FOUNDATION_ALLOWLIST, CHECK_ID_JSON};
     use crate::tests::tests::create_test_client;
     use crate::user::request_ban::RequestBanUserCliCommand;
     use doublezero_sdk::commands::user::delete::DeleteUserCommand;
@@ -85,7 +85,9 @@ mod tests {
 
         client
             .expect_check_requirements()
-            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .with(predicate::eq(
+                CHECK_ID_JSON | CHECK_BALANCE | CHECK_FOUNDATION_ALLOWLIST,
+            ))
             .returning(|_| Ok(()));
         client
             .expect_get_user()

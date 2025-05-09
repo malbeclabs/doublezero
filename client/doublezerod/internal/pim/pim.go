@@ -3,6 +3,7 @@ package pim
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 
@@ -10,8 +11,11 @@ import (
 	"github.com/google/gopacket/layers"
 )
 
-var PIMMessageType = gopacket.RegisterLayerType(1666, gopacket.LayerTypeMetadata{Name: "PIM", Decoder: gopacket.DecodeFunc(decodePim)})
-var HelloMessageType = gopacket.RegisterLayerType(1667, gopacket.LayerTypeMetadata{Name: "PIMHelloMessage", Decoder: gopacket.DecodeFunc(decodePimHelloMessage)})
+var (
+	PIMMessageType       = gopacket.RegisterLayerType(1666, gopacket.LayerTypeMetadata{Name: "PIM", Decoder: gopacket.DecodeFunc(decodePim)})
+	HelloMessageType     = gopacket.RegisterLayerType(1667, gopacket.LayerTypeMetadata{Name: "PIMHelloMessage", Decoder: gopacket.DecodeFunc(decodePimHelloMessage)})
+	JoinPruneMessageType = gopacket.RegisterLayerType(1668, gopacket.LayerTypeMetadata{Name: "PIMJoinPruneMessage", Decoder: gopacket.DecodeFunc(decodePimJoinPruneMessage)})
+)
 
 func (p *PIMMessage) LayerType() gopacket.LayerType { return PIMMessageType }
 func (p *PIMMessage) SerializeTo(b gopacket.SerializeBuffer, opts gopacket.SerializeOptions) error {
@@ -54,6 +58,11 @@ func (p *HelloMessage) SerializeTo(b gopacket.SerializeBuffer, opts gopacket.Ser
 	return nil
 }
 
+func (p *JoinPruneMessage) LayerType() gopacket.LayerType { return JoinPruneMessageType }
+func (p *JoinPruneMessage) SerializeTo(b gopacket.SerializeBuffer, opts gopacket.SerializeOptions) error {
+	return nil
+}
+
 // Message Type                          Destination
 // ---------------------------------------------------------------------
 // 0 = Hello                             Multicast to ALL-PIM-ROUTERS
@@ -76,6 +85,7 @@ func decodePim(data []byte, p gopacket.PacketBuilder) error {
 	msg.Header.Checksum = binary.BigEndian.Uint16(data[2:4])
 	msg.Contents = data[0:4]
 	msg.Payload = data[4:]
+
 	p.AddLayer(msg)
 
 	switch msg.Header.Type {
@@ -91,7 +101,7 @@ func decodePim(data []byte, p gopacket.PacketBuilder) error {
 
 func decodeEncodedUnicastAddr(data []byte) (net.IP, error) {
 	if len(data) < 2 {
-		return nil, errors.New("Encoded Unicast address is too short")
+		return nil, errors.New("encoded Unicast address is too short")
 	}
 	addrFamily := data[0]
 	switch addrFamily {
@@ -106,7 +116,7 @@ func decodeEncodedUnicastAddr(data []byte) (net.IP, error) {
 		}
 		return net.IP(data[2:18]), nil
 	default:
-		return nil, errors.New("Unsupported address family")
+		return nil, errors.New("unsupported address family")
 	}
 }
 
@@ -157,7 +167,102 @@ func decodePimHelloMessage(data []byte, p gopacket.PacketBuilder) error {
 }
 
 func decodePimJoinPruneMessage(data []byte, p gopacket.PacketBuilder) error {
+	joinPrune := &JoinPruneMessage{BaseLayer: layers.BaseLayer{Contents: data}}
+	// TODO: properly check addr family
+	addr, err := decodeEncodedUnicastAddr(data[0:])
+	if err != nil {
+		return err
+	}
+	if addr == nil {
+		return errors.New("Invalid address")
+	}
+	joinPrune.UpstreamNeighborAddress = addr
+	data = data[len(addr)+2:]
+	joinPrune.Reserved = data[0]
+	joinPrune.NumGroups = data[1]
+	joinPrune.Holdtime = binary.BigEndian.Uint16(data[2:4])
+	groups := make([]Group, 0)
+	joinPrune.Groups, err = decodeGroups(joinPrune.NumGroups, groups, data[4:])
+	if err != nil {
+		return err
+	}
+
+	p.AddLayer(joinPrune)
 	return nil
+}
+
+func decodeGroups(numGroups uint8, groups []Group, data []byte) ([]Group, error) {
+	for i := range int(numGroups) {
+		group := Group{}
+		group.GroupID = uint8(i)
+		group.AddressFamily = data[0]
+		group.EncodingType = data[1]
+		group.Flags = data[2]
+		group.MaskLength = data[3]
+		len := 4
+
+		// clean this up
+		var addr net.IP
+		if data[0] == 1 {
+			addr = net.IP(data[4:8])
+			len = len + 4
+		} else if data[0] == 2 {
+			addr = net.IP(data[4:20])
+			len = len + 16
+		}
+
+		data = data[len:]
+		group.MulticastGroupAddress = addr
+
+		group.NumJoinedSources = binary.BigEndian.Uint16(data[0:2])
+		group.NumPrunedSources = binary.BigEndian.Uint16(data[2:4])
+		group.Joins = make([]SourceAddresses, 0)
+		data = data[4:]
+
+		len = 0
+		for range int(group.NumJoinedSources) {
+			sourceAddress := SourceAddresses{}
+			sourceAddress.AddressFamily = data[0]
+			sourceAddress.EncodingType = data[1]
+			sourceAddress.Flags = data[2]
+			sourceAddress.MaskLength = data[3]
+
+			if data[0] == 1 {
+				addr = net.IP(data[4:8])
+				fmt.Printf("sourceAddress %v\n", addr)
+				len = len + 4
+			} else if data[0] == 2 {
+				addr = net.IP(data[4:20])
+				len = len + 16
+			}
+			sourceAddress.Address = addr
+			group.Joins = append(group.Joins, sourceAddress)
+			data = data[len:]
+		}
+		len = 0
+		group.Prunes = make([]SourceAddresses, 0)
+		for range int(group.NumPrunedSources) {
+			sourceAddress := SourceAddresses{}
+			sourceAddress.AddressFamily = data[0]
+			sourceAddress.EncodingType = data[1]
+			sourceAddress.Flags = data[2]
+			sourceAddress.MaskLength = data[3]
+
+			// TODO: pull into a function
+			if data[0] == 1 {
+				addr = net.IP(data[4:8])
+				len = len + 4
+			} else if data[0] == 2 {
+				addr = net.IP(data[4:20])
+				len = len + 16
+			}
+			sourceAddress.Address = addr
+			group.Prunes = append(group.Prunes, sourceAddress)
+			data = data[len:]
+		}
+		groups = append(groups, group)
+	}
+	return groups, nil
 }
 
 /*
@@ -335,6 +440,7 @@ func NewDRPriority(drPriority uint32) DRPriority {
 		DRPriority: drPriority,
 	}
 }
+
 func (d DRPriority) Bytes() []byte {
 	bytes := make([]byte, 8)
 	binary.BigEndian.PutUint16(bytes[0:2], d.Type)
@@ -435,6 +541,7 @@ func (a AddressList) NewAddressList(addresses []net.IP) AddressList {
 		SecondaryAddress: addresses,
 	}
 }
+
 func (a AddressList) Bytes() []byte {
 	addrs := []byte{}
 	for _, addr := range a.SecondaryAddress {
@@ -468,43 +575,111 @@ PIM Join/Prune Message
 	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 	|  Reserved     | Num groups    |          Holdtime             |
 	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	|         Multicast Group Address 1 (Encoded-Group format)      |
-	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	|   Number of Joined Sources    |   Number of Pruned Sources    |
-	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	|        Joined Source Address 1 (Encoded-Source format)        |
-	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	|                             .                                 |
-	|                             .                                 |
-	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	|        Joined Source Address n (Encoded-Source format)        |
-	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	|        Pruned Source Address 1 (Encoded-Source format)        |
-	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	|                             .                                 |
-	|                             .                                 |
-	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	|        Pruned Source Address n (Encoded-Source format)        |
-	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	|                           .                                   |
-	|                           .                                   |
-	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	|         Multicast Group Address m (Encoded-Group format)      |
-	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	|   Number of Joined Sources    |   Number of Pruned Sources    |
-	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	|        Joined Source Address 1 (Encoded-Source format)        |
-	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	|                             .                                 |
-	|                             .                                 |
-	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	|        Joined Source Address n (Encoded-Source format)        |
-	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	|        Pruned Source Address 1 (Encoded-Source format)        |
-	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	|                             .                                 |
-	|                             .                                 |
-	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	|        Pruned Source Address n (Encoded-Source format)        |
-	+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
+
+type JoinPruneMessage struct {
+	layers.BaseLayer
+	UpstreamNeighborAddress net.IP
+	Reserved                uint8
+	NumGroups               uint8
+	Holdtime                uint16
+	Groups                  []Group
+}
+
+/*
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|         Multicast Group Address 1 (Encoded-Group format)      |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|   Number of Joined Sources    |   Number of Pruned Sources    |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|        Joined Source Address 1 (Encoded-Source format)        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                             .                                 |
+|                             .                                 |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|        Joined Source Address n (Encoded-Source format)        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|        Pruned Source Address 1 (Encoded-Source format)        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                             .                                 |
+|                             .                                 |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|        Pruned Source Address n (Encoded-Source format)        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+*/
+
+type Group struct {
+	GroupID               uint8
+	AddressFamily         uint8
+	EncodingType          uint8
+	Flags                 uint8
+	MaskLength            uint8
+	MulticastGroupAddress net.IP
+	NumJoinedSources      uint16
+	NumPrunedSources      uint16
+	Joins                 []SourceAddresses
+	Prunes                []SourceAddresses
+}
+
+type SourceAddresses struct {
+	AddressFamily uint8
+	EncodingType  uint8
+	Flags         uint8
+	MaskLength    uint8
+	Address       []byte
+}
+
+/*
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|        Joined Source Address 1 (Encoded-Source format)        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                             .                                 |
+|                             .                                 |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|        Joined Source Address n (Encoded-Source format)        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|        Pruned Source Address 1 (Encoded-Source format)        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                             .                                 |
+|                             .                                 |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|        Pruned Source Address n (Encoded-Source format)        |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+*/
+
+// func (p *JoinPruneMessage) SerializeTo(b gopacket.SerializeBuffer, opts gopacket.SerializeOptions) error {
+// 	// if p.UpstreamNeighborAddress != nil {
+// 	addrBytes := serializeEncodedUnicastAddr(p.UpstreamNeighborAddress)
+// 	bytes, err := b.PrependBytes(len(addrBytes))
+// 	if err != nil {
+// 		return err
+// 	}
+// 	fmt.Printf("bytes: ======= %X\n", bytes)
+// 	// bytes[6] = p.Reserved
+// 	// bytes[7] = p.NumGroups
+// 	// bytes, err = b.AppendBytes(2)
+// 	// if err != nil {
+// 	// 	return err
+// 	// }
+
+// 	// for _, group := range p.Groups {
+// 	// 	groupBytes, err := b.PrependBytes(4)
+// 	// 	if err != nil {
+// 	// 		return err
+// 	// 	}
+// 	// 	groupBytes[0] = group.AddressFamily
+// 	// 	groupBytes[1] = group.EncodingType
+// 	// 	groupBytes[2] = group.MaskLength
+// 	// 	groupBytes[3] = group.Flags
+// 	// 	if group.MulticastGroupAddress != nil {
+// 	// 		addrBytes := serializeEncodedUnicastAddr(group.MulticastGroupAddress)
+// 	// 		groupBytes, err := b.PrependBytes(len(addrBytes))
+// 	// 		if err != nil {
+// 	// 			return err
+// 	// 		}
+// 	// 		copy(groupBytes, addrBytes)
+// 	// 		bytes = append(bytes, groupBytes...)
+// 	// 	}
+// 	// }
+// 	return nil
+// }

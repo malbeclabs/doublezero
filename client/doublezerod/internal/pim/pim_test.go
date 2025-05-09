@@ -1,6 +1,7 @@
 package pim_test
 
 import (
+	"net"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -89,7 +90,7 @@ func TestPIMHelloPacket(t *testing.T) {
 		GenerationID: 3614426332,
 	}
 
-	var h = []byte{
+	h := []byte{
 		0x00, 0x01, 0x00, 0x02, 0x00, 0x1e, // holdtime 30
 		0x00, 0x14, 0x00, 0x04, 0xd7, 0x6f, 0xc4, 0xdc, // generation id 3614426332
 		0x00, 0x13, 0x00, 0x04, 0x00, 0x00, 0x00, 0x01, // DR Priority 1
@@ -145,7 +146,105 @@ Protocol Independent Multicast
 	                Source: 1.1.1.1
 	        Num Prunes: 0
 */
-var joinPacket = `01005e00000dc2023d800001080045c00036008b00000167cdfb0a00000ee000000d23005ae501000a00000d000100d201000020ef7b7b7b000100000100072001010101`
+
+var joinPacket = []byte{
+	0x23,                 // addr famly
+	0x0,                  // encoding
+	0x5a, 0xe5, 0x1, 0x0, // upstream neighbor
+	0xa, 0x0, 0x0, 0xd, 0x0, 0x1, 0x0, 0xd2, 0x1, 0x0, 0x0, 0x20, 0xef, 0x7b, 0x7b, 0x7b, 0x0, 0x1, 0x0, 0x0, 0x1, 0x0, 0x7, 0x20, 0x1, 0x1, 0x1, 0x1}
+
+func TestPIMJoinPacket(t *testing.T) {
+	p := gopacket.NewPacket(joinPacket, pim.PIMMessageType, gopacket.Default)
+	if p.ErrorLayer() != nil {
+		t.Fatalf("Error decoding packet: %v", p.ErrorLayer().Error())
+	}
+	if got, ok := p.Layer(pim.PIMMessageType).(*pim.PIMMessage); ok {
+		want := &pim.PIMMessage{
+			Header: pim.PIMHeader{
+				Version:  2,
+				Type:     pim.JoinPrune,
+				Checksum: 0x5ae5,
+			},
+		}
+		if diff := cmp.Diff(got, want, cmpopts.IgnoreFields(pim.PIMMessage{}, "BaseLayer")); diff != "" {
+			t.Errorf("PIMMessage mismatch (-got +want):\n%s", diff)
+		}
+
+		buf := gopacket.NewSerializeBuffer()
+		opts := gopacket.SerializeOptions{}
+		err := want.SerializeTo(buf, opts)
+		if err != nil {
+			t.Fatalf("Error serializing packet: %v", err)
+		}
+		if diff := cmp.Diff(buf.Bytes(), got.BaseLayer.Contents); diff != "" {
+			t.Errorf("Serialized packet mismatch (-got +want):\n%s", diff)
+		}
+	}
+	if got, ok := p.Layer(pim.JoinPruneMessageType).(*pim.JoinPruneMessage); ok {
+		want := &pim.JoinPruneMessage{
+			UpstreamNeighborAddress: net.IP([]byte{10, 0, 0, 13}),
+			NumGroups:               1,
+			Reserved:                0,
+			Holdtime:                210,
+			Groups: []pim.Group{
+				{
+					GroupID:               0,
+					AddressFamily:         1,
+					NumJoinedSources:      1,
+					NumPrunedSources:      0,
+					MaskLength:            32,
+					MulticastGroupAddress: net.IP([]byte{239, 123, 123, 123}),
+					Joins: []pim.SourceAddresses{
+						{AddressFamily: 1,
+							Flags:      7,
+							MaskLength: 32,
+							Address:    net.IP([]byte{1, 1, 1, 1}),
+						},
+					},
+					Prunes: []pim.SourceAddresses{},
+				},
+			}}
+
+		if diff := cmp.Diff(got, want, cmpopts.IgnoreFields(pim.JoinPruneMessage{}, "BaseLayer")); diff != "" {
+			t.Errorf("HelloMessage mismatch (-got +want):\n%s", diff)
+		}
+	}
+
+	got := &pim.JoinPruneMessage{
+		UpstreamNeighborAddress: net.IP([]byte{10, 0, 0, 13}),
+		Reserved:                0,
+		NumGroups:               1,
+		Holdtime:                210,
+		Groups: []pim.Group{
+			{
+				GroupID:               0,
+				AddressFamily:         1,
+				NumJoinedSources:      0,
+				NumPrunedSources:      1,
+				MaskLength:            32,
+				MulticastGroupAddress: net.IP([]byte{239, 123, 123, 123}),
+			}}}
+
+	h := []byte{
+		0x1, 0x0, 0xa, 0x0, 0x0, 0xd, // upstream neighbor
+		0x0,       // reserved
+		0x1,       // num groups 1
+		0x0, 0xd2, // holdtime 210
+		0x1, 0x0, 0x0, 0x20, 0xef, 0x7b, 0x7b, 0x7b, // group 0
+
+	}
+	buf := gopacket.NewSerializeBuffer()
+	opts := gopacket.SerializeOptions{}
+	err := got.SerializeTo(buf, opts)
+	if err != nil {
+		t.Fatalf("Error serializing packet: %v", err)
+	}
+
+	if diff := cmp.Diff(buf.Bytes(), h); diff != "" {
+		t.Errorf("Serialized packet mismatch (-got +want):\n%s", diff)
+	}
+
+}
 
 /*
 Protocol Independent Multicast
@@ -186,4 +285,86 @@ Protocol Independent Multicast
 	                Masklen: 32
 	                Source: 1.1.1.1
 */
-var prunePacket = `01005e00000dc2023d800001080045c0003601a400000167cce20a00000ee000000d23005ae501000a00000d000100d201000020ef7b7b7b000000010100072001010101`
+var prunePacket = []byte{0x23, 0x0, 0x5a, 0xe5, 0x1, 0x0, 0xa, 0x0, 0x0, 0xd, 0x0, 0x1, 0x0, 0xd2, 0x1, 0x0, 0x0, 0x20, 0xef, 0x7b, 0x7b, 0x7b, 0x0, 0x0, 0x0, 0x1, 0x1, 0x0, 0x7, 0x20, 0x1, 0x1, 0x1, 0x1}
+
+func TestPIMPrunePacket(t *testing.T) {
+	p := gopacket.NewPacket(prunePacket, pim.PIMMessageType, gopacket.Default)
+	if p.ErrorLayer() != nil {
+		t.Fatalf("Error decoding packet: %v", p.ErrorLayer().Error())
+	}
+	if got, ok := p.Layer(pim.PIMMessageType).(*pim.PIMMessage); ok {
+		want := &pim.PIMMessage{
+			Header: pim.PIMHeader{
+				Version:  2,
+				Type:     pim.JoinPrune,
+				Checksum: 0x5ae5,
+			},
+		}
+		if diff := cmp.Diff(got, want, cmpopts.IgnoreFields(pim.PIMMessage{}, "BaseLayer")); diff != "" {
+			t.Errorf("PIMMessage mismatch (-got +want):\n%s", diff)
+		}
+
+		buf := gopacket.NewSerializeBuffer()
+		opts := gopacket.SerializeOptions{}
+		err := want.SerializeTo(buf, opts)
+		if err != nil {
+			t.Fatalf("Error serializing packet: %v", err)
+		}
+		if diff := cmp.Diff(buf.Bytes(), got.BaseLayer.Contents); diff != "" {
+			t.Errorf("Serialized packet mismatch (-got +want):\n%s", diff)
+		}
+	}
+	if got, ok := p.Layer(pim.JoinPruneMessageType).(*pim.JoinPruneMessage); ok {
+		want := &pim.JoinPruneMessage{
+			UpstreamNeighborAddress: net.IP([]byte{10, 0, 0, 13}),
+			NumGroups:               1,
+			Reserved:                0,
+			Holdtime:                210,
+			Groups: []pim.Group{
+				{
+					GroupID:               0,
+					AddressFamily:         1,
+					NumJoinedSources:      0,
+					NumPrunedSources:      1,
+					MaskLength:            32,
+					MulticastGroupAddress: net.IP([]byte{239, 123, 123, 123}),
+					Joins:                 []pim.SourceAddresses{},
+					Prunes: []pim.SourceAddresses{
+						{AddressFamily: 1,
+							Flags:      7,
+							MaskLength: 32,
+							Address:    net.IP([]byte{1, 1, 1, 1})},
+					},
+				},
+			}}
+
+		if diff := cmp.Diff(got, want, cmpopts.IgnoreFields(pim.JoinPruneMessage{}, "BaseLayer")); diff != "" {
+			t.Errorf("HelloMessage mismatch (-got +want):\n%s", diff)
+		}
+	}
+	got := &pim.JoinPruneMessage{
+		Reserved:                0,
+		NumGroups:               1,
+		Holdtime:                210,
+		UpstreamNeighborAddress: net.IP([]byte{10, 0, 0, 13}),
+	}
+
+	h := []byte{
+		0x0,       // reserved
+		0x1,       // num groups 1
+		0x0, 0xd2, // holdtime 210
+		0x1, 0x0, 0xa, 0x0, 0x0, 0xd, // upstream neighbor 10.0.0.13
+
+	}
+	buf := gopacket.NewSerializeBuffer()
+	opts := gopacket.SerializeOptions{}
+	err := got.SerializeTo(buf, opts)
+	if err != nil {
+		t.Fatalf("Error serializing packet: %v", err)
+	}
+
+	if diff := cmp.Diff(buf.Bytes(), h); diff != "" {
+		t.Errorf("Serialized packet mismatch (-got +want):\n%s", diff)
+	}
+
+}

@@ -405,7 +405,7 @@ func TestPIMPrunePacket(t *testing.T) {
 func TestPIMJoinPrunePacket(t *testing.T) {
 	joinPruneMessage := &pim.JoinPruneMessage{
 		Reserved:                0,
-		NumGroups:               1,
+		NumGroups:               2,
 		Holdtime:                210,
 		UpstreamNeighborAddress: net.IP([]byte{10, 0, 0, 13}),
 		Groups: []pim.Group{
@@ -464,13 +464,38 @@ func TestPIMJoinPrunePacket(t *testing.T) {
 					},
 				},
 			},
-		},
+			{
+				GroupID:               1,
+				AddressFamily:         1,
+				NumJoinedSources:      1,
+				NumPrunedSources:      1,
+				MaskLength:            32,
+				MulticastGroupAddress: net.IP([]byte{239, 123, 123, 124}),
+				Joins: []pim.SourceAddress{
+					{
+						AddressFamily: 1,
+						Flags:         7,
+						MaskLength:    32,
+						EncodingType:  0,
+						Address:       net.IP([]byte{1, 1, 1, 7}),
+					}},
+				Prunes: []pim.SourceAddress{
+					{
+
+						AddressFamily: 1,
+						Flags:         7,
+						MaskLength:    32,
+						EncodingType:  0,
+						Address:       net.IP([]byte{1, 1, 1, 8}),
+					},
+				},
+			}},
 	}
 
 	joinPrune := []byte{
 		0x1, 0x0, 0xa, 0x0, 0x0, 0xd, // upstream neighbor 10.0.0.13
 		0x0,       // reserved
-		0x1,       // num groups 1
+		0x2,       // num groups 2
 		0x0, 0xd2, // holdtime 210
 		0x1, 0x0, 0x0, 0x20, 0xef, 0x7b, 0x7b, 0x7b, // group 0
 		0x0, 0x3, // numJoinedSources
@@ -481,6 +506,11 @@ func TestPIMJoinPrunePacket(t *testing.T) {
 		0x1, 0x0, 0x7, 0x20, 0x1, 0x1, 0x1, 0x1, // prune 0
 		0x1, 0x0, 0x7, 0x20, 0x1, 0x1, 0x1, 0x2, // prune 1
 		0x1, 0x0, 0x7, 0x20, 0x1, 0x1, 0x1, 0x3, // prune 2
+		0x1, 0x0, 0x0, 0x20, 0xef, 0x7b, 0x7b, 0x7c, // group 1
+		0x0, 0x1, // numJoinedSources
+		0x0, 0x1, // numPrunedSources
+		0x1, 0x0, 0x7, 0x20, 0x1, 0x1, 0x1, 0x7, // join 0
+		0x1, 0x0, 0x7, 0x20, 0x1, 0x1, 0x1, 0x8, // prune 0
 	}
 
 	buf := gopacket.NewSerializeBuffer()

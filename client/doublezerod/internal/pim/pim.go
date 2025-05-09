@@ -243,7 +243,6 @@ func decodeGroups(numGroups uint8, groups []Group, data []byte) ([]Group, error)
 
 		data = data[4:]
 
-		// TODO: Pull out these ranges into a function
 		group.Joins = make([]SourceAddress, 0)
 		for range int(group.NumJoinedSources) {
 			// first four bytes of the group

@@ -1,8 +1,8 @@
+use crate::doublezerocommand::CliCommand;
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 use clap::Args;
 use doublezero_sdk::commands::location::get::GetLocationCommand;
 use doublezero_sdk::commands::location::update::UpdateLocationCommand;
-use doublezero_sdk::*;
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -24,15 +24,15 @@ pub struct UpdateLocationCliCommand {
 }
 
 impl UpdateLocationCliCommand {
-    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
+    pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let (_, location) = GetLocationCommand {
+        let (_, location) = client.get_location(GetLocationCommand {
             pubkey_or_code: self.pubkey,
-        }
-        .execute(client)?;
-        let signature = UpdateLocationCommand {
+        })?;
+
+        let signature = client.update_location(UpdateLocationCommand {
             index: location.index,
             code: self.code,
             name: self.name,
@@ -40,8 +40,8 @@ impl UpdateLocationCliCommand {
             lat: self.lat,
             lng: self.lng,
             loc_id: self.loc_id,
-        }
-        .execute(client)?;
+        })?;
+
         writeln!(out, "Signature: {}", signature)?;
 
         Ok(())
@@ -50,19 +50,16 @@ impl UpdateLocationCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use crate::doublezerocommand::CliCommand;
     use crate::location::update::UpdateLocationCliCommand;
     use crate::tests::tests::create_test_client;
+    use doublezero_sdk::commands::location::update::UpdateLocationCommand;
     use doublezero_sdk::get_location_pda;
-    use doublezero_sdk::AccountData;
     use doublezero_sdk::AccountType;
-    use doublezero_sdk::DoubleZeroClient;
+    use doublezero_sdk::GetLocationCommand;
     use doublezero_sdk::Location;
     use doublezero_sdk::LocationStatus;
-    use doublezero_sla_program::instructions::DoubleZeroInstruction;
-    use doublezero_sla_program::pda::get_globalstate_pda;
-    use doublezero_sla_program::processors::location::update::LocationUpdateArgs;
     use mockall::predicate;
-    use solana_sdk::instruction::AccountMeta;
     use solana_sdk::pubkey::Pubkey;
     use solana_sdk::signature::Signature;
 
@@ -70,8 +67,7 @@ mod tests {
     fn test_cli_location_update() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, bump_seed) = get_location_pda(&client.get_program_id(), 1);
+        let (pda_pubkey, _bump_seed) = get_location_pda(&client.get_program_id(), 1);
         let signature = Signature::from([
             120, 138, 162, 185, 59, 209, 241, 157, 71, 157, 74, 131, 4, 87, 54, 28, 38, 180, 222,
             82, 64, 62, 61, 62, 22, 46, 17, 203, 187, 136, 62, 43, 11, 38, 235, 17, 239, 82, 240,
@@ -94,29 +90,25 @@ mod tests {
         };
 
         client
-            .expect_get()
-            .with(predicate::eq(pda_pubkey))
-            .returning(move |_| Ok(AccountData::Location(location.clone())));
+            .expect_get_location()
+            .with(predicate::eq(GetLocationCommand {
+                pubkey_or_code: pda_pubkey.to_string(),
+            }))
+            .returning(move |_| Ok((pda_pubkey, location.clone())));
 
         client
-            .expect_execute_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::UpdateLocation(LocationUpdateArgs {
-                    index: 1,
-                    bump_seed,
-                    code: Some("test".to_string()),
-                    name: Some("Test Location".to_string()),
-                    country: Some("Test Country".to_string()),
-                    lat: Some(12.34),
-                    lng: Some(56.78),
-                    loc_id: Some(1),
-                })),
-                predicate::eq(vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(move |_, _| Ok(signature));
+            .expect_update_location()
+            .with(predicate::eq(UpdateLocationCommand {
+                index: 1,
+                code: Some("test".to_string()),
+                name: Some("Test Location".to_string()),
+                country: Some("Test Country".to_string()),
+                lat: Some(12.34),
+                lng: Some(56.78),
+                loc_id: Some(1),
+            }))
+            .times(1)
+            .returning(move |_| Ok(signature));
 
         // Expected success
         let mut output = Vec::new();

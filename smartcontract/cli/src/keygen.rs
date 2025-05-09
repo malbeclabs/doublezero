@@ -1,5 +1,6 @@
+use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_sdk::{create_new_pubkey_user, DoubleZeroClient};
+use doublezero_sdk::create_new_pubkey_user;
 use solana_sdk::signer::Signer;
 use std::io::Write;
 
@@ -10,11 +11,7 @@ pub struct KeyGenCliCommand {
 }
 
 impl KeyGenCliCommand {
-    pub fn execute<W: Write>(
-        self,
-        _client: &dyn DoubleZeroClient,
-        out: &mut W,
-    ) -> eyre::Result<()> {
+    pub fn execute<W: Write>(self, _client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
         match create_new_pubkey_user(self.force) {
             Ok(keypair) => {
                 writeln!(out, "Pubkey: {}", keypair.pubkey())?;

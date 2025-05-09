@@ -1,7 +1,7 @@
 use clap::Args;
 use doublezero_sdk::commands::location::get::GetLocationCommand;
-use doublezero_sdk::*;
 use std::io::Write;
+use crate::doublezerocommand::CliCommand;
 
 #[derive(Args, Debug)]
 pub struct GetLocationCliCommand {
@@ -10,11 +10,10 @@ pub struct GetLocationCliCommand {
 }
 
 impl GetLocationCliCommand {
-    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
-        let (pubkey, location) = GetLocationCommand {
+    pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
+        let (pubkey, location) = client.get_location(GetLocationCommand {
             pubkey_or_code: self.code,
-        }
-        .execute(client)?;
+        })?;
 
         writeln!(out, 
                 "account: {},\r\ncode: {}\r\nname: {}\r\ncountry: {}\r\nlat: {}\r\nlng: {}\r\nloc_id: {}\r\nstatus: {}\r\nowner: {}",
@@ -37,7 +36,7 @@ impl GetLocationCliCommand {
 mod tests {
     use std::collections::HashMap;
     use std::str::FromStr;
-    use doublezero_sdk::{AccountData, AccountType, Location, LocationStatus};
+    use doublezero_sdk::{AccountType, GetLocationCommand, Location, LocationStatus};
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
     use crate::location::get::GetLocationCliCommand;
@@ -64,29 +63,38 @@ mod tests {
 
         let location2 = location1.clone();
         client
-            .expect_get()
-            .with(predicate::eq(location1_pubkey))
-            .returning(move |_| Ok(AccountData::Location(location2.clone())));
+            .expect_get_location()
+            .with(predicate::eq(GetLocationCommand {
+                pubkey_or_code: location1_pubkey.to_string(),
+            }))
+            .returning(move |_| Ok((location1_pubkey, location2.clone())));
+        let location3 = location1.clone();
         client
-            .expect_get()
+            .expect_get_location()
+            .with(predicate::eq(GetLocationCommand {
+                pubkey_or_code: "test".to_string(),
+            }))
+            .returning(move |_| Ok((location1_pubkey, location3.clone())));
+        client
+            .expect_get_location()
             .returning(move |_| Err(eyre::eyre!("not found")));
 
         client
-            .expect_gets()
-            .with(predicate::eq(AccountType::Location))
+            .expect_list_location()
             .returning(move |_| {
                 let mut list = HashMap::new();
-                list.insert(location1_pubkey, AccountData::Location(location1.clone()));
+                list.insert(location1_pubkey, location1.clone());
                 Ok(list)
             });
 
+        /*****************************************************************************************************/
         // Expected failure
         let mut output = Vec::new();
         let res = GetLocationCliCommand {
             code: Pubkey::new_unique().to_string(),
         }
         .execute(&client, &mut output);
-        assert!(!res.is_ok());
+        assert!(!res.is_ok(), "I shouldn't find anything.");
 
         // Expected success
         let mut output = Vec::new();
@@ -94,7 +102,7 @@ mod tests {
             code: location1_pubkey.to_string(),
         }
         .execute(&client, &mut output);
-        assert!(res.is_ok());
+        assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nname: Test Location\r\ncountry: Test Country\r\nlat: 12.34\r\nlng: 56.78\r\nloc_id: 1\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
 
@@ -104,7 +112,7 @@ mod tests {
             code: "test".to_string(),
         }
         .execute(&client, &mut output);
-        assert!(res.is_ok());
+        assert!(res.is_ok(), "I should find a item by code");
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nname: Test Location\r\ncountry: Test Country\r\nlat: 12.34\r\nlng: 56.78\r\nloc_id: 1\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
 

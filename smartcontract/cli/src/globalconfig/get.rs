@@ -1,3 +1,4 @@
+use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::commands::globalconfig::get::GetGlobalConfigCommand;
 use doublezero_sdk::*;
@@ -7,8 +8,8 @@ use std::io::Write;
 pub struct GetGlobalConfigCliCommand {}
 
 impl GetGlobalConfigCliCommand {
-    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
-        let (_, config) = GetGlobalConfigCommand {}.execute(client)?;
+    pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
+        let (_, config) = client.get_globalconfig(GetGlobalConfigCommand {})?;
 
         writeln!(
             out,

@@ -20,7 +20,7 @@ pub struct UserCliCommand {
 #[derive(Debug, Subcommand)]
 pub enum UserCommands {
     Create(CreateUserCliCommand),
-    Update(UpdateUserCliCommand),cd 
+    Update(UpdateUserCliCommand),
     List(ListUserCliCommand),
     Get(GetUserCliCommand),
     Delete(DeleteUserCliCommand),

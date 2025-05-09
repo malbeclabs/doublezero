@@ -1,7 +1,7 @@
 use clap::Args;
 use doublezero_sdk::commands::exchange::get::GetExchangeCommand;
-use doublezero_sdk::*;
 use std::io::Write;
+use crate::doublezerocommand::CliCommand;
 
 #[derive(Args, Debug)]
 pub struct GetExchangeCliCommand {
@@ -10,11 +10,10 @@ pub struct GetExchangeCliCommand {
 }
 
 impl GetExchangeCliCommand {
-    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
-        let (pubkey, exchange) = GetExchangeCommand {
+    pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
+        let (pubkey, exchange) = client.get_exchange(GetExchangeCommand {
             pubkey_or_code: self.code,
-        }
-        .execute(client)?;
+        })?;
 
         writeln!(out, 
                 "account: {},\r\ncode: {}\r\nname: {}\r\nlat: {}\r\nlng: {}\r\nloc_id: {}\r\nstatus: {}\r\nowner: {}",
@@ -36,7 +35,8 @@ impl GetExchangeCliCommand {
 mod tests {
     use std::collections::HashMap;
     use std::str::FromStr;
-    use doublezero_sdk::{AccountData, AccountType, Exchange, ExchangeStatus};
+    use doublezero_sdk::commands::exchange::get::GetExchangeCommand;
+    use doublezero_sdk::{AccountType, Exchange, ExchangeStatus};
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
     use crate::exchange::get::GetExchangeCliCommand;
@@ -62,19 +62,27 @@ mod tests {
 
         let exchange2 = exchange1.clone();
         client
-            .expect_get()
-            .with(predicate::eq(exchange1_pubkey))
-            .returning(move |_| Ok(AccountData::Exchange(exchange2.clone())));
+            .expect_get_exchange()
+            .with(predicate::eq(GetExchangeCommand {
+                pubkey_or_code: exchange1_pubkey.to_string(),
+            }))
+            .returning(move |_| Ok((exchange1_pubkey, exchange2.clone())));
+        let exchange3 = exchange1.clone();
         client
-            .expect_get()
+            .expect_get_exchange()
+            .with(predicate::eq(GetExchangeCommand {
+                pubkey_or_code: "test".to_string(),
+            }))
+            .returning(move |_| Ok((exchange1_pubkey, exchange3.clone())));
+        client
+            .expect_get_exchange()
             .returning(move |_| Err(eyre::eyre!("not found")));
 
         client
-            .expect_gets()
-            .with(predicate::eq(AccountType::Exchange))
+            .expect_list_exchange()
             .returning(move |_| {
                 let mut list = HashMap::new();
-                list.insert(exchange1_pubkey, AccountData::Exchange(exchange1.clone()));
+                list.insert(exchange1_pubkey, exchange1.clone());
                 Ok(list)
             });
 

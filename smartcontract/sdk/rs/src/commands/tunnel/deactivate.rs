@@ -6,6 +6,7 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature}
 
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct DeactivateTunnelCommand {
     pub index: u128,
     pub owner: Pubkey,

@@ -1,37 +1,18 @@
 #[cfg(test)]
 pub mod tests {
-    use doublezero_sdk::MockDoubleZeroClient;
-    use doublezero_sla_program::{
-        pda::get_globalstate_pda,
-        state::{accountdata::AccountData, accounttype::AccountType, globalstate::GlobalState},
-    };
-    use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
 
-    pub fn create_test_client() -> MockDoubleZeroClient {
-        let mut client = MockDoubleZeroClient::new();
+    use crate::doublezerocommand::MockCliCommand;
+
+    pub fn create_test_client() -> MockCliCommand {
+        let mut client = MockCliCommand::new();
         // Payer
-        let payer = Pubkey::new_unique();
+        let payer: Pubkey = Pubkey::from_str_const("DDddB7bhR9azxLAUEH7ZVtW168wRdreiDKhi4McDfKZt");
+        let program_id = Pubkey::from_str_const("DZdnB7bhR9azxLAUEH7ZVtW168wRdreiDKhi4McDfKZt");
         client.expect_get_payer().returning(move || payer);
-        // Program ID
-        let program_id = Pubkey::new_unique();
-        client.expect_get_program_id().returning(move || program_id);
-        // Get Balance
         client.expect_get_balance().returning(|| Ok(10));
-        // Global State
-        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
-        let globalstate = GlobalState {
-            account_type: AccountType::GlobalState,
-            account_index: 0,
-            bump_seed: 0,
-            foundation_allowlist: vec![payer],
-            device_allowlist: vec![payer],
-            user_allowlist: vec![payer],
-        };
-        client
-            .expect_get()
-            .with(predicate::eq(globalstate_pubkey))
-            .returning(move |_| Ok(AccountData::GlobalState(globalstate.clone())));
+        client.expect_get_program_id().returning(move || program_id);
+
         client
     }
 }

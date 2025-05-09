@@ -1,11 +1,11 @@
+use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 use doublezero_sla_program::{
     instructions::DoubleZeroInstruction, pda::get_location_pda,
     processors::location::create::LocationCreateArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
-
+#[derive(Debug, PartialEq, Clone)]
 pub struct CreateLocationCommand {
     pub code: String,
     pub name: String,

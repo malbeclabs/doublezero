@@ -7,6 +7,7 @@ use solana_sdk::pubkey::Pubkey;
 
 use crate::DoubleZeroClient;
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct GetGlobalStateCommand {}
 
 impl GetGlobalStateCommand {

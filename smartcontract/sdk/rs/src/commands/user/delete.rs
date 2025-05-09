@@ -6,6 +6,7 @@ use solana_sdk::{instruction::AccountMeta, signature::Signature};
 
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct DeleteUserCommand {
     pub index: u128,
 }

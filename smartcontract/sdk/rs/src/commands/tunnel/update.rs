@@ -6,6 +6,7 @@ use solana_sdk::{instruction::AccountMeta, signature::Signature};
 
 use crate::DoubleZeroClient;
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct UpdateTunnelCommand {
     pub index: u128,
     pub code: Option<String>,

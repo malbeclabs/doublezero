@@ -1,10 +1,10 @@
 use clap::Args;
-use doublezero_sdk::{ipv4_parse, DZClient};
+use doublezero_sdk::ipv4_parse;
 
 use crate::requirements::check_doublezero;
 use doublezero_cli::{
-    helpers::get_public_ipv4,
-    helpers::init_command,
+    doublezerocommand::CliCommand,
+    helpers::{get_public_ipv4, init_command},
     requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON, CHECK_USER_ALLOWLIST},
 };
 
@@ -24,7 +24,7 @@ pub struct DecommissioningCliCommand {
 }
 
 impl DecommissioningCliCommand {
-    pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
+    pub async fn execute(self, client: &dyn CliCommand) -> eyre::Result<()> {
         let spinner = init_command();
         // Check that have your id.json
         check_requirements(
@@ -48,7 +48,7 @@ impl DecommissioningCliCommand {
                     }
                     Err(e) => {
                         spinner.finish_with_message("Error getting public ip");
-                        eprintln!("\nError: {:?}\n",  e);
+                        eprintln!("\nError: {:?}\n", e);
 
                         return Ok(());
                     }
@@ -58,14 +58,13 @@ impl DecommissioningCliCommand {
         spinner.set_message("deleting user account...");
 
         let controller = ServiceController::new(None);
-
-        let users = ListUserCommand {}.execute(client)?;
+        let users = client.list_user(ListUserCommand {})?;
 
         let client_ip = ipv4_parse(&public_ip);
         match users.iter().find(|(_, u)| u.client_ip == client_ip) {
             Some((pubkey, user)) => {
                 println!("🔍  Deleting User Account for: {}", pubkey);
-                let res = DeleteUserCommand { index: user.index }.execute(client);
+                let res = client.delete_user(DeleteUserCommand { index: user.index });
                 match res {
                     Ok(_) => {
                         spinner.finish_with_message("🔍  User Account deleted");

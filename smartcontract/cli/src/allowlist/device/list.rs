@@ -1,14 +1,14 @@
+use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::commands::allowlist::device::list::ListDeviceAllowlistCommand;
-use doublezero_sdk::*;
 use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct ListDeviceAllowlistCliCommand {}
 
 impl ListDeviceAllowlistCliCommand {
-    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
-        let list = ListDeviceAllowlistCommand {}.execute(client)?;
+    pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
+        let list = client.list_device_allowlist(ListDeviceAllowlistCommand {})?;
 
         writeln!(out, "Pubkeys:")?;
         for user in list {

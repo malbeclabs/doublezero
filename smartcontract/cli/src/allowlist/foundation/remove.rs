@@ -1,11 +1,10 @@
+use crate::doublezerocommand::CliCommand;
+use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 use clap::Args;
 use doublezero_sdk::commands::allowlist::foundation::remove::RemoveFoundationAllowlistCommand;
-use doublezero_sdk::*;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 use std::str::FromStr;
-
-use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 
 #[derive(Args, Debug)]
 pub struct RemoveFoundationAllowlistCliCommand {
@@ -14,7 +13,7 @@ pub struct RemoveFoundationAllowlistCliCommand {
 }
 
 impl RemoveFoundationAllowlistCliCommand {
-    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
+    pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -26,7 +25,8 @@ impl RemoveFoundationAllowlistCliCommand {
             }
         };
 
-        let res = RemoveFoundationAllowlistCommand { pubkey }.execute(client)?;
+        let res =
+            client.remove_foundation_allowlist(RemoveFoundationAllowlistCommand { pubkey })?;
         writeln!(out, "Signature: {}", res)?;
 
         Ok(())

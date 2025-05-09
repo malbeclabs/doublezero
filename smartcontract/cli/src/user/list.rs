@@ -1,3 +1,4 @@
+use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::commands::{
     device::list::ListDeviceCommand, location::list::ListLocationCommand,
@@ -41,11 +42,11 @@ pub struct UserDisplay {
 }
 
 impl ListUserCliCommand {
-    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
-        let devices = ListDeviceCommand {}.execute(client)?;
-        let locations = ListLocationCommand {}.execute(client)?;
+    pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
+        let devices = client.list_device(ListDeviceCommand {})?;
+        let locations = client.list_location(ListLocationCommand {})?;
+        let users = client.list_user(ListUserCommand {})?;
 
-        let users = ListUserCommand {}.execute(client)?;
         let mut users: Vec<(Pubkey, User)> = users.into_iter().collect();
         users.sort_by(|(_, a), (_, b)| {
             a.device_pk
@@ -177,9 +178,6 @@ mod tests {
         AccountType, Device, DeviceStatus, DeviceType, Exchange, ExchangeStatus, Location,
         LocationStatus, User,
     };
-
-    use doublezero_sla_program::state::accountdata::AccountData;
-    use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
 
     #[test]
@@ -270,35 +268,26 @@ mod tests {
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8"),
         };
 
-        client
-            .expect_gets()
-            .with(predicate::eq(AccountType::Location))
-            .returning(move |_| {
-                let mut locations = HashMap::new();
-                locations.insert(location1_pubkey, AccountData::Location(location1.clone()));
-                locations.insert(location2_pubkey, AccountData::Location(location2.clone()));
-                Ok(locations)
-            });
+        client.expect_list_location().returning(move |_| {
+            let mut locations = HashMap::new();
+            locations.insert(location1_pubkey, location1.clone());
+            locations.insert(location2_pubkey, location2.clone());
+            Ok(locations)
+        });
 
-        client
-            .expect_gets()
-            .with(predicate::eq(AccountType::Exchange))
-            .returning(move |_| {
-                let mut exchanges = HashMap::new();
-                exchanges.insert(exchange1_pubkey, AccountData::Exchange(exchange1.clone()));
-                exchanges.insert(exchange2_pubkey, AccountData::Exchange(exchange2.clone()));
-                Ok(exchanges)
-            });
+        client.expect_list_exchange().returning(move |_| {
+            let mut exchanges = HashMap::new();
+            exchanges.insert(exchange1_pubkey, exchange1.clone());
+            exchanges.insert(exchange2_pubkey, exchange2.clone());
+            Ok(exchanges)
+        });
 
-        client
-            .expect_gets()
-            .with(predicate::eq(AccountType::Device))
-            .returning(move |_| {
-                let mut devices = HashMap::new();
-                devices.insert(device1_pubkey, AccountData::Device(device1.clone()));
-                devices.insert(device2_pubkey, AccountData::Device(device2.clone()));
-                Ok(devices)
-            });
+        client.expect_list_device().returning(move |_| {
+            let mut devices = HashMap::new();
+            devices.insert(device1_pubkey, device1.clone());
+            devices.insert(device2_pubkey, device2.clone());
+            Ok(devices)
+        });
 
         let user1_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
         let user1 = User {
@@ -317,14 +306,11 @@ mod tests {
             status: Activated,
         };
 
-        client
-            .expect_gets()
-            .with(predicate::eq(AccountType::User))
-            .returning(move |_| {
-                let mut users = HashMap::new();
-                users.insert(user1_pubkey, AccountData::User(user1.clone()));
-                Ok(users)
-            });
+        client.expect_list_user().returning(move |_| {
+            let mut users = HashMap::new();
+            users.insert(user1_pubkey, user1.clone());
+            Ok(users)
+        });
 
         let mut output = Vec::new();
         let res = ListUserCliCommand {

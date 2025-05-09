@@ -12,7 +12,7 @@ pub struct GetAccountCliCommand {
 }
 
 impl GetAccountCliCommand {
-    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
+    pub fn execute<W: Write>(self, client: &DZClient, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         let pubkey = parse_pubkey(&self.pubkey).expect("Invalid pubkey");
 

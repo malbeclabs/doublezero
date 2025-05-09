@@ -1,19 +1,15 @@
+use crate::requirements::check_doublezero;
+use crate::servicecontroller::ServiceController;
 use chrono::prelude::*;
 use clap::Args;
-use doublezero_sdk::DZClient;
-
-use doublezero_cli::helpers::print_error;
-
-use crate::requirements::check_doublezero;
 use doublezero_cli::helpers::init_command;
-
-use crate::servicecontroller::ServiceController;
+use doublezero_cli::{doublezerocommand::CliCommand, helpers::print_error};
 
 #[derive(Args, Debug)]
 pub struct StatusCliCommand {}
 
 impl StatusCliCommand {
-    pub async fn execute(self, _client: &DZClient) -> eyre::Result<()> {
+    pub async fn execute(self, _client: &dyn CliCommand) -> eyre::Result<()> {
         let spinner = init_command();
         let controller = ServiceController::new(None);
 
@@ -22,11 +18,16 @@ impl StatusCliCommand {
 
         match controller.status().await {
             Ok(status) => {
-                let last_session_update = status.doublezero_status.last_session_update.unwrap_or_default();
+                let last_session_update = status
+                    .doublezero_status
+                    .last_session_update
+                    .unwrap_or_default();
                 let parsed_last_session_update = if last_session_update == 0 {
                     "no session data"
                 } else {
-                    &DateTime::from_timestamp(last_session_update, 0).expect("invalid timestamp").to_string()
+                    &DateTime::from_timestamp(last_session_update, 0)
+                        .expect("invalid timestamp")
+                        .to_string()
                 };
 
                 println!(

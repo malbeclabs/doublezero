@@ -1,7 +1,7 @@
+use crate::doublezerocommand::CliCommand;
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 use clap::Args;
 use doublezero_sdk::commands::allowlist::user::add::AddUserAllowlistCommand;
-use doublezero_sdk::*;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 use std::str::FromStr;
@@ -13,7 +13,7 @@ pub struct AddUserAllowlistCliCommand {
 }
 
 impl AddUserAllowlistCliCommand {
-    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
+    pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -25,7 +25,7 @@ impl AddUserAllowlistCliCommand {
             }
         };
 
-        let res = AddUserAllowlistCommand { pubkey }.execute(client)?;
+        let res = client.add_user_allowlist(AddUserAllowlistCommand { pubkey })?;
         writeln!(out, "Signature: {}", res)?;
 
         Ok(())

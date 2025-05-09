@@ -3,6 +3,7 @@ use solana_sdk::{instruction::AccountMeta, signature::Signature};
 
 use crate::DoubleZeroClient;
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct InitGlobalStateCommand {}
 
 impl InitGlobalStateCommand {

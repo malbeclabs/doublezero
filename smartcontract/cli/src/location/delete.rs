@@ -1,8 +1,8 @@
+use crate::doublezerocommand::CliCommand;
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 use clap::Args;
 use doublezero_sdk::commands::location::delete::DeleteLocationCommand;
 use doublezero_sdk::commands::location::get::GetLocationCommand;
-use doublezero_sdk::*;
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -12,18 +12,16 @@ pub struct DeleteLocationCliCommand {
 }
 
 impl DeleteLocationCliCommand {
-    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
+    pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let (_, location) = GetLocationCommand {
+        let (_, location) = client.get_location(GetLocationCommand {
             pubkey_or_code: self.pubkey,
-        }
-        .execute(client)?;
-        let signature = DeleteLocationCommand {
+        })?;
+        let signature = client.delete_location(DeleteLocationCommand {
             index: location.index,
-        }
-        .execute(client)?;
+        })?;
         writeln!(out, "Signature: {}", signature)?;
 
         Ok(())
@@ -32,27 +30,23 @@ impl DeleteLocationCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use crate::doublezerocommand::CliCommand;
     use crate::location::delete::DeleteLocationCliCommand;
     use crate::tests::tests::create_test_client;
+    use doublezero_sdk::commands::location::delete::DeleteLocationCommand;
     use doublezero_sdk::get_location_pda;
-    use doublezero_sdk::AccountData;
     use doublezero_sdk::AccountType;
-    use doublezero_sdk::DoubleZeroClient;
+    use doublezero_sdk::GetLocationCommand;
     use doublezero_sdk::Location;
     use doublezero_sdk::LocationStatus;
-    use doublezero_sla_program::instructions::DoubleZeroInstruction;
-    use doublezero_sla_program::pda::get_globalstate_pda;
-    use doublezero_sla_program::processors::location::delete::LocationDeleteArgs;
     use mockall::predicate;
-    use solana_sdk::instruction::AccountMeta;
     use solana_sdk::signature::Signature;
 
     #[test]
     fn test_cli_location_delete() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, bump_seed) = get_location_pda(&client.get_program_id(), 1);
+        let (pda_pubkey, _bump_seed) = get_location_pda(&client.get_program_id(), 1);
         let signature = Signature::from([
             120, 138, 162, 185, 59, 209, 241, 157, 71, 157, 74, 131, 4, 87, 54, 28, 38, 180, 222,
             82, 64, 62, 61, 62, 22, 46, 17, 203, 187, 136, 62, 43, 11, 38, 235, 17, 239, 82, 240,
@@ -75,24 +69,18 @@ mod tests {
         };
 
         client
-            .expect_get()
-            .with(predicate::eq(pda_pubkey))
-            .returning(move |_| Ok(AccountData::Location(location.clone())));
+            .expect_get_location()
+            .with(predicate::eq(GetLocationCommand {
+                pubkey_or_code: pda_pubkey.to_string(),
+            }))
+            .returning(move |_| Ok((pda_pubkey, location.clone())));
 
         client
-            .expect_execute_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::DeleteLocation(LocationDeleteArgs {
-                    index: 1,
-                    bump_seed,
-                })),
-                predicate::eq(vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(move |_, _| Ok(signature));
+            .expect_delete_location()
+            .with(predicate::eq(DeleteLocationCommand { index: 1 }))
+            .returning(move |_| Ok(signature));
 
+        /*****************************************************************************************************/
         let mut output = Vec::new();
         let res = DeleteLocationCliCommand {
             pubkey: pda_pubkey.to_string(),

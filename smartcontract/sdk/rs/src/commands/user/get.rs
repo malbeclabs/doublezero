@@ -2,6 +2,7 @@ use crate::DoubleZeroClient;
 use doublezero_sla_program::state::{accountdata::AccountData, user::User};
 use solana_sdk::pubkey::Pubkey;
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct GetUserCommand {
     pub pubkey: Pubkey,
 }

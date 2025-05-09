@@ -4,6 +4,7 @@ use doublezero_sla_program::state::{
 };
 use solana_sdk::pubkey::Pubkey;
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct GetLocationCommand {
     pub pubkey_or_code: String,
 }

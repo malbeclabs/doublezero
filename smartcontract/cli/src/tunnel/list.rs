@@ -1,5 +1,4 @@
-use std::io::Write;
-
+use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::commands::device::list::ListDeviceCommand;
 use doublezero_sdk::commands::tunnel::list::ListTunnelCommand;
@@ -7,6 +6,7 @@ use doublezero_sdk::*;
 use prettytable::{format, row, Cell, Row, Table};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
+use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct ListTunnelCliCommand {
@@ -41,9 +41,9 @@ pub struct TunnelDisplay {
 }
 
 impl ListTunnelCliCommand {
-    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
-        let devices = ListDeviceCommand {}.execute(client)?;
-        let tunnels = ListTunnelCommand {}.execute(client)?;
+    pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
+        let devices = client.list_device(ListDeviceCommand {})?;
+        let tunnels = client.list_tunnel(ListTunnelCommand {})?;
 
         let mut tunnels: Vec<(Pubkey, Tunnel)> = tunnels.into_iter().collect();
         tunnels.sort_by(|(_, a), (_, b)| a.owner.cmp(&b.owner).then(a.tunnel_id.cmp(&b.tunnel_id)));
@@ -143,16 +143,14 @@ impl ListTunnelCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use crate::tests::tests::create_test_client;
     use crate::tunnel::list::ListTunnelCliCommand;
     use doublezero_sdk::{
         Device, DeviceStatus, DeviceType, Tunnel, TunnelStatus, TunnelTunnelType,
     };
-    use doublezero_sla_program::state::{accountdata::AccountData, accounttype::AccountType};
-    use mockall::predicate;
+    use doublezero_sla_program::state::accounttype::AccountType;
     use solana_sdk::pubkey::Pubkey;
+    use std::collections::HashMap;
 
     #[test]
     fn test_cli_tunnel_list() {
@@ -192,15 +190,12 @@ mod tests {
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
         };
 
-        client
-            .expect_gets()
-            .with(predicate::eq(AccountType::Device))
-            .returning(move |_| {
-                let mut devices = HashMap::new();
-                devices.insert(device1_pubkey, AccountData::Device(device1.clone()));
-                devices.insert(device2_pubkey, AccountData::Device(device2.clone()));
-                Ok(devices)
-            });
+        client.expect_list_device().returning(move |_| {
+            let mut devices = HashMap::new();
+            devices.insert(device1_pubkey, device1.clone());
+            devices.insert(device2_pubkey, device2.clone());
+            Ok(devices)
+        });
 
         let tunnel1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
         let tunnel1 = Tunnel {
@@ -221,14 +216,11 @@ mod tests {
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
         };
 
-        client
-            .expect_gets()
-            .with(predicate::eq(AccountType::Tunnel))
-            .returning(move |_| {
-                let mut tunnels = HashMap::new();
-                tunnels.insert(tunnel1_pubkey, AccountData::Tunnel(tunnel1.clone()));
-                Ok(tunnels)
-            });
+        client.expect_list_tunnel().returning(move |_| {
+            let mut tunnels = HashMap::new();
+            tunnels.insert(tunnel1_pubkey, tunnel1.clone());
+            Ok(tunnels)
+        });
 
         let mut output = Vec::new();
         let res = ListTunnelCliCommand {

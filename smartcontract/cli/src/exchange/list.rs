@@ -1,3 +1,4 @@
+use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::commands::exchange::list::ListExchangeCommand;
 use doublezero_sdk::*;
@@ -29,8 +30,8 @@ pub struct ExchangeDisplay {
 }
 
 impl ListExchangeCliCommand {
-    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
-        let exchanges = ListExchangeCommand {}.execute(client)?;
+    pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
+        let exchanges = client.list_exchange(ListExchangeCommand {})?;
 
         let mut exchanges: Vec<(Pubkey, Exchange)> = exchanges.into_iter().collect();
         exchanges.sort_by(|(_, a), (_, b)| a.owner.cmp(&b.owner));
@@ -87,14 +88,11 @@ impl ListExchangeCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use crate::exchange::list::ExchangeStatus::Activated;
     use crate::{exchange::list::ListExchangeCliCommand, tests::tests::create_test_client};
     use doublezero_sdk::{AccountType, Device, DeviceStatus, DeviceType, Exchange};
-    use doublezero_sla_program::state::accountdata::AccountData;
-    use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
+    use std::collections::HashMap;
 
     #[test]
     fn test_cli_exchange_list() {
@@ -134,15 +132,12 @@ mod tests {
             owner: Pubkey::new_unique(),
         };
 
-        client
-            .expect_gets()
-            .with(predicate::eq(AccountType::Device))
-            .returning(move |_| {
-                let mut devices = HashMap::new();
-                devices.insert(device1_pubkey, AccountData::Device(device1.clone()));
-                devices.insert(device2_pubkey, AccountData::Device(device2.clone()));
-                Ok(devices)
-            });
+        client.expect_list_device().returning(move |_| {
+            let mut devices = HashMap::new();
+            devices.insert(device1_pubkey, device1.clone());
+            devices.insert(device2_pubkey, device2.clone());
+            Ok(devices)
+        });
 
         let exchange1_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
         let exchange1 = Exchange {
@@ -158,14 +153,11 @@ mod tests {
             name: "some name".to_string(),
         };
 
-        client
-            .expect_gets()
-            .with(predicate::eq(AccountType::Exchange))
-            .returning(move |_| {
-                let mut exchanges = HashMap::new();
-                exchanges.insert(exchange1_pubkey, AccountData::Exchange(exchange1.clone()));
-                Ok(exchanges)
-            });
+        client.expect_list_exchange().returning(move |_| {
+            let mut exchanges = HashMap::new();
+            exchanges.insert(exchange1_pubkey, exchange1.clone());
+            Ok(exchanges)
+        });
 
         let mut output = Vec::new();
         let res = ListExchangeCliCommand {

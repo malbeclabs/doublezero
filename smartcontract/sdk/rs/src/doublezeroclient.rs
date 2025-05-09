@@ -16,6 +16,7 @@ pub trait DoubleZeroClient {
 
     fn get(&self, pubkey: Pubkey) -> eyre::Result<AccountData>;
     fn gets(&self, account_type: AccountType) -> eyre::Result<HashMap<Pubkey, AccountData>>;
+
     fn execute_transaction(
         &self,
         instruction: DoubleZeroInstruction,

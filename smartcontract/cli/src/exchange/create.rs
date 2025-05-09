@@ -1,7 +1,7 @@
+use crate::doublezerocommand::CliCommand;
 use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
 use clap::Args;
 use doublezero_sdk::commands::exchange::create::CreateExchangeCommand;
-use doublezero_sdk::*;
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -19,18 +19,17 @@ pub struct CreateExchangeCliCommand {
 }
 
 impl CreateExchangeCliCommand {
-    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
+    pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let (signature, _pubkey) = CreateExchangeCommand {
+        let (signature, _pubkey) = client.create_exchange(CreateExchangeCommand {
             code: self.code.clone(),
             name: self.name.clone(),
             lat: self.lat,
             lng: self.lng,
             loc_id: self.loc_id,
-        }
-        .execute(client)?;
+        })?;
         writeln!(out, "Signature: {}", signature)?;
 
         Ok(())
@@ -39,13 +38,10 @@ impl CreateExchangeCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use crate::doublezerocommand::CliCommand;
+    use doublezero_sdk::commands::exchange::create::CreateExchangeCommand;
     use doublezero_sdk::get_exchange_pda;
-    use doublezero_sdk::DoubleZeroClient;
-    use doublezero_sla_program::instructions::DoubleZeroInstruction;
-    use doublezero_sla_program::pda::get_globalstate_pda;
-    use doublezero_sla_program::processors::exchange::create::ExchangeCreateArgs;
     use mockall::predicate;
-    use solana_sdk::instruction::AccountMeta;
     use solana_sdk::signature::Signature;
 
     use crate::exchange::create::CreateExchangeCliCommand;
@@ -55,8 +51,7 @@ mod tests {
     fn test_cli_exchange_create() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, bump_seed) = get_exchange_pda(&client.get_program_id(), 1);
+        let (pda_pubkey, _bump_seed) = get_exchange_pda(&client.get_program_id(), 1);
         let signature = Signature::from([
             120, 138, 162, 185, 59, 209, 241, 157, 71, 157, 74, 131, 4, 87, 54, 28, 38, 180, 222,
             82, 64, 62, 61, 62, 22, 46, 17, 203, 187, 136, 62, 43, 11, 38, 235, 17, 239, 82, 240,
@@ -65,23 +60,15 @@ mod tests {
         ]);
 
         client
-            .expect_execute_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
-                    index: 1,
-                    bump_seed,
-                    code: "test".to_string(),
-                    name: "Test Exchange".to_string(),
-                    lat: 0.0,
-                    lng: 0.0,
-                    loc_id: 0,
-                })),
-                predicate::eq(vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(move |_, _| Ok(signature));
+            .expect_create_exchange()
+            .with(predicate::eq(CreateExchangeCommand {
+                code: "test".to_string(),
+                name: "Test Exchange".to_string(),
+                lat: 0.0,
+                lng: 0.0,
+                loc_id: None,
+            }))
+            .returning(move |_| Ok((signature, pda_pubkey)));
 
         let mut output = Vec::new();
         let res = CreateExchangeCliCommand {

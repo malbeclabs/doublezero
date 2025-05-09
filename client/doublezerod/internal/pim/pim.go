@@ -60,17 +60,26 @@ func (p *HelloMessage) SerializeTo(b gopacket.SerializeBuffer, opts gopacket.Ser
 
 func (p *JoinPruneMessage) LayerType() gopacket.LayerType { return JoinPruneMessageType }
 func (p *JoinPruneMessage) SerializeTo(b gopacket.SerializeBuffer, opts gopacket.SerializeOptions) error {
-	// Serialize Upstream Neighbor Address (Encoded-Unicast format)
 	addrBytes := serializeEncodedUnicastAddr(p.UpstreamNeighborAddress)
-	if addrBytes == nil {
-		return errors.New("invalid UpstreamNeighborAddress")
-	}
 	bytes, err := b.PrependBytes(len(addrBytes))
 	if err != nil {
 		return err
 	}
 	copy(bytes, addrBytes)
+
 	fmt.Printf("bytes: ======= %X\n", bytes)
+
+	header := make([]byte, 4)
+	header[0] = p.Reserved
+	header[1] = p.NumGroups
+	binary.BigEndian.PutUint16(header[2:4], p.Holdtime)
+	bytes, err = b.AppendBytes(4)
+	if err != nil {
+		return err
+	}
+	// copy(bytes, header)
+	bytes = append(addrBytes, header...)
+	fmt.Printf("bytes: ======= %X---%X---%d\n", bytes, header, len(header))
 	return nil
 }
 

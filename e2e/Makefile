@@ -1,10 +1,11 @@
 TAG_PREFIX=ghcr.io/malbeclabs
 TAG=doublezero-e2e
-ARCH := $(shell uname -m)
+ARCH:=$(shell uname -m)
+GIT_SHA:=`git rev-parse --short HEAD`
 
 .PHONY: eos
 eos:
-	docker build --build-arg CONFIG=e2e/fixtures/doublezero_device_startup_config_base.txt -f Dockerfile.eos -t agent:latest ../.
+	docker build --build-arg CONFIG=e2e/fixtures/doublezero_device_startup_config_base.txt -f Dockerfile.eos -t agent:$(GIT_SHA) ../.
 
 .PHONY: solana-arm64
 solana-arm64:
@@ -14,24 +15,37 @@ solana-arm64:
 solana-amd64:
 	docker build --platform=linux/amd64 -f Dockerfile.solana.amd64 -t $(TAG_PREFIX)/solana-amd64:latest .
 
+.PHONY: base
+base:
+ifeq ($(ARCH),arm64)
+	docker build --build-arg PLATFORM_ARCH=arm64 --platform linux/arm64 -f Dockerfile.base -t $(TAG_PREFIX)/doublezero-base:latest ../.
+else
+	docker build --build-arg PLATFORM_ARCH=amd64 --platform linux/amd64 -f Dockerfile.base -t $(TAG_PREFIX)/doublezero-base:latest ../.
+endif
+
 .PHONY: build
 build: eos
 ifeq ($(ARCH),arm64)
-	docker build --build-arg PLATFORM_ARCH=arm64 -f Dockerfile -t $(TAG_PREFIX)/$(TAG):latest ../.
+	docker build --build-arg PLATFORM_ARCH=arm64 -f Dockerfile -t $(TAG_PREFIX)/$(TAG):$(GIT_SHA) ../.
 else
-	docker build --build-arg PLATFORM_ARCH=amd64 -f Dockerfile -t $(TAG_PREFIX)/$(TAG):latest ../.
+	docker build --build-arg PLATFORM_ARCH=amd64 -f Dockerfile -t $(TAG_PREFIX)/$(TAG):$(GIT_SHA) ../.
 endif
 
 .PHONY: all
 all: eos
 ifeq ($(ARCH),arm64)
 	docker build -f Dockerfile.solana.arm64 -t $(TAG_PREFIX)/solana-arm64:latest .
-	docker build --build-arg PLATFORM_ARCH=arm64 -f Dockerfile -t $(TAG_PREFIX)/$(TAG):latest ../.
+	docker build --build-arg PLATFORM_ARCH=arm64 -f Dockerfile -t $(TAG_PREFIX)/$(TAG):$(GIT_SHA) ../.
 else
 	docker build --platform=linux/amd64 -f Dockerfile.solana.amd64 -t $(TAG_PREFIX)/solana-amd64:latest .
-	docker build --build-arg PLATFORM_ARCH=amd64 -f Dockerfile -t $(TAG_PREFIX)/$(TAG):latest ../.
+	docker build --build-arg PLATFORM_ARCH=amd64 -f Dockerfile -t $(TAG_PREFIX)/$(TAG):$(GIT_SHA) ../.
 endif
 
 .PHONY: test
 test:
 	bash bootstrap.sh
+
+.PHONY: clean
+clean:
+	docker rmi $(TAG_PREFIX)/$(TAG):$(GIT_SHA)
+	docker rmi agent:$(GIT_SHA)

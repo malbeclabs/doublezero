@@ -1,6 +1,7 @@
 package pim_test
 
 import (
+	"encoding/binary"
 	"net"
 	"testing"
 
@@ -192,9 +193,10 @@ func TestPIMJoinPacket(t *testing.T) {
 					MulticastGroupAddress: net.IP([]byte{239, 123, 123, 123}),
 					Joins: []pim.SourceAddress{
 						{AddressFamily: 1,
-							Flags:      7,
-							MaskLength: 32,
-							Address:    net.IP([]byte{1, 1, 1, 1}),
+							Flags:        7,
+							MaskLength:   32,
+							EncodingType: 0,
+							Address:      net.IP([]byte{1, 1, 1, 1}),
 						},
 					},
 					Prunes: []pim.SourceAddress{},
@@ -221,9 +223,10 @@ func TestPIMJoinPacket(t *testing.T) {
 				MulticastGroupAddress: net.IP([]byte{239, 123, 123, 123}),
 				Joins: []pim.SourceAddress{
 					{AddressFamily: 1,
-						Flags:      7,
-						MaskLength: 32,
-						Address:    net.IP([]byte{1, 1, 1, 1}),
+						Flags:        7,
+						MaskLength:   32,
+						EncodingType: 0,
+						Address:      net.IP([]byte{1, 1, 1, 1}),
 					},
 				},
 				Prunes: []pim.SourceAddress{},
@@ -337,9 +340,10 @@ func TestPIMPrunePacket(t *testing.T) {
 					Joins:                 []pim.SourceAddress{},
 					Prunes: []pim.SourceAddress{
 						{AddressFamily: 1,
-							Flags:      7,
-							MaskLength: 32,
-							Address:    net.IP([]byte{1, 1, 1, 1})},
+							Flags:        7,
+							MaskLength:   32,
+							EncodingType: 0,
+							Address:      net.IP([]byte{1, 1, 1, 1})},
 					},
 				},
 			}}
@@ -364,9 +368,10 @@ func TestPIMPrunePacket(t *testing.T) {
 				Joins:                 []pim.SourceAddress{},
 				Prunes: []pim.SourceAddress{
 					{AddressFamily: 1,
-						Flags:      7,
-						MaskLength: 32,
-						Address:    net.IP([]byte{1, 1, 1, 1}),
+						Flags:        7,
+						MaskLength:   32,
+						EncodingType: 0,
+						Address:      net.IP([]byte{1, 1, 1, 1}),
 					},
 				},
 			},
@@ -393,6 +398,146 @@ func TestPIMPrunePacket(t *testing.T) {
 
 	if diff := cmp.Diff(buf.Bytes(), joinPrune); diff != "" {
 		t.Errorf("Serialized packet mismatch (-got +want):\n%s", diff)
+	}
+
+}
+
+func TestPIMJoinPrunePacket(t *testing.T) {
+	joinPruneMessage := &pim.JoinPruneMessage{
+		Reserved:                0,
+		NumGroups:               1,
+		Holdtime:                210,
+		UpstreamNeighborAddress: net.IP([]byte{10, 0, 0, 13}),
+		Groups: []pim.Group{
+			{
+				GroupID:               0,
+				AddressFamily:         1,
+				NumJoinedSources:      3,
+				NumPrunedSources:      3,
+				MaskLength:            32,
+				MulticastGroupAddress: net.IP([]byte{239, 123, 123, 123}),
+				Joins: []pim.SourceAddress{
+					{
+						AddressFamily: 1,
+						Flags:         7,
+						MaskLength:    32,
+						EncodingType:  0,
+						Address:       net.IP([]byte{1, 1, 1, 4}),
+					},
+
+					{
+						AddressFamily: 1,
+						Flags:         7,
+						MaskLength:    32,
+						EncodingType:  0,
+						Address:       net.IP([]byte{1, 1, 1, 5}),
+					},
+					{
+						AddressFamily: 1,
+						Flags:         7,
+						MaskLength:    32,
+						EncodingType:  0,
+						Address:       net.IP([]byte{1, 1, 1, 6}),
+					},
+				},
+				Prunes: []pim.SourceAddress{
+					{
+						AddressFamily: 1,
+						Flags:         7,
+						MaskLength:    32,
+						EncodingType:  0,
+						Address:       net.IP([]byte{1, 1, 1, 1}),
+					},
+					{
+						AddressFamily: 1,
+						Flags:         7,
+						MaskLength:    32,
+						EncodingType:  0,
+						Address:       net.IP([]byte{1, 1, 1, 2}),
+					},
+					{
+						AddressFamily: 1,
+						Flags:         7,
+						MaskLength:    32,
+						EncodingType:  0,
+						Address:       net.IP([]byte{1, 1, 1, 3}),
+					},
+				},
+			},
+		},
+	}
+
+	joinPrune := []byte{
+		0x1, 0x0, 0xa, 0x0, 0x0, 0xd, // upstream neighbor 10.0.0.13
+		0x0,       // reserved
+		0x1,       // num groups 1
+		0x0, 0xd2, // holdtime 210
+		0x1, 0x0, 0x0, 0x20, 0xef, 0x7b, 0x7b, 0x7b, // group 0
+		0x0, 0x3, // numJoinedSources
+		0x0, 0x3, // numPrunedSources
+		0x1, 0x0, 0x7, 0x20, 0x1, 0x1, 0x1, 0x4, // join 0
+		0x1, 0x0, 0x7, 0x20, 0x1, 0x1, 0x1, 0x5, // join 1
+		0x1, 0x0, 0x7, 0x20, 0x1, 0x1, 0x1, 0x6, // join 2
+		0x1, 0x0, 0x7, 0x20, 0x1, 0x1, 0x1, 0x1, // prune 0
+		0x1, 0x0, 0x7, 0x20, 0x1, 0x1, 0x1, 0x2, // prune 1
+		0x1, 0x0, 0x7, 0x20, 0x1, 0x1, 0x1, 0x3, // prune 2
+	}
+
+	buf := gopacket.NewSerializeBuffer()
+	opts := gopacket.SerializeOptions{}
+	err := joinPruneMessage.SerializeTo(buf, opts)
+
+	if err != nil {
+		t.Fatalf("Error serializing packet: %v", err)
+	}
+
+	if diff := cmp.Diff(buf.Bytes(), joinPrune); diff != "" {
+		t.Errorf("Serialized packet mismatch (-got +want):\n%s", diff)
+	}
+
+	pimHeader := make([]byte, 4)
+
+	var encoded uint32
+	encoded = uint32(2) << 28
+	encoded |= uint32(3) << 24
+	encoded |= uint32(0) << 16
+	encoded |= uint32(23269)
+	binary.BigEndian.PutUint32(pimHeader, encoded)
+
+	joinPruneWithHeader := append(pimHeader, joinPrune...)
+	p := gopacket.NewPacket(joinPruneWithHeader, pim.PIMMessageType, gopacket.Default)
+	if p.ErrorLayer() != nil {
+		t.Fatalf("Error decoding packet: %v", p.ErrorLayer().Error())
+	}
+	if got, ok := p.Layer(pim.PIMMessageType).(*pim.PIMMessage); ok {
+		want := &pim.PIMMessage{
+			Header: pim.PIMHeader{
+				Version:  2,
+				Type:     pim.JoinPrune,
+				Checksum: 0x5ae5,
+			},
+		}
+		if diff := cmp.Diff(got, want, cmpopts.IgnoreFields(pim.PIMMessage{}, "BaseLayer")); diff != "" {
+			t.Errorf("PIMMessage mismatch (-got +want):\n%s", diff)
+		}
+
+		buf := gopacket.NewSerializeBuffer()
+		opts := gopacket.SerializeOptions{}
+		err := want.SerializeTo(buf, opts)
+		if err != nil {
+			t.Fatalf("Error serializing packet: %v", err)
+		}
+		if diff := cmp.Diff(buf.Bytes(), got.BaseLayer.Contents); diff != "" {
+			t.Errorf("Serialized packet mismatch (-got +want):\n%s", diff)
+		}
+	}
+
+	if got, ok := p.Layer(pim.JoinPruneMessageType).(*pim.JoinPruneMessage); ok {
+		want := joinPruneMessage
+
+		if diff := cmp.Diff(got, want, cmpopts.IgnoreFields(pim.JoinPruneMessage{}, "BaseLayer")); diff != "" {
+			t.Errorf("HelloMessage mismatch (-got +want):\n%s", diff)
+		}
 	}
 
 }

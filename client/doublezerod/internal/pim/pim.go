@@ -240,11 +240,14 @@ func decodeGroups(numGroups uint8, groups []Group, data []byte) ([]Group, error)
 
 		group.NumJoinedSources = binary.BigEndian.Uint16(data[0:2])
 		group.NumPrunedSources = binary.BigEndian.Uint16(data[2:4])
-		group.Joins = make([]SourceAddress, 0)
+
 		data = data[4:]
 
-		len = 0
+		// TODO: Pull out these ranges into a function
+		group.Joins = make([]SourceAddress, 0)
 		for range int(group.NumJoinedSources) {
+			// first four bytes of the group
+			len = 4
 			sourceAddress := SourceAddress{}
 			sourceAddress.AddressFamily = data[0]
 			sourceAddress.EncodingType = data[1]
@@ -260,11 +263,14 @@ func decodeGroups(numGroups uint8, groups []Group, data []byte) ([]Group, error)
 			}
 			sourceAddress.Address = addr
 			group.Joins = append(group.Joins, sourceAddress)
+
 			data = data[len:]
 		}
-		len = 0
+
 		group.Prunes = make([]SourceAddress, 0)
 		for range int(group.NumPrunedSources) {
+			// first four bytes of the group
+			len = 4
 			sourceAddress := SourceAddress{}
 			sourceAddress.AddressFamily = data[0]
 			sourceAddress.EncodingType = data[1]

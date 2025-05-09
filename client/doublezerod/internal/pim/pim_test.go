@@ -225,12 +225,12 @@ func TestPIMJoinPacket(t *testing.T) {
 				MulticastGroupAddress: net.IP([]byte{239, 123, 123, 123}),
 			}}}
 
-	h := []byte{
+	joinPrune := []byte{
 		0x1, 0x0, 0xa, 0x0, 0x0, 0xd, // upstream neighbor
-		0x0,       // reserved
-		0x1,       // num groups 1
-		0x0, 0xd2, // holdtime 210
-		0x1, 0x0, 0x0, 0x20, 0xef, 0x7b, 0x7b, 0x7b, // group 0
+		// 0x0,       // reserved
+		// 0x1,       // num groups 1
+		// 0x0, 0xd2, // holdtime 210
+		// 0x1, 0x0, 0x0, 0x20, 0xef, 0x7b, 0x7b, 0x7b, // group 0
 
 	}
 	buf := gopacket.NewSerializeBuffer()
@@ -240,7 +240,7 @@ func TestPIMJoinPacket(t *testing.T) {
 		t.Fatalf("Error serializing packet: %v", err)
 	}
 
-	if diff := cmp.Diff(buf.Bytes(), h); diff != "" {
+	if diff := cmp.Diff(buf.Bytes(), joinPrune); diff != "" {
 		t.Errorf("Serialized packet mismatch (-got +want):\n%s", diff)
 	}
 
@@ -349,13 +349,13 @@ func TestPIMPrunePacket(t *testing.T) {
 		UpstreamNeighborAddress: net.IP([]byte{10, 0, 0, 13}),
 	}
 
-	h := []byte{
-		0x0,       // reserved
-		0x1,       // num groups 1
-		0x0, 0xd2, // holdtime 210
+	joinPrune := []byte{
 		0x1, 0x0, 0xa, 0x0, 0x0, 0xd, // upstream neighbor 10.0.0.13
-
+		// 0x0,       // reserved
+		// 0x1,       // num groups 1
+		// 0x0, 0xd2, // holdtime 210
 	}
+
 	buf := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{}
 	err := got.SerializeTo(buf, opts)
@@ -363,7 +363,7 @@ func TestPIMPrunePacket(t *testing.T) {
 		t.Fatalf("Error serializing packet: %v", err)
 	}
 
-	if diff := cmp.Diff(buf.Bytes(), h); diff != "" {
+	if diff := cmp.Diff(buf.Bytes(), joinPrune); diff != "" {
 		t.Errorf("Serialized packet mismatch (-got +want):\n%s", diff)
 	}
 

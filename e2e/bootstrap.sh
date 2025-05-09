@@ -4,6 +4,7 @@ DZD_NAME=dzd01
 NET_CYOA=b_net2
 TIMEOUT=60  # Healthcheck timeout in seconds for the DZ device container
 INTERVAL=2  # Check interval in seconds
+GIT_SHA=`git rev-parse --short HEAD`
 
 start_time=$(date +%s)
 
@@ -44,7 +45,7 @@ start_doublezero_device() {
     # Docker attaches interfaces in seemingly random order. If the networks
     # end up attached in the wrong order, this test will fail as the CYOA network
     # will not be attached to Ethernet1.
-    docker create --name=$DZD_NAME --privileged -t agent:latest
+    docker create --name=$DZD_NAME --privileged -t agent:$GIT_SHA
     docker network connect --ip=64.86.249.80 $NET_CYOA $DZD_NAME
     docker start $DZD_NAME
 
@@ -80,7 +81,7 @@ check_doublezero_device_health() {
 
 start_e2e_tests() {
     # The e2e test container is connected directly to the DZ device container.
-    docker run --name e2e --privileged --rm --net $NET_CYOA --ip=64.86.249.86 ghcr.io/malbeclabs/doublezero-e2e:latest
+    docker run --name e2e --privileged --rm --net $NET_CYOA --ip=64.86.249.86 ghcr.io/malbeclabs/doublezero-e2e:$GIT_SHA
 }
 
 main "$@"; exit

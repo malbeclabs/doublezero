@@ -5,7 +5,7 @@ GIT_SHA:=`git rev-parse --short HEAD`
 
 .PHONY: eos
 eos:
-	docker build --build-arg CONFIG=e2e/fixtures/doublezero_device_startup_config_base.txt -f Dockerfile.eos -t agent:latest ../.
+	docker build --build-arg CONFIG=e2e/fixtures/doublezero_device_startup_config_base.txt -f Dockerfile.eos -t agent:$(GIT_SHA) ../.
 
 .PHONY: solana-arm64
 solana-arm64:
@@ -44,3 +44,8 @@ endif
 .PHONY: test
 test:
 	bash bootstrap.sh
+
+.PHONY: clean
+clean:
+	docker rmi $(TAG_PREFIX)/$(TAG):$(GIT_SHA)
+	docker rmi agent:$(GIT_SHA)

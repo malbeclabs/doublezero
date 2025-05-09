@@ -41,5 +41,5 @@ else
 endif
 
 .PHONY: test
-test: build
+test:
 	bash bootstrap.sh

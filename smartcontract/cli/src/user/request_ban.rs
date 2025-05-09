@@ -1,9 +1,7 @@
 use std::str::FromStr;
 
 use crate::doublezerocommand::CliCommand;
-use crate::requirements::{
-    check_requirements, CHECK_BALANCE, CHECK_FOUNDATION_ALLOWLIST, CHECK_ID_JSON,
-};
+use crate::requirements::{CHECK_BALANCE, CHECK_FOUNDATION_ALLOWLIST, CHECK_ID_JSON};
 use clap::Args;
 use doublezero_sdk::commands::user::get::GetUserCommand;
 use doublezero_sdk::commands::user::requestban::RequestBanUserCommand;
@@ -19,11 +17,7 @@ pub struct RequestBanUserCliCommand {
 impl RequestBanUserCliCommand {
     pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
         // Check requirements
-        check_requirements(
-            client,
-            None,
-            CHECK_ID_JSON | CHECK_BALANCE | CHECK_FOUNDATION_ALLOWLIST,
-        )?;
+        client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE | CHECK_FOUNDATION_ALLOWLIST)?;
 
         let pubkey = Pubkey::from_str(&self.pubkey)?;
         let (_, user) = client.get_user(GetUserCommand { pubkey })?;

@@ -3,7 +3,6 @@ package pim
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net"
 
@@ -67,8 +66,6 @@ func (p *JoinPruneMessage) SerializeTo(b gopacket.SerializeBuffer, opts gopacket
 	}
 	copy(bytes, addrBytes)
 
-	fmt.Printf("bytes: ======= %X\n", bytes)
-
 	header := make([]byte, 4)
 	header[0] = p.Reserved
 	header[1] = p.NumGroups
@@ -77,9 +74,16 @@ func (p *JoinPruneMessage) SerializeTo(b gopacket.SerializeBuffer, opts gopacket
 	if err != nil {
 		return err
 	}
-	// copy(bytes, header)
-	bytes = append(addrBytes, header...)
-	fmt.Printf("bytes: ======= %X---%X---%d\n", bytes, header, len(header))
+
+	copy(bytes, header)
+	for _, group := range p.Groups {
+		newGroup := NewGroup(group)
+		bytes, err = b.AppendBytes(len(newGroup.Bytes()))
+		copy(bytes, newGroup.Bytes())
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -236,12 +240,12 @@ func decodeGroups(numGroups uint8, groups []Group, data []byte) ([]Group, error)
 
 		group.NumJoinedSources = binary.BigEndian.Uint16(data[0:2])
 		group.NumPrunedSources = binary.BigEndian.Uint16(data[2:4])
-		group.Joins = make([]SourceAddresses, 0)
+		group.Joins = make([]SourceAddress, 0)
 		data = data[4:]
 
 		len = 0
 		for range int(group.NumJoinedSources) {
-			sourceAddress := SourceAddresses{}
+			sourceAddress := SourceAddress{}
 			sourceAddress.AddressFamily = data[0]
 			sourceAddress.EncodingType = data[1]
 			sourceAddress.Flags = data[2]
@@ -249,7 +253,6 @@ func decodeGroups(numGroups uint8, groups []Group, data []byte) ([]Group, error)
 
 			if data[0] == 1 {
 				addr = net.IP(data[4:8])
-				fmt.Printf("sourceAddress %v\n", addr)
 				len = len + 4
 			} else if data[0] == 2 {
 				addr = net.IP(data[4:20])
@@ -260,9 +263,9 @@ func decodeGroups(numGroups uint8, groups []Group, data []byte) ([]Group, error)
 			data = data[len:]
 		}
 		len = 0
-		group.Prunes = make([]SourceAddresses, 0)
+		group.Prunes = make([]SourceAddress, 0)
 		for range int(group.NumPrunedSources) {
-			sourceAddress := SourceAddresses{}
+			sourceAddress := SourceAddress{}
 			sourceAddress.AddressFamily = data[0]
 			sourceAddress.EncodingType = data[1]
 			sourceAddress.Flags = data[2]
@@ -637,16 +640,86 @@ type Group struct {
 	MulticastGroupAddress net.IP
 	NumJoinedSources      uint16
 	NumPrunedSources      uint16
-	Joins                 []SourceAddresses
-	Prunes                []SourceAddresses
+	Joins                 []SourceAddress
+	Prunes                []SourceAddress
 }
 
-type SourceAddresses struct {
+func NewGroup(group Group) Group {
+	return Group{
+		GroupID:               group.GroupID,
+		AddressFamily:         group.AddressFamily,
+		EncodingType:          group.EncodingType,
+		Flags:                 group.Flags,
+		MaskLength:            group.MaskLength,
+		MulticastGroupAddress: group.MulticastGroupAddress,
+		NumJoinedSources:      group.NumJoinedSources,
+		NumPrunedSources:      group.NumPrunedSources,
+		Joins:                 group.Joins,
+		Prunes:                group.Prunes,
+	}
+}
+
+func (g Group) Bytes() []byte {
+	groupAddress := serializeEncodedUnicastAddr(g.MulticastGroupAddress)
+	// drop addr family and encoding type
+	groupAddress = groupAddress[2:]
+
+	bytes := make([]byte, 4+len(groupAddress))
+	bytes[0] = g.AddressFamily
+	bytes[1] = g.EncodingType
+	bytes[2] = g.Flags
+	bytes[3] = g.MaskLength
+	copy(bytes[4:], groupAddress)
+
+	numJoinPruneSources := make([]byte, 4)
+	binary.BigEndian.PutUint16(numJoinPruneSources[0:2], g.NumJoinedSources)
+	binary.BigEndian.PutUint16(numJoinPruneSources[2:4], g.NumPrunedSources)
+
+	bytes = append(bytes, numJoinPruneSources...)
+	for _, join := range g.Joins {
+		sourceAddress := NewSourceAddress(join)
+		bytes = append(bytes, sourceAddress.Bytes()...)
+
+	}
+
+	for _, prune := range g.Prunes {
+		sourceAddress := NewSourceAddress(prune)
+		bytes = append(bytes, sourceAddress.Bytes()...)
+
+	}
+	return bytes
+}
+
+type SourceAddress struct {
 	AddressFamily uint8
 	EncodingType  uint8
 	Flags         uint8
 	MaskLength    uint8
-	Address       []byte
+	Address       net.IP
+}
+
+func NewSourceAddress(s SourceAddress) SourceAddress {
+	return SourceAddress{
+		AddressFamily: s.AddressFamily,
+		EncodingType:  s.EncodingType,
+		Flags:         s.Flags,
+		MaskLength:    s.MaskLength,
+		Address:       s.Address,
+	}
+}
+
+func (s SourceAddress) Bytes() []byte {
+	address := serializeEncodedUnicastAddr(s.Address)
+	// drop addr family and encoding type
+	address = address[2:]
+	bytes := make([]byte, 4+len(s.Address))
+	bytes[0] = s.AddressFamily
+	bytes[1] = s.EncodingType
+	bytes[2] = s.Flags
+	bytes[3] = s.MaskLength
+	copy(bytes[4:], address)
+
+	return bytes
 }
 
 /*
@@ -666,40 +739,3 @@ type SourceAddresses struct {
 |        Pruned Source Address n (Encoded-Source format)        |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
-
-// func (p *JoinPruneMessage) SerializeTo(b gopacket.SerializeBuffer, opts gopacket.SerializeOptions) error {
-// 	// if p.UpstreamNeighborAddress != nil {
-// 	addrBytes := serializeEncodedUnicastAddr(p.UpstreamNeighborAddress)
-// 	bytes, err := b.PrependBytes(len(addrBytes))
-// 	if err != nil {
-// 		return err
-// 	}
-// 	fmt.Printf("bytes: ======= %X\n", bytes)
-// 	// bytes[6] = p.Reserved
-// 	// bytes[7] = p.NumGroups
-// 	// bytes, err = b.AppendBytes(2)
-// 	// if err != nil {
-// 	// 	return err
-// 	// }
-
-// 	// for _, group := range p.Groups {
-// 	// 	groupBytes, err := b.PrependBytes(4)
-// 	// 	if err != nil {
-// 	// 		return err
-// 	// 	}
-// 	// 	groupBytes[0] = group.AddressFamily
-// 	// 	groupBytes[1] = group.EncodingType
-// 	// 	groupBytes[2] = group.MaskLength
-// 	// 	groupBytes[3] = group.Flags
-// 	// 	if group.MulticastGroupAddress != nil {
-// 	// 		addrBytes := serializeEncodedUnicastAddr(group.MulticastGroupAddress)
-// 	// 		groupBytes, err := b.PrependBytes(len(addrBytes))
-// 	// 		if err != nil {
-// 	// 			return err
-// 	// 		}
-// 	// 		copy(groupBytes, addrBytes)
-// 	// 		bytes = append(bytes, groupBytes...)
-// 	// 	}
-// 	// }
-// 	return nil
-// }

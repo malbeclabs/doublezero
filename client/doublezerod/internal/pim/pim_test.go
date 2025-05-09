@@ -147,11 +147,7 @@ Protocol Independent Multicast
 	        Num Prunes: 0
 */
 
-var joinPacket = []byte{
-	0x23,                 // addr famly
-	0x0,                  // encoding
-	0x5a, 0xe5, 0x1, 0x0, // upstream neighbor
-	0xa, 0x0, 0x0, 0xd, 0x0, 0x1, 0x0, 0xd2, 0x1, 0x0, 0x0, 0x20, 0xef, 0x7b, 0x7b, 0x7b, 0x0, 0x1, 0x0, 0x0, 0x1, 0x0, 0x7, 0x20, 0x1, 0x1, 0x1, 0x1}
+var joinPacket = []byte{0x23, 0x0, 0x5a, 0xe5, 0x1, 0x0, 0xa, 0x0, 0x0, 0xd, 0x0, 0x1, 0x0, 0xd2, 0x1, 0x0, 0x0, 0x20, 0xef, 0x7b, 0x7b, 0x7b, 0x0, 0x1, 0x0, 0x0, 0x1, 0x0, 0x7, 0x20, 0x1, 0x1, 0x1, 0x1}
 
 func TestPIMJoinPacket(t *testing.T) {
 	p := gopacket.NewPacket(joinPacket, pim.PIMMessageType, gopacket.Default)
@@ -194,14 +190,14 @@ func TestPIMJoinPacket(t *testing.T) {
 					NumPrunedSources:      0,
 					MaskLength:            32,
 					MulticastGroupAddress: net.IP([]byte{239, 123, 123, 123}),
-					Joins: []pim.SourceAddresses{
+					Joins: []pim.SourceAddress{
 						{AddressFamily: 1,
 							Flags:      7,
 							MaskLength: 32,
 							Address:    net.IP([]byte{1, 1, 1, 1}),
 						},
 					},
-					Prunes: []pim.SourceAddresses{},
+					Prunes: []pim.SourceAddress{},
 				},
 			}}
 
@@ -219,19 +215,29 @@ func TestPIMJoinPacket(t *testing.T) {
 			{
 				GroupID:               0,
 				AddressFamily:         1,
-				NumJoinedSources:      0,
-				NumPrunedSources:      1,
+				NumJoinedSources:      1,
+				NumPrunedSources:      0,
 				MaskLength:            32,
 				MulticastGroupAddress: net.IP([]byte{239, 123, 123, 123}),
+				Joins: []pim.SourceAddress{
+					{AddressFamily: 1,
+						Flags:      7,
+						MaskLength: 32,
+						Address:    net.IP([]byte{1, 1, 1, 1}),
+					},
+				},
+				Prunes: []pim.SourceAddress{},
 			}}}
 
 	joinPrune := []byte{
 		0x1, 0x0, 0xa, 0x0, 0x0, 0xd, // upstream neighbor
-		// 0x0,       // reserved
-		// 0x1,       // num groups 1
-		// 0x0, 0xd2, // holdtime 210
-		// 0x1, 0x0, 0x0, 0x20, 0xef, 0x7b, 0x7b, 0x7b, // group 0
-
+		0x0,       // reserved
+		0x1,       // num groups 1
+		0x0, 0xd2, // holdtime 210
+		0x1, 0x0, 0x0, 0x20, 0xef, 0x7b, 0x7b, 0x7b, // group 0
+		0x0, 0x1, // numJoinedSources
+		0x0, 0x0, // numPrunedSources
+		0x1, 0x0, 0x7, 0x20, 0x1, 0x1, 0x1, 0x1, // joins
 	}
 	buf := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{}
@@ -328,8 +334,8 @@ func TestPIMPrunePacket(t *testing.T) {
 					NumPrunedSources:      1,
 					MaskLength:            32,
 					MulticastGroupAddress: net.IP([]byte{239, 123, 123, 123}),
-					Joins:                 []pim.SourceAddresses{},
-					Prunes: []pim.SourceAddresses{
+					Joins:                 []pim.SourceAddress{},
+					Prunes: []pim.SourceAddress{
 						{AddressFamily: 1,
 							Flags:      7,
 							MaskLength: 32,
@@ -347,13 +353,35 @@ func TestPIMPrunePacket(t *testing.T) {
 		NumGroups:               1,
 		Holdtime:                210,
 		UpstreamNeighborAddress: net.IP([]byte{10, 0, 0, 13}),
+		Groups: []pim.Group{
+			{
+				GroupID:               0,
+				AddressFamily:         1,
+				NumJoinedSources:      0,
+				NumPrunedSources:      1,
+				MaskLength:            32,
+				MulticastGroupAddress: net.IP([]byte{239, 123, 123, 123}),
+				Joins:                 []pim.SourceAddress{},
+				Prunes: []pim.SourceAddress{
+					{AddressFamily: 1,
+						Flags:      7,
+						MaskLength: 32,
+						Address:    net.IP([]byte{1, 1, 1, 1}),
+					},
+				},
+			},
+		},
 	}
 
 	joinPrune := []byte{
 		0x1, 0x0, 0xa, 0x0, 0x0, 0xd, // upstream neighbor 10.0.0.13
-		// 0x0,       // reserved
-		// 0x1,       // num groups 1
-		// 0x0, 0xd2, // holdtime 210
+		0x0,       // reserved
+		0x1,       // num groups 1
+		0x0, 0xd2, // holdtime 210
+		0x1, 0x0, 0x0, 0x20, 0xef, 0x7b, 0x7b, 0x7b, // group 0
+		0x0, 0x0, // numJoinedSources
+		0x0, 0x1, // numPrunedSources
+		0x1, 0x0, 0x7, 0x20, 0x1, 0x1, 0x1, 0x1, // prunes
 	}
 
 	buf := gopacket.NewSerializeBuffer()

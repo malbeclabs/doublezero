@@ -1,6 +1,7 @@
 TAG_PREFIX=ghcr.io/malbeclabs
 TAG=doublezero-e2e
-ARCH := $(shell uname -m)
+ARCH:=$(shell uname -m)
+GIT_SHA:=`git rev-parse --short HEAD`
 
 .PHONY: eos
 eos:
@@ -25,19 +26,19 @@ endif
 .PHONY: build
 build: eos
 ifeq ($(ARCH),arm64)
-	docker build --build-arg PLATFORM_ARCH=arm64 -f Dockerfile -t $(TAG_PREFIX)/$(TAG):latest ../.
+	docker build --build-arg PLATFORM_ARCH=arm64 -f Dockerfile -t $(TAG_PREFIX)/$(TAG):$(GIT_SHA) ../.
 else
-	docker build --build-arg PLATFORM_ARCH=amd64 -f Dockerfile -t $(TAG_PREFIX)/$(TAG):latest ../.
+	docker build --build-arg PLATFORM_ARCH=amd64 -f Dockerfile -t $(TAG_PREFIX)/$(TAG):$(GIT_SHA) ../.
 endif
 
 .PHONY: all
 all: eos
 ifeq ($(ARCH),arm64)
 	docker build -f Dockerfile.solana.arm64 -t $(TAG_PREFIX)/solana-arm64:latest .
-	docker build --build-arg PLATFORM_ARCH=arm64 -f Dockerfile -t $(TAG_PREFIX)/$(TAG):latest ../.
+	docker build --build-arg PLATFORM_ARCH=arm64 -f Dockerfile -t $(TAG_PREFIX)/$(TAG):$(GIT_SHA) ../.
 else
 	docker build --platform=linux/amd64 -f Dockerfile.solana.amd64 -t $(TAG_PREFIX)/solana-amd64:latest .
-	docker build --build-arg PLATFORM_ARCH=amd64 -f Dockerfile -t $(TAG_PREFIX)/$(TAG):latest ../.
+	docker build --build-arg PLATFORM_ARCH=amd64 -f Dockerfile -t $(TAG_PREFIX)/$(TAG):$(GIT_SHA) ../.
 endif
 
 .PHONY: test

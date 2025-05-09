@@ -7,9 +7,13 @@ import (
 	"bytes"
 	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"slices"
@@ -91,6 +95,30 @@ type IpRoute struct {
 
 func (r *ShowIpRoute) GetCmd() string {
 	return "show ip route vrf vrf1"
+}
+
+func TestWaitForLatencyResults(t *testing.T) {
+	deadline := time.Now().Add(75 * time.Second)
+	for time.Now().Before(deadline) {
+		buf, err := fetchClientEndpoint("/latency")
+		if err != nil {
+			t.Fatalf("error fetching latency results: %v", err)
+		}
+		results := []map[string]any{}
+		if err := json.Unmarshal(buf, &results); err != nil {
+			t.Fatalf("error unmarshaling latency data: %v", err)
+		}
+		if len(results) > 0 {
+			for _, result := range results {
+				// Check to make sure ny5-dz01 is reachable
+				if result["device_pk"] == "8scDVeZ8aB1TRTkBqaZgzxuk7WwpARdF1a39wYA7nR3W" && result["reachable"] == true {
+					return
+				}
+			}
+		}
+		time.Sleep(1 * time.Second)
+	}
+	t.Fatalf("timed out waiting for latency results")
 }
 
 // TestIBRLWithAllocatedAddress_Connect_Output is a set of tests to verify the output of the doublezero
@@ -817,4 +845,46 @@ func waitForController(config []byte) bool {
 		time.Sleep(500 * time.Millisecond)
 	}
 	return false
+}
+
+func fetchClientEndpoint(endpoint string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	client := http.Client{
+		Transport: &http.Transport{
+			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+				dialer := net.Dialer{}
+				return dialer.DialContext(ctx, "unix", "/var/run/doublezerod/doublezerod.sock")
+			},
+		},
+	}
+
+	url, err := url.JoinPath("http://doublezero/", endpoint)
+	if err != nil {
+		log.Fatalf("error creating url: %v", err)
+	}
+
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		log.Fatalf("error creating request: %v", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Fatalf("error during request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	buf, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("error fetching endpoint %s: %s", endpoint, string(buf))
+	}
+	if len(buf) == 0 {
+		return nil, fmt.Errorf("empty response from endpoint %s", endpoint)
+	}
+	return buf, nil
 }

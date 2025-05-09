@@ -91,7 +91,7 @@ func TestLatencyManager(t *testing.T) {
 
 	go func() {
 		programId := "9i7v8m3i7W2qPGRonFi8mehN76SXUkDcpgk4tPQhEabc"
-		if err := manager.Start(ctx, programId, ""); err != nil {
+		if err := manager.Start(ctx, programId, "", 30, 30); err != nil {
 			log.Fatalf("error: %v", err)
 		}
 	}()
@@ -233,7 +233,7 @@ func TestLatencyUdpPing(t *testing.T) {
 	defer cancel()
 	go func() {
 		programId := "9i7v8m3i7W2qPGRonFi8mehN76SXUkDcpgk4tPQhEabc"
-		if err := manager.Start(ctx, programId, ""); err != nil {
+		if err := manager.Start(ctx, programId, "", 30, 30); err != nil {
 			log.Fatalf("error: %v", err)
 		}
 	}()

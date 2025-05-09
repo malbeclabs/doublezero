@@ -55,7 +55,7 @@ main() {
     start_doublezerod
 
     print_banner "Waiting for latency results (75 second timeout)"
-    sleep 75
+    e2e_test -test.v -test.run "^TestWaitForLatencyResults"
 
     print_banner "Latency results"
     doublezero latency
@@ -120,7 +120,7 @@ start_doublezerod() {
     mkdir /var/run/doublezerod
     # create state file directory
     mkdir /var/lib/doublezerod
-    doublezerod -program-id $PROGRAM_ID -solana-rpc-endpoint $VALIDATOR_URL &
+    doublezerod -program-id $PROGRAM_ID -solana-rpc-endpoint $VALIDATOR_URL -probe-interval 5 -cache-update-interval 3 &
 }
 
 populate_data_onchain() {

@@ -53,6 +53,7 @@ main() {
 
     print_banner "Initializing doublezero daemon"
     start_doublezerod
+    sleep 5
 
     print_banner "Waiting for latency results (75 second timeout)"
     e2e_test -test.v -test.run "^TestWaitForLatencyResults"

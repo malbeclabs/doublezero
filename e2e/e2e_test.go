@@ -122,7 +122,7 @@ func TestWaitForLatencyResults(t *testing.T) {
 }
 
 func TestWaitForClientTunnelUp(t *testing.T) {
-	deadline := time.Now().Add(120 * time.Second)
+	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
 		buf, err := fetchClientEndpoint("/status")
 		if err != nil {

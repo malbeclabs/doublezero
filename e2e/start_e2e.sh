@@ -99,8 +99,8 @@ test_ibrl() {
     print_banner "Connecting user tunnel"
     doublezero --keypair $SOLANA_KEYPAIR connect ibrl --client-ip 64.86.249.86
 
-    print_banner "Banning account J2MUYJeJvTfrHpxMm3tVYkcDhTwgAFFju2veS27WhByX"
-    doublezero user request-ban --pubkey J2MUYJeJvTfrHpxMm3tVYkcDhTwgAFFju2veS27WhByX
+    # print_banner "Banning account J2MUYJeJvTfrHpxMm3tVYkcDhTwgAFFju2veS27WhByX"
+    # doublezero user request-ban --pubkey J2MUYJeJvTfrHpxMm3tVYkcDhTwgAFFju2veS27WhByX
 
     print_banner "Waiting for client tunnel to be up before starting tests"
     e2e_test -test.v -test.run "^TestWaitForClientTunnelUp"

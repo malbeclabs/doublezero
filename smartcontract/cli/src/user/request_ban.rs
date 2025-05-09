@@ -42,7 +42,7 @@ mod tests {
     use crate::user::request_ban::RequestBanUserCliCommand;
     use doublezero_sdk::commands::user::delete::DeleteUserCommand;
     use doublezero_sdk::commands::user::get::GetUserCommand;
-    use doublezero_sdk::commands::user::update::UpdateUserCommand;
+    use doublezero_sdk::commands::user::requestban::RequestBanUserCommand;
     use doublezero_sdk::AccountType;
     use doublezero_sdk::User;
     use doublezero_sdk::UserCYOA;
@@ -57,6 +57,7 @@ mod tests {
     fn test_cli_user_request_ban() {
         let mut client = create_test_client();
 
+        let payer = client.get_payer();
         let (pda_pubkey, _bump_seed) = get_user_pda(&client.get_program_id(), 1);
         let signature = Signature::from([
             120, 138, 162, 185, 59, 209, 241, 157, 71, 157, 74, 131, 4, 87, 54, 28, 38, 180, 222,
@@ -91,16 +92,12 @@ mod tests {
             .with(predicate::eq(DeleteUserCommand { index: 1 }))
             .returning(move |_| Ok(signature));
         client
-            .expect_update_user()
-            .with(predicate::eq(UpdateUserCommand {
-                index: 1,
-                user_type: None,
-                cyoa_type: None,
-                client_ip: Some([10, 5, 4, 3]),
-                dz_ip: Some([2, 3, 4, 5]),
-                tunnel_id: Some(1),
-                tunnel_net: Some(([10, 2, 2, 3], 24)),
-            }))
+            .expect_list_foundation_allowlist()
+            .returning(move |_| Ok(vec![payer]));
+
+        client
+            .expect_request_ban_user()
+            .with(predicate::eq(RequestBanUserCommand { index: 1 }))
             .returning(move |_| Ok(signature));
 
         /*****************************************************************************************************/

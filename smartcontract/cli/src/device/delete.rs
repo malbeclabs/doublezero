@@ -1,5 +1,5 @@
 use crate::doublezerocommand::CliCommand;
-use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
+use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
 use clap::Args;
 use doublezero_sdk::commands::device::delete::DeleteDeviceCommand;
 use doublezero_sdk::commands::device::get::GetDeviceCommand;
@@ -14,7 +14,7 @@ pub struct DeleteDeviceCliCommand {
 impl DeleteDeviceCliCommand {
     pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
         // Check requirements
-        check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
+        client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
         let (_, device) = client
             .get_device(GetDeviceCommand {
@@ -35,6 +35,7 @@ impl DeleteDeviceCliCommand {
 mod tests {
     use crate::device::delete::DeleteDeviceCliCommand;
     use crate::doublezerocommand::CliCommand;
+    use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
     use crate::tests::tests::create_test_client;
     use doublezero_sdk::commands::device::delete::DeleteDeviceCommand;
     use doublezero_sdk::commands::device::get::GetDeviceCommand;
@@ -106,6 +107,10 @@ mod tests {
             owner: pda_pubkey,
         };
 
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
         client
             .expect_get_location()
             .with(predicate::eq(GetLocationCommand {

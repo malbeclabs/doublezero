@@ -5,7 +5,7 @@ use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 use std::str::FromStr;
 
-use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
+use crate::requirements::{ CHECK_BALANCE, CHECK_ID_JSON};
 
 #[derive(Args, Debug)]
 pub struct RemoveDeviceAllowlistCliCommand {
@@ -16,7 +16,7 @@ pub struct RemoveDeviceAllowlistCliCommand {
 impl RemoveDeviceAllowlistCliCommand {
     pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
         // Check requirements
-        check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
+        client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
         let pubkey = {
             if self.pubkey.eq_ignore_ascii_case("me") {

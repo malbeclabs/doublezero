@@ -1,5 +1,5 @@
 use crate::doublezerocommand::CliCommand;
-use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
+use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
 use clap::Args;
 use doublezero_sdk::commands::location::get::GetLocationCommand;
 use doublezero_sdk::commands::location::update::UpdateLocationCommand;
@@ -26,7 +26,7 @@ pub struct UpdateLocationCliCommand {
 impl UpdateLocationCliCommand {
     pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
         // Check requirements
-        check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
+        client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
         let (_, location) = client.get_location(GetLocationCommand {
             pubkey_or_code: self.pubkey,
@@ -52,6 +52,7 @@ impl UpdateLocationCliCommand {
 mod tests {
     use crate::doublezerocommand::CliCommand;
     use crate::location::update::UpdateLocationCliCommand;
+    use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
     use crate::tests::tests::create_test_client;
     use doublezero_sdk::commands::location::update::UpdateLocationCommand;
     use doublezero_sdk::get_location_pda;
@@ -89,6 +90,10 @@ mod tests {
             owner: Pubkey::new_unique(),
         };
 
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
         client
             .expect_get_location()
             .with(predicate::eq(GetLocationCommand {

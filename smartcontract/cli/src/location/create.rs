@@ -1,5 +1,5 @@
 use crate::doublezerocommand::CliCommand;
-use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
+use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
 use clap::Args;
 use doublezero_sdk::*;
 use std::io::Write;
@@ -23,7 +23,7 @@ pub struct CreateLocationCliCommand {
 impl CreateLocationCliCommand {
     pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
         // Check requirements
-        check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
+        client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
         let (signature, _pubkey) = client.create_location(CreateLocationCommand {
             code: self.code.clone(),
@@ -43,12 +43,12 @@ impl CreateLocationCliCommand {
 #[cfg(test)]
 mod tests {
     use crate::doublezerocommand::CliCommand;
+    use crate::location::create::CreateLocationCliCommand;
+    use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
+    use crate::tests::tests::create_test_client;
     use doublezero_sdk::{get_location_pda, CreateLocationCommand};
     use mockall::predicate;
     use solana_sdk::signature::Signature;
-
-    use crate::location::create::CreateLocationCliCommand;
-    use crate::tests::tests::create_test_client;
 
     #[test]
     fn test_cli_location_create() {
@@ -62,6 +62,10 @@ mod tests {
             100, 221, 20, 137, 4, 5,
         ]);
 
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
         client
             .expect_create_location()
             .with(predicate::eq(CreateLocationCommand {

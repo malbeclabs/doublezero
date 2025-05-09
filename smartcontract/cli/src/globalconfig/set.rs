@@ -1,5 +1,5 @@
 use crate::doublezerocommand::CliCommand;
-use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
+use crate::requirements::{ CHECK_BALANCE, CHECK_ID_JSON};
 use clap::Args;
 use doublezero_sdk::commands::globalconfig::set::SetGlobalConfigCommand;
 use doublezero_sdk::*;
@@ -20,7 +20,7 @@ pub struct SetGlobalConfigCliCommand {
 impl SetGlobalConfigCliCommand {
     pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
         // Check requirements
-        check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
+        client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
         let signature = client.set_globalconfig(SetGlobalConfigCommand {
             local_asn: self.local_asn,

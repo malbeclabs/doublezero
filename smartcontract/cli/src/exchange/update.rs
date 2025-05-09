@@ -1,5 +1,5 @@
 use crate::doublezerocommand::CliCommand;
-use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
+use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
 use clap::Args;
 use doublezero_sdk::commands::exchange::get::GetExchangeCommand;
 use doublezero_sdk::commands::exchange::update::UpdateExchangeCommand;
@@ -24,7 +24,7 @@ pub struct UpdateExchangeCliCommand {
 impl UpdateExchangeCliCommand {
     pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
         // Check requirements
-        check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
+        client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
         let (_, exchange) = client.get_exchange(GetExchangeCommand {
             pubkey_or_code: self.pubkey,
@@ -47,6 +47,7 @@ impl UpdateExchangeCliCommand {
 mod tests {
     use crate::doublezerocommand::CliCommand;
     use crate::exchange::update::UpdateExchangeCliCommand;
+    use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
     use crate::tests::tests::create_test_client;
     use doublezero_sdk::commands::exchange::get::GetExchangeCommand;
     use doublezero_sdk::commands::exchange::update::UpdateExchangeCommand;
@@ -83,6 +84,10 @@ mod tests {
             owner: Pubkey::new_unique(),
         };
 
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
         client
             .expect_get_exchange()
             .with(predicate::eq(GetExchangeCommand {

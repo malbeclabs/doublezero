@@ -1,6 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use crate::helpers::parse_pubkey;
-use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
+use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
 use clap::Args;
 use doublezero_sdk::commands::device::create::CreateDeviceCommand;
 use doublezero_sdk::commands::exchange::get::GetExchangeCommand;
@@ -25,7 +25,7 @@ pub struct CreateDeviceCliCommand {
 impl CreateDeviceCliCommand {
     pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
         // Check requirements
-        check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
+        client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
         let location_pk = match parse_pubkey(&self.location) {
             Some(pk) => pk,
@@ -67,7 +67,10 @@ impl CreateDeviceCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use crate::device::create::CreateDeviceCliCommand;
     use crate::doublezerocommand::CliCommand;
+    use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
+    use crate::tests::tests::create_test_client;
     use doublezero_sdk::commands::device::create::CreateDeviceCommand;
     use doublezero_sdk::commands::exchange::get::GetExchangeCommand;
     use doublezero_sdk::get_device_pda;
@@ -81,9 +84,6 @@ mod tests {
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
     use solana_sdk::signature::Signature;
-
-    use crate::device::create::CreateDeviceCliCommand;
-    use crate::tests::tests::create_test_client;
 
     #[test]
     fn test_cli_device_create() {
@@ -125,6 +125,10 @@ mod tests {
             owner: exchange_pk,
         };
 
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
         client
             .expect_get_location()
             .with(predicate::eq(GetLocationCommand {

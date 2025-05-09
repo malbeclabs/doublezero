@@ -1,6 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use crate::helpers::parse_pubkey;
-use crate::requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON};
+use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
 use clap::Args;
 use doublezero_sdk::commands::device::get::GetDeviceCommand;
 use doublezero_sdk::commands::user::create::CreateUserCommand;
@@ -20,7 +20,7 @@ pub struct CreateUserCliCommand {
 impl CreateUserCliCommand {
     pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
         // Check requirements
-        check_requirements(client, None, CHECK_ID_JSON | CHECK_BALANCE)?;
+        client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
         let device_pk = match parse_pubkey(&self.device) {
             Some(pk) => pk,
@@ -53,6 +53,7 @@ impl CreateUserCliCommand {
 #[cfg(test)]
 mod tests {
     use crate::doublezerocommand::CliCommand;
+    use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
     use doublezero_sdk::commands::device::get::GetDeviceCommand;
     use doublezero_sdk::commands::user::create::CreateUserCommand;
     use doublezero_sdk::{AccountType, Device, DeviceStatus, DeviceType, UserCYOA, UserType};
@@ -91,6 +92,10 @@ mod tests {
             status: DeviceStatus::Activated,
         };
 
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
         client
             .expect_get_device()
             .with(predicate::eq(GetDeviceCommand {

@@ -44,6 +44,8 @@ use std::collections::HashMap;
 
 #[automock]
 pub trait CliCommand {
+    fn check_requirements(&self, checks: u8) -> eyre::Result<()>;
+
     fn get_program_id(&self) -> Pubkey;
     fn get_payer(&self) -> Pubkey;
     fn get_balance(&self) -> eyre::Result<u64>;
@@ -124,6 +126,10 @@ impl CliCommandImpl<'_> {
 }
 
 impl CliCommand for CliCommandImpl<'_> {
+    fn check_requirements(&self, checks: u8) -> eyre::Result<()> {
+        crate::requirements::check_requirements(self, None, checks)
+    }
+
     fn get_program_id(&self) -> Pubkey {
         *self.client.get_program_id()
     }

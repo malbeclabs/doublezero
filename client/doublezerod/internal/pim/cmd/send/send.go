@@ -59,7 +59,9 @@ func main() {
 		GenerationID: 3614426332,
 	}
 	err = helloMsg.SerializeTo(buf, opts)
-
+	if err != nil {
+		log.Fatalf("failed to serialize PIM hello msg %v", err)
+	}
 	pimHeader := &pim.PIMMessage{
 		Header: pim.PIMHeader{
 			Version:  2,
@@ -69,6 +71,9 @@ func main() {
 	}
 
 	err = pimHeader.SerializeTo(buf, opts)
+	if err != nil {
+		log.Fatalf("failed to serialize PIM msg header %v", err)
+	}
 	iph := &ipv4.Header{
 		Version:  4,
 		Len:      20,
@@ -121,6 +126,9 @@ func main() {
 		}}
 
 	err = join.SerializeTo(buf, opts)
+	if err != nil {
+		log.Fatalf("failed to serialize PIM JoinPrune msg %v", err)
+	}
 
 	pimHeader = &pim.PIMMessage{
 		Header: pim.PIMHeader{
@@ -130,17 +138,17 @@ func main() {
 		}}
 
 	err = pimHeader.SerializeTo(buf, opts)
+	if err != nil {
+		log.Fatalf("failed to serialize PIM msg header %v", err)
+	}
 
 	checksum = pim.Checksum(buf.Bytes())
 	b = buf.Bytes()
 	binary.BigEndian.PutUint16(b[2:4], checksum)
 
-	fmt.Printf("bytes: %X\n", b)
-	fmt.Printf("checksum: %X\n", checksum)
 	if err := r.WriteTo(iph, b, cm); err != nil {
 		log.Fatalf("failed to write to IP: %v", err)
 	} else {
 		log.Printf("wrote bytes %d", len(b))
 	}
-
 }

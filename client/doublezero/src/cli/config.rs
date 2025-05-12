@@ -1,11 +1,11 @@
 use clap::Args;
 use clap::Subcommand;
 
-use doublezero_cli::config::get::GetConfigArgs;
-use doublezero_cli::config::set::SetConfigArgs;
+use doublezero_cli::config::get::GetConfigCliCommand;
+use doublezero_cli::config::set::SetConfigCliCommand;
 
 #[derive(Args, Debug)]
-pub struct ConfigArgs {
+pub struct ConfigCliCommand {
     #[command(subcommand)]
     pub command: ConfigCommands,
 }
@@ -13,7 +13,7 @@ pub struct ConfigArgs {
 #[derive(Debug, Subcommand)]
 pub enum ConfigCommands {
     #[command(about = "Get current config settings", hide = false)]
-    Get(GetConfigArgs),
+    Get(GetConfigCliCommand),
     #[command(about = "Set a config setting", hide = false)]
-    Set(SetConfigArgs),
+    Set(SetConfigCliCommand),
 }

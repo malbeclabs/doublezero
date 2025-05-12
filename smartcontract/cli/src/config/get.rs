@@ -1,16 +1,13 @@
+use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_sdk::{convert_url_to_ws, read_doublezero_config, DoubleZeroClient};
+use doublezero_sdk::{convert_url_to_ws, read_doublezero_config};
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct GetConfigArgs {}
+pub struct GetConfigCliCommand {}
 
-impl GetConfigArgs {
-    pub fn execute<W: Write>(
-        self,
-        _client: &dyn DoubleZeroClient,
-        out: &mut W,
-    ) -> eyre::Result<()> {
+impl GetConfigCliCommand {
+    pub fn execute<W: Write>(self, _client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
         let (filename, config) = read_doublezero_config();
 
         writeln!(

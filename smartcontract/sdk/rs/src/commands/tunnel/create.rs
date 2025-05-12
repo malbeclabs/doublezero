@@ -6,6 +6,7 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature}
 
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct CreateTunnelCommand {
     pub code: String,
     pub side_a_pk: Pubkey,

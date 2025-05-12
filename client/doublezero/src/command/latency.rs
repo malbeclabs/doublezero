@@ -1,6 +1,6 @@
 use clap::Args;
+use doublezero_cli::doublezerocommand::CliCommand;
 use doublezero_sdk::commands::device::list::ListDeviceCommand;
-use doublezero_sdk::DZClient;
 use prettytable::{format, row, Cell, Row, Table};
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
@@ -9,10 +9,10 @@ use crate::requirements::check_doublezero;
 use crate::servicecontroller::ServiceController;
 
 #[derive(Args, Debug)]
-pub struct LatencyArgs {}
+pub struct LatencyCliCommand {}
 
-impl LatencyArgs {
-    pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
+impl LatencyCliCommand {
+    pub async fn execute(self, client: &dyn CliCommand) -> eyre::Result<()> {
         check_doublezero(None)?;
 
         let mut table = Table::new();
@@ -27,7 +27,7 @@ impl LatencyArgs {
         ]);
 
         let controller = ServiceController::new(None);
-        let devices = ListDeviceCommand {}.execute(client)?;
+        let devices = client.list_device(ListDeviceCommand {})?;
 
         for data in controller.latency().await.map_err(|e| eyre::eyre!(e))? {
             let device_name =

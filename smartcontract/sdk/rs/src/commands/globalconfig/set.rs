@@ -1,11 +1,12 @@
 use doublezero_sla_program::{
-    instructions::DoubleZeroInstruction, pda::get_globalconfig_pda, 
-    processors::globalconfig::set::SetGlobalConfigArgs, types::NetworkV4, 
+    instructions::DoubleZeroInstruction, pda::get_globalconfig_pda,
+    processors::globalconfig::set::SetGlobalConfigArgs, types::NetworkV4,
 };
 use solana_sdk::{instruction::AccountMeta, signature::Signature};
 
 use crate::{DoubleZeroClient, GetGlobalStateCommand};
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct SetGlobalConfigCommand {
     pub local_asn: u32,
     pub remote_asn: u32,

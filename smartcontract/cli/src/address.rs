@@ -1,17 +1,17 @@
-use crate::requirements::{check_requirements, CHECK_ID_JSON};
+use crate::doublezerocommand::CliCommand;
+use crate::requirements::CHECK_ID_JSON;
 use clap::Args;
 use doublezero_sdk::get_doublezero_pubkey;
-use doublezero_sdk::DoubleZeroClient;
 use solana_sdk::signer::Signer;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct AddressArgs {}
+pub struct AddressCliCommand {}
 
-impl AddressArgs {
-    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
+impl AddressCliCommand {
+    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         // Check requirements
-        check_requirements(client, None, CHECK_ID_JSON)?;
+        client.check_requirements(CHECK_ID_JSON)?;
 
         match get_doublezero_pubkey() {
             Some(pubkey) => {

@@ -4,6 +4,7 @@ pub mod allowlist;
 pub mod balance;
 pub mod config;
 pub mod device;
+pub mod doublezerocommand;
 pub mod exchange;
 pub mod export;
 pub mod globalconfig;

@@ -1,3 +1,4 @@
+use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::commands::{
     device::list::ListDeviceCommand, location::list::ListLocationCommand,
@@ -10,7 +11,7 @@ use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct ListUserArgs {
+pub struct ListUserCliCommand {
     #[arg(long, default_value_t = false)]
     pub json: bool,
     #[arg(long, default_value_t = false)]
@@ -40,12 +41,12 @@ pub struct UserDisplay {
     pub owner: Pubkey,
 }
 
-impl ListUserArgs {
-    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
-        let devices = ListDeviceCommand {}.execute(client)?;
-        let locations = ListLocationCommand {}.execute(client)?;
+impl ListUserCliCommand {
+    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+        let devices = client.list_device(ListDeviceCommand {})?;
+        let locations = client.list_location(ListLocationCommand {})?;
+        let users = client.list_user(ListUserCommand {})?;
 
-        let users = ListUserCommand {}.execute(client)?;
         let mut users: Vec<(Pubkey, User)> = users.into_iter().collect();
         users.sort_by(|(_, a), (_, b)| {
             a.device_pk
@@ -169,7 +170,7 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::tests::tests::create_test_client;
-    use crate::user::list::ListUserArgs;
+    use crate::user::list::ListUserCliCommand;
     use crate::user::list::UserCYOA::GREOverDIA;
     use crate::user::list::UserStatus::Activated;
     use crate::user::list::UserType::IBRL;
@@ -177,9 +178,6 @@ mod tests {
         AccountType, Device, DeviceStatus, DeviceType, Exchange, ExchangeStatus, Location,
         LocationStatus, User,
     };
-
-    use doublezero_sla_program::state::accountdata::AccountData;
-    use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
 
     #[test]
@@ -270,35 +268,26 @@ mod tests {
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8"),
         };
 
-        client
-            .expect_gets()
-            .with(predicate::eq(AccountType::Location))
-            .returning(move |_| {
-                let mut locations = HashMap::new();
-                locations.insert(location1_pubkey, AccountData::Location(location1.clone()));
-                locations.insert(location2_pubkey, AccountData::Location(location2.clone()));
-                Ok(locations)
-            });
+        client.expect_list_location().returning(move |_| {
+            let mut locations = HashMap::new();
+            locations.insert(location1_pubkey, location1.clone());
+            locations.insert(location2_pubkey, location2.clone());
+            Ok(locations)
+        });
 
-        client
-            .expect_gets()
-            .with(predicate::eq(AccountType::Exchange))
-            .returning(move |_| {
-                let mut exchanges = HashMap::new();
-                exchanges.insert(exchange1_pubkey, AccountData::Exchange(exchange1.clone()));
-                exchanges.insert(exchange2_pubkey, AccountData::Exchange(exchange2.clone()));
-                Ok(exchanges)
-            });
+        client.expect_list_exchange().returning(move |_| {
+            let mut exchanges = HashMap::new();
+            exchanges.insert(exchange1_pubkey, exchange1.clone());
+            exchanges.insert(exchange2_pubkey, exchange2.clone());
+            Ok(exchanges)
+        });
 
-        client
-            .expect_gets()
-            .with(predicate::eq(AccountType::Device))
-            .returning(move |_| {
-                let mut devices = HashMap::new();
-                devices.insert(device1_pubkey, AccountData::Device(device1.clone()));
-                devices.insert(device2_pubkey, AccountData::Device(device2.clone()));
-                Ok(devices)
-            });
+        client.expect_list_device().returning(move |_| {
+            let mut devices = HashMap::new();
+            devices.insert(device1_pubkey, device1.clone());
+            devices.insert(device2_pubkey, device2.clone());
+            Ok(devices)
+        });
 
         let user1_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
         let user1 = User {
@@ -317,17 +306,14 @@ mod tests {
             status: Activated,
         };
 
-        client
-            .expect_gets()
-            .with(predicate::eq(AccountType::User))
-            .returning(move |_| {
-                let mut users = HashMap::new();
-                users.insert(user1_pubkey, AccountData::User(user1.clone()));
-                Ok(users)
-            });
+        client.expect_list_user().returning(move |_| {
+            let mut users = HashMap::new();
+            users.insert(user1_pubkey, user1.clone());
+            Ok(users)
+        });
 
         let mut output = Vec::new();
-        let res = ListUserArgs {
+        let res = ListUserCliCommand {
             json: false,
             json_compact: false,
         }
@@ -338,7 +324,7 @@ mod tests {
         assert_eq!(output_str, " account                                   | user_type | device                                    | location | cyoa_type  | client_ip | tunnel_id | tunnel_net | dz_ip   | status    | owner \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | IBRL      | 11111116EPqoQskEM2Pddp8KTL9JdYEBZMGF3aq7V |          | GREOverDIA | 1.2.3.4   | 500       | 1.2.3.5/32 | 2.3.4.5 | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
 
         let mut output = Vec::new();
-        let res = ListUserArgs {
+        let res = ListUserCliCommand {
             json: false,
             json_compact: true,
         }

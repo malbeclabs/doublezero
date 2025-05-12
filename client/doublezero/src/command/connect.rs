@@ -1,13 +1,14 @@
+use crate::servicecontroller::{ProvisioningRequest, ServiceController};
+use clap::{Args, ValueEnum};
+use doublezero_cli::doublezerocommand::CliCommand;
+use doublezero_sdk::commands::globalconfig::get::GetGlobalConfigCommand;
+use doublezero_sdk::{
+    ipv4_parse, ipv4_to_string, networkv4_to_string, IpV4, NetworkV4, User, UserCYOA, UserStatus,
+    UserType,
+};
 use eyre;
 use indicatif::ProgressBar;
 use std::str::FromStr;
-use doublezero_sdk::commands::globalconfig::get::GetGlobalConfigCommand;
-use crate::servicecontroller::{ProvisioningRequest, ServiceController};
-use clap::{Args, ValueEnum};
-use doublezero_sdk::{
-    ipv4_parse, ipv4_to_string, networkv4_to_string, DZClient, IpV4, NetworkV4, User, UserCYOA,
-    UserStatus, UserType,
-};
 
 use doublezero_sdk::commands::device::get::GetDeviceCommand;
 use doublezero_sdk::commands::device::list::ListDeviceCommand;
@@ -25,6 +26,7 @@ use doublezero_cli::{
 use crate::requirements::check_doublezero;
 use doublezero_cli::helpers::init_command;
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Debug, ValueEnum)]
 pub enum DzMode {
     IBRL,
@@ -33,7 +35,7 @@ pub enum DzMode {
 }
 
 #[derive(Args, Debug)]
-pub struct ProvisioningArgs {
+pub struct ProvisioningCliCommand {
     #[arg(value_enum)]
     pub dz_mode: DzMode,
     #[arg(long)]
@@ -46,8 +48,8 @@ pub struct ProvisioningArgs {
     pub verbose: bool,
 }
 
-impl ProvisioningArgs {
-    pub async fn execute(self, client: &DZClient) -> eyre::Result<()> {
+impl ProvisioningCliCommand {
+    pub async fn execute(self, client: &dyn CliCommand) -> eyre::Result<()> {
         let spinner = init_command();
         let controller = ServiceController::new(None);
 
@@ -135,7 +137,7 @@ impl ProvisioningArgs {
     #[allow(unused_assignments)]
     pub async fn look_for_user(
         &self,
-        client: &DZClient,
+        client: &dyn CliCommand,
         controller: &ServiceController,
         client_ip: &IpV4,
         spinner: &ProgressBar,
@@ -143,8 +145,8 @@ impl ProvisioningArgs {
         spinner.set_message("Searching for user account...");
         spinner.set_prefix("2/4 User");
 
-        let users = ListUserCommand {}.execute(client)?;
-        let devices = ListDeviceCommand {}.execute(client)?;
+        let users = client.list_user(ListUserCommand {})?;
+        let devices = client.list_device(ListDeviceCommand {})?;
 
         let mut user_pubkey: Option<Pubkey> = None;
 
@@ -185,11 +187,11 @@ impl ProvisioningArgs {
                     }
                 };
 
-                let (_, device) = GetDeviceCommand {
-                    pubkey_or_code: device_pk.to_string(),
-                }
-                .execute(client)
-                .expect("Unable to get device");
+                let (_, device) = client
+                    .get_device(GetDeviceCommand {
+                        pubkey_or_code: device_pk.to_string(),
+                    })
+                    .expect("Unable to get device");
 
                 spinner.println(format!(
                     "    The Device has been selected: {} ",
@@ -197,13 +199,12 @@ impl ProvisioningArgs {
                 ));
                 spinner.set_prefix("🔗 [3/4] User");
 
-                let res = CreateUserCommand {
+                let res = client.create_user(CreateUserCommand {
                     user_type: self.get_user_type(),
                     device_pk,
                     cyoa_type: UserCYOA::GREOverDIA,
                     client_ip: *client_ip,
-                }
-                .execute(client);
+                });
 
                 match res {
                     Ok((_, pubkey)) => {
@@ -228,19 +229,19 @@ impl ProvisioningArgs {
             return Err(eyre::eyre!("Error creating user"));
         }
 
-        let (_, mut user) = GetUserCommand {
-            pubkey: user_pubkey.unwrap(),
-        }
-        .execute(client)
-        .expect("User not found");
+        let (_, mut user) = client
+            .get_user(GetUserCommand {
+                pubkey: user_pubkey.unwrap(),
+            })
+            .expect("User not found");
         while user.status != UserStatus::Activated && user.status != UserStatus::Rejected {
             spinner.set_message("Waiting for user activation...");
             std::thread::sleep(std::time::Duration::from_secs(5));
-            let (_, updated_user) = GetUserCommand {
-                pubkey: user_pubkey.unwrap(),
-            }
-            .execute(client)
-            .expect("User not found");
+            let (_, updated_user) = client
+                .get_user(GetUserCommand {
+                    pubkey: user_pubkey.unwrap(),
+                })
+                .expect("User not found");
             user = updated_user.clone();
         }
 
@@ -249,7 +250,7 @@ impl ProvisioningArgs {
 
     async fn user_activated(
         &self,
-        client: &DZClient,
+        client: &dyn CliCommand,
         controller: &ServiceController,
         user: &User,
         client_ip: &IpV4,
@@ -263,14 +264,16 @@ impl ProvisioningArgs {
         spinner.set_prefix("3/4 Device");
         spinner.set_message("Reading devices...");
 
-        let devices = ListDeviceCommand {}.execute(client)?;
+        let devices = client.list_device(ListDeviceCommand {})?;
         let prefixes = devices
             .values()
             .flat_map(|device| device.dz_prefixes.clone())
             .collect::<Vec<NetworkV4>>();
 
         spinner.set_message("Getting global-config...");
-        let (_, config) = GetGlobalConfigCommand{}.execute(client).expect("Unable to get config");
+        let (_, config) = client
+            .get_globalconfig(GetGlobalConfigCommand {})
+            .expect("Unable to get config");
 
         spinner.set_message("Getting user account...");
         let device = devices.get(&user.device_pk).expect("Device not found");
@@ -330,7 +333,7 @@ impl ProvisioningArgs {
 
     async fn user_rejected(
         &self,
-        client: &DZClient,
+        client: &dyn CliCommand,
         user_pubkey: &Pubkey,
         spinner: &ProgressBar,
     ) -> eyre::Result<()> {

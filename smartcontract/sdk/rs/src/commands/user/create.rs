@@ -9,6 +9,7 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature}
 
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct CreateUserCommand {
     pub user_type: UserType,
     pub device_pk: Pubkey,

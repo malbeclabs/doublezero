@@ -79,7 +79,7 @@ test_ibrl_with_allocated_addr() {
     doublezero --keypair $SOLANA_KEYPAIR connect ibrl --client-ip 64.86.249.86  --allocate-addr
 
     print_banner "Creating multiple users to exhaust the /30 and allocate from the /29, ie use both blocks"
-    create_multiple_users
+    create_multiple_ibrl_with_allocated_address_users
 
     print_banner "Waiting for client tunnel to be up before starting tests"
     e2e_test -test.v -test.run "^TestWaitForClientTunnelUp"
@@ -98,6 +98,9 @@ test_ibrl_with_allocated_addr() {
 test_ibrl() {
     print_banner "Connecting user tunnel"
     doublezero --keypair $SOLANA_KEYPAIR connect ibrl --client-ip 64.86.249.86
+
+    print_banner "Create multiple users"
+    create_multiple_ibrl_users
 
     # print_banner "Banning account J2MUYJeJvTfrHpxMm3tVYkcDhTwgAFFju2veS27WhByX"
     # doublezero user request-ban --pubkey J2MUYJeJvTfrHpxMm3tVYkcDhTwgAFFju2veS27WhByX
@@ -197,7 +200,14 @@ populate_data_onchain() {
 
 }
 
-create_multiple_users() {
+create_multiple_ibrl_users() {
+  print_banner "Creating multiple users on a single device"
+  doublezero user create --device la2-dz01
+  doublezero user create --device la2-dz01
+
+}
+
+create_multiple_ibrl_with_allocated_address_users() {
     print_banner "Creating multiple users on a single device"
     doublezero user create --device la2-dz01 --client-ip 1.2.3.4
     doublezero user create --device la2-dz01 --client-ip 2.3.4.5

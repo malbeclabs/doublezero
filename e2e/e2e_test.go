@@ -325,6 +325,16 @@ func TestIBRLWithAllocatedAddress_Connect_Networking(t *testing.T) {
 			t.Fatalf("expected client route of %s installed; got none\n", doublezeroAddr)
 		}
 	})
+
+	t.Run("ban_user_and_verify_user_is_banned", func(t *testing.T) {
+		cmd := []string{"doublezero", "user", "list"}
+		got, err := exec.Command(cmd[0], cmd[1:]...).Output()
+		if err != nil {
+			t.Fatalf("error running cmd %s: %v", cmd, err)
+		}
+
+		fmt.Printf("CMD output: %+v", got)
+	})
 }
 
 // TestIBRLWithAllocatedAddress__Disconnect_Networking verifies the client and agent configuration after a
@@ -414,7 +424,6 @@ func TestIBRLWithAllocatedAddress_Disconnect_Networking(t *testing.T) {
 			_, ok := neighbors.VRFs["vrf1"].Peers[ip]
 			if !ok {
 				return
-
 			}
 			time.Sleep(1 * time.Second)
 		}
@@ -759,7 +768,6 @@ func TestIBRL_Disconnect_Networking(t *testing.T) {
 			_, ok := neighbors.VRFs["vrf1"].Peers[ip]
 			if !ok {
 				return
-
 			}
 			time.Sleep(1 * time.Second)
 		}

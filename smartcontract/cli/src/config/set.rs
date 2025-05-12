@@ -1,7 +1,8 @@
+use crate::doublezerocommand::CliCommand;
 use clap::{ArgGroup, Args};
 use doublezero_sdk::{
     convert_program_moniker, convert_url_moniker, convert_url_to_ws, convert_ws_moniker,
-    read_doublezero_config, write_doublezero_config, DoubleZeroClient,
+    read_doublezero_config, write_doublezero_config,
 };
 use std::io::Write;
 
@@ -12,7 +13,7 @@ use std::io::Write;
         .required(true)
         .multiple(true)
 ))]
-pub struct SetConfigArgs {
+pub struct SetConfigCliCommand {
     #[arg(
         long,
         help = "URL of the JSON RPC endpoint (devnet, testnet, mainnet, localhost)"
@@ -29,12 +30,8 @@ pub struct SetConfigArgs {
     program_id: Option<String>,
 }
 
-impl SetConfigArgs {
-    pub fn execute<W: Write>(
-        self,
-        _client: &dyn DoubleZeroClient,
-        out: &mut W,
-    ) -> eyre::Result<()> {
+impl SetConfigCliCommand {
+    pub fn execute<W: Write>(self, _client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
         if self.url.is_none()
             && self.ws.is_none()
             && self.keypair.is_none()

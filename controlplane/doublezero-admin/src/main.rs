@@ -8,7 +8,7 @@ use cli::globalconfig::{FoundationAllowlistCommands, GlobalConfigCommands};
 use cli::location::LocationCommands;
 use cli::tunnel::TunnelCommands;
 use cli::user::{UserAllowlistCommands, UserCommands};
-
+use doublezero_cli::doublezerocommand::CliCommandImpl;
 mod cli;
 
 include!(concat!(env!("OUT_DIR"), "/version.rs"));
@@ -41,7 +41,8 @@ async fn main() -> eyre::Result<()> {
         println!("using keypair: {}", keypair);
     }
 
-    let client = DZClient::new(app.url, app.ws, app.program_id, app.keypair)?;
+    let dzclient = DZClient::new(app.url, app.ws, app.program_id, app.keypair)?;
+    let client = CliCommandImpl::new(&dzclient);
 
     let stdout = std::io::stdout();
     let mut handle = stdout.lock();
@@ -63,7 +64,7 @@ async fn main() -> eyre::Result<()> {
                 FoundationAllowlistCommands::Remove(args) => args.execute(&client, &mut handle),
             },
         },
-        Command::Account(args) => args.execute(&client, &mut handle),
+        Command::Account(args) => args.execute(&dzclient, &mut handle),
         Command::Location(command) => match command.command {
             LocationCommands::Create(args) => args.execute(&client, &mut handle),
             LocationCommands::Update(args) => args.execute(&client, &mut handle),
@@ -112,7 +113,7 @@ async fn main() -> eyre::Result<()> {
         },
         Command::Export(args) => args.execute(&client, &mut handle),
         Command::Keygen(args) => args.execute(&client, &mut handle),
-        Command::Log(args) => args.execute(&client, &mut handle),
+        Command::Log(args) => args.execute(&dzclient, &mut handle),
     };
 
     match res {

@@ -8,6 +8,7 @@ use solana_sdk::{instruction::AccountMeta, signature::Signature};
 
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct ActivateUserCommand {
     pub index: u128,
     pub tunnel_id: u16,

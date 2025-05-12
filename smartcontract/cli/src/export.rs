@@ -1,3 +1,4 @@
+use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::commands::device::list::ListDeviceCommand;
 use doublezero_sdk::commands::exchange::list::ListExchangeCommand;
@@ -10,7 +11,7 @@ use std::fs;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct ExportArgs {
+pub struct ExportCliCommand {
     #[arg(long)]
     pub path: String,
 }
@@ -89,14 +90,14 @@ struct UserData {
     pub owner: String,
 }
 
-impl ExportArgs {
-    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
-        let locations = ListLocationCommand {}.execute(client)?;
-        let exchanges = ListExchangeCommand {}.execute(client)?;
+impl ExportCliCommand {
+    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+        let locations = client.list_location(ListLocationCommand {})?;
+        let exchanges = client.list_exchange(ListExchangeCommand {})?;
 
-        let devices = ListDeviceCommand {}.execute(client)?;
-        let tunnels = ListTunnelCommand {}.execute(client)?;
-        let users = ListUserCommand {}.execute(client)?;
+        let devices = client.list_device(ListDeviceCommand {})?;
+        let tunnels = client.list_tunnel(ListTunnelCommand {})?;
+        let users = client.list_user(ListUserCommand {})?;
 
         for (pubkey, data) in devices.clone() {
             let name = format!("{}/{}.yml", self.path, data.code);

@@ -1,4 +1,11 @@
-use doublezero_sdk::{get_doublezero_pubkey, DoubleZeroClient, GetGlobalStateCommand};
+use crate::doublezerocommand::CliCommand;
+use doublezero_sdk::{
+    commands::allowlist::{
+        device::list::ListDeviceAllowlistCommand, foundation::list::ListFoundationAllowlistCommand,
+        user::list::ListUserAllowlistCommand,
+    },
+    get_doublezero_pubkey,
+};
 use indicatif::ProgressBar;
 
 pub const CHECK_ID_JSON: u8 = 1;
@@ -8,7 +15,7 @@ pub const CHECK_DEVICE_ALLOWLIST: u8 = 8;
 pub const CHECK_USER_ALLOWLIST: u8 = 16;
 
 pub fn check_requirements(
-    client: &dyn DoubleZeroClient,
+    client: &dyn CliCommand,
     spinner: Option<&ProgressBar>,
     checks: u8,
 ) -> eyre::Result<()> {
@@ -52,10 +59,7 @@ pub fn check_id(spinner: Option<&ProgressBar>) -> eyre::Result<()> {
     }
 }
 
-pub fn check_balance(
-    client: &dyn DoubleZeroClient,
-    spinner: Option<&ProgressBar>,
-) -> eyre::Result<()> {
+pub fn check_balance(client: &dyn CliCommand, spinner: Option<&ProgressBar>) -> eyre::Result<()> {
     match client.get_balance() {
         Ok(balance) => {
             // Check that have some balance
@@ -78,20 +82,20 @@ pub fn check_balance(
 }
 
 pub fn check_allowlist(
-    client: &dyn DoubleZeroClient,
+    client: &dyn CliCommand,
     spinner: Option<&ProgressBar>,
     checks: u8,
 ) -> eyre::Result<()> {
-    let (_, global_state) = GetGlobalStateCommand {}.execute(client)?;
     // Check that the client is in the allowlist
     let is_in_allowlist = if checks & CHECK_FOUNDATION_ALLOWLIST != 0 {
-        global_state
-            .foundation_allowlist
-            .contains(&client.get_payer())
+        let allowlist = client.list_foundation_allowlist(ListFoundationAllowlistCommand {})?;
+        allowlist.contains(&client.get_payer())
     } else if checks & CHECK_DEVICE_ALLOWLIST != 0 {
-        global_state.device_allowlist.contains(&client.get_payer())
+        let allowlist = client.list_device_allowlist(ListDeviceAllowlistCommand {})?;
+        allowlist.contains(&client.get_payer())
     } else if checks & CHECK_USER_ALLOWLIST != 0 {
-        global_state.user_allowlist.contains(&client.get_payer())
+        let allowlist = client.list_user_allowlist(ListUserAllowlistCommand {})?;
+        allowlist.contains(&client.get_payer())
     } else {
         false
     };
@@ -100,7 +104,7 @@ pub fn check_allowlist(
         if let Some(spinner) = spinner {
             spinner.println("You are not in the allowlist");
         } else {
-            eprintln!("{}: You are not in the allowlist", "Error");
+            eprintln!("Error: You are not in the allowlist");
         }
         return Err(eyre::eyre!(
             "Please contact the DoubleZero Foundation to add you to the allowlist."

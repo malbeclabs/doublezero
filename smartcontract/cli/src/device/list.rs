@@ -1,3 +1,4 @@
+use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::commands::device::list::ListDeviceCommand;
 use doublezero_sdk::commands::exchange::list::ListExchangeCommand;
@@ -9,7 +10,7 @@ use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct ListDeviceArgs {
+pub struct ListDeviceCliCommand {
     #[arg(long, default_value_t = false)]
     pub json: bool,
     #[arg(long, default_value_t = false)]
@@ -40,12 +41,12 @@ pub struct DeviceDisplay {
     pub owner: Pubkey,
 }
 
-impl ListDeviceArgs {
-    pub fn execute<W: Write>(self, client: &dyn DoubleZeroClient, out: &mut W) -> eyre::Result<()> {
-        let locations = ListLocationCommand {}.execute(client)?;
-        let exchanges = ListExchangeCommand {}.execute(client)?;
+impl ListDeviceCliCommand {
+    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+        let locations = client.list_location(ListLocationCommand {})?;
+        let exchanges = client.list_exchange(ListExchangeCommand {})?;
 
-        let devices = ListDeviceCommand {}.execute(client)?;
+        let devices = client.list_device(ListDeviceCommand {})?;
 
         let mut devices: Vec<(Pubkey, Device)> = devices.into_iter().collect();
         devices.sort_by(|(_, a), (_, b)| a.owner.cmp(&b.owner));
@@ -144,15 +145,12 @@ impl ListDeviceArgs {
 mod tests {
     use std::collections::HashMap;
 
-    use crate::device::list::ListDeviceArgs;
+    use crate::device::list::ListDeviceCliCommand;
     use crate::tests::tests::create_test_client;
     use doublezero_sdk::{
         AccountType, Device, DeviceStatus, DeviceType, Exchange, ExchangeStatus, Location,
         LocationStatus,
     };
-
-    use doublezero_sla_program::state::accountdata::AccountData;
-    use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
 
     #[test]
@@ -203,35 +201,26 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
         };
 
-        client
-            .expect_gets()
-            .with(predicate::eq(AccountType::Location))
-            .returning(move |_| {
-                let mut locations = HashMap::new();
-                locations.insert(location1_pubkey, AccountData::Location(location1.clone()));
-                Ok(locations)
-            });
+        client.expect_list_location().returning(move |_| {
+            let mut locations = HashMap::new();
+            locations.insert(location1_pubkey, location1.clone());
+            Ok(locations)
+        });
 
-        client
-            .expect_gets()
-            .with(predicate::eq(AccountType::Exchange))
-            .returning(move |_| {
-                let mut exchanges = HashMap::new();
-                exchanges.insert(exchange1_pubkey, AccountData::Exchange(exchange1.clone()));
-                Ok(exchanges)
-            });
+        client.expect_list_exchange().returning(move |_| {
+            let mut exchanges = HashMap::new();
+            exchanges.insert(exchange1_pubkey, exchange1.clone());
+            Ok(exchanges)
+        });
 
-        client
-            .expect_gets()
-            .with(predicate::eq(AccountType::Device))
-            .returning(move |_| {
-                let mut devices = HashMap::new();
-                devices.insert(device1_pubkey, AccountData::Device(device1.clone()));
-                Ok(devices)
-            });
+        client.expect_list_device().returning(move |_| {
+            let mut devices = HashMap::new();
+            devices.insert(device1_pubkey, device1.clone());
+            Ok(devices)
+        });
 
         let mut output = Vec::new();
-        let res = ListDeviceArgs {
+        let res = ListDeviceCliCommand {
             json: false,
             json_compact: false,
         }
@@ -241,7 +230,7 @@ mod tests {
         assert_eq!(output_str, " account                                   | code         | location       | exchange       | device_type | public_ip | dz_prefixes | status    | owner \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | device1_code | location1_code | exchange1_code | switch      | 1.2.3.4   | 1.2.3.4/32  | activated | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
 
         let mut output = Vec::new();
-        let res = ListDeviceArgs {
+        let res = ListDeviceCliCommand {
             json: false,
             json_compact: true,
         }

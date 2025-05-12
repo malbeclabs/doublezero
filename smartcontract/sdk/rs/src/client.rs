@@ -40,15 +40,6 @@ pub struct DZClient {
 }
 
 impl DZClient {
-    pub fn get_rpc(&self) -> &String {
-        &self.rpc_url
-    }
-    pub fn get_ws(&self) -> &String {
-        &self.rpc_ws_url
-    }
-}
-
-impl DZClient {
     pub fn new(
         rpc_url: Option<String>,
         websocket_url: Option<String>,
@@ -98,13 +89,21 @@ impl DZClient {
     }
 
     /******************************************************************************************************************************************/
+    pub fn get_rpc(&self) -> &String {
+        &self.rpc_url
+    }
+    pub fn get_ws(&self) -> &String {
+        &self.rpc_ws_url
+    }
 
+    pub fn get_program_id(&self) -> &Pubkey {
+        &self.program_id
+    }
     pub fn get_balance(&self) -> eyre::Result<u64> {
         self.client
             .get_balance(&self.payer.as_ref().unwrap().pubkey())
             .map_err(|e| eyre!(e))
     }
-
     /******************************************************************************************************************************************/
 
     pub fn reset(&self) -> eyre::Result<()> {
@@ -135,7 +134,7 @@ impl DZClient {
             }
 
             let signature = self.execute_transaction(
-                DoubleZeroInstruction::CloseAccount(CloseAccountArgs { pubkey: pubkey }),
+                DoubleZeroInstruction::CloseAccount(CloseAccountArgs { pubkey }),
                 vec![AccountMeta::new(pubkey, false)],
             )?;
 

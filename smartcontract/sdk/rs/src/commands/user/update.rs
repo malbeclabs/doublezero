@@ -9,6 +9,7 @@ use solana_sdk::{instruction::AccountMeta, signature::Signature};
 
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct UpdateUserCommand {
     pub index: u128,
     pub user_type: Option<UserType>,

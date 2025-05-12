@@ -6,6 +6,7 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature}
 
 use crate::DoubleZeroClient;
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct RemoveDeviceAllowlistCommand {
     pub pubkey: Pubkey,
 }

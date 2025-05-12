@@ -1,40 +1,40 @@
 use clap::Args;
 use clap::Subcommand;
 
-use doublezero_cli::allowlist::device::add::AddDeviceAllowlistArgs;
-use doublezero_cli::allowlist::device::list::ListDeviceAllowlistArgs;
-use doublezero_cli::allowlist::device::remove::RemoveDeviceAllowlistArgs;
-use doublezero_cli::device::create::CreateDeviceArgs;
-use doublezero_cli::device::delete::DeleteDeviceArgs;
-use doublezero_cli::device::get::GetDeviceArgs;
-use doublezero_cli::device::list::ListDeviceArgs;
-use doublezero_cli::device::update::UpdateDeviceArgs;
+use doublezero_cli::allowlist::device::add::AddDeviceAllowlistCliCommand;
+use doublezero_cli::allowlist::device::list::ListDeviceAllowlistCliCommand;
+use doublezero_cli::allowlist::device::remove::RemoveDeviceAllowlistCliCommand;
+use doublezero_cli::device::create::CreateDeviceCliCommand;
+use doublezero_cli::device::delete::DeleteDeviceCliCommand;
+use doublezero_cli::device::get::GetDeviceCliCommand;
+use doublezero_cli::device::list::ListDeviceCliCommand;
+use doublezero_cli::device::update::UpdateDeviceCliCommand;
 
 #[derive(Args, Debug)]
-pub struct DeviceArgs {
+pub struct DeviceCliCommand {
     #[command(subcommand)]
     pub command: DeviceCommands,
 }
 
 #[derive(Debug, Subcommand)]
 pub enum DeviceCommands {
-    Create(CreateDeviceArgs),
-    Update(UpdateDeviceArgs),
-    List(ListDeviceArgs),
-    Get(GetDeviceArgs),
-    Delete(DeleteDeviceArgs),
-    Allowlist(DeviceAllowlistArgs),
+    Create(CreateDeviceCliCommand),
+    Update(UpdateDeviceCliCommand),
+    List(ListDeviceCliCommand),
+    Get(GetDeviceCliCommand),
+    Delete(DeleteDeviceCliCommand),
+    Allowlist(DeviceAllowlistCliCommand),
 }
 
 #[derive(Args, Debug)]
-pub struct DeviceAllowlistArgs {
+pub struct DeviceAllowlistCliCommand {
     #[command(subcommand)]
     pub command: DeviceAllowlistCommands,
 }
 
 #[derive(Debug, Subcommand)]
 pub enum DeviceAllowlistCommands {
-    List(ListDeviceAllowlistArgs),
-    Add(AddDeviceAllowlistArgs),
-    Remove(RemoveDeviceAllowlistArgs),
+    List(ListDeviceAllowlistCliCommand),
+    Add(AddDeviceAllowlistCliCommand),
+    Remove(RemoveDeviceAllowlistCliCommand),
 }

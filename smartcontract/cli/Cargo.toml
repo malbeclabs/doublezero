@@ -32,3 +32,5 @@ doublezero_sdk = { path = "../sdk/rs", version = "0.1.0" }
 [dev-dependencies]
 mockall = "^0.13"
 doublezero-sla-program = { path = "../programs/dz-sla-program", version = "0.1.0" }
+
+[dev-dependencies]

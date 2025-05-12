@@ -1,10 +1,9 @@
-use std::collections::HashMap;
-
 use crate::DoubleZeroClient;
 use doublezero_sla_program::state::{
     accountdata::AccountData, accounttype::AccountType, location::Location,
 };
 use solana_sdk::pubkey::Pubkey;
+use std::collections::HashMap;
 
 pub struct ListLocationCommand {}
 

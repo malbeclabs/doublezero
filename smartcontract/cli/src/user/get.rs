@@ -13,7 +13,7 @@ pub struct GetUserCliCommand {
 }
 
 impl GetUserCliCommand {
-    pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
+    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let pubkey = Pubkey::from_str(&self.pubkey)?;
         let (pubkey, user) =client.get_user(GetUserCommand { pubkey })?;
 

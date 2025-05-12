@@ -30,7 +30,7 @@ pub struct ExchangeDisplay {
 }
 
 impl ListExchangeCliCommand {
-    pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
+    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let exchanges = client.list_exchange(ListExchangeCommand {})?;
 
         let mut exchanges: Vec<(Pubkey, Exchange)> = exchanges.into_iter().collect();

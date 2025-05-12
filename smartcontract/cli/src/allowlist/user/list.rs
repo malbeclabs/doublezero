@@ -12,7 +12,7 @@ pub struct ListUserAllowlistCliCommand {
 }
 
 impl ListUserAllowlistCliCommand {
-    pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
+    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let list = client.list_user_allowlist(ListUserAllowlistCommand {})?;
 
         if self.json || self.json_compact {

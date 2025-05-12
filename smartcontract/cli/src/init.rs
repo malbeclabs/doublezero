@@ -8,7 +8,7 @@ use std::io::Write;
 pub struct InitCliCommand {}
 
 impl InitCliCommand {
-    pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
+    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
         let signature = client.init_global_state(InitGlobalStateCommand {})?;

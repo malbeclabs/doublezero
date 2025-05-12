@@ -11,7 +11,7 @@ pub struct GetTunnelCliCommand {
 }
 
 impl GetTunnelCliCommand {
-    pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
+    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let (pubkey, tunnel) = client.get_tunnel(GetTunnelCommand {
             pubkey_or_code: self.code,
         })?;

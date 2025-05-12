@@ -14,7 +14,7 @@ pub struct RemoveDeviceAllowlistCliCommand {
 }
 
 impl RemoveDeviceAllowlistCliCommand {
-    pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
+    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 

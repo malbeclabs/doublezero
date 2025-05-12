@@ -12,7 +12,7 @@ pub struct ListFoundationAllowlistCliCommand {
 }
 
 impl ListFoundationAllowlistCliCommand {
-    pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
+    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let list = client.list_foundation_allowlist(ListFoundationAllowlistCommand {})?;
 
         if self.json || self.json_compact {

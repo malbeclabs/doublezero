@@ -11,7 +11,7 @@ pub struct GetDeviceCliCommand {
 }
 
 impl GetDeviceCliCommand {
-    pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
+    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let (pubkey, device) = client.get_device(GetDeviceCommand {
             pubkey_or_code: self.code,
         })?;

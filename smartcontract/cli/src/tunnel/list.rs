@@ -41,7 +41,7 @@ pub struct TunnelDisplay {
 }
 
 impl ListTunnelCliCommand {
-    pub fn execute<W: Write>(self, client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
+    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let devices = client.list_device(ListDeviceCommand {})?;
         let tunnels = client.list_tunnel(ListTunnelCommand {})?;
 

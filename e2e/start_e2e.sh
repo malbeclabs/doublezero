@@ -201,6 +201,7 @@ create_multiple_ibrl_users() {
   print_banner "Creating multiple users on a single device"
   doublezero user create --device la2-dz01 --client-ip 2.3.4.5
   doublezero user create --device la2-dz01 --client-ip 3.4.5.6
+  doublezero user list
   print_banner "Multiple users created"
 }
 

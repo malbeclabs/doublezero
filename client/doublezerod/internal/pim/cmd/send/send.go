@@ -5,6 +5,8 @@ import (
 	"log"
 	"net"
 
+	"github.com/google/gopacket"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
 	"golang.org/x/net/ipv4"
 )
 
@@ -44,21 +46,31 @@ func main() {
 	if err := r.SetMulticastInterface(intf); err != nil {
 		log.Fatalf("failed to set multicast interface: %v", err)
 	}
-	buf := []byte{0x01}
+
+	helloMsg := &pim.HelloMessage{
+		Holdtime:     105,
+		DRPriority:   1,
+		GenerationID: 3614426332,
+	}
+	opts := gopacket.SerializeOptions{}
+	buf := gopacket.NewSerializeBuffer()
+	err = helloMsg.SerializeTo(buf, opts)
+
 	iph := &ipv4.Header{
 		Version:  4,
 		Len:      20,
 		TTL:      1,
 		Protocol: 103,
 		Dst:      allPIMRouters.IP,
-		TotalLen: ipv4.HeaderLen + len(buf),
+		TotalLen: ipv4.HeaderLen + len(buf.Bytes()),
 	}
 	cm := &ipv4.ControlMessage{
 		IfIndex: intf.Index,
 	}
-	if err := r.WriteTo(iph, buf, cm); err != nil {
+	if err := r.WriteTo(iph, buf.Bytes(), cm); err != nil {
 		log.Fatalf("failed to write to IP: %v", err)
 	} else {
 		log.Printf("wrote bytes")
 	}
+
 }

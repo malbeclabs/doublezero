@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-clap = { version = "4.5.37", features = ["derive"] }
+clap = { version = "4.5.38", features = ["derive"] }
 eyre = "0.6.12"
 tokio = { version = "1.45.0", features = ["full"] }
 ipnetwork = "0.21.1"

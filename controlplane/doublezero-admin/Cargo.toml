@@ -7,7 +7,7 @@ license = "Apache-2.0"
 description = "Command line interface to interact with the DZ program."
 
 [dependencies]
-clap = { version = "4.5.37", features = ["derive"] }
+clap = { version = "4.5.38", features = ["derive"] }
 eyre = "0.6.12"
 solana-program = "2.2.1"
 solana-sdk = "2.2.2"
@@ -21,7 +21,7 @@ prettytable-rs = "0.10.0"
 serde_yaml = "0.9.34"
 serde = "1.0.218"
 actix-web = "4.10.2"
-awc = "3.6.0"
+awc = "3.7.0"
 actix-tls = "3.4.0"
 futures = "0.3.31"
 actix-service = "2.0.3"

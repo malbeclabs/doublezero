@@ -98,9 +98,8 @@ func (p *JoinPruneMessage) SerializeTo(b gopacket.SerializeBuffer, opts gopacket
 
 	copy(bytes, header)
 	for _, group := range p.Groups {
-		newGroup := NewGroup(group)
-		bytes, err = b.AppendBytes(len(newGroup.Bytes()))
-		copy(bytes, newGroup.Bytes())
+		bytes, err = b.AppendBytes(len(group.Bytes()))
+		copy(bytes, group.Bytes())
 		if err != nil {
 			return err
 		}
@@ -670,21 +669,6 @@ type Group struct {
 	Prunes                []SourceAddress
 }
 
-func NewGroup(group Group) Group {
-	return Group{
-		GroupID:               group.GroupID,
-		AddressFamily:         group.AddressFamily,
-		EncodingType:          group.EncodingType,
-		Flags:                 group.Flags,
-		MaskLength:            group.MaskLength,
-		MulticastGroupAddress: group.MulticastGroupAddress,
-		NumJoinedSources:      group.NumJoinedSources,
-		NumPrunedSources:      group.NumPrunedSources,
-		Joins:                 group.Joins,
-		Prunes:                group.Prunes,
-	}
-}
-
 func (g Group) Bytes() []byte {
 	groupAddress := serializeEncodedUnicastAddr(g.MulticastGroupAddress)
 	// drop addr family and encoding type
@@ -703,14 +687,12 @@ func (g Group) Bytes() []byte {
 
 	bytes = append(bytes, numJoinPruneSources...)
 	for _, join := range g.Joins {
-		sourceAddress := NewSourceAddress(join)
-		bytes = append(bytes, sourceAddress.Bytes()...)
+		bytes = append(bytes, join.Bytes()...)
 
 	}
 
 	for _, prune := range g.Prunes {
-		sourceAddress := NewSourceAddress(prune)
-		bytes = append(bytes, sourceAddress.Bytes()...)
+		bytes = append(bytes, prune.Bytes()...)
 
 	}
 	return bytes
@@ -722,16 +704,6 @@ type SourceAddress struct {
 	Flags         uint8
 	MaskLength    uint8
 	Address       net.IP
-}
-
-func NewSourceAddress(s SourceAddress) SourceAddress {
-	return SourceAddress{
-		AddressFamily: s.AddressFamily,
-		EncodingType:  s.EncodingType,
-		Flags:         s.Flags,
-		MaskLength:    s.MaskLength,
-		Address:       s.Address,
-	}
 }
 
 func (s SourceAddress) Bytes() []byte {

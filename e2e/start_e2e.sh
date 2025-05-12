@@ -102,9 +102,6 @@ test_ibrl() {
     print_banner "Create multiple users"
     create_multiple_ibrl_users
 
-    # print_banner "Banning account J2MUYJeJvTfrHpxMm3tVYkcDhTwgAFFju2veS27WhByX"
-    # doublezero user request-ban --pubkey J2MUYJeJvTfrHpxMm3tVYkcDhTwgAFFju2veS27WhByX
-
     print_banner "Waiting for client tunnel to be up before starting tests"
     e2e_test -test.v -test.run "^TestWaitForClientTunnelUp"
 
@@ -202,9 +199,9 @@ populate_data_onchain() {
 
 create_multiple_ibrl_users() {
   print_banner "Creating multiple users on a single device"
-  doublezero user create --device la2-dz01
-  doublezero user create --device la2-dz01
-
+  doublezero user create --device la2-dz01 --client-ip 2.3.4.5
+  doublezero user create --device la2-dz01 --client-ip 3.4.5.6
+  print_banner "Multiple users created"
 }
 
 create_multiple_ibrl_with_allocated_address_users() {
@@ -215,7 +212,6 @@ create_multiple_ibrl_with_allocated_address_users() {
     doublezero user create --device la2-dz01 --client-ip 4.5.6.7
     doublezero user create --device la2-dz01 --client-ip 5.6.7.8
     print_banner "Multiple users created"
-
 }
 
 err() {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net"
 
@@ -47,15 +48,26 @@ func main() {
 		log.Fatalf("failed to set multicast interface: %v", err)
 	}
 
+	opts := gopacket.SerializeOptions{}
+	buf := gopacket.NewSerializeBuffer()
+
 	helloMsg := &pim.HelloMessage{
 		Holdtime:     105,
 		DRPriority:   1,
 		GenerationID: 3614426332,
 	}
-	opts := gopacket.SerializeOptions{}
-	buf := gopacket.NewSerializeBuffer()
 	err = helloMsg.SerializeTo(buf, opts)
 
+	pimHeader := &pim.PIMMessage{
+		Header: pim.PIMHeader{
+			Version:  2,
+			Type:     pim.Hello,
+			Checksum: 0x41fe,
+		},
+	}
+
+	err = pimHeader.SerializeTo(buf, opts)
+	fmt.Printf("bytes: %x size: %d\n", buf.Bytes(), len(buf.Bytes()))
 	iph := &ipv4.Header{
 		Version:  4,
 		Len:      20,
@@ -70,7 +82,7 @@ func main() {
 	if err := r.WriteTo(iph, buf.Bytes(), cm); err != nil {
 		log.Fatalf("failed to write to IP: %v", err)
 	} else {
-		log.Printf("wrote bytes")
+		log.Printf("wrote bytes %d", len(buf.Bytes()))
 	}
 
 }

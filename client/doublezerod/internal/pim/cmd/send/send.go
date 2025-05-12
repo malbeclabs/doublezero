@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"log"
@@ -12,7 +13,8 @@ import (
 )
 
 var (
-	iface = flag.String("iface", "", "interface to use")
+	iface            = flag.String("iface", "", "interface to use")
+	upstreamNeighbor = flag.String("upstream-neighbor", "", "upstream neighbor address")
 )
 
 func main() {
@@ -62,12 +64,11 @@ func main() {
 		Header: pim.PIMHeader{
 			Version:  2,
 			Type:     pim.Hello,
-			Checksum: 0x41fe,
+			Checksum: 0x0000,
 		},
 	}
 
 	err = pimHeader.SerializeTo(buf, opts)
-	fmt.Printf("bytes: %x size: %d\n", buf.Bytes(), len(buf.Bytes()))
 	iph := &ipv4.Header{
 		Version:  4,
 		Len:      20,
@@ -79,10 +80,67 @@ func main() {
 	cm := &ipv4.ControlMessage{
 		IfIndex: intf.Index,
 	}
-	if err := r.WriteTo(iph, buf.Bytes(), cm); err != nil {
+
+	checksum := pim.Checksum(buf.Bytes())
+	b := buf.Bytes()
+	binary.BigEndian.PutUint16(b[2:4], checksum)
+
+	fmt.Printf("bytes: %X\n", b)
+	fmt.Printf("checksum: %X\n", checksum)
+	if err := r.WriteTo(iph, b, cm); err != nil {
 		log.Fatalf("failed to write to IP: %v", err)
 	} else {
-		log.Printf("wrote bytes %d", len(buf.Bytes()))
+		log.Printf("wrote bytes %d", len(b))
+	}
+
+	buf = gopacket.NewSerializeBuffer()
+
+	join := &pim.JoinPruneMessage{
+		UpstreamNeighborAddress: net.IP([]byte{169, 254, 1, 3}),
+		NumGroups:               1,
+		Reserved:                0,
+		Holdtime:                210,
+		Groups: []pim.Group{
+			{
+				AddressFamily:         1,
+				NumJoinedSources:      1,
+				NumPrunedSources:      0,
+				MaskLength:            32,
+				MulticastGroupAddress: net.IP([]byte{239, 0, 0, 3}),
+				Joins: []pim.SourceAddress{
+					{
+						AddressFamily: 1,
+						Flags:         7,
+						MaskLength:    32,
+						EncodingType:  0,
+						Address:       net.IP([]byte{11, 0, 0, 0}),
+					},
+				},
+				Prunes: []pim.SourceAddress{},
+			},
+		}}
+
+	err = join.SerializeTo(buf, opts)
+
+	pimHeader = &pim.PIMMessage{
+		Header: pim.PIMHeader{
+			Version:  2,
+			Type:     pim.JoinPrune,
+			Checksum: 0x0000,
+		}}
+
+	err = pimHeader.SerializeTo(buf, opts)
+
+	checksum = pim.Checksum(buf.Bytes())
+	b = buf.Bytes()
+	binary.BigEndian.PutUint16(b[2:4], checksum)
+
+	fmt.Printf("bytes: %X\n", b)
+	fmt.Printf("checksum: %X\n", checksum)
+	if err := r.WriteTo(iph, b, cm); err != nil {
+		log.Fatalf("failed to write to IP: %v", err)
+	} else {
+		log.Printf("wrote bytes %d", len(b))
 	}
 
 }

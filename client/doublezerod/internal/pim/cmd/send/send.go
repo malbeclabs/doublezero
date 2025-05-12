@@ -12,10 +12,7 @@ import (
 	"golang.org/x/net/ipv4"
 )
 
-var (
-	iface            = flag.String("iface", "", "interface to use")
-	upstreamNeighbor = flag.String("upstream-neighbor", "", "upstream neighbor address")
-)
+var iface = flag.String("iface", "", "interface to use")
 
 func main() {
 	flag.Parse()

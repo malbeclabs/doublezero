@@ -698,6 +698,14 @@ func (g Group) Bytes() []byte {
 	return bytes
 }
 
+type EncodedSourceAddressFlag uint8
+
+const (
+	SparseBit   = 1 << 2
+	WildCardBit = 1 << 1
+	RPTreeBit   = 1 << 0
+)
+
 type SourceAddress struct {
 	AddressFamily uint8
 	EncodingType  uint8

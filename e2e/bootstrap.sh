@@ -1,10 +1,11 @@
 #!/bin/bash
 
-DZD_NAME=dzd01
-NET_CYOA=b_net2
+GIT_SHA=`git rev-parse --short HEAD`
+DZD_NAME=dzd01_$GIT_SHA
+NET_CYOA=$GIT_SHA
 TIMEOUT=60  # Healthcheck timeout in seconds for the DZ device container
 INTERVAL=2  # Check interval in seconds
-GIT_SHA=`git rev-parse --short HEAD`
+
 
 start_time=$(date +%s)
 
@@ -81,7 +82,7 @@ check_doublezero_device_health() {
 
 start_e2e_tests() {
     # The e2e test container is connected directly to the DZ device container.
-    docker run --name e2e --privileged --rm --net $NET_CYOA --ip=64.86.249.86 ghcr.io/malbeclabs/doublezero-e2e:$GIT_SHA
+    docker run --name e2e_$GIT_SHA --privileged --rm --net $NET_CYOA --ip=64.86.249.86 ghcr.io/malbeclabs/doublezero-e2e:$GIT_SHA
 }
 
 main "$@"; exit

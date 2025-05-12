@@ -25,7 +25,11 @@ require (
 	github.com/vishvananda/netlink v1.3.0
 	github.com/vishvananda/netns v0.0.5
 	golang.org/x/sys v0.33.0
+<<<<<<< HEAD
 	google.golang.org/grpc v1.72.0
+=======
+	google.golang.org/grpc v1.71.0
+>>>>>>> 3ab4f94 (add pim test prog)
 	google.golang.org/protobuf v1.36.6
 )
 

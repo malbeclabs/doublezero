@@ -4,12 +4,12 @@ on:
     paths:
       - "activator/**"
       - "!**/**.md"
-    branches: [ main ]
+    branches: [ main, feature/* ]
   pull_request:
     paths:
       - "activator/**"
       - "!**/**.md"
-    branches: [ main ]
+    branches: [ main, feature/* ]
 
 jobs:
   build_and_test:

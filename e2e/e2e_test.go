@@ -333,7 +333,7 @@ func TestIBRLWithAllocatedAddress_Connect_Networking(t *testing.T) {
 			t.Fatalf("error running cmd %s: %v", cmd, err)
 		}
 
-		fmt.Printf("CMD output: %+v", got)
+		fmt.Printf("CMD output: %+v", string(got))
 	})
 }
 

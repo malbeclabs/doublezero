@@ -332,13 +332,14 @@ func (n *NetlinkManager) CreateIPRules(prefixes []*net.IPNet) error {
 	rules := []*routing.IPRule{}
 	for _, prefix := range prefixes {
 		// dz-specifics table
-		rule, err := routing.NewIPRule(100, 100, "0.0.0.0/0", prefix.String())
+		rule, err := routing.NewIPRule(100, routing.DzTableSpecific, "0.0.0.0/0", prefix.String())
 		if err != nil {
+			slog.Error("rules: error creating IP rule", "prefix", prefix, "error", err)
 			return fmt.Errorf("rules: error creating IP rule: %v", err)
 		}
 		rules = append(rules, rule)
 		// dz-default table - anything sourced from dz space can't go out the public interface
-		rule, err = routing.NewIPRule(101, 101, prefix.String(), "0.0.0.0/0")
+		rule, err = routing.NewIPRule(101, routing.DzTableDefault, prefix.String(), "0.0.0.0/0")
 		if err != nil {
 			return fmt.Errorf("rules: error creating IP rule: %v", err)
 		}

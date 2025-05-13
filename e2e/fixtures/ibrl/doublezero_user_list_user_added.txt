@@ -1,4 +1,2 @@
- account                                      | user_type | device   | location    | cyoa_type  | client_ip    | tunnel_id | tunnel_net     | dz_ip        | status    | owner
- Do1iXv6tNMHRzF1yYHBcLNfNngCK6Yyr9izpLZc1rrwW | IBRL      | la2-dz01 | Los Angeles | GREOverDIA | 2.3.4.5      | 500       | 169.254.0.2/31 | 2.3.4.5      | activated | Dc3LFdWwKGJvJcVkXhAr14kh1HS6pN7oCWrvHfQtsHGe
- NR8fpCK7mqeFVJ3mUmhndX2JtRCymZzgQgGj5JNbGp8  | IBRL      | la2-dz01 | Los Angeles | GREOverDIA | 3.4.5.6      | 501       | 169.254.0.4/31 | 3.4.5.6      | activated | Dc3LFdWwKGJvJcVkXhAr14kh1HS6pN7oCWrvHfQtsHGe
- J2MUYJeJvTfrHpxMm3tVYkcDhTwgAFFju2veS27WhByX | IBRL      | ny5-dz01 | New York    | GREOverDIA | 64.86.249.86 | 500       | 169.254.0.0/31 | 64.86.249.86 | activated | Dc3LFdWwKGJvJcVkXhAr14kh1HS6pN7oCWrvHfQtsHGe
+account                                      | user_type | device   | location | cyoa_type  | client_ip    | tunnel_id | tunnel_net     | dz_ip        | status    | owner
+ J2MUYJeJvTfrHpxMm3tVYkcDhTwgAFFju2veS27WhByX | IBRL      | ny5-dz01 | New York | GREOverDIA | 64.86.249.86 | 500       | 169.254.0.0/31 | 64.86.249.86 | activated | Dc3LFdWwKGJvJcVkXhAr14kh1HS6pN7oCWrvHfQtsHGe

@@ -326,14 +326,13 @@ func TestIBRLWithAllocatedAddress_Connect_Networking(t *testing.T) {
 		}
 	})
 
-	t.Run("ban_user_and_verify_user_is_banned", func(t *testing.T) {
-		cmd := []string{"doublezero", "user", "list"}
-		got, err := exec.Command(cmd[0], cmd[1:]...).Output()
+	// user ban verified in the `doublezer_user_list_removed.txt` fixture
+	t.Run("ban_user", func(t *testing.T) {
+		cmd := []string{"doublezero", "user", "request-ban", "--pubkey", "NR8fpCK7mqeFVJ3mUmhndX2JtRCymZzgQgGj5JNbGp8"}
+		_, err := exec.Command(cmd[0], cmd[1:]...).Output()
 		if err != nil {
 			t.Fatalf("error running cmd %s: %v", cmd, err)
 		}
-
-		fmt.Printf("CMD output: %+v", string(got))
 	})
 }
 

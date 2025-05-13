@@ -7,9 +7,13 @@ import (
 	"bytes"
 	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"slices"
@@ -93,6 +97,54 @@ func (r *ShowIpRoute) GetCmd() string {
 	return "show ip route vrf vrf1"
 }
 
+func TestWaitForLatencyResults(t *testing.T) {
+	deadline := time.Now().Add(75 * time.Second)
+	for time.Now().Before(deadline) {
+		buf, err := fetchClientEndpoint("/latency")
+		if err != nil {
+			t.Fatalf("error fetching latency results: %v", err)
+		}
+		results := []map[string]any{}
+		if err := json.Unmarshal(buf, &results); err != nil {
+			t.Fatalf("error unmarshaling latency data: %v", err)
+		}
+		if len(results) > 0 {
+			for _, result := range results {
+				// Check to make sure ny5-dz01 is reachable
+				if result["device_pk"] == "8scDVeZ8aB1TRTkBqaZgzxuk7WwpARdF1a39wYA7nR3W" && result["reachable"] == true {
+					return
+				}
+			}
+		}
+		time.Sleep(1 * time.Second)
+	}
+	t.Fatalf("timed out waiting for latency results")
+}
+
+func TestWaitForClientTunnelUp(t *testing.T) {
+	deadline := time.Now().Add(60 * time.Second)
+	for time.Now().Before(deadline) {
+		buf, err := fetchClientEndpoint("/status")
+		if err != nil {
+			t.Fatalf("error fetching status: %v", err)
+		}
+		status := map[string]any{}
+		if err := json.Unmarshal(buf, &status); err != nil {
+			t.Fatalf("error unmarshaling latency data: %v", err)
+		}
+
+		if session, ok := status["doublezero_status"]; ok {
+			if sessionStatus, ok := session.(map[string]any)["session_status"]; ok {
+				if sessionStatus == "up" {
+					return
+				}
+			}
+		}
+		time.Sleep(1 * time.Second)
+	}
+	t.Fatalf("timed out waiting for up status")
+}
+
 // TestIBRLWithAllocatedAddress_Connect_Output is a set of tests to verify the output of the doublezero
 // CLI. These tests utilize golden files of expected output stored in the fixtures directory,
 // which are then compared against the std output of each command line call.
@@ -103,6 +155,17 @@ func (r *ShowIpRoute) GetCmd() string {
 // slices of strings and verify each line of the desired output is present in the test generated
 // output slice.
 func TestIBRLWithAllocatedAddress_Connect_Output(t *testing.T) {
+	config, err := fs.ReadFile("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_added.txt")
+	if err != nil {
+		t.Fatalf("error loading expected agent configuration from file: %v", err)
+	}
+
+	t.Run("wait_for_controller_to_pick_up_new_user", func(t *testing.T) {
+		if !waitForController(config) {
+			t.Fatal("timed out waiting for controller to pick up user for IBRL with allocated address")
+		}
+	})
+
 	tests := []struct {
 		name       string
 		goldenFile string
@@ -262,11 +325,31 @@ func TestIBRLWithAllocatedAddress_Connect_Networking(t *testing.T) {
 			t.Fatalf("expected client route of %s installed; got none\n", doublezeroAddr)
 		}
 	})
+
+	// user ban verified in the `doublezer_user_list_removed.txt` fixture
+	t.Run("ban_user", func(t *testing.T) {
+		cmd := []string{"doublezero", "user", "request-ban", "--pubkey", "NR8fpCK7mqeFVJ3mUmhndX2JtRCymZzgQgGj5JNbGp8"}
+		_, err := exec.Command(cmd[0], cmd[1:]...).Output()
+		if err != nil {
+			t.Fatalf("error running cmd %s: %v", cmd, err)
+		}
+	})
 }
 
 // TestIBRLWithAllocatedAddress__Disconnect_Networking verifies the client and agent configuration after a
 // user has been disconnected.
 func TestIBRLWithAllocatedAddress_Disconnect_Networking(t *testing.T) {
+	config, err := fs.ReadFile("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_removed.txt")
+	if err != nil {
+		t.Fatalf("error loading expected agent configuration from file: %v", err)
+	}
+
+	t.Run("wait_for_controller_to_pickup_disconnected_user", func(t *testing.T) {
+		if !waitForController(config) {
+			t.Fatal("timed out waiting for controller to pick up disconnected user for IBRL with allocated address")
+		}
+	})
+
 	t.Run("check_tunnel_interface_is_removed", func(t *testing.T) {
 		links, err := nl.LinkList()
 		if err != nil {
@@ -324,18 +407,26 @@ func TestIBRLWithAllocatedAddress_Disconnect_Networking(t *testing.T) {
 		if err != nil {
 			t.Fatalf("error connecting to dut: %v", err)
 		}
-		handle, err := dut.GetHandle("json")
-		neighbors := &ShowIPBGPSummary{}
-		handle.AddCommand(neighbors)
-		if err := handle.Call(); err != nil {
-			t.Fatalf("error fetching neighbors from doublezero device: %v", err)
-		}
+		deadline := time.Now().Add(30 * time.Second)
+		for time.Now().Before(deadline) {
+			handle, err := dut.GetHandle("json")
+			if err != nil {
+				t.Fatalf("error getting handle: %v", err)
+			}
+			neighbors := &ShowIPBGPSummary{}
+			handle.AddCommand(neighbors)
+			if err := handle.Call(); err != nil {
+				t.Fatalf("error fetching neighbors from doublezero device: %v", err)
+			}
 
-		ip := strings.Split(linkLocalAddr, "/")[0]
-		_, ok := neighbors.VRFs["vrf1"].Peers[ip]
-		if ok {
-			t.Fatalf("bgp neighbor %s has not been removed from doublezero device\n", linkLocalAddr)
+			ip := strings.Split(linkLocalAddr, "/")[0]
+			_, ok := neighbors.VRFs["vrf1"].Peers[ip]
+			if !ok {
+				return
+			}
+			time.Sleep(1 * time.Second)
 		}
+		t.Fatalf("bgp neighbor %s has not been removed from doublezero device\n", linkLocalAddr)
 	})
 }
 
@@ -368,6 +459,17 @@ func TestIBRLWithAllocatedAddress_Disconnect_Output(t *testing.T) {
 }
 
 func TestIBRL_Connect_Output(t *testing.T) {
+	want, err := fs.ReadFile("fixtures/ibrl/doublezero_agent_config_user_added.txt")
+	if err != nil {
+		t.Fatalf("error loading expected agent configuration from file: %v", err)
+	}
+
+	t.Run("wait_for_controller_to_pick_up_new_user", func(t *testing.T) {
+		if !waitForController(want) {
+			t.Fatal("timed out waiting for controller to pick up user for IBRL")
+		}
+	})
+
 	tests := []struct {
 		name           string
 		goldenFile     string
@@ -581,6 +683,16 @@ func TestIBRL_Disconnect_Output(t *testing.T) {
 // TestIBRL_Disconnect_Networking verifies the client and agent configuration after a
 // user has been disconnected.
 func TestIBRL_Disconnect_Networking(t *testing.T) {
+	want, err := fs.ReadFile("fixtures/ibrl/doublezero_agent_config_user_removed.txt")
+	if err != nil {
+		t.Fatalf("error loading expected agent configuration from file: %v", err)
+	}
+	t.Run("wait_for_controller_to_pickup_disconnected_user", func(t *testing.T) {
+		if !waitForController(want) {
+			t.Fatal("timed out waiting for controller to pick up disconnected user for IBRL")
+		}
+	})
+
 	t.Run("check_tunnel_interface_is_removed", func(t *testing.T) {
 		links, err := nl.LinkList()
 		if err != nil {
@@ -639,24 +751,31 @@ func TestIBRL_Disconnect_Networking(t *testing.T) {
 		if err != nil {
 			t.Fatalf("error connecting to dut: %v", err)
 		}
-		handle, err := dut.GetHandle("json")
-		neighbors := &ShowIPBGPSummary{}
-		handle.AddCommand(neighbors)
-		if err := handle.Call(); err != nil {
-			t.Fatalf("error fetching neighbors from doublezero device: %v", err)
-		}
+		deadline := time.Now().Add(30 * time.Second)
+		for time.Now().Before(deadline) {
+			handle, err := dut.GetHandle("json")
+			if err != nil {
+				t.Fatalf("error getting handle: %v", err)
+			}
+			neighbors := &ShowIPBGPSummary{}
+			handle.AddCommand(neighbors)
+			if err := handle.Call(); err != nil {
+				t.Fatalf("error fetching neighbors from doublezero device: %v", err)
+			}
 
-		ip := strings.Split(linkLocalAddr, "/")[0]
-		_, ok := neighbors.VRFs["vrf1"].Peers[ip]
-		if ok {
-			t.Fatalf("bgp neighbor %s has not been removed from doublezero device\n", linkLocalAddr)
+			ip := strings.Split(linkLocalAddr, "/")[0]
+			_, ok := neighbors.VRFs["vrf1"].Peers[ip]
+			if !ok {
+				return
+			}
+			time.Sleep(1 * time.Second)
 		}
+		t.Fatalf("bgp neighbor %s has not been removed from doublezero device\n", linkLocalAddr)
 	})
 }
 
 func diffCliToGolden(goldenFile string, testOutputType string, cmds ...string) (string, error) {
 	want, err := fs.ReadFile(goldenFile)
-
 	if err != nil {
 		return "", fmt.Errorf("error reading golden file %s: %v", goldenFile, err)
 	}
@@ -693,12 +812,7 @@ func diffCliMapToGoldenMapKV(want []byte, got []byte) string {
 	ignoreKeys := []string{"Last Session Update"}
 
 	return cmp.Diff(gotMap, wantMap, cmpopts.IgnoreMapEntries(func(key string, _ string) bool {
-		for _, k := range ignoreKeys {
-			if key == k {
-				return true
-			}
-		}
-		return false
+		return slices.Contains(ignoreKeys, key)
 	}))
 }
 
@@ -751,4 +865,75 @@ func mapFromKV(output []byte) map[string]string {
 		formattedMap[split[0]] = strings.TrimSpace(split[1])
 	}
 	return formattedMap
+}
+
+func waitForController(config []byte) bool {
+	target := net.JoinHostPort(controllerAddr, controllerPort)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	opts := []grpc.DialOption{
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	}
+	conn, err := grpc.NewClient(target, opts...)
+	if err != nil {
+		log.Fatalf("error creating controller client: %v", err)
+	}
+	defer conn.Close()
+	defer cancel()
+
+	agent := pb.NewControllerClient(conn)
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		got, err := agent.GetConfig(ctx, &pb.ConfigRequest{Pubkey: agentPubKey})
+		if err != nil {
+			log.Fatalf("error while fetching config: %v\n", err)
+		}
+		diff := cmp.Diff(string(config), got.Config)
+		if diff == "" {
+			return true
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return false
+}
+
+func fetchClientEndpoint(endpoint string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	client := http.Client{
+		Transport: &http.Transport{
+			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+				dialer := net.Dialer{}
+				return dialer.DialContext(ctx, "unix", "/var/run/doublezerod/doublezerod.sock")
+			},
+		},
+	}
+
+	url, err := url.JoinPath("http://doublezero/", endpoint)
+	if err != nil {
+		log.Fatalf("error creating url: %v", err)
+	}
+
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		log.Fatalf("error creating request: %v", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Fatalf("error during request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	buf, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("error fetching endpoint %s: %s", endpoint, string(buf))
+	}
+	if len(buf) == 0 {
+		return nil, fmt.Errorf("empty response from endpoint %s", endpoint)
+	}
+	return buf, nil
 }

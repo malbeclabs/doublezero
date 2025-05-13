@@ -19,6 +19,8 @@ var (
 	versionFlag          = flag.Bool("version", false, "build version")
 	programId            = flag.String("program-id", "", "override smartcontract program id to monitor")
 	rpcEndpoint          = flag.String("solana-rpc-endpoint", "", "override solana rpc endpoint url")
+	probeInterval        = flag.Int("probe-interval", 30, "latency probe interval in seconds")
+	cacheUpdateInterval  = flag.Int("cache-update-interval", 30, "latency cache update interval in seconds")
 	enableVerboseLogging = flag.Bool("v", false, "enables verbose logging")
 
 	commit  = ""
@@ -58,7 +60,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := runtime.Run(ctx, *sockFile, *enableLatencyProbing, *programId, *rpcEndpoint); err != nil {
+	if err := runtime.Run(ctx, *sockFile, *enableLatencyProbing, *programId, *rpcEndpoint, *probeInterval, *cacheUpdateInterval); err != nil {
 		slog.Error("runtime error", "error", err)
 		os.Exit(1)
 	}

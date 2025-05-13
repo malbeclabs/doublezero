@@ -24,8 +24,7 @@ impl ActivatorMetrics {
         exchanges: &HashMap<Pubkey, Exchange>,
         state_transitions: &HashMap<&'static str, usize>,
     ) {
-        let mut metrics: Vec<Metric> =
-            Vec::with_capacity(devices.len() + state_transitions.len() + 1);
+        let mut metrics = Vec::with_capacity(devices.len() + state_transitions.len() + 1);
 
         let mut metric = Metric::new("activator_device_count");
         metric.add_field("count", devices.len() as f64);

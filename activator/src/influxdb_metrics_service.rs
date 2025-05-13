@@ -88,14 +88,12 @@ impl InfluxDBMetricsSubmitter {
 
     pub async fn run(&mut self) {
         while let Some(msg) = self.receiver.recv().await {
-            match &self.client {
-                None => {}
-                Some(client) => {
-                    if let Err(e) = client
-                                            .write_line_protocol(&client.org, self.bucket.as_str(), msg)
-                                            .await {
-                        eprintln!("Error writing metric to InfluxDB: {}", e);
-                    }
+            if let Some(client) = &self.client {
+                if let Err(e) = client
+                    .write_line_protocol(&client.org, self.bucket.as_str(), msg)
+                    .await
+                {
+                    eprintln!("Error writing metric to InfluxDB: {}", e);
                 }
             }
         }

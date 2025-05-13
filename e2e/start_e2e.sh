@@ -53,9 +53,10 @@ main() {
 
     print_banner "Initializing doublezero daemon"
     start_doublezerod
+    sleep 5
 
     print_banner "Waiting for latency results (75 second timeout)"
-    sleep 75
+    e2e_test -test.v -test.run "^TestWaitForLatencyResults"
 
     print_banner "Latency results"
     doublezero latency
@@ -78,10 +79,10 @@ test_ibrl_with_allocated_addr() {
     doublezero --keypair $SOLANA_KEYPAIR connect ibrl --client-ip 64.86.249.86  --allocate-addr
 
     print_banner "Creating multiple users to exhaust the /30 and allocate from the /29, ie use both blocks"
-    create_multiple_users
+    create_multiple_ibrl_with_allocated_address_users
 
-    print_banner "Wait for controller to pickup new user"
-    sleep 30
+    print_banner "Waiting for client tunnel to be up before starting tests"
+    e2e_test -test.v -test.run "^TestWaitForClientTunnelUp"
 
     print_banner "Running post-connect tests"
     e2e_test -test.v -test.run "^TestIBRLWithAllocatedAddress_Connect"
@@ -89,19 +90,17 @@ test_ibrl_with_allocated_addr() {
     print_banner "Disconnecting user tunnel"
     doublezero --keypair $SOLANA_KEYPAIR disconnect --client-ip 64.86.249.86
 
-    print_banner "Wait for controller to pickup disconnected user"
-    sleep 30
-
     print_banner "Running post-disconnect tests"
-    e2e_test -test.v -test.run "^TestIBRLWithAllocatedAddress_Disconnect"
+    e2e_test -test.v -test.run "^TestIBRLWithAllocatedAddress_Disconnect_Networking"
+    e2e_test -test.v -test.run "^TestIBRLWithAllocatedAddress_Disconnect_Output"
 }
 
 test_ibrl() {
     print_banner "Connecting user tunnel"
     doublezero --keypair $SOLANA_KEYPAIR connect ibrl --client-ip 64.86.249.86
 
-    print_banner "Wait for controller to pickup new user"
-    sleep 30
+    print_banner "Waiting for client tunnel to be up before starting tests"
+    e2e_test -test.v -test.run "^TestWaitForClientTunnelUp"
 
     print_banner "Running post-connect tests"
     e2e_test -test.v -test.run "^TestIBRL_Connect"
@@ -109,11 +108,9 @@ test_ibrl() {
     print_banner "Disconnecting user tunnel"
     doublezero --keypair $SOLANA_KEYPAIR disconnect --client-ip 64.86.249.86
 
-    print_banner "Wait for controller to pickup disconnected user"
-    sleep 30
-
     print_banner "Running post-disconnect tests"
-    e2e_test -test.v -test.run "^TestIBRL_Disconnect"
+    e2e_test -test.v -test.run "TestIBRL_Disconnect_Networking"
+    e2e_test -test.v -test.run "TestIBRL_Disconnect_Output"
 }
 
 init_doublezero() {
@@ -129,7 +126,7 @@ start_doublezerod() {
     mkdir /var/run/doublezerod
     # create state file directory
     mkdir /var/lib/doublezerod
-    doublezerod -program-id $PROGRAM_ID -solana-rpc-endpoint $VALIDATOR_URL &
+    doublezerod -program-id $PROGRAM_ID -solana-rpc-endpoint $VALIDATOR_URL -probe-interval 5 -cache-update-interval 3 &
 }
 
 populate_data_onchain() {
@@ -175,15 +172,15 @@ populate_data_onchain() {
     print_banner "Device information onchain"
     doublezero device list
 
-    print_banner "Adding blackhole routes to test latency selection to ny5-dz01."
+    print_banner "Adding null routes to test latency selection to ny5-dz01."
     ip rule add priority 1 from 64.86.249.86/32 to all table main
-    ip route add blackhole 207.45.216.134/32
-    ip route add blackhole 195.219.120.72/32
-    ip route add blackhole 195.219.220.88/32
-    ip route add blackhole 180.87.102.104/32
-    ip route add blackhole 180.87.154.112/32
-    ip route add blackhole 204.16.241.243/32
-    ip route add blackhole 195.219.138.50/32
+    ip route add 207.45.216.134/32 dev lo proto static scope host
+    ip route add 195.219.120.72/32 dev lo proto static scope host
+    ip route add 195.219.220.88/32 dev lo proto static scope host
+    ip route add 180.87.102.104/32 dev lo proto static scope host
+    ip route add 180.87.154.112/32 dev lo proto static scope host
+    ip route add 204.16.241.243/32 dev lo proto static scope host
+    ip route add 195.219.138.50/32 dev lo proto static scope host
 
     print_banner "Populate tunnel information onchain"
     doublezero tunnel create --code "la2-dz01:ny5-dz01" --side-a la2-dz01 --side-z ny5-dz01 --tunnel-type MPLSoGRE --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
@@ -197,7 +194,7 @@ populate_data_onchain() {
 
 }
 
-create_multiple_users() {
+create_multiple_ibrl_with_allocated_address_users() {
     print_banner "Creating multiple users on a single device"
     doublezero user create --device la2-dz01 --client-ip 1.2.3.4
     doublezero user create --device la2-dz01 --client-ip 2.3.4.5
@@ -205,7 +202,6 @@ create_multiple_users() {
     doublezero user create --device la2-dz01 --client-ip 4.5.6.7
     doublezero user create --device la2-dz01 --client-ip 5.6.7.8
     print_banner "Multiple users created"
-
 }
 
 err() {

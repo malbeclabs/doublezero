@@ -132,7 +132,9 @@ impl Activator {
 
         println!(
             "devices: {} tunnels: {} users: {}",
-            devices.len(), tunnels.len(), users.len(),
+            devices.len(),
+            tunnels.len(),
+            users.len(),
         );
 
         Ok(())
@@ -1046,7 +1048,7 @@ mod tests {
             owner: Pubkey::new_unique(),
             index: 0,
             bump_seed: get_user_bump_seed(&client),
-            user_type: user_type,
+            user_type,
             tenant_pk: Pubkey::new_unique(),
             device_pk: device_pubkey,
             cyoa_type: UserCYOA::GREOverDIA,

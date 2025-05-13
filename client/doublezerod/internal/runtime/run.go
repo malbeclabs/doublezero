@@ -15,7 +15,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func Run(ctx context.Context, sockFile string, enableLatencyProbing bool, programId string, rpcEndpoint string) error {
+func Run(ctx context.Context, sockFile string, enableLatencyProbing bool, programId string, rpcEndpoint string, probeInterval, cacheUpdateInterval int) error {
 	nlr := netlink.Netlink{}
 	bgp, err := bgp.NewBgpServer(net.IPv4(1, 1, 1, 1))
 	if err != nil {
@@ -46,7 +46,7 @@ func Run(ctx context.Context, sockFile string, enableLatencyProbing bool, progra
 	if enableLatencyProbing {
 		latency := latency.NewLatencyManager(latency.FetchContractData, latency.UdpPing)
 		go func() {
-			err := latency.Start(ctx, programId, rpcEndpoint)
+			err := latency.Start(ctx, programId, rpcEndpoint, probeInterval, cacheUpdateInterval)
 			errCh <- err
 		}()
 		mux.HandleFunc("GET /latency", latency.ServeLatency)

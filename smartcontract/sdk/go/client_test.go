@@ -66,6 +66,15 @@ e00021f01be15c51fbb99f0a8f5a8435593facfb691702e7c85
 e276a54a5566650216c345
 `
 
+var multicastgroupPayload = `
+08ba944643a3527a7f64860ec411e0eedb3b9f494595a18534a
+88a7be3fc8273aa23000000000000000000000000000000ff00
+000000000000000000000000000000000000000000000000000
+00000000000ef00000100ca9a3b000000000000000000000000
+01040000006a69746fb745f92183e1b409bb7006560f858cf3b
+fa557c75cd967182a00392200b5de78
+`
+
 type mockSolanaClient struct {
 	payload string
 }
@@ -124,11 +133,12 @@ func TestRpcClient(t *testing.T) {
 					UserTunnelBlock:   [5]byte{169, 254, 0, 0, 16},
 					PubKey:            getPubKey(configPayload),
 				},
-				Locations: []Location{},
-				Devices:   []Device{},
-				Tunnels:   []Tunnel{},
-				Users:     []User{},
-				Exchanges: []Exchange{},
+				Locations:       []Location{},
+				Devices:         []Device{},
+				Tunnels:         []Tunnel{},
+				Users:           []User{},
+				Exchanges:       []Exchange{},
+				MulticastGroups: []MulticastGroup{},
 			},
 		},
 		{
@@ -151,10 +161,11 @@ func TestRpcClient(t *testing.T) {
 						PubKey:      getPubKey(exchangePayload),
 					},
 				},
-				Locations: []Location{},
-				Devices:   []Device{},
-				Tunnels:   []Tunnel{},
-				Users:     []User{},
+				Locations:       []Location{},
+				Devices:         []Device{},
+				Tunnels:         []Tunnel{},
+				Users:           []User{},
+				MulticastGroups: []MulticastGroup{},
 			},
 		},
 		{
@@ -178,10 +189,11 @@ func TestRpcClient(t *testing.T) {
 						PubKey:         getPubKey(devicePayload),
 					},
 				},
-				Locations: []Location{},
-				Exchanges: []Exchange{},
-				Tunnels:   []Tunnel{},
-				Users:     []User{},
+				Locations:       []Location{},
+				Exchanges:       []Exchange{},
+				Tunnels:         []Tunnel{},
+				Users:           []User{},
+				MulticastGroups: []MulticastGroup{},
 			},
 		},
 		{
@@ -205,10 +217,11 @@ func TestRpcClient(t *testing.T) {
 						PubKey:      getPubKey(locationPayload),
 					},
 				},
-				Exchanges: []Exchange{},
-				Devices:   []Device{},
-				Tunnels:   []Tunnel{},
-				Users:     []User{},
+				Exchanges:       []Exchange{},
+				Devices:         []Device{},
+				Tunnels:         []Tunnel{},
+				Users:           []User{},
+				MulticastGroups: []MulticastGroup{},
 			},
 		},
 		{
@@ -234,10 +247,11 @@ func TestRpcClient(t *testing.T) {
 						PubKey:       getPubKey(userPayload),
 					},
 				},
-				Locations: []Location{},
-				Devices:   []Device{},
-				Tunnels:   []Tunnel{},
-				Exchanges: []Exchange{},
+				Locations:       []Location{},
+				Devices:         []Device{},
+				Tunnels:         []Tunnel{},
+				Exchanges:       []Exchange{},
+				MulticastGroups: []MulticastGroup{},
 			},
 		},
 		{
@@ -265,10 +279,41 @@ func TestRpcClient(t *testing.T) {
 						PubKey:      getPubKey(tunnelPayload),
 					},
 				},
+				Locations:       []Location{},
+				Devices:         []Device{},
+				Exchanges:       []Exchange{},
+				Users:           []User{},
+				MulticastGroups: []MulticastGroup{},
+			},
+		},
+		{
+			Name:        "parse_valid_multicastgroup",
+			Description: "parse and populate a valid multicastgroup struct",
+			Payload:     strings.TrimSuffix(multicastgroupPayload, "\n"),
+			Want: &Client{
+				Tunnels:   []Tunnel{},
 				Locations: []Location{},
 				Devices:   []Device{},
 				Exchanges: []Exchange{},
 				Users:     []User{},
+				MulticastGroups: []MulticastGroup{
+					{
+						AccountType:  MulticastGroupType,
+						Index:        Uint128{High: 35, Low: 0},
+						Bump_seed:    255,
+						Owner:        getOwner(multicastgroupPayload),
+						TenantPubKey: [32]byte{},
+						Status:       MulticastGroupStatusActivated,
+						Code:         "",
+						MulticastIp:  [4]byte{0xef, 0x00, 0x00, 0x01},
+						MaxBandwidth: 1000000000,
+						Publishers:   nil,
+						Subscribers:  nil,
+						PubKey: [32]uint8{0x04, 0x00, 0x00, 0x00, 0x6a, 0x69, 0x74, 0x6f,
+							0xb7, 0x45, 0xf9, 0x21, 0x83, 0xe1, 0xb4, 0x09, 0xbb, 0x70, 0x06, 0x56, 0x0f, 0x85, 0x8c, 0xf3,
+							0xbf, 0xa5, 0x57, 0xc7, 0x5c, 0xd9, 0x67, 0x18},
+					},
+				},
 			},
 		},
 	}

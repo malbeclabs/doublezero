@@ -59,7 +59,7 @@ pub fn process_delete_multicastgroup(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    let multicastgroup: MulticastGroup =
+    let mut multicastgroup: MulticastGroup =
         MulticastGroup::from(&pda_account.try_borrow_data().unwrap()[..]);
     assert_eq!(
         multicastgroup.index, value.index,
@@ -72,7 +72,9 @@ pub fn process_delete_multicastgroup(
     if multicastgroup.status != MulticastGroupStatus::Activated {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
-    account_close(pda_account, payer_account)?;
+    multicastgroup.status = MulticastGroupStatus::Deleting;
+
+    account_write(pda_account, &multicastgroup, payer_account, system_program);
 
     #[cfg(test)]
     msg!("Deleted: {:?}", pda_account);

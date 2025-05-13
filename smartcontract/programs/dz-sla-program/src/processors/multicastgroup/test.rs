@@ -11,6 +11,7 @@ mod multicastgroup_test {
     use crate::tests::test::*;
     use solana_program_test::*;
     use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey};
+    use crate::processors::multicastgroup::deactivate::MulticastGroupDeactivateArgs;
 
     #[tokio::test]
     async fn test_multicastgroup() {
@@ -59,6 +60,7 @@ mod multicastgroup_test {
                 code: "la".to_string(),
                 multicast_ip: [239, 1, 1, 1],
                 max_bandwidth: 1000,
+                owner: Pubkey::new_unique(),
             }),
             vec![
                 AccountMeta::new(multicastgroup_pubkey, false),
@@ -104,7 +106,7 @@ mod multicastgroup_test {
 
         println!("✅ MulticastGroup suspended");
         /*****************************************************************************************************************************************************/
-        println!("Testing MulticastGroup reactivated...");
+        println!("3. Testing MulticastGroup reactivated...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
@@ -130,7 +132,7 @@ mod multicastgroup_test {
 
         println!("✅ MulticastGroup reactivated");
         /*****************************************************************************************************************************************************/
-        println!("Testing MulticastGroup update...");
+        println!("4. Testing MulticastGroup update...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
@@ -160,7 +162,7 @@ mod multicastgroup_test {
 
         println!("✅ MulticastGroup updated");
         /*****************************************************************************************************************************************************/
-        println!("Testing MulticastGroup deletion...");
+        println!("5. Testing MulticastGroup deletion...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
@@ -171,6 +173,34 @@ mod multicastgroup_test {
             }),
             vec![
                 AccountMeta::new(multicastgroup_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
+            &payer,
+        )
+        .await;
+    
+        let multicastgroup_la = get_account_data(&mut banks_client, multicastgroup_pubkey)
+            .await
+            .expect("Unable to get Account")
+            .get_multicastgroup();
+        assert_eq!(multicastgroup_la.account_type, AccountType::MulticastGroup);
+        assert_eq!(multicastgroup_la.code, "la2".to_string());
+        assert_eq!(multicastgroup_la.status, MulticastGroupStatus::Deleting);
+
+        println!("✅ MulticastGroup deleted");    
+        /*****************************************************************************************************************************************************/
+        println!("6. Testing MulticastGroup deactivation (final delete)...");
+        execute_transaction(
+            &mut banks_client,
+            recent_blockhash,
+            program_id,
+            DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {
+                index: multicastgroup_la.index,
+                bump_seed: multicastgroup_la.bump_seed,
+            }),
+            vec![
+                AccountMeta::new(multicastgroup_pubkey, false),
+                AccountMeta::new(multicastgroup.owner, false),
                 AccountMeta::new(globalstate_pubkey, false),
             ],
             &payer,

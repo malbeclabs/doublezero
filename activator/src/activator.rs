@@ -69,7 +69,7 @@ impl Activator {
             "Connected to url: {} ws: {} program_id: {} ",
             client.get_rpc(),
             client.get_ws(),
-            client.get_program_id().to_string()
+            client.get_program_id()
         );
 
         // Wait for the global config to be available
@@ -132,9 +132,7 @@ impl Activator {
 
         println!(
             "devices: {} tunnels: {} users: {}",
-            devices.len().to_string(),
-            tunnels.len().to_string(),
-            users.len().to_string()
+            devices.len(), tunnels.len(), users.len(),
         );
 
         Ok(())
@@ -162,21 +160,18 @@ impl Activator {
                 networkv4_list_to_string(&device.device.dz_prefixes)
             );
 
-            if device.tunnel_ids.assigned.len() == 0 {
-                print!("{},", "-");
+            if device.tunnel_ids.assigned.is_empty() {
+                print!("-,");
             }
             device.tunnel_ids.assigned.iter().for_each(|tunnel_id| {
-                print!("{},", tunnel_id.to_string());
+                print!("{},", tunnel_id);
             });
             println!("\x08 ");
         });
 
-        print!(
-            "tunnel_net: {} assigned: ",
-            self.user_tunnel_ips.base_block.to_string()
-        );
-        if self.user_tunnel_ips.assigned_ips.len() == 0 {
-            print!("{},", "-");
+        print!("tunnel_net: {} assigned: ", self.user_tunnel_ips.base_block);
+        if self.user_tunnel_ips.assigned_ips.is_empty() {
+            print!("-,");
         }
         self.user_tunnel_ips.print_assigned_ips();
         println!("\x08 ");
@@ -196,14 +191,14 @@ impl Activator {
             .gets_and_subscribe(move |client, pubkey, data| {
                 match data {
                     AccountData::Device(device) => {
-                        process_device_event(client, pubkey, devices, &device, state_transitions);
+                        process_device_event(client, pubkey, devices, device, state_transitions);
                     }
                     AccountData::Tunnel(tunnel) => {
                         process_tunnel_event(
                             client,
                             tunnel_tunnel_ips,
                             tunnel_tunnel_ids,
-                            &tunnel,
+                            tunnel,
                             state_transitions,
                         );
                     }
@@ -214,7 +209,7 @@ impl Activator {
                             devices,
                             user_tunnel_ips,
                             tunnel_tunnel_ids,
-                            &user,
+                            user,
                             state_transitions,
                         );
                     }
@@ -259,7 +254,7 @@ fn process_device_event(
 
             match res {
                 Ok(signature) => {
-                    println!("Activated {}", signature.to_string());
+                    println!("Activated {}", signature);
 
                     println!(
                         "Add Device: {} public_ip: {} dz_prefixes: {} ",
@@ -272,7 +267,7 @@ fn process_device_event(
                         .entry("device-pending-to-activated")
                         .or_insert(0) += 1;
                 }
-                Err(e) => println!("Error: {}", e.to_string()),
+                Err(e) => println!("Error: {}", e),
             }
         }
         DeviceStatus::Activated => {
@@ -301,7 +296,7 @@ fn process_device_event(
 
             match res {
                 Ok(signature) => {
-                    println!("Deactivated {}", signature.to_string());
+                    println!("Deactivated {}", signature);
                     devices.remove(pubkey);
                     *state_transitions
                         .entry("device-deleting-to-deactivated")
@@ -331,23 +326,23 @@ fn process_tunnel_event(
 
                     let res = ActivateTunnelCommand {
                         index: tunnel.index,
-                        tunnel_id: tunnel_id,
-                        tunnel_net: tunnel_net,
+                        tunnel_id,
+                        tunnel_net,
                     }
                     .execute(client);
 
                     match res {
                         Ok(signature) => {
-                            println!("Activated {}", signature.to_string());
+                            println!("Activated {}", signature);
                             *state_transitions
                                 .entry("tunnel-pending-to-activated")
                                 .or_insert(0) += 1;
                         }
-                        Err(e) => println!("Error: activate_tunnel: {}", e.to_string()),
+                        Err(e) => println!("Error: activate_tunnel: {}", e),
                     }
                 }
                 None => {
-                    println!("{}", "Error: No available tunnel block");
+                    println!("Error: No available tunnel block");
 
                     let res = RejectTunnelCommand {
                         index: tunnel.index,
@@ -357,12 +352,12 @@ fn process_tunnel_event(
 
                     match res {
                         Ok(signature) => {
-                            println!("Rejected {}", signature.to_string());
+                            println!("Rejected {}", signature);
                             *state_transitions
                                 .entry("tunnel-pending-to-rejected")
                                 .or_insert(0) += 1;
                         }
-                        Err(e) => println!("Error: reject_tunnel: {}", e.to_string()),
+                        Err(e) => println!("Error: reject_tunnel: {}", e),
                     }
                 }
             }
@@ -381,12 +376,12 @@ fn process_tunnel_event(
 
             match res {
                 Ok(signature) => {
-                    println!("Deactivated {}", signature.to_string());
+                    println!("Deactivated {}", signature);
                     *state_transitions
                         .entry("tunnel-deleting-to-deactivated")
                         .or_insert(0) += 1;
                 }
-                Err(e) => println!("{}: {}", "Error: deactivate_tunnel:", e.to_string()),
+                Err(e) => println!("Error: deactivate_tunnel: {}", e),
             }
         }
         _ => {}
@@ -425,7 +420,7 @@ fn process_user_event(
                         devices.insert(*pubkey, DeviceState::new(&device));
                     }
                     Err(e) => {
-                        println!("Error: {}", e.to_string());
+                        println!("Error: {}", e);
                     }
                 }
             }
@@ -443,12 +438,9 @@ fn process_user_event(
 
                             match user.user_type {
                                 UserType::IBRLWithAllocatedIP | UserType::EdgeFiltering => {
-                                    match device_state.get_next() {
-                                        Some((xtunnel_id, xdz_ip)) => {
-                                            tunnel_id = xtunnel_id;
-                                            dz_ip = xdz_ip;
-                                        }
-                                        None => {}
+                                    if let Some((xtunnel_id, xdz_ip)) = device_state.get_next() {
+                                        tunnel_id = xtunnel_id;
+                                        dz_ip = xdz_ip;
                                     }
                                 }
                                 UserType::IBRL => {
@@ -459,7 +451,7 @@ fn process_user_event(
                             }
 
                             if tunnel_id == 0 {
-                                eprintln!("{}", "Error: No available tunnel block");
+                                eprintln!("Error: No available tunnel block");
 
                                 let res = RejectUserCommand {
                                     index: user.index,
@@ -469,42 +461,42 @@ fn process_user_event(
 
                                 match res {
                                     Ok(signature) => {
-                                        println!("Rejected {}", signature.to_string());
+                                        println!("Rejected {}", signature);
                                         *state_transitions
                                             .entry("user-pending-to-rejected")
                                             .or_insert(0) += 1;
                                     }
-                                    Err(e) => println!("Error: {}", e.to_string()),
+                                    Err(e) => println!("Error: {}", e),
                                 }
                                 return;
                             }
 
                             print!(
                                 "tunnel_id: {} dz_ip: {} ",
-                                tunnel_id.to_string(),
+                                tunnel_id,
                                 ipv4_to_string(&dz_ip)
                             );
 
                             let res = ActivateUserCommand {
                                 index: user.index,
-                                tunnel_id: tunnel_id,
-                                tunnel_net: tunnel_net,
-                                dz_ip: dz_ip,
+                                tunnel_id,
+                                tunnel_net,
+                                dz_ip,
                             }
                             .execute(client);
 
                             match res {
                                 Ok(signature) => {
-                                    println!("Activated   {}", signature.to_string());
+                                    println!("Activated   {}", signature);
                                     *state_transitions
                                         .entry("user-pending-to-activated")
                                         .or_insert(0) += 1;
                                 }
-                                Err(e) => println!("Error: {}", e.to_string()),
+                                Err(e) => println!("Error: {}", e),
                             }
                         }
                         None => {
-                            println!("{}", "Error: No available user block");
+                            println!("Error: No available user block");
 
                             let res = RejectUserCommand {
                                 index: user.index,
@@ -514,18 +506,18 @@ fn process_user_event(
 
                             match res {
                                 Ok(signature) => {
-                                    println!("Rejected {}", signature.to_string());
+                                    println!("Rejected {}", signature);
                                     *state_transitions
                                         .entry("user-pending-to-rejected")
                                         .or_insert(0) += 1;
                                 }
-                                Err(e) => println!("Error: {}", e.to_string()),
+                                Err(e) => println!("Error: {}", e),
                             }
                         }
                     }
                 }
                 None => {
-                    eprintln!("Error: Device not found {}", user.device_pk.to_string());
+                    eprintln!("Error: Device not found {}", user.device_pk);
 
                     let res = RejectUserCommand {
                         index: user.index,
@@ -535,12 +527,12 @@ fn process_user_event(
 
                     match res {
                         Ok(signature) => {
-                            println!("Rejected {}", signature.to_string());
+                            println!("Rejected {}", signature);
                             *state_transitions
                                 .entry("user-pending-to-rejected")
                                 .or_insert(0) += 1;
                         }
-                        Err(e) => println!("Error: {}", e.to_string()),
+                        Err(e) => println!("Error: {}", e),
                     }
                 }
             }
@@ -555,7 +547,7 @@ fn process_user_event(
                 print!(
                     "tunnel_net: {} tunnel_id: {} dz_ip: {} ",
                     networkv4_to_string(&user.tunnel_net),
-                    user.tunnel_id.to_string(),
+                    user.tunnel_id,
                     ipv4_to_string(&user.dz_ip)
                 );
 
@@ -578,24 +570,24 @@ fn process_user_event(
 
                     match res {
                         Ok(signature) => {
-                            println!("Deactivated {}", signature.to_string());
+                            println!("Deactivated {}", signature);
                             *state_transitions
                                 .entry("user-deleting-to-deactivated")
                                 .or_insert(0) += 1;
                         }
-                        Err(e) => println!("Error: {}", e.to_string()),
+                        Err(e) => println!("Error: {}", e),
                     }
                 } else if user.status == UserStatus::PendingBan {
                     let res = BanUserCommand { index: user.index }.execute(client);
 
                     match res {
                         Ok(signature) => {
-                            println!("Banned {}", signature.to_string());
+                            println!("Banned {}", signature);
                             *state_transitions
                                 .entry("user-pending-ban-to-banned")
                                 .or_insert(0) += 1;
                         }
-                        Err(e) => println!("Error: {}", e.to_string()),
+                        Err(e) => println!("Error: {}", e),
                     }
                 }
             }
@@ -609,7 +601,7 @@ fn process_location_event(
     locations: &mut HashMap<Pubkey, Location>,
     location: &Location,
 ) {
-    locations.insert(pubkey.clone(), location.clone());
+    locations.insert(*pubkey, location.clone());
 }
 
 fn process_exchange_event(
@@ -617,7 +609,7 @@ fn process_exchange_event(
     exchanges: &mut HashMap<Pubkey, Exchange>,
     exchange: &Exchange,
 ) {
-    exchanges.insert(pubkey.clone(), exchange.clone());
+    exchanges.insert(*pubkey, exchange.clone());
 }
 
 fn process_multicastgroup_event(
@@ -638,7 +630,7 @@ fn process_multicastgroup_event(
 
             match res {
                 Ok(signature) => {
-                    println!("Activated {}", signature.to_string());
+                    println!("Activated {}", signature);
 
                     println!("Add MulticastGroup: {} ", multicastgroup.code,);
                     multicastgroups.insert(*pubkey, multicastgroup.clone());
@@ -646,7 +638,7 @@ fn process_multicastgroup_event(
                         .entry("multicastgroup-pending-to-activated")
                         .or_insert(0) += 1;
                 }
-                Err(e) => println!("Error: {}", e.to_string()),
+                Err(e) => println!("Error: {}", e),
             }
         }
         MulticastGroupStatus::Activated => {
@@ -667,7 +659,7 @@ fn process_multicastgroup_event(
 
             match res {
                 Ok(signature) => {
-                    println!("Deactivated {}", signature.to_string());
+                    println!("Deactivated {}", signature);
                     multicastgroups.remove(pubkey);
                     *state_transitions
                         .entry("multicastgroup-deleting-to-deactivated")

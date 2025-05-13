@@ -36,5 +36,5 @@ impl Metric {
 pub trait MetricsService: Send + Sync + 'static {
     #[allow(dead_code)]
     fn write_metric(&self, metric: &Metric);
-    fn write_metrics(&self, metrics: &Vec<Metric>);
+    fn write_metrics(&self, metrics: &[Metric]);
 }

@@ -97,7 +97,7 @@ pub fn process_create_multicastgroup(
         max_bandwidth: value.max_bandwidth,
         subscribers: vec![],
         publishers: vec![],
-        status: MulticastGroupStatus::Activated,
+        status: MulticastGroupStatus::Pending,
     };
 
     account_create(

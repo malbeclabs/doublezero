@@ -42,8 +42,7 @@ func (m *mockRouteReaderWriter) RouteByProtocol(int) ([]*routing.Route, error) {
 			},
 			Src:     net.IPv4(7, 7, 7, 7),
 			NextHop: net.IP{127, 0, 0, 1},
-			// Protocol: unix.RTPROT_BGP,
-			Table: syscall.RT_TABLE_MAIN,
+			Table:   syscall.RT_TABLE_MAIN,
 		},
 	}, nil
 }
@@ -236,8 +235,7 @@ func TestBgpServer(t *testing.T) {
 				},
 				Src:     net.IP{7, 7, 7, 7},
 				NextHop: net.IP{127, 0, 0, 1},
-				// Protocol: unix.RTPROT_BGP,
-				Table: syscall.RT_TABLE_MAIN,
+				Table:   syscall.RT_TABLE_MAIN,
 			},
 			{
 				Dst: &net.IPNet{
@@ -246,8 +244,7 @@ func TestBgpServer(t *testing.T) {
 				},
 				Src:     net.IP{7, 7, 7, 7},
 				NextHop: net.IP{127, 0, 0, 1},
-				// Protocol: unix.RTPROT_BGP,
-				Table: syscall.RT_TABLE_MAIN,
+				Table:   syscall.RT_TABLE_MAIN,
 			},
 		}
 		if diff := checkRoutes(nlr.routesFlushed, want); diff != "" {

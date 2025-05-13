@@ -710,6 +710,7 @@ mod tests {
                 multicast_ip: [1, 2, 3, 4],
                 max_bandwidth: 1000,
                 code: "test".to_string(),
+                owner: Pubkey::new_unique(),
             }),
             "CreateMulticastGroup",
         );
@@ -717,8 +718,7 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
                 index: 123,
-                bump_seed: 255,
-                
+                bump_seed: 255,                
             }),
             "ActivateMulticastGroup",
         );

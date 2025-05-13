@@ -119,6 +119,26 @@ async fn main() -> eyre::Result<()> {
             },
             UserCommands::RequestBan(args) => args.execute(&client, &mut handle),
         },
+        Command::Multicast(args) => match args.command {
+            cli::multicast::MulticastCommands::Group(args) => match args.command {
+                cli::multicastgroup::MulticastGroupCommands::Create(args) => {
+                    args.execute(&client, &mut handle)
+                }
+                cli::multicastgroup::MulticastGroupCommands::Update(args) => {
+                    args.execute(&client, &mut handle)
+                }
+                cli::multicastgroup::MulticastGroupCommands::List(args) => {
+                    args.execute(&client, &mut handle)
+                }
+                cli::multicastgroup::MulticastGroupCommands::Get(args) => {
+                    args.execute(&client, &mut handle)
+                }
+                cli::multicastgroup::MulticastGroupCommands::Delete(args) => {
+                    args.execute(&client, &mut handle)
+                }
+            },
+        },
+
         Command::Export(args) => args.execute(&client, &mut handle),
         Command::Keygen(args) => args.execute(&client, &mut handle),
         Command::Log(args) => args.execute(&dzclient, &mut handle),

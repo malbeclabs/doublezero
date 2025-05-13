@@ -1300,7 +1300,6 @@ dependencies = [
  "chrono",
  "clap",
  "console",
- "doublezero-sla-program",
  "doublezero_sdk",
  "eyre",
  "futures",

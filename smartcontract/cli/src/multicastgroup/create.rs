@@ -1,10 +1,11 @@
 use crate::doublezerocommand::CliCommand;
-use crate::helpers::parse_pubkey;
 use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
 use clap::Args;
 use doublezero_sdk::commands::multicastgroup::create::CreateMulticastGroupCommand;
 use doublezero_sdk::{bandwidth_parse, ipv4_parse};
+use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
+use std::str::FromStr;
 
 #[derive(Args, Debug)]
 pub struct CreateMulticastGroupCliCommand {
@@ -23,11 +24,19 @@ impl CreateMulticastGroupCliCommand {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
+        let owner_pk = {
+            if self.owner.eq_ignore_ascii_case("me") {
+                client.get_payer()
+            } else {
+                Pubkey::from_str(&self.owner)?
+            }
+        };
+
         let (signature, _pubkey) = client.create_multicastgroup(CreateMulticastGroupCommand {
             code: self.code.clone(),
             multicast_ip: ipv4_parse(&self.multicast_ip),
             max_bandwidth: bandwidth_parse(&self.max_bandwidth),
-            owner: parse_pubkey(&self.owner).unwrap(),
+            owner: owner_pk,
         })?;
 
         writeln!(out, "Signature: {}", signature)?;

@@ -11,7 +11,7 @@ where
     serializer.serialize_str(&pubkey.to_string())
 }
 
-pub fn serialize_ipv4_as_string<S>(ip: &IpV4, serializer: S) -> Result<S::Ok, S::Error>
+pub fn multicastgroup<S>(ip: &IpV4, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
@@ -22,7 +22,7 @@ pub fn serialize_bandwidth_as_string<S>(bandwidth: &u64, serializer: S) -> Resul
 where
     S: serde::Serializer,
 {
-    serializer.serialize_str(&bandwidth_to_string(*bandwidth))
+    serializer.serialize_str(&bandwidth_to_string(bandwidth))
 }
 
 pub fn serialize_networkv4_as_string<S>(ip: &NetworkV4, serializer: S) -> Result<S::Ok, S::Error>

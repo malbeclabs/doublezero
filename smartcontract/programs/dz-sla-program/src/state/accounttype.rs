@@ -15,6 +15,7 @@ pub enum AccountType {
     Device = 5,
     Tunnel = 6,
     User = 7,
+    MulticastGroup = 8,
 }
 
 impl From<u8> for AccountType {
@@ -27,6 +28,7 @@ impl From<u8> for AccountType {
             5 => AccountType::Device,
             6 => AccountType::Tunnel,
             7 => AccountType::User,
+            8 => AccountType::MulticastGroup,
             _ => AccountType::None,
         }
     }
@@ -43,6 +45,7 @@ impl fmt::Display for AccountType {
             AccountType::Device => write!(f, "device"),
             AccountType::Tunnel => write!(f, "tunnel"),
             AccountType::User => write!(f, "user"),
+            AccountType::MulticastGroup => write!(f, "multicastgroup"),
         }
     }
 }

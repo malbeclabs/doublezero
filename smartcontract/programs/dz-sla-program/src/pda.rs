@@ -40,3 +40,10 @@ pub fn get_tunnel_pda(program_id: &Pubkey, index: u128) -> (Pubkey, u8) {
 pub fn get_user_pda(program_id: &Pubkey, index: u128) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[SEED_PREFIX, SEED_USER, &index.to_le_bytes()], program_id)
 }
+
+pub fn get_multicastgroup_pda(program_id: &Pubkey, index: u128) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[SEED_PREFIX, SEED_MULTICAST_GROUP, &index.to_le_bytes()],
+        program_id,
+    )
+}

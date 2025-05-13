@@ -1,76 +1,28 @@
 use crate::doublezerocommand::CliCommand;
-use crate::helpers::parse_pubkey;
 use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
 use clap::Args;
-use doublezero_sdk::commands::device::get::GetDeviceCommand;
-use doublezero_sdk::commands::tunnel::create::CreateTunnelCommand;
-use doublezero_sdk::{bandwidth_parse, TunnelTunnelType};
+use doublezero_sdk::commands::multicastgroup::delete::DeleteMulticastGroupCommand;
+use doublezero_sdk::commands::multicastgroup::get::GetMulticastGroupCommand;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct CreateTunnelCliCommand {
+pub struct DeleteMulticastGroupCliCommand {
     #[arg(long)]
-    pub code: String,
-    #[arg(long)]
-    pub side_a: String,
-    #[arg(long)]
-    pub side_z: String,
-    #[arg(long)]
-    pub tunnel_type: Option<String>,
-    #[arg(long)]
-    pub bandwidth: String,
-    #[arg(long)]
-    pub mtu: u32,
-    #[arg(long)]
-    pub delay_ms: f64,
-    #[arg(long)]
-    pub jitter_ms: f64,
+    pub pubkey: String,
 }
 
-impl CreateTunnelCliCommand {
+impl DeleteMulticastGroupCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let side_a_pk = match parse_pubkey(&self.side_a) {
-            Some(pk) => pk,
-            None => {
-                let (pubkey, _) = client
-                    .get_device(GetDeviceCommand {
-                        pubkey_or_code: self.side_a.clone(),
-                    })
-                    .map_err(|_| eyre::eyre!("Device not found"))?;
-                pubkey
-            }
-        };
-
-        let side_z_pk = match parse_pubkey(&self.side_z) {
-            Some(pk) => pk,
-            None => {
-                let (pubkey, _) = client
-                    .get_device(GetDeviceCommand {
-                        pubkey_or_code: self.side_z.clone(),
-                    })
-                    .map_err(|_| eyre::eyre!("Device not found"))?;
-                pubkey
-            }
-        };
-
-        let (signature, _pubkey) = client.create_tunnel(CreateTunnelCommand {
-            code: self.code.clone(),
-            side_a_pk,
-            side_z_pk,
-            tunnel_type: self
-                .tunnel_type
-                .as_ref()
-                .map(|t| t.parse().unwrap())
-                .unwrap_or(TunnelTunnelType::MPLSoGRE),
-            bandwidth: bandwidth_parse(&self.bandwidth),
-            mtu: self.mtu,
-            delay_ns: (self.delay_ms * 1000000.0) as u64,
-            jitter_ns: (self.jitter_ms * 1000000.0) as u64,
+        let (_, multicastgroup) = client.get_multicastgroup(GetMulticastGroupCommand {
+            pubkey_or_code: self.pubkey,
         })?;
 
+        let signature = client.delete_multicastgroup(DeleteMulticastGroupCommand {
+            index: multicastgroup.index,
+        })?;
         writeln!(out, "Signature: {}", signature)?;
 
         Ok(())
@@ -80,26 +32,27 @@ impl CreateTunnelCliCommand {
 #[cfg(test)]
 mod tests {
     use crate::doublezerocommand::CliCommand;
+    use crate::multicastgroup::delete::DeleteMulticastGroupCliCommand;
     use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
     use crate::tests::tests::create_test_client;
-    use crate::tunnel::create::CreateTunnelCliCommand;
     use doublezero_sdk::commands::device::get::GetDeviceCommand;
-    use doublezero_sdk::commands::tunnel::create::CreateTunnelCommand;
-    use doublezero_sdk::get_device_pda;
-    use doublezero_sdk::AccountType;
+    use doublezero_sdk::commands::multicastgroup::delete::DeleteMulticastGroupCommand;
+    use doublezero_sdk::commands::multicastgroup::get::GetMulticastGroupCommand;
     use doublezero_sdk::Device;
     use doublezero_sdk::DeviceStatus;
     use doublezero_sdk::DeviceType;
-    use doublezero_sdk::TunnelTunnelType;
+    use doublezero_sdk::MulticastGroup;
+    use doublezero_sdk::MulticastGroupStatus;
+    use doublezero_sdk::{get_multicastgroup_pda, AccountType};
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
     use solana_sdk::signature::Signature;
 
     #[test]
-    fn test_cli_device_create() {
+    fn test_cli_multicastgroup_delete() {
         let mut client = create_test_client();
 
-        let (pda_pubkey, _bump_seed) = get_device_pda(&client.get_program_id(), 1);
+        let (pda_pubkey, _bump_seed) = get_multicastgroup_pda(&client.get_program_id(), 1);
         let signature = Signature::from([
             120, 138, 162, 185, 59, 209, 241, 157, 71, 157, 74, 131, 4, 87, 54, 28, 38, 180, 222,
             82, 64, 62, 61, 62, 22, 46, 17, 203, 187, 136, 62, 43, 11, 38, 235, 17, 239, 82, 240,
@@ -140,6 +93,20 @@ mod tests {
             owner: pda_pubkey,
         };
 
+        let multicastgroup = MulticastGroup {
+            account_type: AccountType::MulticastGroup,
+            index: 1,
+            bump_seed: 255,
+            code: "test".to_string(),
+            tenant_pk: Pubkey::new_unique(),
+            multicast_ip: [10, 0, 0, 1],
+            max_bandwidth: 1000000000,
+            publishers: vec![],
+            subscribers: vec![],
+            status: MulticastGroupStatus::Activated,
+            owner: pda_pubkey,
+        };
+
         client
             .expect_check_requirements()
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
@@ -157,31 +124,20 @@ mod tests {
             }))
             .returning(move |_| Ok((device2_pk, device2.clone())));
         client
-            .expect_create_tunnel()
-            .with(predicate::eq(CreateTunnelCommand {
-                code: "test".to_string(),
-                side_a_pk: device1_pk,
-                side_z_pk: device2_pk,
-                tunnel_type: TunnelTunnelType::MPLSoGRE,
-                bandwidth: 1000000000,
-                mtu: 1500,
-                delay_ns: 10000000000,
-                jitter_ns: 5000000000,
+            .expect_get_multicastgroup()
+            .with(predicate::eq(GetMulticastGroupCommand {
+                pubkey_or_code: pda_pubkey.to_string(),
             }))
-            .times(1)
-            .returning(move |_| Ok((signature, pda_pubkey)));
+            .returning(move |_| Ok((pda_pubkey, multicastgroup.clone())));
+        client
+            .expect_delete_multicastgroup()
+            .with(predicate::eq(DeleteMulticastGroupCommand { index: 1 }))
+            .returning(move |_| Ok(signature));
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
-        let res = CreateTunnelCliCommand {
-            code: "test".to_string(),
-            side_a: device1_pk.to_string(),
-            side_z: device2_pk.to_string(),
-            tunnel_type: Some("MPLSoGRE".to_string()),
-            bandwidth: "1Gbps".to_string(),
-            mtu: 1500,
-            delay_ms: 10000.0,
-            jitter_ms: 5000.0,
+        let res = DeleteMulticastGroupCliCommand {
+            pubkey: pda_pubkey.to_string(),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

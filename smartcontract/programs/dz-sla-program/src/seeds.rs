@@ -6,3 +6,4 @@ pub const SEED_EXCHANGE: &[u8] = b"exchange";
 pub const SEED_DEVICE: &[u8] = b"device";
 pub const SEED_TUNNEL: &[u8] = b"tunnel";
 pub const SEED_USER: &[u8] = b"user";
+pub const SEED_MULTICAST_GROUP: &[u8] = b"mulsticast";

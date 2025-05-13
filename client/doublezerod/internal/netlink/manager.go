@@ -14,15 +14,15 @@ import (
 )
 
 type Netlinker interface {
-	TunnelAdd(*Tunnel) error
-	TunnelDelete(*Tunnel) error
-	TunnelAddrAdd(*Tunnel, string) error
-	TunnelUp(*Tunnel) error
+	TunnelAdd(*routing.Tunnel) error
+	TunnelDelete(*routing.Tunnel) error
+	TunnelAddrAdd(*routing.Tunnel, string) error
+	TunnelUp(*routing.Tunnel) error
 	RouteAdd(*routing.Route) error
 	RouteDelete(*routing.Route) error
 	RouteGet(net.IP) ([]*routing.Route, error)
-	RuleAdd(*IPRule) error
-	RuleDel(*IPRule) error
+	RuleAdd(*routing.IPRule) error
+	RuleDel(*routing.IPRule) error
 	RouteByProtocol(int) ([]*routing.Route, error)
 }
 
@@ -43,9 +43,9 @@ type DbReaderWriter interface {
 type NetlinkManager struct {
 	netlink         Netlinker
 	Routes          []*routing.Route
-	Rules           []*IPRule
-	UnicastTunnel   *Tunnel
-	MulticastTunnel *Tunnel
+	Rules           []*routing.IPRule
+	UnicastTunnel   *routing.Tunnel
+	MulticastTunnel *routing.Tunnel
 	DoubleZeroAddr  net.IP
 	bgp             BgpReaderWriter
 	db              DbReaderWriter
@@ -59,7 +59,7 @@ func NewNetlinkManager(netlink Netlinker, bgp BgpReaderWriter, db DbReaderWriter
 // provisionIBRL handles the provisioning of a user IBRL connection. This supports
 // both IP reuse and DoubleZero allocated IP use cases.
 func (n *NetlinkManager) provisionIBRL(p ProvisionRequest) error {
-	tun, err := NewTunnel(p.TunnelSrc, p.TunnelDst, p.TunnelNet.String())
+	tun, err := routing.NewTunnel(p.TunnelSrc, p.TunnelDst, p.TunnelNet.String())
 	if err != nil {
 		return fmt.Errorf("error generating new tunnel: %v", err)
 	}
@@ -114,7 +114,7 @@ func (n *NetlinkManager) provisionIBRL(p ProvisionRequest) error {
 // provisionEdgeFiltering handles the provisioning of a user edge filtering connection.
 func (n *NetlinkManager) provisionEdgeFiltering(p ProvisionRequest) (err error) {
 	// TODO: have NewTunnel take a net.IPNet
-	tun, err := NewTunnel(p.TunnelSrc, p.TunnelDst, p.TunnelNet.String())
+	tun, err := routing.NewTunnel(p.TunnelSrc, p.TunnelDst, p.TunnelNet.String())
 	if err != nil {
 		return fmt.Errorf("error generating new tunnel: %v", err)
 	}
@@ -250,7 +250,7 @@ func (n *NetlinkManager) DiscoverTunnelSource(tunnelDst net.IP) (net.IP, error) 
 }
 
 // createBaseTunnel creates a tunnel interface, adds overlay addressing and brings up the interface.
-func (n *NetlinkManager) createBaseTunnel(tun *Tunnel) error {
+func (n *NetlinkManager) createBaseTunnel(tun *routing.Tunnel) error {
 	if tun.LocalOverlay == nil {
 		return fmt.Errorf("missing tunnel local overlay addressing")
 	}
@@ -285,13 +285,13 @@ func (n *NetlinkManager) createBaseTunnel(tun *Tunnel) error {
 
 // CreateTunnel creates the tunnel interface, adds point to point addressing and brings the interface
 // up.
-func (n *NetlinkManager) CreateTunnel(tun *Tunnel) error {
+func (n *NetlinkManager) CreateTunnel(tun *routing.Tunnel) error {
 	return n.createBaseTunnel(tun)
 }
 
 // CreateTunnelWithIP creates the tunnel interface, adds point-to-point addressing, binds the doublezero IP
 // to the interface and brings the tunnel up.
-func (n *NetlinkManager) CreateTunnelWithIP(tun *Tunnel, dzIp net.IP) (err error) {
+func (n *NetlinkManager) CreateTunnelWithIP(tun *routing.Tunnel, dzIp net.IP) (err error) {
 	if err := n.createBaseTunnel(tun); err != nil {
 		return fmt.Errorf("error creating base tunnel: %v", err)
 	}
@@ -329,17 +329,16 @@ func (n *NetlinkManager) RemoveRoute(r *routing.Route) error {
 }
 
 func (n *NetlinkManager) CreateIPRules(prefixes []*net.IPNet) error {
-	rules := []*IPRule{}
-
+	rules := []*routing.IPRule{}
 	for _, prefix := range prefixes {
 		// dz-specifics table
-		rule, err := NewIPRule(100, dzTableSpecific, "0.0.0.0/0", prefix.String())
+		rule, err := routing.NewIPRule(100, 100, "0.0.0.0/0", prefix.String())
 		if err != nil {
 			return fmt.Errorf("rules: error creating IP rule: %v", err)
 		}
 		rules = append(rules, rule)
 		// dz-default table - anything sourced from dz space can't go out the public interface
-		rule, err = NewIPRule(101, dzTableDefault, prefix.String(), "0.0.0.0/0")
+		rule, err = routing.NewIPRule(101, 101, prefix.String(), "0.0.0.0/0")
 		if err != nil {
 			return fmt.Errorf("rules: error creating IP rule: %v", err)
 		}
@@ -385,7 +384,7 @@ func (n *NetlinkManager) FlushRules() error {
 			err = errors.Join(err, fmt.Errorf("error deleting rule %s: %v", rule, err))
 		}
 	}
-	n.Rules = []*IPRule{}
+	n.Rules = []*routing.IPRule{}
 	return err
 }
 

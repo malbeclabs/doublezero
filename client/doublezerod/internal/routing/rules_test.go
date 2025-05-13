@@ -1,11 +1,11 @@
-package netlink_test
+package routing_test
 
 import (
 	"net"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/malbeclabs/doublezero/client/doublezerod/internal/netlink"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 )
 
 func TestRule_NewRule(t *testing.T) {
@@ -17,7 +17,7 @@ func TestRule_NewRule(t *testing.T) {
 		Table       int
 		Src         string
 		Dst         string
-		Want        *netlink.IPRule
+		Want        *routing.IPRule
 	}{
 		{
 			Name:        "return_rule_happy_path",
@@ -27,7 +27,7 @@ func TestRule_NewRule(t *testing.T) {
 			Table:       100,
 			Src:         "100.0.0.0/24",
 			Dst:         "100.0.0.0/24",
-			Want: &netlink.IPRule{
+			Want: &routing.IPRule{
 				Priority: 100,
 				Table:    100,
 				SrcNet:   &net.IPNet{IP: net.IPv4(100, 0, 0, 0), Mask: []byte{255, 255, 255, 0}},
@@ -78,7 +78,7 @@ func TestRule_NewRule(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
-			got, err := netlink.NewIPRule(test.Priority, test.Table, test.Src, test.Dst)
+			got, err := routing.NewIPRule(test.Priority, test.Table, test.Src, test.Dst)
 			if err != nil && !test.ExpectError {
 				t.Errorf("error: %v", err)
 			}

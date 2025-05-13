@@ -31,29 +31,29 @@ type MockNetlink struct {
 	routes        []*routing.Route
 	routesAdded   []*routing.Route
 	routesRemoved []*routing.Route
-	tunAdded      *netlink.Tunnel
-	tunRemoved    *netlink.Tunnel
+	tunAdded      *routing.Tunnel
+	tunRemoved    *routing.Tunnel
 	tunAddrAdded  []string
-	tunUp         *netlink.Tunnel
-	ruleAdded     []*netlink.IPRule
-	ruleRemoved   []*netlink.IPRule
+	tunUp         *routing.Tunnel
+	ruleAdded     []*routing.IPRule
+	ruleRemoved   []*routing.IPRule
 	callLog       []string
 }
 
-func (m *MockNetlink) TunnelAdd(t *netlink.Tunnel) error {
+func (m *MockNetlink) TunnelAdd(t *routing.Tunnel) error {
 	m.tunAdded = t
 	return nil
 }
-func (m *MockNetlink) TunnelDelete(n *netlink.Tunnel) error {
+func (m *MockNetlink) TunnelDelete(n *routing.Tunnel) error {
 	m.callLog = append(m.callLog, "TunnelDelete")
 	m.tunRemoved = n
 	return nil
 }
-func (m *MockNetlink) TunnelAddrAdd(t *netlink.Tunnel, ip string) error {
+func (m *MockNetlink) TunnelAddrAdd(t *routing.Tunnel, ip string) error {
 	m.tunAddrAdded = append(m.tunAddrAdded, ip)
 	return nil
 }
-func (m *MockNetlink) TunnelUp(t *netlink.Tunnel) error {
+func (m *MockNetlink) TunnelUp(t *routing.Tunnel) error {
 	m.tunUp = t
 	return nil
 }
@@ -69,11 +69,11 @@ func (m *MockNetlink) RouteDelete(n *routing.Route) error {
 func (m *MockNetlink) RouteGet(net.IP) ([]*routing.Route, error) {
 	return m.routes, nil
 }
-func (m *MockNetlink) RuleAdd(r *netlink.IPRule) error {
+func (m *MockNetlink) RuleAdd(r *routing.IPRule) error {
 	m.ruleAdded = append(m.ruleAdded, r)
 	return nil
 }
-func (m *MockNetlink) RuleDel(n *netlink.IPRule) error {
+func (m *MockNetlink) RuleDel(n *routing.IPRule) error {
 	m.callLog = append(m.callLog, "RuleDel")
 	m.ruleRemoved = append(m.ruleRemoved, n)
 	return nil
@@ -143,7 +143,7 @@ func TestNetlinkManager_CreateTunnel(t *testing.T) {
 		Name         string
 		Description  string
 		ExpectError  bool
-		Tunnel       *netlink.Tunnel
+		Tunnel       *routing.Tunnel
 		AddrsAdded   []string
 		DoubleZeroIP net.IP
 	}{
@@ -151,9 +151,9 @@ func TestNetlinkManager_CreateTunnel(t *testing.T) {
 			Name:        "tunnel_created_happy_path",
 			Description: "tunnel creation is successful",
 			ExpectError: false,
-			Tunnel: &netlink.Tunnel{
+			Tunnel: &routing.Tunnel{
 				Name:           "doublezero0",
-				EncapType:      netlink.GRE,
+				EncapType:      routing.GRE,
 				LocalUnderlay:  net.IPv4(1, 1, 1, 1),
 				RemoteUnderlay: net.IPv4(2, 2, 2, 2),
 				LocalOverlay:   net.IPv4(10, 1, 1, 1),
@@ -199,7 +199,7 @@ func TestNetlinkManager_CreateIPRules(t *testing.T) {
 		Description string
 		ExpectError bool
 		Prefixes    []*net.IPNet
-		RulesAdded  []*netlink.IPRule
+		RulesAdded  []*routing.IPRule
 	}{
 		{
 			Name:        "rule_created_happy_path_single_prefix",
@@ -208,7 +208,7 @@ func TestNetlinkManager_CreateIPRules(t *testing.T) {
 			Prefixes: []*net.IPNet{
 				{IP: net.IPv4(1, 1, 1, 1), Mask: []byte{255, 255, 255, 255}},
 			},
-			RulesAdded: []*netlink.IPRule{
+			RulesAdded: []*routing.IPRule{
 				{
 					Priority: 100,
 					Table:    100,
@@ -231,7 +231,7 @@ func TestNetlinkManager_CreateIPRules(t *testing.T) {
 				{IP: net.IPv4(1, 1, 1, 1), Mask: []byte{255, 255, 255, 255}},
 				{IP: net.IPv4(100, 0, 0, 0), Mask: []byte{255, 255, 255, 0}},
 			},
-			RulesAdded: []*netlink.IPRule{
+			RulesAdded: []*routing.IPRule{
 				{
 					Priority: 100,
 					Table:    100,
@@ -319,15 +319,15 @@ func TestNetlinkManager_Remove(t *testing.T) {
 		m := &MockNetlink{}
 		b := &MockBgpServer{}
 		manager := netlink.NewNetlinkManager(m, b, db)
-		manager.UnicastTunnel = &netlink.Tunnel{
+		manager.UnicastTunnel = &routing.Tunnel{
 			Name:           "doublezero0",
-			EncapType:      netlink.GRE,
+			EncapType:      routing.GRE,
 			LocalUnderlay:  net.IP{1, 1, 1, 1},
 			RemoteUnderlay: net.IP{2, 2, 2, 2},
 			LocalOverlay:   net.IP{169, 254, 0, 1},
 			RemoteOverlay:  net.IP{169, 254, 0, 0},
 		}
-		manager.Rules = []*netlink.IPRule{
+		manager.Rules = []*routing.IPRule{
 			{
 				Priority: 100,
 				Table:    100,

@@ -12,7 +12,7 @@ import (
 
 type Netlink struct{}
 
-func (n Netlink) TunnelAdd(t *Tunnel) error {
+func (n Netlink) TunnelAdd(t *routing.Tunnel) error {
 	gre := &nl.Gretun{
 		LinkAttrs: nl.LinkAttrs{
 			Name:      t.Name,
@@ -28,7 +28,7 @@ func (n Netlink) TunnelAdd(t *Tunnel) error {
 	}
 	return err
 }
-func (n Netlink) TunnelDelete(t *Tunnel) error {
+func (n Netlink) TunnelDelete(t *routing.Tunnel) error {
 	gre := &nl.Gretun{
 		LinkAttrs: nl.LinkAttrs{
 			Name:      t.Name,
@@ -39,9 +39,9 @@ func (n Netlink) TunnelDelete(t *Tunnel) error {
 	}
 	return nl.LinkDel(gre)
 }
-func (n Netlink) TunnelGet(t *Tunnel) error { return nil }
+func (n Netlink) TunnelGet(t *routing.Tunnel) error { return nil }
 
-func (n Netlink) TunnelAddrAdd(t *Tunnel, prefix string) error {
+func (n Netlink) TunnelAddrAdd(t *routing.Tunnel, prefix string) error {
 	gre := &nl.Gretun{
 		LinkAttrs: nl.LinkAttrs{
 			Name:      t.Name,
@@ -61,7 +61,7 @@ func (n Netlink) TunnelAddrAdd(t *Tunnel, prefix string) error {
 	return err
 }
 
-func (n Netlink) TunnelUp(t *Tunnel) error {
+func (n Netlink) TunnelUp(t *routing.Tunnel) error {
 	gre := &nl.Gretun{
 		LinkAttrs: nl.LinkAttrs{
 			Name:      t.Name,
@@ -136,7 +136,7 @@ func (n Netlink) RouteByProtocol(protocol int) ([]*routing.Route, error) {
 	return routes, nil
 }
 
-func (n Netlink) RuleAdd(r *IPRule) error {
+func (n Netlink) RuleAdd(r *routing.IPRule) error {
 	rule := nl.NewRule()
 	rule.Priority = r.Priority
 	rule.Table = r.Table
@@ -152,7 +152,7 @@ func (n Netlink) RuleAdd(r *IPRule) error {
 	return err
 }
 
-func (n Netlink) RuleDel(r *IPRule) error {
+func (n Netlink) RuleDel(r *routing.IPRule) error {
 	rule := nl.NewRule()
 	rule.Priority = r.Priority
 	rule.Table = r.Table
@@ -164,6 +164,6 @@ func (n Netlink) RuleDel(r *IPRule) error {
 	return nl.RuleDel(rule)
 }
 
-func (n Netlink) RuleGet(r *IPRule) error { return nil }
+func (n Netlink) RuleGet(r *routing.IPRule) error { return nil }
 
-func (n Netlink) Close(t *Tunnel, r []*IPRule, rt []*routing.Route) {}
+func (n Netlink) Close(t *routing.Tunnel, r []*routing.IPRule, rt []*routing.Route) {}

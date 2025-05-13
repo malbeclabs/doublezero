@@ -18,7 +18,7 @@ pub fn get_utc_nanoseconds_since_epoch() -> u128 {
 /// # Arguments
 ///
 /// * `container`: A container that can be converted into an iterator of borrowed
-///     key-value pairs. Examples include [`HashMap`], [`BTreeMap`], and slices of tuples.
+///   key-value pairs. Examples include [`HashMap`], [`BTreeMap`], and slices of tuples.
 ///
 /// # Returns
 ///

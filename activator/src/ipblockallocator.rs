@@ -107,7 +107,7 @@ impl IPBlockAllocator {
         for (index, assigned) in self.assigned_ips.iter().enumerate() {
             if *assigned {
                 let ip = self.index_to_ip(index);
-                print!("{},", ip.to_string());
+                print!("{},", ip)
             }
         }
     }
@@ -120,7 +120,7 @@ impl IPBlockAllocator {
         if base_ip <= ip_as_u32 {
             Ok((ip_as_u32 - base_ip) as usize)
         } else {
-            return Err("IP address is not in the base block");
+            Err("IP address is not in the base block")
         }
     }
 

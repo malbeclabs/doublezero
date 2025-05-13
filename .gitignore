@@ -1,4 +1,5 @@
 *.pdb
+.DS_STORE
 **/*.swp
 **/*.rs.bk
 **/coverage.out

@@ -114,7 +114,7 @@ impl fmt::Display for UserStatus {
             UserStatus::Suspended => write!(f, "suspended"),
             UserStatus::Deleting => write!(f, "deleting"),
             UserStatus::Rejected => write!(f, "rejected"),
-            UserStatus::PendingBan => write!(f, "pending Ban"),
+            UserStatus::PendingBan => write!(f, "pending ban"),
             UserStatus::Banned => write!(f, "banned"),
         }
     }

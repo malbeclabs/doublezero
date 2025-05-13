@@ -12,4 +12,4 @@ lint:
 
 .PHONY: build
 build:
-	cargo build -v $(LDFLAGS) --manifest-path ./Cargo.toml
+	cargo build $(LDFLAGS) --manifest-path ./Cargo.toml

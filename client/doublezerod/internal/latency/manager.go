@@ -103,7 +103,7 @@ func NewLatencyManager(s SmartContractorFunc, p ProberFunc) *LatencyManager {
 	}
 }
 
-func (l *LatencyManager) Start(ctx context.Context, programId string, rpcEndpoint string) error {
+func (l *LatencyManager) Start(ctx context.Context, programId string, rpcEndpoint string, probeInterval, cacheUpdateInterval int) error {
 
 	// start goroutine for fetching smartcontract devices
 	go func() {
@@ -128,7 +128,7 @@ func (l *LatencyManager) Start(ctx context.Context, programId string, rpcEndpoin
 		// don't wait for first tick and populate cache
 		fetch()
 
-		ticker := time.NewTicker(30 * time.Second)
+		ticker := time.NewTicker(time.Duration(cacheUpdateInterval) * time.Second)
 		for {
 			select {
 			case <-ctx.Done():
@@ -174,7 +174,7 @@ func (l *LatencyManager) Start(ctx context.Context, programId string, rpcEndpoin
 		// don't wait for first tick to ping stuff
 		probe()
 
-		ticker := time.NewTicker(30 * time.Second)
+		ticker := time.NewTicker(time.Duration(probeInterval) * time.Second)
 		for {
 			select {
 			case <-ctx.Done():

@@ -37,12 +37,6 @@ func main() {
 	}
 
 	allPIMRouters := net.IPAddr{IP: net.IPv4(224, 0, 0, 13)}
-	// err = r.JoinGroup(intf, &allPIMRouters)
-	// if err != nil {
-	// 	log.Fatalf("failed to join group: %v", err)
-	// }
-	// defer r.LeaveGroup(intf, &allPIMRouters)
-
 	if err := r.SetMulticastInterface(intf); err != nil {
 		log.Fatalf("failed to set multicast interface: %v", err)
 	}

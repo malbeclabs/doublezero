@@ -9,7 +9,7 @@ on:
       - "go.mod"
       - "go.sum"
       - "!**/**.md"
-    branches: [ main ]
+    branches: [ main, feature/* ]
   pull_request:
     paths:
       - "client/**"
@@ -19,7 +19,7 @@ on:
       - "go.mod"
       - "go.sum"
       - "!**/**.md"
-    branches: [ main ]
+    branches: [ main, feature/* ]
 
 permissions:
     contents: read

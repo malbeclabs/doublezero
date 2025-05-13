@@ -5,14 +5,48 @@ import (
 	"log"
 	"net"
 	"net/netip"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/jwhited/corebgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	gobgp "github.com/osrg/gobgp/pkg/packet/bgp"
+	"golang.org/x/sys/unix"
 )
+
+type mockRouteReaderWriter struct {
+	routesAdded   []*routing.Route
+	routesDeleted []*routing.Route
+	routesFlushed []*routing.Route
+}
+
+func (m *mockRouteReaderWriter) RouteAdd(route *routing.Route) error {
+	m.routesAdded = append(m.routesAdded, route)
+	return nil
+}
+
+func (m *mockRouteReaderWriter) RouteDelete(route *routing.Route) error {
+	m.routesDeleted = append(m.routesDeleted, route)
+	return nil
+}
+
+func (m *mockRouteReaderWriter) RouteByProtocol(int) ([]*routing.Route, error) {
+	return []*routing.Route{
+		{
+			Dst: &net.IPNet{
+				IP:   net.IP{1, 1, 1, 1},
+				Mask: net.CIDRMask(32, 32),
+			},
+			Src:     net.IPv4(7, 7, 7, 7),
+			NextHop: net.IP{127, 0, 0, 1},
+			// Protocol: unix.RTPROT_BGP,
+			Table: syscall.RT_TABLE_MAIN,
+		},
+	}, nil
+}
 
 type dummyPlugin struct{}
 
@@ -51,7 +85,8 @@ func (p *dummyPlugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.N
 }
 
 func TestBgpServer(t *testing.T) {
-	b, err := bgp.NewBgpServer(net.IP{1, 1, 1, 1})
+	nlr := &mockRouteReaderWriter{}
+	b, err := bgp.NewBgpServer(net.IP{1, 1, 1, 1}, nlr)
 	if err != nil {
 		t.Fatalf("error creating bgp server: %v", err)
 	}
@@ -69,6 +104,9 @@ func TestBgpServer(t *testing.T) {
 			LocalAs:       65000,
 			RemoteAs:      65001,
 			Port:          6666,
+			FlushRoutes:   true,
+			RouteTable:    syscall.RT_TABLE_MAIN,
+			RouteSrc:      net.IP{7, 7, 7, 7},
 		},
 		[]bgp.NLRI{
 			{AsPath: []uint32{}, NextHop: "1.1.1.1", Prefix: "10.0.0.0", PrefixLength: 32},
@@ -114,6 +152,18 @@ func TestBgpServer(t *testing.T) {
 		return false
 	}
 
+	checkRoutes := func(got []*routing.Route, want []*routing.Route) string {
+		var diff string
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			if diff := cmp.Diff(got, want); diff == "" {
+				return diff
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+		return diff
+	}
+
 	t.Run("validate_peer_status_is_pending", func(t *testing.T) {
 		if !waitForPeerStatus(bgp.SessionStatusPending) {
 			t.Fatal("timed out waiting for peer status of pending")
@@ -140,47 +190,68 @@ func TestBgpServer(t *testing.T) {
 		}
 	})
 
-	// route withdraws are written to a blocking channel prior route adds
-	// so we need to check for withdraws first
 	t.Run("validate_route_withdraw", func(t *testing.T) {
-		select {
-		case err := <-errChan:
-			log.Fatalf("received error: %v", err)
-		case <-time.After(5 * time.Second):
-			t.Fatal("timed out waiting for route withdraw")
-		case got := <-b.WithdrawRoute():
-			// bgp withdrawals have no nexthop attached so verify we set nexthop to the peer address
-			want := bgp.NLRI{NextHop: "127.0.0.1", Prefix: "4.4.4.4", PrefixLength: 32}
-			if diff := cmp.Diff(got, want); diff != "" {
-				log.Fatalf("bgp withdraw mismatch: -(got); +(want): %s", diff)
-			}
+		want := []*routing.Route{
+			{
+				Dst: &net.IPNet{
+					IP:   net.IP{4, 4, 4, 4},
+					Mask: net.CIDRMask(32, 32),
+				},
+				Src:     net.IP{7, 7, 7, 7},
+				NextHop: net.IP{127, 0, 0, 1},
+				Table:   syscall.RT_TABLE_MAIN,
+			},
+		}
+		if diff := checkRoutes(nlr.routesDeleted, want); diff != "" {
+			t.Fatalf("bgp withdraw mismatch: -(got); +(want): %s", diff)
 		}
 	})
 
 	t.Run("validate_route_add", func(t *testing.T) {
-		select {
-		case err := <-errChan:
-			log.Fatalf("received error: %v", err)
-		case <-time.After(5 * time.Second):
-			t.Fatal("timed out waiting for route update")
-		case got := <-b.AddRoute():
-			want := bgp.NLRI{NextHop: "2.2.2.2", Prefix: "3.3.3.3", PrefixLength: 32}
-			if diff := cmp.Diff(got, want); diff != "" {
-				log.Fatalf("bgp update mismatch: -(got); +(want): %s", diff)
-			}
+		want := []*routing.Route{
+			{
+				Dst: &net.IPNet{
+					IP:   net.IP{3, 3, 3, 3},
+					Mask: net.CIDRMask(32, 32),
+				},
+				Src:      net.IP{7, 7, 7, 7},
+				NextHop:  net.IP{2, 2, 2, 2},
+				Protocol: unix.RTPROT_BGP,
+				Table:    syscall.RT_TABLE_MAIN,
+			},
+		}
+		if diff := checkRoutes(nlr.routesAdded, want); diff != "" {
+			t.Fatalf("bgp add mismatch: -(got); +(want): %s", diff)
 		}
 	})
 
 	t.Run("validate_route_flush", func(t *testing.T) {
 		// close remote server to force a flush message
 		srv.Close()
-		select {
-		case err := <-errChan:
-			log.Fatalf("received error: %v", err)
-		case <-time.After(10 * time.Second):
-			t.Fatal("timed out waiting for route update")
-		case _ = <-b.FlushRoutes():
-			t.Log("received flush message")
+		want := []*routing.Route{
+			{
+				Dst: &net.IPNet{
+					IP:   net.IP{4, 4, 4, 4},
+					Mask: net.CIDRMask(32, 32),
+				},
+				Src:     net.IP{7, 7, 7, 7},
+				NextHop: net.IP{127, 0, 0, 1},
+				// Protocol: unix.RTPROT_BGP,
+				Table: syscall.RT_TABLE_MAIN,
+			},
+			{
+				Dst: &net.IPNet{
+					IP:   net.IP{1, 1, 1, 1},
+					Mask: net.CIDRMask(32, 32),
+				},
+				Src:     net.IP{7, 7, 7, 7},
+				NextHop: net.IP{127, 0, 0, 1},
+				// Protocol: unix.RTPROT_BGP,
+				Table: syscall.RT_TABLE_MAIN,
+			},
+		}
+		if diff := checkRoutes(nlr.routesFlushed, want); diff != "" {
+			t.Fatalf("bgp flush mismatch: -(got); +(want): %s", diff)
 		}
 	})
 }

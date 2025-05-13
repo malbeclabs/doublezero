@@ -17,7 +17,7 @@ import (
 
 func Run(ctx context.Context, sockFile string, enableLatencyProbing bool, programId string, rpcEndpoint string) error {
 	nlr := netlink.Netlink{}
-	bgp, err := bgp.NewBgpServer(net.IPv4(1, 1, 1, 1))
+	bgp, err := bgp.NewBgpServer(net.IPv4(1, 1, 1, 1), nlr)
 	if err != nil {
 		return fmt.Errorf("error creating bgp server: %v", err)
 	}

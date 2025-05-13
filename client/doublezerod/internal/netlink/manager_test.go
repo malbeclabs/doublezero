@@ -10,6 +10,7 @@ import (
 	"github.com/jwhited/corebgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/netlink"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 )
 
 type MockBgpServer struct {
@@ -22,17 +23,14 @@ func (m *MockBgpServer) DeletePeer(ip net.IP) error {
 	m.deletedPeer = ip
 	return nil
 }
-func (m *MockBgpServer) AddRoute() <-chan bgp.NLRI        { return nil }
-func (m *MockBgpServer) WithdrawRoute() <-chan bgp.NLRI   { return nil }
-func (m *MockBgpServer) FlushRoutes() <-chan struct{}     { return nil }
 func (m *MockBgpServer) GetPeerStatus(net.IP) bgp.Session { return bgp.Session{} }
 func (m *MockBgpServer) Close()                           {}
 func (m *MockBgpServer) GetPeers() []corebgp.PeerConfig   { return []corebgp.PeerConfig{} }
 
 type MockNetlink struct {
-	routes        []*netlink.Route
-	routesAdded   []*netlink.Route
-	routesRemoved []*netlink.Route
+	routes        []*routing.Route
+	routesAdded   []*routing.Route
+	routesRemoved []*routing.Route
 	tunAdded      *netlink.Tunnel
 	tunRemoved    *netlink.Tunnel
 	tunAddrAdded  []string
@@ -59,16 +57,16 @@ func (m *MockNetlink) TunnelUp(t *netlink.Tunnel) error {
 	m.tunUp = t
 	return nil
 }
-func (m *MockNetlink) RouteAdd(r *netlink.Route) error {
+func (m *MockNetlink) RouteAdd(r *routing.Route) error {
 	m.routesAdded = append(m.routesAdded, r)
 	return nil
 }
-func (m *MockNetlink) RouteDelete(n *netlink.Route) error {
+func (m *MockNetlink) RouteDelete(n *routing.Route) error {
 	m.callLog = append(m.callLog, "RouteDelete")
 	m.routesRemoved = append(m.routesRemoved, n)
 	return nil
 }
-func (m *MockNetlink) RouteGet(net.IP) ([]*netlink.Route, error) {
+func (m *MockNetlink) RouteGet(net.IP) ([]*routing.Route, error) {
 	return m.routes, nil
 }
 func (m *MockNetlink) RuleAdd(r *netlink.IPRule) error {
@@ -81,7 +79,7 @@ func (m *MockNetlink) RuleDel(n *netlink.IPRule) error {
 	return nil
 }
 
-func (m *MockNetlink) RouteByProtocol(protocol int) ([]*netlink.Route, error) {
+func (m *MockNetlink) RouteByProtocol(protocol int) ([]*routing.Route, error) {
 	return m.routes, nil
 }
 
@@ -103,7 +101,7 @@ func TestNetlinkManager_DiscoverTunnelSource(t *testing.T) {
 		Description string
 		ExpectError bool
 		TunnelDst   net.IP
-		Routes      []*netlink.Route
+		Routes      []*routing.Route
 		Want        net.IP
 	}{
 		{
@@ -111,7 +109,7 @@ func TestNetlinkManager_DiscoverTunnelSource(t *testing.T) {
 			Description: "single default route returned and src address is found",
 			ExpectError: false,
 			TunnelDst:   net.IPv4(1, 1, 1, 1),
-			Routes: []*netlink.Route{{
+			Routes: []*routing.Route{{
 				Dst:     &net.IPNet{IP: net.IPv4(0, 0, 0, 0), Mask: []byte{0, 0, 0, 0}},
 				Src:     net.IPv4(2, 2, 2, 2),
 				Table:   300,
@@ -337,7 +335,7 @@ func TestNetlinkManager_Remove(t *testing.T) {
 				DstNet:   &net.IPNet{IP: net.IP{0, 0, 0, 0}, Mask: net.IPMask{0, 0, 0, 0}},
 			},
 		}
-		manager.Routes = []*netlink.Route{
+		manager.Routes = []*routing.Route{
 			{
 				Dst:     &net.IPNet{IP: net.IP{0, 0, 0, 0}, Mask: net.IPMask{0, 0, 0, 0}},
 				Src:     net.IP{1, 1, 1, 0},

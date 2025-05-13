@@ -10,7 +10,7 @@ import (
 	"syscall"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
-	"golang.org/x/sys/unix"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 )
 
 type Netlinker interface {
@@ -18,12 +18,12 @@ type Netlinker interface {
 	TunnelDelete(*Tunnel) error
 	TunnelAddrAdd(*Tunnel, string) error
 	TunnelUp(*Tunnel) error
-	RouteAdd(*Route) error
-	RouteDelete(*Route) error
-	RouteGet(net.IP) ([]*Route, error)
+	RouteAdd(*routing.Route) error
+	RouteDelete(*routing.Route) error
+	RouteGet(net.IP) ([]*routing.Route, error)
 	RuleAdd(*IPRule) error
 	RuleDel(*IPRule) error
-	RouteByProtocol(int) ([]*Route, error)
+	RouteByProtocol(int) ([]*routing.Route, error)
 }
 
 // I can't think of a better name for this
@@ -31,9 +31,6 @@ type BgpReaderWriter interface {
 	Serve([]net.Listener) error
 	AddPeer(*bgp.PeerConfig, []bgp.NLRI) error
 	DeletePeer(net.IP) error
-	AddRoute() <-chan bgp.NLRI
-	WithdrawRoute() <-chan bgp.NLRI
-	FlushRoutes() <-chan struct{}
 	GetPeerStatus(net.IP) bgp.Session
 }
 
@@ -45,7 +42,7 @@ type DbReaderWriter interface {
 
 type NetlinkManager struct {
 	netlink         Netlinker
-	Routes          []*Route
+	Routes          []*routing.Route
 	Rules           []*IPRule
 	UnicastTunnel   *Tunnel
 	MulticastTunnel *Tunnel
@@ -67,6 +64,7 @@ func (n *NetlinkManager) provisionIBRL(p ProvisionRequest) error {
 		return fmt.Errorf("error generating new tunnel: %v", err)
 	}
 
+	flush := true
 	switch p.UserType {
 	// IBRL mode re-uses the user's public address so we don't need to bind
 	// the doublezero IP to the tunnel interface.
@@ -76,6 +74,7 @@ func (n *NetlinkManager) provisionIBRL(p ProvisionRequest) error {
 	// tunnel interface.
 	case UserTypeIBRLWithAllocatedIP:
 		err = n.CreateTunnelWithIP(tun, p.DoubleZeroIP)
+		flush = false
 	default:
 		return fmt.Errorf("unsupported tunnel type: %v\n", p)
 	}
@@ -87,12 +86,15 @@ func (n *NetlinkManager) provisionIBRL(p ProvisionRequest) error {
 	n.UnicastTunnel = tun
 	n.DoubleZeroAddr = p.DoubleZeroIP
 
+	// TODO: add flush routes flag; depending on IBRL mode, we may or may not flush routes
 	peer := &bgp.PeerConfig{
 		RemoteAddress: n.UnicastTunnel.RemoteOverlay,
 		LocalAddress:  n.UnicastTunnel.LocalOverlay,
 		LocalAs:       p.BgpLocalAsn,
 		RemoteAs:      p.BgpRemoteAsn,
+		RouteSrc:      p.DoubleZeroIP,
 		RouteTable:    syscall.RT_TABLE_MAIN,
+		FlushRoutes:   flush,
 	}
 	nlri, err := bgp.NewNLRI([]uint32{peer.LocalAs}, n.UnicastTunnel.LocalOverlay.String(), p.DoubleZeroIP.String(), 32)
 	if err != nil {
@@ -140,7 +142,8 @@ func (n *NetlinkManager) provisionEdgeFiltering(p ProvisionRequest) (err error) 
 		LocalAddress:  n.UnicastTunnel.LocalOverlay,
 		LocalAs:       p.BgpLocalAsn,
 		RemoteAs:      p.BgpRemoteAsn,
-		RouteTable:    RouteTableSpecific,
+		RouteTable:    routing.RouteTableSpecific, // TODO: this needs to go
+		RouteSrc:      p.DoubleZeroIP,
 	}
 	nlri, err := bgp.NewNLRI([]uint32{peer.LocalAs}, n.UnicastTunnel.LocalOverlay.String(), p.DoubleZeroIP.String(), 32)
 	if err != nil {
@@ -317,11 +320,11 @@ func (n *NetlinkManager) RemoveTunnel() error {
 	return nil
 }
 
-func (n *NetlinkManager) WriteRoute(r *Route) error {
+func (n *NetlinkManager) WriteRoute(r *routing.Route) error {
 	return n.netlink.RouteAdd(r)
 }
 
-func (n *NetlinkManager) RemoveRoute(r *Route) error {
+func (n *NetlinkManager) RemoveRoute(r *routing.Route) error {
 	return n.netlink.RouteDelete(r)
 }
 
@@ -363,8 +366,8 @@ func (n *NetlinkManager) CreateDefaultRoutingTable() error {
 	if err != nil {
 		return fmt.Errorf("routes: unable to parse default route: %v", err)
 	}
-	routes := []*Route{
-		{Dst: defaultRt, Src: n.DoubleZeroAddr, Table: RouteTableDefault, NextHop: n.UnicastTunnel.RemoteOverlay},
+	routes := []*routing.Route{
+		{Dst: defaultRt, Src: n.DoubleZeroAddr, Table: routing.RouteTableDefault, NextHop: n.UnicastTunnel.RemoteOverlay},
 	}
 	for _, route := range routes {
 		if err := n.netlink.RouteAdd(route); err != nil {
@@ -393,7 +396,7 @@ func (n *NetlinkManager) FlushRoutes() error {
 			err = errors.Join(err, fmt.Errorf("error deleting route %s: %v", route, err))
 		}
 	}
-	n.Routes = []*Route{}
+	n.Routes = []*routing.Route{}
 	return err
 }
 
@@ -436,60 +439,6 @@ func (n *NetlinkManager) Serve(ctx context.Context) error {
 	go func() {
 		err := n.bgp.Serve([]net.Listener{})
 		errCh <- err
-	}()
-
-	slog.Info("routes: starting netlink writer thread")
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				slog.Info("exiting netlink writer thread")
-				return
-			// TODO: implement some batching logic for writes via netlink
-			// TODO: pull table number from NLRI
-			case p := <-n.bgp.AddRoute():
-				_, dzNet, err := net.ParseCIDR(fmt.Sprintf("%s/%d", p.Prefix, p.PrefixLength))
-				if err != nil {
-					slog.Error("routes: error parsing nlri from update", "error", err)
-				}
-
-				route := &Route{Src: n.DoubleZeroAddr, Dst: dzNet, Table: p.RouteTable, NextHop: net.ParseIP(p.NextHop), Protocol: unix.RTPROT_BGP}
-				slog.Info("routes: writing route", "table", p.RouteTable, "dz route", route.String())
-				if err := n.WriteRoute(route); err != nil {
-					slog.Error("routes: error writing route", "table", p.RouteTable, "error", err)
-				}
-			// TODO: pull table number from NLRI
-			case p := <-n.bgp.WithdrawRoute():
-				_, dzNet, err := net.ParseCIDR(fmt.Sprintf("%s/%d", p.Prefix, p.PrefixLength))
-				if err != nil {
-					slog.Error("routes: error parsing nlri from update", "error", err)
-				}
-
-				route := &Route{Src: n.DoubleZeroAddr, Dst: dzNet, Table: p.RouteTable, NextHop: net.ParseIP(p.NextHop)}
-				slog.Info("routes: removing route from table", "table", p.RouteTable, "dz route", route.String())
-
-				if err := n.RemoveRoute(route); err != nil {
-					slog.Error("routes: error removing route", "route", route.Dst.String(), "table", RouteTableSpecific, "error", err)
-				}
-			case <-n.bgp.FlushRoutes():
-				if n.db.GetState().UserType != UserTypeIBRL {
-					continue
-				}
-
-				protocol := unix.RTPROT_BGP // 186
-				routes, err := n.netlink.RouteByProtocol(protocol)
-				if err != nil {
-					slog.Error("routes: error getting routes by protocol", "protocol", protocol)
-				}
-				for _, route := range routes {
-					if err := n.netlink.RouteDelete(route); err != nil {
-						slog.Error("Error deleting route", "route", route)
-						continue
-					}
-				}
-
-			}
-		}
 	}()
 
 	// attempt to recover from last provisioned state

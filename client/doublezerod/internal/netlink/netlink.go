@@ -6,6 +6,7 @@ import (
 	"net"
 	"syscall"
 
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	nl "github.com/vishvananda/netlink"
 )
 
@@ -73,7 +74,7 @@ func (n Netlink) TunnelUp(t *Tunnel) error {
 }
 
 // RouteAdd adds a route to the kernel routing table via netlink.
-func (n Netlink) RouteAdd(r *Route) error {
+func (n Netlink) RouteAdd(r *routing.Route) error {
 	return nl.RouteReplace(&nl.Route{
 		Table:    r.Table,
 		Src:      r.Src,
@@ -84,7 +85,7 @@ func (n Netlink) RouteAdd(r *Route) error {
 }
 
 // RouteDelete deletes a route from the kernel routing table via netlink.
-func (n Netlink) RouteDelete(r *Route) error {
+func (n Netlink) RouteDelete(r *routing.Route) error {
 	return nl.RouteDel(&nl.Route{
 		Dst:   r.Dst,
 		Gw:    r.NextHop,
@@ -94,14 +95,14 @@ func (n Netlink) RouteDelete(r *Route) error {
 }
 
 // RouteGet retrieves a route from the kernel routing table via netlink.
-func (n Netlink) RouteGet(ip net.IP) ([]*Route, error) {
+func (n Netlink) RouteGet(ip net.IP) ([]*routing.Route, error) {
 	nlr, err := nl.RouteGet(ip)
 	if err != nil {
 		return nil, err
 	}
-	routes := []*Route{}
+	routes := []*routing.Route{}
 	for _, r := range nlr {
-		routes = append(routes, &Route{
+		routes = append(routes, &routing.Route{
 			Table:    r.Table,
 			Src:      r.Src,
 			Dst:      r.Dst,
@@ -112,19 +113,19 @@ func (n Netlink) RouteGet(ip net.IP) ([]*Route, error) {
 	return routes, nil
 }
 
-func (n Netlink) RouteByProtocol(protocol int) ([]*Route, error) {
+func (n Netlink) RouteByProtocol(protocol int) ([]*routing.Route, error) {
 	routeFilter := &nl.Route{
 		Protocol: nl.RouteProtocol(protocol),
 	}
 
 	nlr, err := nl.RouteListFiltered(nl.FAMILY_V4, routeFilter, nl.RT_FILTER_PROTOCOL)
 	if err != nil {
-		return []*Route{}, err
+		return []*routing.Route{}, err
 	}
 
-	routes := []*Route{}
+	routes := []*routing.Route{}
 	for _, r := range nlr {
-		routes = append(routes, &Route{
+		routes = append(routes, &routing.Route{
 			Table:    r.Table,
 			Src:      r.Src,
 			Dst:      r.Dst,
@@ -165,4 +166,4 @@ func (n Netlink) RuleDel(r *IPRule) error {
 
 func (n Netlink) RuleGet(r *IPRule) error { return nil }
 
-func (n Netlink) Close(t *Tunnel, r []*IPRule, rt []*Route) {}
+func (n Netlink) Close(t *Tunnel, r []*IPRule, rt []*routing.Route) {}

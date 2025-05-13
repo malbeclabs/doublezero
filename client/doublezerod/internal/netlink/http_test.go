@@ -17,6 +17,7 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/netlink"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"golang.org/x/sys/unix"
 )
 
@@ -266,7 +267,7 @@ func TestNetlinkManager_HttpEndpoints(t *testing.T) {
 		Tunnel      *netlink.Tunnel
 		AddrsAdded  []string
 		RulesAdded  []*netlink.IPRule
-		RoutesAdded []*netlink.Route
+		RoutesAdded []*routing.Route
 		ExpectError bool
 	}{
 		{
@@ -306,7 +307,7 @@ func TestNetlinkManager_HttpEndpoints(t *testing.T) {
 					DstNet:   &net.IPNet{IP: net.IPv4(0, 0, 0, 0), Mask: []byte{0, 0, 0, 0}},
 				},
 			},
-			RoutesAdded: []*netlink.Route{
+			RoutesAdded: []*routing.Route{
 				{Src: net.IPv4(10, 0, 0, 0), Dst: &net.IPNet{IP: net.IPv4(0, 0, 0, 0), Mask: []byte{0, 0, 0, 0}}, Table: 101, NextHop: net.IPv4(10, 1, 1, 0)},
 			},
 			ExpectError: false,

@@ -4,12 +4,12 @@ on:
     paths:
       - "smartcontract/sdk/rs/**"
       - "!**/**.md"
-    branches: [ main ]
+    branches: [ main, feature/* ]
   pull_request:
     paths:
       - "smartcontract/sdk/rs/**"
       - "!**/**.md"
-    branches: [ main ]
+    branches: [ main, feature/* ]
 
 jobs:
   test:

@@ -76,30 +76,24 @@ impl InfluxDBMetricsSubmitter {
                     token.expect("Influx token required"),
                 )),
                 bucket: bucket.expect("Influx bucket required").to_string(),
-                receiver: receiver,
+                receiver,
             },
             None => InfluxDBMetricsSubmitter {
                 client: None,
                 bucket: "".to_owned(),
-                receiver: receiver,
+                receiver,
             },
         }
     }
 
     pub async fn run(&mut self) {
         while let Some(msg) = self.receiver.recv().await {
-            match &self.client {
-                None => {}
-                Some(client) => {
-                    match client
-                        .write_line_protocol(&client.org, self.bucket.as_str(), msg)
-                        .await
-                    {
-                        Err(e) => {
-                            eprintln!("Error writing metric to InfluxDB: {}", e);
-                        }
-                        _ => {}
-                    }
+            if let Some(client) = &self.client {
+                if let Err(e) = client
+                    .write_line_protocol(&client.org, self.bucket.as_str(), msg)
+                    .await
+                {
+                    eprintln!("Error writing metric to InfluxDB: {}", e);
                 }
             }
         }
@@ -111,10 +105,10 @@ impl MetricsService for InfluxDBMetricsService {
         self.send(Self::metric_to_line_proto(metric));
     }
 
-    fn write_metrics(&self, metrics: &Vec<Metric>) {
+    fn write_metrics(&self, metrics: &[Metric]) {
         let lines = metrics
             .iter()
-            .map(|metric| Self::metric_to_line_proto(metric))
+            .map(Self::metric_to_line_proto)
             .collect::<Vec<_>>()
             .join("");
         self.send(lines);

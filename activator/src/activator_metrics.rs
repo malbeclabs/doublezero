@@ -24,8 +24,7 @@ impl ActivatorMetrics {
         exchanges: &HashMap<Pubkey, Exchange>,
         state_transitions: &HashMap<&'static str, usize>,
     ) {
-        let mut metrics: Vec<Metric> = vec![];
-        metrics.reserve(devices.len() + state_transitions.len() + 1);
+        let mut metrics = Vec::with_capacity(devices.len() + state_transitions.len() + 1);
 
         let mut metric = Metric::new("activator_device_count");
         metric.add_field("count", devices.len() as f64);
@@ -43,23 +42,17 @@ impl ActivatorMetrics {
                 .add_field("assigned_ips", assigned as f64)
                 .add_field("total_ips", total_ips as f64);
 
-            match location {
-                Some(location) => {
-                    metric
-                        .add_tag("location", &location.name)
-                        .add_tag("location_code", &location.code)
-                        .add_tag("location_country", &location.country);
-                }
-                None => {}
+            if let Some(location) = location {
+                metric
+                    .add_tag("location", &location.name)
+                    .add_tag("location_code", &location.code)
+                    .add_tag("location_country", &location.country);
             }
 
-            match exchange {
-                Some(exchange) => {
-                    metric
-                        .add_tag("exchange", &exchange.name)
-                        .add_tag("exchange_code", &exchange.code);
-                }
-                None => {}
+            if let Some(exchange) = exchange {
+                metric
+                    .add_tag("exchange", &exchange.name)
+                    .add_tag("exchange_code", &exchange.code);
             }
 
             metrics.push(metric);
@@ -68,7 +61,7 @@ impl ActivatorMetrics {
         for (state_transition, count) in state_transitions.iter() {
             let mut metric = Metric::new("activator_state_transition");
             metric
-                .add_tag("state_transition", *state_transition)
+                .add_tag("state_transition", state_transition)
                 .add_field("count", *count as f64);
             metrics.push(metric);
         }

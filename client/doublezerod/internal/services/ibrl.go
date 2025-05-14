@@ -29,6 +29,7 @@ func NewIBRLService(bgp bgpReaderWriter, nl routing.Netlinker, db dbReaderWriter
 		bgp: bgp,
 		nl:  nl,
 		db:  db,
+		nlm: nlm,
 	}
 }
 

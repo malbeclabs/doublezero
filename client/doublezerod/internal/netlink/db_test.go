@@ -11,12 +11,12 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/netlink"
 )
 
-func TestNewDb(t *testing.T) {
+func TestDbNew(t *testing.T) {
 	tests := []struct {
 		name          string
 		setupStateDir bool
 		goldenFile    string
-		state         *netlink.ProvisionRequest
+		state         []*netlink.ProvisionRequest
 		expectError   bool
 	}{
 		{
@@ -29,17 +29,19 @@ func TestNewDb(t *testing.T) {
 			name:          "read_edgefiltering_state_file",
 			setupStateDir: true,
 			goldenFile:    "./fixtures/doublezerod.edgefiltering.json",
-			state: &netlink.ProvisionRequest{
-				TunnelSrc:    net.IP{1, 1, 1, 1},
-				TunnelDst:    net.IP{2, 2, 2, 2},
-				TunnelNet:    &net.IPNet{IP: net.IP{169, 254, 0, 0}, Mask: net.IPMask{255, 255, 255, 254}},
-				DoubleZeroIP: net.IP{7, 7, 7, 7},
-				DoubleZeroPrefixes: []*net.IPNet{
-					{IP: net.IP{7, 0, 0, 0}, Mask: net.IPMask{255, 0, 0, 0}},
+			state: []*netlink.ProvisionRequest{
+				{
+					TunnelSrc:    net.IP{1, 1, 1, 1},
+					TunnelDst:    net.IP{2, 2, 2, 2},
+					TunnelNet:    &net.IPNet{IP: net.IP{169, 254, 0, 0}, Mask: net.IPMask{255, 255, 255, 254}},
+					DoubleZeroIP: net.IP{7, 7, 7, 7},
+					DoubleZeroPrefixes: []*net.IPNet{
+						{IP: net.IP{7, 0, 0, 0}, Mask: net.IPMask{255, 0, 0, 0}},
+					},
+					BgpLocalAsn:  65000,
+					BgpRemoteAsn: 65001,
+					UserType:     netlink.UserTypeEdgeFiltering,
 				},
-				BgpLocalAsn:  65000,
-				BgpRemoteAsn: 65001,
-				UserType:     netlink.UserTypeEdgeFiltering,
 			},
 			expectError: false,
 		},
@@ -47,15 +49,17 @@ func TestNewDb(t *testing.T) {
 			name:          "read_ibrl_state_file",
 			setupStateDir: true,
 			goldenFile:    "./fixtures/doublezerod.ibrl.json",
-			state: &netlink.ProvisionRequest{
-				TunnelSrc:          net.IP{1, 1, 1, 1},
-				TunnelDst:          net.IP{2, 2, 2, 2},
-				TunnelNet:          &net.IPNet{IP: net.IP{169, 254, 0, 0}, Mask: net.IPMask{255, 255, 255, 254}},
-				DoubleZeroIP:       net.IP{1, 1, 1, 1},
-				DoubleZeroPrefixes: nil,
-				BgpLocalAsn:        65000,
-				BgpRemoteAsn:       65001,
-				UserType:           netlink.UserTypeIBRL,
+			state: []*netlink.ProvisionRequest{
+				{
+					TunnelSrc:          net.IP{1, 1, 1, 1},
+					TunnelDst:          net.IP{2, 2, 2, 2},
+					TunnelNet:          &net.IPNet{IP: net.IP{169, 254, 0, 0}, Mask: net.IPMask{255, 255, 255, 254}},
+					DoubleZeroIP:       net.IP{1, 1, 1, 1},
+					DoubleZeroPrefixes: nil,
+					BgpLocalAsn:        65000,
+					BgpRemoteAsn:       65001,
+					UserType:           netlink.UserTypeIBRL,
+				},
 			},
 			expectError: false,
 		},
@@ -65,6 +69,24 @@ func TestNewDb(t *testing.T) {
 			goldenFile:    "",
 			state:         nil,
 			expectError:   false,
+		},
+		{
+			name:          "read_old_style_state_file",
+			setupStateDir: true,
+			goldenFile:    "./fixtures/doublezerod.old.style.json",
+			state: []*netlink.ProvisionRequest{
+				{
+					TunnelSrc:          net.IP{1, 1, 1, 1},
+					TunnelDst:          net.IP{2, 2, 2, 2},
+					TunnelNet:          &net.IPNet{IP: net.IP{169, 254, 0, 0}, Mask: net.IPMask{255, 255, 255, 254}},
+					DoubleZeroIP:       net.IP{1, 1, 1, 1},
+					DoubleZeroPrefixes: nil,
+					BgpLocalAsn:        65000,
+					BgpRemoteAsn:       65001,
+					UserType:           netlink.UserTypeIBRL,
+				},
+			},
+			expectError: false,
 		},
 	}
 	for _, test := range tests {
@@ -120,45 +142,77 @@ func TestNewDb(t *testing.T) {
 func TestDbSaveState(t *testing.T) {
 	tests := []struct {
 		name        string
-		state       *netlink.ProvisionRequest
+		state       []*netlink.ProvisionRequest
 		goldenFile  string
 		expectError bool
 	}{
 		{
 			name:        "provision_request_is_nil",
-			state:       nil,
+			state:       []*netlink.ProvisionRequest{nil},
 			expectError: true,
 		},
 		{
 			name: "save_edgefiltering_state_successfully",
-			state: &netlink.ProvisionRequest{
-				TunnelSrc:    net.IP{1, 1, 1, 1},
-				TunnelDst:    net.IP{2, 2, 2, 2},
-				TunnelNet:    &net.IPNet{IP: net.IP{169, 254, 0, 0}, Mask: net.IPMask{255, 255, 255, 254}},
-				DoubleZeroIP: net.IP{7, 7, 7, 7},
-				DoubleZeroPrefixes: []*net.IPNet{
-					{IP: net.IP{7, 0, 0, 0}, Mask: net.IPMask{255, 0, 0, 0}},
+			state: []*netlink.ProvisionRequest{
+				{
+					TunnelSrc:    net.IP{1, 1, 1, 1},
+					TunnelDst:    net.IP{2, 2, 2, 2},
+					TunnelNet:    &net.IPNet{IP: net.IP{169, 254, 0, 0}, Mask: net.IPMask{255, 255, 255, 254}},
+					DoubleZeroIP: net.IP{7, 7, 7, 7},
+					DoubleZeroPrefixes: []*net.IPNet{
+						{IP: net.IP{7, 0, 0, 0}, Mask: net.IPMask{255, 0, 0, 0}},
+					},
+					BgpLocalAsn:  65000,
+					BgpRemoteAsn: 65001,
+					UserType:     netlink.UserTypeEdgeFiltering,
 				},
-				BgpLocalAsn:  65000,
-				BgpRemoteAsn: 65001,
-				UserType:     netlink.UserTypeEdgeFiltering,
 			},
 			goldenFile:  "./fixtures/doublezerod.edgefiltering.json",
 			expectError: false,
 		},
 		{
 			name: "save_ibrl_state_successfully",
-			state: &netlink.ProvisionRequest{
-				TunnelSrc:          net.IP{1, 1, 1, 1},
-				TunnelDst:          net.IP{2, 2, 2, 2},
-				TunnelNet:          &net.IPNet{IP: net.IP{169, 254, 0, 0}, Mask: net.IPMask{255, 255, 255, 254}},
-				DoubleZeroIP:       net.IP{1, 1, 1, 1},
-				DoubleZeroPrefixes: []*net.IPNet{},
-				BgpLocalAsn:        65000,
-				BgpRemoteAsn:       65001,
-				UserType:           netlink.UserTypeIBRL,
+			state: []*netlink.ProvisionRequest{
+				{
+					TunnelSrc:          net.IP{1, 1, 1, 1},
+					TunnelDst:          net.IP{2, 2, 2, 2},
+					TunnelNet:          &net.IPNet{IP: net.IP{169, 254, 0, 0}, Mask: net.IPMask{255, 255, 255, 254}},
+					DoubleZeroIP:       net.IP{1, 1, 1, 1},
+					DoubleZeroPrefixes: []*net.IPNet{},
+					BgpLocalAsn:        65000,
+					BgpRemoteAsn:       65001,
+					UserType:           netlink.UserTypeIBRL,
+				},
 			},
 			goldenFile:  "./fixtures/doublezerod.ibrl.json",
+			expectError: false,
+		},
+		{
+			name: "save_multiple_services_successfully",
+			state: []*netlink.ProvisionRequest{
+				{
+					TunnelSrc:          net.IP{1, 1, 1, 1},
+					TunnelDst:          net.IP{2, 2, 2, 2},
+					TunnelNet:          &net.IPNet{IP: net.IP{169, 254, 0, 0}, Mask: net.IPMask{255, 255, 255, 254}},
+					DoubleZeroIP:       net.IP{1, 1, 1, 1},
+					DoubleZeroPrefixes: []*net.IPNet{},
+					BgpLocalAsn:        65000,
+					BgpRemoteAsn:       65001,
+					UserType:           netlink.UserTypeIBRL,
+				},
+				{
+					TunnelSrc:          net.IP{1, 1, 1, 1},
+					TunnelDst:          net.IP{2, 2, 2, 2},
+					TunnelNet:          &net.IPNet{IP: net.IP{169, 254, 0, 0}, Mask: net.IPMask{255, 255, 255, 254}},
+					DoubleZeroIP:       net.IP{1, 1, 1, 1},
+					DoubleZeroPrefixes: []*net.IPNet{},
+					BgpLocalAsn:        65000,
+					BgpRemoteAsn:       65001,
+					UserType:           netlink.UserTypeMulticast,
+				},
+			},
+
+			goldenFile:  "./fixtures/doublezerod.multiservice.json",
 			expectError: false,
 		},
 	}
@@ -184,15 +238,17 @@ func TestDbSaveState(t *testing.T) {
 				t.Fatalf("failed to setup db: %v", err)
 			}
 
-			err = db.SaveState(test.state)
-			if test.expectError && err == nil {
-				t.Fatalf("expected error but got none")
-			}
-			if !test.expectError && err != nil {
-				t.Fatalf("error creating db file: %v", err)
-			}
-			if test.expectError {
-				return
+			for _, state := range test.state {
+				err = db.SaveState(state)
+				if test.expectError && err == nil {
+					t.Fatalf("expected error but got none")
+				}
+				if !test.expectError && err != nil {
+					t.Fatalf("error creating db file: %v", err)
+				}
+				if test.expectError {
+					return
+				}
 			}
 
 			want, err := os.ReadFile(test.goldenFile)

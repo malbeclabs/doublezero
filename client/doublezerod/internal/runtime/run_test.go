@@ -79,13 +79,11 @@ func (p *dummyPlugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.N
 func TestEndToEnd_IBRL(t *testing.T) {
 	teardown, err := setupTest(t)
 	rootPath := os.Getenv("XDG_STATE_HOME")
-
+	t.Cleanup(teardown)
 	defer os.RemoveAll(rootPath)
-
 	if err != nil {
 		t.Fatalf("%v\n", err)
 	}
-	t.Cleanup(teardown)
 
 	// TODO: start corebgp instance in network namespace
 	srv, _ := corebgp.NewServer(netip.MustParseAddr("2.2.2.2"))

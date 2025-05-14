@@ -166,11 +166,13 @@ func TestHttpStatus(t *testing.T) {
 	})
 
 	t.Run("provisioned_tunnel_status", func(t *testing.T) {
-		db.state = &netlink.ProvisionRequest{
-			TunnelSrc:    net.IP{1, 1, 1, 1},
-			TunnelDst:    net.IP{2, 2, 2, 2},
-			DoubleZeroIP: net.IP{3, 3, 3, 3},
-			UserType:     netlink.UserTypeIBRL,
+		db.state = []*netlink.ProvisionRequest{
+			{
+				TunnelSrc:    net.IP{1, 1, 1, 1},
+				TunnelDst:    net.IP{2, 2, 2, 2},
+				DoubleZeroIP: net.IP{3, 3, 3, 3},
+				UserType:     netlink.UserTypeIBRL,
+			},
 		}
 		provisionBody := `{
 					"tunnel_src": "1.1.1.1",
@@ -213,7 +215,7 @@ func TestHttpStatus(t *testing.T) {
 func TestNetlinkManager_HttpEndpoints(t *testing.T) {
 	m := &MockNetlink{}
 	b := &MockBgpServer{}
-	db := &MockDb{state: &netlink.ProvisionRequest{}}
+	db := &MockDb{state: []*netlink.ProvisionRequest{}}
 	manager := netlink.NewNetlinkManager(m, b, db)
 
 	f, err := os.CreateTemp("/tmp", "doublezero.sock")

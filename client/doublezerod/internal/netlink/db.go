@@ -1,6 +1,7 @@
 package netlink
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,7 +16,7 @@ var (
 )
 
 type Db struct {
-	State *ProvisionRequest
+	State []*ProvisionRequest
 	Path  string
 	mu    sync.Mutex
 }
@@ -46,10 +47,31 @@ func NewDb() (*Db, error) {
 		if err != nil {
 			return nil, fmt.Errorf("error reading db file: %v", err)
 		}
-		p := &ProvisionRequest{}
-		if err := json.Unmarshal(file, p); err != nil {
-			return nil, fmt.Errorf("error unmarshaling db file: %v", err)
+
+		// check for old style or new style config
+		f := bytes.TrimLeft(file, "\r\t\n")
+		oldConfig := f[0] == '{' // single entry denoting old style
+		newConfig := f[0] == '[' // multiple entries denoting new style
+
+		if !oldConfig && !newConfig {
+			return nil, fmt.Errorf("db file is in an invalid format: %s", path)
 		}
+
+		var p []*ProvisionRequest
+		if oldConfig {
+			deprecatedDbStyle := ProvisionRequest{}
+			if err := json.Unmarshal(file, &deprecatedDbStyle); err != nil {
+				return nil, fmt.Errorf("error unmarshaling db file: %v", err)
+			}
+			p = append(p, &deprecatedDbStyle)
+		}
+
+		if newConfig {
+			if err := json.Unmarshal(file, &p); err != nil {
+				return nil, fmt.Errorf("error unmarshaling db file: %v", err)
+			}
+		}
+
 		return &Db{Path: path, State: p, mu: sync.Mutex{}}, nil
 	}
 	if errors.Is(err, os.ErrNotExist) {
@@ -64,7 +86,7 @@ func NewDb() (*Db, error) {
 }
 
 // GetState returns the latest provisioned state
-func (d *Db) GetState() *ProvisionRequest {
+func (d *Db) GetState() []*ProvisionRequest {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.State
@@ -94,13 +116,14 @@ func (d *Db) SaveState(p *ProvisionRequest) error {
 	if p == nil {
 		return fmt.Errorf("provision request is nil")
 	}
-	buf, err := json.MarshalIndent(p, "", "    ")
+	d.mu.Lock()
+	d.State = append(d.State, p)
+	buf, err := json.MarshalIndent(d.State, "", "    ")
+	d.mu.Unlock()
 	if err != nil {
 		return fmt.Errorf("error saving state: %v", err)
 	}
-	d.mu.Lock()
-	d.State = p
-	d.mu.Unlock()
+
 	buf = append(buf, []byte("\n")...)
 	if err = WriteFile(d.Path, buf, 0666); err != nil {
 		return fmt.Errorf("error writing state file: %v", err)

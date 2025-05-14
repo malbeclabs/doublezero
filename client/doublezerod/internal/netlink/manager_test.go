@@ -84,10 +84,10 @@ func (m *MockNetlink) RouteByProtocol(protocol int) ([]*routing.Route, error) {
 }
 
 type MockDb struct {
-	state *netlink.ProvisionRequest
+	state []*netlink.ProvisionRequest
 }
 
-func (m *MockDb) GetState() *netlink.ProvisionRequest {
+func (m *MockDb) GetState() []*netlink.ProvisionRequest {
 	return m.state
 }
 
@@ -315,7 +315,7 @@ func TestNetlinkManager_Remove(t *testing.T) {
 		}
 
 		// add non-nil state to skip nil check
-		db := &netlink.Db{State: &netlink.ProvisionRequest{}, Path: stateFile}
+		db := &netlink.Db{State: []*netlink.ProvisionRequest{}, Path: stateFile}
 		m := &MockNetlink{}
 		b := &MockBgpServer{}
 		manager := netlink.NewNetlinkManager(m, b, db)

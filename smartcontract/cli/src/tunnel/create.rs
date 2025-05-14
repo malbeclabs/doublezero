@@ -4,7 +4,7 @@ use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
 use clap::Args;
 use doublezero_sdk::commands::device::get::GetDeviceCommand;
 use doublezero_sdk::commands::tunnel::create::CreateTunnelCommand;
-use doublezero_sdk::*;
+use doublezero_sdk::{bandwidth_parse, TunnelTunnelType};
 use std::io::Write;
 
 #[derive(Args, Debug)]

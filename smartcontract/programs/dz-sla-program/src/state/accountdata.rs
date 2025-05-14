@@ -1,6 +1,7 @@
 use super::{
     accounttype::AccountType, device::Device, exchange::Exchange, globalconfig::GlobalConfig,
-    globalstate::GlobalState, location::Location, tunnel::Tunnel, user::User,
+    globalstate::GlobalState, location::Location, multicastgroup::MulticastGroup, tunnel::Tunnel,
+    user::User,
 };
 
 #[derive(Debug, PartialEq)]
@@ -13,6 +14,7 @@ pub enum AccountData {
     Device(Device),
     Tunnel(Tunnel),
     User(User),
+    MulticastGroup(MulticastGroup),
 }
 
 impl AccountData {
@@ -26,6 +28,7 @@ impl AccountData {
             AccountData::Device(_) => "Device",
             AccountData::Tunnel(_) => "Tunnel",
             AccountData::User(_) => "User",
+            AccountData::MulticastGroup(_) => "MulticastGroup",
         }
     }
 
@@ -39,6 +42,7 @@ impl AccountData {
             AccountData::Device(device) => device.to_string(),
             AccountData::Tunnel(tunnel) => tunnel.to_string(),
             AccountData::User(user) => user.to_string(),
+            AccountData::MulticastGroup(multicast_group) => multicast_group.to_string(),
         }
     }
 
@@ -97,6 +101,14 @@ impl AccountData {
             panic!("Invalid Account Type")
         }
     }
+
+    pub fn get_multicastgroup(&self) -> MulticastGroup {
+        if let AccountData::MulticastGroup(multicastgroup) = self {
+            multicastgroup.clone()
+        } else {
+            panic!("Invalid Account Type")
+        }
+    }
 }
 
 impl From<&[u8]> for AccountData {
@@ -110,6 +122,7 @@ impl From<&[u8]> for AccountData {
             AccountType::Device => AccountData::Device(Device::from(bytes)),
             AccountType::Tunnel => AccountData::Tunnel(Tunnel::from(bytes)),
             AccountType::User => AccountData::User(User::from(bytes)),
+            AccountType::MulticastGroup => AccountData::MulticastGroup(MulticastGroup::from(bytes)),
         }
     }
 }

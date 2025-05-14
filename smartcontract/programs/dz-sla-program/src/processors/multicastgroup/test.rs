@@ -59,7 +59,6 @@ mod multicastgroup_test {
                 index: globalstate_account.account_index + 1,
                 bump_seed,
                 code: "la".to_string(),
-                multicast_ip: [239, 1, 1, 1],
                 max_bandwidth: 1000,
                 owner: Pubkey::new_unique(),
             }),
@@ -77,6 +76,8 @@ mod multicastgroup_test {
             .get_multicastgroup();
         assert_eq!(multicastgroup_la.account_type, AccountType::MulticastGroup);
         assert_eq!(multicastgroup_la.code, "la".to_string());
+        assert_eq!(multicastgroup_la.multicast_ip, [0, 0, 0, 0]);
+        assert_eq!(multicastgroup_la.max_bandwidth, 1000);
         assert_eq!(multicastgroup_la.status, MulticastGroupStatus::Pending);
 
         println!("✅ MulticastGroup initialized successfully",);
@@ -91,6 +92,7 @@ mod multicastgroup_test {
             DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
                 index: globalstate_account.account_index + 1,
                 bump_seed,
+                multicast_ip: [224, 0, 0, 0],
             }),
             vec![
                 AccountMeta::new(multicastgroup_pubkey, false),
@@ -106,6 +108,7 @@ mod multicastgroup_test {
             .get_multicastgroup();
         assert_eq!(multicastgroup_la.account_type, AccountType::MulticastGroup);
         assert_eq!(multicastgroup_la.code, "la".to_string());
+        assert_eq!(multicastgroup_la.multicast_ip, [224, 0, 0, 0]);
         assert_eq!(multicastgroup_la.status, MulticastGroupStatus::Activated);
 
         println!("✅ MulticastGroup activate successfully",);

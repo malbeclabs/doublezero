@@ -35,7 +35,7 @@ type BgpReaderWriter interface {
 }
 
 type DbReaderWriter interface {
-	GetState() *ProvisionRequest
+	GetState() []*ProvisionRequest
 	DeleteState() error
 	SaveState(p *ProvisionRequest) error
 }
@@ -462,7 +462,13 @@ func (n *NetlinkManager) Recover() error {
 		return nil
 	}
 	slog.Info("netlink: restoring previous provisioned state")
-	return n.Provision(*state)
+	// TODO: check state to make sure we adhere to our service iteraction rules
+	for _, p := range state {
+		if err := n.Provision(*p); err != nil {
+			return fmt.Errorf("netlink: error while recovering provisioned state: %v", err)
+		}
+	}
+	return nil
 }
 
 func (n *NetlinkManager) Status() (*StatusResponse, error) {

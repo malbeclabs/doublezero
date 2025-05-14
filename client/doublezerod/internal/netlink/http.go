@@ -161,6 +161,7 @@ func (n *NetlinkManager) ServeProvision(w http.ResponseWriter, r *http.Request) 
 	_, _ = w.Write([]byte(`{"status": "ok"}`))
 }
 
+// TODO: we need to take a payload to remove the correct tunnel in a multi-tunnel setup
 func (n *NetlinkManager) ServeRemove(w http.ResponseWriter, r *http.Request) {
 	err := n.Remove()
 	if err != nil {

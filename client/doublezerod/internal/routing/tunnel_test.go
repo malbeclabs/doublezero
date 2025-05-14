@@ -1,11 +1,11 @@
-package netlink_test
+package routing_test
 
 import (
 	"net"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/malbeclabs/doublezero/client/doublezerod/internal/netlink"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 )
 
 func TestTunnel_NewTunnel(t *testing.T) {
@@ -16,7 +16,7 @@ func TestTunnel_NewTunnel(t *testing.T) {
 		RemoteUnderlay net.IP
 		OverlayPrefix  string
 		ExpectError    bool
-		Want           *netlink.Tunnel
+		Want           *routing.Tunnel
 	}{
 		{
 			Name:           "valid_tunnel_happy_path",
@@ -25,9 +25,9 @@ func TestTunnel_NewTunnel(t *testing.T) {
 			RemoteUnderlay: net.IPv4(2, 2, 2, 2),
 			OverlayPrefix:  "10.1.1.0/31",
 			ExpectError:    false,
-			Want: &netlink.Tunnel{
+			Want: &routing.Tunnel{
 				Name:           "doublezero0",
-				EncapType:      netlink.GRE,
+				EncapType:      routing.GRE,
 				LocalUnderlay:  net.IPv4(1, 1, 1, 1),
 				RemoteUnderlay: net.IPv4(2, 2, 2, 2),
 				LocalOverlay:   net.IPv4(10, 1, 1, 1),
@@ -55,7 +55,7 @@ func TestTunnel_NewTunnel(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
-			got, err := netlink.NewTunnel(test.LocalUnderlay, test.RemoteUnderlay, test.OverlayPrefix)
+			got, err := routing.NewTunnel(test.LocalUnderlay, test.RemoteUnderlay, test.OverlayPrefix)
 			if err != nil && !test.ExpectError {
 				t.Errorf("error: %v", err)
 			}

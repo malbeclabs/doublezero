@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/jwhited/corebgp"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 )
 
 var (
@@ -82,39 +83,43 @@ func (s *SessionStatus) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+type RouteReaderWriter interface {
+	RouteAdd(*routing.Route) error
+	RouteDelete(*routing.Route) error
+	RouteByProtocol(int) ([]*routing.Route, error)
+}
+
 type PeerConfig struct {
 	LocalAddress  net.IP
 	RemoteAddress net.IP
 	LocalAs       uint32
 	RemoteAs      uint32
 	Port          int
+	RouteSrc      net.IP
 	RouteTable    int
+	FlushRoutes   bool
 }
 
 type BgpServer struct {
-	server          *corebgp.Server
-	addRouteChan    chan NLRI
-	deleteRouteChan chan NLRI
-	flushRouteChan  chan struct{}
-	peerStatusChan  chan SessionEvent
-	peerStatus      map[string]Session
-	peerStatusLock  sync.Mutex
+	server            *corebgp.Server
+	peerStatusChan    chan SessionEvent
+	peerStatus        map[string]Session
+	peerStatusLock    sync.Mutex
+	routeReaderWriter RouteReaderWriter
 }
 
-func NewBgpServer(routerID net.IP) (*BgpServer, error) {
+func NewBgpServer(routerID net.IP, r RouteReaderWriter) (*BgpServer, error) {
 	corebgp.SetLogger(log.Print)
 	srv, err := corebgp.NewServer(netip.MustParseAddr(routerID.String()))
 	if err != nil {
 		return nil, fmt.Errorf("error creating bgp server: %v", err)
 	}
 	return &BgpServer{
-		server:          srv,
-		addRouteChan:    make(chan NLRI),
-		deleteRouteChan: make(chan NLRI),
-		flushRouteChan:  make(chan struct{}, 1), // TODO: this needs to be buffered to avoid deadlocking plugin handler; not great
-		peerStatusChan:  make(chan SessionEvent),
-		peerStatus:      make(map[string]Session),
-		peerStatusLock:  sync.Mutex{},
+		server:            srv,
+		peerStatusChan:    make(chan SessionEvent),
+		peerStatus:        make(map[string]Session),
+		peerStatusLock:    sync.Mutex{},
+		routeReaderWriter: r,
 	}, nil
 }
 
@@ -136,7 +141,7 @@ func (b *BgpServer) AddPeer(p *PeerConfig, advertised []NLRI) error {
 	if p.Port != 0 {
 		peerOpts = append(peerOpts, corebgp.WithPort(p.Port))
 	}
-	plugin := NewBgpPlugin(b.addRouteChan, b.deleteRouteChan, b.flushRouteChan, advertised, p.RouteTable, b.peerStatusChan)
+	plugin := NewBgpPlugin(advertised, p.RouteSrc, p.RouteTable, b.peerStatusChan, p.FlushRoutes, b.routeReaderWriter)
 	err := b.server.AddPeer(corebgp.PeerConfig{
 		RemoteAddress: netip.MustParseAddr(p.RemoteAddress.String()),
 		LocalAS:       p.LocalAs,
@@ -161,17 +166,6 @@ func (b *BgpServer) DeletePeer(ip net.IP) error {
 		return ErrBgpPeerNotExists
 	}
 	return err
-}
-func (b *BgpServer) AddRoute() <-chan NLRI {
-	return b.addRouteChan
-}
-
-func (b *BgpServer) WithdrawRoute() <-chan NLRI {
-	return b.deleteRouteChan
-}
-
-func (b *BgpServer) FlushRoutes() <-chan struct{} {
-	return b.flushRouteChan
 }
 
 func (b *BgpServer) GetStatusEvent() <-chan SessionEvent {

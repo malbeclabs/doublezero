@@ -121,7 +121,6 @@ func TestEndToEnd_IBRL(t *testing.T) {
 		if err := srv.Serve([]net.Listener{dlis}); err != nil {
 			t.Logf("error on remote peer bgp server: %v", err)
 		}
-		t.Log("here")
 	}()
 
 	tests := []struct {

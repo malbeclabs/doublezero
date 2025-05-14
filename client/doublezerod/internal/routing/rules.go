@@ -1,4 +1,4 @@
-package netlink
+package routing
 
 import (
 	"fmt"
@@ -6,8 +6,8 @@ import (
 )
 
 var (
-	dzTableSpecific = 100
-	dzTableDefault  = 101
+	DzTableSpecific = 100
+	DzTableDefault  = 101
 )
 
 type IPRule struct {

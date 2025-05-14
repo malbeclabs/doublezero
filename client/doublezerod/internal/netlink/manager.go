@@ -10,20 +10,20 @@ import (
 	"syscall"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
-	"golang.org/x/sys/unix"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 )
 
 type Netlinker interface {
-	TunnelAdd(*Tunnel) error
-	TunnelDelete(*Tunnel) error
-	TunnelAddrAdd(*Tunnel, string) error
-	TunnelUp(*Tunnel) error
-	RouteAdd(*Route) error
-	RouteDelete(*Route) error
-	RouteGet(net.IP) ([]*Route, error)
-	RuleAdd(*IPRule) error
-	RuleDel(*IPRule) error
-	RouteByProtocol(int) ([]*Route, error)
+	TunnelAdd(*routing.Tunnel) error
+	TunnelDelete(*routing.Tunnel) error
+	TunnelAddrAdd(*routing.Tunnel, string) error
+	TunnelUp(*routing.Tunnel) error
+	RouteAdd(*routing.Route) error
+	RouteDelete(*routing.Route) error
+	RouteGet(net.IP) ([]*routing.Route, error)
+	RuleAdd(*routing.IPRule) error
+	RuleDel(*routing.IPRule) error
+	RouteByProtocol(int) ([]*routing.Route, error)
 }
 
 // I can't think of a better name for this
@@ -31,9 +31,6 @@ type BgpReaderWriter interface {
 	Serve([]net.Listener) error
 	AddPeer(*bgp.PeerConfig, []bgp.NLRI) error
 	DeletePeer(net.IP) error
-	AddRoute() <-chan bgp.NLRI
-	WithdrawRoute() <-chan bgp.NLRI
-	FlushRoutes() <-chan struct{}
 	GetPeerStatus(net.IP) bgp.Session
 }
 
@@ -45,10 +42,10 @@ type DbReaderWriter interface {
 
 type NetlinkManager struct {
 	netlink         Netlinker
-	Routes          []*Route
-	Rules           []*IPRule
-	UnicastTunnel   *Tunnel
-	MulticastTunnel *Tunnel
+	Routes          []*routing.Route
+	Rules           []*routing.IPRule
+	UnicastTunnel   *routing.Tunnel
+	MulticastTunnel *routing.Tunnel
 	DoubleZeroAddr  net.IP
 	bgp             BgpReaderWriter
 	db              DbReaderWriter
@@ -62,11 +59,12 @@ func NewNetlinkManager(netlink Netlinker, bgp BgpReaderWriter, db DbReaderWriter
 // provisionIBRL handles the provisioning of a user IBRL connection. This supports
 // both IP reuse and DoubleZero allocated IP use cases.
 func (n *NetlinkManager) provisionIBRL(p ProvisionRequest) error {
-	tun, err := NewTunnel(p.TunnelSrc, p.TunnelDst, p.TunnelNet.String())
+	tun, err := routing.NewTunnel(p.TunnelSrc, p.TunnelDst, p.TunnelNet.String())
 	if err != nil {
 		return fmt.Errorf("error generating new tunnel: %v", err)
 	}
 
+	flush := true
 	switch p.UserType {
 	// IBRL mode re-uses the user's public address so we don't need to bind
 	// the doublezero IP to the tunnel interface.
@@ -76,6 +74,7 @@ func (n *NetlinkManager) provisionIBRL(p ProvisionRequest) error {
 	// tunnel interface.
 	case UserTypeIBRLWithAllocatedIP:
 		err = n.CreateTunnelWithIP(tun, p.DoubleZeroIP)
+		flush = false
 	default:
 		return fmt.Errorf("unsupported tunnel type: %v\n", p)
 	}
@@ -87,12 +86,15 @@ func (n *NetlinkManager) provisionIBRL(p ProvisionRequest) error {
 	n.UnicastTunnel = tun
 	n.DoubleZeroAddr = p.DoubleZeroIP
 
+	// TODO: add flush routes flag; depending on IBRL mode, we may or may not flush routes
 	peer := &bgp.PeerConfig{
 		RemoteAddress: n.UnicastTunnel.RemoteOverlay,
 		LocalAddress:  n.UnicastTunnel.LocalOverlay,
 		LocalAs:       p.BgpLocalAsn,
 		RemoteAs:      p.BgpRemoteAsn,
+		RouteSrc:      p.DoubleZeroIP,
 		RouteTable:    syscall.RT_TABLE_MAIN,
+		FlushRoutes:   flush,
 	}
 	nlri, err := bgp.NewNLRI([]uint32{peer.LocalAs}, n.UnicastTunnel.LocalOverlay.String(), p.DoubleZeroIP.String(), 32)
 	if err != nil {
@@ -112,7 +114,7 @@ func (n *NetlinkManager) provisionIBRL(p ProvisionRequest) error {
 // provisionEdgeFiltering handles the provisioning of a user edge filtering connection.
 func (n *NetlinkManager) provisionEdgeFiltering(p ProvisionRequest) (err error) {
 	// TODO: have NewTunnel take a net.IPNet
-	tun, err := NewTunnel(p.TunnelSrc, p.TunnelDst, p.TunnelNet.String())
+	tun, err := routing.NewTunnel(p.TunnelSrc, p.TunnelDst, p.TunnelNet.String())
 	if err != nil {
 		return fmt.Errorf("error generating new tunnel: %v", err)
 	}
@@ -140,7 +142,8 @@ func (n *NetlinkManager) provisionEdgeFiltering(p ProvisionRequest) (err error) 
 		LocalAddress:  n.UnicastTunnel.LocalOverlay,
 		LocalAs:       p.BgpLocalAsn,
 		RemoteAs:      p.BgpRemoteAsn,
-		RouteTable:    RouteTableSpecific,
+		RouteTable:    routing.RouteTableSpecific, // TODO: this needs to go
+		RouteSrc:      p.DoubleZeroIP,
 	}
 	nlri, err := bgp.NewNLRI([]uint32{peer.LocalAs}, n.UnicastTunnel.LocalOverlay.String(), p.DoubleZeroIP.String(), 32)
 	if err != nil {
@@ -247,7 +250,7 @@ func (n *NetlinkManager) DiscoverTunnelSource(tunnelDst net.IP) (net.IP, error) 
 }
 
 // createBaseTunnel creates a tunnel interface, adds overlay addressing and brings up the interface.
-func (n *NetlinkManager) createBaseTunnel(tun *Tunnel) error {
+func (n *NetlinkManager) createBaseTunnel(tun *routing.Tunnel) error {
 	if tun.LocalOverlay == nil {
 		return fmt.Errorf("missing tunnel local overlay addressing")
 	}
@@ -282,13 +285,13 @@ func (n *NetlinkManager) createBaseTunnel(tun *Tunnel) error {
 
 // CreateTunnel creates the tunnel interface, adds point to point addressing and brings the interface
 // up.
-func (n *NetlinkManager) CreateTunnel(tun *Tunnel) error {
+func (n *NetlinkManager) CreateTunnel(tun *routing.Tunnel) error {
 	return n.createBaseTunnel(tun)
 }
 
 // CreateTunnelWithIP creates the tunnel interface, adds point-to-point addressing, binds the doublezero IP
 // to the interface and brings the tunnel up.
-func (n *NetlinkManager) CreateTunnelWithIP(tun *Tunnel, dzIp net.IP) (err error) {
+func (n *NetlinkManager) CreateTunnelWithIP(tun *routing.Tunnel, dzIp net.IP) (err error) {
 	if err := n.createBaseTunnel(tun); err != nil {
 		return fmt.Errorf("error creating base tunnel: %v", err)
 	}
@@ -317,26 +320,26 @@ func (n *NetlinkManager) RemoveTunnel() error {
 	return nil
 }
 
-func (n *NetlinkManager) WriteRoute(r *Route) error {
+func (n *NetlinkManager) WriteRoute(r *routing.Route) error {
 	return n.netlink.RouteAdd(r)
 }
 
-func (n *NetlinkManager) RemoveRoute(r *Route) error {
+func (n *NetlinkManager) RemoveRoute(r *routing.Route) error {
 	return n.netlink.RouteDelete(r)
 }
 
 func (n *NetlinkManager) CreateIPRules(prefixes []*net.IPNet) error {
-	rules := []*IPRule{}
-
+	rules := []*routing.IPRule{}
 	for _, prefix := range prefixes {
 		// dz-specifics table
-		rule, err := NewIPRule(100, dzTableSpecific, "0.0.0.0/0", prefix.String())
+		rule, err := routing.NewIPRule(100, routing.DzTableSpecific, "0.0.0.0/0", prefix.String())
 		if err != nil {
+			slog.Error("rules: error creating IP rule", "prefix", prefix, "error", err)
 			return fmt.Errorf("rules: error creating IP rule: %v", err)
 		}
 		rules = append(rules, rule)
 		// dz-default table - anything sourced from dz space can't go out the public interface
-		rule, err = NewIPRule(101, dzTableDefault, prefix.String(), "0.0.0.0/0")
+		rule, err = routing.NewIPRule(101, routing.DzTableDefault, prefix.String(), "0.0.0.0/0")
 		if err != nil {
 			return fmt.Errorf("rules: error creating IP rule: %v", err)
 		}
@@ -363,8 +366,8 @@ func (n *NetlinkManager) CreateDefaultRoutingTable() error {
 	if err != nil {
 		return fmt.Errorf("routes: unable to parse default route: %v", err)
 	}
-	routes := []*Route{
-		{Dst: defaultRt, Src: n.DoubleZeroAddr, Table: RouteTableDefault, NextHop: n.UnicastTunnel.RemoteOverlay},
+	routes := []*routing.Route{
+		{Dst: defaultRt, Src: n.DoubleZeroAddr, Table: routing.RouteTableDefault, NextHop: n.UnicastTunnel.RemoteOverlay},
 	}
 	for _, route := range routes {
 		if err := n.netlink.RouteAdd(route); err != nil {
@@ -382,7 +385,7 @@ func (n *NetlinkManager) FlushRules() error {
 			err = errors.Join(err, fmt.Errorf("error deleting rule %s: %v", rule, err))
 		}
 	}
-	n.Rules = []*IPRule{}
+	n.Rules = []*routing.IPRule{}
 	return err
 }
 
@@ -393,7 +396,7 @@ func (n *NetlinkManager) FlushRoutes() error {
 			err = errors.Join(err, fmt.Errorf("error deleting route %s: %v", route, err))
 		}
 	}
-	n.Routes = []*Route{}
+	n.Routes = []*routing.Route{}
 	return err
 }
 
@@ -436,60 +439,6 @@ func (n *NetlinkManager) Serve(ctx context.Context) error {
 	go func() {
 		err := n.bgp.Serve([]net.Listener{})
 		errCh <- err
-	}()
-
-	slog.Info("routes: starting netlink writer thread")
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				slog.Info("exiting netlink writer thread")
-				return
-			// TODO: implement some batching logic for writes via netlink
-			// TODO: pull table number from NLRI
-			case p := <-n.bgp.AddRoute():
-				_, dzNet, err := net.ParseCIDR(fmt.Sprintf("%s/%d", p.Prefix, p.PrefixLength))
-				if err != nil {
-					slog.Error("routes: error parsing nlri from update", "error", err)
-				}
-
-				route := &Route{Src: n.DoubleZeroAddr, Dst: dzNet, Table: p.RouteTable, NextHop: net.ParseIP(p.NextHop), Protocol: unix.RTPROT_BGP}
-				slog.Info("routes: writing route", "table", p.RouteTable, "dz route", route.String())
-				if err := n.WriteRoute(route); err != nil {
-					slog.Error("routes: error writing route", "table", p.RouteTable, "error", err)
-				}
-			// TODO: pull table number from NLRI
-			case p := <-n.bgp.WithdrawRoute():
-				_, dzNet, err := net.ParseCIDR(fmt.Sprintf("%s/%d", p.Prefix, p.PrefixLength))
-				if err != nil {
-					slog.Error("routes: error parsing nlri from update", "error", err)
-				}
-
-				route := &Route{Src: n.DoubleZeroAddr, Dst: dzNet, Table: p.RouteTable, NextHop: net.ParseIP(p.NextHop)}
-				slog.Info("routes: removing route from table", "table", p.RouteTable, "dz route", route.String())
-
-				if err := n.RemoveRoute(route); err != nil {
-					slog.Error("routes: error removing route", "route", route.Dst.String(), "table", RouteTableSpecific, "error", err)
-				}
-			case <-n.bgp.FlushRoutes():
-				if n.db.GetState().UserType != UserTypeIBRL {
-					continue
-				}
-
-				protocol := unix.RTPROT_BGP // 186
-				routes, err := n.netlink.RouteByProtocol(protocol)
-				if err != nil {
-					slog.Error("routes: error getting routes by protocol", "protocol", protocol)
-				}
-				for _, route := range routes {
-					if err := n.netlink.RouteDelete(route); err != nil {
-						slog.Error("Error deleting route", "route", route)
-						continue
-					}
-				}
-
-			}
-		}
 	}()
 
 	// attempt to recover from last provisioned state

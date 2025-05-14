@@ -17,6 +17,7 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/netlink"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"golang.org/x/sys/unix"
 )
 
@@ -263,10 +264,10 @@ func TestNetlinkManager_HttpEndpoints(t *testing.T) {
 		Method      string
 		Body        string
 		Response    string
-		Tunnel      *netlink.Tunnel
+		Tunnel      *routing.Tunnel
 		AddrsAdded  []string
-		RulesAdded  []*netlink.IPRule
-		RoutesAdded []*netlink.Route
+		RulesAdded  []*routing.IPRule
+		RoutesAdded []*routing.Route
 		ExpectError bool
 	}{
 		{
@@ -283,16 +284,16 @@ func TestNetlinkManager_HttpEndpoints(t *testing.T) {
 					"user_type": "EdgeFiltering"
 				}`,
 			Response: `{"status": "ok"}`,
-			Tunnel: &netlink.Tunnel{
+			Tunnel: &routing.Tunnel{
 				Name:           "doublezero0",
-				EncapType:      netlink.GRE,
+				EncapType:      routing.GRE,
 				LocalUnderlay:  net.IPv4(1, 1, 1, 1),
 				RemoteUnderlay: net.IPv4(2, 2, 2, 2),
 				LocalOverlay:   net.IPv4(10, 1, 1, 1),
 				RemoteOverlay:  net.IPv4(10, 1, 1, 0),
 			},
 			AddrsAdded: []string{"10.1.1.1/31", "10.0.0.0/32"},
-			RulesAdded: []*netlink.IPRule{
+			RulesAdded: []*routing.IPRule{
 				{
 					Priority: 100,
 					Table:    100,
@@ -306,7 +307,7 @@ func TestNetlinkManager_HttpEndpoints(t *testing.T) {
 					DstNet:   &net.IPNet{IP: net.IPv4(0, 0, 0, 0), Mask: []byte{0, 0, 0, 0}},
 				},
 			},
-			RoutesAdded: []*netlink.Route{
+			RoutesAdded: []*routing.Route{
 				{Src: net.IPv4(10, 0, 0, 0), Dst: &net.IPNet{IP: net.IPv4(0, 0, 0, 0), Mask: []byte{0, 0, 0, 0}}, Table: 101, NextHop: net.IPv4(10, 1, 1, 0)},
 			},
 			ExpectError: false,
@@ -318,7 +319,7 @@ func TestNetlinkManager_HttpEndpoints(t *testing.T) {
 			Method:      http.MethodPost,
 			Body:        `{}`,
 			Response:    `{"status": "ok"}`,
-			Tunnel:      &netlink.Tunnel{},
+			Tunnel:      &routing.Tunnel{},
 			ExpectError: false,
 		},
 	}

@@ -1,5 +1,6 @@
 pub use doublezero_sla_program::pda::{
-    get_device_pda, get_exchange_pda, get_location_pda, get_tunnel_pda,
+    get_device_pda, get_exchange_pda, get_globalconfig_pda, get_location_pda,
+    get_multicastgroup_pda, get_tunnel_pda, get_user_pda,
 };
 
 pub use doublezero_sla_program::addresses::*;
@@ -16,6 +17,7 @@ pub use doublezero_sla_program::state::{
     exchange::{Exchange, ExchangeStatus},
     globalconfig::GlobalConfig,
     location::{Location, LocationStatus},
+    multicastgroup::{MulticastGroup, MulticastGroupStatus},
     tunnel::{Tunnel, TunnelStatus, TunnelTunnelType},
     user::{User, UserCYOA, UserStatus, UserType},
 };

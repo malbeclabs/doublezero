@@ -17,11 +17,20 @@ use crate::cli::globalconfig::GlobalConfigCliCommand;
 use crate::cli::location::LocationCliCommand;
 use crate::cli::tunnel::TunnelCliCommand;
 use crate::cli::user::UserCliCommand;
-
 use crate::command::connect::ProvisioningCliCommand;
 use crate::command::disconnect::DecommissioningCliCommand;
 use crate::command::latency::LatencyCliCommand;
 use crate::command::status::StatusCliCommand;
+use clap::Subcommand;
+use doublezero_cli::account::GetAccountCliCommand;
+use doublezero_cli::address::AddressCliCommand;
+use doublezero_cli::balance::BalanceCliCommand;
+use doublezero_cli::export::ExportCliCommand;
+use doublezero_cli::init::InitCliCommand;
+use doublezero_cli::keygen::KeyGenCliCommand;
+use doublezero_cli::log::LogCliCommand;
+
+use super::multicast::MulticastCliCommand;
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
@@ -58,6 +67,8 @@ pub enum Command {
     Tunnel(TunnelCliCommand),
     #[command(about = "Manage users", hide = false)]
     User(UserCliCommand),
+    #[command(about = "Manage multicast", hide = false)]
+    Multicast(MulticastCliCommand),
     #[command(about = "Export all data to files", hide = false)]
     Export(ExportCliCommand),
     #[command(about = "Create a new user identity", hide = false)]

@@ -5,13 +5,13 @@ on:
       - "telemetry/**"
       - "scripts/**"
       - "**/**.md"
-    branches: [ main, feature/* ]
+    branches: [ main ]
   pull_request:
     paths-ignore:
       - "telemetry/**"
       - "scripts/**"
       - "**/**.md"
-    branches: [ main, feature/* ]
+    branches: [ main ]
 
 jobs:
   end-to-end:

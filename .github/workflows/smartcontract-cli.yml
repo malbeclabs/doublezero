@@ -5,13 +5,13 @@ on:
       - "client/doublezero/**"
       - "smartcontract/cli/**"
       - "!**/**.md"
-    branches: [ main, feature/* ]
+    branches: [ main ]
   pull_request:
     paths:
       - "client/doublezero/**"
       - "smartcontract/cli/**"
       - "!**/**.md"
-    branches: [ main, feature/* ]
+    branches: [ main ]
 
 jobs:
   client:

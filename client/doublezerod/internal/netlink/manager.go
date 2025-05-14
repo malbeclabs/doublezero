@@ -13,6 +13,12 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 )
 
+type Provisioner interface {
+	Setup(*ProvisionRequest) error
+	Teardown() error
+	Status() (*StatusResponse, error) // TODO: what do we return here?
+}
+
 type Netlinker interface {
 	TunnelAdd(*routing.Tunnel) error
 	TunnelDelete(*routing.Tunnel) error

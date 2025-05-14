@@ -14,14 +14,16 @@ import (
 type IBRLService struct {
 	bgp netlink.BgpReaderWriter
 	nl  netlink.Netlinker
+	nlm netlink.NetlinkManager
 	db  netlink.DbReaderWriter
 }
 
-func NewIBRLService(bgp netlink.BgpReaderWriter, nl netlink.Netlinker, db netlink.DbReaderWriter) *IBRLService {
+func NewIBRLService(bgp netlink.BgpReaderWriter, nl netlink.Netlinker, nlm netlink.NetlinkManager, db netlink.DbReaderWriter) *IBRLService {
 	return &IBRLService{
 		bgp: bgp,
 		nl:  nl,
 		db:  db,
+		nlm: nlm,
 	}
 }
 
@@ -41,7 +43,7 @@ func (s *IBRLService) CreateTunnel(tun *routing.Tunnel) error {
 
 	// TODO: debug this log
 	slog.Info("tunnel: adding address to tunnel interface", "address", tun.LocalOverlay)
-	err = n.netlink.TunnelAddrAdd(tun, tun.LocalOverlay.String()+"/31")
+	err = s.nl.TunnelAddrAdd(tun, tun.LocalOverlay.String()+"/31")
 	if err != nil {
 		if errors.Is(err, netlink.ErrAddressExists) {
 			slog.Error("tunnel: address already present on tunnel")
@@ -51,7 +53,7 @@ func (s *IBRLService) CreateTunnel(tun *routing.Tunnel) error {
 	}
 
 	slog.Info("tunnel: bringing up tunnel interface")
-	if err = n.netlink.TunnelUp(tun); err != nil {
+	if err = s.nl.TunnelUp(tun); err != nil {
 		return fmt.Errorf("tunnel: error bring up tunnel interface: %v", err)
 	}
 
@@ -72,24 +74,25 @@ func (s *IBRLService) Setup(p *netlink.ProvisionRequest) error {
 		return fmt.Errorf("error creating tunnel interface: %v", err)
 	}
 
-	s.nl.UnicastTunnel = tun
-	n.DoubleZeroAddr = p.DoubleZeroIP
+	// need netlinkmanager?
+	s.nlm.UnicastTunnel = tun
+	s.nlm.DoubleZeroAddr = p.DoubleZeroIP
 
 	// TODO: add flush routes flag; depending on IBRL mode, we may or may not flush routes
 	peer := &bgp.PeerConfig{
-		RemoteAddress: n.UnicastTunnel.RemoteOverlay,
-		LocalAddress:  n.UnicastTunnel.LocalOverlay,
+		RemoteAddress: s.nlm.UnicastTunnel.RemoteOverlay,
+		LocalAddress:  s.nlm.UnicastTunnel.LocalOverlay,
 		LocalAs:       p.BgpLocalAsn,
 		RemoteAs:      p.BgpRemoteAsn,
 		RouteSrc:      p.DoubleZeroIP,
 		RouteTable:    syscall.RT_TABLE_MAIN,
 		FlushRoutes:   flush,
 	}
-	nlri, err := bgp.NewNLRI([]uint32{peer.LocalAs}, n.UnicastTunnel.LocalOverlay.String(), p.DoubleZeroIP.String(), 32)
+	nlri, err := bgp.NewNLRI([]uint32{peer.LocalAs}, s.nlm.UnicastTunnel.LocalOverlay.String(), p.DoubleZeroIP.String(), 32)
 	if err != nil {
 		return fmt.Errorf("error generating bgp nlri: %v", err)
 	}
-	err = n.bgp.AddPeer(peer, []bgp.NLRI{nlri})
+	err = s.bgp.AddPeer(peer, []bgp.NLRI{nlri})
 	if err != nil {
 		if errors.Is(err, bgp.ErrBgpPeerExists) {
 			slog.Error("bgp not added", "peer local address", peer.RemoteAddress, "error", err)

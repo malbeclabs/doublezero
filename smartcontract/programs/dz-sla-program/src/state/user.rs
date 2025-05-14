@@ -134,6 +134,10 @@ pub struct User {
     pub tunnel_id: u16,            // 2
     pub tunnel_net: NetworkV4,     // 5
     pub status: UserStatus,        // 1
+    // TODO: This will be updated properly by Greg
+    // These are just placeholders for now
+    pub publishers: Vec<Pubkey>,
+    pub subscribers: Vec<Pubkey>,
 }
 
 impl fmt::Display for User {
@@ -192,6 +196,8 @@ impl From<&[u8]> for User {
             tunnel_id: parser.read_u16(),
             tunnel_net: parser.read_networkv4(),
             status: parser.read_enum(),
+            publishers: parser.read_pubkey_vec(),
+            subscribers: parser.read_pubkey_vec(),
         }
     }
 }
@@ -216,6 +222,8 @@ mod tests {
             tunnel_id: 0,
             tunnel_net: networkv4_parse(&"10.0.0.1/25".to_string()),
             status: UserStatus::Activated,
+            publishers: vec![],
+            subscribers: vec![],
         };
 
         let data = borsh::to_vec(&val).unwrap();

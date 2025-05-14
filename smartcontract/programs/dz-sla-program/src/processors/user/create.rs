@@ -104,6 +104,8 @@ pub fn process_create_user(
         tunnel_id: 0,
         tunnel_net: ([0, 0, 0, 0], 0),
         status: UserStatus::Pending,
+        publishers: vec![],
+        subscribers: vec![],
     };
 
     account_create(

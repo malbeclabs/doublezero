@@ -37,6 +37,11 @@ use crate::{
 
 pub type DeviceMap = HashMap<Pubkey, DeviceState>;
 
+type Exchanges = HashMap<Pubkey, Exchange>;
+type Locations = HashMap<Pubkey, Location>;
+type MulticastGroups = HashMap<Pubkey, MulticastGroup>;
+type StateTransitions = HashMap<&'static str, usize>;
+
 pub struct Activator {
     pub client: DZClient,
 
@@ -46,11 +51,11 @@ pub struct Activator {
     pub user_tunnel_ips: IPBlockAllocator,
     pub devices: DeviceMap,
 
-    locations: HashMap<Pubkey, Location>,
-    exchanges: HashMap<Pubkey, Exchange>,
-    multicastgroups: HashMap<Pubkey, MulticastGroup>,
+    locations: Locations,
+    exchanges: Exchanges,
+    multicastgroups: MulticastGroups,
     metrics: ActivatorMetrics,
-    state_transitions: HashMap<&'static str, usize>,
+    state_transitions: StateTransitions,
 }
 
 impl Activator {
@@ -213,6 +218,7 @@ impl Activator {
                             tunnel_tunnel_ids,
                             user,
                             state_transitions,
+                            &multicastgroups,
                         );
                     }
                     AccountData::Location(location) => {
@@ -397,7 +403,8 @@ fn process_user_event(
     user_tunnel_ips: &mut IPBlockAllocator,
     tunnel_tunnel_ids: &mut IDAllocator,
     user: &User,
-    state_transitions: &mut HashMap<&'static str, usize>,
+    state_transitions: &mut StateTransitions,
+    multicastgroups: &MulticastGroups,
 ) {
     match user.status {
         // Create User
@@ -449,7 +456,26 @@ fn process_user_event(
                                     tunnel_id = device_state.get_next_tunnel_id().unwrap();
                                     dz_ip = user.client_ip;
                                 }
-                                UserType::Multicast => {}
+                                UserType::Multicast => {
+                                    // NOTE:
+                                    // - Check whether this user is in publishers
+                                    // - If so, assign them a tunnel_id and dz_ip
+                                    for pk in user.publishers.iter() {
+                                        // NOTE: This pk belongs to a multicast group, Use it in some way?
+                                        if let Some(multicastgroup) = multicastgroups.get(pk) {
+                                            // XXX: Do some validation checks here?
+                                            // - Ensure that the user is not already in this mcast group
+                                            if !multicastgroup.publishers.contains(&user.owner) {
+                                                if let Some((xtunnel_id, xdz_ip)) =
+                                                    device_state.get_next()
+                                                {
+                                                    tunnel_id = xtunnel_id;
+                                                    dz_ip = xdz_ip;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
 
                             if tunnel_id == 0 {
@@ -700,7 +726,7 @@ mod tests {
         state::globalstate::GlobalState,
     };
     use mockall::{predicate, Sequence};
-    use solana_sdk::signature::Signature;
+    use solana_sdk::{blake3::Hash, signature::Signature};
 
     use super::*;
 
@@ -1027,6 +1053,9 @@ mod tests {
         let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
         let mut client = create_test_client();
 
+        // TODO: Do something more
+        let mut multicastgroups = HashMap::new();
+
         let device_pubkey = Pubkey::new_unique();
         let device = Device {
             account_type: AccountType::Device,
@@ -1088,6 +1117,7 @@ mod tests {
             &mut tunnel_tunnel_ids,
             &user,
             &mut state_transitions,
+            &multicastgroups,
         );
 
         assert!(user_tunnel_ips.assigned_ips.len() > 0);
@@ -1124,6 +1154,9 @@ mod tests {
         let mut user_tunnel_ips = IPBlockAllocator::new(([10, 0, 0, 0], 32));
         let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
         let mut client = create_test_client();
+
+        // TODO: Do something more
+        let mut multicastgroups = HashMap::new();
 
         let device_pubkey = Pubkey::new_unique();
 
@@ -1177,6 +1210,7 @@ mod tests {
             &mut tunnel_tunnel_ids,
             &user,
             &mut state_transitions,
+            &multicastgroups,
         );
 
         assert_eq!(state_transitions.len(), 1);
@@ -1189,6 +1223,9 @@ mod tests {
         let mut user_tunnel_ips = IPBlockAllocator::new(([10, 0, 0, 0], 32));
         let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
         let mut client = create_test_client();
+
+        // TODO: Do something more
+        let mut multicastgroups = HashMap::new();
 
         let device_pubkey = Pubkey::new_unique();
         let device = Device {
@@ -1256,6 +1293,7 @@ mod tests {
             &mut tunnel_tunnel_ids,
             &user,
             &mut state_transitions,
+            &multicastgroups,
         );
 
         assert_eq!(state_transitions.len(), 1);
@@ -1268,6 +1306,9 @@ mod tests {
         let mut user_tunnel_ips = IPBlockAllocator::new(([10, 0, 0, 0], 32));
         let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
         let mut client = create_test_client();
+
+        // TODO: Do something more
+        let mut multicastgroups = HashMap::new();
 
         // eat a blocok
         let _ = user_tunnel_ips.next_available_block(0, 2);
@@ -1332,6 +1373,7 @@ mod tests {
             &mut tunnel_tunnel_ids,
             &user,
             &mut state_transitions,
+            &multicastgroups,
         );
 
         assert_eq!(state_transitions.len(), 1);
@@ -1352,6 +1394,9 @@ mod tests {
         let mut user_tunnel_ips = IPBlockAllocator::new(([10, 0, 0, 0], 16));
         let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
         let mut client = create_test_client();
+
+        // TODO: Do something more
+        let mut multicastgroups = HashMap::new();
 
         let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
 
@@ -1400,6 +1445,7 @@ mod tests {
             &mut tunnel_tunnel_ids,
             &user,
             &mut state_transitions,
+            &multicastgroups,
         );
 
         assert!(!tunnel_tunnel_ids.assigned.contains(&102));

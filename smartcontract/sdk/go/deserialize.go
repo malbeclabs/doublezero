@@ -90,3 +90,17 @@ func DeserializeUser(reader *ByteReader, user *User) {
 	user.Status = UserStatus(reader.ReadU8())
 	user.PubKey = reader.ReadPubkey()
 }
+
+func DeserializeMulticastGroup(reader *ByteReader, multicastgroup *MulticastGroup) {
+	multicastgroup.AccountType = AccountType(reader.ReadU8())
+	multicastgroup.Owner = reader.ReadPubkey()
+	multicastgroup.Index = reader.ReadU128()
+	multicastgroup.Bump_seed = reader.ReadU8()
+	multicastgroup.TenantPubKey = reader.ReadPubkey()
+	multicastgroup.MulticastIp = reader.ReadIPv4()
+	multicastgroup.MaxBandwidth = reader.ReadU64()
+	multicastgroup.Publishers = reader.ReadPubkeySlice()
+	multicastgroup.Subscribers = reader.ReadPubkeySlice()
+	multicastgroup.Status = MulticastGroupStatus(reader.ReadU8())
+	multicastgroup.PubKey = reader.ReadPubkey()
+}

@@ -24,12 +24,18 @@ use crate::{
             update::process_update_exchange,
         },
         globalconfig::set::process_set_globalconfig,
-        globalstate::close::process_close_account,
-        globalstate::initialize::initialize_global_state,
+        globalstate::{close::process_close_account, initialize::initialize_global_state},
         location::{
             create::process_create_location, delete::process_delete_location,
             resume::process_resume_location, suspend::process_suspend_location,
             update::process_update_location,
+        },
+        multicastgroup::{
+            activate::process_activate_multicastgroup, create::process_create_multicastgroup,
+            deactivate::process_deactivate_multicastgroup, delete::process_delete_multicastgroup,
+            reactivate::process_reactivate_multicastgroup, reject::process_reject_multicastgroup,
+            subscribe::process_subscribe_multicastgroup, suspend::process_suspend_multicastgroup,
+            unsubscribe::process_unsubscribe_multicastgroup, update::process_update_multicastgroup,
         },
         tunnel::{
             activate::process_activate_tunnel, closeaccount::process_closeaccount_tunnel,
@@ -198,6 +204,37 @@ pub fn process_instruction(
             process_request_ban_user(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::BanUser(value) => process_ban_user(program_id, accounts, &value)?,
+
+        DoubleZeroInstruction::CreateMulticastGroup(value) => {
+            process_create_multicastgroup(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::DeleteMulticastGroup(value) => {
+            process_delete_multicastgroup(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::SuspendMulticastGroup(value) => {
+            process_suspend_multicastgroup(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::ReactivateMulticastGroup(value) => {
+            process_reactivate_multicastgroup(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::ActivateMulticastGroup(value) => {
+            process_activate_multicastgroup(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::RejectMulticastGroup(value) => {
+            process_reject_multicastgroup(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::UpdateMulticastGroup(value) => {
+            process_update_multicastgroup(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::DeactivateMulticastGroup(value) => {
+            process_deactivate_multicastgroup(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::SubscribeMulticastGroup(value) => {
+            process_subscribe_multicastgroup(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::UnsubscribeMulticastGroup(value) => {
+            process_unsubscribe_multicastgroup(program_id, accounts, &value)?
+        }
     };
     Ok(())
 }

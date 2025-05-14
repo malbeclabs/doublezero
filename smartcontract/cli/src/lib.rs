@@ -13,6 +13,7 @@ pub mod init;
 pub mod keygen;
 pub mod location;
 pub mod log;
+pub mod multicastgroup;
 pub mod requirements;
 pub mod serializer;
 pub mod subscribe;

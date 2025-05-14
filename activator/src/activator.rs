@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use doublezero_sdk::GetGlobalConfigCommand;
 use doublezero_sdk::{
     commands::{
         device::{
@@ -9,6 +8,9 @@ use doublezero_sdk::{
         },
         exchange::list::ListExchangeCommand,
         location::list::ListLocationCommand,
+        multicastgroup::{
+            activate::ActivateMulticastGroupCommand, deactivate::DeactivateMulticastGroupCommand,
+        },
         tunnel::{
             activate::ActivateTunnelCommand, closeaccount::CloseAccountTunnelCommand,
             list::ListTunnelCommand, reject::RejectTunnelCommand,
@@ -20,9 +22,10 @@ use doublezero_sdk::{
         },
     },
     ipv4_to_string, networkv4_list_to_string, networkv4_to_string, AccountData, DZClient, Device,
-    DeviceStatus, DoubleZeroClient, Exchange, IpV4, Location, Tunnel, TunnelStatus, User,
-    UserStatus, UserType,
+    DeviceStatus, DoubleZeroClient, Exchange, IpV4, Location, MulticastGroupStatus, Tunnel,
+    TunnelStatus, User, UserStatus, UserType,
 };
+use doublezero_sdk::{GetGlobalConfigCommand, MulticastGroup};
 use solana_sdk::pubkey::Pubkey;
 use std::thread;
 use std::time::Duration;
@@ -46,6 +49,7 @@ pub struct Activator {
 
     locations: HashMap<Pubkey, Location>,
     exchanges: HashMap<Pubkey, Exchange>,
+    multicastgroups: HashMap<Pubkey, MulticastGroup>,
     metrics: ActivatorMetrics,
     state_transitions: HashMap<&'static str, usize>,
 }
@@ -89,6 +93,7 @@ impl Activator {
             metrics: ActivatorMetrics::new(metrics_service),
             locations: HashMap::new(),
             exchanges: HashMap::new(),
+            multicastgroups: HashMap::new(),
             state_transitions: HashMap::new(),
         })
     }
@@ -159,19 +164,17 @@ impl Activator {
             );
 
             if device.tunnel_ids.assigned.is_empty() {
-                print!("-,")
+                print!("-,");
             }
-            device
-                .tunnel_ids
-                .assigned
-                .iter()
-                .for_each(|tunnel_id| print!("{},", tunnel_id));
+            device.tunnel_ids.assigned.iter().for_each(|tunnel_id| {
+                print!("{},", tunnel_id);
+            });
             println!("\x08 ");
         });
 
         print!("tunnel_net: {} assigned: ", self.user_tunnel_ips.base_block);
         if self.user_tunnel_ips.assigned_ips.is_empty() {
-            print!("-,")
+            print!("-,");
         }
         self.user_tunnel_ips.print_assigned_ips();
         println!("\x08 ");
@@ -184,6 +187,7 @@ impl Activator {
         let metrics = &self.metrics;
         let locations = &mut self.locations;
         let exchanges = &mut self.exchanges;
+        let multicastgroups = &mut self.multicastgroups;
         let state_transitions = &mut self.state_transitions;
 
         self.client
@@ -217,6 +221,15 @@ impl Activator {
                     }
                     AccountData::Exchange(exchange) => {
                         process_exchange_event(pubkey, exchanges, exchange);
+                    }
+                    AccountData::MulticastGroup(multicastgroup) => {
+                        process_multicastgroup_event(
+                            client,
+                            pubkey,
+                            multicastgroups,
+                            multicastgroup,
+                            state_transitions,
+                        );
                     }
                     _ => {}
                 };
@@ -600,6 +613,66 @@ fn process_exchange_event(
     exchange: &Exchange,
 ) {
     exchanges.insert(*pubkey, exchange.clone());
+}
+
+fn process_multicastgroup_event(
+    client: &dyn DoubleZeroClient,
+    pubkey: &Pubkey,
+    multicastgroups: &mut HashMap<Pubkey, MulticastGroup>,
+    multicastgroup: &MulticastGroup,
+    state_transitions: &mut HashMap<&'static str, usize>,
+) {
+    match multicastgroup.status {
+        MulticastGroupStatus::Pending => {
+            print!("New MulticastGroup {} ", multicastgroup.code);
+
+            let res = ActivateMulticastGroupCommand {
+                index: multicastgroup.index,
+            }
+            .execute(client);
+
+            match res {
+                Ok(signature) => {
+                    println!("Activated {}", signature);
+
+                    println!("Add MulticastGroup: {} ", multicastgroup.code,);
+                    multicastgroups.insert(*pubkey, multicastgroup.clone());
+                    *state_transitions
+                        .entry("multicastgroup-pending-to-activated")
+                        .or_insert(0) += 1;
+                }
+                Err(e) => println!("Error: {}", e),
+            }
+        }
+        MulticastGroupStatus::Activated => {
+            if !multicastgroups.contains_key(pubkey) {
+                println!("Add MulticastGroup: {} ", multicastgroup.code,);
+
+                multicastgroups.insert(*pubkey, multicastgroup.clone());
+            }
+        }
+        MulticastGroupStatus::Deleting => {
+            print!("Deleting MulticastGroup {} ", multicastgroup.code);
+
+            let res = DeactivateMulticastGroupCommand {
+                index: multicastgroup.index,
+                owner: multicastgroup.owner,
+            }
+            .execute(client);
+
+            match res {
+                Ok(signature) => {
+                    println!("Deactivated {}", signature);
+                    multicastgroups.remove(pubkey);
+                    *state_transitions
+                        .entry("multicastgroup-deleting-to-deactivated")
+                        .or_insert(0) += 1;
+                }
+                Err(e) => println!("Error: {}", e),
+            }
+        }
+        _ => {}
+    }
 }
 
 #[cfg(test)]

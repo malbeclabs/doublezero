@@ -23,6 +23,13 @@ use doublezero_sdk::commands::location::{
     create::CreateLocationCommand, delete::DeleteLocationCommand, get::GetLocationCommand,
     list::ListLocationCommand, update::UpdateLocationCommand,
 };
+use doublezero_sdk::commands::multicastgroup::{
+    activate::ActivateMulticastGroupCommand, create::CreateMulticastGroupCommand,
+    deactivate::DeactivateMulticastGroupCommand, delete::DeleteMulticastGroupCommand,
+    get::GetMulticastGroupCommand, list::ListMulticastGroupCommand,
+    reject::RejectMulticastGroupCommand, subscribe::SubscribeMulticastGroupCommand,
+    unsubscribe::UnsubscribeMulticastGroupCommand, update::UpdateMulticastGroupCommand,
+};
 use doublezero_sdk::commands::tunnel::activate::ActivateTunnelCommand;
 use doublezero_sdk::commands::tunnel::{
     create::CreateTunnelCommand, deactivate::DeactivateTunnelCommand, delete::DeleteTunnelCommand,
@@ -34,6 +41,7 @@ use doublezero_sdk::commands::user::{
     create::CreateUserCommand, delete::DeleteUserCommand, get::GetUserCommand,
     list::ListUserCommand, update::UpdateUserCommand,
 };
+use doublezero_sdk::MulticastGroup;
 use doublezero_sdk::{
     DZClient, Device, DoubleZeroClient, Exchange, GetGlobalConfigCommand, GlobalConfig, Location,
     Tunnel, User,
@@ -113,6 +121,38 @@ pub trait CliCommand {
         -> eyre::Result<Signature>;
     fn add_user_allowlist(&self, cmd: AddUserAllowlistCommand) -> eyre::Result<Signature>;
     fn remove_user_allowlist(&self, cmd: RemoveUserAllowlistCommand) -> eyre::Result<Signature>;
+
+    fn create_multicastgroup(
+        &self,
+        cmd: CreateMulticastGroupCommand,
+    ) -> eyre::Result<(Signature, Pubkey)>;
+    fn get_multicastgroup(
+        &self,
+        cmd: GetMulticastGroupCommand,
+    ) -> eyre::Result<(Pubkey, MulticastGroup)>;
+    fn list_multicastgroup(
+        &self,
+        cmd: ListMulticastGroupCommand,
+    ) -> eyre::Result<HashMap<Pubkey, MulticastGroup>>;
+    fn update_multicastgroup(&self, cmd: UpdateMulticastGroupCommand) -> eyre::Result<Signature>;
+    fn delete_multicastgroup(&self, cmd: DeleteMulticastGroupCommand) -> eyre::Result<Signature>;
+    fn activate_multicastgroup(
+        &self,
+        cmd: ActivateMulticastGroupCommand,
+    ) -> eyre::Result<Signature>;
+    fn reject_multicastgroup(&self, cmd: RejectMulticastGroupCommand) -> eyre::Result<Signature>;
+    fn deactivate_multicastgroup(
+        &self,
+        cmd: DeactivateMulticastGroupCommand,
+    ) -> eyre::Result<Signature>;
+    fn subscribe_multicastgroup(
+        &self,
+        cmd: SubscribeMulticastGroupCommand,
+    ) -> eyre::Result<Signature>;
+    fn unsubscribe_multicastgroup(
+        &self,
+        cmd: UnsubscribeMulticastGroupCommand,
+    ) -> eyre::Result<Signature>;
 }
 
 pub struct CliCommandImpl<'a> {
@@ -290,6 +330,57 @@ impl CliCommand for CliCommandImpl<'_> {
         cmd.execute(self.client)
     }
     fn remove_user_allowlist(&self, cmd: RemoveUserAllowlistCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn create_multicastgroup(
+        &self,
+        cmd: CreateMulticastGroupCommand,
+    ) -> eyre::Result<(Signature, Pubkey)> {
+        cmd.execute(self.client)
+    }
+    fn get_multicastgroup(
+        &self,
+        cmd: GetMulticastGroupCommand,
+    ) -> eyre::Result<(Pubkey, MulticastGroup)> {
+        cmd.execute(self.client)
+    }
+    fn list_multicastgroup(
+        &self,
+        cmd: ListMulticastGroupCommand,
+    ) -> eyre::Result<HashMap<Pubkey, MulticastGroup>> {
+        cmd.execute(self.client)
+    }
+    fn update_multicastgroup(&self, cmd: UpdateMulticastGroupCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn delete_multicastgroup(&self, cmd: DeleteMulticastGroupCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn activate_multicastgroup(
+        &self,
+        cmd: ActivateMulticastGroupCommand,
+    ) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn reject_multicastgroup(&self, cmd: RejectMulticastGroupCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn deactivate_multicastgroup(
+        &self,
+        cmd: DeactivateMulticastGroupCommand,
+    ) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn subscribe_multicastgroup(
+        &self,
+        cmd: SubscribeMulticastGroupCommand,
+    ) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn unsubscribe_multicastgroup(
+        &self,
+        cmd: UnsubscribeMulticastGroupCommand,
+    ) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
 }

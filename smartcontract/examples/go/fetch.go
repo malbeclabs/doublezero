@@ -14,7 +14,7 @@ func main() {
 
 	fmt.Println("Fetching data from the smart contract...")
 
-	c := dzsdk.New(rpc.DevNet_RPC, dzsdk.WithProgramId(dzsdk.PROGRAM_ID_DEVNET))
+	c := dzsdk.New(rpc.LocalNet_RPC, dzsdk.WithProgramId("7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX"))
 	// c := dzsdk.New(rpc.DevNet_RPC, dzsdk.WithProgramId(dzsdk.PROGRAM_ID_TESTNET))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

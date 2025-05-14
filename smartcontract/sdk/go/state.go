@@ -10,6 +10,7 @@ const (
 	DeviceType
 	TunnelType
 	UserType
+	MulticastGroupType
 )
 
 type LocationStatus uint8
@@ -22,8 +23,8 @@ const (
 )
 
 type Uint128 struct {
-	High uint64 // Parte alta del número
-	Low  uint64 // Parte baja del número
+	High uint64
+	Low  uint64
 }
 
 type Config struct {
@@ -175,5 +176,29 @@ type User struct {
 	TunnelId     uint16
 	TunnelNet    [5]uint8
 	Status       UserStatus
+	PubKey       [32]byte
+}
+
+type MulticastGroupStatus uint8
+
+const (
+	MulticastGroupStatusPending MulticastGroupStatus = iota
+	MulticastGroupStatusActivated
+	MulticastGroupStatusSuspended
+	MulticastGroupStatusDeleted
+)
+
+type MulticastGroup struct {
+	AccountType  AccountType
+	Owner        [32]uint8
+	Index        Uint128
+	Bump_seed    uint8
+	TenantPubKey [32]uint8
+	MulticastIp  [4]uint8
+	MaxBandwidth uint64
+	Publishers   [][32]uint8
+	Subscribers  [][32]uint8
+	Status       MulticastGroupStatus
+	Code         string
 	PubKey       [32]byte
 }

@@ -111,6 +111,9 @@ echo "Creating users"
 ./target/doublezero user create --device ld4-dz01 --client-ip 10.0.0.3
 ./target/doublezero user create --device ld4-dz01 --client-ip 10.0.0.4
 
+echo "Creating multicast groups"
+./target/doublezero multicast group create --code jito --multicast-ip 239.0.0.1 --max-bandwidth 1Gbps --owner me
+
 echo "########################################################################"
 
 

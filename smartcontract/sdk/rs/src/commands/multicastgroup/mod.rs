@@ -8,5 +8,4 @@ pub mod reactivate;
 pub mod reject;
 pub mod subscribe;
 pub mod suspend;
-pub mod unsubscribe;
 pub mod update;

@@ -4,91 +4,66 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"syscall"
 
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
-	"github.com/malbeclabs/doublezero/client/doublezerod/internal/netlink"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 )
 
 type IBRLService struct {
-	bgp netlink.BgpReaderWriter
-	nl  netlink.Netlinker
-	nlm netlink.NetlinkManager
-	db  netlink.DbReaderWriter
+	bgp            bgpReaderWriter
+	nl             routing.Netlinker
+	db             dbReaderWriter
+	Tunnel         *routing.Tunnel
+	DoubleZeroAddr net.IP
 }
 
-func NewIBRLService(bgp netlink.BgpReaderWriter, nl netlink.Netlinker, nlm netlink.NetlinkManager, db netlink.DbReaderWriter) *IBRLService {
+func (s *IBRLService) UserType() api.UserType   { return api.UserTypeIBRL }
+func (s *IBRLService) ServiceType() ServiceType { return ServiceTypeUnicast }
+
+func NewIBRLService(bgp bgpReaderWriter, nl routing.Netlinker, db dbReaderWriter) *IBRLService {
 	return &IBRLService{
 		bgp: bgp,
 		nl:  nl,
 		db:  db,
-		nlm: nlm,
 	}
 }
 
-func (s *IBRLService) CreateTunnel(tun *routing.Tunnel) error {
-	if tun.LocalOverlay == nil {
-		return fmt.Errorf("missing tunnel local overlay addressing")
-	}
-
-	err := s.nl.TunnelAdd(tun)
-	if err != nil {
-		if errors.Is(err, netlink.ErrTunnelExists) {
-			slog.Error("tunnel: tunnel already exists", "tunnel", tun.Name)
-		} else {
-			return fmt.Errorf("tunnel: could not add tunnel interface: %v", err)
-		}
-	}
-
-	// TODO: debug this log
-	slog.Info("tunnel: adding address to tunnel interface", "address", tun.LocalOverlay)
-	err = s.nl.TunnelAddrAdd(tun, tun.LocalOverlay.String()+"/31")
-	if err != nil {
-		if errors.Is(err, netlink.ErrAddressExists) {
-			slog.Error("tunnel: address already present on tunnel")
-		} else {
-			return fmt.Errorf("error adding addressing to tunnel: %v", err)
-		}
-	}
-
-	slog.Info("tunnel: bringing up tunnel interface")
-	if err = s.nl.TunnelUp(tun); err != nil {
-		return fmt.Errorf("tunnel: error bring up tunnel interface: %v", err)
-	}
-
-	return nil
-
-}
-func (s *IBRLService) Setup(p *netlink.ProvisionRequest) error {
-
+func (s *IBRLService) Setup(p *api.ProvisionRequest) error {
 	tun, err := routing.NewTunnel(p.TunnelSrc, p.TunnelDst, p.TunnelNet.String())
 	if err != nil {
 		return fmt.Errorf("error generating new tunnel: %v", err)
 	}
 
 	flush := true
-	err = s.CreateTunnel(tun)
-
+	switch p.UserType {
+	case api.UserTypeIBRL:
+		err = createBaseTunnel(s.nl, tun)
+	case api.UserTypeIBRLWithAllocatedIP:
+		err = createTunnelWithIP(s.nl, tun, p.DoubleZeroIP)
+		flush = false
+	default:
+		return fmt.Errorf("unsupported tunnel type: %v\n", p)
+	}
 	if err != nil {
 		return fmt.Errorf("error creating tunnel interface: %v", err)
 	}
 
-	// need netlinkmanager?
-	s.nlm.UnicastTunnel = tun
-	s.nlm.DoubleZeroAddr = p.DoubleZeroIP
+	s.Tunnel = tun
+	s.DoubleZeroAddr = p.DoubleZeroIP
 
-	// TODO: add flush routes flag; depending on IBRL mode, we may or may not flush routes
 	peer := &bgp.PeerConfig{
-		RemoteAddress: s.nlm.UnicastTunnel.RemoteOverlay,
-		LocalAddress:  s.nlm.UnicastTunnel.LocalOverlay,
+		RemoteAddress: s.Tunnel.RemoteOverlay,
+		LocalAddress:  s.Tunnel.LocalOverlay,
 		LocalAs:       p.BgpLocalAsn,
 		RemoteAs:      p.BgpRemoteAsn,
 		RouteSrc:      p.DoubleZeroIP,
 		RouteTable:    syscall.RT_TABLE_MAIN,
 		FlushRoutes:   flush,
 	}
-	nlri, err := bgp.NewNLRI([]uint32{peer.LocalAs}, s.nlm.UnicastTunnel.LocalOverlay.String(), p.DoubleZeroIP.String(), 32)
+	nlri, err := bgp.NewNLRI([]uint32{peer.LocalAs}, s.Tunnel.LocalOverlay.String(), p.DoubleZeroIP.String(), 32)
 	if err != nil {
 		return fmt.Errorf("error generating bgp nlri: %v", err)
 	}
@@ -105,6 +80,62 @@ func (s *IBRLService) Setup(p *netlink.ProvisionRequest) error {
 
 }
 
-func (s *IBRLService) Teardown() error { return nil }
+func (s *IBRLService) Teardown() error {
+	var errRemoveTunnel, errRemovePeer error
+	if s.Tunnel == nil {
+		return nil
+	}
 
-func (s *IBRLService) Status() (*netlink.StatusResponse, error) { return nil, nil }
+	err := s.bgp.DeletePeer(s.Tunnel.RemoteOverlay)
+	if errors.Is(err, bgp.ErrBgpPeerNotExists) {
+		slog.Error("bgp: peer does not exist", "peer tunnel", s.Tunnel.RemoteOverlay)
+	} else if err != nil {
+		errRemovePeer = fmt.Errorf("bgp: error while deleting peer: %v", err)
+	}
+
+	slog.Info("teardown: removing tunnel interface")
+	if err := s.nl.TunnelDelete(s.Tunnel); err != nil {
+		errRemoveTunnel = fmt.Errorf("error removing tunnel interface: %v", err)
+	}
+
+	return errors.Join(errRemoveTunnel, errRemovePeer)
+}
+
+func (s *IBRLService) Status() (*api.StatusResponse, error) {
+	state := s.db.GetState(s.UserType())
+	if state == nil {
+		return nil, nil
+	}
+
+	if s.Tunnel == nil {
+		return nil, fmt.Errorf("netlink: saved state is not programmed into client")
+	}
+
+	peerStatus := s.bgp.GetPeerStatus(s.Tunnel.RemoteOverlay)
+	return &api.StatusResponse{
+		TunnelName:       s.Tunnel.Name,
+		TunnelSrc:        s.Tunnel.LocalUnderlay,
+		TunnelDst:        s.Tunnel.RemoteUnderlay,
+		DoubleZeroIP:     s.DoubleZeroAddr,
+		DoubleZeroStatus: peerStatus,
+	}, nil
+}
+
+type IBRLServiceWithAllocatedAddress struct {
+	IBRLService
+}
+
+func NewIBRLServiceWithAllocatedAddress(bgp bgpReaderWriter, nl routing.Netlinker, db dbReaderWriter) *IBRLServiceWithAllocatedAddress {
+	return &IBRLServiceWithAllocatedAddress{
+		IBRLService: IBRLService{
+			bgp: bgp,
+			nl:  nl,
+			db:  db,
+		},
+	}
+}
+
+func (s *IBRLServiceWithAllocatedAddress) UserType() api.UserType {
+	return api.UserTypeIBRLWithAllocatedIP
+}
+func (s *IBRLServiceWithAllocatedAddress) ServiceType() ServiceType { return ServiceTypeUnicast }

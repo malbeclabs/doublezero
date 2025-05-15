@@ -1,4 +1,4 @@
-package netlink
+package manager
 
 import (
 	"bytes"
@@ -8,7 +8,10 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sync"
+
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 )
 
 var (
@@ -16,7 +19,7 @@ var (
 )
 
 type Db struct {
-	State []*ProvisionRequest
+	State []*api.ProvisionRequest
 	Path  string
 	mu    sync.Mutex
 }
@@ -57,9 +60,9 @@ func NewDb() (*Db, error) {
 			return nil, fmt.Errorf("db file is in an invalid format: %s", path)
 		}
 
-		var p []*ProvisionRequest
+		var p []*api.ProvisionRequest
 		if oldConfig {
-			deprecatedDbStyle := ProvisionRequest{}
+			deprecatedDbStyle := api.ProvisionRequest{}
 			if err := json.Unmarshal(file, &deprecatedDbStyle); err != nil {
 				return nil, fmt.Errorf("error unmarshaling db file: %v", err)
 			}
@@ -86,15 +89,27 @@ func NewDb() (*Db, error) {
 }
 
 // GetState returns the latest provisioned state
-func (d *Db) GetState() []*ProvisionRequest {
+func (d *Db) GetState(userTypes ...api.UserType) []*api.ProvisionRequest {
+	var dbState []*api.ProvisionRequest
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return d.State
+	// return the entire state
+	if len(userTypes) == 0 {
+		return d.State
+	}
+	for i, state := range d.State {
+		for _, userType := range userTypes {
+			if state.UserType == userType {
+				dbState = append(dbState, d.State[i])
+			}
+		}
+	}
+	return dbState
 }
 
 // TODO: this needs to be implemented once the remove endpoint is added
 // Delete removes the latest provisioned state from disk
-func (d *Db) DeleteState() error {
+func (d *Db) DeleteState(u api.UserType) error {
 	if _, err := os.Stat(d.Path); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			// nothing to delete
@@ -102,17 +117,37 @@ func (d *Db) DeleteState() error {
 		}
 		return fmt.Errorf("error checking for state file: %v", err)
 	}
-	if err := os.Remove(d.Path); err != nil {
-		return fmt.Errorf("error delete state file: %v", err)
-	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.State = nil
+	file, err := os.ReadFile(d.Path)
+	if err != nil {
+		return fmt.Errorf("error reading db file: %v", err)
+	}
+	var p []*api.ProvisionRequest
+	if err := json.Unmarshal(file, &p); err != nil {
+		return fmt.Errorf("error unmarshaling db file: %v", err)
+	}
+	for i, _ := range p {
+		if p[i].UserType == u {
+			p = slices.Delete(p, i, i+1)
+			break
+		}
+	}
+
+	d.State = p
+	buf, err := json.MarshalIndent(d.State, "", "    ")
+	if err != nil {
+		return fmt.Errorf("error marshalling state: %v", err)
+	}
+	buf = append(buf, []byte("\n")...)
+	if err = WriteFile(d.Path, buf, 0666); err != nil {
+		return fmt.Errorf("error writing state file: %v", err)
+	}
 	return nil
 }
 
 // Save writes the latest provisioned state to disk
-func (d *Db) SaveState(p *ProvisionRequest) error {
+func (d *Db) SaveState(p *api.ProvisionRequest) error {
 	if p == nil {
 		return fmt.Errorf("provision request is nil")
 	}

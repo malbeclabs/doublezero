@@ -1,4 +1,4 @@
-package netlink_test
+package manager_test
 
 import (
 	"log"
@@ -8,7 +8,8 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/malbeclabs/doublezero/client/doublezerod/internal/netlink"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/manager"
 )
 
 func TestDbNew(t *testing.T) {
@@ -16,7 +17,7 @@ func TestDbNew(t *testing.T) {
 		name          string
 		setupStateDir bool
 		goldenFile    string
-		state         []*netlink.ProvisionRequest
+		state         []*api.ProvisionRequest
 		expectError   bool
 	}{
 		{
@@ -29,7 +30,7 @@ func TestDbNew(t *testing.T) {
 			name:          "read_edgefiltering_state_file",
 			setupStateDir: true,
 			goldenFile:    "./fixtures/doublezerod.edgefiltering.json",
-			state: []*netlink.ProvisionRequest{
+			state: []*api.ProvisionRequest{
 				{
 					TunnelSrc:    net.IP{1, 1, 1, 1},
 					TunnelDst:    net.IP{2, 2, 2, 2},
@@ -40,7 +41,7 @@ func TestDbNew(t *testing.T) {
 					},
 					BgpLocalAsn:  65000,
 					BgpRemoteAsn: 65001,
-					UserType:     netlink.UserTypeEdgeFiltering,
+					UserType:     api.UserTypeEdgeFiltering,
 				},
 			},
 			expectError: false,
@@ -49,7 +50,7 @@ func TestDbNew(t *testing.T) {
 			name:          "read_ibrl_state_file",
 			setupStateDir: true,
 			goldenFile:    "./fixtures/doublezerod.ibrl.json",
-			state: []*netlink.ProvisionRequest{
+			state: []*api.ProvisionRequest{
 				{
 					TunnelSrc:          net.IP{1, 1, 1, 1},
 					TunnelDst:          net.IP{2, 2, 2, 2},
@@ -58,7 +59,7 @@ func TestDbNew(t *testing.T) {
 					DoubleZeroPrefixes: nil,
 					BgpLocalAsn:        65000,
 					BgpRemoteAsn:       65001,
-					UserType:           netlink.UserTypeIBRL,
+					UserType:           api.UserTypeIBRL,
 				},
 			},
 			expectError: false,
@@ -74,7 +75,7 @@ func TestDbNew(t *testing.T) {
 			name:          "read_old_style_state_file",
 			setupStateDir: true,
 			goldenFile:    "./fixtures/doublezerod.old.style.json",
-			state: []*netlink.ProvisionRequest{
+			state: []*api.ProvisionRequest{
 				{
 					TunnelSrc:          net.IP{1, 1, 1, 1},
 					TunnelDst:          net.IP{2, 2, 2, 2},
@@ -83,7 +84,7 @@ func TestDbNew(t *testing.T) {
 					DoubleZeroPrefixes: nil,
 					BgpLocalAsn:        65000,
 					BgpRemoteAsn:       65001,
-					UserType:           netlink.UserTypeIBRL,
+					UserType:           api.UserTypeIBRL,
 				},
 			},
 			expectError: false,
@@ -118,7 +119,7 @@ func TestDbNew(t *testing.T) {
 				}
 			}
 
-			db, err := netlink.NewDb()
+			db, err := manager.NewDb()
 			if test.expectError && err == nil {
 				t.Fatalf("expected error but got none")
 			}
@@ -142,18 +143,18 @@ func TestDbNew(t *testing.T) {
 func TestDbSaveState(t *testing.T) {
 	tests := []struct {
 		name        string
-		state       []*netlink.ProvisionRequest
+		state       []*api.ProvisionRequest
 		goldenFile  string
 		expectError bool
 	}{
 		{
 			name:        "provision_request_is_nil",
-			state:       []*netlink.ProvisionRequest{nil},
+			state:       []*api.ProvisionRequest{nil},
 			expectError: true,
 		},
 		{
 			name: "save_edgefiltering_state_successfully",
-			state: []*netlink.ProvisionRequest{
+			state: []*api.ProvisionRequest{
 				{
 					TunnelSrc:    net.IP{1, 1, 1, 1},
 					TunnelDst:    net.IP{2, 2, 2, 2},
@@ -164,7 +165,7 @@ func TestDbSaveState(t *testing.T) {
 					},
 					BgpLocalAsn:  65000,
 					BgpRemoteAsn: 65001,
-					UserType:     netlink.UserTypeEdgeFiltering,
+					UserType:     api.UserTypeEdgeFiltering,
 				},
 			},
 			goldenFile:  "./fixtures/doublezerod.edgefiltering.json",
@@ -172,7 +173,7 @@ func TestDbSaveState(t *testing.T) {
 		},
 		{
 			name: "save_ibrl_state_successfully",
-			state: []*netlink.ProvisionRequest{
+			state: []*api.ProvisionRequest{
 				{
 					TunnelSrc:          net.IP{1, 1, 1, 1},
 					TunnelDst:          net.IP{2, 2, 2, 2},
@@ -181,7 +182,7 @@ func TestDbSaveState(t *testing.T) {
 					DoubleZeroPrefixes: []*net.IPNet{},
 					BgpLocalAsn:        65000,
 					BgpRemoteAsn:       65001,
-					UserType:           netlink.UserTypeIBRL,
+					UserType:           api.UserTypeIBRL,
 				},
 			},
 			goldenFile:  "./fixtures/doublezerod.ibrl.json",
@@ -189,7 +190,7 @@ func TestDbSaveState(t *testing.T) {
 		},
 		{
 			name: "save_multiple_services_successfully",
-			state: []*netlink.ProvisionRequest{
+			state: []*api.ProvisionRequest{
 				{
 					TunnelSrc:          net.IP{1, 1, 1, 1},
 					TunnelDst:          net.IP{2, 2, 2, 2},
@@ -198,7 +199,7 @@ func TestDbSaveState(t *testing.T) {
 					DoubleZeroPrefixes: []*net.IPNet{},
 					BgpLocalAsn:        65000,
 					BgpRemoteAsn:       65001,
-					UserType:           netlink.UserTypeIBRL,
+					UserType:           api.UserTypeIBRL,
 				},
 				{
 					TunnelSrc:          net.IP{1, 1, 1, 1},
@@ -208,7 +209,7 @@ func TestDbSaveState(t *testing.T) {
 					DoubleZeroPrefixes: []*net.IPNet{},
 					BgpLocalAsn:        65000,
 					BgpRemoteAsn:       65001,
-					UserType:           netlink.UserTypeMulticast,
+					UserType:           api.UserTypeMulticast,
 				},
 			},
 
@@ -233,7 +234,7 @@ func TestDbSaveState(t *testing.T) {
 				t.Fatalf("error creating state dir: %v", err)
 			}
 
-			db, err := netlink.NewDb()
+			db, err := manager.NewDb()
 			if err != nil {
 				t.Fatalf("failed to setup db: %v", err)
 			}
@@ -284,18 +285,19 @@ func TestDbDeleteState(t *testing.T) {
 
 	stateFile := filepath.Join(path, "doublezerod.json")
 	// Create an empty file so we have something to delete
-	err = netlink.WriteFile(stateFile, []byte{}, os.FileMode(os.O_RDWR|os.O_CREATE|os.O_TRUNC))
+	err = manager.WriteFile(stateFile, []byte{}, os.FileMode(os.O_RDWR|os.O_CREATE|os.O_TRUNC))
 	if err != nil {
 		t.Fatalf("could not create file: %v", err)
 	}
 
 	log.Printf("state: %s", filepath.Join(path, "doublezerod.json"))
-	db, err := netlink.NewDb()
+	db, err := manager.NewDb()
 	if err != nil {
 		t.Fatalf("failed to setup db: %v", err)
 	}
 
-	err = db.DeleteState()
+	u := api.UserTypeIBRL
+	err = db.DeleteState(u)
 	// test there is no error
 	if err != nil {
 		t.Fatalf("error removing state file: %v", err)

@@ -2,6 +2,7 @@ use crate::bytereader::ByteReader;
 use crate::{seeds::SEED_USER, types::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::Serialize;
+use solana_program::account_info::AccountInfo;
 use solana_program::pubkey::Pubkey;
 use std::fmt;
 
@@ -89,6 +90,7 @@ pub enum UserStatus {
     Rejected = 4,
     PendingBan = 5,
     Banned = 6,
+    Updated = 7,
 }
 
 impl From<u8> for UserStatus {
@@ -101,6 +103,7 @@ impl From<u8> for UserStatus {
             4 => UserStatus::Rejected,
             5 => UserStatus::PendingBan,
             6 => UserStatus::Banned,
+            7 => UserStatus::Updated,
             _ => UserStatus::Pending,
         }
     }
@@ -115,6 +118,7 @@ impl fmt::Display for UserStatus {
             UserStatus::Deleting => write!(f, "deleting"),
             UserStatus::Rejected => write!(f, "rejected"),
             UserStatus::PendingBan => write!(f, "pending ban"),
+            UserStatus::Updated => write!(f, "updated"),
             UserStatus::Banned => write!(f, "banned"),
         }
     }
@@ -134,6 +138,8 @@ pub struct User {
     pub tunnel_id: u16,            // 2
     pub tunnel_net: NetworkV4,     // 5
     pub status: UserStatus,        // 1
+    pub publishers: Vec<Pubkey>,   // 4 + 32 * len
+    pub subscribers: Vec<Pubkey>,  // 4 + 32 * len
 }
 
 impl fmt::Display for User {
@@ -161,7 +167,22 @@ impl AccountTypeInfo for User {
         SEED_USER
     }
     fn size(&self) -> usize {
-        1 + 32 + 16 + 1 + 1 + 32 + 32 + 1 + 4 + 4 + 2 + 5 + 1
+        1 + 32
+            + 16
+            + 1
+            + 1
+            + 32
+            + 32
+            + 1
+            + 4
+            + 4
+            + 2
+            + 5
+            + 1
+            + 4
+            + self.publishers.len() * 32
+            + 4
+            + self.subscribers.len() * 32
     }
     fn index(&self) -> u128 {
         self.index
@@ -192,7 +213,16 @@ impl From<&[u8]> for User {
             tunnel_id: parser.read_u16(),
             tunnel_net: parser.read_networkv4(),
             status: parser.read_enum(),
+            publishers: parser.read_pubkey_vec(),
+            subscribers: parser.read_pubkey_vec(),
         }
+    }
+}
+
+impl From<&AccountInfo<'_>> for User {
+    fn from(account: &AccountInfo) -> Self {
+        let data = account.try_borrow_data().unwrap();
+        Self::from(&data[..])
     }
 }
 
@@ -216,6 +246,8 @@ mod tests {
             tunnel_id: 0,
             tunnel_net: networkv4_parse(&"10.0.0.1/25".to_string()),
             status: UserStatus::Activated,
+            publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -227,6 +259,8 @@ mod tests {
         assert_eq!(val.dz_ip, val2.dz_ip);
         assert_eq!(val.client_ip, val2.client_ip);
         assert_eq!(val.tunnel_net, val2.tunnel_net);
+        assert_eq!(val.subscribers, val2.subscribers);
+        assert_eq!(val.publishers, val2.publishers);
         assert_eq!(data.len(), val.size(), "Invalid Size");
     }
 }

@@ -94,6 +94,8 @@ mod tests {
             tunnel_net: ([10, 2, 3, 4], 24),
             status: UserStatus::Activated,
             owner: pda_pubkey,
+            publishers: vec![],
+            subscribers: vec![],
         };
 
         client

@@ -5,6 +5,8 @@ use crate::globalstate::globalstate_get_next;
 use crate::globalstate::globalstate_write;
 use crate::helper::*;
 use crate::pda::*;
+use crate::state::multicastgroup::MulticastGroup;
+use crate::state::multicastgroup::MulticastGroupStatus;
 use crate::state::{accounttype::AccountType, user::*};
 use crate::types::*;
 
@@ -19,16 +21,18 @@ use solana_program::{
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct UserCreateArgs {
+pub struct UserCreateSubscribeArgs {
     pub index: u128,
     pub bump_seed: u8,
     pub user_type: UserType,
     pub device_pk: Pubkey,
     pub cyoa_type: UserCYOA,
     pub client_ip: IpV4,
+    pub publisher: bool,
+    pub subscriber: bool,
 }
 
-impl fmt::Debug for UserCreateArgs {
+impl fmt::Debug for UserCreateSubscribeArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -41,15 +45,16 @@ impl fmt::Debug for UserCreateArgs {
     }
 }
 
-pub fn process_create_user(
+pub fn process_create_subscribe_user(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &UserCreateArgs,
+    value: &UserCreateSubscribeArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
     let pda_account = next_account_info(accounts_iter)?;
     let device_account = next_account_info(accounts_iter)?;
+    let mgroup_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -90,6 +95,10 @@ pub fn process_create_user(
         return Err(ProgramError::IncorrectProgramId);
     }
 
+    let mut mgroup: MulticastGroup = MulticastGroup::from(mgroup_account);
+    assert_eq!(mgroup.account_type, AccountType::MulticastGroup);
+    assert_eq!(mgroup.status, MulticastGroupStatus::Activated);
+
     let user: User = User {
         account_type: AccountType::User,
         owner: *payer_account.key,
@@ -104,10 +113,24 @@ pub fn process_create_user(
         tunnel_id: 0,
         tunnel_net: ([0, 0, 0, 0], 0),
         status: UserStatus::Pending,
-        publishers: vec![],
-        subscribers: vec![],
+        publishers: match value.publisher {
+            true => vec![*mgroup_account.key],
+            false => vec![],
+        },
+        subscribers: match value.subscriber {
+            true => vec![*mgroup_account.key],
+            false => vec![],
+        },
     };
 
+    if value.publisher && !mgroup.publishers.contains(&pda_account.key) {
+        mgroup.publishers.push(*pda_account.key);
+    }
+    if value.subscriber && !mgroup.subscribers.contains(&pda_account.key) {
+        mgroup.subscribers.push(*pda_account.key);
+    }
+
+    account_write(mgroup_account, &mgroup, payer_account, system_program);
     account_create(
         pda_account,
         &user,

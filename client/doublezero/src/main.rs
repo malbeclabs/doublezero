@@ -1,4 +1,5 @@
-use clap::Parser;
+use clap::{CommandFactory, Parser};
+use clap_complete::generate;
 mod cli;
 mod command;
 mod requirements;
@@ -122,6 +123,11 @@ async fn main() -> eyre::Result<()> {
         Command::Export(args) => args.execute(&client, &mut handle),
         Command::Keygen(args) => args.execute(&client, &mut handle),
         Command::Log(args) => args.execute(&dzclient, &mut handle),
+        Command::Completion(args) => {
+            let mut cmd = App::command();
+            generate(args.shell, &mut cmd, "doublezero", &mut std::io::stdout());
+            Ok(())
+        }
     };
 
     match res {

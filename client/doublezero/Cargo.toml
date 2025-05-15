@@ -11,6 +11,7 @@ description = "Command line interface to interact with the DZ program."
 
 [dependencies]
 clap = { version = "4.5.38", features = ["derive"] }
+clap_complete = { version = "4", features = [ "unstable-dynamic" ] }
 eyre = "0.6.12"
 solana-program = "2.2.1"
 solana-sdk = "2.2.2"

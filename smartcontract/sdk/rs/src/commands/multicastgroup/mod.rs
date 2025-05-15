@@ -1,4 +1,5 @@
 pub mod activate;
+pub mod allowlist;
 pub mod create;
 pub mod deactivate;
 pub mod delete;

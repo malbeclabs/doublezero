@@ -26,6 +26,7 @@ use std::thread;
 use std::time::Duration;
 
 pub type DeviceMap = HashMap<Pubkey, DeviceState>;
+pub type MulticastGroups = HashMap<Pubkey, MulticastGroup>;
 
 pub struct Activator {
     pub client: DZClient,
@@ -39,7 +40,7 @@ pub struct Activator {
 
     locations: HashMap<Pubkey, Location>,
     exchanges: HashMap<Pubkey, Exchange>,
-    multicastgroups: HashMap<Pubkey, MulticastGroup>,
+    multicastgroups: MulticastGroups,
     metrics: ActivatorMetrics,
     state_transitions: HashMap<&'static str, usize>,
 }
@@ -206,6 +207,7 @@ impl Activator {
                             tunnel_tunnel_ids,
                             user,
                             state_transitions,
+                            multicastgroups,
                         );
                     }
                     AccountData::Location(location) => {

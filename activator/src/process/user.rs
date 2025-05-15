@@ -1,5 +1,7 @@
 use crate::{
-    activator::DeviceMap, idallocator::IDAllocator, ipblockallocator::IPBlockAllocator,
+    activator::{DeviceMap, MulticastGroups},
+    idallocator::IDAllocator,
+    ipblockallocator::IPBlockAllocator,
     states::devicestate::DeviceState,
 };
 use doublezero_sdk::{
@@ -16,6 +18,45 @@ use doublezero_sdk::{
 use solana_sdk::pubkey::Pubkey;
 use std::collections::HashMap;
 
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum MulticastMembershipType {
+    Publisher,
+    Subscriber,
+}
+
+fn check_multicast_group(
+    multicastgroups: &MulticastGroups,
+    mcast_group_pk: &Pubkey,
+    user: &User,
+    membership: MulticastMembershipType,
+) -> bool {
+    let multicastgroup = match multicastgroups.get(mcast_group_pk) {
+        Some(group) => group,
+        None => {
+            println!("Error: no multicast group found for {}", mcast_group_pk);
+            return false;
+        }
+    };
+
+    if !multicastgroup.is_activated() {
+        println!("Error: multicast group is not activated!");
+        return false;
+    }
+
+    let is_member = match membership {
+        MulticastMembershipType::Publisher => multicastgroup.publishers.contains(&user.owner),
+        MulticastMembershipType::Subscriber => multicastgroup.subscribers.contains(&user.owner),
+    };
+
+    if !is_member {
+        println!("Error: multicast group does not contain this user!");
+        return false;
+    }
+
+    true
+}
+
+#[allow(clippy::too_many_arguments)] // HACK, fix me later
 pub fn process_user_event(
     client: &dyn DoubleZeroClient,
     pubkey: &Pubkey,
@@ -24,6 +65,7 @@ pub fn process_user_event(
     tunnel_tunnel_ids: &mut IDAllocator,
     user: &User,
     state_transitions: &mut HashMap<&'static str, usize>,
+    multicastgroups: &MulticastGroups,
 ) {
     match user.status {
         // Create User
@@ -75,7 +117,42 @@ pub fn process_user_event(
                                     tunnel_id = device_state.get_next_tunnel_id().unwrap();
                                     dz_ip = user.client_ip;
                                 }
-                                UserType::Multicast => {}
+                                UserType::Multicast => {
+                                    // Check if the user is a publisher for any multicast group and if so,
+                                    // allocate a tunnel ID and DZ IP for publishing
+                                    for mcast_group_pk in user.publishers.iter() {
+                                        if check_multicast_group(
+                                            multicastgroups,
+                                            mcast_group_pk,
+                                            user,
+                                            MulticastMembershipType::Publisher,
+                                        ) {
+                                            if let Some((xtunnel_id, xdz_ip)) =
+                                                device_state.get_next()
+                                            {
+                                                tunnel_id = xtunnel_id;
+                                                dz_ip = xdz_ip;
+                                            }
+                                        }
+                                    }
+
+                                    // Check if the user is a subscriber to any multicast group and if so,
+                                    // allocate a tunnel ID using the client's IP address. This
+                                    // ensures that only a single tunnel ID is being used.
+                                    let has_valid_subscription =
+                                        user.subscribers.iter().any(|mcast_group_pk| {
+                                            check_multicast_group(
+                                                multicastgroups,
+                                                mcast_group_pk,
+                                                user,
+                                                MulticastMembershipType::Subscriber,
+                                            )
+                                        });
+                                    if has_valid_subscription {
+                                        tunnel_id = device_state.get_next_tunnel_id().unwrap();
+                                        dz_ip = user.client_ip;
+                                    }
+                                }
                             }
 
                             if tunnel_id == 0 {
@@ -322,6 +399,7 @@ mod tests {
             &mut tunnel_tunnel_ids,
             &user,
             &mut state_transitions,
+            &HashMap::new(), // placeholder
         );
 
         assert!(user_tunnel_ips.assigned_ips.len() > 0);
@@ -413,6 +491,7 @@ mod tests {
             &mut tunnel_tunnel_ids,
             &user,
             &mut state_transitions,
+            &HashMap::new(), // placeholder
         );
 
         assert_eq!(state_transitions.len(), 1);
@@ -494,6 +573,7 @@ mod tests {
             &mut tunnel_tunnel_ids,
             &user,
             &mut state_transitions,
+            &HashMap::new(), // placeholder
         );
 
         assert_eq!(state_transitions.len(), 1);
@@ -572,6 +652,7 @@ mod tests {
             &mut tunnel_tunnel_ids,
             &user,
             &mut state_transitions,
+            &HashMap::new(), // placeholder
         );
 
         assert_eq!(state_transitions.len(), 1);
@@ -642,6 +723,7 @@ mod tests {
             &mut tunnel_tunnel_ids,
             &user,
             &mut state_transitions,
+            &HashMap::new(), // placeholder
         );
 
         assert!(!tunnel_tunnel_ids.assigned.contains(&102));

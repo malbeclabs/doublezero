@@ -57,6 +57,12 @@ pub struct MulticastGroup {
     pub code: String,                   // 4 + len
 }
 
+impl MulticastGroup {
+    pub fn is_activated(&self) -> bool {
+        self.status == MulticastGroupStatus::Activated
+    }
+}
+
 impl fmt::Display for MulticastGroup {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(

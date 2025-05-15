@@ -14,9 +14,9 @@ import (
 )
 
 type IBRLService struct {
-	bgp            bgpReaderWriter
+	bgp            BGPReaderWriter
 	nl             routing.Netlinker
-	db             dbReaderWriter
+	db             DBReaderWriter
 	Tunnel         *routing.Tunnel
 	DoubleZeroAddr net.IP
 }
@@ -24,7 +24,7 @@ type IBRLService struct {
 func (s *IBRLService) UserType() api.UserType   { return api.UserTypeIBRL }
 func (s *IBRLService) ServiceType() ServiceType { return ServiceTypeUnicast }
 
-func NewIBRLService(bgp bgpReaderWriter, nl routing.Netlinker, db dbReaderWriter) *IBRLService {
+func NewIBRLService(bgp BGPReaderWriter, nl routing.Netlinker, db DBReaderWriter) *IBRLService {
 	return &IBRLService{
 		bgp: bgp,
 		nl:  nl,
@@ -34,7 +34,7 @@ func NewIBRLService(bgp bgpReaderWriter, nl routing.Netlinker, db dbReaderWriter
 
 // Setup creates an IBRL tunnel with or without an allocated IP address.
 func (s *IBRLService) Setup(p *api.ProvisionRequest) error {
-	tun, err := routing.NewTunnel(p.TunnelSrc, p.TunnelDst, p.TunnelNet.String())
+	tun, err := routing.NewTunnel("doublezero0", p.TunnelSrc, p.TunnelDst, p.TunnelNet.String())
 	if err != nil {
 		return fmt.Errorf("error generating new tunnel: %v", err)
 	}
@@ -122,6 +122,7 @@ func (s *IBRLService) Status() (*api.StatusResponse, error) {
 		TunnelDst:        s.Tunnel.RemoteUnderlay,
 		DoubleZeroIP:     s.DoubleZeroAddr,
 		DoubleZeroStatus: peerStatus,
+		UserType:         s.UserType(),
 	}, nil
 }
 
@@ -129,7 +130,7 @@ type IBRLServiceWithAllocatedAddress struct {
 	IBRLService
 }
 
-func NewIBRLServiceWithAllocatedAddress(bgp bgpReaderWriter, nl routing.Netlinker, db dbReaderWriter) *IBRLServiceWithAllocatedAddress {
+func NewIBRLServiceWithAllocatedAddress(bgp BGPReaderWriter, nl routing.Netlinker, db DBReaderWriter) *IBRLServiceWithAllocatedAddress {
 	return &IBRLServiceWithAllocatedAddress{
 		IBRLService{
 			bgp: bgp,
@@ -163,5 +164,6 @@ func (s *IBRLServiceWithAllocatedAddress) Status() (*api.StatusResponse, error) 
 		TunnelDst:        s.Tunnel.RemoteUnderlay,
 		DoubleZeroIP:     s.DoubleZeroAddr,
 		DoubleZeroStatus: peerStatus,
+		UserType:         s.UserType(),
 	}, nil
 }

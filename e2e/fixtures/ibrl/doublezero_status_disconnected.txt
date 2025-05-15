@@ -4,3 +4,4 @@ Tunnel dst:
 Tunnel src:
 Tunnel status: disconnected
 Last Session Update: no session data
+User type:

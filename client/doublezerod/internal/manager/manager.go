@@ -24,7 +24,7 @@ type Provisioner interface {
 
 // BgpReaderWriter is an interface for the handling of per
 // service bgp sessions.
-type BgpReaderWriter interface {
+type BGPServer interface {
 	Serve([]net.Listener) error
 	AddPeer(*bgp.PeerConfig, []bgp.NLRI) error
 	DeletePeer(net.IP) error
@@ -47,13 +47,14 @@ type NetlinkManager struct {
 	UnicastService   Provisioner
 	MulticastService Provisioner
 	DoubleZeroAddr   net.IP
-	bgp              BgpReaderWriter
-	db               DbReaderWriter
+	bgp              BGPServer
+	db               services.DBReaderWriter
+	pim              services.PIMWriter
 }
 
 // CreateService creates the appropriate service based on the provisioned
 // user type.
-func CreateService(u api.UserType, bgp BgpReaderWriter, nl routing.Netlinker, db DbReaderWriter) (Provisioner, error) {
+func CreateService(u api.UserType, bgp services.BGPReaderWriter, nl routing.Netlinker, db services.DBReaderWriter, pim services.PIMWriter) (Provisioner, error) {
 	switch u {
 	case api.UserTypeIBRL:
 		return services.NewIBRLService(bgp, nl, db), nil
@@ -62,14 +63,14 @@ func CreateService(u api.UserType, bgp BgpReaderWriter, nl routing.Netlinker, db
 	case api.UserTypeEdgeFiltering:
 		return services.NewEdgeFilteringService(bgp, nl, db), nil
 	case api.UserTypeMulticast:
-		return services.NewMulticastService(bgp, nl, db), nil
+		return services.NewMulticastService(bgp, nl, db, pim), nil
 	default:
 		return nil, fmt.Errorf("unsupported user type: %s", u)
 	}
 }
 
-func NewNetlinkManager(netlink routing.Netlinker, bgp BgpReaderWriter, db DbReaderWriter) *NetlinkManager {
-	manager := &NetlinkManager{netlink: netlink, bgp: bgp, db: db}
+func NewNetlinkManager(netlink routing.Netlinker, bgp BGPServer, db services.DBReaderWriter, pim services.PIMWriter) *NetlinkManager {
+	manager := &NetlinkManager{netlink: netlink, bgp: bgp, db: db, pim: pim}
 	return manager
 }
 
@@ -78,7 +79,7 @@ func NewNetlinkManager(netlink routing.Netlinker, bgp BgpReaderWriter, db DbRead
 // tunnel is provisioned, the original request is saved to disk so we're able to
 // handle service restarts.
 func (n *NetlinkManager) Provision(pr api.ProvisionRequest) error {
-	svc, err := CreateService(pr.UserType, n.bgp, n.netlink, n.db)
+	svc, err := CreateService(pr.UserType, n.bgp, n.netlink, n.db, n.pim)
 	if err != nil {
 		return fmt.Errorf("error creating service: %v", err)
 	}
@@ -205,23 +206,22 @@ func (n *NetlinkManager) Recover() error {
 // service.
 //
 // Status returns the status of all provisioned services.
-func (n *NetlinkManager) Status() (*api.StatusResponse, error) {
-	// resp := []*api.StatusResponse{}
+func (n *NetlinkManager) Status() ([]*api.StatusResponse, error) {
+	resp := []*api.StatusResponse{}
 	if n.UnicastService != nil {
 		status, err := n.UnicastService.Status()
 		if err != nil {
 			return nil, fmt.Errorf("error getting unicast service status: %v", err)
 		}
 		// TODO: remove this during multicast work
-		return status, nil
-		// resp = append(resp, status)
+		resp = append(resp, status)
 	}
-	// if n.MulticastService != nil {
-	// 	status, err := n.MulticastService.Status()
-	// 	if err != nil {
-	// 		return nil, fmt.Errorf("error getting multicast service status: %v", err)
-	// 	}
-	// 	resp = append(resp, status)
-	// }
-	return nil, nil
+	if n.MulticastService != nil {
+		status, err := n.MulticastService.Status()
+		if err != nil {
+			return nil, fmt.Errorf("error getting multicast service status: %v", err)
+		}
+		resp = append(resp, status)
+	}
+	return resp, nil
 }

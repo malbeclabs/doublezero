@@ -12,6 +12,7 @@ func TestTunnel_NewTunnel(t *testing.T) {
 	tests := []struct {
 		Name           string
 		Description    string
+		TunnelName     string
 		LocalUnderlay  net.IP
 		RemoteUnderlay net.IP
 		OverlayPrefix  string
@@ -21,6 +22,7 @@ func TestTunnel_NewTunnel(t *testing.T) {
 		{
 			Name:           "valid_tunnel_happy_path",
 			Description:    "create a valid tunnel",
+			TunnelName:     "doublezero0",
 			LocalUnderlay:  net.IPv4(1, 1, 1, 1),
 			RemoteUnderlay: net.IPv4(2, 2, 2, 2),
 			OverlayPrefix:  "10.1.1.0/31",
@@ -37,6 +39,7 @@ func TestTunnel_NewTunnel(t *testing.T) {
 		{
 			Name:           "wrong_overlay_prefix_length",
 			Description:    "the tunnel p2p should always be a /31",
+			TunnelName:     "doublezero0",
 			LocalUnderlay:  net.IPv4(1, 1, 1, 1),
 			RemoteUnderlay: net.IPv4(2, 2, 2, 2),
 			OverlayPrefix:  "10.1.1.0/30",
@@ -46,6 +49,7 @@ func TestTunnel_NewTunnel(t *testing.T) {
 		{
 			Name:           "invalid_overlay_prefix",
 			Description:    "the tunnel p2p needs to be a valid cidr prefix",
+			TunnelName:     "doublezero0",
 			LocalUnderlay:  net.IPv4(1, 1, 1, 1),
 			RemoteUnderlay: net.IPv4(2, 2, 2, 2),
 			OverlayPrefix:  "10.1.1.0.0.0/30",
@@ -55,7 +59,7 @@ func TestTunnel_NewTunnel(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
-			got, err := routing.NewTunnel(test.LocalUnderlay, test.RemoteUnderlay, test.OverlayPrefix)
+			got, err := routing.NewTunnel(test.TunnelName, test.LocalUnderlay, test.RemoteUnderlay, test.OverlayPrefix)
 			if err != nil && !test.ExpectError {
 				t.Errorf("error: %v", err)
 			}

@@ -9,8 +9,6 @@ type EncapType string
 
 const (
 	GRE EncapType = "gre"
-
-	TunnelName = "doublezero0"
 )
 
 type Tunnel struct {
@@ -22,9 +20,9 @@ type Tunnel struct {
 	RemoteOverlay  net.IP
 }
 
-func NewTunnel(local, remote net.IP, overlayNet string) (*Tunnel, error) {
+func NewTunnel(tunnelName string, local, remote net.IP, overlayNet string) (*Tunnel, error) {
 	tun := &Tunnel{
-		Name:           TunnelName,
+		Name:           tunnelName,
 		EncapType:      GRE,
 		LocalUnderlay:  local,
 		RemoteUnderlay: remote,

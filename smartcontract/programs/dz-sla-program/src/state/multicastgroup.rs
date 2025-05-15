@@ -3,6 +3,7 @@ use crate::{bytereader::ByteReader, seeds::{SEED_MULTICAST_GROUP}, types::{ipv4_
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::Serialize;
 use solana_program::pubkey::Pubkey;
+use solana_program::account_info::AccountInfo;
 use std::fmt;
 
 #[repr(u8)]
@@ -101,6 +102,13 @@ impl From<&[u8]> for MulticastGroup {
             status: parser.read_enum(),
             code: parser.read_string(),
         }
+    }
+}
+
+impl From<&AccountInfo<'_>> for MulticastGroup {
+    fn from(account: &AccountInfo) -> Self {
+        let data = account.try_borrow_data().unwrap();
+        Self::from(&data[..])
     }
 }
 

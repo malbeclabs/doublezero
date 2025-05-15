@@ -2,9 +2,9 @@ use super::accounttype::{AccountType, AccountTypeInfo};
 use crate::{bytereader::ByteReader, seeds::SEED_EXCHANGE};
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::Serialize;
+use solana_program::account_info::AccountInfo;
 use solana_program::pubkey::Pubkey;
 use std::fmt;
-
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
 #[borsh(use_discriminant = true)]
@@ -93,6 +93,13 @@ impl From<&[u8]> for Exchange {
             code: parser.read_string(),
             name: parser.read_string(),
         }
+    }
+}
+
+impl From<&AccountInfo<'_>> for Exchange {
+    fn from(account: &AccountInfo) -> Self {
+        let data = account.try_borrow_data().unwrap();
+        Self::from(&data[..])
     }
 }
 

@@ -1,6 +1,7 @@
 pub mod activate;
 pub mod ban;
 pub mod create;
+pub mod create_subscribe;
 pub mod deactivate;
 pub mod delete;
 pub mod get;

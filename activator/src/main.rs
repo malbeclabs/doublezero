@@ -7,8 +7,11 @@ mod idallocator;
 mod influxdb_metrics_service;
 mod ipblockallocator;
 mod metrics_service;
+mod process;
 mod states;
+pub mod tests;
 mod utils;
+
 include!(concat!(env!("OUT_DIR"), "/version.rs"));
 
 #[derive(Parser, Debug)]

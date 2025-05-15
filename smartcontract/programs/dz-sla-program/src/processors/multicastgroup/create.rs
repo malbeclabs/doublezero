@@ -4,7 +4,6 @@ use crate::globalstate::globalstate_write;
 use crate::helper::*;
 use crate::pda::*;
 use crate::state::{accounttype::AccountType, multicastgroup::*};
-use crate::types::{ipv4_to_string, IpV4};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -22,7 +21,6 @@ pub struct MulticastGroupCreateArgs {
     pub index: u128,
     pub bump_seed: u8,
     pub code: String,
-    pub multicast_ip: IpV4,
     pub max_bandwidth: u64,
     pub owner: Pubkey,
 }
@@ -31,9 +29,8 @@ impl fmt::Debug for MulticastGroupCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "code: {}, multicast_ip: {}",
-            self.code,
-            ipv4_to_string(&self.multicast_ip)
+            "code: {}, max_bandwidth: {}",
+            self.code, self.max_bandwidth
         )
     }
 }
@@ -93,7 +90,7 @@ pub fn process_create_multicastgroup(
         bump_seed,
         tenant_pk: Pubkey::default(),
         code: value.code.clone(),
-        multicast_ip: value.multicast_ip,
+        multicast_ip: [0, 0, 0, 0],
         max_bandwidth: value.max_bandwidth,
         subscribers: vec![],
         publishers: vec![],

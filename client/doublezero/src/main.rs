@@ -1,4 +1,3 @@
-use clap::Parser;
 use crate::cli::device::DeviceAllowlistCommands;
 use crate::cli::globalconfig::FoundationAllowlistCommands;
 use crate::cli::user::UserAllowlistCommands;
@@ -7,6 +6,7 @@ use crate::cli::{
     globalconfig::GlobalConfigCommands, location::LocationCommands, tunnel::TunnelCommands,
     user::UserCommands,
 };
+use clap::Parser;
 use doublezero_cli::doublezerocommand::CliCommandImpl;
 use doublezero_sdk::DZClient;
 
@@ -123,6 +123,36 @@ async fn main() -> eyre::Result<()> {
         },
         Command::Multicast(args) => match args.command {
             cli::multicast::MulticastCommands::Group(args) => match args.command {
+                cli::multicastgroup::MulticastGroupCommands::Allowlist(args) => {
+                    match args.command {
+                        cli::multicastgroup::MulticastGroupAllowlistCommands::Publisher(args) => {
+                            match args.command {
+                                cli::multicastgroup::MulticastGroupPubAllowlistCommands::List(
+                                    args,
+                                ) => args.execute(&client, &mut handle),
+                                cli::multicastgroup::MulticastGroupPubAllowlistCommands::Add(
+                                    args,
+                                ) => args.execute(&client, &mut handle),
+                                cli::multicastgroup::MulticastGroupPubAllowlistCommands::Remove(
+                                    args,
+                                ) => args.execute(&client, &mut handle),
+                            }
+                        }
+                        cli::multicastgroup::MulticastGroupAllowlistCommands::Subscriber(args) => {
+                            match args.command {
+                                cli::multicastgroup::MulticastGroupSubAllowlistCommands::List(
+                                    args,
+                                ) => args.execute(&client, &mut handle),
+                                cli::multicastgroup::MulticastGroupSubAllowlistCommands::Add(
+                                    args,
+                                ) => args.execute(&client, &mut handle),
+                                cli::multicastgroup::MulticastGroupSubAllowlistCommands::Remove(
+                                    args,
+                                ) => args.execute(&client, &mut handle),
+                            }
+                        }
+                    }
+                }
                 cli::multicastgroup::MulticastGroupCommands::Create(args) => {
                     args.execute(&client, &mut handle)
                 }

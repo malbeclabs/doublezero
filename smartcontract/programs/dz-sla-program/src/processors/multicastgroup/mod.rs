@@ -7,5 +7,4 @@ pub mod reject;
 pub mod subscribe;
 pub mod suspend;
 pub mod test;
-pub mod unsubscribe;
 pub mod update;

@@ -35,7 +35,7 @@ use crate::{
             deactivate::process_deactivate_multicastgroup, delete::process_delete_multicastgroup,
             reactivate::process_reactivate_multicastgroup, reject::process_reject_multicastgroup,
             subscribe::process_subscribe_multicastgroup, suspend::process_suspend_multicastgroup,
-            unsubscribe::process_unsubscribe_multicastgroup, update::process_update_multicastgroup,
+            update::process_update_multicastgroup,
         },
         tunnel::{
             activate::process_activate_tunnel, create::process_create_tunnel,
@@ -45,10 +45,10 @@ use crate::{
         },
         user::{
             activate::process_activate_user, ban::process_ban_user, create::process_create_user,
-            deactivate::process_deactivate_user, delete::process_delete_user,
-            reactivate::process_reactivate_user, reject::process_reject_user,
-            requestban::process_request_ban_user, suspend::process_suspend_user,
-            update::process_update_user,
+            create_subscribe::process_create_subscribe_user, deactivate::process_deactivate_user,
+            delete::process_delete_user, reactivate::process_reactivate_user,
+            reject::process_reject_user, requestban::process_request_ban_user,
+            suspend::process_suspend_user, update::process_update_user,
         },
     },
 };
@@ -232,8 +232,8 @@ pub fn process_instruction(
         DoubleZeroInstruction::SubscribeMulticastGroup(value) => {
             process_subscribe_multicastgroup(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::UnsubscribeMulticastGroup(value) => {
-            process_unsubscribe_multicastgroup(program_id, accounts, &value)?
+        DoubleZeroInstruction::CreateSubscribeUser(value) => {
+            process_create_subscribe_user(program_id, accounts, &value)?
         }
     };
     Ok(())

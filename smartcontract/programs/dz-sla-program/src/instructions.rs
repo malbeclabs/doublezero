@@ -21,7 +21,6 @@ use crate::processors::{
         activate::MulticastGroupActivateArgs, create::MulticastGroupCreateArgs, deactivate::MulticastGroupDeactivateArgs, 
         delete::MulticastGroupDeleteArgs, reactivate::MulticastGroupReactivateArgs, reject::MulticastGroupRejectArgs, suspend::MulticastGroupSuspendArgs, update::MulticastGroupUpdateArgs,
         subscribe::MulticastGroupSubscribeArgs,
-        unsubscribe::MulticastGroupUnsubscribeArgs,
     }, tunnel::{
         activate::TunnelActivateArgs, create::TunnelCreateArgs, deactivate::TunnelDeactivateArgs,
         delete::TunnelDeleteArgs, reactivate::TunnelReactivateArgs, reject::TunnelRejectArgs,
@@ -29,7 +28,7 @@ use crate::processors::{
     }, user::{
         activate::UserActivateArgs, ban::UserBanArgs, create::UserCreateArgs,
         deactivate::UserDeactivateArgs, delete::UserDeleteArgs, reactivate::UserReactivateArgs,
-        reject::UserRejectArgs, requestban::UserRequestBanArgs, suspend::UserSuspendArgs,
+        reject::UserRejectArgs, requestban::UserRequestBanArgs, suspend::UserSuspendArgs, create_subscribe::UserCreateSubscribeArgs,
         update::UserUpdateArgs,
     }
 };
@@ -100,7 +99,7 @@ pub enum DoubleZeroInstruction {
     DeactivateMulticastGroup(MulticastGroupDeactivateArgs), // variant 53
 
     SubscribeMulticastGroup(MulticastGroupSubscribeArgs), // variant 54
-    UnsubscribeMulticastGroup(MulticastGroupUnsubscribeArgs), // variant 55
+    CreateSubscribeUser(UserCreateSubscribeArgs), // variant 55
 }
 
 impl DoubleZeroInstruction {
@@ -176,7 +175,7 @@ impl DoubleZeroInstruction {
             52 => Ok(Self::DeleteMulticastGroup(from_slice::<MulticastGroupDeleteArgs>(rest).unwrap())),
             53 => Ok(Self::DeactivateMulticastGroup(from_slice::<MulticastGroupDeactivateArgs>(rest).unwrap())),
             54 => Ok(Self::SubscribeMulticastGroup(from_slice::<MulticastGroupSubscribeArgs>(rest).unwrap())),
-            55 => Ok(Self::UnsubscribeMulticastGroup(from_slice::<MulticastGroupUnsubscribeArgs>(rest).unwrap())),
+            55 => Ok(Self::CreateSubscribeUser(from_slice::<UserCreateSubscribeArgs>(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -247,7 +246,7 @@ impl DoubleZeroInstruction {
             Self::UpdateMulticastGroup(_) => "UpdateMulticastGroup".to_string(), // variant 52
             Self::DeactivateMulticastGroup(_) => "DeactivateMulticastGroup".to_string(), // variant 53
             Self::SubscribeMulticastGroup(_) => "SubscribeMulticastGroup".to_string(), // variant 54
-            Self::UnsubscribeMulticastGroup(_) => "UnsubscribeMulticastGroup".to_string(), // variant 55
+            Self::CreateSubscribeUser(_) => "CreateSubscribeUser".to_string(), // variant 55
         }
     }
 
@@ -316,7 +315,8 @@ impl DoubleZeroInstruction {
             Self::UpdateMulticastGroup(args) => format!("{:?}", args), // variant 52
             Self::DeactivateMulticastGroup(args) => format!("{:?}", args), // variant 53
             Self::SubscribeMulticastGroup(args) => format!("{:?}", args), // variant 54
-            Self::UnsubscribeMulticastGroup(args) => format!("{:?}", args), // variant 55
+            Self::CreateSubscribeUser(args) => format!("{:?}", args), // variant 55
+
         }
     }
 }
@@ -324,7 +324,7 @@ impl DoubleZeroInstruction {
 #[cfg(test)]
 mod tests {
     use solana_program::pubkey::Pubkey;
-    use crate::state::{device::DeviceType, user::{UserCYOA, UserType}, tunnel::TunnelTunnelType};
+    use crate::{state::{device::DeviceType, tunnel::TunnelTunnelType, user::{UserCYOA, UserType}}};
 
     use super::*;
 
@@ -778,23 +778,26 @@ mod tests {
 
         test_instruction(
             DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
-                index: 123,
-                bump_seed: 255,
-                publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
-                subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+                publisher: true, subscriber: true,             
+
             }),
             "SubscribeMulticastGroup",
         );
 
         test_instruction(
-            DoubleZeroInstruction::UnsubscribeMulticastGroup(MulticastGroupUnsubscribeArgs {
+            DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
                 index: 123,
-                bump_seed: 255,
-                publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
-                subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+                bump_seed: 255,              
+                device_pk: Pubkey::new_unique(),
+                client_ip: [1, 2, 3, 4],
+                user_type: UserType::Multicast,
+                cyoa_type: UserCYOA::GREOverDIA,
+                publisher: false,
+                subscriber: false,
             }),
-            "UnsubscribeMulticastGroup",
+            "CreateSubscribeUser",
         );
+
 
     }
 }

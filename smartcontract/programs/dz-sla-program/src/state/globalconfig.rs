@@ -1,13 +1,13 @@
 use std::fmt;
 
-use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::pubkey::Pubkey;
-
 use super::accounttype::AccountType;
 use crate::{
     bytereader::ByteReader,
     types::{networkv4_to_string, NetworkV4},
 };
+use borsh::{BorshDeserialize, BorshSerialize};
+use solana_program::account_info::AccountInfo;
+use solana_program::pubkey::Pubkey;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
 pub struct GlobalConfig {
@@ -48,6 +48,13 @@ impl From<&[u8]> for GlobalConfig {
             user_tunnel_block: parser.read_networkv4(),
             multicastgroup_block: parser.read_networkv4(),
         }
+    }
+}
+
+impl From<&AccountInfo<'_>> for GlobalConfig {
+    fn from(account: &AccountInfo) -> Self {
+        let data = account.try_borrow_data().unwrap();
+        Self::from(&data[..])
     }
 }
 

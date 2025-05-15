@@ -1,10 +1,10 @@
+use super::accounttype::{AccountType, AccountTypeInfo};
 use crate::{bytereader::ByteReader, seeds::SEED_TUNNEL, types::*};
 use borsh::{BorshDeserialize, BorshSerialize};
+use serde::Serialize;
+use solana_program::account_info::AccountInfo;
 use solana_program::pubkey::Pubkey;
 use std::{fmt, str::FromStr};
-
-use super::accounttype::{AccountType, AccountTypeInfo};
-use serde::Serialize;
 
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
@@ -145,6 +145,13 @@ impl From<&[u8]> for Tunnel {
             status: parser.read_enum(),
             code: parser.read_string(),
         }
+    }
+}
+
+impl From<&AccountInfo<'_>> for Tunnel {
+    fn from(account: &AccountInfo) -> Self {
+        let data = account.try_borrow_data().unwrap();
+        Self::from(&data[..])
     }
 }
 

@@ -304,6 +304,8 @@ mod tests {
             tunnel_id: 500,
             tunnel_net: ([1, 2, 3, 5], 32).into(),
             status: Activated,
+            publishers: vec![],
+            subscribers: vec![],
         };
 
         client.expect_list_user().returning(move |_| {

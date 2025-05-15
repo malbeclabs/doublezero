@@ -355,6 +355,7 @@ mod tests {
                 remote_asn: 200,
                 tunnel_tunnel_block: ([1, 2, 3, 4], 1),
                 user_tunnel_block: ([1, 2, 3, 4], 1),
+                multicastgroup_block: ([1, 2, 3, 4], 1),
             }),
             "SetGlobalConfig",
         );
@@ -715,7 +716,6 @@ mod tests {
             DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
                 index: 123,
                 bump_seed: 255,
-                multicast_ip: [1, 2, 3, 4],
                 max_bandwidth: 1000,
                 code: "test".to_string(),
                 owner: Pubkey::new_unique(),
@@ -727,6 +727,7 @@ mod tests {
             DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
                 index: 123,
                 bump_seed: 255,                
+                multicast_ip: [1, 2, 3, 4],
             }),
             "ActivateMulticastGroup",
         );

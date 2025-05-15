@@ -68,6 +68,7 @@ pub mod test {
                 remote_asn: 65001,
                 tunnel_tunnel_block: ([10, 0, 0, 0], 24),
                 user_tunnel_block: ([10, 0, 0, 0], 24),
+                multicastgroup_block: ([224, 0, 0, 0], 4),
             }),
             vec![
                 AccountMeta::new(globalconfig_pubkey, false),

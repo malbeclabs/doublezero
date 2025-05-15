@@ -24,10 +24,24 @@ use doublezero_sdk::commands::location::{
     list::ListLocationCommand, update::UpdateLocationCommand,
 };
 use doublezero_sdk::commands::multicastgroup::{
-    activate::ActivateMulticastGroupCommand, create::CreateMulticastGroupCommand,
-    deactivate::DeactivateMulticastGroupCommand, delete::DeleteMulticastGroupCommand,
-    get::GetMulticastGroupCommand, list::ListMulticastGroupCommand,
-    reject::RejectMulticastGroupCommand, subscribe::SubscribeMulticastGroupCommand,
+    activate::ActivateMulticastGroupCommand,
+    allowlist::{
+        publisher::{
+            add::AddMulticastGroupPubAllowlistCommand, list::ListMulticastGroupPubAllowlistCommand,
+            remove::RemoveMulticastGroupPubAllowlistCommand,
+        },
+        subscriber::{
+            add::AddMulticastGroupSubAllowlistCommand, list::ListMulticastGroupSubAllowlistCommand,
+            remove::RemoveMulticastGroupSubAllowlistCommand,
+        },
+    },
+    create::CreateMulticastGroupCommand,
+    deactivate::DeactivateMulticastGroupCommand,
+    delete::DeleteMulticastGroupCommand,
+    get::GetMulticastGroupCommand,
+    list::ListMulticastGroupCommand,
+    reject::RejectMulticastGroupCommand,
+    subscribe::SubscribeMulticastGroupCommand,
     update::UpdateMulticastGroupCommand,
 };
 use doublezero_sdk::commands::tunnel::activate::ActivateTunnelCommand;
@@ -154,6 +168,30 @@ pub trait CliCommand {
         &self,
         cmd: SubscribeMulticastGroupCommand,
     ) -> eyre::Result<Signature>;
+    fn add_multicastgroup_pub_allowlist(
+        &self,
+        cmd: AddMulticastGroupPubAllowlistCommand,
+    ) -> eyre::Result<Signature>;
+    fn remove_multicastgroup_pub_allowlist(
+        &self,
+        cmd: RemoveMulticastGroupPubAllowlistCommand,
+    ) -> eyre::Result<Signature>;
+    fn add_multicastgroup_sub_allowlist(
+        &self,
+        cmd: AddMulticastGroupSubAllowlistCommand,
+    ) -> eyre::Result<Signature>;
+    fn remove_multicastgroup_sub_allowlist(
+        &self,
+        cmd: RemoveMulticastGroupSubAllowlistCommand,
+    ) -> eyre::Result<Signature>;
+    fn list_multicastgroup_pub_allowlist(
+        &self,
+        cmd: ListMulticastGroupPubAllowlistCommand,
+    ) -> eyre::Result<Vec<Pubkey>>;
+    fn list_multicastgroup_sub_allowlist(
+        &self,
+        cmd: ListMulticastGroupSubAllowlistCommand,
+    ) -> eyre::Result<Vec<Pubkey>>;
 }
 
 pub struct CliCommandImpl<'a> {
@@ -382,6 +420,42 @@ impl CliCommand for CliCommandImpl<'_> {
         &self,
         cmd: SubscribeMulticastGroupCommand,
     ) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn add_multicastgroup_pub_allowlist(
+        &self,
+        cmd: AddMulticastGroupPubAllowlistCommand,
+    ) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn remove_multicastgroup_pub_allowlist(
+        &self,
+        cmd: RemoveMulticastGroupPubAllowlistCommand,
+    ) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn add_multicastgroup_sub_allowlist(
+        &self,
+        cmd: AddMulticastGroupSubAllowlistCommand,
+    ) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn remove_multicastgroup_sub_allowlist(
+        &self,
+        cmd: RemoveMulticastGroupSubAllowlistCommand,
+    ) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn list_multicastgroup_pub_allowlist(
+        &self,
+        cmd: ListMulticastGroupPubAllowlistCommand,
+    ) -> eyre::Result<Vec<Pubkey>> {
+        cmd.execute(self.client)
+    }
+    fn list_multicastgroup_sub_allowlist(
+        &self,
+        cmd: ListMulticastGroupSubAllowlistCommand,
+    ) -> eyre::Result<Vec<Pubkey>> {
         cmd.execute(self.client)
     }
 }

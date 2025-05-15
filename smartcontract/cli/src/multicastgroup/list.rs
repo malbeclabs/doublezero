@@ -151,6 +151,8 @@ mod tests {
             code: "multicastgroup_code".to_string(),
             multicast_ip: [1, 2, 3, 4],
             max_bandwidth: 1234,
+            pub_allowlist: vec![],
+            sub_allowlist: vec![],
             publishers: vec![],
             subscribers: vec![],
             status: MulticastGroupStatus::Activated,

@@ -1,6 +1,6 @@
 use doublezero_sla_program::{
     instructions::DoubleZeroInstruction, pda::get_multicastgroup_pda,
-    processors::multicastgroup::create::MulticastGroupCreateArgs, types::IpV4,
+    processors::multicastgroup::create::MulticastGroupCreateArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -9,7 +9,6 @@ use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient}
 #[derive(Debug, PartialEq, Clone)]
 pub struct CreateMulticastGroupCommand {
     pub code: String,
-    pub multicast_ip: IpV4,
     pub max_bandwidth: u64,
     pub owner: Pubkey,
 }
@@ -28,7 +27,6 @@ impl CreateMulticastGroupCommand {
                     index: globalstate.account_index + 1,
                     bump_seed,
                     code: self.code.to_string(),
-                    multicast_ip: self.multicast_ip,
                     max_bandwidth: self.max_bandwidth,
                     owner: self.owner,
                 }),
@@ -70,7 +68,6 @@ mod tests {
                         index: 1,
                         bump_seed,
                         code: "test".to_string(),
-                        multicast_ip: [10, 0, 0, 1],
                         max_bandwidth: 1000,
                         owner: globalstate_pubkey,
                     },
@@ -84,7 +81,6 @@ mod tests {
 
         let res = CreateMulticastGroupCommand {
             code: "test".to_string(),
-            multicast_ip: [10, 0, 0, 1],
             max_bandwidth: 1000,
             owner: globalstate_pubkey,
         }

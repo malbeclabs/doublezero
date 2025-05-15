@@ -1,6 +1,6 @@
 use doublezero_sla_program::{
     instructions::DoubleZeroInstruction, pda::get_multicastgroup_pda,
-    processors::multicastgroup::activate::MulticastGroupActivateArgs,
+    processors::multicastgroup::activate::MulticastGroupActivateArgs, types::IpV4,
 };
 use solana_sdk::{instruction::AccountMeta, signature::Signature};
 
@@ -9,6 +9,7 @@ use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient}
 #[derive(Debug, PartialEq, Clone)]
 pub struct ActivateMulticastGroupCommand {
     pub index: u128,
+    pub multicast_ip: IpV4,
 }
 
 impl ActivateMulticastGroupCommand {
@@ -22,6 +23,7 @@ impl ActivateMulticastGroupCommand {
             DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
                 index: self.index,
                 bump_seed,
+                multicast_ip: self.multicast_ip,
             }),
             vec![
                 AccountMeta::new(pda_pubkey, false),
@@ -59,6 +61,7 @@ mod tests {
                     MulticastGroupActivateArgs {
                         index: 1,
                         bump_seed,
+                        multicast_ip: [1, 2, 3, 4],
                     },
                 )),
                 predicate::eq(vec![
@@ -68,7 +71,11 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        let res = ActivateMulticastGroupCommand { index: 1 }.execute(&client);
+        let res = ActivateMulticastGroupCommand {
+            index: 1,
+            multicast_ip: [1, 2, 3, 4],
+        }
+        .execute(&client);
 
         assert!(res.is_ok());
     }

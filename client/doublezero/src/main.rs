@@ -1,8 +1,4 @@
 use clap::Parser;
-mod cli;
-mod command;
-mod requirements;
-mod servicecontroller;
 use crate::cli::device::DeviceAllowlistCommands;
 use crate::cli::globalconfig::FoundationAllowlistCommands;
 use crate::cli::user::UserAllowlistCommands;
@@ -13,6 +9,12 @@ use crate::cli::{
 };
 use doublezero_cli::doublezerocommand::CliCommandImpl;
 use doublezero_sdk::DZClient;
+
+mod cli;
+mod command;
+mod requirements;
+mod servicecontroller;
+mod tests;
 
 include!(concat!(env!("OUT_DIR"), "/version.rs"));
 

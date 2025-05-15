@@ -7,30 +7,40 @@ use crate::processors::{
         device::{add::AddDeviceAllowlistArgs, remove::RemoveDeviceAllowlistArgs},
         foundation::{add::AddFoundationAllowlistArgs, remove::RemoveFoundationAllowlistArgs},
         user::{add::AddUserAllowlistArgs, remove::RemoveUserAllowlistArgs},
-    }, device::{
+    },
+    device::{
         activate::DeviceActivateArgs, create::DeviceCreateArgs, deactivate::DeviceDeactivateArgs,
         delete::DeviceDeleteArgs, reactivate::DeviceReactivateArgs, reject::DeviceRejectArgs,
         suspend::DeviceSuspendArgs, update::DeviceUpdateArgs,
-    }, exchange::{
+    },
+    exchange::{
         create::ExchangeCreateArgs, delete::ExchangeDeleteArgs, reactivate::ExchangeReactivateArgs,
         suspend::ExchangeSuspendArgs, update::ExchangeUpdateArgs,
-    }, globalconfig::set::SetGlobalConfigArgs, globalstate::close::CloseAccountArgs, location::{
+    },
+    globalconfig::set::SetGlobalConfigArgs,
+    globalstate::close::CloseAccountArgs,
+    location::{
         create::LocationCreateArgs, delete::LocationDeleteArgs, reactivate::LocationReactivateArgs,
         suspend::LocationSuspendArgs, update::LocationUpdateArgs,
-    }, multicastgroup::{
-        activate::MulticastGroupActivateArgs, create::MulticastGroupCreateArgs, deactivate::MulticastGroupDeactivateArgs, 
-        delete::MulticastGroupDeleteArgs, reactivate::MulticastGroupReactivateArgs, reject::MulticastGroupRejectArgs, suspend::MulticastGroupSuspendArgs, update::MulticastGroupUpdateArgs,
-        subscribe::MulticastGroupSubscribeArgs,
-    }, tunnel::{
+    },
+    multicastgroup::{
+        activate::MulticastGroupActivateArgs, create::MulticastGroupCreateArgs,
+        deactivate::MulticastGroupDeactivateArgs, delete::MulticastGroupDeleteArgs,
+        reactivate::MulticastGroupReactivateArgs, reject::MulticastGroupRejectArgs,
+        subscribe::MulticastGroupSubscribeArgs, suspend::MulticastGroupSuspendArgs,
+        update::MulticastGroupUpdateArgs,
+    },
+    tunnel::{
         activate::TunnelActivateArgs, create::TunnelCreateArgs, deactivate::TunnelDeactivateArgs,
         delete::TunnelDeleteArgs, reactivate::TunnelReactivateArgs, reject::TunnelRejectArgs,
         suspend::TunnelSuspendArgs, update::TunnelUpdateArgs,
-    }, user::{
+    },
+    user::{
         activate::UserActivateArgs, ban::UserBanArgs, create::UserCreateArgs,
-        deactivate::UserDeactivateArgs, delete::UserDeleteArgs, reactivate::UserReactivateArgs,
-        reject::UserRejectArgs, requestban::UserRequestBanArgs, suspend::UserSuspendArgs, create_subscribe::UserCreateSubscribeArgs,
-        update::UserUpdateArgs,
-    }
+        create_subscribe::UserCreateSubscribeArgs, deactivate::UserDeactivateArgs,
+        delete::UserDeleteArgs, reactivate::UserReactivateArgs, reject::UserRejectArgs,
+        requestban::UserRequestBanArgs, suspend::UserSuspendArgs, update::UserUpdateArgs,
+    },
 };
 
 // Instructions that our program can execute
@@ -78,9 +88,9 @@ pub enum DoubleZeroInstruction {
     DeleteTunnel(TunnelDeleteArgs),         // variant 34
     DeactivateTunnel(TunnelDeactivateArgs), // variant 35
 
-    CreateUser(UserCreateArgs),     // variant 36
-    ActivateUser(UserActivateArgs), // variant 37
-    RejectUser(UserRejectArgs),     // variant 38
+    CreateUser(UserCreateArgs),         // variant 36
+    ActivateUser(UserActivateArgs),     // variant 37
+    RejectUser(UserRejectArgs),         // variant 38
     UpdateUser(UserUpdateArgs),         // variant 39
     SuspendUser(UserSuspendArgs),       // variant 40
     ReactivateUser(UserReactivateArgs), // variant 41
@@ -99,7 +109,7 @@ pub enum DoubleZeroInstruction {
     DeactivateMulticastGroup(MulticastGroupDeactivateArgs), // variant 53
 
     SubscribeMulticastGroup(MulticastGroupSubscribeArgs), // variant 54
-    CreateSubscribeUser(UserCreateSubscribeArgs), // variant 55
+    CreateSubscribeUser(UserCreateSubscribeArgs),         // variant 55
 }
 
 impl DoubleZeroInstruction {
@@ -135,7 +145,7 @@ impl DoubleZeroInstruction {
             17 => Ok(Self::SuspendExchange(from_slice::<ExchangeSuspendArgs>(rest).unwrap())),
             18 => Ok(Self::ReactivateExchange(from_slice::<ExchangeReactivateArgs>(rest).unwrap())),
             19 => Ok(Self::DeleteExchange(from_slice::<ExchangeDeleteArgs>(rest).unwrap())),
-            
+
             20 => Ok(Self::CreateDevice(from_slice::<DeviceCreateArgs>(rest).unwrap())),
             21 => Ok(Self::ActivateDevice(from_slice::<DeviceActivateArgs>(rest).unwrap())),
             22 => Ok(Self::RejectDevice(from_slice::<DeviceRejectArgs>(rest).unwrap())),
@@ -163,7 +173,7 @@ impl DoubleZeroInstruction {
             42 => Ok(Self::DeleteUser(from_slice::<UserDeleteArgs>(rest).unwrap())),
             43 => Ok(Self::DeactivateUser(from_slice::<UserDeactivateArgs>(rest).unwrap())),
             44 => Ok(Self::RequestBanUser(from_slice::<UserRequestBanArgs>(rest).unwrap())),
-            45 => Ok(Self::BanUser(from_slice::<UserBanArgs>(rest).unwrap())),        
+            45 => Ok(Self::BanUser(from_slice::<UserBanArgs>(rest).unwrap())),
 
 
             46 => Ok(Self::CreateMulticastGroup(from_slice::<MulticastGroupCreateArgs>(rest).unwrap())),
@@ -192,7 +202,7 @@ impl DoubleZeroInstruction {
             Self::RemoveFoundationAllowlist(_) => "RemoveFoundationAllowlist".to_string(), // variant 5
             Self::AddDeviceAllowlist(_) => "AddDeviceAllowlist".to_string(), // variant 6
             Self::RemoveDeviceAllowlist(_) => "RemoveDeviceAllowlist".to_string(), // variant 7
-            Self::AddUserAllowlist(_) => "AddUserAllowlist".to_string(), // variant 8
+            Self::AddUserAllowlist(_) => "AddUserAllowlist".to_string(),     // variant 8
             Self::RemoveUserAllowlist(_) => "RemoveUserAllowlist".to_string(), // variant 9
 
             Self::CreateLocation(_) => "CreateLocation".to_string(), // variant 10
@@ -235,7 +245,7 @@ impl DoubleZeroInstruction {
             Self::DeactivateUser(_) => "DeactivateUser".to_string(), // variant 43
 
             Self::RequestBanUser(_) => "RequestBanUser".to_string(), // variant 44
-            Self::BanUser(_) => "BanUser".to_string(), // variant 45
+            Self::BanUser(_) => "BanUser".to_string(),               // variant 45
 
             Self::CreateMulticastGroup(_) => "CreateMulticastGroup".to_string(), // variant 46
             Self::ActivateMulticastGroup(_) => "ActivateMulticastGroup".to_string(), // variant 47
@@ -246,23 +256,23 @@ impl DoubleZeroInstruction {
             Self::UpdateMulticastGroup(_) => "UpdateMulticastGroup".to_string(), // variant 52
             Self::DeactivateMulticastGroup(_) => "DeactivateMulticastGroup".to_string(), // variant 53
             Self::SubscribeMulticastGroup(_) => "SubscribeMulticastGroup".to_string(), // variant 54
-            Self::CreateSubscribeUser(_) => "CreateSubscribeUser".to_string(), // variant 55
+            Self::CreateSubscribeUser(_) => "CreateSubscribeUser".to_string(),         // variant 55
         }
     }
 
     pub fn get_args(&self) -> String {
         match self {
-            Self::None() => "".to_string(), // variant 0
-            Self::InitGlobalState() => "".to_string(), // variant 1
-            Self::CloseAccount(args) => format!("{:?}", args), // variant 2
+            Self::None() => "".to_string(),                       // variant 0
+            Self::InitGlobalState() => "".to_string(),            // variant 1
+            Self::CloseAccount(args) => format!("{:?}", args),    // variant 2
             Self::SetGlobalConfig(args) => format!("{:?}", args), // variant 3
 
             Self::AddFoundationAllowlist(args) => format!("{:?}", args), // variant 4
             Self::RemoveFoundationAllowlist(args) => format!("{:?}", args), // variant 5
-            Self::AddDeviceAllowlist(args) => format!("{:?}", args), // variant 6
-            Self::RemoveDeviceAllowlist(args) => format!("{:?}", args), // variant 7
-            Self::AddUserAllowlist(args) => format!("{:?}", args), // variant 8
-            Self::RemoveUserAllowlist(args) => format!("{:?}", args), // variant 9
+            Self::AddDeviceAllowlist(args) => format!("{:?}", args),     // variant 6
+            Self::RemoveDeviceAllowlist(args) => format!("{:?}", args),  // variant 7
+            Self::AddUserAllowlist(args) => format!("{:?}", args),       // variant 8
+            Self::RemoveUserAllowlist(args) => format!("{:?}", args),    // variant 9
 
             Self::CreateLocation(args) => format!("{:?}", args), // variant 10
             Self::UpdateLocation(args) => format!("{:?}", args), // variant 11
@@ -304,7 +314,7 @@ impl DoubleZeroInstruction {
             Self::DeactivateUser(args) => format!("{:?}", args), // variant 43
 
             Self::RequestBanUser(args) => format!("{:?}", args), // variant 44
-            Self::BanUser(args) => format!("{:?}", args), // variant 45
+            Self::BanUser(args) => format!("{:?}", args),        // variant 45
 
             Self::CreateMulticastGroup(args) => format!("{:?}", args), // variant 46
             Self::ActivateMulticastGroup(args) => format!("{:?}", args), // variant 47
@@ -315,16 +325,19 @@ impl DoubleZeroInstruction {
             Self::UpdateMulticastGroup(args) => format!("{:?}", args), // variant 52
             Self::DeactivateMulticastGroup(args) => format!("{:?}", args), // variant 53
             Self::SubscribeMulticastGroup(args) => format!("{:?}", args), // variant 54
-            Self::CreateSubscribeUser(args) => format!("{:?}", args), // variant 55
-
+            Self::CreateSubscribeUser(args) => format!("{:?}", args),  // variant 55
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::state::{
+        device::DeviceType,
+        tunnel::TunnelTunnelType,
+        user::{UserCYOA, UserType},
+    };
     use solana_program::pubkey::Pubkey;
-    use crate::{state::{device::DeviceType, tunnel::TunnelTunnelType, user::{UserCYOA, UserType}}};
 
     use super::*;
 
@@ -718,7 +731,7 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
                 index: 123,
-                bump_seed: 255,                
+                bump_seed: 255,
                 multicast_ip: [1, 2, 3, 4],
             }),
             "ActivateMulticastGroup",
@@ -778,8 +791,8 @@ mod tests {
 
         test_instruction(
             DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
-                publisher: true, subscriber: true,             
-
+                publisher: true,
+                subscriber: true,
             }),
             "SubscribeMulticastGroup",
         );
@@ -787,17 +800,15 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
                 index: 123,
-                bump_seed: 255,              
+                bump_seed: 255,
                 device_pk: Pubkey::new_unique(),
                 client_ip: [1, 2, 3, 4],
-                user_type: UserType::Multicast,
+                user_type: UserType::MulticastSubscriber,
                 cyoa_type: UserCYOA::GREOverDIA,
                 publisher: false,
                 subscriber: false,
             }),
             "CreateSubscribeUser",
         );
-
-
     }
 }

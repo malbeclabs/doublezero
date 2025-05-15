@@ -15,7 +15,8 @@ pub enum UserType {
     IBRL = 0,
     IBRLWithAllocatedIP = 1,
     EdgeFiltering = 2,
-    Multicast = 3,
+    MulticastSubscriber = 3,
+    MulticastPublisher = 4,
 }
 
 impl From<u8> for UserType {
@@ -24,7 +25,8 @@ impl From<u8> for UserType {
             0 => UserType::IBRL,
             1 => UserType::IBRLWithAllocatedIP,
             2 => UserType::EdgeFiltering,
-            3 => UserType::Multicast,
+            3 => UserType::MulticastPublisher,
+            4 => UserType::MulticastSubscriber,
             _ => panic!("Unknown UserType"),
         }
     }
@@ -36,7 +38,8 @@ impl fmt::Display for UserType {
             UserType::IBRL => write!(f, "IBRL"),
             UserType::IBRLWithAllocatedIP => write!(f, "IBRLWithAllocatedIP"),
             UserType::EdgeFiltering => write!(f, "EdgeFiltering"),
-            UserType::Multicast => write!(f, "Multicast"),
+            UserType::MulticastPublisher => write!(f, "MulticastPublisher"),
+            UserType::MulticastSubscriber => write!(f, "MulticastSubscriber"),
         }
     }
 }

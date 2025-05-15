@@ -18,17 +18,11 @@ use doublezero_sdk::{
 use solana_sdk::pubkey::Pubkey;
 use std::collections::HashMap;
 
-#[derive(Copy, Clone, PartialEq, Eq)]
-enum MulticastMembershipType {
-    Publisher,
-    Subscriber,
-}
-
 fn check_multicast_group(
     multicastgroups: &MulticastGroups,
     mcast_group_pk: &Pubkey,
     user: &User,
-    membership: MulticastMembershipType,
+    user_type: UserType,
 ) -> bool {
     let multicastgroup = match multicastgroups.get(mcast_group_pk) {
         Some(group) => group,
@@ -43,9 +37,10 @@ fn check_multicast_group(
         return false;
     }
 
-    let is_member = match membership {
-        MulticastMembershipType::Publisher => multicastgroup.publishers.contains(&user.owner),
-        MulticastMembershipType::Subscriber => multicastgroup.subscribers.contains(&user.owner),
+    let is_member = match user_type {
+        UserType::MulticastPublisher => multicastgroup.publishers.contains(&user.owner),
+        UserType::MulticastSubscriber => multicastgroup.subscribers.contains(&user.owner),
+        _ => false,
     };
 
     if !is_member {
@@ -117,38 +112,39 @@ pub fn process_user_event(
                                     tunnel_id = device_state.get_next_tunnel_id().unwrap();
                                     dz_ip = user.client_ip;
                                 }
-                                UserType::Multicast => {
+                                UserType::MulticastPublisher => {
                                     // Check if the user is a publisher for any multicast group and if so,
-                                    // allocate a tunnel ID and DZ IP for publishing
-                                    for mcast_group_pk in user.publishers.iter() {
-                                        if check_multicast_group(
+                                    // allocate a tunnel ID using the src IP address. This
+                                    // ensures that only a single tunnel ID is being used.
+                                    let is_valid = user.publishers.iter().any(|mcast_group_pk| {
+                                        check_multicast_group(
                                             multicastgroups,
                                             mcast_group_pk,
                                             user,
-                                            MulticastMembershipType::Publisher,
-                                        ) {
-                                            if let Some((xtunnel_id, xdz_ip)) =
-                                                device_state.get_next()
-                                            {
-                                                tunnel_id = xtunnel_id;
-                                                dz_ip = xdz_ip;
-                                            }
+                                            UserType::MulticastPublisher,
+                                        )
+                                    });
+                                    if is_valid {
+                                        if let Some((xtunnel_id, xdz_ip)) = device_state.get_next()
+                                        {
+                                            tunnel_id = xtunnel_id;
+                                            dz_ip = xdz_ip;
                                         }
                                     }
-
+                                }
+                                UserType::MulticastSubscriber => {
                                     // Check if the user is a subscriber to any multicast group and if so,
                                     // allocate a tunnel ID using the client's IP address. This
                                     // ensures that only a single tunnel ID is being used.
-                                    let has_valid_subscription =
-                                        user.subscribers.iter().any(|mcast_group_pk| {
-                                            check_multicast_group(
-                                                multicastgroups,
-                                                mcast_group_pk,
-                                                user,
-                                                MulticastMembershipType::Subscriber,
-                                            )
-                                        });
-                                    if has_valid_subscription {
+                                    let is_valid = user.subscribers.iter().any(|mcast_group_pk| {
+                                        check_multicast_group(
+                                            multicastgroups,
+                                            mcast_group_pk,
+                                            user,
+                                            UserType::MulticastSubscriber,
+                                        )
+                                    });
+                                    if is_valid {
                                         tunnel_id = device_state.get_next_tunnel_id().unwrap();
                                         dz_ip = user.client_ip;
                                     }

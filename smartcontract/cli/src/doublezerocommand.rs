@@ -30,7 +30,7 @@ use doublezero_sdk::commands::multicastgroup::{
     deactivate::DeactivateMulticastGroupCommand, delete::DeleteMulticastGroupCommand,
     get::GetMulticastGroupCommand, list::ListMulticastGroupCommand,
     reject::RejectMulticastGroupCommand, subscribe::SubscribeMulticastGroupCommand,
-    unsubscribe::UnsubscribeMulticastGroupCommand, update::UpdateMulticastGroupCommand,
+    update::UpdateMulticastGroupCommand,
 };
 use doublezero_sdk::commands::tunnel::activate::ActivateTunnelCommand;
 use doublezero_sdk::commands::tunnel::{
@@ -40,8 +40,9 @@ use doublezero_sdk::commands::tunnel::{
 };
 use doublezero_sdk::commands::user::requestban::RequestBanUserCommand;
 use doublezero_sdk::commands::user::{
-    create::CreateUserCommand, delete::DeleteUserCommand, get::GetUserCommand,
-    list::ListUserCommand, update::UpdateUserCommand,
+    create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand,
+    delete::DeleteUserCommand, get::GetUserCommand, list::ListUserCommand,
+    update::UpdateUserCommand,
 };
 use doublezero_sdk::MulticastGroup;
 use doublezero_sdk::{
@@ -100,6 +101,10 @@ pub trait CliCommand {
     fn closeaccount_tunnel(&self, cmd: CloseAccountTunnelCommand) -> eyre::Result<Signature>;
 
     fn create_user(&self, cmd: CreateUserCommand) -> eyre::Result<(Signature, Pubkey)>;
+    fn create_subscribe_user(
+        &self,
+        cmd: CreateSubscribeUserCommand,
+    ) -> eyre::Result<(Signature, Pubkey)>;
     fn get_user(&self, cmd: GetUserCommand) -> eyre::Result<(Pubkey, User)>;
     fn list_user(&self, cmd: ListUserCommand) -> eyre::Result<HashMap<Pubkey, User>>;
     fn update_user(&self, cmd: UpdateUserCommand) -> eyre::Result<Signature>;
@@ -152,10 +157,6 @@ pub trait CliCommand {
     fn subscribe_multicastgroup(
         &self,
         cmd: SubscribeMulticastGroupCommand,
-    ) -> eyre::Result<Signature>;
-    fn unsubscribe_multicastgroup(
-        &self,
-        cmd: UnsubscribeMulticastGroupCommand,
     ) -> eyre::Result<Signature>;
 }
 
@@ -288,6 +289,12 @@ impl CliCommand for CliCommandImpl<'_> {
     fn create_user(&self, cmd: CreateUserCommand) -> eyre::Result<(Signature, Pubkey)> {
         cmd.execute(self.client)
     }
+    fn create_subscribe_user(
+        &self,
+        cmd: CreateSubscribeUserCommand,
+    ) -> eyre::Result<(Signature, Pubkey)> {
+        cmd.execute(self.client)
+    }
     fn get_user(&self, cmd: GetUserCommand) -> eyre::Result<(Pubkey, User)> {
         cmd.execute(self.client)
     }
@@ -384,12 +391,6 @@ impl CliCommand for CliCommandImpl<'_> {
     fn subscribe_multicastgroup(
         &self,
         cmd: SubscribeMulticastGroupCommand,
-    ) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
-    fn unsubscribe_multicastgroup(
-        &self,
-        cmd: UnsubscribeMulticastGroupCommand,
     ) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }

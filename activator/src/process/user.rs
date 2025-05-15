@@ -289,6 +289,8 @@ mod tests {
             tunnel_id: 0,
             tunnel_net: ([0, 0, 0, 0], 0),
             status: UserStatus::Pending,
+            publishers: vec![],
+            subscribers: vec![],
         };
 
         client
@@ -374,6 +376,8 @@ mod tests {
             tunnel_id: 0,
             tunnel_net: ([0, 0, 0, 0], 0),
             status: UserStatus::Pending,
+            publishers: vec![],
+            subscribers: vec![],
         };
 
         client
@@ -452,6 +456,8 @@ mod tests {
             tunnel_id: 0,
             tunnel_net: ([0, 0, 0, 0], 0),
             status: UserStatus::Pending,
+            publishers: vec![],
+            subscribers: vec![],
         };
 
         client
@@ -534,6 +540,8 @@ mod tests {
             tunnel_id: 0,
             tunnel_net: ([0, 0, 0, 0], 0),
             status: UserStatus::Pending,
+            publishers: vec![],
+            subscribers: vec![],
         };
 
         client
@@ -602,6 +610,8 @@ mod tests {
             tunnel_id: 102,
             tunnel_net: ([10, 0, 0, 0], 31),
             status: user_status,
+            publishers: vec![],
+            subscribers: vec![],
         };
 
         let device = Device {

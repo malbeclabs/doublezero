@@ -90,7 +90,7 @@ pub enum UserStatus {
     Rejected = 4,
     PendingBan = 5,
     Banned = 6,
-    Updated = 7,
+    Updating = 7,
 }
 
 impl From<u8> for UserStatus {
@@ -103,7 +103,7 @@ impl From<u8> for UserStatus {
             4 => UserStatus::Rejected,
             5 => UserStatus::PendingBan,
             6 => UserStatus::Banned,
-            7 => UserStatus::Updated,
+            7 => UserStatus::Updating,
             _ => UserStatus::Pending,
         }
     }
@@ -118,7 +118,7 @@ impl fmt::Display for UserStatus {
             UserStatus::Deleting => write!(f, "deleting"),
             UserStatus::Rejected => write!(f, "rejected"),
             UserStatus::PendingBan => write!(f, "pending ban"),
-            UserStatus::Updated => write!(f, "updated"),
+            UserStatus::Updating => write!(f, "updating"),
             UserStatus::Banned => write!(f, "banned"),
         }
     }

@@ -1,4 +1,5 @@
-use clap::Subcommand;
+use clap::{Args, Subcommand};
+use clap_complete::Shell;
 
 use doublezero_cli::init::InitCliCommand;
 
@@ -63,4 +64,12 @@ pub enum Command {
     Keygen(KeyGenCliCommand),
     #[command(about = "Get logs", hide = false)]
     Log(LogCliCommand),
+    #[command(about = "Generate shell completions", hide = false)]
+    Completion(CompletionCliCommand),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct CompletionCliCommand {
+    #[arg(value_enum)]
+    pub shell: Shell,
 }

@@ -1,5 +1,5 @@
 PREFIX:=github.com/malbeclabs/doublezero/smartcontract
-BUILD:=`git rev-parse --short HEAD` 
+BUILD:=`git rev-parse --short HEAD`
 LDFLAGS=
 
 .PHONY: test

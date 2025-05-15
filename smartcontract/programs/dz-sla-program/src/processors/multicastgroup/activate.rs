@@ -1,4 +1,5 @@
 use crate::globalstate::globalstate_get;
+use crate::types::IpV4;
 use crate::{error::DoubleZeroError, helper::*, state::multicastgroup::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
@@ -15,6 +16,7 @@ use solana_program::{
 pub struct MulticastGroupActivateArgs {
     pub index: u128,
     pub bump_seed: u8,
+    pub multicast_ip: IpV4,
 }
 
 impl fmt::Debug for MulticastGroupActivateArgs {
@@ -66,6 +68,7 @@ pub fn process_activate_multicastgroup(
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
+    multicastgroup.multicast_ip = value.multicast_ip;
     multicastgroup.status = MulticastGroupStatus::Activated;
 
     account_write(pda_account, &multicastgroup, payer_account, system_program);

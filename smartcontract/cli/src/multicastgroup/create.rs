@@ -1,8 +1,8 @@
 use crate::doublezerocommand::CliCommand;
 use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
 use clap::Args;
+use doublezero_sdk::bandwidth_parse;
 use doublezero_sdk::commands::multicastgroup::create::CreateMulticastGroupCommand;
-use doublezero_sdk::{bandwidth_parse, ipv4_parse};
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 use std::str::FromStr;
@@ -34,7 +34,6 @@ impl CreateMulticastGroupCliCommand {
 
         let (signature, _pubkey) = client.create_multicastgroup(CreateMulticastGroupCommand {
             code: self.code.clone(),
-            multicast_ip: ipv4_parse(&self.multicast_ip),
             max_bandwidth: bandwidth_parse(&self.max_bandwidth),
             owner: owner_pk,
         })?;
@@ -76,7 +75,6 @@ mod tests {
             .expect_create_multicastgroup()
             .with(predicate::eq(CreateMulticastGroupCommand {
                 code: "test".to_string(),
-                multicast_ip: [10, 0, 0, 1],
                 max_bandwidth: 10000000000,
                 owner: pda_pubkey,
             }))

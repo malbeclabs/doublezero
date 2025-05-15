@@ -47,6 +47,7 @@ mod tests {
             remote_asn: 5678,
             tunnel_tunnel_block: ([10, 1, 0, 0], 24),
             user_tunnel_block: ([10, 5, 0, 0], 24),
+            multicastgroup_block: ([224, 2, 0, 0], 4),
         };
 
         client

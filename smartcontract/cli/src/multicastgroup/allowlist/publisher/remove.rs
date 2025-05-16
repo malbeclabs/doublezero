@@ -36,7 +36,7 @@ impl RemoveMulticastGroupPubAllowlistCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::multicastgroup::allowlist::publisher::remove::RemoveMulticastGroupAllowlistCliCommand;
+    use crate::multicastgroup::allowlist::publisher::remove::RemoveMulticastGroupPubAllowlistCliCommand;
     use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
     use crate::tests::tests::create_test_client;
     use doublezero_sdk::commands::multicastgroup::allowlist::publisher::remove::RemoveMulticastGroupPubAllowlistCommand;
@@ -69,7 +69,7 @@ mod tests {
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
-        let res = RemoveMulticastGroupAllowlistCliCommand {
+        let res = RemoveMulticastGroupPubAllowlistCliCommand {
             pubkey: pubkey.to_string(),
         }
         .execute(&client, &mut output);

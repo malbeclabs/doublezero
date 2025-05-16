@@ -10,7 +10,7 @@ use doublezero_sdk::{
             reject::RejectUserCommand,
         },
     },
-    ipv4_to_string, networkv4_list_to_string, networkv4_to_string, DoubleZeroClient, IpV4, User,
+    ipv4_to_string, networkv4_list_to_string, networkv4_to_string, DoubleZeroClient, User,
     UserStatus, UserType,
 };
 use solana_sdk::pubkey::Pubkey;
@@ -61,66 +61,65 @@ pub fn process_user_event(
                         Some(tunnel_net) => {
                             print!("tunnel_net: {} ", networkv4_to_string(&tunnel_net));
 
-                            let mut tunnel_id: u16 = 0;
-                            let mut dz_ip: IpV4 = [0, 0, 0, 0];
+                            let tunnel_id = device_state.get_next_tunnel_id();
 
-                            match user.user_type {
-                                UserType::IBRLWithAllocatedIP | UserType::EdgeFiltering => {
-                                    if let Some((xtunnel_id, xdz_ip)) = device_state.get_next() {
-                                        tunnel_id = xtunnel_id;
-                                        dz_ip = xdz_ip;
+                            let need_dz_ip = match user.user_type {
+                                UserType::IBRLWithAllocatedIP | UserType::EdgeFiltering => true,
+                                UserType::IBRL => false,
+                                UserType::Multicast => !user.publishers.is_empty(),
+                            };
+
+                            let maybe_dz_ip = if need_dz_ip {
+                                device_state.get_next_dz_ip()
+                            } else {
+                                Some(user.client_ip)
+                            };
+
+                            match maybe_dz_ip {
+                                None => {
+                                    eprintln!("Error: No available dz_ip to allocate");
+
+                                    let res = RejectUserCommand {
+                                        index: user.index,
+                                        reason: "Error: No available dz_ip to allocate".to_string(),
+                                    }
+                                    .execute(client);
+
+                                    match res {
+                                        Ok(signature) => {
+                                            println!("Rejected {}", signature);
+                                            *state_transitions
+                                                .entry("user-pending-to-rejected")
+                                                .or_insert(0) += 1;
+                                        }
+                                        Err(e) => println!("Error: {}", e),
                                     }
                                 }
-                                UserType::IBRL => {
-                                    tunnel_id = device_state.get_next_tunnel_id().unwrap();
-                                    dz_ip = user.client_ip;
-                                }
-                                UserType::Multicast => {}
-                            }
+                                Some(dz_ip) => {
+                                    print!(
+                                        "tunnel_id: {} dz_ip: {} ",
+                                        tunnel_id,
+                                        ipv4_to_string(&dz_ip)
+                                    );
 
-                            if tunnel_id == 0 {
-                                eprintln!("Error: No available tunnel block");
-
-                                let res = RejectUserCommand {
-                                    index: user.index,
-                                    reason: "Error: No available tunnel block".to_string(),
-                                }
-                                .execute(client);
-
-                                match res {
-                                    Ok(signature) => {
-                                        println!("Rejected {}", signature);
-                                        *state_transitions
-                                            .entry("user-pending-to-rejected")
-                                            .or_insert(0) += 1;
+                                    let res = ActivateUserCommand {
+                                        index: user.index,
+                                        tunnel_id,
+                                        tunnel_net,
+                                        dz_ip,
                                     }
-                                    Err(e) => println!("Error: {}", e),
+                                    .execute(client);
+
+                                    match res {
+                                        Ok(signature) => {
+                                            println!("Activated   {}", signature);
+                                            *state_transitions
+                                                .entry("user-pending-to-activated")
+                                                .or_insert(0) += 1;
+                                        }
+                                        Err(e) => println!("Error: {}", e),
+                                    }
                                 }
-                                return;
-                            }
-
-                            print!(
-                                "tunnel_id: {} dz_ip: {} ",
-                                tunnel_id,
-                                ipv4_to_string(&dz_ip)
-                            );
-
-                            let res = ActivateUserCommand {
-                                index: user.index,
-                                tunnel_id,
-                                tunnel_net,
-                                dz_ip,
-                            }
-                            .execute(client);
-
-                            match res {
-                                Ok(signature) => {
-                                    println!("Activated   {}", signature);
-                                    *state_transitions
-                                        .entry("user-pending-to-activated")
-                                        .or_insert(0) += 1;
-                                }
-                                Err(e) => println!("Error: {}", e),
                             }
                         }
                         None => {

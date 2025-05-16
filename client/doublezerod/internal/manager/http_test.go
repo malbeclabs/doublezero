@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/jwhited/corebgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/manager"
@@ -391,3 +392,84 @@ func TestNetlinkManager_HttpEndpoints(t *testing.T) {
 
 	}
 }
+
+type MockBgpServer struct {
+	deletedPeer net.IP
+}
+
+func (m *MockBgpServer) Serve(lis []net.Listener) error                   { return nil }
+func (m *MockBgpServer) AddPeer(p *bgp.PeerConfig, nlri []bgp.NLRI) error { return nil }
+func (m *MockBgpServer) DeletePeer(ip net.IP) error {
+	m.deletedPeer = ip
+	return nil
+}
+func (m *MockBgpServer) GetPeerStatus(net.IP) bgp.Session { return bgp.Session{} }
+func (m *MockBgpServer) Close()                           {}
+func (m *MockBgpServer) GetPeers() []corebgp.PeerConfig   { return []corebgp.PeerConfig{} }
+
+type MockNetlink struct {
+	routes        []*routing.Route
+	routesAdded   []*routing.Route
+	routesRemoved []*routing.Route
+	tunAdded      *routing.Tunnel
+	tunRemoved    *routing.Tunnel
+	tunAddrAdded  []string
+	tunUp         *routing.Tunnel
+	ruleAdded     []*routing.IPRule
+	ruleRemoved   []*routing.IPRule
+	callLog       []string
+}
+
+func (m *MockNetlink) TunnelAdd(t *routing.Tunnel) error {
+	m.tunAdded = t
+	return nil
+}
+func (m *MockNetlink) TunnelDelete(n *routing.Tunnel) error {
+	m.callLog = append(m.callLog, "TunnelDelete")
+	m.tunRemoved = n
+	return nil
+}
+func (m *MockNetlink) TunnelAddrAdd(t *routing.Tunnel, ip string) error {
+	m.tunAddrAdded = append(m.tunAddrAdded, ip)
+	return nil
+}
+func (m *MockNetlink) TunnelUp(t *routing.Tunnel) error {
+	m.tunUp = t
+	return nil
+}
+func (m *MockNetlink) RouteAdd(r *routing.Route) error {
+	m.routesAdded = append(m.routesAdded, r)
+	return nil
+}
+func (m *MockNetlink) RouteDelete(n *routing.Route) error {
+	m.callLog = append(m.callLog, "RouteDelete")
+	m.routesRemoved = append(m.routesRemoved, n)
+	return nil
+}
+func (m *MockNetlink) RouteGet(net.IP) ([]*routing.Route, error) {
+	return m.routes, nil
+}
+func (m *MockNetlink) RuleAdd(r *routing.IPRule) error {
+	m.ruleAdded = append(m.ruleAdded, r)
+	return nil
+}
+func (m *MockNetlink) RuleDel(n *routing.IPRule) error {
+	m.callLog = append(m.callLog, "RuleDel")
+	m.ruleRemoved = append(m.ruleRemoved, n)
+	return nil
+}
+
+func (m *MockNetlink) RouteByProtocol(protocol int) ([]*routing.Route, error) {
+	return m.routes, nil
+}
+
+type MockDb struct {
+	state []*api.ProvisionRequest
+}
+
+func (m *MockDb) GetState(usertypes ...api.UserType) []*api.ProvisionRequest {
+	return m.state
+}
+
+func (m *MockDb) DeleteState(u api.UserType) error        { return nil }
+func (m *MockDb) SaveState(p *api.ProvisionRequest) error { return nil }

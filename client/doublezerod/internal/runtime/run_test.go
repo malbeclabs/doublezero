@@ -424,7 +424,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 				if err != nil {
 					t.Fatalf("error creating url: %v", err)
 				}
-				req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(`{"user_type": "IBRL"}`))
+				req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(fmt.Sprintf(`{"user_type": "%s"}`, test.userType)))
 				if err != nil {
 					t.Fatalf("error creating request: %v", err)
 				}
@@ -738,7 +738,7 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 		if err != nil {
 			t.Fatalf("error creating url: %v", err)
 		}
-		req, err := http.NewRequest(http.MethodPost, url, nil)
+		req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(fmt.Sprintf(`{"user_type": "%s"}`, api.UserTypeEdgeFiltering)))
 		if err != nil {
 			t.Fatalf("error creating request: %v", err)
 		}
@@ -806,8 +806,16 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 	})
 
 	t.Run("state_removal_verify_state_file_removed", func(t *testing.T) {
-		if _, err := os.Stat(filepath.Join(rootPath, "doublezerod", "doublezerod.json")); err == nil {
-			t.Fatalf("state file still exists when should be removed")
+		path, _ := os.ReadFile(filepath.Join(rootPath, "doublezerod", "doublezerod.json"))
+
+		var p []*api.ProvisionRequest
+		if err := json.Unmarshal(path, &p); err != nil {
+			t.Errorf("error unmarshaling db file: %v", err)
+		}
+
+		if len(p) != 0 {
+			t.Fatalf("provisioned requests should be empty; got %+v %s", p, string(path))
+
 		}
 	})
 
@@ -893,12 +901,12 @@ func waitForPeerStatus(httpClient http.Client, status bgp.SessionStatus, timeout
 		if err != nil {
 			return false, fmt.Errorf("error reading status response: %v", err)
 		}
-		var statusResponse api.StatusResponse
+		var statusResponse []api.StatusResponse
 		if err := json.Unmarshal(got, &statusResponse); err != nil {
 			return false, fmt.Errorf("error unmarshalling status response: %v", err)
 		}
 
-		if statusResponse.DoubleZeroStatus.SessionStatus == status {
+		if statusResponse[0].DoubleZeroStatus.SessionStatus == status {
 			return true, nil
 		}
 		time.Sleep(200 * time.Millisecond)

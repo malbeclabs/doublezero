@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -123,18 +124,19 @@ func (d *Db) DeleteState(u api.UserType) error {
 	if err != nil {
 		return fmt.Errorf("error reading db file: %v", err)
 	}
+	if len(file) == 0 {
+		return nil
+	}
 	var p []*api.ProvisionRequest
 	if err := json.Unmarshal(file, &p); err != nil {
 		return fmt.Errorf("error unmarshaling db file: %v", err)
 	}
-	for i, _ := range p {
-		if p[i].UserType == u {
-			p = slices.Delete(p, i, i+1)
-			break
-		}
-	}
+	p = slices.DeleteFunc(p, func(pr *api.ProvisionRequest) bool {
+		return pr.UserType == u
+	})
 
 	d.State = p
+	log.Printf("state is this after delete: %+v", d.State)
 	buf, err := json.MarshalIndent(d.State, "", "    ")
 	if err != nil {
 		return fmt.Errorf("error marshalling state: %v", err)
@@ -150,6 +152,10 @@ func (d *Db) DeleteState(u api.UserType) error {
 func (d *Db) SaveState(p *api.ProvisionRequest) error {
 	if p == nil {
 		return fmt.Errorf("provision request is nil")
+	}
+	if slices.Contains(d.State, p) {
+		log.Printf("provision request already exists in state: %v", p)
+		return nil
 	}
 	d.mu.Lock()
 	d.State = append(d.State, p)

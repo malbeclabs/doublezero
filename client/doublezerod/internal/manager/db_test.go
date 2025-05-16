@@ -283,9 +283,13 @@ func TestDbDeleteState(t *testing.T) {
 		t.Fatalf("error creating state dir: %v", err)
 	}
 
+	file, err := os.ReadFile("./fixtures/doublezerod.ibrl.json")
+	if err != nil {
+		t.Fatalf("error reading fixture: %v", err)
+	}
 	stateFile := filepath.Join(path, "doublezerod.json")
 	// Create an empty file so we have something to delete
-	err = manager.WriteFile(stateFile, []byte{}, os.FileMode(os.O_RDWR|os.O_CREATE|os.O_TRUNC))
+	err = manager.WriteFile(stateFile, file, os.FileMode(os.O_RDWR|os.O_CREATE|os.O_TRUNC))
 	if err != nil {
 		t.Fatalf("could not create file: %v", err)
 	}
@@ -302,12 +306,16 @@ func TestDbDeleteState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error removing state file: %v", err)
 	}
-	// test the state file as been removed
-	if _, err := os.Stat(stateFile); err == nil {
-		t.Fatalf("state file still exists when should be removed")
+	file, err = os.ReadFile(stateFile)
+	if err != nil {
+		t.Fatalf("error reading state file: %v", err)
 	}
+	if string(file) != "[]\n" {
+		t.Fatalf("state file is not empty: %s", string(file))
+	}
+
 	// test the db.State has been set back to nil
-	if db.State != nil {
-		t.Fatalf("db state is not nil")
+	if len(db.State) != 0 {
+		t.Fatalf("db state is not nil: %v", db.State)
 	}
 }

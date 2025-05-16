@@ -3,6 +3,7 @@ package manager
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
@@ -50,7 +51,11 @@ func (n *NetlinkManager) ServeProvision(w http.ResponseWriter, r *http.Request) 
 func (n *NetlinkManager) ServeRemove(w http.ResponseWriter, r *http.Request) {
 	var rr api.RemoveRequest
 	err := json.NewDecoder(r.Body).Decode(&rr)
-	if err != nil {
+	switch {
+	case err == io.EOF:
+		// TODO: this is a hack until the client is updated to send user type
+		rr.UserType = api.UserTypeIBRL
+	case err != nil:
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(fmt.Sprintf(`{"status": "error", "description": "malformed provision request: %v"}`, err)))
 		return

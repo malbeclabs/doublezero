@@ -323,6 +323,8 @@ mod tests {
             code: "m_code".to_string(),
             multicast_ip: [1, 2, 3, 4],
             max_bandwidth: 1000,
+            pub_allowlist: vec![],
+            sub_allowlist: vec![],
             publishers: vec![],
             subscribers: vec![user2_pubkey],
             status: MulticastGroupStatus::Activated,

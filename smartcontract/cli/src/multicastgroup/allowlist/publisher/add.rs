@@ -35,7 +35,7 @@ impl AddMulticastGroupPubAllowlistCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::multicastgroup::allowlist::publisher::add::AddMulticastGroupAllowlistCliCommand;
+    use crate::multicastgroup::allowlist::publisher::add::AddMulticastGroupPubAllowlistCliCommand;
     use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
     use crate::tests::tests::create_test_client;
     use doublezero_sdk::commands::multicastgroup::allowlist::publisher::add::AddMulticastGroupPubAllowlistCommand;
@@ -68,7 +68,7 @@ mod tests {
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
-        let res = AddMulticastGroupAllowlistCliCommand {
+        let res = AddMulticastGroupPubAllowlistCliCommand {
             pubkey: pubkey.to_string(),
         }
         .execute(&client, &mut output);

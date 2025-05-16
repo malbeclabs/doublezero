@@ -1,8 +1,8 @@
+use super::helpers::look_for_ip;
 use crate::servicecontroller::{ProvisioningRequest, ServiceController};
 use clap::{Args, Subcommand, ValueEnum};
 use doublezero_cli::{
     doublezerocommand::CliCommand,
-    helpers::get_public_ipv4,
     helpers::init_command,
     requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON, CHECK_USER_ALLOWLIST},
 };
@@ -14,7 +14,7 @@ use doublezero_sdk::commands::{
     user::list::ListUserCommand,
 };
 use doublezero_sdk::{
-    ipv4_parse, ipv4_to_string, networkv4_to_string, Device, IpV4, NetworkV4, User, UserCYOA,
+    ipv4_to_string, networkv4_to_string, Device, IpV4, NetworkV4, User, UserCYOA,
     UserStatus, UserType,
 };
 
@@ -78,8 +78,13 @@ impl ProvisioningCliCommand {
 
         check_doublezero(Some(&spinner))?;
 
+        spinner.println("🔗  Start Provisioning User...");
+        spinner.set_prefix("1/4 Public IP");
+
         // Get public IP
-        let client_ip = self.look_for_ip(&spinner).await?;
+        let (client_ip, client_ip_str) = look_for_ip(&self.client_ip, &spinner).await?;
+
+        spinner.println(format!("🔍  Provisioning User for IP: {}", client_ip_str));
 
         let (user_type, multicast_mode, multicast_group) = self.parse_dz_mode();
 
@@ -213,38 +218,6 @@ impl ProvisioningCliCommand {
                 multicast_group,
             } => (UserType::Multicast, Some(mode), Some(multicast_group)),
         }
-    }
-
-    async fn look_for_ip(&self, spinner: &ProgressBar) -> eyre::Result<IpV4> {
-        spinner.println("🔗  Start Provisioning User...");
-        spinner.set_prefix("1/4 Public IP");
-
-        // Get public IP from command line or from the internet
-        let client_ip = match self.client_ip.as_ref() {
-            Some(ip) => {
-                spinner.println(format!("    Using Public IP: {}", ip));
-
-                ip
-            }
-            None => &{
-                spinner.set_message("Searching for Public IP...");
-
-                match get_public_ipv4() {
-                    Ok(ip) => {
-                        spinner.println(format!("    Get your Public IP: {} (If you want to specify a particular address, use the argument --client-ip x.x.x.x)", ip));
-                        ip
-                    }
-                    Err(e) => {
-                        return Err(eyre::eyre!("I couldn't retrieve your Public IP. Please provide it using the `--client-ip` argument. ({})", e.to_string()));
-                    }
-                }
-            },
-        };
-
-        spinner.println(format!("🔍  Provisioning User for IP: {}", client_ip));
-
-        let client_ip = ipv4_parse(client_ip);
-        Ok(client_ip)
     }
 
     async fn find_or_create_device(

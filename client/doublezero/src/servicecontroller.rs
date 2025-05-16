@@ -51,7 +51,9 @@ impl fmt::Display for LatencyRecord {
 }
 
 #[derive(Serialize, Debug)]
-pub struct RemoveTunnelCliCommand {}
+pub struct RemoveTunnelCliCommand {
+    pub user_type: String,
+}
 
 #[derive(Deserialize, Debug)]
 pub struct RemoveResponse {

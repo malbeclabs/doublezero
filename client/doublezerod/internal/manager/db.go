@@ -124,17 +124,13 @@ func (d *Db) DeleteState(u api.UserType) error {
 	if err != nil {
 		return fmt.Errorf("error reading db file: %v", err)
 	}
-<<<<<<< HEAD
 	if len(file) == 0 {
 		return nil
 	}
-=======
->>>>>>> 118d633 (splitting out into services)
 	var p []*api.ProvisionRequest
 	if err := json.Unmarshal(file, &p); err != nil {
 		return fmt.Errorf("error unmarshaling db file: %v", err)
 	}
-<<<<<<< HEAD
 	p = slices.DeleteFunc(p, func(pr *api.ProvisionRequest) bool {
 		// TODO: this is a hack until the client is updated to send user type
 		return pr.UserType == u || pr.UserType == api.UserTypeIBRL || pr.UserType == api.UserTypeIBRLWithAllocatedIP
@@ -142,16 +138,6 @@ func (d *Db) DeleteState(u api.UserType) error {
 
 	d.State = p
 	log.Printf("state is this after delete: %+v", d.State)
-=======
-	for i, _ := range p {
-		if p[i].UserType == u {
-			p = slices.Delete(p, i, i+1)
-			break
-		}
-	}
-
-	d.State = p
->>>>>>> 118d633 (splitting out into services)
 	buf, err := json.MarshalIndent(d.State, "", "    ")
 	if err != nil {
 		return fmt.Errorf("error marshalling state: %v", err)

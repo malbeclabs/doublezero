@@ -901,12 +901,12 @@ func waitForPeerStatus(httpClient http.Client, status bgp.SessionStatus, timeout
 		if err != nil {
 			return false, fmt.Errorf("error reading status response: %v", err)
 		}
-		var statusResponse api.StatusResponse
+		var statusResponse []api.StatusResponse
 		if err := json.Unmarshal(got, &statusResponse); err != nil {
 			return false, fmt.Errorf("error unmarshalling status response: %v", err)
 		}
 
-		if statusResponse.DoubleZeroStatus.SessionStatus == status {
+		if statusResponse[0].DoubleZeroStatus.SessionStatus == status {
 			return true, nil
 		}
 		time.Sleep(200 * time.Millisecond)

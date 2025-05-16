@@ -289,11 +289,7 @@ func TestDbDeleteState(t *testing.T) {
 	}
 	stateFile := filepath.Join(path, "doublezerod.json")
 	// Create an empty file so we have something to delete
-<<<<<<< HEAD
 	err = manager.WriteFile(stateFile, file, os.FileMode(os.O_RDWR|os.O_CREATE|os.O_TRUNC))
-=======
-	err = manager.WriteFile(stateFile, []byte{}, os.FileMode(os.O_RDWR|os.O_CREATE|os.O_TRUNC))
->>>>>>> 118d633 (splitting out into services)
 	if err != nil {
 		t.Fatalf("could not create file: %v", err)
 	}

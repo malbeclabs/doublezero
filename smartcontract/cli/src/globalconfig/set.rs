@@ -16,7 +16,7 @@ pub struct SetGlobalConfigCliCommand {
     #[arg(long)]
     device_tunnel_block: String,
     #[arg(long)]
-    multicasogroup_block: String,
+    multicastgroup_block: String,
 }
 
 impl SetGlobalConfigCliCommand {
@@ -29,7 +29,7 @@ impl SetGlobalConfigCliCommand {
             remote_asn: self.remote_asn,
             tunnel_tunnel_block: networkv4_parse(&self.tunnel_tunnel_block),
             user_tunnel_block: networkv4_parse(&self.device_tunnel_block),
-            multicastgroup_block: networkv4_parse(&self.multicasogroup_block),
+            multicastgroup_block: networkv4_parse(&self.multicastgroup_block),
         })?;
         writeln!(out, "Signature: {}", signature)?;
 
@@ -79,7 +79,7 @@ mod tests {
             remote_asn: 5678,
             tunnel_tunnel_block: "10.10.0.0/16".to_string(),
             device_tunnel_block: "10.20.0.0/16".to_string(),
-            multicasogroup_block: "224.2.0.0/4".to_string(),
+            multicastgroup_block: "224.2.0.0/4".to_string(),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

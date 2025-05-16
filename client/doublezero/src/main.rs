@@ -18,6 +18,12 @@ mod requirements;
 mod servicecontroller;
 mod tests;
 
+mod cli;
+mod command;
+mod requirements;
+mod servicecontroller;
+mod tests;
+
 include!(concat!(env!("OUT_DIR"), "/version.rs"));
 
 #[derive(Parser, Debug)]

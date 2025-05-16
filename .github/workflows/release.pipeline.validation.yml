@@ -12,7 +12,7 @@ on:
       - "!**/**.md"
       - ".goreleaser.*"
       - ".github/workflows/release.pipeline.validation.yml"
-    branches: [ main, feature/*]
+    branches: [ main ]
   pull_request:
     paths:
       - "client/**"
@@ -24,7 +24,7 @@ on:
       - "!**/**.md"
       - ".goreleaser.*"
       - ".github/workflows/release.pipeline.validation.yml"
-    branches: [ main, feature/* ]
+    branches: [ main ]
 
 permissions:
   contents: write

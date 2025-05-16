@@ -89,7 +89,7 @@ mod tests {
         ipblockallocator::IPBlockAllocator, process::multicastgroup::process_multicastgroup_event,
         tests::tests::create_test_client,
     };
-    use doublezero_sdk::DoubleZeroClient;
+    use doublezero_sdk::{get_multicastgroup_pda, DoubleZeroClient};
     use doublezero_sdk::{AccountType, MulticastGroup, MulticastGroupStatus};
     use doublezero_sla_program::{
         instructions::DoubleZeroInstruction,
@@ -103,13 +103,15 @@ mod tests {
     fn test_process_multicastgroup_event() {
         let mut client = create_test_client();
 
+        let (_, bump_seed) = get_multicastgroup_pda(&client.get_program_id(), 1);
+
         client
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::ActivateMulticastGroup(
                     MulticastGroupActivateArgs {
-                        index: 0,
-                        bump_seed: 253,
+                        index: 1,
+                        bump_seed: bump_seed,
                         multicast_ip: [224, 0, 0, 0],
                     },
                 )),
@@ -122,8 +124,8 @@ mod tests {
         let multicastgroup = MulticastGroup {
             account_type: AccountType::MulticastGroup,
             owner: Pubkey::new_unique(),
-            index: 0,
-            bump_seed: 253,
+            index: 1,
+            bump_seed: bump_seed,
             multicast_ip: [0, 0, 0, 0],
             max_bandwidth: 10000,
             pub_allowlist: vec![client.get_payer()],

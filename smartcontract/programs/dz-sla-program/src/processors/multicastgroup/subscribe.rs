@@ -1,9 +1,8 @@
-use crate::globalstate::globalstate_get;
-use crate::helper::*;
 use crate::state::accounttype::AccountType;
 use crate::state::multicastgroup::*;
 use crate::state::user::User;
 use crate::state::user::*;
+use crate::{error::DoubleZeroError, helper::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
 use solana_program::msg;
@@ -66,27 +65,43 @@ pub fn process_subscribe_multicastgroup(
     );
     assert!(user_account.is_writable, "user account is not writable");
     // Parse the global state account & check if the payer is in the allowlist
-    let _globalstate = globalstate_get(globalstate_account)?;
-
-    //TODO: Check if payer is in the allowlist
+    //let _globalstate = globalstate_get(globalstate_account)?;
 
     // Parse accounts
     let mut mgroup: MulticastGroup = MulticastGroup::from(mgroup_account);
     assert_eq!(mgroup.account_type, AccountType::MulticastGroup);
-    assert_eq!(mgroup.status, MulticastGroupStatus::Activated);
+    if mgroup.status != MulticastGroupStatus::Activated {
+        #[cfg(test)]
+        msg!("MulticastGroupStatus: {:?}", mgroup.status);
+
+        return Err(DoubleZeroError::InvalidStatus.into());
+    }
 
     let mut user = User::from(user_account);
     assert_eq!(user.account_type, AccountType::User);
-    assert_eq!(user.status, UserStatus::Activated);
+    if user.status != UserStatus::Activated && user.status != UserStatus::Updating {
+        #[cfg(test)]
+        msg!("UserStatus: {:?}", user.status);
+
+        return Err(DoubleZeroError::InvalidStatus.into());
+    }
+
+    // Check if the user is in the allowlist
+    if value.publisher && !mgroup.pub_allowlist.contains(payer_account.key) {
+        return Err(DoubleZeroError::NotAllowed.into());
+    }
+    if value.subscriber && !mgroup.sub_allowlist.contains(payer_account.key) {
+        return Err(DoubleZeroError::NotAllowed.into());
+    }
 
     match value.publisher {
         true => {
-            if !user.publishers.contains(&mgroup_account.key) {
+            if !user.publishers.contains(mgroup_account.key) {
                 user.publishers.push(*mgroup_account.key);
-                user.status = UserStatus::Pending;
+                user.status = UserStatus::Updating;
             }
 
-            if !mgroup.publishers.contains(&user_account.key) {
+            if !mgroup.publishers.contains(user_account.key) {
                 mgroup.publishers.push(*user_account.key);
             }
         }
@@ -98,12 +113,12 @@ pub fn process_subscribe_multicastgroup(
 
     match value.subscriber {
         true => {
-            if !user.subscribers.contains(&mgroup_account.key) {
+            if !user.subscribers.contains(mgroup_account.key) {
                 user.subscribers.push(*mgroup_account.key);
-                user.status = UserStatus::Pending;
+                user.status = UserStatus::Updating;
             }
 
-            if !mgroup.subscribers.contains(&user_account.key) {
+            if !mgroup.subscribers.contains(user_account.key) {
                 mgroup.subscribers.push(*user_account.key);
             }
         }

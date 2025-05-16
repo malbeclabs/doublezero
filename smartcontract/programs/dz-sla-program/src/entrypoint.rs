@@ -31,10 +31,24 @@ use crate::{
             update::process_update_location,
         },
         multicastgroup::{
-            activate::process_activate_multicastgroup, create::process_create_multicastgroup,
-            deactivate::process_deactivate_multicastgroup, delete::process_delete_multicastgroup,
-            reactivate::process_reactivate_multicastgroup, reject::process_reject_multicastgroup,
-            subscribe::process_subscribe_multicastgroup, suspend::process_suspend_multicastgroup,
+            activate::process_activate_multicastgroup,
+            allowlist::{
+                publisher::{
+                    add::process_add_multicastgroup_pub_allowlist,
+                    remove::process_remove_multicast_pub_allowlist,
+                },
+                subscriber::{
+                    add::process_add_multicastgroup_sub_allowlist,
+                    remove::process_remove_multicast_sub_allowlist,
+                },
+            },
+            create::process_create_multicastgroup,
+            deactivate::process_deactivate_multicastgroup,
+            delete::process_delete_multicastgroup,
+            reactivate::process_reactivate_multicastgroup,
+            reject::process_reject_multicastgroup,
+            subscribe::process_subscribe_multicastgroup,
+            suspend::process_suspend_multicastgroup,
             update::process_update_multicastgroup,
         },
         tunnel::{
@@ -228,6 +242,18 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::DeactivateMulticastGroup(value) => {
             process_deactivate_multicastgroup(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::AddMulticastGroupPubAllowlist(value) => {
+            process_add_multicastgroup_pub_allowlist(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::RemoveMulticastGroupPubAllowlist(value) => {
+            process_remove_multicast_pub_allowlist(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::AddMulticastGroupSubAllowlist(value) => {
+            process_add_multicastgroup_sub_allowlist(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::RemoveMulticastGroupSubAllowlist(value) => {
+            process_remove_multicast_sub_allowlist(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::SubscribeMulticastGroup(value) => {
             process_subscribe_multicastgroup(program_id, accounts, &value)?

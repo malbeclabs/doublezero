@@ -124,7 +124,7 @@ impl ProvisioningCliCommand {
         match user.status {
             UserStatus::Activated => {
                 // User is activated
-                self.user_activated(client, &controller, &user, &client_ip, &spinner, user_type)
+                self.user_activated(client, &controller, &user, &client_ip, &spinner, user_type, None, None)
                     .await?
             }
             UserStatus::Rejected => {
@@ -167,6 +167,9 @@ impl ProvisioningCliCommand {
             )
             .await?;
 
+        let mcast_pub_groups = user.publishers.iter().map(|pk| ipv4_to_string(&mcast_groups.get(pk).unwrap().multicast_ip)).collect::<Vec<_>>();
+        let mcast_sub_groups = user.subscribers.iter().map(|pk| ipv4_to_string(&mcast_groups.get(pk).unwrap().multicast_ip)).collect::<Vec<_>>();
+
         // Check user status
         match user.status {
             UserStatus::Activated => {
@@ -178,6 +181,8 @@ impl ProvisioningCliCommand {
                     &client_ip,
                     &spinner,
                     UserType::Multicast,
+                    Some(mcast_pub_groups),
+                    Some(mcast_sub_groups),
                 )
                 .await?
             }
@@ -477,6 +482,8 @@ impl ProvisioningCliCommand {
         client_ip: &IpV4,
         spinner: &ProgressBar,
         user_type: UserType,
+        mcast_pub_groups: Option<Vec<String>>,
+        mcast_sub_groups: Option<Vec<String>>,
     ) -> eyre::Result<()> {
         spinner.println(format!(
             "    User activated with dz_ip: {}",
@@ -514,7 +521,7 @@ impl ProvisioningCliCommand {
 
         if self.verbose {
             spinner.println(format!(
-                "➤   Provisioning Local Tunnel for IP: {}\n\ttunnel_src: {}\n\ttunnel_dst: {}\n\ttunnel_net: {}\n\tdoublezero_ip: {}\n\tdoublezero_prefixes: {:?}\n\tlocal_asn: {}\n\tremote_asn: {}\n",
+                "➤   Provisioning Local Tunnel for IP: {}\n\ttunnel_src: {}\n\ttunnel_dst: {}\n\ttunnel_net: {}\n\tdoublezero_ip: {}\n\tdoublezero_prefixes: {:?}\n\tlocal_asn: {}\n\tremote_asn: {}\n\tmcast_pub_groups: {:?}\n\tmcast_sub_groups: {:?}\n",
                 ipv4_to_string(client_ip),
                 tunnel_src,
                 tunnel_dst,
@@ -523,6 +530,8 @@ impl ProvisioningCliCommand {
                 doublezero_prefixes,
                 config.local_asn,
                 config.remote_asn,
+                mcast_pub_groups.clone().unwrap_or(vec![]),
+                mcast_sub_groups.clone().unwrap_or(vec![]),
             ));
         };
 
@@ -537,6 +546,8 @@ impl ProvisioningCliCommand {
                 bgp_local_asn: Some(config.local_asn),
                 bgp_remote_asn: Some(config.remote_asn),
                 user_type: user_type.to_string(),
+                mcast_pub_groups,
+                mcast_sub_groups,
             })
             .await
         {

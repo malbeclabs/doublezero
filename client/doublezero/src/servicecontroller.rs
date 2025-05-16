@@ -15,6 +15,8 @@ pub struct ProvisioningRequest {
     pub bgp_local_asn: Option<u32>,
     pub bgp_remote_asn: Option<u32>,
     pub user_type: String,
+    pub mcast_pub_groups: Option<Vec<String>>,
+    pub mcast_sub_groups: Option<Vec<String>>,
 }
 
 #[derive(Deserialize, Debug)]

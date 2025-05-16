@@ -66,7 +66,7 @@ pub fn process_create_multicastgroup(
     let (expected_pda_account, bump_seed) = get_multicastgroup_pda(program_id, value.index);
     assert_eq!(
         pda_account.key, &expected_pda_account,
-        "Invalid MulticastGroup PubKey"
+        "Invalid MulticastGroup Pubkey"
     );
     assert_eq!(
         bump_seed, value.bump_seed,
@@ -92,6 +92,8 @@ pub fn process_create_multicastgroup(
         code: value.code.clone(),
         multicast_ip: [0, 0, 0, 0],
         max_bandwidth: value.max_bandwidth,
+        pub_allowlist: vec![],
+        sub_allowlist: vec![],
         subscribers: vec![],
         publishers: vec![],
         status: MulticastGroupStatus::Pending,

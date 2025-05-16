@@ -31,6 +31,9 @@ pub mod tests {
             .with(predicate::eq(globalstate_pubkey))
             .returning(move |_| Ok(AccountData::GlobalState(globalstate.clone())));
 
+        let payer = Pubkey::new_unique();
+        client.expect_get_payer().returning(move || payer);
+
         client
     }
 

@@ -51,10 +51,12 @@ pub struct MulticastGroup {
     pub tenant_pk: Pubkey,              // 32
     pub multicast_ip: IpV4,             // 4
     pub max_bandwidth: u64,             // 8
-    pub publishers: Vec<Pubkey>,        // 4 + 32 * len
-    pub subscribers: Vec<Pubkey>,       // 4 + 32 * len
     pub status: MulticastGroupStatus,   // 1
     pub code: String,                   // 4 + len
+    pub pub_allowlist: Vec<Pubkey>,     // 4 + 32 * len
+    pub sub_allowlist: Vec<Pubkey>,     // 4 + 32 * len
+    pub publishers: Vec<Pubkey>,        // 4 + 32 * len
+    pub subscribers: Vec<Pubkey>,       // 4 + 32 * len
 }
 
 impl fmt::Display for MulticastGroup {
@@ -72,7 +74,9 @@ impl AccountTypeInfo for MulticastGroup {
         SEED_MULTICAST_GROUP
     }
     fn size(&self) -> usize {
-        1 + 32 + 16 + 1 + 32 + 4 + 8 + 4 + self.publishers.len() * 32 + 4 + self.subscribers.len() * 32 + 1 + 4 + self.code.len()
+        1 + 32 + 16 + 1 + 32 + 4 + 8 + 4 + self.code.len() +
+        4 + self.pub_allowlist.len() * 32 + 4 + self.sub_allowlist.len() * 32 +
+        4 + self.publishers.len() * 32 + 4 + self.subscribers.len() * 32 + 1 
     }
     fn index(&self) -> u128 {
         self.index
@@ -97,10 +101,12 @@ impl From<&[u8]> for MulticastGroup {
             tenant_pk: parser.read_pubkey(),
             multicast_ip: parser.read_ipv4(),
             max_bandwidth: parser.read_u64(),
-            publishers: parser.read_pubkey_vec(),
-            subscribers: parser.read_pubkey_vec(),
             status: parser.read_enum(),
             code: parser.read_string(),
+            pub_allowlist: parser.read_pubkey_vec(),
+            sub_allowlist: parser.read_pubkey_vec(),
+            publishers: parser.read_pubkey_vec(),
+            subscribers: parser.read_pubkey_vec(),
         }
     }
 }
@@ -126,10 +132,12 @@ mod tests {
             tenant_pk: Pubkey::new_unique(),
             multicast_ip: [239, 1, 1, 1],
             max_bandwidth: 1000,
+            status: MulticastGroupStatus::Activated,
+            code: "test".to_string(),
+            pub_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            sub_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
-            code: "test".to_string(),
-            status: MulticastGroupStatus::Activated,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -147,6 +155,12 @@ mod tests {
         assert_eq!(val.max_bandwidth, val2.max_bandwidth);
         assert_eq!(val.account_type as u8, data[0], "Invalid Account Type");
         assert_eq!(val.account_type as u8, val2.account_type as u8, "Invalid Account Type");
+        assert_eq!(val.pub_allowlist.len(), val2.pub_allowlist.len(), "Invalid Pub Allowlist");
+        assert_eq!(val.sub_allowlist.len(), val2.sub_allowlist.len(), "Invalid Sub Allowlist");
+        assert_eq!(val.publishers.len(), val2.publishers.len(), "Invalid Publishers");
+        assert_eq!(val.subscribers.len(), val2.subscribers.len(), "Invalid Subscribers");
+        assert_eq!(val.pub_allowlist[0], val2.pub_allowlist[0], "Invalid Pub Allowlist");
+        assert_eq!(val.sub_allowlist[0], val2.sub_allowlist[0], "Invalid Sub Allowlist");        
         assert_eq!(data.len(), val.size(), "Invalid Size");
     }
 }

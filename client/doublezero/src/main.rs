@@ -122,6 +122,36 @@ async fn main() -> eyre::Result<()> {
         },
         Command::Multicast(args) => match args.command {
             cli::multicast::MulticastCommands::Group(args) => match args.command {
+                cli::multicastgroup::MulticastGroupCommands::Allowlist(args) => {
+                    match args.command {
+                        cli::multicastgroup::MulticastGroupAllowlistCommands::Publisher(args) => {
+                            match args.command {
+                                cli::multicastgroup::MulticastGroupPubAllowlistCommands::List(
+                                    args,
+                                ) => args.execute(&client, &mut handle),
+                                cli::multicastgroup::MulticastGroupPubAllowlistCommands::Add(
+                                    args,
+                                ) => args.execute(&client, &mut handle),
+                                cli::multicastgroup::MulticastGroupPubAllowlistCommands::Remove(
+                                    args,
+                                ) => args.execute(&client, &mut handle),
+                            }
+                        }
+                        cli::multicastgroup::MulticastGroupAllowlistCommands::Subscriber(args) => {
+                            match args.command {
+                                cli::multicastgroup::MulticastGroupSubAllowlistCommands::List(
+                                    args,
+                                ) => args.execute(&client, &mut handle),
+                                cli::multicastgroup::MulticastGroupSubAllowlistCommands::Add(
+                                    args,
+                                ) => args.execute(&client, &mut handle),
+                                cli::multicastgroup::MulticastGroupSubAllowlistCommands::Remove(
+                                    args,
+                                ) => args.execute(&client, &mut handle),
+                            }
+                        }
+                    }
+                }
                 cli::multicastgroup::MulticastGroupCommands::Create(args) => {
                     args.execute(&client, &mut handle)
                 }

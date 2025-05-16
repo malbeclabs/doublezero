@@ -85,8 +85,11 @@ pub fn process_multicastgroup_event(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
+    use crate::{
+        ipblockallocator::IPBlockAllocator, process::multicastgroup::process_multicastgroup_event,
+        tests::tests::create_test_client,
+    };
+    use doublezero_sdk::DoubleZeroClient;
     use doublezero_sdk::{AccountType, MulticastGroup, MulticastGroupStatus};
     use doublezero_sla_program::{
         instructions::DoubleZeroInstruction,
@@ -94,11 +97,7 @@ mod tests {
     };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
-
-    use crate::{
-        ipblockallocator::IPBlockAllocator, process::multicastgroup::process_multicastgroup_event,
-        tests::tests::create_test_client,
-    };
+    use std::collections::HashMap;
 
     #[test]
     fn test_process_multicastgroup_event() {
@@ -127,6 +126,8 @@ mod tests {
             bump_seed: 253,
             multicast_ip: [0, 0, 0, 0],
             max_bandwidth: 10000,
+            pub_allowlist: vec![client.get_payer()],
+            sub_allowlist: vec![client.get_payer()],
             publishers: vec![],
             subscribers: vec![],
             status: MulticastGroupStatus::Pending,

@@ -42,8 +42,8 @@ impl CreateSubscribeUserCommand {
                 }),
                 vec![
                     AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(self.mgroup_pk, false),
                     AccountMeta::new(self.device_pk, false),
+                    AccountMeta::new(self.mgroup_pk, false),
                     AccountMeta::new(globalstate_pubkey, false),
                 ],
             )

@@ -16,7 +16,9 @@ pub struct CreateSubscribeUserCliCommand {
     pub client_ip: String,
     #[arg(short, long, default_value_t = false)]
     pub allocate_addr: bool,
+    #[arg(long)]
     pub publisher: Option<String>,
+    #[arg(long)]
     pub subscribe: Option<String>,
 }
 
@@ -46,7 +48,7 @@ impl CreateSubscribeUserCliCommand {
                         .get_multicastgroup(GetMulticastGroupCommand {
                             pubkey_or_code: publisher.to_string(),
                         })
-                        .map_err(|_| eyre::eyre!("MulticastGroup not found"))?;
+                        .map_err(|_| eyre::eyre!("MulticastGroup not found {}", publisher))?;
                     Some(pubkey)
                 }
             },
@@ -61,7 +63,7 @@ impl CreateSubscribeUserCliCommand {
                         .get_multicastgroup(GetMulticastGroupCommand {
                             pubkey_or_code: subscribe.to_string(),
                         })
-                        .map_err(|_| eyre::eyre!("MulticastGroup not found"))?;
+                        .map_err(|_| eyre::eyre!("MulticastGroup not found ({})", subscribe))?;
                     Some(pubkey)
                 }
             },

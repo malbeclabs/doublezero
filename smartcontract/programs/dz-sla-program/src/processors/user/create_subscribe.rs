@@ -1,5 +1,3 @@
-use core::fmt;
-
 use crate::error::DoubleZeroError;
 use crate::globalstate::globalstate_get_next;
 use crate::globalstate::globalstate_write;
@@ -9,6 +7,7 @@ use crate::state::multicastgroup::MulticastGroup;
 use crate::state::multicastgroup::MulticastGroupStatus;
 use crate::state::{accounttype::AccountType, user::*};
 use crate::types::*;
+use core::fmt;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
@@ -123,10 +122,10 @@ pub fn process_create_subscribe_user(
         },
     };
 
-    if value.publisher && !mgroup.publishers.contains(&pda_account.key) {
+    if value.publisher && !mgroup.publishers.contains(pda_account.key) {
         mgroup.publishers.push(*pda_account.key);
     }
-    if value.subscriber && !mgroup.subscribers.contains(&pda_account.key) {
+    if value.subscriber && !mgroup.subscribers.contains(pda_account.key) {
         mgroup.subscribers.push(*pda_account.key);
     }
 

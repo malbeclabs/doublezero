@@ -1,4 +1,4 @@
-package netlink
+package routing
 
 import (
 	"errors"
@@ -6,13 +6,25 @@ import (
 	"net"
 	"syscall"
 
-	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	nl "github.com/vishvananda/netlink"
 )
 
 type Netlink struct{}
 
-func (n Netlink) TunnelAdd(t *routing.Tunnel) error {
+type Netlinker interface {
+	TunnelAdd(*Tunnel) error
+	TunnelDelete(*Tunnel) error
+	TunnelAddrAdd(*Tunnel, string) error
+	TunnelUp(*Tunnel) error
+	RouteAdd(*Route) error
+	RouteDelete(*Route) error
+	RouteGet(net.IP) ([]*Route, error)
+	RuleAdd(*IPRule) error
+	RuleDel(*IPRule) error
+	RouteByProtocol(int) ([]*Route, error)
+}
+
+func (n Netlink) TunnelAdd(t *Tunnel) error {
 	gre := &nl.Gretun{
 		LinkAttrs: nl.LinkAttrs{
 			Name:      t.Name,
@@ -28,7 +40,7 @@ func (n Netlink) TunnelAdd(t *routing.Tunnel) error {
 	}
 	return err
 }
-func (n Netlink) TunnelDelete(t *routing.Tunnel) error {
+func (n Netlink) TunnelDelete(t *Tunnel) error {
 	gre := &nl.Gretun{
 		LinkAttrs: nl.LinkAttrs{
 			Name:      t.Name,
@@ -39,9 +51,9 @@ func (n Netlink) TunnelDelete(t *routing.Tunnel) error {
 	}
 	return nl.LinkDel(gre)
 }
-func (n Netlink) TunnelGet(t *routing.Tunnel) error { return nil }
+func (n Netlink) TunnelGet(t *Tunnel) error { return nil }
 
-func (n Netlink) TunnelAddrAdd(t *routing.Tunnel, prefix string) error {
+func (n Netlink) TunnelAddrAdd(t *Tunnel, prefix string) error {
 	gre := &nl.Gretun{
 		LinkAttrs: nl.LinkAttrs{
 			Name:      t.Name,
@@ -61,7 +73,7 @@ func (n Netlink) TunnelAddrAdd(t *routing.Tunnel, prefix string) error {
 	return err
 }
 
-func (n Netlink) TunnelUp(t *routing.Tunnel) error {
+func (n Netlink) TunnelUp(t *Tunnel) error {
 	gre := &nl.Gretun{
 		LinkAttrs: nl.LinkAttrs{
 			Name:      t.Name,
@@ -74,7 +86,7 @@ func (n Netlink) TunnelUp(t *routing.Tunnel) error {
 }
 
 // RouteAdd adds a route to the kernel routing table via netlink.
-func (n Netlink) RouteAdd(r *routing.Route) error {
+func (n Netlink) RouteAdd(r *Route) error {
 	return nl.RouteReplace(&nl.Route{
 		Table:    r.Table,
 		Src:      r.Src,
@@ -85,7 +97,7 @@ func (n Netlink) RouteAdd(r *routing.Route) error {
 }
 
 // RouteDelete deletes a route from the kernel routing table via netlink.
-func (n Netlink) RouteDelete(r *routing.Route) error {
+func (n Netlink) RouteDelete(r *Route) error {
 	return nl.RouteDel(&nl.Route{
 		Dst:   r.Dst,
 		Gw:    r.NextHop,
@@ -95,14 +107,14 @@ func (n Netlink) RouteDelete(r *routing.Route) error {
 }
 
 // RouteGet retrieves a route from the kernel routing table via netlink.
-func (n Netlink) RouteGet(ip net.IP) ([]*routing.Route, error) {
+func (n Netlink) RouteGet(ip net.IP) ([]*Route, error) {
 	nlr, err := nl.RouteGet(ip)
 	if err != nil {
 		return nil, err
 	}
-	routes := []*routing.Route{}
+	routes := []*Route{}
 	for _, r := range nlr {
-		routes = append(routes, &routing.Route{
+		routes = append(routes, &Route{
 			Table:    r.Table,
 			Src:      r.Src,
 			Dst:      r.Dst,
@@ -113,19 +125,19 @@ func (n Netlink) RouteGet(ip net.IP) ([]*routing.Route, error) {
 	return routes, nil
 }
 
-func (n Netlink) RouteByProtocol(protocol int) ([]*routing.Route, error) {
+func (n Netlink) RouteByProtocol(protocol int) ([]*Route, error) {
 	routeFilter := &nl.Route{
 		Protocol: nl.RouteProtocol(protocol),
 	}
 
 	nlr, err := nl.RouteListFiltered(nl.FAMILY_V4, routeFilter, nl.RT_FILTER_PROTOCOL)
 	if err != nil {
-		return []*routing.Route{}, err
+		return []*Route{}, err
 	}
 
-	routes := []*routing.Route{}
+	routes := []*Route{}
 	for _, r := range nlr {
-		routes = append(routes, &routing.Route{
+		routes = append(routes, &Route{
 			Table:    r.Table,
 			Src:      r.Src,
 			Dst:      r.Dst,
@@ -136,7 +148,7 @@ func (n Netlink) RouteByProtocol(protocol int) ([]*routing.Route, error) {
 	return routes, nil
 }
 
-func (n Netlink) RuleAdd(r *routing.IPRule) error {
+func (n Netlink) RuleAdd(r *IPRule) error {
 	rule := nl.NewRule()
 	rule.Priority = r.Priority
 	rule.Table = r.Table
@@ -152,7 +164,7 @@ func (n Netlink) RuleAdd(r *routing.IPRule) error {
 	return err
 }
 
-func (n Netlink) RuleDel(r *routing.IPRule) error {
+func (n Netlink) RuleDel(r *IPRule) error {
 	rule := nl.NewRule()
 	rule.Priority = r.Priority
 	rule.Table = r.Table
@@ -164,6 +176,6 @@ func (n Netlink) RuleDel(r *routing.IPRule) error {
 	return nl.RuleDel(rule)
 }
 
-func (n Netlink) RuleGet(r *routing.IPRule) error { return nil }
+func (n Netlink) RuleGet(r *IPRule) error { return nil }
 
-func (n Netlink) Close(t *routing.Tunnel, r []*routing.IPRule, rt []*routing.Route) {}
+func (n Netlink) Close(t *Tunnel, r []*IPRule, rt []*Route) {}

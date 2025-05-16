@@ -160,7 +160,8 @@ func TestHttpStatus(t *testing.T) {
 			t.Fatalf("wanted 200 response; got %d\n", resp.StatusCode)
 		}
 		// this previously returned `{"doublezero_status": {"session_status": "disconnected"}}  but now returns []
-		want := "[]\n"
+		// want := "[]\n"
+		want := `{"doublezero_status": {"session_status": "disconnected"}}`
 		got, _ := io.ReadAll(resp.Body)
 		if diff := cmp.Diff(want, string(got)); diff != "" {
 			t.Fatalf("wrong response (-want +got): %s\n", diff)
@@ -205,7 +206,7 @@ func TestHttpStatus(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("wanted 200 response; got %d", resp.StatusCode)
 		}
-		want := `[{"tunnel_name":"doublezero0","tunnel_src":"1.1.1.1","tunnel_dst":"2.2.2.2","doublezero_ip":"3.3.3.3","doublezero_status":{"session_status":"unknown","last_session_update":0}}]` + "\n"
+		want := `{"tunnel_name":"doublezero0","tunnel_src":"1.1.1.1","tunnel_dst":"2.2.2.2","doublezero_ip":"3.3.3.3","doublezero_status":{"session_status":"unknown","last_session_update":0}}` + "\n"
 		got, _ := io.ReadAll(resp.Body)
 		if diff := cmp.Diff(want, string(got), cmpopts.IgnoreFields(bgp.Session{}, "LastSessionUpdate")); diff != "" {
 			t.Fatalf("Response body mismatch (-want +got): %s\n", diff)

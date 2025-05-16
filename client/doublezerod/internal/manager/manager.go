@@ -199,14 +199,16 @@ func (n *NetlinkManager) Recover() error {
 }
 
 // Status returns the status of all provisioned services.
-func (n *NetlinkManager) Status() ([]*api.StatusResponse, error) {
+func (n *NetlinkManager) Status() (*api.StatusResponse, error) {
 	resp := []*api.StatusResponse{}
 	if n.UnicastService != nil {
 		status, err := n.UnicastService.Status()
 		if err != nil {
 			return nil, fmt.Errorf("error getting unicast service status: %v", err)
 		}
-		resp = append(resp, status)
+		// TODO: remove this during multicast work
+		return status, nil
+		// resp = append(resp, status)
 	}
 	if n.MulticastService != nil {
 		status, err := n.MulticastService.Status()
@@ -215,5 +217,5 @@ func (n *NetlinkManager) Status() ([]*api.StatusResponse, error) {
 		}
 		resp = append(resp, status)
 	}
-	return resp, nil
+	return nil, nil
 }

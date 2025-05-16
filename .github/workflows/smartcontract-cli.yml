@@ -22,6 +22,8 @@ jobs:
     steps:
       - name: Check out the repository
         uses: actions/checkout@v4
+      - name: Build Binary (needed for assert_cmd tests)
+        run: cargo build
       - name: Test
         run: cargo test
   cli:

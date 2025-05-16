@@ -4,23 +4,23 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum DoubleZeroError {
     #[error("Custom program error: {0:#x}")]
-    Custom(u32),
+    Custom(u32), // variant 0
     #[error("Only the owner can perform this action")]
-    InvalidOwnerPubkey,
+    InvalidOwnerPubkey, // variant 1
     #[error("You are trying to assign a Pubkey that does not correspond to a Exchange")]
-    InvalidExchangePubkey,
+    InvalidExchangePubkey, // variant 2
     #[error("You are trying to assign a Pubkey that does not correspond to a Device")]
-    InvalidDevicePubkey,
+    InvalidDevicePubkey, // variant 3
     #[error("You are trying to assign a Pubkey that does not correspond to a Location")]
-    InvalidLocationPubkey,
+    InvalidLocationPubkey, // variant 4
     #[error("You are trying to assign a Pubkey that does not correspond to a Device A")]
-    InvalidDeviceAPubkey,
+    InvalidDeviceAPubkey, // variant 5
     #[error("You are trying to assign a Pubkey that does not correspond to a Device Z")]
-    InvalidDeviceZPubkey,
+    InvalidDeviceZPubkey, // variant 6
     #[error("Invalid Status")]
-    InvalidStatus,
+    InvalidStatus, // variant 7
     #[error("You are not allowed to execute this action")]
-    NotAllowed,
+    NotAllowed, // variant 8
 }
 
 impl From<DoubleZeroError> for ProgramError {

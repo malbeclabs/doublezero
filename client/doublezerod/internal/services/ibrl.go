@@ -31,6 +31,7 @@ func NewIBRLService(bgp bgpReaderWriter, nl routing.Netlinker, db dbReaderWriter
 	}
 }
 
+// Setup creates an IBRL tunnel with or without an allocated IP address.
 func (s *IBRLService) Setup(p *api.ProvisionRequest) error {
 	tun, err := routing.NewTunnel(p.TunnelSrc, p.TunnelDst, p.TunnelNet.String())
 	if err != nil {

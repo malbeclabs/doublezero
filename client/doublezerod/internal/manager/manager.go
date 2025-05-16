@@ -13,6 +13,8 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/services"
 )
 
+// Provisioner is an interface for all services that can be provisioned by the
+// manager. All new services must implement this interface.
 type Provisioner interface {
 	Setup(*api.ProvisionRequest) error
 	Teardown() error
@@ -20,6 +22,8 @@ type Provisioner interface {
 	ServiceType() services.ServiceType
 }
 
+// BgpReaderWriter is an interface for the handling of per
+// service bgp sessions.
 type BgpReaderWriter interface {
 	Serve([]net.Listener) error
 	AddPeer(*bgp.PeerConfig, []bgp.NLRI) error
@@ -27,6 +31,9 @@ type BgpReaderWriter interface {
 	GetPeerStatus(net.IP) bgp.Session
 }
 
+// DbReaderWriter is an interface for managing the state of
+// services. This is used to persist the last provisioned state
+// to disk so we can recover from it on restart/crash.
 type DbReaderWriter interface {
 	GetState(userTypes ...api.UserType) []*api.ProvisionRequest
 	DeleteState(u api.UserType) error
@@ -44,6 +51,8 @@ type NetlinkManager struct {
 	db               DbReaderWriter
 }
 
+// CreateService creates the appropriate service based on the provisioned
+// user type.
 func CreateService(u api.UserType, bgp BgpReaderWriter, nl routing.Netlinker, db DbReaderWriter) (Provisioner, error) {
 	switch u {
 	case api.UserTypeIBRL:
@@ -97,6 +106,7 @@ func (n *NetlinkManager) Provision(pr api.ProvisionRequest) error {
 	return nil
 }
 
+// Remove is the entry point for service deprovisioning.
 func (n *NetlinkManager) Remove(u api.UserType) error {
 	// We've never been provisioned
 	if n.db.GetState() == nil {
@@ -126,6 +136,8 @@ func (n *NetlinkManager) Remove(u api.UserType) error {
 	return nil
 }
 
+// Close tears down any active services. This is typically called when
+// manager is shutting down. Per-service state is not deleted from the db.
 func (n *NetlinkManager) Close() error {
 	var teardownErr error
 	if n.UnicastService == nil && n.MulticastService == nil {
@@ -145,6 +157,7 @@ func (n *NetlinkManager) Close() error {
 	return teardownErr
 }
 
+// Serve starts the manager and attempts to recover from the last provisioned state.
 func (n *NetlinkManager) Serve(ctx context.Context) error {
 	errCh := make(chan error)
 	slog.Info("bgp: starting bgp fsm")
@@ -168,6 +181,7 @@ func (n *NetlinkManager) Serve(ctx context.Context) error {
 	}
 }
 
+// Recover attempts to recover from the last provisioned state.
 func (n *NetlinkManager) Recover() error {
 	// check last provisioned state and attempt to recover
 	state := n.db.GetState()
@@ -184,6 +198,7 @@ func (n *NetlinkManager) Recover() error {
 	return nil
 }
 
+// Status returns the status of all provisioned services.
 func (n *NetlinkManager) Status() ([]*api.StatusResponse, error) {
 	resp := []*api.StatusResponse{}
 	if n.UnicastService != nil {

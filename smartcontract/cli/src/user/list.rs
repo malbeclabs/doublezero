@@ -177,7 +177,6 @@ impl ListUserCliCommand {
     }
 }
 
-
 pub fn get_multicast_gropups_names(user: &User, mgroups: &HashMap<Pubkey, MulticastGroup>) -> String {
     user.get_multicast_groups()
         .iter()
@@ -200,9 +199,7 @@ pub fn get_multicast_gropups_names(user: &User, mgroups: &HashMap<Pubkey, Multic
         )
         .collect::<Vec<_>>()
         .join(",")
-
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -385,7 +382,6 @@ mod tests {
             publishers: vec![],
             subscribers: vec![mgroup1_pubkey],
         };
-        
 
         client.expect_list_user().returning(move |_| {
             let mut users = HashMap::new();
@@ -393,8 +389,6 @@ mod tests {
             users.insert(user2_pubkey, user2.clone());
             Ok(users)
         });
-
-        
 
         let mut output = Vec::new();
         let res = ListUserCliCommand {

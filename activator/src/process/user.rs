@@ -467,7 +467,7 @@ mod tests {
                 predicate::eq(DoubleZeroInstruction::RejectUser(UserRejectArgs {
                     index: user.index,
                     bump_seed: user.bump_seed,
-                    reason: "Error: No available tunnel block".to_string(),
+                    reason: "Error: No available dz_ip to allocate".to_string(),
                 })),
                 predicate::always(),
             )

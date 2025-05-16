@@ -1,7 +1,9 @@
 package routing
 
 import (
+	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 )
 
@@ -45,4 +47,19 @@ func NewIPRule(priority, table int, srcnet, dstnet string) (*IPRule, error) {
 
 func (r *IPRule) String() string {
 	return fmt.Sprintf("priority: %d, table: %d, src: %s, dst: %s", r.Priority, r.Table, r.SrcNet, r.DstNet)
+}
+
+func CreateIPRules(nl Netlinker, rules []*IPRule) error {
+	for _, rule := range rules {
+		slog.Info("tunnel: adding ip rule", "rule", rule)
+		err := nl.RuleAdd(rule)
+		if err != nil {
+			if errors.Is(err, ErrRuleExists) {
+				slog.Error("tunnel: rule already exists", "rule", rule)
+			} else {
+				return fmt.Errorf("error adding ip rule: %v", err)
+			}
+		}
+	}
+	return nil
 }

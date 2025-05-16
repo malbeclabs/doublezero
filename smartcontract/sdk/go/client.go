@@ -80,8 +80,6 @@ func (e *Client) Load(ctx context.Context) error {
 		data = append(data, element.Pubkey.Bytes()...)
 		reader := NewByteReader(data)
 
-		//fmt.Printf("HEX: %x\n", data)
-
 		switch account_type := data[0]; account_type {
 		case byte(ConfigType):
 			DeserializeConfig(reader, &e.Config)

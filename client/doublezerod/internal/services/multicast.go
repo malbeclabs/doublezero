@@ -7,18 +7,6 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 )
 
-// type bgpReaderWriter interface {
-// 	AddPeer(*bgp.PeerConfig, []bgp.NLRI) error
-// 	DeletePeer(net.IP) error
-// 	GetPeerStatus(net.IP) bgp.Session
-// }
-
-// type dbReaderWriter interface {
-// 	GetState() []*api.ProvisionRequest
-// 	DeleteState() error
-// 	SaveState(p *api.ProvisionRequest) error
-// }
-
 type MulticastService struct {
 	bgp            bgpReaderWriter
 	nl             routing.Netlinker

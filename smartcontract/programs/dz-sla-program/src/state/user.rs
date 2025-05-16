@@ -226,6 +226,24 @@ impl From<&AccountInfo<'_>> for User {
     }
 }
 
+impl User {
+    pub fn get_multicast_groups(&self) -> Vec<Pubkey> {
+        let mut groups: Vec<Pubkey> = vec![];
+
+        // Add publishers first
+        groups.extend(self.publishers.iter().cloned());
+
+        // Add subscribers that aren't already in the list
+        for sub in &self.subscribers {
+            if !groups.contains(sub) {
+                groups.push(*sub);
+            }
+        }
+
+        groups
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

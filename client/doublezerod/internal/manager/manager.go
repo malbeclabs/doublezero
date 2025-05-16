@@ -121,12 +121,14 @@ func (n *NetlinkManager) Remove(u api.UserType) error {
 		if err := n.UnicastService.Teardown(); err != nil {
 			return fmt.Errorf("error tearing down unicast service: %v", err)
 		}
+		n.UnicastService = nil
 	}
 
 	if services.IsMulticastUser(u) {
 		if err := n.MulticastService.Teardown(); err != nil {
 			return fmt.Errorf("error tearing down multicast service: %v", err)
 		}
+		n.MulticastService = nil
 	}
 
 	// Delete state so we don't reprovision ourselves on restart

@@ -132,7 +132,8 @@ func (d *Db) DeleteState(u api.UserType) error {
 		return fmt.Errorf("error unmarshaling db file: %v", err)
 	}
 	p = slices.DeleteFunc(p, func(pr *api.ProvisionRequest) bool {
-		return pr.UserType == u
+		// TODO: this is a hack until the client is updated to send user type
+		return pr.UserType == u || pr.UserType == api.UserTypeIBRL || pr.UserType == api.UserTypeIBRLWithAllocatedIP
 	})
 
 	d.State = p

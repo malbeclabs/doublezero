@@ -3,6 +3,7 @@ package services
 import (
 	"errors"
 	"fmt"
+	"log"
 	"log/slog"
 	"net"
 	"syscall"
@@ -105,6 +106,7 @@ func (s *IBRLService) Teardown() error {
 func (s *IBRLService) Status() (*api.StatusResponse, error) {
 	state := s.db.GetState(s.UserType())
 	if state == nil {
+		log.Printf("netlink: no state found for %v", s.UserType())
 		return nil, nil
 	}
 
@@ -113,6 +115,7 @@ func (s *IBRLService) Status() (*api.StatusResponse, error) {
 	}
 
 	peerStatus := s.bgp.GetPeerStatus(s.Tunnel.RemoteOverlay)
+
 	return &api.StatusResponse{
 		TunnelName:       s.Tunnel.Name,
 		TunnelSrc:        s.Tunnel.LocalUnderlay,
@@ -128,7 +131,7 @@ type IBRLServiceWithAllocatedAddress struct {
 
 func NewIBRLServiceWithAllocatedAddress(bgp bgpReaderWriter, nl routing.Netlinker, db dbReaderWriter) *IBRLServiceWithAllocatedAddress {
 	return &IBRLServiceWithAllocatedAddress{
-		IBRLService: IBRLService{
+		IBRLService{
 			bgp: bgp,
 			nl:  nl,
 			db:  db,
@@ -140,3 +143,25 @@ func (s *IBRLServiceWithAllocatedAddress) UserType() api.UserType {
 	return api.UserTypeIBRLWithAllocatedIP
 }
 func (s *IBRLServiceWithAllocatedAddress) ServiceType() ServiceType { return ServiceTypeUnicast }
+
+func (s *IBRLServiceWithAllocatedAddress) Status() (*api.StatusResponse, error) {
+	state := s.db.GetState(s.UserType())
+	if state == nil {
+		log.Printf("netlink: no state found for %v", s.UserType())
+		return nil, nil
+	}
+
+	if s.Tunnel == nil {
+		return nil, fmt.Errorf("netlink: saved state is not programmed into client")
+	}
+
+	peerStatus := s.bgp.GetPeerStatus(s.Tunnel.RemoteOverlay)
+
+	return &api.StatusResponse{
+		TunnelName:       s.Tunnel.Name,
+		TunnelSrc:        s.Tunnel.LocalUnderlay,
+		TunnelDst:        s.Tunnel.RemoteUnderlay,
+		DoubleZeroIP:     s.DoubleZeroAddr,
+		DoubleZeroStatus: peerStatus,
+	}, nil
+}

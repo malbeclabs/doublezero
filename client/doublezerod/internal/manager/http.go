@@ -3,7 +3,7 @@ package manager
 import (
 	"encoding/json"
 	"fmt"
-	"io"
+	"log/slog"
 	"net/http"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
@@ -40,6 +40,7 @@ func (n *NetlinkManager) ServeProvision(w http.ResponseWriter, r *http.Request) 
 
 	err = n.Provision(p)
 	if err != nil {
+		slog.Error("error during tunnel provisioning", "error", err)
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(fmt.Sprintf(`{"status": "error", "description": "malformed stuff: %v"}`, err)))
 		return
@@ -49,23 +50,24 @@ func (n *NetlinkManager) ServeProvision(w http.ResponseWriter, r *http.Request) 
 }
 
 func (n *NetlinkManager) ServeRemove(w http.ResponseWriter, r *http.Request) {
-	var rr api.RemoveRequest
-	err := json.NewDecoder(r.Body).Decode(&rr)
-	switch {
-	case err == io.EOF:
-		// TODO: this is a hack until the client is updated to send user type
-		rr.UserType = api.UserTypeIBRL
-	case err != nil:
+	rr := &api.RemoveRequest{}
+	err := json.NewDecoder(r.Body).Decode(rr)
+	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(fmt.Sprintf(`{"status": "error", "description": "malformed provision request: %v"}`, err)))
 		return
 	}
 
+	// TODO: this is a hack until the client is updated to send user type
+	if rr.UserType == api.UserTypeUnknown {
+		rr.UserType = api.UserTypeIBRL
+	}
 	if err = rr.Validate(); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(fmt.Sprintf(`{"status": "error", "description": "invalid request: %v"}`, err)))
 		return
 	}
+
 	err = n.Remove(rr.UserType)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)

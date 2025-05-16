@@ -11,18 +11,12 @@ use crate::cli::{
 use doublezero_cli::doublezerocommand::CliCommandImpl;
 use doublezero_sdk::DZClient;
 use clap::CommandFactory;
-
 mod cli;
 mod command;
 mod requirements;
 mod servicecontroller;
 mod tests;
 
-mod cli;
-mod command;
-mod requirements;
-mod servicecontroller;
-mod tests;
 
 include!(concat!(env!("OUT_DIR"), "/version.rs"));
 

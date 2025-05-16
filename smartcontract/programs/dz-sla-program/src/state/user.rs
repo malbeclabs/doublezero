@@ -228,11 +228,19 @@ impl From<&AccountInfo<'_>> for User {
 
 impl User {
     pub fn get_multicast_groups(&self) -> Vec<Pubkey> {
-        self.publishers
-            .clone()
-            .into_iter()
-            .chain(self.subscribers.clone().into_iter())
-            .collect()
+        let mut groups: Vec<Pubkey> = vec![];
+
+        // Add publishers first
+        groups.extend(self.publishers.iter().cloned());
+
+        // Add subscribers that aren't already in the list
+        for sub in &self.subscribers {
+            if !groups.contains(sub) {
+                groups.push(*sub);
+            }
+        }
+
+        groups
     }
 }
 

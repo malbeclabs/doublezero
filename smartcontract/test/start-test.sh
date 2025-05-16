@@ -41,7 +41,7 @@ sleep 15
 ./target/doublezero init 
 
 ### Configure global setting
-./target/doublezero global-config set --local-asn 65100 --remote-asn 65001 --tunnel-tunnel-block 172.16.0.0/16 --device-tunnel-block 169.254.0.0/16
+./target/doublezero global-config set --local-asn 65100 --remote-asn 65001 --tunnel-tunnel-block 172.16.0.0/16 --device-tunnel-block 169.254.0.0/16 --multicasogroup-block 223.0.0.0/4
 
 
 # Build the activator

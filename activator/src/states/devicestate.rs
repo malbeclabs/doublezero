@@ -40,12 +40,11 @@ impl DeviceState {
         }
     }
 
-    pub fn get_next(&mut self) -> Option<(u16, IpV4)> {
+    pub fn get_next_dz_ip(&mut self) -> Option<IpV4> {
         for allocator in self.dz_ips.iter_mut() {
             match allocator.next_available_block(1, 1) {
                 Some(dz_ip) => {
-                    let tunnel_id = self.tunnel_ids.next_available();
-                    return Some((tunnel_id, dz_ip.0));
+                    return Some(dz_ip.0);
                 }
                 None => continue,
             }
@@ -54,8 +53,8 @@ impl DeviceState {
         None
     }
 
-    pub fn get_next_tunnel_id(&mut self) -> Option<u16> {
-        Some(self.tunnel_ids.next_available())
+    pub fn get_next_tunnel_id(&mut self) -> u16 {
+        self.tunnel_ids.next_available()
     }
 
     pub fn register(&mut self, dz_ip: IpV4, tunnel_id: u16) {

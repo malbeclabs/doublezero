@@ -1,5 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_sdk::commands::multicastgroup::list::ListMulticastGroupCommand;
 use doublezero_sdk::commands::{
     device::list::ListDeviceCommand, location::list::ListLocationCommand,
     user::list::ListUserCommand,
@@ -8,6 +9,7 @@ use doublezero_sdk::*;
 use prettytable::{format, row, Cell, Row, Table};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
+use std::collections::HashMap;
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -25,6 +27,9 @@ pub struct UserDisplay {
     pub user_type: UserType,
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
     pub device_pk: Pubkey,
+    pub multicast: String,
+    pub publishers: Vec<String>,
+    pub subscribers: Vec<String>,
     pub device_name: String,
     pub location_code: String,
     pub location_name: String,
@@ -45,6 +50,7 @@ impl ListUserCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let devices = client.list_device(ListDeviceCommand {})?;
         let locations = client.list_location(ListLocationCommand {})?;
+        let mgroups = client.list_multicastgroup(ListMulticastGroupCommand {})?;
         let users = client.list_user(ListUserCommand {})?;
 
         let mut users: Vec<(Pubkey, User)> = users.into_iter().collect();
@@ -85,6 +91,9 @@ impl ListUserCliCommand {
                     UserDisplay {
                         account: pubkey,
                         user_type: user.user_type,
+                        multicast: get_multicast_gropups_names(&user, &mgroups),
+                        publishers: user.publishers.into_iter().map(|pk| pk.to_string()).collect(),
+                        subscribers: user.subscribers.into_iter().map(|pk| pk.to_string()).collect(),
                         device_pk: user.device_pk,
                         device_name,
                         location_code,
@@ -113,6 +122,7 @@ impl ListUserCliCommand {
             table.add_row(row![
                 "account",
                 "user_type",
+                "groups",
                 "device",
                 "location",
                 "cyoa_type",
@@ -130,6 +140,7 @@ impl ListUserCliCommand {
                     Some(device) => locations.get(&device.location_pk),
                     None => None,
                 };
+
                 let device_name = match device {
                     Some(device) => device.code.clone(),
                     None => data.device_pk.to_string(),
@@ -145,6 +156,7 @@ impl ListUserCliCommand {
                 table.add_row(Row::new(vec![
                     Cell::new(&pubkey.to_string()),
                     Cell::new(&data.user_type.to_string()),
+                    Cell::new(&get_multicast_gropups_names(&data,&mgroups,)),
                     Cell::new(&device_name),
                     Cell::new(&location_name),
                     Cell::new(&data.cyoa_type.to_string()),
@@ -165,6 +177,33 @@ impl ListUserCliCommand {
     }
 }
 
+
+pub fn get_multicast_gropups_names(user: &User, mgroups: &HashMap<Pubkey, MulticastGroup>) -> String {
+    user.get_multicast_groups()
+        .iter()
+        .map(|pk| 
+            match mgroups.get(pk) {
+            Some(group) => {
+                group.code.clone()
+            }
+            None => {
+                pk.to_string()
+            }} 
+            + match user.publishers.contains(pk) {
+                true => " (Tx)",
+                false => "",
+            }
+            + match user.subscribers.contains(pk) {
+                true => " (Rx)",
+                false => "",
+            }                    
+        )
+        .collect::<Vec<_>>()
+        .join(",")
+
+}
+
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
@@ -175,14 +214,16 @@ mod tests {
     use crate::user::list::UserStatus::Activated;
     use crate::user::list::UserType::IBRL;
     use doublezero_sdk::{
-        AccountType, Device, DeviceStatus, DeviceType, Exchange, ExchangeStatus, Location,
-        LocationStatus, User,
+        AccountType, Device, DeviceStatus, DeviceType, Exchange, ExchangeStatus, Location, LocationStatus, MulticastGroup, MulticastGroupStatus, User, UserType
     };
     use solana_sdk::pubkey::Pubkey;
 
     #[test]
     fn test_cli_user_list() {
         let mut client = create_test_client();
+
+        let user1_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
+        let user2_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
 
         let location1_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1");
         let location1 = Location {
@@ -267,6 +308,20 @@ mod tests {
             status: DeviceStatus::Activated,
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8"),
         };
+        let mgroup1_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8");
+        let mgroup1 = MulticastGroup {
+            account_type: AccountType::MulticastGroup,
+            index: 1,
+            bump_seed: 2,
+            tenant_pk: Pubkey::default(),
+            code: "m_code".to_string(),
+            multicast_ip: [1, 2, 3, 4],
+            max_bandwidth: 1000,
+            publishers: vec![],
+            subscribers: vec![user2_pubkey],       
+            status: MulticastGroupStatus::Activated,     
+            owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
+        };
 
         client.expect_list_location().returning(move |_| {
             let mut locations = HashMap::new();
@@ -289,15 +344,20 @@ mod tests {
             Ok(devices)
         });
 
-        let user1_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
+        client.expect_list_multicastgroup().returning(move |_| {
+            let mut mgroups = HashMap::new();
+            mgroups.insert(mgroup1_pubkey, mgroup1.clone());
+            Ok(mgroups)
+        });
+
         let user1 = User {
             account_type: AccountType::User,
             index: 1,
             bump_seed: 2,
             owner: user1_pubkey,
             user_type: IBRL,
-            tenant_pk: Pubkey::new_unique(),
-            device_pk: Pubkey::from_str_const("11111116EPqoQskEM2Pddp8KTL9JdYEBZMGF3aq7V"),
+            tenant_pk: Pubkey::default(),
+            device_pk: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
             cyoa_type: GREOverDIA,
             client_ip: [1, 2, 3, 4],
             dz_ip: [2, 3, 4, 5],
@@ -308,11 +368,33 @@ mod tests {
             subscribers: vec![],
         };
 
+        let user2 = User {
+            account_type: AccountType::User,
+            index: 2,
+            bump_seed: 3,
+            owner: user2_pubkey,
+            user_type: UserType::Multicast,
+            tenant_pk: Pubkey::default(),
+            device_pk: device1_pubkey,
+            cyoa_type: GREOverDIA,
+            client_ip: [1, 2, 3, 4],
+            dz_ip: [2, 3, 4, 5],
+            tunnel_id: 500,
+            tunnel_net: ([1, 2, 3, 5], 32).into(),
+            status: Activated,
+            publishers: vec![],
+            subscribers: vec![mgroup1_pubkey],
+        };
+        
+
         client.expect_list_user().returning(move |_| {
             let mut users = HashMap::new();
             users.insert(user1_pubkey, user1.clone());
+            users.insert(user2_pubkey, user2.clone());
             Ok(users)
         });
+
+        
 
         let mut output = Vec::new();
         let res = ListUserCliCommand {
@@ -323,7 +405,7 @@ mod tests {
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
 
-        assert_eq!(output_str, " account                                   | user_type | device                                    | location | cyoa_type  | client_ip | tunnel_id | tunnel_net | dz_ip   | status    | owner \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | IBRL      | 11111116EPqoQskEM2Pddp8KTL9JdYEBZMGF3aq7V |          | GREOverDIA | 1.2.3.4   | 500       | 1.2.3.5/32 | 2.3.4.5 | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
+        assert_eq!(output_str, " account                                   | user_type | groups      | device       | location       | cyoa_type  | client_ip | tunnel_id | tunnel_net | dz_ip   | status    | owner \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | Multicast | m_code (Rx) | device1_code | location1_name | GREOverDIA | 1.2.3.4   | 500       | 1.2.3.5/32 | 2.3.4.5 | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
 
         let mut output = Vec::new();
         let res = ListUserCliCommand {
@@ -334,6 +416,6 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"user_type\":\"IBRL\",\"device_pk\":\"11111116EPqoQskEM2Pddp8KTL9JdYEBZMGF3aq7V\",\"device_name\":\"11111116EPqoQskEM2Pddp8KTL9JdYEBZMGF3aq7V\",\"location_code\":\"\",\"location_name\":\"\",\"cyoa_type\":\"GREOverDIA\",\"client_ip\":\"1.2.3.4\",\"dz_ip\":\"2.3.4.5\",\"tunnel_id\":500,\"tunnel_net\":\"1.2.3.5/32\",\"status\":\"Activated\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"user_type\":\"Multicast\",\"device_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"multicast\":\"m_code (Rx)\",\"publishers\":[],\"subscribers\":[\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8\"],\"device_name\":\"device1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"cyoa_type\":\"GREOverDIA\",\"client_ip\":\"1.2.3.4\",\"dz_ip\":\"2.3.4.5\",\"tunnel_id\":500,\"tunnel_net\":\"1.2.3.5/32\",\"status\":\"Activated\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
     }
 }

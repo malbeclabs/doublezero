@@ -226,6 +226,16 @@ impl From<&AccountInfo<'_>> for User {
     }
 }
 
+impl User {
+    pub fn get_multicast_groups(&self) -> Vec<Pubkey> {
+        self.publishers
+            .clone()
+            .into_iter()
+            .chain(self.subscribers.clone().into_iter())
+            .collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -91,9 +91,17 @@ impl ListUserCliCommand {
                     UserDisplay {
                         account: pubkey,
                         user_type: user.user_type,
-                        multicast: get_multicast_gropups_names(&user, &mgroups),
-                        publishers: user.publishers.into_iter().map(|pk| pk.to_string()).collect(),
-                        subscribers: user.subscribers.into_iter().map(|pk| pk.to_string()).collect(),
+                        multicast: format_multicast_group_names(&user, &mgroups),
+                        publishers: user
+                            .publishers
+                            .into_iter()
+                            .map(|pk| pk.to_string())
+                            .collect(),
+                        subscribers: user
+                            .subscribers
+                            .into_iter()
+                            .map(|pk| pk.to_string())
+                            .collect(),
                         device_pk: user.device_pk,
                         device_name,
                         location_code,
@@ -156,7 +164,7 @@ impl ListUserCliCommand {
                 table.add_row(Row::new(vec![
                     Cell::new(&pubkey.to_string()),
                     Cell::new(&data.user_type.to_string()),
-                    Cell::new(&get_multicast_gropups_names(&data,&mgroups,)),
+                    Cell::new(&format_multicast_group_names(&data, &mgroups)),
                     Cell::new(&device_name),
                     Cell::new(&location_name),
                     Cell::new(&data.cyoa_type.to_string()),
@@ -177,26 +185,26 @@ impl ListUserCliCommand {
     }
 }
 
-pub fn get_multicast_gropups_names(user: &User, mgroups: &HashMap<Pubkey, MulticastGroup>) -> String {
+pub fn format_multicast_group_names(
+    user: &User,
+    mgroups: &HashMap<Pubkey, MulticastGroup>,
+) -> String {
     user.get_multicast_groups()
         .iter()
-        .map(|pk| 
-            match mgroups.get(pk) {
-            Some(group) => {
-                group.code.clone()
+        .map(|pk| {
+            let name = mgroups
+                .get(pk)
+                .map_or_else(|| pk.to_string(), |group| group.code.clone());
+
+            let mut result = name;
+            if user.publishers.contains(pk) {
+                result.push_str(" (Tx)");
             }
-            None => {
-                pk.to_string()
-            }} 
-            + match user.publishers.contains(pk) {
-                true => " (Tx)",
-                false => "",
+            if user.subscribers.contains(pk) {
+                result.push_str(" (Rx)");
             }
-            + match user.subscribers.contains(pk) {
-                true => " (Rx)",
-                false => "",
-            }                    
-        )
+            result
+        })
         .collect::<Vec<_>>()
         .join(",")
 }
@@ -211,7 +219,8 @@ mod tests {
     use crate::user::list::UserStatus::Activated;
     use crate::user::list::UserType::IBRL;
     use doublezero_sdk::{
-        AccountType, Device, DeviceStatus, DeviceType, Exchange, ExchangeStatus, Location, LocationStatus, MulticastGroup, MulticastGroupStatus, User, UserType
+        AccountType, Device, DeviceStatus, DeviceType, Exchange, ExchangeStatus, Location,
+        LocationStatus, MulticastGroup, MulticastGroupStatus, User, UserType,
     };
     use solana_sdk::pubkey::Pubkey;
 
@@ -315,8 +324,8 @@ mod tests {
             multicast_ip: [1, 2, 3, 4],
             max_bandwidth: 1000,
             publishers: vec![],
-            subscribers: vec![user2_pubkey],       
-            status: MulticastGroupStatus::Activated,     
+            subscribers: vec![user2_pubkey],
+            status: MulticastGroupStatus::Activated,
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
         };
 

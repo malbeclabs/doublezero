@@ -19,7 +19,7 @@ pub struct CreateSubscribeUserCliCommand {
     #[arg(long)]
     pub publisher: Option<String>,
     #[arg(long)]
-    pub subscribe: Option<String>,
+    pub subscriber: Option<String>,
 }
 
 impl CreateSubscribeUserCliCommand {
@@ -54,16 +54,16 @@ impl CreateSubscribeUserCliCommand {
             },
         };
 
-        let subscribe_pk = match self.subscribe {
+        let subscriber_pk = match self.subscriber {
             None => None,
-            Some(subscribe) => match parse_pubkey(&subscribe) {
+            Some(subscriber) => match parse_pubkey(&subscriber) {
                 Some(pk) => Some(pk),
                 None => {
                     let (pubkey, _) = client
                         .get_multicastgroup(GetMulticastGroupCommand {
-                            pubkey_or_code: subscribe.to_string(),
+                            pubkey_or_code: subscriber.to_string(),
                         })
-                        .map_err(|_| eyre::eyre!("MulticastGroup not found ({})", subscribe))?;
+                        .map_err(|_| eyre::eyre!("MulticastGroup not found ({})", subscriber))?;
                     Some(pubkey)
                 }
             },
@@ -75,9 +75,9 @@ impl CreateSubscribeUserCliCommand {
             cyoa_type: UserCYOA::GREOverDIA,
             client_ip: ipv4_parse(&self.client_ip),
             publisher: publisher_pk.is_some(),
-            subscriber: subscribe_pk.is_some(),
+            subscriber: subscriber_pk.is_some(),
             mgroup_pk: publisher_pk.unwrap_or_else(|| {
-                subscribe_pk.expect("Subscriber is required if publisher is not")
+                subscriber_pk.expect("Subscriber is required if publisher is not")
             }),
         })?;
         writeln!(out, "Signature: {}", signature)?;

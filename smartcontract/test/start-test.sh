@@ -41,7 +41,7 @@ sleep 15
 ./target/doublezero init 
 
 ### Configure global setting
-./target/doublezero global-config set --local-asn 65100 --remote-asn 65001 --tunnel-tunnel-block 172.16.0.0/16 --device-tunnel-block 169.254.0.0/16 --multicasogroup-block 223.0.0.0/4
+./target/doublezero global-config set --local-asn 65100 --remote-asn 65001 --tunnel-tunnel-block 172.16.0.0/16 --device-tunnel-block 169.254.0.0/16 --multicastgroup-block 223.0.0.0/4
 
 
 # Build the activator
@@ -112,7 +112,11 @@ echo "Creating users"
 ./target/doublezero user create --device ld4-dz01 --client-ip 10.0.0.4
 
 echo "Creating multicast groups"
-./target/doublezero multicast group create --code jito --multicast-ip 239.0.0.1 --max-bandwidth 1Gbps --owner me
+./target/doublezero multicast group create --code jito --max-bandwidth 1Gbps --owner me
+
+echo "Creating multicast user & subscribe"
+./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 10.0.0.4 --subscribe jito
+
 
 echo "########################################################################"
 

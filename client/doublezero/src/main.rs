@@ -1,22 +1,21 @@
 use crate::cli::device::DeviceAllowlistCommands;
 use crate::cli::globalconfig::FoundationAllowlistCommands;
-use clap_complete::generate;
 use crate::cli::user::UserAllowlistCommands;
 use crate::cli::{
     command::Command, config::ConfigCommands, device::DeviceCommands, exchange::ExchangeCommands,
     globalconfig::GlobalConfigCommands, location::LocationCommands, tunnel::TunnelCommands,
     user::UserCommands,
 };
+use clap::CommandFactory;
 use clap::Parser;
+use clap_complete::generate;
 use doublezero_cli::doublezerocommand::CliCommandImpl;
 use doublezero_sdk::DZClient;
-use clap::CommandFactory;
 mod cli;
 mod command;
 mod requirements;
 mod servicecontroller;
 mod tests;
-
 
 include!(concat!(env!("OUT_DIR"), "/version.rs"));
 
@@ -112,6 +111,7 @@ async fn main() -> eyre::Result<()> {
         },
         Command::User(command) => match command.command {
             UserCommands::Create(args) => args.execute(&client, &mut handle),
+            UserCommands::CreateSubscribe(args) => args.execute(&client, &mut handle),
             UserCommands::Update(args) => args.execute(&client, &mut handle),
             UserCommands::List(args) => args.execute(&client, &mut handle),
             UserCommands::Get(args) => args.execute(&client, &mut handle),

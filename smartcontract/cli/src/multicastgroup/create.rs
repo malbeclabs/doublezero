@@ -12,8 +12,6 @@ pub struct CreateMulticastGroupCliCommand {
     #[arg(long)]
     pub code: String,
     #[arg(long)]
-    pub multicast_ip: String,
-    #[arg(long)]
     pub max_bandwidth: String,
     #[arg(long)]
     pub owner: String,

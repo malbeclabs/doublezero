@@ -111,6 +111,7 @@ async fn main() -> eyre::Result<()> {
         },
         Command::User(command) => match command.command {
             UserCommands::Create(args) => args.execute(&client, &mut handle),
+            UserCommands::CreateSubscribe(args) => args.execute(&client, &mut handle),
             UserCommands::Update(args) => args.execute(&client, &mut handle),
             UserCommands::List(args) => args.execute(&client, &mut handle),
             UserCommands::Get(args) => args.execute(&client, &mut handle),

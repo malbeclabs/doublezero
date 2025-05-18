@@ -98,6 +98,14 @@ pub fn process_create_subscribe_user(
     assert_eq!(mgroup.account_type, AccountType::MulticastGroup);
     assert_eq!(mgroup.status, MulticastGroupStatus::Activated);
 
+    // Check if the user is in the allowlist
+    if value.publisher && !mgroup.pub_allowlist.contains(payer_account.key) {
+        return Err(DoubleZeroError::NotAllowed.into());
+    }
+    if value.subscriber && !mgroup.sub_allowlist.contains(payer_account.key) {
+        return Err(DoubleZeroError::NotAllowed.into());
+    }
+
     let user: User = User {
         account_type: AccountType::User,
         owner: *payer_account.key,

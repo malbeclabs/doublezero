@@ -83,7 +83,6 @@ mod tests {
         let mut output = Vec::new();
         let res = CreateMulticastGroupCliCommand {
             code: "test".to_string(),
-            multicast_ip: "10.0.0.1".to_string(),
             max_bandwidth: "10Gbps".to_string(),
             owner: pda_pubkey.to_string(),
         }

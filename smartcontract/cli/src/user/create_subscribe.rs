@@ -184,7 +184,7 @@ mod tests {
             client_ip: "10.0.0.1".to_string(),
             allocate_addr: false,
             publisher: None,
-            subscribe: Some(mgroup_pubkey.to_string()),
+            subscriber: Some(mgroup_pubkey.to_string()),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

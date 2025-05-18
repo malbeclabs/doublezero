@@ -90,6 +90,7 @@ mod tests {
         tests::tests::create_test_client,
     };
     use doublezero_sdk::get_multicastgroup_pda;
+    use doublezero_sdk::AccountData;
     use doublezero_sdk::DoubleZeroClient;
     use doublezero_sdk::{AccountType, MulticastGroup, MulticastGroupStatus};
     use doublezero_sla_program::{
@@ -105,7 +106,6 @@ mod tests {
         let mut client = create_test_client();
 
         let (_, bump_seed) = get_multicastgroup_pda(&client.get_program_id(), 1);
-
         client
             .expect_execute_transaction()
             .with(
@@ -137,6 +137,12 @@ mod tests {
             code: "test".to_string(),
             tenant_pk: Pubkey::default(),
         };
+
+        let mgroup = multicastgroup.clone();
+        client
+            .expect_get()
+            .with(predicate::eq(pubkey.clone()))
+            .returning(move |_| Ok(AccountData::MulticastGroup(mgroup.clone())));
 
         let mut multicastgroup_tunnel_ips = IPBlockAllocator::new(([224, 0, 0, 0], 4));
         let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();

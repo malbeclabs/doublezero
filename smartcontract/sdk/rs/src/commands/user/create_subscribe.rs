@@ -2,12 +2,20 @@ use doublezero_sla_program::{
     instructions::DoubleZeroInstruction,
     pda::get_user_pda,
     processors::user::create_subscribe::UserCreateSubscribeArgs,
-    state::user::{UserCYOA, UserType},
+    state::{
+        multicastgroup::MulticastGroupStatus,
+        user::{UserCYOA, UserType},
+    },
     types::IpV4,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
+use crate::{
+    commands::{
+        globalstate::get::GetGlobalStateCommand, multicastgroup::get::GetMulticastGroupCommand,
+    },
+    DoubleZeroClient,
+};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CreateSubscribeUserCommand {
@@ -25,6 +33,22 @@ impl CreateSubscribeUserCommand {
         let (globalstate_pubkey, globalstate) = GetGlobalStateCommand {}
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
+
+        let (_, mgroup) = GetMulticastGroupCommand {
+            pubkey_or_code: self.mgroup_pk.to_string(),
+        }
+        .execute(client)
+        .map_err(|_err| eyre::eyre!("MulticastGroup not found"))?;
+
+        if mgroup.status != MulticastGroupStatus::Activated {
+            return Err(eyre::eyre!("MulticastGroup not active"));
+        }
+        if self.publisher && !mgroup.pub_allowlist.contains(&client.get_payer()) {
+            return Err(eyre::eyre!("Publisher not allowed"));
+        }
+        if self.subscriber && !mgroup.sub_allowlist.contains(&client.get_payer()) {
+            return Err(eyre::eyre!("Subscriber not allowed"));
+        }
 
         let (pda_pubkey, bump_seed) =
             get_user_pda(&client.get_program_id(), globalstate.account_index + 1);

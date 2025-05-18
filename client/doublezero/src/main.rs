@@ -15,7 +15,6 @@ mod cli;
 mod command;
 mod requirements;
 mod servicecontroller;
-mod tests;
 
 include!(concat!(env!("OUT_DIR"), "/version.rs"));
 

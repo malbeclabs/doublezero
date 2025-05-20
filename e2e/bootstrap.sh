@@ -20,6 +20,10 @@ function cleanup {
 trap cleanup EXIT
 
 main() {
+    if [ "$EUID" -ne 0 ]
+        then echo "error: This script must be run as root"
+        exit 1
+    fi
     print_banner "Starting DoubleZero device container"
     start_doublezero_device
 
@@ -43,12 +47,13 @@ start_doublezero_device() {
     # attached is the management interface, then subsequent networks correspond to
     # ethernet interfaces.d
     #
-    # Docker attaches interfaces in seemingly random order. If the networks
-    # end up attached in the wrong order, this test will fail as the CYOA network
-    # will not be attached to Ethernet1.
+    # Docker attaches interfaces in seemingly random order if the container is not yet started. 
+    # If the networks end up attached in the wrong order, this test will fail as the CYOA network
+    # will not be attached to Ethernet1. To avoid this, we start the container with the default bridge
+    # network attached, then attach the CYOA network to the container.
     docker create --name=$DZD_NAME --privileged -t agent:$GIT_SHA
-    docker network connect --ip=64.86.249.80 $NET_CYOA $DZD_NAME
     docker start $DZD_NAME
+    docker network connect --ip=64.86.249.80 $NET_CYOA $DZD_NAME
 
     # In github actions w/ the arista container, docker iptables rules
     # only allow traffic to/from the interconnect link which causes traffic

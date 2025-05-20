@@ -22,13 +22,13 @@ AGENT_DEVICE=ny5-dz01
 export AGENT_PUBKEY
 
 main() {
-    # WARNING: docker networks are connected unordered to containers in OSX. This can break
+    # WARNING: docker networks are connected unordered to containers. This can break
     #          networking between the e2e container and the device container. The Arista
     #          cEOS container requires at least two networks attached (a management network
-    #          and at least 1 front panel port network i.e. to the e2e container). Docker on OSX
+    #          and at least 1 front panel port network i.e. to the e2e container). Docker
     #          will attach these in a random order which can cause the network facing the e2e container
     #          to be incorrect from the perspective of the device container.
-    print_banner "Check networking to DoubleZero device\n(This can fail randomly on OSX; See comment in this script above.)"
+    print_banner "Check networking to DoubleZero device\n"
     ping -c 3 -q 64.86.249.80
 
     print_banner "Starting local validator w/ smartcontract program"

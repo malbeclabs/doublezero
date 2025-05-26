@@ -14,7 +14,7 @@ solana-sdk = "2.2.2"
 solana-client = "2.2.7"
 solana-pubsub-client = "2.2.7"
 chrono = "0.4"
-tokio = { version = "1.44.2", features = ["full"] }
+tokio = { version = "1.45.1", features = ["full"] }
 dirs = "6.0.0"
 serde_json = "1.0.140"
 prettytable-rs = "0.10.0"

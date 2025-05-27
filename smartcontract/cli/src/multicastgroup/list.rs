@@ -26,6 +26,10 @@ pub struct MulticastGroupDisplay {
     pub multicast_ip: IpV4,
     #[serde(serialize_with = "crate::serializer::serialize_bandwidth_as_string")]
     pub max_bandwidth: u64,
+    #[serde(serialize_with = "crate::serializer::serialize_pubkeylist_as_string")]
+    pub publishers: Vec<Pubkey>,
+    #[serde(serialize_with = "crate::serializer::serialize_pubkeylist_as_string")]
+    pub subscribers: Vec<Pubkey>,
     pub status: MulticastGroupStatus,
 }
 
@@ -46,6 +50,8 @@ impl ListMulticastGroupCliCommand {
                     owner: multicastgroup.owner,
                     multicast_ip: multicastgroup.multicast_ip,
                     max_bandwidth: multicastgroup.max_bandwidth,
+                    publishers: multicastgroup.publishers,
+                    subscribers: multicastgroup.subscribers,
                     status: multicastgroup.status,
                 })
                 .collect::<Vec<_>>();
@@ -157,8 +163,13 @@ mod tests {
             max_bandwidth: 1234,
             pub_allowlist: vec![],
             sub_allowlist: vec![],
-            publishers: vec![],
-            subscribers: vec![],
+            publishers: vec![
+                Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo2"),
+                Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo3"),
+            ],
+            subscribers: vec![Pubkey::from_str_const(
+                "11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo3",
+            )],
             status: MulticastGroupStatus::Activated,
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
         };
@@ -178,7 +189,7 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | code                | multicast_ip | max_bandwidth | status    | owner \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | multicastgroup_code | 1.2.3.4      | 1.23Kbps      | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
+        assert_eq!(output_str, " account                                   | code                | multicast_ip | max_bandwidth | publishers | subscribers | status    | owner \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | multicastgroup_code | 1.2.3.4      | 1.23Kbps      | 2          | 1           | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
 
         let mut output = Vec::new();
         let res = ListMulticastGroupCliCommand {
@@ -189,6 +200,6 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"code\":\"multicastgroup_code\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"multicast_ip\":\"1.2.3.4\",\"max_bandwidth\":\"1.23Kbps\",\"status\":\"Activated\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"code\":\"multicastgroup_code\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"multicast_ip\":\"1.2.3.4\",\"max_bandwidth\":\"1.23Kbps\",\"publishers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo2, 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo3\",\"subscribers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo3\",\"status\":\"Activated\"}]\n");
     }
 }

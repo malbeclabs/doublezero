@@ -11,6 +11,22 @@ where
     serializer.serialize_str(&pubkey.to_string())
 }
 
+pub fn serialize_pubkeylist_as_string<S>(
+    pubkey: &Vec<Pubkey>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(
+        &pubkey
+            .iter()
+            .map(|p| p.to_string())
+            .collect::<Vec<_>>()
+            .join(", "),
+    )
+}
+
 pub fn serialize_ipv4_as_string<S>(ip: &IpV4, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,

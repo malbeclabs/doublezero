@@ -546,7 +546,7 @@ impl ProvisioningCliCommand {
                 config.local_asn,
                 config.remote_asn,
                 mcast_pub_groups.clone().unwrap_or_default(),
-                mcast_sub_groups.clone().unwrap_or_default()
+                mcast_sub_groups.clone().unwrap_or_default(),
             ));
         };
 

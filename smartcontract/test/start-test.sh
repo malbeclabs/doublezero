@@ -48,14 +48,14 @@ sleep 15
 echo "Start the activator"
 ./target/doublezero-activator --program-id 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX  > ./logs/activator.log 2>&1 &
 
-echo "add allowlist"
+echo "Add allowlist"
 ./target/doublezero global-config allowlist add --pubkey 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
 ./target/doublezero device allowlist add --pubkey 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
 ./target/doublezero user allowlist add --pubkey 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
 
 
 ### Initialice locations
-echo "creating locations"
+echo "Creating locations"
 ./target/doublezero location create --code lax --name "XXXXXXX" --country US --lat 34.049641274076464 --lng -118.25939642499903
 ./target/doublezero location create --code ewr --name "New York" --country US --lat 40.780297071772125 --lng -74.07203003496925
 ./target/doublezero location create --code lhr --name "London" --country UK --lat 51.513999803939384 --lng -0.12014764843092213
@@ -65,11 +65,11 @@ echo "creating locations"
 ./target/doublezero location create --code pit --name "Pittsburgh" --country US --lat 40.45119259881935 --lng -80.00498215509094
 ./target/doublezero location create --code ams --name "Amsterdam" --country US --lat 52.30085793004002 --lng 4.942241140085309
 
-echo "update locations"
+echo "Update locations"
 ./target/doublezero location update --pubkey XEY7fFCJ8r1FM9xwyvMqZ3GEgEbKNBTw65N2ynGJXRD --name "Los Angeles"
 
 ### Initialice exchanges
-echo "creating exchanges"
+echo "Creating exchanges"
 ./target/doublezero exchange create --code xlax --name "XXXXXXXX" --lat 34.049641274076464 --lng -118.25939642499903
 ./target/doublezero exchange create --code xewr --name "New York" --lat 40.780297071772125 --lng -74.07203003496925
 ./target/doublezero exchange create --code xlhr --name "London" --lat 51.513999803939384 --lng -0.12014764843092213
@@ -79,11 +79,11 @@ echo "creating exchanges"
 ./target/doublezero exchange create --code xpit --name "Pittsburgh" --lat 40.45119259881935 --lng -80.00498215509094
 ./target/doublezero exchange create --code xams --name "Amsterdam" --lat 52.30085793004002 --lng 4.942241140085309
 
-echo "update exchanges"
+echo "Update exchanges"
 ./target/doublezero exchange update --pubkey EpE1QxRzUXFLSAPKcsGrHrdareBZ7hNsyJtTPw1iL7q8 --name "Los Angeles"
 
 ### Initialice devices
-echo "creating devices"
+echo "Creating devices"
 ./target/doublezero device create --code la2-dz01 --location lax --exchange xlax --public-ip "207.45.216.134" --dz-prefixes "207.45.216.136/29"
 ./target/doublezero device create --code ny5-dz01 --location ewr --exchange xewr --public-ip "64.86.249.80" --dz-prefixes "64.86.249.80/29"
 ./target/doublezero device create --code ld4-dz01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "195.219.120.72/30,195.219.120.76/30"
@@ -95,7 +95,7 @@ echo "creating devices"
 
 
 ### Initialice tunnels
-echo "creating tunnels"
+echo "Creating tunnels"
 ./target/doublezero tunnel create --code "la2-dz01:ny5-dz01" --side-a la2-dz01 --side-z ny5-dz01 --tunnel-type MPLSoGRE --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
 ./target/doublezero tunnel create --code "ny5-dz01:ld4-dz01" --side-a ny5-dz01 --side-z ld4-dz01 --tunnel-type MPLSoGRE --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
 ./target/doublezero tunnel create --code "ld4-dz01:frk-dz01" --side-a ld4-dz01 --side-z frk-dz01 --tunnel-type MPLSoGRE --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10
@@ -103,9 +103,8 @@ echo "creating tunnels"
 ./target/doublezero tunnel create --code "sg1-dz01:ty2-dz01" --side-a sg1-dz01 --side-z ty2-dz01 --tunnel-type MPLSoGRE --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7
 ./target/doublezero tunnel create --code "ty2-dz01:la2-dz01" --side-a ty2-dz01 --side-z la2-dz01 --tunnel-type MPLSoGRE --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 10
 
-echo "Creating users"
-
 # create a user
+echo "Creating users"
 ./target/doublezero user create --device ld4-dz01 --client-ip 10.0.0.1
 ./target/doublezero user create --device ld4-dz01 --client-ip 10.0.0.2
 ./target/doublezero user create --device ld4-dz01 --client-ip 10.0.0.3
@@ -114,12 +113,19 @@ echo "Creating users"
 echo "Creating multicast groups"
 ./target/doublezero multicast group create --code jito --max-bandwidth 1Gbps --owner me
 
+echo "Add me to multicast group allowlist"
+./target/doublezero multicast group allowlist publisher add --code DLRVcWaZQf1xN9vJemgjqNd286Kx5md1LxTe7p67c4ZM --pubkey me
+./target/doublezero multicast group allowlist subscriber add --code DLRVcWaZQf1xN9vJemgjqNd286Kx5md1LxTe7p67c4ZM --pubkey me
+
 echo "Creating multicast user & subscribe"
-./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 10.0.0.4 --subscribe jito
+./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 10.0.0.5 --publisher jito
+./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 10.0.0.6 --subscriber jito
+./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 10.0.0.7 --publisher jito --subscriber jito
 
 
 echo "########################################################################"
 
+return
 
 echo "Delete users"
 ./target/doublezero user delete --pubkey Do1iXv6tNMHRzF1yYHBcLNfNngCK6Yyr9izpLZc1rrwW

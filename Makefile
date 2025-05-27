@@ -1,15 +1,14 @@
 PREFIX:=github.com/malbeclabs/doublezero/smartcontract
-BUILD:=`git rev-parse --short HEAD` 
+BUILD:=`git rev-parse --short HEAD`
 LDFLAGS=
 
 .PHONY: test
 test:
 	cargo test --manifest-path ./client/doublezero/Cargo.toml
-	go test -race -v -coverprofile coverage.out ./client/doublezerod/...
 	cargo test --manifest-path ./smartcontract/sdk/rs/Cargo.toml
 	cargo test --manifest-path ./smartcontract/programs/dz-sla-program/Cargo.toml
 	cargo test --manifest-path ./smartcontract/cli/Cargo.toml
-	go test ./sdk/go/
+	go test ./... -race -v -coverprofile coverage.out
 
 .PHONY: lint
 lint:

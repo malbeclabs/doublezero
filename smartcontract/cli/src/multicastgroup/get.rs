@@ -1,7 +1,11 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_sdk::commands::device::list::ListDeviceCommand;
+use doublezero_sdk::commands::location::list::ListLocationCommand;
 use doublezero_sdk::commands::multicastgroup::get::GetMulticastGroupCommand;
+use doublezero_sdk::commands::user::list::ListUserCommand;
 use doublezero_sdk::*;
+use prettytable::{format, row, Cell, Row, Table};
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -12,19 +16,91 @@ pub struct GetMulticastGroupCliCommand {
 
 impl GetMulticastGroupCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        let (pubkey, multicastgroup) = client.get_multicastgroup(GetMulticastGroupCommand {
+        let (pubkey, mgroup) = client.get_multicastgroup(GetMulticastGroupCommand {
             pubkey_or_code: self.code,
         })?;
 
+        let users = client.list_user(ListUserCommand {})?;
+        let devices = client.list_device(ListDeviceCommand {})?;
+        let locations = client.list_location(ListLocationCommand {})?;
+
         writeln!(out,
-        "account: {}\r\ncode: {}\r\nmulticast_ip: {}\r\nmax_bandwidth: {}\r\nstatus: {}\r\nowner: {}",
+        "account: {}\r\ncode: {}\r\nmulticast_ip: {}\r\nmax_bandwidth: {}\r\rpublisher_allowlist: {}\r\nsubscriber_allowlist: {}\r\nstatus: {}\r\nowner: {}\r\n\r\nusers:\r\n",
         pubkey,
-        multicastgroup.code,
-        ipv4_to_string(&multicastgroup.multicast_ip),
-        bandwidth_to_string(multicastgroup.max_bandwidth),
-        multicastgroup.status,
-        multicastgroup.owner
+        mgroup.code,
+        ipv4_to_string(&mgroup.multicast_ip),
+        bandwidth_to_string(mgroup.max_bandwidth),
+        mgroup.pub_allowlist.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "),
+        mgroup.sub_allowlist.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "),
+        mgroup.status,
+        mgroup.owner
         )?;
+
+        let mut table = Table::new();
+        table.add_row(row![
+            "account",
+            "multicast_mode",
+            "device",
+            "location",
+            "cyoa_type",
+            "client_ip",
+            "tunnel_id",
+            "tunnel_net",
+            "dz_ip",
+            "status",
+            "owner"
+        ]);
+
+        for (pubkey, data) in users
+            .into_iter()
+            .filter(|(pk, _)| mgroup.publishers.contains(pk) || mgroup.subscribers.contains(pk))
+        {
+            let device = devices.get(&data.device_pk);
+            let location = match device {
+                Some(device) => locations.get(&device.location_pk),
+                None => None,
+            };
+
+            let device_name = match device {
+                Some(device) => device.code.clone(),
+                None => data.device_pk.to_string(),
+            };
+            let location_name = match device {
+                Some(device) => match location {
+                    Some(location) => location.name.clone(),
+                    None => device.location_pk.to_string(),
+                },
+                None => "".to_string(),
+            };
+            let mode_text = if mgroup.publishers.contains(&pubkey) {
+                if !mgroup.subscribers.contains(&pubkey) {
+                    "Tx"
+                } else {
+                    "Tx/Rx"
+                }
+            } else if mgroup.subscribers.contains(&pubkey) {
+                "Rx"
+            } else {
+                "XX"
+            };
+
+            table.add_row(Row::new(vec![
+                Cell::new(&pubkey.to_string()),
+                Cell::new(&mode_text),
+                Cell::new(&device_name),
+                Cell::new(&location_name),
+                Cell::new(&data.cyoa_type.to_string()),
+                Cell::new(&ipv4_to_string(&data.client_ip)),
+                Cell::new(&data.tunnel_id.to_string()),
+                Cell::new(&networkv4_to_string(&data.tunnel_net)),
+                Cell::new(&ipv4_to_string(&data.dz_ip)),
+                Cell::new(&data.status.to_string()),
+                Cell::new(&data.owner.to_string()),
+            ]));
+        }
+
+        table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
+        let _ = table.print(out);
 
         Ok(())
     }

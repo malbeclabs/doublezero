@@ -111,7 +111,7 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::ActivateMulticastGroup(
                     MulticastGroupActivateArgs {
-                        index: 0,
+                        index: 1,
                         bump_seed,
                         multicast_ip: [224, 0, 0, 0],
                     },
@@ -125,7 +125,7 @@ mod tests {
         let multicastgroup = MulticastGroup {
             account_type: AccountType::MulticastGroup,
             owner: Pubkey::new_unique(),
-            index: 0,
+            index: 1,
             bump_seed,
             multicast_ip: [0, 0, 0, 0],
             max_bandwidth: 10000,
@@ -143,6 +143,20 @@ mod tests {
             .expect_get()
             .with(predicate::eq(pubkey.clone()))
             .returning(move |_| Ok(AccountData::MulticastGroup(mgroup.clone())));
+
+        client
+            .expect_execute_transaction()
+            .with(
+                predicate::eq(DoubleZeroInstruction::ActivateMulticastGroup(
+                    MulticastGroupActivateArgs {
+                        index: 1,
+                        bump_seed,
+                        multicast_ip: [224, 0, 0, 0],
+                    },
+                )),
+                predicate::always(),
+            )
+            .returning(|_, _| Ok(Signature::new_unique()));
 
         let mut multicastgroup_tunnel_ips = IPBlockAllocator::new(([224, 0, 0, 0], 4));
         let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();

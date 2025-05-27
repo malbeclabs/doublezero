@@ -1,0 +1,29 @@
+{
+    "name": "DoubleZero Development",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": "."
+    },
+    "features": {
+        "ghcr.io/devcontainers/features/common-utils:2": {},
+        "ghcr.io/devcontainers/features/rust:1": {},
+        "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "golang.go",
+                "rust-lang.rust-analyzer"
+            ]
+        }
+    },
+    "remoteUser": "root",
+    "mounts": [
+        "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+    ],
+    "privileged": true,
+    "capAdd": [
+        "NET_ADMIN",
+        "NET_RAW"
+    ]
+}

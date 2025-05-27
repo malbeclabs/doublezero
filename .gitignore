@@ -15,5 +15,3 @@ smartcontract/cli/config/*
 .vscode
 
 dist/
-
-.devcontainer/

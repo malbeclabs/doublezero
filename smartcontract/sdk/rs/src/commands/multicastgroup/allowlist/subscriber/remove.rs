@@ -1,20 +1,27 @@
 use doublezero_sla_program::{
-    instructions::DoubleZeroInstruction, pda::get_globalstate_pda,
+    instructions::DoubleZeroInstruction,
     processors::multicastgroup::allowlist::subscriber::remove::RemoveMulticastGroupSubAllowlistArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
-use crate::DoubleZeroClient;
+use crate::{commands::multicastgroup::get::GetMulticastGroupCommand, DoubleZeroClient};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct RemoveMulticastGroupSubAllowlistCommand {
+    pub pubkey_or_code: String,
     pub pubkey: Pubkey,
 }
 
 impl RemoveMulticastGroupSubAllowlistCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (pda_pubkey, _) = get_globalstate_pda(&client.get_program_id());
+        let (pda_pubkey, mgroup) = GetMulticastGroupCommand {
+            pubkey_or_code: self.pubkey_or_code.clone(),
+        }
+        .execute(client)?;
 
+        if !mgroup.pub_allowlist.contains(&self.pubkey) {
+            return Err(eyre::eyre!("Publisher is not in the allowlist"));
+        }
         client.execute_transaction(
             DoubleZeroInstruction::RemoveMulticastGroupSubAllowlist(
                 RemoveMulticastGroupSubAllowlistArgs {

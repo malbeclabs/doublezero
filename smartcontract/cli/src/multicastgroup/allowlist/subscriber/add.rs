@@ -9,6 +9,8 @@ use std::str::FromStr;
 #[derive(Args, Debug)]
 pub struct AddMulticastGroupSubAllowlistCliCommand {
     #[arg(long)]
+    pub code: String,
+    #[arg(long)]
     pub pubkey: String,
 }
 
@@ -25,8 +27,11 @@ impl AddMulticastGroupSubAllowlistCliCommand {
             }
         };
 
-        let res = client
-            .add_multicastgroup_sub_allowlist(AddMulticastGroupSubAllowlistCommand { pubkey })?;
+        let res =
+            client.add_multicastgroup_sub_allowlist(AddMulticastGroupSubAllowlistCommand {
+                pubkey_or_code: self.code,
+                pubkey,
+            })?;
         writeln!(out, "Signature: {}", res)?;
 
         Ok(())
@@ -62,6 +67,7 @@ mod tests {
         client
             .expect_add_multicastgroup_sub_allowlist()
             .with(predicate::eq(AddMulticastGroupSubAllowlistCommand {
+                pubkey_or_code: "test_code".to_string(),
                 pubkey,
             }))
             .returning(move |_| Ok(signature));
@@ -69,6 +75,7 @@ mod tests {
         /*****************************************************************************************************/
         let mut output = Vec::new();
         let res = AddMulticastGroupSubAllowlistCliCommand {
+            code: "test_code".to_string(),
             pubkey: pubkey.to_string(),
         }
         .execute(&client, &mut output);

@@ -1,25 +1,24 @@
-name: smartcontract-activator-rust
+name: rust
 on:
   push:
     paths:
-      - "activator/**"
       - "!**/**.md"
+      - "!**/**.go"
     branches: [ main ]
   pull_request:
     paths:
-      - "activator/**"
       - "!**/**.md"
+      - "!**/**.go"
     branches: [ main ]
 
 jobs:
-  build_and_test:
+  checks:
     runs-on: ubuntu-24.04-16c-64gb
-    defaults:
-      run:
-        working-directory: "activator/"
     steps:
       - uses: actions/checkout@v4
-      - name: build
-        run: cargo build
       - name: test
-        run: cargo test
+        run: cargo test --all --all-features
+      - name: clippy
+        run: cargo clippy --all --all-features --all-targets
+      - name: build
+        run: cargo build --all

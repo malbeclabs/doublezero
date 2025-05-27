@@ -5,24 +5,15 @@ CLIPPY_FLAGS=-- -Dclippy::all -D warnings
 
 .PHONY: test
 test:
-	cargo test --manifest-path ./client/doublezero/Cargo.toml
-	cargo test --manifest-path ./smartcontract/sdk/rs/Cargo.toml
-	cargo test --manifest-path ./smartcontract/programs/dz-sla-program/Cargo.toml
-	cargo test --manifest-path ./smartcontract/cli/Cargo.toml
 	go test ./... -race -v -coverprofile coverage.out
+	cargo test --all --all-features
 
 .PHONY: lint
 lint:
-	cargo clippy --manifest-path ./client/doublezero/Cargo.toml $(CLIPPY_FLAGS)
 	golangci-lint run -c ./.golangci.yaml
-	cargo clippy --manifest-path ./smartcontract/programs/dz-sla-program/Cargo.toml $(CLIPPY_FLAGS)
-	cargo clippy --manifest-path ./smartcontract/sdk/rs/Cargo.toml $(CLIPPY_FLAGS)
-	cargo clippy --manifest-path ./smartcontract/cli/Cargo.toml $(CLIPPY_FLAGS)
+	cargo clippy --all --all-features $(CLIPPY_FLAGS)
 
 .PHONY: build
 build:
-	cargo build $(LDFLAGS) --release --manifest-path ./client/doublezero/Cargo.toml
 	CGO_ENABLED=0 go build -v $(LDFLAGS) -o ./client/doublezerod/bin/doublezerod ./client/doublezerod/cmd/doublezerod/main.go
-	cargo build $(LDFLAGS) --manifest-path ./smartcontract/programs/dz-sla-program/Cargo.toml
-	cargo build $(LDFLAGS) --manifest-path ./smartcontract/sdk/rs/Cargo.toml
-	cargo build $(LDFLAGS) --manifest-path ./smartcontract/cli/Cargo.toml
+	cargo build -v $(LDFLAGS) --all

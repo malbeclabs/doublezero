@@ -1,6 +1,7 @@
 PREFIX:=github.com/malbeclabs/doublezero/smartcontract
 BUILD:=`git rev-parse --short HEAD`
 LDFLAGS=
+CLIPPY_FLAGS=-- -Dclippy::all -D warnings
 
 .PHONY: test
 test:
@@ -11,9 +12,9 @@ test:
 
 .PHONY: lint
 lint:
-	cargo clippy --manifest-path ./programs/dz-sla-program/Cargo.toml
-	cargo clippy --manifest-path ./sdk/rs/Cargo.toml
-	cargo clippy --manifest-path ./cli/Cargo.toml
+	cargo clippy --manifest-path ./programs/dz-sla-program/Cargo.toml $(CLIPPY_FLAGS)
+	cargo clippy --manifest-path ./sdk/rs/Cargo.toml $(CLIPPY_FLAGS)
+	cargo clippy --manifest-path ./cli/Cargo.toml $(CLIPPY_FLAGS)
 
 .PHONY: build
 build:

@@ -90,22 +90,20 @@ impl ProvisioningCliCommand {
 
         match user_type {
             UserType::IBRL | UserType::IBRLWithAllocatedIP => {
-                return self
-                    .execute_ibrl(client, controller, user_type, client_ip, spinner)
-                    .await;
+                self.execute_ibrl(client, controller, user_type, client_ip, spinner)
+                    .await
             }
             UserType::EdgeFiltering => Err(eyre::eyre!("DzMode not supported")),
             UserType::Multicast => {
-                return self
-                    .execute_multicast(
-                        client,
-                        controller,
-                        multicast_mode.unwrap(),
-                        multicast_group.unwrap(),
-                        client_ip,
-                        spinner,
-                    )
-                    .await;
+                self.execute_multicast(
+                    client,
+                    controller,
+                    multicast_mode.unwrap(),
+                    multicast_group.unwrap(),
+                    client_ip,
+                    spinner,
+                )
+                .await
             }
         }
     }

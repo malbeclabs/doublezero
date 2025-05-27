@@ -19,7 +19,7 @@ impl AddMulticastGroupSubAllowlistCommand {
         }
         .execute(client)?;
 
-        if mgroup.pub_allowlist.contains(&self.pubkey) {
+        if mgroup.sub_allowlist.contains(&self.pubkey) {
             return Err(eyre::eyre!("Publisher is already in the allowlist"));
         }
 

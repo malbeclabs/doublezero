@@ -12,7 +12,7 @@ where
 }
 
 pub fn serialize_pubkeylist_as_string<S>(
-    pubkey: &Vec<Pubkey>,
+    pubkey: &[Pubkey],
     serializer: S,
 ) -> Result<S::Ok, S::Error>
 where

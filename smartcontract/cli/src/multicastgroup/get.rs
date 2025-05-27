@@ -86,7 +86,7 @@ impl GetMulticastGroupCliCommand {
 
             table.add_row(Row::new(vec![
                 Cell::new(&pubkey.to_string()),
-                Cell::new(&mode_text),
+                Cell::new(mode_text),
                 Cell::new(&device_name),
                 Cell::new(&location_name),
                 Cell::new(&data.cyoa_type.to_string()),

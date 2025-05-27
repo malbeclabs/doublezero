@@ -65,6 +65,8 @@ impl ListMulticastGroupCliCommand {
                 "code",
                 "multicast_ip",
                 "max_bandwidth",
+                "publishers",
+                "subscribers",
                 "status",
                 "owner"
             ]);
@@ -74,6 +76,8 @@ impl ListMulticastGroupCliCommand {
                     Cell::new(&data.code),
                     Cell::new(&ipv4_to_string(&data.multicast_ip)),
                     Cell::new(&bandwidth_to_string(data.max_bandwidth)),
+                    Cell::new(&data.publishers.len().to_string()),
+                    Cell::new(&data.subscribers.len().to_string()),
                     Cell::new(&data.status.to_string()),
                     Cell::new(&data.owner.to_string()),
                 ]));

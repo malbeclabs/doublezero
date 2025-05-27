@@ -5,6 +5,7 @@ use doublezero_sla_program::state::{
 use solana_sdk::pubkey::Pubkey;
 use std::collections::HashMap;
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct ListLocationCommand {}
 
 impl ListLocationCommand {

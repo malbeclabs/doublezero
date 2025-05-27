@@ -14,8 +14,8 @@ use doublezero_sdk::commands::{
     user::list::ListUserCommand,
 };
 use doublezero_sdk::{
-    ipv4_to_string, networkv4_to_string, Device, IpV4, NetworkV4, User, UserCYOA,
-    UserStatus, UserType,
+    ipv4_to_string, networkv4_to_string, Device, IpV4, NetworkV4, User, UserCYOA, UserStatus,
+    UserType,
 };
 
 use eyre;
@@ -90,24 +90,20 @@ impl ProvisioningCliCommand {
 
         match user_type {
             UserType::IBRL | UserType::IBRLWithAllocatedIP => {
-                return self
-                    .execute_ibrl(client, controller, user_type, client_ip, spinner)
-                    .await;
+                self.execute_ibrl(client, controller, user_type, client_ip, spinner)
+                    .await
             }
-            UserType::EdgeFiltering => {
-                return Err(eyre::eyre!("DzMode not supported"));
-            }
+            UserType::EdgeFiltering => Err(eyre::eyre!("DzMode not supported")),
             UserType::Multicast => {
-                return self
-                    .execute_multicast(
-                        client,
-                        controller,
-                        multicast_mode.unwrap(),
-                        multicast_group.unwrap(),
-                        client_ip,
-                        spinner,
-                    )
-                    .await;
+                self.execute_multicast(
+                    client,
+                    controller,
+                    multicast_mode.unwrap(),
+                    multicast_group.unwrap(),
+                    client_ip,
+                    spinner,
+                )
+                .await
             }
         }
     }
@@ -129,8 +125,17 @@ impl ProvisioningCliCommand {
         match user.status {
             UserStatus::Activated => {
                 // User is activated
-                self.user_activated(client, &controller, &user, &client_ip, &spinner, user_type, None, None)
-                    .await?
+                self.user_activated(
+                    client,
+                    &controller,
+                    &user,
+                    &client_ip,
+                    &spinner,
+                    user_type,
+                    None,
+                    None,
+                )
+                .await?
             }
             UserStatus::Rejected => {
                 // User is rejected
@@ -172,8 +177,16 @@ impl ProvisioningCliCommand {
             )
             .await?;
 
-        let mcast_pub_groups = user.publishers.iter().map(|pk| ipv4_to_string(&mcast_groups.get(pk).unwrap().multicast_ip)).collect::<Vec<_>>();
-        let mcast_sub_groups = user.subscribers.iter().map(|pk| ipv4_to_string(&mcast_groups.get(pk).unwrap().multicast_ip)).collect::<Vec<_>>();
+        let mcast_pub_groups = user
+            .publishers
+            .iter()
+            .map(|pk| ipv4_to_string(&mcast_groups.get(pk).unwrap().multicast_ip))
+            .collect::<Vec<_>>();
+        let mcast_sub_groups = user
+            .subscribers
+            .iter()
+            .map(|pk| ipv4_to_string(&mcast_groups.get(pk).unwrap().multicast_ip))
+            .collect::<Vec<_>>();
 
         // Check user status
         match user.status {
@@ -447,6 +460,7 @@ impl ProvisioningCliCommand {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn user_activated(
         &self,
         client: &dyn CliCommand,
@@ -503,8 +517,8 @@ impl ProvisioningCliCommand {
                 doublezero_prefixes,
                 config.local_asn,
                 config.remote_asn,
-                mcast_pub_groups.clone().unwrap_or(vec![]),
-                mcast_sub_groups.clone().unwrap_or(vec![]),
+                mcast_pub_groups.clone().unwrap_or_default(),
+                mcast_sub_groups.clone().unwrap_or_default()
             ));
         };
 

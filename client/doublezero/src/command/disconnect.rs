@@ -15,6 +15,7 @@ use doublezero_sdk::UserType;
 
 use super::helpers::look_for_ip;
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Debug, ValueEnum)]
 pub enum DzMode {
     IBRL,
@@ -57,7 +58,9 @@ impl DecommissioningCliCommand {
         for (pubkey, user) in users.iter().filter(|(_, u)| u.client_ip == client_ip) {
             match self.dz_mode {
                 Some(DzMode::IBRL) => {
-                    if user.user_type != UserType::IBRL && user.user_type != UserType::IBRLWithAllocatedIP {
+                    if user.user_type != UserType::IBRL
+                        && user.user_type != UserType::IBRLWithAllocatedIP
+                    {
                         continue;
                     }
                 }
@@ -80,11 +83,14 @@ impl DecommissioningCliCommand {
                 }
             }
 
-            let _ = controller.remove(RemoveTunnelCliCommand { user_type: user.user_type.to_string() }).await;
+            let _ = controller
+                .remove(RemoveTunnelCliCommand {
+                    user_type: user.user_type.to_string(),
+                })
+                .await;
         }
 
         spinner.finish_with_message("🔍  Deprovisioning Complete");
-
 
         Ok(())
     }

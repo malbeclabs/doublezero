@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"net/netip"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -21,19 +22,26 @@ type mockRouteReaderWriter struct {
 	routesAdded   []*routing.Route
 	routesDeleted []*routing.Route
 	routesFlushed []*routing.Route
+	mu            sync.Mutex
 }
 
 func (m *mockRouteReaderWriter) RouteAdd(route *routing.Route) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.routesAdded = append(m.routesAdded, route)
 	return nil
 }
 
 func (m *mockRouteReaderWriter) RouteDelete(route *routing.Route) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.routesDeleted = append(m.routesDeleted, route)
 	return nil
 }
 
 func (m *mockRouteReaderWriter) RouteByProtocol(int) ([]*routing.Route, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return []*routing.Route{
 		{
 			Dst: &net.IPNet{
@@ -45,6 +53,24 @@ func (m *mockRouteReaderWriter) RouteByProtocol(int) ([]*routing.Route, error) {
 			Table:   syscall.RT_TABLE_MAIN,
 		},
 	}, nil
+}
+
+func (m *mockRouteReaderWriter) getRoutesAdded() []*routing.Route {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]*routing.Route(nil), m.routesAdded...)
+}
+
+func (m *mockRouteReaderWriter) getRoutesDeleted() []*routing.Route {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]*routing.Route(nil), m.routesDeleted...)
+}
+
+func (m *mockRouteReaderWriter) getRoutesFlushed() []*routing.Route {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]*routing.Route(nil), m.routesFlushed...)
 }
 
 type dummyPlugin struct{}
@@ -201,7 +227,7 @@ func TestBgpServer(t *testing.T) {
 				Table:   syscall.RT_TABLE_MAIN,
 			},
 		}
-		if diff := checkRoutes(nlr.routesDeleted, want); diff != "" {
+		if diff := checkRoutes(nlr.getRoutesDeleted(), want); diff != "" {
 			t.Fatalf("bgp withdraw mismatch: -(got); +(want): %s", diff)
 		}
 	})
@@ -219,7 +245,7 @@ func TestBgpServer(t *testing.T) {
 				Table:    syscall.RT_TABLE_MAIN,
 			},
 		}
-		if diff := checkRoutes(nlr.routesAdded, want); diff != "" {
+		if diff := checkRoutes(nlr.getRoutesAdded(), want); diff != "" {
 			t.Fatalf("bgp add mismatch: -(got); +(want): %s", diff)
 		}
 	})
@@ -247,7 +273,7 @@ func TestBgpServer(t *testing.T) {
 				Table:   syscall.RT_TABLE_MAIN,
 			},
 		}
-		if diff := checkRoutes(nlr.routesFlushed, want); diff != "" {
+		if diff := checkRoutes(nlr.getRoutesFlushed(), want); diff != "" {
 			t.Fatalf("bgp flush mismatch: -(got); +(want): %s", diff)
 		}
 	})

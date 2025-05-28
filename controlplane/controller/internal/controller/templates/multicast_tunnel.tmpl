@@ -9,10 +9,10 @@ router pim sparse-mode
 default interface Tunnel{{ .Id }}
 {{- if eq true .Allocated }}
 interface Tunnel{{ .Id }}
-   description USER-MCSAT-{{ .Id }}
+   description USER-MCAST-{{ .Id }}
    mtu 9216
    ip address {{ .OverlaySrcIP }}/31
-   ip access-group SEC-USER-MCAST-{{ .Id  }}-IN in
+   ip access-group SEC-USER-MCAST-IN in
    multicast ipv4 boundary SEC-USER-MCAST-BOUNDARY-{{ .Id }}-OUT out
    pim ipv4 sparse-mode
    pim ipv4 dr-priority 4294967295
@@ -31,9 +31,9 @@ router bgp 65342
    no neighbor {{ .OverlayDstIP }}
    neighbor {{ .OverlayDstIP }} remote-as 65000
    neighbor {{ .OverlayDstIP }} passive
-   neighbor {{ .OverlayDstIP }} description USER-MCAST-{{ .Id  }}
-   neighbor {{ .OverlayDstIP }} route-map RM-USER-MCAST-{{ .Id }}-IN in
-   neighbor {{ .OverlayDstIP }} route-map RM-USER-MCAST-{{ .Id }}-OUT out
+   neighbor {{ .OverlayDstIP }} description USER-{{ .Id  }}
+   neighbor {{ .OverlayDstIP }} route-map RM-USER-{{ .Id }}-IN in
+   neighbor {{ .OverlayDstIP }} route-map RM-USER-{{ .Id }}-OUT out
    neighbor {{ .OverlayDstIP }} maximum-routes 1
    neighbor {{ .OverlayDstIP }} maximum-accepted-routes 1
    address-family ipv4
@@ -59,16 +59,16 @@ route-map RM-USER-MCAST-{{ .Id }}-OUT permit 10
 no route-map RM-USER-MCAST-{{ .Id }}-IN
 {{- if eq true .Allocated }}
 route-map RM-USER-MCAST-{{ .Id }}-IN permit 10
-   match ip address prefix-list PL-USER-MCAST-{{ .Id }}
+   match ip address prefix-list PL-USER-{{ .Id }}
    match as-path length = 1
    set community 21682:1300
 {{- end }}
 !
 {{- end }}
 {{- range .Device.Tunnels }}
-no ip prefix-list PL-USER-MCAST-{{ .Id }}
+no ip prefix-list PL-USER-{{ .Id }}
 {{- if eq true .Allocated }}
-ip prefix-list PL-USER-MCAST-{{ .Id }} seq 10 permit {{ .DzIp }}/32
+ip prefix-list PL-USER-{{ .Id }} seq 10 permit {{ .DzIp }}/32
 {{- end }}
 !
 {{- range .Device.Tunnels }}
@@ -80,13 +80,9 @@ ip access-list standard SEC-USER-MCAST-BOUNDARY-{{ .Id }}-OUT
    deny 224.0.0.0/4
 {{- end }}
 !
-{{- range .Device.Tunnels }}
-no SEC-USER-MCAST-{{ .Id  }}-IN
-{{- if eq true .Allocated }}
-ip access-list SEC-USER-MCAST-{{ .Id  }}-IN
+no SEC-USER-MCAST-IN
+ip access-list SEC-USER-MCAST-IN
    counters per-entry
    permit ip any 239.0.0.0/24
    deny ip any any
-{{- end }}
 !
-{{- end }}

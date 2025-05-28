@@ -17,3 +17,6 @@ lint:
 build:
 	CGO_ENABLED=0 go build -v $(LDFLAGS) -o ./client/doublezerod/bin/doublezerod ./client/doublezerod/cmd/doublezerod/main.go
 	cargo build -v $(LDFLAGS) --all
+
+.PHONY: checks
+checks: lint test build

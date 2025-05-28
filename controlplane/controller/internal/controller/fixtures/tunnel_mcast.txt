@@ -65,7 +65,7 @@ router bgp 65342
    no neighbor 169.254.0.3
    neighbor 169.254.0.3 remote-as 65000
    neighbor 169.254.0.3 passive
-   neighbor 169.254.0.3 description USER--501
+   neighbor 169.254.0.3 description USER-501
    neighbor 169.254.0.3 route-map RM-USER-501-IN in
    neighbor 169.254.0.3 route-map RM-USER-501-OUT out
    neighbor 169.254.0.3 maximum-routes 1
@@ -101,7 +101,7 @@ route-map RM-USER-MCAST-IN permit 10
 !
 no route-map RM-USER-501-IN
 route-map RM-USER-501-IN permit 10
-   match ip address prefix-list PL-USER--501
+   match ip address prefix-list PL-USER-501
    match as-path length = 1
    set community 21682:1300
 !

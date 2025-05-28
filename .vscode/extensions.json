@@ -1,0 +1,7 @@
+{
+    "recommendations": [
+        "golang.go",
+        "rust-lang.rust-analyzer",
+        "casualjim.gotemplate"
+    ]
+}

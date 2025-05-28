@@ -10,12 +10,7 @@
         "ghcr.io/devcontainers/features/docker-in-docker:2": {}
     },
     "customizations": {
-        "vscode": {
-            "extensions": [
-                "golang.go",
-                "rust-lang.rust-analyzer"
-            ]
-        }
+        "vscode": {}
     },
     "remoteUser": "root",
     "mounts": [

@@ -1,0 +1,92 @@
+!
+ip multicast-routing
+!
+router pim sparse-mode
+   ipv4
+      rp address 10.0.0.0 239.0.0.0/24 override
+!
+{{- range .Device.Tunnels }}
+default interface Tunnel{{ .Id }}
+{{- if eq true .Allocated }}
+interface Tunnel{{ .Id }}
+   description USER-MCSAT-{{ .Id }}
+   mtu 9216
+   ip address {{ .OverlaySrcIP }}/31
+   ip access-group SEC-USER-MCAST-{{ .Id  }}-IN in
+   multicast ipv4 boundary SEC-USER-MCAST-BOUNDARY-{{ .Id }}-OUT out
+   pim ipv4 sparse-mode
+   pim ipv4 dr-priority 4294967295
+   tunnel mode gre
+   tunnel source {{ .UnderlaySrcIP }}
+   tunnel destination {{ .UnderlayDstIP }}
+   tunnel path-mtu-discovery
+   tunnel ttl 32
+   no shutdown
+{{- end }}
+!
+{{- end }}
+router bgp 65342
+{{- range .Device.Tunnels }}
+{{- if eq true .Allocated }}
+   no neighbor {{ .OverlayDstIP }}
+   neighbor {{ .OverlayDstIP }} remote-as 65000
+   neighbor {{ .OverlayDstIP }} passive
+   neighbor {{ .OverlayDstIP }} description USER-MCAST-{{ .Id  }}
+   neighbor {{ .OverlayDstIP }} route-map RM-USER-MCAST-{{ .Id }}-IN in
+   neighbor {{ .OverlayDstIP }} route-map RM-USER-MCAST-{{ .Id }}-OUT out
+   neighbor {{ .OverlayDstIP }} maximum-routes 1
+   neighbor {{ .OverlayDstIP }} maximum-accepted-routes 1
+   address-family ipv4
+     no neighbor {{ .OverlayDstIP }} activate
+     neighbor {{ .OverlayDstIP }} activate
+{{- end }}
+{{- end }}
+{{- range .UnknownBgpPeers }}
+      no neighbor {{ . }}
+{{- end }}
+!
+ip community-list COMM-ALL_MCAST_USERS permit 21682:1300
+!
+{{- range .Device.Tunnels }}
+no route-map RM-USER-MCAST-{{ .Id }}-OUT
+{{- if eq true .Allocated }}
+route-map RM-USER-MCAST-{{ .Id }}-OUT permit 10
+   match community COMM-ALL_MCAST_USERS
+{{- end }}
+!
+{{- end }}
+{{- range .Device.Tunnels }}
+no route-map RM-USER-MCAST-{{ .Id }}-IN
+{{- if eq true .Allocated }}
+route-map RM-USER-MCAST-{{ .Id }}-IN permit 10
+   match ip address prefix-list PL-USER-MCAST-{{ .Id }}
+   match as-path length = 1
+   set community 21682:1300
+{{- end }}
+!
+{{- end }}
+{{- range .Device.Tunnels }}
+no ip prefix-list PL-USER-MCAST-{{ .Id }}
+{{- if eq true .Allocated }}
+ip prefix-list PL-USER-MCAST-{{ .Id }} seq 10 permit {{ .DzIp }}/32
+{{- end }}
+!
+{{- range .Device.Tunnels }}
+no SEC-USER-MCAST-BOUNDARY-{{ .Id }}-OUT
+{{- if eq true .Allocated }}
+ip access-list standard SEC-USER-MCAST-BOUNDARY-{{ .Id }}-OUT
+   counters per-entry
+   permit host 239.0.0.1
+   deny 224.0.0.0/4
+{{- end }}
+!
+{{- range .Device.Tunnels }}
+no SEC-USER-MCAST-{{ .Id  }}-IN
+{{- if eq true .Allocated }}
+ip access-list SEC-USER-MCAST-{{ .Id  }}-IN
+   counters per-entry
+   permit ip any 239.0.0.0/24
+   deny ip any any
+{{- end }}
+!
+{{- end }}

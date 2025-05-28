@@ -35,9 +35,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: v1.64.2
+        uses: golangci/golangci-lint-action@v8
   build:
     name: "build"
     needs: lint

@@ -68,13 +68,12 @@ pub struct StatusResponse {
     pub tunnel_src: Option<String>,
     pub tunnel_dst: Option<String>,
     pub doublezero_ip: Option<String>,
+    pub user_type: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct DoubleZeroStatus {
     pub session_status: String,
-    // since this is a dynamic value, tests will fail becasue the fixtures are static
-    // will be fixed in https://github.com/malbeclabs/doublezero/issues/220
     pub last_session_update: Option<i64>,
 }
 
@@ -168,7 +167,7 @@ impl ServiceController {
         }
     }
 
-    pub async fn status(&self) -> eyre::Result<StatusResponse> {
+    pub async fn status(&self) -> eyre::Result<Vec<StatusResponse>> {
         let client: Client<UnixConnector, Body> = Client::builder().build(UnixConnector);
 
         let req = Request::builder()
@@ -189,7 +188,7 @@ impl ServiceController {
                     .await
                     .map_err(|e| eyre!("Unable to connect to doublezero daemon: {}", e))?;
 
-                match serde_json::from_slice::<StatusResponse>(&data) {
+                match serde_json::from_slice::<Vec<StatusResponse>>(&data) {
                     Ok(response) => Ok(response),
                     Err(e) => {
                         println!("Data: {:?}", data);

@@ -128,15 +128,16 @@ func TestWaitForClientTunnelUp(t *testing.T) {
 		if err != nil {
 			t.Fatalf("error fetching status: %v", err)
 		}
-		status := map[string]any{}
+		status := []map[string]any{}
 		if err := json.Unmarshal(buf, &status); err != nil {
 			t.Fatalf("error unmarshaling latency data: %v", err)
 		}
-
-		if session, ok := status["doublezero_status"]; ok {
-			if sessionStatus, ok := session.(map[string]any)["session_status"]; ok {
-				if sessionStatus == "up" {
-					return
+		for _, s := range status {
+			if session, ok := s["doublezero_status"]; ok {
+				if sessionStatus, ok := session.(map[string]any)["session_status"]; ok {
+					if sessionStatus == "up" {
+						return
+					}
 				}
 			}
 		}
@@ -554,7 +555,10 @@ func TestIBRL_Connect_Networking(t *testing.T) {
 	// TODO: check routing tables
 	t.Run("check_learned_route_installed", func(t *testing.T) {
 		// 8.8.8.8/32 should be received from the attached dz device and installed
+
 		// in the main routing table on the client
+		// TODO: figure out why this sleep is now needed
+		time.Sleep(1 * time.Second)
 		route, err := nl.RouteListFiltered(
 			0,
 			&nl.Route{

@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/binary"
 	"flag"
-	"fmt"
 	"log"
 	"net"
 
@@ -81,8 +80,6 @@ func main() {
 	b := buf.Bytes()
 	binary.BigEndian.PutUint16(b[2:4], checksum)
 
-	fmt.Printf("bytes: %X\n", b)
-	fmt.Printf("checksum: %X\n", checksum)
 	if err := r.WriteTo(iph, b, cm); err != nil {
 		log.Fatalf("failed to write to IP: %v", err)
 	} else {

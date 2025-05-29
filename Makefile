@@ -21,8 +21,8 @@ lint:
 
 .PHONY: build
 build:
-	cargo build -v $(LDFLAGS) --release --manifest-path ./client/doublezero/Cargo.toml
+	cargo build $(LDFLAGS) --release --manifest-path ./client/doublezero/Cargo.toml
 	CGO_ENABLED=0 go build -v $(LDFLAGS) -o ./client/doublezerod/bin/doublezerod ./client/doublezerod/cmd/doublezerod/main.go
-	cargo build -v $(LDFLAGS) --manifest-path ./smartcontract/programs/dz-sla-program/Cargo.toml
-	cargo build -v $(LDFLAGS) --manifest-path ./smartcontract/sdk/rs/Cargo.toml
-	cargo build -v $(LDFLAGS) --manifest-path ./smartcontract/cli/Cargo.toml
+	cargo build $(LDFLAGS) --manifest-path ./smartcontract/programs/dz-sla-program/Cargo.toml
+	cargo build $(LDFLAGS) --manifest-path ./smartcontract/sdk/rs/Cargo.toml
+	cargo build $(LDFLAGS) --manifest-path ./smartcontract/cli/Cargo.toml

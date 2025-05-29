@@ -39,46 +39,59 @@ type MockNetlink struct {
 	routesRemoved []*routing.Route
 	tunAdded      *routing.Tunnel
 	tunRemoved    *routing.Tunnel
-	tunAddrAdded  []string
+	tunAddrAdded  []MockTunAddr
 	tunUp         bool
 	ruleAdded     []*routing.IPRule
 	ruleRemoved   []*routing.IPRule
 	callLog       []string
 }
 
+type MockTunAddr struct {
+	IP       string
+	Autojoin bool
+}
+
 func (m *MockNetlink) TunnelAdd(t *routing.Tunnel) error {
 	m.tunAdded = t
 	return nil
 }
+
 func (m *MockNetlink) TunnelDelete(n *routing.Tunnel) error {
 	m.callLog = append(m.callLog, "TunnelDelete")
 	m.tunRemoved = n
 	return nil
 }
-func (m *MockNetlink) TunnelAddrAdd(t *routing.Tunnel, ip string) error {
-	m.tunAddrAdded = append(m.tunAddrAdded, ip)
+
+func (m *MockNetlink) TunnelAddrAdd(t *routing.Tunnel, ip string, autojoin bool) error {
+	m.tunAddrAdded = append(m.tunAddrAdded, MockTunAddr{IP: ip, Autojoin: autojoin})
 	return nil
 }
+
 func (m *MockNetlink) TunnelUp(t *routing.Tunnel) error {
 	m.tunUp = true
 	return nil
 }
+
 func (m *MockNetlink) RouteAdd(r *routing.Route) error {
 	m.routesAdded = append(m.routesAdded, r)
 	return nil
 }
+
 func (m *MockNetlink) RouteDelete(n *routing.Route) error {
 	m.callLog = append(m.callLog, "RouteDelete")
 	m.routesRemoved = append(m.routesRemoved, n)
 	return nil
 }
+
 func (m *MockNetlink) RouteGet(net.IP) ([]*routing.Route, error) {
 	return m.routes, nil
 }
+
 func (m *MockNetlink) RuleAdd(r *routing.IPRule) error {
 	m.ruleAdded = append(m.ruleAdded, r)
 	return nil
 }
+
 func (m *MockNetlink) RuleDel(n *routing.IPRule) error {
 	m.callLog = append(m.callLog, "RuleDel")
 	m.ruleRemoved = append(m.ruleRemoved, n)
@@ -100,6 +113,16 @@ func (m *MockDb) GetState(usertypes ...api.UserType) []*api.ProvisionRequest {
 func (m *MockDb) DeleteState(u api.UserType) error        { return nil }
 func (m *MockDb) SaveState(p *api.ProvisionRequest) error { return nil }
 
+type MockPIMServer struct{}
+
+func (m *MockPIMServer) Start(iface string, tunnelAddr net.IP, group []net.IP) error {
+	return nil
+}
+
+func (m *MockPIMServer) Close() error {
+	return nil
+}
+
 func TestServices(t *testing.T) {
 	tests := []struct {
 		name                string
@@ -110,11 +133,12 @@ func TestServices(t *testing.T) {
 		wantRulesRemoved    []*routing.IPRule
 		wantRoutesAdded     []*routing.Route
 		wantRoutesRemoved   []*routing.Route
-		wantTunAddrAdded    []string
+		wantTunAddrAdded    []MockTunAddr
 		wantTunAdded        *routing.Tunnel
 		wantTunUp           bool
 		wantTunRemoved      *routing.Tunnel
 		wantPeerConfig      *bgp.PeerConfig
+		wantPeerRemoved     net.IP
 	}{
 		{
 			name: "provision_ibrl",
@@ -141,7 +165,7 @@ func TestServices(t *testing.T) {
 				LocalOverlay:   net.IPv4(169, 254, 0, 1),
 				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
 			},
-			wantTunAddrAdded: []string{"169.254.0.1/31"},
+			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31"}},
 			wantTunUp:        true,
 			wantRulesAdded:   nil,
 			wantRoutesAdded:  nil,
@@ -154,6 +178,15 @@ func TestServices(t *testing.T) {
 				RouteTable:    syscall.RT_TABLE_MAIN,
 				FlushRoutes:   true,
 			},
+			wantTunRemoved: &routing.Tunnel{
+				Name:           "doublezero0",
+				EncapType:      routing.GRE,
+				LocalUnderlay:  net.IPv4(192, 168, 1, 1),
+				RemoteUnderlay: net.IPv4(192, 168, 1, 2),
+				LocalOverlay:   net.IPv4(169, 254, 0, 1),
+				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
+			},
+			wantPeerRemoved: net.IP{169, 254, 0, 0},
 		},
 		{
 			name: "provision_ibrl_with_allocated_ip",
@@ -180,7 +213,7 @@ func TestServices(t *testing.T) {
 				LocalOverlay:   net.IPv4(169, 254, 0, 1),
 				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
 			},
-			wantTunAddrAdded: []string{"169.254.0.1/31", "192.168.1.0/32"},
+			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31"}, {IP: "192.168.1.0/32"}},
 			wantTunUp:        true,
 			wantRulesAdded:   nil,
 			wantRoutesAdded:  nil,
@@ -193,6 +226,15 @@ func TestServices(t *testing.T) {
 				RouteTable:    syscall.RT_TABLE_MAIN,
 				FlushRoutes:   false,
 			},
+			wantTunRemoved: &routing.Tunnel{
+				Name:           "doublezero0",
+				EncapType:      routing.GRE,
+				LocalUnderlay:  net.IPv4(192, 168, 1, 0),
+				RemoteUnderlay: net.IPv4(192, 168, 1, 1),
+				LocalOverlay:   net.IPv4(169, 254, 0, 1),
+				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
+			},
+			wantPeerRemoved: net.IP{169, 254, 0, 0},
 		},
 		{
 			name: "provision_edge_filtering",
@@ -202,7 +244,8 @@ func TestServices(t *testing.T) {
 				TunnelDst: net.IPv4(2, 2, 2, 2),
 				TunnelNet: &net.IPNet{
 					IP:   net.IPv4(169, 254, 0, 0),
-					Mask: net.IPMask{255, 255, 255, 254}},
+					Mask: net.IPMask{255, 255, 255, 254},
+				},
 				DoubleZeroIP: net.IPv4(7, 7, 7, 7),
 				DoubleZeroPrefixes: []*net.IPNet{
 					{IP: net.IP{7, 0, 0, 0}, Mask: net.IPMask{255, 0, 0, 0}},
@@ -220,19 +263,21 @@ func TestServices(t *testing.T) {
 				LocalOverlay:   net.IPv4(169, 254, 0, 1),
 				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
 			},
-			wantTunAddrAdded: []string{"169.254.0.1/31", "7.7.7.7/32"},
+			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31"}, {IP: "7.7.7.7/32"}},
 			wantTunUp:        true,
 			wantRulesAdded: []*routing.IPRule{
 				{
 					Priority: 100,
 					Table:    routing.DzTableSpecific,
 					SrcNet:   &net.IPNet{IP: net.IPv4(0, 0, 0, 0), Mask: []byte{0, 0, 0, 0}},
-					DstNet:   &net.IPNet{IP: net.IPv4(7, 0, 0, 0), Mask: []byte{255, 0, 0, 0}}},
+					DstNet:   &net.IPNet{IP: net.IPv4(7, 0, 0, 0), Mask: []byte{255, 0, 0, 0}},
+				},
 				{
 					Priority: 101,
 					Table:    101,
 					SrcNet:   &net.IPNet{IP: net.IPv4(7, 0, 0, 0), Mask: []byte{255, 0, 0, 0}},
-					DstNet:   &net.IPNet{IP: net.IPv4(0, 0, 0, 0), Mask: []byte{0, 0, 0, 0}}},
+					DstNet:   &net.IPNet{IP: net.IPv4(0, 0, 0, 0), Mask: []byte{0, 0, 0, 0}},
+				},
 			},
 			wantRoutesAdded: []*routing.Route{
 				{
@@ -241,7 +286,8 @@ func TestServices(t *testing.T) {
 					Src:      net.IP{7, 7, 7, 7},
 					NextHop:  net.IP{169, 254, 0, 0},
 					Protocol: unix.RT_CLASS_UNSPEC,
-				}},
+				},
+			},
 			wantPeerConfig: &bgp.PeerConfig{
 				LocalAddress:  net.IPv4(169, 254, 0, 1),
 				RemoteAddress: net.IPv4(169, 254, 0, 0),
@@ -251,6 +297,140 @@ func TestServices(t *testing.T) {
 				RouteTable:    100, // ?
 				FlushRoutes:   false,
 			},
+			wantTunRemoved: &routing.Tunnel{
+				Name:           "doublezero0",
+				EncapType:      routing.GRE,
+				LocalUnderlay:  net.IPv4(1, 1, 1, 1),
+				RemoteUnderlay: net.IPv4(2, 2, 2, 2),
+				LocalOverlay:   net.IPv4(169, 254, 0, 1),
+				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
+			},
+			wantPeerRemoved: net.IP{169, 254, 0, 0},
+			wantRulesRemoved: []*routing.IPRule{
+				{
+					Priority: 100,
+					Table:    routing.DzTableSpecific,
+					SrcNet:   &net.IPNet{IP: net.IPv4(0, 0, 0, 0), Mask: []byte{0, 0, 0, 0}},
+					DstNet:   &net.IPNet{IP: net.IPv4(7, 0, 0, 0), Mask: []byte{255, 0, 0, 0}},
+				},
+				{
+					Priority: 101,
+					Table:    101,
+					SrcNet:   &net.IPNet{IP: net.IPv4(7, 0, 0, 0), Mask: []byte{255, 0, 0, 0}},
+					DstNet:   &net.IPNet{IP: net.IPv4(0, 0, 0, 0), Mask: []byte{0, 0, 0, 0}},
+				},
+			},
+			wantRoutesRemoved: []*routing.Route{
+				{
+					Table:    101,
+					Dst:      &net.IPNet{IP: net.IP{0, 0, 0, 0}, Mask: net.IPMask{0, 0, 0, 0}},
+					Src:      net.IP{7, 7, 7, 7},
+					NextHop:  net.IP{169, 254, 0, 0},
+					Protocol: unix.RT_CLASS_UNSPEC,
+				},
+			},
+		},
+		{
+			name: "provision_multicast_subscriber",
+			provisioningRequest: &api.ProvisionRequest{
+				UserType:           api.UserTypeMulticast,
+				TunnelSrc:          net.IPv4(1, 1, 1, 1),
+				TunnelDst:          net.IPv4(2, 2, 2, 2),
+				MulticastSubGroups: []net.IP{{239, 0, 0, 1}},
+				TunnelNet: &net.IPNet{
+					IP:   net.IPv4(169, 254, 0, 0),
+					Mask: net.IPMask{255, 255, 255, 254},
+				},
+				DoubleZeroIP:       net.IPv4(7, 7, 7, 7),
+				DoubleZeroPrefixes: []*net.IPNet{},
+				BgpLocalAsn:        65000,
+				BgpRemoteAsn:       65001,
+			},
+			userType:    api.UserTypeMulticast,
+			expectError: false,
+			wantTunAdded: &routing.Tunnel{
+				Name:           "doublezero1",
+				EncapType:      routing.GRE,
+				LocalUnderlay:  net.IPv4(1, 1, 1, 1),
+				RemoteUnderlay: net.IPv4(2, 2, 2, 2),
+				LocalOverlay:   net.IPv4(169, 254, 0, 1),
+				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
+			},
+			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31"}, {IP: "239.0.0.1/32", Autojoin: true}},
+			wantTunUp:        true,
+			wantRulesAdded:   nil,
+			wantRoutesAdded:  nil,
+			wantPeerConfig: &bgp.PeerConfig{
+				LocalAddress:  net.IPv4(169, 254, 0, 1),
+				RemoteAddress: net.IPv4(169, 254, 0, 0),
+				LocalAs:       65000,
+				RemoteAs:      65001,
+				NoInstall:     true,
+			},
+			wantTunRemoved: &routing.Tunnel{
+				Name:           "doublezero1",
+				EncapType:      routing.GRE,
+				LocalUnderlay:  net.IPv4(1, 1, 1, 1),
+				RemoteUnderlay: net.IPv4(2, 2, 2, 2),
+				LocalOverlay:   net.IPv4(169, 254, 0, 1),
+				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
+			},
+			wantPeerRemoved: net.IP{169, 254, 0, 0},
+		},
+		{
+			name: "provision_multicast_publisher",
+			provisioningRequest: &api.ProvisionRequest{
+				UserType:           api.UserTypeMulticast,
+				TunnelSrc:          net.IPv4(1, 1, 1, 1),
+				TunnelDst:          net.IPv4(2, 2, 2, 2),
+				MulticastPubGroups: []net.IP{{239, 0, 0, 1}},
+				TunnelNet: &net.IPNet{
+					IP:   net.IPv4(169, 254, 0, 0),
+					Mask: net.IPMask{255, 255, 255, 254},
+				},
+				DoubleZeroIP:       net.IPv4(7, 7, 7, 7),
+				DoubleZeroPrefixes: []*net.IPNet{},
+				BgpLocalAsn:        65000,
+				BgpRemoteAsn:       65001,
+			},
+			userType:    api.UserTypeMulticast,
+			expectError: false,
+			wantTunAdded: &routing.Tunnel{
+				Name:           "doublezero1",
+				EncapType:      routing.GRE,
+				LocalUnderlay:  net.IPv4(1, 1, 1, 1),
+				RemoteUnderlay: net.IPv4(2, 2, 2, 2),
+				LocalOverlay:   net.IPv4(169, 254, 0, 1),
+				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
+			},
+			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31"}, {IP: "7.7.7.7/32"}},
+			wantTunUp:        true,
+			wantRulesAdded:   nil,
+			wantRoutesAdded: []*routing.Route{
+				{
+					Table:    syscall.RT_TABLE_MAIN,
+					Dst:      &net.IPNet{IP: net.IP{239, 0, 0, 1}, Mask: net.IPMask{255, 255, 255, 255}},
+					NextHop:  net.IP{169, 254, 0, 0},
+					Src:      net.IP{7, 7, 7, 7},
+					Protocol: unix.RTPROT_STATIC,
+				},
+			},
+			wantPeerConfig: &bgp.PeerConfig{
+				LocalAddress:  net.IPv4(169, 254, 0, 1),
+				RemoteAddress: net.IPv4(169, 254, 0, 0),
+				LocalAs:       65000,
+				RemoteAs:      65001,
+				NoInstall:     true,
+			},
+			wantTunRemoved: &routing.Tunnel{
+				Name:           "doublezero1",
+				EncapType:      routing.GRE,
+				LocalUnderlay:  net.IPv4(1, 1, 1, 1),
+				RemoteUnderlay: net.IPv4(2, 2, 2, 2),
+				LocalOverlay:   net.IPv4(169, 254, 0, 1),
+				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
+			},
+			wantPeerRemoved: net.IP{169, 254, 0, 0},
 		},
 	}
 
@@ -259,8 +439,9 @@ func TestServices(t *testing.T) {
 			mockBgp := &MockBgpServer{}
 			mockNetlink := &MockNetlink{}
 			mockDb := &MockDb{}
+			mockPim := &MockPIMServer{}
 
-			svc, err := manager.CreateService(tt.userType, mockBgp, mockNetlink, mockDb)
+			svc, err := manager.CreateService(tt.userType, mockBgp, mockNetlink, mockDb, mockPim)
 			if err != nil {
 				t.Fatalf("failed to create service: %v", err)
 			}
@@ -296,7 +477,7 @@ func TestServices(t *testing.T) {
 				}
 			})
 			t.Run("check_routes_added", func(t *testing.T) {
-				if diff := cmp.Diff(mockNetlink.routesAdded, tt.wantRoutesAdded); diff != "" {
+				if diff := cmp.Diff(tt.wantRoutesAdded, mockNetlink.routesAdded); diff != "" {
 					t.Errorf("unexpected routes added (-want +got):\n%s", diff)
 				}
 			})
@@ -304,6 +485,16 @@ func TestServices(t *testing.T) {
 			t.Run("check_peer_added", func(t *testing.T) {
 				if diff := cmp.Diff(mockBgp.addPeer, tt.wantPeerConfig); diff != "" {
 					t.Errorf("unexpected peer added (-want +got):\n%s", diff)
+				}
+			})
+
+			if err = svc.Teardown(); err != nil {
+				t.Fatalf("unexpected error during teardown: %v", err)
+			}
+
+			t.Run("check_peer_delete", func(t *testing.T) {
+				if diff := cmp.Diff(mockBgp.deletedPeer, tt.wantPeerRemoved); diff != "" {
+					t.Errorf("unexpected peer removed (-want +got):\n%s", diff)
 				}
 			})
 

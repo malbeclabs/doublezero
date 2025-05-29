@@ -26,6 +26,7 @@ interface Tunnel500
 !
 default interface Tunnel501
 interface Tunnel501
+   description USER-UCAST-501
    vrf vrf1
    mtu 9216
    ip address 169.254.0.2/31

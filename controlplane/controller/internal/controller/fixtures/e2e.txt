@@ -10,6 +10,7 @@ ip routing vrf vrf1
 !
 default interface Tunnel500
 interface Tunnel500
+   description USER-UCAST-500
    vrf vrf1
    mtu 9216
    ip address 169.254.0.0/31

@@ -19,6 +19,7 @@ interface Tunnel{{ .Id }}
    pim ipv4 sparse-mode
    pim ipv4 dr-priority 4294967295
    {{- else }}
+   description USER-UCAST-{{ .Id }}
    vrf vrf1
    {{- end }}
    mtu 9216

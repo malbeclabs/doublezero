@@ -1,4 +1,10 @@
 !
+ip multicast-routing
+!
+router pim sparse-mode
+   ipv4
+      rp address 10.0.0.0 239.0.0.0/24 override
+!
 vrf instance vrf1
 ip routing vrf vrf1
 !
@@ -51,6 +57,7 @@ router bgp 65342
       no neighbor 169.254.0.13
 !
 ip community-list COMM-ALL_USERS permit 21682:1200
+ip community-list COMM-ALL_MCAST_USERS permit 21682:1300
 !
 no route-map RM-USER-500-OUT
 !
@@ -171,4 +178,10 @@ no ip prefix-list PL-USER-517
 no ip prefix-list PL-USER-518
 !
 no ip prefix-list PL-USER-519
+!
+no ip access-list SEC-USER-MCAST-IN
+ip access-list SEC-USER-MCAST-IN
+   counters per-entry
+   permit ip any 239.0.0.0/24
+   deny ip any any
 !

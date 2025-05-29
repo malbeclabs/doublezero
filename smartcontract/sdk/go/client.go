@@ -138,6 +138,10 @@ func (s *Client) GetTunnels() []Tunnel {
 	return s.Tunnels
 }
 
+func (s *Client) GetMulticastGroups() []MulticastGroup {
+	return s.MulticastGroups
+}
+
 func (s *Client) List() {
 	for _, item := range s.Locations {
 		spew.Dump(item)

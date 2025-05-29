@@ -23,14 +23,20 @@ type accountFetcher interface {
 	Load(context.Context) error
 	GetDevices() []dzsdk.Device
 	GetUsers() []dzsdk.User
+	GetMulticastGroups() []dzsdk.MulticastGroup
+	GetConfig() dzsdk.Config
 }
 
-type deviceCache map[string]*Device
+type stateCache struct {
+	Config          dzsdk.Config
+	Devices         map[string]*Device
+	MulticastGroups map[string]dzsdk.MulticastGroup
+}
 
 type Controller struct {
 	pb.UnimplementedControllerServer
 
-	cache deviceCache
+	cache stateCache
 	mu    sync.RWMutex
 	accountFetcher
 	listener    net.Listener
@@ -43,8 +49,7 @@ type Option func(*Controller)
 
 func NewController(options ...Option) (*Controller, error) {
 	controller := &Controller{
-		cache: make(deviceCache),
-		mu:    sync.RWMutex{},
+		cache: stateCache{},
 	}
 	for _, o := range options {
 		o(controller)
@@ -100,7 +105,7 @@ func WithListener(listener net.Listener) Option {
 	}
 }
 
-// WithSignalChan provides a way to be signaled when the local device cache
+// WithSignalChan provides a way to be signaled when the local state cache
 // has been updated. This is used for testing.
 func WithSignalChan(ch chan struct{}) Option {
 	return func(c *Controller) {
@@ -108,10 +113,10 @@ func WithSignalChan(ch chan struct{}) Option {
 	}
 }
 
-// updateDeviceCache fetches the latest on-chain data for devices/users. User accounts
-// are converted into a list of tunnels, stored under their respective device, and placed
-// in a map, keyed by the device's public key.
-func (c *Controller) updateDeviceCache(ctx context.Context) error {
+// updateStateCache fetches the latest on-chain data for devices/users and config. User accounts
+// are converted into a list of tunnels, stored under their respective device, and placed in a map,
+// keyed by the device's public key.
+func (c *Controller) updateStateCache(ctx context.Context) error {
 	if err := c.accountFetcher.Load(ctx); err != nil {
 		cacheUpdateFetchErrors.Inc()
 		return fmt.Errorf("error while loading accounts: %v", err)
@@ -125,7 +130,11 @@ func (c *Controller) updateDeviceCache(ctx context.Context) error {
 	if len(users) == 0 {
 		slog.Debug("0 users found on-chain")
 	}
-	cache := make(deviceCache)
+	cache := stateCache{
+		Config:          c.accountFetcher.GetConfig(),
+		Devices:         make(map[string]*Device),
+		MulticastGroups: make(map[string]dzsdk.MulticastGroup),
+	}
 
 	// build cache of devices
 	for _, device := range devices {
@@ -136,7 +145,12 @@ func (c *Controller) updateDeviceCache(ctx context.Context) error {
 			continue
 		}
 		devicePubKey := base58.Encode(device.PubKey[:])
-		cache[devicePubKey] = NewDevice(ip, devicePubKey)
+		cache.Devices[devicePubKey] = NewDevice(ip, devicePubKey)
+	}
+
+	// Build cache of multicast groups.
+	for _, group := range c.accountFetcher.GetMulticastGroups() {
+		cache.MulticastGroups[base58.Encode(group.PubKey[:])] = group
 	}
 
 	// create user tunnels and add to the appropriate device
@@ -149,7 +163,7 @@ func (c *Controller) updateDeviceCache(ctx context.Context) error {
 
 		// rules for validating on-chain user data
 		validUser := func() bool {
-			if _, ok := cache[devicePubKey]; !ok {
+			if _, ok := cache.Devices[devicePubKey]; !ok {
 				// TODO: add metric
 				slog.Error("device pubkey could be found for activated user pubkey", "device pubkey", devicePubKey, "user pubkey", userPubKey)
 				return false
@@ -173,13 +187,13 @@ func (c *Controller) updateDeviceCache(ctx context.Context) error {
 			continue
 		}
 
-		tunnel := cache[devicePubKey].findTunnel(int(user.TunnelId))
+		tunnel := cache.Devices[devicePubKey].findTunnel(int(user.TunnelId))
 		if tunnel == nil {
 			slog.Error("unable to find tunnel slot %d on device %s for user %s\n", "tunnel slot", user.TunnelId, "device pubkey", devicePubKey, "user pubkey", userPubKey)
 			continue
 		}
 		tunnel.UnderlayDstIP = net.IP(user.ClientIp[:])
-		tunnel.UnderlaySrcIP = cache[devicePubKey].PublicIP
+		tunnel.UnderlaySrcIP = cache.Devices[devicePubKey].PublicIP
 
 		var overlaySrc [4]byte
 		copy(overlaySrc[:], user.TunnelNet[:4])
@@ -194,17 +208,28 @@ func (c *Controller) updateDeviceCache(ctx context.Context) error {
 		tunnel.DzIp = net.IP(user.DzIp[:])
 		tunnel.PubKey = userPubKey
 		tunnel.Allocated = true
+
+		if user.UserType == dzsdk.UserTypeMulticast {
+			tunnel.IsMulticast = true
+
+			// Set multicast subscribers for the tunnel.
+			for _, subscriber := range user.Subscribers {
+				if subscriberIP, ok := cache.MulticastGroups[base58.Encode(subscriber[:])]; ok {
+					tunnel.MulticastSubscribers = append(tunnel.MulticastSubscribers, net.IP(subscriberIP.MulticastIp[:]))
+				}
+			}
+		}
 	}
 
-	// swap out device cache with new version
-	slog.Debug("updating device cache", "device cache", cache)
+	// swap out state cache with new version
+	slog.Debug("updating state cache", "state cache", cache)
 	c.swapCache(cache)
 	return nil
 }
 
-// swapCache atomically updates the local device cache with the latest copy and
+// swapCache atomically updates the local state cache with the latest copy and
 // if a signal channel is present, sends a notification.
-func (c *Controller) swapCache(cache deviceCache) {
+func (c *Controller) swapCache(cache stateCache) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.cache = cache
@@ -213,7 +238,7 @@ func (c *Controller) swapCache(cache deviceCache) {
 	}
 }
 
-// Run starts a goroutine for updating the local device cache with on-chain
+// Run starts a goroutine for updating the local state cache with on-chain
 // data and another for a gRPC server to service devices.
 func (c *Controller) Run(ctx context.Context) error {
 	// start prometheus
@@ -225,7 +250,7 @@ func (c *Controller) Run(ctx context.Context) error {
 
 	// start on-chain fetcher
 	go func() {
-		if err := c.updateDeviceCache(ctx); err != nil {
+		if err := c.updateStateCache(ctx); err != nil {
 			cacheUpdateErrors.Inc()
 			slog.Error("error fetching accounts", "error", err)
 		}
@@ -236,8 +261,8 @@ func (c *Controller) Run(ctx context.Context) error {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				slog.Debug("updating device cache on clock tick")
-				if err := c.updateDeviceCache(ctx); err != nil {
+				slog.Debug("updating state cache on clock tick")
+				if err := c.updateStateCache(ctx); err != nil {
 					cacheUpdateErrors.Inc()
 					slog.Error("error fetching accounts", "error", err)
 				}
@@ -272,7 +297,7 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 	getConfigOps.WithLabelValues(req.GetPubkey()).Inc()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	device, ok := c.cache[req.GetPubkey()]
+	device, ok := c.cache.Devices[req.GetPubkey()]
 	if !ok {
 		getConfigPubkeyErrors.WithLabelValues(req.GetPubkey()).Inc()
 		err := status.Errorf(codes.NotFound, "pubkey %s not found", req.Pubkey)
@@ -306,10 +331,14 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		slog.Error("device returned unknown peers", "device pubkey", req.GetPubkey(), "number of unknown peers", len(unknownPeers), "peers", unknownPeers)
 	}
 
+	multicastGroupBlock := formatCIDR(&c.cache.Config.MulticastGroupBlock)
+
 	data := templateData{
-		Device:          device,
-		UnknownBgpPeers: unknownPeers,
+		MulticastGroupBlock: multicastGroupBlock,
+		Device:              device,
+		UnknownBgpPeers:     unknownPeers,
 	}
+
 	config, err := renderConfig(data)
 	if err != nil {
 		getConfigRenderErrors.WithLabelValues(req.GetPubkey()).Inc()
@@ -317,4 +346,11 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		return nil, err
 	}
 	return &pb.ConfigResponse{Config: config}, nil
+}
+
+// formatCIDR formats a 5-byte network block into CIDR notation
+func formatCIDR(b *[5]byte) string {
+	ip := net.IPv4(b[0], b[1], b[2], b[3])
+	mask := net.CIDRMask(int(b[4]), 32)
+	return (&net.IPNet{IP: ip, Mask: mask}).String()
 }

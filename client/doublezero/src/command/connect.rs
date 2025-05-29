@@ -179,11 +179,12 @@ impl ProvisioningCliCommand {
                         let mut latencies =
                             controller.latency().await.expect("Could not get latency");
                         latencies.retain(|l| l.reachable);
-                        latencies.retain(|l| {
-                            match devices.get(&Pubkey::from_str(&l.device_pk).unwrap()) {
+                        latencies.retain(|l| match Pubkey::from_str(&l.device_pk) {
+                            Ok(pubkey) => match devices.get(&pubkey) {
                                 Some(device) => device.status == DeviceStatus::Activated,
                                 None => false,
-                            }
+                            },
+                            Err(_) => false,
                         }); // Filter the active devices
                         latencies.sort_by(|a, b| a.avg_latency_ns.cmp(&b.avg_latency_ns));
 

@@ -4,7 +4,7 @@ mod user_test {
     use crate::instructions::*;
     use crate::pda::*;
     use crate::processors::user::{
-        activate::*, create::*, delete::*, reactivate::*, suspend::*, update::*,
+        activate::*, create::*, delete::*, resume::*, suspend::*, update::*,
     };
     use crate::processors::*;
 
@@ -17,7 +17,7 @@ mod user_test {
     use globalconfig::set::SetGlobalConfigArgs;
     use solana_program_test::*;
     use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey};
-    use user::deactivate::UserDeactivateArgs;
+    use user::deactivate::UserCloseAccountArgs;
 
     #[tokio::test]
     async fn test_user() {
@@ -294,12 +294,12 @@ mod user_test {
 
         println!("✅ User suspended");
         /*****************************************************************************************************************************************************/
-        println!("🟢 9. Testing User reactivated...");
+        println!("🟢 9. Testing User resumed...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::ReactivateUser(UserReactivateArgs {
+            DoubleZeroInstruction::ResumeUser(UserResumeArgs {
                 index: user.index,
                 bump_seed: user.bump_seed,
             }),
@@ -315,7 +315,7 @@ mod user_test {
         assert_eq!(user.account_type, AccountType::User);
         assert_eq!(user.status, UserStatus::Activated);
 
-        println!("✅ User reactivated");
+        println!("✅ User resumed");
         /*****************************************************************************************************************************************************/
         println!("🟢 10. Testing User update...");
         execute_transaction(
@@ -385,7 +385,7 @@ mod user_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::DeactivateUser(UserDeactivateArgs {
+            DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
                 index: user.index,
                 bump_seed: user.bump_seed,
             }),

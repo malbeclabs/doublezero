@@ -71,6 +71,8 @@ pub trait CliCommand {
     fn create_device(&self, cmd: CreateDeviceCommand) -> eyre::Result<(Signature, Pubkey)>;
     fn get_device(&self, cmd: GetDeviceCommand) -> eyre::Result<(Pubkey, Device)>;
     fn list_device(&self, cmd: ListDeviceCommand) -> eyre::Result<HashMap<Pubkey, Device>>;
+    fn suspend_device(&self, cmd: SuspendDeviceCommand) -> eyre::Result<Signature>;
+    fn resume_device(&self, cmd: ResumeDeviceCommand) -> eyre::Result<Signature>;
     fn update_device(&self, cmd: UpdateDeviceCommand) -> eyre::Result<Signature>;
     fn delete_device(&self, cmd: DeleteDeviceCommand) -> eyre::Result<Signature>;
 

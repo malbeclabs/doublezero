@@ -15,12 +15,12 @@ use crate::{
         device::{
             activate::process_activate_device, create::process_create_device,
             deactivate::process_deactivate_device, delete::process_delete_device,
-            reactivate::process_reactivate_device, reject::process_reject_device,
+            reject::process_reject_device, resume::process_resume_device,
             suspend::process_suspend_device, update::process_update_device,
         },
         exchange::{
             create::process_create_exchange, delete::process_delete_exchange,
-            reactivate::process_reactivate_exchange, suspend::process_suspend_exchange,
+            resume::process_resume_exchange, suspend::process_suspend_exchange,
             update::process_update_exchange,
         },
         globalconfig::set::process_set_globalconfig,
@@ -28,20 +28,20 @@ use crate::{
         globalstate::initialize::initialize_global_state,
         location::{
             create::process_create_location, delete::process_delete_location,
-            reactivate::process_reactivate_location, suspend::process_suspend_location,
+            resume::process_resume_location, suspend::process_suspend_location,
             update::process_update_location,
         },
         tunnel::{
             activate::process_activate_tunnel, create::process_create_tunnel,
             deactivate::process_deactivate_tunnel, delete::process_delete_tunnel,
-            reactivate::process_reactivate_tunnel, reject::process_reject_tunnel,
+            reject::process_reject_tunnel, resume::process_resume_tunnel,
             suspend::process_suspend_tunnel, update::process_update_tunnel,
         },
         user::{
             activate::process_activate_user, ban::process_ban_user, create::process_create_user,
             deactivate::process_deactivate_user, delete::process_delete_user,
-            reactivate::process_reactivate_user, reject::process_reject_user,
-            requestban::process_request_ban_user, suspend::process_suspend_user,
+            reject::process_reject_user, requestban::process_request_ban_user,
+            resume::process_resume_user, suspend::process_suspend_user,
             update::process_update_user,
         },
     },
@@ -142,28 +142,28 @@ pub fn process_instruction(
         DoubleZeroInstruction::SuspendUser(value) => {
             process_suspend_user(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::ReactivateLocation(value) => {
-            process_reactivate_location(program_id, accounts, &value)?
+        DoubleZeroInstruction::ResumeLocation(value) => {
+            process_resume_location(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::ReactivateExchange(value) => {
-            process_reactivate_exchange(program_id, accounts, &value)?
+        DoubleZeroInstruction::ResumeExchange(value) => {
+            process_resume_exchange(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::ReactivateDevice(value) => {
-            process_reactivate_device(program_id, accounts, &value)?
+        DoubleZeroInstruction::ResumeDevice(value) => {
+            process_resume_device(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::ReactivateTunnel(value) => {
-            process_reactivate_tunnel(program_id, accounts, &value)?
+        DoubleZeroInstruction::ResumeTunnel(value) => {
+            process_resume_tunnel(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::ReactivateUser(value) => {
-            process_reactivate_user(program_id, accounts, &value)?
+        DoubleZeroInstruction::ResumeUser(value) => {
+            process_resume_user(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::DeactivateDevice(value) => {
+        DoubleZeroInstruction::CloseAccountDevice(value) => {
             process_deactivate_device(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::DeactivateTunnel(value) => {
+        DoubleZeroInstruction::CloseAccountTunnel(value) => {
             process_deactivate_tunnel(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::DeactivateUser(value) => {
+        DoubleZeroInstruction::CloseAccountUser(value) => {
             process_deactivate_user(program_id, accounts, &value)?
         }
 

@@ -13,21 +13,21 @@ use solana_program::{
     pubkey::Pubkey,
 };
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct LocationReactivateArgs {
+pub struct LocationResumeArgs {
     pub index: u128,
     pub bump_seed: u8,
 }
 
-impl fmt::Debug for LocationReactivateArgs {
+impl fmt::Debug for LocationResumeArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "")
     }
 }
 
-pub fn process_reactivate_location(
+pub fn process_resume_location(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &LocationReactivateArgs,
+    value: &LocationResumeArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -37,7 +37,7 @@ pub fn process_reactivate_location(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_reactivate_location({:?})", value);
+    msg!("process_resume_location({:?})", value);
 
     // Check the owner of the accounts
     assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");

@@ -1,6 +1,8 @@
-use core::fmt;
-use crate::{error::DoubleZeroError, helper::*, state::tunnel::*};
+use crate::error::DoubleZeroError;
+use crate::helper::*;
+use crate::state::user::*;
 use borsh::{BorshDeserialize, BorshSerialize};
+use core::fmt;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -8,22 +10,23 @@ use solana_program::{
     entrypoint::ProgramResult,
     pubkey::Pubkey,
 };
+
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct TunnelReactivateArgs {
+pub struct UserResumeArgs {
     pub index: u128,
     pub bump_seed: u8,
 }
 
-impl fmt::Debug for TunnelReactivateArgs {
+impl fmt::Debug for UserResumeArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "")
     }
 }
 
-pub fn process_reactivate_tunnel(
+pub fn process_resume_user(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &TunnelReactivateArgs,
+    value: &UserResumeArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -32,7 +35,7 @@ pub fn process_reactivate_tunnel(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_reactivate_tunnel({:?})", value);
+    msg!("process_resume_user({:?})", value);
 
     // Check the owner of the accounts
     assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
@@ -41,28 +44,22 @@ pub fn process_reactivate_tunnel(
         solana_program::system_program::id(),
         "Invalid System Program Account Owner"
     );
+    // Check if the account is writable
+    assert!(pda_account.is_writable, "PDA Account is not writable");
 
-    let mut tunnel: Tunnel = Tunnel::from(&pda_account.try_borrow_data().unwrap()[..]);
-    assert_eq!(tunnel.index, value.index, "Invalid PDA Account Index");
-    assert_eq!(
-        tunnel.bump_seed, value.bump_seed,
-        "Invalid PDA Account Bump Seed"
-    );
-
-    if tunnel.owner != *payer_account.key {
-        return Err(solana_program::program_error::ProgramError::Custom(0));
+    let mut user: User = User::from(&pda_account.try_borrow_data().unwrap()[..]);
+    assert_eq!(user.index, value.index, "Invalid PDA Account Index");
+    assert_eq!(user.bump_seed, value.bump_seed, "Invalid bump seed");
+    if user.owner != *payer_account.key {
+        return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    if tunnel.status != TunnelStatus::Suspended {
-        return Err(DoubleZeroError::InvalidStatus.into());
-    }
+    user.status = UserStatus::Activated;
 
-    tunnel.status = TunnelStatus::Activated;
-
-    account_write(pda_account, &tunnel, payer_account, system_program);
+    account_write(pda_account, &user, payer_account, system_program);
 
     #[cfg(test)]
-    msg!("Suspended: {:?}", tunnel);
+    msg!("Suspended: {:?}", user);
 
     Ok(())
 }

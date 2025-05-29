@@ -12,12 +12,12 @@ use solana_program::{
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct DeviceDeactivateArgs {
+pub struct DeviceCloseAccountArgs {
     pub index: u128,
     pub bump_seed: u8,
 }
 
-impl fmt::Debug for DeviceDeactivateArgs {
+impl fmt::Debug for DeviceCloseAccountArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "")
     }
@@ -26,7 +26,7 @@ impl fmt::Debug for DeviceDeactivateArgs {
 pub fn process_deactivate_device(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &DeviceDeactivateArgs,
+    value: &DeviceCloseAccountArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -67,7 +67,7 @@ pub fn process_deactivate_device(
     account_close(pda_account, owner_account)?;
 
     #[cfg(test)]
-    msg!("Deactivated: {:?}", device);
+    msg!("CloseAccountd: {:?}", device);
 
     Ok(())
 }

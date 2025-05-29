@@ -9,28 +9,28 @@ use crate::processors::{
         user::{add::AddUserAllowlistArgs, remove::RemoveUserAllowlistArgs},
     },
     device::{
-        activate::DeviceActivateArgs, create::DeviceCreateArgs, deactivate::DeviceDeactivateArgs,
-        delete::DeviceDeleteArgs, reactivate::DeviceReactivateArgs, reject::DeviceRejectArgs,
+        activate::DeviceActivateArgs, create::DeviceCreateArgs, deactivate::DeviceCloseAccountArgs,
+        delete::DeviceDeleteArgs, resume::DeviceResumeArgs, reject::DeviceRejectArgs,
         suspend::DeviceSuspendArgs, update::DeviceUpdateArgs,
     },
     exchange::{
-        create::ExchangeCreateArgs, delete::ExchangeDeleteArgs, reactivate::ExchangeReactivateArgs,
+        create::ExchangeCreateArgs, delete::ExchangeDeleteArgs, resume::ExchangeResumeArgs,
         suspend::ExchangeSuspendArgs, update::ExchangeUpdateArgs,
     },
     globalconfig::set::SetGlobalConfigArgs,
     globalstate::close::CloseAccountArgs,
     location::{
-        create::LocationCreateArgs, delete::LocationDeleteArgs, reactivate::LocationReactivateArgs,
+        create::LocationCreateArgs, delete::LocationDeleteArgs, resume::LocationResumeArgs,
         suspend::LocationSuspendArgs, update::LocationUpdateArgs,
     },
     tunnel::{
-        activate::TunnelActivateArgs, create::TunnelCreateArgs, deactivate::TunnelDeactivateArgs,
-        delete::TunnelDeleteArgs, reactivate::TunnelReactivateArgs, reject::TunnelRejectArgs,
+        activate::TunnelActivateArgs, create::TunnelCreateArgs, deactivate::TunnelCloseAccountArgs,
+        delete::TunnelDeleteArgs, resume::TunnelResumeArgs, reject::TunnelRejectArgs,
         suspend::TunnelSuspendArgs, update::TunnelUpdateArgs,
     },
     user::{
         activate::UserActivateArgs, ban::UserBanArgs, create::UserCreateArgs,
-        deactivate::UserDeactivateArgs, delete::UserDeleteArgs, reactivate::UserReactivateArgs,
+        deactivate::UserCloseAccountArgs, delete::UserDeleteArgs, resume::UserResumeArgs,
         reject::UserRejectArgs, requestban::UserRequestBanArgs, suspend::UserSuspendArgs,
         update::UserUpdateArgs,
     },
@@ -54,13 +54,13 @@ pub enum DoubleZeroInstruction {
     CreateLocation(LocationCreateArgs),         // variant 10
     UpdateLocation(LocationUpdateArgs),         // variant 11
     SuspendLocation(LocationSuspendArgs),       // variant 12
-    ReactivateLocation(LocationReactivateArgs), // variant 13
+    ResumeLocation(LocationResumeArgs), // variant 13
     DeleteLocation(LocationDeleteArgs),         // variant 14
 
     CreateExchange(ExchangeCreateArgs),         // variant 15
     UpdateExchange(ExchangeUpdateArgs),         // variant 16
     SuspendExchange(ExchangeSuspendArgs),       // variant 17
-    ReactivateExchange(ExchangeReactivateArgs), // variant 18
+    ResumeExchange(ExchangeResumeArgs), // variant 18
     DeleteExchange(ExchangeDeleteArgs),         // variant 19
 
     CreateDevice(DeviceCreateArgs),         // variant 20
@@ -68,18 +68,18 @@ pub enum DoubleZeroInstruction {
     RejectDevice(DeviceRejectArgs),         // variant 22
     UpdateDevice(DeviceUpdateArgs),         // variant 23
     SuspendDevice(DeviceSuspendArgs),       // variant 24
-    ReactivateDevice(DeviceReactivateArgs), // variant 25
+    ResumeDevice(DeviceResumeArgs), // variant 25
     DeleteDevice(DeviceDeleteArgs),         // variant 26
-    DeactivateDevice(DeviceDeactivateArgs), // variant 27
+    CloseAccountDevice(DeviceCloseAccountArgs), // variant 27
 
     CreateTunnel(TunnelCreateArgs),         // variant 28
     ActivateTunnel(TunnelActivateArgs),     // variant 29
     RejectTunnel(TunnelRejectArgs),         // variant 30
     UpdateTunnel(TunnelUpdateArgs),         // variant 31
     SuspendTunnel(TunnelSuspendArgs),       // variant 32
-    ReactivateTunnel(TunnelReactivateArgs), // variant 33
+    ResumeTunnel(TunnelResumeArgs), // variant 33
     DeleteTunnel(TunnelDeleteArgs),         // variant 34
-    DeactivateTunnel(TunnelDeactivateArgs), // variant 35
+    CloseAccountTunnel(TunnelCloseAccountArgs), // variant 35
 
     CreateUser(UserCreateArgs),     // variant 36
     ActivateUser(UserActivateArgs), // variant 37
@@ -87,9 +87,9 @@ pub enum DoubleZeroInstruction {
 
     UpdateUser(UserUpdateArgs),         // variant 39
     SuspendUser(UserSuspendArgs),       // variant 40
-    ReactivateUser(UserReactivateArgs), // variant 41
+    ResumeUser(UserResumeArgs), // variant 41
     DeleteUser(UserDeleteArgs),         // variant 42
-    DeactivateUser(UserDeactivateArgs), // variant 42
+    CloseAccountUser(UserCloseAccountArgs), // variant 42
     RequestBanUser(UserRequestBanArgs), // variant 44
     BanUser(UserBanArgs),               // variant 45
 }
@@ -119,13 +119,13 @@ impl DoubleZeroInstruction {
             10 => Ok(Self::CreateLocation(from_slice::<LocationCreateArgs>(rest).unwrap())),
             11 => Ok(Self::UpdateLocation(from_slice::<LocationUpdateArgs>(rest).unwrap())),
             12 => Ok(Self::SuspendLocation(from_slice::<LocationSuspendArgs>(rest).unwrap())),
-            13 => Ok(Self::ReactivateLocation(from_slice::<LocationReactivateArgs>(rest).unwrap())),
+            13 => Ok(Self::ResumeLocation(from_slice::<LocationResumeArgs>(rest).unwrap())),
             14 => Ok(Self::DeleteLocation(from_slice::<LocationDeleteArgs>(rest).unwrap())),
 
             15 => Ok(Self::CreateExchange(from_slice::<ExchangeCreateArgs>(rest).unwrap())),
             16 => Ok(Self::UpdateExchange(from_slice::<ExchangeUpdateArgs>(rest).unwrap())),
             17 => Ok(Self::SuspendExchange(from_slice::<ExchangeSuspendArgs>(rest).unwrap())),
-            18 => Ok(Self::ReactivateExchange(from_slice::<ExchangeReactivateArgs>(rest).unwrap())),
+            18 => Ok(Self::ResumeExchange(from_slice::<ExchangeResumeArgs>(rest).unwrap())),
             19 => Ok(Self::DeleteExchange(from_slice::<ExchangeDeleteArgs>(rest).unwrap())),
             
             20 => Ok(Self::CreateDevice(from_slice::<DeviceCreateArgs>(rest).unwrap())),
@@ -133,27 +133,27 @@ impl DoubleZeroInstruction {
             22 => Ok(Self::RejectDevice(from_slice::<DeviceRejectArgs>(rest).unwrap())),
             23 => Ok(Self::UpdateDevice(from_slice::<DeviceUpdateArgs>(rest).unwrap())),
             24 => Ok(Self::SuspendDevice(from_slice::<DeviceSuspendArgs>(rest).unwrap())),
-            25 => Ok(Self::ReactivateDevice(from_slice::<DeviceReactivateArgs>(rest).unwrap())),
+            25 => Ok(Self::ResumeDevice(from_slice::<DeviceResumeArgs>(rest).unwrap())),
             26 => Ok(Self::DeleteDevice(from_slice::<DeviceDeleteArgs>(rest).unwrap())),
-            27 => Ok(Self::DeactivateDevice(from_slice::<DeviceDeactivateArgs>(rest).unwrap())),
+            27 => Ok(Self::CloseAccountDevice(from_slice::<DeviceCloseAccountArgs>(rest).unwrap())),
 
             28 => Ok(Self::CreateTunnel(from_slice::<TunnelCreateArgs>(rest).unwrap())),
             29 => Ok(Self::ActivateTunnel(from_slice::<TunnelActivateArgs>(rest).unwrap())),
             30 => Ok(Self::RejectTunnel(from_slice::<TunnelRejectArgs>(rest).unwrap())),
             31 => Ok(Self::UpdateTunnel(from_slice::<TunnelUpdateArgs>(rest).unwrap())),
             32 => Ok(Self::SuspendTunnel(from_slice::<TunnelSuspendArgs>(rest).unwrap())),
-            33 => Ok(Self::ReactivateTunnel(from_slice::<TunnelReactivateArgs>(rest).unwrap())),
+            33 => Ok(Self::ResumeTunnel(from_slice::<TunnelResumeArgs>(rest).unwrap())),
             34 => Ok(Self::DeleteTunnel(from_slice::<TunnelDeleteArgs>(rest).unwrap())),
-            35 => Ok(Self::DeactivateTunnel(from_slice::<TunnelDeactivateArgs>(rest).unwrap())),
+            35 => Ok(Self::CloseAccountTunnel(from_slice::<TunnelCloseAccountArgs>(rest).unwrap())),
 
             36 => Ok(Self::CreateUser(from_slice::<UserCreateArgs>(rest).unwrap())),
             37 => Ok(Self::ActivateUser(from_slice::<UserActivateArgs>(rest).unwrap())),
             38 => Ok(Self::RejectUser(from_slice::<UserRejectArgs>(rest).unwrap())),
             39 => Ok(Self::UpdateUser(from_slice::<UserUpdateArgs>(rest).unwrap())),
             40 => Ok(Self::SuspendUser(from_slice::<UserSuspendArgs>(rest).unwrap())),
-            41 => Ok(Self::ReactivateUser(from_slice::<UserReactivateArgs>(rest).unwrap())),
+            41 => Ok(Self::ResumeUser(from_slice::<UserResumeArgs>(rest).unwrap())),
             42 => Ok(Self::DeleteUser(from_slice::<UserDeleteArgs>(rest).unwrap())),
-            43 => Ok(Self::DeactivateUser(from_slice::<UserDeactivateArgs>(rest).unwrap())),
+            43 => Ok(Self::CloseAccountUser(from_slice::<UserCloseAccountArgs>(rest).unwrap())),
             44 => Ok(Self::RequestBanUser(from_slice::<UserRequestBanArgs>(rest).unwrap())),
             45 => Ok(Self::BanUser(from_slice::<UserBanArgs>(rest).unwrap())),        
             _ => Err(ProgramError::InvalidInstructionData),
@@ -177,13 +177,13 @@ impl DoubleZeroInstruction {
             Self::CreateLocation(_) => "CreateLocation".to_string(), // variant 10
             Self::UpdateLocation(_) => "UpdateLocation".to_string(), // variant 11
             Self::SuspendLocation(_) => "SuspendLocation".to_string(), // variant 12
-            Self::ReactivateLocation(_) => "ReactivateLocation".to_string(), // variant 13
+            Self::ResumeLocation(_) => "ResumeLocation".to_string(), // variant 13
             Self::DeleteLocation(_) => "DeleteLocation".to_string(), // variant 14
 
             Self::CreateExchange(_) => "CreateExchange".to_string(), // variant 15
             Self::UpdateExchange(_) => "UpdateExchange".to_string(), // variant 16
             Self::SuspendExchange(_) => "SuspendExchange".to_string(), // variant 17
-            Self::ReactivateExchange(_) => "ReactivateExchange".to_string(), // variant 18
+            Self::ResumeExchange(_) => "ResumeExchange".to_string(), // variant 18
             Self::DeleteExchange(_) => "DeleteExchange".to_string(), // variant 19
 
             Self::CreateDevice(_) => "CreateDevice".to_string(), // variant 20
@@ -191,27 +191,27 @@ impl DoubleZeroInstruction {
             Self::RejectDevice(_) => "RejectDevice".to_string(), // variant 22
             Self::UpdateDevice(_) => "UpdateDevice".to_string(), // variant 23
             Self::SuspendDevice(_) => "SuspendDevice".to_string(), // variant 24
-            Self::ReactivateDevice(_) => "ReactivateDevice".to_string(), // variant 25
+            Self::ResumeDevice(_) => "ResumeDevice".to_string(), // variant 25
             Self::DeleteDevice(_) => "DeleteDevice".to_string(), // variant 26
-            Self::DeactivateDevice(_) => "DeactivateDevice".to_string(), // variant 27
+            Self::CloseAccountDevice(_) => "CloseAccountDevice".to_string(), // variant 27
 
             Self::CreateTunnel(_) => "CreateTunnel".to_string(), // variant 28
             Self::ActivateTunnel(_) => "ActivateTunnel".to_string(), // variant 29
             Self::RejectTunnel(_) => "RejectTunnel".to_string(), // variant 30
             Self::UpdateTunnel(_) => "UpdateTunnel".to_string(), // variant 31
             Self::SuspendTunnel(_) => "SuspendTunnel".to_string(), // variant 32
-            Self::ReactivateTunnel(_) => "ReactivateTunnel".to_string(), // variant 33
+            Self::ResumeTunnel(_) => "ResumeTunnel".to_string(), // variant 33
             Self::DeleteTunnel(_) => "DeleteTunnel".to_string(), // variant 34
-            Self::DeactivateTunnel(_) => "DeactivateTunnel".to_string(), // variant 35
+            Self::CloseAccountTunnel(_) => "CloseAccountTunnel".to_string(), // variant 35
 
             Self::CreateUser(_) => "CreateUser".to_string(), // variant 36
             Self::ActivateUser(_) => "ActivateUser".to_string(), // variant 37
             Self::RejectUser(_) => "RejectUser".to_string(), // variant 38
             Self::UpdateUser(_) => "UpdateUser".to_string(), // variant 39
             Self::SuspendUser(_) => "SuspendUser".to_string(), // variant 40
-            Self::ReactivateUser(_) => "ReactivateUser".to_string(), // variant 41
+            Self::ResumeUser(_) => "ResumeUser".to_string(), // variant 41
             Self::DeleteUser(_) => "DeleteUser".to_string(), // variant 42
-            Self::DeactivateUser(_) => "DeactivateUser".to_string(), // variant 43
+            Self::CloseAccountUser(_) => "CloseAccountUser".to_string(), // variant 43
 
             Self::RequestBanUser(_) => "RequestBanUser".to_string(), // variant 44
             Self::BanUser(_) => "BanUser".to_string(), // variant 45
@@ -235,13 +235,13 @@ impl DoubleZeroInstruction {
             Self::CreateLocation(args) => format!("{:?}", args), // variant 10
             Self::UpdateLocation(args) => format!("{:?}", args), // variant 11
             Self::SuspendLocation(args) => format!("{:?}", args), // variant 12
-            Self::ReactivateLocation(args) => format!("{:?}", args), // variant 13
+            Self::ResumeLocation(args) => format!("{:?}", args), // variant 13
             Self::DeleteLocation(args) => format!("{:?}", args), // variant 14
 
             Self::CreateExchange(args) => format!("{:?}", args), // variant 15
             Self::UpdateExchange(args) => format!("{:?}", args), // variant 16
             Self::SuspendExchange(args) => format!("{:?}", args), // variant 17
-            Self::ReactivateExchange(args) => format!("{:?}", args), // variant 18
+            Self::ResumeExchange(args) => format!("{:?}", args), // variant 18
             Self::DeleteExchange(args) => format!("{:?}", args), // variant 19
 
             Self::CreateDevice(args) => format!("{:?}", args), // variant 20
@@ -249,27 +249,27 @@ impl DoubleZeroInstruction {
             Self::RejectDevice(args) => format!("{:?}", args), // variant 22
             Self::UpdateDevice(args) => format!("{:?}", args), // variant 23
             Self::SuspendDevice(args) => format!("{:?}", args), // variant 24
-            Self::ReactivateDevice(args) => format!("{:?}", args), // variant 25
+            Self::ResumeDevice(args) => format!("{:?}", args), // variant 25
             Self::DeleteDevice(args) => format!("{:?}", args), // variant 26
-            Self::DeactivateDevice(args) => format!("{:?}", args), // variant 27
+            Self::CloseAccountDevice(args) => format!("{:?}", args), // variant 27
 
             Self::CreateTunnel(args) => format!("{:?}", args), // variant 28
             Self::ActivateTunnel(args) => format!("{:?}", args), // variant 29
             Self::RejectTunnel(args) => format!("{:?}", args), // variant 30
             Self::UpdateTunnel(args) => format!("{:?}", args), // variant 31
             Self::SuspendTunnel(args) => format!("{:?}", args), // variant 32
-            Self::ReactivateTunnel(args) => format!("{:?}", args), // variant 33
+            Self::ResumeTunnel(args) => format!("{:?}", args), // variant 33
             Self::DeleteTunnel(args) => format!("{:?}", args), // variant 34
-            Self::DeactivateTunnel(args) => format!("{:?}", args), // variant 35
+            Self::CloseAccountTunnel(args) => format!("{:?}", args), // variant 35
 
             Self::CreateUser(args) => format!("{:?}", args), // variant 36
             Self::ActivateUser(args) => format!("{:?}", args), // variant 37
             Self::RejectUser(args) => format!("{:?}", args), // variant 38
             Self::UpdateUser(args) => format!("{:?}", args), // variant 39
             Self::SuspendUser(args) => format!("{:?}", args), // variant 40
-            Self::ReactivateUser(args) => format!("{:?}", args), // variant 41
+            Self::ResumeUser(args) => format!("{:?}", args), // variant 41
             Self::DeleteUser(args) => format!("{:?}", args), // variant 42
-            Self::DeactivateUser(args) => format!("{:?}", args), // variant 43
+            Self::CloseAccountUser(args) => format!("{:?}", args), // variant 43
 
             Self::RequestBanUser(args) => format!("{:?}", args), // variant 44
             Self::BanUser(args) => format!("{:?}", args), // variant 45
@@ -340,11 +340,11 @@ mod tests {
             "SuspendLocation",
         );
         test_instruction(
-            DoubleZeroInstruction::ReactivateLocation(LocationReactivateArgs {
+            DoubleZeroInstruction::ResumeLocation(LocationResumeArgs {
                 index: 123,
                 bump_seed: 255,
             }),
-            "ReactivateLocation",
+            "ResumeLocation",
         );
         test_instruction(
             DoubleZeroInstruction::DeleteLocation(LocationDeleteArgs {
@@ -385,11 +385,11 @@ mod tests {
             "SuspendExchange",
         );
         test_instruction(
-            DoubleZeroInstruction::ReactivateExchange(ExchangeReactivateArgs {
+            DoubleZeroInstruction::ResumeExchange(ExchangeResumeArgs {
                 index: 123,
                 bump_seed: 255,
             }),
-            "ReactivateExchange",
+            "ResumeExchange",
         );
         test_instruction(
             DoubleZeroInstruction::DeleteExchange(ExchangeDeleteArgs {
@@ -437,11 +437,11 @@ mod tests {
             "SuspendDevice",
         );
         test_instruction(
-            DoubleZeroInstruction::ReactivateDevice(DeviceReactivateArgs {
+            DoubleZeroInstruction::ResumeDevice(DeviceResumeArgs {
                 index: 123,
                 bump_seed: 255,
             }),
-            "ReactivateDevice",
+            "ResumeDevice",
         );
         test_instruction(
             DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs {
@@ -495,11 +495,11 @@ mod tests {
             "SuspendTunnel",
         );
         test_instruction(
-            DoubleZeroInstruction::ReactivateTunnel(TunnelReactivateArgs {
+            DoubleZeroInstruction::ResumeTunnel(TunnelResumeArgs {
                 index: 123,
                 bump_seed: 255,
             }),
-            "ReactivateTunnel",
+            "ResumeTunnel",
         );
         test_instruction(
             DoubleZeroInstruction::DeleteTunnel(TunnelDeleteArgs {
@@ -550,11 +550,11 @@ mod tests {
             "SuspendUser",
         );
         test_instruction(
-            DoubleZeroInstruction::ReactivateUser(UserReactivateArgs {
+            DoubleZeroInstruction::ResumeUser(UserResumeArgs {
                 index: 123,
                 bump_seed: 255,
             }),
-            "ReactivateUser",
+            "ResumeUser",
         );
         test_instruction(
             DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
@@ -564,25 +564,25 @@ mod tests {
             "DeleteUser",
         );
         test_instruction(
-            DoubleZeroInstruction::DeactivateDevice(DeviceDeactivateArgs {
+            DoubleZeroInstruction::CloseAccountDevice(DeviceCloseAccountArgs {
                 index: 123,
                 bump_seed: 255,
             }),
-            "DeactivateDevice",
+            "CloseAccountDevice",
         );
         test_instruction(
-            DoubleZeroInstruction::DeactivateTunnel(TunnelDeactivateArgs {
+            DoubleZeroInstruction::CloseAccountTunnel(TunnelCloseAccountArgs {
                 index: 123,
                 bump_seed: 255,
             }),
-            "DeactivateTunnel",
+            "CloseAccountTunnel",
         );
         test_instruction(
-            DoubleZeroInstruction::DeactivateUser(UserDeactivateArgs {
+            DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
                 index: 123,
                 bump_seed: 255,
             }),
-            "DeactivateUser",
+            "CloseAccountUser",
         );
         test_instruction(
             DoubleZeroInstruction::RejectDevice(DeviceRejectArgs {

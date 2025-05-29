@@ -13,12 +13,12 @@ use solana_program::{
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct UserDeactivateArgs {
+pub struct UserCloseAccountArgs {
     pub index: u128,
     pub bump_seed: u8,
 }
 
-impl fmt::Debug for UserDeactivateArgs {
+impl fmt::Debug for UserCloseAccountArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "")
     }
@@ -27,7 +27,7 @@ impl fmt::Debug for UserDeactivateArgs {
 pub fn process_deactivate_user(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &UserDeactivateArgs,
+    value: &UserCloseAccountArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 

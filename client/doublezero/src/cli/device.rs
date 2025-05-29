@@ -22,6 +22,8 @@ pub enum DeviceCommands {
     Update(UpdateDeviceCliCommand),
     List(ListDeviceCliCommand),
     Get(GetDeviceCliCommand),
+    Suspend(SuspendDeviceCliCommand),
+    Reactivate(ReactivateDeviceCliCommand),
     Delete(DeleteDeviceCliCommand),
     Allowlist(DeviceAllowlistCliCommand),
 }

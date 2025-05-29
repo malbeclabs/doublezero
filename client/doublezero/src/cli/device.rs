@@ -8,6 +8,8 @@ use doublezero_cli::device::create::CreateDeviceCliCommand;
 use doublezero_cli::device::delete::DeleteDeviceCliCommand;
 use doublezero_cli::device::get::GetDeviceCliCommand;
 use doublezero_cli::device::list::ListDeviceCliCommand;
+use doublezero_cli::device::resume::ResumeDeviceCliCommand;
+use doublezero_cli::device::suspend::SuspendDeviceCliCommand;
 use doublezero_cli::device::update::UpdateDeviceCliCommand;
 
 #[derive(Args, Debug)]
@@ -23,7 +25,7 @@ pub enum DeviceCommands {
     List(ListDeviceCliCommand),
     Get(GetDeviceCliCommand),
     Suspend(SuspendDeviceCliCommand),
-    Reactivate(ReactivateDeviceCliCommand),
+    Resume(ResumeDeviceCliCommand),
     Delete(DeleteDeviceCliCommand),
     Allowlist(DeviceAllowlistCliCommand),
 }

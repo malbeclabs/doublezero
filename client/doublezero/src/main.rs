@@ -93,6 +93,8 @@ async fn main() -> eyre::Result<()> {
             DeviceCommands::Update(args) => args.execute(&client, &mut handle),
             DeviceCommands::List(args) => args.execute(&client, &mut handle),
             DeviceCommands::Get(args) => args.execute(&client, &mut handle),
+            DeviceCommands::Suspend(args) => args.execute(&client, &mut handle),
+            DeviceCommands::Resume(args) => args.execute(&client, &mut handle),
             DeviceCommands::Delete(args) => args.execute(&client, &mut handle),
             DeviceCommands::Allowlist(command) => match command.command {
                 DeviceAllowlistCommands::List(args) => args.execute(&client, &mut handle),

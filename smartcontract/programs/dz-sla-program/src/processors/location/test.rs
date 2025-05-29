@@ -3,7 +3,7 @@ mod location_test {
     use crate::entrypoint::*;
     use crate::instructions::*;
     use crate::pda::*;
-    use crate::processors::location::{create::*, delete::*, reactivate::*, suspend::*, update::*};
+    use crate::processors::location::{create::*, delete::*, resume::*, suspend::*, update::*};
     use crate::state::accounttype::AccountType;
     use crate::state::location::*;
     use crate::tests::test::*;
@@ -105,12 +105,12 @@ mod location_test {
 
         println!("✅ Location suspended");
         /*****************************************************************************************************************************************************/
-        println!("Testing Location reactivated...");
+        println!("Testing Location resumed...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::ReactivateLocation(LocationReactivateArgs {
+            DoubleZeroInstruction::ResumeLocation(LocationResumeArgs {
                 index: location_la.index,
                 bump_seed: location_la.bump_seed,
             }),
@@ -129,7 +129,7 @@ mod location_test {
         assert_eq!(location.account_type, AccountType::Location);
         assert_eq!(location.status, LocationStatus::Activated);
 
-        println!("✅ Location reactivated");
+        println!("✅ Location resumed");
         /*****************************************************************************************************************************************************/
         println!("Testing Location update...");
         execute_transaction(

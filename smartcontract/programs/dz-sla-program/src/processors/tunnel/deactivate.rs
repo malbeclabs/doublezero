@@ -13,12 +13,12 @@ use solana_program::{
 use std::fmt;
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct TunnelDeactivateArgs {
+pub struct TunnelCloseAccountArgs {
     pub index: u128,
     pub bump_seed: u8,
 }
 
-impl fmt::Debug for TunnelDeactivateArgs {
+impl fmt::Debug for TunnelCloseAccountArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "")
     }
@@ -27,7 +27,7 @@ impl fmt::Debug for TunnelDeactivateArgs {
 pub fn process_deactivate_tunnel(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &TunnelDeactivateArgs,
+    value: &TunnelCloseAccountArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -77,7 +77,7 @@ pub fn process_deactivate_tunnel(
     account_close(pda_account, owner_account)?;
 
     #[cfg(test)]
-    msg!("Deactivated: {:?}", tunnel);
+    msg!("CloseAccountd: {:?}", tunnel);
 
     Ok(())
 }

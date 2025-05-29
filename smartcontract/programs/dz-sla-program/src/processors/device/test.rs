@@ -4,7 +4,7 @@ mod device_test {
     use crate::instructions::*;
     use crate::pda::*;
     use crate::processors::device::{
-        create::*, deactivate::*, delete::*, reactivate::*, suspend::*, update::*,
+        create::*, deactivate::*, delete::*, resume::*, suspend::*, update::*,
     };
     use crate::processors::*;
     use crate::state::accounttype::AccountType;
@@ -219,12 +219,12 @@ mod device_test {
 
         println!("✅ Device suspended");
         /*****************************************************************************************************************************************************/
-        println!("🟢 8. Reactivate Device...");
+        println!("🟢 8. Resume Device...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::ReactivateDevice(DeviceReactivateArgs {
+            DoubleZeroInstruction::ResumeDevice(DeviceResumeArgs {
                 index: device_la.index,
                 bump_seed: device_la.bump_seed,
             }),
@@ -240,7 +240,7 @@ mod device_test {
         assert_eq!(device.account_type, AccountType::Device);
         assert_eq!(device.status, DeviceStatus::Activated);
 
-        println!("✅ Device reactivated");
+        println!("✅ Device resumed");
         /*****************************************************************************************************************************************************/
         println!("🟢 9. Update Device...");
         execute_transaction(
@@ -301,12 +301,12 @@ mod device_test {
         assert_eq!(device_la.status, DeviceStatus::Deleting);
 
         /*****************************************************************************************************************************************************/
-        println!("🟢 11. Deactivate Device...");
+        println!("🟢 11. CloseAccount Device...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::DeactivateDevice(DeviceDeactivateArgs {
+            DoubleZeroInstruction::CloseAccountDevice(DeviceCloseAccountArgs {
                 index: device.index,
                 bump_seed: device.bump_seed,
             }),

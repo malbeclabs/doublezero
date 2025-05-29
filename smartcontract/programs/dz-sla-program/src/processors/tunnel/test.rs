@@ -4,7 +4,7 @@ mod tunnel_test {
     use crate::instructions::*;
     use crate::pda::*;
     use crate::processors::tunnel::{
-        activate::*, create::*, delete::*, reactivate::*, suspend::*, update::*,
+        activate::*, create::*, delete::*, resume::*, suspend::*, update::*,
     };
     use crate::processors::*;
     use crate::state::accounttype::AccountType;
@@ -14,7 +14,7 @@ mod tunnel_test {
     use globalconfig::set::SetGlobalConfigArgs;
     use solana_program_test::*;
     use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey};
-    use tunnel::deactivate::TunnelDeactivateArgs;
+    use tunnel::deactivate::TunnelCloseAccountArgs;
 
     #[tokio::test]
     async fn test_tunnel() {
@@ -292,12 +292,12 @@ mod tunnel_test {
 
         println!("✅ Tunnel suspended");
         /*****************************************************************************************************************************************************/
-        println!("🟢 8. Reactivate Tunnel...");
+        println!("🟢 8. Resume Tunnel...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::ReactivateTunnel(TunnelReactivateArgs {
+            DoubleZeroInstruction::ResumeTunnel(TunnelResumeArgs {
                 index: tunnel_la.index,
                 bump_seed: tunnel_la.bump_seed,
             }),
@@ -313,7 +313,7 @@ mod tunnel_test {
         assert_eq!(tunnel.account_type, AccountType::Tunnel);
         assert_eq!(tunnel.status, TunnelStatus::Activated);
 
-        println!("✅ Tunnel reactivated");
+        println!("✅ Tunnel resumed");
         /*****************************************************************************************************************************************************/
         println!("🟢 9. Update Tunnel...");
         execute_transaction(
@@ -383,12 +383,12 @@ mod tunnel_test {
         println!("✅ Tunnel deleting");
 
         /*****************************************************************************************************************************************************/
-        println!("🟢 9. Deactivate Tunnel...");
+        println!("🟢 9. CloseAccount Tunnel...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::DeactivateTunnel(TunnelDeactivateArgs {
+            DoubleZeroInstruction::CloseAccountTunnel(TunnelCloseAccountArgs {
                 index: tunnel.index,
                 bump_seed: tunnel.bump_seed,
             }),

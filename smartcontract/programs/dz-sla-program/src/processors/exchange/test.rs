@@ -3,7 +3,7 @@ mod exchange_test {
     use crate::entrypoint::*;
     use crate::instructions::*;
     use crate::pda::*;
-    use crate::processors::exchange::{create::*, delete::*, reactivate::*, suspend::*, update::*};
+    use crate::processors::exchange::{create::*, delete::*, resume::*, suspend::*, update::*};
     use crate::state::accounttype::AccountType;
     use crate::state::exchange::*;
     use crate::tests::test::*;
@@ -105,12 +105,12 @@ mod exchange_test {
 
         println!("✅ Exchange suspended");
         /*****************************************************************************************************************************************************/
-        println!("Testing Exchange reactivated...");
+        println!("Testing Exchange resumed...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::ReactivateExchange(ExchangeReactivateArgs {
+            DoubleZeroInstruction::ResumeExchange(ExchangeResumeArgs {
                 index: exchange_la.index,
                 bump_seed: exchange_la.bump_seed,
             }),
@@ -129,7 +129,7 @@ mod exchange_test {
         assert_eq!(exchange.account_type, AccountType::Exchange);
         assert_eq!(exchange.status, ExchangeStatus::Activated);
 
-        println!("✅ Exchange reactivated");
+        println!("✅ Exchange resumed");
         /*****************************************************************************************************************************************************/
         println!("Testing Exchange update...");
         execute_transaction(

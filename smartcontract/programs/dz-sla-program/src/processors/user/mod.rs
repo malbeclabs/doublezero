@@ -3,9 +3,9 @@ pub mod ban;
 pub mod create;
 pub mod deactivate;
 pub mod delete;
-pub mod reactivate;
 pub mod reject;
 pub mod requestban;
+pub mod resume;
 pub mod suspend;
 pub mod update;
 

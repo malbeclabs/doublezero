@@ -14,21 +14,21 @@ use solana_program::{
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct ExchangeReactivateArgs {
+pub struct ExchangeResumeArgs {
     pub index: u128,
     pub bump_seed: u8,
 }
 
-impl fmt::Debug for ExchangeReactivateArgs {
+impl fmt::Debug for ExchangeResumeArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "")
     }
 }
 
-pub fn process_reactivate_exchange(
+pub fn process_resume_exchange(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &ExchangeReactivateArgs,
+    value: &ExchangeResumeArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -38,11 +38,14 @@ pub fn process_reactivate_exchange(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_reactivate_exchange({:?})", value);
+    msg!("process_resume_exchange({:?})", value);
 
     // Check the owner of the accounts
     assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
-    assert_eq!(globalstate_account.owner, program_id,"Invalid GlobalState Account Owner");
+    assert_eq!(
+        globalstate_account.owner, program_id,
+        "Invalid GlobalState Account Owner"
+    );
     assert_eq!(
         *system_program.unsigned_key(),
         solana_program::system_program::id(),

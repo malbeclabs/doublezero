@@ -125,7 +125,7 @@ echo "Creating multicast user & subscribe"
 
 echo "########################################################################"
 
-return
+exit 0
 
 echo "Delete users"
 ./target/doublezero user delete --pubkey Do1iXv6tNMHRzF1yYHBcLNfNngCK6Yyr9izpLZc1rrwW

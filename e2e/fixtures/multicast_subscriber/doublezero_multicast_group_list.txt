@@ -1,0 +1,2 @@
+ account                                      | code | multicast_ip | max_bandwidth | publishers | subscribers | status    | owner
+ 52ieY9ydcJsms5rYMdsYtH6SnpMvWT2GcvAa8UydRdgi | mg01 | 224.5.6.0    | 10Gbps        | 0          | 1           | activated | Dc3LFdWwKGJvJcVkXhAr14kh1HS6pN7oCWrvHfQtsHGe

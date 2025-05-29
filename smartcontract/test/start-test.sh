@@ -4,7 +4,6 @@ clear
 killall solana-test-validator
 killall doublezero-activator
 
-
 # Build the program
 echo "Build the program"
 cargo build-sbf --manifest-path ../programs/dz-sla-program/Cargo.toml -- -Znext-lockfile-bump
@@ -17,7 +16,7 @@ cp ../../activator/target/debug/doublezero-activator ./target/
 
 #Build the activator
 echo "Build the client"
-cargo build --manifest-path ../../client/doublezero/Cargo.toml 
+cargo build --manifest-path ../../client/doublezero/Cargo.toml
 cp ../../client/doublezero/target/debug/doublezero ./target/
 
 # Configure to connect to localnet
@@ -27,32 +26,28 @@ solana config set --url http://127.0.0.1:8899
 ./target/doublezero config set --url http://127.0.0.1:8899
 ./target/doublezero config set --program-id 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
 
-
 # start the solana test cluster
 echo "Start solana local test cluster"
-solana-test-validator --reset --bpf-program ./keypair.json ./target/doublezero_sla_program.so > ./logs/validator.log 2>&1 &
+solana-test-validator --reset --bpf-program ./keypair.json ./target/doublezero_sla_program.so >./logs/validator.log 2>&1 &
 
 # Wait for the solana test cluster to start
 echo "Waiting 15 seconds to start the solana test cluster"
 sleep 15
 
-
 # initialice doublezero smart contract
-./target/doublezero init 
+./target/doublezero init
 
 ### Configure global setting
 ./target/doublezero global-config set --local-asn 65100 --remote-asn 65001 --tunnel-tunnel-block 172.16.0.0/16 --device-tunnel-block 169.254.0.0/16 --multicastgroup-block 223.0.0.0/4
 
-
 # Build the activator
 echo "Start the activator"
-./target/doublezero-activator --program-id 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX  > ./logs/activator.log 2>&1 &
+./target/doublezero-activator --program-id 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX >./logs/activator.log 2>&1 &
 
 echo "Add allowlist"
 ./target/doublezero global-config allowlist add --pubkey 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
 ./target/doublezero device allowlist add --pubkey 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
 ./target/doublezero user allowlist add --pubkey 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
-
 
 ### Initialice locations
 echo "Creating locations"
@@ -93,7 +88,6 @@ echo "Creating devices"
 ./target/doublezero device create --code pit-dzd01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "204.16.243.243/32"
 ./target/doublezero device create --code ams-dz001 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "195.219.138.56/29"
 
-
 ### Initialice tunnels
 echo "Creating tunnels"
 ./target/doublezero tunnel create --code "la2-dz01:ny5-dz01" --side-a la2-dz01 --side-z ny5-dz01 --tunnel-type MPLSoGRE --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
@@ -111,17 +105,16 @@ echo "Creating users"
 ./target/doublezero user create --device ld4-dz01 --client-ip 10.0.0.4
 
 echo "Creating multicast groups"
-./target/doublezero multicast group create --code jito --max-bandwidth 1Gbps --owner me
+./target/doublezero multicast group create --code mg01 --max-bandwidth 1Gbps --owner me
 
 echo "Add me to multicast group allowlist"
 ./target/doublezero multicast group allowlist publisher add --code DLRVcWaZQf1xN9vJemgjqNd286Kx5md1LxTe7p67c4ZM --pubkey me
 ./target/doublezero multicast group allowlist subscriber add --code DLRVcWaZQf1xN9vJemgjqNd286Kx5md1LxTe7p67c4ZM --pubkey me
 
 echo "Creating multicast user & subscribe"
-./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 10.0.0.5 --publisher jito
-./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 10.0.0.6 --subscriber jito
-./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 10.0.0.7 --publisher jito --subscriber jito
-
+./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 10.0.0.5 --publisher mg01
+./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 10.0.0.6 --subscriber mg01
+./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 10.0.0.7 --publisher mg01 --subscriber mg01
 
 echo "########################################################################"
 

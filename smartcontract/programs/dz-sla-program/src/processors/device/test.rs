@@ -4,7 +4,7 @@ mod device_test {
     use crate::instructions::*;
     use crate::pda::*;
     use crate::processors::device::{
-        create::*, deactivate::*, delete::*, resume::*, suspend::*, update::*,
+        create::*, closeaccount::*, delete::*, resume::*, suspend::*, update::*,
     };
     use crate::processors::*;
     use crate::state::accounttype::AccountType;

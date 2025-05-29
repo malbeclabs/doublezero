@@ -17,7 +17,7 @@ mod user_test {
     use globalconfig::set::SetGlobalConfigArgs;
     use solana_program_test::*;
     use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey};
-    use user::deactivate::UserCloseAccountArgs;
+    use user::closeaccount::UserCloseAccountArgs;
 
     #[tokio::test]
     async fn test_user() {

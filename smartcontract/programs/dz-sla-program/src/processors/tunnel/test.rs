@@ -14,7 +14,7 @@ mod tunnel_test {
     use globalconfig::set::SetGlobalConfigArgs;
     use solana_program_test::*;
     use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey};
-    use tunnel::deactivate::TunnelCloseAccountArgs;
+    use tunnel::closeaccount::TunnelCloseAccountArgs;
 
     #[tokio::test]
     async fn test_tunnel() {

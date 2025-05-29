@@ -9,7 +9,7 @@ use crate::processors::{
         user::{add::AddUserAllowlistArgs, remove::RemoveUserAllowlistArgs},
     },
     device::{
-        activate::DeviceActivateArgs, create::DeviceCreateArgs, deactivate::DeviceCloseAccountArgs,
+        activate::DeviceActivateArgs, create::DeviceCreateArgs, closeaccount::DeviceCloseAccountArgs,
         delete::DeviceDeleteArgs, resume::DeviceResumeArgs, reject::DeviceRejectArgs,
         suspend::DeviceSuspendArgs, update::DeviceUpdateArgs,
     },
@@ -24,13 +24,13 @@ use crate::processors::{
         suspend::LocationSuspendArgs, update::LocationUpdateArgs,
     },
     tunnel::{
-        activate::TunnelActivateArgs, create::TunnelCreateArgs, deactivate::TunnelCloseAccountArgs,
+        activate::TunnelActivateArgs, create::TunnelCreateArgs, closeaccount::TunnelCloseAccountArgs,
         delete::TunnelDeleteArgs, resume::TunnelResumeArgs, reject::TunnelRejectArgs,
         suspend::TunnelSuspendArgs, update::TunnelUpdateArgs,
     },
     user::{
         activate::UserActivateArgs, ban::UserBanArgs, create::UserCreateArgs,
-        deactivate::UserCloseAccountArgs, delete::UserDeleteArgs, resume::UserResumeArgs,
+        closeaccount::UserCloseAccountArgs, delete::UserDeleteArgs, resume::UserResumeArgs,
         reject::UserRejectArgs, requestban::UserRequestBanArgs, suspend::UserSuspendArgs,
         update::UserUpdateArgs,
     },

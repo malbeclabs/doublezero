@@ -1,6 +1,7 @@
 use clap::Args;
 use doublezero_cli::doublezerocommand::CliCommand;
 use doublezero_sdk::commands::device::list::ListDeviceCommand;
+use doublezero_sdk::DeviceStatus;
 use prettytable::{format, row, Cell, Row, Table};
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
@@ -28,8 +29,16 @@ impl LatencyCliCommand {
 
         let controller = ServiceController::new(None);
         let devices = client.list_device(ListDeviceCommand {})?;
+        let mut latencies = controller.latency().await.map_err(|e| eyre::eyre!(e))?;
+        latencies.retain(
+            |l| match devices.get(&Pubkey::from_str(&l.device_pk).unwrap()) {
+                Some(device) => device.status == DeviceStatus::Activated,
+                None => false,
+            },
+        ); // Filter the active devices
+        latencies.sort_by(|a, b| a.avg_latency_ns.cmp(&b.avg_latency_ns));
 
-        for data in controller.latency().await.map_err(|e| eyre::eyre!(e))? {
+        for data in latencies {
             let device_name =
                 match devices.get(&Pubkey::from_str(&data.device_pk).expect("Invalid pubkey")) {
                     Some(device) => &device.code,

@@ -204,9 +204,16 @@ no ip prefix-list PL-USER-518
 !
 no ip prefix-list PL-USER-519
 !
-no ip access-list SEC-USER-MCAST-IN
-ip access-list SEC-USER-MCAST-IN
+no ip access-list SEC-USER-PUB-MCAST-IN
+ip access-list SEC-USER-PUB-MCAST-IN
    counters per-entry
+   permit ip any 224.0.0.13/32
    permit ip any 224.5.6.0/24
+   deny ip any any
+!
+no ip access-list SEC-USER-SUB-MCAST-IN
+ip access-list SEC-USER-SUB-MCAST-IN
+   counters per-entry
+   permit ip any 224.0.0.13/32
    deny ip any any
 !

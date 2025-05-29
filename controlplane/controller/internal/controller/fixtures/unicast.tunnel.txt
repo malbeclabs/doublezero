@@ -120,9 +120,16 @@ ip prefix-list PL-USER-501 seq 10 permit 100.0.0.1/32
 no ip prefix-list PL-USER-502
 ip prefix-list PL-USER-502 seq 10 permit 100.0.0.2/32
 !
-no ip access-list SEC-USER-MCAST-IN
-ip access-list SEC-USER-MCAST-IN
+no ip access-list SEC-USER-PUB-MCAST-IN
+ip access-list SEC-USER-PUB-MCAST-IN
    counters per-entry
+   permit ip any 224.0.0.13/32
    permit ip any 239.0.0.0/24
+   deny ip any any
+!
+no ip access-list SEC-USER-SUB-MCAST-IN
+ip access-list SEC-USER-SUB-MCAST-IN
+   counters per-entry
+   permit ip any 224.0.0.13/32
    deny ip any any
 !

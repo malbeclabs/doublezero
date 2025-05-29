@@ -5,6 +5,8 @@ use crate::globalstate::globalstate_get_next;
 use crate::globalstate::globalstate_write;
 use crate::helper::*;
 use crate::pda::*;
+use crate::state::device::Device;
+use crate::state::device::DeviceStatus;
 use crate::state::{accounttype::AccountType, user::*};
 use crate::types::*;
 
@@ -88,6 +90,17 @@ pub fn process_create_user(
     }
     if device_account.owner != program_id {
         return Err(ProgramError::IncorrectProgramId);
+    }
+
+    let device: Device = Device::from(&device_account.try_borrow_data().unwrap()[..]);
+    if device.status == DeviceStatus::Suspended {
+        if !globalstate.foundation_allowlist.contains(payer_account.key) {
+            return Err(DoubleZeroError::InvalidStatus.into());
+        }
+    } else if device.status != DeviceStatus::Activated {
+        #[cfg(test)]
+        msg!("{:?}", device);
+        return Err(DoubleZeroError::InvalidStatus.into());
     }
 
     let user: User = User {

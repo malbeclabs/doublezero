@@ -3,6 +3,7 @@ pub mod test {
     use crate::entrypoint::*;
     use crate::instructions::*;
     use crate::pda::*;
+    use crate::processors::device::activate::DeviceActivateArgs;
     use crate::processors::device::create::*;
     use crate::processors::exchange::create::*;
     use crate::processors::globalconfig::set::SetGlobalConfigArgs;
@@ -342,6 +343,58 @@ pub mod test {
         assert_eq!(device_ny.code, device_ny_code);
         println!(
             "✅ Device NY initialized successfully with index: {}",
+            device_ny.index
+        );
+
+        execute_transaction(
+            &mut banks_client,
+            recent_blockhash,
+            program_id,
+            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {
+                index: device_ny.index,
+                bump_seed: device_ny.bump_seed,
+            }),
+            vec![
+                AccountMeta::new(device_ny_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
+            &payer,
+        )
+        .await;
+
+        let device_ny = get_account_data(&mut banks_client, device_ny_pubkey)
+            .await
+            .expect("Unable to get Device")
+            .get_device();
+        assert_eq!(device_ny.status, DeviceStatus::Activated);
+        println!(
+            "✅ Device NY activation successfully with index: {}",
+            device_ny.index
+        );
+
+        execute_transaction(
+            &mut banks_client,
+            recent_blockhash,
+            program_id,
+            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {
+                index: device_la.index,
+                bump_seed: device_la.bump_seed,
+            }),
+            vec![
+                AccountMeta::new(device_la_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
+            &payer,
+        )
+        .await;
+
+        let device_la = get_account_data(&mut banks_client, device_la_pubkey)
+            .await
+            .expect("Unable to get Device")
+            .get_device();
+        assert_eq!(device_la.status, DeviceStatus::Activated);
+        println!(
+            "✅ Device LA activation successfully with index: {}",
             device_ny.index
         );
 

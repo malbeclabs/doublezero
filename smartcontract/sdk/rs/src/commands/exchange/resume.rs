@@ -1,17 +1,17 @@
 use doublezero_sla_program::{
     instructions::DoubleZeroInstruction, pda::get_exchange_pda,
-    processors::exchange::reactivate::ExchangeReactivateArgs,
+    processors::exchange::resume::ExchangeResumeArgs,
 };
 use solana_sdk::{instruction::AccountMeta, signature::Signature};
 
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct ReactivateExchangeCommand {
+pub struct ResumeExchangeCommand {
     pub index: u128,
 }
 
-impl ReactivateExchangeCommand {
+impl ResumeExchangeCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
         let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand {}
             .execute(client)
@@ -19,7 +19,7 @@ impl ReactivateExchangeCommand {
 
         let (pda_pubkey, bump_seed) = get_exchange_pda(&client.get_program_id(), self.index);
         client.execute_transaction(
-            DoubleZeroInstruction::ReactivateExchange(ExchangeReactivateArgs {
+            DoubleZeroInstruction::ResumeExchange(ExchangeResumeArgs {
                 index: self.index,
                 bump_seed,
             }),
@@ -34,19 +34,19 @@ impl ReactivateExchangeCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::exchange::reactivate::ReactivateExchangeCommand,
+        commands::exchange::resume::ResumeExchangeCommand,
         tests::tests::create_test_client, DoubleZeroClient,
     };
     use doublezero_sla_program::{
         instructions::DoubleZeroInstruction,
         pda::{get_exchange_pda, get_globalstate_pda},
-        processors::exchange::reactivate::ExchangeReactivateArgs,
+        processors::exchange::resume::ExchangeResumeArgs,
     };
     use mockall::predicate;
     use solana_sdk::{instruction::AccountMeta, signature::Signature, system_program};
 
     #[test]
-    fn test_commands_exchange_reactivate_command() {
+    fn test_commands_exchange_resume_command() {
         let mut client = create_test_client();
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
@@ -56,8 +56,8 @@ mod tests {
         client
             .expect_execute_transaction()
             .with(
-                predicate::eq(DoubleZeroInstruction::ReactivateExchange(
-                    ExchangeReactivateArgs {
+                predicate::eq(DoubleZeroInstruction::ResumeExchange(
+                    ExchangeResumeArgs {
                         index: 1,
                         bump_seed,
                     },
@@ -71,7 +71,7 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        let res = ReactivateExchangeCommand { index: 1 }.execute(&client);
+        let res = ResumeExchangeCommand { index: 1 }.execute(&client);
 
         assert!(res.is_ok());
     }

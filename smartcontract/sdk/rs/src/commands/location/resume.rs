@@ -1,17 +1,17 @@
 use doublezero_sla_program::{
     instructions::DoubleZeroInstruction, pda::get_location_pda,
-    processors::location::reactivate::LocationReactivateArgs,
+    processors::location::resume::LocationResumeArgs,
 };
 use solana_sdk::{instruction::AccountMeta, signature::Signature};
 
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct ReactivateLocationCommand {
+pub struct ResumeLocationCommand {
     pub index: u128,
 }
 
-impl ReactivateLocationCommand {
+impl ResumeLocationCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
         let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand {}
             .execute(client)
@@ -19,7 +19,7 @@ impl ReactivateLocationCommand {
 
         let (pda_pubkey, bump_seed) = get_location_pda(&client.get_program_id(), self.index);
         client.execute_transaction(
-            DoubleZeroInstruction::ReactivateLocation(LocationReactivateArgs {
+            DoubleZeroInstruction::ResumeLocation(LocationResumeArgs {
                 index: self.index,
                 bump_seed,
             }),
@@ -34,19 +34,19 @@ impl ReactivateLocationCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::location::reactivate::ReactivateLocationCommand,
-        tests::tests::create_test_client, DoubleZeroClient,
+        commands::location::resume::ResumeLocationCommand, tests::tests::create_test_client,
+        DoubleZeroClient,
     };
     use doublezero_sla_program::{
         instructions::DoubleZeroInstruction,
         pda::{get_globalstate_pda, get_location_pda},
-        processors::location::reactivate::LocationReactivateArgs,
+        processors::location::resume::LocationResumeArgs,
     };
     use mockall::predicate;
     use solana_sdk::{instruction::AccountMeta, signature::Signature, system_program};
 
     #[test]
-    fn test_commands_location_reactivate_command() {
+    fn test_commands_location_resume_command() {
         let mut client = create_test_client();
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
@@ -56,12 +56,10 @@ mod tests {
         client
             .expect_execute_transaction()
             .with(
-                predicate::eq(DoubleZeroInstruction::ReactivateLocation(
-                    LocationReactivateArgs {
-                        index: 1,
-                        bump_seed,
-                    },
-                )),
+                predicate::eq(DoubleZeroInstruction::ResumeLocation(LocationResumeArgs {
+                    index: 1,
+                    bump_seed,
+                })),
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),
@@ -71,7 +69,7 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        let res = ReactivateLocationCommand { index: 1 }.execute(&client);
+        let res = ResumeLocationCommand { index: 1 }.execute(&client);
 
         assert!(res.is_ok());
     }

@@ -24,10 +24,14 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/google/gopacket"
 	"github.com/jwhited/corebgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/runtime"
+	"golang.org/x/net/ipv4"
 	"golang.org/x/sys/unix"
 
 	nl "github.com/vishvananda/netlink"
@@ -290,12 +294,11 @@ func TestEndToEnd_IBRL(t *testing.T) {
 					t.Skip("we don't flush routes in IBRLWithAllocatedIP mode")
 				}
 
-				t.Logf("peers: %+v\n", srv.ListPeers())
 				if err := srv.DeletePeer(netip.AddrFrom4([4]byte{169, 254, 0, 1})); err != nil {
 					t.Fatalf("error deleting peer: %v", err)
 				}
 				// wait for peer status to be deleted
-				down, err := waitForPeerStatus(httpClient, bgp.SessionStatusPending, 10*time.Second)
+				down, err := waitForPeerStatus(httpClient, test.userType, bgp.SessionStatusPending, 10*time.Second)
 				if err != nil {
 					t.Fatalf("error while waiting for peer status: %v", err)
 				}
@@ -323,7 +326,7 @@ func TestEndToEnd_IBRL(t *testing.T) {
 				}
 
 				// wait for peer status to come back up
-				up, err := waitForPeerStatus(httpClient, bgp.SessionStatusUp, 10*time.Second)
+				up, err := waitForPeerStatus(httpClient, test.userType, bgp.SessionStatusUp, 10*time.Second)
 				if err != nil {
 					t.Fatalf("error while waiting for peer status: %v", err)
 				}
@@ -815,13 +818,810 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 
 		if len(p) != 0 {
 			t.Fatalf("provisioned requests should be empty; got %+v %s", p, string(path))
-
 		}
 	})
 
 	// case: latency endpoint
 	// TODO: call latency endpoint
 	// TODO: verify latency samples are returned
+}
+
+func TestMulticastPublisher(t *testing.T) {
+	teardown, err := setupTest(t)
+	rootPath := os.Getenv("XDG_STATE_HOME")
+	t.Cleanup(teardown)
+	defer os.RemoveAll(rootPath)
+	if err != nil {
+		t.Fatalf("%v\n", err)
+	}
+
+	srv, _ := corebgp.NewServer(netip.MustParseAddr("2.2.2.2"))
+	go func() {
+		rt.LockOSThread()
+		defer rt.UnlockOSThread()
+
+		peerNS, err := netns.GetFromName("doublezero-peer")
+		if err != nil {
+			t.Logf("error creating namespace: %v", err)
+		}
+		if err = netns.Set(peerNS); err != nil {
+			t.Logf("error setting namespace: %v", err)
+		}
+
+		// start bgp instance in network namespace
+		d := &dummyPlugin{}
+		err = srv.AddPeer(corebgp.PeerConfig{
+			RemoteAddress: netip.MustParseAddr("169.254.0.1"),
+			LocalAS:       65342,
+			RemoteAS:      65000,
+		}, d, corebgp.WithPassive())
+		if err != nil {
+			log.Fatalf("error creating dummy bgp server: %v", err)
+		}
+		dlc := &net.ListenConfig{}
+		dlis, err := dlc.Listen(context.Background(), "tcp", ":179")
+		if err != nil {
+			log.Fatalf("error constructing listener: %v", err)
+		}
+
+		t.Log("starting bgp server")
+		if err := srv.Serve([]net.Listener{dlis}); err != nil {
+			t.Logf("error on remote peer bgp server: %v", err)
+		}
+	}()
+
+	errChan := make(chan error, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	sockFile := filepath.Join(rootPath, "doublezerod.sock")
+	go func() {
+		programId := ""
+		err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
+		errChan <- err
+	}()
+
+	httpClient := http.Client{
+		Transport: &http.Transport{
+			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+				return net.Dial("unix", sockFile)
+			},
+		},
+	}
+
+	// case: clean start and provision tunnel
+	t.Run("start_runtime", func(t *testing.T) {
+		select {
+		case err := <-errChan:
+			if err != nil {
+				t.Fatalf("error starting runtime: %v", err)
+			}
+		case <-time.After(5 * time.Second):
+		}
+	})
+
+	t.Run("send_provision_request", func(t *testing.T) {
+		url, err := url.JoinPath("http://localhost/", "provision")
+		if err != nil {
+			t.Fatalf("error creating url: %v", err)
+		}
+		body := `{
+					"tunnel_src":     "192.168.1.0",
+					"tunnel_dst":     "192.168.1.1",
+					"tunnel_net":     "169.254.0.0/31",
+					"doublezero_ip": "3.3.3.3",
+					"doublezero_prefixes": [],
+					"user_type": "Multicast",
+					"mcast_pub_groups": ["239.0.0.1"],
+					"bgp_local_asn":  65000,
+					"bgp_remote_asn": 65342
+				}`
+		req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(body))
+		if err != nil {
+			t.Fatalf("error creating request: %v", err)
+		}
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			t.Fatalf("error during request: %v", err)
+		}
+		defer resp.Body.Close()
+
+		got, _ := io.ReadAll(resp.Body)
+		want := `{"status": "ok"}`
+		if string(got) != want {
+			t.Fatalf("wrong response: %s", string(got))
+		}
+	})
+
+	t.Run("verify_tunnel_is_up", func(t *testing.T) {
+		tun, err := nl.LinkByName("doublezero1")
+		if err != nil {
+			t.Fatalf("error fetching tunnel status: %v", err)
+		}
+		if tun.Attrs().Name != "doublezero1" {
+			t.Fatalf("tunnel name is not doublezero0: %s", tun.Attrs().Name)
+		}
+		if tun.Attrs().OperState != 0 { // 0 == IF_OPER_UNKNOWN
+			t.Fatalf("tunnel is not set to up state (6), got %d", tun.Attrs().OperState)
+		}
+		if tun.Attrs().MTU != 1476 {
+			t.Fatalf("tunnel mtu should be 1476; got %d", tun.Attrs().MTU)
+		}
+		addrs, err := nl.AddrList(tun, nl.FAMILY_V4)
+		if err != nil {
+			t.Fatalf("error fetching tunnel addresses: %v", err)
+		}
+		for _, addr := range addrs {
+			if addr.String() == "239.0.0.1/32 doublezero1" {
+				if addr.Flags&unix.IFA_F_MCAUTOJOIN != 0x400 {
+					t.Fatalf("expected to find 0x400, got %x", addr.Flags&unix.IFA_F_MCAUTOJOIN)
+				}
+			}
+		}
+	})
+
+	t.Run("verify_doublezero_ip_is_added_to_tunnel", func(t *testing.T) {
+		tun, err := nl.LinkByName("doublezero1")
+		if err != nil {
+			t.Fatalf("error fetching tunnel info: %v", err)
+		}
+		addrs, err := nl.AddrList(tun, nl.FAMILY_V4)
+		if err != nil {
+			t.Fatalf("error fetching tunnel addresses: %v", err)
+		}
+		want, err := nl.ParseAddr("3.3.3.3/32 doublezero1")
+		if err != nil {
+			t.Fatalf("error parsing doublezero ip: %v", err)
+		}
+		for _, addr := range addrs {
+			if addr.Equal(*want) {
+				return // found the doublezero ip
+			}
+		}
+		t.Fatalf("addr 3.3.3.3/32 not found on tunnel doublezero1")
+	})
+
+	t.Run("verify_routes_are_installed", func(t *testing.T) {
+		got, err := nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Dst: &net.IPNet{IP: net.IP{239, 0, 0, 1}, Mask: net.IPv4Mask(255, 255, 255, 255)}}, nl.RT_FILTER_DST)
+		if err != nil {
+			t.Fatalf("error fetching routes: %v", err)
+		}
+		tun, err := nl.LinkByName("doublezero1")
+		if err != nil {
+			t.Fatalf("error fetching tunnel info: %v", err)
+		}
+		want := []nl.Route{
+			{
+				LinkIndex: tun.Attrs().Index,
+				Table:     254,
+				Dst: &net.IPNet{
+					IP:   net.IP{239, 0, 0, 1},
+					Mask: net.IPv4Mask(255, 255, 255, 255),
+				},
+				Gw:       net.IP{169, 254, 0, 0},
+				Protocol: unix.RTPROT_STATIC,
+				Src:      net.IP{3, 3, 3, 3},
+				Family:   nl.FAMILY_V4,
+				Type:     syscall.RTN_UNICAST,
+			},
+		}
+		if diff := cmp.Diff(want, got); diff != "" {
+			t.Fatalf("Route mismatch (-want +got): %s\n", diff)
+		}
+	})
+
+	t.Run("verify_state_file_is_created", func(t *testing.T) {
+		got, err := os.ReadFile(filepath.Join(rootPath, "doublezerod", "doublezerod.json"))
+		if err != nil {
+			t.Fatalf("error reading state file: %v", err)
+		}
+		want, err := os.ReadFile("./fixtures/doublezerod.mcast_publisher.json")
+		if err != nil {
+			t.Fatalf("error reading state file: %v", err)
+		}
+		if diff := cmp.Diff(string(want), string(got)); diff != "" {
+			t.Fatalf("State mismatch (-want +got): %s\n", diff)
+		}
+	})
+
+	t.Run("verify_bgp_session_is_up", func(t *testing.T) {
+		up, err := waitForPeerStatus(httpClient, api.UserTypeMulticast, bgp.SessionStatusUp, 10*time.Second)
+		if err != nil {
+			t.Fatalf("error while waiting for peer status: %v", err)
+		}
+		if !up {
+			t.Fatalf("timed out waiting for peer status of up")
+		}
+	})
+
+	t.Run("stop_runtime", func(t *testing.T) {
+		cancel()
+		select {
+		case err := <-errChan:
+			if err != nil {
+				t.Fatalf("error stopping runtime: %v", err)
+			}
+		case <-time.After(5 * time.Second):
+			log.Fatalf("timed out waiting for close")
+		}
+	})
+
+	ctx, cancel = context.WithCancel(context.Background())
+	go func() {
+		programId := ""
+		err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
+		errChan <- err
+	}()
+
+	<-time.After(5 * time.Second)
+
+	t.Run("restart_runtime", func(t *testing.T) {
+		select {
+		case err := <-errChan:
+			if err != nil {
+				t.Fatalf("error starting runtime: %v", err)
+			}
+		case <-time.After(10 * time.Second):
+		}
+	})
+
+	t.Run("state_recovery_verify_tunnel_is_up", func(t *testing.T) {
+		tun, err := nl.LinkByName("doublezero1")
+		if err != nil {
+			t.Fatalf("error fetching tunnel status: %v", err)
+		}
+		if tun.Attrs().Name != "doublezero1" {
+			t.Fatalf("tunnel name is not doublezero1: %s", tun.Attrs().Name)
+		}
+		if tun.Attrs().OperState != 0 { // 0 == IF_OPER_UNKNOWN
+			t.Fatalf("tunnel is not set to up state (6), got %d", tun.Attrs().OperState)
+		}
+		if tun.Attrs().MTU != 1476 {
+			t.Fatalf("tunnel mtu should be 1476; got %d", tun.Attrs().MTU)
+		}
+		addrs, err := nl.AddrList(tun, nl.FAMILY_V4)
+		if err != nil {
+			t.Fatalf("error fetching tunnel addresses: %v", err)
+		}
+		for _, addr := range addrs {
+			if addr.String() == "239.0.0.1/32 doublezero1" {
+				if addr.Flags&unix.IFA_F_MCAUTOJOIN != 0x400 {
+					t.Fatalf("expected to find 0x400, got %x", addr.Flags&unix.IFA_F_MCAUTOJOIN)
+				}
+			}
+		}
+	})
+
+	t.Run("send_remove_request", func(t *testing.T) {
+		url, err := url.JoinPath("http://localhost/", "remove")
+		if err != nil {
+			t.Fatalf("error creating url: %v", err)
+		}
+		req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(fmt.Sprintf(`{"user_type": "%s"}`, api.UserTypeMulticast)))
+		if err != nil {
+			t.Fatalf("error creating request: %v", err)
+		}
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			t.Fatalf("error during request: %v", err)
+		}
+		defer resp.Body.Close()
+
+		got, _ := io.ReadAll(resp.Body)
+		want := `{"status": "ok"}`
+		if string(got) != want {
+			t.Fatalf("wrong response: %s", string(got))
+		}
+	})
+
+	t.Run("verify_tunnel_is_removed", func(t *testing.T) {
+		_, err := nl.LinkByName("doublezero1")
+		if !errors.As(err, &nl.LinkNotFoundError{}) {
+			t.Fatalf("expected LinkNotFoundError; got: %v", err)
+		}
+	})
+
+	t.Run("state_removal_stop_runtime", func(t *testing.T) {
+		cancel()
+		select {
+		case err := <-errChan:
+			if err != nil {
+				t.Fatalf("error stopping runtime: %v", err)
+			}
+		case <-time.After(5 * time.Second):
+			log.Fatalf("timed out waiting for close")
+		}
+	})
+
+	t.Run("state_removal_verify_state_file_removed", func(t *testing.T) {
+		path, _ := os.ReadFile(filepath.Join(rootPath, "doublezerod", "doublezerod.json"))
+
+		var p []*api.ProvisionRequest
+		if err := json.Unmarshal(path, &p); err != nil {
+			t.Errorf("error unmarshaling db file: %v", err)
+		}
+
+		if len(p) != 0 {
+			t.Fatalf("provisioned requests should be empty; got %+v", p)
+
+		}
+	})
+
+}
+
+func TestMulticastSubscriber(t *testing.T) {
+	teardown, err := setupTest(t)
+	rootPath := os.Getenv("XDG_STATE_HOME")
+	t.Cleanup(teardown)
+	defer os.RemoveAll(rootPath)
+	if err != nil {
+		t.Fatalf("error setting up test: %v", err)
+	}
+
+	srv, _ := corebgp.NewServer(netip.MustParseAddr("2.2.2.2"))
+	go func() {
+		rt.LockOSThread()
+		defer rt.UnlockOSThread()
+
+		peerNS, err := netns.GetFromName("doublezero-peer")
+		if err != nil {
+			t.Logf("error creating namespace: %v", err)
+		}
+		if err = netns.Set(peerNS); err != nil {
+			t.Logf("error setting namespace: %v", err)
+		}
+
+		// start bgp instance in network namespace
+		d := &dummyPlugin{}
+		err = srv.AddPeer(corebgp.PeerConfig{
+			RemoteAddress: netip.MustParseAddr("169.254.0.1"),
+			LocalAS:       65342,
+			RemoteAS:      65000,
+		}, d, corebgp.WithPassive())
+		if err != nil {
+			log.Fatalf("error creating dummy bgp server: %v", err)
+		}
+		dlc := &net.ListenConfig{}
+		dlis, err := dlc.Listen(context.Background(), "tcp", ":179")
+		if err != nil {
+			log.Fatalf("error constructing listener: %v", err)
+		}
+
+		t.Log("starting bgp server")
+		if err := srv.Serve([]net.Listener{dlis}); err != nil {
+			t.Logf("error on remote peer bgp server: %v", err)
+		}
+	}()
+
+	pimJoinPruneChan := make(chan []byte, 1)
+	pimHelloChan := make(chan []byte, 1)
+
+	// start pim receiver in network namespace;
+	go func() {
+		rt.LockOSThread()
+		defer rt.UnlockOSThread()
+
+		pimNS, err := netns.GetFromName("doublezero-peer")
+		if err != nil {
+			log.Fatalf("error creating namespace: %v", err)
+		}
+		if err = netns.Set(pimNS); err != nil {
+			log.Fatalf("error setting namespace: %v", err)
+		}
+
+		tun, err := net.InterfaceByName("doublezero0")
+		if err != nil {
+			log.Fatalf("error getting eth0 interface: %v", err)
+		}
+		c, err := net.ListenPacket("ip4:103", "0.0.0.0")
+		if err != nil {
+			log.Fatalf("error creating listener: %v", err)
+		}
+		defer c.Close()
+		p := ipv4.NewPacketConn(c)
+		if err := p.JoinGroup(tun, &net.IPAddr{IP: net.IP{224, 0, 0, 13}}); err != nil {
+			log.Fatalf("error joining multicast group: %v", err)
+		}
+
+		for {
+			b := make([]byte, 1500)
+			n, _, _, err := p.ReadFrom(b)
+			if err != nil {
+				log.Printf("error reading from packet conn: %v", err)
+				continue
+			}
+			if n == 0 {
+				log.Printf("received empty message")
+				continue
+			}
+
+			pimType := b[0] & 0x0f // PIM message type is in the first byte, lower 4 bits
+			switch pimType {
+			case pim.Hello:
+				pimHelloChan <- b[:n] // send the hello message to the channel
+				log.Printf("received PIM hello message: %x", b[:n])
+			case pim.JoinPrune:
+				pimJoinPruneChan <- b[:n] // send the join message to the channel
+				log.Printf("received PIM join message: %x", b[:n])
+			default:
+				log.Printf("received unknown PIM message type: %x", b[0])
+				// ignore unknown message types
+			}
+		}
+	}()
+
+	errChan := make(chan error, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	sockFile := filepath.Join(rootPath, "doublezerod.sock")
+	go func() {
+		programId := ""
+		err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
+		errChan <- err
+	}()
+
+	httpClient := http.Client{
+		Transport: &http.Transport{
+			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+				return net.Dial("unix", sockFile)
+			},
+		},
+	}
+
+	t.Run("start_runtime", func(t *testing.T) {
+		select {
+		case err := <-errChan:
+			if err != nil {
+				t.Fatalf("error starting runtime: %v", err)
+			}
+		case <-time.After(5 * time.Second):
+		}
+	})
+
+	t.Run("send_provision_request", func(t *testing.T) {
+		url, err := url.JoinPath("http://localhost/", "provision")
+		if err != nil {
+			t.Fatalf("error creating url: %v", err)
+		}
+		body := `{
+					"tunnel_src":     "192.168.1.0",
+					"tunnel_dst":     "192.168.1.1",
+					"tunnel_net":     "169.254.0.0/31",
+					"doublezero_ip": "3.3.3.3",
+					"doublezero_prefixes": [],
+					"user_type": "Multicast",
+					"mcast_sub_groups": ["239.0.0.1"],
+					"bgp_local_asn":  65000,
+					"bgp_remote_asn": 65342
+				}`
+		req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(body))
+		if err != nil {
+			t.Fatalf("error creating request: %v", err)
+		}
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			t.Fatalf("error during request: %v", err)
+		}
+		defer resp.Body.Close()
+
+		got, _ := io.ReadAll(resp.Body)
+		want := `{"status": "ok"}`
+		if string(got) != want {
+			t.Fatalf("wrong response: %s", string(got))
+		}
+	})
+
+	t.Run("verify_tunnel_is_up", func(t *testing.T) {
+		tun, err := nl.LinkByName("doublezero1")
+		if err != nil {
+			t.Fatalf("error fetching tunnel status: %v", err)
+		}
+		if tun.Attrs().Name != "doublezero1" {
+			t.Fatalf("tunnel name is not doublezero0: %s", tun.Attrs().Name)
+		}
+		if tun.Attrs().OperState != 0 { // 0 == IF_OPER_UNKNOWN
+			t.Fatalf("tunnel is not set to up state (6), got %d", tun.Attrs().OperState)
+		}
+		if tun.Attrs().MTU != 1476 {
+			t.Fatalf("tunnel mtu should be 1476; got %d", tun.Attrs().MTU)
+		}
+		addrs, err := nl.AddrList(tun, nl.FAMILY_V4)
+		if err != nil {
+			t.Fatalf("error fetching tunnel addresses: %v", err)
+		}
+		for _, addr := range addrs {
+			if addr.String() == "239.0.0.1/32 doublezero1" {
+				if addr.Flags&unix.IFA_F_MCAUTOJOIN != 0x400 {
+					t.Fatalf("expected to find 0x400, got %x", addr.Flags&unix.IFA_F_MCAUTOJOIN)
+				}
+			}
+		}
+	})
+
+	t.Run("verify_state_file_is_created", func(t *testing.T) {
+		got, err := os.ReadFile(filepath.Join(rootPath, "doublezerod", "doublezerod.json"))
+		if err != nil {
+			t.Fatalf("error reading state file: %v", err)
+		}
+		want, err := os.ReadFile("./fixtures/doublezerod.mcast_subscriber.json")
+		if err != nil {
+			t.Fatalf("error reading state file: %v", err)
+		}
+		if diff := cmp.Diff(string(want), string(got)); diff != "" {
+			t.Fatalf("State mismatch (-want +got): %s\n", diff)
+		}
+	})
+
+	t.Run("verify_bgp_session_is_up", func(t *testing.T) {
+		up, err := waitForPeerStatus(httpClient, api.UserTypeMulticast, bgp.SessionStatusUp, 10*time.Second)
+		if err != nil {
+			t.Fatalf("error while waiting for peer status: %v", err)
+		}
+		if !up {
+			t.Fatalf("timed out waiting for peer status of up")
+		}
+	})
+
+	t.Run("verify_pim_hello_message_sent", func(t *testing.T) {
+		var msg []byte
+		// Wait for a PIM Hello message
+		select {
+		case msg = <-pimHelloChan:
+			if len(msg) == 0 {
+				t.Fatalf("received empty PIM message")
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("timed out waiting for PIM Hello message")
+		}
+
+		p := gopacket.NewPacket(msg, pim.PIMMessageType, gopacket.Default)
+		if p.ErrorLayer() != nil {
+			t.Fatalf("Error decoding packet: %v", p.ErrorLayer().Error())
+		}
+		if got, ok := p.Layer(pim.PIMMessageType).(*pim.PIMMessage); ok {
+			want := &pim.PIMMessage{
+				Header: pim.PIMHeader{
+					Version:  2,
+					Type:     pim.Hello,
+					Checksum: 0x4317,
+				},
+			}
+			if diff := cmp.Diff(got, want, cmpopts.IgnoreFields(pim.PIMMessage{}, "BaseLayer")); diff != "" {
+				t.Errorf("PIMMessage mismatch (-got +want):\n%s", diff)
+			}
+		}
+		if got, ok := p.Layer(pim.HelloMessageType).(*pim.HelloMessage); ok {
+			want := &pim.HelloMessage{
+				Holdtime:     105,
+				DRPriority:   1,
+				GenerationID: 3614426332,
+			}
+			if diff := cmp.Diff(got, want, cmpopts.IgnoreFields(pim.HelloMessage{}, "BaseLayer")); diff != "" {
+				t.Errorf("HelloMessage mismatch (-got +want):\n%s", diff)
+			}
+		}
+	})
+	t.Run("verify_pim_join_message_sent", func(t *testing.T) {
+		// Verify join message is received
+		var msg []byte
+		select {
+		case msg = <-pimJoinPruneChan:
+			if len(msg) == 0 {
+				t.Fatalf("received empty PIM message")
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("timed out waiting for PIM Join message")
+		}
+
+		p := gopacket.NewPacket(msg, pim.PIMMessageType, gopacket.Default)
+		if p.ErrorLayer() != nil {
+			t.Fatalf("Error decoding packet: %v", p.ErrorLayer().Error())
+		}
+		if got, ok := p.Layer(pim.PIMMessageType).(*pim.PIMMessage); ok {
+			want := &pim.PIMMessage{
+				Header: pim.PIMHeader{
+					Version:  2,
+					Type:     pim.JoinPrune,
+					Checksum: 0x2deb,
+				},
+			}
+			if diff := cmp.Diff(got, want, cmpopts.IgnoreFields(pim.PIMMessage{}, "BaseLayer")); diff != "" {
+				t.Errorf("PIMMessage mismatch (-got +want):\n%s", diff)
+			}
+		}
+		if got, ok := p.Layer(pim.JoinPruneMessageType).(*pim.JoinPruneMessage); ok {
+			want := &pim.JoinPruneMessage{
+				UpstreamNeighborAddress: net.IP([]byte{169, 254, 0, 0}),
+				NumGroups:               1,
+				Reserved:                0,
+				Holdtime:                210,
+				Groups: []pim.Group{{
+					GroupID:               0,
+					AddressFamily:         1,
+					NumJoinedSources:      1,
+					NumPrunedSources:      0,
+					MaskLength:            32,
+					MulticastGroupAddress: net.IP{239, 0, 0, 1},
+					Joins: []pim.SourceAddress{{
+						AddressFamily: 1,
+						Flags:         pim.RPTreeBit | pim.SparseBit | pim.WildCardBit,
+						MaskLength:    32,
+						EncodingType:  0,
+						Address:       net.IP([]byte{11, 0, 0, 0})},
+					},
+					Prunes: []pim.SourceAddress{},
+				}},
+			}
+			if diff := cmp.Diff(got, want, cmpopts.IgnoreFields(pim.JoinPruneMessage{}, "BaseLayer")); diff != "" {
+				t.Errorf("JoinPruneMessage mismatch (-got +want):\n%s", diff)
+			}
+		}
+	})
+
+	t.Run("stop_runtime", func(t *testing.T) {
+		cancel()
+		select {
+		case err := <-errChan:
+			if err != nil {
+				t.Fatalf("error stopping runtime: %v", err)
+			}
+		case <-time.After(5 * time.Second):
+			log.Fatalf("timed out waiting for close")
+		}
+	})
+
+	t.Run("verify_prune_message_sent", func(t *testing.T) {
+		// Verify prune message is received
+		var msg []byte
+		select {
+		case msg = <-pimJoinPruneChan:
+			if len(msg) == 0 {
+				t.Fatalf("received empty PIM message")
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("timed out waiting for PIM prune message")
+		}
+
+		p := gopacket.NewPacket(msg, pim.PIMMessageType, gopacket.Default)
+		if p.ErrorLayer() != nil {
+			t.Fatalf("Error decoding packet: %v", p.ErrorLayer().Error())
+		}
+		if got, ok := p.Layer(pim.PIMMessageType).(*pim.PIMMessage); ok {
+			want := &pim.PIMMessage{
+				Header: pim.PIMHeader{
+					Version:  2,
+					Type:     pim.JoinPrune,
+					Checksum: 0x2deb,
+				},
+			}
+			if diff := cmp.Diff(got, want, cmpopts.IgnoreFields(pim.PIMMessage{}, "BaseLayer")); diff != "" {
+				t.Errorf("PIMMessage mismatch (-got +want):\n%s", diff)
+			}
+		}
+		if got, ok := p.Layer(pim.JoinPruneMessageType).(*pim.JoinPruneMessage); ok {
+			want := &pim.JoinPruneMessage{
+				UpstreamNeighborAddress: net.IP([]byte{169, 254, 0, 0}),
+				NumGroups:               1,
+				Reserved:                0,
+				Holdtime:                210,
+				Groups: []pim.Group{{
+					GroupID:               0,
+					AddressFamily:         1,
+					NumJoinedSources:      0,
+					NumPrunedSources:      1,
+					MaskLength:            32,
+					MulticastGroupAddress: net.IP{239, 0, 0, 1},
+					Joins:                 []pim.SourceAddress{},
+					Prunes: []pim.SourceAddress{{
+						AddressFamily: 1,
+						Flags:         pim.RPTreeBit | pim.SparseBit | pim.WildCardBit,
+						MaskLength:    32,
+						EncodingType:  0,
+						Address:       net.IP([]byte{11, 0, 0, 0})}}}}}
+			if diff := cmp.Diff(got, want, cmpopts.IgnoreFields(pim.JoinPruneMessage{}, "BaseLayer")); diff != "" {
+				t.Errorf("JoinPruneMessage mismatch (-got +want):\n%s", diff)
+			}
+		}
+	})
+
+	ctx, cancel = context.WithCancel(context.Background())
+	go func() {
+		programId := ""
+		err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
+		errChan <- err
+	}()
+
+	<-time.After(5 * time.Second)
+
+	t.Run("restart_runtime", func(t *testing.T) {
+		select {
+		case err := <-errChan:
+			if err != nil {
+				t.Fatalf("error starting runtime: %v", err)
+			}
+		case <-time.After(10 * time.Second):
+		}
+	})
+
+	t.Run("state_recovery_verify_tunnel_is_up", func(t *testing.T) {
+		tun, err := nl.LinkByName("doublezero1")
+		if err != nil {
+			t.Fatalf("error fetching tunnel status: %v", err)
+		}
+		if tun.Attrs().Name != "doublezero1" {
+			t.Fatalf("tunnel name is not doublezero1: %s", tun.Attrs().Name)
+		}
+		if tun.Attrs().OperState != 0 { // 0 == IF_OPER_UNKNOWN
+			t.Fatalf("tunnel is not set to up state (6), got %d", tun.Attrs().OperState)
+		}
+		if tun.Attrs().MTU != 1476 {
+			t.Fatalf("tunnel mtu should be 1476; got %d", tun.Attrs().MTU)
+		}
+		addrs, err := nl.AddrList(tun, nl.FAMILY_V4)
+		if err != nil {
+			t.Fatalf("error fetching tunnel addresses: %v", err)
+		}
+		for _, addr := range addrs {
+			if addr.String() == "239.0.0.1/32 doublezero1" {
+				if addr.Flags&unix.IFA_F_MCAUTOJOIN != 0x400 {
+					t.Fatalf("expected to find 0x400, got %x", addr.Flags&unix.IFA_F_MCAUTOJOIN)
+				}
+			}
+		}
+	})
+
+	t.Run("send_remove_request", func(t *testing.T) {
+		url, err := url.JoinPath("http://localhost/", "remove")
+		if err != nil {
+			t.Fatalf("error creating url: %v", err)
+		}
+		req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(fmt.Sprintf(`{"user_type": "%s"}`, api.UserTypeMulticast)))
+		if err != nil {
+			t.Fatalf("error creating request: %v", err)
+		}
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			t.Fatalf("error during request: %v", err)
+		}
+		defer resp.Body.Close()
+
+		got, _ := io.ReadAll(resp.Body)
+		want := `{"status": "ok"}`
+		if string(got) != want {
+			t.Fatalf("wrong response: %s", string(got))
+		}
+	})
+
+	t.Run("verify_tunnel_is_removed", func(t *testing.T) {
+		_, err := nl.LinkByName("doublezero0")
+		if !errors.As(err, &nl.LinkNotFoundError{}) {
+			t.Fatalf("expected LinkNotFoundError; got: %v", err)
+		}
+	})
+
+	t.Run("state_removal_stop_runtime", func(t *testing.T) {
+		cancel()
+		select {
+		case err := <-errChan:
+			if err != nil {
+				t.Fatalf("error stopping runtime: %v", err)
+			}
+		case <-time.After(5 * time.Second):
+			log.Fatalf("timed out waiting for close")
+		}
+	})
+
+	t.Run("state_removal_verify_state_file_removed", func(t *testing.T) {
+		path, _ := os.ReadFile(filepath.Join(rootPath, "doublezerod", "doublezerod.json"))
+
+		var p []*api.ProvisionRequest
+		if err := json.Unmarshal(path, &p); err != nil {
+			t.Errorf("error unmarshaling db file: %v", err)
+		}
+
+		if len(p) != 0 {
+			t.Fatalf("provisioned requests should be empty; got %+v", p)
+		}
+	})
 }
 
 func setupTest(t *testing.T) (func(), error) {
@@ -880,7 +1680,7 @@ func execSysCommand(cmdSlice []string, t *testing.T) ([]byte, error) {
 	return stdout, nil
 }
 
-func waitForPeerStatus(httpClient http.Client, status bgp.SessionStatus, timeout time.Duration) (bool, error) {
+func waitForPeerStatus(httpClient http.Client, userType api.UserType, status bgp.SessionStatus, timeout time.Duration) (bool, error) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		url, err := url.JoinPath("http://localhost/", "status")
@@ -901,14 +1701,20 @@ func waitForPeerStatus(httpClient http.Client, status bgp.SessionStatus, timeout
 		if err != nil {
 			return false, fmt.Errorf("error reading status response: %v", err)
 		}
-		var statusResponse api.StatusResponse
-		if err := json.Unmarshal(got, &statusResponse); err != nil {
+		var statusResponses []api.StatusResponse
+		if err := json.Unmarshal(got, &statusResponses); err != nil {
 			return false, fmt.Errorf("error unmarshalling status response: %v", err)
 		}
-
-		if statusResponse.DoubleZeroStatus.SessionStatus == status {
-			return true, nil
+		for _, statusResponse := range statusResponses {
+			log.Printf("statusResponse: %+v", statusResponse)
+			if statusResponse.UserType != userType {
+				continue
+			}
+			if statusResponse.DoubleZeroStatus.SessionStatus == status {
+				return true, nil
+			}
 		}
+
 		time.Sleep(200 * time.Millisecond)
 	}
 	return false, nil

@@ -670,17 +670,17 @@ type Group struct {
 }
 
 func (g Group) Bytes() []byte {
-	groupAddress := serializeEncodedUnicastAddr(g.MulticastGroupAddress)
-	// drop addr family and encoding type
-	groupAddress = groupAddress[2:]
 
-	bytes := make([]byte, 4+len(groupAddress))
+	var groupAddr []byte
+	var groupAddrLen uint8
+	groupAddr, groupAddrLen = bytesFromNetIP(g.MulticastGroupAddress, g.AddressFamily)
+
+	bytes := make([]byte, 4+groupAddrLen)
 	bytes[0] = g.AddressFamily
 	bytes[1] = g.EncodingType
 	bytes[2] = g.Flags
 	bytes[3] = g.MaskLength
-	copy(bytes[4:], groupAddress)
-
+	copy(bytes[4:], groupAddr)
 	numJoinPruneSources := make([]byte, 4)
 	binary.BigEndian.PutUint16(numJoinPruneSources[0:2], g.NumJoinedSources)
 	binary.BigEndian.PutUint16(numJoinPruneSources[2:4], g.NumPrunedSources)
@@ -715,10 +715,12 @@ type SourceAddress struct {
 }
 
 func (s SourceAddress) Bytes() []byte {
-	address := serializeEncodedUnicastAddr(s.Address)
-	// drop addr family and encoding type
-	address = address[2:]
-	bytes := make([]byte, 4+len(s.Address))
+	var address []byte
+	var addrLen uint8
+
+	address, addrLen = bytesFromNetIP(s.Address, s.AddressFamily)
+
+	bytes := make([]byte, 4+addrLen)
 	bytes[0] = s.AddressFamily
 	bytes[1] = s.EncodingType
 	bytes[2] = s.Flags
@@ -726,4 +728,15 @@ func (s SourceAddress) Bytes() []byte {
 	copy(bytes[4:], address)
 
 	return bytes
+}
+
+func bytesFromNetIP(ip net.IP, addrFamily uint8) (bytes []byte, addrLen uint8) {
+	if addrFamily == 1 {
+		addrLen = 4
+		bytes = ip.To4()
+	} else if addrFamily == 2 {
+		addrLen = 16
+		bytes = ip.To16()
+	}
+	return bytes, addrLen
 }

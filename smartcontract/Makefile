@@ -18,6 +18,6 @@ lint:
 
 .PHONY: build
 build:
-	cargo build -v $(LDFLAGS) --manifest-path ./programs/dz-sla-program/Cargo.toml
-	cargo build -v $(LDFLAGS) --manifest-path ./sdk/rs/Cargo.toml
-	cargo build -v $(LDFLAGS) --manifest-path ./cli/Cargo.toml
+	cargo build $(LDFLAGS) --manifest-path ./programs/dz-sla-program/Cargo.toml
+	cargo build $(LDFLAGS) --manifest-path ./sdk/rs/Cargo.toml
+	cargo build $(LDFLAGS) --manifest-path ./cli/Cargo.toml

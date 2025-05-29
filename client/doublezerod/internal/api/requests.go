@@ -81,6 +81,8 @@ type ProvisionRequest struct {
 	TunnelNet          *net.IPNet   `json:"tunnel_net"`
 	DoubleZeroIP       net.IP       `json:"doublezero_ip"`
 	DoubleZeroPrefixes []*net.IPNet `json:"doublezero_prefixes"`
+	MulticastSubGroups []net.IP     `json:"mcast_sub_groups"`
+	MulticastPubGroups []net.IP     `json:"mcast_pub_groups"`
 	BgpLocalAsn        uint32       `json:"bgp_local_asn"`
 	BgpRemoteAsn       uint32       `json:"bgp_remote_asn"`
 }
@@ -123,6 +125,7 @@ func (p *ProvisionRequest) UnmarshalJSON(data []byte) error {
 		}
 		p.DoubleZeroPrefixes = append(p.DoubleZeroPrefixes, nn)
 	}
+
 	return nil
 }
 
@@ -152,4 +155,5 @@ type StatusResponse struct {
 	TunnelDst        net.IP      `json:"tunnel_dst"`
 	DoubleZeroIP     net.IP      `json:"doublezero_ip"`
 	DoubleZeroStatus bgp.Session `json:"doublezero_status"`
+	UserType         UserType    `json:"user_type"`
 }

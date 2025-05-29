@@ -1,33 +1,33 @@
-use crate::error::DoubleZeroError;
-use crate::globalstate::globalstate_get;
-use crate::helper::*;
-use crate::state::user::*;
+use crate::{
+    error::DoubleZeroError, globalstate::globalstate_get_next, helper::*, state::tunnel::*,
+};
 use borsh::{BorshDeserialize, BorshSerialize};
-use core::fmt;
+#[cfg(test)]
+use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
-    msg,
     program_error::ProgramError,
     pubkey::Pubkey,
 };
+use std::fmt;
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct UserCloseAccountArgs {
+pub struct TunnelCloseAccountArgs {
     pub index: u128,
     pub bump_seed: u8,
 }
 
-impl fmt::Debug for UserCloseAccountArgs {
+impl fmt::Debug for TunnelCloseAccountArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "")
     }
 }
 
-pub fn process_deactivate_user(
+pub fn process_closeaccount_tunnel(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &UserCloseAccountArgs,
+    value: &TunnelCloseAccountArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -38,7 +38,7 @@ pub fn process_deactivate_user(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_delete_user({:?})", value);
+    msg!("process_closeaccount_tunnel({:?})", value);
 
     // Check the owner of the accounts
     assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
@@ -54,29 +54,30 @@ pub fn process_deactivate_user(
     // Check if the account is writable
     assert!(pda_account.is_writable, "PDA Account is not writable");
 
-    let globalstate = globalstate_get(globalstate_account)?;
+    let globalstate = globalstate_get_next(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    let user: User = User::from(&pda_account.try_borrow_data().unwrap()[..]);
-    assert_eq!(user.index, value.index, "Invalid PDA Account Index");
+    let tunnel: Tunnel = Tunnel::from(&pda_account.try_borrow_data().unwrap()[..]);
+    assert_eq!(tunnel.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
-        user.bump_seed, value.bump_seed,
+        tunnel.bump_seed, value.bump_seed,
         "Invalid PDA Account Bump Seed"
     );
-    if user.owner != *owner_account.key {
+    if tunnel.owner != *owner_account.key {
         return Err(ProgramError::InvalidAccountData);
     }
-    if user.status != UserStatus::Deleting {
-        msg!("{:?}", user);
+    if tunnel.status != TunnelStatus::Deleting {
+        #[cfg(test)]
+        msg!("{:?}", tunnel);
         return Err(solana_program::program_error::ProgramError::Custom(1));
     }
 
     account_close(pda_account, owner_account)?;
 
     #[cfg(test)]
-    msg!("Deleted: {:?}", user);
+    msg!("CloseAccountd: {:?}", tunnel);
 
     Ok(())
 }

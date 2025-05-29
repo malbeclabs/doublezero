@@ -1,6 +1,6 @@
 pub mod activate;
 pub mod create;
-pub mod deactivate;
+pub mod closeaccount;
 pub mod delete;
 pub mod resume;
 pub mod reject;

@@ -1,7 +1,7 @@
 pub mod activate;
 pub mod ban;
 pub mod create;
-pub mod deactivate;
+pub mod closeaccount;
 pub mod delete;
 pub mod reject;
 pub mod requestban;

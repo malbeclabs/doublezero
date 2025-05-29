@@ -13,8 +13,8 @@ use crate::{
             user::{add::process_add_user_allowlist, remove::process_remove_user_allowlist},
         },
         device::{
-            activate::process_activate_device, create::process_create_device,
-            deactivate::process_deactivate_device, delete::process_delete_device,
+            activate::process_activate_device, closeaccount::process_closeaccount_device,
+            create::process_create_device, delete::process_delete_device,
             reject::process_reject_device, resume::process_resume_device,
             suspend::process_suspend_device, update::process_update_device,
         },
@@ -32,17 +32,17 @@ use crate::{
             update::process_update_location,
         },
         tunnel::{
-            activate::process_activate_tunnel, create::process_create_tunnel,
-            deactivate::process_deactivate_tunnel, delete::process_delete_tunnel,
+            activate::process_activate_tunnel, closeaccount::process_closeaccount_tunnel,
+            create::process_create_tunnel, delete::process_delete_tunnel,
             reject::process_reject_tunnel, resume::process_resume_tunnel,
             suspend::process_suspend_tunnel, update::process_update_tunnel,
         },
         user::{
-            activate::process_activate_user, ban::process_ban_user, create::process_create_user,
-            deactivate::process_deactivate_user, delete::process_delete_user,
-            reject::process_reject_user, requestban::process_request_ban_user,
-            resume::process_resume_user, suspend::process_suspend_user,
-            update::process_update_user,
+            activate::process_activate_user, ban::process_ban_user,
+            closeaccount::process_closeaccount_user, create::process_create_user,
+            delete::process_delete_user, reject::process_reject_user,
+            requestban::process_request_ban_user, resume::process_resume_user,
+            suspend::process_suspend_user, update::process_update_user,
         },
     },
 };
@@ -158,13 +158,13 @@ pub fn process_instruction(
             process_resume_user(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::CloseAccountDevice(value) => {
-            process_deactivate_device(program_id, accounts, &value)?
+            process_closeaccount_device(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::CloseAccountTunnel(value) => {
-            process_deactivate_tunnel(program_id, accounts, &value)?
+            process_closeaccount_tunnel(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::CloseAccountUser(value) => {
-            process_deactivate_user(program_id, accounts, &value)?
+            process_closeaccount_user(program_id, accounts, &value)?
         }
 
         DoubleZeroInstruction::RejectDevice(value) => {

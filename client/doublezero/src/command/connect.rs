@@ -3,8 +3,8 @@ use clap::{Args, ValueEnum};
 use doublezero_cli::doublezerocommand::CliCommand;
 use doublezero_sdk::commands::globalconfig::get::GetGlobalConfigCommand;
 use doublezero_sdk::{
-    ipv4_parse, ipv4_to_string, networkv4_to_string, IpV4, NetworkV4, User, UserCYOA, UserStatus,
-    UserType,
+    ipv4_parse, ipv4_to_string, networkv4_to_string, DeviceStatus, IpV4, NetworkV4, User, UserCYOA,
+    UserStatus, UserType,
 };
 use eyre;
 use indicatif::ProgressBar;
@@ -179,6 +179,12 @@ impl ProvisioningCliCommand {
                         let mut latencies =
                             controller.latency().await.expect("Could not get latency");
                         latencies.retain(|l| l.reachable);
+                        latencies.retain(|l| {
+                            match devices.get(&Pubkey::from_str(&l.device_pk).unwrap()) {
+                                Some(device) => device.status == DeviceStatus::Activated,
+                                None => false,
+                            }
+                        }); // Filter the active devices
                         latencies.sort_by(|a, b| a.avg_latency_ns.cmp(&b.avg_latency_ns));
 
                         spinner.set_message("Searching for device account...");

@@ -232,7 +232,7 @@ no ip prefix-list PL-USER-518
 !
 no ip prefix-list PL-USER-519
 !
-no ip access-list SEC-USER-MCAST-BOUNDARY-501-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-501-OUT
 ip access-list standard SEC-USER-MCAST-BOUNDARY-501-OUT
    counters per-entry
    permit host 239.0.0.1

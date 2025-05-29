@@ -4,18 +4,19 @@ use doublezero_sdk::GetGlobalConfigCommand;
 use doublezero_sdk::{
     commands::{
         device::{
-            activate::ActivateDeviceCommand, deactivate::DeactivateDeviceCommand,
+            activate::ActivateDeviceCommand, closeaccount::CloseAccountDeviceCommand,
             get::GetDeviceCommand, list::ListDeviceCommand,
         },
         exchange::list::ListExchangeCommand,
         location::list::ListLocationCommand,
         tunnel::{
-            activate::ActivateTunnelCommand, deactivate::DeactivateTunnelCommand,
+            activate::ActivateTunnelCommand, closeaccount::CloseAccountTunnelCommand,
             list::ListTunnelCommand, reject::RejectTunnelCommand,
         },
         user::{
-            activate::ActivateUserCommand, ban::BanUserCommand, deactivate::DeactivateUserCommand,
-            list::ListUserCommand, reject::RejectUserCommand,
+            activate::ActivateUserCommand, ban::BanUserCommand,
+            closeaccount::CloseAccountUserCommand, list::ListUserCommand,
+            reject::RejectUserCommand,
         },
     },
     ipv4_to_string, networkv4_list_to_string, networkv4_to_string, AccountData, DZClient, Device,
@@ -277,7 +278,7 @@ fn process_device_event(
         DeviceStatus::Deleting => {
             print!("Deleting Device {} ", device.code);
 
-            let res = DeactivateDeviceCommand {
+            let res = CloseAccountDeviceCommand {
                 index: device.index,
                 owner: device.owner,
             }
@@ -285,10 +286,10 @@ fn process_device_event(
 
             match res {
                 Ok(signature) => {
-                    println!("Deactivated {}", signature);
+                    println!("CloseAccountd {}", signature);
                     devices.remove(pubkey);
                     *state_transitions
-                        .entry("device-deleting-to-deactivated")
+                        .entry("device-deleting-to-closeaccountd")
                         .or_insert(0) += 1;
                 }
                 Err(e) => println!("Error: {}", e),
@@ -357,7 +358,7 @@ fn process_tunnel_event(
             tunnel_tunnel_ids.unassign(tunnel.tunnel_id);
             tunnel_tunnel_ips.unassign_block(tunnel.tunnel_net);
 
-            let res = DeactivateTunnelCommand {
+            let res = CloseAccountTunnelCommand {
                 index: tunnel.index,
                 owner: tunnel.owner,
             }
@@ -365,12 +366,12 @@ fn process_tunnel_event(
 
             match res {
                 Ok(signature) => {
-                    println!("Deactivated {}", signature);
+                    println!("CloseAccountd {}", signature);
                     *state_transitions
-                        .entry("tunnel-deleting-to-deactivated")
+                        .entry("tunnel-deleting-to-closeaccountd")
                         .or_insert(0) += 1;
                 }
-                Err(e) => println!("Error deactivate_tunnel: {}", e),
+                Err(e) => println!("Error closeaccount_tunnel: {}", e),
             }
         }
         _ => {}
@@ -551,7 +552,7 @@ fn process_user_event(
                 }
 
                 if user.status == UserStatus::Deleting {
-                    let res = DeactivateUserCommand {
+                    let res = CloseAccountUserCommand {
                         index: user.index,
                         owner: user.owner,
                     }
@@ -559,9 +560,9 @@ fn process_user_event(
 
                     match res {
                         Ok(signature) => {
-                            println!("Deactivated {}", signature);
+                            println!("CloseAccountd {}", signature);
                             *state_transitions
-                                .entry("user-deleting-to-deactivated")
+                                .entry("user-deleting-to-closeaccountd")
                                 .or_insert(0) += 1;
                         }
                         Err(e) => println!("Error: {}", e),
@@ -614,13 +615,13 @@ mod tests {
         pda::get_tunnel_pda,
         pda::get_user_pda,
         processors::{
-            device::{activate::DeviceActivateArgs, deactivate::DeviceDeactivateArgs},
+            device::{activate::DeviceActivateArgs, closeaccount::DeviceCloseAccountArgs},
             tunnel::{
-                activate::TunnelActivateArgs, deactivate::TunnelDeactivateArgs,
+                activate::TunnelActivateArgs, closeaccount::TunnelCloseAccountArgs,
                 reject::TunnelRejectArgs,
             },
             user::{
-                activate::UserActivateArgs, ban::UserBanArgs, deactivate::UserDeactivateArgs,
+                activate::UserActivateArgs, ban::UserBanArgs, closeaccount::UserCloseAccountArgs,
                 reject::UserRejectArgs,
             },
         },
@@ -728,8 +729,8 @@ mod tests {
             .times(1)
             .in_sequence(&mut seq)
             .with(
-                predicate::eq(DoubleZeroInstruction::DeactivateDevice(
-                    DeviceDeactivateArgs {
+                predicate::eq(DoubleZeroInstruction::CloseAccountDevice(
+                    DeviceCloseAccountArgs {
                         index: device.index,
                         bump_seed: device_bump_seed,
                     },
@@ -748,7 +749,7 @@ mod tests {
         assert!(!devices.contains_key(&device_pubkey));
         assert_eq!(state_transitions.len(), 2);
         assert_eq!(state_transitions["device-pending-to-activated"], 1);
-        assert_eq!(state_transitions["device-deleting-to-deactivated"], 1);
+        assert_eq!(state_transitions["device-deleting-to-closeaccountd"], 1);
     }
 
     #[test]
@@ -862,8 +863,8 @@ mod tests {
             .times(1)
             .in_sequence(&mut seq)
             .with(
-                predicate::eq(DoubleZeroInstruction::DeactivateTunnel(
-                    TunnelDeactivateArgs {
+                predicate::eq(DoubleZeroInstruction::CloseAccountTunnel(
+                    TunnelCloseAccountArgs {
                         index: tunnel.index,
                         bump_seed: tunnel.bump_seed,
                     },
@@ -887,7 +888,7 @@ mod tests {
 
         assert_eq!(state_transitions.len(), 2);
         assert_eq!(state_transitions["tunnel-pending-to-activated"], 1);
-        assert_eq!(state_transitions["tunnel-deleting-to-deactivated"], 1);
+        assert_eq!(state_transitions["tunnel-deleting-to-closeaccountd"], 1);
     }
 
     #[test]
@@ -1345,15 +1346,17 @@ mod tests {
                     .times(1)
                     .in_sequence(seq)
                     .with(
-                        predicate::eq(DoubleZeroInstruction::DeactivateUser(UserDeactivateArgs {
-                            index: user.index,
-                            bump_seed: user.bump_seed,
-                        })),
+                        predicate::eq(DoubleZeroInstruction::CloseAccountUser(
+                            UserCloseAccountArgs {
+                                index: user.index,
+                                bump_seed: user.bump_seed,
+                            },
+                        )),
                         predicate::always(),
                     )
                     .returning(|_, _| Ok(Signature::new_unique()));
             },
-            "user-deleting-to-deactivated",
+            "user-deleting-to-closeaccountd",
         );
     }
 

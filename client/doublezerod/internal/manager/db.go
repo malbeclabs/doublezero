@@ -108,7 +108,6 @@ func (d *Db) GetState(userTypes ...api.UserType) []*api.ProvisionRequest {
 	return dbState
 }
 
-// TODO: this needs to be implemented once the remove endpoint is added
 // Delete removes the latest provisioned state from disk
 func (d *Db) DeleteState(u api.UserType) error {
 	if _, err := os.Stat(d.Path); err != nil {
@@ -131,9 +130,10 @@ func (d *Db) DeleteState(u api.UserType) error {
 	if err := json.Unmarshal(file, &p); err != nil {
 		return fmt.Errorf("error unmarshaling db file: %v", err)
 	}
+	log.Printf("state is this before delete: %+v", p)
 	p = slices.DeleteFunc(p, func(pr *api.ProvisionRequest) bool {
-		// TODO: this is a hack until the client is updated to send user type
-		return pr.UserType == u || pr.UserType == api.UserTypeIBRL || pr.UserType == api.UserTypeIBRLWithAllocatedIP
+		log.Printf("checking for match %s %s", pr.UserType, u)
+		return pr.UserType == u
 	})
 
 	d.State = p

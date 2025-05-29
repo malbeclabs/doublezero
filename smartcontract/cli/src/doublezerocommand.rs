@@ -7,7 +7,9 @@ use doublezero_sdk::commands::allowlist::foundation::remove::RemoveFoundationAll
 use doublezero_sdk::commands::allowlist::user::add::AddUserAllowlistCommand;
 use doublezero_sdk::commands::allowlist::user::list::ListUserAllowlistCommand;
 use doublezero_sdk::commands::allowlist::user::remove::RemoveUserAllowlistCommand;
-use doublezero_sdk::commands::device::deactivate::DeactivateDeviceCommand;
+use doublezero_sdk::commands::device::closeaccount::CloseAccountDeviceCommand;
+use doublezero_sdk::commands::device::resume::ResumeDeviceCommand;
+use doublezero_sdk::commands::device::suspend::SuspendDeviceCommand;
 use doublezero_sdk::commands::device::{
     activate::ActivateDeviceCommand, create::CreateDeviceCommand, delete::DeleteDeviceCommand,
     get::GetDeviceCommand, list::ListDeviceCommand, reject::RejectDeviceCommand,
@@ -25,9 +27,9 @@ use doublezero_sdk::commands::location::{
 };
 use doublezero_sdk::commands::tunnel::activate::ActivateTunnelCommand;
 use doublezero_sdk::commands::tunnel::{
-    create::CreateTunnelCommand, deactivate::DeactivateTunnelCommand, delete::DeleteTunnelCommand,
-    get::GetTunnelCommand, list::ListTunnelCommand, reject::RejectTunnelCommand,
-    update::UpdateTunnelCommand,
+    closeaccount::CloseAccountTunnelCommand, create::CreateTunnelCommand,
+    delete::DeleteTunnelCommand, get::GetTunnelCommand, list::ListTunnelCommand,
+    reject::RejectTunnelCommand, update::UpdateTunnelCommand,
 };
 use doublezero_sdk::commands::user::requestban::RequestBanUserCommand;
 use doublezero_sdk::commands::user::{
@@ -78,7 +80,7 @@ pub trait CliCommand {
 
     fn activate_device(&self, cmd: ActivateDeviceCommand) -> eyre::Result<Signature>;
     fn reject_device(&self, cmd: RejectDeviceCommand) -> eyre::Result<Signature>;
-    fn deactivate_device(&self, cmd: DeactivateDeviceCommand) -> eyre::Result<Signature>;
+    fn closeaccount_device(&self, cmd: CloseAccountDeviceCommand) -> eyre::Result<Signature>;
 
     fn create_tunnel(&self, cmd: CreateTunnelCommand) -> eyre::Result<(Signature, Pubkey)>;
     fn get_tunnel(&self, cmd: GetTunnelCommand) -> eyre::Result<(Pubkey, Tunnel)>;
@@ -87,7 +89,7 @@ pub trait CliCommand {
     fn delete_tunnel(&self, cmd: DeleteTunnelCommand) -> eyre::Result<Signature>;
     fn activate_tunnel(&self, cmd: ActivateTunnelCommand) -> eyre::Result<Signature>;
     fn reject_tunnel(&self, cmd: RejectTunnelCommand) -> eyre::Result<Signature>;
-    fn deactivate_tunnel(&self, cmd: DeactivateTunnelCommand) -> eyre::Result<Signature>;
+    fn closeaccount_tunnel(&self, cmd: CloseAccountTunnelCommand) -> eyre::Result<Signature>;
 
     fn create_user(&self, cmd: CreateUserCommand) -> eyre::Result<(Signature, Pubkey)>;
     fn get_user(&self, cmd: GetUserCommand) -> eyre::Result<(Pubkey, User)>;
@@ -210,7 +212,13 @@ impl CliCommand for CliCommandImpl<'_> {
     fn reject_device(&self, cmd: RejectDeviceCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
-    fn deactivate_device(&self, cmd: DeactivateDeviceCommand) -> eyre::Result<Signature> {
+    fn suspend_device(&self, cmd: SuspendDeviceCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn resume_device(&self, cmd: ResumeDeviceCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn closeaccount_device(&self, cmd: CloseAccountDeviceCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
     fn create_tunnel(&self, cmd: CreateTunnelCommand) -> eyre::Result<(Signature, Pubkey)> {
@@ -234,7 +242,7 @@ impl CliCommand for CliCommandImpl<'_> {
     fn reject_tunnel(&self, cmd: RejectTunnelCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
-    fn deactivate_tunnel(&self, cmd: DeactivateTunnelCommand) -> eyre::Result<Signature> {
+    fn closeaccount_tunnel(&self, cmd: CloseAccountTunnelCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
     fn create_user(&self, cmd: CreateUserCommand) -> eyre::Result<(Signature, Pubkey)> {

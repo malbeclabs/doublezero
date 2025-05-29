@@ -120,17 +120,19 @@ func TestRenderConfig(t *testing.T) {
 								{239, 0, 0, 1},
 								{239, 0, 0, 2},
 							},
+							MulticastPublishers: []net.IP{},
 						},
 						{
-							Id:            501,
-							UnderlaySrcIP: net.IP{3, 3, 3, 3},
-							UnderlayDstIP: net.IP{4, 4, 4, 4},
-							OverlaySrcIP:  net.IP{169, 254, 0, 2},
-							OverlayDstIP:  net.IP{169, 254, 0, 3},
-							DzIp:          net.IP{100, 0, 0, 1},
-							Allocated:     true,
-							IsMulticast:   true,
-							MulticastSubscribers: []net.IP{
+							Id:                   501,
+							UnderlaySrcIP:        net.IP{3, 3, 3, 3},
+							UnderlayDstIP:        net.IP{4, 4, 4, 4},
+							OverlaySrcIP:         net.IP{169, 254, 0, 2},
+							OverlayDstIP:         net.IP{169, 254, 0, 3},
+							DzIp:                 net.IP{100, 0, 0, 1},
+							Allocated:            true,
+							IsMulticast:          true,
+							MulticastSubscribers: []net.IP{},
+							MulticastPublishers: []net.IP{
 								{239, 0, 0, 3},
 								{239, 0, 0, 4},
 							},
@@ -145,6 +147,10 @@ func TestRenderConfig(t *testing.T) {
 							Allocated:     true,
 							IsMulticast:   true,
 							MulticastSubscribers: []net.IP{
+								{239, 0, 0, 5},
+								{239, 0, 0, 6},
+							},
+							MulticastPublishers: []net.IP{
 								{239, 0, 0, 5},
 								{239, 0, 0, 6},
 							},
@@ -176,6 +182,7 @@ func TestRenderConfig(t *testing.T) {
 								{239, 0, 0, 1},
 								{239, 0, 0, 2},
 							},
+							MulticastPublishers: []net.IP{},
 						},
 						{
 							Id:            501,
@@ -198,6 +205,10 @@ func TestRenderConfig(t *testing.T) {
 							MulticastSubscribers: []net.IP{
 								{239, 0, 0, 3},
 								{239, 0, 0, 4},
+							},
+							MulticastPublishers: []net.IP{
+								{239, 0, 0, 5},
+								{239, 0, 0, 6},
 							},
 						},
 					},

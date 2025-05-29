@@ -121,7 +121,7 @@ route-map RM-USER-502-IN permit 10
    set community 21682:1300
 !
 no ip prefix-list PL-USER-500
-ip prefix-list PL-USER-500 seq 10 permit 100.0.0.0/32
+ip prefix-list PL-USER-500 seq 10 deny 0.0.0.0/0 le 32
 !
 no ip prefix-list PL-USER-501
 ip prefix-list PL-USER-501 seq 10 permit 100.0.0.1/32
@@ -139,8 +139,6 @@ ip access-list standard SEC-USER-MCAST-BOUNDARY-500-OUT
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-501-OUT
 ip access-list standard SEC-USER-MCAST-BOUNDARY-501-OUT
    counters per-entry
-   permit host 239.0.0.3
-   permit host 239.0.0.4
    deny 224.0.0.0/4
 !
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-502-OUT

@@ -118,7 +118,7 @@ route-map RM-USER-502-IN permit 10
    set community 21682:1300
 !
 no ip prefix-list PL-USER-500
-ip prefix-list PL-USER-500 seq 10 permit 100.0.0.0/32
+ip prefix-list PL-USER-500 seq 10 deny 0.0.0.0/0 le 32
 !
 no ip prefix-list PL-USER-501
 ip prefix-list PL-USER-501 seq 10 permit 100.0.0.1/32

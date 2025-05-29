@@ -55,6 +55,7 @@ type Tunnel struct {
 	Allocated            bool
 	IsMulticast          bool
 	MulticastSubscribers []net.IP
+	MulticastPublishers  []net.IP
 }
 
 type templateData struct {

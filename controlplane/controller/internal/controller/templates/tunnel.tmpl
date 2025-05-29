@@ -79,7 +79,11 @@ route-map RM-USER-{{ .Id }}-IN permit 10
 {{- range .Device.Tunnels }}
 no ip prefix-list PL-USER-{{ .Id }}
 {{- if eq true .Allocated }}
+{{- if and .IsMulticast .MulticastSubscribers (not .MulticastPublishers) }}
+ip prefix-list PL-USER-{{ .Id }} seq 10 deny 0.0.0.0/0 le 32
+{{- else }}
 ip prefix-list PL-USER-{{ .Id }} seq 10 permit {{ .DzIp }}/32
+{{- end }}
 {{- end }}
 !
 {{- end }}

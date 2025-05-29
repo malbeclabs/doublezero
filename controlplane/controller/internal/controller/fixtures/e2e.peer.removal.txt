@@ -196,7 +196,7 @@ no ip prefix-list PL-USER-500
 ip prefix-list PL-USER-500 seq 10 permit 100.100.100.100/32
 !
 no ip prefix-list PL-USER-501
-ip prefix-list PL-USER-501 seq 10 permit 100.100.100.101/32
+ip prefix-list PL-USER-501 seq 10 deny 0.0.0.0/0 le 32
 !
 no ip prefix-list PL-USER-502
 !

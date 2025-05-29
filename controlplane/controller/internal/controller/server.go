@@ -218,6 +218,13 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 					tunnel.MulticastSubscribers = append(tunnel.MulticastSubscribers, net.IP(subscriberIP.MulticastIp[:]))
 				}
 			}
+
+			// Set multicast publishers for the tunnel.
+			for _, publisher := range user.Publishers {
+				if publisherIP, ok := cache.MulticastGroups[base58.Encode(publisher[:])]; ok {
+					tunnel.MulticastPublishers = append(tunnel.MulticastPublishers, net.IP(publisherIP.MulticastIp[:]))
+				}
+			}
 		}
 	}
 

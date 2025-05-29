@@ -4,7 +4,7 @@ mod device_test {
     use crate::instructions::*;
     use crate::pda::*;
     use crate::processors::device::{
-        create::*, closeaccount::*, delete::*, resume::*, suspend::*, update::*,
+        closeaccount::*, create::*, delete::*, resume::*, suspend::*, update::*,
     };
     use crate::processors::*;
     use crate::state::accounttype::AccountType;
@@ -205,7 +205,10 @@ mod device_test {
                 index: device.index,
                 bump_seed: device.bump_seed,
             }),
-            vec![AccountMeta::new(device_pubkey, false)],
+            vec![
+                AccountMeta::new(device_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
             &payer,
         )
         .await;
@@ -228,7 +231,10 @@ mod device_test {
                 index: device_la.index,
                 bump_seed: device_la.bump_seed,
             }),
-            vec![AccountMeta::new(device_pubkey, false)],
+            vec![
+                AccountMeta::new(device_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
             &payer,
         )
         .await;

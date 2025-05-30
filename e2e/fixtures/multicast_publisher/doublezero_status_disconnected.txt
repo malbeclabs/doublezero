@@ -1,7 +1,7 @@
-Doublezero IP: N/A
-Name: N/A
-Tunnel dst: N/A
-Tunnel src: N/A
-Tunnel status: down
-User type: N/A
-Last Session Update: 2025-04-29 22:37:42 UTC
+Doublezero IP:
+Name:
+Tunnel dst:
+Tunnel src:
+Tunnel status: disconnected
+User type:
+Last Session Update: no session data

@@ -1,4 +1,4 @@
-Doublezero IP: 64.86.249.81
+Doublezero IP:
 Name: doublezero1
 Tunnel dst: 64.86.249.80
 Tunnel src: 64.86.249.86

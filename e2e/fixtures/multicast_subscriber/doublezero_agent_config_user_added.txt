@@ -169,7 +169,7 @@ no route-map RM-USER-518-IN
 no route-map RM-USER-519-IN
 !
 no ip prefix-list PL-USER-500
-ip prefix-list PL-USER-500 seq 10 permit 64.86.249.81/32
+ip prefix-list PL-USER-500 seq 10 deny 0.0.0.0/0 le 32
 !
 no ip prefix-list PL-USER-501
 !
@@ -212,6 +212,7 @@ no ip prefix-list PL-USER-519
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-500-OUT
 ip access-list standard SEC-USER-MCAST-BOUNDARY-500-OUT
    counters per-entry
+   permit host 224.5.6.0
    deny 224.0.0.0/4
 !
 no ip access-list SEC-USER-PUB-MCAST-IN

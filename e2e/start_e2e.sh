@@ -237,7 +237,8 @@ test_multicast_publisher() {
     e2e_test -test.v -test.run "^TestMulticastPublisher_Connect"
 
     print_banner "Disconnecting multicast publisher"
-    doublezero --keypair $SOLANA_KEYPAIR disconnect multicast
+    # TODO: Investigate why disconnect needs --client-ip
+    doublezero --keypair $SOLANA_KEYPAIR disconnect multicast --client-ip 64.86.249.86
 
     print_banner "Running multicast publisher disconnect tests"
     e2e_test -test.v -test.run "^TestMulticastPublisher_Disconnect_Networking"
@@ -246,7 +247,7 @@ test_multicast_publisher() {
 
 test_multicast_subscriber() {
     print_banner "Connecting multicast subscriber"
-    doublezero --keypair $SOLANA_KEYPAIR connect multicast subscriber mg01 --client-ip 64.86.249.87
+    doublezero --keypair $SOLANA_KEYPAIR connect multicast subscriber mg01 --client-ip 64.86.249.86
 
     sleep 5
     print_banner "Another check to see if subscriber number goes up"
@@ -259,7 +260,8 @@ test_multicast_subscriber() {
     e2e_test -test.v -test.run "^TestMulticastSubscriber_Connect"
 
     print_banner "Disconnecting multicast subscriber"
-    doublezero --keypair $SOLANA_KEYPAIR disconnect multicast
+    # TODO: Investigate why disconnect needs --client-ip
+    doublezero --keypair $SOLANA_KEYPAIR disconnect multicast --client-ip 64.86.249.86
 
     print_banner "Running multicast subscriber disconnect tests"
     e2e_test -test.v -test.run "^TestMulticastSubscriber_Disconnect_Networking"

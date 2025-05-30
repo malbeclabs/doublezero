@@ -8,6 +8,8 @@ router pim sparse-mode
 vrf instance vrf1
 ip routing vrf vrf1
 !
+hardware access-list update default-result permit
+!
 default interface Tunnel500
 interface Tunnel500
    description USER-UCAST-500
@@ -48,6 +50,9 @@ interface Tunnel502
    no shutdown
 !
 router bgp 65342
+   address-family ipv4
+   no neighbor 169.254.0.7
+   !
    vrf vrf1
       rd 65342:1
       route-target import vpn-ipv4 65342:1

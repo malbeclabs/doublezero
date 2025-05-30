@@ -8,12 +8,9 @@ router pim sparse-mode
 vrf instance vrf1
 ip routing vrf vrf1
 !
-hardware access-list update default-result permit
-!
 default interface Tunnel500
 interface Tunnel500
    description USER-MCAST-500
-   ip access-group SEC-USER-SUB-MCAST-IN in
    multicast ipv4 boundary SEC-USER-MCAST-BOUNDARY-500-OUT out
    pim ipv4 sparse-mode
    pim ipv4 dr-priority 4294967295
@@ -42,7 +39,6 @@ interface Tunnel501
 default interface Tunnel502
 interface Tunnel502
    description USER-MCAST-502
-   ip access-group SEC-USER-PUB-MCAST-IN in
    multicast ipv4 boundary SEC-USER-MCAST-BOUNDARY-502-OUT out
    pim ipv4 sparse-mode
    pim ipv4 dr-priority 4294967295
@@ -58,7 +54,6 @@ interface Tunnel502
 default interface Tunnel503
 interface Tunnel503
    description USER-MCAST-503
-   ip access-group SEC-USER-PUB-MCAST-IN in
    multicast ipv4 boundary SEC-USER-MCAST-BOUNDARY-503-OUT out
    pim ipv4 sparse-mode
    pim ipv4 dr-priority 4294967295

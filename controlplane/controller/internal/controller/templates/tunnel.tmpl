@@ -8,13 +8,23 @@ router pim sparse-mode
 vrf instance vrf1
 ip routing vrf vrf1
 !
+{{- if not .NoHardware }}
+hardware access-list update default-result permit
+!
+{{- end }}
 {{- range .Device.Tunnels }}
 default interface Tunnel{{ .Id }}
 {{- if eq true .Allocated }}
 interface Tunnel{{ .Id }}
    {{- if eq true .IsMulticast }}
    description USER-MCAST-{{ .Id }}
-   ip access-group SEC-USER-MCAST-IN in
+   {{- if not $.NoHardware }}
+   {{- if and .IsMulticast .MulticastSubscribers (not .MulticastPublishers) }}
+   ip access-group SEC-USER-SUB-MCAST-IN in
+   {{- else }}
+   ip access-group SEC-USER-PUB-MCAST-IN in
+   {{- end }}
+   {{- end }}
    multicast ipv4 boundary SEC-USER-MCAST-BOUNDARY-{{ .Id }}-OUT out
    pim ipv4 sparse-mode
    pim ipv4 dr-priority 4294967295
@@ -34,13 +44,36 @@ interface Tunnel{{ .Id }}
 !
 {{- end }}
 router bgp 65342
+   {{- range .Device.Tunnels }}
+   {{- if and .IsMulticast .Allocated }}
+   no neighbor {{ .OverlayDstIP }}
+   neighbor {{ .OverlayDstIP }} remote-as 65000
+   neighbor {{ .OverlayDstIP }} passive
+   neighbor {{ .OverlayDstIP }} description USER-{{ .Id  }}
+   neighbor {{ .OverlayDstIP }} route-map RM-USER-{{ .Id }}-IN in
+   neighbor {{ .OverlayDstIP }} route-map RM-USER-{{ .Id }}-OUT out
+   neighbor {{ .OverlayDstIP }} maximum-routes 1
+   neighbor {{ .OverlayDstIP }} maximum-accepted-routes 1
+   {{- end }}
+   {{- end }}
+   address-family ipv4
+   {{- range .Device.Tunnels }}
+   {{- if and .IsMulticast .Allocated }}
+      neighbor {{ .OverlayDstIP }} activate
+   {{- end }}
+   {{- end }}
+   {{- range .UnknownBgpPeers }}
+   no neighbor {{ . }}
+   {{- end }}
+   !
    vrf vrf1
       rd 65342:1
       route-target import vpn-ipv4 65342:1
       route-target export vpn-ipv4 65342:1
       router-id {{ .Device.PublicIP }}
-{{- range .Device.Tunnels }}
-{{- if eq true .Allocated }}
+      {{- range .Device.Tunnels }}
+      {{- if eq true .Allocated }}
+      {{- if not .IsMulticast }}
       no neighbor {{ .OverlayDstIP }}
       neighbor {{ .OverlayDstIP }} remote-as 65000
       neighbor {{ .OverlayDstIP }} passive
@@ -49,8 +82,9 @@ router bgp 65342
       neighbor {{ .OverlayDstIP }} route-map RM-USER-{{ .Id }}-OUT out
       neighbor {{ .OverlayDstIP }} maximum-routes 1
       neighbor {{ .OverlayDstIP }} maximum-accepted-routes 1
-{{- end }}
-{{- end }}
+      {{- end }}
+      {{- end }}
+      {{- end }}
 {{- range .UnknownBgpPeers }}
       no neighbor {{ . }}
 {{- end }}

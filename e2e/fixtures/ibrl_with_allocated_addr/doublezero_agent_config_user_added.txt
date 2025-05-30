@@ -60,6 +60,8 @@ default interface Tunnel518
 default interface Tunnel519
 !
 router bgp 65342
+   address-family ipv4
+   !
    vrf vrf1
       rd 65342:1
       route-target import vpn-ipv4 65342:1

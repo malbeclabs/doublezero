@@ -7,6 +7,7 @@ use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 use tabled::{Table, Tabled};
+use tabled::settings::Style;
 
 #[derive(Args, Debug)]
 pub struct ListTunnelCliCommand {
@@ -86,7 +87,8 @@ impl ListTunnelCliCommand {
         } else if self.json_compact {
             serde_json::to_string(&tunnel_displays)?
         } else {
-            let table = Table::new(tunnel_displays);
+            let mut table = Table::new(tunnel_displays);
+            table.with(Style::psql().remove_horizontals());
             table.to_string()
         };
 
@@ -186,7 +188,7 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "+-------------------------------------------+-------------+-------------------------------------------+--------------+-------------------------------------------+--------------+-------------+-----------+------+----------+-----------+-----------+------------+-----------+-------------------------------------------+\n| account                                   | code        | side_a_pk                                 | side_a_name  | side_z_pk                                 | side_z_name  | tunnel_type | bandwidth | mtu  | delay_ns | jitter_ns | tunnel_id | tunnel_net | status    | owner                                     |\n+-------------------------------------------+-------------+-------------------------------------------+--------------+-------------------------------------------+--------------+-------------+-----------+------+----------+-----------+-----------+------------+-----------+-------------------------------------------+\n| 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | tunnel_code | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | device2_code | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | device2_code | MPLSoGRE    | 1234      | 1566 | 1234     | 1121      | 1234      | 1.2.3.4/32 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 |\n+-------------------------------------------+-------------+-------------------------------------------+--------------+-------------------------------------------+--------------+-------------+-----------+------+----------+-----------+-----------+------------+-----------+-------------------------------------------+\n");
+        assert_eq!(output_str, " account                                   | code        | side_a_pk                                 | side_a_name  | side_z_pk                                 | side_z_name  | tunnel_type | bandwidth | mtu  | delay_ns | jitter_ns | tunnel_id | tunnel_net | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | tunnel_code | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | device2_code | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | device2_code | MPLSoGRE    | 1234      | 1566 | 1234     | 1121      | 1234      | 1.2.3.4/32 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
 
         let mut output = Vec::new();
         let res = ListTunnelCliCommand {

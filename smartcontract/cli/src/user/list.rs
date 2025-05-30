@@ -9,6 +9,7 @@ use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::collections::HashMap;
 use std::io::Write;
+use tabled::settings::Style;
 use tabled::{Table, Tabled};
 
 #[derive(Args, Debug)]
@@ -133,7 +134,8 @@ impl ListUserCliCommand {
         } else if self.json_compact {
             serde_json::to_string(&users_displays)?
         } else {
-            let table = Table::new(users_displays);
+            let mut table = Table::new(users_displays);
+            table.with(Style::psql().remove_horizontals());
             table.to_string()
         };
 

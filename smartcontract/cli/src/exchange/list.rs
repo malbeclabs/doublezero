@@ -6,6 +6,7 @@ use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 use tabled::{Table, Tabled};
+use tabled::settings::Style;
 
 #[derive(Args, Debug)]
 pub struct ListExchangeCliCommand {
@@ -55,7 +56,8 @@ impl ListExchangeCliCommand {
         } else if self.json_compact {
             serde_json::to_string(&exchange_displays)?
         } else {
-            let table = Table::new(exchange_displays);
+            let mut table = Table::new(exchange_displays);
+            table.with(Style::psql().remove_horizontals());
             table.to_string()
         };
 
@@ -146,7 +148,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "+-------------------------------------------+-----------+-----------+-----+-----+--------+-----------+-------------------------------------------+\n| account                                   | code      | name      | lat | lng | loc_id | status    | owner                                     |\n+-------------------------------------------+-----------+-----------+-----+-----+--------+-----------+-------------------------------------------+\n| 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | some code | some name | 15  | 15  | 6      | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo |\n+-------------------------------------------+-----------+-----------+-----+-----+--------+-----------+-------------------------------------------+\n");
+        assert_eq!(output_str, " account                                   | code      | name      | lat | lng | loc_id | status    | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | some code | some name | 15  | 15  | 6      | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
 
         let mut output = Vec::new();
         let res = ListExchangeCliCommand {

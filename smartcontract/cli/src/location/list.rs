@@ -6,6 +6,7 @@ use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 use tabled::{Table, Tabled};
+use tabled::settings::Style;
 
 #[derive(Args, Debug)]
 pub struct ListLocationCliCommand {
@@ -58,7 +59,8 @@ impl ListLocationCliCommand {
         } else if self.json_compact {
             serde_json::to_string(&location_displays)?
         } else {
-            let table = Table::new(location_displays);
+            let mut table = Table::new(location_displays);
+            table.with(Style::psql().remove_horizontals());
             table.to_string()
         };
 
@@ -109,7 +111,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "+-------------------------------------------+-----------+-----------+--------------+-----+-----+--------+-----------+-------------------------------------------+\n| account                                   | code      | name      | country      | lat | lng | loc_id | status    | owner                                     |\n+-------------------------------------------+-----------+-----------+--------------+-----+-----+--------+-----------+-------------------------------------------+\n| 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | some code | some name | some country | 15  | 15  | 7      | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo |\n+-------------------------------------------+-----------+-----------+--------------+-----+-----+--------+-----------+-------------------------------------------+\n");
+        assert_eq!(output_str, " account                                   | code      | name      | country      | lat | lng | loc_id | status    | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | some code | some name | some country | 15  | 15  | 7      | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
 
         let mut output = Vec::new();
         let res = ListLocationCliCommand {

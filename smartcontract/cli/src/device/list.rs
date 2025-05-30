@@ -8,6 +8,7 @@ use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 use tabled::{Table, Tabled};
+use tabled::settings::Style;
 
 #[derive(Args, Debug)]
 pub struct ListDeviceCliCommand {
@@ -95,8 +96,10 @@ impl ListDeviceCliCommand {
         } else if self.json_compact {
             serde_json::to_string(&device_displays)?
         } else {
-            let table = Table::new(device_displays);
+            let mut table = Table::new(device_displays);
+            table.with(Style::psql().remove_horizontals());
             table.to_string()
+
         };
 
         writeln!(out, "{}", res)?;
@@ -191,7 +194,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "+-------------------------------------------+--------------+-----------+-------------------------------------------+----------------+----------------+-------------------------------------------+----------------+----------------+-------------+-----------+-----------+-------------+-------------------------------------------+\n| account                                   | code         | bump_seed | location_pk                               | location_code  | location_name  | exchange_pk                               | exchange_code  | exchange_name  | device_type | public_ip | status    | dz_prefixes | owner                                     |\n+-------------------------------------------+--------------+-----------+-------------------------------------------+----------------+----------------+-------------------------------------------+----------------+----------------+-------------+-----------+-----------+-------------+-------------------------------------------+\n| 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | device1_code | 2         | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | location1_code | location1_name | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA | exchange1_code | exchange1_name | switch      | 1.2.3.4   | activated | 1.2.3.4/32  | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB |\n+-------------------------------------------+--------------+-----------+-------------------------------------------+----------------+----------------+-------------------------------------------+----------------+----------------+-------------+-----------+-----------+-------------+-------------------------------------------+\n");
+        assert_eq!(output_str, " account                                   | code         | bump_seed | location_pk                               | location_code  | location_name  | exchange_pk                               | exchange_code  | exchange_name  | device_type | public_ip | status    | dz_prefixes | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | device1_code | 2         | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | location1_code | location1_name | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA | exchange1_code | exchange1_name | switch      | 1.2.3.4   | activated | 1.2.3.4/32  | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
 
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
@@ -202,5 +205,6 @@ mod tests {
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"code\":\"device1_code\",\"bump_seed\":2,\"location_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"exchange_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA\",\"exchange_code\":\"exchange1_code\",\"exchange_name\":\"exchange1_name\",\"device_type\":\"Switch\",\"public_ip\":\"1.2.3.4\",\"status\":\"Activated\",\"dz_prefixes\":\"1.2.3.4/32\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
+
     }
 }

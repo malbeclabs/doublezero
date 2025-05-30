@@ -5,6 +5,7 @@ use doublezero_sdk::DeviceStatus;
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 use tabled::builder::Builder;
+use tabled::settings::Style;
 
 use crate::requirements::check_doublezero;
 use crate::servicecontroller::ServiceController;
@@ -28,6 +29,10 @@ impl LatencyCliCommand {
         latencies.sort_by(|a, b| a.avg_latency_ns.cmp(&b.avg_latency_ns));
 
         let mut builder = Builder::new();
+        // TODO: proper header?
+        builder.push_record(["pubkey", "name", "ip", "min", "max", "avg", "teachable"]);
+
+
         for data in latencies {
             let device_name =
                 match devices.get(&Pubkey::from_str(&data.device_pk).expect("Invalid pubkey")) {
@@ -46,7 +51,8 @@ impl LatencyCliCommand {
             ]);
         }
 
-        let table = builder.build();
+        let mut table = builder.build();
+        table.with(Style::psql().remove_horizontals());
         println!("{}", table);
 
         Ok(())

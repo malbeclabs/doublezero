@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	rt "runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -946,17 +947,6 @@ func TestMulticastPublisher(t *testing.T) {
 		if tun.Attrs().MTU != 1476 {
 			t.Fatalf("tunnel mtu should be 1476; got %d", tun.Attrs().MTU)
 		}
-		addrs, err := nl.AddrList(tun, nl.FAMILY_V4)
-		if err != nil {
-			t.Fatalf("error fetching tunnel addresses: %v", err)
-		}
-		for _, addr := range addrs {
-			if addr.String() == "239.0.0.1/32 doublezero1" {
-				if addr.Flags&unix.IFA_F_MCAUTOJOIN != 0x400 {
-					t.Fatalf("expected to find 0x400, got %x", addr.Flags&unix.IFA_F_MCAUTOJOIN)
-				}
-			}
-		}
 	})
 
 	t.Run("verify_doublezero_ip_is_added_to_tunnel", func(t *testing.T) {
@@ -1324,17 +1314,8 @@ func TestMulticastSubscriber(t *testing.T) {
 		if tun.Attrs().MTU != 1476 {
 			t.Fatalf("tunnel mtu should be 1476; got %d", tun.Attrs().MTU)
 		}
-		addrs, err := nl.AddrList(tun, nl.FAMILY_V4)
-		if err != nil {
-			t.Fatalf("error fetching tunnel addresses: %v", err)
-		}
-		for _, addr := range addrs {
-			if addr.String() == "239.0.0.1/32 doublezero1" {
-				if addr.Flags&unix.IFA_F_MCAUTOJOIN != 0x400 {
-					t.Fatalf("expected to find 0x400, got %x", addr.Flags&unix.IFA_F_MCAUTOJOIN)
-				}
-			}
-		}
+
+		verifyMulticastAddrSet(t, "doublezero1", "239.0.0.1/32")
 	})
 
 	t.Run("verify_state_file_is_created", func(t *testing.T) {
@@ -1836,6 +1817,7 @@ func TestServiceCoexistence(t *testing.T) {
 
 	t.Run("verify_multicast_state", func(t *testing.T) {
 		verifyTunnelIsUp(t, "doublezero1")
+		verifyMulticastAddrSet(t, "doublezero1", "239.0.0.1/32")
 		verifyBgpSessionIsUp(t, httpClient, api.UserTypeMulticast)
 		verifyPimHelloMessageSent(t, pimHelloChan)
 		verifyPimJoinMessageSent(t, pimJoinPruneChan, net.IP([]byte{169, 254, 1, 0}))
@@ -1911,6 +1893,7 @@ func TestServiceCoexistence(t *testing.T) {
 
 	t.Run("verify_multicast_state_after_restart", func(t *testing.T) {
 		verifyTunnelIsUp(t, "doublezero1")
+		verifyMulticastAddrSet(t, "doublezero1", "239.0.0.1/32")
 		verifyBgpSessionIsUp(t, httpClient, api.UserTypeMulticast)
 		verifyPruneMessageSent(t, pimJoinPruneChan, net.IP([]byte{169, 254, 1, 0}))
 		verifyPimHelloMessageSent(t, pimHelloChan)
@@ -2108,6 +2091,29 @@ func verifyTunnelIsUp(t *testing.T, tunName string) {
 		if tun.Attrs().MTU != 1476 {
 			t.Fatalf("tunnel mtu should be 1476; got %d", tun.Attrs().MTU)
 		}
+	})
+}
+
+// verifyMulticastAddrSet checks if the multicast address is set on the tunnel interface
+// with the correct flags. The mAddr argument should be a multicast address in CIDR notation.
+func verifyMulticastAddrSet(t *testing.T, tunName string, mAddr string) {
+	t.Run("verify_multicast_addr_set", func(t *testing.T) {
+		tun, err := nl.LinkByName(tunName)
+		if err != nil {
+			t.Fatalf("error fetching tunnel info: %v", err)
+		}
+		addrs, err := nl.AddrList(tun, nl.FAMILY_V4)
+		if err != nil {
+			t.Fatalf("error fetching tunnel addresses: %v", err)
+		}
+		isMulticastAddrSet := slices.ContainsFunc(addrs, func(addr nl.Addr) bool {
+			return addr.String() == fmt.Sprintf("%s doublezero1", mAddr) && addr.Flags&unix.IFA_F_MCAUTOJOIN == 0x400
+		})
+
+		if !isMulticastAddrSet {
+			t.Fatalf("multicast address %s not found on tunnel doublezero1", mAddr)
+		}
+
 	})
 }
 

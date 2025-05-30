@@ -8,8 +8,6 @@ router pim sparse-mode
 vrf instance vrf1
 ip routing vrf vrf1
 !
-hardware access-list update default-result permit
-!
 default interface Tunnel500
 interface Tunnel500
    description USER-UCAST-500

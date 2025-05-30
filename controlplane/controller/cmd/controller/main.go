@@ -104,6 +104,7 @@ func NewControllerCommand() *ControllerCommand {
 	c.fs.StringVar(&c.listenPort, "listen-port", "443", "listening port for controller grpc server")
 	c.fs.StringVar(&c.programId, "program-id", "", "smartcontract program id to monitor")
 	c.fs.StringVar(&c.rpcEndpoint, "solana-rpc-endpoint", "", "override solana rpc endpoint (default: devnet)")
+	c.fs.BoolVar(&c.noHardware, "no-hardware", false, "exclude config commands that will fail when not running on the real hardware")
 	return c
 }
 
@@ -114,6 +115,7 @@ type ControllerCommand struct {
 	listenPort  string
 	programId   string
 	rpcEndpoint string
+	noHardware  bool
 }
 
 func (c *ControllerCommand) Fs() *flag.FlagSet {
@@ -144,6 +146,10 @@ func (c *ControllerCommand) Run() error {
 
 	if c.rpcEndpoint != "" {
 		options = append(options, controller.WithRpcEndpoint(c.rpcEndpoint))
+	}
+
+	if c.noHardware {
+		options = append(options, controller.WithNoHardware())
 	}
 
 	lis, err := net.Listen("tcp", net.JoinHostPort(c.listenAddr, c.listenPort))

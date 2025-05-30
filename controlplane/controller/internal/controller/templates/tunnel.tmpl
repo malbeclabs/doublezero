@@ -8,18 +8,22 @@ router pim sparse-mode
 vrf instance vrf1
 ip routing vrf vrf1
 !
+{{- if not .NoHardware }}
 hardware access-list update default-result permit
 !
+{{- end }}
 {{- range .Device.Tunnels }}
 default interface Tunnel{{ .Id }}
 {{- if eq true .Allocated }}
 interface Tunnel{{ .Id }}
    {{- if eq true .IsMulticast }}
    description USER-MCAST-{{ .Id }}
+   {{- if not $.NoHardware }}
    {{- if and .IsMulticast .MulticastSubscribers (not .MulticastPublishers) }}
    ip access-group SEC-USER-SUB-MCAST-IN in
    {{- else }}
    ip access-group SEC-USER-PUB-MCAST-IN in
+   {{- end }}
    {{- end }}
    multicast ipv4 boundary SEC-USER-MCAST-BOUNDARY-{{ .Id }}-OUT out
    pim ipv4 sparse-mode

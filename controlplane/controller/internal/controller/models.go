@@ -62,4 +62,5 @@ type templateData struct {
 	Device              *Device
 	UnknownBgpPeers     []net.IP
 	MulticastGroupBlock string
+	NoHardware          bool
 }

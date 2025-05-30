@@ -11,4 +11,7 @@ test-ledger/
 **/bin/*
 smartcontract/cli/config/*
 
+.vscode/*
+.vscode
+
 dist/

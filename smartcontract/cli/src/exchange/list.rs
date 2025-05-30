@@ -2,10 +2,10 @@ use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::commands::exchange::list::ListExchangeCommand;
 use doublezero_sdk::*;
-use prettytable::{format, row, Cell, Row, Table};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
+use tabled::{Table, Tabled};
 
 #[derive(Args, Debug)]
 pub struct ListExchangeCliCommand {
@@ -15,7 +15,7 @@ pub struct ListExchangeCliCommand {
     pub json_compact: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Tabled, Serialize)]
 pub struct ExchangeDisplay {
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
     pub account: Pubkey,
@@ -36,51 +36,30 @@ impl ListExchangeCliCommand {
         let mut exchanges: Vec<(Pubkey, Exchange)> = exchanges.into_iter().collect();
         exchanges.sort_by(|(_, a), (_, b)| a.owner.cmp(&b.owner));
 
-        if self.json || self.json_compact {
-            let exchanges = exchanges
-                .into_iter()
-                .map(|(pubkey, tunnel)| ExchangeDisplay {
-                    account: pubkey,
-                    code: tunnel.code,
-                    name: tunnel.name,
-                    lat: tunnel.lat,
-                    lng: tunnel.lng,
-                    loc_id: tunnel.loc_id,
-                    status: tunnel.status,
-                    owner: tunnel.owner,
-                })
-                .collect::<Vec<_>>();
+        let exchange_displays: Vec<ExchangeDisplay> = exchanges
+            .into_iter()
+            .map(|(pubkey, tunnel)| ExchangeDisplay {
+                account: pubkey,
+                code: tunnel.code,
+                name: tunnel.name,
+                lat: tunnel.lat,
+                lng: tunnel.lng,
+                loc_id: tunnel.loc_id,
+                status: tunnel.status,
+                owner: tunnel.owner,
+            })
+            .collect();
 
-            let json = {
-                if self.json_compact {
-                    serde_json::to_string(&exchanges)?
-                } else {
-                    serde_json::to_string_pretty(&exchanges)?
-                }
-            };
-            writeln!(out, "{}", json)?;
+        let res = if self.json {
+            serde_json::to_string_pretty(&exchange_displays)?
+        } else if self.json_compact {
+            serde_json::to_string(&exchange_displays)?
         } else {
-            let mut table = Table::new();
-            table.add_row(row![
-                "account", "code", "name", "lat", "lng", "loc_id", "status", "owner"
-            ]);
+            let table = Table::new(exchange_displays);
+            table.to_string()
+        };
 
-            for (pubkey, data) in exchanges {
-                table.add_row(Row::new(vec![
-                    Cell::new(&pubkey.to_string()),
-                    Cell::new(&data.code),
-                    Cell::new(&data.name),
-                    Cell::new(&data.lat.to_string()),
-                    Cell::new(&data.lng.to_string()),
-                    Cell::new(&data.loc_id.to_string()),
-                    Cell::new(&data.status.to_string()),
-                    Cell::new(&data.owner.to_string()),
-                ]));
-            }
-
-            table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
-            let _ = table.print(out);
-        }
+        writeln!(out, "{}", res)?;
 
         Ok(())
     }
@@ -167,7 +146,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | code      | name      | lat | lng | loc_id | status    | owner \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | some code | some name | 15  | 15  | 6      | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
+        assert_eq!(output_str, "+-------------------------------------------+-----------+-----------+-----+-----+--------+-----------+-------------------------------------------+\n| account                                   | code      | name      | lat | lng | loc_id | status    | owner                                     |\n+-------------------------------------------+-----------+-----------+-----+-----+--------+-----------+-------------------------------------------+\n| 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | some code | some name | 15  | 15  | 6      | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo |\n+-------------------------------------------+-----------+-----------+-----+-----+--------+-----------+-------------------------------------------+\n");
 
         let mut output = Vec::new();
         let res = ListExchangeCliCommand {

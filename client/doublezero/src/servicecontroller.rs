@@ -4,6 +4,9 @@ use hyper::{Body, Client, Method, Request};
 use hyperlocal::{UnixConnector, Uri};
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use tabled::Tabled;
+
+const NANOS_TO_MS: f32 = 1000000.0;
 
 #[derive(Serialize, Debug)]
 pub struct ProvisioningRequest {
@@ -25,14 +28,21 @@ pub struct ProvisioningResponse {
     pub description: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Tabled, Deserialize, Debug)]
 pub struct LatencyRecord {
     pub device_pk: String,
     pub device_ip: String,
+    #[tabled(display = "display_as_ms")]
     pub min_latency_ns: i32,
+    #[tabled(display = "display_as_ms")]
     pub max_latency_ns: i32,
+    #[tabled(display = "display_as_ms")]
     pub avg_latency_ns: i32,
     pub reachable: bool,
+}
+
+fn display_as_ms(latency: &i32) -> String {
+    format!("{:.2}ms", (*latency as f32 / NANOS_TO_MS))
 }
 
 impl fmt::Display for LatencyRecord {

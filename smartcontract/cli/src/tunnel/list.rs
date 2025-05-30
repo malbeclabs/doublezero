@@ -6,8 +6,7 @@ use doublezero_sdk::*;
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
-use tabled::{Table, Tabled};
-use tabled::settings::Style;
+use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
 pub struct ListTunnelCliCommand {
@@ -87,9 +86,9 @@ impl ListTunnelCliCommand {
         } else if self.json_compact {
             serde_json::to_string(&tunnel_displays)?
         } else {
-            let mut table = Table::new(tunnel_displays);
-            table.with(Style::psql().remove_horizontals());
-            table.to_string()
+            Table::new(tunnel_displays)
+                .with(Style::psql().remove_horizontals())
+                .to_string()
         };
 
         writeln!(out, "{}", res)?;

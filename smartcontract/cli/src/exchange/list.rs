@@ -5,8 +5,7 @@ use doublezero_sdk::*;
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
-use tabled::{Table, Tabled};
-use tabled::settings::Style;
+use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
 pub struct ListExchangeCliCommand {
@@ -56,9 +55,9 @@ impl ListExchangeCliCommand {
         } else if self.json_compact {
             serde_json::to_string(&exchange_displays)?
         } else {
-            let mut table = Table::new(exchange_displays);
-            table.with(Style::psql().remove_horizontals());
-            table.to_string()
+            Table::new(exchange_displays)
+                .with(Style::psql().remove_horizontals())
+                .to_string()
         };
 
         writeln!(out, "{}", res)?;

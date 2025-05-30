@@ -7,8 +7,7 @@ use doublezero_sdk::*;
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
-use tabled::{Table, Tabled};
-use tabled::settings::Style;
+use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
 pub struct ListDeviceCliCommand {
@@ -96,10 +95,9 @@ impl ListDeviceCliCommand {
         } else if self.json_compact {
             serde_json::to_string(&device_displays)?
         } else {
-            let mut table = Table::new(device_displays);
-            table.with(Style::psql().remove_horizontals());
-            table.to_string()
-
+            Table::new(device_displays)
+                .with(Style::psql().remove_horizontals())
+                .to_string()
         };
 
         writeln!(out, "{}", res)?;
@@ -205,6 +203,5 @@ mod tests {
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"code\":\"device1_code\",\"bump_seed\":2,\"location_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"exchange_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA\",\"exchange_code\":\"exchange1_code\",\"exchange_name\":\"exchange1_name\",\"device_type\":\"Switch\",\"public_ip\":\"1.2.3.4\",\"status\":\"Activated\",\"dz_prefixes\":\"1.2.3.4/32\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
-
     }
 }

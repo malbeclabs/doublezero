@@ -91,7 +91,6 @@ func (s *MulticastService) Setup(p *api.ProvisionRequest) error {
 		}
 		s.MulticastSubGroups = p.MulticastSubGroups
 		for _, group := range s.MulticastSubGroups {
-			fmt.Printf("adding multicast group %s for publisher\n", group)
 			_, groupNet, err := net.ParseCIDR(fmt.Sprintf("%s/32", group))
 			if err != nil {
 				return fmt.Errorf("error parsing multicast group address: %v", err)
@@ -133,7 +132,6 @@ func (s *MulticastService) Teardown() error {
 	}
 
 	if s.isSubscriber() {
-		// TODO: stop pim FSM, which should send prune messages
 		if err := s.pim.Close(); err != nil {
 			slog.Error("error stopping pim FSM", "error", err)
 		}
@@ -164,7 +162,7 @@ func (s *MulticastService) Status() (*api.StatusResponse, error) {
 		return nil, fmt.Errorf("netlink: saved state is not programmed into client")
 	}
 	peerStatus := s.bgp.GetPeerStatus(s.Tunnel.RemoteOverlay)
-	fmt.Printf("tunnel: %s", s.Tunnel.Name)
+
 	return &api.StatusResponse{
 		TunnelName:       s.Tunnel.Name,
 		TunnelSrc:        s.Tunnel.LocalUnderlay,

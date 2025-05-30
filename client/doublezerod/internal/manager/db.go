@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -131,13 +130,11 @@ func (d *Db) DeleteState(u api.UserType) error {
 	if err := json.Unmarshal(file, &p); err != nil {
 		return fmt.Errorf("error unmarshaling db file: %v", err)
 	}
-	log.Printf("state is this before delete: %+v", p)
+
 	p = slices.DeleteFunc(p, func(pr *api.ProvisionRequest) bool {
-		log.Printf("checking for match %s %s\n", pr.UserType, u)
 		return pr.UserType == u
 	})
 
-	log.Printf("state is this after delete: %+v", p)
 	d.State = p
 	buf, err := json.MarshalIndent(d.State, "", "    ")
 	if err != nil {
@@ -158,7 +155,6 @@ func (d *Db) SaveState(p *api.ProvisionRequest) error {
 
 	for _, existing := range d.State {
 		if reflect.DeepEqual(existing, p) {
-			log.Printf("provision request already exists in state: %v", p)
 			return nil
 		}
 	}

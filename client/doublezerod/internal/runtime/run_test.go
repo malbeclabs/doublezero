@@ -1633,8 +1633,6 @@ func TestServiceCoexistence(t *testing.T) {
 		t.Fatalf("error setting up test: %v", err)
 	}
 
-	// TODO: setup BGP server in the doublezero-peer namespace
-	// TODO: setup PIM receiver in network namespace
 	srv, _ := corebgp.NewServer(netip.MustParseAddr("2.2.2.2"))
 	go func() {
 		rt.LockOSThread()
@@ -1846,7 +1844,7 @@ func TestServiceCoexistence(t *testing.T) {
 	t.Run("verify_state_file_is_created", func(t *testing.T) {
 		verifyStateFileMatches(t, rootPath, "./fixtures/doublezerod.ibrl_w_mcast_subscriber.json")
 	})
-	// TODO: stop and start runtime to make sure recovery works
+
 	t.Run("stop_runtime", func(t *testing.T) {
 		cancel()
 		select {
@@ -1919,7 +1917,6 @@ func TestServiceCoexistence(t *testing.T) {
 		verifyPimJoinMessageSent(t, pimJoinPruneChan, net.IP([]byte{169, 254, 1, 0}))
 	})
 
-	// TODO: remove unicast IBRL tunnel
 	t.Run("remove_ibrl_subscriber_tunnel", func(t *testing.T) {
 		body := fmt.Sprintf(`{"user_type": "%s"}`, api.UserTypeIBRL)
 		if err := sendClientRequest(httpClient, "remove", body); err != nil {
@@ -1935,18 +1932,22 @@ func TestServiceCoexistence(t *testing.T) {
 		verifyStateFileMatches(t, rootPath, "./fixtures/doublezerod.ibrl_w_mcast_subscriber_ibrl_removed.json")
 	})
 
-	// TODO: remove multicast subscriber tunnel
 	t.Run("remove_multicast_subscriber_tunnel", func(t *testing.T) {
 		body := fmt.Sprintf(`{"user_type": "%s"}`, api.UserTypeMulticast)
 		if err := sendClientRequest(httpClient, "remove", body); err != nil {
 			t.Fatalf("error sending remove request: %v", err)
 		}
 	})
-	// TODO: check things were removed
 
-	// TODO: stop runtime and make sure state file is removed
-	t.Run("state_removal_stop_runtime", func(t *testing.T) {
-		time.Sleep(2 * time.Second) // give some time for the remove request to be processed
+	t.Run("verify_multicast_tunnel_is_removed", func(t *testing.T) {
+		verifyTunnelIsRemoved(t, "doublezero1")
+	})
+
+	t.Run("verify_multicast_state_removed", func(t *testing.T) {
+		verifyStateFileMatches(t, rootPath, "./fixtures/doublezerod.empty.json")
+	})
+
+	t.Run("stop_runtime", func(t *testing.T) {
 		cancel()
 		select {
 		case err := <-errChan:
@@ -1955,27 +1956,6 @@ func TestServiceCoexistence(t *testing.T) {
 			}
 		case <-time.After(5 * time.Second):
 			t.Fatalf("timed out waiting for close")
-		}
-	})
-
-	t.Run("verify_tunnel_is_removed", func(t *testing.T) {
-		_, err := nl.LinkByName("doublezero0")
-		if !errors.As(err, &nl.LinkNotFoundError{}) {
-			t.Fatalf("expected LinkNotFoundError; got: %v", err)
-		}
-	})
-
-	t.Run("state_removal_verify_state_file_removed", func(t *testing.T) {
-		path, _ := os.ReadFile(filepath.Join(rootPath, "doublezerod", "doublezerod.json"))
-
-		var p []*api.ProvisionRequest
-		if err := json.Unmarshal(path, &p); err != nil {
-			t.Errorf("error unmarshaling db file: %v", err)
-		}
-
-		if len(p) != 0 {
-			t.Fatalf("provisioned requests should be empty; got %+v", p)
-
 		}
 	})
 }

@@ -62,6 +62,9 @@ router bgp 65342
       neighbor {{ .OverlayDstIP }} activate
    {{- end }}
    {{- end }}
+   {{- range .UnknownBgpPeers }}
+   no neighbor {{ . }}
+   {{- end }}
    !
    vrf vrf1
       rd 65342:1

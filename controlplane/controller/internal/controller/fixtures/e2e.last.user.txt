@@ -52,6 +52,7 @@ default interface Tunnel519
 !
 router bgp 65342
    address-family ipv4
+   no neighbor 169.254.0.13
    !
    vrf vrf1
       rd 65342:1

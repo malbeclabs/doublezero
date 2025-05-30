@@ -286,7 +286,7 @@ fn process_device_event(
 
             match res {
                 Ok(signature) => {
-                    println!("CloseAccountd {}", signature);
+                    println!("CloseAccount {}", signature);
                     devices.remove(pubkey);
                     *state_transitions
                         .entry("device-deleting-to-closeaccountd")
@@ -366,7 +366,7 @@ fn process_tunnel_event(
 
             match res {
                 Ok(signature) => {
-                    println!("CloseAccountd {}", signature);
+                    println!("CloseAccount {}", signature);
                     *state_transitions
                         .entry("tunnel-deleting-to-closeaccountd")
                         .or_insert(0) += 1;
@@ -560,7 +560,7 @@ fn process_user_event(
 
                     match res {
                         Ok(signature) => {
-                            println!("CloseAccountd {}", signature);
+                            println!("CloseAccount {}", signature);
                             *state_transitions
                                 .entry("user-deleting-to-closeaccountd")
                                 .or_insert(0) += 1;

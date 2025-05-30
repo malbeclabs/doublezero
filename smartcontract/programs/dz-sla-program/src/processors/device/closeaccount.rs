@@ -67,7 +67,7 @@ pub fn process_closeaccount_device(
     account_close(pda_account, owner_account)?;
 
     #[cfg(test)]
-    msg!("CloseAccountd: {:?}", device);
+    msg!("CloseAccount: {:?}", device);
 
     Ok(())
 }

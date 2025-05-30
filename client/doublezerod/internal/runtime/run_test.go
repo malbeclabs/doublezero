@@ -1624,7 +1624,7 @@ func TestMulticastSubscriber(t *testing.T) {
 	})
 }
 
-func TestServiceCoexistance(t *testing.T) {
+func TestServiceCoexistence(t *testing.T) {
 	teardown, err := setupTest(t)
 	rootPath := os.Getenv("XDG_STATE_HOME")
 	t.Cleanup(teardown)

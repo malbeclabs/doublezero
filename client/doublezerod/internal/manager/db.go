@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"slices"
 	"sync"
@@ -132,12 +133,12 @@ func (d *Db) DeleteState(u api.UserType) error {
 	}
 	log.Printf("state is this before delete: %+v", p)
 	p = slices.DeleteFunc(p, func(pr *api.ProvisionRequest) bool {
-		log.Printf("checking for match %s %s", pr.UserType, u)
+		log.Printf("checking for match %s %s\n", pr.UserType, u)
 		return pr.UserType == u
 	})
 
+	log.Printf("state is this after delete: %+v", p)
 	d.State = p
-	log.Printf("state is this after delete: %+v", d.State)
 	buf, err := json.MarshalIndent(d.State, "", "    ")
 	if err != nil {
 		return fmt.Errorf("error marshalling state: %v", err)
@@ -154,9 +155,12 @@ func (d *Db) SaveState(p *api.ProvisionRequest) error {
 	if p == nil {
 		return fmt.Errorf("provision request is nil")
 	}
-	if slices.Contains(d.State, p) {
-		log.Printf("provision request already exists in state: %v", p)
-		return nil
+
+	for _, existing := range d.State {
+		if reflect.DeepEqual(existing, p) {
+			log.Printf("provision request already exists in state: %v", p)
+			return nil
+		}
 	}
 	d.mu.Lock()
 	d.State = append(d.State, p)

@@ -22,6 +22,7 @@ func TestGetConfig(t *testing.T) {
 		Name        string
 		Description string
 		StateCache  stateCache
+		NoHardware  bool
 		Pubkey      string
 		Want        string
 	}{
@@ -188,6 +189,21 @@ func TestGetConfig(t *testing.T) {
 									{239, 0, 0, 6},
 								},
 							},
+							{
+								Id:                   503,
+								UnderlaySrcIP:        net.IP{7, 7, 7, 7},
+								UnderlayDstIP:        net.IP{8, 8, 8, 8},
+								OverlaySrcIP:         net.IP{169, 254, 0, 6},
+								OverlayDstIP:         net.IP{169, 254, 0, 7},
+								DzIp:                 net.IP{100, 0, 0, 3},
+								Allocated:            true,
+								IsMulticast:          true,
+								MulticastSubscribers: []net.IP{},
+								MulticastPublishers: []net.IP{
+									{239, 0, 0, 5},
+									{239, 0, 0, 6},
+								},
+							},
 						},
 						PublicIP: net.IP{7, 7, 7, 7},
 					},
@@ -196,37 +212,115 @@ func TestGetConfig(t *testing.T) {
 			Pubkey: "abc123",
 			Want:   "fixtures/mixed.tunnel.txt",
 		},
+		{
+			Name:        "get_config_nohardware_tunnels_successfully",
+			Description: "get config for a mix of unicast and multicast tunnels with no hardware option",
+			NoHardware:  true,
+			StateCache: stateCache{
+				Config: dzsdk.Config{
+					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+				},
+				Devices: map[string]*Device{
+					"abc123": {
+						Tunnels: []*Tunnel{
+							{
+								Id:            500,
+								UnderlaySrcIP: net.IP{1, 1, 1, 1},
+								UnderlayDstIP: net.IP{2, 2, 2, 2},
+								OverlaySrcIP:  net.IP{169, 254, 0, 0},
+								OverlayDstIP:  net.IP{169, 254, 0, 1},
+								DzIp:          net.IP{100, 0, 0, 0},
+								Allocated:     true,
+								IsMulticast:   true,
+								MulticastSubscribers: []net.IP{
+									{239, 0, 0, 1},
+									{239, 0, 0, 2},
+								},
+								MulticastPublishers: []net.IP{},
+							},
+							{
+								Id:            501,
+								UnderlaySrcIP: net.IP{3, 3, 3, 3},
+								UnderlayDstIP: net.IP{4, 4, 4, 4},
+								OverlaySrcIP:  net.IP{169, 254, 0, 2},
+								OverlayDstIP:  net.IP{169, 254, 0, 3},
+								DzIp:          net.IP{100, 0, 0, 1},
+								Allocated:     true,
+							},
+							{
+								Id:            502,
+								UnderlaySrcIP: net.IP{5, 5, 5, 5},
+								UnderlayDstIP: net.IP{6, 6, 6, 6},
+								OverlaySrcIP:  net.IP{169, 254, 0, 4},
+								OverlayDstIP:  net.IP{169, 254, 0, 5},
+								DzIp:          net.IP{100, 0, 0, 2},
+								Allocated:     true,
+								IsMulticast:   true,
+								MulticastSubscribers: []net.IP{
+									{239, 0, 0, 3},
+									{239, 0, 0, 4},
+								},
+								MulticastPublishers: []net.IP{
+									{239, 0, 0, 5},
+									{239, 0, 0, 6},
+								},
+							},
+							{
+								Id:                   503,
+								UnderlaySrcIP:        net.IP{7, 7, 7, 7},
+								UnderlayDstIP:        net.IP{8, 8, 8, 8},
+								OverlaySrcIP:         net.IP{169, 254, 0, 6},
+								OverlayDstIP:         net.IP{169, 254, 0, 7},
+								DzIp:                 net.IP{100, 0, 0, 3},
+								Allocated:            true,
+								IsMulticast:          true,
+								MulticastSubscribers: []net.IP{},
+								MulticastPublishers: []net.IP{
+									{239, 0, 0, 5},
+									{239, 0, 0, 6},
+								},
+							},
+						},
+						PublicIP: net.IP{7, 7, 7, 7},
+					},
+				},
+			},
+			Pubkey: "abc123",
+			Want:   "fixtures/nohardware.tunnel.txt",
+		},
 	}
-
-	listener := bufconn.Listen(1024 * 1024)
-	server := grpc.NewServer()
-	controller := &Controller{}
-	pb.RegisterControllerServer(server, controller)
-
-	go func() {
-		if err := server.Serve(listener); err != nil {
-			log.Fatal(err)
-		}
-	}()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	opts := []grpc.DialOption{
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
-			return listener.Dial()
-		}),
-	}
-	conn, err := grpc.NewClient("passthrough://bufnet", opts...)
-	if err != nil {
-		t.Fatalf("error creating controller client: %v", err)
-	}
-	defer conn.Close()
-	defer cancel()
-
-	agent := pb.NewControllerClient(conn)
 
 	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
+			listener := bufconn.Listen(1024 * 1024)
+			server := grpc.NewServer()
+			controller := &Controller{
+				noHardware: test.NoHardware,
+			}
+			pb.RegisterControllerServer(server, controller)
+
+			go func() {
+				if err := server.Serve(listener); err != nil {
+					log.Fatal(err)
+				}
+			}()
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			opts := []grpc.DialOption{
+				grpc.WithTransportCredentials(insecure.NewCredentials()),
+				grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+					return listener.Dial()
+				}),
+			}
+			conn, err := grpc.NewClient("passthrough://bufnet", opts...)
+			if err != nil {
+				t.Fatalf("error creating controller client: %v", err)
+			}
+			defer conn.Close()
+			defer cancel()
+
+			agent := pb.NewControllerClient(conn)
+
 			// update the state cache in the controller per the test
 			controller.swapCache(test.StateCache)
 

@@ -42,6 +42,7 @@ type Controller struct {
 	listener    net.Listener
 	programId   string
 	rpcEndpoint string
+	noHardware  bool
 	updateDone  chan struct{}
 }
 
@@ -110,6 +111,14 @@ func WithListener(listener net.Listener) Option {
 func WithSignalChan(ch chan struct{}) Option {
 	return func(c *Controller) {
 		c.updateDone = ch
+	}
+}
+
+// WithNoHardware provides a way to exclude rendering config commands that will fail when not
+// running on the real hardware.
+func WithNoHardware() Option {
+	return func(c *Controller) {
+		c.noHardware = true
 	}
 }
 
@@ -344,6 +353,7 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		MulticastGroupBlock: multicastGroupBlock,
 		Device:              device,
 		UnknownBgpPeers:     unknownPeers,
+		NoHardware:          c.noHardware,
 	}
 
 	config, err := renderConfig(data)

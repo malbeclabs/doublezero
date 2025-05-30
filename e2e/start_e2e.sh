@@ -49,7 +49,7 @@ main() {
     populate_data_onchain
 
     print_banner "Initializing doublezero controller"
-    doublezero-controller start -listen-addr 0.0.0.0 -listen-port 7000 -program-id $PROGRAM_ID -solana-rpc-endpoint $VALIDATOR_URL &
+    doublezero-controller start -listen-addr 0.0.0.0 -listen-port 7000 -program-id $PROGRAM_ID -solana-rpc-endpoint $VALIDATOR_URL -no-hardware &
 
     print_banner "Initializing doublezero daemon"
     start_doublezerod

@@ -8,6 +8,8 @@ router pim sparse-mode
 vrf instance vrf1
 ip routing vrf vrf1
 !
+hardware access-list update default-result permit
+!
 default interface Tunnel500
 !
 default interface Tunnel501
@@ -49,6 +51,9 @@ default interface Tunnel518
 default interface Tunnel519
 !
 router bgp 65342
+   address-family ipv4
+   no neighbor 169.254.0.13
+   !
    vrf vrf1
       rd 65342:1
       route-target import vpn-ipv4 65342:1

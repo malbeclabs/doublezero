@@ -94,6 +94,7 @@ func (s *PIMServer) Start(iface string, tunnelAddr net.IP, groups []net.IP) erro
 					slog.Error("failed to send PIM prune msg", "error", err)
 				}
 				s.wg.Done()
+				return
 			}
 		}
 	}()

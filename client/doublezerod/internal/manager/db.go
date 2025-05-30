@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"slices"
 	"sync"
@@ -108,7 +108,6 @@ func (d *Db) GetState(userTypes ...api.UserType) []*api.ProvisionRequest {
 	return dbState
 }
 
-// TODO: this needs to be implemented once the remove endpoint is added
 // Delete removes the latest provisioned state from disk
 func (d *Db) DeleteState(u api.UserType) error {
 	if _, err := os.Stat(d.Path); err != nil {
@@ -131,13 +130,12 @@ func (d *Db) DeleteState(u api.UserType) error {
 	if err := json.Unmarshal(file, &p); err != nil {
 		return fmt.Errorf("error unmarshaling db file: %v", err)
 	}
+
 	p = slices.DeleteFunc(p, func(pr *api.ProvisionRequest) bool {
-		// TODO: this is a hack until the client is updated to send user type
-		return pr.UserType == u || pr.UserType == api.UserTypeIBRL || pr.UserType == api.UserTypeIBRLWithAllocatedIP
+		return pr.UserType == u
 	})
 
 	d.State = p
-	log.Printf("state is this after delete: %+v", d.State)
 	buf, err := json.MarshalIndent(d.State, "", "    ")
 	if err != nil {
 		return fmt.Errorf("error marshalling state: %v", err)
@@ -154,9 +152,11 @@ func (d *Db) SaveState(p *api.ProvisionRequest) error {
 	if p == nil {
 		return fmt.Errorf("provision request is nil")
 	}
-	if slices.Contains(d.State, p) {
-		log.Printf("provision request already exists in state: %v", p)
-		return nil
+
+	for _, existing := range d.State {
+		if reflect.DeepEqual(existing, p) {
+			return nil
+		}
 	}
 	d.mu.Lock()
 	d.State = append(d.State, p)

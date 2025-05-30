@@ -69,7 +69,7 @@ pub fn process_resume_device(
     account_write(pda_account, &device, payer_account, system_program);
 
     #[cfg(test)]
-    msg!("Suspended: {:?}", device);
+    msg!("Resumed: {:?}", device);
 
     Ok(())
 }

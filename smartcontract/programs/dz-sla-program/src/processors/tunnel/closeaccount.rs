@@ -77,7 +77,7 @@ pub fn process_closeaccount_tunnel(
     account_close(pda_account, owner_account)?;
 
     #[cfg(test)]
-    msg!("CloseAccountd: {:?}", tunnel);
+    msg!("CloseAccount: {:?}", tunnel);
 
     Ok(())
 }

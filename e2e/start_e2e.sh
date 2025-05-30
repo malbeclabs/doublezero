@@ -226,6 +226,10 @@ test_multicast_publisher() {
     print_banner "Connecting multicast publisher"
     doublezero --keypair $SOLANA_KEYPAIR connect multicast publisher mg01 --client-ip 64.86.249.86
 
+    sleep 5
+    print_banner "Another check to see if publisher number goes up"
+    doublezero multicast group list
+
     print_banner "Waiting for client tunnel to be up before starting tests"
     e2e_test -test.v -test.run "^TestWaitForClientTunnelUp"
 
@@ -243,6 +247,10 @@ test_multicast_publisher() {
 test_multicast_subscriber() {
     print_banner "Connecting multicast subscriber"
     doublezero --keypair $SOLANA_KEYPAIR connect multicast subscriber mg01 --client-ip 64.86.249.87
+
+    sleep 5
+    print_banner "Another check to see if subscriber number goes up"
+    doublezero multicast group list
 
     print_banner "Waiting for client tunnel to be up before starting tests"
     e2e_test -test.v -test.run "^TestWaitForClientTunnelUp"

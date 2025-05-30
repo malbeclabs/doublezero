@@ -211,7 +211,21 @@ func TestRenderConfig(t *testing.T) {
 								{239, 0, 0, 6},
 							},
 						},
-						// TODO(snormore): Add a publisher-only tunnel.
+						{
+							Id:                   503,
+							UnderlaySrcIP:        net.IP{7, 7, 7, 7},
+							UnderlayDstIP:        net.IP{8, 8, 8, 8},
+							OverlaySrcIP:         net.IP{169, 254, 0, 6},
+							OverlayDstIP:         net.IP{169, 254, 0, 7},
+							DzIp:                 net.IP{100, 0, 0, 3},
+							Allocated:            true,
+							IsMulticast:          true,
+							MulticastSubscribers: []net.IP{},
+							MulticastPublishers: []net.IP{
+								{239, 0, 0, 5},
+								{239, 0, 0, 6},
+							},
+						},
 					},
 				},
 				UnknownBgpPeers: []net.IP{},

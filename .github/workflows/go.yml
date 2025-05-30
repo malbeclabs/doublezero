@@ -1,24 +1,14 @@
 name: go
 on:
   push:
-    paths:
-      - "client/**"
-      - "controlplane/**"
-      - "telemetry/**"
-      - "smartcontract/sdk/go/**"
-      - "go.mod"
-      - "go.sum"
-      - "!**/**.md"
+    paths-ignore:
+      - "**/*.md"
+      - "**/*.rs"
     branches: [ main ]
   pull_request:
-    paths:
-      - "client/**"
-      - "controlplane/**"
-      - "telemetry/**"
-      - "smartcontract/sdk/go/**"
-      - "go.mod"
-      - "go.sum"
-      - "!**/**.md"
+    paths-ignore:
+      - "**/*.md"
+      - "**/*.rs"
     branches: [ main ]
 
 permissions:

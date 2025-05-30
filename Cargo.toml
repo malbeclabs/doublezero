@@ -13,7 +13,6 @@ resolver = "2"
 
 [workspace.package]
 authors = ["Malbec Labs <dev@malbeclabs.com>"]
-rust-version = "1.87"
 readme = "README.md"
 edition = "2021"
 description = "Malbec Labs DoubleZero"

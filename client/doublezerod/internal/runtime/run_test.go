@@ -1944,6 +1944,7 @@ func TestServiceCoexistence(t *testing.T) {
 }
 
 func setupTest(t *testing.T) (func(), error) {
+	abortIfLinksAreUp(t)
 	rootPath, err := os.MkdirTemp("", "doublezerod")
 	if err != nil {
 		t.Fatalf("error creating temp dir: %v", err)
@@ -2337,4 +2338,15 @@ func verifyPruneMessageSent(t *testing.T, pimJoinPruneChan chan []byte, upstream
 			}
 		}
 	})
+}
+
+// TODO: should the links be removed instead of aborting?
+func abortIfLinksAreUp(t *testing.T) {
+	links := []string{"doublezero0", "doublezero1"}
+	for _, link := range links {
+		tun, _ := nl.LinkByName(link)
+		if tun != nil {
+			t.Fatalf("tunnel %s is up and needs to be removed", tun.Attrs().Name)
+		}
+	}
 }

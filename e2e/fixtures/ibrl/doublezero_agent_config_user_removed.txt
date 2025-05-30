@@ -8,6 +8,8 @@ router pim sparse-mode
 vrf instance vrf1
 ip routing vrf vrf1
 !
+hardware access-list update default-result permit
+!
 default interface Tunnel500
 !
 default interface Tunnel501

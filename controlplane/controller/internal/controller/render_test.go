@@ -211,6 +211,7 @@ func TestRenderConfig(t *testing.T) {
 								{239, 0, 0, 6},
 							},
 						},
+						// TODO(snormore): Add a publisher-only tunnel.
 					},
 				},
 				UnknownBgpPeers: []net.IP{},

@@ -14,7 +14,11 @@ default interface Tunnel{{ .Id }}
 interface Tunnel{{ .Id }}
    {{- if eq true .IsMulticast }}
    description USER-MCAST-{{ .Id }}
-   ip access-group SEC-USER-MCAST-IN in
+   {{- if and .IsMulticast .MulticastSubscribers (not .MulticastPublishers) }}
+   ip access-group SEC-USER-SUB-MCAST-IN in
+   {{- else }}
+   ip access-group SEC-USER-PUB-MCAST-IN in
+   {{- end }}
    multicast ipv4 boundary SEC-USER-MCAST-BOUNDARY-{{ .Id }}-OUT out
    pim ipv4 sparse-mode
    pim ipv4 dr-priority 4294967295

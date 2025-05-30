@@ -24,7 +24,7 @@ interface Tunnel500
 default interface Tunnel501
 interface Tunnel501
    description USER-MCAST-501
-   ip access-group SEC-USER-MCAST-IN in
+   ip access-group SEC-USER-SUB-MCAST-IN in
    multicast ipv4 boundary SEC-USER-MCAST-BOUNDARY-501-OUT out
    pim ipv4 sparse-mode
    pim ipv4 dr-priority 4294967295

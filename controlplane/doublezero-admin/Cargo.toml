@@ -1,34 +1,37 @@
 [package]
 name = "doublezero-admin"
 version = "0.2.0"
-edition = "2021"
-authors = ["Juan Olveira"]
-license = "Apache-2.0"
 description = "Command line interface to interact with the DZ program."
 
+# Workspace inherited keys
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+
 [dependencies]
-clap = { version = "4.5.38", features = ["derive"] }
-clap_complete = { version = "4", features = [ "unstable-dynamic" ] }
-eyre = "0.6.12"
-solana-program = "2.2.1"
-solana-sdk = "2.2.2"
-solana-client = "2.2.7"
-solana-pubsub-client = "2.2.7"
-chrono = "0.4"
-tokio = { version = "1.45.1", features = ["full"] }
-serde_json = "1.0.140"
-prettytable-rs = "0.10.0"
-serde_yaml = "0.9.33"
-serde = "1.0.218"
-futures = "0.3.31"
-futures-util = "0.3.31"
-indicatif = "0.17.11"
-console = "0.15.11"
-anyhow = "1.0.98"
+anyhow.workspace = true
+chrono.workspace = true
+clap.workspace = true
+clap_complete.workspace = true
+console.workspace = true
+eyre.workspace = true
+futures.workspace = true
+futures-util.workspace = true
+hyper.workspace = true
+hyperlocal.workspace = true
+indicatif.workspace = true
+prettytable-rs.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+solana-client.workspace = true
+solana-program.workspace = true
+solana-pubsub-client.workspace = true
+solana-sdk.workspace = true
+tokio.workspace = true
 
-hyper = { version="0.14", features=["client", "http1", "tcp", "stream"] }
-hyperlocal = { version="0.8" }
-
-
-doublezero_sdk = { path = "../../smartcontract/sdk/rs", version = "0.2.0" }
-doublezero_cli = { path = "../../smartcontract/cli", version = "0.2.0" }
+# Dependencies from this workspace
+doublezero_sdk.workspace = true
+doublezero_cli.workspace = true

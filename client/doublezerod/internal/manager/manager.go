@@ -118,14 +118,14 @@ func (n *NetlinkManager) Remove(u api.UserType) error {
 		return fmt.Errorf("unsupported user type: %s", u)
 	}
 
-	if services.IsUnicastUser(u) {
+	if services.IsUnicastUser(u) && n.UnicastService != nil {
 		if err := n.UnicastService.Teardown(); err != nil {
 			return fmt.Errorf("error tearing down unicast service: %v", err)
 		}
 		n.UnicastService = nil
 	}
 
-	if services.IsMulticastUser(u) {
+	if services.IsMulticastUser(u) && n.MulticastService != nil {
 		if err := n.MulticastService.Teardown(); err != nil {
 			return fmt.Errorf("error tearing down multicast service: %v", err)
 		}

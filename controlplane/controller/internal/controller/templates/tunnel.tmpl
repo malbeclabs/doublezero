@@ -44,13 +44,33 @@ interface Tunnel{{ .Id }}
 !
 {{- end }}
 router bgp 65342
+   {{- range .Device.Tunnels }}
+   {{- if and .IsMulticast .Allocated }}
+   no neighbor {{ .OverlayDstIP }}
+   neighbor {{ .OverlayDstIP }} remote-as 65000
+   neighbor {{ .OverlayDstIP }} passive
+   neighbor {{ .OverlayDstIP }} description USER-{{ .Id  }}
+   neighbor {{ .OverlayDstIP }} route-map RM-USER-{{ .Id }}-IN in
+   neighbor {{ .OverlayDstIP }} route-map RM-USER-{{ .Id }}-OUT out
+   neighbor {{ .OverlayDstIP }} maximum-routes 1
+   neighbor {{ .OverlayDstIP }} maximum-accepted-routes 1
+   {{- end }}
+   {{- end }}
+   address-family ipv4
+   {{- range .Device.Tunnels }}
+   {{- if and .IsMulticast .Allocated }}
+      neighbor {{ .OverlayDstIP }} activate
+   {{- end }}
+   {{- end }}
+   !
    vrf vrf1
       rd 65342:1
       route-target import vpn-ipv4 65342:1
       route-target export vpn-ipv4 65342:1
       router-id {{ .Device.PublicIP }}
-{{- range .Device.Tunnels }}
-{{- if eq true .Allocated }}
+      {{- range .Device.Tunnels }}
+      {{- if eq true .Allocated }}
+      {{- if not .IsMulticast }}
       no neighbor {{ .OverlayDstIP }}
       neighbor {{ .OverlayDstIP }} remote-as 65000
       neighbor {{ .OverlayDstIP }} passive
@@ -59,8 +79,9 @@ router bgp 65342
       neighbor {{ .OverlayDstIP }} route-map RM-USER-{{ .Id }}-OUT out
       neighbor {{ .OverlayDstIP }} maximum-routes 1
       neighbor {{ .OverlayDstIP }} maximum-accepted-routes 1
-{{- end }}
-{{- end }}
+      {{- end }}
+      {{- end }}
+      {{- end }}
 {{- range .UnknownBgpPeers }}
       no neighbor {{ . }}
 {{- end }}

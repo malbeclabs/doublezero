@@ -67,19 +67,40 @@ interface Tunnel503
    no shutdown
 !
 router bgp 65342
+   no neighbor 169.254.0.1
+   neighbor 169.254.0.1 remote-as 65000
+   neighbor 169.254.0.1 passive
+   neighbor 169.254.0.1 description USER-500
+   neighbor 169.254.0.1 route-map RM-USER-500-IN in
+   neighbor 169.254.0.1 route-map RM-USER-500-OUT out
+   neighbor 169.254.0.1 maximum-routes 1
+   neighbor 169.254.0.1 maximum-accepted-routes 1
+   no neighbor 169.254.0.5
+   neighbor 169.254.0.5 remote-as 65000
+   neighbor 169.254.0.5 passive
+   neighbor 169.254.0.5 description USER-502
+   neighbor 169.254.0.5 route-map RM-USER-502-IN in
+   neighbor 169.254.0.5 route-map RM-USER-502-OUT out
+   neighbor 169.254.0.5 maximum-routes 1
+   neighbor 169.254.0.5 maximum-accepted-routes 1
+   no neighbor 169.254.0.7
+   neighbor 169.254.0.7 remote-as 65000
+   neighbor 169.254.0.7 passive
+   neighbor 169.254.0.7 description USER-503
+   neighbor 169.254.0.7 route-map RM-USER-503-IN in
+   neighbor 169.254.0.7 route-map RM-USER-503-OUT out
+   neighbor 169.254.0.7 maximum-routes 1
+   neighbor 169.254.0.7 maximum-accepted-routes 1
+   address-family ipv4
+      neighbor 169.254.0.1 activate
+      neighbor 169.254.0.5 activate
+      neighbor 169.254.0.7 activate
+   !
    vrf vrf1
       rd 65342:1
       route-target import vpn-ipv4 65342:1
       route-target export vpn-ipv4 65342:1
       router-id 7.7.7.7
-      no neighbor 169.254.0.1
-      neighbor 169.254.0.1 remote-as 65000
-      neighbor 169.254.0.1 passive
-      neighbor 169.254.0.1 description USER-500
-      neighbor 169.254.0.1 route-map RM-USER-500-IN in
-      neighbor 169.254.0.1 route-map RM-USER-500-OUT out
-      neighbor 169.254.0.1 maximum-routes 1
-      neighbor 169.254.0.1 maximum-accepted-routes 1
       no neighbor 169.254.0.3
       neighbor 169.254.0.3 remote-as 65000
       neighbor 169.254.0.3 passive
@@ -88,22 +109,6 @@ router bgp 65342
       neighbor 169.254.0.3 route-map RM-USER-501-OUT out
       neighbor 169.254.0.3 maximum-routes 1
       neighbor 169.254.0.3 maximum-accepted-routes 1
-      no neighbor 169.254.0.5
-      neighbor 169.254.0.5 remote-as 65000
-      neighbor 169.254.0.5 passive
-      neighbor 169.254.0.5 description USER-502
-      neighbor 169.254.0.5 route-map RM-USER-502-IN in
-      neighbor 169.254.0.5 route-map RM-USER-502-OUT out
-      neighbor 169.254.0.5 maximum-routes 1
-      neighbor 169.254.0.5 maximum-accepted-routes 1
-      no neighbor 169.254.0.7
-      neighbor 169.254.0.7 remote-as 65000
-      neighbor 169.254.0.7 passive
-      neighbor 169.254.0.7 description USER-503
-      neighbor 169.254.0.7 route-map RM-USER-503-IN in
-      neighbor 169.254.0.7 route-map RM-USER-503-OUT out
-      neighbor 169.254.0.7 maximum-routes 1
-      neighbor 169.254.0.7 maximum-accepted-routes 1
 !
 ip community-list COMM-ALL_USERS permit 21682:1200
 ip community-list COMM-ALL_MCAST_USERS permit 21682:1300

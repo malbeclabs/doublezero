@@ -74,7 +74,7 @@ pub fn process_resume_exchange(
     account_write(pda_account, &exchange, payer_account, system_program);
 
     #[cfg(test)]
-    msg!("Suspended: {:?}", exchange);
+    msg!("Resumed: {:?}", exchange);
 
     Ok(())
 }

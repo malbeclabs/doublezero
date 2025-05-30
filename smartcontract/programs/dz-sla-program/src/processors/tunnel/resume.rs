@@ -62,7 +62,7 @@ pub fn process_resume_tunnel(
     account_write(pda_account, &tunnel, payer_account, system_program);
 
     #[cfg(test)]
-    msg!("Suspended: {:?}", tunnel);
+    msg!("Resumed: {:?}", tunnel);
 
     Ok(())
 }

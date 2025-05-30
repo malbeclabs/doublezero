@@ -59,7 +59,7 @@ pub fn process_resume_user(
     account_write(pda_account, &user, payer_account, system_program);
 
     #[cfg(test)]
-    msg!("Suspended: {:?}", user);
+    msg!("Resumed: {:?}", user);
 
     Ok(())
 }

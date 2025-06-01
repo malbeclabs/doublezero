@@ -35,7 +35,6 @@
     "mounts": [
         "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
     ],
-    "privileged": true,
     "capAdd": [
         "NET_ADMIN",
         "NET_RAW"

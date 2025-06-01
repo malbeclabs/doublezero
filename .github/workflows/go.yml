@@ -24,6 +24,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
   build:
@@ -35,6 +36,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
       - name: build
         run: go build -v ./...
   unit_test:
@@ -46,6 +48,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
       - name: test
         run: go test -exec sudo -race -v ./...
   integration_test:
@@ -57,5 +60,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
       - name: test
         run: go test -exec sudo -race -v ./... -tags=integration

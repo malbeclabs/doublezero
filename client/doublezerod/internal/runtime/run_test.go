@@ -1,4 +1,4 @@
-//go:build !race
+//go:build !race && e2e
 
 package runtime_test
 
@@ -81,7 +81,33 @@ func (p *dummyPlugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.N
 	return nil
 }
 
-func TestEndToEnd_IBRL(t *testing.T) {
+func TestEndToEnd_IBRL_Basic(t *testing.T) {
+	runIBRLTest(t, api.UserTypeIBRL, map[string]any{
+
+		"tunnel_src":     "192.168.1.0",
+		"tunnel_dst":     "192.168.1.1",
+		"tunnel_net":     "169.254.0.0/31",
+		"doublezero_ip":  "192.168.1.0",
+		"user_type":      "IBRL",
+		"bgp_local_asn":  65000,
+		"bgp_remote_asn": 65342,
+	}, "./fixtures/doublezerod.ibrl.json")
+}
+
+func TestEndToEnd_IBRL_WithAllocatedIP(t *testing.T) {
+	runIBRLTest(t, api.UserTypeIBRLWithAllocatedIP, map[string]any{
+
+		"tunnel_src":     "192.168.1.0",
+		"tunnel_dst":     "192.168.1.1",
+		"tunnel_net":     "169.254.0.0/31",
+		"doublezero_ip":  "192.168.1.0",
+		"user_type":      "IBRLWithAllocatedIP",
+		"bgp_local_asn":  65000,
+		"bgp_remote_asn": 65342,
+	}, "./fixtures/doublezerod.ibrl.with.allocated.ip.json")
+}
+
+func runIBRLTest(t *testing.T, userType api.UserType, provisioningRequest map[string]any, goldenStateFile string) {
 	teardown, err := setupTest(t)
 	rootPath := os.Getenv("XDG_STATE_HOME")
 	t.Cleanup(teardown)
@@ -126,359 +152,320 @@ func TestEndToEnd_IBRL(t *testing.T) {
 		}
 	}()
 
-	tests := []struct {
-		name                string
-		userType            api.UserType
-		provisioningRequest map[string]any
-		goldenStateFile     string
-	}{
-		{
-			name:     "test_ibrl",
-			userType: api.UserTypeIBRL,
-			provisioningRequest: map[string]any{
+	errChan := make(chan error, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-				"tunnel_src":     "192.168.1.0",
-				"tunnel_dst":     "192.168.1.1",
-				"tunnel_net":     "169.254.0.0/31",
-				"doublezero_ip":  "192.168.1.0",
-				"user_type":      "IBRL",
-				"bgp_local_asn":  65000,
-				"bgp_remote_asn": 65342,
+	t.Run("IBRL", func(t *testing.T) {
+		sockFile := filepath.Join(rootPath, "doublezerod.sock")
+		go func() {
+			programId := ""
+			err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
+			errChan <- err
+		}()
+
+		httpClient := http.Client{
+			Transport: &http.Transport{
+				DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+					return net.Dial("unix", sockFile)
+				},
 			},
-			goldenStateFile: "./fixtures/doublezerod.ibrl.json",
-		},
-		{
-			name:     "test_ibrl_with_allocated_ip",
-			userType: api.UserTypeIBRLWithAllocatedIP,
-			provisioningRequest: map[string]any{
+		}
 
-				"tunnel_src":     "192.168.1.0",
-				"tunnel_dst":     "192.168.1.1",
-				"tunnel_net":     "169.254.0.0/31",
-				"doublezero_ip":  "192.168.1.0",
-				"user_type":      "IBRLWithAllocatedIP",
-				"bgp_local_asn":  65000,
-				"bgp_remote_asn": 65342,
-			},
-			goldenStateFile: "./fixtures/doublezerod.ibrl.with.allocated.ip.json",
-		},
-	}
-	for _, test := range tests {
-		errChan := make(chan error, 1)
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		t.Run("start_runtime", func(t *testing.T) {
+			select {
+			case err := <-errChan:
+				if err != nil {
+					t.Fatalf("error starting runtime: %v", err)
+				}
+			case <-time.After(5 * time.Second):
+			}
+		})
 
-		t.Run(test.name, func(t *testing.T) {
-			sockFile := filepath.Join(rootPath, "doublezerod.sock")
-			go func() {
-				programId := ""
-				err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
-				errChan <- err
-			}()
+		t.Run("send_provision_request", func(t *testing.T) {
+			url, err := url.JoinPath("http://localhost/", "provision")
+			if err != nil {
+				t.Fatalf("error creating url: %v", err)
+			}
+			body, _ := json.Marshal(provisioningRequest)
+			req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(body))
+			if err != nil {
+				t.Fatalf("error creating request: %v", err)
+			}
+			resp, err := httpClient.Do(req)
+			if err != nil {
+				t.Fatalf("error during request: %v", err)
+			}
+			defer resp.Body.Close()
 
-			httpClient := http.Client{
-				Transport: &http.Transport{
-					DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-						return net.Dial("unix", sockFile)
+			got, _ := io.ReadAll(resp.Body)
+			want := `{"status": "ok"}`
+			if string(got) != want {
+				t.Fatalf("wrong response: %s", string(got))
+			}
+		})
+
+		t.Run("verify_tunnel_is_up", func(t *testing.T) {
+			tun, err := nl.LinkByName("doublezero0")
+			if err != nil {
+				t.Fatalf("error fetching tunnel status: %v", err)
+			}
+			if tun.Attrs().Name != "doublezero0" {
+				t.Fatalf("tunnel name is not doublezero0: %s", tun.Attrs().Name)
+			}
+			if tun.Attrs().OperState != 0 { // 0 == IF_OPER_UNKNOWN
+				t.Fatalf("tunnel is not set to up state (6), got %d", tun.Attrs().OperState)
+			}
+			if tun.Attrs().MTU != 1476 {
+				t.Fatalf("tunnel mtu should be 1476; got %d", tun.Attrs().MTU)
+			}
+		})
+
+		t.Run("verify_routes_are_installed", func(t *testing.T) {
+			time.Sleep(5 * time.Second)
+			got, err := nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Protocol: unix.RTPROT_BGP}, nl.RT_FILTER_PROTOCOL)
+			if err != nil {
+				t.Fatalf("error fetching routes: %v", err)
+			}
+			tun, err := nl.LinkByName("doublezero0")
+			if err != nil {
+				t.Fatalf("error fetching tunnel info: %v", err)
+			}
+			want := []nl.Route{
+				{
+					LinkIndex: tun.Attrs().Index,
+					Table:     254,
+					Dst: &net.IPNet{
+						IP:   net.IP{4, 4, 4, 4},
+						Mask: net.IPv4Mask(255, 255, 255, 255),
 					},
+					Gw:       net.IP{169, 254, 0, 0},
+					Protocol: unix.RTPROT_BGP,
+					Src:      net.IP{192, 168, 1, 0},
+					Family:   nl.FAMILY_V4,
+					Type:     syscall.RTN_UNICAST,
+				},
+				{
+					LinkIndex: tun.Attrs().Index,
+					Table:     254,
+					Dst: &net.IPNet{
+						IP:   net.IP{5, 5, 5, 5},
+						Mask: net.IPv4Mask(255, 255, 255, 255),
+					},
+					Gw:       net.IP{169, 254, 0, 0},
+					Protocol: unix.RTPROT_BGP,
+					Src:      net.IP{192, 168, 1, 0},
+					Family:   nl.FAMILY_V4,
+					Type:     syscall.RTN_UNICAST,
 				},
 			}
-
-			t.Run("start_runtime", func(t *testing.T) {
-				select {
-				case err := <-errChan:
-					if err != nil {
-						t.Fatalf("error starting runtime: %v", err)
-					}
-				case <-time.After(5 * time.Second):
-				}
-			})
-
-			t.Run("send_provision_request", func(t *testing.T) {
-				url, err := url.JoinPath("http://localhost/", "provision")
-				if err != nil {
-					t.Fatalf("error creating url: %v", err)
-				}
-				body, _ := json.Marshal(test.provisioningRequest)
-				req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(body))
-				if err != nil {
-					t.Fatalf("error creating request: %v", err)
-				}
-				resp, err := httpClient.Do(req)
-				if err != nil {
-					t.Fatalf("error during request: %v", err)
-				}
-				defer resp.Body.Close()
-
-				got, _ := io.ReadAll(resp.Body)
-				want := `{"status": "ok"}`
-				if string(got) != want {
-					t.Fatalf("wrong response: %s", string(got))
-				}
-			})
-
-			t.Run("verify_tunnel_is_up", func(t *testing.T) {
-				tun, err := nl.LinkByName("doublezero0")
-				if err != nil {
-					t.Fatalf("error fetching tunnel status: %v", err)
-				}
-				if tun.Attrs().Name != "doublezero0" {
-					t.Fatalf("tunnel name is not doublezero0: %s", tun.Attrs().Name)
-				}
-				if tun.Attrs().OperState != 0 { // 0 == IF_OPER_UNKNOWN
-					t.Fatalf("tunnel is not set to up state (6), got %d", tun.Attrs().OperState)
-				}
-				if tun.Attrs().MTU != 1476 {
-					t.Fatalf("tunnel mtu should be 1476; got %d", tun.Attrs().MTU)
-				}
-			})
-
-			t.Run("verify_routes_are_installed", func(t *testing.T) {
-				time.Sleep(5 * time.Second)
-				got, err := nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Protocol: unix.RTPROT_BGP}, nl.RT_FILTER_PROTOCOL)
-				if err != nil {
-					t.Fatalf("error fetching routes: %v", err)
-				}
-				tun, err := nl.LinkByName("doublezero0")
-				if err != nil {
-					t.Fatalf("error fetching tunnel info: %v", err)
-				}
-				want := []nl.Route{
-					{
-						LinkIndex: tun.Attrs().Index,
-						Table:     254,
-						Dst: &net.IPNet{
-							IP:   net.IP{4, 4, 4, 4},
-							Mask: net.IPv4Mask(255, 255, 255, 255),
-						},
-						Gw:       net.IP{169, 254, 0, 0},
-						Protocol: unix.RTPROT_BGP,
-						Src:      net.IP{192, 168, 1, 0},
-						Family:   nl.FAMILY_V4,
-						Type:     syscall.RTN_UNICAST,
-					},
-					{
-						LinkIndex: tun.Attrs().Index,
-						Table:     254,
-						Dst: &net.IPNet{
-							IP:   net.IP{5, 5, 5, 5},
-							Mask: net.IPv4Mask(255, 255, 255, 255),
-						},
-						Gw:       net.IP{169, 254, 0, 0},
-						Protocol: unix.RTPROT_BGP,
-						Src:      net.IP{192, 168, 1, 0},
-						Family:   nl.FAMILY_V4,
-						Type:     syscall.RTN_UNICAST,
-					},
-				}
-				if diff := cmp.Diff(want, got); diff != "" {
-					t.Fatalf("Route mismatch (-want +got): %s\n", diff)
-				}
-			})
-
-			t.Run("verify_state_file_is_created", func(t *testing.T) {
-				got, err := os.ReadFile(filepath.Join(rootPath, "doublezerod", "doublezerod.json"))
-				if err != nil {
-					t.Fatalf("error reading state file: %v", err)
-				}
-				want, err := os.ReadFile(test.goldenStateFile)
-				if err != nil {
-					t.Fatalf("error reading state file: %v", err)
-				}
-				if diff := cmp.Diff(string(want), string(got)); diff != "" {
-					t.Fatalf("State mismatch (-want +got): %s\n", diff)
-				}
-			})
-
-			t.Run("verify_routes_flushed_on_session_down_event", func(t *testing.T) {
-				if test.userType == api.UserTypeIBRLWithAllocatedIP {
-					t.Skip("we don't flush routes in IBRLWithAllocatedIP mode")
-				}
-
-				if err := srv.DeletePeer(netip.AddrFrom4([4]byte{169, 254, 0, 1})); err != nil {
-					t.Fatalf("error deleting peer: %v", err)
-				}
-				// wait for peer status to be deleted
-				down, err := waitForPeerStatus(httpClient, test.userType, bgp.SessionStatusPending, 10*time.Second)
-				if err != nil {
-					t.Fatalf("error while waiting for peer status: %v", err)
-				}
-				if !down {
-					t.Fatalf("timed out waiting for peer status of pending")
-				}
-				// should not have any routes tagged bgp
-				got, err := nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Protocol: unix.RTPROT_BGP}, nl.RT_FILTER_PROTOCOL)
-				if err != nil {
-					t.Fatalf("error fetching routes: %v", err)
-				}
-				if len(got) > 0 {
-					t.Fatalf("expected no routes, got %d, %+v\n", len(got), got)
-				}
-
-				// 	re-add peer
-				d := &dummyPlugin{}
-				err = srv.AddPeer(corebgp.PeerConfig{
-					RemoteAddress: netip.MustParseAddr("169.254.0.1"),
-					LocalAS:       65342,
-					RemoteAS:      65000,
-				}, d, corebgp.WithPassive())
-				if err != nil {
-					log.Fatalf("error creating dummy bgp server: %v", err)
-				}
-
-				// wait for peer status to come back up
-				up, err := waitForPeerStatus(httpClient, test.userType, bgp.SessionStatusUp, 10*time.Second)
-				if err != nil {
-					t.Fatalf("error while waiting for peer status: %v", err)
-				}
-				if !up {
-					t.Fatalf("timed out waiting for peer status of pending")
-				}
-				// ensure that 4.4.4.4,3.3.3.3 are added and tagged with bgp (unix.RTPROT_BGP)
-				got, err = nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Protocol: unix.RTPROT_BGP}, nl.RT_FILTER_PROTOCOL)
-				if err != nil {
-					t.Fatalf("error fetching routes: %v", err)
-				}
-				tun, err := nl.LinkByName("doublezero0")
-				if err != nil {
-					t.Fatalf("error fetching tunnel info: %v", err)
-				}
-				want := []nl.Route{
-					{
-						LinkIndex: tun.Attrs().Index,
-						Table:     254,
-						Dst: &net.IPNet{
-							IP:   net.IP{4, 4, 4, 4},
-							Mask: net.IPv4Mask(255, 255, 255, 255),
-						},
-						Gw:       net.IP{169, 254, 0, 0},
-						Protocol: unix.RTPROT_BGP,
-						Src:      net.IP{192, 168, 1, 0},
-						Family:   nl.FAMILY_V4,
-						Type:     syscall.RTN_UNICAST,
-					},
-					{
-						LinkIndex: tun.Attrs().Index,
-						Table:     254,
-						Dst: &net.IPNet{
-							IP:   net.IP{5, 5, 5, 5},
-							Mask: net.IPv4Mask(255, 255, 255, 255),
-						},
-						Gw:       net.IP{169, 254, 0, 0},
-						Protocol: unix.RTPROT_BGP,
-						Src:      net.IP{192, 168, 1, 0},
-						Family:   nl.FAMILY_V4,
-						Type:     syscall.RTN_UNICAST,
-					},
-				}
-				if diff := cmp.Diff(want, got); diff != "" {
-					t.Fatalf("Route mismatch (-want +got): %s\n", diff)
-				}
-			})
-
-			t.Run("stop_runtime", func(t *testing.T) {
-				cancel()
-				select {
-				case err := <-errChan:
-					if err != nil {
-						t.Fatalf("error stopping runtime: %v", err)
-					}
-				case <-time.After(5 * time.Second):
-					log.Fatalf("timed out waiting for close")
-				}
-			})
-
-			ctx, cancel = context.WithCancel(context.Background())
-			go func() {
-				programId := ""
-				err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
-				errChan <- err
-			}()
-
-			<-time.After(5 * time.Second)
-
-			t.Run("restart_runtime", func(t *testing.T) {
-				select {
-				case err := <-errChan:
-					if err != nil {
-						t.Fatalf("error starting runtime: %v", err)
-					}
-				case <-time.After(5 * time.Second):
-				}
-			})
-
-			t.Run("state_recovery_verify_tunnel_is_up", func(t *testing.T) {
-				tun, err := nl.LinkByName("doublezero0")
-				if err != nil {
-					t.Fatalf("error fetching tunnel status: %v", err)
-				}
-				if tun.Attrs().Name != "doublezero0" {
-					t.Fatalf("tunnel name is not doublezero0: %s", tun.Attrs().Name)
-				}
-				if tun.Attrs().OperState != 0 { // 0 == IF_OPER_UNKNOWN
-					t.Fatalf("tunnel is not set to up state (6), got %d", tun.Attrs().OperState)
-				}
-				if tun.Attrs().MTU != 1476 {
-					t.Fatalf("tunnel mtu should be 1476; got %d", tun.Attrs().MTU)
-				}
-			})
-
-			t.Run("send_remove_request", func(t *testing.T) {
-				url, err := url.JoinPath("http://localhost/", "remove")
-				if err != nil {
-					t.Fatalf("error creating url: %v", err)
-				}
-				req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(fmt.Sprintf(`{"user_type": "%s"}`, test.userType)))
-				if err != nil {
-					t.Fatalf("error creating request: %v", err)
-				}
-				resp, err := httpClient.Do(req)
-				if err != nil {
-					t.Fatalf("error during request: %v", err)
-				}
-				defer resp.Body.Close()
-
-				got, _ := io.ReadAll(resp.Body)
-				want := `{"status": "ok"}`
-				if string(got) != want {
-					t.Fatalf("wrong response: %s", string(got))
-				}
-			})
-
-			t.Run("verify_tunnel_is_removed", func(t *testing.T) {
-				_, err := nl.LinkByName("doublezero0")
-				if !errors.As(err, &nl.LinkNotFoundError{}) {
-					t.Fatalf("expected LinkNotFoundError; got: %v", err)
-				}
-			})
-
-			t.Run("state_removal_stop_runtime", func(t *testing.T) {
-				cancel()
-				select {
-				case err := <-errChan:
-					if err != nil {
-						t.Fatalf("error stopping runtime: %v", err)
-					}
-				case <-time.After(5 * time.Second):
-					log.Fatalf("timed out waiting for close")
-				}
-			})
-
-			t.Run("state_removal_verify_state_file_removed", func(t *testing.T) {
-				path, _ := os.ReadFile(filepath.Join(rootPath, "doublezerod", "doublezerod.json"))
-
-				var p []*api.ProvisionRequest
-				if err := json.Unmarshal(path, &p); err != nil {
-					t.Errorf("error unmarshaling db file: %v", err)
-				}
-
-				if len(p) != 0 {
-					t.Fatalf("provisioned requests should be empty; got %+v", p)
-
-				}
-			})
+			if diff := cmp.Diff(want, got); diff != "" {
+				t.Fatalf("Route mismatch (-want +got): %s\n", diff)
+			}
 		})
-	}
+
+		t.Run("verify_state_file_is_created", func(t *testing.T) {
+			got, err := os.ReadFile(filepath.Join(rootPath, "doublezerod", "doublezerod.json"))
+			if err != nil {
+				t.Fatalf("error reading state file: %v", err)
+			}
+			want, err := os.ReadFile(goldenStateFile)
+			if err != nil {
+				t.Fatalf("error reading state file: %v", err)
+			}
+			if diff := cmp.Diff(string(want), string(got)); diff != "" {
+				t.Fatalf("State mismatch (-want +got): %s\n", diff)
+			}
+		})
+
+		t.Run("verify_routes_flushed_on_session_down_event", func(t *testing.T) {
+			if userType == api.UserTypeIBRLWithAllocatedIP {
+				t.Skip("we don't flush routes in IBRLWithAllocatedIP mode")
+			}
+
+			if err := srv.DeletePeer(netip.AddrFrom4([4]byte{169, 254, 0, 1})); err != nil {
+				t.Fatalf("error deleting peer: %v", err)
+			}
+			// wait for peer status to be deleted
+			down, err := waitForPeerStatus(httpClient, userType, bgp.SessionStatusPending, 10*time.Second)
+			if err != nil {
+				t.Fatalf("error while waiting for peer status: %v", err)
+			}
+			if !down {
+				t.Fatalf("timed out waiting for peer status of pending")
+			}
+			// should not have any routes tagged bgp
+			got, err := nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Protocol: unix.RTPROT_BGP}, nl.RT_FILTER_PROTOCOL)
+			if err != nil {
+				t.Fatalf("error fetching routes: %v", err)
+			}
+			if len(got) > 0 {
+				t.Fatalf("expected no routes, got %d, %+v\n", len(got), got)
+			}
+
+			// 	re-add peer
+			d := &dummyPlugin{}
+			err = srv.AddPeer(corebgp.PeerConfig{
+				RemoteAddress: netip.MustParseAddr("169.254.0.1"),
+				LocalAS:       65342,
+				RemoteAS:      65000,
+			}, d, corebgp.WithPassive())
+			if err != nil {
+				log.Fatalf("error creating dummy bgp server: %v", err)
+			}
+
+			// wait for peer status to come back up
+			up, err := waitForPeerStatus(httpClient, userType, bgp.SessionStatusUp, 10*time.Second)
+			if err != nil {
+				t.Fatalf("error while waiting for peer status: %v", err)
+			}
+			if !up {
+				t.Fatalf("timed out waiting for peer status of pending")
+			}
+			// ensure that 4.4.4.4,3.3.3.3 are added and tagged with bgp (unix.RTPROT_BGP)
+			got, err = nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Protocol: unix.RTPROT_BGP}, nl.RT_FILTER_PROTOCOL)
+			if err != nil {
+				t.Fatalf("error fetching routes: %v", err)
+			}
+			tun, err := nl.LinkByName("doublezero0")
+			if err != nil {
+				t.Fatalf("error fetching tunnel info: %v", err)
+			}
+			want := []nl.Route{
+				{
+					LinkIndex: tun.Attrs().Index,
+					Table:     254,
+					Dst: &net.IPNet{
+						IP:   net.IP{4, 4, 4, 4},
+						Mask: net.IPv4Mask(255, 255, 255, 255),
+					},
+					Gw:       net.IP{169, 254, 0, 0},
+					Protocol: unix.RTPROT_BGP,
+					Src:      net.IP{192, 168, 1, 0},
+					Family:   nl.FAMILY_V4,
+					Type:     syscall.RTN_UNICAST,
+				},
+				{
+					LinkIndex: tun.Attrs().Index,
+					Table:     254,
+					Dst: &net.IPNet{
+						IP:   net.IP{5, 5, 5, 5},
+						Mask: net.IPv4Mask(255, 255, 255, 255),
+					},
+					Gw:       net.IP{169, 254, 0, 0},
+					Protocol: unix.RTPROT_BGP,
+					Src:      net.IP{192, 168, 1, 0},
+					Family:   nl.FAMILY_V4,
+					Type:     syscall.RTN_UNICAST,
+				},
+			}
+			if diff := cmp.Diff(want, got); diff != "" {
+				t.Fatalf("Route mismatch (-want +got): %s\n", diff)
+			}
+		})
+
+		t.Run("stop_runtime", func(t *testing.T) {
+			cancel()
+			select {
+			case err := <-errChan:
+				if err != nil {
+					t.Fatalf("error stopping runtime: %v", err)
+				}
+			case <-time.After(5 * time.Second):
+				log.Fatalf("timed out waiting for close")
+			}
+		})
+
+		ctx, cancel = context.WithCancel(context.Background())
+		go func() {
+			programId := ""
+			err := runtime.Run(ctx, sockFile, false, programId, "", 30, 30)
+			errChan <- err
+		}()
+
+		<-time.After(5 * time.Second)
+
+		t.Run("restart_runtime", func(t *testing.T) {
+			select {
+			case err := <-errChan:
+				if err != nil {
+					t.Fatalf("error starting runtime: %v", err)
+				}
+			case <-time.After(5 * time.Second):
+			}
+		})
+
+		t.Run("state_recovery_verify_tunnel_is_up", func(t *testing.T) {
+			tun, err := nl.LinkByName("doublezero0")
+			if err != nil {
+				t.Fatalf("error fetching tunnel status: %v", err)
+			}
+			if tun.Attrs().Name != "doublezero0" {
+				t.Fatalf("tunnel name is not doublezero0: %s", tun.Attrs().Name)
+			}
+			if tun.Attrs().OperState != 0 { // 0 == IF_OPER_UNKNOWN
+				t.Fatalf("tunnel is not set to up state (6), got %d", tun.Attrs().OperState)
+			}
+			if tun.Attrs().MTU != 1476 {
+				t.Fatalf("tunnel mtu should be 1476; got %d", tun.Attrs().MTU)
+			}
+		})
+
+		t.Run("send_remove_request", func(t *testing.T) {
+			url, err := url.JoinPath("http://localhost/", "remove")
+			if err != nil {
+				t.Fatalf("error creating url: %v", err)
+			}
+			req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(fmt.Sprintf(`{"user_type": "%s"}`, userType)))
+			if err != nil {
+				t.Fatalf("error creating request: %v", err)
+			}
+			resp, err := httpClient.Do(req)
+			if err != nil {
+				t.Fatalf("error during request: %v", err)
+			}
+			defer resp.Body.Close()
+
+			got, _ := io.ReadAll(resp.Body)
+			want := `{"status": "ok"}`
+			if string(got) != want {
+				t.Fatalf("wrong response: %s", string(got))
+			}
+		})
+
+		t.Run("verify_tunnel_is_removed", func(t *testing.T) {
+			_, err := nl.LinkByName("doublezero0")
+			if !errors.As(err, &nl.LinkNotFoundError{}) {
+				t.Fatalf("expected LinkNotFoundError; got: %v", err)
+			}
+		})
+
+		t.Run("state_removal_stop_runtime", func(t *testing.T) {
+			cancel()
+			select {
+			case err := <-errChan:
+				if err != nil {
+					t.Fatalf("error stopping runtime: %v", err)
+				}
+			case <-time.After(5 * time.Second):
+				log.Fatalf("timed out waiting for close")
+			}
+		})
+
+		t.Run("state_removal_verify_state_file_removed", func(t *testing.T) {
+			path, _ := os.ReadFile(filepath.Join(rootPath, "doublezerod", "doublezerod.json"))
+
+			var p []*api.ProvisionRequest
+			if err := json.Unmarshal(path, &p); err != nil {
+				t.Errorf("error unmarshaling db file: %v", err)
+			}
+
+			if len(p) != 0 {
+				t.Fatalf("provisioned requests should be empty; got %+v", p)
+
+			}
+		})
+	})
 }
 
 // TestEndToEnd_EdgeFiltering exercises the entire client daemon end to end. It starts

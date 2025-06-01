@@ -5,7 +5,12 @@ LDFLAGS=
 .PHONY: test
 test:
 	go test ./... -race -v -coverprofile coverage.out
+	$(MAKE) test-containerized
 	cargo test --all --all-features
+
+.PHONY: test-containerized
+test-containerized:
+	go tool go-e2e
 
 .PHONY: lint
 lint:

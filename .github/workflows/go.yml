@@ -63,3 +63,17 @@ jobs:
           cache: true
       - name: test
         run: go test -exec sudo -race -v ./... -tags=integration
+  containerized_test:
+    name: containerized_tests
+    needs: build
+    runs-on: ubuntu-24.04-16c-64gb
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v3
+      - name: test
+        run: go tool go-e2e -vv

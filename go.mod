@@ -2,6 +2,8 @@ module github.com/malbeclabs/doublezero
 
 go 1.24.3
 
+tool github.com/snormore/go-e2e
+
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.35.0
 	github.com/aristanetworks/goeapi v1.0.0
@@ -94,6 +96,7 @@ require (
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
+	github.com/snormore/go-e2e v0.0.0-20250601190642-1400fcc25e52 // indirect
 	github.com/streamingfast/logging v0.0.0-20230608130331-f22c91403091 // indirect
 	github.com/stretchr/testify v1.10.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.15 // indirect

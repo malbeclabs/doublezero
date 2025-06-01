@@ -11,23 +11,39 @@ WORKDIR /doublezero
 COPY . .
 RUN mkdir -p bin/
 
+# Pre-fetch and cache rust dependencies
+RUN --mount=type=cache,target=/cargo \
+    --mount=type=cache,target=/target \
+    cargo fetch
+
 # Build all rust components except the Solana program
-RUN cargo build --workspace --release --exclude doublezero-sla-program && \
+RUN --mount=type=cache,target=/cargo \
+    --mount=type=cache,target=/target \
+    cargo build --workspace --release --exclude doublezero-sla-program && \
     cp /target/release/doublezero ./bin/ && \
     cp /target/release/doublezero-activator ./bin/ && \
     cp /target/release/doublezero-admin ./bin/
 
 # Build the Solana program with build-sbf (rust)
-RUN cd smartcontract/programs/dz-sla-program && \
+# NOTE: We need to cache /root/.cache for this, and we use a different target directory for
+# better caching isolation.
+RUN --mount=type=cache,target=/cargo \
+    --mount=type=cache,target=/target-sbf \
+    --mount=type=cache,target=/root/.cache \
+    cd smartcontract/programs/dz-sla-program && \
     CARGO_TARGET_DIR=/target-sbf cargo build-sbf && \
     cp /target-sbf/deploy/doublezero_sla_program.so /doublezero/bin/doublezero_sla_program.so
 
 # Build client/doublezerod (golang)
-RUN make -C ./client/doublezerod build && \
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    make -C ./client/doublezerod build && \
     cp client/doublezerod/bin/doublezerod ./bin/
 
 # Build the controller (golang)
-RUN make -C ./controlplane/controller build && \
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    make -C ./controlplane/controller build && \
     cp controlplane/controller/bin/controller ./bin/doublezero-controller
 
 # Copy test dependencies and build tests

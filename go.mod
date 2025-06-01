@@ -1,8 +1,6 @@
 module github.com/malbeclabs/doublezero
 
-go 1.23.8
-
-toolchain go1.24.1
+go 1.24.3
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.35.0
@@ -128,3 +126,7 @@ require (
 )
 
 replace github.com/testcontainers/testcontainers-go => github.com/packethog/testcontainers-go v0.0.36
+
+// Fix: ambiguous import: found package google.golang.org/genproto/googleapis/api/httpbody in multiple modules
+// See "go mod graph | grep genproto" for more details.
+replace google.golang.org/genproto => google.golang.org/genproto v0.0.0-20250519155744-55703ea1f237

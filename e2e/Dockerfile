@@ -3,6 +3,10 @@ ARG PLATFORM_ARCH="amd64"
 # we need to pull in the correct build of solana tools based on amd64 vs. arm64
 FROM ghcr.io/malbeclabs/doublezero-base:latest AS builder
 
+ENV CARGO_HOME=/cargo
+ENV CARGO_TARGET_DIR=/target
+ENV CARGO_INCREMENTAL=0
+
 WORKDIR /doublezero
 COPY go.mod go.sum ./
 RUN mkdir -p bin/
@@ -16,44 +20,56 @@ RUN mkdir -p bin/
 # building to happen in parallel.
 FROM builder AS client
 
-# build the doublezero client
+# build the doublezero client (go and rust)
 COPY client client
 COPY smartcontract smartcontract
-RUN make -C ./client build && \
-    cp client/doublezero/target/release/doublezero ./bin/. && \
-    rm -rf client/doublezero/target && \
+RUN --mount=type=cache,target=/cargo \
+    --mount=type=cache,target=/target \
+    --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    make -C ./client build && \
+    cp /target/release/doublezero ./bin/. && \
     cp client/doublezerod/bin/doublezerod ./bin/.
 
-# build the smartcontract
+# build the smartcontract (rust-sbf)
+# NOTE: We need to cache /root/.cache for this, and we use a different target directory for better
+# caching isolation.
 FROM builder AS smartcontract
 COPY smartcontract smartcontract
-RUN cargo build-sbf --manifest-path smartcontract/programs/dz-sla-program/Cargo.toml && \
-    cp smartcontract/programs/dz-sla-program/target/deploy/doublezero_sla_program.so ./bin/doublezero_sla_program.so && \
-    rm -rf smartcontract/programs/dz-sla-program/target
+RUN --mount=type=cache,target=/cargo \
+    --mount=type=cache,target=/target-sbf \
+    --mount=type=cache,target=/root/.cache \
+    CARGO_TARGET_DIR=/target-sbf cargo build-sbf --manifest-path smartcontract/programs/dz-sla-program/Cargo.toml && \
+    cp /target-sbf/deploy/doublezero_sla_program.so ./bin/doublezero_sla_program.so
 
-# build the activator
+# build the activator (rust)
 FROM builder AS activator
 COPY activator activator
 COPY smartcontract smartcontract
-RUN cargo build --release --manifest-path activator/Cargo.toml && \
-    cp activator/target/release/doublezero-activator ./bin/doublezero-activator && \
-    rm -rf activator/target
+RUN --mount=type=cache,target=/cargo \
+    --mount=type=cache,target=/target \
+    cargo build --release --manifest-path activator/Cargo.toml && \
+    cp /target/release/doublezero-activator ./bin/doublezero-activator
 
-# build the controller
+# build the controller (go)
 FROM builder AS controlplane
 COPY controlplane controlplane
 COPY smartcontract smartcontract
-RUN make -C ./controlplane/controller build && \
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    make -C ./controlplane/controller build && \
     cp controlplane/controller/bin/controller ./bin/doublezero-controller
 
-# copy test dependencies and build tests
+# copy test dependencies and build tests (go)
 FROM builder AS tests
 COPY e2e e2e
 COPY controlplane controlplane
 COPY ./e2e/start_e2e.sh ./bin/start_e2e.sh
 COPY ./e2e/keypair.json ./bin/keypair.json
 COPY ./e2e/doublezero_keypair.json ./bin/doublezero_keypair.json
-RUN go test -c -o ./bin/e2e_test ./e2e/e2e_test.go
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go test -c -o ./bin/e2e_test ./e2e/e2e_test.go
 
 # copy everything from the previous stages into the main stage
 FROM builder

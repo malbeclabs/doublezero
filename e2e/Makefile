@@ -3,6 +3,10 @@ TAG=doublezero-e2e
 ARCH:=$(shell uname -m)
 GIT_SHA:=`git rev-parse --short HEAD`
 
+# Enable buildkit for docker mount caching.
+# Enabled by default on mac, but not always on linux.
+DOCKER_BUILDKIT=1
+
 .PHONY: eos
 eos:
 	docker build --build-arg CONFIG=e2e/fixtures/doublezero_device_startup_config_base.txt -f Dockerfile.eos -t agent:$(GIT_SHA) ../.

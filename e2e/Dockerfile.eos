@@ -13,7 +13,9 @@ ENV PATH="/usr/local/go/bin:${PATH}"
 COPY controlplane ./controlplane
 COPY e2e ./e2e
 
-RUN CGO_ENABLED=0 GOOS=linux /usr/local/go/bin/go build -o doublezero-agent ./controlplane/agent/cmd/agent/main.go
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux /usr/local/go/bin/go build -o doublezero-agent ./controlplane/agent/cmd/agent/main.go
 
 RUN cp doublezero-agent /mnt/flash/.
 

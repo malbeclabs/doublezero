@@ -32,7 +32,7 @@ main() {
     ping -c 3 -q 64.86.249.80
 
     print_banner "Starting local validator w/ smartcontract program"
-    solana-test-validator --reset --bpf-program ./bin/keypair.json ./bin/doublezero_sla_program.so > /tmp/solana.log 2>&1 &
+    solana-test-validator --reset --bpf-program ./bin/keypair.json ./bin/doublezero_sla_program.so >/tmp/solana.log 2>&1 &
     echo "Waiting 15 seconds to start the solana test cluster"
     sleep 15
 
@@ -43,7 +43,7 @@ main() {
     doublezero --keypair $SOLANA_KEYPAIR init
 
     print_banner "Initializing activator"
-    doublezero-activator --program-id $PROGRAM_ID  > /tmp/activator.log 2>&1 &
+    doublezero-activator --program-id $PROGRAM_ID >/tmp/activator.log 2>&1 &
 
     print_banner "Initializing onchain data"
     populate_data_onchain
@@ -66,6 +66,12 @@ main() {
 
     print_banner "Running IBRL w/ allocated address tests"
     test_ibrl_with_allocated_addr
+
+    print_banner "Running multicast publisher tests"
+    test_multicast_publisher
+
+    print_banner "Running multicast subscriber tests"
+    test_multicast_subscriber
 }
 
 print_banner() {
@@ -76,7 +82,7 @@ print_banner() {
 
 test_ibrl_with_allocated_addr() {
     print_banner "Connecting user tunnel"
-    doublezero --keypair $SOLANA_KEYPAIR connect ibrl --client-ip 64.86.249.86  --allocate-addr
+    doublezero --keypair $SOLANA_KEYPAIR connect ibrl --client-ip 64.86.249.86 --allocate-addr
 
     print_banner "Creating multiple users to exhaust the /30 and allocate from the /29, ie use both blocks"
     create_multiple_ibrl_with_allocated_address_users
@@ -160,7 +166,6 @@ populate_data_onchain() {
     print_banner "Exchange information onchain"
     doublezero exchange list
 
-
     print_banner "Populate device information onchain - DO NOT SHUFFLE THESE AS THE PUBKEYS WILL CHANGE"
     doublezero device create --code la2-dz01 --location lax --exchange xlax --public-ip "207.45.216.134" --dz-prefixes "207.45.216.136/30,200.12.12.12/29"
     doublezero device create --code ny5-dz01 --location ewr --exchange xewr --public-ip "64.86.249.80" --dz-prefixes "64.86.249.80/29"
@@ -193,6 +198,18 @@ populate_data_onchain() {
     print_banner "Tunnel information onchain"
     doublezero tunnel list
 
+    print_banner "Populate multicast group information onchain"
+    doublezero multicast group create --code mg01 --max-bandwidth 10Gbps --owner me
+
+    print_banner "Waiting for multicast group to be activated by activator"
+    sleep 5
+
+    print_banner "Multicast group information onchain"
+    doublezero multicast group list
+
+    print_banner "Add me to multicast group allowlist"
+    doublezero multicast group allowlist publisher add --code mg01 --pubkey me
+    doublezero multicast group allowlist subscriber add --code mg01 --pubkey me
 }
 
 create_multiple_ibrl_with_allocated_address_users() {
@@ -205,8 +222,55 @@ create_multiple_ibrl_with_allocated_address_users() {
     print_banner "Multiple users created"
 }
 
-err() {
-  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')]: $*" >&2
+test_multicast_publisher() {
+    print_banner "Connecting multicast publisher"
+    doublezero --keypair $SOLANA_KEYPAIR connect multicast publisher mg01 --client-ip 64.86.249.86
+
+    sleep 5
+    print_banner "Another check to see if publisher number goes up"
+    doublezero multicast group list
+
+    print_banner "Waiting for client tunnel to be up before starting tests"
+    e2e_test -test.v -test.run "^TestWaitForClientTunnelUp"
+
+    print_banner "Running multicast publisher connect tests"
+    e2e_test -test.v -test.run "^TestMulticastPublisher_Connect"
+
+    print_banner "Disconnecting multicast publisher"
+    # NOTE: --client-ip is required within the container to disconnect
+    doublezero --keypair $SOLANA_KEYPAIR disconnect multicast --client-ip 64.86.249.86
+
+    print_banner "Running multicast publisher disconnect tests"
+    e2e_test -test.v -test.run "^TestMulticastPublisher_Disconnect_Networking"
+    e2e_test -test.v -test.run "^TestMulticastPublisher_Disconnect_Output"
 }
 
-main "$@"; exit
+test_multicast_subscriber() {
+    print_banner "Connecting multicast subscriber"
+    doublezero --keypair $SOLANA_KEYPAIR connect multicast subscriber mg01 --client-ip 64.86.249.86
+
+    sleep 5
+    print_banner "Another check to see if subscriber number goes up"
+    doublezero multicast group list
+
+    print_banner "Waiting for client tunnel to be up before starting tests"
+    e2e_test -test.v -test.run "^TestWaitForClientTunnelUp"
+
+    print_banner "Running multicast subscriber connect tests"
+    e2e_test -test.v -test.run "^TestMulticastSubscriber_Connect"
+
+    print_banner "Disconnecting multicast subscriber"
+    # NOTE: --client-ip is required within the container to disconnect
+    doublezero --keypair $SOLANA_KEYPAIR disconnect multicast --client-ip 64.86.249.86
+
+    print_banner "Running multicast subscriber disconnect tests"
+    e2e_test -test.v -test.run "^TestMulticastSubscriber_Disconnect_Networking"
+    e2e_test -test.v -test.run "^TestMulticastSubscriber_Disconnect_Output"
+}
+
+err() {
+    echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')]: $*" >&2
+}
+
+main "$@"
+exit

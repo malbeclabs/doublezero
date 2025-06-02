@@ -91,6 +91,7 @@ test_ibrl_with_allocated_addr() {
     e2e_test -test.v -test.run "^TestWaitForClientTunnelUp"
 
     print_banner "Running post-connect tests"
+    e2e_test -test.v -test.run "^TestIBRLWithAllocatedAddress_Connect"
     e2e_test -test.v -test.run "^TestIBRLWithAllocatedAddress_Connect_Networking"
 
     print_banner "Disconnecting user tunnel"
@@ -109,6 +110,7 @@ test_ibrl() {
     e2e_test -test.v -test.run "^TestWaitForClientTunnelUp"
 
     print_banner "Running post-connect tests"
+    e2e_test -test.v -test.run "^TestIBRL_Connect"
     e2e_test -test.v -test.run "^TestIBRL_Connect_Networking"
 
     print_banner "Disconnecting user tunnel"
@@ -116,7 +118,7 @@ test_ibrl() {
 
     print_banner "Running post-disconnect tests"
     e2e_test -test.v -test.run "TestIBRL_Disconnect_Networking"
-    # e2e_test -test.v -test.run "TestIBRL_Disconnect_Output"
+    e2e_test -test.v -test.run "TestIBRL_Disconnect_Output"
 }
 
 init_doublezero() {

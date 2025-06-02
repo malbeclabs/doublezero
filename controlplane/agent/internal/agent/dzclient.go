@@ -19,7 +19,7 @@ func GetConfigFromServer(ctx context.Context, client pb.ControllerClient, localD
 	for vrf, peers := range neighborIpMap {
 		bgpPeersByVrf[vrf] = &pb.BgpPeers{Peers: peers}
 	}
-	req := &pb.ConfigRequest{Pubkey: localDevicePubkey, BgpPeersByVrf: bgpPeersByVrf}
+	req := &pb.ConfigRequest{Pubkey: localDevicePubkey, BgpPeers: neighborIpMap["vrf1"], BgpPeersByVrf: bgpPeersByVrf}
 	resp, err := client.GetConfig(ctx, req)
 	if err != nil {
 		log.Printf("Error calling GetConfig: %v\n", err)

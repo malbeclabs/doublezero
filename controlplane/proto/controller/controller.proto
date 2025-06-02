@@ -13,8 +13,9 @@ service Controller {
 // Request for latest configuration of a DoubleZero node based on its public key
 message ConfigRequest {
     string pubkey = 1;
-    map<string, BgpPeers> BgpPeersByVrf = 2;
-    string hash = 3;
+    repeated string bgp_peers = 2;
+    map<string, BgpPeers> bgp_peers_by_vrf = 3;
+    string hash = 4;
 }
 
 // Represents a list of BGP peers

@@ -6,8 +6,8 @@ use doublezero_sdk::{
     commands::{
         device::get::GetDeviceCommand,
         user::{
-            activate::ActivateUserCommand, ban::BanUserCommand, deactivate::DeactivateUserCommand,
-            reject::RejectUserCommand,
+            activate::ActivateUserCommand, ban::BanUserCommand,
+            closeaccount::CloseAccountUserCommand, reject::RejectUserCommand,
         },
     },
     ipv4_to_string, networkv4_list_to_string, networkv4_to_string, DoubleZeroClient, User,
@@ -189,7 +189,7 @@ pub fn process_user_event(
                 }
 
                 if user.status == UserStatus::Deleting {
-                    let res = DeactivateUserCommand {
+                    let res = CloseAccountUserCommand {
                         index: user.index,
                         owner: user.owner,
                     }
@@ -234,7 +234,7 @@ mod tests {
     use doublezero_sla_program::{
         instructions::DoubleZeroInstruction,
         processors::user::{
-            activate::UserActivateArgs, ban::UserBanArgs, deactivate::UserDeactivateArgs,
+            activate::UserActivateArgs, ban::UserBanArgs, closeaccount::UserCloseAccountArgs,
             reject::UserRejectArgs,
         },
     };
@@ -659,10 +659,12 @@ mod tests {
                     .times(1)
                     .in_sequence(seq)
                     .with(
-                        predicate::eq(DoubleZeroInstruction::DeactivateUser(UserDeactivateArgs {
-                            index: user.index,
-                            bump_seed: user.bump_seed,
-                        })),
+                        predicate::eq(DoubleZeroInstruction::CloseAccountUser(
+                            UserCloseAccountArgs {
+                                index: user.index,
+                                bump_seed: user.bump_seed,
+                            },
+                        )),
                         predicate::always(),
                     )
                     .returning(|_, _| Ok(Signature::new_unique()));

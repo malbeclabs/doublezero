@@ -1,19 +1,15 @@
-use doublezero_sdk::commands::allowlist::device::add::AddDeviceAllowlistCommand;
-use doublezero_sdk::commands::allowlist::device::list::ListDeviceAllowlistCommand;
-use doublezero_sdk::commands::allowlist::device::remove::RemoveDeviceAllowlistCommand;
-use doublezero_sdk::commands::allowlist::foundation::add::AddFoundationAllowlistCommand;
-use doublezero_sdk::commands::allowlist::foundation::list::ListFoundationAllowlistCommand;
-use doublezero_sdk::commands::allowlist::foundation::remove::RemoveFoundationAllowlistCommand;
-use doublezero_sdk::commands::allowlist::user::add::AddUserAllowlistCommand;
-use doublezero_sdk::commands::allowlist::user::list::ListUserAllowlistCommand;
-use doublezero_sdk::commands::allowlist::user::remove::RemoveUserAllowlistCommand;
-use doublezero_sdk::commands::device::closeaccount::CloseAccountDeviceCommand;
-use doublezero_sdk::commands::device::resume::ResumeDeviceCommand;
-use doublezero_sdk::commands::device::suspend::SuspendDeviceCommand;
+use doublezero_sdk::commands::allowlist::{
+    device::add::AddDeviceAllowlistCommand, device::list::ListDeviceAllowlistCommand,
+    device::remove::RemoveDeviceAllowlistCommand, foundation::add::AddFoundationAllowlistCommand,
+    foundation::list::ListFoundationAllowlistCommand,
+    foundation::remove::RemoveFoundationAllowlistCommand, user::add::AddUserAllowlistCommand,
+    user::list::ListUserAllowlistCommand, user::remove::RemoveUserAllowlistCommand,
+};
 use doublezero_sdk::commands::device::{
-    activate::ActivateDeviceCommand, create::CreateDeviceCommand, delete::DeleteDeviceCommand,
-    get::GetDeviceCommand, list::ListDeviceCommand, reject::RejectDeviceCommand,
-    update::UpdateDeviceCommand,
+    activate::ActivateDeviceCommand, closeaccount::CloseAccountDeviceCommand,
+    create::CreateDeviceCommand, delete::DeleteDeviceCommand, get::GetDeviceCommand,
+    list::ListDeviceCommand, reject::RejectDeviceCommand, resume::ResumeDeviceCommand,
+    suspend::SuspendDeviceCommand, update::UpdateDeviceCommand,
 };
 use doublezero_sdk::commands::exchange::{
     create::CreateExchangeCommand, delete::DeleteExchangeCommand, get::GetExchangeCommand,
@@ -25,6 +21,7 @@ use doublezero_sdk::commands::location::{
     create::CreateLocationCommand, delete::DeleteLocationCommand, get::GetLocationCommand,
     list::ListLocationCommand, update::UpdateLocationCommand,
 };
+use doublezero_sdk::commands::multicastgroup::deactivate::DeactivateMulticastGroupCommand;
 use doublezero_sdk::commands::multicastgroup::{
     activate::ActivateMulticastGroupCommand,
     allowlist::{
@@ -38,7 +35,6 @@ use doublezero_sdk::commands::multicastgroup::{
         },
     },
     create::CreateMulticastGroupCommand,
-    deactivate::DeactivateMulticastGroupCommand,
     delete::DeleteMulticastGroupCommand,
     get::GetMulticastGroupCommand,
     list::ListMulticastGroupCommand,

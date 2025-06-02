@@ -24,7 +24,7 @@ mod device_test {
     use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey};
 
     #[tokio::test]
-    async fn multicast_subscriber_allowlist_test() {
+    async fn test_multicast_subscriber_allowlist() {
         let program_id = Pubkey::new_unique();
         let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
             "doublezero_sla_program",

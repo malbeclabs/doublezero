@@ -1,15 +1,11 @@
 use super::helpers::look_for_ip;
 use crate::servicecontroller::{ProvisioningRequest, ServiceController};
 use clap::{Args, Subcommand, ValueEnum};
-use doublezero_cli::doublezerocommand::CliCommand;
-use doublezero_cli::doublezerocommand::CliCommand;
 use doublezero_cli::{
     doublezerocommand::CliCommand,
     helpers::init_command,
     requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON, CHECK_USER_ALLOWLIST},
 };
-use doublezero_sdk::commands::globalconfig::get::GetGlobalConfigCommand;
-use doublezero_sdk::commands::globalconfig::get::GetGlobalConfigCommand;
 use doublezero_sdk::commands::{
     device::get::GetDeviceCommand, device::list::ListDeviceCommand,
     globalconfig::get::GetGlobalConfigCommand, multicastgroup::list::ListMulticastGroupCommand,
@@ -306,30 +302,6 @@ impl ProvisioningCliCommand {
                     "    Creating an account for the IP: {}",
                     ipv4_to_string(client_ip)
                 ));
-                let device_pk = match self.device.as_ref() {
-                    Some(device) => match device.parse::<Pubkey>() {
-                        Ok(pubkey) => pubkey,
-                        Err(_) => {
-                            spinner.set_message("Searching for device account...");
-                            let (pubkey, _) = devices
-                                .iter()
-                                .find(|(_, d)| d.code == *device)
-                                .expect("Device not found");
-                            *pubkey
-                        }
-                    },
-                    None => {
-                        spinner.set_message("Reading latency stats...");
-                        let mut latencies =
-                            controller.latency().await.expect("Could not get latency");
-                        latencies.retain(|l| l.reachable);
-                        latencies.sort_by(|a, b| a.avg_latency_ns.cmp(&b.avg_latency_ns));
-
-                        spinner.set_message("Searching for device account...");
-                        Pubkey::from_str(&latencies.first().expect("No devices found").device_pk)
-                            .expect("Unable to parse pubkey")
-                    }
-                };
 
                 let (device_pk, device) = self
                     .find_or_create_device(client, controller, spinner)

@@ -1,5 +1,5 @@
 use doublezero_sdk::{
-    commands::device::{activate::ActivateDeviceCommand, deactivate::DeactivateDeviceCommand},
+    commands::device::{activate::ActivateDeviceCommand, closeaccount::CloseAccountDeviceCommand},
     ipv4_to_string, networkv4_list_to_string, Device, DeviceStatus, DoubleZeroClient,
 };
 use solana_sdk::pubkey::Pubkey;
@@ -59,7 +59,7 @@ pub fn process_device_event(
         DeviceStatus::Deleting => {
             print!("Deleting Device {} ", device.code);
 
-            let res = DeactivateDeviceCommand {
+            let res = CloseAccountDeviceCommand {
                 index: device.index,
                 owner: device.owner,
             }
@@ -88,7 +88,7 @@ mod tests {
     use doublezero_sdk::{AccountType, DeviceType};
     use doublezero_sla_program::{
         instructions::DoubleZeroInstruction,
-        processors::device::{activate::DeviceActivateArgs, deactivate::DeviceDeactivateArgs},
+        processors::device::{activate::DeviceActivateArgs, closeaccount::DeviceCloseAccountArgs},
     };
     use mockall::{predicate, Sequence};
     use solana_sdk::signature::Signature;
@@ -150,8 +150,8 @@ mod tests {
             .times(1)
             .in_sequence(&mut seq)
             .with(
-                predicate::eq(DoubleZeroInstruction::DeactivateDevice(
-                    DeviceDeactivateArgs {
+                predicate::eq(DoubleZeroInstruction::CloseAccountDevice(
+                    DeviceCloseAccountArgs {
                         index: device.index,
                         bump_seed: device_bump_seed,
                     },

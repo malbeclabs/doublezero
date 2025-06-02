@@ -60,9 +60,10 @@ use crate::{
         user::{
             activate::process_activate_user, ban::process_ban_user,
             closeaccount::process_closeaccount_user, create::process_create_user,
-            delete::process_delete_user, reject::process_reject_user,
-            requestban::process_request_ban_user, resume::process_resume_user,
-            suspend::process_suspend_user, update::process_update_user,
+            create_subscribe::process_create_subscribe_user, delete::process_delete_user,
+            reject::process_reject_user, requestban::process_request_ban_user,
+            resume::process_resume_user, suspend::process_suspend_user,
+            update::process_update_user,
         },
     },
 };

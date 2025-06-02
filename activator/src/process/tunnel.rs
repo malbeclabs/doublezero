@@ -1,7 +1,7 @@
 use crate::{idallocator::IDAllocator, ipblockallocator::IPBlockAllocator};
 use doublezero_sdk::{
     commands::tunnel::{
-        activate::ActivateTunnelCommand, deactivate::DeactivateTunnelCommand,
+        activate::ActivateTunnelCommand, closeaccount::CloseAccountTunnelCommand,
         reject::RejectTunnelCommand,
     },
     DoubleZeroClient, Tunnel, TunnelStatus,
@@ -67,7 +67,7 @@ pub fn process_tunnel_event(
             tunnel_tunnel_ids.unassign(tunnel.tunnel_id);
             tunnel_tunnel_ips.unassign_block(tunnel.tunnel_net);
 
-            let res = DeactivateTunnelCommand {
+            let res = CloseAccountTunnelCommand {
                 index: tunnel.index,
                 owner: tunnel.owner,
             }
@@ -99,7 +99,7 @@ mod tests {
     use doublezero_sla_program::{
         instructions::DoubleZeroInstruction,
         processors::tunnel::{
-            activate::TunnelActivateArgs, deactivate::TunnelDeactivateArgs,
+            activate::TunnelActivateArgs, closeaccount::TunnelCloseAccountArgs,
             reject::TunnelRejectArgs,
         },
     };
@@ -170,8 +170,8 @@ mod tests {
             .times(1)
             .in_sequence(&mut seq)
             .with(
-                predicate::eq(DoubleZeroInstruction::DeactivateTunnel(
-                    TunnelDeactivateArgs {
+                predicate::eq(DoubleZeroInstruction::CloseAccountTunnel(
+                    TunnelCloseAccountArgs {
                         index: tunnel.index,
                         bump_seed: tunnel.bump_seed,
                     },

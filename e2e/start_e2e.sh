@@ -92,7 +92,6 @@ test_ibrl_with_allocated_addr() {
 
     print_banner "Running post-connect tests"
     e2e_test -test.v -test.run "^TestIBRLWithAllocatedAddress_Connect"
-    e2e_test -test.v -test.run "^TestIBRLWithAllocatedAddress_Connect_Networking"
 
     print_banner "Disconnecting user tunnel"
     doublezero --keypair $SOLANA_KEYPAIR disconnect --client-ip 64.86.249.86
@@ -111,7 +110,6 @@ test_ibrl() {
 
     print_banner "Running post-connect tests"
     e2e_test -test.v -test.run "^TestIBRL_Connect"
-    e2e_test -test.v -test.run "^TestIBRL_Connect_Networking"
 
     print_banner "Disconnecting user tunnel"
     doublezero --keypair $SOLANA_KEYPAIR disconnect --client-ip 64.86.249.86

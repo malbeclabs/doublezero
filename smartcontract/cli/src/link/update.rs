@@ -1,13 +1,13 @@
 use crate::doublezerocommand::CliCommand;
 use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
 use clap::Args;
-use doublezero_sdk::commands::tunnel::get::GetTunnelCommand;
-use doublezero_sdk::commands::tunnel::update::UpdateTunnelCommand;
+use doublezero_sdk::commands::link::get::GetLinkCommand;
+use doublezero_sdk::commands::link::update::UpdateLinkCommand;
 use doublezero_sdk::*;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct UpdateTunnelCliCommand {
+pub struct UpdateLinkCliCommand {
     #[arg(long)]
     pub pubkey: String,
     #[arg(long)]
@@ -24,16 +24,16 @@ pub struct UpdateTunnelCliCommand {
     pub jitter_ms: Option<f64>,
 }
 
-impl UpdateTunnelCliCommand {
+impl UpdateLinkCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let (_, tunnel) = client.get_tunnel(GetTunnelCommand {
+        let (_, tunnel) = client.get_link(GetLinkCommand {
             pubkey_or_code: self.pubkey,
         })?;
 
-        let signature = client.update_tunnel(UpdateTunnelCommand {
+        let signature = client.update_link(UpdateLinkCommand {
             index: tunnel.index,
             code: self.code.clone(),
             tunnel_type: self.tunnel_type.map(|t| t.parse().unwrap()),
@@ -53,25 +53,25 @@ impl UpdateTunnelCliCommand {
 #[cfg(test)]
 mod tests {
     use crate::doublezerocommand::CliCommand;
+    use crate::link::update::UpdateLinkCliCommand;
     use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
     use crate::tests::utils::create_test_client;
-    use crate::tunnel::update::UpdateTunnelCliCommand;
-    use doublezero_sdk::commands::tunnel::get::GetTunnelCommand;
-    use doublezero_sdk::commands::tunnel::update::UpdateTunnelCommand;
-    use doublezero_sdk::get_tunnel_pda;
+    use doublezero_sdk::commands::link::get::GetLinkCommand;
+    use doublezero_sdk::commands::link::update::UpdateLinkCommand;
+    use doublezero_sdk::get_link_pda;
     use doublezero_sdk::AccountType;
-    use doublezero_sdk::Tunnel;
-    use doublezero_sdk::TunnelStatus;
-    use doublezero_sdk::TunnelTunnelType;
+    use doublezero_sdk::Link;
+    use doublezero_sdk::LinkLinkType;
+    use doublezero_sdk::LinkStatus;
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
     use solana_sdk::signature::Signature;
 
     #[test]
-    fn test_cli_tunnel_update() {
+    fn test_cli_link_update() {
         let mut client = create_test_client();
 
-        let (pda_pubkey, _bump_seed) = get_tunnel_pda(&client.get_program_id(), 1);
+        let (pda_pubkey, _bump_seed) = get_link_pda(&client.get_program_id(), 1);
         let signature = Signature::from([
             120, 138, 162, 185, 59, 209, 241, 157, 71, 157, 74, 131, 4, 87, 54, 28, 38, 180, 222,
             82, 64, 62, 61, 62, 22, 46, 17, 203, 187, 136, 62, 43, 11, 38, 235, 17, 239, 82, 240,
@@ -82,21 +82,21 @@ mod tests {
         let device1_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb");
         let device2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf");
 
-        let tunnel = Tunnel {
-            account_type: AccountType::Tunnel,
+        let tunnel = Link {
+            account_type: AccountType::Link,
             index: 1,
             bump_seed: 255,
             code: "test".to_string(),
             side_a_pk: device1_pk,
             side_z_pk: device2_pk,
-            tunnel_type: TunnelTunnelType::MPLSoGRE,
+            link_type: LinkLinkType::L3,
             bandwidth: 1000000000,
             mtu: 1500,
             delay_ns: 10000000000,
             jitter_ns: 5000000000,
             tunnel_id: 1,
             tunnel_net: ([10, 0, 0, 1], 16),
-            status: TunnelStatus::Activated,
+            status: LinkStatus::Activated,
             owner: pda_pubkey,
         };
 
@@ -105,14 +105,14 @@ mod tests {
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
         client
-            .expect_get_tunnel()
-            .with(predicate::eq(GetTunnelCommand {
+            .expect_get_link()
+            .with(predicate::eq(GetLinkCommand {
                 pubkey_or_code: pda_pubkey.to_string(),
             }))
             .returning(move |_| Ok((pda_pubkey, tunnel.clone())));
         client
-            .expect_update_tunnel()
-            .with(predicate::eq(UpdateTunnelCommand {
+            .expect_update_link()
+            .with(predicate::eq(UpdateLinkCommand {
                 index: 1,
                 code: Some("new_code".to_string()),
                 tunnel_type: None,
@@ -125,7 +125,7 @@ mod tests {
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
-        let res = UpdateTunnelCliCommand {
+        let res = UpdateLinkCliCommand {
             pubkey: pda_pubkey.to_string(),
             code: Some("new_code".to_string()),
             tunnel_type: None,

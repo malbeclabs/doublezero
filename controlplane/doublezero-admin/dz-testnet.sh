@@ -40,7 +40,7 @@ cargo build
 ./target/debug/doublezero-admin device create --code ams-dz001 --location ams --exchange xam --public-ip "195.219.138.50" --dz-prefix "195.219.138.56/29"
 
 
-### Tunnels
+### Links
 ./target/debug/doublezero-admin tunnel create --code "la2-dz01:ny5-dz01" --side-a la2-dz01 --side-z ny5-dz01 --tunnel-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
 ./target/debug/doublezero-admin tunnel create --code "ny5-dz01:ld4-dz01" --side-a ny5-dz01 --side-z ld4-dz01 --tunnel-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
 ./target/debug/doublezero-admin tunnel create --code "ld4-dz01:frk-dz01" --side-a ld4-dz01 --side-z frk-dz01 --tunnel-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10

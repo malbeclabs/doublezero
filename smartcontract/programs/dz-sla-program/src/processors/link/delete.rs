@@ -1,6 +1,6 @@
 use crate::error::DoubleZeroError;
 use crate::globalstate::globalstate_get;
-use crate::{helper::*, state::tunnel::*};
+use crate::{helper::*, state::link::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
 #[cfg(test)]
@@ -12,21 +12,21 @@ use solana_program::{
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct TunnelDeleteArgs {
+pub struct LinkDeleteArgs {
     pub index: u128,
     pub bump_seed: u8,
 }
 
-impl fmt::Debug for TunnelDeleteArgs {
+impl fmt::Debug for LinkDeleteArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "")
     }
 }
 
-pub fn process_delete_tunnel(
+pub fn process_delete_link(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &TunnelDeleteArgs,
+    value: &LinkDeleteArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -36,7 +36,7 @@ pub fn process_delete_tunnel(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_delete_tunnel({:?})", value);
+    msg!("process_delete_link({:?})", value);
 
     // Check the owner of the accounts
     assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
@@ -50,7 +50,7 @@ pub fn process_delete_tunnel(
         "Invalid System Program Account Owner"
     );
 
-    let mut tunnel: Tunnel = Tunnel::from(&pda_account.try_borrow_data().unwrap()[..]);
+    let mut tunnel: Link = Link::from(&pda_account.try_borrow_data().unwrap()[..]);
     assert_eq!(tunnel.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
         tunnel.bump_seed, value.bump_seed,
@@ -64,7 +64,7 @@ pub fn process_delete_tunnel(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    tunnel.status = TunnelStatus::Deleting;
+    tunnel.status = LinkStatus::Deleting;
 
     account_write(pda_account, &tunnel, payer_account, system_program);
 

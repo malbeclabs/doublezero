@@ -4,6 +4,7 @@ use doublezero_sdk::commands::{
     device::list::ListDeviceCommand, location::list::ListLocationCommand,
     multicastgroup::list::ListMulticastGroupCommand, user::list::ListUserCommand,
 };
+use doublezero_sdk::MulticastGroup;
 use doublezero_sdk::*;
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;

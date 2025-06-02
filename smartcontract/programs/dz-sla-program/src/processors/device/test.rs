@@ -195,7 +195,7 @@ mod device_test {
         assert_eq!(device.code, "la".to_string());
         assert_eq!(device.status, DeviceStatus::Activated);
 
-        println!("✅ Tunnel updated");
+        println!("✅ Link updated");
         /*****************************************************************************************************************************************************/
         println!("🟢 7. Suspend Device...");
         execute_transaction(

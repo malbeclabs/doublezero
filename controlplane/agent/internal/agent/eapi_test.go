@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"os/exec"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -16,6 +17,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 )
+
+var mockResponseSelector = 0
 
 type mockAristaEapiMgr struct {
 	pb.UnimplementedEapiMgrServiceServer
@@ -33,8 +36,13 @@ func (*mockAristaEapiMgr) RunConfigCmds(ctx context.Context, req *pb.RunConfigCm
 func (*mockAristaEapiMgr) RunShowCmd(ctx context.Context, req *pb.RunShowCmdRequest) (*pb.RunShowCmdResponse, error) {
 	var resp []string
 	switch req.Command {
-	case "show ip bgp neighbors vrf vrf1":
-		resp = []string{string("{ \"vrfs\": { \"vrf1\": { \"peerList\": [ { \"peerAddress\": \"192.168.1.1\", \"asn\": \"65342\", \"linkType\": \"internal\", \"routerId\": \"0.0.0.0\" }, { \"peerAddress\": \"192.168.1.1\", \"asn\": \"65342\", \"linkType\": \"internal\", \"routerId\": \"0.0.0.0\" } ] } } }")}
+	case "show ip bgp neighbors vrf all":
+		resps := []string{
+			"{ \"vrfs\": { \"vrf1\": { \"peerList\": [ { \"peerAddress\": \"192.168.1.1\", \"asn\": \"65342\", \"linkType\": \"internal\", \"routerId\": \"0.0.0.0\" }, { \"peerAddress\": \"192.168.1.1\", \"asn\": \"65342\", \"linkType\": \"internal\", \"routerId\": \"0.0.0.0\" } ] } } }",
+			"{ \"vrfs\": { \"default\": { \"peerList\": [{ \"peerAddress\": \"192.168.1.1\", \"asn\": \"65342\", \"linkType\": \"internal\", \"routerId\": \"0.0.0.0\" }, { \"peerAddress\": \"192.168.1.2\", \"asn\": \"65342\", \"linkType\": \"internal\", \"routerId\": \"0.0.0.0\" }] }, \"vrf1\": { \"peerList\": [{ \"peerAddress\": \"192.168.1.4\", \"asn\": \"65342\", \"linkType\": \"internal\", \"routerId\": \"0.0.0.0\" }] } } } ",
+		}
+		resp = []string{resps[mockResponseSelector%len(resps)]}
+		mockResponseSelector++
 	case "show configuration sessions":
 		resp = []string{string("{\"sessions\": {\"doublezero-agent-123456789000\": {\"state\": \"pending\", \"completedTime\": 1736543591.7917519, \"commitUser\": \"\", \"description\": \"\", \"instances\": {\"868\": {\"user\": \"root\", \"terminal\": \"vty5\", \"currentTerminal\": false}}}, \"blah1\": {\"state\": \"pending\", \"commitUser\": \"\", \"description\": \"\", \"instances\": {}}}, \"maxSavedSessions\": 1, \"maxOpenSessions\": 5, \"mergeOnCommit\": false, \"saveToStartupConfigOnCommit\": false}")}
 	case "show configuration lock":
@@ -225,7 +233,7 @@ func TestGetBgpNeighbors(t *testing.T) {
 		Ctx         context.Context
 		Device      string
 		ClientConn  *grpc.ClientConn
-		Want        []string
+		Want        map[string][]string
 	}{
 		{
 			Name:        "success",
@@ -233,7 +241,15 @@ func TestGetBgpNeighbors(t *testing.T) {
 			Ctx:         context.Background(),
 			Device:      "127.0.0.1:9543",
 			ClientConn:  mockClientConn,
-			Want:        []string{"192.168.1.1"},
+			Want:        map[string][]string{"vrf1": {"192.168.1.1"}},
+		},
+		{
+			Name:        "success",
+			ExpectError: false,
+			Ctx:         context.Background(),
+			Device:      "127.0.0.1:9543",
+			ClientConn:  mockClientConn,
+			Want:        map[string][]string{"default": {"192.168.1.1", "192.168.1.2"}, "vrf1": {"192.168.1.4"}},
 		},
 		{
 			Name:        "connection_failure",
@@ -250,7 +266,6 @@ func TestGetBgpNeighbors(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
 			eapiClient, err := NewEapiClient(test.Device, test.ClientConn)
-
 			if err != nil {
 				t.Errorf("Call to NewEapiClient failed with error %q", err)
 			} else {
@@ -263,8 +278,8 @@ func TestGetBgpNeighbors(t *testing.T) {
 					t.Errorf("Call to eapiClient.GetBgpNeighbors failed with error: %q", err)
 				} else if len(resp) == 0 {
 					t.Fatalf("Call to eapiClient.GetBgpNeighbors returned empty response")
-				} else if test.Want != nil && (test.Want[0] != resp[0]) {
-					t.Errorf("Expected peer 0 to be %s but instead got %s", test.Want[0], resp[0])
+				} else if test.Want != nil && !reflect.DeepEqual(test.Want, resp) {
+					t.Errorf("Expected peers to be %s but instead got %s", test.Want, resp)
 				}
 			}
 		})

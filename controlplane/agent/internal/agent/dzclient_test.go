@@ -69,7 +69,7 @@ func TestGetConfigFromServer(t *testing.T) {
 		Ctx               context.Context
 		ControllerClient  pb.ControllerClient
 		LocalDevicePubkey string
-		NeighborIpList    []string
+		NeighborIpMap     map[string][]string
 		Timeout           float64
 	}{
 		{
@@ -78,14 +78,14 @@ func TestGetConfigFromServer(t *testing.T) {
 			Ctx:               context.Background(),
 			ControllerClient:  mockDzControllerClient,
 			LocalDevicePubkey: "fakepubkey111111111111111111",
-			NeighborIpList:    []string{"1.2.3.4"},
+			NeighborIpMap:     map[string][]string{"vrf1": {"1.2.3.4"}},
 			Timeout:           2.0,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
-			_, err := GetConfigFromServer(test.Ctx, test.ControllerClient, test.LocalDevicePubkey, test.NeighborIpList, &test.Timeout)
+			_, err := GetConfigFromServer(test.Ctx, test.ControllerClient, test.LocalDevicePubkey, test.NeighborIpMap, &test.Timeout)
 			if err != nil {
 				t.Errorf("Call to GetConfigFromServer failed with error %q", err)
 			}

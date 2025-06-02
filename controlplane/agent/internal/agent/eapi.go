@@ -333,9 +333,9 @@ func (e *EapiClient) AddConfigToDevice(ctx context.Context, config string, diffC
 
 // Retrieve a list of BGP neighbor IP addresses from the local switch.
 // (The slice of strings return value is intended to be used only by unit tests)
-func (e *EapiClient) GetBgpNeighbors(ctx context.Context) ([]string, error) {
+func (e *EapiClient) GetBgpNeighbors(ctx context.Context) (map[string][]string, error) {
 	cmd := &arista.RunShowCmdRequest{
-		Command: "show ip bgp neighbors vrf vrf1",
+		Command: "show ip bgp neighbors vrf all",
 	}
 
 	resp, err := e.Client.RunShowCmd(ctx, cmd)
@@ -355,15 +355,15 @@ func (e *EapiClient) GetBgpNeighbors(ctx context.Context) ([]string, error) {
 		log.Printf("Warning: json.Unmarshal returned error %v\n", err)
 	}
 
-	var neighborIpList []string
+	neighborIpMap := make(map[string][]string)
 
-	for _, vrf := range neighbors.VRFs {
+	for vrfName, vrf := range neighbors.VRFs {
 		for _, peer := range vrf.Peers {
-			if !slices.Contains(neighborIpList, peer.PeerAddress) {
-				neighborIpList = append(neighborIpList, peer.PeerAddress)
+			if !slices.Contains(neighborIpMap[vrfName], peer.PeerAddress) {
+				neighborIpMap[vrfName] = append(neighborIpMap[vrfName], peer.PeerAddress)
 			}
 		}
 	}
 
-	return neighborIpList, nil
+	return neighborIpMap, nil
 }

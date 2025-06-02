@@ -25,12 +25,13 @@ type Client struct {
 
 	client AccountFetcher
 
-	Config    Config
-	Locations []Location
-	Exchanges []Exchange
-	Devices   []Device
-	Tunnels   []Tunnel
-	Users     []User
+	Config          Config
+	Locations       []Location
+	Exchanges       []Exchange
+	Devices         []Device
+	Tunnels         []Tunnel
+	Users           []User
+	MulticastGroups []MulticastGroup
 }
 
 type Option func(*Client)
@@ -69,6 +70,7 @@ func (e *Client) Load(ctx context.Context) error {
 	e.Devices = []Device{}
 	e.Tunnels = []Tunnel{}
 	e.Users = []User{}
+	e.MulticastGroups = []MulticastGroup{}
 
 	var errs error
 	for _, element := range out {
@@ -103,6 +105,10 @@ func (e *Client) Load(ctx context.Context) error {
 			var user User
 			DeserializeUser(reader, &user)
 			e.Users = append(e.Users, user)
+		case byte(MulticastGroupType):
+			var multicastgroup MulticastGroup
+			DeserializeMulticastGroup(reader, &multicastgroup)
+			e.MulticastGroups = append(e.MulticastGroups, multicastgroup)
 		}
 	}
 	return errs
@@ -130,6 +136,10 @@ func (s *Client) GetConfig() Config {
 
 func (s *Client) GetTunnels() []Tunnel {
 	return s.Tunnels
+}
+
+func (s *Client) GetMulticastGroups() []MulticastGroup {
+	return s.MulticastGroups
 }
 
 func (s *Client) List() {

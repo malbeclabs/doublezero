@@ -8,6 +8,7 @@ func DeserializeConfig(reader *ByteReader, cfg *Config) {
 	cfg.Remote_asn = reader.ReadU32()
 	cfg.TunnelTunnelBlock = reader.ReadNetworkV4()
 	cfg.UserTunnelBlock = reader.ReadNetworkV4()
+	cfg.MulticastGroupBlock = reader.ReadNetworkV4()
 	cfg.PubKey = reader.ReadPubkey()
 }
 
@@ -88,5 +89,24 @@ func DeserializeUser(reader *ByteReader, user *User) {
 	user.TunnelId = reader.ReadU16()
 	user.TunnelNet = reader.ReadNetworkV4()
 	user.Status = UserStatus(reader.ReadU8())
+	user.Publishers = reader.ReadPubkeySlice()
+	user.Subscribers = reader.ReadPubkeySlice()
 	user.PubKey = reader.ReadPubkey()
+}
+
+func DeserializeMulticastGroup(reader *ByteReader, multicastgroup *MulticastGroup) {
+	multicastgroup.AccountType = AccountType(reader.ReadU8())
+	multicastgroup.Owner = reader.ReadPubkey()
+	multicastgroup.Index = reader.ReadU128()
+	multicastgroup.Bump_seed = reader.ReadU8()
+	multicastgroup.TenantPubKey = reader.ReadPubkey()
+	multicastgroup.MulticastIp = reader.ReadIPv4()
+	multicastgroup.MaxBandwidth = reader.ReadU64()
+	multicastgroup.Status = MulticastGroupStatus(reader.ReadU8())
+	multicastgroup.Code = reader.ReadString()
+	multicastgroup.PubAllowList = reader.ReadPubkeySlice()
+	multicastgroup.SubAllowList = reader.ReadPubkeySlice()
+	multicastgroup.Publishers = reader.ReadPubkeySlice()
+	multicastgroup.Subscribers = reader.ReadPubkeySlice()
+	multicastgroup.PubKey = reader.ReadPubkey()
 }

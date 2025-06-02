@@ -69,8 +69,8 @@ func TestNetlinkManager_ProvisionRequestUnmarshal(t *testing.T) {
 			t.Errorf("Unmarshal mismatch (-want +got): %s\n", diff)
 		}
 	}
-
 }
+
 func TestNetlinkManager_ProvisionRequestValidation(t *testing.T) {
 	tests := []struct {
 		Name        string
@@ -106,7 +106,8 @@ func TestHttpStatus(t *testing.T) {
 	m := &MockNetlink{}
 	b := &MockBgpServer{}
 	db := &MockDb{state: nil}
-	manager := manager.NewNetlinkManager(m, b, db)
+	pim := &MockPIMServer{}
+	manager := manager.NewNetlinkManager(m, b, db, pim)
 
 	f, err := os.CreateTemp("/tmp", "doublezero.sock")
 	if err != nil {
@@ -137,7 +138,6 @@ func TestHttpStatus(t *testing.T) {
 		if err := apiServer.Serve(lis); err != nil {
 			t.Errorf("api error: %v", err)
 		}
-
 	}()
 
 	client := http.Client{
@@ -161,7 +161,7 @@ func TestHttpStatus(t *testing.T) {
 		}
 		// this previously returned `{"doublezero_status": {"session_status": "disconnected"}}  but now returns []
 		// want := "[]\n"
-		want := `{"doublezero_status": {"session_status": "disconnected"}}`
+		want := `[{"doublezero_status": {"session_status": "disconnected"}}]`
 		got, _ := io.ReadAll(resp.Body)
 		if diff := cmp.Diff(want, string(got)); diff != "" {
 			t.Fatalf("wrong response (-want +got): %s\n", diff)
@@ -206,20 +206,20 @@ func TestHttpStatus(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("wanted 200 response; got %d", resp.StatusCode)
 		}
-		want := `{"tunnel_name":"doublezero0","tunnel_src":"1.1.1.1","tunnel_dst":"2.2.2.2","doublezero_ip":"3.3.3.3","doublezero_status":{"session_status":"unknown","last_session_update":0}}` + "\n"
+		want := `[{"tunnel_name":"doublezero0","tunnel_src":"1.1.1.1","tunnel_dst":"2.2.2.2","doublezero_ip":"3.3.3.3","doublezero_status":{"session_status":"unknown","last_session_update":0},"user_type":"IBRL"}]` + "\n"
 		got, _ := io.ReadAll(resp.Body)
 		if diff := cmp.Diff(want, string(got), cmpopts.IgnoreFields(bgp.Session{}, "LastSessionUpdate")); diff != "" {
 			t.Fatalf("Response body mismatch (-want +got): %s\n", diff)
 		}
 	})
-
 }
 
 func TestNetlinkManager_HttpEndpoints(t *testing.T) {
 	m := &MockNetlink{}
 	b := &MockBgpServer{}
 	db := &MockDb{state: []*api.ProvisionRequest{}}
-	manager := manager.NewNetlinkManager(m, b, db)
+	pim := &MockPIMServer{}
+	manager := manager.NewNetlinkManager(m, b, db, pim)
 
 	f, err := os.CreateTemp("/tmp", "doublezero.sock")
 	if err != nil {
@@ -251,14 +251,12 @@ func TestNetlinkManager_HttpEndpoints(t *testing.T) {
 		if err := api.Serve(lis); err != nil {
 			t.Errorf("api error: %v", err)
 		}
-
 	}()
 
 	client := http.Client{
 		Transport: &http.Transport{
 			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
 				return net.Dial("unix", f.Name())
-
 			},
 		},
 	}
@@ -394,6 +392,16 @@ func TestNetlinkManager_HttpEndpoints(t *testing.T) {
 	}
 }
 
+type MockPIMServer struct{}
+
+func (m *MockPIMServer) Start(iface string, tunnelAddr net.IP, group []net.IP) error {
+	return nil
+}
+
+func (m *MockPIMServer) Close() error {
+	return nil
+}
+
 type MockBgpServer struct {
 	deletedPeer net.IP
 }
@@ -425,35 +433,43 @@ func (m *MockNetlink) TunnelAdd(t *routing.Tunnel) error {
 	m.tunAdded = t
 	return nil
 }
+
 func (m *MockNetlink) TunnelDelete(n *routing.Tunnel) error {
 	m.callLog = append(m.callLog, "TunnelDelete")
 	m.tunRemoved = n
 	return nil
 }
-func (m *MockNetlink) TunnelAddrAdd(t *routing.Tunnel, ip string) error {
+
+func (m *MockNetlink) TunnelAddrAdd(t *routing.Tunnel, ip string, _ bool) error {
 	m.tunAddrAdded = append(m.tunAddrAdded, ip)
 	return nil
 }
+
 func (m *MockNetlink) TunnelUp(t *routing.Tunnel) error {
 	m.tunUp = t
 	return nil
 }
+
 func (m *MockNetlink) RouteAdd(r *routing.Route) error {
 	m.routesAdded = append(m.routesAdded, r)
 	return nil
 }
+
 func (m *MockNetlink) RouteDelete(n *routing.Route) error {
 	m.callLog = append(m.callLog, "RouteDelete")
 	m.routesRemoved = append(m.routesRemoved, n)
 	return nil
 }
+
 func (m *MockNetlink) RouteGet(net.IP) ([]*routing.Route, error) {
 	return m.routes, nil
 }
+
 func (m *MockNetlink) RuleAdd(r *routing.IPRule) error {
 	m.ruleAdded = append(m.ruleAdded, r)
 	return nil
 }
+
 func (m *MockNetlink) RuleDel(n *routing.IPRule) error {
 	m.callLog = append(m.callLog, "RuleDel")
 	m.ruleRemoved = append(m.ruleRemoved, n)

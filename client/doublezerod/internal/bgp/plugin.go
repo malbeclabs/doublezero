@@ -18,16 +18,25 @@ type Plugin struct {
 	RouteSrc          net.IP
 	RouteTable        int // kernel routing table to target for writing/removing
 	FlushRoutes       bool
+	NoInstall         bool
 	RouteReaderWriter RouteReaderWriter
 }
 
-func NewBgpPlugin(advertised []NLRI, routeSrc net.IP, routeTable int, peerStatus chan SessionEvent, flushRoutes bool, routeReaderWriter RouteReaderWriter) *Plugin {
+func NewBgpPlugin(
+	advertised []NLRI,
+	routeSrc net.IP,
+	routeTable int,
+	peerStatus chan SessionEvent,
+	flushRoutes bool,
+	noInstall bool,
+	routeReaderWriter RouteReaderWriter) *Plugin {
 	return &Plugin{
 		AdvertisedNLRI:    advertised,
 		RouteSrc:          routeSrc,
 		RouteTable:        routeTable,
 		PeerStatusChan:    peerStatus,
 		FlushRoutes:       flushRoutes,
+		NoInstall:         noInstall,
 		RouteReaderWriter: routeReaderWriter,
 	}
 }
@@ -94,6 +103,9 @@ func (p *Plugin) OnClose(peer corebgp.PeerConfig) {
 }
 
 func (p *Plugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.Notification {
+	if p.NoInstall {
+		return nil
+	}
 	update := gobgp.BGPUpdate{}
 	if err := update.DecodeFromBytes(u); err != nil {
 		// TODO: send back notification message

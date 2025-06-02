@@ -86,9 +86,9 @@ func (n *NetlinkManager) ServeStatus(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(fmt.Sprintf(`{"status": "error", "description": "error while getting status: %v"}`, err)))
 		return
 	}
-	if status == nil {
+	if len(status) == 0 {
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"doublezero_status": {"session_status": "disconnected"}}`))
+		_, _ = w.Write([]byte(`[{"doublezero_status": {"session_status": "disconnected"}}]`))
 		return
 	}
 	if err = json.NewEncoder(w).Encode(status); err != nil {

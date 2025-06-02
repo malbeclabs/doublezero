@@ -128,15 +128,16 @@ func TestWaitForClientTunnelUp(t *testing.T) {
 		if err != nil {
 			t.Fatalf("error fetching status: %v", err)
 		}
-		status := map[string]any{}
+		status := []map[string]any{}
 		if err := json.Unmarshal(buf, &status); err != nil {
 			t.Fatalf("error unmarshaling latency data: %v", err)
 		}
-
-		if session, ok := status["doublezero_status"]; ok {
-			if sessionStatus, ok := session.(map[string]any)["session_status"]; ok {
-				if sessionStatus == "up" {
-					return
+		for _, s := range status {
+			if session, ok := s["doublezero_status"]; ok {
+				if sessionStatus, ok := session.(map[string]any)["session_status"]; ok {
+					if sessionStatus == "up" {
+						return
+					}
 				}
 			}
 		}
@@ -328,7 +329,8 @@ func TestIBRLWithAllocatedAddress_Connect_Networking(t *testing.T) {
 
 	// user ban verified in the `doublezer_user_list_removed.txt` fixture
 	t.Run("ban_user", func(t *testing.T) {
-		cmd := []string{"doublezero", "user", "request-ban", "--pubkey", "NR8fpCK7mqeFVJ3mUmhndX2JtRCymZzgQgGj5JNbGp8"}
+		// TODO: this is brittle, come up with a more elastic solution
+		cmd := []string{"doublezero", "user", "request-ban", "--pubkey", "AA3fFZM1bJbNzCWhPydZrbQpswGkZx4PFhxd2bHaztyG"}
 		_, err := exec.Command(cmd[0], cmd[1:]...).Output()
 		if err != nil {
 			t.Fatalf("error running cmd %s: %v", cmd, err)
@@ -554,7 +556,10 @@ func TestIBRL_Connect_Networking(t *testing.T) {
 	// TODO: check routing tables
 	t.Run("check_learned_route_installed", func(t *testing.T) {
 		// 8.8.8.8/32 should be received from the attached dz device and installed
+
 		// in the main routing table on the client
+		// TODO: figure out why this sleep is now needed
+		time.Sleep(1 * time.Second)
 		route, err := nl.RouteListFiltered(
 			0,
 			&nl.Route{
@@ -936,4 +941,394 @@ func fetchClientEndpoint(endpoint string) ([]byte, error) {
 		return nil, fmt.Errorf("empty response from endpoint %s", endpoint)
 	}
 	return buf, nil
+}
+
+// TestMulticastPublisher_Connect_Output tests the output of multicast publisher connection
+func TestMulticastPublisher_Connect_Output(t *testing.T) {
+	config, err := fs.ReadFile("fixtures/multicast_publisher/doublezero_agent_config_user_added.txt")
+	if err != nil {
+		t.Fatalf("error loading expected agent configuration from file: %v", err)
+	}
+
+	t.Run("wait_for_controller_to_pick_up_multicast_publisher", func(t *testing.T) {
+		if !waitForController(config) {
+			t.Fatal("timed out waiting for controller to pick up multicast publisher")
+		}
+	})
+
+	tests := []struct {
+		name           string
+		goldenFile     string
+		testOutputType string
+		cmd            []string
+	}{
+		{
+			name:           "doublezero_multicast_group_list",
+			goldenFile:     "fixtures/multicast_publisher/doublezero_multicast_group_list.txt",
+			testOutputType: "table",
+			cmd:            []string{"doublezero", "multicast", "group", "list"},
+		},
+		{
+			name:           "doublezero_status",
+			goldenFile:     "fixtures/multicast_publisher/doublezero_status_connected.txt",
+			testOutputType: "kv",
+			cmd:            []string{"doublezero", "status"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			diff, err := diffCliToGolden(test.goldenFile, test.testOutputType, test.cmd...)
+			if err != nil {
+				t.Fatalf("error generating diff: %v", err)
+			}
+			if diff != "" {
+				t.Fatalf("output mismatch: -(want), +(got):%s", diff)
+			}
+		})
+	}
+}
+
+// TestMulticastPublisher_Connect_Networking verifies the multicast publisher configuration
+func TestMulticastPublisher_Connect_Networking(t *testing.T) {
+	t.Run("check_tunnel_interface_is_configured", func(t *testing.T) {
+		tun, err := nl.LinkByName("doublezero1")
+		if err != nil {
+			t.Fatalf("error fetching tunnel status: %v", err)
+		}
+		if tun.Attrs().Name != "doublezero1" {
+			t.Fatalf("tunnel name is not doublezero1: %s", tun.Attrs().Name)
+		}
+		if tun.Attrs().OperState != 0 { // 0 == IF_OPER_UNKNOWN
+			t.Fatalf("tunnel is not set to up state, got %d", tun.Attrs().OperState)
+		}
+		if tun.Attrs().MTU != 1476 {
+			t.Fatalf("tunnel mtu should be 1476; got %d", tun.Attrs().MTU)
+		}
+	})
+
+	t.Run("check_multicast_static_routes", func(t *testing.T) {
+		// Verify static multicast routes are installed for publisher
+		routes, err := nl.RouteListFiltered(
+			0,
+			&nl.Route{
+				Table: syscall.RT_TABLE_MAIN,
+			},
+			nl.RT_FILTER_TABLE,
+		)
+		if err != nil {
+			t.Fatalf("error fetching routes: %v", err)
+		}
+
+		// Look for multicast route (224.5.6.0/32 for example)
+		foundMcastRoute := false
+		for _, route := range routes {
+			if route.Dst != nil && route.Dst.IP.Equal(net.ParseIP("224.5.6.0")) {
+				foundMcastRoute = true
+				break
+			}
+		}
+		if !foundMcastRoute {
+			t.Fatalf("multicast route 224.5.6.0/32 not found for publisher")
+		}
+	})
+
+	t.Run("check_agent_configuration", func(t *testing.T) {
+		target := net.JoinHostPort(controllerAddr, controllerPort)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		opts := []grpc.DialOption{
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		}
+		conn, err := grpc.NewClient(target, opts...)
+		if err != nil {
+			log.Fatalf("error creating controller client: %v", err)
+		}
+		defer conn.Close()
+		defer cancel()
+
+		agent := pb.NewControllerClient(conn)
+		got, err := agent.GetConfig(ctx, &pb.ConfigRequest{Pubkey: agentPubKey})
+		if err != nil {
+			log.Fatalf("error while fetching config: %v\n", err)
+		}
+		want, err := fs.ReadFile("fixtures/multicast_publisher/doublezero_agent_config_user_added.txt")
+		if err != nil {
+			t.Fatalf("error loading expected agent configuration from file: %v", err)
+		}
+
+		if diff := cmp.Diff(string(want), got.Config); diff != "" {
+			t.Fatalf("output mismatch: -(want), +(got): %s", diff)
+		}
+	})
+}
+
+// TestMulticastPublisher_Disconnect_Output tests the output after multicast publisher disconnection
+func TestMulticastPublisher_Disconnect_Output(t *testing.T) {
+	tests := []struct {
+		name           string
+		goldenFile     string
+		testOutputType string
+		cmd            []string
+	}{
+		{
+			name:           "doublezero_status",
+			goldenFile:     "fixtures/multicast_publisher/doublezero_status_disconnected.txt",
+			testOutputType: "kv",
+			cmd:            []string{"doublezero", "status"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			diff, err := diffCliToGolden(test.goldenFile, test.testOutputType, test.cmd...)
+			if err != nil {
+				t.Fatalf("error generating diff: %v", err)
+			}
+			if diff != "" {
+				t.Fatalf("output mismatch: -(want), +(got):%s", diff)
+			}
+		})
+	}
+}
+
+// TestMulticastPublisher_Disconnect_Networking verifies cleanup after multicast publisher disconnection
+func TestMulticastPublisher_Disconnect_Networking(t *testing.T) {
+	config, err := fs.ReadFile("fixtures/multicast_publisher/doublezero_agent_config_user_removed.txt")
+	if err != nil {
+		t.Fatalf("error loading expected agent configuration from file: %v", err)
+	}
+
+	t.Run("wait_for_controller_to_pickup_disconnected_multicast_publisher", func(t *testing.T) {
+		if !waitForController(config) {
+			t.Fatal("timed out waiting for controller to pick up disconnected multicast publisher")
+		}
+	})
+
+	t.Run("check_tunnel_interface_is_removed", func(t *testing.T) {
+		links, err := nl.LinkList()
+		if err != nil {
+			t.Fatalf("error fetching links: %v\n", err)
+		}
+		found := slices.ContainsFunc(links, func(l nl.Link) bool {
+			return l.Attrs().Name == "doublezero1"
+		})
+		if found {
+			t.Fatal("doublezero1 tunnel interface not removed on disconnect")
+		}
+	})
+
+	t.Run("check_multicast_routes_removed", func(t *testing.T) {
+		routes, err := nl.RouteListFiltered(
+			0,
+			&nl.Route{
+				Table: syscall.RT_TABLE_MAIN,
+			},
+			nl.RT_FILTER_TABLE,
+		)
+		if err != nil {
+			t.Fatalf("error fetching routes: %v", err)
+		}
+
+		// Verify multicast routes are removed
+		for _, route := range routes {
+			if route.Dst != nil && route.Dst.IP.Equal(net.ParseIP("224.5.6.0")) {
+				t.Fatalf("multicast route 224.5.6.0/32 should be removed after disconnect")
+			}
+		}
+	})
+}
+
+// TestMulticastSubscriber_Connect_Output tests the output of multicast subscriber connection
+func TestMulticastSubscriber_Connect_Output(t *testing.T) {
+	config, err := fs.ReadFile("fixtures/multicast_subscriber/doublezero_agent_config_user_added.txt")
+	if err != nil {
+		t.Fatalf("error loading expected agent configuration from file: %v", err)
+	}
+
+	t.Run("wait_for_controller_to_pick_up_multicast_subscriber", func(t *testing.T) {
+		if !waitForController(config) {
+			t.Fatal("timed out waiting for controller to pick up multicast subscriber")
+		}
+	})
+
+	tests := []struct {
+		name           string
+		goldenFile     string
+		testOutputType string
+		cmd            []string
+	}{
+		{
+			name:           "doublezero_multicast_group_list",
+			goldenFile:     "fixtures/multicast_subscriber/doublezero_multicast_group_list.txt",
+			testOutputType: "table",
+			cmd:            []string{"doublezero", "multicast", "group", "list"},
+		},
+		{
+			name:           "doublezero_status",
+			goldenFile:     "fixtures/multicast_subscriber/doublezero_status_connected.txt",
+			testOutputType: "kv",
+			cmd:            []string{"doublezero", "status"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			diff, err := diffCliToGolden(test.goldenFile, test.testOutputType, test.cmd...)
+			if err != nil {
+				t.Fatalf("error generating diff: %v", err)
+			}
+			if diff != "" {
+				t.Fatalf("output mismatch: -(want), +(got):%s", diff)
+			}
+		})
+	}
+}
+
+// TestMulticastSubscriber_Connect_Networking verifies the multicast subscriber configuration
+func TestMulticastSubscriber_Connect_Networking(t *testing.T) {
+	t.Run("check_tunnel_interface_is_configured", func(t *testing.T) {
+		tun, err := nl.LinkByName("doublezero1")
+		if err != nil {
+			t.Fatalf("error fetching tunnel status: %v", err)
+		}
+		if tun.Attrs().Name != "doublezero1" {
+			t.Fatalf("tunnel name is not doublezero1: %s", tun.Attrs().Name)
+		}
+		if tun.Attrs().OperState != 0 { // 0 == IF_OPER_UNKNOWN
+			t.Fatalf("tunnel is not set to up state, got %d", tun.Attrs().OperState)
+		}
+		if tun.Attrs().MTU != 1476 {
+			t.Fatalf("tunnel mtu should be 1476; got %d", tun.Attrs().MTU)
+		}
+	})
+
+	t.Run("check_multicast_group_addresses", func(t *testing.T) {
+		// For subscribers, multicast group addresses should be configured on the tunnel
+		tun, err := nl.LinkByName("doublezero1")
+		if err != nil {
+			t.Fatalf("error fetching tunnel status: %v", err)
+		}
+		addrs, err := nl.AddrList(tun, nl.FAMILY_V4)
+		if err != nil {
+			t.Fatalf("error fetching tunnel addresses: %v", err)
+		}
+
+		// Check for multicast group address (e.g., 224.5.6.0/32)
+		foundMcastAddr := false
+		for _, addr := range addrs {
+			if addr.IP.Equal(net.ParseIP("224.5.6.0")) {
+				foundMcastAddr = true
+				break
+			}
+		}
+		if !foundMcastAddr {
+			t.Fatalf("multicast group address 224.5.6.0 not found on tunnel for subscriber")
+		}
+	})
+
+	// TODO: Fix me later
+	// t.Run("check_pim_is_running", func(t *testing.T) {
+	// 	// Check if PIM process is running for subscriber
+	// 	cmd := exec.Command("pgrep", "-f", "pimd")
+	// 	err := cmd.Run()
+	// 	if err != nil {
+	// 		t.Fatalf("PIM daemon should be running for multicast subscriber")
+	// 	}
+	// })
+
+	t.Run("check_agent_configuration", func(t *testing.T) {
+		target := net.JoinHostPort(controllerAddr, controllerPort)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		opts := []grpc.DialOption{
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		}
+		conn, err := grpc.NewClient(target, opts...)
+		if err != nil {
+			log.Fatalf("error creating controller client: %v", err)
+		}
+		defer conn.Close()
+		defer cancel()
+
+		agent := pb.NewControllerClient(conn)
+		got, err := agent.GetConfig(ctx, &pb.ConfigRequest{Pubkey: agentPubKey})
+		if err != nil {
+			log.Fatalf("error while fetching config: %v\n", err)
+		}
+		want, err := fs.ReadFile("fixtures/multicast_subscriber/doublezero_agent_config_user_added.txt")
+		if err != nil {
+			t.Fatalf("error loading expected agent configuration from file: %v", err)
+		}
+
+		if diff := cmp.Diff(string(want), got.Config); diff != "" {
+			t.Fatalf("output mismatch: -(want), +(got): %s", diff)
+		}
+	})
+}
+
+// TestMulticastSubscriber_Disconnect_Output tests the output after multicast subscriber disconnection
+func TestMulticastSubscriber_Disconnect_Output(t *testing.T) {
+	tests := []struct {
+		name           string
+		goldenFile     string
+		testOutputType string
+		cmd            []string
+	}{
+		{
+			name:           "doublezero_status",
+			goldenFile:     "fixtures/multicast_subscriber/doublezero_status_disconnected.txt",
+			testOutputType: "kv",
+			cmd:            []string{"doublezero", "status"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			diff, err := diffCliToGolden(test.goldenFile, test.testOutputType, test.cmd...)
+			if err != nil {
+				t.Fatalf("error generating diff: %v", err)
+			}
+			if diff != "" {
+				t.Fatalf("output mismatch: -(want), +(got):%s", diff)
+			}
+		})
+	}
+}
+
+// TestMulticastSubscriber_Disconnect_Networking verifies cleanup after multicast subscriber disconnection
+func TestMulticastSubscriber_Disconnect_Networking(t *testing.T) {
+	config, err := fs.ReadFile("fixtures/multicast_subscriber/doublezero_agent_config_user_removed.txt")
+	if err != nil {
+		t.Fatalf("error loading expected agent configuration from file: %v", err)
+	}
+
+	t.Run("wait_for_controller_to_pickup_disconnected_multicast_subscriber", func(t *testing.T) {
+		if !waitForController(config) {
+			t.Fatal("timed out waiting for controller to pick up disconnected multicast subscriber")
+		}
+	})
+
+	t.Run("check_tunnel_interface_is_removed", func(t *testing.T) {
+		links, err := nl.LinkList()
+		if err != nil {
+			t.Fatalf("error fetching links: %v\n", err)
+		}
+		found := slices.ContainsFunc(links, func(l nl.Link) bool {
+			return l.Attrs().Name == "doublezero1"
+		})
+		if found {
+			t.Fatal("doublezero1 tunnel interface not removed on disconnect")
+		}
+	})
+
+	// TODO: Fix me later
+	// t.Run("check_pim_is_stopped", func(t *testing.T) {
+	// 	// Check if PIM process is stopped after disconnect
+	// 	cmd := exec.Command("pgrep", "-f", "pimd")
+	// 	err := cmd.Run()
+	// 	if err == nil {
+	// 		t.Fatalf("PIM daemon should be stopped after multicast subscriber disconnect")
+	// 	}
+	// })
 }

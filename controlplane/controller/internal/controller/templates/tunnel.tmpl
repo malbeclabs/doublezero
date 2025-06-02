@@ -1,13 +1,38 @@
 !
+ip multicast-routing
+!
+router pim sparse-mode
+   ipv4
+      rp address 10.0.0.0 {{ .MulticastGroupBlock }} override
+!
 vrf instance vrf1
 ip routing vrf vrf1
 !
+{{- if not .NoHardware }}
+hardware access-list update default-result permit
+!
+{{- end }}
 {{- range .Device.Tunnels }}
 default interface Tunnel{{ .Id }}
 {{- if eq true .Allocated }}
 interface Tunnel{{ .Id }}
-   mtu 9216
+   {{- if eq true .IsMulticast }}
+   description USER-MCAST-{{ .Id }}
+   {{- if not $.NoHardware }}
+   {{- if and .IsMulticast .MulticastSubscribers (not .MulticastPublishers) }}
+   ip access-group SEC-USER-SUB-MCAST-IN in
+   {{- else }}
+   ip access-group SEC-USER-PUB-MCAST-IN in
+   {{- end }}
+   {{- end }}
+   multicast ipv4 boundary SEC-USER-MCAST-BOUNDARY-{{ .Id }}-OUT out
+   pim ipv4 sparse-mode
+   pim ipv4 dr-priority 4294967295
+   {{- else }}
+   description USER-UCAST-{{ .Id }}
    vrf vrf1
+   {{- end }}
+   mtu 9216
    ip address {{ .OverlaySrcIP }}/31
    tunnel mode gre
    tunnel source {{ .UnderlaySrcIP }}
@@ -19,13 +44,36 @@ interface Tunnel{{ .Id }}
 !
 {{- end }}
 router bgp 65342
+   {{- range .Device.Tunnels }}
+   {{- if and .IsMulticast .Allocated }}
+   no neighbor {{ .OverlayDstIP }}
+   neighbor {{ .OverlayDstIP }} remote-as 65000
+   neighbor {{ .OverlayDstIP }} passive
+   neighbor {{ .OverlayDstIP }} description USER-{{ .Id  }}
+   neighbor {{ .OverlayDstIP }} route-map RM-USER-{{ .Id }}-IN in
+   neighbor {{ .OverlayDstIP }} route-map RM-USER-{{ .Id }}-OUT out
+   neighbor {{ .OverlayDstIP }} maximum-routes 1
+   neighbor {{ .OverlayDstIP }} maximum-accepted-routes 1
+   {{- end }}
+   {{- end }}
+   address-family ipv4
+   {{- range .Device.Tunnels }}
+   {{- if and .IsMulticast .Allocated }}
+      neighbor {{ .OverlayDstIP }} activate
+   {{- end }}
+   {{- end }}
+   {{- range .UnknownBgpPeers }}
+   no neighbor {{ . }}
+   {{- end }}
+   !
    vrf vrf1
       rd 65342:1
       route-target import vpn-ipv4 65342:1
       route-target export vpn-ipv4 65342:1
       router-id {{ .Device.PublicIP }}
-{{- range .Device.Tunnels }}
-{{- if eq true .Allocated }}
+      {{- range .Device.Tunnels }}
+      {{- if eq true .Allocated }}
+      {{- if not .IsMulticast }}
       no neighbor {{ .OverlayDstIP }}
       neighbor {{ .OverlayDstIP }} remote-as 65000
       neighbor {{ .OverlayDstIP }} passive
@@ -34,19 +82,21 @@ router bgp 65342
       neighbor {{ .OverlayDstIP }} route-map RM-USER-{{ .Id }}-OUT out
       neighbor {{ .OverlayDstIP }} maximum-routes 1
       neighbor {{ .OverlayDstIP }} maximum-accepted-routes 1
-{{- end }}
-{{- end }}
+      {{- end }}
+      {{- end }}
+      {{- end }}
 {{- range .UnknownBgpPeers }}
       no neighbor {{ . }}
 {{- end }}
 !
 ip community-list COMM-ALL_USERS permit 21682:1200
+ip community-list COMM-ALL_MCAST_USERS permit 21682:1300
 !
 {{- range .Device.Tunnels }}
 no route-map RM-USER-{{ .Id }}-OUT
 {{- if eq true .Allocated }}
 route-map RM-USER-{{ .Id }}-OUT permit 10
-   match community COMM-ALL_USERS
+   match community {{ if eq true .IsMulticast }}COMM-ALL_MCAST_USERS{{ else }}COMM-ALL_USERS{{ end }}
 {{- end }}
 !
 {{- end }}
@@ -56,14 +106,43 @@ no route-map RM-USER-{{ .Id }}-IN
 route-map RM-USER-{{ .Id }}-IN permit 10
    match ip address prefix-list PL-USER-{{ .Id }}
    match as-path length = 1
-   set community 21682:1200
+   set community 21682:{{ if eq true .IsMulticast }}1300{{ else }}1200{{ end }}
 {{- end }}
 !
 {{- end }}
 {{- range .Device.Tunnels }}
 no ip prefix-list PL-USER-{{ .Id }}
 {{- if eq true .Allocated }}
+{{- if and .IsMulticast .MulticastSubscribers (not .MulticastPublishers) }}
+ip prefix-list PL-USER-{{ .Id }} seq 10 deny 0.0.0.0/0 le 32
+{{- else }}
 ip prefix-list PL-USER-{{ .Id }} seq 10 permit {{ .DzIp }}/32
+{{- end }}
 {{- end }}
 !
 {{- end }}
+{{- range .Device.Tunnels }}
+{{- if eq true .IsMulticast }}
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-{{ .Id }}-OUT
+ip access-list standard SEC-USER-MCAST-BOUNDARY-{{ .Id }}-OUT
+   counters per-entry
+   {{- range .MulticastSubscribers }}
+   permit host {{ . }}
+   {{- end }}
+   deny 224.0.0.0/4
+!
+{{- end }}
+{{- end }}
+no ip access-list SEC-USER-PUB-MCAST-IN
+ip access-list SEC-USER-PUB-MCAST-IN
+   counters per-entry
+   permit ip any 224.0.0.13/32
+   permit ip any {{ .MulticastGroupBlock }}
+   deny ip any any
+!
+no ip access-list SEC-USER-SUB-MCAST-IN
+ip access-list SEC-USER-SUB-MCAST-IN
+   counters per-entry
+   permit ip any 224.0.0.13/32
+   deny ip any any
+!

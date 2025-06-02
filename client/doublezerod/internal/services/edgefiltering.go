@@ -12,16 +12,19 @@ import (
 )
 
 type EdgeFilteringService struct {
-	bgp            bgpReaderWriter
+	bgp            BGPReaderWriter
 	nl             routing.Netlinker
-	db             dbReaderWriter
+	db             DBReaderWriter
 	Tunnel         *routing.Tunnel
 	DoubleZeroAddr net.IP
 	Routes         []*routing.Route
 	Rules          []*routing.IPRule
 }
 
-func NewEdgeFilteringService(bgp bgpReaderWriter, nl routing.Netlinker, db dbReaderWriter) *EdgeFilteringService {
+func (s *EdgeFilteringService) UserType() api.UserType   { return api.UserTypeEdgeFiltering }
+func (s *EdgeFilteringService) ServiceType() ServiceType { return ServiceTypeUnicast }
+
+func NewEdgeFilteringService(bgp BGPReaderWriter, nl routing.Netlinker, db DBReaderWriter) *EdgeFilteringService {
 	return &EdgeFilteringService{
 		bgp: bgp,
 		nl:  nl,
@@ -31,7 +34,7 @@ func NewEdgeFilteringService(bgp bgpReaderWriter, nl routing.Netlinker, db dbRea
 
 func (s *EdgeFilteringService) Setup(p *api.ProvisionRequest) error {
 	// TODO: have NewTunnel take a net.IPNet
-	tun, err := routing.NewTunnel(p.TunnelSrc, p.TunnelDst, p.TunnelNet.String())
+	tun, err := routing.NewTunnel("doublezero0", p.TunnelSrc, p.TunnelDst, p.TunnelNet.String())
 	if err != nil {
 		return fmt.Errorf("error generating new tunnel: %v", err)
 	}
@@ -127,10 +130,9 @@ func (s *EdgeFilteringService) Status() (*api.StatusResponse, error) {
 		TunnelDst:        s.Tunnel.RemoteUnderlay,
 		DoubleZeroIP:     s.DoubleZeroAddr,
 		DoubleZeroStatus: peerStatus,
+		UserType:         s.UserType(),
 	}, nil
 }
-
-func (s *EdgeFilteringService) ServiceType() ServiceType { return ServiceTypeUnicast }
 
 func (s *EdgeFilteringService) createIPRules(prefixes []*net.IPNet) error {
 	rules := []*routing.IPRule{}

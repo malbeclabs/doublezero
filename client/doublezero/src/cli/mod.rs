@@ -4,5 +4,7 @@ pub mod device;
 pub mod exchange;
 pub mod globalconfig;
 pub mod location;
+pub mod multicast;
+pub mod multicastgroup;
 pub mod tunnel;
 pub mod user;

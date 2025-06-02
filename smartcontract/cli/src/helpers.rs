@@ -12,10 +12,7 @@ pub fn parse_pubkey(input: &str) -> Option<Pubkey> {
         return None;
     }
 
-    match Pubkey::from_str(input) {
-        Ok(pk) => Some(pk),
-        Err(_) => None,
-    }
+    Pubkey::from_str(input).ok()
 }
 
 pub fn print_error(e: eyre::Report) {

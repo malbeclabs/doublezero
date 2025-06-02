@@ -1,11 +1,18 @@
 !
+ip multicast-routing
+!
+router pim sparse-mode
+   ipv4
+      rp address 10.0.0.0 224.5.6.0/24 override
+!
 vrf instance vrf1
 ip routing vrf vrf1
 !
 default interface Tunnel500
 interface Tunnel500
-   mtu 9216
+   description USER-UCAST-500
    vrf vrf1
+   mtu 9216
    ip address 169.254.0.0/31
    tunnel mode gre
    tunnel source 64.86.249.80
@@ -53,6 +60,8 @@ default interface Tunnel518
 default interface Tunnel519
 !
 router bgp 65342
+   address-family ipv4
+   !
    vrf vrf1
       rd 65342:1
       route-target import vpn-ipv4 65342:1
@@ -68,6 +77,7 @@ router bgp 65342
       neighbor 169.254.0.1 maximum-accepted-routes 1
 !
 ip community-list COMM-ALL_USERS permit 21682:1200
+ip community-list COMM-ALL_MCAST_USERS permit 21682:1300
 !
 no route-map RM-USER-500-OUT
 route-map RM-USER-500-OUT permit 10
@@ -195,4 +205,17 @@ no ip prefix-list PL-USER-517
 no ip prefix-list PL-USER-518
 !
 no ip prefix-list PL-USER-519
+!
+no ip access-list SEC-USER-PUB-MCAST-IN
+ip access-list SEC-USER-PUB-MCAST-IN
+   counters per-entry
+   permit ip any 224.0.0.13/32
+   permit ip any 224.5.6.0/24
+   deny ip any any
+!
+no ip access-list SEC-USER-SUB-MCAST-IN
+ip access-list SEC-USER-SUB-MCAST-IN
+   counters per-entry
+   permit ip any 224.0.0.13/32
+   deny ip any any
 !

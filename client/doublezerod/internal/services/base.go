@@ -12,13 +12,18 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 )
 
-type dbReaderWriter interface {
+type PIMWriter interface {
+	Start(iface string, tunnelAddr net.IP, group []net.IP) error
+	Close() error
+}
+
+type DBReaderWriter interface {
 	GetState(userTypes ...api.UserType) []*api.ProvisionRequest
 	DeleteState(u api.UserType) error
 	SaveState(p *api.ProvisionRequest) error
 }
 
-type bgpReaderWriter interface {
+type BGPReaderWriter interface {
 	AddPeer(*bgp.PeerConfig, []bgp.NLRI) error
 	DeletePeer(net.IP) error
 	GetPeerStatus(net.IP) bgp.Session
@@ -39,7 +44,8 @@ func IsUnicastUser(u api.UserType) bool {
 	return slices.Contains([]api.UserType{
 		api.UserTypeEdgeFiltering,
 		api.UserTypeIBRL,
-		api.UserTypeIBRLWithAllocatedIP}, u)
+		api.UserTypeIBRLWithAllocatedIP,
+	}, u)
 }
 
 func IsMulticastUser(u api.UserType) bool {
@@ -61,7 +67,7 @@ func createBaseTunnel(nl routing.Netlinker, tun *routing.Tunnel) error {
 		}
 	}
 	slog.Info("tunnel: adding address to tunnel interface", "address", tun.LocalOverlay)
-	err = nl.TunnelAddrAdd(tun, tun.LocalOverlay.String()+"/31")
+	err = nl.TunnelAddrAdd(tun, tun.LocalOverlay.String()+"/31", false)
 	if err != nil {
 		if errors.Is(err, routing.ErrAddressExists) {
 			slog.Error("tunnel: address already present on tunnel")
@@ -83,7 +89,7 @@ func createTunnelWithIP(nl routing.Netlinker, tun *routing.Tunnel, dzIp net.IP) 
 	}
 
 	slog.Info("tunnel: adding dz address to tunnel interface", "dz address", dzIp.String()+"/32")
-	err = nl.TunnelAddrAdd(tun, dzIp.String()+"/32")
+	err = nl.TunnelAddrAdd(tun, dzIp.String()+"/32", false)
 	if err != nil {
 		if errors.Is(err, routing.ErrAddressExists) {
 			slog.Error("tunnel: address already present on tunnel")

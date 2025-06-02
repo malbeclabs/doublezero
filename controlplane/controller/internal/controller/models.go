@@ -1,6 +1,8 @@
 package controller
 
-import "net"
+import (
+	"net"
+)
 
 var (
 	// maximum number of tunnels to provision on a given device
@@ -43,17 +45,22 @@ func (d *Device) findTunnel(id int) *Tunnel {
 }
 
 type Tunnel struct {
-	Id            int
-	UnderlaySrcIP net.IP
-	UnderlayDstIP net.IP
-	OverlaySrcIP  net.IP // This needs to be derived based on the tunnel net
-	OverlayDstIP  net.IP // This needs to be derived based on the tunnel net
-	DzIp          net.IP
-	PubKey        string
-	Allocated     bool
+	Id                   int
+	UnderlaySrcIP        net.IP
+	UnderlayDstIP        net.IP
+	OverlaySrcIP         net.IP // This needs to be derived based on the tunnel net
+	OverlayDstIP         net.IP // This needs to be derived based on the tunnel net
+	DzIp                 net.IP
+	PubKey               string
+	Allocated            bool
+	IsMulticast          bool
+	MulticastSubscribers []net.IP
+	MulticastPublishers  []net.IP
 }
 
 type templateData struct {
-	Device          *Device
-	UnknownBgpPeers []net.IP
+	Device              *Device
+	UnknownBgpPeers     []net.IP
+	MulticastGroupBlock string
+	NoHardware          bool
 }

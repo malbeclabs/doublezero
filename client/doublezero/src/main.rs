@@ -111,6 +111,7 @@ async fn main() -> eyre::Result<()> {
         },
         Command::User(command) => match command.command {
             UserCommands::Create(args) => args.execute(&client, &mut handle),
+            UserCommands::CreateSubscribe(args) => args.execute(&client, &mut handle),
             UserCommands::Update(args) => args.execute(&client, &mut handle),
             UserCommands::List(args) => args.execute(&client, &mut handle),
             UserCommands::Get(args) => args.execute(&client, &mut handle),
@@ -122,6 +123,56 @@ async fn main() -> eyre::Result<()> {
             },
             UserCommands::RequestBan(args) => args.execute(&client, &mut handle),
         },
+        Command::Multicast(args) => match args.command {
+            cli::multicast::MulticastCommands::Group(args) => match args.command {
+                cli::multicastgroup::MulticastGroupCommands::Allowlist(args) => {
+                    match args.command {
+                        cli::multicastgroup::MulticastGroupAllowlistCommands::Publisher(args) => {
+                            match args.command {
+                                cli::multicastgroup::MulticastGroupPubAllowlistCommands::List(
+                                    args,
+                                ) => args.execute(&client, &mut handle),
+                                cli::multicastgroup::MulticastGroupPubAllowlistCommands::Add(
+                                    args,
+                                ) => args.execute(&client, &mut handle),
+                                cli::multicastgroup::MulticastGroupPubAllowlistCommands::Remove(
+                                    args,
+                                ) => args.execute(&client, &mut handle),
+                            }
+                        }
+                        cli::multicastgroup::MulticastGroupAllowlistCommands::Subscriber(args) => {
+                            match args.command {
+                                cli::multicastgroup::MulticastGroupSubAllowlistCommands::List(
+                                    args,
+                                ) => args.execute(&client, &mut handle),
+                                cli::multicastgroup::MulticastGroupSubAllowlistCommands::Add(
+                                    args,
+                                ) => args.execute(&client, &mut handle),
+                                cli::multicastgroup::MulticastGroupSubAllowlistCommands::Remove(
+                                    args,
+                                ) => args.execute(&client, &mut handle),
+                            }
+                        }
+                    }
+                }
+                cli::multicastgroup::MulticastGroupCommands::Create(args) => {
+                    args.execute(&client, &mut handle)
+                }
+                cli::multicastgroup::MulticastGroupCommands::Update(args) => {
+                    args.execute(&client, &mut handle)
+                }
+                cli::multicastgroup::MulticastGroupCommands::List(args) => {
+                    args.execute(&client, &mut handle)
+                }
+                cli::multicastgroup::MulticastGroupCommands::Get(args) => {
+                    args.execute(&client, &mut handle)
+                }
+                cli::multicastgroup::MulticastGroupCommands::Delete(args) => {
+                    args.execute(&client, &mut handle)
+                }
+            },
+        },
+
         Command::Export(args) => args.execute(&client, &mut handle),
         Command::Keygen(args) => args.execute(&client, &mut handle),
         Command::Log(args) => args.execute(&dzclient, &mut handle),

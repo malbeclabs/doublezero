@@ -107,7 +107,7 @@ impl IPBlockAllocator {
         for (index, assigned) in self.assigned_ips.iter().enumerate() {
             if *assigned {
                 let ip = self.index_to_ip(index);
-                print!("{},", ip)
+                print!("{},", ip);
             }
         }
     }

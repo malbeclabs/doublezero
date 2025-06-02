@@ -17,11 +17,9 @@ pub fn parse_pubkey(input: &str) -> Option<Pubkey> {
         return None;
     }
 
-    match Pubkey::from_str(input) {
-        Ok(pk) => Some(pk),
-        Err(_) => None,
-    }
+    Pubkey::from_str(input).ok()
 }
+
 /*
 pub fn create_transaction(program_id: Pubkey, instruction: DoubleZeroInstruction, accounts: Vec<AccountMeta>, payer: &Keypair) -> Transaction {
 

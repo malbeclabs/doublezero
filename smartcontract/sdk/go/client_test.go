@@ -13,10 +13,10 @@ import (
 )
 
 var configPayload = `
-020a3b74b3535cdeb34fd5e4cd7ea1133e55abc521c8850f6d0
-8166d11e4828978fd4cfe0000e9fd0000ac10000010a9fe0000
-10a2aa7d81b23bd270048af6aae3813deae93cdb4c7630e9600
-7cba72863408022
+02baae1ce3bce5130ae5f46b6d47884ab60b6d22f55b0c0cfac
+f14abe7ea3118aefd4cfe0000e9fd0000ac10000010a9fe0000
+10df00000004a2aa7d81b23bd270048af6aae3813deae93cdb4
+c7630e96007cba72863408022
 `
 
 var locationPayload = `
@@ -57,13 +57,30 @@ f8198607689246e25c9403fba46e89122ff5d0fcc1febb51d4b
 `
 
 var userPayload = `
-070a3b74b3535cdeb34fd5e4cd7ea1133e55abc521c8850f6d0
-8166d11e482897820000000000000000000000000000000ff00
+07baae1ce3bce5130ae5f46b6d47884ab60b6d22f55b0c0cfac
+f14abe7ea3118ae1f000000000000000000000000000000fc00
 000000000000000000000000000000000000000000000000000
 0000000000000d2b30c6593b3dd99bbdde9c8e29eb9291adefb
-c11544a47f17d9472cae13fdfc010a0000020a000002f501a9f
-e00021f01be15c51fbb99f0a8f5a8435593facfb691702e7c85
-e276a54a5566650216c345
+c11544a47f17d9472cae13fdfc010a0000010a000001f401a9f
+e00001f010000000000000000fcef68d5d9eae991fd7d6284da
+d2f2d755ed5b09e8b5e76f5988360d7687fac6
+`
+
+var multicastgroupPayload = `
+08baae1ce3bce5130ae5f46b6d47884ab60b6d22f55b0c0cfac
+f14abe7ea3118ae23000000000000000000000000000000ff00
+000000000000000000000000000000000000000000000000000
+00000000000d000000000ca9a3b0000000001040000006a6974
+6f01000000baae1ce3bce5130ae5f46b6d47884ab60b6d22f55
+b0c0cfacf14abe7ea3118ae01000000baae1ce3bce5130ae5f4
+6b6d47884ab60b6d22f55b0c0cfacf14abe7ea3118ae0200000
+059d127e5abbd5ce88c1de4abe70b132b4c79d4a1ffe781952a
+8bdf13801d2cb63a316a4505a39d6026a55bf2894e30bad33bc
+1631ce1bd925f02ab4c7994e9d40200000041c6964053cf55d2
+925472dbe01afbc327f5abfdb917ec234ecabc09e5290b2b3a3
+16a4505a39d6026a55bf2894e30bad33bc1631ce1bd925f02ab
+4c7994e9d4b745f92183e1b409bb7006560f858cf3bfa557c75
+cd967182a00392200b5de78
 `
 
 type mockSolanaClient struct {
@@ -115,20 +132,22 @@ func TestRpcClient(t *testing.T) {
 			Payload:     strings.TrimSuffix(configPayload, "\n"),
 			Want: &Client{
 				Config: Config{
-					AccountType:       ConfigType,
-					Owner:             getOwner(configPayload),
-					Bump_seed:         253,
-					Local_asn:         65100,
-					Remote_asn:        65001,
-					TunnelTunnelBlock: [5]byte{172, 16, 0, 0, 16},
-					UserTunnelBlock:   [5]byte{169, 254, 0, 0, 16},
-					PubKey:            getPubKey(configPayload),
+					AccountType:         ConfigType,
+					Owner:               getOwner(configPayload),
+					Bump_seed:           253,
+					Local_asn:           65100,
+					Remote_asn:          65001,
+					TunnelTunnelBlock:   [5]byte{172, 16, 0, 0, 16},
+					UserTunnelBlock:     [5]byte{169, 254, 0, 0, 16},
+					MulticastGroupBlock: [5]byte{223, 0, 0, 0, 4},
+					PubKey:              getPubKey(configPayload),
 				},
-				Locations: []Location{},
-				Devices:   []Device{},
-				Tunnels:   []Tunnel{},
-				Users:     []User{},
-				Exchanges: []Exchange{},
+				Locations:       []Location{},
+				Devices:         []Device{},
+				Tunnels:         []Tunnel{},
+				Users:           []User{},
+				Exchanges:       []Exchange{},
+				MulticastGroups: []MulticastGroup{},
 			},
 		},
 		{
@@ -151,10 +170,11 @@ func TestRpcClient(t *testing.T) {
 						PubKey:      getPubKey(exchangePayload),
 					},
 				},
-				Locations: []Location{},
-				Devices:   []Device{},
-				Tunnels:   []Tunnel{},
-				Users:     []User{},
+				Locations:       []Location{},
+				Devices:         []Device{},
+				Tunnels:         []Tunnel{},
+				Users:           []User{},
+				MulticastGroups: []MulticastGroup{},
 			},
 		},
 		{
@@ -178,10 +198,11 @@ func TestRpcClient(t *testing.T) {
 						PubKey:         getPubKey(devicePayload),
 					},
 				},
-				Locations: []Location{},
-				Exchanges: []Exchange{},
-				Tunnels:   []Tunnel{},
-				Users:     []User{},
+				Locations:       []Location{},
+				Exchanges:       []Exchange{},
+				Tunnels:         []Tunnel{},
+				Users:           []User{},
+				MulticastGroups: []MulticastGroup{},
 			},
 		},
 		{
@@ -205,10 +226,11 @@ func TestRpcClient(t *testing.T) {
 						PubKey:      getPubKey(locationPayload),
 					},
 				},
-				Exchanges: []Exchange{},
-				Devices:   []Device{},
-				Tunnels:   []Tunnel{},
-				Users:     []User{},
+				Exchanges:       []Exchange{},
+				Devices:         []Device{},
+				Tunnels:         []Tunnel{},
+				Users:           []User{},
+				MulticastGroups: []MulticastGroup{},
 			},
 		},
 		{
@@ -219,25 +241,26 @@ func TestRpcClient(t *testing.T) {
 				Users: []User{
 					{
 						AccountType:  UserType,
-						Index:        Uint128{High: 32, Low: 0},
-						Bump_seed:    255,
+						Index:        Uint128{High: 31, Low: 0},
+						Bump_seed:    252,
 						Owner:        getOwner(userPayload),
 						UserType:     UserTypeIBRL,
 						TenantPubKey: getPubKeyOffset(userPayload, 51, 83),
 						DevicePubKey: getPubKeyOffset(userPayload, 83, 115),
 						CyoaType:     CyoaTypeGREOverDIA,
-						ClientIp:     [4]byte{0x0a, 0x00, 0x00, 0x02},
-						TunnelId:     501,
-						TunnelNet:    [5]byte{0xa9, 0xfe, 0x00, 0x02, 0x1f},
-						DzIp:         [4]byte{0x0a, 0x00, 0x00, 0x02},
+						ClientIp:     [4]byte{0x0a, 0x00, 0x00, 0x01},
+						TunnelId:     500,
+						TunnelNet:    [5]byte{0xa9, 0xfe, 0x00, 0x00, 0x1f},
+						DzIp:         [4]byte{0x0a, 0x00, 0x00, 0x01},
 						Status:       UserStatusActivated,
 						PubKey:       getPubKey(userPayload),
 					},
 				},
-				Locations: []Location{},
-				Devices:   []Device{},
-				Tunnels:   []Tunnel{},
-				Exchanges: []Exchange{},
+				Locations:       []Location{},
+				Devices:         []Device{},
+				Tunnels:         []Tunnel{},
+				Exchanges:       []Exchange{},
+				MulticastGroups: []MulticastGroup{},
 			},
 		},
 		{
@@ -265,10 +288,43 @@ func TestRpcClient(t *testing.T) {
 						PubKey:      getPubKey(tunnelPayload),
 					},
 				},
+				Locations:       []Location{},
+				Devices:         []Device{},
+				Exchanges:       []Exchange{},
+				Users:           []User{},
+				MulticastGroups: []MulticastGroup{},
+			},
+		},
+		{
+			Name:        "parse_valid_multicastgroup",
+			Description: "parse and populate a valid multicastgroup struct",
+			Payload:     strings.TrimSuffix(multicastgroupPayload, "\n"),
+			Want: &Client{
+				Tunnels:   []Tunnel{},
 				Locations: []Location{},
 				Devices:   []Device{},
 				Exchanges: []Exchange{},
 				Users:     []User{},
+				MulticastGroups: []MulticastGroup{
+					{
+						AccountType:  MulticastGroupType,
+						Index:        Uint128{High: 35, Low: 0},
+						Bump_seed:    255,
+						Owner:        getOwner(multicastgroupPayload),
+						TenantPubKey: [32]byte{},
+						MulticastIp:  [4]byte{0xd0, 0x00, 0x00, 0x00},
+						MaxBandwidth: 1000000000,
+						Status:       MulticastGroupStatusActivated,
+						Code:         "jito",
+						PubAllowList: [][32]uint8{{0xba, 0xae, 0x1c, 0xe3, 0xbc, 0xe5, 0x13, 0x0a, 0xe5, 0xf4, 0x6b, 0x6d, 0x47, 0x88, 0x4a, 0xb6, 0x0b, 0x6d, 0x22, 0xf5, 0x5b, 0x0c, 0x0c, 0xfa, 0xcf, 0x14, 0xab, 0xe7, 0xea, 0x31, 0x18, 0xae}},
+						SubAllowList: [][32]uint8{{0xba, 0xae, 0x1c, 0xe3, 0xbc, 0xe5, 0x13, 0x0a, 0xe5, 0xf4, 0x6b, 0x6d, 0x47, 0x88, 0x4a, 0xb6, 0x0b, 0x6d, 0x22, 0xf5, 0x5b, 0x0c, 0x0c, 0xfa, 0xcf, 0x14, 0xab, 0xe7, 0xea, 0x31, 0x18, 0xae}},
+						Publishers:   [][32]uint8{{0x59, 0xd1, 0x27, 0xe5, 0xab, 0xbd, 0x5c, 0xe8, 0x8c, 0x1d, 0xe4, 0xab, 0xe7, 0x0b, 0x13, 0x2b, 0x4c, 0x79, 0xd4, 0xa1, 0xff, 0xe7, 0x81, 0x95, 0x2a, 0x8b, 0xdf, 0x13, 0x80, 0x1d, 0x2c, 0xb6}, {0x3a, 0x31, 0x6a, 0x45, 0x05, 0xa3, 0x9d, 0x60, 0x26, 0xa5, 0x5b, 0xf2, 0x89, 0x4e, 0x30, 0xba, 0xd3, 0x3b, 0xc1, 0x63, 0x1c, 0xe1, 0xbd, 0x92, 0x5f, 0x02, 0xab, 0x4c, 0x79, 0x94, 0xe9, 0xd4}},
+						Subscribers:  [][32]uint8{{0x41, 0xc6, 0x96, 0x40, 0x53, 0xcf, 0x55, 0xd2, 0x92, 0x54, 0x72, 0xdb, 0xe0, 0x1a, 0xfb, 0xc3, 0x27, 0xf5, 0xab, 0xfd, 0xb9, 0x17, 0xec, 0x23, 0x4e, 0xca, 0xbc, 0x09, 0xe5, 0x29, 0x0b, 0x2b}, {0x3a, 0x31, 0x6a, 0x45, 0x05, 0xa3, 0x9d, 0x60, 0x26, 0xa5, 0x5b, 0xf2, 0x89, 0x4e, 0x30, 0xba, 0xd3, 0x3b, 0xc1, 0x63, 0x1c, 0xe1, 0xbd, 0x92, 0x5f, 0x02, 0xab, 0x4c, 0x79, 0x94, 0xe9, 0xd4}},
+						PubKey: [32]uint8{
+							0xb7, 0x45, 0xf9, 0x21, 0x83, 0xe1, 0xb4, 0x09, 0xbb, 0x70, 0x06, 0x56, 0x0f, 0x85, 0x8c, 0xf3,
+							0xbf, 0xa5, 0x57, 0xc7, 0x5c, 0xd9, 0x67, 0x18, 0x2a, 0x00, 0x39, 0x22, 0x00, 0xb5, 0xde, 0x78},
+					},
+				},
 			},
 		},
 	}

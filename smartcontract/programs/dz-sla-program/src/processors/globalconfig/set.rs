@@ -27,17 +27,19 @@ pub struct SetGlobalConfigArgs {
     pub remote_asn: u32,
     pub tunnel_tunnel_block: NetworkV4,
     pub user_tunnel_block: NetworkV4,
+    pub multicastgroup_block: NetworkV4,
 }
 
 impl fmt::Debug for SetGlobalConfigArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "local_asn: {}, remote_asn: {}, tunnel_block: {}, user _block: {}",
+            "local_asn: {}, remote_asn: {}, tunnel_block: {}, user _block: {}, multicastgroup_block: {}",
             self.local_asn,
             self.remote_asn,
             networkv4_to_string(&self.tunnel_tunnel_block),
-            networkv4_to_string(&self.user_tunnel_block)
+            networkv4_to_string(&self.user_tunnel_block),
+            networkv4_to_string(&self.multicastgroup_block)
         )
     }
 }
@@ -80,6 +82,7 @@ pub fn process_set_globalconfig(
         remote_asn: value.remote_asn,
         tunnel_tunnel_block: value.tunnel_tunnel_block,
         user_tunnel_block: value.user_tunnel_block,
+        multicastgroup_block: value.multicastgroup_block,
     };
     // Size of our index account
     let account_space = data.size();

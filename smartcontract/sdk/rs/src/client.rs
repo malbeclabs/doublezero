@@ -60,10 +60,7 @@ impl DZClient {
         let client = RpcClient::new_with_commitment(rpc_url.clone(), CommitmentConfig::confirmed());
 
         let payer: Option<solana_sdk::signature::Keypair> =
-            match read_keypair_from_file(kaypair.unwrap_or(config.keypair_path)) {
-                Ok(keypair) => Some(keypair),
-                Err(_) => None,
-            };
+            read_keypair_from_file(kaypair.unwrap_or(config.keypair_path)).ok();
 
         let program_id = {
             if program_id.is_none() {
@@ -355,7 +352,7 @@ impl DoubleZeroClient for DZClient {
         let mut list: HashMap<Pubkey, AccountData> = HashMap::new();
         let accounts = self
             .client
-            .get_program_accounts_with_config(&self.get_program_id(), options)?;
+            .get_program_accounts_with_config(self.get_program_id(), options)?;
 
         for (pubkey, account) in accounts {
             assert!(account.data[0] == account_type, "Invalid account type");

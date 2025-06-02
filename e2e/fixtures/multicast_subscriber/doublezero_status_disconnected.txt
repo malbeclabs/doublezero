@@ -1,0 +1,7 @@
+Doublezero IP:
+Name:
+Tunnel dst:
+Tunnel src:
+Tunnel status: disconnected
+User type:
+Last Session Update: no session data

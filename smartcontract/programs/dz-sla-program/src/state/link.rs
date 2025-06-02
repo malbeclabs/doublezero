@@ -10,14 +10,18 @@ use serde::Serialize;
 #[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
 #[borsh(use_discriminant = true)]
 pub enum LinkLinkType {
-    MPLSoGRE = 1,
+    L1 = 1,
+    L2 = 2,
+    L3 = 3,
 }
 
 impl From<u8> for LinkLinkType {
     fn from(value: u8) -> Self {
         match value {
-            1 => LinkLinkType::MPLSoGRE,
-            _ => LinkLinkType::MPLSoGRE, // Default case
+            1 => LinkLinkType::L1,
+            2 => LinkLinkType::L2,
+            3 => LinkLinkType::L3,
+            _ => LinkLinkType::L2, // Default case
         }
     }
 }
@@ -27,7 +31,9 @@ impl FromStr for LinkLinkType {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "MPLSoGRE" => Ok(LinkLinkType::MPLSoGRE),
+            "L1" => Ok(LinkLinkType::L1),
+            "L2" => Ok(LinkLinkType::L2),
+            "L3" => Ok(LinkLinkType::L3),
             _ => Err(format!("Invalid LinkLinkType: {}", s)),
         }
     }
@@ -36,7 +42,9 @@ impl FromStr for LinkLinkType {
 impl fmt::Display for LinkLinkType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            LinkLinkType::MPLSoGRE => write!(f, "MPLSoGRE"),
+            LinkLinkType::L1 => write!(f, "L1"),
+            LinkLinkType::L2 => write!(f, "L2"),
+            LinkLinkType::L3 => write!(f, "L3"),
         }
     }
 }
@@ -85,7 +93,7 @@ pub struct Link {
     pub bump_seed: u8,             // 1
     pub side_a_pk: Pubkey,         // 32
     pub side_z_pk: Pubkey,         // 32
-    pub tunnel_type: LinkLinkType, // 1
+    pub link_type: LinkLinkType,   // 1
     pub bandwidth: u64,            // 8
     pub mtu: u32,                  // 4
     pub delay_ns: u64,             // 8
@@ -101,7 +109,7 @@ impl fmt::Display for Link {
         write!(
             f,
             "account_type: {}, owner: {}, index: {}, side_a_pk: {}, side_z_pk: {}, tunnel_type: {}, bandwidth: {}, mtu: {}, delay_ns: {}, jitter_ns: {}, tunnel_id: {}, tunnel_net: {}, status: {}, code: {}",
-            self.account_type, self.owner, self.index, self.side_a_pk, self.side_z_pk, self.tunnel_type, self.bandwidth, self.mtu, self.delay_ns, self.jitter_ns, self.tunnel_id, networkv4_to_string(&self.tunnel_net), self.status, self.code
+            self.account_type, self.owner, self.index, self.side_a_pk, self.side_z_pk, self.link_type, self.bandwidth, self.mtu, self.delay_ns, self.jitter_ns, self.tunnel_id, networkv4_to_string(&self.tunnel_net), self.status, self.code
         )
     }
 }
@@ -135,7 +143,7 @@ impl From<&[u8]> for Link {
             bump_seed: parser.read_u8(),
             side_a_pk: parser.read_pubkey(),
             side_z_pk: parser.read_pubkey(),
-            tunnel_type: parser.read_enum(),
+            link_type: parser.read_enum(),
             bandwidth: parser.read_u64(),
             mtu: parser.read_u32(),
             delay_ns: parser.read_u64(),
@@ -161,7 +169,7 @@ mod tests {
             bump_seed: 1,
             side_a_pk: Pubkey::new_unique(),
             side_z_pk: Pubkey::new_unique(),
-            tunnel_type: LinkLinkType::MPLSoGRE,
+            link_type: LinkLinkType::L3,
             bandwidth: 1234,
             mtu: 1566,
             delay_ns: 1234,

@@ -101,7 +101,7 @@ pub fn process_create_link(
         code: value.code.clone(),
         side_a_pk: value.side_a_pk,
         side_z_pk: value.side_z_pk,
-        tunnel_type: value.tunnel_type,
+        link_type: value.tunnel_type,
         bandwidth: value.bandwidth,
         mtu: value.mtu,
         delay_ns: value.delay_ns,

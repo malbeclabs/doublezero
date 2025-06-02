@@ -1,7 +1,7 @@
 use clap::Args;
 use doublezero_sdk::commands::link::get::GetLinkCommand;
-use doublezero_sdk::*;
 use std::io::Write;
+use doublezero_sdk::networkv4_to_string;
 use crate::doublezerocommand::CliCommand;
 
 #[derive(Args, Debug)]
@@ -17,12 +17,12 @@ impl GetLinkCliCommand {
         })?;
 
         writeln!(out, 
-            "account: {}\r\ncode: {}\r\nside_a: {}\r\nside_z: {}\r\ntunnel_type: {}\r\nbandwidth: {}\r\nmtu: {}\r\ndelay: {}ms\r\njitter: {}ms\r\ntunnel_net: {}\r\nstatus: {}\r\nowner: {}",
+            "account: {}\r\ncode: {}\r\nside_a: {}\r\nside_z: {}\r\nlink_type: {}\r\nbandwidth: {}\r\nmtu: {}\r\ndelay: {}ms\r\njitter: {}ms\r\ntunnel_net: {}\r\nstatus: {}\r\nowner: {}",
             pubkey,
             tunnel.code,
             tunnel.side_a_pk,
             tunnel.side_z_pk,
-            tunnel.tunnel_type,
+            tunnel.link_type,
             tunnel.bandwidth,
             tunnel.mtu,
             tunnel.delay_ns as f32 / 1000000.0,
@@ -61,7 +61,7 @@ mod tests {
             code: "test".to_string(),
             side_a_pk: device1_pk,
             side_z_pk: device2_pk,
-            tunnel_type: LinkLinkType::MPLSoGRE,
+            link_type: LinkLinkType::L3,
             bandwidth: 1000000000,
             mtu: 1500,
             delay_ns: 10000000000,
@@ -105,7 +105,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: 8vB4Pa1eGbQ2GpAvbpZsykdmc5mrwYCXYboyRopB2Ev1\r\ncode: test\r\nside_a: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb\r\nside_z: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf\r\ntunnel_type: MPLSoGRE\r\nbandwidth: 1000000000\r\nmtu: 1500\r\ndelay: 10000ms\r\njitter: 5000ms\r\ntunnel_net: 10.0.0.1/16\r\nstatus: activated\r\nowner: 8vB4Pa1eGbQ2GpAvbpZsykdmc5mrwYCXYboyRopB2Ev1\n");
+        assert_eq!(output_str, "account: 8vB4Pa1eGbQ2GpAvbpZsykdmc5mrwYCXYboyRopB2Ev1\r\ncode: test\r\nside_a: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb\r\nside_z: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf\r\nlink_type: L3\r\nbandwidth: 1000000000\r\nmtu: 1500\r\ndelay: 10000ms\r\njitter: 5000ms\r\ntunnel_net: 10.0.0.1/16\r\nstatus: activated\r\nowner: 8vB4Pa1eGbQ2GpAvbpZsykdmc5mrwYCXYboyRopB2Ev1\n");
 
         // Expected success 
         let mut output = Vec::new();
@@ -115,7 +115,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by code");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: 8vB4Pa1eGbQ2GpAvbpZsykdmc5mrwYCXYboyRopB2Ev1\r\ncode: test\r\nside_a: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb\r\nside_z: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf\r\ntunnel_type: MPLSoGRE\r\nbandwidth: 1000000000\r\nmtu: 1500\r\ndelay: 10000ms\r\njitter: 5000ms\r\ntunnel_net: 10.0.0.1/16\r\nstatus: activated\r\nowner: 8vB4Pa1eGbQ2GpAvbpZsykdmc5mrwYCXYboyRopB2Ev1\n");
+        assert_eq!(output_str, "account: 8vB4Pa1eGbQ2GpAvbpZsykdmc5mrwYCXYboyRopB2Ev1\r\ncode: test\r\nside_a: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb\r\nside_z: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf\r\nlink_type: L3\r\nbandwidth: 1000000000\r\nmtu: 1500\r\ndelay: 10000ms\r\njitter: 5000ms\r\ntunnel_net: 10.0.0.1/16\r\nstatus: activated\r\nowner: 8vB4Pa1eGbQ2GpAvbpZsykdmc5mrwYCXYboyRopB2Ev1\n");
 
     }
 }

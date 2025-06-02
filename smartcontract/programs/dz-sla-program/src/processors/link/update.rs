@@ -82,7 +82,7 @@ pub fn process_update_link(
         tunnel.code = code.clone();
     }
     if let Some(tunnel_type) = value.tunnel_type {
-        tunnel.tunnel_type = tunnel_type;
+        tunnel.link_type = tunnel_type;
     }
     if let Some(bandwidth) = value.bandwidth {
         tunnel.bandwidth = bandwidth;

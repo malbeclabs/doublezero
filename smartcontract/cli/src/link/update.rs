@@ -53,16 +53,16 @@ impl UpdateLinkCliCommand {
 #[cfg(test)]
 mod tests {
     use crate::doublezerocommand::CliCommand;
+    use crate::link::update::UpdateLinkCliCommand;
     use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
     use crate::tests::tests::create_test_client;
-    use crate::link::update::UpdateLinkCliCommand;
     use doublezero_sdk::commands::link::get::GetLinkCommand;
     use doublezero_sdk::commands::link::update::UpdateLinkCommand;
     use doublezero_sdk::get_tunnel_pda;
     use doublezero_sdk::AccountType;
     use doublezero_sdk::Link;
-    use doublezero_sdk::LinkStatus;
     use doublezero_sdk::LinkLinkType;
+    use doublezero_sdk::LinkStatus;
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
     use solana_sdk::signature::Signature;
@@ -89,7 +89,7 @@ mod tests {
             code: "test".to_string(),
             side_a_pk: device1_pk,
             side_z_pk: device2_pk,
-            tunnel_type: LinkLinkType::MPLSoGRE,
+            link_type: LinkLinkType::L3,
             bandwidth: 1000000000,
             mtu: 1500,
             delay_ns: 10000000000,

@@ -413,7 +413,7 @@ pub mod test {
             code: tunnel_la_ny_code.clone(),
             side_a_pk: device_la_pubkey,
             side_z_pk: device_ny_pubkey,
-            tunnel_type: LinkLinkType::MPLSoGRE,
+            tunnel_type: LinkLinkType::L3,
             bandwidth: 100,
             mtu: 1900,
             delay_ns: 12 * 1000000,

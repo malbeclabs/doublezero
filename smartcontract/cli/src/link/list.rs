@@ -27,7 +27,7 @@ pub struct LinkDisplay {
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
     pub side_z_pk: Pubkey,
     pub side_z_name: String,
-    pub tunnel_type: LinkLinkType,
+    pub link_type: LinkLinkType,
     pub bandwidth: u64,
     pub mtu: u32,
     pub delay_ns: u64,
@@ -68,7 +68,7 @@ impl ListLinkCliCommand {
                         side_a_name,
                         side_z_pk: tunnel.side_z_pk,
                         side_z_name,
-                        tunnel_type: tunnel.tunnel_type,
+                        link_type: tunnel.link_type,
                         bandwidth: tunnel.bandwidth,
                         mtu: tunnel.mtu,
                         delay_ns: tunnel.delay_ns,
@@ -96,7 +96,7 @@ impl ListLinkCliCommand {
                 "code",
                 "side_a",
                 "side_z",
-                "tunnel_type",
+                "link_type",
                 "bandwidth",
                 "mtu",
                 "delay_ms",
@@ -121,7 +121,7 @@ impl ListLinkCliCommand {
                     Cell::new(&data.code),
                     Cell::new(side_a_name),
                     Cell::new(side_z_name),
-                    Cell::new(&data.tunnel_type.to_string()),
+                    Cell::new(&data.link_type.to_string()),
                     Cell::new(&bandwidth_to_string(data.bandwidth)),
                     Cell::new_align(&data.mtu.to_string(), format::Alignment::RIGHT),
                     Cell::new_align(&delay_to_string(data.delay_ns), format::Alignment::RIGHT),
@@ -143,11 +143,9 @@ impl ListLinkCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::tests::tests::create_test_client;
     use crate::link::list::ListLinkCliCommand;
-    use doublezero_sdk::{
-        Device, DeviceStatus, DeviceType, Link, LinkStatus, LinkLinkType,
-    };
+    use crate::tests::tests::create_test_client;
+    use doublezero_sdk::{Device, DeviceStatus, DeviceType, Link, LinkLinkType, LinkStatus};
     use doublezero_sla_program::state::accounttype::AccountType;
     use solana_sdk::pubkey::Pubkey;
     use std::collections::HashMap;
@@ -205,7 +203,7 @@ mod tests {
             code: "tunnel_code".to_string(),
             side_a_pk: device1_pubkey,
             side_z_pk: device2_pubkey,
-            tunnel_type: LinkLinkType::MPLSoGRE,
+            link_type: LinkLinkType::L3,
             bandwidth: 1234,
             mtu: 1566,
             delay_ns: 1234,
@@ -231,7 +229,7 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | code        | side_a       | side_z       | tunnel_type | bandwidth | mtu  | delay_ms | jitter_ms | tunnel_id | tunnel_net | status    | owner \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | tunnel_code | device2_code | device2_code | MPLSoGRE    | 1.23Kbps  | 1566 |   0.00ms |    0.00ms | 1234      | 1.2.3.4/32 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
+        assert_eq!(output_str, " account                                   | code        | side_a       | side_z       | link_type | bandwidth | mtu  | delay_ms | jitter_ms | tunnel_id | tunnel_net | status    | owner \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | tunnel_code | device2_code | device2_code | L3        | 1.23Kbps  | 1566 |   0.00ms |    0.00ms | 1234      | 1.2.3.4/32 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
 
         let mut output = Vec::new();
         let res = ListLinkCliCommand {
@@ -242,6 +240,6 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"code\":\"tunnel_code\",\"side_a_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_a_name\":\"device2_code\",\"side_z_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_z_name\":\"device2_code\",\"tunnel_type\":\"MPLSoGRE\",\"bandwidth\":1234,\"mtu\":1566,\"delay_ns\":1234,\"jitter_ns\":1121,\"tunnel_id\":1234,\"tunnel_net\":\"1.2.3.4/32\",\"status\":\"Activated\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"code\":\"tunnel_code\",\"side_a_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_a_name\":\"device2_code\",\"side_z_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_z_name\":\"device2_code\",\"link_type\":\"L3\",\"bandwidth\":1234,\"mtu\":1566,\"delay_ns\":1234,\"jitter_ns\":1121,\"tunnel_id\":1234,\"tunnel_net\":\"1.2.3.4/32\",\"status\":\"Activated\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\"}]\n");
     }
 }

@@ -32,9 +32,9 @@ impl DeleteLinkCliCommand {
 #[cfg(test)]
 mod tests {
     use crate::doublezerocommand::CliCommand;
+    use crate::link::delete::DeleteLinkCliCommand;
     use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
     use crate::tests::tests::create_test_client;
-    use crate::link::delete::DeleteLinkCliCommand;
     use doublezero_sdk::commands::device::get::GetDeviceCommand;
     use doublezero_sdk::commands::link::delete::DeleteLinkCommand;
     use doublezero_sdk::commands::link::get::GetLinkCommand;
@@ -44,8 +44,8 @@ mod tests {
     use doublezero_sdk::DeviceStatus;
     use doublezero_sdk::DeviceType;
     use doublezero_sdk::Link;
-    use doublezero_sdk::LinkStatus;
     use doublezero_sdk::LinkLinkType;
+    use doublezero_sdk::LinkStatus;
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
     use solana_sdk::signature::Signature;
@@ -102,7 +102,7 @@ mod tests {
             code: "test".to_string(),
             side_a_pk: device1_pk,
             side_z_pk: device2_pk,
-            tunnel_type: LinkLinkType::MPLSoGRE,
+            link_type: LinkLinkType::L3,
             bandwidth: 1000000000,
             mtu: 1500,
             delay_ns: 10000000000,

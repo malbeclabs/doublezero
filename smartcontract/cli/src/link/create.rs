@@ -64,7 +64,7 @@ impl CreateLinkCliCommand {
                 .tunnel_type
                 .as_ref()
                 .map(|t| t.parse().unwrap())
-                .unwrap_or(LinkLinkType::MPLSoGRE),
+                .unwrap_or(LinkLinkType::L3),
             bandwidth: bandwidth_parse(&self.bandwidth),
             mtu: self.mtu,
             delay_ns: (self.delay_ms * 1000000.0) as u64,
@@ -80,9 +80,9 @@ impl CreateLinkCliCommand {
 #[cfg(test)]
 mod tests {
     use crate::doublezerocommand::CliCommand;
+    use crate::link::create::CreateLinkCliCommand;
     use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
     use crate::tests::tests::create_test_client;
-    use crate::link::create::CreateLinkCliCommand;
     use doublezero_sdk::commands::device::get::GetDeviceCommand;
     use doublezero_sdk::commands::link::create::CreateLinkCommand;
     use doublezero_sdk::get_device_pda;
@@ -162,7 +162,7 @@ mod tests {
                 code: "test".to_string(),
                 side_a_pk: device1_pk,
                 side_z_pk: device2_pk,
-                tunnel_type: LinkLinkType::MPLSoGRE,
+                tunnel_type: LinkLinkType::L3,
                 bandwidth: 1000000000,
                 mtu: 1500,
                 delay_ns: 10000000000,
@@ -177,7 +177,7 @@ mod tests {
             code: "test".to_string(),
             side_a: device1_pk.to_string(),
             side_z: device2_pk.to_string(),
-            tunnel_type: Some("MPLSoGRE".to_string()),
+            tunnel_type: Some("L3".to_string()),
             bandwidth: "1Gbps".to_string(),
             mtu: 1500,
             delay_ms: 10000.0,

@@ -1,7 +1,7 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::commands::device::list::ListDeviceCommand;
-use doublezero_sdk::commands::tunnel::list::ListTunnelCommand;
+use doublezero_sdk::commands::link::list::ListLinkCommand;
 use doublezero_sdk::*;
 use prettytable::{format, row, Cell, Row, Table};
 use serde::Serialize;
@@ -9,7 +9,7 @@ use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct ListTunnelCliCommand {
+pub struct ListLinkCliCommand {
     #[arg(long, default_value_t = false)]
     pub json: bool,
     #[arg(long, default_value_t = false)]
@@ -17,7 +17,7 @@ pub struct ListTunnelCliCommand {
 }
 
 #[derive(Serialize)]
-pub struct TunnelDisplay {
+pub struct LinkDisplay {
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
     pub account: Pubkey,
     pub code: String,
@@ -27,7 +27,7 @@ pub struct TunnelDisplay {
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
     pub side_z_pk: Pubkey,
     pub side_z_name: String,
-    pub tunnel_type: TunnelTunnelType,
+    pub tunnel_type: LinkLinkType,
     pub bandwidth: u64,
     pub mtu: u32,
     pub delay_ns: u64,
@@ -35,17 +35,17 @@ pub struct TunnelDisplay {
     pub tunnel_id: u16,
     #[serde(serialize_with = "crate::serializer::serialize_networkv4_as_string")]
     pub tunnel_net: NetworkV4,
-    pub status: TunnelStatus,
+    pub status: LinkStatus,
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
 }
 
-impl ListTunnelCliCommand {
+impl ListLinkCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let devices = client.list_device(ListDeviceCommand {})?;
-        let tunnels = client.list_tunnel(ListTunnelCommand {})?;
+        let tunnels = client.list_tunnel(ListLinkCommand {})?;
 
-        let mut tunnels: Vec<(Pubkey, Tunnel)> = tunnels.into_iter().collect();
+        let mut tunnels: Vec<(Pubkey, Link)> = tunnels.into_iter().collect();
         tunnels.sort_by(|(_, a), (_, b)| a.owner.cmp(&b.owner).then(a.tunnel_id.cmp(&b.tunnel_id)));
 
         if self.json || self.json_compact {
@@ -61,7 +61,7 @@ impl ListTunnelCliCommand {
                         None => tunnel.side_z_pk.to_string(),
                     };
 
-                    TunnelDisplay {
+                    LinkDisplay {
                         account: pubkey,
                         code: tunnel.code,
                         side_a_pk: tunnel.side_a_pk,
@@ -144,9 +144,9 @@ impl ListTunnelCliCommand {
 #[cfg(test)]
 mod tests {
     use crate::tests::tests::create_test_client;
-    use crate::tunnel::list::ListTunnelCliCommand;
+    use crate::link::list::ListLinkCliCommand;
     use doublezero_sdk::{
-        Device, DeviceStatus, DeviceType, Tunnel, TunnelStatus, TunnelTunnelType,
+        Device, DeviceStatus, DeviceType, Link, LinkStatus, LinkLinkType,
     };
     use doublezero_sla_program::state::accounttype::AccountType;
     use solana_sdk::pubkey::Pubkey;
@@ -198,21 +198,21 @@ mod tests {
         });
 
         let tunnel1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
-        let tunnel1 = Tunnel {
-            account_type: AccountType::Tunnel,
+        let tunnel1 = Link {
+            account_type: AccountType::Link,
             index: 1,
             bump_seed: 2,
             code: "tunnel_code".to_string(),
             side_a_pk: device1_pubkey,
             side_z_pk: device2_pubkey,
-            tunnel_type: TunnelTunnelType::MPLSoGRE,
+            tunnel_type: LinkLinkType::MPLSoGRE,
             bandwidth: 1234,
             mtu: 1566,
             delay_ns: 1234,
             jitter_ns: 1121,
             tunnel_id: 1234,
             tunnel_net: ([1, 2, 3, 4], 32).into(),
-            status: TunnelStatus::Activated,
+            status: LinkStatus::Activated,
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
         };
 
@@ -223,7 +223,7 @@ mod tests {
         });
 
         let mut output = Vec::new();
-        let res = ListTunnelCliCommand {
+        let res = ListLinkCliCommand {
             json: false,
             json_compact: false,
         }
@@ -234,7 +234,7 @@ mod tests {
         assert_eq!(output_str, " account                                   | code        | side_a       | side_z       | tunnel_type | bandwidth | mtu  | delay_ms | jitter_ms | tunnel_id | tunnel_net | status    | owner \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | tunnel_code | device2_code | device2_code | MPLSoGRE    | 1.23Kbps  | 1566 |   0.00ms |    0.00ms | 1234      | 1.2.3.4/32 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
 
         let mut output = Vec::new();
-        let res = ListTunnelCliCommand {
+        let res = ListLinkCliCommand {
             json: false,
             json_compact: true,
         }

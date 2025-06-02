@@ -1,26 +1,26 @@
 use crate::doublezerocommand::CliCommand;
 use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
 use clap::Args;
-use doublezero_sdk::commands::tunnel::delete::DeleteTunnelCommand;
-use doublezero_sdk::commands::tunnel::get::GetTunnelCommand;
+use doublezero_sdk::commands::link::delete::DeleteLinkCommand;
+use doublezero_sdk::commands::link::get::GetLinkCommand;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct DeleteTunnelCliCommand {
+pub struct DeleteLinkCliCommand {
     #[arg(long)]
     pub pubkey: String,
 }
 
-impl DeleteTunnelCliCommand {
+impl DeleteLinkCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let (_, tunnel) = client.get_tunnel(GetTunnelCommand {
+        let (_, tunnel) = client.get_tunnel(GetLinkCommand {
             pubkey_or_code: self.pubkey,
         })?;
 
-        let signature = client.delete_tunnel(DeleteTunnelCommand {
+        let signature = client.delete_tunnel(DeleteLinkCommand {
             index: tunnel.index,
         })?;
         writeln!(out, "Signature: {}", signature)?;
@@ -34,18 +34,18 @@ mod tests {
     use crate::doublezerocommand::CliCommand;
     use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
     use crate::tests::tests::create_test_client;
-    use crate::tunnel::delete::DeleteTunnelCliCommand;
+    use crate::link::delete::DeleteLinkCliCommand;
     use doublezero_sdk::commands::device::get::GetDeviceCommand;
-    use doublezero_sdk::commands::tunnel::delete::DeleteTunnelCommand;
-    use doublezero_sdk::commands::tunnel::get::GetTunnelCommand;
+    use doublezero_sdk::commands::link::delete::DeleteLinkCommand;
+    use doublezero_sdk::commands::link::get::GetLinkCommand;
     use doublezero_sdk::get_tunnel_pda;
     use doublezero_sdk::AccountType;
     use doublezero_sdk::Device;
     use doublezero_sdk::DeviceStatus;
     use doublezero_sdk::DeviceType;
-    use doublezero_sdk::Tunnel;
-    use doublezero_sdk::TunnelStatus;
-    use doublezero_sdk::TunnelTunnelType;
+    use doublezero_sdk::Link;
+    use doublezero_sdk::LinkStatus;
+    use doublezero_sdk::LinkLinkType;
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
     use solana_sdk::signature::Signature;
@@ -95,21 +95,21 @@ mod tests {
             owner: pda_pubkey,
         };
 
-        let tunnel = Tunnel {
-            account_type: AccountType::Tunnel,
+        let tunnel = Link {
+            account_type: AccountType::Link,
             index: 1,
             bump_seed: 255,
             code: "test".to_string(),
             side_a_pk: device1_pk,
             side_z_pk: device2_pk,
-            tunnel_type: TunnelTunnelType::MPLSoGRE,
+            tunnel_type: LinkLinkType::MPLSoGRE,
             bandwidth: 1000000000,
             mtu: 1500,
             delay_ns: 10000000000,
             jitter_ns: 5000000000,
             tunnel_id: 1,
             tunnel_net: ([10, 0, 0, 1], 16),
-            status: TunnelStatus::Activated,
+            status: LinkStatus::Activated,
             owner: pda_pubkey,
         };
 
@@ -131,18 +131,18 @@ mod tests {
             .returning(move |_| Ok((device2_pk, device2.clone())));
         client
             .expect_get_tunnel()
-            .with(predicate::eq(GetTunnelCommand {
+            .with(predicate::eq(GetLinkCommand {
                 pubkey_or_code: pda_pubkey.to_string(),
             }))
             .returning(move |_| Ok((pda_pubkey, tunnel.clone())));
         client
             .expect_delete_tunnel()
-            .with(predicate::eq(DeleteTunnelCommand { index: 1 }))
+            .with(predicate::eq(DeleteLinkCommand { index: 1 }))
             .returning(move |_| Ok(signature));
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
-        let res = DeleteTunnelCliCommand {
+        let res = DeleteLinkCliCommand {
             pubkey: pda_pubkey.to_string(),
         }
         .execute(&client, &mut output);

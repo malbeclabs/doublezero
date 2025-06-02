@@ -1,18 +1,18 @@
 use clap::Args;
-use doublezero_sdk::commands::tunnel::get::GetTunnelCommand;
+use doublezero_sdk::commands::link::get::GetLinkCommand;
 use doublezero_sdk::*;
 use std::io::Write;
 use crate::doublezerocommand::CliCommand;
 
 #[derive(Args, Debug)]
-pub struct GetTunnelCliCommand {
+pub struct GetLinkCliCommand {
     #[arg(long)]
     pub code: String,
 }
 
-impl GetTunnelCliCommand {
+impl GetLinkCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        let (pubkey, tunnel) = client.get_tunnel(GetTunnelCommand {
+        let (pubkey, tunnel) = client.get_tunnel(GetLinkCommand {
             pubkey_or_code: self.code,
         })?;
 
@@ -38,12 +38,12 @@ impl GetTunnelCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use doublezero_sdk::commands::tunnel::get::GetTunnelCommand;
-    use doublezero_sdk::{get_tunnel_pda, AccountType, Tunnel, TunnelStatus, TunnelTunnelType};
+    use doublezero_sdk::commands::link::get::GetLinkCommand;
+    use doublezero_sdk::{get_tunnel_pda, AccountType, Link, LinkStatus, LinkLinkType};
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
     use crate::doublezerocommand::CliCommand;
-    use crate::tunnel::get::GetTunnelCliCommand;
+    use crate::link::get::GetLinkCliCommand;
     use crate::tests::tests::create_test_client;
 
     #[test]
@@ -54,34 +54,34 @@ mod tests {
         let device1_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb");
         let device2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf");
 
-        let tunnel = Tunnel {
-            account_type: AccountType::Tunnel,
+        let tunnel = Link {
+            account_type: AccountType::Link,
             index: 1,
             bump_seed: 255,
             code: "test".to_string(),
             side_a_pk: device1_pk,
             side_z_pk: device2_pk,
-            tunnel_type: TunnelTunnelType::MPLSoGRE,
+            tunnel_type: LinkLinkType::MPLSoGRE,
             bandwidth: 1000000000,
             mtu: 1500,
             delay_ns: 10000000000,
             jitter_ns: 5000000000,
             tunnel_id: 1,
             tunnel_net: ([10, 0, 0, 1], 16),
-            status: TunnelStatus::Activated,
+            status: LinkStatus::Activated,
             owner: pda_pubkey,
         };
 
         let tunnel2 = tunnel.clone();
         client
             .expect_get_tunnel()
-            .with(predicate::eq(GetTunnelCommand {
+            .with(predicate::eq(GetLinkCommand {
                 pubkey_or_code: pda_pubkey.to_string(),
             }))
             .returning(move |_| Ok((pda_pubkey, tunnel.clone())));
         client
             .expect_get_tunnel()
-            .with(predicate::eq(GetTunnelCommand {
+            .with(predicate::eq(GetLinkCommand {
                 pubkey_or_code: "test".to_string(),
             }))
             .returning(move |_| Ok((pda_pubkey, tunnel2.clone())));
@@ -91,7 +91,7 @@ mod tests {
         /*****************************************************************************************************/
         // Expected failure
         let mut output = Vec::new();
-        let res = GetTunnelCliCommand {
+        let res = GetLinkCliCommand {
             code: Pubkey::new_unique().to_string(),
         }
         .execute(&client, &mut output);
@@ -99,7 +99,7 @@ mod tests {
 
         // Expected success
         let mut output = Vec::new();
-        let res = GetTunnelCliCommand {
+        let res = GetLinkCliCommand {
             code: pda_pubkey.to_string(),
         }
         .execute(&client, &mut output);
@@ -109,7 +109,7 @@ mod tests {
 
         // Expected success 
         let mut output = Vec::new();
-        let res = GetTunnelCliCommand {
+        let res = GetLinkCliCommand {
             code: "test".to_string(),
         }
         .execute(&client, &mut output);

@@ -5,7 +5,7 @@ use crate::pda::*;
 use crate::{
     error::DoubleZeroError,
     helper::*,
-    state::{accounttype::AccountType, tunnel::*},
+    state::{accounttype::AccountType, link::*},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
@@ -18,20 +18,20 @@ use solana_program::{
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct TunnelCreateArgs {
+pub struct LinkCreateArgs {
     pub index: u128,
     pub bump_seed: u8,
     pub code: String,
     pub side_a_pk: Pubkey,
     pub side_z_pk: Pubkey,
-    pub tunnel_type: TunnelTunnelType,
+    pub tunnel_type: LinkLinkType,
     pub bandwidth: u64,
     pub mtu: u32,
     pub delay_ns: u64,
     pub jitter_ns: u64,
 }
 
-impl fmt::Debug for TunnelCreateArgs {
+impl fmt::Debug for LinkCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -41,10 +41,10 @@ impl fmt::Debug for TunnelCreateArgs {
     }
 }
 
-pub fn process_create_tunnel(
+pub fn process_create_link(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &TunnelCreateArgs,
+    value: &LinkCreateArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -56,7 +56,7 @@ pub fn process_create_tunnel(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_create_tunnel({:?})", value);
+    msg!("process_create_link({:?})", value);
 
     if !pda_account.data.borrow().is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);
@@ -93,8 +93,8 @@ pub fn process_create_tunnel(
         return Err(DoubleZeroError::InvalidDeviceZPubkey.into());
     }
 
-    let tunnel: Tunnel = Tunnel {
-        account_type: AccountType::Tunnel,
+    let tunnel: Link = Link {
+        account_type: AccountType::Link,
         owner: *payer_account.key,
         index: globalstate.account_index,
         bump_seed,
@@ -108,7 +108,7 @@ pub fn process_create_tunnel(
         jitter_ns: value.jitter_ns,
         tunnel_id: 0,
         tunnel_net: ([0, 0, 0, 0], 0),
-        status: TunnelStatus::Pending,
+        status: LinkStatus::Pending,
     };
 
     account_create(

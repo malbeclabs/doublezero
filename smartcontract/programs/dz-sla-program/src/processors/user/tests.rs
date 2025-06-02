@@ -377,7 +377,7 @@ mod user_test {
         assert_eq!(user.cyoa_type, UserCYOA::GREOverPrivatePeering);
         assert_eq!(user.status, UserStatus::Deleting);
 
-        println!("✅ Tunnel deleting");
+        println!("✅ Link deleting");
 
         /*****************************************************************************************************************************************************/
         println!("🟢 12. Testing User deactivation...");
@@ -401,7 +401,7 @@ mod user_test {
         let user = get_account_data(&mut banks_client, user_pubkey).await;
         assert_eq!(user, None);
 
-        println!("✅ Tunnel deleted successfully");
+        println!("✅ Link deleted successfully");
 
         println!("🟢🟢🟢  End test_device  🟢🟢🟢");
     }

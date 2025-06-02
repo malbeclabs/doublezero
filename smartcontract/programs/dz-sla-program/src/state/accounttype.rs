@@ -13,7 +13,7 @@ pub enum AccountType {
     Location = 3,
     Exchange = 4,
     Device = 5,
-    Tunnel = 6,
+    Link = 6,
     User = 7,
 }
 
@@ -25,7 +25,7 @@ impl From<u8> for AccountType {
             3 => AccountType::Location,
             4 => AccountType::Exchange,
             5 => AccountType::Device,
-            6 => AccountType::Tunnel,
+            6 => AccountType::Link,
             7 => AccountType::User,
             _ => AccountType::None,
         }
@@ -41,7 +41,7 @@ impl fmt::Display for AccountType {
             AccountType::Location => write!(f, "location"),
             AccountType::Exchange => write!(f, "exchange"),
             AccountType::Device => write!(f, "device"),
-            AccountType::Tunnel => write!(f, "tunnel"),
+            AccountType::Link => write!(f, "tunnel"),
             AccountType::User => write!(f, "user"),
         }
     }

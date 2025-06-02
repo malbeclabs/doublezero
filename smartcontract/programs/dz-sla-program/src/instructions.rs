@@ -23,10 +23,10 @@ use crate::processors::{
         create::LocationCreateArgs, delete::LocationDeleteArgs, resume::LocationResumeArgs,
         suspend::LocationSuspendArgs, update::LocationUpdateArgs,
     },
-    tunnel::{
-        activate::TunnelActivateArgs, create::TunnelCreateArgs, closeaccount::TunnelCloseAccountArgs,
-        delete::TunnelDeleteArgs, resume::TunnelResumeArgs, reject::TunnelRejectArgs,
-        suspend::TunnelSuspendArgs, update::TunnelUpdateArgs,
+    link::{
+        activate::LinkActivateArgs, create::LinkCreateArgs, closeaccount::LinkCloseAccountArgs,
+        delete::LinkDeleteArgs, resume::LinkResumeArgs, reject::LinkRejectArgs,
+        suspend::LinkSuspendArgs, update::LinkUpdateArgs,
     },
     user::{
         activate::UserActivateArgs, ban::UserBanArgs, create::UserCreateArgs,
@@ -72,14 +72,14 @@ pub enum DoubleZeroInstruction {
     DeleteDevice(DeviceDeleteArgs),         // variant 26
     CloseAccountDevice(DeviceCloseAccountArgs), // variant 27
 
-    CreateTunnel(TunnelCreateArgs),         // variant 28
-    ActivateTunnel(TunnelActivateArgs),     // variant 29
-    RejectTunnel(TunnelRejectArgs),         // variant 30
-    UpdateTunnel(TunnelUpdateArgs),         // variant 31
-    SuspendTunnel(TunnelSuspendArgs),       // variant 32
-    ResumeTunnel(TunnelResumeArgs), // variant 33
-    DeleteTunnel(TunnelDeleteArgs),         // variant 34
-    CloseAccountTunnel(TunnelCloseAccountArgs), // variant 35
+    CreateLink(LinkCreateArgs),         // variant 28
+    ActivateLink(LinkActivateArgs),     // variant 29
+    RejectLink(LinkRejectArgs),         // variant 30
+    UpdateLink(LinkUpdateArgs),         // variant 31
+    SuspendLink(LinkSuspendArgs),       // variant 32
+    ResumeLink(LinkResumeArgs), // variant 33
+    DeleteLink(LinkDeleteArgs),         // variant 34
+    CloseAccountLink(LinkCloseAccountArgs), // variant 35
 
     CreateUser(UserCreateArgs),     // variant 36
     ActivateUser(UserActivateArgs), // variant 37
@@ -137,14 +137,14 @@ impl DoubleZeroInstruction {
             26 => Ok(Self::DeleteDevice(from_slice::<DeviceDeleteArgs>(rest).unwrap())),
             27 => Ok(Self::CloseAccountDevice(from_slice::<DeviceCloseAccountArgs>(rest).unwrap())),
 
-            28 => Ok(Self::CreateTunnel(from_slice::<TunnelCreateArgs>(rest).unwrap())),
-            29 => Ok(Self::ActivateTunnel(from_slice::<TunnelActivateArgs>(rest).unwrap())),
-            30 => Ok(Self::RejectTunnel(from_slice::<TunnelRejectArgs>(rest).unwrap())),
-            31 => Ok(Self::UpdateTunnel(from_slice::<TunnelUpdateArgs>(rest).unwrap())),
-            32 => Ok(Self::SuspendTunnel(from_slice::<TunnelSuspendArgs>(rest).unwrap())),
-            33 => Ok(Self::ResumeTunnel(from_slice::<TunnelResumeArgs>(rest).unwrap())),
-            34 => Ok(Self::DeleteTunnel(from_slice::<TunnelDeleteArgs>(rest).unwrap())),
-            35 => Ok(Self::CloseAccountTunnel(from_slice::<TunnelCloseAccountArgs>(rest).unwrap())),
+            28 => Ok(Self::CreateLink(from_slice::<LinkCreateArgs>(rest).unwrap())),
+            29 => Ok(Self::ActivateLink(from_slice::<LinkActivateArgs>(rest).unwrap())),
+            30 => Ok(Self::RejectLink(from_slice::<LinkRejectArgs>(rest).unwrap())),
+            31 => Ok(Self::UpdateLink(from_slice::<LinkUpdateArgs>(rest).unwrap())),
+            32 => Ok(Self::SuspendLink(from_slice::<LinkSuspendArgs>(rest).unwrap())),
+            33 => Ok(Self::ResumeLink(from_slice::<LinkResumeArgs>(rest).unwrap())),
+            34 => Ok(Self::DeleteLink(from_slice::<LinkDeleteArgs>(rest).unwrap())),
+            35 => Ok(Self::CloseAccountLink(from_slice::<LinkCloseAccountArgs>(rest).unwrap())),
 
             36 => Ok(Self::CreateUser(from_slice::<UserCreateArgs>(rest).unwrap())),
             37 => Ok(Self::ActivateUser(from_slice::<UserActivateArgs>(rest).unwrap())),
@@ -195,14 +195,14 @@ impl DoubleZeroInstruction {
             Self::DeleteDevice(_) => "DeleteDevice".to_string(), // variant 26
             Self::CloseAccountDevice(_) => "CloseAccountDevice".to_string(), // variant 27
 
-            Self::CreateTunnel(_) => "CreateTunnel".to_string(), // variant 28
-            Self::ActivateTunnel(_) => "ActivateTunnel".to_string(), // variant 29
-            Self::RejectTunnel(_) => "RejectTunnel".to_string(), // variant 30
-            Self::UpdateTunnel(_) => "UpdateTunnel".to_string(), // variant 31
-            Self::SuspendTunnel(_) => "SuspendTunnel".to_string(), // variant 32
-            Self::ResumeTunnel(_) => "ResumeTunnel".to_string(), // variant 33
-            Self::DeleteTunnel(_) => "DeleteTunnel".to_string(), // variant 34
-            Self::CloseAccountTunnel(_) => "CloseAccountTunnel".to_string(), // variant 35
+            Self::CreateLink(_) => "CreateLink".to_string(), // variant 28
+            Self::ActivateLink(_) => "ActivateLink".to_string(), // variant 29
+            Self::RejectLink(_) => "RejectLink".to_string(), // variant 30
+            Self::UpdateLink(_) => "UpdateLink".to_string(), // variant 31
+            Self::SuspendLink(_) => "SuspendLink".to_string(), // variant 32
+            Self::ResumeLink(_) => "ResumeLink".to_string(), // variant 33
+            Self::DeleteLink(_) => "DeleteLink".to_string(), // variant 34
+            Self::CloseAccountLink(_) => "CloseAccountLink".to_string(), // variant 35
 
             Self::CreateUser(_) => "CreateUser".to_string(), // variant 36
             Self::ActivateUser(_) => "ActivateUser".to_string(), // variant 37
@@ -253,14 +253,14 @@ impl DoubleZeroInstruction {
             Self::DeleteDevice(args) => format!("{:?}", args), // variant 26
             Self::CloseAccountDevice(args) => format!("{:?}", args), // variant 27
 
-            Self::CreateTunnel(args) => format!("{:?}", args), // variant 28
-            Self::ActivateTunnel(args) => format!("{:?}", args), // variant 29
-            Self::RejectTunnel(args) => format!("{:?}", args), // variant 30
-            Self::UpdateTunnel(args) => format!("{:?}", args), // variant 31
-            Self::SuspendTunnel(args) => format!("{:?}", args), // variant 32
-            Self::ResumeTunnel(args) => format!("{:?}", args), // variant 33
-            Self::DeleteTunnel(args) => format!("{:?}", args), // variant 34
-            Self::CloseAccountTunnel(args) => format!("{:?}", args), // variant 35
+            Self::CreateLink(args) => format!("{:?}", args), // variant 28
+            Self::ActivateLink(args) => format!("{:?}", args), // variant 29
+            Self::RejectLink(args) => format!("{:?}", args), // variant 30
+            Self::UpdateLink(args) => format!("{:?}", args), // variant 31
+            Self::SuspendLink(args) => format!("{:?}", args), // variant 32
+            Self::ResumeLink(args) => format!("{:?}", args), // variant 33
+            Self::DeleteLink(args) => format!("{:?}", args), // variant 34
+            Self::CloseAccountLink(args) => format!("{:?}", args), // variant 35
 
             Self::CreateUser(args) => format!("{:?}", args), // variant 36
             Self::ActivateUser(args) => format!("{:?}", args), // variant 37
@@ -280,7 +280,7 @@ impl DoubleZeroInstruction {
 #[cfg(test)]
 mod tests {
     use solana_program::pubkey::Pubkey;
-    use crate::state::{device::DeviceType, user::{UserCYOA, UserType}, tunnel::TunnelTunnelType};
+    use crate::state::{device::DeviceType, user::{UserCYOA, UserType}, link::LinkLinkType};
 
     use super::*;
 
@@ -451,62 +451,62 @@ mod tests {
             "DeleteDevice",
         );
         test_instruction(
-            DoubleZeroInstruction::CreateTunnel(TunnelCreateArgs {
+            DoubleZeroInstruction::CreateLink(LinkCreateArgs {
                 index: 123,
                 bump_seed: 255,
                 code: "test".to_string(),
                 side_a_pk: Pubkey::new_unique(),
                 side_z_pk: Pubkey::new_unique(),
-                tunnel_type: TunnelTunnelType::MPLSoGRE,
+                tunnel_type: LinkLinkType::MPLSoGRE,
                 bandwidth: 100,
                 mtu: 1500,
                 delay_ns: 1000,
                 jitter_ns: 100,
             }),
-            "CreateTunnel",
+            "CreateLink",
         );
         test_instruction(
-            DoubleZeroInstruction::ActivateTunnel(TunnelActivateArgs {
+            DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
                 index: 123,
                 bump_seed: 255,
                 tunnel_id: 1,
                 tunnel_net: ([1, 2, 3, 4], 1),
             }),
-            "ActivateTunnel",
+            "ActivateLink",
         );
         test_instruction(
-            DoubleZeroInstruction::UpdateTunnel(TunnelUpdateArgs {
+            DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
                 index: 123,
                 bump_seed: 255,
                 code: Some("test".to_string()),
-                tunnel_type: Some(TunnelTunnelType::MPLSoGRE),
+                tunnel_type: Some(LinkLinkType::MPLSoGRE),
                 bandwidth: Some(100),
                 mtu: Some(1500),
                 delay_ns: Some(1000),
                 jitter_ns: Some(100),
             }),
-            "UpdateTunnel",
+            "UpdateLink",
         );
         test_instruction(
-            DoubleZeroInstruction::SuspendTunnel(TunnelSuspendArgs {
+            DoubleZeroInstruction::SuspendLink(LinkSuspendArgs {
                 index: 123,
                 bump_seed: 255,
             }),
-            "SuspendTunnel",
+            "SuspendLink",
         );
         test_instruction(
-            DoubleZeroInstruction::ResumeTunnel(TunnelResumeArgs {
+            DoubleZeroInstruction::ResumeLink(LinkResumeArgs {
                 index: 123,
                 bump_seed: 255,
             }),
-            "ResumeTunnel",
+            "ResumeLink",
         );
         test_instruction(
-            DoubleZeroInstruction::DeleteTunnel(TunnelDeleteArgs {
+            DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {
                 index: 123,
                 bump_seed: 255,
             }),
-            "DeleteTunnel",
+            "DeleteLink",
         );
         test_instruction(
             DoubleZeroInstruction::CreateUser(UserCreateArgs {
@@ -571,11 +571,11 @@ mod tests {
             "CloseAccountDevice",
         );
         test_instruction(
-            DoubleZeroInstruction::CloseAccountTunnel(TunnelCloseAccountArgs {
+            DoubleZeroInstruction::CloseAccountLink(LinkCloseAccountArgs {
                 index: 123,
                 bump_seed: 255,
             }),
-            "CloseAccountTunnel",
+            "CloseAccountLink",
         );
         test_instruction(
             DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
@@ -593,12 +593,12 @@ mod tests {
             "RejectDevice",
         );
         test_instruction(
-            DoubleZeroInstruction::RejectTunnel(TunnelRejectArgs {
+            DoubleZeroInstruction::RejectLink(LinkRejectArgs {
                 index: 123,
                 bump_seed: 255,
                 reason: "test".to_string(),
             }),
-            "RejectTunnel",
+            "RejectLink",
         );
         test_instruction(
             DoubleZeroInstruction::RejectUser(UserRejectArgs {

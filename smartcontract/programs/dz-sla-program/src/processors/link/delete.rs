@@ -1,34 +1,32 @@
 use crate::error::DoubleZeroError;
 use crate::globalstate::globalstate_get;
-use crate::helper::*;
-use crate::state::tunnel::*;
-use std::fmt;
-
+use crate::{helper::*, state::link::*};
 use borsh::{BorshDeserialize, BorshSerialize};
+use core::fmt;
+#[cfg(test)]
+use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
-    msg,
     pubkey::Pubkey,
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct TunnelRejectArgs {
+pub struct LinkDeleteArgs {
     pub index: u128,
     pub bump_seed: u8,
-    pub reason: String,
 }
 
-impl fmt::Debug for TunnelRejectArgs {
+impl fmt::Debug for LinkDeleteArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "reason: {}", self.reason)
+        write!(f, "")
     }
 }
 
-pub fn process_reject_tunnel(
+pub fn process_delete_link(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &TunnelRejectArgs,
+    value: &LinkDeleteArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -38,7 +36,7 @@ pub fn process_reject_tunnel(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_activate_tunnel({:?})", value);
+    msg!("process_delete_link({:?})", value);
 
     // Check the owner of the accounts
     assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
@@ -51,32 +49,27 @@ pub fn process_reject_tunnel(
         solana_program::system_program::id(),
         "Invalid System Program Account Owner"
     );
-    assert!(pda_account.is_writable, "PDA Account is not writable");
 
-    let globalstate = globalstate_get(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
-
-    let mut tunnel: Tunnel = Tunnel::from(&pda_account.try_borrow_data().unwrap()[..]);
+    let mut tunnel: Link = Link::from(&pda_account.try_borrow_data().unwrap()[..]);
     assert_eq!(tunnel.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
         tunnel.bump_seed, value.bump_seed,
         "Invalid PDA Account Bump Seed"
     );
-    if tunnel.status != TunnelStatus::Pending {
-        return Err(DoubleZeroError::InvalidStatus.into());
+
+    let globalstate = globalstate_get(globalstate_account)?;
+    if !globalstate.foundation_allowlist.contains(payer_account.key)
+        && tunnel.owner != *payer_account.key
+    {
+        return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    tunnel.tunnel_id = 0;
-    tunnel.tunnel_net = ([0, 0, 0, 0], 0);
-    tunnel.status = TunnelStatus::Rejected;
-    msg!("Reason: {:?}", value.reason);
+    tunnel.status = LinkStatus::Deleting;
 
     account_write(pda_account, &tunnel, payer_account, system_program);
 
     #[cfg(test)]
-    msg!("Rejectd: {:?}", tunnel);
+    msg!("Deleting: {:?}", tunnel);
 
     Ok(())
 }

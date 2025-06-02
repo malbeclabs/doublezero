@@ -9,34 +9,34 @@ use serde::Serialize;
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
 #[borsh(use_discriminant = true)]
-pub enum TunnelTunnelType {
+pub enum LinkLinkType {
     MPLSoGRE = 1,
 }
 
-impl From<u8> for TunnelTunnelType {
+impl From<u8> for LinkLinkType {
     fn from(value: u8) -> Self {
         match value {
-            1 => TunnelTunnelType::MPLSoGRE,
-            _ => TunnelTunnelType::MPLSoGRE, // Default case
+            1 => LinkLinkType::MPLSoGRE,
+            _ => LinkLinkType::MPLSoGRE, // Default case
         }
     }
 }
 
-impl FromStr for TunnelTunnelType {
+impl FromStr for LinkLinkType {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "MPLSoGRE" => Ok(TunnelTunnelType::MPLSoGRE),
-            _ => Err(format!("Invalid TunnelTunnelType: {}", s)),
+            "MPLSoGRE" => Ok(LinkLinkType::MPLSoGRE),
+            _ => Err(format!("Invalid LinkLinkType: {}", s)),
         }
     }
 }
 
-impl fmt::Display for TunnelTunnelType {
+impl fmt::Display for LinkLinkType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TunnelTunnelType::MPLSoGRE => write!(f, "MPLSoGRE"),
+            LinkLinkType::MPLSoGRE => write!(f, "MPLSoGRE"),
         }
     }
 }
@@ -44,7 +44,7 @@ impl fmt::Display for TunnelTunnelType {
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
 #[borsh(use_discriminant = true)]
-pub enum TunnelStatus {
+pub enum LinkStatus {
     Pending = 0,
     Activated = 1,
     Suspended = 2,
@@ -52,51 +52,51 @@ pub enum TunnelStatus {
     Rejected = 4,
 }
 
-impl From<u8> for TunnelStatus {
+impl From<u8> for LinkStatus {
     fn from(value: u8) -> Self {
         match value {
-            0 => TunnelStatus::Pending,
-            1 => TunnelStatus::Activated,
-            2 => TunnelStatus::Suspended,
-            3 => TunnelStatus::Deleting,
-            4 => TunnelStatus::Rejected,
-            _ => TunnelStatus::Pending,
+            0 => LinkStatus::Pending,
+            1 => LinkStatus::Activated,
+            2 => LinkStatus::Suspended,
+            3 => LinkStatus::Deleting,
+            4 => LinkStatus::Rejected,
+            _ => LinkStatus::Pending,
         }
     }
 }
 
-impl fmt::Display for TunnelStatus {
+impl fmt::Display for LinkStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TunnelStatus::Pending => write!(f, "pending"),
-            TunnelStatus::Activated => write!(f, "activated"),
-            TunnelStatus::Suspended => write!(f, "suspended"),
-            TunnelStatus::Deleting => write!(f, "deleting"),
-            TunnelStatus::Rejected => write!(f, "rejected"),
+            LinkStatus::Pending => write!(f, "pending"),
+            LinkStatus::Activated => write!(f, "activated"),
+            LinkStatus::Suspended => write!(f, "suspended"),
+            LinkStatus::Deleting => write!(f, "deleting"),
+            LinkStatus::Rejected => write!(f, "rejected"),
         }
     }
 }
 
 #[derive(BorshSerialize, Debug, PartialEq, Clone, Serialize)]
-pub struct Tunnel {
-    pub account_type: AccountType,     // 1
-    pub owner: Pubkey,                 // 32
-    pub index: u128,                   // 16
-    pub bump_seed: u8,                 // 1
-    pub side_a_pk: Pubkey,             // 32
-    pub side_z_pk: Pubkey,             // 32
-    pub tunnel_type: TunnelTunnelType, // 1
-    pub bandwidth: u64,                // 8
-    pub mtu: u32,                      // 4
-    pub delay_ns: u64,                 // 8
-    pub jitter_ns: u64,                // 8
-    pub tunnel_id: u16,                // 2
-    pub tunnel_net: NetworkV4,         // 5 (IP(4 x u8) + Prefix (u8) CIDR)
-    pub status: TunnelStatus,          // 1
-    pub code: String,                  // 4 + len
+pub struct Link {
+    pub account_type: AccountType, // 1
+    pub owner: Pubkey,             // 32
+    pub index: u128,               // 16
+    pub bump_seed: u8,             // 1
+    pub side_a_pk: Pubkey,         // 32
+    pub side_z_pk: Pubkey,         // 32
+    pub tunnel_type: LinkLinkType, // 1
+    pub bandwidth: u64,            // 8
+    pub mtu: u32,                  // 4
+    pub delay_ns: u64,             // 8
+    pub jitter_ns: u64,            // 8
+    pub tunnel_id: u16,            // 2
+    pub tunnel_net: NetworkV4,     // 5 (IP(4 x u8) + Prefix (u8) CIDR)
+    pub status: LinkStatus,        // 1
+    pub code: String,              // 4 + len
 }
 
-impl fmt::Display for Tunnel {
+impl fmt::Display for Link {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -106,7 +106,7 @@ impl fmt::Display for Tunnel {
     }
 }
 
-impl AccountTypeInfo for Tunnel {
+impl AccountTypeInfo for Link {
     fn seed(&self) -> &[u8] {
         SEED_TUNNEL
     }
@@ -124,7 +124,7 @@ impl AccountTypeInfo for Tunnel {
     }
 }
 
-impl From<&[u8]> for Tunnel {
+impl From<&[u8]> for Link {
     fn from(data: &[u8]) -> Self {
         let mut parser = ByteReader::new(data);
 
@@ -154,14 +154,14 @@ mod tests {
 
     #[test]
     fn test_state_tunnel_serialization() {
-        let val = Tunnel {
-            account_type: AccountType::Tunnel,
+        let val = Link {
+            account_type: AccountType::Link,
             owner: Pubkey::new_unique(),
             index: 123,
             bump_seed: 1,
             side_a_pk: Pubkey::new_unique(),
             side_z_pk: Pubkey::new_unique(),
-            tunnel_type: TunnelTunnelType::MPLSoGRE,
+            tunnel_type: LinkLinkType::MPLSoGRE,
             bandwidth: 1234,
             mtu: 1566,
             delay_ns: 1234,
@@ -169,11 +169,11 @@ mod tests {
             tunnel_id: 1234,
             tunnel_net: networkv4_parse(&"1.2.3.4/32".to_string()),
             code: "test-123".to_string(),
-            status: TunnelStatus::Activated,
+            status: LinkStatus::Activated,
         };
 
         let data = borsh::to_vec(&val).unwrap();
-        let val2 = Tunnel::from(&data[..]);
+        let val2 = Link::from(&data[..]);
 
         assert_eq!(val.size(), val2.size());
         assert_eq!(val.owner, val2.owner);

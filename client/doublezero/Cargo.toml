@@ -39,6 +39,7 @@ tokio.workspace = true
 # Dependencies from this workspace
 doublezero_sdk.workspace = true
 doublezero_cli.workspace = true
+mockall = "^0.13"
 
 [dev-dependencies]
 assert_cmd.workspace = true

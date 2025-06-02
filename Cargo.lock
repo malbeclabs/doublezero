@@ -1442,6 +1442,7 @@ dependencies = [
  "hyper-util",
  "hyperlocal",
  "indicatif",
+ "mockall 0.13.1",
  "serde",
  "serde_json",
  "serde_yaml",

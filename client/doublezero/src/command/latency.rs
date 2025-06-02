@@ -14,7 +14,7 @@ impl LatencyCliCommand {
     pub async fn execute(self, client: &dyn CliCommand) -> eyre::Result<()> {
         check_doublezero(None)?;
 
-        let controller = ServiceController::new(None);
+        let controller = ServiceControllerImpl::new(None);
         let devices = client.list_device(ListDeviceCommand {})?;
         let mut latencies = controller.latency().await.map_err(|e| eyre::eyre!(e))?;
         // Filter the active devices

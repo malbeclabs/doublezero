@@ -7,7 +7,7 @@ use doublezero_cli::{
     requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON, CHECK_USER_ALLOWLIST},
 };
 
-use crate::servicecontroller::{RemoveTunnelCliCommand, ServiceController};
+use crate::servicecontroller::{RemoveTunnelCliCommand, ServiceController, ServiceControllerImpl};
 
 use doublezero_sdk::{
     commands::user::{delete::DeleteUserCommand, list::ListUserCommand},
@@ -53,7 +53,7 @@ impl DecommissioningCliCommand {
 
         spinner.set_message("deleting user account...");
 
-        let controller = ServiceController::new(None);
+        let controller = ServiceControllerImpl::new(None);
         let users = client.list_user(ListUserCommand {})?;
 
         for (pubkey, user) in users.iter().filter(|(_, u)| u.client_ip == client_ip) {

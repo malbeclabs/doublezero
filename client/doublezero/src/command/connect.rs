@@ -1,5 +1,5 @@
 use super::helpers::look_for_ip;
-use crate::servicecontroller::{ProvisioningRequest, ServiceController};
+use crate::servicecontroller::{ProvisioningRequest, ServiceController, ServiceControllerImpl};
 use clap::{Args, Subcommand, ValueEnum};
 use doublezero_cli::{
     doublezerocommand::CliCommand,
@@ -67,7 +67,7 @@ pub struct ProvisioningCliCommand {
 impl ProvisioningCliCommand {
     pub async fn execute(&self, client: &dyn CliCommand) -> eyre::Result<()> {
         let spinner = init_command();
-        let controller = ServiceController::new(None);
+        let controller = ServiceControllerImpl::new(None);
 
         // Check requirements
         check_requirements(
@@ -90,14 +90,14 @@ impl ProvisioningCliCommand {
 
         match user_type {
             UserType::IBRL | UserType::IBRLWithAllocatedIP => {
-                self.execute_ibrl(client, controller, user_type, client_ip, spinner)
+                self.execute_ibrl(client, &controller, user_type, client_ip, spinner)
                     .await
             }
             UserType::EdgeFiltering => Err(eyre::eyre!("DzMode not supported")),
             UserType::Multicast => {
                 self.execute_multicast(
                     client,
-                    controller,
+                    &controller,
                     multicast_mode.unwrap(),
                     multicast_group.unwrap(),
                     client_ip,
@@ -108,17 +108,17 @@ impl ProvisioningCliCommand {
         }
     }
 
-    async fn execute_ibrl(
+    async fn execute_ibrl<T: ServiceController>(
         &self,
         client: &dyn CliCommand,
-        controller: ServiceController,
+        controller: &T,
         user_type: UserType,
         client_ip: IpV4,
         spinner: ProgressBar,
     ) -> eyre::Result<()> {
         // Look for user
         let (user_pubkey, user) = self
-            .find_or_create_user(client, &controller, &client_ip, &spinner, user_type)
+            .find_or_create_user(client, controller, &client_ip, &spinner, user_type)
             .await?;
 
         // Check user status
@@ -127,7 +127,7 @@ impl ProvisioningCliCommand {
                 // User is activated
                 self.user_activated(
                     client,
-                    &controller,
+                    controller,
                     &user,
                     &client_ip,
                     &spinner,
@@ -150,10 +150,10 @@ impl ProvisioningCliCommand {
         Ok(())
     }
 
-    async fn execute_multicast(
+    async fn execute_multicast<T: ServiceController>(
         &self,
         client: &dyn CliCommand,
-        controller: ServiceController,
+        controller: &T,
         multicast_mode: &MulticastMode,
         multicast_group: &String,
         client_ip: IpV4,
@@ -169,7 +169,7 @@ impl ProvisioningCliCommand {
         let (user_pubkey, user) = self
             .find_or_create_user_and_subscribe(
                 client,
-                &controller,
+                controller,
                 &client_ip,
                 &spinner,
                 multicast_mode,
@@ -194,7 +194,7 @@ impl ProvisioningCliCommand {
                 // User is activated
                 self.user_activated(
                     client,
-                    &controller,
+                    controller,
                     &user,
                     &client_ip,
                     &spinner,
@@ -233,10 +233,10 @@ impl ProvisioningCliCommand {
         }
     }
 
-    async fn find_or_create_device(
+    async fn find_or_create_device<T: ServiceController>(
         &self,
         client: &dyn CliCommand,
-        controller: &ServiceController,
+        controller: &T,
         spinner: &ProgressBar,
     ) -> eyre::Result<(Pubkey, Device)> {
         spinner.set_message("Searching for device account...");
@@ -274,10 +274,10 @@ impl ProvisioningCliCommand {
         Ok((device_pk, device))
     }
 
-    async fn find_or_create_user(
+    async fn find_or_create_user<T: ServiceController>(
         &self,
         client: &dyn CliCommand,
-        controller: &ServiceController,
+        controller: &T,
         client_ip: &IpV4,
         spinner: &ProgressBar,
         user_type: UserType,
@@ -340,10 +340,10 @@ impl ProvisioningCliCommand {
         Ok((user_pubkey, user))
     }
 
-    async fn find_or_create_user_and_subscribe(
+    async fn find_or_create_user_and_subscribe<T: ServiceController>(
         &self,
         client: &dyn CliCommand,
-        controller: &ServiceController,
+        controller: &T,
         client_ip: &IpV4,
         spinner: &ProgressBar,
         multicast_mode: &MulticastMode,
@@ -461,10 +461,10 @@ impl ProvisioningCliCommand {
     }
 
     #[allow(clippy::too_many_arguments)]
-    async fn user_activated(
+    async fn user_activated<T: ServiceController>(
         &self,
         client: &dyn CliCommand,
-        controller: &ServiceController,
+        controller: &T,
         user: &User,
         client_ip: &IpV4,
         spinner: &ProgressBar,

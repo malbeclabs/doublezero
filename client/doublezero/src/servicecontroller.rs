@@ -83,18 +83,27 @@ pub struct ErrorResponse {
     pub description: String,
 }
 
-pub struct ServiceController {
+pub trait ServiceController {
+    async fn latency(&self) -> eyre::Result<Vec<LatencyRecord>>;
+    async fn provisioning(&self, args: ProvisioningRequest) -> eyre::Result<ProvisioningResponse>;
+    async fn remove(&self, args: RemoveTunnelCliCommand) -> eyre::Result<RemoveResponse>;
+    async fn status(&self) -> eyre::Result<Vec<StatusResponse>>;
+}
+
+pub struct ServiceControllerImpl {
     pub socket_path: String,
 }
 
-impl ServiceController {
-    pub fn new(socket_path: Option<String>) -> ServiceController {
-        ServiceController {
+impl ServiceControllerImpl {
+    pub fn new(socket_path: Option<String>) -> ServiceControllerImpl {
+        ServiceControllerImpl {
             socket_path: socket_path.unwrap_or("/var/run/doublezerod/doublezerod.sock".to_string()),
         }
     }
+}
 
-    pub async fn latency(&self) -> eyre::Result<Vec<LatencyRecord>> {
+impl ServiceController for ServiceControllerImpl{
+    async fn latency(&self) -> eyre::Result<Vec<LatencyRecord>> {
         let uri: Uri = Uri::new(&self.socket_path, "/latency");
         let client: Client<UnixConnector, Body> = Client::builder().build(UnixConnector);
         let res = client
@@ -118,7 +127,7 @@ impl ServiceController {
         }
     }
 
-    pub async fn provisioning(
+    async fn provisioning(
         &self,
         args: ProvisioningRequest,
     ) -> eyre::Result<ProvisioningResponse> {
@@ -144,7 +153,7 @@ impl ServiceController {
         }
     }
 
-    pub async fn remove(&self, args: RemoveTunnelCliCommand) -> eyre::Result<RemoveResponse> {
+    async fn remove(&self, args: RemoveTunnelCliCommand) -> eyre::Result<RemoveResponse> {
         let client: Client<UnixConnector, Body> = Client::builder().build(UnixConnector);
 
         let req = Request::builder()
@@ -167,7 +176,7 @@ impl ServiceController {
         }
     }
 
-    pub async fn status(&self) -> eyre::Result<Vec<StatusResponse>> {
+    async fn status(&self) -> eyre::Result<Vec<StatusResponse>> {
         let client: Client<UnixConnector, Body> = Client::builder().build(UnixConnector);
 
         let req = Request::builder()

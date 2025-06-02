@@ -1,5 +1,5 @@
 use crate::requirements::check_doublezero;
-use crate::servicecontroller::ServiceController;
+use crate::servicecontroller::{ServiceController, ServiceControllerImpl};
 use chrono::prelude::*;
 use clap::Args;
 use doublezero_cli::helpers::init_command;
@@ -11,7 +11,7 @@ pub struct StatusCliCommand {}
 impl StatusCliCommand {
     pub async fn execute(self, _client: &dyn CliCommand) -> eyre::Result<()> {
         let spinner = init_command();
-        let controller = ServiceController::new(None);
+        let controller = ServiceControllerImpl::new(None);
 
         // Check requirements
         check_doublezero(Some(&spinner))?;

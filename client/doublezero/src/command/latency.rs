@@ -6,7 +6,7 @@ use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 
 use crate::requirements::check_doublezero;
-use crate::servicecontroller::ServiceController;
+use crate::servicecontroller::{ServiceController, ServiceControllerImpl};
 
 #[derive(Args, Debug)]
 pub struct LatencyCliCommand {}
@@ -26,7 +26,7 @@ impl LatencyCliCommand {
             "reachable"
         ]);
 
-        let controller = ServiceController::new(None);
+        let controller = ServiceControllerImpl::new(None);
         let devices = client.list_device(ListDeviceCommand {})?;
 
         for data in controller.latency().await.map_err(|e| eyre::eyre!(e))? {

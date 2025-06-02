@@ -1,24 +1,24 @@
 use doublezero_sla_program::{
     instructions::DoubleZeroInstruction, pda::get_tunnel_pda,
-    processors::tunnel::create::TunnelCreateArgs, state::tunnel::TunnelTunnelType,
+    processors::link::create::LinkCreateArgs, state::link::LinkLinkType,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct CreateTunnelCommand {
+pub struct CreateLinkCommand {
     pub code: String,
     pub side_a_pk: Pubkey,
     pub side_z_pk: Pubkey,
-    pub tunnel_type: TunnelTunnelType,
+    pub tunnel_type: LinkLinkType,
     pub bandwidth: u64,
     pub mtu: u32,
     pub delay_ns: u64,
     pub jitter_ns: u64,
 }
 
-impl CreateTunnelCommand {
+impl CreateLinkCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
         let (globalstate_pubkey, globalstate) = GetGlobalStateCommand {}
             .execute(client)
@@ -28,7 +28,7 @@ impl CreateTunnelCommand {
             get_tunnel_pda(&client.get_program_id(), globalstate.account_index + 1);
         client
             .execute_transaction(
-                DoubleZeroInstruction::CreateTunnel(TunnelCreateArgs {
+                DoubleZeroInstruction::CreateLink(LinkCreateArgs {
                     index: globalstate.account_index + 1,
                     bump_seed,
                     code: self.code.to_string(),

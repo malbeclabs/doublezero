@@ -15,8 +15,8 @@ pub use doublezero_sla_program::state::{
     device::{Device, DeviceStatus, DeviceType},
     exchange::{Exchange, ExchangeStatus},
     globalconfig::GlobalConfig,
+    link::{Link, LinkLinkType, LinkStatus},
     location::{Location, LocationStatus},
-    tunnel::{Tunnel, TunnelStatus, TunnelTunnelType},
     user::{User, UserCYOA, UserStatus, UserType},
 };
 pub use doublezero_sla_program::types::*;

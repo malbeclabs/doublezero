@@ -1,27 +1,27 @@
 use doublezero_sla_program::{
     instructions::DoubleZeroInstruction, pda::get_tunnel_pda,
-    processors::tunnel::update::TunnelUpdateArgs, state::tunnel::TunnelTunnelType,
+    processors::link::update::LinkUpdateArgs, state::link::LinkLinkType,
 };
 use solana_sdk::{instruction::AccountMeta, signature::Signature};
 
 use crate::DoubleZeroClient;
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct UpdateTunnelCommand {
+pub struct UpdateLinkCommand {
     pub index: u128,
     pub code: Option<String>,
-    pub tunnel_type: Option<TunnelTunnelType>,
+    pub tunnel_type: Option<LinkLinkType>,
     pub bandwidth: Option<u64>,
     pub mtu: Option<u32>,
     pub delay_ns: Option<u64>,
     pub jitter_ns: Option<u64>,
 }
 
-impl UpdateTunnelCommand {
+impl UpdateLinkCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
         let (pda_pubkey, bump_seed) = get_tunnel_pda(&client.get_program_id(), self.index);
         client.execute_transaction(
-            DoubleZeroInstruction::UpdateTunnel(TunnelUpdateArgs {
+            DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
                 index: self.index,
                 bump_seed,
                 code: self.code.clone(),

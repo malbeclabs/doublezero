@@ -1,17 +1,17 @@
 use doublezero_sla_program::{
     instructions::DoubleZeroInstruction, pda::get_tunnel_pda,
-    processors::tunnel::resume::TunnelResumeArgs,
+    processors::link::delete::LinkDeleteArgs,
 };
 use solana_sdk::{instruction::AccountMeta, signature::Signature};
 
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct ResumeTunnelCommand {
+pub struct DeleteLinkCommand {
     pub index: u128,
 }
 
-impl ResumeTunnelCommand {
+impl DeleteLinkCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
         let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand {}
             .execute(client)
@@ -19,7 +19,7 @@ impl ResumeTunnelCommand {
 
         let (pda_pubkey, bump_seed) = get_tunnel_pda(&client.get_program_id(), self.index);
         client.execute_transaction(
-            DoubleZeroInstruction::ResumeTunnel(TunnelResumeArgs {
+            DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {
                 index: self.index,
                 bump_seed,
             }),

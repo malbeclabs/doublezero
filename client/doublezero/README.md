@@ -56,12 +56,12 @@ doublezero user create --help
 
 Output:
 ```
-Usage: doublezero user create --user-type <USER_TYPE> --device <DEVICE> --Link-type <Link_TYPE> --client-ip <CLIENT_IP>
+Usage: doublezero user create --user-type <USER_TYPE> --device <DEVICE> --link-type <LINK_TYPE> --client-ip <CLIENT_IP>
 
 Options:
       --user-type <USER_TYPE>      
       --device <DEVICE>            
-      --Link-type <Link_TYPE>  
+      --link-type <LINK_TYPE>  
       --client-ip <CLIENT_IP>      
   -h, --help                       Print help
 ```
@@ -210,7 +210,7 @@ doublezero Link list
 
 Output:
 ```
- pubkey                                       | code              | side_a   | side_z   | Link_type | bandwidth | mtu  | delay | jitter | status | owner 
+ pubkey                                       | code              | side_a   | side_z   | link_type | bandwidth | mtu  | delay | jitter | status | owner 
  FK5AN9sgfS56Du2UtPAZu54u1q15GiPdfkBH4v2H6FgR | la2-dz02:ny5-dz01 | la2-dz01 | ny5-dz01 | 1           | 100       | 9000 | 0     | 0      | 1      | gwfHPG4suqu1aiXEjCPyW9rZfKnb9zQqdNt4iyqiA1D 
 ```
 
@@ -218,7 +218,7 @@ Output:
 ### Create User
 
 ```console
-doublezero user create --user-type 1 --device ny5-dz01 --Link-type 1 --client-ip 186.158.137.96
+doublezero user create --user-type 1 --device ny5-dz01 --link-type 1 --client-ip 186.158.137.96
 ```
 
 [DGyGkcLZqdNWGbeBtLYdzVrgDi4VxemSwh6e6hG6qA2k](https://explorer.solana.com/address/DGyGkcLZqdNWGbeBtLYdzVrgDi4VxemSwh6e6hG6qA2k?cluster=devnet)
@@ -231,7 +231,7 @@ doublezero user list
 
 Output:
 ```
- pubkey                                       | user_type | device_pk | Link_type | client_ip      | c_underlay_ip | dz_underlay_ip | status | owner 
+ pubkey                                       | user_type | device_pk | link_type | client_ip      | c_underlay_ip | dz_underlay_ip | status | owner 
  DGyGkcLZqdNWGbeBtLYdzVrgDi4VxemSwh6e6hG6qA2k | 1         | ny5-dz01  | 1           | 186.158.137.96 | 0.0.0.0       | 0.0.0.0        | 1      | gwfHPG4suqu1aiXEjCPyW9rZfKnb9zQqdNt4iyqiA1D 
 ```
 
@@ -251,6 +251,6 @@ doublezero user list
 
 Output:
 ```
- pubkey                                       | user_type | device_pk | Link_type | client_ip      | c_underlay_ip | dz_underlay_ip | status | owner 
+ pubkey                                       | user_type | device_pk | link_type | client_ip      | c_underlay_ip | dz_underlay_ip | status | owner 
  DGyGkcLZqdNWGbeBtLYdzVrgDi4VxemSwh6e6hG6qA2k | 1         | ny5-dz01  | 1           | 186.158.137.96 | 10.0.0.1      | 10.0.0.2       | 2      | gwfHPG4suqu1aiXEjCPyW9rZfKnb9zQqdNt4iyqiA1D 
 ```

@@ -16,7 +16,7 @@ pub struct CreateLinkCliCommand {
     #[arg(long)]
     pub side_z: String,
     #[arg(long)]
-    pub tunnel_type: Option<String>,
+    pub link_type: Option<String>,
     #[arg(long)]
     pub bandwidth: String,
     #[arg(long)]
@@ -60,8 +60,8 @@ impl CreateLinkCliCommand {
             code: self.code.clone(),
             side_a_pk,
             side_z_pk,
-            tunnel_type: self
-                .tunnel_type
+            link_type: self
+                .link_type
                 .as_ref()
                 .map(|t| t.parse().unwrap())
                 .unwrap_or(LinkLinkType::L3),
@@ -162,7 +162,7 @@ mod tests {
                 code: "test".to_string(),
                 side_a_pk: device1_pk,
                 side_z_pk: device2_pk,
-                tunnel_type: LinkLinkType::L3,
+                link_type: LinkLinkType::L3,
                 bandwidth: 1000000000,
                 mtu: 1500,
                 delay_ns: 10000000000,
@@ -177,7 +177,7 @@ mod tests {
             code: "test".to_string(),
             side_a: device1_pk.to_string(),
             side_z: device2_pk.to_string(),
-            tunnel_type: Some("L3".to_string()),
+            link_type: Some("L3".to_string()),
             bandwidth: "1Gbps".to_string(),
             mtu: 1500,
             delay_ms: 10000.0,

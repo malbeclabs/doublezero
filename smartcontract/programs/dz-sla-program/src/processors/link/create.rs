@@ -24,7 +24,7 @@ pub struct LinkCreateArgs {
     pub code: String,
     pub side_a_pk: Pubkey,
     pub side_z_pk: Pubkey,
-    pub tunnel_type: LinkLinkType,
+    pub link_type: LinkLinkType,
     pub bandwidth: u64,
     pub mtu: u32,
     pub delay_ns: u64,
@@ -35,8 +35,8 @@ impl fmt::Debug for LinkCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "code: {}, side_a_pk: {}, side_z_pk: {}, tunnel_type: {:?}, bandwidth: {}, mtu: {}, delay_ns: {}, jitter_ns: {}",
-            self.code, self.side_a_pk, self.side_z_pk, self.tunnel_type, self.bandwidth, self.mtu, self.delay_ns, self.jitter_ns
+            "code: {}, side_a_pk: {}, side_z_pk: {}, link_type: {:?}, bandwidth: {}, mtu: {}, delay_ns: {}, jitter_ns: {}",
+            self.code, self.side_a_pk, self.side_z_pk, self.link_type, self.bandwidth, self.mtu, self.delay_ns, self.jitter_ns
         )
     }
 }
@@ -101,7 +101,7 @@ pub fn process_create_link(
         code: value.code.clone(),
         side_a_pk: value.side_a_pk,
         side_z_pk: value.side_z_pk,
-        link_type: value.tunnel_type,
+        link_type: value.link_type,
         bandwidth: value.bandwidth,
         mtu: value.mtu,
         delay_ns: value.delay_ns,

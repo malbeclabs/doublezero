@@ -13,8 +13,14 @@
         "vscode": {
             "extensions": [
                 "golang.go",
-                "rust-lang.rust-analyzer"
-            ]
+                "rust-lang.rust-analyzer",
+                "casualjim.gotemplate"
+            ],
+            "settings": {
+                "files.associations": {
+                    "*.tmpl": "gotemplate"
+                }
+            }
         }
     },
     "remoteUser": "root",

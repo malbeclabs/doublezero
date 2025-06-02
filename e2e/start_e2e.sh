@@ -237,7 +237,7 @@ test_multicast_publisher() {
     e2e_test -test.v -test.run "^TestMulticastPublisher_Connect"
 
     print_banner "Disconnecting multicast publisher"
-    # TODO: Investigate why disconnect needs --client-ip
+    # NOTE: --client-ip is required within the container to disconnect
     doublezero --keypair $SOLANA_KEYPAIR disconnect multicast --client-ip 64.86.249.86
 
     print_banner "Running multicast publisher disconnect tests"
@@ -260,7 +260,7 @@ test_multicast_subscriber() {
     e2e_test -test.v -test.run "^TestMulticastSubscriber_Connect"
 
     print_banner "Disconnecting multicast subscriber"
-    # TODO: Investigate why disconnect needs --client-ip
+    # NOTE: --client-ip is required within the container to disconnect
     doublezero --keypair $SOLANA_KEYPAIR disconnect multicast --client-ip 64.86.249.86
 
     print_banner "Running multicast subscriber disconnect tests"

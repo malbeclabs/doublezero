@@ -8,11 +8,11 @@ use doublezero_sdk::{
             get::GetDeviceCommand, list::ListDeviceCommand,
         },
         exchange::list::ListExchangeCommand,
-        location::list::ListLocationCommand,
-        tunnel::{
-            activate::ActivateTunnelCommand, closeaccount::CloseAccountTunnelCommand,
-            list::ListTunnelCommand, reject::RejectTunnelCommand,
+        link::{
+            activate::ActivateLinkCommand, closeaccount::CloseAccountLinkCommand,
+            list::ListLinkCommand, reject::RejectLinkCommand,
         },
+        location::list::ListLocationCommand,
         user::{
             activate::ActivateUserCommand, ban::BanUserCommand,
             closeaccount::CloseAccountUserCommand, list::ListUserCommand,
@@ -20,8 +20,8 @@ use doublezero_sdk::{
         },
     },
     ipv4_to_string, networkv4_list_to_string, networkv4_to_string, AccountData, DZClient, Device,
-    DeviceStatus, DoubleZeroClient, Exchange, IpV4, Location, Tunnel, TunnelStatus, User,
-    UserStatus, UserType,
+    DeviceStatus, DoubleZeroClient, Exchange, IpV4, Link, LinkStatus, Location, User, UserStatus,
+    UserType,
 };
 use solana_sdk::pubkey::Pubkey;
 use std::thread;
@@ -96,14 +96,14 @@ impl Activator {
     pub async fn init(&mut self) -> eyre::Result<()> {
         // Fetch the list of tunnels, devices, and users from the client
         let devices = ListDeviceCommand {}.execute(&self.client)?;
-        let tunnels = ListTunnelCommand {}.execute(&self.client)?;
+        let tunnels = ListLinkCommand {}.execute(&self.client)?;
         let users = ListUserCommand {}.execute(&self.client)?;
         self.locations = ListLocationCommand {}.execute(&self.client)?;
         self.exchanges = ListExchangeCommand {}.execute(&self.client)?;
 
         for (_, tunnel) in tunnels
             .iter()
-            .filter(|(_, t)| t.status == TunnelStatus::Activated)
+            .filter(|(_, t)| t.status == LinkStatus::Activated)
         {
             self.tunnel_tunnel_ids.assign(tunnel.tunnel_id);
             self.tunnel_tunnel_ips.assign_block(tunnel.tunnel_net);
@@ -192,7 +192,7 @@ impl Activator {
                     AccountData::Device(device) => {
                         process_device_event(client, pubkey, devices, device, state_transitions);
                     }
-                    AccountData::Tunnel(tunnel) => {
+                    AccountData::Link(tunnel) => {
                         process_tunnel_event(
                             client,
                             tunnel_tunnel_ips,
@@ -303,18 +303,18 @@ fn process_tunnel_event(
     client: &dyn DoubleZeroClient,
     tunnel_tunnel_ips: &mut IPBlockAllocator,
     tunnel_tunnel_ids: &mut IDAllocator,
-    tunnel: &Tunnel,
+    tunnel: &Link,
     state_transitions: &mut HashMap<&'static str, usize>,
 ) {
     match tunnel.status {
-        TunnelStatus::Pending => {
-            print!("New Tunnel {} ", tunnel.code);
+        LinkStatus::Pending => {
+            print!("New Link {} ", tunnel.code);
 
             match tunnel_tunnel_ips.next_available_block(0, 2) {
                 Some(tunnel_net) => {
                     let tunnel_id = tunnel_tunnel_ids.next_available();
 
-                    let res = ActivateTunnelCommand {
+                    let res = ActivateLinkCommand {
                         index: tunnel.index,
                         tunnel_id,
                         tunnel_net,
@@ -334,7 +334,7 @@ fn process_tunnel_event(
                 None => {
                     println!("Error: No available tunnel block");
 
-                    let res = RejectTunnelCommand {
+                    let res = RejectLinkCommand {
                         index: tunnel.index,
                         reason: "Error: No available tunnel block".to_string(),
                     }
@@ -352,13 +352,13 @@ fn process_tunnel_event(
                 }
             }
         }
-        TunnelStatus::Deleting => {
-            print!("Deleting Tunnel {} ", tunnel.code);
+        LinkStatus::Deleting => {
+            print!("Deleting Link {} ", tunnel.code);
 
             tunnel_tunnel_ids.unassign(tunnel.tunnel_id);
             tunnel_tunnel_ips.unassign_block(tunnel.tunnel_net);
 
-            let res = CloseAccountTunnelCommand {
+            let res = CloseAccountLinkCommand {
                 index: tunnel.index,
                 owner: tunnel.owner,
             }
@@ -605,8 +605,8 @@ fn process_exchange_event(
 #[cfg(test)]
 mod tests {
     use doublezero_sdk::{
-        AccountType, DeviceType, ExchangeStatus, LocationStatus, MockDoubleZeroClient,
-        TunnelTunnelType, UserCYOA,
+        AccountType, DeviceType, ExchangeStatus, LinkLinkType, LocationStatus,
+        MockDoubleZeroClient, UserCYOA,
     };
     use doublezero_sla_program::{
         instructions::DoubleZeroInstruction,
@@ -616,9 +616,9 @@ mod tests {
         pda::get_user_pda,
         processors::{
             device::{activate::DeviceActivateArgs, closeaccount::DeviceCloseAccountArgs},
-            tunnel::{
-                activate::TunnelActivateArgs, closeaccount::TunnelCloseAccountArgs,
-                reject::TunnelRejectArgs,
+            link::{
+                activate::LinkActivateArgs, closeaccount::LinkCloseAccountArgs,
+                reject::LinkRejectArgs,
             },
             user::{
                 activate::UserActivateArgs, ban::UserBanArgs, closeaccount::UserCloseAccountArgs,
@@ -807,22 +807,22 @@ mod tests {
         let mut tunnel_tunnel_ids = IDAllocator::new(500, vec![500, 501, 503]);
         let mut client = create_test_client();
 
-        let tunnel = Tunnel {
-            account_type: AccountType::Tunnel,
+        let tunnel = Link {
+            account_type: AccountType::Link,
             owner: Pubkey::new_unique(),
             index: 0,
             bump_seed: get_tunnel_bump_seed(&client),
             side_a_pk: Pubkey::new_unique(),
             side_z_pk: Pubkey::new_unique(),
-            tunnel_type: TunnelTunnelType::MPLSoGRE,
+            tunnel_type: LinkLinkType::L3,
             bandwidth: 10_000_000_000,
             mtu: 1500,
             delay_ns: 100,
             jitter_ns: 100,
             tunnel_id: 1,
             tunnel_net: ([0, 0, 0, 0], 0),
-            status: TunnelStatus::Pending,
-            code: "TestTunnel".to_string(),
+            status: LinkStatus::Pending,
+            code: "TestLink".to_string(),
         };
 
         client
@@ -830,7 +830,7 @@ mod tests {
             .times(1)
             .in_sequence(&mut seq)
             .with(
-                predicate::eq(DoubleZeroInstruction::ActivateTunnel(TunnelActivateArgs {
+                predicate::eq(DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
                     index: tunnel.index,
                     bump_seed: tunnel.bump_seed,
                     tunnel_id: 502,
@@ -854,7 +854,7 @@ mod tests {
         assert!(tunnel_tunnel_ips.contains([10, 0, 0, 42]));
 
         let mut tunnel = tunnel.clone();
-        tunnel.status = TunnelStatus::Deleting;
+        tunnel.status = LinkStatus::Deleting;
         tunnel.tunnel_id = 502;
         tunnel.tunnel_net = ([10, 0, 0, 0], 31);
 
@@ -863,8 +863,8 @@ mod tests {
             .times(1)
             .in_sequence(&mut seq)
             .with(
-                predicate::eq(DoubleZeroInstruction::CloseAccountTunnel(
-                    TunnelCloseAccountArgs {
+                predicate::eq(DoubleZeroInstruction::CloseAccountLink(
+                    LinkCloseAccountArgs {
                         index: tunnel.index,
                         bump_seed: tunnel.bump_seed,
                     },
@@ -898,22 +898,22 @@ mod tests {
         let mut tunnel_tunnel_ids = IDAllocator::new(500, vec![500, 501, 503]);
         let mut client = create_test_client();
 
-        let tunnel = Tunnel {
-            account_type: AccountType::Tunnel,
+        let tunnel = Link {
+            account_type: AccountType::Link,
             owner: Pubkey::new_unique(),
             index: 0,
             bump_seed: get_tunnel_bump_seed(&client),
             side_a_pk: Pubkey::new_unique(),
             side_z_pk: Pubkey::new_unique(),
-            tunnel_type: TunnelTunnelType::MPLSoGRE,
+            tunnel_type: LinkLinkType::L3,
             bandwidth: 10_000_000_000,
             mtu: 1500,
             delay_ns: 100,
             jitter_ns: 100,
             tunnel_id: 1,
             tunnel_net: ([0, 0, 0, 0], 0),
-            status: TunnelStatus::Pending,
-            code: "TestTunnel".to_string(),
+            status: LinkStatus::Pending,
+            code: "TestLink".to_string(),
         };
 
         let _ = tunnel_tunnel_ips.next_available_block(0, 2);
@@ -923,7 +923,7 @@ mod tests {
             .times(1)
             .in_sequence(&mut seq)
             .with(
-                predicate::eq(DoubleZeroInstruction::RejectTunnel(TunnelRejectArgs {
+                predicate::eq(DoubleZeroInstruction::RejectLink(LinkRejectArgs {
                     index: tunnel.index,
                     bump_seed: tunnel.bump_seed,
                     reason: "Error: No available tunnel block".to_string(),

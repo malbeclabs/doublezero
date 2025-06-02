@@ -8,6 +8,8 @@ use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 use tabled::{settings::Style, Table, Tabled};
 
+const NANOS_TO_MS: f32 = 1000000.0;
+
 #[derive(Args, Debug)]
 pub struct ListTunnelCliCommand {
     #[arg(long, default_value_t = false)]
@@ -22,15 +24,21 @@ pub struct TunnelDisplay {
     pub account: Pubkey,
     pub code: String,
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    #[tabled(rename = "side_a")]
     pub side_a_pk: Pubkey,
+    #[tabled(skip)]
     pub side_a_name: String,
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    #[tabled(rename = "side_z")]
     pub side_z_pk: Pubkey,
+    #[tabled(skip)]
     pub side_z_name: String,
     pub tunnel_type: TunnelTunnelType,
     pub bandwidth: u64,
     pub mtu: u32,
+    #[tabled(display = "display_as_ms", rename = "delay_ms")]
     pub delay_ns: u64,
+    #[tabled(display = "display_as_ms", rename = "jitter_ms")]
     pub jitter_ns: u64,
     pub tunnel_id: u16,
     #[tabled(display = "doublezero_sla_program::types::networkv4_to_string")]
@@ -39,6 +47,10 @@ pub struct TunnelDisplay {
     pub status: TunnelStatus,
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
+}
+
+fn display_as_ms(latency: &u64) -> String {
+    format!("{:.2}ms", (*latency as f32 / NANOS_TO_MS))
 }
 
 impl ListTunnelCliCommand {
@@ -187,7 +199,7 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | code        | side_a_pk                                 | side_a_name  | side_z_pk                                 | side_z_name  | tunnel_type | bandwidth | mtu  | delay_ns | jitter_ns | tunnel_id | tunnel_net | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | tunnel_code | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | device2_code | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | device2_code | MPLSoGRE    | 1234      | 1566 | 1234     | 1121      | 1234      | 1.2.3.4/32 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
+        assert_eq!(output_str, " account                                   | code        | side_a                                    | side_z                                    | tunnel_type | bandwidth | mtu  | delay_ms | jitter_ms | tunnel_id | tunnel_net | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | tunnel_code | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | MPLSoGRE    | 1234      | 1566 | 0.00ms   | 0.00ms    | 1234      | 1.2.3.4/32 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
 
         let mut output = Vec::new();
         let res = ListTunnelCliCommand {

@@ -22,23 +22,30 @@ pub struct DeviceDisplay {
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
     pub account: Pubkey,
     pub code: String,
+    #[tabled(skip)]
     pub bump_seed: u8,
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    #[tabled(skip)]
     pub location_pk: Pubkey,
+    #[tabled(rename = "location")]
     pub location_code: String,
+    #[tabled(skip)]
     pub location_name: String,
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    #[tabled(skip)]
     pub exchange_pk: Pubkey,
+    #[tabled(rename = "exchange")]
     pub exchange_code: String,
+    #[tabled(skip)]
     pub exchange_name: String,
     pub device_type: DeviceType,
     #[tabled(display = "doublezero_sla_program::types::ipv4_to_string")]
     #[serde(serialize_with = "crate::serializer::serialize_ipv4_as_string")]
     pub public_ip: IpV4,
-    pub status: DeviceStatus,
     #[tabled(display = "doublezero_sla_program::types::networkv4_list_to_string")]
     #[serde(serialize_with = "crate::serializer::serialize_networkv4list_as_string")]
     pub dz_prefixes: NetworkV4List,
+    pub status: DeviceStatus,
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
 }
@@ -192,7 +199,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | code         | bump_seed | location_pk                               | location_code  | location_name  | exchange_pk                               | exchange_code  | exchange_name  | device_type | public_ip | status    | dz_prefixes | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | device1_code | 2         | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | location1_code | location1_name | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA | exchange1_code | exchange1_name | switch      | 1.2.3.4   | activated | 1.2.3.4/32  | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
+        assert_eq!(output_str, " account                                   | code         | location       | exchange       | device_type | public_ip | dz_prefixes | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | device1_code | location1_code | exchange1_code | switch      | 1.2.3.4   | 1.2.3.4/32  | activated | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
 
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
@@ -202,6 +209,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"code\":\"device1_code\",\"bump_seed\":2,\"location_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"exchange_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA\",\"exchange_code\":\"exchange1_code\",\"exchange_name\":\"exchange1_name\",\"device_type\":\"Switch\",\"public_ip\":\"1.2.3.4\",\"status\":\"Activated\",\"dz_prefixes\":\"1.2.3.4/32\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"code\":\"device1_code\",\"bump_seed\":2,\"location_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"exchange_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA\",\"exchange_code\":\"exchange1_code\",\"exchange_name\":\"exchange1_name\",\"device_type\":\"Switch\",\"public_ip\":\"1.2.3.4\",\"dz_prefixes\":\"1.2.3.4/32\",\"status\":\"Activated\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
     }
 }

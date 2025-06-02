@@ -25,14 +25,18 @@ pub struct UserDisplay {
     pub account: Pubkey,
     pub user_type: UserType,
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    #[tabled(skip)]
     pub device_pk: Pubkey,
     pub multicast: String,
     #[tabled(display = "display_pubs_or_subs")]
     pub publishers: Vec<String>,
     #[tabled(display = "display_pubs_or_subs")]
     pub subscribers: Vec<String>,
+    #[tabled(rename = "device")]
     pub device_name: String,
+    #[tabled(skip)]
     pub location_code: String,
+    #[tabled(rename = "location")]
     pub location_name: String,
     pub cyoa_type: UserCYOA,
     #[tabled(display = "doublezero_sla_program::types::ipv4_to_string")]

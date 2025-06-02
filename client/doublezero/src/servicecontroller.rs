@@ -30,13 +30,15 @@ pub struct ProvisioningResponse {
 
 #[derive(Tabled, Deserialize, Debug)]
 pub struct LatencyRecord {
+    #[tabled(rename = "pubkey")]
     pub device_pk: String,
+    #[tabled(rename = "ip")]
     pub device_ip: String,
-    #[tabled(display = "display_as_ms")]
+    #[tabled(display = "display_as_ms", rename = "min")]
     pub min_latency_ns: i32,
-    #[tabled(display = "display_as_ms")]
+    #[tabled(display = "display_as_ms", rename = "max")]
     pub max_latency_ns: i32,
-    #[tabled(display = "display_as_ms")]
+    #[tabled(display = "display_as_ms", rename = "avg")]
     pub avg_latency_ns: i32,
     pub reachable: bool,
 }

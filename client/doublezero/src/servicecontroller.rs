@@ -1,7 +1,8 @@
 use chrono::DateTime;
 use eyre::eyre;
-use hyper::body::to_bytes;
-use hyper::{Body, Client, Method, Request};
+use http_body_util::{BodyExt, Empty, Full};
+use hyper::{body::Bytes, Method, Request};
+use hyper_util::{client::legacy::Client, rt::TokioExecutor};
 use hyperlocal::{UnixConnector, Uri};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -128,14 +129,22 @@ impl ServiceController {
     }
 
     pub async fn latency(&self) -> eyre::Result<Vec<LatencyRecord>> {
-        let uri: Uri = Uri::new(&self.socket_path, "/latency");
-        let client: Client<UnixConnector, Body> = Client::builder().build(UnixConnector);
+        let uri = Uri::new(&self.socket_path, "/latency").into();
+        let client: Client<UnixConnector, Full<Bytes>> =
+            Client::builder(TokioExecutor::new()).build(UnixConnector);
+
         let res = client
-            .get(uri.into())
+            .get(uri)
             .await
             .map_err(|e| eyre!("Unable to connect to doublezero daemon: {}", e))?;
 
-        let data = to_bytes(res.into_body()).await?;
+        let data = res
+            .into_body()
+            .collect()
+            .await
+            .map_err(|e| eyre!("Unable to read response body: {}", e))?
+            .to_bytes();
+
         match serde_json::from_slice::<Vec<LatencyRecord>>(&data) {
             Ok(response) => Ok(response),
             Err(e) => match serde_json::from_slice::<ErrorResponse>(&data) {
@@ -155,19 +164,22 @@ impl ServiceController {
         &self,
         args: ProvisioningRequest,
     ) -> eyre::Result<ProvisioningResponse> {
-        let client: Client<UnixConnector, Body> = Client::builder().build(UnixConnector);
+        let client = Client::builder(TokioExecutor::new()).build(UnixConnector);
+        let body_bytes =
+            serde_json::to_vec(&args).map_err(|e| eyre!("Unable to serialize request: {}", e))?;
 
         let req = Request::builder()
             .method(Method::POST)
             .uri(Uri::new(&self.socket_path, "/provision"))
-            .body(Body::from(
-                serde_json::to_vec(&args)
-                    .map_err(|e| eyre!("Unable to serialize request: {}", e))?,
-            ))?;
+            .body(Full::new(Bytes::from(body_bytes)))?;
+
         let res = client.request(req).await?;
-        let data = to_bytes(res.into_body())
+        let data = res
+            .into_body()
+            .collect()
             .await
-            .map_err(|e| eyre!("Unable to connect to doublezero daemon: {}", e))?;
+            .map_err(|e| eyre!("Unable to read response body: {}", e))?
+            .to_bytes();
 
         let response = serde_json::from_slice::<ProvisioningResponse>(&data)?;
         if response.status == "error" {
@@ -178,19 +190,22 @@ impl ServiceController {
     }
 
     pub async fn remove(&self, args: RemoveTunnelCliCommand) -> eyre::Result<RemoveResponse> {
-        let client: Client<UnixConnector, Body> = Client::builder().build(UnixConnector);
+        let client = Client::builder(TokioExecutor::new()).build(UnixConnector);
+        let body_bytes =
+            serde_json::to_vec(&args).map_err(|e| eyre!("Unable to serialize request: {}", e))?;
 
         let req = Request::builder()
             .method(Method::POST)
             .uri(Uri::new(&self.socket_path, "/remove"))
-            .body(Body::from(
-                serde_json::to_vec(&args)
-                    .map_err(|e| eyre!("Unable to serialize request: {}", e))?,
-            ))?;
+            .body(Full::new(Bytes::from(body_bytes)))?;
+
         let res = client.request(req).await?;
-        let data = to_bytes(res.into_body())
+        let data = res
+            .into_body()
+            .collect()
             .await
-            .map_err(|e| eyre!("Unable to connect to doublezero daemon: {}", e))?;
+            .map_err(|e| eyre!("Unable to read response body: {}", e))?
+            .to_bytes();
 
         let response = serde_json::from_slice::<RemoveResponse>(&data)?;
         if response.status == "error" {
@@ -201,12 +216,12 @@ impl ServiceController {
     }
 
     pub async fn status(&self) -> eyre::Result<Vec<StatusResponse>> {
-        let client: Client<UnixConnector, Body> = Client::builder().build(UnixConnector);
+        let client = Client::builder(TokioExecutor::new()).build(UnixConnector);
 
         let req = Request::builder()
             .method(Method::GET)
             .uri(Uri::new(&self.socket_path, "/status"))
-            .body(Body::empty())?;
+            .body(Empty::<Bytes>::new())?;
 
         match client.request(req).await {
             Ok(res) => {
@@ -217,9 +232,12 @@ impl ServiceController {
                     ));
                 }
 
-                let data = to_bytes(res.into_body())
+                let data = res
+                    .into_body()
+                    .collect()
                     .await
-                    .map_err(|e| eyre!("Unable to connect to doublezero daemon: {}", e))?;
+                    .map_err(|e| eyre!("Unable to read response body: {}", e))?
+                    .to_bytes();
 
                 match serde_json::from_slice::<Vec<StatusResponse>>(&data) {
                     Ok(response) => Ok(response),

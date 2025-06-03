@@ -14,8 +14,8 @@ service Controller {
 message ConfigRequest {
     string pubkey = 1;
     repeated string bgp_peers = 2;
-    map<string, BgpPeers> bgp_peers_by_vrf = 3;
-    string hash = 4;
+    string hash = 3;
+    map<string, BgpPeers> bgp_peers_by_vrf = 4;
 }
 
 // Represents a list of BGP peers

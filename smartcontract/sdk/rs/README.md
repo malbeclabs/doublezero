@@ -220,7 +220,12 @@ Lists all exchanges in the program. Returns a map of exchange public keys to the
 | loc_id        | u32     | Location ID                |
 
 ### CreateExchangeCommand
-...existing code...
+Creates a new location with the specified parameters. Returns the transaction signature and the location's public key on success.
+- `code: String` — Unique exchange code
+- `name: String` — Exchange name
+- `lat: f64` — Latitude
+- `lng: f64` — Longitude
+- `loc_id: Option<u32>` — Optional location ID
 
 ## Device Commands
 

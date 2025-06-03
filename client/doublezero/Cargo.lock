@@ -1307,7 +1307,7 @@ checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
 
 [[package]]
 name = "doublezero"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -1336,7 +1336,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-sla-program"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "borsh 1.5.7",
  "ipnetwork",
@@ -1347,7 +1347,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero_cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1373,7 +1373,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero_sdk"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "bincode",

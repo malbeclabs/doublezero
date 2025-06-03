@@ -4,10 +4,10 @@ use doublezero_sdk::commands::device::list::ListDeviceCommand;
 use doublezero_sdk::commands::exchange::list::ListExchangeCommand;
 use doublezero_sdk::commands::location::list::ListLocationCommand;
 use doublezero_sdk::*;
-use prettytable::{format, row, Cell, Row, Table};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
+use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
 pub struct ListDeviceCliCommand {
@@ -17,26 +17,35 @@ pub struct ListDeviceCliCommand {
     pub json_compact: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Tabled, Serialize)]
 pub struct DeviceDisplay {
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
     pub account: Pubkey,
     pub code: String,
+    #[tabled(skip)]
     pub bump_seed: u8,
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    #[tabled(skip)]
     pub location_pk: Pubkey,
+    #[tabled(rename = "location")]
     pub location_code: String,
+    #[tabled(skip)]
     pub location_name: String,
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    #[tabled(skip)]
     pub exchange_pk: Pubkey,
+    #[tabled(rename = "exchange")]
     pub exchange_code: String,
+    #[tabled(skip)]
     pub exchange_name: String,
     pub device_type: DeviceType,
+    #[tabled(display = "doublezero_sla_program::types::ipv4_to_string")]
     #[serde(serialize_with = "crate::serializer::serialize_ipv4_as_string")]
     pub public_ip: IpV4,
-    pub status: DeviceStatus,
+    #[tabled(display = "doublezero_sla_program::types::networkv4_list_to_string")]
     #[serde(serialize_with = "crate::serializer::serialize_networkv4list_as_string")]
     pub dz_prefixes: NetworkV4List,
+    pub status: DeviceStatus,
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
 }
@@ -51,91 +60,54 @@ impl ListDeviceCliCommand {
         let mut devices: Vec<(Pubkey, Device)> = devices.into_iter().collect();
         devices.sort_by(|(_, a), (_, b)| a.owner.cmp(&b.owner));
 
-        if self.json || self.json_compact {
-            let devices = devices
-                .into_iter()
-                .map(|(pubkey, device)| {
-                    let (location_code, location_name) = match locations.get(&device.location_pk) {
-                        Some(location) => (location.code.clone(), location.name.clone()),
-                        None => (
-                            device.location_pk.to_string(),
-                            device.location_pk.to_string(),
-                        ),
-                    };
-                    let (exchange_code, exchange_name) = match exchanges.get(&device.exchange_pk) {
-                        Some(exchange) => (exchange.code.clone(), exchange.name.clone()),
-                        None => (
-                            device.exchange_pk.to_string(),
-                            device.exchange_pk.to_string(),
-                        ),
-                    };
+        let device_displays: Vec<DeviceDisplay> = devices
+            .iter()
+            .map(|(pubkey, device)| {
+                let (location_code, location_name) = match locations.get(&device.location_pk) {
+                    Some(location) => (location.code.clone(), location.name.clone()),
+                    None => (
+                        device.location_pk.to_string(),
+                        device.location_pk.to_string(),
+                    ),
+                };
+                let (exchange_code, exchange_name) = match exchanges.get(&device.exchange_pk) {
+                    Some(exchange) => (exchange.code.clone(), exchange.name.clone()),
+                    None => (
+                        device.exchange_pk.to_string(),
+                        device.exchange_pk.to_string(),
+                    ),
+                };
 
-                    DeviceDisplay {
-                        account: pubkey,
-                        code: device.code,
-                        bump_seed: device.bump_seed,
-                        location_pk: device.location_pk,
-                        location_code,
-                        location_name,
-                        exchange_pk: device.exchange_pk,
-                        exchange_code,
-                        exchange_name,
-                        device_type: device.device_type,
-                        public_ip: device.public_ip,
-                        status: device.status,
-                        dz_prefixes: device.dz_prefixes,
-                        owner: device.owner,
-                    }
-                })
-                .collect::<Vec<_>>();
-
-            let json = {
-                if self.json_compact {
-                    serde_json::to_string(&devices)?
-                } else {
-                    serde_json::to_string_pretty(&devices)?
+                DeviceDisplay {
+                    account: *pubkey,
+                    code: device.code.clone(),
+                    bump_seed: device.bump_seed,
+                    location_pk: device.location_pk,
+                    location_code,
+                    location_name,
+                    exchange_pk: device.exchange_pk,
+                    exchange_code,
+                    exchange_name,
+                    device_type: device.device_type,
+                    public_ip: device.public_ip,
+                    status: device.status,
+                    dz_prefixes: device.dz_prefixes.clone(),
+                    owner: device.owner,
                 }
-            };
-            writeln!(out, "{}", json)?;
+            })
+            .collect();
+
+        let res = if self.json {
+            serde_json::to_string_pretty(&device_displays)?
+        } else if self.json_compact {
+            serde_json::to_string(&device_displays)?
         } else {
-            let mut table = Table::new();
-            table.add_row(row![
-                "account",
-                "code",
-                "location",
-                "exchange",
-                "device_type",
-                "public_ip",
-                "dz_prefixes",
-                "status",
-                "owner"
-            ]);
-            for (pubkey, data) in devices {
-                let loc_name = match &locations.get(&data.location_pk) {
-                    Some(location) => &location.code,
-                    None => &data.location_pk.to_string(),
-                };
-                let exch_name = match &exchanges.get(&data.exchange_pk) {
-                    Some(exchange) => &exchange.code,
-                    None => &data.exchange_pk.to_string(),
-                };
+            Table::new(device_displays)
+                .with(Style::psql().remove_horizontals())
+                .to_string()
+        };
 
-                table.add_row(Row::new(vec![
-                    Cell::new(&pubkey.to_string()),
-                    Cell::new(&data.code),
-                    Cell::new(loc_name),
-                    Cell::new(exch_name),
-                    Cell::new(&data.device_type.to_string()),
-                    Cell::new(&ipv4_to_string(&data.public_ip)),
-                    Cell::new(&networkv4_list_to_string(&data.dz_prefixes)),
-                    Cell::new(&data.status.to_string()),
-                    Cell::new(&data.owner.to_string()),
-                ]));
-            }
-
-            table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
-            table.print(out)?;
-        }
+        writeln!(out, "{}", res)?;
 
         Ok(())
     }
@@ -227,7 +199,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | code         | location       | exchange       | device_type | public_ip | dz_prefixes | status    | owner \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | device1_code | location1_code | exchange1_code | switch      | 1.2.3.4   | 1.2.3.4/32  | activated | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
+        assert_eq!(output_str, " account                                   | code         | location       | exchange       | device_type | public_ip | dz_prefixes | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | device1_code | location1_code | exchange1_code | switch      | 1.2.3.4   | 1.2.3.4/32  | activated | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
 
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
@@ -237,6 +209,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"code\":\"device1_code\",\"bump_seed\":2,\"location_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"exchange_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA\",\"exchange_code\":\"exchange1_code\",\"exchange_name\":\"exchange1_name\",\"device_type\":\"Switch\",\"public_ip\":\"1.2.3.4\",\"status\":\"Activated\",\"dz_prefixes\":\"1.2.3.4/32\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"code\":\"device1_code\",\"bump_seed\":2,\"location_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"exchange_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA\",\"exchange_code\":\"exchange1_code\",\"exchange_name\":\"exchange1_name\",\"device_type\":\"Switch\",\"public_ip\":\"1.2.3.4\",\"dz_prefixes\":\"1.2.3.4/32\",\"status\":\"Activated\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
     }
 }

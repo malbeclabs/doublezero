@@ -23,7 +23,6 @@ futures-util.workspace = true
 http.workspace = true
 indicatif.workspace = true
 mockall.workspace = true
-prettytable-rs.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
@@ -31,12 +30,9 @@ solana-client.workspace = true
 solana-program.workspace = true
 solana-pubsub-client.workspace = true
 solana-sdk.workspace = true
+tabled.workspace = true
 tokio.workspace = true
 
 # Dependencies from this workspace
 doublezero_sdk.workspace = true
-
-[dev-dependencies]
-
-# Dependencies from this workspace
 doublezero-sla-program.workspace = true

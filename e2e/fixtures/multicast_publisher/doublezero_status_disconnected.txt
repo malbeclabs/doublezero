@@ -1,7 +1,2 @@
-Doublezero IP:
-Name:
-Tunnel dst:
-Tunnel src:
-Tunnel status: disconnected
-User type:
-Last Session Update: no session data
+ Tunnel status | Last Session Update | Tunnel Name | Tunnel src | Tunnel dst | Doublezero IP | User Type
+ disconnected  | no session data     |             |            |            |               |

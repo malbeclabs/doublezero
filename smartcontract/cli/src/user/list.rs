@@ -1,16 +1,15 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_sdk::commands::multicastgroup::list::ListMulticastGroupCommand;
 use doublezero_sdk::commands::{
     device::list::ListDeviceCommand, location::list::ListLocationCommand,
-    user::list::ListUserCommand,
+    multicastgroup::list::ListMulticastGroupCommand, user::list::ListUserCommand,
 };
 use doublezero_sdk::*;
-use prettytable::{format, row, Cell, Row, Table};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::collections::HashMap;
 use std::io::Write;
+use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
 pub struct ListUserCliCommand {
@@ -20,25 +19,37 @@ pub struct ListUserCliCommand {
     pub json_compact: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Tabled, Serialize)]
 pub struct UserDisplay {
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
     pub account: Pubkey,
     pub user_type: UserType,
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    #[tabled(skip)]
     pub device_pk: Pubkey,
+    #[tabled(rename = "groups")]
     pub multicast: String,
-    pub publishers: Vec<String>,
-    pub subscribers: Vec<String>,
+    #[tabled(display = "crate::util::display_pks")]
+    #[serde(serialize_with = "crate::serializer::serialize_pubkeylist_as_string")]
+    pub publishers: Vec<Pubkey>,
+    #[tabled(display = "crate::util::display_pks")]
+    #[serde(serialize_with = "crate::serializer::serialize_pubkeylist_as_string")]
+    pub subscribers: Vec<Pubkey>,
+    #[tabled(rename = "device")]
     pub device_name: String,
+    #[tabled(skip)]
     pub location_code: String,
+    #[tabled(rename = "location")]
     pub location_name: String,
     pub cyoa_type: UserCYOA,
+    #[tabled(display = "doublezero_sla_program::types::ipv4_to_string")]
     #[serde(serialize_with = "crate::serializer::serialize_ipv4_as_string")]
     pub client_ip: IpV4,
+    #[tabled(display = "doublezero_sla_program::types::ipv4_to_string")]
     #[serde(serialize_with = "crate::serializer::serialize_ipv4_as_string")]
     pub dz_ip: IpV4,
     pub tunnel_id: u16,
+    #[tabled(display = "doublezero_sla_program::types::networkv4_to_string")]
     #[serde(serialize_with = "crate::serializer::serialize_networkv4_as_string")]
     pub tunnel_net: NetworkV4,
     pub status: UserStatus,
@@ -59,91 +70,10 @@ impl ListUserCliCommand {
                 .cmp(&b.device_pk)
                 .then(a.tunnel_id.cmp(&b.tunnel_id))
         });
-
-        if self.json || self.json_compact {
-            let users = users
-                .into_iter()
-                .map(|(pubkey, user)| {
-                    let device = devices.get(&user.device_pk);
-                    let location = match device {
-                        Some(device) => locations.get(&device.location_pk),
-                        None => None,
-                    };
-                    let device_name = match device {
-                        Some(device) => device.code.clone(),
-                        None => user.device_pk.to_string(),
-                    };
-                    let location_code = match device {
-                        Some(device) => match location {
-                            Some(location) => location.code.clone(),
-                            None => device.location_pk.to_string(),
-                        },
-                        None => "".to_string(),
-                    };
-                    let location_name = match device {
-                        Some(device) => match location {
-                            Some(location) => location.name.clone(),
-                            None => device.location_pk.to_string(),
-                        },
-                        None => "".to_string(),
-                    };
-
-                    UserDisplay {
-                        account: pubkey,
-                        user_type: user.user_type,
-                        multicast: format_multicast_group_names(&user, &mgroups),
-                        publishers: user
-                            .publishers
-                            .into_iter()
-                            .map(|pk| pk.to_string())
-                            .collect(),
-                        subscribers: user
-                            .subscribers
-                            .into_iter()
-                            .map(|pk| pk.to_string())
-                            .collect(),
-                        device_pk: user.device_pk,
-                        device_name,
-                        location_code,
-                        location_name,
-                        cyoa_type: user.cyoa_type,
-                        client_ip: user.client_ip,
-                        dz_ip: user.dz_ip,
-                        tunnel_id: user.tunnel_id,
-                        tunnel_net: user.tunnel_net,
-                        status: user.status,
-                        owner: user.owner,
-                    }
-                })
-                .collect::<Vec<_>>();
-
-            let json = {
-                if self.json_compact {
-                    serde_json::to_string(&users)?
-                } else {
-                    serde_json::to_string_pretty(&users)?
-                }
-            };
-            writeln!(out, "{}", json)?;
-        } else {
-            let mut table = Table::new();
-            table.add_row(row![
-                "account",
-                "user_type",
-                "groups",
-                "device",
-                "location",
-                "cyoa_type",
-                "client_ip",
-                "tunnel_id",
-                "tunnel_net",
-                "dz_ip",
-                "status",
-                "owner"
-            ]);
-
-            for (pubkey, data) in users {
-                let device = devices.get(&data.device_pk);
+        let users_displays: Vec<UserDisplay> = users
+            .into_iter()
+            .map(|(pubkey, user)| {
+                let device = devices.get(&user.device_pk);
                 let location = match device {
                     Some(device) => locations.get(&device.location_pk),
                     None => None,
@@ -151,7 +81,14 @@ impl ListUserCliCommand {
 
                 let device_name = match device {
                     Some(device) => device.code.clone(),
-                    None => data.device_pk.to_string(),
+                    None => user.device_pk.to_string(),
+                };
+                let location_code = match device {
+                    Some(device) => match location {
+                        Some(location) => location.code.clone(),
+                        None => device.location_pk.to_string(),
+                    },
+                    None => "".to_string(),
                 };
                 let location_name = match device {
                     Some(device) => match location {
@@ -161,25 +98,38 @@ impl ListUserCliCommand {
                     None => "".to_string(),
                 };
 
-                table.add_row(Row::new(vec![
-                    Cell::new(&pubkey.to_string()),
-                    Cell::new(&data.user_type.to_string()),
-                    Cell::new(&format_multicast_group_names(&data, &mgroups)),
-                    Cell::new(&device_name),
-                    Cell::new(&location_name),
-                    Cell::new(&data.cyoa_type.to_string()),
-                    Cell::new(&ipv4_to_string(&data.client_ip)),
-                    Cell::new(&data.tunnel_id.to_string()),
-                    Cell::new(&networkv4_to_string(&data.tunnel_net)),
-                    Cell::new(&ipv4_to_string(&data.dz_ip)),
-                    Cell::new(&data.status.to_string()),
-                    Cell::new(&data.owner.to_string()),
-                ]));
-            }
+                UserDisplay {
+                    account: pubkey,
+                    user_type: user.user_type,
+                    device_pk: user.device_pk,
+                    multicast: format_multicast_group_names(&user, &mgroups),
+                    publishers: user.publishers,
+                    subscribers: user.subscribers,
+                    device_name,
+                    location_code,
+                    location_name,
+                    cyoa_type: user.cyoa_type,
+                    client_ip: user.client_ip,
+                    dz_ip: user.dz_ip,
+                    tunnel_id: user.tunnel_id,
+                    tunnel_net: user.tunnel_net,
+                    status: user.status,
+                    owner: user.owner,
+                }
+            })
+            .collect();
 
-            table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
-            let _ = table.print(out);
-        }
+        let res = if self.json {
+            serde_json::to_string_pretty(&users_displays)?
+        } else if self.json_compact {
+            serde_json::to_string(&users_displays)?
+        } else {
+            Table::new(users_displays)
+                .with(Style::psql().remove_horizontals())
+                .to_string()
+        };
+
+        writeln!(out, "{}", res)?;
 
         Ok(())
     }
@@ -409,8 +359,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-
-        assert_eq!(output_str, " account                                   | user_type | groups      | device       | location       | cyoa_type  | client_ip | tunnel_id | tunnel_net | dz_ip   | status    | owner \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | Multicast | m_code (Rx) | device1_code | location1_name | GREOverDIA | 1.2.3.4   | 500       | 1.2.3.5/32 | 2.3.4.5 | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
+        assert_eq!(output_str, " account                                   | user_type | groups      | publishers | subscribers                               | device       | location       | cyoa_type  | client_ip | dz_ip   | tunnel_id | tunnel_net | status    | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | Multicast | m_code (Rx) |            | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8 | device1_code | location1_name | GREOverDIA | 1.2.3.4   | 2.3.4.5 | 500       | 1.2.3.5/32 | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
 
         let mut output = Vec::new();
         let res = ListUserCliCommand {
@@ -421,6 +370,6 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"user_type\":\"Multicast\",\"device_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"multicast\":\"m_code (Rx)\",\"publishers\":[],\"subscribers\":[\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8\"],\"device_name\":\"device1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"cyoa_type\":\"GREOverDIA\",\"client_ip\":\"1.2.3.4\",\"dz_ip\":\"2.3.4.5\",\"tunnel_id\":500,\"tunnel_net\":\"1.2.3.5/32\",\"status\":\"Activated\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"user_type\":\"Multicast\",\"device_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"multicast\":\"m_code (Rx)\",\"publishers\":\"\",\"subscribers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8\",\"device_name\":\"device1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"cyoa_type\":\"GREOverDIA\",\"client_ip\":\"1.2.3.4\",\"dz_ip\":\"2.3.4.5\",\"tunnel_id\":500,\"tunnel_net\":\"1.2.3.5/32\",\"status\":\"Activated\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
     }
 }

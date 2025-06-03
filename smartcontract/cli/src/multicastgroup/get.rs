@@ -1,12 +1,12 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_sdk::commands::device::list::ListDeviceCommand;
-use doublezero_sdk::commands::location::list::ListLocationCommand;
-use doublezero_sdk::commands::multicastgroup::get::GetMulticastGroupCommand;
-use doublezero_sdk::commands::user::list::ListUserCommand;
+use doublezero_sdk::commands::{
+    device::list::ListDeviceCommand, location::list::ListLocationCommand,
+    multicastgroup::get::GetMulticastGroupCommand, user::list::ListUserCommand,
+};
 use doublezero_sdk::*;
-use prettytable::{format, row, Cell, Row, Table};
 use std::io::Write;
+use tabled::{builder::Builder, settings::Style};
 
 #[derive(Args, Debug)]
 pub struct GetMulticastGroupCliCommand {
@@ -24,20 +24,21 @@ impl GetMulticastGroupCliCommand {
         let devices = client.list_device(ListDeviceCommand {})?;
         let locations = client.list_location(ListLocationCommand {})?;
 
+        // Write the multicast group details first
         writeln!(out,
         "account: {}\r\ncode: {}\r\nmulticast_ip: {}\r\nmax_bandwidth: {}\r\rpublisher_allowlist: {}\r\nsubscriber_allowlist: {}\r\nstatus: {}\r\nowner: {}\r\n\r\nusers:\r\n",
         pubkey,
         mgroup.code,
         ipv4_to_string(&mgroup.multicast_ip),
-        bandwidth_to_string(mgroup.max_bandwidth),
+        bandwidth_to_string(&mgroup.max_bandwidth),
         mgroup.pub_allowlist.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "),
         mgroup.sub_allowlist.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "),
         mgroup.status,
         mgroup.owner
         )?;
 
-        let mut table = Table::new();
-        table.add_row(row![
+        let mut builder = Builder::default();
+        builder.push_record([
             "account",
             "multicast_mode",
             "device",
@@ -48,7 +49,7 @@ impl GetMulticastGroupCliCommand {
             "tunnel_net",
             "dz_ip",
             "status",
-            "owner"
+            "owner",
         ]);
 
         for (pubkey, data) in users
@@ -84,23 +85,27 @@ impl GetMulticastGroupCliCommand {
                 "XX"
             };
 
-            table.add_row(Row::new(vec![
-                Cell::new(&pubkey.to_string()),
-                Cell::new(mode_text),
-                Cell::new(&device_name),
-                Cell::new(&location_name),
-                Cell::new(&data.cyoa_type.to_string()),
-                Cell::new(&ipv4_to_string(&data.client_ip)),
-                Cell::new(&data.tunnel_id.to_string()),
-                Cell::new(&networkv4_to_string(&data.tunnel_net)),
-                Cell::new(&ipv4_to_string(&data.dz_ip)),
-                Cell::new(&data.status.to_string()),
-                Cell::new(&data.owner.to_string()),
-            ]));
+            builder.push_record([
+                &pubkey.to_string(),
+                mode_text,
+                &device_name,
+                &location_name,
+                &data.cyoa_type.to_string(),
+                &ipv4_to_string(&data.client_ip),
+                &data.tunnel_id.to_string(),
+                &networkv4_to_string(&data.tunnel_net),
+                &ipv4_to_string(&data.dz_ip),
+                &data.status.to_string(),
+                &data.owner.to_string(),
+            ]);
         }
 
-        table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
-        let _ = table.print(out);
+        let table = builder
+            .build()
+            .with(Style::psql().remove_horizontals())
+            .to_string();
+
+        writeln!(out, "{}", table)?;
 
         Ok(())
     }
@@ -267,7 +272,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: CahibSNzuzo1MZhonHXLw3bJRmZoecDSJRXWdH4WFYJK\r\ncode: test\r\nmulticast_ip: 10.0.0.1\r\nmax_bandwidth: 1Gbps\r\rpublisher_allowlist: \r\nsubscriber_allowlist: \r\nstatus: activated\r\nowner: CahibSNzuzo1MZhonHXLw3bJRmZoecDSJRXWdH4WFYJK\r\n\r\nusers:\r\n\n account                                   | multicast_mode | device                           | location | cyoa_type  | client_ip   | tunnel_id | tunnel_net  | dz_ip    | status    | owner \n 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 | Tx             | 11111111111111111111111111111111 |          | GREOverDIA | 192.168.1.1 | 12345     | 10.0.0.0/32 | 10.0.0.2 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 \n");
+        assert_eq!(output_str, "account: CahibSNzuzo1MZhonHXLw3bJRmZoecDSJRXWdH4WFYJK\r\ncode: test\r\nmulticast_ip: 10.0.0.1\r\nmax_bandwidth: 1Gbps\r\rpublisher_allowlist: \r\nsubscriber_allowlist: \r\nstatus: activated\r\nowner: CahibSNzuzo1MZhonHXLw3bJRmZoecDSJRXWdH4WFYJK\r\n\r\nusers:\r\n\n account                                   | multicast_mode | device                           | location | cyoa_type  | client_ip   | tunnel_id | tunnel_net  | dz_ip    | status    | owner                                     \n 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 | Tx             | 11111111111111111111111111111111 |          | GREOverDIA | 192.168.1.1 | 12345     | 10.0.0.0/32 | 10.0.0.2 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 \n");
 
         // Expected success
         let mut output = Vec::new();
@@ -277,6 +282,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by code");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: CahibSNzuzo1MZhonHXLw3bJRmZoecDSJRXWdH4WFYJK\r\ncode: test\r\nmulticast_ip: 10.0.0.1\r\nmax_bandwidth: 1Gbps\r\rpublisher_allowlist: \r\nsubscriber_allowlist: \r\nstatus: activated\r\nowner: CahibSNzuzo1MZhonHXLw3bJRmZoecDSJRXWdH4WFYJK\r\n\r\nusers:\r\n\n account                                   | multicast_mode | device                           | location | cyoa_type  | client_ip   | tunnel_id | tunnel_net  | dz_ip    | status    | owner \n 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 | Tx             | 11111111111111111111111111111111 |          | GREOverDIA | 192.168.1.1 | 12345     | 10.0.0.0/32 | 10.0.0.2 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 \n");
+        assert_eq!(output_str, "account: CahibSNzuzo1MZhonHXLw3bJRmZoecDSJRXWdH4WFYJK\r\ncode: test\r\nmulticast_ip: 10.0.0.1\r\nmax_bandwidth: 1Gbps\r\rpublisher_allowlist: \r\nsubscriber_allowlist: \r\nstatus: activated\r\nowner: CahibSNzuzo1MZhonHXLw3bJRmZoecDSJRXWdH4WFYJK\r\n\r\nusers:\r\n\n account                                   | multicast_mode | device                           | location | cyoa_type  | client_ip   | tunnel_id | tunnel_net  | dz_ip    | status    | owner                                     \n 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 | Tx             | 11111111111111111111111111111111 |          | GREOverDIA | 192.168.1.1 | 12345     | 10.0.0.0/32 | 10.0.0.2 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 \n");
     }
 }

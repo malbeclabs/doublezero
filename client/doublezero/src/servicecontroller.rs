@@ -1,9 +1,13 @@
+use chrono::DateTime;
 use eyre::eyre;
 use hyper::body::to_bytes;
 use hyper::{Body, Client, Method, Request};
 use hyperlocal::{UnixConnector, Uri};
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use tabled::{derive::display, Tabled};
+
+const NANOS_TO_MS: f32 = 1000000.0;
 
 #[derive(Serialize, Debug)]
 pub struct ProvisioningRequest {
@@ -25,14 +29,23 @@ pub struct ProvisioningResponse {
     pub description: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Tabled, Deserialize, Debug)]
 pub struct LatencyRecord {
+    #[tabled(rename = "pubkey")]
     pub device_pk: String,
+    #[tabled(rename = "ip")]
     pub device_ip: String,
+    #[tabled(display = "display_as_ms", rename = "min")]
     pub min_latency_ns: i32,
+    #[tabled(display = "display_as_ms", rename = "max")]
     pub max_latency_ns: i32,
+    #[tabled(display = "display_as_ms", rename = "avg")]
     pub avg_latency_ns: i32,
     pub reachable: bool,
+}
+
+fn display_as_ms(latency: &i32) -> String {
+    format!("{:.2}ms", (*latency as f32 / NANOS_TO_MS))
 }
 
 impl fmt::Display for LatencyRecord {
@@ -61,20 +74,40 @@ pub struct RemoveResponse {
     pub description: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Tabled, Deserialize, Debug)]
+#[tabled(display(Option, "display::option", ""))]
 pub struct StatusResponse {
+    #[tabled(inline)]
     pub doublezero_status: DoubleZeroStatus,
+    #[tabled(rename = "Tunnel Name")]
     pub tunnel_name: Option<String>,
+    #[tabled(rename = "Tunnel src")]
     pub tunnel_src: Option<String>,
+    #[tabled(rename = "Tunnel dst")]
     pub tunnel_dst: Option<String>,
+    #[tabled(rename = "Doublezero IP")]
     pub doublezero_ip: Option<String>,
+    #[tabled(rename = "User Type")]
     pub user_type: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Tabled, Deserialize, Debug)]
 pub struct DoubleZeroStatus {
+    #[tabled(rename = "Tunnel status")]
     pub session_status: String,
+    #[tabled(rename = "Last Session Update", display = "maybe_i64_to_dt_str")]
     pub last_session_update: Option<i64>,
+}
+
+fn maybe_i64_to_dt_str(maybe_i64_dt: &Option<i64>) -> String {
+    let dt_i64 = maybe_i64_dt.unwrap_or_default();
+    if dt_i64 == 0 {
+        "no session data".to_string()
+    } else {
+        DateTime::from_timestamp(dt_i64, 0)
+            .expect("invalid timestamp")
+            .to_string()
+    }
 }
 
 #[derive(Deserialize, Debug)]

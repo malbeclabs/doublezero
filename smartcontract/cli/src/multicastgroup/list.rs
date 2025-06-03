@@ -2,10 +2,10 @@ use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::commands::multicastgroup::list::ListMulticastGroupCommand;
 use doublezero_sdk::*;
-use prettytable::{format, row, Cell, Row, Table};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
+use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
 pub struct ListMulticastGroupCliCommand {
@@ -15,20 +15,24 @@ pub struct ListMulticastGroupCliCommand {
     pub json_compact: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Tabled, Serialize)]
 pub struct MulticastGroupDisplay {
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
     pub account: Pubkey,
-    pub code: String,
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
+    pub code: String,
     #[serde(serialize_with = "crate::serializer::serialize_ipv4_as_string")]
+    #[tabled(display = "doublezero_sla_program::types::ipv4_to_string")]
     pub multicast_ip: IpV4,
     #[serde(serialize_with = "crate::serializer::serialize_bandwidth_as_string")]
+    #[tabled(display = "doublezero_sla_program::types::bandwidth_to_string")]
     pub max_bandwidth: u64,
     #[serde(serialize_with = "crate::serializer::serialize_pubkeylist_as_string")]
+    #[tabled(display = "crate::util::display_count")]
     pub publishers: Vec<Pubkey>,
     #[serde(serialize_with = "crate::serializer::serialize_pubkeylist_as_string")]
+    #[tabled(display = "crate::util::display_count")]
     pub subscribers: Vec<Pubkey>,
     pub status: MulticastGroupStatus,
 }
@@ -41,57 +45,31 @@ impl ListMulticastGroupCliCommand {
             multicastgroups.into_iter().collect();
         multicastgroups.sort_by(|(_, a), (_, b)| a.owner.cmp(&b.owner));
 
-        if self.json || self.json_compact {
-            let multicastgroups = multicastgroups
-                .into_iter()
-                .map(|(pubkey, multicastgroup)| MulticastGroupDisplay {
-                    account: pubkey,
-                    code: multicastgroup.code,
-                    owner: multicastgroup.owner,
-                    multicast_ip: multicastgroup.multicast_ip,
-                    max_bandwidth: multicastgroup.max_bandwidth,
-                    publishers: multicastgroup.publishers,
-                    subscribers: multicastgroup.subscribers,
-                    status: multicastgroup.status,
-                })
-                .collect::<Vec<_>>();
+        let mg_displays = multicastgroups
+            .into_iter()
+            .map(|(pubkey, multicastgroup)| MulticastGroupDisplay {
+                account: pubkey,
+                code: multicastgroup.code,
+                owner: multicastgroup.owner,
+                multicast_ip: multicastgroup.multicast_ip,
+                max_bandwidth: multicastgroup.max_bandwidth,
+                publishers: multicastgroup.publishers,
+                subscribers: multicastgroup.subscribers,
+                status: multicastgroup.status,
+            })
+            .collect::<Vec<_>>();
 
-            let json = {
-                if self.json_compact {
-                    serde_json::to_string(&multicastgroups)?
-                } else {
-                    serde_json::to_string_pretty(&multicastgroups)?
-                }
-            };
-            writeln!(out, "{}", json)?;
+        let res = if self.json {
+            serde_json::to_string_pretty(&mg_displays)?
+        } else if self.json_compact {
+            serde_json::to_string(&mg_displays)?
         } else {
-            let mut table = Table::new();
-            table.add_row(row![
-                "account",
-                "code",
-                "multicast_ip",
-                "max_bandwidth",
-                "publishers",
-                "subscribers",
-                "status",
-                "owner"
-            ]);
-            for (pubkey, data) in multicastgroups {
-                table.add_row(Row::new(vec![
-                    Cell::new(&pubkey.to_string()),
-                    Cell::new(&data.code),
-                    Cell::new(&ipv4_to_string(&data.multicast_ip)),
-                    Cell::new(&bandwidth_to_string(data.max_bandwidth)),
-                    Cell::new(&data.publishers.len().to_string()),
-                    Cell::new(&data.subscribers.len().to_string()),
-                    Cell::new(&data.status.to_string()),
-                    Cell::new(&data.owner.to_string()),
-                ]));
-            }
+            Table::new(mg_displays)
+                .with(Style::psql().remove_horizontals())
+                .to_string()
+        };
 
-            table.set_format(*format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
-            table.print(out)?;
-        }
+        writeln!(out, "{}", res)?;
 
         Ok(())
     }
@@ -189,7 +167,7 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | code                | multicast_ip | max_bandwidth | publishers | subscribers | status    | owner \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | multicastgroup_code | 1.2.3.4      | 1.23Kbps      | 2          | 1           | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
+        assert_eq!(output_str, " account                                   | owner                                     | code                | multicast_ip | max_bandwidth | publishers | subscribers | status    \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | multicastgroup_code | 1.2.3.4      | 1.23Kbps      | 2          | 1           | activated \n");
 
         let mut output = Vec::new();
         let res = ListMulticastGroupCliCommand {
@@ -200,6 +178,6 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"code\":\"multicastgroup_code\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"multicast_ip\":\"1.2.3.4\",\"max_bandwidth\":\"1.23Kbps\",\"publishers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo2, 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo3\",\"subscribers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo3\",\"status\":\"Activated\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"code\":\"multicastgroup_code\",\"multicast_ip\":\"1.2.3.4\",\"max_bandwidth\":\"1.23Kbps\",\"publishers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo2, 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo3\",\"subscribers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo3\",\"status\":\"Activated\"}]\n");
     }
 }

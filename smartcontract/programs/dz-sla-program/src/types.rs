@@ -77,25 +77,25 @@ pub fn bandwidth_parse(str: &str) -> u64 {
     }
 }
 
-pub fn bandwidth_to_string(bandwidth: u64) -> String {
-    if bandwidth < 1000 {
+pub fn bandwidth_to_string(bandwidth: &u64) -> String {
+    if *bandwidth < 1000 {
         format!("{}bps", bandwidth)
-    } else if bandwidth < 1000000 {
+    } else if *bandwidth < 1000000 {
         if bandwidth % 1000 == 0 {
             format!("{}Kbps", bandwidth / 1000)
         } else {
-            format!("{:.2}Kbps", bandwidth as f64 / 1000.0)
+            format!("{:.2}Kbps", *bandwidth as f64 / 1000.0)
         }
-    } else if bandwidth < 1000000000 {
+    } else if *bandwidth < 1000000000 {
         if bandwidth % 1000000 == 0 {
             format!("{}Mbps", bandwidth / 1000000)
         } else {
-            format!("{:.2}Mbps", bandwidth as f64 / 1000000.0)
+            format!("{:.2}Mbps", *bandwidth as f64 / 1000000.0)
         }
     } else if bandwidth % 1000000000 == 0 {
         format!("{}Gbps", bandwidth / 1000000000)
     } else {
-        format!("{:.2}Gbps", bandwidth as f64 / 1000000000.0)
+        format!("{:.2}Gbps", *bandwidth as f64 / 1000000000.0)
     }
 }
 
@@ -169,10 +169,10 @@ mod tests {
 
     #[test]
     fn test_bandwidth_to_string() {
-        assert_eq!(bandwidth_to_string(500), "500bps", "500");
-        assert_eq!(bandwidth_to_string(1500), "1.50Kbps", "1.50Kbps");
-        assert_eq!(bandwidth_to_string(2500000), "2.50Mbps", "2.50Mbps");
-        assert_eq!(bandwidth_to_string(3500000000), "3.50Gbps", "3.50Gbps");
+        assert_eq!(bandwidth_to_string(&500), "500bps", "500");
+        assert_eq!(bandwidth_to_string(&1500), "1.50Kbps", "1.50Kbps");
+        assert_eq!(bandwidth_to_string(&2500000), "2.50Mbps", "2.50Mbps");
+        assert_eq!(bandwidth_to_string(&3500000000), "3.50Gbps", "3.50Gbps");
     }
 
     #[test]

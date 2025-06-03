@@ -1,7 +1,6 @@
 PREFIX:=github.com/malbeclabs/doublezero/smartcontract
 BUILD:=`git rev-parse --short HEAD`
 LDFLAGS=
-CLIPPY_FLAGS=-- -Dclippy::all -D warnings
 
 .PHONY: test
 test:
@@ -11,7 +10,7 @@ test:
 .PHONY: lint
 lint:
 	golangci-lint run -c ./.golangci.yaml
-	cargo clippy --all --all-features $(CLIPPY_FLAGS)
+	cargo clippy --all --all-features --all-targets
 
 .PHONY: build
 build:

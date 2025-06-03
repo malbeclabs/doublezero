@@ -270,7 +270,6 @@ func TestIBRLWithAllocatedAddress_Connect_Output(t *testing.T) {
 		name       string
 		goldenFile string
 		// example table file:  "fixtures/ibrl_with_allocated_addr/doublezero_user_list_user_added.txt"
-		// example kv file: "fixtures/ibrl_with_allocated_addr/doublezero_status_connected.txt"
 		testOutputType string
 		cmd            []string
 	}{
@@ -289,7 +288,7 @@ func TestIBRLWithAllocatedAddress_Connect_Output(t *testing.T) {
 		{
 			name:           "doublezero_status",
 			goldenFile:     "fixtures/ibrl_with_allocated_addr/doublezero_status_connected.txt",
-			testOutputType: "kv",
+			testOutputType: "table",
 			cmd:            []string{"doublezero", "status"},
 		},
 	}
@@ -541,7 +540,7 @@ func TestIBRLWithAllocatedAddress_Disconnect_Output(t *testing.T) {
 		{
 			name:           "doublezero_status",
 			goldenFile:     "fixtures/ibrl_with_allocated_addr/doublezero_status_disconnected.txt",
-			testOutputType: "kv",
+			testOutputType: "table",
 			cmd:            []string{"doublezero", "status"},
 		},
 	}
@@ -586,7 +585,7 @@ func TestIBRL_Connect_Output(t *testing.T) {
 		{
 			name:           "doublezero_status",
 			goldenFile:     "fixtures/ibrl/doublezero_status_connected.txt",
-			testOutputType: "kv",
+			testOutputType: "table",
 			cmd:            []string{"doublezero", "status"},
 		},
 	}
@@ -766,7 +765,7 @@ func TestIBRL_Disconnect_Output(t *testing.T) {
 		{
 			name:           "doublezero_status",
 			goldenFile:     "fixtures/ibrl/doublezero_status_disconnected.txt",
-			testOutputType: "kv",
+			testOutputType: "table",
 			cmd:            []string{"doublezero", "status"},
 		},
 	}
@@ -893,9 +892,6 @@ func diffCliToGolden(goldenFile string, testOutputType string, cmds ...string) (
 	case "table":
 		diff := diffCliMapToGoldenMapTable(want, got)
 		return diff, nil
-	case "kv":
-		diff := diffCliMapToGoldenMapKV(want, got)
-		return diff, nil
 	default:
 		return "", fmt.Errorf("unexepcted testOutputType: %s\n", testOutputType)
 
@@ -905,13 +901,6 @@ func diffCliToGolden(goldenFile string, testOutputType string, cmds ...string) (
 func diffCliMapToGoldenMapTable(want []byte, got []byte) string {
 	gotMap := mapFromTable(got)
 	wantMap := mapFromTable(want)
-
-	return cmp.Diff(gotMap, wantMap)
-}
-
-func diffCliMapToGoldenMapKV(want []byte, got []byte) string {
-	gotMap := mapFromKV(got)
-	wantMap := mapFromKV(want)
 
 	ignoreKeys := []string{"Last Session Update"}
 
@@ -951,24 +940,6 @@ func mapFromTable(output []byte) []map[string]string {
 	})
 
 	return sliceOfMaps
-}
-
-// example KV
-// Doublezero IP: 64.86.249.81
-// Name: doublezero0
-// Tunnel dst: 64.86.249.80
-// Tunnel src: 64.86.249.86
-// Tunnel status: up
-func mapFromKV(output []byte) map[string]string {
-	formattedMap := make(map[string]string)
-
-	scanner := bufio.NewScanner(bytes.NewReader(output))
-	for i := 0; scanner.Scan(); i++ {
-		line := scanner.Text()
-		split := strings.Split(line, ":")
-		formattedMap[split[0]] = strings.TrimSpace(split[1])
-	}
-	return formattedMap
 }
 
 func waitForController(config []byte) bool {
@@ -1070,7 +1041,7 @@ func TestMulticastPublisher_Connect_Output(t *testing.T) {
 		{
 			name:           "doublezero_status",
 			goldenFile:     "fixtures/multicast_publisher/doublezero_status_connected.txt",
-			testOutputType: "kv",
+			testOutputType: "table",
 			cmd:            []string{"doublezero", "status"},
 		},
 	}
@@ -1207,7 +1178,7 @@ func TestMulticastPublisher_Disconnect_Output(t *testing.T) {
 		{
 			name:           "doublezero_status",
 			goldenFile:     "fixtures/multicast_publisher/doublezero_status_disconnected.txt",
-			testOutputType: "kv",
+			testOutputType: "table",
 			cmd:            []string{"doublezero", "status"},
 		},
 	}
@@ -1300,7 +1271,7 @@ func TestMulticastSubscriber_Connect_Output(t *testing.T) {
 		{
 			name:           "doublezero_status",
 			goldenFile:     "fixtures/multicast_subscriber/doublezero_status_connected.txt",
-			testOutputType: "kv",
+			testOutputType: "table",
 			cmd:            []string{"doublezero", "status"},
 		},
 	}
@@ -1467,7 +1438,7 @@ func TestMulticastSubscriber_Disconnect_Output(t *testing.T) {
 		{
 			name:           "doublezero_status",
 			goldenFile:     "fixtures/multicast_subscriber/doublezero_status_disconnected.txt",
-			testOutputType: "kv",
+			testOutputType: "table",
 			cmd:            []string{"doublezero", "status"},
 		},
 	}

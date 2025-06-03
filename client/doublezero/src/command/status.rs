@@ -20,10 +20,12 @@ impl StatusCliCommand {
         match controller.status().await {
             Err(e) => print_error(e),
             Ok(status_responses) => {
-                let table = Table::new(status_responses)
-                    .with(Style::psql().remove_horizontals())
-                    .to_string();
-                println!("{}", table);
+                if !status_responses.is_empty() {
+                    let table = Table::new(status_responses)
+                        .with(Style::psql().remove_horizontals())
+                        .to_string();
+                    println!("{}", table);
+                }
             }
         }
 

@@ -87,34 +87,26 @@ pub struct StatusResponse {
     pub tunnel_dst: Option<String>,
     #[tabled(rename = "Doublezero IP")]
     pub doublezero_ip: Option<String>,
+    #[tabled(rename = "User Type")]
     pub user_type: Option<String>,
 }
 
 #[derive(Tabled, Deserialize, Debug)]
-#[tabled(display(Option, "display::option", ""))]
 pub struct DoubleZeroStatus {
     #[tabled(rename = "Tunnel status")]
     pub session_status: String,
-    #[tabled(rename = "Last Session Update")]
+    #[tabled(rename = "Last Session Update", display = "maybe_i64_to_dt_str")]
     pub last_session_update: Option<i64>,
 }
 
-impl fmt::Display for DoubleZeroStatus {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let last_session_update = self.last_session_update.unwrap_or_default();
-        let parsed_last_session_update = if last_session_update == 0 {
-            "no session data"
-        } else {
-            &DateTime::from_timestamp(last_session_update, 0)
-                .expect("invalid timestamp")
-                .to_string()
-        };
-
-        write!(
-            f,
-            "session_status: {}, last_session_update: {}",
-            self.session_status, parsed_last_session_update
-        )
+fn maybe_i64_to_dt_str(maybe_i64_dt: &Option<i64>) -> String {
+    let dt_i64 = maybe_i64_dt.unwrap_or_default();
+    if dt_i64 == 0 {
+        "no session data".to_string()
+    } else {
+        DateTime::from_timestamp(dt_i64, 0)
+            .expect("invalid timestamp")
+            .to_string()
     }
 }
 

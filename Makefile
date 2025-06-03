@@ -6,7 +6,7 @@ LDFLAGS=
 test:
 	go test ./... -race -v -coverprofile coverage.out
 	$(MAKE) test-e2e
-	cargo test --all --all-features
+	cargo test --workspace --all-features
 
 # NOTE: This does not yet run the tests in the ./e2e directory. It only runs the e2e tests in the
 # ./client/doublezerod directory for now, until the e2e tests are converted to use the e2e-test tool.
@@ -18,12 +18,12 @@ test-e2e:
 .PHONY: lint
 lint:
 	golangci-lint run -c ./.golangci.yaml
-	cargo clippy --all --all-features --all-targets
+	cargo clippy --workspace --all-features --all-targets -- -Dclippy::all -Dwarnings
 
 .PHONY: build
 build:
 	CGO_ENABLED=0 go build -v $(LDFLAGS) -o ./client/doublezerod/bin/doublezerod ./client/doublezerod/cmd/doublezerod/main.go
-	cargo build -v $(LDFLAGS) --all
+	cargo build -v $(LDFLAGS) --workspace
 
 .PHONY: checks
 checks: lint test build

@@ -3,7 +3,7 @@ ip multicast-routing
 !
 router pim sparse-mode
    ipv4
-      rp address 10.0.0.0 224.5.6.0/24 override
+      rp address 10.0.0.0 233.84.178.0/24 override
 !
 vrf instance vrf1
 ip routing vrf vrf1
@@ -184,7 +184,7 @@ no ip access-list SEC-USER-PUB-MCAST-IN
 ip access-list SEC-USER-PUB-MCAST-IN
    counters per-entry
    permit ip any 224.0.0.13/32
-   permit ip any 224.5.6.0/24
+   permit ip any 233.84.178.0/24
    deny ip any any
 !
 no ip access-list SEC-USER-SUB-MCAST-IN

@@ -1,24 +1,25 @@
 use std::fmt;
 
 use crate::error::DoubleZeroError;
-use crate::globalstate::globalstate_get;
+use crate::globalstate::{globalconfig_write_with_realloc, globalstate_get};
 use crate::pda::*;
+use crate::seeds::{SEED_CONFIG, SEED_PREFIX};
 use crate::types::networkv4_to_string;
 use crate::{
-    seeds::*,
     state::{accounttype::AccountType, globalconfig::GlobalConfig},
     types::NetworkV4,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
 use solana_program::msg;
+use solana_program::program::invoke_signed;
+use solana_program::system_instruction;
+use solana_program::sysvar::rent::Rent;
+use solana_program::sysvar::Sysvar;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
-    program::invoke_signed,
     pubkey::Pubkey,
-    system_instruction,
-    sysvar::{rent::Rent, Sysvar},
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
@@ -84,9 +85,8 @@ pub fn process_set_globalconfig(
         user_tunnel_block: value.user_tunnel_block,
         multicastgroup_block: value.multicastgroup_block,
     };
-    // Size of our index account
-    let account_space = data.size();
 
+    let account_space = data.size();
     // Calculate minimum balance for rent exemption
     let rent = Rent::get()?;
     let required_lamports = rent.minimum_balance(account_space);
@@ -108,11 +108,18 @@ pub fn process_set_globalconfig(
             ],
             &[&[SEED_PREFIX, SEED_CONFIG, &[bump_seed]]],
         )?;
+
+        let mut account_data = &mut pda_account.data.borrow_mut()[..];
+        data.serialize(&mut account_data).unwrap();
+    } else {
+        globalconfig_write_with_realloc(
+            pda_account,
+            &data,
+            payer_account,
+            system_program,
+            bump_seed,
+        );
     }
-
-    let mut account_data = &mut pda_account.data.borrow_mut()[..];
-    data.serialize(&mut account_data).unwrap();
-
     #[cfg(test)]
     msg!("SetGlobalConfig: {:?}", data);
 

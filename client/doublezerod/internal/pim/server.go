@@ -189,9 +189,8 @@ func sendMsg(buf gopacket.SerializeBuffer, intf *net.Interface, r RawConner) err
 	binary.BigEndian.PutUint16(b[2:4], checksum)
 	if err := r.WriteTo(iph, b, cm); err != nil {
 		return err
-	} else {
-		return err
 	}
+	return nil
 }
 
 func constructGroups(ips []net.IP, joinSourceAddress net.IP, pruneSourceAddress net.IP) []Group {

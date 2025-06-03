@@ -97,33 +97,129 @@ func (r *ShowIpRoute) GetCmd() string {
 	return "show ip route vrf vrf1"
 }
 
+// show ip mroute sparse-mode
+//
+// "groups": {
+//     "224.5.6.0": {
+//         "groupSources": {
+//             "0.0.0.0": {
+//                 "sourceAddress": "0.0.0.0",
+//                 "creationTime": 1748646912.0,
+//                 "routeFlags": "W",
+//                 "rp": "10.0.0.0",
+//                 "rpfInterface": "Null0",
+//                 "oifList": [
+//                     "Tunnel500"
+//                 ]
+//             }
+//         }
+//     }
+// }
+
+// ShowIPMroute represents the top-level structure containing multicast routing information.
+type ShowIPMroute struct {
+	Groups map[string]GroupDetail `json:"groups"`
+}
+
+type GroupDetail struct {
+	GroupSources map[string]SourceDetail `json:"groupSources"`
+}
+
+type SourceDetail struct {
+	SourceAddress string   `json:"sourceAddress"`
+	CreationTime  float64  `json:"creationTime"`
+	RouteFlags    string   `json:"routeFlags"`
+	RP            string   `json:"rp"`
+	RPFInterface  string   `json:"rpfInterface"`
+	OIFList       []string `json:"oifList"`
+}
+
+func (r *ShowIPMroute) GetCmd() string {
+	return "show ip mroute sparse-mode"
+}
+
+// show ip pim neighbor
+//
+// {
+//   "neighbors": {
+//     "169.254.0.1": {
+//       "address": "169.254.0.1",
+//       "intf": "Tunnel500",
+//       "creationTime": 1748812548.569936,
+//       "lastRefreshTime": 1748812548.5713866,
+//       "holdTime": 105,
+//       "mode": {
+//         "mode": "Sparse",
+//         "borderRouter": false
+//       },
+//       "bfdState": "disabled",
+//       "transport": "datagram",
+//       "detail": false,
+//       "secondaryAddress": [],
+//       "maintenanceReceived": null,
+//       "maintenanceSent": null
+//     }
+//   }
+// }
+
+// ShowPIMNeighbors represents the top-level structure containing a map of PIM neighbor details.
+type ShowPIMNeighbors struct {
+	Neighbors map[string]PIMNeighborDetail `json:"neighbors"`
+}
+
+// PIMNeighborDetail holds the specific information for a PIM neighbor.
+type PIMNeighborDetail struct {
+	Address             string          `json:"address"`
+	Interface           string          `json:"intf"`
+	CreationTime        float64         `json:"creationTime"`
+	LastRefreshTime     float64         `json:"lastRefreshTime"`
+	HoldTime            int             `json:"holdTime"`
+	Mode                PIMNeighborMode `json:"mode"`
+	BFDState            string          `json:"bfdState"`
+	Transport           string          `json:"transport"`
+	Detail              bool            `json:"detail"`
+	SecondaryAddresses  []string        `json:"secondaryAddress"`
+	MaintenanceReceived string          `json:"maintenanceReceived"`
+	MaintenanceSent     string          `json:"maintenanceSent"`
+}
+
+// PIMNeighborMode describes the operational mode of the PIM neighbor.
+type PIMNeighborMode struct {
+	Mode string `json:"mode"`
+}
+
+func (n *ShowPIMNeighbors) GetCmd() string {
+	return "show ip pim neighbor"
+}
+
 func TestWaitForLatencyResults(t *testing.T) {
-	deadline := time.Now().Add(75 * time.Second)
-	for time.Now().Before(deadline) {
+	condition := func() (bool, error) {
 		buf, err := fetchClientEndpoint("/latency")
 		if err != nil {
-			t.Fatalf("error fetching latency results: %v", err)
+			return false, fmt.Errorf("error fetching latency results: %v", err)
 		}
 		results := []map[string]any{}
 		if err := json.Unmarshal(buf, &results); err != nil {
-			t.Fatalf("error unmarshaling latency data: %v", err)
+			return false, fmt.Errorf("error unmarshaling latency data: %v", err)
 		}
 		if len(results) > 0 {
 			for _, result := range results {
 				// Check to make sure ny5-dz01 is reachable
 				if result["device_pk"] == "8scDVeZ8aB1TRTkBqaZgzxuk7WwpARdF1a39wYA7nR3W" && result["reachable"] == true {
-					return
+					return true, nil
 				}
 			}
 		}
-		time.Sleep(1 * time.Second)
+		return false, nil
 	}
-	t.Fatalf("timed out waiting for latency results")
+	err := waitForCondition(t, condition, 75*time.Second)
+	if err != nil {
+		t.Fatalf("timed out waiting for latency results: %v", err)
+	}
 }
 
 func TestWaitForClientTunnelUp(t *testing.T) {
-	deadline := time.Now().Add(60 * time.Second)
-	for time.Now().Before(deadline) {
+	condition := func() (bool, error) {
 		buf, err := fetchClientEndpoint("/status")
 		if err != nil {
 			t.Fatalf("error fetching status: %v", err)
@@ -136,14 +232,17 @@ func TestWaitForClientTunnelUp(t *testing.T) {
 			if session, ok := s["doublezero_status"]; ok {
 				if sessionStatus, ok := session.(map[string]any)["session_status"]; ok {
 					if sessionStatus == "up" {
-						return
+						return true, nil
 					}
 				}
 			}
 		}
-		time.Sleep(1 * time.Second)
+		return false, nil
 	}
-	t.Fatalf("timed out waiting for up status")
+	err := waitForCondition(t, condition, 60*time.Second)
+	if err != nil {
+		t.Fatalf("timed out waiting for up status: %v", err)
+	}
 }
 
 // TestIBRLWithAllocatedAddress_Connect_Output is a set of tests to verify the output of the doublezero
@@ -991,6 +1090,15 @@ func TestMulticastPublisher_Connect_Output(t *testing.T) {
 
 // TestMulticastPublisher_Connect_Networking verifies the multicast publisher configuration
 func TestMulticastPublisher_Connect_Networking(t *testing.T) {
+	dut, err := goeapi.Connect("http", doublezeroDeviceAddr, "admin", "admin", 80)
+	if err != nil {
+		t.Fatalf("error connecting to dut: %v", err)
+	}
+	handle, err := dut.GetHandle("json")
+	if err != nil {
+		t.Fatalf("error getting handle: %v", err)
+	}
+
 	t.Run("check_tunnel_interface_is_configured", func(t *testing.T) {
 		tun, err := nl.LinkByName("doublezero1")
 		if err != nil {
@@ -1030,6 +1138,31 @@ func TestMulticastPublisher_Connect_Networking(t *testing.T) {
 		}
 		if !foundMcastRoute {
 			t.Fatalf("multicast route 224.5.6.0/32 not found for publisher")
+		}
+	})
+
+	t.Run("check_s_comma_g_is_created", func(t *testing.T) {
+		// Send single ping to simulate multicast traffic
+		cmd := exec.Command("ping", "-c", "1", "-w", "1", "224.5.6.0")
+		_ = cmd.Run()
+
+		mroutes := &ShowIPMroute{}
+		if err := handle.AddCommand(mroutes); err != nil {
+			t.Fatalf("error adding %s command: %v", mroutes.GetCmd(), err)
+		}
+		if err := handle.Call(); err != nil {
+			t.Fatalf("error fetching neighbors from doublezero device: %v", err)
+		}
+
+		mGroup := "224.5.6.0"
+		groups, ok := mroutes.Groups[mGroup]
+		if !ok {
+			t.Fatalf("multicast group %s not found in mroutes", mGroup)
+		}
+
+		_, ok = groups.GroupSources["64.86.249.81"]
+		if !ok {
+			t.Fatalf("missing S,G for (64.86.249.81, 224.5.6.0)")
 		}
 	})
 
@@ -1187,6 +1320,15 @@ func TestMulticastSubscriber_Connect_Output(t *testing.T) {
 
 // TestMulticastSubscriber_Connect_Networking verifies the multicast subscriber configuration
 func TestMulticastSubscriber_Connect_Networking(t *testing.T) {
+	dut, err := goeapi.Connect("http", doublezeroDeviceAddr, "admin", "admin", 80)
+	if err != nil {
+		t.Fatalf("error connecting to dut: %v", err)
+	}
+	handle, err := dut.GetHandle("json")
+	if err != nil {
+		t.Fatalf("error getting handle: %v", err)
+	}
+
 	t.Run("check_tunnel_interface_is_configured", func(t *testing.T) {
 		tun, err := nl.LinkByName("doublezero1")
 		if err != nil {
@@ -1227,15 +1369,62 @@ func TestMulticastSubscriber_Connect_Networking(t *testing.T) {
 		}
 	})
 
-	// TODO: Fix me later
-	// t.Run("check_pim_is_running", func(t *testing.T) {
-	// 	// Check if PIM process is running for subscriber
-	// 	cmd := exec.Command("pgrep", "-f", "pimd")
-	// 	err := cmd.Run()
-	// 	if err != nil {
-	// 		t.Fatalf("PIM daemon should be running for multicast subscriber")
-	// 	}
-	// })
+	t.Run("check_pim_neighbor_formed", func(t *testing.T) {
+		condition := func() (bool, error) {
+			pim := &ShowPIMNeighbors{}
+			if err := handle.AddCommand(pim); err != nil {
+				t.Fatalf("error adding %s command: %v", pim.GetCmd(), err)
+			}
+			if err := handle.Call(); err != nil {
+				return false, fmt.Errorf("error fetching neighbors from doublezero device: %v", err)
+			}
+			neighbor, ok := pim.Neighbors["169.254.0.1"]
+			if !ok {
+				return false, nil
+			}
+			if neighbor.Interface == "Tunnel500" {
+				return true, nil
+			}
+			return false, nil
+		}
+		err = waitForCondition(t, condition, 30*time.Second)
+		if err != nil {
+			t.Fatalf("PIM neighbor not established on Tunnel500: %v", err)
+		}
+	})
+
+	t.Run("check_pim_join_received", func(t *testing.T) {
+		condition := func() (bool, error) {
+			mroutes := &ShowIPMroute{}
+			if err := handle.AddCommand(mroutes); err != nil {
+				t.Fatalf("error adding %s command: %v", mroutes.GetCmd(), err)
+			}
+			if err := handle.Call(); err != nil {
+				return false, fmt.Errorf("error fetching neighbors from doublezero device: %v", err)
+			}
+
+			mGroup := "224.5.6.0"
+			groups, ok := mroutes.Groups[mGroup]
+			if !ok {
+				return false, nil
+			}
+
+			groupDetails, ok := groups.GroupSources["0.0.0.0"]
+			if !ok {
+				return false, nil
+			}
+
+			if slices.Contains(groupDetails.OIFList, "Tunnel500") {
+				return true, nil
+			}
+			return false, nil
+		}
+
+		err = waitForCondition(t, condition, 30*time.Second)
+		if err != nil {
+			t.Fatalf("PIM join not received for 224.5.6.0: %v", err)
+		}
+	})
 
 	t.Run("check_agent_configuration", func(t *testing.T) {
 		target := net.JoinHostPort(controllerAddr, controllerPort)
@@ -1331,4 +1520,20 @@ func TestMulticastSubscriber_Disconnect_Networking(t *testing.T) {
 	// 		t.Fatalf("PIM daemon should be stopped after multicast subscriber disconnect")
 	// 	}
 	// })
+}
+
+func waitForCondition(t *testing.T, condition func() (bool, error), timeout time.Duration) error {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		ok, err := condition()
+		if err != nil {
+			return fmt.Errorf("error checking condition: %v", err)
+		}
+		if ok {
+			return nil
+		}
+		time.Sleep(1 * time.Second)
+	}
+	return fmt.Errorf("condition not met within %s", timeout)
 }

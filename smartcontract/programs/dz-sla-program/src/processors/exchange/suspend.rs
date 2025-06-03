@@ -1,9 +1,9 @@
-use core::fmt;
 use crate::error::DoubleZeroError;
 use crate::globalstate::globalstate_get;
 use crate::helper::*;
 use crate::state::exchange::*;
 use borsh::{BorshDeserialize, BorshSerialize};
+use core::fmt;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -60,19 +60,17 @@ pub fn process_suspend_exchange(
 
     let mut exchange: Exchange = Exchange::from(&pda_account.try_borrow_data().unwrap()[..]);
     assert_eq!(exchange.index, value.index, "Invalid PDA Account Index");
-    assert_eq!(exchange.bump_seed, value.bump_seed, "Invalid PDA Account Bump Seed");
+    assert_eq!(
+        exchange.bump_seed, value.bump_seed,
+        "Invalid PDA Account Bump Seed"
+    );
     if exchange.owner != *payer_account.key {
         return Err(solana_program::program_error::ProgramError::Custom(0));
     }
 
     exchange.status = ExchangeStatus::Suspended;
 
-    account_write(
-        pda_account,
-        &exchange,
-        payer_account,
-        system_program,
-    );
+    account_write(pda_account, &exchange, payer_account, system_program);
 
     #[cfg(test)]
     msg!("Suspended: {:?}", exchange);

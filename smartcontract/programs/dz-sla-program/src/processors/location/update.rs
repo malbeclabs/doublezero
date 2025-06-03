@@ -1,4 +1,3 @@
-use std::fmt;
 use crate::error::DoubleZeroError;
 use crate::globalstate::globalstate_get;
 use crate::helper::*;
@@ -11,6 +10,7 @@ use solana_program::{
     entrypoint::ProgramResult,
     pubkey::Pubkey,
 };
+use std::fmt;
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct LocationUpdateArgs {
     pub index: u128,
@@ -50,8 +50,15 @@ pub fn process_update_location(
 
     // Check the owner of the accounts
     assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
-    assert_eq!(globalstate_account.owner, program_id, "Invalid GlobalState Account Owner");
-    assert_eq!(*system_program.unsigned_key(), solana_program::system_program::id(), "Invalid System Program Account Owner");
+    assert_eq!(
+        globalstate_account.owner, program_id,
+        "Invalid GlobalState Account Owner"
+    );
+    assert_eq!(
+        *system_program.unsigned_key(),
+        solana_program::system_program::id(),
+        "Invalid System Program Account Owner"
+    );
     assert!(pda_account.is_writable, "PDA Account is not writable");
     // Parse the global state account & check if the payer is in the allowlist
     let globalstate = globalstate_get(globalstate_account)?;
@@ -86,12 +93,7 @@ pub fn process_update_location(
         location.loc_id = loc_id;
     }
 
-    account_write(
-        pda_account,
-        &location,
-        payer_account,
-        system_program,
-    );
+    account_write(pda_account, &location, payer_account, system_program);
 
     #[cfg(test)]
     msg!("Updated: {:?}", location);

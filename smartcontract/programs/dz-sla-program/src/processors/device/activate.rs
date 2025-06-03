@@ -60,7 +60,10 @@ pub fn process_activate_device(
 
     let mut device: Device = Device::from(&pda_account.try_borrow_data().unwrap()[..]);
     assert_eq!(device.index, value.index, "Invalid PDA Account Index");
-    assert_eq!(device.bump_seed, value.bump_seed, "Invalid PDA Account Bump Seed");
+    assert_eq!(
+        device.bump_seed, value.bump_seed,
+        "Invalid PDA Account Bump Seed"
+    );
     assert!(device.bump_seed == bump_seed, "Invalid bump seed");
 
     if device.status != DeviceStatus::Pending {
@@ -69,12 +72,7 @@ pub fn process_activate_device(
 
     device.status = DeviceStatus::Activated;
 
-    account_write(
-        pda_account,
-        &device,
-        payer_account,
-        system_program,
-    );
+    account_write(pda_account, &device, payer_account, system_program);
 
     #[cfg(test)]
     msg!("Activated: {:?}", device);

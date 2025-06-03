@@ -41,8 +41,15 @@ pub fn process_reactivate_multicastgroup(
 
     // Check the owner of the accounts
     assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
-    assert_eq!(globalstate_account.owner, program_id, "Invalid GlobalState Account Owner");
-    assert_eq!(*system_program.unsigned_key(), solana_program::system_program::id(), "Invalid System Program Account Owner");
+    assert_eq!(
+        globalstate_account.owner, program_id,
+        "Invalid GlobalState Account Owner"
+    );
+    assert_eq!(
+        *system_program.unsigned_key(),
+        solana_program::system_program::id(),
+        "Invalid System Program Account Owner"
+    );
     assert!(pda_account.is_writable, "PDA Account is not writable");
 
     // Parse the global state account & check if the payer is in the allowlist
@@ -51,20 +58,19 @@ pub fn process_reactivate_multicastgroup(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    let mut multicastgroup: MulticastGroup = MulticastGroup::from(&pda_account.try_borrow_data().unwrap()[..]);
-    assert_eq!(multicastgroup.index, value.index, "Invalid PDA Account Index");
+    let mut multicastgroup: MulticastGroup =
+        MulticastGroup::from(&pda_account.try_borrow_data().unwrap()[..]);
+    assert_eq!(
+        multicastgroup.index, value.index,
+        "Invalid PDA Account Index"
+    );
     assert_eq!(
         multicastgroup.bump_seed, value.bump_seed,
         "Invalid PDA Account Bump Seed"
     );
     multicastgroup.status = MulticastGroupStatus::Activated;
 
-    account_write(
-        pda_account,
-        &multicastgroup,
-        payer_account,
-        system_program,
-    );
+    account_write(pda_account, &multicastgroup, payer_account, system_program);
 
     #[cfg(test)]
     msg!("Suspended: {:?}", multicastgroup);

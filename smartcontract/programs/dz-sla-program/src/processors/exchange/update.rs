@@ -70,7 +70,10 @@ pub fn process_update_exchange(
 
     let mut exchange: Exchange = Exchange::from(&pda_account.try_borrow_data().unwrap()[..]);
     assert_eq!(exchange.index, value.index, "Invalid PDA Account Index");
-    assert_eq!(exchange.bump_seed, value.bump_seed, "Invalid PDA Account Bump Seed");
+    assert_eq!(
+        exchange.bump_seed, value.bump_seed,
+        "Invalid PDA Account Bump Seed"
+    );
     if let Some(ref code) = value.code {
         exchange.code = code.clone();
     }
@@ -87,12 +90,7 @@ pub fn process_update_exchange(
         exchange.loc_id = *loc_id;
     }
 
-    account_write(
-        pda_account,
-        &exchange,
-        payer_account,
-        system_program,
-    );
+    account_write(pda_account, &exchange, payer_account, system_program);
 
     #[cfg(test)]
     msg!("Updated: {:?}", exchange);

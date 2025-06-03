@@ -11,6 +11,7 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
+	"golang.org/x/net/ipv4"
 	"golang.org/x/sys/unix"
 )
 
@@ -100,7 +101,16 @@ func (s *MulticastService) Setup(p *api.ProvisionRequest) error {
 			}
 		}
 
-		if err := s.pim.Start(s.Tunnel.Name, s.Tunnel.RemoteOverlay, s.MulticastSubGroups); err != nil {
+		c, err := net.ListenPacket("ip4:103", "0.0.0.0")
+		if err != nil {
+			return fmt.Errorf("failed to listen: %v", err)
+		}
+		r, err := ipv4.NewRawConn(c)
+		if err != nil {
+			return fmt.Errorf("failed to create raw conn: %v", err)
+		}
+
+		if err := s.pim.Start(r, s.Tunnel.Name, s.Tunnel.RemoteOverlay, s.MulticastSubGroups); err != nil {
 			return fmt.Errorf("error starting pim FSM: %v", err)
 		}
 	}

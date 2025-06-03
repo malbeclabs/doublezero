@@ -10,6 +10,7 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/manager"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"golang.org/x/sys/unix"
 )
@@ -115,7 +116,7 @@ func (m *MockDb) SaveState(p *api.ProvisionRequest) error { return nil }
 
 type MockPIMServer struct{}
 
-func (m *MockPIMServer) Start(iface string, tunnelAddr net.IP, group []net.IP) error {
+func (m *MockPIMServer) Start(conn pim.RawConner, iface string, tunnelAddr net.IP, group []net.IP) error {
 	return nil
 }
 

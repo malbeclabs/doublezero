@@ -14,7 +14,6 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/manager"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
-	"golang.org/x/net/ipv4"
 	"golang.org/x/sys/unix"
 )
 
@@ -30,17 +29,8 @@ func Run(ctx context.Context, sockFile string, enableLatencyProbing bool, progra
 		return fmt.Errorf("error initializing db: %v", err)
 	}
 
-	c, err := net.ListenPacket("ip4:103", "0.0.0.0")
-	if err != nil {
-		return fmt.Errorf("failed to listen: %v", err)
-	}
-	r, err := ipv4.NewRawConn(c)
-	if err != nil {
-		return fmt.Errorf("failed to create raw conn: %v", err)
-	}
-	pimServer := pim.NewPIMServer(r)
-
-	nlm := manager.NewNetlinkManager(nlr, bgp, db, pimServer)
+	pim := pim.NewPIMServer()
+	nlm := manager.NewNetlinkManager(nlr, bgp, db, pim)
 
 	errCh := make(chan error)
 

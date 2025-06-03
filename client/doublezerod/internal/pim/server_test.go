@@ -37,8 +37,8 @@ func (m *mockRawConn) SetControlMessage(cm ipv4.ControlFlags, on bool) error {
 
 func TestPIMServer(t *testing.T) {
 	c := &mockRawConn{writeChan: make(chan []byte, 10)}
-	svr := pim.NewPIMServer(c)
-	err := svr.Start("eth0", net.IPv4(169, 254, 0, 0), []net.IP{net.IPv4(239, 0, 0, 1)})
+	svr := pim.NewPIMServer()
+	err := svr.Start(c, "eth0", net.IPv4(169, 254, 0, 0), []net.IP{net.IPv4(239, 0, 0, 1)})
 	if err != nil {
 		log.Fatalf("failed to start PIM server: %v", err)
 	}
@@ -121,7 +121,7 @@ func checkJoinMesssage(t *testing.T, b []byte) {
 			Header: pim.PIMHeader{
 				Version:  2,
 				Type:     pim.JoinPrune,
-				Checksum: 0x2ceb,
+				Checksum: 0x2deb,
 			},
 		}
 
@@ -149,7 +149,7 @@ func checkJoinMesssage(t *testing.T, b []byte) {
 							Flags:         pim.RPTreeBit | pim.SparseBit | pim.WildCardBit,
 							MaskLength:    32,
 							EncodingType:  0,
-							Address:       net.IP([]byte{11, 0, 0, 0}),
+							Address:       net.IP([]byte{10, 0, 0, 0}),
 						},
 					},
 					Prunes: []pim.SourceAddress{},
@@ -172,7 +172,7 @@ func checkPruneMesssage(t *testing.T, b []byte) {
 			Header: pim.PIMHeader{
 				Version:  2,
 				Type:     pim.JoinPrune,
-				Checksum: 0x2ceb,
+				Checksum: 0x2deb,
 			},
 		}
 
@@ -201,7 +201,7 @@ func checkPruneMesssage(t *testing.T, b []byte) {
 							Flags:         pim.RPTreeBit | pim.SparseBit | pim.WildCardBit,
 							MaskLength:    32,
 							EncodingType:  0,
-							Address:       net.IP([]byte{11, 0, 0, 0}),
+							Address:       net.IP([]byte{10, 0, 0, 0}),
 						},
 					},
 				},

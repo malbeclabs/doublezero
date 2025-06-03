@@ -115,7 +115,7 @@ impl GetMulticastGroupCliCommand {
 mod tests {
     use crate::doublezerocommand::CliCommand;
     use crate::multicastgroup::get::GetMulticastGroupCliCommand;
-    use crate::tests::tests::create_test_client;
+    use crate::tests::utils::create_test_client;
     use doublezero_sdk::commands::device::get::GetDeviceCommand;
     use doublezero_sdk::commands::device::list::ListDeviceCommand;
     use doublezero_sdk::commands::location::list::ListLocationCommand;
@@ -152,14 +152,14 @@ mod tests {
             .with(predicate::eq(GetLocationCommand {
                 pubkey_or_code: location_pubkey.to_string(),
             }))
-            .returning(move |_| Ok((location_pubkey.clone(), cloned_location.clone())));
+            .returning(move |_| Ok((location_pubkey, cloned_location.clone())));
         let cloned_location = location.clone();
         client
             .expect_list_location()
             .with(predicate::eq(ListLocationCommand {}))
             .returning(move |_| {
                 let mut locations = std::collections::HashMap::new();
-                locations.insert(location_pubkey.clone(), cloned_location.clone());
+                locations.insert(location_pubkey, cloned_location.clone());
                 Ok(locations)
             });
 
@@ -173,7 +173,7 @@ mod tests {
             location_pk: Pubkey::default(),
             status: DeviceStatus::Activated,
             owner: device_pubkey,
-            exchange_pk: location_pubkey.clone(),
+            exchange_pk: location_pubkey,
             public_ip: [10, 0, 0, 1],
             dz_prefixes: vec![([10, 0, 0, 0], 32)],
         };
@@ -211,7 +211,7 @@ mod tests {
             tunnel_id: 12345,
             tunnel_net: ([10, 0, 0, 0], 32),
             cyoa_type: UserCYOA::GREOverDIA,
-            publishers: vec![mgroup_pubkey.clone()],
+            publishers: vec![mgroup_pubkey],
             subscribers: vec![],
             status: UserStatus::Activated,
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1"),
@@ -227,7 +227,7 @@ mod tests {
             max_bandwidth: 1000000000,
             pub_allowlist: vec![],
             sub_allowlist: vec![],
-            publishers: vec![user1_pk.clone()],
+            publishers: vec![user1_pk],
             subscribers: vec![],
             status: MulticastGroupStatus::Activated,
             owner: mgroup_pubkey,
@@ -262,7 +262,7 @@ mod tests {
             code: Pubkey::new_unique().to_string(),
         }
         .execute(&client, &mut output);
-        assert!(!res.is_ok(), "I shouldn't find anything.");
+        assert!(res.is_err(), "I shouldn't find anything.");
 
         // Expected success
         let mut output = Vec::new();

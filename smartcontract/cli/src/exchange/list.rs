@@ -69,7 +69,7 @@ impl ListExchangeCliCommand {
 #[cfg(test)]
 mod tests {
     use crate::exchange::list::ExchangeStatus::Activated;
-    use crate::{exchange::list::ListExchangeCliCommand, tests::tests::create_test_client};
+    use crate::{exchange::list::ListExchangeCliCommand, tests::utils::create_test_client};
     use doublezero_sdk::{AccountType, Device, DeviceStatus, DeviceType, Exchange};
     use solana_sdk::pubkey::Pubkey;
     use std::collections::HashMap;

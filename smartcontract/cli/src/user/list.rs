@@ -163,7 +163,7 @@ pub fn format_multicast_group_names(
 mod tests {
     use std::collections::HashMap;
 
-    use crate::tests::tests::create_test_client;
+    use crate::tests::utils::create_test_client;
     use crate::user::list::ListUserCliCommand;
     use crate::user::list::UserCYOA::GREOverDIA;
     use crate::user::list::UserStatus::Activated;
@@ -320,7 +320,7 @@ mod tests {
             client_ip: [1, 2, 3, 4],
             dz_ip: [2, 3, 4, 5],
             tunnel_id: 500,
-            tunnel_net: ([1, 2, 3, 5], 32).into(),
+            tunnel_net: ([1, 2, 3, 5], 32),
             status: Activated,
             publishers: vec![],
             subscribers: vec![],
@@ -338,7 +338,7 @@ mod tests {
             client_ip: [1, 2, 3, 4],
             dz_ip: [2, 3, 4, 5],
             tunnel_id: 500,
-            tunnel_net: ([1, 2, 3, 5], 32).into(),
+            tunnel_net: ([1, 2, 3, 5], 32),
             status: Activated,
             publishers: vec![],
             subscribers: vec![mgroup1_pubkey],

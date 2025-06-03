@@ -118,7 +118,7 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::device::list::ListDeviceCliCommand;
-    use crate::tests::tests::create_test_client;
+    use crate::tests::utils::create_test_client;
     use doublezero_sdk::{
         AccountType, Device, DeviceStatus, DeviceType, Exchange, ExchangeStatus, Location,
         LocationStatus,

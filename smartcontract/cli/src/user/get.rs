@@ -1,10 +1,10 @@
+use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::commands::user::get::GetUserCommand;
 use doublezero_sdk::*;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 use std::str::FromStr;
-use crate::doublezerocommand::CliCommand;
 
 #[derive(Args, Debug)]
 pub struct GetUserCliCommand {
@@ -15,9 +15,9 @@ pub struct GetUserCliCommand {
 impl GetUserCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let pubkey = Pubkey::from_str(&self.pubkey)?;
-        let (pubkey, user) =client.get_user(GetUserCommand { pubkey })?;
+        let (pubkey, user) = client.get_user(GetUserCommand { pubkey })?;
 
-        writeln!(out, 
+        writeln!(out,
                 "account: {} user_type: {} device: {} cyoa_type: {} client_ip: {} tunnel_net: {} dz_ip: {} status: {} owner: {}",
                 pubkey,
                 user.user_type,
@@ -37,7 +37,7 @@ impl GetUserCliCommand {
 #[cfg(test)]
 mod tests {
     use crate::doublezerocommand::CliCommand;
-    use crate::tests::tests::create_test_client;
+    use crate::tests::utils::create_test_client;
     use crate::user::get::GetUserCliCommand;
     use doublezero_sdk::commands::user::delete::DeleteUserCommand;
     use doublezero_sdk::commands::user::get::GetUserCommand;
@@ -92,7 +92,7 @@ mod tests {
             .returning(move |_| Ok(signature));
 
         /*****************************************************************************************************/
-        // Expected success 
+        // Expected success
         let mut output = Vec::new();
         let res = GetUserCliCommand {
             pubkey: pda_pubkey.to_string(),
@@ -101,6 +101,5 @@ mod tests {
         assert!(res.is_ok(), "I should find a item by code");
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, "account: CJTXjCEbDDgQoccJgEbNGc63QwWzJtdAoSio36zVXHQw user_type: IBRL device: 11111111111111111111111111111111 cyoa_type: GREOverDIA client_ip: 10.0.0.1 tunnel_net: 10.2.3.4/24 dz_ip: 10.0.0.2 status: activated owner: CJTXjCEbDDgQoccJgEbNGc63QwWzJtdAoSio36zVXHQw\n");
-
     }
 }

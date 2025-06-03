@@ -34,7 +34,7 @@ impl DeleteLocationCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::location::delete::DeleteLocationCommand, tests::tests::create_test_client,
+        commands::location::delete::DeleteLocationCommand, tests::utils::create_test_client,
         DoubleZeroClient,
     };
     use doublezero_sla_program::{

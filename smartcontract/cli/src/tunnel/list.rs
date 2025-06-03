@@ -105,7 +105,7 @@ impl ListTunnelCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::tests::tests::create_test_client;
+    use crate::tests::utils::create_test_client;
     use crate::tunnel::list::ListTunnelCliCommand;
     use doublezero_sdk::{
         Device, DeviceStatus, DeviceType, Tunnel, TunnelStatus, TunnelTunnelType,
@@ -173,7 +173,7 @@ mod tests {
             delay_ns: 1234,
             jitter_ns: 1121,
             tunnel_id: 1234,
-            tunnel_net: ([1, 2, 3, 4], 32).into(),
+            tunnel_net: ([1, 2, 3, 4], 32),
             status: TunnelStatus::Activated,
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
         };

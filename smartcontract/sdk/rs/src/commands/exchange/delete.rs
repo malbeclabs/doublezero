@@ -34,7 +34,7 @@ impl DeleteExchangeCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::exchange::delete::DeleteExchangeCommand, tests::tests::create_test_client,
+        commands::exchange::delete::DeleteExchangeCommand, tests::utils::create_test_client,
         DoubleZeroClient,
     };
     use doublezero_sla_program::{

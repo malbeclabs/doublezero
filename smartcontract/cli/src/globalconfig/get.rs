@@ -29,7 +29,7 @@ impl GetGlobalConfigCliCommand {
 mod tests {
     use crate::doublezerocommand::CliCommand;
     use crate::globalconfig::get::GetGlobalConfigCliCommand;
-    use crate::tests::tests::create_test_client;
+    use crate::tests::utils::create_test_client;
     use doublezero_sdk::{GetGlobalConfigCommand, GlobalConfig};
     use doublezero_sla_program::pda::get_globalconfig_pda;
     use mockall::predicate;

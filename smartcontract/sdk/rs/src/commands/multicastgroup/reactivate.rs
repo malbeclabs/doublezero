@@ -35,7 +35,7 @@ impl ReactivateMulticastGroupCommand {
 mod tests {
     use crate::{
         commands::multicastgroup::reactivate::ReactivateMulticastGroupCommand,
-        tests::tests::create_test_client, DoubleZeroClient,
+        tests::utils::create_test_client, DoubleZeroClient,
     };
     use doublezero_sla_program::{
         instructions::DoubleZeroInstruction,

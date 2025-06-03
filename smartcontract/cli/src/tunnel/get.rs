@@ -1,8 +1,8 @@
+use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::commands::tunnel::get::GetTunnelCommand;
 use doublezero_sdk::*;
 use std::io::Write;
-use crate::doublezerocommand::CliCommand;
 
 #[derive(Args, Debug)]
 pub struct GetTunnelCliCommand {
@@ -16,7 +16,7 @@ impl GetTunnelCliCommand {
             pubkey_or_code: self.code,
         })?;
 
-        writeln!(out, 
+        writeln!(out,
             "account: {}\r\ncode: {}\r\nside_a: {}\r\nside_z: {}\r\ntunnel_type: {}\r\nbandwidth: {}\r\nmtu: {}\r\ndelay: {}ms\r\njitter: {}ms\r\ntunnel_net: {}\r\nstatus: {}\r\nowner: {}",
             pubkey,
             tunnel.code,
@@ -38,13 +38,13 @@ impl GetTunnelCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use crate::doublezerocommand::CliCommand;
+    use crate::tests::utils::create_test_client;
+    use crate::tunnel::get::GetTunnelCliCommand;
     use doublezero_sdk::commands::tunnel::get::GetTunnelCommand;
     use doublezero_sdk::{get_tunnel_pda, AccountType, Tunnel, TunnelStatus, TunnelTunnelType};
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
-    use crate::doublezerocommand::CliCommand;
-    use crate::tunnel::get::GetTunnelCliCommand;
-    use crate::tests::tests::create_test_client;
 
     #[test]
     fn test_cli_tunnel_get() {
@@ -95,7 +95,7 @@ mod tests {
             code: Pubkey::new_unique().to_string(),
         }
         .execute(&client, &mut output);
-        assert!(!res.is_ok(), "I shouldn't find anything.");
+        assert!(res.is_err(), "I shouldn't find anything.");
 
         // Expected success
         let mut output = Vec::new();
@@ -107,7 +107,7 @@ mod tests {
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, "account: 8vB4Pa1eGbQ2GpAvbpZsykdmc5mrwYCXYboyRopB2Ev1\r\ncode: test\r\nside_a: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb\r\nside_z: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf\r\ntunnel_type: MPLSoGRE\r\nbandwidth: 1000000000\r\nmtu: 1500\r\ndelay: 10000ms\r\njitter: 5000ms\r\ntunnel_net: 10.0.0.1/16\r\nstatus: activated\r\nowner: 8vB4Pa1eGbQ2GpAvbpZsykdmc5mrwYCXYboyRopB2Ev1\n");
 
-        // Expected success 
+        // Expected success
         let mut output = Vec::new();
         let res = GetTunnelCliCommand {
             code: "test".to_string(),
@@ -116,6 +116,5 @@ mod tests {
         assert!(res.is_ok(), "I should find a item by code");
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, "account: 8vB4Pa1eGbQ2GpAvbpZsykdmc5mrwYCXYboyRopB2Ev1\r\ncode: test\r\nside_a: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb\r\nside_z: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf\r\ntunnel_type: MPLSoGRE\r\nbandwidth: 1000000000\r\nmtu: 1500\r\ndelay: 10000ms\r\njitter: 5000ms\r\ntunnel_net: 10.0.0.1/16\r\nstatus: activated\r\nowner: 8vB4Pa1eGbQ2GpAvbpZsykdmc5mrwYCXYboyRopB2Ev1\n");
-
     }
 }

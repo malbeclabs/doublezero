@@ -1,7 +1,7 @@
+use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::commands::exchange::get::GetExchangeCommand;
 use std::io::Write;
-use crate::doublezerocommand::CliCommand;
 
 #[derive(Args, Debug)]
 pub struct GetExchangeCliCommand {
@@ -15,7 +15,7 @@ impl GetExchangeCliCommand {
             pubkey_or_code: self.code,
         })?;
 
-        writeln!(out, 
+        writeln!(out,
                 "account: {},\r\ncode: {}\r\nname: {}\r\nlat: {}\r\nlng: {}\r\nloc_id: {}\r\nstatus: {}\r\nowner: {}",
                 pubkey,
                 exchange.code,
@@ -33,20 +33,21 @@ impl GetExchangeCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-    use std::str::FromStr;
+    use crate::exchange::get::GetExchangeCliCommand;
+    use crate::tests::utils::create_test_client;
     use doublezero_sdk::commands::exchange::get::GetExchangeCommand;
     use doublezero_sdk::{AccountType, Exchange, ExchangeStatus};
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
-    use crate::exchange::get::GetExchangeCliCommand;
-    use crate::tests::tests::create_test_client;
+    use std::collections::HashMap;
+    use std::str::FromStr;
 
     #[test]
     fn test_cli_exchange_get() {
         let mut client = create_test_client();
 
-        let exchange1_pubkey = Pubkey::from_str("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB").unwrap();
+        let exchange1_pubkey =
+            Pubkey::from_str("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB").unwrap();
         let exchange1 = Exchange {
             account_type: AccountType::Exchange,
             index: 1,
@@ -78,13 +79,11 @@ mod tests {
             .expect_get_exchange()
             .returning(move |_| Err(eyre::eyre!("not found")));
 
-        client
-            .expect_list_exchange()
-            .returning(move |_| {
-                let mut list = HashMap::new();
-                list.insert(exchange1_pubkey, exchange1.clone());
-                Ok(list)
-            });
+        client.expect_list_exchange().returning(move |_| {
+            let mut list = HashMap::new();
+            list.insert(exchange1_pubkey, exchange1.clone());
+            Ok(list)
+        });
 
         // Expected failure
         let mut output = Vec::new();
@@ -92,7 +91,7 @@ mod tests {
             code: Pubkey::new_unique().to_string(),
         }
         .execute(&client, &mut output);
-        assert!(!res.is_ok());
+        assert!(res.is_err());
 
         // Expected success
         let mut output = Vec::new();
@@ -104,7 +103,7 @@ mod tests {
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nname: Test Exchange\r\nlat: 12.34\r\nlng: 56.78\r\nloc_id: 1\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
 
-        // Expected success 
+        // Expected success
         let mut output = Vec::new();
         let res = GetExchangeCliCommand {
             code: "test".to_string(),
@@ -113,6 +112,5 @@ mod tests {
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nname: Test Exchange\r\nlat: 12.34\r\nlng: 56.78\r\nloc_id: 1\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
-
     }
 }

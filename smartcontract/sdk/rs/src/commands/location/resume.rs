@@ -34,7 +34,7 @@ impl ResumeLocationCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::location::resume::ResumeLocationCommand, tests::tests::create_test_client,
+        commands::location::resume::ResumeLocationCommand, tests::utils::create_test_client,
         DoubleZeroClient,
     };
     use doublezero_sla_program::{

@@ -87,7 +87,7 @@ pub fn process_multicastgroup_event(
 mod tests {
     use crate::{
         ipblockallocator::IPBlockAllocator, process::multicastgroup::process_multicastgroup_event,
-        tests::tests::create_test_client,
+        tests::utils::create_test_client,
     };
     use doublezero_sdk::get_multicastgroup_pda;
     use doublezero_sdk::AccountData;
@@ -141,7 +141,7 @@ mod tests {
         let mgroup = multicastgroup.clone();
         client
             .expect_get()
-            .with(predicate::eq(pubkey.clone()))
+            .with(predicate::eq(pubkey))
             .returning(move |_| Ok(AccountData::MulticastGroup(mgroup.clone())));
 
         client

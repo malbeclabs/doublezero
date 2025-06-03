@@ -1,5 +1,5 @@
 #[cfg(test)]
-pub mod tests {
+pub mod utils {
     use doublezero_sla_program::{
         pda::get_globalstate_pda,
         state::{accountdata::AccountData, accounttype::AccountType, globalstate::GlobalState},

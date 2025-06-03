@@ -73,7 +73,7 @@ impl ListLocationCliCommand {
 mod tests {
     use crate::location::list::ListLocationCliCommand;
     use crate::location::list::LocationStatus::Activated;
-    use crate::tests::tests::create_test_client;
+    use crate::tests::utils::create_test_client;
     use doublezero_sdk::{AccountType, Location};
     use solana_sdk::pubkey::Pubkey;
     use std::collections::HashMap;

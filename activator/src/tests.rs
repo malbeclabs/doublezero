@@ -1,5 +1,5 @@
 #[cfg(test)]
-pub mod tests {
+pub mod utils {
     use doublezero_sdk::{AccountData, AccountType, DoubleZeroClient, MockDoubleZeroClient};
     use doublezero_sla_program::{
         pda::get_device_pda, pda::get_globalstate_pda, pda::get_tunnel_pda, pda::get_user_pda,

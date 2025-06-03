@@ -46,7 +46,7 @@ impl CreateExchangeCommand {
 #[cfg(test)]
 mod tests {
     use crate::commands::exchange::create::CreateExchangeCommand;
-    use crate::{tests::tests::create_test_client, DoubleZeroClient};
+    use crate::{tests::utils::create_test_client, DoubleZeroClient};
     use doublezero_sla_program::{
         instructions::DoubleZeroInstruction,
         pda::{get_exchange_pda, get_globalstate_pda},

@@ -246,7 +246,7 @@ mod tests {
         ipblockallocator::IPBlockAllocator,
         process::user::process_user_event,
         states::devicestate::DeviceState,
-        tests::tests::{create_test_client, get_device_bump_seed, get_user_bump_seed},
+        tests::utils::{create_test_client, get_device_bump_seed, get_user_bump_seed},
     };
 
     fn do_test_process_user_event_pending_to_activated(
@@ -323,8 +323,8 @@ mod tests {
             &mut state_transitions,
         );
 
-        assert!(user_tunnel_ips.assigned_ips.len() > 0);
-        assert!(tunnel_tunnel_ids.assigned.len() > 0);
+        assert!(!user_tunnel_ips.assigned_ips.is_empty());
+        assert!(!tunnel_tunnel_ids.assigned.is_empty());
 
         assert_eq!(state_transitions.len(), 1);
         assert_eq!(state_transitions["user-pending-to-activated"], 1);
@@ -582,7 +582,7 @@ mod tests {
         func: F,
         state_transition: &'static str,
     ) where
-        F: Fn(&mut MockDoubleZeroClient, &User, &mut Sequence) -> (),
+        F: Fn(&mut MockDoubleZeroClient, &User, &mut Sequence),
     {
         assert!(user_status == UserStatus::Deleting || user_status == UserStatus::PendingBan);
 

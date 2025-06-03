@@ -44,7 +44,7 @@ impl ListUserAllowlistCliCommand {
 mod tests {
     use crate::allowlist::user::list::ListUserAllowlistCliCommand;
     use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::tests::create_test_client;
+    use crate::tests::utils::create_test_client;
     use doublezero_sdk::commands::allowlist::user::list::ListUserAllowlistCommand;
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;

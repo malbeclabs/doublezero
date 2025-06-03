@@ -37,7 +37,7 @@ impl DeactivateMulticastGroupCommand {
 mod tests {
     use crate::{
         commands::multicastgroup::deactivate::DeactivateMulticastGroupCommand,
-        tests::tests::create_test_client, DoubleZeroClient,
+        tests::utils::create_test_client, DoubleZeroClient,
     };
     use doublezero_sla_program::{
         instructions::DoubleZeroInstruction,

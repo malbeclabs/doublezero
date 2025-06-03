@@ -33,7 +33,7 @@ impl RequestBanUserCliCommand {
 mod tests {
     use crate::doublezerocommand::CliCommand;
     use crate::requirements::{CHECK_BALANCE, CHECK_FOUNDATION_ALLOWLIST, CHECK_ID_JSON};
-    use crate::tests::tests::create_test_client;
+    use crate::tests::utils::create_test_client;
     use crate::user::request_ban::RequestBanUserCliCommand;
     use doublezero_sdk::commands::user::delete::DeleteUserCommand;
     use doublezero_sdk::commands::user::get::GetUserCommand;

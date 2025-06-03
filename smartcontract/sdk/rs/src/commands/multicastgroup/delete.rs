@@ -35,7 +35,7 @@ impl DeleteMulticastGroupCommand {
 mod tests {
     use crate::{
         commands::multicastgroup::delete::DeleteMulticastGroupCommand,
-        tests::tests::create_test_client, DoubleZeroClient,
+        tests::utils::create_test_client, DoubleZeroClient,
     };
     use doublezero_sla_program::{
         instructions::DoubleZeroInstruction,

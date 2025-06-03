@@ -41,7 +41,7 @@ impl SetGlobalConfigCliCommand {
 mod tests {
     use crate::globalconfig::set::SetGlobalConfigCliCommand;
     use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::tests::create_test_client;
+    use crate::tests::utils::create_test_client;
     use doublezero_sdk::commands::globalconfig::set::SetGlobalConfigCommand;
     use mockall::predicate;
     use solana_sdk::signature::Signature;

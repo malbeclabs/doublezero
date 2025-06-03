@@ -82,7 +82,7 @@ pub fn process_device_event(
 
 #[cfg(test)]
 mod tests {
-    use crate::tests::tests::{create_test_client, get_device_bump_seed};
+    use crate::tests::utils::{create_test_client, get_device_bump_seed};
 
     use super::*;
     use doublezero_sdk::{AccountType, DeviceType};

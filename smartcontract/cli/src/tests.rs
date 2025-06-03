@@ -1,5 +1,5 @@
 #[cfg(test)]
-pub mod tests {
+pub mod utils {
     use solana_sdk::pubkey::Pubkey;
 
     use crate::doublezerocommand::MockCliCommand;

@@ -33,7 +33,7 @@ mod tests {
     use crate::doublezerocommand::CliCommand;
     use crate::exchange::delete::DeleteExchangeCliCommand;
     use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::tests::create_test_client;
+    use crate::tests::utils::create_test_client;
     use doublezero_sdk::commands::exchange::delete::DeleteExchangeCommand;
     use doublezero_sdk::commands::exchange::get::GetExchangeCommand;
     use doublezero_sdk::get_exchange_pda;

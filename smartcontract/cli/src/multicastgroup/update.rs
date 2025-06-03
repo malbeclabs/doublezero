@@ -44,7 +44,7 @@ mod tests {
     use crate::doublezerocommand::CliCommand;
     use crate::multicastgroup::update::UpdateMulticastGroupCliCommand;
     use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::tests::create_test_client;
+    use crate::tests::utils::create_test_client;
     use doublezero_sdk::commands::multicastgroup::get::GetMulticastGroupCommand;
     use doublezero_sdk::commands::multicastgroup::update::UpdateMulticastGroupCommand;
     use doublezero_sdk::get_multicastgroup_pda;

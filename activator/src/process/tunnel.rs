@@ -93,7 +93,7 @@ mod tests {
         idallocator::IDAllocator,
         ipblockallocator::IPBlockAllocator,
         process::tunnel::process_tunnel_event,
-        tests::tests::{create_test_client, get_tunnel_bump_seed},
+        tests::utils::{create_test_client, get_tunnel_bump_seed},
     };
     use doublezero_sdk::{AccountType, Tunnel, TunnelStatus, TunnelTunnelType};
     use doublezero_sla_program::{

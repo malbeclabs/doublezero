@@ -1,10 +1,11 @@
+use chrono::DateTime;
 use eyre::eyre;
 use hyper::body::to_bytes;
 use hyper::{Body, Client, Method, Request};
 use hyperlocal::{UnixConnector, Uri};
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use tabled::Tabled;
+use tabled::{derive::display, Tabled};
 
 const NANOS_TO_MS: f32 = 1000000.0;
 
@@ -73,20 +74,48 @@ pub struct RemoveResponse {
     pub description: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Tabled, Deserialize, Debug)]
+#[tabled(display(Option, "display::option", ""))]
 pub struct StatusResponse {
+    #[tabled(inline)]
     pub doublezero_status: DoubleZeroStatus,
+    #[tabled(rename = "Tunnel Name")]
     pub tunnel_name: Option<String>,
+    #[tabled(rename = "Tunnel src")]
     pub tunnel_src: Option<String>,
+    #[tabled(rename = "Tunnel dst")]
     pub tunnel_dst: Option<String>,
+    #[tabled(rename = "Doublezero IP")]
     pub doublezero_ip: Option<String>,
     pub user_type: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Tabled, Deserialize, Debug)]
+#[tabled(display(Option, "display::option", ""))]
 pub struct DoubleZeroStatus {
+    #[tabled(rename = "Tunnel status")]
     pub session_status: String,
+    #[tabled(rename = "Last Session Update")]
     pub last_session_update: Option<i64>,
+}
+
+impl fmt::Display for DoubleZeroStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let last_session_update = self.last_session_update.unwrap_or_default();
+        let parsed_last_session_update = if last_session_update == 0 {
+            "no session data"
+        } else {
+            &DateTime::from_timestamp(last_session_update, 0)
+                .expect("invalid timestamp")
+                .to_string()
+        };
+
+        write!(
+            f,
+            "session_status: {}, last_session_update: {}",
+            self.session_status, parsed_last_session_update
+        )
+    }
 }
 
 #[derive(Deserialize, Debug)]

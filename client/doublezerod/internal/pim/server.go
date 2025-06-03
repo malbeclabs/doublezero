@@ -14,7 +14,7 @@ import (
 
 var (
 	// Anycast rendezvous point address used within DoubleZero
-	rpAddress = net.IP([]byte{10, 0, 0, 0})
+	RpAddress = net.IP([]byte{10, 0, 0, 0})
 )
 
 type RawConner interface {
@@ -23,6 +23,7 @@ type RawConner interface {
 	SetMulticastInterface(iface *net.Interface) error
 	SetControlMessage(cm ipv4.ControlFlags, on bool) error
 }
+
 type PIMServer struct {
 	iface  string
 	groups []net.IP
@@ -61,7 +62,7 @@ func (s *PIMServer) Start(conn RawConner, iface string, tunnelAddr net.IP, group
 		if err != nil {
 			slog.Error("failed to send PIM hello msg", "error", err)
 		}
-		joinPruneMsgBuf, err := constructJoinPruneMessage(tunnelAddr, groups, rpAddress, nil)
+		joinPruneMsgBuf, err := constructJoinPruneMessage(tunnelAddr, groups, RpAddress, nil)
 		if err != nil {
 			slog.Error("failed to serialize PIM join msg", "error", err)
 		}
@@ -82,7 +83,7 @@ func (s *PIMServer) Start(conn RawConner, iface string, tunnelAddr net.IP, group
 				if err != nil {
 					slog.Error("failed to send PIM hello msg", "error", err)
 				}
-				joinPruneMsgBuf, err := constructJoinPruneMessage(tunnelAddr, groups, rpAddress, nil)
+				joinPruneMsgBuf, err := constructJoinPruneMessage(tunnelAddr, groups, RpAddress, nil)
 				if err != nil {
 					slog.Error("failed to serialize PIM join msg", "error", err)
 				}
@@ -91,7 +92,7 @@ func (s *PIMServer) Start(conn RawConner, iface string, tunnelAddr net.IP, group
 					slog.Error("failed to send PIM join msg", "error", err)
 				}
 			case <-s.done:
-				joinPruneMsgBuf, err := constructJoinPruneMessage(tunnelAddr, groups, nil, rpAddress)
+				joinPruneMsgBuf, err := constructJoinPruneMessage(tunnelAddr, groups, nil, RpAddress)
 				if err != nil {
 					slog.Error("failed to serialize PIM prune msg", "error", err)
 				}

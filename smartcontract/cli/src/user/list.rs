@@ -27,11 +27,14 @@ pub struct UserDisplay {
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
     #[tabled(skip)]
     pub device_pk: Pubkey,
+    #[tabled(rename = "groups")]
     pub multicast: String,
-    #[tabled(display = "display_pubs_or_subs")]
-    pub publishers: Vec<String>,
-    #[tabled(display = "display_pubs_or_subs")]
-    pub subscribers: Vec<String>,
+    #[tabled(display = "crate::util::display_pks")]
+    #[serde(serialize_with = "crate::serializer::serialize_pubkeylist_as_string")]
+    pub publishers: Vec<Pubkey>,
+    #[tabled(display = "crate::util::display_pks")]
+    #[serde(serialize_with = "crate::serializer::serialize_pubkeylist_as_string")]
+    pub subscribers: Vec<Pubkey>,
     #[tabled(rename = "device")]
     pub device_name: String,
     #[tabled(skip)]
@@ -52,14 +55,6 @@ pub struct UserDisplay {
     pub status: UserStatus,
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
-}
-
-fn display_pubs_or_subs(pubs_or_subs: Vec<String>) -> String {
-    pubs_or_subs
-        .iter()
-        .map(|pk| pk.to_string())
-        .collect::<Vec<_>>()
-        .join(",")
 }
 
 impl ListUserCliCommand {
@@ -108,16 +103,8 @@ impl ListUserCliCommand {
                     user_type: user.user_type,
                     device_pk: user.device_pk,
                     multicast: format_multicast_group_names(&user, &mgroups),
-                    publishers: user
-                        .publishers
-                        .into_iter()
-                        .map(|pk| pk.to_string())
-                        .collect(),
-                    subscribers: user
-                        .subscribers
-                        .into_iter()
-                        .map(|pk| pk.to_string())
-                        .collect(),
+                    publishers: user.publishers.into_iter().collect(),
+                    subscribers: user.subscribers.into_iter().collect(),
                     device_name,
                     location_code,
                     location_name,
@@ -372,8 +359,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-
-        assert_eq!(output_str, " account                                   | user_type | device                                    | location | cyoa_type  | client_ip | dz_ip   | tunnel_id | tunnel_net | status    | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | IBRL      | 11111116EPqoQskEM2Pddp8KTL9JdYEBZMGF3aq7V |          | GREOverDIA | 1.2.3.4   | 2.3.4.5 | 500       | 1.2.3.5/32 | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
+        assert_eq!(output_str, " account                                   | user_type | groups      | publishers | subscribers                               | device       | location       | cyoa_type  | client_ip | dz_ip   | tunnel_id | tunnel_net | status    | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | Multicast | m_code (Rx) |            | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8 | device1_code | location1_name | GREOverDIA | 1.2.3.4   | 2.3.4.5 | 500       | 1.2.3.5/32 | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
 
         let mut output = Vec::new();
         let res = ListUserCliCommand {
@@ -384,6 +370,6 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"user_type\":\"Multicast\",\"device_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"multicast\":\"m_code (Rx)\",\"publishers\":[],\"subscribers\":[\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8\"],\"device_name\":\"device1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"cyoa_type\":\"GREOverDIA\",\"client_ip\":\"1.2.3.4\",\"dz_ip\":\"2.3.4.5\",\"tunnel_id\":500,\"tunnel_net\":\"1.2.3.5/32\",\"status\":\"Activated\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"user_type\":\"Multicast\",\"device_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"multicast\":\"m_code (Rx)\",\"publishers\":\"\",\"subscribers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8\",\"device_name\":\"device1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"cyoa_type\":\"GREOverDIA\",\"client_ip\":\"1.2.3.4\",\"dz_ip\":\"2.3.4.5\",\"tunnel_id\":500,\"tunnel_net\":\"1.2.3.5/32\",\"status\":\"Activated\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
     }
 }

@@ -160,7 +160,7 @@ impl ExportCliCommand {
                                     tunnel_net: networkv4_to_string(&tunnel.tunnel_net),
                                 },
                                 tunnel_type: tunnel.tunnel_type.to_string(),
-                                bandwidth: bandwidth_to_string(tunnel.bandwidth),
+                                bandwidth: bandwidth_to_string(&tunnel.bandwidth),
                                 mtu: tunnel.mtu,
                                 delay_ms: tunnel.delay_ns as f32 / 1000000.0,
                                 jitter_ms: tunnel.jitter_ns as f32 / 1000000.0,

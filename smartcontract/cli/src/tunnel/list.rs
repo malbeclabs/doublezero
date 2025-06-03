@@ -8,8 +8,6 @@ use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 use tabled::{settings::Style, Table, Tabled};
 
-const NANOS_TO_MS: f32 = 1000000.0;
-
 #[derive(Args, Debug)]
 pub struct ListTunnelCliCommand {
     #[arg(long, default_value_t = false)]
@@ -36,9 +34,9 @@ pub struct TunnelDisplay {
     pub tunnel_type: TunnelTunnelType,
     pub bandwidth: u64,
     pub mtu: u32,
-    #[tabled(display = "display_as_ms", rename = "delay_ms")]
+    #[tabled(display = "crate::util::display_as_ms", rename = "delay_ms")]
     pub delay_ns: u64,
-    #[tabled(display = "display_as_ms", rename = "jitter_ms")]
+    #[tabled(display = "crate::util::display_as_ms", rename = "jitter_ms")]
     pub jitter_ns: u64,
     pub tunnel_id: u16,
     #[tabled(display = "doublezero_sla_program::types::networkv4_to_string")]
@@ -47,10 +45,6 @@ pub struct TunnelDisplay {
     pub status: TunnelStatus,
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
-}
-
-fn display_as_ms(latency: &u64) -> String {
-    format!("{:.2}ms", (*latency as f32 / NANOS_TO_MS))
 }
 
 impl ListTunnelCliCommand {

@@ -2,7 +2,7 @@
 
 [package]
 name = "doublezero_cli"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [lib]
@@ -27,8 +27,8 @@ futures-util = "0.3.31"
 indicatif = "0.17.11"
 console = "0.15.10"
 anyhow = "1.0.95"
-doublezero_sdk = { path = "../sdk/rs", version = "0.1.0" }
+doublezero_sdk = { path = "../sdk/rs", version = "0.2.0" }
 mockall = "^0.13"
 
 [dev-dependencies]
-doublezero-sla-program = { path = "../programs/dz-sla-program", version = "0.1.0" }
+doublezero-sla-program = { path = "../programs/dz-sla-program", version = "0.2.0" }

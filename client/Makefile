@@ -2,11 +2,16 @@ PREFIX:=github.com/malbeclabs/doublezero/smartcontract
 BUILD:=`git rev-parse --short HEAD`
 LDFLAGS=
 CLIPPY_FLAGS=-- -Dclippy::all -D warnings
+CARGO_FLAGS?=
 
 .PHONY: test
 test:
-	cargo test --manifest-path ./doublezero/Cargo.toml
-	go test -race -v -coverprofile coverage.out ./doublezerod/...
+	$(MAKE) test -C doublezero
+	$(MAKE) test -C doublezerod
+
+.PHONY: test-e2e
+test-e2e:
+	go run tools/e2e-test/main.go -v
 
 .PHONY: lint
 lint:
@@ -15,5 +20,10 @@ lint:
 
 .PHONY: build
 build:
-	cargo build $(LDFLAGS) --release --manifest-path ./doublezero/Cargo.toml
-	CGO_ENABLED=0 go build -v $(LDFLAGS) -o ./doublezerod/bin/doublezerod ./doublezerod/cmd/doublezerod/main.go
+	$(MAKE) lint -C doublezero
+	$(MAKE) lint -C doublezerod
+
+.PHONY: build
+build:
+	$(MAKE) build -C doublezero CARGO_FLAGS="$(CARGO_FLAGS)"
+	$(MAKE) build -C doublezerod

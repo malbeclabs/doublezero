@@ -1,10 +1,15 @@
 PREFIX:=github.com/malbeclabs/doublezero/client/doublezerod
-BUILD:=`git rev-parse --short HEAD` 
+BUILD:=`git rev-parse --short HEAD`
 LDFLAGS=-ldflags "-X=$(PREFIX)/build.Build=$(BUILD)"
 
 .PHONY: test
 test:
 	go test -race -v -coverprofile coverage.out ./...
+	$(MAKE) test-e2e
+
+.PHONY: test-e2e
+test-e2e:
+	go run ../../tools/e2e-test/main.go -v
 
 .PHONY: lint
 lint:

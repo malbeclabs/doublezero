@@ -1,0 +1,3 @@
+dockerfile: e2e.dockerfile
+docker-run-args:
+  - --privileged

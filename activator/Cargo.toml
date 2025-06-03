@@ -1,6 +1,6 @@
 [package]
 name = "doublezero-activator"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
@@ -17,7 +17,7 @@ mockall = "^0.13"
 
 
 solana-sdk = "2.2.2"
-doublezero_sdk = { path = "../smartcontract/sdk/rs", version = "0.1.0" }
+doublezero_sdk = { path = "../smartcontract/sdk/rs", version = "0.2.0" }
 
 [dev-dependencies]
-doublezero-sla-program = { path = "../smartcontract/programs/dz-sla-program", version = "0.1.0" }
+doublezero-sla-program = { path = "../smartcontract/programs/dz-sla-program", version = "0.2.0" }

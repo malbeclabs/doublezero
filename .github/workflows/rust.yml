@@ -1,0 +1,25 @@
+name: rust
+on:
+  push:
+    paths-ignore:
+      - "**/*.md"
+      - "**/*.go"
+    branches: [ main ]
+  pull_request:
+    paths-ignore:
+      - "**/*.md"
+      - "**/*.go"
+    branches: [ main ]
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04-16c-64gb
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: test
+        run: cargo test --all --all-features
+      - name: clippy
+        run: cargo clippy --all --all-features --all-targets
+      - name: build
+        run: cargo build --all

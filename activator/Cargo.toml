@@ -4,20 +4,23 @@ version = "0.2.0"
 edition = "2021"
 
 [dependencies]
-clap = { version = "4.5.39", features = ["derive"] }
-eyre = "0.6.12"
-tokio = { version = "1.45.1", features = ["full"] }
-ipnetwork = "0.21.1"
-bitvec = "1.0.1"
-influxdb2 = "0.5.2"
-influxdb2-structmap = "0.2"
-influxdb2-derive = "0.1.1"
-chrono = "0.4"
-mockall = "^0.13"
+bitvec.workspace = true
+chrono.workspace = true
+clap.workspace = true
+eyre.workspace = true
+influxdb2.workspace = true
+influxdb2-derive.workspace = true
+influxdb2-structmap.workspace = true
+ipnetwork.workspace = true
+mockall.workspace = true
+solana-sdk.workspace = true
+tokio.workspace = true
 
-
-solana-sdk = "2.2.2"
-doublezero_sdk = { path = "../smartcontract/sdk/rs", version = "0.2.0" }
+# Dependencies from this workspace
+doublezero_sdk.workspace = true
+doublezero-sla-program.workspace = true
 
 [dev-dependencies]
-doublezero-sla-program = { path = "../smartcontract/programs/dz-sla-program", version = "0.2.0" }
+
+# Dependencies from this workspace
+doublezero-sla-program.workspace = true

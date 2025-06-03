@@ -7,7 +7,6 @@ project_name: doublezero-activator
 
 monorepo:
   tag_prefix: activator/
-  dir: activator/
 
 builds:
   - id: doublezero-activator
@@ -15,10 +14,13 @@ builds:
     builder: rust
     tool: cargo
     command: build
+    flags:
+      - --package=doublezero-activator
+      - --release
     targets:
       - x86_64-unknown-linux-gnu
     env:
-      - RUSTFLAGS=-C linker=x86_64-linux-gnu-gcc      
+      - RUSTFLAGS=-C linker=x86_64-linux-gnu-gcc
 
 archives:
   - id: activator_archive

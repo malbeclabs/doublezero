@@ -7,11 +7,10 @@ project_name: doublezero
 
 monorepo:
   tag_prefix: client/
-  dir: client
 
 builds:
   - id: doublezerod
-    main: doublezerod/cmd/doublezerod/main.go
+    main: client/doublezerod/cmd/doublezerod/main.go
     binary: doublezerod
     env:
       - CGO_ENABLED=0
@@ -25,8 +24,10 @@ builds:
     binary: doublezero
     targets:
       - x86_64-unknown-linux-gnu
-    dir: client/doublezero
     command: build
+    flags:
+      - --package=doublezero
+      - --release
     env:
       - RUSTFLAGS=-C linker=x86_64-linux-gnu-gcc
 

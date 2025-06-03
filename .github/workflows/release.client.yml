@@ -20,6 +20,8 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
+      - uses: Swatinem/rust-cache@v2
       - name: Set env vars
         run: ./scripts/env.sh >> $GITHUB_ENV
       - name: install rust for cli

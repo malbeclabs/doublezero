@@ -6,8 +6,7 @@ This document describes the formal process for deploying a smart contract (progr
 
 - Ensure your Solana CLI is configured with the correct keypair and network settings for DZ Lager.
 ```bash
-solana config set --url https://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30 --ws wss://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-687
-3e358ed30/whirligig
+solana config set --url https://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30 --ws wss://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30/whirligig
 ```
 - You must have the keypair file for the version of the smart contract you are deploying (e.g., DZdnB7bhR9azxLAUEH7ZVtW168wRdreiDKhi4McDfKZt.json).
 - You must also have the id.json keypair file for the authority account that is allowed to update the smart contract on-chain.
@@ -53,7 +52,7 @@ With the program compiled, deploy it to the DZ Lager sidechain using the Solana 
 ### Command
 
 ```bash
-solana program deploy --url https://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30 --ws wss://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30/whirligig --keypair ~/DZdnB7bhR9azxLAUEH7ZVtW168wRdreiDKhi4McDfKZt.json target/deploy/doublezero_sla_program.so
+solana program deploy --program-id ~/DZdnB7bhR9azxLAUEH7ZVtW168wRdreiDKhi4McDfKZt.json target/deploy/doublezero_sla_program.so
 ```
 
 ## 5 Next steps

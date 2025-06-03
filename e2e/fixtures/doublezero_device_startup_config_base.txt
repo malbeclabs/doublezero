@@ -66,7 +66,7 @@ router bgp 65342
 !
 router multicast
    ipv4
-      software-forwarding kernel
+      software-forwarding sfe
    !
    ipv6
       software-forwarding kernel

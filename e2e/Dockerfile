@@ -49,9 +49,9 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Copy test dependencies and build tests
 FROM builder AS tests
 COPY e2e e2e
-COPY ./e2e/start_e2e.sh ./bin/start_e2e.sh
-COPY ./e2e/keypair.json ./bin/keypair.json
-COPY ./e2e/doublezero_keypair.json ./bin/doublezero_keypair.json
+RUN cp ./e2e/start_e2e.sh ./bin/start_e2e.sh && \
+    cp ./e2e/keypair.json ./bin/keypair.json && \
+    cp ./e2e/doublezero_keypair.json ./bin/doublezero_keypair.json
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go test -c -o ./bin/e2e_test ./e2e/e2e_test.go

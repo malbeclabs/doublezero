@@ -1,10 +1,9 @@
 use base64::prelude::*;
 use base64::{engine::general_purpose, Engine};
-use bincode::deserialize;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use doublezero_sla_program::processors::globalstate::close::CloseAccountArgs;
 use doublezero_sla_program::{instructions::*, state::accounttype::AccountType};
-use eyre::{eyre, OptionExt};
+use eyre::{bail, eyre, OptionExt};
 use solana_account_decoder::{UiAccountData, UiAccountEncoding};
 use solana_client::{
     pubsub_client::PubsubClient,
@@ -401,13 +400,13 @@ impl DoubleZeroClient for DZClient {
             if let EncodedTransaction::Binary(data, _enc) = trans {
                 let data: &[u8] = &general_purpose::STANDARD.decode(data).unwrap();
 
-                let tx: Transaction = match deserialize(data) {
-                    Ok(tx) => tx,
-                    Err(e) => {
-                        eprintln!("Error al deserializar la transacción: {:?}", e);
-                        panic!("");
-                    }
-                };
+                let tx: Transaction =
+                    match bincode::serde::decode_from_slice(data, bincode::config::legacy()) {
+                        Ok((tx, _)) => tx,
+                        Err(e) => {
+                            bail!("Error deserializing txn: {:?}", e);
+                        }
+                    };
 
                 for instr in tx.message.instructions.iter() {
                     let program_id = instr.program_id(&tx.message.account_keys);

@@ -27,6 +27,9 @@ interface Tunnel{{ .Id }}
    {{- end }}
    multicast ipv4 boundary SEC-USER-MCAST-BOUNDARY-{{ .Id }}-OUT out
    pim ipv4 sparse-mode
+   {{- if and .IsMulticast .MulticastPublishers }}
+   pim ipv4 border-router
+   {{- end }}
    pim ipv4 dr-priority 4294967295
    {{- else }}
    description USER-UCAST-{{ .Id }}
@@ -129,6 +132,9 @@ ip access-list standard SEC-USER-MCAST-BOUNDARY-{{ .Id }}-OUT
    {{- range .MulticastSubscribers }}
    permit host {{ . }}
    {{- end }}
+   {{- range .MulticastPublishers }}
+   permit host {{ . }}
+   {{- end }}
    deny 224.0.0.0/4
 !
 {{- end }}
@@ -136,6 +142,8 @@ ip access-list standard SEC-USER-MCAST-BOUNDARY-{{ .Id }}-OUT
 no ip access-list SEC-USER-PUB-MCAST-IN
 ip access-list SEC-USER-PUB-MCAST-IN
    counters per-entry
+   permit icmp any any
+   permit tcp any any eq bgp
    permit ip any 224.0.0.13/32
    permit ip any {{ .MulticastGroupBlock }}
    deny ip any any
@@ -143,6 +151,8 @@ ip access-list SEC-USER-PUB-MCAST-IN
 no ip access-list SEC-USER-SUB-MCAST-IN
 ip access-list SEC-USER-SUB-MCAST-IN
    counters per-entry
+   permit icmp any any
+   permit tcp any any eq bgp
    permit ip any 224.0.0.13/32
    deny ip any any
 !

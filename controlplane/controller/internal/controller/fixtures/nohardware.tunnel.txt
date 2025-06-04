@@ -177,16 +177,22 @@ ip access-list standard SEC-USER-MCAST-BOUNDARY-502-OUT
    counters per-entry
    permit host 239.0.0.3
    permit host 239.0.0.4
+   permit host 239.0.0.5
+   permit host 239.0.0.6
    deny 224.0.0.0/4
 !
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-503-OUT
 ip access-list standard SEC-USER-MCAST-BOUNDARY-503-OUT
    counters per-entry
+   permit host 239.0.0.5
+   permit host 239.0.0.6
    deny 224.0.0.0/4
 !
 no ip access-list SEC-USER-PUB-MCAST-IN
 ip access-list SEC-USER-PUB-MCAST-IN
    counters per-entry
+   permit icmp any any
+   permit tcp any any eq bgp
    permit ip any 224.0.0.13/32
    permit ip any 239.0.0.0/24
    deny ip any any
@@ -194,6 +200,8 @@ ip access-list SEC-USER-PUB-MCAST-IN
 no ip access-list SEC-USER-SUB-MCAST-IN
 ip access-list SEC-USER-SUB-MCAST-IN
    counters per-entry
+   permit icmp any any
+   permit tcp any any eq bgp
    permit ip any 224.0.0.13/32
    deny ip any any
 !

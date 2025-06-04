@@ -9,11 +9,12 @@ import (
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 )
 
 type PIMWriter interface {
-	Start(iface string, tunnelAddr net.IP, group []net.IP) error
+	Start(conn pim.RawConner, iface string, tunnelAddr net.IP, group []net.IP) error
 	Close() error
 }
 

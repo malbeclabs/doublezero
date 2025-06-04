@@ -1389,7 +1389,7 @@ func TestMulticastSubscriber(t *testing.T) {
 				Header: pim.PIMHeader{
 					Version:  2,
 					Type:     pim.JoinPrune,
-					Checksum: 0x2deb,
+					Checksum: 0x2eeb,
 				},
 			}
 			if diff := cmp.Diff(got, want, cmpopts.IgnoreFields(pim.PIMMessage{}, "BaseLayer")); diff != "" {
@@ -1414,7 +1414,8 @@ func TestMulticastSubscriber(t *testing.T) {
 						Flags:         pim.RPTreeBit | pim.SparseBit | pim.WildCardBit,
 						MaskLength:    32,
 						EncodingType:  0,
-						Address:       net.IP([]byte{11, 0, 0, 0})},
+						Address:       pim.RpAddress,
+					},
 					},
 					Prunes: []pim.SourceAddress{},
 				}},
@@ -1458,7 +1459,7 @@ func TestMulticastSubscriber(t *testing.T) {
 				Header: pim.PIMHeader{
 					Version:  2,
 					Type:     pim.JoinPrune,
-					Checksum: 0x2deb,
+					Checksum: 0x2eeb,
 				},
 			}
 			if diff := cmp.Diff(got, want, cmpopts.IgnoreFields(pim.PIMMessage{}, "BaseLayer")); diff != "" {
@@ -1484,7 +1485,7 @@ func TestMulticastSubscriber(t *testing.T) {
 						Flags:         pim.RPTreeBit | pim.SparseBit | pim.WildCardBit,
 						MaskLength:    32,
 						EncodingType:  0,
-						Address:       net.IP([]byte{11, 0, 0, 0})}}}}}
+						Address:       pim.RpAddress}}}}}
 			if diff := cmp.Diff(got, want, cmpopts.IgnoreFields(pim.JoinPruneMessage{}, "BaseLayer")); diff != "" {
 				t.Errorf("JoinPruneMessage mismatch (-got +want):\n%s", diff)
 			}
@@ -2232,7 +2233,7 @@ func verifyPimJoinMessageSent(t *testing.T, pimJoinPruneChan chan []byte, upstre
 				Header: pim.PIMHeader{
 					Version:  2,
 					Type:     pim.JoinPrune,
-					Checksum: 0x2ceb,
+					Checksum: 0x2deb,
 				},
 			}
 			if diff := cmp.Diff(got, want, cmpopts.IgnoreFields(pim.PIMMessage{}, "BaseLayer")); diff != "" {
@@ -2257,7 +2258,7 @@ func verifyPimJoinMessageSent(t *testing.T, pimJoinPruneChan chan []byte, upstre
 						Flags:         pim.RPTreeBit | pim.SparseBit | pim.WildCardBit,
 						MaskLength:    32,
 						EncodingType:  0,
-						Address:       net.IP([]byte{11, 0, 0, 0})},
+						Address:       pim.RpAddress},
 					},
 					Prunes: []pim.SourceAddress{},
 				}},
@@ -2293,7 +2294,7 @@ func verifyPruneMessageSent(t *testing.T, pimJoinPruneChan chan []byte, upstream
 				Header: pim.PIMHeader{
 					Version:  2,
 					Type:     pim.JoinPrune,
-					Checksum: 0x2ceb,
+					Checksum: 0x2deb,
 				},
 			}
 			if diff := cmp.Diff(got, want, cmpopts.IgnoreFields(pim.PIMMessage{}, "BaseLayer")); diff != "" {
@@ -2319,7 +2320,7 @@ func verifyPruneMessageSent(t *testing.T, pimJoinPruneChan chan []byte, upstream
 						Flags:         pim.RPTreeBit | pim.SparseBit | pim.WildCardBit,
 						MaskLength:    32,
 						EncodingType:  0,
-						Address:       net.IP([]byte{11, 0, 0, 0})}}}}}
+						Address:       pim.RpAddress}}}}}
 			if diff := cmp.Diff(got, want, cmpopts.IgnoreFields(pim.JoinPruneMessage{}, "BaseLayer")); diff != "" {
 				t.Errorf("JoinPruneMessage mismatch (-got +want):\n%s", diff)
 			}

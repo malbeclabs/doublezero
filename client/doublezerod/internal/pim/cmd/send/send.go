@@ -106,7 +106,7 @@ func main() {
 						Flags:         7,
 						MaskLength:    32,
 						EncodingType:  0,
-						Address:       net.IP([]byte{11, 0, 0, 0}),
+						Address:       pim.RpAddress,
 					},
 				},
 				Prunes: []pim.SourceAddress{},

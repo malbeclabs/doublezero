@@ -12,12 +12,18 @@ import (
 	"golang.org/x/net/ipv4"
 )
 
+var (
+	// Anycast rendezvous point address used within DoubleZero
+	RpAddress = net.IP([]byte{10, 0, 0, 0})
+)
+
 type RawConner interface {
 	WriteTo(h *ipv4.Header, b []byte, cm *ipv4.ControlMessage) error
 	Close() error
 	SetMulticastInterface(iface *net.Interface) error
 	SetControlMessage(cm ipv4.ControlFlags, on bool) error
 }
+
 type PIMServer struct {
 	iface  string
 	groups []net.IP
@@ -26,13 +32,14 @@ type PIMServer struct {
 	wg     *sync.WaitGroup
 }
 
-func NewPIMServer(conn RawConner) *PIMServer {
-	return &PIMServer{conn: conn, done: make(chan struct{})}
+func NewPIMServer() *PIMServer {
+	return &PIMServer{done: make(chan struct{})}
 }
 
-func (s *PIMServer) Start(iface string, tunnelAddr net.IP, groups []net.IP) error {
+func (s *PIMServer) Start(conn RawConner, iface string, tunnelAddr net.IP, groups []net.IP) error {
 	s.iface = iface
 	s.groups = groups
+	s.conn = conn
 
 	intf, err := net.InterfaceByName(s.iface)
 	if err != nil {
@@ -55,7 +62,7 @@ func (s *PIMServer) Start(iface string, tunnelAddr net.IP, groups []net.IP) erro
 		if err != nil {
 			slog.Error("failed to send PIM hello msg", "error", err)
 		}
-		joinPruneMsgBuf, err := constructJoinPruneMessage(tunnelAddr, groups, net.IP([]byte{11, 0, 0, 0}), nil)
+		joinPruneMsgBuf, err := constructJoinPruneMessage(tunnelAddr, groups, RpAddress, nil)
 		if err != nil {
 			slog.Error("failed to serialize PIM join msg", "error", err)
 		}
@@ -76,7 +83,7 @@ func (s *PIMServer) Start(iface string, tunnelAddr net.IP, groups []net.IP) erro
 				if err != nil {
 					slog.Error("failed to send PIM hello msg", "error", err)
 				}
-				joinPruneMsgBuf, err := constructJoinPruneMessage(tunnelAddr, groups, net.IP([]byte{11, 0, 0, 0}), nil)
+				joinPruneMsgBuf, err := constructJoinPruneMessage(tunnelAddr, groups, RpAddress, nil)
 				if err != nil {
 					slog.Error("failed to serialize PIM join msg", "error", err)
 				}
@@ -85,7 +92,7 @@ func (s *PIMServer) Start(iface string, tunnelAddr net.IP, groups []net.IP) erro
 					slog.Error("failed to send PIM join msg", "error", err)
 				}
 			case <-s.done:
-				joinPruneMsgBuf, err := constructJoinPruneMessage(tunnelAddr, groups, nil, net.IP([]byte{11, 0, 0, 0}))
+				joinPruneMsgBuf, err := constructJoinPruneMessage(tunnelAddr, groups, nil, RpAddress)
 				if err != nil {
 					slog.Error("failed to serialize PIM prune msg", "error", err)
 				}

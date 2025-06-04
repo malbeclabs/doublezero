@@ -5,7 +5,7 @@ GIT_SHA:=`git rev-parse --short HEAD`
 
 # Enable buildkit for docker mount caching.
 # Enabled by default on mac, but not always on linux.
-DOCKER_BUILDKIT=1
+export DOCKER_BUILDKIT=1
 
 .PHONY: eos
 eos:

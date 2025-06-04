@@ -41,6 +41,7 @@ interface Tunnel502
    description USER-MCAST-502
    multicast ipv4 boundary SEC-USER-MCAST-BOUNDARY-502-OUT out
    pim ipv4 sparse-mode
+   pim ipv4 border-router
    pim ipv4 dr-priority 4294967295
    mtu 9216
    ip address 169.254.0.4/31
@@ -56,6 +57,7 @@ interface Tunnel503
    description USER-MCAST-503
    multicast ipv4 boundary SEC-USER-MCAST-BOUNDARY-503-OUT out
    pim ipv4 sparse-mode
+   pim ipv4 border-router
    pim ipv4 dr-priority 4294967295
    mtu 9216
    ip address 169.254.0.6/31

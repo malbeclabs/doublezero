@@ -46,7 +46,7 @@ impl UpdateLocationCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::location::update::UpdateLocationCommand, tests::tests::create_test_client,
+        commands::location::update::UpdateLocationCommand, tests::utils::create_test_client,
         DoubleZeroClient,
     };
     use doublezero_sla_program::{

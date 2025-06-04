@@ -45,7 +45,7 @@ mod tests {
     use crate::doublezerocommand::CliCommand;
     use crate::location::create::CreateLocationCliCommand;
     use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::tests::create_test_client;
+    use crate::tests::utils::create_test_client;
     use doublezero_sdk::{get_location_pda, CreateLocationCommand};
     use mockall::predicate;
     use solana_sdk::signature::Signature;

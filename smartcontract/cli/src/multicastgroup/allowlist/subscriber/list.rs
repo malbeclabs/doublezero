@@ -49,7 +49,7 @@ impl ListMulticastGroupSubAllowlistCliCommand {
 mod tests {
     use crate::multicastgroup::allowlist::subscriber::list::ListMulticastGroupSubAllowlistCliCommand;
     use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::tests::create_test_client;
+    use crate::tests::utils::create_test_client;
     use doublezero_sdk::commands::multicastgroup::allowlist::subscriber::list::ListMulticastGroupSubAllowlistCommand;
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;

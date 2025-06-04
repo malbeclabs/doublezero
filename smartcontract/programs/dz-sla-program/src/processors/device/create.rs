@@ -10,12 +10,15 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-use crate::{globalstate::{globalstate_get_next, globalstate_write}, pda::*};
 use crate::types::*;
 use crate::{
     error::DoubleZeroError,
     helper::*,
     state::{accounttype::AccountType, device::*},
+};
+use crate::{
+    globalstate::{globalstate_get_next, globalstate_write},
+    pda::*,
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
@@ -97,7 +100,6 @@ pub fn process_create_device(
     if exchange_account.owner != program_id {
         return Err(ProgramError::IncorrectProgramId);
     }
-
 
     let device: Device = Device {
         account_type: AccountType::Device,

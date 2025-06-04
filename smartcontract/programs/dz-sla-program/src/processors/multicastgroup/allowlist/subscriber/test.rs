@@ -60,7 +60,7 @@ mod device_test {
             program_id,
             DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
                 index: globalstate.account_index + 1,
-                bump_seed: bump_seed,
+                bump_seed,
                 code: "test".to_string(),
                 max_bandwidth: 100,
                 owner: payer.pubkey(),

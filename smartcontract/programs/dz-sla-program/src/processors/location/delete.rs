@@ -42,8 +42,15 @@ pub fn process_delete_location(
 
     // Check the owner of the accounts
     assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
-    assert_eq!(globalstate_account.owner, program_id, "Invalid GlobalState Account Owner");
-    assert_eq!( *system_program.unsigned_key(), solana_program::system_program::id(), "Invalid System Program Account Owner");
+    assert_eq!(
+        globalstate_account.owner, program_id,
+        "Invalid GlobalState Account Owner"
+    );
+    assert_eq!(
+        *system_program.unsigned_key(),
+        solana_program::system_program::id(),
+        "Invalid System Program Account Owner"
+    );
     assert!(pda_account.is_writable, "PDA Account is not writable");
 
     // Parse the global state account & check if the payer is in the allowlist
@@ -58,7 +65,7 @@ pub fn process_delete_location(
         location.bump_seed, value.bump_seed,
         "Invalid PDA Account Bump Seed"
     );
-        if location.status != LocationStatus::Activated {
+    if location.status != LocationStatus::Activated {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
     account_close(pda_account, payer_account)?;

@@ -44,7 +44,7 @@ impl UpdateExchangeCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::exchange::update::UpdateExchangeCommand, tests::tests::create_test_client,
+        commands::exchange::update::UpdateExchangeCommand, tests::utils::create_test_client,
         DoubleZeroClient,
     };
     use doublezero_sla_program::{

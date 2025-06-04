@@ -1,8 +1,8 @@
+use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::commands::device::get::GetDeviceCommand;
 use doublezero_sdk::*;
 use std::io::Write;
-use crate::doublezerocommand::CliCommand;
 
 #[derive(Args, Debug)]
 pub struct GetDeviceCliCommand {
@@ -16,7 +16,7 @@ impl GetDeviceCliCommand {
             pubkey_or_code: self.code,
         })?;
 
-        writeln!(out, 
+        writeln!(out,
             "account: {}\r\ncode: {}\r\nlocation: {}\r\nexchange: {}\r\ndevice_type: {}\r\npublic_ip: {}\r\ndz_prefixes: {}\r\nstatus: {}\r\nowner: {}",
             pubkey,
             device.code,
@@ -35,13 +35,13 @@ impl GetDeviceCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
+    use crate::device::get::GetDeviceCliCommand;
+    use crate::tests::utils::create_test_client;
     use doublezero_sdk::commands::device::get::GetDeviceCommand;
     use doublezero_sdk::{AccountType, Device, DeviceStatus, DeviceType};
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
-    use crate::device::get::GetDeviceCliCommand;
-    use crate::tests::tests::create_test_client;
+    use std::str::FromStr;
 
     #[test]
     fn test_cli_device_get() {
@@ -49,14 +49,15 @@ mod tests {
 
         let location_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let exchange_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
-        let device1_pubkey = Pubkey::from_str("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB").unwrap();
+        let device1_pubkey =
+            Pubkey::from_str("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB").unwrap();
         let device1 = Device {
             account_type: AccountType::Device,
             index: 1,
             bump_seed: 255,
             code: "test".to_string(),
-            location_pk: location_pk,
-            exchange_pk: exchange_pk,
+            location_pk,
+            exchange_pk,
             device_type: DeviceType::Switch,
             public_ip: [1, 2, 3, 4],
             dz_prefixes: vec![([1, 2, 3, 4], 32)],
@@ -80,7 +81,7 @@ mod tests {
             code: Pubkey::new_unique().to_string(),
         }
         .execute(&client, &mut output);
-        assert!(!res.is_ok(), "I shouldn't find anything.");
+        assert!(res.is_err(), "I shouldn't find anything.");
 
         // Expected success
         let mut output = Vec::new();
@@ -91,6 +92,5 @@ mod tests {
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\r\ncode: test\r\nlocation: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx\r\nexchange: GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc\r\ndevice_type: switch\r\npublic_ip: 1.2.3.4\r\ndz_prefixes: 1.2.3.4/32\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
-
     }
 }

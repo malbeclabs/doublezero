@@ -46,7 +46,7 @@ impl CreateLocationCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::{tests::tests::create_test_client, CreateLocationCommand, DoubleZeroClient};
+    use crate::{tests::utils::create_test_client, CreateLocationCommand, DoubleZeroClient};
     use doublezero_sla_program::{
         instructions::DoubleZeroInstruction,
         pda::{get_globalstate_pda, get_location_pda},

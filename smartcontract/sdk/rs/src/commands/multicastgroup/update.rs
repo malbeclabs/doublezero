@@ -41,7 +41,7 @@ impl UpdateMulticastGroupCommand {
 mod tests {
     use crate::{
         commands::multicastgroup::update::UpdateMulticastGroupCommand,
-        tests::tests::create_test_client, DoubleZeroClient,
+        tests::utils::create_test_client, DoubleZeroClient,
     };
     use doublezero_sla_program::{
         instructions::DoubleZeroInstruction,

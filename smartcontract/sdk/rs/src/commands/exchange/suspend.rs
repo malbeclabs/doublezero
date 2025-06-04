@@ -34,7 +34,7 @@ impl SuspendExchangeCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::exchange::suspend::SuspendExchangeCommand, tests::tests::create_test_client,
+        commands::exchange::suspend::SuspendExchangeCommand, tests::utils::create_test_client,
         DoubleZeroClient,
     };
     use doublezero_sla_program::{

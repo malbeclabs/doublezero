@@ -41,7 +41,7 @@ impl GetLocationCommand {
 mod tests {
     use std::collections::HashMap;
 
-    use crate::{commands::location::get::GetLocationCommand, tests::tests::create_test_client};
+    use crate::{commands::location::get::GetLocationCommand, tests::utils::create_test_client};
     use doublezero_sla_program::state::{
         accountdata::AccountData,
         accounttype::AccountType,
@@ -109,6 +109,6 @@ mod tests {
         }
         .execute(&client);
 
-        assert!(!res.is_ok());
+        assert!(res.is_err());
     }
 }

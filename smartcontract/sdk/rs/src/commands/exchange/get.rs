@@ -41,7 +41,7 @@ impl GetExchangeCommand {
 mod tests {
     use std::collections::HashMap;
 
-    use crate::{commands::exchange::get::GetExchangeCommand, tests::tests::create_test_client};
+    use crate::{commands::exchange::get::GetExchangeCommand, tests::utils::create_test_client};
     use doublezero_sla_program::state::{
         accountdata::AccountData,
         accounttype::AccountType,
@@ -108,6 +108,6 @@ mod tests {
         }
         .execute(&client);
 
-        assert!(!res.is_ok());
+        assert!(res.is_err());
     }
 }

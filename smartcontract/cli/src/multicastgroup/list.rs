@@ -78,7 +78,7 @@ impl ListMulticastGroupCliCommand {
 #[cfg(test)]
 mod tests {
     use crate::multicastgroup::list::ListMulticastGroupCliCommand;
-    use crate::tests::tests::create_test_client;
+    use crate::tests::utils::create_test_client;
     use doublezero_sdk::{Device, DeviceStatus, DeviceType, MulticastGroup, MulticastGroupStatus};
     use doublezero_sla_program::state::accounttype::AccountType;
     use solana_sdk::pubkey::Pubkey;

@@ -34,7 +34,7 @@ impl ActivateDeviceCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::device::activate::ActivateDeviceCommand, tests::tests::create_test_client,
+        commands::device::activate::ActivateDeviceCommand, tests::utils::create_test_client,
         DoubleZeroClient,
     };
     use doublezero_sla_program::{

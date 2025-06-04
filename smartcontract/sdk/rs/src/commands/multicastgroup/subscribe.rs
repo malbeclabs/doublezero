@@ -70,7 +70,7 @@ impl SubscribeMulticastGroupCommand {
 mod tests {
     use crate::{
         commands::multicastgroup::subscribe::SubscribeMulticastGroupCommand,
-        tests::tests::create_test_client, DoubleZeroClient,
+        tests::utils::create_test_client, DoubleZeroClient,
     };
     use doublezero_sla_program::state::accountdata::AccountData;
     use doublezero_sla_program::state::accounttype::AccountType;

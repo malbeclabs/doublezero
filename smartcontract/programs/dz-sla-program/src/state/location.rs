@@ -2,9 +2,9 @@ use super::accounttype::*;
 use crate::{bytereader::ByteReader, seeds::SEED_LOCATION};
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::Serialize;
+use solana_program::account_info::AccountInfo;
 use solana_program::pubkey::Pubkey;
 use std::fmt;
-use solana_program::account_info::AccountInfo;
 
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
@@ -56,7 +56,7 @@ impl fmt::Display for Location {
         write!(
             f,
             "account_type: {}, owner: {}, index: {}, bump_seed:{}, code: {}, name: {}, country: {} lat: {}, lng: {}, loc_id: {}, status: {}",
-            self.account_type, self.owner, self.index, self.bump_seed, self.code, self.name, self.country, self.lat, self.lng, self.loc_id, self.status, 
+            self.account_type, self.owner, self.index, self.bump_seed, self.code, self.name, self.country, self.lat, self.lng, self.loc_id, self.status,
         )
     }
 }

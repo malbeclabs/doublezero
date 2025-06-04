@@ -36,7 +36,7 @@ mod tests {
     use crate::device::delete::DeleteDeviceCliCommand;
     use crate::doublezerocommand::CliCommand;
     use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::tests::create_test_client;
+    use crate::tests::utils::create_test_client;
     use doublezero_sdk::commands::device::delete::DeleteDeviceCommand;
     use doublezero_sdk::commands::device::get::GetDeviceCommand;
     use doublezero_sdk::commands::exchange::get::GetExchangeCommand;

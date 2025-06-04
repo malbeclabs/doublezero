@@ -38,7 +38,7 @@ impl RemoveMulticastGroupSubAllowlistCommand {
 mod tests {
     use crate::{
         commands::multicastgroup::allowlist::subscriber::remove::RemoveMulticastGroupSubAllowlistCommand,
-        tests::tests::create_test_client,
+        tests::utils::create_test_client,
     };
     use doublezero_sla_program::{
         instructions::DoubleZeroInstruction,
@@ -70,13 +70,13 @@ mod tests {
             publishers: vec![],
             subscribers: vec![],
             pub_allowlist: vec![],
-            sub_allowlist: vec![pubkey.clone()],
+            sub_allowlist: vec![pubkey],
         };
 
         let cloned_mgroup = mgroup.clone();
         client
             .expect_get()
-            .with(predicate::eq(pubkey.clone()))
+            .with(predicate::eq(pubkey))
             .returning(move |_| Ok(AccountData::MulticastGroup(cloned_mgroup.clone())));
         let cloned_mgroup = mgroup.clone();
         client
@@ -84,19 +84,14 @@ mod tests {
             .with(predicate::eq(AccountType::MulticastGroup))
             .returning(move |_| {
                 let mut map = std::collections::HashMap::new();
-                map.insert(
-                    pubkey.clone(),
-                    AccountData::MulticastGroup(cloned_mgroup.clone()),
-                );
+                map.insert(pubkey, AccountData::MulticastGroup(cloned_mgroup.clone()));
                 Ok(map)
             });
         client
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::RemoveMulticastGroupSubAllowlist(
-                    RemoveMulticastGroupSubAllowlistArgs {
-                        pubkey: pubkey.clone(),
-                    },
+                    RemoveMulticastGroupSubAllowlistArgs { pubkey },
                 )),
                 predicate::always(),
             )
@@ -104,7 +99,7 @@ mod tests {
 
         let res = RemoveMulticastGroupSubAllowlistCommand {
             pubkey_or_code: "test_code".to_string(),
-            pubkey: pubkey,
+            pubkey,
         }
         .execute(&client);
 

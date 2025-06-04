@@ -44,7 +44,7 @@ impl ListDeviceAllowlistCliCommand {
 mod tests {
     use crate::allowlist::device::list::ListDeviceAllowlistCliCommand;
     use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::tests::create_test_client;
+    use crate::tests::utils::create_test_client;
     use doublezero_sdk::commands::allowlist::device::list::ListDeviceAllowlistCommand;
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;

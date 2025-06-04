@@ -29,7 +29,7 @@ impl ListExchangeCommand {
 mod tests {
     use std::collections::HashMap;
 
-    use crate::{commands::exchange::list::ListExchangeCommand, tests::tests::create_test_client};
+    use crate::{commands::exchange::list::ListExchangeCommand, tests::utils::create_test_client};
     use doublezero_sla_program::state::{
         accountdata::AccountData,
         accounttype::AccountType,

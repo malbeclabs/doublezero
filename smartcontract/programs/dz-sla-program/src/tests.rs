@@ -272,7 +272,7 @@ pub mod test {
             exchange_pk: exchange_la_pubkey,
             device_type: DeviceType::Switch,
             public_ip: [1, 0, 0, 1],
-            dz_prefixes: vec![networkv4_parse(&"10.0.0.1/24".to_string())],
+            dz_prefixes: vec![networkv4_parse("10.0.0.1/24")],
         };
 
         println!("Testing Device LA initialization...");
@@ -318,7 +318,7 @@ pub mod test {
             exchange_pk: exchange_ny_pubkey,
             device_type: DeviceType::Switch,
             public_ip: [1, 0, 0, 2],
-            dz_prefixes: vec![networkv4_parse(&"10.1.0.1/24".to_string())],
+            dz_prefixes: vec![networkv4_parse("10.1.0.1/24")],
         };
 
         execute_transaction(
@@ -417,8 +417,8 @@ pub mod test {
             tunnel_type: TunnelTunnelType::MPLSoGRE,
             bandwidth: 100,
             mtu: 1900,
-            delay_ns: 12 * 1000000,
-            jitter_ns: 1 * 1000000,
+            delay_ns: 12_000_000,
+            jitter_ns: 1_000_000,
         };
 
         println!("Testing Tunnel LA-NY initialization...");
@@ -451,7 +451,7 @@ pub mod test {
         );
 
         println!("Testing Tunnel activation...");
-        let tunnel_net: NetworkV4 = networkv4_parse(&"10.31.0.0/31".to_string());
+        let tunnel_net: NetworkV4 = networkv4_parse("10.31.0.0/31");
         let tunnel_activate: TunnelActivateArgs = TunnelActivateArgs {
             index: tunnel.index,
             bump_seed: tunnel.bump_seed,
@@ -502,7 +502,7 @@ pub mod test {
             user_type: UserType::IBRL,
             device_pk: device_la_pubkey,
             cyoa_type: UserCYOA::GREOverDIA,
-            client_ip: user_ip.clone(),
+            client_ip: user_ip,
         };
 
         println!("Testing User1 initialization...");
@@ -532,8 +532,8 @@ pub mod test {
             user1.index
         );
 
-        let tunnel_net: NetworkV4 = networkv4_parse(&"10.0.0.0/24".to_string());
-        let dz_ip: IpV4 = ipv4_parse(&"10.2.0.1".to_string());
+        let tunnel_net: NetworkV4 = networkv4_parse("10.0.0.0/24");
+        let dz_ip: IpV4 = ipv4_parse("10.2.0.1");
 
         let update1: UserActivateArgs = UserActivateArgs {
             index: user1.index,
@@ -647,7 +647,7 @@ pub mod test {
         accounts: Vec<AccountMeta>,
         payer: &Keypair,
     ) -> Transaction {
-        return Transaction::new_with_payer(
+        Transaction::new_with_payer(
             &[Instruction::new_with_bytes(
                 program_id,
                 &to_vec(&instruction).unwrap(),
@@ -661,6 +661,6 @@ pub mod test {
                 .concat(),
             )],
             Some(&payer.pubkey()),
-        );
+        )
     }
 }

@@ -34,7 +34,7 @@ impl SuspendLocationCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::location::suspend::SuspendLocationCommand, tests::tests::create_test_client,
+        commands::location::suspend::SuspendLocationCommand, tests::utils::create_test_client,
         DoubleZeroClient,
     };
     use doublezero_sla_program::{

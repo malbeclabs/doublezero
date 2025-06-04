@@ -33,7 +33,7 @@ impl DeleteTunnelCliCommand {
 mod tests {
     use crate::doublezerocommand::CliCommand;
     use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::tests::create_test_client;
+    use crate::tests::utils::create_test_client;
     use crate::tunnel::delete::DeleteTunnelCliCommand;
     use doublezero_sdk::commands::device::get::GetDeviceCommand;
     use doublezero_sdk::commands::tunnel::delete::DeleteTunnelCommand;

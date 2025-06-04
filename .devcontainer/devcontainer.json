@@ -27,7 +27,13 @@
                     "buildFlags": [
                         "-tags=e2e"
                     ]
-                }
+                },
+                "rust-analyzer.checkOnSave.command": "clippy",
+                "rust-analyzer.checkOnSave.extraArgs": [
+                    "--",
+                    "-Dclippy::all",
+                    "-Dwarnings"
+                ]
             }
         }
     },

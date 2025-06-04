@@ -174,7 +174,7 @@ mod tests {
             delay_ns: 1234,
             jitter_ns: 1121,
             tunnel_id: 1234,
-            tunnel_net: networkv4_parse(&"1.2.3.4/32".to_string()),
+            tunnel_net: networkv4_parse("1.2.3.4/32"),
             code: "test-123".to_string(),
             status: TunnelStatus::Activated,
         };

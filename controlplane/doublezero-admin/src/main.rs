@@ -1,5 +1,4 @@
 use clap::Parser;
-use doublezero_sdk::DZClient;
 use cli::command::Command;
 use cli::config::ConfigCommands;
 use cli::device::{DeviceAllowlistCommands, DeviceCommands};
@@ -9,6 +8,7 @@ use cli::location::LocationCommands;
 use cli::tunnel::TunnelCommands;
 use cli::user::{UserAllowlistCommands, UserCommands};
 use doublezero_cli::doublezerocommand::CliCommandImpl;
+use doublezero_sdk::DZClient;
 mod cli;
 
 include!(concat!(env!("OUT_DIR"), "/version.rs"));
@@ -119,7 +119,7 @@ async fn main() -> eyre::Result<()> {
     match res {
         Ok(_) => {}
         Err(e) => {
-            eprintln!("{}: {}", "Error", e);
+            eprintln!("Error: {}", e);
             std::process::exit(1);
         }
     };

@@ -1,9 +1,13 @@
 use super::accounttype::*;
-use crate::{bytereader::ByteReader, seeds::{SEED_MULTICAST_GROUP}, types::{ipv4_to_string, IpV4}};
+use crate::{
+    bytereader::ByteReader,
+    seeds::SEED_MULTICAST_GROUP,
+    types::{ipv4_to_string, IpV4},
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::Serialize;
-use solana_program::pubkey::Pubkey;
 use solana_program::account_info::AccountInfo;
+use solana_program::pubkey::Pubkey;
 use std::fmt;
 
 #[repr(u8)]
@@ -44,19 +48,19 @@ impl fmt::Display for MulticastGroupStatus {
 
 #[derive(BorshSerialize, Debug, PartialEq, Clone, Serialize)]
 pub struct MulticastGroup {
-    pub account_type: AccountType,      // 1
-    pub owner: Pubkey,                  // 32
-    pub index: u128,                    // 16
-    pub bump_seed: u8,                  // 1
-    pub tenant_pk: Pubkey,              // 32
-    pub multicast_ip: IpV4,             // 4
-    pub max_bandwidth: u64,             // 8
-    pub status: MulticastGroupStatus,   // 1
-    pub code: String,                   // 4 + len
-    pub pub_allowlist: Vec<Pubkey>,     // 4 + 32 * len
-    pub sub_allowlist: Vec<Pubkey>,     // 4 + 32 * len
-    pub publishers: Vec<Pubkey>,        // 4 + 32 * len
-    pub subscribers: Vec<Pubkey>,       // 4 + 32 * len
+    pub account_type: AccountType,    // 1
+    pub owner: Pubkey,                // 32
+    pub index: u128,                  // 16
+    pub bump_seed: u8,                // 1
+    pub tenant_pk: Pubkey,            // 32
+    pub multicast_ip: IpV4,           // 4
+    pub max_bandwidth: u64,           // 8
+    pub status: MulticastGroupStatus, // 1
+    pub code: String,                 // 4 + len
+    pub pub_allowlist: Vec<Pubkey>,   // 4 + 32 * len
+    pub sub_allowlist: Vec<Pubkey>,   // 4 + 32 * len
+    pub publishers: Vec<Pubkey>,      // 4 + 32 * len
+    pub subscribers: Vec<Pubkey>,     // 4 + 32 * len
 }
 
 impl fmt::Display for MulticastGroup {
@@ -64,7 +68,7 @@ impl fmt::Display for MulticastGroup {
         write!(
             f,
             "account_type: {}, owner: {}, index: {}, bump_seed:{}, code: {}, multicast_ip: {}, max_bandwdith: {}, status: {}",
-            self.account_type, self.owner, self.index, self.bump_seed, self.code, ipv4_to_string(&self.multicast_ip), self.max_bandwidth,  self.status, 
+            self.account_type, self.owner, self.index, self.bump_seed, self.code, ipv4_to_string(&self.multicast_ip), self.max_bandwidth,  self.status,
         )
     }
 }
@@ -74,9 +78,23 @@ impl AccountTypeInfo for MulticastGroup {
         SEED_MULTICAST_GROUP
     }
     fn size(&self) -> usize {
-        1 + 32 + 16 + 1 + 32 + 4 + 8 + 4 + self.code.len() +
-        4 + self.pub_allowlist.len() * 32 + 4 + self.sub_allowlist.len() * 32 +
-        4 + self.publishers.len() * 32 + 4 + self.subscribers.len() * 32 + 1 
+        1 + 32
+            + 16
+            + 1
+            + 32
+            + 4
+            + 8
+            + 4
+            + self.code.len()
+            + 4
+            + self.pub_allowlist.len() * 32
+            + 4
+            + self.sub_allowlist.len() * 32
+            + 4
+            + self.publishers.len() * 32
+            + 4
+            + self.subscribers.len() * 32
+            + 1
     }
     fn index(&self) -> u128 {
         self.index
@@ -154,13 +172,38 @@ mod tests {
         assert_eq!(val.account_type, val2.account_type);
         assert_eq!(val.max_bandwidth, val2.max_bandwidth);
         assert_eq!(val.account_type as u8, data[0], "Invalid Account Type");
-        assert_eq!(val.account_type as u8, val2.account_type as u8, "Invalid Account Type");
-        assert_eq!(val.pub_allowlist.len(), val2.pub_allowlist.len(), "Invalid Pub Allowlist");
-        assert_eq!(val.sub_allowlist.len(), val2.sub_allowlist.len(), "Invalid Sub Allowlist");
-        assert_eq!(val.publishers.len(), val2.publishers.len(), "Invalid Publishers");
-        assert_eq!(val.subscribers.len(), val2.subscribers.len(), "Invalid Subscribers");
-        assert_eq!(val.pub_allowlist[0], val2.pub_allowlist[0], "Invalid Pub Allowlist");
-        assert_eq!(val.sub_allowlist[0], val2.sub_allowlist[0], "Invalid Sub Allowlist");        
+        assert_eq!(
+            val.account_type as u8, val2.account_type as u8,
+            "Invalid Account Type"
+        );
+        assert_eq!(
+            val.pub_allowlist.len(),
+            val2.pub_allowlist.len(),
+            "Invalid Pub Allowlist"
+        );
+        assert_eq!(
+            val.sub_allowlist.len(),
+            val2.sub_allowlist.len(),
+            "Invalid Sub Allowlist"
+        );
+        assert_eq!(
+            val.publishers.len(),
+            val2.publishers.len(),
+            "Invalid Publishers"
+        );
+        assert_eq!(
+            val.subscribers.len(),
+            val2.subscribers.len(),
+            "Invalid Subscribers"
+        );
+        assert_eq!(
+            val.pub_allowlist[0], val2.pub_allowlist[0],
+            "Invalid Pub Allowlist"
+        );
+        assert_eq!(
+            val.sub_allowlist[0], val2.sub_allowlist[0],
+            "Invalid Sub Allowlist"
+        );
         assert_eq!(data.len(), val.size(), "Invalid Size");
     }
 }

@@ -54,7 +54,7 @@ impl UpdateTunnelCliCommand {
 mod tests {
     use crate::doublezerocommand::CliCommand;
     use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::tests::create_test_client;
+    use crate::tests::utils::create_test_client;
     use crate::tunnel::update::UpdateTunnelCliCommand;
     use doublezero_sdk::commands::tunnel::get::GetTunnelCommand;
     use doublezero_sdk::commands::tunnel::update::UpdateTunnelCommand;

@@ -28,7 +28,7 @@ impl ListLocationCommand {
 mod tests {
     use std::collections::HashMap;
 
-    use crate::{commands::location::list::ListLocationCommand, tests::tests::create_test_client};
+    use crate::{commands::location::list::ListLocationCommand, tests::utils::create_test_client};
     use doublezero_sla_program::state::{
         accountdata::AccountData,
         accounttype::AccountType,

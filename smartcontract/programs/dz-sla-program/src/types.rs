@@ -115,13 +115,13 @@ mod tests {
 
     #[test]
     fn test_ipv4_parse() {
-        let ip = ipv4_parse(&"1.2.3.4".to_string());
+        let ip = ipv4_parse("1.2.3.4");
         assert_eq!(ip, [1, 2, 3, 4]);
     }
 
     #[test]
     fn test_ipv4_serialize() {
-        let val = ipv4_parse(&"1.2.3.4".to_string());
+        let val = ipv4_parse("1.2.3.4");
         let data = borsh::to_vec(&val).unwrap();
         let val2 = borsh::from_slice::<IpV4>(&data).unwrap();
         assert_eq!(val, val2);
@@ -130,13 +130,13 @@ mod tests {
 
     #[test]
     fn test_networkv4_parse() {
-        let ip = networkv4_parse(&"10.0.0.1/24".to_string());
+        let ip = networkv4_parse("10.0.0.1/24");
         assert_eq!(ip, ([10, 0, 0, 1], 24));
     }
 
     #[test]
     fn test_networkv4_serialize() {
-        let val = networkv4_parse(&"10.0.0.1/24".to_string());
+        let val = networkv4_parse("10.0.0.1/24");
         let data = borsh::to_vec(&val).unwrap();
         let val2 = borsh::from_slice::<NetworkV4>(&data).unwrap();
         assert_eq!(val, val2);
@@ -145,13 +145,13 @@ mod tests {
 
     #[test]
     fn test_networkv4_list_parse() {
-        let ip = networkv4_list_parse(&"10.0.0.1/24,11.0.0.1/24".to_string());
+        let ip = networkv4_list_parse("10.0.0.1/24,11.0.0.1/24");
         assert_eq!(ip, vec!(([10, 0, 0, 1], 24), ([11, 0, 0, 1], 24)));
     }
 
     #[test]
     fn test_networkv4_list_serialize() {
-        let val = networkv4_list_parse(&"10.0.0.1/24,11.0.0.1/24".to_string());
+        let val = networkv4_list_parse("10.0.0.1/24,11.0.0.1/24");
         let data = borsh::to_vec(&val).unwrap();
         let val2 = borsh::from_slice::<NetworkV4List>(&data).unwrap();
         assert_eq!(val, val2);

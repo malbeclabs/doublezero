@@ -34,8 +34,8 @@ impl ResumeExchangeCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::exchange::resume::ResumeExchangeCommand,
-        tests::tests::create_test_client, DoubleZeroClient,
+        commands::exchange::resume::ResumeExchangeCommand, tests::utils::create_test_client,
+        DoubleZeroClient,
     };
     use doublezero_sla_program::{
         instructions::DoubleZeroInstruction,
@@ -56,12 +56,10 @@ mod tests {
         client
             .expect_execute_transaction()
             .with(
-                predicate::eq(DoubleZeroInstruction::ResumeExchange(
-                    ExchangeResumeArgs {
-                        index: 1,
-                        bump_seed,
-                    },
-                )),
+                predicate::eq(DoubleZeroInstruction::ResumeExchange(ExchangeResumeArgs {
+                    index: 1,
+                    bump_seed,
+                })),
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),

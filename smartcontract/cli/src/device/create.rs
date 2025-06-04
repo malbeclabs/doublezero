@@ -70,7 +70,7 @@ mod tests {
     use crate::device::create::CreateDeviceCliCommand;
     use crate::doublezerocommand::CliCommand;
     use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::tests::create_test_client;
+    use crate::tests::utils::create_test_client;
     use doublezero_sdk::commands::device::create::CreateDeviceCommand;
     use doublezero_sdk::commands::exchange::get::GetExchangeCommand;
     use doublezero_sdk::get_device_pda;

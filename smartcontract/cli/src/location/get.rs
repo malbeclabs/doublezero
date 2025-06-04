@@ -1,7 +1,7 @@
+use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::commands::location::get::GetLocationCommand;
 use std::io::Write;
-use crate::doublezerocommand::CliCommand;
 
 #[derive(Args, Debug)]
 pub struct GetLocationCliCommand {
@@ -15,7 +15,7 @@ impl GetLocationCliCommand {
             pubkey_or_code: self.code,
         })?;
 
-        writeln!(out, 
+        writeln!(out,
                 "account: {},\r\ncode: {}\r\nname: {}\r\ncountry: {}\r\nlat: {}\r\nlng: {}\r\nloc_id: {}\r\nstatus: {}\r\nowner: {}",
                 pubkey,
                 location.code,
@@ -34,19 +34,20 @@ impl GetLocationCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-    use std::str::FromStr;
+    use crate::location::get::GetLocationCliCommand;
+    use crate::tests::utils::create_test_client;
     use doublezero_sdk::{AccountType, GetLocationCommand, Location, LocationStatus};
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
-    use crate::location::get::GetLocationCliCommand;
-    use crate::tests::tests::create_test_client;
+    use std::collections::HashMap;
+    use std::str::FromStr;
 
     #[test]
     fn test_cli_location_get() {
         let mut client = create_test_client();
 
-        let location1_pubkey = Pubkey::from_str("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB").unwrap();
+        let location1_pubkey =
+            Pubkey::from_str("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB").unwrap();
         let location1 = Location {
             account_type: AccountType::Location,
             index: 1,
@@ -79,13 +80,11 @@ mod tests {
             .expect_get_location()
             .returning(move |_| Err(eyre::eyre!("not found")));
 
-        client
-            .expect_list_location()
-            .returning(move |_| {
-                let mut list = HashMap::new();
-                list.insert(location1_pubkey, location1.clone());
-                Ok(list)
-            });
+        client.expect_list_location().returning(move |_| {
+            let mut list = HashMap::new();
+            list.insert(location1_pubkey, location1.clone());
+            Ok(list)
+        });
 
         /*****************************************************************************************************/
         // Expected failure
@@ -94,7 +93,7 @@ mod tests {
             code: Pubkey::new_unique().to_string(),
         }
         .execute(&client, &mut output);
-        assert!(!res.is_ok(), "I shouldn't find anything.");
+        assert!(res.is_err(), "I shouldn't find anything.");
 
         // Expected success
         let mut output = Vec::new();
@@ -106,7 +105,7 @@ mod tests {
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nname: Test Location\r\ncountry: Test Country\r\nlat: 12.34\r\nlng: 56.78\r\nloc_id: 1\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
 
-        // Expected success 
+        // Expected success
         let mut output = Vec::new();
         let res = GetLocationCliCommand {
             code: "test".to_string(),
@@ -115,6 +114,5 @@ mod tests {
         assert!(res.is_ok(), "I should find a item by code");
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nname: Test Location\r\ncountry: Test Country\r\nlat: 12.34\r\nlng: 56.78\r\nloc_id: 1\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
-
     }
 }

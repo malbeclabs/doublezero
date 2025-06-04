@@ -62,7 +62,7 @@ mod tests {
     use solana_sdk::pubkey::Pubkey;
     use solana_sdk::signature::Signature;
 
-    use crate::tests::tests::create_test_client;
+    use crate::tests::utils::create_test_client;
     use crate::user::create::CreateUserCliCommand;
 
     #[test]

@@ -38,7 +38,7 @@ mod tests {
     use crate::allowlist::device::remove::RemoveDeviceAllowlistCliCommand;
     use crate::allowlist::device::remove::RemoveDeviceAllowlistCommand;
     use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::tests::create_test_client;
+    use crate::tests::utils::create_test_client;
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
     use solana_sdk::signature::Signature;

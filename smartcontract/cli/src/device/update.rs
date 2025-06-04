@@ -44,7 +44,7 @@ mod tests {
     use crate::device::update::UpdateDeviceCliCommand;
     use crate::doublezerocommand::CliCommand;
     use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::tests::create_test_client;
+    use crate::tests::utils::create_test_client;
     use doublezero_sdk::commands::device::get::GetDeviceCommand;
     use doublezero_sdk::commands::device::update::UpdateDeviceCommand;
     use doublezero_sdk::get_device_pda;
@@ -75,8 +75,8 @@ mod tests {
             index: 1,
             bump_seed: 255,
             code: "test".to_string(),
-            location_pk: location_pk,
-            exchange_pk: exchange_pk,
+            location_pk,
+            exchange_pk,
             device_type: DeviceType::Switch,
             public_ip: [1, 2, 3, 4],
             dz_prefixes: vec![([1, 2, 3, 4], 32)],

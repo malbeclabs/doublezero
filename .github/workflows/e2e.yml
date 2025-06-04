@@ -24,6 +24,8 @@ jobs:
     permissions:
       packages: read
       contents: read
+    env:
+      BUILDKIT_PROGRESS: plain
     steps:
       - uses: actions/checkout@v4
       - name: Login to docker

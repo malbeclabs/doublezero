@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 
@@ -246,6 +247,9 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			for ip := range boundaryList {
 				tunnel.MulticastBoundaryList = append(tunnel.MulticastBoundaryList, net.ParseIP(ip))
 			}
+			sort.Slice(tunnel.MulticastBoundaryList, func(i, j int) bool {
+				return tunnel.MulticastBoundaryList[i].String() < tunnel.MulticastBoundaryList[j].String()
+			})
 		}
 	}
 

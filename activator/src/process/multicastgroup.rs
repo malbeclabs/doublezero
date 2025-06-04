@@ -6,7 +6,7 @@ use doublezero_sdk::{
     ipv4_to_string, DoubleZeroClient, MulticastGroup, MulticastGroupStatus,
 };
 use solana_sdk::pubkey::Pubkey;
-use std::collections::HashMap;
+use std::collections::{hash_map::Entry, HashMap};
 
 pub fn process_multicastgroup_event(
     client: &dyn DoubleZeroClient,
@@ -50,10 +50,10 @@ pub fn process_multicastgroup_event(
             }
         }
         MulticastGroupStatus::Activated => {
-            if !multicastgroups.contains_key(pubkey) {
-                println!("Add MulticastGroup: {} ", multicastgroup.code,);
+            if let Entry::Vacant(entry) = multicastgroups.entry(*pubkey) {
+                println!("Add MulticastGroup: {} ", multicastgroup.code);
 
-                multicastgroups.insert(*pubkey, multicastgroup.clone());
+                entry.insert(multicastgroup.clone());
                 multicastgroup_tunnel_ips.assign_block((multicastgroup.multicast_ip, 32));
             }
         }

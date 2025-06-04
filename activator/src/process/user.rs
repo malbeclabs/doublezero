@@ -13,12 +13,10 @@ use doublezero_sdk::{
     ipv4_to_string, networkv4_list_to_string, networkv4_to_string, DoubleZeroClient, User,
     UserStatus, UserType,
 };
-use solana_sdk::pubkey::Pubkey;
-use std::collections::HashMap;
+use std::collections::{hash_map::Entry, HashMap};
 
 pub fn process_user_event(
     client: &dyn DoubleZeroClient,
-    pubkey: &Pubkey,
     devices: &mut DeviceMap,
     user_tunnel_ips: &mut IPBlockAllocator,
     tunnel_tunnel_ids: &mut IDAllocator,
@@ -28,142 +26,108 @@ pub fn process_user_event(
     match user.status {
         // Create User
         UserStatus::Pending => {
-            print!("Activating User   {} ", ipv4_to_string(&user.client_ip));
-            // Load Device if not exists
-            if !devices.contains_key(&user.device_pk) {
-                let res = GetDeviceCommand {
-                    pubkey_or_code: user.device_pk.to_string(),
-                }
-                .execute(client);
-
-                match res {
-                    Ok((_, device)) => {
-                        println!(
-                            "Add Device: {} public_ip: {} dz_prefixes: {} ",
-                            device.code,
-                            ipv4_to_string(&device.public_ip),
-                            networkv4_list_to_string(&device.dz_prefixes)
-                        );
-
-                        devices.insert(*pubkey, DeviceState::new(&device));
-                    }
-                    Err(e) => {
-                        println!("Error: {}", e);
-                    }
-                }
-            }
-
-            match devices.get_mut(&user.device_pk) {
-                Some(device_state) => {
-                    print!("for {} ", device_state.device.code);
-
-                    match user_tunnel_ips.next_available_block(0, 2) {
-                        Some(tunnel_net) => {
-                            print!("tunnel_net: {} ", networkv4_to_string(&tunnel_net));
-
-                            let tunnel_id = device_state.get_next_tunnel_id();
-
-                            let need_dz_ip = match user.user_type {
-                                UserType::IBRLWithAllocatedIP | UserType::EdgeFiltering => true,
-                                UserType::IBRL => false,
-                                UserType::Multicast => !user.publishers.is_empty(),
-                            };
-
-                            let maybe_dz_ip = if need_dz_ip {
-                                device_state.get_next_dz_ip()
-                            } else {
-                                Some(user.client_ip)
-                            };
-
-                            match maybe_dz_ip {
-                                None => {
-                                    eprintln!("Error: No available dz_ip to allocate");
-
-                                    let res = RejectUserCommand {
-                                        index: user.index,
-                                        reason: "Error: No available dz_ip to allocate".to_string(),
-                                    }
-                                    .execute(client);
-
-                                    match res {
-                                        Ok(signature) => {
-                                            println!("Rejected {}", signature);
-                                            *state_transitions
-                                                .entry("user-pending-to-rejected")
-                                                .or_insert(0) += 1;
-                                        }
-                                        Err(e) => println!("Error: {}", e),
-                                    }
-                                }
-                                Some(dz_ip) => {
-                                    print!(
-                                        "tunnel_id: {} dz_ip: {} ",
-                                        tunnel_id,
-                                        ipv4_to_string(&dz_ip)
-                                    );
-
-                                    let res = ActivateUserCommand {
-                                        index: user.index,
-                                        tunnel_id,
-                                        tunnel_net,
-                                        dz_ip,
-                                    }
-                                    .execute(client);
-
-                                    match res {
-                                        Ok(signature) => {
-                                            println!("Activated   {}", signature);
-                                            *state_transitions
-                                                .entry("user-pending-to-activated")
-                                                .or_insert(0) += 1;
-                                        }
-                                        Err(e) => println!("Error: {}", e),
-                                    }
-                                }
-                            }
-                        }
-                        None => {
-                            println!("Error: No available user block");
-
-                            let res = RejectUserCommand {
-                                index: user.index,
-                                reason: "Error: No available user block".to_string(),
-                            }
-                            .execute(client);
-
-                            match res {
-                                Ok(signature) => {
-                                    println!("Rejected {}", signature);
-                                    *state_transitions
-                                        .entry("user-pending-to-rejected")
-                                        .or_insert(0) += 1;
-                                }
-                                Err(e) => println!("Error: {}", e),
-                            }
-                        }
-                    }
-                }
-                None => {
-                    eprintln!("Error: Device not found {}", user.device_pk);
-
-                    let res = RejectUserCommand {
-                        index: user.index,
-                        reason: "Error: Device not found".to_string(),
+            let device_state = match devices.entry(user.device_pk) {
+                Entry::Occupied(entry) => entry.into_mut(),
+                Entry::Vacant(entry) => {
+                    let res = GetDeviceCommand {
+                        pubkey_or_code: user.device_pk.to_string(),
                     }
                     .execute(client);
 
                     match res {
-                        Ok(signature) => {
-                            println!("Rejected {}", signature);
-                            *state_transitions
-                                .entry("user-pending-to-rejected")
-                                .or_insert(0) += 1;
+                        Ok((_, device)) => {
+                            println!(
+                                "Add Device: {} public_ip: {} dz_prefixes: {} ",
+                                device.code,
+                                ipv4_to_string(&device.public_ip),
+                                networkv4_list_to_string(&device.dz_prefixes)
+                            );
+                            entry.insert(DeviceState::new(&device))
                         }
-                        Err(e) => println!("Error: {}", e),
+                        Err(_) => {
+                            // Reject user since we couldn't load the device
+                            reject_user(client, user, "Error: Device not found", state_transitions);
+                            return;
+                        }
                     }
                 }
+            };
+
+            println!(
+                "Activating User: {}, for: {}",
+                ipv4_to_string(&user.client_ip),
+                device_state.device.code
+            );
+
+            // Try to get tunnel network
+            let tunnel_net = match user_tunnel_ips.next_available_block(0, 2) {
+                Some(net) => net,
+                None => {
+                    // Reject user since we couldn't get their user block
+                    reject_user(
+                        client,
+                        user,
+                        "Error: No available user block",
+                        state_transitions,
+                    );
+                    return;
+                }
+            };
+
+            print!("tunnel_net: {} ", networkv4_to_string(&tunnel_net));
+
+            let tunnel_id = device_state.get_next_tunnel_id();
+
+            let need_dz_ip = match user.user_type {
+                UserType::IBRLWithAllocatedIP | UserType::EdgeFiltering => true,
+                UserType::IBRL => false,
+                UserType::Multicast => !user.publishers.is_empty(),
+            };
+
+            let dz_ip = if need_dz_ip {
+                match device_state.get_next_dz_ip() {
+                    Some(ip) => ip,
+                    None => {
+                        eprintln!("Error: No available dz_ip to allocate");
+                        reject_user(
+                            client,
+                            user,
+                            "Error: No available dz_ip to allocate",
+                            state_transitions,
+                        );
+                        return;
+                    }
+                }
+            } else {
+                user.client_ip
+            };
+
+            print!(
+                "tunnel_id: {} dz_ip: {} ",
+                tunnel_id,
+                ipv4_to_string(&dz_ip)
+            );
+
+            // Activate the user
+            let res = ActivateUserCommand {
+                index: user.index,
+                tunnel_id,
+                tunnel_net,
+                dz_ip,
+            }
+            .execute(client);
+
+            match res {
+                Ok(signature) => {
+                    println!("Activated   {}", signature);
+                    *state_transitions
+                        .entry("user-pending-to-activated")
+                        .or_insert(0) += 1;
+                }
+                Err(e) => println!("Error: {}", e),
             }
         }
+
         // Delete User
         UserStatus::Deleting | UserStatus::PendingBan => {
             print!("Deactivating User {} ", ipv4_to_string(&user.client_ip));
@@ -223,6 +187,29 @@ pub fn process_user_event(
     }
 }
 
+fn reject_user(
+    client: &dyn DoubleZeroClient,
+    user: &User,
+    reason: &str,
+    state_transitions: &mut HashMap<&str, usize>,
+) {
+    let res = RejectUserCommand {
+        index: user.index,
+        reason: reason.to_string(),
+    }
+    .execute(client);
+
+    match res {
+        Ok(signature) => {
+            println!("Rejected {}", signature);
+            *state_transitions
+                .entry("user-pending-to-rejected")
+                .or_insert(0) += 1;
+        }
+        Err(e) => println!("Error: {}", e),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
@@ -273,7 +260,6 @@ mod tests {
             dz_prefixes: vec![([10, 0, 0, 1], 24)],
         };
 
-        let user_pubkey = Pubkey::new_unique();
         let user = User {
             account_type: AccountType::User,
             owner: Pubkey::new_unique(),
@@ -315,7 +301,6 @@ mod tests {
 
         process_user_event(
             &client,
-            &user_pubkey,
             &mut devices,
             &mut user_tunnel_ips,
             &mut tunnel_tunnel_ids,
@@ -360,7 +345,6 @@ mod tests {
 
         let device_pubkey = Pubkey::new_unique();
 
-        let user_pubkey = Pubkey::new_unique();
         let user = User {
             account_type: AccountType::User,
             owner: Pubkey::new_unique(),
@@ -406,7 +390,6 @@ mod tests {
 
         process_user_event(
             &client,
-            &user_pubkey,
             &mut devices,
             &mut user_tunnel_ips,
             &mut tunnel_tunnel_ids,
@@ -440,7 +423,6 @@ mod tests {
             dz_prefixes: vec![([10, 0, 0, 0], 32)],
         };
 
-        let user_pubkey = Pubkey::new_unique();
         let user = User {
             account_type: AccountType::User,
             owner: Pubkey::new_unique(),
@@ -487,7 +469,6 @@ mod tests {
 
         process_user_event(
             &client,
-            &user_pubkey,
             &mut devices,
             &mut user_tunnel_ips,
             &mut tunnel_tunnel_ids,
@@ -524,7 +505,6 @@ mod tests {
             dz_prefixes: vec![([10, 0, 0, 1], 24)],
         };
 
-        let pubkey = Pubkey::new_unique();
         let user = User {
             account_type: AccountType::User,
             owner: Pubkey::new_unique(),
@@ -565,7 +545,6 @@ mod tests {
 
         process_user_event(
             &client,
-            &pubkey,
             &mut devices,
             &mut user_tunnel_ips,
             &mut tunnel_tunnel_ids,
@@ -635,7 +614,6 @@ mod tests {
 
         process_user_event(
             &client,
-            &pubkey,
             &mut devices,
             &mut user_tunnel_ips,
             &mut tunnel_tunnel_ids,

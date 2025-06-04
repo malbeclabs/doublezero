@@ -3,7 +3,7 @@ use doublezero_sdk::{
     ipv4_to_string, networkv4_list_to_string, Device, DeviceStatus, DoubleZeroClient,
 };
 use solana_sdk::pubkey::Pubkey;
-use std::collections::HashMap;
+use std::collections::{hash_map::Entry, HashMap};
 
 use crate::{activator::DeviceMap, states::devicestate::DeviceState};
 
@@ -24,6 +24,7 @@ pub fn process_device_event(
             .execute(client);
 
             match res {
+                Err(e) => println!("Error: {}", e),
                 Ok(signature) => {
                     println!("Activated {}", signature);
 
@@ -38,24 +39,20 @@ pub fn process_device_event(
                         .entry("device-pending-to-activated")
                         .or_insert(0) += 1;
                 }
-                Err(e) => println!("Error: {}", e),
             }
         }
-        DeviceStatus::Activated => {
-            if !devices.contains_key(pubkey) {
+        DeviceStatus::Activated => match devices.entry(*pubkey) {
+            Entry::Occupied(mut entry) => entry.get_mut().update(device),
+            Entry::Vacant(entry) => {
                 println!(
                     "Add Device: {} public_ip: {} dz_prefixes: {} ",
                     device.code,
                     ipv4_to_string(&device.public_ip),
                     networkv4_list_to_string(&device.dz_prefixes)
                 );
-
-                devices.insert(*pubkey, DeviceState::new(device));
-            } else {
-                let device_state = devices.get_mut(pubkey).unwrap();
-                device_state.update(device);
+                entry.insert(DeviceState::new(device));
             }
-        }
+        },
         DeviceStatus::Deleting => {
             print!("Deleting Device {} ", device.code);
 
@@ -66,6 +63,7 @@ pub fn process_device_event(
             .execute(client);
 
             match res {
+                Err(e) => println!("Error: {}", e),
                 Ok(signature) => {
                     println!("Deactivated {}", signature);
                     devices.remove(pubkey);
@@ -73,7 +71,6 @@ pub fn process_device_event(
                         .entry("device-deleting-to-deactivated")
                         .or_insert(0) += 1;
                 }
-                Err(e) => println!("Error: {}", e),
             }
         }
         _ => {}

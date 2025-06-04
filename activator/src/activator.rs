@@ -133,9 +133,9 @@ impl Activator {
     }
 
     fn add_device(&mut self, pubkey: &Pubkey, device: &Device) {
-        if !self.devices.contains_key(pubkey) {
-            self.devices.insert(*pubkey, DeviceState::new(device));
-        }
+        self.devices
+            .entry(*pubkey)
+            .or_insert_with(|| DeviceState::new(device));
     }
 
     pub fn run(&mut self) -> eyre::Result<()> {
@@ -200,7 +200,6 @@ impl Activator {
                     AccountData::User(user) => {
                         process_user_event(
                             client,
-                            pubkey,
                             devices,
                             user_tunnel_ips,
                             tunnel_tunnel_ids,

@@ -32,6 +32,7 @@ interface Tunnel501
    ip access-group SEC-USER-PUB-MCAST-IN in
    multicast ipv4 boundary SEC-USER-MCAST-BOUNDARY-501-OUT out
    pim ipv4 sparse-mode
+   pim ipv4 border-router
    pim ipv4 dr-priority 4294967295
    mtu 9216
    ip address 169.254.0.2/31
@@ -48,6 +49,7 @@ interface Tunnel502
    ip access-group SEC-USER-PUB-MCAST-IN in
    multicast ipv4 boundary SEC-USER-MCAST-BOUNDARY-502-OUT out
    pim ipv4 sparse-mode
+   pim ipv4 border-router
    pim ipv4 dr-priority 4294967295
    mtu 9216
    ip address 169.254.0.4/31
@@ -146,6 +148,8 @@ ip access-list standard SEC-USER-MCAST-BOUNDARY-500-OUT
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-501-OUT
 ip access-list standard SEC-USER-MCAST-BOUNDARY-501-OUT
    counters per-entry
+   permit host 239.0.0.3
+   permit host 239.0.0.4
    deny 224.0.0.0/4
 !
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-502-OUT
@@ -158,6 +162,8 @@ ip access-list standard SEC-USER-MCAST-BOUNDARY-502-OUT
 no ip access-list SEC-USER-PUB-MCAST-IN
 ip access-list SEC-USER-PUB-MCAST-IN
    counters per-entry
+   permit icmp any any
+   permit tcp any any eq bgp
    permit ip any 224.0.0.13/32
    permit ip any 239.0.0.0/24
    deny ip any any
@@ -165,6 +171,8 @@ ip access-list SEC-USER-PUB-MCAST-IN
 no ip access-list SEC-USER-SUB-MCAST-IN
 ip access-list SEC-USER-SUB-MCAST-IN
    counters per-entry
+   permit icmp any any
+   permit tcp any any eq bgp
    permit ip any 224.0.0.13/32
    deny ip any any
 !

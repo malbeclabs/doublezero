@@ -19,7 +19,7 @@ interface Tunnel{{ .Id }}
    {{- if eq true .IsMulticast }}
    description USER-MCAST-{{ .Id }}
    {{- if not $.NoHardware }}
-   {{- if and .IsMulticast .MulticastSubscribers (not .MulticastPublishers) }}
+   {{- if and .IsMulticast (gt (len .MulticastSubscribers) 0) (eq (len .MulticastPublishers) 0) }}
    ip access-group SEC-USER-SUB-MCAST-IN in
    {{- else }}
    ip access-group SEC-USER-PUB-MCAST-IN in
@@ -27,6 +27,9 @@ interface Tunnel{{ .Id }}
    {{- end }}
    multicast ipv4 boundary SEC-USER-MCAST-BOUNDARY-{{ .Id }}-OUT out
    pim ipv4 sparse-mode
+   {{- if and .IsMulticast (gt (len .MulticastPublishers) 0) }}
+   pim ipv4 border-router
+   {{- end }}
    pim ipv4 dr-priority 4294967295
    {{- else }}
    description USER-UCAST-{{ .Id }}
@@ -113,7 +116,7 @@ route-map RM-USER-{{ .Id }}-IN permit 10
 {{- range .Device.Tunnels }}
 no ip prefix-list PL-USER-{{ .Id }}
 {{- if eq true .Allocated }}
-{{- if and .IsMulticast .MulticastSubscribers (not .MulticastPublishers) }}
+{{- if and .IsMulticast (gt (len .MulticastSubscribers) 0) (eq (len .MulticastPublishers) 0) }}
 ip prefix-list PL-USER-{{ .Id }} seq 10 deny 0.0.0.0/0 le 32
 {{- else }}
 ip prefix-list PL-USER-{{ .Id }} seq 10 permit {{ .DzIp }}/32
@@ -126,7 +129,7 @@ ip prefix-list PL-USER-{{ .Id }} seq 10 permit {{ .DzIp }}/32
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-{{ .Id }}-OUT
 ip access-list standard SEC-USER-MCAST-BOUNDARY-{{ .Id }}-OUT
    counters per-entry
-   {{- range .MulticastSubscribers }}
+   {{- range .MulticastBoundaryList }}
    permit host {{ . }}
    {{- end }}
    deny 224.0.0.0/4
@@ -136,6 +139,8 @@ ip access-list standard SEC-USER-MCAST-BOUNDARY-{{ .Id }}-OUT
 no ip access-list SEC-USER-PUB-MCAST-IN
 ip access-list SEC-USER-PUB-MCAST-IN
    counters per-entry
+   permit icmp any any
+   permit tcp any any eq bgp
    permit ip any 224.0.0.13/32
    permit ip any {{ .MulticastGroupBlock }}
    deny ip any any
@@ -143,6 +148,8 @@ ip access-list SEC-USER-PUB-MCAST-IN
 no ip access-list SEC-USER-SUB-MCAST-IN
 ip access-list SEC-USER-SUB-MCAST-IN
    counters per-entry
+   permit icmp any any
+   permit tcp any any eq bgp
    permit ip any 224.0.0.13/32
    deny ip any any
 !

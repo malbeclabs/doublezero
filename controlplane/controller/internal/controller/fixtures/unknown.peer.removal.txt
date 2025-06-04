@@ -129,6 +129,8 @@ ip prefix-list PL-USER-502 seq 10 permit 100.0.0.2/32
 no ip access-list SEC-USER-PUB-MCAST-IN
 ip access-list SEC-USER-PUB-MCAST-IN
    counters per-entry
+   permit icmp any any
+   permit tcp any any eq bgp
    permit ip any 224.0.0.13/32
    permit ip any 239.0.0.0/24
    deny ip any any
@@ -136,6 +138,8 @@ ip access-list SEC-USER-PUB-MCAST-IN
 no ip access-list SEC-USER-SUB-MCAST-IN
 ip access-list SEC-USER-SUB-MCAST-IN
    counters per-entry
+   permit icmp any any
+   permit tcp any any eq bgp
    permit ip any 224.0.0.13/32
    deny ip any any
 !

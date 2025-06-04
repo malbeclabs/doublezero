@@ -13,6 +13,7 @@ interface Tunnel500
    description USER-MCAST-500
    multicast ipv4 boundary SEC-USER-MCAST-BOUNDARY-500-OUT out
    pim ipv4 sparse-mode
+   pim ipv4 border-router
    pim ipv4 dr-priority 4294967295
    mtu 9216
    ip address 169.254.0.0/31
@@ -212,11 +213,14 @@ no ip prefix-list PL-USER-519
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-500-OUT
 ip access-list standard SEC-USER-MCAST-BOUNDARY-500-OUT
    counters per-entry
+   permit host 233.84.178.0
    deny 224.0.0.0/4
 !
 no ip access-list SEC-USER-PUB-MCAST-IN
 ip access-list SEC-USER-PUB-MCAST-IN
    counters per-entry
+   permit icmp any any
+   permit tcp any any eq bgp
    permit ip any 224.0.0.13/32
    permit ip any 233.84.178.0/24
    deny ip any any
@@ -224,6 +228,8 @@ ip access-list SEC-USER-PUB-MCAST-IN
 no ip access-list SEC-USER-SUB-MCAST-IN
 ip access-list SEC-USER-SUB-MCAST-IN
    counters per-entry
+   permit icmp any any
+   permit tcp any any eq bgp
    permit ip any 224.0.0.13/32
    deny ip any any
 !

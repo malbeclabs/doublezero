@@ -957,17 +957,19 @@ func waitForController(config []byte) bool {
 
 	agent := pb.NewControllerClient(conn)
 	deadline := time.Now().Add(30 * time.Second)
+	var diff string
 	for time.Now().Before(deadline) {
 		got, err := agent.GetConfig(ctx, &pb.ConfigRequest{Pubkey: agentPubKey})
 		if err != nil {
 			log.Fatalf("error while fetching config: %v\n", err)
 		}
-		diff := cmp.Diff(string(config), got.Config)
+		diff = cmp.Diff(string(config), got.Config)
 		if diff == "" {
 			return true
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
+	log.Printf("output mismatch: +(want), -(got): %s", diff)
 	return false
 }
 

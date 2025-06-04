@@ -100,7 +100,7 @@ func (r *ShowIpRoute) GetCmd() string {
 // show ip mroute sparse-mode
 //
 // "groups": {
-//     "224.5.6.0": {
+//     "233.84.178.0": {
 //         "groupSources": {
 //             "0.0.0.0": {
 //                 "sourceAddress": "0.0.0.0",
@@ -1099,22 +1099,22 @@ func TestMulticastPublisher_Connect_Networking(t *testing.T) {
 			t.Fatalf("error fetching routes: %v", err)
 		}
 
-		// Look for multicast route (224.5.6.0/32 for example)
+		// Look for multicast route (233.84.178.0/32 for example)
 		foundMcastRoute := false
 		for _, route := range routes {
-			if route.Dst != nil && route.Dst.IP.Equal(net.ParseIP("224.5.6.0")) {
+			if route.Dst != nil && route.Dst.IP.Equal(net.ParseIP("233.84.178.0")) {
 				foundMcastRoute = true
 				break
 			}
 		}
 		if !foundMcastRoute {
-			t.Fatalf("multicast route 224.5.6.0/32 not found for publisher")
+			t.Fatalf("multicast route 233.84.178.0/32 not found for publisher")
 		}
 	})
 
 	t.Run("check_s_comma_g_is_created", func(t *testing.T) {
 		// Send single ping to simulate multicast traffic
-		cmd := exec.Command("ping", "-c", "1", "-w", "1", "224.5.6.0")
+		cmd := exec.Command("ping", "-c", "1", "-w", "1", "233.84.178.0")
 		_ = cmd.Run()
 
 		mroutes := &ShowIPMroute{}
@@ -1125,7 +1125,7 @@ func TestMulticastPublisher_Connect_Networking(t *testing.T) {
 			t.Fatalf("error fetching neighbors from doublezero device: %v", err)
 		}
 
-		mGroup := "224.5.6.0"
+		mGroup := "233.84.178.0"
 		groups, ok := mroutes.Groups[mGroup]
 		if !ok {
 			t.Fatalf("multicast group %s not found in mroutes", mGroup)
@@ -1133,7 +1133,7 @@ func TestMulticastPublisher_Connect_Networking(t *testing.T) {
 
 		_, ok = groups.GroupSources["64.86.249.81"]
 		if !ok {
-			t.Fatalf("missing S,G for (64.86.249.81, 224.5.6.0)")
+			t.Fatalf("missing S,G for (64.86.249.81, 233.84.178.0)")
 		}
 	})
 
@@ -1236,8 +1236,8 @@ func TestMulticastPublisher_Disconnect_Networking(t *testing.T) {
 
 		// Verify multicast routes are removed
 		for _, route := range routes {
-			if route.Dst != nil && route.Dst.IP.Equal(net.ParseIP("224.5.6.0")) {
-				t.Fatalf("multicast route 224.5.6.0/32 should be removed after disconnect")
+			if route.Dst != nil && route.Dst.IP.Equal(net.ParseIP("233.84.178.0")) {
+				t.Fatalf("multicast route 233.84.178.0/32 should be removed after disconnect")
 			}
 		}
 	})
@@ -1327,16 +1327,16 @@ func TestMulticastSubscriber_Connect_Networking(t *testing.T) {
 			t.Fatalf("error fetching tunnel addresses: %v", err)
 		}
 
-		// Check for multicast group address (e.g., 224.5.6.0/32)
+		// Check for multicast group address (e.g., 233.84.178.0/32)
 		foundMcastAddr := false
 		for _, addr := range addrs {
-			if addr.IP.Equal(net.ParseIP("224.5.6.0")) {
+			if addr.IP.Equal(net.ParseIP("233.84.178.0")) {
 				foundMcastAddr = true
 				break
 			}
 		}
 		if !foundMcastAddr {
-			t.Fatalf("multicast group address 224.5.6.0 not found on tunnel for subscriber")
+			t.Fatalf("multicast group address 233.84.178.0 not found on tunnel for subscriber")
 		}
 	})
 
@@ -1374,7 +1374,7 @@ func TestMulticastSubscriber_Connect_Networking(t *testing.T) {
 				return false, fmt.Errorf("error fetching neighbors from doublezero device: %v", err)
 			}
 
-			mGroup := "224.5.6.0"
+			mGroup := "233.84.178.0"
 			groups, ok := mroutes.Groups[mGroup]
 			if !ok {
 				return false, nil
@@ -1393,7 +1393,7 @@ func TestMulticastSubscriber_Connect_Networking(t *testing.T) {
 
 		err = waitForCondition(t, condition, 30*time.Second)
 		if err != nil {
-			t.Fatalf("PIM join not received for 224.5.6.0: %v", err)
+			t.Fatalf("PIM join not received for 233.84.178.0: %v", err)
 		}
 	})
 

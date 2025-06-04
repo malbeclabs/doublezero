@@ -1,4 +1,3 @@
-#[cfg(test)]
 pub mod tests {
     use solana_sdk::pubkey::Pubkey;
 

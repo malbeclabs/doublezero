@@ -2,10 +2,13 @@ use eyre::eyre;
 use hyper::body::to_bytes;
 use hyper::{Body, Client, Method, Request};
 use hyperlocal::{UnixConnector, Uri};
+use mockall::automock;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::fs::File;
+use std::path::Path;
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, PartialEq)]
 pub struct ProvisioningRequest {
     pub tunnel_src: String,
     pub tunnel_dst: String,
@@ -25,7 +28,7 @@ pub struct ProvisioningResponse {
     pub description: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Clone, Deserialize, Debug)]
 pub struct LatencyRecord {
     pub device_pk: String,
     pub device_ip: String,
@@ -83,7 +86,10 @@ pub struct ErrorResponse {
     pub description: String,
 }
 
+#[automock]
 pub trait ServiceController {
+    fn service_controller_check(&self) -> bool;
+    fn service_controller_can_open(&self) -> bool;
     async fn latency(&self) -> eyre::Result<Vec<LatencyRecord>>;
     async fn provisioning(&self, args: ProvisioningRequest) -> eyre::Result<ProvisioningResponse>;
     async fn remove(&self, args: RemoveTunnelCliCommand) -> eyre::Result<RemoveResponse>;
@@ -102,7 +108,22 @@ impl ServiceControllerImpl {
     }
 }
 
-impl ServiceController for ServiceControllerImpl{
+impl ServiceController for ServiceControllerImpl {
+    fn service_controller_check(&self) -> bool {
+        Path::new("/var/run/doublezerod/doublezerod.sock").exists()
+    }
+
+    fn service_controller_can_open(&self) -> bool {
+        let file = File::options()
+            .read(true)
+            .write(true)
+            .open("/var/run/doublezerod/doublezerod.sock");
+        match file {
+            Ok(_) => true,
+            Err(e) => !matches!(e.kind(), std::io::ErrorKind::PermissionDenied),
+        }
+    }
+
     async fn latency(&self) -> eyre::Result<Vec<LatencyRecord>> {
         let uri: Uri = Uri::new(&self.socket_path, "/latency");
         let client: Client<UnixConnector, Body> = Client::builder().build(UnixConnector);
@@ -127,10 +148,7 @@ impl ServiceController for ServiceControllerImpl{
         }
     }
 
-    async fn provisioning(
-        &self,
-        args: ProvisioningRequest,
-    ) -> eyre::Result<ProvisioningResponse> {
+    async fn provisioning(&self, args: ProvisioningRequest) -> eyre::Result<ProvisioningResponse> {
         let client: Client<UnixConnector, Body> = Client::builder().build(UnixConnector);
 
         let req = Request::builder()

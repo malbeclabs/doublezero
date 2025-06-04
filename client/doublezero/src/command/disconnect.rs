@@ -37,13 +37,15 @@ pub struct DecommissioningCliCommand {
 impl DecommissioningCliCommand {
     pub async fn execute(self, client: &dyn CliCommand) -> eyre::Result<()> {
         let spinner = init_command();
+        let controller = ServiceControllerImpl::new(None);
+
         // Check that have your id.json
         check_requirements(
             client,
             Some(&spinner),
             CHECK_ID_JSON | CHECK_BALANCE | CHECK_USER_ALLOWLIST,
         )?;
-        check_doublezero(Some(&spinner))?;
+        check_doublezero(&controller, Some(&spinner))?;
         // READY
         spinner.println("🔍  Decommissioning User");
 
@@ -52,7 +54,6 @@ impl DecommissioningCliCommand {
 
         spinner.set_message("deleting user account...");
 
-        let controller = ServiceControllerImpl::new(None);
         let users = client.list_user(ListUserCommand {})?;
 
         for (pubkey, user) in users.iter().filter(|(_, u)| u.client_ip == client_ip) {

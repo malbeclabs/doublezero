@@ -13,7 +13,8 @@ pub struct LatencyCliCommand {}
 
 impl LatencyCliCommand {
     pub async fn execute(self, client: &dyn CliCommand) -> eyre::Result<()> {
-        check_doublezero(None)?;
+        let controller = ServiceControllerImpl::new(None);
+        check_doublezero(&controller, None)?;
 
         let mut table = Table::new();
         table.add_row(row![
@@ -26,7 +27,6 @@ impl LatencyCliCommand {
             "reachable"
         ]);
 
-        let controller = ServiceControllerImpl::new(None);
         let devices = client.list_device(ListDeviceCommand {})?;
 
         for data in controller.latency().await.map_err(|e| eyre::eyre!(e))? {

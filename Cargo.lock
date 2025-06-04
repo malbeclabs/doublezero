@@ -1431,6 +1431,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "console",
+ "doublezero-sla-program",
  "doublezero_cli",
  "doublezero_sdk",
  "eyre",

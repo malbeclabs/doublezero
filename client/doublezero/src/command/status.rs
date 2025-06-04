@@ -16,7 +16,7 @@ impl StatusCliCommand {
         let controller = ServiceControllerImpl::new(None);
 
         // Check requirements
-        check_doublezero(Some(&spinner))?;
+        check_doublezero(&controller, Some(&spinner))?;
 
         match controller.status().await {
             Err(e) => {

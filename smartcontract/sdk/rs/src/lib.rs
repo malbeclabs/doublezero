@@ -35,9 +35,9 @@ mod doublezeroclient;
 mod dztransaction;
 mod errors;
 mod tests;
-mod utils;
 
 pub mod commands;
+pub mod utils;
 
 pub use crate::client::DZClient;
 

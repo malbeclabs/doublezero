@@ -3,21 +3,22 @@
 clear
 killall solana-test-validator
 killall doublezero-activator
+killall solana
 
 # Build the program
 echo "Build the program"
 cargo build-sbf --manifest-path ../programs/dz-sla-program/Cargo.toml -- -Znext-lockfile-bump
-cp ../programs/dz-sla-program/target/deploy/doublezero_sla_program.so ./target/doublezero_sla_program.so
+cp ../../target/deploy/doublezero_sla_program.so ./target/doublezero_sla_program.so
 
 #Build the activator
 echo "Build the activator"
 cargo build --manifest-path ../../activator/Cargo.toml
-cp ../../activator/target/debug/doublezero-activator ./target/
+cp ../../target/debug/doublezero-activator ./target/
 
 #Build the activator
 echo "Build the client"
 cargo build --manifest-path ../../client/doublezero/Cargo.toml
-cp ../../client/doublezero/target/debug/doublezero ./target/
+cp ../../target/debug/doublezero ./target/
 
 # Configure to connect to localnet
 solana config set --url http://127.0.0.1:8899
@@ -33,6 +34,10 @@ solana-test-validator --reset --bpf-program ./keypair.json ./target/doublezero_s
 # Wait for the solana test cluster to start
 echo "Waiting 15 seconds to start the solana test cluster"
 sleep 15
+
+# start isntruction logger
+echo "Start instruction logger"
+solana logs > ./logs/instruction.log 2>&1 &
 
 # initialice doublezero smart contract
 ./target/doublezero init

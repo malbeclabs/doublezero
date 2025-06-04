@@ -18,7 +18,7 @@ impl GetUserCliCommand {
         let (pubkey, user) = client.get_user(GetUserCommand { pubkey })?;
 
         writeln!(out,
-                "account: {} user_type: {} device: {} cyoa_type: {} client_ip: {} tunnel_net: {} dz_ip: {} status: {} owner: {}",
+                "account: {}\r\nuser_type: {}\r\ndevice: {}\r\ncyoa_type: {}\r\nclient_ip: {}\r\ntunnel_net: {}\r\ndz_ip: {}\r\npublishers: {}\r\nsuscribers: {}\r\nstatus: {}\r\nowner: {}",
                 pubkey,
                 user.user_type,
                 user.device_pk,
@@ -26,6 +26,8 @@ impl GetUserCliCommand {
                 ipv4_to_string(&user.client_ip),
                 networkv4_to_string(&user.tunnel_net),
                 ipv4_to_string(&user.dz_ip),
+                user.publishers.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "),
+                user.subscribers.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "),
                 user.status,
                 user.owner
             )?;
@@ -100,6 +102,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by code");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: CJTXjCEbDDgQoccJgEbNGc63QwWzJtdAoSio36zVXHQw user_type: IBRL device: 11111111111111111111111111111111 cyoa_type: GREOverDIA client_ip: 10.0.0.1 tunnel_net: 10.2.3.4/24 dz_ip: 10.0.0.2 status: activated owner: CJTXjCEbDDgQoccJgEbNGc63QwWzJtdAoSio36zVXHQw\n");
+        assert_eq!(output_str, "account: CJTXjCEbDDgQoccJgEbNGc63QwWzJtdAoSio36zVXHQw\r\nuser_type: IBRL\r\ndevice: 11111111111111111111111111111111\r\ncyoa_type: GREOverDIA\r\nclient_ip: 10.0.0.1\r\ntunnel_net: 10.2.3.4/24\r\ndz_ip: 10.0.0.2\r\npublishers: \r\nsuscribers: \r\nstatus: activated\r\nowner: CJTXjCEbDDgQoccJgEbNGc63QwWzJtdAoSio36zVXHQw\n");
     }
 }

@@ -26,13 +26,15 @@ impl GetMulticastGroupCliCommand {
 
         // Write the multicast group details first
         writeln!(out,
-        "account: {}\r\ncode: {}\r\nmulticast_ip: {}\r\nmax_bandwidth: {}\r\rpublisher_allowlist: {}\r\nsubscriber_allowlist: {}\r\nstatus: {}\r\nowner: {}\r\n\r\nusers:\r\n",
+        "account: {}\r\ncode: {}\r\nmulticast_ip: {}\r\nmax_bandwidth: {}\r\rpublisher_allowlist: {}\r\nsubscriber_allowlist: {}\r\npublishers: {}\r\nsubscribers: {}\r\nstatus: {}\r\nowner: {}\r\n\r\nusers:\r\n",
         pubkey,
         mgroup.code,
         ipv4_to_string(&mgroup.multicast_ip),
         bandwidth_to_string(&mgroup.max_bandwidth),
         mgroup.pub_allowlist.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "),
         mgroup.sub_allowlist.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "),
+        mgroup.publishers.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "),
+        mgroup.subscribers.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "),
         mgroup.status,
         mgroup.owner
         )?;
@@ -272,7 +274,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: CahibSNzuzo1MZhonHXLw3bJRmZoecDSJRXWdH4WFYJK\r\ncode: test\r\nmulticast_ip: 10.0.0.1\r\nmax_bandwidth: 1Gbps\r\rpublisher_allowlist: \r\nsubscriber_allowlist: \r\nstatus: activated\r\nowner: CahibSNzuzo1MZhonHXLw3bJRmZoecDSJRXWdH4WFYJK\r\n\r\nusers:\r\n\n account                                   | multicast_mode | device                           | location | cyoa_type  | client_ip   | tunnel_id | tunnel_net  | dz_ip    | status    | owner                                     \n 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 | Tx             | 11111111111111111111111111111111 |          | GREOverDIA | 192.168.1.1 | 12345     | 10.0.0.0/32 | 10.0.0.2 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 \n");
+        assert_eq!(output_str, "account: CahibSNzuzo1MZhonHXLw3bJRmZoecDSJRXWdH4WFYJK\r\ncode: test\r\nmulticast_ip: 10.0.0.1\r\nmax_bandwidth: 1Gbps\r\rpublisher_allowlist: \r\nsubscriber_allowlist: \r\npublishers: 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1\r\nsubscribers: \r\nstatus: activated\r\nowner: CahibSNzuzo1MZhonHXLw3bJRmZoecDSJRXWdH4WFYJK\r\n\r\nusers:\r\n\n account                                   | multicast_mode | device                           | location | cyoa_type  | client_ip   | tunnel_id | tunnel_net  | dz_ip    | status    | owner                                     \n 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 | Tx             | 11111111111111111111111111111111 |          | GREOverDIA | 192.168.1.1 | 12345     | 10.0.0.0/32 | 10.0.0.2 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 \n");
 
         // Expected success
         let mut output = Vec::new();
@@ -282,6 +284,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by code");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: CahibSNzuzo1MZhonHXLw3bJRmZoecDSJRXWdH4WFYJK\r\ncode: test\r\nmulticast_ip: 10.0.0.1\r\nmax_bandwidth: 1Gbps\r\rpublisher_allowlist: \r\nsubscriber_allowlist: \r\nstatus: activated\r\nowner: CahibSNzuzo1MZhonHXLw3bJRmZoecDSJRXWdH4WFYJK\r\n\r\nusers:\r\n\n account                                   | multicast_mode | device                           | location | cyoa_type  | client_ip   | tunnel_id | tunnel_net  | dz_ip    | status    | owner                                     \n 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 | Tx             | 11111111111111111111111111111111 |          | GREOverDIA | 192.168.1.1 | 12345     | 10.0.0.0/32 | 10.0.0.2 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 \n");
+        assert_eq!(output_str, "account: CahibSNzuzo1MZhonHXLw3bJRmZoecDSJRXWdH4WFYJK\r\ncode: test\r\nmulticast_ip: 10.0.0.1\r\nmax_bandwidth: 1Gbps\r\rpublisher_allowlist: \r\nsubscriber_allowlist: \r\npublishers: 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1\r\nsubscribers: \r\nstatus: activated\r\nowner: CahibSNzuzo1MZhonHXLw3bJRmZoecDSJRXWdH4WFYJK\r\n\r\nusers:\r\n\n account                                   | multicast_mode | device                           | location | cyoa_type  | client_ip   | tunnel_id | tunnel_net  | dz_ip    | status    | owner                                     \n 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 | Tx             | 11111111111111111111111111111111 |          | GREOverDIA | 192.168.1.1 | 12345     | 10.0.0.0/32 | 10.0.0.2 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1 \n");
     }
 }

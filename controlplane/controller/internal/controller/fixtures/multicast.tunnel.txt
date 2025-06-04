@@ -157,8 +157,6 @@ ip access-list standard SEC-USER-MCAST-BOUNDARY-502-OUT
    counters per-entry
    permit host 239.0.0.5
    permit host 239.0.0.6
-   permit host 239.0.0.5
-   permit host 239.0.0.6
    deny 224.0.0.0/4
 !
 no ip access-list SEC-USER-PUB-MCAST-IN

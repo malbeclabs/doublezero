@@ -90,6 +90,10 @@ func TestGetConfig(t *testing.T) {
 								DzIp:          net.IP{100, 0, 0, 0},
 								Allocated:     true,
 								IsMulticast:   true,
+								MulticastBoundaryList: []net.IP{
+									{239, 0, 0, 1},
+									{239, 0, 0, 2},
+								},
 								MulticastSubscribers: []net.IP{
 									{239, 0, 0, 1},
 									{239, 0, 0, 2},
@@ -97,14 +101,18 @@ func TestGetConfig(t *testing.T) {
 								MulticastPublishers: []net.IP{},
 							},
 							{
-								Id:                   501,
-								UnderlaySrcIP:        net.IP{3, 3, 3, 3},
-								UnderlayDstIP:        net.IP{4, 4, 4, 4},
-								OverlaySrcIP:         net.IP{169, 254, 0, 2},
-								OverlayDstIP:         net.IP{169, 254, 0, 3},
-								DzIp:                 net.IP{100, 0, 0, 1},
-								Allocated:            true,
-								IsMulticast:          true,
+								Id:            501,
+								UnderlaySrcIP: net.IP{3, 3, 3, 3},
+								UnderlayDstIP: net.IP{4, 4, 4, 4},
+								OverlaySrcIP:  net.IP{169, 254, 0, 2},
+								OverlayDstIP:  net.IP{169, 254, 0, 3},
+								DzIp:          net.IP{100, 0, 0, 1},
+								Allocated:     true,
+								IsMulticast:   true,
+								MulticastBoundaryList: []net.IP{
+									{239, 0, 0, 3},
+									{239, 0, 0, 4},
+								},
 								MulticastSubscribers: []net.IP{},
 								MulticastPublishers: []net.IP{
 									{239, 0, 0, 3},
@@ -120,6 +128,10 @@ func TestGetConfig(t *testing.T) {
 								DzIp:          net.IP{100, 0, 0, 2},
 								Allocated:     true,
 								IsMulticast:   true,
+								MulticastBoundaryList: []net.IP{
+									{239, 0, 0, 5},
+									{239, 0, 0, 6},
+								},
 								MulticastSubscribers: []net.IP{
 									{239, 0, 0, 5},
 									{239, 0, 0, 6},
@@ -156,6 +168,10 @@ func TestGetConfig(t *testing.T) {
 								DzIp:          net.IP{100, 0, 0, 0},
 								Allocated:     true,
 								IsMulticast:   true,
+								MulticastBoundaryList: []net.IP{
+									{239, 0, 0, 1},
+									{239, 0, 0, 2},
+								},
 								MulticastSubscribers: []net.IP{
 									{239, 0, 0, 1},
 									{239, 0, 0, 2},
@@ -180,6 +196,12 @@ func TestGetConfig(t *testing.T) {
 								DzIp:          net.IP{100, 0, 0, 2},
 								Allocated:     true,
 								IsMulticast:   true,
+								MulticastBoundaryList: []net.IP{
+									{239, 0, 0, 3},
+									{239, 0, 0, 4},
+									{239, 0, 0, 5},
+									{239, 0, 0, 6},
+								},
 								MulticastSubscribers: []net.IP{
 									{239, 0, 0, 3},
 									{239, 0, 0, 4},
@@ -190,14 +212,18 @@ func TestGetConfig(t *testing.T) {
 								},
 							},
 							{
-								Id:                   503,
-								UnderlaySrcIP:        net.IP{7, 7, 7, 7},
-								UnderlayDstIP:        net.IP{8, 8, 8, 8},
-								OverlaySrcIP:         net.IP{169, 254, 0, 6},
-								OverlayDstIP:         net.IP{169, 254, 0, 7},
-								DzIp:                 net.IP{100, 0, 0, 3},
-								Allocated:            true,
-								IsMulticast:          true,
+								Id:            503,
+								UnderlaySrcIP: net.IP{7, 7, 7, 7},
+								UnderlayDstIP: net.IP{8, 8, 8, 8},
+								OverlaySrcIP:  net.IP{169, 254, 0, 6},
+								OverlayDstIP:  net.IP{169, 254, 0, 7},
+								DzIp:          net.IP{100, 0, 0, 3},
+								Allocated:     true,
+								IsMulticast:   true,
+								MulticastBoundaryList: []net.IP{
+									{239, 0, 0, 5},
+									{239, 0, 0, 6},
+								},
 								MulticastSubscribers: []net.IP{},
 								MulticastPublishers: []net.IP{
 									{239, 0, 0, 5},
@@ -232,6 +258,10 @@ func TestGetConfig(t *testing.T) {
 								DzIp:          net.IP{100, 0, 0, 0},
 								Allocated:     true,
 								IsMulticast:   true,
+								MulticastBoundaryList: []net.IP{
+									{239, 0, 0, 1},
+									{239, 0, 0, 2},
+								},
 								MulticastSubscribers: []net.IP{
 									{239, 0, 0, 1},
 									{239, 0, 0, 2},
@@ -256,6 +286,12 @@ func TestGetConfig(t *testing.T) {
 								DzIp:          net.IP{100, 0, 0, 2},
 								Allocated:     true,
 								IsMulticast:   true,
+								MulticastBoundaryList: []net.IP{
+									{239, 0, 0, 3},
+									{239, 0, 0, 4},
+									{239, 0, 0, 5},
+									{239, 0, 0, 6},
+								},
 								MulticastSubscribers: []net.IP{
 									{239, 0, 0, 3},
 									{239, 0, 0, 4},
@@ -266,14 +302,18 @@ func TestGetConfig(t *testing.T) {
 								},
 							},
 							{
-								Id:                   503,
-								UnderlaySrcIP:        net.IP{7, 7, 7, 7},
-								UnderlayDstIP:        net.IP{8, 8, 8, 8},
-								OverlaySrcIP:         net.IP{169, 254, 0, 6},
-								OverlayDstIP:         net.IP{169, 254, 0, 7},
-								DzIp:                 net.IP{100, 0, 0, 3},
-								Allocated:            true,
-								IsMulticast:          true,
+								Id:            503,
+								UnderlaySrcIP: net.IP{7, 7, 7, 7},
+								UnderlayDstIP: net.IP{8, 8, 8, 8},
+								OverlaySrcIP:  net.IP{169, 254, 0, 6},
+								OverlayDstIP:  net.IP{169, 254, 0, 7},
+								DzIp:          net.IP{100, 0, 0, 3},
+								Allocated:     true,
+								IsMulticast:   true,
+								MulticastBoundaryList: []net.IP{
+									{239, 0, 0, 5},
+									{239, 0, 0, 6},
+								},
 								MulticastSubscribers: []net.IP{},
 								MulticastPublishers: []net.IP{
 									{239, 0, 0, 5},
@@ -473,6 +513,9 @@ func TestStateCache(t *testing.T) {
 								PubKey:        "11111111111111111111111111111111",
 								Allocated:     true,
 								IsMulticast:   true,
+								MulticastBoundaryList: []net.IP{
+									{239, 0, 0, 1},
+								},
 								MulticastSubscribers: []net.IP{
 									{239, 0, 0, 1},
 								},

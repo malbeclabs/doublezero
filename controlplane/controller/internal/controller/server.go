@@ -221,10 +221,14 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		if user.UserType == dzsdk.UserTypeMulticast {
 			tunnel.IsMulticast = true
 
+			boundaryList := make(map[string]struct{})
+
 			// Set multicast subscribers for the tunnel.
 			for _, subscriber := range user.Subscribers {
 				if subscriberIP, ok := cache.MulticastGroups[base58.Encode(subscriber[:])]; ok {
 					tunnel.MulticastSubscribers = append(tunnel.MulticastSubscribers, net.IP(subscriberIP.MulticastIp[:]))
+
+					boundaryList[net.IP(subscriberIP.MulticastIp[:]).String()] = struct{}{}
 				}
 			}
 
@@ -232,7 +236,15 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			for _, publisher := range user.Publishers {
 				if publisherIP, ok := cache.MulticastGroups[base58.Encode(publisher[:])]; ok {
 					tunnel.MulticastPublishers = append(tunnel.MulticastPublishers, net.IP(publisherIP.MulticastIp[:]))
+
+					boundaryList[net.IP(publisherIP.MulticastIp[:]).String()] = struct{}{}
 				}
+			}
+
+			// Set multicast boundary list for the tunnel.
+			// This is the combined and deduplicated list of subscribers and publishers.
+			for ip := range boundaryList {
+				tunnel.MulticastBoundaryList = append(tunnel.MulticastBoundaryList, net.ParseIP(ip))
 			}
 		}
 	}

@@ -129,10 +129,7 @@ ip prefix-list PL-USER-{{ .Id }} seq 10 permit {{ .DzIp }}/32
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-{{ .Id }}-OUT
 ip access-list standard SEC-USER-MCAST-BOUNDARY-{{ .Id }}-OUT
    counters per-entry
-   {{- range .MulticastSubscribers }}
-   permit host {{ . }}
-   {{- end }}
-   {{- range .MulticastPublishers }}
+   {{- range .MulticastBoundaryList }}
    permit host {{ . }}
    {{- end }}
    deny 224.0.0.0/4

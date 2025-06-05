@@ -6,14 +6,18 @@ use doublezero_cli::{
     helpers::init_command,
     requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON, CHECK_USER_ALLOWLIST},
 };
-use doublezero_sdk::commands::{
-    device::get::GetDeviceCommand, device::list::ListDeviceCommand,
-    globalconfig::get::GetGlobalConfigCommand, multicastgroup::list::ListMulticastGroupCommand,
-    multicastgroup::subscribe::SubscribeMulticastGroupCommand, user::create::CreateUserCommand,
-    user::create_subscribe::CreateSubscribeUserCommand, user::get::GetUserCommand,
-    user::list::ListUserCommand,
-};
 use doublezero_sdk::{
+    commands::{
+        device::{get::GetDeviceCommand, list::ListDeviceCommand},
+        globalconfig::get::GetGlobalConfigCommand,
+        multicastgroup::{
+            list::ListMulticastGroupCommand, subscribe::SubscribeMulticastGroupCommand,
+        },
+        user::{
+            create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand,
+            get::GetUserCommand, list::ListUserCommand,
+        },
+    },
     ipv4_to_string, networkv4_to_string, Device, IpV4, NetworkV4, User, UserCYOA, UserStatus,
     UserType,
 };

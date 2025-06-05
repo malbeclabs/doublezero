@@ -1,8 +1,9 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_sdk::commands::device::list::ListDeviceCommand;
-use doublezero_sdk::commands::link::list::ListLinkCommand;
-use doublezero_sdk::*;
+use doublezero_sdk::{
+    commands::{device::list::ListDeviceCommand, link::list::ListLinkCommand},
+    *,
+};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;

@@ -1,25 +1,23 @@
 use std::fmt;
 
-use crate::error::DoubleZeroError;
-use crate::globalstate::{globalconfig_write_with_realloc, globalstate_get};
-use crate::pda::*;
-use crate::seeds::{SEED_CONFIG, SEED_PREFIX};
-use crate::types::networkv4_to_string;
 use crate::{
+    error::DoubleZeroError,
+    globalstate::{globalconfig_write_with_realloc, globalstate_get},
+    pda::*,
+    seeds::{SEED_CONFIG, SEED_PREFIX},
     state::{accounttype::AccountType, globalconfig::GlobalConfig},
-    types::NetworkV4,
+    types::{networkv4_to_string, NetworkV4},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
 use solana_program::msg;
-use solana_program::program::invoke_signed;
-use solana_program::system_instruction;
-use solana_program::sysvar::rent::Rent;
-use solana_program::sysvar::Sysvar;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    program::invoke_signed,
     pubkey::Pubkey,
+    system_instruction,
+    sysvar::{rent::Rent, Sysvar},
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]

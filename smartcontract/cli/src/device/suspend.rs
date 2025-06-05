@@ -1,8 +1,9 @@
-use crate::doublezerocommand::CliCommand;
-use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
+use crate::{
+    doublezerocommand::CliCommand,
+    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+};
 use clap::Args;
-use doublezero_sdk::commands::device::get::GetDeviceCommand;
-use doublezero_sdk::commands::device::suspend::SuspendDeviceCommand;
+use doublezero_sdk::commands::device::{get::GetDeviceCommand, suspend::SuspendDeviceCommand};
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -33,25 +34,22 @@ impl SuspendDeviceCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::device::suspend::SuspendDeviceCliCommand;
-    use crate::doublezerocommand::CliCommand;
-    use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::utils::create_test_client;
-    use doublezero_sdk::commands::device::get::GetDeviceCommand;
-    use doublezero_sdk::commands::device::suspend::SuspendDeviceCommand;
-    use doublezero_sdk::commands::exchange::get::GetExchangeCommand;
-    use doublezero_sdk::get_device_pda;
-    use doublezero_sdk::AccountType;
-    use doublezero_sdk::Device;
-    use doublezero_sdk::DeviceStatus;
-    use doublezero_sdk::Exchange;
-    use doublezero_sdk::ExchangeStatus;
-    use doublezero_sdk::GetLocationCommand;
-    use doublezero_sdk::Location;
-    use doublezero_sdk::LocationStatus;
+    use crate::{
+        device::suspend::SuspendDeviceCliCommand,
+        doublezerocommand::CliCommand,
+        requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+        tests::utils::create_test_client,
+    };
+    use doublezero_sdk::{
+        commands::{
+            device::{get::GetDeviceCommand, suspend::SuspendDeviceCommand},
+            exchange::get::GetExchangeCommand,
+        },
+        get_device_pda, AccountType, Device, DeviceStatus, Exchange, ExchangeStatus,
+        GetLocationCommand, Location, LocationStatus,
+    };
     use mockall::predicate;
-    use solana_sdk::pubkey::Pubkey;
-    use solana_sdk::signature::Signature;
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_cli_device_suspend() {

@@ -1,18 +1,22 @@
 #[cfg(test)]
 mod device_test {
-    use crate::entrypoint::*;
-    use crate::instructions::*;
-    use crate::pda::*;
-    use crate::processors::multicastgroup::activate::MulticastGroupActivateArgs;
-    use crate::processors::multicastgroup::allowlist::subscriber::add::AddMulticastGroupSubAllowlistArgs;
-    use crate::processors::multicastgroup::allowlist::subscriber::remove::RemoveMulticastGroupSubAllowlistArgs;
-    use crate::processors::multicastgroup::create::MulticastGroupCreateArgs;
-    use crate::state::accounttype::AccountType;
-    use crate::state::multicastgroup::MulticastGroupStatus;
-    use crate::tests::test::*;
+    use crate::{
+        entrypoint::*,
+        instructions::*,
+        pda::*,
+        processors::multicastgroup::{
+            activate::MulticastGroupActivateArgs,
+            allowlist::subscriber::{
+                add::AddMulticastGroupSubAllowlistArgs,
+                remove::RemoveMulticastGroupSubAllowlistArgs,
+            },
+            create::MulticastGroupCreateArgs,
+        },
+        state::{accounttype::AccountType, multicastgroup::MulticastGroupStatus},
+        tests::test::*,
+    };
     use solana_program_test::*;
-    use solana_sdk::signer::Signer;
-    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey};
+    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signer::Signer};
 
     #[tokio::test]
     async fn test_multicast_subscriber_allowlist() {

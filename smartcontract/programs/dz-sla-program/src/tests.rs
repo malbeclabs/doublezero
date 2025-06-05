@@ -1,22 +1,26 @@
 #[cfg(test)]
 pub mod test {
-    use crate::entrypoint::*;
-    use crate::instructions::*;
-    use crate::pda::*;
-    use crate::processors::device::activate::DeviceActivateArgs;
-    use crate::processors::device::create::*;
-    use crate::processors::exchange::create::*;
-    use crate::processors::globalconfig::set::SetGlobalConfigArgs;
-    use crate::processors::link::{activate::*, create::*};
-    use crate::processors::location::create::*;
-    use crate::processors::user::{activate::*, create::*};
-    use crate::state::accountdata::AccountData;
+    use crate::{
+        entrypoint::*,
+        instructions::*,
+        pda::*,
+        processors::{
+            device::{activate::DeviceActivateArgs, create::*},
+            exchange::create::*,
+            globalconfig::set::SetGlobalConfigArgs,
+            link::{activate::*, create::*},
+            location::create::*,
+            user::{activate::*, create::*},
+        },
+        state::accountdata::AccountData,
+    };
     use std::any::type_name;
 
-    use crate::state::accounttype::AccountType;
-    use crate::state::globalstate::GlobalState;
     use crate::{
-        state::{device::*, link::*, location::*, user::*},
+        state::{
+            accounttype::AccountType, device::*, globalstate::GlobalState, link::*, location::*,
+            user::*,
+        },
         types::*,
     };
 

@@ -1,11 +1,6 @@
-use clap::Args;
-use clap::Subcommand;
+use clap::{Args, Subcommand};
 
-use doublezero_cli::link::create::*;
-use doublezero_cli::link::delete::*;
-use doublezero_cli::link::get::*;
-use doublezero_cli::link::list::*;
-use doublezero_cli::link::update::*;
+use doublezero_cli::link::{create::*, delete::*, get::*, list::*, update::*};
 
 #[derive(Args, Debug)]
 pub struct LinkCliCommand {

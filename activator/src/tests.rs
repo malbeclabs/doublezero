@@ -2,7 +2,7 @@
 pub mod utils {
     use doublezero_sdk::{AccountData, AccountType, DoubleZeroClient, MockDoubleZeroClient};
     use doublezero_sla_program::{
-        pda::get_device_pda, pda::get_globalstate_pda, pda::get_link_pda, pda::get_user_pda,
+        pda::{get_device_pda, get_globalstate_pda, get_link_pda, get_user_pda},
         state::globalstate::GlobalState,
     };
     use mockall::predicate;

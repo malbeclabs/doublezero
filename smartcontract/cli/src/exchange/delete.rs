@@ -1,8 +1,9 @@
-use crate::doublezerocommand::CliCommand;
-use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
+use crate::{
+    doublezerocommand::CliCommand,
+    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+};
 use clap::Args;
-use doublezero_sdk::commands::exchange::delete::DeleteExchangeCommand;
-use doublezero_sdk::commands::exchange::get::GetExchangeCommand;
+use doublezero_sdk::commands::exchange::{delete::DeleteExchangeCommand, get::GetExchangeCommand};
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -30,16 +31,16 @@ impl DeleteExchangeCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::doublezerocommand::CliCommand;
-    use crate::exchange::delete::DeleteExchangeCliCommand;
-    use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::utils::create_test_client;
-    use doublezero_sdk::commands::exchange::delete::DeleteExchangeCommand;
-    use doublezero_sdk::commands::exchange::get::GetExchangeCommand;
-    use doublezero_sdk::get_exchange_pda;
-    use doublezero_sdk::AccountType;
-    use doublezero_sdk::Exchange;
-    use doublezero_sdk::ExchangeStatus;
+    use crate::{
+        doublezerocommand::CliCommand,
+        exchange::delete::DeleteExchangeCliCommand,
+        requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+        tests::utils::create_test_client,
+    };
+    use doublezero_sdk::{
+        commands::exchange::{delete::DeleteExchangeCommand, get::GetExchangeCommand},
+        get_exchange_pda, AccountType, Exchange, ExchangeStatus,
+    };
     use mockall::predicate;
     use solana_sdk::signature::Signature;
 

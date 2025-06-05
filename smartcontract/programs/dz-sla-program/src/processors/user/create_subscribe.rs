@@ -1,12 +1,15 @@
-use crate::error::DoubleZeroError;
-use crate::globalstate::globalstate_get_next;
-use crate::globalstate::globalstate_write;
-use crate::helper::*;
-use crate::pda::*;
-use crate::state::multicastgroup::MulticastGroup;
-use crate::state::multicastgroup::MulticastGroupStatus;
-use crate::state::{accounttype::AccountType, user::*};
-use crate::types::*;
+use crate::{
+    error::DoubleZeroError,
+    globalstate::{globalstate_get_next, globalstate_write},
+    helper::*,
+    pda::*,
+    state::{
+        accounttype::AccountType,
+        multicastgroup::{MulticastGroup, MulticastGroupStatus},
+        user::*,
+    },
+    types::*,
+};
 use core::fmt;
 
 use borsh::{BorshDeserialize, BorshSerialize};

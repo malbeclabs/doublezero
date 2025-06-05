@@ -1,25 +1,21 @@
 use super::multicast::MulticastCliCommand;
-use crate::cli::config::ConfigCliCommand;
-use crate::cli::device::DeviceCliCommand;
-use crate::cli::exchange::ExchangeCliCommand;
-use crate::cli::globalconfig::GlobalConfigCliCommand;
-use crate::cli::link::LinkCliCommand;
-use crate::cli::location::LocationCliCommand;
-use crate::cli::user::UserCliCommand;
-use crate::command::connect::ProvisioningCliCommand;
-use crate::command::disconnect::DecommissioningCliCommand;
-use crate::command::latency::LatencyCliCommand;
-use crate::command::status::StatusCliCommand;
-use clap::Args;
-use clap::Subcommand;
+use crate::{
+    cli::{
+        config::ConfigCliCommand, device::DeviceCliCommand, exchange::ExchangeCliCommand,
+        globalconfig::GlobalConfigCliCommand, link::LinkCliCommand, location::LocationCliCommand,
+        user::UserCliCommand,
+    },
+    command::{
+        connect::ProvisioningCliCommand, disconnect::DecommissioningCliCommand,
+        latency::LatencyCliCommand, status::StatusCliCommand,
+    },
+};
+use clap::{Args, Subcommand};
 use clap_complete::Shell;
-use doublezero_cli::account::GetAccountCliCommand;
-use doublezero_cli::address::AddressCliCommand;
-use doublezero_cli::balance::BalanceCliCommand;
-use doublezero_cli::export::ExportCliCommand;
-use doublezero_cli::init::InitCliCommand;
-use doublezero_cli::keygen::KeyGenCliCommand;
-use doublezero_cli::log::LogCliCommand;
+use doublezero_cli::{
+    account::GetAccountCliCommand, address::AddressCliCommand, balance::BalanceCliCommand,
+    export::ExportCliCommand, init::InitCliCommand, keygen::KeyGenCliCommand, log::LogCliCommand,
+};
 
 #[derive(Subcommand, Debug)]
 pub enum Command {

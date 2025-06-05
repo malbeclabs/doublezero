@@ -2,20 +2,16 @@ use clap::Subcommand;
 
 use doublezero_cli::init::InitCliCommand;
 
-use doublezero_cli::account::GetAccountCliCommand;
-use doublezero_cli::address::AddressCliCommand;
-use doublezero_cli::balance::BalanceCliCommand;
-use doublezero_cli::export::ExportCliCommand;
-use doublezero_cli::keygen::KeyGenCliCommand;
-use doublezero_cli::log::LogCliCommand;
+use doublezero_cli::{
+    account::GetAccountCliCommand, address::AddressCliCommand, balance::BalanceCliCommand,
+    export::ExportCliCommand, keygen::KeyGenCliCommand, log::LogCliCommand,
+};
 
-use crate::cli::config::ConfigCliCommand;
-use crate::cli::device::DeviceCliCommand;
-use crate::cli::exchange::ExchangeCliCommand;
-use crate::cli::globalconfig::GlobalConfigCliCommand;
-use crate::cli::link::LinkCliCommand;
-use crate::cli::location::LocationCliCommand;
-use crate::cli::user::UserCliCommand;
+use crate::cli::{
+    config::ConfigCliCommand, device::DeviceCliCommand, exchange::ExchangeCliCommand,
+    globalconfig::GlobalConfigCliCommand, link::LinkCliCommand, location::LocationCliCommand,
+    user::UserCliCommand,
+};
 
 #[derive(Subcommand, Debug)]
 pub enum Command {

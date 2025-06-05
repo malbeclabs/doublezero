@@ -10,15 +10,13 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-use crate::types::*;
 use crate::{
     error::DoubleZeroError,
-    helper::*,
-    state::{accounttype::AccountType, device::*},
-};
-use crate::{
     globalstate::{globalstate_get_next, globalstate_write},
+    helper::*,
     pda::*,
+    state::{accounttype::AccountType, device::*},
+    types::*,
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]

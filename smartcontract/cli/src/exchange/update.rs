@@ -1,8 +1,9 @@
-use crate::doublezerocommand::CliCommand;
-use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
+use crate::{
+    doublezerocommand::CliCommand,
+    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+};
 use clap::Args;
-use doublezero_sdk::commands::exchange::get::GetExchangeCommand;
-use doublezero_sdk::commands::exchange::update::UpdateExchangeCommand;
+use doublezero_sdk::commands::exchange::{get::GetExchangeCommand, update::UpdateExchangeCommand};
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -45,19 +46,18 @@ impl UpdateExchangeCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::doublezerocommand::CliCommand;
-    use crate::exchange::update::UpdateExchangeCliCommand;
-    use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::utils::create_test_client;
-    use doublezero_sdk::commands::exchange::get::GetExchangeCommand;
-    use doublezero_sdk::commands::exchange::update::UpdateExchangeCommand;
-    use doublezero_sdk::get_exchange_pda;
-    use doublezero_sdk::AccountType;
-    use doublezero_sdk::Exchange;
-    use doublezero_sdk::ExchangeStatus;
+    use crate::{
+        doublezerocommand::CliCommand,
+        exchange::update::UpdateExchangeCliCommand,
+        requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+        tests::utils::create_test_client,
+    };
+    use doublezero_sdk::{
+        commands::exchange::{get::GetExchangeCommand, update::UpdateExchangeCommand},
+        get_exchange_pda, AccountType, Exchange, ExchangeStatus,
+    };
     use mockall::predicate;
-    use solana_sdk::pubkey::Pubkey;
-    use solana_sdk::signature::Signature;
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_cli_exchange_update() {

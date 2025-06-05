@@ -89,10 +89,10 @@ mod tests {
         ipblockallocator::IPBlockAllocator, process::multicastgroup::process_multicastgroup_event,
         tests::utils::create_test_client,
     };
-    use doublezero_sdk::get_multicastgroup_pda;
-    use doublezero_sdk::AccountData;
-    use doublezero_sdk::DoubleZeroClient;
-    use doublezero_sdk::{AccountType, MulticastGroup, MulticastGroupStatus};
+    use doublezero_sdk::{
+        get_multicastgroup_pda, AccountData, AccountType, DoubleZeroClient, MulticastGroup,
+        MulticastGroupStatus,
+    };
     use doublezero_sla_program::{
         instructions::DoubleZeroInstruction,
         processors::multicastgroup::activate::MulticastGroupActivateArgs,

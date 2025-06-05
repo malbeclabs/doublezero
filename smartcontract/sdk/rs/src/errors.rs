@@ -1,11 +1,9 @@
-use {
-    solana_rpc_client_api::{request, response},
-    solana_sdk::{
-        signature::SignerError, transaction::TransactionError, transport::TransportError,
-    },
-    std::io,
-    thiserror::Error as ThisError,
+use solana_rpc_client_api::{request, response};
+use solana_sdk::{
+    signature::SignerError, transaction::TransactionError, transport::TransportError,
 };
+use std::io;
+use thiserror::Error as ThisError;
 
 #[derive(ThisError, Debug)]
 pub enum ErrorKind {

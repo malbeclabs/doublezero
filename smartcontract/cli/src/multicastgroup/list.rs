@@ -1,7 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_sdk::commands::multicastgroup::list::ListMulticastGroupCommand;
-use doublezero_sdk::*;
+use doublezero_sdk::{commands::multicastgroup::list::ListMulticastGroupCommand, *};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
@@ -77,8 +76,9 @@ impl ListMulticastGroupCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::multicastgroup::list::ListMulticastGroupCliCommand;
-    use crate::tests::utils::create_test_client;
+    use crate::{
+        multicastgroup::list::ListMulticastGroupCliCommand, tests::utils::create_test_client,
+    };
     use doublezero_sdk::{Device, DeviceStatus, DeviceType, MulticastGroup, MulticastGroupStatus};
     use doublezero_sla_program::state::accounttype::AccountType;
     use solana_sdk::pubkey::Pubkey;

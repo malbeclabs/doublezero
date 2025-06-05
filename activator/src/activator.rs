@@ -17,13 +17,10 @@ use doublezero_sdk::{
         user::list::ListUserCommand,
     },
     ipv4_to_string, networkv4_list_to_string, AccountData, DZClient, Device, DeviceStatus,
-    Exchange, LinkStatus, Location, UserStatus,
+    Exchange, GetGlobalConfigCommand, LinkStatus, Location, MulticastGroup, UserStatus,
 };
-use doublezero_sdk::{GetGlobalConfigCommand, MulticastGroup};
 use solana_sdk::pubkey::Pubkey;
-use std::collections::HashMap;
-use std::thread;
-use std::time::Duration;
+use std::{collections::HashMap, thread, time::Duration};
 
 pub type DeviceMap = HashMap<Pubkey, DeviceState>;
 

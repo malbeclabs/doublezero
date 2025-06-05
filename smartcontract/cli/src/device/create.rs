@@ -1,11 +1,16 @@
-use crate::doublezerocommand::CliCommand;
-use crate::helpers::parse_pubkey;
-use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
+use crate::{
+    doublezerocommand::CliCommand,
+    helpers::parse_pubkey,
+    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+};
 use clap::Args;
-use doublezero_sdk::commands::device::create::CreateDeviceCommand;
-use doublezero_sdk::commands::exchange::get::GetExchangeCommand;
-use doublezero_sdk::commands::location::get::GetLocationCommand;
-use doublezero_sdk::*;
+use doublezero_sdk::{
+    commands::{
+        device::create::CreateDeviceCommand, exchange::get::GetExchangeCommand,
+        location::get::GetLocationCommand,
+    },
+    *,
+};
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -67,23 +72,19 @@ impl CreateDeviceCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::device::create::CreateDeviceCliCommand;
-    use crate::doublezerocommand::CliCommand;
-    use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::utils::create_test_client;
-    use doublezero_sdk::commands::device::create::CreateDeviceCommand;
-    use doublezero_sdk::commands::exchange::get::GetExchangeCommand;
-    use doublezero_sdk::get_device_pda;
-    use doublezero_sdk::AccountType;
-    use doublezero_sdk::DeviceType;
-    use doublezero_sdk::Exchange;
-    use doublezero_sdk::ExchangeStatus;
-    use doublezero_sdk::GetLocationCommand;
-    use doublezero_sdk::Location;
-    use doublezero_sdk::LocationStatus;
+    use crate::{
+        device::create::CreateDeviceCliCommand,
+        doublezerocommand::CliCommand,
+        requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+        tests::utils::create_test_client,
+    };
+    use doublezero_sdk::{
+        commands::{device::create::CreateDeviceCommand, exchange::get::GetExchangeCommand},
+        get_device_pda, AccountType, DeviceType, Exchange, ExchangeStatus, GetLocationCommand,
+        Location, LocationStatus,
+    };
     use mockall::predicate;
-    use solana_sdk::pubkey::Pubkey;
-    use solana_sdk::signature::Signature;
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_cli_device_create() {

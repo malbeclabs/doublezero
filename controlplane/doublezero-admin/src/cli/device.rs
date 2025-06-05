@@ -1,14 +1,15 @@
-use clap::Args;
-use clap::Subcommand;
+use clap::{Args, Subcommand};
 
-use doublezero_cli::allowlist::device::add::AddDeviceAllowlistCliCommand;
-use doublezero_cli::allowlist::device::list::ListDeviceAllowlistCliCommand;
-use doublezero_cli::allowlist::device::remove::RemoveDeviceAllowlistCliCommand;
-use doublezero_cli::device::create::CreateDeviceCliCommand;
-use doublezero_cli::device::delete::DeleteDeviceCliCommand;
-use doublezero_cli::device::get::GetDeviceCliCommand;
-use doublezero_cli::device::list::ListDeviceCliCommand;
-use doublezero_cli::device::update::UpdateDeviceCliCommand;
+use doublezero_cli::{
+    allowlist::device::{
+        add::AddDeviceAllowlistCliCommand, list::ListDeviceAllowlistCliCommand,
+        remove::RemoveDeviceAllowlistCliCommand,
+    },
+    device::{
+        create::CreateDeviceCliCommand, delete::DeleteDeviceCliCommand, get::GetDeviceCliCommand,
+        list::ListDeviceCliCommand, update::UpdateDeviceCliCommand,
+    },
+};
 
 #[derive(Args, Debug)]
 pub struct DeviceCliCommand {

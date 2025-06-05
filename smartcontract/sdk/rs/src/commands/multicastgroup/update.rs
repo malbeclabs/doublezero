@@ -1,5 +1,4 @@
-use crate::DoubleZeroClient;
-use crate::GetGlobalStateCommand;
+use crate::{DoubleZeroClient, GetGlobalStateCommand};
 use doublezero_sla_program::{
     instructions::DoubleZeroInstruction, pda::get_multicastgroup_pda,
     processors::multicastgroup::update::MulticastGroupUpdateArgs, types::IpV4,

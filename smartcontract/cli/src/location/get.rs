@@ -34,13 +34,11 @@ impl GetLocationCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::location::get::GetLocationCliCommand;
-    use crate::tests::utils::create_test_client;
+    use crate::{location::get::GetLocationCliCommand, tests::utils::create_test_client};
     use doublezero_sdk::{AccountType, GetLocationCommand, Location, LocationStatus};
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
-    use std::collections::HashMap;
-    use std::str::FromStr;
+    use std::{collections::HashMap, str::FromStr};
 
     #[test]
     fn test_cli_location_get() {

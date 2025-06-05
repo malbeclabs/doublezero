@@ -1,9 +1,6 @@
 use core::fmt;
 
-use crate::error::DoubleZeroError;
-use crate::globalstate::globalstate_get;
-use crate::helper::*;
-use crate::state::device::*;
+use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::device::*};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{

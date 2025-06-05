@@ -4,13 +4,15 @@ mod cli;
 mod command;
 mod requirements;
 mod servicecontroller;
-use crate::cli::device::DeviceAllowlistCommands;
-use crate::cli::globalconfig::FoundationAllowlistCommands;
-use crate::cli::user::UserAllowlistCommands;
 use crate::cli::{
-    command::Command, config::ConfigCommands, device::DeviceCommands, exchange::ExchangeCommands,
-    globalconfig::GlobalConfigCommands, link::LinkCommands, location::LocationCommands,
-    user::UserCommands,
+    command::Command,
+    config::ConfigCommands,
+    device::{DeviceAllowlistCommands, DeviceCommands},
+    exchange::ExchangeCommands,
+    globalconfig::{FoundationAllowlistCommands, GlobalConfigCommands},
+    link::LinkCommands,
+    location::LocationCommands,
+    user::{UserAllowlistCommands, UserCommands},
 };
 use doublezero_cli::doublezerocommand::CliCommandImpl;
 use doublezero_sdk::DZClient;

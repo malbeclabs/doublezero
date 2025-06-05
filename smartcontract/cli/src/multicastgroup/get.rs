@@ -1,10 +1,12 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_sdk::commands::{
-    device::list::ListDeviceCommand, location::list::ListLocationCommand,
-    multicastgroup::get::GetMulticastGroupCommand, user::list::ListUserCommand,
+use doublezero_sdk::{
+    commands::{
+        device::list::ListDeviceCommand, location::list::ListLocationCommand,
+        multicastgroup::get::GetMulticastGroupCommand, user::list::ListUserCommand,
+    },
+    *,
 };
-use doublezero_sdk::*;
 use std::io::Write;
 use tabled::{builder::Builder, settings::Style};
 
@@ -115,14 +117,16 @@ impl GetMulticastGroupCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::doublezerocommand::CliCommand;
-    use crate::multicastgroup::get::GetMulticastGroupCliCommand;
-    use crate::tests::utils::create_test_client;
-    use doublezero_sdk::commands::device::get::GetDeviceCommand;
-    use doublezero_sdk::commands::device::list::ListDeviceCommand;
-    use doublezero_sdk::commands::location::list::ListLocationCommand;
-    use doublezero_sdk::commands::multicastgroup::get::GetMulticastGroupCommand;
+    use crate::{
+        doublezerocommand::CliCommand, multicastgroup::get::GetMulticastGroupCliCommand,
+        tests::utils::create_test_client,
+    };
     use doublezero_sdk::{
+        commands::{
+            device::{get::GetDeviceCommand, list::ListDeviceCommand},
+            location::list::ListLocationCommand,
+            multicastgroup::get::GetMulticastGroupCommand,
+        },
         get_multicastgroup_pda, AccountType, Device, DeviceStatus, GetLocationCommand, Location,
         LocationStatus, MulticastGroup, MulticastGroupStatus, User, UserCYOA, UserStatus, UserType,
     };

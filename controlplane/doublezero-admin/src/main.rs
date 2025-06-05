@@ -1,12 +1,14 @@
 use clap::Parser;
-use cli::command::Command;
-use cli::config::ConfigCommands;
-use cli::device::{DeviceAllowlistCommands, DeviceCommands};
-use cli::exchange::ExchangeCommands;
-use cli::globalconfig::{FoundationAllowlistCommands, GlobalConfigCommands};
-use cli::link::LinkCommands;
-use cli::location::LocationCommands;
-use cli::user::{UserAllowlistCommands, UserCommands};
+use cli::{
+    command::Command,
+    config::ConfigCommands,
+    device::{DeviceAllowlistCommands, DeviceCommands},
+    exchange::ExchangeCommands,
+    globalconfig::{FoundationAllowlistCommands, GlobalConfigCommands},
+    link::LinkCommands,
+    location::LocationCommands,
+    user::{UserAllowlistCommands, UserCommands},
+};
 use doublezero_cli::doublezerocommand::CliCommandImpl;
 use doublezero_sdk::DZClient;
 mod cli;

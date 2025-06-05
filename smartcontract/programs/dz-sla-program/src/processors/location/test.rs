@@ -1,12 +1,13 @@
 #[cfg(test)]
 mod location_test {
-    use crate::entrypoint::*;
-    use crate::instructions::*;
-    use crate::pda::*;
-    use crate::processors::location::{create::*, delete::*, resume::*, suspend::*, update::*};
-    use crate::state::accounttype::AccountType;
-    use crate::state::location::*;
-    use crate::tests::test::*;
+    use crate::{
+        entrypoint::*,
+        instructions::*,
+        pda::*,
+        processors::location::{create::*, delete::*, resume::*, suspend::*, update::*},
+        state::{accounttype::AccountType, location::*},
+        tests::test::*,
+    };
     use solana_program_test::*;
     use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey};
 

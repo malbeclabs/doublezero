@@ -82,14 +82,15 @@ fn ip_count(device: &DeviceState) -> (u32, u32) {
 
 #[cfg(test)]
 mod tests {
-    use crate::activator_metrics::ip_count;
-    use crate::activator_metrics::ActivatorMetrics;
-    use crate::metrics_service::Metric;
-    use crate::metrics_service::MockMetricsService;
-    use crate::states::devicestate::DeviceState;
-    use doublezero_sdk::ExchangeStatus;
-    use doublezero_sdk::LocationStatus;
-    use doublezero_sdk::{AccountType, Device, DeviceStatus, DeviceType, Exchange, Location};
+    use crate::{
+        activator_metrics::{ip_count, ActivatorMetrics},
+        metrics_service::{Metric, MockMetricsService},
+        states::devicestate::DeviceState,
+    };
+    use doublezero_sdk::{
+        AccountType, Device, DeviceStatus, DeviceType, Exchange, ExchangeStatus, Location,
+        LocationStatus,
+    };
     use solana_sdk::pubkey::Pubkey;
     use std::collections::HashMap;
 

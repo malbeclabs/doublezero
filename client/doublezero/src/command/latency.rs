@@ -1,13 +1,11 @@
 use clap::Args;
 use doublezero_cli::doublezerocommand::CliCommand;
-use doublezero_sdk::commands::device::list::ListDeviceCommand;
-use doublezero_sdk::DeviceStatus;
+use doublezero_sdk::{commands::device::list::ListDeviceCommand, DeviceStatus};
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 use tabled::{settings::Style, Table};
 
-use crate::requirements::check_doublezero;
-use crate::servicecontroller::ServiceController;
+use crate::{requirements::check_doublezero, servicecontroller::ServiceController};
 
 #[derive(Args, Debug)]
 pub struct LatencyCliCommand {}

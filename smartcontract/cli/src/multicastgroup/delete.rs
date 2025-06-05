@@ -1,8 +1,11 @@
-use crate::doublezerocommand::CliCommand;
-use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
+use crate::{
+    doublezerocommand::CliCommand,
+    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+};
 use clap::Args;
-use doublezero_sdk::commands::multicastgroup::delete::DeleteMulticastGroupCommand;
-use doublezero_sdk::commands::multicastgroup::get::GetMulticastGroupCommand;
+use doublezero_sdk::commands::multicastgroup::{
+    delete::DeleteMulticastGroupCommand, get::GetMulticastGroupCommand,
+};
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -31,22 +34,22 @@ impl DeleteMulticastGroupCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::doublezerocommand::CliCommand;
-    use crate::multicastgroup::delete::DeleteMulticastGroupCliCommand;
-    use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::utils::create_test_client;
-    use doublezero_sdk::commands::device::get::GetDeviceCommand;
-    use doublezero_sdk::commands::multicastgroup::delete::DeleteMulticastGroupCommand;
-    use doublezero_sdk::commands::multicastgroup::get::GetMulticastGroupCommand;
-    use doublezero_sdk::Device;
-    use doublezero_sdk::DeviceStatus;
-    use doublezero_sdk::DeviceType;
-    use doublezero_sdk::MulticastGroup;
-    use doublezero_sdk::MulticastGroupStatus;
-    use doublezero_sdk::{get_multicastgroup_pda, AccountType};
+    use crate::{
+        doublezerocommand::CliCommand,
+        multicastgroup::delete::DeleteMulticastGroupCliCommand,
+        requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+        tests::utils::create_test_client,
+    };
+    use doublezero_sdk::{
+        commands::{
+            device::get::GetDeviceCommand,
+            multicastgroup::{delete::DeleteMulticastGroupCommand, get::GetMulticastGroupCommand},
+        },
+        get_multicastgroup_pda, AccountType, Device, DeviceStatus, DeviceType, MulticastGroup,
+        MulticastGroupStatus,
+    };
     use mockall::predicate;
-    use solana_sdk::pubkey::Pubkey;
-    use solana_sdk::signature::Signature;
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_cli_multicastgroup_delete() {

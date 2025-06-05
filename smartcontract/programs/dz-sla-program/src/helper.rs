@@ -9,8 +9,7 @@ use solana_program::{
     system_instruction, system_program,
     sysvar::{rent::Rent, Sysvar},
 };
-use std::fmt;
-use std::fmt::Debug;
+use std::{fmt, fmt::Debug};
 
 #[cfg(test)]
 use solana_program::msg;

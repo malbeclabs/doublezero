@@ -9,9 +9,10 @@ use doublezero_cli::{
 
 use crate::servicecontroller::{RemoveTunnelCliCommand, ServiceController};
 
-use doublezero_sdk::commands::user::delete::DeleteUserCommand;
-use doublezero_sdk::commands::user::list::ListUserCommand;
-use doublezero_sdk::UserType;
+use doublezero_sdk::{
+    commands::user::{delete::DeleteUserCommand, list::ListUserCommand},
+    UserType,
+};
 
 use super::helpers::look_for_ip;
 

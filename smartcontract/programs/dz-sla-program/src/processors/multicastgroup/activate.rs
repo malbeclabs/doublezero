@@ -1,6 +1,7 @@
-use crate::globalstate::globalstate_get;
-use crate::types::IpV4;
-use crate::{error::DoubleZeroError, helper::*, state::multicastgroup::*};
+use crate::{
+    error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::multicastgroup::*,
+    types::IpV4,
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
 

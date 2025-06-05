@@ -1,10 +1,11 @@
 use std::str::FromStr;
 
-use crate::doublezerocommand::CliCommand;
-use crate::requirements::{CHECK_BALANCE, CHECK_FOUNDATION_ALLOWLIST, CHECK_ID_JSON};
+use crate::{
+    doublezerocommand::CliCommand,
+    requirements::{CHECK_BALANCE, CHECK_FOUNDATION_ALLOWLIST, CHECK_ID_JSON},
+};
 use clap::Args;
-use doublezero_sdk::commands::user::get::GetUserCommand;
-use doublezero_sdk::commands::user::requestban::RequestBanUserCommand;
+use doublezero_sdk::commands::user::{get::GetUserCommand, requestban::RequestBanUserCommand};
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 
@@ -31,22 +32,21 @@ impl RequestBanUserCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::doublezerocommand::CliCommand;
-    use crate::requirements::{CHECK_BALANCE, CHECK_FOUNDATION_ALLOWLIST, CHECK_ID_JSON};
-    use crate::tests::utils::create_test_client;
-    use crate::user::request_ban::RequestBanUserCliCommand;
-    use doublezero_sdk::commands::user::delete::DeleteUserCommand;
-    use doublezero_sdk::commands::user::get::GetUserCommand;
-    use doublezero_sdk::commands::user::requestban::RequestBanUserCommand;
-    use doublezero_sdk::AccountType;
-    use doublezero_sdk::User;
-    use doublezero_sdk::UserCYOA;
-    use doublezero_sdk::UserStatus;
-    use doublezero_sdk::UserType;
+    use crate::{
+        doublezerocommand::CliCommand,
+        requirements::{CHECK_BALANCE, CHECK_FOUNDATION_ALLOWLIST, CHECK_ID_JSON},
+        tests::utils::create_test_client,
+        user::request_ban::RequestBanUserCliCommand,
+    };
+    use doublezero_sdk::{
+        commands::user::{
+            delete::DeleteUserCommand, get::GetUserCommand, requestban::RequestBanUserCommand,
+        },
+        AccountType, User, UserCYOA, UserStatus, UserType,
+    };
     use doublezero_sla_program::pda::get_user_pda;
     use mockall::predicate;
-    use solana_sdk::pubkey::Pubkey;
-    use solana_sdk::signature::Signature;
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_cli_user_request_ban() {

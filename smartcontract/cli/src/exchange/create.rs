@@ -1,5 +1,7 @@
-use crate::doublezerocommand::CliCommand;
-use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
+use crate::{
+    doublezerocommand::CliCommand,
+    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+};
 use clap::Args;
 use doublezero_sdk::commands::exchange::create::CreateExchangeCommand;
 use std::io::Write;
@@ -38,12 +40,13 @@ impl CreateExchangeCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::doublezerocommand::CliCommand;
-    use crate::exchange::create::CreateExchangeCliCommand;
-    use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::utils::create_test_client;
-    use doublezero_sdk::commands::exchange::create::CreateExchangeCommand;
-    use doublezero_sdk::get_exchange_pda;
+    use crate::{
+        doublezerocommand::CliCommand,
+        exchange::create::CreateExchangeCliCommand,
+        requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+        tests::utils::create_test_client,
+    };
+    use doublezero_sdk::{commands::exchange::create::CreateExchangeCommand, get_exchange_pda};
     use mockall::predicate;
     use solana_sdk::signature::Signature;
 

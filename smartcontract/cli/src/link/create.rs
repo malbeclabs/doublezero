@@ -1,10 +1,13 @@
-use crate::doublezerocommand::CliCommand;
-use crate::helpers::parse_pubkey;
-use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
+use crate::{
+    doublezerocommand::CliCommand,
+    helpers::parse_pubkey,
+    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+};
 use clap::Args;
-use doublezero_sdk::commands::device::get::GetDeviceCommand;
-use doublezero_sdk::commands::link::create::CreateLinkCommand;
-use doublezero_sdk::*;
+use doublezero_sdk::{
+    commands::{device::get::GetDeviceCommand, link::create::CreateLinkCommand},
+    *,
+};
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -79,21 +82,18 @@ impl CreateLinkCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::doublezerocommand::CliCommand;
-    use crate::link::create::CreateLinkCliCommand;
-    use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::utils::create_test_client;
-    use doublezero_sdk::commands::device::get::GetDeviceCommand;
-    use doublezero_sdk::commands::link::create::CreateLinkCommand;
-    use doublezero_sdk::get_device_pda;
-    use doublezero_sdk::AccountType;
-    use doublezero_sdk::Device;
-    use doublezero_sdk::DeviceStatus;
-    use doublezero_sdk::DeviceType;
-    use doublezero_sdk::LinkLinkType;
+    use crate::{
+        doublezerocommand::CliCommand,
+        link::create::CreateLinkCliCommand,
+        requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+        tests::utils::create_test_client,
+    };
+    use doublezero_sdk::{
+        commands::{device::get::GetDeviceCommand, link::create::CreateLinkCommand},
+        get_device_pda, AccountType, Device, DeviceStatus, DeviceType, LinkLinkType,
+    };
     use mockall::predicate;
-    use solana_sdk::pubkey::Pubkey;
-    use solana_sdk::signature::Signature;
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_cli_device_create() {

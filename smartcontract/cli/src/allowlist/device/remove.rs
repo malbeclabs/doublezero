@@ -2,8 +2,7 @@ use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::commands::allowlist::device::remove::RemoveDeviceAllowlistCommand;
 use solana_sdk::pubkey::Pubkey;
-use std::io::Write;
-use std::str::FromStr;
+use std::{io::Write, str::FromStr};
 
 use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
 
@@ -35,13 +34,15 @@ impl RemoveDeviceAllowlistCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::allowlist::device::remove::RemoveDeviceAllowlistCliCommand;
-    use crate::allowlist::device::remove::RemoveDeviceAllowlistCommand;
-    use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::utils::create_test_client;
+    use crate::{
+        allowlist::device::remove::{
+            RemoveDeviceAllowlistCliCommand, RemoveDeviceAllowlistCommand,
+        },
+        requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+        tests::utils::create_test_client,
+    };
     use mockall::predicate;
-    use solana_sdk::pubkey::Pubkey;
-    use solana_sdk::signature::Signature;
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_cli_device_allowlist_remove() {

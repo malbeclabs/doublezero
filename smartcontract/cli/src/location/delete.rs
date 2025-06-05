@@ -1,8 +1,9 @@
-use crate::doublezerocommand::CliCommand;
-use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
+use crate::{
+    doublezerocommand::CliCommand,
+    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+};
 use clap::Args;
-use doublezero_sdk::commands::location::delete::DeleteLocationCommand;
-use doublezero_sdk::commands::location::get::GetLocationCommand;
+use doublezero_sdk::commands::location::{delete::DeleteLocationCommand, get::GetLocationCommand};
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -30,16 +31,16 @@ impl DeleteLocationCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::doublezerocommand::CliCommand;
-    use crate::location::delete::DeleteLocationCliCommand;
-    use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::utils::create_test_client;
-    use doublezero_sdk::commands::location::delete::DeleteLocationCommand;
-    use doublezero_sdk::get_location_pda;
-    use doublezero_sdk::AccountType;
-    use doublezero_sdk::GetLocationCommand;
-    use doublezero_sdk::Location;
-    use doublezero_sdk::LocationStatus;
+    use crate::{
+        doublezerocommand::CliCommand,
+        location::delete::DeleteLocationCliCommand,
+        requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+        tests::utils::create_test_client,
+    };
+    use doublezero_sdk::{
+        commands::location::delete::DeleteLocationCommand, get_location_pda, AccountType,
+        GetLocationCommand, Location, LocationStatus,
+    };
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
     use solana_sdk::signature::Signature;

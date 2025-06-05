@@ -1,7 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_sdk::commands::exchange::list::ListExchangeCommand;
-use doublezero_sdk::*;
+use doublezero_sdk::{commands::exchange::list::ListExchangeCommand, *};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
@@ -68,8 +67,10 @@ impl ListExchangeCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::exchange::list::ExchangeStatus::Activated;
-    use crate::{exchange::list::ListExchangeCliCommand, tests::utils::create_test_client};
+    use crate::{
+        exchange::list::{ExchangeStatus::Activated, ListExchangeCliCommand},
+        tests::utils::create_test_client,
+    };
     use doublezero_sdk::{AccountType, Device, DeviceStatus, DeviceType, Exchange};
     use solana_sdk::pubkey::Pubkey;
     use std::collections::HashMap;

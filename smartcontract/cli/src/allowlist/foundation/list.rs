@@ -42,9 +42,11 @@ impl ListFoundationAllowlistCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::allowlist::foundation::list::ListFoundationAllowlistCliCommand;
-    use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::utils::create_test_client;
+    use crate::{
+        allowlist::foundation::list::ListFoundationAllowlistCliCommand,
+        requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+        tests::utils::create_test_client,
+    };
     use doublezero_sdk::commands::allowlist::foundation::list::ListFoundationAllowlistCommand;
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;

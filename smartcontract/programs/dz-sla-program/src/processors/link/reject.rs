@@ -1,7 +1,4 @@
-use crate::error::DoubleZeroError;
-use crate::globalstate::globalstate_get;
-use crate::helper::*;
-use crate::state::link::*;
+use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::link::*};
 use std::fmt;
 
 use borsh::{BorshDeserialize, BorshSerialize};

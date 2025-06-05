@@ -5,8 +5,7 @@ use std::{
     collections::HashMap,
     fs::{self, File},
     io::{self, Write},
-    path::Path,
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 lazy_static! {

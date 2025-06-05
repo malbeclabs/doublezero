@@ -1,6 +1,4 @@
-use crate::error::DoubleZeroError;
-use crate::helper::*;
-use crate::state::user::*;
+use crate::{error::DoubleZeroError, helper::*, state::user::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
 #[cfg(test)]

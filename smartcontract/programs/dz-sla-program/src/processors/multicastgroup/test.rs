@@ -1,16 +1,17 @@
 #[cfg(test)]
 mod multicastgroup_test {
-    use crate::entrypoint::*;
-    use crate::instructions::*;
-    use crate::pda::*;
-    use crate::processors::multicastgroup::activate::MulticastGroupActivateArgs;
-    use crate::processors::multicastgroup::deactivate::MulticastGroupDeactivateArgs;
-    use crate::processors::multicastgroup::{
-        create::*, delete::*, reactivate::*, suspend::*, update::*,
+    use crate::{
+        entrypoint::*,
+        instructions::*,
+        pda::*,
+        processors::multicastgroup::{
+            activate::MulticastGroupActivateArgs, create::*,
+            deactivate::MulticastGroupDeactivateArgs, delete::*, reactivate::*, suspend::*,
+            update::*,
+        },
+        state::{accounttype::AccountType, multicastgroup::*},
+        tests::test::*,
     };
-    use crate::state::accounttype::AccountType;
-    use crate::state::multicastgroup::*;
-    use crate::tests::test::*;
     use solana_program_test::*;
     use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey};
 

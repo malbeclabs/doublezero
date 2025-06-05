@@ -1,10 +1,10 @@
-use base64::prelude::*;
-use base64::{engine::general_purpose, Engine};
-use bincode::deserialize;
+use base64::{engine::general_purpose, prelude::*, Engine};
 use chrono::{DateTime, NaiveDateTime, Utc};
-use doublezero_sla_program::processors::globalstate::close::CloseAccountArgs;
-use doublezero_sla_program::{instructions::*, state::accounttype::AccountType};
-use eyre::{eyre, OptionExt};
+use doublezero_sla_program::{
+    instructions::*, processors::globalstate::close::CloseAccountArgs,
+    state::accounttype::AccountType,
+};
+use eyre::{bail, eyre, OptionExt};
 use solana_account_decoder::{UiAccountData, UiAccountEncoding};
 use solana_client::{
     pubsub_client::PubsubClient,
@@ -24,12 +24,12 @@ use solana_transaction_status::{
     option_serializer::OptionSerializer, EncodedTransaction, TransactionBinaryEncoding,
     UiTransactionEncoding,
 };
-use std::collections::HashMap;
-use std::str::FromStr;
+use std::{collections::HashMap, str::FromStr};
 
-use crate::dztransaction::DZTransaction;
-use crate::utils::*;
-use crate::{config::*, doublezeroclient::DoubleZeroClient, AccountData};
+use crate::{
+    config::*, doublezeroclient::DoubleZeroClient, dztransaction::DZTransaction, utils::*,
+    AccountData,
+};
 
 pub struct DZClient {
     rpc_url: String,
@@ -401,13 +401,13 @@ impl DoubleZeroClient for DZClient {
             if let EncodedTransaction::Binary(data, _enc) = trans {
                 let data: &[u8] = &general_purpose::STANDARD.decode(data).unwrap();
 
-                let tx: Transaction = match deserialize(data) {
-                    Ok(tx) => tx,
-                    Err(e) => {
-                        eprintln!("Error al deserializar la transacción: {:?}", e);
-                        panic!("");
-                    }
-                };
+                let tx: Transaction =
+                    match bincode::serde::decode_from_slice(data, bincode::config::legacy()) {
+                        Ok((tx, _)) => tx,
+                        Err(e) => {
+                            bail!("Error deserializing txn: {:?}", e);
+                        }
+                    };
 
                 for instr in tx.message.instructions.iter() {
                     let program_id = instr.program_id(&tx.message.account_keys);

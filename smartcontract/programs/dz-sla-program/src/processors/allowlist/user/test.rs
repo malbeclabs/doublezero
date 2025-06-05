@@ -1,12 +1,13 @@
 #[cfg(test)]
 mod device_test {
-    use crate::entrypoint::*;
-    use crate::instructions::*;
-    use crate::pda::*;
-    use crate::processors::allowlist::user::add::AddUserAllowlistArgs;
-    use crate::processors::allowlist::user::remove::RemoveUserAllowlistArgs;
-    use crate::state::accounttype::AccountType;
-    use crate::tests::test::*;
+    use crate::{
+        entrypoint::*,
+        instructions::*,
+        pda::*,
+        processors::allowlist::user::{add::AddUserAllowlistArgs, remove::RemoveUserAllowlistArgs},
+        state::accounttype::AccountType,
+        tests::test::*,
+    };
     use solana_program_test::*;
     use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey};
 

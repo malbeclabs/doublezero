@@ -1,10 +1,8 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_sdk::commands::user::get::GetUserCommand;
-use doublezero_sdk::*;
+use doublezero_sdk::{commands::user::get::GetUserCommand, *};
 use solana_sdk::pubkey::Pubkey;
-use std::io::Write;
-use std::str::FromStr;
+use std::{io::Write, str::FromStr};
 
 #[derive(Args, Debug)]
 pub struct GetUserCliCommand {
@@ -18,7 +16,7 @@ impl GetUserCliCommand {
         let (pubkey, user) = client.get_user(GetUserCommand { pubkey })?;
 
         writeln!(out,
-                "account: {} user_type: {} device: {} cyoa_type: {} client_ip: {} tunnel_net: {} dz_ip: {} status: {} owner: {}",
+                "account: {}\r\nuser_type: {}\r\ndevice: {}\r\ncyoa_type: {}\r\nclient_ip: {}\r\ntunnel_net: {}\r\ndz_ip: {}\r\npublishers: {}\r\nsuscribers: {}\r\nstatus: {}\r\nowner: {}",
                 pubkey,
                 user.user_type,
                 user.device_pk,
@@ -26,6 +24,8 @@ impl GetUserCliCommand {
                 ipv4_to_string(&user.client_ip),
                 networkv4_to_string(&user.tunnel_net),
                 ipv4_to_string(&user.dz_ip),
+                user.publishers.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "),
+                user.subscribers.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "),
                 user.status,
                 user.owner
             )?;
@@ -36,20 +36,17 @@ impl GetUserCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::doublezerocommand::CliCommand;
-    use crate::tests::utils::create_test_client;
-    use crate::user::get::GetUserCliCommand;
-    use doublezero_sdk::commands::user::delete::DeleteUserCommand;
-    use doublezero_sdk::commands::user::get::GetUserCommand;
-    use doublezero_sdk::AccountType;
-    use doublezero_sdk::User;
-    use doublezero_sdk::UserCYOA;
-    use doublezero_sdk::UserStatus;
-    use doublezero_sdk::UserType;
+    use crate::{
+        doublezerocommand::CliCommand, tests::utils::create_test_client,
+        user::get::GetUserCliCommand,
+    };
+    use doublezero_sdk::{
+        commands::user::{delete::DeleteUserCommand, get::GetUserCommand},
+        AccountType, User, UserCYOA, UserStatus, UserType,
+    };
     use doublezero_sla_program::pda::get_user_pda;
     use mockall::predicate;
-    use solana_sdk::pubkey::Pubkey;
-    use solana_sdk::signature::Signature;
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_cli_user_get() {
@@ -100,6 +97,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by code");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: CJTXjCEbDDgQoccJgEbNGc63QwWzJtdAoSio36zVXHQw user_type: IBRL device: 11111111111111111111111111111111 cyoa_type: GREOverDIA client_ip: 10.0.0.1 tunnel_net: 10.2.3.4/24 dz_ip: 10.0.0.2 status: activated owner: CJTXjCEbDDgQoccJgEbNGc63QwWzJtdAoSio36zVXHQw\n");
+        assert_eq!(output_str, "account: CJTXjCEbDDgQoccJgEbNGc63QwWzJtdAoSio36zVXHQw\r\nuser_type: IBRL\r\ndevice: 11111111111111111111111111111111\r\ncyoa_type: GREOverDIA\r\nclient_ip: 10.0.0.1\r\ntunnel_net: 10.2.3.4/24\r\ndz_ip: 10.0.0.2\r\npublishers: \r\nsuscribers: \r\nstatus: activated\r\nowner: CJTXjCEbDDgQoccJgEbNGc63QwWzJtdAoSio36zVXHQw\n");
     }
 }

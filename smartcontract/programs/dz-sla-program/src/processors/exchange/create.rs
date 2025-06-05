@@ -1,18 +1,19 @@
 use core::fmt;
 
-use crate::error::DoubleZeroError;
-use crate::globalstate::globalstate_get_next;
-use crate::globalstate::globalstate_write;
-use crate::helper::*;
-use crate::pda::*;
-use crate::state::{accounttype::AccountType, exchange::*};
+use crate::{
+    error::DoubleZeroError,
+    globalstate::{globalstate_get_next, globalstate_write},
+    helper::*,
+    pda::*,
+    state::{accounttype::AccountType, exchange::*},
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
 use solana_program::msg;
-use solana_program::program_error::ProgramError;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    program_error::ProgramError,
     pubkey::Pubkey,
 };
 

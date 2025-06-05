@@ -1,7 +1,8 @@
 use core::fmt;
 
-use crate::globalstate::globalstate_get_next;
-use crate::{error::DoubleZeroError, helper::*, state::device::*};
+use crate::{
+    error::DoubleZeroError, globalstate::globalstate_get_next, helper::*, state::device::*,
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
 use solana_program::msg;

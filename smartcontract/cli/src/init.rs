@@ -1,5 +1,7 @@
-use crate::doublezerocommand::CliCommand;
-use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
+use crate::{
+    doublezerocommand::CliCommand,
+    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+};
 use clap::Args;
 use doublezero_sdk::commands::globalstate::init::InitGlobalStateCommand;
 use std::io::Write;

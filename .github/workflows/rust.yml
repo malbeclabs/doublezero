@@ -22,6 +22,7 @@ jobs:
       - name: clippy
         run: cargo clippy --workspace --all-features --all-targets -- -Dclippy::all -Dwarnings
       - name: fmt-check
-        run: cargo fmt --check --all
+        run: |
+          make cargo-fmt-check
       - name: build
         run: cargo build --workspace

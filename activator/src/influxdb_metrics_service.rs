@@ -1,5 +1,7 @@
-use crate::metrics_service::{Metric, MetricsService};
-use crate::utils::{get_utc_nanoseconds_since_epoch, kvpair_string};
+use crate::{
+    metrics_service::{Metric, MetricsService},
+    utils::{get_utc_nanoseconds_since_epoch, kvpair_string},
+};
 use influxdb2::Client;
 use tokio::sync::mpsc::{Receiver, Sender};
 

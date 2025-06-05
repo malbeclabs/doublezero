@@ -1,22 +1,23 @@
 use clap::Args;
 use doublezero_cli::doublezerocommand::CliCommand;
-use doublezero_sdk::commands::device::list::ListDeviceCommand;
-use doublezero_sdk::DeviceStatus;
+use doublezero_sdk::{commands::device::list::ListDeviceCommand, DeviceStatus};
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 use tabled::{settings::Style, Table};
 
-use crate::requirements::check_doublezero;
-use crate::servicecontroller::ServiceController;
+use crate::{
+    requirements::check_doublezero,
+    servicecontroller::{ServiceController, ServiceControllerImpl},
+};
 
 #[derive(Args, Debug)]
 pub struct LatencyCliCommand {}
 
 impl LatencyCliCommand {
     pub async fn execute(self, client: &dyn CliCommand) -> eyre::Result<()> {
-        check_doublezero(None)?;
+        let controller = ServiceControllerImpl::new(None);
+        check_doublezero(&controller, None)?;
 
-        let controller = ServiceController::new(None);
         let devices = client.list_device(ListDeviceCommand {})?;
         let mut latencies = controller.latency().await.map_err(|e| eyre::eyre!(e))?;
         // Filter the active devices

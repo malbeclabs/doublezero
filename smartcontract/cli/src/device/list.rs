@@ -1,9 +1,12 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_sdk::commands::device::list::ListDeviceCommand;
-use doublezero_sdk::commands::exchange::list::ListExchangeCommand;
-use doublezero_sdk::commands::location::list::ListLocationCommand;
-use doublezero_sdk::*;
+use doublezero_sdk::{
+    commands::{
+        device::list::ListDeviceCommand, exchange::list::ListExchangeCommand,
+        location::list::ListLocationCommand,
+    },
+    *,
+};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
@@ -117,8 +120,7 @@ impl ListDeviceCliCommand {
 mod tests {
     use std::collections::HashMap;
 
-    use crate::device::list::ListDeviceCliCommand;
-    use crate::tests::utils::create_test_client;
+    use crate::{device::list::ListDeviceCliCommand, tests::utils::create_test_client};
     use doublezero_sdk::{
         AccountType, Device, DeviceStatus, DeviceType, Exchange, ExchangeStatus, Location,
         LocationStatus,

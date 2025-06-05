@@ -1,10 +1,11 @@
 use core::fmt;
 
-use crate::error::DoubleZeroError;
-use crate::globalstate::globalstate_get;
-use crate::helper::*;
-use crate::state::exchange::Exchange;
-use crate::state::exchange::ExchangeStatus;
+use crate::{
+    error::DoubleZeroError,
+    globalstate::globalstate_get,
+    helper::*,
+    state::exchange::{Exchange, ExchangeStatus},
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
 use solana_program::msg;

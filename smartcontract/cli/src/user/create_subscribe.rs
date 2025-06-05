@@ -1,11 +1,16 @@
-use crate::doublezerocommand::CliCommand;
-use crate::helpers::parse_pubkey;
-use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
+use crate::{
+    doublezerocommand::CliCommand,
+    helpers::parse_pubkey,
+    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+};
 use clap::Args;
-use doublezero_sdk::commands::device::get::GetDeviceCommand;
-use doublezero_sdk::commands::multicastgroup::get::GetMulticastGroupCommand;
-use doublezero_sdk::commands::user::create_subscribe::CreateSubscribeUserCommand;
-use doublezero_sdk::*;
+use doublezero_sdk::{
+    commands::{
+        device::get::GetDeviceCommand, multicastgroup::get::GetMulticastGroupCommand,
+        user::create_subscribe::CreateSubscribeUserCommand,
+    },
+    *,
+};
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -88,21 +93,23 @@ impl CreateSubscribeUserCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::doublezerocommand::CliCommand;
-    use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::utils::create_test_client;
-    use crate::user::create_subscribe::CreateSubscribeUserCliCommand;
-    use doublezero_sdk::commands::device::get::GetDeviceCommand;
-    use doublezero_sdk::commands::multicastgroup::get::GetMulticastGroupCommand;
-    use doublezero_sdk::commands::user::create_subscribe::CreateSubscribeUserCommand;
+    use crate::{
+        doublezerocommand::CliCommand,
+        requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+        tests::utils::create_test_client,
+        user::create_subscribe::CreateSubscribeUserCliCommand,
+    };
     use doublezero_sdk::{
+        commands::{
+            device::get::GetDeviceCommand, multicastgroup::get::GetMulticastGroupCommand,
+            user::create_subscribe::CreateSubscribeUserCommand,
+        },
         AccountType, Device, DeviceStatus, DeviceType, MulticastGroup, MulticastGroupStatus,
         UserCYOA, UserType,
     };
     use doublezero_sla_program::pda::get_user_pda;
     use mockall::predicate;
-    use solana_sdk::pubkey::Pubkey;
-    use solana_sdk::signature::Signature;
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_cli_user_create_subscribe() {

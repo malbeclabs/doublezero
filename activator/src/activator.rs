@@ -4,26 +4,23 @@ use crate::{
     ipblockallocator::IPBlockAllocator,
     metrics_service::MetricsService,
     process::{
-        device::process_device_event, exchange::process_exchange_event,
+        device::process_device_event, exchange::process_exchange_event, link::process_tunnel_event,
         location::process_location_event, multicastgroup::process_multicastgroup_event,
-        tunnel::process_tunnel_event, user::process_user_event,
+        user::process_user_event,
     },
     states::devicestate::DeviceState,
 };
 use doublezero_sdk::{
     commands::{
         device::list::ListDeviceCommand, exchange::list::ListExchangeCommand,
-        location::list::ListLocationCommand, tunnel::list::ListTunnelCommand,
+        link::list::ListLinkCommand, location::list::ListLocationCommand,
         user::list::ListUserCommand,
     },
     ipv4_to_string, networkv4_list_to_string, AccountData, DZClient, Device, DeviceStatus,
-    Exchange, Location, TunnelStatus, UserStatus,
+    Exchange, GetGlobalConfigCommand, LinkStatus, Location, MulticastGroup, UserStatus,
 };
-use doublezero_sdk::{GetGlobalConfigCommand, MulticastGroup};
 use solana_sdk::pubkey::Pubkey;
-use std::collections::HashMap;
-use std::thread;
-use std::time::Duration;
+use std::{collections::HashMap, thread, time::Duration};
 
 pub type DeviceMap = HashMap<Pubkey, DeviceState>;
 
@@ -92,14 +89,14 @@ impl Activator {
     pub async fn init(&mut self) -> eyre::Result<()> {
         // Fetch the list of tunnels, devices, and users from the client
         let devices = ListDeviceCommand {}.execute(&self.client)?;
-        let tunnels = ListTunnelCommand {}.execute(&self.client)?;
+        let tunnels = ListLinkCommand {}.execute(&self.client)?;
         let users = ListUserCommand {}.execute(&self.client)?;
         self.locations = ListLocationCommand {}.execute(&self.client)?;
         self.exchanges = ListExchangeCommand {}.execute(&self.client)?;
 
         for (_, tunnel) in tunnels
             .iter()
-            .filter(|(_, t)| t.status == TunnelStatus::Activated)
+            .filter(|(_, t)| t.status == LinkStatus::Activated)
         {
             self.tunnel_tunnel_ids.assign(tunnel.tunnel_id);
             self.tunnel_tunnel_ips.assign_block(tunnel.tunnel_net);
@@ -133,9 +130,9 @@ impl Activator {
     }
 
     fn add_device(&mut self, pubkey: &Pubkey, device: &Device) {
-        if !self.devices.contains_key(pubkey) {
-            self.devices.insert(*pubkey, DeviceState::new(device));
-        }
+        self.devices
+            .entry(*pubkey)
+            .or_insert_with(|| DeviceState::new(device));
     }
 
     pub fn run(&mut self) -> eyre::Result<()> {
@@ -147,28 +144,16 @@ impl Activator {
         );
 
         self.devices.iter().for_each(|(_pubkey, device)| {
-            print!(
-                "Device code: {} public_ip: {} dz_prefixes: {} tunnels: ",
+            println!(
+                "Device code: {} public_ip: {} dz_prefixes: {} tunnels: {} tunnel_net: {} assigned: {}",
                 device.device.code,
                 ipv4_to_string(&device.device.public_ip),
-                networkv4_list_to_string(&device.device.dz_prefixes)
+                networkv4_list_to_string(&device.device.dz_prefixes),
+                device.tunnel_ids.display_assigned(),
+                self.user_tunnel_ips.base_block,
+                self.user_tunnel_ips.display_assigned_ips(),
             );
-
-            if device.tunnel_ids.assigned.is_empty() {
-                print!("-,");
-            }
-            device.tunnel_ids.assigned.iter().for_each(|tunnel_id| {
-                print!("{},", tunnel_id);
-            });
-            println!("\x08 ");
         });
-
-        print!("tunnel_net: {} assigned: ", self.user_tunnel_ips.base_block);
-        if self.user_tunnel_ips.assigned_ips.is_empty() {
-            print!("-,");
-        }
-        self.user_tunnel_ips.print_assigned_ips();
-        println!("\x08 ");
 
         // store these so we can move them into the below closure without making the borrow checker mad
         let devices = &mut self.devices;
@@ -188,7 +173,7 @@ impl Activator {
                     AccountData::Device(device) => {
                         process_device_event(client, pubkey, devices, device, state_transitions);
                     }
-                    AccountData::Tunnel(tunnel) => {
+                    AccountData::Link(tunnel) => {
                         process_tunnel_event(
                             client,
                             tunnel_tunnel_ips,
@@ -200,7 +185,6 @@ impl Activator {
                     AccountData::User(user) => {
                         process_user_event(
                             client,
-                            pubkey,
                             devices,
                             user_tunnel_ips,
                             tunnel_tunnel_ids,

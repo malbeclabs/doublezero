@@ -4,13 +4,15 @@ mod cli;
 mod command;
 mod requirements;
 mod servicecontroller;
-use crate::cli::device::DeviceAllowlistCommands;
-use crate::cli::globalconfig::FoundationAllowlistCommands;
-use crate::cli::user::UserAllowlistCommands;
 use crate::cli::{
-    command::Command, config::ConfigCommands, device::DeviceCommands, exchange::ExchangeCommands,
-    globalconfig::GlobalConfigCommands, location::LocationCommands, tunnel::TunnelCommands,
-    user::UserCommands,
+    command::Command,
+    config::ConfigCommands,
+    device::{DeviceAllowlistCommands, DeviceCommands},
+    exchange::ExchangeCommands,
+    globalconfig::{FoundationAllowlistCommands, GlobalConfigCommands},
+    link::LinkCommands,
+    location::LocationCommands,
+    user::{UserAllowlistCommands, UserCommands},
 };
 use doublezero_cli::doublezerocommand::CliCommandImpl;
 use doublezero_sdk::DZClient;
@@ -102,12 +104,12 @@ async fn main() -> eyre::Result<()> {
                 DeviceAllowlistCommands::Remove(args) => args.execute(&client, &mut handle),
             },
         },
-        Command::Tunnel(command) => match command.command {
-            TunnelCommands::Create(args) => args.execute(&client, &mut handle),
-            TunnelCommands::Update(args) => args.execute(&client, &mut handle),
-            TunnelCommands::List(args) => args.execute(&client, &mut handle),
-            TunnelCommands::Get(args) => args.execute(&client, &mut handle),
-            TunnelCommands::Delete(args) => args.execute(&client, &mut handle),
+        Command::Link(command) => match command.command {
+            LinkCommands::Create(args) => args.execute(&client, &mut handle),
+            LinkCommands::Update(args) => args.execute(&client, &mut handle),
+            LinkCommands::List(args) => args.execute(&client, &mut handle),
+            LinkCommands::Get(args) => args.execute(&client, &mut handle),
+            LinkCommands::Delete(args) => args.execute(&client, &mut handle),
         },
         Command::User(command) => match command.command {
             UserCommands::Create(args) => args.execute(&client, &mut handle),

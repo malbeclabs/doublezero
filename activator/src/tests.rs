@@ -2,7 +2,7 @@
 pub mod utils {
     use doublezero_sdk::{AccountData, AccountType, DoubleZeroClient, MockDoubleZeroClient};
     use doublezero_sla_program::{
-        pda::get_device_pda, pda::get_globalstate_pda, pda::get_tunnel_pda, pda::get_user_pda,
+        pda::{get_device_pda, get_globalstate_pda, get_link_pda, get_user_pda},
         state::globalstate::GlobalState,
     };
     use mockall::predicate;
@@ -43,7 +43,7 @@ pub mod utils {
     }
 
     pub fn get_tunnel_bump_seed(client: &MockDoubleZeroClient) -> u8 {
-        let (_, bump_seed) = get_tunnel_pda(&client.get_program_id(), 0);
+        let (_, bump_seed) = get_link_pda(&client.get_program_id(), 0);
         bump_seed
     }
 

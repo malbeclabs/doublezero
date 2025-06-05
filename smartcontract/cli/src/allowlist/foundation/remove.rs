@@ -1,10 +1,11 @@
-use crate::doublezerocommand::CliCommand;
-use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
+use crate::{
+    doublezerocommand::CliCommand,
+    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+};
 use clap::Args;
 use doublezero_sdk::commands::allowlist::foundation::remove::RemoveFoundationAllowlistCommand;
 use solana_sdk::pubkey::Pubkey;
-use std::io::Write;
-use std::str::FromStr;
+use std::{io::Write, str::FromStr};
 
 #[derive(Args, Debug)]
 pub struct RemoveFoundationAllowlistCliCommand {
@@ -35,13 +36,15 @@ impl RemoveFoundationAllowlistCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::allowlist::foundation::remove::RemoveFoundationAllowlistCliCommand;
-    use crate::allowlist::foundation::remove::RemoveFoundationAllowlistCommand;
-    use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::utils::create_test_client;
+    use crate::{
+        allowlist::foundation::remove::{
+            RemoveFoundationAllowlistCliCommand, RemoveFoundationAllowlistCommand,
+        },
+        requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+        tests::utils::create_test_client,
+    };
     use mockall::predicate;
-    use solana_sdk::pubkey::Pubkey;
-    use solana_sdk::signature::Signature;
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_cli_foundation_allowlist_remove() {

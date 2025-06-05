@@ -1,14 +1,17 @@
-use crate::doublezerocommand::CliCommand;
-use crate::helpers::parse_pubkey;
-use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
+use crate::{
+    doublezerocommand::CliCommand,
+    helpers::parse_pubkey,
+    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+};
 use clap::Args;
-use doublezero_sdk::commands::device::get::GetDeviceCommand;
-use doublezero_sdk::commands::tunnel::create::CreateTunnelCommand;
-use doublezero_sdk::{bandwidth_parse, TunnelTunnelType};
+use doublezero_sdk::{
+    commands::{device::get::GetDeviceCommand, link::create::CreateLinkCommand},
+    *,
+};
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct CreateTunnelCliCommand {
+pub struct CreateLinkCliCommand {
     #[arg(long)]
     pub code: String,
     #[arg(long)]
@@ -16,7 +19,7 @@ pub struct CreateTunnelCliCommand {
     #[arg(long)]
     pub side_z: String,
     #[arg(long)]
-    pub tunnel_type: Option<String>,
+    pub link_type: Option<String>,
     #[arg(long)]
     pub bandwidth: String,
     #[arg(long)]
@@ -27,7 +30,7 @@ pub struct CreateTunnelCliCommand {
     pub jitter_ms: f64,
 }
 
-impl CreateTunnelCliCommand {
+impl CreateLinkCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
@@ -56,15 +59,15 @@ impl CreateTunnelCliCommand {
             }
         };
 
-        let (signature, _pubkey) = client.create_tunnel(CreateTunnelCommand {
+        let (signature, _pubkey) = client.create_link(CreateLinkCommand {
             code: self.code.clone(),
             side_a_pk,
             side_z_pk,
-            tunnel_type: self
-                .tunnel_type
+            link_type: self
+                .link_type
                 .as_ref()
                 .map(|t| t.parse().unwrap())
-                .unwrap_or(TunnelTunnelType::MPLSoGRE),
+                .unwrap_or(LinkLinkType::L3),
             bandwidth: bandwidth_parse(&self.bandwidth),
             mtu: self.mtu,
             delay_ns: (self.delay_ms * 1000000.0) as u64,
@@ -79,21 +82,18 @@ impl CreateTunnelCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::doublezerocommand::CliCommand;
-    use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::utils::create_test_client;
-    use crate::tunnel::create::CreateTunnelCliCommand;
-    use doublezero_sdk::commands::device::get::GetDeviceCommand;
-    use doublezero_sdk::commands::tunnel::create::CreateTunnelCommand;
-    use doublezero_sdk::get_device_pda;
-    use doublezero_sdk::AccountType;
-    use doublezero_sdk::Device;
-    use doublezero_sdk::DeviceStatus;
-    use doublezero_sdk::DeviceType;
-    use doublezero_sdk::TunnelTunnelType;
+    use crate::{
+        doublezerocommand::CliCommand,
+        link::create::CreateLinkCliCommand,
+        requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+        tests::utils::create_test_client,
+    };
+    use doublezero_sdk::{
+        commands::{device::get::GetDeviceCommand, link::create::CreateLinkCommand},
+        get_device_pda, AccountType, Device, DeviceStatus, DeviceType, LinkLinkType,
+    };
     use mockall::predicate;
-    use solana_sdk::pubkey::Pubkey;
-    use solana_sdk::signature::Signature;
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_cli_device_create() {
@@ -157,12 +157,12 @@ mod tests {
             }))
             .returning(move |_| Ok((device2_pk, device2.clone())));
         client
-            .expect_create_tunnel()
-            .with(predicate::eq(CreateTunnelCommand {
+            .expect_create_link()
+            .with(predicate::eq(CreateLinkCommand {
                 code: "test".to_string(),
                 side_a_pk: device1_pk,
                 side_z_pk: device2_pk,
-                tunnel_type: TunnelTunnelType::MPLSoGRE,
+                link_type: LinkLinkType::L3,
                 bandwidth: 1000000000,
                 mtu: 1500,
                 delay_ns: 10000000000,
@@ -173,11 +173,11 @@ mod tests {
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
-        let res = CreateTunnelCliCommand {
+        let res = CreateLinkCliCommand {
             code: "test".to_string(),
             side_a: device1_pk.to_string(),
             side_z: device2_pk.to_string(),
-            tunnel_type: Some("MPLSoGRE".to_string()),
+            link_type: Some("L3".to_string()),
             bandwidth: "1Gbps".to_string(),
             mtu: 1500,
             delay_ms: 10000.0,

@@ -1,19 +1,23 @@
 use super::helpers::look_for_ip;
-use crate::servicecontroller::{ProvisioningRequest, ServiceController};
+use crate::servicecontroller::{ProvisioningRequest, ServiceController, ServiceControllerImpl};
 use clap::{Args, Subcommand, ValueEnum};
 use doublezero_cli::{
     doublezerocommand::CliCommand,
     helpers::init_command,
     requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON, CHECK_USER_ALLOWLIST},
 };
-use doublezero_sdk::commands::{
-    device::get::GetDeviceCommand, device::list::ListDeviceCommand,
-    globalconfig::get::GetGlobalConfigCommand, multicastgroup::list::ListMulticastGroupCommand,
-    multicastgroup::subscribe::SubscribeMulticastGroupCommand, user::create::CreateUserCommand,
-    user::create_subscribe::CreateSubscribeUserCommand, user::get::GetUserCommand,
-    user::list::ListUserCommand,
-};
 use doublezero_sdk::{
+    commands::{
+        device::{get::GetDeviceCommand, list::ListDeviceCommand},
+        globalconfig::get::GetGlobalConfigCommand,
+        multicastgroup::{
+            list::ListMulticastGroupCommand, subscribe::SubscribeMulticastGroupCommand,
+        },
+        user::{
+            create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand,
+            get::GetUserCommand, list::ListUserCommand,
+        },
+    },
     ipv4_to_string, networkv4_to_string, Device, IpV4, NetworkV4, User, UserCYOA, UserStatus,
     UserType,
 };
@@ -66,8 +70,17 @@ pub struct ProvisioningCliCommand {
 
 impl ProvisioningCliCommand {
     pub async fn execute(&self, client: &dyn CliCommand) -> eyre::Result<()> {
+        let controller = ServiceControllerImpl::new(None);
+        self.execute_with_service_controller(client, &controller)
+            .await
+    }
+
+    pub async fn execute_with_service_controller<T: ServiceController>(
+        &self,
+        client: &dyn CliCommand,
+        controller: &T,
+    ) -> eyre::Result<()> {
         let spinner = init_command();
-        let controller = ServiceController::new(None);
 
         // Check requirements
         check_requirements(
@@ -76,7 +89,7 @@ impl ProvisioningCliCommand {
             CHECK_ID_JSON | CHECK_BALANCE | CHECK_USER_ALLOWLIST,
         )?;
 
-        check_doublezero(Some(&spinner))?;
+        check_doublezero(controller, Some(&spinner))?;
 
         spinner.println("🔗  Start Provisioning User...");
         spinner.set_prefix("1/4 Public IP");
@@ -108,17 +121,17 @@ impl ProvisioningCliCommand {
         }
     }
 
-    async fn execute_ibrl(
+    async fn execute_ibrl<T: ServiceController>(
         &self,
         client: &dyn CliCommand,
-        controller: ServiceController,
+        controller: &T,
         user_type: UserType,
         client_ip: IpV4,
         spinner: ProgressBar,
     ) -> eyre::Result<()> {
         // Look for user
         let (user_pubkey, user) = self
-            .find_or_create_user(client, &controller, &client_ip, &spinner, user_type)
+            .find_or_create_user(client, controller, &client_ip, &spinner, user_type)
             .await?;
 
         // Check user status
@@ -126,14 +139,7 @@ impl ProvisioningCliCommand {
             UserStatus::Activated => {
                 // User is activated
                 self.user_activated(
-                    client,
-                    &controller,
-                    &user,
-                    &client_ip,
-                    &spinner,
-                    user_type,
-                    None,
-                    None,
+                    client, controller, &user, &client_ip, &spinner, user_type, None, None,
                 )
                 .await?
             }
@@ -150,10 +156,10 @@ impl ProvisioningCliCommand {
         Ok(())
     }
 
-    async fn execute_multicast(
+    async fn execute_multicast<T: ServiceController>(
         &self,
         client: &dyn CliCommand,
-        controller: ServiceController,
+        controller: &T,
         multicast_mode: &MulticastMode,
         multicast_group: &String,
         client_ip: IpV4,
@@ -169,7 +175,7 @@ impl ProvisioningCliCommand {
         let (user_pubkey, user) = self
             .find_or_create_user_and_subscribe(
                 client,
-                &controller,
+                controller,
                 &client_ip,
                 &spinner,
                 multicast_mode,
@@ -194,7 +200,7 @@ impl ProvisioningCliCommand {
                 // User is activated
                 self.user_activated(
                     client,
-                    &controller,
+                    controller,
                     &user,
                     &client_ip,
                     &spinner,
@@ -233,10 +239,10 @@ impl ProvisioningCliCommand {
         }
     }
 
-    async fn find_or_create_device(
+    async fn find_or_create_device<T: ServiceController>(
         &self,
         client: &dyn CliCommand,
-        controller: &ServiceController,
+        controller: &T,
         spinner: &ProgressBar,
     ) -> eyre::Result<(Pubkey, Device)> {
         spinner.set_message("Searching for device account...");
@@ -274,10 +280,10 @@ impl ProvisioningCliCommand {
         Ok((device_pk, device))
     }
 
-    async fn find_or_create_user(
+    async fn find_or_create_user<T: ServiceController>(
         &self,
         client: &dyn CliCommand,
-        controller: &ServiceController,
+        controller: &T,
         client_ip: &IpV4,
         spinner: &ProgressBar,
         user_type: UserType,
@@ -340,10 +346,10 @@ impl ProvisioningCliCommand {
         Ok((user_pubkey, user))
     }
 
-    async fn find_or_create_user_and_subscribe(
+    async fn find_or_create_user_and_subscribe<T: ServiceController>(
         &self,
         client: &dyn CliCommand,
-        controller: &ServiceController,
+        controller: &T,
         client_ip: &IpV4,
         spinner: &ProgressBar,
         multicast_mode: &MulticastMode,
@@ -461,10 +467,10 @@ impl ProvisioningCliCommand {
     }
 
     #[allow(clippy::too_many_arguments)]
-    async fn user_activated(
+    async fn user_activated<T: ServiceController>(
         &self,
         client: &dyn CliCommand,
-        controller: &ServiceController,
+        controller: &T,
         user: &User,
         client_ip: &IpV4,
         spinner: &ProgressBar,
@@ -570,5 +576,453 @@ impl ProvisioningCliCommand {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::servicecontroller::{LatencyRecord, MockServiceController, ProvisioningResponse};
+    use doublezero_cli::{doublezerocommand::MockCliCommand, tests::utils::create_test_client};
+    use doublezero_sdk::{tests::utils::create_temp_config, utils::parse_pubkey};
+    use doublezero_sla_program::{
+        state::{
+            accounttype::AccountType,
+            device::{Device, DeviceStatus, DeviceType},
+            globalconfig::GlobalConfig,
+            multicastgroup::{MulticastGroup, MulticastGroupStatus},
+        },
+        types::{ipv4_parse, networkv4_parse},
+    };
+    use lazy_static::lazy_static;
+    use mockall::predicate;
+    use solana_sdk::signature::Signature;
+    use std::{cell::RefCell, collections::HashMap, rc::Rc};
+    use tempfile::TempDir;
+
+    lazy_static! {
+        pub static ref TMPDIR: TempDir = create_temp_config();
+    }
+
+    #[ctor::ctor]
+    fn setup() {
+        // forces lazy_static to initialize
+        println!("Using TMPDIR = {}", TMPDIR.path().display());
+    }
+
+    struct TestFixture {
+        pub global_cfg: GlobalConfig,
+        pub client: MockCliCommand,
+        pub controller: MockServiceController,
+        pub devices: Rc<RefCell<HashMap<Pubkey, Device>>>,
+        pub users: Rc<RefCell<HashMap<Pubkey, User>>>,
+        pub latencies: Rc<RefCell<Vec<LatencyRecord>>>,
+        pub mcast_groups: Rc<RefCell<HashMap<Pubkey, MulticastGroup>>>,
+    }
+
+    impl TestFixture {
+        pub fn new() -> Self {
+            let mut fixture = Self {
+                global_cfg: GlobalConfig {
+                    account_type: AccountType::Config,
+                    owner: Pubkey::new_unique(),
+                    bump_seed: 1,
+                    local_asn: 65000,
+                    remote_asn: 65001,
+                    tunnel_tunnel_block: networkv4_parse("10.0.0.0/24"),
+                    user_tunnel_block: networkv4_parse("10.0.1.0/24"),
+                    multicastgroup_block: networkv4_parse("239.0.0.0/24"),
+                },
+                client: create_test_client(),
+                controller: MockServiceController::new(),
+                devices: Rc::new(RefCell::new(HashMap::new())),
+                users: Rc::new(RefCell::new(HashMap::new())),
+                latencies: Rc::new(RefCell::new(vec![])),
+                mcast_groups: Rc::new(RefCell::new(HashMap::new())),
+            };
+
+            fixture
+                .controller
+                .expect_service_controller_check()
+                .return_const(true);
+
+            fixture
+                .controller
+                .expect_service_controller_can_open()
+                .return_const(true);
+
+            let latencies = fixture.latencies.clone();
+            fixture
+                .controller
+                .expect_latency()
+                .returning_st(move || Ok(latencies.borrow().clone()));
+
+            let global_cfg = fixture.global_cfg.clone();
+            fixture
+                .client
+                .expect_get_globalconfig()
+                .returning_st(move |_| Ok((Pubkey::new_unique(), global_cfg.clone())));
+
+            let payer = fixture.client.get_payer();
+            fixture
+                .client
+                .expect_list_user_allowlist()
+                .returning_st(move |_| Ok(vec![payer]));
+
+            let users = fixture.users.clone();
+            fixture
+                .client
+                .expect_list_user()
+                .returning_st(move |_| Ok(users.borrow().clone()));
+
+            let devices = fixture.devices.clone();
+            fixture
+                .client
+                .expect_list_device()
+                .returning_st(move |_| Ok(devices.borrow().clone()));
+
+            let mcast_groups = fixture.mcast_groups.clone();
+            fixture
+                .client
+                .expect_list_multicastgroup()
+                .returning_st(move |_| Ok(mcast_groups.borrow().clone()));
+
+            let users = fixture.users.clone();
+            fixture.client.expect_get_user().returning_st(move |cmd| {
+                let user_pk = cmd.pubkey;
+                let users = users.borrow();
+                let user = users.get(&user_pk);
+                match user {
+                    Some(user) => Ok((user_pk, user.clone())),
+                    None => Err(eyre::eyre!("User not found")),
+                }
+            });
+
+            let devices = fixture.devices.clone();
+            fixture.client.expect_get_device().returning_st(move |cmd| {
+                let devices = devices.borrow();
+                match parse_pubkey(&cmd.pubkey_or_code) {
+                    Some(pk) => match devices.get(&pk) {
+                        Some(device) => Ok((pk, device.clone())),
+                        None => Err(eyre::eyre!("Invalid Account Type")),
+                    },
+                    None => {
+                        let dev = devices.iter().find(|(_, v)| v.code == cmd.pubkey_or_code);
+                        match dev {
+                            Some((pk, device)) => Ok((*pk, device.clone())),
+                            None => Err(eyre::eyre!("Device not found")),
+                        }
+                    }
+                }
+            });
+
+            fixture
+        }
+
+        pub fn add_device(&mut self, latency_ns: i32, reachable: bool) -> (Pubkey, Device) {
+            let mut devices = self.devices.borrow_mut();
+            let device_number = devices.len() + 1;
+            let pk = Pubkey::new_unique();
+            let device_ip = format!("5.6.7.{}", device_number);
+            self.latencies.borrow_mut().push(LatencyRecord {
+                device_pk: pk.to_string(),
+                device_ip: device_ip.clone(),
+                min_latency_ns: latency_ns,
+                max_latency_ns: latency_ns,
+                avg_latency_ns: latency_ns,
+                reachable,
+            });
+            let device = Device {
+                account_type: AccountType::Device,
+                owner: Pubkey::new_unique(),
+                index: 1,
+                bump_seed: 1,
+                location_pk: Pubkey::new_unique(),
+                exchange_pk: Pubkey::new_unique(),
+                device_type: DeviceType::Switch,
+                public_ip: ipv4_parse(device_ip.as_str()),
+                status: DeviceStatus::Activated,
+                code: format!("device{}", device_number),
+                dz_prefixes: vec![networkv4_parse("10.0.0.0/24")],
+            };
+            devices.insert(pk, device.clone());
+            (pk, device)
+        }
+
+        pub fn add_multicast_group(
+            &mut self,
+            code: &str,
+            multicast_ip: &str,
+        ) -> (Pubkey, MulticastGroup) {
+            let mut mcast_groups = self.mcast_groups.borrow_mut();
+            let pk = Pubkey::new_unique();
+            let group = MulticastGroup {
+                account_type: AccountType::MulticastGroup,
+                owner: Pubkey::new_unique(),
+                index: 1,
+                bump_seed: 1,
+                tenant_pk: Pubkey::new_unique(),
+                multicast_ip: ipv4_parse(multicast_ip),
+                max_bandwidth: 10_000_000_000,
+                status: MulticastGroupStatus::Activated,
+                code: code.to_string(),
+                pub_allowlist: vec![],
+                sub_allowlist: vec![],
+                publishers: vec![],
+                subscribers: vec![],
+            };
+            mcast_groups.insert(pk, group.clone());
+            (pk, group)
+        }
+
+        pub fn create_user(
+            &mut self,
+            user_type: UserType,
+            device_pk: Pubkey,
+            client_ip: &str,
+        ) -> User {
+            User {
+                account_type: AccountType::User,
+                owner: Pubkey::new_unique(),
+                index: 1,
+                bump_seed: 1,
+                user_type,
+                device_pk,
+                tenant_pk: Pubkey::new_unique(),
+                cyoa_type: UserCYOA::GREOverDIA,
+                client_ip: ipv4_parse(client_ip),
+                dz_ip: ipv4_parse(client_ip),
+                tunnel_id: 1,
+                tunnel_net: networkv4_parse("10.1.1.0/31"),
+                status: UserStatus::Activated,
+                publishers: vec![],
+                subscribers: vec![],
+            }
+        }
+
+        pub fn expect_create_user(&mut self, pk: Pubkey, user: &User) {
+            let expected_create_user_command = CreateUserCommand {
+                user_type: user.user_type,
+                device_pk: user.device_pk,
+                cyoa_type: UserCYOA::GREOverDIA,
+                client_ip: user.client_ip,
+            };
+
+            let users = self.users.clone();
+            let user = user.clone();
+            self.client
+                .expect_create_user()
+                .times(1)
+                .with(predicate::eq(expected_create_user_command))
+                .returning_st(move |_| {
+                    users.borrow_mut().insert(pk, user.clone());
+                    Ok((Signature::default(), pk))
+                });
+        }
+
+        pub fn expect_create_subscribe_user(
+            &mut self,
+            pk: Pubkey,
+            user: &User,
+            mcast_group_pk: Pubkey,
+            publisher: bool,
+            subscriber: bool,
+        ) {
+            let expected_create_subscribe_user_command = CreateSubscribeUserCommand {
+                user_type: user.user_type,
+                device_pk: user.device_pk,
+                cyoa_type: UserCYOA::GREOverDIA,
+                client_ip: user.client_ip,
+                mgroup_pk: mcast_group_pk,
+                publisher,
+                subscriber,
+            };
+
+            let users = self.users.clone();
+            let mut user = user.clone();
+            if publisher {
+                user.publishers.push(mcast_group_pk);
+            }
+            if subscriber {
+                user.subscribers.push(mcast_group_pk);
+            }
+            self.client
+                .expect_create_subscribe_user()
+                .times(1)
+                .with(predicate::eq(expected_create_subscribe_user_command))
+                .returning_st(move |_| {
+                    users.borrow_mut().insert(pk, user.clone());
+                    Ok((Signature::default(), pk))
+                });
+        }
+
+        pub fn expected_provisioning_request(
+            &mut self,
+            user_type: UserType,
+            client_ip: &str,
+            device_ip: &str,
+            mcast_pub_groups: Option<Vec<String>>,
+            mcast_sub_groups: Option<Vec<String>>,
+        ) {
+            let expected_request = ProvisioningRequest {
+                tunnel_src: client_ip.to_string(),
+                tunnel_dst: device_ip.to_string(),
+                tunnel_net: "10.1.1.0/31".to_string(),
+                doublezero_ip: client_ip.to_string(),
+                doublezero_prefixes: vec!["10.0.0.0/24".to_string()],
+                bgp_local_asn: Some(self.global_cfg.local_asn),
+                bgp_remote_asn: Some(self.global_cfg.remote_asn),
+                user_type: user_type.to_string(),
+                mcast_pub_groups,
+                mcast_sub_groups,
+            };
+
+            self.controller
+                .expect_provisioning()
+                .times(1)
+                .with(predicate::eq(expected_request))
+                .returning_st(move |_| {
+                    Ok(ProvisioningResponse {
+                        status: "success".to_string(),
+                        description: None,
+                    })
+                });
+        }
+    }
+
+    #[tokio::test]
+    async fn test_connect_command_ibrl() {
+        let mut fixture = TestFixture::new();
+
+        let (device1_pk, device1) = fixture.add_device(100, true);
+        let user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
+        fixture.expect_create_user(Pubkey::new_unique(), &user);
+        fixture.expected_provisioning_request(
+            UserType::IBRL,
+            ipv4_to_string(&user.client_ip).as_str(),
+            ipv4_to_string(&device1.public_ip).as_str(),
+            None,
+            None,
+        );
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::IBRL {
+                allocate_addr: false,
+            },
+            client_ip: Some(ipv4_to_string(&user.client_ip)),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_connect_command_ibrl_allocate() {
+        let mut fixture = TestFixture::new();
+
+        let (device1_pk, device1) = fixture.add_device(100, true);
+        let user = fixture.create_user(UserType::IBRLWithAllocatedIP, device1_pk, "1.2.3.4");
+        fixture.expect_create_user(Pubkey::new_unique(), &user);
+        fixture.expected_provisioning_request(
+            UserType::IBRLWithAllocatedIP,
+            ipv4_to_string(&user.client_ip).as_str(),
+            ipv4_to_string(&device1.public_ip).as_str(),
+            None,
+            None,
+        );
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::IBRL {
+                allocate_addr: true,
+            },
+            client_ip: Some(ipv4_to_string(&user.client_ip)),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_connect_command_multicast_producer() {
+        let mut fixture = TestFixture::new();
+
+        let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
+        let (device1_pk, device1) = fixture.add_device(100, true);
+        let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+        fixture.expect_create_subscribe_user(
+            Pubkey::new_unique(),
+            &user,
+            mcast_group_pk,
+            true,
+            false,
+        );
+        fixture.expected_provisioning_request(
+            UserType::Multicast,
+            ipv4_to_string(&user.client_ip).as_str(),
+            ipv4_to_string(&device1.public_ip).as_str(),
+            Some(vec![ipv4_to_string(&mcast_group.multicast_ip)]),
+            Some(vec![]),
+        );
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: MulticastMode::Publisher,
+                multicast_group: "test-group".to_string(),
+            },
+            client_ip: Some(ipv4_to_string(&user.client_ip)),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_connect_command_multicast_subscribe() {
+        let mut fixture = TestFixture::new();
+
+        let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
+        let (device1_pk, device1) = fixture.add_device(100, true);
+        let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+        fixture.expect_create_subscribe_user(
+            Pubkey::new_unique(),
+            &user,
+            mcast_group_pk,
+            false,
+            true,
+        );
+        fixture.expected_provisioning_request(
+            UserType::Multicast,
+            ipv4_to_string(&user.client_ip).as_str(),
+            ipv4_to_string(&device1.public_ip).as_str(),
+            Some(vec![]),
+            Some(vec![ipv4_to_string(&mcast_group.multicast_ip)]),
+        );
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: MulticastMode::Subscriber,
+                multicast_group: "test-group".to_string(),
+            },
+            client_ip: Some(ipv4_to_string(&user.client_ip)),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(result.is_ok());
     }
 }

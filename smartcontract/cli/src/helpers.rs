@@ -1,11 +1,15 @@
-use std::io::{Read, Write};
-use std::str;
+use std::{
+    io::{Read, Write},
+    str,
+};
 
 use indicatif::{ProgressBar, ProgressStyle};
 use solana_sdk::pubkey::Pubkey;
-use std::net::{TcpStream, ToSocketAddrs};
-use std::str::FromStr;
-use std::time::Duration;
+use std::{
+    net::{TcpStream, ToSocketAddrs},
+    str::FromStr,
+    time::Duration,
+};
 
 pub fn parse_pubkey(input: &str) -> Option<Pubkey> {
     if input.len() < 43 || input.len() > 44 {

@@ -1,9 +1,7 @@
-use crate::error::DoubleZeroError;
-use crate::format_option;
-use crate::globalstate::globalstate_get;
-use crate::helper::*;
-use crate::state::user::*;
-use crate::types::*;
+use crate::{
+    error::DoubleZeroError, format_option, globalstate::globalstate_get, helper::*, state::user::*,
+    types::*,
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
 use solana_program::msg;

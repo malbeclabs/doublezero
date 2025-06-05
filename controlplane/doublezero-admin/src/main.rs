@@ -1,12 +1,14 @@
 use clap::Parser;
-use cli::command::Command;
-use cli::config::ConfigCommands;
-use cli::device::{DeviceAllowlistCommands, DeviceCommands};
-use cli::exchange::ExchangeCommands;
-use cli::globalconfig::{FoundationAllowlistCommands, GlobalConfigCommands};
-use cli::location::LocationCommands;
-use cli::tunnel::TunnelCommands;
-use cli::user::{UserAllowlistCommands, UserCommands};
+use cli::{
+    command::Command,
+    config::ConfigCommands,
+    device::{DeviceAllowlistCommands, DeviceCommands},
+    exchange::ExchangeCommands,
+    globalconfig::{FoundationAllowlistCommands, GlobalConfigCommands},
+    link::LinkCommands,
+    location::LocationCommands,
+    user::{UserAllowlistCommands, UserCommands},
+};
 use doublezero_cli::doublezerocommand::CliCommandImpl;
 use doublezero_sdk::DZClient;
 mod cli;
@@ -91,12 +93,12 @@ async fn main() -> eyre::Result<()> {
                 DeviceAllowlistCommands::Remove(args) => args.execute(&client, &mut handle),
             },
         },
-        Command::Tunnel(command) => match command.command {
-            TunnelCommands::Create(args) => args.execute(&client, &mut handle),
-            TunnelCommands::Update(args) => args.execute(&client, &mut handle),
-            TunnelCommands::List(args) => args.execute(&client, &mut handle),
-            TunnelCommands::Get(args) => args.execute(&client, &mut handle),
-            TunnelCommands::Delete(args) => args.execute(&client, &mut handle),
+        Command::Link(command) => match command.command {
+            LinkCommands::Create(args) => args.execute(&client, &mut handle),
+            LinkCommands::Update(args) => args.execute(&client, &mut handle),
+            LinkCommands::List(args) => args.execute(&client, &mut handle),
+            LinkCommands::Get(args) => args.execute(&client, &mut handle),
+            LinkCommands::Delete(args) => args.execute(&client, &mut handle),
         },
         Command::User(command) => match command.command {
             UserCommands::Create(args) => args.execute(&client, &mut handle),

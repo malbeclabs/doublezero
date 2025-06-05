@@ -1,6 +1,4 @@
-use crate::error::DoubleZeroError;
-use crate::helper::account_write;
-use crate::state::multicastgroup::MulticastGroup;
+use crate::{error::DoubleZeroError, helper::account_write, state::multicastgroup::MulticastGroup};
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
 #[cfg(test)]

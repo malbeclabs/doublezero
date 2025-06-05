@@ -1,8 +1,9 @@
-use crate::doublezerocommand::CliCommand;
-use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
+use crate::{
+    doublezerocommand::CliCommand,
+    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+};
 use clap::Args;
-use doublezero_sdk::commands::location::delete::DeleteLocationCommand;
-use doublezero_sdk::commands::location::get::GetLocationCommand;
+use doublezero_sdk::commands::location::{delete::DeleteLocationCommand, get::GetLocationCommand};
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -30,18 +31,18 @@ impl DeleteLocationCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::doublezerocommand::CliCommand;
-    use crate::location::delete::DeleteLocationCliCommand;
-    use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::utils::create_test_client;
-    use doublezero_sdk::commands::location::delete::DeleteLocationCommand;
-    use doublezero_sdk::get_location_pda;
-    use doublezero_sdk::AccountType;
-    use doublezero_sdk::GetLocationCommand;
-    use doublezero_sdk::Location;
-    use doublezero_sdk::LocationStatus;
+    use crate::{
+        doublezerocommand::CliCommand,
+        location::delete::DeleteLocationCliCommand,
+        requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+        tests::utils::create_test_client,
+    };
+    use doublezero_sdk::{
+        commands::location::delete::DeleteLocationCommand, get_location_pda, AccountType,
+        GetLocationCommand, Location, LocationStatus,
+    };
     use mockall::predicate;
-    use solana_sdk::signature::Signature;
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_cli_location_delete() {
@@ -66,19 +67,20 @@ mod tests {
             lng: 56.78,
             loc_id: 1,
             status: LocationStatus::Activated,
-            owner: pda_pubkey,
+            owner: Pubkey::default(),
         };
 
         client
             .expect_check_requirements()
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
+        let location_cloned = location.clone();
         client
             .expect_get_location()
             .with(predicate::eq(GetLocationCommand {
                 pubkey_or_code: pda_pubkey.to_string(),
             }))
-            .returning(move |_| Ok((pda_pubkey, location.clone())));
+            .returning(move |_| Ok((pda_pubkey, location_cloned.clone())));
 
         client
             .expect_delete_location()

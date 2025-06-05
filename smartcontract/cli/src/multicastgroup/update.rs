@@ -1,9 +1,14 @@
-use crate::doublezerocommand::CliCommand;
-use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
+use crate::{
+    doublezerocommand::CliCommand,
+    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+};
 use clap::Args;
-use doublezero_sdk::commands::multicastgroup::get::GetMulticastGroupCommand;
-use doublezero_sdk::commands::multicastgroup::update::UpdateMulticastGroupCommand;
-use doublezero_sdk::*;
+use doublezero_sdk::{
+    commands::multicastgroup::{
+        get::GetMulticastGroupCommand, update::UpdateMulticastGroupCommand,
+    },
+    *,
+};
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -41,19 +46,20 @@ impl UpdateMulticastGroupCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::doublezerocommand::CliCommand;
-    use crate::multicastgroup::update::UpdateMulticastGroupCliCommand;
-    use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::utils::create_test_client;
-    use doublezero_sdk::commands::multicastgroup::get::GetMulticastGroupCommand;
-    use doublezero_sdk::commands::multicastgroup::update::UpdateMulticastGroupCommand;
-    use doublezero_sdk::get_multicastgroup_pda;
-    use doublezero_sdk::AccountType;
-    use doublezero_sdk::MulticastGroup;
-    use doublezero_sdk::MulticastGroupStatus;
+    use crate::{
+        doublezerocommand::CliCommand,
+        multicastgroup::update::UpdateMulticastGroupCliCommand,
+        requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+        tests::utils::create_test_client,
+    };
+    use doublezero_sdk::{
+        commands::multicastgroup::{
+            get::GetMulticastGroupCommand, update::UpdateMulticastGroupCommand,
+        },
+        get_multicastgroup_pda, AccountType, MulticastGroup, MulticastGroupStatus,
+    };
     use mockall::predicate;
-    use solana_sdk::pubkey::Pubkey;
-    use solana_sdk::signature::Signature;
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_cli_multicastgroup_update() {

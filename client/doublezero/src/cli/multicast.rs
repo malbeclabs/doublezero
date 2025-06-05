@@ -1,5 +1,4 @@
-use clap::Args;
-use clap::Subcommand;
+use clap::{Args, Subcommand};
 
 use super::multicastgroup::MulticastGroupCliCommand;
 

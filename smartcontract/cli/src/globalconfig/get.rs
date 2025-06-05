@@ -1,7 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_sdk::commands::globalconfig::get::GetGlobalConfigCommand;
-use doublezero_sdk::*;
+use doublezero_sdk::{commands::globalconfig::get::GetGlobalConfigCommand, *};
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -27,9 +26,10 @@ impl GetGlobalConfigCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::doublezerocommand::CliCommand;
-    use crate::globalconfig::get::GetGlobalConfigCliCommand;
-    use crate::tests::utils::create_test_client;
+    use crate::{
+        doublezerocommand::CliCommand, globalconfig::get::GetGlobalConfigCliCommand,
+        tests::utils::create_test_client,
+    };
     use doublezero_sdk::{GetGlobalConfigCommand, GlobalConfig};
     use doublezero_sla_program::pda::get_globalconfig_pda;
     use mockall::predicate;

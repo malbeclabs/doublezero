@@ -1,7 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_sdk::commands::location::list::ListLocationCommand;
-use doublezero_sdk::*;
+use doublezero_sdk::{commands::location::list::ListLocationCommand, *};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
@@ -71,9 +70,10 @@ impl ListLocationCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::location::list::ListLocationCliCommand;
-    use crate::location::list::LocationStatus::Activated;
-    use crate::tests::utils::create_test_client;
+    use crate::{
+        location::list::{ListLocationCliCommand, LocationStatus::Activated},
+        tests::utils::create_test_client,
+    };
     use doublezero_sdk::{AccountType, Location};
     use solana_sdk::pubkey::Pubkey;
     use std::collections::HashMap;

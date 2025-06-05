@@ -1,9 +1,11 @@
+use crate::servicecontroller::ServiceController;
 use indicatif::ProgressBar;
-use std::fs::File;
-use std::path::Path;
 
-pub fn check_doublezero(spinner: Option<&ProgressBar>) -> eyre::Result<()> {
-    if !service_controller_check() {
+pub fn check_doublezero<T: ServiceController>(
+    controller: &T,
+    spinner: Option<&ProgressBar>,
+) -> eyre::Result<()> {
+    if !controller.service_controller_check() {
         if let Some(spinner) = spinner {
             spinner.println("doublezero service is not accessible.");
         } else {
@@ -14,7 +16,7 @@ pub fn check_doublezero(spinner: Option<&ProgressBar>) -> eyre::Result<()> {
     }
 
     // Check that the doublezerod is accessible
-    if !service_controller_can_open() {
+    if !controller.service_controller_can_open() {
         if let Some(spinner) = spinner {
             spinner.println("doublezero service is not accessible.");
         } else {
@@ -26,19 +28,4 @@ pub fn check_doublezero(spinner: Option<&ProgressBar>) -> eyre::Result<()> {
     }
 
     Ok(())
-}
-
-pub fn service_controller_check() -> bool {
-    Path::new("/var/run/doublezerod/doublezerod.sock").exists()
-}
-
-pub fn service_controller_can_open() -> bool {
-    let file = File::options()
-        .read(true)
-        .write(true)
-        .open("/var/run/doublezerod/doublezerod.sock");
-    match file {
-        Ok(_) => true,
-        Err(e) => !matches!(e.kind(), std::io::ErrorKind::PermissionDenied),
-    }
 }

@@ -86,7 +86,7 @@ Options:
 # Basic use case
 
 In the following example, two Locations and Exchanges will be created. 
-Then a Contributor will create two Devices and a Tunnel between them.
+Then a Contributor will create two Devices and a Link between them.
 
 <img title="structures" alt="Structures" src="images/Example.png">
 
@@ -202,7 +202,7 @@ Output:
  J8AdFmRgHG1ADAH17WppbY9s79zYoBJc24yActMPkr8D | ny5-dz01 | ny       | xny      | 1           | 64.86.249.80   | 1      | gwfHPG4suqu1aiXEjCPyW9rZfKnb9zQqdNt4iyqiA1D 
 ```
 
-### List Tunnel
+### List Link
 
 ```console
 doublezero-admin tunnel list

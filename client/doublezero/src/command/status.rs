@@ -1,8 +1,11 @@
-use crate::{requirements::check_doublezero, servicecontroller::ServiceController};
+use crate::{
+    requirements::check_doublezero,
+    servicecontroller::{ServiceController, ServiceControllerImpl},
+};
 use clap::Args;
 use doublezero_cli::{
-    helpers::init_command,
-    {doublezerocommand::CliCommand, helpers::print_error},
+    doublezerocommand::CliCommand,
+    helpers::{init_command, print_error},
 };
 use tabled::{settings::Style, Table};
 
@@ -12,18 +15,22 @@ pub struct StatusCliCommand {}
 impl StatusCliCommand {
     pub async fn execute(self, _client: &dyn CliCommand) -> eyre::Result<()> {
         let spinner = init_command();
-        let controller = ServiceController::new(None);
+        let controller = ServiceControllerImpl::new(None);
 
         // Check requirements
-        check_doublezero(Some(&spinner))?;
+        check_doublezero(&controller, Some(&spinner))?;
 
         match controller.status().await {
-            Err(e) => print_error(e),
+            Err(e) => {
+                spinner.finish_and_clear();
+                print_error(e)
+            }
             Ok(status_responses) => {
                 if !status_responses.is_empty() {
                     let table = Table::new(status_responses)
                         .with(Style::psql().remove_horizontals())
                         .to_string();
+                    spinner.finish_and_clear();
                     println!("{}", table);
                 }
             }

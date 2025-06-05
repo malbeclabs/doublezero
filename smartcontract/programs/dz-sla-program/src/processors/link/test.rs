@@ -1,20 +1,20 @@
 #[cfg(test)]
 mod tunnel_test {
-    use crate::entrypoint::*;
-    use crate::instructions::*;
-    use crate::pda::*;
-    use crate::processors::tunnel::{
-        activate::*, create::*, delete::*, resume::*, suspend::*, update::*,
+    use crate::{
+        entrypoint::*,
+        instructions::*,
+        pda::*,
+        processors::{
+            link::{activate::*, create::*, delete::*, resume::*, suspend::*, update::*},
+            *,
+        },
+        state::{accounttype::AccountType, device::DeviceType, link::*},
+        tests::test::*,
     };
-    use crate::processors::*;
-    use crate::state::accounttype::AccountType;
-    use crate::state::device::DeviceType;
-    use crate::state::tunnel::*;
-    use crate::tests::test::*;
     use globalconfig::set::SetGlobalConfigArgs;
+    use link::closeaccount::LinkCloseAccountArgs;
     use solana_program_test::*;
     use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey};
-    use tunnel::closeaccount::TunnelCloseAccountArgs;
 
     #[tokio::test]
     async fn test_tunnel() {
@@ -192,8 +192,8 @@ mod tunnel_test {
 
         /***********************************************************************************************************************************/
         /***********************************************************************************************************************************/
-        // Tunnel _la
-        println!("🟢 5. Create Tunnel...");
+        // Link _la
+        println!("🟢 5. Create Link...");
 
         let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
@@ -201,17 +201,17 @@ mod tunnel_test {
         assert_eq!(globalstate_account.account_index, 4);
 
         let (tunnel_pubkey, bump_seed) =
-            get_tunnel_pda(&program_id, globalstate_account.account_index + 1);
+            get_link_pda(&program_id, globalstate_account.account_index + 1);
 
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::CreateTunnel(TunnelCreateArgs {
+            DoubleZeroInstruction::CreateLink(LinkCreateArgs {
                 index: globalstate_account.account_index + 1,
                 bump_seed,
                 code: "la".to_string(),
-                tunnel_type: TunnelTunnelType::MPLSoGRE,
+                link_type: LinkLinkType::L3,
                 side_a_pk: device_a_pubkey,
                 side_z_pk: device_z_pubkey,
                 bandwidth: 100000000,
@@ -233,19 +233,19 @@ mod tunnel_test {
             .await
             .expect("Unable to get Account")
             .get_tunnel();
-        assert_eq!(tunnel_la.account_type, AccountType::Tunnel);
+        assert_eq!(tunnel_la.account_type, AccountType::Link);
         assert_eq!(tunnel_la.code, "la".to_string());
-        assert_eq!(tunnel_la.status, TunnelStatus::Pending);
+        assert_eq!(tunnel_la.status, LinkStatus::Pending);
 
-        println!("✅ Tunnel initialized successfully",);
+        println!("✅ Link initialized successfully",);
         /*****************************************************************************************************************************************************/
-        println!("🟢 6. Activate Tunnel...");
+        println!("🟢 6. Activate Link...");
 
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::ActivateTunnel(TunnelActivateArgs {
+            DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
                 index: tunnel_la.index,
                 bump_seed: tunnel_la.bump_seed,
                 tunnel_id: 500,
@@ -263,19 +263,19 @@ mod tunnel_test {
             .await
             .expect("Unable to get Account")
             .get_tunnel();
-        assert_eq!(tunnel_la.account_type, AccountType::Tunnel);
+        assert_eq!(tunnel_la.account_type, AccountType::Link);
         assert_eq!(tunnel_la.tunnel_id, 500);
         assert_eq!(tunnel_la.tunnel_net, ([10, 0, 0, 0], 21));
-        assert_eq!(tunnel_la.status, TunnelStatus::Activated);
+        assert_eq!(tunnel_la.status, LinkStatus::Activated);
 
-        println!("✅ Tunnel activated");
+        println!("✅ Link activated");
         /*****************************************************************************************************************************************************/
-        println!("🟢 7. Suspend Tunnel...");
+        println!("🟢 7. Suspend Link...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::SuspendTunnel(TunnelSuspendArgs {
+            DoubleZeroInstruction::SuspendLink(LinkSuspendArgs {
                 index: tunnel_la.index,
                 bump_seed: tunnel_la.bump_seed,
             }),
@@ -288,17 +288,17 @@ mod tunnel_test {
             .await
             .expect("Unable to get Account")
             .get_tunnel();
-        assert_eq!(tunnel_la.account_type, AccountType::Tunnel);
-        assert_eq!(tunnel_la.status, TunnelStatus::Suspended);
+        assert_eq!(tunnel_la.account_type, AccountType::Link);
+        assert_eq!(tunnel_la.status, LinkStatus::Suspended);
 
-        println!("✅ Tunnel suspended");
+        println!("✅ Link suspended");
         /*****************************************************************************************************************************************************/
-        println!("🟢 8. Resume Tunnel...");
+        println!("🟢 8. Resume Link...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::ResumeTunnel(TunnelResumeArgs {
+            DoubleZeroInstruction::ResumeLink(LinkResumeArgs {
                 index: tunnel_la.index,
                 bump_seed: tunnel_la.bump_seed,
             }),
@@ -311,21 +311,21 @@ mod tunnel_test {
             .await
             .expect("Unable to get Account")
             .get_tunnel();
-        assert_eq!(tunnel.account_type, AccountType::Tunnel);
-        assert_eq!(tunnel.status, TunnelStatus::Activated);
+        assert_eq!(tunnel.account_type, AccountType::Link);
+        assert_eq!(tunnel.status, LinkStatus::Activated);
 
-        println!("✅ Tunnel resumed");
+        println!("✅ Link resumed");
         /*****************************************************************************************************************************************************/
-        println!("🟢 9. Update Tunnel...");
+        println!("🟢 9. Update Link...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::UpdateTunnel(TunnelUpdateArgs {
+            DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
                 index: tunnel.index,
                 bump_seed: tunnel.bump_seed,
                 code: Some("la2".to_string()),
-                tunnel_type: Some(TunnelTunnelType::MPLSoGRE),
+                tunnel_type: Some(LinkLinkType::L3),
                 bandwidth: Some(2000000000),
                 mtu: Some(8900),
                 delay_ns: Some(15000),
@@ -343,22 +343,22 @@ mod tunnel_test {
             .await
             .expect("Unable to get Account")
             .get_tunnel();
-        assert_eq!(tunnel_la.account_type, AccountType::Tunnel);
+        assert_eq!(tunnel_la.account_type, AccountType::Link);
         assert_eq!(tunnel_la.code, "la2".to_string());
         assert_eq!(tunnel_la.bandwidth, 2000000000);
         assert_eq!(tunnel_la.mtu, 8900);
         assert_eq!(tunnel_la.delay_ns, 15000);
-        assert_eq!(tunnel_la.status, TunnelStatus::Activated);
+        assert_eq!(tunnel_la.status, LinkStatus::Activated);
 
-        println!("✅ Tunnel updated");
+        println!("✅ Link updated");
 
         /*****************************************************************************************************************************************************/
-        println!("🟢 9. Deleting Tunnel...");
+        println!("🟢 9. Deleting Link...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::DeleteTunnel(TunnelDeleteArgs {
+            DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {
                 index: tunnel_la.index,
                 bump_seed: tunnel_la.bump_seed,
             }),
@@ -374,22 +374,22 @@ mod tunnel_test {
             .await
             .expect("Unable to get Account")
             .get_tunnel();
-        assert_eq!(tunnel_la.account_type, AccountType::Tunnel);
+        assert_eq!(tunnel_la.account_type, AccountType::Link);
         assert_eq!(tunnel_la.code, "la2".to_string());
         assert_eq!(tunnel_la.bandwidth, 2000000000);
         assert_eq!(tunnel_la.mtu, 8900);
         assert_eq!(tunnel_la.delay_ns, 15000);
-        assert_eq!(tunnel_la.status, TunnelStatus::Deleting);
+        assert_eq!(tunnel_la.status, LinkStatus::Deleting);
 
-        println!("✅ Tunnel deleting");
+        println!("✅ Link deleting");
 
         /*****************************************************************************************************************************************************/
-        println!("🟢 9. CloseAccount Tunnel...");
+        println!("🟢 9. CloseAccount Link...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::CloseAccountTunnel(TunnelCloseAccountArgs {
+            DoubleZeroInstruction::CloseAccountLink(LinkCloseAccountArgs {
                 index: tunnel.index,
                 bump_seed: tunnel.bump_seed,
             }),
@@ -405,7 +405,7 @@ mod tunnel_test {
         let tunnel_la = get_account_data(&mut banks_client, tunnel_pubkey).await;
         assert_eq!(tunnel_la, None);
 
-        println!("✅ Tunnel deleted successfully");
+        println!("✅ Link deleted successfully");
         println!("🟢🟢🟢  End test_tunnel  🟢🟢🟢");
     }
 }

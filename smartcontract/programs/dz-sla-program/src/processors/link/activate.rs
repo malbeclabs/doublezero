@@ -1,8 +1,9 @@
-use crate::error::DoubleZeroError;
-use crate::globalstate::globalstate_get;
-use crate::{helper::*, state::tunnel::*};
-use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
+
+use crate::{
+    error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::link::*, types::*,
+};
+use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -12,21 +13,28 @@ use solana_program::{
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct TunnelDeleteArgs {
+pub struct LinkActivateArgs {
     pub index: u128,
     pub bump_seed: u8,
+    pub tunnel_id: u16,
+    pub tunnel_net: NetworkV4,
 }
 
-impl fmt::Debug for TunnelDeleteArgs {
+impl fmt::Debug for LinkActivateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "")
+        write!(
+            f,
+            "tunnel_id: {}, tunnel_net: {}",
+            self.tunnel_id,
+            networkv4_to_string(&self.tunnel_net)
+        )
     }
 }
 
-pub fn process_delete_tunnel(
+pub fn process_activate_link(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &TunnelDeleteArgs,
+    value: &LinkActivateArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -36,7 +44,7 @@ pub fn process_delete_tunnel(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_delete_tunnel({:?})", value);
+    msg!("process_activate_link({:?})", value);
 
     // Check the owner of the accounts
     assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
@@ -44,32 +52,32 @@ pub fn process_delete_tunnel(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"
     );
-    assert_eq!(
-        *system_program.unsigned_key(),
-        solana_program::system_program::id(),
-        "Invalid System Program Account Owner"
-    );
+    // Check if the account is writable
+    assert!(pda_account.is_writable, "PDA Account is not writable");
 
-    let mut tunnel: Tunnel = Tunnel::from(&pda_account.try_borrow_data().unwrap()[..]);
+    let globalstate = globalstate_get(globalstate_account)?;
+    if !globalstate.foundation_allowlist.contains(payer_account.key) {
+        return Err(DoubleZeroError::NotAllowed.into());
+    }
+
+    let mut tunnel: Link = Link::from(&pda_account.try_borrow_data().unwrap()[..]);
     assert_eq!(tunnel.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
         tunnel.bump_seed, value.bump_seed,
         "Invalid PDA Account Bump Seed"
     );
-
-    let globalstate = globalstate_get(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key)
-        && tunnel.owner != *payer_account.key
-    {
-        return Err(DoubleZeroError::NotAllowed.into());
+    if tunnel.status != LinkStatus::Pending {
+        return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    tunnel.status = TunnelStatus::Deleting;
+    tunnel.tunnel_id = value.tunnel_id;
+    tunnel.tunnel_net = value.tunnel_net;
+    tunnel.status = LinkStatus::Activated;
 
     account_write(pda_account, &tunnel, payer_account, system_program);
 
     #[cfg(test)]
-    msg!("Deleting: {:?}", tunnel);
+    msg!("Activated: {:?}", tunnel);
 
     Ok(())
 }

@@ -1,14 +1,15 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_sdk::commands::device::list::ListDeviceCommand;
-use doublezero_sdk::commands::exchange::list::ListExchangeCommand;
-use doublezero_sdk::commands::location::list::ListLocationCommand;
-use doublezero_sdk::commands::tunnel::list::ListTunnelCommand;
-use doublezero_sdk::commands::user::list::ListUserCommand;
-use doublezero_sdk::*;
+use doublezero_sdk::{
+    commands::{
+        device::list::ListDeviceCommand, exchange::list::ListExchangeCommand,
+        link::list::ListLinkCommand, location::list::ListLocationCommand,
+        user::list::ListUserCommand,
+    },
+    *,
+};
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::io::Write;
+use std::{fs, io::Write};
 
 #[derive(Args, Debug)]
 pub struct ExportCliCommand {
@@ -28,7 +29,7 @@ struct DeviceData {
     public_ip: String,
     location: LocationData,
     exchange: ExchangeData,
-    tunnels: Vec<TunnelData>,
+    tunnels: Vec<LinkData>,
     users: Vec<UserData>,
     owner: String,
 }
@@ -55,12 +56,12 @@ struct ExchangeData {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct TunnelData {
+struct LinkData {
     pub pubkey: String,
     pub code: String,
-    pub side: TunnelSideData,
+    pub side: LinkSideData,
     pub tunnel_net: String,
-    pub tunnel_type: String,
+    pub link_type: String,
     pub bandwidth: String,
     pub mtu: u32,
     pub delay_ms: f32,
@@ -69,7 +70,7 @@ struct TunnelData {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct TunnelSideData {
+struct LinkSideData {
     pub name: String,
     pub pubkey: String,
     pub tunnel_id: u16,
@@ -96,7 +97,7 @@ impl ExportCliCommand {
         let exchanges = client.list_exchange(ListExchangeCommand {})?;
 
         let devices = client.list_device(ListDeviceCommand {})?;
-        let tunnels = client.list_tunnel(ListTunnelCommand {})?;
+        let tunnels = client.list_link(ListLinkCommand {})?;
         let users = client.list_user(ListUserCommand {})?;
 
         for (pubkey, data) in devices.clone() {
@@ -139,32 +140,32 @@ impl ExportCliCommand {
                         .filter(|(_, tunnel)| {
                             tunnel.side_a_pk == pubkey || tunnel.side_z_pk == pubkey
                         })
-                        .map(|(key, tunnel)| {
-                            let side_pubkey = if tunnel.side_a_pk == pubkey {
-                                tunnel.side_z_pk
+                        .map(|(key, link)| {
+                            let side_pubkey = if link.side_a_pk == pubkey {
+                                link.side_z_pk
                             } else {
-                                tunnel.side_a_pk
+                                link.side_a_pk
                             };
                             let side_device =
                                 devices.get(&side_pubkey).expect("could get Location");
 
-                            TunnelData {
+                            LinkData {
                                 pubkey: key.to_string(),
-                                code: tunnel.code.clone(),
-                                tunnel_net: networkv4_to_string(&tunnel.tunnel_net),
-                                side: TunnelSideData {
+                                code: link.code.clone(),
+                                tunnel_net: networkv4_to_string(&link.tunnel_net),
+                                side: LinkSideData {
                                     name: side_device.code.clone(),
                                     pubkey: side_pubkey.to_string(),
                                     public_ip: ipv4_to_string(&side_device.public_ip),
-                                    tunnel_id: tunnel.tunnel_id,
-                                    tunnel_net: networkv4_to_string(&tunnel.tunnel_net),
+                                    tunnel_id: link.tunnel_id,
+                                    tunnel_net: networkv4_to_string(&link.tunnel_net),
                                 },
-                                tunnel_type: tunnel.tunnel_type.to_string(),
-                                bandwidth: bandwidth_to_string(&tunnel.bandwidth),
-                                mtu: tunnel.mtu,
-                                delay_ms: tunnel.delay_ns as f32 / 1000000.0,
-                                jitter_ms: tunnel.jitter_ns as f32 / 1000000.0,
-                                owner: tunnel.owner.to_string(),
+                                link_type: link.link_type.to_string(),
+                                bandwidth: bandwidth_to_string(&link.bandwidth),
+                                mtu: link.mtu,
+                                delay_ms: link.delay_ns as f32 / 1000000.0,
+                                jitter_ms: link.jitter_ns as f32 / 1000000.0,
+                                owner: link.owner.to_string(),
                             }
                         })
                         .collect(),

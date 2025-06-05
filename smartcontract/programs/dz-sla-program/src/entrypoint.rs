@@ -25,6 +25,12 @@ use crate::{
         },
         globalconfig::set::process_set_globalconfig,
         globalstate::{close::process_close_account, initialize::initialize_global_state},
+        link::{
+            activate::process_activate_link, closeaccount::process_closeaccount_link,
+            create::process_create_link, delete::process_delete_link, reject::process_reject_link,
+            resume::process_resume_link, suspend::process_suspend_link,
+            update::process_update_link,
+        },
         location::{
             create::process_create_location, delete::process_delete_location,
             resume::process_resume_location, suspend::process_suspend_location,
@@ -51,12 +57,6 @@ use crate::{
             suspend::process_suspend_multicastgroup,
             update::process_update_multicastgroup,
         },
-        tunnel::{
-            activate::process_activate_tunnel, closeaccount::process_closeaccount_tunnel,
-            create::process_create_tunnel, delete::process_delete_tunnel,
-            reject::process_reject_tunnel, resume::process_resume_tunnel,
-            suspend::process_suspend_tunnel, update::process_update_tunnel,
-        },
         user::{
             activate::process_activate_user, ban::process_ban_user,
             closeaccount::process_closeaccount_user, create::process_create_user,
@@ -67,9 +67,8 @@ use crate::{
         },
     },
 };
-use solana_program::msg;
 use solana_program::{
-    account_info::AccountInfo, entrypoint, entrypoint::ProgramResult, pubkey::Pubkey,
+    account_info::AccountInfo, entrypoint, entrypoint::ProgramResult, msg, pubkey::Pubkey,
 };
 
 // Program entrypoint
@@ -106,14 +105,14 @@ pub fn process_instruction(
         DoubleZeroInstruction::UpdateDevice(value) => {
             process_update_device(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::CreateTunnel(value) => {
-            process_create_tunnel(program_id, accounts, &value)?
+        DoubleZeroInstruction::CreateLink(value) => {
+            process_create_link(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::CreateUser(value) => {
             process_create_user(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::ActivateTunnel(value) => {
-            process_activate_tunnel(program_id, accounts, &value)?
+        DoubleZeroInstruction::ActivateLink(value) => {
+            process_activate_link(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::ActivateDevice(value) => {
             process_activate_device(program_id, accounts, &value)?
@@ -127,8 +126,8 @@ pub fn process_instruction(
         DoubleZeroInstruction::DeleteDevice(value) => {
             process_delete_device(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::DeleteTunnel(value) => {
-            process_delete_tunnel(program_id, accounts, &value)?
+        DoubleZeroInstruction::DeleteLink(value) => {
+            process_delete_link(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::DeleteExchange(value) => {
             process_delete_exchange(program_id, accounts, &value)?
@@ -142,8 +141,8 @@ pub fn process_instruction(
         DoubleZeroInstruction::UpdateExchange(value) => {
             process_update_exchange(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::UpdateTunnel(value) => {
-            process_update_tunnel(program_id, accounts, &value)?
+        DoubleZeroInstruction::UpdateLink(value) => {
+            process_update_link(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::UpdateUser(value) => {
             process_update_user(program_id, accounts, &value)?
@@ -157,8 +156,8 @@ pub fn process_instruction(
         DoubleZeroInstruction::SuspendDevice(value) => {
             process_suspend_device(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::SuspendTunnel(value) => {
-            process_suspend_tunnel(program_id, accounts, &value)?
+        DoubleZeroInstruction::SuspendLink(value) => {
+            process_suspend_link(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::SuspendUser(value) => {
             process_suspend_user(program_id, accounts, &value)?
@@ -172,8 +171,8 @@ pub fn process_instruction(
         DoubleZeroInstruction::ResumeDevice(value) => {
             process_resume_device(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::ResumeTunnel(value) => {
-            process_resume_tunnel(program_id, accounts, &value)?
+        DoubleZeroInstruction::ResumeLink(value) => {
+            process_resume_link(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::ResumeUser(value) => {
             process_resume_user(program_id, accounts, &value)?
@@ -181,8 +180,8 @@ pub fn process_instruction(
         DoubleZeroInstruction::CloseAccountDevice(value) => {
             process_closeaccount_device(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::CloseAccountTunnel(value) => {
-            process_closeaccount_tunnel(program_id, accounts, &value)?
+        DoubleZeroInstruction::CloseAccountLink(value) => {
+            process_closeaccount_link(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::CloseAccountUser(value) => {
             process_closeaccount_user(program_id, accounts, &value)?
@@ -191,8 +190,8 @@ pub fn process_instruction(
         DoubleZeroInstruction::RejectDevice(value) => {
             process_reject_device(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::RejectTunnel(value) => {
-            process_reject_tunnel(program_id, accounts, &value)?
+        DoubleZeroInstruction::RejectLink(value) => {
+            process_reject_link(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::RejectUser(value) => {
             process_reject_user(program_id, accounts, &value)?

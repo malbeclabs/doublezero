@@ -1,15 +1,16 @@
 #[cfg(test)]
 mod device_test {
-    use crate::entrypoint::*;
-    use crate::instructions::*;
-    use crate::pda::*;
-    use crate::processors::device::{
-        closeaccount::*, create::*, delete::*, resume::*, suspend::*, update::*,
+    use crate::{
+        entrypoint::*,
+        instructions::*,
+        pda::*,
+        processors::{
+            device::{closeaccount::*, create::*, delete::*, resume::*, suspend::*, update::*},
+            *,
+        },
+        state::{accounttype::AccountType, device::*},
+        tests::test::*,
     };
-    use crate::processors::*;
-    use crate::state::accounttype::AccountType;
-    use crate::state::device::*;
-    use crate::tests::test::*;
     use device::activate::DeviceActivateArgs;
     use globalconfig::set::SetGlobalConfigArgs;
     use solana_program_test::*;
@@ -195,7 +196,7 @@ mod device_test {
         assert_eq!(device.code, "la".to_string());
         assert_eq!(device.status, DeviceStatus::Activated);
 
-        println!("✅ Tunnel updated");
+        println!("✅ Link updated");
         /*****************************************************************************************************************************************************/
         println!("🟢 7. Suspend Device...");
         execute_transaction(

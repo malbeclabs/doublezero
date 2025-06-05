@@ -1,63 +1,71 @@
-use doublezero_sdk::commands::allowlist::{
-    device::add::AddDeviceAllowlistCommand, device::list::ListDeviceAllowlistCommand,
-    device::remove::RemoveDeviceAllowlistCommand, foundation::add::AddFoundationAllowlistCommand,
-    foundation::list::ListFoundationAllowlistCommand,
-    foundation::remove::RemoveFoundationAllowlistCommand, user::add::AddUserAllowlistCommand,
-    user::list::ListUserAllowlistCommand, user::remove::RemoveUserAllowlistCommand,
-};
-use doublezero_sdk::commands::device::{
-    activate::ActivateDeviceCommand, closeaccount::CloseAccountDeviceCommand,
-    create::CreateDeviceCommand, delete::DeleteDeviceCommand, get::GetDeviceCommand,
-    list::ListDeviceCommand, reject::RejectDeviceCommand, resume::ResumeDeviceCommand,
-    suspend::SuspendDeviceCommand, update::UpdateDeviceCommand,
-};
-use doublezero_sdk::commands::exchange::{
-    create::CreateExchangeCommand, delete::DeleteExchangeCommand, get::GetExchangeCommand,
-    list::ListExchangeCommand, update::UpdateExchangeCommand,
-};
-use doublezero_sdk::commands::globalconfig::set::SetGlobalConfigCommand;
-use doublezero_sdk::commands::globalstate::init::InitGlobalStateCommand;
-use doublezero_sdk::commands::location::{
-    create::CreateLocationCommand, delete::DeleteLocationCommand, get::GetLocationCommand,
-    list::ListLocationCommand, update::UpdateLocationCommand,
-};
-use doublezero_sdk::commands::multicastgroup::deactivate::DeactivateMulticastGroupCommand;
-use doublezero_sdk::commands::multicastgroup::{
-    activate::ActivateMulticastGroupCommand,
-    allowlist::{
-        publisher::{
-            add::AddMulticastGroupPubAllowlistCommand, list::ListMulticastGroupPubAllowlistCommand,
-            remove::RemoveMulticastGroupPubAllowlistCommand,
+use doublezero_sdk::{
+    commands::{
+        allowlist::{
+            device::{
+                add::AddDeviceAllowlistCommand, list::ListDeviceAllowlistCommand,
+                remove::RemoveDeviceAllowlistCommand,
+            },
+            foundation::{
+                add::AddFoundationAllowlistCommand, list::ListFoundationAllowlistCommand,
+                remove::RemoveFoundationAllowlistCommand,
+            },
+            user::{
+                add::AddUserAllowlistCommand, list::ListUserAllowlistCommand,
+                remove::RemoveUserAllowlistCommand,
+            },
         },
-        subscriber::{
-            add::AddMulticastGroupSubAllowlistCommand, list::ListMulticastGroupSubAllowlistCommand,
-            remove::RemoveMulticastGroupSubAllowlistCommand,
+        device::{
+            activate::ActivateDeviceCommand, closeaccount::CloseAccountDeviceCommand,
+            create::CreateDeviceCommand, delete::DeleteDeviceCommand, get::GetDeviceCommand,
+            list::ListDeviceCommand, reject::RejectDeviceCommand, resume::ResumeDeviceCommand,
+            suspend::SuspendDeviceCommand, update::UpdateDeviceCommand,
+        },
+        exchange::{
+            create::CreateExchangeCommand, delete::DeleteExchangeCommand, get::GetExchangeCommand,
+            list::ListExchangeCommand, update::UpdateExchangeCommand,
+        },
+        globalconfig::set::SetGlobalConfigCommand,
+        globalstate::init::InitGlobalStateCommand,
+        link::{
+            activate::ActivateLinkCommand, closeaccount::CloseAccountLinkCommand,
+            create::CreateLinkCommand, delete::DeleteLinkCommand, get::GetLinkCommand,
+            list::ListLinkCommand, reject::RejectLinkCommand, update::UpdateLinkCommand,
+        },
+        location::{
+            create::CreateLocationCommand, delete::DeleteLocationCommand, get::GetLocationCommand,
+            list::ListLocationCommand, update::UpdateLocationCommand,
+        },
+        multicastgroup::{
+            activate::ActivateMulticastGroupCommand,
+            allowlist::{
+                publisher::{
+                    add::AddMulticastGroupPubAllowlistCommand,
+                    list::ListMulticastGroupPubAllowlistCommand,
+                    remove::RemoveMulticastGroupPubAllowlistCommand,
+                },
+                subscriber::{
+                    add::AddMulticastGroupSubAllowlistCommand,
+                    list::ListMulticastGroupSubAllowlistCommand,
+                    remove::RemoveMulticastGroupSubAllowlistCommand,
+                },
+            },
+            create::CreateMulticastGroupCommand,
+            deactivate::DeactivateMulticastGroupCommand,
+            delete::DeleteMulticastGroupCommand,
+            get::GetMulticastGroupCommand,
+            list::ListMulticastGroupCommand,
+            reject::RejectMulticastGroupCommand,
+            subscribe::SubscribeMulticastGroupCommand,
+            update::UpdateMulticastGroupCommand,
+        },
+        user::{
+            create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand,
+            delete::DeleteUserCommand, get::GetUserCommand, list::ListUserCommand,
+            requestban::RequestBanUserCommand, update::UpdateUserCommand,
         },
     },
-    create::CreateMulticastGroupCommand,
-    delete::DeleteMulticastGroupCommand,
-    get::GetMulticastGroupCommand,
-    list::ListMulticastGroupCommand,
-    reject::RejectMulticastGroupCommand,
-    subscribe::SubscribeMulticastGroupCommand,
-    update::UpdateMulticastGroupCommand,
-};
-use doublezero_sdk::commands::tunnel::activate::ActivateTunnelCommand;
-use doublezero_sdk::commands::tunnel::{
-    closeaccount::CloseAccountTunnelCommand, create::CreateTunnelCommand,
-    delete::DeleteTunnelCommand, get::GetTunnelCommand, list::ListTunnelCommand,
-    reject::RejectTunnelCommand, update::UpdateTunnelCommand,
-};
-use doublezero_sdk::commands::user::requestban::RequestBanUserCommand;
-use doublezero_sdk::commands::user::{
-    create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand,
-    delete::DeleteUserCommand, get::GetUserCommand, list::ListUserCommand,
-    update::UpdateUserCommand,
-};
-use doublezero_sdk::MulticastGroup;
-use doublezero_sdk::{
-    DZClient, Device, DoubleZeroClient, Exchange, GetGlobalConfigCommand, GlobalConfig, Location,
-    Tunnel, User,
+    DZClient, Device, DoubleZeroClient, Exchange, GetGlobalConfigCommand, GlobalConfig, Link,
+    Location, MulticastGroup, User,
 };
 use mockall::automock;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
@@ -101,14 +109,14 @@ pub trait CliCommand {
     fn reject_device(&self, cmd: RejectDeviceCommand) -> eyre::Result<Signature>;
     fn closeaccount_device(&self, cmd: CloseAccountDeviceCommand) -> eyre::Result<Signature>;
 
-    fn create_tunnel(&self, cmd: CreateTunnelCommand) -> eyre::Result<(Signature, Pubkey)>;
-    fn get_tunnel(&self, cmd: GetTunnelCommand) -> eyre::Result<(Pubkey, Tunnel)>;
-    fn list_tunnel(&self, cmd: ListTunnelCommand) -> eyre::Result<HashMap<Pubkey, Tunnel>>;
-    fn update_tunnel(&self, cmd: UpdateTunnelCommand) -> eyre::Result<Signature>;
-    fn delete_tunnel(&self, cmd: DeleteTunnelCommand) -> eyre::Result<Signature>;
-    fn activate_tunnel(&self, cmd: ActivateTunnelCommand) -> eyre::Result<Signature>;
-    fn reject_tunnel(&self, cmd: RejectTunnelCommand) -> eyre::Result<Signature>;
-    fn closeaccount_tunnel(&self, cmd: CloseAccountTunnelCommand) -> eyre::Result<Signature>;
+    fn create_link(&self, cmd: CreateLinkCommand) -> eyre::Result<(Signature, Pubkey)>;
+    fn get_link(&self, cmd: GetLinkCommand) -> eyre::Result<(Pubkey, Link)>;
+    fn list_link(&self, cmd: ListLinkCommand) -> eyre::Result<HashMap<Pubkey, Link>>;
+    fn update_link(&self, cmd: UpdateLinkCommand) -> eyre::Result<Signature>;
+    fn delete_link(&self, cmd: DeleteLinkCommand) -> eyre::Result<Signature>;
+    fn activate_link(&self, cmd: ActivateLinkCommand) -> eyre::Result<Signature>;
+    fn reject_link(&self, cmd: RejectLinkCommand) -> eyre::Result<Signature>;
+    fn closeaccount_link(&self, cmd: CloseAccountLinkCommand) -> eyre::Result<Signature>;
 
     fn create_user(&self, cmd: CreateUserCommand) -> eyre::Result<(Signature, Pubkey)>;
     fn create_subscribe_user(
@@ -296,28 +304,28 @@ impl CliCommand for CliCommandImpl<'_> {
     fn closeaccount_device(&self, cmd: CloseAccountDeviceCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
-    fn create_tunnel(&self, cmd: CreateTunnelCommand) -> eyre::Result<(Signature, Pubkey)> {
+    fn create_link(&self, cmd: CreateLinkCommand) -> eyre::Result<(Signature, Pubkey)> {
         cmd.execute(self.client)
     }
-    fn get_tunnel(&self, cmd: GetTunnelCommand) -> eyre::Result<(Pubkey, Tunnel)> {
+    fn get_link(&self, cmd: GetLinkCommand) -> eyre::Result<(Pubkey, Link)> {
         cmd.execute(self.client)
     }
-    fn list_tunnel(&self, cmd: ListTunnelCommand) -> eyre::Result<HashMap<Pubkey, Tunnel>> {
+    fn list_link(&self, cmd: ListLinkCommand) -> eyre::Result<HashMap<Pubkey, Link>> {
         cmd.execute(self.client)
     }
-    fn update_tunnel(&self, cmd: UpdateTunnelCommand) -> eyre::Result<Signature> {
+    fn update_link(&self, cmd: UpdateLinkCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
-    fn delete_tunnel(&self, cmd: DeleteTunnelCommand) -> eyre::Result<Signature> {
+    fn delete_link(&self, cmd: DeleteLinkCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
-    fn activate_tunnel(&self, cmd: ActivateTunnelCommand) -> eyre::Result<Signature> {
+    fn activate_link(&self, cmd: ActivateLinkCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
-    fn reject_tunnel(&self, cmd: RejectTunnelCommand) -> eyre::Result<Signature> {
+    fn reject_link(&self, cmd: RejectLinkCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
-    fn closeaccount_tunnel(&self, cmd: CloseAccountTunnelCommand) -> eyre::Result<Signature> {
+    fn closeaccount_link(&self, cmd: CloseAccountLinkCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
     fn create_user(&self, cmd: CreateUserCommand) -> eyre::Result<(Signature, Pubkey)> {

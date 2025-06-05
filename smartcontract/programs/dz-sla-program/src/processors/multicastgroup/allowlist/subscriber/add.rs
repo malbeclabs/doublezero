@@ -1,8 +1,6 @@
 use core::fmt;
 
-use crate::error::DoubleZeroError;
-use crate::helper::account_write;
-use crate::state::multicastgroup::MulticastGroup;
+use crate::{error::DoubleZeroError, helper::account_write, state::multicastgroup::MulticastGroup};
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
 use solana_program::msg;

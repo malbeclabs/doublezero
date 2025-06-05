@@ -1,7 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_sdk::commands::multicastgroup::list::ListMulticastGroupCommand;
-use doublezero_sdk::*;
+use doublezero_sdk::{commands::multicastgroup::list::ListMulticastGroupCommand, *};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
@@ -19,8 +18,6 @@ pub struct ListMulticastGroupCliCommand {
 pub struct MulticastGroupDisplay {
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
     pub account: Pubkey,
-    #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
-    pub owner: Pubkey,
     pub code: String,
     #[serde(serialize_with = "crate::serializer::serialize_ipv4_as_string")]
     #[tabled(display = "doublezero_sla_program::types::ipv4_to_string")]
@@ -35,6 +32,8 @@ pub struct MulticastGroupDisplay {
     #[tabled(display = "crate::util::display_count")]
     pub subscribers: Vec<Pubkey>,
     pub status: MulticastGroupStatus,
+    #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    pub owner: Pubkey,
 }
 
 impl ListMulticastGroupCliCommand {
@@ -77,8 +76,9 @@ impl ListMulticastGroupCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::multicastgroup::list::ListMulticastGroupCliCommand;
-    use crate::tests::utils::create_test_client;
+    use crate::{
+        multicastgroup::list::ListMulticastGroupCliCommand, tests::utils::create_test_client,
+    };
     use doublezero_sdk::{Device, DeviceStatus, DeviceType, MulticastGroup, MulticastGroupStatus};
     use doublezero_sla_program::state::accounttype::AccountType;
     use solana_sdk::pubkey::Pubkey;
@@ -167,7 +167,7 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | owner                                     | code                | multicast_ip | max_bandwidth | publishers | subscribers | status    \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | multicastgroup_code | 1.2.3.4      | 1.23Kbps      | 2          | 1           | activated \n");
+        assert_eq!(output_str, " account                                   | code                | multicast_ip | max_bandwidth | publishers | subscribers | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | multicastgroup_code | 1.2.3.4      | 1.23Kbps      | 2          | 1           | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
 
         let mut output = Vec::new();
         let res = ListMulticastGroupCliCommand {
@@ -178,6 +178,6 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"code\":\"multicastgroup_code\",\"multicast_ip\":\"1.2.3.4\",\"max_bandwidth\":\"1.23Kbps\",\"publishers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo2, 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo3\",\"subscribers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo3\",\"status\":\"Activated\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"code\":\"multicastgroup_code\",\"multicast_ip\":\"1.2.3.4\",\"max_bandwidth\":\"1.23Kbps\",\"publishers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo2, 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo3\",\"subscribers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo3\",\"status\":\"Activated\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\"}]\n");
     }
 }

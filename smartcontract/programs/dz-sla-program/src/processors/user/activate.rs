@@ -1,8 +1,6 @@
-use crate::error::DoubleZeroError;
-use crate::globalstate::globalstate_get;
-use crate::helper::*;
-use crate::state::user::*;
-use crate::types::*;
+use crate::{
+    error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::user::*, types::*,
+};
 use core::fmt;
 
 use borsh::{BorshDeserialize, BorshSerialize};

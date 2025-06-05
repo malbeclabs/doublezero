@@ -1552,7 +1552,6 @@ dependencies = [
  "doublezero-sla-program",
  "eyre",
  "futures",
- "lazy_static",
  "mockall 0.13.1",
  "serde",
  "serde_json",

@@ -8,7 +8,7 @@ pub struct GetConfigCliCommand {}
 
 impl GetConfigCliCommand {
     pub fn execute<W: Write>(self, _client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
-        let (filename, config) = read_doublezero_config();
+        let (filename, config) = read_doublezero_config()?;
 
         writeln!(
             out,

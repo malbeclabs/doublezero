@@ -6,30 +6,29 @@ use std::{
     fs::{self, File},
     io::{self, Write},
     path::{Path, PathBuf},
+    sync::OnceLock,
 };
 
-lazy_static! {
-    /// The default path to the CLI configuration file.
-    ///
-    /// This is a [lazy_static] of `Option<String>`, the value of which is
-    ///
-    /// > `~/.config/solana/cli/config.yml`
-    ///
-    /// It will only be `None` if it is unable to identify the user's home
-    /// directory, which should not happen under typical OS environments.
-    ///
-    /// [lazy_static]: https://docs.rs/lazy_static
-    pub static ref CONFIG_FILE: Option<String> = {
-        match directories_next::UserDirs::new() {
-            Some(dirs) => {
-                let mut buf = PathBuf::new();
-                buf.push(dirs.home_dir().to_str().unwrap());
-                buf.extend([".config", "doublezero", "cli", "config.yml"]);
-                Some(buf.to_str().unwrap().to_string())
-            }
-            None => None,
+static CONFIG_FILE: OnceLock<String> = OnceLock::new();
+
+/// The default path to the CLI configuration file.
+///
+/// > `~/.config/doublezero/cli/config.yml`
+///
+/// Falls back to `./config.yml` if unable to identify the user's home directory.
+fn get_cfg_filename() -> &'static String {
+    CONFIG_FILE.get_or_init(|| match directories_next::UserDirs::new() {
+        None => {
+            // Fallback to current dir
+            "./config.yml".to_string()
         }
-    };
+        Some(dirs) => {
+            let mut buf = PathBuf::new();
+            buf.push(dirs.home_dir().to_str().unwrap());
+            buf.extend([".config", "doublezero", "cli", "config.yml"]);
+            buf.to_string_lossy().to_string()
+        }
+    })
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -41,17 +40,12 @@ pub struct ClientConfig {
     pub address_labels: HashMap<String, String>,
 }
 
-pub fn read_doublezero_config() -> (String, ClientConfig) {
-    let filename = CONFIG_FILE.as_ref().unwrap();
+pub fn read_doublezero_config() -> eyre::Result<(String, ClientConfig)> {
+    let filename = get_cfg_filename();
 
     match fs::read_to_string(filename) {
-        Ok(config_content) => {
-            let config: ClientConfig = serde_yaml::from_str(&config_content).unwrap();
-
-            (filename.clone(), config)
-        }
-        Err(_) => (
-            filename.clone(),
+        Err(_) => Ok((
+            filename.to_string(),
             ClientConfig {
                 json_rpc_url: crate::consts::DOUBLEZERO_URL.to_string(),
                 websocket_url: None,
@@ -63,8 +57,28 @@ pub fn read_doublezero_config() -> (String, ClientConfig) {
                 program_id: None,
                 address_labels: HashMap::new(),
             },
-        ),
+        )),
+        Ok(config_content) => {
+            let config: ClientConfig = serde_yaml::from_str(&config_content)?;
+            Ok((filename.to_string(), config))
+        }
     }
+}
+
+pub fn write_doublezero_config(config: &ClientConfig) -> eyre::Result<()> {
+    let config_file = get_cfg_filename();
+    let path = Path::new(config_file);
+
+    // Create parent directories if they don't exist
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    // Serialize and write the config
+    let yaml_content = serde_yaml::to_string(config)?;
+    fs::write(config_file, yaml_content)?;
+
+    Ok(())
 }
 
 pub fn convert_url_moniker(url: String) -> String {
@@ -109,19 +123,6 @@ pub fn convert_url_to_ws(url: &str) -> String {
         url.set_scheme("ws").ok();
     }
     url.to_string()
-}
-
-pub fn write_doublezero_config(config: &ClientConfig) {
-    let path = Path::new(CONFIG_FILE.as_ref().unwrap());
-    if !path.exists() {
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-    }
-
-    fs::write(
-        CONFIG_FILE.as_ref().unwrap(),
-        serde_yaml::to_string(config).unwrap(),
-    )
-    .unwrap();
 }
 
 pub fn create_new_pubkey_user(force: bool) -> std::io::Result<Keypair> {

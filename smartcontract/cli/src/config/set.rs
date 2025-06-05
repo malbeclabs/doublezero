@@ -41,7 +41,7 @@ impl SetConfigCliCommand {
             return Ok(());
         }
 
-        let (filename, mut config) = read_doublezero_config();
+        let (filename, mut config) = read_doublezero_config()?;
         if let Some(url) = self.url {
             config.json_rpc_url = convert_url_moniker(url);
             config.websocket_url = None;
@@ -56,7 +56,7 @@ impl SetConfigCliCommand {
             config.program_id = Some(convert_program_moniker(program_id));
         }
 
-        write_doublezero_config(&config);
+        write_doublezero_config(&config)?;
 
         writeln!(
             out,

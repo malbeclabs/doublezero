@@ -46,7 +46,7 @@ impl DZClient {
         program_id: Option<String>,
         kaypair: Option<String>,
     ) -> eyre::Result<DZClient> {
-        let (_, config) = read_doublezero_config();
+        let (_, config) = read_doublezero_config()?;
 
         let rpc_url = convert_url_moniker(rpc_url.unwrap_or(config.json_rpc_url));
         let rpc_ws_url = convert_ws_moniker(

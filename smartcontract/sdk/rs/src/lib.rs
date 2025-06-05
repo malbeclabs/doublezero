@@ -25,9 +25,6 @@ pub use doublezero_sla_program::{
     types::*,
 };
 
-#[macro_use]
-extern crate lazy_static;
-
 mod client;
 mod config;
 mod consts;

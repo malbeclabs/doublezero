@@ -19,13 +19,17 @@ test-e2e:
 lint:
 	golangci-lint run -c ./.golangci.yaml
 	cargo clippy --workspace --all-features --all-targets -- -Dclippy::all -Dwarnings
-	rustup component add rustfmt --toolchain nightly
-	cargo +nightly fmt --check --all
+	$(MAKE) cargo-fmt-check
 
 .PHONY: fmt
 fmt:
 	rustup component add rustfmt --toolchain nightly
-	cargo +nightly fmt --all
+	cargo +nightly fmt --all -- --config imports_granularity=Crate
+
+.PHONY: cargo-fmt-check
+cargo-fmt-check:
+	@rustup component add rustfmt --toolchain nightly
+	@cargo +nightly fmt --all -- --check --config imports_granularity=Crate || (echo "Formatting check failed. Please run 'make fmt' to fix formatting issues." && exit 1)
 
 .PHONY: build
 build:

@@ -30,7 +30,9 @@
                     ]
                 },
                 "rust-analyzer.rustfmt.extraArgs": [
-                    "+nightly"
+                    "+nightly",
+                    "--config",
+                    "imports_granularity=Crate"
                 ],
                 "rust-analyzer.checkOnSave.command": "clippy",
                 "rust-analyzer.checkOnSave.extraArgs": [

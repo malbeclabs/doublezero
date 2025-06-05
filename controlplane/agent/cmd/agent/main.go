@@ -36,14 +36,14 @@ func pollControllerAndConfigureDevice(ctx context.Context, dzclient pb.Controlle
 		return err
 	}
 	// The dz controller needs to know what BGP sessions we have configured locally
-	var neighborIpList []string
-	neighborIpList, err = eapiClient.GetBgpNeighbors(ctx)
+	var neighborIpMap map[string][]string
+	neighborIpMap, err = eapiClient.GetBgpNeighbors(ctx)
 	if err != nil {
 		log.Println("pollControllerAndConfigureDevice: eapiClient.GetBgpNeighbors returned error:", err)
 	}
 
 	var configText string
-	configText, err = agent.GetConfigFromServer(ctx, dzclient, pubkey, neighborIpList, controllerTimeoutInSeconds)
+	configText, err = agent.GetConfigFromServer(ctx, dzclient, pubkey, neighborIpMap, controllerTimeoutInSeconds)
 	if err != nil {
 		log.Printf("pollControllerAndConfigureDevice failed to call agent.GetConfigFromServer: %q", err)
 		return err

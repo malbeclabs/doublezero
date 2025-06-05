@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"log"
+	"slices"
 	"time"
 
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
@@ -10,12 +11,19 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-func GetConfigFromServer(ctx context.Context, client pb.ControllerClient, localDevicePubkey string, neighborIpList []string, controllerTimeoutInSeconds *float64) (config string, err error) {
+func GetConfigFromServer(ctx context.Context, client pb.ControllerClient, localDevicePubkey string, neighborIpMap map[string][]string, controllerTimeoutInSeconds *float64) (config string, err error) {
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(*controllerTimeoutInSeconds*float64(time.Second)))
 	defer cancel()
 
-	// Make a blocking GetData RPC call
-	req := &pb.ConfigRequest{Pubkey: localDevicePubkey, BgpPeers: neighborIpList}
+	var bgpPeers []string
+	bgpPeersByVrf := make(map[string]*pb.BgpPeers)
+	for vrf, peers := range neighborIpMap {
+		bgpPeersByVrf[vrf] = &pb.BgpPeers{Peers: peers}
+		bgpPeers = append(bgpPeers, peers...)
+	}
+	slices.Sort(bgpPeers)
+
+	req := &pb.ConfigRequest{Pubkey: localDevicePubkey, BgpPeers: bgpPeers, BgpPeersByVrf: bgpPeersByVrf}
 	resp, err := client.GetConfig(ctx, req)
 	if err != nil {
 		log.Printf("Error calling GetConfig: %v\n", err)

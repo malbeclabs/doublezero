@@ -147,28 +147,16 @@ impl Activator {
         );
 
         self.devices.iter().for_each(|(_pubkey, device)| {
-            print!(
-                "Device code: {} public_ip: {} dz_prefixes: {} tunnels: ",
+            println!(
+                "Device code: {} public_ip: {} dz_prefixes: {} tunnels: {} tunnel_net: {} assigned: {}",
                 device.device.code,
                 ipv4_to_string(&device.device.public_ip),
-                networkv4_list_to_string(&device.device.dz_prefixes)
+                networkv4_list_to_string(&device.device.dz_prefixes),
+                device.tunnel_ids.display_assigned(),
+                self.user_tunnel_ips.base_block,
+                self.user_tunnel_ips.display_assigned_ips(),
             );
-
-            if device.tunnel_ids.assigned.is_empty() {
-                print!("-,");
-            }
-            device.tunnel_ids.assigned.iter().for_each(|tunnel_id| {
-                print!("{},", tunnel_id);
-            });
-            println!("\x08 ");
         });
-
-        print!("tunnel_net: {} assigned: ", self.user_tunnel_ips.base_block);
-        if self.user_tunnel_ips.assigned_ips.is_empty() {
-            print!("-,");
-        }
-        self.user_tunnel_ips.print_assigned_ips();
-        println!("\x08 ");
 
         // store these so we can move them into the below closure without making the borrow checker mad
         let devices = &mut self.devices;

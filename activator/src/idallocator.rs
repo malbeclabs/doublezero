@@ -25,4 +25,12 @@ impl IDAllocator {
         self.assigned.push(id);
         id
     }
+
+    pub fn display_assigned(&self) -> String {
+        self.assigned
+            .iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<String>>()
+            .join(",")
+    }
 }

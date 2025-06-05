@@ -103,13 +103,15 @@ impl IPBlockAllocator {
         None
     }
 
-    pub fn print_assigned_ips(&self) {
+    pub fn display_assigned_ips(&self) -> String {
+        let mut ips = String::new();
         for (index, assigned) in self.assigned_ips.iter().enumerate() {
             if *assigned {
                 let ip = self.index_to_ip(index);
-                print!("{},", ip);
+                ips.push_str(&format!("{},", ip));
             }
         }
+        ips.trim_end_matches(',').to_string()
     }
 
     /// Converts an IP address to an index in the bit vector.

@@ -68,7 +68,7 @@ func createBaseTunnel(nl routing.Netlinker, tun *routing.Tunnel) error {
 		}
 	}
 	slog.Info("tunnel: adding address to tunnel interface", "address", tun.LocalOverlay)
-	err = nl.TunnelAddrAdd(tun, tun.LocalOverlay.String()+"/31", false)
+	err = nl.TunnelAddrAdd(tun, tun.LocalOverlay.String()+"/31")
 	if err != nil {
 		if errors.Is(err, routing.ErrAddressExists) {
 			slog.Error("tunnel: address already present on tunnel")
@@ -90,7 +90,7 @@ func createTunnelWithIP(nl routing.Netlinker, tun *routing.Tunnel, dzIp net.IP) 
 	}
 
 	slog.Info("tunnel: adding dz address to tunnel interface", "dz address", dzIp.String()+"/32")
-	err = nl.TunnelAddrAdd(tun, dzIp.String()+"/32", false)
+	err = nl.TunnelAddrAdd(tun, dzIp.String()+"/32")
 	if err != nil {
 		if errors.Is(err, routing.ErrAddressExists) {
 			slog.Error("tunnel: address already present on tunnel")

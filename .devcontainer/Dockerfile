@@ -6,3 +6,7 @@ RUN echo 'deb [trusted=yes] https://repo.goreleaser.com/apt/ /' | tee /etc/apt/s
     apt install -y gcc-x86-64-linux-gnu goreleaser-pro && \
     apt clean -y && \
     rm -rf /var/lib/apt/lists/*
+# Install gotest
+RUN curl https://gotest-release.s3.amazonaws.com/gotest_linux > gotest && \
+    chmod +x gotest && \
+    mv gotest /usr/local/bin/gotest

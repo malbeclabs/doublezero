@@ -7,7 +7,6 @@ import (
 	"syscall"
 
 	nl "github.com/vishvananda/netlink"
-	"golang.org/x/sys/unix"
 )
 
 type Netlink struct{}
@@ -15,7 +14,7 @@ type Netlink struct{}
 type Netlinker interface {
 	TunnelAdd(*Tunnel) error
 	TunnelDelete(*Tunnel) error
-	TunnelAddrAdd(*Tunnel, string, bool) error
+	TunnelAddrAdd(*Tunnel, string) error
 	TunnelUp(*Tunnel) error
 	RouteAdd(*Route) error
 	RouteDelete(*Route) error
@@ -54,7 +53,7 @@ func (n Netlink) TunnelDelete(t *Tunnel) error {
 }
 func (n Netlink) TunnelGet(t *Tunnel) error { return nil }
 
-func (n Netlink) TunnelAddrAdd(t *Tunnel, prefix string, autojoin bool) error {
+func (n Netlink) TunnelAddrAdd(t *Tunnel, prefix string) error {
 	gre := &nl.Gretun{
 		LinkAttrs: nl.LinkAttrs{
 			Name:      t.Name,
@@ -67,9 +66,7 @@ func (n Netlink) TunnelAddrAdd(t *Tunnel, prefix string, autojoin bool) error {
 	if err != nil {
 		return fmt.Errorf("tunnel: error parsing addr: %v", err)
 	}
-	if autojoin {
-		addr.Flags = unix.IFA_F_MCAUTOJOIN
-	}
+
 	err = nl.AddrAdd(gre, addr)
 	if err != nil && errors.Is(err, syscall.EEXIST) {
 		return ErrAddressExists

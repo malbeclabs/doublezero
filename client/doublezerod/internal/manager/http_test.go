@@ -441,7 +441,7 @@ func (m *MockNetlink) TunnelDelete(n *routing.Tunnel) error {
 	return nil
 }
 
-func (m *MockNetlink) TunnelAddrAdd(t *routing.Tunnel, ip string, _ bool) error {
+func (m *MockNetlink) TunnelAddrAdd(t *routing.Tunnel, ip string) error {
 	m.tunAddrAdded = append(m.tunAddrAdded, ip)
 	return nil
 }

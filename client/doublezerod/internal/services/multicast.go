@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"syscall"
+	"time"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
@@ -96,8 +97,10 @@ func (s *MulticastService) Setup(p *api.ProvisionRequest) error {
 			if err != nil {
 				return fmt.Errorf("error parsing multicast group address: %v", err)
 			}
-			if err = s.nl.TunnelAddrAdd(s.Tunnel, groupNet.String(), true); err != nil {
-				return fmt.Errorf("error adding multicast group address to tunnel: %v", err)
+
+			mroute := &routing.Route{Dst: groupNet, NextHop: s.Tunnel.RemoteOverlay, Table: syscall.RT_TABLE_MAIN, Protocol: unix.RTPROT_STATIC}
+			if err := s.nl.RouteAdd(mroute); err != nil {
+				return fmt.Errorf("error adding multicast route: %v", err)
 			}
 		}
 
@@ -146,6 +149,15 @@ func (s *MulticastService) Teardown() error {
 			slog.Error("error stopping pim FSM", "error", err)
 		}
 	}
+
+	// the tunnel gets torn down before the prune message is received
+	// so the subscriber continues to publish towards a no longer existent subscriber
+	// there's no ack from the publisher that is got the prune so the 1 second delay gives
+	// time to ensure the prune message is received before the tunnel is torn down
+	// NOTE: even if this is missed, the publisher will stop sending messages because the
+	// hello / joinprune messages are no longer being sent by the subscriber and the publisher
+	// will automatically prune the subscriber after a configurable timeout
+	time.Sleep(1 * time.Second)
 
 	// both delete multicast tunnel
 	err := s.bgp.DeletePeer(s.Tunnel.RemoteOverlay)

@@ -13,11 +13,11 @@ impl AddressCliCommand {
         client.check_requirements(CHECK_ID_JSON)?;
 
         match get_doublezero_pubkey() {
-            Some(pubkey) => {
-                writeln!(out, "{}", pubkey.pubkey())?;
-            }
-            None => {
+            Err(_) => {
                 writeln!(out, "Unable to read the Pubkey")?;
+            }
+            Ok(pubkey) => {
+                writeln!(out, "{}", pubkey.pubkey())?;
             }
         }
         Ok(())

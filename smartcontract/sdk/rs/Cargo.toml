@@ -21,7 +21,6 @@ dirs-next.workspace = true
 doublezero-sla-program.workspace = true
 eyre.workspace = true
 futures.workspace = true
-lazy_static.workspace = true
 mockall.workspace = true
 serde.workspace = true
 serde_json.workspace = true

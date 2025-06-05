@@ -41,8 +41,8 @@ pub fn check_requirements(
 
 pub fn check_id(spinner: Option<&ProgressBar>) -> eyre::Result<()> {
     match get_doublezero_pubkey() {
-        Some(_) => Ok(()),
-        None => {
+        Ok(_) => Ok(()),
+        Err(_) => {
             if let Some(spinner) = spinner {
                 spinner.println(format!(
                     "    {}: DoubleZero id.json not found (~/.config/doublezero/id.json)",

@@ -34,4 +34,5 @@ solana-rpc-client-api.workspace = true
 solana-sdk.workspace = true
 solana-transaction-status.workspace = true
 thiserror.workspace = true
+tempfile.workspace = true
 tokio.workspace = true

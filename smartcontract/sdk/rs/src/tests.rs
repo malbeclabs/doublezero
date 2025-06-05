@@ -1,4 +1,3 @@
-#[cfg(test)]
 pub mod utils {
     use doublezero_sla_program::{
         pda::get_globalstate_pda,
@@ -6,8 +5,13 @@ pub mod utils {
     };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
+    use std::env;
+    use tempfile::TempDir;
 
-    use crate::MockDoubleZeroClient;
+    use crate::{
+        config::{write_doublezero_config, ClientConfig},
+        create_new_pubkey_user, MockDoubleZeroClient,
+    };
 
     pub fn create_test_client() -> MockDoubleZeroClient {
         let mut client = MockDoubleZeroClient::new();
@@ -37,5 +41,17 @@ pub mod utils {
             .expect_execute_transaction()
             .returning(|_, _| Ok(Signature::new_unique()));
         client
+    }
+
+    pub fn create_temp_config() -> TempDir {
+        let tmpdir = TempDir::with_prefix("doublezero-tests-").unwrap();
+        env::set_var("DOUBLEZERO_CONFIG_FILE", tmpdir.path().join("config.yaml"));
+        let client_cfg = ClientConfig {
+            keypair_path: tmpdir.path().join("id.json").to_str().unwrap().to_string(),
+            ..Default::default()
+        };
+        write_doublezero_config(&client_cfg);
+        let _ = create_new_pubkey_user(false);
+        tmpdir
     }
 }

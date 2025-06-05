@@ -31,6 +31,7 @@ chrono = "0"
 clap = { version = "4", features = ["derive"] }
 clap_complete = { version = "4", features = ["unstable-dynamic"] }
 console = "0"
+ctor = "0"
 directories-next = "2"
 dirs-next = "2"
 eyre = "0"
@@ -60,6 +61,7 @@ solana-rpc-client-api = "2.2.7"
 solana-sdk = "2.2.2"
 solana-transaction-status = "2.2.7"
 tabled = "0"
+tempfile = "3"
 thiserror = "2"
 tokio = { version = "1", features = ["full"] }
 

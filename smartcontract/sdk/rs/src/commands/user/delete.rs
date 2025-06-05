@@ -27,7 +27,7 @@ impl DeleteUserCommand {
 
         let user = client
             .get(user_pubkey)
-            .map_err(|_| eyre::eyre!("User not found (index: {})", user_pubkey))?
+            .map_err(|_| eyre::eyre!("User not found ({})", user_pubkey))?
             .get_user();
 
         for mgroup_pk in user.publishers.iter().chain(user.subscribers.iter()) {

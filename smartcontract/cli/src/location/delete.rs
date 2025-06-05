@@ -41,6 +41,7 @@ mod tests {
     use doublezero_sdk::Location;
     use doublezero_sdk::LocationStatus;
     use mockall::predicate;
+    use solana_sdk::pubkey::Pubkey;
     use solana_sdk::signature::Signature;
 
     #[test]
@@ -66,19 +67,20 @@ mod tests {
             lng: 56.78,
             loc_id: 1,
             status: LocationStatus::Activated,
-            owner: pda_pubkey,
+            owner: Pubkey::default(),
         };
 
         client
             .expect_check_requirements()
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
+        let location_cloned = location.clone();
         client
             .expect_get_location()
             .with(predicate::eq(GetLocationCommand {
                 pubkey_or_code: pda_pubkey.to_string(),
             }))
-            .returning(move |_| Ok((pda_pubkey, location.clone())));
+            .returning(move |_| Ok((pda_pubkey, location_cloned.clone())));
 
         client
             .expect_delete_location()

@@ -47,7 +47,7 @@ solana logs > ./logs/instruction.log 2>&1 &
 
 # Build the activator
 echo "Start the activator"
-./target/doublezero-activator --program-id 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX >./logs/activator.log 2>&1 &
+./target/doublezero-activator --program-id 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX --ws ws://127.0.0.1:8900 >./logs/activator.log 2>&1 &
 
 echo "Add allowlist"
 ./target/doublezero global-config allowlist add --pubkey 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX

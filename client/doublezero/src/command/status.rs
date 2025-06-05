@@ -18,12 +18,16 @@ impl StatusCliCommand {
         check_doublezero(Some(&spinner))?;
 
         match controller.status().await {
-            Err(e) => print_error(e),
+            Err(e) => {
+                spinner.finish_and_clear();
+                print_error(e)
+            }
             Ok(status_responses) => {
                 if !status_responses.is_empty() {
                     let table = Table::new(status_responses)
                         .with(Style::psql().remove_horizontals())
                         .to_string();
+                    spinner.finish_and_clear();
                     println!("{}", table);
                 }
             }

@@ -7,8 +7,8 @@ pub mod test {
     use crate::processors::device::create::*;
     use crate::processors::exchange::create::*;
     use crate::processors::globalconfig::set::SetGlobalConfigArgs;
+    use crate::processors::link::{activate::*, create::*};
     use crate::processors::location::create::*;
-    use crate::processors::tunnel::{activate::*, create::*};
     use crate::processors::user::{activate::*, create::*};
     use crate::state::accountdata::AccountData;
     use std::any::type_name;
@@ -16,7 +16,7 @@ pub mod test {
     use crate::state::accounttype::AccountType;
     use crate::state::globalstate::GlobalState;
     use crate::{
-        state::{device::*, location::*, tunnel::*, user::*},
+        state::{device::*, link::*, location::*, user::*},
         types::*,
     };
 
@@ -407,26 +407,26 @@ pub mod test {
 
         let tunnel_la_ny_code = "la-ny1".to_string();
         let (tunnel_la_ny_pubkey, bump_seed) =
-            get_tunnel_pda(&program_id, globalstate_account.account_index + 1);
-        let tunnel_la_ny: TunnelCreateArgs = TunnelCreateArgs {
+            get_link_pda(&program_id, globalstate_account.account_index + 1);
+        let tunnel_la_ny: LinkCreateArgs = LinkCreateArgs {
             index: globalstate_account.account_index + 1,
             bump_seed,
             code: tunnel_la_ny_code.clone(),
             side_a_pk: device_la_pubkey,
             side_z_pk: device_ny_pubkey,
-            tunnel_type: TunnelTunnelType::MPLSoGRE,
+            link_type: LinkLinkType::L3,
             bandwidth: 100,
             mtu: 1900,
             delay_ns: 12_000_000,
             jitter_ns: 1_000_000,
         };
 
-        println!("Testing Tunnel LA-NY initialization...");
+        println!("Testing Link LA-NY initialization...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::CreateTunnel(tunnel_la_ny),
+            DoubleZeroInstruction::CreateLink(tunnel_la_ny),
             vec![
                 AccountMeta::new(tunnel_la_ny_pubkey, false),
                 AccountMeta::new(device_la_pubkey, false),
@@ -440,19 +440,19 @@ pub mod test {
         // Check account data
         let tunnel = get_account_data(&mut banks_client, tunnel_la_ny_pubkey)
             .await
-            .expect("Unable to get Tunnel")
+            .expect("Unable to get Link")
             .get_tunnel();
-        assert_eq!(tunnel.account_type, AccountType::Tunnel);
+        assert_eq!(tunnel.account_type, AccountType::Link);
         assert_eq!(tunnel.code, tunnel_la_ny_code);
-        assert_eq!(tunnel.status, TunnelStatus::Pending);
+        assert_eq!(tunnel.status, LinkStatus::Pending);
         println!(
-            "✅ Tunnel LA-NY initialized successfully with index: {}",
+            "✅ Link LA-NY initialized successfully with index: {}",
             tunnel.index
         );
 
-        println!("Testing Tunnel activation...");
+        println!("Testing Link activation...");
         let tunnel_net: NetworkV4 = networkv4_parse("10.31.0.0/31");
-        let tunnel_activate: TunnelActivateArgs = TunnelActivateArgs {
+        let tunnel_activate: LinkActivateArgs = LinkActivateArgs {
             index: tunnel.index,
             bump_seed: tunnel.bump_seed,
             tunnel_id: 1,
@@ -463,7 +463,7 @@ pub mod test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::ActivateTunnel(tunnel_activate),
+            DoubleZeroInstruction::ActivateLink(tunnel_activate),
             vec![
                 AccountMeta::new(tunnel_la_ny_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
@@ -476,13 +476,13 @@ pub mod test {
         // Check account data
         let tunnel = get_account_data(&mut banks_client, tunnel_la_ny_pubkey)
             .await
-            .expect("Unable to get Tunnel")
+            .expect("Unable to get Link")
             .get_tunnel();
-        assert_eq!(tunnel.account_type, AccountType::Tunnel);
+        assert_eq!(tunnel.account_type, AccountType::Link);
         assert_eq!(tunnel.code, tunnel_la_ny_code);
-        assert_eq!(tunnel.status, TunnelStatus::Activated);
+        assert_eq!(tunnel.status, LinkStatus::Activated);
         println!(
-            "✅ Tunnel LA-NY activated successfully with value: {:?}",
+            "✅ Link LA-NY activated successfully with value: {:?}",
             tunnel_net
         );
 

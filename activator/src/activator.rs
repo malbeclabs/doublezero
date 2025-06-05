@@ -4,20 +4,20 @@ use crate::{
     ipblockallocator::IPBlockAllocator,
     metrics_service::MetricsService,
     process::{
-        device::process_device_event, exchange::process_exchange_event,
+        device::process_device_event, exchange::process_exchange_event, link::process_tunnel_event,
         location::process_location_event, multicastgroup::process_multicastgroup_event,
-        tunnel::process_tunnel_event, user::process_user_event,
+        user::process_user_event,
     },
     states::devicestate::DeviceState,
 };
 use doublezero_sdk::{
     commands::{
         device::list::ListDeviceCommand, exchange::list::ListExchangeCommand,
-        location::list::ListLocationCommand, tunnel::list::ListTunnelCommand,
+        link::list::ListLinkCommand, location::list::ListLocationCommand,
         user::list::ListUserCommand,
     },
     ipv4_to_string, networkv4_list_to_string, AccountData, DZClient, Device, DeviceStatus,
-    Exchange, Location, TunnelStatus, UserStatus,
+    Exchange, LinkStatus, Location, UserStatus,
 };
 use doublezero_sdk::{GetGlobalConfigCommand, MulticastGroup};
 use solana_sdk::pubkey::Pubkey;
@@ -92,14 +92,14 @@ impl Activator {
     pub async fn init(&mut self) -> eyre::Result<()> {
         // Fetch the list of tunnels, devices, and users from the client
         let devices = ListDeviceCommand {}.execute(&self.client)?;
-        let tunnels = ListTunnelCommand {}.execute(&self.client)?;
+        let tunnels = ListLinkCommand {}.execute(&self.client)?;
         let users = ListUserCommand {}.execute(&self.client)?;
         self.locations = ListLocationCommand {}.execute(&self.client)?;
         self.exchanges = ListExchangeCommand {}.execute(&self.client)?;
 
         for (_, tunnel) in tunnels
             .iter()
-            .filter(|(_, t)| t.status == TunnelStatus::Activated)
+            .filter(|(_, t)| t.status == LinkStatus::Activated)
         {
             self.tunnel_tunnel_ids.assign(tunnel.tunnel_id);
             self.tunnel_tunnel_ips.assign_block(tunnel.tunnel_net);
@@ -188,7 +188,7 @@ impl Activator {
                     AccountData::Device(device) => {
                         process_device_event(client, pubkey, devices, device, state_transitions);
                     }
-                    AccountData::Tunnel(tunnel) => {
+                    AccountData::Link(tunnel) => {
                         process_tunnel_event(
                             client,
                             tunnel_tunnel_ips,

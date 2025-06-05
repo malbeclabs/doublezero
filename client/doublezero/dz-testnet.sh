@@ -7,7 +7,7 @@ cargo build
 ./target/debug/doublezero init 
 
 ### Config
-./target/debug/doublezero global-config set --local-asn 65100 --remote-asn 65001 --tunnel-tunnel-block 172.16.0.0/16 --device-tunnel-block 169.254.0.0/16
+./target/debug/doublezero global-config set --local-asn 65100 --remote-asn 65001 --Link-Link-block 172.16.0.0/16 --device-Link-block 169.254.0.0/16
 
 ### Locations
 ./target/debug/doublezero location create --code la --name "Los Angeles" --country US --lat 34.049641274076464 --lng -118.25939642499903
@@ -40,17 +40,17 @@ cargo build
 ./target/debug/doublezero device create --code ams-dz001 --location ams --exchange xam --public-ip "195.219.138.50" --dz-prefix "195.219.138.56/29"
 
 
-### Tunnels
-./target/debug/doublezero tunnel create --code "la2-dz01:ny5-dz01" --side-a la2-dz01 --side-z ny5-dz01 --tunnel-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
-./target/debug/doublezero tunnel create --code "ny5-dz01:ld4-dz01" --side-a ny5-dz01 --side-z ld4-dz01 --tunnel-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
-./target/debug/doublezero tunnel create --code "ld4-dz01:frk-dz01" --side-a ld4-dz01 --side-z frk-dz01 --tunnel-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10
-./target/debug/doublezero tunnel create --code "ld4-dz01:sg1-dz01" --side-a ld4-dz01 --side-z sg1-dz01 --tunnel-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9
-./target/debug/doublezero tunnel create --code "sg1-dz01:ty2-dz01" --side-a sg1-dz01 --side-z ty2-dz01 --tunnel-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7
-./target/debug/doublezero tunnel create --code "ty2-dz01:la2-dz01" --side-a ty2-dz01 --side-z la2-dz01 --tunnel-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 10
+### Links
+./target/debug/doublezero Link create --code "la2-dz01:ny5-dz01" --side-a la2-dz01 --side-z ny5-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
+./target/debug/doublezero Link create --code "ny5-dz01:ld4-dz01" --side-a ny5-dz01 --side-z ld4-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
+./target/debug/doublezero Link create --code "ld4-dz01:frk-dz01" --side-a ld4-dz01 --side-z frk-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10
+./target/debug/doublezero Link create --code "ld4-dz01:sg1-dz01" --side-a ld4-dz01 --side-z sg1-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9
+./target/debug/doublezero Link create --code "sg1-dz01:ty2-dz01" --side-a sg1-dz01 --side-z ty2-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7
+./target/debug/doublezero Link create --code "ty2-dz01:la2-dz01" --side-a ty2-dz01 --side-z la2-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 10
 
 
 # pit
 #./target/debug/doublezero user create --device 6HYr3JYsVvdGARWAYyvVAVoRZFKoLpufmVebGHD4xYAm --client-ip 145.40.78.112
 
 
-#./target/debug/doublezero user activate --client-ip 145.40.78.113 --tunnel-net 192.168.2.0/31
+#./target/debug/doublezero user activate --client-ip 145.40.78.113 --Link-net 192.168.2.0/31

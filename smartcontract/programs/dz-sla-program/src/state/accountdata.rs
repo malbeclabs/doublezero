@@ -1,8 +1,8 @@
 use super::{
     accounttype::AccountType, device::Device, exchange::Exchange, globalconfig::GlobalConfig,
-    globalstate::GlobalState, location::Location, multicastgroup::MulticastGroup, tunnel::Tunnel,
-    user::User,
+    globalstate::GlobalState, location::Location, multicastgroup::MulticastGroup, user::User,
 };
+use crate::state::link::Link;
 
 #[derive(Debug, PartialEq)]
 pub enum AccountData {
@@ -12,7 +12,7 @@ pub enum AccountData {
     Location(Location),
     Exchange(Exchange),
     Device(Device),
-    Tunnel(Tunnel),
+    Link(Link),
     User(User),
     MulticastGroup(MulticastGroup),
 }
@@ -26,7 +26,7 @@ impl AccountData {
             AccountData::Location(_) => "Location",
             AccountData::Exchange(_) => "Exchange",
             AccountData::Device(_) => "Device",
-            AccountData::Tunnel(_) => "Tunnel",
+            AccountData::Link(_) => "Link",
             AccountData::User(_) => "User",
             AccountData::MulticastGroup(_) => "MulticastGroup",
         }
@@ -40,7 +40,7 @@ impl AccountData {
             AccountData::Location(location) => location.to_string(),
             AccountData::Exchange(exchange) => exchange.to_string(),
             AccountData::Device(device) => device.to_string(),
-            AccountData::Tunnel(tunnel) => tunnel.to_string(),
+            AccountData::Link(tunnel) => tunnel.to_string(),
             AccountData::User(user) => user.to_string(),
             AccountData::MulticastGroup(multicast_group) => multicast_group.to_string(),
         }
@@ -86,8 +86,8 @@ impl AccountData {
         }
     }
 
-    pub fn get_tunnel(&self) -> Tunnel {
-        if let AccountData::Tunnel(tunnel) = self {
+    pub fn get_tunnel(&self) -> Link {
+        if let AccountData::Link(tunnel) = self {
             tunnel.clone()
         } else {
             panic!("Invalid Account Type")
@@ -120,7 +120,7 @@ impl From<&[u8]> for AccountData {
             AccountType::Location => AccountData::Location(Location::from(bytes)),
             AccountType::Exchange => AccountData::Exchange(Exchange::from(bytes)),
             AccountType::Device => AccountData::Device(Device::from(bytes)),
-            AccountType::Tunnel => AccountData::Tunnel(Tunnel::from(bytes)),
+            AccountType::Link => AccountData::Link(Link::from(bytes)),
             AccountType::User => AccountData::User(User::from(bytes)),
             AccountType::MulticastGroup => AccountData::MulticastGroup(MulticastGroup::from(bytes)),
         }

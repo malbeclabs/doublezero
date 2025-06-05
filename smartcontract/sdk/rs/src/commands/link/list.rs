@@ -2,20 +2,20 @@ use std::collections::HashMap;
 
 use crate::DoubleZeroClient;
 use doublezero_sla_program::state::{
-    accountdata::AccountData, accounttype::AccountType, tunnel::Tunnel,
+    accountdata::AccountData, accounttype::AccountType, link::Link,
 };
 use solana_sdk::pubkey::Pubkey;
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct ListTunnelCommand {}
+pub struct ListLinkCommand {}
 
-impl ListTunnelCommand {
-    pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<HashMap<Pubkey, Tunnel>> {
+impl ListLinkCommand {
+    pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<HashMap<Pubkey, Link>> {
         Ok(client
-            .gets(AccountType::Tunnel)?
+            .gets(AccountType::Link)?
             .into_iter()
             .map(|(k, v)| match v {
-                AccountData::Tunnel(tunnel) => (k, tunnel),
+                AccountData::Link(tunnel) => (k, tunnel),
                 _ => panic!("Invalid Account Type"),
             })
             .collect())

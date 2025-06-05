@@ -1,44 +1,44 @@
-use crate::{
-    error::DoubleZeroError, globalstate::globalstate_get_next, helper::*, state::tunnel::*,
-};
+use crate::error::DoubleZeroError;
+use crate::globalstate::globalstate_get;
+use crate::helper::*;
+use crate::state::link::*;
+use std::fmt;
+
 use borsh::{BorshDeserialize, BorshSerialize};
-#[cfg(test)]
-use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
-    program_error::ProgramError,
+    msg,
     pubkey::Pubkey,
 };
-use std::fmt;
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct TunnelCloseAccountArgs {
+pub struct LinkRejectArgs {
     pub index: u128,
     pub bump_seed: u8,
+    pub reason: String,
 }
 
-impl fmt::Debug for TunnelCloseAccountArgs {
+impl fmt::Debug for LinkRejectArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "")
+        write!(f, "reason: {}", self.reason)
     }
 }
 
-pub fn process_closeaccount_tunnel(
+pub fn process_reject_link(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &TunnelCloseAccountArgs,
+    value: &LinkRejectArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
     let pda_account = next_account_info(accounts_iter)?;
-    let owner_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_closeaccount_tunnel({:?})", value);
+    msg!("process_activate_link({:?})", value);
 
     // Check the owner of the accounts
     assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
@@ -51,33 +51,32 @@ pub fn process_closeaccount_tunnel(
         solana_program::system_program::id(),
         "Invalid System Program Account Owner"
     );
-    // Check if the account is writable
     assert!(pda_account.is_writable, "PDA Account is not writable");
 
-    let globalstate = globalstate_get_next(globalstate_account)?;
+    let globalstate = globalstate_get(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    let tunnel: Tunnel = Tunnel::from(&pda_account.try_borrow_data().unwrap()[..]);
+    let mut tunnel: Link = Link::from(&pda_account.try_borrow_data().unwrap()[..]);
     assert_eq!(tunnel.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
         tunnel.bump_seed, value.bump_seed,
         "Invalid PDA Account Bump Seed"
     );
-    if tunnel.owner != *owner_account.key {
-        return Err(ProgramError::InvalidAccountData);
-    }
-    if tunnel.status != TunnelStatus::Deleting {
-        #[cfg(test)]
-        msg!("{:?}", tunnel);
-        return Err(solana_program::program_error::ProgramError::Custom(1));
+    if tunnel.status != LinkStatus::Pending {
+        return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    account_close(pda_account, owner_account)?;
+    tunnel.tunnel_id = 0;
+    tunnel.tunnel_net = ([0, 0, 0, 0], 0);
+    tunnel.status = LinkStatus::Rejected;
+    msg!("Reason: {:?}", value.reason);
+
+    account_write(pda_account, &tunnel, payer_account, system_program);
 
     #[cfg(test)]
-    msg!("CloseAccount: {:?}", tunnel);
+    msg!("Rejectd: {:?}", tunnel);
 
     Ok(())
 }

@@ -3,8 +3,8 @@ use crate::cli::config::ConfigCliCommand;
 use crate::cli::device::DeviceCliCommand;
 use crate::cli::exchange::ExchangeCliCommand;
 use crate::cli::globalconfig::GlobalConfigCliCommand;
+use crate::cli::link::LinkCliCommand;
 use crate::cli::location::LocationCliCommand;
-use crate::cli::tunnel::TunnelCliCommand;
 use crate::cli::user::UserCliCommand;
 use crate::command::connect::ProvisioningCliCommand;
 use crate::command::disconnect::DecommissioningCliCommand;
@@ -53,7 +53,7 @@ pub enum Command {
     #[command(about = "Manage devices", hide = false)]
     Device(DeviceCliCommand),
     #[command(about = "Manage tunnels between devices", hide = false)]
-    Tunnel(TunnelCliCommand),
+    Link(LinkCliCommand),
     #[command(about = "Manage users", hide = false)]
     User(UserCliCommand),
     #[command(about = "Manage multicast", hide = false)]

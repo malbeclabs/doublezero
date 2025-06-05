@@ -1,7 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_sdk::commands::link::get::GetLinkCommand;
-use doublezero_sdk::networkv4_to_string;
+use doublezero_sdk::{commands::link::get::GetLinkCommand, networkv4_to_string};
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -38,11 +37,14 @@ impl GetLinkCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::doublezerocommand::CliCommand;
-    use crate::link::get::GetLinkCliCommand;
-    use crate::tests::utils::create_test_client;
-    use doublezero_sdk::commands::link::get::GetLinkCommand;
-    use doublezero_sdk::{get_link_pda, AccountType, Link, LinkLinkType, LinkStatus};
+    use crate::{
+        doublezerocommand::CliCommand, link::get::GetLinkCliCommand,
+        tests::utils::create_test_client,
+    };
+    use doublezero_sdk::{
+        commands::link::get::GetLinkCommand, get_link_pda, AccountType, Link, LinkLinkType,
+        LinkStatus,
+    };
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
 

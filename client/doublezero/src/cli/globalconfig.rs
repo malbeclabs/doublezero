@@ -1,12 +1,11 @@
-use clap::Args;
-use clap::Subcommand;
+use clap::{Args, Subcommand};
 
-use doublezero_cli::globalconfig::get::*;
-use doublezero_cli::globalconfig::set::*;
+use doublezero_cli::globalconfig::{get::*, set::*};
 
-use doublezero_cli::allowlist::foundation::add::AddFoundationAllowlistCliCommand;
-use doublezero_cli::allowlist::foundation::list::ListFoundationAllowlistCliCommand;
-use doublezero_cli::allowlist::foundation::remove::RemoveFoundationAllowlistCliCommand;
+use doublezero_cli::allowlist::foundation::{
+    add::AddFoundationAllowlistCliCommand, list::ListFoundationAllowlistCliCommand,
+    remove::RemoveFoundationAllowlistCliCommand,
+};
 
 #[derive(Args, Debug)]
 pub struct GlobalConfigCliCommand {

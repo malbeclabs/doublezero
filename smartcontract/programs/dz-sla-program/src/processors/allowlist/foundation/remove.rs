@@ -1,8 +1,10 @@
 use core::fmt;
 
-use crate::error::DoubleZeroError;
-use crate::globalstate::{globalstate_get, globalstate_write_with_realloc};
-use crate::pda::*;
+use crate::{
+    error::DoubleZeroError,
+    globalstate::{globalstate_get, globalstate_write_with_realloc},
+    pda::*,
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
 use solana_program::msg;

@@ -1,5 +1,4 @@
-use crate::doublezerocommand::CliCommand;
-use crate::requirements::CHECK_ID_JSON;
+use crate::{doublezerocommand::CliCommand, requirements::CHECK_ID_JSON};
 use clap::Args;
 use doublezero_sdk::get_doublezero_pubkey;
 use solana_sdk::signer::Signer;

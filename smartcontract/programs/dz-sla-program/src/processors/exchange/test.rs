@@ -1,12 +1,13 @@
 #[cfg(test)]
 mod exchange_test {
-    use crate::entrypoint::*;
-    use crate::instructions::*;
-    use crate::pda::*;
-    use crate::processors::exchange::{create::*, delete::*, resume::*, suspend::*, update::*};
-    use crate::state::accounttype::AccountType;
-    use crate::state::exchange::*;
-    use crate::tests::test::*;
+    use crate::{
+        entrypoint::*,
+        instructions::*,
+        pda::*,
+        processors::exchange::{create::*, delete::*, resume::*, suspend::*, update::*},
+        state::{accounttype::AccountType, exchange::*},
+        tests::test::*,
+    };
     use solana_program_test::*;
     use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey};
 

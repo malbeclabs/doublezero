@@ -1,16 +1,16 @@
 #[cfg(test)]
 mod tunnel_test {
-    use crate::entrypoint::*;
-    use crate::instructions::*;
-    use crate::pda::*;
-    use crate::processors::link::{
-        activate::*, create::*, delete::*, resume::*, suspend::*, update::*,
+    use crate::{
+        entrypoint::*,
+        instructions::*,
+        pda::*,
+        processors::{
+            link::{activate::*, create::*, delete::*, resume::*, suspend::*, update::*},
+            *,
+        },
+        state::{accounttype::AccountType, device::DeviceType, link::*},
+        tests::test::*,
     };
-    use crate::processors::*;
-    use crate::state::accounttype::AccountType;
-    use crate::state::device::DeviceType;
-    use crate::state::link::*;
-    use crate::tests::test::*;
     use globalconfig::set::SetGlobalConfigArgs;
     use link::closeaccount::LinkCloseAccountArgs;
     use solana_program_test::*;

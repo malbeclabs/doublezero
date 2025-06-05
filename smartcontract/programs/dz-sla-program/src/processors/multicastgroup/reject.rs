@@ -1,7 +1,6 @@
-use crate::error::DoubleZeroError;
-use crate::globalstate::globalstate_get;
-use crate::helper::*;
-use crate::state::multicastgroup::*;
+use crate::{
+    error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::multicastgroup::*,
+};
 use std::fmt;
 
 use borsh::{BorshDeserialize, BorshSerialize};

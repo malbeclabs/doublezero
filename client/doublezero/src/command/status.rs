@@ -1,8 +1,8 @@
 use crate::{requirements::check_doublezero, servicecontroller::ServiceController};
 use clap::Args;
 use doublezero_cli::{
-    helpers::init_command,
-    {doublezerocommand::CliCommand, helpers::print_error},
+    doublezerocommand::CliCommand,
+    helpers::{init_command, print_error},
 };
 use tabled::{settings::Style, Table};
 

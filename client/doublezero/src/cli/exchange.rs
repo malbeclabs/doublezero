@@ -1,11 +1,6 @@
-use clap::Args;
-use clap::Subcommand;
+use clap::{Args, Subcommand};
 
-use doublezero_cli::exchange::create::*;
-use doublezero_cli::exchange::delete::*;
-use doublezero_cli::exchange::get::*;
-use doublezero_cli::exchange::list::*;
-use doublezero_cli::exchange::update::*;
+use doublezero_cli::exchange::{create::*, delete::*, get::*, list::*, update::*};
 
 #[derive(Args, Debug)]
 pub struct ExchangeCliCommand {

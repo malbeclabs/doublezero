@@ -1,15 +1,15 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_sdk::commands::{
-    device::list::ListDeviceCommand, location::list::ListLocationCommand,
-    multicastgroup::list::ListMulticastGroupCommand, user::list::ListUserCommand,
+use doublezero_sdk::{
+    commands::{
+        device::list::ListDeviceCommand, location::list::ListLocationCommand,
+        multicastgroup::list::ListMulticastGroupCommand, user::list::ListUserCommand,
+    },
+    MulticastGroup, *,
 };
-use doublezero_sdk::MulticastGroup;
-use doublezero_sdk::*;
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
-use std::collections::HashMap;
-use std::io::Write;
+use std::{collections::HashMap, io::Write};
 use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
@@ -164,11 +164,12 @@ pub fn format_multicast_group_names(
 mod tests {
     use std::collections::HashMap;
 
-    use crate::tests::utils::create_test_client;
-    use crate::user::list::ListUserCliCommand;
-    use crate::user::list::UserCYOA::GREOverDIA;
-    use crate::user::list::UserStatus::Activated;
-    use crate::user::list::UserType::IBRL;
+    use crate::{
+        tests::utils::create_test_client,
+        user::list::{
+            ListUserCliCommand, UserCYOA::GREOverDIA, UserStatus::Activated, UserType::IBRL,
+        },
+    };
     use doublezero_sdk::{
         AccountType, Device, DeviceStatus, DeviceType, Exchange, ExchangeStatus, Location,
         LocationStatus, MulticastGroup, MulticastGroupStatus, User, UserType,

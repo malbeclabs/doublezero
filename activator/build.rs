@@ -1,6 +1,4 @@
-use std::env;
-use std::fs;
-use std::path::Path;
+use std::{env, fs, path::Path};
 
 fn main() {
     // Get the version from an environment variable (or use a default value)

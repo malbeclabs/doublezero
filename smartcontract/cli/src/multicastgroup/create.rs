@@ -1,11 +1,13 @@
-use crate::doublezerocommand::CliCommand;
-use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
+use crate::{
+    doublezerocommand::CliCommand,
+    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+};
 use clap::Args;
-use doublezero_sdk::bandwidth_parse;
-use doublezero_sdk::commands::multicastgroup::create::CreateMulticastGroupCommand;
+use doublezero_sdk::{
+    bandwidth_parse, commands::multicastgroup::create::CreateMulticastGroupCommand,
+};
 use solana_sdk::pubkey::Pubkey;
-use std::io::Write;
-use std::str::FromStr;
+use std::{io::Write, str::FromStr};
 
 #[derive(Args, Debug)]
 pub struct CreateMulticastGroupCliCommand {
@@ -44,12 +46,15 @@ impl CreateMulticastGroupCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::doublezerocommand::CliCommand;
-    use crate::multicastgroup::create::CreateMulticastGroupCliCommand;
-    use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::utils::create_test_client;
-    use doublezero_sdk::commands::multicastgroup::create::CreateMulticastGroupCommand;
-    use doublezero_sdk::get_device_pda;
+    use crate::{
+        doublezerocommand::CliCommand,
+        multicastgroup::create::CreateMulticastGroupCliCommand,
+        requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+        tests::utils::create_test_client,
+    };
+    use doublezero_sdk::{
+        commands::multicastgroup::create::CreateMulticastGroupCommand, get_device_pda,
+    };
     use mockall::predicate;
     use solana_sdk::signature::Signature;
 

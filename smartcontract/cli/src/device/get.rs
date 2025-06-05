@@ -1,7 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_sdk::commands::device::get::GetDeviceCommand;
-use doublezero_sdk::*;
+use doublezero_sdk::{commands::device::get::GetDeviceCommand, *};
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -35,10 +34,10 @@ impl GetDeviceCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::device::get::GetDeviceCliCommand;
-    use crate::tests::utils::create_test_client;
-    use doublezero_sdk::commands::device::get::GetDeviceCommand;
-    use doublezero_sdk::{AccountType, Device, DeviceStatus, DeviceType};
+    use crate::{device::get::GetDeviceCliCommand, tests::utils::create_test_client};
+    use doublezero_sdk::{
+        commands::device::get::GetDeviceCommand, AccountType, Device, DeviceStatus, DeviceType,
+    };
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
     use std::str::FromStr;

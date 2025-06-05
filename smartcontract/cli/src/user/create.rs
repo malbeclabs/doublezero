@@ -1,10 +1,13 @@
-use crate::doublezerocommand::CliCommand;
-use crate::helpers::parse_pubkey;
-use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
+use crate::{
+    doublezerocommand::CliCommand,
+    helpers::parse_pubkey,
+    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+};
 use clap::Args;
-use doublezero_sdk::commands::device::get::GetDeviceCommand;
-use doublezero_sdk::commands::user::create::CreateUserCommand;
-use doublezero_sdk::*;
+use doublezero_sdk::{
+    commands::{device::get::GetDeviceCommand, user::create::CreateUserCommand},
+    *,
+};
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -52,18 +55,19 @@ impl CreateUserCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::doublezerocommand::CliCommand;
-    use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use doublezero_sdk::commands::device::get::GetDeviceCommand;
-    use doublezero_sdk::commands::user::create::CreateUserCommand;
-    use doublezero_sdk::{AccountType, Device, DeviceStatus, DeviceType, UserCYOA, UserType};
+    use crate::{
+        doublezerocommand::CliCommand,
+        requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+    };
+    use doublezero_sdk::{
+        commands::{device::get::GetDeviceCommand, user::create::CreateUserCommand},
+        AccountType, Device, DeviceStatus, DeviceType, UserCYOA, UserType,
+    };
     use doublezero_sla_program::pda::get_user_pda;
     use mockall::predicate;
-    use solana_sdk::pubkey::Pubkey;
-    use solana_sdk::signature::Signature;
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
-    use crate::tests::utils::create_test_client;
-    use crate::user::create::CreateUserCliCommand;
+    use crate::{tests::utils::create_test_client, user::create::CreateUserCliCommand};
 
     #[test]
     fn test_cli_user_create() {

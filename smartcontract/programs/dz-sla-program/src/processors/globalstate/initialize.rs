@@ -1,7 +1,8 @@
-use crate::pda::*;
-use crate::seeds::{SEED_GLOBALSTATE, SEED_PREFIX};
-use crate::state::accounttype::AccountType;
-use crate::state::globalstate::GlobalState;
+use crate::{
+    pda::*,
+    seeds::{SEED_GLOBALSTATE, SEED_PREFIX},
+    state::{accounttype::AccountType, globalstate::GlobalState},
+};
 use borsh::BorshSerialize;
 #[cfg(test)]
 use solana_program::msg;

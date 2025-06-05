@@ -10,18 +10,20 @@ pub use crate::config::{
     ClientConfig,
 };
 
-pub use doublezero_sla_program::state::{
-    accountdata::AccountData,
-    accounttype::AccountType,
-    device::{Device, DeviceStatus, DeviceType},
-    exchange::{Exchange, ExchangeStatus},
-    globalconfig::GlobalConfig,
-    link::{Link, LinkLinkType, LinkStatus},
-    location::{Location, LocationStatus},
-    multicastgroup::{MulticastGroup, MulticastGroupStatus},
-    user::{User, UserCYOA, UserStatus, UserType},
+pub use doublezero_sla_program::{
+    state::{
+        accountdata::AccountData,
+        accounttype::AccountType,
+        device::{Device, DeviceStatus, DeviceType},
+        exchange::{Exchange, ExchangeStatus},
+        globalconfig::GlobalConfig,
+        link::{Link, LinkLinkType, LinkStatus},
+        location::{Location, LocationStatus},
+        multicastgroup::{MulticastGroup, MulticastGroupStatus},
+        user::{User, UserCYOA, UserStatus, UserType},
+    },
+    types::*,
 };
-pub use doublezero_sla_program::types::*;
 
 #[macro_use]
 extern crate lazy_static;
@@ -39,14 +41,14 @@ pub mod commands;
 
 pub use crate::client::DZClient;
 
-pub use crate::config::{
-    convert_program_moniker, convert_url_moniker, convert_url_to_ws, convert_ws_moniker,
+pub use crate::{
+    config::{convert_program_moniker, convert_url_moniker, convert_url_to_ws, convert_ws_moniker},
+    doublezeroclient::{DoubleZeroClient, MockDoubleZeroClient},
+    errors::*,
 };
-pub use crate::doublezeroclient::DoubleZeroClient;
-pub use crate::doublezeroclient::MockDoubleZeroClient;
-pub use crate::errors::*;
 
-pub use crate::commands::globalconfig::get::GetGlobalConfigCommand;
-pub use crate::commands::globalstate::get::GetGlobalStateCommand;
-pub use crate::commands::location::create::CreateLocationCommand;
-pub use crate::commands::location::get::GetLocationCommand;
+pub use crate::commands::{
+    globalconfig::get::GetGlobalConfigCommand,
+    globalstate::get::GetGlobalStateCommand,
+    location::{create::CreateLocationCommand, get::GetLocationCommand},
+};

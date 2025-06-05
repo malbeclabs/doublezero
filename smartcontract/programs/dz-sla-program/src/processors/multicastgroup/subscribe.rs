@@ -1,8 +1,12 @@
-use crate::state::accounttype::AccountType;
-use crate::state::multicastgroup::*;
-use crate::state::user::User;
-use crate::state::user::*;
-use crate::{error::DoubleZeroError, helper::*};
+use crate::{
+    error::DoubleZeroError,
+    helper::*,
+    state::{
+        accounttype::AccountType,
+        multicastgroup::*,
+        user::{User, *},
+    },
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
 use solana_program::msg;

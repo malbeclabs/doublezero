@@ -1,6 +1,4 @@
-use crate::error::DoubleZeroError;
-use crate::globalstate::globalstate_get;
-use crate::{helper::*, state::link::*};
+use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::link::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
 #[cfg(test)]

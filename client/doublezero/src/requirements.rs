@@ -1,6 +1,5 @@
 use indicatif::ProgressBar;
-use std::fs::File;
-use std::path::Path;
+use std::{fs::File, path::Path};
 
 pub fn check_doublezero(spinner: Option<&ProgressBar>) -> eyre::Result<()> {
     if !service_controller_check() {

@@ -24,8 +24,7 @@ use crate::{
             update::process_update_exchange,
         },
         globalconfig::set::process_set_globalconfig,
-        globalstate::close::process_close_account,
-        globalstate::initialize::initialize_global_state,
+        globalstate::{close::process_close_account, initialize::initialize_global_state},
         link::{
             activate::process_activate_link, closeaccount::process_closeaccount_link,
             create::process_create_link, delete::process_delete_link, reject::process_reject_link,
@@ -68,9 +67,8 @@ use crate::{
         },
     },
 };
-use solana_program::msg;
 use solana_program::{
-    account_info::AccountInfo, entrypoint, entrypoint::ProgramResult, pubkey::Pubkey,
+    account_info::AccountInfo, entrypoint, entrypoint::ProgramResult, msg, pubkey::Pubkey,
 };
 
 // Program entrypoint

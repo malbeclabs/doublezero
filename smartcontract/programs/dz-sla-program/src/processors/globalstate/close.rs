@@ -1,5 +1,4 @@
-use std::fmt;
-use std::str::FromStr;
+use std::{fmt, str::FromStr};
 
 use crate::helper::account_close;
 use borsh::{BorshDeserialize, BorshSerialize};

@@ -1,15 +1,12 @@
-use clap::Args;
-use clap::Subcommand;
+use clap::{Args, Subcommand};
 
-use doublezero_cli::allowlist::user::add::AddUserAllowlistCliCommand;
-use doublezero_cli::allowlist::user::list::ListUserAllowlistCliCommand;
-use doublezero_cli::allowlist::user::remove::RemoveUserAllowlistCliCommand;
-use doublezero_cli::user::create::*;
-use doublezero_cli::user::delete::*;
-use doublezero_cli::user::get::*;
-use doublezero_cli::user::list::*;
-use doublezero_cli::user::request_ban::*;
-use doublezero_cli::user::update::*;
+use doublezero_cli::{
+    allowlist::user::{
+        add::AddUserAllowlistCliCommand, list::ListUserAllowlistCliCommand,
+        remove::RemoveUserAllowlistCliCommand,
+    },
+    user::{create::*, delete::*, get::*, list::*, request_ban::*, update::*},
+};
 
 #[derive(Args, Debug)]
 pub struct UserCliCommand {

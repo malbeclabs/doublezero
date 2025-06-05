@@ -1,19 +1,23 @@
 #[cfg(test)]
 mod user_test {
-    use crate::entrypoint::*;
-    use crate::instructions::*;
-    use crate::pda::*;
-    use crate::processors::user::{
-        activate::*, create::*, delete::*, resume::*, suspend::*, update::*,
+    use crate::{
+        entrypoint::*,
+        instructions::*,
+        pda::*,
+        processors::{
+            user::{activate::*, create::*, delete::*, resume::*, suspend::*, update::*},
+            *,
+        },
     };
-    use crate::processors::*;
 
-    use crate::state::accounttype::AccountType;
-    use crate::state::device::*;
-    use crate::state::user::UserCYOA;
-    use crate::state::user::UserStatus;
-    use crate::state::user::UserType;
-    use crate::tests::test::*;
+    use crate::{
+        state::{
+            accounttype::AccountType,
+            device::*,
+            user::{UserCYOA, UserStatus, UserType},
+        },
+        tests::test::*,
+    };
     use globalconfig::set::SetGlobalConfigArgs;
     use solana_program_test::*;
     use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey};

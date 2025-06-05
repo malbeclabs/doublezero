@@ -2,8 +2,7 @@ use super::accounttype::{AccountType, AccountTypeInfo};
 use crate::{bytereader::ByteReader, seeds::SEED_EXCHANGE};
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::Serialize;
-use solana_program::account_info::AccountInfo;
-use solana_program::pubkey::Pubkey;
+use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 use std::fmt;
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]

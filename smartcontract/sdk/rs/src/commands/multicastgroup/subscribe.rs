@@ -72,18 +72,16 @@ mod tests {
         commands::multicastgroup::subscribe::SubscribeMulticastGroupCommand,
         tests::utils::create_test_client, DoubleZeroClient,
     };
-    use doublezero_sla_program::state::accountdata::AccountData;
-    use doublezero_sla_program::state::accounttype::AccountType;
-    use doublezero_sla_program::state::multicastgroup::MulticastGroup;
-    use doublezero_sla_program::state::multicastgroup::MulticastGroupStatus;
-    use doublezero_sla_program::state::user::User;
-    use doublezero_sla_program::state::user::UserCYOA;
-    use doublezero_sla_program::state::user::UserStatus;
-    use doublezero_sla_program::state::user::UserType;
     use doublezero_sla_program::{
         instructions::DoubleZeroInstruction,
         pda::{get_globalstate_pda, get_location_pda},
         processors::multicastgroup::subscribe::MulticastGroupSubscribeArgs,
+        state::{
+            accountdata::AccountData,
+            accounttype::AccountType,
+            multicastgroup::{MulticastGroup, MulticastGroupStatus},
+            user::{User, UserCYOA, UserStatus, UserType},
+        },
     };
     use mockall::predicate;
     use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};

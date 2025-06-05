@@ -1,8 +1,5 @@
-use solana_sdk::pubkey::Pubkey;
-use solana_sdk::signature::Keypair;
-use std::error::Error;
-use std::fs;
-use std::str::FromStr;
+use solana_sdk::{pubkey::Pubkey, signature::Keypair};
+use std::{error::Error, fs, str::FromStr};
 
 pub fn read_keypair_from_file(file: String) -> eyre::Result<Keypair, Box<dyn Error>> {
     let file_content = fs::read_to_string(file)?;

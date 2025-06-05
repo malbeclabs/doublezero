@@ -1,8 +1,9 @@
-use crate::doublezerocommand::CliCommand;
-use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
+use crate::{
+    doublezerocommand::CliCommand,
+    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+};
 use clap::Args;
-use doublezero_sdk::commands::globalconfig::set::SetGlobalConfigCommand;
-use doublezero_sdk::*;
+use doublezero_sdk::{commands::globalconfig::set::SetGlobalConfigCommand, *};
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -39,9 +40,11 @@ impl SetGlobalConfigCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::globalconfig::set::SetGlobalConfigCliCommand;
-    use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
-    use crate::tests::utils::create_test_client;
+    use crate::{
+        globalconfig::set::SetGlobalConfigCliCommand,
+        requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+        tests::utils::create_test_client,
+    };
     use doublezero_sdk::commands::globalconfig::set::SetGlobalConfigCommand;
     use mockall::predicate;
     use solana_sdk::signature::Signature;

@@ -1,9 +1,10 @@
-use crate::error::DoubleZeroError;
-use crate::globalstate::globalstate_get_next;
-use crate::globalstate::globalstate_write;
-use crate::helper::*;
-use crate::pda::*;
-use crate::state::{accounttype::AccountType, location::*};
+use crate::{
+    error::DoubleZeroError,
+    globalstate::{globalstate_get_next, globalstate_write},
+    helper::*,
+    pda::*,
+    state::{accounttype::AccountType, location::*},
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},

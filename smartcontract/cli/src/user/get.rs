@@ -1,10 +1,8 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_sdk::commands::user::get::GetUserCommand;
-use doublezero_sdk::*;
+use doublezero_sdk::{commands::user::get::GetUserCommand, *};
 use solana_sdk::pubkey::Pubkey;
-use std::io::Write;
-use std::str::FromStr;
+use std::{io::Write, str::FromStr};
 
 #[derive(Args, Debug)]
 pub struct GetUserCliCommand {
@@ -38,20 +36,17 @@ impl GetUserCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::doublezerocommand::CliCommand;
-    use crate::tests::utils::create_test_client;
-    use crate::user::get::GetUserCliCommand;
-    use doublezero_sdk::commands::user::delete::DeleteUserCommand;
-    use doublezero_sdk::commands::user::get::GetUserCommand;
-    use doublezero_sdk::AccountType;
-    use doublezero_sdk::User;
-    use doublezero_sdk::UserCYOA;
-    use doublezero_sdk::UserStatus;
-    use doublezero_sdk::UserType;
+    use crate::{
+        doublezerocommand::CliCommand, tests::utils::create_test_client,
+        user::get::GetUserCliCommand,
+    };
+    use doublezero_sdk::{
+        commands::user::{delete::DeleteUserCommand, get::GetUserCommand},
+        AccountType, User, UserCYOA, UserStatus, UserType,
+    };
     use doublezero_sla_program::pda::get_user_pda;
     use mockall::predicate;
-    use solana_sdk::pubkey::Pubkey;
-    use solana_sdk::signature::Signature;
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_cli_user_get() {

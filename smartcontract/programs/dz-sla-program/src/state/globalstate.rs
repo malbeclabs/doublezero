@@ -2,8 +2,7 @@ use super::accounttype::AccountType;
 use crate::bytereader::ByteReader;
 use borsh::BorshSerialize;
 use core::fmt;
-use solana_program::account_info::AccountInfo;
-use solana_program::pubkey::Pubkey;
+use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 pub struct GlobalState {

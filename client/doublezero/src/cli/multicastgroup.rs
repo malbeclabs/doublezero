@@ -1,17 +1,24 @@
-use clap::Args;
-use clap::Subcommand;
+use clap::{Args, Subcommand};
 
-use doublezero_cli::multicastgroup::allowlist::publisher::add::AddMulticastGroupPubAllowlistCliCommand;
-use doublezero_cli::multicastgroup::allowlist::publisher::list::ListMulticastGroupPubAllowlistCliCommand;
-use doublezero_cli::multicastgroup::allowlist::publisher::remove::RemoveMulticastGroupPubAllowlistCliCommand;
-use doublezero_cli::multicastgroup::allowlist::subscriber::add::AddMulticastGroupSubAllowlistCliCommand;
-use doublezero_cli::multicastgroup::allowlist::subscriber::list::ListMulticastGroupSubAllowlistCliCommand;
-use doublezero_cli::multicastgroup::allowlist::subscriber::remove::RemoveMulticastGroupSubAllowlistCliCommand;
-use doublezero_cli::multicastgroup::create::CreateMulticastGroupCliCommand;
-use doublezero_cli::multicastgroup::delete::DeleteMulticastGroupCliCommand;
-use doublezero_cli::multicastgroup::get::GetMulticastGroupCliCommand;
-use doublezero_cli::multicastgroup::list::ListMulticastGroupCliCommand;
-use doublezero_cli::multicastgroup::update::UpdateMulticastGroupCliCommand;
+use doublezero_cli::multicastgroup::{
+    allowlist::{
+        publisher::{
+            add::AddMulticastGroupPubAllowlistCliCommand,
+            list::ListMulticastGroupPubAllowlistCliCommand,
+            remove::RemoveMulticastGroupPubAllowlistCliCommand,
+        },
+        subscriber::{
+            add::AddMulticastGroupSubAllowlistCliCommand,
+            list::ListMulticastGroupSubAllowlistCliCommand,
+            remove::RemoveMulticastGroupSubAllowlistCliCommand,
+        },
+    },
+    create::CreateMulticastGroupCliCommand,
+    delete::DeleteMulticastGroupCliCommand,
+    get::GetMulticastGroupCliCommand,
+    list::ListMulticastGroupCliCommand,
+    update::UpdateMulticastGroupCliCommand,
+};
 
 #[derive(Args, Debug)]
 pub struct MulticastGroupCliCommand {

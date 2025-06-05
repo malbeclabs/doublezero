@@ -33,14 +33,13 @@ impl GetExchangeCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::exchange::get::GetExchangeCliCommand;
-    use crate::tests::utils::create_test_client;
-    use doublezero_sdk::commands::exchange::get::GetExchangeCommand;
-    use doublezero_sdk::{AccountType, Exchange, ExchangeStatus};
+    use crate::{exchange::get::GetExchangeCliCommand, tests::utils::create_test_client};
+    use doublezero_sdk::{
+        commands::exchange::get::GetExchangeCommand, AccountType, Exchange, ExchangeStatus,
+    };
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
-    use std::collections::HashMap;
-    use std::str::FromStr;
+    use std::{collections::HashMap, str::FromStr};
 
     #[test]
     fn test_cli_exchange_get() {

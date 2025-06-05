@@ -1,7 +1,5 @@
 use super::helpers::look_for_ip;
-use crate::servicecontroller::{
-    ProvisioningRequest, ServiceController, ServiceControllerImpl,
-};
+use crate::servicecontroller::{ProvisioningRequest, ServiceController, ServiceControllerImpl};
 use clap::{Args, Subcommand, ValueEnum};
 use doublezero_cli::{
     doublezerocommand::CliCommand,
@@ -586,18 +584,31 @@ mod tests {
     use super::*;
     use crate::servicecontroller::{LatencyRecord, MockServiceController, ProvisioningResponse};
     use doublezero_cli::doublezerocommand::MockCliCommand;
-    use doublezero_cli::tests::tests::create_test_client;
+    use doublezero_cli::tests::utils::create_test_client;
+    use doublezero_sdk::tests::utils::create_temp_config;
     use doublezero_sdk::utils::parse_pubkey;
     use doublezero_sla_program::state::accounttype::AccountType;
     use doublezero_sla_program::state::device::{Device, DeviceStatus, DeviceType};
     use doublezero_sla_program::state::globalconfig::GlobalConfig;
     use doublezero_sla_program::state::multicastgroup::{MulticastGroup, MulticastGroupStatus};
     use doublezero_sla_program::types::{ipv4_parse, networkv4_parse};
+    use lazy_static::lazy_static;
     use mockall::predicate;
     use solana_sdk::signature::Signature;
     use std::cell::RefCell;
     use std::collections::HashMap;
     use std::rc::Rc;
+    use tempdir::TempDir;
+
+    lazy_static! {
+        pub static ref TMPDIR: TempDir = create_temp_config();
+    }
+
+    #[ctor::ctor]
+    fn setup() {
+        // forces lazy_static to initialize
+        println!("Using TMPDIR = {}", TMPDIR.path().display());
+    }
 
     struct TestFixture {
         pub global_cfg: GlobalConfig,
@@ -775,8 +786,8 @@ mod tests {
                 owner: Pubkey::new_unique(),
                 index: 1,
                 bump_seed: 1,
-                user_type: user_type,
-                device_pk: device_pk,
+                user_type,
+                device_pk,
                 tenant_pk: Pubkey::new_unique(),
                 cyoa_type: UserCYOA::GREOverDIA,
                 client_ip: ipv4_parse(client_ip),
@@ -865,7 +876,6 @@ mod tests {
                 mcast_pub_groups,
                 mcast_sub_groups,
             };
-            println!("expected_request: {:?}", expected_request);
 
             self.controller
                 .expect_provisioning()

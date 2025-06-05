@@ -189,10 +189,7 @@ impl ServiceController for ServiceControllerImpl {
         }
     }
 
-    async fn provisioning(
-        &self,
-        args: ProvisioningRequest,
-    ) -> eyre::Result<ProvisioningResponse> {
+    async fn provisioning(&self, args: ProvisioningRequest) -> eyre::Result<ProvisioningResponse> {
         let client = Client::builder(TokioExecutor::new()).build(UnixConnector);
         let body_bytes =
             serde_json::to_vec(&args).map_err(|e| eyre!("Unable to serialize request: {}", e))?;

@@ -113,24 +113,6 @@ func TestGetConfigFromServer_GetConfigRequestValidation(t *testing.T) {
 	}
 }
 
-// stringSlicesEqualIgnoreOrder returns true if two string slices contain the same elements, regardless of order.
-func stringSlicesEqualIgnoreOrder(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	counts := make(map[string]int)
-	for _, v := range a {
-		counts[v]++
-	}
-	for _, v := range b {
-		counts[v]--
-		if counts[v] < 0 {
-			return false
-		}
-	}
-	return true
-}
-
 func TestGetDzClient(t *testing.T) {
 	tests := []struct {
 		Name                     string

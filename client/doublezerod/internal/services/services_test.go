@@ -48,8 +48,7 @@ type MockNetlink struct {
 }
 
 type MockTunAddr struct {
-	IP       string
-	Autojoin bool
+	IP string
 }
 
 func (m *MockNetlink) TunnelAdd(t *routing.Tunnel) error {
@@ -63,8 +62,8 @@ func (m *MockNetlink) TunnelDelete(n *routing.Tunnel) error {
 	return nil
 }
 
-func (m *MockNetlink) TunnelAddrAdd(t *routing.Tunnel, ip string, autojoin bool) error {
-	m.tunAddrAdded = append(m.tunAddrAdded, MockTunAddr{IP: ip, Autojoin: autojoin})
+func (m *MockNetlink) TunnelAddrAdd(t *routing.Tunnel, ip string) error {
+	m.tunAddrAdded = append(m.tunAddrAdded, MockTunAddr{IP: ip})
 	return nil
 }
 
@@ -357,10 +356,17 @@ func TestServices(t *testing.T) {
 				LocalOverlay:   net.IPv4(169, 254, 0, 1),
 				RemoteOverlay:  net.IPv4(169, 254, 0, 0),
 			},
-			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31"}, {IP: "239.0.0.1/32", Autojoin: true}},
+			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31"}},
 			wantTunUp:        true,
 			wantRulesAdded:   nil,
-			wantRoutesAdded:  nil,
+			wantRoutesAdded: []*routing.Route{
+				{
+					Table:    syscall.RT_TABLE_MAIN,
+					Dst:      &net.IPNet{IP: net.IP{239, 0, 0, 1}, Mask: net.IPMask{255, 255, 255, 255}},
+					NextHop:  net.IP{169, 254, 0, 0},
+					Src:      nil,
+					Protocol: unix.RTPROT_STATIC,
+				}},
 			wantPeerConfig: &bgp.PeerConfig{
 				LocalAddress:  net.IPv4(169, 254, 0, 1),
 				RemoteAddress: net.IPv4(169, 254, 0, 0),

@@ -1318,26 +1318,27 @@ func TestMulticastSubscriber_Connect_Networking(t *testing.T) {
 		}
 	})
 
-	t.Run("check_multicast_group_addresses", func(t *testing.T) {
-		// For subscribers, multicast group addresses should be configured on the tunnel
-		tun, err := nl.LinkByName("doublezero1")
+	t.Run("check_multicast_static_routes", func(t *testing.T) {
+		routes, err := nl.RouteListFiltered(
+			0,
+			&nl.Route{
+				Table: syscall.RT_TABLE_MAIN,
+			},
+			nl.RT_FILTER_TABLE,
+		)
 		if err != nil {
-			t.Fatalf("error fetching tunnel status: %v", err)
-		}
-		addrs, err := nl.AddrList(tun, nl.FAMILY_V4)
-		if err != nil {
-			t.Fatalf("error fetching tunnel addresses: %v", err)
+			t.Fatalf("error fetching routes: %v", err)
 		}
 
 		// Check for multicast group address (e.g., 233.84.178.0/32)
-		foundMcastAddr := false
-		for _, addr := range addrs {
-			if addr.IP.Equal(net.ParseIP("233.84.178.0")) {
-				foundMcastAddr = true
+		foundMcastRoute := false
+		for _, route := range routes {
+			if route.Dst != nil && route.Dst.IP.Equal(net.ParseIP("233.84.178.0")) {
+				foundMcastRoute = true
 				break
 			}
 		}
-		if !foundMcastAddr {
+		if !foundMcastRoute {
 			t.Fatalf("multicast group address 233.84.178.0 not found on tunnel for subscriber")
 		}
 	})

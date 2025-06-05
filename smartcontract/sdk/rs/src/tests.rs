@@ -6,12 +6,11 @@ pub mod utils {
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
     use std::env;
-    use tempdir::TempDir;
+    use tempfile::TempDir;
 
-    use crate::MockDoubleZeroClient;
     use crate::{
         config::{write_doublezero_config, ClientConfig},
-        create_new_pubkey_user,
+        create_new_pubkey_user, MockDoubleZeroClient,
     };
 
     pub fn create_test_client() -> MockDoubleZeroClient {
@@ -45,7 +44,7 @@ pub mod utils {
     }
 
     pub fn create_temp_config() -> TempDir {
-        let tmpdir = TempDir::new("doublezero-tests").unwrap();
+        let tmpdir = TempDir::with_prefix("doublezero-tests-").unwrap();
         env::set_var("DOUBLEZERO_CONFIG_FILE", tmpdir.path().join("config.yaml"));
         let client_cfg = ClientConfig {
             keypair_path: tmpdir.path().join("id.json").to_str().unwrap().to_string(),

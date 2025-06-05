@@ -6,9 +6,7 @@ use hyper_util::{client::legacy::Client, rt::TokioExecutor};
 use hyperlocal::{UnixConnector, Uri};
 use mockall::automock;
 use serde::{Deserialize, Serialize};
-use std::fmt;
-use std::fs::File;
-use std::path::Path;
+use std::{fmt, fs::File, path::Path};
 use tabled::{derive::display, Tabled};
 
 const NANOS_TO_MS: f32 = 1000000.0;

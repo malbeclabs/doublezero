@@ -583,22 +583,22 @@ impl ProvisioningCliCommand {
 mod tests {
     use super::*;
     use crate::servicecontroller::{LatencyRecord, MockServiceController, ProvisioningResponse};
-    use doublezero_cli::doublezerocommand::MockCliCommand;
-    use doublezero_cli::tests::utils::create_test_client;
-    use doublezero_sdk::tests::utils::create_temp_config;
-    use doublezero_sdk::utils::parse_pubkey;
-    use doublezero_sla_program::state::accounttype::AccountType;
-    use doublezero_sla_program::state::device::{Device, DeviceStatus, DeviceType};
-    use doublezero_sla_program::state::globalconfig::GlobalConfig;
-    use doublezero_sla_program::state::multicastgroup::{MulticastGroup, MulticastGroupStatus};
-    use doublezero_sla_program::types::{ipv4_parse, networkv4_parse};
+    use doublezero_cli::{doublezerocommand::MockCliCommand, tests::utils::create_test_client};
+    use doublezero_sdk::{tests::utils::create_temp_config, utils::parse_pubkey};
+    use doublezero_sla_program::{
+        state::{
+            accounttype::AccountType,
+            device::{Device, DeviceStatus, DeviceType},
+            globalconfig::GlobalConfig,
+            multicastgroup::{MulticastGroup, MulticastGroupStatus},
+        },
+        types::{ipv4_parse, networkv4_parse},
+    };
     use lazy_static::lazy_static;
     use mockall::predicate;
     use solana_sdk::signature::Signature;
-    use std::cell::RefCell;
-    use std::collections::HashMap;
-    use std::rc::Rc;
-    use tempdir::TempDir;
+    use std::{cell::RefCell, collections::HashMap, rc::Rc};
+    use tempfile::TempDir;
 
     lazy_static! {
         pub static ref TMPDIR: TempDir = create_temp_config();

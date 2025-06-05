@@ -61,7 +61,7 @@ solana-rpc-client-api = "2.2.7"
 solana-sdk = "2.2.2"
 solana-transaction-status = "2.2.7"
 tabled = "0"
-tempdir = "^0.3"
+tempfile = "3"
 thiserror = "2"
 tokio = { version = "1", features = ["full"] }
 

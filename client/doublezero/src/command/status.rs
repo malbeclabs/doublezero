@@ -1,5 +1,7 @@
-use crate::requirements::check_doublezero;
-use crate::servicecontroller::{ServiceController, ServiceControllerImpl};
+use crate::{
+    requirements::check_doublezero,
+    servicecontroller::{ServiceController, ServiceControllerImpl},
+};
 use clap::Args;
 use doublezero_cli::{
     doublezerocommand::CliCommand,

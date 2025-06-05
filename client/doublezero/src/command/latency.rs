@@ -5,7 +5,10 @@ use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 use tabled::{settings::Style, Table};
 
-use crate::{requirements::check_doublezero, servicecontroller::ServiceController};
+use crate::{
+    requirements::check_doublezero,
+    servicecontroller::{ServiceController, ServiceControllerImpl},
+};
 
 #[derive(Args, Debug)]
 pub struct LatencyCliCommand {}

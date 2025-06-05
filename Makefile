@@ -19,7 +19,13 @@ test-e2e:
 lint:
 	golangci-lint run -c ./.golangci.yaml
 	cargo clippy --workspace --all-features --all-targets -- -Dclippy::all -Dwarnings
-	cargo fmt --check --all
+	rustup component add rustfmt --toolchain nightly
+	cargo +nightly fmt --check --all
+
+.PHONY: fmt
+fmt:
+	rustup component add rustfmt --toolchain nightly
+	cargo +nightly fmt --all
 
 .PHONY: build
 build:

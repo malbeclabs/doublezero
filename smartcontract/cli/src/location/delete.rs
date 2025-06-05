@@ -42,8 +42,7 @@ mod tests {
         GetLocationCommand, Location, LocationStatus,
     };
     use mockall::predicate;
-    use solana_sdk::pubkey::Pubkey;
-    use solana_sdk::signature::Signature;
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_cli_location_delete() {

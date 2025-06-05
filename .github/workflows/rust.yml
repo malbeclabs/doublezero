@@ -22,6 +22,8 @@ jobs:
       - name: clippy
         run: cargo clippy --workspace --all-features --all-targets -- -Dclippy::all -Dwarnings
       - name: fmt-check
-        run: cargo fmt --check --all
+        run: |
+          rustup component add rustfmt --toolchain nightly
+          cargo +nightly fmt --check --all
       - name: build
         run: cargo build --workspace

@@ -12,6 +12,7 @@
         "ghcr.io/devcontainers/features/rust:1": {},
         "ghcr.io/devcontainers/features/docker-in-docker:2": {}
     },
+    "postCreateCommand": "rustup component add --toolchain nightly rustfmt",
     "customizations": {
         "vscode": {
             "extensions": [
@@ -28,6 +29,9 @@
                         "-tags=e2e"
                     ]
                 },
+                "rust-analyzer.rustfmt.extraArgs": [
+                    "+nightly"
+                ],
                 "rust-analyzer.checkOnSave.command": "clippy",
                 "rust-analyzer.checkOnSave.extraArgs": [
                     "--",

@@ -363,6 +363,7 @@ func (e *EapiClient) GetBgpNeighbors(ctx context.Context) (map[string][]string, 
 				neighborIpMap[vrfName] = append(neighborIpMap[vrfName], peer.PeerAddress)
 			}
 		}
+		slices.Sort(neighborIpMap[vrfName])
 	}
 
 	return neighborIpMap, nil

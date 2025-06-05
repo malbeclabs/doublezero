@@ -76,7 +76,7 @@ func TestGetConfigFromServer_GetConfigRequestValidation(t *testing.T) {
 				"vrf2":    {"10.0.0.1"},
 			},
 			Timeout:          2.0,
-			ExpectedBgpPeers: []string{"172.16.0.1", "172.16.0.2", "10.0.0.1", "10.0.0.2", "10.0.0.1"},
+			ExpectedBgpPeers: []string{"10.0.0.1", "10.0.0.1", "10.0.0.2", "172.16.0.1", "172.16.0.2"},
 			ExpectedBgpPeersByVrf: map[string]*pb.BgpPeers{
 				"default": {Peers: []string{"172.16.0.1", "172.16.0.2"}},
 				"vrf1":    {Peers: []string{"10.0.0.1", "10.0.0.2"}},
@@ -102,7 +102,7 @@ func TestGetConfigFromServer_GetConfigRequestValidation(t *testing.T) {
 				t.Errorf("Expected Pubkey %q, got %q", test.LocalDevicePubkey, receivedReq.Pubkey)
 			}
 
-			if !stringSlicesEqualIgnoreOrder(receivedReq.BgpPeers, test.ExpectedBgpPeers) {
+			if !reflect.DeepEqual(receivedReq.BgpPeers, test.ExpectedBgpPeers) {
 				t.Errorf("Expected BgpPeers %v, got %v", test.ExpectedBgpPeers, receivedReq.BgpPeers)
 			}
 

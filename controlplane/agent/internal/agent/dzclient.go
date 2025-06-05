@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"log"
+	"slices"
 	"time"
 
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
@@ -20,6 +21,8 @@ func GetConfigFromServer(ctx context.Context, client pb.ControllerClient, localD
 		bgpPeersByVrf[vrf] = &pb.BgpPeers{Peers: peers}
 		bgpPeers = append(bgpPeers, peers...)
 	}
+	slices.Sort(bgpPeers)
+
 	req := &pb.ConfigRequest{Pubkey: localDevicePubkey, BgpPeers: bgpPeers, BgpPeersByVrf: bgpPeersByVrf}
 	resp, err := client.GetConfig(ctx, req)
 	if err != nil {

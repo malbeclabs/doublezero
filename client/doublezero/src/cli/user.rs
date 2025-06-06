@@ -8,7 +8,8 @@ use doublezero_cli::{
     user::{
         create::CreateUserCliCommand, create_subscribe::CreateSubscribeUserCliCommand,
         delete::DeleteUserCliCommand, get::GetUserCliCommand, list::ListUserCliCommand,
-        request_ban::RequestBanUserCliCommand, update::UpdateUserCliCommand,
+        request_ban::RequestBanUserCliCommand, subscribe::SubscribeUserCliCommand,
+        update::UpdateUserCliCommand,
     },
 };
 
@@ -24,6 +25,8 @@ pub enum UserCommands {
     Create(CreateUserCliCommand),
     #[command(about = "", hide = true)]
     CreateSubscribe(CreateSubscribeUserCliCommand),
+    #[command(about = "", hide = true)]
+    Subscribe(SubscribeUserCliCommand),
     #[command(about = "", hide = true)]
     Update(UpdateUserCliCommand),
     List(ListUserCliCommand),

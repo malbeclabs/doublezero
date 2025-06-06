@@ -26,32 +26,11 @@ pub fn process_user_event(
     match user.status {
         // Create User
         UserStatus::Pending => {
-            let device_state = match devices.entry(user.device_pk) {
-                Entry::Occupied(entry) => entry.into_mut(),
-                Entry::Vacant(entry) => {
-                    let res = GetDeviceCommand {
-                        pubkey_or_code: user.device_pk.to_string(),
-                    }
-                    .execute(client);
-
-                    match res {
-                        Ok((_, device)) => {
-                            println!(
-                                "Add Device: {} public_ip: {} dz_prefixes: {} ",
-                                device.code,
-                                ipv4_to_string(&device.public_ip),
-                                networkv4_list_to_string(&device.dz_prefixes)
-                            );
-                            entry.insert(DeviceState::new(&device))
-                        }
-                        Err(_) => {
-                            // Reject user since we couldn't load the device
-                            reject_user(client, user, "Error: Device not found", state_transitions);
-                            return;
-                        }
-                    }
-                }
-            };
+            let device_state =
+                match get_or_insert_device_state(client, devices, user, state_transitions) {
+                    Some(ds) => ds,
+                    None => return,
+                };
 
             println!(
                 "Activating User: {}, for: {}",
@@ -122,6 +101,69 @@ pub fn process_user_event(
                     println!("Activated   {}", signature);
                     *state_transitions
                         .entry("user-pending-to-activated")
+                        .or_insert(0) += 1;
+                }
+                Err(e) => println!("Error: {}", e),
+            }
+        }
+
+        UserStatus::Updating => {
+            let device_state =
+                match get_or_insert_device_state(client, devices, user, state_transitions) {
+                    Some(ds) => ds,
+                    None => return,
+                };
+
+            println!(
+                "Activating User: {}, for: {}",
+                ipv4_to_string(&user.client_ip),
+                device_state.device.code
+            );
+
+            let need_dz_ip = match user.user_type {
+                UserType::IBRLWithAllocatedIP | UserType::EdgeFiltering => true,
+                UserType::IBRL => false,
+                UserType::Multicast => !user.publishers.is_empty(),
+            };
+
+            let dz_ip = if need_dz_ip && user.dz_ip == user.client_ip {
+                match device_state.get_next_dz_ip() {
+                    Some(ip) => ip,
+                    None => {
+                        eprintln!("Error: No available dz_ip to allocate");
+                        reject_user(
+                            client,
+                            user,
+                            "Error: No available dz_ip to allocate",
+                            state_transitions,
+                        );
+                        return;
+                    }
+                }
+            } else {
+                user.dz_ip
+            };
+
+            print!(
+                "tunnel_net: {} tunnel_id: {} dz_ip: {} ",
+                networkv4_to_string(&user.tunnel_net),
+                user.tunnel_id,
+                ipv4_to_string(&dz_ip)
+            );
+
+            // Activate the user
+            let res = ActivateUserCommand {
+                index: user.index,
+                tunnel_id: user.tunnel_id,
+                tunnel_net: user.tunnel_net,
+                dz_ip,
+            }
+            .execute(client);
+            match res {
+                Ok(signature) => {
+                    println!("Reactivated   {}", signature);
+                    *state_transitions
+                        .entry("user-updating-to-activated")
                         .or_insert(0) += 1;
                 }
                 Err(e) => println!("Error: {}", e),
@@ -207,6 +249,40 @@ fn reject_user(
                 .or_insert(0) += 1;
         }
         Err(e) => println!("Error: {}", e),
+    }
+}
+
+fn get_or_insert_device_state<'a>(
+    client: &dyn DoubleZeroClient,
+    devices: &'a mut DeviceMap,
+    user: &User,
+    state_transitions: &mut HashMap<&'static str, usize>,
+) -> Option<&'a mut DeviceState> {
+    match devices.entry(user.device_pk) {
+        Entry::Occupied(entry) => Some(entry.into_mut()),
+        Entry::Vacant(entry) => {
+            let res = GetDeviceCommand {
+                pubkey_or_code: user.device_pk.to_string(),
+            }
+            .execute(client);
+
+            match res {
+                Ok((_, device)) => {
+                    println!(
+                        "Add Device: {} public_ip: {} dz_prefixes: {} ",
+                        device.code,
+                        ipv4_to_string(&device.public_ip),
+                        networkv4_list_to_string(&device.dz_prefixes)
+                    );
+                    Some(entry.insert(DeviceState::new(&device)))
+                }
+                Err(_) => {
+                    // Reject user since we couldn't load the device
+                    reject_user(client, user, "Error: Device not found", state_transitions);
+                    None
+                }
+            }
+        }
     }
 }
 

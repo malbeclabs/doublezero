@@ -72,7 +72,7 @@ pub fn process_activate_user(
         user.bump_seed, value.bump_seed,
         "Invalid PDA Account Bump Seed"
     );
-    if user.status != UserStatus::Pending {
+    if user.status != UserStatus::Pending && user.status != UserStatus::Updating {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 

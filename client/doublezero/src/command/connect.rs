@@ -147,7 +147,7 @@ impl ProvisioningCliCommand {
                 // User is rejected
                 self.user_rejected(client, &user_pubkey, &spinner).await?;
             }
-            _ => panic!("User status not expected"),
+            _ => eyre::bail!("User status not expected"),
         }
 
         spinner.finish_with_message("Connected");
@@ -218,7 +218,7 @@ impl ProvisioningCliCommand {
                 // User is rejected
                 self.user_rejected(client, &user_pubkey, &spinner).await?;
             }
-            _ => panic!("User status not expected"),
+            _ => eyre::bail!("User status not expected"),
         }
 
         spinner.finish_with_message("Connected");

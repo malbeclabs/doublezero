@@ -1,6 +1,4 @@
-# We need to use the correct build of solana tools based on amd64 vs. arm64
-ARG PLATFORM_ARCH="amd64"
-FROM ghcr.io/malbeclabs/solana-${PLATFORM_ARCH}:latest AS solana
+FROM ghcr.io/malbeclabs/solana:latest AS solana
 
 # -----------------------------------------------------------------------------
 # Base builder stage includes go, rust, and other system dependencies that are

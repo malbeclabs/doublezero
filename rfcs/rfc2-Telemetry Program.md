@@ -58,7 +58,7 @@ graph TB
     A[DZD Agent] -->|Ping every 10s| B[Other DZDs]
     B -->|RTT Response| A
     A -->|Local buffer| C[Accumulate RTT samples 
-    5 minutes]
+    60 minutes]
     C -->|submit_telemetry_data| D[DZ Ledger
     sidechain]
     D -->|Store in TelemetryAccount| E[(PDA per DZD/Link/Epoch)]

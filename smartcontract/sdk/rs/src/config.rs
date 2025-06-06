@@ -4,39 +4,33 @@ use solana_sdk::signature::Keypair;
 use std::{
     collections::HashMap,
     default::Default,
-    env,
-    fs::{self, File},
-    io::{self, Write},
+    env, fs,
+    io::Write,
     path::{Path, PathBuf},
+    sync::OnceLock,
 };
 
-lazy_static! {
-    /// The default path to the CLI configuration file.
-    ///
-    /// This is a [lazy_static] of `Option<String>`, the value of which is
-    ///
-    /// > `~/.config/doublezero/cli/config.yml`
-    ///
-    /// It will only be `None` if it is unable to identify the user's home
-    /// directory, which should not happen under typical OS environments.
-    ///
-    /// [lazy_static]: https://docs.rs/lazy_static
-    pub static ref CONFIG_FILE: Option<String> = {
-        match env::var_os("DOUBLEZERO_CONFIG_FILE") {
-            Some(path) => Some(path.to_str().unwrap().to_string()),
-            None => {
-                match directories_next::UserDirs::new() {
-                    Some(dirs) => {
-                        let mut buf = PathBuf::new();
-                        buf.push(dirs.home_dir().to_str().unwrap());
-                        buf.extend([".config", "doublezero", "cli", "config.yml"]);
-                        Some(buf.to_str().unwrap().to_string())
-                    }
-                    None => None,
-                }
+static CONFIG_FILE: OnceLock<Option<String>> = OnceLock::new();
+
+/// The default path to the CLI configuration file.
+///
+/// > `~/.config/doublezero/cli/config.yml`
+///
+/// It will only be `None` if it is unable to identify the user's home
+/// directory, which should not happen under typical OS environments.
+fn get_cfg_filename() -> &'static Option<String> {
+    CONFIG_FILE.get_or_init(|| match env::var_os("DOUBLEZERO_CONFIG_FILE") {
+        Some(path) => Some(path.to_str().unwrap().to_string()),
+        None => match directories_next::UserDirs::new() {
+            Some(dirs) => {
+                let mut buf = PathBuf::new();
+                buf.push(dirs.home_dir().to_str().unwrap());
+                buf.extend([".config", "doublezero", "cli", "config.yml"]);
+                Some(buf.to_string_lossy().to_string())
             }
-        }
-    };
+            None => None,
+        },
+    })
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -64,16 +58,34 @@ impl Default for ClientConfig {
     }
 }
 
-pub fn read_doublezero_config() -> (String, ClientConfig) {
-    let filename = CONFIG_FILE.as_ref().unwrap();
+pub fn read_doublezero_config() -> eyre::Result<(String, ClientConfig)> {
+    match get_cfg_filename() {
+        None => eyre::bail!("Unable to get_cfg_filename"),
+        Some(filename) => match fs::read_to_string(filename) {
+            Err(_) => Ok((filename.clone(), ClientConfig::default())),
+            Ok(config_content) => {
+                let config: ClientConfig = serde_yaml::from_str(&config_content).unwrap();
 
-    match fs::read_to_string(filename) {
-        Ok(config_content) => {
-            let config: ClientConfig = serde_yaml::from_str(&config_content).unwrap();
+                Ok((filename.clone(), config))
+            }
+        },
+    }
+}
 
-            (filename.clone(), config)
+pub fn write_doublezero_config(config: &ClientConfig) -> eyre::Result<()> {
+    match get_cfg_filename() {
+        None => eyre::bail!("Unable to get_cfg_filename"),
+        Some(filename) => {
+            let path = Path::new(filename);
+
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)?
+            }
+
+            let yaml_content = serde_yaml::to_string(config)?;
+            fs::write(filename, yaml_content)?;
+            Ok(())
         }
-        Err(_) => (filename.clone(), ClientConfig::default()),
     }
 }
 
@@ -121,21 +133,8 @@ pub fn convert_url_to_ws(url: &str) -> String {
     url.to_string()
 }
 
-pub fn write_doublezero_config(config: &ClientConfig) {
-    let path = Path::new(CONFIG_FILE.as_ref().unwrap());
-    if !path.exists() {
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-    }
-
-    fs::write(
-        CONFIG_FILE.as_ref().unwrap(),
-        serde_yaml::to_string(config).unwrap(),
-    )
-    .unwrap();
-}
-
-pub fn create_new_pubkey_user(force: bool) -> std::io::Result<Keypair> {
-    let (_, client_cfg) = read_doublezero_config();
+pub fn create_new_pubkey_user(force: bool) -> eyre::Result<Keypair> {
+    let (_, client_cfg) = read_doublezero_config()?;
     let file_path = client_cfg.keypair_path.clone();
     let dir_path = Path::new(&file_path)
         .parent()
@@ -150,31 +149,28 @@ pub fn create_new_pubkey_user(force: bool) -> std::io::Result<Keypair> {
     }
 
     if !force && Path::new(&file_path).exists() {
-        return Err(io::Error::new(
-            io::ErrorKind::AlreadyExists,
-            format!(
-                "The file {} already exists (use doublezero keygen -f)",
-                file_path
-            ),
-        ));
+        eyre::bail!(
+            "The file {} already exists (use doublezero keygen -f)",
+            file_path
+        );
     }
 
     let data = key.to_bytes().to_vec();
     let json = serde_json::to_string(&data).ok().unwrap();
-    let mut file = File::create(&file_path)?;
+    let mut file = fs::File::create(&file_path)?;
     file.write_all(json.as_bytes())?;
 
     Ok(key)
 }
 
-pub fn get_doublezero_pubkey() -> Option<Keypair> {
-    let (_, client_cfg) = read_doublezero_config();
+pub fn get_doublezero_pubkey() -> eyre::Result<Keypair> {
+    let (_, client_cfg) = read_doublezero_config()?;
     match fs::read_to_string(client_cfg.keypair_path) {
+        Err(_) => eyre::bail!("Unable to read configured keypair_path"),
         Ok(key_content) => {
-            let key_bytes: Vec<u8> = serde_json::from_str(&key_content).unwrap();
-            let key = Keypair::from_bytes(&key_bytes).unwrap();
-            Some(key)
+            let key_bytes: Vec<u8> = serde_json::from_str(&key_content)?;
+            let key = Keypair::from_bytes(&key_bytes)?;
+            Ok(key)
         }
-        Err(_) => None,
     }
 }

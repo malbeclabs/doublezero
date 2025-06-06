@@ -594,20 +594,21 @@ mod tests {
         },
         types::{ipv4_parse, networkv4_parse},
     };
-    use lazy_static::lazy_static;
     use mockall::predicate;
     use solana_sdk::signature::Signature;
-    use std::{cell::RefCell, collections::HashMap, rc::Rc};
+    use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::OnceLock};
     use tempfile::TempDir;
 
-    lazy_static! {
-        pub static ref TMPDIR: TempDir = create_temp_config();
+    static TMPDIR: OnceLock<TempDir> = OnceLock::new();
+
+    fn get_temp_dir() -> &'static TempDir {
+        TMPDIR.get_or_init(|| create_temp_config().expect("Failed to create temp config"))
     }
 
     #[ctor::ctor]
     fn setup() {
-        // forces lazy_static to initialize
-        println!("Using TMPDIR = {}", TMPDIR.path().display());
+        let temp_dir = get_temp_dir();
+        println!("Using TMPDIR = {}", temp_dir.path().display());
     }
 
     struct TestFixture {

@@ -1243,6 +1243,35 @@ func TestMulticastPublisher_Disconnect_Networking(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("check_user_tunnel_is_removed_from_agent", func(t *testing.T) {
+		dut, err := goeapi.Connect("http", doublezeroDeviceAddr, "admin", "admin", 80)
+		if err != nil {
+			t.Fatalf("error connecting to dut: %v", err)
+		}
+		condition := func() (bool, error) {
+			handle, err := dut.GetHandle("json")
+			if err != nil {
+				return false, fmt.Errorf("error getting handle: %v", err)
+			}
+			neighbors := &ShowIPBGPSummary{}
+			handle.AddCommand(neighbors)
+			if err := handle.Call(); err != nil {
+				return false, fmt.Errorf("error fetching neighbors from doublezero device: %v", err)
+			}
+
+			ip := strings.Split(linkLocalAddr, "/")[0]
+			_, ok := neighbors.VRFs["default"].Peers[ip]
+			if !ok {
+				return true, nil
+			}
+			return false, nil
+		}
+		err = waitForCondition(t, condition, 30*time.Second)
+		if err != nil {
+			t.Fatalf("bgp neighbor %s has not been removed from doublezero device: %v", linkLocalAddr, err)
+		}
+	})
 }
 
 // TestMulticastSubscriber_Connect_Output tests the output of multicast subscriber connection
@@ -1484,16 +1513,34 @@ func TestMulticastSubscriber_Disconnect_Networking(t *testing.T) {
 			t.Fatal("doublezero1 tunnel interface not removed on disconnect")
 		}
 	})
+	t.Run("check_user_tunnel_is_removed_from_agent", func(t *testing.T) {
+		dut, err := goeapi.Connect("http", doublezeroDeviceAddr, "admin", "admin", 80)
+		if err != nil {
+			t.Fatalf("error connecting to dut: %v", err)
+		}
+		condition := func() (bool, error) {
+			handle, err := dut.GetHandle("json")
+			if err != nil {
+				return false, fmt.Errorf("error getting handle: %v", err)
+			}
+			neighbors := &ShowIPBGPSummary{}
+			handle.AddCommand(neighbors)
+			if err := handle.Call(); err != nil {
+				return false, fmt.Errorf("error fetching neighbors from doublezero device: %v", err)
+			}
 
-	// TODO: Fix me later
-	// t.Run("check_pim_is_stopped", func(t *testing.T) {
-	// 	// Check if PIM process is stopped after disconnect
-	// 	cmd := exec.Command("pgrep", "-f", "pimd")
-	// 	err := cmd.Run()
-	// 	if err == nil {
-	// 		t.Fatalf("PIM daemon should be stopped after multicast subscriber disconnect")
-	// 	}
-	// })
+			ip := strings.Split(linkLocalAddr, "/")[0]
+			_, ok := neighbors.VRFs["default"].Peers[ip]
+			if !ok {
+				return true, nil
+			}
+			return false, nil
+		}
+		err = waitForCondition(t, condition, 30*time.Second)
+		if err != nil {
+			t.Fatalf("bgp neighbor %s has not been removed from doublezero device: %v", linkLocalAddr, err)
+		}
+	})
 }
 
 func waitForCondition(t *testing.T, condition func() (bool, error), timeout time.Duration) error {

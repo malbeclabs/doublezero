@@ -1,7 +1,7 @@
 TAG_PREFIX=ghcr.io/malbeclabs
 TAG=doublezero-e2e
 GIT_SHA:=`git rev-parse --short HEAD`
-ARCH:=$(shell if [ "$(shell uname -m)" = "aarch64" ]; then echo "arm64"; else echo "$(shell uname -m)"; fi)
+ARCH:=$(shell if [ "$(shell uname -m)" = "aarch64" ]; then echo "arm64"; elif [ "$(shell uname -m)" = "x86_64" ]; then echo "amd64"; else echo "$(shell uname -m)"; fi)
 
 # Enable buildkit for docker mount caching.
 # Enabled by default on mac, but not always on linux.

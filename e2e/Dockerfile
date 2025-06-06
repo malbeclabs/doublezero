@@ -1,6 +1,21 @@
-ARG PLATFORM_ARCH="amd64"
+FROM golang:1.24-bookworm AS base
 
-# we need to pull in the correct build of solana tools based on amd64 vs. arm64
+# Install system dependencies and utilities
+RUN apt update && apt install --no-install-recommends -y \
+    ca-certificates \
+    curl \
+    build-essential \
+    pkg-config \
+    libudev-dev llvm libclang-dev \
+    protobuf-compiler libssl-dev git iproute2 iputils-ping iproute2 net-tools tcpdump
+
+# Install rust
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Install solana cli/tools
+RUN sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)" && \
+    cp -r /root/.local/share/solana/install/active_release/bin/* /usr/local/bin/
 
 # -----------------------------------------------------------------------------
 # Rust workspace builder
@@ -8,7 +23,7 @@ ARG PLATFORM_ARCH="amd64"
 # We can build the whole rust workspace in a single stage, to take advantage of
 # caching and cargo's own parallelization.
 # -----------------------------------------------------------------------------
-FROM ghcr.io/malbeclabs/doublezero-base:latest AS builder-rust
+FROM base AS builder-rust
 
 ENV CARGO_HOME=/cargo
 ENV CARGO_TARGET_DIR=/target
@@ -37,7 +52,7 @@ RUN --mount=type=cache,target=/cargo \
 # This builds for a different target than the rest of the rust workspace, so
 # we build it in a separate stage so it's parallelized and cached separately.
 # -----------------------------------------------------------------------------
-FROM ghcr.io/malbeclabs/doublezero-base:latest AS builder-sbf
+FROM base AS builder-sbf
 
 ENV CARGO_HOME=/cargo-sbf
 ENV CARGO_TARGET_DIR=/target-sbf
@@ -69,7 +84,7 @@ RUN --mount=type=cache,target=/cargo-sbf \
 # We build the go components in a single stage, to take advantage of caching
 # across components.
 # -----------------------------------------------------------------------------
-FROM ghcr.io/malbeclabs/doublezero-base:latest AS builder-go
+FROM base AS builder-go
 
 WORKDIR /doublezero
 COPY . .
@@ -104,7 +119,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 #
 # Copy everything we need from the previous stages into the main stage.
 # -----------------------------------------------------------------------------
-FROM ghcr.io/malbeclabs/doublezero-base:latest
+FROM base
 ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /doublezero
 

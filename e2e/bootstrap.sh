@@ -47,7 +47,7 @@ start_doublezero_device() {
     # attached is the management interface, then subsequent networks correspond to
     # ethernet interfaces.d
     #
-    # Docker attaches interfaces in seemingly random order if the container is not yet started. 
+    # Docker attaches interfaces in seemingly random order if the container is not yet started.
     # If the networks end up attached in the wrong order, this test will fail as the CYOA network
     # will not be attached to Ethernet1. To avoid this, we start the container with the default bridge
     # network attached, then attach the CYOA network to the container.
@@ -87,7 +87,7 @@ check_doublezero_device_health() {
 
 start_e2e_tests() {
     # The e2e test container is connected directly to the DZ device container.
-    docker run --name e2e_$GIT_SHA --privileged --rm --net $NET_CYOA --ip=64.86.249.86 ghcr.io/malbeclabs/doublezero-e2e:$GIT_SHA
+    docker run --platform linux/amd64 --name e2e_$GIT_SHA --privileged --rm --net $NET_CYOA --ip=64.86.249.86 ghcr.io/malbeclabs/doublezero-e2e:$GIT_SHA
 }
 
 main "$@"; exit

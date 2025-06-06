@@ -47,7 +47,7 @@ start_doublezero_device() {
     # attached is the management interface, then subsequent networks correspond to
     # ethernet interfaces.d
     #
-    # Docker attaches interfaces in seemingly random order if the container is not yet started. 
+    # Docker attaches interfaces in seemingly random order if the container is not yet started.
     # If the networks end up attached in the wrong order, this test will fail as the CYOA network
     # will not be attached to Ethernet1. To avoid this, we start the container with the default bridge
     # network attached, then attach the CYOA network to the container.

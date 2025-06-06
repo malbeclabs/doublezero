@@ -1,7 +1,7 @@
 TAG_PREFIX=ghcr.io/malbeclabs
 TAG=doublezero-e2e
-ARCH:=$(shell uname -m)
 GIT_SHA:=`git rev-parse --short HEAD`
+ARCH:=$(shell if [ "$(shell uname -m)" = "aarch64" ]; then echo "arm64"; elif [ "$(shell uname -m)" = "x86_64" ]; then echo "amd64"; else echo "$(shell uname -m)"; fi)
 
 # Enable buildkit for docker mount caching.
 # Enabled by default on mac, but not always on linux.
@@ -9,44 +9,18 @@ export DOCKER_BUILDKIT=1
 
 .PHONY: eos
 eos:
-	docker build --build-arg CONFIG=e2e/fixtures/doublezero_device_startup_config_base.txt -f Dockerfile.eos -t agent:$(GIT_SHA) ../.
+	docker build --platform linux/${ARCH} --build-arg CONFIG=e2e/fixtures/doublezero_device_startup_config_base.txt -f Dockerfile.eos -t agent:$(GIT_SHA) ../.
 
-.PHONY: solana-arm64
-solana-arm64:
-	docker build -f Dockerfile.solana.arm64 -t $(TAG_PREFIX)/solana-arm64:latest .
-
-.PHONY: solana-amd64
-solana-amd64:
-	docker build --platform=linux/amd64 -f Dockerfile.solana.amd64 -t $(TAG_PREFIX)/solana-amd64:latest .
-
-.PHONY: base
-base:
-ifeq ($(ARCH),arm64)
-	docker build --build-arg PLATFORM_ARCH=arm64 --platform linux/arm64 -f Dockerfile.base -t $(TAG_PREFIX)/doublezero-base:latest ../.
-else
-	docker build --build-arg PLATFORM_ARCH=amd64 --platform linux/amd64 -f Dockerfile.base -t $(TAG_PREFIX)/doublezero-base:latest ../.
-endif
+.PHONY: build-solana
+build-solana:
+	docker build --platform linux/${ARCH} -f Dockerfile.solana.${ARCH} -t $(TAG_PREFIX)/solana-${ARCH}:latest ../.
 
 .PHONY: build
 build: eos
-ifeq ($(ARCH),arm64)
-	docker build --build-arg PLATFORM_ARCH=arm64 -f Dockerfile -t $(TAG_PREFIX)/$(TAG):$(GIT_SHA) ../.
-else
-	docker build --build-arg PLATFORM_ARCH=amd64 -f Dockerfile -t $(TAG_PREFIX)/$(TAG):$(GIT_SHA) ../.
-endif
-
-.PHONY: all
-all: eos
-ifeq ($(ARCH),arm64)
-	docker build -f Dockerfile.solana.arm64 -t $(TAG_PREFIX)/solana-arm64:latest .
-	docker build --build-arg PLATFORM_ARCH=arm64 -f Dockerfile -t $(TAG_PREFIX)/$(TAG):$(GIT_SHA) ../.
-else
-	docker build --platform=linux/amd64 -f Dockerfile.solana.amd64 -t $(TAG_PREFIX)/solana-amd64:latest .
-	docker build --build-arg PLATFORM_ARCH=amd64 -f Dockerfile -t $(TAG_PREFIX)/$(TAG):$(GIT_SHA) ../.
-endif
+	docker build --platform linux/${ARCH} --build-arg PLATFORM_ARCH=${ARCH} -f Dockerfile -t $(TAG_PREFIX)/$(TAG):$(GIT_SHA) ../.
 
 .PHONY: test
-test:
+test: build
 	bash bootstrap.sh
 
 .PHONY: clean

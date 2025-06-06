@@ -1,6 +1,29 @@
+# We need to use the correct build of solana tools based on amd64 vs. arm64
 ARG PLATFORM_ARCH="amd64"
+FROM ghcr.io/malbeclabs/solana-${PLATFORM_ARCH}:latest AS solana
 
-# we need to pull in the correct build of solana tools based on amd64 vs. arm64
+# -----------------------------------------------------------------------------
+# Base builder stage includes go, rust, and other system dependencies that are
+# shared across all builder stages.
+# -----------------------------------------------------------------------------
+FROM golang:1.24-bookworm AS base
+
+# Install system dependencies and utilities
+RUN apt update && apt install --no-install-recommends -y \
+    ca-certificates \
+    curl \
+    build-essential \
+    pkg-config \
+    mold \
+    libudev-dev llvm libclang-dev \
+    protobuf-compiler libssl-dev git iproute2 iputils-ping iproute2 net-tools tcpdump
+
+# Install rust
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Copy in the solana tools from the solana builder stage.
+COPY --from=solana /usr/local/bin /usr/local/bin
 
 # -----------------------------------------------------------------------------
 # Rust workspace builder
@@ -8,7 +31,7 @@ ARG PLATFORM_ARCH="amd64"
 # We can build the whole rust workspace in a single stage, to take advantage of
 # caching and cargo's own parallelization.
 # -----------------------------------------------------------------------------
-FROM ghcr.io/malbeclabs/doublezero-base:latest AS builder-rust
+FROM base AS builder-rust
 
 ENV CARGO_HOME=/cargo
 ENV CARGO_TARGET_DIR=/target
@@ -26,7 +49,7 @@ RUN --mount=type=cache,target=/cargo \
 # Build all rust components except the Solana program
 RUN --mount=type=cache,target=/cargo \
     --mount=type=cache,target=/target \
-    cargo build --workspace --release --exclude doublezero-sla-program && \
+    RUSTFLAGS="-C link-arg=-fuse-ld=mold" cargo build --workspace --release --exclude doublezero-sla-program && \
     cp /target/release/doublezero ./bin/ && \
     cp /target/release/doublezero-activator ./bin/ && \
     cp /target/release/doublezero-admin ./bin/
@@ -37,7 +60,7 @@ RUN --mount=type=cache,target=/cargo \
 # This builds for a different target than the rest of the rust workspace, so
 # we build it in a separate stage so it's parallelized and cached separately.
 # -----------------------------------------------------------------------------
-FROM ghcr.io/malbeclabs/doublezero-base:latest AS builder-sbf
+FROM base AS builder-sbf
 
 ENV CARGO_HOME=/cargo-sbf
 ENV CARGO_TARGET_DIR=/target-sbf
@@ -54,8 +77,7 @@ RUN --mount=type=cache,target=/cargo-sbf \
     cargo fetch
 
 # Build the Solana program with build-sbf (rust)
-# NOTE: We need to cache /root/.cache for this, and we use a different target directory for
-# better caching isolation.
+# Note that we don't use mold here.
 RUN --mount=type=cache,target=/cargo-sbf \
     --mount=type=cache,target=/target-sbf \
     --mount=type=cache,target=/root/.cache \
@@ -69,7 +91,7 @@ RUN --mount=type=cache,target=/cargo-sbf \
 # We build the go components in a single stage, to take advantage of caching
 # across components.
 # -----------------------------------------------------------------------------
-FROM ghcr.io/malbeclabs/doublezero-base:latest AS builder-go
+FROM base AS builder-go
 
 WORKDIR /doublezero
 COPY . .
@@ -104,7 +126,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 #
 # Copy everything we need from the previous stages into the main stage.
 # -----------------------------------------------------------------------------
-FROM ghcr.io/malbeclabs/doublezero-base:latest
+FROM base
 ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /doublezero
 

@@ -37,6 +37,6 @@ jobs:
       - name: build
         run: make build
       - name: test
-        run: sudo make test
+        run: sudo -E make test
       - name: clean
         run: make clean

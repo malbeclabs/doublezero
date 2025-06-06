@@ -11,12 +11,12 @@ export DOCKER_BUILDKIT=1
 eos:
 	docker build --platform linux/${ARCH} --build-arg CONFIG=e2e/fixtures/doublezero_device_startup_config_base.txt -f Dockerfile.eos -t agent:$(GIT_SHA) ../.
 
-.PHONY: solana
-solana:
+.PHONY: build-solana
+build-solana:
 	docker build --platform linux/${ARCH} -f Dockerfile.solana.${ARCH} -t $(TAG_PREFIX)/solana-${ARCH}:latest ../.
 
 .PHONY: build
-build: eos solana
+build: eos
 	docker build --platform linux/${ARCH} --build-arg PLATFORM_ARCH=${ARCH} -f Dockerfile -t $(TAG_PREFIX)/$(TAG):$(GIT_SHA) ../.
 
 .PHONY: test

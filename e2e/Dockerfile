@@ -1,7 +1,14 @@
 ARG PLATFORM_ARCH="amd64"
 
 # we need to pull in the correct build of solana tools based on amd64 vs. arm64
-FROM ghcr.io/malbeclabs/doublezero-base:latest AS builder
+
+# -----------------------------------------------------------------------------
+# Rust workspace builder
+#
+# We can build the whole rust workspace in a single stage, to take advantage of
+# caching and cargo's own parallelization.
+# -----------------------------------------------------------------------------
+FROM ghcr.io/malbeclabs/doublezero-base:latest AS builder-rust
 
 ENV CARGO_HOME=/cargo
 ENV CARGO_TARGET_DIR=/target
@@ -24,15 +31,49 @@ RUN --mount=type=cache,target=/cargo \
     cp /target/release/doublezero-activator ./bin/ && \
     cp /target/release/doublezero-admin ./bin/
 
+# -----------------------------------------------------------------------------
+# Solana program builder (rust)
+#
+# This builds for a different target than the rest of the rust workspace, so
+# we build it in a separate stage so it's parallelized and cached separately.
+# -----------------------------------------------------------------------------
+FROM ghcr.io/malbeclabs/doublezero-base:latest AS builder-sbf
+
+ENV CARGO_HOME=/cargo-sbf
+ENV CARGO_TARGET_DIR=/target-sbf
+ENV CARGO_INCREMENTAL=0
+
+WORKDIR /doublezero
+COPY . .
+RUN mkdir -p bin/
+
+# Pre-fetch and cache rust dependencies
+RUN --mount=type=cache,target=/cargo-sbf \
+    --mount=type=cache,target=/target-sbf \
+    cd smartcontract/programs/dz-sla-program && \
+    cargo fetch
+
 # Build the Solana program with build-sbf (rust)
 # NOTE: We need to cache /root/.cache for this, and we use a different target directory for
 # better caching isolation.
-RUN --mount=type=cache,target=/cargo \
+RUN --mount=type=cache,target=/cargo-sbf \
     --mount=type=cache,target=/target-sbf \
     --mount=type=cache,target=/root/.cache \
     cd smartcontract/programs/dz-sla-program && \
-    CARGO_TARGET_DIR=/target-sbf cargo build-sbf && \
+    cargo build-sbf && \
     cp /target-sbf/deploy/doublezero_sla_program.so /doublezero/bin/doublezero_sla_program.so
+
+# -----------------------------------------------------------------------------
+# Go builder
+#
+# We build the go components in a single stage, to take advantage of caching
+# across components.
+# -----------------------------------------------------------------------------
+FROM ghcr.io/malbeclabs/doublezero-base:latest AS builder-go
+
+WORKDIR /doublezero
+COPY . .
+RUN mkdir -p bin/
 
 # Build client/doublezerod (golang)
 RUN --mount=type=cache,target=/go/pkg/mod \
@@ -46,8 +87,10 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     make -C ./controlplane/controller build && \
     cp controlplane/controller/bin/controller ./bin/doublezero-controller
 
-# Copy test dependencies and build tests
-FROM builder AS tests
+# -----------------------------------------------------------------------------
+# Test builder stage builds the e2e tests binary.
+# -----------------------------------------------------------------------------
+FROM builder-go AS tests
 COPY e2e e2e
 RUN cp ./e2e/start_e2e.sh ./bin/start_e2e.sh && \
     cp ./e2e/keypair.json ./bin/keypair.json && \
@@ -56,20 +99,22 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go test -c -o ./bin/e2e_test ./e2e/e2e_test.go
 
-# Copy everything from the previous stages into the main stage
-FROM builder
+# -----------------------------------------------------------------------------
+# Main stage
+#
+# Copy everything we need from the previous stages into the main stage.
+# -----------------------------------------------------------------------------
+FROM ghcr.io/malbeclabs/doublezero-base:latest
 ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /doublezero
 
-COPY --from=builder /usr/local/bin /usr/local/bin
-ENV PATH="/usr/local/bin:${PATH}"
-
-COPY --from=golang:1.24-alpine /usr/local/go/ /usr/local/go/
-ENV PATH="/usr/local/go/bin:${PATH}"
-
-COPY --from=builder /doublezero/bin bin
+# Copy our binaries from the builder and test stages.
+COPY --from=builder-rust /doublezero/bin/. bin/.
+COPY --from=builder-sbf /doublezero/bin/. bin/.
+COPY --from=builder-go /doublezero/bin/. bin/.
 COPY --from=tests /doublezero/bin/. ./bin/.
 
+# Set up the config directories and keypairs for testing.
 RUN mkdir -p /root/.config/solana
 RUN mkdir -p /root/.config/doublezero
 COPY --from=tests /doublezero/bin/doublezero_keypair.json /root/.config/solana/id.json

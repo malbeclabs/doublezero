@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-24.04-16c-64gb
     steps:
       - uses: actions/checkout@v4
+      - name: Setup rust toolchain
+        uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: test
         run: cargo test --workspace --all-features

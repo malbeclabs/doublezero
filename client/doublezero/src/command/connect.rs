@@ -174,7 +174,6 @@ impl ProvisioningCliCommand {
                 eyre::eyre!("Multicast group not found")
             })?;
 
-
         // Look for user
         let (user_pubkey, user) = self
             .find_or_create_user_and_subscribe(

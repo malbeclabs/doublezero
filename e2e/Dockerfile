@@ -6,6 +6,7 @@ RUN apt update && apt install --no-install-recommends -y \
     curl \
     build-essential \
     pkg-config \
+    mold \
     libudev-dev llvm libclang-dev \
     protobuf-compiler libssl-dev git iproute2 iputils-ping iproute2 net-tools tcpdump
 
@@ -41,7 +42,7 @@ RUN --mount=type=cache,target=/cargo \
 # Build all rust components except the Solana program
 RUN --mount=type=cache,target=/cargo \
     --mount=type=cache,target=/target \
-    cargo build --workspace --release --exclude doublezero-sla-program && \
+    RUSTFLAGS="-C link-arg=-fuse-ld=mold" cargo build --workspace --release --exclude doublezero-sla-program && \
     cp /target/release/doublezero ./bin/ && \
     cp /target/release/doublezero-activator ./bin/ && \
     cp /target/release/doublezero-admin ./bin/
@@ -69,8 +70,7 @@ RUN --mount=type=cache,target=/cargo-sbf \
     cargo fetch
 
 # Build the Solana program with build-sbf (rust)
-# NOTE: We need to cache /root/.cache for this, and we use a different target directory for
-# better caching isolation.
+# Note that we don't use mold here.
 RUN --mount=type=cache,target=/cargo-sbf \
     --mount=type=cache,target=/target-sbf \
     --mount=type=cache,target=/root/.cache \

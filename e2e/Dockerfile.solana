@@ -27,4 +27,4 @@ FROM ubuntu:22.04
 
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-CMD ["which", "solana"]
+CMD [ "/bin/bash" ]

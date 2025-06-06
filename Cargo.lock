@@ -1483,6 +1483,7 @@ dependencies = [
  "doublezero-sla-program",
  "doublezero_sdk",
  "eyre",
+ "indexmap",
  "influxdb2",
  "influxdb2-derive",
  "influxdb2-structmap",

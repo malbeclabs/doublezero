@@ -42,6 +42,7 @@ http-body-util = "0"
 hyper = "1"
 hyper-util = "0"
 hyperlocal = { version = "0" }
+indexmap = "2"
 indicatif = "0"
 influxdb2 = "0"
 influxdb2-derive = "0"

@@ -8,6 +8,7 @@ bitvec.workspace = true
 chrono.workspace = true
 clap.workspace = true
 eyre.workspace = true
+indexmap.workspace = true
 influxdb2.workspace = true
 influxdb2-derive.workspace = true
 influxdb2-structmap.workspace = true

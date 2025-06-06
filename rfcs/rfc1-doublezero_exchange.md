@@ -8,40 +8,64 @@ As the number of DZDs in a metro grows, typically beyond four, the complexity an
 
 In the long term, the DZX also aligns with the DZ project’s strategic vision of permissionless networking by serving as a physical access point to enable future contributors to join the network. DZD connections could be governed and validated by smart contracts, automated provisioning, verification and ongoing compliance.
 
+The design considerations for a DZX should focus on:
+- Enabling a globally contiguous DZ network
+- Expanding decentralization
+  - Multiple DZX operators
+  - Multiple data-center vendors
+- Intenet being captured with a smart-contract
+- Automation of logical components
+- Enhance the vision of permissionless networking
 
 ## Motivation
 
 *Why we need this change now.*
 Describe the problem or limitation that exists today, who is affected, and any data or examples that illustrate the pain point. Clarify how the proposed feature advances project goals (performance, usability, security, ecosystem growth, etc.).
 
-The DZX is required as the ecosystem expands beyond three contributors in specific metros, which is an already identified requirement in multiple major metro areas such as New York City, London, Frankfurt and others.
+The DZX is required as the ecosystem expands beyond three DZDs in specific metros.  This is an already identified requirement in multiple major metro areas such as New York City, London, Frankfurt and others.
 
 Consider how DZ could enter and expand into any given city:
-* Single DZD, single contributor
-** Metro is most centralized, single point of failure
-** No DZX required
-* Two DZDs, single data center, single contributor
-** Contributor may have deployed redundant DZDs in their data center
-** Metro is highly centralized, contributor is single point of failure, resiliency in network
-** Switches are interconnected, most likely with a simple intra rack or intra cage cabling
-** Neglibible cost, low latency
-* Two DZDs, single data center, multiple contibutors
-** Decentralization across contributors, resiliency in network, centralized within a single data center vendor
-** Switches are interconnected using point-to-point cross-connects
-** Low cost, low latency
-* Two DZDs, multiple data centers, multiple contributors
+- Single DZD, single contributor
+  - Metro is most centralized, single point of failure
+  - No DZX required
+- Two DZDs, single data center, single contributor
+  - Contributor may have deployed redundant DZDs in their data center
+  - Metro is highly centralized, contributor is single point of failure, increased resiliency in metro network
+  - Switches are interconnected, most likely with a simple intra rack or intra cage cabling
+  - Negligible cost, low latency, low complexity
+- Two DZDs, single data center, multiple contributors
+  - Decentralization across contributors, resiliency in network, centralized within a single data center vendor
+  - Switches are interconnected using point-to-point cross-connects
+  - Low cost, low latency, low complexity
+- Multiple DZDs, multiple data centers and vendors, multiple contributors
+  - Decentralization across contributors, data centers and vendor, highly resilient network
+  - Switches are interconnected using a mixture of hub and spoke and point-to-point interconnects
+  - High cost, acceptable latency, higher complexity, greatest scale
+
+The motivation for the DZX is to allow DZ to scale to maximize reach and decentralize while still supporting DZ's major goal of IBRL.
 
 ## New Terminology
 
 *Glossary of any new or overloaded terms.*
 List and define new words, acronyms, or protocol messages introduced by this RFC. Keep each definition concise and unambiguous so reviewers share a common vocabulary.
 
-* Metro - the geographical area where DZDs are deployed and interconnected together across facilities within a city or urban area.
+- DoubleZero Exchange (DZX): a metro interconnect between 
+- Metro: the geographical area where DZDs are deployed and interconnected together across facilities within a city or urban area.
 
 ## Alternatives Considered
 
-*Other ways the problem might be solved.*
-Outline the main competing approaches (including “do nothing”) and briefly state their advantages and disadvantages. This demonstrates due diligence and helps reviewers weigh trade‑offs.
+- Do nothing: 
+  - Advantages:
+    - None
+  - Disadvantages:
+    - DZ network is severely limited in its growth without being able to interconnect multiple contributors
+- Leverage public Internet by connecting DZDs via GRE over Internet:
+  - Advantages:
+    - Reuse existing investment, i.e. cheap
+  - Disadvantages:
+    - Unable to guarantee MTU
+    - Loose end-to-end visibility
+    - Potential additional capacity required for Internet connections
 
 ## Detailed Design
 
@@ -55,7 +79,7 @@ Provide enough detail for someone to implement the feature:
 * Configuration options, defaults, and migration steps
   Use subsections as needed; aim for clarity over brevity.
 
-
+![DZX Option 1](./rfc1/images/DZX-Option-1.png)
 
 ## Impact
 

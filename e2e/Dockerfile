@@ -1,3 +1,11 @@
+# We need to use the correct build of solana tools based on amd64 vs. arm64
+ARG PLATFORM_ARCH="amd64"
+FROM ghcr.io/malbeclabs/solana-${PLATFORM_ARCH}:latest AS solana
+
+# -----------------------------------------------------------------------------
+# Base builder stage includes go, rust, and other system dependencies that are
+# shared across all builder stages.
+# -----------------------------------------------------------------------------
 FROM golang:1.24-bookworm AS base
 
 # Install system dependencies and utilities
@@ -14,9 +22,8 @@ RUN apt update && apt install --no-install-recommends -y \
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-# Install solana cli/tools
-RUN sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)" && \
-    cp -r /root/.local/share/solana/install/active_release/bin/* /usr/local/bin/
+# Copy in the solana tools from the solana builder stage.
+COPY --from=solana /usr/local/bin /usr/local/bin
 
 # -----------------------------------------------------------------------------
 # Rust workspace builder

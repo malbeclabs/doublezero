@@ -2,6 +2,8 @@
 
 This directory contains our end-to-end tests which exercise the smartcontract, client, activator, and controller within a single docker container. A local validator (solana-test-validator) is used to apply the smartcontract and populate data onchain.
 
+These tests depend on images exposed via our container registry. To access, you need to login with your github username and a personal access token with `read:packages` access. See [this github doc](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#authenticating-with-a-personal-access-token-classic) for more details.
+
 Docker images are built containing the doublezero components, tests, and solana CLI. They will automatically build whenever you run the tests from the `e2e` directory:
 
 ```

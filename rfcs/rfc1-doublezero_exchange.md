@@ -79,7 +79,9 @@ Provide enough detail for someone to implement the feature:
 * Configuration options, defaults, and migration steps
   Use subsections as needed; aim for clarity over brevity.
 
-![DZX Option 1](./rfc1/images/DZX-Option-1.png)
+<img src="rfc1/images/DZX-Option-1.png" alt="DZX Option 1" width="1200"/>
+
+
 
 ## Impact
 

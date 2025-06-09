@@ -10,6 +10,10 @@ type ByteReader struct {
 	offset int
 }
 
+func (br *ByteReader) Remaining() uint32 {
+	return uint32(len(br.data) - br.offset)
+}
+
 func NewByteReader(data []byte) *ByteReader {
 	return &ByteReader{data: data, offset: 0}
 }
@@ -76,7 +80,7 @@ func (br *ByteReader) ReadPubkey() [32]byte {
 
 func (br *ByteReader) ReadPubkeySlice() [][32]byte {
 	length := br.ReadU32()
-	if length == 0 {
+	if length == 0 || (length*32) > br.Remaining() {
 		return nil
 	}
 	result := make([][32]byte, length)
@@ -106,7 +110,7 @@ func (br *ByteReader) ReadNetworkV4() [5]byte {
 
 func (br *ByteReader) ReadNetworkV4Slice() [][5]byte {
 	length := br.ReadU32()
-	if length == 0 {
+	if length == 0 || (length*5) > br.Remaining() {
 		return nil
 	}
 	result := make([][5]byte, length)

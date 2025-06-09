@@ -20,7 +20,7 @@ pub async fn look_for_ip(
                     ip
                 }
                 Err(e) => {
-                    return Err(eyre::eyre!("Error getting public ip. Please provide it using the `--client-ip` argument. ({})", e.to_string()));
+                    eyre::bail!("Error getting public ip. Please provide it using the `--client-ip` argument. ({})", e.to_string());
                 }
             }
         },

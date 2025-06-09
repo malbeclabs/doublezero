@@ -12,7 +12,7 @@ pub fn check_doublezero<T: ServiceController>(
             eprintln!("doublezero service is not accessible.");
         }
 
-        return Err(eyre::eyre!("Please start the doublezerod service."));
+        eyre::bail!("Please start the doublezerod service.");
     }
 
     // Check that the doublezerod is accessible
@@ -22,9 +22,7 @@ pub fn check_doublezero<T: ServiceController>(
         } else {
             eprintln!("doublezero service is not accessible.");
         }
-        return Err(eyre::eyre!(
-            "Please check the permissions of the doublezerod service."
-        ));
+        eyre::bail!("Please check the permissions of the doublezerod service.");
     }
 
     Ok(())

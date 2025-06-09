@@ -323,7 +323,7 @@ impl DoubleZeroClient for DZClient {
             for log in result.value.logs.unwrap() {
                 println!("{}", log);
             }
-            return Err(eyre!("Error in transaction"));
+            eyre::bail!("Error in transaction");
         }
 
         self.client

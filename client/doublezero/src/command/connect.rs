@@ -147,7 +147,7 @@ impl ProvisioningCliCommand {
                 // User is rejected
                 self.user_rejected(client, &user_pubkey, &spinner).await?;
             }
-            _ => panic!("User status not expected"),
+            _ => eyre::bail!("User status not expected"),
         }
 
         spinner.finish_with_message("Connected");
@@ -169,7 +169,10 @@ impl ProvisioningCliCommand {
         let (mcast_group_pk, _) = mcast_groups
             .iter()
             .find(|(_, g)| g.code == *multicast_group)
-            .expect("Multicast group not found");
+            .ok_or_else(|| {
+                spinner.finish_and_clear();
+                eyre::eyre!("Multicast group not found")
+            })?;
 
         // Look for user
         let (user_pubkey, user) = self
@@ -214,7 +217,7 @@ impl ProvisioningCliCommand {
                 // User is rejected
                 self.user_rejected(client, &user_pubkey, &spinner).await?;
             }
-            _ => panic!("User status not expected"),
+            _ => eyre::bail!("User status not expected"),
         }
 
         spinner.finish_with_message("Connected");

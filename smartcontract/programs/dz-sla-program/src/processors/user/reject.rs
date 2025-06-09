@@ -59,7 +59,7 @@ pub fn process_reject_user(
     assert_eq!(user.index, value.index, "Invalid PDA Account Index");
     assert_eq!(user.bump_seed, value.bump_seed, "Invalid bump seed");
 
-    if user.status != UserStatus::Pending {
+    if user.status != UserStatus::Pending && user.status != UserStatus::Updating {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 

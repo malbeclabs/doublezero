@@ -26,32 +26,11 @@ pub fn process_user_event(
     match user.status {
         // Create User
         UserStatus::Pending => {
-            let device_state = match devices.entry(user.device_pk) {
-                Entry::Occupied(entry) => entry.into_mut(),
-                Entry::Vacant(entry) => {
-                    let res = GetDeviceCommand {
-                        pubkey_or_code: user.device_pk.to_string(),
-                    }
-                    .execute(client);
-
-                    match res {
-                        Ok((_, device)) => {
-                            println!(
-                                "Add Device: {} public_ip: {} dz_prefixes: {} ",
-                                device.code,
-                                ipv4_to_string(&device.public_ip),
-                                networkv4_list_to_string(&device.dz_prefixes)
-                            );
-                            entry.insert(DeviceState::new(&device))
-                        }
-                        Err(_) => {
-                            // Reject user since we couldn't load the device
-                            reject_user(client, user, "Error: Device not found", state_transitions);
-                            return;
-                        }
-                    }
-                }
-            };
+            let device_state =
+                match get_or_insert_device_state(client, devices, user, state_transitions) {
+                    Some(ds) => ds,
+                    None => return,
+                };
 
             println!(
                 "Activating User: {}, for: {}",
@@ -122,6 +101,69 @@ pub fn process_user_event(
                     println!("Activated   {}", signature);
                     *state_transitions
                         .entry("user-pending-to-activated")
+                        .or_insert(0) += 1;
+                }
+                Err(e) => println!("Error: {}", e),
+            }
+        }
+
+        UserStatus::Updating => {
+            let device_state =
+                match get_or_insert_device_state(client, devices, user, state_transitions) {
+                    Some(ds) => ds,
+                    None => return,
+                };
+
+            println!(
+                "Activating User: {}, for: {}",
+                ipv4_to_string(&user.client_ip),
+                device_state.device.code
+            );
+
+            let need_dz_ip = match user.user_type {
+                UserType::IBRLWithAllocatedIP | UserType::EdgeFiltering => true,
+                UserType::IBRL => false,
+                UserType::Multicast => !user.publishers.is_empty(),
+            };
+
+            let dz_ip = if need_dz_ip && user.dz_ip == user.client_ip {
+                match device_state.get_next_dz_ip() {
+                    Some(ip) => ip,
+                    None => {
+                        eprintln!("Error: No available dz_ip to allocate");
+                        reject_user(
+                            client,
+                            user,
+                            "Error: No available dz_ip to allocate",
+                            state_transitions,
+                        );
+                        return;
+                    }
+                }
+            } else {
+                user.dz_ip
+            };
+
+            print!(
+                "tunnel_net: {} tunnel_id: {} dz_ip: {} ",
+                networkv4_to_string(&user.tunnel_net),
+                user.tunnel_id,
+                ipv4_to_string(&dz_ip)
+            );
+
+            // Activate the user
+            let res = ActivateUserCommand {
+                index: user.index,
+                tunnel_id: user.tunnel_id,
+                tunnel_net: user.tunnel_net,
+                dz_ip,
+            }
+            .execute(client);
+            match res {
+                Ok(signature) => {
+                    println!("Reactivated   {}", signature);
+                    *state_transitions
+                        .entry("user-updating-to-activated")
                         .or_insert(0) += 1;
                 }
                 Err(e) => println!("Error: {}", e),
@@ -210,10 +252,49 @@ fn reject_user(
     }
 }
 
+fn get_or_insert_device_state<'a>(
+    client: &dyn DoubleZeroClient,
+    devices: &'a mut DeviceMap,
+    user: &User,
+    state_transitions: &mut HashMap<&'static str, usize>,
+) -> Option<&'a mut DeviceState> {
+    match devices.entry(user.device_pk) {
+        Entry::Occupied(entry) => Some(entry.into_mut()),
+        Entry::Vacant(entry) => {
+            let res = GetDeviceCommand {
+                pubkey_or_code: user.device_pk.to_string(),
+            }
+            .execute(client);
+
+            match res {
+                Ok((_, device)) => {
+                    println!(
+                        "Add Device: {} public_ip: {} dz_prefixes: {} ",
+                        device.code,
+                        ipv4_to_string(&device.public_ip),
+                        networkv4_list_to_string(&device.dz_prefixes)
+                    );
+                    Some(entry.insert(DeviceState::new(&device)))
+                }
+                Err(_) => {
+                    // Reject user since we couldn't load the device
+                    reject_user(client, user, "Error: Device not found", state_transitions);
+                    None
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
+    use crate::{
+        idallocator::IDAllocator,
+        ipblockallocator::IPBlockAllocator,
+        process::user::process_user_event,
+        states::devicestate::DeviceState,
+        tests::utils::{create_test_client, get_device_bump_seed, get_user_bump_seed},
+    };
     use doublezero_sdk::{
         AccountType, Device, DeviceStatus, DeviceType, IpV4, MockDoubleZeroClient, User, UserCYOA,
         UserStatus, UserType,
@@ -227,14 +308,7 @@ mod tests {
     };
     use mockall::{predicate, Sequence};
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
-
-    use crate::{
-        idallocator::IDAllocator,
-        ipblockallocator::IPBlockAllocator,
-        process::user::process_user_event,
-        states::devicestate::DeviceState,
-        tests::utils::{create_test_client, get_device_bump_seed, get_user_bump_seed},
-    };
+    use std::collections::HashMap;
 
     fn do_test_process_user_event_pending_to_activated(
         user_type: UserType,
@@ -334,6 +408,83 @@ mod tests {
             UserType::EdgeFiltering,
             Some([10, 0, 0, 1]),
         );
+    }
+
+    #[test]
+    fn test_process_user_event_update_to_activated() {
+        let mut seq = Sequence::new();
+        let mut user_tunnel_ips = IPBlockAllocator::new(([10, 0, 0, 0], 16));
+        let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
+        let mut client = create_test_client();
+
+        let device_pubkey = Pubkey::new_unique();
+        let device = Device {
+            account_type: AccountType::Device,
+            owner: Pubkey::new_unique(),
+            index: 0,
+            bump_seed: get_device_bump_seed(&client),
+            location_pk: Pubkey::new_unique(),
+            exchange_pk: Pubkey::new_unique(),
+            device_type: DeviceType::Switch,
+            public_ip: [192, 168, 1, 2],
+            status: DeviceStatus::Activated,
+            code: "TestDevice".to_string(),
+            dz_prefixes: vec![([10, 0, 0, 1], 24)],
+        };
+
+        let user = User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 0,
+            bump_seed: get_user_bump_seed(&client),
+            user_type: UserType::Multicast,
+            tenant_pk: Pubkey::new_unique(),
+            device_pk: device_pubkey,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: [192, 168, 1, 1],
+            dz_ip: [192, 168, 1, 1],
+            tunnel_id: 500,
+            tunnel_net: ([10, 0, 0, 1], 29),
+            status: UserStatus::Updating,
+            publishers: vec![Pubkey::default()],
+            subscribers: vec![Pubkey::default()],
+        };
+
+        client
+            .expect_execute_transaction()
+            .times(1)
+            .in_sequence(&mut seq)
+            .with(
+                predicate::eq(DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+                    index: user.index,
+                    bump_seed: user.bump_seed,
+                    tunnel_id: 500,
+                    tunnel_net: ([10, 0, 0, 1], 29),
+                    dz_ip: [10, 0, 0, 1],
+                })),
+                predicate::always(),
+            )
+            .returning(|_, _| Ok(Signature::new_unique()));
+
+        let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
+
+        let mut devices = HashMap::new();
+        devices.insert(device_pubkey, DeviceState::new(&device));
+
+        process_user_event(
+            &client,
+            &mut devices,
+            &mut user_tunnel_ips,
+            &mut tunnel_tunnel_ids,
+            &user,
+            &mut state_transitions,
+        );
+
+        assert!(!user_tunnel_ips.assigned_ips.is_empty());
+        assert!(!tunnel_tunnel_ids.assigned.is_empty());
+
+        assert_eq!(state_transitions.len(), 1);
+        assert_eq!(state_transitions["user-updating-to-activated"], 1);
     }
 
     #[test]

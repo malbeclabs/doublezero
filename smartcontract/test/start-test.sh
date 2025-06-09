@@ -84,14 +84,14 @@ echo "Update exchanges"
 
 ### Initialice devices
 echo "Creating devices"
-./target/doublezero device create --code la2-dz01 --location lax --exchange xlax --public-ip "207.45.216.134" --dz-prefixes "207.45.216.136/29"
-./target/doublezero device create --code ny5-dz01 --location ewr --exchange xewr --public-ip "64.86.249.80" --dz-prefixes "64.86.249.80/29"
-./target/doublezero device create --code ld4-dz01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "195.219.120.72/30,195.219.120.76/30"
-./target/doublezero device create --code frk-dz01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "195.219.220.88/29"
-./target/doublezero device create --code sg1-dz01 --location sin --exchange xsin --public-ip "180.87.102.104" --dz-prefixes "180.87.102.104/29"
-./target/doublezero device create --code ty2-dz01 --location tyo --exchange xtyo --public-ip "180.87.154.112" --dz-prefixes "180.87.154.112/29"
-./target/doublezero device create --code pit-dzd01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "204.16.243.243/32"
-./target/doublezero device create --code ams-dz001 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "195.219.138.56/29"
+./target/doublezero device create --code la2-dz01 --location lax --exchange xlax --public-ip "207.45.216.134" --dz-prefixes "100.0.0.0/16"
+./target/doublezero device create --code ny5-dz01 --location ewr --exchange xewr --public-ip "64.86.249.80" --dz-prefixes "101.0.0.0/16"
+./target/doublezero device create --code ld4-dz01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "102.0.0.0/29,103.0.0.0/16"
+./target/doublezero device create --code frk-dz01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "104.0.0.0/16"
+./target/doublezero device create --code sg1-dz01 --location sin --exchange xsin --public-ip "180.87.102.104" --dz-prefixes "105.0.0.0/16"
+./target/doublezero device create --code ty2-dz01 --location tyo --exchange xtyo --public-ip "180.87.154.112" --dz-prefixes "106.0.0.0/16"
+./target/doublezero device create --code pit-dzd01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "107.0.0.0/16"
+./target/doublezero device create --code ams-dz001 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "108.0.0.0/16"
 
 ### Initialice links
 echo "Creating links"
@@ -111,15 +111,16 @@ echo "Creating users"
 
 echo "Creating multicast groups"
 ./target/doublezero multicast group create --code mg01 --max-bandwidth 1Gbps --owner me
+./target/doublezero multicast group create --code mg02 --max-bandwidth 1Gbps --owner me
 
 echo "Add me to multicast group allowlist"
-./target/doublezero multicast group allowlist publisher add --code DLRVcWaZQf1xN9vJemgjqNd286Kx5md1LxTe7p67c4ZM --pubkey me
-./target/doublezero multicast group allowlist subscriber add --code DLRVcWaZQf1xN9vJemgjqNd286Kx5md1LxTe7p67c4ZM --pubkey me
+./target/doublezero multicast group allowlist subscriber add --code mg01 --pubkey me
+./target/doublezero multicast group allowlist publisher add --code mg02 --pubkey me
 
 echo "Creating multicast user & subscribe"
-./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 10.0.0.5 --publisher mg01
-./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 10.0.0.6 --subscriber mg01
-./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 10.0.0.7 --publisher mg01 --subscriber mg01
+./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 10.0.0.5 --subscriber mg01
+sleep 1
+./target/doublezero user subscribe --user 5Rm8dp4dDzR5SE3HtrqGVpqHLaPvvxDEV3EotqPBBUgS --group mg02 --publisher
 
 echo "########################################################################"
 

@@ -15,8 +15,11 @@ The following Rust structures define the on-chain account types that the smart c
 - **Location**: Structure and enums for locations, including status.
 - **Exchange**: Structure and enums for exchanges, including status.
 - **Device**: Structure and enums for devices, including device type and status.
-- **Tunnel**: Structure and enums for tunnels, including tunnel type and status.
+- **Link**: Structure and enums for tunnels, including tunnel type and status.
 - **User**: Structure and enums for users, including user type.
+- **MulticastGroup**: Structure and enums for multicast groups, including status.
+- **GlobalConfig**: Structure for global configuration parameters, such as ASNs and network blocks.
+- **GlobalState**: Structure for the global state, including allowlists and global indices.
 
 ---
 
@@ -62,21 +65,21 @@ classDiagram
         String code
         NetworkV4List dz_prefixes
     }
-    class Tunnel {
+    class Link {
         AccountType account_type
         Pubkey owner
         u128 index
         u8 bump_seed
         Pubkey side_a_pk
         Pubkey side_z_pk
-        TunnelTunnelType tunnel_type
+        LinkLinkType tunnel_type
         u64 bandwidth
         u32 mtu
         u64 delay_ns
         u64 jitter_ns
         u16 tunnel_id
         NetworkV4 tunnel_net
-        TunnelStatus status
+        LinkStatus status
         String code
     }
     class User {
@@ -92,14 +95,49 @@ classDiagram
         IpV4 dz_ip
         u16 tunnel_id
         NetworkV4 tunnel_net
+        Pubkey[] publisher
+        Pubkey[] subscribers
         UserStatus status
+    }
+    class MulticastGroup {
+        AccountType account_type
+        Pubkey owner
+        u128 index
+        u8 bump_seed
+        Pubkey tenant_pk
+        String code
+        MulticastGroupStatus status
+        Pubkey[] pub_allowlist
+        Pubkey[] sub_allowlist
+        Pubkey[] publisher
+        Pubkey[] subscribers
+    }
+    class GlobalConfig {
+        AccountType account_type
+        Pubkey owner
+        u8 bump_seed
+        u32 local_asn
+        u32 remote_asn
+        NetworkV4 tunnel_tunnel_block
+        NetworkV4 user_tunnel_block
+    }
+    class GlobalState {
+        AccountType account_type
+        u8 bump_seed
+        u128 account_index
+        Pubkey[] foundation_allowlist
+        Pubkey[] device_allowlist
+        Pubkey[] user_allowlist
     }
     Device --> Exchange : exchange_pk
     Device --> Location  : location_pk
-    Tunnel --> Device : side_a_pk
-    Tunnel --> Device : side_z_pk
-
+    Link --> Device : side_a_pk
+    Link --> Device : side_z_pk
     User --> Device  : device_pk
+    User --> MulticastGroup : publishers
+    User --> MulticastGroup : subscribers
+    MulticastGroup --> User : publishers
+    MulticastGroup --> User : subscribers
 ```
 
 ---
@@ -197,9 +235,9 @@ stateDiagram-v2
 | code          | String       | Device code                |
 | dz_prefixes   | NetworkV4List| List of network prefixes   |
 
-## Tunnel
+## Link
 
-Represents a network tunnel between two endpoints (devices or users) in the DoubleZero network. Tunnels define connectivity, bandwidth, and other transport parameters.
+Represents a network tunnel between two endpoints (devices or users) in the DoubleZero network. Links define connectivity, bandwidth, and other transport parameters.
 
 ```mermaid
 stateDiagram-v2
@@ -217,20 +255,20 @@ stateDiagram-v2
 | Field        | Type               | Description                |
 |--------------|--------------------|----------------------------|
 | account_type | AccountType        | Type of account            |
-| owner        | Pubkey             | Tunnel owner               |
-| index        | u128               | Tunnel index               |
+| owner        | Pubkey             | Link owner                 |
+| index        | u128               | Link index                 |
 | bump_seed    | u8                 | PDA bump seed              |
 | side_a_pk    | Pubkey             | Side A public key          |
 | side_z_pk    | Pubkey             | Side Z public key          |
-| tunnel_type  | TunnelTunnelType   | Tunnel type                |
+| tunnel_type  | LinkLinkType       | Tunnel type                |
 | bandwidth    | u64                | Bandwidth                  |
 | mtu          | u32                | MTU                        |
 | delay_ns     | u64                | Delay in nanoseconds       |
 | jitter_ns    | u64                | Jitter in nanoseconds      |
 | tunnel_id    | u16                | Tunnel ID                  |
 | tunnel_net   | NetworkV4          | Tunnel network             |
-| status       | TunnelStatus       | Tunnel status              |
-| code         | String             | Tunnel code                |
+| status       | LinkStatus         | Link status                |
+| code         | String             | Link code                  |
 
 ## User
 
@@ -268,6 +306,37 @@ stateDiagram-v2
 | tunnel_id    | u16          | Tunnel ID                  |
 | tunnel_net   | NetworkV4    | Tunnel network             |
 | status       | UserStatus   | User status                |
+
+## MulticastGroup
+
+Represents a multicast group in the DoubleZero network. Multicast groups aggregate users for group-based communication and maintain group membership and network information.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Pending
+    Pending --> Activated: approve
+    Pending --> Rejected: reject
+    Activated --> Suspended: suspend
+    Activated --> Deleting: delete
+    Suspended --> Activated: resume
+    Suspended --> Deleting: delete
+    Rejected --> [*]
+    Deleting --> [*]
+```
+
+| Field              | Type                  | Description                              |
+|--------------------|-----------------------|------------------------------------------|
+| account_type       | AccountType           | Type of account                          |
+| owner              | Pubkey                | Multicast group owner                    |
+| index              | u128                  | Multicast group index                    |
+| bump_seed          | u8                    | PDA bump seed                            |
+| tenant_pk          | Pubkey                | Tenant public key                        |
+| code               | String                | Multicast group code                     |
+| status             | MulticastGroupStatus  | Multicast group status                   |
+| pub_allowlist      | Vec<Pubkey>           | List of allowed publisher public keys    |
+| sub_allowlist      | Vec<Pubkey>           | List of allowed subscriber public keys   |
+| publishers         | Vec<Pubkey>           | List of publisher user public keys       |
+| subscribers        | Vec<Pubkey>           | List of subscriber user public keys      |
 
 ## GlobalConfig
 
@@ -310,6 +379,7 @@ Each module in `processors/` implements instructions for operating on the smart 
 - **device/**: `create`, `activate`, `deactivate`, `delete`, `reactivate`, `reject`, `suspend`, `update`, `resume`, `closeaccount`
 - **tunnel/**: `create`, `activate`, `deactivate`, `delete`, `reactivate`, `reject`, `suspend`, `update`, `resume`, `closeaccount`
 - **user/**: `create`, `activate`, `deactivate`, `delete`, `reactivate`, `reject`, `requestban`, `suspend`, `update`, `ban`, `resume`, `closeaccount`
+- **multicastgroup/**: `create`, `delete`, `reactivate`, `suspend`, `update`, `resume`
 
 Each instruction is implemented as a Rust file in the corresponding folder, following the convention `name.rs`.
 
@@ -540,7 +610,7 @@ Closes and cleans up a device account that is in Deleting status.
 - `[signer]` Payer
 - `system_program`
 
-### tunnel
+### link
 
 #### create
 Creates a new tunnel between two endpoints (devices or users), defining connectivity, bandwidth, and transport parameters.
@@ -548,18 +618,18 @@ Creates a new tunnel between two endpoints (devices or users), defining connecti
 |---------------|--------------------|---------------------------------------------|
 | side_a_pk     | Pubkey             | Public key of side A endpoint               |
 | side_z_pk     | Pubkey             | Public key of side Z endpoint               |
-| tunnel_type   | TunnelTunnelType   | Type of tunnel (e.g., MPLSoGRE)             |
+| link_type     | LinkLinkType       | Type of tunnel (e.g., MPLSoGRE)             |
 | bandwidth     | u64                | Bandwidth for the tunnel                    |
 | mtu           | u32                | MTU for the tunnel                          |
 | delay_ns      | u64                | Delay in nanoseconds                        |
 | jitter_ns     | u64                | Jitter in nanoseconds                       |
 | tunnel_id     | u16                | Tunnel identifier                           |
 | tunnel_net    | NetworkV4          | Network block for the tunnel                |
-| code          | String             | Tunnel code identifier                      |
+| code          | String             | Link code identifier                        |
 
 **Accounts:**
 - `[signer]` Payer
-- `[writable]` Tunnel account (PDA)
+- `[writable]` Link account (PDA)
 - `[writable]` GlobalState account
 - `[writable]` Device account (side A)
 - `[writable]` Device account (side Z)
@@ -569,34 +639,34 @@ Creates a new tunnel between two endpoints (devices or users), defining connecti
 Changes the status of an existing tunnel. Used to activate, deactivate, delete, reactivate, reject, or suspend a tunnel.
 | Parameter | Type   | Description                |
 |-----------|--------|----------------------------|
-| index     | u128   | Tunnel index (unique ID)   |
+| index     | u128   | Link index (unique ID)   |
 
 **Accounts:**
 - `[signer]` Authority
-- `[writable]` Tunnel account (PDA)
+- `[writable]` Link account (PDA)
 - `[writable]` GlobalState account
 
 #### update
 Updates the fields of an existing tunnel. Allows modification of tunnel configuration and metadata.
 | Parameter      | Type           | Description                                 |
 |---------------|----------------|---------------------------------------------|
-| index         | u128           | Tunnel index (unique ID)                    |
+| index         | u128           | Link index (unique ID)                    |
 | ...fields     | varies         | Fields to update (same as in create)        |
 
 **Accounts:**
 - `[signer]` Authority
-- `[writable]` Tunnel account (PDA)
+- `[writable]` Link account (PDA)
 - `[writable]` GlobalState account
 
 #### resume
 Reactivates a suspended tunnel, setting its status back to Activated.
 | Parameter | Type   | Description                |
 |-----------|--------|----------------------------|
-| index     | u128   | Tunnel index (unique ID)   |
+| index     | u128   | Link index (unique ID)   |
 | bump_seed | u8     | PDA bump seed              |
 
 **Accounts:**
-- `[writable]` Tunnel account (PDA)
+- `[writable]` Link account (PDA)
 - `[signer]` Payer
 - `system_program`
 
@@ -604,11 +674,11 @@ Reactivates a suspended tunnel, setting its status back to Activated.
 Closes and cleans up a tunnel account that is in Deleting status.
 | Parameter | Type   | Description                |
 |-----------|--------|----------------------------|
-| index     | u128   | Tunnel index (unique ID)   |
+| index     | u128   | Link index (unique ID)   |
 | bump_seed | u8     | PDA bump seed              |
 
 **Accounts:**
-- `[writable]` Tunnel account (PDA)
+- `[writable]` Link account (PDA)
 - `[writable]` Owner account
 - `[writable]` GlobalState account
 - `[signer]` Payer
@@ -634,7 +704,7 @@ Creates a new user in the DoubleZero network, associating it with a device and t
 - `[writable]` User account (PDA)
 - `[writable]` GlobalState account
 - `[writable]` Device account
-- `[writable]` Tunnel account
+- `[writable]` Link account
 - `system_program`
 
 #### activate / deactivate / delete / reactivate / reject / requestban / suspend / ban
@@ -681,6 +751,76 @@ Closes and cleans up a user account that is in Deleting status.
 
 **Accounts:**
 - `[writable]` User account (PDA)
+- `[writable]` Owner account
+- `[writable]` GlobalState account
+- `[signer]` Payer
+- `system_program`
+
+### multicastgroup
+
+#### create
+Creates a new multicast group in the DoubleZero network, defining its code, tenant, publisher/subscriber allowlists, and membership.
+| Parameter      | Type         | Description                                |
+|---------------|--------------|---------------------------------------------|
+| code          | String       | Multicast group code identifier             |
+| max_bandwidth | u64          | Max bandwidth                               |
+| owner         | Pubkey       | The multicast group owner                   |
+
+**Accounts:**
+- `[signer]` Payer
+- `[writable]` MulticastGroup account (PDA)
+- `[writable]` GlobalState account
+- `system_program`
+
+#### delete / reactivate / suspend
+Changes the status of an existing multicast group. Used to delete, reactivate, or suspend a multicast group.
+| Parameter | Type   | Description                |
+|-----------|--------|----------------------------|
+| index     | u128   | Multicast group index      |
+| bump_seed | u8     | PDA bump seed              |
+
+**Accounts:**
+- `[signer]` Authority
+- `[writable]` MulticastGroup account (PDA)
+- `[writable]` GlobalState account
+
+#### update
+Updates the fields of an existing multicast group. Allows modification of group configuration and membership.
+| Parameter      | Type           | Description                                |
+|---------------|----------------|---------------------------------------------|
+| index         | u128           | Multicast group index                       |
+| bump_seed     | u8             | PDA bump seed                               | 
+| code          | String         | Multicast group code identifier             |
+| multicast_ip  | IP             | The multicast group IP address              |
+| max_bandwidth | u64            | Max bandwidth                               |
+
+**Accounts:**
+- `[signer]` Authority
+- `[writable]` MulticastGroup account (PDA)
+- `[writable]` GlobalState account
+
+#### resume
+Reactivates a suspended multicast group, setting its status back to Activated.
+| Parameter | Type   | Description                |
+|-----------|--------|----------------------------|
+| index     | u128   | Multicast group index      |
+| bump_seed | u8     | PDA bump seed              |
+
+**Accounts:**
+- `[writable]` MulticastGroup account (PDA)
+- `[writable]` GlobalState account
+- `[signer]` Payer
+- `system_program`
+
+#### closeaccount
+Closes and cleans up a multicast group account that is in Deleting status.
+| Parameter | Type   | Description                |
+|-----------|--------|----------------------------|
+| index     | u128   | Multicast group index      |
+| bump_seed | u8     | PDA bump seed              |
+
+**Accounts:**
+- `[writable]` MulticastGroup account (PDA)
 - `[writable]` Owner account
 - `[writable]` GlobalState account
 - `[signer]` Payer

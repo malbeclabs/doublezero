@@ -364,15 +364,18 @@ impl ProvisioningCliCommand {
             |user, client_ip| user.user_type == UserType::Multicast && user.client_ip == *client_ip;
 
         let user_pubkey = match users.iter().find(|(_, u)| filter_func(u, client_ip)) {
-            Some((pubkey, _)) => {
-                spinner
-                    .finish_with_message(format!("An account already exists Pubkey: {}", pubkey));
-                eyre::bail!(
-                    r#"User already exists for IP: {}
-                    Multicast supports only one subscription at this time.
-                    Disconnect and connect again!"#,
-                    ipv4_to_string(client_ip)
+            Some((_, _)) => {
+                let err_msg = format!(
+                    r#"Multicast user already exists for IP: {}
+Multicast supports only one subscription at this time.
+Disconnect and connect again!"#,
+                    ipv4_to_string(client_ip),
                 );
+
+                spinner.finish_with_message(err_msg.clone());
+                eyre::bail!(err_msg);
+                //spinner
+                //  .finish_with_message(format!("An account already exists Pubkey: {}", pubkey));
                 //spinner.set_prefix("🔗 [3/4] Subscribing");
 
                 //let (publisher, subscriber) = match multicast_mode {
@@ -1002,6 +1005,7 @@ mod tests {
         let mut fixture = TestFixture::new();
 
         let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
+        (_, _) = fixture.add_multicast_group("test-group2", "239.0.0.2");
         let (device1_pk, device1) = fixture.add_device(100, true);
         let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
         fixture.expect_create_subscribe_user(
@@ -1033,5 +1037,25 @@ mod tests {
             .execute_with_service_controller(&fixture.client, &fixture.controller)
             .await;
         assert!(result.is_ok());
+
+        // Test that adding a second subscriber fails
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: MulticastMode::Subscriber,
+                multicast_group: "test-group2".to_string(),
+            },
+            client_ip: Some(ipv4_to_string(&user.client_ip)),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Multicast user already exists for IP: 1.2.3.4"));
     }
 }

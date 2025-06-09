@@ -41,13 +41,13 @@ impl CreateSubscribeUserCommand {
         .map_err(|_err| eyre::eyre!("MulticastGroup not found"))?;
 
         if mgroup.status != MulticastGroupStatus::Activated {
-            return Err(eyre::eyre!("MulticastGroup not active"));
+            eyre::bail!("MulticastGroup not active");
         }
         if self.publisher && !mgroup.pub_allowlist.contains(&client.get_payer()) {
-            return Err(eyre::eyre!("Publisher not allowed"));
+            eyre::bail!("Publisher not allowed");
         }
         if self.subscriber && !mgroup.sub_allowlist.contains(&client.get_payer()) {
-            return Err(eyre::eyre!("Subscriber not allowed"));
+            eyre::bail!("Subscriber not allowed");
         }
 
         let (pda_pubkey, bump_seed) =

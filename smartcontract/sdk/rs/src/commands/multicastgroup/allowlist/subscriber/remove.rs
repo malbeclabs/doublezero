@@ -20,7 +20,7 @@ impl RemoveMulticastGroupSubAllowlistCommand {
         .execute(client)?;
 
         if !mgroup.sub_allowlist.contains(&self.pubkey) {
-            return Err(eyre::eyre!("Publisher is not in the allowlist"));
+            eyre::bail!("Publisher is not in the allowlist");
         }
 
         client.execute_transaction(

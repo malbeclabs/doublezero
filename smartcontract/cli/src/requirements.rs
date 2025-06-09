@@ -69,10 +69,10 @@ pub fn check_balance(client: &dyn CliCommand, spinner: Option<&ProgressBar>) -> 
                 } else {
                     eprintln!("Insufficient balance");
                 }
-                return Err(eyre::eyre!(
+                eyre::bail!(
                     "Please transfer some balance to your DoubleZero account [{}].",
                     client.get_payer().to_string()
-                ));
+                );
             }
 
             Ok(())
@@ -106,9 +106,7 @@ pub fn check_allowlist(
         } else {
             eprintln!("Error: You are not in the allowlist");
         }
-        return Err(eyre::eyre!(
-            "Please contact the DoubleZero Foundation to add you to the allowlist."
-        ));
+        eyre::bail!("Please contact the DoubleZero Foundation to add you to the allowlist.");
     }
 
     Ok(())

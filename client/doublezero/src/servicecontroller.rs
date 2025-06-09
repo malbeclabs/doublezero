@@ -250,10 +250,7 @@ impl ServiceController for ServiceControllerImpl {
         match client.request(req).await {
             Ok(res) => {
                 if res.status() != 200 {
-                    return Err(eyre!(
-                        "Unable to connect to doublezero daemon: {}",
-                        res.status()
-                    ));
+                    eyre::bail!("Unable to connect to doublezero daemon: {}", res.status());
                 }
 
                 let data = res
@@ -269,7 +266,7 @@ impl ServiceController for ServiceControllerImpl {
                         println!("Data: {:?}", data);
 
                         if data.is_empty() {
-                            return Err(eyre!("No data returned"));
+                            eyre::bail!("No data returned");
                         }
 
                         match serde_json::from_slice::<ErrorResponse>(&data) {

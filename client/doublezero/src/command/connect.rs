@@ -10,9 +10,7 @@ use doublezero_sdk::{
     commands::{
         device::{get::GetDeviceCommand, list::ListDeviceCommand},
         globalconfig::get::GetGlobalConfigCommand,
-        multicastgroup::{
-            list::ListMulticastGroupCommand, subscribe::SubscribeMulticastGroupCommand,
-        },
+        multicastgroup::list::ListMulticastGroupCommand,
         user::{
             create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand,
             get::GetUserCommand, list::ListUserCommand,
@@ -366,34 +364,41 @@ impl ProvisioningCliCommand {
             |user, client_ip| user.user_type == UserType::Multicast && user.client_ip == *client_ip;
 
         let user_pubkey = match users.iter().find(|(_, u)| filter_func(u, client_ip)) {
-            Some((pubkey, user)) => {
-                spinner.println(format!("    An account already exists Pubkey: {}", pubkey));
-                spinner.set_prefix("🔗 [3/4] Subscribing");
+            Some((pubkey, _)) => {
+                spinner
+                    .finish_with_message(format!("An account already exists Pubkey: {}", pubkey));
+                eyre::bail!(
+                    r#"User already exists for IP: {}
+                    Multicast supports only one subscription at this time.
+                    Disconnect and connect again!"#,
+                    ipv4_to_string(client_ip)
+                );
+                //spinner.set_prefix("🔗 [3/4] Subscribing");
 
-                let (publisher, subscriber) = match multicast_mode {
-                    MulticastMode::Publisher => (true, user.subscribers.contains(mcast_group_pk)),
-                    MulticastMode::Subscriber => (user.publishers.contains(mcast_group_pk), true),
-                };
+                //let (publisher, subscriber) = match multicast_mode {
+                //    MulticastMode::Publisher => (true, user.subscribers.contains(mcast_group_pk)),
+                //     MulticastMode::Subscriber => (user.publishers.contains(mcast_group_pk), true),
+                // };
 
-                let res = client.subscribe_multicastgroup(SubscribeMulticastGroupCommand {
-                    group_pk: *mcast_group_pk,
-                    user_pk: *pubkey,
-                    publisher,
-                    subscriber,
-                });
-                match res {
-                    Ok(_) => {
-                        spinner.set_message("User subscribed");
-                        Ok(*pubkey)
-                    }
-                    Err(e) => {
-                        spinner.finish_with_message("Error subscribing user");
-                        spinner.println(format!("\n{}: {:?}\n", "Error", e));
+                // let res = client.subscribe_multicastgroup(SubscribeMulticastGroupCommand {
+                //     group_pk: *mcast_group_pk,
+                //     user_pk: *pubkey,
+                //     publisher,
+                //     subscriber,
+                // });
+                // match res {
+                //     Ok(_) => {
+                //         spinner.set_message("User subscribed");
+                //         Ok(*pubkey)
+                //     }
+                //     Err(e) => {
+                //         spinner.finish_with_message("Error subscribing user");
+                //         spinner.println(format!("\n{}: {:?}\n", "Error", e));
 
-                        Err(eyre::eyre!("Error subscribing user"))
-                    }
-                }
-            }?,
+                //         Err(eyre::eyre!("Error subscribing user"))
+                //     }
+                // }
+            }
             None => {
                 spinner.println(format!(
                     "    Creating an account for the IP: {}",

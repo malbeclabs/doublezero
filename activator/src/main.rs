@@ -66,8 +66,7 @@ async fn main() -> eyre::Result<()> {
         args.keypair,
         metrics_service,
     )
-    .await
-    .unwrap();
+    .await?;
 
     println!("Activator started");
 

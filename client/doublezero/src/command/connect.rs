@@ -524,7 +524,7 @@ Disconnect and connect again!"#,
 
         spinner.set_message("Getting global-config...");
         let (_, config) = client
-            .get_globalconfig(GetGlobalConfigCommand {})
+            .get_globalconfig(GetGlobalConfigCommand)
             .expect("Unable to get config");
 
         spinner.set_message("Getting user account...");

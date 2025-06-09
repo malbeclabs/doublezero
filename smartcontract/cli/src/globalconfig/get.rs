@@ -8,7 +8,7 @@ pub struct GetGlobalConfigCliCommand {}
 
 impl GetGlobalConfigCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        let (_, config) = client.get_globalconfig(GetGlobalConfigCommand {})?;
+        let (_, config) = client.get_globalconfig(GetGlobalConfigCommand)?;
 
         writeln!(
             out,
@@ -53,7 +53,7 @@ mod tests {
 
         client
             .expect_get_globalconfig()
-            .with(predicate::eq(GetGlobalConfigCommand {}))
+            .with(predicate::eq(GetGlobalConfigCommand))
             .returning(move |_| Ok((pubkey, globalconfig.clone())));
 
         /*****************************************************************************************************/

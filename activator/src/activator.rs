@@ -62,14 +62,15 @@ impl Activator {
 
         // Wait for the global config to be available
         // This is a workaround for the fact that the global config is not available immediately
-        let mut config = GetGlobalConfigCommand {}.execute(&client);
-        while config.is_err() {
-            println!("Waiting for config...");
-            thread::sleep(Duration::from_secs(10));
-            config = GetGlobalConfigCommand {}.execute(&client);
-        }
-
-        let (_, config) = config.unwrap();
+        let (_, config) = loop {
+            match GetGlobalConfigCommand.execute(&client) {
+                Ok(result) => break result,
+                Err(_) => {
+                    println!("Waiting for config...");
+                    thread::sleep(Duration::from_secs(10));
+                }
+            }
+        };
 
         Ok(Self {
             client,
@@ -113,10 +114,10 @@ impl Activator {
             .iter()
             .filter(|(_, u)| u.status == UserStatus::Activated)
             .for_each(|(_, user)| {
-                let device_state = self.devices.get_mut(&user.device_pk).unwrap();
-                device_state.register(user.dz_ip, user.tunnel_id);
-
-                self.user_tunnel_ips.assign_block(user.tunnel_net);
+                if let Some(device_state) = self.devices.get_mut(&user.device_pk) {
+                    device_state.register(user.dz_ip, user.tunnel_id);
+                    self.user_tunnel_ips.assign_block(user.tunnel_net);
+                }
             });
 
         println!(

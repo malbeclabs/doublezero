@@ -20,13 +20,16 @@ impl LatencyCliCommand {
 
         let devices = client.list_device(ListDeviceCommand {})?;
         let mut latencies = controller.latency().await.map_err(|e| eyre::eyre!(e))?;
+
         // Filter the active devices
-        latencies.retain(
-            |l| match devices.get(&Pubkey::from_str(&l.device_pk).unwrap()) {
-                Some(device) => device.status == DeviceStatus::Activated,
-                None => false,
-            },
-        );
+        latencies.retain(|l| {
+            Pubkey::from_str(&l.device_pk)
+                .ok()
+                .and_then(|pubkey| devices.get(&pubkey))
+                .map(|device| device.status == DeviceStatus::Activated)
+                .unwrap_or(false)
+        });
+
         latencies.sort_by(|a, b| a.avg_latency_ns.cmp(&b.avg_latency_ns));
 
         let table = Table::new(latencies)

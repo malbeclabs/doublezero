@@ -97,25 +97,33 @@ impl ProvisioningCliCommand {
 
         spinner.println(format!("🔍  Provisioning User for IP: {}", client_ip_str));
 
-        let (user_type, multicast_mode, multicast_group) = self.parse_dz_mode();
-
-        match user_type {
-            UserType::IBRL | UserType::IBRLWithAllocatedIP => {
-                self.execute_ibrl(client, controller, user_type, client_ip, spinner)
+        match self.parse_dz_mode() {
+            (UserType::IBRL, _, _) => {
+                self.execute_ibrl(client, controller, UserType::IBRL, client_ip, spinner)
                     .await
             }
-            UserType::EdgeFiltering => Err(eyre::eyre!("DzMode not supported")),
-            UserType::Multicast => {
-                self.execute_multicast(
+            (UserType::IBRLWithAllocatedIP, _, _) => {
+                self.execute_ibrl(
                     client,
                     controller,
-                    multicast_mode.unwrap(),
-                    multicast_group.unwrap(),
+                    UserType::IBRLWithAllocatedIP,
                     client_ip,
                     spinner,
                 )
                 .await
             }
+            (UserType::Multicast, Some(multicast_mode), Some(multicast_group)) => {
+                self.execute_multicast(
+                    client,
+                    controller,
+                    multicast_mode,
+                    multicast_group,
+                    client_ip,
+                    spinner,
+                )
+                .await
+            }
+            _ => Err(eyre::eyre!("DzMode not supported")),
         }
     }
 
@@ -187,13 +195,24 @@ impl ProvisioningCliCommand {
         let mcast_pub_groups = user
             .publishers
             .iter()
-            .map(|pk| ipv4_to_string(&mcast_groups.get(pk).unwrap().multicast_ip))
-            .collect::<Vec<_>>();
+            .map(|pk| {
+                mcast_groups
+                    .get(pk)
+                    .map(|group| ipv4_to_string(&group.multicast_ip))
+                    .ok_or_else(|| eyre::eyre!("Missing multicast group for publisher: {}", pk))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
         let mcast_sub_groups = user
             .subscribers
             .iter()
-            .map(|pk| ipv4_to_string(&mcast_groups.get(pk).unwrap().multicast_ip))
-            .collect::<Vec<_>>();
+            .map(|pk| {
+                mcast_groups
+                    .get(pk)
+                    .map(|group| ipv4_to_string(&group.multicast_ip))
+                    .ok_or_else(|| eyre::eyre!("Missing multicast group for subscriber: {}", pk))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
         // Check user status
         match user.status {

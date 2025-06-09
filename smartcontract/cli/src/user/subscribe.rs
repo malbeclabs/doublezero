@@ -60,15 +60,13 @@ mod tests {
         doublezerocommand::CliCommand,
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
         tests::utils::create_test_client,
-        user::create_subscribe::CreateSubscribeUserCliCommand,
+        user::subscribe::SubscribeUserCliCommand,
     };
     use doublezero_sdk::{
-        commands::{
-            device::get::GetDeviceCommand, multicastgroup::get::GetMulticastGroupCommand,
-            user::create_subscribe::CreateSubscribeUserCommand,
+        commands::multicastgroup::{
+            get::GetMulticastGroupCommand, subscribe::SubscribeMulticastGroupCommand,
         },
-        AccountType, Device, DeviceStatus, DeviceType, MulticastGroup, MulticastGroupStatus,
-        UserCYOA, UserType,
+        AccountType, MulticastGroup, MulticastGroupStatus,
     };
     use doublezero_sla_program::pda::get_user_pda;
     use mockall::predicate;
@@ -78,7 +76,7 @@ mod tests {
     fn test_cli_user_create_subscribe() {
         let mut client = create_test_client();
 
-        let (pda_pubkey, _bump_seed) = get_user_pda(&client.get_program_id(), 1);
+        let (user_pubkey, _bump_seed) = get_user_pda(&client.get_program_id(), 1);
         let signature = Signature::from([
             120, 138, 162, 185, 59, 209, 241, 157, 71, 157, 74, 131, 4, 87, 54, 28, 38, 180, 222,
             82, 64, 62, 61, 62, 22, 46, 17, 203, 187, 136, 62, 43, 11, 38, 235, 17, 239, 82, 240,
@@ -102,31 +100,10 @@ mod tests {
             owner: mgroup_pubkey,
         };
 
-        let device_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
-        let device = Device {
-            account_type: AccountType::Device,
-            index: 1,
-            bump_seed: 255,
-            code: "device1".to_string(),
-            location_pk: Pubkey::new_unique(),
-            exchange_pk: Pubkey::new_unique(),
-            device_type: DeviceType::Switch,
-            public_ip: [10, 0, 0, 1],
-            dz_prefixes: vec![([10, 0, 0, 1], 24), ([11, 0, 0, 1], 24)],
-            owner: device_pubkey,
-            status: DeviceStatus::Activated,
-        };
-
         client
             .expect_check_requirements()
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
-        client
-            .expect_get_device()
-            .with(predicate::eq(GetDeviceCommand {
-                pubkey_or_code: "device1".to_string(),
-            }))
-            .returning(move |_| Ok((device_pubkey, device.clone())));
         client
             .expect_get_multicastgroup()
             .with(predicate::eq(GetMulticastGroupCommand {
@@ -134,27 +111,23 @@ mod tests {
             }))
             .returning(move |_| Ok((mgroup_pubkey, mgroup.clone())));
         client
-            .expect_create_subscribe_user()
-            .with(predicate::eq(CreateSubscribeUserCommand {
-                user_type: UserType::Multicast,
-                device_pk: device_pubkey,
-                cyoa_type: UserCYOA::GREOverDIA,
-                client_ip: [10, 0, 0, 1],
+            .expect_subscribe_multicastgroup()
+            .with(predicate::eq(SubscribeMulticastGroupCommand {
+                user_pk: user_pubkey,
+                group_pk: mgroup_pubkey,
                 publisher: false,
                 subscriber: true,
-                mgroup_pk: mgroup_pubkey,
             }))
             .times(1)
-            .returning(move |_| Ok((signature, pda_pubkey)));
+            .returning(move |_| Ok(signature));
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
-        let res = CreateSubscribeUserCliCommand {
-            device: "device1".to_string(),
-            client_ip: "10.0.0.1".to_string(),
-            allocate_addr: false,
-            publisher: None,
-            subscriber: Some(mgroup_pubkey.to_string()),
+        let res = SubscribeUserCliCommand {
+            user: user_pubkey.to_string(),
+            group: mgroup_pubkey.to_string(),
+            publisher: false,
+            subscriber: true,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

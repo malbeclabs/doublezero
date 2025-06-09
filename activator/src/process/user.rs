@@ -288,8 +288,13 @@ fn get_or_insert_device_state<'a>(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
+    use crate::{
+        idallocator::IDAllocator,
+        ipblockallocator::IPBlockAllocator,
+        process::user::process_user_event,
+        states::devicestate::DeviceState,
+        tests::utils::{create_test_client, get_device_bump_seed, get_user_bump_seed},
+    };
     use doublezero_sdk::{
         AccountType, Device, DeviceStatus, DeviceType, IpV4, MockDoubleZeroClient, User, UserCYOA,
         UserStatus, UserType,
@@ -303,14 +308,7 @@ mod tests {
     };
     use mockall::{predicate, Sequence};
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
-
-    use crate::{
-        idallocator::IDAllocator,
-        ipblockallocator::IPBlockAllocator,
-        process::user::process_user_event,
-        states::devicestate::DeviceState,
-        tests::utils::{create_test_client, get_device_bump_seed, get_user_bump_seed},
-    };
+    use std::collections::HashMap;
 
     fn do_test_process_user_event_pending_to_activated(
         user_type: UserType,
@@ -410,6 +408,83 @@ mod tests {
             UserType::EdgeFiltering,
             Some([10, 0, 0, 1]),
         );
+    }
+
+    #[test]
+    fn test_process_user_event_update_to_activated() {
+        let mut seq = Sequence::new();
+        let mut user_tunnel_ips = IPBlockAllocator::new(([10, 0, 0, 0], 16));
+        let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
+        let mut client = create_test_client();
+
+        let device_pubkey = Pubkey::new_unique();
+        let device = Device {
+            account_type: AccountType::Device,
+            owner: Pubkey::new_unique(),
+            index: 0,
+            bump_seed: get_device_bump_seed(&client),
+            location_pk: Pubkey::new_unique(),
+            exchange_pk: Pubkey::new_unique(),
+            device_type: DeviceType::Switch,
+            public_ip: [192, 168, 1, 2],
+            status: DeviceStatus::Activated,
+            code: "TestDevice".to_string(),
+            dz_prefixes: vec![([10, 0, 0, 1], 24)],
+        };
+
+        let user = User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 0,
+            bump_seed: get_user_bump_seed(&client),
+            user_type: UserType::Multicast,
+            tenant_pk: Pubkey::new_unique(),
+            device_pk: device_pubkey,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: [192, 168, 1, 1],
+            dz_ip: [192, 168, 1, 1],
+            tunnel_id: 500,
+            tunnel_net: ([10, 0, 0, 1], 29),
+            status: UserStatus::Updating,
+            publishers: vec![Pubkey::default()],
+            subscribers: vec![Pubkey::default()],
+        };
+
+        client
+            .expect_execute_transaction()
+            .times(1)
+            .in_sequence(&mut seq)
+            .with(
+                predicate::eq(DoubleZeroInstruction::ActivateUser(UserActivateArgs {
+                    index: user.index,
+                    bump_seed: user.bump_seed,
+                    tunnel_id: 500,
+                    tunnel_net: ([10, 0, 0, 1], 29),
+                    dz_ip: [10, 0, 0, 1],
+                })),
+                predicate::always(),
+            )
+            .returning(|_, _| Ok(Signature::new_unique()));
+
+        let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
+
+        let mut devices = HashMap::new();
+        devices.insert(device_pubkey, DeviceState::new(&device));
+
+        process_user_event(
+            &client,
+            &mut devices,
+            &mut user_tunnel_ips,
+            &mut tunnel_tunnel_ids,
+            &user,
+            &mut state_transitions,
+        );
+
+        assert!(!user_tunnel_ips.assigned_ips.is_empty());
+        assert!(!tunnel_tunnel_ids.assigned.is_empty());
+
+        assert_eq!(state_transitions.len(), 1);
+        assert_eq!(state_transitions["user-updating-to-activated"], 1);
     }
 
     #[test]

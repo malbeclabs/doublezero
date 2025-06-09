@@ -79,35 +79,41 @@ func (e *Client) Load(ctx context.Context) error {
 		if len(data) == 0 {
 			continue
 		}
-		data = append(data, element.Pubkey.Bytes()...)
 		reader := NewByteReader(data)
 
 		switch account_type := data[0]; account_type {
 		case byte(ConfigType):
 			DeserializeConfig(reader, &e.Config)
+			e.Config.PubKey = element.Pubkey
 		case byte(LocationType):
 			var location Location
 			DeserializeLocation(reader, &location)
+			location.PubKey = element.Pubkey
 			e.Locations = append(e.Locations, location)
 		case byte(ExchangeType):
 			var exchange Exchange
 			DeserializeExchange(reader, &exchange)
+			exchange.PubKey = element.Pubkey
 			e.Exchanges = append(e.Exchanges, exchange)
 		case byte(DeviceType):
 			var device Device
 			DeserializeDevice(reader, &device)
+			device.PubKey = element.Pubkey
 			e.Devices = append(e.Devices, device)
 		case byte(TunnelType):
 			var tunnel Tunnel
 			DeserializeTunnel(reader, &tunnel)
+			tunnel.PubKey = element.Pubkey
 			e.Tunnels = append(e.Tunnels, tunnel)
 		case byte(UserType):
 			var user User
 			DeserializeUser(reader, &user)
+			user.PubKey = element.Pubkey
 			e.Users = append(e.Users, user)
 		case byte(MulticastGroupType):
 			var multicastgroup MulticastGroup
 			DeserializeMulticastGroup(reader, &multicastgroup)
+			multicastgroup.PubKey = element.Pubkey
 			e.MulticastGroups = append(e.MulticastGroups, multicastgroup)
 		}
 	}

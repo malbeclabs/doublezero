@@ -1,0 +1,30 @@
+FROM ubuntu:22.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt update && apt install --no-install-recommends -y \
+    ca-certificates \
+    curl \
+    build-essential \
+    pkg-config \
+    mold \
+    libudev-dev llvm libclang-dev \
+    protobuf-compiler libssl-dev git iproute2
+
+# Install rust
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Enable mold linker for faster builds
+ENV RUSTFLAGS="-C link-arg=-fuse-ld=mold"
+
+# Install solana cli
+RUN git clone https://github.com/anza-xyz/agave.git && \
+    ./agave/scripts/cargo-install-all.sh /usr/local/ && \
+    rm -rf agave
+
+FROM ubuntu:22.04
+
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+CMD [ "/bin/bash" ]

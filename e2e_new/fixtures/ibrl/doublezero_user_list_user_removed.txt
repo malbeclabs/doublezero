@@ -1,0 +1,1 @@
+ account | user_type | device | location | cyoa_type | client_ip | tunnel_id | tunnel_net | dz_ip | status | owner

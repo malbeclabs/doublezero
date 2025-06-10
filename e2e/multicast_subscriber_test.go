@@ -86,8 +86,10 @@ func checkMulticastSubscriberPostConnect(t *testing.T, log *slog.Logger, dn *dev
 		{
 			name:        "doublezero_multicast_group_list",
 			fixturePath: "fixtures/multicast_subscriber/doublezero_multicast_group_list.tmpl",
-			data:        map[string]string{},
-			cmd:         []string{"doublezero", "multicast", "group", "list"},
+			data: map[string]string{
+				"ManagerPubkey": dn.ManagerPubkey,
+			},
+			cmd: []string{"doublezero", "multicast", "group", "list"},
 		},
 		{
 			name:        "doublezero_status",

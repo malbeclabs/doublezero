@@ -40,8 +40,9 @@ type Devnet struct {
 	ExternalControllerHost string
 	ExternalDevicePort     int
 
-	AgentPubkey string
-	ProgramID   string
+	AgentPubkey   string
+	ProgramID     string
+	ManagerPubkey string
 
 	defaultNetwork *testcontainers.DockerNetwork
 
@@ -67,12 +68,18 @@ func New(config DevnetConfig) (*Devnet, error) {
 
 	log.Info("--> Devnet config", "programID", programID, "agentPubkey", config.AgentPubkey)
 
+	managerPubkey, err := solana.PublicAddressFromKeypair(config.ManagerKeypairPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get manager pubkey: %v", err)
+	}
+
 	return &Devnet{
 		log:    log,
 		config: config,
 
-		ProgramID:   programID,
-		AgentPubkey: config.AgentPubkey,
+		ProgramID:     programID,
+		AgentPubkey:   config.AgentPubkey,
+		ManagerPubkey: managerPubkey,
 
 		InternalLedgerURL:   "http://ledger:8899",
 		InternalLedgerWSURL: "ws://ledger:8900",

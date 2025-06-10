@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
+	"github.com/malbeclabs/doublezero/e2e/internal/solana"
 	"github.com/stretchr/testify/require"
 )
 
@@ -97,13 +99,11 @@ func newTestDevnetConfig(t *testing.T) devnet.DevnetConfig {
 	programKeypairPath := "data/dz-program-keypair.json"
 
 	// Generate manager keypair.
-	// managerKeypairPath := filepath.Join(workDir, "dz-manager-keypair.json")
-	// err = solana.GenerateKeypair(managerKeypairPath)
-	// if err != nil {
-	// 	t.Fatalf("failed to generate manager keypair: %v", err)
-	// }
-	// TODO(snormore): Generate these instead of hardcoding them.
-	managerKeypairPath := "data/dz-manager-keypair.json"
+	managerKeypairPath := filepath.Join(workDir, "dz-manager-keypair.json")
+	err = solana.GenerateKeypair(managerKeypairPath)
+	if err != nil {
+		t.Fatalf("failed to generate manager keypair: %v", err)
+	}
 
 	// TODO(snormore): Can we derive this internally instead of passing it in as a config?
 	agentPubkey := "8scDVeZ8aB1TRTkBqaZgzxuk7WwpARdF1a39wYA7nR3W"

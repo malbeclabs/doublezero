@@ -90,8 +90,10 @@ func checkMulticastPublisherPostConnect(t *testing.T, log *slog.Logger, dn *devn
 		{
 			name:        "doublezero_multicast_group_list",
 			fixturePath: "fixtures/multicast_publisher/doublezero_multicast_group_list.tmpl",
-			data:        map[string]string{},
-			cmd:         []string{"doublezero", "multicast", "group", "list"},
+			data: map[string]string{
+				"ManagerPubkey": dn.ManagerPubkey,
+			},
+			cmd: []string{"doublezero", "multicast", "group", "list"},
 		},
 		{
 			name:        "doublezero_status",
@@ -183,7 +185,8 @@ func checkMulticastPublisherPostConnect(t *testing.T, log *slog.Logger, dn *devn
 		t.Parallel()
 
 		// Send single ping to simulate multicast traffic
-		_, err := client.Exec(t.Context(), []string{"bash", "-c", "ping -c 1 -w 5 233.84.178.0"})
+		// TODO(snormore): Figure out why this ping is failing.
+		_, err := client.Exec(t.Context(), []string{"bash", "-c", "ping -c 1 -w 1 233.84.178.0"})
 		require.NoError(t, err, "error sending ping to multicast group")
 
 		mroutes, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPMroute](t.Context(), device, arista.ShowIPMrouteCmd())

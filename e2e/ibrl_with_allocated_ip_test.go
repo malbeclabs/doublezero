@@ -110,8 +110,8 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, log *slog.Logger, dn *dev
 			name:        "doublezero_device_list",
 			fixturePath: "fixtures/ibrl_with_allocated_addr/doublezero_device_list.tmpl",
 			data: map[string]string{
-				"DeviceIP":            device.InternalCYOAIP,
-				"ClientPubkeyAddress": client.PubkeyAddress,
+				"DeviceIP":      device.InternalCYOAIP,
+				"ManagerPubkey": dn.ManagerPubkey,
 			},
 			cmd: []string{"doublezero", "device", "list"},
 		},

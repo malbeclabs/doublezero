@@ -1,28 +1,19 @@
 # Supporting Simultaneous Tunnels
 
-Use this template when proposing any substantive change to the DoubleZero project. Replace each guideline paragraph with the content for your proposal while preserving the section headings.
-
----
-
 ## Summary
 
-*Brief, self‑contained overview of the proposal.*
-Explain **what** the feature is and **why** it is worth adding in one or two short paragraphs. A reader should understand the essence of the idea and its expected benefit without reading further details.
+DoubleZero needs to support simultaneous tunnels of the same or different types.
 
 ## Motivation
 
-*Why we need this change now.*
-Describe the problem or limitation that exists today, who is affected, and any data or examples that illustrate the pain point. Clarify how the proposed feature advances project goals (performance, usability, security, ecosystem growth, etc.).
-
+Simultaneous tunnel support is required now that DoubleZero supports IBRL and multicast.
 ## New Terminology
 
-*Glossary of any new or overloaded terms.*
-List and define new words, acronyms, or protocol messages introduced by this RFC. Keep each definition concise and unambiguous so reviewers share a common vocabulary.
+*
 
 ## Alternatives Considered
 
-*Other ways the problem might be solved.*
-Outline the main competing approaches (including “do nothing”) and briefly state their advantages and disadvantages. This demonstrates due diligence and helps reviewers weigh trade‑offs.
+
 
 ## Detailed Design
 
@@ -39,6 +30,10 @@ Provide enough detail for someone to implement the feature:
 ## Impact
 
 *Consequences of adopting this RFC.*
+
+* We could start the migration away from Ansible to do configuration and move more toward putting logic in the controller.
+*
+
 Discuss effects on:
 
 * Existing codebase (modules touched, refactors required)
@@ -54,17 +49,13 @@ Identify new attack surfaces, trust boundaries, or privacy issues introduced by 
 
 ## Backwards Compatibility
 
-*Interaction with existing deployments.*
-Explain whether current nodes, data, or integrations continue to work unchanged. If not, spell out migration paths, feature gates, version negotiation, or deprecation timelines.
+New logic will introduce a breaking change as this RFC covers the initial rollout of multicast. This release will be tagged with a minor version of 0.2.0 to signify the breaking change.
 
 ## Open Questions
 
-*Items that still need resolution.*
-List outstanding issues, research tasks, or decisions deferred to later milestones. This section helps reviewers focus feedback and signals areas where contributions are welcomed.
 
----
 
-*End of template. Delete all instructional text (italicized sentences and bullet guidance) when submitting your RFC.*
+
 
 
 ## NOTES

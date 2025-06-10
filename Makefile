@@ -4,7 +4,7 @@ LDFLAGS=
 
 .PHONY: test
 test:
-	go test ./... -race -v -coverprofile coverage.out
+	go test -exec sudo -race -v ./...
 	$(MAKE) test-e2e
 	cargo test --workspace --all-features
 

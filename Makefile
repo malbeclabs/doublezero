@@ -5,12 +5,15 @@ LDFLAGS=
 .PHONY: test
 test:
 	go test -exec "sudo -E" -race -v ./...
-	$(MAKE) test-e2e
+	$(MAKE) test-containerized
 	cargo test --workspace --all-features
+
+.PHONY: test-containerized
+test-containerized:
+	cd client/doublezerod && $(MAKE) test
 
 .PHONY: test-e2e
 test-e2e:
-	go run tools/e2e-test/main.go
 	cd e2e && $(MAKE) test
 
 .PHONY: lint

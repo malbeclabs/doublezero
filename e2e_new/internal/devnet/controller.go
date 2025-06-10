@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/network"
+	"github.com/docker/go-connections/nat"
 	"github.com/malbeclabs/doublezero/e2e_new/internal/logging"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -16,6 +16,10 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
+)
+
+const (
+	internalControllerPort = 7000
 )
 
 func (d *Devnet) GetAgentConfigViaController(ctx context.Context) (*pb.ConfigResponse, error) {
@@ -49,45 +53,19 @@ func (d *Devnet) GetAgentConfigViaController(ctx context.Context) (*pb.ConfigRes
 func (d *Devnet) startController(ctx context.Context) error {
 	d.log.Info("==> Starting controller")
 
-	// Construct an IP address for the controller on the CYOA network subnet, the x.y.z.85 address.
-	parsedIP, _, err := net.ParseCIDR(d.CYOANetworkCIDR)
-	if err != nil {
-		return fmt.Errorf("failed to parse CYOA network subnet: %w", err)
-	}
-	ip4 := parsedIP.To4()
-	d.log.Info("--> Controller IP parsed", "ip", ip4)
-	if ip4 == nil {
-		return fmt.Errorf("failed to parse CYOA network subnet as IPv4")
-	}
-	ip4[3] = 85
-	ip := ip4.String()
-	d.log.Info("--> Controller IP selected", "ip", ip)
-
 	req := testcontainers.ContainerRequest{
 		Image:        d.config.ControllerImage,
 		Name:         d.config.DeployID + "-controller",
-		ExposedPorts: []string{"7000/tcp"},
+		ExposedPorts: []string{fmt.Sprintf("%d/tcp", internalControllerPort)},
 		WaitingFor:   wait.ForExposedPort(),
 		Env: map[string]string{
 			"DZ_LEDGER_URL": d.InternalLedgerURL,
 			"DZ_PROGRAM_ID": d.ProgramID,
 			"DZ_DEVICE_IP":  d.devices["ny5-dz01"].InternalCYOAIP,
 		},
-		Networks: []string{d.defaultNetwork.Name, d.cyoaNetwork.Name},
+		Networks: []string{d.defaultNetwork.Name},
 		NetworkAliases: map[string][]string{
 			d.defaultNetwork.Name: {"controller"},
-			d.cyoaNetwork.Name:    {"controller"},
-		},
-		// NOTE: We need to set a specific IP address for the controller on the CYOA network for
-		// the component to be reachable. Otherwise, routing does not work.
-		EndpointSettingsModifier: func(m map[string]*network.EndpointSettings) {
-			if m[d.cyoaNetwork.Name] == nil {
-				m[d.cyoaNetwork.Name] = &network.EndpointSettings{}
-			}
-			m[d.cyoaNetwork.Name].IPAddress = ip
-			m[d.cyoaNetwork.Name].IPAMConfig = &network.EndpointIPAMConfig{
-				IPv4Address: ip,
-			}
 		},
 		// NOTE: We intentionally use the deprecated Resources field here instead of the HostConfigModifier
 		// because the latter has issues with setting SHM memory and other constraints to 0, which can cause
@@ -106,20 +84,15 @@ func (d *Devnet) startController(ctx context.Context) error {
 		return fmt.Errorf("failed to start controller: %w", err)
 	}
 
-	// Get the controller's IP address.
-	ip, err = d.getContainerIPOnNetwork(ctx, container, d.cyoaNetwork.Name)
-	if err != nil {
-		return fmt.Errorf("failed to get controller IP address: %w", err)
-	}
-	d.InternalControllerAddr = net.JoinHostPort(ip, "7000")
-
 	// Get the controller's public/host-exposed port.
-	port, err := container.MappedPort(ctx, "7000/tcp")
+	port, err := container.MappedPort(ctx, nat.Port(fmt.Sprintf("%d/tcp", internalControllerPort)))
 	if err != nil {
 		return fmt.Errorf("failed to get controller port: %w", err)
 	}
 	d.ExternalControllerPort = port.Int()
 
-	d.log.Info("--> Controller started", "container", shortContainerID(container.GetContainerID()), "internalAddrOnCYOA", d.InternalControllerAddr, "externalPort", d.ExternalControllerPort)
+	d.controller = container
+
+	d.log.Info("--> Controller started", "container", shortContainerID(container.GetContainerID()), "externalPort", d.ExternalControllerPort)
 	return nil
 }

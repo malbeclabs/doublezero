@@ -54,10 +54,6 @@ interface Ethernet1
    no switchport
    ip address ${DZ_DEVICE_IP}/29
 !
-interface Ethernet2
-   no switchport
-   ip address dhcp
-!
 interface Management0
    shutdown
 !

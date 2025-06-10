@@ -185,9 +185,6 @@ func startSingleDeviceSingleClientDevnet(t *testing.T, log *slog.Logger) (*devne
 	require.NoError(t, err)
 	t.Cleanup(devnet.Close)
 
-	_, err = devnet.CreateCYOANetwork(ctx)
-	require.NoError(t, err)
-
 	err = devnet.StartControlPlane(ctx)
 	require.NoError(t, err)
 

@@ -47,7 +47,7 @@ func (d *Devnet) StartClient(ctx context.Context, device *Device) (*Client, erro
 	}
 
 	// Construct an IP address for the client on the CYOA network subnet, the x.y.z.86 address.
-	parsedIP, _, err := net.ParseCIDR(d.CYOANetworkCIDR)
+	parsedIP, _, err := net.ParseCIDR(device.CYOASubnetCIDR)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse CYOA network subnet: %w", err)
 	}
@@ -81,14 +81,14 @@ func (d *Devnet) StartClient(ctx context.Context, device *Device) (*Client, erro
 		},
 		Networks: []string{
 			d.defaultNetwork.Name,
-			d.cyoaNetwork.Name,
+			device.CYOANetwork.Name,
 		},
 		EndpointSettingsModifier: func(m map[string]*network.EndpointSettings) {
-			if m[d.cyoaNetwork.Name] == nil {
-				m[d.cyoaNetwork.Name] = &network.EndpointSettings{}
+			if m[device.CYOANetwork.Name] == nil {
+				m[device.CYOANetwork.Name] = &network.EndpointSettings{}
 			}
-			m[d.cyoaNetwork.Name].IPAddress = ip
-			m[d.cyoaNetwork.Name].IPAMConfig = &network.EndpointIPAMConfig{
+			m[device.CYOANetwork.Name].IPAddress = ip
+			m[device.CYOANetwork.Name].IPAMConfig = &network.EndpointIPAMConfig{
 				IPv4Address: ip,
 			}
 		},
@@ -103,7 +103,7 @@ func (d *Devnet) StartClient(ctx context.Context, device *Device) (*Client, erro
 	}
 
 	// Get the client's IP address on the CYOA network.
-	ip, err = d.getContainerIPOnNetwork(ctx, container, d.cyoaNetwork.Name)
+	ip, err = d.getContainerIPOnNetwork(ctx, container, device.CYOANetwork.Name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get container IP on CYOA network: %w", err)
 	}

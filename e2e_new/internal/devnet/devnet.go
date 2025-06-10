@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/network"
 	"github.com/malbeclabs/doublezero/e2e_new/internal/logging"
 	"github.com/malbeclabs/doublezero/e2e_new/internal/solana"
 	"github.com/testcontainers/testcontainers-go"
@@ -34,9 +33,8 @@ type Devnet struct {
 	log    *slog.Logger
 	config DevnetConfig
 
-	InternalLedgerURL      string
-	InternalLedgerWSURL    string
-	InternalControllerAddr string
+	InternalLedgerURL   string
+	InternalLedgerWSURL string
 
 	ExternalControllerPort int
 	ExternalControllerHost string
@@ -45,13 +43,12 @@ type Devnet struct {
 	AgentPubkey string
 	ProgramID   string
 
-	defaultNetwork  *testcontainers.DockerNetwork
-	cyoaNetwork     *testcontainers.DockerNetwork
-	CYOANetworkCIDR string
+	defaultNetwork *testcontainers.DockerNetwork
 
-	manager testcontainers.Container
-	devices map[string]Device
-	clients map[string]Client
+	controller testcontainers.Container
+	manager    testcontainers.Container
+	devices    map[string]Device
+	clients    map[string]Client
 }
 
 func New(config DevnetConfig) (*Devnet, error) {
@@ -79,11 +76,6 @@ func New(config DevnetConfig) (*Devnet, error) {
 
 		InternalLedgerURL:   "http://ledger:8899",
 		InternalLedgerWSURL: "ws://ledger:8900",
-
-		// This will be set after the controller is started, and must be the IP of the controller,
-		// because the device container cannot resolve docker DNS (it removes resolve.conf and uses
-		// dnsmasq instead).
-		InternalControllerAddr: "",
 
 		// This is set after the controller container is started, because the host-exposed port is
 		// random.
@@ -119,39 +111,6 @@ func (d *Devnet) CreateDefaultNetwork(ctx context.Context) (*testcontainers.Dock
 	d.defaultNetwork = network
 
 	d.log.Info("--> Default network created", "network", network.Name)
-
-	return network, nil
-}
-
-func (d *Devnet) CreateCYOANetwork(ctx context.Context) (*testcontainers.DockerNetwork, error) {
-	d.log.Info("==> Creating CYOA network")
-
-	// Get an available subnet.
-	subnetCIDR, err := d.config.SubnetAllocator.FindAvailableSubnet(ctx, d.config.DeployID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get available subnet: %w", err)
-	}
-	d.log.Info("--> CYOA network subnet selected", "subnet", subnetCIDR)
-
-	// Create CYOA network.
-	network, err := tcnetwork.New(ctx,
-		tcnetwork.WithDriver("bridge"),
-		tcnetwork.WithAttachable(),
-		tcnetwork.WithInternal(),
-		tcnetwork.WithIPAM(&network.IPAM{
-			Config: []network.IPAMConfig{
-				{Subnet: subnetCIDR},
-			},
-		}),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create CYOA network: %w", err)
-	}
-
-	d.cyoaNetwork = network
-	d.CYOANetworkCIDR = subnetCIDR
-
-	d.log.Info("--> CYOA network created", "network", network.Name, "subnet", subnetCIDR)
 
 	return network, nil
 }
@@ -232,7 +191,6 @@ func (d *Devnet) startLedger(ctx context.Context) error {
 		Networks: []string{d.defaultNetwork.Name},
 		NetworkAliases: map[string][]string{
 			d.defaultNetwork.Name: {"ledger"},
-			d.cyoaNetwork.Name:    {"ledger"},
 		},
 		// NOTE: We intentionally use the deprecated Resources field here instead of the HostConfigModifier
 		// because the latter has issues with setting SHM memory and other constraints to 0, which can cause
@@ -280,10 +238,9 @@ func (d *Devnet) startManager(ctx context.Context) error {
 				ContainerFilePath: containerProgramKeypairPath,
 			},
 		},
-		Networks: []string{d.defaultNetwork.Name, d.cyoaNetwork.Name},
+		Networks: []string{d.defaultNetwork.Name},
 		NetworkAliases: map[string][]string{
 			d.defaultNetwork.Name: {"manager"},
-			d.cyoaNetwork.Name:    {"manager"},
 		},
 		// NOTE: We intentionally use the deprecated Resources field here instead of the HostConfigModifier
 		// because the latter has issues with setting SHM memory and other constraints to 0, which can cause
@@ -391,10 +348,9 @@ func (d *Devnet) startActivator(ctx context.Context) error {
 				ContainerFilePath: containerManagerKeypairPath,
 			},
 		},
-		Networks: []string{d.defaultNetwork.Name, d.cyoaNetwork.Name},
+		Networks: []string{d.defaultNetwork.Name},
 		NetworkAliases: map[string][]string{
 			d.defaultNetwork.Name: {"activator"},
-			d.cyoaNetwork.Name:    {"activator"},
 		},
 		// NOTE: We intentionally use the deprecated Resources field here instead of the HostConfigModifier
 		// because the latter has issues with setting SHM memory and other constraints to 0, which can cause

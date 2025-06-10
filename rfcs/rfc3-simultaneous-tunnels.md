@@ -9,15 +9,9 @@ DoubleZero needs to support multiple tunnels of the same or different types. Cur
 Multiple tunnel support is required now that DoubleZero supports IBRL and multicast. In fact, multicast can not be publicly released wthout multiple tunnel support.  
 ## New Terminology
 
-*
-
 ## Alternatives Considered
 
-
-
 ## Detailed Design
-
-
 
 ```mermaid
 zenuml
@@ -40,9 +34,8 @@ classDiagram
       Pubkey owner
       Pubkey device_pk
       string name
-      IpV4Inet[] ip4_addresses
+      IpV4Inet ip4_addr
       bool tunnel_termination
-      
     }
     class Device {
         AccountType account_type
@@ -69,12 +62,9 @@ IPs will be assigned from a general pool of IP addresses. These IP addresses wil
 
  ### Service Changes
 
-
-
-Supporting multiple tunnels
-
 #### CLI
-The CLI currently selects the tunnel termination endpoint for a user connection based on min(latency) across all DZDs. In the event there is an existing tunnel terminated on the DZD, we need to select the next best endpoint on the same DZD. 
+1. The CLI currently selects the tunnel termination endpoint for a user connection based on min(latency) across all DZDs. In the event there is an existing tunnel terminated on the DZD, we need to select the next best endpoint on the same DZD. 
+2. We need to be able to display interfaces listed on-chain via `doublezero interfaces list` or some derivative command. 
 
 #### Daemon
 Latency probing changes are needed for this as the current implementation looks at the public_ip field of device record to probe each DZD:
@@ -91,26 +81,10 @@ Latency probing changes are needed for this as the current implementation looks 
     * can a user set their own termination "points" etc
 
 #### Controller
-* *optional*: configuration for tunnel termination loopbacks generated in 
-The smart contract will need to own the issuing of IPs. The IP's usage is agnostic from the smart contract's perspective. All it needs to do is assign the IP that is associated with a particular interface. 
-o etc
-* registct
-The immediate impact will be the rollout of multicast support, the v0.2.0 release for DoubleZeroC. Non-*
+* *optional*: configuration for tunnel termination loopbacks generated in device template
 
-* Functional simultaneous tunnels of
-* 
-
-Discuss effects on:
-
-* Existing codebase (modules touched, refactors required)
-* Operational complexity (deployment, monitoring, costs)
-* Performance (throughput, latency, resource usage)
-* User experience or documentation
-  Quantify impacts where possible; note any Supporting multip e tunnels shouldn't change the security posxure as the same security practices are inherited. pected ROI.
 
 ## Security Considerations
-
-
 
 *Threat analysis and mitigations.*
 Identify new attack surfaces, trust boundaries, or privacy issues introduced by the change. Describe how each risk is prevented, detected, or accepted and reference relevant best practices.
@@ -121,4 +95,10 @@ New logic will introduce a breaking change as this RFC covers the initial rollou
 
 ## Open Questions
 
+Discuss effects on:
 
+* Existing codebase (modules touched, refactors required)
+* Operational complexity (deployment, monitoring, costs)
+* Performance (throughput, latency, resource usage)
+* User experience or documentation
+  Quantify impacts where possible; note any Supporting multip e tunnels shouldn't change the security posxure as the same security practices are inherited. pected ROI.

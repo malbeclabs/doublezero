@@ -31,6 +31,7 @@ func TestE2E_IBRL(t *testing.T) {
 		checkIBRLPostConnect(t, log, devnet, device, client)
 	}) {
 		t.Fail()
+		return
 	}
 
 	if !t.Run("disconnect", func(t *testing.T) {

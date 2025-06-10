@@ -33,6 +33,7 @@ func TestE2E_IBRL_WithAllocatedIP(t *testing.T) {
 		checkIBRLWithAllocatedIPPostConnect(t, log, dn, device, client)
 	}) {
 		t.Fail()
+		return
 	}
 
 	if !t.Run("disconnect", func(t *testing.T) {

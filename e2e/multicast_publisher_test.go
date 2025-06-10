@@ -31,6 +31,7 @@ func TestE2E_Multicast_Publisher(t *testing.T) {
 		checkMulticastPublisherPostConnect(t, log, devnet, device, client)
 	}) {
 		t.Fail()
+		return
 	}
 
 	if !t.Run("disconnect", func(t *testing.T) {

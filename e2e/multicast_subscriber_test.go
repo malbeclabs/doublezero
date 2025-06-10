@@ -32,6 +32,7 @@ func TestE2E_Multicast_Subscriber(t *testing.T) {
 		checkMulticastSubscriberPostConnect(t, log, devnet, device, client)
 	}) {
 		t.Fail()
+		return
 	}
 
 	if !t.Run("disconnect", func(t *testing.T) {

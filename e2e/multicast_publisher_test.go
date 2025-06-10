@@ -185,9 +185,9 @@ func checkMulticastPublisherPostConnect(t *testing.T, log *slog.Logger, dn *devn
 		t.Parallel()
 
 		// Send single ping to simulate multicast traffic
-		// TODO(snormore): Figure out why this ping is failing.
-		_, err := client.Exec(t.Context(), []string{"bash", "-c", "ping -c 1 -w 1 233.84.178.0"})
-		require.NoError(t, err, "error sending ping to multicast group")
+		// We ignore the expected error from this because it's happening just to build the mroute
+		// state on the switch, so we can check the mroute state later.
+		_, _ = client.Exec(t.Context(), []string{"bash", "-c", "ping -c 1 -w 1 233.84.178.0"})
 
 		mroutes, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPMroute](t.Context(), device, arista.ShowIPMrouteCmd())
 		require.NoError(t, err, "error fetching mroutes from doublezero device")

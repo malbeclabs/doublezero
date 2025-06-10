@@ -28,6 +28,10 @@ jobs:
       BUILDKIT_PROGRESS: plain
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
       - name: Login to docker
         uses: docker/login-action@v3
         with:

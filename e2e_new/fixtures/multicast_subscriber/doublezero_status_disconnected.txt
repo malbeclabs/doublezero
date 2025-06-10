@@ -1,2 +1,0 @@
- Tunnel status | Last Session Update | Tunnel Name | Tunnel src | Tunnel dst | Doublezero IP | User Type
- disconnected  | no session data     |             |            |            |               |

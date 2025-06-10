@@ -6,9 +6,32 @@ GIT_SHA:=`git rev-parse --short HEAD`
 # Enabled by default on mac, but not always on linux.
 export DOCKER_BUILDKIT=1
 
-.PHONY: eos
-eos:
-	docker build --build-arg CONFIG=e2e/fixtures/doublezero_device_startup_config_base.txt -f Dockerfile.eos -t agent:$(GIT_SHA) ../.
+.PHONY: build
+build:
+	bash scripts/build-docker-images.sh
+
+# -----------------------------------------------------------------------------
+# Run the e2e tests.
+#
+# This will build the docker images first, so it's not necessary to run `build`
+# before running `test`.
+# -----------------------------------------------------------------------------
+.PHONY: test
+test: build
+	go test -v -tags=e2e
+
+# -----------------------------------------------------------------------------
+# Solana image build and push.
+#
+# This is not required to run for the e2e tests, because it is expected that
+# the solana image is already built and pushed to the container registry.
+#
+# If you need to rebuild the solana image, you can do that with the `buildx-solana`
+# command, and then push it to the container registry with the
+# `buildx-solana-push` command.
+#
+# The solana image is used by the e2e tests to run the solana validator.
+# -----------------------------------------------------------------------------
 
 .PHONY: .setup-multiplatform
 .setup-multiplatform:
@@ -16,21 +39,8 @@ eos:
 
 .PHONY: buildx-solana
 buildx-solana: .setup-multiplatform
-	docker buildx build --platform linux/amd64,linux/arm64 -f Dockerfile.solana -t $(TAG_PREFIX)/solana:latest .
+	docker buildx build --platform linux/amd64,linux/arm64 -f docker/solana/Dockerfile -t $(TAG_PREFIX)/solana:latest .
 
 .PHONY: buildx-solana-push
 buildx-solana-push: .setup-multiplatform
-	docker buildx build --platform linux/amd64,linux/arm64 -f Dockerfile.solana -t $(TAG_PREFIX)/solana:latest --push .
-
-.PHONY: build
-build: eos
-	docker build -f Dockerfile -t $(TAG_PREFIX)/$(TAG):$(GIT_SHA) ../.
-
-.PHONY: test
-test: build
-	bash bootstrap.sh
-
-.PHONY: clean
-clean:
-	docker rmi $(TAG_PREFIX)/$(TAG):$(GIT_SHA)
-	docker rmi agent:$(GIT_SHA)
+	docker buildx build --platform linux/amd64,linux/arm64 -f docker/solana/Dockerfile -t $(TAG_PREFIX)/solana:latest --push .

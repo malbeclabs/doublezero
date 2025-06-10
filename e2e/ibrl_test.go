@@ -159,22 +159,30 @@ func checkIBRLPostConnect(t *testing.T, log *slog.Logger, dn *devnet.Devnet, dev
 	if !t.Run("check_learned_route_installed", func(t *testing.T) {
 		t.Parallel()
 
-		// TODO(snormore): Figure out why this sleep is needed, and consider using a poll-wait instead.
-		time.Sleep(3 * time.Second)
-
-		routes, err := client.ExecReturnJSONList(t.Context(), []string{
-			"bash", "-c", "ip -j route show table main",
-		})
-		require.NoError(t, err)
-
 		var matchingRoute map[string]any
-		for _, route := range routes {
-			if dst, ok := route["dst"].(string); ok && dst == "8.8.8.8" {
-				matchingRoute = route
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			routes, err := client.ExecReturnJSONList(t.Context(), []string{
+				"bash", "-c", "ip -j route show table main",
+			})
+			require.NoError(t, err)
+
+			for _, route := range routes {
+				if dst, ok := route["dst"].(string); ok && dst == "8.8.8.8" {
+					matchingRoute = route
+					break
+				}
+			}
+
+			if matchingRoute != nil {
 				break
 			}
+
+			log.Info("no route to 8.8.8.8 found, retrying...", "routes", routes)
+
+			time.Sleep(1 * time.Second)
 		}
-		require.NotNil(t, matchingRoute, "no route to 8.8.8.8 found in: %+v", routes)
+		require.NotNil(t, matchingRoute, "no route to 8.8.8.8 found")
 
 		require.Equal(t, "8.8.8.8", matchingRoute["dst"])
 		require.Equal(t, "169.254.0.0", matchingRoute["gateway"])

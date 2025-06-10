@@ -20,15 +20,7 @@ Multiple tunnel support is required now that DoubleZero supports IBRL and multic
 
 ## Detailed Design
 
-```mermaid
-zenuml
-    title Simultaneous Tunnel Creation
-    CLI->John: Hello John, how are you?
-    John->Alice: Great!
-    Alice->John: See you later!
-
-
-```
+TBX
 
 ### Data Structure Changes
 
@@ -79,14 +71,10 @@ Latency probing changes are needed for this as the current implementation looks 
   4. Store results as <Device: Interface: LatencyResult> and serve via /latency endpoint for CLI
 
 #### Activator
-The logic for assigning an IP will need to be modified to account for `n` > 1 IPs instead of just the first IP available. The smart contract will ned to
+* Logic for assigning an IP will need to be modified to account for `n` > 1 IPs instead of just the first IP available
+* Smart contract will need to be amended to associate `n` > 1 interfaces with a particular device
+* Initial bootstrapping of a device may have to be revisited
 
-
-* check to see logic around which dz prefixes are chosen
-* logic that change; currently first ip now we need >1 and changes reflected on the table
-* initial device bootstrapping needs to be considered
-    * where/how do you allocate
-    * can a user set their own termination "points" etc
 
 #### Controller
 * *optional*: configuration for tunnel termination loopbacks generated in device template
@@ -107,4 +95,4 @@ New logic will introduce a breaking change as this RFC covers the initial rollou
 * While not necessary for this initial multiple tunnels RFC, should logic be added to the controller to start handling some of the ansible functionality?
 * Updating the smart contract seems non-trivial; must it be this way or are there things that can reduce the friction to smart contract changes?
 * What kind of data validation / sanitization is required to ensure that bad data isn't entered? In a SQL db, indexes can be used (or am ORM) to ensure data confirms but not sure what kind of on-chain validation can or should be done.
-
+* Should a user be able to provide their own "termination point" or should it be assigned by DoubleZero? To start, it makes sense to not allow this but is this functionality that a user would want?

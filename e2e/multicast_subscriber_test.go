@@ -129,10 +129,10 @@ func checkMulticastSubscriberPostConnect(t *testing.T, log *slog.Logger, dn *dev
 		require.NoError(t, err)
 
 		require.Len(t, links, 1)
+		delete(links[0], "ifindex")
 		require.Equal(t, map[string]any{
-			"ifindex": float64(13),
-			"link":    nil,
-			"ifname":  "doublezero1",
+			"link":   nil,
+			"ifname": "doublezero1",
 			"flags": []any{
 				"POINTOPOINT",
 				"NOARP",

@@ -4,7 +4,7 @@ LDFLAGS=-ldflags "-X=$(PREFIX)/build.Build=$(BUILD)"
 
 .PHONY: test
 test:
-	go test -exec sudo -race -v ./...
+	go test -exec "sudo -E" -race -v ./...
 	$(MAKE) test-e2e
 
 .PHONY: test-e2e

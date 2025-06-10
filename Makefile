@@ -4,7 +4,7 @@ LDFLAGS=
 
 .PHONY: test
 test:
-	go test -exec sudo -race -v ./...
+	go test -exec "sudo -E" -race -v ./...
 	$(MAKE) test-e2e
 	cargo test --workspace --all-features
 

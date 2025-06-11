@@ -110,7 +110,7 @@ func TestCheckConfigChanges(t *testing.T) {
 		{
 			Name:        "diff_found",
 			ExpectError: false,
-			diffCmd:     exec.Command("echo", fmt.Sprintf("If this was not a test I'd run \"show session-config named XXXXX diffs\"")),
+			diffCmd:     exec.Command("echo", fmt.Sprintf("if this was not a test I'd run \"show session-config named XXXXX diffs\"")),
 		},
 		{
 			Name:        "no_diff_found",
@@ -131,10 +131,7 @@ func TestCheckConfigChanges(t *testing.T) {
 	}
 	defer mockClientConn.Close()
 
-	eapiClient, err := NewEapiClient("127.0.0.1:9543", mockClientConn)
-	if err != nil {
-		t.Fatalf("Call to NewEapiClient failed with error %q", err)
-	}
+	eapiClient := NewEapiClient("127.0.0.1:9543", mockClientConn)
 
 	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
@@ -143,17 +140,8 @@ func TestCheckConfigChanges(t *testing.T) {
 	}
 }
 
-func TestNewEapiClient(t *testing.T) {
-	_, err := NewEapiClient("127.0.0.1:9543", nil)
-	if err != nil {
-		t.Errorf("Call to NewEapiClient failed with error %q", err)
-		return
-	}
-}
-
 func TestAddConfigToDevice(t *testing.T) {
 	mockClientConn, err := newMockClientConn()
-
 	if err != nil {
 		log.Printf("Call to newMockClientConn failed with error: %q", err)
 		return
@@ -176,26 +164,14 @@ func TestAddConfigToDevice(t *testing.T) {
 			ClientConn:  mockClientConn,
 			Config:      "blah",
 		},
-		{
-			Name:        "connection_failure",
-			ExpectError: true,
-			Ctx:         context.Background(),
-			Device:      "127.0.0.1:9543",
-			// When ClientConn is set to nil, we will create a new connection.
-			// This will not fail as expected if you have an EOS instance running on 127.0.0.1:9543
-			ClientConn: nil,
-			Config:     "This should blow up",
-		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
-			eapiClient, err := NewEapiClient(test.Device, test.ClientConn)
-			if err != nil {
-				t.Fatalf("Call to NewEapiClient failed with error %q", err)
-			}
+			eapiClient := NewEapiClient(test.Device, test.ClientConn)
+
 			var configSlice []string
-			diffCmd := exec.Command("echo", fmt.Sprintf("If this was not a test I'd run \"show session-config named XXXXX diffs\""))
+			diffCmd := exec.Command("echo", "if this was not a test I'd run \"show session-config named XXXXX diffs\"")
 
 			configSlice, err = eapiClient.AddConfigToDevice(test.Ctx, test.Config, diffCmd, 600)
 
@@ -220,7 +196,6 @@ func TestAddConfigToDevice(t *testing.T) {
 
 func TestGetBgpNeighbors(t *testing.T) {
 	mockClientConn, err := newMockClientConn()
-
 	if err != nil {
 		log.Fatalf("Call to newMockClientConn failed with error: %q", err)
 		return
@@ -251,36 +226,23 @@ func TestGetBgpNeighbors(t *testing.T) {
 			ClientConn:  mockClientConn,
 			Want:        map[string][]string{"default": {"192.168.1.1", "192.168.1.2"}, "vrf1": {"192.168.1.4"}},
 		},
-		{
-			Name:        "connection_failure",
-			ExpectError: true,
-			Ctx:         context.Background(),
-			Device:      "127.0.0.1:9543j",
-			// When ClientConn is set to nil, we will create a new connection.
-			// This will not fail as expected if you have an EOS instance running on 127.0.0.1:9543
-			ClientConn: nil,
-			Want:       nil,
-		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
-			eapiClient, err := NewEapiClient(test.Device, test.ClientConn)
-			if err != nil {
-				t.Errorf("Call to NewEapiClient failed with error %q", err)
-			} else {
-				resp, err := eapiClient.GetBgpNeighbors(test.Ctx)
-				if test.ExpectError {
-					if err == nil {
-						t.Errorf("Should have failed to connect but no error was raised %q", err)
-					}
-				} else if err != nil {
-					t.Errorf("Call to eapiClient.GetBgpNeighbors failed with error: %q", err)
-				} else if len(resp) == 0 {
-					t.Fatalf("Call to eapiClient.GetBgpNeighbors returned empty response")
-				} else if test.Want != nil && !reflect.DeepEqual(test.Want, resp) {
-					t.Errorf("Expected peers to be %s but instead got %s", test.Want, resp)
+			eapiClient := NewEapiClient(test.Device, test.ClientConn)
+
+			resp, err := eapiClient.GetBgpNeighbors(test.Ctx)
+			if test.ExpectError {
+				if err == nil {
+					t.Errorf("Should have failed to connect but no error was raised %q", err)
 				}
+			} else if err != nil {
+				t.Errorf("Call to eapiClient.GetBgpNeighbors failed with error: %q", err)
+			} else if len(resp) == 0 {
+				t.Fatalf("Call to eapiClient.GetBgpNeighbors returned empty response")
+			} else if test.Want != nil && !reflect.DeepEqual(test.Want, resp) {
+				t.Errorf("Expected peers to be %s but instead got %s", test.Want, resp)
 			}
 		})
 	}
@@ -288,7 +250,6 @@ func TestGetBgpNeighbors(t *testing.T) {
 
 func TestClearStaleConfigSessions(t *testing.T) {
 	mockClientConn, err := newMockClientConn()
-
 	if err != nil {
 		log.Fatalf("Call to newMockClientConn failed with error: %q", err)
 		return
@@ -309,21 +270,11 @@ func TestClearStaleConfigSessions(t *testing.T) {
 			Device:      "127.0.0.1:9543",
 			ClientConn:  mockClientConn,
 		},
-		{
-			Name:        "failure",
-			ExpectError: true,
-			Ctx:         context.Background(),
-			Device:      "127.0.0.1:9543",
-			ClientConn:  nil,
-		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
-			eapiClient, err := NewEapiClient(test.Device, test.ClientConn)
-			if err != nil {
-				t.Fatalf("NewEapiClient failed with %q", err)
-			}
+			eapiClient := NewEapiClient(test.Device, test.ClientConn)
 
 			_ = eapiClient.clearStaleConfigSessions(test.Ctx)
 		})

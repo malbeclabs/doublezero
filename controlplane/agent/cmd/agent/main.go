@@ -27,14 +27,9 @@ var (
 	Build   string
 )
 
-func pollControllerAndConfigureDevice(ctx context.Context, dzclient pb.ControllerClient, device *string, pubkey string, verbose *bool, maxLockAge int) error {
-	var eapiClient *agent.EapiClient
+func pollControllerAndConfigureDevice(ctx context.Context, dzclient pb.ControllerClient, eapiClient *agent.EapiClient, pubkey string, verbose *bool, maxLockAge int) error {
 	var err error
 
-	eapiClient, err = agent.NewEapiClient(*device, nil)
-	if err != nil {
-		return err
-	}
 	// The dz controller needs to know what BGP sessions we have configured locally
 	var neighborIpMap map[string][]string
 	neighborIpMap, err = eapiClient.GetBgpNeighbors(ctx)
@@ -97,12 +92,21 @@ func main() {
 
 	ticker := time.NewTicker(time.Duration(*sleepIntervalInSeconds * float64(time.Second)))
 
+	var eapiClient *agent.EapiClient
+
+	clientConn, err := agent.NewClientConn(*device)
+	if err != nil {
+		log.Fatalf("call to NewClientConn failed: %v\n", err)
+	}
+
+	eapiClient = agent.NewEapiClient(*device, clientConn)
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			err := pollControllerAndConfigureDevice(ctx, dzclient, device, *localDevicePubkey, verbose, *maxLockAge)
+			err := pollControllerAndConfigureDevice(ctx, dzclient, eapiClient, *localDevicePubkey, verbose, *maxLockAge)
 			if err != nil {
 				log.Println("ERROR: pollAndConfigureDevice returned", err)
 			}

@@ -66,20 +66,12 @@ func NewClientConn(device string) (*grpc.ClientConn, error) {
 // NewEapiClient creates a new instance of EapiClient with the provided context and device address.
 // If clientConn is set to nil, generate a new clientConn using the specified device. Unit tests can use this
 // to pass in a mock clientConn.
-func NewEapiClient(device string, clientConn *grpc.ClientConn) (*EapiClient, error) {
-	if clientConn == nil {
-		var err error
-		clientConn, err = NewClientConn(device)
-		if err != nil {
-			return nil, fmt.Errorf("call to NewClientConn failed: %w", err)
-		}
-	}
-
+func NewEapiClient(device string, clientConn *grpc.ClientConn) *EapiClient {
 	client := arista.NewEapiMgrServiceClient(clientConn)
 
 	return &EapiClient{
 		Client: client,
-	}, nil
+	}
 }
 
 // Generate a distinguisher that to append to the EOS config session name to make it unique
@@ -257,7 +249,7 @@ func (e *EapiClient) CheckConfigChanges(sessionName string, diffCmd *exec.Cmd) (
 	err := diffCmd.Run()
 
 	if ctx.Err() == context.DeadlineExceeded {
-		return "", fmt.Errorf("Could not get diff because /usr/bin/Cli command timed out after 60 seconds")
+		return "", fmt.Errorf("could not get diff because /usr/bin/Cli command timed out after 60 seconds")
 	}
 
 	if err != nil {
@@ -349,7 +341,6 @@ func (e *EapiClient) GetBgpNeighbors(ctx context.Context) (map[string][]string, 
 
 	neighbors := &ShowBgpNeighborsResponse{}
 	err = json.Unmarshal([]byte(resp.Response.Responses[0]), neighbors)
-
 	// Add error handling to decide which Unmarshal errors should be fatal
 	if err != nil {
 		log.Printf("Warning: json.Unmarshal returned error %v\n", err)

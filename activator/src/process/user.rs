@@ -299,7 +299,7 @@ mod tests {
         AccountType, Device, DeviceStatus, DeviceType, IpV4, MockDoubleZeroClient, User, UserCYOA,
         UserStatus, UserType,
     };
-    use doublezero_sla_program::{
+    use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
         processors::user::{
             activate::UserActivateArgs, ban::UserBanArgs, closeaccount::UserCloseAccountArgs,

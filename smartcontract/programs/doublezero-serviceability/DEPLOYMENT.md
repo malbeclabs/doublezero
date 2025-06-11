@@ -37,8 +37,8 @@ cargo build-sbf
 ```
 
 - This command compiles the program to a `.so` (shared object) file suitable for deployment on Solana and DZ Lager.
-- The output will be located in the `target/deploy/` directory (e.g., `target/deploy/doublezero_sla_program.so`).
-- **Important:** You must ensure that the compiled file is named `doublezero_sla_program.so` and is present in the `./target/deploy` directory before proceeding to deployment. This file is required by the deployment command.
+- The output will be located in the `target/deploy/` directory (e.g., `target/deploy/doublezero_serviceability.so`).
+- **Important:** You must ensure that the compiled file is named `doublezero_serviceability.so` and is present in the `./target/deploy` directory before proceeding to deployment. This file is required by the deployment command.
 
 ## 4. Deploy the Program to DZ Lager
 
@@ -47,12 +47,12 @@ With the program compiled, deploy it to the DZ Lager sidechain using the Solana 
 - RPC = https://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30
 - WS = wss://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30/whirligig
 - Keypair = ~/DZdnB7bhR9azxLAUEH7ZVtW168wRdreiDKhi4McDfKZt.json
-- Binary file = ./target/deploy/doublezero_sla_program.so
+- Binary file = ./target/deploy/doublezero_serviceability.so
 
 ### Command
 
 ```bash
-solana program deploy --program-id ~/DZdnB7bhR9azxLAUEH7ZVtW168wRdreiDKhi4McDfKZt.json target/deploy/doublezero_sla_program.so
+solana program deploy --program-id ~/DZdnB7bhR9azxLAUEH7ZVtW168wRdreiDKhi4McDfKZt.json target/deploy/doublezero_serviceability.so
 ```
 
 ## 5 Next steps

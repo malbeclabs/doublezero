@@ -1,4 +1,4 @@
-use doublezero_sla_program::{
+use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, pda::get_location_pda,
     processors::location::update::LocationUpdateArgs,
 };
@@ -49,7 +49,7 @@ mod tests {
         commands::location::update::UpdateLocationCommand, tests::utils::create_test_client,
         DoubleZeroClient,
     };
-    use doublezero_sla_program::{
+    use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
         pda::{get_globalstate_pda, get_location_pda},
         processors::location::update::LocationUpdateArgs,

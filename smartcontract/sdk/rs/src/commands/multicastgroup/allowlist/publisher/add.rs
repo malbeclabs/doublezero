@@ -1,5 +1,5 @@
 use crate::{commands::multicastgroup::get::GetMulticastGroupCommand, DoubleZeroClient};
-use doublezero_sla_program::{
+use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     processors::multicastgroup::allowlist::publisher::add::AddMulticastGroupPubAllowlistArgs,
 };
@@ -39,7 +39,7 @@ mod tests {
         commands::multicastgroup::allowlist::publisher::add::AddMulticastGroupPubAllowlistCommand,
         tests::utils::create_test_client,
     };
-    use doublezero_sla_program::{
+    use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
         processors::multicastgroup::allowlist::publisher::add::AddMulticastGroupPubAllowlistArgs,
         state::{

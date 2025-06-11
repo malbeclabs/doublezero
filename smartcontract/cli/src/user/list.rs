@@ -43,14 +43,14 @@ pub struct UserDisplay {
     #[tabled(rename = "location")]
     pub location_name: String,
     pub cyoa_type: UserCYOA,
-    #[tabled(display = "doublezero_sla_program::types::ipv4_to_string")]
+    #[tabled(display = "doublezero_serviceability::types::ipv4_to_string")]
     #[serde(serialize_with = "crate::serializer::serialize_ipv4_as_string")]
     pub client_ip: IpV4,
-    #[tabled(display = "doublezero_sla_program::types::ipv4_to_string")]
+    #[tabled(display = "doublezero_serviceability::types::ipv4_to_string")]
     #[serde(serialize_with = "crate::serializer::serialize_ipv4_as_string")]
     pub dz_ip: IpV4,
     pub tunnel_id: u16,
-    #[tabled(display = "doublezero_sla_program::types::networkv4_to_string")]
+    #[tabled(display = "doublezero_serviceability::types::networkv4_to_string")]
     #[serde(serialize_with = "crate::serializer::serialize_networkv4_as_string")]
     pub tunnel_net: NetworkV4,
     pub status: UserStatus,

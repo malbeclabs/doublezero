@@ -1,4 +1,4 @@
-use doublezero_sla_program::{instructions::DoubleZeroInstruction, pda::get_globalstate_pda};
+use doublezero_serviceability::{instructions::DoubleZeroInstruction, pda::get_globalstate_pda};
 use solana_sdk::{instruction::AccountMeta, signature::Signature};
 
 use crate::DoubleZeroClient;

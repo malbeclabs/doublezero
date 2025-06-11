@@ -83,7 +83,7 @@ mod tests {
 
     use super::*;
     use doublezero_sdk::{AccountType, DeviceType};
-    use doublezero_sla_program::{
+    use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
         processors::device::{activate::DeviceActivateArgs, closeaccount::DeviceCloseAccountArgs},
     };

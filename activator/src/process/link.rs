@@ -96,7 +96,7 @@ mod tests {
         tests::utils::{create_test_client, get_tunnel_bump_seed},
     };
     use doublezero_sdk::{AccountType, Link, LinkLinkType, LinkStatus};
-    use doublezero_sla_program::{
+    use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
         processors::link::{
             activate::LinkActivateArgs, closeaccount::LinkCloseAccountArgs, reject::LinkRejectArgs,

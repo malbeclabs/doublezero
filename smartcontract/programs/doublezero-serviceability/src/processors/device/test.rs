@@ -1,33 +1,26 @@
 #[cfg(test)]
-mod user_test {
+mod device_test {
     use crate::{
         entrypoint::*,
         instructions::*,
         pda::*,
         processors::{
-            user::{activate::*, create::*, delete::*, resume::*, suspend::*, update::*},
+            device::{closeaccount::*, create::*, delete::*, resume::*, suspend::*, update::*},
             *,
         },
-    };
-
-    use crate::{
-        state::{
-            accounttype::AccountType,
-            device::*,
-            user::{UserCYOA, UserStatus, UserType},
-        },
+        state::{accounttype::AccountType, device::*},
         tests::test::*,
     };
+    use device::activate::DeviceActivateArgs;
     use globalconfig::set::SetGlobalConfigArgs;
     use solana_program_test::*;
     use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey};
-    use user::closeaccount::UserCloseAccountArgs;
 
     #[tokio::test]
-    async fn test_user() {
+    async fn test_device() {
         let program_id = Pubkey::new_unique();
         let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
-            "doublezero_sla_program",
+            "doublezero_serviceability",
             program_id,
             processor!(process_instruction),
         )
@@ -39,7 +32,7 @@ mod user_test {
 
         let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
-        println!("🟢 1. Global Initialize...");
+        println!("🟢 1. Global Initialization...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
@@ -51,7 +44,7 @@ mod user_test {
         .await;
 
         let (config_pubkey, _) = get_globalconfig_pda(&program_id);
-
+        println!("🟢 2. Set GlobalConfig...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
@@ -72,7 +65,7 @@ mod user_test {
         .await;
 
         /***********************************************************************************************************************************/
-        println!("🟢 2. Create Location...");
+        println!("🟢 3. Create Location...");
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 0);
 
@@ -102,7 +95,7 @@ mod user_test {
         .await;
 
         /***********************************************************************************************************************************/
-        println!("🟢 3. Create Exchange...");
+        println!("🟢 4. Create Exchange...");
 
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 1);
@@ -133,7 +126,7 @@ mod user_test {
 
         /***********************************************************************************************************************************/
         // Device _la
-        println!("🟢 4. Testing Device initialization...");
+        println!("🟢 5. Create Device...");
 
         let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
@@ -147,7 +140,7 @@ mod user_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::CreateDevice(device::create::DeviceCreateArgs {
+            DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
                 index: globalstate_account.account_index + 1,
                 bump_seed,
                 code: "la".to_string(),
@@ -167,22 +160,134 @@ mod user_test {
         )
         .await;
 
+        let device = get_account_data(&mut banks_client, device_pubkey)
+            .await
+            .expect("Unable to get Account")
+            .get_device();
+        assert_eq!(device.account_type, AccountType::Device);
+        assert_eq!(device.code, "la".to_string());
+        assert_eq!(device.status, DeviceStatus::Pending);
+
+        println!("✅ Device initialized successfully",);
+        /*****************************************************************************************************************************************************/
+        println!("🟢 6. Activate Device...");
+
+        execute_transaction(
+            &mut banks_client,
+            recent_blockhash,
+            program_id,
+            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {
+                index: device.index,
+                bump_seed: device.bump_seed,
+            }),
+            vec![
+                AccountMeta::new(device_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
+            &payer,
+        )
+        .await;
+
+        let device = get_account_data(&mut banks_client, device_pubkey)
+            .await
+            .expect("Unable to get Account")
+            .get_device();
+        assert_eq!(device.account_type, AccountType::Device);
+        assert_eq!(device.code, "la".to_string());
+        assert_eq!(device.status, DeviceStatus::Activated);
+
+        println!("✅ Link updated");
+        /*****************************************************************************************************************************************************/
+        println!("🟢 7. Suspend Device...");
+        execute_transaction(
+            &mut banks_client,
+            recent_blockhash,
+            program_id,
+            DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs {
+                index: device.index,
+                bump_seed: device.bump_seed,
+            }),
+            vec![
+                AccountMeta::new(device_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
+            &payer,
+        )
+        .await;
+
         let device_la = get_account_data(&mut banks_client, device_pubkey)
             .await
             .expect("Unable to get Account")
             .get_device();
         assert_eq!(device_la.account_type, AccountType::Device);
-        assert_eq!(device_la.code, "la".to_string());
-        assert_eq!(device_la.status, DeviceStatus::Pending);
+        assert_eq!(device_la.status, DeviceStatus::Suspended);
 
-        println!("✅ Device initialized successfully",);
+        println!("✅ Device suspended");
         /*****************************************************************************************************************************************************/
-        println!("🟢 5. Testing Activate Device...");
+        println!("🟢 8. Resume Device...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::ActivateDevice(device::activate::DeviceActivateArgs {
+            DoubleZeroInstruction::ResumeDevice(DeviceResumeArgs {
+                index: device_la.index,
+                bump_seed: device_la.bump_seed,
+            }),
+            vec![
+                AccountMeta::new(device_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
+            &payer,
+        )
+        .await;
+
+        let device = get_account_data(&mut banks_client, device_pubkey)
+            .await
+            .expect("Unable to get Account")
+            .get_device();
+        assert_eq!(device.account_type, AccountType::Device);
+        assert_eq!(device.status, DeviceStatus::Activated);
+
+        println!("✅ Device resumed");
+        /*****************************************************************************************************************************************************/
+        println!("🟢 9. Update Device...");
+        execute_transaction(
+            &mut banks_client,
+            recent_blockhash,
+            program_id,
+            DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+                index: device.index,
+                bump_seed: device.bump_seed,
+                code: Some("la2".to_string()),
+                device_type: Some(DeviceType::Switch),
+                public_ip: Some([10, 2, 2, 1]),
+                dz_prefixes: Some(vec![([10, 1, 0, 0], 23)]),
+            }),
+            vec![
+                AccountMeta::new(device_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
+            &payer,
+        )
+        .await;
+
+        let device_la = get_account_data(&mut banks_client, device_pubkey)
+            .await
+            .expect("Unable to get Account")
+            .get_device();
+        assert_eq!(device_la.account_type, AccountType::Device);
+        assert_eq!(device_la.code, "la2".to_string());
+        assert_eq!(device_la.public_ip, [10, 2, 2, 1]);
+        assert_eq!(device_la.status, DeviceStatus::Activated);
+
+        println!("✅ Device updated");
+        /*****************************************************************************************************************************************************/
+        println!("🟢 10. Deleting Device...");
+        execute_transaction(
+            &mut banks_client,
+            recent_blockhash,
+            program_id,
+            DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs {
                 index: device_la.index,
                 bump_seed: device_la.bump_seed,
             }),
@@ -199,215 +304,33 @@ mod user_test {
             .expect("Unable to get Account")
             .get_device();
         assert_eq!(device_la.account_type, AccountType::Device);
-        assert_eq!(device_la.status, DeviceStatus::Activated);
+        assert_eq!(device_la.code, "la2".to_string());
+        assert_eq!(device_la.public_ip, [10, 2, 2, 1]);
+        assert_eq!(device_la.status, DeviceStatus::Deleting);
 
-        println!("✅ Device activated successfully");
-        /***********************************************************************************************************************************/
-        // Device _la
-        println!("🟢 6. Testing User creation...");
-        let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-        assert_eq!(globalstate_account.account_index, 3);
-
-        let (user_pubkey, bump_seed) =
-            get_user_pda(&program_id, globalstate_account.account_index + 1);
-
+        /*****************************************************************************************************************************************************/
+        println!("🟢 11. CloseAccount Device...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::CreateUser(UserCreateArgs {
-                index: globalstate_account.account_index + 1,
-                bump_seed,
-                client_ip: [100, 0, 0, 1],
-                user_type: UserType::IBRL,
-                device_pk: device_pubkey,
-                cyoa_type: UserCYOA::GREOverDIA,
+            DoubleZeroInstruction::CloseAccountDevice(DeviceCloseAccountArgs {
+                index: device.index,
+                bump_seed: device.bump_seed,
             }),
             vec![
-                AccountMeta::new(user_pubkey, false),
                 AccountMeta::new(device_pubkey, false),
+                AccountMeta::new(device.owner, false),
                 AccountMeta::new(globalstate_pubkey, false),
             ],
             &payer,
         )
         .await;
 
-        let user = get_account_data(&mut banks_client, user_pubkey)
-            .await
-            .expect("Unable to get Account")
-            .get_user();
-        assert_eq!(user.account_type, AccountType::User);
-        assert_eq!(user.client_ip, [100, 0, 0, 1]);
-        assert_eq!(user.device_pk, device_pubkey);
-        assert_eq!(user.status, UserStatus::Pending);
+        let device_la = get_account_data(&mut banks_client, device_pubkey).await;
+        assert_eq!(device_la, None);
 
-        println!("✅ User created successfully",);
-        /***********************************************************************************************************************************/
-        println!("🟢 7. Testing User activation...");
-
-        execute_transaction(
-            &mut banks_client,
-            recent_blockhash,
-            program_id,
-            DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-                index: user.index,
-                bump_seed: user.bump_seed,
-                tunnel_id: 500,
-                tunnel_net: ([10, 1, 2, 3], 21),
-                dz_ip: [200, 0, 0, 1],
-            }),
-            vec![
-                AccountMeta::new(user_pubkey, false),
-                AccountMeta::new(globalstate_pubkey, false),
-            ],
-            &payer,
-        )
-        .await;
-
-        let user = get_account_data(&mut banks_client, user_pubkey)
-            .await
-            .expect("Unable to get Account")
-            .get_user();
-        assert_eq!(user.account_type, AccountType::User);
-        assert_eq!(user.tunnel_id, 500);
-        assert_eq!(user.tunnel_net, ([10, 1, 2, 3], 21));
-        assert_eq!(user.dz_ip, [200, 0, 0, 1]);
-        assert_eq!(user.status, UserStatus::Activated);
-
-        println!("✅ User created successfully",);
-        /*****************************************************************************************************************************************************/
-        println!("🟢 8. Testing user suspend...");
-        execute_transaction(
-            &mut banks_client,
-            recent_blockhash,
-            program_id,
-            DoubleZeroInstruction::SuspendUser(UserSuspendArgs {
-                index: user.index,
-                bump_seed: user.bump_seed,
-            }),
-            vec![AccountMeta::new(user_pubkey, false)],
-            &payer,
-        )
-        .await;
-
-        let user = get_account_data(&mut banks_client, user_pubkey)
-            .await
-            .expect("Unable to get Account")
-            .get_user();
-        assert_eq!(user.account_type, AccountType::User);
-        assert_eq!(user.status, UserStatus::Suspended);
-
-        println!("✅ User suspended");
-        /*****************************************************************************************************************************************************/
-        println!("🟢 9. Testing User resumed...");
-        execute_transaction(
-            &mut banks_client,
-            recent_blockhash,
-            program_id,
-            DoubleZeroInstruction::ResumeUser(UserResumeArgs {
-                index: user.index,
-                bump_seed: user.bump_seed,
-            }),
-            vec![AccountMeta::new(user_pubkey, false)],
-            &payer,
-        )
-        .await;
-
-        let user = get_account_data(&mut banks_client, user_pubkey)
-            .await
-            .expect("Unable to get Account")
-            .get_user();
-        assert_eq!(user.account_type, AccountType::User);
-        assert_eq!(user.status, UserStatus::Activated);
-
-        println!("✅ User resumed");
-        /*****************************************************************************************************************************************************/
-        println!("🟢 10. Testing User update...");
-        execute_transaction(
-            &mut banks_client,
-            recent_blockhash,
-            program_id,
-            DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
-                index: user.index,
-                bump_seed: user.bump_seed,
-                client_ip: Some([10, 2, 3, 4]),
-                user_type: Some(UserType::IBRL),
-                cyoa_type: Some(UserCYOA::GREOverPrivatePeering),
-                dz_ip: Some([200, 0, 0, 4]),
-                tunnel_id: Some(501),
-                tunnel_net: Some(([10, 1, 2, 4], 22)),
-            }),
-            vec![
-                AccountMeta::new(user_pubkey, false),
-                AccountMeta::new(globalstate_pubkey, false),
-            ],
-            &payer,
-        )
-        .await;
-
-        let user = get_account_data(&mut banks_client, user_pubkey)
-            .await
-            .expect("Unable t get Account")
-            .get_user();
-        assert_eq!(user.account_type, AccountType::User);
-        assert_eq!(user.client_ip, [10, 2, 3, 4]);
-        assert_eq!(user.cyoa_type, UserCYOA::GREOverPrivatePeering);
-        assert_eq!(user.status, UserStatus::Activated);
-
-        println!("✅ User updated");
-        /*****************************************************************************************************************************************************/
-        println!("🟢 11. Testing User deletion...");
-        execute_transaction(
-            &mut banks_client,
-            recent_blockhash,
-            program_id,
-            DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
-                index: user.index,
-                bump_seed: user.bump_seed,
-            }),
-            vec![
-                AccountMeta::new(user_pubkey, false),
-                AccountMeta::new(globalstate_pubkey, false),
-            ],
-            &payer,
-        )
-        .await;
-
-        let user = get_account_data(&mut banks_client, user_pubkey)
-            .await
-            .expect("Unable t get Account")
-            .get_user();
-        assert_eq!(user.account_type, AccountType::User);
-        assert_eq!(user.client_ip, [10, 2, 3, 4]);
-        assert_eq!(user.cyoa_type, UserCYOA::GREOverPrivatePeering);
-        assert_eq!(user.status, UserStatus::Deleting);
-
-        println!("✅ Link deleting");
-
-        /*****************************************************************************************************************************************************/
-        println!("🟢 12. Testing User deactivation...");
-        execute_transaction(
-            &mut banks_client,
-            recent_blockhash,
-            program_id,
-            DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
-                index: user.index,
-                bump_seed: user.bump_seed,
-            }),
-            vec![
-                AccountMeta::new(user_pubkey, false),
-                AccountMeta::new(user.owner, false),
-                AccountMeta::new(globalstate_pubkey, false),
-            ],
-            &payer,
-        )
-        .await;
-
-        let user = get_account_data(&mut banks_client, user_pubkey).await;
-        assert_eq!(user, None);
-
-        println!("✅ Link deleted successfully");
-
+        println!("✅ Device deleted successfully");
         println!("🟢🟢🟢  End test_device  🟢🟢🟢");
     }
 }

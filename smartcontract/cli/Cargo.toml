@@ -35,4 +35,4 @@ tokio.workspace = true
 
 # Dependencies from this workspace
 doublezero_sdk.workspace = true
-doublezero-sla-program.workspace = true
+doublezero-serviceability.workspace = true

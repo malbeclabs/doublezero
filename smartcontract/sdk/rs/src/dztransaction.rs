@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use doublezero_sla_program::instructions::DoubleZeroInstruction;
+use doublezero_serviceability::instructions::DoubleZeroInstruction;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, Clone)]

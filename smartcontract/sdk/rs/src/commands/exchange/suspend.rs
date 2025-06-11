@@ -1,4 +1,4 @@
-use doublezero_sla_program::{
+use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, pda::get_exchange_pda,
     processors::exchange::suspend::ExchangeSuspendArgs,
 };
@@ -37,7 +37,7 @@ mod tests {
         commands::exchange::suspend::SuspendExchangeCommand, tests::utils::create_test_client,
         DoubleZeroClient,
     };
-    use doublezero_sla_program::{
+    use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
         pda::{get_exchange_pda, get_globalstate_pda},
         processors::exchange::suspend::ExchangeSuspendArgs,

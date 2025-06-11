@@ -615,7 +615,7 @@ mod tests {
     use crate::servicecontroller::{LatencyRecord, MockServiceController, ProvisioningResponse};
     use doublezero_cli::{doublezerocommand::MockCliCommand, tests::utils::create_test_client};
     use doublezero_sdk::{tests::utils::create_temp_config, utils::parse_pubkey};
-    use doublezero_sla_program::{
+    use doublezero_serviceability::{
         state::{
             accounttype::AccountType,
             device::{Device, DeviceStatus, DeviceType},

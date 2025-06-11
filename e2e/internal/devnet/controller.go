@@ -61,7 +61,6 @@ func (d *Devnet) startController(ctx context.Context) error {
 		Env: map[string]string{
 			"DZ_LEDGER_URL": d.InternalLedgerURL,
 			"DZ_PROGRAM_ID": d.ProgramID,
-			"DZ_DEVICE_IP":  d.devices["ny5-dz01"].InternalCYOAIP,
 		},
 		Networks: []string{d.defaultNetwork.Name},
 		NetworkAliases: map[string][]string{

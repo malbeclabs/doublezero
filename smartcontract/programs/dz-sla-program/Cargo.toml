@@ -22,3 +22,7 @@ thiserror.workspace = true
 [dev-dependencies]
 solana-sdk.workspace = true
 solana-program-test.workspace = true
+
+[features]
+default = []
+no-entrypoint = []

@@ -6,9 +6,9 @@ mod device_test {
         pda::*,
         processors::multicastgroup::{
             activate::MulticastGroupActivateArgs,
-            allowlist::publisher::{
-                add::AddMulticastGroupPubAllowlistArgs,
-                remove::RemoveMulticastGroupPubAllowlistArgs,
+            allowlist::subscriber::{
+                add::AddMulticastGroupSubAllowlistArgs,
+                remove::RemoveMulticastGroupSubAllowlistArgs,
             },
             create::MulticastGroupCreateArgs,
         },
@@ -19,10 +19,10 @@ mod device_test {
     use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signer::Signer};
 
     #[tokio::test]
-    async fn test_multicast_publisher_allowlist() {
+    async fn test_multicast_subscriber_allowlist() {
         let program_id = Pubkey::new_unique();
         let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
-            "doublezero_sla_program",
+            "doublezero_serviceability",
             program_id,
             processor!(process_instruction),
         )
@@ -130,8 +130,8 @@ mod device_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::AddMulticastGroupPubAllowlist(
-                AddMulticastGroupPubAllowlistArgs {
+            DoubleZeroInstruction::AddMulticastGroupSubAllowlist(
+                AddMulticastGroupSubAllowlistArgs {
                     pubkey: allowlist_pubkey,
                 },
             ),
@@ -146,8 +146,8 @@ mod device_test {
             .get_multicastgroup();
 
         assert_eq!(mgroup.account_type, AccountType::MulticastGroup);
-        assert_eq!(mgroup.pub_allowlist.len(), 1);
-        assert!(mgroup.pub_allowlist.contains(&allowlist_pubkey));
+        assert_eq!(mgroup.sub_allowlist.len(), 1);
+        assert!(mgroup.sub_allowlist.contains(&allowlist_pubkey));
         assert_eq!(mgroup.status, MulticastGroupStatus::Activated);
 
         println!("✅");
@@ -160,8 +160,8 @@ mod device_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::RemoveMulticastGroupPubAllowlist(
-                RemoveMulticastGroupPubAllowlistArgs {
+            DoubleZeroInstruction::RemoveMulticastGroupSubAllowlist(
+                RemoveMulticastGroupSubAllowlistArgs {
                     pubkey: allowlist_pubkey,
                 },
             ),
@@ -176,7 +176,7 @@ mod device_test {
             .get_multicastgroup();
 
         assert_eq!(mgroup.account_type, AccountType::MulticastGroup);
-        assert_eq!(mgroup.pub_allowlist.len(), 0);
+        assert_eq!(mgroup.sub_allowlist.len(), 0);
         assert_eq!(mgroup.status, MulticastGroupStatus::Activated);
 
         println!("✅");

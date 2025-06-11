@@ -1,4 +1,4 @@
-use doublezero_sla_program::{
+use doublezero_serviceability::{
     pda::get_globalconfig_pda,
     state::{accountdata::AccountData, globalconfig::GlobalConfig},
 };

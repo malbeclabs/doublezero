@@ -5,7 +5,7 @@ members = [
     "controlplane/doublezero-admin",
     "smartcontract/cli",
     "smartcontract/sdk/rs",
-    "smartcontract/programs/dz-sla-program",
+    "smartcontract/programs/doublezero-serviceability",
 ]
 default-members = []
 exclude = []
@@ -70,4 +70,4 @@ doublezero = { path = "client/doublezero" }
 doublezero_admin = { path = "controlplane/doublezero-admin" }
 doublezero_cli = { path = "smartcontract/cli" }
 doublezero_sdk = { path = "smartcontract/sdk/rs" }
-doublezero-sla-program = { path = "smartcontract/programs/dz-sla-program" }
+doublezero-serviceability = { path = "smartcontract/programs/doublezero-serviceability" }

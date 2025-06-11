@@ -1,5 +1,5 @@
 use crate::DoubleZeroClient;
-use doublezero_sla_program::state::{
+use doublezero_serviceability::state::{
     accountdata::AccountData, accounttype::AccountType, location::Location,
 };
 use solana_sdk::pubkey::Pubkey;
@@ -29,7 +29,7 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::{commands::location::list::ListLocationCommand, tests::utils::create_test_client};
-    use doublezero_sla_program::state::{
+    use doublezero_serviceability::state::{
         accountdata::AccountData,
         accounttype::AccountType,
         location::{Location, LocationStatus},

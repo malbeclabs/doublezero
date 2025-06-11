@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::DoubleZeroClient;
-use doublezero_sla_program::state::{
+use doublezero_serviceability::state::{
     accountdata::AccountData, accounttype::AccountType, user::User,
 };
 use solana_sdk::pubkey::Pubkey;

@@ -1,4 +1,4 @@
-use doublezero_sla_program::state::{accountdata::AccountData, accounttype::AccountType};
+use doublezero_serviceability::state::{accountdata::AccountData, accounttype::AccountType};
 use solana_sdk::pubkey::Pubkey;
 
 use crate::{utils::parse_pubkey, DoubleZeroClient};
@@ -42,7 +42,7 @@ mod tests {
         commands::multicastgroup::allowlist::publisher::list::ListMulticastGroupPubAllowlistCommand,
         tests::utils::create_test_client,
     };
-    use doublezero_sla_program::{
+    use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
         processors::multicastgroup::allowlist::publisher::add::AddMulticastGroupPubAllowlistArgs,
         state::{

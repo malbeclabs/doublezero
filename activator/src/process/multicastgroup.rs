@@ -93,7 +93,7 @@ mod tests {
         get_multicastgroup_pda, AccountData, AccountType, DoubleZeroClient, MulticastGroup,
         MulticastGroupStatus,
     };
-    use doublezero_sla_program::{
+    use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
         processors::multicastgroup::activate::MulticastGroupActivateArgs,
     };

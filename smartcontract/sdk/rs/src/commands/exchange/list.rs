@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::DoubleZeroClient;
-use doublezero_sla_program::state::{
+use doublezero_serviceability::state::{
     accountdata::AccountData, accounttype::AccountType, exchange::Exchange,
 };
 use solana_sdk::pubkey::Pubkey;
@@ -30,7 +30,7 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::{commands::exchange::list::ListExchangeCommand, tests::utils::create_test_client};
-    use doublezero_sla_program::state::{
+    use doublezero_serviceability::state::{
         accountdata::AccountData,
         accounttype::AccountType,
         exchange::{Exchange, ExchangeStatus},

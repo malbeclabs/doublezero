@@ -47,7 +47,7 @@ RUN --mount=type=cache,target=/cargo \
 # Build all rust components except the Solana program
 RUN --mount=type=cache,target=/cargo \
     --mount=type=cache,target=/target \
-    RUSTFLAGS="-C link-arg=-fuse-ld=mold" cargo build --workspace --release --exclude doublezero-sla-program && \
+    RUSTFLAGS="-C link-arg=-fuse-ld=mold" cargo build --workspace --release --exclude doublezero-serviceability && \
     cp /target/release/doublezero ./bin/ && \
     cp /target/release/doublezero-activator ./bin/ && \
     cp /target/release/doublezero-admin ./bin/
@@ -71,7 +71,7 @@ RUN mkdir -p bin/
 # Pre-fetch and cache rust dependencies
 RUN --mount=type=cache,target=/cargo-sbf \
     --mount=type=cache,target=/target-sbf \
-    cd smartcontract/programs/dz-sla-program && \
+    cd smartcontract/programs/doublezero-serviceability && \
     cargo fetch
 
 # Build the Solana program with build-sbf (rust)
@@ -79,9 +79,9 @@ RUN --mount=type=cache,target=/cargo-sbf \
 RUN --mount=type=cache,target=/cargo-sbf \
     --mount=type=cache,target=/target-sbf \
     --mount=type=cache,target=/root/.cache \
-    cd smartcontract/programs/dz-sla-program && \
+    cd smartcontract/programs/doublezero-serviceability && \
     cargo build-sbf && \
-    cp /target-sbf/deploy/doublezero_sla_program.so /doublezero/bin/doublezero_sla_program.so
+    cp /target-sbf/deploy/doublezero_serviceability.so /doublezero/bin/doublezero_serviceability.so
 
 # -----------------------------------------------------------------------------
 # Go builder

@@ -40,7 +40,7 @@ pub struct LinkDisplay {
     #[tabled(display = "crate::util::display_as_ms", rename = "jitter_ms")]
     pub jitter_ns: u64,
     pub tunnel_id: u16,
-    #[tabled(display = "doublezero_sla_program::types::networkv4_to_string")]
+    #[tabled(display = "doublezero_serviceability::types::networkv4_to_string")]
     #[serde(serialize_with = "crate::serializer::serialize_networkv4_as_string")]
     pub tunnel_net: NetworkV4,
     pub status: LinkStatus,
@@ -109,7 +109,7 @@ mod tests {
     use crate::{link::list::ListLinkCliCommand, tests::utils::create_test_client};
 
     use doublezero_sdk::{Device, DeviceStatus, DeviceType, Link, LinkLinkType, LinkStatus};
-    use doublezero_sla_program::state::accounttype::AccountType;
+    use doublezero_serviceability::state::accounttype::AccountType;
     use solana_sdk::pubkey::Pubkey;
     use std::collections::HashMap;
 

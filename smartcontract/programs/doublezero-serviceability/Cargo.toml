@@ -1,5 +1,5 @@
 [package]
-name = "doublezero-sla-program"
+name = "doublezero-serviceability"
 version = "0.2.0"
 
 # Workspace inherited keys

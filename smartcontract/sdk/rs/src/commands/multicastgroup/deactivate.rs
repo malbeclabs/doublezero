@@ -1,4 +1,4 @@
-use doublezero_sla_program::{
+use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, pda::get_multicastgroup_pda,
     processors::multicastgroup::deactivate::MulticastGroupDeactivateArgs,
 };
@@ -39,7 +39,7 @@ mod tests {
         commands::multicastgroup::deactivate::DeactivateMulticastGroupCommand,
         tests::utils::create_test_client, DoubleZeroClient,
     };
-    use doublezero_sla_program::{
+    use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
         pda::{get_globalstate_pda, get_location_pda},
         processors::multicastgroup::deactivate::MulticastGroupDeactivateArgs,

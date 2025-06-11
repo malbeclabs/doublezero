@@ -63,7 +63,7 @@ mod tests {
         commands::{device::get::GetDeviceCommand, user::create::CreateUserCommand},
         AccountType, Device, DeviceStatus, DeviceType, UserCYOA, UserType,
     };
-    use doublezero_sla_program::pda::get_user_pda;
+    use doublezero_serviceability::pda::get_user_pda;
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 

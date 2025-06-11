@@ -42,10 +42,10 @@ pub struct DeviceDisplay {
     #[tabled(skip)]
     pub exchange_name: String,
     pub device_type: DeviceType,
-    #[tabled(display = "doublezero_sla_program::types::ipv4_to_string")]
+    #[tabled(display = "doublezero_serviceability::types::ipv4_to_string")]
     #[serde(serialize_with = "crate::serializer::serialize_ipv4_as_string")]
     pub public_ip: IpV4,
-    #[tabled(display = "doublezero_sla_program::types::networkv4_list_to_string")]
+    #[tabled(display = "doublezero_serviceability::types::networkv4_list_to_string")]
     #[serde(serialize_with = "crate::serializer::serialize_networkv4list_as_string")]
     pub dz_prefixes: NetworkV4List,
     pub status: DeviceStatus,

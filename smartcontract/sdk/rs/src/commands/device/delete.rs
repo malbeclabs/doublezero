@@ -1,4 +1,4 @@
-use doublezero_sla_program::{
+use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, pda::get_device_pda,
     processors::device::delete::DeviceDeleteArgs,
 };

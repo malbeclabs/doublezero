@@ -1,5 +1,5 @@
 pub mod utils {
-    use doublezero_sla_program::{
+    use doublezero_serviceability::{
         pda::get_globalstate_pda,
         state::{accountdata::AccountData, accounttype::AccountType, globalstate::GlobalState},
     };

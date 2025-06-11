@@ -1,5 +1,5 @@
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
-use doublezero_sla_program::{
+use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, pda::get_location_pda,
     processors::location::create::LocationCreateArgs,
 };
@@ -47,7 +47,7 @@ impl CreateLocationCommand {
 #[cfg(test)]
 mod tests {
     use crate::{tests::utils::create_test_client, CreateLocationCommand, DoubleZeroClient};
-    use doublezero_sla_program::{
+    use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
         pda::{get_globalstate_pda, get_location_pda},
         processors::location::create::LocationCreateArgs,

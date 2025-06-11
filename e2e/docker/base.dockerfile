@@ -18,7 +18,7 @@ RUN apt update -qq && \
     pkg-config \
     mold \
     libudev-dev llvm libclang-dev \
-    protobuf-compiler libssl-dev git iproute2 iputils-ping iproute2 net-tools tcpdump
+    protobuf-compiler libssl-dev git iproute2 iputils-ping net-tools tcpdump
 
 # Install rust
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y

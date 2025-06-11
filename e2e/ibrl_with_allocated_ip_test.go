@@ -13,7 +13,6 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/fixtures"
 	"github.com/malbeclabs/doublezero/e2e/internal/netlink"
-	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -74,7 +73,7 @@ func createMultipleIBRLUsersOnSameDeviceWithAllocatedIPs(t *testing.T, log *slog
 func checkIBRLWithAllocatedIPPostConnect(t *testing.T, log *slog.Logger, dn *devnet.Devnet, device *devnet.Device, client *devnet.Client) {
 	log.Info("==> Checking IBRL with allocated IP post-connect requirements")
 
-	expectedAllocatedClientIP := buildExpectedAllocatedClientIP(t, device.CYOASubnetCIDR)
+	expectedAllocatedClientIP := getNextAllocatedClientIP(device.InternalCYOAIP)
 
 	if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
 		config, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_added.tmpl", map[string]string{
@@ -327,14 +326,4 @@ func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, log *slog.Logger, dn *
 	}
 
 	log.Info("--> IBRL with allocated IP post-disconnect requirements checked")
-}
-
-// Expected client IP address suffix to be allocated to the client during test.
-// This is appended to the device IP to get the expected allocated client IP.
-const expectedAllocatedClientIPLastOctet = 81
-
-func buildExpectedAllocatedClientIP(t *testing.T, cyoaSubnetCIDR string) string {
-	ip, err := netutil.BuildIPInCIDR(cyoaSubnetCIDR, expectedAllocatedClientIPLastOctet)
-	require.NoError(t, err)
-	return ip.String()
 }

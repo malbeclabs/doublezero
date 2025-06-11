@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -351,4 +352,13 @@ func waitForAgentConfigMatchViaController(t *testing.T, dn *devnet.Devnet, devic
 		time.Sleep(2 * time.Second)
 	}
 	return fmt.Errorf("output mismatch: +(want), -(got): %s", diff)
+}
+
+// getNextAllocatedClientIP returns the next allocated client IP address in the subnet based on a
+// given previous IP, by simply incrementing the last octet. This is a naive implementation that
+// does not consider the actual subnet CIDR and will break if used for a lot of IPs.
+func getNextAllocatedClientIP(previousIP string) string {
+	ip := net.ParseIP(previousIP).To4()
+	ip[3]++
+	return ip.String()
 }

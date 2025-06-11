@@ -66,7 +66,7 @@ func disconnectMulticastPublisher(t *testing.T, log *slog.Logger, client *devnet
 func checkMulticastPublisherPostConnect(t *testing.T, log *slog.Logger, dn *devnet.Devnet, device *devnet.Device, client *devnet.Client) {
 	log.Info("==> Checking multicast publisher post-connect requirements")
 
-	expectedAllocatedClientIP := buildExpectedAllocatedClientIP(device.CYOASubnetCIDR)
+	expectedAllocatedClientIP := buildExpectedAllocatedClientIP(t, device.CYOASubnetCIDR)
 
 	if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
 		config, err := fixtures.Render("fixtures/multicast_publisher/doublezero_agent_config_user_added.tmpl", map[string]string{
@@ -75,7 +75,7 @@ func checkMulticastPublisherPostConnect(t *testing.T, log *slog.Logger, dn *devn
 			"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
 		})
 		require.NoError(t, err, "error reading agent configuration fixture")
-		err = waitForAgentConfigMatchViaController(t, dn, string(config))
+		err = waitForAgentConfigMatchViaController(t, dn, device.AgentPubkey, string(config))
 		require.NoError(t, err, "error waiting for agent config to match")
 	}) {
 		t.Fail()
@@ -214,7 +214,7 @@ func checkMulticastPublisherPostDisconnect(t *testing.T, log *slog.Logger, dn *d
 			"DeviceIP": device.InternalCYOAIP,
 		})
 		require.NoError(t, err, "error reading agent configuration fixture")
-		err = waitForAgentConfigMatchViaController(t, dn, string(config))
+		err = waitForAgentConfigMatchViaController(t, dn, device.AgentPubkey, string(config))
 		require.NoError(t, err, "error waiting for agent config to match")
 	}) {
 		t.Fail()

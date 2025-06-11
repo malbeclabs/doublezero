@@ -17,7 +17,6 @@ type DevnetConfig struct {
 
 	ProgramKeypairPath string
 	ManagerKeypairPath string
-	AgentPubkey        string
 
 	LedgerImage     string
 	ControllerImage string
@@ -48,16 +47,6 @@ func (c *DevnetConfig) Validate() error {
 	}
 	if c.DockerClient == nil {
 		return fmt.Errorf("dockerClient is required")
-	}
-
-	if c.ProgramKeypairPath == "" {
-		return fmt.Errorf("programKeypairPath is required")
-	}
-	if c.ManagerKeypairPath == "" {
-		return fmt.Errorf("managerKeypairPath is required")
-	}
-	if c.AgentPubkey == "" {
-		return fmt.Errorf("agentPubkey is required")
 	}
 
 	// All the docker images should be set.

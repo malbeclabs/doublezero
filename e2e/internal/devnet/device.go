@@ -12,6 +12,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
+	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/testcontainers/testcontainers-go"
 	tcexec "github.com/testcontainers/testcontainers-go/exec"
 	tcnetwork "github.com/testcontainers/testcontainers-go/network"
@@ -25,6 +26,7 @@ type Device struct {
 	CYOANetwork      *testcontainers.DockerNetwork
 	CYOASubnetCIDR   string
 	ControllerCYOAIP string
+	AgentPubkey      string
 }
 
 // StartDevice starts a device container and attaches it to the management network.
@@ -37,30 +39,10 @@ type Device struct {
 // If the networks end up attached in the wrong order, this test will fail as the CYOA network
 // will not be attached to Ethernet1. To avoid this, we start the container with the default bridge
 // network attached, then attach the CYOA network to the container.
-func (d *Devnet) StartDevice(t *testing.T, deviceCode string) (*Device, error) {
+func (d *Devnet) StartDevice(t *testing.T, deviceCode string, cyoaNetwork *testcontainers.DockerNetwork, cyoaSubnetCIDR string, deviceCYOAIP string, devicePubKey string) (*Device, error) {
 	ctx := t.Context()
 
 	d.log.Info("==> Starting device", "deviceCode", deviceCode)
-
-	// Create CYOA network.
-	cyoaNetwork, cyoaSubnetCIDR, err := d.createCYOANetwork(ctx, deviceCode)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create CYOA network: %w", err)
-	}
-
-	// Construct an IP address for the device on the CYOA network subnet, the x.y.z.80 address.
-	parsedIP, _, err := net.ParseCIDR(cyoaSubnetCIDR)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse CYOA network subnet: %w", err)
-	}
-	ip4 := parsedIP.To4()
-	d.log.Info("--> Device IP parsed", "ip", ip4)
-	if ip4 == nil {
-		return nil, fmt.Errorf("failed to parse CYOA network subnet as IPv4")
-	}
-	ip4[3] = 80
-	deviceIP := ip4.String()
-	d.log.Info("--> Device IP selected", "ip", deviceIP)
 
 	// Connect the controller to the device CYOA network.
 	cyoaControllerIP, err := d.connectControllerToDeviceCYOA(ctx, cyoaSubnetCIDR, cyoaNetwork.Name, deviceCode)
@@ -76,8 +58,8 @@ func (d *Devnet) StartDevice(t *testing.T, deviceCode string) (*Device, error) {
 		ExposedPorts: []string{"80/tcp"},
 		Env: map[string]string{
 			"DZ_CONTROLLER_ADDR": cyoaControllerAddr,
-			"DZ_AGENT_PUBKEY":    d.AgentPubkey,
-			"DZ_DEVICE_IP":       deviceIP,
+			"DZ_AGENT_PUBKEY":    devicePubKey,
+			"DZ_DEVICE_IP":       deviceCYOAIP,
 		},
 		Privileged: true,
 		Networks: []string{
@@ -110,9 +92,9 @@ func (d *Devnet) StartDevice(t *testing.T, deviceCode string) (*Device, error) {
 	// This is configured as eth1 in the startup-config.template.
 	containerID := container.GetContainerID()
 	err = d.config.DockerClient.NetworkConnect(ctx, cyoaNetwork.Name, containerID, &network.EndpointSettings{
-		IPAddress: deviceIP,
+		IPAddress: deviceCYOAIP,
 		IPAMConfig: &network.EndpointIPAMConfig{
-			IPv4Address: deviceIP,
+			IPv4Address: deviceCYOAIP,
 		},
 	})
 	if err != nil {
@@ -139,18 +121,19 @@ func (d *Devnet) StartDevice(t *testing.T, deviceCode string) (*Device, error) {
 	device := Device{
 		Code:           deviceCode,
 		Container:      container,
-		InternalCYOAIP: deviceIP,
+		InternalCYOAIP: deviceCYOAIP,
 		ExternalPort:   d.ExternalDevicePort,
 		CYOANetwork:    cyoaNetwork,
 		CYOASubnetCIDR: cyoaSubnetCIDR,
+		AgentPubkey:    devicePubKey,
 	}
 	d.devices[deviceCode] = device
 
-	d.log.Info("--> Device started", "deviceCode", deviceCode, "container", shortContainerID(containerID), "internalAddrOnCYOA", deviceIP, "externalPort", d.ExternalDevicePort)
+	d.log.Info("--> Device started", "deviceCode", deviceCode, "container", shortContainerID(containerID), "internalAddrOnCYOA", deviceCYOAIP, "externalPort", d.ExternalDevicePort)
 	return &device, nil
 }
 
-func (d *Devnet) createCYOANetwork(ctx context.Context, deviceCode string) (*testcontainers.DockerNetwork, string, error) {
+func (d *Devnet) CreateCYOANetwork(ctx context.Context, deviceCode string) (*testcontainers.DockerNetwork, string, error) {
 	d.log.Info("==> Creating CYOA network", "deviceCode", deviceCode)
 
 	// Get an available subnet.
@@ -182,13 +165,11 @@ func (d *Devnet) createCYOANetwork(ctx context.Context, deviceCode string) (*tes
 
 func (d *Devnet) connectControllerToDeviceCYOA(ctx context.Context, subnetCIDR string, networkName string, deviceCode string) (string, error) {
 	// Construct an IP address for the controller on the device CYOA network.
-	parsedIP, _, err := net.ParseCIDR(subnetCIDR)
+	ip, err := netutil.BuildIPInCIDR(subnetCIDR, 85)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse device CYOA network subnet: %w", err)
+		return "", fmt.Errorf("failed to build controller IP in CYOA network subnet: %w", err)
 	}
-	ip4 := parsedIP.To4()
-	ip4[3] = 85
-	controllerIP := ip4.String()
+	controllerIP := ip.String()
 
 	// Connect the controller to the device CYOA network.
 	err = d.config.DockerClient.NetworkConnect(ctx, networkName, d.controller.GetContainerID(), &network.EndpointSettings{

@@ -62,7 +62,7 @@ func checkIBRLPostConnect(t *testing.T, log *slog.Logger, dn *devnet.Devnet, dev
 			"DeviceIP": device.InternalCYOAIP,
 		})
 		require.NoError(t, err, "error reading agent configuration fixture")
-		err = waitForAgentConfigMatchViaController(t, dn, string(config))
+		err = waitForAgentConfigMatchViaController(t, dn, device.AgentPubkey, string(config))
 		require.NoError(t, err, "error waiting for agent config to match")
 	}) {
 		t.Fail()
@@ -226,7 +226,7 @@ func checkIBRLPostDisconnect(t *testing.T, log *slog.Logger, dn *devnet.Devnet, 
 			"DeviceIP": device.InternalCYOAIP,
 		})
 		require.NoError(t, err, "error reading agent configuration fixture")
-		err = waitForAgentConfigMatchViaController(t, dn, string(config))
+		err = waitForAgentConfigMatchViaController(t, dn, device.AgentPubkey, string(config))
 		require.NoError(t, err, "error waiting for agent config to match")
 	}) {
 		t.Fail()

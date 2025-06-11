@@ -71,7 +71,7 @@ func checkMulticastSubscriberPostConnect(t *testing.T, log *slog.Logger, dn *dev
 			"DeviceIP": device.InternalCYOAIP,
 		})
 		require.NoError(t, err, "error reading agent configuration fixture")
-		err = waitForAgentConfigMatchViaController(t, dn, string(config))
+		err = waitForAgentConfigMatchViaController(t, dn, device.AgentPubkey, string(config))
 		require.NoError(t, err, "error waiting for agent config to match")
 	}) {
 		t.Fail()
@@ -235,7 +235,7 @@ func checkMulticastSubscriberPostDisconnect(t *testing.T, log *slog.Logger, dn *
 			"DeviceIP": device.InternalCYOAIP,
 		})
 		require.NoError(t, err, "error reading agent configuration fixture")
-		err = waitForAgentConfigMatchViaController(t, dn, string(config))
+		err = waitForAgentConfigMatchViaController(t, dn, device.AgentPubkey, string(config))
 		require.NoError(t, err, "error waiting for agent config to match")
 	}) {
 		t.Fail()

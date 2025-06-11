@@ -5,7 +5,6 @@ package e2e_test
 import (
 	"fmt"
 	"log/slog"
-	"net"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/fixtures"
 	"github.com/malbeclabs/doublezero/e2e/internal/netlink"
+	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -74,7 +74,7 @@ func createMultipleIBRLUsersOnSameDeviceWithAllocatedIPs(t *testing.T, log *slog
 func checkIBRLWithAllocatedIPPostConnect(t *testing.T, log *slog.Logger, dn *devnet.Devnet, device *devnet.Device, client *devnet.Client) {
 	log.Info("==> Checking IBRL with allocated IP post-connect requirements")
 
-	expectedAllocatedClientIP := buildExpectedAllocatedClientIP(device.CYOASubnetCIDR)
+	expectedAllocatedClientIP := buildExpectedAllocatedClientIP(t, device.CYOASubnetCIDR)
 
 	if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
 		config, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_added.tmpl", map[string]string{
@@ -83,7 +83,7 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, log *slog.Logger, dn *dev
 			"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
 		})
 		require.NoError(t, err, "error reading agent configuration fixture")
-		err = waitForAgentConfigMatchViaController(t, dn, string(config))
+		err = waitForAgentConfigMatchViaController(t, dn, device.AgentPubkey, string(config))
 		require.NoError(t, err, "error waiting for agent config to match")
 	}) {
 		t.Fail()
@@ -237,7 +237,7 @@ func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, log *slog.Logger, dn *
 			"DeviceIP": device.InternalCYOAIP,
 		})
 		require.NoError(t, err, "error reading agent configuration fixture")
-		err = waitForAgentConfigMatchViaController(t, dn, string(config))
+		err = waitForAgentConfigMatchViaController(t, dn, device.AgentPubkey, string(config))
 		require.NoError(t, err, "error waiting for agent config to match")
 	}) {
 		t.Fail()
@@ -333,15 +333,8 @@ func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, log *slog.Logger, dn *
 // This is appended to the device IP to get the expected allocated client IP.
 const expectedAllocatedClientIPLastOctet = 81
 
-func buildExpectedAllocatedClientIP(cyoaSubnetCIDR string) string {
-	parsedIP, _, err := net.ParseCIDR(cyoaSubnetCIDR)
-	if err != nil {
-		return ""
-	}
-	ip4 := parsedIP.To4()
-	if ip4 == nil {
-		return ""
-	}
-	ip4[3] = expectedAllocatedClientIPLastOctet
-	return ip4.String()
+func buildExpectedAllocatedClientIP(t *testing.T, cyoaSubnetCIDR string) string {
+	ip, err := netutil.BuildIPInCIDR(cyoaSubnetCIDR, expectedAllocatedClientIPLastOctet)
+	require.NoError(t, err)
+	return ip.String()
 }

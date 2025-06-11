@@ -40,7 +40,6 @@ type Devnet struct {
 	ExternalControllerHost string
 	ExternalDevicePort     int
 
-	AgentPubkey   string
 	ProgramID     string
 	ManagerPubkey string
 
@@ -66,7 +65,7 @@ func New(config DevnetConfig) (*Devnet, error) {
 		return nil, fmt.Errorf("failed to get program pubkey: %v", err)
 	}
 
-	log.Info("--> Devnet config", "programID", programID, "agentPubkey", config.AgentPubkey)
+	log.Info("--> Devnet config", "programID", programID)
 
 	managerPubkey, err := solana.PublicAddressFromKeypair(config.ManagerKeypairPath)
 	if err != nil {
@@ -78,7 +77,6 @@ func New(config DevnetConfig) (*Devnet, error) {
 		config: config,
 
 		ProgramID:     programID,
-		AgentPubkey:   config.AgentPubkey,
 		ManagerPubkey: managerPubkey,
 
 		InternalLedgerURL:   "http://ledger:8899",

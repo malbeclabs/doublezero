@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
+	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
 	"github.com/malbeclabs/doublezero/e2e/internal/solana"
 	"github.com/stretchr/testify/require"
@@ -105,9 +107,6 @@ func newTestDevnetConfig(t *testing.T) devnet.DevnetConfig {
 		t.Fatalf("failed to generate manager keypair: %v", err)
 	}
 
-	// TODO(snormore): Can we derive this internally instead of passing it in as a config?
-	agentPubkey := "8scDVeZ8aB1TRTkBqaZgzxuk7WwpARdF1a39wYA7nR3W"
-
 	return devnet.DevnetConfig{
 		Logger:          logger,
 		DeployID:        deployID,
@@ -117,7 +116,6 @@ func newTestDevnetConfig(t *testing.T) devnet.DevnetConfig {
 
 		ProgramKeypairPath: programKeypairPath,
 		ManagerKeypairPath: managerKeypairPath,
-		AgentPubkey:        agentPubkey,
 
 		LedgerImage:     os.Getenv("DZ_LEDGER_IMAGE"),
 		ControllerImage: os.Getenv("DZ_CONTROLLER_IMAGE"),
@@ -188,10 +186,25 @@ func startSingleDeviceSingleClientDevnet(t *testing.T, log *slog.Logger) (*devne
 	err = devnet.StartControlPlane(ctx)
 	require.NoError(t, err)
 
-	device, err := devnet.StartDevice(t, "ny5-dz01")
+	// Create device CYOA network first, get the IP, then create it onchain.
+	cyoaNetwork, cyoaSubnetCIDR, err := devnet.CreateCYOANetwork(ctx, "ny5-dz01")
+	require.NoError(t, err)
+	deviceCYOAIP, err := netutil.BuildIPInCIDR(cyoaSubnetCIDR, 80)
 	require.NoError(t, err)
 
-	createDevicesAndLinksOnchain(t, log, devnet, device)
+	// Create our device and a few others onchain.
+	deviceCode := "ny5-dz01"
+	createDevicesAndLinksOnchain(t, log, devnet, deviceCode, deviceCYOAIP.String())
+
+	// Get the device agent pubkey from the onchain device list.
+	deviceAgentPubkey := getDevicePubkeyOnchain(t, devnet, deviceCode)
+	if deviceAgentPubkey == "" {
+		t.Fatalf("device agent pubkey not found onchain for device %s", deviceCode)
+	}
+
+	// Start our device and connect it to the CYOA network.
+	device, err := devnet.StartDevice(t, deviceCode, cyoaNetwork, cyoaSubnetCIDR, deviceCYOAIP.String(), deviceAgentPubkey)
+	require.NoError(t, err)
 
 	client, err := devnet.StartClient(ctx, device)
 	require.NoError(t, err)
@@ -217,11 +230,27 @@ func startSingleDeviceSingleClientDevnet(t *testing.T, log *slog.Logger) (*devne
 	require.NoError(t, err)
 
 	// Wait for latency results.
-	waitForLatencyResults(t, log, client, devnet.AgentPubkey)
+	waitForLatencyResults(t, log, client, deviceAgentPubkey)
 
 	return devnet, device, client
 }
 
+func getDevicePubkeyOnchain(t *testing.T, devnet *devnet.Devnet, deviceCode string) string {
+	ctx := t.Context()
+
+	output, err := devnet.ManagerExec(ctx, []string{"bash", "-c", `
+		doublezero device get --code ny5-dz01
+	`})
+	require.NoError(t, err)
+
+	for _, line := range strings.Split(string(output), "\n") {
+		if strings.HasPrefix(line, "account: ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "account: "))
+		}
+	}
+
+	return ""
+}
 func waitForLatencyResults(t *testing.T, log *slog.Logger, client *devnet.Client, expectedAgentPubkey string) {
 	ctx := t.Context()
 
@@ -248,7 +277,7 @@ func waitForLatencyResults(t *testing.T, log *slog.Logger, client *devnet.Client
 	}, timeout, 2*time.Second, "timeout waiting for latency results")
 }
 
-func createDevicesAndLinksOnchain(t *testing.T, log *slog.Logger, devnet *devnet.Devnet, device *devnet.Device) {
+func createDevicesAndLinksOnchain(t *testing.T, log *slog.Logger, devnet *devnet.Devnet, deviceCode string, deviceCYOAIP string) {
 	ctx := t.Context()
 
 	log.Info("==> Creating devices and links onchain")
@@ -258,7 +287,7 @@ func createDevicesAndLinksOnchain(t *testing.T, log *slog.Logger, devnet *devnet
 
 		echo "==> Populate device information onchain - DO NOT SHUFFLE THESE AS THE PUBKEYS WILL CHANGE"
 		doublezero device create --code la2-dz01 --location lax --exchange xlax --public-ip "207.45.216.134" --dz-prefixes "207.45.216.136/30,200.12.12.12/29"
-		doublezero device create --code ny5-dz01 --location ewr --exchange xewr --public-ip "` + device.InternalCYOAIP + `" --dz-prefixes "` + device.InternalCYOAIP + `/29"
+		doublezero device create --code ny5-dz01 --location ewr --exchange xewr --public-ip "` + deviceCYOAIP + `" --dz-prefixes "` + deviceCYOAIP + `/29"
 		doublezero device create --code ld4-dz01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "195.219.120.72/29"
 		doublezero device create --code frk-dz01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "195.219.220.88/29"
 		doublezero device create --code sg1-dz01 --location sin --exchange xsin --public-ip "180.87.102.104" --dz-prefixes "180.87.102.104/29"
@@ -309,13 +338,13 @@ func createMulticastGroupOnchain(t *testing.T, log *slog.Logger, devnet *devnet.
 	require.NoError(t, err)
 }
 
-func waitForAgentConfigMatchViaController(t *testing.T, dn *devnet.Devnet, config string) error {
+func waitForAgentConfigMatchViaController(t *testing.T, dn *devnet.Devnet, deviceAgentPubkey string, config string) error {
 	ctx := t.Context()
 
 	deadline := time.Now().Add(30 * time.Second)
 	var diff string
 	for time.Now().Before(deadline) {
-		got, err := dn.GetAgentConfigViaController(ctx)
+		got, err := dn.GetAgentConfigViaController(ctx, deviceAgentPubkey)
 		if err != nil {
 			return fmt.Errorf("error while fetching config: %w", err)
 		}

@@ -22,9 +22,9 @@ const (
 	internalControllerPort = 7000
 )
 
-func (d *Devnet) GetAgentConfigViaController(ctx context.Context) (*pb.ConfigResponse, error) {
+func (d *Devnet) GetAgentConfigViaController(ctx context.Context, deviceAgentPubkey string) (*pb.ConfigResponse, error) {
 	controllerAddr := net.JoinHostPort(d.ExternalControllerHost, strconv.Itoa(d.ExternalControllerPort))
-	d.log.Debug("==> Getting agent config from controller", "controllerAddr", controllerAddr, "agentPubkey", d.AgentPubkey)
+	d.log.Debug("==> Getting agent config from controller", "controllerAddr", controllerAddr, "agentPubkey", deviceAgentPubkey)
 
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	opts := []grpc.DialOption{
@@ -39,7 +39,7 @@ func (d *Devnet) GetAgentConfigViaController(ctx context.Context) (*pb.ConfigRes
 	defer cancel()
 
 	agent := pb.NewControllerClient(conn)
-	config, err := agent.GetConfig(ctx, &pb.ConfigRequest{Pubkey: d.AgentPubkey})
+	config, err := agent.GetConfig(ctx, &pb.ConfigRequest{Pubkey: deviceAgentPubkey})
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("error while fetching config: %w", err)

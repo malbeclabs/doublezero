@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/docker/docker/api/types/network"
+	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
 	"github.com/malbeclabs/doublezero/e2e/internal/solana"
 	"github.com/testcontainers/testcontainers-go"
@@ -47,16 +47,10 @@ func (d *Devnet) StartClient(ctx context.Context, device *Device) (*Client, erro
 	}
 
 	// Construct an IP address for the client on the CYOA network subnet, the x.y.z.86 address.
-	parsedIP, _, err := net.ParseCIDR(device.CYOASubnetCIDR)
+	ip4, err := netutil.BuildIPInCIDR(device.CYOASubnetCIDR, 86)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse CYOA network subnet: %w", err)
+		return nil, fmt.Errorf("failed to build client IP in CYOA network subnet: %w", err)
 	}
-	ip4 := parsedIP.To4()
-	d.log.Info("--> Client IP parsed", "ip", ip4)
-	if ip4 == nil {
-		return nil, fmt.Errorf("failed to parse CYOA network subnet as IPv4")
-	}
-	ip4[3] = 86
 	ip := ip4.String()
 	d.log.Info("--> Client IP selected", "ip", ip)
 

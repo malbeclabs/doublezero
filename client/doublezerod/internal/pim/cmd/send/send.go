@@ -11,13 +11,34 @@ import (
 	"golang.org/x/net/ipv4"
 )
 
-var iface = flag.String("iface", "", "interface to use")
+var (
+	iface            = flag.String("iface", "", "interface to use")
+	group            = flag.String("group", "", "multicast group to join/prune")
+	upstreamNeighbor = flag.String("upstream", "", "upstream neighbor address (for JoinPrune messages)")
+	rpAddress        = flag.String("rp", "10.0.0.0", "RP address (for JoinPrune messages, defaults to 10.0.0.0")
+	join             = flag.Bool("join", false, "send a join message")
+	prune            = flag.Bool("prune", false, "send a prune message")
+	holdtime         = flag.Int("holdtime", 120, "holdtime for JoinPrune messages (default 210 seconds)")
+)
 
 func main() {
 	flag.Parse()
 	if *iface == "" {
 		log.Fatalf("interface not specified")
 	}
+
+	if *group == "" {
+		log.Fatalf("multicast group not specified")
+	}
+
+	if *upstreamNeighbor == "" {
+		log.Fatalf("upstream neighbor address not specified")
+	}
+
+	if !*join && !*prune {
+		log.Fatalf("either -join or -prune must be specified")
+	}
+
 	c, err := net.ListenPacket("ip4:103", "0.0.0.0")
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
@@ -88,32 +109,63 @@ func main() {
 
 	buf = gopacket.NewSerializeBuffer()
 
-	join := &pim.JoinPruneMessage{
-		UpstreamNeighborAddress: net.IP([]byte{169, 254, 1, 3}),
-		NumGroups:               1,
-		Reserved:                0,
-		Holdtime:                210,
-		Groups: []pim.Group{
-			{
-				AddressFamily:         1,
-				NumJoinedSources:      1,
-				NumPrunedSources:      0,
-				MaskLength:            32,
-				MulticastGroupAddress: net.IP([]byte{239, 0, 0, 3}),
-				Joins: []pim.SourceAddress{
-					{
-						AddressFamily: 1,
-						Flags:         7,
-						MaskLength:    32,
-						EncodingType:  0,
-						Address:       pim.RpAddress,
+	var msg *pim.JoinPruneMessage
+	if *join {
+		msg = &pim.JoinPruneMessage{
+			UpstreamNeighborAddress: net.ParseIP(*upstreamNeighbor).To4(),
+			NumGroups:               1,
+			Reserved:                0,
+			Holdtime:                uint16(*holdtime),
+			Groups: []pim.Group{
+				{
+					AddressFamily:         1,
+					NumJoinedSources:      1,
+					NumPrunedSources:      0,
+					MaskLength:            32,
+					MulticastGroupAddress: net.ParseIP(*group).To4(),
+					Joins: []pim.SourceAddress{
+						{
+							AddressFamily: 1,
+							Flags:         7,
+							MaskLength:    32,
+							EncodingType:  0,
+							Address:       net.ParseIP(*rpAddress).To4(),
+						},
+					},
+					Prunes: []pim.SourceAddress{},
+				},
+			},
+		}
+	}
+	if *prune {
+		msg = &pim.JoinPruneMessage{
+			UpstreamNeighborAddress: net.ParseIP(*upstreamNeighbor).To4(),
+			NumGroups:               1,
+			Reserved:                0,
+			Holdtime:                120,
+			Groups: []pim.Group{
+				{
+					AddressFamily:         1,
+					NumJoinedSources:      0,
+					NumPrunedSources:      1,
+					MaskLength:            32,
+					MulticastGroupAddress: net.ParseIP(*group).To4(),
+					Joins:                 []pim.SourceAddress{},
+					Prunes: []pim.SourceAddress{
+						{
+							AddressFamily: 1,
+							Flags:         7,
+							MaskLength:    32,
+							EncodingType:  0,
+							Address:       net.ParseIP(*rpAddress).To4(),
+						},
 					},
 				},
-				Prunes: []pim.SourceAddress{},
 			},
-		}}
+		}
+	}
 
-	err = join.SerializeTo(buf, opts)
+	err = msg.SerializeTo(buf, opts)
 	if err != nil {
 		log.Fatalf("failed to serialize PIM JoinPrune msg %v", err)
 	}

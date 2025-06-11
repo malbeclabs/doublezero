@@ -197,7 +197,7 @@ func decodePimHelloMessage(data []byte, p gopacket.PacketBuilder) error {
 					return err
 				}
 				if addr == nil {
-					return errors.New("Invalid address")
+					return errors.New("invalid address")
 				}
 
 				hello.SecondaryAddress = append(hello.SecondaryAddress, addr)
@@ -218,7 +218,7 @@ func decodePimJoinPruneMessage(data []byte, p gopacket.PacketBuilder) error {
 		return err
 	}
 	if addr == nil {
-		return errors.New("Invalid address")
+		return errors.New("invalid address")
 	}
 	joinPrune.UpstreamNeighborAddress = addr
 	data = data[len(addr)+2:]

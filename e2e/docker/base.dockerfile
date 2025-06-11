@@ -126,11 +126,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     make -C ./controlplane/controller build && \
     cp controlplane/controller/bin/controller ${BIN_DIR}/doublezero-controller
 
-# # Build the agent (golang)
-# RUN --mount=type=cache,target=/go/pkg/mod \
-#     --mount=type=cache,target=/root/.cache/go-build \
-#     make -C ./controlplane/agent build && \
-#     cp controlplane/agent/bin/doublezero-agent ${BIN_DIR}/doublezero-agent
+# (Removed commented-out code for building the agent)
 
 
 # ----------------------------------------------------------------------------

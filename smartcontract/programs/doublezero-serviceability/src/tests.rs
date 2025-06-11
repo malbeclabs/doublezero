@@ -38,7 +38,7 @@ pub mod test {
     async fn test_doublezero_program() {
         let program_id = Pubkey::new_unique();
         let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
-            "doublezero_sla_program",
+            "doublezero_serviceability",
             program_id,
             processor!(process_instruction),
         )

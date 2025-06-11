@@ -49,7 +49,7 @@ mod tests {
         tests::utils::create_test_client,
     };
     use doublezero_sdk::{GetGlobalConfigCommand, GlobalConfig};
-    use doublezero_sla_program::pda::get_globalconfig_pda;
+    use doublezero_serviceability::pda::get_globalconfig_pda;
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
 

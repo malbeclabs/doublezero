@@ -1,4 +1,4 @@
-use doublezero_sla_program::{
+use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     processors::multicastgroup::allowlist::subscriber::add::AddMulticastGroupSubAllowlistArgs,
 };
@@ -40,7 +40,7 @@ mod tests {
         commands::multicastgroup::allowlist::subscriber::add::AddMulticastGroupSubAllowlistCommand,
         tests::utils::create_test_client,
     };
-    use doublezero_sla_program::{
+    use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
         processors::multicastgroup::allowlist::subscriber::add::AddMulticastGroupSubAllowlistArgs,
         state::{

@@ -1448,7 +1448,7 @@ dependencies = [
  "clap_complete",
  "console",
  "ctor",
- "doublezero-sla-program",
+ "doublezero-serviceability",
  "doublezero_cli",
  "doublezero_sdk",
  "eyre",
@@ -1480,7 +1480,7 @@ dependencies = [
  "bitvec",
  "chrono",
  "clap",
- "doublezero-sla-program",
+ "doublezero-serviceability",
  "doublezero_sdk",
  "eyre",
  "indexmap",
@@ -1522,7 +1522,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "doublezero-sla-program"
+name = "doublezero-serviceability"
 version = "0.2.0"
 dependencies = [
  "borsh 1.5.7",
@@ -1542,7 +1542,7 @@ dependencies = [
  "chrono",
  "clap",
  "console",
- "doublezero-sla-program",
+ "doublezero-serviceability",
  "doublezero_sdk",
  "eyre",
  "futures",
@@ -1570,7 +1570,7 @@ dependencies = [
  "chrono",
  "directories-next",
  "dirs-next",
- "doublezero-sla-program",
+ "doublezero-serviceability",
  "eyre",
  "futures",
  "mockall 0.13.1",

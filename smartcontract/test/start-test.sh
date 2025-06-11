@@ -7,8 +7,8 @@ killall solana
 
 # Build the program
 echo "Build the program"
-cargo build-sbf --manifest-path ../programs/dz-sla-program/Cargo.toml -- -Znext-lockfile-bump
-cp ../../target/deploy/doublezero_sla_program.so ./target/doublezero_sla_program.so
+cargo build-sbf --manifest-path ../programs/doublezero-serviceability/Cargo.toml -- -Znext-lockfile-bump
+cp ../../target/deploy/doublezero_serviceability.so ./target/doublezero_serviceability.so
 
 #Build the activator
 echo "Build the activator"
@@ -29,7 +29,7 @@ solana config set --url http://127.0.0.1:8899
 
 # start the solana test cluster
 echo "Start solana local test cluster"
-solana-test-validator --reset --bpf-program ./keypair.json ./target/doublezero_sla_program.so >./logs/validator.log 2>&1 &
+solana-test-validator --reset --bpf-program ./keypair.json ./target/doublezero_serviceability.so >./logs/validator.log 2>&1 &
 
 # Wait for the solana test cluster to start
 echo "Waiting 15 seconds to start the solana test cluster"

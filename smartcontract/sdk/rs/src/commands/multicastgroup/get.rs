@@ -1,5 +1,5 @@
 use crate::{utils::parse_pubkey, DoubleZeroClient};
-use doublezero_sla_program::state::{
+use doublezero_serviceability::state::{
     accountdata::AccountData, accounttype::AccountType, multicastgroup::MulticastGroup,
 };
 use solana_sdk::pubkey::Pubkey;

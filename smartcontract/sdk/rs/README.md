@@ -33,7 +33,7 @@ To use a command, create the corresponding struct, set its arguments, and call `
 use doublezero_sdk::commands::tunnel::CreateTunnelCommand;
 use doublezero_sdk::DoubleZeroClient;
 use solana_sdk::pubkey::Pubkey;
-use doublezero_sla_program::state::tunnel::TunnelTunnelType;
+use doublezero_serviceability::state::tunnel::TunnelTunnelType;
 
 // Prepare your arguments
 let result = CreateTunnelCommand {

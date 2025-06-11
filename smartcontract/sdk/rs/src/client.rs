@@ -1,6 +1,6 @@
 use base64::{engine::general_purpose, prelude::*, Engine};
 use chrono::{DateTime, NaiveDateTime, Utc};
-use doublezero_sla_program::{
+use doublezero_serviceability::{
     instructions::*, processors::globalstate::close::CloseAccountArgs,
     state::accounttype::AccountType,
 };
@@ -65,7 +65,7 @@ impl DZClient {
         let program_id = {
             if program_id.is_none() {
                 if config.program_id.is_none() {
-                    doublezero_sla_program::addresses::testnet::program_id::id()
+                    doublezero_serviceability::addresses::testnet::program_id::id()
                 } else {
                     Pubkey::from_str(&config.program_id.unwrap())
                         .map_err(|_| eyre!("Invalid program ID"))?

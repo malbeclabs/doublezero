@@ -1,5 +1,5 @@
 use crate::DoubleZeroClient;
-use doublezero_sla_program::state::{accountdata::AccountData, user::User};
+use doublezero_serviceability::state::{accountdata::AccountData, user::User};
 use solana_sdk::pubkey::Pubkey;
 
 #[derive(Debug, PartialEq, Clone)]

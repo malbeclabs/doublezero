@@ -20,10 +20,10 @@ pub struct MulticastGroupDisplay {
     pub account: Pubkey,
     pub code: String,
     #[serde(serialize_with = "crate::serializer::serialize_ipv4_as_string")]
-    #[tabled(display = "doublezero_sla_program::types::ipv4_to_string")]
+    #[tabled(display = "doublezero_serviceability::types::ipv4_to_string")]
     pub multicast_ip: IpV4,
     #[serde(serialize_with = "crate::serializer::serialize_bandwidth_as_string")]
-    #[tabled(display = "doublezero_sla_program::types::bandwidth_to_string")]
+    #[tabled(display = "doublezero_serviceability::types::bandwidth_to_string")]
     pub max_bandwidth: u64,
     #[serde(serialize_with = "crate::serializer::serialize_pubkeylist_as_string")]
     #[tabled(display = "crate::util::display_count")]
@@ -80,7 +80,7 @@ mod tests {
         multicastgroup::list::ListMulticastGroupCliCommand, tests::utils::create_test_client,
     };
     use doublezero_sdk::{Device, DeviceStatus, DeviceType, MulticastGroup, MulticastGroupStatus};
-    use doublezero_sla_program::state::accounttype::AccountType;
+    use doublezero_serviceability::state::accounttype::AccountType;
     use solana_sdk::pubkey::Pubkey;
     use std::collections::HashMap;
 

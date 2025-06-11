@@ -1,4 +1,4 @@
-use doublezero_sla_program::{
+use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, pda::get_globalstate_pda,
     processors::allowlist::foundation::add::AddFoundationAllowlistArgs,
 };

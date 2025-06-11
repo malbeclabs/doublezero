@@ -1,5 +1,5 @@
 use crate::{DoubleZeroClient, GetGlobalStateCommand};
-use doublezero_sla_program::{
+use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, pda::get_multicastgroup_pda,
     processors::multicastgroup::update::MulticastGroupUpdateArgs, types::IpV4,
 };
@@ -42,7 +42,7 @@ mod tests {
         commands::multicastgroup::update::UpdateMulticastGroupCommand,
         tests::utils::create_test_client, DoubleZeroClient,
     };
-    use doublezero_sla_program::{
+    use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
         pda::{get_globalstate_pda, get_location_pda},
         processors::multicastgroup::update::MulticastGroupUpdateArgs,

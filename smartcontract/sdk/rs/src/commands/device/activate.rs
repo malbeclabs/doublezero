@@ -1,4 +1,4 @@
-use doublezero_sla_program::{
+use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, pda::get_device_pda,
     processors::device::activate::DeviceActivateArgs,
 };
@@ -37,7 +37,7 @@ mod tests {
         commands::device::activate::ActivateDeviceCommand, tests::utils::create_test_client,
         DoubleZeroClient,
     };
-    use doublezero_sla_program::{
+    use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
         pda::{get_device_pda, get_globalstate_pda},
         processors::device::activate::DeviceActivateArgs,

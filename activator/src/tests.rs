@@ -1,7 +1,7 @@
 #[cfg(test)]
 pub mod utils {
     use doublezero_sdk::{AccountData, AccountType, DoubleZeroClient, MockDoubleZeroClient};
-    use doublezero_sla_program::{
+    use doublezero_serviceability::{
         pda::{get_device_pda, get_globalstate_pda, get_link_pda, get_user_pda},
         state::globalstate::GlobalState,
     };

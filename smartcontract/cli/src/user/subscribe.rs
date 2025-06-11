@@ -68,7 +68,7 @@ mod tests {
         },
         AccountType, MulticastGroup, MulticastGroupStatus,
     };
-    use doublezero_sla_program::pda::get_user_pda;
+    use doublezero_serviceability::pda::get_user_pda;
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 

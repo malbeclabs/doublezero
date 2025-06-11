@@ -18,7 +18,7 @@ var (
 	rpAddress        = flag.String("rp", "10.0.0.0", "RP address defaults to 10.0.0.0")
 	join             = flag.Bool("join", false, "send a join message")
 	prune            = flag.Bool("prune", false, "send a prune message")
-	holdtime         = flag.Int("holdtime", 120, "holdtime for JoinPrune messages (default 210 seconds)")
+	holdtime         = flag.Int("holdtime", 120, "holdtime for JoinPrune messages (default 120 seconds)")
 )
 
 func main() {

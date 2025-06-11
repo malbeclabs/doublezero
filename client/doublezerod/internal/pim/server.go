@@ -14,7 +14,10 @@ import (
 
 var (
 	// Anycast rendezvous point address used within DoubleZero
-	RpAddress     = net.IP([]byte{10, 0, 0, 0})
+	RpAddress = net.IP([]byte{10, 0, 0, 0})
+)
+
+const (
 	joinHoldtime  = uint16(120) // ask upstream router to keep join state for 120 seconds
 	pruneHoldtime = uint16(5)   // ask upstream router to flush join state after 5 seconds
 )

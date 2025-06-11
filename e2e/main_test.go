@@ -91,13 +91,9 @@ func newTestDevnetConfig(t *testing.T) devnet.DevnetConfig {
 		os.RemoveAll(workDir)
 	})
 
-	// Generate program keypair.
-	// programKeypairPath := filepath.Join(workDir, "dz-program-keypair.json")
-	// err = solana.GenerateKeypair(programKeypairPath)
-	// if err != nil {
-	// 	t.Fatalf("failed to generate program keypair: %v", err)
-	// }
-	// TODO(snormore): Generate these instead of hardcoding them.
+	// Use a hardcoded program keypair for these tests, since device and account pubkeys onchain
+	// are derived in the smartcontract and will change if the program keypair changes. We create
+	// several devices onchain and test pubkey expectations via fixtures.
 	programKeypairPath := "data/dz-program-keypair.json"
 
 	// Generate manager keypair.

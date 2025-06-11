@@ -2,23 +2,41 @@ use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::{commands::globalconfig::get::GetGlobalConfigCommand, *};
 use std::io::Write;
+use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
 pub struct GetGlobalConfigCliCommand {}
+
+#[derive(Tabled)]
+pub struct ConfigDisplay {
+    #[tabled(rename = "local asn")]
+    pub local_asn: u32,
+    #[tabled(rename = "remote asn")]
+    pub remote_asn: u32,
+    #[tabled(rename = "device tunnel block")]
+    pub device_tunnel_block: String,
+    #[tabled(rename = "user tunnel block")]
+    pub user_tunnel_block: String,
+    #[tabled(rename = "multicast group block")]
+    pub multicast_group_block: String,
+}
 
 impl GetGlobalConfigCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let (_, config) = client.get_globalconfig(GetGlobalConfigCommand)?;
 
-        writeln!(
-            out,
-            "local-asn: {}\r\nremote-asn: {}\r\ndevice_tunnel_block: {}\r\nuser_tunnel_block: {}\r\nmulticastgroup_block: {}",
-            config.local_asn,
-            config.remote_asn,
-            networkv4_to_string(&config.tunnel_tunnel_block),
-            networkv4_to_string(&config.user_tunnel_block),
-            networkv4_to_string(&config.multicastgroup_block),
-        )?;
+        let config_display = ConfigDisplay {
+            local_asn: config.local_asn,
+            remote_asn: config.remote_asn,
+            device_tunnel_block: networkv4_to_string(&config.tunnel_tunnel_block),
+            user_tunnel_block: networkv4_to_string(&config.user_tunnel_block),
+            multicast_group_block: networkv4_to_string(&config.multicastgroup_block),
+        };
+        let config_displays = vec![config_display];
+        let table = Table::new(config_displays)
+            .with(Style::psql().remove_horizontals())
+            .to_string();
+        writeln!(out, "{}", table)?;
 
         Ok(())
     }
@@ -62,7 +80,7 @@ mod tests {
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
-            output_str,"local-asn: 1234\r\nremote-asn: 5678\r\ndevice_tunnel_block: 10.1.0.0/24\r\nuser_tunnel_block: 10.5.0.0/24\r\nmulticastgroup_block: 224.2.0.0/4\n"
+            output_str, " local asn | remote asn | device tunnel block | user tunnel block | multicast group block \n 1234      | 5678       | 10.1.0.0/24         | 10.5.0.0/24       | 224.2.0.0/4           \n"
         );
     }
 }

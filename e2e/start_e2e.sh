@@ -137,7 +137,6 @@ start_doublezerod() {
 
 populate_data_onchain() {
     print_banner "Populate global configuration onchain"
-    echo doublezero global-config set --local-asn 65000 --remote-asn 65342 --tunnel-tunnel-block 172.16.0.0/16 --device-tunnel-block 169.254.0.0/16 --multicastgroup-block 233.84.178.0/24
     doublezero global-config set --local-asn 65000 --remote-asn 65342 --tunnel-tunnel-block 172.16.0.0/16 --device-tunnel-block 169.254.0.0/16 --multicastgroup-block 233.84.178.0/24
     print_banner "Global configuration onchain"
     doublezero global-config get

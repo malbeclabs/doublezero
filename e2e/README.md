@@ -4,7 +4,7 @@ This directory contains our end-to-end tests which exercise smartcontract, contr
 
 The docker images depend on images exposed via our container registry. To access, you need to login with your github username and a personal access token with read access. Go to your [Personal Access Tokens](https://github.com/settings/tokens) page and create a token with `read:packages` access. See [this github doc](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#authenticating-with-a-personal-access-token-classic) for more details.
 
-The docker images will automatically build whenever you run `make test`. You do not need to explicitely build them, but if you'd like to you can run `make build`
+The docker images will automatically build whenever you run `make test`. You do not need to explicitly build them, but if you'd like to you can run `make build`
 
 Run the tests with:
 

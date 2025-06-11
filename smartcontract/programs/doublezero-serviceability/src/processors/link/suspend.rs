@@ -45,7 +45,12 @@ pub fn process_suspend_link(
     // Check if the account is writable
     assert!(pda_account.is_writable, "PDA Account is not writable");
 
-    let mut tunnel: Link = Link::from(&pda_account.try_borrow_data().unwrap()[..]);
+    let mut tunnel: Link = {
+        let account_data = pda_account
+            .try_borrow_data()
+            .map_err(|_| ProgramError::AccountBorrowFailed)?;
+        Link::from(&account_data[..])
+    };
     assert_eq!(tunnel.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
         tunnel.bump_seed, value.bump_seed,

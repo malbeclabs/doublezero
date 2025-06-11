@@ -8,6 +8,7 @@ use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    program_error::ProgramError,
     pubkey::Pubkey,
 };
 use std::fmt;
@@ -64,8 +65,12 @@ pub fn process_update_multicastgroup(
     }
 
     // Parse the multicastgroup account
-    let mut multicastgroup: MulticastGroup =
-        MulticastGroup::from(&pda_account.try_borrow_data().unwrap()[..]);
+    let mut multicastgroup: MulticastGroup = {
+        let account_data = pda_account
+            .try_borrow_data()
+            .map_err(|_| ProgramError::AccountBorrowFailed)?;
+        MulticastGroup::from(&account_data[..])
+    };
     assert_eq!(
         multicastgroup.index, value.index,
         "Invalid PDA Account Index"

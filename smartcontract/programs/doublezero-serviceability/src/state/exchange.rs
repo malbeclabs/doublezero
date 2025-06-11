@@ -1,6 +1,7 @@
 use super::accounttype::{AccountType, AccountTypeInfo};
 use crate::{bytereader::ByteReader, seeds::SEED_EXCHANGE};
 use borsh::{BorshDeserialize, BorshSerialize};
+use eyre::eyre;
 use serde::Serialize;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 use std::fmt;
@@ -95,10 +96,14 @@ impl From<&[u8]> for Exchange {
     }
 }
 
-impl From<&AccountInfo<'_>> for Exchange {
-    fn from(account: &AccountInfo) -> Self {
-        let data = account.try_borrow_data().unwrap();
-        Self::from(&data[..])
+impl TryFrom<&AccountInfo<'_>> for Exchange {
+    type Error = eyre::Error;
+
+    fn try_from(account: &AccountInfo) -> eyre::Result<Self> {
+        let data = account
+            .try_borrow_data()
+            .map_err(|e| eyre!("Failed to borrow account data: {}", e))?;
+        Ok(Self::from(&data[..]))
     }
 }
 

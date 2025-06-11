@@ -10,7 +10,9 @@ impl SubscribeCliCommand {
         println!("Waiting for events...");
 
         client.subscribe(|_, pubkey, account| {
-            writeln!(out, "{} -> {:?}", pubkey, account).unwrap();
+            if let Err(e) = writeln!(out, "{} -> {:?}", pubkey, account) {
+                eprintln!("Failed to write output: {}", e);
+            }
         })?;
 
         Ok(())

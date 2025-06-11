@@ -1,12 +1,12 @@
-use std::fmt;
-
 use super::accounttype::AccountType;
 use crate::{
     bytereader::ByteReader,
     types::{networkv4_to_string, NetworkV4},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
+use eyre::eyre;
 use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
+use std::fmt;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
 pub struct GlobalConfig {
@@ -50,10 +50,14 @@ impl From<&[u8]> for GlobalConfig {
     }
 }
 
-impl From<&AccountInfo<'_>> for GlobalConfig {
-    fn from(account: &AccountInfo) -> Self {
-        let data = account.try_borrow_data().unwrap();
-        Self::from(&data[..])
+impl TryFrom<&AccountInfo<'_>> for GlobalConfig {
+    type Error = eyre::Error;
+
+    fn try_from(account: &AccountInfo) -> eyre::Result<Self> {
+        let data = account
+            .try_borrow_data()
+            .map_err(|e| eyre!("Failed to borrow account data: {}", e))?;
+        Ok(Self::from(&data[..]))
     }
 }
 

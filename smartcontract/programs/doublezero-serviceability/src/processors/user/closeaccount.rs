@@ -56,24 +56,29 @@ pub fn process_closeaccount_user(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    let user: User = User::from(&pda_account.try_borrow_data().unwrap()[..]);
-    assert_eq!(user.index, value.index, "Invalid PDA Account Index");
-    assert_eq!(
-        user.bump_seed, value.bump_seed,
-        "Invalid PDA Account Bump Seed"
-    );
-    if user.owner != *owner_account.key {
-        return Err(ProgramError::InvalidAccountData);
-    }
-    if user.status != UserStatus::Deleting {
-        msg!("{:?}", user);
-        return Err(solana_program::program_error::ProgramError::Custom(1));
+    {
+        let account_data = pda_account
+            .try_borrow_data()
+            .map_err(|_| ProgramError::AccountBorrowFailed)?;
+        let user: User = User::from(&account_data[..]);
+        assert_eq!(user.index, value.index, "Invalid PDA Account Index");
+        assert_eq!(
+            user.bump_seed, value.bump_seed,
+            "Invalid PDA Account Bump Seed"
+        );
+        if user.owner != *owner_account.key {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        if user.status != UserStatus::Deleting {
+            msg!("{:?}", user);
+            return Err(solana_program::program_error::ProgramError::Custom(1));
+        }
     }
 
     account_close(pda_account, owner_account)?;
 
     #[cfg(test)]
-    msg!("Deleted: {:?}", user);
+    msg!("CloseAccount: User closed");
 
     Ok(())
 }

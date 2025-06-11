@@ -9,6 +9,7 @@ use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    program_error::ProgramError,
     pubkey::Pubkey,
 };
 
@@ -60,7 +61,12 @@ pub fn process_activate_link(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    let mut tunnel: Link = Link::from(&pda_account.try_borrow_data().unwrap()[..]);
+    let mut tunnel: Link = {
+        let account_data = pda_account
+            .try_borrow_data()
+            .map_err(|_| ProgramError::AccountBorrowFailed)?;
+        Link::from(&account_data[..])
+    };
     assert_eq!(tunnel.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
         tunnel.bump_seed, value.bump_seed,

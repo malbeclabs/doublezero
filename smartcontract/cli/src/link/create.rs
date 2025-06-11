@@ -8,6 +8,7 @@ use doublezero_sdk::{
     commands::{device::get::GetDeviceCommand, link::create::CreateLinkCommand},
     *,
 };
+use eyre::eyre;
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -59,15 +60,18 @@ impl CreateLinkCliCommand {
             }
         };
 
+        let link_type = match self.link_type.as_ref() {
+            Some(t) => t
+                .parse()
+                .map_err(|e| eyre!("Invalid link type '{}': {}", t, e))?,
+            None => LinkLinkType::L3,
+        };
+
         let (signature, _pubkey) = client.create_link(CreateLinkCommand {
             code: self.code.clone(),
             side_a_pk,
             side_z_pk,
-            link_type: self
-                .link_type
-                .as_ref()
-                .map(|t| t.parse().unwrap())
-                .unwrap_or(LinkLinkType::L3),
+            link_type,
             bandwidth: bandwidth_parse(&self.bandwidth),
             mtu: self.mtu,
             delay_ns: (self.delay_ms * 1000000.0) as u64,

@@ -57,25 +57,30 @@ pub fn process_closeaccount_link(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    let tunnel: Link = Link::from(&pda_account.try_borrow_data().unwrap()[..]);
-    assert_eq!(tunnel.index, value.index, "Invalid PDA Account Index");
-    assert_eq!(
-        tunnel.bump_seed, value.bump_seed,
-        "Invalid PDA Account Bump Seed"
-    );
-    if tunnel.owner != *owner_account.key {
-        return Err(ProgramError::InvalidAccountData);
-    }
-    if tunnel.status != LinkStatus::Deleting {
-        #[cfg(test)]
-        msg!("{:?}", tunnel);
-        return Err(solana_program::program_error::ProgramError::Custom(1));
+    {
+        let account_data = pda_account
+            .try_borrow_data()
+            .map_err(|_| ProgramError::AccountBorrowFailed)?;
+        let tunnel: Link = Link::from(&account_data[..]);
+        assert_eq!(tunnel.index, value.index, "Invalid PDA Account Index");
+        assert_eq!(
+            tunnel.bump_seed, value.bump_seed,
+            "Invalid PDA Account Bump Seed"
+        );
+        if tunnel.owner != *owner_account.key {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        if tunnel.status != LinkStatus::Deleting {
+            #[cfg(test)]
+            msg!("{:?}", tunnel);
+            return Err(solana_program::program_error::ProgramError::Custom(1));
+        }
     }
 
     account_close(pda_account, owner_account)?;
 
     #[cfg(test)]
-    msg!("CloseAccount: {:?}", tunnel);
+    msg!("CloseAccount: Link closed");
 
     Ok(())
 }

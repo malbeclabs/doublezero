@@ -7,6 +7,7 @@ use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    program_error::ProgramError,
     pubkey::Pubkey,
 };
 
@@ -56,7 +57,12 @@ pub fn process_suspend_location(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    let mut location: Location = Location::from(&pda_account.try_borrow_data().unwrap()[..]);
+    let mut location: Location = {
+        let account_data = pda_account
+            .try_borrow_data()
+            .map_err(|_| ProgramError::AccountBorrowFailed)?;
+        Location::from(&account_data[..])
+    };
     assert_eq!(location.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
         location.bump_seed, value.bump_seed,

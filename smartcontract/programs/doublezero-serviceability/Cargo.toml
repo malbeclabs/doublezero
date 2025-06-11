@@ -14,6 +14,7 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 borsh.workspace = true
+eyre.workspace = true
 ipnetwork.workspace = true
 serde.workspace = true
 solana-program.workspace = true

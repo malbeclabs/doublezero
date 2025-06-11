@@ -9,6 +9,7 @@ use doublezero_sdk::{
     },
     *,
 };
+use eyre::eyre;
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -32,11 +33,20 @@ impl UpdateMulticastGroupCliCommand {
             pubkey_or_code: self.pubkey,
         })?;
 
+        let max_bandwidth = self
+            .max_bandwidth
+            .as_ref()
+            .map(|bw| {
+                bw.parse::<u64>()
+                    .map_err(|e| eyre!("Invalid max bandwidth '{}': {}", bw, e))
+            })
+            .transpose()?;
+
         let signature = client.update_multicastgroup(UpdateMulticastGroupCommand {
             index: multicastgroup.index,
             code: self.code.clone(),
             multicast_ip: self.multicast_ip.as_ref().map(|ip| ipv4_parse(ip)),
-            max_bandwidth: self.max_bandwidth.map(|bw| bw.parse::<u64>().unwrap()),
+            max_bandwidth,
         })?;
         writeln!(out, "Signature: {}", signature)?;
 

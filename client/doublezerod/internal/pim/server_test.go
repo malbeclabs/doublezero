@@ -121,7 +121,7 @@ func checkJoinMesssage(t *testing.T, b []byte) {
 			Header: pim.PIMHeader{
 				Version:  2,
 				Type:     pim.JoinPrune,
-				Checksum: 0x2deb,
+				Checksum: 0x2e45,
 			},
 		}
 
@@ -134,7 +134,7 @@ func checkJoinMesssage(t *testing.T, b []byte) {
 			UpstreamNeighborAddress: net.IP([]byte{169, 254, 0, 0}),
 			NumGroups:               1,
 			Reserved:                0,
-			Holdtime:                210,
+			Holdtime:                120,
 			Groups: []pim.Group{
 				{
 					GroupID:               0,
@@ -172,7 +172,7 @@ func checkPruneMesssage(t *testing.T, b []byte) {
 			Header: pim.PIMHeader{
 				Version:  2,
 				Type:     pim.JoinPrune,
-				Checksum: 0x2deb,
+				Checksum: 0x2eb8,
 			},
 		}
 
@@ -185,7 +185,7 @@ func checkPruneMesssage(t *testing.T, b []byte) {
 			UpstreamNeighborAddress: net.IP([]byte{169, 254, 0, 0}),
 			NumGroups:               1,
 			Reserved:                0,
-			Holdtime:                210,
+			Holdtime:                5,
 			Groups: []pim.Group{
 				{
 					GroupID:               0,

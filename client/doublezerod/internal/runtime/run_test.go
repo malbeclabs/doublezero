@@ -1386,7 +1386,7 @@ func TestMulticastSubscriber(t *testing.T) {
 				Header: pim.PIMHeader{
 					Version:  2,
 					Type:     pim.JoinPrune,
-					Checksum: 0x2eeb,
+					Checksum: 0x2f45,
 				},
 			}
 			if diff := cmp.Diff(got, want, cmpopts.IgnoreFields(pim.PIMMessage{}, "BaseLayer")); diff != "" {
@@ -1398,7 +1398,7 @@ func TestMulticastSubscriber(t *testing.T) {
 				UpstreamNeighborAddress: net.IP([]byte{169, 254, 0, 0}),
 				NumGroups:               1,
 				Reserved:                0,
-				Holdtime:                210,
+				Holdtime:                120,
 				Groups: []pim.Group{{
 					GroupID:               0,
 					AddressFamily:         1,
@@ -1456,7 +1456,7 @@ func TestMulticastSubscriber(t *testing.T) {
 				Header: pim.PIMHeader{
 					Version:  2,
 					Type:     pim.JoinPrune,
-					Checksum: 0x2eeb,
+					Checksum: 0x2fb8,
 				},
 			}
 			if diff := cmp.Diff(got, want, cmpopts.IgnoreFields(pim.PIMMessage{}, "BaseLayer")); diff != "" {
@@ -1468,7 +1468,7 @@ func TestMulticastSubscriber(t *testing.T) {
 				UpstreamNeighborAddress: net.IP([]byte{169, 254, 0, 0}),
 				NumGroups:               1,
 				Reserved:                0,
-				Holdtime:                210,
+				Holdtime:                5,
 				Groups: []pim.Group{{
 					GroupID:               0,
 					AddressFamily:         1,
@@ -2205,7 +2205,7 @@ func verifyPimJoinMessageSent(t *testing.T, pimJoinPruneChan chan []byte, upstre
 				Header: pim.PIMHeader{
 					Version:  2,
 					Type:     pim.JoinPrune,
-					Checksum: 0x2deb,
+					Checksum: 0x2e45,
 				},
 			}
 			if diff := cmp.Diff(got, want, cmpopts.IgnoreFields(pim.PIMMessage{}, "BaseLayer")); diff != "" {
@@ -2217,7 +2217,7 @@ func verifyPimJoinMessageSent(t *testing.T, pimJoinPruneChan chan []byte, upstre
 				UpstreamNeighborAddress: upstreamNeighbor,
 				NumGroups:               1,
 				Reserved:                0,
-				Holdtime:                210,
+				Holdtime:                120,
 				Groups: []pim.Group{{
 					GroupID:               0,
 					AddressFamily:         1,
@@ -2266,7 +2266,7 @@ func verifyPruneMessageSent(t *testing.T, pimJoinPruneChan chan []byte, upstream
 				Header: pim.PIMHeader{
 					Version:  2,
 					Type:     pim.JoinPrune,
-					Checksum: 0x2deb,
+					Checksum: 0x2eb8,
 				},
 			}
 			if diff := cmp.Diff(got, want, cmpopts.IgnoreFields(pim.PIMMessage{}, "BaseLayer")); diff != "" {
@@ -2278,7 +2278,7 @@ func verifyPruneMessageSent(t *testing.T, pimJoinPruneChan chan []byte, upstream
 				UpstreamNeighborAddress: upstreamNeighbor,
 				NumGroups:               1,
 				Reserved:                0,
-				Holdtime:                210,
+				Holdtime:                5,
 				Groups: []pim.Group{{
 					GroupID:               0,
 					AddressFamily:         1,

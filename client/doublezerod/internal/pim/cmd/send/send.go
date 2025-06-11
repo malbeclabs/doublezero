@@ -15,7 +15,7 @@ var (
 	iface            = flag.String("iface", "", "interface to use")
 	group            = flag.String("group", "", "multicast group to join/prune")
 	upstreamNeighbor = flag.String("upstream", "", "upstream neighbor address (for JoinPrune messages)")
-	rpAddress        = flag.String("rp", "10.0.0.0", "RP address (for JoinPrune messages, defaults to 10.0.0.0")
+	rpAddress        = flag.String("rp", "10.0.0.0", "RP address defaults to 10.0.0.0")
 	join             = flag.Bool("join", false, "send a join message")
 	prune            = flag.Bool("prune", false, "send a prune message")
 	holdtime         = flag.Int("holdtime", 120, "holdtime for JoinPrune messages (default 210 seconds)")
@@ -142,7 +142,7 @@ func main() {
 			UpstreamNeighborAddress: net.ParseIP(*upstreamNeighbor).To4(),
 			NumGroups:               1,
 			Reserved:                0,
-			Holdtime:                120,
+			Holdtime:                uint16(*holdtime),
 			Groups: []pim.Group{
 				{
 					AddressFamily:         1,

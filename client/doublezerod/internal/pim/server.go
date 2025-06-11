@@ -17,6 +17,11 @@ var (
 	RpAddress = net.IP([]byte{10, 0, 0, 0})
 )
 
+const (
+	joinHoldtime  = uint16(120) // ask upstream router to keep join state for 120 seconds
+	pruneHoldtime = uint16(5)   // ask upstream router to flush join state after 5 seconds
+)
+
 type RawConner interface {
 	WriteTo(h *ipv4.Header, b []byte, cm *ipv4.ControlMessage) error
 	Close() error
@@ -62,7 +67,7 @@ func (s *PIMServer) Start(conn RawConner, iface string, tunnelAddr net.IP, group
 		if err != nil {
 			slog.Error("failed to send PIM hello msg", "error", err)
 		}
-		joinPruneMsgBuf, err := constructJoinPruneMessage(tunnelAddr, groups, RpAddress, nil)
+		joinPruneMsgBuf, err := constructJoinPruneMessage(tunnelAddr, groups, RpAddress, nil, joinHoldtime)
 		if err != nil {
 			slog.Error("failed to serialize PIM join msg", "error", err)
 		}
@@ -83,7 +88,7 @@ func (s *PIMServer) Start(conn RawConner, iface string, tunnelAddr net.IP, group
 				if err != nil {
 					slog.Error("failed to send PIM hello msg", "error", err)
 				}
-				joinPruneMsgBuf, err := constructJoinPruneMessage(tunnelAddr, groups, RpAddress, nil)
+				joinPruneMsgBuf, err := constructJoinPruneMessage(tunnelAddr, groups, RpAddress, nil, joinHoldtime)
 				if err != nil {
 					slog.Error("failed to serialize PIM join msg", "error", err)
 				}
@@ -92,7 +97,7 @@ func (s *PIMServer) Start(conn RawConner, iface string, tunnelAddr net.IP, group
 					slog.Error("failed to send PIM join msg", "error", err)
 				}
 			case <-s.done:
-				joinPruneMsgBuf, err := constructJoinPruneMessage(tunnelAddr, groups, nil, RpAddress)
+				joinPruneMsgBuf, err := constructJoinPruneMessage(tunnelAddr, groups, nil, RpAddress, pruneHoldtime)
 				if err != nil {
 					slog.Error("failed to serialize PIM prune msg", "error", err)
 				}
@@ -142,7 +147,7 @@ func constructHelloMessage() (gopacket.SerializeBuffer, error) {
 }
 
 // TODO: at some point this could require multiple groups with joins/prunes mixed together
-func constructJoinPruneMessage(upstreamNeighbor net.IP, multicastGroupAddresses []net.IP, joinSourceAddress net.IP, pruneSourceAddress net.IP) (gopacket.SerializeBuffer, error) {
+func constructJoinPruneMessage(upstreamNeighbor net.IP, multicastGroupAddresses []net.IP, joinSourceAddress net.IP, pruneSourceAddress net.IP, holdtime uint16) (gopacket.SerializeBuffer, error) {
 	numGroups := len(multicastGroupAddresses)
 	opts := gopacket.SerializeOptions{}
 	buf := gopacket.NewSerializeBuffer()
@@ -152,7 +157,7 @@ func constructJoinPruneMessage(upstreamNeighbor net.IP, multicastGroupAddresses 
 		UpstreamNeighborAddress: upstreamNeighbor,
 		NumGroups:               uint8(numGroups),
 		Reserved:                0,
-		Holdtime:                210,
+		Holdtime:                holdtime,
 		Groups:                  groups,
 	}
 

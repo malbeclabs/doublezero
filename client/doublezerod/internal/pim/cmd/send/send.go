@@ -35,7 +35,7 @@ func main() {
 		log.Fatalf("upstream neighbor address not specified")
 	}
 
-	if !*join && !*prune {
+	if (!*join && !*prune) || (*join && *prune) {
 		log.Fatalf("either -join or -prune must be specified")
 	}
 

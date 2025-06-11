@@ -1,7 +1,7 @@
 #![allow(unexpected_cfgs)]
 
 mod bytereader;
-#[cfg(not(feature = "no-entrypoint"))]
+#[cfg(any(not(feature = "no-entrypoint"), test))]
 mod entrypoint;
 mod globalstate;
 mod helper;

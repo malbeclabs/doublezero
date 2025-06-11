@@ -71,200 +71,240 @@ func createMultipleIBRLUsersOnSameDeviceWithAllocatedIPs(t *testing.T, log *slog
 
 // checkIBRLWithAllocatedIPPostConnect checks requirements after connecting a user tunnel with an allocated IP.
 func checkIBRLWithAllocatedIPPostConnect(t *testing.T, log *slog.Logger, dn *devnet.Devnet, device *devnet.Device, client *devnet.Client) {
-	log.Info("==> Checking IBRL with allocated IP post-connect requirements")
+	// NOTE: Since we have inner parallel tests in this method, we need to wrap them in a
+	// non-parallel test to ensure methods that follow this one wait for the inner tests to
+	// complete.
+	t.Run("check_post_connect", func(t *testing.T) {
+		log.Info("==> Checking IBRL with allocated IP post-connect requirements")
 
-	expectedAllocatedClientIP := getNextAllocatedClientIP(device.InternalCYOAIP)
+		expectedAllocatedClientIP := getNextAllocatedClientIP(device.InternalCYOAIP)
 
-	if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
-		config, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_added.tmpl", map[string]string{
-			"ClientIP":                  client.IP,
-			"DeviceIP":                  device.InternalCYOAIP,
-			"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
-		})
-		require.NoError(t, err, "error reading agent configuration fixture")
-		err = waitForAgentConfigMatchViaController(t, dn, device.AgentPubkey, string(config))
-		require.NoError(t, err, "error waiting for agent config to match")
-	}) {
-		t.Fail()
-	}
-
-	tests := []struct {
-		name        string
-		fixturePath string
-		data        map[string]string
-		cmd         []string
-	}{
-		{
-			name:        "doublezero_user_list",
-			fixturePath: "fixtures/ibrl_with_allocated_addr/doublezero_user_list_user_added.tmpl",
-			data: map[string]string{
-				"ClientIP":                  client.IP,
-				"ClientPubkeyAddress":       client.PubkeyAddress,
-				"DeviceIP":                  device.InternalCYOAIP,
-				"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
-			},
-			cmd: []string{"doublezero", "user", "list"},
-		},
-		{
-			name:        "doublezero_device_list",
-			fixturePath: "fixtures/ibrl_with_allocated_addr/doublezero_device_list.tmpl",
-			data: map[string]string{
-				"DeviceIP":      device.InternalCYOAIP,
-				"ManagerPubkey": dn.ManagerPubkey,
-			},
-			cmd: []string{"doublezero", "device", "list"},
-		},
-		{
-			name:        "doublezero_status",
-			fixturePath: "fixtures/ibrl_with_allocated_addr/doublezero_status_connected.tmpl",
-			data: map[string]string{
+		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
+			config, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_added.tmpl", map[string]string{
 				"ClientIP":                  client.IP,
 				"DeviceIP":                  device.InternalCYOAIP,
 				"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
-			},
-			cmd: []string{"doublezero", "status"},
-		},
-	}
+			})
+			require.NoError(t, err, "error reading agent configuration fixture")
+			err = waitForAgentConfigMatchViaController(t, dn, device.AgentPubkey, string(config))
+			require.NoError(t, err, "error waiting for agent config to match")
+		}) {
+			t.Fail()
+		}
 
-	for _, test := range tests {
-		if !t.Run(test.name, func(t *testing.T) {
+		tests := []struct {
+			name        string
+			fixturePath string
+			data        map[string]string
+			cmd         []string
+		}{
+			{
+				name:        "doublezero_user_list",
+				fixturePath: "fixtures/ibrl_with_allocated_addr/doublezero_user_list_user_added.tmpl",
+				data: map[string]string{
+					"ClientIP":                  client.IP,
+					"ClientPubkeyAddress":       client.PubkeyAddress,
+					"DeviceIP":                  device.InternalCYOAIP,
+					"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
+				},
+				cmd: []string{"doublezero", "user", "list"},
+			},
+			{
+				name:        "doublezero_device_list",
+				fixturePath: "fixtures/ibrl_with_allocated_addr/doublezero_device_list.tmpl",
+				data: map[string]string{
+					"DeviceIP":      device.InternalCYOAIP,
+					"ManagerPubkey": dn.ManagerPubkey,
+				},
+				cmd: []string{"doublezero", "device", "list"},
+			},
+			{
+				name:        "doublezero_status",
+				fixturePath: "fixtures/ibrl_with_allocated_addr/doublezero_status_connected.tmpl",
+				data: map[string]string{
+					"ClientIP":                  client.IP,
+					"DeviceIP":                  device.InternalCYOAIP,
+					"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
+				},
+				cmd: []string{"doublezero", "status"},
+			},
+		}
+
+		for _, test := range tests {
+			if !t.Run(test.name, func(t *testing.T) {
+				t.Parallel()
+
+				got, err := client.Exec(t.Context(), test.cmd)
+				require.NoError(t, err, "error executing command on client")
+
+				want, err := fixtures.Render(test.fixturePath, test.data)
+				require.NoError(t, err, "error reading fixture")
+
+				diff := fixtures.DiffCLITable(got, []byte(want))
+				if diff != "" {
+					fmt.Println(string(got))
+					t.Fatalf("output mismatch: -(want), +(got):%s", diff)
+				}
+			}) {
+				t.Fail()
+			}
+		}
+
+		if !t.Run("check_tunnel_interface_is_configured", func(t *testing.T) {
 			t.Parallel()
 
-			got, err := client.Exec(t.Context(), test.cmd)
-			require.NoError(t, err, "error executing command on client")
+			links, err := client.ExecReturnJSONList(t.Context(), []string{"bash", "-c", "ip -j link show dev doublezero0"})
+			require.NoError(t, err)
 
-			want, err := fixtures.Render(test.fixturePath, test.data)
-			require.NoError(t, err, "error reading fixture")
+			require.Len(t, links, 1)
+			delete(links[0], "ifindex")
+			require.Equal(t, map[string]any{
+				"link":   nil,
+				"ifname": "doublezero0",
+				"flags": []any{
+					"POINTOPOINT",
+					"NOARP",
+					"UP",
+					"LOWER_UP",
+				},
+				"mtu":               float64(1476),
+				"qdisc":             "noqueue",
+				"operstate":         "UNKNOWN",
+				"linkmode":          "DEFAULT",
+				"group":             "default",
+				"link_type":         "gre",
+				"address":           client.IP,
+				"link_pointtopoint": true,
+				"broadcast":         device.InternalCYOAIP,
+			}, links[0])
+		}) {
+			t.Fail()
+		}
 
-			diff := fixtures.DiffCLITable(got, []byte(want))
-			if diff != "" {
-				fmt.Println(string(got))
-				t.Fatalf("output mismatch: -(want), +(got):%s", diff)
+		if !t.Run("check_doublezero_address_is_configured", func(t *testing.T) {
+			t.Parallel()
+
+			ifaces, err := client.ExecReturnJSONList(t.Context(), []string{"bash", "-c", "ip -j -4 addr show dev doublezero0"})
+			require.NoError(t, err)
+
+			require.True(t, netlink.HasAddr(ifaces, "doublezero0", expectedLinkLocalAddr), fmt.Sprintf("doublezero0 should have link-local address %s in: %+v", expectedLinkLocalAddr, ifaces))
+			require.True(t, netlink.HasAddr(ifaces, "doublezero0", expectedAllocatedClientIP), fmt.Sprintf("doublezero0 should have allocated client IP %s in: %+v", expectedAllocatedClientIP, ifaces))
+		}) {
+			t.Fail()
+		}
+
+		if !t.Run("check_user_session_is_established", func(t *testing.T) {
+			t.Parallel()
+			ctx := t.Context()
+
+			neighbors, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPBGPSummary](ctx, device, arista.ShowIPBGPSummaryCmd("vrf1"))
+			require.NoError(t, err, "error fetching neighbors from doublezero device")
+
+			routes, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIpRoute](ctx, device, arista.ShowIpRouteCmd("vrf1"))
+			require.NoError(t, err, "error fetching routes from doublezero device")
+
+			peer, ok := neighbors.VRFs["vrf1"].Peers[expectedLinkLocalAddr]
+			require.True(t, ok, "client ip %s missing from doublezero device\n", expectedLinkLocalAddr)
+			require.Equal(t, "65000", peer.ASN, "client asn should be 65000; got %s\n", peer.ASN)
+			require.Equal(t, "Established", peer.PeerState, "client state should be established; got %s\n", peer.PeerState)
+
+			_, ok = routes.VRFs["vrf1"].Routes[expectedAllocatedClientIP+"/32"]
+			if !ok {
+				fmt.Println(routes)
+				t.Fatalf("expected allocated client IP %s installed; got none\n", expectedAllocatedClientIP)
 			}
 		}) {
 			t.Fail()
 		}
-	}
 
-	if !t.Run("check_tunnel_interface_is_configured", func(t *testing.T) {
-		t.Parallel()
+		// User ban verified in the `doublezer_user_list_removed.txt` fixture.
+		if !t.Run("ban_user", func(t *testing.T) {
+			t.Parallel()
 
-		links, err := client.ExecReturnJSONList(t.Context(), []string{"bash", "-c", "ip -j link show dev doublezero0"})
-		require.NoError(t, err)
-
-		require.Len(t, links, 1)
-		delete(links[0], "ifindex")
-		require.Equal(t, map[string]any{
-			"link":   nil,
-			"ifname": "doublezero0",
-			"flags": []any{
-				"POINTOPOINT",
-				"NOARP",
-				"UP",
-				"LOWER_UP",
-			},
-			"mtu":               float64(1476),
-			"qdisc":             "noqueue",
-			"operstate":         "UNKNOWN",
-			"linkmode":          "DEFAULT",
-			"group":             "default",
-			"link_type":         "gre",
-			"address":           client.IP,
-			"link_pointtopoint": true,
-			"broadcast":         device.InternalCYOAIP,
-		}, links[0])
-	}) {
-		t.Fail()
-	}
-
-	if !t.Run("check_doublezero_address_is_configured", func(t *testing.T) {
-		t.Parallel()
-
-		ifaces, err := client.ExecReturnJSONList(t.Context(), []string{"bash", "-c", "ip -j -4 addr show dev doublezero0"})
-		require.NoError(t, err)
-
-		require.True(t, netlink.HasAddr(ifaces, "doublezero0", expectedLinkLocalAddr), fmt.Sprintf("doublezero0 should have link-local address %s in: %+v", expectedLinkLocalAddr, ifaces))
-		require.True(t, netlink.HasAddr(ifaces, "doublezero0", expectedAllocatedClientIP), fmt.Sprintf("doublezero0 should have allocated client IP %s in: %+v", expectedAllocatedClientIP, ifaces))
-	}) {
-		t.Fail()
-	}
-
-	if !t.Run("check_user_session_is_established", func(t *testing.T) {
-		t.Parallel()
-		ctx := t.Context()
-
-		neighbors, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPBGPSummary](ctx, device, arista.ShowIPBGPSummaryCmd("vrf1"))
-		require.NoError(t, err, "error fetching neighbors from doublezero device")
-
-		routes, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIpRoute](ctx, device, arista.ShowIpRouteCmd("vrf1"))
-		require.NoError(t, err, "error fetching routes from doublezero device")
-
-		peer, ok := neighbors.VRFs["vrf1"].Peers[expectedLinkLocalAddr]
-		require.True(t, ok, "client ip %s missing from doublezero device\n", expectedLinkLocalAddr)
-		require.Equal(t, "65000", peer.ASN, "client asn should be 65000; got %s\n", peer.ASN)
-		require.Equal(t, "Established", peer.PeerState, "client state should be established; got %s\n", peer.PeerState)
-
-		_, ok = routes.VRFs["vrf1"].Routes[expectedAllocatedClientIP+"/32"]
-		if !ok {
-			fmt.Println(routes)
-			t.Fatalf("expected allocated client IP %s installed; got none\n", expectedAllocatedClientIP)
+			// TODO: This is brittle, come up with a better solution.
+			_, err := dn.ManagerExec(t.Context(), []string{"bash", "-c", "doublezero user request-ban --pubkey AA3fFZM1bJbNzCWhPydZrbQpswGkZx4PFhxd2bHaztyG"})
+			require.NoError(t, err)
+		}) {
+			t.Fail()
 		}
-	}) {
-		t.Fail()
-	}
 
-	// User ban verified in the `doublezer_user_list_removed.txt` fixture.
-	if !t.Run("ban_user", func(t *testing.T) {
-		t.Parallel()
-
-		// TODO: This is brittle, come up with a better solution.
-		_, err := dn.ManagerExec(t.Context(), []string{"bash", "-c", "doublezero user request-ban --pubkey AA3fFZM1bJbNzCWhPydZrbQpswGkZx4PFhxd2bHaztyG"})
-		require.NoError(t, err)
-	}) {
-		t.Fail()
-	}
-
-	log.Info("--> IBRL with allocated IP post-connect requirements checked")
+		log.Info("--> IBRL with allocated IP post-connect requirements checked")
+	})
 }
 
 // checkIBRLWithAllocatedIPPostDisconnect checks requirements after disconnecting a user tunnel with an allocated IP.
 func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, log *slog.Logger, dn *devnet.Devnet, device *devnet.Device, client *devnet.Client) {
-	log.Info("==> Checking IBRL with allocated IP post-disconnect requirements")
+	// NOTE: Since we have inner parallel tests in this method, we need to wrap them in a
+	// non-parallel test to ensure methods that follow this one wait for the inner tests to
+	// complete.
+	t.Run("check_post_disconnect", func(t *testing.T) {
+		log.Info("==> Checking IBRL with allocated IP post-disconnect requirements")
 
-	if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
-		config, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_removed.tmpl", map[string]string{
-			"DeviceIP": device.InternalCYOAIP,
-		})
-		require.NoError(t, err, "error reading agent configuration fixture")
-		err = waitForAgentConfigMatchViaController(t, dn, device.AgentPubkey, string(config))
-		require.NoError(t, err, "error waiting for agent config to match")
-	}) {
-		t.Fail()
-	}
+		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
+			config, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_removed.tmpl", map[string]string{
+				"DeviceIP": device.InternalCYOAIP,
+			})
+			require.NoError(t, err, "error reading agent configuration fixture")
+			err = waitForAgentConfigMatchViaController(t, dn, device.AgentPubkey, string(config))
+			require.NoError(t, err, "error waiting for agent config to match")
+		}) {
+			t.Fail()
+		}
 
-	tests := []struct {
-		name        string
-		fixturePath string
-		data        map[string]string
-		cmd         []string
-	}{
-		{
-			name:        "doublezero_status",
-			fixturePath: "fixtures/ibrl_with_allocated_addr/doublezero_status_disconnected.txt",
-			data:        map[string]string{},
-			cmd:         []string{"doublezero", "status"},
-		},
-	}
+		tests := []struct {
+			name        string
+			fixturePath string
+			data        map[string]string
+			cmd         []string
+		}{
+			{
+				name:        "doublezero_status",
+				fixturePath: "fixtures/ibrl_with_allocated_addr/doublezero_status_disconnected.txt",
+				data:        map[string]string{},
+				cmd:         []string{"doublezero", "status"},
+			},
+		}
 
-	for _, test := range tests {
-		if !t.Run(test.name, func(t *testing.T) {
+		for _, test := range tests {
+			if !t.Run(test.name, func(t *testing.T) {
+				t.Parallel()
+
+				got, err := client.Exec(t.Context(), test.cmd)
+				require.NoError(t, err, "error executing command on client")
+
+				want, err := fixtures.Render(test.fixturePath, test.data)
+				require.NoError(t, err, "error reading fixture")
+
+				diff := fixtures.DiffCLITable(got, []byte(want))
+				if diff != "" {
+					fmt.Println(string(got))
+					t.Fatalf("output mismatch: -(want), +(got):%s", diff)
+				}
+			}) {
+				t.Fail()
+			}
+		}
+
+		if !t.Run("check_tunnel_interface_is_removed", func(t *testing.T) {
 			t.Parallel()
 
-			got, err := client.Exec(t.Context(), test.cmd)
-			require.NoError(t, err, "error executing command on client")
+			got, err := client.Exec(t.Context(), []string{"bash", "-c", "ip -j link show dev doublezero0"})
+			require.Error(t, err)
+			require.Equal(t, `Device "doublezero0" does not exist.`, strings.TrimSpace(string(got)))
+		}) {
+			t.Fail()
+		}
 
-			want, err := fixtures.Render(test.fixturePath, test.data)
-			require.NoError(t, err, "error reading fixture")
+		if !t.Run("check_user_contract_is_removed", func(t *testing.T) {
+			t.Parallel()
+
+			got, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero user list"})
+			require.NoError(t, err)
+
+			want, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_user_list_user_removed.tmpl", map[string]string{
+				"ClientPubkeyAddress": client.PubkeyAddress,
+			})
+			require.NoError(t, err, "error reading user list fixture")
 
 			diff := fixtures.DiffCLITable(got, []byte(want))
 			if diff != "" {
@@ -274,56 +314,26 @@ func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, log *slog.Logger, dn *
 		}) {
 			t.Fail()
 		}
-	}
 
-	if !t.Run("check_tunnel_interface_is_removed", func(t *testing.T) {
-		t.Parallel()
+		if !t.Run("check_user_tunnel_is_removed_from_agent", func(t *testing.T) {
+			t.Parallel()
 
-		got, err := client.Exec(t.Context(), []string{"bash", "-c", "ip -j link show dev doublezero0"})
-		require.Error(t, err)
-		require.Equal(t, `Device "doublezero0" does not exist.`, strings.TrimSpace(string(got)))
-	}) {
-		t.Fail()
-	}
+			deadline := time.Now().Add(30 * time.Second)
+			for time.Now().Before(deadline) {
+				neighbors, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPBGPSummary](t.Context(), device, arista.ShowIPBGPSummaryCmd("vrf1"))
+				require.NoError(t, err, "error fetching neighbors from doublezero device")
 
-	if !t.Run("check_user_contract_is_removed", func(t *testing.T) {
-		t.Parallel()
-
-		got, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero user list"})
-		require.NoError(t, err)
-
-		want, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_user_list_user_removed.tmpl", map[string]string{
-			"ClientPubkeyAddress": client.PubkeyAddress,
-		})
-		require.NoError(t, err, "error reading user list fixture")
-
-		diff := fixtures.DiffCLITable(got, []byte(want))
-		if diff != "" {
-			fmt.Println(string(got))
-			t.Fatalf("output mismatch: -(want), +(got):%s", diff)
-		}
-	}) {
-		t.Fail()
-	}
-
-	if !t.Run("check_user_tunnel_is_removed_from_agent", func(t *testing.T) {
-		t.Parallel()
-
-		deadline := time.Now().Add(30 * time.Second)
-		for time.Now().Before(deadline) {
-			neighbors, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPBGPSummary](t.Context(), device, arista.ShowIPBGPSummaryCmd("vrf1"))
-			require.NoError(t, err, "error fetching neighbors from doublezero device")
-
-			_, ok := neighbors.VRFs["vrf1"].Peers[expectedLinkLocalAddr]
-			if !ok {
-				return
+				_, ok := neighbors.VRFs["vrf1"].Peers[expectedLinkLocalAddr]
+				if !ok {
+					return
+				}
+				time.Sleep(1 * time.Second)
 			}
-			time.Sleep(1 * time.Second)
+			t.Fatalf("bgp neighbor %s has not been removed from doublezero device", expectedLinkLocalAddr)
+		}) {
+			t.Fail()
 		}
-		t.Fatalf("bgp neighbor %s has not been removed from doublezero device", expectedLinkLocalAddr)
-	}) {
-		t.Fail()
-	}
 
-	log.Info("--> IBRL with allocated IP post-disconnect requirements checked")
+		log.Info("--> IBRL with allocated IP post-disconnect requirements checked")
+	})
 }

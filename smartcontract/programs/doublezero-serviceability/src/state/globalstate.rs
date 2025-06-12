@@ -2,7 +2,7 @@ use super::accounttype::AccountType;
 use crate::bytereader::ByteReader;
 use borsh::BorshSerialize;
 use core::fmt;
-use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
+use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
 
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 pub struct GlobalState {
@@ -52,10 +52,13 @@ impl From<&[u8]> for GlobalState {
     }
 }
 
-impl From<&AccountInfo<'_>> for GlobalState {
-    fn from(account: &AccountInfo) -> Self {
-        let data = account.try_borrow_data().unwrap();
-        Self::from(&data[..])
+impl TryFrom<&AccountInfo<'_>> for GlobalState {
+    type Error = ProgramError;
+    fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
+        let data = account
+            .try_borrow_data()
+            .map_err(|_| ProgramError::AccountBorrowFailed)?;
+        Ok(Self::from(&data[..]))
     }
 }
 

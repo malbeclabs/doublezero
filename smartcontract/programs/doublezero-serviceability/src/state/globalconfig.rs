@@ -4,8 +4,7 @@ use crate::{
     types::{networkv4_to_string, NetworkV4},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use eyre::eyre;
-use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
+use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
 use std::fmt;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
@@ -51,12 +50,11 @@ impl From<&[u8]> for GlobalConfig {
 }
 
 impl TryFrom<&AccountInfo<'_>> for GlobalConfig {
-    type Error = eyre::Error;
-
-    fn try_from(account: &AccountInfo) -> eyre::Result<Self> {
+    type Error = ProgramError;
+    fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
         let data = account
             .try_borrow_data()
-            .map_err(|e| eyre!("Failed to borrow account data: {}", e))?;
+            .map_err(|_| ProgramError::AccountBorrowFailed)?;
         Ok(Self::from(&data[..]))
     }
 }

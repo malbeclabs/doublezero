@@ -35,7 +35,7 @@ pub fn process_delete_exchange(
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
-    let pda_account = next_account_info(accounts_iter)?;
+    let exchange_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -44,7 +44,7 @@ pub fn process_delete_exchange(
     msg!("process_delete_exchange({:?})", value);
 
     // Check the owner of the accounts
-    assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
+    assert_eq!(exchange_account.owner, program_id, "Invalid PDA Account Owner");
     assert_eq!(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"
@@ -54,7 +54,7 @@ pub fn process_delete_exchange(
         solana_program::system_program::id(),
         "Invalid System Program Account Owner"
     );
-    assert!(pda_account.is_writable, "PDA Account is not writable");
+    assert!(exchange_account.is_writable, "PDA Account is not writable");
 
     // Parse the global state account & check if the payer is in the allowlist
     let globalstate = globalstate_get(globalstate_account)?;
@@ -63,7 +63,7 @@ pub fn process_delete_exchange(
     }
 
     {
-        let account_data = pda_account
+        let account_data = exchange_account
             .try_borrow_data()
             .map_err(|_| ProgramError::AccountBorrowFailed)?;
         let exchange: Exchange = Exchange::from(&account_data[..]);
@@ -77,10 +77,10 @@ pub fn process_delete_exchange(
         }
     }
 
-    account_close(pda_account, payer_account)?;
+    account_close(exchange_account, payer_account)?;
 
     #[cfg(test)]
-    msg!("Deleted: {:?}", pda_account);
+    msg!("Deleted: {:?}", exchange_account);
 
     Ok(())
 }

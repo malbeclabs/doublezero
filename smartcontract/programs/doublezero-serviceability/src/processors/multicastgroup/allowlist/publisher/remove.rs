@@ -48,7 +48,7 @@ pub fn process_remove_multicast_pub_allowlist(
     assert!(mgroup_account.is_writable, "PDA Account is not writable");
 
     // Parse the global state account & check if the payer is in the allowlist
-    let mut mgroup = MulticastGroup::from(mgroup_account);
+    let mut mgroup = MulticastGroup::try_from(mgroup_account)?;
     if mgroup.owner != *payer_account.key {
         return Err(DoubleZeroError::NotAllowed.into());
     }

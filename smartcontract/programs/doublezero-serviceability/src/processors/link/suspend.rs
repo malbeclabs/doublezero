@@ -28,7 +28,7 @@ pub fn process_suspend_link(
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
-    let pda_account = next_account_info(accounts_iter)?;
+    let link_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -36,41 +36,36 @@ pub fn process_suspend_link(
     msg!("process_suspend_link({:?})", value);
 
     // Check the owner of the accounts
-    assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
+    assert_eq!(link_account.owner, program_id, "Invalid PDA Account Owner");
     assert_eq!(
         *system_program.unsigned_key(),
         solana_program::system_program::id(),
         "Invalid System Program Account Owner"
     );
     // Check if the account is writable
-    assert!(pda_account.is_writable, "PDA Account is not writable");
+    assert!(link_account.is_writable, "PDA Account is not writable");
 
-    let mut tunnel: Link = {
-        let account_data = pda_account
-            .try_borrow_data()
-            .map_err(|_| ProgramError::AccountBorrowFailed)?;
-        Link::from(&account_data[..])
-    };
-    assert_eq!(tunnel.index, value.index, "Invalid PDA Account Index");
+    let mut link: Link = Link::try_from(link_account)?;
+    assert_eq!(link.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
-        tunnel.bump_seed, value.bump_seed,
+        link.bump_seed, value.bump_seed,
         "Invalid PDA Account Bump Seed"
     );
 
-    if tunnel.owner != *payer_account.key {
+    if link.owner != *payer_account.key {
         return Err(ProgramError::InvalidAccountOwner);
     }
-    if tunnel.status != LinkStatus::Activated {
+    if link.status != LinkStatus::Activated {
         #[cfg(test)]
-        msg!("{:?}", tunnel);
+        msg!("{:?}", link);
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    tunnel.status = LinkStatus::Suspended;
+    link.status = LinkStatus::Suspended;
 
-    account_write(pda_account, &tunnel, payer_account, system_program);
+    account_write(link_account, &link, payer_account, system_program);
 
-    msg!("Suspended: {:?}", tunnel);
+    msg!("Suspended: {:?}", link);
 
     Ok(())
 }

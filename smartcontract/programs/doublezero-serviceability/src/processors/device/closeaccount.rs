@@ -32,7 +32,7 @@ pub fn process_closeaccount_device(
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
-    let pda_account = next_account_info(accounts_iter)?;
+    let device_account = next_account_info(accounts_iter)?;
     let owner_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
@@ -42,12 +42,12 @@ pub fn process_closeaccount_device(
     msg!("process_closeaccount_device({:?})", value);
 
     // Check the owner of the accounts
-    assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
+    assert_eq!(device_account.owner, program_id, "Invalid PDA Account Owner");
     assert_eq!(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"
     );
-    assert!(pda_account.is_writable, "PDA Account is not writable");
+    assert!(device_account.is_writable, "PDA Account is not writable");
 
     let globalstate = globalstate_get_next(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
@@ -55,7 +55,7 @@ pub fn process_closeaccount_device(
     }
 
     {
-        let account_data = pda_account
+        let account_data = device_account
             .try_borrow_data()
             .map_err(|_| ProgramError::AccountBorrowFailed)?;
         let device: Device = Device::from(&account_data[..]);
@@ -72,7 +72,7 @@ pub fn process_closeaccount_device(
         }
     }
 
-    account_close(pda_account, owner_account)?;
+    account_close(device_account, owner_account)?;
 
     #[cfg(test)]
     msg!("CloseAccount: Device closed");

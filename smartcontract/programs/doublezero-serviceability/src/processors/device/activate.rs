@@ -32,7 +32,7 @@ pub fn process_activate_device(
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
-    let pda_account = next_account_info(accounts_iter)?;
+    let device_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -42,11 +42,11 @@ pub fn process_activate_device(
 
     let (expected_pda_account, bump_seed) = get_device_pda(program_id, value.index);
     assert_eq!(
-        pda_account.key, &expected_pda_account,
+        device_account.key, &expected_pda_account,
         "Invalid Device PubKey"
     );
 
-    if pda_account.owner != program_id {
+    if device_account.owner != program_id {
         return Err(ProgramError::IncorrectProgramId);
     }
     if globalstate_account.owner != program_id {
@@ -58,12 +58,7 @@ pub fn process_activate_device(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    let mut device: Device = {
-        let account_data = pda_account
-            .try_borrow_data()
-            .map_err(|_| ProgramError::AccountBorrowFailed)?;
-        Device::from(&account_data[..])
-    };
+    let mut device: Device = Device::try_from(device_account)?;
     assert_eq!(device.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
         device.bump_seed, value.bump_seed,
@@ -77,7 +72,7 @@ pub fn process_activate_device(
 
     device.status = DeviceStatus::Activated;
 
-    account_write(pda_account, &device, payer_account, system_program);
+    account_write(device_account, &device, payer_account, system_program);
 
     #[cfg(test)]
     msg!("Activated: {:?}", device);

@@ -6,7 +6,6 @@ use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
-    program_error::ProgramError,
     pubkey::Pubkey,
 };
 
@@ -29,7 +28,7 @@ pub fn process_delete_user(
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
-    let pda_account = next_account_info(accounts_iter)?;
+    let user_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -38,7 +37,7 @@ pub fn process_delete_user(
     msg!("process_delete_user({:?})", value);
 
     // Check the owner of the accounts
-    assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
+    assert_eq!(user_account.owner, program_id, "Invalid PDA Account Owner");
     assert_eq!(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"
@@ -49,14 +48,9 @@ pub fn process_delete_user(
         "Invalid System Program Account Owner"
     );
     // Check if the account is writable
-    assert!(pda_account.is_writable, "PDA Account is not writable");
+    assert!(user_account.is_writable, "PDA Account is not writable");
 
-    let mut user: User = {
-        let account_data = pda_account
-            .try_borrow_data()
-            .map_err(|_| ProgramError::AccountBorrowFailed)?;
-        User::from(&account_data[..])
-    };
+    let mut user: User = User::try_from(user_account)?;
     assert_eq!(user.index, value.index, "Invalid PDA Account Index");
     assert_eq!(user.bump_seed, value.bump_seed, "Invalid bump seed");
 
@@ -69,7 +63,7 @@ pub fn process_delete_user(
 
     user.status = UserStatus::Deleting;
 
-    account_write(pda_account, &user, payer_account, system_program);
+    account_write(user_account, &user, payer_account, system_program);
 
     #[cfg(test)]
     msg!("Deleting: {:?}", user);

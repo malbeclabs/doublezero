@@ -6,7 +6,7 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::Serialize;
-use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
+use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
 use std::fmt;
 
 #[repr(u8)]
@@ -128,10 +128,13 @@ impl From<&[u8]> for MulticastGroup {
     }
 }
 
-impl From<&AccountInfo<'_>> for MulticastGroup {
-    fn from(account: &AccountInfo) -> Self {
-        let data = account.try_borrow_data().unwrap();
-        Self::from(&data[..])
+impl TryFrom<&AccountInfo<'_>> for MulticastGroup {
+    type Error = ProgramError;
+    fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
+        let data = account
+            .try_borrow_data()
+            .map_err(|_| ProgramError::AccountBorrowFailed)?;
+        Ok(Self::from(&data[..]))
     }
 }
 

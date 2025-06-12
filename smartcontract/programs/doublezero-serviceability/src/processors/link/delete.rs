@@ -6,7 +6,6 @@ use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
-    program_error::ProgramError,
     pubkey::Pubkey,
 };
 
@@ -29,7 +28,7 @@ pub fn process_delete_link(
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
-    let pda_account = next_account_info(accounts_iter)?;
+    let link_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -38,7 +37,7 @@ pub fn process_delete_link(
     msg!("process_delete_link({:?})", value);
 
     // Check the owner of the accounts
-    assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
+    assert_eq!(link_account.owner, program_id, "Invalid PDA Account Owner");
     assert_eq!(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"
@@ -49,31 +48,26 @@ pub fn process_delete_link(
         "Invalid System Program Account Owner"
     );
 
-    let mut tunnel: Link = {
-        let account_data = pda_account
-            .try_borrow_data()
-            .map_err(|_| ProgramError::AccountBorrowFailed)?;
-        Link::from(&account_data[..])
-    };
-    assert_eq!(tunnel.index, value.index, "Invalid PDA Account Index");
+    let mut link: Link = Link::try_from(link_account)?;
+    assert_eq!(link.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
-        tunnel.bump_seed, value.bump_seed,
+        link.bump_seed, value.bump_seed,
         "Invalid PDA Account Bump Seed"
     );
 
     let globalstate = globalstate_get(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key)
-        && tunnel.owner != *payer_account.key
+        && link.owner != *payer_account.key
     {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    tunnel.status = LinkStatus::Deleting;
+    link.status = LinkStatus::Deleting;
 
-    account_write(pda_account, &tunnel, payer_account, system_program);
+    account_write(link_account, &link, payer_account, system_program);
 
     #[cfg(test)]
-    msg!("Deleting: {:?}", tunnel);
+    msg!("Deleting: {:?}", link);
 
     Ok(())
 }

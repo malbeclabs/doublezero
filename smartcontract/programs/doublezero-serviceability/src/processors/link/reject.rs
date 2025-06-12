@@ -6,7 +6,6 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     msg,
-    program_error::ProgramError,
     pubkey::Pubkey,
 };
 
@@ -30,7 +29,7 @@ pub fn process_reject_link(
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
-    let pda_account = next_account_info(accounts_iter)?;
+    let link_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -39,7 +38,7 @@ pub fn process_reject_link(
     msg!("process_activate_link({:?})", value);
 
     // Check the owner of the accounts
-    assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
+    assert_eq!(link_account.owner, program_id, "Invalid PDA Account Owner");
     assert_eq!(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"
@@ -49,37 +48,32 @@ pub fn process_reject_link(
         solana_program::system_program::id(),
         "Invalid System Program Account Owner"
     );
-    assert!(pda_account.is_writable, "PDA Account is not writable");
+    assert!(link_account.is_writable, "PDA Account is not writable");
 
     let globalstate = globalstate_get(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    let mut tunnel: Link = {
-        let account_data = pda_account
-            .try_borrow_data()
-            .map_err(|_| ProgramError::AccountBorrowFailed)?;
-        Link::from(&account_data[..])
-    };
-    assert_eq!(tunnel.index, value.index, "Invalid PDA Account Index");
+    let mut link: Link = Link::try_from(link_account)?;
+    assert_eq!(link.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
-        tunnel.bump_seed, value.bump_seed,
+        link.bump_seed, value.bump_seed,
         "Invalid PDA Account Bump Seed"
     );
-    if tunnel.status != LinkStatus::Pending {
+    if link.status != LinkStatus::Pending {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    tunnel.tunnel_id = 0;
-    tunnel.tunnel_net = ([0, 0, 0, 0], 0);
-    tunnel.status = LinkStatus::Rejected;
+    link.tunnel_id = 0;
+    link.tunnel_net = ([0, 0, 0, 0], 0);
+    link.status = LinkStatus::Rejected;
     msg!("Reason: {:?}", value.reason);
 
-    account_write(pda_account, &tunnel, payer_account, system_program);
+    account_write(link_account, &link, payer_account, system_program);
 
     #[cfg(test)]
-    msg!("Rejectd: {:?}", tunnel);
+    msg!("Rejectd: {:?}", link);
 
     Ok(())
 }

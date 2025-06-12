@@ -97,7 +97,7 @@ pub fn process_create_subscribe_user(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let mut mgroup: MulticastGroup = MulticastGroup::from(mgroup_account);
+    let mut mgroup: MulticastGroup = MulticastGroup::try_from(mgroup_account)?;
     assert_eq!(mgroup.account_type, AccountType::MulticastGroup);
     assert_eq!(mgroup.status, MulticastGroupStatus::Activated);
 

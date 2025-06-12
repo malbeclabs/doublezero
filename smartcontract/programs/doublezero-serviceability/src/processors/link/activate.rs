@@ -9,7 +9,6 @@ use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
-    program_error::ProgramError,
     pubkey::Pubkey,
 };
 
@@ -39,7 +38,7 @@ pub fn process_activate_link(
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
-    let pda_account = next_account_info(accounts_iter)?;
+    let link_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -48,42 +47,37 @@ pub fn process_activate_link(
     msg!("process_activate_link({:?})", value);
 
     // Check the owner of the accounts
-    assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
+    assert_eq!(link_account.owner, program_id, "Invalid PDA Account Owner");
     assert_eq!(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"
     );
     // Check if the account is writable
-    assert!(pda_account.is_writable, "PDA Account is not writable");
+    assert!(link_account.is_writable, "PDA Account is not writable");
 
     let globalstate = globalstate_get(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    let mut tunnel: Link = {
-        let account_data = pda_account
-            .try_borrow_data()
-            .map_err(|_| ProgramError::AccountBorrowFailed)?;
-        Link::from(&account_data[..])
-    };
-    assert_eq!(tunnel.index, value.index, "Invalid PDA Account Index");
+    let mut link: Link = Link::try_from(link_account)?;
+    assert_eq!(link.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
-        tunnel.bump_seed, value.bump_seed,
+        link.bump_seed, value.bump_seed,
         "Invalid PDA Account Bump Seed"
     );
-    if tunnel.status != LinkStatus::Pending {
+    if link.status != LinkStatus::Pending {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    tunnel.tunnel_id = value.tunnel_id;
-    tunnel.tunnel_net = value.tunnel_net;
-    tunnel.status = LinkStatus::Activated;
+    link.tunnel_id = value.tunnel_id;
+    link.tunnel_net = value.tunnel_net;
+    link.status = LinkStatus::Activated;
 
-    account_write(pda_account, &tunnel, payer_account, system_program);
+    account_write(link_account, &link, payer_account, system_program);
 
     #[cfg(test)]
-    msg!("Activated: {:?}", tunnel);
+    msg!("Activated: {:?}", link);
 
     Ok(())
 }

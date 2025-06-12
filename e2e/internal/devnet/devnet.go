@@ -1,0 +1,290 @@
+package devnet
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"sync"
+	"time"
+
+	"github.com/docker/docker/client"
+	"github.com/malbeclabs/doublezero/e2e/internal/docker"
+)
+
+const (
+	defaultContainerNanoCPUs = 1_000_000_000      // 1 core
+	defaultContainerMemory   = 1024 * 1024 * 1024 // 1GB
+
+	labelsKeyDomain = "dz.malbeclabs.com"
+)
+
+type DevnetSpec struct {
+	DeployID   string
+	WorkingDir string
+
+	// ExtraLabels are used to identify the resources created by the devnet.
+	// These are added to the resources created by the devnet, in addition to default labels based
+	// on the deployID.
+	ExtraLabels map[string]string
+
+	Ledger     LedgerSpec
+	Manager    ManagerSpec
+	Controller ControllerSpec
+	Activator  ActivatorSpec
+	Devices    []DeviceSpec
+	Clients    []ClientSpec
+}
+
+type Devnet struct {
+	Spec DevnetSpec
+
+	log             *slog.Logger
+	subnetAllocator *docker.SubnetAllocator
+	dockerClient    *client.Client
+	labels          map[string]string
+	mu              sync.RWMutex
+
+	DefaultNetwork *DefaultNetwork
+	CYOANetwork    *CYOANetwork
+
+	Ledger     *Ledger
+	Manager    *Manager
+	Controller *Controller
+	Activator  *Activator
+	Devices    []*Device
+	Clients    []*Client
+}
+
+func (s *DevnetSpec) Validate() error {
+	if s.DeployID == "" {
+		return fmt.Errorf("deployID is required")
+	}
+
+	if s.WorkingDir == "" {
+		return fmt.Errorf("workingDir is required")
+	}
+
+	if err := s.Ledger.Validate(); err != nil {
+		return fmt.Errorf("ledger: %w", err)
+	}
+
+	if err := s.Manager.Validate(); err != nil {
+		return fmt.Errorf("manager: %w", err)
+	}
+
+	if err := s.Controller.Validate(); err != nil {
+		return fmt.Errorf("controller: %w", err)
+	}
+
+	if err := s.Activator.Validate(); err != nil {
+		return fmt.Errorf("activator: %w", err)
+	}
+
+	for _, device := range s.Devices {
+		if err := device.Validate(); err != nil {
+			return fmt.Errorf("device: %w", err)
+		}
+	}
+
+	for _, client := range s.Clients {
+		if err := client.Validate(); err != nil {
+			return fmt.Errorf("client: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func New(spec DevnetSpec, logger *slog.Logger, dockerClient *client.Client, subnetAllocator *docker.SubnetAllocator) (*Devnet, error) {
+	// Configure the logger.
+	log := logger.With("deployID", spec.DeployID)
+
+	// Build the resource labels used to identify resources.
+	labels := make(map[string]string)
+	for k, v := range spec.ExtraLabels {
+		labels[k] = v
+	}
+	labels[labelsKeyDomain] = "true"
+	labels[labelsKeyDomain+"/type"] = "devnet"
+	labels[labelsKeyDomain+"/deploy-id"] = spec.DeployID
+
+	dn := &Devnet{
+		log:             log,
+		dockerClient:    dockerClient,
+		subnetAllocator: subnetAllocator,
+
+		Spec: spec,
+	}
+
+	// NOTE: The devnet and log fields need to be set before calling Start on the sub-components,
+	// which will then fill in the rest of the fields.
+	dn.DefaultNetwork = &DefaultNetwork{
+		dn:  dn,
+		log: log.With("component", "default-network"),
+	}
+	dn.CYOANetwork = &CYOANetwork{
+		dn:  dn,
+		log: log.With("component", "cyoa-network"),
+	}
+	dn.Ledger = &Ledger{
+		dn:  dn,
+		log: log.With("component", "ledger"),
+	}
+	dn.Manager = &Manager{
+		dn:  dn,
+		log: log.With("component", "manager"),
+	}
+	dn.Controller = &Controller{
+		dn:  dn,
+		log: log.With("component", "controller"),
+	}
+	dn.Activator = &Activator{
+		dn:  dn,
+		log: log.With("component", "activator"),
+	}
+	dn.Devices = []*Device{}
+	dn.Clients = []*Client{}
+
+	return dn, nil
+}
+
+func (d *Devnet) Close() {}
+
+func (d *Devnet) Start(ctx context.Context) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.log.Info("==> Starting devnet", "deployID", d.Spec.DeployID, "workingDir", d.Spec.WorkingDir)
+	start := time.Now()
+
+	// Create the default network.
+	if err := d.DefaultNetwork.Create(ctx); err != nil {
+		return fmt.Errorf("failed to create default network: %w", err)
+	}
+
+	// Start the ledger.
+	if err := d.Ledger.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start ledger: %w", err)
+	}
+
+	// Start the manager.
+	if err := d.Manager.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start manager: %w", err)
+	}
+
+	// Initialize the smart contract.
+	if !d.Spec.Manager.NoInitSmartContract {
+		if err := d.Manager.InitSmartContract(ctx); err != nil {
+			return fmt.Errorf("failed to initialize smart contract: %w", err)
+		}
+	}
+
+	// Start the controller.
+	if err := d.Controller.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start controller: %w", err)
+	}
+
+	// Start the activator.
+	if err := d.Activator.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start activator: %w", err)
+	}
+
+	// Create the CYOA network.
+	if err := d.CYOANetwork.Create(ctx); err != nil {
+		return fmt.Errorf("failed to create CYOA network: %w", err)
+	}
+
+	// Connect the controller to the device CYOA network.
+	if err := d.Controller.ConnectToCYOANetwork(ctx); err != nil {
+		return fmt.Errorf("failed to connect controller to device CYOA network: %w", err)
+	}
+
+	// We don't support starting with devices yet.
+	// The AddDevice method can be used to add devices after the devnet is started.
+	if len(d.Spec.Devices) > 0 {
+		return fmt.Errorf("starting with devices is not supported yet")
+	}
+
+	// We don't support starting with clients yet.
+	// The AddClient method can be used to add clients after the devnet is started.
+	if len(d.Spec.Clients) > 0 {
+		return fmt.Errorf("starting with clients is not supported yet")
+	}
+
+	d.log.Info("--> Devnet started", "duration", time.Since(start))
+	return nil
+}
+
+func (d *Devnet) AddDevice(ctx context.Context, spec DeviceSpec) (int, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	deviceIndex := len(d.Devices)
+	d.Spec.Devices = append(d.Spec.Devices, spec)
+
+	// NOTE: The devnet, log, and index fields need to be set before calling Start, which will
+	// then fill in the rest of the fields.
+	device := &Device{
+		dn:    d,
+		log:   d.log.With("component", "device", "index", deviceIndex),
+		index: deviceIndex,
+	}
+	d.Devices = append(d.Devices, device)
+
+	err := device.Start(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to start device: %w", err)
+	}
+
+	return deviceIndex, nil
+}
+
+func (d *Devnet) AddClient(ctx context.Context, spec ClientSpec) (int, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	clientIndex := len(d.Clients)
+	d.Spec.Clients = append(d.Spec.Clients, spec)
+
+	// NOTE: The devnet, log, and index fields need to be set before calling Start, which will
+	// then fill in the rest of the fields.
+	client := &Client{
+		dn:    d,
+		log:   d.log.With("component", "client", "index", clientIndex),
+		index: clientIndex,
+	}
+	d.Clients = append(d.Clients, client)
+
+	err := client.Start(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to start client: %w", err)
+	}
+
+	return clientIndex, nil
+}
+
+func (d *Devnet) waitContainerHealthy(ctx context.Context, containerID string, timeout time.Duration, delay time.Duration) error {
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	ticker := time.NewTicker(delay)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-waitCtx.Done():
+			return fmt.Errorf("timeout waiting for container to be healthy")
+		case <-ticker.C:
+			inspect, err := d.dockerClient.ContainerInspect(waitCtx, containerID)
+			if err != nil {
+				return fmt.Errorf("failed to inspect container: %w", err)
+			}
+			if inspect.State.Health.Status == "healthy" {
+				return nil
+			}
+			d.log.Debug("--> Waiting for container to be healthy", "container", shortContainerID(containerID), "status", inspect.State.Health.Status)
+		}
+	}
+}
+
+func shortContainerID(id string) string {
+	return id[:12]
+}

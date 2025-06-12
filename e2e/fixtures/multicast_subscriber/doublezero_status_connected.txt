@@ -1,2 +1,0 @@
- Tunnel status | Last Session Update     | Tunnel Name | Tunnel src   | Tunnel dst   | Doublezero IP | User Type
- up            | 2025-06-03 20:17:46 UTC | doublezero1 | 64.86.249.86 | 64.86.249.80 |               | Multicast

@@ -5,15 +5,16 @@ LDFLAGS=
 .PHONY: test
 test:
 	go test -exec "sudo -E" -race -v ./...
-	$(MAKE) test-e2e
+	$(MAKE) test-containerized
 	cargo test --workspace --all-features
 
-# NOTE: This does not yet run the tests in the ./e2e directory. It only runs the e2e tests in the
-# ./client/doublezerod directory for now, until the e2e tests are converted to use the e2e-test tool.
-# TODO(snormore): Remove this note when the e2e tests are converted to use the e2e-test tool.
+.PHONY: test-containerized
+test-containerized:
+	cd client/doublezerod && $(MAKE) test
+
 .PHONY: test-e2e
 test-e2e:
-	go run tools/e2e-test/main.go
+	cd e2e && $(MAKE) test
 
 .PHONY: lint
 lint:

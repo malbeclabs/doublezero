@@ -1,0 +1,577 @@
+!
+ip multicast-routing
+!
+router pim sparse-mode
+   ipv4
+      rp address 10.0.0.0 233.84.178.0/24 override
+!
+vrf instance vrf1
+ip routing vrf vrf1
+!
+default interface Tunnel500
+interface Tunnel500
+   description USER-UCAST-500
+   vrf vrf1
+   mtu 9216
+   ip address 169.254.0.0/31
+   tunnel mode gre
+   tunnel source {{.DeviceIP}}
+   tunnel destination {{.ClientIP}}
+   tunnel path-mtu-discovery
+   tunnel ttl 32
+   no shutdown
+!
+default interface Tunnel501
+!
+default interface Tunnel502
+!
+default interface Tunnel503
+!
+default interface Tunnel504
+!
+default interface Tunnel505
+!
+default interface Tunnel506
+!
+default interface Tunnel507
+!
+default interface Tunnel508
+!
+default interface Tunnel509
+!
+default interface Tunnel510
+!
+default interface Tunnel511
+!
+default interface Tunnel512
+!
+default interface Tunnel513
+!
+default interface Tunnel514
+!
+default interface Tunnel515
+!
+default interface Tunnel516
+!
+default interface Tunnel517
+!
+default interface Tunnel518
+!
+default interface Tunnel519
+!
+default interface Tunnel520
+!
+default interface Tunnel521
+!
+default interface Tunnel522
+!
+default interface Tunnel523
+!
+default interface Tunnel524
+!
+default interface Tunnel525
+!
+default interface Tunnel526
+!
+default interface Tunnel527
+!
+default interface Tunnel528
+!
+default interface Tunnel529
+!
+default interface Tunnel530
+!
+default interface Tunnel531
+!
+default interface Tunnel532
+!
+default interface Tunnel533
+!
+default interface Tunnel534
+!
+default interface Tunnel535
+!
+default interface Tunnel536
+!
+default interface Tunnel537
+!
+default interface Tunnel538
+!
+default interface Tunnel539
+!
+default interface Tunnel540
+!
+default interface Tunnel541
+!
+default interface Tunnel542
+!
+default interface Tunnel543
+!
+default interface Tunnel544
+!
+default interface Tunnel545
+!
+default interface Tunnel546
+!
+default interface Tunnel547
+!
+default interface Tunnel548
+!
+default interface Tunnel549
+!
+default interface Tunnel550
+!
+default interface Tunnel551
+!
+default interface Tunnel552
+!
+default interface Tunnel553
+!
+default interface Tunnel554
+!
+default interface Tunnel555
+!
+default interface Tunnel556
+!
+default interface Tunnel557
+!
+default interface Tunnel558
+!
+default interface Tunnel559
+!
+default interface Tunnel560
+!
+default interface Tunnel561
+!
+default interface Tunnel562
+!
+default interface Tunnel563
+!
+router bgp 65342
+   address-family ipv4
+   !
+   vrf vrf1
+      rd 65342:1
+      route-target import vpn-ipv4 65342:1
+      route-target export vpn-ipv4 65342:1
+      router-id {{ .DeviceIP }}
+      no neighbor 169.254.0.1
+      neighbor 169.254.0.1 remote-as 65000
+      neighbor 169.254.0.1 passive
+      neighbor 169.254.0.1 description USER-500
+      neighbor 169.254.0.1 route-map RM-USER-500-IN in
+      neighbor 169.254.0.1 route-map RM-USER-500-OUT out
+      neighbor 169.254.0.1 maximum-routes 1
+      neighbor 169.254.0.1 maximum-accepted-routes 1
+!
+ip community-list COMM-ALL_USERS permit 21682:1200
+ip community-list COMM-ALL_MCAST_USERS permit 21682:1300
+!
+no route-map RM-USER-500-OUT
+route-map RM-USER-500-OUT permit 10
+   match community COMM-ALL_USERS
+!
+no route-map RM-USER-501-OUT
+!
+no route-map RM-USER-502-OUT
+!
+no route-map RM-USER-503-OUT
+!
+no route-map RM-USER-504-OUT
+!
+no route-map RM-USER-505-OUT
+!
+no route-map RM-USER-506-OUT
+!
+no route-map RM-USER-507-OUT
+!
+no route-map RM-USER-508-OUT
+!
+no route-map RM-USER-509-OUT
+!
+no route-map RM-USER-510-OUT
+!
+no route-map RM-USER-511-OUT
+!
+no route-map RM-USER-512-OUT
+!
+no route-map RM-USER-513-OUT
+!
+no route-map RM-USER-514-OUT
+!
+no route-map RM-USER-515-OUT
+!
+no route-map RM-USER-516-OUT
+!
+no route-map RM-USER-517-OUT
+!
+no route-map RM-USER-518-OUT
+!
+no route-map RM-USER-519-OUT
+!
+no route-map RM-USER-520-OUT
+!
+no route-map RM-USER-521-OUT
+!
+no route-map RM-USER-522-OUT
+!
+no route-map RM-USER-523-OUT
+!
+no route-map RM-USER-524-OUT
+!
+no route-map RM-USER-525-OUT
+!
+no route-map RM-USER-526-OUT
+!
+no route-map RM-USER-527-OUT
+!
+no route-map RM-USER-528-OUT
+!
+no route-map RM-USER-529-OUT
+!
+no route-map RM-USER-530-OUT
+!
+no route-map RM-USER-531-OUT
+!
+no route-map RM-USER-532-OUT
+!
+no route-map RM-USER-533-OUT
+!
+no route-map RM-USER-534-OUT
+!
+no route-map RM-USER-535-OUT
+!
+no route-map RM-USER-536-OUT
+!
+no route-map RM-USER-537-OUT
+!
+no route-map RM-USER-538-OUT
+!
+no route-map RM-USER-539-OUT
+!
+no route-map RM-USER-540-OUT
+!
+no route-map RM-USER-541-OUT
+!
+no route-map RM-USER-542-OUT
+!
+no route-map RM-USER-543-OUT
+!
+no route-map RM-USER-544-OUT
+!
+no route-map RM-USER-545-OUT
+!
+no route-map RM-USER-546-OUT
+!
+no route-map RM-USER-547-OUT
+!
+no route-map RM-USER-548-OUT
+!
+no route-map RM-USER-549-OUT
+!
+no route-map RM-USER-550-OUT
+!
+no route-map RM-USER-551-OUT
+!
+no route-map RM-USER-552-OUT
+!
+no route-map RM-USER-553-OUT
+!
+no route-map RM-USER-554-OUT
+!
+no route-map RM-USER-555-OUT
+!
+no route-map RM-USER-556-OUT
+!
+no route-map RM-USER-557-OUT
+!
+no route-map RM-USER-558-OUT
+!
+no route-map RM-USER-559-OUT
+!
+no route-map RM-USER-560-OUT
+!
+no route-map RM-USER-561-OUT
+!
+no route-map RM-USER-562-OUT
+!
+no route-map RM-USER-563-OUT
+!
+no route-map RM-USER-500-IN
+route-map RM-USER-500-IN permit 10
+   match ip address prefix-list PL-USER-500
+   match as-path length = 1
+   set community 21682:1200
+!
+no route-map RM-USER-501-IN
+!
+no route-map RM-USER-502-IN
+!
+no route-map RM-USER-503-IN
+!
+no route-map RM-USER-504-IN
+!
+no route-map RM-USER-505-IN
+!
+no route-map RM-USER-506-IN
+!
+no route-map RM-USER-507-IN
+!
+no route-map RM-USER-508-IN
+!
+no route-map RM-USER-509-IN
+!
+no route-map RM-USER-510-IN
+!
+no route-map RM-USER-511-IN
+!
+no route-map RM-USER-512-IN
+!
+no route-map RM-USER-513-IN
+!
+no route-map RM-USER-514-IN
+!
+no route-map RM-USER-515-IN
+!
+no route-map RM-USER-516-IN
+!
+no route-map RM-USER-517-IN
+!
+no route-map RM-USER-518-IN
+!
+no route-map RM-USER-519-IN
+!
+no route-map RM-USER-520-IN
+!
+no route-map RM-USER-521-IN
+!
+no route-map RM-USER-522-IN
+!
+no route-map RM-USER-523-IN
+!
+no route-map RM-USER-524-IN
+!
+no route-map RM-USER-525-IN
+!
+no route-map RM-USER-526-IN
+!
+no route-map RM-USER-527-IN
+!
+no route-map RM-USER-528-IN
+!
+no route-map RM-USER-529-IN
+!
+no route-map RM-USER-530-IN
+!
+no route-map RM-USER-531-IN
+!
+no route-map RM-USER-532-IN
+!
+no route-map RM-USER-533-IN
+!
+no route-map RM-USER-534-IN
+!
+no route-map RM-USER-535-IN
+!
+no route-map RM-USER-536-IN
+!
+no route-map RM-USER-537-IN
+!
+no route-map RM-USER-538-IN
+!
+no route-map RM-USER-539-IN
+!
+no route-map RM-USER-540-IN
+!
+no route-map RM-USER-541-IN
+!
+no route-map RM-USER-542-IN
+!
+no route-map RM-USER-543-IN
+!
+no route-map RM-USER-544-IN
+!
+no route-map RM-USER-545-IN
+!
+no route-map RM-USER-546-IN
+!
+no route-map RM-USER-547-IN
+!
+no route-map RM-USER-548-IN
+!
+no route-map RM-USER-549-IN
+!
+no route-map RM-USER-550-IN
+!
+no route-map RM-USER-551-IN
+!
+no route-map RM-USER-552-IN
+!
+no route-map RM-USER-553-IN
+!
+no route-map RM-USER-554-IN
+!
+no route-map RM-USER-555-IN
+!
+no route-map RM-USER-556-IN
+!
+no route-map RM-USER-557-IN
+!
+no route-map RM-USER-558-IN
+!
+no route-map RM-USER-559-IN
+!
+no route-map RM-USER-560-IN
+!
+no route-map RM-USER-561-IN
+!
+no route-map RM-USER-562-IN
+!
+no route-map RM-USER-563-IN
+!
+no ip prefix-list PL-USER-500
+ip prefix-list PL-USER-500 seq 10 permit {{ .ClientIP }}/32
+!
+no ip prefix-list PL-USER-501
+!
+no ip prefix-list PL-USER-502
+!
+no ip prefix-list PL-USER-503
+!
+no ip prefix-list PL-USER-504
+!
+no ip prefix-list PL-USER-505
+!
+no ip prefix-list PL-USER-506
+!
+no ip prefix-list PL-USER-507
+!
+no ip prefix-list PL-USER-508
+!
+no ip prefix-list PL-USER-509
+!
+no ip prefix-list PL-USER-510
+!
+no ip prefix-list PL-USER-511
+!
+no ip prefix-list PL-USER-512
+!
+no ip prefix-list PL-USER-513
+!
+no ip prefix-list PL-USER-514
+!
+no ip prefix-list PL-USER-515
+!
+no ip prefix-list PL-USER-516
+!
+no ip prefix-list PL-USER-517
+!
+no ip prefix-list PL-USER-518
+!
+no ip prefix-list PL-USER-519
+!
+no ip prefix-list PL-USER-520
+!
+no ip prefix-list PL-USER-521
+!
+no ip prefix-list PL-USER-522
+!
+no ip prefix-list PL-USER-523
+!
+no ip prefix-list PL-USER-524
+!
+no ip prefix-list PL-USER-525
+!
+no ip prefix-list PL-USER-526
+!
+no ip prefix-list PL-USER-527
+!
+no ip prefix-list PL-USER-528
+!
+no ip prefix-list PL-USER-529
+!
+no ip prefix-list PL-USER-530
+!
+no ip prefix-list PL-USER-531
+!
+no ip prefix-list PL-USER-532
+!
+no ip prefix-list PL-USER-533
+!
+no ip prefix-list PL-USER-534
+!
+no ip prefix-list PL-USER-535
+!
+no ip prefix-list PL-USER-536
+!
+no ip prefix-list PL-USER-537
+!
+no ip prefix-list PL-USER-538
+!
+no ip prefix-list PL-USER-539
+!
+no ip prefix-list PL-USER-540
+!
+no ip prefix-list PL-USER-541
+!
+no ip prefix-list PL-USER-542
+!
+no ip prefix-list PL-USER-543
+!
+no ip prefix-list PL-USER-544
+!
+no ip prefix-list PL-USER-545
+!
+no ip prefix-list PL-USER-546
+!
+no ip prefix-list PL-USER-547
+!
+no ip prefix-list PL-USER-548
+!
+no ip prefix-list PL-USER-549
+!
+no ip prefix-list PL-USER-550
+!
+no ip prefix-list PL-USER-551
+!
+no ip prefix-list PL-USER-552
+!
+no ip prefix-list PL-USER-553
+!
+no ip prefix-list PL-USER-554
+!
+no ip prefix-list PL-USER-555
+!
+no ip prefix-list PL-USER-556
+!
+no ip prefix-list PL-USER-557
+!
+no ip prefix-list PL-USER-558
+!
+no ip prefix-list PL-USER-559
+!
+no ip prefix-list PL-USER-560
+!
+no ip prefix-list PL-USER-561
+!
+no ip prefix-list PL-USER-562
+!
+no ip prefix-list PL-USER-563
+!
+no ip access-list SEC-USER-PUB-MCAST-IN
+ip access-list SEC-USER-PUB-MCAST-IN
+   counters per-entry
+   permit icmp any any
+   permit tcp any any eq bgp
+   permit ip any 224.0.0.13/32
+   permit ip any 233.84.178.0/24
+   deny ip any any
+!
+no ip access-list SEC-USER-SUB-MCAST-IN
+ip access-list SEC-USER-SUB-MCAST-IN
+   counters per-entry
+   permit icmp any any
+   permit tcp any any eq bgp
+   permit ip any 224.0.0.13/32
+   deny ip any any
+!

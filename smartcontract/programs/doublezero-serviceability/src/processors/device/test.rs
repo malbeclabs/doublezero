@@ -163,7 +163,8 @@ mod device_test {
         let device = get_account_data(&mut banks_client, device_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_device();
+            .get_device()
+            .unwrap();
         assert_eq!(device.account_type, AccountType::Device);
         assert_eq!(device.code, "la".to_string());
         assert_eq!(device.status, DeviceStatus::Pending);
@@ -191,7 +192,8 @@ mod device_test {
         let device = get_account_data(&mut banks_client, device_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_device();
+            .get_device()
+            .unwrap();
         assert_eq!(device.account_type, AccountType::Device);
         assert_eq!(device.code, "la".to_string());
         assert_eq!(device.status, DeviceStatus::Activated);
@@ -218,7 +220,8 @@ mod device_test {
         let device_la = get_account_data(&mut banks_client, device_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_device();
+            .get_device()
+            .unwrap();
         assert_eq!(device_la.account_type, AccountType::Device);
         assert_eq!(device_la.status, DeviceStatus::Suspended);
 
@@ -244,7 +247,8 @@ mod device_test {
         let device = get_account_data(&mut banks_client, device_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_device();
+            .get_device()
+            .unwrap();
         assert_eq!(device.account_type, AccountType::Device);
         assert_eq!(device.status, DeviceStatus::Activated);
 
@@ -274,7 +278,8 @@ mod device_test {
         let device_la = get_account_data(&mut banks_client, device_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_device();
+            .get_device()
+            .unwrap();
         assert_eq!(device_la.account_type, AccountType::Device);
         assert_eq!(device_la.code, "la2".to_string());
         assert_eq!(device_la.public_ip, [10, 2, 2, 1]);
@@ -302,7 +307,8 @@ mod device_test {
         let device_la = get_account_data(&mut banks_client, device_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_device();
+            .get_device()
+            .unwrap();
         assert_eq!(device_la.account_type, AccountType::Device);
         assert_eq!(device_la.code, "la2".to_string());
         assert_eq!(device_la.public_ip, [10, 2, 2, 1]);

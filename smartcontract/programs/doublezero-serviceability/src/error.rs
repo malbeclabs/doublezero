@@ -21,6 +21,8 @@ pub enum DoubleZeroError {
     InvalidStatus, // variant 7
     #[error("You are not allowed to execute this action")]
     NotAllowed, // variant 8
+    #[error("Invalid Account Type")]
+    InvalidAccountType, // variant 9
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -35,6 +37,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InvalidDevicePubkey => ProgramError::Custom(6),
             DoubleZeroError::InvalidStatus => ProgramError::Custom(7),
             DoubleZeroError::NotAllowed => ProgramError::Custom(8),
+            DoubleZeroError::InvalidAccountType => ProgramError::Custom(9),
         }
     }
 }

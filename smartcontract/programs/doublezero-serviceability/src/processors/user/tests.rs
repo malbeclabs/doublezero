@@ -170,7 +170,8 @@ mod user_test {
         let device_la = get_account_data(&mut banks_client, device_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_device();
+            .get_device()
+            .unwrap();
         assert_eq!(device_la.account_type, AccountType::Device);
         assert_eq!(device_la.code, "la".to_string());
         assert_eq!(device_la.status, DeviceStatus::Pending);
@@ -197,7 +198,8 @@ mod user_test {
         let device_la = get_account_data(&mut banks_client, device_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_device();
+            .get_device()
+            .unwrap();
         assert_eq!(device_la.account_type, AccountType::Device);
         assert_eq!(device_la.status, DeviceStatus::Activated);
 
@@ -235,7 +237,8 @@ mod user_test {
         let user = get_account_data(&mut banks_client, user_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_user();
+            .get_user()
+            .unwrap();
         assert_eq!(user.account_type, AccountType::User);
         assert_eq!(user.client_ip, [100, 0, 0, 1]);
         assert_eq!(user.device_pk, device_pubkey);
@@ -267,7 +270,8 @@ mod user_test {
         let user = get_account_data(&mut banks_client, user_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_user();
+            .get_user()
+            .unwrap();
         assert_eq!(user.account_type, AccountType::User);
         assert_eq!(user.tunnel_id, 500);
         assert_eq!(user.tunnel_net, ([10, 1, 2, 3], 21));
@@ -293,7 +297,8 @@ mod user_test {
         let user = get_account_data(&mut banks_client, user_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_user();
+            .get_user()
+            .unwrap();
         assert_eq!(user.account_type, AccountType::User);
         assert_eq!(user.status, UserStatus::Suspended);
 
@@ -316,7 +321,8 @@ mod user_test {
         let user = get_account_data(&mut banks_client, user_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_user();
+            .get_user()
+            .unwrap();
         assert_eq!(user.account_type, AccountType::User);
         assert_eq!(user.status, UserStatus::Activated);
 
@@ -348,7 +354,8 @@ mod user_test {
         let user = get_account_data(&mut banks_client, user_pubkey)
             .await
             .expect("Unable t get Account")
-            .get_user();
+            .get_user()
+            .unwrap();
         assert_eq!(user.account_type, AccountType::User);
         assert_eq!(user.client_ip, [10, 2, 3, 4]);
         assert_eq!(user.cyoa_type, UserCYOA::GREOverPrivatePeering);
@@ -376,7 +383,8 @@ mod user_test {
         let user = get_account_data(&mut banks_client, user_pubkey)
             .await
             .expect("Unable t get Account")
-            .get_user();
+            .get_user()
+            .unwrap();
         assert_eq!(user.account_type, AccountType::User);
         assert_eq!(user.client_ip, [10, 2, 3, 4]);
         assert_eq!(user.cyoa_type, UserCYOA::GREOverPrivatePeering);

@@ -15,6 +15,7 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     program::invoke_signed,
+    program_error::ProgramError,
     pubkey::Pubkey,
     system_instruction,
     sysvar::{rent::Rent, Sysvar},
@@ -59,7 +60,7 @@ pub fn process_set_globalconfig(
     msg!("process_set_global_config({:?})", value);
 
     if globalstate_account.data.borrow().is_empty() {
-        panic!("GlobalState account not initialized");
+        return Err(ProgramError::UninitializedAccount);
     }
     let globalstate = globalstate_get(globalstate_account)?;
 

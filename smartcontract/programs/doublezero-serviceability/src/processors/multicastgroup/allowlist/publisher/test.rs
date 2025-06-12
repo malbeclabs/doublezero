@@ -53,7 +53,8 @@ mod device_test {
         let globalstate = get_account_data(&mut banks_client, globalstate_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_global_state();
+            .get_global_state()
+            .unwrap();
 
         let (multicastgroup_pubkey, bump_seed) =
             get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
@@ -80,7 +81,8 @@ mod device_test {
         let mgroup = get_account_data(&mut banks_client, multicastgroup_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_multicastgroup();
+            .get_multicastgroup()
+            .unwrap();
 
         assert_eq!(mgroup.account_type, AccountType::MulticastGroup);
         assert_eq!(mgroup.code, "test".to_string());
@@ -112,7 +114,8 @@ mod device_test {
         let mgroup = get_account_data(&mut banks_client, multicastgroup_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_multicastgroup();
+            .get_multicastgroup()
+            .unwrap();
 
         assert_eq!(mgroup.account_type, AccountType::MulticastGroup);
         assert_eq!(mgroup.multicast_ip, [223, 0, 0, 1]);
@@ -143,7 +146,8 @@ mod device_test {
         let mgroup = get_account_data(&mut banks_client, multicastgroup_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_multicastgroup();
+            .get_multicastgroup()
+            .unwrap();
 
         assert_eq!(mgroup.account_type, AccountType::MulticastGroup);
         assert_eq!(mgroup.pub_allowlist.len(), 1);
@@ -173,7 +177,8 @@ mod device_test {
         let mgroup = get_account_data(&mut banks_client, multicastgroup_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_multicastgroup();
+            .get_multicastgroup()
+            .unwrap();
 
         assert_eq!(mgroup.account_type, AccountType::MulticastGroup);
         assert_eq!(mgroup.pub_allowlist.len(), 0);

@@ -119,7 +119,8 @@ pub mod test {
         let location_la = get_account_data(&mut banks_client, location_la_pubkey)
             .await
             .expect("Unable to get Location")
-            .get_location();
+            .get_location()
+            .unwrap();
         assert_eq!(location_la.account_type, AccountType::Location);
         assert_eq!(location_la.code, location_la_code);
         assert_eq!(location_la.status, LocationStatus::Activated);
@@ -165,7 +166,8 @@ pub mod test {
         let location_ny = get_account_data(&mut banks_client, location_ny_pubkey)
             .await
             .expect("Unable to get Location")
-            .get_location();
+            .get_location()
+            .unwrap();
         assert_eq!(location_ny.account_type, AccountType::Location);
         assert_eq!(location_ny.code, location_ny_code);
         println!(
@@ -209,7 +211,8 @@ pub mod test {
         let exchange_la = get_account_data(&mut banks_client, exchange_la_pubkey)
             .await
             .expect("Unable to get Exchange")
-            .get_exchange();
+            .get_exchange()
+            .unwrap();
         assert_eq!(exchange_la.account_type, AccountType::Exchange);
         assert_eq!(exchange_la.code, exchange_la_code);
         println!(
@@ -251,7 +254,9 @@ pub mod test {
         let exchange_ny = get_account_data(&mut banks_client, exchange_ny_pubkey)
             .await
             .expect("Unable to get Exchange")
-            .get_exchange();
+            .get_exchange()
+            .unwrap();
+
         assert_eq!(exchange_ny.account_type, AccountType::Exchange);
         assert_eq!(exchange_ny.code, exchange_ny_code);
         println!(
@@ -298,7 +303,8 @@ pub mod test {
         let device_la = get_account_data(&mut banks_client, device_la_pubkey)
             .await
             .expect("Unable to get Device")
-            .get_device();
+            .get_device()
+            .unwrap();
         assert_eq!(device_la.account_type, AccountType::Device);
         assert_eq!(device_la.code, device_la_code);
         println!(
@@ -343,7 +349,8 @@ pub mod test {
         let device_ny = get_account_data(&mut banks_client, device_ny_pubkey)
             .await
             .expect("Unable to get Device")
-            .get_device();
+            .get_device()
+            .unwrap();
         assert_eq!(device_ny.account_type, AccountType::Device);
         assert_eq!(device_ny.code, device_ny_code);
         println!(
@@ -370,7 +377,8 @@ pub mod test {
         let device_ny = get_account_data(&mut banks_client, device_ny_pubkey)
             .await
             .expect("Unable to get Device")
-            .get_device();
+            .get_device()
+            .unwrap();
         assert_eq!(device_ny.status, DeviceStatus::Activated);
         println!(
             "✅ Device NY activation successfully with index: {}",
@@ -396,7 +404,8 @@ pub mod test {
         let device_la = get_account_data(&mut banks_client, device_la_pubkey)
             .await
             .expect("Unable to get Device")
-            .get_device();
+            .get_device()
+            .unwrap();
         assert_eq!(device_la.status, DeviceStatus::Activated);
         println!(
             "✅ Device LA activation successfully with index: {}",
@@ -445,7 +454,9 @@ pub mod test {
         let tunnel = get_account_data(&mut banks_client, tunnel_la_ny_pubkey)
             .await
             .expect("Unable to get Link")
-            .get_tunnel();
+            .get_tunnel()
+            .unwrap();
+
         assert_eq!(tunnel.account_type, AccountType::Link);
         assert_eq!(tunnel.code, tunnel_la_ny_code);
         assert_eq!(tunnel.status, LinkStatus::Pending);
@@ -481,7 +492,9 @@ pub mod test {
         let tunnel = get_account_data(&mut banks_client, tunnel_la_ny_pubkey)
             .await
             .expect("Unable to get Link")
-            .get_tunnel();
+            .get_tunnel()
+            .unwrap();
+
         assert_eq!(tunnel.account_type, AccountType::Link);
         assert_eq!(tunnel.code, tunnel_la_ny_code);
         assert_eq!(tunnel.status, LinkStatus::Activated);
@@ -525,7 +538,8 @@ pub mod test {
         let user1 = get_account_data(&mut banks_client, user1_pubkey)
             .await
             .expect("Unable to get User")
-            .get_user();
+            .get_user()
+            .unwrap();
         assert_eq!(user1.account_type, AccountType::User);
         assert_eq!(user1.status, UserStatus::Pending);
         println!(
@@ -562,7 +576,9 @@ pub mod test {
         let user1 = get_account_data(&mut banks_client, user1_pubkey)
             .await
             .expect("Unable to get User")
-            .get_user();
+            .get_user()
+            .unwrap();
+
         assert_eq!(user1.account_type, AccountType::User);
         assert_eq!(user1.tunnel_id, 1);
         assert_eq!(user1.tunnel_net, tunnel_net);

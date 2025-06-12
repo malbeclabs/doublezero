@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
 use crate::DoubleZeroClient;
-use doublezero_serviceability::state::{
-    accountdata::AccountData, accounttype::AccountType, exchange::Exchange,
+use doublezero_serviceability::{
+    error::DoubleZeroError,
+    state::{accountdata::AccountData, accounttype::AccountType, exchange::Exchange},
 };
 use solana_sdk::pubkey::Pubkey;
 
@@ -14,14 +15,17 @@ impl ListExchangeCommand {
         &self,
         client: &dyn DoubleZeroClient,
     ) -> eyre::Result<HashMap<Pubkey, Exchange>> {
-        Ok(client
+        client
             .gets(AccountType::Exchange)?
             .into_iter()
-            .map(|(k, v)| match v {
-                AccountData::Exchange(exchange) => (k, exchange),
-                _ => panic!("Invalid Account Type"),
+            .map(|(k, v)| {
+                if let AccountData::Exchange(exchange) = v {
+                    Ok((k, exchange))
+                } else {
+                    Err(DoubleZeroError::InvalidAccountType.into())
+                }
             })
-            .collect())
+            .collect()
     }
 }
 

@@ -68,7 +68,7 @@ pub fn process_create_subscribe_user(
         return Err(ProgramError::AccountAlreadyInitialized);
     }
     if globalstate_account.data.borrow().is_empty() {
-        panic!("GlobalState account not initialized");
+        return Err(ProgramError::UninitializedAccount);
     }
     let globalstate = globalstate_get_next(globalstate_account)?;
     assert_eq!(
@@ -91,7 +91,7 @@ pub fn process_create_subscribe_user(
     if device_account.data_is_empty()
         || device_account.data.borrow()[0] != AccountType::Device as u8
     {
-        panic!("Invalid Device Pubkey");
+        return Err(DoubleZeroError::InvalidDevicePubkey.into());
     }
     if device_account.owner != program_id {
         return Err(ProgramError::IncorrectProgramId);

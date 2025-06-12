@@ -60,7 +60,8 @@ mod device_test {
         let state = get_account_data(&mut banks_client, globalstate_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_global_state();
+            .get_global_state()
+            .unwrap();
 
         assert_eq!(state.account_type, AccountType::GlobalState);
         assert_eq!(state.foundation_allowlist.len(), 2);
@@ -84,7 +85,8 @@ mod device_test {
         let state = get_account_data(&mut banks_client, globalstate_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_global_state();
+            .get_global_state()
+            .unwrap();
 
         assert_eq!(state.account_type, AccountType::GlobalState);
         assert_eq!(state.foundation_allowlist.len(), 3);
@@ -109,7 +111,8 @@ mod device_test {
         let state = get_account_data(&mut banks_client, globalstate_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_global_state();
+            .get_global_state()
+            .unwrap();
 
         assert_eq!(state.account_type, AccountType::GlobalState);
         assert_eq!(state.foundation_allowlist.len(), 2);
@@ -134,7 +137,8 @@ mod device_test {
         let state = get_account_data(&mut banks_client, globalstate_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_global_state();
+            .get_global_state()
+            .unwrap();
 
         assert_eq!(state.account_type, AccountType::GlobalState);
         assert_eq!(state.foundation_allowlist.len(), 1);

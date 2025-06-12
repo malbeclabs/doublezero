@@ -31,6 +31,12 @@ func TestE2E_Multicast_Subscriber(t *testing.T) {
 		dn.WaitForClientTunnelUp(t, client)
 
 		checkMulticastSubscriberPostConnect(t, dn, device, client)
+
+		dn.CreateMulticastGroupOnchain(t, client, "mg02")
+
+		output, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast subscriber mg02 --client-ip " + client.Spec().CYOANetworkIP})
+		require.Error(t, err)
+		require.Contains(t, string(output), "Multicast supports only one subscription at this time")
 	}) {
 		t.Fail()
 		return

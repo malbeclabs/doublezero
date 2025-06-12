@@ -1,5 +1,4 @@
-use super::accounttype::AccountType;
-use crate::bytereader::ByteReader;
+use crate::{bytereader::ByteReader, state::accounttype::AccountType};
 use borsh::BorshSerialize;
 use core::fmt;
 use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
@@ -54,10 +53,9 @@ impl From<&[u8]> for GlobalState {
 
 impl TryFrom<&AccountInfo<'_>> for GlobalState {
     type Error = ProgramError;
+
     fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
-        let data = account
-            .try_borrow_data()
-            .map_err(|_| ProgramError::AccountBorrowFailed)?;
+        let data = account.try_borrow_data()?;
         Ok(Self::from(&data[..]))
     }
 }

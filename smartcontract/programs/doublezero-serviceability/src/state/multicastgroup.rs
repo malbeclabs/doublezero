@@ -1,7 +1,7 @@
-use super::accounttype::*;
 use crate::{
     bytereader::ByteReader,
     seeds::SEED_MULTICAST_GROUP,
+    state::accounttype::{AccountType, AccountTypeInfo},
     types::{ipv4_to_string, IpV4},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -130,10 +130,9 @@ impl From<&[u8]> for MulticastGroup {
 
 impl TryFrom<&AccountInfo<'_>> for MulticastGroup {
     type Error = ProgramError;
+
     fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
-        let data = account
-            .try_borrow_data()
-            .map_err(|_| ProgramError::AccountBorrowFailed)?;
+        let data = account.try_borrow_data()?;
         Ok(Self::from(&data[..]))
     }
 }

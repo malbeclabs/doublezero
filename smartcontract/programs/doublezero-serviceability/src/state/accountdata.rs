@@ -1,8 +1,8 @@
-use super::{
+use crate::state::{
     accounttype::AccountType, device::Device, exchange::Exchange, globalconfig::GlobalConfig,
-    globalstate::GlobalState, location::Location, multicastgroup::MulticastGroup, user::User,
+    globalstate::GlobalState, link::Link, location::Location, multicastgroup::MulticastGroup,
+    user::User,
 };
-use crate::state::link::Link;
 
 #[derive(Debug, PartialEq)]
 pub enum AccountData {

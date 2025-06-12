@@ -65,27 +65,22 @@ pub fn process_deactivate_multicastgroup(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    {
-        let account_data = multicastgroup_account
-            .try_borrow_data()
-            .map_err(|_| ProgramError::AccountBorrowFailed)?;
-        let multicastgroup: MulticastGroup = MulticastGroup::from(&account_data[..]);
-        assert_eq!(
-            multicastgroup.index, value.index,
-            "Invalid PDA Account Index"
-        );
-        assert_eq!(
-            multicastgroup.bump_seed, value.bump_seed,
-            "Invalid PDA Account Bump Seed"
-        );
-        if multicastgroup.owner != *owner_account.key {
-            return Err(ProgramError::InvalidAccountData);
-        }
-        if multicastgroup.status != MulticastGroupStatus::Deleting {
-            #[cfg(test)]
-            msg!("{:?}", multicastgroup);
-            return Err(solana_program::program_error::ProgramError::Custom(1));
-        }
+    let multicastgroup = MulticastGroup::try_from(multicastgroup_account)?;
+    assert_eq!(
+        multicastgroup.index, value.index,
+        "Invalid PDA Account Index"
+    );
+    assert_eq!(
+        multicastgroup.bump_seed, value.bump_seed,
+        "Invalid PDA Account Bump Seed"
+    );
+    if multicastgroup.owner != *owner_account.key {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if multicastgroup.status != MulticastGroupStatus::Deleting {
+        #[cfg(test)]
+        msg!("{:?}", multicastgroup);
+        return Err(solana_program::program_error::ProgramError::Custom(1));
     }
 
     account_close(multicastgroup_account, owner_account)?;

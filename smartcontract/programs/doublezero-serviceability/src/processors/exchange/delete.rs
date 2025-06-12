@@ -12,7 +12,6 @@ use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
-    program_error::ProgramError,
     pubkey::Pubkey,
 };
 
@@ -65,19 +64,14 @@ pub fn process_delete_exchange(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    {
-        let account_data = exchange_account
-            .try_borrow_data()
-            .map_err(|_| ProgramError::AccountBorrowFailed)?;
-        let exchange: Exchange = Exchange::from(&account_data[..]);
-        assert_eq!(exchange.index, value.index, "Invalid PDA Account Index");
-        assert_eq!(
-            exchange.bump_seed, value.bump_seed,
-            "Invalid PDA Account Bump Seed"
-        );
-        if exchange.status != ExchangeStatus::Activated {
-            return Err(DoubleZeroError::InvalidStatus.into());
-        }
+    let exchange = Exchange::try_from(exchange_account)?;
+    assert_eq!(exchange.index, value.index, "Invalid PDA Account Index");
+    assert_eq!(
+        exchange.bump_seed, value.bump_seed,
+        "Invalid PDA Account Bump Seed"
+    );
+    if exchange.status != ExchangeStatus::Activated {
+        return Err(DoubleZeroError::InvalidStatus.into());
     }
 
     account_close(exchange_account, payer_account)?;

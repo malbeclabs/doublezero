@@ -9,7 +9,6 @@ use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
-    program_error::ProgramError,
     pubkey::Pubkey,
 };
 
@@ -57,22 +56,17 @@ pub fn process_closeaccount_device(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    {
-        let account_data = device_account
-            .try_borrow_data()
-            .map_err(|_| ProgramError::AccountBorrowFailed)?;
-        let device: Device = Device::from(&account_data[..]);
-        assert_eq!(device.index, value.index, "Invalid PDA Account Index");
-        assert_eq!(
-            device.bump_seed, value.bump_seed,
-            "Invalid PDA Account Bump Seed"
-        );
+    let device = Device::try_from(device_account)?;
+    assert_eq!(device.index, value.index, "Invalid PDA Account Index");
+    assert_eq!(
+        device.bump_seed, value.bump_seed,
+        "Invalid PDA Account Bump Seed"
+    );
 
-        if device.status != DeviceStatus::Deleting {
-            #[cfg(test)]
-            msg!("{:?}", device);
-            return Err(solana_program::program_error::ProgramError::Custom(1));
-        }
+    if device.status != DeviceStatus::Deleting {
+        #[cfg(test)]
+        msg!("{:?}", device);
+        return Err(solana_program::program_error::ProgramError::Custom(1));
     }
 
     account_close(device_account, owner_account)?;

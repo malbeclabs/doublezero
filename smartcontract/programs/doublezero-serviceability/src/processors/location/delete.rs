@@ -1,13 +1,11 @@
-use core::fmt;
-
 use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::location::*};
 use borsh::{BorshDeserialize, BorshSerialize};
+use core::fmt;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
-    program_error::ProgramError,
     pubkey::Pubkey,
 };
 
@@ -60,19 +58,14 @@ pub fn process_delete_location(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    {
-        let account_data = location_account
-            .try_borrow_data()
-            .map_err(|_| ProgramError::AccountBorrowFailed)?;
-        let location: Location = Location::from(&account_data[..]);
-        assert_eq!(location.index, value.index, "Invalid PDA Account Index");
-        assert_eq!(
-            location.bump_seed, value.bump_seed,
-            "Invalid PDA Account Bump Seed"
-        );
-        if location.status != LocationStatus::Activated {
-            return Err(DoubleZeroError::InvalidStatus.into());
-        }
+    let location = Location::try_from(location_account)?;
+    assert_eq!(location.index, value.index, "Invalid PDA Account Index");
+    assert_eq!(
+        location.bump_seed, value.bump_seed,
+        "Invalid PDA Account Bump Seed"
+    );
+    if location.status != LocationStatus::Activated {
+        return Err(DoubleZeroError::InvalidStatus.into());
     }
 
     account_close(location_account, payer_account)?;

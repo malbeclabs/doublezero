@@ -1,6 +1,6 @@
-use super::accounttype::AccountType;
 use crate::{
     bytereader::ByteReader,
+    state::accounttype::AccountType,
     types::{networkv4_to_string, NetworkV4},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -51,10 +51,9 @@ impl From<&[u8]> for GlobalConfig {
 
 impl TryFrom<&AccountInfo<'_>> for GlobalConfig {
     type Error = ProgramError;
+
     fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
-        let data = account
-            .try_borrow_data()
-            .map_err(|_| ProgramError::AccountBorrowFailed)?;
+        let data = account.try_borrow_data()?;
         Ok(Self::from(&data[..]))
     }
 }

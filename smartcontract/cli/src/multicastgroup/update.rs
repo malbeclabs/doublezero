@@ -48,7 +48,7 @@ impl UpdateMulticastGroupCliCommand {
             multicast_ip: self.multicast_ip.as_ref().map(|ip| ipv4_parse(ip)),
             max_bandwidth,
         })?;
-        writeln!(out, "Signature: {}", signature)?;
+        writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
     }

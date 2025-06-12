@@ -79,7 +79,7 @@ pub fn bandwidth_parse(str: &str) -> u64 {
 
 pub fn bandwidth_to_string(bandwidth: &u64) -> String {
     if *bandwidth < 1000 {
-        format!("{}bps", bandwidth)
+        format!("{bandwidth}bps")
     } else if *bandwidth < 1000000 {
         if bandwidth % 1000 == 0 {
             format!("{}Kbps", bandwidth / 1000)
@@ -101,12 +101,12 @@ pub fn bandwidth_to_string(bandwidth: &u64) -> String {
 
 pub fn delay_to_string(delay_ns: u64) -> String {
     let delay_ms = delay_ns as f64 / 1_000_000.0;
-    format!("{:.2}ms", delay_ms)
+    format!("{delay_ms:.2}ms")
 }
 
 pub fn jitter_to_string(delay_ns: u64) -> String {
     let delay_ms = delay_ns as f64 / 1_000_000.0;
-    format!("{:.2}ms", delay_ms)
+    format!("{delay_ms:.2}ms")
 }
 
 #[cfg(test)]

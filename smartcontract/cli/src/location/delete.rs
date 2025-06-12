@@ -23,7 +23,7 @@ impl DeleteLocationCliCommand {
         let signature = client.delete_location(DeleteLocationCommand {
             index: location.index,
         })?;
-        writeln!(out, "Signature: {}", signature)?;
+        writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
     }

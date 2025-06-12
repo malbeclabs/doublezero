@@ -37,19 +37,19 @@ impl GetAccountCliCommand {
 
                             if self.logs {
                                 for msg in tran.log_messages {
-                                    writeln!(out, "  - {}", msg)?;
+                                    writeln!(out, "  - {msg}")?;
                                 }
                                 writeln!(out)?;
                             }
                         }
                     }
                     Err(e) => {
-                        writeln!(out, "Error: {}", e)?;
+                        writeln!(out, "Error: {e}")?;
                     }
                 }
             }
             Err(e) => {
-                writeln!(out, "Error: {}", e)?;
+                writeln!(out, "Error: {e}")?;
             }
         }
 

@@ -207,7 +207,7 @@ pub struct CliCommandImpl<'a> {
 }
 
 impl CliCommandImpl<'_> {
-    pub fn new(client: &DZClient) -> CliCommandImpl {
+    pub fn new(client: &DZClient) -> CliCommandImpl<'_> {
         CliCommandImpl { client }
     }
 }

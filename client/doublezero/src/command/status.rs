@@ -31,7 +31,7 @@ impl StatusCliCommand {
                         .with(Style::psql().remove_horizontals())
                         .to_string();
                     spinner.finish_and_clear();
-                    println!("{}", table);
+                    println!("{table}");
                 }
             }
         }

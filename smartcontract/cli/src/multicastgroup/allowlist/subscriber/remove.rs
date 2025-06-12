@@ -28,13 +28,13 @@ impl RemoveMulticastGroupSubAllowlistCliCommand {
             }
         };
 
-        let res = client.remove_multicastgroup_sub_allowlist(
+        let signature = client.remove_multicastgroup_sub_allowlist(
             RemoveMulticastGroupSubAllowlistCommand {
                 pubkey_or_code: self.code,
                 pubkey,
             },
         )?;
-        writeln!(out, "Signature: {}", res)?;
+        writeln!(out, "Signature: {signature}")?;
 
         Ok(())
     }

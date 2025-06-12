@@ -32,12 +32,12 @@ pub fn process_tunnel_event(
 
                     match res {
                         Ok(signature) => {
-                            println!("Activated {}", signature);
+                            println!("Activated {signature}");
                             *state_transitions
                                 .entry("tunnel-pending-to-activated")
                                 .or_insert(0) += 1;
                         }
-                        Err(e) => println!("Error: activate_tunnel: {}", e),
+                        Err(e) => println!("Error: activate_tunnel: {e}"),
                     }
                 }
                 None => {
@@ -51,12 +51,12 @@ pub fn process_tunnel_event(
 
                     match res {
                         Ok(signature) => {
-                            println!("Rejected {}", signature);
+                            println!("Rejected {signature}");
                             *state_transitions
                                 .entry("tunnel-pending-to-rejected")
                                 .or_insert(0) += 1;
                         }
-                        Err(e) => println!("Error: reject_tunnel: {}", e),
+                        Err(e) => println!("Error: reject_tunnel: {e}"),
                     }
                 }
             }
@@ -75,12 +75,12 @@ pub fn process_tunnel_event(
 
             match res {
                 Ok(signature) => {
-                    println!("Deactivated {}", signature);
+                    println!("Deactivated {signature}");
                     *state_transitions
                         .entry("tunnel-deleting-to-deactivated")
                         .or_insert(0) += 1;
                 }
-                Err(e) => println!("Error: deactivate_tunnel: {}", e),
+                Err(e) => println!("Error: deactivate_tunnel: {e}"),
             }
         }
         _ => {}

@@ -21,7 +21,7 @@ impl DeleteUserCliCommand {
         let pubkey = Pubkey::from_str(&self.pubkey)?;
         let (_, user) = client.get_user(GetUserCommand { pubkey })?;
         let signature = client.delete_user(DeleteUserCommand { index: user.index })?;
-        writeln!(out, "Signature: {}", signature)?;
+        writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
     }

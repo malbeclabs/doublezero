@@ -41,7 +41,7 @@ impl UpdateLinkCliCommand {
             .tunnel_type
             .map(|t| t.parse())
             .transpose()
-            .map_err(|e| eyre!("Invalid tunnel type: {}", e))?;
+            .map_err(|e| eyre!("Invalid tunnel type: {e}"))?;
 
         let signature = client.update_link(UpdateLinkCommand {
             index: tunnel.index,
@@ -54,7 +54,7 @@ impl UpdateLinkCliCommand {
                 .jitter_ms
                 .map(|jitter_ms| (jitter_ms * 1000000.0) as u64),
         })?;
-        writeln!(out, "Signature: {}", signature)?;
+        writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
     }

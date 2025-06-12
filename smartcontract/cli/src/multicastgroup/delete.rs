@@ -26,7 +26,7 @@ impl DeleteMulticastGroupCliCommand {
         let signature = client.delete_multicastgroup(DeleteMulticastGroupCommand {
             index: multicastgroup.index,
         })?;
-        writeln!(out, "Signature: {}", signature)?;
+        writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
     }

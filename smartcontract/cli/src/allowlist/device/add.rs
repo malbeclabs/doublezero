@@ -26,8 +26,8 @@ impl AddDeviceAllowlistCliCommand {
             }
         };
 
-        let res = client.add_device_allowlist(AddDeviceAllowlistCommand { pubkey })?;
-        writeln!(out, "Signature: {}", res)?;
+        let signature = client.add_device_allowlist(AddDeviceAllowlistCommand { pubkey })?;
+        writeln!(out, "Signature: {signature}")?;
 
         Ok(())
     }

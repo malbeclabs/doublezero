@@ -38,7 +38,7 @@ impl CreateMulticastGroupCliCommand {
             owner: owner_pk,
         })?;
 
-        writeln!(out, "Signature: {}", signature)?;
+        writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
     }

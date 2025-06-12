@@ -78,7 +78,7 @@ impl CreateLinkCliCommand {
             jitter_ns: (self.jitter_ms * 1000000.0) as u64,
         })?;
 
-        writeln!(out, "Signature: {}", signature)?;
+        writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
     }

@@ -20,7 +20,7 @@ pub fn parse_pubkey(input: &str) -> Option<Pubkey> {
 }
 
 pub fn print_error(e: eyre::Report) {
-    eprintln!("\nError: {:?}\n", e);
+    eprintln!("\nError: {e:?}\n");
 }
 
 pub fn get_public_ipv4() -> Result<String, Box<dyn std::error::Error>> {

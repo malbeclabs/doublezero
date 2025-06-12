@@ -485,10 +485,7 @@ pub mod test {
         assert_eq!(tunnel.account_type, AccountType::Link);
         assert_eq!(tunnel.code, tunnel_la_ny_code);
         assert_eq!(tunnel.status, LinkStatus::Activated);
-        println!(
-            "✅ Link LA-NY activated successfully with value: {:?}",
-            tunnel_net
-        );
+        println!("✅ Link LA-NY activated successfully with value: {tunnel_net:?}",);
 
         println!("Start Users...");
         /***********************************************************************************************************************************/
@@ -589,13 +586,13 @@ pub mod test {
                     let globalstate = GlobalState::from(&account_data.data[..]);
                     assert_eq!(globalstate.account_type, AccountType::GlobalState);
 
-                    println!("⬅️  Read {:?}", globalstate);
+                    println!("⬅️  Read {globalstate:?}");
 
                     globalstate
                 }
                 None => panic!("GlobalState account not found"),
             },
-            Err(err) => panic!("GlobalState account not found: {:?}", err),
+            Err(err) => panic!("GlobalState account not found: {err:?}"),
         }
     }
 
@@ -618,13 +615,13 @@ pub mod test {
             Ok(account) => match account {
                 Some(account_data) => {
                     let object = AccountData::from(&account_data.data[..]);
-                    println!("{:?}", object);
+                    println!("{object:?}");
 
                     Some(object)
                 }
                 None => None,
             },
-            Err(err) => panic!("account not found: {:?}", err),
+            Err(err) => panic!("account not found: {err:?}"),
         }
     }
 
@@ -636,7 +633,7 @@ pub mod test {
         accounts: Vec<AccountMeta>,
         payer: &Keypair,
     ) {
-        print!("➡️  Transaction {:?} ", instruction);
+        print!("➡️  Transaction {instruction:?} ");
 
         let mut transaction = create_transaction(program_id, instruction, accounts, payer);
         transaction.sign(&[&payer], recent_blockhash);

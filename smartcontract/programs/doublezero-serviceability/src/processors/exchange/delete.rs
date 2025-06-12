@@ -44,7 +44,10 @@ pub fn process_delete_exchange(
     msg!("process_delete_exchange({:?})", value);
 
     // Check the owner of the accounts
-    assert_eq!(exchange_account.owner, program_id, "Invalid PDA Account Owner");
+    assert_eq!(
+        exchange_account.owner, program_id,
+        "Invalid PDA Account Owner"
+    );
     assert_eq!(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"

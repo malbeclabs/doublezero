@@ -33,7 +33,7 @@ impl AddMulticastGroupPubAllowlistCliCommand {
                 pubkey_or_code: self.code,
                 pubkey,
             })?;
-        writeln!(out, "Signature: {}", res)?;
+        writeln!(out, "Signature: {res}")?;
 
         Ok(())
     }

@@ -127,7 +127,7 @@ impl DZClient {
         for (pubkey, account) in accounts {
             let account_type = AccountType::from(account.data[0]);
 
-            print!("Deleting {}: {}", account_type, pubkey);
+            print!("Deleting {account_type}: {pubkey}");
 
             if account_type == AccountType::GlobalState || account_type == AccountType::Config {
                 print!(" - Skipping");
@@ -139,7 +139,7 @@ impl DZClient {
                 vec![AccountMeta::new(pubkey, false)],
             )?;
 
-            println!(" - Done {}", signature);
+            println!(" - Done {signature}");
         }
 
         Ok(())
@@ -185,14 +185,14 @@ impl DZClient {
                     }
                 }
                 Err(e) => {
-                    eprintln!("Error: {}", e);
+                    eprintln!("Error: {e}");
                 }
             }
 
             match self.subscribe(&mut action) {
                 Ok(_) => {}
                 Err(e) => {
-                    eprintln!("Error: {}", e);
+                    eprintln!("Error: {e}");
                 }
             }
         }
@@ -225,10 +225,10 @@ impl DZClient {
                 if let UiAccountData::Binary(data, encoding) = event.account.data {
                     if let UiAccountEncoding::Base64 = encoding {
                         let pubkey = Pubkey::from_str(&event.pubkey)
-                            .map_err(|e| eyre!("Unable to parse Pubkey:{}", e))?;
+                            .map_err(|e| eyre!("Unable to parse Pubkey:{e}"))?;
                         let bytes = BASE64_STANDARD
                             .decode(data.clone())
-                            .map_err(|e| eyre!("Unable decode data: {}", e))?;
+                            .map_err(|e| eyre!("Unable decode data: {e}"))?;
                         let account = AccountData::from(&bytes[..]);
 
                         action(self, &pubkey, &account);
@@ -325,7 +325,7 @@ impl DoubleZeroClient for DZClient {
             println!("Program Logs:");
             if let Some(logs) = result.value.logs {
                 for log in logs {
-                    println!("{}", log);
+                    println!("{log}");
                 }
             }
             eyre::bail!("Error in transaction");

@@ -8,7 +8,7 @@ pub async fn look_for_ip(
 ) -> eyre::Result<(IpV4, String)> {
     let client_ip = match client_ip {
         Some(ip) => {
-            spinner.println(format!("    Using Public IP: {}", ip));
+            spinner.println(format!("    Using Public IP: {ip}"));
             ip
         }
         None => &{
@@ -16,7 +16,7 @@ pub async fn look_for_ip(
 
             match get_public_ipv4() {
                 Ok(ip) => {
-                    spinner.println(format!("Public IP: {} (If you want to specify a particular address, use the argument --client-ip x.x.x.x)", ip));
+                    spinner.println(format!("Public IP: {ip} (If you want to specify a particular address, use the argument --client-ip x.x.x.x)"));
                     ip
                 }
                 Err(e) => {

@@ -23,7 +23,7 @@ impl DeleteExchangeCliCommand {
         let signature = client.delete_exchange(DeleteExchangeCommand {
             index: exchange.index,
         })?;
-        writeln!(out, "Signature: {}", signature)?;
+        writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
     }

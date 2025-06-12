@@ -296,74 +296,74 @@ impl DoubleZeroInstruction {
 
     pub fn get_args(&self) -> String {
         match self {
-            Self::None() => "".to_string(),                       // variant 0
-            Self::InitGlobalState() => "".to_string(),            // variant 1
-            Self::CloseAccount(args) => format!("{:?}", args),    // variant 2
-            Self::SetGlobalConfig(args) => format!("{:?}", args), // variant 3
+            Self::None() => "".to_string(),                     // variant 0
+            Self::InitGlobalState() => "".to_string(),          // variant 1
+            Self::CloseAccount(args) => format!("{args:?}"),    // variant 2
+            Self::SetGlobalConfig(args) => format!("{args:?}"), // variant 3
 
-            Self::AddFoundationAllowlist(args) => format!("{:?}", args), // variant 4
-            Self::RemoveFoundationAllowlist(args) => format!("{:?}", args), // variant 5
-            Self::AddDeviceAllowlist(args) => format!("{:?}", args),     // variant 6
-            Self::RemoveDeviceAllowlist(args) => format!("{:?}", args),  // variant 7
-            Self::AddUserAllowlist(args) => format!("{:?}", args),       // variant 8
-            Self::RemoveUserAllowlist(args) => format!("{:?}", args),    // variant 9
+            Self::AddFoundationAllowlist(args) => format!("{args:?}"), // variant 4
+            Self::RemoveFoundationAllowlist(args) => format!("{args:?}"), // variant 5
+            Self::AddDeviceAllowlist(args) => format!("{args:?}"),     // variant 6
+            Self::RemoveDeviceAllowlist(args) => format!("{args:?}"),  // variant 7
+            Self::AddUserAllowlist(args) => format!("{args:?}"),       // variant 8
+            Self::RemoveUserAllowlist(args) => format!("{args:?}"),    // variant 9
 
-            Self::CreateLocation(args) => format!("{:?}", args), // variant 10
-            Self::UpdateLocation(args) => format!("{:?}", args), // variant 11
-            Self::SuspendLocation(args) => format!("{:?}", args), // variant 12
-            Self::ResumeLocation(args) => format!("{:?}", args), // variant 13
-            Self::DeleteLocation(args) => format!("{:?}", args), // variant 14
+            Self::CreateLocation(args) => format!("{args:?}"), // variant 10
+            Self::UpdateLocation(args) => format!("{args:?}"), // variant 11
+            Self::SuspendLocation(args) => format!("{args:?}"), // variant 12
+            Self::ResumeLocation(args) => format!("{args:?}"), // variant 13
+            Self::DeleteLocation(args) => format!("{args:?}"), // variant 14
 
-            Self::CreateExchange(args) => format!("{:?}", args), // variant 15
-            Self::UpdateExchange(args) => format!("{:?}", args), // variant 16
-            Self::SuspendExchange(args) => format!("{:?}", args), // variant 17
-            Self::ResumeExchange(args) => format!("{:?}", args), // variant 18
-            Self::DeleteExchange(args) => format!("{:?}", args), // variant 19
+            Self::CreateExchange(args) => format!("{args:?}"), // variant 15
+            Self::UpdateExchange(args) => format!("{args:?}"), // variant 16
+            Self::SuspendExchange(args) => format!("{args:?}"), // variant 17
+            Self::ResumeExchange(args) => format!("{args:?}"), // variant 18
+            Self::DeleteExchange(args) => format!("{args:?}"), // variant 19
 
-            Self::CreateDevice(args) => format!("{:?}", args), // variant 20
-            Self::ActivateDevice(args) => format!("{:?}", args), // variant 21
-            Self::RejectDevice(args) => format!("{:?}", args), // variant 22
-            Self::UpdateDevice(args) => format!("{:?}", args), // variant 23
-            Self::SuspendDevice(args) => format!("{:?}", args), // variant 24
-            Self::ResumeDevice(args) => format!("{:?}", args), // variant 25
-            Self::DeleteDevice(args) => format!("{:?}", args), // variant 26
-            Self::CloseAccountDevice(args) => format!("{:?}", args), // variant 27
+            Self::CreateDevice(args) => format!("{args:?}"), // variant 20
+            Self::ActivateDevice(args) => format!("{args:?}"), // variant 21
+            Self::RejectDevice(args) => format!("{args:?}"), // variant 22
+            Self::UpdateDevice(args) => format!("{args:?}"), // variant 23
+            Self::SuspendDevice(args) => format!("{args:?}"), // variant 24
+            Self::ResumeDevice(args) => format!("{args:?}"), // variant 25
+            Self::DeleteDevice(args) => format!("{args:?}"), // variant 26
+            Self::CloseAccountDevice(args) => format!("{args:?}"), // variant 27
 
-            Self::CreateLink(args) => format!("{:?}", args), // variant 28
-            Self::ActivateLink(args) => format!("{:?}", args), // variant 29
-            Self::RejectLink(args) => format!("{:?}", args), // variant 30
-            Self::UpdateLink(args) => format!("{:?}", args), // variant 31
-            Self::SuspendLink(args) => format!("{:?}", args), // variant 32
-            Self::ResumeLink(args) => format!("{:?}", args), // variant 33
-            Self::DeleteLink(args) => format!("{:?}", args), // variant 34
-            Self::CloseAccountLink(args) => format!("{:?}", args), // variant 35
+            Self::CreateLink(args) => format!("{args:?}"), // variant 28
+            Self::ActivateLink(args) => format!("{args:?}"), // variant 29
+            Self::RejectLink(args) => format!("{args:?}"), // variant 30
+            Self::UpdateLink(args) => format!("{args:?}"), // variant 31
+            Self::SuspendLink(args) => format!("{args:?}"), // variant 32
+            Self::ResumeLink(args) => format!("{args:?}"), // variant 33
+            Self::DeleteLink(args) => format!("{args:?}"), // variant 34
+            Self::CloseAccountLink(args) => format!("{args:?}"), // variant 35
 
-            Self::CreateUser(args) => format!("{:?}", args), // variant 36
-            Self::ActivateUser(args) => format!("{:?}", args), // variant 37
-            Self::RejectUser(args) => format!("{:?}", args), // variant 38
-            Self::UpdateUser(args) => format!("{:?}", args), // variant 39
-            Self::SuspendUser(args) => format!("{:?}", args), // variant 40
-            Self::ResumeUser(args) => format!("{:?}", args), // variant 41
-            Self::DeleteUser(args) => format!("{:?}", args), // variant 42
-            Self::CloseAccountUser(args) => format!("{:?}", args), // variant 43
+            Self::CreateUser(args) => format!("{args:?}"), // variant 36
+            Self::ActivateUser(args) => format!("{args:?}"), // variant 37
+            Self::RejectUser(args) => format!("{args:?}"), // variant 38
+            Self::UpdateUser(args) => format!("{args:?}"), // variant 39
+            Self::SuspendUser(args) => format!("{args:?}"), // variant 40
+            Self::ResumeUser(args) => format!("{args:?}"), // variant 41
+            Self::DeleteUser(args) => format!("{args:?}"), // variant 42
+            Self::CloseAccountUser(args) => format!("{args:?}"), // variant 43
 
-            Self::RequestBanUser(args) => format!("{:?}", args), // variant 44
-            Self::BanUser(args) => format!("{:?}", args),        // variant 45
+            Self::RequestBanUser(args) => format!("{args:?}"), // variant 44
+            Self::BanUser(args) => format!("{args:?}"),        // variant 45
 
-            Self::CreateMulticastGroup(args) => format!("{:?}", args), // variant 46
-            Self::ActivateMulticastGroup(args) => format!("{:?}", args), // variant 47
-            Self::RejectMulticastGroup(args) => format!("{:?}", args), // variant 48
-            Self::SuspendMulticastGroup(args) => format!("{:?}", args), // variant 49
-            Self::ReactivateMulticastGroup(args) => format!("{:?}", args), // variant 50
-            Self::DeleteMulticastGroup(args) => format!("{:?}", args), // variant 51
-            Self::UpdateMulticastGroup(args) => format!("{:?}", args), // variant 52
-            Self::DeactivateMulticastGroup(args) => format!("{:?}", args), // variant 53
-            Self::SubscribeMulticastGroup(args) => format!("{:?}", args), // variant 54
-            Self::AddMulticastGroupPubAllowlist(args) => format!("{:?}", args), // variant 55
-            Self::RemoveMulticastGroupPubAllowlist(args) => format!("{:?}", args), // variant 56
-            Self::AddMulticastGroupSubAllowlist(args) => format!("{:?}", args), // variant 57
-            Self::RemoveMulticastGroupSubAllowlist(args) => format!("{:?}", args), // variant 58
-            Self::CreateSubscribeUser(args) => format!("{:?}", args),  // variant 59
+            Self::CreateMulticastGroup(args) => format!("{args:?}"), // variant 46
+            Self::ActivateMulticastGroup(args) => format!("{args:?}"), // variant 47
+            Self::RejectMulticastGroup(args) => format!("{args:?}"), // variant 48
+            Self::SuspendMulticastGroup(args) => format!("{args:?}"), // variant 49
+            Self::ReactivateMulticastGroup(args) => format!("{args:?}"), // variant 50
+            Self::DeleteMulticastGroup(args) => format!("{args:?}"), // variant 51
+            Self::UpdateMulticastGroup(args) => format!("{args:?}"), // variant 52
+            Self::DeactivateMulticastGroup(args) => format!("{args:?}"), // variant 53
+            Self::SubscribeMulticastGroup(args) => format!("{args:?}"), // variant 54
+            Self::AddMulticastGroupPubAllowlist(args) => format!("{args:?}"), // variant 55
+            Self::RemoveMulticastGroupPubAllowlist(args) => format!("{args:?}"), // variant 56
+            Self::AddMulticastGroupSubAllowlist(args) => format!("{args:?}"), // variant 57
+            Self::RemoveMulticastGroupSubAllowlist(args) => format!("{args:?}"), // variant 58
+            Self::CreateSubscribeUser(args) => format!("{args:?}"),  // variant 59
         }
     }
 }

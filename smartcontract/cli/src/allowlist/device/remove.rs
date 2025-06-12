@@ -25,8 +25,8 @@ impl RemoveDeviceAllowlistCliCommand {
             }
         };
 
-        let res = client.remove_device_allowlist(RemoveDeviceAllowlistCommand { pubkey })?;
-        writeln!(out, "Signature: {}", res)?;
+        let signature = client.remove_device_allowlist(RemoveDeviceAllowlistCommand { pubkey })?;
+        writeln!(out, "Signature: {signature}")?;
 
         Ok(())
     }

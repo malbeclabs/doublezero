@@ -42,7 +42,10 @@ pub fn process_closeaccount_device(
     msg!("process_closeaccount_device({:?})", value);
 
     // Check the owner of the accounts
-    assert_eq!(device_account.owner, program_id, "Invalid PDA Account Owner");
+    assert_eq!(
+        device_account.owner, program_id,
+        "Invalid PDA Account Owner"
+    );
     assert_eq!(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"

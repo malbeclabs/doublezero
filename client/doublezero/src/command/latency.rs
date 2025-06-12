@@ -35,7 +35,7 @@ impl LatencyCliCommand {
         let table = Table::new(latencies)
             .with(Style::psql().remove_horizontals())
             .to_string();
-        println!("{}", table);
+        println!("{table}");
 
         Ok(())
     }

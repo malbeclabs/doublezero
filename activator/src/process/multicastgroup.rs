@@ -33,7 +33,7 @@ pub fn process_multicastgroup_event(
 
                     match res {
                         Ok(signature) => {
-                            println!("Activated {}", signature);
+                            println!("Activated {signature}");
 
                             println!("Add MulticastGroup: {} ", multicastgroup.code,);
                             multicastgroups.insert(*pubkey, multicastgroup.clone());
@@ -41,7 +41,7 @@ pub fn process_multicastgroup_event(
                                 .entry("multicastgroup-pending-to-activated")
                                 .or_insert(0) += 1;
                         }
-                        Err(e) => println!("Error: {}", e),
+                        Err(e) => println!("Error: {e}"),
                     }
                 }
                 None => {
@@ -70,13 +70,13 @@ pub fn process_multicastgroup_event(
 
             match res {
                 Ok(signature) => {
-                    println!("Deactivated {}", signature);
+                    println!("Deactivated {signature}");
                     multicastgroups.remove(pubkey);
                     *state_transitions
                         .entry("multicastgroup-deleting-to-deactivated")
                         .or_insert(0) += 1;
                 }
-                Err(e) => println!("Error: {}", e),
+                Err(e) => println!("Error: {e}"),
             }
         }
         _ => {}

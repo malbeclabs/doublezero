@@ -26,7 +26,7 @@ impl ResumeDeviceCliCommand {
         let signature = client.resume_device(ResumeDeviceCommand {
             index: device.index,
         })?;
-        writeln!(out, "Signature: {}", signature)?;
+        writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
     }

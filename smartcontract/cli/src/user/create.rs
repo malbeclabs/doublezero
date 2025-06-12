@@ -47,7 +47,7 @@ impl CreateUserCliCommand {
             cyoa_type: UserCYOA::GREOverDIA,
             client_ip: ipv4_parse(&self.client_ip),
         })?;
-        writeln!(out, "Signature: {}", signature)?;
+        writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
     }

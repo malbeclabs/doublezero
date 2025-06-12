@@ -62,7 +62,7 @@ impl ListLocationCliCommand {
                 .to_string()
         };
 
-        writeln!(out, "{}", res)?;
+        writeln!(out, "{res}")?;
 
         Ok(())
     }

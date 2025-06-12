@@ -28,11 +28,11 @@ impl ListUserAllowlistCliCommand {
                     serde_json::to_string_pretty(&list)?
                 }
             };
-            writeln!(out, "{}", json)?;
+            writeln!(out, "{json}")?;
         } else {
             writeln!(out, "Pubkeys:")?;
             for user in list {
-                writeln!(out, "\t{}", user)?;
+                writeln!(out, "\t{user}")?;
             }
         }
 

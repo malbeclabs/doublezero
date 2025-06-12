@@ -14,7 +14,7 @@ impl InitCliCommand {
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
         let signature = client.init_global_state(InitGlobalStateCommand {})?;
-        writeln!(out, "Signature: {}", signature)?;
+        writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
     }

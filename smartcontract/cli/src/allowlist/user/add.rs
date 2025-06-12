@@ -26,8 +26,8 @@ impl AddUserAllowlistCliCommand {
             }
         };
 
-        let res = client.add_user_allowlist(AddUserAllowlistCommand { pubkey })?;
-        writeln!(out, "Signature: {}", res)?;
+        let signature = client.add_user_allowlist(AddUserAllowlistCommand { pubkey })?;
+        writeln!(out, "Signature: {signature}")?;
 
         Ok(())
     }

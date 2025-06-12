@@ -33,7 +33,7 @@ impl FromStr for LinkLinkType {
             "L1" => Ok(LinkLinkType::L1),
             "L2" => Ok(LinkLinkType::L2),
             "L3" => Ok(LinkLinkType::L3),
-            _ => Err(format!("Invalid LinkLinkType: {}", s)),
+            _ => Err(format!("Invalid LinkLinkType: {s}")),
         }
     }
 }

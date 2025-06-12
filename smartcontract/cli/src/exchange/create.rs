@@ -32,7 +32,7 @@ impl CreateExchangeCliCommand {
             lng: self.lng,
             loc_id: self.loc_id,
         })?;
-        writeln!(out, "Signature: {}", signature)?;
+        writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
     }

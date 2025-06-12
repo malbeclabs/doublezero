@@ -3,7 +3,7 @@ module github.com/malbeclabs/doublezero
 go 1.24
 
 require (
-	github.com/ClickHouse/clickhouse-go/v2 v2.34.0
+	github.com/ClickHouse/clickhouse-go/v2 v2.36.0
 	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/docker v28.2.2+incompatible
 	github.com/docker/go-connections v0.5.0
@@ -75,7 +75,6 @@ require (
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/go-archive v0.1.0 // indirect
 	github.com/moby/patternmatcher v0.6.0 // indirect
-	github.com/moby/sys/atomicwriter v0.1.0 // indirect
 	github.com/moby/sys/sequential v0.6.0 // indirect
 	github.com/moby/sys/user v0.4.0 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect

@@ -1,11 +1,9 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub fn get_utc_nanoseconds_since_epoch() -> u128 {
+pub fn get_utc_nanoseconds_since_epoch() -> eyre::Result<u128> {
     match SystemTime::now().duration_since(UNIX_EPOCH) {
-        Ok(duration) => duration.as_nanos(),
-        Err(_) => {
-            panic!("Can't get ns since epoch");
-        }
+        Err(e) => eyre::bail!("Can't get ns since epoch, err: {e}"),
+        Ok(duration) => Ok(duration.as_nanos()),
     }
 }
 

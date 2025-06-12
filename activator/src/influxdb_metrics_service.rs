@@ -32,24 +32,26 @@ pub fn create_influxdb_metrics_service(
 }
 
 impl InfluxDBMetricsService {
-    pub fn metric_to_line_proto(metric: &Metric) -> String {
-        let ts = get_utc_nanoseconds_since_epoch();
+    pub fn metric_to_line_proto(metric: &Metric) -> eyre::Result<String> {
+        let ts = get_utc_nanoseconds_since_epoch()?;
         if metric.tags.is_empty() {
-            return format!(
+            let msg = format!(
                 "{} {} {}\n",
                 metric.measurement,
                 kvpair_string(&metric.fields),
                 ts
             );
+            return Ok(msg);
         }
 
-        format!(
+        let msg = format!(
             "{},{} {} {}\n",
             metric.measurement,
             kvpair_string(&metric.tags),
             kvpair_string(&metric.fields),
             ts
-        )
+        );
+        Ok(msg)
     }
 
     fn send(&self, lines: String) {
@@ -103,16 +105,13 @@ impl InfluxDBMetricsSubmitter {
 }
 
 impl MetricsService for InfluxDBMetricsService {
-    fn write_metric(&self, metric: &Metric) {
-        self.send(Self::metric_to_line_proto(metric));
-    }
-
-    fn write_metrics(&self, metrics: &[Metric]) {
+    fn write_metrics(&self, metrics: &[Metric]) -> eyre::Result<()> {
         let lines = metrics
             .iter()
             .map(Self::metric_to_line_proto)
-            .collect::<Vec<_>>()
+            .collect::<eyre::Result<Vec<_>>>()?
             .join("");
         self.send(lines);
+        Ok(())
     }
 }

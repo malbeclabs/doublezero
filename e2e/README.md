@@ -44,3 +44,86 @@ graph LR
   style Default_Net fill:#f0f0f0,stroke:#666,stroke-width:2px
   style CYOA_Net    fill:#d6eaf8,stroke:#2980b9,stroke-width:2px
 ```
+
+## Test Structure
+
+The test framework is designed to be modular and reusable. Here's how the components fit together:
+
+1. **TestDevnet**: The main test infrastructure that sets up:
+   - A local devnet with ledger, manager, controller, and activator
+   - A CYOA network for devices and clients
+   - Helper methods for common operations (connecting tunnels, checking state, etc.)
+   - `TestDevnet` is mostly just a wrapper around [Devnet](./internal/devnet/devnet.go), which is responsible for provisioning and managing the component containers
+
+2. **Test Cases**: Each of the current tests follow a common pattern:
+  ```go
+  func TestE2E_IBRL(t *testing.T) {
+    t.Parallel()
+
+    // 1. Set up test environment
+    dn := NewSingleDeviceSingleClientTestDevnet(t)
+    client := dn.Clients[0]
+    device := dn.Devices[0]
+
+    if !t.Run("connect", func(t *testing.T) {
+      // Setup steps
+      // Connect steps
+      // Verify post-connect state
+    }) {
+      t.Fail()
+      return
+    }
+
+    if !t.Run("disconnect", func(t *testing.T) {
+      // Disconnect steps
+      // Verify post-disconnect state
+    }) {
+      t.Fail()
+    }
+  }
+  ```
+
+3. **State Verification**: Tests use helper methods to verify state:
+   - `WaitForClientTunnelUp`: Ensures tunnel is established
+   - `WaitForAgentConfigMatchViaController`: Verifies agent configuration
+   - Custom verification functions for specific test cases
+
+## Adding a New Test
+
+To add a new test:
+
+1. Create a new test file (e.g., `ibrl_test.go`) in the `e2e` directory
+2. Use `NewSingleDeviceSingleClientTestDevnet` to set up the test environment
+3. Implement connect/disconnect test cases following the pattern above, if applicable
+4. Add state verification functions specific to your test case (see `checkIBRLPostConnect` in [ibrl_test.go](ibrl_test.go) for example)
+5. Use fixtures for expected output verification if appropriate
+
+Example test structure:
+```go
+func TestE2E_IBRL(t *testing.T) {
+	t.Parallel()
+
+	dn := NewSingleDeviceSingleClientTestDevnet(t)
+	client := dn.Clients[0]
+	device := dn.Devices[0]
+
+	if !t.Run("connect", func(t *testing.T) {
+		dn.ConnectIBRLUserTunnel(t, client)
+
+		dn.WaitForClientTunnelUp(t, client)
+
+		checkIBRLPostConnect(t, dn, device, client)
+	}) {
+		t.Fail()
+		return
+	}
+
+	if !t.Run("disconnect", func(t *testing.T) {
+		dn.DisconnectUserTunnel(t, client)
+
+		checkIBRLPostDisconnect(t, dn, device, client)
+	}) {
+		t.Fail()
+	}
+}
+```

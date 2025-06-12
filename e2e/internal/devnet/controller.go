@@ -103,6 +103,7 @@ func (c *Controller) GetAgentConfig(ctx context.Context, deviceAgentPubkey strin
 	c.log.Debug("==> Getting agent config from controller", "controllerAddr", controllerAddr, "agentPubkey", deviceAgentPubkey)
 
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	}
@@ -112,7 +113,6 @@ func (c *Controller) GetAgentConfig(ctx context.Context, deviceAgentPubkey strin
 		return nil, fmt.Errorf("error creating controller client: %w", err)
 	}
 	defer conn.Close()
-	defer cancel()
 
 	agent := pb.NewControllerClient(conn)
 	config, err := agent.GetConfig(ctx, &pb.ConfigRequest{Pubkey: deviceAgentPubkey})

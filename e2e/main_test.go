@@ -80,16 +80,22 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func newTestDevnetConfig(t *testing.T) devnet.DevnetConfig {
+type TestDevnet struct {
+	*devnet.Devnet
+	log *slog.Logger
+}
+
+func NewSingleDeviceSingleClientTestDevnet(t *testing.T) *TestDevnet {
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
+	log := logger.With("test", t.Name(), "deployID", deployID)
+
+	log.Info("==> Starting test devnet with single device and client")
 
 	// Make a working directory for the generated keypairs.
-	workDir, err := os.MkdirTemp("", "dz-devnet-"+deployID)
-	if err != nil {
-		t.Fatalf("failed to create working directory: %v", err)
-	}
+	workingDir, err := os.MkdirTemp("", "dz-devnet-"+deployID)
+	require.NoError(t, err)
 	t.Cleanup(func() {
-		os.RemoveAll(workDir)
+		os.RemoveAll(workingDir)
 	})
 
 	// Use a hardcoded program keypair for these tests, since device and account pubkeys onchain
@@ -98,124 +104,98 @@ func newTestDevnetConfig(t *testing.T) devnet.DevnetConfig {
 	programKeypairPath := "data/dz-program-keypair.json"
 
 	// Generate manager keypair.
-	managerKeypairPath := filepath.Join(workDir, "dz-manager-keypair.json")
+	managerKeypairPath := filepath.Join(workingDir, "dz-manager-keypair.json")
 	err = solana.GenerateKeypair(managerKeypairPath)
 	if err != nil {
-		t.Fatalf("failed to generate manager keypair: %v", err)
+		t.Fatal("failed to generate manager keypair")
 	}
 
-	return devnet.DevnetConfig{
-		Logger:          logger,
-		DeployID:        deployID,
-		WorkDir:         workDir,
-		SubnetAllocator: subnetAllocator,
-		DockerClient:    dockerClient,
+	dn, err := devnet.New(devnet.DevnetSpec{
+		DeployID:   deployID,
+		WorkingDir: workingDir,
 
-		ProgramKeypairPath: programKeypairPath,
-		ManagerKeypairPath: managerKeypairPath,
-
-		LedgerImage:     os.Getenv("DZ_LEDGER_IMAGE"),
-		ControllerImage: os.Getenv("DZ_CONTROLLER_IMAGE"),
-		ActivatorImage:  os.Getenv("DZ_ACTIVATOR_IMAGE"),
-		ManagerImage:    os.Getenv("DZ_MANAGER_IMAGE"),
-		DeviceImage:     os.Getenv("DZ_DEVICE_IMAGE"),
-		ClientImage:     os.Getenv("DZ_CLIENT_IMAGE"),
-	}
-}
-
-func newTestLogger(verbose bool) *slog.Logger {
-	logWriter := os.Stdout
-	logLevel := slog.LevelDebug
-	if !verbose {
-		logLevel = slog.LevelInfo
-	}
-	logger := slog.New(tint.NewHandler(logWriter, &tint.Options{
-		Level:      logLevel,
-		TimeFormat: time.DateTime,
-		// NoColor:    !isatty.IsTerminal(logWriter.Fd()),
-	}))
-	return logger
-}
-
-func disconnectUserTunnel(t *testing.T, log *slog.Logger, client *devnet.Client) {
-	log.Info("==> Disconnecting user tunnel")
-
-	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect --client-ip " + client.IP})
+		Ledger: devnet.LedgerSpec{
+			ContainerImage:     os.Getenv("DZ_LEDGER_IMAGE"),
+			ProgramKeypairPath: programKeypairPath,
+		},
+		Manager: devnet.ManagerSpec{
+			ContainerImage: os.Getenv("DZ_MANAGER_IMAGE"),
+			KeypairPath:    managerKeypairPath,
+		},
+		Controller: devnet.ControllerSpec{
+			ContainerImage: os.Getenv("DZ_CONTROLLER_IMAGE"),
+			ExternalHost:   "localhost",
+		},
+		Activator: devnet.ActivatorSpec{
+			ContainerImage: os.Getenv("DZ_ACTIVATOR_IMAGE"),
+		},
+	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
 
-	log.Info("--> User tunnel disconnected")
+	tdn := &TestDevnet{
+		Devnet: dn,
+		log:    logger,
+	}
+
+	tdn.Start(t)
+
+	return tdn
 }
 
-func waitForClientTunnelUp(t *testing.T, log *slog.Logger, client *devnet.Client) {
+func (dn *TestDevnet) Start(t *testing.T) {
 	ctx := t.Context()
 
-	timeout := 90 * time.Second
-	log.Info("==> Waiting for client tunnel to be up (timeout " + timeout.String() + ")")
-	require.Eventually(t, func() bool {
-		resp, err := client.ExecReturnJSONList(ctx, []string{"bash", "-c", `
-				curl -s --unix-socket /var/run/doublezerod/doublezerod.sock http://doublezero/status
-			`})
-		require.NoError(t, err)
-		log.Debug("--> Status response", "response", resp)
-
-		for _, s := range resp {
-			if session, ok := s["doublezero_status"]; ok {
-				if sessionStatus, ok := session.(map[string]any)["session_status"]; ok {
-					if sessionStatus == "up" {
-						log.Info("✅ Client tunnel is up")
-						return true
-					}
-				}
-			}
-		}
-		return false
-	}, timeout, 2*time.Second, "timeout waiting for client tunnel to be up")
-}
-
-func startSingleDeviceSingleClientDevnet(t *testing.T, log *slog.Logger) (*devnet.Devnet, *devnet.Device, *devnet.Client) {
-	ctx := t.Context()
-
-	devnetConfig := newTestDevnetConfig(t)
-	devnet, err := devnet.New(devnetConfig)
-	require.NoError(t, err)
-	t.Cleanup(devnet.Close)
-
-	err = devnet.StartControlPlane(ctx)
+	err := dn.Devnet.Start(ctx)
 	require.NoError(t, err)
 
-	// Create device CYOA network first, get the IP, then create it onchain.
-	cyoaNetwork, cyoaSubnetCIDR, err := devnet.CreateCYOANetwork(ctx, "ny5-dz01")
-	require.NoError(t, err)
-	deviceCYOAIP, err := netutil.BuildIPInCIDR(cyoaSubnetCIDR, 80)
+	// Build a device CYOA IP from the subnet CIDR.
+	deviceCYOAIP, err := netutil.BuildIPInCIDR(dn.CYOANetwork.SubnetCIDR, 80)
 	require.NoError(t, err)
 
 	// Create our device and a few others onchain.
 	deviceCode := "ny5-dz01"
-	createDevicesAndLinksOnchain(t, log, devnet, deviceCode, deviceCYOAIP.String())
+	dn.createDevicesAndLinksOnchain(t, deviceCode, deviceCYOAIP.String())
 
 	// Get the device agent pubkey from the onchain device list.
-	deviceAgentPubkey := getDevicePubkeyOnchain(t, devnet, deviceCode)
-	if deviceAgentPubkey == "" {
-		t.Fatalf("device agent pubkey not found onchain for device %s", deviceCode)
-	}
+	deviceAgentPubkey := dn.GetDevicePubkeyOnchain(t, deviceCode)
+	require.NotEmpty(t, deviceAgentPubkey, "device agent pubkey not found onchain for device %s", deviceCode)
 
-	// Start our device and connect it to the CYOA network.
-	device, err := devnet.StartDevice(t, deviceCode, cyoaNetwork, cyoaSubnetCIDR, deviceCYOAIP.String(), deviceAgentPubkey)
+	// Add a device to the devnet.
+	_, err = dn.AddDevice(ctx, devnet.DeviceSpec{
+		ContainerImage: os.Getenv("DZ_DEVICE_IMAGE"),
+		Code:           deviceCode,
+		Pubkey:         deviceAgentPubkey,
+		CYOANetworkIP:  deviceCYOAIP.String(),
+	})
 	require.NoError(t, err)
 
-	client, err := devnet.StartClient(ctx, device)
+	// Build a client CYOA IP from the subnet CIDR.
+	clientCYOAIP, err := netutil.BuildIPInCIDR(dn.CYOANetwork.SubnetCIDR, 86)
 	require.NoError(t, err)
+
+	// Generate a new client keypair.
+	clientKeypairPath := filepath.Join(dn.Spec.WorkingDir, "client-keypair.json")
+	err = solana.GenerateKeypair(clientKeypairPath)
+	require.NoError(t, err)
+
+	// Add a client to the devnet.
+	clientIndex, err := dn.AddClient(ctx, devnet.ClientSpec{
+		ContainerImage: os.Getenv("DZ_CLIENT_IMAGE"),
+		KeypairPath:    clientKeypairPath,
+		CYOANetworkIP:  clientCYOAIP.String(),
+	})
+	require.NoError(t, err)
+	client := dn.Clients[clientIndex]
+	clientSpec := client.Spec()
 
 	// Add client to the user allowlist.
-	_, err = devnet.ManagerExec(ctx, []string{"bash", "-c", `
-		doublezero user allowlist add --pubkey ` + client.PubkeyAddress + `
-	`})
+	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", "doublezero user allowlist add --pubkey " + client.Pubkey})
 	require.NoError(t, err)
 
 	// Add null routes to test latency selection to ny5-dz01.
 	_, err = client.Exec(ctx, []string{"bash", "-c", `
 		echo "==> Adding null routes to test latency selection to ny5-dz01."
-		ip rule add priority 1 from ` + client.IP + `/32 to all table main
+		ip rule add priority 1 from ` + clientSpec.CYOANetworkIP + `/32 to all table main
 		ip route add 207.45.216.134/32 dev lo proto static scope host
 		ip route add 195.219.120.72/32 dev lo proto static scope host
 		ip route add 195.219.220.88/32 dev lo proto static scope host
@@ -227,17 +207,46 @@ func startSingleDeviceSingleClientDevnet(t *testing.T, log *slog.Logger) (*devne
 	require.NoError(t, err)
 
 	// Wait for latency results.
-	waitForLatencyResults(t, log, client, deviceAgentPubkey)
-
-	return devnet, device, client
+	dn.waitForLatencyResults(t, client, deviceAgentPubkey)
 }
 
-func getDevicePubkeyOnchain(t *testing.T, devnet *devnet.Devnet, deviceCode string) string {
-	ctx := t.Context()
+func (dn *TestDevnet) DisconnectUserTunnel(t *testing.T, client *devnet.Client) {
+	dn.log.Info("==> Disconnecting user tunnel")
 
-	output, err := devnet.ManagerExec(ctx, []string{"bash", "-c", `
-		doublezero device get --code ny5-dz01
-	`})
+	clientSpec := client.Spec()
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect --client-ip " + clientSpec.CYOANetworkIP})
+	require.NoError(t, err)
+
+	dn.log.Info("--> User tunnel disconnected")
+}
+
+func (dn *TestDevnet) WaitForClientTunnelUp(t *testing.T, client *devnet.Client) {
+	timeout := 90 * time.Second
+	dn.log.Info("==> Waiting for client tunnel to be up (timeout " + timeout.String() + ")")
+
+	require.Eventually(t, func() bool {
+		resp, err := client.ExecReturnJSONList(t.Context(), []string{"bash", "-c", `
+				curl -s --unix-socket /var/run/doublezerod/doublezerod.sock http://doublezero/status
+			`})
+		require.NoError(t, err)
+		dn.log.Debug("--> Status response", "response", resp)
+
+		for _, s := range resp {
+			if session, ok := s["doublezero_status"]; ok {
+				if sessionStatus, ok := session.(map[string]any)["session_status"]; ok {
+					if sessionStatus == "up" {
+						dn.log.Info("✅ Client tunnel is up")
+						return true
+					}
+				}
+			}
+		}
+		return false
+	}, 90*time.Second, 2*time.Second, "timeout waiting for client tunnel to be up")
+}
+
+func (dn *TestDevnet) GetDevicePubkeyOnchain(t *testing.T, deviceCode string) string {
+	output, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero device get --code " + deviceCode})
 	require.NoError(t, err)
 
 	for _, line := range strings.Split(string(output), "\n") {
@@ -248,24 +257,21 @@ func getDevicePubkeyOnchain(t *testing.T, devnet *devnet.Devnet, deviceCode stri
 
 	return ""
 }
-func waitForLatencyResults(t *testing.T, log *slog.Logger, client *devnet.Client, expectedAgentPubkey string) {
-	ctx := t.Context()
 
+func (dn *TestDevnet) waitForLatencyResults(t *testing.T, client *devnet.Client, expectedAgentPubkey string) {
 	start := time.Now()
 	timeout := 75 * time.Second
-	log.Info("==> Waiting for latency results (timeout " + timeout.String() + ")")
+	dn.log.Info("==> Waiting for latency results (timeout " + timeout.String() + ")")
 	require.Eventually(t, func() bool {
-		results, err := client.ExecReturnJSONList(ctx, []string{"bash", "-c", `
-				curl -s --unix-socket /var/run/doublezerod/doublezerod.sock http://doublezero/latency
-			`})
-		log.Debug("--> Latency results", "results", results)
+		results, err := client.ExecReturnJSONList(t.Context(), []string{"bash", "-c", "curl -s --unix-socket /var/run/doublezerod/doublezerod.sock http://doublezero/latency"})
+		dn.log.Debug("--> Latency results", "results", results)
 		require.NoError(t, err)
 
 		if len(results) > 0 {
 			for _, result := range results {
 				// Check to make sure ny5-dz01 is reachable
 				if result["device_pk"] == expectedAgentPubkey && result["reachable"] == true {
-					log.Info("✅ Got expected latency results", "duration", time.Since(start))
+					dn.log.Info("✅ Got expected latency results", "duration", time.Since(start))
 					return true
 				}
 			}
@@ -274,17 +280,15 @@ func waitForLatencyResults(t *testing.T, log *slog.Logger, client *devnet.Client
 	}, timeout, 2*time.Second, "timeout waiting for latency results")
 }
 
-func createDevicesAndLinksOnchain(t *testing.T, log *slog.Logger, devnet *devnet.Devnet, deviceCode string, deviceCYOAIP string) {
-	ctx := t.Context()
+func (dn *TestDevnet) createDevicesAndLinksOnchain(t *testing.T, deviceCode string, deviceCYOAIP string) {
+	dn.log.Info("==> Creating devices and links onchain", "deviceCode", deviceCode, "deviceCYOAIP", deviceCYOAIP)
 
-	log.Info("==> Creating devices and links onchain")
-
-	_, err := devnet.ManagerExec(ctx, []string{"bash", "-c", `
+	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 		set -e
 
 		echo "==> Populate device information onchain - DO NOT SHUFFLE THESE AS THE PUBKEYS WILL CHANGE"
 		doublezero device create --code la2-dz01 --location lax --exchange xlax --public-ip "207.45.216.134" --dz-prefixes "207.45.216.136/30,200.12.12.12/29"
-		doublezero device create --code ny5-dz01 --location ewr --exchange xewr --public-ip "` + deviceCYOAIP + `" --dz-prefixes "` + deviceCYOAIP + `/29"
+		doublezero device create --code ` + deviceCode + ` --location ewr --exchange xewr --public-ip "` + deviceCYOAIP + `" --dz-prefixes "` + deviceCYOAIP + `/29"
 		doublezero device create --code ld4-dz01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "195.219.120.72/29"
 		doublezero device create --code frk-dz01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "195.219.220.88/29"
 		doublezero device create --code sg1-dz01 --location sin --exchange xsin --public-ip "180.87.102.104" --dz-prefixes "180.87.102.104/29"
@@ -295,8 +299,8 @@ func createDevicesAndLinksOnchain(t *testing.T, log *slog.Logger, devnet *devnet
 		doublezero device list
 
 		echo "==> Populate link information onchain"
-		doublezero link create --code "la2-dz01:ny5-dz01" --side-a la2-dz01 --side-z ny5-dz01 --link-type L2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
-		doublezero link create --code "ny5-dz01:ld4-dz01" --side-a ny5-dz01 --side-z ld4-dz01 --link-type L2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
+		doublezero link create --code "la2-dz01:` + deviceCode + `" --side-a la2-dz01 --side-z ` + deviceCode + ` --link-type L2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
+		doublezero link create --code "` + deviceCode + `:ld4-dz01" --side-a ` + deviceCode + ` --side-z ld4-dz01 --link-type L2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
 		doublezero link create --code "ld4-dz01:frk-dz01" --side-a ld4-dz01 --side-z frk-dz01 --link-type L2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10
 		doublezero link create --code "ld4-dz01:sg1-dz01" --side-a ld4-dz01 --side-z sg1-dz01 --link-type L2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9
 		doublezero link create --code "sg1-dz01:ty2-dz01" --side-a sg1-dz01 --side-z ty2-dz01 --link-type L2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7
@@ -307,12 +311,10 @@ func createDevicesAndLinksOnchain(t *testing.T, log *slog.Logger, devnet *devnet
 	require.NoError(t, err)
 }
 
-func createMulticastGroupOnchain(t *testing.T, log *slog.Logger, devnet *devnet.Devnet, client *devnet.Client, multicastGroupCode string) {
-	ctx := t.Context()
+func (dn *TestDevnet) CreateMulticastGroupOnchain(t *testing.T, client *devnet.Client, multicastGroupCode string) {
+	dn.log.Info("==> Creating multicast group onchain")
 
-	log.Info("==> Creating multicast group onchain")
-
-	_, err := devnet.ManagerExec(ctx, []string{"bash", "-c", `
+	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 		set -e
 
 		echo "==> Populate multicast group information onchain"
@@ -329,19 +331,17 @@ func createMulticastGroupOnchain(t *testing.T, log *slog.Logger, devnet *devnet.
 		doublezero multicast group allowlist subscriber add --code ` + multicastGroupCode + ` --pubkey me
 
 		echo "==> Add client pubkey to multicast group allowlist"
-		doublezero multicast group allowlist publisher add --code ` + multicastGroupCode + ` --pubkey ` + client.PubkeyAddress + `
-		doublezero multicast group allowlist subscriber add --code ` + multicastGroupCode + ` --pubkey ` + client.PubkeyAddress + `
+		doublezero multicast group allowlist publisher add --code ` + multicastGroupCode + ` --pubkey ` + client.Pubkey + `
+		doublezero multicast group allowlist subscriber add --code ` + multicastGroupCode + ` --pubkey ` + client.Pubkey + `
 	`})
 	require.NoError(t, err)
 }
 
-func waitForAgentConfigMatchViaController(t *testing.T, dn *devnet.Devnet, deviceAgentPubkey string, config string) error {
-	ctx := t.Context()
-
+func (dn *TestDevnet) WaitForAgentConfigMatchViaController(t *testing.T, deviceAgentPubkey string, config string) error {
 	deadline := time.Now().Add(30 * time.Second)
 	var diff string
 	for time.Now().Before(deadline) {
-		got, err := dn.GetAgentConfigViaController(ctx, deviceAgentPubkey)
+		got, err := dn.Controller.GetAgentConfig(t.Context(), deviceAgentPubkey)
 		if err != nil {
 			return fmt.Errorf("error while fetching config: %w", err)
 		}
@@ -354,6 +354,70 @@ func waitForAgentConfigMatchViaController(t *testing.T, dn *devnet.Devnet, devic
 	return fmt.Errorf("output mismatch: +(want), -(got): %s", diff)
 }
 
+func (dn *TestDevnet) ConnectIBRLUserTunnel(t *testing.T, client *devnet.Client) {
+	dn.log.Info("==> Connecting IBRL user tunnel")
+
+	clientSpec := client.Spec()
+
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect ibrl --client-ip " + clientSpec.CYOANetworkIP})
+	require.NoError(t, err)
+
+	dn.log.Info("--> IBRL user tunnel connected")
+}
+
+// ConnectUserTunnelWithAllocatedIP connects a user tunnel with an allocated IP.
+func (dn *TestDevnet) ConnectUserTunnelWithAllocatedIP(t *testing.T, client *devnet.Client) {
+	dn.log.Info("==> Connecting user tunnel with allocated IP")
+
+	clientSpec := client.Spec()
+
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect ibrl --client-ip " + clientSpec.CYOANetworkIP + " --allocate-addr"})
+	require.NoError(t, err)
+
+	dn.log.Info("--> User tunnel with allocated IP connected")
+}
+
+func (dn *TestDevnet) ConnectMulticastPublisher(t *testing.T, client *devnet.Client, multicastGroupCode string) {
+	clientSpec := client.Spec()
+	dn.log.Info("==> Connecting multicast publisher", "clientIP", clientSpec.CYOANetworkIP)
+
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast publisher " + multicastGroupCode + " --client-ip " + clientSpec.CYOANetworkIP})
+	require.NoError(t, err, "failed to connect multicast publisher")
+
+	dn.log.Info("--> Multicast publisher connected")
+}
+
+// DisconnectMulticastPublisher disconnects a multicast publisher from a multicast group.
+func (dn *TestDevnet) DisconnectMulticastPublisher(t *testing.T, client *devnet.Client) {
+	clientSpec := client.Spec()
+	dn.log.Info("==> Disconnecting multicast publisher", "clientIP", clientSpec.CYOANetworkIP)
+
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast --client-ip " + clientSpec.CYOANetworkIP})
+	require.NoError(t, err, "failed to disconnect multicast publisher")
+
+	dn.log.Info("--> Multicast publisher disconnected")
+}
+
+func (dn *TestDevnet) ConnectMulticastSubscriber(t *testing.T, client *devnet.Client, multicastGroupCode string) {
+	clientSpec := client.Spec()
+	dn.log.Info("==> Connecting multicast subscriber", "clientIP", clientSpec.CYOANetworkIP)
+
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast subscriber " + multicastGroupCode + " --client-ip " + clientSpec.CYOANetworkIP})
+	require.NoError(t, err)
+
+	dn.log.Info("--> Multicast subscriber connected")
+}
+
+func (dn *TestDevnet) DisconnectMulticastSubscriber(t *testing.T, client *devnet.Client) {
+	clientSpec := client.Spec()
+	dn.log.Info("==> Disconnecting multicast subscriber", "clientIP", clientSpec.CYOANetworkIP)
+
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast --client-ip " + clientSpec.CYOANetworkIP})
+	require.NoError(t, err)
+
+	dn.log.Info("--> Multicast subscriber disconnected")
+}
+
 // getNextAllocatedClientIP returns the next allocated client IP address in the subnet based on a
 // given previous IP, by simply incrementing the last octet. This is a naive implementation that
 // does not consider the actual subnet CIDR and will break if used for a lot of IPs.
@@ -361,4 +425,18 @@ func getNextAllocatedClientIP(previousIP string) string {
 	ip := net.ParseIP(previousIP).To4()
 	ip[3]++
 	return ip.String()
+}
+
+func newTestLogger(verbose bool) *slog.Logger {
+	logWriter := os.Stdout
+	logLevel := slog.LevelDebug
+	if !verbose {
+		logLevel = slog.LevelInfo
+	}
+	logger := slog.New(tint.NewHandler(logWriter, &tint.Options{
+		Level:      logLevel,
+		TimeFormat: time.DateTime,
+		// NoColor:    !isatty.IsTerminal(logWriter.Fd()),
+	}))
+	return logger
 }

@@ -2,182 +2,168 @@ package devnet
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
-	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/docker/docker/api/types/network"
+	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
-	"github.com/malbeclabs/doublezero/e2e/internal/random"
 	"github.com/malbeclabs/doublezero/e2e/internal/solana"
 	"github.com/testcontainers/testcontainers-go"
-	tcexec "github.com/testcontainers/testcontainers-go/exec"
 )
 
-type Client struct {
-	ID            string
-	PubkeyAddress string
-	KeypairPath   string
-	Network       *testcontainers.DockerNetwork
-	Container     testcontainers.Container
-	IP            string
-
-	log *slog.Logger
+type ClientSpec struct {
+	ContainerImage string
+	KeypairPath    string
+	CYOANetworkIP  string
 }
 
-func (d *Devnet) StartClient(ctx context.Context, device *Device) (*Client, error) {
-	d.log.Info("==> Starting client")
-
-	// Generate a new client keypair.
-	clientID := random.ShortID()
-	clientKeypairPath := filepath.Join(d.config.WorkDir, "client-"+clientID+"-keypair.json")
-	err := solana.GenerateKeypair(clientKeypairPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate client keypair: %w", err)
+func (s *ClientSpec) Validate() error {
+	if s.ContainerImage == "" {
+		return fmt.Errorf("containerImage is required")
 	}
 
+	if s.KeypairPath == "" {
+		return fmt.Errorf("keypairPath is required")
+	}
+
+	if s.CYOANetworkIP == "" {
+		return fmt.Errorf("cyoaNetworkIP is required")
+	}
+
+	return nil
+}
+
+type Client struct {
+	dn  *Devnet
+	log *slog.Logger
+
+	index int
+
+	ContainerID string
+	Pubkey      string
+}
+
+func (c *Client) Spec() *ClientSpec {
+	return &c.dn.Spec.Clients[c.index]
+}
+
+func (c *Client) Start(ctx context.Context) error {
+	spec := c.Spec()
+	c.log.Info("==> Starting client", "image", spec.ContainerImage, "cyoaNetworkIP", spec.CYOANetworkIP)
+
 	// Get the client's public address.
-	clientPubkeyAddress, err := solana.PublicAddressFromKeypair(clientKeypairPath)
+	clientPubkey, err := solana.PublicAddressFromKeypair(spec.KeypairPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get client public address: %w", err)
+		return fmt.Errorf("failed to get client public address: %w", err)
 	}
 
 	// Construct an IP address for the client on the CYOA network subnet, the x.y.z.86 address.
-	ip4, err := netutil.BuildIPInCIDR(device.CYOASubnetCIDR, 86)
+	ip4, err := netutil.BuildIPInCIDR(c.dn.CYOANetwork.SubnetCIDR, 86)
 	if err != nil {
-		return nil, fmt.Errorf("failed to build client IP in CYOA network subnet: %w", err)
+		return fmt.Errorf("failed to build client IP in CYOA network subnet: %w", err)
 	}
 	ip := ip4.String()
-	d.log.Info("--> Client IP selected", "ip", ip)
+	c.log.Info("--> Client IP selected", "ip", ip)
 
 	// Start the client container.
 	req := testcontainers.ContainerRequest{
-		Image: d.config.ClientImage,
-		Name:  d.config.DeployID + "-client-" + clientID,
+		Image: spec.ContainerImage,
+		Name:  c.dn.Spec.DeployID + "-client-" + strconv.Itoa(c.index),
 		Env: map[string]string{
-			"DZ_LEDGER_URL": d.InternalLedgerURL,
-			"DZ_LEDGER_WS":  d.InternalLedgerWSURL,
-			"DZ_PROGRAM_ID": d.ProgramID,
+			"DZ_LEDGER_URL": c.dn.Ledger.InternalURL,
+			"DZ_LEDGER_WS":  c.dn.Ledger.InternalWSURL,
+			"DZ_PROGRAM_ID": c.dn.Ledger.ProgramID,
 		},
 		Files: []testcontainers.ContainerFile{
 			{
-				HostFilePath:      clientKeypairPath,
+				HostFilePath:      spec.KeypairPath,
 				ContainerFilePath: "/root/.config/doublezero/id.json",
 			},
 			{
-				HostFilePath:      clientKeypairPath,
+				HostFilePath:      spec.KeypairPath,
 				ContainerFilePath: "/root/.config/solana/id.json",
 			},
 		},
 		Networks: []string{
-			d.defaultNetwork.Name,
-			device.CYOANetwork.Name,
+			c.dn.DefaultNetwork.Name,
+			c.dn.CYOANetwork.Name,
 		},
 		EndpointSettingsModifier: func(m map[string]*network.EndpointSettings) {
-			if m[device.CYOANetwork.Name] == nil {
-				m[device.CYOANetwork.Name] = &network.EndpointSettings{}
+			if m[c.dn.CYOANetwork.Name] == nil {
+				m[c.dn.CYOANetwork.Name] = &network.EndpointSettings{}
 			}
-			m[device.CYOANetwork.Name].IPAddress = ip
-			m[device.CYOANetwork.Name].IPAMConfig = &network.EndpointIPAMConfig{
+			m[c.dn.CYOANetwork.Name].IPAddress = ip
+			m[c.dn.CYOANetwork.Name].IPAMConfig = &network.EndpointIPAMConfig{
 				IPv4Address: ip,
 			}
 		},
 		Privileged: true,
+		Labels:     c.dn.labels,
 	}
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
 		Started:          true,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to start client: %w", err)
+		return fmt.Errorf("failed to start client: %w", err)
 	}
 
 	// Get the client's IP address on the CYOA network.
-	ip, err = d.getContainerIPOnNetwork(ctx, container, device.CYOANetwork.Name)
+	ip, err = c.dn.getContainerIPOnNetwork(ctx, container, c.dn.CYOANetwork.Name)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get container IP on CYOA network: %w", err)
+		return fmt.Errorf("failed to get container IP on CYOA network: %w", err)
 	}
-	client := Client{
-		ID:            clientID,
-		PubkeyAddress: clientPubkeyAddress,
-		KeypairPath:   clientKeypairPath,
-		Container:     container,
-		IP:            ip,
 
-		log: d.log.With("clientID", clientID, "pubkeyAddress", clientPubkeyAddress, "container", shortContainerID(container.GetContainerID())),
-	}
-	d.clients[clientID] = client
+	c.ContainerID = shortContainerID(container.GetContainerID())
+	c.Pubkey = clientPubkey
 
 	// Fund the client account via airdrop.
 	// Retry a couple times to avoid the observed intermittent failures, even on the first airdrop request.
 	funded := false
+	var output []byte
 	for range 3 {
-		output, err := client.Exec(ctx, []string{"solana", "airdrop", "10", clientPubkeyAddress})
+		c.log.Info("--> Funding client account", "clientPubkey", clientPubkey)
+		output, err = c.Exec(ctx, []string{"solana", "airdrop", "10", clientPubkey}, docker.NoPrintOnError())
 		if err != nil {
 			if strings.Contains(string(output), "rate limit") {
-				d.log.Info("--> Solana airdrop request failed with rate limit message, retrying", "clientID", clientID, "container", shortContainerID(container.GetContainerID()), "ip", ip, "error", err)
+				c.log.Info("--> Solana airdrop request failed with rate limit message, retrying")
 				time.Sleep(1 * time.Second)
 				continue
 			}
-			return nil, fmt.Errorf("failed to fund client account: %w", err)
+			fmt.Println(string(output))
+			return fmt.Errorf("failed to fund client account: %w", err)
 		}
 		funded = true
 		break
 	}
 	if !funded {
-		return nil, fmt.Errorf("failed to fund client account after 3 attempts")
+		fmt.Println(string(output))
+		return fmt.Errorf("failed to fund client account after 3 attempts")
 	}
 
-	d.log.Info("--> Client started", "clientID", clientID, "container", shortContainerID(container.GetContainerID()), "ip", ip)
-	return &client, nil
+	c.log.Info("--> Client started", "container", c.ContainerID, "pubkey", c.Pubkey)
+	return nil
 }
 
-// Exec executes a given command/script on the client container.
-func (c *Client) Exec(ctx context.Context, command []string) ([]byte, error) {
-	exitCode, execReader, err := c.Container.Exec(ctx, command, tcexec.Multiplexed())
+func (c *Client) Exec(ctx context.Context, command []string, options ...docker.ExecOption) ([]byte, error) {
+	c.log.Debug("--> Executing command", "command", command)
+	output, err := docker.Exec(ctx, c.dn.dockerClient, c.ContainerID, command, options...)
 	if err != nil {
-		var buf []byte
-		if execReader != nil {
-			buf, _ = io.ReadAll(execReader)
-			if buf != nil {
-				fmt.Println(string(buf))
-			}
-		}
-		return buf, fmt.Errorf("failed to execute command: %w", err)
+		// NOTE: We return the output here because it can contain useful information on error.
+		return output, fmt.Errorf("failed to execute command from client: %w", err)
 	}
-	if exitCode != 0 {
-		var buf []byte
-		if execReader != nil {
-			buf, _ = io.ReadAll(execReader)
-			if buf != nil {
-				fmt.Println(string(buf))
-			}
-		}
-		return buf, fmt.Errorf("command failed with exit code %d", exitCode)
-	}
-
-	buf, err := io.ReadAll(execReader)
-	if err != nil {
-		return nil, fmt.Errorf("error reading command output: %w", err)
-	}
-	return buf, nil
+	return output, nil
 }
 
-func (c *Client) ExecReturnJSONList(ctx context.Context, command []string) ([]map[string]any, error) {
-	output, err := c.Exec(ctx, command)
+func (c *Client) ExecReturnJSONList(ctx context.Context, command []string, options ...docker.ExecOption) ([]map[string]any, error) {
+	list, err := docker.ExecReturnJSONList(ctx, c.dn.dockerClient, c.ContainerID, command, options...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute command: %w", err)
+		return nil, fmt.Errorf("failed to execute command from client: %w", err)
 	}
 
-	links := []map[string]any{}
-	err = json.Unmarshal(output, &links)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
-	}
-
-	return links, nil
+	return list, nil
 }

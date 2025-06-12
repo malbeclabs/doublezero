@@ -4,29 +4,63 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
+	"log/slog"
 	"net"
-	"testing"
+	"strconv"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
+	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
-	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/testcontainers/testcontainers-go"
-	tcexec "github.com/testcontainers/testcontainers-go/exec"
-	tcnetwork "github.com/testcontainers/testcontainers-go/network"
 )
 
+const (
+
+	// Device container is more CPU and memory intensive than the others.
+	deviceContainerNanoCPUs = 4_000_000_000          // 4 cores
+	deviceContainerMemory   = 4 * 1024 * 1024 * 1024 // 4GB
+)
+
+type DeviceSpec struct {
+	ContainerImage string
+	Code           string
+	Pubkey         string
+	CYOANetworkIP  string
+}
+
+func (s *DeviceSpec) Validate() error {
+	if s.ContainerImage == "" {
+		return fmt.Errorf("containerImage is required")
+	}
+
+	if s.Code == "" {
+		return fmt.Errorf("code is required")
+	}
+
+	if s.Pubkey == "" {
+		return fmt.Errorf("pubkey is required")
+	}
+
+	if s.CYOANetworkIP == "" {
+		return fmt.Errorf("cyoaNetworkIP is required")
+	}
+
+	return nil
+}
+
 type Device struct {
-	Code             string
-	Container        testcontainers.Container
-	InternalCYOAIP   string
-	ExternalPort     int
-	CYOANetwork      *testcontainers.DockerNetwork
-	CYOASubnetCIDR   string
-	ControllerCYOAIP string
-	AgentPubkey      string
+	dn  *Devnet
+	log *slog.Logger
+
+	index int
+
+	ContainerID string
+}
+
+func (d *Device) Spec() *DeviceSpec {
+	return &d.dn.Spec.Devices[d.index]
 }
 
 // StartDevice starts a device container and attaches it to the management network.
@@ -39,31 +73,25 @@ type Device struct {
 // If the networks end up attached in the wrong order, this test will fail as the CYOA network
 // will not be attached to Ethernet1. To avoid this, we start the container with the default bridge
 // network attached, then attach the CYOA network to the container.
-func (d *Devnet) StartDevice(t *testing.T, deviceCode string, cyoaNetwork *testcontainers.DockerNetwork, cyoaSubnetCIDR string, deviceCYOAIP string, devicePubKey string) (*Device, error) {
-	ctx := t.Context()
+func (d *Device) Start(ctx context.Context) error {
+	spec := d.Spec()
+	d.log.Info("==> Starting device", "image", spec.ContainerImage, "code", spec.Code, "pubkey", spec.Pubkey, "cyoaNetworkIP", spec.CYOANetworkIP)
 
-	d.log.Info("==> Starting device", "deviceCode", deviceCode)
-
-	// Connect the controller to the device CYOA network.
-	cyoaControllerIP, err := d.connectControllerToDeviceCYOA(ctx, cyoaSubnetCIDR, cyoaNetwork.Name, deviceCode)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect controller to device CYOA network: %w", err)
-	}
-	cyoaControllerAddr := net.JoinHostPort(cyoaControllerIP, fmt.Sprintf("%d", internalControllerPort))
+	cyoaControllerAddr := net.JoinHostPort(d.dn.Controller.CYOANetworkIP, fmt.Sprintf("%d", internalControllerPort))
 
 	// Create the device container, but don't start it yet.
 	req := testcontainers.ContainerRequest{
-		Image:        d.config.DeviceImage,
-		Name:         d.config.DeployID + "-device-" + deviceCode,
+		Image:        spec.ContainerImage,
+		Name:         d.dn.Spec.DeployID + "-device-" + strconv.Itoa(d.index),
 		ExposedPorts: []string{"80/tcp"},
 		Env: map[string]string{
 			"DZ_CONTROLLER_ADDR": cyoaControllerAddr,
-			"DZ_AGENT_PUBKEY":    devicePubKey,
-			"DZ_DEVICE_IP":       deviceCYOAIP,
+			"DZ_AGENT_PUBKEY":    spec.Pubkey,
+			"DZ_DEVICE_IP":       spec.CYOANetworkIP,
 		},
 		Privileged: true,
 		Networks: []string{
-			d.defaultNetwork.Name,
+			d.dn.DefaultNetwork.Name,
 		},
 		// NOTE: We intentionally use the deprecated Resources field here instead of the HostConfigModifier
 		// because the latter has issues with setting SHM memory and other constraints to 0, which
@@ -72,6 +100,7 @@ func (d *Devnet) StartDevice(t *testing.T, deviceCode string, cyoaNetwork *testc
 			NanoCPUs: deviceContainerNanoCPUs,
 			Memory:   deviceContainerMemory,
 		},
+		Labels: d.dn.labels,
 	}
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
@@ -79,141 +108,41 @@ func (d *Devnet) StartDevice(t *testing.T, deviceCode string, cyoaNetwork *testc
 		Logger:           logging.NewTestcontainersAdapter(d.log),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to start device %s: %w", deviceCode, err)
+		return fmt.Errorf("failed to start device %s: %w", spec.Code, err)
 	}
 
 	// Start the device container.
 	err = container.Start(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to start device %s: %w", deviceCode, err)
+		return fmt.Errorf("failed to start device %s: %w", spec.Code, err)
 	}
 
 	// Attach the device container to the CYOA network.
 	// This is configured as eth1 in the startup-config.template.
 	containerID := container.GetContainerID()
-	err = d.config.DockerClient.NetworkConnect(ctx, cyoaNetwork.Name, containerID, &network.EndpointSettings{
-		IPAddress: deviceCYOAIP,
+	err = d.dn.dockerClient.NetworkConnect(ctx, d.dn.CYOANetwork.Name, containerID, &network.EndpointSettings{
+		IPAddress: spec.CYOANetworkIP,
 		IPAMConfig: &network.EndpointIPAMConfig{
-			IPv4Address: deviceCYOAIP,
+			IPv4Address: spec.CYOANetworkIP,
 		},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to attach device %s to CYOA network: %w", deviceCode, err)
+		return fmt.Errorf("failed to attach device %s to CYOA network: %w", spec.Code, err)
 	}
 
 	// Wait for the device container to have status healthy.
 	d.log.Info("--> Waiting for device container to be healthy", "container", shortContainerID(containerID), "name", container.Name)
 	start := time.Now()
-	err = d.waitContainerHealthy(ctx, containerID, 180*time.Second, 2*time.Second)
+	err = d.dn.waitContainerHealthy(ctx, containerID, 180*time.Second, 2*time.Second)
 	if err != nil {
-		return nil, fmt.Errorf("failed to wait for device container to be healthy: %w", err)
+		return fmt.Errorf("failed to wait for device container to be healthy: %w", err)
 	}
 	d.log.Info("--> Device container is healthy", "container", shortContainerID(containerID), "name", container.Name, "duration", time.Since(start))
 
-	// Get the device's public/host-exposed port.
-	port, err := container.MappedPort(ctx, "80/tcp")
-	if err != nil {
-		return nil, fmt.Errorf("failed to get device port: %w", err)
-	}
-	d.ExternalDevicePort = port.Int()
+	d.ContainerID = shortContainerID(container.GetContainerID())
 
-	// Save the device network on this devnet.
-	device := Device{
-		Code:           deviceCode,
-		Container:      container,
-		InternalCYOAIP: deviceCYOAIP,
-		ExternalPort:   d.ExternalDevicePort,
-		CYOANetwork:    cyoaNetwork,
-		CYOASubnetCIDR: cyoaSubnetCIDR,
-		AgentPubkey:    devicePubKey,
-	}
-	d.devices[deviceCode] = device
-
-	d.log.Info("--> Device started", "deviceCode", deviceCode, "container", shortContainerID(containerID), "internalAddrOnCYOA", deviceCYOAIP, "externalPort", d.ExternalDevicePort)
-	return &device, nil
-}
-
-func (d *Devnet) CreateCYOANetwork(ctx context.Context, deviceCode string) (*testcontainers.DockerNetwork, string, error) {
-	d.log.Info("==> Creating CYOA network", "deviceCode", deviceCode)
-
-	// Get an available subnet.
-	subnetCIDR, err := d.config.SubnetAllocator.FindAvailableSubnet(ctx, d.config.DeployID)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to get available subnet: %w", err)
-	}
-	d.log.Info("--> CYOA network subnet selected", "subnet", subnetCIDR, "deviceCode", deviceCode)
-
-	// Create CYOA network.
-	network, err := tcnetwork.New(ctx,
-		tcnetwork.WithDriver("bridge"),
-		tcnetwork.WithAttachable(),
-		tcnetwork.WithInternal(),
-		tcnetwork.WithIPAM(&network.IPAM{
-			Config: []network.IPAMConfig{
-				{Subnet: subnetCIDR},
-			},
-		}),
-	)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to create CYOA network: %w", err)
-	}
-
-	d.log.Info("--> CYOA network created", "network", network.Name, "subnet", subnetCIDR, "deviceCode", deviceCode)
-
-	return network, subnetCIDR, nil
-}
-
-func (d *Devnet) connectControllerToDeviceCYOA(ctx context.Context, subnetCIDR string, networkName string, deviceCode string) (string, error) {
-	// Construct an IP address for the controller on the device CYOA network.
-	ip, err := netutil.BuildIPInCIDR(subnetCIDR, 85)
-	if err != nil {
-		return "", fmt.Errorf("failed to build controller IP in CYOA network subnet: %w", err)
-	}
-	controllerIP := ip.String()
-
-	// Connect the controller to the device CYOA network.
-	err = d.config.DockerClient.NetworkConnect(ctx, networkName, d.controller.GetContainerID(), &network.EndpointSettings{
-		IPAddress: controllerIP,
-		IPAMConfig: &network.EndpointIPAMConfig{
-			IPv4Address: controllerIP,
-		},
-	})
-	if err != nil {
-		return "", fmt.Errorf("failed to connect controller to device CYOA network %s: %w", deviceCode, err)
-	}
-
-	return controllerIP, nil
-}
-
-// Exec executes a given command/script on the device container.
-func (d *Device) Exec(ctx context.Context, command []string) ([]byte, error) {
-	exitCode, execReader, err := d.Container.Exec(ctx, command, tcexec.Multiplexed())
-	if err != nil {
-		var buf []byte
-		if execReader != nil {
-			buf, _ = io.ReadAll(execReader)
-			if buf != nil {
-				fmt.Println(string(buf))
-			}
-		}
-		return buf, fmt.Errorf("failed to execute command: %w", err)
-	}
-	if exitCode != 0 {
-		var buf []byte
-		if execReader != nil {
-			buf, _ = io.ReadAll(execReader)
-			if buf != nil {
-				fmt.Println(string(buf))
-			}
-		}
-		return buf, fmt.Errorf("command failed with exit code %d", exitCode)
-	}
-
-	buf, err := io.ReadAll(execReader)
-	if err != nil {
-		return nil, fmt.Errorf("error reading command output: %w", err)
-	}
-	return buf, nil
+	d.log.Info("--> Device started", "container", d.ContainerID)
+	return nil
 }
 
 // ExecCliReturnJSONObject executes a command on the device using the Cli tool and returns the
@@ -233,4 +162,14 @@ func DeviceExecAristaCliJSON[T any](ctx context.Context, device *Device, command
 	}
 
 	return result, nil
+}
+
+func (d *Device) Exec(ctx context.Context, command []string) ([]byte, error) {
+	d.log.Debug("--> Executing command", "command", command)
+	output, err := docker.Exec(ctx, d.dn.dockerClient, d.ContainerID, command)
+	if err != nil {
+		// NOTE: We return the output here because it can contain useful information on error.
+		return output, fmt.Errorf("failed to execute command from device: %w", err)
+	}
+	return output, nil
 }

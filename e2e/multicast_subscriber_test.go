@@ -4,7 +4,6 @@ package e2e_test
 
 import (
 	"fmt"
-	"log/slog"
 	"slices"
 	"strings"
 	"testing"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/malbeclabs/doublezero/e2e/internal/arista"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
+	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/fixtures"
 	"github.com/stretchr/testify/require"
 )
@@ -19,63 +19,49 @@ import (
 func TestE2E_Multicast_Subscriber(t *testing.T) {
 	t.Parallel()
 
-	log := logger.With("test", t.Name())
-	devnet, device, client := startSingleDeviceSingleClientDevnet(t, log)
+	dn := NewSingleDeviceSingleClientTestDevnet(t)
+	client := dn.Clients[0]
+	device := dn.Devices[0]
 
 	if !t.Run("connect", func(t *testing.T) {
-		createMulticastGroupOnchain(t, log, devnet, client, "mg01")
+		dn.CreateMulticastGroupOnchain(t, client, "mg01")
 
-		connectMulticastSubscriber(t, log, client, "mg01")
+		dn.ConnectMulticastSubscriber(t, client, "mg01")
 
-		waitForClientTunnelUp(t, log, client)
+		dn.WaitForClientTunnelUp(t, client)
 
-		checkMulticastSubscriberPostConnect(t, log, devnet, device, client)
+		checkMulticastSubscriberPostConnect(t, dn, device, client)
 	}) {
 		t.Fail()
 		return
 	}
 
 	if !t.Run("disconnect", func(t *testing.T) {
-		disconnectMulticastSubscriber(t, log, client)
+		dn.DisconnectMulticastSubscriber(t, client)
 
-		checkMulticastSubscriberPostDisconnect(t, log, devnet, device, client)
+		checkMulticastSubscriberPostDisconnect(t, dn, device, client)
 	}) {
 		t.Fail()
 	}
 }
 
-func connectMulticastSubscriber(t *testing.T, log *slog.Logger, client *devnet.Client, multicastGroupCode string) {
-	log.Info("==> Connecting multicast subscriber", "clientIP", client.IP)
-
-	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast subscriber " + multicastGroupCode + " --client-ip " + client.IP})
-	require.NoError(t, err)
-
-	log.Info("--> Multicast subscriber connected")
-}
-
-func disconnectMulticastSubscriber(t *testing.T, log *slog.Logger, client *devnet.Client) {
-	log.Info("==> Disconnecting multicast subscriber", "clientIP", client.IP)
-
-	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast --client-ip " + client.IP})
-	require.NoError(t, err)
-
-	log.Info("--> Multicast subscriber disconnected")
-}
-
-func checkMulticastSubscriberPostConnect(t *testing.T, log *slog.Logger, dn *devnet.Devnet, device *devnet.Device, client *devnet.Client) {
+func checkMulticastSubscriberPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, client *devnet.Client) {
 	// NOTE: Since we have inner parallel tests in this method, we need to wrap them in a
 	// non-parallel test to ensure methods that follow this one wait for the inner tests to
 	// complete.
 	t.Run("check_post_connect", func(t *testing.T) {
-		log.Info("==> Checking multicast subscriber post-connect requirements")
+		dn.log.Info("==> Checking multicast subscriber post-connect requirements")
+
+		clientSpec := client.Spec()
+		deviceSpec := device.Spec()
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
 			config, err := fixtures.Render("fixtures/multicast_subscriber/doublezero_agent_config_user_added.tmpl", map[string]string{
-				"ClientIP": client.IP,
-				"DeviceIP": device.InternalCYOAIP,
+				"ClientIP": clientSpec.CYOANetworkIP,
+				"DeviceIP": deviceSpec.CYOANetworkIP,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
-			err = waitForAgentConfigMatchViaController(t, dn, device.AgentPubkey, string(config))
+			err = dn.WaitForAgentConfigMatchViaController(t, deviceSpec.Pubkey, string(config))
 			require.NoError(t, err, "error waiting for agent config to match")
 		}) {
 			t.Fail()
@@ -91,7 +77,7 @@ func checkMulticastSubscriberPostConnect(t *testing.T, log *slog.Logger, dn *dev
 				name:        "doublezero_multicast_group_list",
 				fixturePath: "fixtures/multicast_subscriber/doublezero_multicast_group_list.tmpl",
 				data: map[string]string{
-					"ManagerPubkey": dn.ManagerPubkey,
+					"ManagerPubkey": dn.Manager.Pubkey,
 				},
 				cmd: []string{"doublezero", "multicast", "group", "list"},
 			},
@@ -99,8 +85,8 @@ func checkMulticastSubscriberPostConnect(t *testing.T, log *slog.Logger, dn *dev
 				name:        "doublezero_status",
 				fixturePath: "fixtures/multicast_subscriber/doublezero_status_connected.tmpl",
 				data: map[string]string{
-					"ClientIP": client.IP,
-					"DeviceIP": device.InternalCYOAIP,
+					"ClientIP": clientSpec.CYOANetworkIP,
+					"DeviceIP": deviceSpec.CYOANetworkIP,
 				},
 				cmd: []string{"doublezero", "status"},
 			},
@@ -149,9 +135,9 @@ func checkMulticastSubscriberPostConnect(t *testing.T, log *slog.Logger, dn *dev
 				"linkmode":          "DEFAULT",
 				"group":             "default",
 				"link_type":         "gre",
-				"address":           client.IP,
+				"address":           clientSpec.CYOANetworkIP,
 				"link_pointtopoint": true,
-				"broadcast":         device.InternalCYOAIP,
+				"broadcast":         deviceSpec.CYOANetworkIP,
 			}, links[0])
 		}) {
 			t.Fail()
@@ -160,9 +146,7 @@ func checkMulticastSubscriberPostConnect(t *testing.T, log *slog.Logger, dn *dev
 		if !t.Run("check_multicast_static_routes", func(t *testing.T) {
 			t.Parallel()
 
-			routes, err := client.ExecReturnJSONList(t.Context(), []string{
-				"bash", "-c", "ip -j route show table main",
-			})
+			routes, err := client.ExecReturnJSONList(t.Context(), []string{"bash", "-c", "ip -j route show table main"})
 			require.NoError(t, err)
 
 			found := false
@@ -228,23 +212,25 @@ func checkMulticastSubscriberPostConnect(t *testing.T, log *slog.Logger, dn *dev
 			t.Fail()
 		}
 
-		log.Info("--> Multicast subscriber post-connect requirements checked")
+		dn.log.Info("--> Multicast subscriber post-connect requirements checked")
 	})
 }
 
-func checkMulticastSubscriberPostDisconnect(t *testing.T, log *slog.Logger, dn *devnet.Devnet, device *devnet.Device, client *devnet.Client) {
+func checkMulticastSubscriberPostDisconnect(t *testing.T, dn *TestDevnet, device *devnet.Device, client *devnet.Client) {
 	// NOTE: Since we have inner parallel tests in this method, we need to wrap them in a
 	// non-parallel test to ensure methods that follow this one wait for the inner tests to
 	// complete.
 	t.Run("check_post_disconnect", func(t *testing.T) {
-		log.Info("==> Checking multicast subscriber post-disconnect requirements")
+		dn.log.Info("==> Checking multicast subscriber post-disconnect requirements")
+
+		deviceSpec := device.Spec()
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
 			config, err := fixtures.Render("fixtures/multicast_subscriber/doublezero_agent_config_user_removed.tmpl", map[string]string{
-				"DeviceIP": device.InternalCYOAIP,
+				"DeviceIP": deviceSpec.CYOANetworkIP,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
-			err = waitForAgentConfigMatchViaController(t, dn, device.AgentPubkey, string(config))
+			err = dn.WaitForAgentConfigMatchViaController(t, deviceSpec.Pubkey, string(config))
 			require.NoError(t, err, "error waiting for agent config to match")
 		}) {
 			t.Fail()
@@ -287,9 +273,9 @@ func checkMulticastSubscriberPostDisconnect(t *testing.T, log *slog.Logger, dn *
 		if !t.Run("check_tunnel_interface_is_removed", func(t *testing.T) {
 			t.Parallel()
 
-			got, err := client.Exec(t.Context(), []string{"bash", "-c", "ip -j link show dev doublezero1"})
+			got, err := client.Exec(t.Context(), []string{"bash", "-c", "ip -j link show dev doublezero1"}, docker.NoPrintOnError())
 			require.Error(t, err)
-			require.Equal(t, `Device "doublezero1" does not exist.`, strings.TrimSpace(string(got)))
+			require.Equal(t, `Device "doublezero1" does not exist.`, strings.TrimSpace(string(got)), err.Error())
 		}) {
 			t.Fail()
 		}
@@ -313,6 +299,6 @@ func checkMulticastSubscriberPostDisconnect(t *testing.T, log *slog.Logger, dn *
 			t.Fail()
 		}
 
-		log.Info("--> Multicast subscriber post-disconnect requirements checked")
+		dn.log.Info("--> Multicast subscriber post-disconnect requirements checked")
 	})
 }

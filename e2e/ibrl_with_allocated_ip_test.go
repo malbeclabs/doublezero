@@ -4,13 +4,13 @@ package e2e_test
 
 import (
 	"fmt"
-	"log/slog"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/malbeclabs/doublezero/e2e/internal/arista"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
+	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/fixtures"
 	"github.com/malbeclabs/doublezero/e2e/internal/netlink"
 	"github.com/stretchr/testify/require"
@@ -19,43 +19,34 @@ import (
 func TestE2E_IBRL_WithAllocatedIP(t *testing.T) {
 	t.Parallel()
 
-	log := logger.With("test", t.Name())
-	dn, device, client := startSingleDeviceSingleClientDevnet(t, log)
+	dn := NewSingleDeviceSingleClientTestDevnet(t)
+	client := dn.Clients[0]
+	device := dn.Devices[0]
 
 	if !t.Run("connect", func(t *testing.T) {
-		connectUserTunnelWithAllocatedIP(t, log, client)
+		dn.ConnectUserTunnelWithAllocatedIP(t, client)
 
-		createMultipleIBRLUsersOnSameDeviceWithAllocatedIPs(t, log, client)
+		createMultipleIBRLUsersOnSameDeviceWithAllocatedIPs(t, dn, client)
 
-		waitForClientTunnelUp(t, log, client)
+		dn.WaitForClientTunnelUp(t, client)
 
-		checkIBRLWithAllocatedIPPostConnect(t, log, dn, device, client)
+		checkIBRLWithAllocatedIPPostConnect(t, dn, device, client)
 	}) {
 		t.Fail()
 		return
 	}
 
 	if !t.Run("disconnect", func(t *testing.T) {
-		disconnectUserTunnel(t, log, client)
+		dn.DisconnectUserTunnel(t, client)
 
-		checkIBRLWithAllocatedIPPostDisconnect(t, log, dn, device, client)
+		checkIBRLWithAllocatedIPPostDisconnect(t, dn, device, client)
 	}) {
 		t.Fail()
 	}
 }
 
-// ConnectUserTunnelWithAllocatedIP connects a user tunnel with an allocated IP.
-func connectUserTunnelWithAllocatedIP(t *testing.T, log *slog.Logger, client *devnet.Client) {
-	log.Info("==> Connecting user tunnel with allocated IP")
-
-	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect ibrl --client-ip " + client.IP + " --allocate-addr"})
-	require.NoError(t, err)
-
-	log.Info("--> User tunnel with allocated IP connected")
-}
-
-func createMultipleIBRLUsersOnSameDeviceWithAllocatedIPs(t *testing.T, log *slog.Logger, client *devnet.Client) {
-	log.Info("==> Creating multiple IBRL users on a single device with allocated IP addresses")
+func createMultipleIBRLUsersOnSameDeviceWithAllocatedIPs(t *testing.T, dn *TestDevnet, client *devnet.Client) {
+	dn.log.Info("==> Creating multiple IBRL users on a single device with allocated IP addresses")
 
 	_, err := client.Exec(t.Context(), []string{"bash", "-c", `
 		doublezero user create --device la2-dz01 --client-ip 1.2.3.4
@@ -66,27 +57,30 @@ func createMultipleIBRLUsersOnSameDeviceWithAllocatedIPs(t *testing.T, log *slog
 	`})
 	require.NoError(t, err)
 
-	log.Info("--> Multiple IBRL users on a single device with allocated IP addresses created")
+	dn.log.Info("--> Multiple IBRL users on a single device with allocated IP addresses created")
 }
 
 // checkIBRLWithAllocatedIPPostConnect checks requirements after connecting a user tunnel with an allocated IP.
-func checkIBRLWithAllocatedIPPostConnect(t *testing.T, log *slog.Logger, dn *devnet.Devnet, device *devnet.Device, client *devnet.Client) {
+func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, client *devnet.Client) {
 	// NOTE: Since we have inner parallel tests in this method, we need to wrap them in a
 	// non-parallel test to ensure methods that follow this one wait for the inner tests to
 	// complete.
 	t.Run("check_post_connect", func(t *testing.T) {
-		log.Info("==> Checking IBRL with allocated IP post-connect requirements")
+		dn.log.Info("==> Checking IBRL with allocated IP post-connect requirements")
 
-		expectedAllocatedClientIP := getNextAllocatedClientIP(device.InternalCYOAIP)
+		deviceSpec := device.Spec()
+		clientSpec := client.Spec()
+
+		expectedAllocatedClientIP := getNextAllocatedClientIP(deviceSpec.CYOANetworkIP)
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
 			config, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_added.tmpl", map[string]string{
-				"ClientIP":                  client.IP,
-				"DeviceIP":                  device.InternalCYOAIP,
+				"ClientIP":                  clientSpec.CYOANetworkIP,
+				"DeviceIP":                  deviceSpec.CYOANetworkIP,
 				"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
-			err = waitForAgentConfigMatchViaController(t, dn, device.AgentPubkey, string(config))
+			err = dn.WaitForAgentConfigMatchViaController(t, deviceSpec.Pubkey, string(config))
 			require.NoError(t, err, "error waiting for agent config to match")
 		}) {
 			t.Fail()
@@ -102,9 +96,9 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, log *slog.Logger, dn *dev
 				name:        "doublezero_user_list",
 				fixturePath: "fixtures/ibrl_with_allocated_addr/doublezero_user_list_user_added.tmpl",
 				data: map[string]string{
-					"ClientIP":                  client.IP,
-					"ClientPubkeyAddress":       client.PubkeyAddress,
-					"DeviceIP":                  device.InternalCYOAIP,
+					"ClientIP":                  clientSpec.CYOANetworkIP,
+					"ClientPubkeyAddress":       client.Pubkey,
+					"DeviceIP":                  deviceSpec.CYOANetworkIP,
 					"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
 				},
 				cmd: []string{"doublezero", "user", "list"},
@@ -113,8 +107,8 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, log *slog.Logger, dn *dev
 				name:        "doublezero_device_list",
 				fixturePath: "fixtures/ibrl_with_allocated_addr/doublezero_device_list.tmpl",
 				data: map[string]string{
-					"DeviceIP":      device.InternalCYOAIP,
-					"ManagerPubkey": dn.ManagerPubkey,
+					"DeviceIP":      deviceSpec.CYOANetworkIP,
+					"ManagerPubkey": dn.Manager.Pubkey,
 				},
 				cmd: []string{"doublezero", "device", "list"},
 			},
@@ -122,8 +116,8 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, log *slog.Logger, dn *dev
 				name:        "doublezero_status",
 				fixturePath: "fixtures/ibrl_with_allocated_addr/doublezero_status_connected.tmpl",
 				data: map[string]string{
-					"ClientIP":                  client.IP,
-					"DeviceIP":                  device.InternalCYOAIP,
+					"ClientIP":                  clientSpec.CYOANetworkIP,
+					"DeviceIP":                  deviceSpec.CYOANetworkIP,
 					"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
 				},
 				cmd: []string{"doublezero", "status"},
@@ -173,9 +167,9 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, log *slog.Logger, dn *dev
 				"linkmode":          "DEFAULT",
 				"group":             "default",
 				"link_type":         "gre",
-				"address":           client.IP,
+				"address":           clientSpec.CYOANetworkIP,
 				"link_pointtopoint": true,
-				"broadcast":         device.InternalCYOAIP,
+				"broadcast":         deviceSpec.CYOANetworkIP,
 			}, links[0])
 		}) {
 			t.Fail()
@@ -222,30 +216,32 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, log *slog.Logger, dn *dev
 			t.Parallel()
 
 			// TODO: This is brittle, come up with a better solution.
-			_, err := dn.ManagerExec(t.Context(), []string{"bash", "-c", "doublezero user request-ban --pubkey AA3fFZM1bJbNzCWhPydZrbQpswGkZx4PFhxd2bHaztyG"})
+			_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero user request-ban --pubkey AA3fFZM1bJbNzCWhPydZrbQpswGkZx4PFhxd2bHaztyG"})
 			require.NoError(t, err)
 		}) {
 			t.Fail()
 		}
 
-		log.Info("--> IBRL with allocated IP post-connect requirements checked")
+		dn.log.Info("--> IBRL with allocated IP post-connect requirements checked")
 	})
 }
 
 // checkIBRLWithAllocatedIPPostDisconnect checks requirements after disconnecting a user tunnel with an allocated IP.
-func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, log *slog.Logger, dn *devnet.Devnet, device *devnet.Device, client *devnet.Client) {
+func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, dn *TestDevnet, device *devnet.Device, client *devnet.Client) {
 	// NOTE: Since we have inner parallel tests in this method, we need to wrap them in a
 	// non-parallel test to ensure methods that follow this one wait for the inner tests to
 	// complete.
 	t.Run("check_post_disconnect", func(t *testing.T) {
-		log.Info("==> Checking IBRL with allocated IP post-disconnect requirements")
+		dn.log.Info("==> Checking IBRL with allocated IP post-disconnect requirements")
+
+		deviceSpec := device.Spec()
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
 			config, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_removed.tmpl", map[string]string{
-				"DeviceIP": device.InternalCYOAIP,
+				"DeviceIP": deviceSpec.CYOANetworkIP,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
-			err = waitForAgentConfigMatchViaController(t, dn, device.AgentPubkey, string(config))
+			err = dn.WaitForAgentConfigMatchViaController(t, deviceSpec.Pubkey, string(config))
 			require.NoError(t, err, "error waiting for agent config to match")
 		}) {
 			t.Fail()
@@ -288,9 +284,9 @@ func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, log *slog.Logger, dn *
 		if !t.Run("check_tunnel_interface_is_removed", func(t *testing.T) {
 			t.Parallel()
 
-			got, err := client.Exec(t.Context(), []string{"bash", "-c", "ip -j link show dev doublezero0"})
+			got, err := client.Exec(t.Context(), []string{"bash", "-c", "ip -j link show dev doublezero0"}, docker.NoPrintOnError())
 			require.Error(t, err)
-			require.Equal(t, `Device "doublezero0" does not exist.`, strings.TrimSpace(string(got)))
+			require.Equal(t, `Device "doublezero0" does not exist.`, strings.TrimSpace(string(got)), err.Error())
 		}) {
 			t.Fail()
 		}
@@ -302,7 +298,7 @@ func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, log *slog.Logger, dn *
 			require.NoError(t, err)
 
 			want, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_user_list_user_removed.tmpl", map[string]string{
-				"ClientPubkeyAddress": client.PubkeyAddress,
+				"ClientPubkeyAddress": client.Pubkey,
 			})
 			require.NoError(t, err, "error reading user list fixture")
 
@@ -334,6 +330,6 @@ func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, log *slog.Logger, dn *
 			t.Fail()
 		}
 
-		log.Info("--> IBRL with allocated IP post-disconnect requirements checked")
+		dn.log.Info("--> IBRL with allocated IP post-disconnect requirements checked")
 	})
 }

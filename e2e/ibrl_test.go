@@ -4,7 +4,6 @@ package e2e_test
 
 import (
 	"fmt"
-	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +11,7 @@ import (
 	e2e "github.com/malbeclabs/doublezero/e2e"
 	"github.com/malbeclabs/doublezero/e2e/internal/arista"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
+	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/fixtures"
 	"github.com/malbeclabs/doublezero/e2e/internal/netlink"
 	"github.com/stretchr/testify/require"
@@ -20,53 +20,48 @@ import (
 func TestE2E_IBRL(t *testing.T) {
 	t.Parallel()
 
-	log := logger.With("test", t.Name())
-	devnet, device, client := startSingleDeviceSingleClientDevnet(t, log)
+	dn := NewSingleDeviceSingleClientTestDevnet(t)
+	client := dn.Clients[0]
+	device := dn.Devices[0]
 
 	if !t.Run("connect", func(t *testing.T) {
-		connectIBRLUserTunnel(t, log, client)
+		dn.ConnectIBRLUserTunnel(t, client)
 
-		waitForClientTunnelUp(t, log, client)
+		dn.WaitForClientTunnelUp(t, client)
 
-		checkIBRLPostConnect(t, log, devnet, device, client)
+		checkIBRLPostConnect(t, dn, device, client)
 	}) {
 		t.Fail()
 		return
 	}
 
 	if !t.Run("disconnect", func(t *testing.T) {
-		disconnectUserTunnel(t, log, client)
+		dn.DisconnectUserTunnel(t, client)
 
-		checkIBRLPostDisconnect(t, log, devnet, device, client)
+		checkIBRLPostDisconnect(t, dn, device, client)
 	}) {
 		t.Fail()
 	}
 }
 
-func connectIBRLUserTunnel(t *testing.T, log *slog.Logger, client *devnet.Client) {
-	log.Info("==> Connecting IBRL user tunnel")
-
-	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect ibrl --client-ip " + client.IP})
-	require.NoError(t, err)
-
-	log.Info("--> IBRL user tunnel connected")
-}
-
 // checkIBRLPostConnect checks requirements after connecting a user tunnel.
-func checkIBRLPostConnect(t *testing.T, log *slog.Logger, dn *devnet.Devnet, device *devnet.Device, client *devnet.Client) {
+func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, client *devnet.Client) {
 	// NOTE: Since we have inner parallel tests in this method, we need to wrap them in a
 	// non-parallel test to ensure methods that follow this one wait for the inner tests to
 	// complete.
 	t.Run("check_post_connect", func(t *testing.T) {
-		log.Info("==> Checking IBRL post-connect requirements")
+		dn.log.Info("==> Checking IBRL post-connect requirements")
+
+		clientSpec := client.Spec()
+		deviceSpec := device.Spec()
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
 			config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_user_added.tmpl", map[string]string{
-				"ClientIP": client.IP,
-				"DeviceIP": device.InternalCYOAIP,
+				"ClientIP": clientSpec.CYOANetworkIP,
+				"DeviceIP": deviceSpec.CYOANetworkIP,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
-			err = waitForAgentConfigMatchViaController(t, dn, device.AgentPubkey, string(config))
+			err = dn.WaitForAgentConfigMatchViaController(t, deviceSpec.Pubkey, string(config))
 			require.NoError(t, err, "error waiting for agent config to match")
 		}) {
 			t.Fail()
@@ -82,8 +77,8 @@ func checkIBRLPostConnect(t *testing.T, log *slog.Logger, dn *devnet.Devnet, dev
 				name:        "doublezero_user_list",
 				fixturePath: "fixtures/ibrl/doublezero_user_list_user_added.tmpl",
 				data: map[string]string{
-					"ClientIP":            client.IP,
-					"ClientPubkeyAddress": client.PubkeyAddress,
+					"ClientIP":            clientSpec.CYOANetworkIP,
+					"ClientPubkeyAddress": client.Pubkey,
 				},
 				cmd: []string{"doublezero", "user", "list"},
 			},
@@ -91,8 +86,8 @@ func checkIBRLPostConnect(t *testing.T, log *slog.Logger, dn *devnet.Devnet, dev
 				name:        "doublezero_status",
 				fixturePath: "fixtures/ibrl/doublezero_status_connected.tmpl",
 				data: map[string]string{
-					"ClientIP": client.IP,
-					"DeviceIP": device.InternalCYOAIP,
+					"ClientIP": clientSpec.CYOANetworkIP,
+					"DeviceIP": deviceSpec.CYOANetworkIP,
 				},
 				cmd: []string{"doublezero", "status"},
 			},
@@ -141,9 +136,9 @@ func checkIBRLPostConnect(t *testing.T, log *slog.Logger, dn *devnet.Devnet, dev
 				"linkmode":          "DEFAULT",
 				"group":             "default",
 				"link_type":         "gre",
-				"address":           client.IP,
+				"address":           clientSpec.CYOANetworkIP,
 				"link_pointtopoint": true,
-				"broadcast":         device.InternalCYOAIP,
+				"broadcast":         deviceSpec.CYOANetworkIP,
 			}, links[0])
 		}) {
 			t.Fail()
@@ -166,9 +161,7 @@ func checkIBRLPostConnect(t *testing.T, log *slog.Logger, dn *devnet.Devnet, dev
 			var matchingRoute map[string]any
 			deadline := time.Now().Add(5 * time.Second)
 			for time.Now().Before(deadline) {
-				routes, err := client.ExecReturnJSONList(t.Context(), []string{
-					"bash", "-c", "ip -j route show table main",
-				})
+				routes, err := client.ExecReturnJSONList(t.Context(), []string{"bash", "-c", "ip -j route show table main"})
 				require.NoError(t, err)
 
 				for _, route := range routes {
@@ -182,7 +175,7 @@ func checkIBRLPostConnect(t *testing.T, log *slog.Logger, dn *devnet.Devnet, dev
 					break
 				}
 
-				log.Info("no route to 8.8.8.8 found, retrying...", "routes", routes)
+				dn.log.Info("no route to 8.8.8.8 found, retrying...", "routes", routes)
 
 				time.Sleep(1 * time.Second)
 			}
@@ -191,7 +184,7 @@ func checkIBRLPostConnect(t *testing.T, log *slog.Logger, dn *devnet.Devnet, dev
 			require.Equal(t, "8.8.8.8", matchingRoute["dst"])
 			require.Equal(t, "169.254.0.0", matchingRoute["gateway"])
 			require.Equal(t, "doublezero0", matchingRoute["dev"])
-			require.Equal(t, client.IP, matchingRoute["prefsrc"])
+			require.Equal(t, clientSpec.CYOANetworkIP, matchingRoute["prefsrc"])
 		}) {
 			t.Fail()
 		}
@@ -211,31 +204,33 @@ func checkIBRLPostConnect(t *testing.T, log *slog.Logger, dn *devnet.Devnet, dev
 			require.Equal(t, "65000", peer.ASN, "client asn should be 65000; got %s\n", peer.ASN)
 			require.Equal(t, "Established", peer.PeerState, "client state should be established; got %s\n", peer.PeerState)
 
-			clientRoute := client.IP + "/32"
+			clientRoute := clientSpec.CYOANetworkIP + "/32"
 			_, ok = routes.VRFs["vrf1"].Routes[clientRoute]
 			require.True(t, ok, "expected client route of %s installed; got none\n", clientRoute)
 		}) {
 			t.Fail()
 		}
 
-		log.Info("--> IBRL post-connect requirements checked")
+		dn.log.Info("--> IBRL post-connect requirements checked")
 	})
 }
 
 // checkIBRLPostDisconnect checks requirements after disconnecting a user tunnel.
-func checkIBRLPostDisconnect(t *testing.T, log *slog.Logger, dn *devnet.Devnet, device *devnet.Device, client *devnet.Client) {
+func checkIBRLPostDisconnect(t *testing.T, dn *TestDevnet, device *devnet.Device, client *devnet.Client) {
 	// NOTE: Since we have inner parallel tests in this method, we need to wrap them in a
 	// non-parallel test to ensure methods that follow this one wait for the inner tests to
 	// complete.
 	t.Run("check_post_disconnect", func(t *testing.T) {
-		log.Info("==> Checking IBRL post-disconnect requirements")
+		dn.log.Info("==> Checking IBRL post-disconnect requirements")
+
+		deviceSpec := device.Spec()
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
 			config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_user_removed.tmpl", map[string]string{
-				"DeviceIP": device.InternalCYOAIP,
+				"DeviceIP": deviceSpec.CYOANetworkIP,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
-			err = waitForAgentConfigMatchViaController(t, dn, device.AgentPubkey, string(config))
+			err = dn.WaitForAgentConfigMatchViaController(t, deviceSpec.Pubkey, string(config))
 			require.NoError(t, err, "error waiting for agent config to match")
 		}) {
 			t.Fail()
@@ -284,9 +279,9 @@ func checkIBRLPostDisconnect(t *testing.T, log *slog.Logger, dn *devnet.Devnet, 
 		if !t.Run("check_tunnel_interface_is_removed", func(t *testing.T) {
 			t.Parallel()
 
-			got, err := client.Exec(t.Context(), []string{"bash", "-c", "ip -j link show dev doublezero0"})
+			got, err := client.Exec(t.Context(), []string{"bash", "-c", "ip -j link show dev doublezero0"}, docker.NoPrintOnError())
 			require.Error(t, err)
-			require.Equal(t, `Device "doublezero0" does not exist.`, strings.TrimSpace(string(got)))
+			require.Equal(t, `Device "doublezero0" does not exist.`, strings.TrimSpace(string(got)), err.Error())
 		}) {
 			t.Fail()
 		}
@@ -328,6 +323,6 @@ func checkIBRLPostDisconnect(t *testing.T, log *slog.Logger, dn *devnet.Devnet, 
 			t.Fail()
 		}
 
-		log.Info("--> IBRL post-disconnect requirements checked")
+		dn.log.Info("--> IBRL post-disconnect requirements checked")
 	})
 }

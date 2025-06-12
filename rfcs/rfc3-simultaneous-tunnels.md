@@ -6,7 +6,7 @@ DoubleZero needs to support multiple tunnels of the same or different types. In 
 
 ## Motivation
 
-Multiple tunnel support is required now that DoubleZero supports IBRL and multicast. In fact, multicast can not be publicly released wthout multiple tunnel support due to restrictions in the Linux kernel.
+Multiple tunnel support is required now that DoubleZero supports IBRL and multicast. In fact, multicast can not be publicly released without multiple tunnel support due to restrictions in the Linux kernel.
 
 ## New Terminology
 
@@ -16,7 +16,7 @@ Multiple tunnel support is required now that DoubleZero supports IBRL and multic
 
 2. **Require users to obtain a second public address.** While this would satisfy the requirement of a unique (source, destination) tunnel IP endpoint per tunnel, it pushes this issue back on the users of DoubleZero and possibly prevents user uptake at the expense of more engineering work.
 
-3. **Adapt the devices table in the current smart contract to fit a second tunnel (i.e. multicast) endpoint.**. While this seems like significantly less work on its face, we end up needing to touch the same portions of the stack as a more ideal solution as they all need to be taught to understand this field.
+3. **Adapt the devices table in the current smart contract to fit a second tunnel (i.e. multicast) endpoint.** While this seems like significantly less work on its face, we end up needing to touch the same portions of the stack as a more ideal solution as they all need to be taught to understand this field.
 
 ## Detailed Design
 
@@ -33,6 +33,7 @@ classDiagram
       Pubkey owner
       Pubkey device_pk
       string name
+      string device_type
       IpV4Inet ip4_addr
       bool tunnel_termination
     }
@@ -89,7 +90,7 @@ There is more information exposed on-chain, namely the `interface` struct. Perha
 
 ## Backwards Compatibility
 
-New logic will introduce a breaking change as this RFC covers the initial rollout of multicast. This release will be tagged with a minor version of 0.2.0 to signif* y the breaking change.
+New logic will introduce a breaking change as this RFC covers the initial rollout of multicast. This release will be tagged with a minor version of 0.2.0 to signify the breaking change.
 
 ## Open Questions
 * While not necessary for this initial multiple tunnels RFC, should logic be added to the controller to start handling some of the ansible functionality?

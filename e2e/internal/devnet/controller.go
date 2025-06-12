@@ -102,7 +102,7 @@ func (c *Controller) GetAgentConfig(ctx context.Context, deviceAgentPubkey strin
 	controllerAddr := net.JoinHostPort(c.dn.Spec.Controller.ExternalHost, strconv.Itoa(c.ExternalPort))
 	c.log.Debug("==> Getting agent config from controller", "controllerAddr", controllerAddr, "agentPubkey", deviceAgentPubkey)
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	}

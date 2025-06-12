@@ -28,12 +28,12 @@ impl AddMulticastGroupSubAllowlistCliCommand {
             }
         };
 
-        let res =
+        let signature =
             client.add_multicastgroup_sub_allowlist(AddMulticastGroupSubAllowlistCommand {
                 pubkey_or_code: self.code,
                 pubkey,
             })?;
-        writeln!(out, "Signature: {res}")?;
+        writeln!(out, "Signature: {signature}")?;
 
         Ok(())
     }

@@ -26,9 +26,9 @@ impl RemoveFoundationAllowlistCliCommand {
             }
         };
 
-        let res =
+        let signature =
             client.remove_foundation_allowlist(RemoveFoundationAllowlistCommand { pubkey })?;
-        writeln!(out, "Signature: {res}")?;
+        writeln!(out, "Signature: {signature}")?;
 
         Ok(())
     }

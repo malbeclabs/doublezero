@@ -179,10 +179,10 @@ impl ServiceController for ServiceControllerImpl {
                     if response.status == "error" {
                         Err(eyre!(response.description))
                     } else {
-                        Err(eyre!("Unable to parse response: {e}"))
+                        Err(eyre!("Unable to parse LatencyRecord: {e}"))
                     }
                 }
-                Err(_) => Err(eyre!("Unable to parse response: {e}")),
+                Err(e) => Err(eyre!("Unable to parse ErrorResponse: {e}")),
             },
         }
     }
@@ -274,10 +274,10 @@ impl ServiceController for ServiceControllerImpl {
                                 if response.status == "error" {
                                     Err(eyre!(response.description))
                                 } else {
-                                    Err(eyre!("Unable to parse response: {e}"))
+                                    Err(eyre!("Unable to parse StatusResponse: {e}"))
                                 }
                             }
-                            Err(_) => Err(eyre!("Unable to parse response: {e}")),
+                            Err(e) => Err(eyre!("Unable to parse ErrorResponse: {e}")),
                         }
                     }
                 }

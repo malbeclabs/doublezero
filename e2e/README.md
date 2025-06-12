@@ -32,8 +32,7 @@ To run the tests with lower parallelism or sequentially, use the `parallel` argu
 
 ```sh
 # Using `go test`:
-# NOTE: If you are running all the tests sequentially, you may need to increase
-# the test timeout with the -timeout argument as shown below:
+# NOTE: If you are running all the tests sequentially:
 go test -tags e2e -v -parallel=1 -timeout=20m
 
 # Using `make test`:

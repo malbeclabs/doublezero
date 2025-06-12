@@ -8,8 +8,10 @@ use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
 pub struct ListLocationCliCommand {
+    /// Output as pretty JSON
     #[arg(long, default_value_t = false)]
     pub json: bool,
+    /// Output as compact JSON
     #[arg(long, default_value_t = false)]
     pub json_compact: bool,
 }
@@ -17,16 +19,15 @@ pub struct ListLocationCliCommand {
 #[derive(Tabled, Serialize)]
 pub struct LocationDisplay {
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
-    pub account: Pubkey, // 32
-    pub code: String,           // 4 + len
-    pub name: String,           // 4 + len
-    pub country: String,        // 4 + len
-    pub lat: f64,               // 8
-    pub lng: f64,               // 8
-    pub loc_id: u32,            // 4
-    pub status: LocationStatus, // 1
+    pub account: Pubkey,
+    pub code: String,
+    pub name: String,
+    pub country: String,
+    pub lat: f64,
+    pub lng: f64,
+    pub status: LocationStatus,
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
-    pub owner: Pubkey, // 32
+    pub owner: Pubkey,
 }
 
 impl ListLocationCliCommand {
@@ -46,7 +47,6 @@ impl ListLocationCliCommand {
                 country: tunnel.country,
                 lat: tunnel.lat,
                 lng: tunnel.lng,
-                loc_id: tunnel.loc_id,
                 status: tunnel.status,
                 owner: tunnel.owner,
             })
@@ -110,7 +110,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | code      | name      | country      | lat | lng | loc_id | status    | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | some code | some name | some country | 15  | 15  | 7      | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
+        assert_eq!(output_str, " account                                   | code      | name      | country      | lat | lng | status    | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | some code | some name | some country | 15  | 15  | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
 
         let mut output = Vec::new();
         let res = ListLocationCliCommand {
@@ -121,6 +121,6 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"code\":\"some code\",\"name\":\"some name\",\"country\":\"some country\",\"lat\":15.0,\"lng\":15.0,\"loc_id\":7,\"status\":\"Activated\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"code\":\"some code\",\"name\":\"some name\",\"country\":\"some country\",\"lat\":15.0,\"lng\":15.0,\"status\":\"Activated\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
     }
 }

@@ -20,13 +20,29 @@ pub struct DeviceCliCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum DeviceCommands {
+    /// Create a new device
+    #[clap()]
     Create(CreateDeviceCliCommand),
+    /// Update an existing device
+    #[clap()]
     Update(UpdateDeviceCliCommand),
+    /// List all devices
+    #[clap()]
     List(ListDeviceCliCommand),
+    /// Get details for a specific device
+    #[clap()]
     Get(GetDeviceCliCommand),
+    /// Suspend a device
+    #[clap()]
     Suspend(SuspendDeviceCliCommand),
+    /// Resume a suspended device
+    #[clap()]
     Resume(ResumeDeviceCliCommand),
+    /// Delete a device
+    #[clap()]
     Delete(DeleteDeviceCliCommand),
+    /// Manage device allowlist
+    #[clap()]
     Allowlist(DeviceAllowlistCliCommand),
 }
 
@@ -38,7 +54,13 @@ pub struct DeviceAllowlistCliCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum DeviceAllowlistCommands {
+    /// List device allowlist
+    #[clap()]
     List(ListDeviceAllowlistCliCommand),
+    /// Add a device to the allowlist
+    #[clap()]
     Add(AddDeviceAllowlistCliCommand),
+    /// Remove a device from the allowlist
+    #[clap()]
     Remove(RemoveDeviceAllowlistCliCommand),
 }

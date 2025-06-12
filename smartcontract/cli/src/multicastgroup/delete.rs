@@ -10,6 +10,7 @@ use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct DeleteMulticastGroupCliCommand {
+    /// Multicast group Pubkey to delete
     #[arg(long)]
     pub pubkey: String,
 }

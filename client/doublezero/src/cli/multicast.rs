@@ -10,5 +10,7 @@ pub struct MulticastCliCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum MulticastCommands {
+    /// Manage multicast groups
+    #[clap()]
     Group(MulticastGroupCliCommand),
 }

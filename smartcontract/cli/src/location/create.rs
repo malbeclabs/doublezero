@@ -8,14 +8,19 @@ use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct CreateLocationCliCommand {
+    /// Unique location code
     #[arg(long)]
     pub code: String,
+    /// Location name
     #[arg(long)]
     pub name: String,
+    /// Country of the location
     #[arg(long)]
     pub country: String,
+    /// Latitude of the location
     #[arg(long, allow_hyphen_values(true))]
     pub lat: f64,
+    /// Longitude of the location
     #[arg(long, allow_hyphen_values(true))]
     pub lng: f64,
     #[arg(long)]

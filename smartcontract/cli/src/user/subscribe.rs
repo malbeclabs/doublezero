@@ -11,12 +11,16 @@ use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct SubscribeUserCliCommand {
+    /// User Pubkey to subscribe
     #[arg(long)]
     pub user: String,
+    /// Multicast group Pubkey or code to subscribe to
     #[arg(long)]
     pub group: String,
+    /// Subscribe as a publisher
     #[arg(long)]
     pub publisher: bool,
+    /// Subscribe as a subscriber
     #[arg(long)]
     pub subscriber: bool,
 }

@@ -15,14 +15,19 @@ use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct CreateDeviceCliCommand {
+    /// Unique device code
     #[arg(long)]
     pub code: String,
+    /// Location (pubkey or code) associated with the device
     #[arg(long)]
     pub location: String,
+    /// Exchange (pubkey or code) associated with the device
     #[arg(long)]
     pub exchange: String,
+    /// Device public IPv4 address (e.g. 10.0.0.1)
     #[arg(long)]
     pub public_ip: String,
+    /// List of DZ prefixes in comma-separated CIDR format (e.g. 10.1.0.0/16,10.2.0.0/16)
     #[arg(long)]
     pub dz_prefixes: String,
 }

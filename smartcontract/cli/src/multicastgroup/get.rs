@@ -12,6 +12,7 @@ use tabled::{builder::Builder, settings::Style};
 
 #[derive(Args, Debug)]
 pub struct GetMulticastGroupCliCommand {
+    /// MulticastCroup code or Pubkey to query
     #[arg(long)]
     pub code: String,
 }

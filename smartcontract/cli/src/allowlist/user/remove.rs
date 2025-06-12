@@ -9,6 +9,7 @@ use std::{io::Write, str::FromStr};
 
 #[derive(Args, Debug)]
 pub struct RemoveUserAllowlistCliCommand {
+    /// User public key to remove from the allowlist
     #[arg(long)]
     pub pubkey: String,
 }

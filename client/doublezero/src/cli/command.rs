@@ -19,48 +19,64 @@ use doublezero_cli::{
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
-    #[command(about = "", hide = true)]
+    #[command(hide = true)]
     Init(InitCliCommand),
-    #[command(about = "Connect your server to a doublezero device", hide = false)]
+    /// Connect your server to a doublezero device
+    #[command(hide = false)]
     Connect(ProvisioningCliCommand),
-    #[command(about = "Get the status of your service", hide = false)]
+    /// Get the status of your service
+    #[command(hide = false)]
     Status(StatusCliCommand),
-    #[command(
-        about = "Disconnect your server from the doublezero network",
-        hide = false
-    )]
+    /// Disconnect your server from the doublezero network
+    #[command(hide = false)]
     Disconnect(DecommissioningCliCommand),
-    #[command(about = "Get device latencies", hide = false)]
+    /// Get device latencies
+    #[command(hide = false)]
     Latency(LatencyCliCommand),
-    #[command(about = "Get your public key", hide = false)]
+    /// Get your public key
+    #[command(hide = false)]
     Address(AddressCliCommand),
-    #[command(about = "Get your balance", hide = false)]
+    /// Get your balance
+    #[command(hide = false)]
     Balance(BalanceCliCommand),
-    #[command(about = "local configuration", hide = false)]
+    /// local configuration
+    #[command(hide = false)]
     Config(ConfigCliCommand),
-    #[command(about = "Global network configuration", hide = false)]
+    /// Global network configuration
+    #[command(hide = false)]
     GlobalConfig(GlobalConfigCliCommand),
-    #[command(about = "Get Account", hide = false)]
+    /// Get Account
+    #[command(hide = false)]
     Account(GetAccountCliCommand),
-    #[command(about = "Manage locations", hide = false)]
+    /// Manage locations
+    #[command(hide = false)]
     Location(LocationCliCommand),
-    #[command(about = "Manage exchanges", hide = false)]
+    /// Manage exchanges
+    #[command(hide = false)]
     Exchange(ExchangeCliCommand),
-    #[command(about = "Manage devices", hide = false)]
+    /// Manage devices
+    #[command(hide = false)]
     Device(DeviceCliCommand),
-    #[command(about = "Manage tunnels between devices", hide = false)]
+    /// Manage tunnels between devices
+    #[command(hide = false)]
     Link(LinkCliCommand),
-    #[command(about = "Manage users", hide = false)]
+    /// Manage users
+    #[command(hide = false)]
     User(UserCliCommand),
-    #[command(about = "Manage multicast", hide = false)]
+    /// Manage multicast
+    #[command(hide = false)]
     Multicast(MulticastCliCommand),
-    #[command(about = "Export all data to files", hide = false)]
+    /// Export all data to files
+    #[command(hide = false)]
     Export(ExportCliCommand),
-    #[command(about = "Create a new user identity", hide = false)]
+    /// Create a new user identity
+    #[command(hide = false)]
     Keygen(KeyGenCliCommand),
-    #[command(about = "Get logs", hide = false)]
+    /// Get logs
+    #[command(hide = false)]
     Log(LogCliCommand),
-    #[command(about = "Generate shell completions", hide = false)]
+    /// Generate shell completions
+    #[command(hide = false)]
     Completion(CompletionCliCommand),
 }
 

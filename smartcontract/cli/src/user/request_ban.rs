@@ -11,6 +11,7 @@ use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct RequestBanUserCliCommand {
+    /// User Pubkey to ban
     #[arg(long)]
     pub pubkey: String,
 }

@@ -8,16 +8,22 @@ use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct UpdateExchangeCliCommand {
+    /// Exchange Pubkey to update
     #[arg(long)]
     pub pubkey: String,
+    /// Updated code for the exchange
     #[arg(long)]
     pub code: Option<String>,
+    /// Updated name for the exchange
     #[arg(long)]
     pub name: Option<String>,
+    /// Updated latitude for the exchange
     #[arg(long, allow_hyphen_values(true))]
     pub lat: Option<f64>,
+    /// Updated longitude for the exchange
     #[arg(long, allow_hyphen_values(true))]
     pub lng: Option<f64>,
+    /// Updated location ID for the exchange
     #[arg(long)]
     pub loc_id: Option<u32>,
 }

@@ -8,8 +8,10 @@ use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
 pub struct ListExchangeCliCommand {
+    /// Output in JSON format
     #[arg(long, default_value_t = false)]
     pub json: bool,
+    /// Output in compact JSON format
     #[arg(long, default_value_t = false)]
     pub json_compact: bool,
 }

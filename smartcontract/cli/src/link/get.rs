@@ -5,6 +5,7 @@ use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct GetLinkCliCommand {
+    /// The pubkey or code of the link to retrieve
     #[arg(long)]
     pub code: String,
 }

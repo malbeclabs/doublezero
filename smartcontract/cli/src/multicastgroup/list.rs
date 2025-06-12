@@ -8,8 +8,10 @@ use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
 pub struct ListMulticastGroupCliCommand {
+    /// Output as pretty JSON
     #[arg(long, default_value_t = false)]
     pub json: bool,
+    /// Output as compact JSON
     #[arg(long, default_value_t = false)]
     pub json_compact: bool,
 }

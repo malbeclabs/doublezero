@@ -8,6 +8,7 @@ use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct SuspendDeviceCliCommand {
+    /// Device Pubkey to suspend
     #[arg(long)]
     pub pubkey: String,
 }

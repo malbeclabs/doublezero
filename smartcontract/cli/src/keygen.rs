@@ -6,7 +6,8 @@ use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct KeyGenCliCommand {
-    #[arg(short, default_value = "false", help = "Force keypair generation")]
+    /// Force keypair generation
+    #[arg(short, default_value = "false")]
     force: bool,
 }
 

@@ -12,18 +12,25 @@ use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct UpdateLinkCliCommand {
+    /// Link Pubkey or code to update
     #[arg(long)]
     pub pubkey: String,
+    /// Updated code for the link
     #[arg(long)]
     pub code: Option<String>,
+    /// Updated tunnel type (e.g. L1, L2, L3)
     #[arg(long)]
     pub tunnel_type: Option<String>,
+    /// Updated bandwidth (e.g. 1Gbps, 100Mbps)
     #[arg(long)]
     pub bandwidth: Option<String>,
+    /// Updated MTU (Maximum Transmission Unit) in bytes
     #[arg(long)]
     pub mtu: Option<u32>,
+    /// RTT (Round Trip Time) delay in milliseconds
     #[arg(long)]
     pub delay_ms: Option<f64>,
+    /// Jitter in milliseconds
     #[arg(long)]
     pub jitter_ms: Option<f64>,
 }

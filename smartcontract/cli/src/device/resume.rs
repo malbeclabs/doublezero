@@ -8,6 +8,7 @@ use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct ResumeDeviceCliCommand {
+    /// Device Pubkey or code to resume
     #[arg(long)]
     pub pubkey: String,
 }

@@ -8,6 +8,7 @@ use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct DeleteLinkCliCommand {
+    /// Link Pubkey or code to delete
     #[arg(long)]
     pub pubkey: String,
 }

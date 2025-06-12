@@ -12,14 +12,19 @@ use std::{io::Write, str::FromStr};
 
 #[derive(Args, Debug)]
 pub struct UpdateUserCliCommand {
+    /// User Pubkey to update
     #[arg(long)]
     pub pubkey: String,
+    /// New Client IP address
     #[arg(long)]
     pub client_ip: Option<String>,
+    /// New DZ IP address
     #[arg(long)]
     pub dz_ip: Option<String>,
+    /// New Tunnel ID
     #[arg(long)]
     pub tunnel_id: Option<String>,
+    /// New Tunnel Network in CIDR format
     #[arg(long)]
     pub tunnel_net: Option<String>,
 }

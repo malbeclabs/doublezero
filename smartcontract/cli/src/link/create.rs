@@ -13,20 +13,28 @@ use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct CreateLinkCliCommand {
+    /// Link code, must be unique.
     #[arg(long)]
     pub code: String,
+    /// Device Pubkey or code for side A.
     #[arg(long)]
     pub side_a: String,
+    /// Device Pubkey or code for side Z.
     #[arg(long)]
     pub side_z: String,
+    /// Link type: L1, L2, or L3.
     #[arg(long)]
     pub link_type: Option<String>,
+    /// Bandwidth (required). Accepts values in Kbps, Mbps, or Gbps.
     #[arg(long)]
     pub bandwidth: String,
+    /// MTU (Maximum Transmission Unit) in bytes.
     #[arg(long)]
     pub mtu: u32,
+    /// RTT (Round Trip Time) delay in milliseconds.
     #[arg(long)]
     pub delay_ms: f64,
+    /// Jitter in milliseconds.
     #[arg(long)]
     pub jitter_ms: f64,
 }

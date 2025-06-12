@@ -8,6 +8,7 @@ use crate::requirements::{CHECK_BALANCE, CHECK_ID_JSON};
 
 #[derive(Args, Debug)]
 pub struct RemoveDeviceAllowlistCliCommand {
+    /// Device public key to remove from the allowlist
     #[arg(long)]
     pub pubkey: String,
 }

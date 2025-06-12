@@ -28,11 +28,23 @@ pub struct MulticastGroupCliCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum MulticastGroupCommands {
+    /// Manage multicast group allowlists
+    #[clap()]
     Allowlist(MulticastGroupAllowlistCliCommand),
+    /// Create a new multicast group
+    #[clap()]
     Create(CreateMulticastGroupCliCommand),
+    /// Update an existing multicast group
+    #[clap()]
     Update(UpdateMulticastGroupCliCommand),
+    /// List all multicast groups
+    #[clap()]
     List(ListMulticastGroupCliCommand),
+    /// Get details for a specific multicast group
+    #[clap()]
     Get(GetMulticastGroupCliCommand),
+    /// Delete a multicast group
+    #[clap()]
     Delete(DeleteMulticastGroupCliCommand),
 }
 
@@ -44,7 +56,11 @@ pub struct MulticastGroupAllowlistCliCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum MulticastGroupAllowlistCommands {
+    /// Manage publisher allowlist for multicast group
+    #[clap()]
     Publisher(MulticastGroupPubAllowlistCliCommand),
+    /// Manage subscriber allowlist for multicast group
+    #[clap()]
     Subscriber(MulticastGroupSubAllowlistCliCommand),
 }
 
@@ -56,8 +72,14 @@ pub struct MulticastGroupPubAllowlistCliCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum MulticastGroupPubAllowlistCommands {
+    /// List publisher allowlist
+    #[clap()]
     List(ListMulticastGroupPubAllowlistCliCommand),
+    /// Add a publisher to the allowlist
+    #[clap()]
     Add(AddMulticastGroupPubAllowlistCliCommand),
+    /// Remove a publisher from the allowlist
+    #[clap()]
     Remove(RemoveMulticastGroupPubAllowlistCliCommand),
 }
 
@@ -69,7 +91,13 @@ pub struct MulticastGroupSubAllowlistCliCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum MulticastGroupSubAllowlistCommands {
+    /// List subscriber allowlist
+    #[clap()]
     List(ListMulticastGroupSubAllowlistCliCommand),
+    /// Add a subscriber to the allowlist
+    #[clap()]
     Add(AddMulticastGroupSubAllowlistCliCommand),
+    /// Remove a subscriber from the allowlist
+    #[clap()]
     Remove(RemoveMulticastGroupSubAllowlistCliCommand),
 }

@@ -14,19 +14,17 @@ use std::io::Write;
         .multiple(true)
 ))]
 pub struct SetConfigCliCommand {
-    #[arg(
-        long,
-        help = "URL of the JSON RPC endpoint (devnet, testnet, mainnet, localhost)"
-    )]
+    /// URL of the JSON RPC endpoint (devnet, testnet, mainnet, localhost)
+    #[arg(long)]
     url: Option<String>,
-    #[arg(
-        long,
-        help = "URL of the WS RPC endpoint (devnet, testnet, mainnet, localhost)"
-    )]
+    /// URL of the WS RPC endpoint (devnet, testnet, mainnet, localhost)
+    #[arg(long)]
     ws: Option<String>,
-    #[arg(long, help = "Keypair of the user")]
+    /// Keypair of the user
+    #[arg(long)]
     keypair: Option<String>,
-    #[arg(long, help = "Pubkey of the smart contract (devnet, testnet)")]
+    /// Pubkey of the smart contract (devnet, testnet)
+    #[arg(long)]
     program_id: Option<String>,
 }
 

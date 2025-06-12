@@ -8,6 +8,7 @@ use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct DeleteDeviceCliCommand {
+    /// Device Pubkey to delete
     #[arg(long)]
     pub pubkey: String,
 }

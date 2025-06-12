@@ -13,6 +13,7 @@ use std::{fs, io::Write};
 
 #[derive(Args, Debug)]
 pub struct ExportCliCommand {
+    /// Path to export the YAML files
     #[arg(long)]
     pub path: String,
 }

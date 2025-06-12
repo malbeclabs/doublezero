@@ -25,10 +25,13 @@ pub enum DzMode {
 
 #[derive(Args, Debug)]
 pub struct DecommissioningCliCommand {
+    /// Device Pubkey or code to associate with the user
     #[arg(long)]
     pub device: Option<String>,
+    /// Client IP address in IPv4 format
     #[arg(long)]
     pub client_ip: Option<String>,
+    /// Allocate a new address for the user
     #[arg(short, long, default_value_t = false)]
     pub verbose: bool,
     #[arg(value_enum)]

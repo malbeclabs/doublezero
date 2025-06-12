@@ -18,7 +18,7 @@ build:
 # -----------------------------------------------------------------------------
 .PHONY: test
 test: build
-	go test -v -tags=e2e $(if $(parallel),-parallel=$(parallel))
+	go test -v -tags=e2e $(if $(parallel),-parallel=$(parallel)) $(if $(test),-run=$(test))
 
 # -----------------------------------------------------------------------------
 # Solana image build and push.

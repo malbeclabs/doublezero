@@ -34,7 +34,5 @@ impl Metric {
 
 #[automock]
 pub trait MetricsService: Send + Sync + 'static {
-    #[allow(dead_code)]
-    fn write_metric(&self, metric: &Metric);
-    fn write_metrics(&self, metrics: &[Metric]);
+    fn write_metrics(&self, metrics: &[Metric]) -> eyre::Result<()>;
 }

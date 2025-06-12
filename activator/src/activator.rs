@@ -142,7 +142,7 @@ impl Activator {
             &self.locations,
             &self.exchanges,
             &self.state_transitions,
-        );
+        )?;
 
         self.devices.iter().for_each(|(_pubkey, device)| {
             println!(
@@ -211,7 +211,12 @@ impl Activator {
                     }
                     _ => {}
                 };
-                metrics.record_metrics(devices, locations, exchanges, state_transitions);
+                if let Err(e) =
+                    metrics.record_metrics(devices, locations, exchanges, state_transitions)
+                {
+                    // Just log the error
+                    eprintln!("error on record_metrics: {e}")
+                }
             })?;
         Ok(())
     }

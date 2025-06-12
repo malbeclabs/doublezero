@@ -23,7 +23,7 @@ impl ActivatorMetrics {
         locations: &HashMap<Pubkey, Location>,
         exchanges: &HashMap<Pubkey, Exchange>,
         state_transitions: &HashMap<&'static str, usize>,
-    ) {
+    ) -> eyre::Result<()> {
         let mut metrics = Vec::with_capacity(devices.len() + state_transitions.len() + 1);
 
         let mut metric = Metric::new("activator_device_count");
@@ -66,7 +66,9 @@ impl ActivatorMetrics {
             metrics.push(metric);
         }
 
-        self.metrics_service.write_metrics(&metrics);
+        self.metrics_service.write_metrics(&metrics)?;
+
+        Ok(())
     }
 }
 
@@ -157,7 +159,7 @@ mod tests {
             .expect_write_metrics()
             .with(mockall::predicate::eq(metrics))
             .times(1)
-            .return_const(());
+            .returning(|_| Ok(()));
 
         let activator_metrics = ActivatorMetrics::new(metrics_service);
 
@@ -219,6 +221,8 @@ mod tests {
         state_transitions.insert("pending_to_active", 1);
 
         // Test record_metrics
-        activator_metrics.record_metrics(&devices, &locations, &exchanges, &state_transitions);
+        activator_metrics
+            .record_metrics(&devices, &locations, &exchanges, &state_transitions)
+            .unwrap();
     }
 }

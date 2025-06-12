@@ -14,10 +14,10 @@ make test
 
 Or run specific tests:
 ```sh
-# Using go test directly
+# Using `go test`:
 go test -tags e2e -v -run=TestE2E_IBRL$
 
-# Using make test
+# Using `make test`:
 # NOTE: If you are using the special character $, you need to wrap it in single
 # quotes and escape with an extra $, as shown below:
 make test run='TestE2E_IBRL$$'
@@ -27,6 +27,18 @@ If you're running tests with `go test` directly, and you're making changes to th
 
 > ⚠️ **Note**
 > If you are running the full test suite in parallel on Mac with [Docker for Mac](https://docs.docker.com/desktop/setup/install/mac-install/), you'll likely need to configure it with sufficient resources. We recommend at least 26GB of memory and 6 CPUs, or more.
+
+To run the tests with lower parallelism or sequentially, use the `parallel` argument:
+
+```sh
+# Using `go test`:
+# NOTE: If you are running all the tests sequentially, you may need to increase
+# the test timeout with the -timeout argument as shown below:
+go test -tags e2e -v -parallel=1 -timeout=20m
+
+# Using `make test`:
+make test parallel=1
+```
 
 ## Topology
 

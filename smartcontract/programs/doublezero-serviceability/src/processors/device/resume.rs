@@ -29,7 +29,7 @@ pub fn process_resume_device(
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
-    let pda_account = next_account_info(accounts_iter)?;
+    let device_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -38,7 +38,10 @@ pub fn process_resume_device(
     msg!("process_resume_device({:?})", value);
 
     // Check the owner of the accounts
-    assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
+    assert_eq!(
+        device_account.owner, program_id,
+        "Invalid PDA Account Owner"
+    );
     assert_eq!(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"
@@ -48,9 +51,9 @@ pub fn process_resume_device(
         solana_program::system_program::id(),
         "Invalid System Program Account Owner"
     );
-    assert!(pda_account.is_writable, "PDA Account is not writable");
+    assert!(device_account.is_writable, "PDA Account is not writable");
 
-    let mut device: Device = Device::from(&pda_account.try_borrow_data().unwrap()[..]);
+    let mut device: Device = Device::try_from(device_account)?;
     assert_eq!(device.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
         device.bump_seed, value.bump_seed,
@@ -66,7 +69,7 @@ pub fn process_resume_device(
 
     device.status = DeviceStatus::Activated;
 
-    account_write(pda_account, &device, payer_account, system_program);
+    account_write(device_account, &device, payer_account, system_program);
 
     #[cfg(test)]
     msg!("Resumed: {:?}", device);

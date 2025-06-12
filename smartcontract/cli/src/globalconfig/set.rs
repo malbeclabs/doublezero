@@ -32,7 +32,7 @@ impl SetGlobalConfigCliCommand {
             user_tunnel_block: networkv4_parse(&self.device_tunnel_block),
             multicastgroup_block: networkv4_parse(&self.multicastgroup_block),
         })?;
-        writeln!(out, "Signature: {}", signature)?;
+        writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
     }

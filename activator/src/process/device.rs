@@ -24,9 +24,9 @@ pub fn process_device_event(
             .execute(client);
 
             match res {
-                Err(e) => println!("Error: {}", e),
+                Err(e) => println!("Error: {e}"),
                 Ok(signature) => {
-                    println!("Activated {}", signature);
+                    println!("Activated {signature}");
 
                     println!(
                         "Add Device: {} public_ip: {} dz_prefixes: {} ",
@@ -63,9 +63,9 @@ pub fn process_device_event(
             .execute(client);
 
             match res {
-                Err(e) => println!("Error: {}", e),
+                Err(e) => println!("Error: {e}"),
                 Ok(signature) => {
-                    println!("Deactivated {}", signature);
+                    println!("Deactivated {signature}");
                     devices.remove(pubkey);
                     *state_transitions
                         .entry("device-deleting-to-deactivated")

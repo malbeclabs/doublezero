@@ -95,7 +95,7 @@ pub fn process_create_user(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let device: Device = Device::from(&device_account.try_borrow_data().unwrap()[..]);
+    let device = Device::try_from(device_account)?;
     if device.status == DeviceStatus::Suspended {
         if !globalstate.foundation_allowlist.contains(payer_account.key) {
             return Err(DoubleZeroError::InvalidStatus.into());

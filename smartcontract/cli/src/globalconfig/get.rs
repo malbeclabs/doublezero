@@ -36,7 +36,7 @@ impl GetGlobalConfigCliCommand {
         let table = Table::new(config_displays)
             .with(Style::psql().remove_horizontals())
             .to_string();
-        writeln!(out, "{}", table)?;
+        writeln!(out, "{table}")?;
 
         Ok(())
     }

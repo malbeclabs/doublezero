@@ -45,7 +45,7 @@ impl UpdateUserCliCommand {
                 .tunnel_net
                 .map(|tunnel_net| networkv4_parse(&tunnel_net)),
         })?;
-        writeln!(out, "Signature: {}", signature)?;
+        writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
     }

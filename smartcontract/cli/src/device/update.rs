@@ -36,7 +36,7 @@ impl UpdateDeviceCliCommand {
             public_ip: self.public_ip.map(|ip| ipv4_parse(&ip)),
             dz_prefixes: self.dz_prefixes.map(|ip| networkv4_list_parse(&ip)),
         })?;
-        writeln!(out, "Signature: {}", signature)?;
+        writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
     }

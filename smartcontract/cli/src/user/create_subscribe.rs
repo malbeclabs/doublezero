@@ -85,7 +85,7 @@ impl CreateSubscribeUserCliCommand {
                 subscriber_pk.expect("Subscriber is required if publisher is not")
             }),
         })?;
-        writeln!(out, "Signature: {}", signature)?;
+        writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
     }

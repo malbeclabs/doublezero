@@ -14,7 +14,7 @@ impl LogCliCommand {
         let pubkey = parse_pubkey(&self.pubkey).expect("Invalid pubkey");
 
         for msg in client.get_logs(&pubkey)? {
-            writeln!(out, "{}", msg)?;
+            writeln!(out, "{msg}")?;
         }
 
         Ok(())

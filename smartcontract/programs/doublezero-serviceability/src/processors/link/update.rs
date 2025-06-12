@@ -37,7 +37,7 @@ pub fn process_update_link(
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
-    let pda_account = next_account_info(accounts_iter)?;
+    let link_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -46,7 +46,7 @@ pub fn process_update_link(
     msg!("process_update_link({:?})", value);
 
     // Check the owner of the accounts
-    assert_eq!(pda_account.owner, program_id, "Invalid PDA Account Owner");
+    assert_eq!(link_account.owner, program_id, "Invalid PDA Account Owner");
     assert_eq!(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"
@@ -57,48 +57,48 @@ pub fn process_update_link(
         "Invalid System Program Account Owner"
     );
     // Check if the account is writable
-    assert!(pda_account.is_writable, "PDA Account is not writable");
+    assert!(link_account.is_writable, "PDA Account is not writable");
 
     let globalstate = globalstate_get(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    let mut tunnel: Link = Link::from(&pda_account.try_borrow_data().unwrap()[..]);
-    assert_eq!(tunnel.index, value.index, "Invalid PDA Account Index");
+    let mut link: Link = Link::try_from(link_account)?;
+    assert_eq!(link.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
-        tunnel.bump_seed, value.bump_seed,
+        link.bump_seed, value.bump_seed,
         "Invalid PDA Account Bump Seed"
     );
 
-    if tunnel.owner != *payer_account.key {
+    if link.owner != *payer_account.key {
         return Err(solana_program::program_error::ProgramError::Custom(0));
     }
 
     //tunnel.tunnel_type = value.tunnel_type;
     if let Some(code) = &value.code {
-        tunnel.code = code.clone();
+        link.code = code.clone();
     }
     if let Some(tunnel_type) = value.tunnel_type {
-        tunnel.link_type = tunnel_type;
+        link.link_type = tunnel_type;
     }
     if let Some(bandwidth) = value.bandwidth {
-        tunnel.bandwidth = bandwidth;
+        link.bandwidth = bandwidth;
     }
     if let Some(mtu) = value.mtu {
-        tunnel.mtu = mtu;
+        link.mtu = mtu;
     }
     if let Some(delay_ns) = value.delay_ns {
-        tunnel.delay_ns = delay_ns;
+        link.delay_ns = delay_ns;
     }
     if let Some(jitter_ns) = value.jitter_ns {
-        tunnel.jitter_ns = jitter_ns;
+        link.jitter_ns = jitter_ns;
     }
 
-    account_write(pda_account, &tunnel, payer_account, system_program);
+    account_write(link_account, &link, payer_account, system_program);
 
     #[cfg(test)]
-    msg!("Updated: {:?}", tunnel);
+    msg!("Updated: {:?}", link);
 
     Ok(())
 }

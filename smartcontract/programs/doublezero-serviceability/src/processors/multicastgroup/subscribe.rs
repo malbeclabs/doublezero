@@ -1,10 +1,10 @@
 use crate::{
     error::DoubleZeroError,
-    helper::*,
+    helper::account_write,
     state::{
         accounttype::AccountType,
-        multicastgroup::*,
-        user::{User, *},
+        multicastgroup::{MulticastGroup, MulticastGroupStatus},
+        user::{User, UserStatus},
     },
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -39,7 +39,7 @@ pub fn process_subscribe_multicastgroup(
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
-    let mgroup_account = next_account_info(accounts_iter)?;
+    let multicastgroup_account = next_account_info(accounts_iter)?;
     let user_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
@@ -50,7 +50,7 @@ pub fn process_subscribe_multicastgroup(
 
     // Check the owner of the accounts
     assert_eq!(
-        mgroup_account.owner, program_id,
+        multicastgroup_account.owner, program_id,
         "Invalid PDA Account Owner"
     );
     assert_eq!(user_account.owner, program_id, "Invalid PDA Account Owner");
@@ -64,7 +64,7 @@ pub fn process_subscribe_multicastgroup(
         "Invalid System Program Account Owner"
     );
     assert!(
-        mgroup_account.is_writable,
+        multicastgroup_account.is_writable,
         "multicastgroup account is not writable"
     );
     assert!(user_account.is_writable, "user account is not writable");
@@ -72,7 +72,7 @@ pub fn process_subscribe_multicastgroup(
     //let _globalstate = globalstate_get(globalstate_account)?;
 
     // Parse accounts
-    let mut mgroup: MulticastGroup = MulticastGroup::from(mgroup_account);
+    let mut mgroup: MulticastGroup = MulticastGroup::try_from(multicastgroup_account)?;
     assert_eq!(mgroup.account_type, AccountType::MulticastGroup);
     if mgroup.status != MulticastGroupStatus::Activated {
         #[cfg(test)]
@@ -81,7 +81,7 @@ pub fn process_subscribe_multicastgroup(
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    let mut user = User::from(user_account);
+    let mut user: User = User::try_from(user_account)?;
     assert_eq!(user.account_type, AccountType::User);
     if user.status != UserStatus::Activated && user.status != UserStatus::Updating {
         #[cfg(test)]
@@ -100,8 +100,8 @@ pub fn process_subscribe_multicastgroup(
 
     match value.publisher {
         true => {
-            if !user.publishers.contains(mgroup_account.key) {
-                user.publishers.push(*mgroup_account.key);
+            if !user.publishers.contains(multicastgroup_account.key) {
+                user.publishers.push(*multicastgroup_account.key);
                 user.status = UserStatus::Updating;
             }
 
@@ -110,15 +110,16 @@ pub fn process_subscribe_multicastgroup(
             }
         }
         false => {
-            user.publishers.retain(|&x| x != *mgroup_account.key);
+            user.publishers
+                .retain(|&x| x != *multicastgroup_account.key);
             mgroup.publishers.retain(|&x| x != *user_account.key);
         }
     }
 
     match value.subscriber {
         true => {
-            if !user.subscribers.contains(mgroup_account.key) {
-                user.subscribers.push(*mgroup_account.key);
+            if !user.subscribers.contains(multicastgroup_account.key) {
+                user.subscribers.push(*multicastgroup_account.key);
                 user.status = UserStatus::Updating;
             }
 
@@ -127,12 +128,18 @@ pub fn process_subscribe_multicastgroup(
             }
         }
         false => {
-            user.subscribers.retain(|&x| x != *mgroup_account.key);
+            user.subscribers
+                .retain(|&x| x != *multicastgroup_account.key);
             mgroup.subscribers.retain(|&x| x != *user_account.key);
         }
     }
 
-    account_write(mgroup_account, &mgroup, payer_account, system_program);
+    account_write(
+        multicastgroup_account,
+        &mgroup,
+        payer_account,
+        system_program,
+    );
     account_write(user_account, &user, payer_account, system_program);
 
     #[cfg(test)]

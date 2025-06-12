@@ -40,7 +40,7 @@ async fn main() -> eyre::Result<()> {
     let app = App::parse();
 
     if let Some(keypair) = &app.keypair {
-        println!("using keypair: {}", keypair);
+        println!("using keypair: {keypair}");
     }
 
     let dzclient = DZClient::new(app.url, app.ws, app.program_id, app.keypair)?;
@@ -121,7 +121,7 @@ async fn main() -> eyre::Result<()> {
     match res {
         Ok(_) => {}
         Err(e) => {
-            eprintln!("Error: {}", e);
+            eprintln!("Error: {e}");
             std::process::exit(1);
         }
     };

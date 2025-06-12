@@ -48,7 +48,7 @@ let result = CreateTunnelCommand {
 
 match result {
     Ok((signature, tunnel_pubkey)) => println!("Tunnel created: {} {}", signature, tunnel_pubkey),
-    Err(e) => eprintln!("Error: {}", e),
+    Err(e) => eprintln!("Error: {e}"),
 }
 ```
 

@@ -48,7 +48,7 @@ impl SubscribeUserCliCommand {
             publisher: self.publisher,
             subscriber: self.subscriber,
         })?;
-        writeln!(out, "Signature: {}", signature)?;
+        writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
     }

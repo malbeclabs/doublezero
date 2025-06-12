@@ -7,6 +7,7 @@ use doublezero_sdk::{
     commands::link::{get::GetLinkCommand, update::UpdateLinkCommand},
     *,
 };
+use eyre::eyre;
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -36,10 +37,16 @@ impl UpdateLinkCliCommand {
             pubkey_or_code: self.pubkey,
         })?;
 
+        let tunnel_type = self
+            .tunnel_type
+            .map(|t| t.parse())
+            .transpose()
+            .map_err(|e| eyre!("Invalid tunnel type: {e}"))?;
+
         let signature = client.update_link(UpdateLinkCommand {
             index: tunnel.index,
             code: self.code.clone(),
-            tunnel_type: self.tunnel_type.map(|t| t.parse().unwrap()),
+            tunnel_type,
             bandwidth: self.bandwidth.map(|b| bandwidth_parse(&b)),
             mtu: self.mtu,
             delay_ns: self.delay_ms.map(|delay_ms| (delay_ms * 1000000.0) as u64),
@@ -47,7 +54,7 @@ impl UpdateLinkCliCommand {
                 .jitter_ms
                 .map(|jitter_ms| (jitter_ms * 1000000.0) as u64),
         })?;
-        writeln!(out, "Signature: {}", signature)?;
+        writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
     }

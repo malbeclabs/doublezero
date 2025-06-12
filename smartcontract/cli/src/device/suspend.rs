@@ -26,7 +26,7 @@ impl SuspendDeviceCliCommand {
         let signature = client.suspend_device(SuspendDeviceCommand {
             index: device.index,
         })?;
-        writeln!(out, "Signature: {}", signature)?;
+        writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
     }

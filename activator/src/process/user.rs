@@ -98,12 +98,12 @@ pub fn process_user_event(
 
             match res {
                 Ok(signature) => {
-                    println!("Activated   {}", signature);
+                    println!("Activated   {signature}");
                     *state_transitions
                         .entry("user-pending-to-activated")
                         .or_insert(0) += 1;
                 }
-                Err(e) => println!("Error: {}", e),
+                Err(e) => println!("Error: {e}"),
             }
         }
 
@@ -161,12 +161,12 @@ pub fn process_user_event(
             .execute(client);
             match res {
                 Ok(signature) => {
-                    println!("Reactivated   {}", signature);
+                    println!("Reactivated   {signature}");
                     *state_transitions
                         .entry("user-updating-to-activated")
                         .or_insert(0) += 1;
                 }
-                Err(e) => println!("Error: {}", e),
+                Err(e) => println!("Error: {e}"),
             }
         }
 
@@ -203,24 +203,24 @@ pub fn process_user_event(
 
                     match res {
                         Ok(signature) => {
-                            println!("Deactivated {}", signature);
+                            println!("Deactivated {signature}");
                             *state_transitions
                                 .entry("user-deleting-to-deactivated")
                                 .or_insert(0) += 1;
                         }
-                        Err(e) => println!("Error: {}", e),
+                        Err(e) => println!("Error: {e}"),
                     }
                 } else if user.status == UserStatus::PendingBan {
                     let res = BanUserCommand { index: user.index }.execute(client);
 
                     match res {
                         Ok(signature) => {
-                            println!("Banned {}", signature);
+                            println!("Banned {signature}");
                             *state_transitions
                                 .entry("user-pending-ban-to-banned")
                                 .or_insert(0) += 1;
                         }
-                        Err(e) => println!("Error: {}", e),
+                        Err(e) => println!("Error: {e}"),
                     }
                 }
             }
@@ -243,12 +243,12 @@ fn reject_user(
 
     match res {
         Ok(signature) => {
-            println!("Rejected {}", signature);
+            println!("Rejected {signature}");
             *state_transitions
                 .entry("user-pending-to-rejected")
                 .or_insert(0) += 1;
         }
-        Err(e) => println!("Error: {}", e),
+        Err(e) => println!("Error: {e}"),
     }
 }
 

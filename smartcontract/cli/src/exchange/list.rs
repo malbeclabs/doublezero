@@ -59,7 +59,7 @@ impl ListExchangeCliCommand {
                 .to_string()
         };
 
-        writeln!(out, "{}", res)?;
+        writeln!(out, "{res}")?;
 
         Ok(())
     }

@@ -10,9 +10,8 @@ fn main() {
     fs::write(
         dest_path,
         format!(
-            r#"pub const APP_VERSION: &str = "{}";
-pub const APP_LONG_VERSION: &str = "version: {}\n";"#,
-            version, version
+            r#"pub const APP_VERSION: &str = "{version}";
+pub const APP_LONG_VERSION: &str = "version: {version}\n";"#
         ),
     )
     .unwrap();

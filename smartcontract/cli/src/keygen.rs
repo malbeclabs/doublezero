@@ -17,7 +17,7 @@ impl KeyGenCliCommand {
                 writeln!(out, "Pubkey: {}", keypair.pubkey())?;
             }
             Err(e) => {
-                writeln!(out, "Error: {}", e)?;
+                writeln!(out, "Error: {e}")?;
             }
         };
 

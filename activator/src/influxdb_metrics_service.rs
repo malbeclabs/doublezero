@@ -56,7 +56,7 @@ impl InfluxDBMetricsService {
         match self.sender.blocking_send(lines) {
             Ok(_) => {}
             Err(e) => {
-                eprintln!("Error sending metrics: {}", e);
+                eprintln!("Error sending metrics: {e}");
             }
         }
     }
@@ -95,7 +95,7 @@ impl InfluxDBMetricsSubmitter {
                     .write_line_protocol(&client.org, self.bucket.as_str(), msg)
                     .await
                 {
-                    eprintln!("Error writing metric to InfluxDB: {}", e);
+                    eprintln!("Error writing metric to InfluxDB: {e}");
                 }
             }
         }

@@ -95,7 +95,7 @@ impl ProvisioningCliCommand {
         // Get public IP
         let (client_ip, client_ip_str) = look_for_ip(&self.client_ip, &spinner).await?;
 
-        spinner.println(format!("🔍  Provisioning User for IP: {}", client_ip_str));
+        spinner.println(format!("🔍  Provisioning User for IP: {client_ip_str}"));
 
         match self.parse_dz_mode() {
             (UserType::IBRL, _, _) => {
@@ -319,7 +319,7 @@ impl ProvisioningCliCommand {
 
         let user_pubkey = match users.iter().find(|(_, u)| filter_func(u, client_ip)) {
             Some((pubkey, _user)) => {
-                spinner.println(format!("    An account already exists Pubkey: {}", pubkey));
+                spinner.println(format!("    An account already exists Pubkey: {pubkey}"));
 
                 *pubkey
             }
@@ -754,7 +754,7 @@ mod tests {
             let mut devices = self.devices.borrow_mut();
             let device_number = devices.len() + 1;
             let pk = Pubkey::new_unique();
-            let device_ip = format!("5.6.7.{}", device_number);
+            let device_ip = format!("5.6.7.{device_number}");
             self.latencies.borrow_mut().push(LatencyRecord {
                 device_pk: pk.to_string(),
                 device_ip: device_ip.clone(),
@@ -773,7 +773,7 @@ mod tests {
                 device_type: DeviceType::Switch,
                 public_ip: ipv4_parse(device_ip.as_str()),
                 status: DeviceStatus::Activated,
-                code: format!("device{}", device_number),
+                code: format!("device{device_number}"),
                 dz_prefixes: vec![networkv4_parse("10.0.0.0/24")],
             };
             devices.insert(pk, device.clone());

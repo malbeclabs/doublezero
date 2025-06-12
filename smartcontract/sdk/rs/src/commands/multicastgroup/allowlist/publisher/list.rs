@@ -108,8 +108,7 @@ mod tests {
         let allowlist = res.unwrap();
         assert!(
             allowlist.is_empty(),
-            "Expected empty allowlist, got: {:?}",
-            allowlist
+            "Expected empty allowlist, got: {allowlist:?}",
         );
     }
 }

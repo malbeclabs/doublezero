@@ -26,8 +26,9 @@ impl AddFoundationAllowlistCliCommand {
             }
         };
 
-        let res = client.add_foundation_allowlist(AddFoundationAllowlistCommand { pubkey })?;
-        writeln!(out, "Signature: {}", res)?;
+        let signature =
+            client.add_foundation_allowlist(AddFoundationAllowlistCommand { pubkey })?;
+        writeln!(out, "Signature: {signature}")?;
 
         Ok(())
     }

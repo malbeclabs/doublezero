@@ -26,7 +26,7 @@ impl DeleteDeviceCliCommand {
         let signature = client.delete_device(DeleteDeviceCommand {
             index: device.index,
         })?;
-        writeln!(out, "Signature: {}", signature)?;
+        writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
     }

@@ -1,8 +1,12 @@
-use super::accounttype::{AccountType, AccountTypeInfo};
-use crate::{bytereader::ByteReader, seeds::SEED_LINK, types::*};
+use crate::{
+    bytereader::ByteReader,
+    seeds::SEED_LINK,
+    state::accounttype::{AccountType, AccountTypeInfo},
+    types::*,
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::Serialize;
-use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
+use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
 use std::{fmt, str::FromStr};
 
 #[repr(u8)]
@@ -33,7 +37,7 @@ impl FromStr for LinkLinkType {
             "L1" => Ok(LinkLinkType::L1),
             "L2" => Ok(LinkLinkType::L2),
             "L3" => Ok(LinkLinkType::L3),
-            _ => Err(format!("Invalid LinkLinkType: {}", s)),
+            _ => Err(format!("Invalid LinkLinkType: {s}")),
         }
     }
 }
@@ -155,10 +159,12 @@ impl From<&[u8]> for Link {
     }
 }
 
-impl From<&AccountInfo<'_>> for Link {
-    fn from(account: &AccountInfo) -> Self {
-        let data = account.try_borrow_data().unwrap();
-        Self::from(&data[..])
+impl TryFrom<&AccountInfo<'_>> for Link {
+    type Error = ProgramError;
+
+    fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
+        let data = account.try_borrow_data()?;
+        Ok(Self::from(&data[..]))
     }
 }
 

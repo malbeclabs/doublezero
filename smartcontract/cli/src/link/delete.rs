@@ -24,7 +24,7 @@ impl DeleteLinkCliCommand {
         let signature = client.delete_link(DeleteLinkCommand {
             index: tunnel.index,
         })?;
-        writeln!(out, "Signature: {}", signature)?;
+        writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
     }

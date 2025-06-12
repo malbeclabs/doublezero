@@ -1,16 +1,16 @@
+use crate::{
+    commands::{
+        globalstate::get::GetGlobalStateCommand, multicastgroup::get::GetMulticastGroupCommand,
+        user::get::GetUserCommand,
+    },
+    DoubleZeroClient,
+};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     processors::multicastgroup::subscribe::MulticastGroupSubscribeArgs,
     state::{multicastgroup::MulticastGroupStatus, user::UserStatus},
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
-
-use crate::{
-    commands::{globalstate::get::GetGlobalStateCommand, user::get::GetUserCommand},
-    DoubleZeroClient,
-};
-
-use super::get::GetMulticastGroupCommand;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SubscribeMulticastGroupCommand {

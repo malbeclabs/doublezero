@@ -49,7 +49,7 @@ impl IPBlockAllocator {
                 }
             }
             Err(e) => {
-                print!(" {} ", e);
+                print!(" {e} ");
             }
         }
     }
@@ -67,7 +67,7 @@ impl IPBlockAllocator {
                 }
             }
             Err(e) => {
-                print!(" {} ", e);
+                print!(" {e} ");
             }
         }
     }
@@ -108,7 +108,7 @@ impl IPBlockAllocator {
         for (index, assigned) in self.assigned_ips.iter().enumerate() {
             if *assigned {
                 let ip = self.index_to_ip(index);
-                ips.push_str(&format!("{},", ip));
+                ips.push_str(&format!("{ip},"));
             }
         }
         ips.trim_end_matches(',').to_string()

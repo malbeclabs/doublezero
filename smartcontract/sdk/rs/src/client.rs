@@ -62,17 +62,16 @@ impl DZClient {
         let payer: Option<solana_sdk::signature::Keypair> =
             read_keypair_from_file(kaypair.unwrap_or(config.keypair_path)).ok();
 
-        let program_id = {
-            if program_id.is_none() {
-                if config.program_id.is_none() {
-                    doublezero_serviceability::addresses::testnet::program_id::id()
-                } else {
-                    Pubkey::from_str(&config.program_id.unwrap())
-                        .map_err(|_| eyre!("Invalid program ID"))?
+        let program_id = match program_id {
+            None => match config.program_id.as_ref() {
+                None => doublezero_serviceability::addresses::testnet::program_id::id(),
+                Some(config_pg_id) => {
+                    Pubkey::from_str(config_pg_id).map_err(|_| eyre!("Invalid program ID"))?
                 }
-            } else {
-                Pubkey::from_str(&convert_program_moniker(program_id.unwrap()))
-                    .map_err(|_| eyre!("Invalid program ID"))?
+            },
+            Some(pg_id) => {
+                let converted_id = convert_program_moniker(pg_id);
+                Pubkey::from_str(&converted_id).map_err(|_| eyre!("Invalid program ID"))?
             }
         };
 
@@ -85,10 +84,10 @@ impl DZClient {
         })
     }
 
-    /******************************************************************************************************************************************/
     pub fn get_rpc(&self) -> &String {
         &self.rpc_url
     }
+
     pub fn get_ws(&self) -> &String {
         &self.rpc_ws_url
     }
@@ -96,12 +95,17 @@ impl DZClient {
     pub fn get_program_id(&self) -> &Pubkey {
         &self.program_id
     }
+
     pub fn get_balance(&self) -> eyre::Result<u64> {
+        let payer = self
+            .payer
+            .as_ref()
+            .ok_or_else(|| eyre!("No payer configured for client!"))?;
+
         self.client
-            .get_balance(&self.payer.as_ref().unwrap().pubkey())
+            .get_balance(&payer.pubkey())
             .map_err(|e| eyre!(e))
     }
-    /******************************************************************************************************************************************/
 
     pub fn reset(&self) -> eyre::Result<()> {
         let options = RpcProgramAccountsConfig {
@@ -123,7 +127,7 @@ impl DZClient {
         for (pubkey, account) in accounts {
             let account_type = AccountType::from(account.data[0]);
 
-            print!("Deleting {}: {}", account_type, pubkey);
+            print!("Deleting {account_type}: {pubkey}");
 
             if account_type == AccountType::GlobalState || account_type == AccountType::Config {
                 print!(" - Skipping");
@@ -135,7 +139,7 @@ impl DZClient {
                 vec![AccountMeta::new(pubkey, false)],
             )?;
 
-            println!(" - Done {}", signature);
+            println!(" - Done {signature}");
         }
 
         Ok(())
@@ -181,14 +185,14 @@ impl DZClient {
                     }
                 }
                 Err(e) => {
-                    eprintln!("Error: {}", e);
+                    eprintln!("Error: {e}");
                 }
             }
 
             match self.subscribe(&mut action) {
                 Ok(_) => {}
                 Err(e) => {
-                    eprintln!("Error: {}", e);
+                    eprintln!("Error: {e}");
                 }
             }
         }
@@ -221,10 +225,10 @@ impl DZClient {
                 if let UiAccountData::Binary(data, encoding) = event.account.data {
                     if let UiAccountEncoding::Base64 = encoding {
                         let pubkey = Pubkey::from_str(&event.pubkey)
-                            .map_err(|e| eyre!("Unable to parse Pubkey:{}", e))?;
+                            .map_err(|e| eyre!("Unable to parse Pubkey:{e}"))?;
                         let bytes = BASE64_STANDARD
                             .decode(data.clone())
-                            .map_err(|e| eyre!("Unable decode data: {}", e))?;
+                            .map_err(|e| eyre!("Unable decode data: {e}"))?;
                         let account = AccountData::from(&bytes[..]);
 
                         action(self, &pubkey, &account);
@@ -240,7 +244,7 @@ impl DZClient {
         let signatures = self.client.get_signatures_for_address(pubkey)?;
 
         for signature_info in signatures {
-            let signature = Signature::from_str(&signature_info.signature).unwrap();
+            let signature = Signature::from_str(&signature_info.signature)?;
 
             if let Ok(trans) = self
                 .client
@@ -248,11 +252,11 @@ impl DZClient {
             {
                 if let EncodedTransaction::Binary(_, base) = trans.transaction.transaction {
                     if base == TransactionBinaryEncoding::Base64 {
-                        let meta = trans.transaction.meta.unwrap();
-
-                        if let OptionSerializer::Some(msgs) = meta.log_messages {
-                            for msg in msgs {
-                                errors.push(msg.to_string());
+                        if let Some(meta) = trans.transaction.meta {
+                            if let OptionSerializer::Some(msgs) = meta.log_messages {
+                                for msg in msgs {
+                                    errors.push(msg.to_string());
+                                }
                             }
                         }
                     }
@@ -291,7 +295,6 @@ impl DoubleZeroClient for DZClient {
             .payer
             .as_ref()
             .ok_or_eyre("No default signer found, run \"doublezero keygen\" to create a new one")?;
-        //let data = borsh::to_vec(&instruction).unwrap();
         let data = instruction.pack();
 
         let mut transaction = Transaction::new_with_payer(
@@ -320,8 +323,10 @@ impl DoubleZeroClient for DZClient {
             .map_err(|e| eyre!(e))?;
         if result.value.err.is_some() {
             println!("Program Logs:");
-            for log in result.value.logs.unwrap() {
-                println!("{}", log);
+            if let Some(logs) = result.value.logs {
+                for log in logs {
+                    println!("{log}");
+                }
             }
             eyre::bail!("Error in transaction");
         }
@@ -383,7 +388,7 @@ impl DoubleZeroClient for DZClient {
         let signatures = self.client.get_signatures_for_address(&pubkey)?;
 
         for signature_info in signatures.into_iter() {
-            let signature = Signature::from_str(&signature_info.signature).unwrap();
+            let signature = Signature::from_str(&signature_info.signature)?;
             let enc_transaction = self
                 .client
                 .get_transaction(&signature, UiTransactionEncoding::Base64)?;
@@ -395,11 +400,10 @@ impl DoubleZeroClient for DZClient {
                 None => DateTime::<Utc>::from_timestamp_nanos(0),
             };
 
-            let meta = enc_transaction.transaction.meta.unwrap();
             let trans = enc_transaction.transaction.transaction;
 
             if let EncodedTransaction::Binary(data, _enc) = trans {
-                let data: &[u8] = &general_purpose::STANDARD.decode(data).unwrap();
+                let data: &[u8] = &general_purpose::STANDARD.decode(data)?;
 
                 let tx: Transaction =
                     match bincode::serde::decode_from_slice(data, bincode::config::legacy()) {
@@ -416,17 +420,20 @@ impl DoubleZeroClient for DZClient {
 
                     let instruction = {
                         if program_id == &self.program_id {
-                            DoubleZeroInstruction::unpack(&instr.data).unwrap()
+                            DoubleZeroInstruction::unpack(&instr.data)?
                         } else {
                             DoubleZeroInstruction::InitGlobalState()
                         }
                     };
 
-                    let log_messages = {
-                        if let OptionSerializer::Some(msgs) = &meta.log_messages {
-                            msgs.clone()
-                        } else {
-                            vec![]
+                    let log_messages = match &enc_transaction.transaction.meta {
+                        None => vec![],
+                        Some(meta) => {
+                            if let OptionSerializer::Some(msgs) = &meta.log_messages {
+                                msgs.clone()
+                            } else {
+                                vec![]
+                            }
                         }
                     };
 

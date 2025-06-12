@@ -163,13 +163,13 @@ impl ServiceController for ServiceControllerImpl {
         let res = client
             .get(uri)
             .await
-            .map_err(|e| eyre!("Unable to connect to doublezero daemon: {}", e))?;
+            .map_err(|e| eyre!("Unable to connect to doublezero daemon: {e}"))?;
 
         let data = res
             .into_body()
             .collect()
             .await
-            .map_err(|e| eyre!("Unable to read response body: {}", e))?
+            .map_err(|e| eyre!("Unable to read response body: {e}"))?
             .to_bytes();
 
         match serde_json::from_slice::<Vec<LatencyRecord>>(&data) {
@@ -179,10 +179,10 @@ impl ServiceController for ServiceControllerImpl {
                     if response.status == "error" {
                         Err(eyre!(response.description))
                     } else {
-                        Err(eyre!("Unable to parse response: {}", e))
+                        Err(eyre!("Unable to parse LatencyRecord: {e}"))
                     }
                 }
-                Err(_) => Err(eyre!("Unable to parse response: {}", e)),
+                Err(e) => Err(eyre!("Unable to parse ErrorResponse: {e}")),
             },
         }
     }
@@ -190,7 +190,7 @@ impl ServiceController for ServiceControllerImpl {
     async fn provisioning(&self, args: ProvisioningRequest) -> eyre::Result<ProvisioningResponse> {
         let client = Client::builder(TokioExecutor::new()).build(UnixConnector);
         let body_bytes =
-            serde_json::to_vec(&args).map_err(|e| eyre!("Unable to serialize request: {}", e))?;
+            serde_json::to_vec(&args).map_err(|e| eyre!("Unable to serialize request: {e}"))?;
 
         let req = Request::builder()
             .method(Method::POST)
@@ -202,7 +202,7 @@ impl ServiceController for ServiceControllerImpl {
             .into_body()
             .collect()
             .await
-            .map_err(|e| eyre!("Unable to read response body: {}", e))?
+            .map_err(|e| eyre!("Unable to read response body: {e}"))?
             .to_bytes();
 
         let response = serde_json::from_slice::<ProvisioningResponse>(&data)?;
@@ -216,7 +216,7 @@ impl ServiceController for ServiceControllerImpl {
     async fn remove(&self, args: RemoveTunnelCliCommand) -> eyre::Result<RemoveResponse> {
         let client = Client::builder(TokioExecutor::new()).build(UnixConnector);
         let body_bytes =
-            serde_json::to_vec(&args).map_err(|e| eyre!("Unable to serialize request: {}", e))?;
+            serde_json::to_vec(&args).map_err(|e| eyre!("Unable to serialize request: {e}"))?;
 
         let req = Request::builder()
             .method(Method::POST)
@@ -228,7 +228,7 @@ impl ServiceController for ServiceControllerImpl {
             .into_body()
             .collect()
             .await
-            .map_err(|e| eyre!("Unable to read response body: {}", e))?
+            .map_err(|e| eyre!("Unable to read response body: {e}"))?
             .to_bytes();
 
         let response = serde_json::from_slice::<RemoveResponse>(&data)?;
@@ -257,13 +257,13 @@ impl ServiceController for ServiceControllerImpl {
                     .into_body()
                     .collect()
                     .await
-                    .map_err(|e| eyre!("Unable to read response body: {}", e))?
+                    .map_err(|e| eyre!("Unable to read response body: {e}"))?
                     .to_bytes();
 
                 match serde_json::from_slice::<Vec<StatusResponse>>(&data) {
                     Ok(response) => Ok(response),
                     Err(e) => {
-                        println!("Data: {:?}", data);
+                        println!("Data: {data:?}");
 
                         if data.is_empty() {
                             eyre::bail!("No data returned");
@@ -274,15 +274,15 @@ impl ServiceController for ServiceControllerImpl {
                                 if response.status == "error" {
                                     Err(eyre!(response.description))
                                 } else {
-                                    Err(eyre!("Unable to parse response: {}", e))
+                                    Err(eyre!("Unable to parse StatusResponse: {e}"))
                                 }
                             }
-                            Err(_) => Err(eyre!("Unable to parse response: {}", e)),
+                            Err(e) => Err(eyre!("Unable to parse ErrorResponse: {e}")),
                         }
                     }
                 }
             }
-            Err(e) => Err(eyre!("Unable to connect to doublezero daemon: {}", e)),
+            Err(e) => Err(eyre!("Unable to connect to doublezero daemon: {e}")),
         }
     }
 }

@@ -74,7 +74,7 @@ impl DecommissioningCliCommand {
                 None => {}
             }
 
-            println!("🔍  Deleting User Account for: {}", pubkey);
+            println!("🔍  Deleting User Account for: {pubkey}");
             let res = client.delete_user(DeleteUserCommand { index: user.index });
             match res {
                 Ok(_) => {

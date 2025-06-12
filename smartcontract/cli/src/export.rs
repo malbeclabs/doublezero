@@ -110,7 +110,7 @@ impl ExportCliCommand {
                 .get(&data.exchange_pk)
                 .expect("could get Location");
 
-            writeln!(out, "{}", name)?;
+            writeln!(out, "{name}")?;
 
             let config = Data {
                 device: DeviceData {

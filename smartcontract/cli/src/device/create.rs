@@ -64,7 +64,7 @@ impl CreateDeviceCliCommand {
             public_ip: ipv4_parse(&self.public_ip),
             dz_prefixes: networkv4_list_parse(&self.dz_prefixes),
         })?;
-        writeln!(out, "Signature: {}", signature)?;
+        writeln!(out, "Signature: {signature}")?;
 
         Ok(())
     }

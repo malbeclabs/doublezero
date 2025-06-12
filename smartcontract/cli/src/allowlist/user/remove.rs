@@ -26,8 +26,8 @@ impl RemoveUserAllowlistCliCommand {
             }
         };
 
-        let res = client.remove_user_allowlist(RemoveUserAllowlistCommand { pubkey })?;
-        writeln!(out, "Signature: {}", res)?;
+        let signature = client.remove_user_allowlist(RemoveUserAllowlistCommand { pubkey })?;
+        writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
     }

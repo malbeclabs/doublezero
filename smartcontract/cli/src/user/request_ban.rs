@@ -24,7 +24,7 @@ impl RequestBanUserCliCommand {
         let (_, user) = client.get_user(GetUserCommand { pubkey })?;
 
         let signature = client.request_ban_user(RequestBanUserCommand { index: user.index })?;
-        writeln!(out, "Signature: {}", signature)?;
+        writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
     }

@@ -14,7 +14,7 @@ test-containerized:
 
 .PHONY: test-e2e
 test-e2e:
-	cd e2e && $(MAKE) test $(if $(parallel),parallel=$(parallel)) $(if $(test),test=$(test))
+	cd e2e && $(MAKE) test $(if $(parallel),parallel=$(parallel)) $(if $(run),test=$(run))
 
 .PHONY: lint
 lint:

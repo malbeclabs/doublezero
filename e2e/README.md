@@ -12,9 +12,15 @@ Run the tests with:
 make test
 ```
 
-Or run specific tests with `go test` directly:
+Or run specific tests:
 ```sh
+# Using go test directly
 go test -tags e2e -v -run=TestE2E_IBRL$
+
+# Using make test
+# NOTE: If you are using the special character $, you need to wrap it in single
+# quotes and escape with an extra $, as shown below:
+make test run='TestE2E_IBRL$$'
 ```
 
 If you're running tests with `go test` directly, and you're making changes to the components, you'll need to run `make build` before your `go test` command for the changes to be included.

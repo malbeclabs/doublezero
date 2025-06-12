@@ -25,27 +25,22 @@ Each test spins up a local devnet with all components running in containers, and
 
 ```mermaid
 graph LR
-  subgraph Control_Plane["Control Plane"]
+  subgraph Default_Net["Default Network"]
     Ledger["Ledger/SmartContract"]
     Activator["Activator"]
-    Controller["Controller"]
   end
 
-  subgraph Data_Plane["Data Plane"]
-    subgraph CYOA_Net["CYOA Network (10.X.Y.0/24)"]
+  subgraph CYOA_Net["CYOA Network (10.X.Y.0/24)"]
     Device["Device/Agent @ 10.X.Y.80"]
     Client["Client @ 10.X.Y.86"]
-    ControllerCYOA["Controller @ 10.X.Y.85"]
-    end
+    Controller["Controller @ 10.X.Y.85"]
   end
 
   Controller <--> Ledger
   Activator <--> Ledger
   Client --> Device
-  ControllerCYOA --> Device
-  ControllerCYOA <-.-> Controller
+  Controller --> Device
 
-  style Control_Plane fill:#e8f8f5,stroke:#1abc9c,stroke-width:2px
-  style Data_Plane fill:#f0f0f0,stroke:#666,stroke-width:2px
+  style Default_Net fill:#f0f0f0,stroke:#666,stroke-width:2px
   style CYOA_Net    fill:#d6eaf8,stroke:#2980b9,stroke-width:2px
 ```

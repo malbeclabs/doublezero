@@ -41,7 +41,7 @@ type Manager struct {
 }
 
 func (m *Manager) Start(ctx context.Context) error {
-	m.log.Info("==> Starting manager", "image", m.dn.Spec.Manager.ContainerImage, "keypairPath")
+	m.log.Info("==> Starting manager", "image", m.dn.Spec.Manager.ContainerImage)
 
 	// Derive the manager pubkey from the manager keypair.
 	managerPubkey, err := solana.PublicAddressFromKeypair(m.dn.Spec.Manager.KeypairPath)

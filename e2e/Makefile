@@ -17,7 +17,8 @@ build:
 # before running `test`.
 # -----------------------------------------------------------------------------
 .PHONY: test
-test: build
+test:
+	$(if $(findstring nobuild,$(MAKECMDGOALS)),,$(MAKE) build)
 	go test -v -tags=e2e $(if $(parallel),-parallel=$(parallel)) $(if $(run),-run=$(run))
 
 # -----------------------------------------------------------------------------

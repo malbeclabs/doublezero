@@ -26,7 +26,7 @@ make test run='TestE2E_IBRL$$'
 If you're running tests with `go test` directly, and you're making changes to the components, you'll need to run `make build` before your `go test` command for the changes to be included.
 
 > ⚠️ **Note**
-> If you are running the full test suite in parallel on Mac with [Docker for Mac](https://docs.docker.com/desktop/setup/install/mac-install/), you'll likely need to configure it with sufficient resources. We recommend at least 26GB of memory and 6 CPUs, or more.
+> If you are running the full test suite in parallel on Mac with [Docker for Mac](https://docs.docker.com/desktop/setup/install/mac-install/), you'll likely need to configure it with sufficient resources. We recommend at least 24GB of memory and 6 CPUs, or more.
 
 To run the tests with lower parallelism or sequentially, use the `parallel` argument:
 
@@ -38,6 +38,15 @@ go test -tags e2e -v -parallel=1 -timeout=20m
 
 # Using `make test`:
 make test parallel=1
+```
+
+To run the tests without building the docker images first use the `nobuild` makefile argument:
+
+```sh
+make test nobuild
+
+# Or, any combination of the previous args with it:
+make test run=TestE2E_IBRL nobuild
 ```
 
 ## Topology

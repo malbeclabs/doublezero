@@ -19,6 +19,9 @@ go test -tags e2e -v -run=TestE2E_IBRL$
 
 If you're running tests with `go test` directly, and you're making changes to the components, you'll need to run `make build` before your `go test` command for the changes to be included.
 
+> ⚠️ **Note**
+> If you are running the full test suite in parallel on Mac with [Docker for Mac](https://docs.docker.com/desktop/setup/install/mac-install/), you'll likely need to configure it with sufficient resources. We recommend at least 26GB of memory and 6 CPUs, or more.
+
 ## Topology
 
 Each test spins up a local devnet with all components running in containers, and internal CYOA networks for devices and clients.

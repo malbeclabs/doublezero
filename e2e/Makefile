@@ -15,10 +15,15 @@ build:
 #
 # This will build the docker images first, so it's not necessary to run `build`
 # before running `test`.
+#
+# We configure -timeout=20m for the case where the user is running the tests
+# sequentially. This should be more than enough time for the tests to run in
+# that case, and leave room in case more tests are added in the future.
 # -----------------------------------------------------------------------------
 .PHONY: test
-test: build
-	go test -v -tags=e2e
+test:
+	$(if $(findstring nobuild,$(MAKECMDGOALS)),,$(MAKE) build)
+	go test -v -tags=e2e -timeout=20m $(if $(parallel),-parallel=$(parallel)) $(if $(run),-run=$(run))
 
 # -----------------------------------------------------------------------------
 # Solana image build and push.

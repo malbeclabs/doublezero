@@ -22,6 +22,14 @@ doublezero_sdk.workspace = true
 doublezero-serviceability.workspace = true
 
 [dev-dependencies]
+bollard.workspace = true
+cargo_metadata.workspace = true
+dotenv.workspace = true
+serde_json.workspace = true
+solana-client.workspace = true
+testcontainers.workspace = true
+tempfile.workspace = true
 
 # Dependencies from this workspace
 doublezero-serviceability.workspace = true
+doublezero_cli.workspace = true

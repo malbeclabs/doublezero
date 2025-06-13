@@ -16,6 +16,10 @@ test-containerized:
 test-e2e:
 	cd e2e && $(MAKE) test $(if $(parallel),parallel=$(parallel)) $(if $(run),run=$(run))
 
+.PHONY: build-e2e
+build-e2e:
+	cd e2e && $(MAKE) build
+
 .PHONY: lint
 lint:
 	golangci-lint run -c ./.golangci.yaml

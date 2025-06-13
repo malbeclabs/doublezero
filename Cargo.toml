@@ -24,9 +24,11 @@ repository = "https://github.com/malbeclabs/doublezero"
 anyhow = "1"
 assert_cmd = "2"
 base64 = "0"
-bincode = { version = "2", features = [ "serde" ] }
+bollard = "0"
+bincode = { version = "2", features = ["serde"] }
 bitvec = "1"
 borsh = "1"
+cargo_metadata = "0"
 chrono = "0"
 clap = { version = "4", features = ["derive"] }
 clap_complete = { version = "4", features = ["unstable-dynamic"] }
@@ -34,6 +36,7 @@ console = "0"
 ctor = "0"
 directories-next = "2"
 dirs-next = "2"
+dotenv = "0"
 eyre = "0"
 futures = "0"
 futures-util = "0"
@@ -62,6 +65,7 @@ solana-sdk = "2.2.2"
 solana-transaction-status = "2.2.7"
 tabled = "0"
 tempfile = "3"
+testcontainers = "0"
 thiserror = "2"
 tokio = { version = "1", features = ["full"] }
 

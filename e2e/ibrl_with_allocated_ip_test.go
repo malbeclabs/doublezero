@@ -69,13 +69,11 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 	t.Run("check_post_connect", func(t *testing.T) {
 		dn.log.Info("==> Checking IBRL with allocated IP post-connect requirements")
 
-		clientSpec := client.Spec()
-
 		expectedAllocatedClientIP := getNextAllocatedClientIP(device.CYOANetworkIP)
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
 			config, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_added.tmpl", map[string]string{
-				"ClientIP":                  clientSpec.CYOANetworkIP,
+				"ClientIP":                  client.CYOANetworkIP,
 				"DeviceIP":                  device.CYOANetworkIP,
 				"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
 			})
@@ -96,7 +94,7 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 				name:        "doublezero_user_list",
 				fixturePath: "fixtures/ibrl_with_allocated_addr/doublezero_user_list_user_added.tmpl",
 				data: map[string]string{
-					"ClientIP":                  clientSpec.CYOANetworkIP,
+					"ClientIP":                  client.CYOANetworkIP,
 					"ClientPubkeyAddress":       client.Pubkey,
 					"DeviceIP":                  device.CYOANetworkIP,
 					"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
@@ -117,7 +115,7 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 				name:        "doublezero_status",
 				fixturePath: "fixtures/ibrl_with_allocated_addr/doublezero_status_connected.tmpl",
 				data: map[string]string{
-					"ClientIP":                  clientSpec.CYOANetworkIP,
+					"ClientIP":                  client.CYOANetworkIP,
 					"DeviceIP":                  device.CYOANetworkIP,
 					"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
 				},
@@ -168,7 +166,7 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 				"linkmode":          "DEFAULT",
 				"group":             "default",
 				"link_type":         "gre",
-				"address":           clientSpec.CYOANetworkIP,
+				"address":           client.CYOANetworkIP,
 				"link_pointtopoint": true,
 				"broadcast":         device.CYOANetworkIP,
 			}, links[0])

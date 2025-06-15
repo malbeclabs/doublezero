@@ -21,7 +21,6 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
-	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
 	"github.com/malbeclabs/doublezero/e2e/internal/solana"
 	"github.com/stretchr/testify/require"
@@ -196,11 +195,6 @@ func (dn *TestDevnet) Start(t *testing.T) {
 	`})
 	require.NoError(t, err)
 
-	// Build a client CYOA IP from the subnet CIDR.
-	// TODO(snormore): Pass the IP last octet in from the client spec.
-	clientCYOAIP, err := netutil.DeriveIPFromCIDR(dn.CYOANetwork.SubnetCIDR, 100)
-	require.NoError(t, err)
-
 	// Generate a new client keypair.
 	clientKeypairPath := filepath.Join(dn.Spec.WorkingDir, "client-keypair.json")
 	err = solana.GenerateKeypair(clientKeypairPath)
@@ -208,13 +202,12 @@ func (dn *TestDevnet) Start(t *testing.T) {
 
 	// Add a client to the devnet.
 	clientIndex, err := dn.AddClient(ctx, devnet.ClientSpec{
-		ContainerImage: os.Getenv("DZ_CLIENT_IMAGE"),
-		KeypairPath:    clientKeypairPath,
-		CYOANetworkIP:  clientCYOAIP.String(),
+		ContainerImage:      os.Getenv("DZ_CLIENT_IMAGE"),
+		KeypairPath:         clientKeypairPath,
+		CYOANetworkIPHostID: 100,
 	})
 	require.NoError(t, err)
 	client := dn.Clients[clientIndex]
-	clientSpec := client.Spec()
 
 	// Add client to the user allowlist.
 	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", "doublezero user allowlist add --pubkey " + client.Pubkey})
@@ -223,7 +216,7 @@ func (dn *TestDevnet) Start(t *testing.T) {
 	// Add null routes to test latency selection to ny5-dz01.
 	_, err = client.Exec(ctx, []string{"bash", "-c", `
 		echo "==> Adding null routes to test latency selection to ny5-dz01."
-		ip rule add priority 1 from ` + clientSpec.CYOANetworkIP + `/` + strconv.Itoa(dn.Spec.CYOANetworkSpec.CIDRPrefix) + ` to all table main
+		ip rule add priority 1 from ` + client.CYOANetworkIP + `/` + strconv.Itoa(dn.Spec.CYOANetworkSpec.CIDRPrefix) + ` to all table main
 		ip route add 207.45.216.134/32 dev lo proto static scope host
 		ip route add 195.219.120.72/32 dev lo proto static scope host
 		ip route add 195.219.220.88/32 dev lo proto static scope host
@@ -241,8 +234,7 @@ func (dn *TestDevnet) Start(t *testing.T) {
 func (dn *TestDevnet) DisconnectUserTunnel(t *testing.T, client *devnet.Client) {
 	dn.log.Info("==> Disconnecting user tunnel")
 
-	clientSpec := client.Spec()
-	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect --client-ip " + clientSpec.CYOANetworkIP})
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect --client-ip " + client.CYOANetworkIP})
 	require.NoError(t, err)
 
 	dn.log.Info("--> User tunnel disconnected")
@@ -354,9 +346,7 @@ func (dn *TestDevnet) WaitForAgentConfigMatchViaController(t *testing.T, deviceA
 func (dn *TestDevnet) ConnectIBRLUserTunnel(t *testing.T, client *devnet.Client) {
 	dn.log.Info("==> Connecting IBRL user tunnel")
 
-	clientSpec := client.Spec()
-
-	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect ibrl --client-ip " + clientSpec.CYOANetworkIP})
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect ibrl --client-ip " + client.CYOANetworkIP})
 	require.NoError(t, err)
 
 	dn.log.Info("--> IBRL user tunnel connected")
@@ -366,19 +356,16 @@ func (dn *TestDevnet) ConnectIBRLUserTunnel(t *testing.T, client *devnet.Client)
 func (dn *TestDevnet) ConnectUserTunnelWithAllocatedIP(t *testing.T, client *devnet.Client) {
 	dn.log.Info("==> Connecting user tunnel with allocated IP")
 
-	clientSpec := client.Spec()
-
-	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect ibrl --client-ip " + clientSpec.CYOANetworkIP + " --allocate-addr"})
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect ibrl --client-ip " + client.CYOANetworkIP + " --allocate-addr"})
 	require.NoError(t, err)
 
 	dn.log.Info("--> User tunnel with allocated IP connected")
 }
 
 func (dn *TestDevnet) ConnectMulticastPublisher(t *testing.T, client *devnet.Client, multicastGroupCode string) {
-	clientSpec := client.Spec()
-	dn.log.Info("==> Connecting multicast publisher", "clientIP", clientSpec.CYOANetworkIP)
+	dn.log.Info("==> Connecting multicast publisher", "clientIP", client.CYOANetworkIP)
 
-	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast publisher " + multicastGroupCode + " --client-ip " + clientSpec.CYOANetworkIP})
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast publisher " + multicastGroupCode + " --client-ip " + client.CYOANetworkIP})
 	require.NoError(t, err, "failed to connect multicast publisher")
 
 	dn.log.Info("--> Multicast publisher connected")
@@ -386,30 +373,27 @@ func (dn *TestDevnet) ConnectMulticastPublisher(t *testing.T, client *devnet.Cli
 
 // DisconnectMulticastPublisher disconnects a multicast publisher from a multicast group.
 func (dn *TestDevnet) DisconnectMulticastPublisher(t *testing.T, client *devnet.Client) {
-	clientSpec := client.Spec()
-	dn.log.Info("==> Disconnecting multicast publisher", "clientIP", clientSpec.CYOANetworkIP)
+	dn.log.Info("==> Disconnecting multicast publisher", "clientIP", client.CYOANetworkIP)
 
-	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast --client-ip " + clientSpec.CYOANetworkIP})
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast --client-ip " + client.CYOANetworkIP})
 	require.NoError(t, err, "failed to disconnect multicast publisher")
 
 	dn.log.Info("--> Multicast publisher disconnected")
 }
 
 func (dn *TestDevnet) ConnectMulticastSubscriber(t *testing.T, client *devnet.Client, multicastGroupCode string) {
-	clientSpec := client.Spec()
-	dn.log.Info("==> Connecting multicast subscriber", "clientIP", clientSpec.CYOANetworkIP)
+	dn.log.Info("==> Connecting multicast subscriber", "clientIP", client.CYOANetworkIP)
 
-	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast subscriber " + multicastGroupCode + " --client-ip " + clientSpec.CYOANetworkIP})
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast subscriber " + multicastGroupCode + " --client-ip " + client.CYOANetworkIP})
 	require.NoError(t, err)
 
 	dn.log.Info("--> Multicast subscriber connected")
 }
 
 func (dn *TestDevnet) DisconnectMulticastSubscriber(t *testing.T, client *devnet.Client) {
-	clientSpec := client.Spec()
-	dn.log.Info("==> Disconnecting multicast subscriber", "clientIP", clientSpec.CYOANetworkIP)
+	dn.log.Info("==> Disconnecting multicast subscriber", "clientIP", client.CYOANetworkIP)
 
-	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast --client-ip " + clientSpec.CYOANetworkIP})
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast --client-ip " + client.CYOANetworkIP})
 	require.NoError(t, err)
 
 	dn.log.Info("--> Multicast subscriber disconnected")

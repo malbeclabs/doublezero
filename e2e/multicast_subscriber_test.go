@@ -34,7 +34,7 @@ func TestE2E_Multicast_Subscriber(t *testing.T) {
 
 		dn.CreateMulticastGroupOnchain(t, client, "mg02")
 
-		output, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast subscriber mg02 --client-ip " + client.Spec().CYOANetworkIP})
+		output, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast subscriber mg02 --client-ip " + client.CYOANetworkIP})
 		require.Error(t, err)
 		require.Contains(t, string(output), "Multicast supports only one subscription at this time")
 	}) {
@@ -58,11 +58,9 @@ func checkMulticastSubscriberPostConnect(t *testing.T, dn *TestDevnet, device *d
 	t.Run("check_post_connect", func(t *testing.T) {
 		dn.log.Info("==> Checking multicast subscriber post-connect requirements")
 
-		clientSpec := client.Spec()
-
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
 			config, err := fixtures.Render("fixtures/multicast_subscriber/doublezero_agent_config_user_added.tmpl", map[string]string{
-				"ClientIP": clientSpec.CYOANetworkIP,
+				"ClientIP": client.CYOANetworkIP,
 				"DeviceIP": device.CYOANetworkIP,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
@@ -90,7 +88,7 @@ func checkMulticastSubscriberPostConnect(t *testing.T, dn *TestDevnet, device *d
 				name:        "doublezero_status",
 				fixturePath: "fixtures/multicast_subscriber/doublezero_status_connected.tmpl",
 				data: map[string]string{
-					"ClientIP": clientSpec.CYOANetworkIP,
+					"ClientIP": client.CYOANetworkIP,
 					"DeviceIP": device.CYOANetworkIP,
 				},
 				cmd: []string{"doublezero", "status"},
@@ -140,7 +138,7 @@ func checkMulticastSubscriberPostConnect(t *testing.T, dn *TestDevnet, device *d
 				"linkmode":          "DEFAULT",
 				"group":             "default",
 				"link_type":         "gre",
-				"address":           clientSpec.CYOANetworkIP,
+				"address":           client.CYOANetworkIP,
 				"link_pointtopoint": true,
 				"broadcast":         device.CYOANetworkIP,
 			}, links[0])

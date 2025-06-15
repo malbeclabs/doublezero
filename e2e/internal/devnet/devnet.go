@@ -95,7 +95,7 @@ func (s *DevnetSpec) Validate() error {
 	}
 
 	for _, client := range s.Clients {
-		if err := client.Validate(); err != nil {
+		if err := client.Validate(s.CYOANetworkSpec); err != nil {
 			return fmt.Errorf("client: %w", err)
 		}
 	}
@@ -257,7 +257,7 @@ func (d *Devnet) AddClient(ctx context.Context, spec ClientSpec) (int, error) {
 	defer d.mu.Unlock()
 
 	// Validate the client spec.
-	if err := spec.Validate(); err != nil {
+	if err := spec.Validate(d.Spec.CYOANetworkSpec); err != nil {
 		return 0, fmt.Errorf("failed to validate client spec: %w", err)
 	}
 

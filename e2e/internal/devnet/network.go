@@ -10,11 +10,23 @@ import (
 )
 
 type CYOANetwork struct {
-	dn  *Devnet
-	log *slog.Logger
+	dn   *Devnet
+	log  *slog.Logger
+	Spec CYOANetworkSpec
 
 	Name       string
 	SubnetCIDR string
+}
+
+type CYOANetworkSpec struct {
+	CIDRPrefix int
+}
+
+func (s *CYOANetworkSpec) Validate() error {
+	if s.CIDRPrefix < 0 || s.CIDRPrefix > 32 {
+		return fmt.Errorf("CIDRPrefix must be between 0 and 32")
+	}
+	return nil
 }
 
 func (n *CYOANetwork) Create(ctx context.Context) error {

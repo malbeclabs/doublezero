@@ -4,6 +4,7 @@ package e2e_test
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -107,8 +108,9 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 				name:        "doublezero_device_list",
 				fixturePath: "fixtures/ibrl_with_allocated_addr/doublezero_device_list.tmpl",
 				data: map[string]string{
-					"DeviceIP":      deviceSpec.CYOANetworkIP,
-					"ManagerPubkey": dn.Manager.Pubkey,
+					"DeviceIP":              deviceSpec.CYOANetworkIP,
+					"ManagerPubkey":         dn.Manager.Pubkey,
+					"CYOANetworkCIDRPrefix": strconv.Itoa(dn.CYOANetwork.Spec.CIDRPrefix),
 				},
 				cmd: []string{"doublezero", "device", "list"},
 			},

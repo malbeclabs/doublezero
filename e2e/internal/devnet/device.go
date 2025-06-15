@@ -85,9 +85,10 @@ func (d *Device) Start(ctx context.Context) error {
 		Name:         d.dn.Spec.DeployID + "-device-" + strconv.Itoa(d.index),
 		ExposedPorts: []string{"80/tcp"},
 		Env: map[string]string{
-			"DZ_CONTROLLER_ADDR": cyoaControllerAddr,
-			"DZ_AGENT_PUBKEY":    spec.Pubkey,
-			"DZ_DEVICE_IP":       spec.CYOANetworkIP,
+			"DZ_CONTROLLER_ADDR":          cyoaControllerAddr,
+			"DZ_AGENT_PUBKEY":             spec.Pubkey,
+			"DZ_DEVICE_IP":                spec.CYOANetworkIP,
+			"DZ_CYOA_NETWORK_CIDR_PREFIX": strconv.Itoa(d.dn.CYOANetwork.Spec.CIDRPrefix),
 		},
 		Privileged: true,
 		Networks: []string{

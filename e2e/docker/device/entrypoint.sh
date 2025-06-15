@@ -13,6 +13,10 @@ if [ -z "${DZ_DEVICE_IP:-}" ]; then
     echo "DZ_DEVICE_IP is not set"
     exit 1
 fi
+if [ -z "${DZ_CYOA_NETWORK_CIDR_PREFIX:-}" ]; then
+    echo "DZ_CYOA_NETWORK_CIDR_PREFIX is not set"
+    exit 1
+fi
 
 # Substitute environment variables in the startup config.
 envsubst < /etc/doublezero/agent/startup-config.template > /mnt/flash/startup-config

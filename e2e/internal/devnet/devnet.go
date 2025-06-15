@@ -27,6 +27,8 @@ type DevnetSpec struct {
 	// on the deployID.
 	ExtraLabels map[string]string
 
+	CYOANetworkSpec CYOANetworkSpec
+
 	Ledger     LedgerSpec
 	Manager    ManagerSpec
 	Controller ControllerSpec
@@ -62,6 +64,10 @@ func (s *DevnetSpec) Validate() error {
 
 	if s.WorkingDir == "" {
 		return fmt.Errorf("workingDir is required")
+	}
+
+	if err := s.CYOANetworkSpec.Validate(); err != nil {
+		return fmt.Errorf("cyoa-network: %w", err)
 	}
 
 	if err := s.Ledger.Validate(); err != nil {

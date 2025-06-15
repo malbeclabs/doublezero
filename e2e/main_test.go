@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -29,6 +30,10 @@ import (
 const (
 	// Expected link-local address to be allocated to the client during test.
 	expectedLinkLocalAddr = "169.254.0.1"
+
+	// Subnet CIDR prefix.
+	// Provides the full last octet range for devices and clients (2-254) for testing.
+	subnetCIDRPrefix = 24
 )
 
 var (
@@ -74,7 +79,7 @@ func TestMain(m *testing.M) {
 	}
 
 	// Initialize a subnet allocator.
-	subnetAllocator = docker.NewSubnetAllocator("10.128.0.0/9", 24, dockerClient)
+	subnetAllocator = docker.NewSubnetAllocator("10.128.0.0/9", subnetCIDRPrefix, dockerClient)
 
 	// Run the tests.
 	os.Exit(m.Run())
@@ -114,6 +119,9 @@ func NewSingleDeviceSingleClientTestDevnet(t *testing.T) *TestDevnet {
 		DeployID:   deployID,
 		WorkingDir: workingDir,
 
+		CYOANetworkSpec: devnet.CYOANetworkSpec{
+			CIDRPrefix: subnetCIDRPrefix,
+		},
 		Ledger: devnet.LedgerSpec{
 			ContainerImage:     os.Getenv("DZ_LEDGER_IMAGE"),
 			ProgramKeypairPath: programKeypairPath,
@@ -149,7 +157,8 @@ func (dn *TestDevnet) Start(t *testing.T) {
 	require.NoError(t, err)
 
 	// Build a device CYOA IP from the subnet CIDR.
-	deviceCYOAIP, err := netutil.BuildIPInCIDR(dn.CYOANetwork.SubnetCIDR, 80)
+	// TODO(snormore): Pass the IP last octet in from the device spec.
+	deviceCYOAIP, err := netutil.BuildIPInCIDR(dn.CYOANetwork.SubnetCIDR, 10)
 	require.NoError(t, err)
 
 	// Create our device and a few others onchain.
@@ -170,7 +179,8 @@ func (dn *TestDevnet) Start(t *testing.T) {
 	require.NoError(t, err)
 
 	// Build a client CYOA IP from the subnet CIDR.
-	clientCYOAIP, err := netutil.BuildIPInCIDR(dn.CYOANetwork.SubnetCIDR, 86)
+	// TODO(snormore): Pass the IP last octet in from the client spec.
+	clientCYOAIP, err := netutil.BuildIPInCIDR(dn.CYOANetwork.SubnetCIDR, 100)
 	require.NoError(t, err)
 
 	// Generate a new client keypair.
@@ -195,7 +205,7 @@ func (dn *TestDevnet) Start(t *testing.T) {
 	// Add null routes to test latency selection to ny5-dz01.
 	_, err = client.Exec(ctx, []string{"bash", "-c", `
 		echo "==> Adding null routes to test latency selection to ny5-dz01."
-		ip rule add priority 1 from ` + clientSpec.CYOANetworkIP + `/32 to all table main
+		ip rule add priority 1 from ` + clientSpec.CYOANetworkIP + `/` + strconv.Itoa(dn.CYOANetwork.Spec.CIDRPrefix) + ` to all table main
 		ip route add 207.45.216.134/32 dev lo proto static scope host
 		ip route add 195.219.120.72/32 dev lo proto static scope host
 		ip route add 195.219.220.88/32 dev lo proto static scope host
@@ -288,7 +298,7 @@ func (dn *TestDevnet) createDevicesAndLinksOnchain(t *testing.T, deviceCode stri
 
 		echo "==> Populate device information onchain - DO NOT SHUFFLE THESE AS THE PUBKEYS WILL CHANGE"
 		doublezero device create --code la2-dz01 --location lax --exchange xlax --public-ip "207.45.216.134" --dz-prefixes "207.45.216.136/30,200.12.12.12/29"
-		doublezero device create --code ` + deviceCode + ` --location ewr --exchange xewr --public-ip "` + deviceCYOAIP + `" --dz-prefixes "` + deviceCYOAIP + `/29"
+		doublezero device create --code ` + deviceCode + ` --location ewr --exchange xewr --public-ip "` + deviceCYOAIP + `" --dz-prefixes "` + deviceCYOAIP + `/` + strconv.Itoa(dn.CYOANetwork.Spec.CIDRPrefix) + `"
 		doublezero device create --code ld4-dz01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "195.219.120.72/29"
 		doublezero device create --code frk-dz01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "195.219.220.88/29"
 		doublezero device create --code sg1-dz01 --location sin --exchange xsin --public-ip "180.87.102.104" --dz-prefixes "180.87.102.104/29"

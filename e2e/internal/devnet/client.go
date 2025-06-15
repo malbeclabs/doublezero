@@ -10,7 +10,6 @@ import (
 
 	"github.com/docker/docker/api/types/network"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
-	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/malbeclabs/doublezero/e2e/internal/solana"
 	"github.com/testcontainers/testcontainers-go"
 )
@@ -61,14 +60,6 @@ func (c *Client) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to get client public address: %w", err)
 	}
 
-	// Construct an IP address for the client on the CYOA network subnet, the x.y.z.86 address.
-	ip4, err := netutil.BuildIPInCIDR(c.dn.CYOANetwork.SubnetCIDR, 86)
-	if err != nil {
-		return fmt.Errorf("failed to build client IP in CYOA network subnet: %w", err)
-	}
-	ip := ip4.String()
-	c.log.Info("--> Client IP selected", "ip", ip)
-
 	// Start the client container.
 	req := testcontainers.ContainerRequest{
 		Image: spec.ContainerImage,
@@ -96,9 +87,9 @@ func (c *Client) Start(ctx context.Context) error {
 			if m[c.dn.CYOANetwork.Name] == nil {
 				m[c.dn.CYOANetwork.Name] = &network.EndpointSettings{}
 			}
-			m[c.dn.CYOANetwork.Name].IPAddress = ip
+			m[c.dn.CYOANetwork.Name].IPAddress = spec.CYOANetworkIP
 			m[c.dn.CYOANetwork.Name].IPAMConfig = &network.EndpointIPAMConfig{
-				IPv4Address: ip,
+				IPv4Address: spec.CYOANetworkIP,
 			}
 		},
 		Privileged: true,
@@ -110,12 +101,6 @@ func (c *Client) Start(ctx context.Context) error {
 	})
 	if err != nil {
 		return fmt.Errorf("failed to start client: %w", err)
-	}
-
-	// Get the client's IP address on the CYOA network.
-	ip, err = c.dn.getContainerIPOnNetwork(ctx, container, c.dn.CYOANetwork.Name)
-	if err != nil {
-		return fmt.Errorf("failed to get container IP on CYOA network: %w", err)
 	}
 
 	c.ContainerID = shortContainerID(container.GetContainerID())

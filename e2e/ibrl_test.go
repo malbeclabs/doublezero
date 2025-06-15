@@ -53,15 +53,14 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 		dn.log.Info("==> Checking IBRL post-connect requirements")
 
 		clientSpec := client.Spec()
-		deviceSpec := device.Spec()
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
 			config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_user_added.tmpl", map[string]string{
 				"ClientIP": clientSpec.CYOANetworkIP,
-				"DeviceIP": deviceSpec.CYOANetworkIP,
+				"DeviceIP": device.CYOANetworkIP,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
-			err = dn.WaitForAgentConfigMatchViaController(t, deviceSpec.Pubkey, string(config))
+			err = dn.WaitForAgentConfigMatchViaController(t, device.AccountPubkey, string(config))
 			require.NoError(t, err, "error waiting for agent config to match")
 		}) {
 			t.Fail()
@@ -87,7 +86,7 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 				fixturePath: "fixtures/ibrl/doublezero_status_connected.tmpl",
 				data: map[string]string{
 					"ClientIP": clientSpec.CYOANetworkIP,
-					"DeviceIP": deviceSpec.CYOANetworkIP,
+					"DeviceIP": device.CYOANetworkIP,
 				},
 				cmd: []string{"doublezero", "status"},
 			},
@@ -138,7 +137,7 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 				"link_type":         "gre",
 				"address":           clientSpec.CYOANetworkIP,
 				"link_pointtopoint": true,
-				"broadcast":         deviceSpec.CYOANetworkIP,
+				"broadcast":         device.CYOANetworkIP,
 			}, links[0])
 		}) {
 			t.Fail()
@@ -232,14 +231,12 @@ func checkIBRLPostDisconnect(t *testing.T, dn *TestDevnet, device *devnet.Device
 	t.Run("check_post_disconnect", func(t *testing.T) {
 		dn.log.Info("==> Checking IBRL post-disconnect requirements")
 
-		deviceSpec := device.Spec()
-
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
 			config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_user_removed.tmpl", map[string]string{
-				"DeviceIP": deviceSpec.CYOANetworkIP,
+				"DeviceIP": device.CYOANetworkIP,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
-			err = dn.WaitForAgentConfigMatchViaController(t, deviceSpec.Pubkey, string(config))
+			err = dn.WaitForAgentConfigMatchViaController(t, device.AccountPubkey, string(config))
 			require.NoError(t, err, "error waiting for agent config to match")
 		}) {
 			t.Fail()

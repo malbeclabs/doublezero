@@ -128,7 +128,8 @@ func (c *Controller) GetAgentConfig(ctx context.Context, deviceAgentPubkey strin
 
 func (c *Controller) ConnectToCYOANetwork(ctx context.Context) error {
 	// Construct an IP address for the controller on the device CYOA network.
-	ip, err := netutil.BuildIPInCIDR(c.dn.CYOANetwork.SubnetCIDR, 85)
+	// TODO(snormore): Make this hostID configurable on the controller spec.
+	ip, err := netutil.DeriveIPFromCIDR(c.dn.CYOANetwork.SubnetCIDR, 85)
 	if err != nil {
 		return fmt.Errorf("failed to build controller IP in CYOA network subnet: %w", err)
 	}

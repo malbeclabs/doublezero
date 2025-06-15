@@ -2,8 +2,10 @@ package devnet
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -87,7 +89,7 @@ func (s *DevnetSpec) Validate() error {
 	}
 
 	for _, device := range s.Devices {
-		if err := device.Validate(); err != nil {
+		if err := device.Validate(s.CYOANetworkSpec); err != nil {
 			return fmt.Errorf("device: %w", err)
 		}
 	}
@@ -225,6 +227,11 @@ func (d *Devnet) AddDevice(ctx context.Context, spec DeviceSpec) (int, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
+	// Validate the device spec.
+	if err := spec.Validate(d.Spec.CYOANetworkSpec); err != nil {
+		return 0, fmt.Errorf("failed to validate device spec: %w", err)
+	}
+
 	deviceIndex := len(d.Devices)
 	d.Spec.Devices = append(d.Spec.Devices, spec)
 
@@ -249,6 +256,11 @@ func (d *Devnet) AddClient(ctx context.Context, spec ClientSpec) (int, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
+	// Validate the client spec.
+	if err := spec.Validate(); err != nil {
+		return 0, fmt.Errorf("failed to validate client spec: %w", err)
+	}
+
 	clientIndex := len(d.Clients)
 	d.Spec.Clients = append(d.Spec.Clients, spec)
 
@@ -267,6 +279,33 @@ func (d *Devnet) AddClient(ctx context.Context, spec ClientSpec) (int, error) {
 	}
 
 	return clientIndex, nil
+}
+
+var (
+	ErrDevicePubkeyNotFoundOnchain = errors.New("device pubkey not found onchain")
+)
+
+func (d *Devnet) CreateDeviceOnchain(ctx context.Context, deviceCode string, location string, exchange string, publicIP string, prefixes []string) error {
+	_, err := d.Manager.Exec(ctx, []string{"doublezero", "device", "create", "--code", deviceCode, "--location", location, "--exchange", exchange, "--public-ip", publicIP, "--dz-prefixes", strings.Join(prefixes, ",")})
+	if err != nil {
+		return fmt.Errorf("failed to create device onchain: %w", err)
+	}
+	return nil
+}
+
+func (d *Devnet) GetDevicePubkeyOnchain(ctx context.Context, deviceCode string) (string, error) {
+	output, err := d.Manager.Exec(ctx, []string{"bash", "-c", "doublezero device get --code " + deviceCode})
+	if err != nil {
+		return "", fmt.Errorf("failed to get device pubkey onchain: %w", err)
+	}
+
+	for _, line := range strings.Split(string(output), "\n") {
+		if strings.HasPrefix(line, "account: ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "account: ")), nil
+		}
+	}
+
+	return "", ErrDevicePubkeyNotFoundOnchain
 }
 
 func (d *Devnet) waitContainerHealthy(ctx context.Context, containerID string, timeout time.Duration, delay time.Duration) error {

@@ -58,19 +58,18 @@ func checkMulticastPublisherPostConnect(t *testing.T, dn *TestDevnet, device *de
 	t.Run("check_post_connect", func(t *testing.T) {
 		dn.log.Info("==> Checking multicast publisher post-connect requirements")
 
-		deviceSpec := device.Spec()
 		clientSpec := client.Spec()
 
-		expectedAllocatedClientIP := getNextAllocatedClientIP(deviceSpec.CYOANetworkIP)
+		expectedAllocatedClientIP := getNextAllocatedClientIP(device.CYOANetworkIP)
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
 			config, err := fixtures.Render("fixtures/multicast_publisher/doublezero_agent_config_user_added.tmpl", map[string]string{
 				"ClientIP":                  clientSpec.CYOANetworkIP,
-				"DeviceIP":                  deviceSpec.CYOANetworkIP,
+				"DeviceIP":                  device.CYOANetworkIP,
 				"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
-			err = dn.WaitForAgentConfigMatchViaController(t, deviceSpec.Pubkey, string(config))
+			err = dn.WaitForAgentConfigMatchViaController(t, device.AccountPubkey, string(config))
 			require.NoError(t, err, "error waiting for agent config to match")
 		}) {
 			t.Fail()
@@ -95,7 +94,7 @@ func checkMulticastPublisherPostConnect(t *testing.T, dn *TestDevnet, device *de
 				fixturePath: "fixtures/multicast_publisher/doublezero_status_connected.tmpl",
 				data: map[string]string{
 					"ClientIP":                  clientSpec.CYOANetworkIP,
-					"DeviceIP":                  deviceSpec.CYOANetworkIP,
+					"DeviceIP":                  device.CYOANetworkIP,
 					"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
 				},
 				cmd: []string{"doublezero", "status"},
@@ -147,7 +146,7 @@ func checkMulticastPublisherPostConnect(t *testing.T, dn *TestDevnet, device *de
 				"link_type":         "gre",
 				"address":           clientSpec.CYOANetworkIP,
 				"link_pointtopoint": true,
-				"broadcast":         deviceSpec.CYOANetworkIP,
+				"broadcast":         device.CYOANetworkIP,
 			}, links[0])
 		}) {
 			t.Fail()
@@ -216,14 +215,12 @@ func checkMulticastPublisherPostDisconnect(t *testing.T, dn *TestDevnet, device 
 	t.Run("check_post_disconnect", func(t *testing.T) {
 		dn.log.Info("==> Checking multicast publisher post-disconnect requirements")
 
-		deviceSpec := device.Spec()
-
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
 			config, err := fixtures.Render("fixtures/multicast_publisher/doublezero_agent_config_user_removed.tmpl", map[string]string{
-				"DeviceIP": deviceSpec.CYOANetworkIP,
+				"DeviceIP": device.CYOANetworkIP,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
-			err = dn.WaitForAgentConfigMatchViaController(t, deviceSpec.Pubkey, string(config))
+			err = dn.WaitForAgentConfigMatchViaController(t, device.AccountPubkey, string(config))
 			require.NoError(t, err, "error waiting for agent config to match")
 		}) {
 			t.Fail()

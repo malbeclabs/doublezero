@@ -1705,8 +1705,8 @@ func TestServiceNoCoExistence(t *testing.T) {
 					"bgp_local_asn":  65000,
 					"bgp_remote_asn": 65342
 				}`
-		if err := sendClientRequest(httpClient, "provision", req); err == nil {
-			t.Fatalf("expected test to fail with error containing 'cannot provision multiple tunnels at the same time' but got: %v", err)
+		if err := sendClientRequest(httpClient, "provision", req); err == nil || !strings.Contains(err.Error(), "cannot provision multiple tunnels at the same time") {
+			t.Fatalf("expected provisioning request to fail with error containing 'cannot provision multiple tunnels at the same time' but got: %v", err)
 		}
 	})
 

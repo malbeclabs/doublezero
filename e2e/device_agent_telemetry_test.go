@@ -48,8 +48,10 @@ func TestE2E_DeviceAgentTelemetry(t *testing.T) {
 		Manager: devnet.ManagerSpec{
 			KeypairPath: managerKeypairPath,
 		},
-		Controller: devnet.ControllerSpec{},
-		Activator:  devnet.ActivatorSpec{},
+		Controller: devnet.ControllerSpec{
+			CYOANetworkIPHostID: 99,
+		},
+		Activator: devnet.ActivatorSpec{},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
 
@@ -65,8 +67,10 @@ func TestE2E_DeviceAgentTelemetry(t *testing.T) {
 
 		// Add the la2-dz01 device.
 		_, err = dn.AddDevice(context.Background(), devnet.DeviceSpec{
-			Code:                "la2-dz01",
-			CYOANetworkIPHostID: 10,
+			Code: "la2-dz01",
+			// .8/29 has network address .8, allocatable up to .14, and broadcast .15
+			CYOANetworkIPHostID:          8,
+			CYOANetworkAllocatablePrefix: 29,
 		})
 		require.NoError(t, err)
 	}()
@@ -75,8 +79,10 @@ func TestE2E_DeviceAgentTelemetry(t *testing.T) {
 
 		// Add the ny5-dz01 device.
 		_, err = dn.AddDevice(context.Background(), devnet.DeviceSpec{
-			Code:                "ny5-dz01",
-			CYOANetworkIPHostID: 11,
+			Code: "ny5-dz01",
+			// .16/29 has network address .16, allocatable up to .22, and broadcast .23
+			CYOANetworkIPHostID:          16,
+			CYOANetworkAllocatablePrefix: 29,
 		})
 		require.NoError(t, err)
 	}()

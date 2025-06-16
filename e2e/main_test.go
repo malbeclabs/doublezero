@@ -3,6 +3,8 @@
 package e2e_test
 
 import (
+	"encoding/binary"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -129,7 +131,7 @@ func NewSingleDeviceSingleClientTestDevnet(t *testing.T) *TestDevnet {
 		},
 		Controller: devnet.ControllerSpec{
 			ExternalHost:        "localhost",
-			CYOANetworkIPHostID: 5,
+			CYOANetworkIPHostID: 99,
 		},
 		Activator: devnet.ActivatorSpec{},
 	}, log, dockerClient, subnetAllocator)
@@ -157,8 +159,10 @@ func (dn *TestDevnet) Start(t *testing.T) {
 
 	// Add a device to the devnet and onchain.
 	deviceIndex, err := dn.AddDevice(ctx, devnet.DeviceSpec{
-		Code:                "ny5-dz01",
-		CYOANetworkIPHostID: 10,
+		Code: "ny5-dz01",
+		// .8/29 has network address .8, allocatable up to .14, and broadcast .15
+		CYOANetworkIPHostID:          8,
+		CYOANetworkAllocatablePrefix: 29,
 	})
 	require.NoError(t, err)
 	device := dn.Devices[deviceIndex]
@@ -393,13 +397,29 @@ func (dn *TestDevnet) DisconnectMulticastSubscriber(t *testing.T, client *devnet
 	dn.log.Info("--> Multicast subscriber disconnected")
 }
 
-// getNextAllocatedClientIP returns the next allocated client IP address in the subnet based on a
-// given previous IP, by simply incrementing the last octet. This is a naive implementation that
-// does not consider the actual subnet CIDR and will break if used for a lot of IPs.
-func getNextAllocatedClientIP(previousIP string) string {
-	ip := net.ParseIP(previousIP).To4()
-	ip[3]++
-	return ip.String()
+// nextAllocatableIP returns the next available IPv4 address within a subnet,
+// given a starting IP (assumed to be the network address), the subnet prefix length,
+// and a set of already allocated IPs. It skips the network and broadcast addresses,
+// and searches linearly for the first unallocated host address.
+func nextAllocatableIP(ip string, allocatablePrefix int, allocated map[string]bool) (string, error) {
+	network := net.ParseIP(ip).To4()
+	if network == nil {
+		return "", errors.New("only IPv4 is supported")
+	}
+
+	networkInt := binary.BigEndian.Uint32(network)
+	start := networkInt + 1                          // first usable
+	end := networkInt + (1 << allocatablePrefix) - 2 // last usable
+
+	for ipInt := start; ipInt <= end; ipInt++ {
+		ip := make(net.IP, 4)
+		binary.BigEndian.PutUint32(ip, ipInt)
+		if !allocated[ip.String()] {
+			return ip.To4().String(), nil
+		}
+	}
+
+	return "", errors.New("no allocatable IPs remaining")
 }
 
 func newTestLogger(verbose bool) *slog.Logger {

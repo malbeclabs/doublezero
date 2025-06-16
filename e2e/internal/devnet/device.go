@@ -31,6 +31,10 @@ type DeviceSpec struct {
 
 	// CYOANetworkIPHostID is the offset into the host portion of the subnet (must be < 2^(32 - prefixLen)).
 	CYOANetworkIPHostID uint32
+
+	// CYOANetworkAllocatablePrefix is the prefix length of the allocatable portion of the CYOA network.
+	// This is used to derive the allocatable IP addresses for the device.
+	CYOANetworkAllocatablePrefix uint32
 }
 
 func (s *DeviceSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
@@ -49,6 +53,10 @@ func (s *DeviceSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
 	maxHostID := uint32((1 << hostBits) - 1)
 	if s.CYOANetworkIPHostID <= 0 || s.CYOANetworkIPHostID >= maxHostID {
 		return fmt.Errorf("hostID %d is out of valid range (1 to %d)", s.CYOANetworkIPHostID, maxHostID-1)
+	}
+
+	if cyoaNetworkSpec.CIDRPrefix >= int(s.CYOANetworkAllocatablePrefix) {
+		return fmt.Errorf("allocatable prefix %d is greater than the CIDR prefix %d", s.CYOANetworkAllocatablePrefix, cyoaNetworkSpec.CIDRPrefix)
 	}
 
 	return nil
@@ -92,7 +100,7 @@ func (d *Device) Start(ctx context.Context) error {
 	deviceCYOAIP := deviceIP.To4().String()
 
 	// Create the device onchain.
-	err = d.dn.CreateDeviceOnchain(ctx, spec.Code, "ewr", "xewr", deviceCYOAIP, []string{deviceCYOAIP + "/" + strconv.Itoa(d.dn.Spec.CYOANetworkSpec.CIDRPrefix)})
+	err = d.dn.CreateDeviceOnchain(ctx, spec.Code, "ewr", "xewr", deviceCYOAIP, []string{deviceCYOAIP + "/" + strconv.Itoa(int(spec.CYOANetworkAllocatablePrefix))})
 	if err != nil {
 		return fmt.Errorf("failed to create device %s onchain: %w", spec.Code, err)
 	}

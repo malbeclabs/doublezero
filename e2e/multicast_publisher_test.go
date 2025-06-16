@@ -58,7 +58,8 @@ func checkMulticastPublisherPostConnect(t *testing.T, dn *TestDevnet, device *de
 	t.Run("check_post_connect", func(t *testing.T) {
 		dn.log.Info("==> Checking multicast publisher post-connect requirements")
 
-		expectedAllocatedClientIP := getNextAllocatedClientIP(device.CYOANetworkIP)
+		expectedAllocatedClientIP, err := nextAllocatableIP(device.CYOANetworkIP, int(device.Spec().CYOANetworkAllocatablePrefix), map[string]bool{})
+		require.NoError(t, err)
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
 			config, err := fixtures.Render("fixtures/multicast_publisher/doublezero_agent_config_user_added.tmpl", map[string]string{

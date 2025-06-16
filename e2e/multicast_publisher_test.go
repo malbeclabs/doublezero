@@ -182,15 +182,22 @@ func checkMulticastPublisherPostConnect(t *testing.T, dn *TestDevnet, device *de
 			// state on the switch, so we can check the mroute state later.
 			_, _ = client.Exec(t.Context(), []string{"bash", "-c", "ping -c 1 -w 1 233.84.178.0"}, docker.NoPrintOnError())
 
-			mroutes, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPMroute](t.Context(), device, arista.ShowIPMrouteCmd())
-			require.NoError(t, err, "error fetching mroutes from doublezero device")
-
 			mGroup := "233.84.178.0"
-			groups, ok := mroutes.Groups[mGroup]
-			require.True(t, ok, "multicast group %s not found in mroutes", mGroup)
+			require.Eventually(t, func() bool {
+				mroutes, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPMroute](t.Context(), device, arista.ShowIPMrouteCmd())
+				require.NoError(t, err, "error fetching mroutes from doublezero device")
 
-			_, ok = groups.GroupSources[expectedAllocatedClientIP]
-			require.True(t, ok, "source %s not found in multicast group %s", expectedAllocatedClientIP, mGroup)
+				groups, ok := mroutes.Groups[mGroup]
+				if !ok {
+					dn.log.Debug("Waiting for multicast group to be created", "mGroup", mGroup, "mroutes", mroutes)
+					return false
+				}
+
+				_, ok = groups.GroupSources[expectedAllocatedClientIP]
+				require.True(t, ok, "source %s not found in multicast group %s", expectedAllocatedClientIP, mGroup)
+
+				return true
+			}, 5*time.Second, 1*time.Second, "multicast group %s not found in mroutes", mGroup)
 		}) {
 			t.Fail()
 		}

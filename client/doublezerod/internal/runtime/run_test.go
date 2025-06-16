@@ -2255,8 +2255,6 @@ func verifyStateFileMatches(t *testing.T, stateFilepath, fixturePath string) {
 		if err != nil {
 			t.Fatalf("error reading state file: %v", err)
 		}
-		fmt.Printf("&&&&&&&&&&file path want: %s\n", want)
-		fmt.Printf("&&&&&&&&&&file path got: %s\n", got)
 		if diff := cmp.Diff(string(want), string(got)); diff != "" {
 			t.Fatalf("State mismatch (-want +got): %s\n", diff)
 		}

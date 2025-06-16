@@ -312,16 +312,34 @@ impl ProvisioningCliCommand {
         spinner.set_prefix("2/4 User");
 
         let users = client.list_user(ListUserCommand {})?;
-        let filter_func: fn(&User, &IpV4) -> bool = |user, client_ip| {
-            (user.user_type == UserType::IBRL || user.user_type == UserType::IBRLWithAllocatedIP)
-                && user.client_ip == *client_ip
-        };
 
-        let user_pubkey = match users.iter().find(|(_, u)| filter_func(u, client_ip)) {
-            Some((pubkey, _user)) => {
+        let matched_users = users
+            .iter()
+            .filter(|(_, u)| u.client_ip == *client_ip)
+            .collect::<Vec<_>>();
+
+        if matched_users.len() > 1 {
+            // invariant, this indicates a bug that should never happen
+            panic!("Multiple tunnels found for the same IP address. This should not happen.");
+        }
+
+        let user_pubkey = match matched_users.first() {
+            Some((pubkey, user)) => {
+                if user.user_type != UserType::IBRL
+                    && user.user_type != UserType::IBRLWithAllocatedIP
+                {
+                    spinner.finish_with_message(format!(
+                        "User with IP {} already exists with type {:?}. Expected type {:?}. Only one tunnel currently supported.",
+                        ipv4_to_string(client_ip),
+                        user.user_type,
+                        user_type
+                    ));
+                    eyre::bail!("User with different type already exists. Only one tunnel currently supported.");
+                }
+
                 spinner.println(format!("    An account already exists Pubkey: {pubkey}"));
 
-                *pubkey
+                **pubkey
             }
             None => {
                 spinner.println(format!(
@@ -379,11 +397,29 @@ impl ProvisioningCliCommand {
         spinner.set_prefix("2/4 User");
 
         let users = client.list_user(ListUserCommand {})?;
-        let filter_func: fn(&User, &IpV4) -> bool =
-            |user, client_ip| user.user_type == UserType::Multicast && user.client_ip == *client_ip;
 
-        let user_pubkey = match users.iter().find(|(_, u)| filter_func(u, client_ip)) {
-            Some((_, _)) => {
+        let matched_users = users
+            .iter()
+            .filter(|(_, u)| u.client_ip == *client_ip)
+            .collect::<Vec<_>>();
+
+        if matched_users.len() > 1 {
+            // invariant, this indicates a bug that should never happen
+            panic!("Multiple tunnels found for the same IP address. This should not happen.");
+        }
+
+        let user_pubkey = match matched_users.first() {
+            Some((_, user)) => {
+                if user.user_type != UserType::Multicast {
+                    spinner.finish_with_message(format!(
+                        "User with IP {} already exists with type {:?}. Expected type {:?}. Only one tunnel currently supported.",
+                        ipv4_to_string(client_ip),
+                        user.user_type,
+                        UserType::Multicast
+                    ));
+                    eyre::bail!("User with different type already exists. Only one tunnel currently supported.");
+                }
+
                 let err_msg = format!(
                     r#"Multicast user already exists for IP: {}
 Multicast supports only one subscription at this time.
@@ -393,33 +429,6 @@ Disconnect and connect again!"#,
 
                 spinner.finish_with_message(err_msg.clone());
                 eyre::bail!(err_msg);
-                //spinner
-                //  .finish_with_message(format!("An account already exists Pubkey: {}", pubkey));
-                //spinner.set_prefix("🔗 [3/4] Subscribing");
-
-                //let (publisher, subscriber) = match multicast_mode {
-                //    MulticastMode::Publisher => (true, user.subscribers.contains(mcast_group_pk)),
-                //     MulticastMode::Subscriber => (user.publishers.contains(mcast_group_pk), true),
-                // };
-
-                // let res = client.subscribe_multicastgroup(SubscribeMulticastGroupCommand {
-                //     group_pk: *mcast_group_pk,
-                //     user_pk: *pubkey,
-                //     publisher,
-                //     subscriber,
-                // });
-                // match res {
-                //     Ok(_) => {
-                //         spinner.set_message("User subscribed");
-                //         Ok(*pubkey)
-                //     }
-                //     Err(e) => {
-                //         spinner.finish_with_message("Error subscribing user");
-                //         spinner.println(format!("\n{}: {:?}\n", "Error", e));
-
-                //         Err(eyre::eyre!("Error subscribing user"))
-                //     }
-                // }
             }
             None => {
                 spinner.println(format!(
@@ -949,6 +958,28 @@ mod tests {
             .execute_with_service_controller(&fixture.client, &fixture.controller)
             .await;
         assert!(result.is_ok());
+
+        // Test that adding an IBRL tunnel with an existing multicast fails
+        (_, _) = fixture.add_multicast_group("test-group", "239.0.0.1");
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: MulticastMode::Publisher,
+                multicast_group: "test-group".to_string(),
+            },
+            client_ip: Some(ipv4_to_string(&user.client_ip)),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Only one tunnel currently supported"));
     }
 
     #[tokio::test]
@@ -1076,5 +1107,24 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("Multicast user already exists for IP: 1.2.3.4"));
+
+        // Test that adding an IBRL tunnel with an existing multicast fails
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::IBRL {
+                allocate_addr: false,
+            },
+            client_ip: Some(ipv4_to_string(&user.client_ip)),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Only one tunnel currently supported"));
     }
 }

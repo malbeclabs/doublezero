@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"os"
 	"strconv"
 	"time"
 
@@ -33,10 +34,12 @@ type DeviceSpec struct {
 }
 
 func (s *DeviceSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
+	// If the container image is not set, use the DZ_DEVICE_IMAGE environment variable.
 	if s.ContainerImage == "" {
-		return fmt.Errorf("containerImage is required")
+		s.ContainerImage = os.Getenv("DZ_DEVICE_IMAGE")
 	}
 
+	// Check for required fields.
 	if s.Code == "" {
 		return fmt.Errorf("code is required")
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
@@ -21,10 +22,12 @@ type ManagerSpec struct {
 }
 
 func (s *ManagerSpec) Validate() error {
+	// If the container image is not set, use the DZ_MANAGER_IMAGE environment variable.
 	if s.ContainerImage == "" {
-		return fmt.Errorf("containerImage is required")
+		s.ContainerImage = os.Getenv("DZ_MANAGER_IMAGE")
 	}
 
+	// Check for required fields.
 	if s.KeypairPath == "" {
 		return fmt.Errorf("keypairPath is required")
 	}

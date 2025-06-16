@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
@@ -15,8 +16,9 @@ type ActivatorSpec struct {
 }
 
 func (s *ActivatorSpec) Validate() error {
+	// If the container image is not set, use the DZ_ACTIVATOR_IMAGE environment variable.
 	if s.ContainerImage == "" {
-		return fmt.Errorf("containerImage is required")
+		s.ContainerImage = os.Getenv("DZ_ACTIVATOR_IMAGE")
 	}
 
 	return nil

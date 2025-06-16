@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"strings"
 	"sync"
 	"time"
@@ -42,11 +43,12 @@ type DevnetSpec struct {
 type Devnet struct {
 	Spec DevnetSpec
 
-	log             *slog.Logger
-	subnetAllocator *docker.SubnetAllocator
-	dockerClient    *client.Client
-	labels          map[string]string
-	mu              sync.RWMutex
+	log               *slog.Logger
+	subnetAllocator   *docker.SubnetAllocator
+	dockerClient      *client.Client
+	labels            map[string]string
+	mu                sync.RWMutex
+	onchainWriteMutex sync.Mutex
 
 	DefaultNetwork *DefaultNetwork
 	CYOANetwork    *CYOANetwork
@@ -109,12 +111,14 @@ func New(spec DevnetSpec, logger *slog.Logger, dockerClient *client.Client, subn
 
 	// Build the resource labels used to identify resources.
 	labels := make(map[string]string)
-	for k, v := range spec.ExtraLabels {
-		labels[k] = v
-	}
+	maps.Copy(labels, spec.ExtraLabels)
 	labels[labelsKeyDomain] = "true"
 	labels[labelsKeyDomain+"/type"] = "devnet"
 	labels[labelsKeyDomain+"/deploy-id"] = spec.DeployID
+
+	if err := spec.Validate(); err != nil {
+		return nil, fmt.Errorf("failed to validate devnet spec: %w", err)
+	}
 
 	dn := &Devnet{
 		log:             log,
@@ -224,25 +228,29 @@ func (d *Devnet) Start(ctx context.Context) error {
 }
 
 func (d *Devnet) AddDevice(ctx context.Context, spec DeviceSpec) (int, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	// Validate the device spec.
 	if err := spec.Validate(d.Spec.CYOANetworkSpec); err != nil {
 		return 0, fmt.Errorf("failed to validate device spec: %w", err)
 	}
 
-	deviceIndex := len(d.Devices)
-	d.Spec.Devices = append(d.Spec.Devices, spec)
+	// We want to be able to add/start devices in parallel, so we need to use a closure to
+	// to avoid locking the devnet mutex for the entire duration of the AddDevice method.
+	device, deviceIndex := func() (*Device, int) {
+		d.mu.Lock()
+		defer d.mu.Unlock()
 
-	// NOTE: The devnet, log, and index fields need to be set before calling Start, which will
-	// then fill in the rest of the fields.
-	device := &Device{
-		dn:    d,
-		log:   d.log.With("component", "device", "index", deviceIndex),
-		index: deviceIndex,
-	}
-	d.Devices = append(d.Devices, device)
+		deviceIndex := len(d.Devices)
+		d.Spec.Devices = append(d.Spec.Devices, spec)
+
+		// NOTE: The devnet, log, and index fields need to be set before calling Start, which will
+		// then fill in the rest of the fields.
+		device := &Device{
+			dn:    d,
+			log:   d.log.With("component", "device", "index", deviceIndex),
+			index: deviceIndex,
+		}
+		d.Devices = append(d.Devices, device)
+		return device, deviceIndex
+	}()
 
 	err := device.Start(ctx)
 	if err != nil {
@@ -253,25 +261,30 @@ func (d *Devnet) AddDevice(ctx context.Context, spec DeviceSpec) (int, error) {
 }
 
 func (d *Devnet) AddClient(ctx context.Context, spec ClientSpec) (int, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	// Validate the client spec.
 	if err := spec.Validate(d.Spec.CYOANetworkSpec); err != nil {
 		return 0, fmt.Errorf("failed to validate client spec: %w", err)
 	}
 
-	clientIndex := len(d.Clients)
-	d.Spec.Clients = append(d.Spec.Clients, spec)
+	// We want to be able to add/start clients in parallel, so we need to use a closure to
+	// to avoid locking the devnet mutex for the entire duration of the AddClient method.
+	client, clientIndex := func() (*Client, int) {
+		d.mu.Lock()
+		defer d.mu.Unlock()
 
-	// NOTE: The devnet, log, and index fields need to be set before calling Start, which will
-	// then fill in the rest of the fields.
-	client := &Client{
-		dn:    d,
-		log:   d.log.With("component", "client", "index", clientIndex),
-		index: clientIndex,
-	}
-	d.Clients = append(d.Clients, client)
+		clientIndex := len(d.Clients)
+		d.Spec.Clients = append(d.Spec.Clients, spec)
+
+		// NOTE: The devnet, log, and index fields need to be set before calling Start, which will
+		// then fill in the rest of the fields.
+		client := &Client{
+			dn:    d,
+			log:   d.log.With("component", "client", "index", clientIndex),
+			index: clientIndex,
+		}
+		d.Clients = append(d.Clients, client)
+
+		return client, clientIndex
+	}()
 
 	err := client.Start(ctx)
 	if err != nil {
@@ -286,6 +299,9 @@ var (
 )
 
 func (d *Devnet) CreateDeviceOnchain(ctx context.Context, deviceCode string, location string, exchange string, publicIP string, prefixes []string) error {
+	d.onchainWriteMutex.Lock()
+	defer d.onchainWriteMutex.Unlock()
+
 	_, err := d.Manager.Exec(ctx, []string{"doublezero", "device", "create", "--code", deviceCode, "--location", location, "--exchange", exchange, "--public-ip", publicIP, "--dz-prefixes", strings.Join(prefixes, ",")})
 	if err != nil {
 		return fmt.Errorf("failed to create device onchain: %w", err)

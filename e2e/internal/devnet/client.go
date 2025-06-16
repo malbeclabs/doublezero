@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -24,10 +25,12 @@ type ClientSpec struct {
 }
 
 func (s *ClientSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
+	// If the container image is not set, use the DZ_CLIENT_IMAGE environment variable.
 	if s.ContainerImage == "" {
-		return fmt.Errorf("containerImage is required")
+		s.ContainerImage = os.Getenv("DZ_CLIENT_IMAGE")
 	}
 
+	// Check for required fields.
 	if s.KeypairPath == "" {
 		return fmt.Errorf("keypairPath is required")
 	}

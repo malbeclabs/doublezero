@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"os"
 	"strconv"
 	"time"
 
@@ -31,12 +32,15 @@ type ControllerSpec struct {
 }
 
 func (s *ControllerSpec) Validate() error {
+	// If the container image is not set, use the DZ_CONTROLLER_IMAGE environment variable.
 	if s.ContainerImage == "" {
-		return fmt.Errorf("containerImage is required")
+		s.ContainerImage = os.Getenv("DZ_CONTROLLER_IMAGE")
 	}
 
+	// Check for required fields.
 	if s.ExternalHost == "" {
-		return fmt.Errorf("externalHost is required")
+		// If the external host is not set, use localhost, assuming the test is running in a docker container.
+		s.ExternalHost = "localhost"
 	}
 
 	return nil

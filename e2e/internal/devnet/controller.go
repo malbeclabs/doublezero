@@ -29,9 +29,12 @@ const (
 type ControllerSpec struct {
 	ContainerImage string
 	ExternalHost   string
+
+	// CYOANetworkIPHostID is the offset into the host portion of the subnet (must be < 2^(32 - prefixLen)).
+	CYOANetworkIPHostID uint32
 }
 
-func (s *ControllerSpec) Validate() error {
+func (s *ControllerSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
 	// If the container image is not set, use the DZ_CONTROLLER_IMAGE environment variable.
 	if s.ContainerImage == "" {
 		s.ContainerImage = os.Getenv("DZ_CONTROLLER_IMAGE")
@@ -41,6 +44,13 @@ func (s *ControllerSpec) Validate() error {
 	if s.ExternalHost == "" {
 		// If the external host is not set, use localhost, assuming the test is running in a docker container.
 		s.ExternalHost = "localhost"
+	}
+
+	// Validate that hostID does not select the network (0) or broadcast (max) address.
+	hostBits := 32 - cyoaNetworkSpec.CIDRPrefix
+	maxHostID := uint32((1 << hostBits) - 1)
+	if s.CYOANetworkIPHostID <= 0 || s.CYOANetworkIPHostID >= maxHostID {
+		return fmt.Errorf("hostID %d is out of valid range (1 to %d)", s.CYOANetworkIPHostID, maxHostID-1)
 	}
 
 	return nil
@@ -98,6 +108,11 @@ func (c *Controller) Start(ctx context.Context) error {
 	c.ContainerID = shortContainerID(container.GetContainerID())
 	c.ExternalPort = port.Int()
 
+	// Connect the controller to the device CYOA network.
+	if err := c.connectToCYOANetwork(ctx); err != nil {
+		return fmt.Errorf("failed to connect controller to device CYOA network: %w", err)
+	}
+
 	c.log.Info("--> Controller started", "container", c.ContainerID, "externalPort", c.ExternalPort)
 	return nil
 }
@@ -130,10 +145,10 @@ func (c *Controller) GetAgentConfig(ctx context.Context, deviceAgentPubkey strin
 	return config, nil
 }
 
-func (c *Controller) ConnectToCYOANetwork(ctx context.Context) error {
+func (c *Controller) connectToCYOANetwork(ctx context.Context) error {
 	// Construct an IP address for the controller on the device CYOA network.
 	// TODO(snormore): Make this hostID configurable on the controller spec.
-	ip, err := netutil.DeriveIPFromCIDR(c.dn.CYOANetwork.SubnetCIDR, 85)
+	ip, err := netutil.DeriveIPFromCIDR(c.dn.CYOANetwork.SubnetCIDR, c.dn.Spec.Controller.CYOANetworkIPHostID)
 	if err != nil {
 		return fmt.Errorf("failed to build controller IP in CYOA network subnet: %w", err)
 	}

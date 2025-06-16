@@ -82,7 +82,7 @@ func (s *DevnetSpec) Validate() error {
 		return fmt.Errorf("manager: %w", err)
 	}
 
-	if err := s.Controller.Validate(); err != nil {
+	if err := s.Controller.Validate(s.CYOANetworkSpec); err != nil {
 		return fmt.Errorf("controller: %w", err)
 	}
 
@@ -191,7 +191,13 @@ func (d *Devnet) Start(ctx context.Context) error {
 		}
 	}
 
+	// Create the CYOA network.
+	if err := d.CYOANetwork.Create(ctx); err != nil {
+		return fmt.Errorf("failed to create CYOA network: %w", err)
+	}
+
 	// Start the controller.
+	// Requires the CYOA network to be created first.
 	if err := d.Controller.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start controller: %w", err)
 	}
@@ -199,16 +205,6 @@ func (d *Devnet) Start(ctx context.Context) error {
 	// Start the activator.
 	if err := d.Activator.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start activator: %w", err)
-	}
-
-	// Create the CYOA network.
-	if err := d.CYOANetwork.Create(ctx); err != nil {
-		return fmt.Errorf("failed to create CYOA network: %w", err)
-	}
-
-	// Connect the controller to the device CYOA network.
-	if err := d.Controller.ConnectToCYOANetwork(ctx); err != nil {
-		return fmt.Errorf("failed to connect controller to device CYOA network: %w", err)
 	}
 
 	// We don't support starting with devices yet.

@@ -122,20 +122,16 @@ func NewSingleDeviceSingleClientTestDevnet(t *testing.T) *TestDevnet {
 			CIDRPrefix: subnetCIDRPrefix,
 		},
 		Ledger: devnet.LedgerSpec{
-			ContainerImage:     os.Getenv("DZ_LEDGER_IMAGE"),
 			ProgramKeypairPath: programKeypairPath,
 		},
 		Manager: devnet.ManagerSpec{
-			ContainerImage: os.Getenv("DZ_MANAGER_IMAGE"),
-			KeypairPath:    managerKeypairPath,
+			KeypairPath: managerKeypairPath,
 		},
 		Controller: devnet.ControllerSpec{
-			ContainerImage: os.Getenv("DZ_CONTROLLER_IMAGE"),
-			ExternalHost:   "localhost",
+			ExternalHost:        "localhost",
+			CYOANetworkIPHostID: 5,
 		},
-		Activator: devnet.ActivatorSpec{
-			ContainerImage: os.Getenv("DZ_ACTIVATOR_IMAGE"),
-		},
+		Activator: devnet.ActivatorSpec{},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
 
@@ -161,7 +157,6 @@ func (dn *TestDevnet) Start(t *testing.T) {
 
 	// Add a device to the devnet and onchain.
 	deviceIndex, err := dn.AddDevice(ctx, devnet.DeviceSpec{
-		ContainerImage:      os.Getenv("DZ_DEVICE_IMAGE"),
 		Code:                "ny5-dz01",
 		CYOANetworkIPHostID: 10,
 	})
@@ -202,7 +197,6 @@ func (dn *TestDevnet) Start(t *testing.T) {
 
 	// Add a client to the devnet.
 	clientIndex, err := dn.AddClient(ctx, devnet.ClientSpec{
-		ContainerImage:      os.Getenv("DZ_CLIENT_IMAGE"),
 		KeypairPath:         clientKeypairPath,
 		CYOANetworkIPHostID: 100,
 	})

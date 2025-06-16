@@ -12,7 +12,7 @@ require (
 	github.com/google/gopacket v1.1.19
 	github.com/joho/godotenv v1.5.1
 	github.com/jwhited/corebgp v0.8.5
-	github.com/lmittmann/tint v1.1.1
+	github.com/lmittmann/tint v1.1.2
 	github.com/mr-tron/base58 v1.2.0
 	github.com/osrg/gobgp v2.0.0+incompatible
 	github.com/prometheus-community/pro-bing v0.7.0

@@ -167,20 +167,6 @@ func (m *Manager) InitSmartContract(ctx context.Context) error {
 	return nil
 }
 
-func (d *Devnet) getContainerIPOnNetwork(ctx context.Context, container testcontainers.Container, networkName string) (string, error) {
-	containerInfo, err := d.dockerClient.ContainerInspect(ctx, container.GetContainerID())
-	if err != nil {
-		return "", err
-	}
-
-	network, ok := containerInfo.NetworkSettings.Networks[networkName]
-	if !ok {
-		return "", fmt.Errorf("container not connected to network %q", networkName)
-	}
-
-	return network.IPAddress, nil
-}
-
 func (m *Manager) Exec(ctx context.Context, command []string) ([]byte, error) {
 	m.log.Debug("--> Executing command", "command", command)
 	output, err := docker.Exec(ctx, m.dn.dockerClient, m.ContainerID, command)

@@ -11,7 +11,7 @@ type ContractData struct {
 	Locations []dzsdk.Location
 	Devices   []dzsdk.Device
 	Exchanges []dzsdk.Exchange
-	Tunnels   []dzsdk.Tunnel
+	Links     []dzsdk.Link
 	Users     []dzsdk.User
 }
 

@@ -8,7 +8,7 @@ const (
 	LocationType
 	ExchangeType
 	DeviceType
-	TunnelType
+	LinkType
 	UserType
 	MulticastGroupType
 )
@@ -101,36 +101,36 @@ type Device struct {
 	PubKey         [32]byte
 }
 
-type TunnelTunnelType uint8
+type LinkLinkType uint8
 
 const (
-	TunnelTunnelTypeMPLSoverGRE TunnelTunnelType = iota + 1
+	LinkLinkTypeMPLSoverGRE LinkLinkType = iota + 1
 )
 
-type TunnelStatus uint8
+type LinkStatus uint8
 
 const (
-	TunnelStatusPending TunnelStatus = iota
-	TunnelStatusActivated
-	TunnelStatusSuspended
-	TunnelStatusDeleted
+	LinkStatusPending LinkStatus = iota
+	LinkStatusActivated
+	LinkStatusSuspended
+	LinkStatusDeleted
 )
 
-type Tunnel struct {
+type Link struct {
 	AccountType AccountType
 	Owner       [32]uint8
 	Index       Uint128
 	Bump_seed   uint8
 	SideAPubKey [32]uint8
 	SideZPubKey [32]uint8
-	TunnelType  TunnelTunnelType
+	LinkType    LinkLinkType
 	Bandwidth   uint64
 	Mtu         uint32
 	DelayNs     uint64
 	JitterNs    uint64
 	TunnelId    uint16
 	TunnelNet   [5]uint8
-	Status      TunnelStatus
+	Status      LinkStatus
 	Code        string
 	PubKey      [32]byte
 }

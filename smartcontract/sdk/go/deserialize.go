@@ -56,23 +56,23 @@ func DeserializeDevice(reader *ByteReader, dev *Device) {
 	dev.PubKey = reader.ReadPubkey()
 }
 
-func DeserializeTunnel(reader *ByteReader, tunnel *Tunnel) {
-	tunnel.AccountType = AccountType(reader.ReadU8())
-	tunnel.Owner = reader.ReadPubkey()
-	tunnel.Index = reader.ReadU128()
-	tunnel.Bump_seed = reader.ReadU8()
-	tunnel.SideAPubKey = reader.ReadPubkey()
-	tunnel.SideZPubKey = reader.ReadPubkey()
-	tunnel.TunnelType = TunnelTunnelType(reader.ReadU8())
-	tunnel.Bandwidth = reader.ReadU64()
-	tunnel.Mtu = reader.ReadU32()
-	tunnel.DelayNs = reader.ReadU64()
-	tunnel.JitterNs = reader.ReadU64()
-	tunnel.TunnelId = reader.ReadU16()
-	tunnel.TunnelNet = reader.ReadNetworkV4()
-	tunnel.Status = TunnelStatus(reader.ReadU8())
-	tunnel.Code = reader.ReadString()
-	tunnel.PubKey = reader.ReadPubkey()
+func DeserializeLink(reader *ByteReader, link *Link) {
+	link.AccountType = AccountType(reader.ReadU8())
+	link.Owner = reader.ReadPubkey()
+	link.Index = reader.ReadU128()
+	link.Bump_seed = reader.ReadU8()
+	link.SideAPubKey = reader.ReadPubkey()
+	link.SideZPubKey = reader.ReadPubkey()
+	link.LinkType = LinkLinkType(reader.ReadU8())
+	link.Bandwidth = reader.ReadU64()
+	link.Mtu = reader.ReadU32()
+	link.DelayNs = reader.ReadU64()
+	link.JitterNs = reader.ReadU64()
+	link.TunnelId = reader.ReadU16()
+	link.TunnelNet = reader.ReadNetworkV4()
+	link.Status = LinkStatus(reader.ReadU8())
+	link.Code = reader.ReadString()
+	link.PubKey = reader.ReadPubkey()
 }
 
 func DeserializeUser(reader *ByteReader, user *User) {

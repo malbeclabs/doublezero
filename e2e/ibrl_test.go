@@ -213,7 +213,6 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 
 		if !t.Run("only_one_tunnel_allowed", func(t *testing.T) {
 			dn.CreateMulticastGroupOnchain(t, client, "mg01")
-			// dn.ConnectMulticastPublisher(t, client, "mg01")
 
 			_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast publisher mg01 --client-ip " + clientSpec.CYOANetworkIP})
 			require.Error(t, err, "User with different type already exists. Only one tunnel currently supported")

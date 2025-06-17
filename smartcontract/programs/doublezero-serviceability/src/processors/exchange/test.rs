@@ -73,7 +73,8 @@ mod exchange_test {
         let exchange_la = get_account_data(&mut banks_client, exchange_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_exchange();
+            .get_exchange()
+            .unwrap();
         assert_eq!(exchange_la.account_type, AccountType::Exchange);
         assert_eq!(exchange_la.code, "la".to_string());
         assert_eq!(exchange_la.status, ExchangeStatus::Activated);
@@ -100,7 +101,8 @@ mod exchange_test {
         let exchange_la = get_account_data(&mut banks_client, exchange_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_exchange();
+            .get_exchange()
+            .unwrap();
         assert_eq!(exchange_la.account_type, AccountType::Exchange);
         assert_eq!(exchange_la.status, ExchangeStatus::Suspended);
 
@@ -126,7 +128,8 @@ mod exchange_test {
         let exchange = get_account_data(&mut banks_client, exchange_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_exchange();
+            .get_exchange()
+            .unwrap();
         assert_eq!(exchange.account_type, AccountType::Exchange);
         assert_eq!(exchange.status, ExchangeStatus::Activated);
 
@@ -157,7 +160,8 @@ mod exchange_test {
         let exchange_la = get_account_data(&mut banks_client, exchange_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_exchange();
+            .get_exchange()
+            .unwrap();
         assert_eq!(exchange_la.account_type, AccountType::Exchange);
         assert_eq!(exchange_la.code, "la2".to_string());
         assert_eq!(exchange_la.name, "Los Angeles - Los Angeles".to_string());

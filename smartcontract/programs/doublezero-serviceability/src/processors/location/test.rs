@@ -73,7 +73,8 @@ mod location_test {
         let location_la = get_account_data(&mut banks_client, location_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_location();
+            .get_location()
+            .unwrap();
         assert_eq!(location_la.account_type, AccountType::Location);
         assert_eq!(location_la.code, "la".to_string());
         assert_eq!(location_la.status, LocationStatus::Activated);
@@ -100,7 +101,8 @@ mod location_test {
         let location_la = get_account_data(&mut banks_client, location_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_location();
+            .get_location()
+            .unwrap();
         assert_eq!(location_la.account_type, AccountType::Location);
         assert_eq!(location_la.status, LocationStatus::Suspended);
 
@@ -126,7 +128,8 @@ mod location_test {
         let location = get_account_data(&mut banks_client, location_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_location();
+            .get_location()
+            .unwrap();
         assert_eq!(location.account_type, AccountType::Location);
         assert_eq!(location.status, LocationStatus::Activated);
 
@@ -158,7 +161,8 @@ mod location_test {
         let location_la = get_account_data(&mut banks_client, location_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_location();
+            .get_location()
+            .unwrap();
         assert_eq!(location_la.account_type, AccountType::Location);
         assert_eq!(location_la.code, "la2".to_string());
         assert_eq!(location_la.name, "Los Angeles - Los Angeles".to_string());

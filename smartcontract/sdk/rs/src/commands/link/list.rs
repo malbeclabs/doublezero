@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
 use crate::DoubleZeroClient;
-use doublezero_serviceability::state::{
-    accountdata::AccountData, accounttype::AccountType, link::Link,
+use doublezero_serviceability::{
+    error::DoubleZeroError,
+    state::{accountdata::AccountData, accounttype::AccountType, link::Link},
 };
 use solana_sdk::pubkey::Pubkey;
 
@@ -11,13 +12,13 @@ pub struct ListLinkCommand {}
 
 impl ListLinkCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<HashMap<Pubkey, Link>> {
-        Ok(client
+        client
             .gets(AccountType::Link)?
             .into_iter()
             .map(|(k, v)| match v {
-                AccountData::Link(tunnel) => (k, tunnel),
-                _ => panic!("Invalid Account Type"),
+                AccountData::Link(tunnel) => Ok((k, tunnel)),
+                _ => Err(DoubleZeroError::InvalidAccountType.into()),
             })
-            .collect())
+            .collect()
     }
 }

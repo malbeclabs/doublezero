@@ -74,7 +74,8 @@ mod multicastgroup_test {
         let multicastgroup_la = get_account_data(&mut banks_client, multicastgroup_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_multicastgroup();
+            .get_multicastgroup()
+            .unwrap();
         assert_eq!(multicastgroup_la.account_type, AccountType::MulticastGroup);
         assert_eq!(multicastgroup_la.code, "la".to_string());
         assert_eq!(multicastgroup_la.multicast_ip, [0, 0, 0, 0]);
@@ -106,7 +107,8 @@ mod multicastgroup_test {
         let multicastgroup_la = get_account_data(&mut banks_client, multicastgroup_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_multicastgroup();
+            .get_multicastgroup()
+            .unwrap();
         assert_eq!(multicastgroup_la.account_type, AccountType::MulticastGroup);
         assert_eq!(multicastgroup_la.code, "la".to_string());
         assert_eq!(multicastgroup_la.multicast_ip, [224, 0, 0, 0]);
@@ -134,7 +136,8 @@ mod multicastgroup_test {
         let multicastgroup_la = get_account_data(&mut banks_client, multicastgroup_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_multicastgroup();
+            .get_multicastgroup()
+            .unwrap();
         assert_eq!(multicastgroup_la.account_type, AccountType::MulticastGroup);
         assert_eq!(multicastgroup_la.status, MulticastGroupStatus::Suspended);
 
@@ -160,7 +163,8 @@ mod multicastgroup_test {
         let multicastgroup = get_account_data(&mut banks_client, multicastgroup_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_multicastgroup();
+            .get_multicastgroup()
+            .unwrap();
         assert_eq!(multicastgroup.account_type, AccountType::MulticastGroup);
         assert_eq!(multicastgroup.status, MulticastGroupStatus::Activated);
 
@@ -189,7 +193,8 @@ mod multicastgroup_test {
         let multicastgroup_la = get_account_data(&mut banks_client, multicastgroup_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_multicastgroup();
+            .get_multicastgroup()
+            .unwrap();
         assert_eq!(multicastgroup_la.account_type, AccountType::MulticastGroup);
         assert_eq!(multicastgroup_la.code, "la2".to_string());
         assert_eq!(multicastgroup_la.status, MulticastGroupStatus::Activated);
@@ -216,7 +221,8 @@ mod multicastgroup_test {
         let multicastgroup_la = get_account_data(&mut banks_client, multicastgroup_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_multicastgroup();
+            .get_multicastgroup()
+            .unwrap();
         assert_eq!(multicastgroup_la.account_type, AccountType::MulticastGroup);
         assert_eq!(multicastgroup_la.code, "la2".to_string());
         assert_eq!(multicastgroup_la.status, MulticastGroupStatus::Deleting);

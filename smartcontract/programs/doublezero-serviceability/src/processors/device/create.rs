@@ -62,7 +62,7 @@ pub fn process_create_device(
         return Err(ProgramError::AccountAlreadyInitialized);
     }
     if globalstate_account.data.borrow().is_empty() {
-        panic!("GlobalState account not initialized");
+        return Err(ProgramError::UninitializedAccount);
     }
     let globalstate = globalstate_get_next(globalstate_account)?;
     assert_eq!(

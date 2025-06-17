@@ -232,7 +232,8 @@ mod tunnel_test {
         let tunnel_la = get_account_data(&mut banks_client, tunnel_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_tunnel();
+            .get_tunnel()
+            .unwrap();
         assert_eq!(tunnel_la.account_type, AccountType::Link);
         assert_eq!(tunnel_la.code, "la".to_string());
         assert_eq!(tunnel_la.status, LinkStatus::Pending);
@@ -262,7 +263,8 @@ mod tunnel_test {
         let tunnel_la = get_account_data(&mut banks_client, tunnel_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_tunnel();
+            .get_tunnel()
+            .unwrap();
         assert_eq!(tunnel_la.account_type, AccountType::Link);
         assert_eq!(tunnel_la.tunnel_id, 500);
         assert_eq!(tunnel_la.tunnel_net, ([10, 0, 0, 0], 21));
@@ -287,7 +289,8 @@ mod tunnel_test {
         let tunnel_la = get_account_data(&mut banks_client, tunnel_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_tunnel();
+            .get_tunnel()
+            .unwrap();
         assert_eq!(tunnel_la.account_type, AccountType::Link);
         assert_eq!(tunnel_la.status, LinkStatus::Suspended);
 
@@ -310,7 +313,8 @@ mod tunnel_test {
         let tunnel = get_account_data(&mut banks_client, tunnel_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_tunnel();
+            .get_tunnel()
+            .unwrap();
         assert_eq!(tunnel.account_type, AccountType::Link);
         assert_eq!(tunnel.status, LinkStatus::Activated);
 
@@ -342,7 +346,8 @@ mod tunnel_test {
         let tunnel_la = get_account_data(&mut banks_client, tunnel_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_tunnel();
+            .get_tunnel()
+            .unwrap();
         assert_eq!(tunnel_la.account_type, AccountType::Link);
         assert_eq!(tunnel_la.code, "la2".to_string());
         assert_eq!(tunnel_la.bandwidth, 2000000000);
@@ -373,7 +378,8 @@ mod tunnel_test {
         let tunnel_la = get_account_data(&mut banks_client, tunnel_pubkey)
             .await
             .expect("Unable to get Account")
-            .get_tunnel();
+            .get_tunnel()
+            .unwrap();
         assert_eq!(tunnel_la.account_type, AccountType::Link);
         assert_eq!(tunnel_la.code, "la2".to_string());
         assert_eq!(tunnel_la.bandwidth, 2000000000);

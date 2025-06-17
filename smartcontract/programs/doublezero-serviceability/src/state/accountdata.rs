@@ -1,7 +1,10 @@
-use crate::state::{
-    accounttype::AccountType, device::Device, exchange::Exchange, globalconfig::GlobalConfig,
-    globalstate::GlobalState, link::Link, location::Location, multicastgroup::MulticastGroup,
-    user::User,
+use crate::{
+    error::DoubleZeroError,
+    state::{
+        accounttype::AccountType, device::Device, exchange::Exchange, globalconfig::GlobalConfig,
+        globalstate::GlobalState, link::Link, location::Location, multicastgroup::MulticastGroup,
+        user::User,
+    },
 };
 
 #[derive(Debug, PartialEq)]
@@ -46,67 +49,67 @@ impl AccountData {
         }
     }
 
-    pub fn get_global_state(&self) -> GlobalState {
+    pub fn get_global_state(&self) -> Result<GlobalState, DoubleZeroError> {
         if let AccountData::GlobalState(global_state) = self {
-            global_state.clone()
+            Ok(global_state.clone())
         } else {
-            panic!("Invalid Account Type")
+            Err(DoubleZeroError::InvalidAccountType)
         }
     }
 
-    pub fn get_global_config(&self) -> GlobalConfig {
+    pub fn get_global_config(&self) -> Result<GlobalConfig, DoubleZeroError> {
         if let AccountData::GlobalConfig(global_config) = self {
-            global_config.clone()
+            Ok(global_config.clone())
         } else {
-            panic!("Invalid Account Type")
+            Err(DoubleZeroError::InvalidAccountType)
         }
     }
 
-    pub fn get_location(&self) -> Location {
+    pub fn get_location(&self) -> Result<Location, DoubleZeroError> {
         if let AccountData::Location(location) = self {
-            location.clone()
+            Ok(location.clone())
         } else {
-            panic!("Invalid Account Type")
+            Err(DoubleZeroError::InvalidAccountType)
         }
     }
 
-    pub fn get_exchange(&self) -> Exchange {
+    pub fn get_exchange(&self) -> Result<Exchange, DoubleZeroError> {
         if let AccountData::Exchange(exchange) = self {
-            exchange.clone()
+            Ok(exchange.clone())
         } else {
-            panic!("Invalid Account Type")
+            Err(DoubleZeroError::InvalidAccountType)
         }
     }
 
-    pub fn get_device(&self) -> Device {
+    pub fn get_device(&self) -> Result<Device, DoubleZeroError> {
         if let AccountData::Device(device) = self {
-            device.clone()
+            Ok(device.clone())
         } else {
-            panic!("Invalid Account Type")
+            Err(DoubleZeroError::InvalidAccountType)
         }
     }
 
-    pub fn get_tunnel(&self) -> Link {
+    pub fn get_tunnel(&self) -> Result<Link, DoubleZeroError> {
         if let AccountData::Link(tunnel) = self {
-            tunnel.clone()
+            Ok(tunnel.clone())
         } else {
-            panic!("Invalid Account Type")
+            Err(DoubleZeroError::InvalidAccountType)
         }
     }
 
-    pub fn get_user(&self) -> User {
+    pub fn get_user(&self) -> Result<User, DoubleZeroError> {
         if let AccountData::User(user) = self {
-            user.clone()
+            Ok(user.clone())
         } else {
-            panic!("Invalid Account Type")
+            Err(DoubleZeroError::InvalidAccountType)
         }
     }
 
-    pub fn get_multicastgroup(&self) -> MulticastGroup {
+    pub fn get_multicastgroup(&self) -> Result<MulticastGroup, DoubleZeroError> {
         if let AccountData::MulticastGroup(multicastgroup) = self {
-            multicastgroup.clone()
+            Ok(multicastgroup.clone())
         } else {
-            panic!("Invalid Account Type")
+            Err(DoubleZeroError::InvalidAccountType)
         }
     }
 }

@@ -26,6 +26,7 @@ impl From<u8> for UserType {
             1 => UserType::IBRLWithAllocatedIP,
             2 => UserType::EdgeFiltering,
             3 => UserType::Multicast,
+            // TODO: leaving this as it unwinds a lot of things and doesn't seem worth the effort at this time
             _ => panic!("Unknown UserType"),
         }
     }

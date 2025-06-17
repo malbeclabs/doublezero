@@ -1,6 +1,7 @@
 use crate::DoubleZeroClient;
-use doublezero_serviceability::state::{
-    accountdata::AccountData, accounttype::AccountType, location::Location,
+use doublezero_serviceability::{
+    error::DoubleZeroError,
+    state::{accountdata::AccountData, accounttype::AccountType, location::Location},
 };
 use solana_sdk::pubkey::Pubkey;
 use std::collections::HashMap;
@@ -13,14 +14,14 @@ impl ListLocationCommand {
         &self,
         client: &dyn DoubleZeroClient,
     ) -> eyre::Result<HashMap<Pubkey, Location>> {
-        Ok(client
+        client
             .gets(AccountType::Location)?
             .into_iter()
             .map(|(k, v)| match v {
-                AccountData::Location(location) => (k, location),
-                _ => panic!("Invalid Account Type"),
+                AccountData::Location(location) => Ok((k, location)),
+                _ => Err(DoubleZeroError::InvalidAccountType.into()),
             })
-            .collect())
+            .collect()
     }
 }
 

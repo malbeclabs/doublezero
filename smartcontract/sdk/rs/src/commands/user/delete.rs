@@ -28,7 +28,8 @@ impl DeleteUserCommand {
         let user = client
             .get(user_pubkey)
             .map_err(|_| eyre::eyre!("User not found ({})", user_pubkey))?
-            .get_user();
+            .get_user()
+            .map_err(|e| eyre::eyre!(e))?;
 
         for mgroup_pk in user.publishers.iter().chain(user.subscribers.iter()) {
             SubscribeMulticastGroupCommand {

@@ -28,7 +28,8 @@ impl DeleteMulticastGroupCommand {
         let mgroup = client
             .get(mgroup_pubkey)
             .map_err(|_| eyre::eyre!("MulticastGroup not found ({})", mgroup_pubkey))?
-            .get_multicastgroup();
+            .get_multicastgroup()
+            .map_err(|e| eyre::eyre!(e))?;
 
         for user_pk in mgroup.publishers.iter().chain(mgroup.subscribers.iter()) {
             SubscribeMulticastGroupCommand {

@@ -81,9 +81,9 @@ impl CreateSubscribeUserCliCommand {
             client_ip: ipv4_parse(&self.client_ip),
             publisher: publisher_pk.is_some(),
             subscriber: subscriber_pk.is_some(),
-            mgroup_pk: publisher_pk.unwrap_or_else(|| {
-                subscriber_pk.expect("Subscriber is required if publisher is not")
-            }),
+            mgroup_pk: publisher_pk
+                .or(subscriber_pk)
+                .ok_or(eyre::eyre!("Subscriber is required if publisher is not"))?,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 

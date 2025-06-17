@@ -20,15 +20,15 @@ pub fn create_influxdb_metrics_service(
     org: Option<&str>,
     token: Option<&str>,
     bucket: Option<&str>,
-) -> (
+) -> eyre::Result<(
     Box<dyn MetricsService + Send + Sync>,
     InfluxDBMetricsSubmitter,
-) {
+)> {
     let (tx, rx) = tokio::sync::mpsc::channel(16);
-    (
+    Ok((
         Box::new(InfluxDBMetricsService { sender: tx }),
-        InfluxDBMetricsSubmitter::new(host, org, token, bucket, rx),
-    )
+        InfluxDBMetricsSubmitter::new(host, org, token, bucket, rx)?,
+    ))
 }
 
 impl InfluxDBMetricsService {
@@ -71,22 +71,24 @@ impl InfluxDBMetricsSubmitter {
         token: Option<&str>,
         bucket: Option<&str>,
         receiver: Receiver<String>,
-    ) -> Self {
+    ) -> eyre::Result<Self> {
         match host {
-            Some(host) => InfluxDBMetricsSubmitter {
+            Some(host) => Ok(InfluxDBMetricsSubmitter {
                 client: Some(Client::new(
                     host,
-                    org.expect("Influx org required"),
-                    token.expect("Influx token required"),
+                    org.ok_or_else(|| eyre::eyre!("Influx org required"))?,
+                    token.ok_or_else(|| eyre::eyre!("Influx token required"))?,
                 )),
-                bucket: bucket.expect("Influx bucket required").to_string(),
+                bucket: bucket
+                    .ok_or_else(|| eyre::eyre!("Influx bucket required"))?
+                    .to_string(),
                 receiver,
-            },
-            None => InfluxDBMetricsSubmitter {
+            }),
+            None => Ok(InfluxDBMetricsSubmitter {
                 client: None,
                 bucket: "".to_owned(),
                 receiver,
-            },
+            }),
         }
     }
 

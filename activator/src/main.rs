@@ -57,7 +57,7 @@ async fn main() -> eyre::Result<()> {
             args.influxdb_org.as_deref(),
             args.influxdb_token.as_deref(),
             args.influxdb_bucket.as_deref(),
-        );
+        )?;
 
     let mut activator = activator::Activator::new(
         args.rpc,

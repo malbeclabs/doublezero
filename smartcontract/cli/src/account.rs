@@ -14,7 +14,7 @@ pub struct GetAccountCliCommand {
 impl GetAccountCliCommand {
     pub fn execute<W: Write>(self, client: &DZClient, out: &mut W) -> eyre::Result<()> {
         // Check requirements
-        let pubkey = parse_pubkey(&self.pubkey).expect("Invalid pubkey");
+        let pubkey = parse_pubkey(&self.pubkey).ok_or(eyre::eyre!("Invalid pubkey"))?;
 
         match client.get(pubkey) {
             Ok(account) => {

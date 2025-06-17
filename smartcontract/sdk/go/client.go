@@ -29,7 +29,7 @@ type Client struct {
 	Locations       []Location
 	Exchanges       []Exchange
 	Devices         []Device
-	Tunnels         []Tunnel
+	Links           []Link
 	Users           []User
 	MulticastGroups []MulticastGroup
 }
@@ -68,7 +68,7 @@ func (e *Client) Load(ctx context.Context) error {
 	e.Locations = []Location{}
 	e.Exchanges = []Exchange{}
 	e.Devices = []Device{}
-	e.Tunnels = []Tunnel{}
+	e.Links = []Link{}
 	e.Users = []User{}
 	e.MulticastGroups = []MulticastGroup{}
 
@@ -100,11 +100,11 @@ func (e *Client) Load(ctx context.Context) error {
 			DeserializeDevice(reader, &device)
 			device.PubKey = element.Pubkey
 			e.Devices = append(e.Devices, device)
-		case byte(TunnelType):
-			var tunnel Tunnel
-			DeserializeTunnel(reader, &tunnel)
-			tunnel.PubKey = element.Pubkey
-			e.Tunnels = append(e.Tunnels, tunnel)
+		case byte(LinkType):
+			var link Link
+			DeserializeLink(reader, &link)
+			link.PubKey = element.Pubkey
+			e.Links = append(e.Links, link)
 		case byte(UserType):
 			var user User
 			DeserializeUser(reader, &user)
@@ -140,8 +140,8 @@ func (s *Client) GetConfig() Config {
 	return s.Config
 }
 
-func (s *Client) GetTunnels() []Tunnel {
-	return s.Tunnels
+func (s *Client) GetLinks() []Link {
+	return s.Links
 }
 
 func (s *Client) GetMulticastGroups() []MulticastGroup {

@@ -34,7 +34,7 @@ func TestGetConfig(t *testing.T) {
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				Devices: map[string]*Device{
-					"abc123": {
+					"4t6vjgfcmznthnu8npaqjzz7ye3wnwox7kzty1o7yvsg": {
 						Tunnels: []*Tunnel{
 							{
 								Id:            500,
@@ -68,7 +68,7 @@ func TestGetConfig(t *testing.T) {
 					},
 				},
 			},
-			Pubkey: "abc123",
+			Pubkey: "4t6vjgfcmznthnu8npaqjzz7ye3wnwox7kzty1o7yvsg",
 			Want:   "fixtures/unicast.tunnel.txt",
 		},
 		{
@@ -79,7 +79,7 @@ func TestGetConfig(t *testing.T) {
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				Devices: map[string]*Device{
-					"abc123": {
+					"4t6vjgfcmznthnu8npaqjzz7ye3wnwox7kzty1o7yvsg": {
 						Tunnels: []*Tunnel{
 							{
 								Id:            500,
@@ -146,7 +146,7 @@ func TestGetConfig(t *testing.T) {
 					},
 				},
 			},
-			Pubkey: "abc123",
+			Pubkey: "4t6vjgfcmznthnu8npaqjzz7ye3wnwox7kzty1o7yvsg",
 			Want:   "fixtures/multicast.tunnel.txt",
 		},
 		{
@@ -157,7 +157,7 @@ func TestGetConfig(t *testing.T) {
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				Devices: map[string]*Device{
-					"abc123": {
+					"4t6vjgfcmznthnu8npaqjzz7ye3wnwox7kzty1o7yvsg": {
 						Tunnels: []*Tunnel{
 							{
 								Id:            500,
@@ -235,7 +235,7 @@ func TestGetConfig(t *testing.T) {
 					},
 				},
 			},
-			Pubkey: "abc123",
+			Pubkey: "4t6vjgfcmznthnu8npaqjzz7ye3wnwox7kzty1o7yvsg",
 			Want:   "fixtures/mixed.tunnel.txt",
 		},
 		{
@@ -247,7 +247,7 @@ func TestGetConfig(t *testing.T) {
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				Devices: map[string]*Device{
-					"abc123": {
+					"4t6vjgfcmznthnu8npaqjzz7ye3wnwox7kzty1o7yvsg": {
 						Tunnels: []*Tunnel{
 							{
 								Id:            500,
@@ -325,7 +325,7 @@ func TestGetConfig(t *testing.T) {
 					},
 				},
 			},
-			Pubkey: "abc123",
+			Pubkey: "4t6vjgfcmznthnu8npaqjzz7ye3wnwox7kzty1o7yvsg",
 			Want:   "fixtures/nohardware.tunnel.txt",
 		},
 	}

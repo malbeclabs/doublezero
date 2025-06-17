@@ -324,7 +324,6 @@ func (c *Controller) Run(ctx context.Context) error {
 	case err := <-errChan:
 		return err
 	}
-
 }
 
 // GetConfig renders the latest device configuration based on cached device data
@@ -332,6 +331,25 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 	getConfigOps.WithLabelValues(req.GetPubkey()).Inc()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+	decoded, err := base58.Decode(req.GetPubkey())
+	if err != nil {
+		err := status.Errorf(codes.InvalidArgument, "pubkey %s is not a valid base58 string: %v", req.Pubkey, err)
+		return nil, err
+	}
+
+	if len(decoded) != 32 {
+		err := status.Errorf(codes.InvalidArgument, "pubkey %s is length %d, expected 32", req.Pubkey, len(decoded))
+		return nil, err
+	}
+
+	var publicKey solana.PublicKey
+	copy(publicKey[:], decoded)
+	if !publicKey.IsOnCurve() {
+		err := status.Errorf(codes.InvalidArgument, "pubkey %s is not a valid public key", req.Pubkey)
+		return nil, err
+
+	}
+
 	device, ok := c.cache.Devices[req.GetPubkey()]
 	if !ok {
 		getConfigPubkeyErrors.WithLabelValues(req.GetPubkey()).Inc()

@@ -70,11 +70,13 @@ func NewController(options ...Option) (*Controller, error) {
 			if err != nil {
 				return nil, fmt.Errorf("invalid program id %s: %v", controller.programId, err)
 			}
-			slog.Info("starting with smartcontract", "program-id", controller.programId)
 			options = append(options, dzsdk.WithProgramId(controller.programId))
 		}
 		if controller.rpcEndpoint == "" {
 			controller.rpcEndpoint = dzsdk.URL_DOUBLEZERO
+		}
+		if controller.programId == "" {
+			controller.programId = dzsdk.PROGRAM_ID_TESTNET
 		}
 		controller.accountFetcher = dzsdk.New(controller.rpcEndpoint, options...)
 	}
@@ -282,6 +284,7 @@ func (c *Controller) Run(ctx context.Context) error {
 
 	// start on-chain fetcher
 	go func() {
+		slog.Info("starting fetch of on-chain data", "program-id", c.programId, "rpc-endpoint", c.rpcEndpoint)
 		if err := c.updateStateCache(ctx); err != nil {
 			cacheUpdateErrors.Inc()
 			slog.Error("error fetching accounts", "error", err)

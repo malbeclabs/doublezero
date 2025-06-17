@@ -25,6 +25,9 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Allow TWAMP traffic.
+iptables -I INPUT -p udp --dport 862 -j ACCEPT
+
 # Start the device.
 exec /sbin/init \
     systemd.setenv=INTFTYPE=eth \

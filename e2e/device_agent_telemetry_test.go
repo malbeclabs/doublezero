@@ -5,8 +5,10 @@ package e2e_test
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
@@ -122,4 +124,27 @@ func TestE2E_DeviceAgentTelemetry(t *testing.T) {
 	require.NoError(t, err)
 	_, err = dn.Devices[1].Exec(context.Background(), []string{"ping", "-c", "1", dn.Devices[0].CYOANetworkIP})
 	require.NoError(t, err)
+
+	// Check that TWAMP probes work between the devices.
+	// TODO(snormore): Remove this when we have agent telemetry implemented, and check that instead.
+	log.Info("==> Checking that TWAMP probes work between the devices")
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	sender := dn.Devices[1]
+	reflector := dn.Devices[0]
+	go func() {
+		_, err = reflector.Exec(ctx, []string{"twamp-reflector"})
+		require.NoError(t, err)
+	}()
+	require.Eventually(t, func() bool {
+		_, err := reflector.Exec(t.Context(), []string{"bash", "-c", "ss -uln '( dport = :862 )' | grep -q ."})
+		return err == nil
+	}, 3*time.Second, 100*time.Millisecond)
+	output, err := sender.Exec(t.Context(), []string{"twamp-sender", reflector.CYOANetworkIP})
+	require.NoError(t, err)
+	log.Info("TWAMP sender output", "output", string(output))
+	require.Contains(t, string(output), "RTT:")
+	rtt, err := time.ParseDuration(strings.TrimSpace(strings.TrimPrefix(string(output), "RTT: ")))
+	require.NoError(t, err)
+	require.Greater(t, rtt, 0*time.Millisecond)
 }

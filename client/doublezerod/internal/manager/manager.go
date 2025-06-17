@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"sync"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
@@ -50,6 +51,7 @@ type NetlinkManager struct {
 	bgp              BGPServer
 	db               services.DBReaderWriter
 	pim              services.PIMWriter
+	mu               sync.Mutex
 }
 
 // CreateService creates the appropriate service based on the provisioned
@@ -79,6 +81,9 @@ func NewNetlinkManager(netlink routing.Netlinker, bgp BGPServer, db services.DBR
 // tunnel is provisioned, the original request is saved to disk so we're able to
 // handle service restarts.
 func (n *NetlinkManager) Provision(pr api.ProvisionRequest) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
 	svc, err := CreateService(pr.UserType, n.bgp, n.netlink, n.db, n.pim)
 	if err != nil {
 		return fmt.Errorf("error creating service: %v", err)
@@ -91,6 +96,7 @@ func (n *NetlinkManager) Provision(pr api.ProvisionRequest) error {
 	if n.UnicastService != nil && svc.ServiceType() == services.ServiceTypeUnicast {
 		return fmt.Errorf("unicast service already provisioned")
 	}
+
 	if n.MulticastService != nil && svc.ServiceType() == services.ServiceTypeMulticast {
 		return fmt.Errorf("multicast service already provisioned")
 	}
@@ -113,6 +119,9 @@ func (n *NetlinkManager) Provision(pr api.ProvisionRequest) error {
 
 // Remove is the entry point for service deprovisioning.
 func (n *NetlinkManager) Remove(u api.UserType) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
 	// We've never been provisioned
 	if n.db.GetState() == nil {
 		return nil
@@ -146,6 +155,9 @@ func (n *NetlinkManager) Remove(u api.UserType) error {
 // Close tears down any active services. This is typically called when
 // manager is shutting down. Per-service state is not deleted from the db.
 func (n *NetlinkManager) Close() error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
 	var teardownErr error
 	if n.UnicastService == nil && n.MulticastService == nil {
 		return nil
@@ -211,6 +223,9 @@ func (n *NetlinkManager) Recover() error {
 //
 // Status returns the status of all provisioned services.
 func (n *NetlinkManager) Status() ([]*api.StatusResponse, error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
 	resp := []*api.StatusResponse{}
 	if n.UnicastService != nil {
 		status, err := n.UnicastService.Status()

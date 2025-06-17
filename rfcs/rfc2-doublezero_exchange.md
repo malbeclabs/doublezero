@@ -8,20 +8,21 @@ As the number of DZDs in a metro grows, typically beyond four, the complexity an
 
 In the long term, the DZX aligns with the DZ project’s strategic vision of permissionless networking by serving as a physical access point to enable future contributors to join the network. DZD connections could be governed and validated by smart contracts, automated provisioning, verification and ongoing compliance.
 
-The design considerations for a DZX should focus on:
-- Enabling a globally contiguous DZ network
-- Expanding decentralization
+### Design considerations
+A successful design:
+- Enables a globally contiguous DZ network
+- Expands decentralization
   - Multiple DZX operators
   - Multiple data-center vendors
-- Intent being captured with a smart-contract
-- Automation of logical components
-- Enhance the vision of permissionless networking
+- Captures intent with a smart-contract
+- Automates logical components
+- Enhances the vision of permissionless networking
 
-Note that [DZX Economics](https://www.notion.so/DZX-Economics-2088eaaee713801f95aaf84a5003314c?source=copy_link) provides detail on the econimic model and potential incentives for operating a DZX.  This document does not consider the pros or cons of single or dual-ownership.
+Note that [DZX Economics](https://www.notion.so/DZX-Economics-2088eaaee713801f95aaf84a5003314c?source=copy_link) provides detail on the economic model and potential incentives for operating a DZX.  This document does not consider the pros or cons of single or dual-ownership.
 
 ## Motivation
 
-The DZX is required as the ecosystem expands beyond three DZDs in specific metros.  This is an already identified requirement in multiple major metro areas such as New York City, London, Frankfurt and others.
+The DZX is required as the ecosystem expands beyond three DZDs in specific metros.  By Q2 2025 we had identified this requirement in multiple major metro areas such as New York City, London, Frankfurt and others.
 
 Consider the evolution of DZ as it expands into new cities and metros:
 - Single DZD, single contributor
@@ -68,56 +69,19 @@ The motivation for the DZX is to allow DZ to scale to maximize reach and decentr
 
 ### High-Level Physical Topology Options
 
-<img src="rfc1/images/DZX-Topologies.png" alt="DZX Option 1" width="1000"/>
+<img src="rfc2/images/DZX-Topologies.png" alt="DZX Option 1" width="1000"/>
 Figure 1: DZX Topology Options
 
-#### Option 1
-- The simplest DZX setup
-- A single switch that requires links from each contributor in the metro
-  - Links may be:
-    - Cross-connects within a campus
-    - Tail circuits between different data centers across cities
+| Option     | Description | Pros | Cons |
+|------------|-------------|------|------|
+| **Option 1** | - Simplest DZX setup<br>- Single switch requiring links from each contributor in the metro<br>  - Links may be:<br>    - Cross-connects within a campus<br>    - Tail circuits across cities | - Simple<br>- Cheap<br>- Quickest time to market | - Highly centralized<br>- Single point of failure<br>- Scalability limited to at most the number of ports on the switch |
+| **Option 2** | - Redundant DZX switches operated by multiple Operators across two strategic data centers<br>- Requires only one DZX connection per DZD<br>- Requires interconnect between DZX switches | - Increased decentralization<br>- No single point of failure<br>- Contributors can choose their DZX Operator | - Risk of network discontinuity if interconnect fails or an Operator stops participating<br>- Scalability limited to ~2× switch port count<br>  - Depends on L2 vs. L3 switch operation |
+| **Option 3** | - Redundant DZX switches operated by multiple Operators across two strategic data centers<br>- Each contributor must purchase links to both DZXs<br>- No interdependence between DZX Operators | - Most decentralized<br>- Highest redundancy | - Most expensive for Network Contributors |
 
-Pros
-- Simple
-- Cheap
-- Quickest time to market
 
-Cons
-- Highly centralized
-- Single point of failure
-- Scalability limited to at most the number of ports available on the switch*
+### 7280CR3A port speed options: 
 
-#### Option 2
-- Redundant DZX switches operated by multiple Operators across two strategic data centers
-- Requires only a single DZX connection per DZD
-- Requires DZX switches to have interconnect to ensure contiguous network
-
-Pros
-- Increased decentralization
-- More resilient network without single point of failure (compare to option 1)
-- Optionality for network contributors to choose their DZX Operator
-
-Cons
-- Risk that a single entity is able to create a discontiguous network if they cease to operate the DZX to DZX interlink
-- Scalability realistically limited to twice the ports available per switch, similar to option 1 
-  - Dependent on whether switches operate at layer 2 or layer 3
-
-#### Option 3
-- Redundant DZX switches operated by multiple Operators across two strategic data centers 
-- Requires each Network Contributor to purchase links to each DZX to ensure contiguous network
-- No dependency between DZX operators
-
-Pros
-- Most decentralized
-- Highest redundancy
-
-Cons
-- Most expensive for Network Contributors
-
-*7280CR3A port speed options: 
-
-<img src="rfc1/images/DZX-Arista7280-PortOptions.png" alt="DZX Option 1rista 7280 POrt Options" width="600"/>
+<img src="rfc2/images/DZX-Arista7280-PortOptions.png" alt="DZX Option 1rista 7280 POrt Options" width="600"/>
 
 [Arista 7280 Datasheet](https://www.arista.com/assets/data/pdf/Datasheets/7280R3A-Datasheet.pdf) 
 
@@ -135,7 +99,7 @@ Cons
   - Prevents an arms race in the metro
 - The DZX switch maintains a layer 3 connection for telemetry
 
-<img src="rfc1/images/DZX-Logical-L2.png" alt="DZX Logical Layer 2" width="600"/>
+<img src="rfc2/images/DZX-Logical-L2.png" alt="DZX Logical Layer 2" width="600"/>
 
 Figure 2: DZX Logical Layer 2
 
@@ -150,7 +114,7 @@ Pros
 Cons
 - New automation and configuration model to support DZX switch use-case
 - Small switch buffers with Tomahawk may not be sufficient to absorb traffic bursts towards busy DZDs in the metro
-- Limitations of scaling a single broadcast domain i.e. MUST remain loop-free and MUST NOT rely on spanning-tree protocols
+- Limitations of scaling a single broadcast domain, for example the DZX topology MUST remain loop-free and MUST NOT rely on spanning-tree protocols
   - Limited to three DZX switches
     - Is this a real limitation?
 - Complex to integrate within a hybrid community/vendor model
@@ -168,7 +132,7 @@ Cons
   - Helps incentivize diversification out of a single data center
   - Prevents an arms race in the metro
 
-<img src="rfc1/images/DZX-Logical-L3.png" alt="DZX Logical Layer 3" width="600"/>
+<img src="rfc2/images/DZX-Logical-L3.png" alt="DZX Logical Layer 3" width="600"/>
 
 Figure 3: DZX Logical Layer 3
 
@@ -195,7 +159,7 @@ Cons
   - Helps incentivize diversification out of a single data center
   - Prevents an arms race in the metro
 
-<img src="rfc1/images/DZX-Logical-vendor.png" alt="DZX Logical Vendor" width="600"/>
+<img src="rfc2/images/DZX-Logical-vendor.png" alt="DZX Logical Vendor" width="600"/>
 
 Figure 4: DZX Logical Vendor
 
@@ -216,7 +180,7 @@ Cons
   - Helps incentivize diversification out of a single data center
   - Prevents an arms race in the metro
 
-<img src="rfc1/images/DZX-Logical-hybrid.png" alt="DZX Logical Hybrid" width="600"/>
+<img src="rfc2/images/DZX-Logical-hybrid.png" alt="DZX Logical Hybrid" width="600"/>
 
 Figure 5: DZX Logical Vendor
 
@@ -228,9 +192,9 @@ Cons
 - Complexity?
 
 ### Recommendation:
-- Hybrid model with layer 3 DZX switches would offer most optionality while achieving objectives
-- Cost is likely a major consideration with layer 3 DZX i.e. cost of additional 7280CR3/Jericho switches for DZX operator
-- Potential option to start with layer 2 DZX and step into layer 3/hybrid model
+- Hybrid model with layer 3 DZX switches offers most optionality while achieving objectives
+- Cost is likely a major consideration with layer 3 DZX, for example the cost of additional 7280CR3/Jericho switches for DZX operator
+- Potential option to start with layer 2 DZX and step into layer-3/hybrid model
   - Assumes that development effort to create a DZX device and configuration automation is not a major blocker
 
 ## Impact

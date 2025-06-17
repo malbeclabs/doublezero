@@ -84,6 +84,10 @@ func (n *NetlinkManager) Provision(pr api.ProvisionRequest) error {
 		return fmt.Errorf("error creating service: %v", err)
 	}
 
+	if n.UnicastService != nil || n.MulticastService != nil {
+		return fmt.Errorf("cannot provision multiple tunnels at the same time")
+	}
+
 	if n.UnicastService != nil && svc.ServiceType() == services.ServiceTypeUnicast {
 		return fmt.Errorf("unicast service already provisioned")
 	}

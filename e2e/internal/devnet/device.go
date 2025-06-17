@@ -100,8 +100,6 @@ func (d *Device) Start(ctx context.Context) error {
 	spec := d.Spec()
 	d.log.Info("==> Starting device", "image", spec.ContainerImage, "code", spec.Code, "cyoaNetworkIPHostID", spec.CYOANetworkIPHostID)
 
-	cyoaControllerAddr := net.JoinHostPort(d.dn.Controller.CYOANetworkIP, fmt.Sprintf("%d", internalControllerPort))
-
 	ip, err := netutil.DeriveIPFromCIDR(d.dn.CYOANetwork.SubnetCIDR, uint32(spec.CYOANetworkIPHostID))
 	if err != nil {
 		return fmt.Errorf("failed to derive CYOA network IP: %w", err)
@@ -121,8 +119,10 @@ func (d *Device) Start(ctx context.Context) error {
 	}
 	d.log.Info("--> Created device onchain", "code", spec.Code, "cyoaNetworkIP", cyoaNetworkIP, "accountPubkey", accountPubkey)
 
+	controllerAddr := net.JoinHostPort(d.dn.Controller.DefaultNetworkIP, fmt.Sprintf("%d", internalControllerPort))
+
 	commandArgs := []string{
-		"-controller", cyoaControllerAddr,
+		"-controller", controllerAddr,
 		"-pubkey", accountPubkey,
 	}
 

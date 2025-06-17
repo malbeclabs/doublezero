@@ -1,29 +1,14 @@
 #!/bin/bash
 
-# Check for required environment variables.
-if [ -z "${DZ_CONTROLLER_ADDR:-}" ]; then
-    echo "DZ_CONTROLLER_ADDR is not set"
-    exit 1
-fi
-if [ -z "${DZ_AGENT_PUBKEY:-}" ]; then
-    echo "DZ_AGENT_PUBKEY is not set"
-    exit 1
-fi
-if [ -z "${DZ_DEVICE_IP:-}" ]; then
-    echo "DZ_DEVICE_IP is not set"
-    exit 1
-fi
-if [ -z "${DZ_CYOA_NETWORK_CIDR_PREFIX:-}" ]; then
-    echo "DZ_CYOA_NETWORK_CIDR_PREFIX is not set"
-    exit 1
-fi
+# Wait for startup-config to exist.
+config_path="/etc/doublezero/agent/startup-config"
+while [ ! -f "$config_path" ]; do
+    echo "Waiting for $config_path to exist"
+    sleep 1
+done
 
-# Substitute environment variables in the startup config.
-envsubst < /etc/doublezero/agent/startup-config.template > /mnt/flash/startup-config
-if [ $? -ne 0 ]; then
-    echo "Failed to render startup config"
-    exit 1
-fi
+# Copy the startup config to the flash partition.
+cp "$config_path" /mnt/flash/startup-config
 
 # Allow TWAMP traffic.
 iptables -I INPUT -p udp --dport 862 -j ACCEPT

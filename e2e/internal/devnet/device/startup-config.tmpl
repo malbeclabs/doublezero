@@ -9,7 +9,7 @@ vrf instance vrf1
 ip routing vrf vrf1
 !
 daemon doublezero-agent
-   exec /mnt/flash/doublezero-agent -controller ${DZ_CONTROLLER_ADDR} -pubkey ${DZ_AGENT_PUBKEY}
+   exec /mnt/flash/doublezero-agent {{.AgentCommandArgs}}
    no shutdown
 !
 management api http-commands
@@ -52,10 +52,11 @@ interface Loopback0
 !
 interface Ethernet1
    no switchport
-   ip address ${DZ_DEVICE_IP}/${DZ_CYOA_NETWORK_CIDR_PREFIX}
+   ip address {{.CYOANetworkIP}}/{{.CYOANetworkCIDRPrefix}}
 !
 interface Management0
-   shutdown
+   no shutdown
+   ip address {{.DefaultNetworkIP}}/{{.DefaultNetworkCIDRPrefix}}
 !
 ip routing
 !

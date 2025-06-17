@@ -199,7 +199,8 @@ func (d *Device) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to execute template: %w", err)
 	}
-	if err := os.WriteFile(deviceConfigPath, configContents.Bytes(), 0644); err != nil {
+	err = atomicWriteFile(deviceConfigPath, configContents.Bytes())
+	if err != nil {
 		return fmt.Errorf("failed to write device config file: %w", err)
 	}
 
@@ -259,4 +260,27 @@ func (d *Device) Exec(ctx context.Context, command []string) ([]byte, error) {
 		return output, fmt.Errorf("failed to execute command from device: %w", err)
 	}
 	return output, nil
+}
+
+func atomicWriteFile(path string, data []byte) error {
+	tmpFile, err := os.CreateTemp(filepath.Dir(path), "atomic-write-*.tmp")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary config file: %w", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write(data); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("failed to write to temporary config file: %w", err)
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		return fmt.Errorf("failed to close temporary config file: %w", err)
+	}
+
+	if err := os.Rename(tmpFile.Name(), path); err != nil {
+		return fmt.Errorf("failed to rename temporary config file: %w", err)
+	}
+
+	return nil
 }

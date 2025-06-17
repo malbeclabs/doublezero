@@ -203,7 +203,7 @@ func checkMulticastPublisherPostConnect(t *testing.T, dn *TestDevnet, device *de
 		}
 
 		if !t.Run("only_one_tunnel_allowed", func(t *testing.T) {
-			_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect ibrl --client-ip " + clientSpec.CYOANetworkIP})
+			_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect ibrl --client-ip " + client.CYOANetworkIP})
 			require.Error(t, err, "User with different type already exists. Only one tunnel currently supported")
 		}) {
 			t.Fail()

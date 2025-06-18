@@ -2,6 +2,7 @@ use crate::{
     doublezerocommand::CliCommand,
     helpers::parse_pubkey,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+    validators::{validate_pubkey, validate_pubkey_or_code},
 };
 use clap::Args;
 use doublezero_sdk::commands::multicastgroup::{
@@ -12,10 +13,10 @@ use std::io::Write;
 #[derive(Args, Debug)]
 pub struct SubscribeUserCliCommand {
     /// User Pubkey to subscribe
-    #[arg(long)]
+    #[arg(long, value_parser = validate_pubkey)]
     pub user: String,
     /// Multicast group Pubkey or code to subscribe to
-    #[arg(long)]
+    #[arg(long, value_parser = validate_pubkey_or_code)]
     pub group: String,
     /// Subscribe as a publisher
     #[arg(long)]

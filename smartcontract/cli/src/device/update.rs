@@ -1,10 +1,15 @@
 use crate::{
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+    validators::{
+        validate_code, validate_parse_ipv4, validate_parse_networkv4_list, validate_pubkey_or_code,
+    },
 };
 use clap::Args;
 use doublezero_sdk::{
-    commands::device::{get::GetDeviceCommand, update::UpdateDeviceCommand},
+    commands::device::{
+        get::GetDeviceCommand, list::ListDeviceCommand, update::UpdateDeviceCommand,
+    },
     *,
 };
 use std::io::Write;
@@ -12,23 +17,38 @@ use std::io::Write;
 #[derive(Args, Debug)]
 pub struct UpdateDeviceCliCommand {
     /// Device Pubkey to update
-    #[arg(long)]
+    #[arg(long, value_parser = validate_pubkey_or_code)]
     pub pubkey: String,
     /// Updated code for the device
-    #[arg(long)]
+    #[arg(long, value_parser = validate_code)]
     pub code: Option<String>,
     /// Updated public IPv4 address for the device (e.g. 10.0.0.1)
-    #[arg(long)]
-    pub public_ip: Option<String>,
+    #[arg(long, value_parser = validate_parse_ipv4)]
+    pub public_ip: Option<IpV4>,
     /// Updated list of DZ prefixes in comma-separated CIDR format (e.g. 10.1.0.0/16,10.2.0.0/16)
-    #[arg(long)]
-    pub dz_prefixes: Option<String>,
+    #[arg(long, value_parser = validate_parse_networkv4_list)]
+    pub dz_prefixes: Option<NetworkV4List>,
 }
 
 impl UpdateDeviceCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
+
+        let devices = client.list_device(ListDeviceCommand {})?;
+        if let Some(code) = &self.code {
+            if devices.iter().any(|(_, d)| d.code == *code) {
+                return Err(eyre::eyre!("Device with code '{}' already exists", code));
+            }
+        }
+        if let Some(public_ip) = &self.public_ip {
+            if devices.iter().any(|(_, d)| d.public_ip == *public_ip) {
+                return Err(eyre::eyre!(
+                    "Device with public ip '{}' already exists",
+                    ipv4_to_string(public_ip)
+                ));
+            }
+        }
 
         let (_, device) = client.get_device(GetDeviceCommand {
             pubkey_or_code: self.pubkey,
@@ -37,8 +57,8 @@ impl UpdateDeviceCliCommand {
             index: device.index,
             code: self.code,
             device_type: Some(DeviceType::Switch),
-            public_ip: self.public_ip.map(|ip| ipv4_parse(&ip)),
-            dz_prefixes: self.dz_prefixes.map(|ip| networkv4_list_parse(&ip)),
+            public_ip: self.public_ip,
+            dz_prefixes: self.dz_prefixes,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -48,6 +68,8 @@ impl UpdateDeviceCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use crate::{
         device::update::UpdateDeviceCliCommand,
         doublezerocommand::CliCommand,
@@ -55,7 +77,9 @@ mod tests {
         tests::utils::create_test_client,
     };
     use doublezero_sdk::{
-        commands::device::{get::GetDeviceCommand, update::UpdateDeviceCommand},
+        commands::device::{
+            get::GetDeviceCommand, list::ListDeviceCommand, update::UpdateDeviceCommand,
+        },
         get_device_pda, AccountType, Device, DeviceStatus, DeviceType,
     };
     use mockall::predicate;
@@ -99,6 +123,10 @@ mod tests {
                 pubkey_or_code: pda_pubkey.to_string(),
             }))
             .returning(move |_| Ok((pda_pubkey, device1.clone())));
+        client
+            .expect_list_device()
+            .with(predicate::eq(ListDeviceCommand {}))
+            .returning(move |_| Ok(HashMap::new()));
 
         client
             .expect_update_device()
@@ -117,8 +145,8 @@ mod tests {
         let res = UpdateDeviceCliCommand {
             pubkey: pda_pubkey.to_string(),
             code: Some("test".to_string()),
-            public_ip: Some("1.2.3.4".to_string()),
-            dz_prefixes: Some("1.2.3.4/32".to_string()),
+            public_ip: Some([1, 2, 3, 4]),
+            dz_prefixes: Some(vec![([1, 2, 3, 4], 32)]),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

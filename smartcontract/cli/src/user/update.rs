@@ -1,6 +1,7 @@
 use crate::{
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+    validators::{validate_parse_ipv4, validate_parse_networkv4, validate_pubkey},
 };
 use clap::Args;
 use doublezero_sdk::{
@@ -13,20 +14,20 @@ use std::{io::Write, str::FromStr};
 #[derive(Args, Debug)]
 pub struct UpdateUserCliCommand {
     /// User Pubkey to update
-    #[arg(long)]
+    #[arg(long, value_parser = validate_pubkey)]
     pub pubkey: String,
     /// New Client IP address
-    #[arg(long)]
-    pub client_ip: Option<String>,
+    #[arg(long, value_parser = validate_parse_ipv4)]
+    pub client_ip: Option<IpV4>,
     /// New DZ IP address
-    #[arg(long)]
-    pub dz_ip: Option<String>,
+    #[arg(long, value_parser = validate_parse_ipv4)]
+    pub dz_ip: Option<IpV4>,
     /// New Tunnel ID
     #[arg(long)]
-    pub tunnel_id: Option<String>,
+    pub tunnel_id: Option<u16>,
     /// New Tunnel Network in CIDR format
-    #[arg(long)]
-    pub tunnel_net: Option<String>,
+    #[arg(long, value_parser = validate_parse_networkv4)]
+    pub tunnel_net: Option<NetworkV4>,
 }
 
 impl UpdateUserCliCommand {
@@ -41,14 +42,10 @@ impl UpdateUserCliCommand {
             index: user.index,
             user_type: None,
             cyoa_type: None,
-            client_ip: self.client_ip.map(|client_ip| ipv4_parse(&client_ip)),
-            dz_ip: self.dz_ip.map(|dz_ip| ipv4_parse(&dz_ip)),
-            tunnel_id: self
-                .tunnel_id
-                .map(|tunnel_id| u16::from_str(&tunnel_id).unwrap()),
-            tunnel_net: self
-                .tunnel_net
-                .map(|tunnel_net| networkv4_parse(&tunnel_net)),
+            client_ip: self.client_ip,
+            dz_ip: self.dz_ip,
+            tunnel_id: self.tunnel_id,
+            tunnel_net: self.tunnel_net,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -134,10 +131,10 @@ mod tests {
         let mut output = Vec::new();
         let res = UpdateUserCliCommand {
             pubkey: pda_pubkey.to_string(),
-            client_ip: Some("10.5.4.3".to_string()),
-            dz_ip: Some("2.3.4.5".to_string()),
-            tunnel_id: Some("1".to_string()),
-            tunnel_net: Some("10.2.2.3/24".to_string()),
+            client_ip: Some([10, 5, 4, 3]),
+            dz_ip: Some([2, 3, 4, 5]),
+            tunnel_id: Some(1),
+            tunnel_net: Some(([10, 2, 2, 3], 24)),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

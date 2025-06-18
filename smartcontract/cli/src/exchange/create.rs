@@ -1,6 +1,7 @@
 use crate::{
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+    validators::validate_code,
 };
 use clap::Args;
 use doublezero_sdk::commands::exchange::create::CreateExchangeCommand;
@@ -9,7 +10,7 @@ use std::io::Write;
 #[derive(Args, Debug)]
 pub struct CreateExchangeCliCommand {
     /// Unique code for the exchange
-    #[arg(long)]
+    #[arg(long, value_parser = validate_code)]
     pub code: String,
     /// Name of the exchange
     #[arg(long)]

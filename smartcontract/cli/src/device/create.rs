@@ -2,11 +2,15 @@ use crate::{
     doublezerocommand::CliCommand,
     helpers::parse_pubkey,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+    validators::{
+        validate_code, validate_parse_ipv4, validate_parse_networkv4_list, validate_pubkey_or_code,
+    },
 };
 use clap::Args;
 use doublezero_sdk::{
     commands::{
-        device::create::CreateDeviceCommand, exchange::get::GetExchangeCommand,
+        device::{create::CreateDeviceCommand, list::ListDeviceCommand},
+        exchange::get::GetExchangeCommand,
         location::get::GetLocationCommand,
     },
     *,
@@ -16,26 +20,40 @@ use std::io::Write;
 #[derive(Args, Debug)]
 pub struct CreateDeviceCliCommand {
     /// Unique device code
-    #[arg(long)]
+    #[arg(long, value_parser = validate_code)]
     pub code: String,
     /// Location (pubkey or code) associated with the device
-    #[arg(long)]
+    #[arg(long, value_parser = validate_pubkey_or_code)]
     pub location: String,
     /// Exchange (pubkey or code) associated with the device
-    #[arg(long)]
+    #[arg(long, value_parser = validate_pubkey_or_code)]
     pub exchange: String,
     /// Device public IPv4 address (e.g. 10.0.0.1)
-    #[arg(long)]
-    pub public_ip: String,
+    #[arg(long, value_parser = validate_parse_ipv4)]
+    pub public_ip: IpV4,
     /// List of DZ prefixes in comma-separated CIDR format (e.g. 10.1.0.0/16,10.2.0.0/16)
-    #[arg(long)]
-    pub dz_prefixes: String,
+    #[arg(long, value_parser = validate_parse_networkv4_list)]
+    pub dz_prefixes: NetworkV4List,
 }
 
 impl CreateDeviceCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
+
+        let devices = client.list_device(ListDeviceCommand {})?;
+        if devices.iter().any(|(_, d)| d.code == self.code) {
+            return Err(eyre::eyre!(
+                "Device with code '{}' already exists",
+                self.code
+            ));
+        }
+        if devices.iter().any(|(_, d)| d.public_ip == self.public_ip) {
+            return Err(eyre::eyre!(
+                "Device with public ip '{}' already exists",
+                ipv4_to_string(&self.public_ip)
+            ));
+        }
 
         let location_pk = match parse_pubkey(&self.location) {
             Some(pk) => pk,
@@ -66,8 +84,8 @@ impl CreateDeviceCliCommand {
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
-            public_ip: ipv4_parse(&self.public_ip),
-            dz_prefixes: networkv4_list_parse(&self.dz_prefixes),
+            public_ip: self.public_ip,
+            dz_prefixes: self.dz_prefixes,
         })?;
         writeln!(out, "Signature: {signature}")?;
 
@@ -77,6 +95,8 @@ impl CreateDeviceCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use crate::{
         device::create::CreateDeviceCliCommand,
         doublezerocommand::CliCommand,
@@ -84,7 +104,10 @@ mod tests {
         tests::utils::create_test_client,
     };
     use doublezero_sdk::{
-        commands::{device::create::CreateDeviceCommand, exchange::get::GetExchangeCommand},
+        commands::{
+            device::{create::CreateDeviceCommand, list::ListDeviceCommand},
+            exchange::get::GetExchangeCommand,
+        },
         get_device_pda, AccountType, DeviceType, Exchange, ExchangeStatus, GetLocationCommand,
         Location, LocationStatus,
     };
@@ -148,13 +171,17 @@ mod tests {
             }))
             .returning(move |_| Ok((exchange_pk, exchange.clone())));
         client
+            .expect_list_device()
+            .with(predicate::eq(ListDeviceCommand {}))
+            .returning(move |_| Ok(HashMap::new()));
+        client
             .expect_create_device()
             .with(predicate::eq(CreateDeviceCommand {
                 code: "test".to_string(),
                 location_pk,
                 exchange_pk,
                 device_type: DeviceType::Switch,
-                public_ip: [10, 0, 0, 1],
+                public_ip: [100, 0, 0, 1],
                 dz_prefixes: vec![([10, 1, 0, 0], 16)],
             }))
             .returning(move |_| Ok((signature, pda_pubkey)));
@@ -164,8 +191,8 @@ mod tests {
             code: "test".to_string(),
             location: location_pk.to_string(),
             exchange: exchange_pk.to_string(),
-            public_ip: "10.0.0.1".to_string(),
-            dz_prefixes: "10.1.0.0/16".to_string(),
+            public_ip: [100, 0, 0, 1],
+            dz_prefixes: vec![([10, 1, 0, 0], 16)],
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

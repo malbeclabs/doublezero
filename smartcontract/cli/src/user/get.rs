@@ -1,4 +1,4 @@
-use crate::doublezerocommand::CliCommand;
+use crate::{doublezerocommand::CliCommand, validators::validate_pubkey};
 use clap::Args;
 use doublezero_sdk::{commands::user::get::GetUserCommand, *};
 use solana_sdk::pubkey::Pubkey;
@@ -7,7 +7,7 @@ use std::{io::Write, str::FromStr};
 #[derive(Args, Debug)]
 pub struct GetUserCliCommand {
     /// User Pubkey to retrieve
-    #[arg(long)]
+    #[arg(long, value_parser = validate_pubkey)]
     pub pubkey: String,
 }
 

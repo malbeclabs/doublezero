@@ -1,4 +1,4 @@
-use crate::doublezerocommand::CliCommand;
+use crate::{doublezerocommand::CliCommand, validators::validate_code};
 use clap::Args;
 use doublezero_sdk::{commands::link::get::GetLinkCommand, networkv4_to_string};
 use std::io::Write;
@@ -6,7 +6,7 @@ use std::io::Write;
 #[derive(Args, Debug)]
 pub struct GetLinkCliCommand {
     /// The pubkey or code of the link to retrieve
-    #[arg(long)]
+    #[arg(long, value_parser = validate_code)]
     pub code: String,
 }
 

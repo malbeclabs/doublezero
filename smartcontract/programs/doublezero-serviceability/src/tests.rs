@@ -281,7 +281,7 @@ pub mod test {
             exchange_pk: exchange_la_pubkey,
             device_type: DeviceType::Switch,
             public_ip: [1, 0, 0, 1],
-            dz_prefixes: vec![networkv4_parse("10.0.0.1/24")],
+            dz_prefixes: vec![networkv4_parse("10.0.0.1/24").unwrap()],
         };
 
         println!("Testing Device LA initialization...");
@@ -328,7 +328,7 @@ pub mod test {
             exchange_pk: exchange_ny_pubkey,
             device_type: DeviceType::Switch,
             public_ip: [1, 0, 0, 2],
-            dz_prefixes: vec![networkv4_parse("10.1.0.1/24")],
+            dz_prefixes: vec![networkv4_parse("10.1.0.1/24").unwrap()],
         };
 
         execute_transaction(
@@ -466,7 +466,7 @@ pub mod test {
         );
 
         println!("Testing Link activation...");
-        let tunnel_net: NetworkV4 = networkv4_parse("10.31.0.0/31");
+        let tunnel_net: NetworkV4 = networkv4_parse("10.31.0.0/31").unwrap();
         let tunnel_activate: LinkActivateArgs = LinkActivateArgs {
             index: tunnel.index,
             bump_seed: tunnel.bump_seed,
@@ -547,8 +547,8 @@ pub mod test {
             user1.index
         );
 
-        let tunnel_net: NetworkV4 = networkv4_parse("10.0.0.0/24");
-        let dz_ip: IpV4 = ipv4_parse("10.2.0.1");
+        let tunnel_net: NetworkV4 = networkv4_parse("10.0.0.0/24").unwrap();
+        let dz_ip: IpV4 = ipv4_parse("10.2.0.1").unwrap();
 
         let update1: UserActivateArgs = UserActivateArgs {
             index: user1.index,

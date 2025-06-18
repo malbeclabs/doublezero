@@ -1,4 +1,4 @@
-use crate::doublezerocommand::CliCommand;
+use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
 use doublezero_sdk::{
     commands::{
@@ -13,7 +13,7 @@ use tabled::{builder::Builder, settings::Style};
 #[derive(Args, Debug)]
 pub struct GetMulticastGroupCliCommand {
     /// MulticastCroup code or Pubkey to query
-    #[arg(long)]
+    #[arg(long, value_parser = validate_pubkey_or_code)]
     pub code: String,
 }
 

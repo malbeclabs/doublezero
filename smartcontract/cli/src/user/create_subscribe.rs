@@ -2,6 +2,7 @@ use crate::{
     doublezerocommand::CliCommand,
     helpers::parse_pubkey,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+    validators::{validate_parse_ipv4, validate_pubkey_or_code},
 };
 use clap::Args;
 use doublezero_sdk::{
@@ -16,11 +17,11 @@ use std::io::Write;
 #[derive(Args, Debug)]
 pub struct CreateSubscribeUserCliCommand {
     /// Device Pubkey or code to associate with the user
-    #[arg(long)]
+    #[arg(long, value_parser = validate_pubkey_or_code)]
     pub device: String,
     /// Client IP address in IPv4 format
-    #[arg(long)]
-    pub client_ip: String,
+    #[arg(long, value_parser = validate_parse_ipv4)]
+    pub client_ip: IpV4,
     /// Allocate a new address for the user
     #[arg(short, long, default_value_t = false)]
     pub allocate_addr: bool,
@@ -83,7 +84,7 @@ impl CreateSubscribeUserCliCommand {
             user_type: UserType::Multicast,
             device_pk,
             cyoa_type: UserCYOA::GREOverDIA,
-            client_ip: ipv4_parse(&self.client_ip),
+            client_ip: self.client_ip,
             publisher: publisher_pk.is_some(),
             subscriber: subscriber_pk.is_some(),
             mgroup_pk: publisher_pk
@@ -181,7 +182,7 @@ mod tests {
                 user_type: UserType::Multicast,
                 device_pk: device_pubkey,
                 cyoa_type: UserCYOA::GREOverDIA,
-                client_ip: [10, 0, 0, 1],
+                client_ip: [100, 0, 0, 1],
                 publisher: false,
                 subscriber: true,
                 mgroup_pk: mgroup_pubkey,
@@ -193,7 +194,7 @@ mod tests {
         let mut output = Vec::new();
         let res = CreateSubscribeUserCliCommand {
             device: "device1".to_string(),
-            client_ip: "10.0.0.1".to_string(),
+            client_ip: [100, 0, 0, 1],
             allocate_addr: false,
             publisher: None,
             subscriber: Some(mgroup_pubkey.to_string()),

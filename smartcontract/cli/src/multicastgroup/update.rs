@@ -1,6 +1,7 @@
 use crate::{
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+    validators::{validate_code, validate_parse_ipv4, validate_pubkey_or_code},
 };
 use clap::Args;
 use doublezero_sdk::{
@@ -9,23 +10,22 @@ use doublezero_sdk::{
     },
     *,
 };
-use eyre::eyre;
 use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct UpdateMulticastGroupCliCommand {
     /// Multicast group Pubkey to update
-    #[arg(long)]
+    #[arg(long, value_parser = validate_pubkey_or_code)]
     pub pubkey: String,
     /// Updated code for the multicast group
-    #[arg(long)]
+    #[arg(long, value_parser = validate_code)]
     pub code: Option<String>,
     /// Updated multicast IPv4 address (e.g. 239.0.0.1)
-    #[arg(long)]
-    pub multicast_ip: Option<String>,
+    #[arg(long, value_parser = validate_parse_ipv4)]
+    pub multicast_ip: Option<IpV4>,
     /// Updated maximum bandwidth (e.g. 1Gbps, 100Mbps)
     #[arg(long)]
-    pub max_bandwidth: Option<String>,
+    pub max_bandwidth: Option<u64>,
 }
 
 impl UpdateMulticastGroupCliCommand {
@@ -37,20 +37,11 @@ impl UpdateMulticastGroupCliCommand {
             pubkey_or_code: self.pubkey,
         })?;
 
-        let max_bandwidth = self
-            .max_bandwidth
-            .as_ref()
-            .map(|bw| {
-                bw.parse::<u64>()
-                    .map_err(|e| eyre!("Invalid max bandwidth '{}': {}", bw, e))
-            })
-            .transpose()?;
-
         let signature = client.update_multicastgroup(UpdateMulticastGroupCommand {
             index: multicastgroup.index,
             code: self.code.clone(),
-            multicast_ip: self.multicast_ip.as_ref().map(|ip| ipv4_parse(ip)),
-            max_bandwidth,
+            multicast_ip: self.multicast_ip,
+            max_bandwidth: self.max_bandwidth,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -128,8 +119,8 @@ mod tests {
         let res = UpdateMulticastGroupCliCommand {
             pubkey: pda_pubkey.to_string(),
             code: Some("new_code".to_string()),
-            multicast_ip: Some("10.0.0.1".to_string()),
-            max_bandwidth: Some("1000000000".to_string()),
+            multicast_ip: Some([10, 0, 0, 1]),
+            max_bandwidth: Some(1000000000),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

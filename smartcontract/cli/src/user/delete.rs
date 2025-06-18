@@ -1,6 +1,7 @@
 use crate::{
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+    validators::validate_pubkey,
 };
 use clap::Args;
 use doublezero_sdk::commands::user::{delete::DeleteUserCommand, get::GetUserCommand};
@@ -10,7 +11,7 @@ use std::{io::Write, str::FromStr};
 #[derive(Args, Debug)]
 pub struct DeleteUserCliCommand {
     /// User Pubkey to delete
-    #[arg(long)]
+    #[arg(long, value_parser = validate_pubkey)]
     pub pubkey: String,
 }
 

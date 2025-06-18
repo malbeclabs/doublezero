@@ -49,3 +49,108 @@ impl CreateDeviceCommand {
             .map(|sig| (sig, pda_pubkey))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        commands::device::create::CreateDeviceCommand, tests::utils::create_test_client,
+        DoubleZeroClient,
+    };
+    use doublezero_serviceability::{
+        instructions::DoubleZeroInstruction,
+        pda::{get_device_pda, get_globalstate_pda},
+        processors::device::create::DeviceCreateArgs,
+        state::{
+            accountdata::AccountData,
+            accounttype::AccountType,
+            device::DeviceType,
+            exchange::{Exchange, ExchangeStatus},
+            location::{Location, LocationStatus},
+        },
+    };
+    use mockall::predicate;
+    use solana_sdk::{
+        instruction::AccountMeta, pubkey::Pubkey, signature::Signature, system_program,
+    };
+
+    #[test]
+    fn test_commands_device_create_command() {
+        let mut client = create_test_client();
+
+        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
+        let payer = client.get_payer();
+
+        let location_pubkey = Pubkey::new_unique();
+        let location = Location {
+            account_type: AccountType::Location,
+            owner: client.get_payer(),
+            index: 1,
+            bump_seed: 255,
+            name: "Test Location".to_string(),
+            country: "UA".to_string(),
+            code: "TEST".to_string(),
+            lat: 50.4501,
+            lng: 30.5234,
+            loc_id: 1,
+            status: LocationStatus::Activated,
+        };
+
+        client
+            .expect_get()
+            .with(predicate::eq(location_pubkey))
+            .returning(move |_| Ok(AccountData::Location(location.clone())));
+
+        let exchange_pubkey = Pubkey::new_unique();
+        let exchange = Exchange {
+            account_type: AccountType::Exchange,
+            owner: client.get_payer(),
+            index: 2,
+            bump_seed: 255,
+            name: "Test Location".to_string(),
+            code: "TEST".to_string(),
+            lat: 50.4501,
+            lng: 30.5234,
+            loc_id: 1,
+            status: ExchangeStatus::Activated,
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(exchange_pubkey))
+            .returning(move |_| Ok(AccountData::Exchange(exchange.clone())));
+
+        let (device_pubkey, bump_seed) = get_device_pda(&client.get_program_id(), 3);
+
+        client
+            .expect_execute_transaction()
+            .with(
+                predicate::eq(DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
+                    index: 3,
+                    bump_seed,
+                    code: "test-device".to_string(),
+                    location_pk: location_pubkey,
+                    exchange_pk: Pubkey::new_unique(),
+                    device_type: DeviceType::Switch,
+                    public_ip: [10, 0, 0, 1],
+                    dz_prefixes: vec![([10, 0, 0, 0], 8)],
+                })),
+                predicate::eq(vec![
+                    AccountMeta::new(device_pubkey, false),
+                    AccountMeta::new(globalstate_pubkey, false),
+                    AccountMeta::new(payer, true),
+                    AccountMeta::new(system_program::id(), false),
+                ]),
+            )
+            .returning(|_, _| Ok(Signature::new_unique()));
+
+        let res = CreateDeviceCommand {
+            code: "test-device".to_string(),
+            location_pk: location_pubkey,
+            exchange_pk: exchange_pubkey,
+            device_type: DeviceType::Switch,
+            public_ip: [10, 0, 0, 1],
+            dz_prefixes: vec![([10, 0, 0, 0], 8)],
+        }
+        .execute(&client);
+        assert!(res.is_ok());
+    }
+}

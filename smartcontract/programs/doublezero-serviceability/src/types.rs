@@ -5,31 +5,40 @@ pub type IpV4 = [u8; 4]; // 4
 pub type NetworkV4 = (IpV4, u8); // 5
 pub type NetworkV4List = Vec<NetworkV4>; // 4 + len * 5
 
-pub fn ipv4_parse(str: &str) -> IpV4 {
-    Ipv4Addr::from_str(str).expect("Invalid IP").octets()
+pub fn ipv4_parse(str: &str) -> Result<IpV4, String> {
+    Ipv4Addr::from_str(str)
+        .map(|ip| ip.octets())
+        .map_err(|_| String::from("Invalid IPv4 address format"))
 }
 
 pub fn ipv4_to_string(ip: &IpV4) -> String {
     format!("{}.{}.{}.{}", ip[0], ip[1], ip[2], ip[3])
 }
 
-pub fn networkv4_parse(str: &str) -> NetworkV4 {
-    let net = Ipv4Network::from_str(str).expect("Invalid IP");
-    (net.ip().octets(), net.prefix())
+pub fn networkv4_parse(str: &str) -> Result<NetworkV4, String> {
+    match Ipv4Network::from_str(str) {
+        Ok(net) => {
+            let ip = net.ip().octets();
+            let prefix = net.prefix();
+            Ok((ip, prefix))
+        }
+        Err(_) => Err(String::from("Invalid network format")),
+    }
 }
 
 /* 1.2.3.4/5, */
-pub fn networkv4_list_parse(input: &str) -> NetworkV4List {
+pub fn networkv4_list_parse(input: &str) -> Result<NetworkV4List, String> {
     let mut collected = Vec::new();
 
     // remove spaces
     let input = &input.replace(" ", "");
 
-    input.split(',').for_each(|val| {
-        collected.push(networkv4_parse(val));
-    });
+    for val in input.split(',') {
+        let val = networkv4_parse(val)?;
+        collected.push(val);
+    }
 
-    collected
+    Ok(collected)
 }
 
 pub fn networkv4_to_string(net: &NetworkV4) -> String {
@@ -52,7 +61,7 @@ pub fn networkv4_to_ipnetwork(net: &NetworkV4) -> Ipv4Network {
     Ipv4Network::new(ip_addr, net.1).expect("Invalid network")
 }
 
-pub fn bandwidth_parse(str: &str) -> u64 {
+pub fn bandwidth_parse(str: &str) -> Result<u64, String> {
     let str = str.to_lowercase().replace(" ", "");
     let str = str.replace("gbps", "g");
     let str = str.replace("mbps", "m");
@@ -66,14 +75,16 @@ pub fn bandwidth_parse(str: &str) -> u64 {
 
     let str: String = str.chars().filter(|c| !c.is_alphabetic()).collect();
 
-    let val = str.parse::<f64>().expect("Invalid bandwidth");
+    let val = str
+        .parse::<f64>()
+        .map_err(|_| String::from("Invalid bandwidth value"))?;
 
     match unit {
-        'b' => val as u64,
-        'k' => (val * 1000.0) as u64,
-        'm' => (val * 1000000.0) as u64,
-        'g' => (val * 1000000000.0) as u64,
-        _ => (val * 1000.0) as u64,
+        'b' => Ok(val as u64),
+        'k' => Ok((val * 1000.0) as u64),
+        'm' => Ok((val * 1000000.0) as u64),
+        'g' => Ok((val * 1000000000.0) as u64),
+        _ => Ok((val * 1000.0) as u64),
     }
 }
 
@@ -109,6 +120,46 @@ pub fn jitter_to_string(delay_ns: u64) -> String {
     format!("{delay_ms:.2}ms")
 }
 
+pub fn ipv4_is_bogon(ip: IpV4) -> bool {
+    let bogons = vec![
+        Ipv4Network::new("0.0.0.0".parse().unwrap(), 8).unwrap(),
+        Ipv4Network::new("10.0.0.0".parse().unwrap(), 8).unwrap(),
+        Ipv4Network::new("100.64.0.0".parse().unwrap(), 10).unwrap(),
+        Ipv4Network::new("127.0.0.0".parse().unwrap(), 8).unwrap(),
+        Ipv4Network::new("169.254.0.0".parse().unwrap(), 16).unwrap(),
+        Ipv4Network::new("172.16.0.0".parse().unwrap(), 12).unwrap(),
+        Ipv4Network::new("192.0.2.0".parse().unwrap(), 24).unwrap(),
+        Ipv4Network::new("192.168.0.0".parse().unwrap(), 16).unwrap(),
+        Ipv4Network::new("198.18.0.0".parse().unwrap(), 15).unwrap(),
+        Ipv4Network::new("224.0.0.0".parse().unwrap(), 4).unwrap(),
+        Ipv4Network::new("240.0.0.0".parse().unwrap(), 4).unwrap(),
+    ];
+
+    let ip = Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3]);
+    for net in bogons {
+        if net.contains(ip) {
+            return true;
+        }
+    }
+    false
+}
+
+pub fn ipv4_is_rfc1918(ip: IpV4) -> bool {
+    let private_ranges = vec![
+        Ipv4Network::new("10.0.0.0".parse().unwrap(), 8).unwrap(),
+        Ipv4Network::new("172.16.0.0".parse().unwrap(), 12).unwrap(),
+        Ipv4Network::new("192.168.0.0".parse().unwrap(), 16).unwrap(),
+    ];
+
+    let ip = Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3]);
+    for net in private_ranges {
+        if net.contains(ip) {
+            return true;
+        }
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -116,55 +167,61 @@ mod tests {
     #[test]
     fn test_ipv4_parse() {
         let ip = ipv4_parse("1.2.3.4");
-        assert_eq!(ip, [1, 2, 3, 4]);
+        assert!(ip.is_ok());
+        assert_eq!(ip.unwrap(), [1, 2, 3, 4]);
     }
 
     #[test]
     fn test_ipv4_serialize() {
         let val = ipv4_parse("1.2.3.4");
-        let data = borsh::to_vec(&val).unwrap();
+        let data = borsh::to_vec(&val.clone().unwrap()).unwrap();
         let val2 = borsh::from_slice::<IpV4>(&data).unwrap();
-        assert_eq!(val, val2);
+        assert!(val.is_ok());
+        assert_eq!(val.unwrap(), val2);
         assert_eq!(data.len(), 4);
     }
 
     #[test]
     fn test_networkv4_parse() {
         let ip = networkv4_parse("10.0.0.1/24");
-        assert_eq!(ip, ([10, 0, 0, 1], 24));
+        assert!(ip.is_ok());
+        assert_eq!(ip.unwrap(), ([10, 0, 0, 1], 24));
     }
 
     #[test]
     fn test_networkv4_serialize() {
         let val = networkv4_parse("10.0.0.1/24");
-        let data = borsh::to_vec(&val).unwrap();
+        let data = borsh::to_vec(&val.clone().unwrap()).unwrap();
         let val2 = borsh::from_slice::<NetworkV4>(&data).unwrap();
-        assert_eq!(val, val2);
+        assert!(val.is_ok());
+        assert_eq!(val.unwrap(), val2);
         assert_eq!(data.len(), 5);
     }
 
     #[test]
     fn test_networkv4_list_parse() {
         let ip = networkv4_list_parse("10.0.0.1/24,11.0.0.1/24");
-        assert_eq!(ip, vec!(([10, 0, 0, 1], 24), ([11, 0, 0, 1], 24)));
+        assert!(ip.is_ok());
+        assert_eq!(ip.unwrap(), vec!(([10, 0, 0, 1], 24), ([11, 0, 0, 1], 24)));
     }
 
     #[test]
     fn test_networkv4_list_serialize() {
         let val = networkv4_list_parse("10.0.0.1/24,11.0.0.1/24");
-        let data = borsh::to_vec(&val).unwrap();
+        let data = borsh::to_vec(&val.clone().unwrap()).unwrap();
         let val2 = borsh::from_slice::<NetworkV4List>(&data).unwrap();
-        assert_eq!(val, val2);
+        assert!(val.is_ok());
+        assert_eq!(val.unwrap(), val2);
         assert_eq!(data.len(), 4 + 5 + 5);
     }
 
     #[test]
     fn test_bandwidth_parse() {
-        assert_eq!(bandwidth_parse("500"), 500000, "500");
-        assert_eq!(bandwidth_parse("500bps"), 500, "500bps");
-        assert_eq!(bandwidth_parse("1.50Kbps"), 1500, "1.50Kbps");
-        assert_eq!(bandwidth_parse("2.50Mbps"), 2500000, "2.50Mbps");
-        assert_eq!(bandwidth_parse("3.50Gbps"), 3500000000, "3.50Gbps");
+        assert_eq!(bandwidth_parse("500").unwrap(), 500000, "500");
+        assert_eq!(bandwidth_parse("500bps").unwrap(), 500, "500bps");
+        assert_eq!(bandwidth_parse("1.50Kbps").unwrap(), 1500, "1.50Kbps");
+        assert_eq!(bandwidth_parse("2.50Mbps").unwrap(), 2500000, "2.50Mbps");
+        assert_eq!(bandwidth_parse("3.50Gbps").unwrap(), 3500000000, "3.50Gbps");
     }
 
     #[test]

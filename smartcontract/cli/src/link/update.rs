@@ -1,37 +1,38 @@
 use crate::{
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+    validators::{
+        validate_code, validate_parse_bandwidth, validate_parse_delay_ms, validate_parse_jitter_ms,
+        validate_parse_mtu, validate_pubkey,
+    },
 };
 use clap::Args;
-use doublezero_sdk::{
-    commands::link::{get::GetLinkCommand, update::UpdateLinkCommand},
-    *,
-};
+use doublezero_sdk::commands::link::{get::GetLinkCommand, update::UpdateLinkCommand};
 use eyre::eyre;
 use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct UpdateLinkCliCommand {
     /// Link Pubkey or code to update
-    #[arg(long)]
+    #[arg(long, value_parser = validate_pubkey)]
     pub pubkey: String,
     /// Updated code for the link
-    #[arg(long)]
+    #[arg(long, value_parser = validate_code)]
     pub code: Option<String>,
     /// Updated tunnel type (e.g. L1, L2, L3)
     #[arg(long)]
     pub tunnel_type: Option<String>,
     /// Updated bandwidth (e.g. 1Gbps, 100Mbps)
-    #[arg(long)]
-    pub bandwidth: Option<String>,
+    #[arg(long, value_parser = validate_parse_bandwidth)]
+    pub bandwidth: Option<u64>,
     /// Updated MTU (Maximum Transmission Unit) in bytes
-    #[arg(long)]
+    #[arg(long, value_parser = validate_parse_mtu)]
     pub mtu: Option<u32>,
     /// RTT (Round Trip Time) delay in milliseconds
-    #[arg(long)]
+    #[arg(long, value_parser = validate_parse_delay_ms)]
     pub delay_ms: Option<f64>,
     /// Jitter in milliseconds
-    #[arg(long)]
+    #[arg(long, value_parser = validate_parse_jitter_ms)]
     pub jitter_ms: Option<f64>,
 }
 
@@ -54,7 +55,7 @@ impl UpdateLinkCliCommand {
             index: tunnel.index,
             code: self.code.clone(),
             tunnel_type,
-            bandwidth: self.bandwidth.map(|b| bandwidth_parse(&b)),
+            bandwidth: self.bandwidth,
             mtu: self.mtu,
             delay_ns: self.delay_ms.map(|delay_ms| (delay_ms * 1000000.0) as u64),
             jitter_ns: self
@@ -131,7 +132,7 @@ mod tests {
                 index: 1,
                 code: Some("new_code".to_string()),
                 tunnel_type: None,
-                bandwidth: Some(1000000000000),
+                bandwidth: Some(1000000000),
                 mtu: Some(1500),
                 delay_ns: Some(10000000),
                 jitter_ns: Some(5000000),
@@ -144,7 +145,7 @@ mod tests {
             pubkey: pda_pubkey.to_string(),
             code: Some("new_code".to_string()),
             tunnel_type: None,
-            bandwidth: Some("1000000000".to_string()),
+            bandwidth: Some(1000000000),
             mtu: Some(1500),
             delay_ms: Some(10.0),
             jitter_ms: Some(5.0),

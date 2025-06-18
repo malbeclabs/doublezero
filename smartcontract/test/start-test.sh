@@ -104,10 +104,10 @@ echo "Creating links"
 
 # create a user
 echo "Creating users"
-./target/doublezero user create --device ld4-dz01 --client-ip 10.0.0.1
-./target/doublezero user create --device ld4-dz01 --client-ip 10.0.0.2
-./target/doublezero user create --device ld4-dz01 --client-ip 10.0.0.3
-./target/doublezero user create --device ld4-dz01 --client-ip 10.0.0.4
+./target/doublezero user create --device ld4-dz01 --client-ip 100.0.0.1
+./target/doublezero user create --device ld4-dz01 --client-ip 100.0.0.2
+./target/doublezero user create --device ld4-dz01 --client-ip 100.0.0.3
+./target/doublezero user create --device ld4-dz01 --client-ip 100.0.0.4
 
 echo "Creating multicast groups"
 ./target/doublezero multicast group create --code mg01 --max-bandwidth 1Gbps --owner me
@@ -118,7 +118,7 @@ echo "Add me to multicast group allowlist"
 ./target/doublezero multicast group allowlist publisher add --code mg02 --pubkey me
 
 echo "Creating multicast user & subscribe"
-./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 10.0.0.5 --subscriber mg01
+./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 100.0.0.5 --subscriber mg01
 sleep 1
 ./target/doublezero user subscribe --user 5Rm8dp4dDzR5SE3HtrqGVpqHLaPvvxDEV3EotqPBBUgS --group mg02 --publisher
 

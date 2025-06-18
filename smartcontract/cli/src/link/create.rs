@@ -2,6 +2,10 @@ use crate::{
     doublezerocommand::CliCommand,
     helpers::parse_pubkey,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+    validators::{
+        validate_code, validate_parse_bandwidth, validate_parse_delay_ms, validate_parse_jitter_ms,
+        validate_parse_mtu, validate_pubkey_or_code,
+    },
 };
 use clap::Args;
 use doublezero_sdk::{
@@ -14,28 +18,28 @@ use std::io::Write;
 #[derive(Args, Debug)]
 pub struct CreateLinkCliCommand {
     /// Link code, must be unique.
-    #[arg(long)]
+    #[arg(long, value_parser = validate_code)]
     pub code: String,
     /// Device Pubkey or code for side A.
-    #[arg(long)]
+    #[arg(long, value_parser = validate_pubkey_or_code)]
     pub side_a: String,
     /// Device Pubkey or code for side Z.
-    #[arg(long)]
+    #[arg(long, value_parser = validate_pubkey_or_code)]
     pub side_z: String,
     /// Link type: L1, L2, or L3.
     #[arg(long)]
     pub link_type: Option<String>,
     /// Bandwidth (required). Accepts values in Kbps, Mbps, or Gbps.
-    #[arg(long)]
-    pub bandwidth: String,
+    #[arg(long, value_parser = validate_parse_bandwidth)]
+    pub bandwidth: u64,
     /// MTU (Maximum Transmission Unit) in bytes.
-    #[arg(long)]
+    #[arg(long, value_parser = validate_parse_mtu)]
     pub mtu: u32,
     /// RTT (Round Trip Time) delay in milliseconds.
-    #[arg(long)]
+    #[arg(long, value_parser = validate_parse_delay_ms)]
     pub delay_ms: f64,
     /// Jitter in milliseconds.
-    #[arg(long)]
+    #[arg(long, value_parser = validate_parse_jitter_ms)]
     pub jitter_ms: f64,
 }
 
@@ -80,7 +84,7 @@ impl CreateLinkCliCommand {
             side_a_pk,
             side_z_pk,
             link_type,
-            bandwidth: bandwidth_parse(&self.bandwidth),
+            bandwidth: self.bandwidth,
             mtu: self.mtu,
             delay_ns: (self.delay_ms * 1000000.0) as u64,
             jitter_ns: (self.jitter_ms * 1000000.0) as u64,
@@ -108,7 +112,7 @@ mod tests {
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
-    fn test_cli_device_create() {
+    fn test_cli_link_create() {
         let mut client = create_test_client();
 
         let (pda_pubkey, _bump_seed) = get_device_pda(&client.get_program_id(), 1);
@@ -190,7 +194,7 @@ mod tests {
             side_a: device1_pk.to_string(),
             side_z: device2_pk.to_string(),
             link_type: Some("L3".to_string()),
-            bandwidth: "1Gbps".to_string(),
+            bandwidth: 1000000000,
             mtu: 1500,
             delay_ms: 10000.0,
             jitter_ms: 5000.0,

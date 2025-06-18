@@ -1,6 +1,7 @@
 use crate::{
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+    validators::validate_pubkey,
 };
 use clap::Args;
 use doublezero_sdk::commands::link::{delete::DeleteLinkCommand, get::GetLinkCommand};
@@ -9,7 +10,7 @@ use std::io::Write;
 #[derive(Args, Debug)]
 pub struct DeleteLinkCliCommand {
     /// Link Pubkey or code to delete
-    #[arg(long)]
+    #[arg(long, value_parser = validate_pubkey)]
     pub pubkey: String,
 }
 

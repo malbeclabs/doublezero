@@ -3,6 +3,7 @@ use std::str::FromStr;
 use crate::{
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_FOUNDATION_ALLOWLIST, CHECK_ID_JSON},
+    validators::validate_pubkey,
 };
 use clap::Args;
 use doublezero_sdk::commands::user::{get::GetUserCommand, requestban::RequestBanUserCommand};
@@ -12,7 +13,7 @@ use std::io::Write;
 #[derive(Args, Debug)]
 pub struct RequestBanUserCliCommand {
     /// User Pubkey to ban
-    #[arg(long)]
+    #[arg(long, value_parser = validate_pubkey)]
     pub pubkey: String,
 }
 

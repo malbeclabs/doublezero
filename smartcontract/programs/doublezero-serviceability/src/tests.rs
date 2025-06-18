@@ -281,7 +281,8 @@ pub mod test {
             exchange_pk: exchange_la_pubkey,
             device_type: DeviceType::Switch,
             public_ip: [1, 0, 0, 1],
-            dz_prefixes: vec![networkv4_parse("10.0.0.1/24").unwrap()],
+            dz_prefixes: vec![],
+            metrics_publisher_pk: Pubkey::default(), // Assuming no metrics publisher for this test
         };
 
         println!("Testing Device LA initialization...");
@@ -328,7 +329,8 @@ pub mod test {
             exchange_pk: exchange_ny_pubkey,
             device_type: DeviceType::Switch,
             public_ip: [1, 0, 0, 2],
-            dz_prefixes: vec![networkv4_parse("10.1.0.1/24").unwrap()],
+            dz_prefixes: vec![([10, 1, 0, 1], 24)],
+            metrics_publisher_pk: Pubkey::default(), // Assuming no metrics publisher for this test
         };
 
         execute_transaction(

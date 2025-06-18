@@ -3,7 +3,8 @@ use crate::{
     helpers::parse_pubkey,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::{
-        validate_code, validate_parse_ipv4, validate_parse_networkv4_list, validate_pubkey_or_code,
+        validate_code, validate_parse_ipv4, validate_parse_networkv4_list, validate_pubkey,
+        validate_pubkey_or_code,
     },
 };
 use clap::Args;
@@ -15,7 +16,8 @@ use doublezero_sdk::{
     },
     *,
 };
-use std::io::Write;
+use solana_sdk::pubkey::Pubkey;
+use std::{io::Write, str::FromStr};
 
 #[derive(Args, Debug)]
 pub struct CreateDeviceCliCommand {
@@ -34,6 +36,9 @@ pub struct CreateDeviceCliCommand {
     /// List of DZ prefixes in comma-separated CIDR format (e.g. 10.1.0.0/16,10.2.0.0/16)
     #[arg(long, value_parser = validate_parse_networkv4_list)]
     pub dz_prefixes: NetworkV4List,
+    /// Metrics publisher public key (optional, defaults to zeroed pubkey)
+    #[arg(long, value_parser = validate_pubkey)]
+    pub metrics_publisher: Option<String>,
 }
 
 impl CreateDeviceCliCommand {
@@ -79,6 +84,19 @@ impl CreateDeviceCliCommand {
             }
         };
 
+        let metrics_publisher = if let Some(metrics_publisher) = &self.metrics_publisher {
+            if metrics_publisher == "me" {
+                client.get_payer()
+            } else {
+                match Pubkey::from_str(metrics_publisher) {
+                    Ok(pk) => pk,
+                    Err(_) => return Err(eyre::eyre!("Invalid metrics publisher Pubkey")),
+                }
+            }
+        } else {
+            client.get_payer()
+        };
+
         let (signature, _pubkey) = client.create_device(CreateDeviceCommand {
             code: self.code.clone(),
             location_pk,
@@ -86,6 +104,7 @@ impl CreateDeviceCliCommand {
             device_type: DeviceType::Switch,
             public_ip: self.public_ip,
             dz_prefixes: self.dz_prefixes,
+            metrics_publisher: metrics_publisher,
         })?;
         writeln!(out, "Signature: {signature}")?;
 
@@ -183,6 +202,7 @@ mod tests {
                 device_type: DeviceType::Switch,
                 public_ip: [100, 0, 0, 1],
                 dz_prefixes: vec![([10, 1, 0, 0], 16)],
+                metrics_publisher: Pubkey::default(),
             }))
             .returning(move |_| Ok((signature, pda_pubkey)));
 
@@ -193,6 +213,7 @@ mod tests {
             exchange: exchange_pk.to_string(),
             public_ip: [100, 0, 0, 1],
             dz_prefixes: vec![([10, 1, 0, 0], 16)],
+            metrics_publisher: Some(Pubkey::default().to_string()),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

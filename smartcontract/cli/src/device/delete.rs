@@ -104,6 +104,7 @@ mod tests {
             public_ip: [10, 0, 0, 1],
             dz_prefixes: vec![],
             status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
             owner: pda_pubkey,
         };
 

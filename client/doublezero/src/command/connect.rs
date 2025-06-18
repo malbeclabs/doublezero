@@ -800,6 +800,7 @@ mod tests {
                 device_type: DeviceType::Switch,
                 public_ip: ipv4_parse(device_ip.as_str()).unwrap(),
                 status: DeviceStatus::Activated,
+                metrics_publisher_pk: Pubkey::default(),
                 code: format!("device{device_number}"),
                 dz_prefixes: vec![networkv4_parse("10.0.0.0/24").unwrap()],
             };

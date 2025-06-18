@@ -2,7 +2,8 @@ use crate::{
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::{
-        validate_code, validate_parse_ipv4, validate_parse_networkv4_list, validate_pubkey_or_code,
+        validate_code, validate_parse_ipv4, validate_parse_networkv4_list, validate_pubkey,
+        validate_pubkey_or_code,
     },
 };
 use clap::Args;
@@ -12,7 +13,8 @@ use doublezero_sdk::{
     },
     *,
 };
-use std::io::Write;
+use solana_sdk::pubkey::Pubkey;
+use std::{io::Write, str::FromStr};
 
 #[derive(Args, Debug)]
 pub struct UpdateDeviceCliCommand {
@@ -28,6 +30,9 @@ pub struct UpdateDeviceCliCommand {
     /// Updated list of DZ prefixes in comma-separated CIDR format (e.g. 10.1.0.0/16,10.2.0.0/16)
     #[arg(long, value_parser = validate_parse_networkv4_list)]
     pub dz_prefixes: Option<NetworkV4List>,
+    /// Metrics publisher Pubkey (optional)
+    #[arg(long, value_parser = validate_pubkey)]
+    pub metrics_publisher: Option<String>,
 }
 
 impl UpdateDeviceCliCommand {
@@ -50,6 +55,19 @@ impl UpdateDeviceCliCommand {
             }
         }
 
+        let metrics_publisher = if let Some(metrics_publisher) = &self.metrics_publisher {
+            if metrics_publisher == "me" {
+                Some(client.get_payer())
+            } else {
+                match Pubkey::from_str(metrics_publisher) {
+                    Ok(pk) => Some(pk),
+                    Err(_) => return Err(eyre::eyre!("Invalid metrics publisher Pubkey")),
+                }
+            }
+        } else {
+            None
+        };
+
         let (_, device) = client.get_device(GetDeviceCommand {
             pubkey_or_code: self.pubkey,
         })?;
@@ -59,6 +77,7 @@ impl UpdateDeviceCliCommand {
             device_type: Some(DeviceType::Switch),
             public_ip: self.public_ip,
             dz_prefixes: self.dz_prefixes,
+            metrics_publisher,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -110,6 +129,7 @@ mod tests {
             public_ip: [1, 2, 3, 4],
             dz_prefixes: vec![([1, 2, 3, 4], 32)],
             status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
             owner: pda_pubkey,
         };
 
@@ -136,6 +156,9 @@ mod tests {
                 device_type: Some(DeviceType::Switch),
                 public_ip: Some([1, 2, 3, 4]),
                 dz_prefixes: Some(vec![([1, 2, 3, 4], 32)]),
+                metrics_publisher: Some(Pubkey::from_str_const(
+                    "HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx",
+                )),
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -147,6 +170,7 @@ mod tests {
             code: Some("test".to_string()),
             public_ip: Some([1, 2, 3, 4]),
             dz_prefixes: Some(vec![([1, 2, 3, 4], 32)]),
+            metrics_publisher: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

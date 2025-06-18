@@ -1,0 +1,21 @@
+#!/bin/sh
+
+COMMIT_MSG_REGEX="^DZ (#[0-9]* )+- .*$"
+
+
+# Get the commit message file
+COMMIT_MSG_FILE="$1"
+
+# Read the commit message
+COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
+
+if [[ ! "$COMMIT_MSG" =~ $COMMIT_MSG_REGEX ]]; then
+  echo "ERROR: Commit message does not match the required pattern:"
+  echo "       $COMMIT_MSG_REGEX"
+  echo "Your commit message:"
+  echo "       $COMMIT_MSG"
+  echo "Please fix the commit message and try again."
+  exit 1
+fi
+
+exit 0

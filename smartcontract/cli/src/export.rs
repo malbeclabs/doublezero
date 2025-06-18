@@ -106,10 +106,10 @@ impl ExportCliCommand {
 
             let location = locations
                 .get(&data.location_pk)
-                .expect("could get Location");
+                .ok_or(eyre::eyre!("Unable to retrieve Location"))?;
             let exchange = exchanges
                 .get(&data.exchange_pk)
-                .expect("could get Location");
+                .ok_or(eyre::eyre!("Unable to retrieve Exchange"))?;
 
             writeln!(out, "{name}")?;
 
@@ -141,16 +141,15 @@ impl ExportCliCommand {
                         .filter(|(_, tunnel)| {
                             tunnel.side_a_pk == pubkey || tunnel.side_z_pk == pubkey
                         })
-                        .map(|(key, link)| {
+                        .filter_map(|(key, link)| {
                             let side_pubkey = if link.side_a_pk == pubkey {
                                 link.side_z_pk
                             } else {
                                 link.side_a_pk
                             };
-                            let side_device =
-                                devices.get(&side_pubkey).expect("could get Location");
+                            let side_device = devices.get(&side_pubkey)?;
 
-                            LinkData {
+                            Some(LinkData {
                                 pubkey: key.to_string(),
                                 code: link.code.clone(),
                                 tunnel_net: networkv4_to_string(&link.tunnel_net),
@@ -167,7 +166,7 @@ impl ExportCliCommand {
                                 delay_ms: link.delay_ns as f32 / 1000000.0,
                                 jitter_ms: link.jitter_ns as f32 / 1000000.0,
                                 owner: link.owner.to_string(),
-                            }
+                            })
                         })
                         .collect(),
                     users: users

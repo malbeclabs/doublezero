@@ -102,14 +102,14 @@ pub struct DoubleZeroStatus {
 }
 
 fn maybe_i64_to_dt_str(maybe_i64_dt: &Option<i64>) -> String {
-    let dt_i64 = maybe_i64_dt.unwrap_or_default();
-    if dt_i64 == 0 {
-        "no session data".to_string()
-    } else {
-        DateTime::from_timestamp(dt_i64, 0)
-            .expect("invalid timestamp")
-            .to_string()
-    }
+    maybe_i64_dt.as_ref().map_or_else(
+        || "no session data".to_string(),
+        |dt_i64| {
+            DateTime::from_timestamp(*dt_i64, 0)
+                .map(|dt| dt.to_string())
+                .unwrap_or_else(|| "invalid timestamp".to_string())
+        },
+    )
 }
 
 #[derive(Deserialize, Debug)]

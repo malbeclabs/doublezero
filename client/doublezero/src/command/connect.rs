@@ -281,19 +281,27 @@ impl ProvisioningCliCommand {
                     let (pubkey, _) = devices
                         .iter()
                         .find(|(_, d)| d.code == *device)
-                        .expect("Device not found");
+                        .ok_or(eyre::eyre!("Device not found"))?;
                     *pubkey
                 }
             },
             None => {
                 spinner.set_message("Reading latency stats...");
-                let mut latencies = controller.latency().await.expect("Could not get latency");
+                let mut latencies = controller
+                    .latency()
+                    .await
+                    .map_err(|_| eyre::eyre!("Could not get latency"))?;
                 latencies.retain(|l| l.reachable);
                 latencies.sort_by(|a, b| a.avg_latency_ns.cmp(&b.avg_latency_ns));
 
                 spinner.set_message("Searching for device account...");
-                Pubkey::from_str(&latencies.first().expect("No devices found").device_pk)
-                    .expect("Unable to parse pubkey")
+                Pubkey::from_str(
+                    &latencies
+                        .first()
+                        .ok_or(eyre::eyre!("No devices found"))?
+                        .device_pk,
+                )
+                .map_err(|_| eyre::eyre!("Unable to parse pubkey"))?
             }
         };
 
@@ -301,7 +309,7 @@ impl ProvisioningCliCommand {
             .get_device(GetDeviceCommand {
                 pubkey_or_code: device_pk.to_string(),
             })
-            .expect("Unable to get device");
+            .map_err(|_| eyre::eyre!("Unable to get device"))?;
 
         Ok((device_pk, device))
     }
@@ -499,7 +507,7 @@ Disconnect and connect again!"#,
                 .get_user(GetUserCommand {
                     pubkey: *user_pubkey,
                 })
-                .expect("User not found");
+                .map_err(|_| eyre::eyre!("User not found"))?;
 
             if user.status == UserStatus::Activated || user.status == UserStatus::Rejected {
                 spinner.println(format!(
@@ -540,10 +548,12 @@ Disconnect and connect again!"#,
         spinner.set_message("Getting global-config...");
         let (_, config) = client
             .get_globalconfig(GetGlobalConfigCommand)
-            .expect("Unable to get config");
+            .map_err(|_| eyre::eyre!("Unable to get global config"))?;
 
         spinner.set_message("Getting user account...");
-        let device = devices.get(&user.device_pk).expect("Device not found");
+        let device = devices
+            .get(&user.device_pk)
+            .ok_or(eyre::eyre!("Device not found"))?;
 
         spinner.set_prefix("4/4 Provisioning");
 
@@ -612,7 +622,9 @@ Disconnect and connect again!"#,
 
         spinner.set_message("Reading logs...");
         std::thread::sleep(std::time::Duration::from_secs(10));
-        let msgs = client.get_logs(user_pubkey).expect("Unable to get logs");
+        let msgs = client
+            .get_logs(user_pubkey)
+            .map_err(|_| eyre::eyre!("Unable to get logs"))?;
 
         for mut msg in msgs {
             if msg.starts_with("Program log: Error: ") {

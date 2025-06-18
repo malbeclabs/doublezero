@@ -104,7 +104,7 @@ impl CreateDeviceCliCommand {
             device_type: DeviceType::Switch,
             public_ip: self.public_ip,
             dz_prefixes: self.dz_prefixes,
-            metrics_publisher: metrics_publisher,
+            metrics_publisher,
         })?;
         writeln!(out, "Signature: {signature}")?;
 

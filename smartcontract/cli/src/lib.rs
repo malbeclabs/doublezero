@@ -21,3 +21,4 @@ pub mod subscribe;
 pub mod tests;
 pub mod user;
 pub mod util;
+pub mod validators;

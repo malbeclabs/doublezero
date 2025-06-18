@@ -1,5 +1,3 @@
-use core::fmt;
-
 use crate::{
     error::DoubleZeroError,
     globalstate::{globalstate_get_next, globalstate_write},
@@ -12,13 +10,12 @@ use crate::{
     },
     types::*,
 };
-
 use borsh::{BorshDeserialize, BorshSerialize};
-#[cfg(test)]
-use solana_program::msg;
+use core::fmt;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
     program_error::ProgramError,
     pubkey::Pubkey,
 };
@@ -98,10 +95,10 @@ pub fn process_create_user(
     let device = Device::try_from(device_account)?;
     if device.status == DeviceStatus::Suspended {
         if !globalstate.foundation_allowlist.contains(payer_account.key) {
+            msg!("{:?}", device);
             return Err(DoubleZeroError::InvalidStatus.into());
         }
     } else if device.status != DeviceStatus::Activated {
-        #[cfg(test)]
         msg!("{:?}", device);
         return Err(DoubleZeroError::InvalidStatus.into());
     }

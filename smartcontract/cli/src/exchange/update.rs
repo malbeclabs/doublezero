@@ -1,6 +1,7 @@
 use crate::{
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+    validators::{validate_code, validate_pubkey_or_code},
 };
 use clap::Args;
 use doublezero_sdk::commands::exchange::{get::GetExchangeCommand, update::UpdateExchangeCommand};
@@ -9,10 +10,10 @@ use std::io::Write;
 #[derive(Args, Debug)]
 pub struct UpdateExchangeCliCommand {
     /// Exchange Pubkey to update
-    #[arg(long)]
+    #[arg(long, value_parser = validate_pubkey_or_code)]
     pub pubkey: String,
     /// Updated code for the exchange
-    #[arg(long)]
+    #[arg(long, value_parser = validate_code)]
     pub code: Option<String>,
     /// Updated name for the exchange
     #[arg(long)]

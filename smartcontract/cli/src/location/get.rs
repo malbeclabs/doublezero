@@ -1,4 +1,4 @@
-use crate::doublezerocommand::CliCommand;
+use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
 use doublezero_sdk::commands::location::get::GetLocationCommand;
 use std::io::Write;
@@ -6,7 +6,7 @@ use std::io::Write;
 #[derive(Args, Debug)]
 pub struct GetLocationCliCommand {
     /// Location Pubkey or code to get details for
-    #[arg(long)]
+    #[arg(long, value_parser = validate_pubkey_or_code)]
     pub code: String,
 }
 

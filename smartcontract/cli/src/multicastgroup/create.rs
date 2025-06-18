@@ -1,24 +1,23 @@
 use crate::{
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+    validators::{validate_code, validate_parse_bandwidth, validate_pubkey},
 };
 use clap::Args;
-use doublezero_sdk::{
-    bandwidth_parse, commands::multicastgroup::create::CreateMulticastGroupCommand,
-};
+use doublezero_sdk::commands::multicastgroup::create::CreateMulticastGroupCommand;
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, str::FromStr};
 
 #[derive(Args, Debug)]
 pub struct CreateMulticastGroupCliCommand {
     /// Unique code for the multicast group
-    #[arg(long)]
+    #[arg(long, value_parser = validate_code)]
     pub code: String,
     /// Maximum bandwidth for the group (e.g. 10Gbps, 100Mbps)
-    #[arg(long)]
-    pub max_bandwidth: String,
+    #[arg(long, value_parser = validate_parse_bandwidth)]
+    pub max_bandwidth: u64,
     /// Owner Pubkey or 'me' for current payer
-    #[arg(long)]
+    #[arg(long, value_parser = validate_pubkey)]
     pub owner: String,
 }
 
@@ -37,7 +36,7 @@ impl CreateMulticastGroupCliCommand {
 
         let (signature, _pubkey) = client.create_multicastgroup(CreateMulticastGroupCommand {
             code: self.code.clone(),
-            max_bandwidth: bandwidth_parse(&self.max_bandwidth),
+            max_bandwidth: self.max_bandwidth,
             owner: owner_pk,
         })?;
 
@@ -91,7 +90,7 @@ mod tests {
         let mut output = Vec::new();
         let res = CreateMulticastGroupCliCommand {
             code: "test".to_string(),
-            max_bandwidth: "10Gbps".to_string(),
+            max_bandwidth: 10000000000,
             owner: pda_pubkey.to_string(),
         }
         .execute(&client, &mut output);

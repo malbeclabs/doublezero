@@ -1,4 +1,4 @@
-use crate::doublezerocommand::CliCommand;
+use crate::{doublezerocommand::CliCommand, validators::validate_code};
 use clap::Args;
 use doublezero_sdk::commands::exchange::get::GetExchangeCommand;
 use std::io::Write;
@@ -6,7 +6,7 @@ use std::io::Write;
 #[derive(Args, Debug)]
 pub struct GetExchangeCliCommand {
     /// Exchange Pubkey or code to get details for
-    #[arg(long)]
+    #[arg(long, value_parser = validate_code)]
     pub code: String,
 }
 

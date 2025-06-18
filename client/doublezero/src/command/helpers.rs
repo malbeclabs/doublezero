@@ -26,5 +26,8 @@ pub async fn look_for_ip(
         },
     };
 
-    Ok((ipv4_parse(client_ip), client_ip.clone()))
+    let ip = ipv4_parse(client_ip)
+        .map_err(|_| eyre::eyre!("Invalid IPv4 address format: {}", client_ip))?;
+
+    Ok((ip, client_ip.to_string()))
 }

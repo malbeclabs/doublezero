@@ -28,10 +28,6 @@ FROM ghcr.io/malbeclabs/ceos:4.33.1F AS eos
 
 ARG DOCKERFILE_DIR
 
-# Install envsubst.
-RUN curl -L https://github.com/a8m/envsubst/releases/latest/download/envsubst-$(uname -s)-$(uname -m) -o /usr/local/bin/envsubst && \
-    chmod +x /usr/local/bin/envsubst
-
 # Copy the control plane agent binary from the builder stage
 COPY --from=builder /doublezero/bin/doublezero-agent /mnt/flash/.
 
@@ -46,9 +42,6 @@ ENV SKIP_ZEROTOUCH_BARRIER_IN_SYSDBINIT=1
 ENV CEOS=1
 ENV EOS_PLATFORM=ceoslab
 ENV container=docker
-
-# Copy the startup config template for the device
-COPY ${DOCKERFILE_DIR}/etc/startup-config.template /etc/doublezero/agent/startup-config.template
 
 # Advertise port 80 for the device
 EXPOSE 80

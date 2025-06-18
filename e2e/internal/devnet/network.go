@@ -36,7 +36,7 @@ func (n *CYOANetwork) Create(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to get available subnet: %w", err)
 	}
-	n.log.Info("--> Network subnet selected", "subnet", subnetCIDR)
+	n.log.Info("--> CYOA network subnet selected", "subnet", subnetCIDR)
 
 	// Create the docker network.
 	network, err := tcnetwork.New(ctx,
@@ -73,26 +73,27 @@ type DefaultNetwork struct {
 func (n *DefaultNetwork) Create(ctx context.Context) error {
 	n.log.Info("==> Creating default network")
 
+	// Get an available subnet for the default network.
+	subnetCIDR, err := n.dn.subnetAllocator.FindAvailableSubnet(ctx, n.dn.Spec.DeployID)
+	if err != nil {
+		return fmt.Errorf("failed to get available subnet: %w", err)
+	}
+	n.log.Info("--> Default network subnet selected", "subnet", subnetCIDR)
+
 	// Create a docker network.
 	network, err := tcnetwork.New(ctx,
 		tcnetwork.WithDriver("bridge"),
 		tcnetwork.WithAttachable(),
 		tcnetwork.WithLabels(n.dn.labels),
+		tcnetwork.WithIPAM(&dockernetwork.IPAM{
+			Config: []dockernetwork.IPAMConfig{
+				{Subnet: subnetCIDR},
+			},
+		}),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create network: %w", err)
 	}
-
-	// Get the subnet CIDR from the network.
-	// We need to inspect for this in case the subnet was allocated by docker instead of our subnet allocator.
-	inspect, err := n.dn.dockerClient.NetworkInspect(ctx, network.Name, dockernetwork.InspectOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to inspect network: %w", err)
-	}
-	if len(inspect.IPAM.Config) == 0 {
-		return fmt.Errorf("network %s has no IPAM config", network.Name)
-	}
-	subnetCIDR := inspect.IPAM.Config[0].Subnet
 
 	n.Name = network.Name
 	n.SubnetCIDR = subnetCIDR

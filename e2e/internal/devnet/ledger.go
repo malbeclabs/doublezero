@@ -107,10 +107,15 @@ func (l *Ledger) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to start ledger: %w", err)
 	}
 
+	ip, err := container.ContainerIP(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get ledger container IP: %w", err)
+	}
+
 	l.ContainerID = shortContainerID(container.GetContainerID())
 	l.ProgramID = programID
-	l.InternalURL = "http://ledger:8899"
-	l.InternalWSURL = "ws://ledger:8900"
+	l.InternalURL = fmt.Sprintf("http://%s:8899", ip)
+	l.InternalWSURL = fmt.Sprintf("ws://%s:8900", ip)
 
 	l.log.Info("--> Ledger started", "container", l.ContainerID, "programID", l.ProgramID, "internalURL", l.InternalURL, "internalWSURL", l.InternalWSURL)
 	return nil

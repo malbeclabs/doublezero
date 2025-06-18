@@ -10,10 +10,8 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/network"
 	"github.com/docker/go-connections/nat"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
-	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"google.golang.org/grpc"
@@ -60,9 +58,9 @@ type Controller struct {
 	dn  *Devnet
 	log *slog.Logger
 
-	ContainerID   string
-	ExternalPort  int
-	CYOANetworkIP string
+	ContainerID      string
+	ExternalPort     int
+	DefaultNetworkIP string
 }
 
 func (c *Controller) Start(ctx context.Context) error {
@@ -105,13 +103,15 @@ func (c *Controller) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to get controller port: %w", err)
 	}
 
+	// Get the controller's IP address on the default network.
+	ip, err := container.ContainerIP(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get ledger container IP: %w", err)
+	}
+
 	c.ContainerID = shortContainerID(container.GetContainerID())
 	c.ExternalPort = port.Int()
-
-	// Connect the controller to the device CYOA network.
-	if err := c.connectToCYOANetwork(ctx); err != nil {
-		return fmt.Errorf("failed to connect controller to device CYOA network: %w", err)
-	}
+	c.DefaultNetworkIP = ip
 
 	c.log.Info("--> Controller started", "container", c.ContainerID, "externalPort", c.ExternalPort)
 	return nil
@@ -143,29 +143,4 @@ func (c *Controller) GetAgentConfig(ctx context.Context, deviceAgentPubkey strin
 	c.log.Debug("--> Got agent config from controller")
 
 	return config, nil
-}
-
-func (c *Controller) connectToCYOANetwork(ctx context.Context) error {
-	ip, err := netutil.DeriveIPFromCIDR(c.dn.CYOANetwork.SubnetCIDR, c.dn.Spec.Controller.CYOANetworkIPHostID)
-	if err != nil {
-		return fmt.Errorf("failed to build controller IP in CYOA network subnet: %w", err)
-	}
-	controllerIP := ip.String()
-
-	// Connect the controller to the device CYOA network.
-	err = c.dn.dockerClient.NetworkConnect(ctx, c.dn.CYOANetwork.Name, c.ContainerID, &network.EndpointSettings{
-		IPAddress: controllerIP,
-		IPAMConfig: &network.EndpointIPAMConfig{
-			IPv4Address: controllerIP,
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("failed to connect controller to CYOA network %s: %w", c.dn.CYOANetwork.Name, err)
-	}
-
-	c.CYOANetworkIP = controllerIP
-
-	c.log.Info("--> Controller connected to CYOA network", "controllerIP", controllerIP)
-
-	return nil
 }

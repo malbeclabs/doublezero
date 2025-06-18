@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -18,20 +19,27 @@ import (
 type ClientSpec struct {
 	ContainerImage string
 	KeypairPath    string
-	CYOANetworkIP  string
+
+	// CYOANetworkIPHostID is the offset into the host portion of the subnet (must be < 2^(32 - prefixLen)).
+	CYOANetworkIPHostID uint32
 }
 
-func (s *ClientSpec) Validate() error {
+func (s *ClientSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
+	// If the container image is not set, use the DZ_CLIENT_IMAGE environment variable.
 	if s.ContainerImage == "" {
-		return fmt.Errorf("containerImage is required")
+		s.ContainerImage = os.Getenv("DZ_CLIENT_IMAGE")
 	}
 
+	// Check for required fields.
 	if s.KeypairPath == "" {
 		return fmt.Errorf("keypairPath is required")
 	}
 
-	if s.CYOANetworkIP == "" {
-		return fmt.Errorf("cyoaNetworkIP is required")
+	// Validate that hostID does not select the network (0) or broadcast (max) address.
+	hostBits := 32 - cyoaNetworkSpec.CIDRPrefix
+	maxHostID := uint32((1 << hostBits) - 1)
+	if s.CYOANetworkIPHostID <= 0 || s.CYOANetworkIPHostID >= maxHostID {
+		return fmt.Errorf("hostID %d is out of valid range (1 to %d)", s.CYOANetworkIPHostID, maxHostID-1)
 	}
 
 	return nil
@@ -43,8 +51,9 @@ type Client struct {
 
 	index int
 
-	ContainerID string
-	Pubkey      string
+	ContainerID   string
+	Pubkey        string
+	CYOANetworkIP string
 }
 
 func (c *Client) Spec() *ClientSpec {
@@ -53,21 +62,19 @@ func (c *Client) Spec() *ClientSpec {
 
 func (c *Client) Start(ctx context.Context) error {
 	spec := c.Spec()
-	c.log.Info("==> Starting client", "image", spec.ContainerImage, "cyoaNetworkIP", spec.CYOANetworkIP)
+	c.log.Info("==> Starting client", "image", spec.ContainerImage, "cyoaNetworkIPHostID", spec.CYOANetworkIPHostID)
+
+	cyoaIP, err := netutil.DeriveIPFromCIDR(c.dn.CYOANetwork.SubnetCIDR, uint32(spec.CYOANetworkIPHostID))
+	if err != nil {
+		return fmt.Errorf("failed to derive CYOA network IP: %w", err)
+	}
+	clientCYOAIP := cyoaIP.To4().String()
 
 	// Get the client's public address.
 	clientPubkey, err := solana.PublicAddressFromKeypair(spec.KeypairPath)
 	if err != nil {
 		return fmt.Errorf("failed to get client public address: %w", err)
 	}
-
-	// Construct an IP address for the client on the CYOA network subnet, the x.y.z.86 address.
-	ip4, err := netutil.BuildIPInCIDR(c.dn.CYOANetwork.SubnetCIDR, 86)
-	if err != nil {
-		return fmt.Errorf("failed to build client IP in CYOA network subnet: %w", err)
-	}
-	ip := ip4.String()
-	c.log.Info("--> Client IP selected", "ip", ip)
 
 	// Start the client container.
 	req := testcontainers.ContainerRequest{
@@ -96,9 +103,9 @@ func (c *Client) Start(ctx context.Context) error {
 			if m[c.dn.CYOANetwork.Name] == nil {
 				m[c.dn.CYOANetwork.Name] = &network.EndpointSettings{}
 			}
-			m[c.dn.CYOANetwork.Name].IPAddress = ip
+			m[c.dn.CYOANetwork.Name].IPAddress = clientCYOAIP
 			m[c.dn.CYOANetwork.Name].IPAMConfig = &network.EndpointIPAMConfig{
-				IPv4Address: ip,
+				IPv4Address: clientCYOAIP,
 			}
 		},
 		Privileged: true,
@@ -112,14 +119,9 @@ func (c *Client) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to start client: %w", err)
 	}
 
-	// Get the client's IP address on the CYOA network.
-	ip, err = c.dn.getContainerIPOnNetwork(ctx, container, c.dn.CYOANetwork.Name)
-	if err != nil {
-		return fmt.Errorf("failed to get container IP on CYOA network: %w", err)
-	}
-
 	c.ContainerID = shortContainerID(container.GetContainerID())
 	c.Pubkey = clientPubkey
+	c.CYOANetworkIP = clientCYOAIP
 
 	// Fund the client account via airdrop.
 	// Retry a couple times to avoid the observed intermittent failures, even on the first airdrop request.
@@ -145,7 +147,7 @@ func (c *Client) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to fund client account after 3 attempts")
 	}
 
-	c.log.Info("--> Client started", "container", c.ContainerID, "pubkey", c.Pubkey)
+	c.log.Info("--> Client started", "container", c.ContainerID, "pubkey", c.Pubkey, "cyoaIP", clientCYOAIP)
 	return nil
 }
 

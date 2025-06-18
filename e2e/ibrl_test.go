@@ -52,16 +52,13 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 	t.Run("check_post_connect", func(t *testing.T) {
 		dn.log.Info("==> Checking IBRL post-connect requirements")
 
-		clientSpec := client.Spec()
-		deviceSpec := device.Spec()
-
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
 			config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_user_added.tmpl", map[string]string{
-				"ClientIP": clientSpec.CYOANetworkIP,
-				"DeviceIP": deviceSpec.CYOANetworkIP,
+				"ClientIP": client.CYOANetworkIP,
+				"DeviceIP": device.CYOANetworkIP,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
-			err = dn.WaitForAgentConfigMatchViaController(t, deviceSpec.Pubkey, string(config))
+			err = dn.WaitForAgentConfigMatchViaController(t, device.AccountPubkey, string(config))
 			require.NoError(t, err, "error waiting for agent config to match")
 		}) {
 			t.Fail()
@@ -77,7 +74,7 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 				name:        "doublezero_user_list",
 				fixturePath: "fixtures/ibrl/doublezero_user_list_user_added.tmpl",
 				data: map[string]string{
-					"ClientIP":            clientSpec.CYOANetworkIP,
+					"ClientIP":            client.CYOANetworkIP,
 					"ClientPubkeyAddress": client.Pubkey,
 				},
 				cmd: []string{"doublezero", "user", "list"},
@@ -86,8 +83,8 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 				name:        "doublezero_status",
 				fixturePath: "fixtures/ibrl/doublezero_status_connected.tmpl",
 				data: map[string]string{
-					"ClientIP": clientSpec.CYOANetworkIP,
-					"DeviceIP": deviceSpec.CYOANetworkIP,
+					"ClientIP": client.CYOANetworkIP,
+					"DeviceIP": device.CYOANetworkIP,
 				},
 				cmd: []string{"doublezero", "status"},
 			},
@@ -136,9 +133,9 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 				"linkmode":          "DEFAULT",
 				"group":             "default",
 				"link_type":         "gre",
-				"address":           clientSpec.CYOANetworkIP,
+				"address":           client.CYOANetworkIP,
 				"link_pointtopoint": true,
-				"broadcast":         deviceSpec.CYOANetworkIP,
+				"broadcast":         device.CYOANetworkIP,
 			}, links[0])
 		}) {
 			t.Fail()
@@ -184,7 +181,7 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 			require.Equal(t, "8.8.8.8", matchingRoute["dst"])
 			require.Equal(t, "169.254.0.0", matchingRoute["gateway"])
 			require.Equal(t, "doublezero0", matchingRoute["dev"])
-			require.Equal(t, clientSpec.CYOANetworkIP, matchingRoute["prefsrc"])
+			require.Equal(t, client.CYOANetworkIP, matchingRoute["prefsrc"])
 		}) {
 			t.Fail()
 		}
@@ -204,7 +201,7 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 			require.Equal(t, "65000", peer.ASN, "client asn should be 65000; got %s\n", peer.ASN)
 			require.Equal(t, "Established", peer.PeerState, "client state should be established; got %s\n", peer.PeerState)
 
-			clientRoute := clientSpec.CYOANetworkIP + "/32"
+			clientRoute := client.CYOANetworkIP + "/32"
 			_, ok = routes.VRFs["vrf1"].Routes[clientRoute]
 			require.True(t, ok, "expected client route of %s installed; got none\n", clientRoute)
 		}) {
@@ -214,7 +211,7 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 		if !t.Run("only_one_tunnel_allowed", func(t *testing.T) {
 			dn.CreateMulticastGroupOnchain(t, client, "mg01")
 
-			_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast publisher mg01 --client-ip " + clientSpec.CYOANetworkIP})
+			_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast publisher mg01 --client-ip " + client.CYOANetworkIP})
 			require.Error(t, err, "User with different type already exists. Only one tunnel currently supported")
 		}) {
 			t.Fail()
@@ -232,14 +229,12 @@ func checkIBRLPostDisconnect(t *testing.T, dn *TestDevnet, device *devnet.Device
 	t.Run("check_post_disconnect", func(t *testing.T) {
 		dn.log.Info("==> Checking IBRL post-disconnect requirements")
 
-		deviceSpec := device.Spec()
-
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
 			config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_user_removed.tmpl", map[string]string{
-				"DeviceIP": deviceSpec.CYOANetworkIP,
+				"DeviceIP": device.CYOANetworkIP,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
-			err = dn.WaitForAgentConfigMatchViaController(t, deviceSpec.Pubkey, string(config))
+			err = dn.WaitForAgentConfigMatchViaController(t, device.AccountPubkey, string(config))
 			require.NoError(t, err, "error waiting for agent config to match")
 		}) {
 			t.Fail()

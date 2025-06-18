@@ -3,12 +3,15 @@
 package e2e_test
 
 import (
+	"encoding/binary"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -20,7 +23,6 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
-	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
 	"github.com/malbeclabs/doublezero/e2e/internal/solana"
 	"github.com/stretchr/testify/require"
@@ -29,6 +31,10 @@ import (
 const (
 	// Expected link-local address to be allocated to the client during test.
 	expectedLinkLocalAddr = "169.254.0.1"
+
+	// Subnet CIDR prefix.
+	// Provides the full last octet range for devices and clients (2-254) for testing.
+	subnetCIDRPrefix = 24
 )
 
 var (
@@ -74,7 +80,7 @@ func TestMain(m *testing.M) {
 	}
 
 	// Initialize a subnet allocator.
-	subnetAllocator = docker.NewSubnetAllocator("10.128.0.0/9", 24, dockerClient)
+	subnetAllocator = docker.NewSubnetAllocator("10.128.0.0/9", subnetCIDRPrefix, dockerClient)
 
 	// Run the tests.
 	os.Exit(m.Run())
@@ -114,21 +120,20 @@ func NewSingleDeviceSingleClientTestDevnet(t *testing.T) *TestDevnet {
 		DeployID:   deployID,
 		WorkingDir: workingDir,
 
+		CYOANetworkSpec: devnet.CYOANetworkSpec{
+			CIDRPrefix: subnetCIDRPrefix,
+		},
 		Ledger: devnet.LedgerSpec{
-			ContainerImage:     os.Getenv("DZ_LEDGER_IMAGE"),
 			ProgramKeypairPath: programKeypairPath,
 		},
 		Manager: devnet.ManagerSpec{
-			ContainerImage: os.Getenv("DZ_MANAGER_IMAGE"),
-			KeypairPath:    managerKeypairPath,
+			KeypairPath: managerKeypairPath,
 		},
 		Controller: devnet.ControllerSpec{
-			ContainerImage: os.Getenv("DZ_CONTROLLER_IMAGE"),
-			ExternalHost:   "localhost",
+			ExternalHost:        "localhost",
+			CYOANetworkIPHostID: 99,
 		},
-		Activator: devnet.ActivatorSpec{
-			ContainerImage: os.Getenv("DZ_ACTIVATOR_IMAGE"),
-		},
+		Activator: devnet.ActivatorSpec{},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
 
@@ -148,29 +153,45 @@ func (dn *TestDevnet) Start(t *testing.T) {
 	err := dn.Devnet.Start(ctx)
 	require.NoError(t, err)
 
-	// Build a device CYOA IP from the subnet CIDR.
-	deviceCYOAIP, err := netutil.BuildIPInCIDR(dn.CYOANetwork.SubnetCIDR, 80)
+	// Create a dummy device first to maintain same ordering of devices as before.
+	err = dn.CreateDeviceOnchain(ctx, "la2-dz01", "lax", "xlax", "207.45.216.134", []string{"207.45.216.136/30", "200.12.12.12/29"})
 	require.NoError(t, err)
 
-	// Create our device and a few others onchain.
-	deviceCode := "ny5-dz01"
-	dn.createDevicesAndLinksOnchain(t, deviceCode, deviceCYOAIP.String())
-
-	// Get the device agent pubkey from the onchain device list.
-	deviceAgentPubkey := dn.GetDevicePubkeyOnchain(t, deviceCode)
-	require.NotEmpty(t, deviceAgentPubkey, "device agent pubkey not found onchain for device %s", deviceCode)
-
-	// Add a device to the devnet.
-	_, err = dn.AddDevice(ctx, devnet.DeviceSpec{
-		ContainerImage: os.Getenv("DZ_DEVICE_IMAGE"),
-		Code:           deviceCode,
-		Pubkey:         deviceAgentPubkey,
-		CYOANetworkIP:  deviceCYOAIP.String(),
+	// Add a device to the devnet and onchain.
+	deviceIndex, err := dn.AddDevice(ctx, devnet.DeviceSpec{
+		Code: "ny5-dz01",
+		// .8/29 has network address .8, allocatable up to .14, and broadcast .15
+		CYOANetworkIPHostID:          8,
+		CYOANetworkAllocatablePrefix: 29,
 	})
 	require.NoError(t, err)
+	device := dn.Devices[deviceIndex]
 
-	// Build a client CYOA IP from the subnet CIDR.
-	clientCYOAIP, err := netutil.BuildIPInCIDR(dn.CYOANetwork.SubnetCIDR, 86)
+	// Add the other devices and links onchain.
+	dn.log.Info("==> Creating other devices and links onchain")
+	dn.Manager.Exec(ctx, []string{"bash", "-c", `
+		set -e
+
+		echo "==> Populate device information onchain - DO NOT SHUFFLE THESE AS THE PUBKEYS WILL CHANGE"
+		doublezero device create --code ld4-dz01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "195.219.120.72/29"
+		doublezero device create --code frk-dz01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "195.219.220.88/29"
+		doublezero device create --code sg1-dz01 --location sin --exchange xsin --public-ip "180.87.102.104" --dz-prefixes "180.87.102.104/29"
+		doublezero device create --code ty2-dz01 --location tyo --exchange xtyo --public-ip "180.87.154.112" --dz-prefixes "180.87.154.112/29"
+		doublezero device create --code pit-dzd01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "204.16.243.243/32"
+		doublezero device create --code ams-dz001 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "195.219.138.56/29"
+		echo "--> Device information onchain:"
+		doublezero device list
+
+		echo "==> Populate link information onchain"
+		doublezero link create --code "la2-dz01:ny5-dz01" --side-a la2-dz01 --side-z ny5-dz01 --link-type L2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
+		doublezero link create --code "ny5-dz01:ld4-dz01" --side-a ny5-dz01 --side-z ld4-dz01 --link-type L2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
+		doublezero link create --code "ld4-dz01:frk-dz01" --side-a ld4-dz01 --side-z frk-dz01 --link-type L2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10
+		doublezero link create --code "ld4-dz01:sg1-dz01" --side-a ld4-dz01 --side-z sg1-dz01 --link-type L2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9
+		doublezero link create --code "sg1-dz01:ty2-dz01" --side-a sg1-dz01 --side-z ty2-dz01 --link-type L2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7
+		doublezero link create --code "ty2-dz01:la2-dz01" --side-a ty2-dz01 --side-z la2-dz01 --link-type L2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 10
+		echo "--> Tunnel information onchain:"
+		doublezero link list
+	`})
 	require.NoError(t, err)
 
 	// Generate a new client keypair.
@@ -180,13 +201,11 @@ func (dn *TestDevnet) Start(t *testing.T) {
 
 	// Add a client to the devnet.
 	clientIndex, err := dn.AddClient(ctx, devnet.ClientSpec{
-		ContainerImage: os.Getenv("DZ_CLIENT_IMAGE"),
-		KeypairPath:    clientKeypairPath,
-		CYOANetworkIP:  clientCYOAIP.String(),
+		KeypairPath:         clientKeypairPath,
+		CYOANetworkIPHostID: 100,
 	})
 	require.NoError(t, err)
 	client := dn.Clients[clientIndex]
-	clientSpec := client.Spec()
 
 	// Add client to the user allowlist.
 	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", "doublezero user allowlist add --pubkey " + client.Pubkey})
@@ -195,7 +214,7 @@ func (dn *TestDevnet) Start(t *testing.T) {
 	// Add null routes to test latency selection to ny5-dz01.
 	_, err = client.Exec(ctx, []string{"bash", "-c", `
 		echo "==> Adding null routes to test latency selection to ny5-dz01."
-		ip rule add priority 1 from ` + clientSpec.CYOANetworkIP + `/32 to all table main
+		ip rule add priority 1 from ` + client.CYOANetworkIP + `/` + strconv.Itoa(dn.Spec.CYOANetworkSpec.CIDRPrefix) + ` to all table main
 		ip route add 207.45.216.134/32 dev lo proto static scope host
 		ip route add 195.219.120.72/32 dev lo proto static scope host
 		ip route add 195.219.220.88/32 dev lo proto static scope host
@@ -207,14 +226,13 @@ func (dn *TestDevnet) Start(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for latency results.
-	dn.waitForLatencyResults(t, client, deviceAgentPubkey)
+	dn.waitForLatencyResults(t, client, device.AccountPubkey)
 }
 
 func (dn *TestDevnet) DisconnectUserTunnel(t *testing.T, client *devnet.Client) {
 	dn.log.Info("==> Disconnecting user tunnel")
 
-	clientSpec := client.Spec()
-	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect --client-ip " + clientSpec.CYOANetworkIP})
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect --client-ip " + client.CYOANetworkIP})
 	require.NoError(t, err)
 
 	dn.log.Info("--> User tunnel disconnected")
@@ -280,37 +298,6 @@ func (dn *TestDevnet) waitForLatencyResults(t *testing.T, client *devnet.Client,
 	}, timeout, 2*time.Second, "timeout waiting for latency results")
 }
 
-func (dn *TestDevnet) createDevicesAndLinksOnchain(t *testing.T, deviceCode string, deviceCYOAIP string) {
-	dn.log.Info("==> Creating devices and links onchain", "deviceCode", deviceCode, "deviceCYOAIP", deviceCYOAIP)
-
-	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
-		set -e
-
-		echo "==> Populate device information onchain - DO NOT SHUFFLE THESE AS THE PUBKEYS WILL CHANGE"
-		doublezero device create --code la2-dz01 --location lax --exchange xlax --public-ip "207.45.216.134" --dz-prefixes "207.45.216.136/30,200.12.12.12/29"
-		doublezero device create --code ` + deviceCode + ` --location ewr --exchange xewr --public-ip "` + deviceCYOAIP + `" --dz-prefixes "` + deviceCYOAIP + `/29"
-		doublezero device create --code ld4-dz01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "195.219.120.72/29"
-		doublezero device create --code frk-dz01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "195.219.220.88/29"
-		doublezero device create --code sg1-dz01 --location sin --exchange xsin --public-ip "180.87.102.104" --dz-prefixes "180.87.102.104/29"
-		doublezero device create --code ty2-dz01 --location tyo --exchange xtyo --public-ip "180.87.154.112" --dz-prefixes "180.87.154.112/29"
-		doublezero device create --code pit-dzd01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "204.16.243.243/32"
-		doublezero device create --code ams-dz001 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "195.219.138.56/29"
-		echo "--> Device information onchain:"
-		doublezero device list
-
-		echo "==> Populate link information onchain"
-		doublezero link create --code "la2-dz01:` + deviceCode + `" --side-a la2-dz01 --side-z ` + deviceCode + ` --link-type L2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
-		doublezero link create --code "` + deviceCode + `:ld4-dz01" --side-a ` + deviceCode + ` --side-z ld4-dz01 --link-type L2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
-		doublezero link create --code "ld4-dz01:frk-dz01" --side-a ld4-dz01 --side-z frk-dz01 --link-type L2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10
-		doublezero link create --code "ld4-dz01:sg1-dz01" --side-a ld4-dz01 --side-z sg1-dz01 --link-type L2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9
-		doublezero link create --code "sg1-dz01:ty2-dz01" --side-a sg1-dz01 --side-z ty2-dz01 --link-type L2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7
-		doublezero link create --code "ty2-dz01:la2-dz01" --side-a ty2-dz01 --side-z la2-dz01 --link-type L2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 10
-		echo "--> Tunnel information onchain:"
-		doublezero link list
-	`})
-	require.NoError(t, err)
-}
-
 func (dn *TestDevnet) CreateMulticastGroupOnchain(t *testing.T, client *devnet.Client, multicastGroupCode string) {
 	dn.log.Info("==> Creating multicast group onchain")
 
@@ -357,9 +344,7 @@ func (dn *TestDevnet) WaitForAgentConfigMatchViaController(t *testing.T, deviceA
 func (dn *TestDevnet) ConnectIBRLUserTunnel(t *testing.T, client *devnet.Client) {
 	dn.log.Info("==> Connecting IBRL user tunnel")
 
-	clientSpec := client.Spec()
-
-	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect ibrl --client-ip " + clientSpec.CYOANetworkIP})
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect ibrl --client-ip " + client.CYOANetworkIP})
 	require.NoError(t, err)
 
 	dn.log.Info("--> IBRL user tunnel connected")
@@ -369,19 +354,16 @@ func (dn *TestDevnet) ConnectIBRLUserTunnel(t *testing.T, client *devnet.Client)
 func (dn *TestDevnet) ConnectUserTunnelWithAllocatedIP(t *testing.T, client *devnet.Client) {
 	dn.log.Info("==> Connecting user tunnel with allocated IP")
 
-	clientSpec := client.Spec()
-
-	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect ibrl --client-ip " + clientSpec.CYOANetworkIP + " --allocate-addr"})
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect ibrl --client-ip " + client.CYOANetworkIP + " --allocate-addr"})
 	require.NoError(t, err)
 
 	dn.log.Info("--> User tunnel with allocated IP connected")
 }
 
 func (dn *TestDevnet) ConnectMulticastPublisher(t *testing.T, client *devnet.Client, multicastGroupCode string) {
-	clientSpec := client.Spec()
-	dn.log.Info("==> Connecting multicast publisher", "clientIP", clientSpec.CYOANetworkIP)
+	dn.log.Info("==> Connecting multicast publisher", "clientIP", client.CYOANetworkIP)
 
-	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast publisher " + multicastGroupCode + " --client-ip " + clientSpec.CYOANetworkIP})
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast publisher " + multicastGroupCode + " --client-ip " + client.CYOANetworkIP})
 	require.NoError(t, err, "failed to connect multicast publisher")
 
 	dn.log.Info("--> Multicast publisher connected")
@@ -389,42 +371,55 @@ func (dn *TestDevnet) ConnectMulticastPublisher(t *testing.T, client *devnet.Cli
 
 // DisconnectMulticastPublisher disconnects a multicast publisher from a multicast group.
 func (dn *TestDevnet) DisconnectMulticastPublisher(t *testing.T, client *devnet.Client) {
-	clientSpec := client.Spec()
-	dn.log.Info("==> Disconnecting multicast publisher", "clientIP", clientSpec.CYOANetworkIP)
+	dn.log.Info("==> Disconnecting multicast publisher", "clientIP", client.CYOANetworkIP)
 
-	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast --client-ip " + clientSpec.CYOANetworkIP})
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast --client-ip " + client.CYOANetworkIP})
 	require.NoError(t, err, "failed to disconnect multicast publisher")
 
 	dn.log.Info("--> Multicast publisher disconnected")
 }
 
 func (dn *TestDevnet) ConnectMulticastSubscriber(t *testing.T, client *devnet.Client, multicastGroupCode string) {
-	clientSpec := client.Spec()
-	dn.log.Info("==> Connecting multicast subscriber", "clientIP", clientSpec.CYOANetworkIP)
+	dn.log.Info("==> Connecting multicast subscriber", "clientIP", client.CYOANetworkIP)
 
-	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast subscriber " + multicastGroupCode + " --client-ip " + clientSpec.CYOANetworkIP})
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast subscriber " + multicastGroupCode + " --client-ip " + client.CYOANetworkIP})
 	require.NoError(t, err)
 
 	dn.log.Info("--> Multicast subscriber connected")
 }
 
 func (dn *TestDevnet) DisconnectMulticastSubscriber(t *testing.T, client *devnet.Client) {
-	clientSpec := client.Spec()
-	dn.log.Info("==> Disconnecting multicast subscriber", "clientIP", clientSpec.CYOANetworkIP)
+	dn.log.Info("==> Disconnecting multicast subscriber", "clientIP", client.CYOANetworkIP)
 
-	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast --client-ip " + clientSpec.CYOANetworkIP})
+	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero disconnect multicast --client-ip " + client.CYOANetworkIP})
 	require.NoError(t, err)
 
 	dn.log.Info("--> Multicast subscriber disconnected")
 }
 
-// getNextAllocatedClientIP returns the next allocated client IP address in the subnet based on a
-// given previous IP, by simply incrementing the last octet. This is a naive implementation that
-// does not consider the actual subnet CIDR and will break if used for a lot of IPs.
-func getNextAllocatedClientIP(previousIP string) string {
-	ip := net.ParseIP(previousIP).To4()
-	ip[3]++
-	return ip.String()
+// nextAllocatableIP returns the next available IPv4 address within a subnet,
+// given a starting IP (assumed to be the network address), the subnet prefix length,
+// and a set of already allocated IPs. It skips the network and broadcast addresses,
+// and searches linearly for the first unallocated host address.
+func nextAllocatableIP(ip string, allocatablePrefix int, allocated map[string]bool) (string, error) {
+	network := net.ParseIP(ip).To4()
+	if network == nil {
+		return "", errors.New("only IPv4 is supported")
+	}
+
+	networkInt := binary.BigEndian.Uint32(network)
+	start := networkInt + 1                          // first usable
+	end := networkInt + (1 << allocatablePrefix) - 2 // last usable
+
+	for ipInt := start; ipInt <= end; ipInt++ {
+		ip := make(net.IP, 4)
+		binary.BigEndian.PutUint32(ip, ipInt)
+		if !allocated[ip.String()] {
+			return ip.To4().String(), nil
+		}
+	}
+
+	return "", errors.New("no allocatable IPs remaining")
 }
 
 func newTestLogger(verbose bool) *slog.Logger {

@@ -17,8 +17,19 @@ type CYOANetwork struct {
 	SubnetCIDR string
 }
 
+type CYOANetworkSpec struct {
+	CIDRPrefix int
+}
+
+func (s *CYOANetworkSpec) Validate() error {
+	if s.CIDRPrefix <= 0 || s.CIDRPrefix > 32 {
+		return fmt.Errorf("CIDRPrefix must be between 1 and 32")
+	}
+	return nil
+}
+
 func (n *CYOANetwork) Create(ctx context.Context) error {
-	n.log.Info("==> Creating CYOA network")
+	n.log.Info("==> Creating CYOA network", "cidrPrefix", n.dn.Spec.CYOANetworkSpec.CIDRPrefix)
 
 	// Get an available subnet for the CYOA network.
 	subnetCIDR, err := n.dn.subnetAllocator.FindAvailableSubnet(ctx, n.dn.Spec.DeployID)

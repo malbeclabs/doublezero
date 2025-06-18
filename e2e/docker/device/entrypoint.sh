@@ -13,6 +13,10 @@ if [ -z "${DZ_DEVICE_IP:-}" ]; then
     echo "DZ_DEVICE_IP is not set"
     exit 1
 fi
+if [ -z "${DZ_CYOA_NETWORK_CIDR_PREFIX:-}" ]; then
+    echo "DZ_CYOA_NETWORK_CIDR_PREFIX is not set"
+    exit 1
+fi
 
 # Substitute environment variables in the startup config.
 envsubst < /etc/doublezero/agent/startup-config.template > /mnt/flash/startup-config
@@ -20,6 +24,9 @@ if [ $? -ne 0 ]; then
     echo "Failed to render startup config"
     exit 1
 fi
+
+# Allow TWAMP traffic.
+iptables -I INPUT -p udp --dport 862 -j ACCEPT
 
 # Start the device.
 exec /sbin/init \

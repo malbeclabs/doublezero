@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -27,10 +28,12 @@ type LedgerSpec struct {
 
 func (s *LedgerSpec) Validate() error {
 
+	// If the container image is not set, use the DZ_LEDGER_IMAGE environment variable.
 	if s.ContainerImage == "" {
-		return fmt.Errorf("containerImage is required")
+		s.ContainerImage = os.Getenv("DZ_LEDGER_IMAGE")
 	}
 
+	// Check for required fields.
 	if s.ProgramKeypairPath == "" {
 		return fmt.Errorf("programKeypairPath is required")
 	}

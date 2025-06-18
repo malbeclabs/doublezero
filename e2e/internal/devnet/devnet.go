@@ -2,8 +2,11 @@ package devnet
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
+	"strings"
 	"sync"
 	"time"
 
@@ -27,6 +30,8 @@ type DevnetSpec struct {
 	// on the deployID.
 	ExtraLabels map[string]string
 
+	CYOANetworkSpec CYOANetworkSpec
+
 	Ledger     LedgerSpec
 	Manager    ManagerSpec
 	Controller ControllerSpec
@@ -38,11 +43,12 @@ type DevnetSpec struct {
 type Devnet struct {
 	Spec DevnetSpec
 
-	log             *slog.Logger
-	subnetAllocator *docker.SubnetAllocator
-	dockerClient    *client.Client
-	labels          map[string]string
-	mu              sync.RWMutex
+	log               *slog.Logger
+	subnetAllocator   *docker.SubnetAllocator
+	dockerClient      *client.Client
+	labels            map[string]string
+	mu                sync.RWMutex
+	onchainWriteMutex sync.Mutex
 
 	DefaultNetwork *DefaultNetwork
 	CYOANetwork    *CYOANetwork
@@ -64,6 +70,10 @@ func (s *DevnetSpec) Validate() error {
 		return fmt.Errorf("workingDir is required")
 	}
 
+	if err := s.CYOANetworkSpec.Validate(); err != nil {
+		return fmt.Errorf("cyoa-network: %w", err)
+	}
+
 	if err := s.Ledger.Validate(); err != nil {
 		return fmt.Errorf("ledger: %w", err)
 	}
@@ -72,7 +82,7 @@ func (s *DevnetSpec) Validate() error {
 		return fmt.Errorf("manager: %w", err)
 	}
 
-	if err := s.Controller.Validate(); err != nil {
+	if err := s.Controller.Validate(s.CYOANetworkSpec); err != nil {
 		return fmt.Errorf("controller: %w", err)
 	}
 
@@ -81,13 +91,13 @@ func (s *DevnetSpec) Validate() error {
 	}
 
 	for _, device := range s.Devices {
-		if err := device.Validate(); err != nil {
+		if err := device.Validate(s.CYOANetworkSpec); err != nil {
 			return fmt.Errorf("device: %w", err)
 		}
 	}
 
 	for _, client := range s.Clients {
-		if err := client.Validate(); err != nil {
+		if err := client.Validate(s.CYOANetworkSpec); err != nil {
 			return fmt.Errorf("client: %w", err)
 		}
 	}
@@ -101,12 +111,14 @@ func New(spec DevnetSpec, logger *slog.Logger, dockerClient *client.Client, subn
 
 	// Build the resource labels used to identify resources.
 	labels := make(map[string]string)
-	for k, v := range spec.ExtraLabels {
-		labels[k] = v
-	}
+	maps.Copy(labels, spec.ExtraLabels)
 	labels[labelsKeyDomain] = "true"
 	labels[labelsKeyDomain+"/type"] = "devnet"
 	labels[labelsKeyDomain+"/deploy-id"] = spec.DeployID
+
+	if err := spec.Validate(); err != nil {
+		return nil, fmt.Errorf("failed to validate devnet spec: %w", err)
+	}
 
 	dn := &Devnet{
 		log:             log,
@@ -179,7 +191,13 @@ func (d *Devnet) Start(ctx context.Context) error {
 		}
 	}
 
+	// Create the CYOA network.
+	if err := d.CYOANetwork.Create(ctx); err != nil {
+		return fmt.Errorf("failed to create CYOA network: %w", err)
+	}
+
 	// Start the controller.
+	// Requires the CYOA network to be created first.
 	if err := d.Controller.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start controller: %w", err)
 	}
@@ -187,16 +205,6 @@ func (d *Devnet) Start(ctx context.Context) error {
 	// Start the activator.
 	if err := d.Activator.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start activator: %w", err)
-	}
-
-	// Create the CYOA network.
-	if err := d.CYOANetwork.Create(ctx); err != nil {
-		return fmt.Errorf("failed to create CYOA network: %w", err)
-	}
-
-	// Connect the controller to the device CYOA network.
-	if err := d.Controller.ConnectToCYOANetwork(ctx); err != nil {
-		return fmt.Errorf("failed to connect controller to device CYOA network: %w", err)
 	}
 
 	// We don't support starting with devices yet.
@@ -216,20 +224,29 @@ func (d *Devnet) Start(ctx context.Context) error {
 }
 
 func (d *Devnet) AddDevice(ctx context.Context, spec DeviceSpec) (int, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	deviceIndex := len(d.Devices)
-	d.Spec.Devices = append(d.Spec.Devices, spec)
-
-	// NOTE: The devnet, log, and index fields need to be set before calling Start, which will
-	// then fill in the rest of the fields.
-	device := &Device{
-		dn:    d,
-		log:   d.log.With("component", "device", "index", deviceIndex),
-		index: deviceIndex,
+	if err := spec.Validate(d.Spec.CYOANetworkSpec); err != nil {
+		return 0, fmt.Errorf("failed to validate device spec: %w", err)
 	}
-	d.Devices = append(d.Devices, device)
+
+	// We want to be able to add/start devices in parallel, so we need to use a closure to
+	// to avoid locking the devnet mutex for the entire duration of the AddDevice method.
+	device, deviceIndex := func() (*Device, int) {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+
+		deviceIndex := len(d.Devices)
+		d.Spec.Devices = append(d.Spec.Devices, spec)
+
+		// NOTE: The devnet, log, and index fields need to be set before calling Start, which will
+		// then fill in the rest of the fields.
+		device := &Device{
+			dn:    d,
+			log:   d.log.With("component", "device", "index", deviceIndex),
+			index: deviceIndex,
+		}
+		d.Devices = append(d.Devices, device)
+		return device, deviceIndex
+	}()
 
 	err := device.Start(ctx)
 	if err != nil {
@@ -240,20 +257,30 @@ func (d *Devnet) AddDevice(ctx context.Context, spec DeviceSpec) (int, error) {
 }
 
 func (d *Devnet) AddClient(ctx context.Context, spec ClientSpec) (int, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	clientIndex := len(d.Clients)
-	d.Spec.Clients = append(d.Spec.Clients, spec)
-
-	// NOTE: The devnet, log, and index fields need to be set before calling Start, which will
-	// then fill in the rest of the fields.
-	client := &Client{
-		dn:    d,
-		log:   d.log.With("component", "client", "index", clientIndex),
-		index: clientIndex,
+	if err := spec.Validate(d.Spec.CYOANetworkSpec); err != nil {
+		return 0, fmt.Errorf("failed to validate client spec: %w", err)
 	}
-	d.Clients = append(d.Clients, client)
+
+	// We want to be able to add/start clients in parallel, so we need to use a closure to
+	// to avoid locking the devnet mutex for the entire duration of the AddClient method.
+	client, clientIndex := func() (*Client, int) {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+
+		clientIndex := len(d.Clients)
+		d.Spec.Clients = append(d.Spec.Clients, spec)
+
+		// NOTE: The devnet, log, and index fields need to be set before calling Start, which will
+		// then fill in the rest of the fields.
+		client := &Client{
+			dn:    d,
+			log:   d.log.With("component", "client", "index", clientIndex),
+			index: clientIndex,
+		}
+		d.Clients = append(d.Clients, client)
+
+		return client, clientIndex
+	}()
 
 	err := client.Start(ctx)
 	if err != nil {
@@ -261,6 +288,36 @@ func (d *Devnet) AddClient(ctx context.Context, spec ClientSpec) (int, error) {
 	}
 
 	return clientIndex, nil
+}
+
+var (
+	ErrDevicePubkeyNotFoundOnchain = errors.New("device pubkey not found onchain")
+)
+
+func (d *Devnet) CreateDeviceOnchain(ctx context.Context, deviceCode string, location string, exchange string, publicIP string, prefixes []string) error {
+	d.onchainWriteMutex.Lock()
+	defer d.onchainWriteMutex.Unlock()
+
+	_, err := d.Manager.Exec(ctx, []string{"doublezero", "device", "create", "--code", deviceCode, "--location", location, "--exchange", exchange, "--public-ip", publicIP, "--dz-prefixes", strings.Join(prefixes, ",")})
+	if err != nil {
+		return fmt.Errorf("failed to create device onchain: %w", err)
+	}
+	return nil
+}
+
+func (d *Devnet) GetDevicePubkeyOnchain(ctx context.Context, deviceCode string) (string, error) {
+	output, err := d.Manager.Exec(ctx, []string{"bash", "-c", "doublezero device get --code " + deviceCode})
+	if err != nil {
+		return "", fmt.Errorf("failed to get device pubkey onchain: %w", err)
+	}
+
+	for _, line := range strings.Split(string(output), "\n") {
+		if strings.HasPrefix(line, "account: ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "account: ")), nil
+		}
+	}
+
+	return "", ErrDevicePubkeyNotFoundOnchain
 }
 
 func (d *Devnet) waitContainerHealthy(ctx context.Context, containerID string, timeout time.Duration, delay time.Duration) error {

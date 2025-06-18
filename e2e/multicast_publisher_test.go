@@ -33,7 +33,7 @@ func TestE2E_Multicast_Publisher(t *testing.T) {
 
 		dn.CreateMulticastGroupOnchain(t, client, "mg02")
 
-		output, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast publisher mg02 --client-ip " + client.Spec().CYOANetworkIP})
+		output, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast publisher mg02 --client-ip " + client.CYOANetworkIP})
 		require.Error(t, err)
 		require.Contains(t, string(output), "Multicast supports only one subscription at this time")
 	}) {
@@ -58,19 +58,17 @@ func checkMulticastPublisherPostConnect(t *testing.T, dn *TestDevnet, device *de
 	t.Run("check_post_connect", func(t *testing.T) {
 		dn.log.Info("==> Checking multicast publisher post-connect requirements")
 
-		deviceSpec := device.Spec()
-		clientSpec := client.Spec()
-
-		expectedAllocatedClientIP := getNextAllocatedClientIP(deviceSpec.CYOANetworkIP)
+		expectedAllocatedClientIP, err := nextAllocatableIP(device.CYOANetworkIP, int(device.Spec().CYOANetworkAllocatablePrefix), map[string]bool{})
+		require.NoError(t, err)
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
 			config, err := fixtures.Render("fixtures/multicast_publisher/doublezero_agent_config_user_added.tmpl", map[string]string{
-				"ClientIP":                  clientSpec.CYOANetworkIP,
-				"DeviceIP":                  deviceSpec.CYOANetworkIP,
+				"ClientIP":                  client.CYOANetworkIP,
+				"DeviceIP":                  device.CYOANetworkIP,
 				"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
-			err = dn.WaitForAgentConfigMatchViaController(t, deviceSpec.Pubkey, string(config))
+			err = dn.WaitForAgentConfigMatchViaController(t, device.AccountPubkey, string(config))
 			require.NoError(t, err, "error waiting for agent config to match")
 		}) {
 			t.Fail()
@@ -94,8 +92,8 @@ func checkMulticastPublisherPostConnect(t *testing.T, dn *TestDevnet, device *de
 				name:        "doublezero_status",
 				fixturePath: "fixtures/multicast_publisher/doublezero_status_connected.tmpl",
 				data: map[string]string{
-					"ClientIP":                  clientSpec.CYOANetworkIP,
-					"DeviceIP":                  deviceSpec.CYOANetworkIP,
+					"ClientIP":                  client.CYOANetworkIP,
+					"DeviceIP":                  device.CYOANetworkIP,
 					"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
 				},
 				cmd: []string{"doublezero", "status"},
@@ -145,9 +143,9 @@ func checkMulticastPublisherPostConnect(t *testing.T, dn *TestDevnet, device *de
 				"linkmode":          "DEFAULT",
 				"group":             "default",
 				"link_type":         "gre",
-				"address":           clientSpec.CYOANetworkIP,
+				"address":           client.CYOANetworkIP,
 				"link_pointtopoint": true,
-				"broadcast":         deviceSpec.CYOANetworkIP,
+				"broadcast":         device.CYOANetworkIP,
 			}, links[0])
 		}) {
 			t.Fail()
@@ -184,21 +182,28 @@ func checkMulticastPublisherPostConnect(t *testing.T, dn *TestDevnet, device *de
 			// state on the switch, so we can check the mroute state later.
 			_, _ = client.Exec(t.Context(), []string{"bash", "-c", "ping -c 1 -w 1 233.84.178.0"}, docker.NoPrintOnError())
 
-			mroutes, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPMroute](t.Context(), device, arista.ShowIPMrouteCmd())
-			require.NoError(t, err, "error fetching mroutes from doublezero device")
-
 			mGroup := "233.84.178.0"
-			groups, ok := mroutes.Groups[mGroup]
-			require.True(t, ok, "multicast group %s not found in mroutes", mGroup)
+			require.Eventually(t, func() bool {
+				mroutes, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPMroute](t.Context(), device, arista.ShowIPMrouteCmd())
+				require.NoError(t, err, "error fetching mroutes from doublezero device")
 
-			_, ok = groups.GroupSources[expectedAllocatedClientIP]
-			require.True(t, ok, "source %s not found in multicast group %s", expectedAllocatedClientIP, mGroup)
+				groups, ok := mroutes.Groups[mGroup]
+				if !ok {
+					dn.log.Debug("Waiting for multicast group to be created", "mGroup", mGroup, "mroutes", mroutes)
+					return false
+				}
+
+				_, ok = groups.GroupSources[expectedAllocatedClientIP]
+				require.True(t, ok, "source %s not found in multicast group %s", expectedAllocatedClientIP, mGroup)
+
+				return true
+			}, 5*time.Second, 1*time.Second, "multicast group %s not found in mroutes", mGroup)
 		}) {
 			t.Fail()
 		}
 
 		if !t.Run("only_one_tunnel_allowed", func(t *testing.T) {
-			_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect ibrl --client-ip " + clientSpec.CYOANetworkIP})
+			_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect ibrl --client-ip " + client.CYOANetworkIP})
 			require.Error(t, err, "User with different type already exists. Only one tunnel currently supported")
 		}) {
 			t.Fail()
@@ -216,14 +221,12 @@ func checkMulticastPublisherPostDisconnect(t *testing.T, dn *TestDevnet, device 
 	t.Run("check_post_disconnect", func(t *testing.T) {
 		dn.log.Info("==> Checking multicast publisher post-disconnect requirements")
 
-		deviceSpec := device.Spec()
-
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
 			config, err := fixtures.Render("fixtures/multicast_publisher/doublezero_agent_config_user_removed.tmpl", map[string]string{
-				"DeviceIP": deviceSpec.CYOANetworkIP,
+				"DeviceIP": device.CYOANetworkIP,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
-			err = dn.WaitForAgentConfigMatchViaController(t, deviceSpec.Pubkey, string(config))
+			err = dn.WaitForAgentConfigMatchViaController(t, device.AccountPubkey, string(config))
 			require.NoError(t, err, "error waiting for agent config to match")
 		}) {
 			t.Fail()

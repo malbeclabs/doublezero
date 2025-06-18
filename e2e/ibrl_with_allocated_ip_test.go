@@ -4,6 +4,7 @@ package e2e_test
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -68,19 +69,19 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 	t.Run("check_post_connect", func(t *testing.T) {
 		dn.log.Info("==> Checking IBRL with allocated IP post-connect requirements")
 
-		deviceSpec := device.Spec()
-		clientSpec := client.Spec()
+		expectedAllocatedClientIP, err := nextAllocatableIP(device.CYOANetworkIP, int(device.Spec().CYOANetworkAllocatablePrefix), map[string]bool{})
+		require.NoError(t, err)
 
-		expectedAllocatedClientIP := getNextAllocatedClientIP(deviceSpec.CYOANetworkIP)
+		dn.log.Info("--> Expected allocated client IP", "expectedAllocatedClientIP", expectedAllocatedClientIP, "deviceCYOAIP", device.CYOANetworkIP)
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
 			config, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_added.tmpl", map[string]string{
-				"ClientIP":                  clientSpec.CYOANetworkIP,
-				"DeviceIP":                  deviceSpec.CYOANetworkIP,
+				"ClientIP":                  client.CYOANetworkIP,
+				"DeviceIP":                  device.CYOANetworkIP,
 				"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
-			err = dn.WaitForAgentConfigMatchViaController(t, deviceSpec.Pubkey, string(config))
+			err = dn.WaitForAgentConfigMatchViaController(t, device.AccountPubkey, string(config))
 			require.NoError(t, err, "error waiting for agent config to match")
 		}) {
 			t.Fail()
@@ -96,9 +97,9 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 				name:        "doublezero_user_list",
 				fixturePath: "fixtures/ibrl_with_allocated_addr/doublezero_user_list_user_added.tmpl",
 				data: map[string]string{
-					"ClientIP":                  clientSpec.CYOANetworkIP,
+					"ClientIP":                  client.CYOANetworkIP,
 					"ClientPubkeyAddress":       client.Pubkey,
-					"DeviceIP":                  deviceSpec.CYOANetworkIP,
+					"DeviceIP":                  device.CYOANetworkIP,
 					"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
 				},
 				cmd: []string{"doublezero", "user", "list"},
@@ -107,8 +108,9 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 				name:        "doublezero_device_list",
 				fixturePath: "fixtures/ibrl_with_allocated_addr/doublezero_device_list.tmpl",
 				data: map[string]string{
-					"DeviceIP":      deviceSpec.CYOANetworkIP,
-					"ManagerPubkey": dn.Manager.Pubkey,
+					"DeviceIP":                device.CYOANetworkIP,
+					"ManagerPubkey":           dn.Manager.Pubkey,
+					"DeviceAllocatablePrefix": strconv.Itoa(int(device.Spec().CYOANetworkAllocatablePrefix)),
 				},
 				cmd: []string{"doublezero", "device", "list"},
 			},
@@ -116,8 +118,8 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 				name:        "doublezero_status",
 				fixturePath: "fixtures/ibrl_with_allocated_addr/doublezero_status_connected.tmpl",
 				data: map[string]string{
-					"ClientIP":                  clientSpec.CYOANetworkIP,
-					"DeviceIP":                  deviceSpec.CYOANetworkIP,
+					"ClientIP":                  client.CYOANetworkIP,
+					"DeviceIP":                  device.CYOANetworkIP,
 					"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
 				},
 				cmd: []string{"doublezero", "status"},
@@ -167,9 +169,9 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 				"linkmode":          "DEFAULT",
 				"group":             "default",
 				"link_type":         "gre",
-				"address":           clientSpec.CYOANetworkIP,
+				"address":           client.CYOANetworkIP,
 				"link_pointtopoint": true,
-				"broadcast":         deviceSpec.CYOANetworkIP,
+				"broadcast":         device.CYOANetworkIP,
 			}, links[0])
 		}) {
 			t.Fail()
@@ -234,14 +236,12 @@ func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, dn *TestDevnet, device
 	t.Run("check_post_disconnect", func(t *testing.T) {
 		dn.log.Info("==> Checking IBRL with allocated IP post-disconnect requirements")
 
-		deviceSpec := device.Spec()
-
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
 			config, err := fixtures.Render("fixtures/ibrl_with_allocated_addr/doublezero_agent_config_user_removed.tmpl", map[string]string{
-				"DeviceIP": deviceSpec.CYOANetworkIP,
+				"DeviceIP": device.CYOANetworkIP,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
-			err = dn.WaitForAgentConfigMatchViaController(t, deviceSpec.Pubkey, string(config))
+			err = dn.WaitForAgentConfigMatchViaController(t, device.AccountPubkey, string(config))
 			require.NoError(t, err, "error waiting for agent config to match")
 		}) {
 			t.Fail()

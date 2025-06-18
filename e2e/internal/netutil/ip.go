@@ -1,22 +1,33 @@
 package netutil
 
 import (
+	"encoding/binary"
+	"errors"
 	"fmt"
 	"net"
 )
 
-func BuildIPInCIDR(cidr string, lastOctet byte) (net.IP, error) {
-	parsedIP, _, err := net.ParseCIDR(cidr)
+func DeriveIPFromCIDR(cidr string, hostID uint32) (net.IP, error) {
+	ip, ipnet, err := net.ParseCIDR(cidr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse CYOA network subnet: %w", err)
+		return nil, fmt.Errorf("invalid CIDR: %w", err)
 	}
 
-	ip4 := parsedIP.To4()
-	if ip4 == nil {
-		return nil, fmt.Errorf("failed to parse CYOA network subnet as IPv4")
+	ip = ip.To4()
+	if ip == nil {
+		return nil, errors.New("only IPv4 is supported")
 	}
 
-	ip4[3] = lastOctet
+	prefixLen, bits := ipnet.Mask.Size()
+	hostBits := bits - prefixLen
+	if hostID >= (1 << hostBits) {
+		return nil, fmt.Errorf("host ID %d out of range for /%d", hostID, prefixLen)
+	}
 
-	return ip4, nil
+	ipInt := binary.BigEndian.Uint32(ip)
+	ipInt += hostID
+
+	result := make(net.IP, 4)
+	binary.BigEndian.PutUint32(result, ipInt)
+	return result, nil
 }

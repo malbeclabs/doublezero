@@ -52,7 +52,7 @@ interface Loopback0
 !
 interface Ethernet1
    no switchport
-   ip address ${DZ_DEVICE_IP}/29
+   ip address ${DZ_DEVICE_IP}/${DZ_CYOA_NETWORK_CIDR_PREFIX}
 !
 interface Management0
    shutdown

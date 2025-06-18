@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"os"
 	"strconv"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
+	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/testcontainers/testcontainers-go"
 )
 
@@ -26,25 +28,35 @@ const (
 type DeviceSpec struct {
 	ContainerImage string
 	Code           string
-	Pubkey         string
-	CYOANetworkIP  string
+
+	// CYOANetworkIPHostID is the offset into the host portion of the subnet (must be < 2^(32 - prefixLen)).
+	CYOANetworkIPHostID uint32
+
+	// CYOANetworkAllocatablePrefix is the prefix length of the allocatable portion of the CYOA network.
+	// This is used to derive the allocatable IP addresses for the device.
+	CYOANetworkAllocatablePrefix uint32
 }
 
-func (s *DeviceSpec) Validate() error {
+func (s *DeviceSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
+	// If the container image is not set, use the DZ_DEVICE_IMAGE environment variable.
 	if s.ContainerImage == "" {
-		return fmt.Errorf("containerImage is required")
+		s.ContainerImage = os.Getenv("DZ_DEVICE_IMAGE")
 	}
 
+	// Check for required fields.
 	if s.Code == "" {
 		return fmt.Errorf("code is required")
 	}
 
-	if s.Pubkey == "" {
-		return fmt.Errorf("pubkey is required")
+	// Validate that hostID does not select the network (0) or broadcast (max) address.
+	hostBits := 32 - cyoaNetworkSpec.CIDRPrefix
+	maxHostID := uint32((1 << hostBits) - 1)
+	if s.CYOANetworkIPHostID <= 0 || s.CYOANetworkIPHostID >= maxHostID {
+		return fmt.Errorf("hostID %d is out of valid range (1 to %d)", s.CYOANetworkIPHostID, maxHostID-1)
 	}
 
-	if s.CYOANetworkIP == "" {
-		return fmt.Errorf("cyoaNetworkIP is required")
+	if cyoaNetworkSpec.CIDRPrefix >= int(s.CYOANetworkAllocatablePrefix) {
+		return fmt.Errorf("allocatable prefix %d is greater than the CIDR prefix %d", s.CYOANetworkAllocatablePrefix, cyoaNetworkSpec.CIDRPrefix)
 	}
 
 	return nil
@@ -56,7 +68,9 @@ type Device struct {
 
 	index int
 
-	ContainerID string
+	ContainerID   string
+	CYOANetworkIP string
+	AccountPubkey string
 }
 
 func (d *Device) Spec() *DeviceSpec {
@@ -75,9 +89,28 @@ func (d *Device) Spec() *DeviceSpec {
 // network attached, then attach the CYOA network to the container.
 func (d *Device) Start(ctx context.Context) error {
 	spec := d.Spec()
-	d.log.Info("==> Starting device", "image", spec.ContainerImage, "code", spec.Code, "pubkey", spec.Pubkey, "cyoaNetworkIP", spec.CYOANetworkIP)
+	d.log.Info("==> Starting device", "image", spec.ContainerImage, "code", spec.Code, "cyoaNetworkIPHostID", spec.CYOANetworkIPHostID)
 
 	cyoaControllerAddr := net.JoinHostPort(d.dn.Controller.CYOANetworkIP, fmt.Sprintf("%d", internalControllerPort))
+
+	deviceIP, err := netutil.DeriveIPFromCIDR(d.dn.CYOANetwork.SubnetCIDR, uint32(spec.CYOANetworkIPHostID))
+	if err != nil {
+		return fmt.Errorf("failed to derive CYOA network IP: %w", err)
+	}
+	deviceCYOAIP := deviceIP.To4().String()
+
+	// Create the device onchain.
+	err = d.dn.CreateDeviceOnchain(ctx, spec.Code, "ewr", "xewr", deviceCYOAIP, []string{deviceCYOAIP + "/" + strconv.Itoa(int(spec.CYOANetworkAllocatablePrefix))})
+	if err != nil {
+		return fmt.Errorf("failed to create device %s onchain: %w", spec.Code, err)
+	}
+
+	// Get the device agent pubkey from onchain.
+	accountPubkey, err := d.dn.GetDevicePubkeyOnchain(ctx, spec.Code)
+	if err != nil {
+		return fmt.Errorf("failed to get device agent pubkey onchain for device %s: %w", spec.Code, err)
+	}
+	d.log.Info("--> Created device onchain", "code", spec.Code, "cyoaIP", deviceCYOAIP, "accountPubkey", accountPubkey)
 
 	// Create the device container, but don't start it yet.
 	req := testcontainers.ContainerRequest{
@@ -85,9 +118,10 @@ func (d *Device) Start(ctx context.Context) error {
 		Name:         d.dn.Spec.DeployID + "-device-" + strconv.Itoa(d.index),
 		ExposedPorts: []string{"80/tcp"},
 		Env: map[string]string{
-			"DZ_CONTROLLER_ADDR": cyoaControllerAddr,
-			"DZ_AGENT_PUBKEY":    spec.Pubkey,
-			"DZ_DEVICE_IP":       spec.CYOANetworkIP,
+			"DZ_CONTROLLER_ADDR":          cyoaControllerAddr,
+			"DZ_AGENT_PUBKEY":             accountPubkey,
+			"DZ_DEVICE_IP":                deviceCYOAIP,
+			"DZ_CYOA_NETWORK_CIDR_PREFIX": strconv.Itoa(d.dn.Spec.CYOANetworkSpec.CIDRPrefix),
 		},
 		Privileged: true,
 		Networks: []string{
@@ -121,9 +155,9 @@ func (d *Device) Start(ctx context.Context) error {
 	// This is configured as eth1 in the startup-config.template.
 	containerID := container.GetContainerID()
 	err = d.dn.dockerClient.NetworkConnect(ctx, d.dn.CYOANetwork.Name, containerID, &network.EndpointSettings{
-		IPAddress: spec.CYOANetworkIP,
+		IPAddress: deviceCYOAIP,
 		IPAMConfig: &network.EndpointIPAMConfig{
-			IPv4Address: spec.CYOANetworkIP,
+			IPv4Address: deviceCYOAIP,
 		},
 	})
 	if err != nil {
@@ -137,11 +171,13 @@ func (d *Device) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to wait for device container to be healthy: %w", err)
 	}
-	d.log.Info("--> Device container is healthy", "container", shortContainerID(containerID), "name", container.Name, "duration", time.Since(start))
+	d.log.Info("--> Device container is healthy", "container", shortContainerID(containerID), "cyoaIP", deviceCYOAIP, "name", container.Name, "duration", time.Since(start))
 
 	d.ContainerID = shortContainerID(container.GetContainerID())
+	d.CYOANetworkIP = deviceCYOAIP
+	d.AccountPubkey = accountPubkey
 
-	d.log.Info("--> Device started", "container", d.ContainerID)
+	d.log.Info("--> Device started", "container", d.ContainerID, "cyoaIP", deviceCYOAIP, "accountPubkey", accountPubkey)
 	return nil
 }
 

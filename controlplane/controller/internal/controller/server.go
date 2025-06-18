@@ -331,23 +331,10 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 	getConfigOps.WithLabelValues(req.GetPubkey()).Inc()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	decoded, err := base58.Decode(req.GetPubkey())
+
+	err := validatePubkey(req.GetPubkey())
 	if err != nil {
-		err := status.Errorf(codes.InvalidArgument, "pubkey %s is not a valid base58 string: %v", req.Pubkey, err)
 		return nil, err
-	}
-
-	if len(decoded) != 32 {
-		err := status.Errorf(codes.InvalidArgument, "pubkey %s is length %d, expected 32", req.Pubkey, len(decoded))
-		return nil, err
-	}
-
-	var publicKey solana.PublicKey
-	copy(publicKey[:], decoded)
-	if !publicKey.IsOnCurve() {
-		err := status.Errorf(codes.InvalidArgument, "pubkey %s is not a valid public key", req.Pubkey)
-		return nil, err
-
 	}
 
 	device, ok := c.cache.Devices[req.GetPubkey()]
@@ -407,4 +394,26 @@ func formatCIDR(b *[5]byte) string {
 	ip := net.IPv4(b[0], b[1], b[2], b[3])
 	mask := net.CIDRMask(int(b[4]), 32)
 	return (&net.IPNet{IP: ip, Mask: mask}).String()
+}
+
+func validatePubkey(pubkey string) error {
+	decoded, err := base58.Decode(pubkey)
+	if err != nil {
+		err := status.Errorf(codes.InvalidArgument, "pubkey %s is not a valid base58 string: %v", pubkey, err)
+		return err
+	}
+
+	if len(decoded) != 32 {
+		err := status.Errorf(codes.InvalidArgument, "pubkey %s is length %d, expected 32", pubkey, len(decoded))
+		return err
+	}
+
+	var publicKey solana.PublicKey
+	copy(publicKey[:], decoded)
+	if !publicKey.IsOnCurve() {
+		err := status.Errorf(codes.InvalidArgument, "pubkey %s is not a valid public key", pubkey)
+		return err
+
+	}
+	return nil
 }

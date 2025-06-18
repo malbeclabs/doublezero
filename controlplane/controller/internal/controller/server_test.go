@@ -17,6 +17,8 @@ import (
 	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
 )
 
+const pubkey = "4t6vjgfcmznthnu8npaqjzz7ye3wnwox7kzty1o7yvsg"
+
 func TestGetConfig(t *testing.T) {
 	tests := []struct {
 		Name        string
@@ -34,7 +36,7 @@ func TestGetConfig(t *testing.T) {
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				Devices: map[string]*Device{
-					"4t6vjgfcmznthnu8npaqjzz7ye3wnwox7kzty1o7yvsg": {
+					pubkey: {
 						Tunnels: []*Tunnel{
 							{
 								Id:            500,
@@ -68,7 +70,7 @@ func TestGetConfig(t *testing.T) {
 					},
 				},
 			},
-			Pubkey: "4t6vjgfcmznthnu8npaqjzz7ye3wnwox7kzty1o7yvsg",
+			Pubkey: pubkey,
 			Want:   "fixtures/unicast.tunnel.txt",
 		},
 		{
@@ -79,7 +81,7 @@ func TestGetConfig(t *testing.T) {
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				Devices: map[string]*Device{
-					"4t6vjgfcmznthnu8npaqjzz7ye3wnwox7kzty1o7yvsg": {
+					pubkey: {
 						Tunnels: []*Tunnel{
 							{
 								Id:            500,
@@ -146,7 +148,7 @@ func TestGetConfig(t *testing.T) {
 					},
 				},
 			},
-			Pubkey: "4t6vjgfcmznthnu8npaqjzz7ye3wnwox7kzty1o7yvsg",
+			Pubkey: pubkey,
 			Want:   "fixtures/multicast.tunnel.txt",
 		},
 		{
@@ -157,7 +159,7 @@ func TestGetConfig(t *testing.T) {
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				Devices: map[string]*Device{
-					"4t6vjgfcmznthnu8npaqjzz7ye3wnwox7kzty1o7yvsg": {
+					pubkey: {
 						Tunnels: []*Tunnel{
 							{
 								Id:            500,
@@ -235,7 +237,7 @@ func TestGetConfig(t *testing.T) {
 					},
 				},
 			},
-			Pubkey: "4t6vjgfcmznthnu8npaqjzz7ye3wnwox7kzty1o7yvsg",
+			Pubkey: pubkey,
 			Want:   "fixtures/mixed.tunnel.txt",
 		},
 		{
@@ -247,7 +249,7 @@ func TestGetConfig(t *testing.T) {
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				Devices: map[string]*Device{
-					"4t6vjgfcmznthnu8npaqjzz7ye3wnwox7kzty1o7yvsg": {
+					pubkey: {
 						Tunnels: []*Tunnel{
 							{
 								Id:            500,
@@ -325,7 +327,7 @@ func TestGetConfig(t *testing.T) {
 					},
 				},
 			},
-			Pubkey: "4t6vjgfcmznthnu8npaqjzz7ye3wnwox7kzty1o7yvsg",
+			Pubkey: pubkey,
 			Want:   "fixtures/nohardware.tunnel.txt",
 		},
 	}

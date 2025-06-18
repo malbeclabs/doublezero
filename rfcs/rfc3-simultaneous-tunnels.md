@@ -18,6 +18,8 @@ Multiple tunnel support is required now that DoubleZero supports IBRL and multic
 
 3. **Adapt the devices table in the current smart contract to fit a second tunnel (i.e. multicast) endpoint.** While this seems like significantly less work on its face, we end up needing to touch the same portions of the stack as a more ideal solution as they all need to be taught to understand this field.
 
+4. **Use GRE keys to identify tunnels.** GRE keys enable a route to de-encapsulate packets and idenfity the right tunnel to use. This would have been a good approach except that at rates of about 250 Mbps, packets were being dropped which makes it unviable option.
+
 ## Detailed Design
 
 TBX

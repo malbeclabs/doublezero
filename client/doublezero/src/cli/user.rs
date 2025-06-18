@@ -21,21 +21,32 @@ pub struct UserCliCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum UserCommands {
-    #[command(about = "", hide = true)]
+    /// Create a new user
+    #[command(hide = true)]
     Create(CreateUserCliCommand),
-    #[command(about = "", hide = true)]
+    /// Create and subscribe a new user
+    #[command(hide = true)]
     CreateSubscribe(CreateSubscribeUserCliCommand),
-    #[command(about = "", hide = true)]
+    /// Subscribe an existing user
+    #[command(hide = true)]
     Subscribe(SubscribeUserCliCommand),
-    #[command(about = "", hide = true)]
+    /// Update an existing user
+    #[command(hide = true)]
     Update(UpdateUserCliCommand),
+    /// List all users
+    #[command()]
     List(ListUserCliCommand),
+    /// Get details for a specific user
+    #[command()]
     Get(GetUserCliCommand),
-    #[command(about = "", hide = true)]
+    /// Delete a user
+    #[command(hide = true)]
     Delete(DeleteUserCliCommand),
-    #[command(about = "allowlist", hide = false)]
+    /// Manage user allowlist
+    #[command(hide = false)]
     Allowlist(UserAllowlistCliCommand),
-    #[command(about = "", hide = true)]
+    /// Request a ban for a user
+    #[command(hide = true)]
     RequestBan(RequestBanUserCliCommand),
 }
 
@@ -47,7 +58,13 @@ pub struct UserAllowlistCliCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum UserAllowlistCommands {
+    /// List user allowlist
+    #[clap()]
     List(ListUserAllowlistCliCommand),
+    /// Add a user to the allowlist
+    #[clap()]
     Add(AddUserAllowlistCliCommand),
+    /// Remove a user from the allowlist
+    #[clap()]
     Remove(RemoveUserAllowlistCliCommand),
 }

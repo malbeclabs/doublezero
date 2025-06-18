@@ -11,12 +11,16 @@ use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct UpdateDeviceCliCommand {
+    /// Device Pubkey to update
     #[arg(long)]
     pub pubkey: String,
+    /// Updated code for the device
     #[arg(long)]
     pub code: Option<String>,
+    /// Updated public IPv4 address for the device (e.g. 10.0.0.1)
     #[arg(long)]
     pub public_ip: Option<String>,
+    /// Updated list of DZ prefixes in comma-separated CIDR format (e.g. 10.1.0.0/16,10.2.0.0/16)
     #[arg(long)]
     pub dz_prefixes: Option<String>,
 }

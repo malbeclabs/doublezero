@@ -15,8 +15,14 @@ pub struct GlobalConfigCliCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum GlobalConfigCommands {
+    /// Get the current global configuration
+    #[clap()]
     Get(GetGlobalConfigCliCommand),
+    /// Set the global configuration
+    #[clap()]
     Set(SetGlobalConfigCliCommand),
+    /// Manage the foundation allowlist
+    #[clap()]
     Allowlist(FoundationAllowlistCliCommand),
 }
 
@@ -28,7 +34,13 @@ pub struct FoundationAllowlistCliCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum FoundationAllowlistCommands {
+    /// List foundation allowlist
+    #[clap()]
     List(ListFoundationAllowlistCliCommand),
+    /// Add a foundation to the allowlist
+    #[clap()]
     Add(AddFoundationAllowlistCliCommand),
+    /// Remove a foundation from the allowlist
+    #[clap()]
     Remove(RemoveFoundationAllowlistCliCommand),
 }

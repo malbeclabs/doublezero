@@ -6,6 +6,7 @@ use std::{io::Write, str::FromStr};
 
 #[derive(Args, Debug)]
 pub struct GetUserCliCommand {
+    /// User Pubkey to retrieve
     #[arg(long)]
     pub pubkey: String,
 }

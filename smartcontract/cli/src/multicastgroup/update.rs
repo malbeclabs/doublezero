@@ -14,12 +14,16 @@ use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct UpdateMulticastGroupCliCommand {
+    /// Multicast group Pubkey to update
     #[arg(long)]
     pub pubkey: String,
+    /// Updated code for the multicast group
     #[arg(long)]
     pub code: Option<String>,
+    /// Updated multicast IPv4 address (e.g. 239.0.0.1)
     #[arg(long)]
     pub multicast_ip: Option<String>,
+    /// Updated maximum bandwidth (e.g. 1Gbps, 100Mbps)
     #[arg(long)]
     pub max_bandwidth: Option<String>,
 }

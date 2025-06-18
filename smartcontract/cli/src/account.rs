@@ -5,8 +5,10 @@ use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct GetAccountCliCommand {
+    /// Public key of the account to retrieve
     #[arg(long)]
     pub pubkey: String,
+    /// Include transaction logs in the output
     #[arg(long, action = clap::ArgAction::SetTrue)]
     pub logs: bool,
 }

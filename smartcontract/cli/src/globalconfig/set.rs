@@ -8,14 +8,19 @@ use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct SetGlobalConfigCliCommand {
+    /// Local ASN (Autonomous System Number)
     #[arg(long)]
     pub local_asn: u32,
+    /// Remote ASN (Autonomous System Number)
     #[arg(long)]
     pub remote_asn: u32,
+    /// Link tunnel block in CIDR format
     #[arg(long)]
     tunnel_tunnel_block: String,
+    /// Device tunnel block in CIDR format
     #[arg(long)]
     device_tunnel_block: String,
+    /// Multicast group block in CIDR format
     #[arg(long)]
     multicastgroup_block: String,
 }

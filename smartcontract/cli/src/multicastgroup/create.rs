@@ -11,10 +11,13 @@ use std::{io::Write, str::FromStr};
 
 #[derive(Args, Debug)]
 pub struct CreateMulticastGroupCliCommand {
+    /// Unique code for the multicast group
     #[arg(long)]
     pub code: String,
+    /// Maximum bandwidth for the group (e.g. 10Gbps, 100Mbps)
     #[arg(long)]
     pub max_bandwidth: String,
+    /// Owner Pubkey or 'me' for current payer
     #[arg(long)]
     pub owner: String,
 }

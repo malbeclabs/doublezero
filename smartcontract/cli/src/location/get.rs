@@ -5,6 +5,7 @@ use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct GetLocationCliCommand {
+    /// Location Pubkey or code to get details for
     #[arg(long)]
     pub code: String,
 }

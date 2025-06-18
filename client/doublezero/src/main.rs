@@ -29,12 +29,16 @@ struct App {
     #[command(subcommand)]
     command: Command,
 
+    /// DZ ledger RPC URL
     #[arg(long, value_name = "RPC_URL", global = true)]
     url: Option<String>,
+    /// DZ ledger WebSocket URL
     #[arg(long, value_name = "WEBSOCKET_URL", global = true)]
     ws: Option<String>,
+    /// DZ program ID (testnet or devnet)
     #[arg(long, value_name = "PROGRAM_ID", global = true)]
     program_id: Option<String>,
+    /// Path to the keypair file
     #[arg(long, value_name = "KEYPAIR", global = true)]
     keypair: Option<String>,
 }

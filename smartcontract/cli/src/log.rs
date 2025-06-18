@@ -5,6 +5,7 @@ use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct LogCliCommand {
+    /// Public key of the user to get logs for
     #[arg(long)]
     pubkey: String,
 }

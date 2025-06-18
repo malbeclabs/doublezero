@@ -9,8 +9,10 @@ use std::{io::Write, str::FromStr};
 
 #[derive(Args, Debug)]
 pub struct RemoveMulticastGroupPubAllowlistCliCommand {
+    /// Multicast group code or pubkey to remove publisher allowlist for
     #[arg(long)]
     pub code: String,
+    /// Publisher Pubkey or 'me' for current payer
     #[arg(long)]
     pub pubkey: String,
 }

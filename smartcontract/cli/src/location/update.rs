@@ -8,18 +8,25 @@ use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct UpdateLocationCliCommand {
+    /// Location Pubkey to update
     #[arg(long)]
     pub pubkey: String,
+    /// Updated code for the location
     #[arg(long)]
     pub code: Option<String>,
+    /// Updated name for the location
     #[arg(long)]
     pub name: Option<String>,
+    /// Updated country for the location
     #[arg(long)]
     pub country: Option<String>,
+    /// Updated latitude for the location
     #[arg(long, allow_hyphen_values(true))]
     pub lat: Option<f64>,
+    /// Updated longitude for the location
     #[arg(long, allow_hyphen_values(true))]
     pub lng: Option<f64>,
+    /// Updated location ID
     #[arg(long)]
     pub loc_id: Option<u32>,
 }

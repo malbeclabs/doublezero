@@ -12,10 +12,13 @@ use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct CreateUserCliCommand {
+    /// Device Pubkey or code to associate with the user
     #[arg(long)]
     pub device: String,
+    /// Client IP address in IPv4 format
     #[arg(long)]
     pub client_ip: String,
+    /// Allocate a new address for the user
     #[arg(short, long, default_value_t = false)]
     pub allocate_addr: bool,
 }

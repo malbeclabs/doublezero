@@ -5,6 +5,7 @@ use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct GetDeviceCliCommand {
+    /// Device Pubkey or code to retrieve
     #[arg(long)]
     pub code: String,
 }

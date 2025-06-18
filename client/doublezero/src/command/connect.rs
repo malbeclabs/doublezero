@@ -1,5 +1,8 @@
 use super::helpers::look_for_ip;
-use crate::servicecontroller::{ProvisioningRequest, ServiceController, ServiceControllerImpl};
+use crate::{
+    requirements::check_doublezero,
+    servicecontroller::{ProvisioningRequest, ServiceController, ServiceControllerImpl},
+};
 use clap::{Args, Subcommand, ValueEnum};
 use doublezero_cli::{
     doublezerocommand::CliCommand,
@@ -19,14 +22,10 @@ use doublezero_sdk::{
     ipv4_to_string, networkv4_to_string, Device, IpV4, NetworkV4, User, UserCYOA, UserStatus,
     UserType,
 };
-
 use eyre;
 use indicatif::ProgressBar;
-use std::str::FromStr;
-
 use solana_sdk::pubkey::Pubkey;
-
-use crate::requirements::check_doublezero;
+use std::str::FromStr;
 
 #[derive(Clone, Debug, ValueEnum)]
 pub enum MulticastMode {
@@ -37,16 +36,20 @@ pub enum MulticastMode {
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Debug, Subcommand)]
 pub enum DzMode {
+    /// Provision a user in IBRL mode
     IBRL {
+        /// Allocate a new address for the user
         #[arg(short, long, default_value_t = false)]
         allocate_addr: bool,
     },
     //EdgeFiltering,
+    /// Provision a user in Multicast mode
     Multicast {
+        /// Multicast mode: Publisher or Subscriber
         #[arg(value_enum)]
         mode: MulticastMode,
 
-        #[arg()]
+        /// Multicast group code
         multicast_group: String,
     },
 }
@@ -56,12 +59,15 @@ pub struct ProvisioningCliCommand {
     #[clap(subcommand)]
     pub dz_mode: DzMode,
 
+    /// Client IP address in IPv4 format
     #[arg(long, global = true)]
     pub client_ip: Option<String>,
 
+    /// Device Pubkey or code to associate with the user
     #[arg(long, global = true)]
     pub device: Option<String>,
 
+    /// Verbose output
     #[arg(short, long, global = true, default_value_t = false)]
     pub verbose: bool,
 }

@@ -8,14 +8,19 @@ use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct CreateExchangeCliCommand {
+    /// Unique code for the exchange
     #[arg(long)]
     pub code: String,
+    /// Name of the exchange
     #[arg(long)]
     pub name: String,
+    /// Latitude of the exchange
     #[arg(long, allow_hyphen_values(true))]
     pub lat: f64,
+    /// Longitude of the exchange
     #[arg(long, allow_hyphen_values(true))]
     pub lng: f64,
+    /// Optional location ID for the exchange
     #[arg(long)]
     pub loc_id: Option<u32>,
 }

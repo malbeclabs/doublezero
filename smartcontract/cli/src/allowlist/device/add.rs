@@ -9,6 +9,7 @@ use std::{io::Write, str::FromStr};
 
 #[derive(Args, Debug)]
 pub struct AddDeviceAllowlistCliCommand {
+    /// Contributor Pubkey to add to the allowlist
     #[arg(long)]
     pub pubkey: String,
 }

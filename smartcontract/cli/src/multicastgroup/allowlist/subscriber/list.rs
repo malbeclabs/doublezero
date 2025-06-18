@@ -5,10 +5,13 @@ use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct ListMulticastGroupSubAllowlistCliCommand {
+    /// Multicast group code or pubkey to list subscriber allowlist for
     #[arg(long)]
     pub code: String,
+    /// Output as pretty JSON
     #[arg(long, default_value_t = false)]
     pub json: bool,
+    /// Output as compact JSON
     #[arg(long, default_value_t = false)]
     pub json_compact: bool,
 }

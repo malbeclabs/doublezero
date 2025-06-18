@@ -9,6 +9,7 @@ use std::{io::Write, str::FromStr};
 
 #[derive(Args, Debug)]
 pub struct DeleteUserCliCommand {
+    /// User Pubkey to delete
     #[arg(long)]
     pub pubkey: String,
 }

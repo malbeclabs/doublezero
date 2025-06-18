@@ -4,6 +4,8 @@ package e2e_test
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -46,6 +48,13 @@ func TestE2E_DeviceAgentTelemetry(t *testing.T) {
 			// .8/29 has network address .8, allocatable up to .14, and broadcast .15
 			CYOANetworkIPHostID:          8,
 			CYOANetworkAllocatablePrefix: 29,
+			Telemetry: devnet.DeviceTelemetryConfig{
+				Enabled:              true,
+				TWAMPListenPort:      862,
+				ProbeInterval:        1 * time.Second,
+				SubmissionInterval:   3 * time.Second,
+				PeersRefreshInterval: 1 * time.Second,
+			},
 		})
 		require.NoError(t, err)
 	}()
@@ -58,6 +67,13 @@ func TestE2E_DeviceAgentTelemetry(t *testing.T) {
 			// .16/29 has network address .16, allocatable up to .22, and broadcast .23
 			CYOANetworkIPHostID:          16,
 			CYOANetworkAllocatablePrefix: 29,
+			Telemetry: devnet.DeviceTelemetryConfig{
+				Enabled:              true,
+				TWAMPListenPort:      862,
+				ProbeInterval:        1 * time.Second,
+				SubmissionInterval:   3 * time.Second,
+				PeersRefreshInterval: 1 * time.Second,
+			},
 		})
 		require.NoError(t, err)
 	}()
@@ -105,19 +121,65 @@ func TestE2E_DeviceAgentTelemetry(t *testing.T) {
 	defer cancel()
 	sender := dn.Devices["ny5-dz01"]
 	reflector := dn.Devices["la2-dz01"]
+	port := 1862
+	_, err = sender.Exec(context.Background(), []string{"iptables", "-I", "INPUT", "-p", "udp", "--dport", strconv.Itoa(port), "-j", "ACCEPT"})
+	require.NoError(t, err)
+	_, err = reflector.Exec(context.Background(), []string{"iptables", "-I", "INPUT", "-p", "udp", "--dport", strconv.Itoa(port), "-j", "ACCEPT"})
+	require.NoError(t, err)
 	go func() {
-		_, err = reflector.Exec(ctx, []string{"twamp-reflector"})
+		_, err = reflector.Exec(ctx, []string{"twamp-reflector", fmt.Sprintf(":%d", port)})
 		require.NoError(t, err)
 	}()
 	require.Eventually(t, func() bool {
-		_, err := reflector.Exec(t.Context(), []string{"bash", "-c", "ss -uln '( dport = :862 )' | grep -q ."})
+		_, err := reflector.Exec(t.Context(), []string{"bash", "-c", fmt.Sprintf("ss -uln '( dport = :%d )' | grep -q .", port)})
 		return err == nil
 	}, 3*time.Second, 100*time.Millisecond)
-	output, err := sender.Exec(t.Context(), []string{"twamp-sender", reflector.CYOANetworkIP})
+	output, err := sender.Exec(t.Context(), []string{"twamp-sender", "-q", fmt.Sprintf("%s:%d", reflector.CYOANetworkIP, port)})
 	require.NoError(t, err)
 	log.Info("TWAMP sender output", "output", string(output))
 	require.Contains(t, string(output), "RTT:")
 	rtt, err := time.ParseDuration(strings.TrimSpace(strings.TrimPrefix(string(output), "RTT: ")))
 	require.NoError(t, err)
 	require.Greater(t, rtt, 0*time.Millisecond)
+
+	// Check that the mock ledger logs are showing up with telemetry samples in the telemetry daemon logs.
+	// TODO(snormore): Replace this with a check of the actual ledger state once we have that implemented.
+	log.Info("==> Checking that mock ledger logs are showing up with telemetry samples in the telemetry daemon logs")
+	for _, device := range dn.Devices {
+		var sampleCount int
+		require.Eventually(t, func() bool {
+			output, err = device.Exec(context.Background(), []string{"bash", "-c", `grep -F "[MOCK LEDGER LOG] telemetry sample" /var/log/agents-latest/doublezero-telemetry || true`})
+			require.NoError(t, err)
+			lines := strings.SplitN(string(output), "\n", -1)
+			for _, line := range lines {
+				if strings.TrimSpace(line) == "" {
+					continue
+				}
+				sampleCount++
+			}
+			if sampleCount < 6 {
+				log.Info("--> Waiting for telemetry samples", "device", device.Spec.Code, "samples", sampleCount)
+				return false
+			}
+			return true
+		}, 30*time.Second, 1*time.Second)
+
+		var nextSampleCount int
+		require.Eventually(t, func() bool {
+			output, err = device.Exec(context.Background(), []string{"bash", "-c", `grep -F "[MOCK LEDGER LOG] telemetry sample" /var/log/agents-latest/doublezero-telemetry || true`})
+			require.NoError(t, err)
+			lines := strings.SplitN(string(output), "\n", -1)
+			for _, line := range lines {
+				if strings.TrimSpace(line) == "" {
+					continue
+				}
+				nextSampleCount++
+			}
+			if nextSampleCount <= sampleCount {
+				log.Info("--> Waiting for more telemetry samples", "device", device.Spec.Code, "samples", nextSampleCount)
+				return false
+			}
+			return true
+		}, 10*time.Second, 1*time.Second)
+	}
 }

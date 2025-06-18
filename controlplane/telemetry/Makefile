@@ -1,4 +1,4 @@
-PREFIX:=github.com/malbeclabs/doublezero/controlplane/agent
+PREFIX:=github.com/malbeclabs/doublezero/controlplane/telemetry
 BUILD:=`git rev-parse --short HEAD`
 LDFLAGS=-ldflags "-X=$(PREFIX)/build.Build=$(BUILD)"
 
@@ -12,4 +12,4 @@ lint:
 
 .PHONY: build
 build:
-	CGO_ENABLED=0 go build -v $(LDFLAGS) -o bin/doublezero-agent cmd/agent/main.go
+	CGO_ENABLED=0 go build -v $(LDFLAGS) -o bin/doublezero-telemetry cmd/telemetry/main.go

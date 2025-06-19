@@ -31,7 +31,7 @@ pub struct ProvisioningResponse {
     pub description: Option<String>,
 }
 
-#[derive(Clone, Tabled, Deserialize, Debug)]
+#[derive(Clone, Tabled, Deserialize, Serialize, Debug)]
 pub struct LatencyRecord {
     #[tabled(rename = "pubkey")]
     pub device_pk: String,
@@ -76,7 +76,7 @@ pub struct RemoveResponse {
     pub description: Option<String>,
 }
 
-#[derive(Tabled, Deserialize, Debug)]
+#[derive(Tabled, Serialize, Deserialize, Debug)]
 #[tabled(display(Option, "display::option", ""))]
 pub struct StatusResponse {
     #[tabled(inline)]
@@ -93,7 +93,7 @@ pub struct StatusResponse {
     pub user_type: Option<String>,
 }
 
-#[derive(Tabled, Deserialize, Debug)]
+#[derive(Tabled, Serialize, Deserialize, Debug)]
 pub struct DoubleZeroStatus {
     #[tabled(rename = "Tunnel status")]
     pub session_status: String,

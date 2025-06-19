@@ -19,9 +19,7 @@ import (
 func TestE2E_Multicast_Subscriber(t *testing.T) {
 	t.Parallel()
 
-	dn := NewSingleDeviceSingleClientTestDevnet(t)
-	client := dn.Clients[0]
-	device := dn.Devices[0]
+	dn, device, client := NewSingleDeviceSingleClientTestDevnet(t)
 
 	if !t.Run("connect", func(t *testing.T) {
 		dn.CreateMulticastGroupOnchain(t, client, "mg01")
@@ -64,7 +62,7 @@ func checkMulticastSubscriberPostConnect(t *testing.T, dn *TestDevnet, device *d
 				"DeviceIP": device.CYOANetworkIP,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
-			err = dn.WaitForAgentConfigMatchViaController(t, device.AccountPubkey, string(config))
+			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
 			require.NoError(t, err, "error waiting for agent config to match")
 		}) {
 			t.Fail()
@@ -238,7 +236,7 @@ func checkMulticastSubscriberPostDisconnect(t *testing.T, dn *TestDevnet, device
 				"DeviceIP": device.CYOANetworkIP,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
-			err = dn.WaitForAgentConfigMatchViaController(t, device.AccountPubkey, string(config))
+			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
 			require.NoError(t, err, "error waiting for agent config to match")
 		}) {
 			t.Fail()

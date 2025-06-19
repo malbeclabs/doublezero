@@ -4,6 +4,10 @@
         "dockerfile": "Dockerfile",
         "context": "."
     },
+    "runArgs": [
+        "--name",
+        "dz-dev-workspace-vsc"
+    ],
     "features": {
         "ghcr.io/devcontainers/features/common-utils:2": {},
         "ghcr.io/devcontainers/features/go:1": {

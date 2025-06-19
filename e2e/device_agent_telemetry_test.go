@@ -4,7 +4,6 @@ package e2e_test
 
 import (
 	"context"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -12,7 +11,6 @@ import (
 
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
-	"github.com/malbeclabs/doublezero/e2e/internal/solana"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,44 +19,19 @@ func TestE2E_DeviceAgentTelemetry(t *testing.T) {
 
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
 	log := logger.With("test", t.Name(), "deployID", deployID)
-	workingDir := t.TempDir()
-
-	// Generate a program keypair.
-	programKeypairPath := filepath.Join(workingDir, "dz-program-keypair.json")
-	err := solana.GenerateKeypair(programKeypairPath)
-	if err != nil {
-		t.Fatal("failed to generate program keypair")
-	}
-
-	// Generate manager keypair.
-	managerKeypairPath := filepath.Join(workingDir, "dz-manager-keypair.json")
-	err = solana.GenerateKeypair(managerKeypairPath)
-	if err != nil {
-		t.Fatal("failed to generate manager keypair")
-	}
 
 	dn, err := devnet.New(devnet.DevnetSpec{
-		DeployID:   deployID,
-		WorkingDir: workingDir,
+		DeployID:  deployID,
+		DeployDir: t.TempDir(),
 
-		CYOANetworkSpec: devnet.CYOANetworkSpec{
+		CYOANetwork: devnet.CYOANetworkSpec{
 			CIDRPrefix: subnetCIDRPrefix,
 		},
-		Ledger: devnet.LedgerSpec{
-			ProgramKeypairPath: programKeypairPath,
-		},
-		Manager: devnet.ManagerSpec{
-			KeypairPath: managerKeypairPath,
-		},
-		Controller: devnet.ControllerSpec{
-			CYOANetworkIPHostID: 99,
-		},
-		Activator: devnet.ActivatorSpec{},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
 
 	log.Info("==> Starting devnet")
-	err = dn.Start(context.Background())
+	err = dn.Start(context.Background(), nil)
 	require.NoError(t, err)
 
 	// Add and start the 2 devices in parallel.
@@ -93,7 +66,7 @@ func TestE2E_DeviceAgentTelemetry(t *testing.T) {
 	// Add some dummy devices onchain.
 	log.Info("==> Adding dummy devices onchain")
 	_, err = dn.Manager.Exec(context.Background(), []string{"bash", "-c", `
-			set -e
+			set -euo pipefail
 
 			doublezero device create --code ld4-dz01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "195.219.120.72/29"
 			doublezero device create --code frk-dz01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "195.219.220.88/29"
@@ -107,7 +80,7 @@ func TestE2E_DeviceAgentTelemetry(t *testing.T) {
 	// Add links onchain, including our real devices and some devices that haven't been added yet.
 	log.Info("==> Creating links onchain")
 	_, err = dn.Manager.Exec(context.Background(), []string{"bash", "-c", `
-			set -e
+			set -euo pipefail
 
 			doublezero link create --code "la2-dz01:ny5-dz01" --side-a la2-dz01 --side-z ny5-dz01 --link-type L2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
 			doublezero link create --code "ny5-dz01:ld4-dz01" --side-a ny5-dz01 --side-z ld4-dz01 --link-type L2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
@@ -120,9 +93,9 @@ func TestE2E_DeviceAgentTelemetry(t *testing.T) {
 
 	// Check that the devices are reachable from each other via ping.
 	log.Info("==> Checking that devices are reachable from each other via ping")
-	_, err = dn.Devices[0].Exec(context.Background(), []string{"ping", "-c", "1", dn.Devices[1].CYOANetworkIP})
+	_, err = dn.Devices["la2-dz01"].Exec(context.Background(), []string{"ping", "-c", "1", dn.Devices["ny5-dz01"].CYOANetworkIP})
 	require.NoError(t, err)
-	_, err = dn.Devices[1].Exec(context.Background(), []string{"ping", "-c", "1", dn.Devices[0].CYOANetworkIP})
+	_, err = dn.Devices["ny5-dz01"].Exec(context.Background(), []string{"ping", "-c", "1", dn.Devices["la2-dz01"].CYOANetworkIP})
 	require.NoError(t, err)
 
 	// Check that TWAMP probes work between the devices.
@@ -130,8 +103,8 @@ func TestE2E_DeviceAgentTelemetry(t *testing.T) {
 	log.Info("==> Checking that TWAMP probes work between the devices")
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	sender := dn.Devices[1]
-	reflector := dn.Devices[0]
+	sender := dn.Devices["ny5-dz01"]
+	reflector := dn.Devices["la2-dz01"]
 	go func() {
 		_, err = reflector.Exec(ctx, []string{"twamp-reflector"})
 		require.NoError(t, err)

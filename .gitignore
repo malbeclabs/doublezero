@@ -15,3 +15,6 @@ smartcontract/cli/config/*
 .vscode
 
 dist/
+
+# Local devnet deployment artifacts.
+dev/.deploy/

@@ -1,4 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
 # Wait for startup-config to exist.
 config_path="/etc/doublezero/agent/startup-config"
@@ -10,10 +11,14 @@ done
 # Copy the startup config to the flash partition.
 cp "$config_path" /mnt/flash/startup-config
 
+echo "==> Startup config ready"
+
 # Allow TWAMP traffic.
+echo "==> Allowing TWAMP traffic"
 iptables -I INPUT -p udp --dport 862 -j ACCEPT
 
 # Start the device.
+echo "==> Starting device services"
 exec /sbin/init \
     systemd.setenv=INTFTYPE=eth \
     systemd.setenv=ETBA=4 \

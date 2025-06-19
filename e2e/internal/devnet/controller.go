@@ -9,7 +9,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
+	dockercontainer "github.com/docker/docker/api/types/container"
+	dockerfilters "github.com/docker/docker/api/types/filters"
 	"github.com/docker/go-connections/nat"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
 	"github.com/testcontainers/testcontainers-go"
@@ -27,9 +28,6 @@ const (
 type ControllerSpec struct {
 	ContainerImage string
 	ExternalHost   string
-
-	// CYOANetworkIPHostID is the offset into the host portion of the subnet (must be < 2^(32 - prefixLen)).
-	CYOANetworkIPHostID uint32
 }
 
 func (s *ControllerSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
@@ -44,13 +42,6 @@ func (s *ControllerSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
 		s.ExternalHost = "localhost"
 	}
 
-	// Validate that hostID does not select the network (0) or broadcast (max) address.
-	hostBits := 32 - cyoaNetworkSpec.CIDRPrefix
-	maxHostID := uint32((1 << hostBits) - 1)
-	if s.CYOANetworkIPHostID <= 0 || s.CYOANetworkIPHostID >= maxHostID {
-		return fmt.Errorf("hostID %d is out of valid range (1 to %d)", s.CYOANetworkIPHostID, maxHostID-1)
-	}
-
 	return nil
 }
 
@@ -63,17 +54,80 @@ type Controller struct {
 	DefaultNetworkIP string
 }
 
+// Exists checks if the controller container exists.
+func (c *Controller) Exists(ctx context.Context) (bool, error) {
+	containers, err := c.dn.dockerClient.ContainerList(ctx, dockercontainer.ListOptions{
+		All:     true, // Include non-running containers.
+		Filters: dockerfilters.NewArgs(dockerfilters.Arg("name", c.dockerContainerName())),
+	})
+	if err != nil {
+		return false, fmt.Errorf("failed to list containers: %w", err)
+	}
+	for _, container := range containers {
+		if container.Names[0] == "/"+c.dockerContainerName() {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// StartIfNotRunning creates and starts the controller container if it's not already running.
+func (c *Controller) StartIfNotRunning(ctx context.Context) (bool, error) {
+	exists, err := c.Exists(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to check if controller exists: %w", err)
+	}
+	if exists {
+		container, err := c.dn.dockerClient.ContainerInspect(ctx, c.dockerContainerName())
+		if err != nil {
+			return false, fmt.Errorf("failed to inspect container: %w", err)
+		}
+
+		// Check if the container is running.
+		if container.State.Running {
+			c.log.Info("--> Controller already running", "container", shortContainerID(container.ID))
+
+			// Set the component's state.
+			err = c.setState(ctx, container.ID)
+			if err != nil {
+				return false, fmt.Errorf("failed to set controller state: %w", err)
+			}
+
+			return false, nil
+		}
+
+		// Otherwise, start the container.
+		err = c.dn.dockerClient.ContainerStart(ctx, container.ID, dockercontainer.StartOptions{})
+		if err != nil {
+			return false, fmt.Errorf("failed to start controller: %w", err)
+		}
+
+		// Set the component's state.
+		err = c.setState(ctx, container.ID)
+		if err != nil {
+			return false, fmt.Errorf("failed to set controller state: %w", err)
+		}
+
+		return true, nil
+	}
+
+	return false, c.Start(ctx)
+}
+
 func (c *Controller) Start(ctx context.Context) error {
 	c.log.Info("==> Starting controller", "image", c.dn.Spec.Controller.ContainerImage, "externalHost", c.dn.Spec.Controller.ExternalHost)
 
 	req := testcontainers.ContainerRequest{
-		Image:        c.dn.Spec.Controller.ContainerImage,
-		Name:         c.dn.Spec.DeployID + "-controller",
+		Image: c.dn.Spec.Controller.ContainerImage,
+		Name:  c.dockerContainerName(),
+		ConfigModifier: func(cfg *dockercontainer.Config) {
+			cfg.Hostname = c.dockerContainerHostname()
+		},
 		ExposedPorts: []string{fmt.Sprintf("%d/tcp", internalControllerPort)},
 		WaitingFor:   wait.ForExposedPort(),
 		Env: map[string]string{
-			"DZ_LEDGER_URL": c.dn.Ledger.InternalURL,
-			"DZ_PROGRAM_ID": c.dn.Ledger.ProgramID,
+			"DZ_LEDGER_URL":                c.dn.Ledger.InternalRPCURL,
+			"DZ_SERVICEABILITY_PROGRAM_ID": c.dn.Manager.ServiceabilityProgramID,
 		},
 		Networks: []string{c.dn.DefaultNetwork.Name},
 		NetworkAliases: map[string][]string{
@@ -82,7 +136,7 @@ func (c *Controller) Start(ctx context.Context) error {
 		// NOTE: We intentionally use the deprecated Resources field here instead of the HostConfigModifier
 		// because the latter has issues with setting SHM memory and other constraints to 0, which can cause
 		// unexpected behavior.
-		Resources: container.Resources{
+		Resources: dockercontainer.Resources{
 			NanoCPUs: defaultContainerNanoCPUs,
 			Memory:   defaultContainerMemory,
 		},
@@ -97,23 +151,67 @@ func (c *Controller) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to start controller: %w", err)
 	}
 
-	// Get the controller's public/host-exposed port.
-	port, err := container.MappedPort(ctx, nat.Port(fmt.Sprintf("%d/tcp", internalControllerPort)))
+	// Set the component's state.
+	err = c.setState(ctx, container.GetContainerID())
+	if err != nil {
+		return fmt.Errorf("failed to set controller state: %w", err)
+	}
+
+	c.log.Info("--> Controller started", "container", c.ContainerID, "externalPort", c.ExternalPort)
+	return nil
+}
+
+func (c *Controller) dockerContainerHostname() string {
+	return "controller"
+}
+
+func (c *Controller) dockerContainerName() string {
+	return c.dn.Spec.DeployID + "-" + c.dockerContainerHostname()
+}
+
+func (c *Controller) setState(ctx context.Context, containerID string) error {
+	// Wait for the controller's public/host-exposed port to be exposed.
+	var loggedWait bool
+	timeout := 10 * time.Second
+	var attempts int
+	var container dockercontainer.InspectResponse
+	var port int
+	err := pollUntil(ctx, func() (bool, error) {
+		attempts++
+		var err error
+		container, err = c.dn.dockerClient.ContainerInspect(ctx, containerID)
+		if err != nil {
+			return false, fmt.Errorf("failed to inspect container: %w", err)
+		}
+
+		ports, ok := container.NetworkSettings.Ports[nat.Port(fmt.Sprintf("%d/tcp", internalControllerPort))]
+		if !ok || len(ports) == 0 {
+			if !loggedWait && attempts > 1 {
+				c.log.Debug("--> Waiting for controller port to be exposed", "container", shortContainerID(container.ID), "timeout", timeout)
+				loggedWait = true
+			}
+			return false, nil
+		}
+		port, err = strconv.Atoi(ports[0].HostPort)
+		if err != nil {
+			return false, fmt.Errorf("failed to get controller port: %w", err)
+		}
+		return true, nil
+	}, timeout, 500*time.Millisecond)
 	if err != nil {
 		return fmt.Errorf("failed to get controller port: %w", err)
 	}
 
 	// Get the controller's IP address on the default network.
-	ip, err := container.ContainerIP(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get ledger container IP: %w", err)
+	if container.NetworkSettings.Networks[c.dn.DefaultNetwork.Name] == nil {
+		return fmt.Errorf("failed to get controller IP")
 	}
+	ip := container.NetworkSettings.Networks[c.dn.DefaultNetwork.Name].IPAddress
 
-	c.ContainerID = shortContainerID(container.GetContainerID())
-	c.ExternalPort = port.Int()
+	c.ContainerID = shortContainerID(container.ID)
+	c.ExternalPort = port
 	c.DefaultNetworkIP = ip
 
-	c.log.Info("--> Controller started", "container", c.ContainerID, "externalPort", c.ExternalPort)
 	return nil
 }
 

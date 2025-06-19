@@ -1,4 +1,5 @@
-#!/bin/sh
+#!/usr/bin/env bash
+set -euo pipefail
 
 # Check for required environment variables.
 if [ -z "${DZ_LEDGER_URL}" ]; then
@@ -9,12 +10,8 @@ if [ -z "${DZ_LEDGER_WS}" ]; then
   echo "DZ_LEDGER_WS is not set"
   exit 1
 fi
-if [ -z "${DZ_PROGRAM_ID}" ]; then
-  echo "DZ_PROGRAM_ID is not set"
-  exit 1
-fi
-if [ -z "${DZ_MANAGER_KEYPAIR_PATH}" ]; then
-  echo "DZ_MANAGER_KEYPAIR_PATH is not set"
+if [ -z "${DZ_SERVICEABILITY_PROGRAM_ID}" ]; then
+  echo "DZ_SERVICEABILITY_PROGRAM_ID is not set"
   exit 1
 fi
 
@@ -27,9 +24,9 @@ while ! curl -sf -X POST -H 'Content-Type: application/json' \
 done
 
 # Initialize config for talking to the smart contract on the DZ ledger (solana).
-doublezero --keypair $DZ_MANAGER_KEYPAIR_PATH config set --url $DZ_LEDGER_URL
-doublezero --keypair $DZ_MANAGER_KEYPAIR_PATH config set --ws $DZ_LEDGER_WS
-doublezero --keypair $DZ_MANAGER_KEYPAIR_PATH config set --program-id $DZ_PROGRAM_ID
+doublezero config set --url $DZ_LEDGER_URL
+doublezero config set --ws $DZ_LEDGER_WS
+doublezero config set --program-id $DZ_SERVICEABILITY_PROGRAM_ID
 
 # Start the activator.
-doublezero-activator --program-id ${DZ_PROGRAM_ID}
+doublezero-activator --program-id ${DZ_SERVICEABILITY_PROGRAM_ID}

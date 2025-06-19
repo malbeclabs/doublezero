@@ -3,26 +3,18 @@ package solana_test
 import (
 	"crypto/ed25519"
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/malbeclabs/doublezero/e2e/internal/solana"
 	"github.com/stretchr/testify/require"
 )
 
-func TestGenerateKeypair(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "keypair.json")
-
-	err := solana.GenerateKeypair(path)
-	require.NoError(t, err)
-
-	data, err := os.ReadFile(path)
+func TestGenerateKeypairJSON(t *testing.T) {
+	keypairJSON, err := solana.GenerateKeypairJSON()
 	require.NoError(t, err)
 
 	var keyJSON []any
-	require.NoError(t, json.Unmarshal(data, &keyJSON))
+	require.NoError(t, json.Unmarshal(keypairJSON, &keyJSON))
 	require.Equal(t, ed25519.PrivateKeySize, len(keyJSON), "expected 64-byte array")
 
 	// Convert []any -> []byte, validating that all elements are integers in [0, 255]
@@ -42,7 +34,7 @@ func TestGenerateKeypair(t *testing.T) {
 	require.True(t, equalBytes(pubFromPriv, expectedPub), "public key mismatch")
 }
 
-func TestPublicAddressFromKeypair(t *testing.T) {
+func TestPubkeyFromKeypairJSON(t *testing.T) {
 	// Example 64-byte Solana keypair (ed25519 private + public)
 	// This one corresponds to pubkey: 7T2Wzq8Km74GZ3HYDpyMRH6nRRZ9yRBYwvvBhfbNNrMf
 	keypair := []byte{
@@ -52,23 +44,12 @@ func TestPublicAddressFromKeypair(t *testing.T) {
 		117, 90, 156, 181, 193, 61, 146, 90, 60, 126, 57, 132, 52, 239, 78, 154,
 	}
 
-	tmpFile, err := os.CreateTemp("", "keypair.json")
-	if err != nil {
-		t.Fatalf("Failed to create temp file: %v", err)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	data, err := json.Marshal(keypair)
+	keypairJSON, err := json.Marshal(keypair)
 	if err != nil {
 		t.Fatalf("Failed to marshal keypair: %v", err)
 	}
 
-	if _, err := tmpFile.Write(data); err != nil {
-		t.Fatalf("Failed to write to temp file: %v", err)
-	}
-	tmpFile.Close()
-
-	addr, err := solana.PublicAddressFromKeypair(tmpFile.Name())
+	addr, err := solana.PubkeyFromKeypairJSON(keypairJSON)
 	if err != nil {
 		t.Fatalf("Function returned error: %v", err)
 	}

@@ -19,6 +19,9 @@ func NewTestcontainersAdapter(logger *slog.Logger) *testcontainersLogger {
 
 func (s *testcontainersLogger) Printf(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
+	if strings.Contains(msg, "Connected to docker:") {
+		return
+	}
 	switch {
 	case strings.HasPrefix(format, "❌"):
 		s.logger.ErrorContext(context.Background(), msg)

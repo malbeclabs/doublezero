@@ -6,10 +6,6 @@ GIT_SHA:=`git rev-parse --short HEAD`
 # Enabled by default on mac, but not always on linux.
 export DOCKER_BUILDKIT=1
 
-.PHONY: build
-build:
-	bash scripts/build-docker-images.sh
-
 # -----------------------------------------------------------------------------
 # Run the e2e tests.
 #
@@ -22,12 +18,22 @@ build:
 # -----------------------------------------------------------------------------
 .PHONY: test
 test:
-	$(if $(findstring nobuild,$(MAKECMDGOALS)),,$(MAKE) build)
-	go test -v -tags=e2e -timeout=20m $(if $(parallel),-parallel=$(parallel)) $(if $(run),-run=$(run))
+	$(if $(findstring nobuild,$(MAKECMDGOALS)),DZ_E2E_NO_BUILD=1) go test -tags=e2e -timeout=20m $(if $(parallel),-parallel=$(parallel)) $(if $(run),-run=$(run)) $(if $(findstring verbose,$(MAKECMDGOALS)),-v)
 
+# Dummy target to suppress errors when using 'nobuild' as a flag in `make test nobuild
 .PHONY: nobuild
 nobuild:
 	@:
+
+# Dummy target to suppress errors when using 'verbose' as a flag in `make test verbose`
+.PHONY: verbose
+verbose:
+	@:
+
+.PHONY: build
+build:
+	go run ./cmd/dzctl/main.go build
+
 
 # -----------------------------------------------------------------------------
 # Solana image build and push.

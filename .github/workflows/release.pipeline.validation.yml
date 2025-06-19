@@ -11,7 +11,7 @@ on:
       - "go.sum"
       - "!**/**.md"
       - ".goreleaser.*"
-      - ".github/workflows/release.pipeline.validation.yml"
+      - ".github/workflows/release.*"
     branches: [ main ]
   pull_request:
     paths:
@@ -23,7 +23,7 @@ on:
       - "go.sum"
       - "!**/**.md"
       - ".goreleaser.*"
-      - ".github/workflows/release.pipeline.validation.yml"
+      - ".github/workflows/release.*"
     branches: [ main ]
 
 permissions:

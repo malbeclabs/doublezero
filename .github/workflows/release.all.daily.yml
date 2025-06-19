@@ -1,0 +1,26 @@
+name: release.all.daily
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 14 * * 1-5'  # Every weekday at 10AM ET/9AM CT
+
+jobs:
+  release:
+    uses: ./.github/workflows/release.daily.yml
+    strategy:
+      matrix:
+        component: [
+          agent,
+          controller,
+          activator,
+          client,
+        ]
+    with:
+      component: ${{ matrix.component }}
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
+    permissions:
+      contents: write
+      packages: write

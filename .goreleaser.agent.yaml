@@ -81,3 +81,9 @@ cloudsmiths:
 git:
   ignore_tags:
     - agent/daily
+
+nightly:
+  publish_release: true
+  keep_single_release: true
+  version_template: '{{ incpatch .Version }}-{{ .ShortCommit }}-daily'
+  tag_name: 'agent/daily'

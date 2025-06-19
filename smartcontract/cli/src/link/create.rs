@@ -136,6 +136,7 @@ mod tests {
             device_type: DeviceType::Switch,
             public_ip: [10, 0, 0, 1],
             dz_prefixes: vec![([10, 1, 0, 0], 16)],
+            metrics_publisher_pk: Pubkey::default(),
             status: DeviceStatus::Activated,
             owner: pda_pubkey,
         };
@@ -152,6 +153,7 @@ mod tests {
             device_type: DeviceType::Switch,
             public_ip: [10, 0, 0, 1],
             dz_prefixes: vec![([10, 1, 0, 0], 16)],
+            metrics_publisher_pk: Pubkey::default(),
             status: DeviceStatus::Activated,
             owner: pda_pubkey,
         };

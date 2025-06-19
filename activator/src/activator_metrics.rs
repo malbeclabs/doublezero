@@ -109,6 +109,7 @@ mod tests {
             public_ip: [192, 168, 1, 1],
             status: DeviceStatus::Pending,
             code: "TestDevice".to_string(),
+            metrics_publisher_pk: Pubkey::default(),
             dz_prefixes: vec![([10, 0, 0, 0], 24), ([10, 0, 1, 0], 24)],
         };
 
@@ -175,6 +176,7 @@ mod tests {
             device_type: DeviceType::Switch,
             public_ip: [192, 168, 1, 1],
             status: DeviceStatus::Pending,
+            metrics_publisher_pk: Pubkey::default(),
             code: "TestDevice".to_string(),
             dz_prefixes: vec![([10, 0, 0, 0], 24)],
         };

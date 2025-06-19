@@ -17,6 +17,7 @@ pub struct CreateDeviceCommand {
     pub device_type: DeviceType,
     pub public_ip: IpV4,
     pub dz_prefixes: NetworkV4List,
+    pub metrics_publisher: Pubkey,
 }
 
 impl CreateDeviceCommand {
@@ -38,6 +39,7 @@ impl CreateDeviceCommand {
                     device_type: self.device_type,
                     public_ip: self.public_ip,
                     dz_prefixes: self.dz_prefixes.clone(),
+                    metrics_publisher_pk: self.metrics_publisher,
                 }),
                 vec![
                     AccountMeta::new(pda_pubkey, false),
@@ -132,6 +134,7 @@ mod tests {
                     device_type: DeviceType::Switch,
                     public_ip: [10, 0, 0, 1],
                     dz_prefixes: vec![([10, 0, 0, 0], 8)],
+                    metrics_publisher_pk: Pubkey::default(),
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(device_pubkey, false),
@@ -149,6 +152,7 @@ mod tests {
             device_type: DeviceType::Switch,
             public_ip: [10, 0, 0, 1],
             dz_prefixes: vec![([10, 0, 0, 0], 8)],
+            metrics_publisher: Pubkey::default(),
         }
         .execute(&client);
         assert!(res.is_ok());

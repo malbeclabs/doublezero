@@ -146,6 +146,7 @@ mod tunnel_test {
                 exchange_pk: exchange_pubkey,
                 public_ip: [10, 0, 0, 1],
                 dz_prefixes: vec![([10, 1, 0, 0], 23)],
+                metrics_publisher_pk: Pubkey::default(),
             }),
             vec![
                 AccountMeta::new(device_a_pubkey, false),
@@ -179,6 +180,7 @@ mod tunnel_test {
                 exchange_pk: exchange_pubkey,
                 public_ip: [11, 0, 0, 1],
                 dz_prefixes: vec![([11, 1, 0, 0], 23)],
+                metrics_publisher_pk: Pubkey::default(),
             }),
             vec![
                 AccountMeta::new(device_z_pubkey, false),

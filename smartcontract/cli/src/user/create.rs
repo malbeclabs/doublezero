@@ -98,6 +98,7 @@ mod tests {
             dz_prefixes: vec![([10, 0, 0, 1], 24), ([11, 0, 0, 1], 24)],
             owner: device_pubkey,
             status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::new_unique(),
         };
 
         client

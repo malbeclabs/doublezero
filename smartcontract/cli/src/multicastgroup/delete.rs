@@ -79,6 +79,7 @@ mod tests {
             public_ip: [10, 0, 0, 1],
             dz_prefixes: vec![([10, 1, 0, 0], 16)],
             status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::new_unique(),
             owner: pda_pubkey,
         };
         let location2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
@@ -95,6 +96,7 @@ mod tests {
             public_ip: [10, 0, 0, 1],
             dz_prefixes: vec![([10, 1, 0, 0], 16)],
             status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::new_unique(),
             owner: pda_pubkey,
         };
 

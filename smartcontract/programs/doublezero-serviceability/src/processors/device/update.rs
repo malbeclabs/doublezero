@@ -19,6 +19,7 @@ pub struct DeviceUpdateArgs {
     pub device_type: Option<DeviceType>,
     pub public_ip: Option<IpV4>,
     pub dz_prefixes: Option<NetworkV4List>,
+    pub metrics_publisher_pk: Option<Pubkey>,
 }
 
 impl fmt::Debug for DeviceUpdateArgs {
@@ -92,6 +93,9 @@ pub fn process_update_device(
     }
     if let Some(dz_prefixes) = &value.dz_prefixes {
         device.dz_prefixes = dz_prefixes.to_vec();
+    }
+    if let Some(metrics_publisher_pk) = &value.metrics_publisher_pk {
+        device.metrics_publisher_pk = *metrics_publisher_pk;
     }
 
     account_write(device_account, &device, payer_account, system_program);

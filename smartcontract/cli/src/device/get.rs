@@ -17,7 +17,7 @@ impl GetDeviceCliCommand {
         })?;
 
         writeln!(out,
-            "account: {}\r\ncode: {}\r\nlocation: {}\r\nexchange: {}\r\ndevice_type: {}\r\npublic_ip: {}\r\ndz_prefixes: {}\r\nstatus: {}\r\nowner: {}",
+            "account: {}\r\ncode: {}\r\nlocation: {}\r\nexchange: {}\r\ndevice_type: {}\r\npublic_ip: {}\r\ndz_prefixes: {}\r\nmetrics_publisher: {}\r\nstatus: {}\r\nowner: {}",
             pubkey,
             device.code,
             device.location_pk,
@@ -25,6 +25,7 @@ impl GetDeviceCliCommand {
             device.device_type,
             ipv4_to_string(&device.public_ip),
             networkv4_list_to_string(&device.dz_prefixes),
+            device.metrics_publisher_pk,
             device.status,
             device.owner
             )?;
@@ -62,6 +63,9 @@ mod tests {
             public_ip: [1, 2, 3, 4],
             dz_prefixes: vec![([1, 2, 3, 4], 32)],
             status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::from_str_const(
+                "1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR",
+            ),
             owner: device1_pubkey,
         };
 
@@ -91,6 +95,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\r\ncode: test\r\nlocation: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx\r\nexchange: GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc\r\ndevice_type: switch\r\npublic_ip: 1.2.3.4\r\ndz_prefixes: 1.2.3.4/32\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
+        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\r\ncode: test\r\nlocation: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx\r\nexchange: GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc\r\ndevice_type: switch\r\npublic_ip: 1.2.3.4\r\ndz_prefixes: 1.2.3.4/32\r\nmetrics_publisher: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
     }
 }

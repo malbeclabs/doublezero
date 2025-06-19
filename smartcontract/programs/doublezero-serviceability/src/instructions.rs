@@ -504,6 +504,7 @@ mod tests {
                 dz_prefixes: vec![([1, 2, 3, 4], 1)],
                 location_pk: Pubkey::new_unique(),
                 exchange_pk: Pubkey::new_unique(),
+                metrics_publisher_pk: Pubkey::new_unique(),
             }),
             "CreateDevice",
         );
@@ -522,6 +523,7 @@ mod tests {
                 public_ip: Some([1, 2, 3, 4]),
                 device_type: Some(DeviceType::Switch),
                 dz_prefixes: Some(vec![([1, 2, 3, 4], 1)]),
+                metrics_publisher_pk: Some(Pubkey::new_unique()),
             }),
             "UpdateDevice",
         );

@@ -149,6 +149,7 @@ mod device_test {
                 exchange_pk: exchange_pubkey,
                 public_ip: [10, 0, 0, 1],
                 dz_prefixes: vec![([10, 1, 0, 0], 23)],
+                metrics_publisher_pk: Pubkey::default(),
             }),
             vec![
                 AccountMeta::new(device_pubkey, false),
@@ -266,6 +267,7 @@ mod device_test {
                 device_type: Some(DeviceType::Switch),
                 public_ip: Some([10, 2, 2, 1]),
                 dz_prefixes: Some(vec![([10, 1, 0, 0], 23)]),
+                metrics_publisher_pk: Some(Pubkey::default()),
             }),
             vec![
                 AccountMeta::new(device_pubkey, false),

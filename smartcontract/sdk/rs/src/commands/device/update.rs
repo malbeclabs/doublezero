@@ -5,7 +5,7 @@ use doublezero_serviceability::{
     state::device::DeviceType,
     types::{IpV4, NetworkV4List},
 };
-use solana_sdk::{instruction::AccountMeta, signature::Signature};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 
@@ -16,6 +16,7 @@ pub struct UpdateDeviceCommand {
     pub device_type: Option<DeviceType>,
     pub public_ip: Option<IpV4>,
     pub dz_prefixes: Option<NetworkV4List>,
+    pub metrics_publisher: Option<Pubkey>,
 }
 
 impl UpdateDeviceCommand {
@@ -33,6 +34,7 @@ impl UpdateDeviceCommand {
                 device_type: self.device_type,
                 public_ip: self.public_ip,
                 dz_prefixes: self.dz_prefixes.clone(),
+                metrics_publisher_pk: self.metrics_publisher,
             }),
             vec![
                 AccountMeta::new(pda_pubkey, false),

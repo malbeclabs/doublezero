@@ -98,6 +98,7 @@ mod tests {
             public_ip: [1, 2, 3, 4],
             dz_prefixes: vec![([1, 2, 3, 4], 32)],
             status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
             owner: Pubkey::new_unique(),
         };
         let device2_pubkey = Pubkey::new_unique();
@@ -112,6 +113,7 @@ mod tests {
             public_ip: [1, 2, 3, 4],
             dz_prefixes: vec![([1, 2, 3, 4], 32)],
             status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
             owner: Pubkey::new_unique(),
         };
 

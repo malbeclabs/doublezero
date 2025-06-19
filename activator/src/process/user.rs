@@ -330,6 +330,7 @@ mod tests {
             device_type: DeviceType::Switch,
             public_ip: [192, 168, 1, 2],
             status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
             code: "TestDevice".to_string(),
             dz_prefixes: vec![([10, 0, 0, 1], 24)],
         };
@@ -428,6 +429,7 @@ mod tests {
             device_type: DeviceType::Switch,
             public_ip: [192, 168, 1, 2],
             status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
             code: "TestDevice".to_string(),
             dz_prefixes: vec![([10, 0, 0, 1], 24)],
         };
@@ -571,6 +573,7 @@ mod tests {
             public_ip: [192, 168, 1, 2],
             status: DeviceStatus::Activated,
             code: "TestDevice".to_string(),
+            metrics_publisher_pk: Pubkey::default(),
             dz_prefixes: vec![([10, 0, 0, 0], 32)],
         };
 
@@ -652,6 +655,7 @@ mod tests {
             device_type: DeviceType::Switch,
             public_ip: [192, 168, 1, 2],
             status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
             code: "TestDevice".to_string(),
             dz_prefixes: vec![([10, 0, 0, 1], 24)],
         };
@@ -754,6 +758,7 @@ mod tests {
             public_ip: [192, 168, 1, 2],
             status: DeviceStatus::Activated,
             code: "TestDevice".to_string(),
+            metrics_publisher_pk: Pubkey::default(),
             dz_prefixes: vec![([11, 0, 0, 0], 16)],
         };
 

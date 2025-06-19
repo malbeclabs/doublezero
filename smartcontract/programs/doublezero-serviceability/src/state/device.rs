@@ -71,25 +71,26 @@ impl fmt::Display for DeviceStatus {
 
 #[derive(BorshSerialize, Debug, PartialEq, Clone, Serialize)]
 pub struct Device {
-    pub account_type: AccountType,  // 1
-    pub owner: Pubkey,              // 32
-    pub index: u128,                // 16
-    pub bump_seed: u8,              // 1
-    pub location_pk: Pubkey,        // 32
-    pub exchange_pk: Pubkey,        // 32
-    pub device_type: DeviceType,    // 1
-    pub public_ip: IpV4,            // 4
-    pub status: DeviceStatus,       // 1
-    pub code: String,               // 4 + len
-    pub dz_prefixes: NetworkV4List, // 4 + 5 * len
+    pub account_type: AccountType,    // 1
+    pub owner: Pubkey,                // 32
+    pub index: u128,                  // 16
+    pub bump_seed: u8,                // 1
+    pub location_pk: Pubkey,          // 32
+    pub exchange_pk: Pubkey,          // 32
+    pub device_type: DeviceType,      // 1
+    pub public_ip: IpV4,              // 4
+    pub status: DeviceStatus,         // 1
+    pub code: String,                 // 4 + len
+    pub dz_prefixes: NetworkV4List,   // 4 + 5 * len
+    pub metrics_publisher_pk: Pubkey, // 32
 }
 
 impl fmt::Display for Device {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, index: {}, location_pk: {}, exchange_pk: {}, device_type: {}, public_ip: {}, dz_prefixes: {}, status: {}, code: {}",
-            self.account_type, self.owner, self.index, self.location_pk, self.exchange_pk, self.device_type, ipv4_to_string(&self.public_ip), networkv4_list_to_string(&self.dz_prefixes), self.status, self.code
+            "account_type: {}, owner: {}, index: {}, location_pk: {}, exchange_pk: {}, device_type: {}, public_ip: {}, dz_prefixes: {}, status: {}, code: {}, metrics_publisher_pk: {}",
+            self.account_type, self.owner, self.index, self.location_pk, self.exchange_pk, self.device_type, ipv4_to_string(&self.public_ip), networkv4_list_to_string(&self.dz_prefixes), self.status, self.code, self.metrics_publisher_pk
         )
     }
 }
@@ -99,7 +100,19 @@ impl AccountTypeInfo for Device {
         SEED_DEVICE
     }
     fn size(&self) -> usize {
-        1 + 32 + 16 + 1 + 32 + 32 + 1 + 4 + 1 + 4 + self.code.len() + 4 + 5 * self.dz_prefixes.len()
+        1 + 32
+            + 16
+            + 1
+            + 32
+            + 32
+            + 1
+            + 4
+            + 1
+            + 4
+            + self.code.len()
+            + 4
+            + 5 * self.dz_prefixes.len()
+            + 32
     }
     fn bump_seed(&self) -> u8 {
         self.bump_seed
@@ -128,6 +141,7 @@ impl From<&[u8]> for Device {
             status: parser.read_enum(),
             code: parser.read_string(),
             dz_prefixes: parser.read_networkv4_vec(),
+            metrics_publisher_pk: parser.read_pubkey(),
         }
     }
 }
@@ -159,6 +173,7 @@ mod tests {
             dz_prefixes: vec![([10, 0, 0, 1], 24), ([11, 0, 0, 1], 24)],
             public_ip: ipv4_parse("1.2.3.4").unwrap(),
             status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::new_unique(),
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -173,6 +188,7 @@ mod tests {
         assert_eq!(val.public_ip, val2.public_ip);
         assert_eq!(val.dz_prefixes, val2.dz_prefixes);
         assert_eq!(val.status, val2.status);
+        assert_eq!(val.metrics_publisher_pk, val2.metrics_publisher_pk);
         assert_eq!(data.len(), val.size(), "Invalid Size");
     }
 }

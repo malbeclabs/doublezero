@@ -156,6 +156,7 @@ mod user_test {
                 exchange_pk: exchange_pubkey,
                 public_ip: [10, 0, 0, 1],
                 dz_prefixes: vec![([10, 1, 0, 0], 23)],
+                metrics_publisher_pk: Pubkey::default(),
             }),
             vec![
                 AccountMeta::new(device_pubkey, false),

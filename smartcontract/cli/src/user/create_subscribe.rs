@@ -157,6 +157,7 @@ mod tests {
             public_ip: [10, 0, 0, 1],
             dz_prefixes: vec![([10, 0, 0, 1], 24), ([11, 0, 0, 1], 24)],
             owner: device_pubkey,
+            metrics_publisher_pk: Pubkey::new_unique(),
             status: DeviceStatus::Activated,
         };
 

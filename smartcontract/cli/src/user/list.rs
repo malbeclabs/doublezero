@@ -32,10 +32,10 @@ pub struct UserDisplay {
     pub device_pk: Pubkey,
     #[tabled(rename = "groups")]
     pub multicast: String,
-    #[tabled(display = "crate::util::display_pks")]
+    #[tabled(skip)]
     #[serde(serialize_with = "crate::serializer::serialize_pubkeylist_as_string")]
     pub publishers: Vec<Pubkey>,
-    #[tabled(display = "crate::util::display_pks")]
+    #[tabled(skip)]
     #[serde(serialize_with = "crate::serializer::serialize_pubkeylist_as_string")]
     pub subscribers: Vec<Pubkey>,
     #[tabled(rename = "device")]
@@ -365,7 +365,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | user_type | groups      | publishers | subscribers                               | device       | location       | cyoa_type  | client_ip | dz_ip   | tunnel_id | tunnel_net | status    | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | Multicast | m_code (Rx) |            | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8 | device1_code | location1_name | GREOverDIA | 1.2.3.4   | 2.3.4.5 | 500       | 1.2.3.5/32 | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
+        assert_eq!(output_str, " account                                   | user_type | groups      | device       | location       | cyoa_type  | client_ip | dz_ip   | tunnel_id | tunnel_net | status    | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | Multicast | m_code (Rx) | device1_code | location1_name | GREOverDIA | 1.2.3.4   | 2.3.4.5 | 500       | 1.2.3.5/32 | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
 
         let mut output = Vec::new();
         let res = ListUserCliCommand {

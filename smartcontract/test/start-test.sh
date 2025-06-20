@@ -112,15 +112,21 @@ echo "Creating users"
 echo "Creating multicast groups"
 ./target/doublezero multicast group create --code mg01 --max-bandwidth 1Gbps --owner me
 ./target/doublezero multicast group create --code mg02 --max-bandwidth 1Gbps --owner me
+./target/doublezero multicast group create --code mg03 --max-bandwidth 1Gbps --owner me
 
 echo "Add me to multicast group allowlist"
 ./target/doublezero multicast group allowlist subscriber add --code mg01 --pubkey me
 ./target/doublezero multicast group allowlist publisher add --code mg02 --pubkey me
+./target/doublezero multicast group allowlist publisher add --code mg03 --pubkey me
+sleep 2
 
 echo "Creating multicast user & subscribe"
 ./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 100.0.0.5 --subscriber mg01
-sleep 1
-./target/doublezero user subscribe --user 5Rm8dp4dDzR5SE3HtrqGVpqHLaPvvxDEV3EotqPBBUgS --group mg02 --publisher
+./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 100.0.0.6 --subscriber mg01
+sleep 2
+./target/doublezero user subscribe --user 4vAMGYgvk2rhdNEo7vBcuz2KuSJJGZrqf4vxnKMesnyq --group mg02 --publisher
+./target/doublezero user subscribe --user 9gYCNwLTNHveZiNGA62Z1PMRiYFYbmUz3VTx9FgVuSEH --group mg02 --subscriber
+
 
 echo "########################################################################"
 

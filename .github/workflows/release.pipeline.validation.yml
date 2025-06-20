@@ -31,7 +31,7 @@ permissions:
 
 jobs:
   validate_pipeline:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-16c-64gb
     strategy:
       matrix:
         release: [

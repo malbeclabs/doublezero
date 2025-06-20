@@ -18,7 +18,7 @@ permissions:
 jobs:
   lint:
     name: "lint"
-    runs-on: ubuntu-24.04-16c-64gb
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -30,7 +30,7 @@ jobs:
   build:
     name: "build"
     needs: lint
-    runs-on: ubuntu-24.04-16c-64gb
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -42,7 +42,7 @@ jobs:
   unit_test:
     name: "unit_test"
     needs: build
-    runs-on: ubuntu-24.04-16c-64gb
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -54,7 +54,7 @@ jobs:
   integration_test:
     name: "integration_test"
     needs: build
-    runs-on: ubuntu-24.04-16c-64gb
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -66,7 +66,7 @@ jobs:
   containerized_test:
     name: containerized_tests
     needs: build
-    runs-on: ubuntu-24.04-16c-64gb
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

@@ -12,12 +12,13 @@ on:
 jobs:
   validate:
     name: schema:validate
-    runs-on: ubuntu-24.04-16c-64gb
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
       - name: install goose
         run: go install github.com/pressly/goose/v3/cmd/goose@latest
       - name: validate
@@ -25,12 +26,13 @@ jobs:
         run: goose validate
   status:
     name: schema:status
-    runs-on: ubuntu-24.04-16c-64gb
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
       - name: install goose
         run: go install github.com/pressly/goose/v3/cmd/goose@latest
       - name: status
@@ -42,7 +44,7 @@ jobs:
   migrate:
     name: schema:migrate
     needs: [ validate, status ]
-    runs-on: ubuntu-24.04-16c-64gb
+    runs-on: ubuntu-latest
     environment: testnet
     if: github.ref == 'refs/heads/main'
     steps:
@@ -50,6 +52,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
       - name: install goose
         run: go install github.com/pressly/goose/v3/cmd/goose@latest
       - name: migrate

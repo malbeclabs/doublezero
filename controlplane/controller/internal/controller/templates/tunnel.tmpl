@@ -125,8 +125,8 @@ ip prefix-list PL-USER-{{ .Id }} seq 10 permit {{ .DzIp }}/32
 !
 {{- end }}
 {{- range .Device.Tunnels }}
-{{- if eq true .IsMulticast }}
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-{{ .Id }}-OUT
+{{- if and .Allocated .IsMulticast }}
 ip access-list standard SEC-USER-MCAST-BOUNDARY-{{ .Id }}-OUT
    counters per-entry
    {{- range .MulticastBoundaryList }}

@@ -536,6 +536,70 @@ no ip prefix-list PL-USER-562
 !
 no ip prefix-list PL-USER-563
 !
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-500-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-501-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-502-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-503-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-504-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-505-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-506-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-507-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-508-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-509-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-510-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-511-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-512-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-513-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-514-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-515-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-516-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-517-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-518-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-519-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-520-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-521-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-522-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-523-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-524-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-525-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-526-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-527-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-528-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-529-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-530-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-531-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-532-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-533-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-534-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-535-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-536-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-537-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-538-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-539-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-540-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-541-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-542-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-543-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-544-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-545-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-546-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-547-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-548-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-549-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-550-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-551-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-552-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-553-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-554-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-555-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-556-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-557-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-558-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-559-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-560-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-561-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-562-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-563-OUT
 no ip access-list SEC-USER-PUB-MCAST-IN
 ip access-list SEC-USER-PUB-MCAST-IN
    counters per-entry

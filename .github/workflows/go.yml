@@ -11,13 +11,8 @@ on:
       - "**/*.rs"
     branches: [ main ]
 
-permissions:
-    contents: read
-    checks: write
-
 jobs:
-  lint:
-    name: "lint"
+  ci:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,55 +20,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v8
-  build:
-    name: "build"
-    needs: lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: build
-        run: go build -v ./...
-  unit_test:
-    name: "unit_test"
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: test
-        run: go test -exec sudo -race -v ./...
-  integration_test:
-    name: "integration_test"
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: test
-        run: go test -exec sudo -race -v ./... -tags=integration
-  containerized_test:
-    name: containerized_tests
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: Set up Docker
-        uses: docker/setup-buildx-action@v3
-      - name: test
-        run: go run tools/e2e-test/main.go -vv
+      - uses: golangci/golangci-lint-action@v8
+      - uses: docker/setup-buildx-action@v3
+      - run: make go-ci

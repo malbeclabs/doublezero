@@ -33,8 +33,9 @@ go-fmt:
 	go fmt ./...
 
 .PHONY: go-test
-go-test: go-container-test
+go-test:
 	go test -exec "sudo -E" -race -v ./...
+	$(if $(findstring nocontainertest,$(MAKECMDGOALS)),,$(MAKE) go-container-test)
 
 # NOTE: The naming of `tools/e2e-test` is confusing. It's not running the `./e2e` tests, but rather
 # the containerized tests in `client/doublezerod`. This package should be renamed to something

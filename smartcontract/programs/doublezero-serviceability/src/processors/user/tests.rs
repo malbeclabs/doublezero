@@ -63,9 +63,9 @@ mod user_test {
             DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
                 local_asn: 65000,
                 remote_asn: 65001,
-                device_tunnel_block: ([10, 0, 0, 0], 24),
-                user_tunnel_block: ([10, 0, 0, 0], 24),
-                multicastgroup_block: ([224, 0, 0, 0], 4),
+                device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
+                user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
+                multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
             }),
             vec![
                 AccountMeta::new(config_pubkey, false),
@@ -158,8 +158,8 @@ mod user_test {
                 device_type: DeviceType::Switch,
                 location_pk: location_pubkey,
                 exchange_pk: exchange_pubkey,
-                public_ip: [10, 0, 0, 1],
-                dz_prefixes: vec![([10, 1, 0, 0], 23)],
+                public_ip: [10, 0, 0, 1].into(),
+                dz_prefixes: "10.1.0.0/23".parse().unwrap(),
                 metrics_publisher_pk: Pubkey::default(),
             }),
             vec![
@@ -222,7 +222,7 @@ mod user_test {
             DoubleZeroInstruction::CreateUser(UserCreateArgs {
                 index: globalstate_account.account_index + 1,
                 bump_seed,
-                client_ip: [100, 0, 0, 1],
+                client_ip: [100, 0, 0, 1].into(),
                 user_type: UserType::IBRL,
                 device_pk: device_pubkey,
                 cyoa_type: UserCYOA::GREOverDIA,
@@ -242,7 +242,7 @@ mod user_test {
             .get_user()
             .unwrap();
         assert_eq!(user.account_type, AccountType::User);
-        assert_eq!(user.client_ip, [100, 0, 0, 1]);
+        assert_eq!(user.client_ip.to_string(), "100.0.0.1");
         assert_eq!(user.device_pk, device_pubkey);
         assert_eq!(user.status, UserStatus::Pending);
 
@@ -256,8 +256,8 @@ mod user_test {
             program_id,
             DoubleZeroInstruction::ActivateUser(UserActivateArgs {
                 tunnel_id: 500,
-                tunnel_net: ([10, 1, 2, 3], 21),
-                dz_ip: [200, 0, 0, 1],
+                tunnel_net: "10.1.2.3/21".parse().unwrap(),
+                dz_ip: [200, 0, 0, 1].into(),
             }),
             vec![
                 AccountMeta::new(user_pubkey, false),
@@ -274,8 +274,8 @@ mod user_test {
             .unwrap();
         assert_eq!(user.account_type, AccountType::User);
         assert_eq!(user.tunnel_id, 500);
-        assert_eq!(user.tunnel_net, ([10, 1, 2, 3], 21));
-        assert_eq!(user.dz_ip, [200, 0, 0, 1]);
+        assert_eq!(user.tunnel_net.to_string(), "10.1.2.3/21");
+        assert_eq!(user.dz_ip.to_string(), "200.0.0.1");
         assert_eq!(user.status, UserStatus::Activated);
 
         println!("✅ User created successfully",);
@@ -328,12 +328,12 @@ mod user_test {
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
-                client_ip: Some([10, 2, 3, 4]),
+                client_ip: Some([10, 2, 3, 4].into()),
                 user_type: Some(UserType::IBRL),
                 cyoa_type: Some(UserCYOA::GREOverPrivatePeering),
-                dz_ip: Some([200, 0, 0, 4]),
+                dz_ip: Some([200, 0, 0, 4].into()),
                 tunnel_id: Some(501),
-                tunnel_net: Some(([10, 1, 2, 4], 22)),
+                tunnel_net: Some("10.1.2.4/22".parse().unwrap()),
             }),
             vec![
                 AccountMeta::new(user_pubkey, false),
@@ -349,7 +349,7 @@ mod user_test {
             .get_user()
             .unwrap();
         assert_eq!(user.account_type, AccountType::User);
-        assert_eq!(user.client_ip, [10, 2, 3, 4]);
+        assert_eq!(user.client_ip.to_string(), "10.2.3.4");
         assert_eq!(user.cyoa_type, UserCYOA::GREOverPrivatePeering);
         assert_eq!(user.status, UserStatus::Activated);
 
@@ -375,7 +375,7 @@ mod user_test {
             .get_user()
             .unwrap();
         assert_eq!(user.account_type, AccountType::User);
-        assert_eq!(user.client_ip, [10, 2, 3, 4]);
+        assert_eq!(user.client_ip.to_string(), "10.2.3.4");
         assert_eq!(user.cyoa_type, UserCYOA::GREOverPrivatePeering);
         assert_eq!(user.status, UserStatus::Deleting);
 

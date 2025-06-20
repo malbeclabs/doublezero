@@ -19,13 +19,12 @@ use doublezero_sdk::{
             get::GetUserCommand, list::ListUserCommand,
         },
     },
-    ipv4_to_string, networkv4_to_string, Device, IpV4, NetworkV4, User, UserCYOA, UserStatus,
-    UserType,
+    Device, NetworkV4, User, UserCYOA, UserStatus, UserType,
 };
 use eyre;
 use indicatif::ProgressBar;
 use solana_sdk::pubkey::Pubkey;
-use std::str::FromStr;
+use std::{net::Ipv4Addr, str::FromStr};
 
 #[derive(Clone, Debug, ValueEnum)]
 pub enum MulticastMode {
@@ -138,7 +137,7 @@ impl ProvisioningCliCommand {
         client: &dyn CliCommand,
         controller: &T,
         user_type: UserType,
-        client_ip: IpV4,
+        client_ip: Ipv4Addr,
         spinner: ProgressBar,
     ) -> eyre::Result<()> {
         // Look for user
@@ -174,7 +173,7 @@ impl ProvisioningCliCommand {
         controller: &T,
         multicast_mode: &MulticastMode,
         multicast_group: &String,
-        client_ip: IpV4,
+        client_ip: Ipv4Addr,
         spinner: ProgressBar,
     ) -> eyre::Result<()> {
         let mcast_groups = client.list_multicastgroup(ListMulticastGroupCommand)?;
@@ -204,7 +203,7 @@ impl ProvisioningCliCommand {
             .map(|pk| {
                 mcast_groups
                     .get(pk)
-                    .map(|group| ipv4_to_string(&group.multicast_ip))
+                    .map(|group| group.multicast_ip.to_string())
                     .ok_or_else(|| eyre::eyre!("Missing multicast group for publisher: {}", pk))
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -215,7 +214,7 @@ impl ProvisioningCliCommand {
             .map(|pk| {
                 mcast_groups
                     .get(pk)
-                    .map(|group| ipv4_to_string(&group.multicast_ip))
+                    .map(|group| group.multicast_ip.to_string())
                     .ok_or_else(|| eyre::eyre!("Missing multicast group for subscriber: {}", pk))
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -318,7 +317,7 @@ impl ProvisioningCliCommand {
         &self,
         client: &dyn CliCommand,
         controller: &T,
-        client_ip: &IpV4,
+        client_ip: &Ipv4Addr,
         spinner: &ProgressBar,
         user_type: UserType,
     ) -> eyre::Result<(Pubkey, User)> {
@@ -344,7 +343,7 @@ impl ProvisioningCliCommand {
                 {
                     spinner.finish_with_message(format!(
                         "User with IP {} already exists with type {:?}. Expected type {:?}. Only one tunnel currently supported.",
-                        ipv4_to_string(client_ip),
+                        client_ip,
                         user.user_type,
                         user_type
                     ));
@@ -356,10 +355,7 @@ impl ProvisioningCliCommand {
                 **pubkey
             }
             None => {
-                spinner.println(format!(
-                    "    Creating an account for the IP: {}",
-                    ipv4_to_string(client_ip)
-                ));
+                spinner.println(format!("    Creating an account for the IP: {client_ip}"));
 
                 let (device_pk, device) = self
                     .find_or_create_device(client, controller, spinner)
@@ -402,7 +398,7 @@ impl ProvisioningCliCommand {
         &self,
         client: &dyn CliCommand,
         controller: &T,
-        client_ip: &IpV4,
+        client_ip: &Ipv4Addr,
         spinner: &ProgressBar,
         multicast_mode: &MulticastMode,
         mcast_group_pk: &Pubkey,
@@ -427,7 +423,7 @@ impl ProvisioningCliCommand {
                 if user.user_type != UserType::Multicast {
                     spinner.finish_with_message(format!(
                         "User with IP {} already exists with type {:?}. Expected type {:?}. Only one tunnel currently supported.",
-                        ipv4_to_string(client_ip),
+                        client_ip,
                         user.user_type,
                         UserType::Multicast
                     ));
@@ -435,20 +431,16 @@ impl ProvisioningCliCommand {
                 }
 
                 let err_msg = format!(
-                    r#"Multicast user already exists for IP: {}
+                    r#"Multicast user already exists for IP: {client_ip}
 Multicast supports only one subscription at this time.
 Disconnect and connect again!"#,
-                    ipv4_to_string(client_ip),
                 );
 
                 spinner.finish_with_message(err_msg.clone());
                 eyre::bail!(err_msg);
             }
             None => {
-                spinner.println(format!(
-                    "    Creating an account for the IP: {}",
-                    ipv4_to_string(client_ip)
-                ));
+                spinner.println(format!("    Creating an account for the IP: {client_ip}"));
 
                 let (device_pk, device) = self
                     .find_or_create_device(client, controller, spinner)
@@ -510,10 +502,7 @@ Disconnect and connect again!"#,
                 .map_err(|_| eyre::eyre!("User not found"))?;
 
             if user.status == UserStatus::Activated || user.status == UserStatus::Rejected {
-                spinner.println(format!(
-                    "    User activated with dz_ip: {}",
-                    ipv4_to_string(&user.dz_ip)
-                ));
+                spinner.println(format!("    User activated with dz_ip: {}", &user.dz_ip));
                 return Ok(user);
             }
         }
@@ -525,16 +514,13 @@ Disconnect and connect again!"#,
         client: &dyn CliCommand,
         controller: &T,
         user: &User,
-        client_ip: &IpV4,
+        client_ip: &Ipv4Addr,
         spinner: &ProgressBar,
         user_type: UserType,
         mcast_pub_groups: Option<Vec<String>>,
         mcast_sub_groups: Option<Vec<String>>,
     ) -> eyre::Result<()> {
-        spinner.println(format!(
-            "    User activated with dz_ip: {}",
-            ipv4_to_string(&user.dz_ip)
-        ));
+        spinner.println(format!("    User activated with dz_ip: {}", &user.dz_ip));
 
         spinner.set_prefix("3/4 Device");
         spinner.set_message("Reading devices...");
@@ -542,7 +528,7 @@ Disconnect and connect again!"#,
         let devices = client.list_device(ListDeviceCommand)?;
         let prefixes = devices
             .values()
-            .flat_map(|device| device.dz_prefixes.clone())
+            .flat_map(|device| Into::<Vec<NetworkV4>>::into(device.dz_prefixes.clone()))
             .collect::<Vec<NetworkV4>>();
 
         spinner.set_message("Getting global-config...");
@@ -558,19 +544,17 @@ Disconnect and connect again!"#,
         spinner.set_prefix("4/4 Provisioning");
 
         // Tunnel provisioning
-        let tunnel_src = ipv4_to_string(&user.client_ip);
-        let tunnel_dst = ipv4_to_string(&device.public_ip);
-        let tunnel_net = networkv4_to_string(&user.tunnel_net);
-        let doublezero_ip = ipv4_to_string(&user.dz_ip);
-        let doublezero_prefixes: Vec<String> = prefixes
-            .into_iter()
-            .map(|net| networkv4_to_string(&net))
-            .collect();
+        let tunnel_src = user.client_ip.to_string();
+        let tunnel_dst = device.public_ip.to_string();
+        let tunnel_net = user.tunnel_net.to_string();
+        let doublezero_ip = &user.dz_ip;
+        let doublezero_prefixes: Vec<String> =
+            prefixes.into_iter().map(|net| net.to_string()).collect();
 
         if self.verbose {
             spinner.println(format!(
                 "➤   Provisioning Local Tunnel for IP: {}\n\ttunnel_src: {}\n\ttunnel_dst: {}\n\ttunnel_net: {}\n\tdoublezero_ip: {}\n\tdoublezero_prefixes: {:?}\n\tlocal_asn: {}\n\tremote_asn: {}\n\tmcast_pub_groups: {:?}\n\tmcast_sub_groups: {:?}\n",
-                ipv4_to_string(client_ip),
+                client_ip,
                 tunnel_src,
                 tunnel_dst,
                 tunnel_net,
@@ -589,7 +573,7 @@ Disconnect and connect again!"#,
                 tunnel_src,
                 tunnel_dst,
                 tunnel_net,
-                doublezero_ip,
+                doublezero_ip: doublezero_ip.to_string(),
                 doublezero_prefixes,
                 bgp_local_asn: Some(config.local_asn),
                 bgp_remote_asn: Some(config.remote_asn),
@@ -642,14 +626,11 @@ mod tests {
     use crate::servicecontroller::{LatencyRecord, MockServiceController, ProvisioningResponse};
     use doublezero_cli::{doublezerocommand::MockCliCommand, tests::utils::create_test_client};
     use doublezero_sdk::{tests::utils::create_temp_config, utils::parse_pubkey};
-    use doublezero_serviceability::{
-        state::{
-            accounttype::AccountType,
-            device::{Device, DeviceStatus, DeviceType},
-            globalconfig::GlobalConfig,
-            multicastgroup::{MulticastGroup, MulticastGroupStatus},
-        },
-        types::{ipv4_parse, networkv4_parse},
+    use doublezero_serviceability::state::{
+        accounttype::AccountType,
+        device::{Device, DeviceStatus, DeviceType},
+        globalconfig::GlobalConfig,
+        multicastgroup::{MulticastGroup, MulticastGroupStatus},
     };
     use mockall::predicate;
     use solana_sdk::signature::Signature;
@@ -687,9 +668,9 @@ mod tests {
                     bump_seed: 1,
                     local_asn: 65000,
                     remote_asn: 65001,
-                    device_tunnel_block: ([10, 0, 0, 0], 24),
-                    user_tunnel_block: ([10, 0, 1, 0], 24),
-                    multicastgroup_block: ([239, 0, 0, 0], 24),
+                    device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
+                    user_tunnel_block: "10.0.1.0/24".parse().unwrap(),
+                    multicastgroup_block: "239.0.0.0/24".parse().unwrap(),
                 },
                 client: create_test_client(),
                 controller: MockServiceController::new(),
@@ -798,11 +779,11 @@ mod tests {
                 location_pk: Pubkey::new_unique(),
                 exchange_pk: Pubkey::new_unique(),
                 device_type: DeviceType::Switch,
-                public_ip: ipv4_parse(device_ip.as_str()).unwrap(),
+                public_ip: device_ip.parse().unwrap(),
                 status: DeviceStatus::Activated,
                 metrics_publisher_pk: Pubkey::default(),
                 code: format!("device{device_number}"),
-                dz_prefixes: vec![networkv4_parse("10.0.0.0/24").unwrap()],
+                dz_prefixes: "10.0.0.0/24".parse().unwrap(),
             };
             devices.insert(pk, device.clone());
             (pk, device)
@@ -821,7 +802,7 @@ mod tests {
                 index: 1,
                 bump_seed: 1,
                 tenant_pk: Pubkey::new_unique(),
-                multicast_ip: ipv4_parse(multicast_ip).unwrap(),
+                multicast_ip: multicast_ip.parse().unwrap(),
                 max_bandwidth: 10_000_000_000,
                 status: MulticastGroupStatus::Activated,
                 code: code.to_string(),
@@ -849,10 +830,10 @@ mod tests {
                 device_pk,
                 tenant_pk: Pubkey::new_unique(),
                 cyoa_type: UserCYOA::GREOverDIA,
-                client_ip: ipv4_parse(client_ip).unwrap(),
-                dz_ip: ipv4_parse(client_ip).unwrap(),
+                client_ip: client_ip.parse().unwrap(),
+                dz_ip: client_ip.parse().unwrap(),
                 tunnel_id: 1,
-                tunnel_net: networkv4_parse("10.1.1.0/31").unwrap(),
+                tunnel_net: "10.1.1.0/31".parse().unwrap(),
                 status: UserStatus::Activated,
                 publishers: vec![],
                 subscribers: vec![],
@@ -958,8 +939,8 @@ mod tests {
         fixture.expect_create_user(Pubkey::new_unique(), &user);
         fixture.expected_provisioning_request(
             UserType::IBRL,
-            ipv4_to_string(&user.client_ip).as_str(),
-            ipv4_to_string(&device1.public_ip).as_str(),
+            user.client_ip.to_string().as_str(),
+            device1.public_ip.to_string().as_str(),
             None,
             None,
         );
@@ -968,7 +949,7 @@ mod tests {
             dz_mode: DzMode::IBRL {
                 allocate_addr: false,
             },
-            client_ip: Some(ipv4_to_string(&user.client_ip)),
+            client_ip: Some(user.client_ip.to_string()),
             device: None,
             verbose: false,
         };
@@ -986,7 +967,7 @@ mod tests {
                 mode: MulticastMode::Publisher,
                 multicast_group: "test-group".to_string(),
             },
-            client_ip: Some(ipv4_to_string(&user.client_ip)),
+            client_ip: Some(user.client_ip.to_string()),
             device: None,
             verbose: false,
         };
@@ -1010,8 +991,8 @@ mod tests {
         fixture.expect_create_user(Pubkey::new_unique(), &user);
         fixture.expected_provisioning_request(
             UserType::IBRLWithAllocatedIP,
-            ipv4_to_string(&user.client_ip).as_str(),
-            ipv4_to_string(&device1.public_ip).as_str(),
+            user.client_ip.to_string().as_str(),
+            device1.public_ip.to_string().as_str(),
             None,
             None,
         );
@@ -1020,7 +1001,7 @@ mod tests {
             dz_mode: DzMode::IBRL {
                 allocate_addr: true,
             },
-            client_ip: Some(ipv4_to_string(&user.client_ip)),
+            client_ip: Some(user.client_ip.to_string()),
             device: None,
             verbose: false,
         };
@@ -1047,9 +1028,9 @@ mod tests {
         );
         fixture.expected_provisioning_request(
             UserType::Multicast,
-            ipv4_to_string(&user.client_ip).as_str(),
-            ipv4_to_string(&device1.public_ip).as_str(),
-            Some(vec![ipv4_to_string(&mcast_group.multicast_ip)]),
+            user.client_ip.to_string().as_str(),
+            device1.public_ip.to_string().as_str(),
+            Some(vec![mcast_group.multicast_ip.to_string()]),
             Some(vec![]),
         );
 
@@ -1058,7 +1039,7 @@ mod tests {
                 mode: MulticastMode::Publisher,
                 multicast_group: "test-group".to_string(),
             },
-            client_ip: Some(ipv4_to_string(&user.client_ip)),
+            client_ip: Some(user.client_ip.to_string()),
             device: None,
             verbose: false,
         };
@@ -1086,10 +1067,10 @@ mod tests {
         );
         fixture.expected_provisioning_request(
             UserType::Multicast,
-            ipv4_to_string(&user.client_ip).as_str(),
-            ipv4_to_string(&device1.public_ip).as_str(),
+            user.client_ip.to_string().as_str(),
+            device1.public_ip.to_string().as_str(),
             Some(vec![]),
-            Some(vec![ipv4_to_string(&mcast_group.multicast_ip)]),
+            Some(vec![mcast_group.multicast_ip.to_string()]),
         );
 
         let command = ProvisioningCliCommand {
@@ -1097,7 +1078,7 @@ mod tests {
                 mode: MulticastMode::Subscriber,
                 multicast_group: "test-group".to_string(),
             },
-            client_ip: Some(ipv4_to_string(&user.client_ip)),
+            client_ip: Some(user.client_ip.to_string()),
             device: None,
             verbose: false,
         };
@@ -1113,7 +1094,7 @@ mod tests {
                 mode: MulticastMode::Subscriber,
                 multicast_group: "test-group2".to_string(),
             },
-            client_ip: Some(ipv4_to_string(&user.client_ip)),
+            client_ip: Some(user.client_ip.to_string()),
             device: None,
             verbose: false,
         };
@@ -1132,7 +1113,7 @@ mod tests {
             dz_mode: DzMode::IBRL {
                 allocate_addr: false,
             },
-            client_ip: Some(ipv4_to_string(&user.client_ip)),
+            client_ip: Some(user.client_ip.to_string()),
             device: None,
             verbose: false,
         };

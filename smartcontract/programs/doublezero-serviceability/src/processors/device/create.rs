@@ -27,7 +27,7 @@ pub struct DeviceCreateArgs {
     pub location_pk: Pubkey,
     pub exchange_pk: Pubkey,
     pub device_type: DeviceType,
-    pub public_ip: IpV4,
+    pub public_ip: std::net::Ipv4Addr,
     pub dz_prefixes: NetworkV4List,
     pub metrics_publisher_pk: Pubkey,
 }
@@ -37,7 +37,7 @@ impl fmt::Debug for DeviceCreateArgs {
         write!(
             f,
             "code: {}, location_pk: {}, exchange_pk: {}, device_type: {:?}, public_ip: {}, dz_prefixes: {}, metrics_publisher_pk: {}",
-            self.code, self.location_pk, self.exchange_pk, self.device_type, ipv4_to_string(&self.public_ip), networkv4_list_to_string(&self.dz_prefixes), self.metrics_publisher_pk
+            self.code, self.location_pk, self.exchange_pk, self.device_type, &self.public_ip, &self.dz_prefixes, self.metrics_publisher_pk
         )
     }
 }

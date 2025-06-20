@@ -1,6 +1,6 @@
 use doublezero_sdk::{
     commands::device::{activate::ActivateDeviceCommand, closeaccount::CloseAccountDeviceCommand},
-    ipv4_to_string, networkv4_list_to_string, Device, DeviceStatus, DoubleZeroClient,
+    Device, DeviceStatus, DoubleZeroClient,
 };
 use solana_sdk::pubkey::Pubkey;
 use std::collections::{hash_map::Entry, HashMap};
@@ -30,9 +30,7 @@ pub fn process_device_event(
 
                     println!(
                         "Add Device: {} public_ip: {} dz_prefixes: {} ",
-                        device.code,
-                        ipv4_to_string(&device.public_ip),
-                        networkv4_list_to_string(&device.dz_prefixes)
+                        device.code, &device.public_ip, &device.dz_prefixes,
                     );
                     devices.insert(*pubkey, DeviceState::new(device));
                     *state_transitions
@@ -46,9 +44,7 @@ pub fn process_device_event(
             Entry::Vacant(entry) => {
                 println!(
                     "Add Device: {} public_ip: {} dz_prefixes: {} ",
-                    device.code,
-                    ipv4_to_string(&device.public_ip),
-                    networkv4_list_to_string(&device.dz_prefixes)
+                    device.code, &device.public_ip, &device.dz_prefixes,
                 );
                 entry.insert(DeviceState::new(device));
             }
@@ -106,11 +102,11 @@ mod tests {
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             device_type: DeviceType::Switch,
-            public_ip: [192, 168, 1, 1],
+            public_ip: [192, 168, 1, 1].into(),
             status: DeviceStatus::Pending,
             metrics_publisher_pk: Pubkey::default(),
             code: "TestDevice".to_string(),
-            dz_prefixes: vec![([10, 0, 0, 1], 24), ([10, 0, 1, 1], 24)],
+            dz_prefixes: "10.0.0.1/24,10.0.1.1/24".parse().unwrap(),
         };
 
         let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
@@ -178,11 +174,11 @@ mod tests {
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             device_type: DeviceType::Switch,
-            public_ip: [192, 168, 1, 1],
+            public_ip: [192, 168, 1, 1].into(),
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::default(),
             code: "TestDevice".to_string(),
-            dz_prefixes: vec![([10, 0, 0, 1], 24)],
+            dz_prefixes: "10.0.0.1/24".parse().unwrap(),
         };
 
         let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
@@ -198,7 +194,7 @@ mod tests {
         assert!(devices.contains_key(&pubkey));
         assert_eq!(devices.get(&pubkey).unwrap().device, device);
 
-        device.dz_prefixes.push(([10, 0, 1, 1], 24));
+        device.dz_prefixes.push("10.0.1.1/24".parse().unwrap());
         process_device_event(
             &client,
             &pubkey,

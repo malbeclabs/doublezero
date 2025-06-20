@@ -64,7 +64,7 @@ mod tests {
             bump_seed: 1,
             owner: Pubkey::new_unique(),
             tenant_pk: Pubkey::new_unique(),
-            multicast_ip: [239, 1, 1, 1],
+            multicast_ip: [239, 1, 1, 1].into(),
             max_bandwidth: 1000,
             status: MulticastGroupStatus::Activated,
             code: "test_code".to_string(),

@@ -7,7 +7,7 @@ use crate::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::Serialize;
 use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
-use std::fmt;
+use std::{fmt, net::Ipv4Addr};
 
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
@@ -78,7 +78,7 @@ pub struct Device {
     pub location_pk: Pubkey,          // 32
     pub exchange_pk: Pubkey,          // 32
     pub device_type: DeviceType,      // 1
-    pub public_ip: IpV4,              // 4
+    pub public_ip: Ipv4Addr,          // 4
     pub status: DeviceStatus,         // 1
     pub code: String,                 // 4 + len
     pub dz_prefixes: NetworkV4List,   // 4 + 5 * len
@@ -90,7 +90,7 @@ impl fmt::Display for Device {
         write!(
             f,
             "account_type: {}, owner: {}, index: {}, location_pk: {}, exchange_pk: {}, device_type: {}, public_ip: {}, dz_prefixes: {}, status: {}, code: {}, metrics_publisher_pk: {}",
-            self.account_type, self.owner, self.index, self.location_pk, self.exchange_pk, self.device_type, ipv4_to_string(&self.public_ip), networkv4_list_to_string(&self.dz_prefixes), self.status, self.code, self.metrics_publisher_pk
+            self.account_type, self.owner, self.index, self.location_pk, self.exchange_pk, self.device_type, &self.public_ip, &self.dz_prefixes, self.status, self.code, self.metrics_publisher_pk
         )
     }
 }
@@ -140,7 +140,7 @@ impl From<&[u8]> for Device {
             public_ip: parser.read_ipv4(),
             status: parser.read_enum(),
             code: parser.read_string(),
-            dz_prefixes: parser.read_networkv4_vec(),
+            dz_prefixes: parser.read_networkv4_list(),
             metrics_publisher_pk: parser.read_pubkey(),
         }
     }
@@ -170,8 +170,8 @@ mod tests {
             device_type: DeviceType::Switch,
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
-            dz_prefixes: vec![([10, 0, 0, 1], 24), ([11, 0, 0, 1], 24)],
-            public_ip: ipv4_parse("1.2.3.4").unwrap(),
+            dz_prefixes: "10.0.0.1/24,11.0.0.1/24".parse().unwrap(),
+            public_ip: [1, 2, 3, 4].into(),
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::new_unique(),
         };

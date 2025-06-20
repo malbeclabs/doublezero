@@ -3,17 +3,18 @@ use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     processors::user::update::UserUpdateArgs,
     state::user::{UserCYOA, UserType},
-    types::{IpV4, NetworkV4},
+    types::NetworkV4,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use std::net::Ipv4Addr;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct UpdateUserCommand {
     pub pubkey: Pubkey,
     pub user_type: Option<UserType>,
     pub cyoa_type: Option<UserCYOA>,
-    pub client_ip: Option<IpV4>,
-    pub dz_ip: Option<IpV4>,
+    pub client_ip: Option<Ipv4Addr>,
+    pub dz_ip: Option<Ipv4Addr>,
     pub tunnel_id: Option<u16>,
     pub tunnel_net: Option<NetworkV4>,
 }

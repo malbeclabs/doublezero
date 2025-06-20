@@ -48,6 +48,7 @@ mod tests {
         get_device_pda, AccountType, Device, DeviceStatus, Exchange, ExchangeStatus,
         GetLocationCommand, Location, LocationStatus,
     };
+    use doublezero_serviceability::types::NetworkV4List;
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
@@ -99,8 +100,8 @@ mod tests {
             location_pk,
             exchange_pk,
             device_type: doublezero_sdk::DeviceType::Switch,
-            public_ip: [10, 0, 0, 1],
-            dz_prefixes: vec![],
+            public_ip: [10, 0, 0, 1].into(),
+            dz_prefixes: NetworkV4List::default(),
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::default(),
             owner: pda_pubkey,

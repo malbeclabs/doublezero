@@ -84,7 +84,10 @@ mod multicastgroup_test {
             .unwrap();
         assert_eq!(multicastgroup_la.account_type, AccountType::MulticastGroup);
         assert_eq!(multicastgroup_la.code, "la".to_string());
-        assert_eq!(multicastgroup_la.multicast_ip, [0, 0, 0, 0]);
+        assert_eq!(
+            multicastgroup_la.multicast_ip,
+            std::net::Ipv4Addr::UNSPECIFIED
+        );
         assert_eq!(multicastgroup_la.max_bandwidth, 1000);
         assert_eq!(multicastgroup_la.status, MulticastGroupStatus::Pending);
 
@@ -98,7 +101,7 @@ mod multicastgroup_test {
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
-                multicast_ip: [224, 0, 0, 0],
+                multicast_ip: [224, 0, 0, 0].into(),
             }),
             vec![
                 AccountMeta::new(multicastgroup_pubkey, false),
@@ -115,7 +118,7 @@ mod multicastgroup_test {
             .unwrap();
         assert_eq!(multicastgroup_la.account_type, AccountType::MulticastGroup);
         assert_eq!(multicastgroup_la.code, "la".to_string());
-        assert_eq!(multicastgroup_la.multicast_ip, [224, 0, 0, 0]);
+        assert_eq!(multicastgroup_la.multicast_ip.to_string(), "224.0.0.0");
         assert_eq!(multicastgroup_la.status, MulticastGroupStatus::Activated);
 
         println!("✅ MulticastGroup activate successfully",);
@@ -175,7 +178,7 @@ mod multicastgroup_test {
             program_id,
             DoubleZeroInstruction::UpdateMulticastGroup(MulticastGroupUpdateArgs {
                 code: Some("la2".to_string()),
-                multicast_ip: Some([239, 1, 1, 2]),
+                multicast_ip: Some([239, 1, 1, 2].into()),
                 max_bandwidth: Some(2000),
             }),
             vec![

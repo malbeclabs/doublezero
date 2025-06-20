@@ -91,7 +91,7 @@ pub fn process_create_multicastgroup(
         bump_seed,
         tenant_pk: Pubkey::default(),
         code: value.code.clone(),
-        multicast_ip: [0, 0, 0, 0],
+        multicast_ip: std::net::Ipv4Addr::UNSPECIFIED,
         max_bandwidth: value.max_bandwidth,
         pub_allowlist: vec![],
         sub_allowlist: vec![],

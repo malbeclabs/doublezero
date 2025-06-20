@@ -82,9 +82,11 @@ mod tests {
             multicastgroup::{MulticastGroup, MulticastGroupStatus},
             user::{User, UserCYOA, UserStatus, UserType},
         },
+        types::NetworkV4,
     };
     use mockall::predicate;
     use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+    use std::net::Ipv4Addr;
 
     #[test]
     fn test_commands_multicastgroup_subscribe_command() {
@@ -103,7 +105,7 @@ mod tests {
             pub_allowlist: vec![client.get_payer()],
             sub_allowlist: vec![client.get_payer()],
             tenant_pk: Pubkey::default(),
-            multicast_ip: [223, 0, 0, 1],
+            multicast_ip: "223.0.0.1".parse().unwrap(),
             publishers: vec![],
             subscribers: vec![],
         };
@@ -123,10 +125,10 @@ mod tests {
             user_type: UserType::Multicast,
             device_pk: pda_pubkey,
             cyoa_type: UserCYOA::GREOverDIA,
-            client_ip: [0, 0, 0, 0],
-            dz_ip: [0, 0, 0, 0],
+            client_ip: Ipv4Addr::UNSPECIFIED,
+            dz_ip: Ipv4Addr::UNSPECIFIED,
             tunnel_id: 0,
-            tunnel_net: ([0, 0, 0, 0], 0),
+            tunnel_net: NetworkV4::default(),
             status: UserStatus::Activated,
             publishers: vec![],
             subscribers: vec![],

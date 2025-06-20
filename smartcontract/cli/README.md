@@ -53,7 +53,7 @@ classDiagram
         Pubkey location_pk
         Pubkey exchange_pk
         DeviceType device_type
-        IpV4 public_ip
+        Ipv4Addr public_ip
         DeviceStatus status
         String code
         NetworkV4List dz_prefixes
@@ -84,8 +84,8 @@ classDiagram
         Pubkey tenant_pk
         Pubkey device_pk
         UserCYOA cyoa_type
-        IpV4 client_ip
-        IpV4 dz_ip
+        Ipv4Addr client_ip
+        Ipv4Addr dz_ip
         u16 tunnel_id
         NetworkV4 tunnel_net
         UserStatus status
@@ -210,7 +210,7 @@ Below is a list of available CLI commands for each main on-chain structure:
     | --code           | String   | Device code/identifier            |
     | --location       | Pubkey   | Location public key               |
     | --exchange       | Pubkey   | Exchange public key               |
-    | --public-ip      | IpV4     | Device public IPv4 address        |
+    | --public-ip      | Ipv4Addr | Device public IPv4 address        |
     | --device-type    | Enum     | Device type                       |
 - `device delete` — Delete a device
     | Argument   | Type   | Description         |
@@ -229,7 +229,7 @@ Below is a list of available CLI commands for each main on-chain structure:
     | location        | Pubkey   | Location public key               |
     | exchange        | Pubkey   | Exchange public key               |
     | device_type     | Enum     | Device type                       |
-    | public_ip       | IpV4     | Device public IPv4 address        |
+    | public_ip       | Ipv4Addr | Device public IPv4 address        |
     | dz_prefixes     | List     | List of network prefixes          |
     | status          | Enum     | Device status                     |
     | owner           | Pubkey   | Owner's public key                |
@@ -246,7 +246,7 @@ Below is a list of available CLI commands for each main on-chain structure:
     |------------------|----------|-----------------------------------|
     | --pubkey         | Pubkey   | Device public key                 |
     | --code           | String   | Device code/identifier            |
-    | --public-ip      | IpV4     | Device public IPv4 address        |
+    | --public-ip      | Ipv4Addr | Device public IPv4 address        |
     | --dz-prefixes    | List     | List of network prefixes          |
 
 ### Tunnel
@@ -302,8 +302,8 @@ Below is a list of available CLI commands for each main on-chain structure:
     |---------------|----------|----------------------------|
     | --device      | Pubkey   | Device public key          |
     | --cyoa-type   | Enum     | CYOA type                  |
-    | --client-ip   | IpV4     | Client IPv4 address        |
-    | --dz-ip       | IpV4     | DoubleZero IPv4 address    |
+    | --client-ip   | Ipv4Addr | Client IPv4 address        |
+    | --dz-ip       | Ipv4Addr | DoubleZero IPv4 address    |
     | -a            | Option   | Allocate DZ IP             |
 - `user delete` — Delete a user
     | Argument   | Type   | Description         |
@@ -322,8 +322,8 @@ Below is a list of available CLI commands for each main on-chain structure:
     | tenant_pk       | Pubkey   | Tenant public key                 |
     | device_pk       | Pubkey   | Device public key                 |
     | cyoa_type       | Enum     | CYOA type                         |
-    | client_ip       | IpV4     | Client IPv4 address               |
-    | dz_ip           | IpV4     | DoubleZero IPv4 address           |
+    | client_ip       | Ipv4Addr | Client IPv4 address               |
+    | dz_ip           | Ipv4Addr | DoubleZero IPv4 address           |
     | tunnel_id       | u16      | Tunnel ID                         |
     | tunnel_net      | NetworkV4| Tunnel network prefix             |
     | status          | Enum     | User status                       |
@@ -336,8 +336,8 @@ Below is a list of available CLI commands for each main on-chain structure:
     | Argument      | Type     | Description                |
     |---------------|----------|----------------------------|
     | --pubkey      | Pubkey   | User public key            |
-    | --client-ip   | IpV4     | Client IPv4 address        |
-    | --dz-ip       | IpV4     | DoubleZero IPv4 address    |
+    | --client-ip   | Ipv4Addr | Client IPv4 address        |
+    | --dz-ip       | Ipv4Addr | DoubleZero IPv4 address    |
     | --tunnel-id   | u16      | Tunnel ID                  |
     | --tunnel-net  | NetworkV4| Tunnel network prefix      |
 

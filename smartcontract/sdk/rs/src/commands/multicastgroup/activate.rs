@@ -1,15 +1,16 @@
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    processors::multicastgroup::activate::MulticastGroupActivateArgs, types::IpV4,
+    processors::multicastgroup::activate::MulticastGroupActivateArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use std::net::Ipv4Addr;
 
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ActivateMulticastGroupCommand {
     pub mgroup_pubkey: Pubkey,
-    pub multicast_ip: IpV4,
+    pub multicast_ip: Ipv4Addr,
 }
 
 impl ActivateMulticastGroupCommand {
@@ -56,7 +57,7 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::ActivateMulticastGroup(
                     MulticastGroupActivateArgs {
-                        multicast_ip: [1, 2, 3, 4],
+                        multicast_ip: [1, 2, 3, 4].into(),
                     },
                 )),
                 predicate::eq(vec![
@@ -68,7 +69,7 @@ mod tests {
 
         let res = ActivateMulticastGroupCommand {
             mgroup_pubkey: pda_pubkey,
-            multicast_ip: [1, 2, 3, 4],
+            multicast_ip: [1, 2, 3, 4].into(),
         }
         .execute(&client);
 

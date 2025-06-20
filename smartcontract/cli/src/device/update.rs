@@ -1,10 +1,7 @@
 use crate::{
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-    validators::{
-        validate_code, validate_parse_ipv4, validate_parse_networkv4_list, validate_pubkey,
-        validate_pubkey_or_code,
-    },
+    validators::{validate_code, validate_pubkey, validate_pubkey_or_code},
 };
 use clap::Args;
 use doublezero_sdk::{
@@ -14,7 +11,7 @@ use doublezero_sdk::{
     *,
 };
 use solana_sdk::pubkey::Pubkey;
-use std::{io::Write, str::FromStr};
+use std::{io::Write, net::Ipv4Addr, str::FromStr};
 
 #[derive(Args, Debug)]
 pub struct UpdateDeviceCliCommand {
@@ -25,10 +22,10 @@ pub struct UpdateDeviceCliCommand {
     #[arg(long, value_parser = validate_code)]
     pub code: Option<String>,
     /// Updated public IPv4 address for the device (e.g. 10.0.0.1)
-    #[arg(long, value_parser = validate_parse_ipv4)]
-    pub public_ip: Option<IpV4>,
+    #[arg(long)]
+    pub public_ip: Option<Ipv4Addr>,
     /// Updated list of DZ prefixes in comma-separated CIDR format (e.g. 10.1.0.0/16,10.2.0.0/16)
-    #[arg(long, value_parser = validate_parse_networkv4_list)]
+    #[arg(long)]
     pub dz_prefixes: Option<NetworkV4List>,
     /// Metrics publisher Pubkey (optional)
     #[arg(long, value_parser = validate_pubkey)]
@@ -57,7 +54,7 @@ impl UpdateDeviceCliCommand {
             {
                 return Err(eyre::eyre!(
                     "Device with public ip '{}' already exists",
-                    ipv4_to_string(public_ip)
+                    public_ip
                 ));
             }
         }
@@ -133,8 +130,8 @@ mod tests {
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
-            public_ip: [1, 2, 3, 4],
-            dz_prefixes: vec![([1, 2, 3, 4], 32)],
+            public_ip: [1, 2, 3, 4].into(),
+            dz_prefixes: "1.2.3.4/32".parse().unwrap(),
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::default(),
             owner: pda_pubkey,
@@ -147,8 +144,8 @@ mod tests {
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
-            public_ip: [2, 3, 4, 5],
-            dz_prefixes: vec![([2, 3, 4, 5], 32)],
+            public_ip: [2, 3, 4, 5].into(),
+            dz_prefixes: "2.3.4.5/32".parse().unwrap(),
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::default(),
             owner: pda_pubkey,
@@ -161,8 +158,8 @@ mod tests {
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
-            public_ip: [3, 4, 5, 6],
-            dz_prefixes: vec![([3, 4, 5, 6], 32)],
+            public_ip: [3, 4, 5, 6].into(),
+            dz_prefixes: "3.4.5.6/32".parse().unwrap(),
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::default(),
             owner: pda_pubkey,
@@ -194,8 +191,8 @@ mod tests {
                 pubkey: pda_pubkey,
                 code: Some("test".to_string()),
                 device_type: Some(DeviceType::Switch),
-                public_ip: Some([1, 2, 3, 4]),
-                dz_prefixes: Some(vec![([1, 2, 3, 4], 32)]),
+                public_ip: Some([1, 2, 3, 4].into()),
+                dz_prefixes: Some("1.2.3.4/32".parse().unwrap()),
                 metrics_publisher: Some(Pubkey::from_str_const(
                     "HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx",
                 )),
@@ -208,8 +205,8 @@ mod tests {
         let res = UpdateDeviceCliCommand {
             pubkey: pda_pubkey.to_string(),
             code: Some("test".to_string()),
-            public_ip: Some([1, 2, 3, 4]),
-            dz_prefixes: Some(vec![([1, 2, 3, 4], 32)]),
+            public_ip: Some([1, 2, 3, 4].into()),
+            dz_prefixes: Some("1.2.3.4/32".parse().unwrap()),
             metrics_publisher: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
         }
         .execute(&client, &mut output);
@@ -237,8 +234,8 @@ mod tests {
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
-            public_ip: [1, 2, 3, 4],
-            dz_prefixes: vec![([1, 2, 3, 4], 32)],
+            public_ip: [1, 2, 3, 4].into(),
+            dz_prefixes: "1.2.3.4/32".parse().unwrap(),
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::default(),
             owner: pda_pubkey,
@@ -251,8 +248,8 @@ mod tests {
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
-            public_ip: [2, 3, 4, 5],
-            dz_prefixes: vec![([2, 3, 4, 5], 32)],
+            public_ip: [2, 3, 4, 5].into(),
+            dz_prefixes: "2.3.4.5/32".parse().unwrap(),
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::default(),
             owner: other_pubkey,
@@ -302,8 +299,8 @@ mod tests {
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
-            public_ip: [1, 2, 3, 4],
-            dz_prefixes: vec![([1, 2, 3, 4], 32)],
+            public_ip: [1, 2, 3, 4].into(),
+            dz_prefixes: "1.2.3.4/32".parse().unwrap(),
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::default(),
             owner: pda_pubkey,
@@ -316,8 +313,8 @@ mod tests {
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
-            public_ip: [10, 20, 30, 40],
-            dz_prefixes: vec![([10, 20, 30, 40], 32)],
+            public_ip: [10, 20, 30, 40].into(),
+            dz_prefixes: "10.20.30.40/32".parse().unwrap(),
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::default(),
             owner: other_pubkey,
@@ -338,7 +335,7 @@ mod tests {
         let res = UpdateDeviceCliCommand {
             pubkey: pda_pubkey.to_string(),
             code: None,
-            public_ip: Some([10, 20, 30, 40]),
+            public_ip: Some([10, 20, 30, 40].into()),
             dz_prefixes: None,
             metrics_publisher: None,
         }

@@ -19,7 +19,7 @@ use solana_program::{
 pub struct DeviceUpdateArgs {
     pub code: Option<String>,
     pub device_type: Option<DeviceType>,
-    pub public_ip: Option<IpV4>,
+    pub public_ip: Option<std::net::Ipv4Addr>,
     pub dz_prefixes: Option<NetworkV4List>,
     pub metrics_publisher_pk: Option<Pubkey>,
 }
@@ -31,8 +31,8 @@ impl fmt::Debug for DeviceUpdateArgs {
             "code: {:?}, device_type: {:?}, public_ip: {:?}, dz_prefixes: {:?}",
             self.code,
             self.device_type,
-            self.public_ip.map(|public_ip| ipv4_to_string(&public_ip),),
-            self.dz_prefixes.as_ref().map(networkv4_list_to_string)
+            self.public_ip.map(|public_ip| public_ip.to_string(),),
+            self.dz_prefixes.as_ref().map(|net| net.to_string())
         )
     }
 }
@@ -95,7 +95,7 @@ pub fn process_update_device(
         device.public_ip = public_ip;
     }
     if let Some(dz_prefixes) = &value.dz_prefixes {
-        device.dz_prefixes = dz_prefixes.to_vec();
+        device.dz_prefixes = dz_prefixes.clone();
     }
     if let Some(metrics_publisher_pk) = &value.metrics_publisher_pk {
         device.metrics_publisher_pk = *metrics_publisher_pk;

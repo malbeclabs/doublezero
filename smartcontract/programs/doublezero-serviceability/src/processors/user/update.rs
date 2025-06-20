@@ -20,8 +20,8 @@ use std::fmt;
 pub struct UserUpdateArgs {
     pub user_type: Option<UserType>,
     pub cyoa_type: Option<UserCYOA>,
-    pub client_ip: Option<IpV4>,
-    pub dz_ip: Option<IpV4>,
+    pub client_ip: Option<std::net::Ipv4Addr>,
+    pub dz_ip: Option<std::net::Ipv4Addr>,
     pub tunnel_id: Option<u16>,
     pub tunnel_net: Option<NetworkV4>,
 }
@@ -33,10 +33,10 @@ impl fmt::Debug for UserUpdateArgs {
             "user_type: {}, cyoa_type: {}, client_ip: {}, dz_ip: {}, tunnel_id: {}, tunnel_net: {}",
             format_option!(self.user_type),
             format_option!(self.cyoa_type),
-            format_option!(self.client_ip, ipv4_to_string),
-            format_option!(self.dz_ip, ipv4_to_string),
+            format_option!(self.client_ip),
+            format_option!(self.dz_ip),
             format_option!(self.tunnel_id),
-            format_option!(self.tunnel_net, networkv4_to_string),
+            format_option!(self.tunnel_net),
         )
     }
 }
@@ -78,7 +78,7 @@ pub fn process_update_user(
     let mut user: User = User::try_from(user_account)?;
     assert_eq!(user.account_type, AccountType::User, "Invalid Account Type");
 
-    user.dz_ip = value.dz_ip.unwrap_or([0, 0, 0, 0]);
+    user.dz_ip = value.dz_ip.unwrap_or(std::net::Ipv4Addr::UNSPECIFIED);
     if let Some(value) = value.tunnel_id {
         user.tunnel_id = value;
     }

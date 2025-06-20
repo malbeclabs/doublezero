@@ -9,7 +9,7 @@ use doublezero_sdk::{
 };
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
-use std::io::Write;
+use std::{io::Write, net::Ipv4Addr};
 use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
@@ -44,10 +44,8 @@ pub struct DeviceDisplay {
     #[tabled(skip)]
     pub exchange_name: String,
     pub device_type: DeviceType,
-    #[tabled(display = "doublezero_serviceability::types::ipv4_to_string")]
-    #[serde(serialize_with = "crate::serializer::serialize_ipv4_as_string")]
-    pub public_ip: IpV4,
-    #[tabled(display = "doublezero_serviceability::types::networkv4_list_to_string")]
+    pub public_ip: Ipv4Addr,
+    #[tabled(display = "doublezero_serviceability::types::NetworkV4List::to_string")]
     #[serde(serialize_with = "crate::serializer::serialize_networkv4list_as_string")]
     pub dz_prefixes: NetworkV4List,
     pub status: DeviceStatus,
@@ -171,8 +169,8 @@ mod tests {
             location_pk: location1_pubkey,
             exchange_pk: exchange1_pubkey,
             device_type: DeviceType::Switch,
-            public_ip: [1, 2, 3, 4],
-            dz_prefixes: vec![([1, 2, 3, 4], 32)],
+            public_ip: [1, 2, 3, 4].into(),
+            dz_prefixes: "1.2.3.4/32".parse().unwrap(),
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::default(),
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),

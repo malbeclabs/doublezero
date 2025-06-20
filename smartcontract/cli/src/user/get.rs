@@ -1,6 +1,6 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_pubkey};
 use clap::Args;
-use doublezero_sdk::{commands::user::get::GetUserCommand, *};
+use doublezero_sdk::commands::user::get::GetUserCommand;
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, str::FromStr};
 
@@ -22,9 +22,9 @@ impl GetUserCliCommand {
                 user.user_type,
                 user.device_pk,
                 user.cyoa_type,
-                ipv4_to_string(&user.client_ip),
-                networkv4_to_string(&user.tunnel_net),
-                ipv4_to_string(&user.dz_ip),
+                &user.client_ip,
+                &user.tunnel_net,
+                &user.dz_ip,
                 user.publishers.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "),
                 user.subscribers.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "),
                 user.status,
@@ -69,10 +69,10 @@ mod tests {
             tenant_pk: Pubkey::default(),
             cyoa_type: UserCYOA::GREOverDIA,
             device_pk: Pubkey::default(),
-            client_ip: [10, 0, 0, 1],
-            dz_ip: [10, 0, 0, 2],
+            client_ip: [10, 0, 0, 1].into(),
+            dz_ip: [10, 0, 0, 2].into(),
             tunnel_id: 0,
-            tunnel_net: ([10, 2, 3, 4], 24),
+            tunnel_net: "10.2.3.4/24".parse().unwrap(),
             status: UserStatus::Activated,
             owner: pda_pubkey,
             publishers: vec![],

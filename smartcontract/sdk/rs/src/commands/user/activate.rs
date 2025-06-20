@@ -1,9 +1,9 @@
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
-    processors::user::activate::UserActivateArgs,
-    types::{IpV4, NetworkV4},
+    instructions::DoubleZeroInstruction, processors::user::activate::UserActivateArgs,
+    types::NetworkV4,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use std::net::Ipv4Addr;
 
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 
@@ -12,7 +12,7 @@ pub struct ActivateUserCommand {
     pub user_pubkey: Pubkey,
     pub tunnel_id: u16,
     pub tunnel_net: NetworkV4,
-    pub dz_ip: IpV4,
+    pub dz_ip: Ipv4Addr,
 }
 
 impl ActivateUserCommand {

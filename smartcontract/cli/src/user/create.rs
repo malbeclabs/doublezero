@@ -2,14 +2,14 @@ use crate::{
     doublezerocommand::CliCommand,
     helpers::parse_pubkey,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-    validators::{validate_parse_ipv4, validate_pubkey_or_code},
+    validators::validate_pubkey_or_code,
 };
 use clap::Args;
 use doublezero_sdk::{
     commands::{device::get::GetDeviceCommand, user::create::CreateUserCommand},
     *,
 };
-use std::io::Write;
+use std::{io::Write, net::Ipv4Addr};
 
 #[derive(Args, Debug)]
 pub struct CreateUserCliCommand {
@@ -17,8 +17,8 @@ pub struct CreateUserCliCommand {
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub device: String,
     /// Client IP address in IPv4 format
-    #[arg(long, value_parser = validate_parse_ipv4)]
-    pub client_ip: IpV4,
+    #[arg(long)]
+    pub client_ip: Ipv4Addr,
     /// Allocate a new address for the user
     #[arg(short, long, default_value_t = false)]
     pub allocate_addr: bool,
@@ -94,8 +94,8 @@ mod tests {
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             device_type: DeviceType::Switch,
-            public_ip: [10, 0, 0, 1],
-            dz_prefixes: vec![([10, 0, 0, 1], 24), ([11, 0, 0, 1], 24)],
+            public_ip: [10, 0, 0, 1].into(),
+            dz_prefixes: "10.0.0.1/24,11.0.0.1/24".parse().unwrap(),
             owner: device_pubkey,
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::new_unique(),
@@ -118,7 +118,7 @@ mod tests {
                 user_type: UserType::IBRL,
                 device_pk: device_pubkey,
                 cyoa_type: UserCYOA::GREOverDIA,
-                client_ip: [100, 0, 0, 1],
+                client_ip: [100, 0, 0, 1].into(),
             }))
             .times(1)
             .returning(move |_| Ok((signature, pda_pubkey)));
@@ -127,7 +127,7 @@ mod tests {
         let mut output = Vec::new();
         let res = CreateUserCliCommand {
             device: "device1".to_string(),
-            client_ip: [100, 0, 0, 1],
+            client_ip: [100, 0, 0, 1].into(),
             allocate_addr: false,
         }
         .execute(&client, &mut output);

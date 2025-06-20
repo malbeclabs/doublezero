@@ -1,11 +1,9 @@
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
-    pda::get_device_pda,
-    processors::device::create::DeviceCreateArgs,
-    state::device::DeviceType,
-    types::{IpV4, NetworkV4List},
+    instructions::DoubleZeroInstruction, pda::get_device_pda,
+    processors::device::create::DeviceCreateArgs, state::device::DeviceType, types::NetworkV4List,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use std::net::Ipv4Addr;
 
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 
@@ -15,7 +13,7 @@ pub struct CreateDeviceCommand {
     pub location_pk: Pubkey,
     pub exchange_pk: Pubkey,
     pub device_type: DeviceType,
-    pub public_ip: IpV4,
+    pub public_ip: Ipv4Addr,
     pub dz_prefixes: NetworkV4List,
     pub metrics_publisher: Pubkey,
 }
@@ -132,8 +130,8 @@ mod tests {
                     location_pk: location_pubkey,
                     exchange_pk: Pubkey::new_unique(),
                     device_type: DeviceType::Switch,
-                    public_ip: [10, 0, 0, 1],
-                    dz_prefixes: vec![([10, 0, 0, 0], 8)],
+                    public_ip: [10, 0, 0, 1].into(),
+                    dz_prefixes: "10.0.0.0/8".parse().unwrap(),
                     metrics_publisher_pk: Pubkey::default(),
                 })),
                 predicate::eq(vec![
@@ -150,8 +148,8 @@ mod tests {
             location_pk: location_pubkey,
             exchange_pk: exchange_pubkey,
             device_type: DeviceType::Switch,
-            public_ip: [10, 0, 0, 1],
-            dz_prefixes: vec![([10, 0, 0, 0], 8)],
+            public_ip: [10, 0, 0, 1].into(),
+            dz_prefixes: "10.0.0.0/8".parse().unwrap(),
             metrics_publisher: Pubkey::default(),
         }
         .execute(&client);

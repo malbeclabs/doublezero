@@ -56,9 +56,9 @@ mod tunnel_test {
             DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
                 local_asn: 65000,
                 remote_asn: 65001,
-                device_tunnel_block: ([10, 0, 0, 0], 24),
-                user_tunnel_block: ([10, 0, 0, 0], 24),
-                multicastgroup_block: ([10, 0, 0, 0], 24),
+                device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
+                user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
+                multicastgroup_block: "10.0.0.0/24".parse().unwrap(),
             }),
             vec![
                 AccountMeta::new(config_pubkey, false),
@@ -148,8 +148,8 @@ mod tunnel_test {
                 device_type: DeviceType::Switch,
                 location_pk: location_pubkey,
                 exchange_pk: exchange_pubkey,
-                public_ip: [10, 0, 0, 1],
-                dz_prefixes: vec![([10, 1, 0, 0], 23)],
+                public_ip: [10, 0, 0, 1].into(),
+                dz_prefixes: "10.1.0.0/24".parse().unwrap(),
                 metrics_publisher_pk: Pubkey::default(),
             }),
             vec![
@@ -182,8 +182,8 @@ mod tunnel_test {
                 device_type: DeviceType::Switch,
                 location_pk: location_pubkey,
                 exchange_pk: exchange_pubkey,
-                public_ip: [11, 0, 0, 1],
-                dz_prefixes: vec![([11, 1, 0, 0], 23)],
+                public_ip: [11, 0, 0, 1].into(),
+                dz_prefixes: "11.1.0.0/23".parse().unwrap(),
                 metrics_publisher_pk: Pubkey::default(),
             }),
             vec![
@@ -254,7 +254,7 @@ mod tunnel_test {
             program_id,
             DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
                 tunnel_id: 500,
-                tunnel_net: ([10, 0, 0, 0], 21),
+                tunnel_net: "10.0.0.0/21".parse().unwrap(),
             }),
             vec![
                 AccountMeta::new(tunnel_pubkey, false),
@@ -271,7 +271,7 @@ mod tunnel_test {
             .unwrap();
         assert_eq!(tunnel_la.account_type, AccountType::Link);
         assert_eq!(tunnel_la.tunnel_id, 500);
-        assert_eq!(tunnel_la.tunnel_net, ([10, 0, 0, 0], 21));
+        assert_eq!(tunnel_la.tunnel_net.to_string(), "10.0.0.0/21");
         assert_eq!(tunnel_la.status, LinkStatus::Activated);
 
         println!("✅ Link activated");

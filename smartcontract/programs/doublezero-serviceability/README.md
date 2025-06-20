@@ -60,7 +60,7 @@ classDiagram
         Pubkey location_pk
         Pubkey exchange_pk
         DeviceType device_type
-        IpV4 public_ip
+        Ipv4Addr public_ip
         DeviceStatus status
         String code
         NetworkV4List dz_prefixes
@@ -91,8 +91,8 @@ classDiagram
         Pubkey tenant_pk
         Pubkey device_pk
         UserCYOA cyoa_type
-        IpV4 client_ip
-        IpV4 dz_ip
+        Ipv4Addr client_ip
+        Ipv4Addr dz_ip
         u16 tunnel_id
         NetworkV4 tunnel_net
         Pubkey[] publisher
@@ -230,7 +230,7 @@ stateDiagram-v2
 | location_pk  | Pubkey        | Location public key       |
 | exchange_pk  | Pubkey        | Exchange public key       |
 | device_type  | DeviceType    | Device type (e.g. Switch) |
-| public_ip    | IpV4          | Public IP address         |
+| public_ip    | Ipv4Addr      | Public IP address         |
 | status       | DeviceStatus  | Device status             |
 | code         | String        | Device code               |
 | dz_prefixes  | NetworkV4List | List of network prefixes  |
@@ -301,8 +301,8 @@ stateDiagram-v2
 | tenant_pk    | Pubkey      | Tenant public key |
 | device_pk    | Pubkey      | Device public key |
 | cyoa_type    | UserCYOA    | CYOA type         |
-| client_ip    | IpV4        | Client IP         |
-| dz_ip        | IpV4        | DoubleZero IP     |
+| client_ip    | IpV4Addr    | Client IP         |
+| dz_ip        | IpV4Addr    | DoubleZero IP     |
 | tunnel_id    | u16         | Tunnel ID         |
 | tunnel_net   | NetworkV4   | Tunnel network    |
 | status       | UserStatus  | User status       |
@@ -571,7 +571,7 @@ Creates a new device in the DoubleZero network, associating it with a location a
 | location_pk | Pubkey | Public key of the associated location |
 | exchange_pk | Pubkey | Public key of the associated exchange |
 | device_type | DeviceType | Type of device (e.g., Switch) |
-| public_ip | IpV4 | Public IP address of the device |
+| public_ip | IpV4Addr | Public IP address of the device |
 | code | String | Device code identifier |
 | dz_prefixes | NetworkV4List | List of network prefixes for the device |
 
@@ -737,8 +737,8 @@ Creates a new user in the DoubleZero network, associating it with a device and t
 | tenant_pk | Pubkey | Tenant public key |
 | device_pk | Pubkey | Device public key |
 | cyoa_type | UserCYOA | CYOA type (connectivity option) |
-| client_ip | IpV4 | Client IP address |
-| dz_ip | IpV4 | DoubleZero-assigned IP address |
+| client_ip | IpV4Addr | Client IP address |
+| dz_ip | IpV4Addr | DoubleZero-assigned IP address |
 | tunnel_id | u16 | Tunnel identifier |
 | tunnel_net | NetworkV4 | Network block for the tunnel |
 

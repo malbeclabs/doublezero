@@ -29,7 +29,7 @@ pub struct UserCreateSubscribeArgs {
     pub user_type: UserType,
     pub device_pk: Pubkey,
     pub cyoa_type: UserCYOA,
-    pub client_ip: IpV4,
+    pub client_ip: std::net::Ipv4Addr,
     pub publisher: bool,
     pub subscriber: bool,
 }
@@ -39,10 +39,7 @@ impl fmt::Debug for UserCreateSubscribeArgs {
         write!(
             f,
             "user_type: {}, device_pk: {}, cyoa_type: {}, client_ip: {}",
-            self.user_type,
-            self.device_pk,
-            self.cyoa_type,
-            ipv4_to_string(&self.client_ip)
+            self.user_type, self.device_pk, self.cyoa_type, &self.client_ip,
         )
     }
 }
@@ -119,9 +116,9 @@ pub fn process_create_subscribe_user(
         device_pk: value.device_pk,
         cyoa_type: value.cyoa_type,
         client_ip: value.client_ip,
-        dz_ip: [0, 0, 0, 0],
+        dz_ip: std::net::Ipv4Addr::UNSPECIFIED,
         tunnel_id: 0,
-        tunnel_net: ([0, 0, 0, 0], 0),
+        tunnel_net: NetworkV4::default(),
         status: UserStatus::Pending,
         publishers: match value.publisher {
             true => vec![*mgroup_account.key],

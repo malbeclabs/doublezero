@@ -1,6 +1,6 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_code};
 use clap::Args;
-use doublezero_sdk::{commands::device::get::GetDeviceCommand, *};
+use doublezero_sdk::commands::device::get::GetDeviceCommand;
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -23,8 +23,8 @@ impl GetDeviceCliCommand {
             device.location_pk,
             device.exchange_pk,
             device.device_type,
-            ipv4_to_string(&device.public_ip),
-            networkv4_list_to_string(&device.dz_prefixes),
+            &device.public_ip,
+            &device.dz_prefixes,
             device.metrics_publisher_pk,
             device.status,
             device.owner
@@ -60,8 +60,8 @@ mod tests {
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
-            public_ip: [1, 2, 3, 4],
-            dz_prefixes: vec![([1, 2, 3, 4], 32)],
+            public_ip: [1, 2, 3, 4].into(),
+            dz_prefixes: "1.2.3.4/32".parse().unwrap(),
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::from_str_const(
                 "1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR",

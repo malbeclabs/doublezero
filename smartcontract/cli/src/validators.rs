@@ -1,8 +1,4 @@
-use doublezero_sdk::{
-    bandwidth_parse, ipv4_parse, networkv4_list_parse, networkv4_parse, IpV4, NetworkV4,
-    NetworkV4List,
-};
-use ipnetwork::Ipv4Network;
+use doublezero_sdk::bandwidth_parse;
 use solana_sdk::pubkey::Pubkey;
 
 pub fn validate_code(val: &str) -> Result<String, String> {
@@ -43,26 +39,6 @@ pub fn validate_pubkey_or_code(val: &str) -> Result<String, String> {
     }
 }
 
-pub fn validate_parse_ipv4(val: &str) -> Result<IpV4, String> {
-    if val.parse::<std::net::Ipv4Addr>().is_ok() {
-        let ip = ipv4_parse(val)?;
-        Ok(ip)
-    } else {
-        Err(String::from("invalid IPv4 address format"))
-    }
-}
-
-pub fn validate_parse_networkv4(val: &str) -> Result<NetworkV4, String> {
-    networkv4_parse(val)
-}
-
-pub fn validate_parse_networkv4_list(val: &str) -> Result<NetworkV4List, String> {
-    if val.split(',').all(|ip| ip.parse::<Ipv4Network>().is_ok()) {
-        Ok(networkv4_list_parse(val)?)
-    } else {
-        Err(String::from("invalid networkv4 list format"))
-    }
-}
 pub fn validate_parse_bandwidth(val: &str) -> Result<u64, String> {
     if bandwidth_parse(val).is_ok() {
         bandwidth_parse(val)
@@ -132,18 +108,6 @@ mod tests {
         assert!(validate_pubkey_or_code(&pk).is_ok());
         assert!(validate_pubkey_or_code("valid_code-123").is_ok());
         assert!(validate_pubkey_or_code("invalid code!").is_err());
-    }
-
-    #[test]
-    fn test_validate_ipv4() {
-        assert!(validate_parse_ipv4("100.0.0.1").is_ok());
-        assert!(validate_parse_ipv4("999.999.999.999").is_err());
-    }
-
-    #[test]
-    fn test_validate_networkv4_list() {
-        assert!(validate_parse_networkv4_list("192.168.1.0/24,10.0.0.0/8").is_ok());
-        assert!(validate_parse_networkv4_list("192.168.1.0/24,not_a_network").is_err());
     }
 
     #[test]

@@ -1,7 +1,6 @@
 use crate::{
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-    validators::validate_parse_networkv4,
 };
 use clap::Args;
 use doublezero_sdk::{commands::globalconfig::set::SetGlobalConfigCommand, *};
@@ -16,13 +15,13 @@ pub struct SetGlobalConfigCliCommand {
     #[arg(long)]
     pub remote_asn: u32,
     /// Link tunnel block in CIDR format
-    #[arg(long, value_parser = validate_parse_networkv4)]
+    #[arg(long)]
     device_tunnel_block: NetworkV4,
     /// Device tunnel block in CIDR format
-    #[arg(long, value_parser = validate_parse_networkv4)]
+    #[arg(long)]
     user_tunnel_block: NetworkV4,
     /// Multicast group block in CIDR format
-    #[arg(long, value_parser = validate_parse_networkv4)]
+    #[arg(long)]
     multicastgroup_block: NetworkV4,
 }
 
@@ -75,9 +74,9 @@ mod tests {
             .with(predicate::eq(SetGlobalConfigCommand {
                 local_asn: 1234,
                 remote_asn: 5678,
-                device_tunnel_block: ([10, 20, 0, 0], 16),
-                user_tunnel_block: ([10, 10, 0, 0], 16),
-                multicastgroup_block: ([224, 2, 0, 0], 4),
+                device_tunnel_block: "10.20.0.0/16".parse().unwrap(),
+                user_tunnel_block: "10.10.0.0/16".parse().unwrap(),
+                multicastgroup_block: "224.2.0.0/4".parse().unwrap(),
             }))
             .returning(move |_| Ok(signature));
 
@@ -86,9 +85,9 @@ mod tests {
         let res = SetGlobalConfigCliCommand {
             local_asn: 1234,
             remote_asn: 5678,
-            device_tunnel_block: ([10, 20, 0, 0], 16),
-            user_tunnel_block: ([10, 10, 0, 0], 16),
-            multicastgroup_block: ([224, 2, 0, 0], 4),
+            device_tunnel_block: "10.20.0.0/16".parse().unwrap(),
+            user_tunnel_block: "10.10.0.0/16".parse().unwrap(),
+            multicastgroup_block: "224.2.0.0/4".parse().unwrap(),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

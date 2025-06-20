@@ -7,7 +7,7 @@ use crate::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::Serialize;
 use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
-use std::fmt;
+use std::{fmt, net::Ipv4Addr};
 
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
@@ -135,8 +135,8 @@ pub struct User {
     pub tenant_pk: Pubkey,         // 32
     pub device_pk: Pubkey,         // 32
     pub cyoa_type: UserCYOA,       // 1
-    pub client_ip: IpV4,           // 4
-    pub dz_ip: IpV4,               // 4
+    pub client_ip: Ipv4Addr,       // 4
+    pub dz_ip: Ipv4Addr,           // 4
     pub tunnel_id: u16,            // 2
     pub tunnel_net: NetworkV4,     // 5
     pub status: UserStatus,        // 1
@@ -155,10 +155,10 @@ impl fmt::Display for User {
             self.user_type,
             self.device_pk,
             self.cyoa_type,
-            ipv4_to_string(&self.client_ip),
-            ipv4_to_string(&self.dz_ip),
+            &self.client_ip,
+            &self.dz_ip,
             self.tunnel_id,
-            networkv4_to_string(&self.tunnel_net),
+            &self.tunnel_net,
             self.status
         )
     }
@@ -263,10 +263,10 @@ mod tests {
             user_type: UserType::IBRL,
             device_pk: Pubkey::new_unique(),
             cyoa_type: UserCYOA::GREOverDIA,
-            dz_ip: ipv4_parse("3.2.4.2").unwrap(),
-            client_ip: ipv4_parse("1.2.3.4").unwrap(),
+            dz_ip: [3, 2, 4, 2].into(),
+            client_ip: [1, 2, 3, 4].into(),
             tunnel_id: 0,
-            tunnel_net: networkv4_parse("10.0.0.1/25").unwrap(),
+            tunnel_net: "10.0.0.1/25".parse().unwrap(),
             status: UserStatus::Activated,
             publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],

@@ -12,19 +12,10 @@ on:
     branches: [ main ]
 
 jobs:
-  checks:
+  ci:
     runs-on: ubuntu-24.04-16c-64gb
     steps:
       - uses: actions/checkout@v4
-      - name: Setup rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: test
-        run: cargo test --workspace --all-features
-      - name: clippy
-        run: cargo clippy --workspace --all-features --all-targets -- -Dclippy::all -Dwarnings
-      - name: fmt-check
-        run: |
-          make cargo-fmt-check
-      - name: build
-        run: cargo build --workspace
+      - run: make rust-ci

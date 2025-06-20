@@ -11,69 +11,45 @@ on:
       - "**/*.rs"
     branches: [ main ]
 
-permissions:
-    contents: read
-    checks: write
-
 jobs:
-  lint:
-    name: "lint"
-    runs-on: ubuntu-24.04-16c-64gb
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v8
   build:
-    name: "build"
-    needs: lint
-    runs-on: ubuntu-24.04-16c-64gb
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
-      - name: build
-        run: go build -v ./...
-  unit_test:
-    name: "unit_test"
+      - run: make go-build
+  lint:
+    runs-on: ubuntu-latest
     needs: build
-    runs-on: ubuntu-24.04-16c-64gb
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
-      - name: test
-        run: go test -exec sudo -race -v ./...
-  integration_test:
-    name: "integration_test"
+      - uses: golangci/golangci-lint-action@v8
+      - run: make go-lint
+  test:
+    runs-on: ubuntu-latest
     needs: build
-    runs-on: ubuntu-24.04-16c-64gb
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
-      - name: test
-        run: go test -exec sudo -race -v ./... -tags=integration
-  containerized_test:
-    name: containerized_tests
+      - run: make go-test nocontainertest
+  container-test:
+    runs-on: ubuntu-latest
     needs: build
-    runs-on: ubuntu-24.04-16c-64gb
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
-      - name: Set up Docker
-        uses: docker/setup-buildx-action@v3
-      - name: test
-        run: go run tools/e2e-test/main.go -vv
+      - uses: docker/setup-buildx-action@v3
+      - run: make go-container-test

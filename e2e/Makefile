@@ -25,6 +25,10 @@ test:
 	$(if $(findstring nobuild,$(MAKECMDGOALS)),,$(MAKE) build)
 	go test -v -tags=e2e -timeout=20m $(if $(parallel),-parallel=$(parallel)) $(if $(run),-run=$(run))
 
+.PHONY: nobuild
+nobuild:
+	@:
+
 # -----------------------------------------------------------------------------
 # Solana image build and push.
 #

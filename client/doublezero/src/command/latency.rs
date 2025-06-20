@@ -1,9 +1,9 @@
+use crate::command::util;
 use clap::Args;
 use doublezero_cli::doublezerocommand::CliCommand;
 use doublezero_sdk::{commands::device::list::ListDeviceCommand, DeviceStatus};
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
-use tabled::{settings::Style, Table};
 
 use crate::{
     requirements::check_doublezero,
@@ -11,7 +11,11 @@ use crate::{
 };
 
 #[derive(Args, Debug)]
-pub struct LatencyCliCommand {}
+pub struct LatencyCliCommand {
+    /// Output as json
+    #[arg(long, default_value = "false")]
+    json: bool,
+}
 
 impl LatencyCliCommand {
     pub async fn execute(self, client: &dyn CliCommand) -> eyre::Result<()> {
@@ -32,10 +36,7 @@ impl LatencyCliCommand {
 
         latencies.sort_by(|a, b| a.avg_latency_ns.cmp(&b.avg_latency_ns));
 
-        let table = Table::new(latencies)
-            .with(Style::psql().remove_horizontals())
-            .to_string();
-        println!("{table}");
+        util::show_output(latencies, self.json)?;
 
         Ok(())
     }

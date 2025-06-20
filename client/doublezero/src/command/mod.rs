@@ -3,3 +3,4 @@ pub mod disconnect;
 pub mod helpers;
 pub mod latency;
 pub mod status;
+pub mod util;

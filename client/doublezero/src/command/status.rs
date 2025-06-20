@@ -1,4 +1,5 @@
 use crate::{
+    command::util,
     requirements::check_doublezero,
     servicecontroller::{ServiceController, ServiceControllerImpl},
 };
@@ -7,10 +8,13 @@ use doublezero_cli::{
     doublezerocommand::CliCommand,
     helpers::{init_command, print_error},
 };
-use tabled::{settings::Style, Table};
 
 #[derive(Args, Debug)]
-pub struct StatusCliCommand {}
+pub struct StatusCliCommand {
+    /// Output as json
+    #[arg(long, default_value = "false")]
+    json: bool,
+}
 
 impl StatusCliCommand {
     pub async fn execute(self, _client: &dyn CliCommand) -> eyre::Result<()> {
@@ -27,11 +31,8 @@ impl StatusCliCommand {
             }
             Ok(status_responses) => {
                 if !status_responses.is_empty() {
-                    let table = Table::new(status_responses)
-                        .with(Style::psql().remove_horizontals())
-                        .to_string();
                     spinner.finish_and_clear();
-                    println!("{table}");
+                    util::show_output(status_responses, self.json)?
                 }
             }
         }

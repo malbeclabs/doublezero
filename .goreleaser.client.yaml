@@ -104,3 +104,7 @@ cloudsmiths:
     distributions:
       deb: "any-distro/any-version"
       rpm: "any-distro/any-version"
+
+git:
+  ignore_tags:
+    - client/daily

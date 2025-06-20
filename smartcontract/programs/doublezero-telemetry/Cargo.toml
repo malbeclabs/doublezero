@@ -1,0 +1,27 @@
+[package]
+name = "doublezero-telemetry"
+version = "0.2.0"
+
+# Workspace inherited keys
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+borsh.workspace = true
+serde.workspace = true
+solana-program.workspace = true
+doublezero-serviceability = { path = "../doublezero-serviceability", features = ["no-entrypoint"] }
+
+[dev-dependencies]
+solana-sdk.workspace = true
+solana-program-test.workspace = true
+
+[features]
+default = []
+no-entrypoint = []

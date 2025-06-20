@@ -72,6 +72,7 @@ use solana_program::{
 };
 
 // Program entrypoint
+#[cfg(not(feature = "no-entrypoint"))]
 entrypoint!(process_instruction);
 
 // Function to route instructions to the correct handler

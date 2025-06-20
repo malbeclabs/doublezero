@@ -6,6 +6,7 @@ members = [
     "smartcontract/cli",
     "smartcontract/sdk/rs",
     "smartcontract/programs/doublezero-serviceability",
+    "smartcontract/programs/doublezero-telemetry",
 ]
 default-members = []
 exclude = []

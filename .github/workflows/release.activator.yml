@@ -17,6 +17,10 @@ jobs:
         with:
           fetch-depth: 0
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: |
+            target
+            target/x86_64-unknown-linux-gnu/release
       - name: Install rust for cli
         uses: dtolnay/rust-toolchain@stable
       - name: Install dependencies for rpm packaging

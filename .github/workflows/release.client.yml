@@ -22,6 +22,10 @@ jobs:
           go-version-file: go.mod
           cache: true
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: |
+            target
+            target/x86_64-unknown-linux-gnu/release
       - name: Set env vars
         run: ./scripts/env.sh >> $GITHUB_ENV
       - name: Install rust for cli

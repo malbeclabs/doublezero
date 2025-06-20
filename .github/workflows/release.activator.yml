@@ -19,7 +19,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install rust for cli
         uses: dtolnay/rust-toolchain@stable
-      - name: install dependencies for rpm packaging
+      - name: Install dependencies for rpm packaging
         run: |
           sudo apt update
           sudo apt-get install squashfs-tools rpm -y

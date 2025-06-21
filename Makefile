@@ -91,3 +91,15 @@ e2e-test:
 .PHONY: e2e-build
 e2e-build:
 	cd e2e && $(MAKE) build
+
+
+# -----------------------------------------------------------------------------
+# Development container targets
+# -----------------------------------------------------------------------------
+.PHONY: devcontainer-build
+devcontainer-build:
+	cd .devcontainer && ./build.sh
+
+.PHONY: devcontainer-run
+devcontainer-run:
+	cd .devcontainer && ./run.sh

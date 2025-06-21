@@ -1,4 +1,7 @@
 version: "2"
+issues:
+  exclude-dirs:
+    - ^target/
 linters:
   default: none
   enable:

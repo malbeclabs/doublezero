@@ -1,18 +1,12 @@
 {
     "name": "DoubleZero Development",
-    "build": {
-        "dockerfile": "Dockerfile",
-        "context": "."
-    },
-    "features": {
-        "ghcr.io/devcontainers/features/common-utils:2": {},
-        "ghcr.io/devcontainers/features/go:1": {
-            "version": "1.24.3"
-        },
-        "ghcr.io/devcontainers/features/rust:1": {},
-        "ghcr.io/devcontainers/features/docker-in-docker:2": {}
-    },
-    "postCreateCommand": "rustup component add --toolchain nightly rustfmt",
+    "image": "dz-dev/workspace:latest",
+    "initializeCommand": "make devcontainer-build",
+    "runArgs": [
+        "--name",
+        "dz-dev-workspace-vsc",
+        "--privileged"
+    ],
     "customizations": {
         "vscode": {
             "extensions": [
@@ -29,13 +23,16 @@
                         "-tags=e2e"
                     ]
                 },
+                "go.toolsManagement.autoUpdate": false,
+                "go.toolsManagement.autoInstall": false,
                 "rust-analyzer.rustfmt.extraArgs": [
                     "+nightly",
                     "--config",
                     "imports_granularity=Crate"
                 ],
-                "rust-analyzer.checkOnSave.command": "clippy",
-                "rust-analyzer.checkOnSave.extraArgs": [
+                "rust-analyzer.checkOnSave": true,
+                "rust-analyzer.check.command": "clippy",
+                "rust-analyzer.check.extraArgs": [
                     "--",
                     "-Dclippy::all",
                     "-Dwarnings"
@@ -46,9 +43,5 @@
     "remoteUser": "root",
     "mounts": [
         "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
-    ],
-    "capAdd": [
-        "NET_ADMIN",
-        "NET_RAW"
     ]
 }

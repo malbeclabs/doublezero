@@ -49,6 +49,8 @@ EXPOSE 80
 # Define a HTTP healthcheck for the device
 HEALTHCHECK --start-period=60s --start-interval=5s --interval=15s --retries=6 CMD curl -f http://localhost/ || exit 1
 
+RUN mkdir -p /etc/doublezero/agent
+
 # Copy and configure the entrypoint
 COPY ${DOCKERFILE_DIR}/entrypoint.sh /entrypoint.sh
 ENTRYPOINT [ "/entrypoint.sh" ]

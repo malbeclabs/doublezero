@@ -102,11 +102,16 @@ ENV PATH="/opt/solana/bin:${PATH}"
 # --- Configure bash completion ---
 RUN echo '[ -f /etc/bash_completion ] && . /etc/bash_completion' >> /root/.bashrc
 
-# --- Set testcontainers host override ---
-ENV TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal
+# Alias to access the DinD container's published ports from inside the container,
+# since localhost does not route through NAT. Used in place of `localhost`.
+ENV DIND_LOCALHOST=host.docker.internal
+
+# Tell Testcontainers to connect to the Docker daemon via host.docker.internal,
+# so sidecar containers like Ryuk can reach the DinD container hosting the daemon.
+ENV TESTCONTAINERS_HOST_OVERRIDE=${DIND_LOCALHOST}
 
 # --- Configure entrypoint ---
 COPY .devcontainer/entrypoint.sh /entrypoint.sh
-ENTRYPOINT ["./entrypoint.sh"]
+ENTRYPOINT ["/entrypoint.sh"]
 
 CMD ["/bin/bash"]

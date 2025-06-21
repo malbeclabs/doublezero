@@ -116,6 +116,14 @@ func NewSingleDeviceSingleClientTestDevnet(t *testing.T) *TestDevnet {
 		t.Fatal("failed to generate manager keypair")
 	}
 
+	// When running in a Docker-in-Docker container, we can't just use `localhost` as the target
+	// for accessing exposed services, so a special environment variable is set in those cases
+	// with the hostname that can be used.
+	localhost := os.Getenv("DIND_LOCALHOST")
+	if localhost == "" {
+		localhost = "localhost"
+	}
+
 	dn, err := devnet.New(devnet.DevnetSpec{
 		DeployID:   deployID,
 		WorkingDir: workingDir,
@@ -130,7 +138,7 @@ func NewSingleDeviceSingleClientTestDevnet(t *testing.T) *TestDevnet {
 			KeypairPath: managerKeypairPath,
 		},
 		Controller: devnet.ControllerSpec{
-			ExternalHost:        "localhost",
+			ExternalHost:        localhost,
 			CYOANetworkIPHostID: 99,
 		},
 		Activator: devnet.ActivatorSpec{},

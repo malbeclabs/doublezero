@@ -148,12 +148,6 @@ func (d *Device) Start(ctx context.Context) error {
 			NanoCPUs: deviceContainerNanoCPUs,
 			Memory:   deviceContainerMemory,
 		},
-		// NOTE: We intentionally use the deprecated Binds field here instead of the HostConfigModifier
-		// because the latter has issues with setting SHM memory and other constraints to 0, which
-		// causes the device to fail to start.
-		Binds: []string{
-			fmt.Sprintf("%s:/etc/doublezero/agent", deviceConfigDir),
-		},
 		Labels: d.dn.labels,
 	}
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
@@ -202,6 +196,10 @@ func (d *Device) Start(ctx context.Context) error {
 	err = atomicWriteFile(deviceConfigPath, configContents.Bytes())
 	if err != nil {
 		return fmt.Errorf("failed to write device config file: %w", err)
+	}
+	err = container.CopyFileToContainer(ctx, deviceConfigPath, "/etc/doublezero/agent/startup-config", 0644)
+	if err != nil {
+		return fmt.Errorf("failed to copy file to container: %w", err)
 	}
 
 	// Attach the device container to the CYOA network.

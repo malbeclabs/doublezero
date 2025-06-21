@@ -1,11 +1,16 @@
 {
     "name": "DoubleZero Development",
     "image": "dz-dev/workspace:latest",
+    // This allows us to build the devcontainer image from the Dockerfile before starting the
+    // container, without the devcontainer extension injecting things into layers before the image
+    // and causing the build to be different than if you were to run it as a standalone image.
     "initializeCommand": "make devcontainer-build",
+    // The devcontainer initialization in vscode does not execute the entrypoint.sh script, so we
+    // need to run it manually here after startup.
+    "postStartCommand": "/entrypoint.sh echo 'Devcontainer initialized'",
     "runArgs": [
         "--name",
-        "dz-dev-workspace-vsc",
-        "--privileged"
+        "dz-dev-workspace-vsc"
     ],
     "customizations": {
         "vscode": {
@@ -43,5 +48,10 @@
     "remoteUser": "root",
     "mounts": [
         "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+    ],
+    // These network capabilities are required for some of the tests we run.
+    "capAdd": [
+        "NET_ADMIN",
+        "NET_RAW"
     ]
 }

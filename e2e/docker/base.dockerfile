@@ -126,11 +126,16 @@ RUN --mount=type=cache,target=/cargo-sbf \
     cd smartcontract/programs/doublezero-serviceability && \
     cargo fetch
 
+RUN --mount=type=cache,target=/cargo-sbf \
+    --mount=type=cache,target=/target-sbf \
+    cd smartcontract/programs/doublezero-telemetry && \
+    cargo fetch
+
 # Set up a binaries directory
 ENV BIN_DIR=/doublezero/bin
 RUN mkdir -p ${BIN_DIR}
 
-# Build the Solana program with build-sbf (rust)
+# Build the Solana programs with build-sbf (rust)
 # Note that we don't use mold here.
 RUN --mount=type=cache,target=/cargo-sbf \
     --mount=type=cache,target=/target-sbf \
@@ -138,6 +143,16 @@ RUN --mount=type=cache,target=/cargo-sbf \
     cd smartcontract/programs/doublezero-serviceability && \
     cargo build-sbf && \
     cp /target-sbf/deploy/doublezero_serviceability.so ${BIN_DIR}/doublezero_serviceability.so
+
+# This serviceability program ID is required by the telemetry program at build-time, and
+# corresponds to the keypair in e2e/data/serviceability-program-keypair.json
+ENV SERVICEABILITY_PROGRAM_ID=7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
+RUN --mount=type=cache,target=/cargo-sbf \
+    --mount=type=cache,target=/target-sbf \
+    --mount=type=cache,target=/root/.cache/solana \
+    cd smartcontract/programs/doublezero-telemetry && \
+    cargo build-sbf && \
+    cp /target-sbf/deploy/doublezero_telemetry.so ${BIN_DIR}/doublezero_telemetry.so
 
 
 # -----------------------------------------------------------------------------

@@ -19,12 +19,14 @@ import (
 
 const (
 	serviceabilityProgramContainerKeypairPath = "/etc/doublezero/manager/dz-program-keypair.json"
+	telemetryProgramContainerKeypairPath      = "/etc/doublezero/manager/dz-telemetry-program-keypair.json"
 )
 
 type ManagerSpec struct {
 	ContainerImage                   string
 	ManagerKeypairPath               string
 	ServiceabilityProgramKeypairPath string
+	TelemetryProgramKeypairPath      string
 }
 
 func (s *ManagerSpec) Validate() error {
@@ -40,6 +42,10 @@ func (s *ManagerSpec) Validate() error {
 
 	if s.ServiceabilityProgramKeypairPath == "" {
 		return fmt.Errorf("serviceability program keypair path is required")
+	}
+
+	if s.TelemetryProgramKeypairPath == "" {
+		return fmt.Errorf("telemetry program keypair path is required")
 	}
 
 	// Check that the manager keypair file exists and is an absolute path.
@@ -58,6 +64,14 @@ func (s *ManagerSpec) Validate() error {
 		return fmt.Errorf("serviceability program keypair path must be an absolute path: %s", s.ServiceabilityProgramKeypairPath)
 	}
 
+	// Check that the telemetry program keypair file exists and is an absolute path.
+	if _, err := os.Stat(s.TelemetryProgramKeypairPath); os.IsNotExist(err) {
+		return fmt.Errorf("telemetry program keypair path does not exist: %s", s.TelemetryProgramKeypairPath)
+	}
+	if !filepath.IsAbs(s.TelemetryProgramKeypairPath) {
+		return fmt.Errorf("telemetry program keypair path must be an absolute path: %s", s.TelemetryProgramKeypairPath)
+	}
+
 	return nil
 }
 
@@ -68,6 +82,7 @@ type Manager struct {
 	ContainerID             string
 	Pubkey                  string
 	ServiceabilityProgramID string
+	TelemetryProgramID      string
 }
 
 // dockerContainerName returns the name of the deterministic manager container based on the
@@ -123,7 +138,7 @@ func (m *Manager) StartIfNotRunning(ctx context.Context) (bool, error) {
 		}
 
 		// Otherwise, start the container.
-		m.log.Info("--> Starting manager", "container", container.ID, "serviceabilityProgramID", m.ServiceabilityProgramID)
+		m.log.Info("--> Starting manager", "container", container.ID, "serviceabilityProgramID", m.ServiceabilityProgramID, "telemetryProgramID", m.TelemetryProgramID)
 		err = m.dn.dockerClient.ContainerStart(ctx, container.ID, dockercontainer.StartOptions{})
 		if err != nil {
 			return false, fmt.Errorf("failed to start manager: %w", err)
@@ -156,6 +171,7 @@ func (m *Manager) Start(ctx context.Context) error {
 			"DZ_LEDGER_URL":                          m.dn.Ledger.InternalRPCURL,
 			"DZ_LEDGER_WS":                           m.dn.Ledger.InternalRPCWSURL,
 			"DZ_SERVICEABILITY_PROGRAM_KEYPAIR_PATH": serviceabilityProgramContainerKeypairPath,
+			"DZ_TELEMETRY_PROGRAM_KEYPAIR_PATH":      telemetryProgramContainerKeypairPath,
 		},
 		Files: []testcontainers.ContainerFile{
 			{
@@ -169,6 +185,10 @@ func (m *Manager) Start(ctx context.Context) error {
 			{
 				HostFilePath:      m.dn.Spec.Manager.ServiceabilityProgramKeypairPath,
 				ContainerFilePath: serviceabilityProgramContainerKeypairPath,
+			},
+			{
+				HostFilePath:      m.dn.Spec.Manager.TelemetryProgramKeypairPath,
+				ContainerFilePath: telemetryProgramContainerKeypairPath,
 			},
 		},
 		Networks: []string{m.dn.DefaultNetwork.Name},
@@ -219,6 +239,13 @@ func (m *Manager) setState(ctx context.Context, containerID string) error {
 		return fmt.Errorf("failed to get serviceability program pubkey: %v", err)
 	}
 	m.ServiceabilityProgramID = strings.TrimSpace(string(output))
+
+	// Get the telemetry program ID from the telemetry program keypair.
+	output, err = m.Exec(ctx, []string{"solana", "address", "-k", telemetryProgramContainerKeypairPath}, docker.NoPrintOnError())
+	if err != nil {
+		return fmt.Errorf("failed to get telemetry program pubkey: %v", err)
+	}
+	m.TelemetryProgramID = strings.TrimSpace(string(output))
 
 	return nil
 }

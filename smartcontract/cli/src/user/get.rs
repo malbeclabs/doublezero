@@ -96,7 +96,7 @@ mod tests {
             pubkey: pda_pubkey.to_string(),
         }
         .execute(&client, &mut output);
-        assert!(res.is_ok(), "I should find a item by code");
+        assert!(res.is_ok(), "I should find an item by code");
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, "account: CJTXjCEbDDgQoccJgEbNGc63QwWzJtdAoSio36zVXHQw\r\nuser_type: IBRL\r\ndevice: 11111111111111111111111111111111\r\ncyoa_type: GREOverDIA\r\nclient_ip: 10.0.0.1\r\ntunnel_net: 10.2.3.4/24\r\ndz_ip: 10.0.0.2\r\npublishers: \r\nsuscribers: \r\nstatus: activated\r\nowner: CJTXjCEbDDgQoccJgEbNGc63QwWzJtdAoSio36zVXHQw\n");
     }

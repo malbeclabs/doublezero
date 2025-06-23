@@ -13,8 +13,8 @@ smartcontract/cli/config/*
 
 .vscode/*
 .vscode
+.zed
 
 dist/
-
 # Local devnet deployment artifacts.
 dev/.deploy/

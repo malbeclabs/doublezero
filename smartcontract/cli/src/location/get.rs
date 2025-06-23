@@ -100,7 +100,7 @@ mod tests {
             code: location1_pubkey.to_string(),
         }
         .execute(&client, &mut output);
-        assert!(res.is_ok(), "I should find a item by pubkey");
+        assert!(res.is_ok(), "I should find an item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nname: Test Location\r\ncountry: Test Country\r\nlat: 12.34\r\nlng: 56.78\r\nloc_id: 1\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
 
@@ -110,7 +110,7 @@ mod tests {
             code: "test".to_string(),
         }
         .execute(&client, &mut output);
-        assert!(res.is_ok(), "I should find a item by code");
+        assert!(res.is_ok(), "I should find an item by code");
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nname: Test Location\r\ncountry: Test Country\r\nlat: 12.34\r\nlng: 56.78\r\nloc_id: 1\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
     }

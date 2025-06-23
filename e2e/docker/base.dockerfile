@@ -81,7 +81,6 @@ COPY . .
 # Pre-fetch and cache rust dependencies
 RUN --mount=type=cache,target=/cargo-sbf \
     --mount=type=cache,target=/target-sbf \
-    --mount=type=cache,target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-serviceability && \
     cargo fetch
 
@@ -93,7 +92,6 @@ RUN mkdir -p ${BIN_DIR}
 # Note that we don't use mold here.
 RUN --mount=type=cache,target=/cargo-sbf \
     --mount=type=cache,target=/target-sbf \
-    --mount=type=cache,target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-serviceability && \
     cargo build-sbf && \
     cp /target-sbf/deploy/doublezero_serviceability.so ${BIN_DIR}/doublezero_serviceability.so

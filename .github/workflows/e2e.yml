@@ -6,8 +6,7 @@ on:
     branches: [ main ]
 
 jobs:
-  end-to-end:
-    name: "end-to-end"
+  e2e:
     defaults:
       run:
         working-directory: "e2e/"

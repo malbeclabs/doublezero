@@ -6,7 +6,7 @@ on:
     branches: [ main ]
 
 jobs:
-  build:
+  go-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,7 +15,7 @@ jobs:
           go-version-file: go.mod
           cache: true
       - run: make go-build
-  lint:
+  go-lint:
     runs-on: ubuntu-latest
     needs: build
     steps:
@@ -26,7 +26,7 @@ jobs:
           cache: true
       - uses: golangci/golangci-lint-action@v8
       - run: make go-lint
-  test:
+  go-test:
     runs-on: ubuntu-latest
     needs: build
     steps:
@@ -36,7 +36,7 @@ jobs:
           go-version-file: go.mod
           cache: true
       - run: make go-test nocontainertest
-  container-test:
+  go-container-test:
     runs-on: ubuntu-latest
     needs: build
     steps:

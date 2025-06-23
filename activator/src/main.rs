@@ -12,12 +12,10 @@ mod states;
 pub mod tests;
 mod utils;
 
-include!(concat!(env!("OUT_DIR"), "/version.rs"));
-
 #[derive(Parser, Debug)]
 #[command(term_width = 0)]
 #[command(name = "Doublezero activator")]
-#[command(version = "1.0")]
+#[command(version = env!("CARGO_PKG_VERSION"))]
 #[command(about = "Double Zero ", long_about = None)]
 struct AppArgs {
     #[arg(long)]

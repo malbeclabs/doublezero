@@ -23,7 +23,8 @@ repository = "https://github.com/malbeclabs/doublezero"
 [workspace.dependencies]
 anyhow = "1"
 assert_cmd = "2"
-base64 = "0"
+# NOTE: We need to maintain base64 version 0.22.1
+base64 = "0.22.1"
 bincode = { version = "2", features = [ "serde" ] }
 bitvec = "1"
 borsh = "1"

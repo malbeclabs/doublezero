@@ -17,13 +17,11 @@ use crate::cli::{
 use doublezero_cli::doublezerocommand::CliCommandImpl;
 use doublezero_sdk::DZClient;
 
-include!(concat!(env!("OUT_DIR"), "/version.rs"));
-
 #[derive(Parser, Debug)]
 #[command(term_width = 0)]
 #[command(name = "DoubleZero")]
-#[command(version = APP_VERSION)]
-#[command(long_version = APP_LONG_VERSION)]
+#[command(version = env!("CARGO_PKG_VERSION"))]
+#[command(long_version = env!("CARGO_PKG_VERSION"))]
 #[command(about = "DoubleZero client tool", long_about = None)]
 struct App {
     #[command(subcommand)]

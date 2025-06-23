@@ -13,13 +13,11 @@ use doublezero_cli::doublezerocommand::CliCommandImpl;
 use doublezero_sdk::DZClient;
 mod cli;
 
-include!(concat!(env!("OUT_DIR"), "/version.rs"));
-
 #[derive(Parser, Debug)]
 #[command(term_width = 0)]
 #[command(name = "DoubleZeroAdmin")]
-#[command(version = APP_VERSION)]
-#[command(long_version = APP_LONG_VERSION)]
+#[command(version = env!("CARGO_PKG_VERSION"))]
+#[command(long_version = env!("CARGO_PKG_VERSION"))]
 #[command(about = "Double Zero contributor tool", long_about = None)]
 struct App {
     #[command(subcommand)]

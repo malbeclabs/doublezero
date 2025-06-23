@@ -75,8 +75,8 @@ mod tests {
             .with(predicate::eq(SetGlobalConfigCommand {
                 local_asn: 1234,
                 remote_asn: 5678,
-                device_tunnel_block: ([10, 10, 0, 0], 16),
-                user_tunnel_block: ([10, 20, 0, 0], 16),
+                device_tunnel_block: ([10, 20, 0, 0], 16),
+                user_tunnel_block: ([10, 10, 0, 0], 16),
                 multicastgroup_block: ([224, 2, 0, 0], 4),
             }))
             .returning(move |_| Ok(signature));

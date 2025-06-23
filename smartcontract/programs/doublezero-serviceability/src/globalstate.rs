@@ -161,7 +161,7 @@ pub fn globalconfig_write_with_realloc<'a>(
                     payer_account.clone(),
                     system_program.clone(),
                 ],
-                &[&[SEED_PREFIX, SEED_GLOBALSTATE, &[bump_seed]]],
+                &[&[SEED_PREFIX, SEED_CONFIG, &[bump_seed]]],
             )
             .expect("Unable to pay rent");
         }

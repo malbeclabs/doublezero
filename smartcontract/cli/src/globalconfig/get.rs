@@ -28,7 +28,7 @@ impl GetGlobalConfigCliCommand {
         let config_display = ConfigDisplay {
             local_asn: config.local_asn,
             remote_asn: config.remote_asn,
-            device_tunnel_block: networkv4_to_string(&config.tunnel_tunnel_block),
+            device_tunnel_block: networkv4_to_string(&config.device_tunnel_block),
             user_tunnel_block: networkv4_to_string(&config.user_tunnel_block),
             multicast_group_block: networkv4_to_string(&config.multicastgroup_block),
         };
@@ -64,7 +64,7 @@ mod tests {
             bump_seed,
             local_asn: 1234,
             remote_asn: 5678,
-            tunnel_tunnel_block: ([10, 1, 0, 0], 24),
+            device_tunnel_block: ([10, 1, 0, 0], 24),
             user_tunnel_block: ([10, 5, 0, 0], 24),
             multicastgroup_block: ([224, 2, 0, 0], 4),
         };

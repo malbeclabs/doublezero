@@ -52,7 +52,7 @@ mod tunnel_test {
             DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
                 local_asn: 65000,
                 remote_asn: 65001,
-                tunnel_tunnel_block: ([10, 0, 0, 0], 24),
+                device_tunnel_block: ([10, 0, 0, 0], 24),
                 user_tunnel_block: ([10, 0, 0, 0], 24),
                 multicastgroup_block: ([10, 0, 0, 0], 24),
             }),

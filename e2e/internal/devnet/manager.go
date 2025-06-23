@@ -124,8 +124,8 @@ func (m *Manager) InitSmartContract(ctx context.Context) error {
 
 		# Populate global configuration onchain.
 		echo "==> Populating global configuration onchain"
-		echo doublezero global-config set --local-asn 65000 --remote-asn 65342 --tunnel-tunnel-block 172.16.0.0/16 --device-tunnel-block 169.254.0.0/16 --multicastgroup-block 233.84.178.0/24
-		doublezero global-config set --local-asn 65000 --remote-asn 65342 --tunnel-tunnel-block 172.16.0.0/16 --device-tunnel-block 169.254.0.0/16 --multicastgroup-block 233.84.178.0/24
+		echo doublezero global-config set --local-asn 65000 --remote-asn 65342 --device-tunnel-block 172.16.0.0/16 --user-tunnel-block 169.254.0.0/16 --multicastgroup-block 233.84.178.0/24
+		doublezero global-config set --local-asn 65000 --remote-asn 65342 --device-tunnel-block 172.16.0.0/16 --user-tunnel-block 169.254.0.0/16 --multicastgroup-block 233.84.178.0/24
 		echo "--> Global configuration onchain:"
 		doublezero global-config get
 		echo

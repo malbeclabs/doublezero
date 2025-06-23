@@ -25,7 +25,7 @@ use solana_program::{
 pub struct SetGlobalConfigArgs {
     pub local_asn: u32,
     pub remote_asn: u32,
-    pub tunnel_tunnel_block: NetworkV4,
+    pub device_tunnel_block: NetworkV4,
     pub user_tunnel_block: NetworkV4,
     pub multicastgroup_block: NetworkV4,
 }
@@ -37,7 +37,7 @@ impl fmt::Debug for SetGlobalConfigArgs {
             "local_asn: {}, remote_asn: {}, tunnel_block: {}, user _block: {}, multicastgroup_block: {}",
             self.local_asn,
             self.remote_asn,
-            networkv4_to_string(&self.tunnel_tunnel_block),
+            networkv4_to_string(&self.device_tunnel_block),
             networkv4_to_string(&self.user_tunnel_block),
             networkv4_to_string(&self.multicastgroup_block)
         )
@@ -80,7 +80,7 @@ pub fn process_set_globalconfig(
         bump_seed,
         local_asn: value.local_asn,
         remote_asn: value.remote_asn,
-        tunnel_tunnel_block: value.tunnel_tunnel_block,
+        device_tunnel_block: value.device_tunnel_block,
         user_tunnel_block: value.user_tunnel_block,
         multicastgroup_block: value.multicastgroup_block,
     };

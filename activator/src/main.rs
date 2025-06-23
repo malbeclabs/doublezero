@@ -47,7 +47,7 @@ struct AppArgs {
 async fn main() -> eyre::Result<()> {
     let args = AppArgs::parse();
 
-    println!("DoubleZero Activator {APP_VERSION}");
+    println!("DoubleZero Activator");
 
     let (metrics_service, mut metrics_submitter) =
         influxdb_metrics_service::create_influxdb_metrics_service(

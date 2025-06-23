@@ -17,8 +17,7 @@ mod cli;
 #[command(term_width = 0)]
 #[command(name = "DoubleZeroAdmin")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
-#[command(long_version = env!("CARGO_PKG_VERSION"))]
-#[command(about = "Double Zero contributor tool", long_about = None)]
+#[command(about = "Double Zero contributor tool")]
 struct App {
     #[command(subcommand)]
     command: Command,

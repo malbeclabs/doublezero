@@ -14,9 +14,9 @@ mod utils;
 
 #[derive(Parser, Debug)]
 #[command(term_width = 0)]
-#[command(name = "Doublezero activator")]
+#[command(name = "Doublezero Activator")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
-#[command(about = "Double Zero ", long_about = None)]
+#[command(about = "Double Zero")]
 struct AppArgs {
     #[arg(long)]
     rpc: Option<String>,
@@ -47,7 +47,7 @@ struct AppArgs {
 async fn main() -> eyre::Result<()> {
     let args = AppArgs::parse();
 
-    println!("DoubleZero Activator {APP_VERSION}");
+    println!("DoubleZero Activator");
 
     let (metrics_service, mut metrics_submitter) =
         influxdb_metrics_service::create_influxdb_metrics_service(

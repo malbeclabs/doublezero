@@ -21,7 +21,6 @@ use doublezero_sdk::DZClient;
 #[command(term_width = 0)]
 #[command(name = "DoubleZero")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
-#[command(long_version = env!("CARGO_PKG_VERSION"))]
 #[command(about = "DoubleZero client tool", long_about = None)]
 struct App {
     #[command(subcommand)]

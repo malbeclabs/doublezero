@@ -1460,7 +1460,7 @@ dependencies = [
  "hyper-util",
  "hyperlocal",
  "indicatif",
- "mockall 0.11.4",
+ "mockall",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -1475,7 +1475,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-activator"
-version = "0.2.0"
+version = "0.2.2"
 dependencies = [
  "bitvec",
  "chrono",
@@ -1488,7 +1488,7 @@ dependencies = [
  "influxdb2-derive",
  "influxdb2-structmap",
  "ipnetwork",
- "mockall 0.13.1",
+ "mockall",
  "solana-sdk",
  "tokio",
 ]
@@ -1551,7 +1551,7 @@ dependencies = [
  "http 1.3.1",
  "indicatif",
  "ipnetwork",
- "mockall 0.11.4",
+ "mockall",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -1575,7 +1575,7 @@ dependencies = [
  "doublezero-serviceability",
  "eyre",
  "futures",
- "mockall 0.11.4",
+ "mockall",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -3010,22 +3010,8 @@ dependencies = [
  "downcast",
  "fragile",
  "lazy_static",
- "mockall_derive 0.11.4",
+ "mockall_derive",
  "predicates 2.1.5",
- "predicates-tree",
-]
-
-[[package]]
-name = "mockall"
-version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39a6bfcc6c8c7eed5ee98b9c3e33adc726054389233e201c95dab2d41a3839d2"
-dependencies = [
- "cfg-if",
- "downcast",
- "fragile",
- "mockall_derive 0.13.1",
- "predicates 3.1.3",
  "predicates-tree",
 ]
 
@@ -3039,18 +3025,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
-]
-
-[[package]]
-name = "mockall_derive"
-version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25ca3004c2efe9011bd4e461bd8256445052b9615405b4f7ea43fc8ca5c20898"
-dependencies = [
- "cfg-if",
- "proc-macro2",
- "quote",
- "syn 2.0.102",
 ]
 
 [[package]]
@@ -6419,7 +6393,7 @@ dependencies = [
  "log",
  "lz4",
  "memmap2",
- "mockall 0.11.4",
+ "mockall",
  "modular-bitfield",
  "num-derive",
  "num-traits",

@@ -79,7 +79,10 @@ WORKDIR /doublezero
 COPY . .
 
 # Pre-fetch and cache rust dependencies
-RUN cd smartcontract/programs/doublezero-serviceability && cargo fetch
+RUN --mount=type=cache,target=/cargo-sbf \
+    --mount=type=cache,target=/target-sbf \
+    cd smartcontract/programs/doublezero-serviceability && \
+    cargo fetch
 
 # Set up a binaries directory
 ENV BIN_DIR=/doublezero/bin
@@ -87,7 +90,10 @@ RUN mkdir -p ${BIN_DIR}
 
 # Build the Solana program with build-sbf (rust)
 # Note that we don't use mold here.
-RUN cd smartcontract/programs/doublezero-serviceability && \
+RUN --mount=type=cache,target=/cargo-sbf \
+    --mount=type=cache,target=/target-sbf \
+    --mount=type=cache,target=/root/.cache/solana \
+    cd smartcontract/programs/doublezero-serviceability && \
     cargo build-sbf && \
     cp /target-sbf/deploy/doublezero_serviceability.so ${BIN_DIR}/doublezero_serviceability.so
 

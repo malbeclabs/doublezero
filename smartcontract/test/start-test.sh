@@ -37,13 +37,13 @@ sleep 15
 
 # start isntruction logger
 echo "Start instruction logger"
-solana logs > ./logs/instruction.log 2>&1 &
+solana logs >./logs/instruction.log 2>&1 &
 
 # initialice doublezero smart contract
 ./target/doublezero init
 
 ### Configure global setting
-./target/doublezero global-config set --local-asn 65100 --remote-asn 65001 --tunnel-tunnel-block 172.16.0.0/16 --device-tunnel-block 169.254.0.0/16 --multicastgroup-block 223.0.0.0/4
+./target/doublezero global-config set --local-asn 65100 --remote-asn 65001 --device-tunnel-block 172.16.0.0/16 --user-tunnel-block 169.254.0.0/16 --multicastgroup-block 223.0.0.0/4
 
 # Build the activator
 echo "Start the activator"
@@ -126,7 +126,6 @@ echo "Creating multicast user & subscribe"
 sleep 2
 ./target/doublezero user subscribe --user 4vAMGYgvk2rhdNEo7vBcuz2KuSJJGZrqf4vxnKMesnyq --group mg02 --publisher
 ./target/doublezero user subscribe --user 9gYCNwLTNHveZiNGA62Z1PMRiYFYbmUz3VTx9FgVuSEH --group mg02 --subscriber
-
 
 echo "########################################################################"
 

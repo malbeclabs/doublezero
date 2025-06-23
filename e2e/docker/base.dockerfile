@@ -1,8 +1,8 @@
 # ----------------------------------------------------------------------------
 # Solana stage with a platform-specific image.
 # ----------------------------------------------------------------------------
-FROM ghcr.io/malbeclabs/solana:latest AS solana
-
+ARG SOLANA_IMAGE=unknown
+FROM ${SOLANA_IMAGE} AS solana
 
 # ----------------------------------------------------------------------------
 # Builder stage for the doublezero components.
@@ -78,9 +78,16 @@ ENV CARGO_INCREMENTAL=0
 WORKDIR /doublezero
 COPY . .
 
+ARG SOLANA_VERSION
+ENV SOLANA_VERSION=${SOLANA_VERSION}
+ENV SOLANA_CACHE_PATH=/root/.cache/solana-${SOLANA_VERSION}
+RUN mkdir -p ${SOLANA_CACHE_PATH} && \
+    ln -sfn ${SOLANA_CACHE_PATH} /root/.cache/solana
+
 # Pre-fetch and cache rust dependencies
 RUN --mount=type=cache,target=/cargo-sbf \
     --mount=type=cache,target=/target-sbf \
+    --mount=type=cache,target=/root/.cache/solana-${SOLANA_VERSION} \
     cd smartcontract/programs/doublezero-serviceability && \
     cargo fetch
 
@@ -92,6 +99,7 @@ RUN mkdir -p ${BIN_DIR}
 # Note that we don't use mold here.
 RUN --mount=type=cache,target=/cargo-sbf \
     --mount=type=cache,target=/target-sbf \
+    --mount=type=cache,target=/root/.cache/solana-${SOLANA_VERSION} \
     cd smartcontract/programs/doublezero-serviceability && \
     cargo build-sbf && \
     cp /target-sbf/deploy/doublezero_serviceability.so ${BIN_DIR}/doublezero_serviceability.so

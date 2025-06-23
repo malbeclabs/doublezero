@@ -16,7 +16,7 @@ mod utils;
 #[command(term_width = 0)]
 #[command(name = "Doublezero Activator")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
-#[command(about = "Double Zero ")]
+#[command(about = "Double Zero")]
 struct AppArgs {
     #[arg(long)]
     rpc: Option<String>,

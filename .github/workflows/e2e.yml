@@ -1,16 +1,8 @@
 name: end-to-end
 on:
   push:
-    paths-ignore:
-      - "telemetry/**"
-      - "scripts/**"
-      - "**/**.md"
     branches: [ main ]
   pull_request:
-    paths-ignore:
-      - "telemetry/**"
-      - "scripts/**"
-      - "**/**.md"
     branches: [ main ]
 
 jobs:

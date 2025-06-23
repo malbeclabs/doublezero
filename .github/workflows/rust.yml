@@ -1,14 +1,8 @@
 name: rust
 on:
   push:
-    paths-ignore:
-      - "**/*.md"
-      - "**/*.go"
     branches: [ main ]
   pull_request:
-    paths-ignore:
-      - "**/*.md"
-      - "**/*.go"
     branches: [ main ]
 
 jobs:

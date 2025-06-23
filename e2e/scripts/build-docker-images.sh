@@ -16,7 +16,7 @@ if [ -n "${DEBUG:-}" ]; then
 fi
 
 # Get the solana tools version.
-solana_version="$(docker run --rm ${DZ_SOLANA_IMAGE} solana --version | awk '{print $2}')"
+solana_version="$(docker run --rm "${DZ_SOLANA_IMAGE}" solana --version | awk '{print $2}')"
 
 # Build the base image.
 docker build -t "${DZ_BASE_IMAGE}" -f "${dockerfiles_dir}/base.dockerfile" --build-arg SOLANA_IMAGE="${DZ_SOLANA_IMAGE}" --build-arg SOLANA_VERSION="${solana_version}" "${workspace_dir}"

@@ -23,7 +23,7 @@ jobs:
             languages: ["go", "rust"]
           - release: controller
             languages: ["go"]
-    name: ${{ matrix.release }}
+    name: release-validation-${{ matrix.release }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

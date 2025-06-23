@@ -21,7 +21,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.37.0
 	github.com/testcontainers/testcontainers-go/modules/clickhouse v0.37.0
 	github.com/testcontainers/testcontainers-go/modules/redpanda v0.37.0
-	github.com/twmb/franz-go v1.19.4
+	github.com/twmb/franz-go v1.19.5
 	github.com/twmb/franz-go/pkg/kadm v1.16.0
 	github.com/twmb/franz-go/plugin/kprom v1.2.1
 	github.com/vishvananda/netlink v1.3.1

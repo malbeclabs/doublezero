@@ -74,7 +74,7 @@ impl Activator {
 
         Ok(Self {
             client,
-            tunnel_tunnel_ips: IPBlockAllocator::new(config.tunnel_tunnel_block),
+            tunnel_tunnel_ips: IPBlockAllocator::new(config.device_tunnel_block),
             tunnel_tunnel_ids: IDAllocator::new(0, vec![]),
             multicastgroup_tunnel_ips: IPBlockAllocator::new(config.multicastgroup_block),
             user_tunnel_ips: IPBlockAllocator::new(config.user_tunnel_block),

@@ -14,7 +14,7 @@ pub struct GlobalConfig {
     pub bump_seed: u8,                   // 1
     pub local_asn: u32,                  // 4
     pub remote_asn: u32,                 // 4
-    pub tunnel_tunnel_block: NetworkV4,  // 5
+    pub device_tunnel_block: NetworkV4,  // 5
     pub user_tunnel_block: NetworkV4,    // 5
     pub multicastgroup_block: NetworkV4, // 5
 }
@@ -23,9 +23,9 @@ impl fmt::Display for GlobalConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, local_asn: {}, remote_asn: {}, tunnel_tunnel_block: {}, user_tunnel_block: {}, multicastgroup_block: {}",
+            "account_type: {}, owner: {}, local_asn: {}, remote_asn: {}, device_tunnel_block: {}, user_tunnel_block: {}, multicastgroup_block: {}",
             self.account_type, self.owner, self.local_asn, self.remote_asn,
-            networkv4_to_string(&self.tunnel_tunnel_block),
+            networkv4_to_string(&self.device_tunnel_block),
             networkv4_to_string(&self.user_tunnel_block),
             networkv4_to_string(&self.multicastgroup_block)
         )
@@ -42,7 +42,7 @@ impl From<&[u8]> for GlobalConfig {
             bump_seed: parser.read_u8(),
             local_asn: parser.read_u32(),
             remote_asn: parser.read_u32(),
-            tunnel_tunnel_block: parser.read_networkv4(),
+            device_tunnel_block: parser.read_networkv4(),
             user_tunnel_block: parser.read_networkv4(),
             multicastgroup_block: parser.read_networkv4(),
         }
@@ -76,7 +76,7 @@ mod tests {
             bump_seed: 1,
             local_asn: 123,
             remote_asn: 456,
-            tunnel_tunnel_block: ([10, 0, 0, 1], 24),
+            device_tunnel_block: ([10, 0, 0, 1], 24),
             user_tunnel_block: ([10, 0, 0, 2], 24),
             multicastgroup_block: ([224, 0, 0, 0], 4),
         };
@@ -88,7 +88,7 @@ mod tests {
         assert_eq!(val.owner, val2.owner);
         assert_eq!(val.local_asn, val2.local_asn);
         assert_eq!(val.remote_asn, val2.remote_asn);
-        assert_eq!(val.tunnel_tunnel_block, val2.tunnel_tunnel_block);
+        assert_eq!(val.device_tunnel_block, val2.device_tunnel_block);
         assert_eq!(val.user_tunnel_block, val2.user_tunnel_block);
         assert_eq!(val.multicastgroup_block, val2.multicastgroup_block);
         assert_eq!(data.len(), val.size(), "Invalid Size");

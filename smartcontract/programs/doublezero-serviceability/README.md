@@ -118,7 +118,7 @@ classDiagram
         u8 bump_seed
         u32 local_asn
         u32 remote_asn
-        NetworkV4 tunnel_tunnel_block
+        NetworkV4 device_tunnel_block
         NetworkV4 user_tunnel_block
     }
     class GlobalState {
@@ -159,19 +159,19 @@ stateDiagram-v2
     Deleting --> [*]
 ```
 
-| Field        | Type           | Description                |
-|--------------|----------------|----------------------------|
-| account_type | AccountType    | Type of account            |
-| owner        | Pubkey         | Location owner             |
-| index        | u128           | Location index             |
-| bump_seed    | u8             | PDA bump seed              |
-| lat          | f64            | Latitude                   |
-| lng          | f64            | Longitude                  |
-| loc_id       | u32            | Location ID                |
-| status       | LocationStatus | Location status            |
-| code         | String         | Location code              |
-| name         | String         | Location name              |
-| country      | String         | Country                    |
+| Field        | Type           | Description     |
+| ------------ | -------------- | --------------- |
+| account_type | AccountType    | Type of account |
+| owner        | Pubkey         | Location owner  |
+| index        | u128           | Location index  |
+| bump_seed    | u8             | PDA bump seed   |
+| lat          | f64            | Latitude        |
+| lng          | f64            | Longitude       |
+| loc_id       | u32            | Location ID     |
+| status       | LocationStatus | Location status |
+| code         | String         | Location code   |
+| name         | String         | Location name   |
+| country      | String         | Country         |
 
 ## Exchange
 
@@ -191,18 +191,18 @@ stateDiagram-v2
     Deleting --> [*]
 ```
 
-| Field        | Type           | Description                |
-|--------------|----------------|----------------------------|
-| account_type | AccountType    | Type of account            |
-| owner        | Pubkey         | Exchange owner             |
-| index        | u128           | Exchange index             |
-| bump_seed    | u8             | PDA bump seed              |
-| lat          | f64            | Latitude                   |
-| lng          | f64            | Longitude                  |
-| loc_id       | u32            | Location ID                |
-| status       | ExchangeStatus | Exchange status            |
-| code         | String         | Exchange code              |
-| name         | String         | Exchange name              |
+| Field        | Type           | Description     |
+| ------------ | -------------- | --------------- |
+| account_type | AccountType    | Type of account |
+| owner        | Pubkey         | Exchange owner  |
+| index        | u128           | Exchange index  |
+| bump_seed    | u8             | PDA bump seed   |
+| lat          | f64            | Latitude        |
+| lng          | f64            | Longitude       |
+| loc_id       | u32            | Location ID     |
+| status       | ExchangeStatus | Exchange status |
+| code         | String         | Exchange code   |
+| name         | String         | Exchange name   |
 
 ## Device
 
@@ -221,19 +221,19 @@ stateDiagram-v2
     Deleting --> [*]
 ```
 
-| Field         | Type         | Description                |
-|---------------|--------------|----------------------------|
-| account_type  | AccountType  | Type of account            |
-| owner         | Pubkey       | Device owner               |
-| index         | u128         | Device index               |
-| bump_seed     | u8           | PDA bump seed              |
-| location_pk   | Pubkey       | Location public key        |
-| exchange_pk   | Pubkey       | Exchange public key        |
-| device_type   | DeviceType   | Device type (e.g. Switch)  |
-| public_ip     | IpV4         | Public IP address          |
-| status        | DeviceStatus | Device status              |
-| code          | String       | Device code                |
-| dz_prefixes   | NetworkV4List| List of network prefixes   |
+| Field        | Type          | Description               |
+| ------------ | ------------- | ------------------------- |
+| account_type | AccountType   | Type of account           |
+| owner        | Pubkey        | Device owner              |
+| index        | u128          | Device index              |
+| bump_seed    | u8            | PDA bump seed             |
+| location_pk  | Pubkey        | Location public key       |
+| exchange_pk  | Pubkey        | Exchange public key       |
+| device_type  | DeviceType    | Device type (e.g. Switch) |
+| public_ip    | IpV4          | Public IP address         |
+| status       | DeviceStatus  | Device status             |
+| code         | String        | Device code               |
+| dz_prefixes  | NetworkV4List | List of network prefixes  |
 
 ## Link
 
@@ -252,23 +252,23 @@ stateDiagram-v2
     Deleting --> [*]
 ```
 
-| Field        | Type               | Description                |
-|--------------|--------------------|----------------------------|
-| account_type | AccountType        | Type of account            |
-| owner        | Pubkey             | Link owner                 |
-| index        | u128               | Link index                 |
-| bump_seed    | u8                 | PDA bump seed              |
-| side_a_pk    | Pubkey             | Side A public key          |
-| side_z_pk    | Pubkey             | Side Z public key          |
-| tunnel_type  | LinkLinkType       | Tunnel type                |
-| bandwidth    | u64                | Bandwidth                  |
-| mtu          | u32                | MTU                        |
-| delay_ns     | u64                | Delay in nanoseconds       |
-| jitter_ns    | u64                | Jitter in nanoseconds      |
-| tunnel_id    | u16                | Tunnel ID                  |
-| tunnel_net   | NetworkV4          | Tunnel network             |
-| status       | LinkStatus         | Link status                |
-| code         | String             | Link code                  |
+| Field        | Type         | Description           |
+| ------------ | ------------ | --------------------- |
+| account_type | AccountType  | Type of account       |
+| owner        | Pubkey       | Link owner            |
+| index        | u128         | Link index            |
+| bump_seed    | u8           | PDA bump seed         |
+| side_a_pk    | Pubkey       | Side A public key     |
+| side_z_pk    | Pubkey       | Side Z public key     |
+| tunnel_type  | LinkLinkType | Tunnel type           |
+| bandwidth    | u64          | Bandwidth             |
+| mtu          | u32          | MTU                   |
+| delay_ns     | u64          | Delay in nanoseconds  |
+| jitter_ns    | u64          | Jitter in nanoseconds |
+| tunnel_id    | u16          | Tunnel ID             |
+| tunnel_net   | NetworkV4    | Tunnel network        |
+| status       | LinkStatus   | Link status           |
+| code         | String       | Link code             |
 
 ## User
 
@@ -291,21 +291,21 @@ stateDiagram-v2
     Rejected --> [*]
 ```
 
-| Field        | Type         | Description                |
-|--------------|--------------|----------------------------|
-| account_type | AccountType  | Type of account            |
-| owner        | Pubkey       | User owner                 |
-| index        | u128         | User index                 |
-| bump_seed    | u8           | PDA bump seed              |
-| user_type    | UserType     | User type                  |
-| tenant_pk    | Pubkey       | Tenant public key          |
-| device_pk    | Pubkey       | Device public key          |
-| cyoa_type    | UserCYOA     | CYOA type                  |
-| client_ip    | IpV4         | Client IP                  |
-| dz_ip        | IpV4         | DoubleZero IP              |
-| tunnel_id    | u16          | Tunnel ID                  |
-| tunnel_net   | NetworkV4    | Tunnel network             |
-| status       | UserStatus   | User status                |
+| Field        | Type        | Description       |
+| ------------ | ----------- | ----------------- |
+| account_type | AccountType | Type of account   |
+| owner        | Pubkey      | User owner        |
+| index        | u128        | User index        |
+| bump_seed    | u8          | PDA bump seed     |
+| user_type    | UserType    | User type         |
+| tenant_pk    | Pubkey      | Tenant public key |
+| device_pk    | Pubkey      | Device public key |
+| cyoa_type    | UserCYOA    | CYOA type         |
+| client_ip    | IpV4        | Client IP         |
+| dz_ip        | IpV4        | DoubleZero IP     |
+| tunnel_id    | u16         | Tunnel ID         |
+| tunnel_net   | NetworkV4   | Tunnel network    |
+| status       | UserStatus  | User status       |
 
 ## MulticastGroup
 
@@ -324,46 +324,46 @@ stateDiagram-v2
     Deleting --> [*]
 ```
 
-| Field              | Type                  | Description                              |
-|--------------------|-----------------------|------------------------------------------|
-| account_type       | AccountType           | Type of account                          |
-| owner              | Pubkey                | Multicast group owner                    |
-| index              | u128                  | Multicast group index                    |
-| bump_seed          | u8                    | PDA bump seed                            |
-| tenant_pk          | Pubkey                | Tenant public key                        |
-| code               | String                | Multicast group code                     |
-| status             | MulticastGroupStatus  | Multicast group status                   |
-| pub_allowlist      | Vec<Pubkey>           | List of allowed publisher public keys    |
-| sub_allowlist      | Vec<Pubkey>           | List of allowed subscriber public keys   |
-| publishers         | Vec<Pubkey>           | List of publisher user public keys       |
-| subscribers        | Vec<Pubkey>           | List of subscriber user public keys      |
+| Field         | Type                 | Description                            |
+| ------------- | -------------------- | -------------------------------------- |
+| account_type  | AccountType          | Type of account                        |
+| owner         | Pubkey               | Multicast group owner                  |
+| index         | u128                 | Multicast group index                  |
+| bump_seed     | u8                   | PDA bump seed                          |
+| tenant_pk     | Pubkey               | Tenant public key                      |
+| code          | String               | Multicast group code                   |
+| status        | MulticastGroupStatus | Multicast group status                 |
+| pub_allowlist | Vec<Pubkey>          | List of allowed publisher public keys  |
+| sub_allowlist | Vec<Pubkey>          | List of allowed subscriber public keys |
+| publishers    | Vec<Pubkey>          | List of publisher user public keys     |
+| subscribers   | Vec<Pubkey>          | List of subscriber user public keys    |
 
 ## GlobalConfig
 
 Stores global configuration parameters for the DoubleZero network, such as ASNs and network blocks for tunnels and users.
 
-| Field               | Type        | Description                |
-|---------------------|-------------|----------------------------|
-| account_type        | AccountType | Type of account            |
-| owner               | Pubkey      | Config owner               |
-| bump_seed           | u8          | PDA bump seed              |
-| local_asn           | u32         | Local ASN                  |
-| remote_asn          | u32         | Remote ASN                 |
-| tunnel_tunnel_block | NetworkV4   | Tunnel block               |
-| user_tunnel_block   | NetworkV4   | User tunnel block          |
+| Field               | Type        | Description         |
+| ------------------- | ----------- | ------------------- |
+| account_type        | AccountType | Type of account     |
+| owner               | Pubkey      | Config owner        |
+| bump_seed           | u8          | PDA bump seed       |
+| local_asn           | u32         | Local ASN           |
+| remote_asn          | u32         | Remote ASN          |
+| device_tunnel_block | NetworkV4   | Device Tunnel block |
+| user_tunnel_block   | NetworkV4   | User tunnel block   |
 
 ## GlobalState
 
 Represents the global state of the DoubleZero network, including allowlists for foundations, devices, and users, as well as a global index.
 
-| Field                | Type         | Description                |
-|----------------------|--------------|----------------------------|
-| account_type         | AccountType  | Type of account            |
-| bump_seed            | u8           | PDA bump seed              |
-| account_index        | u128         | Global state index         |
-| foundation_allowlist | Vec<Pubkey>  | Foundation allowlist       |
-| device_allowlist     | Vec<Pubkey>  | Device allowlist           |
-| user_allowlist       | Vec<Pubkey>  | User allowlist             |
+| Field                | Type        | Description          |
+| -------------------- | ----------- | -------------------- |
+| account_type         | AccountType | Type of account      |
+| bump_seed            | u8          | PDA bump seed        |
+| account_index        | u128        | Global state index   |
+| foundation_allowlist | Vec<Pubkey> | Foundation allowlist |
+| device_allowlist     | Vec<Pubkey> | Device allowlist     |
+| user_allowlist       | Vec<Pubkey> | User allowlist       |
 
 ---
 
@@ -390,15 +390,17 @@ Each instruction is implemented as a Rust file in the corresponding folder, foll
 ### globalconfig
 
 #### set
+
 Sets or updates the global configuration parameters for the DoubleZero network, such as ASNs and network blocks.
-| Parameter            | Type      | Description                                 |
+| Parameter | Type | Description |
 |----------------------|-----------|---------------------------------------------|
-| local_asn            | u32       | Local ASN for the network                   |
-| remote_asn           | u32       | Remote ASN for the network                  |
-| tunnel_tunnel_block  | NetworkV4 | Network block for tunnels                   |
-| user_tunnel_block    | NetworkV4 | Network block for user tunnels              |
+| local_asn | u32 | Local ASN for the network |
+| remote_asn | u32 | Remote ASN for the network |
+| device_tunnel_block | NetworkV4 | Network block for tunnels |
+| user_tunnel_block | NetworkV4 | Network block for user tunnels |
 
 **Accounts:**
+
 - `[signer]` Authority
 - `[writable]` GlobalConfig account (PDA)
 - `[writable]` GlobalState account
@@ -406,14 +408,16 @@ Sets or updates the global configuration parameters for the DoubleZero network, 
 ### globalstate
 
 #### initialize
+
 Initializes the global state for the DoubleZero network, including allowlists and global indices. **This instruction is executed only once to initialize the smart contract after deployment on the blockchain. Subsequent executions will have no effect.**
-| Parameter              | Type           | Description                                 |
+| Parameter | Type | Description |
 |------------------------|----------------|---------------------------------------------|
-| foundation_allowlist   | Vec<Pubkey>    | List of foundation public keys              |
-| device_allowlist       | Vec<Pubkey>    | List of device public keys                  |
-| user_allowlist         | Vec<Pubkey>    | List of user public keys                    |
+| foundation_allowlist | Vec<Pubkey> | List of foundation public keys |
+| device_allowlist | Vec<Pubkey> | List of device public keys |
+| user_allowlist | Vec<Pubkey> | List of user public keys |
 
 **Accounts:**
+
 - `[signer]` Payer
 - `[writable]` GlobalState account (PDA)
 - `system_program`
@@ -421,64 +425,74 @@ Initializes the global state for the DoubleZero network, including allowlists an
 ### allowlist
 
 #### add / remove
+
 Adds or removes a public key from the foundation, device, or user allowlists in the global state.
-| Parameter | Type   | Description                |
+| Parameter | Type | Description |
 |-----------|--------|----------------------------|
-| pubkey    | Pubkey | Public key to add/remove   |
+| pubkey | Pubkey | Public key to add/remove |
 
 **Accounts:**
+
 - `[signer]` Authority
 - `[writable]` GlobalState account
 
 ### location
 
 #### create
+
 Creates a new location in the DoubleZero network, storing its coordinates, code, name, and country.
-| Parameter | Type   | Description                                 |
+| Parameter | Type | Description |
 |-----------|--------|---------------------------------------------|
-| lat       | f64    | Latitude of the location                    |
-| lng       | f64    | Longitude of the location                   |
-| code      | String | Location code identifier                    |
-| name      | String | Location name                               |
-| country   | String | Country of the location                     |
+| lat | f64 | Latitude of the location |
+| lng | f64 | Longitude of the location |
+| code | String | Location code identifier |
+| name | String | Location name |
+| country | String | Country of the location |
 
 **Accounts:**
+
 - `[signer]` Payer
 - `[writable]` Location account (PDA)
 - `[writable]` GlobalState account
 - `system_program`
 
 #### delete / reactivate / suspend
+
 Changes the status of an existing location. Used to delete, reactivate, or suspend a location.
-| Parameter | Type   | Description                |
+| Parameter | Type | Description |
 |-----------|--------|----------------------------|
-| index     | u128   | Location index (unique ID) |
+| index | u128 | Location index (unique ID) |
 
 **Accounts:**
+
 - `[signer]` Authority
 - `[writable]` Location account (PDA)
 - `[writable]` GlobalState account
 
 #### update
+
 Updates the fields of an existing location. Allows modification of location configuration and metadata.
-| Parameter      | Type           | Description                                 |
+| Parameter | Type | Description |
 |---------------|----------------|---------------------------------------------|
-| index         | u128           | Location index (unique ID)                  |
-| ...fields     | varies         | Fields to update (same as in create)        |
+| index | u128 | Location index (unique ID) |
+| ...fields | varies | Fields to update (same as in create) |
 
 **Accounts:**
+
 - `[signer]` Authority
 - `[writable]` Location account (PDA)
 - `[writable]` GlobalState account
 
 #### resume
+
 Reactivates a suspended location, setting its status back to Activated.
-| Parameter | Type   | Description                |
+| Parameter | Type | Description |
 |-----------|--------|----------------------------|
-| index     | u128   | Location index (unique ID) |
-| bump_seed | u8     | PDA bump seed              |
+| index | u128 | Location index (unique ID) |
+| bump_seed | u8 | PDA bump seed |
 
 **Accounts:**
+
 - `[writable]` Location account (PDA)
 - `[writable]` GlobalState account
 - `[signer]` Payer
@@ -487,16 +501,18 @@ Reactivates a suspended location, setting its status back to Activated.
 ### exchange
 
 #### create
+
 Creates a new exchange point in the network, typically linked to a location, and sets its metadata and coordinates.
-| Parameter   | Type     | Description                                 |
+| Parameter | Type | Description |
 |-------------|----------|---------------------------------------------|
-| location_pk | Pubkey   | Public key of the associated location       |
-| lat         | f64      | Latitude of the exchange                    |
-| lng         | f64      | Longitude of the exchange                   |
-| code        | String   | Exchange code identifier                    |
-| name        | String   | Exchange name                               |
+| location_pk | Pubkey | Public key of the associated location |
+| lat | f64 | Latitude of the exchange |
+| lng | f64 | Longitude of the exchange |
+| code | String | Exchange code identifier |
+| name | String | Exchange name |
 
 **Accounts:**
+
 - `[signer]` Payer
 - `[writable]` Exchange account (PDA)
 - `[writable]` GlobalState account
@@ -504,36 +520,42 @@ Creates a new exchange point in the network, typically linked to a location, and
 - `system_program`
 
 #### delete / reactivate / suspend
+
 Changes the status of an existing exchange. Used to delete, reactivate, or suspend an exchange point.
-| Parameter | Type   | Description                |
+| Parameter | Type | Description |
 |-----------|--------|----------------------------|
-| index     | u128   | Exchange index (unique ID) |
+| index | u128 | Exchange index (unique ID) |
 
 **Accounts:**
+
 - `[signer]` Authority
 - `[writable]` Exchange account (PDA)
 - `[writable]` GlobalState account
 
 #### update
+
 Updates the fields of an existing exchange. Allows modification of exchange configuration and metadata.
-| Parameter      | Type           | Description                                 |
+| Parameter | Type | Description |
 |---------------|----------------|---------------------------------------------|
-| index         | u128           | Exchange index (unique ID)                  |
-| ...fields     | varies         | Fields to update (same as in create)        |
+| index | u128 | Exchange index (unique ID) |
+| ...fields | varies | Fields to update (same as in create) |
 
 **Accounts:**
+
 - `[signer]` Authority
 - `[writable]` Exchange account (PDA)
 - `[writable]` GlobalState account
 
 #### resume
+
 Reactivates a suspended exchange, setting its status back to Activated.
-| Parameter | Type   | Description                |
+| Parameter | Type | Description |
 |-----------|--------|----------------------------|
-| index     | u128   | Exchange index (unique ID) |
-| bump_seed | u8     | PDA bump seed              |
+| index | u128 | Exchange index (unique ID) |
+| bump_seed | u8 | PDA bump seed |
 
 **Accounts:**
+
 - `[writable]` Exchange account (PDA)
 - `[writable]` GlobalState account
 - `[signer]` Payer
@@ -542,17 +564,19 @@ Reactivates a suspended exchange, setting its status back to Activated.
 ### device
 
 #### create
+
 Creates a new device in the DoubleZero network, associating it with a location and exchange, and initializing its configuration.
-| Parameter      | Type           | Description                                 |
+| Parameter | Type | Description |
 |---------------|----------------|---------------------------------------------|
-| location_pk    | Pubkey         | Public key of the associated location       |
-| exchange_pk    | Pubkey         | Public key of the associated exchange       |
-| device_type    | DeviceType     | Type of device (e.g., Switch)               |
-| public_ip      | IpV4           | Public IP address of the device             |
-| code           | String         | Device code identifier                      |
-| dz_prefixes    | NetworkV4List  | List of network prefixes for the device     |
+| location_pk | Pubkey | Public key of the associated location |
+| exchange_pk | Pubkey | Public key of the associated exchange |
+| device_type | DeviceType | Type of device (e.g., Switch) |
+| public_ip | IpV4 | Public IP address of the device |
+| code | String | Device code identifier |
+| dz_prefixes | NetworkV4List | List of network prefixes for the device |
 
 **Accounts:**
+
 - `[signer]` Payer
 - `[writable]` Device account (PDA)
 - `[writable]` GlobalState account
@@ -561,49 +585,57 @@ Creates a new device in the DoubleZero network, associating it with a location a
 - `system_program`
 
 #### activate / deactivate / delete / reactivate / reject / suspend
+
 Changes the status of an existing device. Used to activate, deactivate, delete, reactivate, reject, or suspend a device in the network.
-| Parameter | Type   | Description                |
+| Parameter | Type | Description |
 |-----------|--------|----------------------------|
-| index     | u128   | Device index (unique ID)   |
+| index | u128 | Device index (unique ID) |
 
 **Accounts:**
+
 - `[signer]` Authority
 - `[writable]` Device account (PDA)
 - `[writable]` GlobalState account
 
 #### update
+
 Updates the fields of an existing device. Allows modification of device configuration and metadata.
-| Parameter      | Type           | Description                                 |
+| Parameter | Type | Description |
 |---------------|----------------|---------------------------------------------|
-| index         | u128           | Device index (unique ID)                    |
-| ...fields     | varies         | Fields to update (same as in create)        |
+| index | u128 | Device index (unique ID) |
+| ...fields | varies | Fields to update (same as in create) |
 
 **Accounts:**
+
 - `[signer]` Authority
 - `[writable]` Device account (PDA)
 - `[writable]` GlobalState account
 
 #### resume
+
 Reactivates a suspended device, setting its status back to Activated.
-| Parameter | Type   | Description                |
+| Parameter | Type | Description |
 |-----------|--------|----------------------------|
-| index     | u128   | Device index (unique ID)   |
-| bump_seed | u8     | PDA bump seed              |
+| index | u128 | Device index (unique ID) |
+| bump_seed | u8 | PDA bump seed |
 
 **Accounts:**
+
 - `[writable]` Device account (PDA)
 - `[writable]` GlobalState account
 - `[signer]` Payer
 - `system_program`
 
 #### closeaccount
+
 Closes and cleans up a device account that is in Deleting status.
-| Parameter | Type   | Description                |
+| Parameter | Type | Description |
 |-----------|--------|----------------------------|
-| index     | u128   | Device index (unique ID)   |
-| bump_seed | u8     | PDA bump seed              |
+| index | u128 | Device index (unique ID) |
+| bump_seed | u8 | PDA bump seed |
 
 **Accounts:**
+
 - `[writable]` Device account (PDA)
 - `[writable]` Owner account
 - `[writable]` GlobalState account
@@ -613,21 +645,23 @@ Closes and cleans up a device account that is in Deleting status.
 ### link
 
 #### create
+
 Creates a new tunnel between two endpoints (devices or users), defining connectivity, bandwidth, and transport parameters.
-| Parameter      | Type               | Description                                 |
+| Parameter | Type | Description |
 |---------------|--------------------|---------------------------------------------|
-| side_a_pk     | Pubkey             | Public key of side A endpoint               |
-| side_z_pk     | Pubkey             | Public key of side Z endpoint               |
-| link_type     | LinkLinkType       | Type of tunnel (e.g., MPLSoGRE)             |
-| bandwidth     | u64                | Bandwidth for the tunnel                    |
-| mtu           | u32                | MTU for the tunnel                          |
-| delay_ns      | u64                | Delay in nanoseconds                        |
-| jitter_ns     | u64                | Jitter in nanoseconds                       |
-| tunnel_id     | u16                | Tunnel identifier                           |
-| tunnel_net    | NetworkV4          | Network block for the tunnel                |
-| code          | String             | Link code identifier                        |
+| side_a_pk | Pubkey | Public key of side A endpoint |
+| side_z_pk | Pubkey | Public key of side Z endpoint |
+| link_type | LinkLinkType | Type of tunnel (e.g., MPLSoGRE) |
+| bandwidth | u64 | Bandwidth for the tunnel |
+| mtu | u32 | MTU for the tunnel |
+| delay_ns | u64 | Delay in nanoseconds |
+| jitter_ns | u64 | Jitter in nanoseconds |
+| tunnel_id | u16 | Tunnel identifier |
+| tunnel_net | NetworkV4 | Network block for the tunnel |
+| code | String | Link code identifier |
 
 **Accounts:**
+
 - `[signer]` Payer
 - `[writable]` Link account (PDA)
 - `[writable]` GlobalState account
@@ -636,48 +670,56 @@ Creates a new tunnel between two endpoints (devices or users), defining connecti
 - `system_program`
 
 #### activate / deactivate / delete / reactivate / reject / suspend
+
 Changes the status of an existing tunnel. Used to activate, deactivate, delete, reactivate, reject, or suspend a tunnel.
-| Parameter | Type   | Description                |
+| Parameter | Type | Description |
 |-----------|--------|----------------------------|
-| index     | u128   | Link index (unique ID)   |
+| index | u128 | Link index (unique ID) |
 
 **Accounts:**
+
 - `[signer]` Authority
 - `[writable]` Link account (PDA)
 - `[writable]` GlobalState account
 
 #### update
+
 Updates the fields of an existing tunnel. Allows modification of tunnel configuration and metadata.
-| Parameter      | Type           | Description                                 |
+| Parameter | Type | Description |
 |---------------|----------------|---------------------------------------------|
-| index         | u128           | Link index (unique ID)                    |
-| ...fields     | varies         | Fields to update (same as in create)        |
+| index | u128 | Link index (unique ID) |
+| ...fields | varies | Fields to update (same as in create) |
 
 **Accounts:**
+
 - `[signer]` Authority
 - `[writable]` Link account (PDA)
 - `[writable]` GlobalState account
 
 #### resume
+
 Reactivates a suspended tunnel, setting its status back to Activated.
-| Parameter | Type   | Description                |
+| Parameter | Type | Description |
 |-----------|--------|----------------------------|
-| index     | u128   | Link index (unique ID)   |
-| bump_seed | u8     | PDA bump seed              |
+| index | u128 | Link index (unique ID) |
+| bump_seed | u8 | PDA bump seed |
 
 **Accounts:**
+
 - `[writable]` Link account (PDA)
 - `[signer]` Payer
 - `system_program`
 
 #### closeaccount
+
 Closes and cleans up a tunnel account that is in Deleting status.
-| Parameter | Type   | Description                |
+| Parameter | Type | Description |
 |-----------|--------|----------------------------|
-| index     | u128   | Link index (unique ID)   |
-| bump_seed | u8     | PDA bump seed              |
+| index | u128 | Link index (unique ID) |
+| bump_seed | u8 | PDA bump seed |
 
 **Accounts:**
+
 - `[writable]` Link account (PDA)
 - `[writable]` Owner account
 - `[writable]` GlobalState account
@@ -687,19 +729,21 @@ Closes and cleans up a tunnel account that is in Deleting status.
 ### user
 
 #### create
+
 Creates a new user in the DoubleZero network, associating it with a device and tunnel, and initializing its configuration.
-| Parameter   | Type         | Description                                 |
+| Parameter | Type | Description |
 |-------------|--------------|---------------------------------------------|
-| user_type   | UserType     | Type of user (e.g., IBRL, Multicast)        |
-| tenant_pk   | Pubkey       | Tenant public key                           |
-| device_pk   | Pubkey       | Device public key                           |
-| cyoa_type   | UserCYOA     | CYOA type (connectivity option)             |
-| client_ip   | IpV4         | Client IP address                           |
-| dz_ip       | IpV4         | DoubleZero-assigned IP address              |
-| tunnel_id   | u16          | Tunnel identifier                           |
-| tunnel_net  | NetworkV4    | Network block for the tunnel                |
+| user_type | UserType | Type of user (e.g., IBRL, Multicast) |
+| tenant_pk | Pubkey | Tenant public key |
+| device_pk | Pubkey | Device public key |
+| cyoa_type | UserCYOA | CYOA type (connectivity option) |
+| client_ip | IpV4 | Client IP address |
+| dz_ip | IpV4 | DoubleZero-assigned IP address |
+| tunnel_id | u16 | Tunnel identifier |
+| tunnel_net | NetworkV4 | Network block for the tunnel |
 
 **Accounts:**
+
 - `[signer]` Payer
 - `[writable]` User account (PDA)
 - `[writable]` GlobalState account
@@ -708,48 +752,56 @@ Creates a new user in the DoubleZero network, associating it with a device and t
 - `system_program`
 
 #### activate / deactivate / delete / reactivate / reject / requestban / suspend / ban
+
 Changes the status of an existing user. Used to activate, deactivate, delete, reactivate, reject, request a ban, suspend, or ban a user.
-| Parameter | Type   | Description                |
+| Parameter | Type | Description |
 |-----------|--------|----------------------------|
-| index     | u128   | User index (unique ID)     |
+| index | u128 | User index (unique ID) |
 
 **Accounts:**
+
 - `[signer]` Authority
 - `[writable]` User account (PDA)
 - `[writable]` GlobalState account
 
 #### update
+
 Updates the fields of an existing user. Allows modification of user configuration and metadata.
-| Parameter      | Type           | Description                                 |
+| Parameter | Type | Description |
 |---------------|----------------|---------------------------------------------|
-| index         | u128           | User index (unique ID)                      |
-| ...fields     | varies         | Fields to update (same as in create)        |
+| index | u128 | User index (unique ID) |
+| ...fields | varies | Fields to update (same as in create) |
 
 **Accounts:**
+
 - `[signer]` Authority
 - `[writable]` User account (PDA)
 - `[writable]` GlobalState account
 
 #### resume
+
 Reactivates a suspended user, setting its status back to Activated.
-| Parameter | Type   | Description                |
+| Parameter | Type | Description |
 |-----------|--------|----------------------------|
-| index     | u128   | User index (unique ID)     |
-| bump_seed | u8     | PDA bump seed              |
+| index | u128 | User index (unique ID) |
+| bump_seed | u8 | PDA bump seed |
 
 **Accounts:**
+
 - `[writable]` User account (PDA)
 - `[signer]` Payer
 - `system_program`
 
 #### closeaccount
+
 Closes and cleans up a user account that is in Deleting status.
-| Parameter | Type   | Description                |
+| Parameter | Type | Description |
 |-----------|--------|----------------------------|
-| index     | u128   | User index (unique ID)     |
-| bump_seed | u8     | PDA bump seed              |
+| index | u128 | User index (unique ID) |
+| bump_seed | u8 | PDA bump seed |
 
 **Accounts:**
+
 - `[writable]` User account (PDA)
 - `[writable]` Owner account
 - `[writable]` GlobalState account
@@ -759,67 +811,77 @@ Closes and cleans up a user account that is in Deleting status.
 ### multicastgroup
 
 #### create
+
 Creates a new multicast group in the DoubleZero network, defining its code, tenant, publisher/subscriber allowlists, and membership.
-| Parameter      | Type         | Description                                |
+| Parameter | Type | Description |
 |---------------|--------------|---------------------------------------------|
-| code          | String       | Multicast group code identifier             |
-| max_bandwidth | u64          | Max bandwidth                               |
-| owner         | Pubkey       | The multicast group owner                   |
+| code | String | Multicast group code identifier |
+| max_bandwidth | u64 | Max bandwidth |
+| owner | Pubkey | The multicast group owner |
 
 **Accounts:**
+
 - `[signer]` Payer
 - `[writable]` MulticastGroup account (PDA)
 - `[writable]` GlobalState account
 - `system_program`
 
 #### delete / reactivate / suspend
+
 Changes the status of an existing multicast group. Used to delete, reactivate, or suspend a multicast group.
-| Parameter | Type   | Description                |
+| Parameter | Type | Description |
 |-----------|--------|----------------------------|
-| index     | u128   | Multicast group index      |
-| bump_seed | u8     | PDA bump seed              |
+| index | u128 | Multicast group index |
+| bump_seed | u8 | PDA bump seed |
 
 **Accounts:**
+
 - `[signer]` Authority
 - `[writable]` MulticastGroup account (PDA)
 - `[writable]` GlobalState account
 
 #### update
+
 Updates the fields of an existing multicast group. Allows modification of group configuration and membership.
-| Parameter      | Type           | Description                                |
+| Parameter | Type | Description |
 |---------------|----------------|---------------------------------------------|
-| index         | u128           | Multicast group index                       |
-| bump_seed     | u8             | PDA bump seed                               | 
-| code          | String         | Multicast group code identifier             |
-| multicast_ip  | IP             | The multicast group IP address              |
-| max_bandwidth | u64            | Max bandwidth                               |
+| index | u128 | Multicast group index |
+| bump_seed | u8 | PDA bump seed |
+| code | String | Multicast group code identifier |
+| multicast_ip | IP | The multicast group IP address |
+| max_bandwidth | u64 | Max bandwidth |
 
 **Accounts:**
+
 - `[signer]` Authority
 - `[writable]` MulticastGroup account (PDA)
 - `[writable]` GlobalState account
 
 #### resume
+
 Reactivates a suspended multicast group, setting its status back to Activated.
-| Parameter | Type   | Description                |
+| Parameter | Type | Description |
 |-----------|--------|----------------------------|
-| index     | u128   | Multicast group index      |
-| bump_seed | u8     | PDA bump seed              |
+| index | u128 | Multicast group index |
+| bump_seed | u8 | PDA bump seed |
 
 **Accounts:**
+
 - `[writable]` MulticastGroup account (PDA)
 - `[writable]` GlobalState account
 - `[signer]` Payer
 - `system_program`
 
 #### closeaccount
+
 Closes and cleans up a multicast group account that is in Deleting status.
-| Parameter | Type   | Description                |
+| Parameter | Type | Description |
 |-----------|--------|----------------------------|
-| index     | u128   | Multicast group index      |
-| bump_seed | u8     | PDA bump seed              |
+| index | u128 | Multicast group index |
+| bump_seed | u8 | PDA bump seed |
 
 **Accounts:**
+
 - `[writable]` MulticastGroup account (PDA)
 - `[writable]` Owner account
 - `[writable]` GlobalState account

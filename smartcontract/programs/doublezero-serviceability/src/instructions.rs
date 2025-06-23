@@ -396,7 +396,7 @@ mod tests {
             DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
                 local_asn: 100,
                 remote_asn: 200,
-                tunnel_tunnel_block: ([1, 2, 3, 4], 1),
+                device_tunnel_block: ([1, 2, 3, 4], 1),
                 user_tunnel_block: ([1, 2, 3, 4], 1),
                 multicastgroup_block: ([1, 2, 3, 4], 1),
             }),

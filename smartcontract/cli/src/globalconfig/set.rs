@@ -17,10 +17,10 @@ pub struct SetGlobalConfigCliCommand {
     pub remote_asn: u32,
     /// Link tunnel block in CIDR format
     #[arg(long, value_parser = validate_parse_networkv4)]
-    tunnel_tunnel_block: NetworkV4,
+    device_tunnel_block: NetworkV4,
     /// Device tunnel block in CIDR format
     #[arg(long, value_parser = validate_parse_networkv4)]
-    device_tunnel_block: NetworkV4,
+    user_tunnel_block: NetworkV4,
     /// Multicast group block in CIDR format
     #[arg(long, value_parser = validate_parse_networkv4)]
     multicastgroup_block: NetworkV4,
@@ -34,8 +34,8 @@ impl SetGlobalConfigCliCommand {
         let signature = client.set_globalconfig(SetGlobalConfigCommand {
             local_asn: self.local_asn,
             remote_asn: self.remote_asn,
-            tunnel_tunnel_block: self.tunnel_tunnel_block,
-            user_tunnel_block: self.device_tunnel_block,
+            device_tunnel_block: self.device_tunnel_block,
+            user_tunnel_block: self.user_tunnel_block,
             multicastgroup_block: self.multicastgroup_block,
         })?;
         writeln!(out, "Signature: {signature}",)?;
@@ -75,7 +75,7 @@ mod tests {
             .with(predicate::eq(SetGlobalConfigCommand {
                 local_asn: 1234,
                 remote_asn: 5678,
-                tunnel_tunnel_block: ([10, 10, 0, 0], 16),
+                device_tunnel_block: ([10, 10, 0, 0], 16),
                 user_tunnel_block: ([10, 20, 0, 0], 16),
                 multicastgroup_block: ([224, 2, 0, 0], 4),
             }))
@@ -86,8 +86,8 @@ mod tests {
         let res = SetGlobalConfigCliCommand {
             local_asn: 1234,
             remote_asn: 5678,
-            tunnel_tunnel_block: ([10, 10, 0, 0], 16),
             device_tunnel_block: ([10, 20, 0, 0], 16),
+            user_tunnel_block: ([10, 10, 0, 0], 16),
             multicastgroup_block: ([224, 2, 0, 0], 4),
         }
         .execute(&client, &mut output);

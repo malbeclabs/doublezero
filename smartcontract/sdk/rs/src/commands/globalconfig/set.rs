@@ -10,7 +10,7 @@ use crate::{DoubleZeroClient, GetGlobalStateCommand};
 pub struct SetGlobalConfigCommand {
     pub local_asn: u32,
     pub remote_asn: u32,
-    pub tunnel_tunnel_block: NetworkV4,
+    pub device_tunnel_block: NetworkV4,
     pub user_tunnel_block: NetworkV4,
     pub multicastgroup_block: NetworkV4,
 }
@@ -26,7 +26,7 @@ impl SetGlobalConfigCommand {
             DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
                 local_asn: self.local_asn,
                 remote_asn: self.remote_asn,
-                tunnel_tunnel_block: self.tunnel_tunnel_block,
+                device_tunnel_block: self.device_tunnel_block,
                 user_tunnel_block: self.user_tunnel_block,
                 multicastgroup_block: self.multicastgroup_block,
             }),

@@ -1,14 +1,8 @@
 name: go
 on:
   push:
-    paths-ignore:
-      - "**/*.md"
-      - "**/*.rs"
     branches: [ main ]
   pull_request:
-    paths-ignore:
-      - "**/*.md"
-      - "**/*.rs"
     branches: [ main ]
 
 jobs:

@@ -2,29 +2,8 @@ name: release pipeline validation
 
 on:
   push:
-    paths:
-      - "activator/**"
-      - "client/**"
-      - "controlplane/**"
-      - "telemetry/**"
-      - "smartcontract/**"
-      - "go.mod"
-      - "go.sum"
-      - "!**/**.md"
-      - ".goreleaser.*"
-      - ".github/workflows/release.*"
     branches: [ main ]
   pull_request:
-    paths:
-      - "client/**"
-      - "controlplane/**"
-      - "telemetry/**"
-      - "smartcontract/**"
-      - "go.mod"
-      - "go.sum"
-      - "!**/**.md"
-      - ".goreleaser.*"
-      - ".github/workflows/release.*"
     branches: [ main ]
 
 permissions:

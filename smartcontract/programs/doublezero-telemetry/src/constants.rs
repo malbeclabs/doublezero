@@ -18,12 +18,3 @@ pub const DZ_LATENCY_SAMPLES_MAX_SIZE: usize = DZ_LATENCY_SAMPLES_BASE_SIZE + (M
 
 /// Default sampling interval in microseconds (5 seconds)
 pub const DEFAULT_SAMPLING_INTERVAL_MICROSECONDS: u64 = 5_000_000;
-
-/// Base size of ThirdPartyLatencySamples account (without samples vector)
-/// AccountType(1) + data_provider_name(32) + epoch(8) + location_a_pk(32) +
-/// location_z_pk(32) + start_timestamp(8) + next_sample_index(4) + bump_seed(1) + agent_pk(32) + vec_prefix(4)
-pub const THIRDPARTY_LATENCY_SAMPLES_BASE_SIZE: usize = 1 + 32 + 8 + 32 + 32 + 8 + 4 + 1 + 32 + 4;
-
-/// Maximum account size for third-party latency samples (base + max samples)
-pub const THIRDPARTY_LATENCY_SAMPLES_MAX_SIZE: usize =
-    THIRDPARTY_LATENCY_SAMPLES_BASE_SIZE + (MAX_SAMPLES * 4);

@@ -57,17 +57,21 @@ graph LR
   subgraph Default_Net["Default Network"]
     Ledger["Ledger/SmartContract"]
     Activator["Activator"]
+    Controller["Controller"]
   end
 
   subgraph CYOA_Net["CYOA Network (10.X.Y.0/24)"]
-    Device["Device/Agent @ 10.X.Y.80"]
-    Client["Client @ 10.X.Y.86"]
-    Controller["Controller @ 10.X.Y.85"]
+    Device["Device/Agent @ 10.X.Y.8"]
+    Client1["Client @ 10.X.Y.100"]
+    Client2["Client @ 10.X.Y.110"]
   end
 
   Controller <--> Ledger
   Activator <--> Ledger
-  Client --> Device
+  Client1 <--> Device
+  Client1 <--> Ledger
+  Client2 <--> Device
+  Client2 <--> Ledger
   Controller --> Device
 
   style Default_Net fill:#f0f0f0,stroke:#666,stroke-width:2px

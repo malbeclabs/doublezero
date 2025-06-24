@@ -10,7 +10,7 @@ import (
 func DeriveIPFromCIDR(cidr string, hostID uint32) (net.IP, error) {
 	ip, ipnet, err := net.ParseCIDR(cidr)
 	if err != nil {
-		return nil, fmt.Errorf("invalid CIDR: %w", err)
+		return nil, fmt.Errorf("invalid CIDR %q: %w", cidr, err)
 	}
 
 	ip = ip.To4()

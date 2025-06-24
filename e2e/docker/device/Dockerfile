@@ -47,7 +47,7 @@ ENV container=docker
 EXPOSE 80
 
 # Define a HTTP healthcheck for the device
-HEALTHCHECK --start-period=60s --start-interval=5s --interval=15s --retries=6 CMD curl -f http://localhost/ || exit 1
+HEALTHCHECK --interval=10s --timeout=3s --retries=18 CMD curl --silent --fail http://localhost/ || exit 1
 
 # Copy and configure the entrypoint
 COPY ${DOCKERFILE_DIR}/entrypoint.sh /entrypoint.sh

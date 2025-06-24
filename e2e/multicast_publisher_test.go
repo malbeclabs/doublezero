@@ -18,9 +18,7 @@ import (
 func TestE2E_Multicast_Publisher(t *testing.T) {
 	t.Parallel()
 
-	dn := NewSingleDeviceSingleClientTestDevnet(t)
-	client := dn.Clients[0]
-	device := dn.Devices[0]
+	dn, device, client := NewSingleDeviceSingleClientTestDevnet(t)
 
 	if !t.Run("connect", func(t *testing.T) {
 		dn.CreateMulticastGroupOnchain(t, client, "mg01")
@@ -58,7 +56,7 @@ func checkMulticastPublisherPostConnect(t *testing.T, dn *TestDevnet, device *de
 	t.Run("check_post_connect", func(t *testing.T) {
 		dn.log.Info("==> Checking multicast publisher post-connect requirements")
 
-		expectedAllocatedClientIP, err := nextAllocatableIP(device.CYOANetworkIP, int(device.Spec().CYOANetworkAllocatablePrefix), map[string]bool{})
+		expectedAllocatedClientIP, err := nextAllocatableIP(device.CYOANetworkIP, int(device.Spec.CYOANetworkAllocatablePrefix), map[string]bool{})
 		require.NoError(t, err)
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
@@ -68,7 +66,7 @@ func checkMulticastPublisherPostConnect(t *testing.T, dn *TestDevnet, device *de
 				"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
-			err = dn.WaitForAgentConfigMatchViaController(t, device.AccountPubkey, string(config))
+			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
 			require.NoError(t, err, "error waiting for agent config to match")
 		}) {
 			t.Fail()
@@ -226,7 +224,7 @@ func checkMulticastPublisherPostDisconnect(t *testing.T, dn *TestDevnet, device 
 				"DeviceIP": device.CYOANetworkIP,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
-			err = dn.WaitForAgentConfigMatchViaController(t, device.AccountPubkey, string(config))
+			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
 			require.NoError(t, err, "error waiting for agent config to match")
 		}) {
 			t.Fail()

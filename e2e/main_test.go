@@ -3,6 +3,7 @@
 package e2e_test
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"flag"
@@ -18,13 +19,11 @@ import (
 
 	"github.com/docker/docker/client"
 	"github.com/google/go-cmp/cmp"
-	"github.com/joho/godotenv"
 	"github.com/lmittmann/tint"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
-	"github.com/malbeclabs/doublezero/e2e/internal/solana"
 	"github.com/stretchr/testify/require"
 )
 
@@ -52,16 +51,6 @@ func TestMain(m *testing.M) {
 		verbose = true
 	}
 
-	// Load environment variables file with docker images repos/names.
-	envFilePath := ".env.local"
-	if _, err := os.Stat(envFilePath); os.IsNotExist(err) {
-		logger.Error("env file not found", "path", envFilePath)
-		os.Exit(1)
-	}
-	if err := godotenv.Load(envFilePath); err != nil {
-		logger.Error("failed to load env file", "error", err, "path", envFilePath)
-	}
-
 	// Initialize a logger.
 	logger = newTestLogger(verbose)
 	if verbose {
@@ -82,6 +71,25 @@ func TestMain(m *testing.M) {
 	// Initialize a subnet allocator.
 	subnetAllocator = docker.NewSubnetAllocator("10.128.0.0/9", subnetCIDRPrefix, dockerClient)
 
+	// Build the container images unless the "no build" environment variable is set.
+	if os.Getenv("DZ_E2E_NO_BUILD") == "" {
+		workspaceDir, err := devnet.WorkspaceDir()
+		if err != nil {
+			logger.Error("failed to find workspace directory", "error", err)
+			os.Exit(1)
+		}
+		err = devnet.LoadContainerImagesEnvFile(logger, workspaceDir)
+		if err != nil {
+			logger.Error("failed to load env file", "error", err)
+			os.Exit(1)
+		}
+		err = devnet.BuildContainerImages(context.Background(), logger, workspaceDir, verbose)
+		if err != nil {
+			logger.Error("failed to build container images", "error", err)
+			os.Exit(1)
+		}
+	}
+
 	// Run the tests.
 	os.Exit(m.Run())
 }
@@ -91,49 +99,30 @@ type TestDevnet struct {
 	log *slog.Logger
 }
 
-func NewSingleDeviceSingleClientTestDevnet(t *testing.T) *TestDevnet {
+func NewSingleDeviceSingleClientTestDevnet(t *testing.T) (*TestDevnet, *devnet.Device, *devnet.Client) {
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
 	log := logger.With("test", t.Name(), "deployID", deployID)
 
 	log.Info("==> Starting test devnet with single device and client")
 
-	// Make a working directory for the generated keypairs.
-	workingDir, err := os.MkdirTemp("", "dz-devnet-"+deployID)
+	// Use a hardcoded serviceability program keypair for these tests, since device and account
+	// pubkeys onchain are derived in the smartcontract and will change if the serviceability
+	// program keypair changes. We create several devices onchain and test pubkey expectations
+	// via fixtures.
+	currentDir, err := os.Getwd()
 	require.NoError(t, err)
-	t.Cleanup(func() {
-		os.RemoveAll(workingDir)
-	})
-
-	// Use a hardcoded program keypair for these tests, since device and account pubkeys onchain
-	// are derived in the smartcontract and will change if the program keypair changes. We create
-	// several devices onchain and test pubkey expectations via fixtures.
-	programKeypairPath := "data/dz-program-keypair.json"
-
-	// Generate manager keypair.
-	managerKeypairPath := filepath.Join(workingDir, "dz-manager-keypair.json")
-	err = solana.GenerateKeypair(managerKeypairPath)
-	if err != nil {
-		t.Fatal("failed to generate manager keypair")
-	}
+	serviceabilityProgramKeypairPath := filepath.Join(currentDir, "data", "serviceability-program-keypair.json")
 
 	dn, err := devnet.New(devnet.DevnetSpec{
-		DeployID:   deployID,
-		WorkingDir: workingDir,
+		DeployID:  deployID,
+		DeployDir: t.TempDir(),
 
-		CYOANetworkSpec: devnet.CYOANetworkSpec{
+		CYOANetwork: devnet.CYOANetworkSpec{
 			CIDRPrefix: subnetCIDRPrefix,
 		},
-		Ledger: devnet.LedgerSpec{
-			ProgramKeypairPath: programKeypairPath,
-		},
 		Manager: devnet.ManagerSpec{
-			KeypairPath: managerKeypairPath,
+			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
 		},
-		Controller: devnet.ControllerSpec{
-			ExternalHost:        "localhost",
-			CYOANetworkIPHostID: 99,
-		},
-		Activator: devnet.ActivatorSpec{},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
 
@@ -142,15 +131,15 @@ func NewSingleDeviceSingleClientTestDevnet(t *testing.T) *TestDevnet {
 		log:    logger,
 	}
 
-	tdn.Start(t)
+	device, client := tdn.Start(t)
 
-	return tdn
+	return tdn, device, client
 }
 
-func (dn *TestDevnet) Start(t *testing.T) {
+func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 	ctx := t.Context()
 
-	err := dn.Devnet.Start(ctx)
+	err := dn.Devnet.Start(ctx, nil)
 	require.NoError(t, err)
 
 	// Create a dummy device first to maintain same ordering of devices as before.
@@ -158,19 +147,18 @@ func (dn *TestDevnet) Start(t *testing.T) {
 	require.NoError(t, err)
 
 	// Add a device to the devnet and onchain.
-	deviceIndex, err := dn.AddDevice(ctx, devnet.DeviceSpec{
+	device, err := dn.AddDevice(ctx, devnet.DeviceSpec{
 		Code: "ny5-dz01",
 		// .8/29 has network address .8, allocatable up to .14, and broadcast .15
 		CYOANetworkIPHostID:          8,
 		CYOANetworkAllocatablePrefix: 29,
 	})
 	require.NoError(t, err)
-	device := dn.Devices[deviceIndex]
 
 	// Add the other devices and links onchain.
 	dn.log.Info("==> Creating other devices and links onchain")
 	dn.Manager.Exec(ctx, []string{"bash", "-c", `
-		set -e
+		set -euo pipefail
 
 		echo "==> Populate device information onchain - DO NOT SHUFFLE THESE AS THE PUBKEYS WILL CHANGE"
 		doublezero device create --code ld4-dz01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "195.219.120.72/29"
@@ -194,18 +182,11 @@ func (dn *TestDevnet) Start(t *testing.T) {
 	`})
 	require.NoError(t, err)
 
-	// Generate a new client keypair.
-	clientKeypairPath := filepath.Join(dn.Spec.WorkingDir, "client-keypair.json")
-	err = solana.GenerateKeypair(clientKeypairPath)
-	require.NoError(t, err)
-
 	// Add a client to the devnet.
-	clientIndex, err := dn.AddClient(ctx, devnet.ClientSpec{
-		KeypairPath:         clientKeypairPath,
+	client, err := dn.AddClient(ctx, devnet.ClientSpec{
 		CYOANetworkIPHostID: 100,
 	})
 	require.NoError(t, err)
-	client := dn.Clients[clientIndex]
 
 	// Add client to the user allowlist.
 	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", "doublezero user allowlist add --pubkey " + client.Pubkey})
@@ -214,7 +195,7 @@ func (dn *TestDevnet) Start(t *testing.T) {
 	// Add null routes to test latency selection to ny5-dz01.
 	_, err = client.Exec(ctx, []string{"bash", "-c", `
 		echo "==> Adding null routes to test latency selection to ny5-dz01."
-		ip rule add priority 1 from ` + client.CYOANetworkIP + `/` + strconv.Itoa(dn.Spec.CYOANetworkSpec.CIDRPrefix) + ` to all table main
+		ip rule add priority 1 from ` + client.CYOANetworkIP + `/` + strconv.Itoa(dn.Spec.CYOANetwork.CIDRPrefix) + ` to all table main
 		ip route add 207.45.216.134/32 dev lo proto static scope host
 		ip route add 195.219.120.72/32 dev lo proto static scope host
 		ip route add 195.219.220.88/32 dev lo proto static scope host
@@ -226,7 +207,9 @@ func (dn *TestDevnet) Start(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for latency results.
-	dn.waitForLatencyResults(t, client, device.AccountPubkey)
+	dn.waitForLatencyResults(t, client, device.ID)
+
+	return device, client
 }
 
 func (dn *TestDevnet) DisconnectUserTunnel(t *testing.T, client *devnet.Client) {
@@ -302,7 +285,7 @@ func (dn *TestDevnet) CreateMulticastGroupOnchain(t *testing.T, client *devnet.C
 	dn.log.Info("==> Creating multicast group onchain")
 
 	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
-		set -e
+			set -e
 
 		echo "==> Populate multicast group information onchain"
 		doublezero multicast group create --code ` + multicastGroupCode + ` --max-bandwidth 10Gbps --owner me
@@ -431,7 +414,6 @@ func newTestLogger(verbose bool) *slog.Logger {
 	logger := slog.New(tint.NewHandler(logWriter, &tint.Options{
 		Level:      logLevel,
 		TimeFormat: time.DateTime,
-		// NoColor:    !isatty.IsTerminal(logWriter.Fd()),
 	}))
 	return logger
 }

@@ -5,20 +5,26 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"strings"
+	"time"
 
-	"github.com/docker/docker/api/types/container"
+	dockercontainer "github.com/docker/docker/api/types/container"
+	dockerfilters "github.com/docker/docker/api/types/filters"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
-	"github.com/malbeclabs/doublezero/e2e/internal/solana"
 	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
+)
+
+const (
+	serviceabilityProgramContainerKeypairPath = "/etc/doublezero/manager/dz-program-keypair.json"
 )
 
 type ManagerSpec struct {
-	ContainerImage string
-	KeypairPath    string
-
-	// If true, the smart contract will not be initialized on start.
-	NoInitSmartContract bool
+	ContainerImage                   string
+	ManagerKeypairPath               string
+	ServiceabilityProgramKeypairPath string
 }
 
 func (s *ManagerSpec) Validate() error {
@@ -27,9 +33,29 @@ func (s *ManagerSpec) Validate() error {
 		s.ContainerImage = os.Getenv("DZ_MANAGER_IMAGE")
 	}
 
-	// Check for required fields.
-	if s.KeypairPath == "" {
-		return fmt.Errorf("keypairPath is required")
+	// Check required fields.
+	if s.ManagerKeypairPath == "" {
+		return fmt.Errorf("manager keypair path is required")
+	}
+
+	if s.ServiceabilityProgramKeypairPath == "" {
+		return fmt.Errorf("serviceability program keypair path is required")
+	}
+
+	// Check that the manager keypair file exists and is an absolute path.
+	if _, err := os.Stat(s.ManagerKeypairPath); os.IsNotExist(err) {
+		return fmt.Errorf("manager keypair path does not exist: %s", s.ManagerKeypairPath)
+	}
+	if !filepath.IsAbs(s.ManagerKeypairPath) {
+		return fmt.Errorf("manager keypair path must be an absolute path: %s", s.ManagerKeypairPath)
+	}
+
+	// Check that the serviceability program keypair file exists and is an absolute path.
+	if _, err := os.Stat(s.ServiceabilityProgramKeypairPath); os.IsNotExist(err) {
+		return fmt.Errorf("serviceability program keypair path does not exist: %s", s.ServiceabilityProgramKeypairPath)
+	}
+	if !filepath.IsAbs(s.ServiceabilityProgramKeypairPath) {
+		return fmt.Errorf("serviceability program keypair path must be an absolute path: %s", s.ServiceabilityProgramKeypairPath)
 	}
 
 	return nil
@@ -39,39 +65,110 @@ type Manager struct {
 	dn  *Devnet
 	log *slog.Logger
 
-	ContainerID string
-	Pubkey      string
+	ContainerID             string
+	Pubkey                  string
+	ServiceabilityProgramID string
 }
 
+// dockerContainerName returns the name of the deterministic manager container based on the
+// deployID and component name.
+func (m *Manager) dockerContainerName() string {
+	return m.dn.Spec.DeployID + "-" + m.dockerContainerHostname()
+}
+
+func (m *Manager) dockerContainerHostname() string {
+	return "manager"
+}
+
+// Exists checks if the ledger container exists.
+func (m *Manager) Exists(ctx context.Context) (bool, error) {
+	containers, err := m.dn.dockerClient.ContainerList(ctx, dockercontainer.ListOptions{
+		All:     true, // Include non-running containers.
+		Filters: dockerfilters.NewArgs(dockerfilters.Arg("name", m.dockerContainerName())),
+	})
+	if err != nil {
+		return false, fmt.Errorf("failed to list containers: %w", err)
+	}
+	for _, container := range containers {
+		if container.Names[0] == "/"+m.dockerContainerName() {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// StartIfNotRunning creates and starts the ledger container if it's not already running.
+func (m *Manager) StartIfNotRunning(ctx context.Context) (bool, error) {
+	exists, err := m.Exists(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to check if manager exists: %w", err)
+	}
+	if exists {
+		container, err := m.dn.dockerClient.ContainerInspect(ctx, m.dockerContainerName())
+		if err != nil {
+			return false, fmt.Errorf("failed to inspect container: %w", err)
+		}
+
+		// Check if the container is running.
+		if container.State.Running {
+			m.log.Info("--> Manager already running", "container", shortContainerID(container.ID))
+
+			// Set the component's state.
+			err = m.setState(ctx, container.ID)
+			if err != nil {
+				return false, fmt.Errorf("failed to set manager state: %w", err)
+			}
+
+			return false, nil
+		}
+
+		// Otherwise, start the container.
+		m.log.Info("--> Starting manager", "container", container.ID, "serviceabilityProgramID", m.ServiceabilityProgramID)
+		err = m.dn.dockerClient.ContainerStart(ctx, container.ID, dockercontainer.StartOptions{})
+		if err != nil {
+			return false, fmt.Errorf("failed to start manager: %w", err)
+		}
+
+		// Set the component's state.
+		err = m.setState(ctx, container.ID)
+		if err != nil {
+			return false, fmt.Errorf("failed to set manager state: %w", err)
+		}
+
+		return true, nil
+	}
+
+	return false, m.Start(ctx)
+}
+
+// Start creates and starts the manager container and attaches it to the default network.
 func (m *Manager) Start(ctx context.Context) error {
 	m.log.Info("==> Starting manager", "image", m.dn.Spec.Manager.ContainerImage)
 
-	// Derive the manager pubkey from the manager keypair.
-	managerPubkey, err := solana.PublicAddressFromKeypair(m.dn.Spec.Manager.KeypairPath)
-	if err != nil {
-		return fmt.Errorf("failed to get manager pubkey: %v", err)
-	}
-
-	containerManagerKeypairPath := "/etc/doublezero/manager/dz-manager-keypair.json"
-	containerProgramKeypairPath := "/etc/doublezero/manager/dz-program-keypair.json"
 	req := testcontainers.ContainerRequest{
 		Image: m.dn.Spec.Manager.ContainerImage,
-		Name:  m.dn.Spec.DeployID + "-manager",
+		Name:  m.dockerContainerName(),
+		ConfigModifier: func(cfg *dockercontainer.Config) {
+			cfg.Hostname = m.dockerContainerHostname()
+		},
+		WaitingFor: wait.ForLog("Config initialized").WithStartupTimeout(30 * time.Second),
 		Env: map[string]string{
-			"DZ_LEDGER_URL":           m.dn.Ledger.InternalURL,
-			"DZ_LEDGER_WS":            m.dn.Ledger.InternalWSURL,
-			"DZ_PROGRAM_ID":           m.dn.Ledger.ProgramID,
-			"DZ_MANAGER_KEYPAIR_PATH": containerManagerKeypairPath,
-			"DZ_PROGRAM_KEYPAIR_PATH": containerProgramKeypairPath,
+			"DZ_LEDGER_URL":                          m.dn.Ledger.InternalRPCURL,
+			"DZ_LEDGER_WS":                           m.dn.Ledger.InternalRPCWSURL,
+			"DZ_SERVICEABILITY_PROGRAM_KEYPAIR_PATH": serviceabilityProgramContainerKeypairPath,
 		},
 		Files: []testcontainers.ContainerFile{
 			{
-				HostFilePath:      m.dn.Spec.Manager.KeypairPath,
-				ContainerFilePath: containerManagerKeypairPath,
+				HostFilePath:      m.dn.Spec.Manager.ManagerKeypairPath,
+				ContainerFilePath: containerDoublezeroKeypairPath,
 			},
 			{
-				HostFilePath:      m.dn.Spec.Ledger.ProgramKeypairPath,
-				ContainerFilePath: containerProgramKeypairPath,
+				HostFilePath:      m.dn.Spec.Manager.ManagerKeypairPath,
+				ContainerFilePath: containerSolanaKeypairPath,
+			},
+			{
+				HostFilePath:      m.dn.Spec.Manager.ServiceabilityProgramKeypairPath,
+				ContainerFilePath: serviceabilityProgramContainerKeypairPath,
 			},
 		},
 		Networks: []string{m.dn.DefaultNetwork.Name},
@@ -81,7 +178,7 @@ func (m *Manager) Start(ctx context.Context) error {
 		// NOTE: We intentionally use the deprecated Resources field here instead of the HostConfigModifier
 		// because the latter has issues with setting SHM memory and other constraints to 0, which can cause
 		// unexpected behavior.
-		Resources: container.Resources{
+		Resources: dockercontainer.Resources{
 			NanoCPUs: defaultContainerNanoCPUs,
 			Memory:   defaultContainerMemory,
 		},
@@ -96,80 +193,39 @@ func (m *Manager) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to start manager: %w", err)
 	}
 
-	m.ContainerID = shortContainerID(container.GetContainerID())
-	m.Pubkey = managerPubkey
+	// Set the component's state.
+	err = m.setState(ctx, container.GetContainerID())
+	if err != nil {
+		return fmt.Errorf("failed to set manager state: %w", err)
+	}
 
 	m.log.Info("--> Manager started", "container", m.ContainerID, "pubkey", m.Pubkey)
 	return nil
 }
 
-func (m *Manager) InitSmartContract(ctx context.Context) error {
-	m.log.Info("==> Initializing smart contract")
+func (m *Manager) setState(ctx context.Context, containerID string) error {
+	m.ContainerID = shortContainerID(containerID)
 
-	_, err := docker.Exec(ctx, m.dn.dockerClient, m.ContainerID, []string{"bash", "-c", `
-		set -e
-
-		# Fund the manager account with some SOL if the balance is 0.
-		echo "==> Checking manager account balance"
-		solana balance --keypair $DZ_MANAGER_KEYPAIR_PATH
-		if solana balance --keypair $DZ_MANAGER_KEYPAIR_PATH | grep -q "^0 SOL$"; then
-			echo "==> Manager account balance is 0 SOL, funding with 1000 SOL"
-			solana airdrop 100 $(solana-keygen pubkey $DZ_MANAGER_KEYPAIR_PATH)
-		fi
-		echo
-
-		echo "==> Initializing smart contract"
-		doublezero init
-		echo
-
-		# Populate global configuration onchain.
-		echo "==> Populating global configuration onchain"
-		echo doublezero global-config set --local-asn 65000 --remote-asn 65342 --device-tunnel-block 172.16.0.0/16 --user-tunnel-block 169.254.0.0/16 --multicastgroup-block 233.84.178.0/24
-		doublezero global-config set --local-asn 65000 --remote-asn 65342 --device-tunnel-block 172.16.0.0/16 --user-tunnel-block 169.254.0.0/16 --multicastgroup-block 233.84.178.0/24
-		echo "--> Global configuration onchain:"
-		doublezero global-config get
-		echo
-
-		# Populate location information onchain.
-		echo "==> Populating location information onchain"
-		doublezero location create --code lax --name "Los Angeles" --country US --lat 34.049641274076464 --lng -118.25939642499903
-		doublezero location create --code ewr --name "New York" --country US --lat 40.780297071772125 --lng -74.07203003496925
-		doublezero location create --code lhr --name "London" --country UK --lat 51.513999803939384 --lng -0.12014764843092213
-		doublezero location create --code fra --name "Frankfurt" --country DE --lat 50.1215356432098 --lng 8.642047117175098
-		doublezero location create --code sin --name "Singapore" --country SG --lat 1.2807150707390342 --lng 103.85507136144396
-		doublezero location create --code tyo --name "Tokyo" --country JP --lat 35.66875144228767 --lng 139.76565267564501
-		doublezero location create --code pit --name "Pittsburgh" --country US --lat 40.45119259881935 --lng -80.00498215509094
-		doublezero location create --code ams --name "Amsterdam" --country US --lat 52.30085793004002 --lng 4.942241140085309
-		echo "--> Location information onchain:"
-		doublezero location list
-
-		# Populate exchange information onchain.
-		echo "==> Populating exchange information onchain"
-		doublezero exchange create --code xlax --name "Los Angeles" --lat 34.049641274076464 --lng -118.25939642499903
-		doublezero exchange create --code xewr --name "New York" --lat 40.780297071772125 --lng -74.07203003496925
-		doublezero exchange create --code xlhr --name "London" --lat 51.513999803939384 --lng -0.12014764843092213
-		doublezero exchange create --code xfra --name "Frankfurt" --lat 50.1215356432098 --lng 8.642047117175098
-		doublezero exchange create --code xsin --name "Singapore" --lat 1.2807150707390342 --lng 103.85507136144396
-		doublezero exchange create --code xtyo --name "Tokyo" --lat 35.66875144228767 --lng 139.76565267564501
-		doublezero exchange create --code xpit --name "Pittsburgh" --lat 40.45119259881935 --lng -80.00498215509094
-		doublezero exchange create --code xams --name "Amsterdam" --lat 52.30085793004002 --lng 4.942241140085309
-		echo "--> Exchange information onchain:"
-		doublezero exchange list
-
-		echo "--> Smart contract initialized"
-	`})
+	// Get the manager pubkey from the manager keypair.
+	output, err := m.Exec(ctx, []string{"solana", "address"}, docker.NoPrintOnError())
 	if err != nil {
-		return fmt.Errorf("failed to execute script initializing smart contract: %w", err)
+		return fmt.Errorf("failed to get manager pubkey: %v", err)
 	}
+	m.Pubkey = strings.TrimSpace(string(output))
 
-	m.log.Info("--> Smart contract initialized")
+	// Get the serviceability program ID from the serviceability program keypair.
+	output, err = m.Exec(ctx, []string{"solana", "address", "-k", serviceabilityProgramContainerKeypairPath}, docker.NoPrintOnError())
+	if err != nil {
+		return fmt.Errorf("failed to get serviceability program pubkey: %v", err)
+	}
+	m.ServiceabilityProgramID = strings.TrimSpace(string(output))
 
 	return nil
 }
 
-func (m *Manager) Exec(ctx context.Context, command []string) ([]byte, error) {
+func (m *Manager) Exec(ctx context.Context, command []string, opts ...docker.ExecOption) ([]byte, error) {
 	m.log.Debug("--> Executing command", "command", command)
-	output, err := docker.Exec(ctx, m.dn.dockerClient, m.ContainerID, command)
+	output, err := docker.Exec(ctx, m.dn.dockerClient, m.ContainerID, command, opts...)
 	if err != nil {
 		// NOTE: We return the output here because it can contain useful information on error.
 		return output, fmt.Errorf("failed to execute command from manager: %w", err)

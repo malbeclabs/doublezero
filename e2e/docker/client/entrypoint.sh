@@ -1,4 +1,5 @@
-#!/bin/sh
+#!/usr/bin/env bash
+set -euo pipefail
 
 # Check for required environment variables.
 if [ -z "${DZ_LEDGER_URL}" ]; then
@@ -9,8 +10,8 @@ if [ -z "${DZ_LEDGER_WS}" ]; then
   echo "DZ_LEDGER_WS is not set"
   exit 1
 fi
-if [ -z "${DZ_PROGRAM_ID}" ]; then
-  echo "DZ_PROGRAM_ID is not set"
+if [ -z "${DZ_SERVICEABILITY_PROGRAM_ID}" ]; then
+  echo "DZ_SERVICEABILITY_PROGRAM_ID is not set"
   exit 1
 fi
 
@@ -27,7 +28,7 @@ done
 doublezero config set \
   --url $DZ_LEDGER_URL \
   --ws $DZ_LEDGER_WS \
-  --program-id $DZ_PROGRAM_ID
+  --program-id $DZ_SERVICEABILITY_PROGRAM_ID
 echo "==> Config:"
 cat /root/.config/doublezero/cli/config.yml
 echo
@@ -39,10 +40,13 @@ solana config set --url $DZ_LEDGER_URL
 echo
 
 # Create path for socket file.
-mkdir /var/run/doublezerod
+mkdir -p /var/run/doublezerod
+
+# Delete the socket file if it exists at this point.
+rm -f /var/run/doublezerod/doublezerod.sock
 
 # Create state file directory.
-mkdir /var/lib/doublezerod
+mkdir -p /var/lib/doublezerod
 
 # Start doublezerod.
-doublezerod -program-id ${DZ_PROGRAM_ID} -solana-rpc-endpoint ${DZ_LEDGER_URL} -probe-interval 5 -cache-update-interval 3
+doublezerod -program-id ${DZ_SERVICEABILITY_PROGRAM_ID} -solana-rpc-endpoint ${DZ_LEDGER_URL} -probe-interval 5 -cache-update-interval 3

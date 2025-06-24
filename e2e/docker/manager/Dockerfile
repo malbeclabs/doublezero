@@ -1,19 +1,31 @@
-ARG BASE_IMAGE
+ARG BASE_IMAGE=undefined
 FROM ${BASE_IMAGE} AS base
 
 FROM ubuntu:24.04
 
+ENV DEBIAN_FRONTEND=noninteractive
+
 RUN apt-get update && \
-    apt-get install -y curl
+    apt-get install -y curl perl jq vim iproute2
 
-COPY --from=base /doublezero/bin/doublezero /usr/local/bin/
-COPY --from=base /usr/local/bin/solana /usr/local/bin/
-COPY --from=base /usr/local/bin/solana-keygen /usr/local/bin/
-COPY --from=base /doublezero/bin/doublezero_serviceability.so /usr/local/bin/
+COPY --from=base /doublezero/bin/doublezero /doublezero/bin/.
+COPY --from=base /doublezero/bin/doublezero_serviceability.so /doublezero/bin/.
 
-ENV DZ_PROGRAM_PATH=/usr/local/bin/doublezero_serviceability.so
+COPY --from=base /usr/local/bin/solana /usr/local/bin/.
+COPY --from=base /usr/local/bin/solana-keygen /usr/local/bin/.
+
+ENV PATH=/doublezero/bin:$PATH
+
+ENV DZ_SERVICEABILITY_PROGRAM_PATH=/doublezero/bin/doublezero_serviceability.so
 
 ARG DOCKERFILE_DIR
 COPY ${DOCKERFILE_DIR}/scripts/init-config.sh /doublezero/scripts/init-config.sh
+
+# Configure bash completions for doublezero and solana CLIs.
+RUN mkdir -p /etc/bash_completion.d && \
+    doublezero completion bash > /etc/bash_completion.d/doublezero && \
+    solana completion > /etc/bash_completion.d/solana && \
+    echo "source /etc/bash_completion.d/doublezero" >> /root/.bashrc && \
+    echo "source /etc/bash_completion.d/solana" >> /root/.bashrc
 
 CMD ["bash", "-c", "/doublezero/scripts/init-config.sh && sleep infinity"]

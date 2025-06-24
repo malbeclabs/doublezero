@@ -10,6 +10,7 @@ use crate::{
     },
     states::devicestate::DeviceState,
 };
+use doublezero_cli::{checkversion::check_version, doublezerocommand::CliCommandImpl};
 use doublezero_sdk::{
     commands::{
         device::list::ListDeviceCommand, exchange::list::ListExchangeCommand,
@@ -17,7 +18,8 @@ use doublezero_sdk::{
         user::list::ListUserCommand,
     },
     ipv4_to_string, networkv4_list_to_string, AccountData, DZClient, Device, DeviceStatus,
-    Exchange, GetGlobalConfigCommand, LinkStatus, Location, MulticastGroup, UserStatus,
+    Exchange, GetGlobalConfigCommand, LinkStatus, Location, MulticastGroup, ProgramVersion,
+    UserStatus,
 };
 use solana_sdk::pubkey::Pubkey;
 use std::{collections::HashMap, thread, time::Duration};
@@ -59,6 +61,13 @@ impl Activator {
             client.get_ws(),
             client.get_program_id()
         );
+
+        let stdout = std::io::stdout();
+        let mut handle = stdout.lock();
+
+        // Check the version of the client against the program version
+        let cli = CliCommandImpl::new(&client);
+        check_version(&cli, &mut handle, ProgramVersion::current())?;
 
         // Wait for the global config to be available
         // This is a workaround for the fact that the global config is not available immediately

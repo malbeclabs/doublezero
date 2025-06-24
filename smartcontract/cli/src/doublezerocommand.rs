@@ -58,6 +58,7 @@ use doublezero_sdk::{
             subscribe::SubscribeMulticastGroupCommand,
             update::UpdateMulticastGroupCommand,
         },
+        programconfig::get::GetProgramConfigCommand,
         user::{
             create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand,
             delete::DeleteUserCommand, get::GetUserCommand, list::ListUserCommand,
@@ -67,6 +68,7 @@ use doublezero_sdk::{
     DZClient, Device, DoubleZeroClient, Exchange, GetGlobalConfigCommand, GlobalConfig, Link,
     Location, MulticastGroup, User,
 };
+use doublezero_serviceability::state::programconfig::ProgramConfig;
 use mockall::automock;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 use std::collections::HashMap;
@@ -74,6 +76,11 @@ use std::collections::HashMap;
 #[automock]
 pub trait CliCommand {
     fn check_requirements(&self, checks: u8) -> eyre::Result<()>;
+
+    fn get_program_config(
+        &self,
+        cmd: GetProgramConfigCommand,
+    ) -> eyre::Result<(Pubkey, ProgramConfig)>;
 
     fn get_program_id(&self) -> Pubkey;
     fn get_payer(&self) -> Pubkey;
@@ -215,6 +222,13 @@ impl CliCommandImpl<'_> {
 impl CliCommand for CliCommandImpl<'_> {
     fn check_requirements(&self, checks: u8) -> eyre::Result<()> {
         crate::requirements::check_requirements(self, None, checks)
+    }
+
+    fn get_program_config(
+        &self,
+        cmd: GetProgramConfigCommand,
+    ) -> eyre::Result<(Pubkey, ProgramConfig)> {
+        cmd.execute(self.client)
     }
 
     fn get_program_id(&self) -> Pubkey {

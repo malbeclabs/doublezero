@@ -1481,6 +1481,7 @@ dependencies = [
  "chrono",
  "clap",
  "doublezero-serviceability",
+ "doublezero_cli",
  "doublezero_sdk",
  "eyre",
  "indexmap",

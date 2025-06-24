@@ -17,7 +17,7 @@ mod tunnel_test {
     use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey};
 
     #[tokio::test]
-    async fn test_tunnel() {
+    async fn test_link() {
         let program_id = Pubkey::new_unique();
         let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
             "doublezero_serviceability",
@@ -28,17 +28,21 @@ mod tunnel_test {
         .await;
 
         /***********************************************************************************************************************************/
-        println!("🟢  Start test_tunnel");
+        println!("🟢  Start test_link");
 
+        let (program_config_pubkey, _) = get_program_config_pda(&program_id);
         let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
-        println!("🟢 1. Global Initizlize...");
+        println!("🟢 1. Global Initialization...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::InitGlobalState(),
-            vec![AccountMeta::new(globalstate_pubkey, false)],
+            vec![
+                AccountMeta::new(program_config_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
             &payer,
         )
         .await;

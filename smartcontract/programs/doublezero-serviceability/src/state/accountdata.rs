@@ -3,7 +3,7 @@ use crate::{
     state::{
         accounttype::AccountType, device::Device, exchange::Exchange, globalconfig::GlobalConfig,
         globalstate::GlobalState, link::Link, location::Location, multicastgroup::MulticastGroup,
-        user::User,
+        programconfig::ProgramConfig, user::User,
     },
 };
 
@@ -18,6 +18,7 @@ pub enum AccountData {
     Link(Link),
     User(User),
     MulticastGroup(MulticastGroup),
+    ProgramConfig(ProgramConfig),
 }
 
 impl AccountData {
@@ -32,6 +33,7 @@ impl AccountData {
             AccountData::Link(_) => "Link",
             AccountData::User(_) => "User",
             AccountData::MulticastGroup(_) => "MulticastGroup",
+            AccountData::ProgramConfig(_) => "ProgramConfig",
         }
     }
 
@@ -46,6 +48,7 @@ impl AccountData {
             AccountData::Link(tunnel) => tunnel.to_string(),
             AccountData::User(user) => user.to_string(),
             AccountData::MulticastGroup(multicast_group) => multicast_group.to_string(),
+            AccountData::ProgramConfig(program_config) => program_config.to_string(),
         }
     }
 
@@ -112,6 +115,14 @@ impl AccountData {
             Err(DoubleZeroError::InvalidAccountType)
         }
     }
+
+    pub fn get_program_config(&self) -> Result<ProgramConfig, DoubleZeroError> {
+        if let AccountData::ProgramConfig(program_config) = self {
+            Ok(program_config.clone())
+        } else {
+            Err(DoubleZeroError::InvalidAccountType)
+        }
+    }
 }
 
 impl From<&[u8]> for AccountData {
@@ -126,6 +137,7 @@ impl From<&[u8]> for AccountData {
             AccountType::Link => AccountData::Link(Link::from(bytes)),
             AccountType::User => AccountData::User(User::from(bytes)),
             AccountType::MulticastGroup => AccountData::MulticastGroup(MulticastGroup::from(bytes)),
+            AccountType::ProgramConfig => AccountData::ProgramConfig(ProgramConfig::from(bytes)),
         }
     }
 }

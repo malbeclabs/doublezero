@@ -1,7 +1,9 @@
 use crate::{
+    accounts::write_account,
     pda::*,
+    programversion::ProgramVersion,
     seeds::{SEED_GLOBALSTATE, SEED_PREFIX},
-    state::{accounttype::AccountType, globalstate::GlobalState},
+    state::{accounttype::AccountType, globalstate::GlobalState, programconfig::ProgramConfig},
 };
 use borsh::BorshSerialize;
 #[cfg(test)]
@@ -18,12 +20,30 @@ use solana_program::{
 pub fn initialize_global_state(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
+    let program_config_account = next_account_info(accounts_iter)?;
     let pda_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
     msg!("initialize_global_state()");
+
+    let (program_config_pda, program_config_bump_seed) = get_program_config_pda(program_id);
+    assert_eq!(
+        program_config_account.key, &program_config_pda,
+        "Invalid ProgramConfig PubKey"
+    );
+    write_account(
+        program_config_account,
+        &ProgramConfig {
+            account_type: AccountType::ProgramConfig,
+            bump_seed: program_config_bump_seed, // This is not used in this context
+            version: ProgramVersion::current(),  // Default version for initialization
+        },
+        program_id,
+        payer_account,
+        system_program,
+    )?;
 
     let (expected_pda_account, bump_seed) = get_globalstate_pda(program_id);
     assert_eq!(

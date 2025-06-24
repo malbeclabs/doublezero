@@ -269,9 +269,9 @@ func (d *Device) Start(ctx context.Context) error {
 	defaultNetworkCIDRPrefix := inspect.NetworkSettings.Networks[d.dn.DefaultNetwork.Name].IPPrefixLen
 
 	telemetryCommandArgs := []string{
-		"-ledger-rpc-url", d.dn.Ledger.InternalURL,
-		"-program-id", d.dn.Ledger.ProgramID,
-		"-local-device-pubkey", accountPubkey,
+		"-ledger-rpc-url", d.dn.Ledger.InternalIPRPCURL,
+		"-program-id", d.dn.Ledger.dn.Manager.ServiceabilityProgramID,
+		"-local-device-pubkey", onchainID,
 		"-twamp-listen-port", strconv.Itoa(int(spec.Telemetry.TWAMPListenPort)),
 		"-probe-interval", spec.Telemetry.ProbeInterval.String(),
 		"-submission-interval", spec.Telemetry.SubmissionInterval.String(),

@@ -2,6 +2,7 @@ pub mod account;
 pub mod address;
 pub mod allowlist;
 pub mod balance;
+pub mod checkversion;
 pub mod config;
 pub mod device;
 pub mod doublezerocommand;

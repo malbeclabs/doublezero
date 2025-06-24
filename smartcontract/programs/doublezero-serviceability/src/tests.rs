@@ -48,14 +48,19 @@ pub mod test {
         /***********************************************************************************************************************************/
         println!("🟢  Start...");
 
-        let (globalstate_pubkey, _globalstate_bump_seed) = get_globalstate_pda(&program_id);
+        let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
+        println!("🟢 1. Global Initialization...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::InitGlobalState(),
-            vec![AccountMeta::new(globalstate_pubkey, false)],
+            vec![
+                AccountMeta::new(program_config_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
             &payer,
         )
         .await;

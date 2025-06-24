@@ -16,6 +16,7 @@ pub enum AccountType {
     Link = 6,
     User = 7,
     MulticastGroup = 8,
+    ProgramConfig = 9,
 }
 
 impl From<u8> for AccountType {
@@ -29,6 +30,7 @@ impl From<u8> for AccountType {
             6 => AccountType::Link,
             7 => AccountType::User,
             8 => AccountType::MulticastGroup,
+            9 => AccountType::ProgramConfig,
             _ => AccountType::None,
         }
     }
@@ -46,14 +48,15 @@ impl fmt::Display for AccountType {
             AccountType::Link => write!(f, "tunnel"),
             AccountType::User => write!(f, "user"),
             AccountType::MulticastGroup => write!(f, "multicastgroup"),
+            AccountType::ProgramConfig => write!(f, "programconfig"),
         }
     }
 }
 
 pub trait AccountTypeInfo {
     fn index(&self) -> u128;
-    fn owner(&self) -> Pubkey;
     fn bump_seed(&self) -> u8;
     fn size(&self) -> usize;
     fn seed(&self) -> &[u8];
+    fn owner(&self) -> Pubkey;
 }

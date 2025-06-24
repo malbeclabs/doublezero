@@ -9,7 +9,7 @@ use cli::{
     location::LocationCommands,
     user::{UserAllowlistCommands, UserCommands},
 };
-use doublezero_cli::doublezerocommand::CliCommandImpl;
+use doublezero_cli::{checkversion::check_version, doublezerocommand::CliCommandImpl};
 use doublezero_sdk::DZClient;
 mod cli;
 
@@ -50,6 +50,7 @@ async fn main() -> eyre::Result<()> {
     let stdout = std::io::stdout();
     let mut handle = stdout.lock();
 
+    check_version(&client, &mut handle)?;
     let res = match app.command {
         Command::Address(args) => args.execute(&client, &mut handle),
         Command::Balance(args) => args.execute(&client, &mut handle),

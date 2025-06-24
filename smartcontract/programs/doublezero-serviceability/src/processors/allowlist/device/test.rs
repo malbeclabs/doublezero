@@ -30,6 +30,7 @@ mod device_test {
         let user1 = Pubkey::new_unique();
         let user2 = Pubkey::new_unique();
 
+        let (program_config_pubkey, _) = get_program_config_pda(&program_id);
         let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
         println!("🟢 1. Global Initialization...");
@@ -38,7 +39,10 @@ mod device_test {
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::InitGlobalState(),
-            vec![AccountMeta::new(globalstate_pubkey, false)],
+            vec![
+                AccountMeta::new(program_config_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
             &payer,
         )
         .await;

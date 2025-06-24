@@ -9,6 +9,10 @@ pub fn get_globalconfig_pda(program_id: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[SEED_PREFIX, SEED_CONFIG], program_id)
 }
 
+pub fn get_program_config_pda(program_id: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[SEED_PREFIX, SEED_PROGRAM_CONFIG], program_id)
+}
+
 pub fn get_location_pda(program_id: &Pubkey, index: u128) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[SEED_PREFIX, SEED_LOCATION, &index.to_le_bytes()],

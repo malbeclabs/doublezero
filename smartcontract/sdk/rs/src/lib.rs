@@ -11,6 +11,7 @@ pub use crate::config::{
 };
 
 pub use doublezero_serviceability::{
+    programversion::ProgramVersion,
     state::{
         accountdata::AccountData,
         accounttype::AccountType,

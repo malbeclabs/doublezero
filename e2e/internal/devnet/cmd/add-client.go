@@ -39,7 +39,7 @@ func (c *AddClientCmd) Command() *cobra.Command {
 		}),
 	}
 
-	cmd.Flags().Uint32Var(&cyoaNetworkHostID, "cyoa-network-host-id", 0, "CYOA network host ID")
+	cmd.Flags().Uint32Var(&cyoaNetworkHostID, "cyoa-network-host-id", 0, "CYOA network host ID; if the subnet CIDR prefix is 24 (default), this represents the last octet of the IP address")
 	_ = cmd.MarkFlagRequired("cyoa-network-host-id")
 
 	cmd.Flags().StringVar(&keypairPath, "keypair-path", "", "Path to the keypair file (optional)")

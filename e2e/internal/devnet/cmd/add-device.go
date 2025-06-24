@@ -17,6 +17,7 @@ func NewAddDeviceCmd() *AddDeviceCmd {
 func (c *AddDeviceCmd) Command() *cobra.Command {
 	var code string
 	var cyoaNetworkHostID uint32
+	var cyoaNetworkAllocatablePrefix uint32
 
 	cmd := &cobra.Command{
 		Use:   "add-device",
@@ -28,8 +29,9 @@ func (c *AddDeviceCmd) Command() *cobra.Command {
 			}
 
 			_, err = dn.AddDevice(ctx, devnet.DeviceSpec{
-				Code:                code,
-				CYOANetworkIPHostID: cyoaNetworkHostID,
+				Code:                         code,
+				CYOANetworkIPHostID:          cyoaNetworkHostID,
+				CYOANetworkAllocatablePrefix: cyoaNetworkAllocatablePrefix,
 			})
 			if err != nil {
 				return fmt.Errorf("failed to add device: %w", err)
@@ -40,7 +42,8 @@ func (c *AddDeviceCmd) Command() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&code, "code", "", "Device code")
-	cmd.Flags().Uint32Var(&cyoaNetworkHostID, "cyoa-network-host-id", 0, "CYOA network host ID")
+	cmd.Flags().Uint32Var(&cyoaNetworkHostID, "cyoa-network-host-id", 0, "CYOA network host ID; if the subnet CIDR prefix is 24 (default), this represents the last octet of the IP address")
+	cmd.Flags().Uint32Var(&cyoaNetworkAllocatablePrefix, "cyoa-network-allocatable-prefix", 0, "CYOA network allocatable prefix; the prefix length of the block of IPs that are available for allocation to clients for this device in the CYOA subnet (default 29)")
 	_ = cmd.MarkFlagRequired("code")
 	_ = cmd.MarkFlagRequired("cyoa-network-host-id")
 

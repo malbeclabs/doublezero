@@ -15,7 +15,7 @@ func Run(ctx context.Context, log *slog.Logger, imageName string, verbose bool, 
 		log.Debug("--> Executing command", "cmd", cmd.Args)
 	}
 
-	output, err := cmd.CombinedOutput()
+	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to run docker container: %w", err)
 	}

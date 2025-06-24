@@ -25,6 +25,19 @@ func BuildContainerImages(ctx context.Context, log *slog.Logger, workspaceDir st
 
 	dockerfilesDir := filepath.Join(workspaceDir, dockerfilesDirRelativeToWorkspace)
 
+	// Pull the solana image first.
+	// This can be flaky sometimes, so we retry a couple times.
+	for i := range 3 {
+		err := docker.Pull(ctx, log, os.Getenv("DZ_SOLANA_IMAGE"), verbose)
+		if err == nil {
+			break
+		}
+		if i == 2 {
+			return fmt.Errorf("failed to pull solana image after 3 attempts: %w", err)
+		}
+		time.Sleep(time.Second * time.Duration(i+1))
+	}
+
 	// Get the solana version.
 	output, err := docker.Run(ctx, log, os.Getenv("DZ_SOLANA_IMAGE"), verbose, "bash", "-c", "solana --version | awk '{print $2}'")
 	if err != nil {

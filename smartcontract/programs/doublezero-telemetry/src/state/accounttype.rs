@@ -1,6 +1,6 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::Serialize;
-use solana_program::pubkey::Pubkey;
+use solana_program::{program_error::ProgramError, pubkey::Pubkey};
 use std::fmt;
 
 #[repr(u8)]
@@ -11,12 +11,14 @@ pub enum AccountType {
     ThirdPartyLatencySamples = 2,
 }
 
-impl From<u8> for AccountType {
-    fn from(value: u8) -> Self {
+impl TryFrom<u8> for AccountType {
+    type Error = ProgramError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            1 => AccountType::DzLatencySamples,
-            2 => AccountType::ThirdPartyLatencySamples,
-            _ => AccountType::DzLatencySamples, // Default
+            1 => Ok(AccountType::DzLatencySamples),
+            2 => Ok(AccountType::ThirdPartyLatencySamples),
+            _ => Err(ProgramError::InvalidAccountData),
         }
     }
 }

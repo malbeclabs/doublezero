@@ -2,9 +2,7 @@ use crate::{
     instructions::TelemetryInstruction,
     processors::telemetry::{
         initialize_dz_samples::process_initialize_dz_latency_samples,
-        initialize_thirdparty_samples::process_initialize_thirdparty_latency_samples,
         write_dz_samples::process_write_dz_latency_samples,
-        write_thirdparty_samples::process_write_thirdparty_latency_samples,
     },
 };
 use solana_program::{
@@ -29,14 +27,8 @@ pub fn process_instruction(
         TelemetryInstruction::InitializeDzLatencySamples(args) => {
             process_initialize_dz_latency_samples(program_id, accounts, &args)?
         }
-        TelemetryInstruction::InitializeThirdPartyLatencySamples(args) => {
-            process_initialize_thirdparty_latency_samples(program_id, accounts, &args)?
-        }
         TelemetryInstruction::WriteDzLatencySamples(args) => {
             process_write_dz_latency_samples(program_id, accounts, &args)?
-        }
-        TelemetryInstruction::WriteThirdPartyLatencySamples(args) => {
-            process_write_thirdparty_latency_samples(program_id, accounts, &args)?
         }
     };
 

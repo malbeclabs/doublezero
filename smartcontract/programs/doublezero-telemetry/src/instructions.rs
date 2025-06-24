@@ -1,8 +1,6 @@
 use crate::processors::telemetry::{
     initialize_dz_samples::InitializeDzLatencySamplesArgs,
-    initialize_thirdparty_samples::InitializeThirdPartyLatencySamplesArgs,
     write_dz_samples::WriteDzLatencySamplesArgs,
-    write_thirdparty_samples::WriteThirdPartyLatencySamplesArgs,
 };
 use borsh::{from_slice, BorshDeserialize, BorshSerialize};
 use solana_program::program_error::ProgramError;
@@ -12,12 +10,8 @@ use std::cmp::PartialEq;
 pub enum TelemetryInstruction {
     /// Initialize DZ latency samples account
     InitializeDzLatencySamples(InitializeDzLatencySamplesArgs),
-    /// Initialize third-party latency samples account
-    InitializeThirdPartyLatencySamples(InitializeThirdPartyLatencySamplesArgs),
     /// Write DZ latency samples to chain
     WriteDzLatencySamples(WriteDzLatencySamplesArgs),
-    /// Write third-party latency samples to chain
-    WriteThirdPartyLatencySamples(WriteThirdPartyLatencySamplesArgs),
 }
 
 impl TelemetryInstruction {
@@ -38,17 +32,9 @@ impl TelemetryInstruction {
                 let args: InitializeDzLatencySamplesArgs = from_slice(&data[1..])?;
                 TelemetryInstruction::InitializeDzLatencySamples(args)
             }
-            1 => {
-                let args: InitializeThirdPartyLatencySamplesArgs = from_slice(&data[1..])?;
-                TelemetryInstruction::InitializeThirdPartyLatencySamples(args)
-            }
             2 => {
                 let args: WriteDzLatencySamplesArgs = from_slice(&data[1..])?;
                 TelemetryInstruction::WriteDzLatencySamples(args)
-            }
-            3 => {
-                let args: WriteThirdPartyLatencySamplesArgs = from_slice(&data[1..])?;
-                TelemetryInstruction::WriteThirdPartyLatencySamples(args)
             }
             _ => return Err(ProgramError::InvalidInstructionData),
         };

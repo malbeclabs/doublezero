@@ -76,7 +76,7 @@ pub fn process_write_dz_latency_samples(
     msg!("Updating existing DZ latency samples account");
 
     // Derive PDA using the provided link account
-    let (expected_pda, _bump_seed) = derive_dz_latency_samples_pda(
+    let (dz_latency_samples_pda, _dz_latency_samples_bump_seed) = derive_dz_latency_samples_pda(
         program_id,
         device_a_account.key,
         device_z_account.key,
@@ -85,7 +85,7 @@ pub fn process_write_dz_latency_samples(
     );
 
     // Verify PDA matches
-    if *latency_samples_account.key != expected_pda {
+    if *latency_samples_account.key != dz_latency_samples_pda {
         msg!("Invalid PDA for latency samples account");
         return Err(TelemetryError::InvalidPDA.into());
     }

@@ -99,38 +99,29 @@ pub fn process_initialize_dz_latency_samples(
         return Err(TelemetryError::DeviceNotActive.into());
     }
 
-    // Determine link_pk based on whether this is internet data or link data
-    let link_pk_to_store = if args.link_index == u128::MAX {
-        // Check if this is internet data (indicated by u128::MAX sentinel value)
-        msg!("Initializing for internet data (all 1s link_pk)");
-        crate::helper::all_ones_pubkey()
-    } else {
-        // Regular link data - validate the link
-        let link = Link::try_from(link_account)?;
-        if link.status != LinkStatus::Activated {
-            msg!("Link is not activated");
-            return Err(TelemetryError::LinkNotActive.into());
-        }
+    // Regular link validation
+    let link = Link::try_from(link_account)?;
+    if link.status != LinkStatus::Activated {
+        msg!("Link is not activated");
+        return Err(TelemetryError::LinkNotActive.into());
+    }
 
-        // Verify link connects the two devices
-        if !((link.side_a_pk == *device_a_account.key && link.side_z_pk == *device_z_account.key)
-            || (link.side_z_pk == *device_a_account.key && link.side_a_pk == *device_z_account.key))
-        {
-            msg!("Link does not connect the specified devices");
-            return Err(TelemetryError::InvalidLink.into());
-        }
-
-        *link_account.key
+    // Verify link connects the two devices
+    if !((link.side_a_pk == *device_a_account.key && link.side_z_pk == *device_z_account.key)
+        || (link.side_z_pk == *device_a_account.key && link.side_a_pk == *device_z_account.key))
+    {
+        msg!("Link does not connect the specified devices");
+        return Err(TelemetryError::InvalidLink.into());
     };
 
     // NOTE: Order the keys first
     let (pk_a, pk_b) = order_pubkeys(device_a_account.key, device_z_account.key);
 
-    let (expected_pda, bump_seed) =
-        derive_dz_latency_samples_pda(program_id, &pk_a, &pk_b, &link_pk_to_store, args.epoch);
+    let (latency_samples_pda, latency_samples_bump_seed) =
+        derive_dz_latency_samples_pda(program_id, &pk_a, &pk_b, &link_account.key, args.epoch);
 
     // Verify PDA matches
-    if *latency_samples_account.key != expected_pda {
+    if *latency_samples_account.key != latency_samples_pda {
         msg!("Invalid PDA for latency samples account");
         return Err(TelemetryError::InvalidPDA.into());
     }
@@ -146,7 +137,10 @@ pub fn process_initialize_dz_latency_samples(
     let space = DZ_LATENCY_SAMPLES_MAX_SIZE;
     let lamports = rent.minimum_balance(space);
 
-    msg!("Creating PDA account: {}", expected_pda);
+    msg!(
+        "Creating latency_samples_pda account: {}",
+        latency_samples_pda
+    );
     msg!("Agent: {}", agent.key);
     msg!("Lamports required: {}", lamports);
     msg!("Space: {}", space);
@@ -156,7 +150,7 @@ pub fn process_initialize_dz_latency_samples(
     invoke_signed(
         &system_instruction::create_account(
             agent.key,
-            &expected_pda,
+            &latency_samples_pda,
             lamports,
             space as u64,
             program_id,
@@ -171,9 +165,9 @@ pub fn process_initialize_dz_latency_samples(
             SEED_DZ_LATENCY_SAMPLES,
             pk_a.as_ref(),
             pk_b.as_ref(),
-            link_pk_to_store.as_ref(),
+            link_account.key.as_ref(),
             &args.epoch.to_le_bytes(),
-            &[bump_seed],
+            &[latency_samples_bump_seed],
         ]],
     )?;
 
@@ -185,12 +179,12 @@ pub fn process_initialize_dz_latency_samples(
         device_z_pk: *device_z_account.key,
         location_a_pk: device_a.location_pk,
         location_z_pk: device_z.location_pk,
-        link_pk: link_pk_to_store,
+        link_pk: *link_account.key,
         agent_pk: *agent.key,
         sampling_interval_microseconds: args.sampling_interval_microseconds,
         start_timestamp_microseconds: 0, // Will be set on first write
         next_sample_index: 0,
-        bump_seed,
+        bump_seed: latency_samples_bump_seed,
         samples: Vec::with_capacity(MAX_SAMPLES),
     };
 

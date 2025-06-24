@@ -67,6 +67,9 @@ use crate::{
         },
     },
 };
+
+// XXX (temporary)
+#[allow(unused_imports)]
 use solana_program::{
     account_info::AccountInfo, entrypoint, entrypoint::ProgramResult, msg, pubkey::Pubkey,
 };

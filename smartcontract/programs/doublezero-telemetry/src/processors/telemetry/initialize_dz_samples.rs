@@ -118,7 +118,7 @@ pub fn process_initialize_dz_latency_samples(
     let (pk_a, pk_b) = order_pubkeys(device_a_account.key, device_z_account.key);
 
     let (latency_samples_pda, latency_samples_bump_seed) =
-        derive_dz_latency_samples_pda(program_id, &pk_a, &pk_b, &link_account.key, args.epoch);
+        derive_dz_latency_samples_pda(program_id, &pk_a, &pk_b, link_account.key, args.epoch);
 
     // Verify PDA matches
     if *latency_samples_account.key != latency_samples_pda {

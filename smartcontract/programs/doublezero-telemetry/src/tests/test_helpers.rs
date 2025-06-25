@@ -357,6 +357,7 @@ impl TelemetryProgramHelper {
             vec![
                 AccountMeta::new(latency_samples_pda, false),
                 AccountMeta::new(agent.pubkey(), true),
+                AccountMeta::new_readonly(system_program::id(), false),
             ],
         )
         .await

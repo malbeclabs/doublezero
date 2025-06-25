@@ -5,7 +5,7 @@ use crate::{
     seeds::{SEED_DZ_LATENCY_SAMPLES, SEED_PREFIX},
     state::{
         accounttype::AccountType,
-        dz_latency_samples::{DzLatencySamples, DZ_LATENCY_SAMPLES_MAX_SIZE, MAX_SAMPLES},
+        dz_latency_samples::{DzLatencySamples, DZ_LATENCY_SAMPLES_HEADER_SIZE},
     },
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -136,7 +136,7 @@ pub fn process_initialize_dz_latency_samples(
 
     // Create new account
     let rent = Rent::get()?;
-    let space = DZ_LATENCY_SAMPLES_MAX_SIZE;
+    let space = DZ_LATENCY_SAMPLES_HEADER_SIZE;
     let lamports = rent.minimum_balance(space);
 
     msg!(
@@ -187,7 +187,7 @@ pub fn process_initialize_dz_latency_samples(
         start_timestamp_microseconds: 0, // Will be set on first write
         next_sample_index: 0,
         bump_seed: latency_samples_bump_seed,
-        samples: Vec::with_capacity(MAX_SAMPLES),
+        samples: Vec::new(),
     };
 
     // Write data to account

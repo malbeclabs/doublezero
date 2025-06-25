@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::{
-        state::dz_latency_samples::{DzLatencySamples, DZ_LATENCY_SAMPLES_MAX_SIZE},
+        state::dz_latency_samples::{DzLatencySamples, DZ_LATENCY_SAMPLES_HEADER_SIZE},
         tests::test_helpers::*,
     };
     use solana_program_test::*;
@@ -31,19 +31,19 @@ mod tests {
             .await
             .unwrap();
 
+        // Verify account creation and data.
         let account = ledger
             .get_account(latency_samples_pda)
             .await
             .unwrap()
             .expect("Latency samples account does not exist");
         assert_eq!(account.owner, ledger.telemetry.program_id);
-        assert_eq!(account.data.len(), DZ_LATENCY_SAMPLES_MAX_SIZE);
+        assert_eq!(account.data.len(), DZ_LATENCY_SAMPLES_HEADER_SIZE);
 
         let samples_data = DzLatencySamples::try_from(&account.data[..]).unwrap();
         assert_eq!(samples_data.start_timestamp_microseconds, 0);
         assert_eq!(samples_data.next_sample_index, 0);
         assert_eq!(samples_data.samples, Vec::<u32>::new());
-
         // Write samples to account.
         let samples_to_write = vec![1000, 1200, 1100];
         let current_timestamp = 1_700_000_000_000_100; // Example timestamp

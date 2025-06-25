@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::{
-        error::TelemetryError, state::dz_latency_samples::DZ_LATENCY_SAMPLES_MAX_SIZE,
+        error::TelemetryError, state::dz_latency_samples::DZ_LATENCY_SAMPLES_HEADER_SIZE,
         tests::test_helpers::*,
     };
     use solana_program_test::*;
@@ -39,8 +39,8 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(account.owner, ledger.telemetry.program_id);
-        assert_eq!(account.data.len(), DZ_LATENCY_SAMPLES_MAX_SIZE);
-        assert_eq!(account.lamports, 5247840);
+        assert_eq!(account.data.len(), DZ_LATENCY_SAMPLES_HEADER_SIZE);
+        assert_eq!(account.lamports, 2463840);
     }
 
     #[tokio::test]

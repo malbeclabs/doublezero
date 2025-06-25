@@ -15,11 +15,8 @@ pub const MAX_SAMPLES: usize = 100; // Reduced for testing
 pub const MAX_SAMPLES: usize = 35_000;
 
 /// Base size of DzLatencySamples account (without samples vector)
-pub const DZ_LATENCY_SAMPLES_BASE_SIZE: usize =
+pub const DZ_LATENCY_SAMPLES_HEADER_SIZE: usize =
     1 + 1 + 8 + 32 + 32 + 32 + 32 + 32 + 32 + 8 + 8 + 4 + 4;
-
-/// Maximum account size for DZ latency samples (base + max samples)
-pub const DZ_LATENCY_SAMPLES_MAX_SIZE: usize = DZ_LATENCY_SAMPLES_BASE_SIZE + (MAX_SAMPLES * 4);
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
 pub struct DzLatencySamples {

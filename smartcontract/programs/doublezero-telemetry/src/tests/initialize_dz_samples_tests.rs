@@ -1,9 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::{
-        constants::DEFAULT_SAMPLING_INTERVAL_MICROSECONDS, error::TelemetryError,
-        tests::test_helpers::*,
-    };
+    use crate::{error::TelemetryError, tests::test_helpers::*};
     use solana_program_test::*;
     use solana_sdk::signature::{Keypair, Signer};
 
@@ -27,7 +24,7 @@ mod tests {
                 target_device_pk,
                 link_pk,
                 1u64,
-                DEFAULT_SAMPLING_INTERVAL_MICROSECONDS,
+                5_000_000,
             )
             .await
             .unwrap();
@@ -71,7 +68,7 @@ mod tests {
                 target_device_pk,
                 link_pk,
                 1u64,
-                DEFAULT_SAMPLING_INTERVAL_MICROSECONDS,
+                5_000_000,
             )
             .await;
         assert_telemetry_error(result, TelemetryError::UnauthorizedAgent);

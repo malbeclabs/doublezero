@@ -15,6 +15,3 @@ pub const DZ_LATENCY_SAMPLES_BASE_SIZE: usize =
 
 /// Maximum account size for DZ latency samples (base + max samples)
 pub const DZ_LATENCY_SAMPLES_MAX_SIZE: usize = DZ_LATENCY_SAMPLES_BASE_SIZE + (MAX_SAMPLES * 4);
-
-/// Default sampling interval in microseconds (5 seconds)
-pub const DEFAULT_SAMPLING_INTERVAL_MICROSECONDS: u64 = 5_000_000;

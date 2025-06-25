@@ -1,8 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::{
-        constants::DEFAULT_SAMPLING_INTERVAL_MICROSECONDS, instructions::TelemetryInstruction,
-        pda::derive_dz_latency_samples_pda,
+        constants::instructions::TelemetryInstruction, pda::derive_dz_latency_samples_pda,
         processors::telemetry::write_dz_samples::WriteDzLatencySamplesArgs,
         state::dz_latency_samples::DzLatencySamples, tests::test_helpers::*,
     };
@@ -151,7 +150,7 @@ mod tests {
                 device_z_index: 2,
                 link_index: 3,
                 epoch,
-                sampling_interval_microseconds: DEFAULT_SAMPLING_INTERVAL_MICROSECONDS,
+                sampling_interval_microseconds: 5_000_000,
             };
         let init_instruction_data = TelemetryInstruction::InitializeDzLatencySamples(init_args)
             .pack()

@@ -29,6 +29,7 @@ pub struct LinkCreateArgs {
     pub mtu: u32,
     pub delay_ns: u64,
     pub jitter_ns: u64,
+    pub ata_reward_owner_pk: Pubkey,
 }
 
 impl fmt::Debug for LinkCreateArgs {
@@ -108,6 +109,7 @@ pub fn process_create_link(
         jitter_ns: value.jitter_ns,
         tunnel_id: 0,
         tunnel_net: ([0, 0, 0, 0], 0),
+        ata_reward_owner_pk: value.ata_reward_owner_pk,
         status: LinkStatus::Pending,
     };
 

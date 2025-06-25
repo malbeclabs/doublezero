@@ -220,6 +220,7 @@ mod tunnel_test {
                 mtu: 9000,
                 delay_ns: 150000,
                 jitter_ns: 5000,
+                ata_reward_owner_pk: Pubkey::default(),
             }),
             vec![
                 AccountMeta::new(tunnel_pubkey, false),
@@ -336,6 +337,7 @@ mod tunnel_test {
                 mtu: Some(8900),
                 delay_ns: Some(15000),
                 jitter_ns: Some(5000),
+                ata_reward_owner_pk: Some(Pubkey::default()),
             }),
             vec![
                 AccountMeta::new(tunnel_pubkey, false),

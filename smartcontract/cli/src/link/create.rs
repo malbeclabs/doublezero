@@ -4,7 +4,7 @@ use crate::{
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::{
         validate_code, validate_parse_bandwidth, validate_parse_delay_ms, validate_parse_jitter_ms,
-        validate_parse_mtu, validate_pubkey_or_code,
+        validate_parse_mtu, validate_parse_pubkey, validate_pubkey_or_code,
     },
 };
 use clap::Args;
@@ -13,6 +13,7 @@ use doublezero_sdk::{
     *,
 };
 use eyre::eyre;
+use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -41,6 +42,9 @@ pub struct CreateLinkCliCommand {
     /// Jitter in milliseconds.
     #[arg(long, value_parser = validate_parse_jitter_ms)]
     pub jitter_ms: f64,
+    /// ATA reward owner identity (optional).
+    #[arg(long, value_parser = validate_parse_pubkey)]
+    pub ata_reward: Option<Pubkey>,
 }
 
 impl CreateLinkCliCommand {
@@ -88,6 +92,7 @@ impl CreateLinkCliCommand {
             mtu: self.mtu,
             delay_ns: (self.delay_ms * 1000000.0) as u64,
             jitter_ns: (self.jitter_ms * 1000000.0) as u64,
+            ata_reward_owner_pk: self.ata_reward.unwrap_or_default(),
         })?;
 
         writeln!(out, "Signature: {signature}",)?;
@@ -185,6 +190,7 @@ mod tests {
                 mtu: 1500,
                 delay_ns: 10000000000,
                 jitter_ns: 5000000000,
+                ata_reward_owner_pk: Pubkey::default(),
             }))
             .times(1)
             .returning(move |_| Ok((signature, pda_pubkey)));
@@ -200,6 +206,7 @@ mod tests {
             mtu: 1500,
             delay_ms: 10000.0,
             jitter_ms: 5000.0,
+            ata_reward: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

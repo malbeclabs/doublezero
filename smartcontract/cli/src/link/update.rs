@@ -3,12 +3,13 @@ use crate::{
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::{
         validate_code, validate_parse_bandwidth, validate_parse_delay_ms, validate_parse_jitter_ms,
-        validate_parse_mtu, validate_pubkey,
+        validate_parse_mtu, validate_parse_pubkey, validate_pubkey,
     },
 };
 use clap::Args;
 use doublezero_sdk::commands::link::{get::GetLinkCommand, update::UpdateLinkCommand};
 use eyre::eyre;
+use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -34,6 +35,9 @@ pub struct UpdateLinkCliCommand {
     /// Jitter in milliseconds
     #[arg(long, value_parser = validate_parse_jitter_ms)]
     pub jitter_ms: Option<f64>,
+    /// ATA reward owner identity (optional).
+    #[arg(long, value_parser = validate_parse_pubkey)]
+    pub ata_reward_owner_pk: Option<Pubkey>,
 }
 
 impl UpdateLinkCliCommand {
@@ -61,6 +65,7 @@ impl UpdateLinkCliCommand {
             jitter_ns: self
                 .jitter_ms
                 .map(|jitter_ms| (jitter_ms * 1000000.0) as u64),
+            ata_reward_owner_pk: self.ata_reward_owner_pk,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -114,6 +119,7 @@ mod tests {
             tunnel_net: ([10, 0, 0, 1], 16),
             status: LinkStatus::Activated,
             owner: pda_pubkey,
+            ata_reward_owner_pk: Pubkey::default(),
         };
 
         client
@@ -136,6 +142,7 @@ mod tests {
                 mtu: Some(1500),
                 delay_ns: Some(10000000),
                 jitter_ns: Some(5000000),
+                ata_reward_owner_pk: None,
             }))
             .returning(move |_| Ok(signature));
 
@@ -149,6 +156,7 @@ mod tests {
             mtu: Some(1500),
             delay_ms: Some(10.0),
             jitter_ms: Some(5.0),
+            ata_reward_owner_pk: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

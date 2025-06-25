@@ -434,6 +434,7 @@ pub mod test {
             mtu: 1900,
             delay_ns: 12_000_000,
             jitter_ns: 1_000_000,
+            ata_reward_owner_pk: Pubkey::default(), // Assuming no ATA reward owner for this test
         };
 
         println!("Testing Link LA-NY initialization...");

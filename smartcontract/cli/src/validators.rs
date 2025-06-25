@@ -5,6 +5,8 @@ use doublezero_sdk::{
 use ipnetwork::Ipv4Network;
 use solana_sdk::pubkey::Pubkey;
 
+use crate::helpers::parse_pubkey;
+
 pub fn validate_code(val: &str) -> Result<String, String> {
     if val
         .chars()
@@ -40,6 +42,13 @@ pub fn validate_pubkey_or_code(val: &str) -> Result<String, String> {
                 Err(String::from("invalid pubkey or code format"))
             }
         }
+    }
+}
+
+pub fn validate_parse_pubkey(val: &str) -> Result<Pubkey, String> {
+    match parse_pubkey(val) {
+        Some(pubkey) => Ok(pubkey),
+        None => Err(String::from("invalid pubkey format")),
     }
 }
 

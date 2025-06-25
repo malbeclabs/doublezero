@@ -114,6 +114,7 @@ mod tests {
             tunnel_net: ([10, 0, 0, 1], 16),
             status: LinkStatus::Activated,
             owner: pda_pubkey,
+            ata_reward_owner_pk: Pubkey::default(),
         };
 
         client

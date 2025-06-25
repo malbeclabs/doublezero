@@ -2,7 +2,7 @@ use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, pda::get_link_pda,
     processors::link::update::LinkUpdateArgs, state::link::LinkLinkType,
 };
-use solana_sdk::{instruction::AccountMeta, signature::Signature};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 use crate::DoubleZeroClient;
 
@@ -15,6 +15,7 @@ pub struct UpdateLinkCommand {
     pub mtu: Option<u32>,
     pub delay_ns: Option<u64>,
     pub jitter_ns: Option<u64>,
+    pub ata_reward_owner_pk: Option<Pubkey>,
 }
 
 impl UpdateLinkCommand {
@@ -30,6 +31,7 @@ impl UpdateLinkCommand {
                 mtu: self.mtu,
                 delay_ns: self.delay_ns,
                 jitter_ns: self.jitter_ns,
+                ata_reward_owner_pk: self.ata_reward_owner_pk,
             }),
             vec![AccountMeta::new(pda_pubkey, false)],
         )

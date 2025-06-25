@@ -560,6 +560,7 @@ mod tests {
                 mtu: 1500,
                 delay_ns: 1000,
                 jitter_ns: 100,
+                ata_reward_owner_pk: Pubkey::default(),
             }),
             "CreateLink",
         );
@@ -582,6 +583,7 @@ mod tests {
                 mtu: Some(1500),
                 delay_ns: Some(1000),
                 jitter_ns: Some(100),
+                ata_reward_owner_pk: Some(Pubkey::default()),
             }),
             "UpdateLink",
         );

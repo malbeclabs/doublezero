@@ -18,6 +18,7 @@ pub struct LinkUpdateArgs {
     pub mtu: Option<u32>,
     pub delay_ns: Option<u64>,
     pub jitter_ns: Option<u64>,
+    pub ata_reward_owner_pk: Option<Pubkey>,
 }
 
 impl fmt::Debug for LinkUpdateArgs {
@@ -93,6 +94,9 @@ pub fn process_update_link(
     }
     if let Some(jitter_ns) = value.jitter_ns {
         link.jitter_ns = jitter_ns;
+    }
+    if let Some(ata_reward_owner_pk) = &value.ata_reward_owner_pk {
+        link.ata_reward_owner_pk = *ata_reward_owner_pk;
     }
 
     account_write(link_account, &link, payer_account, system_program);

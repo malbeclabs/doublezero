@@ -178,6 +178,7 @@ mod tests {
             tunnel_id: 1234,
             tunnel_net: ([1, 2, 3, 4], 32),
             status: LinkStatus::Activated,
+            ata_reward_owner_pk: Pubkey::default(),
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
         };
 

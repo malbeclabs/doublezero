@@ -128,6 +128,7 @@ mod tests {
             tunnel_id: 1,
             tunnel_net: ([0, 0, 0, 0], 0),
             status: LinkStatus::Pending,
+            ata_reward_owner_pk: Pubkey::default(),
             code: "TestLink".to_string(),
         };
 
@@ -218,6 +219,7 @@ mod tests {
             jitter_ns: 100,
             tunnel_id: 1,
             tunnel_net: ([0, 0, 0, 0], 0),
+            ata_reward_owner_pk: Pubkey::default(),
             status: LinkStatus::Pending,
             code: "TestLink".to_string(),
         };

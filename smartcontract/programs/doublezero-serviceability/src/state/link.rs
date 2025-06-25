@@ -90,21 +90,22 @@ impl fmt::Display for LinkStatus {
 
 #[derive(BorshSerialize, Debug, PartialEq, Clone, Serialize)]
 pub struct Link {
-    pub account_type: AccountType, // 1
-    pub owner: Pubkey,             // 32
-    pub index: u128,               // 16
-    pub bump_seed: u8,             // 1
-    pub side_a_pk: Pubkey,         // 32
-    pub side_z_pk: Pubkey,         // 32
-    pub link_type: LinkLinkType,   // 1
-    pub bandwidth: u64,            // 8
-    pub mtu: u32,                  // 4
-    pub delay_ns: u64,             // 8
-    pub jitter_ns: u64,            // 8
-    pub tunnel_id: u16,            // 2
-    pub tunnel_net: NetworkV4,     // 5 (IP(4 x u8) + Prefix (u8) CIDR)
-    pub status: LinkStatus,        // 1
-    pub code: String,              // 4 + len
+    pub account_type: AccountType,   // 1
+    pub owner: Pubkey,               // 32
+    pub index: u128,                 // 16
+    pub bump_seed: u8,               // 1
+    pub side_a_pk: Pubkey,           // 32
+    pub side_z_pk: Pubkey,           // 32
+    pub link_type: LinkLinkType,     // 1
+    pub bandwidth: u64,              // 8
+    pub mtu: u32,                    // 4
+    pub delay_ns: u64,               // 8
+    pub jitter_ns: u64,              // 8
+    pub tunnel_id: u16,              // 2
+    pub tunnel_net: NetworkV4,       // 5 (IP(4 x u8) + Prefix (u8) CIDR)
+    pub status: LinkStatus,          // 1
+    pub code: String,                // 4 + len
+    pub ata_reward_owner_pk: Pubkey, // 32
 }
 
 impl fmt::Display for Link {
@@ -122,7 +123,7 @@ impl AccountTypeInfo for Link {
         SEED_LINK
     }
     fn size(&self) -> usize {
-        1 + 32 + 16 + 1 + 32 + 32 + 1 + 8 + 4 + 8 + 8 + 2 + 5 + 1 + 4 + self.code.len()
+        1 + 32 + 16 + 1 + 32 + 32 + 1 + 8 + 4 + 8 + 8 + 2 + 5 + 1 + 4 + self.code.len() + 32
     }
     fn index(&self) -> u128 {
         self.index
@@ -155,6 +156,7 @@ impl From<&[u8]> for Link {
             tunnel_net: parser.read_networkv4(),
             status: parser.read_enum(),
             code: parser.read_string(),
+            ata_reward_owner_pk: parser.read_pubkey(),
         }
     }
 }
@@ -188,6 +190,7 @@ mod tests {
             jitter_ns: 1121,
             tunnel_id: 1234,
             tunnel_net: networkv4_parse("1.2.3.4/32").unwrap(),
+            ata_reward_owner_pk: Pubkey::default(),
             code: "test-123".to_string(),
             status: LinkStatus::Activated,
         };

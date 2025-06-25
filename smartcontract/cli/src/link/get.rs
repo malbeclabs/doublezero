@@ -12,25 +12,26 @@ pub struct GetLinkCliCommand {
 
 impl GetLinkCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        let (pubkey, tunnel) = client.get_link(GetLinkCommand {
+        let (pubkey, link) = client.get_link(GetLinkCommand {
             pubkey_or_code: self.code,
         })?;
 
         writeln!(out,
-            "account: {}\r\ncode: {}\r\nside_a: {}\r\nside_z: {}\r\ntunnel_type: {}\r\nbandwidth: {}\r\nmtu: {}\r\ndelay: {}ms\r\njitter: {}ms\r\ntunnel_net: {}\r\nstatus: {}\r\nowner: {}",
-            pubkey,
-            tunnel.code,
-            tunnel.side_a_pk,
-            tunnel.side_z_pk,
-            tunnel.link_type,
-            tunnel.bandwidth,
-            tunnel.mtu,
-            tunnel.delay_ns as f32 / 1000000.0,
-            tunnel.jitter_ns as f32 / 1000000.0,
-            networkv4_to_string(&tunnel.tunnel_net),
-            tunnel.status,
-            tunnel.owner
-            )?;
+        "account: {}\r\ncode: {}\r\nside_a: {}\r\nside_z: {}\r\ntunnel_type: {}\r\nbandwidth: {}\r\nmtu: {}\r\ndelay: {}ms\r\njitter: {}ms\r\ntunnel_net: {}\r\nstatus: {}\r\nowner: {}\r\nata_reward: {}",
+        pubkey,
+        link.code,
+        link.side_a_pk,
+        link.side_z_pk,
+        link.link_type,
+        link.bandwidth,
+        link.mtu,
+        link.delay_ns as f32 / 1000000.0,
+        link.jitter_ns as f32 / 1000000.0,
+        networkv4_to_string(&link.tunnel_net),
+        link.status,
+        link.owner,
+        link.ata_reward_owner_pk,
+        )?;
 
         Ok(())
     }
@@ -73,6 +74,7 @@ mod tests {
             tunnel_net: ([10, 0, 0, 1], 16),
             status: LinkStatus::Activated,
             owner: pda_pubkey,
+            ata_reward_owner_pk: Pubkey::default(),
         };
 
         let tunnel2 = tunnel.clone();
@@ -108,7 +110,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: 45oivwjiumVv8uwsJw8qPjG3EQy9Yn2qAuqLzA5XoE1Q\r\ncode: test\r\nside_a: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb\r\nside_z: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf\r\ntunnel_type: L3\r\nbandwidth: 1000000000\r\nmtu: 1500\r\ndelay: 10000ms\r\njitter: 5000ms\r\ntunnel_net: 10.0.0.1/16\r\nstatus: activated\r\nowner: 45oivwjiumVv8uwsJw8qPjG3EQy9Yn2qAuqLzA5XoE1Q\n");
+        assert_eq!(output_str, "account: 45oivwjiumVv8uwsJw8qPjG3EQy9Yn2qAuqLzA5XoE1Q\r\ncode: test\r\nside_a: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb\r\nside_z: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf\r\ntunnel_type: L3\r\nbandwidth: 1000000000\r\nmtu: 1500\r\ndelay: 10000ms\r\njitter: 5000ms\r\ntunnel_net: 10.0.0.1/16\r\nstatus: activated\r\nowner: 45oivwjiumVv8uwsJw8qPjG3EQy9Yn2qAuqLzA5XoE1Q\r\nata_reward: 11111111111111111111111111111111\n");
 
         // Expected success
         let mut output = Vec::new();
@@ -118,6 +120,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by code");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: 45oivwjiumVv8uwsJw8qPjG3EQy9Yn2qAuqLzA5XoE1Q\r\ncode: test\r\nside_a: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb\r\nside_z: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf\r\ntunnel_type: L3\r\nbandwidth: 1000000000\r\nmtu: 1500\r\ndelay: 10000ms\r\njitter: 5000ms\r\ntunnel_net: 10.0.0.1/16\r\nstatus: activated\r\nowner: 45oivwjiumVv8uwsJw8qPjG3EQy9Yn2qAuqLzA5XoE1Q\n");
+        assert_eq!(output_str, "account: 45oivwjiumVv8uwsJw8qPjG3EQy9Yn2qAuqLzA5XoE1Q\r\ncode: test\r\nside_a: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb\r\nside_z: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf\r\ntunnel_type: L3\r\nbandwidth: 1000000000\r\nmtu: 1500\r\ndelay: 10000ms\r\njitter: 5000ms\r\ntunnel_net: 10.0.0.1/16\r\nstatus: activated\r\nowner: 45oivwjiumVv8uwsJw8qPjG3EQy9Yn2qAuqLzA5XoE1Q\r\nata_reward: 11111111111111111111111111111111\n");
     }
 }

@@ -91,7 +91,13 @@ pub fn process_write_dz_latency_samples(
     }
 
     // Load existing account data after PDA verification
-    let mut samples_data = DzLatencySamples::try_from(latency_samples_account)?;
+    let mut samples_data = DzLatencySamples::try_from_slice(
+        &latency_samples_account.try_borrow_data()?,
+    )
+    .map_err(|e| {
+        msg!("Failed to deserialize DzLatencySamples: {}", e);
+        ProgramError::InvalidAccountData
+    })?;
 
     // Verify account type
     if samples_data.account_type != AccountType::DzLatencySamples {

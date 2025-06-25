@@ -4,7 +4,7 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::Serialize;
-use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
+use solana_program::pubkey::Pubkey;
 use std::fmt;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone, Serialize)]
@@ -50,18 +50,6 @@ impl AccountTypeInfo for DzLatencySamples {
     /// Owner is the agent pubkey which writes data
     fn owner(&self) -> Pubkey {
         self.agent_pk
-    }
-}
-
-impl TryFrom<&AccountInfo<'_>> for DzLatencySamples {
-    type Error = ProgramError;
-
-    fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
-        let data = account.try_borrow_data()?;
-        Self::try_from_slice(&data).map_err(|e| {
-            msg!("Failed to deserialize DzLatencySamples: {}", e);
-            ProgramError::InvalidAccountData
-        })
     }
 }
 

@@ -3,6 +3,7 @@ package telemetry
 import (
 	"context"
 	"log/slog"
+	"math/rand"
 	"time"
 )
 
@@ -20,10 +21,16 @@ type SubmitterConfig struct {
 type Submitter struct {
 	log *slog.Logger
 	cfg *SubmitterConfig
+	rng *rand.Rand
 }
 
 func NewSubmitter(log *slog.Logger, cfg *SubmitterConfig) *Submitter {
-	return &Submitter{log: log, cfg: cfg}
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	return &Submitter{
+		log: log,
+		cfg: cfg,
+		rng: rng,
+	}
 }
 
 func (s *Submitter) Run(ctx context.Context) error {
@@ -73,7 +80,7 @@ func (s *Submitter) Run(ctx context.Context) error {
 					backoff = s.cfg.BackoffFunc(attempt)
 				} else {
 					base := 250 * time.Millisecond
-					jitter := time.Duration(float64(base) * (0.5 + 0.5*randFloat64()))
+					jitter := time.Duration(float64(base) * (0.5 + 0.5*s.rng.Float64()))
 					backoff = time.Duration(attempt) * jitter
 				}
 

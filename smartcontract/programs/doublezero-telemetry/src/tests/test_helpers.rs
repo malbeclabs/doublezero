@@ -2,7 +2,8 @@ use std::sync::{Arc, Mutex};
 
 use crate::{
     entrypoint::process_instruction as telemetry_process_instruction,
-    instructions::TelemetryInstruction, pda::derive_dz_latency_samples_pda,
+    instructions::{TelemetryInstruction, INITIALIZE_DZ_LATENCY_SAMPLES_INSTRUCTION_INDEX},
+    pda::derive_dz_latency_samples_pda,
     processors::telemetry::initialize_dz_samples::InitializeDzLatencySamplesArgs,
 };
 use doublezero_serviceability::{
@@ -776,7 +777,7 @@ pub fn assert_telemetry_error<T>(
         Ok(_) => panic!("Expected error {:?}, but got Ok", expected_error),
         Err(BanksClientError::TransactionError(
             solana_sdk::transaction::TransactionError::InstructionError(
-                0, // TODO(snormore): Use instruction constant here.
+                INITIALIZE_DZ_LATENCY_SAMPLES_INSTRUCTION_INDEX,
                 solana_sdk::instruction::InstructionError::Custom(error_code),
             ),
         )) => {

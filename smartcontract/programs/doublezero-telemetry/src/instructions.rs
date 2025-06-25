@@ -14,6 +14,9 @@ pub enum TelemetryInstruction {
     WriteDzLatencySamples(WriteDzLatencySamplesArgs),
 }
 
+pub const INITIALIZE_DZ_LATENCY_SAMPLES_INSTRUCTION_INDEX: u8 = 0;
+pub const WRITE_DZ_LATENCY_SAMPLES_INSTRUCTION_INDEX: u8 = 1;
+
 impl TelemetryInstruction {
     pub fn pack(&self) -> Result<Vec<u8>, ProgramError> {
         match borsh::to_vec(&self) {
@@ -28,11 +31,11 @@ impl TelemetryInstruction {
         }
 
         let instruction = match data[0] {
-            0 => {
+            INITIALIZE_DZ_LATENCY_SAMPLES_INSTRUCTION_INDEX => {
                 let args: InitializeDzLatencySamplesArgs = from_slice(&data[1..])?;
                 TelemetryInstruction::InitializeDzLatencySamples(args)
             }
-            2 => {
+            WRITE_DZ_LATENCY_SAMPLES_INSTRUCTION_INDEX => {
                 let args: WriteDzLatencySamplesArgs = from_slice(&data[1..])?;
                 TelemetryInstruction::WriteDzLatencySamples(args)
             }

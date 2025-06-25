@@ -4,12 +4,17 @@ LDFLAGS=
 CLIPPY_FLAGS=-- -Dclippy::all -D warnings
 
 .PHONY: test
-test:
+test: test-sbf
 	cargo test --manifest-path ./sdk/rs/Cargo.toml
 	cargo test --manifest-path ./programs/doublezero-serviceability/Cargo.toml
 	cargo test --manifest-path ./programs/doublezero-telemetry/Cargo.toml
 	cargo test --manifest-path ./cli/Cargo.toml
 	go test ./sdk/go/
+
+.PHONY: test-sbf
+test-sbf:
+	cargo test-sbf --manifest-path ./programs/doublezero-serviceability/Cargo.toml
+	cargo test-sbf --manifest-path ./programs/doublezero-telemetry/Cargo.toml
 
 .PHONY: lint
 lint:

@@ -78,8 +78,12 @@ rust-fmt-check:
 	@cargo +nightly fmt --all -- --check --config imports_granularity=Crate || (echo "Formatting check failed. Please run 'make fmt' to fix formatting issues." && exit 1)
 
 .PHONY: rust-test
-rust-test:
+rust-test: rust-test-sbf
 	cargo test --workspace --all-features
+
+.PHONY: rust-test-sbf
+rust-test-sbf:
+	cargo test-sbf --workspace
 
 .PHONY: rust-ci
 rust-ci: rust-build rust-lint rust-test

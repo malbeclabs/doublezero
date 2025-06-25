@@ -8,7 +8,6 @@ use std::fmt;
 #[borsh(use_discriminant = true)]
 pub enum AccountType {
     DzLatencySamples = 1,
-    ThirdPartyLatencySamples = 2,
 }
 
 impl TryFrom<u8> for AccountType {
@@ -17,7 +16,6 @@ impl TryFrom<u8> for AccountType {
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             1 => Ok(AccountType::DzLatencySamples),
-            2 => Ok(AccountType::ThirdPartyLatencySamples),
             _ => Err(ProgramError::InvalidAccountData),
         }
     }
@@ -27,7 +25,6 @@ impl fmt::Display for AccountType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             AccountType::DzLatencySamples => write!(f, "DzLatencySamples"),
-            AccountType::ThirdPartyLatencySamples => write!(f, "ThirdPartyLatencySamples"),
         }
     }
 }

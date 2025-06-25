@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use crate::{error::TelemetryError, tests::test_helpers::*};
+    use crate::{
+        constants::DZ_LATENCY_SAMPLES_MAX_SIZE, error::TelemetryError, tests::test_helpers::*,
+    };
     use solana_program_test::*;
     use solana_sdk::signature::{Keypair, Signer};
 
@@ -12,7 +14,7 @@ mod tests {
         let (origin_device_agent, origin_device_pk, target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
 
-        // Refresh blockhash to latest blockhash before telemetry transaction.
+        // Refresh blockhash to latest before telemetry transaction.
         ledger.refresh_blockhash().await.unwrap();
 
         // Execute initialize latency samples transaction.
@@ -30,14 +32,14 @@ mod tests {
             .unwrap();
 
         // Verify account creation and data.
-        let account_data_raw = ledger
-            .get_account_data(latency_samples_pda)
+        let account = ledger
+            .get_account(latency_samples_pda)
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(account_data_raw.owner, ledger.telemetry.program_id);
-        assert_eq!(account_data_raw.data.len(), 400);
-        assert_eq!(account_data_raw.lamports, 5247840);
+        assert_eq!(account.owner, ledger.telemetry.program_id);
+        assert_eq!(account.data.len(), DZ_LATENCY_SAMPLES_MAX_SIZE);
+        assert_eq!(account.lamports, 5247840);
     }
 
     #[tokio::test]
@@ -48,7 +50,7 @@ mod tests {
         let (_origin_device_agent, origin_device_pk, target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
 
-        // Refresh blockhash to latest blockhash before telemetry transaction.
+        // Refresh blockhash to latest before telemetry transaction.
         ledger.refresh_blockhash().await.unwrap();
 
         // Create and fund an unauthorized agent keypair.

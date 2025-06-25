@@ -62,8 +62,8 @@ pub fn process_write_dz_latency_samples(
     msg!("Updating existing DZ latency samples account");
 
     // Load existing account data
-    let mut samples_data = DzLatencySamples::try_from_slice(
-        &latency_samples_account.try_borrow_data()?,
+    let mut samples_data = DzLatencySamples::try_from(
+        &latency_samples_account.try_borrow_data()?[..],
     )
     .map_err(|e| {
         msg!("Failed to deserialize DzLatencySamples: {}", e);
@@ -104,7 +104,8 @@ pub fn process_write_dz_latency_samples(
     samples_data.next_sample_index = samples_data.samples.len() as u32;
 
     // Write back
-    samples_data.serialize(&mut *latency_samples_account.try_borrow_mut_data()?)?;
+    let mut data = &mut latency_samples_account.data.borrow_mut()[..];
+    samples_data.serialize(&mut data)?;
     msg!(
         "Updated account, now has {} samples",
         samples_data.samples.len()

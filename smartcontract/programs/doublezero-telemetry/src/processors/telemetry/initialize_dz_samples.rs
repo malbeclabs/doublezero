@@ -188,8 +188,9 @@ pub fn process_initialize_dz_latency_samples(
         samples: Vec::with_capacity(MAX_SAMPLES),
     };
 
-    samples.serialize(&mut *latency_samples_account.try_borrow_mut_data()?)?;
-    msg!("Initialized DZ latency samples account");
+    // Write data to account
+    let mut data = &mut latency_samples_account.data.borrow_mut()[..];
+    samples.serialize(&mut data)?;
 
     Ok(())
 }

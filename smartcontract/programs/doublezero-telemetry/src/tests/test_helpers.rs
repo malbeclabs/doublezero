@@ -4,7 +4,10 @@ use crate::{
     entrypoint::process_instruction as telemetry_process_instruction,
     instructions::{TelemetryInstruction, INITIALIZE_DZ_LATENCY_SAMPLES_INSTRUCTION_INDEX},
     pda::derive_dz_latency_samples_pda,
-    processors::telemetry::initialize_dz_samples::InitializeDzLatencySamplesArgs,
+    processors::telemetry::{
+        initialize_dz_samples::InitializeDzLatencySamplesArgs,
+        write_dz_samples::WriteDzLatencySamplesArgs,
+    },
 };
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
@@ -151,7 +154,7 @@ impl LedgerHelper {
         })
     }
 
-    pub async fn get_account_data(
+    pub async fn get_account(
         &mut self,
         pubkey: Pubkey,
     ) -> Result<Option<Account>, BanksClientError> {
@@ -336,6 +339,27 @@ impl TelemetryProgramHelper {
         .await?;
 
         Ok(pda)
+    }
+
+    pub async fn write_dz_latency_samples(
+        &mut self,
+        agent: &Keypair,
+        latency_samples_pda: Pubkey,
+        samples: Vec<u32>,
+        start_timestamp_microseconds: u64,
+    ) -> Result<(), BanksClientError> {
+        self.execute_transaction(
+            TelemetryInstruction::WriteDzLatencySamples(WriteDzLatencySamplesArgs {
+                start_timestamp_microseconds,
+                samples,
+            }),
+            &[agent],
+            vec![
+                AccountMeta::new(latency_samples_pda, false),
+                AccountMeta::new(agent.pubkey(), true),
+            ],
+        )
+        .await
     }
 
     pub async fn execute_transaction(

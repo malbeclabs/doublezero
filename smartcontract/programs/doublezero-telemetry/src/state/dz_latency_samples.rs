@@ -3,13 +3,14 @@ use crate::{
     state::accounttype::{AccountType, AccountTypeInfo},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use serde::Serialize;
 use solana_program::pubkey::Pubkey;
 use std::fmt;
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone, Serialize)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
 pub struct DzLatencySamples {
+    // TODO(snormore): Should this be versioned?
     pub account_type: AccountType,           // 1
+    pub bump_seed: u8,                       // 1
     pub epoch: u64,                          // 8
     pub device_a_pk: Pubkey,                 // 32
     pub device_z_pk: Pubkey,                 // 32
@@ -20,8 +21,8 @@ pub struct DzLatencySamples {
     pub sampling_interval_microseconds: u64, // 8
     pub start_timestamp_microseconds: u64,   // 8
     pub next_sample_index: u32,              // 4
-    pub bump_seed: u8,                       // 1
-    pub samples: Vec<u32>,                   // 4 + n*4 (RTT values in microseconds)
+    // TODO(snormore): Leave room for future things?
+    pub samples: Vec<u32>, // 4 + n*4 (RTT values in microseconds)
 }
 
 impl fmt::Display for DzLatencySamples {
@@ -40,7 +41,7 @@ impl AccountTypeInfo for DzLatencySamples {
     }
 
     fn size(&self) -> usize {
-        1 + 8 + 32 + 32 + 32 + 32 + 32 + 32 + 8 + 8 + 4 + 1 + 4 + self.samples.len() * 4
+        1 + 1 + 8 + 32 + 32 + 32 + 32 + 32 + 32 + 8 + 8 + 4 + 4 + self.samples.len() * 4
     }
 
     fn bump_seed(&self) -> u8 {
@@ -53,6 +54,14 @@ impl AccountTypeInfo for DzLatencySamples {
     }
 }
 
+impl TryFrom<&[u8]> for DzLatencySamples {
+    type Error = borsh::io::Error;
+
+    fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
+        DzLatencySamples::deserialize(&mut &data[..])
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -62,6 +71,7 @@ mod tests {
         let samples = vec![100u32, 200u32, 300u32, 400u32, 500u32];
         let val = DzLatencySamples {
             account_type: AccountType::DzLatencySamples,
+            bump_seed: 255,
             epoch: 19800,
             device_a_pk: Pubkey::new_unique(),
             device_z_pk: Pubkey::new_unique(),
@@ -72,7 +82,6 @@ mod tests {
             sampling_interval_microseconds: 5_000_000,
             start_timestamp_microseconds: 1_700_000_000_000_000,
             next_sample_index: samples.len() as u32,
-            bump_seed: 255,
             samples: samples.clone(),
         };
 
@@ -80,6 +89,7 @@ mod tests {
         let val2 = DzLatencySamples::try_from_slice(&data).unwrap();
 
         assert_eq!(val.account_type, val2.account_type);
+        assert_eq!(val.bump_seed, val2.bump_seed);
         assert_eq!(val.epoch, val2.epoch);
         assert_eq!(val.device_a_pk, val2.device_a_pk);
         assert_eq!(val.device_z_pk, val2.device_z_pk);
@@ -96,7 +106,6 @@ mod tests {
             val2.start_timestamp_microseconds
         );
         assert_eq!(val.next_sample_index, val2.next_sample_index);
-        assert_eq!(val.bump_seed, val2.bump_seed);
         assert_eq!(val.samples, val2.samples);
         assert_eq!(data.len(), val.size(), "Invalid Size");
     }

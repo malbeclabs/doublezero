@@ -1,7 +1,6 @@
 use crate::{
     constants::MAX_SAMPLES,
     error::TelemetryError,
-    pda::derive_dz_latency_samples_pda,
     state::{accounttype::AccountType, dz_latency_samples::DzLatencySamples},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -16,10 +15,6 @@ use solana_program::{
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct WriteDzLatencySamplesArgs {
-    pub device_a_index: u128,
-    pub device_z_index: u128,
-    pub link_index: u128,
-    pub epoch: u64,
     pub start_timestamp_microseconds: u64,
     pub samples: Vec<u32>,
 }
@@ -28,11 +23,7 @@ impl fmt::Debug for WriteDzLatencySamplesArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "device_a: {}, device_z: {}, link: {}, epoch: {}, timestamp: {}, samples: {}",
-            self.device_a_index,
-            self.device_z_index,
-            self.link_index,
-            self.epoch,
+            "start_timestamp_microseconds: {}, samples: {}",
             self.start_timestamp_microseconds,
             self.samples.len()
         )
@@ -50,9 +41,6 @@ pub fn process_write_dz_latency_samples(
 
     // Parse accounts
     let latency_samples_account = next_account_info(accounts_iter)?;
-    let device_a_account = next_account_info(accounts_iter)?;
-    let device_z_account = next_account_info(accounts_iter)?;
-    let link_account = next_account_info(accounts_iter)?;
     let agent = next_account_info(accounts_iter)?;
 
     // Verify agent is signer
@@ -60,37 +48,20 @@ pub fn process_write_dz_latency_samples(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    // NOTE: We skip device/link validation on write operations for performance.
-    // These validations **should** already be performed during initialization.
-
-    // Verify account exists and is owned by this program
+    // Verify account exists
     if latency_samples_account.data_is_empty() {
         msg!("DZ latency samples account does not exist");
         return Err(TelemetryError::AccountDoesNotExist.into());
     }
 
+    // Verify account is owned by this program
     if latency_samples_account.owner != program_id {
         return Err(TelemetryError::InvalidAccountOwner.into());
     }
 
     msg!("Updating existing DZ latency samples account");
 
-    // Derive PDA using the provided link account
-    let (dz_latency_samples_pda, _dz_latency_samples_bump_seed) = derive_dz_latency_samples_pda(
-        program_id,
-        device_a_account.key,
-        device_z_account.key,
-        link_account.key,
-        args.epoch,
-    );
-
-    // Verify PDA matches
-    if *latency_samples_account.key != dz_latency_samples_pda {
-        msg!("Invalid PDA for latency samples account");
-        return Err(TelemetryError::InvalidPDA.into());
-    }
-
-    // Load existing account data after PDA verification
+    // Load existing account data
     let mut samples_data = DzLatencySamples::try_from_slice(
         &latency_samples_account.try_borrow_data()?,
     )
@@ -102,26 +73,6 @@ pub fn process_write_dz_latency_samples(
     // Verify account type
     if samples_data.account_type != AccountType::DzLatencySamples {
         return Err(TelemetryError::InvalidAccountType.into());
-    }
-
-    // Verify link account matches the stored link_pk
-    if samples_data.link_pk != *link_account.key {
-        msg!(
-            "Link mismatch: account expects {}, got {}",
-            samples_data.link_pk,
-            link_account.key
-        );
-        return Err(TelemetryError::InvalidLink.into());
-    }
-
-    // Verify epoch matches
-    if samples_data.epoch != args.epoch {
-        msg!(
-            "Epoch mismatch: account epoch {} != instruction epoch {}",
-            samples_data.epoch,
-            args.epoch
-        );
-        return Err(TelemetryError::EpochMismatch.into());
     }
 
     // Verify agent matches

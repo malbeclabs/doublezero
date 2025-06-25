@@ -3,6 +3,7 @@ package telemetry
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
@@ -46,46 +47,53 @@ func (p *Pinger) Run(ctx context.Context) error {
 
 func (p *Pinger) Tick(ctx context.Context) {
 	peers := p.cfg.Peers.GetPeers()
+	var wg sync.WaitGroup
 	for peerKey, peer := range peers {
-		if !sleepOrDone(ctx, time.Millisecond) {
-			p.log.Debug("==> Probe loop cancelled during iteration")
-			return
-		}
+		wg.Add(1)
+		go func(peerKey string, peer *Peer) {
+			defer wg.Done()
 
-		ts := time.Now().UTC()
+			if !sleepOrDone(ctx, time.Millisecond) {
+				p.log.Debug("==> Probe loop cancelled during iteration")
+				return
+			}
 
-		sender := p.cfg.GetSender(peerKey, peer)
-		if sender == nil {
-			p.log.Debug("==> Failed to create sender, recording loss", "peer", peerKey)
+			ts := time.Now().UTC()
+
+			sender := p.cfg.GetSender(peerKey, peer)
+			if sender == nil {
+				p.log.Debug("==> Failed to create sender, recording loss", "peer", peerKey)
+				p.cfg.Buffer.Add(Sample{
+					Timestamp: ts,
+					Link:      peer.LinkPubkey,
+					Device:    peer.DevicePubkey,
+					RTT:       0,
+					Loss:      true,
+				})
+				return
+			}
+
+			rtt, err := sender.Probe(ctx)
+			if err != nil {
+				p.log.Debug("==> Probe failed, recording loss", "peer", peerKey, "error", err)
+				p.cfg.Buffer.Add(Sample{
+					Timestamp: ts,
+					Link:      peer.LinkPubkey,
+					Device:    peer.DevicePubkey,
+					RTT:       0,
+					Loss:      true,
+				})
+				return
+			}
+
 			p.cfg.Buffer.Add(Sample{
 				Timestamp: ts,
 				Link:      peer.LinkPubkey,
 				Device:    peer.DevicePubkey,
-				RTT:       0,
-				Loss:      true,
+				RTT:       rtt,
+				Loss:      false,
 			})
-			continue
-		}
-
-		rtt, err := sender.Probe(ctx)
-		if err != nil {
-			p.log.Debug("==> Probe failed, recording loss", "peer", peerKey, "error", err)
-			p.cfg.Buffer.Add(Sample{
-				Timestamp: ts,
-				Link:      peer.LinkPubkey,
-				Device:    peer.DevicePubkey,
-				RTT:       0,
-				Loss:      true,
-			})
-			continue
-		}
-
-		p.cfg.Buffer.Add(Sample{
-			Timestamp: ts,
-			Link:      peer.LinkPubkey,
-			Device:    peer.DevicePubkey,
-			RTT:       rtt,
-			Loss:      false,
-		})
+		}(peerKey, peer)
 	}
+	wg.Wait()
 }

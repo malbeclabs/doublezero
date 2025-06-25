@@ -1,7 +1,8 @@
 #[cfg(test)]
 mod tests {
     use crate::{
-        constants::DZ_LATENCY_SAMPLES_MAX_SIZE, error::TelemetryError, tests::test_helpers::*,
+        error::TelemetryError, state::dz_latency_samples::DZ_LATENCY_SAMPLES_MAX_SIZE,
+        tests::test_helpers::*,
     };
     use solana_program_test::*;
     use solana_sdk::signature::{Keypair, Signer};

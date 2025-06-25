@@ -1,7 +1,9 @@
 use crate::{
-    constants::MAX_SAMPLES,
     error::TelemetryError,
-    state::{accounttype::AccountType, dz_latency_samples::DzLatencySamples},
+    state::{
+        accounttype::AccountType,
+        dz_latency_samples::{DzLatencySamples, MAX_SAMPLES},
+    },
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;

@@ -1,10 +1,12 @@
 use crate::{
-    constants::{DZ_LATENCY_SAMPLES_MAX_SIZE, MAX_SAMPLES},
     error::TelemetryError,
     helper::verify_account_owner,
     pda::{derive_dz_latency_samples_pda, order_pubkeys},
     seeds::{SEED_DZ_LATENCY_SAMPLES, SEED_PREFIX},
-    state::{accounttype::AccountType, dz_latency_samples::DzLatencySamples},
+    state::{
+        accounttype::AccountType,
+        dz_latency_samples::{DzLatencySamples, DZ_LATENCY_SAMPLES_MAX_SIZE, MAX_SAMPLES},
+    },
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;

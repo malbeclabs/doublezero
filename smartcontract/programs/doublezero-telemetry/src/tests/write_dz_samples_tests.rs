@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::{
-        constants::DZ_LATENCY_SAMPLES_MAX_SIZE, state::dz_latency_samples::DzLatencySamples,
+        state::dz_latency_samples::{DzLatencySamples, DZ_LATENCY_SAMPLES_MAX_SIZE},
         tests::test_helpers::*,
     };
     use solana_program_test::*;

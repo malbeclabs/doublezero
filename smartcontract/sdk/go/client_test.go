@@ -372,4 +372,122 @@ func TestNewClient(t *testing.T) {
 		}
 	})
 
+	t.Run("test_with_signer", func(t *testing.T) {
+		privateKey := solana.NewWallet().PrivateKey
+		client := New("endpoint", WithSigner(privateKey))
+		if client.signer == nil {
+			t.Fatal("signer should not be nil")
+		}
+		if !client.signer.PublicKey().Equals(privateKey.PublicKey()) {
+			t.Fatal("signer public key mismatch")
+		}
+	})
+
+	t.Run("test_with_telemetry_program_id", func(t *testing.T) {
+		telemetryProgramID := "9i7v8m3i7W2qPGRonFi8mehN76SXUkDcpgk4tPQhEabc"
+		client := New("endpoint", WithTelemetryProgramID(telemetryProgramID))
+		want := solana.MustPublicKeyFromBase58(telemetryProgramID)
+		if !client.telemetryProgramID.Equals(want) {
+			t.Fatalf("telemetry program ID incorrect; got %s, wanted %s", client.telemetryProgramID, want)
+		}
+	})
+
+	t.Run("test_default_telemetry_program_id", func(t *testing.T) {
+		client := New("endpoint")
+		want := solana.MustPublicKeyFromBase58(TELEMETRY_PROGRAM_ID_TESTNET)
+		if !client.telemetryProgramID.Equals(want) {
+			t.Fatalf("default telemetry program ID incorrect; got %s, wanted %s", client.telemetryProgramID, want)
+		}
+	})
+}
+
+func TestGetDzLatencySamplesPDA(t *testing.T) {
+	client := New("endpoint")
+	deviceAPk := solana.NewWallet().PublicKey()
+	deviceZPk := solana.NewWallet().PublicKey()
+	linkPk := solana.NewWallet().PublicKey()
+	epoch := uint64(100)
+
+	pda, err := client.GetDzLatencySamplesPDA(deviceAPk, deviceZPk, linkPk, epoch)
+	if err != nil {
+		t.Fatalf("Failed to get PDA: %v", err)
+	}
+
+	if pda.IsZero() {
+		t.Error("PDA should not be zero")
+	}
+
+	// Test that swapping device keys produces same PDA
+	pda2, err := client.GetDzLatencySamplesPDA(deviceZPk, deviceAPk, linkPk, epoch)
+	if err != nil {
+		t.Fatalf("Failed to get PDA with swapped keys: %v", err)
+	}
+
+	if !pda.Equals(pda2) {
+		t.Error("PDA should be the same regardless of device key order")
+	}
+}
+
+// Mock RPC client for testing transaction methods
+type mockRpcClient struct {
+	mockSolanaClient
+	sendTransactionErr error
+	getBlockhashErr    error
+}
+
+func (m *mockRpcClient) SendTransaction(ctx context.Context, tx *solana.Transaction) (solana.Signature, error) {
+	if m.sendTransactionErr != nil {
+		return solana.Signature{}, m.sendTransactionErr
+	}
+	// Return a mock signature
+	return solana.SignatureFromBase58("5K7mJpppNKVpJbLzNqezNjmEvT6YUsRsJDNTMEVvrmHHFgATVgp8uWbqjhfJqdodJLqnWhDcwcPYJFowVt1fjRTZ")
+}
+
+func (m *mockRpcClient) GetLatestBlockhash(ctx context.Context, commitment rpc.CommitmentType) (*rpc.GetLatestBlockhashResult, error) {
+	if m.getBlockhashErr != nil {
+		return nil, m.getBlockhashErr
+	}
+	return &rpc.GetLatestBlockhashResult{
+		Value: &rpc.LatestBlockhashResult{
+			Blockhash: solana.MustHashFromBase58("4sGjMW1sUnHzSxGspuhpqLDx6wiyjNtZAMdL4VZHirm4"),
+		},
+	}, nil
+}
+
+func TestInitializeDzLatencySamplesNoSigner(t *testing.T) {
+	client := New("endpoint")
+
+	deviceAPk := solana.NewWallet().PublicKey()
+	deviceZPk := solana.NewWallet().PublicKey()
+	linkPk := solana.NewWallet().PublicKey()
+
+	_, err := client.InitializeDzLatencySamples(
+		context.Background(),
+		deviceAPk,
+		deviceZPk,
+		linkPk,
+		100,
+		1000000,
+	)
+
+	if err != ErrNoPrivateKey {
+		t.Fatalf("Expected ErrNoPrivateKey, got: %v", err)
+	}
+}
+
+func TestWriteDzLatencySamplesNoSigner(t *testing.T) {
+	client := New("endpoint")
+
+	latencySamplesAccount := solana.NewWallet().PublicKey()
+
+	_, err := client.WriteDzLatencySamples(
+		context.Background(),
+		latencySamplesAccount,
+		1234567890,
+		[]uint32{100, 200, 300},
+	)
+
+	if err != ErrNoPrivateKey {
+		t.Fatalf("Expected ErrNoPrivateKey, got: %v", err)
+	}
 }

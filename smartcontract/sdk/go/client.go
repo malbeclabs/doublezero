@@ -2,6 +2,7 @@ package dzsdk
 
 import (
 	"context"
+	"errors"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/gagliardetto/solana-go"
@@ -15,15 +16,27 @@ const PROGRAM_ID_DEVNET = "DZdnB7bhR9azxLAUEH7ZVtW168wRdreiDKhi4McDfKZt"
 
 /************************************************************************************************************/
 
+// ErrNoPrivateKey is returned when a transaction signing operation is attempted without a configured private key
+var ErrNoPrivateKey = errors.New("no private key configured")
+
 type AccountFetcher interface {
 	GetProgramAccounts(context.Context, solana.PublicKey) (rpc.GetProgramAccountsResult, error)
+}
+
+// RpcClient combines read and write capabilities
+type RpcClient interface {
+	AccountFetcher
+	TransactionSender
 }
 
 type Client struct {
 	endpoint string
 	pubkey   solana.PublicKey
 
-	client AccountFetcher
+	client             AccountFetcher
+	rpcClient          *rpc.Client
+	telemetryProgramID solana.PublicKey
+	signer             *solana.PrivateKey
 
 	Config          Config
 	Locations       []Location
@@ -37,10 +50,13 @@ type Client struct {
 type Option func(*Client)
 
 func New(Endpoint string, options ...Option) *Client {
+	rpcClient := rpc.New(Endpoint)
 	c := &Client{
-		endpoint: Endpoint,
-		pubkey:   solana.MustPublicKeyFromBase58(PROGRAM_ID_TESTNET),
-		client:   rpc.New(Endpoint),
+		endpoint:           Endpoint,
+		pubkey:             solana.MustPublicKeyFromBase58(PROGRAM_ID_TESTNET),
+		client:             rpcClient,
+		rpcClient:          rpcClient,
+		telemetryProgramID: solana.MustPublicKeyFromBase58(TELEMETRY_PROGRAM_ID_TESTNET),
 	}
 	for _, o := range options {
 		o(c)
@@ -152,4 +168,165 @@ func (s *Client) List() {
 	for _, item := range s.Locations {
 		spew.Dump(item)
 	}
+}
+
+// Configures the client with a private key for signing transactions
+func WithSigner(privateKey solana.PrivateKey) Option {
+	return func(c *Client) {
+		c.signer = &privateKey
+	}
+}
+
+// Configure the telemetry program ID
+func WithTelemetryProgramID(programID string) Option {
+	return func(c *Client) {
+		c.telemetryProgramID = solana.MustPublicKeyFromBase58(programID)
+	}
+}
+
+// Initializes a new DZ latency samples account
+func (c *Client) InitializeDzLatencySamples(
+	ctx context.Context,
+	originDevicePK solana.PublicKey,
+	targetDevicePK solana.PublicKey,
+	linkPK solana.PublicKey,
+	epoch uint64,
+	samplingIntervalMicroseconds uint64,
+) (solana.Signature, error) {
+	if c.signer == nil {
+		return solana.Signature{}, ErrNoPrivateKey
+	}
+
+	args := &InitializeDzLatencySamplesArgs{
+		OriginDevicePK:               originDevicePK,
+		TargetDevicePK:               targetDevicePK,
+		LinkPK:                       linkPK,
+		Epoch:                        epoch,
+		SamplingIntervalMicroseconds: samplingIntervalMicroseconds,
+	}
+
+	// Build the instruction
+	instruction, err := BuildInitializeDzLatencySamplesInstruction(
+		c.pubkey, // serviceability program ID
+		c.telemetryProgramID,
+		c.signer.PublicKey(),
+		args,
+	)
+	if err != nil {
+		return solana.Signature{}, err
+	}
+
+	// Get latest blockhash
+	blockhashResult, err := c.rpcClient.GetLatestBlockhash(ctx, rpc.CommitmentFinalized)
+	if err != nil {
+		return solana.Signature{}, err
+	}
+
+	// Build transaction
+	tx, err := solana.NewTransaction(
+		[]solana.Instruction{instruction},
+		blockhashResult.Value.Blockhash,
+		solana.TransactionPayer(c.signer.PublicKey()),
+	)
+	if err != nil {
+		return solana.Signature{}, err
+	}
+
+	// Sign transaction
+	_, err = tx.Sign(func(key solana.PublicKey) *solana.PrivateKey {
+		if key.Equals(c.signer.PublicKey()) {
+			return c.signer
+		}
+		return nil
+	})
+	if err != nil {
+		return solana.Signature{}, err
+	}
+
+	// Send transaction (without preflight/simulation) check
+	sig, err := c.rpcClient.SendTransactionWithOpts(ctx, tx, rpc.TransactionOpts{
+		SkipPreflight: true,
+	})
+
+	return sig, nil
+}
+
+// Writes latency samples to an existing DZ latency samples account
+func (c *Client) WriteDzLatencySamples(
+	ctx context.Context,
+	latencySamplesAccount solana.PublicKey,
+	startTimestampMicroseconds uint64,
+	samples []uint32,
+) (solana.Signature, error) {
+	if c.signer == nil {
+		return solana.Signature{}, ErrNoPrivateKey
+	}
+
+	args := &WriteDzLatencySamplesArgs{
+		StartTimestampMicroseconds: startTimestampMicroseconds,
+		Samples:                    samples,
+	}
+
+	// Build the instruction
+	instruction, err := BuildWriteDzLatencySamplesInstruction(
+		c.telemetryProgramID,
+		latencySamplesAccount,
+		c.signer.PublicKey(),
+		args,
+	)
+	if err != nil {
+		return solana.Signature{}, err
+	}
+
+	// Get latest blockhash
+	blockhashResult, err := c.rpcClient.GetLatestBlockhash(ctx, rpc.CommitmentFinalized)
+	if err != nil {
+		return solana.Signature{}, err
+	}
+
+	// Build transaction
+	tx, err := solana.NewTransaction(
+		[]solana.Instruction{instruction},
+		blockhashResult.Value.Blockhash,
+		solana.TransactionPayer(c.signer.PublicKey()),
+	)
+	if err != nil {
+		return solana.Signature{}, err
+	}
+
+	// Sign transaction
+	_, err = tx.Sign(func(key solana.PublicKey) *solana.PrivateKey {
+		if key.Equals(c.signer.PublicKey()) {
+			return c.signer
+		}
+		return nil
+	})
+	if err != nil {
+		return solana.Signature{}, err
+	}
+
+	// Send transaction
+	sig, err := c.rpcClient.SendTransaction(ctx, tx)
+	if err != nil {
+		return solana.Signature{}, err
+	}
+
+	return sig, nil
+}
+
+// Returns the PDA for a DZ latency samples account
+func (c *Client) GetDzLatencySamplesPDA(
+	originDevicePK solana.PublicKey,
+	targetDevicePK solana.PublicKey,
+	linkPK solana.PublicKey,
+	epoch uint64,
+) (solana.PublicKey, error) {
+	pda, _, err := DeriveDzLatencySamplesPDA(
+		c.telemetryProgramID,
+		originDevicePK,
+		targetDevicePK,
+		linkPK,
+		epoch,
+	)
+	return pda, err
 }

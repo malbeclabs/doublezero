@@ -10,6 +10,7 @@ import (
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/stretchr/testify/require"
 )
 
 var configPayload = `
@@ -367,9 +368,105 @@ func TestNewClient(t *testing.T) {
 		programId := "9i7v8m3i7W2qPGRonFi8mehN76SXUkDcpgk4tPQhEabc"
 		client := New("endpoint", WithProgramId(programId))
 		want := solana.MustPublicKeyFromBase58(programId)
-		if client.pubkey != want {
-			t.Fatalf("overridden client pubkey incorrect; got %s, wanted %s", client.pubkey, want)
-		}
+		require.Equal(t, want, client.pubkey, "overridden client pubkey incorrect; got %s, wanted %s", client.pubkey, want)
 	})
 
+	t.Run("test_with_signer", func(t *testing.T) {
+		privateKey := solana.NewWallet().PrivateKey
+		client := New("endpoint", WithSigner(privateKey))
+		require.NotNil(t, client.signer, "signer should not be nil")
+		require.True(t, client.signer.PublicKey().Equals(privateKey.PublicKey()), "signer public key mismatch")
+	})
+
+	t.Run("test_with_telemetry_program_id", func(t *testing.T) {
+		telemetryProgramID := "9i7v8m3i7W2qPGRonFi8mehN76SXUkDcpgk4tPQhEabc"
+		client := New("endpoint", WithTelemetryProgramID(telemetryProgramID))
+		want := solana.MustPublicKeyFromBase58(telemetryProgramID)
+		require.True(t, client.telemetryProgramID.Equals(want), "telemetry program ID incorrect; got %s, wanted %s", client.telemetryProgramID, want)
+	})
+
+	t.Run("test_default_telemetry_program_id", func(t *testing.T) {
+		client := New("endpoint")
+		want := solana.MustPublicKeyFromBase58(TELEMETRY_PROGRAM_ID_TESTNET)
+		require.True(t, client.telemetryProgramID.Equals(want), "default telemetry program ID incorrect; got %s, wanted %s", client.telemetryProgramID, want)
+	})
+}
+
+func TestGetDzLatencySamplesPDA(t *testing.T) {
+	client := New("endpoint")
+	originDevicePK := solana.NewWallet().PublicKey()
+	targetDevicePK := solana.NewWallet().PublicKey()
+	linkPK := solana.NewWallet().PublicKey()
+	epoch := uint64(100)
+
+	pda, err := client.GetDzLatencySamplesPDA(originDevicePK, targetDevicePK, linkPK, epoch)
+	require.NoError(t, err)
+
+	require.False(t, pda.IsZero(), "PDA should not be zero")
+
+	// Test that swapping device keys produces different PDA
+	pda2, err := client.GetDzLatencySamplesPDA(targetDevicePK, originDevicePK, linkPK, epoch)
+	require.NoError(t, err)
+
+	require.NotEqual(t, pda, pda2, "PDA should NOT be the same if device pubkey order changes")
+}
+
+// Mock RPC client for testing transaction methods
+type mockRpcClient struct {
+	mockSolanaClient
+	sendTransactionErr error
+	getBlockhashErr    error
+}
+
+func (m *mockRpcClient) SendTransaction(ctx context.Context, tx *solana.Transaction) (solana.Signature, error) {
+	if m.sendTransactionErr != nil {
+		return solana.Signature{}, m.sendTransactionErr
+	}
+	// Return a mock signature
+	return solana.SignatureFromBase58("5K7mJpppNKVpJbLzNqezNjmEvT6YUsRsJDNTMEVvrmHHFgATVgp8uWbqjhfJqdodJLqnWhDcwcPYJFowVt1fjRTZ")
+}
+
+func (m *mockRpcClient) GetLatestBlockhash(ctx context.Context, commitment rpc.CommitmentType) (*rpc.GetLatestBlockhashResult, error) {
+	if m.getBlockhashErr != nil {
+		return nil, m.getBlockhashErr
+	}
+	return &rpc.GetLatestBlockhashResult{
+		Value: &rpc.LatestBlockhashResult{
+			Blockhash: solana.MustHashFromBase58("4sGjMW1sUnHzSxGspuhpqLDx6wiyjNtZAMdL4VZHirm4"),
+		},
+	}, nil
+}
+
+func TestInitializeDzLatencySamplesNoSigner(t *testing.T) {
+	client := New("endpoint")
+
+	originDevicePK := solana.NewWallet().PublicKey()
+	targetDevicePK := solana.NewWallet().PublicKey()
+	linkPK := solana.NewWallet().PublicKey()
+
+	_, err := client.InitializeDzLatencySamples(
+		context.Background(),
+		originDevicePK,
+		targetDevicePK,
+		linkPK,
+		100,
+		1000000,
+	)
+
+	require.ErrorIs(t, err, ErrNoPrivateKey)
+}
+
+func TestWriteDzLatencySamplesNoSigner(t *testing.T) {
+	client := New("endpoint")
+
+	latencySamplesAccount := solana.NewWallet().PublicKey()
+
+	_, err := client.WriteDzLatencySamples(
+		context.Background(),
+		latencySamplesAccount,
+		1234567890,
+		[]uint32{100, 200, 300},
+	)
+
+	require.ErrorIs(t, err, ErrNoPrivateKey)
 }

@@ -26,9 +26,9 @@ use solana_program::{
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct InitializeDzLatencySamplesArgs {
-    pub device_a_index: u128,
-    pub device_z_index: u128,
-    pub link_index: u128,
+    pub device_a_pk: Pubkey,
+    pub device_z_pk: Pubkey,
+    pub link_pk: Pubkey,
     pub epoch: u64,
     pub sampling_interval_microseconds: u64,
 }
@@ -38,9 +38,9 @@ impl fmt::Debug for InitializeDzLatencySamplesArgs {
         write!(
             f,
             "device_a: {}, device_z: {}, link: {}, epoch: {}, interval: {}µs",
-            self.device_a_index,
-            self.device_z_index,
-            self.link_index,
+            self.device_a_pk,
+            self.device_z_pk,
+            self.link_pk,
             self.epoch,
             self.sampling_interval_microseconds
         )
@@ -58,10 +58,10 @@ pub fn process_initialize_dz_latency_samples(
 
     // Parse accounts
     let latency_samples_account = next_account_info(accounts_iter)?;
+    let agent = next_account_info(accounts_iter)?;
     let device_a_account = next_account_info(accounts_iter)?;
     let device_z_account = next_account_info(accounts_iter)?;
     let link_account = next_account_info(accounts_iter)?;
-    let agent = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
     let serviceability_program = next_account_info(accounts_iter)?;
 

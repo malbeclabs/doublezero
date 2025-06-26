@@ -145,7 +145,7 @@ mod tests {
             )) => {
                 assert_eq!(code, TelemetryError::AccountDoesNotExist as u32);
             }
-            e => panic!("unexpected error: {:?}", e),
+            e => panic!("unexpected error: {e:?}"),
         }
     }
 
@@ -198,7 +198,7 @@ mod tests {
             )) => {
                 assert_eq!(code, TelemetryError::UnauthorizedAgent as u32);
             }
-            e => panic!("unexpected error: {:?}", e),
+            e => panic!("unexpected error: {e:?}"),
         }
     }
 
@@ -250,7 +250,7 @@ mod tests {
                     did_trigger_error = true;
                     break;
                 }
-                Err(e) => panic!("Unexpected error: {:?}", e),
+                Err(e) => panic!("Unexpected error: {e:?}"),
             }
         }
 
@@ -380,7 +380,7 @@ mod tests {
                 _,
                 InstructionError::MissingRequiredSignature,
             ))) => {} // success
-            other => panic!("Expected MissingRequiredSignature, got {:?}", other),
+            other => panic!("Expected MissingRequiredSignature, got {other:?}"),
         }
     }
 
@@ -482,7 +482,7 @@ mod tests {
             )) => {
                 assert_eq!(code, TelemetryError::InvalidAccountOwner as u32);
             }
-            other => panic!("Unexpected error: {:?}", other),
+            other => panic!("Unexpected error: {other:?}"),
         }
     }
 
@@ -509,7 +509,7 @@ mod tests {
             ))) => {
                 assert_eq!(code, TelemetryError::AccountDoesNotExist as u32);
             }
-            other => panic!("Unexpected error: {:?}", other),
+            other => panic!("Unexpected error: {other:?}"),
         }
     }
 
@@ -603,7 +603,7 @@ mod tests {
             )) => {
                 assert_eq!(code, TelemetryError::UnauthorizedAgent as u32);
             }
-            other => panic!("Unexpected error: {:?}", other),
+            other => panic!("Unexpected error: {other:?}"),
         }
     }
 
@@ -656,7 +656,7 @@ mod tests {
             )) => {
                 assert_eq!(code, TelemetryError::UnauthorizedAgent as u32);
             }
-            other => panic!("Unexpected error: {:?}", other),
+            other => panic!("Unexpected error: {other:?}"),
         }
     }
 }

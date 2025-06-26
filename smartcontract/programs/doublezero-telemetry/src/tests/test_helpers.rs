@@ -617,7 +617,7 @@ impl ServiceabilityProgramHelper {
             .get_account(self.global_state_pubkey)
             .await
             .map_err(|e| {
-                println!("Error getting global state account: {:?}", e);
+                println!("Error getting global state account: {e:?}");
                 e
             })?
             .ok_or(BanksClientError::ClientError(
@@ -922,7 +922,7 @@ pub async fn execute_transaction(
         .process_transaction_with_commitment(transaction, CommitmentLevel::Processed)
         .await
         .map_err(|e| {
-            println!("Transaction failed: {:?}", e);
+            println!("Transaction failed: {e:?}");
             e
         })?;
     Ok(())
@@ -988,7 +988,7 @@ pub fn assert_telemetry_error<T>(
     expected_error: crate::error::TelemetryError,
 ) {
     match result {
-        Ok(_) => panic!("Expected error {:?}, but got Ok", expected_error),
+        Ok(_) => panic!("Expected error {expected_error:?}, but got Ok"),
         Err(BanksClientError::TransactionError(
             solana_sdk::transaction::TransactionError::InstructionError(
                 INITIALIZE_DZ_LATENCY_SAMPLES_INSTRUCTION_INDEX,
@@ -1014,17 +1014,13 @@ pub fn assert_banksclient_error<T>(
     expected_error: InstructionError,
 ) {
     match result {
-        Ok(_) => panic!("Expected error {:?}, but got Ok", expected_error),
+        Ok(_) => panic!("Expected error {expected_error:?}, but got Ok"),
         Err(BanksClientError::TransactionError(TransactionError::InstructionError(_, actual))) => {
             assert_eq!(
                 actual, expected_error,
-                "Expected error {:?}, but got {:?}",
-                expected_error, actual
+                "Expected error {expected_error:?}, but got {actual:?}"
             );
         }
-        Err(other) => panic!(
-            "Expected InstructionError {:?}, but got {:?}",
-            expected_error, other
-        ),
+        Err(other) => panic!("Expected InstructionError {expected_error:?}, but got {other:?}"),
     }
 }

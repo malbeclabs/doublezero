@@ -15,8 +15,6 @@ use solana_program::{
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct MulticastGroupActivateArgs {
-    pub index: u128,
-    pub bump_seed: u8,
     pub multicast_ip: IpV4,
 }
 
@@ -62,14 +60,7 @@ pub fn process_activate_multicastgroup(
     }
 
     let mut multicastgroup: MulticastGroup = MulticastGroup::try_from(multicastgroup_account)?;
-    assert_eq!(
-        multicastgroup.index, value.index,
-        "Invalid PDA Account Index"
-    );
-    assert_eq!(
-        multicastgroup.bump_seed, value.bump_seed,
-        "Invalid PDA Account Bump Seed"
-    );
+
     if multicastgroup.status != MulticastGroupStatus::Pending {
         return Err(DoubleZeroError::InvalidStatus.into());
     }

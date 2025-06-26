@@ -26,7 +26,7 @@ pub fn process_multicastgroup_event(
                     println!("multicast_ip: {} ", ipv4_to_string(&multicast_ip));
 
                     let res = ActivateMulticastGroupCommand {
-                        index: multicastgroup.index,
+                        pubkey: *pubkey,
                         multicast_ip,
                     }
                     .execute(client);
@@ -111,8 +111,6 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::ActivateMulticastGroup(
                     MulticastGroupActivateArgs {
-                        index: 1,
-                        bump_seed,
                         multicast_ip: [224, 0, 0, 0],
                     },
                 )),
@@ -149,8 +147,6 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::ActivateMulticastGroup(
                     MulticastGroupActivateArgs {
-                        index: 1,
-                        bump_seed,
                         multicast_ip: [224, 0, 0, 0],
                     },
                 )),

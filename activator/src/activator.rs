@@ -177,6 +177,7 @@ impl Activator {
                     AccountData::Link(tunnel) => {
                         process_tunnel_event(
                             client,
+                            pubkey,
                             tunnel_tunnel_ips,
                             tunnel_tunnel_ids,
                             tunnel,
@@ -186,6 +187,7 @@ impl Activator {
                     AccountData::User(user) => {
                         process_user_event(
                             client,
+                            pubkey,
                             devices,
                             user_tunnel_ips,
                             tunnel_tunnel_ids,

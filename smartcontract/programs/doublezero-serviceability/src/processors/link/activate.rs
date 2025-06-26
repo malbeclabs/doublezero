@@ -14,8 +14,6 @@ use solana_program::{
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct LinkActivateArgs {
-    pub index: u128,
-    pub bump_seed: u8,
     pub tunnel_id: u16,
     pub tunnel_net: NetworkV4,
 }
@@ -61,11 +59,7 @@ pub fn process_activate_link(
     }
 
     let mut link: Link = Link::try_from(link_account)?;
-    assert_eq!(link.index, value.index, "Invalid PDA Account Index");
-    assert_eq!(
-        link.bump_seed, value.bump_seed,
-        "Invalid PDA Account Bump Seed"
-    );
+
     if link.status != LinkStatus::Pending {
         return Err(DoubleZeroError::InvalidStatus.into());
     }

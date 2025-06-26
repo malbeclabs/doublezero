@@ -2,7 +2,7 @@ use crate::{
     error::DoubleZeroError,
     globalstate::{globalstate_get_next, globalstate_write},
     helper::*,
-    pda::*,
+    pda::get_user_pda,
     state::{
         accounttype::AccountType,
         device::{Device, DeviceStatus},

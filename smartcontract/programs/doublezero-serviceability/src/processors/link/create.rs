@@ -4,7 +4,7 @@ use crate::{
     error::DoubleZeroError,
     globalstate::{globalstate_get_next, globalstate_write},
     helper::*,
-    pda::*,
+    pda::get_link_pda,
     state::{accounttype::AccountType, link::*},
 };
 use borsh::{BorshDeserialize, BorshSerialize};

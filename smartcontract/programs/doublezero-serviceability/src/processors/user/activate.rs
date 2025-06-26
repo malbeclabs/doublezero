@@ -17,8 +17,6 @@ use solana_program::{
 };
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct UserActivateArgs {
-    pub index: u128,
-    pub bump_seed: u8,
     pub tunnel_id: u16,
     pub tunnel_net: NetworkV4,
     pub dz_ip: IpV4,
@@ -71,11 +69,7 @@ pub fn process_activate_user(
     }
 
     let mut user: User = User::try_from(user_account)?;
-    assert_eq!(user.index, value.index, "Invalid PDA Account Index");
-    assert_eq!(
-        user.bump_seed, value.bump_seed,
-        "Invalid PDA Account Bump Seed"
-    );
+
     if user.status != UserStatus::Pending && user.status != UserStatus::Updating {
         return Err(DoubleZeroError::InvalidStatus.into());
     }

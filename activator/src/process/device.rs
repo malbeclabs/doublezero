@@ -18,10 +18,7 @@ pub fn process_device_event(
         DeviceStatus::Pending => {
             print!("New Device {} ", device.code);
 
-            let res = ActivateDeviceCommand {
-                index: device.index,
-            }
-            .execute(client);
+            let res = ActivateDeviceCommand { pubkey: *pubkey }.execute(client);
 
             match res {
                 Err(e) => println!("Error: {e}"),
@@ -120,10 +117,7 @@ mod tests {
             .times(1)
             .in_sequence(&mut seq)
             .with(
-                predicate::eq(DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {
-                    index: device.index,
-                    bump_seed: device.bump_seed,
-                })),
+                predicate::eq(DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {})),
                 predicate::always(),
             )
             .returning(|_, _| Ok(Signature::new_unique()));

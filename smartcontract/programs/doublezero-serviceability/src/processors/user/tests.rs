@@ -184,10 +184,7 @@ mod user_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::ActivateDevice(device::activate::DeviceActivateArgs {
-                index: device_la.index,
-                bump_seed: device_la.bump_seed,
-            }),
+            DoubleZeroInstruction::ActivateDevice(device::activate::DeviceActivateArgs {}),
             vec![
                 AccountMeta::new(device_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
@@ -254,8 +251,6 @@ mod user_test {
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-                index: user.index,
-                bump_seed: user.bump_seed,
                 tunnel_id: 500,
                 tunnel_net: ([10, 1, 2, 3], 21),
                 dz_ip: [200, 0, 0, 1],

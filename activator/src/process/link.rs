@@ -6,10 +6,12 @@ use doublezero_sdk::{
     },
     DoubleZeroClient, Link, LinkStatus,
 };
+use solana_sdk::pubkey::Pubkey;
 use std::collections::HashMap;
 
 pub fn process_tunnel_event(
     client: &dyn DoubleZeroClient,
+    pubkey: &Pubkey,
     tunnel_tunnel_ips: &mut IPBlockAllocator,
     tunnel_tunnel_ids: &mut IDAllocator,
     tunnel: &Link,
@@ -24,7 +26,7 @@ pub fn process_tunnel_event(
                     let tunnel_id = tunnel_tunnel_ids.next_available();
 
                     let res = ActivateLinkCommand {
-                        index: tunnel.index,
+                        pubkey: *pubkey,
                         tunnel_id,
                         tunnel_net,
                     }
@@ -113,6 +115,7 @@ mod tests {
         let mut tunnel_tunnel_ids = IDAllocator::new(500, vec![500, 501, 503]);
         let mut client = create_test_client();
 
+        let tunnel_pubkey = Pubkey::new_unique();
         let tunnel = Link {
             account_type: AccountType::Link,
             owner: Pubkey::new_unique(),
@@ -137,8 +140,6 @@ mod tests {
             .in_sequence(&mut seq)
             .with(
                 predicate::eq(DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
-                    index: tunnel.index,
-                    bump_seed: tunnel.bump_seed,
                     tunnel_id: 502,
                     tunnel_net: ([10, 0, 0, 0], 31),
                 })),
@@ -150,6 +151,7 @@ mod tests {
 
         process_tunnel_event(
             &client,
+            &tunnel_pubkey,
             &mut tunnel_tunnel_ips,
             &mut tunnel_tunnel_ids,
             &tunnel,
@@ -183,6 +185,7 @@ mod tests {
 
         process_tunnel_event(
             &client,
+            &tunnel_pubkey,
             &mut tunnel_tunnel_ips,
             &mut tunnel_tunnel_ids,
             &tunnel,
@@ -204,6 +207,7 @@ mod tests {
         let mut tunnel_tunnel_ids = IDAllocator::new(500, vec![500, 501, 503]);
         let mut client = create_test_client();
 
+        let tunnel_pubkey = Pubkey::new_unique();
         let tunnel = Link {
             account_type: AccountType::Link,
             owner: Pubkey::new_unique(),
@@ -242,6 +246,7 @@ mod tests {
 
         process_tunnel_event(
             &client,
+            &tunnel_pubkey,
             &mut tunnel_tunnel_ips,
             &mut tunnel_tunnel_ids,
             &tunnel,

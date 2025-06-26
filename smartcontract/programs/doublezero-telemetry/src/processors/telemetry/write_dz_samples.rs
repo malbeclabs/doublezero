@@ -147,58 +147,13 @@ pub fn process_write_dz_latency_samples(
     samples_data.next_sample_index = samples_data.samples.len() as u32;
 
     // Determine whether the account needs to be resized to hold the new data.
-    let actual_len = latency_samples_account.data_len();
-    let new_len = DZ_LATENCY_SAMPLES_HEADER_SIZE + samples_data.samples.len() * 4; // 4 bytes per RTT (microseconds) sample
-
-    if actual_len != new_len {
-        // If the account grows, we must ensure it's funded for the new size.
-        if new_len > actual_len {
-            let rent: Rent = Rent::get().expect("Unable to read rent");
-            let required_lamports: u64 = rent.minimum_balance(new_len);
-
-            if required_lamports > latency_samples_account.lamports() {
-                msg!(
-                    "Rent required: {}, actual: {}",
-                    required_lamports,
-                    latency_samples_account.lamports()
-                );
-                let payment: u64 = required_lamports - latency_samples_account.lamports();
-
-                // Derive PDA and pay for the rent from the agent account.
-                let (_pda, bump_seed) = derive_dz_latency_samples_pda(
-                    program_id,
-                    &samples_data.origin_device_pk,
-                    &samples_data.target_device_pk,
-                    &samples_data.link_pk,
-                    samples_data.epoch,
-                );
-
-                invoke_signed(
-                    &system_instruction::transfer(agent.key, latency_samples_account.key, payment),
-                    &[
-                        latency_samples_account.clone(),
-                        agent.clone(),
-                        system_program.clone(),
-                    ],
-                    &[&[
-                        SEED_PREFIX,
-                        SEED_DZ_LATENCY_SAMPLES,
-                        samples_data.origin_device_pk.as_ref(),
-                        samples_data.target_device_pk.as_ref(),
-                        samples_data.link_pk.as_ref(),
-                        &samples_data.epoch.to_le_bytes(),
-                        &[bump_seed],
-                    ]],
-                )
-                .expect("Unable to pay rent");
-            }
-        }
-
-        // Resize the account to accommodate the expanded data.
-        latency_samples_account
-            .realloc(new_len, false)
-            .expect("Unable to realloc the account");
-    }
+    realloc_samples_account_if_needed(
+        program_id,
+        latency_samples_account,
+        &samples_data,
+        agent,
+        system_program,
+    )?;
 
     // Serialize the updated struct back into the account.
     {
@@ -208,6 +163,68 @@ pub fn process_write_dz_latency_samples(
             "Updated account, now has {} samples",
             samples_data.samples.len()
         );
+    }
+
+    Ok(())
+}
+
+// Determine whether the account needs to be resized to hold the new data.
+// If so, determine if the account needs to be funded for the new size, and
+// pay for the rent if needed.
+fn realloc_samples_account_if_needed<'a>(
+    program_id: &Pubkey,
+    account: &AccountInfo<'a>,
+    new_data: &DzLatencySamples,
+    agent: &AccountInfo<'a>,
+    system_program: &AccountInfo<'a>,
+) -> ProgramResult {
+    let actual_len = account.data_len();
+    let new_len = DZ_LATENCY_SAMPLES_HEADER_SIZE + new_data.samples.len() * 4; // 4 bytes per RTT (microseconds) sample
+
+    if actual_len != new_len {
+        // If the account grows, we must ensure it's funded for the new size.
+        if new_len > actual_len {
+            let rent: Rent = Rent::get().expect("Unable to read rent");
+            let required_lamports: u64 = rent.minimum_balance(new_len);
+
+            if required_lamports > account.lamports() {
+                msg!(
+                    "Rent required: {}, actual: {}",
+                    required_lamports,
+                    account.lamports()
+                );
+                let payment: u64 = required_lamports - account.lamports();
+
+                // Derive PDA and pay for the rent from the agent account.
+                let (_pda, bump_seed) = derive_dz_latency_samples_pda(
+                    program_id,
+                    &new_data.origin_device_pk,
+                    &new_data.target_device_pk,
+                    &new_data.link_pk,
+                    new_data.epoch,
+                );
+
+                invoke_signed(
+                    &system_instruction::transfer(agent.key, account.key, payment),
+                    &[account.clone(), agent.clone(), system_program.clone()],
+                    &[&[
+                        SEED_PREFIX,
+                        SEED_DZ_LATENCY_SAMPLES,
+                        new_data.origin_device_pk.as_ref(),
+                        new_data.target_device_pk.as_ref(),
+                        new_data.link_pk.as_ref(),
+                        &new_data.epoch.to_le_bytes(),
+                        &[bump_seed],
+                    ]],
+                )
+                .expect("Unable to pay rent");
+            }
+        }
+
+        // Resize the account to accommodate the expanded data.
+        account
+            .realloc(new_len, false)
+            .expect("Unable to realloc the account");
     }
 
     Ok(())

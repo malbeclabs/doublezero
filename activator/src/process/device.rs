@@ -19,7 +19,7 @@ pub fn process_device_event(
             print!("New Device {} ", device.code);
 
             let res = ActivateDeviceCommand {
-                index: device.index,
+                device_pubkey: *pubkey,
             }
             .execute(client);
 
@@ -120,10 +120,7 @@ mod tests {
             .times(1)
             .in_sequence(&mut seq)
             .with(
-                predicate::eq(DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {
-                    index: device.index,
-                    bump_seed: device.bump_seed,
-                })),
+                predicate::eq(DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {})),
                 predicate::always(),
             )
             .returning(|_, _| Ok(Signature::new_unique()));

@@ -369,10 +369,7 @@ pub mod test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {
-                index: device_ny.index,
-                bump_seed: device_ny.bump_seed,
-            }),
+            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {}),
             vec![
                 AccountMeta::new(device_ny_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
@@ -396,10 +393,7 @@ pub mod test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {
-                index: device_la.index,
-                bump_seed: device_la.bump_seed,
-            }),
+            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {}),
             vec![
                 AccountMeta::new(device_la_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
@@ -475,8 +469,6 @@ pub mod test {
         println!("Testing Link activation...");
         let tunnel_net: NetworkV4 = networkv4_parse("10.31.0.0/31").unwrap();
         let tunnel_activate: LinkActivateArgs = LinkActivateArgs {
-            index: tunnel.index,
-            bump_seed: tunnel.bump_seed,
             tunnel_id: 1,
             tunnel_net,
         };
@@ -558,8 +550,6 @@ pub mod test {
         let dz_ip: IpV4 = ipv4_parse("10.2.0.1").unwrap();
 
         let update1: UserActivateArgs = UserActivateArgs {
-            index: user1.index,
-            bump_seed: user1.bump_seed,
             tunnel_id: 1,
             tunnel_net,
             dz_ip,

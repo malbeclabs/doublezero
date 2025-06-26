@@ -509,10 +509,7 @@ mod tests {
             "CreateDevice",
         );
         test_instruction(
-            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {
-                index: 123,
-                bump_seed: 255,
-            }),
+            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {}),
             "ActivateDevice",
         );
         test_instruction(
@@ -565,8 +562,6 @@ mod tests {
         );
         test_instruction(
             DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
-                index: 123,
-                bump_seed: 255,
                 tunnel_id: 1,
                 tunnel_net: ([1, 2, 3, 4], 1),
             }),
@@ -619,8 +614,6 @@ mod tests {
         );
         test_instruction(
             DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-                index: 123,
-                bump_seed: 255,
                 tunnel_id: 1,
                 tunnel_net: ([1, 2, 3, 4], 1),
                 dz_ip: [1, 2, 3, 4],
@@ -770,8 +763,6 @@ mod tests {
 
         test_instruction(
             DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
-                index: 123,
-                bump_seed: 255,
                 multicast_ip: [1, 2, 3, 4],
             }),
             "ActivateMulticastGroup",

@@ -1,7 +1,7 @@
 use core::fmt;
 
 use crate::{
-    error::DoubleZeroError, globalstate::globalstate_get_next, helper::*, pda::*, state::device::*,
+    error::DoubleZeroError, globalstate::globalstate_get_next, helper::*, state::device::*,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
@@ -14,10 +14,7 @@ use solana_program::{
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct DeviceActivateArgs {
-    pub index: u128,
-    pub bump_seed: u8,
-}
+pub struct DeviceActivateArgs {}
 
 impl fmt::Debug for DeviceActivateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -25,11 +22,7 @@ impl fmt::Debug for DeviceActivateArgs {
     }
 }
 
-pub fn process_activate_device(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
-    value: &DeviceActivateArgs,
-) -> ProgramResult {
+pub fn process_activate_device(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
     let device_account = next_account_info(accounts_iter)?;
@@ -38,13 +31,7 @@ pub fn process_activate_device(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_activate_device({:?})", value);
-
-    let (expected_pda_account, bump_seed) = get_device_pda(program_id, value.index);
-    assert_eq!(
-        device_account.key, &expected_pda_account,
-        "Invalid Device PubKey"
-    );
+    msg!("process_activate_device()");
 
     if device_account.owner != program_id {
         return Err(ProgramError::IncorrectProgramId);
@@ -59,12 +46,6 @@ pub fn process_activate_device(
     }
 
     let mut device: Device = Device::try_from(device_account)?;
-    assert_eq!(device.index, value.index, "Invalid PDA Account Index");
-    assert_eq!(
-        device.bump_seed, value.bump_seed,
-        "Invalid PDA Account Bump Seed"
-    );
-    assert!(device.bump_seed == bump_seed, "Invalid bump seed");
 
     if device.status != DeviceStatus::Pending {
         return Err(DoubleZeroError::InvalidStatus.into());

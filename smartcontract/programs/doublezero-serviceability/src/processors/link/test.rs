@@ -253,8 +253,6 @@ mod tunnel_test {
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
-                index: tunnel_la.index,
-                bump_seed: tunnel_la.bump_seed,
                 tunnel_id: 500,
                 tunnel_net: ([10, 0, 0, 0], 21),
             }),

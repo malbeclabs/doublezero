@@ -98,8 +98,6 @@ mod multicastgroup_test {
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
-                index: globalstate_account.account_index + 1,
-                bump_seed,
                 multicast_ip: [224, 0, 0, 0],
             }),
             vec![

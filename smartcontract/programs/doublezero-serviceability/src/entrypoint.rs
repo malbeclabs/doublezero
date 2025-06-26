@@ -114,9 +114,7 @@ pub fn process_instruction(
         DoubleZeroInstruction::ActivateLink(value) => {
             process_activate_link(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::ActivateDevice(value) => {
-            process_activate_device(program_id, accounts, &value)?
-        }
+        DoubleZeroInstruction::ActivateDevice(_) => process_activate_device(program_id, accounts)?,
         DoubleZeroInstruction::ActivateUser(value) => {
             process_activate_user(program_id, accounts, &value)?
         }

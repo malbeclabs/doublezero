@@ -13,10 +13,12 @@ use doublezero_sdk::{
     ipv4_to_string, networkv4_list_to_string, networkv4_to_string, DoubleZeroClient, User,
     UserStatus, UserType,
 };
+use solana_sdk::pubkey::Pubkey;
 use std::collections::{hash_map::Entry, HashMap};
 
 pub fn process_user_event(
     client: &dyn DoubleZeroClient,
+    pubkey: &Pubkey,
     devices: &mut DeviceMap,
     user_tunnel_ips: &mut IPBlockAllocator,
     tunnel_tunnel_ids: &mut IDAllocator,
@@ -89,7 +91,7 @@ pub fn process_user_event(
 
             // Activate the user
             let res = ActivateUserCommand {
-                index: user.index,
+                user_pubkey: *pubkey,
                 tunnel_id,
                 tunnel_net,
                 dz_ip,
@@ -153,7 +155,7 @@ pub fn process_user_event(
 
             // Activate the user
             let res = ActivateUserCommand {
-                index: user.index,
+                user_pubkey: *pubkey,
                 tunnel_id: user.tunnel_id,
                 tunnel_net: user.tunnel_net,
                 dz_ip,
@@ -335,6 +337,7 @@ mod tests {
             dz_prefixes: vec![([10, 0, 0, 1], 24)],
         };
 
+        let user_pubkey = Pubkey::new_unique();
         let user = User {
             account_type: AccountType::User,
             owner: Pubkey::new_unique(),
@@ -359,8 +362,6 @@ mod tests {
             .in_sequence(&mut seq)
             .with(
                 predicate::eq(DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-                    index: user.index,
-                    bump_seed: user.bump_seed,
                     tunnel_id: 500,
                     tunnel_net: ([10, 0, 0, 0], 31),
                     dz_ip: expected_dz_ip.unwrap_or([0, 0, 0, 0]),
@@ -376,6 +377,7 @@ mod tests {
 
         process_user_event(
             &client,
+            &user_pubkey,
             &mut devices,
             &mut user_tunnel_ips,
             &mut tunnel_tunnel_ids,
@@ -434,6 +436,7 @@ mod tests {
             dz_prefixes: vec![([10, 0, 0, 1], 24)],
         };
 
+        let user_pubkey = Pubkey::new_unique();
         let user = User {
             account_type: AccountType::User,
             owner: Pubkey::new_unique(),
@@ -458,8 +461,6 @@ mod tests {
             .in_sequence(&mut seq)
             .with(
                 predicate::eq(DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-                    index: user.index,
-                    bump_seed: user.bump_seed,
                     tunnel_id: 500,
                     tunnel_net: ([10, 0, 0, 1], 29),
                     dz_ip: [10, 0, 0, 1],
@@ -475,6 +476,7 @@ mod tests {
 
         process_user_event(
             &client,
+            &user_pubkey,
             &mut devices,
             &mut user_tunnel_ips,
             &mut tunnel_tunnel_ids,
@@ -498,6 +500,7 @@ mod tests {
 
         let device_pubkey = Pubkey::new_unique();
 
+        let user_pubkey = Pubkey::new_unique();
         let user = User {
             account_type: AccountType::User,
             owner: Pubkey::new_unique(),
@@ -543,6 +546,7 @@ mod tests {
 
         process_user_event(
             &client,
+            &user_pubkey,
             &mut devices,
             &mut user_tunnel_ips,
             &mut tunnel_tunnel_ids,
@@ -577,6 +581,7 @@ mod tests {
             dz_prefixes: vec![([10, 0, 0, 0], 32)],
         };
 
+        let user_pubkey = Pubkey::new_unique();
         let user = User {
             account_type: AccountType::User,
             owner: Pubkey::new_unique(),
@@ -623,6 +628,7 @@ mod tests {
 
         process_user_event(
             &client,
+            &user_pubkey,
             &mut devices,
             &mut user_tunnel_ips,
             &mut tunnel_tunnel_ids,
@@ -660,6 +666,7 @@ mod tests {
             dz_prefixes: vec![([10, 0, 0, 1], 24)],
         };
 
+        let user_pubkey = Pubkey::new_unique();
         let user = User {
             account_type: AccountType::User,
             owner: Pubkey::new_unique(),
@@ -700,6 +707,7 @@ mod tests {
 
         process_user_event(
             &client,
+            &user_pubkey,
             &mut devices,
             &mut user_tunnel_ips,
             &mut tunnel_tunnel_ids,
@@ -728,7 +736,8 @@ mod tests {
 
         let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
 
-        let pubkey = Pubkey::new_unique();
+        let device_pubkey = Pubkey::new_unique();
+        let user_pubkey = Pubkey::new_unique();
         let user = User {
             account_type: AccountType::User,
             owner: Pubkey::new_unique(),
@@ -736,7 +745,7 @@ mod tests {
             bump_seed: get_user_bump_seed(&client),
             user_type: UserType::IBRLWithAllocatedIP,
             tenant_pk: Pubkey::new_unique(),
-            device_pk: pubkey,
+            device_pk: device_pubkey,
             cyoa_type: UserCYOA::GREOverDIA,
             client_ip: [192, 168, 1, 1],
             dz_ip: [0, 0, 0, 0],
@@ -762,7 +771,7 @@ mod tests {
             dz_prefixes: vec![([11, 0, 0, 0], 16)],
         };
 
-        devices.insert(pubkey, DeviceState::new(&device));
+        devices.insert(device_pubkey, DeviceState::new(&device));
 
         func(&mut client, &user, &mut seq);
 
@@ -770,6 +779,7 @@ mod tests {
 
         process_user_event(
             &client,
+            &user_pubkey,
             &mut devices,
             &mut user_tunnel_ips,
             &mut tunnel_tunnel_ids,

@@ -102,8 +102,6 @@ mod device_test {
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
-                index: mgroup.index,
-                bump_seed: mgroup.bump_seed,
                 multicast_ip: [223, 0, 0, 1],
             }),
             vec![

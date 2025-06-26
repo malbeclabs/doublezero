@@ -90,10 +90,10 @@ pub fn process_write_dz_latency_samples(
     }
 
     // Verify agent matches.
-    if samples_data.agent_pk != *agent.key {
+    if samples_data.origin_device_agent_pk != *agent.key {
         msg!(
             "Agent mismatch: account expects {}, got {}",
-            samples_data.agent_pk,
+            samples_data.origin_device_agent_pk,
             agent.key
         );
         return Err(TelemetryError::UnauthorizedAgent.into());
@@ -149,8 +149,8 @@ pub fn process_write_dz_latency_samples(
 
                 let (_pda, bump_seed) = derive_dz_latency_samples_pda(
                     program_id,
-                    &samples_data.device_a_pk,
-                    &samples_data.device_z_pk,
+                    &samples_data.origin_device_pk,
+                    &samples_data.target_device_pk,
                     &samples_data.link_pk,
                     samples_data.epoch,
                 );
@@ -165,8 +165,8 @@ pub fn process_write_dz_latency_samples(
                     &[&[
                         SEED_PREFIX,
                         SEED_DZ_LATENCY_SAMPLES,
-                        samples_data.device_a_pk.as_ref(),
-                        samples_data.device_z_pk.as_ref(),
+                        samples_data.origin_device_pk.as_ref(),
+                        samples_data.target_device_pk.as_ref(),
                         samples_data.link_pk.as_ref(),
                         &samples_data.epoch.to_le_bytes(),
                         &[bump_seed],

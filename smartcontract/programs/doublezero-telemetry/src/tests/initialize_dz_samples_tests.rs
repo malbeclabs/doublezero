@@ -120,8 +120,8 @@ mod tests {
 
         // Construct instruction manually with agent NOT a signer.
         let args = InitializeDzLatencySamplesArgs {
-            device_a_pk: origin_device_pk,
-            device_z_pk: target_device_pk,
+            origin_device_pk,
+            target_device_pk,
             link_pk,
             epoch: 1,
             sampling_interval_microseconds: 5_000_000,
@@ -165,13 +165,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_initialize_dz_latency_samples_fail_device_a_wrong_owner() {
+    async fn test_initialize_dz_latency_samples_fail_origin_device_wrong_owner() {
         let agent = Keypair::new();
-        let fake_device_a_pk = Pubkey::new_unique();
-        let device_z_pk = Pubkey::new_unique(); // doesn’t matter, we won’t get that far
+        let fake_origin_device_pk = Pubkey::new_unique();
+        let target_device_pk = Pubkey::new_unique(); // doesn’t matter, we won’t get that far
         let link_pk = Pubkey::new_unique(); // same
 
-        let fake_device = Device {
+        let fake_origin_device = Device {
             index: 0,
             bump_seed: 0,
             account_type: AccountType::Device,
@@ -187,7 +187,7 @@ mod tests {
         };
 
         let mut device_data = Vec::new();
-        fake_device.serialize(&mut device_data).unwrap();
+        fake_origin_device.serialize(&mut device_data).unwrap();
 
         let fake_account = Account {
             lamports: 1_000_000,
@@ -198,7 +198,7 @@ mod tests {
         };
 
         let mut ledger =
-            LedgerHelper::new_with_preloaded_accounts(vec![(fake_device_a_pk, fake_account)])
+            LedgerHelper::new_with_preloaded_accounts(vec![(fake_origin_device_pk, fake_account)])
                 .await
                 .unwrap();
 
@@ -212,8 +212,8 @@ mod tests {
             .telemetry
             .initialize_dz_latency_samples(
                 &agent,
-                fake_device_a_pk,
-                device_z_pk,
+                fake_origin_device_pk,
+                target_device_pk,
                 link_pk,
                 42,
                 5_000_000,
@@ -223,19 +223,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_initialize_dz_latency_samples_fail_device_z_wrong_owner() {
+    async fn test_initialize_dz_latency_samples_fail_target_device_wrong_owner() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
-        let (agent, device_a_pk, _real_device_z, link_pk) =
+        let (agent, origin_device_pk, _real_target_device, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
 
         ledger.refresh_blockhash().await.unwrap();
 
-        // Inject a fake Device Z account with wrong owner
-        let fake_device_z_pk = Pubkey::new_unique();
+        // Inject a fake target device account with wrong owner
+        let fake_target_device_pk = Pubkey::new_unique();
         let wrong_owner = Pubkey::new_unique();
 
-        let fake_device_z = Device {
+        let fake_target_device = Device {
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::new_unique(), // doesn't matter for Z
             location_pk: Pubkey::new_unique(),
@@ -251,7 +251,7 @@ mod tests {
         };
 
         let mut data = Vec::new();
-        fake_device_z.serialize(&mut data).unwrap();
+        fake_target_device.serialize(&mut data).unwrap();
 
         let fake_account = solana_sdk::account::Account {
             lamports: 1_000_000,
@@ -262,7 +262,7 @@ mod tests {
         };
 
         let mut ledger =
-            LedgerHelper::new_with_preloaded_accounts(vec![(fake_device_z_pk, fake_account)])
+            LedgerHelper::new_with_preloaded_accounts(vec![(fake_target_device_pk, fake_account)])
                 .await
                 .unwrap();
 
@@ -276,8 +276,8 @@ mod tests {
             .telemetry
             .initialize_dz_latency_samples(
                 &agent,
-                device_a_pk,
-                fake_device_z_pk,
+                origin_device_pk,
+                fake_target_device_pk,
                 link_pk,
                 88,
                 5_000_000,
@@ -291,7 +291,7 @@ mod tests {
     async fn test_initialize_dz_latency_samples_fail_link_wrong_owner() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
-        let (agent, device_a_pk, device_z_pk, _real_link_pk) =
+        let (agent, origin_device_pk, target_device_pk, _real_link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
 
         ledger.refresh_blockhash().await.unwrap();
@@ -302,8 +302,8 @@ mod tests {
 
         let fake_link = Link {
             status: LinkStatus::Activated,
-            side_a_pk: device_a_pk,
-            side_z_pk: device_z_pk,
+            side_a_pk: origin_device_pk,
+            side_z_pk: target_device_pk,
             account_type: AccountType::Link,
             owner: wrong_owner,
             index: 0,
@@ -344,8 +344,8 @@ mod tests {
             .telemetry
             .initialize_dz_latency_samples(
                 &agent,
-                device_a_pk,
-                device_z_pk,
+                origin_device_pk,
+                target_device_pk,
                 fake_link_pk,
                 77,
                 5_000_000,
@@ -356,7 +356,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_initialize_dz_latency_samples_fail_device_a_not_activated() {
+    async fn test_initialize_dz_latency_samples_fail_origin_device_not_activated() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         let location_pk = ledger
@@ -388,11 +388,11 @@ mod tests {
             .await
             .unwrap();
 
-        // Device A: not activated
-        let (device_a_pk, _) = ledger
+        // Origin device: not activated
+        let (origin_device_pk, _) = ledger
             .serviceability
             .create_device(DeviceCreateArgs {
-                code: "DeviceA".to_string(),
+                code: "OriginDevice".to_string(),
                 location_pk,
                 exchange_pk,
                 device_type: DeviceType::Switch,
@@ -403,11 +403,11 @@ mod tests {
             .await
             .unwrap();
 
-        // Device Z: activated
-        let (device_z_pk, _) = ledger
+        // Target device: activated
+        let (target_device_pk, _) = ledger
             .serviceability
             .create_and_activate_device(DeviceCreateArgs {
-                code: "DeviceZ".to_string(),
+                code: "TargetDevice".to_string(),
                 location_pk,
                 exchange_pk,
                 device_type: DeviceType::Switch,
@@ -418,14 +418,14 @@ mod tests {
             .await
             .unwrap();
 
-        // Link: between device A and Z
+        // Link: between origin device and target device
         let (link_pk, _) = ledger
             .serviceability
             .create_and_activate_link(
                 LinkCreateArgs {
                     code: "LINK1".to_string(),
-                    side_a_pk: device_a_pk,
-                    side_z_pk: device_z_pk,
+                    side_a_pk: origin_device_pk,
+                    side_z_pk: target_device_pk,
                     link_type: LinkLinkType::L3,
                     bandwidth: 1000,
                     mtu: 1500,
@@ -443,14 +443,21 @@ mod tests {
 
         let result = ledger
             .telemetry
-            .initialize_dz_latency_samples(&agent, device_a_pk, device_z_pk, link_pk, 66, 5_000_000)
+            .initialize_dz_latency_samples(
+                &agent,
+                origin_device_pk,
+                target_device_pk,
+                link_pk,
+                66,
+                5_000_000,
+            )
             .await;
 
         assert_telemetry_error(result, TelemetryError::DeviceNotActive);
     }
 
     #[tokio::test]
-    async fn test_initialize_dz_latency_samples_fail_device_z_not_activated() {
+    async fn test_initialize_dz_latency_samples_fail_target_device_not_activated() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         let location_pk = ledger
@@ -482,11 +489,11 @@ mod tests {
             .await
             .unwrap();
 
-        // Device A: activated
-        let (device_a_pk, _) = ledger
+        // Origin device: activated
+        let (origin_device_pk, _) = ledger
             .serviceability
             .create_and_activate_device(DeviceCreateArgs {
-                code: "DeviceA".to_string(),
+                code: "OriginDevice".to_string(),
                 location_pk,
                 exchange_pk,
                 device_type: DeviceType::Switch,
@@ -497,11 +504,11 @@ mod tests {
             .await
             .unwrap();
 
-        // Device Z: not activated
-        let (device_z_pk, _) = ledger
+        // Target device: not activated
+        let (target_device_pk, _) = ledger
             .serviceability
             .create_device(DeviceCreateArgs {
-                code: "DeviceZ".to_string(),
+                code: "TargetDevice".to_string(),
                 location_pk,
                 exchange_pk,
                 device_type: DeviceType::Switch,
@@ -512,14 +519,14 @@ mod tests {
             .await
             .unwrap();
 
-        // Link between Device A and Device Z
+        // Link between origin device and target device
         let (link_pk, _) = ledger
             .serviceability
             .create_and_activate_link(
                 LinkCreateArgs {
                     code: "LINK1".to_string(),
-                    side_a_pk: device_a_pk,
-                    side_z_pk: device_z_pk,
+                    side_a_pk: origin_device_pk,
+                    side_z_pk: target_device_pk,
                     link_type: LinkLinkType::L3,
                     bandwidth: 1000,
                     mtu: 1500,
@@ -537,7 +544,14 @@ mod tests {
 
         let result = ledger
             .telemetry
-            .initialize_dz_latency_samples(&agent, device_a_pk, device_z_pk, link_pk, 66, 5_000_000)
+            .initialize_dz_latency_samples(
+                &agent,
+                origin_device_pk,
+                target_device_pk,
+                link_pk,
+                66,
+                5_000_000,
+            )
             .await;
 
         assert_telemetry_error(result, TelemetryError::DeviceNotActive);
@@ -576,10 +590,10 @@ mod tests {
             .await
             .unwrap();
 
-        let (device_a_pk, _) = ledger
+        let (origin_device_pk, _) = ledger
             .serviceability
             .create_and_activate_device(DeviceCreateArgs {
-                code: "DeviceA".to_string(),
+                code: "OriginDevice".to_string(),
                 location_pk,
                 exchange_pk,
                 device_type: DeviceType::Switch,
@@ -590,10 +604,10 @@ mod tests {
             .await
             .unwrap();
 
-        let (device_z_pk, _) = ledger
+        let (target_device_pk, _) = ledger
             .serviceability
             .create_and_activate_device(DeviceCreateArgs {
-                code: "DeviceZ".to_string(),
+                code: "TargetDevice".to_string(),
                 location_pk,
                 exchange_pk,
                 device_type: DeviceType::Switch,
@@ -609,8 +623,8 @@ mod tests {
             .serviceability
             .create_link(LinkCreateArgs {
                 code: "LINK1".to_string(),
-                side_a_pk: device_a_pk,
-                side_z_pk: device_z_pk,
+                side_a_pk: origin_device_pk,
+                side_z_pk: target_device_pk,
                 link_type: LinkLinkType::L3,
                 bandwidth: 1000,
                 mtu: 1500,
@@ -625,7 +639,14 @@ mod tests {
 
         let result = ledger
             .telemetry
-            .initialize_dz_latency_samples(&agent, device_a_pk, device_z_pk, link_pk, 66, 5_000_000)
+            .initialize_dz_latency_samples(
+                &agent,
+                origin_device_pk,
+                target_device_pk,
+                link_pk,
+                66,
+                5_000_000,
+            )
             .await;
 
         assert_telemetry_error(result, TelemetryError::LinkNotActive);
@@ -664,11 +685,11 @@ mod tests {
             .await
             .unwrap();
 
-        // Device A and Z: activated
-        let (device_a_pk, _) = ledger
+        // Origin device and target device: activated
+        let (origin_device_pk, _) = ledger
             .serviceability
             .create_and_activate_device(DeviceCreateArgs {
-                code: "DeviceA".to_string(),
+                code: "OriginDevice".to_string(),
                 location_pk,
                 exchange_pk,
                 device_type: DeviceType::Switch,
@@ -679,10 +700,10 @@ mod tests {
             .await
             .unwrap();
 
-        let (device_z_pk, _) = ledger
+        let (target_device_pk, _) = ledger
             .serviceability
             .create_and_activate_device(DeviceCreateArgs {
-                code: "DeviceZ".to_string(),
+                code: "TargetDevice".to_string(),
                 location_pk,
                 exchange_pk,
                 device_type: DeviceType::Switch,
@@ -722,7 +743,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Link between X and Y — not A and Z
+        // Link between X and Y — not origin device and target device
         let (link_pk, _) = ledger
             .serviceability
             .create_and_activate_link(
@@ -747,7 +768,14 @@ mod tests {
 
         let result = ledger
             .telemetry
-            .initialize_dz_latency_samples(&agent, device_a_pk, device_z_pk, link_pk, 55, 5_000_000)
+            .initialize_dz_latency_samples(
+                &agent,
+                origin_device_pk,
+                target_device_pk,
+                link_pk,
+                55,
+                5_000_000,
+            )
             .await;
 
         assert_telemetry_error(result, TelemetryError::InvalidLink);
@@ -786,10 +814,10 @@ mod tests {
             .await
             .unwrap();
 
-        let (device_a_pk, _) = ledger
+        let (origin_device_pk, _) = ledger
             .serviceability
             .create_and_activate_device(DeviceCreateArgs {
-                code: "DeviceA".into(),
+                code: "OriginDevice".into(),
                 location_pk,
                 exchange_pk,
                 device_type: DeviceType::Switch,
@@ -800,10 +828,10 @@ mod tests {
             .await
             .unwrap();
 
-        let (device_z_pk, _) = ledger
+        let (target_device_pk, _) = ledger
             .serviceability
             .create_and_activate_device(DeviceCreateArgs {
-                code: "DeviceZ".into(),
+                code: "TargetDevice".into(),
                 location_pk,
                 exchange_pk,
                 device_type: DeviceType::Switch,
@@ -814,14 +842,14 @@ mod tests {
             .await
             .unwrap();
 
-        // link with device_z on side_a, device_a on side_z
+        // link with target_device on side_a, origin_device on side_z
         let (link_pk, _) = ledger
             .serviceability
             .create_and_activate_link(
                 LinkCreateArgs {
                     code: "LINK1".into(),
-                    side_a_pk: device_z_pk,
-                    side_z_pk: device_a_pk,
+                    side_a_pk: target_device_pk,
+                    side_z_pk: origin_device_pk,
                     link_type: LinkLinkType::L2,
                     bandwidth: 1000,
                     mtu: 1500,
@@ -839,7 +867,14 @@ mod tests {
 
         let result = ledger
             .telemetry
-            .initialize_dz_latency_samples(&agent, device_a_pk, device_z_pk, link_pk, 42, 5_000_000)
+            .initialize_dz_latency_samples(
+                &agent,
+                origin_device_pk,
+                target_device_pk,
+                link_pk,
+                42,
+                5_000_000,
+            )
             .await;
 
         assert!(result.is_ok());
@@ -849,7 +884,7 @@ mod tests {
     async fn test_initialize_dz_latency_samples_fail_account_already_exists() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
-        let (agent, device_a_pk, device_z_pk, link_pk) =
+        let (agent, origin_device_pk, target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
 
         ledger.refresh_blockhash().await.unwrap();
@@ -859,8 +894,8 @@ mod tests {
             .telemetry
             .initialize_dz_latency_samples(
                 &agent,
-                device_a_pk,
-                device_z_pk,
+                origin_device_pk,
+                target_device_pk,
                 link_pk,
                 999,
                 5_000_000,
@@ -877,8 +912,8 @@ mod tests {
             .initialize_dz_latency_samples_with_pda(
                 &agent,
                 latency_samples_pda,
-                device_a_pk,
-                device_z_pk,
+                origin_device_pk,
+                target_device_pk,
                 link_pk,
                 999,
                 5_000_000,
@@ -892,7 +927,7 @@ mod tests {
     async fn test_initialize_dz_latency_samples_fail_invalid_pda() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
-        let (agent, device_a_pk, device_z_pk, link_pk) =
+        let (agent, origin_device_pk, target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
 
         ledger.refresh_blockhash().await.unwrap();
@@ -900,8 +935,8 @@ mod tests {
         // Derive correct PDA (but we won't use it)
         let (_correct_pda, _bump) = derive_dz_latency_samples_pda(
             &ledger.telemetry.program_id,
-            &device_a_pk,
-            &device_z_pk,
+            &origin_device_pk,
+            &target_device_pk,
             &link_pk,
             42,
         );
@@ -914,8 +949,8 @@ mod tests {
             .initialize_dz_latency_samples_with_pda(
                 &agent,
                 fake_pda,
-                device_a_pk,
-                device_z_pk,
+                origin_device_pk,
+                target_device_pk,
                 link_pk,
                 42,
                 5_000_000,
@@ -929,42 +964,56 @@ mod tests {
     async fn test_initialize_dz_latency_samples_fail_zero_sampling_interval() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
-        let (agent, device_a_pk, device_z_pk, link_pk) =
+        let (agent, origin_device_pk, target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
 
         ledger.refresh_blockhash().await.unwrap();
 
         let result = ledger
             .telemetry
-            .initialize_dz_latency_samples(&agent, device_a_pk, device_z_pk, link_pk, 123, 0)
+            .initialize_dz_latency_samples(
+                &agent,
+                origin_device_pk,
+                target_device_pk,
+                link_pk,
+                123,
+                0,
+            )
             .await;
 
         assert_telemetry_error(result, TelemetryError::InvalidSamplingInterval);
     }
 
     #[tokio::test]
-    async fn test_initialize_dz_latency_samples_fail_same_device_a_and_z() {
+    async fn test_initialize_dz_latency_samples_fail_same_origin_device_and_target_device() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
-        let (agent, device_a_pk, _device_z_pk, link_pk) =
+        let (agent, origin_device_pk, _target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
 
-        // Intentionally use device A twice
+        // Intentionally use origin device twice
         ledger.refresh_blockhash().await.unwrap();
 
         let result = ledger
             .telemetry
-            .initialize_dz_latency_samples(&agent, device_a_pk, device_a_pk, link_pk, 123, 100_000)
+            .initialize_dz_latency_samples(
+                &agent,
+                origin_device_pk,
+                origin_device_pk,
+                link_pk,
+                123,
+                100_000,
+            )
             .await;
 
         assert_telemetry_error(result, TelemetryError::InvalidLink);
     }
 
     #[tokio::test]
-    async fn test_initialize_dz_latency_samples_fail_agent_not_owner_of_device_a() {
+    async fn test_initialize_dz_latency_samples_fail_agent_not_owner_of_origin_device() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
-        // Create agent that owns Device A
+        // Create agent that owns origin device
         let owner_agent = Keypair::new();
         ledger
             .fund_account(&owner_agent.pubkey(), 10_000_000_000)
@@ -1001,8 +1050,8 @@ mod tests {
             .await
             .unwrap();
 
-        // Device A: activated, owned by owner_agent
-        let (device_a_pk, _) = ledger
+        // Origin device: activated, owned by owner_agent
+        let (origin_device_pk, _) = ledger
             .serviceability
             .create_and_activate_device(DeviceCreateArgs {
                 code: "A".to_string(),
@@ -1016,8 +1065,8 @@ mod tests {
             .await
             .unwrap();
 
-        // Device Z: also valid
-        let (device_z_pk, _) = ledger
+        // Target device: also valid
+        let (target_device_pk, _) = ledger
             .serviceability
             .create_and_activate_device(DeviceCreateArgs {
                 code: "Z".to_string(),
@@ -1036,8 +1085,8 @@ mod tests {
             .create_and_activate_link(
                 LinkCreateArgs {
                     code: "LNK".to_string(),
-                    side_a_pk: device_a_pk,
-                    side_z_pk: device_z_pk,
+                    side_a_pk: origin_device_pk,
+                    side_z_pk: target_device_pk,
                     ..LinkCreateArgs::default()
                 },
                 1,
@@ -1053,8 +1102,8 @@ mod tests {
             .telemetry
             .initialize_dz_latency_samples(
                 &unauthorized_agent,
-                device_a_pk,
-                device_z_pk,
+                origin_device_pk,
+                target_device_pk,
                 link_pk,
                 66,
                 5_000_000,

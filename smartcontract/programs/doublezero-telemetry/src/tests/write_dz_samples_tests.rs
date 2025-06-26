@@ -154,7 +154,7 @@ mod tests {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         // Set up a valid latency samples account with a specific agent
-        let (authorized_agent, device_a_pk, device_z_pk, link_pk) =
+        let (authorized_agent, origin_device_pk, target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
 
         ledger.refresh_blockhash().await.unwrap();
@@ -163,8 +163,8 @@ mod tests {
             .telemetry
             .initialize_dz_latency_samples(
                 &authorized_agent,
-                device_a_pk,
-                device_z_pk,
+                origin_device_pk,
+                target_device_pk,
                 link_pk,
                 1u64,
                 5_000_000,
@@ -207,14 +207,21 @@ mod tests {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         // Set up a latency samples account with a funded agent
-        let (agent, device_a_pk, device_z_pk, link_pk) =
+        let (agent, origin_device_pk, target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
 
         ledger.refresh_blockhash().await.unwrap();
 
         let latency_samples_pda = ledger
             .telemetry
-            .initialize_dz_latency_samples(&agent, device_a_pk, device_z_pk, link_pk, 1, 5_000_000)
+            .initialize_dz_latency_samples(
+                &agent,
+                origin_device_pk,
+                target_device_pk,
+                link_pk,
+                1,
+                5_000_000,
+            )
             .await
             .unwrap();
 
@@ -257,14 +264,21 @@ mod tests {
     async fn test_write_dz_latency_samples_preserves_start_timestamp() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
-        let (agent, device_a_pk, device_z_pk, link_pk) =
+        let (agent, origin_device_pk, target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
 
         ledger.refresh_blockhash().await.unwrap();
 
         let latency_samples_pda = ledger
             .telemetry
-            .initialize_dz_latency_samples(&agent, device_a_pk, device_z_pk, link_pk, 1, 5_000_000)
+            .initialize_dz_latency_samples(
+                &agent,
+                origin_device_pk,
+                target_device_pk,
+                link_pk,
+                1,
+                5_000_000,
+            )
             .await
             .unwrap();
 
@@ -306,13 +320,20 @@ mod tests {
     async fn test_write_dz_latency_samples_fail_agent_not_signer() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
-        let (agent, device_a_pk, device_z_pk, link_pk) =
+        let (agent, origin_device_pk, target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
         ledger.refresh_blockhash().await.unwrap();
 
         let latency_samples_pda = ledger
             .telemetry
-            .initialize_dz_latency_samples(&agent, device_a_pk, device_z_pk, link_pk, 1, 5_000_000)
+            .initialize_dz_latency_samples(
+                &agent,
+                origin_device_pk,
+                target_device_pk,
+                link_pk,
+                1,
+                5_000_000,
+            )
             .await
             .unwrap();
 
@@ -367,13 +388,20 @@ mod tests {
     async fn test_write_dz_latency_samples_noop_on_empty_samples() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
-        let (agent, device_a_pk, device_z_pk, link_pk) =
+        let (agent, origin_device_pk, target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
         ledger.refresh_blockhash().await.unwrap();
 
         let latency_samples_pda = ledger
             .telemetry
-            .initialize_dz_latency_samples(&agent, device_a_pk, device_z_pk, link_pk, 1, 5_000_000)
+            .initialize_dz_latency_samples(
+                &agent,
+                origin_device_pk,
+                target_device_pk,
+                link_pk,
+                1,
+                5_000_000,
+            )
             .await
             .unwrap();
 
@@ -405,12 +433,12 @@ mod tests {
         let samples = DzLatencySamples {
             account_type: crate::state::accounttype::AccountType::DzLatencySamples,
             epoch: 1,
-            device_a_pk: Pubkey::new_unique(),
-            device_z_pk: Pubkey::new_unique(),
-            location_a_pk: Pubkey::new_unique(),
-            location_z_pk: Pubkey::new_unique(),
+            origin_device_agent_pk: agent.pubkey(),
+            origin_device_pk: Pubkey::new_unique(),
+            target_device_pk: Pubkey::new_unique(),
+            origin_device_location_pk: Pubkey::new_unique(),
+            target_device_location_pk: Pubkey::new_unique(),
             link_pk: Pubkey::new_unique(),
-            agent_pk: agent.pubkey(),
             sampling_interval_microseconds: 1_000_000,
             start_timestamp_microseconds: 0,
             next_sample_index: 0,
@@ -488,13 +516,20 @@ mod tests {
     async fn test_write_dz_latency_samples_next_sample_index_correct() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
-        let (agent, device_a_pk, device_z_pk, link_pk) =
+        let (agent, origin_device_pk, target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
         ledger.refresh_blockhash().await.unwrap();
 
         let pda = ledger
             .telemetry
-            .initialize_dz_latency_samples(&agent, device_a_pk, device_z_pk, link_pk, 1, 5_000_000)
+            .initialize_dz_latency_samples(
+                &agent,
+                origin_device_pk,
+                target_device_pk,
+                link_pk,
+                1,
+                5_000_000,
+            )
             .await
             .unwrap();
 
@@ -523,7 +558,7 @@ mod tests {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         // Seed the latency samples with a known authorized agent
-        let (authorized_agent, device_a_pk, device_z_pk, link_pk) =
+        let (authorized_agent, origin_device_pk, target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
 
         ledger.refresh_blockhash().await.unwrap();
@@ -532,8 +567,8 @@ mod tests {
             .telemetry
             .initialize_dz_latency_samples(
                 &authorized_agent,
-                device_a_pk,
-                device_z_pk,
+                origin_device_pk,
+                target_device_pk,
                 link_pk,
                 1,
                 5_000_000,
@@ -576,7 +611,7 @@ mod tests {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         // Set up real latency samples account
-        let (real_agent, device_a_pk, device_z_pk, link_pk) =
+        let (real_agent, origin_device_pk, target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
 
         ledger.refresh_blockhash().await.unwrap();
@@ -585,8 +620,8 @@ mod tests {
             .telemetry
             .initialize_dz_latency_samples(
                 &real_agent,
-                device_a_pk,
-                device_z_pk,
+                origin_device_pk,
+                target_device_pk,
                 link_pk,
                 1,
                 5_000_000,

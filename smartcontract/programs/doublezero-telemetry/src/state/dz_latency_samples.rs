@@ -21,12 +21,12 @@ pub struct DzLatencySamples {
     pub account_type: AccountType,           // 1
     pub bump_seed: u8,                       // 1
     pub epoch: u64,                          // 8
-    pub device_a_pk: Pubkey,                 // 32
-    pub device_z_pk: Pubkey,                 // 32
-    pub location_a_pk: Pubkey,               // 32
-    pub location_z_pk: Pubkey,               // 32
+    pub origin_device_agent_pk: Pubkey,      // 32
+    pub origin_device_pk: Pubkey,            // 32
+    pub target_device_pk: Pubkey,            // 32
+    pub origin_device_location_pk: Pubkey,   // 32
+    pub target_device_location_pk: Pubkey,   // 32
     pub link_pk: Pubkey,                     // 32 (all 1s for internet data)
-    pub agent_pk: Pubkey,                    // 32
     pub sampling_interval_microseconds: u64, // 8
     pub start_timestamp_microseconds: u64,   // 8
     pub next_sample_index: u32,              // 4
@@ -38,8 +38,8 @@ impl fmt::Display for DzLatencySamples {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, epoch: {}, device_a: {}, device_z: {}, link: {}, agent: {}, samples: {}",
-            self.account_type, self.epoch, self.device_a_pk, self.device_z_pk, self.link_pk, self.agent_pk, self.samples.len()
+            "account_type: {}, epoch: {}, origin_device_agent: {}, origin_device: {}, target_device: {}, link: {}, samples: {}",
+            self.account_type, self.epoch, self.origin_device_agent_pk, self.origin_device_pk, self.target_device_pk, self.link_pk, self.samples.len()
         )
     }
 }
@@ -59,7 +59,7 @@ impl AccountTypeInfo for DzLatencySamples {
 
     /// Owner is the agent pubkey which writes data
     fn owner(&self) -> Pubkey {
-        self.agent_pk
+        self.origin_device_agent_pk
     }
 }
 
@@ -82,12 +82,12 @@ mod tests {
             account_type: AccountType::DzLatencySamples,
             bump_seed: 255,
             epoch: 19800,
-            device_a_pk: Pubkey::new_unique(),
-            device_z_pk: Pubkey::new_unique(),
-            location_a_pk: Pubkey::new_unique(),
-            location_z_pk: Pubkey::new_unique(),
+            origin_device_agent_pk: Pubkey::new_unique(),
+            origin_device_pk: Pubkey::new_unique(),
+            target_device_pk: Pubkey::new_unique(),
+            origin_device_location_pk: Pubkey::new_unique(),
+            target_device_location_pk: Pubkey::new_unique(),
             link_pk: Pubkey::new_unique(),
-            agent_pk: Pubkey::new_unique(),
             sampling_interval_microseconds: 5_000_000,
             start_timestamp_microseconds: 1_700_000_000_000_000,
             next_sample_index: samples.len() as u32,
@@ -100,12 +100,18 @@ mod tests {
         assert_eq!(val.account_type, val2.account_type);
         assert_eq!(val.bump_seed, val2.bump_seed);
         assert_eq!(val.epoch, val2.epoch);
-        assert_eq!(val.device_a_pk, val2.device_a_pk);
-        assert_eq!(val.device_z_pk, val2.device_z_pk);
-        assert_eq!(val.location_a_pk, val2.location_a_pk);
-        assert_eq!(val.location_z_pk, val2.location_z_pk);
+        assert_eq!(val.origin_device_pk, val2.origin_device_pk);
+        assert_eq!(val.target_device_pk, val2.target_device_pk);
+        assert_eq!(
+            val.origin_device_location_pk,
+            val2.origin_device_location_pk
+        );
+        assert_eq!(
+            val.target_device_location_pk,
+            val2.target_device_location_pk
+        );
         assert_eq!(val.link_pk, val2.link_pk);
-        assert_eq!(val.agent_pk, val2.agent_pk);
+        assert_eq!(val.origin_device_agent_pk, val2.origin_device_agent_pk);
         assert_eq!(
             val.sampling_interval_microseconds,
             val2.sampling_interval_microseconds

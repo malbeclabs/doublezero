@@ -362,8 +362,8 @@ impl TelemetryProgramHelper {
 
         self.execute_transaction(
             TelemetryInstruction::InitializeDzLatencySamples(InitializeDzLatencySamplesArgs {
-                device_a_pk: origin_device_pk,
-                device_z_pk: target_device_pk,
+                origin_device_pk,
+                target_device_pk,
                 link_pk,
                 epoch,
                 sampling_interval_microseconds,
@@ -411,15 +411,15 @@ impl TelemetryProgramHelper {
         &mut self,
         agent: &Keypair,
         latency_samples_pda: Pubkey,
-        device_a_pk: Pubkey,
-        device_z_pk: Pubkey,
+        origin_device_pk: Pubkey,
+        target_device_pk: Pubkey,
         link_pk: Pubkey,
         epoch: u64,
         interval_us: u64,
     ) -> Result<Pubkey, BanksClientError> {
         let args = InitializeDzLatencySamplesArgs {
-            device_a_pk,
-            device_z_pk,
+            origin_device_pk,
+            target_device_pk,
             link_pk,
             epoch,
             sampling_interval_microseconds: interval_us,
@@ -431,8 +431,8 @@ impl TelemetryProgramHelper {
             vec![
                 AccountMeta::new(latency_samples_pda, false),
                 AccountMeta::new_readonly(agent.pubkey(), true),
-                AccountMeta::new_readonly(device_a_pk, false),
-                AccountMeta::new_readonly(device_z_pk, false),
+                AccountMeta::new_readonly(origin_device_pk, false),
+                AccountMeta::new_readonly(target_device_pk, false),
                 AccountMeta::new_readonly(link_pk, false),
                 AccountMeta::new_readonly(solana_program::system_program::id(), false),
                 AccountMeta::new_readonly(self.serviceability_program_id, false),

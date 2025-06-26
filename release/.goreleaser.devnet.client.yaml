@@ -3,7 +3,7 @@
 
 includes:
   - from_file:
-      path: .goreleaser.base.client.yaml
+      path: release/.goreleaser.base.client.yaml
 
 cloudsmiths:
   - organization: malbeclabs

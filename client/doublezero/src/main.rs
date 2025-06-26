@@ -14,8 +14,8 @@ use crate::cli::{
     location::LocationCommands,
     user::{UserAllowlistCommands, UserCommands},
 };
-use doublezero_cli::doublezerocommand::CliCommandImpl;
-use doublezero_sdk::DZClient;
+use doublezero_cli::{checkversion::check_version, doublezerocommand::CliCommandImpl};
+use doublezero_sdk::{DZClient, ProgramVersion};
 
 #[derive(Parser, Debug)]
 #[command(term_width = 0)]
@@ -54,6 +54,7 @@ async fn main() -> eyre::Result<()> {
     let stdout = std::io::stdout();
     let mut handle = stdout.lock();
 
+    check_version(&client, &mut handle, ProgramVersion::current())?;
     let res = match app.command {
         Command::Address(args) => args.execute(&client, &mut handle),
         Command::Balance(args) => args.execute(&client, &mut handle),

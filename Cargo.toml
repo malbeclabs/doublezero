@@ -26,7 +26,7 @@ anyhow = "1"
 assert_cmd = "2"
 # NOTE: We need to maintain base64 version 0.22.1
 base64 = "0.22.1"
-bincode = { version = "2", features = [ "serde" ] }
+bincode = { version = "2", features = ["serde"] }
 bitvec = "1"
 borsh = "1"
 chrono = "0"
@@ -36,6 +36,7 @@ console = "0"
 ctor = "0"
 directories-next = "2"
 dirs-next = "2"
+env_logger = "0"
 eyre = "0"
 futures = "0"
 futures-util = "0"

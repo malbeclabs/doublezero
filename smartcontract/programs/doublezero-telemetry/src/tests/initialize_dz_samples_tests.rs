@@ -36,8 +36,8 @@ mod tests {
         let (origin_device_agent, origin_device_pk, target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
 
-        // Refresh blockhash to latest before telemetry transaction.
-        ledger.refresh_blockhash().await.unwrap();
+        // Wait for a new blockhash before moving on.
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         // Execute initialize latency samples transaction.
         let latency_samples_pda = ledger
@@ -79,8 +79,8 @@ mod tests {
             .await
             .unwrap();
 
-        // Refresh blockhash to latest before telemetry transaction.
-        ledger.refresh_blockhash().await.unwrap();
+        // Wait for a new blockhash before moving on.
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         // Check that the origin device is suspended.
         let device = ledger
@@ -130,8 +130,8 @@ mod tests {
             .await
             .unwrap();
 
-        // Refresh blockhash to latest before telemetry transaction.
-        ledger.refresh_blockhash().await.unwrap();
+        // Wait for a new blockhash before moving on.
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         // Check that the target device is suspended.
         let device = ledger
@@ -177,8 +177,8 @@ mod tests {
         // Suspend the link.
         ledger.serviceability.suspend_link(link_pk).await.unwrap();
 
-        // Refresh blockhash to latest before telemetry transaction.
-        ledger.refresh_blockhash().await.unwrap();
+        // Wait for a new blockhash before moving on.
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         // Check that the link is suspended.
         let link = ledger.serviceability.get_link(link_pk).await.unwrap();
@@ -217,8 +217,8 @@ mod tests {
         let (_origin_device_agent, origin_device_pk, target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
 
-        // Refresh blockhash to latest before telemetry transaction.
-        ledger.refresh_blockhash().await.unwrap();
+        // Wait for a new blockhash before moving on.
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         // Create and fund an unauthorized agent keypair.
         let unauthorized_agent = Keypair::new();
@@ -251,8 +251,8 @@ mod tests {
         let (origin_device_agent, origin_device_pk, target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
 
-        // Refresh blockhash.
-        ledger.refresh_blockhash().await.unwrap();
+        // Wait for a new blockhash before moving on.
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         // Create PDA manually.
         let (latency_samples_pda, _) = derive_dz_latency_samples_pda(
@@ -351,7 +351,7 @@ mod tests {
             .fund_account(&agent.pubkey(), 10_000_000_000)
             .await
             .unwrap();
-        ledger.refresh_blockhash().await.unwrap();
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         let result = ledger
             .telemetry
@@ -374,7 +374,8 @@ mod tests {
         let (agent, origin_device_pk, _real_target_device, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
 
-        ledger.refresh_blockhash().await.unwrap();
+        // Wait for a new blockhash before moving on.
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         // Inject a fake target device account with wrong owner
         let fake_target_device_pk = Pubkey::new_unique();
@@ -415,7 +416,7 @@ mod tests {
             .fund_account(&agent.pubkey(), 10_000_000_000)
             .await
             .unwrap();
-        ledger.refresh_blockhash().await.unwrap();
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         let result = ledger
             .telemetry
@@ -439,7 +440,7 @@ mod tests {
         let (agent, origin_device_pk, target_device_pk, _real_link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
 
-        ledger.refresh_blockhash().await.unwrap();
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         // Inject a fake Link account with wrong owner
         let fake_link_pk = Pubkey::new_unique();
@@ -483,7 +484,7 @@ mod tests {
             .fund_account(&agent.pubkey(), 10_000_000_000)
             .await
             .unwrap();
-        ledger.refresh_blockhash().await.unwrap();
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         let result = ledger
             .telemetry
@@ -584,7 +585,7 @@ mod tests {
             .await
             .unwrap();
 
-        ledger.refresh_blockhash().await.unwrap();
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         let result = ledger
             .telemetry
@@ -685,7 +686,7 @@ mod tests {
             .await
             .unwrap();
 
-        ledger.refresh_blockhash().await.unwrap();
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         let result = ledger
             .telemetry
@@ -780,7 +781,7 @@ mod tests {
             .await
             .unwrap();
 
-        ledger.refresh_blockhash().await.unwrap();
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         let result = ledger
             .telemetry
@@ -909,7 +910,7 @@ mod tests {
             .await
             .unwrap();
 
-        ledger.refresh_blockhash().await.unwrap();
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         let result = ledger
             .telemetry
@@ -1008,7 +1009,7 @@ mod tests {
             .await
             .unwrap();
 
-        ledger.refresh_blockhash().await.unwrap();
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         let result = ledger
             .telemetry
@@ -1032,7 +1033,7 @@ mod tests {
         let (agent, origin_device_pk, target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
 
-        ledger.refresh_blockhash().await.unwrap();
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         // First call: succeed and create the account
         let latency_samples_pda = ledger
@@ -1048,8 +1049,8 @@ mod tests {
             .await
             .unwrap();
 
-        // Refresh blockhash again to build new tx
-        ledger.refresh_blockhash().await.unwrap();
+        // Wait for a new blockhash before moving on.
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         // Second call: explicitly pass the same latency_samples_pda as the account
         let result = ledger
@@ -1075,7 +1076,7 @@ mod tests {
         let (agent, origin_device_pk, target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
 
-        ledger.refresh_blockhash().await.unwrap();
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         // Derive correct PDA (but we won't use it)
         let (_correct_pda, _bump) = derive_dz_latency_samples_pda(
@@ -1112,7 +1113,7 @@ mod tests {
         let (agent, origin_device_pk, target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
 
-        ledger.refresh_blockhash().await.unwrap();
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         let result = ledger
             .telemetry
@@ -1136,8 +1137,7 @@ mod tests {
         let (agent, origin_device_pk, _target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
 
-        // Intentionally use origin device twice
-        ledger.refresh_blockhash().await.unwrap();
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         let result = ledger
             .telemetry
@@ -1240,7 +1240,8 @@ mod tests {
             .await
             .unwrap();
 
-        ledger.refresh_blockhash().await.unwrap();
+        // Wait for a new blockhash before moving on.
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         // Attempt with the unauthorized agent
         let result = ledger

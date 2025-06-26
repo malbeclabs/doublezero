@@ -187,6 +187,23 @@ impl LedgerHelper {
         Ok(())
     }
 
+    pub async fn wait_for_new_blockhash(&mut self) -> Result<(), BanksClientError> {
+        let banks_client = { self.context.lock().unwrap().banks_client.clone() };
+        let current_blockhash = self.context.lock().unwrap().recent_blockhash;
+
+        let mut new_blockhash = current_blockhash;
+        while new_blockhash == current_blockhash {
+            new_blockhash = banks_client.get_latest_blockhash().await?;
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        }
+
+        {
+            let mut context = self.context.lock().unwrap();
+            context.recent_blockhash = new_blockhash;
+        }
+        Ok(())
+    }
+
     pub async fn fund_account(
         &mut self,
         recipient: &Pubkey,

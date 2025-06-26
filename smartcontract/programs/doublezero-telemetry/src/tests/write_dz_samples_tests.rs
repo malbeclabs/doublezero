@@ -29,8 +29,8 @@ mod tests {
         let (origin_device_agent, origin_device_pk, target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
 
-        // Refresh blockhash to latest before telemetry transaction.
-        ledger.refresh_blockhash().await.unwrap();
+        // Wait for a new blockhash before moving on.
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         // Execute initialize latency samples transaction.
         let latency_samples_pda = ledger
@@ -157,7 +157,7 @@ mod tests {
         let (authorized_agent, origin_device_pk, target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
 
-        ledger.refresh_blockhash().await.unwrap();
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         let latency_samples_pda = ledger
             .telemetry
@@ -210,7 +210,7 @@ mod tests {
         let (agent, origin_device_pk, target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
 
-        ledger.refresh_blockhash().await.unwrap();
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         let latency_samples_pda = ledger
             .telemetry
@@ -267,7 +267,7 @@ mod tests {
         let (agent, origin_device_pk, target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
 
-        ledger.refresh_blockhash().await.unwrap();
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         let latency_samples_pda = ledger
             .telemetry
@@ -322,7 +322,7 @@ mod tests {
 
         let (agent, origin_device_pk, target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
-        ledger.refresh_blockhash().await.unwrap();
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         let latency_samples_pda = ledger
             .telemetry
@@ -390,7 +390,7 @@ mod tests {
 
         let (agent, origin_device_pk, target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
-        ledger.refresh_blockhash().await.unwrap();
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         let latency_samples_pda = ledger
             .telemetry
@@ -467,7 +467,7 @@ mod tests {
             .fund_account(&agent.pubkey(), 10_000_000_000)
             .await
             .unwrap();
-        ledger.refresh_blockhash().await.unwrap();
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         let result = ledger
             .telemetry
@@ -519,7 +519,7 @@ mod tests {
 
         let (agent, origin_device_pk, target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
-        ledger.refresh_blockhash().await.unwrap();
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         let pda = ledger
             .telemetry
@@ -562,7 +562,7 @@ mod tests {
         let (authorized_agent, origin_device_pk, target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
 
-        ledger.refresh_blockhash().await.unwrap();
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         let latency_samples_pda = ledger
             .telemetry
@@ -615,7 +615,7 @@ mod tests {
         let (real_agent, origin_device_pk, target_device_pk, link_pk) =
             ledger.seed_with_two_linked_devices().await.unwrap();
 
-        ledger.refresh_blockhash().await.unwrap();
+        ledger.wait_for_new_blockhash().await.unwrap();
 
         let latency_samples_pda = ledger
             .telemetry

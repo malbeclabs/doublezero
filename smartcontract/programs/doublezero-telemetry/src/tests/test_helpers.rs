@@ -16,13 +16,19 @@ use doublezero_serviceability::{
         get_location_pda,
     },
     processors::{
-        device::{activate::DeviceActivateArgs, create::DeviceCreateArgs},
+        device::{
+            activate::DeviceActivateArgs, create::DeviceCreateArgs, suspend::DeviceSuspendArgs,
+        },
         exchange::create::ExchangeCreateArgs,
         globalconfig::set::SetGlobalConfigArgs,
-        link::{activate::LinkActivateArgs, create::LinkCreateArgs},
+        link::{activate::LinkActivateArgs, create::LinkCreateArgs, suspend::LinkSuspendArgs},
         location::create::LocationCreateArgs,
     },
-    state::{device::DeviceType, globalstate::GlobalState, link::LinkLinkType},
+    state::{
+        device::{Device, DeviceType},
+        globalstate::GlobalState,
+        link::{Link, LinkLinkType},
+    },
 };
 use solana_program_test::*;
 use solana_sdk::{
@@ -710,6 +716,38 @@ impl ServiceabilityProgramHelper {
         .await
     }
 
+    pub async fn get_device(&mut self, pubkey: Pubkey) -> Result<Device, BanksClientError> {
+        let banks_client = {
+            let context = self.context.lock().unwrap();
+            context.banks_client.clone()
+        };
+        let device = banks_client.get_account(pubkey).await.unwrap().unwrap();
+        Ok(Device::from(&device.data[..]))
+    }
+
+    pub async fn suspend_device(&mut self, pubkey: Pubkey) -> Result<(), BanksClientError> {
+        let device = self.get_device(pubkey).await?;
+
+        let payer = {
+            let context = self.context.lock().unwrap();
+            context.payer.insecure_clone()
+        };
+
+        self.execute_transaction(
+            DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs {
+                index: device.index,
+                bump_seed: device.bump_seed,
+            }),
+            vec![
+                AccountMeta::new(pubkey, false),
+                AccountMeta::new(self.global_state_pubkey, false),
+                AccountMeta::new_readonly(payer.pubkey(), true),
+                AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            ],
+        )
+        .await
+    }
+
     pub async fn create_and_activate_device(
         &mut self,
         device: DeviceCreateArgs,
@@ -772,6 +810,37 @@ impl ServiceabilityProgramHelper {
             vec![
                 AccountMeta::new(link_pk, false),
                 AccountMeta::new(self.global_state_pubkey, false),
+            ],
+        )
+        .await
+    }
+
+    pub async fn get_link(&mut self, pubkey: Pubkey) -> Result<Link, BanksClientError> {
+        let banks_client = {
+            let context = self.context.lock().unwrap();
+            context.banks_client.clone()
+        };
+        let link = banks_client.get_account(pubkey).await.unwrap().unwrap();
+        Ok(Link::from(&link.data[..]))
+    }
+
+    pub async fn suspend_link(&mut self, pubkey: Pubkey) -> Result<(), BanksClientError> {
+        let link = self.get_link(pubkey).await?;
+
+        let payer = {
+            let context = self.context.lock().unwrap();
+            context.payer.insecure_clone()
+        };
+
+        self.execute_transaction(
+            DoubleZeroInstruction::SuspendLink(LinkSuspendArgs {
+                index: link.index,
+                bump_seed: link.bump_seed,
+            }),
+            vec![
+                AccountMeta::new(pubkey, false),
+                AccountMeta::new_readonly(payer.pubkey(), true),
+                AccountMeta::new_readonly(solana_program::system_program::id(), false),
             ],
         )
         .await

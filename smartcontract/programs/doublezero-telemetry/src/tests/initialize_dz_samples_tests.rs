@@ -29,7 +29,7 @@ mod tests {
     };
 
     #[tokio::test]
-    async fn test_initialize_dz_latency_samples_success() {
+    async fn test_initialize_dz_latency_samples_success_active_devices_and_link() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         // Seed ledger with two linked devices, and a funded origin device agent.
@@ -38,6 +38,151 @@ mod tests {
 
         // Refresh blockhash to latest before telemetry transaction.
         ledger.refresh_blockhash().await.unwrap();
+
+        // Execute initialize latency samples transaction.
+        let latency_samples_pda = ledger
+            .telemetry
+            .initialize_dz_latency_samples(
+                &origin_device_agent,
+                origin_device_pk,
+                target_device_pk,
+                link_pk,
+                1u64,
+                5_000_000,
+            )
+            .await
+            .unwrap();
+
+        // Verify account creation and data.
+        let account = ledger
+            .get_account(latency_samples_pda)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(account.owner, ledger.telemetry.program_id);
+        assert_eq!(account.data.len(), DZ_LATENCY_SAMPLES_HEADER_SIZE);
+        assert_eq!(account.lamports, 3354720);
+    }
+
+    #[tokio::test]
+    async fn test_initialize_dz_latency_samples_success_suspended_origin_device() {
+        let mut ledger = LedgerHelper::new().await.unwrap();
+
+        // Seed ledger with two linked devices, and a funded origin device agent.
+        let (origin_device_agent, origin_device_pk, target_device_pk, link_pk) =
+            ledger.seed_with_two_linked_devices().await.unwrap();
+
+        // Suspend the origin device.
+        ledger
+            .serviceability
+            .suspend_device(origin_device_pk)
+            .await
+            .unwrap();
+
+        // Refresh blockhash to latest before telemetry transaction.
+        ledger.refresh_blockhash().await.unwrap();
+
+        // Check that the origin device is suspended.
+        let device = ledger
+            .serviceability
+            .get_device(origin_device_pk)
+            .await
+            .unwrap();
+        assert_eq!(device.status, DeviceStatus::Suspended);
+
+        // Execute initialize latency samples transaction.
+        let latency_samples_pda = ledger
+            .telemetry
+            .initialize_dz_latency_samples(
+                &origin_device_agent,
+                origin_device_pk,
+                target_device_pk,
+                link_pk,
+                1u64,
+                5_000_000,
+            )
+            .await
+            .unwrap();
+
+        // Verify account creation and data.
+        let account = ledger
+            .get_account(latency_samples_pda)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(account.owner, ledger.telemetry.program_id);
+        assert_eq!(account.data.len(), DZ_LATENCY_SAMPLES_HEADER_SIZE);
+        assert_eq!(account.lamports, 3354720);
+    }
+
+    #[tokio::test]
+    async fn test_initialize_dz_latency_samples_success_suspended_target_device() {
+        let mut ledger = LedgerHelper::new().await.unwrap();
+
+        // Seed ledger with two linked devices, and a funded origin device agent.
+        let (origin_device_agent, origin_device_pk, target_device_pk, link_pk) =
+            ledger.seed_with_two_linked_devices().await.unwrap();
+
+        // Suspend the target device.
+        ledger
+            .serviceability
+            .suspend_device(target_device_pk)
+            .await
+            .unwrap();
+
+        // Refresh blockhash to latest before telemetry transaction.
+        ledger.refresh_blockhash().await.unwrap();
+
+        // Check that the target device is suspended.
+        let device = ledger
+            .serviceability
+            .get_device(target_device_pk)
+            .await
+            .unwrap();
+        assert_eq!(device.status, DeviceStatus::Suspended);
+
+        // Execute initialize latency samples transaction.
+        let latency_samples_pda = ledger
+            .telemetry
+            .initialize_dz_latency_samples(
+                &origin_device_agent,
+                origin_device_pk,
+                target_device_pk,
+                link_pk,
+                1u64,
+                5_000_000,
+            )
+            .await
+            .unwrap();
+
+        // Verify account creation and data.
+        let account = ledger
+            .get_account(latency_samples_pda)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(account.owner, ledger.telemetry.program_id);
+        assert_eq!(account.data.len(), DZ_LATENCY_SAMPLES_HEADER_SIZE);
+        assert_eq!(account.lamports, 3354720);
+    }
+
+    #[tokio::test]
+    async fn test_initialize_dz_latency_samples_success_suspended_link() {
+        let mut ledger = LedgerHelper::new().await.unwrap();
+
+        // Seed ledger with two linked devices, and a funded origin device agent.
+        let (origin_device_agent, origin_device_pk, target_device_pk, link_pk) =
+            ledger.seed_with_two_linked_devices().await.unwrap();
+
+        // Suspend the link.
+        ledger.serviceability.suspend_link(link_pk).await.unwrap();
+
+        // Refresh blockhash to latest before telemetry transaction.
+        ledger.refresh_blockhash().await.unwrap();
+
+        // Check that the link is suspended.
+        let link = ledger.serviceability.get_link(link_pk).await.unwrap();
+        assert_eq!(link.status, LinkStatus::Suspended);
 
         // Execute initialize latency samples transaction.
         let latency_samples_pda = ledger
@@ -453,7 +598,7 @@ mod tests {
             )
             .await;
 
-        assert_telemetry_error(result, TelemetryError::DeviceNotActive);
+        assert_telemetry_error(result, TelemetryError::DeviceNotActiveOrSuspended);
     }
 
     #[tokio::test]
@@ -554,7 +699,7 @@ mod tests {
             )
             .await;
 
-        assert_telemetry_error(result, TelemetryError::DeviceNotActive);
+        assert_telemetry_error(result, TelemetryError::DeviceNotActiveOrSuspended);
     }
 
     #[tokio::test]
@@ -649,7 +794,7 @@ mod tests {
             )
             .await;
 
-        assert_telemetry_error(result, TelemetryError::LinkNotActive);
+        assert_telemetry_error(result, TelemetryError::LinkNotActiveOrSuspended);
     }
 
     #[tokio::test]

@@ -1,5 +1,8 @@
 // Support for testing serviceability program from other crates
-use crate::instructions::DoubleZeroInstruction;
+use crate::{
+    instructions::DoubleZeroInstruction,
+    processors::{device::suspend::process_suspend_device, link::suspend::process_suspend_link},
+};
 use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, pubkey::Pubkey};
 
 // NOTE: This duplicates some of the logic from entrypoint.rs but avoids the entrypoint macro
@@ -41,6 +44,12 @@ pub fn process_instruction_for_tests(
         }
         DoubleZeroInstruction::ActivateLink(value) => {
             process_activate_link(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::SuspendDevice(value) => {
+            process_suspend_device(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::SuspendLink(value) => {
+            process_suspend_link(program_id, accounts, &value)?
         }
         _ => {
             // NOTE: For testing, we only need a subset of instructions

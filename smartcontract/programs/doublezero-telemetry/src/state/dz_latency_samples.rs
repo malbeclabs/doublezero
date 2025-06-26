@@ -20,8 +20,11 @@ pub const MAX_SAMPLES: usize = 35_000;
 /// - 8 bytes: `start_timestamp_microseconds`
 /// - 4 bytes: `next_sample_index`
 /// - 4 bytes: encoded length prefix for the `samples` vector
+/// - 128 bytes: reserved for future use
+///
+/// Total size: 354 bytes
 pub const DZ_LATENCY_SAMPLES_HEADER_SIZE: usize =
-    1 + 1 + 8 + 32 + 32 + 32 + 32 + 32 + 32 + 8 + 8 + 4 + 4;
+    1 + 1 + 8 + 32 + 32 + 32 + 32 + 32 + 32 + 8 + 8 + 4 + 4 + 128;
 
 /// Onchain data structure representing a latency sample stream between two devices
 /// over a link for a specific epoch, written by a single authorized agent.
@@ -64,7 +67,8 @@ pub struct DzLatencySamples {
     // Tracks how many samples have been appended.
     pub next_sample_index: u32, // 4
 
-    // TODO(snormore): Leave room for future schema extension?
+    // Reserved for future use.
+    pub _unused: [u8; 128], // 128
 
     // RTT samples in microseconds, one per entry.
     pub samples: Vec<u32>, // 4 + n*4 (RTT values in microseconds)
@@ -89,7 +93,7 @@ impl AccountTypeInfo for DzLatencySamples {
     /// Computes the full serialized size of this account (for realloc).
     /// Used when dynamically resizing to accommodate more samples.
     fn size(&self) -> usize {
-        1 + 1 + 8 + 32 + 32 + 32 + 32 + 32 + 32 + 8 + 8 + 4 + 4 + self.samples.len() * 4
+        DZ_LATENCY_SAMPLES_HEADER_SIZE + self.samples.len() * 4
     }
 
     /// Returns the bump seed used during PDA derivation.
@@ -133,6 +137,7 @@ mod tests {
             start_timestamp_microseconds: 1_700_000_000_000_000,
             next_sample_index: samples.len() as u32,
             samples: samples.clone(),
+            _unused: [0; 128],
         };
 
         let data = borsh::to_vec(&val).unwrap();

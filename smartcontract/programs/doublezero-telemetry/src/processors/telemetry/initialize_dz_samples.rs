@@ -227,6 +227,7 @@ pub fn process_initialize_dz_latency_samples(
         start_timestamp_microseconds: 0, // Will be set on first write
         next_sample_index: 0,
         bump_seed: latency_samples_bump_seed,
+        _unused: [0; 128],
         samples: Vec::new(),
     };
 

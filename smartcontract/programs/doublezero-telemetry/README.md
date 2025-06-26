@@ -118,4 +118,4 @@ pub struct WriteDzLatencySamplesArgs {
 
 - `MAX_SAMPLES = 35_000` — upper bound on total RTT samples.
 - `MAX_ACCOUNT_ALLOC_BYTES = 10,240` — guardrail for realloc limits.
-- `DZ_LATENCY_SAMPLES_HEADER_SIZE = 229` — base size excluding sample vector.
+- `DZ_LATENCY_SAMPLES_HEADER_SIZE = 354` — base size excluding sample vector.

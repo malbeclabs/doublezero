@@ -61,7 +61,7 @@ mod tests {
             .unwrap();
         assert_eq!(account.owner, ledger.telemetry.program_id);
         assert_eq!(account.data.len(), DZ_LATENCY_SAMPLES_HEADER_SIZE);
-        assert_eq!(account.lamports, 2463840);
+        assert_eq!(account.lamports, 3354720);
     }
 
     #[tokio::test]

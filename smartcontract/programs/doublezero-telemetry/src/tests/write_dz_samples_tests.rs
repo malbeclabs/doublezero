@@ -443,6 +443,7 @@ mod tests {
             start_timestamp_microseconds: 0,
             next_sample_index: 0,
             bump_seed: 42,
+            _unused: [0; 128],
             samples: vec![],
         };
 

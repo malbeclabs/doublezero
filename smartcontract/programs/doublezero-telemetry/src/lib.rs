@@ -2,7 +2,6 @@
 
 #[cfg(any(not(feature = "no-entrypoint"), test))]
 mod entrypoint;
-mod helper;
 
 pub mod error;
 pub mod instructions;

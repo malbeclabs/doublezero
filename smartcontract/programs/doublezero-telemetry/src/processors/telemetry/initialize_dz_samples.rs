@@ -1,6 +1,5 @@
 use crate::{
     error::TelemetryError,
-    helper::verify_account_owner,
     pda::{derive_dz_latency_samples_pda, order_pubkeys},
     seeds::{SEED_DZ_LATENCY_SAMPLES, SEED_PREFIX},
     state::{
@@ -67,24 +66,33 @@ pub fn process_initialize_dz_latency_samples(
     let system_program = next_account_info(accounts_iter)?;
     let serviceability_program = next_account_info(accounts_iter)?;
 
-    // Verify agent is signer
+    // Verify agent is signer.
     if !agent.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    // Verify serviceability program owns the device and link accounts
-    verify_account_owner(device_a_account, serviceability_program)?;
-    verify_account_owner(device_z_account, serviceability_program)?;
-    verify_account_owner(link_account, serviceability_program)?;
+    // Verify serviceability program owns the device and link accounts.
+    if device_a_account.owner != serviceability_program.key {
+        msg!("Device A is not owned by serviceability program");
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    if device_z_account.owner != serviceability_program.key {
+        msg!("Device Z is not owned by serviceability program");
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    if link_account.owner != serviceability_program.key {
+        msg!("Link is not owned by serviceability program");
+        return Err(ProgramError::IncorrectProgramId);
+    }
 
-    // Load and validate device A
+    // Load and validate that device A is activated.
     let device_a = Device::try_from(device_a_account)?;
     if device_a.status != DeviceStatus::Activated {
         msg!("Device A is not activated");
         return Err(TelemetryError::DeviceNotActive.into());
     }
 
-    // Check if agent is authorized for device A
+    // Check if agent is authorized for device A.
     if device_a.metrics_publisher_pk != *agent.key {
         msg!(
             "Agent {} is not authorized for device A {}",
@@ -94,21 +102,21 @@ pub fn process_initialize_dz_latency_samples(
         return Err(TelemetryError::UnauthorizedAgent.into());
     }
 
-    // Load and validate device Z
+    // Load and validate that device Z is activated.
     let device_z = Device::try_from(device_z_account)?;
     if device_z.status != DeviceStatus::Activated {
         msg!("Device Z is not activated");
         return Err(TelemetryError::DeviceNotActive.into());
     }
 
-    // Regular link validation
+    // Load and validate that the link is activated.
     let link = Link::try_from(link_account)?;
     if link.status != LinkStatus::Activated {
         msg!("Link is not activated");
         return Err(TelemetryError::LinkNotActive.into());
     }
 
-    // Verify link connects the two devices
+    // Verify link connects the two devices.
     if !((link.side_a_pk == *device_a_account.key && link.side_z_pk == *device_z_account.key)
         || (link.side_z_pk == *device_a_account.key && link.side_a_pk == *device_z_account.key))
     {
@@ -116,25 +124,29 @@ pub fn process_initialize_dz_latency_samples(
         return Err(TelemetryError::InvalidLink.into());
     };
 
-    // NOTE: Order the keys first
+    // Order the keys so that the PDA is deterministic no matter which device is origin or target.
+    // TODO(snormore): Why do we need to do this? If link_1 has (d_a, d_z) and link_2 has (d_z, d_a),
+    // we'd have 2 different PDAs anyway. The devices on a link aren't going to change mid-epoch, right?
+    // Why would we go against the (d_a, d_z) value from the onchain state for this?
+    // TODO(snormore): Add tests around these cases if we keep it.
     let (pk_a, pk_b) = order_pubkeys(device_a_account.key, device_z_account.key);
 
     let (latency_samples_pda, latency_samples_bump_seed) =
         derive_dz_latency_samples_pda(program_id, &pk_a, &pk_b, link_account.key, args.epoch);
 
-    // Verify PDA matches
+    // Verify derived PDA matches the account on the transaction.
     if *latency_samples_account.key != latency_samples_pda {
         msg!("Invalid PDA for latency samples account");
         return Err(TelemetryError::InvalidPDA.into());
     }
 
-    // Ensure account doesn't already exist
+    // Ensure account doesn't already exist.
     if !latency_samples_account.data_is_empty() {
         msg!("Latency samples account already exists");
         return Err(TelemetryError::AccountAlreadyExists.into());
     }
 
-    // Create new account
+    // Create new account.
     let rent = Rent::get()?;
     let space = DZ_LATENCY_SAMPLES_HEADER_SIZE;
     let lamports = rent.minimum_balance(space);
@@ -173,7 +185,7 @@ pub fn process_initialize_dz_latency_samples(
         ]],
     )?;
 
-    // Initialize account data with pre-allocated capacity
+    // Initialize account data.
     let samples = DzLatencySamples {
         account_type: AccountType::DzLatencySamples,
         epoch: args.epoch,
@@ -190,7 +202,7 @@ pub fn process_initialize_dz_latency_samples(
         samples: Vec::new(),
     };
 
-    // Write data to account
+    // Write data to account.
     let mut data = &mut latency_samples_account.data.borrow_mut()[..];
     samples.serialize(&mut data)?;
 

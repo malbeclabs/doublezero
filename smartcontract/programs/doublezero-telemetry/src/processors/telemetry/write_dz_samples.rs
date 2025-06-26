@@ -118,7 +118,7 @@ pub fn process_write_dz_latency_samples(
         // TODO(snormore): Is there a limit we should check against before reallocating?
 
         // Check if the account needs more rent for the new space.
-        // If so, transfer the required lamports from the payer account to the account.
+        // If so, transfer the required lamports from the payer account to the latency samples account.
         if new_len > actual_len {
             let rent: Rent = Rent::get().expect("Unable to read rent");
             let required_lamports: u64 = rent.minimum_balance(new_len);

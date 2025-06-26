@@ -29,11 +29,11 @@ use solana_sdk::{
     account::Account,
     commitment_config::CommitmentLevel,
     hash::Hash,
-    instruction::{AccountMeta, Instruction},
+    instruction::{AccountMeta, Instruction, InstructionError},
     pubkey::Pubkey,
     signature::{Keypair, Signer},
     system_program,
-    transaction::Transaction,
+    transaction::{Transaction, TransactionError},
 };
 
 pub trait LocationCreateArgsExt {
@@ -128,7 +128,19 @@ pub struct LedgerHelper {
 
 impl LedgerHelper {
     pub async fn new() -> Result<Self, BanksClientError> {
-        let (program_test, telemetry_program_id, serviceability_program_id) = setup_test_programs();
+        Self::new_with_preloaded_accounts(vec![]).await
+    }
+
+    pub async fn new_with_preloaded_accounts(
+        preloaded_accounts: Vec<(Pubkey, Account)>,
+    ) -> Result<Self, BanksClientError> {
+        let (mut program_test, telemetry_program_id, serviceability_program_id) =
+            setup_test_programs();
+
+        for (pk, account) in preloaded_accounts {
+            program_test.add_account(pk, account);
+        }
+
         let (banks_client, payer, recent_blockhash) = program_test.start().await;
 
         let context = Arc::new(Mutex::new(LedgerContext {
@@ -361,6 +373,43 @@ impl TelemetryProgramHelper {
             ],
         )
         .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn initialize_dz_latency_samples_with_pda(
+        &mut self,
+        agent: &Keypair,
+        latency_samples_pda: Pubkey,
+        device_a_pk: Pubkey,
+        device_z_pk: Pubkey,
+        link_pk: Pubkey,
+        epoch: u64,
+        interval_us: u64,
+    ) -> Result<Pubkey, BanksClientError> {
+        let args = InitializeDzLatencySamplesArgs {
+            device_a_pk,
+            device_z_pk,
+            link_pk,
+            epoch,
+            sampling_interval_microseconds: interval_us,
+        };
+
+        self.execute_transaction(
+            TelemetryInstruction::InitializeDzLatencySamples(args),
+            &[agent],
+            vec![
+                AccountMeta::new(latency_samples_pda, false),
+                AccountMeta::new_readonly(agent.pubkey(), true),
+                AccountMeta::new_readonly(device_a_pk, false),
+                AccountMeta::new_readonly(device_z_pk, false),
+                AccountMeta::new_readonly(link_pk, false),
+                AccountMeta::new_readonly(solana_program::system_program::id(), false),
+                AccountMeta::new_readonly(self.serviceability_program_id, false),
+            ],
+        )
+        .await?;
+
+        Ok(latency_samples_pda)
     }
 
     pub async fn execute_transaction(
@@ -815,6 +864,27 @@ pub fn assert_telemetry_error<T>(
         Err(other) => panic!(
             "Expected telemetry error {:?} ({}), got: {:?}",
             expected_error, expected_error as u32, other
+        ),
+    }
+}
+
+/// Helper function to assert that a result contains a specific banks client error
+pub fn assert_banksclient_error<T>(
+    result: Result<T, BanksClientError>,
+    expected_error: InstructionError,
+) {
+    match result {
+        Ok(_) => panic!("Expected error {:?}, but got Ok", expected_error),
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(_, actual))) => {
+            assert_eq!(
+                actual, expected_error,
+                "Expected error {:?}, but got {:?}",
+                expected_error, actual
+            );
+        }
+        Err(other) => panic!(
+            "Expected InstructionError {:?}, but got {:?}",
+            expected_error, other
         ),
     }
 }

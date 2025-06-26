@@ -25,6 +25,8 @@ pub enum TelemetryError {
     AccountAlreadyExists = 1010,
     /// Account does not exist
     AccountDoesNotExist = 1011,
+    /// Invalid sampling interval
+    InvalidSamplingInterval = 1012,
 }
 
 impl From<TelemetryError> for ProgramError {
@@ -52,6 +54,7 @@ impl fmt::Display for TelemetryError {
             TelemetryError::InvalidPDA => write!(f, "Invalid PDA"),
             TelemetryError::AccountAlreadyExists => write!(f, "Account already exists"),
             TelemetryError::AccountDoesNotExist => write!(f, "Account does not exist"),
+            TelemetryError::InvalidSamplingInterval => write!(f, "Invalid sampling interval"),
         }
     }
 }

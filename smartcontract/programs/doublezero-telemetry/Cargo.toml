@@ -16,9 +16,12 @@ crate-type = ["cdylib", "lib"]
 borsh.workspace = true
 serde.workspace = true
 solana-program.workspace = true
-doublezero-serviceability = { path = "../doublezero-serviceability", features = ["no-entrypoint"] }
+doublezero-serviceability = { path = "../doublezero-serviceability", features = [
+    "no-entrypoint",
+] }
 
 [dev-dependencies]
+bincode.workspace = true
 solana-sdk.workspace = true
 solana-program-test.workspace = true
 

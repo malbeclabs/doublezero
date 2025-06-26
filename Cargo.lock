@@ -1540,6 +1540,7 @@ dependencies = [
 name = "doublezero-telemetry"
 version = "0.2.0"
 dependencies = [
+ "bincode 2.0.1",
  "borsh 1.5.7",
  "doublezero-serviceability",
  "serde",

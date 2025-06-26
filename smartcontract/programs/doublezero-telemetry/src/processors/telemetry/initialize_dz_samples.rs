@@ -1,6 +1,6 @@
 use crate::{
     error::TelemetryError,
-    pda::{derive_dz_latency_samples_pda, order_pubkeys},
+    pda::derive_dz_latency_samples_pda,
     seeds::{SEED_DZ_LATENCY_SAMPLES, SEED_PREFIX},
     state::{
         accounttype::AccountType,
@@ -27,6 +27,7 @@ use solana_program::{
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct InitializeDzLatencySamplesArgs {
+    // TODO(snormore): Consider renaming to device_a to origin_device and device_z to target_device.
     pub device_a_pk: Pubkey,
     pub device_z_pk: Pubkey,
     pub link_pk: Pubkey,
@@ -54,6 +55,11 @@ pub fn process_initialize_dz_latency_samples(
     args: &InitializeDzLatencySamplesArgs,
 ) -> ProgramResult {
     msg!("Processing InitializeDzLatencySamples: {:?}", args);
+
+    if args.sampling_interval_microseconds == 0 {
+        msg!("Sampling interval must be non-zero");
+        return Err(TelemetryError::InvalidSamplingInterval.into());
+    }
 
     let accounts_iter = &mut accounts.iter();
 
@@ -124,15 +130,13 @@ pub fn process_initialize_dz_latency_samples(
         return Err(TelemetryError::InvalidLink.into());
     };
 
-    // Order the keys so that the PDA is deterministic no matter which device is origin or target.
-    // TODO(snormore): Why do we need to do this? If link_1 has (d_a, d_z) and link_2 has (d_z, d_a),
-    // we'd have 2 different PDAs anyway. The devices on a link aren't going to change mid-epoch, right?
-    // Why would we go against the (d_a, d_z) value from the onchain state for this?
-    // TODO(snormore): Add tests around these cases if we keep it.
-    let (pk_a, pk_b) = order_pubkeys(device_a_account.key, device_z_account.key);
-
-    let (latency_samples_pda, latency_samples_bump_seed) =
-        derive_dz_latency_samples_pda(program_id, &pk_a, &pk_b, link_account.key, args.epoch);
+    let (latency_samples_pda, latency_samples_bump_seed) = derive_dz_latency_samples_pda(
+        program_id,
+        device_a_account.key,
+        device_z_account.key,
+        link_account.key,
+        args.epoch,
+    );
 
     // Verify derived PDA matches the account on the transaction.
     if *latency_samples_account.key != latency_samples_pda {
@@ -177,8 +181,8 @@ pub fn process_initialize_dz_latency_samples(
         &[&[
             SEED_PREFIX,
             SEED_DZ_LATENCY_SAMPLES,
-            pk_a.as_ref(),
-            pk_b.as_ref(),
+            device_a_account.key.as_ref(),
+            device_z_account.key.as_ref(),
             link_account.key.as_ref(),
             &args.epoch.to_le_bytes(),
             &[latency_samples_bump_seed],

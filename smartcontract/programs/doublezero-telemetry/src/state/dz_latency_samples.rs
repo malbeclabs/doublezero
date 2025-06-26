@@ -9,9 +9,6 @@ use std::fmt;
 /// Maximum number of samples that can be stored in a single account
 /// Calculated for ~48 hours of data with samples every 5 seconds
 /// 48 hours * 60 minutes * 60 seconds / 5 seconds = 34,560 samples
-#[cfg(test)]
-pub const MAX_SAMPLES: usize = 100; // Reduced for testing
-#[cfg(not(test))]
 pub const MAX_SAMPLES: usize = 35_000;
 
 /// Base size of DzLatencySamples account (without samples vector)

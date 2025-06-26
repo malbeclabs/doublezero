@@ -67,6 +67,12 @@ pub fn process_write_dz_latency_samples(
         return Err(TelemetryError::InvalidAccountOwner.into());
     }
 
+    // Skip write if no samples provided.
+    if args.samples.is_empty() {
+        msg!("No samples provided; skipping write");
+        return Ok(());
+    }
+
     msg!("Updating existing DZ latency samples account");
 
     // Load existing account data.
@@ -107,6 +113,17 @@ pub fn process_write_dz_latency_samples(
         samples_data.start_timestamp_microseconds = args.start_timestamp_microseconds;
     }
 
+    // Defensive size check to avoid realloc OOM or panic.
+    let new_total_samples = samples_data.samples.len() + args.samples.len();
+    let future_total_len = DZ_LATENCY_SAMPLES_HEADER_SIZE + new_total_samples * 4;
+    if future_total_len > 10_240 {
+        msg!(
+            "Cannot realloc to {}, would exceed Solana inner instruction limit",
+            future_total_len
+        );
+        return Err(TelemetryError::SamplesAccountFull.into());
+    }
+
     // Append new samples.
     samples_data.samples.extend(&args.samples);
     samples_data.next_sample_index = samples_data.samples.len() as u32;
@@ -114,9 +131,8 @@ pub fn process_write_dz_latency_samples(
     // Check if the account needs to be resized.
     let actual_len = latency_samples_account.data_len();
     let new_len = DZ_LATENCY_SAMPLES_HEADER_SIZE + samples_data.samples.len() * 4; // 4 bytes per RTT (microseconds) sample
-    if actual_len != new_len {
-        // TODO(snormore): Is there a limit we should check against before reallocating?
 
+    if actual_len != new_len {
         // Check if the account needs more rent for the new space.
         // If so, transfer the required lamports from the payer account to the latency samples account.
         if new_len > actual_len {

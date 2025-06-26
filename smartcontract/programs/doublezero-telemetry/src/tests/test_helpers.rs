@@ -202,6 +202,37 @@ impl LedgerHelper {
         banks_client.process_transaction(transaction).await
     }
 
+    pub async fn create_account_raw(
+        &mut self,
+        funder: &Keypair,
+        new_account: &Pubkey,
+        lamports: u64,
+        space: u64,
+        owner: &Pubkey,
+    ) -> Result<(), BanksClientError> {
+        let ix = solana_sdk::system_instruction::create_account(
+            &funder.pubkey(),
+            new_account,
+            lamports,
+            space,
+            owner,
+        );
+
+        let banks_client = {
+            let ctx = self.context.lock().unwrap();
+            ctx.banks_client.clone()
+        };
+        let blockhash = banks_client.get_latest_blockhash().await?;
+        let tx = solana_sdk::transaction::Transaction::new_signed_with_payer(
+            &[ix],
+            Some(&funder.pubkey()),
+            &[funder],
+            blockhash,
+        );
+
+        banks_client.process_transaction(tx).await
+    }
+
     pub async fn seed_with_two_linked_devices(
         &mut self,
     ) -> Result<(Keypair, Pubkey, Pubkey, Pubkey), BanksClientError> {
@@ -410,6 +441,53 @@ impl TelemetryProgramHelper {
         .await?;
 
         Ok(latency_samples_pda)
+    }
+
+    pub async fn write_dz_latency_samples_with_pda(
+        &self,
+        agent: &Keypair,
+        latency_samples_pda: Pubkey,
+        samples: Vec<u32>,
+        timestamp: u64,
+    ) -> Result<(), BanksClientError> {
+        let args = WriteDzLatencySamplesArgs {
+            start_timestamp_microseconds: timestamp,
+            samples,
+        };
+
+        let ix = TelemetryInstruction::WriteDzLatencySamples(args)
+            .pack()
+            .expect("failed to pack");
+
+        let accounts = vec![
+            AccountMeta::new(latency_samples_pda, false),
+            AccountMeta::new_readonly(agent.pubkey(), true),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+        ];
+
+        let instruction = solana_sdk::instruction::Instruction {
+            program_id: self.program_id,
+            accounts,
+            data: ix,
+        };
+
+        let (banks_client, payer, recent_blockhash) = {
+            let ctx = self.context.lock().unwrap();
+            (
+                ctx.banks_client.clone(),
+                ctx.payer.insecure_clone(),
+                ctx.recent_blockhash,
+            )
+        };
+
+        let tx = Transaction::new_signed_with_payer(
+            &[instruction],
+            Some(&payer.pubkey()),
+            &[&payer, agent],
+            recent_blockhash,
+        );
+
+        banks_client.process_transaction(tx).await
     }
 
     pub async fn execute_transaction(

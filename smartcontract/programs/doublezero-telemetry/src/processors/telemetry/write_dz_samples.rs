@@ -20,6 +20,11 @@ use solana_program::{
     sysvar::{rent::Rent, Sysvar},
 };
 
+// Upper bound on account data length. Exceeding this risks exceeding BPF inner instruction memory limits.
+// This is a conservative approximation to avoid allocator failures or panics.
+pub const MAX_ACCOUNT_ALLOC_BYTES: usize = 10_240;
+
+/// Instruction arguments for writing RTT samples to a latency samples account.
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct WriteDzLatencySamplesArgs {
     pub start_timestamp_microseconds: u64,
@@ -37,6 +42,19 @@ impl fmt::Debug for WriteDzLatencySamplesArgs {
     }
 }
 
+/// Appends new RTT samples to an existing `DzLatencySamples` account.
+///
+/// Validates that the signer is the authorized agent, the account exists,
+/// and is owned by the program. Resizes the account if necessary, while
+/// ensuring that total size stays within `MAX_ACCOUNT_ALLOC_BYTES`.
+///
+/// Also handles rent top-up if additional space requires higher rent-exempt balance.
+/// If `samples` is empty, the call is treated as a no-op.
+///
+/// Errors:
+/// - `UnauthorizedAgent`: signer does not match `origin_device_agent_pk`
+/// - `SamplesAccountFull`: exceeds sample or byte limit
+/// - `AccountDoesNotExist`, `InvalidAccountType`, `InvalidAccountOwner`
 pub fn process_write_dz_latency_samples(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -46,28 +64,28 @@ pub fn process_write_dz_latency_samples(
 
     let accounts_iter = &mut accounts.iter();
 
-    // Parse accounts.
+    // Expected order: [latency_samples_account, agent, system_program]
     let latency_samples_account = next_account_info(accounts_iter)?;
     let agent = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
-    // Verify agent is signer.
+    // Only the authorized agent may sign this instruction.
     if !agent.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    // Verify account exists.
+    // The account must exist (i.e., not uninitialized or closed).
     if latency_samples_account.data_is_empty() {
         msg!("DZ latency samples account does not exist");
         return Err(TelemetryError::AccountDoesNotExist.into());
     }
 
-    // Verify account is owned by this program.
+    // Enforce program ownership — ensures we're writing to an account we control.
     if latency_samples_account.owner != program_id {
         return Err(TelemetryError::InvalidAccountOwner.into());
     }
 
-    // Skip write if no samples provided.
+    // Nothing to do if the sample vector is empty — treat as a no-op.
     if args.samples.is_empty() {
         msg!("No samples provided; skipping write");
         return Ok(());
@@ -75,7 +93,7 @@ pub fn process_write_dz_latency_samples(
 
     msg!("Updating existing DZ latency samples account");
 
-    // Load existing account data.
+    // Deserialize existing account data.
     let mut samples_data = DzLatencySamples::try_from(
         &latency_samples_account.try_borrow_data()?[..],
     )
@@ -84,12 +102,12 @@ pub fn process_write_dz_latency_samples(
         ProgramError::InvalidAccountData
     })?;
 
-    // Verify account type.
+    // Validate account type to protect against mismatched struct types.
     if samples_data.account_type != AccountType::DzLatencySamples {
         return Err(TelemetryError::InvalidAccountType.into());
     }
 
-    // Verify agent matches.
+    // Confirm the writing agent matches the account owner.
     if samples_data.origin_device_agent_pk != *agent.key {
         msg!(
             "Agent mismatch: account expects {}, got {}",
@@ -99,7 +117,7 @@ pub fn process_write_dz_latency_samples(
         return Err(TelemetryError::UnauthorizedAgent.into());
     }
 
-    // Check capacity.
+    // Ensure we won't exceed sample capacity.
     if samples_data.samples.len() + args.samples.len() > MAX_SAMPLES {
         msg!(
             "Cannot add {} samples, would exceed max capacity",
@@ -108,15 +126,15 @@ pub fn process_write_dz_latency_samples(
         return Err(TelemetryError::SamplesAccountFull.into());
     }
 
-    // Set start timestamp on first write.
+    // Set the first-write timestamp exactly once.
     if samples_data.start_timestamp_microseconds == 0 {
         samples_data.start_timestamp_microseconds = args.start_timestamp_microseconds;
     }
 
-    // Defensive size check to avoid realloc OOM or panic.
+    // Pre-check the total size after append to avoid realloc panics.
     let new_total_samples = samples_data.samples.len() + args.samples.len();
     let future_total_len = DZ_LATENCY_SAMPLES_HEADER_SIZE + new_total_samples * 4;
-    if future_total_len > 10_240 {
+    if future_total_len > MAX_ACCOUNT_ALLOC_BYTES {
         msg!(
             "Cannot realloc to {}, would exceed Solana inner instruction limit",
             future_total_len
@@ -124,17 +142,16 @@ pub fn process_write_dz_latency_samples(
         return Err(TelemetryError::SamplesAccountFull.into());
     }
 
-    // Append new samples.
+    // Append new samples and update sample index.
     samples_data.samples.extend(&args.samples);
     samples_data.next_sample_index = samples_data.samples.len() as u32;
 
-    // Check if the account needs to be resized.
+    // Determine whether the account needs to be resized to hold the new data.
     let actual_len = latency_samples_account.data_len();
     let new_len = DZ_LATENCY_SAMPLES_HEADER_SIZE + samples_data.samples.len() * 4; // 4 bytes per RTT (microseconds) sample
 
     if actual_len != new_len {
-        // Check if the account needs more rent for the new space.
-        // If so, transfer the required lamports from the payer account to the latency samples account.
+        // If the account grows, we must ensure it's funded for the new size.
         if new_len > actual_len {
             let rent: Rent = Rent::get().expect("Unable to read rent");
             let required_lamports: u64 = rent.minimum_balance(new_len);
@@ -147,6 +164,7 @@ pub fn process_write_dz_latency_samples(
                 );
                 let payment: u64 = required_lamports - latency_samples_account.lamports();
 
+                // Derive PDA and pay for the rent from the agent account.
                 let (_pda, bump_seed) = derive_dz_latency_samples_pda(
                     program_id,
                     &samples_data.origin_device_pk,
@@ -176,13 +194,13 @@ pub fn process_write_dz_latency_samples(
             }
         }
 
-        // Reallocate the account.
+        // Resize the account to accommodate the expanded data.
         latency_samples_account
             .realloc(new_len, false)
             .expect("Unable to realloc the account");
     }
 
-    // Write expanded data back to the account.
+    // Serialize the updated struct back into the account.
     {
         let mut data = &mut latency_samples_account.data.borrow_mut()[..];
         samples_data.serialize(&mut data)?;

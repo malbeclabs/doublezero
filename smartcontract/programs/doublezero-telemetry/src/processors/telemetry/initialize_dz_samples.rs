@@ -25,6 +25,8 @@ use solana_program::{
     sysvar::Sysvar,
 };
 
+// Instruction arguments for initializing a latency samples account.
+// Represents a single direction (origin -> target) over a link during an epoch.
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct InitializeDzLatencySamplesArgs {
     pub origin_device_pk: Pubkey,
@@ -48,6 +50,22 @@ impl fmt::Debug for InitializeDzLatencySamplesArgs {
     }
 }
 
+/// Initializes a new PDA account for collecting RTT latency samples.
+///
+/// The account is uniquely derived using the origin device, target device,
+/// link, and epoch. It is created with an initial fixed size header and
+/// is associated with a single agent authorized to write.
+///
+/// This function verifies ownership of all participating device and link
+/// accounts via the `serviceability_program`, ensures all components are
+/// `Activated`, and checks that the link connects the specified devices
+/// in either direction.
+///
+/// Errors:
+/// - `InvalidSamplingInterval`: zero interval
+/// - `DeviceNotActive`, `LinkNotActive`: inactive device or link
+/// - `UnauthorizedAgent`: agent not authorized for origin device
+/// - `InvalidPDA`, `AccountAlreadyExists`
 pub fn process_initialize_dz_latency_samples(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -62,7 +80,7 @@ pub fn process_initialize_dz_latency_samples(
 
     let accounts_iter = &mut accounts.iter();
 
-    // Parse accounts
+    // Expected account order (see instruction layout).
     let latency_samples_account = next_account_info(accounts_iter)?;
     let agent = next_account_info(accounts_iter)?;
     let origin_device_account = next_account_info(accounts_iter)?;
@@ -71,12 +89,13 @@ pub fn process_initialize_dz_latency_samples(
     let system_program = next_account_info(accounts_iter)?;
     let serviceability_program = next_account_info(accounts_iter)?;
 
-    // Verify agent is signer.
+    // Require that the caller is the expected telemetry agent.
     if !agent.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    // Verify serviceability program owns the device and link accounts.
+    // Ensure all relevant accounts are owned by the serviceability program.
+    // These checks ensure on-chain data provenance and enforce registry ownership.
     if origin_device_account.owner != serviceability_program.key {
         msg!("Origin device is not owned by serviceability program");
         return Err(ProgramError::IncorrectProgramId);
@@ -90,14 +109,14 @@ pub fn process_initialize_dz_latency_samples(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    // Load and validate that origin device is activated.
+    // Deserialize and validate device status.
     let origin_device = Device::try_from(origin_device_account)?;
     if origin_device.status != DeviceStatus::Activated {
         msg!("Origin device is not activated");
         return Err(TelemetryError::DeviceNotActive.into());
     }
 
-    // Check if agent is authorized for origin device.
+    // Confirm the agent is authorized to publish for the origin device.
     if origin_device.metrics_publisher_pk != *agent.key {
         msg!(
             "Agent {} is not authorized for origin device {}",
@@ -107,21 +126,22 @@ pub fn process_initialize_dz_latency_samples(
         return Err(TelemetryError::UnauthorizedAgent.into());
     }
 
-    // Load and validate that target device is activated.
+    // Deserialize and validate target device status.
     let target_device = Device::try_from(target_device_account)?;
     if target_device.status != DeviceStatus::Activated {
         msg!("Target device is not activated");
         return Err(TelemetryError::DeviceNotActive.into());
     }
 
-    // Load and validate that the link is activated.
+    // Deserialize and validate link status.
     let link = Link::try_from(link_account)?;
     if link.status != LinkStatus::Activated {
         msg!("Link is not activated");
         return Err(TelemetryError::LinkNotActive.into());
     }
 
-    // Verify link connects the two devices.
+    // Ensure the link connects the two specified devices.
+    // Accepts both (A, Z) and (Z, A) orientations.
     if !((link.side_a_pk == *origin_device_account.key
         && link.side_z_pk == *target_device_account.key)
         || (link.side_z_pk == *origin_device_account.key
@@ -131,6 +151,8 @@ pub fn process_initialize_dz_latency_samples(
         return Err(TelemetryError::InvalidLink.into());
     };
 
+    // Compute PDA address for the latency samples account.
+    // Uniquely scoped by origin, target, link, and epoch.
     let (latency_samples_pda, latency_samples_bump_seed) = derive_dz_latency_samples_pda(
         program_id,
         origin_device_account.key,
@@ -139,19 +161,19 @@ pub fn process_initialize_dz_latency_samples(
         args.epoch,
     );
 
-    // Verify derived PDA matches the account on the transaction.
+    // Verify the derived PDA matches the account on the transaction.
     if *latency_samples_account.key != latency_samples_pda {
         msg!("Invalid PDA for latency samples account");
         return Err(TelemetryError::InvalidPDA.into());
     }
 
-    // Ensure account doesn't already exist.
+    // Ensure the account is not already initialized.
     if !latency_samples_account.data_is_empty() {
         msg!("Latency samples account already exists");
         return Err(TelemetryError::AccountAlreadyExists.into());
     }
 
-    // Create new account.
+    // Create the account with the minimum rent-exempt balance.
     let rent = Rent::get()?;
     let space = DZ_LATENCY_SAMPLES_HEADER_SIZE;
     let lamports = rent.minimum_balance(space);
@@ -166,6 +188,7 @@ pub fn process_initialize_dz_latency_samples(
     msg!("Agent lamports before: {}", agent.lamports());
     msg!("System program: {}", system_program.key);
 
+    // Allocate the account with the correct seed.
     invoke_signed(
         &system_instruction::create_account(
             agent.key,
@@ -190,7 +213,7 @@ pub fn process_initialize_dz_latency_samples(
         ]],
     )?;
 
-    // Initialize account data.
+    // Initialize account contents with metadata and an empty sample list.
     let samples = DzLatencySamples {
         account_type: AccountType::DzLatencySamples,
         epoch: args.epoch,
@@ -207,7 +230,7 @@ pub fn process_initialize_dz_latency_samples(
         samples: Vec::new(),
     };
 
-    // Write data to account.
+    // Write the account data.
     let mut data = &mut latency_samples_account.data.borrow_mut()[..];
     samples.serialize(&mut data)?;
 

@@ -6,31 +6,67 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::pubkey::Pubkey;
 use std::fmt;
 
-/// Maximum number of samples that can be stored in a single account
-/// Calculated for ~48 hours of data with samples every 5 seconds
-/// 48 hours * 60 minutes * 60 seconds / 5 seconds = 34,560 samples
+/// Maximum number of RTT samples storable in a single account.
+/// With 5-second intervals, 35,000 samples ~= 48 hours of data.
 pub const MAX_SAMPLES: usize = 35_000;
 
-/// Base size of DzLatencySamples account (without samples vector)
+/// Static size of the `DzLatencySamples` struct without the `samples` vector.
+/// Used to calculate initial account allocation. Bytes per field:
+/// - 1 byte: `account_type`
+/// - 1 byte: `bump_seed`
+/// - 8 bytes: `epoch`
+/// - 6 * 32 bytes: pubkeys for agent, devices, locations, and link
+/// - 8 bytes: `sampling_interval_microseconds`
+/// - 8 bytes: `start_timestamp_microseconds`
+/// - 4 bytes: `next_sample_index`
+/// - 4 bytes: encoded length prefix for the `samples` vector
 pub const DZ_LATENCY_SAMPLES_HEADER_SIZE: usize =
     1 + 1 + 8 + 32 + 32 + 32 + 32 + 32 + 32 + 8 + 8 + 4 + 4;
 
+/// Onchain data structure representing a latency sample stream between two devices
+/// over a link for a specific epoch, written by a single authorized agent.
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
 pub struct DzLatencySamples {
-    // TODO(snormore): Should this be versioned?
-    pub account_type: AccountType,           // 1
-    pub bump_seed: u8,                       // 1
-    pub epoch: u64,                          // 8
-    pub origin_device_agent_pk: Pubkey,      // 32
-    pub origin_device_pk: Pubkey,            // 32
-    pub target_device_pk: Pubkey,            // 32
-    pub origin_device_location_pk: Pubkey,   // 32
-    pub target_device_location_pk: Pubkey,   // 32
-    pub link_pk: Pubkey,                     // 32 (all 1s for internet data)
+    // Used to distinguish this account type during deserialization
+    pub account_type: AccountType, // 1
+
+    // Required for recreating the PDA (seed authority)
+    pub bump_seed: u8, // 1
+
+    // Epoch number in which samples were collected
+    pub epoch: u64, // 8
+
+    // Agent authorized to write RTT samples (must match signer)
+    pub origin_device_agent_pk: Pubkey, // 32
+
+    // Device initiating sampling
+    pub origin_device_pk: Pubkey, // 32
+
+    // Destination device in RTT path
+    pub target_device_pk: Pubkey, // 32
+
+    // Cached location of origin device for query/UI optimization
+    pub origin_device_location_pk: Pubkey, // 32
+
+    // Cached location of target device
+    pub target_device_location_pk: Pubkey, // 32
+
+    // Link over which the RTT samples were taken
+    pub link_pk: Pubkey, // 32
+
+    // Sampling interval configured by the agent (in microseconds)
     pub sampling_interval_microseconds: u64, // 8
-    pub start_timestamp_microseconds: u64,   // 8
-    pub next_sample_index: u32,              // 4
-    // TODO(snormore): Leave room for future things?
+
+    // Timestamp of the first written sample (µs since UNIX epoch).
+    // Set on the first write, remains unchanged after.
+    pub start_timestamp_microseconds: u64, // 8
+
+    // Tracks how many samples have been appended.
+    pub next_sample_index: u32, // 4
+
+    // TODO(snormore): Leave room for future schema extension?
+
+    // RTT samples in microseconds, one per entry.
     pub samples: Vec<u32>, // 4 + n*4 (RTT values in microseconds)
 }
 
@@ -45,19 +81,23 @@ impl fmt::Display for DzLatencySamples {
 }
 
 impl AccountTypeInfo for DzLatencySamples {
+    /// Returns the fixed seed associated with this account type.
     fn seed(&self) -> &[u8] {
         SEED_DZ_LATENCY_SAMPLES
     }
 
+    /// Computes the full serialized size of this account (for realloc).
+    /// Used when dynamically resizing to accommodate more samples.
     fn size(&self) -> usize {
         1 + 1 + 8 + 32 + 32 + 32 + 32 + 32 + 32 + 8 + 8 + 4 + 4 + self.samples.len() * 4
     }
 
+    /// Returns the bump seed used during PDA derivation.
     fn bump_seed(&self) -> u8 {
         self.bump_seed
     }
 
-    /// Owner is the agent pubkey which writes data
+    /// Returns the public key of the agent who owns/writes to this account.
     fn owner(&self) -> Pubkey {
         self.origin_device_agent_pk
     }
@@ -66,6 +106,7 @@ impl AccountTypeInfo for DzLatencySamples {
 impl TryFrom<&[u8]> for DzLatencySamples {
     type Error = borsh::io::Error;
 
+    /// Enables deserializing from raw Solana account data.
     fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
         DzLatencySamples::deserialize(&mut &data[..])
     }

@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-24.04-16c-64gb
     strategy:
       matrix:
+        env: [devnet, testnet]
         include:
           - release: activator
             languages: ["rust"]
@@ -23,7 +24,7 @@ jobs:
             languages: ["go", "rust"]
           - release: controller
             languages: ["go"]
-    name: release-validation-${{ matrix.release }}
+    name: release-validation-${{ matrix.env }}-${{ matrix.release }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -60,7 +61,7 @@ jobs:
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser-pro
-          args: release --snapshot -f .goreleaser.${{ matrix.release }}.yaml --clean
+          args: release --snapshot -f release/.goreleaser.${{ matrix.env }}.${{ matrix.release }}.yaml --clean
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_BOTS_WEBHOOK }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

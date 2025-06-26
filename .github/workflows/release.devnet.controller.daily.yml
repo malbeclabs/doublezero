@@ -1,4 +1,4 @@
-name: release.controller.daily
+name: release.devnet.controller.daily
 
 on:
   workflow_dispatch:

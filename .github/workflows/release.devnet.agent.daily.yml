@@ -1,4 +1,4 @@
-name: release.agent.daily
+name: release.devnet.agent.daily
 
 on:
   workflow_dispatch:

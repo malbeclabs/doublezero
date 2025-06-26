@@ -1,4 +1,4 @@
-name: release.client.daily
+name: release.devnet.client.daily
 
 on:
   workflow_dispatch:

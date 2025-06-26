@@ -26,7 +26,7 @@ pub fn process_multicastgroup_event(
                     println!("multicast_ip: {} ", ipv4_to_string(&multicast_ip));
 
                     let res = ActivateMulticastGroupCommand {
-                        pubkey: *pubkey,
+                        mgroup_pubkey: *pubkey,
                         multicast_ip,
                     }
                     .execute(client);

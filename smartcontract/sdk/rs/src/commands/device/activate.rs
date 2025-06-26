@@ -7,7 +7,7 @@ use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient}
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ActivateDeviceCommand {
-    pub pubkey: Pubkey,
+    pub device_pubkey: Pubkey,
 }
 
 impl ActivateDeviceCommand {
@@ -19,7 +19,7 @@ impl ActivateDeviceCommand {
         client.execute_transaction(
             DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {}),
             vec![
-                AccountMeta::new(self.pubkey, false),
+                AccountMeta::new(self.device_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
             ],
         )
@@ -61,7 +61,10 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        let res = ActivateDeviceCommand { pubkey: pda_pubkey }.execute(&client);
+        let res = ActivateDeviceCommand {
+            device_pubkey: pda_pubkey,
+        }
+        .execute(&client);
         assert!(res.is_ok());
     }
 }

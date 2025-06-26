@@ -8,7 +8,7 @@ use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient}
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ActivateLinkCommand {
-    pub pubkey: Pubkey,
+    pub link_pubkey: Pubkey,
     pub tunnel_id: u16,
     pub tunnel_net: NetworkV4,
 }
@@ -25,7 +25,7 @@ impl ActivateLinkCommand {
                 tunnel_net: self.tunnel_net,
             }),
             vec![
-                AccountMeta::new(self.pubkey, false),
+                AccountMeta::new(self.link_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
             ],
         )

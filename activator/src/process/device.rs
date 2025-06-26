@@ -18,7 +18,10 @@ pub fn process_device_event(
         DeviceStatus::Pending => {
             print!("New Device {} ", device.code);
 
-            let res = ActivateDeviceCommand { pubkey: *pubkey }.execute(client);
+            let res = ActivateDeviceCommand {
+                device_pubkey: *pubkey,
+            }
+            .execute(client);
 
             match res {
                 Err(e) => println!("Error: {e}"),

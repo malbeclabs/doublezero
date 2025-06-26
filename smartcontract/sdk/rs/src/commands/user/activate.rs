@@ -9,7 +9,7 @@ use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient}
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ActivateUserCommand {
-    pub pubkey: Pubkey,
+    pub user_pubkey: Pubkey,
     pub tunnel_id: u16,
     pub tunnel_net: NetworkV4,
     pub dz_ip: IpV4,
@@ -28,7 +28,7 @@ impl ActivateUserCommand {
                 dz_ip: self.dz_ip,
             }),
             vec![
-                AccountMeta::new(self.pubkey, false),
+                AccountMeta::new(self.user_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
             ],
         )

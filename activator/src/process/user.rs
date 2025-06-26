@@ -91,7 +91,7 @@ pub fn process_user_event(
 
             // Activate the user
             let res = ActivateUserCommand {
-                pubkey: *pubkey,
+                user_pubkey: *pubkey,
                 tunnel_id,
                 tunnel_net,
                 dz_ip,
@@ -155,7 +155,7 @@ pub fn process_user_event(
 
             // Activate the user
             let res = ActivateUserCommand {
-                pubkey: *pubkey,
+                user_pubkey: *pubkey,
                 tunnel_id: user.tunnel_id,
                 tunnel_net: user.tunnel_net,
                 dz_ip,

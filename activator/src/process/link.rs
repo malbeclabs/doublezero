@@ -26,7 +26,7 @@ pub fn process_tunnel_event(
                     let tunnel_id = tunnel_tunnel_ids.next_available();
 
                     let res = ActivateLinkCommand {
-                        pubkey: *pubkey,
+                        link_pubkey: *pubkey,
                         tunnel_id,
                         tunnel_net,
                     }

@@ -8,7 +8,7 @@ use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient}
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ActivateMulticastGroupCommand {
-    pub pubkey: Pubkey,
+    pub mgroup_pubkey: Pubkey,
     pub multicast_ip: IpV4,
 }
 
@@ -23,7 +23,7 @@ impl ActivateMulticastGroupCommand {
                 multicast_ip: self.multicast_ip,
             }),
             vec![
-                AccountMeta::new(self.pubkey, false),
+                AccountMeta::new(self.mgroup_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
             ],
         )
@@ -67,7 +67,7 @@ mod tests {
             .returning(|_, _| Ok(Signature::new_unique()));
 
         let res = ActivateMulticastGroupCommand {
-            pubkey: pda_pubkey,
+            mgroup_pubkey: pda_pubkey,
             multicast_ip: [1, 2, 3, 4],
         }
         .execute(&client);

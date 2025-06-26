@@ -13,7 +13,7 @@ use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     pda::{
         get_device_pda, get_exchange_pda, get_globalconfig_pda, get_globalstate_pda, get_link_pda,
-        get_location_pda,
+        get_location_pda, get_program_config_pda,
     },
     processors::{
         device::{
@@ -272,7 +272,7 @@ impl LedgerHelper {
             .await?;
 
         // Create and activate origin device.
-        let (origin_device_pk, _origin_device_index) = self
+        let origin_device_pk = self
             .serviceability
             .create_and_activate_device(DeviceCreateArgs {
                 index: 0,     // set by the helper
@@ -288,7 +288,7 @@ impl LedgerHelper {
             .await?;
 
         // Create and activate target device.
-        let (target_device_pk, _target_device_index) = self
+        let target_device_pk = self
             .serviceability
             .create_and_activate_device(DeviceCreateArgs {
                 code: "target_device".to_string(),
@@ -302,7 +302,7 @@ impl LedgerHelper {
             .await?;
 
         // Create and activate link.
-        let (link_pk, _link_index) = self
+        let link_pk = self
             .serviceability
             .create_and_activate_link(
                 LinkCreateArgs {
@@ -542,6 +542,8 @@ impl ServiceabilityProgramHelper {
                 )
             };
 
+            let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+
             let (global_state_pubkey, _) = get_globalstate_pda(&program_id);
             execute_serviceability_instruction(
                 &mut banks_client,
@@ -549,7 +551,10 @@ impl ServiceabilityProgramHelper {
                 recent_blockhash,
                 program_id,
                 DoubleZeroInstruction::InitGlobalState(),
-                vec![AccountMeta::new(global_state_pubkey, false)],
+                vec![
+                    AccountMeta::new(program_config_pubkey, false),
+                    AccountMeta::new(global_state_pubkey, false),
+                ],
             )
             .await?;
 
@@ -669,7 +674,7 @@ impl ServiceabilityProgramHelper {
     pub async fn create_device(
         &mut self,
         device: DeviceCreateArgs,
-    ) -> Result<(Pubkey, u128), BanksClientError> {
+    ) -> Result<Pubkey, BanksClientError> {
         let mut device = device;
         if device.index == 0 {
             device.index = self.get_next_global_state_index().await?;
@@ -697,17 +702,12 @@ impl ServiceabilityProgramHelper {
         )
         .await?;
 
-        Ok((device_pk, device.index))
+        Ok(device_pk)
     }
 
-    pub async fn activate_device(&mut self, device_index: u128) -> Result<(), BanksClientError> {
-        let (device_pk, bump_seed) = get_device_pda(&self.program_id, device_index);
-
+    pub async fn activate_device(&mut self, device_pk: Pubkey) -> Result<(), BanksClientError> {
         self.execute_transaction(
-            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {
-                index: device_index,
-                bump_seed,
-            }),
+            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {}),
             vec![
                 AccountMeta::new(device_pk, false),
                 AccountMeta::new(self.global_state_pubkey, false),
@@ -728,11 +728,6 @@ impl ServiceabilityProgramHelper {
     pub async fn suspend_device(&mut self, pubkey: Pubkey) -> Result<(), BanksClientError> {
         let device = self.get_device(pubkey).await?;
 
-        let payer = {
-            let context = self.context.lock().unwrap();
-            context.payer.insecure_clone()
-        };
-
         self.execute_transaction(
             DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs {
                 index: device.index,
@@ -741,8 +736,6 @@ impl ServiceabilityProgramHelper {
             vec![
                 AccountMeta::new(pubkey, false),
                 AccountMeta::new(self.global_state_pubkey, false),
-                AccountMeta::new_readonly(payer.pubkey(), true),
-                AccountMeta::new_readonly(solana_program::system_program::id(), false),
             ],
         )
         .await
@@ -751,16 +744,13 @@ impl ServiceabilityProgramHelper {
     pub async fn create_and_activate_device(
         &mut self,
         device: DeviceCreateArgs,
-    ) -> Result<(Pubkey, u128), BanksClientError> {
-        let (device_pk, device_index) = self.create_device(device).await?;
-        self.activate_device(device_index).await?;
-        Ok((device_pk, device_index))
+    ) -> Result<Pubkey, BanksClientError> {
+        let device_pk = self.create_device(device).await?;
+        self.activate_device(device_pk).await?;
+        Ok(device_pk)
     }
 
-    pub async fn create_link(
-        &mut self,
-        link: LinkCreateArgs,
-    ) -> Result<(Pubkey, u128), BanksClientError> {
+    pub async fn create_link(&mut self, link: LinkCreateArgs) -> Result<Pubkey, BanksClientError> {
         let mut link = link;
         if link.index == 0 {
             link.index = self.get_next_global_state_index().await?;
@@ -789,21 +779,17 @@ impl ServiceabilityProgramHelper {
         )
         .await?;
 
-        Ok((link_pk, link.index))
+        Ok(link_pk)
     }
 
     pub async fn activate_link(
         &mut self,
-        link_index: u128,
+        link_pk: Pubkey,
         tunnel_id: u16,
         tunnel_net: ([u8; 4], u8),
     ) -> Result<(), BanksClientError> {
-        let (link_pk, bump_seed) = get_link_pda(&self.program_id, link_index);
-
         self.execute_transaction(
             DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
-                index: link_index,
-                bump_seed,
                 tunnel_id,
                 tunnel_net,
             }),
@@ -827,21 +813,12 @@ impl ServiceabilityProgramHelper {
     pub async fn suspend_link(&mut self, pubkey: Pubkey) -> Result<(), BanksClientError> {
         let link = self.get_link(pubkey).await?;
 
-        let payer = {
-            let context = self.context.lock().unwrap();
-            context.payer.insecure_clone()
-        };
-
         self.execute_transaction(
             DoubleZeroInstruction::SuspendLink(LinkSuspendArgs {
                 index: link.index,
                 bump_seed: link.bump_seed,
             }),
-            vec![
-                AccountMeta::new(pubkey, false),
-                AccountMeta::new_readonly(payer.pubkey(), true),
-                AccountMeta::new_readonly(solana_program::system_program::id(), false),
-            ],
+            vec![AccountMeta::new(pubkey, false)],
         )
         .await
     }
@@ -851,11 +828,10 @@ impl ServiceabilityProgramHelper {
         link: LinkCreateArgs,
         tunnel_id: u16,
         tunnel_net: ([u8; 4], u8),
-    ) -> Result<(Pubkey, u128), BanksClientError> {
-        let (link_pk, link_index) = self.create_link(link).await?;
-        self.activate_link(link_index, tunnel_id, tunnel_net)
-            .await?;
-        Ok((link_pk, link_index))
+    ) -> Result<Pubkey, BanksClientError> {
+        let link_pk = self.create_link(link).await?;
+        self.activate_link(link_pk, tunnel_id, tunnel_net).await?;
+        Ok(link_pk)
     }
 
     pub async fn execute_transaction(

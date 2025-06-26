@@ -39,9 +39,7 @@ pub fn process_instruction_for_tests(
         DoubleZeroInstruction::CreateLink(value) => {
             process_create_link(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::ActivateDevice(value) => {
-            process_activate_device(program_id, accounts, &value)?
-        }
+        DoubleZeroInstruction::ActivateDevice(_) => process_activate_device(program_id, accounts)?,
         DoubleZeroInstruction::ActivateLink(value) => {
             process_activate_link(program_id, accounts, &value)?
         }

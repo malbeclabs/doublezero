@@ -534,7 +534,7 @@ mod tests {
             .unwrap();
 
         // Origin device: not activated
-        let (origin_device_pk, _) = ledger
+        let origin_device_pk = ledger
             .serviceability
             .create_device(DeviceCreateArgs {
                 code: "OriginDevice".to_string(),
@@ -549,7 +549,7 @@ mod tests {
             .unwrap();
 
         // Target device: activated
-        let (target_device_pk, _) = ledger
+        let target_device_pk = ledger
             .serviceability
             .create_and_activate_device(DeviceCreateArgs {
                 code: "TargetDevice".to_string(),
@@ -564,7 +564,7 @@ mod tests {
             .unwrap();
 
         // Link: between origin device and target device
-        let (link_pk, _) = ledger
+        let link_pk = ledger
             .serviceability
             .create_and_activate_link(
                 LinkCreateArgs {
@@ -635,7 +635,7 @@ mod tests {
             .unwrap();
 
         // Origin device: activated
-        let (origin_device_pk, _) = ledger
+        let origin_device_pk = ledger
             .serviceability
             .create_and_activate_device(DeviceCreateArgs {
                 code: "OriginDevice".to_string(),
@@ -650,7 +650,7 @@ mod tests {
             .unwrap();
 
         // Target device: not activated
-        let (target_device_pk, _) = ledger
+        let target_device_pk = ledger
             .serviceability
             .create_device(DeviceCreateArgs {
                 code: "TargetDevice".to_string(),
@@ -665,7 +665,7 @@ mod tests {
             .unwrap();
 
         // Link between origin device and target device
-        let (link_pk, _) = ledger
+        let link_pk = ledger
             .serviceability
             .create_and_activate_link(
                 LinkCreateArgs {
@@ -735,7 +735,7 @@ mod tests {
             .await
             .unwrap();
 
-        let (origin_device_pk, _) = ledger
+        let origin_device_pk = ledger
             .serviceability
             .create_and_activate_device(DeviceCreateArgs {
                 code: "OriginDevice".to_string(),
@@ -749,7 +749,7 @@ mod tests {
             .await
             .unwrap();
 
-        let (target_device_pk, _) = ledger
+        let target_device_pk = ledger
             .serviceability
             .create_and_activate_device(DeviceCreateArgs {
                 code: "TargetDevice".to_string(),
@@ -764,7 +764,7 @@ mod tests {
             .unwrap();
 
         // Create link but do not activate
-        let (link_pk, _) = ledger
+        let link_pk = ledger
             .serviceability
             .create_link(LinkCreateArgs {
                 code: "LINK1".to_string(),
@@ -831,7 +831,7 @@ mod tests {
             .unwrap();
 
         // Origin device and target device: activated
-        let (origin_device_pk, _) = ledger
+        let origin_device_pk = ledger
             .serviceability
             .create_and_activate_device(DeviceCreateArgs {
                 code: "OriginDevice".to_string(),
@@ -845,7 +845,7 @@ mod tests {
             .await
             .unwrap();
 
-        let (target_device_pk, _) = ledger
+        let target_device_pk = ledger
             .serviceability
             .create_and_activate_device(DeviceCreateArgs {
                 code: "TargetDevice".to_string(),
@@ -860,7 +860,7 @@ mod tests {
             .unwrap();
 
         // Other devices for the link
-        let (device_x_pk, _) = ledger
+        let device_x_pk = ledger
             .serviceability
             .create_and_activate_device(DeviceCreateArgs {
                 code: "DeviceX".to_string(),
@@ -874,7 +874,7 @@ mod tests {
             .await
             .unwrap();
 
-        let (device_y_pk, _) = ledger
+        let device_y_pk = ledger
             .serviceability
             .create_and_activate_device(DeviceCreateArgs {
                 code: "DeviceY".to_string(),
@@ -889,7 +889,7 @@ mod tests {
             .unwrap();
 
         // Link between X and Y — not origin device and target device
-        let (link_pk, _) = ledger
+        let link_pk = ledger
             .serviceability
             .create_and_activate_link(
                 LinkCreateArgs {
@@ -959,7 +959,7 @@ mod tests {
             .await
             .unwrap();
 
-        let (origin_device_pk, _) = ledger
+        let origin_device_pk = ledger
             .serviceability
             .create_and_activate_device(DeviceCreateArgs {
                 code: "OriginDevice".into(),
@@ -973,7 +973,7 @@ mod tests {
             .await
             .unwrap();
 
-        let (target_device_pk, _) = ledger
+        let target_device_pk = ledger
             .serviceability
             .create_and_activate_device(DeviceCreateArgs {
                 code: "TargetDevice".into(),
@@ -988,7 +988,7 @@ mod tests {
             .unwrap();
 
         // link with target_device on side_a, origin_device on side_z
-        let (link_pk, _) = ledger
+        let link_pk = ledger
             .serviceability
             .create_and_activate_link(
                 LinkCreateArgs {
@@ -1196,7 +1196,7 @@ mod tests {
             .unwrap();
 
         // Origin device: activated, owned by owner_agent
-        let (origin_device_pk, _) = ledger
+        let origin_device_pk = ledger
             .serviceability
             .create_and_activate_device(DeviceCreateArgs {
                 code: "A".to_string(),
@@ -1211,7 +1211,7 @@ mod tests {
             .unwrap();
 
         // Target device: also valid
-        let (target_device_pk, _) = ledger
+        let target_device_pk = ledger
             .serviceability
             .create_and_activate_device(DeviceCreateArgs {
                 code: "Z".to_string(),
@@ -1225,7 +1225,7 @@ mod tests {
             .await
             .unwrap();
 
-        let (link_pk, _) = ledger
+        let link_pk = ledger
             .serviceability
             .create_and_activate_link(
                 LinkCreateArgs {

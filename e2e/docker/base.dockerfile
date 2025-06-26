@@ -137,8 +137,6 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     make -C ./controlplane/controller build && \
     cp controlplane/controller/bin/controller ${BIN_DIR}/doublezero-controller
 
-# (Removed commented-out code for building the agent)
-
 
 # ----------------------------------------------------------------------------
 # Main stage with only the binaries.

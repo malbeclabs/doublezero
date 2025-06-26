@@ -46,6 +46,28 @@ type DeviceSpec struct {
 	// CYOANetworkAllocatablePrefix is the prefix length of the allocatable portion of the CYOA network.
 	// This is used to derive the allocatable IP addresses for the device.
 	CYOANetworkAllocatablePrefix uint32
+
+	// Agent telemetry config.
+	Telemetry DeviceTelemetryConfig
+}
+
+type DeviceTelemetryConfig struct {
+	Enabled bool
+
+	// TWAMPListenPort is the port on which the device will listen for TWAMP probes.
+	TWAMPListenPort uint16
+
+	// ProbeInterval is the interval at which to probe peers.
+	ProbeInterval time.Duration
+
+	// SubmissionInterval is the interval at which to submit samples.
+	SubmissionInterval time.Duration
+
+	// PeersRefreshInterval is the interval at which to refresh peers.
+	PeersRefreshInterval time.Duration
+
+	// Verbose is whether to enable verbose logging.
+	Verbose bool
 }
 
 func (s *DeviceSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
@@ -199,6 +221,9 @@ func (d *Device) Start(ctx context.Context) error {
 		},
 		ExposedPorts: []string{"80/tcp"},
 		Privileged:   true,
+		Env: map[string]string{
+			"DZ_AGENT_TELEMETRY_TWAMP_PORT": strconv.Itoa(int(spec.Telemetry.TWAMPListenPort)),
+		},
 		Networks: []string{
 			d.dn.DefaultNetwork.Name,
 		},
@@ -243,11 +268,25 @@ func (d *Device) Start(ctx context.Context) error {
 	}
 	defaultNetworkCIDRPrefix := inspect.NetworkSettings.Networks[d.dn.DefaultNetwork.Name].IPPrefixLen
 
+	telemetryCommandArgs := []string{
+		"-ledger-rpc-url", d.dn.Ledger.InternalIPRPCURL,
+		"-program-id", d.dn.Ledger.dn.Manager.ServiceabilityProgramID,
+		"-local-device-pubkey", onchainID,
+		"-twamp-listen-port", strconv.Itoa(int(spec.Telemetry.TWAMPListenPort)),
+		"-probe-interval", spec.Telemetry.ProbeInterval.String(),
+		"-submission-interval", spec.Telemetry.SubmissionInterval.String(),
+		"-peers-refresh-interval", spec.Telemetry.PeersRefreshInterval.String(),
+	}
+	if spec.Telemetry.Verbose {
+		telemetryCommandArgs = append(telemetryCommandArgs, "-verbose")
+	}
+
 	// Render the device config from go template.
 	var configContents bytes.Buffer
 	tmpl := template.Must(template.New("startup-config").Parse(deviceStartupConfigTemplate))
 	err = tmpl.Execute(&configContents, map[string]any{
 		"AgentCommandArgs":         strings.Join(commandArgs, " "),
+		"TelemetryCommandArgs":     strings.Join(telemetryCommandArgs, " "),
 		"CYOANetworkIP":            cyoaNetworkIP,
 		"CYOANetworkCIDRPrefix":    strconv.Itoa(d.dn.Spec.CYOANetwork.CIDRPrefix),
 		"DefaultNetworkIP":         defaultNetworkIP,

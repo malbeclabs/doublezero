@@ -78,8 +78,9 @@ rust-fmt-check:
 	@cargo +nightly fmt --all -- --check --config imports_granularity=Crate || (echo "Formatting check failed. Please run 'make fmt' to fix formatting issues." && exit 1)
 
 .PHONY: rust-test
-rust-test: rust-test-sbf
-	cargo test --workspace --all-features
+rust-test:
+	cargo test --workspace --exclude doublezero-telemetry --exclude doublezero-serviceability --all-features
+	cd smartcontract && $(MAKE) test-programs
 
 .PHONY: rust-test-sbf
 rust-test-sbf:

@@ -60,7 +60,7 @@ jobs:
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser-pro
-          args: release --snapshot -f .goreleaser.${{ matrix.release }}.yaml --clean
+          args: release --snapshot -f release/.goreleaser.base.${{ matrix.release }}.yaml --clean
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_BOTS_WEBHOOK }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

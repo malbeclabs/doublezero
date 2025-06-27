@@ -1,4 +1,4 @@
-name: release.all.daily
+name: release.devnet.all.daily
 
 on:
   workflow_dispatch:

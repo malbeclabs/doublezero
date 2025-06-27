@@ -10,6 +10,7 @@ use crate::{
     },
 };
 use doublezero_serviceability::{
+    entrypoint::process_instruction as serviceability_process_instruction,
     instructions::DoubleZeroInstruction,
     pda::{
         get_device_pda, get_exchange_pda, get_globalconfig_pda, get_globalstate_pda, get_link_pda,
@@ -974,7 +975,7 @@ pub fn setup_test_programs() -> (ProgramTest, Pubkey, Pubkey) {
     program_test.add_program(
         "doublezero_serviceability",
         serviceability_program_id,
-        processor!(doublezero_serviceability::test_support::process_instruction_for_tests),
+        processor!(serviceability_process_instruction),
     );
 
     (

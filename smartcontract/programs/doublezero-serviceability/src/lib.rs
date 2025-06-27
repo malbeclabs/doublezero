@@ -1,7 +1,6 @@
 #![allow(unexpected_cfgs)]
 
 mod bytereader;
-#[cfg(any(not(feature = "no-entrypoint"), test))]
 pub mod entrypoint;
 mod globalstate;
 mod helper;
@@ -15,6 +14,5 @@ pub mod processors;
 pub mod programversion;
 pub mod seeds;
 pub mod state;
-pub mod test_support;
 pub mod tests;
 pub mod types;

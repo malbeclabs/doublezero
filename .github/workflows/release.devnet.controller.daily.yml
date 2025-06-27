@@ -12,3 +12,25 @@ jobs:
     permissions:
       contents: write
       packages: write
+  deploy:
+    name: deploy controller to devnet
+    runs-on: self-hosted
+    needs: release
+    steps:
+      - uses: actions/checkout@v4
+      - name: checkout ansible playbooks
+        uses: actions/checkout@v4
+        with:
+          repository: "malbeclabs/ansible"
+          path: ansible
+          token: ${{ secrets.GA_ANSIBLE_REPO_RO }}
+      - name: Create ansible vault password file
+        working-directory: ansible
+        run: |
+          echo '#!/usr/bin/bash\necho "${ANSIBLE_VAULT_PASS}"\n' > ansible/.vault_pass
+          chmod +x .vault_pass
+      - name: Run ansible playbook
+        working-directory: ansible
+        run: ansible-playbook -C -D --vault-password-file .vault_pass -i inventory/devnet/hosts.yml playbooks/controllers.yml
+        env:
+          ANSIBLE_VAULT_PASS: ${{ secrets.ANSIBLE_VAULT_PASS }}

@@ -89,7 +89,7 @@ git:
     - controller/daily
 
 nightly:
-  publish_release: true
+  publish_release: false
   keep_single_release: true
   version_template: '{{ incpatch .Version }}-{{ .ShortCommit }}-daily'
   tag_name: 'controller/daily'

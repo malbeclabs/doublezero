@@ -1,10 +1,12 @@
 use crate::{
     error::TelemetryError,
-    pda::derive_dz_latency_samples_pda,
+    pda::derive_device_latency_samples_pda,
     seeds::{SEED_DZ_LATENCY_SAMPLES, SEED_PREFIX},
     state::{
         accounttype::AccountType,
-        dz_latency_samples::{DzLatencySamples, DZ_LATENCY_SAMPLES_HEADER_SIZE, MAX_SAMPLES},
+        device_latency_samples::{
+            DeviceLatencySamples, DZ_LATENCY_SAMPLES_HEADER_SIZE, MAX_SAMPLES,
+        },
     },
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -26,12 +28,12 @@ pub const MAX_ACCOUNT_ALLOC_BYTES: usize = 10_240;
 
 /// Instruction arguments for writing RTT samples to a latency samples account.
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct WriteDzLatencySamplesArgs {
+pub struct WriteDeviceLatencySamplesArgs {
     pub start_timestamp_microseconds: u64,
     pub samples: Vec<u32>,
 }
 
-impl fmt::Debug for WriteDzLatencySamplesArgs {
+impl fmt::Debug for WriteDeviceLatencySamplesArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -42,7 +44,7 @@ impl fmt::Debug for WriteDzLatencySamplesArgs {
     }
 }
 
-/// Appends new RTT samples to an existing `DzLatencySamples` account.
+/// Appends new RTT samples to an existing `DeviceLatencySamples` account.
 ///
 /// Validates that the signer is the authorized agent, the account exists,
 /// and is owned by the program. Resizes the account if necessary, while
@@ -55,12 +57,12 @@ impl fmt::Debug for WriteDzLatencySamplesArgs {
 /// - `UnauthorizedAgent`: signer does not match `origin_device_agent_pk`
 /// - `SamplesAccountFull`: exceeds sample or byte limit
 /// - `AccountDoesNotExist`, `InvalidAccountType`, `InvalidAccountOwner`
-pub fn process_write_dz_latency_samples(
+pub fn process_write_device_latency_samples(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    args: &WriteDzLatencySamplesArgs,
+    args: &WriteDeviceLatencySamplesArgs,
 ) -> ProgramResult {
-    msg!("Processing WriteDzLatencySamples: {:?}", args);
+    msg!("Processing WriteDeviceLatencySamples: {:?}", args);
 
     let accounts_iter = &mut accounts.iter();
 
@@ -94,16 +96,16 @@ pub fn process_write_dz_latency_samples(
     msg!("Updating existing DZ latency samples account");
 
     // Deserialize existing account data.
-    let mut samples_data = DzLatencySamples::try_from(
+    let mut samples_data = DeviceLatencySamples::try_from(
         &latency_samples_account.try_borrow_data()?[..],
     )
     .map_err(|e| {
-        msg!("Failed to deserialize DzLatencySamples: {}", e);
+        msg!("Failed to deserialize DeviceLatencySamples: {}", e);
         ProgramError::InvalidAccountData
     })?;
 
     // Validate account type to protect against mismatched struct types.
-    if samples_data.account_type != AccountType::DzLatencySamples {
+    if samples_data.account_type != AccountType::DeviceLatencySamples {
         return Err(TelemetryError::InvalidAccountType.into());
     }
 
@@ -174,7 +176,7 @@ pub fn process_write_dz_latency_samples(
 fn realloc_samples_account_if_needed<'a>(
     program_id: &Pubkey,
     account: &AccountInfo<'a>,
-    new_data: &DzLatencySamples,
+    new_data: &DeviceLatencySamples,
     agent: &AccountInfo<'a>,
     system_program: &AccountInfo<'a>,
 ) -> ProgramResult {
@@ -196,7 +198,7 @@ fn realloc_samples_account_if_needed<'a>(
                 let payment: u64 = required_lamports - account.lamports();
 
                 // Derive PDA and pay for the rent from the agent account.
-                let (_pda, bump_seed) = derive_dz_latency_samples_pda(
+                let (_pda, bump_seed) = derive_device_latency_samples_pda(
                     program_id,
                     &new_data.origin_device_pk,
                     &new_data.target_device_pk,

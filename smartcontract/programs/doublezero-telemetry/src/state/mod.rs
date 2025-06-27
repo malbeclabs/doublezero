@@ -1,2 +1,2 @@
 pub mod accounttype;
-pub mod dz_latency_samples;
+pub mod device_latency_samples;

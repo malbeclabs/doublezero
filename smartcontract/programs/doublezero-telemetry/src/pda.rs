@@ -2,7 +2,7 @@ use crate::seeds::{SEED_DZ_LATENCY_SAMPLES, SEED_PREFIX};
 use solana_program::pubkey::Pubkey;
 
 /// Derive PDA for DZ latency samples account.
-pub fn derive_dz_latency_samples_pda(
+pub fn derive_device_latency_samples_pda(
     program_id: &Pubkey,
     origin_device_pk: &Pubkey,
     target_device_pk: &Pubkey,

@@ -1,8 +1,8 @@
 use crate::{
     instructions::TelemetryInstruction,
     processors::telemetry::{
-        initialize_dz_samples::process_initialize_dz_latency_samples,
-        write_dz_samples::process_write_dz_latency_samples,
+        initialize_device_latency_samples::process_initialize_device_latency_samples,
+        write_device_latency_samples::process_write_device_latency_samples,
     },
 };
 
@@ -23,11 +23,11 @@ pub fn process_instruction(
     msg!("Instruction: {:?}", instruction);
 
     match instruction {
-        TelemetryInstruction::InitializeDzLatencySamples(args) => {
-            process_initialize_dz_latency_samples(program_id, accounts, &args)?
+        TelemetryInstruction::InitializeDeviceLatencySamples(args) => {
+            process_initialize_device_latency_samples(program_id, accounts, &args)?
         }
-        TelemetryInstruction::WriteDzLatencySamples(args) => {
-            process_write_dz_latency_samples(program_id, accounts, &args)?
+        TelemetryInstruction::WriteDeviceLatencySamples(args) => {
+            process_write_device_latency_samples(program_id, accounts, &args)?
         }
     };
 

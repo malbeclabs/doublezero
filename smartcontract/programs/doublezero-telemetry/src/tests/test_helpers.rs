@@ -2,11 +2,11 @@ use std::sync::{Arc, Mutex};
 
 use crate::{
     entrypoint::process_instruction as telemetry_process_instruction,
-    instructions::{TelemetryInstruction, INITIALIZE_DZ_LATENCY_SAMPLES_INSTRUCTION_INDEX},
-    pda::derive_dz_latency_samples_pda,
+    instructions::{TelemetryInstruction, INITIALIZE_DEVICE_LATENCY_SAMPLES_INSTRUCTION_INDEX},
+    pda::derive_device_latency_samples_pda,
     processors::telemetry::{
-        initialize_dz_samples::InitializeDzLatencySamplesArgs,
-        write_dz_samples::WriteDzLatencySamplesArgs,
+        initialize_device_latency_samples::InitializeDeviceLatencySamplesArgs,
+        write_device_latency_samples::WriteDeviceLatencySamplesArgs,
     },
 };
 use doublezero_serviceability::{
@@ -366,7 +366,7 @@ impl TelemetryProgramHelper {
         })
     }
 
-    pub async fn initialize_dz_latency_samples(
+    pub async fn initialize_device_latency_samples(
         &mut self,
         agent: &Keypair,
         origin_device_pk: Pubkey,
@@ -375,7 +375,7 @@ impl TelemetryProgramHelper {
         epoch: u64,
         sampling_interval_microseconds: u64,
     ) -> Result<Pubkey, BanksClientError> {
-        let (pda, _) = derive_dz_latency_samples_pda(
+        let (pda, _) = derive_device_latency_samples_pda(
             &self.program_id,
             &origin_device_pk,
             &target_device_pk,
@@ -384,13 +384,15 @@ impl TelemetryProgramHelper {
         );
 
         self.execute_transaction(
-            TelemetryInstruction::InitializeDzLatencySamples(InitializeDzLatencySamplesArgs {
-                origin_device_pk,
-                target_device_pk,
-                link_pk,
-                epoch,
-                sampling_interval_microseconds,
-            }),
+            TelemetryInstruction::InitializeDeviceLatencySamples(
+                InitializeDeviceLatencySamplesArgs {
+                    origin_device_pk,
+                    target_device_pk,
+                    link_pk,
+                    epoch,
+                    sampling_interval_microseconds,
+                },
+            ),
             &[agent],
             vec![
                 AccountMeta::new(pda, false),
@@ -407,7 +409,7 @@ impl TelemetryProgramHelper {
         Ok(pda)
     }
 
-    pub async fn write_dz_latency_samples(
+    pub async fn write_device_latency_samples(
         &mut self,
         agent: &Keypair,
         latency_samples_pda: Pubkey,
@@ -415,7 +417,7 @@ impl TelemetryProgramHelper {
         start_timestamp_microseconds: u64,
     ) -> Result<(), BanksClientError> {
         self.execute_transaction(
-            TelemetryInstruction::WriteDzLatencySamples(WriteDzLatencySamplesArgs {
+            TelemetryInstruction::WriteDeviceLatencySamples(WriteDeviceLatencySamplesArgs {
                 start_timestamp_microseconds,
                 samples,
             }),
@@ -430,7 +432,7 @@ impl TelemetryProgramHelper {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub async fn initialize_dz_latency_samples_with_pda(
+    pub async fn initialize_device_latency_samples_with_pda(
         &mut self,
         agent: &Keypair,
         latency_samples_pda: Pubkey,
@@ -440,7 +442,7 @@ impl TelemetryProgramHelper {
         epoch: u64,
         interval_us: u64,
     ) -> Result<Pubkey, BanksClientError> {
-        let args = InitializeDzLatencySamplesArgs {
+        let args = InitializeDeviceLatencySamplesArgs {
             origin_device_pk,
             target_device_pk,
             link_pk,
@@ -449,7 +451,7 @@ impl TelemetryProgramHelper {
         };
 
         self.execute_transaction(
-            TelemetryInstruction::InitializeDzLatencySamples(args),
+            TelemetryInstruction::InitializeDeviceLatencySamples(args),
             &[agent],
             vec![
                 AccountMeta::new(latency_samples_pda, false),
@@ -466,19 +468,19 @@ impl TelemetryProgramHelper {
         Ok(latency_samples_pda)
     }
 
-    pub async fn write_dz_latency_samples_with_pda(
+    pub async fn write_device_latency_samples_with_pda(
         &self,
         agent: &Keypair,
         latency_samples_pda: Pubkey,
         samples: Vec<u32>,
         timestamp: u64,
     ) -> Result<(), BanksClientError> {
-        let args = WriteDzLatencySamplesArgs {
+        let args = WriteDeviceLatencySamplesArgs {
             start_timestamp_microseconds: timestamp,
             samples,
         };
 
-        let ix = TelemetryInstruction::WriteDzLatencySamples(args)
+        let ix = TelemetryInstruction::WriteDeviceLatencySamples(args)
             .pack()
             .expect("failed to pack");
 
@@ -991,7 +993,7 @@ pub fn assert_telemetry_error<T>(
         Ok(_) => panic!("Expected error {expected_error:?}, but got Ok"),
         Err(BanksClientError::TransactionError(
             solana_sdk::transaction::TransactionError::InstructionError(
-                INITIALIZE_DZ_LATENCY_SAMPLES_INSTRUCTION_INDEX,
+                INITIALIZE_DEVICE_LATENCY_SAMPLES_INSTRUCTION_INDEX,
                 solana_sdk::instruction::InstructionError::Custom(error_code),
             ),
         )) => {

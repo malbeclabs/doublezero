@@ -4,13 +4,13 @@ A Solana smart contract for collecting round-trip time (RTT) latency samples bet
 
 ---
 
-## Account Structure: `DzLatencySamples`
+## Account Structure: `DeviceLatencySamples`
 
 Stores metadata and RTT samples (in microseconds):
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `account_type` | `DzLatencySamples` enum | Type marker |
+| `account_type` | `DeviceLatencySamples` enum | Type marker |
 | `bump_seed` | `u8` | PDA bump seed |
 | `epoch` | `u64` | Collection epoch |
 | `origin_device_agent_pk` | `Pubkey` | Authorized agent |
@@ -31,14 +31,14 @@ Constants:
 
 ---
 
-## Instruction: `InitializeDzLatencySamples`
+## Instruction: `InitializeDeviceLatencySamples`
 
 Creates a new latency samples account for a specific device pair, link, and epoch.
 
 ### Arguments
 
 ```rust
-pub struct InitializeDzLatencySamplesArgs {
+pub struct InitializeDeviceLatencySamplesArgs {
     pub origin_device_pk: Pubkey,
     pub target_device_pk: Pubkey,
     pub link_pk: Pubkey,
@@ -62,19 +62,19 @@ pub struct InitializeDzLatencySamplesArgs {
 ### PDA Derivation
 
 ```
-["dz_latency_samples", origin_device, target_device, link, epoch]
+["device_latency_samples", origin_device, target_device, link, epoch]
 ```
 
 ---
 
-## Instruction: `WriteDzLatencySamples`
+## Instruction: `WriteDeviceLatencySamples`
 
 Appends RTT samples to an existing latency samples account.
 
 ### Arguments
 
 ```rust
-pub struct WriteDzLatencySamplesArgs {
+pub struct WriteDeviceLatencySamplesArgs {
     pub start_timestamp_microseconds: u64,
     pub samples: Vec<u32>,
 }
@@ -100,8 +100,8 @@ pub struct WriteDzLatencySamplesArgs {
 ## Usage Flow
 
 1. Devices and links are created and activated using the `doublezero_serviceability` program.
-2. An authorized agent initializes the telemetry stream via `InitializeDzLatencySamples`.
-3. The agent periodically calls `WriteDzLatencySamples` to append RTT measurements.
+2. An authorized agent initializes the telemetry stream via `InitializeDeviceLatencySamples`.
+3. The agent periodically calls `WriteDeviceLatencySamples` to append RTT measurements.
 4. Consumers read the account off-chain to analyze latency data.
 
 ---

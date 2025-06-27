@@ -2,9 +2,9 @@
 pub mod test_helpers;
 
 #[cfg(test)]
-mod initialize_dz_samples_tests;
+mod initialize_device_latency_samples_tests;
 #[cfg(test)]
-mod write_dz_samples_tests;
+mod write_device_latency_samples_tests;
 
 #[cfg(test)]
 #[ctor::ctor]

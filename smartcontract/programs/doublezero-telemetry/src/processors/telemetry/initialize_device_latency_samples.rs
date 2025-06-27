@@ -1,10 +1,10 @@
 use crate::{
     error::TelemetryError,
-    pda::derive_dz_latency_samples_pda,
+    pda::derive_device_latency_samples_pda,
     seeds::{SEED_DZ_LATENCY_SAMPLES, SEED_PREFIX},
     state::{
         accounttype::AccountType,
-        dz_latency_samples::{DzLatencySamples, DZ_LATENCY_SAMPLES_HEADER_SIZE},
+        device_latency_samples::{DeviceLatencySamples, DZ_LATENCY_SAMPLES_HEADER_SIZE},
     },
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -28,7 +28,7 @@ use solana_program::{
 // Instruction arguments for initializing a latency samples account.
 // Represents a single direction (origin -> target) over a link during an epoch.
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct InitializeDzLatencySamplesArgs {
+pub struct InitializeDeviceLatencySamplesArgs {
     pub origin_device_pk: Pubkey,
     pub target_device_pk: Pubkey,
     pub link_pk: Pubkey,
@@ -36,7 +36,7 @@ pub struct InitializeDzLatencySamplesArgs {
     pub sampling_interval_microseconds: u64,
 }
 
-impl fmt::Debug for InitializeDzLatencySamplesArgs {
+impl fmt::Debug for InitializeDeviceLatencySamplesArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -66,12 +66,12 @@ impl fmt::Debug for InitializeDzLatencySamplesArgs {
 /// - `DeviceNotActiveOrSuspended`, `LinkNotActiveOrSuspended`: inactive or suspended device or link
 /// - `UnauthorizedAgent`: agent not authorized for origin device
 /// - `InvalidPDA`, `AccountAlreadyExists`
-pub fn process_initialize_dz_latency_samples(
+pub fn process_initialize_device_latency_samples(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    args: &InitializeDzLatencySamplesArgs,
+    args: &InitializeDeviceLatencySamplesArgs,
 ) -> ProgramResult {
-    msg!("Processing InitializeDzLatencySamples: {:?}", args);
+    msg!("Processing InitializeDeviceLatencySamples: {:?}", args);
 
     if args.sampling_interval_microseconds == 0 {
         msg!("Sampling interval must be non-zero");
@@ -157,7 +157,7 @@ pub fn process_initialize_dz_latency_samples(
 
     // Compute PDA address for the latency samples account.
     // Uniquely scoped by origin, target, link, and epoch.
-    let (latency_samples_pda, latency_samples_bump_seed) = derive_dz_latency_samples_pda(
+    let (latency_samples_pda, latency_samples_bump_seed) = derive_device_latency_samples_pda(
         program_id,
         origin_device_account.key,
         target_device_account.key,
@@ -218,8 +218,8 @@ pub fn process_initialize_dz_latency_samples(
     )?;
 
     // Initialize account contents with metadata and an empty sample list.
-    let samples = DzLatencySamples {
-        account_type: AccountType::DzLatencySamples,
+    let samples = DeviceLatencySamples {
+        account_type: AccountType::DeviceLatencySamples,
         epoch: args.epoch,
         origin_device_agent_pk: *agent.key,
         origin_device_pk: *origin_device_account.key,

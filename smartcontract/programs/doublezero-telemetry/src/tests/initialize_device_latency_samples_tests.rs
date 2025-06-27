@@ -2,9 +2,9 @@
 mod tests {
     use crate::{
         error::TelemetryError, instructions::TelemetryInstruction,
-        pda::derive_dz_latency_samples_pda,
-        processors::telemetry::initialize_dz_samples::InitializeDzLatencySamplesArgs,
-        state::dz_latency_samples::DZ_LATENCY_SAMPLES_HEADER_SIZE, tests::test_helpers::*,
+        pda::derive_device_latency_samples_pda,
+        processors::telemetry::initialize_device_latency_samples::InitializeDeviceLatencySamplesArgs,
+        state::device_latency_samples::DZ_LATENCY_SAMPLES_HEADER_SIZE, tests::test_helpers::*,
     };
     use borsh::BorshSerialize;
     use doublezero_serviceability::{
@@ -29,7 +29,7 @@ mod tests {
     };
 
     #[tokio::test]
-    async fn test_initialize_dz_latency_samples_success_active_devices_and_link() {
+    async fn test_initialize_device_latency_samples_success_active_devices_and_link() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         // Seed ledger with two linked devices, and a funded origin device agent.
@@ -42,7 +42,7 @@ mod tests {
         // Execute initialize latency samples transaction.
         let latency_samples_pda = ledger
             .telemetry
-            .initialize_dz_latency_samples(
+            .initialize_device_latency_samples(
                 &origin_device_agent,
                 origin_device_pk,
                 target_device_pk,
@@ -65,7 +65,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_initialize_dz_latency_samples_success_suspended_origin_device() {
+    async fn test_initialize_device_latency_samples_success_suspended_origin_device() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         // Seed ledger with two linked devices, and a funded origin device agent.
@@ -93,7 +93,7 @@ mod tests {
         // Execute initialize latency samples transaction.
         let latency_samples_pda = ledger
             .telemetry
-            .initialize_dz_latency_samples(
+            .initialize_device_latency_samples(
                 &origin_device_agent,
                 origin_device_pk,
                 target_device_pk,
@@ -116,7 +116,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_initialize_dz_latency_samples_success_suspended_target_device() {
+    async fn test_initialize_device_latency_samples_success_suspended_target_device() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         // Seed ledger with two linked devices, and a funded origin device agent.
@@ -144,7 +144,7 @@ mod tests {
         // Execute initialize latency samples transaction.
         let latency_samples_pda = ledger
             .telemetry
-            .initialize_dz_latency_samples(
+            .initialize_device_latency_samples(
                 &origin_device_agent,
                 origin_device_pk,
                 target_device_pk,
@@ -167,7 +167,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_initialize_dz_latency_samples_success_suspended_link() {
+    async fn test_initialize_device_latency_samples_success_suspended_link() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         // Seed ledger with two linked devices, and a funded origin device agent.
@@ -187,7 +187,7 @@ mod tests {
         // Execute initialize latency samples transaction.
         let latency_samples_pda = ledger
             .telemetry
-            .initialize_dz_latency_samples(
+            .initialize_device_latency_samples(
                 &origin_device_agent,
                 origin_device_pk,
                 target_device_pk,
@@ -210,7 +210,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_initialize_dz_latency_samples_fail_unauthorized_agent() {
+    async fn test_initialize_device_latency_samples_fail_unauthorized_agent() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         // Seed ledger with two linked devices, and a funded origin device agent.
@@ -231,7 +231,7 @@ mod tests {
         // Execute initialize latency samples transaction with unauthorized agent.
         let result = ledger
             .telemetry
-            .initialize_dz_latency_samples(
+            .initialize_device_latency_samples(
                 &unauthorized_agent,
                 origin_device_pk,
                 target_device_pk,
@@ -244,7 +244,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_initialize_dz_latency_samples_fail_agent_not_signer() {
+    async fn test_initialize_device_latency_samples_fail_agent_not_signer() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         // Seed with two linked devices and a valid agent.
@@ -255,7 +255,7 @@ mod tests {
         ledger.wait_for_new_blockhash().await.unwrap();
 
         // Create PDA manually.
-        let (latency_samples_pda, _) = derive_dz_latency_samples_pda(
+        let (latency_samples_pda, _) = derive_device_latency_samples_pda(
             &ledger.telemetry.program_id,
             &origin_device_pk,
             &target_device_pk,
@@ -264,7 +264,7 @@ mod tests {
         );
 
         // Construct instruction manually with agent NOT a signer.
-        let args = InitializeDzLatencySamplesArgs {
+        let args = InitializeDeviceLatencySamplesArgs {
             origin_device_pk,
             target_device_pk,
             link_pk,
@@ -272,7 +272,7 @@ mod tests {
             sampling_interval_microseconds: 5_000_000,
         };
 
-        let instruction = TelemetryInstruction::InitializeDzLatencySamples(args.clone());
+        let instruction = TelemetryInstruction::InitializeDeviceLatencySamples(args.clone());
         let data = instruction.pack().unwrap();
 
         let accounts = vec![
@@ -310,7 +310,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_initialize_dz_latency_samples_fail_origin_device_wrong_owner() {
+    async fn test_initialize_device_latency_samples_fail_origin_device_wrong_owner() {
         let agent = Keypair::new();
         let fake_origin_device_pk = Pubkey::new_unique();
         let target_device_pk = Pubkey::new_unique(); // doesn’t matter, we won’t get that far
@@ -355,7 +355,7 @@ mod tests {
 
         let result = ledger
             .telemetry
-            .initialize_dz_latency_samples(
+            .initialize_device_latency_samples(
                 &agent,
                 fake_origin_device_pk,
                 target_device_pk,
@@ -368,7 +368,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_initialize_dz_latency_samples_fail_target_device_wrong_owner() {
+    async fn test_initialize_device_latency_samples_fail_target_device_wrong_owner() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         let (agent, origin_device_pk, _real_target_device, link_pk) =
@@ -420,7 +420,7 @@ mod tests {
 
         let result = ledger
             .telemetry
-            .initialize_dz_latency_samples(
+            .initialize_device_latency_samples(
                 &agent,
                 origin_device_pk,
                 fake_target_device_pk,
@@ -434,7 +434,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_initialize_dz_latency_samples_fail_link_wrong_owner() {
+    async fn test_initialize_device_latency_samples_fail_link_wrong_owner() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         let (agent, origin_device_pk, target_device_pk, _real_link_pk) =
@@ -488,7 +488,7 @@ mod tests {
 
         let result = ledger
             .telemetry
-            .initialize_dz_latency_samples(
+            .initialize_device_latency_samples(
                 &agent,
                 origin_device_pk,
                 target_device_pk,
@@ -502,7 +502,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_initialize_dz_latency_samples_fail_origin_device_not_activated() {
+    async fn test_initialize_device_latency_samples_fail_origin_device_not_activated() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         let location_pk = ledger
@@ -589,7 +589,7 @@ mod tests {
 
         let result = ledger
             .telemetry
-            .initialize_dz_latency_samples(
+            .initialize_device_latency_samples(
                 &agent,
                 origin_device_pk,
                 target_device_pk,
@@ -603,7 +603,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_initialize_dz_latency_samples_fail_target_device_not_activated() {
+    async fn test_initialize_device_latency_samples_fail_target_device_not_activated() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         let location_pk = ledger
@@ -690,7 +690,7 @@ mod tests {
 
         let result = ledger
             .telemetry
-            .initialize_dz_latency_samples(
+            .initialize_device_latency_samples(
                 &agent,
                 origin_device_pk,
                 target_device_pk,
@@ -704,7 +704,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_initialize_dz_latency_samples_fail_link_not_activated() {
+    async fn test_initialize_device_latency_samples_fail_link_not_activated() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         let location_pk = ledger
@@ -785,7 +785,7 @@ mod tests {
 
         let result = ledger
             .telemetry
-            .initialize_dz_latency_samples(
+            .initialize_device_latency_samples(
                 &agent,
                 origin_device_pk,
                 target_device_pk,
@@ -799,7 +799,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_initialize_dz_latency_samples_fail_link_wrong_devices() {
+    async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         let location_pk = ledger
@@ -914,7 +914,7 @@ mod tests {
 
         let result = ledger
             .telemetry
-            .initialize_dz_latency_samples(
+            .initialize_device_latency_samples(
                 &agent,
                 origin_device_pk,
                 target_device_pk,
@@ -928,7 +928,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_initialize_dz_latency_samples_succeeds_with_reversed_link_sides() {
+    async fn test_initialize_device_latency_samples_succeeds_with_reversed_link_sides() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         let location_pk = ledger
@@ -1013,7 +1013,7 @@ mod tests {
 
         let result = ledger
             .telemetry
-            .initialize_dz_latency_samples(
+            .initialize_device_latency_samples(
                 &agent,
                 origin_device_pk,
                 target_device_pk,
@@ -1027,7 +1027,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_initialize_dz_latency_samples_fail_account_already_exists() {
+    async fn test_initialize_device_latency_samples_fail_account_already_exists() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         let (agent, origin_device_pk, target_device_pk, link_pk) =
@@ -1038,7 +1038,7 @@ mod tests {
         // First call: succeed and create the account
         let latency_samples_pda = ledger
             .telemetry
-            .initialize_dz_latency_samples(
+            .initialize_device_latency_samples(
                 &agent,
                 origin_device_pk,
                 target_device_pk,
@@ -1055,7 +1055,7 @@ mod tests {
         // Second call: explicitly pass the same latency_samples_pda as the account
         let result = ledger
             .telemetry
-            .initialize_dz_latency_samples_with_pda(
+            .initialize_device_latency_samples_with_pda(
                 &agent,
                 latency_samples_pda,
                 origin_device_pk,
@@ -1070,7 +1070,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_initialize_dz_latency_samples_fail_invalid_pda() {
+    async fn test_initialize_device_latency_samples_fail_invalid_pda() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         let (agent, origin_device_pk, target_device_pk, link_pk) =
@@ -1079,7 +1079,7 @@ mod tests {
         ledger.wait_for_new_blockhash().await.unwrap();
 
         // Derive correct PDA (but we won't use it)
-        let (_correct_pda, _bump) = derive_dz_latency_samples_pda(
+        let (_correct_pda, _bump) = derive_device_latency_samples_pda(
             &ledger.telemetry.program_id,
             &origin_device_pk,
             &target_device_pk,
@@ -1092,7 +1092,7 @@ mod tests {
 
         let result = ledger
             .telemetry
-            .initialize_dz_latency_samples_with_pda(
+            .initialize_device_latency_samples_with_pda(
                 &agent,
                 fake_pda,
                 origin_device_pk,
@@ -1107,7 +1107,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_initialize_dz_latency_samples_fail_zero_sampling_interval() {
+    async fn test_initialize_device_latency_samples_fail_zero_sampling_interval() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         let (agent, origin_device_pk, target_device_pk, link_pk) =
@@ -1117,7 +1117,7 @@ mod tests {
 
         let result = ledger
             .telemetry
-            .initialize_dz_latency_samples(
+            .initialize_device_latency_samples(
                 &agent,
                 origin_device_pk,
                 target_device_pk,
@@ -1131,7 +1131,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_initialize_dz_latency_samples_fail_same_origin_device_and_target_device() {
+    async fn test_initialize_device_latency_samples_fail_same_origin_device_and_target_device() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         let (agent, origin_device_pk, _target_device_pk, link_pk) =
@@ -1141,7 +1141,7 @@ mod tests {
 
         let result = ledger
             .telemetry
-            .initialize_dz_latency_samples(
+            .initialize_device_latency_samples(
                 &agent,
                 origin_device_pk,
                 origin_device_pk,
@@ -1155,7 +1155,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_initialize_dz_latency_samples_fail_agent_not_owner_of_origin_device() {
+    async fn test_initialize_device_latency_samples_fail_agent_not_owner_of_origin_device() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         // Create agent that owns origin device
@@ -1246,7 +1246,7 @@ mod tests {
         // Attempt with the unauthorized agent
         let result = ledger
             .telemetry
-            .initialize_dz_latency_samples(
+            .initialize_device_latency_samples(
                 &unauthorized_agent,
                 origin_device_pk,
                 target_device_pk,

@@ -3,9 +3,9 @@ mod tests {
     use crate::{
         error::TelemetryError,
         instructions::TelemetryInstruction,
-        processors::telemetry::write_dz_samples::WriteDzLatencySamplesArgs,
-        state::dz_latency_samples::{
-            DzLatencySamples, DZ_LATENCY_SAMPLES_HEADER_SIZE, MAX_SAMPLES,
+        processors::telemetry::write_device_latency_samples::WriteDeviceLatencySamplesArgs,
+        state::device_latency_samples::{
+            DeviceLatencySamples, DZ_LATENCY_SAMPLES_HEADER_SIZE, MAX_SAMPLES,
         },
         tests::test_helpers::*,
     };
@@ -22,7 +22,7 @@ mod tests {
     };
 
     #[tokio::test]
-    async fn test_write_dz_latency_samples_success() {
+    async fn test_write_device_latency_samples_success() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         // Seed ledger with two linked devices, and a funded origin device agent.
@@ -35,7 +35,7 @@ mod tests {
         // Execute initialize latency samples transaction.
         let latency_samples_pda = ledger
             .telemetry
-            .initialize_dz_latency_samples(
+            .initialize_device_latency_samples(
                 &origin_device_agent,
                 origin_device_pk,
                 target_device_pk,
@@ -55,7 +55,7 @@ mod tests {
         assert_eq!(account.owner, ledger.telemetry.program_id);
         assert_eq!(account.data.len(), DZ_LATENCY_SAMPLES_HEADER_SIZE);
 
-        let samples_data = DzLatencySamples::try_from(&account.data[..]).unwrap();
+        let samples_data = DeviceLatencySamples::try_from(&account.data[..]).unwrap();
         assert_eq!(samples_data.start_timestamp_microseconds, 0);
         assert_eq!(samples_data.next_sample_index, 0);
         assert_eq!(samples_data.samples, Vec::<u32>::new());
@@ -64,7 +64,7 @@ mod tests {
         let current_timestamp = 1_700_000_000_000_100; // Example timestamp
         ledger
             .telemetry
-            .write_dz_latency_samples(
+            .write_device_latency_samples(
                 &origin_device_agent,
                 latency_samples_pda,
                 samples_to_write.clone(),
@@ -80,7 +80,7 @@ mod tests {
             .unwrap()
             .expect("Latency samples account does not exist");
 
-        let samples_data = DzLatencySamples::try_from(&account.data[..]).unwrap();
+        let samples_data = DeviceLatencySamples::try_from(&account.data[..]).unwrap();
         assert_eq!(samples_data.start_timestamp_microseconds, current_timestamp);
         assert_eq!(
             samples_data.next_sample_index,
@@ -93,7 +93,7 @@ mod tests {
         let new_timestamp = 1_700_000_000_000_200; // Later timestamp, should not overwrite original start
         ledger
             .telemetry
-            .write_dz_latency_samples(
+            .write_device_latency_samples(
                 &origin_device_agent,
                 latency_samples_pda,
                 more_samples.clone(),
@@ -109,7 +109,7 @@ mod tests {
             .unwrap()
             .expect("Latency samples account does not exist");
 
-        let samples_data = DzLatencySamples::try_from(&account.data[..]).unwrap();
+        let samples_data = DeviceLatencySamples::try_from(&account.data[..]).unwrap();
         assert_eq!(samples_data.start_timestamp_microseconds, current_timestamp);
         assert_eq!(
             samples_data.next_sample_index,
@@ -118,7 +118,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_write_dz_latency_samples_fail_account_not_exist() {
+    async fn test_write_device_latency_samples_fail_account_not_exist() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         let agent = Keypair::new();
@@ -134,7 +134,7 @@ mod tests {
 
         let result = ledger
             .telemetry
-            .write_dz_latency_samples(&agent, uninitialized_pda, samples, timestamp)
+            .write_device_latency_samples(&agent, uninitialized_pda, samples, timestamp)
             .await;
 
         let error = result.unwrap_err();
@@ -150,7 +150,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_write_dz_latency_samples_fail_unauthorized_agent() {
+    async fn test_write_device_latency_samples_fail_unauthorized_agent() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         // Set up a valid latency samples account with a specific agent
@@ -161,7 +161,7 @@ mod tests {
 
         let latency_samples_pda = ledger
             .telemetry
-            .initialize_dz_latency_samples(
+            .initialize_device_latency_samples(
                 &authorized_agent,
                 origin_device_pk,
                 target_device_pk,
@@ -182,7 +182,7 @@ mod tests {
         // Attempt to write samples with the wrong agent
         let result = ledger
             .telemetry
-            .write_dz_latency_samples(
+            .write_device_latency_samples(
                 &unauthorized_agent,
                 latency_samples_pda,
                 vec![1000, 1100],
@@ -203,7 +203,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_write_dz_latency_samples_fail_account_full() {
+    async fn test_write_device_latency_samples_fail_account_full() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         // Set up a latency samples account with a funded agent
@@ -214,7 +214,7 @@ mod tests {
 
         let latency_samples_pda = ledger
             .telemetry
-            .initialize_dz_latency_samples(
+            .initialize_device_latency_samples(
                 &agent,
                 origin_device_pk,
                 target_device_pk,
@@ -235,7 +235,7 @@ mod tests {
             let chunk = vec![1234u32; chunk_size.min(MAX_SAMPLES - total_written)];
             let result = ledger
                 .telemetry
-                .write_dz_latency_samples(&agent, latency_samples_pda, chunk, timestamp)
+                .write_device_latency_samples(&agent, latency_samples_pda, chunk, timestamp)
                 .await;
 
             match result {
@@ -261,7 +261,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_write_dz_latency_samples_preserves_start_timestamp() {
+    async fn test_write_device_latency_samples_preserves_start_timestamp() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         let (agent, origin_device_pk, target_device_pk, link_pk) =
@@ -271,7 +271,7 @@ mod tests {
 
         let latency_samples_pda = ledger
             .telemetry
-            .initialize_dz_latency_samples(
+            .initialize_device_latency_samples(
                 &agent,
                 origin_device_pk,
                 target_device_pk,
@@ -285,7 +285,7 @@ mod tests {
         let initial_timestamp = 1_700_000_000_000_000;
         ledger
             .telemetry
-            .write_dz_latency_samples(
+            .write_device_latency_samples(
                 &agent,
                 latency_samples_pda,
                 vec![1000, 1100],
@@ -298,7 +298,12 @@ mod tests {
         let new_timestamp = initial_timestamp + 10_000;
         ledger
             .telemetry
-            .write_dz_latency_samples(&agent, latency_samples_pda, vec![1200, 1300], new_timestamp)
+            .write_device_latency_samples(
+                &agent,
+                latency_samples_pda,
+                vec![1200, 1300],
+                new_timestamp,
+            )
             .await
             .unwrap();
 
@@ -309,7 +314,7 @@ mod tests {
             .unwrap()
             .expect("Latency samples account missing");
 
-        let data = DzLatencySamples::try_from(&account.data[..]).unwrap();
+        let data = DeviceLatencySamples::try_from(&account.data[..]).unwrap();
         assert_eq!(
             data.start_timestamp_microseconds, initial_timestamp,
             "Start timestamp should remain unchanged after additional writes"
@@ -317,7 +322,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_write_dz_latency_samples_fail_agent_not_signer() {
+    async fn test_write_device_latency_samples_fail_agent_not_signer() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         let (agent, origin_device_pk, target_device_pk, link_pk) =
@@ -326,7 +331,7 @@ mod tests {
 
         let latency_samples_pda = ledger
             .telemetry
-            .initialize_dz_latency_samples(
+            .initialize_device_latency_samples(
                 &agent,
                 origin_device_pk,
                 target_device_pk,
@@ -337,12 +342,12 @@ mod tests {
             .await
             .unwrap();
 
-        let args = WriteDzLatencySamplesArgs {
+        let args = WriteDeviceLatencySamplesArgs {
             start_timestamp_microseconds: 1_700_000_000_000_000,
             samples: vec![1000, 1100],
         };
 
-        let ix = TelemetryInstruction::WriteDzLatencySamples(args)
+        let ix = TelemetryInstruction::WriteDeviceLatencySamples(args)
             .pack()
             .expect("failed to pack");
 
@@ -385,7 +390,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_write_dz_latency_samples_noop_on_empty_samples() {
+    async fn test_write_device_latency_samples_noop_on_empty_samples() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         let (agent, origin_device_pk, target_device_pk, link_pk) =
@@ -394,7 +399,7 @@ mod tests {
 
         let latency_samples_pda = ledger
             .telemetry
-            .initialize_dz_latency_samples(
+            .initialize_device_latency_samples(
                 &agent,
                 origin_device_pk,
                 target_device_pk,
@@ -408,7 +413,12 @@ mod tests {
         // Try to write an empty sample vector
         ledger
             .telemetry
-            .write_dz_latency_samples(&agent, latency_samples_pda, vec![], 1_700_000_000_000_000)
+            .write_device_latency_samples(
+                &agent,
+                latency_samples_pda,
+                vec![],
+                1_700_000_000_000_000,
+            )
             .await
             .unwrap();
 
@@ -418,7 +428,7 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        let data = DzLatencySamples::try_from(&account.data[..]).unwrap();
+        let data = DeviceLatencySamples::try_from(&account.data[..]).unwrap();
 
         assert_eq!(data.samples.len(), 0);
         assert_eq!(data.next_sample_index, 0);
@@ -426,12 +436,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_write_dz_latency_samples_fail_invalid_account_owner() {
+    async fn test_write_device_latency_samples_fail_invalid_account_owner() {
         let agent = Keypair::new();
         let dummy_pda = Pubkey::new_unique();
 
-        let samples = DzLatencySamples {
-            account_type: crate::state::accounttype::AccountType::DzLatencySamples,
+        let samples = DeviceLatencySamples {
+            account_type: crate::state::accounttype::AccountType::DeviceLatencySamples,
             epoch: 1,
             origin_device_agent_pk: agent.pubkey(),
             origin_device_pk: Pubkey::new_unique(),
@@ -471,7 +481,7 @@ mod tests {
 
         let result = ledger
             .telemetry
-            .write_dz_latency_samples(&agent, dummy_pda, vec![1111], 1_700_000_000_000_000)
+            .write_device_latency_samples(&agent, dummy_pda, vec![1111], 1_700_000_000_000_000)
             .await;
 
         let err = result.unwrap_err();
@@ -487,7 +497,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_write_dz_latency_samples_fail_account_does_not_exist() {
+    async fn test_write_device_latency_samples_fail_account_does_not_exist() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         let fake_pda = Pubkey::new_unique(); // does not exist
@@ -499,7 +509,7 @@ mod tests {
 
         let result = ledger
             .telemetry
-            .write_dz_latency_samples(&agent, fake_pda, vec![1111, 2222], 1_700_000_000_000_000)
+            .write_device_latency_samples(&agent, fake_pda, vec![1111, 2222], 1_700_000_000_000_000)
             .await;
 
         match result {
@@ -514,7 +524,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_write_dz_latency_samples_next_sample_index_correct() {
+    async fn test_write_device_latency_samples_next_sample_index_correct() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         let (agent, origin_device_pk, target_device_pk, link_pk) =
@@ -523,7 +533,7 @@ mod tests {
 
         let pda = ledger
             .telemetry
-            .initialize_dz_latency_samples(
+            .initialize_device_latency_samples(
                 &agent,
                 origin_device_pk,
                 target_device_pk,
@@ -537,25 +547,25 @@ mod tests {
         let t1 = 1_700_000_000_000_000;
         ledger
             .telemetry
-            .write_dz_latency_samples(&agent, pda, vec![1111, 2222], t1)
+            .write_device_latency_samples(&agent, pda, vec![1111, 2222], t1)
             .await
             .unwrap();
 
         let t2 = t1 + 10;
         ledger
             .telemetry
-            .write_dz_latency_samples(&agent, pda, vec![3333, 4444, 5555], t2)
+            .write_device_latency_samples(&agent, pda, vec![3333, 4444, 5555], t2)
             .await
             .unwrap();
 
         let acct = ledger.get_account(pda).await.unwrap().unwrap();
-        let parsed = DzLatencySamples::try_from(&acct.data[..]).unwrap();
+        let parsed = DeviceLatencySamples::try_from(&acct.data[..]).unwrap();
         assert_eq!(parsed.next_sample_index, 5);
         assert_eq!(parsed.samples, vec![1111, 2222, 3333, 4444, 5555]);
     }
 
     #[tokio::test]
-    async fn test_write_dz_latency_samples_fail_wrong_agent_but_valid_signer() {
+    async fn test_write_device_latency_samples_fail_wrong_agent_but_valid_signer() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         // Seed the latency samples with a known authorized agent
@@ -566,7 +576,7 @@ mod tests {
 
         let latency_samples_pda = ledger
             .telemetry
-            .initialize_dz_latency_samples(
+            .initialize_device_latency_samples(
                 &authorized_agent,
                 origin_device_pk,
                 target_device_pk,
@@ -587,7 +597,7 @@ mod tests {
         // Try writing as the wrong agent (but still a signer)
         let result = ledger
             .telemetry
-            .write_dz_latency_samples(
+            .write_device_latency_samples(
                 &wrong_agent,
                 latency_samples_pda,
                 vec![1234],
@@ -608,7 +618,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_write_dz_latency_samples_fail_agent_mismatch() {
+    async fn test_write_device_latency_samples_fail_agent_mismatch() {
         let mut ledger = LedgerHelper::new().await.unwrap();
 
         // Set up real latency samples account
@@ -619,7 +629,7 @@ mod tests {
 
         let latency_samples_pda = ledger
             .telemetry
-            .initialize_dz_latency_samples(
+            .initialize_device_latency_samples(
                 &real_agent,
                 origin_device_pk,
                 target_device_pk,
@@ -640,7 +650,7 @@ mod tests {
         // Attempt to write with the wrong agent
         let result = ledger
             .telemetry
-            .write_dz_latency_samples(
+            .write_device_latency_samples(
                 &wrong_agent,
                 latency_samples_pda,
                 vec![1234],

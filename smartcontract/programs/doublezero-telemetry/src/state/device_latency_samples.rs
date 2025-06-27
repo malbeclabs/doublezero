@@ -10,7 +10,7 @@ use std::fmt;
 /// With 5-second intervals, 35,000 samples ~= 48 hours of data.
 pub const MAX_SAMPLES: usize = 35_000;
 
-/// Static size of the `DzLatencySamples` struct without the `samples` vector.
+/// Static size of the `DeviceLatencySamples` struct without the `samples` vector.
 /// Used to calculate initial account allocation. Bytes per field:
 /// - 1 byte: `account_type`
 /// - 1 byte: `bump_seed`
@@ -29,7 +29,7 @@ pub const DZ_LATENCY_SAMPLES_HEADER_SIZE: usize =
 /// Onchain data structure representing a latency sample stream between two devices
 /// over a link for a specific epoch, written by a single authorized agent.
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
-pub struct DzLatencySamples {
+pub struct DeviceLatencySamples {
     // Used to distinguish this account type during deserialization
     pub account_type: AccountType, // 1
 
@@ -74,7 +74,7 @@ pub struct DzLatencySamples {
     pub samples: Vec<u32>, // 4 + n*4 (RTT values in microseconds)
 }
 
-impl fmt::Display for DzLatencySamples {
+impl fmt::Display for DeviceLatencySamples {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -84,7 +84,7 @@ impl fmt::Display for DzLatencySamples {
     }
 }
 
-impl AccountTypeInfo for DzLatencySamples {
+impl AccountTypeInfo for DeviceLatencySamples {
     /// Returns the fixed seed associated with this account type.
     fn seed(&self) -> &[u8] {
         SEED_DZ_LATENCY_SAMPLES
@@ -107,12 +107,12 @@ impl AccountTypeInfo for DzLatencySamples {
     }
 }
 
-impl TryFrom<&[u8]> for DzLatencySamples {
+impl TryFrom<&[u8]> for DeviceLatencySamples {
     type Error = borsh::io::Error;
 
     /// Enables deserializing from raw Solana account data.
     fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
-        DzLatencySamples::deserialize(&mut &data[..])
+        DeviceLatencySamples::deserialize(&mut &data[..])
     }
 }
 
@@ -121,10 +121,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_dz_latency_samples_serialization() {
+    fn test_device_latency_samples_serialization() {
         let samples = vec![100u32, 200u32, 300u32, 400u32, 500u32];
-        let val = DzLatencySamples {
-            account_type: AccountType::DzLatencySamples,
+        let val = DeviceLatencySamples {
+            account_type: AccountType::DeviceLatencySamples,
             bump_seed: 255,
             epoch: 19800,
             origin_device_agent_pk: Pubkey::new_unique(),
@@ -141,7 +141,7 @@ mod tests {
         };
 
         let data = borsh::to_vec(&val).unwrap();
-        let val2 = DzLatencySamples::try_from_slice(&data).unwrap();
+        let val2 = DeviceLatencySamples::try_from_slice(&data).unwrap();
 
         assert_eq!(val.account_type, val2.account_type);
         assert_eq!(val.bump_seed, val2.bump_seed);

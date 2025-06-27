@@ -8,6 +8,7 @@ jobs:
     uses: ./.github/workflows/release.daily.yml
     with:
       component: agent
+      playbook: playbooks/agents.yml
     secrets: inherit
     permissions:
       contents: write

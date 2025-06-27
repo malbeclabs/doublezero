@@ -8,6 +8,7 @@ jobs:
     uses: ./.github/workflows/release.daily.yml
     with:
       component: activator
+      playbook: playbooks/activators.yml
     secrets: inherit
     permissions:
       contents: write

@@ -8,6 +8,7 @@ jobs:
     uses: ./.github/workflows/release.daily.yml
     with:
       component: client
+      playbook: playbooks/validators.yml
     secrets: inherit
     permissions:
       contents: write

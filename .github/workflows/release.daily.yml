@@ -6,10 +6,13 @@ on:
       component:
         required: true
         type: string
+      playbook:
+        required: true
+        type: string
 
 jobs:
   release:
-    name: ${{ inputs.component }}
+    name: Build ${{ inputs.component }}
     runs-on: ubuntu-24.04-16c-64gb
     steps:
       - name: Checkout
@@ -30,6 +33,8 @@ jobs:
         run: |
           sudo apt update
           sudo apt-get install squashfs-tools rpm gcc-x86-64-linux-gnu -y
+      - name: Set build date
+        run: echo "BUILD_DATE=$(date -u +%Y%m%d%H%M%S)" >> $GITHUB_ENV
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
@@ -37,5 +42,31 @@ jobs:
           args: release -f release/.goreleaser.devnet.${{ inputs.component }}.yaml --clean --nightly
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }} 
+          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
           CLOUDSMITH_TOKEN: ${{ secrets.CLOUDSMITH_TOKEN }}
+  deploy:
+    name: Deploy ${{ inputs.component }} to DevNet
+    runs-on: self-hosted
+    needs: release
+    steps:
+      - uses: actions/checkout@v4
+      - name: checkout ansible playbooks
+        uses: actions/checkout@v4
+        with:
+          repository: "malbeclabs/ansible"
+          path: ansible
+          token: ${{ secrets.GA_ANSIBLE_REPO_RO }}
+      - name: Create ansible vault password file
+        working-directory: ansible
+        run: |
+          cat <<'EOT' > .vault_pass
+          #!/usr/bin/bash
+          echo "${ANSIBLE_VAULT_PASS}"
+          EOT
+          chmod +x .vault_pass
+      - name: Run ansible playbook
+        working-directory: ansible
+        shell: bash -leo pipefail {0}
+        run: ansible-playbook -D --private-key ~/.ssh/id_runner --vault-password-file .vault_pass -i inventory/devnet/hosts.yml ${{ inputs.playbook }}
+        env:
+          ANSIBLE_VAULT_PASS: ${{ secrets.ANSIBLE_VAULT_PASS }}

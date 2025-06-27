@@ -65,7 +65,9 @@ rust-build:
 
 .PHONY: rust-lint
 rust-lint: rust-fmt-check
-	cargo clippy --workspace --all-features --all-targets -- -Dclippy::all -Dwarnings
+	@cargo +stable install cargo-hack
+	cargo hack clippy --workspace --all-targets --exclude doublezero-telemetry --exclude doublezero-serviceability -- -Dclippy::all -Dwarnings
+	cd smartcontract && $(MAKE) lint-programs
 
 .PHONY: rust-fmt
 rust-fmt:

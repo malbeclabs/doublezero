@@ -18,11 +18,13 @@ test-sbf:
 	cargo test-sbf
 
 .PHONY: lint
-lint:
-	cargo clippy --manifest-path ./programs/doublezero-serviceability/Cargo.toml $(CLIPPY_FLAGS)
-	cargo clippy --manifest-path ./programs/doublezero-telemetry/Cargo.toml $(CLIPPY_FLAGS)
+lint: lint-programs
 	cargo clippy --manifest-path ./sdk/rs/Cargo.toml $(CLIPPY_FLAGS)
 	cargo clippy --manifest-path ./cli/Cargo.toml $(CLIPPY_FLAGS)
+
+.PHONY: lint-programs
+lint-programs:
+	cargo clippy --all-targets -p doublezero-telemetry -p doublezero-serviceability -- -Dclippy::all -Dwarnings
 
 .PHONY: build
 build:

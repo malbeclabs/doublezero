@@ -83,7 +83,7 @@ rust-test: rust-test-sbf
 
 .PHONY: rust-test-sbf
 rust-test-sbf:
-	cargo test-sbf --workspace
+	cd smartcontract && $(MAKE) test-sbf
 
 .PHONY: rust-ci
 rust-ci: rust-build rust-lint rust-test

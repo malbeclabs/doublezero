@@ -13,8 +13,7 @@ test: test-sbf
 
 .PHONY: test-sbf
 test-sbf:
-	cargo test-sbf --manifest-path ./programs/doublezero-serviceability/Cargo.toml
-	cargo test-sbf --manifest-path ./programs/doublezero-telemetry/Cargo.toml
+	cargo test-sbf
 
 .PHONY: lint
 lint:

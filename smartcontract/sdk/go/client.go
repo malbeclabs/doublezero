@@ -187,9 +187,9 @@ func WithTelemetryProgramID(programID string) Option {
 // Initializes a new DZ latency samples account
 func (c *Client) InitializeDzLatencySamples(
 	ctx context.Context,
-	deviceAPk solana.PublicKey,
-	deviceZPk solana.PublicKey,
-	linkPk solana.PublicKey,
+	originDevicePK solana.PublicKey,
+	targetDevicePK solana.PublicKey,
+	linkPK solana.PublicKey,
 	epoch uint64,
 	samplingIntervalMicroseconds uint64,
 ) (solana.Signature, error) {
@@ -198,9 +198,9 @@ func (c *Client) InitializeDzLatencySamples(
 	}
 
 	args := &InitializeDzLatencySamplesArgs{
-		DeviceAPk:                    deviceAPk,
-		DeviceZPk:                    deviceZPk,
-		LinkPk:                       linkPk,
+		OriginDevicePK:               originDevicePK,
+		TargetDevicePK:               targetDevicePK,
+		LinkPK:                       linkPK,
 		Epoch:                        epoch,
 		SamplingIntervalMicroseconds: samplingIntervalMicroseconds,
 	}
@@ -243,11 +243,10 @@ func (c *Client) InitializeDzLatencySamples(
 		return solana.Signature{}, err
 	}
 
-	// Send transaction
-	sig, err := c.rpcClient.SendTransaction(ctx, tx)
-	if err != nil {
-		return solana.Signature{}, err
-	}
+	// Send transaction (without preflight/simulation) check
+	sig, err := c.rpcClient.SendTransactionWithOpts(ctx, tx, rpc.TransactionOpts{
+		SkipPreflight: true,
+	})
 
 	return sig, nil
 }
@@ -317,16 +316,16 @@ func (c *Client) WriteDzLatencySamples(
 
 // Returns the PDA for a DZ latency samples account
 func (c *Client) GetDzLatencySamplesPDA(
-	deviceAPk solana.PublicKey,
-	deviceZPk solana.PublicKey,
-	linkPk solana.PublicKey,
+	originDevicePK solana.PublicKey,
+	targetDevicePK solana.PublicKey,
+	linkPK solana.PublicKey,
 	epoch uint64,
 ) (solana.PublicKey, error) {
 	pda, _, err := DeriveDzLatencySamplesPDA(
 		c.telemetryProgramID,
-		deviceAPk,
-		deviceZPk,
-		linkPk,
+		originDevicePK,
+		targetDevicePK,
+		linkPK,
 		epoch,
 	)
 	return pda, err

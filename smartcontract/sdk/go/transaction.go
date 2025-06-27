@@ -15,7 +15,7 @@ type TransactionSender interface {
 
 // Builds the instruction for initializing DZ latency samples
 func BuildInitializeDzLatencySamplesInstruction(
-	programID solana.PublicKey,
+	serviceabilityProgramID solana.PublicKey,
 	telemetryProgramID solana.PublicKey,
 	signer solana.PublicKey,
 	args *InitializeDzLatencySamplesArgs,
@@ -23,9 +23,9 @@ func BuildInitializeDzLatencySamplesInstruction(
 	// Derive the PDA
 	pda, _, err := DeriveDzLatencySamplesPDA(
 		telemetryProgramID,
-		args.DeviceAPk,
-		args.DeviceZPk,
-		args.LinkPk,
+		args.OriginDevicePK,
+		args.TargetDevicePK,
+		args.LinkPK,
 		args.Epoch,
 	)
 	if err != nil {
@@ -42,11 +42,11 @@ func BuildInitializeDzLatencySamplesInstruction(
 	accounts := []*solana.AccountMeta{
 		{PublicKey: pda, IsSigner: false, IsWritable: true},
 		{PublicKey: signer, IsSigner: true, IsWritable: true},
-		{PublicKey: args.DeviceAPk, IsSigner: false, IsWritable: false},
-		{PublicKey: args.DeviceZPk, IsSigner: false, IsWritable: false},
-		{PublicKey: args.LinkPk, IsSigner: false, IsWritable: false},
+		{PublicKey: args.OriginDevicePK, IsSigner: false, IsWritable: false},
+		{PublicKey: args.TargetDevicePK, IsSigner: false, IsWritable: false},
+		{PublicKey: args.LinkPK, IsSigner: false, IsWritable: false},
 		{PublicKey: solana.SystemProgramID, IsSigner: false, IsWritable: false},
-		{PublicKey: programID, IsSigner: false, IsWritable: false}, // serviceability program
+		{PublicKey: serviceabilityProgramID, IsSigner: false, IsWritable: false}, // serviceability program
 	}
 
 	return &solana.GenericInstruction{

@@ -11,14 +11,14 @@ func TestBuildInitializeDzLatencySamplesInstruction(t *testing.T) {
 	programID := solana.NewWallet().PublicKey()
 	telemetryProgramID := solana.NewWallet().PublicKey()
 	signer := solana.NewWallet().PublicKey()
-	deviceAPk := solana.NewWallet().PublicKey()
-	deviceZPk := solana.NewWallet().PublicKey()
-	linkPk := solana.NewWallet().PublicKey()
+	originDevicePK := solana.NewWallet().PublicKey()
+	targetDevicePK := solana.NewWallet().PublicKey()
+	linkPK := solana.NewWallet().PublicKey()
 
 	args := &InitializeDzLatencySamplesArgs{
-		DeviceAPk:                    deviceAPk,
-		DeviceZPk:                    deviceZPk,
-		LinkPk:                       linkPk,
+		OriginDevicePK:               originDevicePK,
+		TargetDevicePK:               targetDevicePK,
+		LinkPK:                       linkPK,
 		Epoch:                        100,
 		SamplingIntervalMicroseconds: 1000000,
 	}

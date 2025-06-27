@@ -23,7 +23,7 @@ const (
 	// Pefix for all telemetry PDAs
 	SEED_PREFIX = "telemetry"
 	// Seed for DZ latency samples PDAs
-	SEED_DZ_LATENCY_SAMPLES = "dz_latency_samples"
+	SEED_DZ_LATENCY_SAMPLES = "dz_latency"
 )
 
 // Constants for telemetry data

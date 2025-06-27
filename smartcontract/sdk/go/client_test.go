@@ -10,6 +10,7 @@ import (
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/stretchr/testify/require"
 )
 
 var configPayload = `
@@ -367,65 +368,47 @@ func TestNewClient(t *testing.T) {
 		programId := "9i7v8m3i7W2qPGRonFi8mehN76SXUkDcpgk4tPQhEabc"
 		client := New("endpoint", WithProgramId(programId))
 		want := solana.MustPublicKeyFromBase58(programId)
-		if client.pubkey != want {
-			t.Fatalf("overridden client pubkey incorrect; got %s, wanted %s", client.pubkey, want)
-		}
+		require.Equal(t, want, client.pubkey, "overridden client pubkey incorrect; got %s, wanted %s", client.pubkey, want)
 	})
 
 	t.Run("test_with_signer", func(t *testing.T) {
 		privateKey := solana.NewWallet().PrivateKey
 		client := New("endpoint", WithSigner(privateKey))
-		if client.signer == nil {
-			t.Fatal("signer should not be nil")
-		}
-		if !client.signer.PublicKey().Equals(privateKey.PublicKey()) {
-			t.Fatal("signer public key mismatch")
-		}
+		require.NotNil(t, client.signer, "signer should not be nil")
+		require.True(t, client.signer.PublicKey().Equals(privateKey.PublicKey()), "signer public key mismatch")
 	})
 
 	t.Run("test_with_telemetry_program_id", func(t *testing.T) {
 		telemetryProgramID := "9i7v8m3i7W2qPGRonFi8mehN76SXUkDcpgk4tPQhEabc"
 		client := New("endpoint", WithTelemetryProgramID(telemetryProgramID))
 		want := solana.MustPublicKeyFromBase58(telemetryProgramID)
-		if !client.telemetryProgramID.Equals(want) {
-			t.Fatalf("telemetry program ID incorrect; got %s, wanted %s", client.telemetryProgramID, want)
-		}
+		require.True(t, client.telemetryProgramID.Equals(want), "telemetry program ID incorrect; got %s, wanted %s", client.telemetryProgramID, want)
 	})
 
 	t.Run("test_default_telemetry_program_id", func(t *testing.T) {
 		client := New("endpoint")
 		want := solana.MustPublicKeyFromBase58(TELEMETRY_PROGRAM_ID_TESTNET)
-		if !client.telemetryProgramID.Equals(want) {
-			t.Fatalf("default telemetry program ID incorrect; got %s, wanted %s", client.telemetryProgramID, want)
-		}
+		require.True(t, client.telemetryProgramID.Equals(want), "default telemetry program ID incorrect; got %s, wanted %s", client.telemetryProgramID, want)
 	})
 }
 
 func TestGetDzLatencySamplesPDA(t *testing.T) {
 	client := New("endpoint")
-	deviceAPk := solana.NewWallet().PublicKey()
-	deviceZPk := solana.NewWallet().PublicKey()
-	linkPk := solana.NewWallet().PublicKey()
+	originDevicePK := solana.NewWallet().PublicKey()
+	targetDevicePK := solana.NewWallet().PublicKey()
+	linkPK := solana.NewWallet().PublicKey()
 	epoch := uint64(100)
 
-	pda, err := client.GetDzLatencySamplesPDA(deviceAPk, deviceZPk, linkPk, epoch)
-	if err != nil {
-		t.Fatalf("Failed to get PDA: %v", err)
-	}
+	pda, err := client.GetDzLatencySamplesPDA(originDevicePK, targetDevicePK, linkPK, epoch)
+	require.NoError(t, err)
 
-	if pda.IsZero() {
-		t.Error("PDA should not be zero")
-	}
+	require.False(t, pda.IsZero(), "PDA should not be zero")
 
-	// Test that swapping device keys produces same PDA
-	pda2, err := client.GetDzLatencySamplesPDA(deviceZPk, deviceAPk, linkPk, epoch)
-	if err != nil {
-		t.Fatalf("Failed to get PDA with swapped keys: %v", err)
-	}
+	// Test that swapping device keys produces different PDA
+	pda2, err := client.GetDzLatencySamplesPDA(targetDevicePK, originDevicePK, linkPK, epoch)
+	require.NoError(t, err)
 
-	if !pda.Equals(pda2) {
-		t.Error("PDA should be the same regardless of device key order")
-	}
+	require.NotEqual(t, pda, pda2, "PDA should NOT be the same if device pubkey order changes")
 }
 
 // Mock RPC client for testing transaction methods
@@ -457,22 +440,20 @@ func (m *mockRpcClient) GetLatestBlockhash(ctx context.Context, commitment rpc.C
 func TestInitializeDzLatencySamplesNoSigner(t *testing.T) {
 	client := New("endpoint")
 
-	deviceAPk := solana.NewWallet().PublicKey()
-	deviceZPk := solana.NewWallet().PublicKey()
-	linkPk := solana.NewWallet().PublicKey()
+	originDevicePK := solana.NewWallet().PublicKey()
+	targetDevicePK := solana.NewWallet().PublicKey()
+	linkPK := solana.NewWallet().PublicKey()
 
 	_, err := client.InitializeDzLatencySamples(
 		context.Background(),
-		deviceAPk,
-		deviceZPk,
-		linkPk,
+		originDevicePK,
+		targetDevicePK,
+		linkPK,
 		100,
 		1000000,
 	)
 
-	if err != ErrNoPrivateKey {
-		t.Fatalf("Expected ErrNoPrivateKey, got: %v", err)
-	}
+	require.ErrorIs(t, err, ErrNoPrivateKey)
 }
 
 func TestWriteDzLatencySamplesNoSigner(t *testing.T) {
@@ -487,7 +468,5 @@ func TestWriteDzLatencySamplesNoSigner(t *testing.T) {
 		[]uint32{100, 200, 300},
 	)
 
-	if err != ErrNoPrivateKey {
-		t.Fatalf("Expected ErrNoPrivateKey, got: %v", err)
-	}
+	require.ErrorIs(t, err, ErrNoPrivateKey)
 }

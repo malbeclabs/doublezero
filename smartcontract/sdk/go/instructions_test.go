@@ -1,51 +1,39 @@
 package dzsdk
 
 import (
-	"bytes"
 	"testing"
 
 	"github.com/gagliardetto/solana-go"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSerializeInitializeDzLatencySamples(t *testing.T) {
-	deviceAPk := solana.NewWallet().PublicKey()
-	deviceZPk := solana.NewWallet().PublicKey()
-	linkPk := solana.NewWallet().PublicKey()
+	originDevicePK := solana.NewWallet().PublicKey()
+	targetDevicePK := solana.NewWallet().PublicKey()
+	linkPK := solana.NewWallet().PublicKey()
 
 	args := &InitializeDzLatencySamplesArgs{
-		DeviceAPk:                    deviceAPk,
-		DeviceZPk:                    deviceZPk,
-		LinkPk:                       linkPk,
+		OriginDevicePK:               originDevicePK,
+		TargetDevicePK:               targetDevicePK,
+		LinkPK:                       linkPK,
 		Epoch:                        100,
 		SamplingIntervalMicroseconds: 1000000, // 1 second
 	}
 
 	data, err := SerializeInitializeDzLatencySamples(args)
-	if err != nil {
-		t.Fatalf("Failed to serialize InitializeDzLatencySamples: %v", err)
-	}
+	require.NoError(t, err)
 
 	// Verify discriminator
-	if data[0] != uint8(InitializeDzLatencySamplesInstruction) {
-		t.Errorf("Expected discriminator %d, got %d", InitializeDzLatencySamplesInstruction, data[0])
-	}
+	require.Equal(t, uint8(InitializeDzLatencySamplesInstruction), data[0], "discriminator mismatch")
 
 	// Verify minimum length (discriminator + 3 pubkeys + 2 uint64s)
 	expectedMinLength := 1 + 32*3 + 8*2
-	if len(data) < expectedMinLength {
-		t.Errorf("Expected data length >= %d, got %d", expectedMinLength, len(data))
-	}
+	require.GreaterOrEqual(t, len(data), expectedMinLength, "data length too short")
 
 	// Verify pubkeys are in the correct positions
-	if !bytes.Equal(data[1:33], deviceAPk[:]) {
-		t.Error("DeviceAPk not serialized correctly")
-	}
-	if !bytes.Equal(data[33:65], deviceZPk[:]) {
-		t.Error("DeviceZPk not serialized correctly")
-	}
-	if !bytes.Equal(data[65:97], linkPk[:]) {
-		t.Error("LinkPk not serialized correctly")
-	}
+	require.Equal(t, originDevicePK[:], data[1:33], "DeviceAPk not serialized correctly")
+	require.Equal(t, targetDevicePK[:], data[33:65], "DeviceZPk not serialized correctly")
+	require.Equal(t, linkPK[:], data[65:97], "LinkPk not serialized correctly")
 }
 
 func TestSerializeWriteDzLatencySamples(t *testing.T) {
@@ -56,19 +44,13 @@ func TestSerializeWriteDzLatencySamples(t *testing.T) {
 	}
 
 	data, err := SerializeWriteDzLatencySamples(args)
-	if err != nil {
-		t.Fatalf("Failed to serialize WriteDzLatencySamples: %v", err)
-	}
+	require.NoError(t, err)
 
 	// Verify discriminator
-	if data[0] != uint8(WriteDzLatencySamplesInstruction) {
-		t.Errorf("Expected discriminator %d, got %d", WriteDzLatencySamplesInstruction, data[0])
-	}
+	require.Equal(t, uint8(WriteDzLatencySamplesInstruction), data[0], "discriminator mismatch")
 
 	// Verify data is not empty beyond discriminator
-	if len(data) <= 1 {
-		t.Error("Serialized data is too short")
-	}
+	require.Greater(t, len(data), 1, "Serialized data is too short")
 }
 
 func TestSerializeWriteDzLatencySamplesEmpty(t *testing.T) {
@@ -79,14 +61,10 @@ func TestSerializeWriteDzLatencySamplesEmpty(t *testing.T) {
 	}
 
 	data, err := SerializeWriteDzLatencySamples(args)
-	if err != nil {
-		t.Fatalf("Failed to serialize WriteDzLatencySamples with empty samples: %v", err)
-	}
+	require.NoError(t, err)
 
 	// Should still have discriminator
-	if data[0] != uint8(WriteDzLatencySamplesInstruction) {
-		t.Errorf("Expected discriminator %d, got %d", WriteDzLatencySamplesInstruction, data[0])
-	}
+	require.Equal(t, uint8(WriteDzLatencySamplesInstruction), data[0], "discriminator mismatch")
 }
 
 func TestSerializeWriteDzLatencySamplesLarge(t *testing.T) {
@@ -101,17 +79,11 @@ func TestSerializeWriteDzLatencySamplesLarge(t *testing.T) {
 	}
 
 	data, err := SerializeWriteDzLatencySamples(args)
-	if err != nil {
-		t.Fatalf("Failed to serialize WriteDzLatencySamples with max samples: %v", err)
-	}
+	require.NoError(t, err)
 
 	// Verify discriminator
-	if data[0] != uint8(WriteDzLatencySamplesInstruction) {
-		t.Errorf("Expected discriminator %d, got %d", WriteDzLatencySamplesInstruction, data[0])
-	}
+	require.Equal(t, uint8(WriteDzLatencySamplesInstruction), data[0], "discriminator mismatch")
 
 	// Verify reasonable size
-	if len(data) > DZ_LATENCY_SAMPLES_MAX_SIZE {
-		t.Errorf("Serialized data exceeds max size: %d > %d", len(data), DZ_LATENCY_SAMPLES_MAX_SIZE)
-	}
+	require.LessOrEqual(t, len(data), DZ_LATENCY_SAMPLES_MAX_SIZE, "Serialized data exceeds max size")
 }

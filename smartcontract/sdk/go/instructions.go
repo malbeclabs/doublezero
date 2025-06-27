@@ -17,9 +17,9 @@ const (
 
 // Represents the arguments for initializing DZ latency samples
 type InitializeDzLatencySamplesArgs struct {
-	DeviceAPk                    solana.PublicKey
-	DeviceZPk                    solana.PublicKey
-	LinkPk                       solana.PublicKey
+	OriginDevicePK               solana.PublicKey
+	TargetDevicePK               solana.PublicKey
+	LinkPK                       solana.PublicKey
 	Epoch                        uint64
 	SamplingIntervalMicroseconds uint64
 }
@@ -35,18 +35,18 @@ func SerializeInitializeDzLatencySamples(args *InitializeDzLatencySamplesArgs) (
 	// Create a struct that matches the Rust side exactly
 	type instructionData struct {
 		Discriminator                uint8
-		DeviceAPk                    [32]byte
-		DeviceZPk                    [32]byte
-		LinkPk                       [32]byte
+		OriginDevicePK               [32]byte
+		TargetDevicePK               [32]byte
+		LinkPK                       [32]byte
 		Epoch                        uint64
 		SamplingIntervalMicroseconds uint64
 	}
 
 	data := instructionData{
 		Discriminator:                uint8(InitializeDzLatencySamplesInstruction),
-		DeviceAPk:                    args.DeviceAPk,
-		DeviceZPk:                    args.DeviceZPk,
-		LinkPk:                       args.LinkPk,
+		OriginDevicePK:               args.OriginDevicePK,
+		TargetDevicePK:               args.TargetDevicePK,
+		LinkPK:                       args.LinkPK,
 		Epoch:                        args.Epoch,
 		SamplingIntervalMicroseconds: args.SamplingIntervalMicroseconds,
 	}

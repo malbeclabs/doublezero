@@ -1545,6 +1545,7 @@ dependencies = [
  "ctor",
  "doublezero-serviceability",
  "env_logger",
+ "log",
  "serde",
  "solana-program",
  "solana-program-test",

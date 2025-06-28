@@ -44,13 +44,23 @@ use solana_sdk::{
     transaction::{Transaction, TransactionError},
 };
 
-#[cfg(test)]
 #[ctor::ctor]
 fn init_logger() {
-    let _ = env_logger::builder()
-        // Suppress noisy solana program logs unless the test fails.
-        .is_test(true)
-        .try_init();
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let mut builder = env_logger::builder();
+
+        // If PROGRAM_LOG is set, show the Solana program logs.
+        if std::env::var_os("PROGRAM_LOG").is_some() {
+            builder.filter_level(log::LevelFilter::Error);
+            builder.filter(
+                Some("solana_runtime::message_processor::stable_log"),
+                log::LevelFilter::Debug,
+            );
+        }
+
+        let _ = builder.try_init();
+    });
 }
 
 pub trait LocationCreateArgsExt {

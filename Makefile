@@ -62,8 +62,12 @@ go-ci: go-build go-lint go-test go-fuzz
 # Rust targets
 # -----------------------------------------------------------------------------
 .PHONY: rust-build
-rust-build:
+rust-build: rust-build-sbf
 	SERVICEABILITY_PROGRAM_ID=$(SERVICEABILITY_PROGRAM_ID) cargo build -v --workspace
+
+.PHONY: rust-build-sbf
+rust-build-sbf:
+	cd smartcontract && SERVICEABILITY_PROGRAM_ID=$(SERVICEABILITY_PROGRAM_ID) $(MAKE) build-sbf
 
 .PHONY: rust-lint
 rust-lint: rust-fmt-check

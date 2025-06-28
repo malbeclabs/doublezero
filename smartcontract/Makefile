@@ -30,8 +30,11 @@ lint-programs:
 	cargo clippy --all-targets -p doublezero-telemetry -p doublezero-serviceability -- -Dclippy::all -Dwarnings
 
 .PHONY: build
-build:
-	cargo build $(LDFLAGS) --manifest-path ./programs/doublezero-serviceability/Cargo.toml
-	SERVICEABILITY_PROGRAM_ID=$(SERVICEABILITY_PROGRAM_ID) cargo build $(LDFLAGS) --manifest-path ./programs/doublezero-telemetry/Cargo.toml
+build: build-sbf
 	cargo build $(LDFLAGS) --manifest-path ./sdk/rs/Cargo.toml
 	cargo build $(LDFLAGS) --manifest-path ./cli/Cargo.toml
+
+.PHONY: build-sbf
+build-sbf:
+	cd programs/doublezero-serviceability && SERVICEABILITY_PROGRAM_ID=$(SERVICEABILITY_PROGRAM_ID) cargo build-sbf
+	cd programs/doublezero-telemetry && SERVICEABILITY_PROGRAM_ID=$(SERVICEABILITY_PROGRAM_ID) cargo build-sbf

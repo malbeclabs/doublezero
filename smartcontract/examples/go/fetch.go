@@ -6,26 +6,27 @@ import (
 	"log"
 	"time"
 
+	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
-	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
 func main() {
-
 	fmt.Println("Fetching data from the smart contract...")
 
-	c := dzsdk.New(rpc.LocalNet_RPC, dzsdk.WithProgramId("7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX"))
-	// c := dzsdk.New(rpc.DevNet_RPC, dzsdk.WithProgramId(dzsdk.PROGRAM_ID_TESTNET))
+	programID := solana.MustPublicKeyFromBase58("7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX")
+	rpcClient := rpc.New(rpc.LocalNet_RPC)
+	client := serviceability.New(rpcClient, programID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := c.Load(ctx); err != nil {
+	if err := client.Load(ctx); err != nil {
 		log.Fatalf("error while loading data: %v", err)
 	}
 
 	fmt.Print("Users:\n")
-	for _, user := range c.Users {
+	for _, user := range client.Users {
 		fmt.Printf("%+v\n\n", user)
 	}
 }

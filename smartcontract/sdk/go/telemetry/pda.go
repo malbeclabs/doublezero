@@ -1,4 +1,4 @@
-package dzsdk
+package telemetry
 
 import (
 	"encoding/binary"
@@ -6,8 +6,8 @@ import (
 	"github.com/gagliardetto/solana-go"
 )
 
-// Derives the PDA for DZ latency samples account
-func DeriveDzLatencySamplesPDA(
+// Derives the PDA for device latency samples account
+func DeriveDeviceLatencySamplesPDA(
 	programID solana.PublicKey,
 	originDevicePK solana.PublicKey,
 	targetDevicePK solana.PublicKey,
@@ -21,7 +21,7 @@ func DeriveDzLatencySamplesPDA(
 	// Create seeds
 	seeds := [][]byte{
 		[]byte(SEED_PREFIX),
-		[]byte(SEED_DZ_LATENCY_SAMPLES),
+		[]byte(SEED_DEVICE_LATENCY_SAMPLES),
 		originDevicePK[:],
 		targetDevicePK[:],
 		linkPK[:],

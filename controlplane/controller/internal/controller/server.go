@@ -11,8 +11,10 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
+	"github.com/gagliardetto/solana-go/rpc"
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
 	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/mr-tron/base58"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
@@ -22,16 +24,16 @@ import (
 
 type accountFetcher interface {
 	Load(context.Context) error
-	GetDevices() []dzsdk.Device
-	GetUsers() []dzsdk.User
-	GetMulticastGroups() []dzsdk.MulticastGroup
-	GetConfig() dzsdk.Config
+	GetDevices() []serviceability.Device
+	GetUsers() []serviceability.User
+	GetMulticastGroups() []serviceability.MulticastGroup
+	GetConfig() serviceability.Config
 }
 
 type stateCache struct {
-	Config          dzsdk.Config
+	Config          serviceability.Config
 	Devices         map[string]*Device
-	MulticastGroups map[string]dzsdk.MulticastGroup
+	MulticastGroups map[string]serviceability.MulticastGroup
 }
 
 type Controller struct {
@@ -64,21 +66,15 @@ func NewController(options ...Option) (*Controller, error) {
 		controller.listener = lis
 	}
 	if controller.accountFetcher == nil {
-		options := []dzsdk.Option{}
-		if controller.programId != "" {
-			_, err := solana.PublicKeyFromBase58(controller.programId)
-			if err != nil {
-				return nil, fmt.Errorf("invalid program id %s: %v", controller.programId, err)
-			}
-			options = append(options, dzsdk.WithProgramId(controller.programId))
+		programID, err := solana.PublicKeyFromBase58(controller.programId)
+		if err != nil {
+			return nil, fmt.Errorf("invalid program id %s: %v", controller.programId, err)
 		}
+		client := serviceability.New(rpc.New(controller.rpcEndpoint), programID)
 		if controller.rpcEndpoint == "" {
-			controller.rpcEndpoint = dzsdk.URL_DOUBLEZERO
+			controller.rpcEndpoint = dzsdk.DZ_LEDGER_RPC_URL
 		}
-		if controller.programId == "" {
-			controller.programId = dzsdk.PROGRAM_ID_TESTNET
-		}
-		controller.accountFetcher = dzsdk.New(controller.rpcEndpoint, options...)
+		controller.accountFetcher = client
 	}
 	return controller, nil
 }
@@ -145,7 +141,7 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 	cache := stateCache{
 		Config:          c.accountFetcher.GetConfig(),
 		Devices:         make(map[string]*Device),
-		MulticastGroups: make(map[string]dzsdk.MulticastGroup),
+		MulticastGroups: make(map[string]serviceability.MulticastGroup),
 	}
 
 	// build cache of devices
@@ -167,7 +163,7 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 
 	// create user tunnels and add to the appropriate device
 	for _, user := range users {
-		if user.Status != dzsdk.UserStatusActivated {
+		if user.Status != serviceability.UserStatusActivated {
 			continue
 		}
 		devicePubKey := base58.Encode(user.DevicePubKey[:])
@@ -221,7 +217,7 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		tunnel.PubKey = userPubKey
 		tunnel.Allocated = true
 
-		if user.UserType == dzsdk.UserTypeMulticast {
+		if user.UserType == serviceability.UserTypeMulticast {
 			tunnel.IsMulticast = true
 
 			boundaryList := make(map[string]struct{})

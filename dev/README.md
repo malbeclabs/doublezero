@@ -57,13 +57,13 @@ dev/dzctl destroy
 Add a device ([agent](../controlplane/agent/)):
 
 ```sh
-dev/dzctl add-device -v --code=lo-dz1 --cyoa-network-host-id 8
+dev/dzctl add-device -v --code=lo-dz1 --location lax --exchange xlax --cyoa-network-host-id 8
 ```
 
 Add another device:
 
 ```sh
-dev/dzctl add-device -v --code=lo-dz2 --cyoa-network-host-id 16
+dev/dzctl add-device -v --code=lo-dz2 --location ams --exchange xams --cyoa-network-host-id 16
 ```
 
 > ℹ️ Notes:

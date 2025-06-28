@@ -3,7 +3,7 @@ package telemetry
 import (
 	"context"
 
-	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
 // ServiceabilityProgramClient is the client to the serviceability program.
@@ -15,10 +15,10 @@ type ServiceabilityProgramClient interface {
 	Load(ctx context.Context) error
 
 	// GetDevices returns the devices in the program.
-	GetDevices() []dzsdk.Device
+	GetDevices() []serviceability.Device
 
 	// GetLinks returns the links in the program.
-	GetLinks() []dzsdk.Link
+	GetLinks() []serviceability.Link
 }
 
 // TelemetryProgramClient is the client to the telemetry program.

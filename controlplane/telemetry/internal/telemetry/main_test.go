@@ -13,7 +13,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/lmittmann/tint"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
-	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
 var (
@@ -41,8 +41,8 @@ func TestMain(m *testing.M) {
 }
 
 type mockServiceabilityProgramClient struct {
-	devices []dzsdk.Device
-	links   []dzsdk.Link
+	devices []serviceability.Device
+	links   []serviceability.Link
 
 	loadFn func(c *mockServiceabilityProgramClient) error
 
@@ -62,14 +62,14 @@ func (c *mockServiceabilityProgramClient) Load(ctx context.Context) error {
 	return c.loadFn(c)
 }
 
-func (c *mockServiceabilityProgramClient) GetDevices() []dzsdk.Device {
+func (c *mockServiceabilityProgramClient) GetDevices() []serviceability.Device {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	return c.devices
 }
 
-func (c *mockServiceabilityProgramClient) GetLinks() []dzsdk.Link {
+func (c *mockServiceabilityProgramClient) GetLinks() []serviceability.Link {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 

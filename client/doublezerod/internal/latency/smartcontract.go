@@ -4,26 +4,29 @@ import (
 	"context"
 	"time"
 
+	"github.com/gagliardetto/solana-go"
+	"github.com/gagliardetto/solana-go/rpc"
 	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
 type ContractData struct {
-	Locations []dzsdk.Location
-	Devices   []dzsdk.Device
-	Exchanges []dzsdk.Exchange
-	Links     []dzsdk.Link
-	Users     []dzsdk.User
+	Locations []serviceability.Location
+	Devices   []serviceability.Device
+	Exchanges []serviceability.Exchange
+	Links     []serviceability.Link
+	Users     []serviceability.User
 }
 
 func FetchContractData(ctx context.Context, programId string, rpcEndpoint string) (*ContractData, error) {
 	if rpcEndpoint == "" {
-		rpcEndpoint = dzsdk.URL_DOUBLEZERO
+		rpcEndpoint = dzsdk.DZ_LEDGER_RPC_URL
 	}
-	options := []dzsdk.Option{}
-	if programId != "" {
-		options = append(options, dzsdk.WithProgramId(programId))
+	programID, err := solana.PublicKeyFromBase58(programId)
+	if err != nil {
+		return nil, err
 	}
-	client := dzsdk.New(rpcEndpoint, options...)
+	client := serviceability.New(rpc.New(rpcEndpoint), programID)
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	if err := client.Load(ctx); err != nil {

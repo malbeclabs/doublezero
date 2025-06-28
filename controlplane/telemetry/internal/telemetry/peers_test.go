@@ -9,7 +9,7 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
-	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -24,13 +24,13 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 		localDevicePubKey := stringToPubkey("device1")
 
 		serviceabilityProgram := newMockServiceabilityProgramClient(func(c *mockServiceabilityProgramClient) error {
-			c.devices = []dzsdk.Device{
+			c.devices = []serviceability.Device{
 				{PubKey: localDevicePubKey, PublicIp: [4]uint8{192, 168, 1, 1}},
 				{PubKey: stringToPubkey("device2"), PublicIp: [4]uint8{192, 168, 1, 2}},
 				{PubKey: stringToPubkey("device3"), PublicIp: [4]uint8{192, 168, 1, 3}},
 				{PubKey: stringToPubkey("device4"), PublicIp: [4]uint8{192, 168, 1, 4}},
 			}
-			c.links = []dzsdk.Link{
+			c.links = []serviceability.Link{
 				{PubKey: stringToPubkey("link_1-2"), SideAPubKey: localDevicePubKey, SideZPubKey: stringToPubkey("device2")},
 				{PubKey: stringToPubkey("link_1-3"), SideAPubKey: localDevicePubKey, SideZPubKey: stringToPubkey("device3")},
 				{PubKey: stringToPubkey("link_2-1"), SideAPubKey: stringToPubkey("device2"), SideZPubKey: localDevicePubKey},

@@ -1,4 +1,4 @@
-package dzsdk
+package serviceability
 
 import (
 	"encoding/binary"

@@ -10,8 +10,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gagliardetto/solana-go"
+	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
-	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 )
 
@@ -96,12 +98,22 @@ func main() {
 	}
 
 	// Set up real peer discovery.
-	dzClient := dzsdk.New(*ledgerRPCURL, dzsdk.WithProgramId(*programId))
+	programID, err := solana.PublicKeyFromBase58(*programId)
+	if err != nil {
+		log.Error("failed to parse program ID", "error", err)
+		os.Exit(1)
+	}
+	rpcClient := rpc.New(*ledgerRPCURL)
+	serviceabilityClient := serviceability.New(rpcClient, programID)
+	if err != nil {
+		log.Error("failed to create serviceability client", "error", err)
+		os.Exit(1)
+	}
 	peerDiscovery, err := telemetry.NewLedgerPeerDiscovery(
 		&telemetry.LedgerPeerDiscoveryConfig{
 			Logger:            log,
 			LocalDevicePubKey: *localDevicePubkey,
-			ProgramClient:     dzClient,
+			ProgramClient:     serviceabilityClient,
 			TWAMPPort:         uint16(*twampListenPort),
 			RefreshInterval:   *peersRefreshInterval,
 		},

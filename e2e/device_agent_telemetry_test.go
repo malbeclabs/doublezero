@@ -44,7 +44,9 @@ func TestE2E_DeviceAgentTelemetry(t *testing.T) {
 
 		// Add the la2-dz01 device.
 		_, err = dn.AddDevice(context.Background(), devnet.DeviceSpec{
-			Code: "la2-dz01",
+			Code:     "la2-dz01",
+			Location: "lax",
+			Exchange: "xlax",
 			// .8/29 has network address .8, allocatable up to .14, and broadcast .15
 			CYOANetworkIPHostID:          8,
 			CYOANetworkAllocatablePrefix: 29,
@@ -63,7 +65,9 @@ func TestE2E_DeviceAgentTelemetry(t *testing.T) {
 
 		// Add the ny5-dz01 device.
 		_, err = dn.AddDevice(context.Background(), devnet.DeviceSpec{
-			Code: "ny5-dz01",
+			Code:     "ny5-dz01",
+			Location: "ewr",
+			Exchange: "xewr",
 			// .16/29 has network address .16, allocatable up to .22, and broadcast .23
 			CYOANetworkIPHostID:          16,
 			CYOANetworkAllocatablePrefix: 29,

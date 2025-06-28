@@ -14,7 +14,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
-	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
 func TestGetConfig(t *testing.T) {
@@ -30,7 +30,7 @@ func TestGetConfig(t *testing.T) {
 			Name:        "render_unicast_config_successfully",
 			Description: "render configuration for a set of unicast devices successfully",
 			StateCache: stateCache{
-				Config: dzsdk.Config{
+				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				Devices: map[string]*Device{
@@ -75,7 +75,7 @@ func TestGetConfig(t *testing.T) {
 			Name:        "render_multicast_config_successfully",
 			Description: "render configuration for a set of multicast devices successfully",
 			StateCache: stateCache{
-				Config: dzsdk.Config{
+				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				Devices: map[string]*Device{
@@ -153,7 +153,7 @@ func TestGetConfig(t *testing.T) {
 			Name:        "get_config_mixed_tunnels_successfully",
 			Description: "get config for a mix of unicast and multicast tunnels",
 			StateCache: stateCache{
-				Config: dzsdk.Config{
+				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				Devices: map[string]*Device{
@@ -243,7 +243,7 @@ func TestGetConfig(t *testing.T) {
 			Description: "get config for a mix of unicast and multicast tunnels with no hardware option",
 			NoHardware:  true,
 			StateCache: stateCache{
-				Config: dzsdk.Config{
+				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				Devices: map[string]*Device{
@@ -383,29 +383,29 @@ func TestGetConfig(t *testing.T) {
 }
 
 type mockAccountFetcher struct {
-	Users           []dzsdk.User
-	Devices         []dzsdk.Device
-	MulticastGroups []dzsdk.MulticastGroup
-	Config          dzsdk.Config
+	Users           []serviceability.User
+	Devices         []serviceability.Device
+	MulticastGroups []serviceability.MulticastGroup
+	Config          serviceability.Config
 }
 
 func (m *mockAccountFetcher) Load(context.Context) error {
 	return nil
 }
 
-func (m *mockAccountFetcher) GetDevices() []dzsdk.Device {
+func (m *mockAccountFetcher) GetDevices() []serviceability.Device {
 	return m.Devices
 }
 
-func (m *mockAccountFetcher) GetUsers() []dzsdk.User {
+func (m *mockAccountFetcher) GetUsers() []serviceability.User {
 	return m.Users
 }
 
-func (m *mockAccountFetcher) GetMulticastGroups() []dzsdk.MulticastGroup {
+func (m *mockAccountFetcher) GetMulticastGroups() []serviceability.MulticastGroup {
 	return m.MulticastGroups
 }
 
-func (m *mockAccountFetcher) GetConfig() dzsdk.Config {
+func (m *mockAccountFetcher) GetConfig() serviceability.Config {
 	return m.Config
 }
 
@@ -413,18 +413,18 @@ func TestStateCache(t *testing.T) {
 	tests := []struct {
 		Name            string
 		Description     string
-		Config          dzsdk.Config
-		Users           []dzsdk.User
-		Devices         []dzsdk.Device
-		MulticastGroups []dzsdk.MulticastGroup
+		Config          serviceability.Config
+		Users           []serviceability.User
+		Devices         []serviceability.Device
+		MulticastGroups []serviceability.MulticastGroup
 		StateCache      stateCache
 	}{
 		{
 			Name: "populate_device_cache_successfully",
-			Config: dzsdk.Config{
+			Config: serviceability.Config{
 				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 			},
-			MulticastGroups: []dzsdk.MulticastGroup{
+			MulticastGroups: []serviceability.MulticastGroup{
 				{
 					PubKey:      [32]uint8{1},
 					MulticastIp: [4]uint8{239, 0, 0, 1},
@@ -434,51 +434,51 @@ func TestStateCache(t *testing.T) {
 					},
 				},
 			},
-			Users: []dzsdk.User{
+			Users: []serviceability.User{
 				{
-					AccountType:  dzsdk.AccountType(0),
+					AccountType:  serviceability.AccountType(0),
 					Owner:        [32]uint8{},
-					UserType:     dzsdk.UserUserType(dzsdk.UserTypeIBRL),
+					UserType:     serviceability.UserUserType(serviceability.UserTypeIBRL),
 					DevicePubKey: [32]uint8{1},
-					CyoaType:     dzsdk.CyoaTypeGREOverDIA,
+					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{1, 1, 1, 1},
 					DzIp:         [4]uint8{100, 100, 100, 100},
 					TunnelId:     uint16(500),
 					TunnelNet:    [5]uint8{10, 1, 1, 0, 31},
-					Status:       dzsdk.UserStatusActivated,
+					Status:       serviceability.UserStatusActivated,
 				},
 				{
-					AccountType:  dzsdk.AccountType(0),
+					AccountType:  serviceability.AccountType(0),
 					Owner:        [32]uint8{},
-					UserType:     dzsdk.UserUserType(dzsdk.UserTypeMulticast),
+					UserType:     serviceability.UserUserType(serviceability.UserTypeMulticast),
 					DevicePubKey: [32]uint8{1},
-					CyoaType:     dzsdk.CyoaTypeGREOverDIA,
+					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{3, 3, 3, 3},
 					DzIp:         [4]uint8{100, 100, 100, 101},
 					TunnelId:     uint16(501),
 					TunnelNet:    [5]uint8{10, 1, 1, 2, 31},
-					Status:       dzsdk.UserStatusActivated,
+					Status:       serviceability.UserStatusActivated,
 					Subscribers:  [][32]uint8{{1}},
 				},
 			},
-			Devices: []dzsdk.Device{
+			Devices: []serviceability.Device{
 				{
-					AccountType:    dzsdk.AccountType(0),
+					AccountType:    serviceability.AccountType(0),
 					Owner:          [32]uint8{},
 					LocationPubKey: [32]uint8{},
 					ExchangePubKey: [32]uint8{},
 					DeviceType:     0,
 					PublicIp:       [4]uint8{2, 2, 2, 2},
-					Status:         dzsdk.DeviceStatusActivated,
+					Status:         serviceability.DeviceStatusActivated,
 					Code:           "abc01",
 					PubKey:         [32]byte{1},
 				},
 			},
 			StateCache: stateCache{
-				Config: dzsdk.Config{
+				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
-				MulticastGroups: map[string]dzsdk.MulticastGroup{
+				MulticastGroups: map[string]serviceability.MulticastGroup{
 					"4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM": {
 						PubKey:      [32]uint8{1},
 						MulticastIp: [4]uint8{239, 0, 0, 1},
@@ -622,20 +622,20 @@ func TestStateCache(t *testing.T) {
 func TestEndToEnd(t *testing.T) {
 	tests := []struct {
 		Name            string
-		Config          dzsdk.Config
-		Users           []dzsdk.User
-		Devices         []dzsdk.Device
-		MulticastGroups []dzsdk.MulticastGroup
+		Config          serviceability.Config
+		Users           []serviceability.User
+		Devices         []serviceability.Device
+		MulticastGroups []serviceability.MulticastGroup
 		AgentRequest    *pb.ConfigRequest
 		DevicePubKey    string
 		Want            string
 	}{
 		{
 			Name: "fetch_accounts_and_render_config_successfully",
-			Config: dzsdk.Config{
+			Config: serviceability.Config{
 				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 			},
-			MulticastGroups: []dzsdk.MulticastGroup{
+			MulticastGroups: []serviceability.MulticastGroup{
 				{
 					PubKey:      [32]uint8{1},
 					MulticastIp: [4]uint8{239, 0, 0, 1},
@@ -645,42 +645,42 @@ func TestEndToEnd(t *testing.T) {
 					},
 				},
 			},
-			Users: []dzsdk.User{
+			Users: []serviceability.User{
 				{
-					AccountType:  dzsdk.AccountType(0),
+					AccountType:  serviceability.AccountType(0),
 					Owner:        [32]uint8{},
-					UserType:     dzsdk.UserUserType(dzsdk.UserTypeIBRL),
+					UserType:     serviceability.UserUserType(serviceability.UserTypeIBRL),
 					DevicePubKey: [32]uint8{1},
-					CyoaType:     dzsdk.CyoaTypeGREOverDIA,
+					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{1, 1, 1, 1},
 					DzIp:         [4]uint8{100, 100, 100, 100},
 					TunnelId:     uint16(500),
 					TunnelNet:    [5]uint8{169, 254, 0, 0, 31},
-					Status:       dzsdk.UserStatusActivated,
+					Status:       serviceability.UserStatusActivated,
 				},
 				{
-					AccountType:  dzsdk.AccountType(0),
+					AccountType:  serviceability.AccountType(0),
 					Owner:        [32]uint8{},
-					UserType:     dzsdk.UserUserType(dzsdk.UserTypeMulticast),
+					UserType:     serviceability.UserUserType(serviceability.UserTypeMulticast),
 					DevicePubKey: [32]uint8{1},
-					CyoaType:     dzsdk.CyoaTypeGREOverDIA,
+					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{3, 3, 3, 3},
 					DzIp:         [4]uint8{100, 100, 100, 101},
 					TunnelId:     uint16(501),
 					TunnelNet:    [5]uint8{169, 254, 0, 2, 31},
-					Status:       dzsdk.UserStatusActivated,
+					Status:       serviceability.UserStatusActivated,
 					Subscribers:  [][32]uint8{{1}},
 				},
 			},
-			Devices: []dzsdk.Device{
+			Devices: []serviceability.Device{
 				{
-					AccountType:    dzsdk.AccountType(0),
+					AccountType:    serviceability.AccountType(0),
 					Owner:          [32]uint8{},
 					LocationPubKey: [32]uint8{},
 					ExchangePubKey: [32]uint8{},
 					DeviceType:     0,
 					PublicIp:       [4]uint8{2, 2, 2, 2},
-					Status:         dzsdk.DeviceStatusActivated,
+					Status:         serviceability.DeviceStatusActivated,
 					Code:           "abc01",
 					PubKey:         [32]byte{1},
 				},
@@ -693,10 +693,10 @@ func TestEndToEnd(t *testing.T) {
 		},
 		{
 			Name: "remove_unknown_peers_successfully",
-			Config: dzsdk.Config{
+			Config: serviceability.Config{
 				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 			},
-			MulticastGroups: []dzsdk.MulticastGroup{
+			MulticastGroups: []serviceability.MulticastGroup{
 				{
 					PubKey:      [32]uint8{1},
 					MulticastIp: [4]uint8{239, 0, 0, 1},
@@ -706,42 +706,42 @@ func TestEndToEnd(t *testing.T) {
 					},
 				},
 			},
-			Users: []dzsdk.User{
+			Users: []serviceability.User{
 				{
-					AccountType:  dzsdk.AccountType(0),
+					AccountType:  serviceability.AccountType(0),
 					Owner:        [32]uint8{},
-					UserType:     dzsdk.UserUserType(dzsdk.UserTypeIBRL),
+					UserType:     serviceability.UserUserType(serviceability.UserTypeIBRL),
 					DevicePubKey: [32]uint8{1},
-					CyoaType:     dzsdk.CyoaTypeGREOverDIA,
+					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{1, 1, 1, 1},
 					DzIp:         [4]uint8{100, 100, 100, 100},
 					TunnelId:     uint16(500),
 					TunnelNet:    [5]uint8{169, 254, 0, 0, 31},
-					Status:       dzsdk.UserStatusActivated,
+					Status:       serviceability.UserStatusActivated,
 				},
 				{
-					AccountType:  dzsdk.AccountType(0),
+					AccountType:  serviceability.AccountType(0),
 					Owner:        [32]uint8{},
-					UserType:     dzsdk.UserUserType(dzsdk.UserTypeMulticast),
+					UserType:     serviceability.UserUserType(serviceability.UserTypeMulticast),
 					DevicePubKey: [32]uint8{1},
-					CyoaType:     dzsdk.CyoaTypeGREOverDIA,
+					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{3, 3, 3, 3},
 					DzIp:         [4]uint8{100, 100, 100, 101},
 					TunnelId:     uint16(501),
 					TunnelNet:    [5]uint8{169, 254, 0, 2, 31},
-					Status:       dzsdk.UserStatusActivated,
+					Status:       serviceability.UserStatusActivated,
 					Subscribers:  [][32]uint8{{1}},
 				},
 			},
-			Devices: []dzsdk.Device{
+			Devices: []serviceability.Device{
 				{
-					AccountType:    dzsdk.AccountType(0),
+					AccountType:    serviceability.AccountType(0),
 					Owner:          [32]uint8{},
 					LocationPubKey: [32]uint8{},
 					ExchangePubKey: [32]uint8{},
 					DeviceType:     0,
 					PublicIp:       [4]uint8{2, 2, 2, 2},
-					Status:         dzsdk.DeviceStatusActivated,
+					Status:         serviceability.DeviceStatusActivated,
 					Code:           "abc01",
 					PubKey:         [32]byte{1},
 				},
@@ -758,19 +758,19 @@ func TestEndToEnd(t *testing.T) {
 		},
 		{
 			Name: "remove_last_user_from_device",
-			Config: dzsdk.Config{
+			Config: serviceability.Config{
 				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 			},
-			Users: []dzsdk.User{},
-			Devices: []dzsdk.Device{
+			Users: []serviceability.User{},
+			Devices: []serviceability.Device{
 				{
-					AccountType:    dzsdk.AccountType(0),
+					AccountType:    serviceability.AccountType(0),
 					Owner:          [32]uint8{},
 					LocationPubKey: [32]uint8{},
 					ExchangePubKey: [32]uint8{},
 					DeviceType:     0,
 					PublicIp:       [4]uint8{2, 2, 2, 2},
-					Status:         dzsdk.DeviceStatusActivated,
+					Status:         serviceability.DeviceStatusActivated,
 					Code:           "abc01",
 					PubKey:         [32]byte{1},
 				},

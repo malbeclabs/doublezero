@@ -13,7 +13,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
-    entrypoint::ProgramResult,
+    entrypoint::{ProgramResult, MAX_PERMITTED_DATA_INCREASE},
     msg,
     program::invoke_signed,
     program_error::ProgramError,
@@ -21,10 +21,6 @@ use solana_program::{
     system_instruction,
     sysvar::{rent::Rent, Sysvar},
 };
-
-// Upper bound on account data length. Exceeding this risks exceeding BPF inner instruction memory limits.
-// This is a conservative approximation to avoid allocator failures or panics.
-pub const MAX_ACCOUNT_ALLOC_BYTES: usize = 10_240;
 
 /// Instruction arguments for writing RTT samples to a latency samples account.
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
@@ -48,7 +44,7 @@ impl fmt::Debug for WriteDeviceLatencySamplesArgs {
 ///
 /// Validates that the signer is the authorized agent, the account exists,
 /// and is owned by the program. Resizes the account if necessary, while
-/// ensuring that total size stays within `MAX_ACCOUNT_ALLOC_BYTES`.
+/// ensuring that total size stays within `MAX_PERMITTED_DATA_INCREASE`.
 ///
 /// Also handles rent top-up if additional space requires higher rent-exempt balance.
 /// If `samples` is empty, the call is treated as a no-op.
@@ -136,7 +132,7 @@ pub fn process_write_device_latency_samples(
     // Pre-check the total size after append to avoid realloc panics.
     let new_total_samples = samples_data.samples.len() + args.samples.len();
     let future_total_len = DZ_LATENCY_SAMPLES_HEADER_SIZE + new_total_samples * 4;
-    if future_total_len > MAX_ACCOUNT_ALLOC_BYTES {
+    if future_total_len > MAX_PERMITTED_DATA_INCREASE {
         msg!(
             "Cannot realloc to {}, would exceed Solana inner instruction limit",
             future_total_len

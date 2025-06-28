@@ -92,7 +92,7 @@ pub struct WriteDeviceLatencySamplesArgs {
 
 - First write sets `start_timestamp_microseconds` if unset.
 - Validates account ownership and agent authorization.
-- Appends samples without exceeding `MAX_SAMPLES` or `MAX_ACCOUNT_ALLOC_BYTES` (10,240 bytes).
+- Appends samples without exceeding `MAX_SAMPLES` or `MAX_PERMITTED_DATA_INCREASE` (10,240 bytes).
 - Performs rent transfer and account resize if needed.
 
 ---
@@ -117,5 +117,4 @@ pub struct WriteDeviceLatencySamplesArgs {
 ## Constants
 
 - `MAX_SAMPLES = 35_000` — upper bound on total RTT samples.
-- `MAX_ACCOUNT_ALLOC_BYTES = 10,240` — guardrail for realloc limits.
 - `DZ_LATENCY_SAMPLES_HEADER_SIZE = 354` — base size excluding sample vector.

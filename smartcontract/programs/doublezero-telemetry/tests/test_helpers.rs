@@ -398,9 +398,6 @@ impl TelemetryProgramHelper {
         self.execute_transaction(
             TelemetryInstruction::InitializeDeviceLatencySamples(
                 InitializeDeviceLatencySamplesArgs {
-                    origin_device_pk,
-                    target_device_pk,
-                    link_pk,
                     epoch,
                     sampling_interval_microseconds,
                 },
@@ -456,9 +453,6 @@ impl TelemetryProgramHelper {
         interval_us: u64,
     ) -> Result<Pubkey, BanksClientError> {
         let args = InitializeDeviceLatencySamplesArgs {
-            origin_device_pk,
-            target_device_pk,
-            link_pk,
             epoch,
             sampling_interval_microseconds: interval_us,
         };

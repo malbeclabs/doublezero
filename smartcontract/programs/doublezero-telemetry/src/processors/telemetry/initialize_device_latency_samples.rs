@@ -29,9 +29,6 @@ use solana_program::{
 // Represents a single direction (origin -> target) over a link during an epoch.
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct InitializeDeviceLatencySamplesArgs {
-    pub origin_device_pk: Pubkey,
-    pub target_device_pk: Pubkey,
-    pub link_pk: Pubkey,
     pub epoch: u64,
     pub sampling_interval_microseconds: u64,
 }
@@ -40,12 +37,8 @@ impl fmt::Debug for InitializeDeviceLatencySamplesArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "origin_device: {}, target_device: {}, link: {}, epoch: {}, interval: {}µs",
-            self.origin_device_pk,
-            self.target_device_pk,
-            self.link_pk,
-            self.epoch,
-            self.sampling_interval_microseconds
+            "epoch: {}, interval: {}µs",
+            self.epoch, self.sampling_interval_microseconds
         )
     }
 }

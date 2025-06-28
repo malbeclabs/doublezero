@@ -267,9 +267,6 @@ async fn test_initialize_device_latency_samples_fail_agent_not_signer() {
 
     // Construct instruction manually with agent NOT a signer.
     let args = InitializeDeviceLatencySamplesArgs {
-        origin_device_pk,
-        target_device_pk,
-        link_pk,
         epoch: 1,
         sampling_interval_microseconds: 5_000_000,
     };

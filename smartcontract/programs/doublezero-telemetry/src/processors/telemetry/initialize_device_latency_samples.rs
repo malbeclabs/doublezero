@@ -2,6 +2,7 @@ use crate::{
     error::TelemetryError,
     pda::derive_device_latency_samples_pda,
     seeds::{SEED_DZ_LATENCY_SAMPLES, SEED_PREFIX},
+    serviceability_program_id,
     state::{
         accounttype::AccountType,
         device_latency_samples::{DeviceLatencySamples, DZ_LATENCY_SAMPLES_HEADER_SIZE},
@@ -80,7 +81,6 @@ pub fn process_initialize_device_latency_samples(
     let target_device_account = next_account_info(accounts_iter)?;
     let link_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
-    let serviceability_program = next_account_info(accounts_iter)?;
 
     // Require that the caller is the expected telemetry agent.
     if !agent.is_signer {
@@ -88,16 +88,16 @@ pub fn process_initialize_device_latency_samples(
     }
 
     // Ensure all relevant accounts are owned by the serviceability program.
-    // These checks ensure on-chain data provenance and enforce registry ownership.
-    if origin_device_account.owner != serviceability_program.key {
+    let serviceability_program_id = &serviceability_program_id();
+    if origin_device_account.owner != serviceability_program_id {
         msg!("Origin device is not owned by serviceability program");
         return Err(ProgramError::IncorrectProgramId);
     }
-    if target_device_account.owner != serviceability_program.key {
+    if target_device_account.owner != serviceability_program_id {
         msg!("Target device is not owned by serviceability program");
         return Err(ProgramError::IncorrectProgramId);
     }
-    if link_account.owner != serviceability_program.key {
+    if link_account.owner != serviceability_program_id {
         msg!("Link is not owned by serviceability program");
         return Err(ProgramError::IncorrectProgramId);
     }

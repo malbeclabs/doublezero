@@ -2,6 +2,7 @@ PREFIX:=github.com/malbeclabs/doublezero/smartcontract
 BUILD:=`git rev-parse --short HEAD`
 LDFLAGS=
 CLIPPY_FLAGS=-- -Dclippy::all -D warnings
+SERVICEABILITY_PROGRAM_ID ?= local
 
 .PHONY: test
 test: test-programs
@@ -15,6 +16,7 @@ test-programs: test-sbf
 
 .PHONY: test-sbf
 test-sbf:
+	SERVICEABILITY_PROGRAM_ID=$(SERVICEABILITY_PROGRAM_ID) \
 	cargo test-sbf
 
 .PHONY: lint
@@ -24,11 +26,12 @@ lint: lint-programs
 
 .PHONY: lint-programs
 lint-programs:
+	SERVICEABILITY_PROGRAM_ID=$(SERVICEABILITY_PROGRAM_ID) \
 	cargo clippy --all-targets -p doublezero-telemetry -p doublezero-serviceability -- -Dclippy::all -Dwarnings
 
 .PHONY: build
 build:
 	cargo build $(LDFLAGS) --manifest-path ./programs/doublezero-serviceability/Cargo.toml
-	cargo build $(LDFLAGS) --manifest-path ./programs/doublezero-telemetry/Cargo.toml
+	SERVICEABILITY_PROGRAM_ID=$(SERVICEABILITY_PROGRAM_ID) cargo build $(LDFLAGS) --manifest-path ./programs/doublezero-telemetry/Cargo.toml
 	cargo build $(LDFLAGS) --manifest-path ./sdk/rs/Cargo.toml
 	cargo build $(LDFLAGS) --manifest-path ./cli/Cargo.toml

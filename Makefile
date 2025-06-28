@@ -1,3 +1,5 @@
+SERVICEABILITY_PROGRAM_ID ?= local
+
 # -----------------------------------------------------------------------------
 # Combined targets
 # -----------------------------------------------------------------------------
@@ -61,13 +63,13 @@ go-ci: go-build go-lint go-test go-fuzz
 # -----------------------------------------------------------------------------
 .PHONY: rust-build
 rust-build:
-	cargo build -v --workspace
+	SERVICEABILITY_PROGRAM_ID=$(SERVICEABILITY_PROGRAM_ID) cargo build -v --workspace
 
 .PHONY: rust-lint
 rust-lint: rust-fmt-check
 	@cargo +stable install cargo-hack
 	cargo hack clippy --workspace --all-targets --exclude doublezero-telemetry --exclude doublezero-serviceability -- -Dclippy::all -Dwarnings
-	cd smartcontract && $(MAKE) lint-programs
+	cd smartcontract && SERVICEABILITY_PROGRAM_ID=$(SERVICEABILITY_PROGRAM_ID) $(MAKE) lint-programs
 
 .PHONY: rust-fmt
 rust-fmt:
@@ -82,11 +84,11 @@ rust-fmt-check:
 .PHONY: rust-test
 rust-test:
 	cargo test --workspace --exclude doublezero-telemetry --exclude doublezero-serviceability --all-features
-	cd smartcontract && $(MAKE) test-programs
+	cd smartcontract && SERVICEABILITY_PROGRAM_ID=$(SERVICEABILITY_PROGRAM_ID) $(MAKE) test-programs
 
 .PHONY: rust-test-sbf
 rust-test-sbf:
-	cd smartcontract && $(MAKE) test-sbf
+	cd smartcontract && SERVICEABILITY_PROGRAM_ID=$(SERVICEABILITY_PROGRAM_ID) $(MAKE) test-sbf
 
 .PHONY: rust-ci
 rust-ci: rust-build rust-lint rust-test

@@ -30,6 +30,7 @@ use doublezero_telemetry::{
         initialize_device_latency_samples::InitializeDeviceLatencySamplesArgs,
         write_device_latency_samples::WriteDeviceLatencySamplesArgs,
     },
+    serviceability_program_id,
 };
 use solana_program_test::*;
 use solana_sdk::{
@@ -168,12 +169,7 @@ impl LedgerHelper {
         let serviceability =
             ServiceabilityProgramHelper::new(context.clone(), serviceability_program_id).await?;
 
-        let telemetry = TelemetryProgramHelper::new(
-            context.clone(),
-            telemetry_program_id,
-            serviceability_program_id,
-        )
-        .await?;
+        let telemetry = TelemetryProgramHelper::new(context.clone(), telemetry_program_id).await?;
 
         Ok(Self {
             context,
@@ -362,19 +358,16 @@ impl LedgerHelper {
 pub struct TelemetryProgramHelper {
     context: Arc<Mutex<LedgerContext>>,
     pub program_id: Pubkey,
-    serviceability_program_id: Pubkey,
 }
 
 impl TelemetryProgramHelper {
     pub async fn new(
         context: Arc<Mutex<LedgerContext>>,
         program_id: Pubkey,
-        serviceability_program_id: Pubkey,
     ) -> Result<Self, BanksClientError> {
         Ok(Self {
             context,
             program_id,
-            serviceability_program_id,
         })
     }
 
@@ -395,23 +388,14 @@ impl TelemetryProgramHelper {
             epoch,
         );
 
-        self.execute_transaction(
-            TelemetryInstruction::InitializeDeviceLatencySamples(
-                InitializeDeviceLatencySamplesArgs {
-                    epoch,
-                    sampling_interval_microseconds,
-                },
-            ),
-            &[agent],
-            vec![
-                AccountMeta::new(pda, false),
-                AccountMeta::new(agent.pubkey(), true),
-                AccountMeta::new_readonly(origin_device_pk, false),
-                AccountMeta::new_readonly(target_device_pk, false),
-                AccountMeta::new_readonly(link_pk, false),
-                AccountMeta::new_readonly(system_program::id(), false),
-                AccountMeta::new_readonly(self.serviceability_program_id, false),
-            ],
+        self.initialize_device_latency_samples_with_pda(
+            agent,
+            pda,
+            origin_device_pk,
+            target_device_pk,
+            link_pk,
+            epoch,
+            sampling_interval_microseconds,
         )
         .await?;
 
@@ -467,7 +451,6 @@ impl TelemetryProgramHelper {
                 AccountMeta::new_readonly(target_device_pk, false),
                 AccountMeta::new_readonly(link_pk, false),
                 AccountMeta::new_readonly(solana_program::system_program::id(), false),
-                AccountMeta::new_readonly(self.serviceability_program_id, false),
             ],
         )
         .await?;
@@ -984,7 +967,7 @@ pub fn setup_test_programs() -> (ProgramTest, Pubkey, Pubkey) {
     );
 
     // Add serviceability program with its actual processor
-    let serviceability_program_id = Pubkey::new_unique();
+    let serviceability_program_id = serviceability_program_id();
     program_test.add_program("doublezero_serviceability", serviceability_program_id, None);
 
     (

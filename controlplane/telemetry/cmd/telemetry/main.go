@@ -14,6 +14,7 @@ import (
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	sdktelemetry "github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 )
 
@@ -32,17 +33,19 @@ const (
 var version = "dev"
 
 var (
-	ledgerRPCURL          = flag.String("ledger-rpc-url", defaultLedgerRPCURL, "the url of the ledger rpc")
-	programId             = flag.String("program-id", defaultProgramId, "the id of the program")
-	localDevicePubkey     = flag.String("local-device-pubkey", defaultLocalDevicePubkey, "the pubkey of the local device")
-	twampListenPort       = flag.Uint("twamp-listen-port", uint(defaultTWAMPListenPort), "the port to listen for twamp probes")
-	probeInterval         = flag.Duration("probe-interval", defaultProbeInterval, "the interval to probe peers")
-	submissionInterval    = flag.Duration("submission-interval", defaultSubmissionInterval, "the interval to submit samples")
-	twampSenderTimeout    = flag.Duration("twamp-sender-timeout", defaultTWAMPSenderTimeout, "the timeout for sending twamp probes")
-	twampReflectorTimeout = flag.Duration("twamp-reflector-timeout", defaultTWAMPReflectorTimeout, "the timeout for the twamp reflector")
-	peersRefreshInterval  = flag.Duration("peers-refresh-interval", defaultPeersRefreshInterval, "the interval to refresh the peer discovery")
-	verbose               = flag.Bool("verbose", false, "enable verbose logging")
-	showVersion           = flag.Bool("version", false, "print version and exit")
+	ledgerRPCURL            = flag.String("ledger-rpc-url", defaultLedgerRPCURL, "the url of the ledger rpc")
+	serviceabilityProgramID = flag.String("serviceability-program-id", defaultProgramId, "the id of the serviceability program")
+	telemetryProgramID      = flag.String("telemetry-program-id", defaultProgramId, "the id of the telemetry program")
+	keypairPath             = flag.String("keypair", "", "the path to the metrics publisher keypair")
+	localDevicePK           = flag.String("local-device-pubkey", defaultLocalDevicePubkey, "the pubkey of the local device")
+	twampListenPort         = flag.Uint("twamp-listen-port", uint(defaultTWAMPListenPort), "the port to listen for twamp probes")
+	probeInterval           = flag.Duration("probe-interval", defaultProbeInterval, "the interval to probe peers")
+	submissionInterval      = flag.Duration("submission-interval", defaultSubmissionInterval, "the interval to submit samples")
+	twampSenderTimeout      = flag.Duration("twamp-sender-timeout", defaultTWAMPSenderTimeout, "the timeout for sending twamp probes")
+	twampReflectorTimeout   = flag.Duration("twamp-reflector-timeout", defaultTWAMPReflectorTimeout, "the timeout for the twamp reflector")
+	peersRefreshInterval    = flag.Duration("peers-refresh-interval", defaultPeersRefreshInterval, "the interval to refresh the peer discovery")
+	verbose                 = flag.Bool("verbose", false, "enable verbose logging")
+	showVersion             = flag.Bool("version", false, "print version and exit")
 )
 
 func main() {
@@ -62,26 +65,59 @@ func main() {
 		AddSource: true,
 	}))
 
+	// Validate required flags.
 	if *ledgerRPCURL == "" {
 		log.Error("Missing required flag", "flag", "ledger-rpc-url")
 		flag.Usage()
 		os.Exit(1)
 	}
-	if *programId == "" {
-		log.Error("Missing required flag", "flag", "program-id")
+	if *serviceabilityProgramID == "" {
+		log.Error("Missing required flag", "flag", "serviceability-program-id")
 		flag.Usage()
 		os.Exit(1)
 	}
-	if *localDevicePubkey == "" {
+	if *telemetryProgramID == "" {
+		log.Error("Missing required flag", "flag", "telemetry-program-id")
+		flag.Usage()
+		os.Exit(1)
+	}
+	if *localDevicePK == "" {
 		log.Error("Missing required flag", "flag", "local-device-pubkey")
 		flag.Usage()
+		os.Exit(1)
+	}
+	if *keypairPath == "" {
+		log.Error("Missing required flag", "flag", "keypair")
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	// Check that local device pubkey is valid.
+	localDevicePK, err := solana.PublicKeyFromBase58(*localDevicePK)
+	if err != nil {
+		log.Error("Failed to parse local device pubkey", "error", err)
+		os.Exit(1)
+	}
+
+	// Check that metrics publisher keypair path exists.
+	if _, err := os.Stat(*keypairPath); os.IsNotExist(err) {
+		log.Error("Metrics publisher keypair does not exist", "path", *keypairPath)
+		os.Exit(1)
+	}
+
+	// Check that the metrics publisher keypair is valid.
+	keypair, err := solana.PrivateKeyFromSolanaKeygenFile(*keypairPath)
+	if err != nil {
+		log.Error("Failed to load metrics publisher keypair", "error", err)
 		os.Exit(1)
 	}
 
 	log.Info("Starting telemetry collector",
 		"ledgerRPCURL", *ledgerRPCURL,
-		"programId", *programId,
-		"devicePubkey", *localDevicePubkey,
+		"serviceabilityProgramID", *serviceabilityProgramID,
+		"telemetryProgramID", *telemetryProgramID,
+		"keypairPath", *keypairPath,
+		"devicePubkey", localDevicePK,
 		"probeInterval", *probeInterval,
 		"submissionInterval", *submissionInterval,
 		"twampListenPort", *twampListenPort,
@@ -98,24 +134,24 @@ func main() {
 	}
 
 	// Set up real peer discovery.
-	programID, err := solana.PublicKeyFromBase58(*programId)
+	serviceabilityProgramID, err := solana.PublicKeyFromBase58(*serviceabilityProgramID)
 	if err != nil {
 		log.Error("failed to parse program ID", "error", err)
 		os.Exit(1)
 	}
 	rpcClient := rpc.New(*ledgerRPCURL)
-	serviceabilityClient := serviceability.New(rpcClient, programID)
+	serviceabilityClient := serviceability.New(rpcClient, serviceabilityProgramID)
 	if err != nil {
 		log.Error("failed to create serviceability client", "error", err)
 		os.Exit(1)
 	}
 	peerDiscovery, err := telemetry.NewLedgerPeerDiscovery(
 		&telemetry.LedgerPeerDiscoveryConfig{
-			Logger:            log,
-			LocalDevicePubKey: *localDevicePubkey,
-			ProgramClient:     serviceabilityClient,
-			TWAMPPort:         uint16(*twampListenPort),
-			RefreshInterval:   *peersRefreshInterval,
+			Logger:          log,
+			LocalDevicePK:   localDevicePK,
+			ProgramClient:   serviceabilityClient,
+			TWAMPPort:       uint16(*twampListenPort),
+			RefreshInterval: *peersRefreshInterval,
 		},
 	)
 	if err != nil {
@@ -124,18 +160,23 @@ func main() {
 	}
 
 	// Initialize telemetry program client.
-	// TODO(snormore): Replace with actual implementation.
-	telemetryProgramClient := newLoggingTelemetryClient(log)
+	telemetryProgramID, err := solana.PublicKeyFromBase58(*telemetryProgramID)
+	if err != nil {
+		log.Error("failed to parse program ID", "error", err)
+		os.Exit(1)
+	}
+	telemetryClient := sdktelemetry.New(log, rpcClient, &keypair, telemetryProgramID)
 
 	// Initialize collector.
 	collector, err := telemetry.New(log, telemetry.Config{
-		LocalDevicePubkey:      *localDevicePubkey,
+		LocalDevicePK:          localDevicePK,
+		MetricsPublisherPK:     keypair.PublicKey(),
 		ProbeInterval:          *probeInterval,
 		SubmissionInterval:     *submissionInterval,
 		TWAMPSenderTimeout:     *twampSenderTimeout,
 		TWAMPReflector:         reflector,
 		PeerDiscovery:          peerDiscovery,
-		TelemetryProgramClient: telemetryProgramClient,
+		TelemetryProgramClient: telemetryClient,
 	})
 	if err != nil {
 		log.Error("failed to create telemetry collector", "error", err)
@@ -147,20 +188,4 @@ func main() {
 		log.Error("collector exited with error", "error", err)
 		os.Exit(1)
 	}
-}
-
-// newLoggingTelemetryClient prints submitted samples to log.
-func newLoggingTelemetryClient(log *slog.Logger) telemetry.TelemetryProgramClient {
-	return &loggingClient{log}
-}
-
-type loggingClient struct {
-	log *slog.Logger
-}
-
-func (l *loggingClient) AddSamples(ctx context.Context, samples []telemetry.Sample) error {
-	for _, s := range samples {
-		l.log.Info("[MOCK LEDGER LOG] telemetry sample", "device_a_pk", *localDevicePubkey, "device_z_pk", s.Device, "link_pk", s.Link, "rtt", s.RTT, "loss", s.Loss)
-	}
-	return nil
 }

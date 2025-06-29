@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 	"github.com/stretchr/testify/assert"
@@ -17,148 +18,143 @@ import (
 func TestAgentTelemetry_Pinger(t *testing.T) {
 	t.Parallel()
 
-	t.Run("adds_successful_sample", func(t *testing.T) {
+	newPK := func(b byte) solana.PublicKey {
+		var pk solana.PublicKey
+		pk[0] = b
+		return pk
+	}
+
+	t.Run("records successful RTT sample", func(t *testing.T) {
 		t.Parallel()
+
+		now := time.Now().UTC()
+		devicePK := newPK(1)
+		peerPK := newPK(2)
+		linkPK := newPK(3)
 
 		mockPeers := newMockPeerDiscovery()
 		mockPeers.UpdatePeers(t, map[string]*telemetry.Peer{
 			"peer1": {
-				DevicePubkey: "device1",
-				LinkPubkey:   "link1",
-				DeviceAddr:   &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 12345},
+				DevicePK:   peerPK,
+				LinkPK:     linkPK,
+				DeviceAddr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 10001},
 			},
 		})
 
-		sampleBuf := telemetry.NewSampleBuffer(10)
+		mockSender := &mockSender{rtt: 42 * time.Millisecond}
+		getSender := func(_ string, _ *telemetry.Peer) twamplight.Sender { return mockSender }
 
-		mockSender := &mockSender{rtt: 42 * time.Millisecond, calls: make(chan struct{}, 1)}
-		getSender := func(string, *telemetry.Peer) twamplight.Sender { return mockSender }
-
+		buffer := telemetry.NewAccountsBuffer()
 		pinger := telemetry.NewPinger(slog.Default(), &telemetry.PingerConfig{
-			Peers:     mockPeers,
-			Buffer:    sampleBuf,
-			GetSender: getSender,
+			LocalDevicePK: devicePK,
+			Peers:         mockPeers,
+			Buffer:        buffer,
+			GetSender:     getSender,
 		})
 
 		pinger.Tick(context.Background())
 
-		samples := sampleBuf.Read()
-		require.Len(t, samples, 1)
-		assert.False(t, samples[0].Loss)
-		assert.Equal(t, "device1", samples[0].Device)
-		assert.Equal(t, "link1", samples[0].Link)
-		assert.Greater(t, samples[0].RTT, time.Duration(0))
-	})
-
-	t.Run("records loss when GetSender returns nil", func(t *testing.T) {
-		t.Parallel()
-
-		peers := newMockPeerDiscovery()
-		buffer := telemetry.NewSampleBuffer(10)
-
-		peers.UpdatePeers(t, map[string]*telemetry.Peer{
-			"peer1": {
-				DeviceAddr:   &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 12345},
-				DevicePubkey: "device-1",
-				LinkPubkey:   "link-1",
-			},
-		})
-
-		pinger := telemetry.NewPinger(slog.Default(), &telemetry.PingerConfig{
-			Peers:     peers,
-			Buffer:    buffer,
-			GetSender: func(string, *telemetry.Peer) twamplight.Sender { return nil },
-		})
-
-		pinger.Tick(context.Background())
-
-		samples := buffer.Read()
-		require.Len(t, samples, 1)
-		assert.True(t, samples[0].Loss)
-		assert.Equal(t, "device-1", samples[0].Device)
-		assert.Equal(t, "link-1", samples[0].Link)
-		assert.Zero(t, samples[0].RTT)
-	})
-
-	t.Run("records RTT when sender succeeds", func(t *testing.T) {
-		t.Parallel()
-
-		peers := newMockPeerDiscovery()
-		buffer := telemetry.NewSampleBuffer(10)
-
-		peers.UpdatePeers(t, map[string]*telemetry.Peer{
-			"peer2": {
-				DeviceAddr:   &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9998},
-				DevicePubkey: "device-2",
-				LinkPubkey:   "link-2",
-			},
-		})
-
-		mockSender := &mockSender{rtt: 42 * time.Millisecond, calls: make(chan struct{}, 1)}
-		pinger := telemetry.NewPinger(slog.Default(), &telemetry.PingerConfig{
-			Peers:     peers,
-			Buffer:    buffer,
-			GetSender: func(string, *telemetry.Peer) twamplight.Sender { return mockSender },
-		})
-
-		pinger.Tick(context.Background())
-
-		samples := buffer.Read()
-		require.Len(t, samples, 1)
-		assert.False(t, samples[0].Loss)
-		assert.Equal(t, "device-2", samples[0].Device)
-		assert.Equal(t, "link-2", samples[0].Link)
-		assert.Equal(t, 42*time.Millisecond, samples[0].RTT)
-	})
-
-	t.Run("records loss when sender returns error", func(t *testing.T) {
-		t.Parallel()
-
-		peers := newMockPeerDiscovery()
-		buffer := telemetry.NewSampleBuffer(10)
-
-		peers.UpdatePeers(t, map[string]*telemetry.Peer{
-			"peer3": {
-				DeviceAddr:   &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9997},
-				DevicePubkey: "device-3",
-				LinkPubkey:   "link-3",
-			},
-		})
-
-		mockSender := &mockSender{
-			rtt:   0,
-			err:   errors.New("network failure"),
-			calls: make(chan struct{}, 1),
+		samples := buffer.FlushWithoutReset()
+		key := telemetry.AccountKey{
+			OriginDevicePK: devicePK,
+			TargetDevicePK: peerPK,
+			LinkPK:         linkPK,
+			Epoch:          telemetry.DeriveEpoch(now),
 		}
 
+		s, ok := samples[key]
+		require.True(t, ok, "expected sample under account key")
+		require.Len(t, s, 1)
+		assert.False(t, s[0].Loss)
+		assert.Equal(t, 42*time.Millisecond, s[0].RTT)
+	})
+
+	t.Run("records loss when sender is nil", func(t *testing.T) {
+		t.Parallel()
+
+		devicePK := newPK(4)
+		peerPK := newPK(5)
+		linkPK := newPK(6)
+
+		mockPeers := newMockPeerDiscovery()
+		mockPeers.UpdatePeers(t, map[string]*telemetry.Peer{
+			"peer2": {
+				DevicePK:   peerPK,
+				LinkPK:     linkPK,
+				DeviceAddr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 10002},
+			},
+		})
+
+		buffer := telemetry.NewAccountsBuffer()
 		pinger := telemetry.NewPinger(slog.Default(), &telemetry.PingerConfig{
-			Peers:     peers,
-			Buffer:    buffer,
-			GetSender: func(string, *telemetry.Peer) twamplight.Sender { return mockSender },
+			LocalDevicePK: devicePK,
+			Peers:         mockPeers,
+			Buffer:        buffer,
+			GetSender:     func(string, *telemetry.Peer) twamplight.Sender { return nil },
 		})
 
 		pinger.Tick(context.Background())
 
-		samples := buffer.Read()
-		require.Len(t, samples, 1)
-		assert.True(t, samples[0].Loss)
-		assert.Equal(t, "device-3", samples[0].Device)
-		assert.Equal(t, "link-3", samples[0].Link)
-		assert.Zero(t, samples[0].RTT)
+		samples := buffer.FlushWithoutReset()
+		var found bool
+		for key, val := range samples {
+			if key.OriginDevicePK == devicePK && key.TargetDevicePK == peerPK && key.LinkPK == linkPK {
+				require.Len(t, val, 1)
+				assert.True(t, val[0].Loss)
+				assert.Zero(t, val[0].RTT)
+				found = true
+			}
+		}
+		assert.True(t, found, "expected loss sample for peer2")
+	})
+
+	t.Run("records loss on sender error", func(t *testing.T) {
+		t.Parallel()
+
+		devicePK := newPK(7)
+		peerPK := newPK(8)
+		linkPK := newPK(9)
+
+		mockPeers := newMockPeerDiscovery()
+		mockPeers.UpdatePeers(t, map[string]*telemetry.Peer{
+			"peer3": {
+				DevicePK:   peerPK,
+				LinkPK:     linkPK,
+				DeviceAddr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 10003},
+			},
+		})
+
+		mockSender := &mockSender{err: errors.New("mock failure")}
+		buffer := telemetry.NewAccountsBuffer()
+		pinger := telemetry.NewPinger(slog.Default(), &telemetry.PingerConfig{
+			LocalDevicePK: devicePK,
+			Peers:         mockPeers,
+			Buffer:        buffer,
+			GetSender:     func(string, *telemetry.Peer) twamplight.Sender { return mockSender },
+		})
+
+		pinger.Tick(context.Background())
+
+		samples := buffer.FlushWithoutReset()
+		var found bool
+		for key, val := range samples {
+			if key.OriginDevicePK == devicePK && key.TargetDevicePK == peerPK && key.LinkPK == linkPK {
+				require.Len(t, val, 1)
+				assert.True(t, val[0].Loss)
+				assert.Zero(t, val[0].RTT)
+				found = true
+			}
+		}
+		assert.True(t, found, "expected loss sample for peer3")
 	})
 }
 
 type mockSender struct {
-	rtt   time.Duration
-	err   error
-	calls chan struct{}
+	rtt time.Duration
+	err error
 }
 
-func (m *mockSender) Probe(ctx context.Context) (time.Duration, error) {
-	select {
-	case m.calls <- struct{}{}:
-	default:
-	}
+func (m *mockSender) Probe(context.Context) (time.Duration, error) {
 	return m.rtt, m.err
 }
 

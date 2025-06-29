@@ -11,7 +11,7 @@ The Telemetry Agent continuously monitors round-trip latency and loss between de
 - **Pinger** – Sends TWAMP probes to discovered peers and records RTT/loss.
 - **Reflector** – Listens for incoming TWAMP probes from remote devices.
 - **Submitter** – Flushes telemetry samples to the on-chain telemetry program.
-- **SampleBuffer** – Thread-safe buffer that aggregates telemetry samples in memory.
+- **Buffer** – Thread-safe buffer that aggregates telemetry samples in memory.
 
 ### System Context Diagram
 
@@ -23,7 +23,7 @@ graph LR
     C -->|"runs"| P[Pinger]
     C -->|"runs"| S[Submitter]
     C -->|"runs"| PD[PeerDiscovery]
-    C -->|"owns"| SB[SampleBuffer]
+    C -->|"owns"| SB[Buffer]
     P -->|"record RTT/loss"| SB
     S -->|"flush samples"| SB
   end
@@ -51,7 +51,7 @@ sequenceDiagram
   participant Pinger
   participant Reflector
   participant RemoteDevice as Remote Device
-  participant Buffer as SampleBuffer
+  participant Buffer
   participant Submitter
   participant TelemetryProgram as Telemetry Program
 

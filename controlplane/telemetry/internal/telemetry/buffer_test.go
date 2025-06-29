@@ -5,46 +5,82 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
+	"github.com/stretchr/testify/require"
 )
 
-func TestAgentTelemetry_Buffer(t *testing.T) {
+func TestAgentTelemetry_Buffer_AccountBuffer(t *testing.T) {
 	t.Parallel()
 
 	t.Run("Add and Read returns expected sample", func(t *testing.T) {
 		t.Parallel()
+		buf := telemetry.NewAccountBuffer(10)
+		s := newTestSample()
+		buf.Add(s)
 
-		buf := telemetry.NewSampleBuffer(10)
-		sample := telemetry.Sample{
-			Timestamp: time.Now(),
-			Link:      "link1",
-			Device:    "device1",
-			RTT:       42 * time.Millisecond,
-			Loss:      false,
-		}
-		buf.Add(sample)
-
-		samples := buf.Read()
-		if len(samples) != 1 {
-			t.Fatalf("expected 1 sample, got %d", len(samples))
-		}
-		if samples[0] != sample {
-			t.Errorf("expected sample %+v, got %+v", sample, samples[0])
-		}
+		read := buf.Read()
+		require.Len(t, read, 1)
+		require.Equal(t, s, read[0])
 	})
 
 	t.Run("Read returns copy not shared with buffer", func(t *testing.T) {
 		t.Parallel()
+		buf := telemetry.NewAccountBuffer(10)
+		buf.Add(newTestSample())
 
-		buf := telemetry.NewSampleBuffer(10)
-		s1 := telemetry.Sample{Device: "a"}
-		buf.Add(s1)
+		copy1 := buf.Read()
+		copy1[0].RTT = 123 * time.Millisecond
 
-		s := buf.Read()
-		s[0].Device = "mutated"
+		copy2 := buf.Read()
+		require.Equal(t, 42*time.Millisecond, copy2[0].RTT)
+	})
 
-		s2 := buf.Read()
-		if s2[0].Device != "a" {
-			t.Errorf("expected original sample to remain unchanged, got %+v", s2[0])
-		}
+	t.Run("CopyAndReset clears buffer and returns full copy", func(t *testing.T) {
+		buf := telemetry.NewAccountBuffer(10)
+		buf.Add(newTestSample())
+		out := buf.CopyAndReset()
+
+		require.Len(t, out, 1)
+		require.Equal(t, 0, buf.Len())
+	})
+
+	t.Run("FlushWithoutReset returns non-mutating copy", func(t *testing.T) {
+		buf := telemetry.NewAccountBuffer(10)
+		buf.Add(newTestSample())
+		out := buf.FlushWithoutReset()
+
+		require.Len(t, out, 1)
+		require.Equal(t, 1, buf.Len())
+	})
+}
+
+func TestAgentTelemetry_Buffer_AccountsBuffer(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Add stores sample under key", func(t *testing.T) {
+		buf := telemetry.NewAccountsBuffer()
+		s := newTestSample()
+		k := newTestAccountKey()
+		buf.Add(k, s)
+
+		snap := buf.FlushWithoutReset()
+		samples := snap[k]
+		require.Len(t, samples, 1)
+		require.Equal(t, s, samples[0])
+	})
+
+	t.Run("Recycle reuses memory buffer", func(t *testing.T) {
+		buf := telemetry.NewAccountsBuffer()
+		k := newTestAccountKey()
+		buf.Add(k, newTestSample())
+
+		s := buf.FlushWithoutReset()[k]
+		require.Len(t, s, 1)
+
+		// Properly reset buffer before recycling
+		s = buf.CopyAndReset(k)
+		buf.Recycle(k, s)
+
+		buf.Add(k, newTestSample())
+		require.Len(t, buf.FlushWithoutReset()[k], 1)
 	})
 }

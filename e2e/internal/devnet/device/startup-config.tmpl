@@ -12,10 +12,12 @@ daemon doublezero-agent
    exec /mnt/flash/doublezero-agent {{.AgentCommandArgs}}
    no shutdown
 !
+{{- if .TelemetryEnabled }}
 daemon doublezero-telemetry
    exec /mnt/flash/doublezero-telemetry {{.TelemetryCommandArgs}}
    no shutdown
 !
+{{- end }}
 management api http-commands
    protocol http
    no shutdown

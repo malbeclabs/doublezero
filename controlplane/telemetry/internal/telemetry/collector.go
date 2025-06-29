@@ -25,7 +25,7 @@ type Collector struct {
 	senders   map[string]*senderEntry
 	sendersMu sync.Mutex
 
-	samples *SampleBuffer
+	buffer *AccountsBuffer
 }
 
 func New(log *slog.Logger, cfg Config) (*Collector, error) {
@@ -33,7 +33,7 @@ func New(log *slog.Logger, cfg Config) (*Collector, error) {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
-	sampleBuffer := NewSampleBuffer(1024)
+	buffer := NewAccountsBuffer()
 
 	c := &Collector{
 		log:       log,
@@ -41,20 +41,23 @@ func New(log *slog.Logger, cfg Config) (*Collector, error) {
 		peers:     cfg.PeerDiscovery,
 		reflector: cfg.TWAMPReflector,
 		senders:   make(map[string]*senderEntry),
-		samples:   sampleBuffer,
+		buffer:    buffer,
 	}
 
 	c.submitter = NewSubmitter(log, &SubmitterConfig{
-		Interval:   cfg.SubmissionInterval,
-		Buffer:     sampleBuffer,
-		SubmitFunc: cfg.TelemetryProgramClient.AddSamples,
+		Interval:      cfg.SubmissionInterval,
+		Buffer:        buffer,
+		AgentPK:       cfg.MetricsPublisherPK,
+		ProbeInterval: cfg.ProbeInterval,
+		ProgramClient: cfg.TelemetryProgramClient,
 	})
 
 	c.pinger = NewPinger(log, &PingerConfig{
-		Interval:  cfg.ProbeInterval,
-		Peers:     cfg.PeerDiscovery,
-		Buffer:    sampleBuffer,
-		GetSender: c.getOrCreateSender,
+		LocalDevicePK: cfg.LocalDevicePK,
+		Interval:      cfg.ProbeInterval,
+		Peers:         cfg.PeerDiscovery,
+		Buffer:        buffer,
+		GetSender:     c.getOrCreateSender,
 	})
 
 	return c, nil
@@ -66,7 +69,7 @@ func New(log *slog.Logger, cfg Config) (*Collector, error) {
 func (c *Collector) Run(ctx context.Context) error {
 	c.log.Info("==> Starting telemetry collector",
 		"twampReflector", c.reflector.LocalAddr(),
-		"localDevicePubkey", c.cfg.LocalDevicePubkey,
+		"localDevicePK", c.cfg.LocalDevicePK,
 		"probeInterval", c.cfg.ProbeInterval,
 		"submissionInterval", c.cfg.SubmissionInterval,
 	)
@@ -154,16 +157,17 @@ func (c *Collector) Close(ctx context.Context) error {
 	c.log.Info("==> Closing telemetry collector")
 
 	// Submit any buffered samples.
-	samples := c.samples.FlushWithoutReset()
-	if len(samples) > 0 {
-		c.log.Debug("==> Submitting remaining samples", "count", len(samples))
-		for attempt := 1; attempt <= 2; attempt++ {
-			err := c.cfg.TelemetryProgramClient.AddSamples(ctx, samples)
-			if err == nil {
-				break
+	for accountKey, samples := range c.buffer.FlushWithoutReset() {
+		if len(samples) > 0 {
+			c.log.Debug("==> Submitting remaining samples", "account", accountKey, "count", len(samples))
+			for attempt := 1; attempt <= 2; attempt++ {
+				err := c.submitter.SubmitSamples(ctx, accountKey, samples)
+				if err == nil {
+					break
+				}
+				c.log.Warn("==> Final sample submission failed", "attempt", attempt, "error", err)
+				sleepOrDone(ctx, time.Duration(attempt)*500*time.Millisecond)
 			}
-			c.log.Warn("==> Final sample submission failed", "attempt", attempt, "error", err)
-			sleepOrDone(ctx, time.Duration(attempt)*500*time.Millisecond)
 		}
 	}
 

@@ -6,14 +6,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gagliardetto/solana-go"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 )
 
 type PingerConfig struct {
-	Interval  time.Duration
-	Peers     PeerDiscovery
-	Buffer    *SampleBuffer
-	GetSender func(peerKey string, peer *Peer) twamplight.Sender
+	LocalDevicePK solana.PublicKey
+	Interval      time.Duration
+	Peers         PeerDiscovery
+	Buffer        *AccountsBuffer
+	GetSender     func(peerKey string, peer *Peer) twamplight.Sender
 }
 
 // Pinger is responsible for periodically probing remote peers using TWAMP.
@@ -60,13 +62,18 @@ func (p *Pinger) Tick(ctx context.Context) {
 
 			ts := time.Now().UTC()
 
+			accountKey := AccountKey{
+				OriginDevicePK: p.cfg.LocalDevicePK,
+				TargetDevicePK: peer.DevicePK,
+				LinkPK:         peer.LinkPK,
+				Epoch:          DeriveEpoch(ts),
+			}
+
 			sender := p.cfg.GetSender(peerKey, peer)
 			if sender == nil {
 				p.log.Debug("==> Failed to create sender, recording loss", "peer", peerKey)
-				p.cfg.Buffer.Add(Sample{
+				p.cfg.Buffer.Add(accountKey, Sample{
 					Timestamp: ts,
-					Link:      peer.LinkPubkey,
-					Device:    peer.DevicePubkey,
 					RTT:       0,
 					Loss:      true,
 				})
@@ -76,20 +83,16 @@ func (p *Pinger) Tick(ctx context.Context) {
 			rtt, err := sender.Probe(ctx)
 			if err != nil {
 				p.log.Debug("==> Probe failed, recording loss", "peer", peerKey, "error", err)
-				p.cfg.Buffer.Add(Sample{
+				p.cfg.Buffer.Add(accountKey, Sample{
 					Timestamp: ts,
-					Link:      peer.LinkPubkey,
-					Device:    peer.DevicePubkey,
 					RTT:       0,
 					Loss:      true,
 				})
 				return
 			}
 
-			p.cfg.Buffer.Add(Sample{
+			p.cfg.Buffer.Add(accountKey, Sample{
 				Timestamp: ts,
-				Link:      peer.LinkPubkey,
-				Device:    peer.DevicePubkey,
 				RTT:       rtt,
 				Loss:      false,
 			})

@@ -8,7 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gagliardetto/solana-go"
+	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
+	sdktelemetry "github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,33 +23,45 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		t.Parallel()
 
 		var received []telemetry.Sample
-		submit := func(ctx context.Context, samples []telemetry.Sample) error {
-			received = append(received, samples...)
-			return nil
+		var receivedKey telemetry.AccountKey
+
+		telemetryProgram := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(ctx context.Context, config sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				receivedKey = telemetry.AccountKey{
+					OriginDevicePK: config.OriginDevicePK,
+					TargetDevicePK: config.TargetDevicePK,
+					LinkPK:         config.LinkPK,
+					Epoch:          config.Epoch,
+				}
+				samples := make([]telemetry.Sample, len(config.Samples))
+				for i, sample := range config.Samples {
+					samples[i] = telemetry.Sample{
+						Timestamp: time.Now(),
+						RTT:       time.Duration(sample) * time.Microsecond,
+						Loss:      sample == 0,
+					}
+				}
+				received = append(received, samples...)
+				return solana.Signature{}, nil, nil
+			},
 		}
 
-		buffer := telemetry.NewSampleBuffer(10)
-		buffer.Add(telemetry.Sample{
-			Timestamp: time.Now(),
-			Link:      "link1",
-			Device:    "device1",
-			RTT:       42 * time.Millisecond,
-			Loss:      false,
-		})
+		buffer := telemetry.NewAccountsBuffer()
+		key := newTestAccountKey()
+		buffer.Add(key, newTestSample())
 
 		submitter := telemetry.NewSubmitter(slog.Default(), &telemetry.SubmitterConfig{
-			Interval:    10 * time.Millisecond,
-			Buffer:      buffer,
-			SubmitFunc:  submit,
-			MaxAttempts: 1,
-			BackoffFunc: func(_ int) time.Duration { return 0 },
+			Interval:      time.Hour, // unused
+			Buffer:        buffer,
+			ProgramClient: telemetryProgram,
+			MaxAttempts:   1,
+			BackoffFunc:   func(_ int) time.Duration { return 0 },
 		})
 
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
-		defer cancel()
+		submitter.Tick(context.Background())
 
-		require.NoError(t, submitter.Run(ctx))
 		require.Len(t, received, 1)
+		assert.Equal(t, key, receivedKey)
 	})
 
 	t.Run("retries_on_transient_error", func(t *testing.T) {
@@ -55,37 +70,34 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		var mu sync.Mutex
 		var callCount int
 
-		submit := func(ctx context.Context, samples []telemetry.Sample) error {
-			mu.Lock()
-			defer mu.Unlock()
-			callCount++
-			if callCount < 3 {
-				return errors.New("temporary failure")
-			}
-			return nil
+		telemetryProgram := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(ctx context.Context, config sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				mu.Lock()
+				defer mu.Unlock()
+				callCount++
+				if callCount < 3 {
+					return solana.Signature{}, nil, errors.New("temporary failure")
+				}
+				return solana.Signature{}, nil, nil
+			},
 		}
 
-		buffer := telemetry.NewSampleBuffer(10)
-		buffer.Add(telemetry.Sample{
+		buffer := telemetry.NewAccountsBuffer()
+		buffer.Add(newTestAccountKey(), telemetry.Sample{
 			Timestamp: time.Now(),
-			Link:      "linkX",
-			Device:    "deviceX",
-			RTT:       5 * time.Millisecond,
+			RTT:       5 * time.Microsecond,
 			Loss:      false,
 		})
 
 		submitter := telemetry.NewSubmitter(slog.Default(), &telemetry.SubmitterConfig{
-			Interval:    10 * time.Millisecond,
-			Buffer:      buffer,
-			SubmitFunc:  submit,
-			MaxAttempts: 5,
-			BackoffFunc: func(_ int) time.Duration { return 0 },
+			Interval:      time.Hour, // unused
+			Buffer:        buffer,
+			ProgramClient: telemetryProgram,
+			MaxAttempts:   5,
+			BackoffFunc:   func(_ int) time.Duration { return 0 },
 		})
 
-		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-		defer cancel()
-
-		require.NoError(t, submitter.Run(ctx))
+		submitter.Tick(context.Background())
 
 		mu.Lock()
 		defer mu.Unlock()
@@ -95,36 +107,38 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 	t.Run("aborts_retries_when_context_is_cancelled", func(t *testing.T) {
 		t.Parallel()
 
+		var mu sync.Mutex
 		var callCount int
-		submit := func(ctx context.Context, samples []telemetry.Sample) error {
-			callCount++
-			return errors.New("still failing")
+
+		telemetryProgram := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(ctx context.Context, config sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				mu.Lock()
+				defer mu.Unlock()
+				callCount++
+				return solana.Signature{}, nil, errors.New("still failing")
+			},
 		}
 
-		buffer := telemetry.NewSampleBuffer(10)
-		buffer.Add(telemetry.Sample{
+		buffer := telemetry.NewAccountsBuffer()
+		buffer.Add(newTestAccountKey(), telemetry.Sample{
 			Timestamp: time.Now(),
-			Link:      "linkY",
-			Device:    "deviceY",
-			RTT:       10 * time.Millisecond,
+			RTT:       10 * time.Microsecond,
 			Loss:      false,
 		})
 
 		submitter := telemetry.NewSubmitter(slog.Default(), &telemetry.SubmitterConfig{
-			Interval:    10 * time.Millisecond,
-			Buffer:      buffer,
-			SubmitFunc:  submit,
-			MaxAttempts: 5,
-			BackoffFunc: func(_ int) time.Duration { return 10 * time.Millisecond },
+			Interval:      time.Hour, // unused
+			Buffer:        buffer,
+			ProgramClient: telemetryProgram,
+			MaxAttempts:   5,
+			BackoffFunc:   func(_ int) time.Duration { return 10 * time.Millisecond },
 		})
 
 		ctx, cancel := context.WithCancel(context.Background())
-		go func() {
-			time.Sleep(15 * time.Millisecond)
-			cancel()
-		}()
+		cancel() // cancel immediately before retry starts
 
-		require.NoError(t, submitter.Run(ctx))
+		submitter.Tick(ctx)
+
 		assert.Less(t, callCount, 5, "should not retry full 5 times due to context cancel")
 	})
 }

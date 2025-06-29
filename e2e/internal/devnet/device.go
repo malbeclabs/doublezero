@@ -37,10 +37,11 @@ const (
 )
 
 type DeviceSpec struct {
-	ContainerImage string
-	Code           string
-	Location       string
-	Exchange       string
+	ContainerImage     string
+	Code               string
+	Location           string
+	Exchange           string
+	MetricsPublisherPK string
 
 	// CYOANetworkIPHostID is the offset into the host portion of the subnet (must be < 2^(32 - prefixLen)).
 	CYOANetworkIPHostID uint32
@@ -50,11 +51,14 @@ type DeviceSpec struct {
 	CYOANetworkAllocatablePrefix uint32
 
 	// Agent telemetry config.
-	Telemetry DeviceTelemetryConfig
+	Telemetry DeviceTelemetrySpec
 }
 
-type DeviceTelemetryConfig struct {
+type DeviceTelemetrySpec struct {
 	Enabled bool
+
+	// KeypairPath is the path to the telemetry keypair.
+	KeypairPath string
 
 	// TWAMPListenPort is the port on which the device will listen for TWAMP probes.
 	TWAMPListenPort uint16
@@ -101,6 +105,20 @@ func (s *DeviceSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
 	maxHostID := uint32((1 << hostBits) - 1)
 	if s.CYOANetworkIPHostID <= 0 || s.CYOANetworkIPHostID >= maxHostID {
 		return fmt.Errorf("hostID %d is out of valid range (1 to %d)", s.CYOANetworkIPHostID, maxHostID-1)
+	}
+
+	if s.Telemetry.Enabled {
+		if err := s.Telemetry.Validate(); err != nil {
+			return fmt.Errorf("telemetry: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (s *DeviceTelemetrySpec) Validate() error {
+	if s.KeypairPath == "" {
+		return fmt.Errorf("keypair path is required")
 	}
 
 	return nil
@@ -209,7 +227,7 @@ func (d *Device) Start(ctx context.Context) error {
 	cyoaNetworkIP := ip.To4().String()
 
 	// Create the device onchain.
-	onchainID, err := d.dn.GetOrCreateDeviceOnchain(ctx, spec.Code, spec.Location, spec.Exchange, cyoaNetworkIP, []string{cyoaNetworkIP + "/" + strconv.Itoa(int(spec.CYOANetworkAllocatablePrefix))})
+	onchainID, err := d.dn.GetOrCreateDeviceOnchain(ctx, spec.Code, spec.Location, spec.Exchange, spec.MetricsPublisherPK, cyoaNetworkIP, []string{cyoaNetworkIP + "/" + strconv.Itoa(int(spec.CYOANetworkAllocatablePrefix))})
 	if err != nil {
 		return fmt.Errorf("failed to create device %s onchain: %w", spec.Code, err)
 	}
@@ -220,6 +238,18 @@ func (d *Device) Start(ctx context.Context) error {
 	commandArgs := []string{
 		"-controller", controllerAddr,
 		"-pubkey", onchainID,
+	}
+
+	// Configure telemetry/metrics publisher keypair if set.
+	containerTelemetryKeypairPath := "/etc/doublezero/telemetry/keypair.json"
+	var reqFiles []testcontainers.ContainerFile
+	if spec.Telemetry.KeypairPath != "" {
+		reqFiles = []testcontainers.ContainerFile{
+			{
+				HostFilePath:      spec.Telemetry.KeypairPath,
+				ContainerFilePath: containerTelemetryKeypairPath,
+			},
+		}
 	}
 
 	// Create the device container, but don't start it yet.
@@ -237,6 +267,7 @@ func (d *Device) Start(ctx context.Context) error {
 		Networks: []string{
 			d.dn.DefaultNetwork.Name,
 		},
+		Files: reqFiles,
 		// NOTE: We intentionally use the deprecated Resources field here instead of the HostConfigModifier
 		// because the latter has issues with setting SHM memory and other constraints to 0, which
 		// causes the device to fail to start.
@@ -280,7 +311,9 @@ func (d *Device) Start(ctx context.Context) error {
 
 	telemetryCommandArgs := []string{
 		"-ledger-rpc-url", d.dn.Ledger.InternalIPRPCURL,
-		"-program-id", d.dn.Ledger.dn.Manager.ServiceabilityProgramID,
+		"-serviceability-program-id", d.dn.Ledger.dn.Manager.ServiceabilityProgramID,
+		"-telemetry-program-id", d.dn.Ledger.dn.Manager.TelemetryProgramID,
+		"-keypair", containerTelemetryKeypairPath,
 		"-local-device-pubkey", onchainID,
 		"-twamp-listen-port", strconv.Itoa(int(spec.Telemetry.TWAMPListenPort)),
 		"-probe-interval", spec.Telemetry.ProbeInterval.String(),
@@ -296,6 +329,7 @@ func (d *Device) Start(ctx context.Context) error {
 	tmpl := template.Must(template.New("startup-config").Parse(deviceStartupConfigTemplate))
 	err = tmpl.Execute(&configContents, map[string]any{
 		"AgentCommandArgs":         strings.Join(commandArgs, " "),
+		"TelemetryEnabled":         spec.Telemetry.Enabled,
 		"TelemetryCommandArgs":     strings.Join(telemetryCommandArgs, " "),
 		"CYOANetworkIP":            cyoaNetworkIP,
 		"CYOANetworkCIDRPrefix":    strconv.Itoa(d.dn.Spec.CYOANetwork.CIDRPrefix),

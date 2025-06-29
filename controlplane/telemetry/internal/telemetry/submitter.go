@@ -2,17 +2,24 @@ package telemetry
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"math/rand"
 	"time"
+
+	"github.com/gagliardetto/solana-go"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 )
 
 type SubmitterConfig struct {
-	Interval    time.Duration
-	Buffer      *SampleBuffer
-	SubmitFunc  func(context.Context, []Sample) error
-	BackoffFunc func(attempt int) time.Duration // optional, defaults to exponential backoff
-	MaxAttempts int                             // optional, defaults to 5
+	Interval      time.Duration
+	Buffer        *AccountsBuffer
+	AgentPK       solana.PublicKey
+	ProbeInterval time.Duration
+	ProgramClient TelemetryProgramClient
+	BackoffFunc   func(attempt int) time.Duration // optional, defaults to exponential backoff
+	MaxAttempts   int                             // optional, defaults to 5
 }
 
 // Submitter periodically flushes collected telemetry samples from the sample
@@ -39,11 +46,6 @@ func (s *Submitter) Run(ctx context.Context) error {
 	ticker := time.NewTicker(s.cfg.Interval)
 	defer ticker.Stop()
 
-	maxAttempts := s.cfg.MaxAttempts
-	if maxAttempts <= 0 {
-		maxAttempts = 5
-	}
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -51,47 +53,122 @@ func (s *Submitter) Run(ctx context.Context) error {
 			return nil
 		case <-ticker.C:
 			s.log.Debug("==> Submission loop ticked")
+			s.Tick(ctx)
+		}
+	}
+}
 
-			tmp := s.cfg.Buffer.CopyAndReset()
-			if len(tmp) == 0 {
-				s.log.Debug("==> No samples to submit, skipping")
-				s.cfg.Buffer.Recycle(tmp)
-				continue
+func (s *Submitter) SubmitSamples(ctx context.Context, accountKey AccountKey, samples []Sample) error {
+	log := s.log.With("account", accountKey)
+
+	if len(samples) == 0 {
+		log.Debug("==> No samples to submit, skipping")
+		return nil
+	}
+
+	rtts := make([]uint32, len(samples))
+	for i, sample := range samples {
+		if sample.Loss {
+			rtts[i] = 0
+		} else {
+			rtts[i] = uint32(sample.RTT.Microseconds())
+		}
+	}
+	log.Debug("==> Submitting account samples", "count", len(samples), "samples", rtts)
+
+	// Get earliest timestamp from samples.
+	startTimestampMicroseconds := uint64(time.Now().UnixMicro())
+	for _, rtt := range rtts {
+		if rtt > 0 {
+			startTimestampMicroseconds = uint64(time.Now().UnixMicro())
+		}
+	}
+
+	writeConfig := telemetry.WriteDeviceLatencySamplesInstructionConfig{
+		AgentPK:                    s.cfg.AgentPK,
+		OriginDevicePK:             accountKey.OriginDevicePK,
+		TargetDevicePK:             accountKey.TargetDevicePK,
+		LinkPK:                     accountKey.LinkPK,
+		Epoch:                      accountKey.Epoch,
+		StartTimestampMicroseconds: startTimestampMicroseconds,
+		Samples:                    rtts,
+	}
+	_, _, err := s.cfg.ProgramClient.WriteDeviceLatencySamples(ctx, writeConfig)
+	if err != nil {
+		if errors.Is(err, telemetry.ErrAccountNotFound) {
+			log.Debug("==> Account not found, initializing")
+			_, _, err = s.cfg.ProgramClient.InitializeDeviceLatencySamples(ctx, telemetry.InitializeDeviceLatencySamplesInstructionConfig{
+				AgentPK:                      s.cfg.AgentPK,
+				OriginDevicePK:               accountKey.OriginDevicePK,
+				TargetDevicePK:               accountKey.TargetDevicePK,
+				LinkPK:                       accountKey.LinkPK,
+				Epoch:                        accountKey.Epoch,
+				SamplingIntervalMicroseconds: uint64(s.cfg.ProbeInterval.Microseconds()),
+			})
+			if err != nil {
+				return fmt.Errorf("failed to initialize device latency samples: %w", err)
 			}
 
-			// NOTE: Use tmp directly and defer recycling
-			func() {
-				defer s.cfg.Buffer.Recycle(tmp)
-
-				for attempt := 1; attempt <= maxAttempts; attempt++ {
-					err := s.cfg.SubmitFunc(ctx, tmp)
-					if err == nil {
-						s.log.Debug("==> Submitted samples", "count", len(tmp), "attempt", attempt)
-						break
-					}
-
-					if attempt == maxAttempts {
-						s.log.Error("==> Failed to submit samples after retries", "error", err)
-						break
-					}
-
-					var backoff time.Duration
-					if s.cfg.BackoffFunc != nil {
-						backoff = s.cfg.BackoffFunc(attempt)
-					} else {
-						base := 250 * time.Millisecond
-						jitter := time.Duration(float64(base) * (0.5 + 0.5*s.rng.Float64()))
-						backoff = time.Duration(attempt) * jitter
-					}
-
-					s.log.Warn("==> Submission failed, retrying", "attempt", attempt, "delay", backoff, "error", err)
-
-					if !sleepOrDone(ctx, backoff) {
-						s.log.Debug("==> Submission retry aborted by context")
-						return
-					}
-				}
-			}() // Call closure immediately
+			_, _, err = s.cfg.ProgramClient.WriteDeviceLatencySamples(ctx, writeConfig)
+			if err != nil {
+				return fmt.Errorf("failed to write device latency samples: %w", err)
+			}
+		} else {
+			return fmt.Errorf("failed to write device latency samples: %w", err)
 		}
+	}
+
+	log.Debug("==> Submitted account samples", "count", len(samples))
+
+	return nil
+}
+
+func (s *Submitter) Tick(ctx context.Context) {
+	maxAttempts := s.cfg.MaxAttempts
+	if maxAttempts <= 0 {
+		maxAttempts = 5
+	}
+
+	for accountKey, tmp := range s.cfg.Buffer.FlushWithoutReset() {
+		s.log.Debug("==> Submitting samples", "account", accountKey, "count", len(tmp))
+
+		if len(tmp) == 0 {
+			s.log.Debug("==> No samples to submit, skipping")
+			s.cfg.Buffer.Recycle(accountKey, tmp)
+			continue
+		}
+
+		func() {
+			defer s.cfg.Buffer.Recycle(accountKey, tmp)
+
+			for attempt := 1; attempt <= maxAttempts; attempt++ {
+				err := s.SubmitSamples(ctx, accountKey, tmp)
+				if err == nil {
+					s.log.Debug("==> Submitted samples", "count", len(tmp), "attempt", attempt)
+					break
+				}
+
+				if attempt == maxAttempts {
+					s.log.Error("==> Failed to submit samples after retries", "error", err)
+					break
+				}
+
+				var backoff time.Duration
+				if s.cfg.BackoffFunc != nil {
+					backoff = s.cfg.BackoffFunc(attempt)
+				} else {
+					base := 250 * time.Millisecond
+					jitter := time.Duration(float64(base) * (0.5 + 0.5*s.rng.Float64()))
+					backoff = time.Duration(attempt) * jitter
+				}
+
+				s.log.Warn("==> Submission failed, retrying", "attempt", attempt, "delay", backoff, "error", err)
+
+				if !sleepOrDone(ctx, backoff) {
+					s.log.Debug("==> Submission retry aborted by context")
+					return
+				}
+			}
+		}()
 	}
 }

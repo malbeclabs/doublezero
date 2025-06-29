@@ -626,14 +626,18 @@ func (d *Devnet) Destroy(ctx context.Context, all bool) error {
 	return nil
 }
 
-func (d *Devnet) GetOrCreateDeviceOnchain(ctx context.Context, deviceCode string, location string, exchange string, publicIP string, prefixes []string) (string, error) {
+func (d *Devnet) GetOrCreateDeviceOnchain(ctx context.Context, deviceCode string, location string, exchange string, metricsPublisherPK string, publicIP string, prefixes []string) (string, error) {
 	d.onchainWriteMutex.Lock()
 	defer d.onchainWriteMutex.Unlock()
 
 	deviceAddress, err := d.GetDevicePubkeyOnchain(ctx, deviceCode)
 	if err != nil {
 		if errors.Is(err, ErrDeviceNotFoundOnchain) {
-			_, err := d.Manager.Exec(ctx, []string{"doublezero", "device", "create", "--code", deviceCode, "--location", location, "--exchange", exchange, "--public-ip", publicIP, "--dz-prefixes", strings.Join(prefixes, ",")})
+			args := []string{"doublezero", "device", "create", "--code", deviceCode, "--location", location, "--exchange", exchange, "--public-ip", publicIP, "--dz-prefixes", strings.Join(prefixes, ",")}
+			if metricsPublisherPK != "" {
+				args = append(args, "--metrics-publisher", metricsPublisherPK)
+			}
+			_, err := d.Manager.Exec(ctx, args)
 			if err != nil {
 				return "", fmt.Errorf("failed to create device onchain: %w", err)
 			}

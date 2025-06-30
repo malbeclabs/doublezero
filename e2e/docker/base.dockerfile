@@ -149,7 +149,7 @@ RUN --mount=type=cache,target=/cargo-sbf \
 ENV SERVICEABILITY_PROGRAM_ID=7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
 RUN --mount=type=cache,target=/cargo-sbf \
     --mount=type=cache,target=/target-sbf \
-    --mount=type=cache,target=/root/.cache/solana \
+    --mount=type=cache,target=/root/.cache/solana-${SOLANA_VERSION} \
     cd smartcontract/programs/doublezero-telemetry && \
     cargo build-sbf && \
     cp /target-sbf/deploy/doublezero_telemetry.so ${BIN_DIR}/doublezero_telemetry.so

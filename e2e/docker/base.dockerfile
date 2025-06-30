@@ -128,6 +128,7 @@ RUN --mount=type=cache,target=/cargo-sbf \
 
 RUN --mount=type=cache,target=/cargo-sbf \
     --mount=type=cache,target=/target-sbf \
+    --mount=type=cache,target=/root/.cache/solana-${SOLANA_VERSION} \
     cd smartcontract/programs/doublezero-telemetry && \
     cargo fetch
 

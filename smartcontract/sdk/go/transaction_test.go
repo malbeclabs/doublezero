@@ -6,7 +6,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 )
 
-func TestBuildInitializeDzLatencySamplesInstruction(t *testing.T) {
+func TestBuildInitializeDeviceLatencySamplesInstruction(t *testing.T) {
 	// Create test keys
 	programID := solana.NewWallet().PublicKey()
 	telemetryProgramID := solana.NewWallet().PublicKey()
@@ -15,7 +15,7 @@ func TestBuildInitializeDzLatencySamplesInstruction(t *testing.T) {
 	targetDevicePK := solana.NewWallet().PublicKey()
 	linkPK := solana.NewWallet().PublicKey()
 
-	args := &InitializeDzLatencySamplesArgs{
+	args := &InitializeDeviceLatencySamplesArgs{
 		OriginDevicePK:               originDevicePK,
 		TargetDevicePK:               targetDevicePK,
 		LinkPK:                       linkPK,
@@ -24,7 +24,7 @@ func TestBuildInitializeDzLatencySamplesInstruction(t *testing.T) {
 	}
 
 	// Build instruction
-	instruction, err := BuildInitializeDzLatencySamplesInstruction(
+	instruction, err := BuildInitializeDeviceLatencySamplesInstruction(
 		programID,
 		telemetryProgramID,
 		signer,
@@ -70,20 +70,20 @@ func TestBuildInitializeDzLatencySamplesInstruction(t *testing.T) {
 	}
 }
 
-func TestBuildWriteDzLatencySamplesInstruction(t *testing.T) {
+func TestBuildWriteDeviceLatencySamplesInstruction(t *testing.T) {
 	// Create test keys
 	telemetryProgramID := solana.NewWallet().PublicKey()
 	latencySamplesAccount := solana.NewWallet().PublicKey()
 	signer := solana.NewWallet().PublicKey()
 
 	samples := []uint32{100, 200, 300}
-	args := &WriteDzLatencySamplesArgs{
+	args := &WriteDeviceLatencySamplesArgs{
 		StartTimestampMicroseconds: 1234567890,
 		Samples:                    samples,
 	}
 
 	// Build instruction
-	instruction, err := BuildWriteDzLatencySamplesInstruction(
+	instruction, err := BuildWriteDeviceLatencySamplesInstruction(
 		telemetryProgramID,
 		latencySamplesAccount,
 		signer,

@@ -70,13 +70,13 @@ func NewController(options ...Option) (*Controller, error) {
 			if err != nil {
 				return nil, fmt.Errorf("invalid program id %s: %v", controller.programId, err)
 			}
-			options = append(options, dzsdk.WithProgramId(controller.programId))
+			options = append(options, dzsdk.WithServiceabilityProgramID(controller.programId))
 		}
 		if controller.rpcEndpoint == "" {
 			controller.rpcEndpoint = dzsdk.URL_DOUBLEZERO
 		}
 		if controller.programId == "" {
-			controller.programId = dzsdk.PROGRAM_ID_TESTNET
+			controller.programId = dzsdk.SERVICEABILITY_PROGRAM_ID_TESTNET
 		}
 		controller.accountFetcher = dzsdk.New(controller.rpcEndpoint, options...)
 	}

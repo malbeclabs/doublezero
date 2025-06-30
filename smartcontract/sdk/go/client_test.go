@@ -358,7 +358,7 @@ func TestRpcClient(t *testing.T) {
 func TestNewClient(t *testing.T) {
 	t.Run("test_default_program_id", func(t *testing.T) {
 		client := New("endpoint")
-		want := solana.MustPublicKeyFromBase58(PROGRAM_ID_TESTNET)
+		want := solana.MustPublicKeyFromBase58(SERVICEABILITY_PROGRAM_ID_TESTNET)
 		if client.pubkey != want {
 			t.Fatalf("default client pubkey incorrect; got %s, wanted %s", client.pubkey, want)
 		}
@@ -366,7 +366,7 @@ func TestNewClient(t *testing.T) {
 
 	t.Run("test_override_program_id", func(t *testing.T) {
 		programId := "9i7v8m3i7W2qPGRonFi8mehN76SXUkDcpgk4tPQhEabc"
-		client := New("endpoint", WithProgramId(programId))
+		client := New("endpoint", WithServiceabilityProgramID(programId))
 		want := solana.MustPublicKeyFromBase58(programId)
 		require.Equal(t, want, client.pubkey, "overridden client pubkey incorrect; got %s, wanted %s", client.pubkey, want)
 	})
@@ -392,59 +392,33 @@ func TestNewClient(t *testing.T) {
 	})
 }
 
-func TestGetDzLatencySamplesPDA(t *testing.T) {
+func TestGetDeviceLatencySamplesPDA(t *testing.T) {
 	client := New("endpoint")
 	originDevicePK := solana.NewWallet().PublicKey()
 	targetDevicePK := solana.NewWallet().PublicKey()
 	linkPK := solana.NewWallet().PublicKey()
 	epoch := uint64(100)
 
-	pda, err := client.GetDzLatencySamplesPDA(originDevicePK, targetDevicePK, linkPK, epoch)
+	pda, err := client.GetDeviceLatencySamplesPDA(originDevicePK, targetDevicePK, linkPK, epoch)
 	require.NoError(t, err)
 
 	require.False(t, pda.IsZero(), "PDA should not be zero")
 
 	// Test that swapping device keys produces different PDA
-	pda2, err := client.GetDzLatencySamplesPDA(targetDevicePK, originDevicePK, linkPK, epoch)
+	pda2, err := client.GetDeviceLatencySamplesPDA(targetDevicePK, originDevicePK, linkPK, epoch)
 	require.NoError(t, err)
 
 	require.NotEqual(t, pda, pda2, "PDA should NOT be the same if device pubkey order changes")
 }
 
-// Mock RPC client for testing transaction methods
-type mockRpcClient struct {
-	mockSolanaClient
-	sendTransactionErr error
-	getBlockhashErr    error
-}
-
-func (m *mockRpcClient) SendTransaction(ctx context.Context, tx *solana.Transaction) (solana.Signature, error) {
-	if m.sendTransactionErr != nil {
-		return solana.Signature{}, m.sendTransactionErr
-	}
-	// Return a mock signature
-	return solana.SignatureFromBase58("5K7mJpppNKVpJbLzNqezNjmEvT6YUsRsJDNTMEVvrmHHFgATVgp8uWbqjhfJqdodJLqnWhDcwcPYJFowVt1fjRTZ")
-}
-
-func (m *mockRpcClient) GetLatestBlockhash(ctx context.Context, commitment rpc.CommitmentType) (*rpc.GetLatestBlockhashResult, error) {
-	if m.getBlockhashErr != nil {
-		return nil, m.getBlockhashErr
-	}
-	return &rpc.GetLatestBlockhashResult{
-		Value: &rpc.LatestBlockhashResult{
-			Blockhash: solana.MustHashFromBase58("4sGjMW1sUnHzSxGspuhpqLDx6wiyjNtZAMdL4VZHirm4"),
-		},
-	}, nil
-}
-
-func TestInitializeDzLatencySamplesNoSigner(t *testing.T) {
+func TestInitializeDeviceLatencySamplesNoSigner(t *testing.T) {
 	client := New("endpoint")
 
 	originDevicePK := solana.NewWallet().PublicKey()
 	targetDevicePK := solana.NewWallet().PublicKey()
 	linkPK := solana.NewWallet().PublicKey()
 
-	_, err := client.InitializeDzLatencySamples(
+	_, err := client.InitializeDeviceLatencySamples(
 		context.Background(),
 		originDevicePK,
 		targetDevicePK,
@@ -456,12 +430,12 @@ func TestInitializeDzLatencySamplesNoSigner(t *testing.T) {
 	require.ErrorIs(t, err, ErrNoPrivateKey)
 }
 
-func TestWriteDzLatencySamplesNoSigner(t *testing.T) {
+func TestWriteDeviceLatencySamplesNoSigner(t *testing.T) {
 	client := New("endpoint")
 
 	latencySamplesAccount := solana.NewWallet().PublicKey()
 
-	_, err := client.WriteDzLatencySamples(
+	_, err := client.WriteDeviceLatencySamples(
 		context.Background(),
 		latencySamplesAccount,
 		1234567890,

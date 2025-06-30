@@ -96,7 +96,7 @@ func main() {
 	}
 
 	// Set up real peer discovery.
-	dzClient := dzsdk.New(*ledgerRPCURL, dzsdk.WithProgramId(*programId))
+	dzClient := dzsdk.New(*ledgerRPCURL, dzsdk.WithServiceabilityProgramID(*programId))
 	peerDiscovery, err := telemetry.NewLedgerPeerDiscovery(
 		&telemetry.LedgerPeerDiscoveryConfig{
 			Logger:            log,

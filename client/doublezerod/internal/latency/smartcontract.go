@@ -21,7 +21,7 @@ func FetchContractData(ctx context.Context, programId string, rpcEndpoint string
 	}
 	options := []dzsdk.Option{}
 	if programId != "" {
-		options = append(options, dzsdk.WithProgramId(programId))
+		options = append(options, dzsdk.WithServiceabilityProgramID(programId))
 	}
 	client := dzsdk.New(rpcEndpoint, options...)
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)

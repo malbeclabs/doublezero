@@ -311,5 +311,5 @@ func waitForSolanaReady(ctx context.Context, log *slog.Logger, rpcPort int) erro
 func (l *Ledger) GetServiceabilityProgramClient(ctx context.Context) (*dzsdk.Client, error) {
 	l.log.Debug("--> Building serviceability program client", "internalRPCURL", l.InternalRPCURL, "serviceabilityProgramID", l.dn.Manager.ServiceabilityProgramID)
 	endpoint := "http://" + net.JoinHostPort(l.dn.Spec.Ledger.ExternalHost, strconv.Itoa(l.ExternalRPCPort))
-	return dzsdk.New(endpoint, dzsdk.WithProgramId(l.dn.Manager.ServiceabilityProgramID)), nil
+	return dzsdk.New(endpoint, dzsdk.WithServiceabilityProgramID(l.dn.Manager.ServiceabilityProgramID)), nil
 }

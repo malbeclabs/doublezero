@@ -13,15 +13,15 @@ type TransactionSender interface {
 	GetLatestBlockhash(context.Context, rpc.CommitmentType) (*rpc.GetLatestBlockhashResult, error)
 }
 
-// Builds the instruction for initializing DZ latency samples
-func BuildInitializeDzLatencySamplesInstruction(
+// Builds the instruction for initializing device latency samples
+func BuildInitializeDeviceLatencySamplesInstruction(
 	serviceabilityProgramID solana.PublicKey,
 	telemetryProgramID solana.PublicKey,
 	signer solana.PublicKey,
-	args *InitializeDzLatencySamplesArgs,
+	args *InitializeDeviceLatencySamplesArgs,
 ) (solana.Instruction, error) {
 	// Derive the PDA
-	pda, _, err := DeriveDzLatencySamplesPDA(
+	pda, _, err := DeriveDeviceLatencySamplesPDA(
 		telemetryProgramID,
 		args.OriginDevicePK,
 		args.TargetDevicePK,
@@ -33,7 +33,7 @@ func BuildInitializeDzLatencySamplesInstruction(
 	}
 
 	// Serialize the instruction data
-	data, err := SerializeInitializeDzLatencySamples(args)
+	data, err := SerializeInitializeDeviceLatencySamples(args)
 	if err != nil {
 		return nil, err
 	}
@@ -56,15 +56,15 @@ func BuildInitializeDzLatencySamplesInstruction(
 	}, nil
 }
 
-// Builds the instruction for writing DZ latency samples
-func BuildWriteDzLatencySamplesInstruction(
+// Builds the instruction for writing device latency samples
+func BuildWriteDeviceLatencySamplesInstruction(
 	telemetryProgramID solana.PublicKey,
 	latencySamplesAccount solana.PublicKey,
 	signer solana.PublicKey,
-	args *WriteDzLatencySamplesArgs,
+	args *WriteDeviceLatencySamplesArgs,
 ) (solana.Instruction, error) {
 	// Serialize the instruction data
-	data, err := SerializeWriteDzLatencySamples(args)
+	data, err := SerializeWriteDeviceLatencySamples(args)
 	if err != nil {
 		return nil, err
 	}

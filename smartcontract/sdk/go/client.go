@@ -3,6 +3,7 @@ package dzsdk
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/gagliardetto/solana-go"
@@ -11,8 +12,8 @@ import (
 
 /************************************************************************************************************/
 const URL_DOUBLEZERO = "https://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30"
-const PROGRAM_ID_TESTNET = "DZtnuQ839pSaDMFG5q1ad2V95G82S5EC4RrB3Ndw2Heb"
-const PROGRAM_ID_DEVNET = "DZdnB7bhR9azxLAUEH7ZVtW168wRdreiDKhi4McDfKZt"
+const SERVICEABILITY_PROGRAM_ID_TESTNET = "DZtnuQ839pSaDMFG5q1ad2V95G82S5EC4RrB3Ndw2Heb"
+const SERVICEABILITY_PROGRAM_ID_DEVNET = "DZdnB7bhR9azxLAUEH7ZVtW168wRdreiDKhi4McDfKZt"
 
 /************************************************************************************************************/
 
@@ -53,7 +54,7 @@ func New(Endpoint string, options ...Option) *Client {
 	rpcClient := rpc.New(Endpoint)
 	c := &Client{
 		endpoint:           Endpoint,
-		pubkey:             solana.MustPublicKeyFromBase58(PROGRAM_ID_TESTNET),
+		pubkey:             solana.MustPublicKeyFromBase58(SERVICEABILITY_PROGRAM_ID_TESTNET),
 		client:             rpcClient,
 		rpcClient:          rpcClient,
 		telemetryProgramID: solana.MustPublicKeyFromBase58(TELEMETRY_PROGRAM_ID_TESTNET),
@@ -67,7 +68,7 @@ func New(Endpoint string, options ...Option) *Client {
 // Configure the program ID to use for the client
 // This is useful if you want to use a different program ID
 // than the default one.
-func WithProgramId(programId string) Option {
+func WithServiceabilityProgramID(programId string) Option {
 	return func(c *Client) {
 		c.pubkey = solana.MustPublicKeyFromBase58(programId)
 	}
@@ -184,8 +185,8 @@ func WithTelemetryProgramID(programID string) Option {
 	}
 }
 
-// Initializes a new DZ latency samples account
-func (c *Client) InitializeDzLatencySamples(
+// Initializes a new device latency samples account
+func (c *Client) InitializeDeviceLatencySamples(
 	ctx context.Context,
 	originDevicePK solana.PublicKey,
 	targetDevicePK solana.PublicKey,
@@ -197,7 +198,7 @@ func (c *Client) InitializeDzLatencySamples(
 		return solana.Signature{}, ErrNoPrivateKey
 	}
 
-	args := &InitializeDzLatencySamplesArgs{
+	args := &InitializeDeviceLatencySamplesArgs{
 		OriginDevicePK:               originDevicePK,
 		TargetDevicePK:               targetDevicePK,
 		LinkPK:                       linkPK,
@@ -206,20 +207,20 @@ func (c *Client) InitializeDzLatencySamples(
 	}
 
 	// Build the instruction
-	instruction, err := BuildInitializeDzLatencySamplesInstruction(
+	instruction, err := BuildInitializeDeviceLatencySamplesInstruction(
 		c.pubkey, // serviceability program ID
 		c.telemetryProgramID,
 		c.signer.PublicKey(),
 		args,
 	)
 	if err != nil {
-		return solana.Signature{}, err
+		return solana.Signature{}, fmt.Errorf("failed to build initialize device latency samples instruction: %w", err)
 	}
 
 	// Get latest blockhash
 	blockhashResult, err := c.rpcClient.GetLatestBlockhash(ctx, rpc.CommitmentFinalized)
 	if err != nil {
-		return solana.Signature{}, err
+		return solana.Signature{}, fmt.Errorf("failed to get latest blockhash: %w", err)
 	}
 
 	// Build transaction
@@ -229,7 +230,7 @@ func (c *Client) InitializeDzLatencySamples(
 		solana.TransactionPayer(c.signer.PublicKey()),
 	)
 	if err != nil {
-		return solana.Signature{}, err
+		return solana.Signature{}, fmt.Errorf("failed to build transaction: %w", err)
 	}
 
 	// Sign transaction
@@ -240,19 +241,22 @@ func (c *Client) InitializeDzLatencySamples(
 		return nil
 	})
 	if err != nil {
-		return solana.Signature{}, err
+		return solana.Signature{}, fmt.Errorf("failed to sign transaction: %w", err)
 	}
 
 	// Send transaction (without preflight/simulation) check
 	sig, err := c.rpcClient.SendTransactionWithOpts(ctx, tx, rpc.TransactionOpts{
 		SkipPreflight: true,
 	})
+	if err != nil {
+		return solana.Signature{}, fmt.Errorf("failed to send transaction: %w", err)
+	}
 
 	return sig, nil
 }
 
-// Writes latency samples to an existing DZ latency samples account
-func (c *Client) WriteDzLatencySamples(
+// Writes latency samples to an existing device latency samples account
+func (c *Client) WriteDeviceLatencySamples(
 	ctx context.Context,
 	latencySamplesAccount solana.PublicKey,
 	startTimestampMicroseconds uint64,
@@ -262,26 +266,26 @@ func (c *Client) WriteDzLatencySamples(
 		return solana.Signature{}, ErrNoPrivateKey
 	}
 
-	args := &WriteDzLatencySamplesArgs{
+	args := &WriteDeviceLatencySamplesArgs{
 		StartTimestampMicroseconds: startTimestampMicroseconds,
 		Samples:                    samples,
 	}
 
 	// Build the instruction
-	instruction, err := BuildWriteDzLatencySamplesInstruction(
+	instruction, err := BuildWriteDeviceLatencySamplesInstruction(
 		c.telemetryProgramID,
 		latencySamplesAccount,
 		c.signer.PublicKey(),
 		args,
 	)
 	if err != nil {
-		return solana.Signature{}, err
+		return solana.Signature{}, fmt.Errorf("failed to build write device latency samples instruction: %w", err)
 	}
 
 	// Get latest blockhash
 	blockhashResult, err := c.rpcClient.GetLatestBlockhash(ctx, rpc.CommitmentFinalized)
 	if err != nil {
-		return solana.Signature{}, err
+		return solana.Signature{}, fmt.Errorf("failed to get latest blockhash: %w", err)
 	}
 
 	// Build transaction
@@ -291,7 +295,7 @@ func (c *Client) WriteDzLatencySamples(
 		solana.TransactionPayer(c.signer.PublicKey()),
 	)
 	if err != nil {
-		return solana.Signature{}, err
+		return solana.Signature{}, fmt.Errorf("failed to build transaction: %w", err)
 	}
 
 	// Sign transaction
@@ -302,26 +306,26 @@ func (c *Client) WriteDzLatencySamples(
 		return nil
 	})
 	if err != nil {
-		return solana.Signature{}, err
+		return solana.Signature{}, fmt.Errorf("failed to sign transaction: %w", err)
 	}
 
 	// Send transaction
 	sig, err := c.rpcClient.SendTransaction(ctx, tx)
 	if err != nil {
-		return solana.Signature{}, err
+		return solana.Signature{}, fmt.Errorf("failed to send transaction: %w", err)
 	}
 
 	return sig, nil
 }
 
-// Returns the PDA for a DZ latency samples account
-func (c *Client) GetDzLatencySamplesPDA(
+// Returns the PDA for a device latency samples account
+func (c *Client) GetDeviceLatencySamplesPDA(
 	originDevicePK solana.PublicKey,
 	targetDevicePK solana.PublicKey,
 	linkPK solana.PublicKey,
 	epoch uint64,
 ) (solana.PublicKey, error) {
-	pda, _, err := DeriveDzLatencySamplesPDA(
+	pda, _, err := DeriveDeviceLatencySamplesPDA(
 		c.telemetryProgramID,
 		originDevicePK,
 		targetDevicePK,

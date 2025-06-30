@@ -12,24 +12,24 @@ const (
 
 // Instruction discriminators for telemetry program
 const (
-	// Instruction index for initializing DZ latency samples
-	INITIALIZE_DZ_LATENCY_SAMPLES_INSTRUCTION_INDEX = 0
-	// Instruction index for writing DZ latency samples
-	WRITE_DZ_LATENCY_SAMPLES_INSTRUCTION_INDEX = 1
+	// Instruction index for initializing device latency samples
+	INITIALIZE_DEVICE_LATENCY_SAMPLES_INSTRUCTION_INDEX = 0
+	// Instruction index for writing device latency samples
+	WRITE_DEVICE_LATENCY_SAMPLES_INSTRUCTION_INDEX = 1
 )
 
 // PDA seeds for telemetry program
 const (
 	// Pefix for all telemetry PDAs
 	SEED_PREFIX = "telemetry"
-	// Seed for DZ latency samples PDAs
-	SEED_DZ_LATENCY_SAMPLES = "dz_latency"
+	// Seed for device latency samples PDAs
+	SEED_DEVICE_LATENCY_SAMPLES = "dzlatency"
 )
 
 // Constants for telemetry data
 const (
 	// Maximum number of samples that can be written in one transaction
 	MAX_SAMPLES = 1000
-	// Maximum size of a DZ latency samples account
-	DZ_LATENCY_SAMPLES_MAX_SIZE = 10240
+	// Maximum size of a device latency samples account
+	DEVICE_LATENCY_SAMPLES_MAX_SIZE = 10240
 )

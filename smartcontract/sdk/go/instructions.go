@@ -9,14 +9,14 @@ import (
 type TelemetryInstructionType uint8
 
 const (
-	// Represents the initialize DZ latency samples instruction
-	InitializeDzLatencySamplesInstruction TelemetryInstructionType = 0
-	// Represents the write DZ latency samples instruction
-	WriteDzLatencySamplesInstruction TelemetryInstructionType = 1
+	// Represents the initialize device latency samples instruction
+	InitializeDeviceLatencySamplesInstruction TelemetryInstructionType = 0
+	// Represents the write device latency samples instruction
+	WriteDeviceLatencySamplesInstruction TelemetryInstructionType = 1
 )
 
-// Represents the arguments for initializing DZ latency samples
-type InitializeDzLatencySamplesArgs struct {
+// Represents the arguments for initializing device latency samples
+type InitializeDeviceLatencySamplesArgs struct {
 	OriginDevicePK               solana.PublicKey
 	TargetDevicePK               solana.PublicKey
 	LinkPK                       solana.PublicKey
@@ -24,14 +24,14 @@ type InitializeDzLatencySamplesArgs struct {
 	SamplingIntervalMicroseconds uint64
 }
 
-// Represents the arguments for writing DZ latency samples
-type WriteDzLatencySamplesArgs struct {
+// Represents the arguments for writing device latency samples
+type WriteDeviceLatencySamplesArgs struct {
 	StartTimestampMicroseconds uint64
 	Samples                    []uint32
 }
 
 // Serializes the initialize instruction
-func SerializeInitializeDzLatencySamples(args *InitializeDzLatencySamplesArgs) ([]byte, error) {
+func SerializeInitializeDeviceLatencySamples(args *InitializeDeviceLatencySamplesArgs) ([]byte, error) {
 	// Create a struct that matches the Rust side exactly
 	type instructionData struct {
 		Discriminator                uint8
@@ -43,7 +43,7 @@ func SerializeInitializeDzLatencySamples(args *InitializeDzLatencySamplesArgs) (
 	}
 
 	data := instructionData{
-		Discriminator:                uint8(InitializeDzLatencySamplesInstruction),
+		Discriminator:                uint8(InitializeDeviceLatencySamplesInstruction),
 		OriginDevicePK:               args.OriginDevicePK,
 		TargetDevicePK:               args.TargetDevicePK,
 		LinkPK:                       args.LinkPK,
@@ -55,7 +55,7 @@ func SerializeInitializeDzLatencySamples(args *InitializeDzLatencySamplesArgs) (
 }
 
 // Serializes the write instruction
-func SerializeWriteDzLatencySamples(args *WriteDzLatencySamplesArgs) ([]byte, error) {
+func SerializeWriteDeviceLatencySamples(args *WriteDeviceLatencySamplesArgs) ([]byte, error) {
 	// Create a struct that matches the expected format
 	type instructionData struct {
 		Discriminator              uint8
@@ -64,7 +64,7 @@ func SerializeWriteDzLatencySamples(args *WriteDzLatencySamplesArgs) ([]byte, er
 	}
 
 	data := instructionData{
-		Discriminator:              uint8(WriteDzLatencySamplesInstruction),
+		Discriminator:              uint8(WriteDeviceLatencySamplesInstruction),
 		StartTimestampMicroseconds: args.StartTimestampMicroseconds,
 		Samples:                    args.Samples,
 	}

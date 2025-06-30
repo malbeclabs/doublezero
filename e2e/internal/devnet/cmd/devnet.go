@@ -63,12 +63,20 @@ func NewLocalDevnet(log *slog.Logger, deployID string) (*LocalDevnet, error) {
 		return nil, fmt.Errorf("failed to create deploy directory: %w", err)
 	}
 
+	// Use the hardcoded serviceability program keypair for this test, since the telemetry program
+	// is built with it as an expectation, and the initialize instruction will fail if the owner
+	// of the devices/links is not the matching serviceability program ID.
+	serviceabilityProgramKeypairPath := filepath.Join(workspaceDir, "e2e", "data", "serviceability-program-keypair.json")
+
 	dn, err := devnet.New(devnet.DevnetSpec{
 		DeployID:  deployID,
 		DeployDir: deployDir,
 
 		CYOANetwork: devnet.CYOANetworkSpec{
 			CIDRPrefix: subnetCIDRPrefix,
+		},
+		Manager: devnet.ManagerSpec{
+			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
 		},
 	}, log, dockerClient, subnetAllocator)
 	if err != nil {

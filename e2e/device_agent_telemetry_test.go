@@ -182,4 +182,10 @@ func TestE2E_DeviceAgentTelemetry(t *testing.T) {
 			return true
 		}, 10*time.Second, 1*time.Second)
 	}
+
+	// Check that the telemetry program is deployed.
+	log.Info("==> Checking that telemetry program is deployed")
+	isDeployed, err := dn.IsTelemetryProgramDeployed(context.Background())
+	require.NoError(t, err)
+	require.True(t, isDeployed)
 }

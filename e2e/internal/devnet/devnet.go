@@ -192,6 +192,23 @@ func New(spec DevnetSpec, log *slog.Logger, dockerClient *client.Client, subnetA
 		}
 	}
 
+	// If the telemetry program keypair path is not provided, generate a new keypair or use an
+	// existing one in the deploy directory if it exists.
+	if spec.Manager.TelemetryProgramKeypairPath == "" {
+		telemetryProgramKeypairPath := filepath.Join(spec.DeployDir, "telemetry-program-keypair.json")
+		generated, err := generateKeypairIfNotExists(telemetryProgramKeypairPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate telemetry program keypair: %w", err)
+		}
+		spec.Manager.TelemetryProgramKeypairPath = telemetryProgramKeypairPath
+		if generated {
+			log.Info("--> Generated telemetry program keypair", "path", telemetryProgramKeypairPath)
+		} else {
+			log.Info("--> Using existing telemetry program keypair", "path", telemetryProgramKeypairPath)
+		}
+
+	}
+
 	// Validate the spec.
 	if err := spec.Validate(); err != nil {
 		return nil, fmt.Errorf("failed to validate spec: %w", err)
@@ -308,6 +325,11 @@ func (d *Devnet) Start(ctx context.Context, buildConfig *BuildConfig) error {
 	// Initialize the smart contract.
 	if _, err := d.InitSmartContractIfNotInitialized(ctx); err != nil {
 		return fmt.Errorf("failed to initialize smart contract: %w", err)
+	}
+
+	// Deploy the telemetry program if it's not already deployed.
+	if _, err := d.DeployTelemetryProgramIfNotDeployed(ctx); err != nil {
+		return fmt.Errorf("failed to deploy telemetry program: %w", err)
 	}
 
 	// Start the controller if it's not already running.

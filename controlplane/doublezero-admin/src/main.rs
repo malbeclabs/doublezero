@@ -1,4 +1,5 @@
-use clap::Parser;
+use clap::{CommandFactory, Parser};
+use clap_complete::generate;
 use cli::{
     command::Command,
     config::ConfigCommands,
@@ -54,6 +55,7 @@ async fn main() -> eyre::Result<()> {
     let res = match app.command {
         Command::Address(args) => args.execute(&client, &mut handle),
         Command::Balance(args) => args.execute(&client, &mut handle),
+
         Command::Init(args) => args.execute(&client, &mut handle),
         Command::Config(command) => match command.command {
             ConfigCommands::Get(args) => args.execute(&client, &mut handle),
@@ -83,11 +85,26 @@ async fn main() -> eyre::Result<()> {
             ExchangeCommands::Get(args) => args.execute(&client, &mut handle),
             ExchangeCommands::Delete(args) => args.execute(&client, &mut handle),
         },
+        Command::Contributor(command) => match command.command {
+            cli::contributor::ContributorCommands::Create(args) => {
+                args.execute(&client, &mut handle)
+            }
+            cli::contributor::ContributorCommands::Update(args) => {
+                args.execute(&client, &mut handle)
+            }
+            cli::contributor::ContributorCommands::List(args) => args.execute(&client, &mut handle),
+            cli::contributor::ContributorCommands::Get(args) => args.execute(&client, &mut handle),
+            cli::contributor::ContributorCommands::Delete(args) => {
+                args.execute(&client, &mut handle)
+            }
+        },
         Command::Device(command) => match command.command {
             DeviceCommands::Create(args) => args.execute(&client, &mut handle),
             DeviceCommands::Update(args) => args.execute(&client, &mut handle),
             DeviceCommands::List(args) => args.execute(&client, &mut handle),
             DeviceCommands::Get(args) => args.execute(&client, &mut handle),
+            DeviceCommands::Suspend(args) => args.execute(&client, &mut handle),
+            DeviceCommands::Resume(args) => args.execute(&client, &mut handle),
             DeviceCommands::Delete(args) => args.execute(&client, &mut handle),
             DeviceCommands::Allowlist(command) => match command.command {
                 DeviceAllowlistCommands::List(args) => args.execute(&client, &mut handle),
@@ -104,6 +121,8 @@ async fn main() -> eyre::Result<()> {
         },
         Command::User(command) => match command.command {
             UserCommands::Create(args) => args.execute(&client, &mut handle),
+            UserCommands::CreateSubscribe(args) => args.execute(&client, &mut handle),
+            UserCommands::Subscribe(args) => args.execute(&client, &mut handle),
             UserCommands::Update(args) => args.execute(&client, &mut handle),
             UserCommands::List(args) => args.execute(&client, &mut handle),
             UserCommands::Get(args) => args.execute(&client, &mut handle),
@@ -115,9 +134,64 @@ async fn main() -> eyre::Result<()> {
             },
             UserCommands::RequestBan(args) => args.execute(&client, &mut handle),
         },
+        Command::Multicast(args) => match args.command {
+            cli::multicast::MulticastCommands::Group(args) => match args.command {
+                cli::multicastgroup::MulticastGroupCommands::Allowlist(args) => {
+                    match args.command {
+                        cli::multicastgroup::MulticastGroupAllowlistCommands::Publisher(args) => {
+                            match args.command {
+                                cli::multicastgroup::MulticastGroupPubAllowlistCommands::List(
+                                    args,
+                                ) => args.execute(&client, &mut handle),
+                                cli::multicastgroup::MulticastGroupPubAllowlistCommands::Add(
+                                    args,
+                                ) => args.execute(&client, &mut handle),
+                                cli::multicastgroup::MulticastGroupPubAllowlistCommands::Remove(
+                                    args,
+                                ) => args.execute(&client, &mut handle),
+                            }
+                        }
+                        cli::multicastgroup::MulticastGroupAllowlistCommands::Subscriber(args) => {
+                            match args.command {
+                                cli::multicastgroup::MulticastGroupSubAllowlistCommands::List(
+                                    args,
+                                ) => args.execute(&client, &mut handle),
+                                cli::multicastgroup::MulticastGroupSubAllowlistCommands::Add(
+                                    args,
+                                ) => args.execute(&client, &mut handle),
+                                cli::multicastgroup::MulticastGroupSubAllowlistCommands::Remove(
+                                    args,
+                                ) => args.execute(&client, &mut handle),
+                            }
+                        }
+                    }
+                }
+                cli::multicastgroup::MulticastGroupCommands::Create(args) => {
+                    args.execute(&client, &mut handle)
+                }
+                cli::multicastgroup::MulticastGroupCommands::Update(args) => {
+                    args.execute(&client, &mut handle)
+                }
+                cli::multicastgroup::MulticastGroupCommands::List(args) => {
+                    args.execute(&client, &mut handle)
+                }
+                cli::multicastgroup::MulticastGroupCommands::Get(args) => {
+                    args.execute(&client, &mut handle)
+                }
+                cli::multicastgroup::MulticastGroupCommands::Delete(args) => {
+                    args.execute(&client, &mut handle)
+                }
+            },
+        },
+
         Command::Export(args) => args.execute(&client, &mut handle),
         Command::Keygen(args) => args.execute(&client, &mut handle),
         Command::Log(args) => args.execute(&dzclient, &mut handle),
+        Command::Completion(args) => {
+            let mut cmd = App::command();
+            generate(args.shell, &mut cmd, "doublezero", &mut std::io::stdout());
+            Ok(())
+        }
     };
 
     match res {

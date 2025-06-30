@@ -5,10 +5,11 @@ mod device_test {
         instructions::*,
         pda::*,
         processors::{
+            contributor::create::ContributorCreateArgs,
             device::{closeaccount::*, create::*, delete::*, resume::*, suspend::*, update::*},
             *,
         },
-        state::{accounttype::AccountType, device::*},
+        state::{accounttype::AccountType, contributor::ContributorStatus, device::*},
         tests::test::*,
     };
     use device::activate::DeviceActivateArgs;
@@ -29,16 +30,16 @@ mod device_test {
 
         /***********************************************************************************************************************************/
         println!("🟢  Start test_device");
-
         let (program_config_pubkey, _) = get_program_config_pda(&program_id);
         let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
+        /***********************************************************************************************************************************/
         println!("🟢 1. Global Initialization...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::InitGlobalState,
+            DoubleZeroInstruction::InitGlobalState(),
             vec![
                 AccountMeta::new(program_config_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
@@ -47,8 +48,9 @@ mod device_test {
         )
         .await;
 
-        let (config_pubkey, _) = get_globalconfig_pda(&program_id);
+        /***********************************************************************************************************************************/
         println!("🟢 2. Set GlobalConfig...");
+        let (config_pubkey, _) = get_globalconfig_pda(&program_id);
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
@@ -100,7 +102,6 @@ mod device_test {
 
         /***********************************************************************************************************************************/
         println!("🟢 4. Create Exchange...");
-
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 1);
 
@@ -127,15 +128,50 @@ mod device_test {
             &payer,
         )
         .await;
+        /***********************************************************************************************************************************/
+        println!("🟢 5. Create Contributor...");
+        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+        let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+        assert_eq!(globalstate_account.account_index, 2);
 
+        let (contributor_pubkey, bump_seed) =
+            get_contributor_pda(&program_id, globalstate_account.account_index + 1);
+
+        execute_transaction(
+            &mut banks_client,
+            recent_blockhash,
+            program_id,
+            DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
+                index: globalstate_account.account_index + 1,
+                bump_seed,
+                code: "cont".to_string(),
+                ata_owner_pk: Pubkey::default(),
+            }),
+            vec![
+                AccountMeta::new(contributor_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
+            &payer,
+        )
+        .await;
+
+        let contributor = get_account_data(&mut banks_client, contributor_pubkey)
+            .await
+            .expect("Unable to get Account")
+            .get_contributor()
+            .unwrap();
+        assert_eq!(contributor.account_type, AccountType::Contributor);
+        assert_eq!(contributor.code, "cont".to_string());
+        assert_eq!(contributor.status, ContributorStatus::Activated);
+
+        println!("✅ Contributor initialized successfully",);
         /***********************************************************************************************************************************/
         // Device _la
-        println!("🟢 5. Create Device...");
-
+        println!("🟢 6. Create Device...");
         let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-        assert_eq!(globalstate_account.account_index, 2);
+        assert_eq!(globalstate_account.account_index, 3);
 
         let (device_pubkey, bump_seed) =
             get_device_pda(&program_id, globalstate_account.account_index + 1);
@@ -149,6 +185,7 @@ mod device_test {
                 bump_seed,
                 code: "la".to_string(),
                 device_type: DeviceType::Switch,
+                contributor_pk: contributor_pubkey,
                 location_pk: location_pubkey,
                 exchange_pk: exchange_pubkey,
                 public_ip: [10, 0, 0, 1].into(),
@@ -157,6 +194,7 @@ mod device_test {
             }),
             vec![
                 AccountMeta::new(device_pubkey, false),
+                AccountMeta::new(contributor_pubkey, false),
                 AccountMeta::new(location_pubkey, false),
                 AccountMeta::new(exchange_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
@@ -176,7 +214,7 @@ mod device_test {
 
         println!("✅ Device initialized successfully",);
         /*****************************************************************************************************************************************************/
-        println!("🟢 6. Activate Device...");
+        println!("🟢 7. Activate Device...");
 
         execute_transaction(
             &mut banks_client,
@@ -202,7 +240,7 @@ mod device_test {
 
         println!("✅ Link updated");
         /*****************************************************************************************************************************************************/
-        println!("🟢 7. Suspend Device...");
+        println!("🟢 8. Suspend Device...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
@@ -226,7 +264,7 @@ mod device_test {
 
         println!("✅ Device suspended");
         /*****************************************************************************************************************************************************/
-        println!("🟢 8. Resume Device...");
+        println!("🟢 9. Resume Device...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
@@ -250,7 +288,7 @@ mod device_test {
 
         println!("✅ Device resumed");
         /*****************************************************************************************************************************************************/
-        println!("🟢 9. Update Device...");
+        println!("🟢 10. Update Device...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
@@ -258,6 +296,7 @@ mod device_test {
             DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
                 code: Some("la2".to_string()),
                 device_type: Some(DeviceType::Switch),
+                contributor_pk: None,
                 public_ip: Some([10, 2, 2, 1].into()),
                 dz_prefixes: Some("10.1.0.0/23".parse().unwrap()),
                 metrics_publisher_pk: Some(Pubkey::default()),
@@ -282,7 +321,7 @@ mod device_test {
 
         println!("✅ Device updated");
         /*****************************************************************************************************************************************************/
-        println!("🟢 10. Deleting Device...");
+        println!("🟢 11. Deleting Device...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
@@ -307,7 +346,7 @@ mod device_test {
         assert_eq!(device_la.status, DeviceStatus::Deleting);
 
         /*****************************************************************************************************************************************************/
-        println!("🟢 11. CloseAccount Device...");
+        println!("🟢 12. CloseAccount Device...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,

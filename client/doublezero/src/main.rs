@@ -92,6 +92,19 @@ async fn main() -> eyre::Result<()> {
             ExchangeCommands::Get(args) => args.execute(&client, &mut handle),
             ExchangeCommands::Delete(args) => args.execute(&client, &mut handle),
         },
+        Command::Contributor(command) => match command.command {
+            cli::contributor::ContributorCommands::Create(args) => {
+                args.execute(&client, &mut handle)
+            }
+            cli::contributor::ContributorCommands::Update(args) => {
+                args.execute(&client, &mut handle)
+            }
+            cli::contributor::ContributorCommands::List(args) => args.execute(&client, &mut handle),
+            cli::contributor::ContributorCommands::Get(args) => args.execute(&client, &mut handle),
+            cli::contributor::ContributorCommands::Delete(args) => {
+                args.execute(&client, &mut handle)
+            }
+        },
         Command::Device(command) => match command.command {
             DeviceCommands::Create(args) => args.execute(&client, &mut handle),
             DeviceCommands::Update(args) => args.execute(&client, &mut handle),

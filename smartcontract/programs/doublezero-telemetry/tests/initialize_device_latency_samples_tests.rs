@@ -323,6 +323,7 @@ async fn test_initialize_device_latency_samples_fail_origin_device_wrong_owner()
         account_type: AccountType::Device,
         code: "invalid".to_string(),
         owner: agent.pubkey(),
+        contributor_pk: Pubkey::new_unique(),
         exchange_pk: Pubkey::new_unique(),
         device_type: DeviceType::Switch,
         public_ip: Ipv4Addr::UNSPECIFIED,
@@ -391,6 +392,7 @@ async fn test_initialize_device_latency_samples_fail_target_device_wrong_owner()
         owner: wrong_owner,
         index: 0,
         bump_seed: 0,
+        contributor_pk: Pubkey::new_unique(),
         exchange_pk: Pubkey::new_unique(),
         device_type: DeviceType::Switch,
         public_ip: Ipv4Addr::UNSPECIFIED,
@@ -528,6 +530,12 @@ async fn test_initialize_device_latency_samples_fail_origin_device_not_activated
         .await
         .unwrap();
 
+    let contributor_pk = ledger
+        .serviceability
+        .create_contributor("CONTRIB".to_string())
+        .await
+        .unwrap();
+
     let agent = Keypair::new();
     ledger
         .fund_account(&agent.pubkey(), 10_000_000_000)
@@ -539,6 +547,7 @@ async fn test_initialize_device_latency_samples_fail_origin_device_not_activated
         .serviceability
         .create_device(DeviceCreateArgs {
             code: "OriginDevice".to_string(),
+            contributor_pk,
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
@@ -554,6 +563,7 @@ async fn test_initialize_device_latency_samples_fail_origin_device_not_activated
         .serviceability
         .create_and_activate_device(DeviceCreateArgs {
             code: "TargetDevice".to_string(),
+            contributor_pk,
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
@@ -635,11 +645,18 @@ async fn test_initialize_device_latency_samples_fail_target_device_not_activated
         .await
         .unwrap();
 
+    let contributor_pk = ledger
+        .serviceability
+        .create_contributor("CONTRIB".to_string())
+        .await
+        .unwrap();
+
     // Origin device: activated
     let origin_device_pk = ledger
         .serviceability
         .create_and_activate_device(DeviceCreateArgs {
             code: "OriginDevice".to_string(),
+            contributor_pk,
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
@@ -655,6 +672,7 @@ async fn test_initialize_device_latency_samples_fail_target_device_not_activated
         .serviceability
         .create_device(DeviceCreateArgs {
             code: "TargetDevice".to_string(),
+            contributor_pk,
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
@@ -736,10 +754,17 @@ async fn test_initialize_device_latency_samples_fail_link_not_activated() {
         .await
         .unwrap();
 
+    let contributor_pk = ledger
+        .serviceability
+        .create_contributor("CONTRIB".to_string())
+        .await
+        .unwrap();
+
     let origin_device_pk = ledger
         .serviceability
         .create_and_activate_device(DeviceCreateArgs {
             code: "OriginDevice".to_string(),
+            contributor_pk,
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
@@ -754,6 +779,7 @@ async fn test_initialize_device_latency_samples_fail_link_not_activated() {
         .serviceability
         .create_and_activate_device(DeviceCreateArgs {
             code: "TargetDevice".to_string(),
+            contributor_pk,
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
@@ -831,11 +857,17 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
         .await
         .unwrap();
 
+    let contributor_pk = ledger
+        .serviceability
+        .create_contributor("CONTRIB".to_string())
+        .await
+        .unwrap();
     // Origin device and target device: activated
     let origin_device_pk = ledger
         .serviceability
         .create_and_activate_device(DeviceCreateArgs {
             code: "OriginDevice".to_string(),
+            contributor_pk,
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
@@ -850,6 +882,7 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
         .serviceability
         .create_and_activate_device(DeviceCreateArgs {
             code: "TargetDevice".to_string(),
+            contributor_pk,
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
@@ -865,6 +898,7 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
         .serviceability
         .create_and_activate_device(DeviceCreateArgs {
             code: "DeviceX".to_string(),
+            contributor_pk,
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
@@ -879,6 +913,7 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
         .serviceability
         .create_and_activate_device(DeviceCreateArgs {
             code: "DeviceY".to_string(),
+            contributor_pk,
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
@@ -960,10 +995,17 @@ async fn test_initialize_device_latency_samples_succeeds_with_reversed_link_side
         .await
         .unwrap();
 
+    let contributor_pk = ledger
+        .serviceability
+        .create_contributor("CONTRIB".to_string())
+        .await
+        .unwrap();
+
     let origin_device_pk = ledger
         .serviceability
         .create_and_activate_device(DeviceCreateArgs {
             code: "OriginDevice".into(),
+            contributor_pk,
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
@@ -978,6 +1020,7 @@ async fn test_initialize_device_latency_samples_succeeds_with_reversed_link_side
         .serviceability
         .create_and_activate_device(DeviceCreateArgs {
             code: "TargetDevice".into(),
+            contributor_pk,
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
@@ -1195,11 +1238,18 @@ async fn test_initialize_device_latency_samples_fail_agent_not_owner_of_origin_d
         .await
         .unwrap();
 
+    let contributor_pk = ledger
+        .serviceability
+        .create_contributor("CONTRIB".to_string())
+        .await
+        .unwrap();
+
     // Origin device: activated, owned by owner_agent
     let origin_device_pk = ledger
         .serviceability
         .create_and_activate_device(DeviceCreateArgs {
             code: "A".to_string(),
+            contributor_pk,
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
@@ -1215,6 +1265,7 @@ async fn test_initialize_device_latency_samples_fail_agent_not_owner_of_origin_d
         .serviceability
         .create_and_activate_device(DeviceCreateArgs {
             code: "Z".to_string(),
+            contributor_pk,
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,

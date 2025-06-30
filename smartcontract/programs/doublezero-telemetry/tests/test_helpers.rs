@@ -6,10 +6,11 @@ use std::{
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     pda::{
-        get_device_pda, get_exchange_pda, get_globalconfig_pda, get_globalstate_pda, get_link_pda,
-        get_location_pda, get_program_config_pda,
+        get_contributor_pda, get_device_pda, get_exchange_pda, get_globalconfig_pda,
+        get_globalstate_pda, get_link_pda, get_location_pda, get_program_config_pda,
     },
     processors::{
+        contributor::create::ContributorCreateArgs,
         device::{
             activate::DeviceActivateArgs, create::DeviceCreateArgs, suspend::DeviceSuspendArgs,
         },
@@ -114,6 +115,7 @@ impl DeviceCreateArgsExt for DeviceCreateArgs {
             index: 0,
             bump_seed: 0,
             code: "".to_string(),
+            contributor_pk: Pubkey::default(),
             location_pk: Pubkey::default(),
             exchange_pk: Pubkey::default(),
             device_type: DeviceType::Switch,
@@ -310,6 +312,11 @@ impl LedgerHelper {
         self.fund_account(&origin_device_agent_pk, 10_000_000_000)
             .await?;
 
+        let contributor_pk = self
+            .serviceability
+            .create_contributor("CONTRIB".to_string())
+            .await
+            .unwrap();
         // Create and activate origin device.
         let origin_device_pk = self
             .serviceability
@@ -317,6 +324,7 @@ impl LedgerHelper {
                 index: 0,     // set by the helper
                 bump_seed: 0, // set by the helper
                 code: "origin_device".to_string(),
+                contributor_pk,
                 location_pk,
                 exchange_pk,
                 device_type: DeviceType::Switch,
@@ -334,6 +342,7 @@ impl LedgerHelper {
                 location_pk,
                 exchange_pk,
                 device_type: DeviceType::Switch,
+                contributor_pk,
                 public_ip: [5, 6, 7, 8].into(),
                 metrics_publisher_pk: Pubkey::new_unique(),
                 ..DeviceCreateArgs::default()
@@ -574,7 +583,7 @@ impl ServiceabilityProgramHelper {
                 &payer,
                 recent_blockhash,
                 program_id,
-                DoubleZeroInstruction::InitGlobalState,
+                DoubleZeroInstruction::InitGlobalState(),
                 vec![
                     AccountMeta::new(program_config_pubkey, false),
                     AccountMeta::new(global_state_pubkey, false),
@@ -695,6 +704,27 @@ impl ServiceabilityProgramHelper {
         Ok(exchange_pubkey)
     }
 
+    pub async fn create_contributor(&mut self, code: String) -> Result<Pubkey, BanksClientError> {
+        let index = self.get_next_global_state_index().await.unwrap();
+        let (contributor_pk, bump_seed) = get_contributor_pda(&self.program_id, index);
+
+        self.execute_transaction(
+            DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
+                index,
+                bump_seed,
+                code,
+                ata_owner_pk: Pubkey::default(), // Default ATA owner
+            }),
+            vec![
+                AccountMeta::new(contributor_pk, false),
+                AccountMeta::new(self.global_state_pubkey, false),
+            ],
+        )
+        .await?;
+
+        Ok(contributor_pk)
+    }
+
     pub async fn create_device(
         &mut self,
         device: DeviceCreateArgs,
@@ -710,6 +740,7 @@ impl ServiceabilityProgramHelper {
                 index: device.index,
                 bump_seed,
                 code: device.code,
+                contributor_pk: device.contributor_pk,
                 location_pk: device.location_pk,
                 exchange_pk: device.exchange_pk,
                 device_type: device.device_type,
@@ -719,6 +750,7 @@ impl ServiceabilityProgramHelper {
             }),
             vec![
                 AccountMeta::new(device_pk, false),
+                AccountMeta::new_readonly(device.contributor_pk, false),
                 AccountMeta::new_readonly(device.location_pk, false),
                 AccountMeta::new_readonly(device.exchange_pk, false),
                 AccountMeta::new(self.global_state_pubkey, false),

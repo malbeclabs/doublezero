@@ -82,16 +82,20 @@ echo "Creating exchanges"
 echo "Update exchanges"
 ./target/doublezero exchange update --pubkey EpE1QxRzUXFLSAPKcsGrHrdareBZ7hNsyJtTPw1iL7q8 --name "Los Angeles"
 
+### Initialice controbutor
+echo "Creating contributor"
+./target/doublezero contributor create --code co01 --ata-owner 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
+
 ### Initialice devices
 echo "Creating devices"
-./target/doublezero device create --code la2-dz01 --location lax --exchange xlax --public-ip "207.45.216.134" --dz-prefixes "100.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB
-./target/doublezero device create --code ny5-dz01 --location ewr --exchange xewr --public-ip "64.86.249.80" --dz-prefixes "101.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB
-./target/doublezero device create --code ld4-dz01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "102.0.0.0/29,103.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB
-./target/doublezero device create --code frk-dz01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "104.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB
-./target/doublezero device create --code sg1-dz01 --location sin --exchange xsin --public-ip "180.87.102.104" --dz-prefixes "105.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB
-./target/doublezero device create --code ty2-dz01 --location tyo --exchange xtyo --public-ip "180.87.154.112" --dz-prefixes "106.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB
-./target/doublezero device create --code pit-dzd01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "107.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB
-./target/doublezero device create --code ams-dz001 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "108.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB
+./target/doublezero device create --code la2-dz01 --contributor test --location lax --exchange xlax --public-ip "207.45.216.134" --dz-prefixes "100.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB
+./target/doublezero device create --code ny5-dz01 --contributor test --location ewr --exchange xewr --public-ip "64.86.249.80" --dz-prefixes "101.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB
+./target/doublezero device create --code ld4-dz01 --contributor test --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "102.0.0.0/29,103.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB
+./target/doublezero device create --code frk-dz01 --contributor test --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "104.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB
+./target/doublezero device create --code sg1-dz01 --contributor test --location sin --exchange xsin --public-ip "180.87.102.104" --dz-prefixes "105.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB
+./target/doublezero device create --code ty2-dz01 --contributor test --location tyo --exchange xtyo --public-ip "180.87.154.112" --dz-prefixes "106.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB
+./target/doublezero device create --code pit-dzd01 --contributor test --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "107.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB
+./target/doublezero device create --code ams-dz001 --contributor test --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "108.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB
 
 ### Initialice links
 echo "Creating links"
@@ -116,6 +120,9 @@ echo "Creating multicast groups"
 
 echo "Add me to multicast group allowlist"
 ./target/doublezero multicast group allowlist subscriber add --code mg01 --pubkey me
+./target/doublezero multicast group allowlist subscriber add --code mg02 --pubkey me
+./target/doublezero multicast group allowlist subscriber add --code mg03 --pubkey me
+./target/doublezero multicast group allowlist publisher add --code mg01 --pubkey me
 ./target/doublezero multicast group allowlist publisher add --code mg02 --pubkey me
 ./target/doublezero multicast group allowlist publisher add --code mg03 --pubkey me
 sleep 2
@@ -124,8 +131,9 @@ echo "Creating multicast user & subscribe"
 ./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 100.0.0.5 --subscriber mg01
 ./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 100.0.0.6 --subscriber mg01
 sleep 2
-./target/doublezero user subscribe --user 4vAMGYgvk2rhdNEo7vBcuz2KuSJJGZrqf4vxnKMesnyq --group mg02 --publisher
-./target/doublezero user subscribe --user 9gYCNwLTNHveZiNGA62Z1PMRiYFYbmUz3VTx9FgVuSEH --group mg02 --subscriber
+./target/doublezero user subscribe --user 9gYCNwLTNHveZiNGA62Z1PMRiYFYbmUz3VTx9FgVuSEH --group mg01 --publisher
+./target/doublezero user subscribe --user 9gYCNwLTNHveZiNGA62Z1PMRiYFYbmUz3VTx9FgVuSEH --group mg02 --publisher
+./target/doublezero user subscribe --user 83Yz9TX1uN5VUnd2rBRueBBJHy61RxFEoj4nSKL3DZuh --group mg01 --subscriber
 
 echo "########################################################################"
 

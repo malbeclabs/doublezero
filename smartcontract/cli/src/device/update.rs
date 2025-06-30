@@ -30,6 +30,9 @@ pub struct UpdateDeviceCliCommand {
     /// Metrics publisher Pubkey (optional)
     #[arg(long, value_parser = validate_pubkey)]
     pub metrics_publisher: Option<String>,
+    /// Contributor Pubkey (optional)
+    #[arg(long, value_parser = validate_pubkey)]
+    pub contributor: Option<String>,
 }
 
 impl UpdateDeviceCliCommand {
@@ -72,6 +75,19 @@ impl UpdateDeviceCliCommand {
             None
         };
 
+        let contributor = if let Some(contributor) = &self.contributor {
+            if contributor == "me" {
+                Some(client.get_payer())
+            } else {
+                match Pubkey::from_str(contributor) {
+                    Ok(pk) => Some(pk),
+                    Err(_) => return Err(eyre::eyre!("Invalid contributor Pubkey")),
+                }
+            }
+        } else {
+            None
+        };
+
         let (pubkey, _) = client.get_device(GetDeviceCommand {
             pubkey_or_code: self.pubkey,
         })?;
@@ -82,6 +98,7 @@ impl UpdateDeviceCliCommand {
             public_ip: self.public_ip,
             dz_prefixes: self.dz_prefixes,
             metrics_publisher,
+            contributor_pk: contributor,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -120,6 +137,7 @@ mod tests {
             100, 221, 20, 137, 4, 5,
         ]);
 
+        let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let location_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let exchange_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
         let device1 = Device {
@@ -127,6 +145,7 @@ mod tests {
             index: 1,
             bump_seed: 255,
             code: "test".to_string(),
+            contributor_pk,
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
@@ -141,6 +160,7 @@ mod tests {
             index: 2,
             bump_seed: 254,
             code: "test2".to_string(),
+            contributor_pk,
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
@@ -155,6 +175,7 @@ mod tests {
             index: 3,
             bump_seed: 253,
             code: "test3".to_string(),
+            contributor_pk,
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
@@ -196,6 +217,9 @@ mod tests {
                 metrics_publisher: Some(Pubkey::from_str_const(
                     "HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx",
                 )),
+                contributor_pk: Some(Pubkey::from_str_const(
+                    "HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx",
+                )),
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -208,6 +232,7 @@ mod tests {
             public_ip: Some([1, 2, 3, 4].into()),
             dz_prefixes: Some("1.2.3.4/32".parse().unwrap()),
             metrics_publisher: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
+            contributor: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok(), "{}", res.err().unwrap());
@@ -224,6 +249,7 @@ mod tests {
         let (pda_pubkey, _bump_seed) = get_device_pda(&client.get_program_id(), 1);
         let other_pubkey = Pubkey::new_unique();
 
+        let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let location_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let exchange_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
         let device1 = Device {
@@ -231,6 +257,7 @@ mod tests {
             index: 1,
             bump_seed: 255,
             code: "test".to_string(),
+            contributor_pk,
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
@@ -245,6 +272,7 @@ mod tests {
             index: 2,
             bump_seed: 254,
             code: "existing_code".to_string(),
+            contributor_pk,
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
@@ -273,6 +301,7 @@ mod tests {
             public_ip: None,
             dz_prefixes: None,
             metrics_publisher: None,
+            contributor: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_err());
@@ -289,6 +318,7 @@ mod tests {
         let (pda_pubkey, _bump_seed) = get_device_pda(&client.get_program_id(), 1);
         let other_pubkey = Pubkey::new_unique();
 
+        let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let location_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let exchange_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
         let device1 = Device {
@@ -296,6 +326,7 @@ mod tests {
             index: 1,
             bump_seed: 255,
             code: "test".to_string(),
+            contributor_pk,
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
@@ -310,6 +341,7 @@ mod tests {
             index: 2,
             bump_seed: 254,
             code: "test2".to_string(),
+            contributor_pk,
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
@@ -338,6 +370,7 @@ mod tests {
             public_ip: Some([10, 20, 30, 40].into()),
             dz_prefixes: None,
             metrics_publisher: None,
+            contributor: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_err());

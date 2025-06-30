@@ -29,15 +29,18 @@ cargo build
 ./target/debug/doublezero exchange create --code xpi --name "Pittsburgh" --lat 40.45119259881935 --lng -80.00498215509094
 ./target/debug/doublezero exchange create --code xam --name "Amsterdam" --lat 52.30085793004002 --lng 4.942241140085309
 
+### Contributors
+./target/doublezero contributor create --code co01 --ata-owner 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
+
 ### Devices
-./target/debug/doublezero device create --code la2-dz01 --location la --exchange xla --public-ip "207.45.216.136" --dz-prefix "207.45.216.136/29"
-./target/debug/doublezero device create --code ny5-dz01 --location ny --exchange xny --public-ip "64.86.249.80" --dz-prefix "64.86.249.80/29"
-./target/debug/doublezero device create --code ld4-dz01 --location ld --exchange xld --public-ip "195.219.120.72" --dz-prefix "195.219.120.72/29"
-./target/debug/doublezero device create --code frk-dz01 --location fr --exchange xfr --public-ip "195.219.220.88" --dz-prefix "195.219.220.88/29"
-./target/debug/doublezero device create --code sg1-dz01 --location sg --exchange xsg --public-ip "180.87.102.104" --dz-prefix "180.87.102.104/29"
-./target/debug/doublezero device create --code ty2-dz01 --location ty --exchange xty --public-ip "180.87.154.112" --dz-prefix "180.87.154.112/29"
-./target/debug/doublezero device create --code pit-dzd01 --location pi --exchange xpi --public-ip "204.16.241.243" --dz-prefix "204.16.243.243/32"
-./target/debug/doublezero device create --code ams-dz001 --location ams --exchange xam --public-ip "195.219.138.50" --dz-prefix "195.219.138.56/29"
+./target/debug/doublezero device create --code la2-dz01 --contributor co01 --location la --exchange xla --public-ip "207.45.216.136" --dz-prefix "207.45.216.136/29"
+./target/debug/doublezero device create --code ny5-dz01 --contributor co01 --location ny --exchange xny --public-ip "64.86.249.80" --dz-prefix "64.86.249.80/29"
+./target/debug/doublezero device create --code ld4-dz01 --contributor co01 --location ld --exchange xld --public-ip "195.219.120.72" --dz-prefix "195.219.120.72/29"
+./target/debug/doublezero device create --code frk-dz01 --contributor co01 --location fr --exchange xfr --public-ip "195.219.220.88" --dz-prefix "195.219.220.88/29"
+./target/debug/doublezero device create --code sg1-dz01 --contributor co01 --location sg --exchange xsg --public-ip "180.87.102.104" --dz-prefix "180.87.102.104/29"
+./target/debug/doublezero device create --code ty2-dz01 --contributor co01 --location ty --exchange xty --public-ip "180.87.154.112" --dz-prefix "180.87.154.112/29"
+./target/debug/doublezero device create --code pit-dzd01 --contributor co01 --location pi --exchange xpi --public-ip "204.16.241.243" --dz-prefix "204.16.243.243/32"
+./target/debug/doublezero device create --code ams-dz001 --contributor co01 --location ams --exchange xam --public-ip "195.219.138.50" --dz-prefix "195.219.138.56/29"
 
 
 ### Links

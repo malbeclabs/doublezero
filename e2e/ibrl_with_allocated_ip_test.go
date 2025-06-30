@@ -215,8 +215,14 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 		if !t.Run("ban_user", func(t *testing.T) {
 			t.Parallel()
 
+			// Find user with tunnel_net 169.254.0.6/31
+			output, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero user list | grep 169.254.0.6/31"})
+			require.NoError(t, err)
+			require.NotEmpty(t, strings.TrimSpace(string(output)), "no user found with tunnel_net 169.254.0.6/31")
+			userID := strings.TrimSpace(strings.Split(string(output), "|")[0])
+
 			// TODO: This is brittle, come up with a better solution.
-			_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero user request-ban --pubkey AA3fFZM1bJbNzCWhPydZrbQpswGkZx4PFhxd2bHaztyG"})
+			_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero user request-ban --pubkey " + userID})
 			require.NoError(t, err)
 		}) {
 			t.Fail()

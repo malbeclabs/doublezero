@@ -64,6 +64,7 @@ mod tests {
             100, 221, 20, 137, 4, 5,
         ]);
 
+        let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let location_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let location = Location {
             account_type: AccountType::Location,
@@ -97,6 +98,7 @@ mod tests {
             index: 1,
             bump_seed: 255,
             code: "test".to_string(),
+            contributor_pk,
             location_pk,
             exchange_pk,
             device_type: doublezero_sdk::DeviceType::Switch,

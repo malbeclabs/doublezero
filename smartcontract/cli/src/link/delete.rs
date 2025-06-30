@@ -61,6 +61,7 @@ mod tests {
             100, 221, 20, 137, 4, 5,
         ]);
 
+        let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let location1_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let exchange1_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkca");
         let device1_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb");
@@ -69,6 +70,7 @@ mod tests {
             index: 1,
             bump_seed: 255,
             code: "test".to_string(),
+            contributor_pk,
             location_pk: location1_pk,
             exchange_pk: exchange1_pk,
             device_type: DeviceType::Switch,
@@ -86,6 +88,7 @@ mod tests {
             index: 1,
             bump_seed: 255,
             code: "test".to_string(),
+            contributor_pk,
             location_pk: location2_pk,
             exchange_pk: exchange2_pk,
             device_type: DeviceType::Switch,

@@ -37,9 +37,7 @@ mod tests {
         processors::location::delete::LocationDeleteArgs,
     };
     use mockall::predicate;
-    use solana_sdk::{
-        instruction::AccountMeta, pubkey::Pubkey, signature::Signature, system_program,
-    };
+    use solana_sdk::{instruction::AccountMeta, signature::Signature, system_program};
 
     #[test]
     fn test_commands_location_delete_command() {

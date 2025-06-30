@@ -44,7 +44,7 @@ mod tests {
         let mut client = create_test_client();
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, bump_seed) = get_location_pda(&client.get_program_id(), 1);
+        let (pda_pubkey, _) = get_location_pda(&client.get_program_id(), 1);
         let payer = client.get_payer();
 
         client

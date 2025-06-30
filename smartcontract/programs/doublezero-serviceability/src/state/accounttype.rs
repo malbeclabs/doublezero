@@ -17,6 +17,15 @@ pub enum AccountType {
     User = 7,
     MulticastGroup = 8,
     ProgramConfig = 9,
+    Contributor = 10,
+}
+
+pub trait AccountTypeInfo {
+    fn index(&self) -> u128;
+    fn bump_seed(&self) -> u8;
+    fn size(&self) -> usize;
+    fn seed(&self) -> &[u8];
+    fn owner(&self) -> Pubkey;
 }
 
 impl From<u8> for AccountType {
@@ -31,6 +40,7 @@ impl From<u8> for AccountType {
             7 => AccountType::User,
             8 => AccountType::MulticastGroup,
             9 => AccountType::ProgramConfig,
+            10 => AccountType::Contributor,
             _ => AccountType::None,
         }
     }
@@ -49,14 +59,7 @@ impl fmt::Display for AccountType {
             AccountType::User => write!(f, "user"),
             AccountType::MulticastGroup => write!(f, "multicastgroup"),
             AccountType::ProgramConfig => write!(f, "programconfig"),
+            AccountType::Contributor => write!(f, "contributor"),
         }
     }
-}
-
-pub trait AccountTypeInfo {
-    fn index(&self) -> u128;
-    fn bump_seed(&self) -> u8;
-    fn size(&self) -> usize;
-    fn seed(&self) -> &[u8];
-    fn owner(&self) -> Pubkey;
 }

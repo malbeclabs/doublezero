@@ -110,6 +110,7 @@ impl DeviceCreateArgsExt for DeviceCreateArgs {
             index: 0,
             bump_seed: 0,
             code: "".to_string(),
+            contributor_pk: Pubkey::default(),
             location_pk: Pubkey::default(),
             exchange_pk: Pubkey::default(),
             device_type: DeviceType::Switch,
@@ -313,6 +314,7 @@ impl LedgerHelper {
                 index: 0,     // set by the helper
                 bump_seed: 0, // set by the helper
                 code: "origin_device".to_string(),
+                contributor_pk: Pubkey::default(),
                 location_pk,
                 exchange_pk,
                 device_type: DeviceType::Switch,
@@ -706,6 +708,7 @@ impl ServiceabilityProgramHelper {
                 index: device.index,
                 bump_seed,
                 code: device.code,
+                contributor_pk: device.contributor_pk,
                 location_pk: device.location_pk,
                 exchange_pk: device.exchange_pk,
                 device_type: device.device_type,

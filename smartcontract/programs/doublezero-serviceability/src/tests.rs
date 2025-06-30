@@ -5,6 +5,7 @@ pub mod test {
         instructions::*,
         pda::*,
         processors::{
+            contributor::create::ContributorCreateArgs,
             device::{activate::DeviceActivateArgs, create::*},
             exchange::create::*,
             globalconfig::set::SetGlobalConfigArgs,
@@ -12,7 +13,7 @@ pub mod test {
             location::create::*,
             user::{activate::*, create::*},
         },
-        state::accountdata::AccountData,
+        state::{accountdata::AccountData, contributor::ContributorStatus},
     };
     use std::any::type_name;
 
@@ -270,9 +271,46 @@ pub mod test {
         );
 
         /***********************************************************************************************************************************/
-
+        println!("🟢 5. Create Contributor...");
+        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 4);
+
+        let (contributor_pubkey, bump_seed) =
+            get_contributor_pda(&program_id, globalstate_account.account_index + 1);
+
+        execute_transaction(
+            &mut banks_client,
+            recent_blockhash,
+            program_id,
+            DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
+                index: globalstate_account.account_index + 1,
+                bump_seed,
+                code: "cont".to_string(),
+                ata_owner_pk: Pubkey::default(),
+            }),
+            vec![
+                AccountMeta::new(contributor_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
+            &payer,
+        )
+        .await;
+
+        let contributor = get_account_data(&mut banks_client, contributor_pubkey)
+            .await
+            .expect("Unable to get Account")
+            .get_contributor()
+            .unwrap();
+        assert_eq!(contributor.account_type, AccountType::Contributor);
+        assert_eq!(contributor.code, "cont".to_string());
+        assert_eq!(contributor.status, ContributorStatus::Activated);
+
+        println!("✅ Contributor initialized successfully",);
+        /***********************************************************************************************************************************/
+
+        let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+        assert_eq!(globalstate_account.account_index, 5);
 
         // Device _la
         let device_la_code = "la1".to_string();
@@ -282,6 +320,7 @@ pub mod test {
             index: globalstate_account.account_index + 1,
             bump_seed,
             code: device_la_code.clone(),
+            contributor_pk: contributor_pubkey,
             location_pk: location_la_pubkey,
             exchange_pk: exchange_la_pubkey,
             device_type: DeviceType::Switch,
@@ -321,7 +360,7 @@ pub mod test {
         println!("Testing Device NY initialization...");
         // Device _ny
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-        assert_eq!(globalstate_account.account_index, 5);
+        assert_eq!(globalstate_account.account_index, 6);
 
         let device_ny_code = "ny1".to_string();
         let (device_ny_pubkey, bump_seed) =
@@ -330,6 +369,7 @@ pub mod test {
             index: globalstate_account.account_index + 1,
             bump_seed,
             code: device_ny_code.clone(),
+            contributor_pk: contributor_pubkey,
             location_pk: location_ny_pubkey,
             exchange_pk: exchange_ny_pubkey,
             device_type: DeviceType::Switch,
@@ -417,7 +457,7 @@ pub mod test {
 
         // Device _la
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-        assert_eq!(globalstate_account.account_index, 6);
+        assert_eq!(globalstate_account.account_index, 7);
 
         let tunnel_la_ny_code = "la-ny1".to_string();
         let (tunnel_la_ny_pubkey, bump_seed) =
@@ -503,7 +543,7 @@ pub mod test {
         /***********************************************************************************************************************************/
 
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-        assert_eq!(globalstate_account.account_index, 7);
+        assert_eq!(globalstate_account.account_index, 8);
 
         // User 100.0.0.1
         let user_ip = [100, 0, 0, 1];

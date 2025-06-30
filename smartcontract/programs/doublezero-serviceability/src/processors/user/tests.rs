@@ -5,9 +5,11 @@ mod user_test {
         instructions::*,
         pda::*,
         processors::{
+            contributor::create::ContributorCreateArgs,
             user::{activate::*, create::*, delete::*, resume::*, suspend::*, update::*},
             *,
         },
+        state::contributor::ContributorStatus,
     };
 
     use crate::{
@@ -136,13 +138,50 @@ mod user_test {
         .await;
 
         /***********************************************************************************************************************************/
+        println!("🟢 5. Create Contributor...");
+        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+        let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+        assert_eq!(globalstate_account.account_index, 2);
+
+        let (contributor_pubkey, bump_seed) =
+            get_contributor_pda(&program_id, globalstate_account.account_index + 1);
+
+        execute_transaction(
+            &mut banks_client,
+            recent_blockhash,
+            program_id,
+            DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
+                index: globalstate_account.account_index + 1,
+                bump_seed,
+                code: "cont".to_string(),
+                ata_owner_pk: Pubkey::default(),
+            }),
+            vec![
+                AccountMeta::new(contributor_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
+            &payer,
+        )
+        .await;
+
+        let contributor = get_account_data(&mut banks_client, contributor_pubkey)
+            .await
+            .expect("Unable to get Account")
+            .get_contributor()
+            .unwrap();
+        assert_eq!(contributor.account_type, AccountType::Contributor);
+        assert_eq!(contributor.code, "cont".to_string());
+        assert_eq!(contributor.status, ContributorStatus::Activated);
+
+        println!("✅ Contributor initialized successfully",);
+        /***********************************************************************************************************************************/
         // Device _la
         println!("🟢 4. Testing Device initialization...");
 
         let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-        assert_eq!(globalstate_account.account_index, 2);
+        assert_eq!(globalstate_account.account_index, 3);
 
         let (device_pubkey, bump_seed) =
             get_device_pda(&program_id, globalstate_account.account_index + 1);
@@ -156,6 +195,7 @@ mod user_test {
                 bump_seed,
                 code: "la".to_string(),
                 device_type: DeviceType::Switch,
+                contributor_pk: contributor_pubkey,
                 location_pk: location_pubkey,
                 exchange_pk: exchange_pubkey,
                 public_ip: [10, 0, 0, 1],
@@ -210,7 +250,7 @@ mod user_test {
         // Device _la
         println!("🟢 6. Testing User creation...");
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-        assert_eq!(globalstate_account.account_index, 3);
+        assert_eq!(globalstate_account.account_index, 4);
 
         let (user_pubkey, bump_seed) =
             get_user_pda(&program_id, globalstate_account.account_index + 1);

@@ -33,6 +33,9 @@ pub struct UpdateDeviceCliCommand {
     /// Metrics publisher Pubkey (optional)
     #[arg(long, value_parser = validate_pubkey)]
     pub metrics_publisher: Option<String>,
+    /// Contributor Pubkey (optional)
+    #[arg(long, value_parser = validate_pubkey)]
+    pub contributor: Option<String>,
 }
 
 impl UpdateDeviceCliCommand {
@@ -68,6 +71,19 @@ impl UpdateDeviceCliCommand {
             None
         };
 
+        let contributor = if let Some(contributor) = &self.contributor {
+            if contributor == "me" {
+                Some(client.get_payer())
+            } else {
+                match Pubkey::from_str(contributor) {
+                    Ok(pk) => Some(pk),
+                    Err(_) => return Err(eyre::eyre!("Invalid contributor Pubkey")),
+                }
+            }
+        } else {
+            None
+        };
+
         let (pubkey, _) = client.get_device(GetDeviceCommand {
             pubkey_or_code: self.pubkey,
         })?;
@@ -78,6 +94,7 @@ impl UpdateDeviceCliCommand {
             public_ip: self.public_ip,
             dz_prefixes: self.dz_prefixes,
             metrics_publisher,
+            contributor_pk: contributor,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -116,6 +133,7 @@ mod tests {
             100, 221, 20, 137, 4, 5,
         ]);
 
+        let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let location_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let exchange_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
         let device1 = Device {
@@ -131,6 +149,7 @@ mod tests {
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::default(),
             owner: pda_pubkey,
+            contributor_pk: contributor_pk,
         };
 
         client
@@ -159,6 +178,9 @@ mod tests {
                 metrics_publisher: Some(Pubkey::from_str_const(
                     "HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx",
                 )),
+                contributor_pk: Some(Pubkey::from_str_const(
+                    "HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx",
+                )),
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -171,6 +193,7 @@ mod tests {
             public_ip: Some([1, 2, 3, 4]),
             dz_prefixes: Some(vec![([1, 2, 3, 4], 32)]),
             metrics_publisher: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
+            contributor: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

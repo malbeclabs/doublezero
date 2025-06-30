@@ -19,6 +19,7 @@ use solana_program::{
 pub struct DeviceUpdateArgs {
     pub code: Option<String>,
     pub device_type: Option<DeviceType>,
+    pub contributor_pk: Option<Pubkey>,
     pub public_ip: Option<IpV4>,
     pub dz_prefixes: Option<NetworkV4List>,
     pub metrics_publisher_pk: Option<Pubkey>,
@@ -90,6 +91,9 @@ pub fn process_update_device(
     }
     if let Some(device_type) = value.device_type {
         device.device_type = device_type;
+    }
+    if let Some(contributor_pk) = value.contributor_pk {
+        device.contributor_pk = contributor_pk;
     }
     if let Some(public_ip) = value.public_ip {
         device.public_ip = public_ip;

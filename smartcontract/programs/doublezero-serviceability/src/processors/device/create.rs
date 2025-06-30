@@ -1,5 +1,13 @@
 use core::fmt;
 
+use crate::{
+    error::DoubleZeroError,
+    globalstate::{globalstate_get_next, globalstate_write},
+    helper::*,
+    pda::*,
+    state::{accounttype::AccountType, device::*},
+    types::*,
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
 use solana_program::msg;
@@ -10,20 +18,12 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-use crate::{
-    error::DoubleZeroError,
-    globalstate::{globalstate_get_next, globalstate_write},
-    helper::*,
-    pda::*,
-    state::{accounttype::AccountType, device::*},
-    types::*,
-};
-
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct DeviceCreateArgs {
     pub index: u128,
     pub bump_seed: u8,
     pub code: String,
+    pub contributor_pk: Pubkey,
     pub location_pk: Pubkey,
     pub exchange_pk: Pubkey,
     pub device_type: DeviceType,
@@ -106,6 +106,7 @@ pub fn process_create_device(
         index: globalstate.account_index,
         bump_seed,
         code: value.code.clone(),
+        contributor_pk: value.contributor_pk,
         location_pk: value.location_pk,
         exchange_pk: value.exchange_pk,
         device_type: value.device_type,

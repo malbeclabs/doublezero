@@ -162,12 +162,14 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA"),
         };
 
+        let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let device1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
         let device1 = Device {
             account_type: AccountType::Device,
             index: 1,
             bump_seed: 2,
             code: "device1_code".to_string(),
+            contributor_pk,
             location_pk: location1_pubkey,
             exchange_pk: exchange1_pubkey,
             device_type: DeviceType::Switch,

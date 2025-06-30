@@ -10,8 +10,10 @@ pub struct ConfigCliCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum ConfigCommands {
-    #[command(about = "Get current config settings", hide = false)]
+    /// Get current config settings
+    #[command(hide = false)]
     Get(GetConfigCliCommand),
-    #[command(about = "Set a config setting", hide = false)]
+    /// Set a config setting
+    #[command(hide = false)]
     Set(SetConfigCliCommand),
 }

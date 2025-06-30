@@ -15,6 +15,7 @@ pub struct UpdateDeviceCommand {
     pub public_ip: Option<IpV4>,
     pub dz_prefixes: Option<NetworkV4List>,
     pub metrics_publisher: Option<Pubkey>,
+    pub contributor_pk: Option<Pubkey>,
 }
 
 impl UpdateDeviceCommand {
@@ -26,6 +27,7 @@ impl UpdateDeviceCommand {
         client.execute_transaction(
             DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
                 code: self.code.clone(),
+                contributor_pk: self.contributor_pk,
                 device_type: self.device_type,
                 public_ip: self.public_ip,
                 dz_prefixes: self.dz_prefixes.clone(),

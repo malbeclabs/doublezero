@@ -48,6 +48,7 @@ mod tests {
     fn test_cli_device_get() {
         let mut client = create_test_client();
 
+        let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let location_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let exchange_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
         let device1_pubkey =
@@ -57,6 +58,7 @@ mod tests {
             index: 1,
             bump_seed: 255,
             code: "test".to_string(),
+            contributor_pk,
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,

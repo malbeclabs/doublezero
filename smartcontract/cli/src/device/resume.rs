@@ -91,11 +91,13 @@ mod tests {
             owner: exchange_pk,
         };
 
+        let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let device = Device {
             account_type: AccountType::Device,
             index: 1,
             bump_seed: 255,
             code: "test".to_string(),
+            contributor_pk,
             location_pk,
             exchange_pk,
             device_type: doublezero_sdk::DeviceType::Switch,

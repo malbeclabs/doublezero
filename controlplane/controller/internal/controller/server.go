@@ -71,6 +71,9 @@ func NewController(options ...Option) (*Controller, error) {
 			return nil, fmt.Errorf("invalid program id %s: %v", controller.programId, err)
 		}
 		client := serviceability.New(rpc.New(controller.rpcEndpoint), programID)
+		if controller.programId == "" {
+			controller.programId = serviceability.SERVICEABILITY_PROGRAM_ID_TESTNET
+		}
 		if controller.rpcEndpoint == "" {
 			controller.rpcEndpoint = dzsdk.DZ_LEDGER_RPC_URL
 		}

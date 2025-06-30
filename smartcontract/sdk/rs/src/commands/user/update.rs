@@ -1,17 +1,15 @@
+use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    pda::get_user_pda,
     processors::user::update::UserUpdateArgs,
     state::user::{UserCYOA, UserType},
     types::{IpV4, NetworkV4},
 };
-use solana_sdk::{instruction::AccountMeta, signature::Signature};
-
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct UpdateUserCommand {
-    pub index: u128,
+    pub pubkey: Pubkey,
     pub user_type: Option<UserType>,
     pub cyoa_type: Option<UserCYOA>,
     pub client_ip: Option<IpV4>,
@@ -26,11 +24,8 @@ impl UpdateUserCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, bump_seed) = get_user_pda(&client.get_program_id(), self.index);
         client.execute_transaction(
             DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
-                index: self.index,
-                bump_seed,
                 user_type: self.user_type,
                 cyoa_type: self.cyoa_type,
                 client_ip: self.client_ip,
@@ -39,7 +34,7 @@ impl UpdateUserCommand {
                 tunnel_net: self.tunnel_net,
             }),
             vec![
-                AccountMeta::new(pda_pubkey, false),
+                AccountMeta::new(self.pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
             ],
         )

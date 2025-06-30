@@ -1,14 +1,13 @@
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_link_pda,
-    processors::link::update::LinkUpdateArgs, state::link::LinkLinkType,
-};
-use solana_sdk::{instruction::AccountMeta, signature::Signature};
-
 use crate::DoubleZeroClient;
+use doublezero_serviceability::{
+    instructions::DoubleZeroInstruction, processors::link::update::LinkUpdateArgs,
+    state::link::LinkLinkType,
+};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct UpdateLinkCommand {
-    pub index: u128,
+    pub pubkey: Pubkey,
     pub code: Option<String>,
     pub tunnel_type: Option<LinkLinkType>,
     pub bandwidth: Option<u64>,
@@ -19,11 +18,8 @@ pub struct UpdateLinkCommand {
 
 impl UpdateLinkCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (pda_pubkey, bump_seed) = get_link_pda(&client.get_program_id(), self.index);
         client.execute_transaction(
             DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
-                index: self.index,
-                bump_seed,
                 code: self.code.clone(),
                 tunnel_type: self.tunnel_type,
                 bandwidth: self.bandwidth,
@@ -31,7 +27,7 @@ impl UpdateLinkCommand {
                 delay_ns: self.delay_ns,
                 jitter_ns: self.jitter_ns,
             }),
-            vec![AccountMeta::new(pda_pubkey, false)],
+            vec![AccountMeta::new(self.pubkey, false)],
         )
     }
 }

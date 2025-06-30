@@ -1,14 +1,12 @@
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_exchange_pda,
-    processors::exchange::delete::ExchangeDeleteArgs,
-};
-use solana_sdk::{instruction::AccountMeta, signature::Signature};
-
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
+use doublezero_serviceability::{
+    instructions::DoubleZeroInstruction, processors::exchange::delete::ExchangeDeleteArgs,
+};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct DeleteExchangeCommand {
-    pub index: u128,
+    pub pubkey: Pubkey,
 }
 
 impl DeleteExchangeCommand {
@@ -17,14 +15,10 @@ impl DeleteExchangeCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, bump_seed) = get_exchange_pda(&client.get_program_id(), self.index);
         client.execute_transaction(
-            DoubleZeroInstruction::DeleteExchange(ExchangeDeleteArgs {
-                index: self.index,
-                bump_seed,
-            }),
+            DoubleZeroInstruction::DeleteExchange(ExchangeDeleteArgs {}),
             vec![
-                AccountMeta::new(pda_pubkey, false),
+                AccountMeta::new(self.pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
             ],
         )
@@ -56,10 +50,7 @@ mod tests {
         client
             .expect_execute_transaction()
             .with(
-                predicate::eq(DoubleZeroInstruction::DeleteExchange(ExchangeDeleteArgs {
-                    index: 1,
-                    bump_seed,
-                })),
+                predicate::eq(DoubleZeroInstruction::DeleteExchange(ExchangeDeleteArgs {})),
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),
@@ -69,7 +60,7 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        let res = DeleteExchangeCommand { index: 1 }.execute(&client);
+        let res = DeleteExchangeCommand { pubkey: pda_pubkey }.execute(&client);
 
         assert!(res.is_ok());
     }

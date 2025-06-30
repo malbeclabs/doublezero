@@ -281,10 +281,7 @@ mod tunnel_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::SuspendLink(LinkSuspendArgs {
-                index: tunnel_la.index,
-                bump_seed: tunnel_la.bump_seed,
-            }),
+            DoubleZeroInstruction::SuspendLink(LinkSuspendArgs {}),
             vec![AccountMeta::new(tunnel_pubkey, false)],
             &payer,
         )
@@ -305,10 +302,7 @@ mod tunnel_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::ResumeLink(LinkResumeArgs {
-                index: tunnel_la.index,
-                bump_seed: tunnel_la.bump_seed,
-            }),
+            DoubleZeroInstruction::ResumeLink(LinkResumeArgs {}),
             vec![AccountMeta::new(tunnel_pubkey, false)],
             &payer,
         )
@@ -330,8 +324,6 @@ mod tunnel_test {
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
-                index: tunnel.index,
-                bump_seed: tunnel.bump_seed,
                 code: Some("la2".to_string()),
                 tunnel_type: Some(LinkLinkType::L3),
                 bandwidth: Some(2000000000),
@@ -367,10 +359,7 @@ mod tunnel_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {
-                index: tunnel_la.index,
-                bump_seed: tunnel_la.bump_seed,
-            }),
+            DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {}),
             vec![
                 AccountMeta::new(tunnel_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
@@ -399,10 +388,7 @@ mod tunnel_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::CloseAccountLink(LinkCloseAccountArgs {
-                index: tunnel.index,
-                bump_seed: tunnel.bump_seed,
-            }),
+            DoubleZeroInstruction::CloseAccountLink(LinkCloseAccountArgs {}),
             vec![
                 AccountMeta::new(tunnel_pubkey, false),
                 AccountMeta::new(tunnel.owner, false),

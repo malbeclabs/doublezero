@@ -1,14 +1,12 @@
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_location_pda,
-    processors::location::resume::LocationResumeArgs,
-};
-use solana_sdk::{instruction::AccountMeta, signature::Signature};
-
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
+use doublezero_serviceability::{
+    instructions::DoubleZeroInstruction, processors::location::resume::LocationResumeArgs,
+};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ResumeLocationCommand {
-    pub index: u128,
+    pub pubkey: Pubkey,
 }
 
 impl ResumeLocationCommand {
@@ -17,14 +15,10 @@ impl ResumeLocationCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, bump_seed) = get_location_pda(&client.get_program_id(), self.index);
         client.execute_transaction(
-            DoubleZeroInstruction::ResumeLocation(LocationResumeArgs {
-                index: self.index,
-                bump_seed,
-            }),
+            DoubleZeroInstruction::ResumeLocation(LocationResumeArgs {}),
             vec![
-                AccountMeta::new(pda_pubkey, false),
+                AccountMeta::new(self.pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
             ],
         )
@@ -56,10 +50,7 @@ mod tests {
         client
             .expect_execute_transaction()
             .with(
-                predicate::eq(DoubleZeroInstruction::ResumeLocation(LocationResumeArgs {
-                    index: 1,
-                    bump_seed,
-                })),
+                predicate::eq(DoubleZeroInstruction::ResumeLocation(LocationResumeArgs {})),
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),
@@ -69,7 +60,7 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        let res = ResumeLocationCommand { index: 1 }.execute(&client);
+        let res = ResumeLocationCommand { pubkey: pda_pubkey }.execute(&client);
 
         assert!(res.is_ok());
     }

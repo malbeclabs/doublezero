@@ -46,7 +46,7 @@ pub fn process_tunnel_event(
                     println!("Error: No available tunnel block");
 
                     let res = RejectLinkCommand {
-                        index: tunnel.index,
+                        pubkey: *pubkey,
                         reason: "Error: No available tunnel block".to_string(),
                     }
                     .execute(client);
@@ -70,7 +70,7 @@ pub fn process_tunnel_event(
             tunnel_tunnel_ips.unassign_block(tunnel.tunnel_net);
 
             let res = CloseAccountLinkCommand {
-                index: tunnel.index,
+                pubkey: *pubkey,
                 owner: tunnel.owner,
             }
             .execute(client);
@@ -172,10 +172,7 @@ mod tests {
             .in_sequence(&mut seq)
             .with(
                 predicate::eq(DoubleZeroInstruction::CloseAccountLink(
-                    LinkCloseAccountArgs {
-                        index: tunnel.index,
-                        bump_seed: tunnel.bump_seed,
-                    },
+                    LinkCloseAccountArgs {},
                 )),
                 predicate::always(),
             )
@@ -234,8 +231,6 @@ mod tests {
             .in_sequence(&mut seq)
             .with(
                 predicate::eq(DoubleZeroInstruction::RejectLink(LinkRejectArgs {
-                    index: tunnel.index,
-                    bump_seed: tunnel.bump_seed,
                     reason: "Error: No available tunnel block".to_string(),
                 })),
                 predicate::always(),

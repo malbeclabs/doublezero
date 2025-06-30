@@ -4,7 +4,10 @@ use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get,
     helper::*,
-    state::exchange::{Exchange, ExchangeStatus},
+    state::{
+        accounttype::AccountType,
+        exchange::{Exchange, ExchangeStatus},
+    },
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
@@ -16,10 +19,7 @@ use solana_program::{
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct ExchangeDeleteArgs {
-    pub index: u128,
-    pub bump_seed: u8,
-}
+pub struct ExchangeDeleteArgs {}
 
 impl fmt::Debug for ExchangeDeleteArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -30,7 +30,7 @@ impl fmt::Debug for ExchangeDeleteArgs {
 pub fn process_delete_exchange(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &ExchangeDeleteArgs,
+    _value: &ExchangeDeleteArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -40,7 +40,7 @@ pub fn process_delete_exchange(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_delete_exchange({:?})", value);
+    msg!("process_delete_exchange({:?})", _value);
 
     // Check the owner of the accounts
     assert_eq!(
@@ -65,10 +65,10 @@ pub fn process_delete_exchange(
     }
 
     let exchange = Exchange::try_from(exchange_account)?;
-    assert_eq!(exchange.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
-        exchange.bump_seed, value.bump_seed,
-        "Invalid PDA Account Bump Seed"
+        exchange.account_type,
+        AccountType::Exchange,
+        "Invalid Account Type"
     );
     if exchange.status != ExchangeStatus::Activated {
         return Err(DoubleZeroError::InvalidStatus.into());

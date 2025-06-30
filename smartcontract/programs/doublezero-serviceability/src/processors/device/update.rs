@@ -1,5 +1,9 @@
 use crate::{
-    error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::device::*, types::*,
+    error::DoubleZeroError,
+    globalstate::globalstate_get,
+    helper::*,
+    state::{accounttype::AccountType, device::*},
+    types::*,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
@@ -13,8 +17,6 @@ use solana_program::{
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct DeviceUpdateArgs {
-    pub index: u128,
-    pub bump_seed: u8,
     pub code: Option<String>,
     pub device_type: Option<DeviceType>,
     pub public_ip: Option<IpV4>,
@@ -73,11 +75,12 @@ pub fn process_update_device(
     }
 
     let mut device: Device = Device::try_from(device_account)?;
-    assert_eq!(device.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
-        device.bump_seed, value.bump_seed,
-        "Invalid PDA Account Bump Seed"
+        device.account_type,
+        AccountType::Device,
+        "Invalid Device Account Type"
     );
+
     if device.owner != *payer_account.key {
         return Err(solana_program::program_error::ProgramError::Custom(0));
     }

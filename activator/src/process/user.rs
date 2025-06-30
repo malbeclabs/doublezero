@@ -28,11 +28,16 @@ pub fn process_user_event(
     match user.status {
         // Create User
         UserStatus::Pending => {
-            let device_state =
-                match get_or_insert_device_state(client, devices, user, state_transitions) {
-                    Some(ds) => ds,
-                    None => return,
-                };
+            let device_state = match get_or_insert_device_state(
+                client,
+                pubkey,
+                devices,
+                user,
+                state_transitions,
+            ) {
+                Some(ds) => ds,
+                None => return,
+            };
 
             println!(
                 "Activating User: {}, for: {}",
@@ -47,7 +52,7 @@ pub fn process_user_event(
                     // Reject user since we couldn't get their user block
                     reject_user(
                         client,
-                        user,
+                        pubkey,
                         "Error: No available user block",
                         state_transitions,
                     );
@@ -72,7 +77,7 @@ pub fn process_user_event(
                         eprintln!("Error: No available dz_ip to allocate");
                         reject_user(
                             client,
-                            user,
+                            pubkey,
                             "Error: No available dz_ip to allocate",
                             state_transitions,
                         );
@@ -110,11 +115,16 @@ pub fn process_user_event(
         }
 
         UserStatus::Updating => {
-            let device_state =
-                match get_or_insert_device_state(client, devices, user, state_transitions) {
-                    Some(ds) => ds,
-                    None => return,
-                };
+            let device_state = match get_or_insert_device_state(
+                client,
+                pubkey,
+                devices,
+                user,
+                state_transitions,
+            ) {
+                Some(ds) => ds,
+                None => return,
+            };
 
             println!(
                 "Activating User: {}, for: {}",
@@ -135,7 +145,7 @@ pub fn process_user_event(
                         eprintln!("Error: No available dz_ip to allocate");
                         reject_user(
                             client,
-                            user,
+                            pubkey,
                             "Error: No available dz_ip to allocate",
                             state_transitions,
                         );
@@ -198,7 +208,7 @@ pub fn process_user_event(
 
                 if user.status == UserStatus::Deleting {
                     let res = CloseAccountUserCommand {
-                        index: user.index,
+                        pubkey: *pubkey,
                         owner: user.owner,
                     }
                     .execute(client);
@@ -213,7 +223,7 @@ pub fn process_user_event(
                         Err(e) => println!("Error: {e}"),
                     }
                 } else if user.status == UserStatus::PendingBan {
-                    let res = BanUserCommand { index: user.index }.execute(client);
+                    let res = BanUserCommand { pubkey: *pubkey }.execute(client);
 
                     match res {
                         Ok(signature) => {
@@ -233,12 +243,12 @@ pub fn process_user_event(
 
 fn reject_user(
     client: &dyn DoubleZeroClient,
-    user: &User,
+    pubkey: &Pubkey,
     reason: &str,
     state_transitions: &mut HashMap<&str, usize>,
 ) {
     let res = RejectUserCommand {
-        index: user.index,
+        pubkey: *pubkey,
         reason: reason.to_string(),
     }
     .execute(client);
@@ -256,6 +266,7 @@ fn reject_user(
 
 fn get_or_insert_device_state<'a>(
     client: &dyn DoubleZeroClient,
+    pubkey: &Pubkey,
     devices: &'a mut DeviceMap,
     user: &User,
     state_transitions: &mut HashMap<&'static str, usize>,
@@ -280,7 +291,7 @@ fn get_or_insert_device_state<'a>(
                 }
                 Err(_) => {
                     // Reject user since we couldn't load the device
-                    reject_user(client, user, "Error: Device not found", state_transitions);
+                    reject_user(client, pubkey, "Error: Device not found", state_transitions);
                     None
                 }
             }
@@ -532,8 +543,6 @@ mod tests {
             .in_sequence(&mut seq)
             .with(
                 predicate::eq(DoubleZeroInstruction::RejectUser(UserRejectArgs {
-                    index: user.index,
-                    bump_seed: user.bump_seed,
                     reason: "Error: Device not found".to_string(),
                 })),
                 predicate::always(),
@@ -606,8 +615,6 @@ mod tests {
             .in_sequence(&mut seq)
             .with(
                 predicate::eq(DoubleZeroInstruction::RejectUser(UserRejectArgs {
-                    index: user.index,
-                    bump_seed: user.bump_seed,
                     reason: "Error: No available dz_ip to allocate".to_string(),
                 })),
                 predicate::always(),
@@ -691,8 +698,6 @@ mod tests {
             .in_sequence(&mut seq)
             .with(
                 predicate::eq(DoubleZeroInstruction::RejectUser(UserRejectArgs {
-                    index: user.index,
-                    bump_seed: user.bump_seed,
                     reason: "Error: No available user block".to_string(),
                 })),
                 predicate::always(),
@@ -797,17 +802,14 @@ mod tests {
     fn test_process_user_event_deleting() {
         do_test_process_user_event_deleting_or_pending_ban(
             UserStatus::Deleting,
-            |user_service, user, seq| {
+            |user_service, _, seq| {
                 user_service
                     .expect_execute_transaction()
                     .times(1)
                     .in_sequence(seq)
                     .with(
                         predicate::eq(DoubleZeroInstruction::CloseAccountUser(
-                            UserCloseAccountArgs {
-                                index: user.index,
-                                bump_seed: user.bump_seed,
-                            },
+                            UserCloseAccountArgs {},
                         )),
                         predicate::always(),
                     )
@@ -821,16 +823,13 @@ mod tests {
     fn test_process_user_event_pending_ban() {
         do_test_process_user_event_deleting_or_pending_ban(
             UserStatus::PendingBan,
-            |user_service, user, seq| {
+            |user_service, _, seq| {
                 user_service
                     .expect_execute_transaction()
                     .times(1)
                     .in_sequence(seq)
                     .with(
-                        predicate::eq(DoubleZeroInstruction::BanUser(UserBanArgs {
-                            index: user.index,
-                            bump_seed: user.bump_seed,
-                        })),
+                        predicate::eq(DoubleZeroInstruction::BanUser(UserBanArgs {})),
                         predicate::always(),
                     )
                     .returning(|_, _| Ok(Signature::new_unique()));

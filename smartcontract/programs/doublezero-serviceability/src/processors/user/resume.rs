@@ -1,4 +1,8 @@
-use crate::{error::DoubleZeroError, helper::*, state::user::*};
+use crate::{
+    error::DoubleZeroError,
+    helper::*,
+    state::{accounttype::AccountType, user::*},
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
 #[cfg(test)]
@@ -10,10 +14,7 @@ use solana_program::{
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct UserResumeArgs {
-    pub index: u128,
-    pub bump_seed: u8,
-}
+pub struct UserResumeArgs {}
 
 impl fmt::Debug for UserResumeArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -24,7 +25,7 @@ impl fmt::Debug for UserResumeArgs {
 pub fn process_resume_user(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &UserResumeArgs,
+    _value: &UserResumeArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -33,7 +34,7 @@ pub fn process_resume_user(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_resume_user({:?})", value);
+    msg!("process_resume_user({:?})", _value);
 
     // Check the owner of the accounts
     assert_eq!(user_account.owner, program_id, "Invalid PDA Account Owner");
@@ -46,8 +47,8 @@ pub fn process_resume_user(
     assert!(user_account.is_writable, "PDA Account is not writable");
 
     let mut user: User = User::try_from(user_account)?;
-    assert_eq!(user.index, value.index, "Invalid PDA Account Index");
-    assert_eq!(user.bump_seed, value.bump_seed, "Invalid bump seed");
+    assert_eq!(user.account_type, AccountType::User, "Invalid Account Type");
+
     if user.owner != *payer_account.key {
         return Err(DoubleZeroError::NotAllowed.into());
     }

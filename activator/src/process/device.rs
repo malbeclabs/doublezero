@@ -57,7 +57,7 @@ pub fn process_device_event(
             print!("Deleting Device {} ", device.code);
 
             let res = CloseAccountDeviceCommand {
-                index: device.index,
+                pubkey: *pubkey,
                 owner: device.owner,
             }
             .execute(client);
@@ -139,17 +139,13 @@ mod tests {
         device.status = DeviceStatus::Deleting;
 
         let mut client = create_test_client();
-        let device_bump_seed = get_device_bump_seed(&client);
         client
             .expect_execute_transaction()
             .times(1)
             .in_sequence(&mut seq)
             .with(
                 predicate::eq(DoubleZeroInstruction::CloseAccountDevice(
-                    DeviceCloseAccountArgs {
-                        index: device.index,
-                        bump_seed: device_bump_seed,
-                    },
+                    DeviceCloseAccountArgs {},
                 )),
                 predicate::always(),
             )

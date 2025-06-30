@@ -1,13 +1,13 @@
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_user_pda, processors::user::ban::UserBanArgs,
+    instructions::DoubleZeroInstruction, processors::user::ban::UserBanArgs,
 };
-use solana_sdk::{instruction::AccountMeta, signature::Signature};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct BanUserCommand {
-    pub index: u128,
+    pub pubkey: Pubkey,
 }
 
 impl BanUserCommand {
@@ -16,14 +16,10 @@ impl BanUserCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, bump_seed) = get_user_pda(&client.get_program_id(), self.index);
         client.execute_transaction(
-            DoubleZeroInstruction::BanUser(UserBanArgs {
-                index: self.index,
-                bump_seed,
-            }),
+            DoubleZeroInstruction::BanUser(UserBanArgs {}),
             vec![
-                AccountMeta::new(pda_pubkey, false),
+                AccountMeta::new(self.pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
             ],
         )

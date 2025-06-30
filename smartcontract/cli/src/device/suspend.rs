@@ -19,15 +19,13 @@ impl SuspendDeviceCliCommand {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let (_, device) = client
+        let (pubkey, _) = client
             .get_device(GetDeviceCommand {
                 pubkey_or_code: self.pubkey,
             })
             .map_err(|_| eyre::eyre!("Device not found"))?;
 
-        let signature = client.suspend_device(SuspendDeviceCommand {
-            index: device.index,
-        })?;
+        let signature = client.suspend_device(SuspendDeviceCommand { pubkey })?;
         writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
@@ -133,7 +131,7 @@ mod tests {
 
         client
             .expect_suspend_device()
-            .with(predicate::eq(SuspendDeviceCommand { index: 1 }))
+            .with(predicate::eq(SuspendDeviceCommand { pubkey: pda_pubkey }))
             .returning(move |_| Ok(signature));
 
         let mut output = Vec::new();

@@ -1,5 +1,9 @@
 use crate::{
-    error::DoubleZeroError, format_option, globalstate::globalstate_get, helper::*, state::user::*,
+    error::DoubleZeroError,
+    format_option,
+    globalstate::globalstate_get,
+    helper::*,
+    state::{accounttype::AccountType, user::*},
     types::*,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -14,8 +18,6 @@ use std::fmt;
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct UserUpdateArgs {
-    pub index: u128,
-    pub bump_seed: u8,
     pub user_type: Option<UserType>,
     pub cyoa_type: Option<UserCYOA>,
     pub client_ip: Option<IpV4>,
@@ -74,11 +76,7 @@ pub fn process_update_user(
     }
 
     let mut user: User = User::try_from(user_account)?;
-    assert_eq!(user.index, value.index, "Invalid PDA Account Index");
-    assert_eq!(
-        user.bump_seed, value.bump_seed,
-        "Invalid PDA Account Bump Seed"
-    );
+    assert_eq!(user.account_type, AccountType::User, "Invalid Account Type");
 
     user.dz_ip = value.dz_ip.unwrap_or([0, 0, 0, 0]);
     if let Some(value) = value.tunnel_id {

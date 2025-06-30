@@ -6,7 +6,7 @@ use crate::{
     validators::validate_pubkey,
 };
 use clap::Args;
-use doublezero_sdk::commands::user::{get::GetUserCommand, requestban::RequestBanUserCommand};
+use doublezero_sdk::commands::user::requestban::RequestBanUserCommand;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 
@@ -23,9 +23,7 @@ impl RequestBanUserCliCommand {
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE | CHECK_FOUNDATION_ALLOWLIST)?;
 
         let pubkey = Pubkey::from_str(&self.pubkey)?;
-        let (_, user) = client.get_user(GetUserCommand { pubkey })?;
-
-        let signature = client.request_ban_user(RequestBanUserCommand { index: user.index })?;
+        let signature = client.request_ban_user(RequestBanUserCommand { pubkey })?;
         writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
@@ -94,7 +92,7 @@ mod tests {
 
         client
             .expect_delete_user()
-            .with(predicate::eq(DeleteUserCommand { index: 1 }))
+            .with(predicate::eq(DeleteUserCommand { pubkey: pda_pubkey }))
             .returning(move |_| Ok(signature));
         client
             .expect_list_foundation_allowlist()
@@ -102,7 +100,7 @@ mod tests {
 
         client
             .expect_request_ban_user()
-            .with(predicate::eq(RequestBanUserCommand { index: 1 }))
+            .with(predicate::eq(RequestBanUserCommand { pubkey: pda_pubkey }))
             .returning(move |_| Ok(signature));
 
         /*****************************************************************************************************/

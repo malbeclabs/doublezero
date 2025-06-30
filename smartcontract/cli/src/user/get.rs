@@ -86,7 +86,7 @@ mod tests {
 
         client
             .expect_delete_user()
-            .with(predicate::eq(DeleteUserCommand { index: 1 }))
+            .with(predicate::eq(DeleteUserCommand { pubkey: pda_pubkey }))
             .returning(move |_| Ok(signature));
 
         /*****************************************************************************************************/

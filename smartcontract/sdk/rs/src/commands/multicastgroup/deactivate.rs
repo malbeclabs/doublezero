@@ -1,14 +1,13 @@
+use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_multicastgroup_pda,
+    instructions::DoubleZeroInstruction,
     processors::multicastgroup::deactivate::MulticastGroupDeactivateArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
-
 #[derive(Debug, PartialEq, Clone)]
 pub struct DeactivateMulticastGroupCommand {
-    pub index: u128,
+    pub pubkey: Pubkey,
     pub owner: Pubkey,
 }
 
@@ -18,14 +17,10 @@ impl DeactivateMulticastGroupCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, bump_seed) = get_multicastgroup_pda(&client.get_program_id(), self.index);
         client.execute_transaction(
-            DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {
-                index: self.index,
-                bump_seed,
-            }),
+            DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {}),
             vec![
-                AccountMeta::new(pda_pubkey, false),
+                AccountMeta::new(self.pubkey, false),
                 AccountMeta::new(self.owner, false),
                 AccountMeta::new(globalstate_pubkey, false),
             ],
@@ -58,10 +53,7 @@ mod tests {
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::DeactivateMulticastGroup(
-                    MulticastGroupDeactivateArgs {
-                        index: 1,
-                        bump_seed,
-                    },
+                    MulticastGroupDeactivateArgs {},
                 )),
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),
@@ -72,7 +64,7 @@ mod tests {
 
         let payer = client.get_payer();
         let res = DeactivateMulticastGroupCommand {
-            index: 1,
+            pubkey: pda_pubkey,
             owner: payer,
         }
         .execute(&client);

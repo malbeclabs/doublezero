@@ -1,4 +1,9 @@
-use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::link::*};
+use crate::{
+    error::DoubleZeroError,
+    globalstate::globalstate_get,
+    helper::*,
+    state::{accounttype::AccountType, link::*},
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
 #[cfg(test)]
@@ -10,8 +15,6 @@ use solana_program::{
 };
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct LinkUpdateArgs {
-    pub index: u128,
-    pub bump_seed: u8,
     pub code: Option<String>,
     pub tunnel_type: Option<LinkLinkType>,
     pub bandwidth: Option<u64>,
@@ -65,11 +68,7 @@ pub fn process_update_link(
     }
 
     let mut link: Link = Link::try_from(link_account)?;
-    assert_eq!(link.index, value.index, "Invalid PDA Account Index");
-    assert_eq!(
-        link.bump_seed, value.bump_seed,
-        "Invalid PDA Account Bump Seed"
-    );
+    assert_eq!(link.account_type, AccountType::Link, "Invalid Account Type");
 
     if link.owner != *payer_account.key {
         return Err(solana_program::program_error::ProgramError::Custom(0));

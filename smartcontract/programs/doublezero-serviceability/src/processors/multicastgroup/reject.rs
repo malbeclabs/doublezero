@@ -1,5 +1,8 @@
 use crate::{
-    error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::multicastgroup::*,
+    error::DoubleZeroError,
+    globalstate::globalstate_get,
+    helper::*,
+    state::{accounttype::AccountType, multicastgroup::*},
 };
 use std::fmt;
 
@@ -13,8 +16,6 @@ use solana_program::{
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct MulticastGroupRejectArgs {
-    pub index: u128,
-    pub bump_seed: u8,
     pub reason: String,
 }
 
@@ -65,12 +66,9 @@ pub fn process_reject_multicastgroup(
 
     let mut multicastgroup: MulticastGroup = MulticastGroup::try_from(multicastgroup_account)?;
     assert_eq!(
-        multicastgroup.index, value.index,
-        "Invalid PDA Account Index"
-    );
-    assert_eq!(
-        multicastgroup.bump_seed, value.bump_seed,
-        "Invalid PDA Account Bump Seed"
+        multicastgroup.account_type,
+        AccountType::MulticastGroup,
+        "Invalid Account Type"
     );
     if multicastgroup.status != MulticastGroupStatus::Pending {
         return Err(DoubleZeroError::InvalidStatus.into());

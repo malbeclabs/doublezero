@@ -1,14 +1,12 @@
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_location_pda,
-    processors::location::update::LocationUpdateArgs,
-};
-use solana_sdk::{instruction::AccountMeta, signature::Signature};
-
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
+use doublezero_serviceability::{
+    instructions::DoubleZeroInstruction, processors::location::update::LocationUpdateArgs,
+};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct UpdateLocationCommand {
-    pub index: u128,
+    pub pubkey: Pubkey,
     pub code: Option<String>,
     pub name: Option<String>,
     pub country: Option<String>,
@@ -23,11 +21,8 @@ impl UpdateLocationCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, bump_seed) = get_location_pda(&client.get_program_id(), self.index);
         client.execute_transaction(
             DoubleZeroInstruction::UpdateLocation(LocationUpdateArgs {
-                index: self.index,
-                bump_seed,
                 code: self.code.to_owned(),
                 name: self.name.to_owned(),
                 country: self.country.to_owned(),
@@ -36,7 +31,7 @@ impl UpdateLocationCommand {
                 loc_id: self.loc_id,
             }),
             vec![
-                AccountMeta::new(pda_pubkey, false),
+                AccountMeta::new(self.pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
             ],
         )
@@ -62,15 +57,13 @@ mod tests {
         let mut client = create_test_client();
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, bump_seed) = get_location_pda(&client.get_program_id(), 1);
+        let (pda_pubkey, _) = get_location_pda(&client.get_program_id(), 1);
         let payer = client.get_payer();
 
         client
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateLocation(LocationUpdateArgs {
-                    index: 1,
-                    bump_seed,
                     code: Some("test".to_string()),
                     name: Some("Test Location".to_string()),
                     country: Some("Test Country".to_string()),
@@ -88,7 +81,7 @@ mod tests {
             .returning(|_, _| Ok(Signature::new_unique()));
 
         let res = UpdateLocationCommand {
-            index: 1,
+            pubkey: pda_pubkey,
             code: Some("test".to_string()),
             name: Some("Test Location".to_string()),
             country: Some("Test Country".to_string()),

@@ -1,14 +1,12 @@
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_exchange_pda,
-    processors::exchange::suspend::ExchangeSuspendArgs,
-};
-use solana_sdk::{instruction::AccountMeta, signature::Signature};
-
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
+use doublezero_serviceability::{
+    instructions::DoubleZeroInstruction, processors::exchange::suspend::ExchangeSuspendArgs,
+};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SuspendExchangeCommand {
-    pub index: u128,
+    pub pubkey: Pubkey,
 }
 
 impl SuspendExchangeCommand {
@@ -17,14 +15,10 @@ impl SuspendExchangeCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, bump_seed) = get_exchange_pda(&client.get_program_id(), self.index);
         client.execute_transaction(
-            DoubleZeroInstruction::SuspendExchange(ExchangeSuspendArgs {
-                index: self.index,
-                bump_seed,
-            }),
+            DoubleZeroInstruction::SuspendExchange(ExchangeSuspendArgs {}),
             vec![
-                AccountMeta::new(pda_pubkey, false),
+                AccountMeta::new(self.pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
             ],
         )
@@ -57,10 +51,7 @@ mod tests {
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::SuspendExchange(
-                    ExchangeSuspendArgs {
-                        index: 1,
-                        bump_seed,
-                    },
+                    ExchangeSuspendArgs {},
                 )),
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),
@@ -71,7 +62,7 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        let res = SuspendExchangeCommand { index: 1 }.execute(&client);
+        let res = SuspendExchangeCommand { pubkey: pda_pubkey }.execute(&client);
 
         assert!(res.is_ok());
     }

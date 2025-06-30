@@ -417,8 +417,6 @@ mod tests {
         );
         test_instruction(
             DoubleZeroInstruction::UpdateLocation(LocationUpdateArgs {
-                index: 123,
-                bump_seed: 255,
                 lat: Some(1.0),
                 lng: Some(2.0),
                 loc_id: Some(123),
@@ -429,24 +427,15 @@ mod tests {
             "UpdateLocation",
         );
         test_instruction(
-            DoubleZeroInstruction::SuspendLocation(LocationSuspendArgs {
-                index: 123,
-                bump_seed: 255,
-            }),
+            DoubleZeroInstruction::SuspendLocation(LocationSuspendArgs {}),
             "SuspendLocation",
         );
         test_instruction(
-            DoubleZeroInstruction::ResumeLocation(LocationResumeArgs {
-                index: 123,
-                bump_seed: 255,
-            }),
+            DoubleZeroInstruction::ResumeLocation(LocationResumeArgs {}),
             "ResumeLocation",
         );
         test_instruction(
-            DoubleZeroInstruction::DeleteLocation(LocationDeleteArgs {
-                index: 123,
-                bump_seed: 255,
-            }),
+            DoubleZeroInstruction::DeleteLocation(LocationDeleteArgs {}),
             "DeleteLocation",
         );
         test_instruction(
@@ -463,8 +452,6 @@ mod tests {
         );
         test_instruction(
             DoubleZeroInstruction::UpdateExchange(ExchangeUpdateArgs {
-                index: 123,
-                bump_seed: 255,
                 lat: Some(1.0),
                 lng: Some(2.0),
                 loc_id: Some(123),
@@ -474,24 +461,15 @@ mod tests {
             "UpdateExchange",
         );
         test_instruction(
-            DoubleZeroInstruction::SuspendExchange(ExchangeSuspendArgs {
-                index: 123,
-                bump_seed: 255,
-            }),
+            DoubleZeroInstruction::SuspendExchange(ExchangeSuspendArgs {}),
             "SuspendExchange",
         );
         test_instruction(
-            DoubleZeroInstruction::ResumeExchange(ExchangeResumeArgs {
-                index: 123,
-                bump_seed: 255,
-            }),
+            DoubleZeroInstruction::ResumeExchange(ExchangeResumeArgs {}),
             "ResumeExchange",
         );
         test_instruction(
-            DoubleZeroInstruction::DeleteExchange(ExchangeDeleteArgs {
-                index: 123,
-                bump_seed: 255,
-            }),
+            DoubleZeroInstruction::DeleteExchange(ExchangeDeleteArgs {}),
             "DeleteExchange",
         );
         test_instruction(
@@ -514,8 +492,6 @@ mod tests {
         );
         test_instruction(
             DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-                index: 123,
-                bump_seed: 255,
                 code: Some("test".to_string()),
                 public_ip: Some([1, 2, 3, 4]),
                 device_type: Some(DeviceType::Switch),
@@ -525,24 +501,15 @@ mod tests {
             "UpdateDevice",
         );
         test_instruction(
-            DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs {
-                index: 123,
-                bump_seed: 255,
-            }),
+            DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs {}),
             "SuspendDevice",
         );
         test_instruction(
-            DoubleZeroInstruction::ResumeDevice(DeviceResumeArgs {
-                index: 123,
-                bump_seed: 255,
-            }),
+            DoubleZeroInstruction::ResumeDevice(DeviceResumeArgs {}),
             "ResumeDevice",
         );
         test_instruction(
-            DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs {
-                index: 123,
-                bump_seed: 255,
-            }),
+            DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs {}),
             "DeleteDevice",
         );
         test_instruction(
@@ -569,8 +536,6 @@ mod tests {
         );
         test_instruction(
             DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
-                index: 123,
-                bump_seed: 255,
                 code: Some("test".to_string()),
                 tunnel_type: Some(LinkLinkType::L3),
                 bandwidth: Some(100),
@@ -581,24 +546,15 @@ mod tests {
             "UpdateLink",
         );
         test_instruction(
-            DoubleZeroInstruction::SuspendLink(LinkSuspendArgs {
-                index: 123,
-                bump_seed: 255,
-            }),
+            DoubleZeroInstruction::SuspendLink(LinkSuspendArgs {}),
             "SuspendLink",
         );
         test_instruction(
-            DoubleZeroInstruction::ResumeLink(LinkResumeArgs {
-                index: 123,
-                bump_seed: 255,
-            }),
+            DoubleZeroInstruction::ResumeLink(LinkResumeArgs {}),
             "ResumeLink",
         );
         test_instruction(
-            DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {
-                index: 123,
-                bump_seed: 255,
-            }),
+            DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {}),
             "DeleteLink",
         );
         test_instruction(
@@ -622,8 +578,6 @@ mod tests {
         );
         test_instruction(
             DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
-                index: 123,
-                bump_seed: 255,
                 user_type: Some(UserType::IBRL),
                 cyoa_type: Some(UserCYOA::GREOverDIA),
                 client_ip: Some([1, 2, 3, 4]),
@@ -634,67 +588,43 @@ mod tests {
             "UpdateUser",
         );
         test_instruction(
-            DoubleZeroInstruction::SuspendUser(UserSuspendArgs {
-                index: 123,
-                bump_seed: 255,
-            }),
+            DoubleZeroInstruction::SuspendUser(UserSuspendArgs {}),
             "SuspendUser",
         );
         test_instruction(
-            DoubleZeroInstruction::ResumeUser(UserResumeArgs {
-                index: 123,
-                bump_seed: 255,
-            }),
+            DoubleZeroInstruction::ResumeUser(UserResumeArgs {}),
             "ResumeUser",
         );
         test_instruction(
-            DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
-                index: 123,
-                bump_seed: 255,
-            }),
+            DoubleZeroInstruction::DeleteUser(UserDeleteArgs {}),
             "DeleteUser",
         );
         test_instruction(
-            DoubleZeroInstruction::CloseAccountDevice(DeviceCloseAccountArgs {
-                index: 123,
-                bump_seed: 255,
-            }),
+            DoubleZeroInstruction::CloseAccountDevice(DeviceCloseAccountArgs {}),
             "CloseAccountDevice",
         );
         test_instruction(
-            DoubleZeroInstruction::CloseAccountLink(LinkCloseAccountArgs {
-                index: 123,
-                bump_seed: 255,
-            }),
+            DoubleZeroInstruction::CloseAccountLink(LinkCloseAccountArgs {}),
             "CloseAccountLink",
         );
         test_instruction(
-            DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
-                index: 123,
-                bump_seed: 255,
-            }),
+            DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {}),
             "CloseAccountUser",
         );
         test_instruction(
             DoubleZeroInstruction::RejectDevice(DeviceRejectArgs {
-                index: 123,
-                bump_seed: 255,
                 reason: "test".to_string(),
             }),
             "RejectDevice",
         );
         test_instruction(
             DoubleZeroInstruction::RejectLink(LinkRejectArgs {
-                index: 123,
-                bump_seed: 255,
                 reason: "test".to_string(),
             }),
             "RejectLink",
         );
         test_instruction(
             DoubleZeroInstruction::RejectUser(UserRejectArgs {
-                index: 123,
-                bump_seed: 255,
                 reason: "test".to_string(),
             }),
             "RejectUser",
@@ -736,19 +666,10 @@ mod tests {
             "RemoveUserAllowlist",
         );
         test_instruction(
-            DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs {
-                index: 123,
-                bump_seed: 255,
-            }),
+            DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs {}),
             "RequestBanUser",
         );
-        test_instruction(
-            DoubleZeroInstruction::BanUser(UserBanArgs {
-                index: 123,
-                bump_seed: 255,
-            }),
-            "BanUser",
-        );
+        test_instruction(DoubleZeroInstruction::BanUser(UserBanArgs {}), "BanUser");
 
         test_instruction(
             DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
@@ -770,8 +691,6 @@ mod tests {
 
         test_instruction(
             DoubleZeroInstruction::RejectMulticastGroup(MulticastGroupRejectArgs {
-                index: 123,
-                bump_seed: 255,
                 reason: "test".to_string(),
             }),
             "RejectMulticastGroup",
@@ -779,8 +698,6 @@ mod tests {
 
         test_instruction(
             DoubleZeroInstruction::UpdateMulticastGroup(MulticastGroupUpdateArgs {
-                index: 123,
-                bump_seed: 255,
                 multicast_ip: Some([1, 2, 3, 4]),
                 max_bandwidth: Some(1000),
                 code: Some("test".to_string()),
@@ -789,34 +706,22 @@ mod tests {
         );
 
         test_instruction(
-            DoubleZeroInstruction::SuspendMulticastGroup(MulticastGroupSuspendArgs {
-                index: 123,
-                bump_seed: 255,
-            }),
+            DoubleZeroInstruction::SuspendMulticastGroup(MulticastGroupSuspendArgs {}),
             "SuspendMulticastGroup",
         );
 
         test_instruction(
-            DoubleZeroInstruction::ReactivateMulticastGroup(MulticastGroupReactivateArgs {
-                index: 123,
-                bump_seed: 255,
-            }),
+            DoubleZeroInstruction::ReactivateMulticastGroup(MulticastGroupReactivateArgs {}),
             "ReactivateMulticastGroup",
         );
 
         test_instruction(
-            DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {
-                index: 123,
-                bump_seed: 255,
-            }),
+            DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {}),
             "DeleteMulticastGroup",
         );
 
         test_instruction(
-            DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {
-                index: 123,
-                bump_seed: 255,
-            }),
+            DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {}),
             "DeactivateMulticastGroup",
         );
 

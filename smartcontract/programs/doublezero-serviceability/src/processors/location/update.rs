@@ -1,4 +1,9 @@
-use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::location::*};
+use crate::{
+    error::DoubleZeroError,
+    globalstate::globalstate_get,
+    helper::*,
+    state::{accounttype::AccountType, location::*},
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
 use solana_program::msg;
@@ -10,8 +15,6 @@ use solana_program::{
 use std::fmt;
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct LocationUpdateArgs {
-    pub index: u128,
-    pub bump_seed: u8,
     pub code: Option<String>,
     pub name: Option<String>,
     pub country: Option<String>,
@@ -68,10 +71,10 @@ pub fn process_update_location(
 
     // Parse the location account
     let mut location: Location = Location::try_from(location_account)?;
-    assert_eq!(location.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
-        location.bump_seed, value.bump_seed,
-        "Invalid PDA Account Bump Seed"
+        location.account_type,
+        AccountType::Location,
+        "Invalid Account Type"
     );
 
     if let Some(ref code) = value.code {

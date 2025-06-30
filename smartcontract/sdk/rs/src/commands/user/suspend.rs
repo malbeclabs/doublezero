@@ -1,14 +1,12 @@
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_user_pda,
-    processors::user::suspend::UserSuspendArgs,
-};
-use solana_sdk::{instruction::AccountMeta, signature::Signature};
-
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
+use doublezero_serviceability::{
+    instructions::DoubleZeroInstruction, processors::user::suspend::UserSuspendArgs,
+};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SuspendUserCommand {
-    pub index: u128,
+    pub pubkey: Pubkey,
 }
 
 impl SuspendUserCommand {
@@ -17,14 +15,10 @@ impl SuspendUserCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, bump_seed) = get_user_pda(&client.get_program_id(), self.index);
         client.execute_transaction(
-            DoubleZeroInstruction::SuspendUser(UserSuspendArgs {
-                index: self.index,
-                bump_seed,
-            }),
+            DoubleZeroInstruction::SuspendUser(UserSuspendArgs {}),
             vec![
-                AccountMeta::new(pda_pubkey, false),
+                AccountMeta::new(self.pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
             ],
         )

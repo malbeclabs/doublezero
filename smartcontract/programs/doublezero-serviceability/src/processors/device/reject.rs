@@ -1,6 +1,11 @@
 use core::fmt;
 
-use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::device::*};
+use crate::{
+    error::DoubleZeroError,
+    globalstate::globalstate_get,
+    helper::*,
+    state::{accounttype::AccountType, device::*},
+};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
@@ -12,8 +17,6 @@ use solana_program::{
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct DeviceRejectArgs {
-    pub index: u128,
-    pub bump_seed: u8,
     pub reason: String,
 }
 
@@ -60,11 +63,12 @@ pub fn process_reject_device(
     }
 
     let mut device: Device = Device::try_from(device_account)?;
-    assert_eq!(device.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
-        device.bump_seed, value.bump_seed,
-        "Invalid PDA Account Bump Seed"
+        device.account_type,
+        AccountType::Device,
+        "Invalid Device Account Type"
     );
+
     if device.status != DeviceStatus::Pending {
         return Err(DoubleZeroError::InvalidStatus.into());
     }

@@ -207,10 +207,7 @@ mod device_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs {
-                index: device.index,
-                bump_seed: device.bump_seed,
-            }),
+            DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs {}),
             vec![
                 AccountMeta::new(device_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
@@ -234,10 +231,7 @@ mod device_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::ResumeDevice(DeviceResumeArgs {
-                index: device_la.index,
-                bump_seed: device_la.bump_seed,
-            }),
+            DoubleZeroInstruction::ResumeDevice(DeviceResumeArgs {}),
             vec![
                 AccountMeta::new(device_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
@@ -262,8 +256,6 @@ mod device_test {
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-                index: device.index,
-                bump_seed: device.bump_seed,
                 code: Some("la2".to_string()),
                 device_type: Some(DeviceType::Switch),
                 public_ip: Some([10, 2, 2, 1]),
@@ -295,10 +287,7 @@ mod device_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs {
-                index: device_la.index,
-                bump_seed: device_la.bump_seed,
-            }),
+            DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs {}),
             vec![
                 AccountMeta::new(device_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
@@ -323,10 +312,7 @@ mod device_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::CloseAccountDevice(DeviceCloseAccountArgs {
-                index: device.index,
-                bump_seed: device.bump_seed,
-            }),
+            DoubleZeroInstruction::CloseAccountDevice(DeviceCloseAccountArgs {}),
             vec![
                 AccountMeta::new(device_pubkey, false),
                 AccountMeta::new(device.owner, false),

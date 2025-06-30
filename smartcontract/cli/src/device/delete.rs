@@ -19,15 +19,13 @@ impl DeleteDeviceCliCommand {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let (_, device) = client
+        let (pubkey, _) = client
             .get_device(GetDeviceCommand {
                 pubkey_or_code: self.pubkey,
             })
             .map_err(|_| eyre::eyre!("Device not found"))?;
 
-        let signature = client.delete_device(DeleteDeviceCommand {
-            index: device.index,
-        })?;
+        let signature = client.delete_device(DeleteDeviceCommand { pubkey })?;
         writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
@@ -133,7 +131,7 @@ mod tests {
 
         client
             .expect_delete_device()
-            .with(predicate::eq(DeleteDeviceCommand { index: 1 }))
+            .with(predicate::eq(DeleteDeviceCommand { pubkey: pda_pubkey }))
             .returning(move |_| Ok(signature));
 
         let mut output = Vec::new();

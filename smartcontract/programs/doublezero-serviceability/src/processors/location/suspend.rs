@@ -1,6 +1,11 @@
 use core::fmt;
 
-use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::location::*};
+use crate::{
+    error::DoubleZeroError,
+    globalstate::globalstate_get,
+    helper::*,
+    state::{accounttype::AccountType, location::*},
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
 use solana_program::msg;
@@ -11,10 +16,7 @@ use solana_program::{
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct LocationSuspendArgs {
-    pub index: u128,
-    pub bump_seed: u8,
-}
+pub struct LocationSuspendArgs {}
 
 impl fmt::Debug for LocationSuspendArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -25,7 +27,7 @@ impl fmt::Debug for LocationSuspendArgs {
 pub fn process_suspend_location(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &LocationSuspendArgs,
+    _value: &LocationSuspendArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -35,7 +37,7 @@ pub fn process_suspend_location(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_suspend_location({:?})", value);
+    msg!("process_suspend_location({:?})", _value);
 
     // Check the owner of the accounts
     assert_eq!(
@@ -60,10 +62,10 @@ pub fn process_suspend_location(
     }
 
     let mut location: Location = Location::try_from(location_account)?;
-    assert_eq!(location.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
-        location.bump_seed, value.bump_seed,
-        "Invalid PDA Account Bump Seed"
+        location.account_type,
+        AccountType::Location,
+        "Invalid Account Type"
     );
 
     location.status = LocationStatus::Suspended;

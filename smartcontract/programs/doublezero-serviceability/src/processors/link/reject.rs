@@ -1,4 +1,9 @@
-use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::link::*};
+use crate::{
+    error::DoubleZeroError,
+    globalstate::globalstate_get,
+    helper::*,
+    state::{accounttype::AccountType, link::*},
+};
 use std::fmt;
 
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -11,8 +16,6 @@ use solana_program::{
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct LinkRejectArgs {
-    pub index: u128,
-    pub bump_seed: u8,
     pub reason: String,
 }
 
@@ -56,11 +59,8 @@ pub fn process_reject_link(
     }
 
     let mut link: Link = Link::try_from(link_account)?;
-    assert_eq!(link.index, value.index, "Invalid PDA Account Index");
-    assert_eq!(
-        link.bump_seed, value.bump_seed,
-        "Invalid PDA Account Bump Seed"
-    );
+    assert_eq!(link.account_type, AccountType::Link, "Invalid Account Type");
+
     if link.status != LinkStatus::Pending {
         return Err(DoubleZeroError::InvalidStatus.into());
     }

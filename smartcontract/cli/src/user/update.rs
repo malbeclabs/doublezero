@@ -4,10 +4,7 @@ use crate::{
     validators::{validate_parse_ipv4, validate_parse_networkv4, validate_pubkey},
 };
 use clap::Args;
-use doublezero_sdk::{
-    commands::user::{get::GetUserCommand, update::UpdateUserCommand},
-    *,
-};
+use doublezero_sdk::{commands::user::update::UpdateUserCommand, *};
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, str::FromStr};
 
@@ -36,10 +33,8 @@ impl UpdateUserCliCommand {
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
         let pubkey = Pubkey::from_str(&self.pubkey)?;
-        let (_, user) = client.get_user(GetUserCommand { pubkey })?;
-
         let signature = client.update_user(UpdateUserCommand {
-            index: user.index,
+            pubkey,
             user_type: None,
             cyoa_type: None,
             client_ip: self.client_ip,
@@ -112,12 +107,12 @@ mod tests {
 
         client
             .expect_delete_user()
-            .with(predicate::eq(DeleteUserCommand { index: 1 }))
+            .with(predicate::eq(DeleteUserCommand { pubkey: pda_pubkey }))
             .returning(move |_| Ok(signature));
         client
             .expect_update_user()
             .with(predicate::eq(UpdateUserCommand {
-                index: 1,
+                pubkey: pda_pubkey,
                 user_type: None,
                 cyoa_type: None,
                 client_ip: Some([10, 5, 4, 3]),

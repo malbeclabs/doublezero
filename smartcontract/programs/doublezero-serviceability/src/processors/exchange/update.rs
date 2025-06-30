@@ -1,6 +1,11 @@
 use core::fmt;
 
-use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::exchange::*};
+use crate::{
+    error::DoubleZeroError,
+    globalstate::globalstate_get,
+    helper::*,
+    state::{accounttype::AccountType, exchange::*},
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
 use solana_program::msg;
@@ -12,8 +17,6 @@ use solana_program::{
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct ExchangeUpdateArgs {
-    pub index: u128,
-    pub bump_seed: u8,
     pub code: Option<String>,
     pub name: Option<String>,
     pub lat: Option<f64>,
@@ -69,11 +72,12 @@ pub fn process_update_exchange(
     }
 
     let mut exchange: Exchange = Exchange::try_from(exchange_account)?;
-    assert_eq!(exchange.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
-        exchange.bump_seed, value.bump_seed,
-        "Invalid PDA Account Bump Seed"
+        exchange.account_type,
+        AccountType::Exchange,
+        "Invalid Account Type"
     );
+
     if let Some(ref code) = value.code {
         exchange.code = code.clone();
     }

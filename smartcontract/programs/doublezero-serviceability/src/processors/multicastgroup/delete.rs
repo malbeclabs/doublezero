@@ -1,7 +1,10 @@
 use core::fmt;
 
 use crate::{
-    error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::multicastgroup::*,
+    error::DoubleZeroError,
+    globalstate::globalstate_get,
+    helper::*,
+    state::{accounttype::AccountType, multicastgroup::*},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
@@ -13,10 +16,7 @@ use solana_program::{
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct MulticastGroupDeleteArgs {
-    pub index: u128,
-    pub bump_seed: u8,
-}
+pub struct MulticastGroupDeleteArgs {}
 
 impl fmt::Debug for MulticastGroupDeleteArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -27,7 +27,7 @@ impl fmt::Debug for MulticastGroupDeleteArgs {
 pub fn process_delete_multicastgroup(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &MulticastGroupDeleteArgs,
+    _value: &MulticastGroupDeleteArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -37,7 +37,7 @@ pub fn process_delete_multicastgroup(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_delete_multicastgroup({:?})", value);
+    msg!("process_delete_multicastgroup({:?})", _value);
 
     // Check the owner of the accounts
     assert_eq!(
@@ -66,12 +66,9 @@ pub fn process_delete_multicastgroup(
 
     let mut multicastgroup: MulticastGroup = MulticastGroup::try_from(multicastgroup_account)?;
     assert_eq!(
-        multicastgroup.index, value.index,
-        "Invalid PDA Account Index"
-    );
-    assert_eq!(
-        multicastgroup.bump_seed, value.bump_seed,
-        "Invalid PDA Account Bump Seed"
+        multicastgroup.account_type,
+        AccountType::MulticastGroup,
+        "Invalid Account Type"
     );
     if multicastgroup.status != MulticastGroupStatus::Activated {
         return Err(DoubleZeroError::InvalidStatus.into());

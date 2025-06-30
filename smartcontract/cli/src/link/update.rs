@@ -41,7 +41,7 @@ impl UpdateLinkCliCommand {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let (_, tunnel) = client.get_link(GetLinkCommand {
+        let (pubkey, _) = client.get_link(GetLinkCommand {
             pubkey_or_code: self.pubkey,
         })?;
 
@@ -52,7 +52,7 @@ impl UpdateLinkCliCommand {
             .map_err(|e| eyre!("Invalid tunnel type: {e}"))?;
 
         let signature = client.update_link(UpdateLinkCommand {
-            index: tunnel.index,
+            pubkey,
             code: self.code.clone(),
             tunnel_type,
             bandwidth: self.bandwidth,
@@ -129,7 +129,7 @@ mod tests {
         client
             .expect_update_link()
             .with(predicate::eq(UpdateLinkCommand {
-                index: 1,
+                pubkey: pda_pubkey,
                 code: Some("new_code".to_string()),
                 tunnel_type: None,
                 bandwidth: Some(1000000000),

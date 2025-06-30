@@ -6,10 +6,32 @@ on:
     branches: [ main ]
 
 jobs:
-  rust-ci:
+  rust-build:
     runs-on: ubuntu-24.04-16c-64gb
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: make rust-ci
+      - name: Install agave solana tools
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v2.2.17/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+      - run: make rust-build
+  rust-lint:
+    runs-on: ubuntu-24.04-16c-64gb
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: make rust-lint
+  rust-test:
+    runs-on: ubuntu-24.04-16c-64gb
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install agave solana tools
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v2.2.17/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+      - run: make rust-test

@@ -6,7 +6,25 @@ RUN echo 'deb [trusted=yes] https://repo.goreleaser.com/apt/ /' | tee /etc/apt/s
     apt install -y gcc-x86-64-linux-gnu goreleaser-pro && \
     apt clean -y && \
     rm -rf /var/lib/apt/lists/*
+
 # Install gotest
 RUN curl https://gotest-release.s3.amazonaws.com/gotest_linux > gotest && \
     chmod +x gotest && \
     mv gotest /usr/local/bin/gotest
+
+# Install agave/solana tools
+# https://github.com/anza-xyz/agave/issues/1734
+ARG AGAVE_SOLANA_VERSION=2.2.17
+RUN ARCH=$(uname -m) && \
+    case "$ARCH" in \
+    x86_64) ARCH_TAG=x86_64 ;; \
+    aarch64) ARCH_TAG=aarch64 ;; \
+    *) echo "Unsupported architecture: $ARCH" && exit 1 ;; \
+    esac && \
+    mkdir -p /opt/agave && \
+    curl -sL "https://github.com/staratlasmeta/agave-dist/releases/download/v${AGAVE_SOLANA_VERSION}/solana-release-${ARCH_TAG}-unknown-linux-gnu.tar.bz2" -o /tmp/agave.tar.bz2 && \
+    tar -xjf /tmp/agave.tar.bz2 -C /opt/agave && \
+    mkdir -p /opt/solana/bin && \
+    cp -r /opt/agave/solana-release/bin/* /opt/solana/bin/ && \
+    rm -rf /tmp/agave.tar.bz2
+ENV PATH="/opt/solana/bin:${PATH}"

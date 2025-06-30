@@ -1537,6 +1537,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "doublezero-telemetry"
+version = "0.2.0"
+dependencies = [
+ "bincode 2.0.1",
+ "borsh 1.5.7",
+ "ctor",
+ "doublezero-serviceability",
+ "env_logger",
+ "log",
+ "serde",
+ "solana-program",
+ "solana-program-test",
+ "solana-sdk",
+]
+
+[[package]]
 name = "doublezero_cli"
 version = "0.2.2"
 dependencies = [

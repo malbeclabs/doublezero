@@ -1,8 +1,11 @@
 pub mod command;
 pub mod config;
+pub mod contributor;
 pub mod device;
 pub mod exchange;
 pub mod globalconfig;
 pub mod link;
 pub mod location;
+pub mod multicast;
+pub mod multicastgroup;
 pub mod user;

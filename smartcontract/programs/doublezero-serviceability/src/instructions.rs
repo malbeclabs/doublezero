@@ -1,12 +1,13 @@
-use borsh::{from_slice, BorshDeserialize, BorshSerialize};
-use solana_program::program_error::ProgramError;
-use std::cmp::PartialEq;
-
 use crate::processors::{
     allowlist::{
         device::{add::AddDeviceAllowlistArgs, remove::RemoveDeviceAllowlistArgs},
         foundation::{add::AddFoundationAllowlistArgs, remove::RemoveFoundationAllowlistArgs},
         user::{add::AddUserAllowlistArgs, remove::RemoveUserAllowlistArgs},
+    },
+    contributor::{
+        create::ContributorCreateArgs, delete::ContributorDeleteArgs,
+        resume::ContributorResumeArgs, suspend::ContributorSuspendArgs,
+        update::ContributorUpdateArgs,
     },
     device::{
         activate::DeviceActivateArgs, closeaccount::DeviceCloseAccountArgs,
@@ -56,11 +57,14 @@ use crate::processors::{
         suspend::UserSuspendArgs, update::UserUpdateArgs,
     },
 };
+use borsh::{from_slice, BorshDeserialize, BorshSerialize};
+use solana_program::program_error::ProgramError;
+use std::cmp::PartialEq;
 
 // Instructions that our program can execute
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
 pub enum DoubleZeroInstruction {
-    None(),
+    None(),                               // variant 0
     InitGlobalState(),                    // variant 1
     CloseAccount(CloseAccountArgs),       // variant 2
     SetGlobalConfig(SetGlobalConfigArgs), // variant 3
@@ -109,7 +113,7 @@ pub enum DoubleZeroInstruction {
     SuspendUser(UserSuspendArgs),           // variant 40
     ResumeUser(UserResumeArgs),             // variant 41
     DeleteUser(UserDeleteArgs),             // variant 42
-    CloseAccountUser(UserCloseAccountArgs), // variant 42
+    CloseAccountUser(UserCloseAccountArgs), // variant 43
     RequestBanUser(UserRequestBanArgs),     // variant 44
     BanUser(UserBanArgs),                   // variant 45
 
@@ -129,6 +133,12 @@ pub enum DoubleZeroInstruction {
 
     SubscribeMulticastGroup(MulticastGroupSubscribeArgs), // variant 58
     CreateSubscribeUser(UserCreateSubscribeArgs),         // variant 59
+
+    CreateContributor(ContributorCreateArgs),   // variant 60
+    UpdateContributor(ContributorUpdateArgs),   // variant 61
+    SuspendContributor(ContributorSuspendArgs), // variant 62
+    ResumeContributor(ContributorResumeArgs),   // variant 63
+    DeleteContributor(ContributorDeleteArgs),   // variant 64
 }
 
 impl DoubleZeroInstruction {
@@ -211,6 +221,12 @@ impl DoubleZeroInstruction {
             58 => Ok(Self::SubscribeMulticastGroup(from_slice::<MulticastGroupSubscribeArgs>(rest).unwrap())),
             59 => Ok(Self::CreateSubscribeUser(from_slice::<UserCreateSubscribeArgs>(rest).unwrap())),
 
+            60 => Ok(Self::CreateContributor(from_slice::<ContributorCreateArgs>(rest).unwrap())),
+            61 => Ok(Self::UpdateContributor(from_slice::<ContributorUpdateArgs>(rest).unwrap())),
+            62 => Ok(Self::SuspendContributor(from_slice::<ContributorSuspendArgs>(rest).unwrap())),
+            63 => Ok(Self::ResumeContributor(from_slice::<ContributorResumeArgs>(rest).unwrap())),
+            64 => Ok(Self::DeleteContributor(from_slice::<ContributorDeleteArgs>(rest).unwrap())),
+
             _ => Err(ProgramError::InvalidInstructionData),
         }
     }
@@ -291,6 +307,12 @@ impl DoubleZeroInstruction {
 
             Self::SubscribeMulticastGroup(_) => "SubscribeMulticastGroup".to_string(), // variant 58
             Self::CreateSubscribeUser(_) => "CreateSubscribeUser".to_string(),         // variant 59
+
+            Self::CreateContributor(_) => "CreateContributor".to_string(), // variant 60
+            Self::UpdateContributor(_) => "UpdateContributor".to_string(), // variant 61
+            Self::SuspendContributor(_) => "SuspendContributor".to_string(), // variant 62
+            Self::ResumeContributor(_) => "ResumeContributor".to_string(), // variant 63
+            Self::DeleteContributor(_) => "DeleteContributor".to_string(), // variant 64
         }
     }
 
@@ -364,6 +386,12 @@ impl DoubleZeroInstruction {
             Self::AddMulticastGroupSubAllowlist(args) => format!("{args:?}"), // variant 57
             Self::RemoveMulticastGroupSubAllowlist(args) => format!("{args:?}"), // variant 58
             Self::CreateSubscribeUser(args) => format!("{args:?}"),  // variant 59
+
+            Self::CreateContributor(args) => format!("{args:?}"), // variant 60
+            Self::UpdateContributor(args) => format!("{args:?}"), // variant 61
+            Self::SuspendContributor(args) => format!("{args:?}"), // variant 62
+            Self::ResumeContributor(args) => format!("{args:?}"), // variant 63
+            Self::DeleteContributor(args) => format!("{args:?}"), // variant 64
         }
     }
 }
@@ -478,6 +506,7 @@ mod tests {
                 bump_seed: 255,
                 code: "test".to_string(),
                 public_ip: [1, 2, 3, 4],
+                contributor_pk: Pubkey::new_unique(),
                 device_type: DeviceType::Switch,
                 dz_prefixes: vec![([1, 2, 3, 4], 1)],
                 location_pk: Pubkey::new_unique(),
@@ -494,6 +523,7 @@ mod tests {
             DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
                 code: Some("test".to_string()),
                 public_ip: Some([1, 2, 3, 4]),
+                contributor_pk: Some(Pubkey::new_unique()),
                 device_type: Some(DeviceType::Switch),
                 dz_prefixes: Some(vec![([1, 2, 3, 4], 1)]),
                 metrics_publisher_pk: Some(Pubkey::new_unique()),
@@ -776,6 +806,34 @@ mod tests {
                 subscriber: true,
             }),
             "CreateSubscribeUser",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
+                index: 123,
+                bump_seed: 255,
+                code: "test".to_string(),
+                ata_owner_pk: Pubkey::default(),
+            }),
+            "CreateContributor",
+        );
+        test_instruction(
+            DoubleZeroInstruction::UpdateContributor(ContributorUpdateArgs {
+                code: Some("test".to_string()),
+                ata_owner_pk: Some(Pubkey::default()),
+            }),
+            "UpdateContributor",
+        );
+        test_instruction(
+            DoubleZeroInstruction::SuspendContributor(ContributorSuspendArgs {}),
+            "SuspendContributor",
+        );
+        test_instruction(
+            DoubleZeroInstruction::ResumeContributor(ContributorResumeArgs {}),
+            "ResumeContributor",
+        );
+        test_instruction(
+            DoubleZeroInstruction::DeleteContributor(ContributorDeleteArgs {}),
+            "DeleteContributor",
         );
     }
 }

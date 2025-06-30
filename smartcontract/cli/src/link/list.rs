@@ -119,6 +119,7 @@ mod tests {
     fn test_cli_link_list() {
         let mut client = create_test_client();
 
+        let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let location1_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1");
         let location2_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo2");
         let exchange1_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo3");
@@ -130,6 +131,7 @@ mod tests {
             index: 1,
             bump_seed: 2,
             code: "device1_code".to_string(),
+            contributor_pk,
             location_pk: location1_pubkey,
             exchange_pk: exchange1_pubkey,
             device_type: DeviceType::Switch,
@@ -145,6 +147,7 @@ mod tests {
             index: 1,
             bump_seed: 2,
             code: "device2_code".to_string(),
+            contributor_pk,
             location_pk: location2_pubkey,
             exchange_pk: exchange2_pubkey,
             device_type: DeviceType::Switch,

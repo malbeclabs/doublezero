@@ -1,9 +1,9 @@
 use crate::{
     error::DoubleZeroError,
     state::{
-        accounttype::AccountType, device::Device, exchange::Exchange, globalconfig::GlobalConfig,
-        globalstate::GlobalState, link::Link, location::Location, multicastgroup::MulticastGroup,
-        programconfig::ProgramConfig, user::User,
+        accounttype::AccountType, contributor::Contributor, device::Device, exchange::Exchange,
+        globalconfig::GlobalConfig, globalstate::GlobalState, link::Link, location::Location,
+        multicastgroup::MulticastGroup, programconfig::ProgramConfig, user::User,
     },
 };
 
@@ -19,6 +19,7 @@ pub enum AccountData {
     User(User),
     MulticastGroup(MulticastGroup),
     ProgramConfig(ProgramConfig),
+    Contributor(Contributor),
 }
 
 impl AccountData {
@@ -34,6 +35,7 @@ impl AccountData {
             AccountData::User(_) => "User",
             AccountData::MulticastGroup(_) => "MulticastGroup",
             AccountData::ProgramConfig(_) => "ProgramConfig",
+            AccountData::Contributor(_) => "Contributor",
         }
     }
 
@@ -49,6 +51,7 @@ impl AccountData {
             AccountData::User(user) => user.to_string(),
             AccountData::MulticastGroup(multicast_group) => multicast_group.to_string(),
             AccountData::ProgramConfig(program_config) => program_config.to_string(),
+            AccountData::Contributor(contributor) => contributor.to_string(),
         }
     }
 
@@ -123,6 +126,14 @@ impl AccountData {
             Err(DoubleZeroError::InvalidAccountType)
         }
     }
+
+    pub fn get_contributor(&self) -> Result<Contributor, DoubleZeroError> {
+        if let AccountData::Contributor(contributor) = self {
+            Ok(contributor.clone())
+        } else {
+            Err(DoubleZeroError::InvalidAccountType)
+        }
+    }
 }
 
 impl From<&[u8]> for AccountData {
@@ -138,6 +149,7 @@ impl From<&[u8]> for AccountData {
             AccountType::User => AccountData::User(User::from(bytes)),
             AccountType::MulticastGroup => AccountData::MulticastGroup(MulticastGroup::from(bytes)),
             AccountType::ProgramConfig => AccountData::ProgramConfig(ProgramConfig::from(bytes)),
+            AccountType::Contributor => AccountData::Contributor(Contributor::from(bytes)),
         }
     }
 }

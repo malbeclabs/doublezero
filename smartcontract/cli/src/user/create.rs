@@ -85,12 +85,14 @@ mod tests {
             100, 221, 20, 137, 4, 5,
         ]);
 
+        let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let device_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
         let device = Device {
             account_type: AccountType::Device,
             index: 1,
             bump_seed: 255,
             code: "device1".to_string(),
+            contributor_pk,
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             device_type: DeviceType::Switch,

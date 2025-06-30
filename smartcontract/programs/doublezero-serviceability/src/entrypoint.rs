@@ -12,6 +12,11 @@ use crate::{
             },
             user::{add::process_add_user_allowlist, remove::process_remove_user_allowlist},
         },
+        contributor::{
+            create::process_create_contributor, delete::process_delete_contributor,
+            resume::process_resume_contributor, suspend::process_suspend_contributor,
+            update::process_update_contributor,
+        },
         device::{
             activate::process_activate_device, closeaccount::process_closeaccount_device,
             create::process_create_device, delete::process_delete_device,
@@ -258,6 +263,21 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::CreateSubscribeUser(value) => {
             process_create_subscribe_user(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::CreateContributor(value) => {
+            process_create_contributor(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::UpdateContributor(value) => {
+            process_update_contributor(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::SuspendContributor(value) => {
+            process_suspend_contributor(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::ResumeContributor(value) => {
+            process_resume_contributor(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::DeleteContributor(value) => {
+            process_delete_contributor(program_id, accounts, &value)?
         }
     };
     Ok(())

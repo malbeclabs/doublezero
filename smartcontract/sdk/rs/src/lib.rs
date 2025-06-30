@@ -1,20 +1,18 @@
-pub use doublezero_serviceability::pda::{
-    get_device_pda, get_exchange_pda, get_globalconfig_pda, get_link_pda, get_location_pda,
-    get_multicastgroup_pda, get_user_pda,
-};
-
-pub use doublezero_serviceability::addresses::*;
-
 pub use crate::config::{
     create_new_pubkey_user, get_doublezero_pubkey, read_doublezero_config, write_doublezero_config,
     ClientConfig,
 };
-
+pub use doublezero_serviceability::addresses::*;
+pub use doublezero_serviceability::pda::{
+    get_contributor_pda, get_device_pda, get_exchange_pda, get_globalconfig_pda, get_link_pda,
+    get_location_pda, get_multicastgroup_pda, get_user_pda,
+};
 pub use doublezero_serviceability::{
     programversion::ProgramVersion,
     state::{
         accountdata::AccountData,
         accounttype::AccountType,
+        contributor::{Contributor, ContributorStatus},
         device::{Device, DeviceStatus, DeviceType},
         exchange::{Exchange, ExchangeStatus},
         globalconfig::GlobalConfig,

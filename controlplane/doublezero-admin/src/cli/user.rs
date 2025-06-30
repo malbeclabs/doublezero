@@ -5,7 +5,12 @@ use doublezero_cli::{
         add::AddUserAllowlistCliCommand, list::ListUserAllowlistCliCommand,
         remove::RemoveUserAllowlistCliCommand,
     },
-    user::{create::*, delete::*, get::*, list::*, request_ban::*, update::*},
+    user::{
+        create::CreateUserCliCommand, create_subscribe::CreateSubscribeUserCliCommand,
+        delete::DeleteUserCliCommand, get::GetUserCliCommand, list::ListUserCliCommand,
+        request_ban::RequestBanUserCliCommand, subscribe::SubscribeUserCliCommand,
+        update::UpdateUserCliCommand,
+    },
 };
 
 #[derive(Args, Debug)]
@@ -16,13 +21,32 @@ pub struct UserCliCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum UserCommands {
+    /// Create a new user
+    #[command(hide = true)]
     Create(CreateUserCliCommand),
+    /// Create and subscribe a new user
+    #[command(hide = true)]
+    CreateSubscribe(CreateSubscribeUserCliCommand),
+    /// Subscribe an existing user
+    #[command(hide = true)]
+    Subscribe(SubscribeUserCliCommand),
+    /// Update an existing user
+    #[command(hide = true)]
     Update(UpdateUserCliCommand),
+    /// List all users
+    #[command()]
     List(ListUserCliCommand),
+    /// Get details for a specific user
+    #[command()]
     Get(GetUserCliCommand),
+    /// Delete a user
+    #[command(hide = true)]
     Delete(DeleteUserCliCommand),
-    #[command(about = "allowlist", hide = false)]
+    /// Manage user allowlist
+    #[command(hide = false)]
     Allowlist(UserAllowlistCliCommand),
+    /// Request a ban for a user
+    #[command(hide = true)]
     RequestBan(RequestBanUserCliCommand),
 }
 
@@ -34,7 +58,13 @@ pub struct UserAllowlistCliCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum UserAllowlistCommands {
+    /// List user allowlist
+    #[clap()]
     List(ListUserAllowlistCliCommand),
+    /// Add a user to the allowlist
+    #[clap()]
     Add(AddUserAllowlistCliCommand),
+    /// Remove a user from the allowlist
+    #[clap()]
     Remove(RemoveUserAllowlistCliCommand),
 }

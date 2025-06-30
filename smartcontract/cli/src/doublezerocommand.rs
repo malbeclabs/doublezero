@@ -14,6 +14,12 @@ use doublezero_sdk::{
                 remove::RemoveUserAllowlistCommand,
             },
         },
+        contributor::{
+            create::CreateContributorCommand, delete::DeleteContributorCommand,
+            get::GetContributorCommand, list::ListContributorCommand,
+            resume::ResumeContributorCommand, suspend::SuspendContributorCommand,
+            update::UpdateContributorCommand,
+        },
         device::{
             activate::ActivateDeviceCommand, closeaccount::CloseAccountDeviceCommand,
             create::CreateDeviceCommand, delete::DeleteDeviceCommand, get::GetDeviceCommand,
@@ -68,7 +74,7 @@ use doublezero_sdk::{
     DZClient, Device, DoubleZeroClient, Exchange, GetGlobalConfigCommand, GlobalConfig, Link,
     Location, MulticastGroup, User,
 };
-use doublezero_serviceability::state::programconfig::ProgramConfig;
+use doublezero_serviceability::state::{contributor::Contributor, programconfig::ProgramConfig};
 use mockall::automock;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 use std::collections::HashMap;
@@ -103,6 +109,20 @@ pub trait CliCommand {
     fn list_exchange(&self, cmd: ListExchangeCommand) -> eyre::Result<HashMap<Pubkey, Exchange>>;
     fn update_exchange(&self, cmd: UpdateExchangeCommand) -> eyre::Result<Signature>;
     fn delete_exchange(&self, cmd: DeleteExchangeCommand) -> eyre::Result<Signature>;
+
+    fn create_contributor(
+        &self,
+        cmd: CreateContributorCommand,
+    ) -> eyre::Result<(Signature, Pubkey)>;
+    fn get_contributor(&self, cmd: GetContributorCommand) -> eyre::Result<(Pubkey, Contributor)>;
+    fn suspend_contributor(&self, cmd: SuspendContributorCommand) -> eyre::Result<Signature>;
+    fn resume_contributor(&self, cmd: ResumeContributorCommand) -> eyre::Result<Signature>;
+    fn list_contributor(
+        &self,
+        cmd: ListContributorCommand,
+    ) -> eyre::Result<HashMap<Pubkey, Contributor>>;
+    fn update_contributor(&self, cmd: UpdateContributorCommand) -> eyre::Result<Signature>;
+    fn delete_contributor(&self, cmd: DeleteContributorCommand) -> eyre::Result<Signature>;
 
     fn create_device(&self, cmd: CreateDeviceCommand) -> eyre::Result<(Signature, Pubkey)>;
     fn get_device(&self, cmd: GetDeviceCommand) -> eyre::Result<(Pubkey, Device)>;
@@ -288,6 +308,34 @@ impl CliCommand for CliCommandImpl<'_> {
     fn delete_exchange(&self, cmd: DeleteExchangeCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
+    fn create_contributor(
+        &self,
+        cmd: CreateContributorCommand,
+    ) -> eyre::Result<(Signature, Pubkey)> {
+        cmd.execute(self.client)
+    }
+    fn get_contributor(&self, cmd: GetContributorCommand) -> eyre::Result<(Pubkey, Contributor)> {
+        cmd.execute(self.client)
+    }
+    fn suspend_contributor(&self, cmd: SuspendContributorCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn resume_contributor(&self, cmd: ResumeContributorCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn list_contributor(
+        &self,
+        cmd: ListContributorCommand,
+    ) -> eyre::Result<HashMap<Pubkey, Contributor>> {
+        cmd.execute(self.client)
+    }
+    fn update_contributor(&self, cmd: UpdateContributorCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn delete_contributor(&self, cmd: DeleteContributorCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+
     fn create_device(&self, cmd: CreateDeviceCommand) -> eyre::Result<(Signature, Pubkey)> {
         cmd.execute(self.client)
     }

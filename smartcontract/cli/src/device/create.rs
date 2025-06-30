@@ -10,6 +10,7 @@ use crate::{
 use clap::Args;
 use doublezero_sdk::{
     commands::{
+        contributor::get::GetContributorCommand,
         device::{create::CreateDeviceCommand, list::ListDeviceCommand},
         exchange::get::GetExchangeCommand,
         location::get::GetLocationCommand,
@@ -24,6 +25,9 @@ pub struct CreateDeviceCliCommand {
     /// Unique device code
     #[arg(long, value_parser = validate_code)]
     pub code: String,
+    /// Location (pubkey or code) associated with the device
+    #[arg(long, value_parser = validate_pubkey_or_code)]
+    pub contributor: String,
     /// Location (pubkey or code) associated with the device
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub location: String,
@@ -59,6 +63,18 @@ impl CreateDeviceCliCommand {
                 ipv4_to_string(&self.public_ip)
             ));
         }
+
+        let contributor_pk = match parse_pubkey(&self.contributor) {
+            Some(pk) => pk,
+            None => {
+                let (pubkey, _) = client
+                    .get_contributor(GetContributorCommand {
+                        pubkey_or_code: self.contributor.clone(),
+                    })
+                    .map_err(|_| eyre::eyre!("Contributor not found"))?;
+                pubkey
+            }
+        };
 
         let location_pk = match parse_pubkey(&self.location) {
             Some(pk) => pk,
@@ -99,6 +115,7 @@ impl CreateDeviceCliCommand {
 
         let (signature, _pubkey) = client.create_device(CreateDeviceCommand {
             code: self.code.clone(),
+            contributor_pk,
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
@@ -124,11 +141,12 @@ mod tests {
     };
     use doublezero_sdk::{
         commands::{
+            contributor::get::GetContributorCommand,
             device::{create::CreateDeviceCommand, list::ListDeviceCommand},
             exchange::get::GetExchangeCommand,
         },
-        get_device_pda, AccountType, DeviceType, Exchange, ExchangeStatus, GetLocationCommand,
-        Location, LocationStatus,
+        get_device_pda, AccountType, Contributor, ContributorStatus, DeviceType, Exchange,
+        ExchangeStatus, GetLocationCommand, Location, LocationStatus,
     };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
@@ -173,6 +191,24 @@ mod tests {
             owner: exchange_pk,
         };
 
+        let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let contributor = Contributor {
+            account_type: AccountType::Contributor,
+            index: 1,
+            bump_seed: 255,
+            code: "test".to_string(),
+            ata_owner_pk: Pubkey::default(),
+            status: ContributorStatus::Activated,
+            owner: contributor_pk,
+        };
+
+        client
+            .expect_get_contributor()
+            .with(predicate::eq(GetContributorCommand {
+                pubkey_or_code: contributor_pk.to_string(),
+            }))
+            .returning(move |_| Ok((contributor_pk, contributor.clone())));
+
         client
             .expect_check_requirements()
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
@@ -197,6 +233,7 @@ mod tests {
             .expect_create_device()
             .with(predicate::eq(CreateDeviceCommand {
                 code: "test".to_string(),
+                contributor_pk,
                 location_pk,
                 exchange_pk,
                 device_type: DeviceType::Switch,
@@ -209,6 +246,7 @@ mod tests {
         let mut output = Vec::new();
         let res = CreateDeviceCliCommand {
             code: "test".to_string(),
+            contributor: contributor_pk.to_string(),
             location: location_pk.to_string(),
             exchange: exchange_pk.to_string(),
             public_ip: [100, 0, 0, 1],

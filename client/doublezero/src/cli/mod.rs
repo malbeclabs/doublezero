@@ -1,5 +1,6 @@
 pub mod command;
 pub mod config;
+pub mod contributor;
 pub mod device;
 pub mod exchange;
 pub mod globalconfig;

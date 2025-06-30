@@ -1,46 +1,71 @@
-use clap::Subcommand;
-
-use doublezero_cli::init::InitCliCommand;
-
+use super::multicast::MulticastCliCommand;
+use crate::cli::{
+    config::ConfigCliCommand, contributor::ContributorCliCommand, device::DeviceCliCommand,
+    exchange::ExchangeCliCommand, globalconfig::GlobalConfigCliCommand, link::LinkCliCommand,
+    location::LocationCliCommand, user::UserCliCommand,
+};
+use clap::{Args, Subcommand};
+use clap_complete::Shell;
 use doublezero_cli::{
     account::GetAccountCliCommand, address::AddressCliCommand, balance::BalanceCliCommand,
-    export::ExportCliCommand, keygen::KeyGenCliCommand, log::LogCliCommand,
-};
-
-use crate::cli::{
-    config::ConfigCliCommand, device::DeviceCliCommand, exchange::ExchangeCliCommand,
-    globalconfig::GlobalConfigCliCommand, link::LinkCliCommand, location::LocationCliCommand,
-    user::UserCliCommand,
+    export::ExportCliCommand, init::InitCliCommand, keygen::KeyGenCliCommand, log::LogCliCommand,
 };
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
-    #[command(about = "", hide = true)]
+    #[command(hide = true)]
     Init(InitCliCommand),
-    #[command(about = "Get your public key", hide = false)]
+    /// Get your public key
+    #[command(hide = false)]
     Address(AddressCliCommand),
-    #[command(about = "Get your balance", hide = false)]
+    /// Get your balance
+    #[command(hide = false)]
     Balance(BalanceCliCommand),
-    #[command(about = "local configuration", hide = false)]
+    /// local configuration
+    #[command(hide = false)]
     Config(ConfigCliCommand),
-    #[command(about = "Global network configuration", hide = false)]
+    /// Global network configuration
+    #[command(hide = false)]
     GlobalConfig(GlobalConfigCliCommand),
-    #[command(about = "Get Account", hide = false)]
+    /// Get Account
+    #[command(hide = false)]
     Account(GetAccountCliCommand),
-    #[command(about = "Manage locations", hide = false)]
+    /// Manage locations
+    #[command(hide = false)]
     Location(LocationCliCommand),
-    #[command(about = "Manage exchanges", hide = false)]
+    /// Manage exchanges
+    #[command(hide = false)]
     Exchange(ExchangeCliCommand),
-    #[command(about = "Manage devices", hide = false)]
+    /// Manage contributors
+    #[command(hide = false)]
+    Contributor(ContributorCliCommand),
+    #[command(hide = false)]
     Device(DeviceCliCommand),
-    #[command(about = "Manage tunnels between devices", hide = false)]
+    /// Manage tunnels between devices
+    #[command(hide = false)]
     Link(LinkCliCommand),
-    #[command(about = "Manage users", hide = false)]
+    /// Manage users
+    #[command(hide = false)]
     User(UserCliCommand),
-    #[command(about = "Export all data to files", hide = false)]
+    /// Manage multicast
+    #[command(hide = false)]
+    Multicast(MulticastCliCommand),
+    /// Export all data to files
+    #[command(hide = false)]
     Export(ExportCliCommand),
-    #[command(about = "Create a new user identity", hide = false)]
+    /// Create a new user identity
+    #[command(hide = false)]
     Keygen(KeyGenCliCommand),
-    #[command(about = "Get logs", hide = false)]
+    /// Get logs
+    #[command(hide = false)]
     Log(LogCliCommand),
+    /// Generate shell completions
+    #[command(hide = false)]
+    Completion(CompletionCliCommand),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct CompletionCliCommand {
+    #[arg(value_enum)]
+    pub shell: Shell,
 }

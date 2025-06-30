@@ -8,3 +8,4 @@ pub const SEED_DEVICE: &[u8] = b"device";
 pub const SEED_LINK: &[u8] = b"link";
 pub const SEED_USER: &[u8] = b"user";
 pub const SEED_MULTICAST_GROUP: &[u8] = b"multicast";
+pub const SEED_CONTRIBUTOR: &[u8] = b"contributor";

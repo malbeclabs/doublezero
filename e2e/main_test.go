@@ -148,7 +148,9 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 
 	// Add a device to the devnet and onchain.
 	device, err := dn.AddDevice(ctx, devnet.DeviceSpec{
-		Code: "ny5-dz01",
+		Code:     "ny5-dz01",
+		Location: "ewr",
+		Exchange: "xewr",
 		// .8/29 has network address .8, allocatable up to .14, and broadcast .15
 		CYOANetworkIPHostID:          8,
 		CYOANetworkAllocatablePrefix: 29,

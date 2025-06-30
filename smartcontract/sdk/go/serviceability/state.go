@@ -1,4 +1,4 @@
-package dzsdk
+package serviceability
 
 type AccountType uint8
 

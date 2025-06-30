@@ -39,6 +39,8 @@ const (
 type DeviceSpec struct {
 	ContainerImage string
 	Code           string
+	Location       string
+	Exchange       string
 
 	// CYOANetworkIPHostID is the offset into the host portion of the subnet (must be < 2^(32 - prefixLen)).
 	CYOANetworkIPHostID uint32
@@ -84,6 +86,14 @@ func (s *DeviceSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
 	// Check for required fields.
 	if s.Code == "" {
 		return fmt.Errorf("code is required")
+	}
+
+	if s.Location == "" {
+		return fmt.Errorf("location is required")
+	}
+
+	if s.Exchange == "" {
+		return fmt.Errorf("exchange is required")
 	}
 
 	// Validate that hostID does not select the network (0) or broadcast (max) address.
@@ -199,7 +209,7 @@ func (d *Device) Start(ctx context.Context) error {
 	cyoaNetworkIP := ip.To4().String()
 
 	// Create the device onchain.
-	onchainID, err := d.dn.GetOrCreateDeviceOnchain(ctx, spec.Code, "ewr", "xewr", cyoaNetworkIP, []string{cyoaNetworkIP + "/" + strconv.Itoa(int(spec.CYOANetworkAllocatablePrefix))})
+	onchainID, err := d.dn.GetOrCreateDeviceOnchain(ctx, spec.Code, spec.Location, spec.Exchange, cyoaNetworkIP, []string{cyoaNetworkIP + "/" + strconv.Itoa(int(spec.CYOANetworkAllocatablePrefix))})
 	if err != nil {
 		return fmt.Errorf("failed to create device %s onchain: %w", spec.Code, err)
 	}

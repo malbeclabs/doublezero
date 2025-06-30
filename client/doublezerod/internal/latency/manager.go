@@ -10,14 +10,14 @@ import (
 	"sync"
 	"time"
 
-	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/mr-tron/base58"
 	probing "github.com/prometheus-community/pro-bing"
 )
 
-type ProberFunc func(context.Context, dzsdk.Device) LatencyResult
+type ProberFunc func(context.Context, serviceability.Device) LatencyResult
 
-func UdpPing(ctx context.Context, d dzsdk.Device) LatencyResult {
+func UdpPing(ctx context.Context, d serviceability.Device) LatencyResult {
 	addr := net.IP(d.PublicIp[:])
 	pinger, err := probing.NewPinger(addr.String())
 	if err != nil {
@@ -50,17 +50,17 @@ func UdpPing(ctx context.Context, d dzsdk.Device) LatencyResult {
 type SmartContractorFunc func(context.Context, string, string) (*ContractData, error)
 
 type DeviceCache struct {
-	Devices []dzsdk.Device
+	Devices []serviceability.Device
 	Lock    sync.Mutex
 }
 
 type LatencyResult struct {
-	Min       int64        `json:"min_latency_ns"`
-	Max       int64        `json:"max_latency_ns"`
-	Avg       int64        `json:"avg_latency_ns"`
-	Loss      float64      `json:"loss_percentage"`
-	Device    dzsdk.Device `json:"-"`
-	Reachable bool         `json:"reachable"`
+	Min       int64                 `json:"min_latency_ns"`
+	Max       int64                 `json:"max_latency_ns"`
+	Avg       int64                 `json:"avg_latency_ns"`
+	Loss      float64               `json:"loss_percentage"`
+	Device    serviceability.Device `json:"-"`
+	Reachable bool                  `json:"reachable"`
 }
 
 func (l *LatencyResult) MarshalJSON() ([]byte, error) {
@@ -98,7 +98,7 @@ func NewLatencyManager(s SmartContractorFunc, p ProberFunc) *LatencyManager {
 	return &LatencyManager{
 		SmartContractFunc: s,
 		ProberFunc:        p,
-		DeviceCache:       &DeviceCache{Devices: []dzsdk.Device{}, Lock: sync.Mutex{}},
+		DeviceCache:       &DeviceCache{Devices: []serviceability.Device{}, Lock: sync.Mutex{}},
 		ResultsCache:      &LatencyResults{Results: []LatencyResult{}, Lock: sync.RWMutex{}},
 	}
 }
@@ -200,10 +200,10 @@ func (l *LatencyManager) ServeLatency(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(data)
 }
 
-func (l *LatencyManager) GetDeviceCache() []dzsdk.Device {
+func (l *LatencyManager) GetDeviceCache() []serviceability.Device {
 	l.DeviceCache.Lock.Lock()
 	defer l.DeviceCache.Lock.Unlock()
-	devices := make([]dzsdk.Device, len(l.DeviceCache.Devices))
+	devices := make([]serviceability.Device, len(l.DeviceCache.Devices))
 	copy(devices, l.DeviceCache.Devices)
 	return devices
 }

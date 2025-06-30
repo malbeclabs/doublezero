@@ -17,8 +17,11 @@ import (
 	dockerfilters "github.com/docker/docker/api/types/filters"
 	dockervolume "github.com/docker/docker/api/types/volume"
 	"github.com/docker/go-connections/nat"
+	"github.com/gagliardetto/solana-go"
+	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
-	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -308,8 +311,31 @@ func waitForSolanaReady(ctx context.Context, log *slog.Logger, rpcPort int) erro
 	return nil
 }
 
-func (l *Ledger) GetServiceabilityProgramClient(ctx context.Context) (*dzsdk.Client, error) {
-	l.log.Debug("--> Building serviceability program client", "internalRPCURL", l.InternalRPCURL, "serviceabilityProgramID", l.dn.Manager.ServiceabilityProgramID)
+func (l *Ledger) GetServiceabilityClient() (*serviceability.Client, error) {
+	l.log.Debug("--> Building serviceability program client", "externalHost", l.dn.Spec.Ledger.ExternalHost, "externalRPCPort", l.ExternalRPCPort, "serviceabilityProgramID", l.dn.Manager.ServiceabilityProgramID)
 	endpoint := "http://" + net.JoinHostPort(l.dn.Spec.Ledger.ExternalHost, strconv.Itoa(l.ExternalRPCPort))
-	return dzsdk.New(endpoint, dzsdk.WithProgramId(l.dn.Manager.ServiceabilityProgramID)), nil
+	rpcClient := rpc.New(endpoint)
+	programID, err := solana.PublicKeyFromBase58(l.dn.Manager.ServiceabilityProgramID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse program ID: %w", err)
+	}
+	client := serviceability.New(rpcClient, programID)
+	return client, nil
+}
+
+func (l *Ledger) GetRPCClient() *rpc.Client {
+	endpoint := "http://" + net.JoinHostPort(l.dn.Spec.Ledger.ExternalHost, strconv.Itoa(l.ExternalRPCPort))
+	return rpc.New(endpoint)
+}
+
+func (l *Ledger) GetTelemetryClient(agentPrivateKey *solana.PrivateKey) (*telemetry.Client, error) {
+	l.log.Debug("--> Building telemetry program client", "externalHost", l.dn.Spec.Ledger.ExternalHost, "externalRPCPort", l.ExternalRPCPort, "telemetryProgramID", l.dn.Manager.TelemetryProgramID)
+	endpoint := "http://" + net.JoinHostPort(l.dn.Spec.Ledger.ExternalHost, strconv.Itoa(l.ExternalRPCPort))
+	rpcClient := rpc.New(endpoint)
+	programID, err := solana.PublicKeyFromBase58(l.dn.Manager.TelemetryProgramID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse program ID: %w", err)
+	}
+	client := telemetry.New(l.log, rpcClient, agentPrivateKey, programID)
+	return client, nil
 }

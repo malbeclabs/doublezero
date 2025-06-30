@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
-	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
 type Peer struct {
@@ -105,13 +105,13 @@ func (p *ledgerPeerDiscovery) refresh(ctx context.Context) {
 	p.peersMu.Lock()
 	defer p.peersMu.Unlock()
 
-	devices := make(map[string]dzsdk.Device)
+	devices := make(map[string]serviceability.Device)
 	for _, device := range p.config.ProgramClient.GetDevices() {
 		pubkey := solana.PublicKeyFromBytes(device.PubKey[:])
 		devices[pubkey.String()] = device
 	}
 
-	links := make(map[string]dzsdk.Link)
+	links := make(map[string]serviceability.Link)
 	for _, link := range p.config.ProgramClient.GetLinks() {
 		pubkey := solana.PublicKeyFromBytes(link.PubKey[:])
 		links[pubkey.String()] = link

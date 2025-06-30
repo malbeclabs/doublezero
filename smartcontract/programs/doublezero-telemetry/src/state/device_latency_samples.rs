@@ -70,7 +70,7 @@ pub struct DeviceLatencySamples {
     // Reserved for future use.
     pub _unused: [u8; 128], // 128
 
-    // RTT samples in microseconds, one per entry.
+    // RTT samples in microseconds, one per entry (with length prefix).
     pub samples: Vec<u32>, // 4 + n*4 (RTT values in microseconds)
 }
 

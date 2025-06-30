@@ -1,4 +1,4 @@
-package dzsdk
+package serviceability
 
 func DeserializeConfig(reader *ByteReader, cfg *Config) {
 	cfg.AccountType = AccountType(reader.ReadU8())

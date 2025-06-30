@@ -16,7 +16,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/latency"
-	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/mr-tron/base58/base58"
 	"golang.org/x/sys/unix"
 )
@@ -25,15 +25,15 @@ func TestLatencyManager(t *testing.T) {
 	tests := []struct {
 		Name         string
 		Description  string
-		DeviceCache  []dzsdk.Device
+		DeviceCache  []serviceability.Device
 		ResultsCache []latency.LatencyResult
 	}{
 		{
 			Name:        "validate_device_cache",
 			Description: "validate the device cache is as we think",
-			DeviceCache: []dzsdk.Device{
+			DeviceCache: []serviceability.Device{
 				{
-					AccountType: dzsdk.DeviceType,
+					AccountType: serviceability.DeviceType,
 					PublicIp:    [4]uint8{127, 0, 0, 1},
 					PubKey:      [32]byte{1},
 				},
@@ -44,8 +44,8 @@ func TestLatencyManager(t *testing.T) {
 					Max:  10,
 					Avg:  5,
 					Loss: 0,
-					Device: dzsdk.Device{
-						AccountType: dzsdk.DeviceType,
+					Device: serviceability.Device{
+						AccountType: serviceability.DeviceType,
 						PublicIp:    [4]uint8{127, 0, 0, 1},
 						PubKey:      [32]byte{1},
 					},
@@ -59,9 +59,9 @@ func TestLatencyManager(t *testing.T) {
 	mockSmartContractFunc := func(context.Context, string, string) (*latency.ContractData, error) {
 		sentContractData <- struct{}{}
 		return &latency.ContractData{
-			Devices: []dzsdk.Device{
+			Devices: []serviceability.Device{
 				{
-					AccountType: dzsdk.DeviceType,
+					AccountType: serviceability.DeviceType,
 					PublicIp:    [4]uint8{127, 0, 0, 1},
 					PubKey:      [32]byte{1},
 				},
@@ -69,7 +69,7 @@ func TestLatencyManager(t *testing.T) {
 		}, nil
 	}
 	sentLatencyData := make(chan struct{}, 1)
-	mockProberFunc := func(ctx context.Context, d dzsdk.Device) latency.LatencyResult {
+	mockProberFunc := func(ctx context.Context, d serviceability.Device) latency.LatencyResult {
 		sentLatencyData <- struct{}{}
 		return latency.LatencyResult{
 			Min:       1,
@@ -195,9 +195,9 @@ func TestLatencyManager(t *testing.T) {
 func TestLatencyUdpPing(t *testing.T) {
 	mockSmartContractFunc := func(context.Context, string, string) (*latency.ContractData, error) {
 		return &latency.ContractData{
-			Devices: []dzsdk.Device{
+			Devices: []serviceability.Device{
 				{
-					AccountType: dzsdk.DeviceType,
+					AccountType: serviceability.DeviceType,
 					PublicIp:    [4]uint8{127, 0, 0, 1},
 					PubKey:      [32]byte{1},
 				},
@@ -207,7 +207,7 @@ func TestLatencyUdpPing(t *testing.T) {
 
 	resultChan := make(chan struct{})
 
-	mockProber := func(ctx context.Context, d dzsdk.Device) latency.LatencyResult {
+	mockProber := func(ctx context.Context, d serviceability.Device) latency.LatencyResult {
 		result := latency.UdpPing(ctx, d)
 		resultChan <- struct{}{}
 		return result
@@ -217,9 +217,9 @@ func TestLatencyUdpPing(t *testing.T) {
 		SmartContractFunc: mockSmartContractFunc,
 		ProberFunc:        mockProber,
 		DeviceCache: &latency.DeviceCache{
-			Devices: []dzsdk.Device{
+			Devices: []serviceability.Device{
 				{
-					AccountType: dzsdk.DeviceType,
+					AccountType: serviceability.DeviceType,
 					PublicIp:    [4]uint8{127, 0, 0, 1},
 					PubKey:      [32]byte{1},
 				},
@@ -248,8 +248,8 @@ func TestLatencyUdpPing(t *testing.T) {
 
 	want := []latency.LatencyResult{
 		{
-			Device: dzsdk.Device{
-				AccountType: dzsdk.DeviceType,
+			Device: serviceability.Device{
+				AccountType: serviceability.DeviceType,
 				PublicIp:    [4]uint8{127, 0, 0, 1},
 				PubKey:      [32]byte{1},
 			},

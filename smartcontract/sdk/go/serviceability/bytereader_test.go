@@ -1,4 +1,4 @@
-package dzsdk
+package serviceability
 
 import (
 	"encoding/binary"
@@ -7,6 +7,8 @@ import (
 )
 
 func TestReadU8(t *testing.T) {
+	t.Parallel()
+
 	data := []byte{0x01, 0x02, 0x03}
 	reader := NewByteReader(data)
 
@@ -32,6 +34,8 @@ func TestReadU8(t *testing.T) {
 }
 
 func TestReadU16(t *testing.T) {
+	t.Parallel()
+
 	data := []byte{0x01, 0x02, 0x03, 0x04}
 	reader := NewByteReader(data)
 
@@ -54,6 +58,8 @@ func TestReadU16(t *testing.T) {
 }
 
 func TestReadU32(t *testing.T) {
+	t.Parallel()
+
 	data := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
 	reader := NewByteReader(data)
 
@@ -75,6 +81,8 @@ func TestReadU32(t *testing.T) {
 }
 
 func TestReadU64(t *testing.T) {
+	t.Parallel()
+
 	data := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16}
 	reader := NewByteReader(data)
 
@@ -97,6 +105,8 @@ func TestReadU64(t *testing.T) {
 }
 
 func TestReadU128(t *testing.T) {
+	t.Parallel()
+
 	data := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19}
 	reader := NewByteReader(data)
 
@@ -113,6 +123,8 @@ func TestReadU128(t *testing.T) {
 }
 
 func TestReadF64(t *testing.T) {
+	t.Parallel()
+
 	data := []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0x3f} // 1.0
 	reader := NewByteReader(data)
 
@@ -123,6 +135,8 @@ func TestReadF64(t *testing.T) {
 }
 
 func TestReadPubkey(t *testing.T) {
+	t.Parallel()
+
 	data := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33}
 	reader := NewByteReader(data)
 	val := reader.ReadPubkey()
@@ -138,6 +152,8 @@ func TestReadPubkey(t *testing.T) {
 }
 
 func TestReadPubkeySlice(t *testing.T) {
+	t.Parallel()
+
 	data := []byte{0x02, 0x00, 0x00, 0x00, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64}
 	reader := NewByteReader(data)
 	val := reader.ReadPubkeySlice()
@@ -151,6 +167,8 @@ func TestReadPubkeySlice(t *testing.T) {
 }
 
 func TestReadIPv4(t *testing.T) {
+	t.Parallel()
+
 	data := []byte{1, 2, 3, 4, 5}
 	reader := NewByteReader(data)
 	val := reader.ReadIPv4()
@@ -167,6 +185,8 @@ func TestReadIPv4(t *testing.T) {
 }
 
 func TestReadNetworkV4(t *testing.T) {
+	t.Parallel()
+
 	data := []byte{1, 2, 3, 4, 5, 6}
 	reader := NewByteReader(data)
 	val := reader.ReadNetworkV4()
@@ -182,6 +202,8 @@ func TestReadNetworkV4(t *testing.T) {
 }
 
 func TestReadNetworkV4Slice(t *testing.T) {
+	t.Parallel()
+
 	data := []byte{0x02, 0x00, 0x00, 0x00, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
 	reader := NewByteReader(data)
 	val := reader.ReadNetworkV4Slice()
@@ -195,6 +217,8 @@ func TestReadNetworkV4Slice(t *testing.T) {
 }
 
 func TestReadString(t *testing.T) {
+	t.Parallel()
+
 	data := []byte{0x04, 0x00, 0x00, 0x00, 0x48, 0x65, 0x6c, 0x6c, 0x05}
 	reader := NewByteReader(data)
 	val := reader.ReadString()

@@ -1,0 +1,15 @@
+{
+  "version": "0.2",
+  "dictionaryDefinitions": [
+    {
+      "name": "ignore-list",
+      "path": "./.cspell-ignore",
+      "addWords": true,
+      "ignoreCase": true
+    }
+  ],
+  "dictionaries": [
+    "ignore-list"
+  ],
+  "useGitignore": true
+}

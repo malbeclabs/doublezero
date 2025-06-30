@@ -16,7 +16,12 @@ fmt: rust-fmt go-fmt
 test: go-test rust-test
 
 .PHONY: ci
-ci: build lint test
+ci: build lint test spellcheck
+
+.PHONY: spellcheck
+spellcheck:
+	@echo "🔍 Running cspell..."
+	cspell .
 
 
 # -----------------------------------------------------------------------------

@@ -8,7 +8,7 @@ RUN apt update -qq && \
 
 # Install agave/solana tools
 # https://github.com/anza-xyz/agave/issues/1734
-ARG AGAVE_SOLANA_VERSION=2.2.17
+ARG SOLANA_VERSION=2.2.17
 RUN ARCH=$(uname -m) && \
     case "$ARCH" in \
     x86_64) ARCH_TAG=x86_64 ;; \
@@ -16,7 +16,7 @@ RUN ARCH=$(uname -m) && \
     *) echo "Unsupported architecture: $ARCH" && exit 1 ;; \
     esac && \
     mkdir -p /opt/agave && \
-    curl -sL "https://github.com/staratlasmeta/agave-dist/releases/download/v${AGAVE_SOLANA_VERSION}/solana-release-${ARCH_TAG}-unknown-linux-gnu.tar.bz2" -o /tmp/agave.tar.bz2 && \
+    curl -sL "https://github.com/staratlasmeta/agave-dist/releases/download/v${SOLANA_VERSION}/solana-release-${ARCH_TAG}-unknown-linux-gnu.tar.bz2" -o /tmp/agave.tar.bz2 && \
     tar -xjf /tmp/agave.tar.bz2 -C /opt/agave && \
     mkdir -p /opt/solana/bin && \
     cp -r /opt/agave/solana-release/bin/* /opt/solana/bin/ && \
@@ -113,7 +113,7 @@ COPY . .
 # `cargo build-sbf` expects /root/.cache/solana, so we symlink it to
 # /root/.cache/solana-${SOLANA_VERSION}, which is cache-mounted per version.
 # SOLANA_VERSION must be passed in via --build-arg.
-ARG SOLANA_VERSION
+ARG SOLANA_VERSION=2.2.17
 ENV SOLANA_VERSION=${SOLANA_VERSION}
 ENV SOLANA_CACHE_PATH=/root/.cache/solana-${SOLANA_VERSION}
 RUN mkdir -p ${SOLANA_CACHE_PATH} && \
@@ -128,6 +128,7 @@ RUN --mount=type=cache,target=/cargo-sbf \
 
 RUN --mount=type=cache,target=/cargo-sbf \
     --mount=type=cache,target=/target-sbf \
+    --mount=type=cache,target=/root/.cache/solana-${SOLANA_VERSION} \
     cd smartcontract/programs/doublezero-telemetry && \
     cargo fetch
 
@@ -149,7 +150,7 @@ RUN --mount=type=cache,target=/cargo-sbf \
 ENV SERVICEABILITY_PROGRAM_ID=7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
 RUN --mount=type=cache,target=/cargo-sbf \
     --mount=type=cache,target=/target-sbf \
-    --mount=type=cache,target=/root/.cache/solana \
+    --mount=type=cache,target=/root/.cache/solana-${SOLANA_VERSION} \
     cd smartcontract/programs/doublezero-telemetry && \
     cargo build-sbf && \
     cp /target-sbf/deploy/doublezero_telemetry.so ${BIN_DIR}/doublezero_telemetry.so

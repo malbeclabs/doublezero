@@ -43,7 +43,7 @@ func (dn *Devnet) DeployServiceabilityProgram(ctx context.Context) error {
 		echo "==> Checking manager account balance"
 		solana balance
 		if solana balance | grep -q "^0 SOL$"; then
-			echo "==> Manager account balance is 0 SOL, funding with 1000 SOL"
+			echo "==> Manager account balance is 0 SOL, funding with 100 SOL"
 			solana airdrop 100 $(solana-keygen pubkey)
 		fi
 		echo

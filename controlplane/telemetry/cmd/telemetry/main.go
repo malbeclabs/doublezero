@@ -51,6 +51,11 @@ var (
 func main() {
 	flag.Parse()
 
+	if *probeInterval >= *submissionInterval {
+		fmt.Println("probe-interval must be less than submission-interval")
+		os.Exit(1)
+	}
+
 	if *showVersion {
 		fmt.Println(version)
 		os.Exit(0)

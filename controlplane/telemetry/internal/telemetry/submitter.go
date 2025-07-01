@@ -130,28 +130,35 @@ func (s *Submitter) Tick(ctx context.Context) {
 		maxAttempts = 5
 	}
 
-	for accountKey, tmp := range s.cfg.Buffer.FlushWithoutReset() {
-		s.log.Debug("==> Submitting samples", "account", accountKey, "count", len(tmp))
+	for accountKey := range s.cfg.Buffer.FlushWithoutReset() {
+		// Copy samples and reset buffer for this account
+		samples := s.cfg.Buffer.CopyAndReset(accountKey)
 
-		if len(tmp) == 0 {
+		s.log.Debug("==> Submitting samples", "account", accountKey, "count", len(samples))
+
+		if len(samples) == 0 {
 			s.log.Debug("==> No samples to submit, skipping")
-			s.cfg.Buffer.Recycle(accountKey, tmp)
+			s.cfg.Buffer.Recycle(accountKey, samples)
 			continue
 		}
 
 		func() {
-			defer s.cfg.Buffer.Recycle(accountKey, tmp)
+			defer s.cfg.Buffer.Recycle(accountKey, samples)
 
 			for attempt := 1; attempt <= maxAttempts; attempt++ {
-				err := s.SubmitSamples(ctx, accountKey, tmp)
+				err := s.SubmitSamples(ctx, accountKey, samples)
 				if err == nil {
-					s.log.Debug("==> Submitted samples", "count", len(tmp), "attempt", attempt)
+					s.log.Debug("==> Submitted samples", "count", len(samples), "attempt", attempt)
 					break
 				}
 
 				if attempt == maxAttempts {
-					s.log.Error("==> Failed to submit samples after retries", "error", err)
-					break
+					s.log.Error("==> Failed to submit samples after retries", "error", err, "accountKey", accountKey, "samplesCount", len(samples))
+					// Re-add failed samples back to buffer for next tick
+					for _, sample := range samples {
+						s.cfg.Buffer.Add(accountKey, sample)
+					}
+					return
 				}
 
 				var backoff time.Duration

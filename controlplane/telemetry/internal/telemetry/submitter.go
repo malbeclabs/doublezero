@@ -77,12 +77,13 @@ func (s *Submitter) SubmitSamples(ctx context.Context, accountKey AccountKey, sa
 	log.Debug("==> Submitting account samples", "count", len(samples), "samples", rtts)
 
 	// Get earliest timestamp from samples.
-	startTimestampMicroseconds := uint64(time.Now().UnixMicro())
-	for _, rtt := range rtts {
-		if rtt > 0 {
-			startTimestampMicroseconds = uint64(time.Now().UnixMicro())
+	var minTimestamp time.Time
+	for _, sample := range samples {
+		if minTimestamp.IsZero() || sample.Timestamp.Before(minTimestamp) {
+			minTimestamp = sample.Timestamp
 		}
 	}
+	startTimestampMicroseconds := uint64(minTimestamp.UnixMicro())
 
 	writeConfig := telemetry.WriteDeviceLatencySamplesInstructionConfig{
 		AgentPK:                    s.cfg.AgentPK,

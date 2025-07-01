@@ -22,7 +22,7 @@ impl LatencyCliCommand {
         let controller = ServiceControllerImpl::new(None);
         check_doublezero(&controller, None)?;
 
-        let devices = client.list_device(ListDeviceCommand {})?;
+        let devices = client.list_device(ListDeviceCommand)?;
         let mut latencies = controller.latency().await.map_err(|e| eyre::eyre!(e))?;
 
         // Filter the active devices

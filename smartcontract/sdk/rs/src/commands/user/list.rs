@@ -6,7 +6,7 @@ use solana_sdk::pubkey::Pubkey;
 use std::collections::HashMap;
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct ListUserCommand {}
+pub struct ListUserCommand;
 
 impl ListUserCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<HashMap<Pubkey, User>> {

@@ -8,7 +8,7 @@ use doublezero_serviceability::{
 use solana_sdk::pubkey::Pubkey;
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct ListMulticastGroupCommand {}
+pub struct ListMulticastGroupCommand;
 
 impl ListMulticastGroupCommand {
     pub fn execute(

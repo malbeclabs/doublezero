@@ -40,7 +40,7 @@ pub struct MulticastGroupDisplay {
 
 impl ListMulticastGroupCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        let multicastgroups = client.list_multicastgroup(ListMulticastGroupCommand {})?;
+        let multicastgroups = client.list_multicastgroup(ListMulticastGroupCommand)?;
 
         let mut multicastgroups: Vec<(Pubkey, MulticastGroup)> =
             multicastgroups.into_iter().collect();

@@ -32,7 +32,7 @@ pub struct ExchangeDisplay {
 
 impl ListExchangeCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        let exchanges = client.list_exchange(ListExchangeCommand {})?;
+        let exchanges = client.list_exchange(ListExchangeCommand)?;
 
         let mut exchanges: Vec<(Pubkey, Exchange)> = exchanges.into_iter().collect();
         exchanges.sort_by(|(_, a), (_, b)| a.owner.cmp(&b.owner));

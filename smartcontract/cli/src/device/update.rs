@@ -40,7 +40,7 @@ impl UpdateDeviceCliCommand {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let devices = client.list_device(ListDeviceCommand {})?;
+        let devices = client.list_device(ListDeviceCommand)?;
         if let Some(code) = &self.code {
             if devices.iter().any(|(_, d)| d.code == *code) {
                 return Err(eyre::eyre!("Device with code '{}' already exists", code));
@@ -145,7 +145,7 @@ mod tests {
             .returning(move |_| Ok((pda_pubkey, device1.clone())));
         client
             .expect_list_device()
-            .with(predicate::eq(ListDeviceCommand {}))
+            .with(predicate::eq(ListDeviceCommand))
             .returning(move |_| Ok(HashMap::new()));
 
         client

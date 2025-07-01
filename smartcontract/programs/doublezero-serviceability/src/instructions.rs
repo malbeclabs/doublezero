@@ -60,8 +60,8 @@ use crate::processors::{
 // Instructions that our program can execute
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
 pub enum DoubleZeroInstruction {
-    None(),
-    InitGlobalState(),                    // variant 1
+    None,
+    InitGlobalState,                      // variant 1
     CloseAccount(CloseAccountArgs),       // variant 2
     SetGlobalConfig(SetGlobalConfigArgs), // variant 3
 
@@ -142,7 +142,7 @@ impl DoubleZeroInstruction {
             .ok_or(ProgramError::InvalidInstructionData)?;
 
         match instruction {
-            1 => Ok(Self::InitGlobalState()),
+            1 => Ok(Self::InitGlobalState),
             2 => Ok(Self::CloseAccount(from_slice::<CloseAccountArgs>(rest).unwrap())),
             3 => Ok(Self::SetGlobalConfig(from_slice::<SetGlobalConfigArgs>(rest).unwrap())),
 
@@ -217,9 +217,9 @@ impl DoubleZeroInstruction {
 
     pub fn get_name(&self) -> String {
         match self {
-            Self::None() => "None".to_string(), // variant 0
-            Self::InitGlobalState() => "InitGlobalState".to_string(), // variant 1
-            Self::CloseAccount(_) => "CloseAccount".to_string(), // variant 2
+            Self::None => "None".to_string(),                       // variant 0
+            Self::InitGlobalState => "InitGlobalState".to_string(), // variant 1
+            Self::CloseAccount(_) => "CloseAccount".to_string(),    // variant 2
             Self::SetGlobalConfig(_) => "SetGlobalConfig".to_string(), // variant 3
 
             Self::AddFoundationAllowlist(_) => "AddFoundationAllowlist".to_string(), // variant 4
@@ -296,8 +296,8 @@ impl DoubleZeroInstruction {
 
     pub fn get_args(&self) -> String {
         match self {
-            Self::None() => "".to_string(),                     // variant 0
-            Self::InitGlobalState() => "".to_string(),          // variant 1
+            Self::None => "".to_string(),                       // variant 0
+            Self::InitGlobalState => "".to_string(),            // variant 1
             Self::CloseAccount(args) => format!("{args:?}"),    // variant 2
             Self::SetGlobalConfig(args) => format!("{args:?}"), // variant 3
 
@@ -391,7 +391,7 @@ mod tests {
 
     #[test]
     fn test_doublezero_instruction() {
-        test_instruction(DoubleZeroInstruction::InitGlobalState(), "InitGlobalState");
+        test_instruction(DoubleZeroInstruction::InitGlobalState, "InitGlobalState");
         test_instruction(
             DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
                 local_asn: 100,
@@ -487,7 +487,7 @@ mod tests {
             "CreateDevice",
         );
         test_instruction(
-            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {}),
+            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs),
             "ActivateDevice",
         );
         test_instruction(

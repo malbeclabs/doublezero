@@ -32,7 +32,7 @@ pub struct LocationDisplay {
 
 impl ListLocationCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        let locations = client.list_location(ListLocationCommand {})?;
+        let locations = client.list_location(ListLocationCommand)?;
 
         let mut locations: Vec<(Pubkey, Location)> = locations.into_iter().collect();
 

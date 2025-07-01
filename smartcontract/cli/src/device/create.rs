@@ -46,7 +46,7 @@ impl CreateDeviceCliCommand {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let devices = client.list_device(ListDeviceCommand {})?;
+        let devices = client.list_device(ListDeviceCommand)?;
         if devices.iter().any(|(_, d)| d.code == self.code) {
             return Err(eyre::eyre!(
                 "Device with code '{}' already exists",
@@ -191,7 +191,7 @@ mod tests {
             .returning(move |_| Ok((exchange_pk, exchange.clone())));
         client
             .expect_list_device()
-            .with(predicate::eq(ListDeviceCommand {}))
+            .with(predicate::eq(ListDeviceCommand))
             .returning(move |_| Ok(HashMap::new()));
         client
             .expect_create_device()

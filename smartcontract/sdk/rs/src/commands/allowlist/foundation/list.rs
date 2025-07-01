@@ -5,7 +5,7 @@ use solana_sdk::pubkey::Pubkey;
 use crate::DoubleZeroClient;
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct ListFoundationAllowlistCommand {}
+pub struct ListFoundationAllowlistCommand;
 
 impl ListFoundationAllowlistCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Vec<Pubkey>> {

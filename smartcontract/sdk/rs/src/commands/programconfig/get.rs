@@ -8,7 +8,7 @@ use solana_sdk::pubkey::Pubkey;
 use crate::DoubleZeroClient;
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct GetProgramConfigCommand {}
+pub struct GetProgramConfigCommand;
 
 impl GetProgramConfigCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Pubkey, ProgramConfig)> {

@@ -45,7 +45,7 @@ mod user_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::InitGlobalState(),
+            DoubleZeroInstruction::InitGlobalState,
             vec![
                 AccountMeta::new(program_config_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
@@ -188,7 +188,7 @@ mod user_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::ActivateDevice(device::activate::DeviceActivateArgs {}),
+            DoubleZeroInstruction::ActivateDevice(device::activate::DeviceActivateArgs),
             vec![
                 AccountMeta::new(device_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),

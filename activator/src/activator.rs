@@ -98,11 +98,11 @@ impl Activator {
 
     pub async fn init(&mut self) -> eyre::Result<()> {
         // Fetch the list of tunnels, devices, and users from the client
-        let devices = ListDeviceCommand {}.execute(&self.client)?;
-        let tunnels = ListLinkCommand {}.execute(&self.client)?;
-        let users = ListUserCommand {}.execute(&self.client)?;
-        self.locations = ListLocationCommand {}.execute(&self.client)?;
-        self.exchanges = ListExchangeCommand {}.execute(&self.client)?;
+        let devices = ListDeviceCommand.execute(&self.client)?;
+        let tunnels = ListLinkCommand.execute(&self.client)?;
+        let users = ListUserCommand.execute(&self.client)?;
+        self.locations = ListLocationCommand.execute(&self.client)?;
+        self.exchanges = ListExchangeCommand.execute(&self.client)?;
 
         for (_, tunnel) in tunnels
             .iter()

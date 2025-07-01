@@ -570,7 +570,7 @@ impl ServiceabilityProgramHelper {
                 &payer,
                 recent_blockhash,
                 program_id,
-                DoubleZeroInstruction::InitGlobalState(),
+                DoubleZeroInstruction::InitGlobalState,
                 vec![
                     AccountMeta::new(program_config_pubkey, false),
                     AccountMeta::new(global_state_pubkey, false),
@@ -727,7 +727,7 @@ impl ServiceabilityProgramHelper {
 
     pub async fn activate_device(&mut self, device_pk: Pubkey) -> Result<(), BanksClientError> {
         self.execute_transaction(
-            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {}),
+            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs),
             vec![
                 AccountMeta::new(device_pk, false),
                 AccountMeta::new(self.global_state_pubkey, false),

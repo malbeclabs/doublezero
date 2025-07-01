@@ -3,7 +3,7 @@ use doublezero_sdk::DZClient;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct SubscribeCliCommand {}
+pub struct SubscribeCliCommand;
 
 impl SubscribeCliCommand {
     pub fn execute<W: Write>(self, client: &DZClient, out: &mut W) -> eyre::Result<()> {

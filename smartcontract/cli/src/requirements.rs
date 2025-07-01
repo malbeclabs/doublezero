@@ -88,13 +88,13 @@ pub fn check_allowlist(
 ) -> eyre::Result<()> {
     // Check that the client is in the allowlist
     let is_in_allowlist = if checks & CHECK_FOUNDATION_ALLOWLIST != 0 {
-        let allowlist = client.list_foundation_allowlist(ListFoundationAllowlistCommand {})?;
+        let allowlist = client.list_foundation_allowlist(ListFoundationAllowlistCommand)?;
         allowlist.contains(&client.get_payer())
     } else if checks & CHECK_DEVICE_ALLOWLIST != 0 {
-        let allowlist = client.list_device_allowlist(ListDeviceAllowlistCommand {})?;
+        let allowlist = client.list_device_allowlist(ListDeviceAllowlistCommand)?;
         allowlist.contains(&client.get_payer())
     } else if checks & CHECK_USER_ALLOWLIST != 0 {
-        let allowlist = client.list_user_allowlist(ListUserAllowlistCommand {})?;
+        let allowlist = client.list_user_allowlist(ListUserAllowlistCommand)?;
         allowlist.contains(&client.get_payer())
     } else {
         false

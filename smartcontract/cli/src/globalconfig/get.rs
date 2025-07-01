@@ -5,7 +5,7 @@ use std::io::Write;
 use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
-pub struct GetGlobalConfigCliCommand {}
+pub struct GetGlobalConfigCliCommand;
 
 #[derive(Tabled)]
 pub struct ConfigDisplay {
@@ -76,7 +76,7 @@ mod tests {
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
-        let res = GetGlobalConfigCliCommand {}.execute(&client, &mut output);
+        let res = GetGlobalConfigCliCommand.execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(

@@ -189,12 +189,9 @@ impl DZClient {
                 }
             }
 
-            match self.subscribe(&mut action) {
-                Ok(_) => {}
-                Err(e) => {
-                    eprintln!("Error: {e}");
-                }
-            }
+            _ = self
+                .subscribe(&mut action)
+                .inspect_err(|e| eprintln!("Error: {e}"));
         }
     }
 
@@ -422,7 +419,7 @@ impl DoubleZeroClient for DZClient {
                         if program_id == &self.program_id {
                             DoubleZeroInstruction::unpack(&instr.data)?
                         } else {
-                            DoubleZeroInstruction::InitGlobalState()
+                            DoubleZeroInstruction::InitGlobalState
                         }
                     };
 

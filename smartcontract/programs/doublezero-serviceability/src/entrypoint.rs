@@ -85,8 +85,8 @@ pub fn process_instruction(
     msg!("Instruction: {:?}", instruction);
 
     match instruction {
-        DoubleZeroInstruction::None() => {}
-        DoubleZeroInstruction::InitGlobalState() => initialize_global_state(program_id, accounts)?,
+        DoubleZeroInstruction::None => {}
+        DoubleZeroInstruction::InitGlobalState => initialize_global_state(program_id, accounts)?,
         DoubleZeroInstruction::CloseAccount(value) => {
             process_close_account(program_id, accounts, &value)?
         }

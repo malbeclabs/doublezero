@@ -23,9 +23,9 @@ impl GetMulticastGroupCliCommand {
             pubkey_or_code: self.code,
         })?;
 
-        let users = client.list_user(ListUserCommand {})?;
-        let devices = client.list_device(ListDeviceCommand {})?;
-        let locations = client.list_location(ListLocationCommand {})?;
+        let users = client.list_user(ListUserCommand)?;
+        let devices = client.list_device(ListDeviceCommand)?;
+        let locations = client.list_location(ListLocationCommand)?;
 
         // Write the multicast group details first
         writeln!(out,
@@ -163,7 +163,7 @@ mod tests {
         let cloned_location = location.clone();
         client
             .expect_list_location()
-            .with(predicate::eq(ListLocationCommand {}))
+            .with(predicate::eq(ListLocationCommand))
             .returning(move |_| {
                 let mut locations = std::collections::HashMap::new();
                 locations.insert(location_pubkey, cloned_location.clone());
@@ -197,7 +197,7 @@ mod tests {
         let cloned_device = device.clone();
         client
             .expect_list_device()
-            .with(predicate::eq(ListDeviceCommand {}))
+            .with(predicate::eq(ListDeviceCommand))
             .returning(move |_| {
                 let mut devices = std::collections::HashMap::new();
                 devices.insert(device_pubkey, cloned_device.clone());

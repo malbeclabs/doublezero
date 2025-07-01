@@ -15,7 +15,7 @@ pub struct ListUserAllowlistCliCommand {
 
 impl ListUserAllowlistCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        let list = client.list_user_allowlist(ListUserAllowlistCommand {})?;
+        let list = client.list_user_allowlist(ListUserAllowlistCommand)?;
 
         if self.json || self.json_compact {
             let list = list
@@ -67,7 +67,7 @@ mod tests {
             .returning(|_| Ok(()));
         client
             .expect_list_user_allowlist()
-            .with(predicate::eq(ListUserAllowlistCommand {}))
+            .with(predicate::eq(ListUserAllowlistCommand))
             .returning(move |_| Ok(vec![pubkey1, pubkey2, pubkey3]));
 
         /*****************************************************************************************************/

@@ -14,7 +14,7 @@ use solana_program::{
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct DeviceActivateArgs {}
+pub struct DeviceActivateArgs;
 
 impl fmt::Debug for DeviceActivateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

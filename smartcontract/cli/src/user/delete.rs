@@ -4,7 +4,7 @@ use crate::{
     validators::validate_pubkey,
 };
 use clap::Args;
-use doublezero_sdk::commands::user::{delete::DeleteUserCommand, get::GetUserCommand};
+use doublezero_sdk::commands::user::delete::DeleteUserCommand;
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, str::FromStr};
 
@@ -21,8 +21,7 @@ impl DeleteUserCliCommand {
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
         let pubkey = Pubkey::from_str(&self.pubkey)?;
-        let (_, user) = client.get_user(GetUserCommand { pubkey })?;
-        let signature = client.delete_user(DeleteUserCommand { index: user.index })?;
+        let signature = client.delete_user(DeleteUserCommand { pubkey })?;
         writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
@@ -86,7 +85,7 @@ mod tests {
 
         client
             .expect_delete_user()
-            .with(predicate::eq(DeleteUserCommand { index: 1 }))
+            .with(predicate::eq(DeleteUserCommand { pubkey: pda_pubkey }))
             .returning(move |_| Ok(signature));
 
         /*****************************************************************************************************/

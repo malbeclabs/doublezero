@@ -63,7 +63,7 @@ pub fn process_multicastgroup_event(
             multicastgroup_tunnel_ips.unassign_block((multicastgroup.multicast_ip, 32));
 
             let res = DeactivateMulticastGroupCommand {
-                index: multicastgroup.index,
+                pubkey: *pubkey,
                 owner: multicastgroup.owner,
             }
             .execute(client);

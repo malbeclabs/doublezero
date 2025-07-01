@@ -6,14 +6,14 @@ use crate::{
     DoubleZeroClient,
 };
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_multicastgroup_pda,
+    instructions::DoubleZeroInstruction,
     processors::multicastgroup::delete::MulticastGroupDeleteArgs,
 };
-use solana_sdk::{instruction::AccountMeta, signature::Signature};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct DeleteMulticastGroupCommand {
-    pub index: u128,
+    pub pubkey: Pubkey,
 }
 
 impl DeleteMulticastGroupCommand {
@@ -22,9 +22,7 @@ impl DeleteMulticastGroupCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (mgroup_pubkey, bump_seed) =
-            get_multicastgroup_pda(&client.get_program_id(), self.index);
-
+        let mgroup_pubkey = self.pubkey;
         let mgroup = client
             .get(mgroup_pubkey)
             .map_err(|_| eyre::eyre!("MulticastGroup not found ({})", mgroup_pubkey))?
@@ -42,10 +40,7 @@ impl DeleteMulticastGroupCommand {
         }
 
         client.execute_transaction(
-            DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {
-                index: self.index,
-                bump_seed,
-            }),
+            DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {}),
             vec![
                 AccountMeta::new(mgroup_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
@@ -106,10 +101,7 @@ mod tests {
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::DeleteMulticastGroup(
-                    MulticastGroupDeleteArgs {
-                        index: 1,
-                        bump_seed,
-                    },
+                    MulticastGroupDeleteArgs {},
                 )),
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),
@@ -118,7 +110,7 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        let res = DeleteMulticastGroupCommand { index: 1 }.execute(&client);
+        let res = DeleteMulticastGroupCommand { pubkey: pda_pubkey }.execute(&client);
 
         assert!(res.is_ok());
     }

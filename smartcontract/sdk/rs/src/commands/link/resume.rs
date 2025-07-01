@@ -1,14 +1,12 @@
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_link_pda,
-    processors::link::resume::LinkResumeArgs,
-};
-use solana_sdk::{instruction::AccountMeta, signature::Signature};
-
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
+use doublezero_serviceability::{
+    instructions::DoubleZeroInstruction, processors::link::resume::LinkResumeArgs,
+};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ResumeLinkCommand {
-    pub index: u128,
+    pub pubkey: Pubkey,
 }
 
 impl ResumeLinkCommand {
@@ -17,14 +15,10 @@ impl ResumeLinkCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, bump_seed) = get_link_pda(&client.get_program_id(), self.index);
         client.execute_transaction(
-            DoubleZeroInstruction::ResumeLink(LinkResumeArgs {
-                index: self.index,
-                bump_seed,
-            }),
+            DoubleZeroInstruction::ResumeLink(LinkResumeArgs {}),
             vec![
-                AccountMeta::new(pda_pubkey, false),
+                AccountMeta::new(self.pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
             ],
         )

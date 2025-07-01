@@ -19,13 +19,11 @@ impl DeleteLinkCliCommand {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let (_, tunnel) = client.get_link(GetLinkCommand {
+        let (pubkey, _) = client.get_link(GetLinkCommand {
             pubkey_or_code: self.pubkey,
         })?;
 
-        let signature = client.delete_link(DeleteLinkCommand {
-            index: tunnel.index,
-        })?;
+        let signature = client.delete_link(DeleteLinkCommand { pubkey })?;
         writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
@@ -140,7 +138,7 @@ mod tests {
             .returning(move |_| Ok((pda_pubkey, tunnel.clone())));
         client
             .expect_delete_link()
-            .with(predicate::eq(DeleteLinkCommand { index: 1 }))
+            .with(predicate::eq(DeleteLinkCommand { pubkey: pda_pubkey }))
             .returning(move |_| Ok(signature));
 
         /*****************************************************************************************************/

@@ -1,5 +1,8 @@
 use crate::{
-    error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::multicastgroup::*,
+    error::DoubleZeroError,
+    globalstate::globalstate_get,
+    helper::*,
+    state::{accounttype::AccountType, multicastgroup::*},
     types::IpV4,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -13,8 +16,6 @@ use solana_program::{
 use std::fmt;
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct MulticastGroupUpdateArgs {
-    pub index: u128,
-    pub bump_seed: u8,
     pub code: Option<String>,
     pub multicast_ip: Option<IpV4>,
     pub max_bandwidth: Option<u64>,
@@ -72,12 +73,9 @@ pub fn process_update_multicastgroup(
     // Parse the multicastgroup account
     let mut multicastgroup: MulticastGroup = MulticastGroup::try_from(multicastgroup_account)?;
     assert_eq!(
-        multicastgroup.index, value.index,
-        "Invalid PDA Account Index"
-    );
-    assert_eq!(
-        multicastgroup.bump_seed, value.bump_seed,
-        "Invalid PDA Account Bump Seed"
+        multicastgroup.account_type,
+        AccountType::MulticastGroup,
+        "Invalid Account Type"
     );
 
     if let Some(ref code) = value.code {

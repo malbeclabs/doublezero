@@ -37,12 +37,12 @@ impl UpdateLocationCliCommand {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let (_, location) = client.get_location(GetLocationCommand {
+        let (pubkey, _) = client.get_location(GetLocationCommand {
             pubkey_or_code: self.pubkey,
         })?;
 
         let signature = client.update_location(UpdateLocationCommand {
-            index: location.index,
+            pubkey,
             code: self.code,
             name: self.name,
             country: self.country,
@@ -112,7 +112,7 @@ mod tests {
         client
             .expect_update_location()
             .with(predicate::eq(UpdateLocationCommand {
-                index: 1,
+                pubkey: pda_pubkey,
                 code: Some("test".to_string()),
                 name: Some("Test Location".to_string()),
                 country: Some("Test Country".to_string()),

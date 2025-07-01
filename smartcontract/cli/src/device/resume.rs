@@ -19,15 +19,13 @@ impl ResumeDeviceCliCommand {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let (_, device) = client
+        let (pubkey, _) = client
             .get_device(GetDeviceCommand {
                 pubkey_or_code: self.pubkey,
             })
             .map_err(|_| eyre::eyre!("Device not found"))?;
 
-        let signature = client.resume_device(ResumeDeviceCommand {
-            index: device.index,
-        })?;
+        let signature = client.resume_device(ResumeDeviceCommand { pubkey })?;
         writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
@@ -133,7 +131,7 @@ mod tests {
 
         client
             .expect_resume_device()
-            .with(predicate::eq(ResumeDeviceCommand { index: 1 }))
+            .with(predicate::eq(ResumeDeviceCommand { pubkey: pda_pubkey }))
             .returning(move |_| Ok(signature));
 
         let mut output = Vec::new();

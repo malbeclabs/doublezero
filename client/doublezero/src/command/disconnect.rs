@@ -78,7 +78,7 @@ impl DecommissioningCliCommand {
             }
 
             println!("🔍  Deleting User Account for: {pubkey}");
-            let res = client.delete_user(DeleteUserCommand { index: user.index });
+            let res = client.delete_user(DeleteUserCommand { pubkey: *pubkey });
             match res {
                 Ok(_) => {
                     spinner.println("🔍  User Account deleted");

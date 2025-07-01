@@ -33,12 +33,12 @@ impl UpdateMulticastGroupCliCommand {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let (_, multicastgroup) = client.get_multicastgroup(GetMulticastGroupCommand {
+        let (pubkey, _) = client.get_multicastgroup(GetMulticastGroupCommand {
             pubkey_or_code: self.pubkey,
         })?;
 
         let signature = client.update_multicastgroup(UpdateMulticastGroupCommand {
-            index: multicastgroup.index,
+            pubkey,
             code: self.code.clone(),
             multicast_ip: self.multicast_ip,
             max_bandwidth: self.max_bandwidth,
@@ -107,7 +107,7 @@ mod tests {
         client
             .expect_update_multicastgroup()
             .with(predicate::eq(UpdateMulticastGroupCommand {
-                index: 1,
+                pubkey: pda_pubkey,
                 code: Some("new_code".to_string()),
                 multicast_ip: Some([10, 0, 0, 1]),
                 max_bandwidth: Some(1000000000),

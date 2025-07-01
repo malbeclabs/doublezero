@@ -92,10 +92,7 @@ mod location_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::SuspendLocation(LocationSuspendArgs {
-                index: location_la.index,
-                bump_seed: location_la.bump_seed,
-            }),
+            DoubleZeroInstruction::SuspendLocation(LocationSuspendArgs {}),
             vec![
                 AccountMeta::new(location_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
@@ -119,10 +116,7 @@ mod location_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::ResumeLocation(LocationResumeArgs {
-                index: location_la.index,
-                bump_seed: location_la.bump_seed,
-            }),
+            DoubleZeroInstruction::ResumeLocation(LocationResumeArgs {}),
             vec![
                 AccountMeta::new(location_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
@@ -147,8 +141,6 @@ mod location_test {
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::UpdateLocation(LocationUpdateArgs {
-                index: location.index,
-                bump_seed: location.bump_seed,
                 code: Some("la2".to_string()),
                 name: Some("Los Angeles - Los Angeles".to_string()),
                 country: Some("CA".to_string()),
@@ -181,10 +173,7 @@ mod location_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::DeleteLocation(LocationDeleteArgs {
-                index: location_la.index,
-                bump_seed: location_la.bump_seed,
-            }),
+            DoubleZeroInstruction::DeleteLocation(LocationDeleteArgs {}),
             vec![
                 AccountMeta::new(location_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),

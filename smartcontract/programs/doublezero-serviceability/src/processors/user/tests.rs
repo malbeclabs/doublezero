@@ -285,10 +285,7 @@ mod user_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::SuspendUser(UserSuspendArgs {
-                index: user.index,
-                bump_seed: user.bump_seed,
-            }),
+            DoubleZeroInstruction::SuspendUser(UserSuspendArgs {}),
             vec![AccountMeta::new(user_pubkey, false)],
             &payer,
         )
@@ -309,10 +306,7 @@ mod user_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::ResumeUser(UserResumeArgs {
-                index: user.index,
-                bump_seed: user.bump_seed,
-            }),
+            DoubleZeroInstruction::ResumeUser(UserResumeArgs {}),
             vec![AccountMeta::new(user_pubkey, false)],
             &payer,
         )
@@ -334,8 +328,6 @@ mod user_test {
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
-                index: user.index,
-                bump_seed: user.bump_seed,
                 client_ip: Some([10, 2, 3, 4]),
                 user_type: Some(UserType::IBRL),
                 cyoa_type: Some(UserCYOA::GREOverPrivatePeering),
@@ -368,10 +360,7 @@ mod user_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
-                index: user.index,
-                bump_seed: user.bump_seed,
-            }),
+            DoubleZeroInstruction::DeleteUser(UserDeleteArgs {}),
             vec![
                 AccountMeta::new(user_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
@@ -398,10 +387,7 @@ mod user_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
-                index: user.index,
-                bump_seed: user.bump_seed,
-            }),
+            DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {}),
             vec![
                 AccountMeta::new(user_pubkey, false),
                 AccountMeta::new(user.owner, false),

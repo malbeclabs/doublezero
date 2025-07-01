@@ -1,4 +1,9 @@
-use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::user::*};
+use crate::{
+    error::DoubleZeroError,
+    globalstate::globalstate_get,
+    helper::*,
+    state::{accounttype::AccountType, user::*},
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -10,8 +15,6 @@ use std::fmt;
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct UserRejectArgs {
-    pub index: u128,
-    pub bump_seed: u8,
     pub reason: String,
 }
 
@@ -56,8 +59,7 @@ pub fn process_reject_user(
     }
 
     let mut user: User = User::try_from(user_account)?;
-    assert_eq!(user.index, value.index, "Invalid PDA Account Index");
-    assert_eq!(user.bump_seed, value.bump_seed, "Invalid bump seed");
+    assert_eq!(user.account_type, AccountType::User, "Invalid Account Type");
 
     if user.status != UserStatus::Pending && user.status != UserStatus::Updating {
         return Err(DoubleZeroError::InvalidStatus.into());

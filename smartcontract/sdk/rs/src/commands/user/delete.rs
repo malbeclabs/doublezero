@@ -1,9 +1,3 @@
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_user_pda,
-    processors::user::delete::UserDeleteArgs,
-};
-use solana_sdk::{instruction::AccountMeta, signature::Signature};
-
 use crate::{
     commands::{
         globalstate::get::GetGlobalStateCommand,
@@ -11,10 +5,14 @@ use crate::{
     },
     DoubleZeroClient,
 };
+use doublezero_serviceability::{
+    instructions::DoubleZeroInstruction, processors::user::delete::UserDeleteArgs,
+};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct DeleteUserCommand {
-    pub index: u128,
+    pub pubkey: Pubkey,
 }
 
 impl DeleteUserCommand {
@@ -23,18 +21,16 @@ impl DeleteUserCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (user_pubkey, bump_seed) = get_user_pda(&client.get_program_id(), self.index);
-
         let user = client
-            .get(user_pubkey)
-            .map_err(|_| eyre::eyre!("User not found ({})", user_pubkey))?
+            .get(self.pubkey)
+            .map_err(|_| eyre::eyre!("User not found ({})", self.pubkey))?
             .get_user()
             .map_err(|e| eyre::eyre!(e))?;
 
         for mgroup_pk in user.publishers.iter().chain(user.subscribers.iter()) {
             SubscribeMulticastGroupCommand {
                 group_pk: *mgroup_pk,
-                user_pk: user_pubkey,
+                user_pk: self.pubkey,
                 publisher: false,
                 subscriber: false,
             }
@@ -42,12 +38,9 @@ impl DeleteUserCommand {
         }
 
         client.execute_transaction(
-            DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
-                index: self.index,
-                bump_seed,
-            }),
+            DoubleZeroInstruction::DeleteUser(UserDeleteArgs {}),
             vec![
-                AccountMeta::new(user_pubkey, false),
+                AccountMeta::new(self.pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
             ],
         )

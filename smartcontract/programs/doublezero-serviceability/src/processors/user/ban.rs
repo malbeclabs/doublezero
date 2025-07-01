@@ -1,4 +1,9 @@
-use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::user::*};
+use crate::{
+    error::DoubleZeroError,
+    globalstate::globalstate_get,
+    helper::*,
+    state::{accounttype::AccountType, user::*},
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
 #[cfg(test)]
@@ -10,21 +15,18 @@ use solana_program::{
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct UserBanArgs {
-    pub index: u128,
-    pub bump_seed: u8,
-}
+pub struct UserBanArgs {}
 
 impl fmt::Debug for UserBanArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "index: {}", self.index)
+        write!(f, "")
     }
 }
 
 pub fn process_ban_user(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &UserBanArgs,
+    _value: &UserBanArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -34,7 +36,7 @@ pub fn process_ban_user(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_banned_user({:?})", value);
+    msg!("process_banned_user({:?})", _value);
 
     // Check the owner of the accounts
     assert_eq!(user_account.owner, program_id, "Invalid PDA Account Owner");
@@ -56,11 +58,7 @@ pub fn process_ban_user(
     }
 
     let mut user: User = User::try_from(user_account)?;
-    assert_eq!(user.index, value.index, "Invalid PDA Account Index");
-    assert_eq!(
-        user.bump_seed, value.bump_seed,
-        "Invalid PDA Account Bump Seed"
-    );
+    assert_eq!(user.account_type, AccountType::User, "Invalid Account Type");
     if user.owner != *payer_account.key {
         #[cfg(test)]
         msg!("{:?}", user);

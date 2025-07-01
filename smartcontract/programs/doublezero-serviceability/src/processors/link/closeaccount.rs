@@ -1,4 +1,9 @@
-use crate::{error::DoubleZeroError, globalstate::globalstate_get_next, helper::*, state::link::*};
+use crate::{
+    error::DoubleZeroError,
+    globalstate::globalstate_get_next,
+    helper::*,
+    state::{accounttype::AccountType, link::*},
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
 use solana_program::msg;
@@ -11,10 +16,7 @@ use solana_program::{
 use std::fmt;
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct LinkCloseAccountArgs {
-    pub index: u128,
-    pub bump_seed: u8,
-}
+pub struct LinkCloseAccountArgs {}
 
 impl fmt::Debug for LinkCloseAccountArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -25,7 +27,7 @@ impl fmt::Debug for LinkCloseAccountArgs {
 pub fn process_closeaccount_link(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &LinkCloseAccountArgs,
+    _value: &LinkCloseAccountArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -36,7 +38,7 @@ pub fn process_closeaccount_link(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_closeaccount_link({:?})", value);
+    msg!("process_closeaccount_link({:?})", _value);
 
     // Check the owner of the accounts
     assert_eq!(link_account.owner, program_id, "Invalid PDA Account Owner");
@@ -59,11 +61,8 @@ pub fn process_closeaccount_link(
 
     {
         let link: Link = Link::try_from(link_account)?;
-        assert_eq!(link.index, value.index, "Invalid PDA Account Index");
-        assert_eq!(
-            link.bump_seed, value.bump_seed,
-            "Invalid PDA Account Bump Seed"
-        );
+        assert_eq!(link.account_type, AccountType::Link, "Invalid Account Type");
+
         if link.owner != *owner_account.key {
             return Err(ProgramError::InvalidAccountData);
         }

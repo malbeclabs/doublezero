@@ -68,11 +68,11 @@ impl UpdateDeviceCliCommand {
             None
         };
 
-        let (_, device) = client.get_device(GetDeviceCommand {
+        let (pubkey, _) = client.get_device(GetDeviceCommand {
             pubkey_or_code: self.pubkey,
         })?;
         let signature = client.update_device(UpdateDeviceCommand {
-            index: device.index,
+            pubkey,
             code: self.code,
             device_type: Some(DeviceType::Switch),
             public_ip: self.public_ip,
@@ -151,7 +151,7 @@ mod tests {
         client
             .expect_update_device()
             .with(predicate::eq(UpdateDeviceCommand {
-                index: 1,
+                pubkey: pda_pubkey,
                 code: Some("test".to_string()),
                 device_type: Some(DeviceType::Switch),
                 public_ip: Some([1, 2, 3, 4]),

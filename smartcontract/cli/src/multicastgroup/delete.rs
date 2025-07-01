@@ -21,13 +21,11 @@ impl DeleteMulticastGroupCliCommand {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let (_, multicastgroup) = client.get_multicastgroup(GetMulticastGroupCommand {
+        let (pubkey, _) = client.get_multicastgroup(GetMulticastGroupCommand {
             pubkey_or_code: self.pubkey,
         })?;
 
-        let signature = client.delete_multicastgroup(DeleteMulticastGroupCommand {
-            index: multicastgroup.index,
-        })?;
+        let signature = client.delete_multicastgroup(DeleteMulticastGroupCommand { pubkey })?;
         writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
@@ -140,7 +138,9 @@ mod tests {
             .returning(move |_| Ok((pda_pubkey, multicastgroup.clone())));
         client
             .expect_delete_multicastgroup()
-            .with(predicate::eq(DeleteMulticastGroupCommand { index: 1 }))
+            .with(predicate::eq(DeleteMulticastGroupCommand {
+                pubkey: pda_pubkey,
+            }))
             .returning(move |_| Ok(signature));
 
         /*****************************************************************************************************/

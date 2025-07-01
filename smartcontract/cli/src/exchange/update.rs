@@ -34,11 +34,11 @@ impl UpdateExchangeCliCommand {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let (_, exchange) = client.get_exchange(GetExchangeCommand {
+        let (pubkey, _) = client.get_exchange(GetExchangeCommand {
             pubkey_or_code: self.pubkey,
         })?;
         let signature = client.update_exchange(UpdateExchangeCommand {
-            index: exchange.index,
+            pubkey,
             code: self.code,
             name: self.name,
             lat: self.lat,
@@ -105,7 +105,7 @@ mod tests {
         client
             .expect_update_exchange()
             .with(predicate::eq(UpdateExchangeCommand {
-                index: 1,
+                pubkey: pda_pubkey,
                 code: Some("test".to_string()),
                 name: Some("Test Exchange".to_string()),
                 lat: Some(12.34),

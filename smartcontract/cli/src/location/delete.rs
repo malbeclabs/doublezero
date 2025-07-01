@@ -19,12 +19,10 @@ impl DeleteLocationCliCommand {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let (_, location) = client.get_location(GetLocationCommand {
+        let (pubkey, _) = client.get_location(GetLocationCommand {
             pubkey_or_code: self.pubkey,
         })?;
-        let signature = client.delete_location(DeleteLocationCommand {
-            index: location.index,
-        })?;
+        let signature = client.delete_location(DeleteLocationCommand { pubkey })?;
         writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
@@ -86,7 +84,7 @@ mod tests {
 
         client
             .expect_delete_location()
-            .with(predicate::eq(DeleteLocationCommand { index: 1 }))
+            .with(predicate::eq(DeleteLocationCommand { pubkey: pda_pubkey }))
             .returning(move |_| Ok(signature));
 
         /*****************************************************************************************************/

@@ -1,14 +1,12 @@
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_device_pda,
-    processors::device::reject::DeviceRejectArgs,
-};
-use solana_sdk::{instruction::AccountMeta, signature::Signature};
-
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
+use doublezero_serviceability::{
+    instructions::DoubleZeroInstruction, processors::device::reject::DeviceRejectArgs,
+};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct RejectDeviceCommand {
-    pub index: u128,
+    pub pubkey: Pubkey,
     pub reason: String,
 }
 
@@ -18,15 +16,12 @@ impl RejectDeviceCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, bump_seed) = get_device_pda(&client.get_program_id(), self.index);
         client.execute_transaction(
             DoubleZeroInstruction::RejectDevice(DeviceRejectArgs {
-                index: self.index,
-                bump_seed,
                 reason: self.reason.clone(),
             }),
             vec![
-                AccountMeta::new(pda_pubkey, false),
+                AccountMeta::new(self.pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
             ],
         )

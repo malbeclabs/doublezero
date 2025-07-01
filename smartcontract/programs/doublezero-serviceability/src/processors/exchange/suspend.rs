@@ -1,4 +1,9 @@
-use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::exchange::*};
+use crate::{
+    error::DoubleZeroError,
+    globalstate::globalstate_get,
+    helper::*,
+    state::{accounttype::AccountType, exchange::*},
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
 #[cfg(test)]
@@ -10,10 +15,7 @@ use solana_program::{
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct ExchangeSuspendArgs {
-    pub index: u128,
-    pub bump_seed: u8,
-}
+pub struct ExchangeSuspendArgs {}
 
 impl fmt::Debug for ExchangeSuspendArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -24,7 +26,7 @@ impl fmt::Debug for ExchangeSuspendArgs {
 pub fn process_suspend_exchange(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &ExchangeSuspendArgs,
+    _value: &ExchangeSuspendArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -34,7 +36,7 @@ pub fn process_suspend_exchange(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_suspend_exchange({:?})", value);
+    msg!("process_suspend_exchange({:?})", _value);
 
     // Check the owner of the accounts
     assert_eq!(
@@ -59,10 +61,10 @@ pub fn process_suspend_exchange(
     }
 
     let mut exchange: Exchange = Exchange::try_from(exchange_account)?;
-    assert_eq!(exchange.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
-        exchange.bump_seed, value.bump_seed,
-        "Invalid PDA Account Bump Seed"
+        exchange.account_type,
+        AccountType::Exchange,
+        "Invalid Account Type"
     );
     if exchange.owner != *payer_account.key {
         return Err(solana_program::program_error::ProgramError::Custom(0));

@@ -125,10 +125,7 @@ mod multicastgroup_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::SuspendMulticastGroup(MulticastGroupSuspendArgs {
-                index: multicastgroup_la.index,
-                bump_seed: multicastgroup_la.bump_seed,
-            }),
+            DoubleZeroInstruction::SuspendMulticastGroup(MulticastGroupSuspendArgs {}),
             vec![
                 AccountMeta::new(multicastgroup_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
@@ -152,10 +149,7 @@ mod multicastgroup_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::ReactivateMulticastGroup(MulticastGroupReactivateArgs {
-                index: multicastgroup_la.index,
-                bump_seed: multicastgroup_la.bump_seed,
-            }),
+            DoubleZeroInstruction::ReactivateMulticastGroup(MulticastGroupReactivateArgs {}),
             vec![
                 AccountMeta::new(multicastgroup_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
@@ -180,8 +174,6 @@ mod multicastgroup_test {
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::UpdateMulticastGroup(MulticastGroupUpdateArgs {
-                index: multicastgroup.index,
-                bump_seed: multicastgroup.bump_seed,
                 code: Some("la2".to_string()),
                 multicast_ip: Some([239, 1, 1, 2]),
                 max_bandwidth: Some(2000),
@@ -210,10 +202,7 @@ mod multicastgroup_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {
-                index: multicastgroup_la.index,
-                bump_seed: multicastgroup_la.bump_seed,
-            }),
+            DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {}),
             vec![
                 AccountMeta::new(multicastgroup_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
@@ -238,10 +227,7 @@ mod multicastgroup_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {
-                index: multicastgroup_la.index,
-                bump_seed: multicastgroup_la.bump_seed,
-            }),
+            DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {}),
             vec![
                 AccountMeta::new(multicastgroup_pubkey, false),
                 AccountMeta::new(multicastgroup.owner, false),

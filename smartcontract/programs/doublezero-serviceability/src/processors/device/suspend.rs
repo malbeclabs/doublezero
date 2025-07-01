@@ -1,6 +1,11 @@
 use core::fmt;
 
-use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::device::*};
+use crate::{
+    error::DoubleZeroError,
+    globalstate::globalstate_get,
+    helper::*,
+    state::{accounttype::AccountType, device::*},
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
 use solana_program::msg;
@@ -11,10 +16,7 @@ use solana_program::{
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct DeviceSuspendArgs {
-    pub index: u128,
-    pub bump_seed: u8,
-}
+pub struct DeviceSuspendArgs {}
 
 impl fmt::Debug for DeviceSuspendArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -25,7 +27,7 @@ impl fmt::Debug for DeviceSuspendArgs {
 pub fn process_suspend_device(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &DeviceSuspendArgs,
+    _value: &DeviceSuspendArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -35,7 +37,7 @@ pub fn process_suspend_device(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_suspend_device({:?})", value);
+    msg!("process_suspend_device({:?})", _value);
 
     // Check the owner of the accounts
     assert_eq!(
@@ -54,10 +56,10 @@ pub fn process_suspend_device(
     assert!(device_account.is_writable, "PDA Account is not writable");
 
     let mut device: Device = Device::try_from(device_account)?;
-    assert_eq!(device.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
-        device.bump_seed, value.bump_seed,
-        "Invalid PDA Account Bump Seed"
+        device.account_type,
+        AccountType::Device,
+        "Invalid Device Account Type"
     );
 
     let globalstate = globalstate_get(globalstate_account)?;

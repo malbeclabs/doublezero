@@ -1,14 +1,12 @@
+use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_device_pda,
-    processors::device::closeaccount::DeviceCloseAccountArgs,
+    instructions::DoubleZeroInstruction, processors::device::closeaccount::DeviceCloseAccountArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
-
 #[derive(Debug, PartialEq, Clone)]
 pub struct CloseAccountDeviceCommand {
-    pub index: u128,
+    pub pubkey: Pubkey,
     pub owner: Pubkey,
 }
 
@@ -18,14 +16,10 @@ impl CloseAccountDeviceCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, bump_seed) = get_device_pda(&client.get_program_id(), self.index);
         client.execute_transaction(
-            DoubleZeroInstruction::CloseAccountDevice(DeviceCloseAccountArgs {
-                index: self.index,
-                bump_seed,
-            }),
+            DoubleZeroInstruction::CloseAccountDevice(DeviceCloseAccountArgs {}),
             vec![
-                AccountMeta::new(pda_pubkey, false),
+                AccountMeta::new(self.pubkey, false),
                 AccountMeta::new(self.owner, false),
                 AccountMeta::new(globalstate_pubkey, false),
             ],

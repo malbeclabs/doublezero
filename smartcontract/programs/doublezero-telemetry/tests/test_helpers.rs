@@ -748,13 +748,8 @@ impl ServiceabilityProgramHelper {
 
     #[allow(dead_code)]
     pub async fn suspend_device(&mut self, pubkey: Pubkey) -> Result<(), BanksClientError> {
-        let device = self.get_device(pubkey).await?;
-
         self.execute_transaction(
-            DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs {
-                index: device.index,
-                bump_seed: device.bump_seed,
-            }),
+            DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs {}),
             vec![
                 AccountMeta::new(pubkey, false),
                 AccountMeta::new(self.global_state_pubkey, false),
@@ -835,13 +830,8 @@ impl ServiceabilityProgramHelper {
 
     #[allow(dead_code)]
     pub async fn suspend_link(&mut self, pubkey: Pubkey) -> Result<(), BanksClientError> {
-        let link = self.get_link(pubkey).await?;
-
         self.execute_transaction(
-            DoubleZeroInstruction::SuspendLink(LinkSuspendArgs {
-                index: link.index,
-                bump_seed: link.bump_seed,
-            }),
+            DoubleZeroInstruction::SuspendLink(LinkSuspendArgs {}),
             vec![AccountMeta::new(pubkey, false)],
         )
         .await

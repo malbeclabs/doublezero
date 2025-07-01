@@ -1,17 +1,15 @@
+use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    pda::get_device_pda,
     processors::device::update::DeviceUpdateArgs,
     state::device::DeviceType,
     types::{IpV4, NetworkV4List},
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
-
 #[derive(Debug, PartialEq, Clone)]
 pub struct UpdateDeviceCommand {
-    pub index: u128,
+    pub pubkey: Pubkey,
     pub code: Option<String>,
     pub device_type: Option<DeviceType>,
     pub public_ip: Option<IpV4>,
@@ -25,11 +23,8 @@ impl UpdateDeviceCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, bump_seed) = get_device_pda(&client.get_program_id(), self.index);
         client.execute_transaction(
             DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-                index: self.index,
-                bump_seed,
                 code: self.code.clone(),
                 device_type: self.device_type,
                 public_ip: self.public_ip,
@@ -37,7 +32,7 @@ impl UpdateDeviceCommand {
                 metrics_publisher_pk: self.metrics_publisher,
             }),
             vec![
-                AccountMeta::new(pda_pubkey, false),
+                AccountMeta::new(self.pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
             ],
         )

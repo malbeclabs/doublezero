@@ -19,12 +19,10 @@ impl DeleteExchangeCliCommand {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let (_, exchange) = client.get_exchange(GetExchangeCommand {
+        let (pubkey, _) = client.get_exchange(GetExchangeCommand {
             pubkey_or_code: self.pubkey,
         })?;
-        let signature = client.delete_exchange(DeleteExchangeCommand {
-            index: exchange.index,
-        })?;
+        let signature = client.delete_exchange(DeleteExchangeCommand { pubkey })?;
         writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
@@ -84,7 +82,7 @@ mod tests {
 
         client
             .expect_delete_exchange()
-            .with(predicate::eq(DeleteExchangeCommand { index: 1 }))
+            .with(predicate::eq(DeleteExchangeCommand { pubkey: pda_pubkey }))
             .times(1)
             .returning(move |_| Ok(signature));
 

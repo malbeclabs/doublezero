@@ -27,6 +27,9 @@ import (
 //go:embed device/startup-config.tmpl
 var deviceStartupConfigTemplate string
 
+//go:embed device/rc.eos.tmpl
+var deviceRCEOS string
+
 const (
 
 	// Device container is more CPU and memory intensive than the others.
@@ -261,9 +264,6 @@ func (d *Device) Start(ctx context.Context) error {
 		},
 		ExposedPorts: []string{"80/tcp"},
 		Privileged:   true,
-		Env: map[string]string{
-			"DZ_AGENT_TELEMETRY_TWAMP_PORT": strconv.Itoa(int(spec.Telemetry.TWAMPListenPort)),
-		},
 		Networks: []string{
 			d.dn.DefaultNetwork.Name,
 		},
@@ -324,10 +324,27 @@ func (d *Device) Start(ctx context.Context) error {
 		telemetryCommandArgs = append(telemetryCommandArgs, "-verbose")
 	}
 
+	// Render the device rc.eos script.
+	var rcEosContents bytes.Buffer
+	rcEOSTemplate := template.Must(template.New("rc.eos").Parse(deviceRCEOS))
+	err = rcEOSTemplate.Execute(&rcEosContents, map[string]any{
+		"TelemetryEnabled":         spec.Telemetry.Enabled,
+		"TelemetryTWAMPListenPort": strconv.Itoa(int(spec.Telemetry.TWAMPListenPort)),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to execute template: %w", err)
+	}
+	containerRCEOSPath := "/mnt/flash/rc.eos"
+	d.log.Info("==> Writing device /mnt/flash/rc.eos script", "path", containerRCEOSPath)
+	err = container.CopyToContainer(ctx, rcEosContents.Bytes(), containerRCEOSPath, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write device rc.eos script: %w", err)
+	}
+
 	// Render the device config from go template.
 	var configContents bytes.Buffer
-	tmpl := template.Must(template.New("startup-config").Parse(deviceStartupConfigTemplate))
-	err = tmpl.Execute(&configContents, map[string]any{
+	startupConfigTemplate := template.Must(template.New("startup-config").Parse(deviceStartupConfigTemplate))
+	err = startupConfigTemplate.Execute(&configContents, map[string]any{
 		"AgentCommandArgs":         strings.Join(commandArgs, " "),
 		"TelemetryEnabled":         spec.Telemetry.Enabled,
 		"TelemetryCommandArgs":     strings.Join(telemetryCommandArgs, " "),

@@ -38,7 +38,7 @@ mod device_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::InitGlobalState(),
+            DoubleZeroInstruction::InitGlobalState,
             vec![
                 AccountMeta::new(program_config_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),

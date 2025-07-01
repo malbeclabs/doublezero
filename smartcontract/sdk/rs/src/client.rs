@@ -419,7 +419,7 @@ impl DoubleZeroClient for DZClient {
                         if program_id == &self.program_id {
                             DoubleZeroInstruction::unpack(&instr.data)?
                         } else {
-                            DoubleZeroInstruction::InitGlobalState()
+                            DoubleZeroInstruction::InitGlobalState
                         }
                     };
 

@@ -391,7 +391,7 @@ mod tests {
 
     #[test]
     fn test_doublezero_instruction() {
-        test_instruction(DoubleZeroInstruction::InitGlobalState(), "InitGlobalState");
+        test_instruction(DoubleZeroInstruction::InitGlobalState, "InitGlobalState");
         test_instruction(
             DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
                 local_asn: 100,

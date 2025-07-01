@@ -15,7 +15,7 @@ impl InitGlobalStateCommand {
         let (pda_pubkey, _) = get_globalstate_pda(&client.get_program_id());
 
         client.execute_transaction(
-            DoubleZeroInstruction::InitGlobalState(),
+            DoubleZeroInstruction::InitGlobalState,
             vec![
                 AccountMeta::new(program_config_pubkey, false),
                 AccountMeta::new(pda_pubkey, false),

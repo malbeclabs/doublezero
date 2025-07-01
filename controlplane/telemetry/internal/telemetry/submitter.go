@@ -131,52 +131,54 @@ func (s *Submitter) Tick(ctx context.Context) {
 	}
 
 	for accountKey := range s.cfg.Buffer.FlushWithoutReset() {
-		// Copy samples and reset buffer for this account
-		samples := s.cfg.Buffer.CopyAndReset(accountKey)
+		tmp := s.cfg.Buffer.CopyAndReset(accountKey)
 
-		s.log.Debug("==> Submitting samples", "account", accountKey, "count", len(samples))
+		s.log.Debug("==> Submitting samples", "account", accountKey, "count", len(tmp))
 
-		if len(samples) == 0 {
+		if len(tmp) == 0 {
 			s.log.Debug("==> No samples to submit, skipping")
-			s.cfg.Buffer.Recycle(accountKey, samples)
+			s.cfg.Buffer.Recycle(accountKey, tmp)
 			continue
 		}
 
-		func() {
-			defer s.cfg.Buffer.Recycle(accountKey, samples)
-
-			for attempt := 1; attempt <= maxAttempts; attempt++ {
-				err := s.SubmitSamples(ctx, accountKey, samples)
-				if err == nil {
-					s.log.Debug("==> Submitted samples", "count", len(samples), "attempt", attempt)
-					break
-				}
-
-				if attempt == maxAttempts {
-					s.log.Error("==> Failed to submit samples after retries", "error", err, "accountKey", accountKey, "samplesCount", len(samples))
-					// Re-add failed samples back to buffer for next tick
-					for _, sample := range samples {
-						s.cfg.Buffer.Add(accountKey, sample)
-					}
-					return
-				}
-
-				var backoff time.Duration
-				if s.cfg.BackoffFunc != nil {
-					backoff = s.cfg.BackoffFunc(attempt)
-				} else {
-					base := 250 * time.Millisecond
-					jitter := time.Duration(float64(base) * (0.5 + 0.5*s.rng.Float64()))
-					backoff = time.Duration(attempt) * jitter
-				}
-
-				s.log.Warn("==> Submission failed, retrying", "attempt", attempt, "delay", backoff, "error", err)
-
-				if !sleepOrDone(ctx, backoff) {
-					s.log.Debug("==> Submission retry aborted by context")
-					return
-				}
+		success := false
+		for attempt := 1; attempt <= maxAttempts; attempt++ {
+			err := s.SubmitSamples(ctx, accountKey, tmp)
+			if err == nil {
+				s.log.Debug("==> Submitted samples", "count", len(tmp), "attempt", attempt)
+				success = true
+				break
 			}
-		}()
+
+			if attempt == maxAttempts {
+				s.log.Error("==> Failed to submit samples after retries", "error", err, "accountKey", accountKey, "samplesCount", len(tmp))
+				break
+			}
+
+			var backoff time.Duration
+			if s.cfg.BackoffFunc != nil {
+				backoff = s.cfg.BackoffFunc(attempt)
+			} else {
+				base := 250 * time.Millisecond
+				jitter := time.Duration(float64(base) * (0.5 + 0.5*s.rng.Float64()))
+				backoff = time.Duration(attempt) * jitter
+			}
+
+			s.log.Warn("==> Submission failed, retrying", "attempt", attempt, "delay", backoff, "error", err)
+
+			if !sleepOrDone(ctx, backoff) {
+				s.log.Debug("==> Submission retry aborted by context")
+				break
+			}
+		}
+
+		if !success {
+			for _, sample := range tmp {
+				s.cfg.Buffer.Add(accountKey, sample)
+			}
+		}
+
+		// Always recycle the slice for reuse
+		s.cfg.Buffer.Recycle(accountKey, tmp)
 	}
 }

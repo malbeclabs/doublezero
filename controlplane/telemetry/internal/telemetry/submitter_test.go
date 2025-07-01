@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -140,5 +141,162 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		submitter.Tick(ctx)
 
 		assert.Less(t, callCount, 5, "should not retry full 5 times due to context cancel")
+	})
+
+	t.Run("preserves_samples_after_exhausted_retries", func(t *testing.T) {
+		t.Parallel()
+
+		key := newTestAccountKey()
+		sample := telemetry.Sample{
+			Timestamp: time.Now(),
+			RTT:       7 * time.Microsecond,
+			Loss:      false,
+		}
+
+		var attempts int32
+		telemetryProgram := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(ctx context.Context, config sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				atomic.AddInt32(&attempts, 1)
+				return solana.Signature{}, nil, errors.New("permanent failure")
+			},
+		}
+
+		buffer := telemetry.NewAccountsBuffer()
+		buffer.Add(key, sample)
+
+		submitter := telemetry.NewSubmitter(slog.Default(), &telemetry.SubmitterConfig{
+			Interval:      time.Hour, // unused
+			Buffer:        buffer,
+			ProgramClient: telemetryProgram,
+			MaxAttempts:   3,
+			BackoffFunc:   func(_ int) time.Duration { return 0 },
+		})
+
+		submitter.Tick(context.Background())
+
+		samplesAfter := buffer.CopyAndReset(key)
+		require.Len(t, samplesAfter, 1)
+		assert.Equal(t, sample.RTT, samplesAfter[0].RTT)
+		assert.Equal(t, sample.Timestamp, samplesAfter[0].Timestamp)
+
+		assert.Equal(t, int32(3), attempts, "should have retried exactly MaxAttempts times")
+	})
+
+	t.Run("drops_samples_after_successful_submission", func(t *testing.T) {
+		t.Parallel()
+
+		key := newTestAccountKey()
+		sample := telemetry.Sample{
+			Timestamp: time.Now(),
+			RTT:       10 * time.Microsecond,
+			Loss:      false,
+		}
+
+		var attempts int32
+		telemetryProgram := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(ctx context.Context, config sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				atomic.AddInt32(&attempts, 1)
+				return solana.Signature{}, nil, nil
+			},
+		}
+
+		buffer := telemetry.NewAccountsBuffer()
+		buffer.Add(key, sample)
+
+		submitter := telemetry.NewSubmitter(slog.Default(), &telemetry.SubmitterConfig{
+			Interval:      time.Hour,
+			Buffer:        buffer,
+			ProgramClient: telemetryProgram,
+			MaxAttempts:   3,
+			BackoffFunc:   func(_ int) time.Duration { return 0 },
+		})
+
+		submitter.Tick(context.Background())
+
+		samplesAfter := buffer.CopyAndReset(key)
+		assert.Len(t, samplesAfter, 0, "samples should be discarded after successful submission")
+		assert.Equal(t, int32(1), attempts, "should not retry on successful submission")
+	})
+
+	t.Run("retries_then_drops_samples_on_eventual_success", func(t *testing.T) {
+		t.Parallel()
+
+		key := newTestAccountKey()
+		sample := telemetry.Sample{
+			Timestamp: time.Now(),
+			RTT:       15 * time.Microsecond,
+			Loss:      false,
+		}
+
+		var attempts int32
+		telemetryProgram := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(ctx context.Context, config sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				n := atomic.AddInt32(&attempts, 1)
+				if n < 2 {
+					return solana.Signature{}, nil, errors.New("transient failure")
+				}
+				return solana.Signature{}, nil, nil
+			},
+		}
+
+		buffer := telemetry.NewAccountsBuffer()
+		buffer.Add(key, sample)
+
+		submitter := telemetry.NewSubmitter(slog.Default(), &telemetry.SubmitterConfig{
+			Interval:      time.Hour,
+			Buffer:        buffer,
+			ProgramClient: telemetryProgram,
+			MaxAttempts:   5,
+			BackoffFunc:   func(_ int) time.Duration { return 0 },
+		})
+
+		submitter.Tick(context.Background())
+
+		samplesAfter := buffer.CopyAndReset(key)
+		assert.Len(t, samplesAfter, 0, "samples should be discarded after eventual successful submission")
+		assert.Equal(t, int32(2), attempts, "should have retried once before succeeding")
+	})
+
+	t.Run("preserves_samples_when_context_cancelled_mid_retry", func(t *testing.T) {
+		t.Parallel()
+
+		key := newTestAccountKey()
+		sample := telemetry.Sample{
+			Timestamp: time.Now(),
+			RTT:       20 * time.Microsecond,
+			Loss:      false,
+		}
+
+		var attempts int32
+		telemetryProgram := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(ctx context.Context, config sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				atomic.AddInt32(&attempts, 1)
+				return solana.Signature{}, nil, errors.New("still failing")
+			},
+		}
+
+		buffer := telemetry.NewAccountsBuffer()
+		buffer.Add(key, sample)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		submitter := telemetry.NewSubmitter(slog.Default(), &telemetry.SubmitterConfig{
+			Interval:      time.Hour,
+			Buffer:        buffer,
+			ProgramClient: telemetryProgram,
+			MaxAttempts:   5,
+			BackoffFunc: func(_ int) time.Duration {
+				cancel() // cancel immediately after first failure
+				return 10 * time.Millisecond
+			},
+		})
+
+		submitter.Tick(ctx)
+
+		samplesAfter := buffer.CopyAndReset(key)
+		assert.Len(t, samplesAfter, 1, "samples should be preserved if context cancels during retries")
+		assert.Less(t, attempts, int32(5), "should stop retrying when context is cancelled")
+
 	})
 }

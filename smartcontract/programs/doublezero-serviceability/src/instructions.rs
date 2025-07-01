@@ -217,9 +217,9 @@ impl DoubleZeroInstruction {
 
     pub fn get_name(&self) -> String {
         match self {
-            Self::None => "None".to_string(), // variant 0
+            Self::None => "None".to_string(),                       // variant 0
             Self::InitGlobalState => "InitGlobalState".to_string(), // variant 1
-            Self::CloseAccount(_) => "CloseAccount".to_string(), // variant 2
+            Self::CloseAccount(_) => "CloseAccount".to_string(),    // variant 2
             Self::SetGlobalConfig(_) => "SetGlobalConfig".to_string(), // variant 3
 
             Self::AddFoundationAllowlist(_) => "AddFoundationAllowlist".to_string(), // variant 4

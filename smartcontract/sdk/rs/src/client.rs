@@ -189,7 +189,9 @@ impl DZClient {
                 }
             }
 
-            _ = self.subscribe(&mut action).inspect_err(|e| eprintln!("Error: {e}"));
+            _ = self
+                .subscribe(&mut action)
+                .inspect_err(|e| eprintln!("Error: {e}"));
         }
     }
 

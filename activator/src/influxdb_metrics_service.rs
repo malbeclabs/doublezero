@@ -55,7 +55,10 @@ impl InfluxDBMetricsService {
     }
 
     fn send(&self, lines: String) {
-        _ = self.sender.blocking_send(lines).inspect_err(|err| eprintln!("Error sending metrics: {err}"));
+        _ = self
+            .sender
+            .blocking_send(lines)
+            .inspect_err(|err| eprintln!("Error sending metrics: {err}"));
     }
 }
 

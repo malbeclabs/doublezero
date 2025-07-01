@@ -7,13 +7,13 @@ use doublezero_sdk::commands::globalstate::init::InitGlobalStateCommand;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct InitCliCommand {}
+pub struct InitCliCommand;
 
 impl InitCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let signature = client.init_global_state(InitGlobalStateCommand {})?;
+        let signature = client.init_global_state(InitGlobalStateCommand)?;
         writeln!(out, "Signature: {signature}",)?;
 
         Ok(())

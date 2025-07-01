@@ -7,7 +7,7 @@ use solana_sdk::{instruction::AccountMeta, signature::Signature};
 use crate::DoubleZeroClient;
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct InitGlobalStateCommand {}
+pub struct InitGlobalStateCommand;
 
 impl InitGlobalStateCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {

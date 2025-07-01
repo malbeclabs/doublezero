@@ -58,7 +58,7 @@ impl DecommissioningCliCommand {
 
         spinner.set_message("deleting user account...");
 
-        let users = client.list_user(ListUserCommand {})?;
+        let users = client.list_user(ListUserCommand)?;
 
         for (pubkey, user) in users.iter().filter(|(_, u)| u.client_ip == client_ip) {
             match self.dz_mode {

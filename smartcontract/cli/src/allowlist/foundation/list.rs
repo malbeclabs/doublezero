@@ -15,7 +15,7 @@ pub struct ListFoundationAllowlistCliCommand {
 
 impl ListFoundationAllowlistCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        let list = client.list_foundation_allowlist(ListFoundationAllowlistCommand {})?;
+        let list = client.list_foundation_allowlist(ListFoundationAllowlistCommand)?;
 
         if self.json || self.json_compact {
             let list = list
@@ -67,7 +67,7 @@ mod tests {
             .returning(|_| Ok(()));
         client
             .expect_list_foundation_allowlist()
-            .with(predicate::eq(ListFoundationAllowlistCommand {}))
+            .with(predicate::eq(ListFoundationAllowlistCommand))
             .returning(move |_| Ok(vec![pubkey1, pubkey2, pubkey3]));
 
         /*****************************************************************************************************/

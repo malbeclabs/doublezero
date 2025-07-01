@@ -182,7 +182,7 @@ mod device_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs {}),
+            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs),
             vec![
                 AccountMeta::new(device_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),

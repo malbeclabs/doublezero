@@ -177,7 +177,7 @@ impl ProvisioningCliCommand {
         client_ip: IpV4,
         spinner: ProgressBar,
     ) -> eyre::Result<()> {
-        let mcast_groups = client.list_multicastgroup(ListMulticastGroupCommand {})?;
+        let mcast_groups = client.list_multicastgroup(ListMulticastGroupCommand)?;
         let (mcast_group_pk, _) = mcast_groups
             .iter()
             .find(|(_, g)| g.code == *multicast_group)
@@ -273,7 +273,7 @@ impl ProvisioningCliCommand {
     ) -> eyre::Result<(Pubkey, Device)> {
         spinner.set_message("Searching for device account...");
 
-        let devices = client.list_device(ListDeviceCommand {})?;
+        let devices = client.list_device(ListDeviceCommand)?;
         let device_pk = match self.device.as_ref() {
             Some(device) => match device.parse::<Pubkey>() {
                 Ok(pubkey) => pubkey,
@@ -325,7 +325,7 @@ impl ProvisioningCliCommand {
         spinner.set_message("Searching for user account...");
         spinner.set_prefix("2/4 User");
 
-        let users = client.list_user(ListUserCommand {})?;
+        let users = client.list_user(ListUserCommand)?;
 
         let matched_users = users
             .iter()
@@ -410,7 +410,7 @@ impl ProvisioningCliCommand {
         spinner.set_message("Searching for user account...");
         spinner.set_prefix("2/4 User");
 
-        let users = client.list_user(ListUserCommand {})?;
+        let users = client.list_user(ListUserCommand)?;
 
         let matched_users = users
             .iter()
@@ -539,7 +539,7 @@ Disconnect and connect again!"#,
         spinner.set_prefix("3/4 Device");
         spinner.set_message("Reading devices...");
 
-        let devices = client.list_device(ListDeviceCommand {})?;
+        let devices = client.list_device(ListDeviceCommand)?;
         let prefixes = devices
             .values()
             .flat_map(|device| device.dz_prefixes.clone())

@@ -3,7 +3,7 @@ use clap::Args;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct BalanceCliCommand {}
+pub struct BalanceCliCommand;
 
 impl BalanceCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {

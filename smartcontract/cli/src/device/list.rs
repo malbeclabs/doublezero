@@ -57,10 +57,10 @@ pub struct DeviceDisplay {
 
 impl ListDeviceCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        let locations = client.list_location(ListLocationCommand {})?;
-        let exchanges = client.list_exchange(ListExchangeCommand {})?;
+        let locations = client.list_location(ListLocationCommand)?;
+        let exchanges = client.list_exchange(ListExchangeCommand)?;
 
-        let devices = client.list_device(ListDeviceCommand {})?;
+        let devices = client.list_device(ListDeviceCommand)?;
 
         let mut devices: Vec<(Pubkey, Device)> = devices.into_iter().collect();
         devices.sort_by(|(_, a), (_, b)| a.owner.cmp(&b.owner));

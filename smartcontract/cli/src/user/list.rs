@@ -62,10 +62,10 @@ pub struct UserDisplay {
 
 impl ListUserCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        let devices = client.list_device(ListDeviceCommand {})?;
-        let locations = client.list_location(ListLocationCommand {})?;
-        let mgroups = client.list_multicastgroup(ListMulticastGroupCommand {})?;
-        let users = client.list_user(ListUserCommand {})?;
+        let devices = client.list_device(ListDeviceCommand)?;
+        let locations = client.list_location(ListLocationCommand)?;
+        let mgroups = client.list_multicastgroup(ListMulticastGroupCommand)?;
+        let users = client.list_user(ListUserCommand)?;
 
         let mut users: Vec<(Pubkey, User)> = users.into_iter().collect();
         users.sort_by(|(_, a), (_, b)| {

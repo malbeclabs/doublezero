@@ -15,7 +15,7 @@ pub struct ListDeviceAllowlistCliCommand {
 
 impl ListDeviceAllowlistCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        let list = client.list_device_allowlist(ListDeviceAllowlistCommand {})?;
+        let list = client.list_device_allowlist(ListDeviceAllowlistCommand)?;
 
         if self.json || self.json_compact {
             let list = list
@@ -67,7 +67,7 @@ mod tests {
             .returning(|_| Ok(()));
         client
             .expect_list_device_allowlist()
-            .with(predicate::eq(ListDeviceAllowlistCommand {}))
+            .with(predicate::eq(ListDeviceAllowlistCommand))
             .returning(move |_| Ok(vec![pubkey1, pubkey2, pubkey3]));
 
         /*****************************************************************************************************/

@@ -8,7 +8,7 @@ use solana_sdk::pubkey::Pubkey;
 use crate::DoubleZeroClient;
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct GetGlobalStateCommand {}
+pub struct GetGlobalStateCommand;
 
 impl GetGlobalStateCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Pubkey, GlobalState)> {

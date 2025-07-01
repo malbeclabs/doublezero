@@ -8,7 +8,7 @@ use doublezero_serviceability::{
 use solana_sdk::pubkey::Pubkey;
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct ListExchangeCommand {}
+pub struct ListExchangeCommand;
 
 impl ListExchangeCommand {
     pub fn execute(
@@ -85,7 +85,7 @@ mod tests {
             });
 
         // Search by pubkey
-        let res = ListExchangeCommand {}.execute(&client);
+        let res = ListExchangeCommand.execute(&client);
 
         assert!(res.is_ok());
         let list = res.unwrap();

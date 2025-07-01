@@ -7,7 +7,7 @@ use solana_sdk::pubkey::Pubkey;
 use std::collections::HashMap;
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct ListLocationCommand {}
+pub struct ListLocationCommand;
 
 impl ListLocationCommand {
     pub fn execute(
@@ -83,7 +83,7 @@ mod tests {
             });
 
         // Search by pubkey
-        let res = ListLocationCommand {}.execute(&client);
+        let res = ListLocationCommand.execute(&client);
 
         assert!(res.is_ok());
         let list = res.unwrap();

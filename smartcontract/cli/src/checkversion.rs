@@ -8,7 +8,7 @@ pub fn check_version<C: CliCommand, W: Write>(
     client_version: ProgramVersion,
 ) -> eyre::Result<()> {
     // Check the program configuration version
-    if let Ok((_, pconfig)) = client.get_program_config(GetProgramConfigCommand {}) {
+    if let Ok((_, pconfig)) = client.get_program_config(GetProgramConfigCommand) {
         // Compare the program version with the client version
         // If the program version is incompatible, return an error
         if pconfig.version.error(&client_version) {
@@ -42,7 +42,7 @@ mod tests {
 
         client
             .expect_get_program_config()
-            .with(predicate::eq(GetProgramConfigCommand {}))
+            .with(predicate::eq(GetProgramConfigCommand))
             .returning(move |_| {
                 let program_config = ProgramConfig {
                     account_type: AccountType::ProgramConfig,

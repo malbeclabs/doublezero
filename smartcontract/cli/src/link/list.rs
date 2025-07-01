@@ -52,8 +52,8 @@ pub struct LinkDisplay {
 
 impl ListLinkCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        let devices = client.list_device(ListDeviceCommand {})?;
-        let tunnels = client.list_link(ListLinkCommand {})?;
+        let devices = client.list_device(ListDeviceCommand)?;
+        let tunnels = client.list_link(ListLinkCommand)?;
 
         let mut tunnels: Vec<(Pubkey, Link)> = tunnels.into_iter().collect();
         tunnels.sort_by(|(_, a), (_, b)| a.owner.cmp(&b.owner).then(a.tunnel_id.cmp(&b.tunnel_id)));

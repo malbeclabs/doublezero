@@ -94,12 +94,12 @@ struct UserData {
 
 impl ExportCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        let locations = client.list_location(ListLocationCommand {})?;
-        let exchanges = client.list_exchange(ListExchangeCommand {})?;
+        let locations = client.list_location(ListLocationCommand)?;
+        let exchanges = client.list_exchange(ListExchangeCommand)?;
 
-        let devices = client.list_device(ListDeviceCommand {})?;
-        let tunnels = client.list_link(ListLinkCommand {})?;
-        let users = client.list_user(ListUserCommand {})?;
+        let devices = client.list_device(ListDeviceCommand)?;
+        let tunnels = client.list_link(ListLinkCommand)?;
+        let users = client.list_user(ListUserCommand)?;
 
         for (pubkey, data) in devices.clone() {
             let name = format!("{}/{}.yml", self.path, data.code);

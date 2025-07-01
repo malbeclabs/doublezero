@@ -5,7 +5,7 @@ use solana_sdk::signer::Signer;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct AddressCliCommand {}
+pub struct AddressCliCommand;
 
 impl AddressCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {

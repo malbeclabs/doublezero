@@ -8,7 +8,7 @@ use doublezero_serviceability::{
 use solana_sdk::pubkey::Pubkey;
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct ListDeviceCommand {}
+pub struct ListDeviceCommand;
 
 impl ListDeviceCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<HashMap<Pubkey, Device>> {

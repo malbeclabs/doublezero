@@ -1,0 +1,82 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema-pro.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 2
+
+project_name: doublezero-telemetry
+
+monorepo:
+  tag_prefix: agent-telemetry/
+  dir: controlplane/telemetry
+
+builds:
+  - id: doublezero-telemetry
+    main: cmd/telemetry/main.go
+    binary: doublezero-telemetry
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      -X main.Build={{.Env.AGENT_TELEMETRY_VERSION}}
+    goos:
+      - linux
+    goarch:
+      - amd64
+
+archives:
+  - id: agent_telemetry_archive
+    formats: ['tar.gz']
+    ids: [doublezero-telemetry]
+    # this name template makes the OS and Arch compatible with the results of `uname`.
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+
+nfpms:
+  - id: doublezero-telemetry
+    package_name: doublezero-telemetry
+    ids: [doublezero-telemetry]
+    vendor: doublezero
+    homepage: doublezero.xyz
+    maintainer: nik <nik@malbeclabs.com>
+    description: |-
+      DoubleZero agent telemetry
+    license: Apache 2.0
+    formats:
+      - rpm
+    bindir: /usr/local/bin
+    release: "1"
+    section: default
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  github:
+    owner: malbeclabs
+    name: doublezero
+  draft: false
+  replace_existing_artifacts: true
+
+announce:
+  slack:
+    enabled: true
+    message_template: "DoubleZero Agent Telemetry {{.Tag}} has been released! Check it out at {{ .ReleaseURL }}"
+    channel: "#bots"
+
+git:
+  ignore_tags:
+    - agent-telemetry/daily
+
+nightly:
+  publish_release: true
+  keep_single_release: true
+  version_template: '{{ incpatch .Version }}~git{{ .Env.BUILD_DATE }}.{{ .ShortCommit }}'
+  tag_name: 'agent-telemetry/daily'

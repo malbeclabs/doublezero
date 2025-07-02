@@ -13,6 +13,8 @@ jobs:
         include:
           - component: agent
             playbook: playbooks/agents.yml
+          - component: device-telemetry-agent
+            playbook: playbooks/device-telemetry-agent.yml
           - component: activator
             playbook: playbooks/activators.yml
           - component: controller

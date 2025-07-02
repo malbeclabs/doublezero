@@ -14,9 +14,9 @@ import (
 )
 
 type Peer struct {
-	LinkPubkey   string
-	DevicePubkey string
-	DeviceAddr   *net.UDPAddr
+	LinkPK     solana.PublicKey
+	DevicePK   solana.PublicKey
+	DeviceAddr *net.UDPAddr
 }
 
 type PeerDiscovery interface {
@@ -25,11 +25,11 @@ type PeerDiscovery interface {
 }
 
 type LedgerPeerDiscoveryConfig struct {
-	Logger            *slog.Logger
-	LocalDevicePubKey string
-	ProgramClient     ServiceabilityProgramClient
-	TWAMPPort         uint16
-	RefreshInterval   time.Duration
+	Logger          *slog.Logger
+	LocalDevicePK   solana.PublicKey
+	ProgramClient   ServiceabilityProgramClient
+	TWAMPPort       uint16
+	RefreshInterval time.Duration
 }
 
 // ledgerPeerDiscovery implements the PeerDiscovery interface by periodically
@@ -53,8 +53,8 @@ func NewLedgerPeerDiscovery(cfg *LedgerPeerDiscoveryConfig) (*ledgerPeerDiscover
 	if cfg.Logger == nil {
 		return nil, errors.New("logger is required")
 	}
-	if cfg.LocalDevicePubKey == "" {
-		return nil, errors.New("LocalDevicePubKey is required")
+	if cfg.LocalDevicePK.IsZero() {
+		return nil, errors.New("LocalDevicePK is required")
 	}
 	if cfg.ProgramClient == nil {
 		return nil, errors.New("ProgramClient is required")
@@ -124,9 +124,9 @@ func (p *ledgerPeerDiscovery) refresh(ctx context.Context) {
 		sideB := solana.PublicKeyFromBytes(link.SideZPubKey[:])
 
 		var remote string
-		if sideA.String() == p.config.LocalDevicePubKey {
+		if sideA.Equals(p.config.LocalDevicePK) {
 			remote = sideB.String()
-		} else if sideB.String() == p.config.LocalDevicePubKey {
+		} else if sideB.Equals(p.config.LocalDevicePK) {
 			remote = sideA.String()
 		} else {
 			continue
@@ -139,8 +139,8 @@ func (p *ledgerPeerDiscovery) refresh(ctx context.Context) {
 		}
 
 		peers[linkPubkey.String()] = &Peer{
-			LinkPubkey:   linkPubkey.String(),
-			DevicePubkey: remote,
+			LinkPK:   linkPubkey,
+			DevicePK: solana.PublicKeyFromBytes(device.PubKey[:]),
 			DeviceAddr: &net.UDPAddr{
 				IP:   net.IP(device.PublicIp[:]),
 				Port: int(p.config.TWAMPPort),

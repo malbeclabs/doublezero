@@ -26,12 +26,12 @@ jobs:
         run: |
           cargo build-sbf
         working-directory: smartcontract/programs/doublezero-serviceability
-      # - name: Deploy serviceability smart contract to DevNet
-        # run: |
-          # solana program deploy \
-            # --program-id /root/.config/ops/serviceability-program-keypair.json \
-            # -k /home/ubuntu/.config/doublezero/id.json \
-            # targets/deploy/doublezero_serviceability.so
+      - name: Deploy serviceability program to DevNet
+        run: |
+          solana program deploy \
+            --program-id serviceability-program-keypair.json \
+            -k id.json \
+            target/deploy/doublezero_serviceability.so
       - name: Build telemetry program
         run: |
           SERVICEABILITY_PROGRAM_ID=devnet cargo build-sbf

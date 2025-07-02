@@ -19,6 +19,8 @@ jobs:
             playbook: playbooks/controllers.yml
           - component: client
             playbook: playbooks/validators.yml
+          - component: device-telemetry-agent
+            playbook: playbooks/device_telemetry_agent.yml
     with:
       component: ${{ matrix.component }}
       playbook: ${{ matrix.playbook }}
@@ -29,6 +31,3 @@ jobs:
   smartcontract:
     uses: ./.github/workflows/release.devnet.smartcontract.daily.yml
     secrets: inherit
-    permissions:
-      contents: write
-      packages: write

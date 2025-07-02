@@ -40,11 +40,12 @@ impl UpdateDeviceCliCommand {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
+        let pubkey = Pubkey::from_str(&self.pubkey)?;
         let devices = client.list_device(ListDeviceCommand)?;
         if let Some(code) = &self.code {
             if devices
                 .iter()
-                .any(|(pk, d)| d.code == *code && pk.to_string() != self.pubkey)
+                .any(|(pk, d)| d.code == *code && *pk != pubkey)
             {
                 return Err(eyre::eyre!("Device with code '{}' already exists", code));
             }
@@ -52,7 +53,7 @@ impl UpdateDeviceCliCommand {
         if let Some(public_ip) = &self.public_ip {
             if devices
                 .iter()
-                .any(|(pk, d)| d.public_ip == *public_ip && pk.to_string() != self.pubkey)
+                .any(|(pk, d)| d.public_ip == *public_ip && *pk != pubkey)
             {
                 return Err(eyre::eyre!(
                     "Device with public ip '{}' already exists",

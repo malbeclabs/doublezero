@@ -109,26 +109,16 @@ ENV CARGO_INCREMENTAL=0
 WORKDIR /doublezero
 COPY . .
 
-# Use a versioned Solana cache to avoid corruption across CLI upgrades.
-# `cargo build-sbf` expects /root/.cache/solana, so we symlink it to
-# /root/.cache/solana-${SOLANA_VERSION}, which is cache-mounted per version.
-# SOLANA_VERSION must be passed in via --build-arg.
-ARG SOLANA_VERSION=2.2.17
-ENV SOLANA_VERSION=${SOLANA_VERSION}
-ENV SOLANA_CACHE_PATH=/root/.cache/solana-${SOLANA_VERSION}
-RUN mkdir -p ${SOLANA_CACHE_PATH} && \
-    ln -sfn ${SOLANA_CACHE_PATH} /root/.cache/solana
-
 # Pre-fetch and cache rust dependencies
 RUN --mount=type=cache,target=/cargo-sbf \
     --mount=type=cache,target=/target-sbf \
-    --mount=type=cache,target=/root/.cache/solana-${SOLANA_VERSION} \
+    --mount=type=cache,target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-serviceability && \
     cargo fetch
 
 RUN --mount=type=cache,target=/cargo-sbf \
     --mount=type=cache,target=/target-sbf \
-    --mount=type=cache,target=/root/.cache/solana-${SOLANA_VERSION} \
+    --mount=type=cache,target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-telemetry && \
     cargo fetch
 
@@ -140,7 +130,7 @@ RUN mkdir -p ${BIN_DIR}
 # Note that we don't use mold here.
 RUN --mount=type=cache,target=/cargo-sbf \
     --mount=type=cache,target=/target-sbf \
-    --mount=type=cache,target=/root/.cache/solana-${SOLANA_VERSION} \
+    --mount=type=cache,target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-serviceability && \
     cargo build-sbf && \
     cp /target-sbf/deploy/doublezero_serviceability.so ${BIN_DIR}/doublezero_serviceability.so
@@ -150,7 +140,7 @@ RUN --mount=type=cache,target=/cargo-sbf \
 ENV SERVICEABILITY_PROGRAM_ID=7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
 RUN --mount=type=cache,target=/cargo-sbf \
     --mount=type=cache,target=/target-sbf \
-    --mount=type=cache,target=/root/.cache/solana-${SOLANA_VERSION} \
+    --mount=type=cache,target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-telemetry && \
     cargo build-sbf && \
     cp /target-sbf/deploy/doublezero_telemetry.so ${BIN_DIR}/doublezero_telemetry.so

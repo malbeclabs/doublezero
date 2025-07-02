@@ -40,14 +40,21 @@ impl UpdateDeviceCliCommand {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
+        let pubkey = Pubkey::from_str(&self.pubkey)?;
         let devices = client.list_device(ListDeviceCommand)?;
         if let Some(code) = &self.code {
-            if devices.iter().any(|(_, d)| d.code == *code) {
+            if devices
+                .iter()
+                .any(|(pk, d)| d.code == *code && *pk != pubkey)
+            {
                 return Err(eyre::eyre!("Device with code '{}' already exists", code));
             }
         }
         if let Some(public_ip) = &self.public_ip {
-            if devices.iter().any(|(_, d)| d.public_ip == *public_ip) {
+            if devices
+                .iter()
+                .any(|(pk, d)| d.public_ip == *public_ip && *pk != pubkey)
+            {
                 return Err(eyre::eyre!(
                     "Device with public ip '{}' already exists",
                     ipv4_to_string(public_ip)
@@ -105,7 +112,7 @@ mod tests {
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
-    fn test_cli_device_update() {
+    fn test_cli_device_update_success() {
         let mut client = create_test_client();
 
         let (pda_pubkey, _bump_seed) = get_device_pda(&client.get_program_id(), 1);
@@ -132,6 +139,39 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             owner: pda_pubkey,
         };
+        let device2 = Device {
+            account_type: AccountType::Device,
+            index: 2,
+            bump_seed: 254,
+            code: "test2".to_string(),
+            location_pk,
+            exchange_pk,
+            device_type: DeviceType::Switch,
+            public_ip: [2, 3, 4, 5],
+            dz_prefixes: vec![([2, 3, 4, 5], 32)],
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
+            owner: pda_pubkey,
+        };
+        let device3 = Device {
+            account_type: AccountType::Device,
+            index: 3,
+            bump_seed: 253,
+            code: "test3".to_string(),
+            location_pk,
+            exchange_pk,
+            device_type: DeviceType::Switch,
+            public_ip: [3, 4, 5, 6],
+            dz_prefixes: vec![([3, 4, 5, 6], 32)],
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
+            owner: pda_pubkey,
+        };
+        let device_list = HashMap::from([
+            (pda_pubkey, device1.clone()),
+            (Pubkey::new_unique(), device2),
+            (Pubkey::new_unique(), device3),
+        ]);
 
         client
             .expect_check_requirements()
@@ -146,7 +186,7 @@ mod tests {
         client
             .expect_list_device()
             .with(predicate::eq(ListDeviceCommand))
-            .returning(move |_| Ok(HashMap::new()));
+            .returning(move |_| Ok(device_list.clone()));
 
         client
             .expect_update_device()
@@ -173,10 +213,140 @@ mod tests {
             metrics_publisher: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
         }
         .execute(&client, &mut output);
-        assert!(res.is_ok());
+        assert!(res.is_ok(), "{}", res.err().unwrap());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
             output_str,"Signature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n"
         );
+    }
+
+    #[test]
+    fn test_cli_device_update_fails_when_code_exists() {
+        let mut client = create_test_client();
+
+        let (pda_pubkey, _bump_seed) = get_device_pda(&client.get_program_id(), 1);
+        let other_pubkey = Pubkey::new_unique();
+
+        let location_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let exchange_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
+        let device1 = Device {
+            account_type: AccountType::Device,
+            index: 1,
+            bump_seed: 255,
+            code: "test".to_string(),
+            location_pk,
+            exchange_pk,
+            device_type: DeviceType::Switch,
+            public_ip: [1, 2, 3, 4],
+            dz_prefixes: vec![([1, 2, 3, 4], 32)],
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
+            owner: pda_pubkey,
+        };
+        let device2 = Device {
+            account_type: AccountType::Device,
+            index: 2,
+            bump_seed: 254,
+            code: "existing_code".to_string(),
+            location_pk,
+            exchange_pk,
+            device_type: DeviceType::Switch,
+            public_ip: [2, 3, 4, 5],
+            dz_prefixes: vec![([2, 3, 4, 5], 32)],
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
+            owner: other_pubkey,
+        };
+        let device_list = HashMap::from([(pda_pubkey, device1.clone()), (other_pubkey, device2)]);
+
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_list_device()
+            .with(predicate::eq(ListDeviceCommand))
+            .returning(move |_| Ok(device_list.clone()));
+
+        // Expected failure - trying to update device1 with code that exists on device2
+        let mut output = Vec::new();
+        let res = UpdateDeviceCliCommand {
+            pubkey: pda_pubkey.to_string(),
+            code: Some("existing_code".to_string()),
+            public_ip: None,
+            dz_prefixes: None,
+            metrics_publisher: None,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_err());
+        assert!(res
+            .unwrap_err()
+            .to_string()
+            .contains("Device with code 'existing_code' already exists"));
+    }
+
+    #[test]
+    fn test_cli_device_update_fails_when_public_ip_exists() {
+        let mut client = create_test_client();
+
+        let (pda_pubkey, _bump_seed) = get_device_pda(&client.get_program_id(), 1);
+        let other_pubkey = Pubkey::new_unique();
+
+        let location_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let exchange_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
+        let device1 = Device {
+            account_type: AccountType::Device,
+            index: 1,
+            bump_seed: 255,
+            code: "test".to_string(),
+            location_pk,
+            exchange_pk,
+            device_type: DeviceType::Switch,
+            public_ip: [1, 2, 3, 4],
+            dz_prefixes: vec![([1, 2, 3, 4], 32)],
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
+            owner: pda_pubkey,
+        };
+        let device2 = Device {
+            account_type: AccountType::Device,
+            index: 2,
+            bump_seed: 254,
+            code: "test2".to_string(),
+            location_pk,
+            exchange_pk,
+            device_type: DeviceType::Switch,
+            public_ip: [10, 20, 30, 40],
+            dz_prefixes: vec![([10, 20, 30, 40], 32)],
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
+            owner: other_pubkey,
+        };
+        let device_list = HashMap::from([(pda_pubkey, device1.clone()), (other_pubkey, device2)]);
+
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_list_device()
+            .with(predicate::eq(ListDeviceCommand))
+            .returning(move |_| Ok(device_list.clone()));
+
+        // Expected failure - trying to update device1 with public IP that exists on device2
+        let mut output = Vec::new();
+        let res = UpdateDeviceCliCommand {
+            pubkey: pda_pubkey.to_string(),
+            code: None,
+            public_ip: Some([10, 20, 30, 40]),
+            dz_prefixes: None,
+            metrics_publisher: None,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_err());
+        assert!(res
+            .unwrap_err()
+            .to_string()
+            .contains("Device with public ip '10.20.30.40' already exists"));
     }
 }

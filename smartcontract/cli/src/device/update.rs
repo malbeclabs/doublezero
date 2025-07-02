@@ -42,12 +42,18 @@ impl UpdateDeviceCliCommand {
 
         let devices = client.list_device(ListDeviceCommand)?;
         if let Some(code) = &self.code {
-            if devices.iter().any(|(_, d)| d.code == *code) {
+            if devices
+                .iter()
+                .any(|(pk, d)| d.code == *code && pk.to_string() != self.pubkey)
+            {
                 return Err(eyre::eyre!("Device with code '{}' already exists", code));
             }
         }
         if let Some(public_ip) = &self.public_ip {
-            if devices.iter().any(|(_, d)| d.public_ip == *public_ip) {
+            if devices
+                .iter()
+                .any(|(pk, d)| d.public_ip == *public_ip && pk.to_string() != self.pubkey)
+            {
                 return Err(eyre::eyre!(
                     "Device with public ip '{}' already exists",
                     ipv4_to_string(public_ip)
@@ -132,6 +138,39 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             owner: pda_pubkey,
         };
+        let device2 = Device {
+            account_type: AccountType::Device,
+            index: 2,
+            bump_seed: 254,
+            code: "test2".to_string(),
+            location_pk,
+            exchange_pk,
+            device_type: DeviceType::Switch,
+            public_ip: [2, 3, 4, 5],
+            dz_prefixes: vec![([2, 3, 4, 5], 32)],
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
+            owner: pda_pubkey,
+        };
+        let device3 = Device {
+            account_type: AccountType::Device,
+            index: 3,
+            bump_seed: 253,
+            code: "test3".to_string(),
+            location_pk,
+            exchange_pk,
+            device_type: DeviceType::Switch,
+            public_ip: [3, 4, 5, 6],
+            dz_prefixes: vec![([3, 4, 5, 6], 32)],
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
+            owner: pda_pubkey,
+        };
+        let device_list = HashMap::from([
+            (pda_pubkey, device1.clone()),
+            (Pubkey::new_unique(), device2),
+            (Pubkey::new_unique(), device3),
+        ]);
 
         client
             .expect_check_requirements()
@@ -146,7 +185,7 @@ mod tests {
         client
             .expect_list_device()
             .with(predicate::eq(ListDeviceCommand))
-            .returning(move |_| Ok(HashMap::new()));
+            .returning(move |_| Ok(device_list.clone()));
 
         client
             .expect_update_device()
@@ -173,7 +212,7 @@ mod tests {
             metrics_publisher: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
         }
         .execute(&client, &mut output);
-        assert!(res.is_ok());
+        assert!(res.is_ok(), "{}", res.err().unwrap());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
             output_str,"Signature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n"

@@ -14,7 +14,7 @@ use solana_program::pubkey::Pubkey;
 use std::str::FromStr;
 
 const LOCAL_SERVICEABILITY_PROGRAM_ID: &str = "7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX";
-const DEVNET_SERVICEABILITY_PROGRAM_ID: &str = "DZdnB7bhR9azxLAUEH7ZVtW168wRdreiDKhi4McDfKZt";
+const DEVNET_SERVICEABILITY_PROGRAM_ID: &str = "GYhQDKuESrasNZGyhMJhGYFtbzNijYhcrN9poSqCQVah";
 const TESTNET_SERVICEABILITY_PROGRAM_ID: &str = "DZtnuQ839pSaDMFG5q1ad2V95G82S5EC4RrB3Ndw2Heb";
 
 #[cfg(not(test))]

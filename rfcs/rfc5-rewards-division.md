@@ -1,281 +1,185 @@
-### **Summary**
+# **Summary**
 
-This document specifies the design and architecture for the DoubleZero
-Off-Chain Rewards Division. This system is a critical component of the
-network's incentive mechanism, responsible for processing on-chain performance
-telemetry and calculating rewards for network contributors in a fair,
-transparent, and _ideally_ verifiable manner.
+This document specifies the architecture for the `rewards-calculator`, a stateless off-chain service responsible for calculating contributor reward proportions and the epoch-specific burn rate for the DoubleZero network. The design prioritizes correctness, verifiability, and a clean separation of concerns between off-chain computation and on-chain settlement.
 
-The architecture is designed for scalability, security, and auditability. It
-leverages Solana's WebSocket (WSS) RPC interface for real-time data ingestion,
-supplemented by a periodic reconciliation process to ensure data completeness.
+The system is a single, scheduled batch service. After each reward epoch, the service fetches all required on-chain data, calculates each contributor's fair _proportion_ of the total rewards (via Shapley values), and determines a `burn_rate`. The final outputs are a **Merkle root** derived from these values and the corresponding **Merkle leaves**. The Merkle root is published to the on-chain Revenue Distribution Program on Solana, while the full set of leaves is published to the DZ Ledger.
 
-A PostgreSQL database serves as the system's persistent store and aggregation
-engine, while Shapley value calculations are used for equitable reward
-distribution. A core feature of this design is the creation of a **Verification
-Packet** and a corresponding **Verification Fingerprint** for each reward
-epoch, allowing any contributor to independently audit their reward calculation
-and fostering trust in the system.
+# **Motivation**
 
-### **Motivation**
+The DoubleZero network's success depends on fairly incentivizing its contributors. The computational complexity of fair reward calculations (specifically Shapley values) makes on-chain execution impractical. This off-chain system is required to:
 
-The DoubleZero network's success depends on incentivizing high-quality
-contributions. While the on-chain telemetry system **[TODO: link to
-telemetry-rfc.md]** provides the source of raw performance data, the
-computational complexity of reward calculations (specifically Shapley values)
-makes on-chain execution impractical and cost-prohibitive.
+- **Decouple Calculation from Payout:** The complex calculation of reward _proportions_ is computationally intensive. By calculating only proportions off-chain, we decouple this process from the variable and potentially delayed finalization of the total on-chain revenue pool for that epoch.
+- **Ensure Verifiability:** Provide a transparent, auditable process where the on-chain commitment (the Merkle root) is small and cheap to store, while the underlying data (the leaves on the DZ Ledger) is fully available for any participant to verify.
+- **Maintain Flexibility:** Allow the core reward logic and parameters (e.g., the burn rate formula) to evolve off-chain without requiring frequent and costly smart contract upgrades.
+- **Process Large Datasets:** Efficiently handle the full data load of a completed epoch to determine fair reward proportions.
 
-This off-chain system is required to:
+# **New Terminology**
 
-- **Process Large Datasets:** Efficiently handle high-volume telemetry data
-  from a growing number of network links.
-- **Enable Complex Calculations:** Perform computationally expensive Shapley
-  value calculations that are currently infeasible to do on chain.
-- **Ensure Verifiability:** Provide a transparent and auditable process that
-  allows contributors to verify the fairness of their rewards, bridging the trust
-  gap inherent in off-chain systems.
-- **Maintain Flexibility:** Allow for the evolution of reward logic and
-  parameters without requiring costly and complex smart contract upgrades.
-- **Guarantee Data Completeness:** Implement a robust data ingestion pipeline
-  that combines real-time subscriptions with periodic reconciliation to prevent
-  missed on-chain events during potential outages.
+- **Reward Proportion:** A fractional value representing a contributor's percentage share of the total rewards for an epoch, as determined by the Shapley value calculation.
+- **Merkle Leaf:** An individual data entry in the reward distribution, such as a single contributor's reward proportion or the epoch burn rate. Each leaf is hashed to form the base of the Merkle tree.
+- **Merkle Root:** A single 32-byte hash that acts as a cryptographic commitment to the entire set of Merkle leaves. It is the only piece of reward data that needs to be stored on the Solana blockchain.
+- **Revenue Distribution Program:** The on-chain Solana program that stores the Merkle root for each epoch and processes payout transactions from contributors who provide a valid Merkle proof.
 
-### **Architecture & Data Flow**
+# **Alternatives Considered**
 
-The system is designed as a set of smaller services that feed a central data
-processing pipeline. This design ensures separation of concerns and high
-availability.
+The primary alternative considered was a system where the off-chain service calculates absolute reward amounts (in 2Z tokens) and publishes the full list of payees and amounts on-chain. This was rejected because:
+
+1.  **Tight Coupling:** It would require the off-chain service to know the total reward pool in advance, coupling it to the on-chain revenue collection and swap processes, which may not have completed in a timely manner.
+2.  **High On-Chain Cost:** Storing a potentially large list of rewards directly on-chain for every epoch would be prohibitively expensive.
+3.  **Inflexibility:** Changes to the reward distribution would require more complex on-chain logic.
+
+The Merkle tree approach was chosen because it provides the best balance of on-chain security, verifiability, and off-chain flexibility at a minimal on-chain cost.
+
+# **Detailed Design**
+
+## **Full Rewarding Architecture**
+
+Below is the full architecture of the rewarding system. This RFC focuses solely on the **Rewards Calculator** off-chain service.
 
 ```mermaid
-graph TD
-    subgraph "On-Chain (DZ Ledger)"
-        A[Program Accounts]
+graph LR
+    V[Validator]
+    PU[Prepaid User]
+    C[Contributor]
+
+    subgraph DS[Data Sources]
+        SP[Serviceability<br/>Program]
+        TP[Telemetry<br/>Program]
+        JITO[Jito<br/>Endpoint]
+        RPC[Solana<br/>RPC]
     end
 
-    subgraph "External Data"
-        AA[3rd Party Latency APIs]
+    subgraph OC[Off-Chain Services]
+        UFC[User Fee<br/>Calculator]
+        RC[Reward<br/>Calculator]
     end
 
-    subgraph "RPC Layer"
-        B[WSS Node]
-        C[HTTP Node]
+    subgraph SIDE CHAIN[Side Chain]
+        DZ[DZ<br/>Ledger]
     end
 
-    subgraph "Data Ingestion (Continuous)"
-        D[Subscription Manager]
-        E[Reconciliation Service]
-        E2[ThirdPartyOracle]
-        F[Notification Processor]
+    subgraph ONCHAIN[On-Chain & Storage]
+        RDP[Revenue Distribution<br/>Program]
+        SWAP[SOL/2Z<br/>Swap]
     end
 
-    subgraph "Database"
-        G[(PostgreSQL)]
-        H[Aggregation Engine]
-        H2[Epoch State Table]
-    end
+    SP -->|paying validators| UFC
+    JITO -->|tip rewards| UFC
+    RPC -->|fetch chain data| UFC
 
-    subgraph "Reward Engine (Scheduled)"
-        I[Shapley Calculator]
-        J[Verification Generator]
-    end
+    SP -->|fetch network state| RC
+    TP -->|fetch telemetry data| RC
 
-    K[IPFS/S3]
-    L[Distribution System]
+    UFC -->|send revenue root| RDP
+    RC -->|send merkle root| RDP
+    RC -->|send merkle leaves| DZ
 
-    A --> B
-    A --> C
-    AA --> E2
+    V -->|pays SOL| RDP
+    PU -->|pays 2Z| RDP
+    RDP -->|withdraw SOL| SWAP
+    SWAP -->|transfer 2Z| RDP
 
-    B --> D
-    C --> E
-
-    D --> F
-    E --> F
-
-    E2 --> A
-
-    F --> G
-    G --> H
-
-    G -.-> |notifies| E
-    E -.-> |certifies| H2
-
-    I --> |reads| H
-    I --> |checks| H2
-    I --> |writes| G
-
-    I --> J
-    J --> K
-
-    G --> L
+    RDP -->|send 2Z reward| C
 ```
 
-**Data Flow:**
+## **Internal Component Architecture**
 
-1.  **Bootstrap:** On startup, the **Subscription Manager** queries all
-    existing accounts via RPC and establishes a WebSocket subscription for each
-    one.
-2.  **Real-time Stream:** The **Subscription Manager** receives real-time
-    account updates from the WSS RPC node and passes them to the **Notification
-    Processor**.
-3.  **Third-Party Data:** The **ThirdPartyOracle** service periodically fetches
-    data from external APIs and submits it to the on-chain Telemetry program.
-    These on-chain updates are then ingested by the `Subscription Manager`.
-4.  **Reconciliation:** On a configurable interval, the **Reconciliation
-    Service** performs a full `getProgramAccounts` scan to find and process any
-    updates missed by the WSS stream. **[TODO: rethink, should be slot based? perf
-    bottleneck?]**
-5.  **Process & Store:** The **Notification Processor** decodes account data,
-    discards duplicates using the `telemetry_account_progress` table, and
-    writes the raw data to the database.
-6.  **Aggregate in DB:** After storing raw data, a SQL function
-    (`update_telemetry_aggregates`) is triggered. This function calculates
-    statistical metrics (p95, uptime). **[TODO: ensure this is not flaky]**
-7.  **Epoch Finalization:** After an epoch ends and a grace period passes, a
-    final reconciliation run certifies the data is complete up to a cutoff
-    slot. This updates the epoch's status to `data_complete`.
-8.  **Calculate Rewards:** The **Shapley Calculator** service is triggered for
-    completed epochs. It reads the finalized metrics, loads the demand matrix,
-    and computes rewards. **[TODO: Does this happen at reward epoch boundary?]**
-9.  **Publish Proof:** The **Verification Generator** creates the Verification
-    Packet, generates its fingerprint (hash), and publishes the packet to
-    IPFS/S3. The fingerprint and storage URL are saved with the reward data.
-    **[TODO: Formalize separately? Needed for launch?]**
-10. **Distribute:** A separate **Rewards Distribution System** reads the
-    finalized rewards to send payments.
+The `rewards-calculator` binary is a single executable with a clear, linear data flow.
 
-### **Atomicity & Data Completeness**
+```mermaid
+sequenceDiagram
+    participant O as Orchestrator
+    participant D as DataFetcher
+    participant M as MetricsProcessor
+    participant G as MerkleGenerator
 
-To guarantee that rewards for an epoch are calculated on a complete and final
-dataset, we can try an "all-or-nothing" approach via an "Epoch Finalization
-Process". Ideally this ensures that the system is reliable.
+    O->>D: fetch_all_data(epoch_window)
+    D-->>O: RewardsData
 
-1.  **Data Grace Period:** A configurable delay (e.g., 6 hours) after an epoch's
-    end, allowing potentially late-arriving data to be ingested.
-2.  **Final Reconciliation & Certification:** After the grace period, a
-    mandatory reconciliation run is performed for the ended epoch. Upon
-    successful completion, this service updates an `epoch_state` table, marking the
-    epoch as `data_complete` and recording a final `cutoff_slot`.
-3.  **Decoupled Calculation:** The `Shapley Calculator` is a scheduled job that
-    will only operate on epochs marked as `data_complete`. This decouples
-    ingestion from calculation, ensuring that if the calculator fails and restarts,
-    it will operate on the exact same, certified dataset, making the process
-    idempotent and deterministic.
+    O->>M: process_metrics(RewardsData)
+    M-->>O: Vec<RewardProportion>
 
-### **Components**
+    O->>G: generate_tree(proportions, burn_rate)
+    G-->>O: CalculationOutput { root, leaves }
 
-#### **Subscription Manager**
+    O->>...: Publish root to Solana & leaves to DZ Ledger
+```
 
-- **Role:** Manages the WSS connection and all account subscriptions.
-- **Logic:** Maintains a list of subscribed accounts, handles
-  connection/reconnection, and forwards WSS messages to the `Notification
-Processor`.
+## **Proposed Data Structures**
 
-#### **Reconciliation Service**
+```rust
+use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
+use solana_sdk::pubkey::Pubkey;
 
-- **Role:** Acts as a periodic safety net and the finalizer of epoch data.
-- **Logic:** Runs on a configurable interval _and_ is triggered as part of the
-  Epoch Finalization Process. It fetches all program accounts, compares against
-  the DB, sends missed updates to the `Notification Processor`, and marks
-  entities no longer on-chain as inactive.
+/// Represents a single contributor's calculated reward proportion.
+/// The `proportion` is stored as a fixed-point integer after scaling.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ContributorReward {
+    pub payee: Pubkey,
+    pub proportion: u64, // e.g., scaled by 1e12 for precision
+}
 
-#### **ThirdPartyOracle** [TODO: This is needed for shapley calculations]
+/// Represents the burn information for the epoch.
+/// The `rate` is stored as a fixed-point integer after scaling.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+pub struct BurnInfo {
+    pub rate: u64, // e.g., scaled by 1e12 for precision
+}
 
-- **Role:** Ingests internet performance data to be used as a baseline.
-- **Logic:** Periodically queries external latency APIs (or whatever we come up
-  with), processes the data, and submits it to the on-chain
-  `ThirdPartyLatencySamples` accounts. [TODO: If this data will not live on
-  chain, we need to incorporate this into this system itself]
+/// Defines the types of data that can be included as a leaf in the Merkle tree.
+/// This enum allows for type-safe handling of different leaf data and ensures
+/// that different leaf types produce different hashes. The enum is sorted by
+/// variant to ensure canonical ordering.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "camelCase")]
+pub enum MerkleLeafData {
+    Burn(BurnInfo),
+    ContributorReward(ContributorReward),
+}
 
-#### **Notification Processor**
+/// The final, canonical output of a successful calculation run.
+#[derive(Debug, Clone)]
+pub struct CalculationOutput {
+    /// The 32-byte Merkle root hash to be published on-chain.
+    pub merkle_root: [u8; 32],
+    /// The full list of leaves, to be published to the DZ Ledger.
+    pub merkle_leaves: Vec<MerkleLeafData>,
+}
+```
 
-- **Role:** Consumes updates from both the `Subscription Manager` and
-  `Reconciliation Service`, decodes them, and persists them.
-- **Logic:** Receives an `(AccountUpdate, slot)` tuple, uses the
-  `telemetry_account_progress` table to discard stale or duplicate updates, and
-  writes new data to the database.
+## **Merkle Tree Construction Algorithm**
 
-#### **Database (PostgreSQL)** [TODO: subject to change]
+The generation of the Merkle root must be perfectly deterministic, leveraging the `svm-hash` library. The `rewards-calculator` service is responsible for preparing the data correctly before passing it to the hashing library.
 
-- **Role:** Source of truth for all data.
-- **Key Tables:**
-  - `telemetry_samples`: Stores raw, unprocessed telemetry data.
-  - `link_metrics`: Stores aggregated, per-epoch metrics.
-  - `telemetry_account_progress`: Tracks the last processed state for each
-    account.
-  - `epoch_state`: Tracks the lifecycle of a reward epoch (`collecting`,
-    `data_complete`, `calculating`, `completed`).
+1.  **Leaf Creation:** For each `(payee, proportion)` tuple, create a `MerkleLeafData::ContributorReward`. Create a single `MerkleLeafData::Burn` with the epoch's burn rate. All `Decimal` values must first be converted to `u64` using a standardized scaling factor.
+2.  **Canonical Ordering:** Collect all `MerkleLeafData` objects into a `Vec<MerkleLeafData>`. **Crucially, sort this `Vec`**. The derived `Ord` trait on `MerkleLeafData` will ensure a canonical ordering, first by enum variant (`Burn` before `ContributorReward`), and then by the struct's fields.
+3.  **Serialization:** Iterate through the _sorted_ `Vec` and serialize each `MerkleLeafData` enum into its canonical JSON byte representation (e.g., `{"burn":{"rate":500...}}`, `{"contributorReward":{"payee":"...","proportion":...}}`). This results in a `Vec<Vec<u8>>`.
+4.  **Hashing and Tree Building:**
+    - Pass the `Vec` of serialized byte slices to the `svm_hash::merkle::merkle_root_from_leaves` function.
+    - This function hashes each serialized leaf using a domain-separated double-SHA256 hash:
+      `H(L) = double_hash(L, LEAF_PREFIX, LEAF_PREFIX)`.
+    - It then combines pairs of hashes using a domain-separated single-SHA256 hash to form their parent:
+      `H(A, B) = hashv(&[NODE_PREFIX, A.as_ref(), B.as_ref()])`.
+    - The process repeats until a single root hash remains.
 
-### **Data Structures**
+# **Impact**
 
-- **`Verification Packet`**: The full JSON dataset published to IPFS/S3 containing all inputs for an epoch's reward calculation.
+- **Codebase:** This RFC guides the initial implementation of the `rewards-calculator` project and its workspace crates. It defines the core data flow and the primary interfaces between components.
+- **Operational Impact:** The resulting system is a single, stateless binary. Its operational footprint is minimal, requiring only a scheduler (e.g., cron) for execution. Monitoring will focus on the successful completion of the batch job and the publication of artifacts to the on-chain program and the DZ Ledger.
+- **Ecosystem:** This service is a critical component for enabling DoubleZero tokenomics. It provides the mechanism for fairly distributing rewards to network contributors in a decentralized and verifiable manner.
 
-- **`Verification Fingerprint`**: The **SHA-256 hash** of the canonicalized `Verification Packet` (deterministic).
+# **Security Considerations**
 
-- **`ContributorReward` (Model):**
+- **Service Integrity:** The `rewards-calculator` is a trusted off-chain component. A compromise of the execution environment could lead to the publication of an incorrect Merkle root. Immediate mitigation is to just run the service in a secure, minimal, and access-controlled environment. The public verifiability of the calculation provides a crucial check; any incorrect root can be challenged and identified by the community.
+- **Availability:** The availability of the Merkle leaf data on the DZ Ledger is critical for payouts. If the DZ Ledger is unavailable, contributors cannot generate proofs to claim their rewards. The DZ Ledger must be treated as a high-availability system.
 
-  ```rust
-  pub struct ContributorReward {
-      pub epoch: u64,
-      pub contributor_pk: String,
-      pub reward_amount: Decimal,
-      pub shapley_value: Decimal,
-      pub verification_fingerprint: String, // SHA-256 hash of the packet
-      pub verification_packet_url: String, // IPFS CID or S3 URL
-  }
-  ```
+# **Backwards Compatibility**
 
-- **`VerificationPacket` (Sample JSON for example):**
-  ```json
-  {
-    "calculationTimestamp": "<ts>"
-    "demandMatrix": [],
-    "epoch": 123,
-    "processedMetrics": [],
-    "rewardPool": "1 bajillion",
-    "shapleyLibraryVersion": "v0.1.0"
-  }
-  ```
+This RFC describes the initial design and implementation of a new system. As such, there are no backwards compatibility concerns. Future changes to the Merkle leaf structure or hashing algorithm will require a new version of the on-chain `Revenue Distribution Program` capable of handling the new format.
 
-### **Verifiability & Audit Trail** [TODO: can be punted for launch?]
+# **Open Questions**
 
-The publication of the `Verification Packet` and `Fingerprint` is a core,
-non-negotiable feature for building contributor trust.
-
-- **Process:** The calculator service will serialize all inputs into the
-  canonical `Verification Packet` JSON, hash it to get the `Fingerprint`, and
-  upload the packet to IPFS/S3.
-- **Storage:** The `Fingerprint` and the storage URL (e.g., `ipfs://<CID>`) are
-  stored in the `contributor_rewards` table.
-- **Public Audit:** A tool can be provided for contributors to fetch the
-  packet, verify its integrity by re-calculating the hash, and then re-run the
-  open-source calculation to validate their reward.
-
-### **Scalability, Performance, & Future Enhancements**
-
-- **Ingestion:** The WSS + Reconciliation model is a practical starting point.
-  It is more resilient than WSS alone. The primary bottleneck will be the
-  periodic `getProgramAccounts` call in the Reconciliation Service, which will
-  become slower as the network grows.
-- **Processing:** The architecture is scalable, the `NotificationProcessor`
-  should be a lightweight buffer, and the heavy lifting of aggregation is
-  offloaded to the database. The `Shapley Calculator` is CPU-bound and
-  Contributor-Count-bound and can be scaled vertically (when its time, which I
-  don't expect would be until late next year).
-
-### **Open Questions & Discussion Points**
-
-- **Third-Party Metrics Integration:** This RFC proposes a dedicated
-  `ThirdPartyOracle` service that writes data on-chain. [TODO: Discuss how we do
-  this]
-- **Epoch Finalization:** Is the proposed "Data Grace Period" followed by a
-  final reconciliation run an acceptable mechanism for ensuring data completeness
-  before reward calculation?
-- **Verification Packet Storage:** Is IPFS the preferred storage target, or is
-  an S3-compatible object store sufficient for launch? S3 is simpler to
-  implement, while IPFS offers better decentralization.
-- **Reward Calculation Timing:** The proposed design calculates rewards for
-  `Epoch N` after it has been finalized. This creates a delay. Is this
-  acceptable, or is a more real-time (and more complex) calculation model
-  required? Arguably the delay is acceptable as long as the rewards are paid out
-  reliably and fairly.
+- The precise mechanism for synchronizing off-chain calculations with on-chain epochs needs to be finalized.
+- The exact formula for calculating the `burn_rate` is to be determined.
+- The exact scaling factors for converting decimal proportions and rates to `u64` need to be defined and standardized across all components.

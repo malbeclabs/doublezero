@@ -10,14 +10,18 @@ jobs:
     uses: ./.github/workflows/release.daily.yml
     strategy:
       matrix:
-        component: [
-          agent,
-          controller,
-          activator,
-          client,
-        ]
+        include:
+          - component: agent
+            playbook: playbooks/agents.yml
+          - component: activator
+            playbook: playbooks/activators.yml
+          - component: controller
+            playbook: playbooks/controllers.yml
+          - component: client
+            playbook: playbooks/validators.yml
     with:
       component: ${{ matrix.component }}
+      playbook: ${{ matrix.playbook }}
     secrets: inherit
     permissions:
       contents: write

@@ -8,6 +8,7 @@ jobs:
     uses: ./.github/workflows/release.daily.yml
     with:
       component: controller
+      playbook: playbooks/controllers.yml
     secrets: inherit
     permissions:
       contents: write

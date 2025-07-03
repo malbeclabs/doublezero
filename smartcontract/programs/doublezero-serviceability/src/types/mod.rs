@@ -32,24 +32,29 @@ pub fn bandwidth_parse(str: &str) -> Result<u64, String> {
 }
 
 pub fn bandwidth_to_string(bandwidth: &u64) -> String {
-    if *bandwidth < 1000 {
-        format!("{bandwidth}bps")
-    } else if *bandwidth < 1000000 {
-        if bandwidth % 1000 == 0 {
-            format!("{}Kbps", bandwidth / 1000)
-        } else {
-            format!("{:.2}Kbps", *bandwidth as f64 / 1000.0)
+    match *bandwidth {
+        0..1_000 => {
+            format!("{bandwidth}bps")
+        },
+        1_000..1_000_000 => {
+            if bandwidth % 1000 == 0 {
+                format!("{}Kbps", bandwidth / 1000)
+            } else {
+                format!("{:.2}Kbps", *bandwidth as f64 / 1000.0)
+            }
+        },
+        1_000_000..1_000_000_000 => {
+            if bandwidth % 1000000 = 0 {
+                format!("{}Mbps", bandwidth / 1000000)
+            } else {
+                format!("{:.2}Mbps", *bandwidth as f64 / 1000000.0)
+            }
         }
-    } else if *bandwidth < 1000000000 {
-        if bandwidth % 1000000 == 0 {
-            format!("{}Mbps", bandwidth / 1000000)
+        1_000_000_000.. => {
+            format!("{}Gbps", bandwidth / 1000000000)
         } else {
-            format!("{:.2}Mbps", *bandwidth as f64 / 1000000.0)
+            format!({"{:.2}Gbps", *bandwidth  as f64 / 1000000000.0})
         }
-    } else if bandwidth % 1000000000 == 0 {
-        format!("{}Gbps", bandwidth / 1000000000)
-    } else {
-        format!("{:.2}Gbps", *bandwidth as f64 / 1000000000.0)
     }
 }
 

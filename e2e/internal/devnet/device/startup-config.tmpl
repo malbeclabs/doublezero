@@ -20,6 +20,7 @@ daemon doublezero-telemetry
 {{- end }}
 management api http-commands
    protocol http
+   ip access-group 0.0.0.0/0
    no shutdown
 !
 management api eos-sdk-rpc
@@ -44,7 +45,7 @@ agent PowerFuse shutdown
 agent StandbyCpld shutdown
 agent LicenseManager shutdown
 !
-hostname dut-dz01
+hostname {{.Hostname}}
 !
 spanning-tree mode mstp
 !

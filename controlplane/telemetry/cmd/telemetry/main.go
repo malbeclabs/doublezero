@@ -12,10 +12,13 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
+	aristapb "github.com/malbeclabs/doublezero/controlplane/proto/arista/gen/pb-go/arista/EosSdkRpc"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	sdktelemetry "github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 const (
@@ -28,6 +31,7 @@ const (
 	defaultLedgerRPCURL          = ""
 	defaultProgramId             = ""
 	defaultLocalDevicePubkey     = ""
+	defaultAristaEAPIGRPCAddress = "127.0.0.1:9543"
 )
 
 var version = "dev"
@@ -150,13 +154,20 @@ func main() {
 		log.Error("failed to create serviceability client", "error", err)
 		os.Exit(1)
 	}
+	eapiRPCConn, err := grpc.NewClient(defaultAristaEAPIGRPCAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Error("failed to create arista eapi client", "error", err)
+		os.Exit(1)
+	}
+	aristaEAPIClient := aristapb.NewEapiMgrServiceClient(eapiRPCConn)
 	peerDiscovery, err := telemetry.NewLedgerPeerDiscovery(
 		&telemetry.LedgerPeerDiscoveryConfig{
-			Logger:          log,
-			LocalDevicePK:   localDevicePK,
-			ProgramClient:   serviceabilityClient,
-			TWAMPPort:       uint16(*twampListenPort),
-			RefreshInterval: *peersRefreshInterval,
+			Logger:           log,
+			LocalDevicePK:    localDevicePK,
+			ProgramClient:    serviceabilityClient,
+			AristaEAPIClient: aristaEAPIClient,
+			TWAMPPort:        uint16(*twampListenPort),
+			RefreshInterval:  *peersRefreshInterval,
 		},
 	)
 	if err != nil {

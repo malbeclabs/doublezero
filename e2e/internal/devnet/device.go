@@ -15,9 +15,11 @@ import (
 
 	_ "embed"
 
+	"github.com/aristanetworks/goeapi"
 	dockercontainer "github.com/docker/docker/api/types/container"
 	dockerfilters "github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
+	"github.com/docker/go-connections/nat"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
@@ -31,7 +33,10 @@ var deviceStartupConfigTemplate string
 var deviceRCEOS string
 
 const (
+	internalEAPIHTTPPort = 80
+)
 
+const (
 	// Device container is more CPU and memory intensive than the others.
 	deviceContainerNanoCPUs = 4_000_000_000          // 4 cores
 	deviceContainerMemory   = 4 * 1024 * 1024 * 1024 // 4GB
@@ -45,6 +50,8 @@ type DeviceSpec struct {
 	Location           string
 	Exchange           string
 	MetricsPublisherPK string
+
+	ExternalHost string
 
 	// CYOANetworkIPHostID is the offset into the host portion of the subnet (must be < 2^(32 - prefixLen)).
 	CYOANetworkIPHostID uint32
@@ -116,6 +123,15 @@ func (s *DeviceSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
 		}
 	}
 
+	// If the external host is not set, use the default.
+	localhost := os.Getenv("DIND_LOCALHOST")
+	if localhost == "" {
+		localhost = "localhost"
+	}
+	if s.ExternalHost == "" {
+		s.ExternalHost = localhost
+	}
+
 	return nil
 }
 
@@ -139,6 +155,9 @@ type Device struct {
 
 	ContainerID   string
 	CYOANetworkIP string
+
+	// ExternalEAPIHTTPPort is the port on which the device's EAPI HTTP server is exposed.
+	ExternalEAPIHTTPPort int
 }
 
 func (d *Device) dockerContainerHostname() string {
@@ -262,7 +281,7 @@ func (d *Device) Start(ctx context.Context) error {
 		ConfigModifier: func(cfg *dockercontainer.Config) {
 			cfg.Hostname = d.dockerContainerHostname()
 		},
-		ExposedPorts: []string{"80/tcp"},
+		ExposedPorts: []string{fmt.Sprintf("%d/tcp", internalEAPIHTTPPort)},
 		Privileged:   true,
 		Networks: []string{
 			d.dn.DefaultNetwork.Name,
@@ -319,6 +338,7 @@ func (d *Device) Start(ctx context.Context) error {
 		"-probe-interval", spec.Telemetry.ProbeInterval.String(),
 		"-submission-interval", spec.Telemetry.SubmissionInterval.String(),
 		"-peers-refresh-interval", spec.Telemetry.PeersRefreshInterval.String(),
+		"-verbose",
 	}
 	if spec.Telemetry.Verbose {
 		telemetryCommandArgs = append(telemetryCommandArgs, "-verbose")
@@ -345,6 +365,7 @@ func (d *Device) Start(ctx context.Context) error {
 	var configContents bytes.Buffer
 	startupConfigTemplate := template.Must(template.New("startup-config").Parse(deviceStartupConfigTemplate))
 	err = startupConfigTemplate.Execute(&configContents, map[string]any{
+		"Hostname":                 d.Spec.Code,
 		"AgentCommandArgs":         strings.Join(commandArgs, " "),
 		"TelemetryEnabled":         spec.Telemetry.Enabled,
 		"TelemetryCommandArgs":     strings.Join(telemetryCommandArgs, " "),
@@ -432,11 +453,45 @@ func (d *Device) setState(ctx context.Context, containerID string) error {
 	}
 	ip := container.NetworkSettings.Networks[d.dn.CYOANetwork.Name].IPAddress
 
+	// Wait for EAPI HTTP port to be exposed.
+	loggedWait = false
+	timeout = 10 * time.Second
+	var port int
+	err = pollUntil(ctx, func() (bool, error) {
+		attempts++
+		var err error
+		container, err = d.dn.dockerClient.ContainerInspect(ctx, containerID)
+		if err != nil {
+			return false, fmt.Errorf("failed to inspect container: %w", err)
+		}
+		ports, ok := container.NetworkSettings.Ports[nat.Port(fmt.Sprintf("%d/tcp", internalEAPIHTTPPort))]
+		if !ok || len(ports) == 0 {
+			if !loggedWait && attempts > 1 {
+				d.log.Debug("--> Waiting for EAPI HTTP port to be exposed", "container", shortContainerID(container.ID), "timeout", timeout)
+				loggedWait = true
+			}
+			return false, nil
+		}
+		port, err = strconv.Atoi(ports[0].HostPort)
+		if err != nil {
+			return false, fmt.Errorf("failed to get RPC port: %w", err)
+		}
+		return true, nil
+	}, timeout, 500*time.Millisecond)
+	if err != nil {
+		return fmt.Errorf("failed to wait for ledger RPC port to be exposed: %w", err)
+	}
+	d.ExternalEAPIHTTPPort = port
+
 	d.ContainerID = shortContainerID(container.ID)
 	d.ID = onchainID
 	d.CYOANetworkIP = ip
 
 	return nil
+}
+
+func (d *Device) GetEAPIHTTPClient() (*goeapi.Node, error) {
+	return goeapi.Connect("http", d.Spec.ExternalHost, "admin", "admin", d.ExternalEAPIHTTPPort)
 }
 
 // ExecCliReturnJSONObject executes a command on the device using the Cli tool and returns the

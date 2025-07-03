@@ -84,8 +84,8 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 				KeypairPath:          telemetryKeypairPath,
 				TWAMPListenPort:      862,
 				ProbeInterval:        1 * time.Second,
-				SubmissionInterval:   3 * time.Second,
-				PeersRefreshInterval: 1 * time.Second,
+				SubmissionInterval:   5 * time.Second,
+				PeersRefreshInterval: 5 * time.Second,
 			},
 		})
 		require.NoError(t, err)
@@ -118,8 +118,8 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 				KeypairPath:          telemetryKeypairPath,
 				TWAMPListenPort:      862,
 				ProbeInterval:        1 * time.Second,
-				SubmissionInterval:   3 * time.Second,
-				PeersRefreshInterval: 1 * time.Second,
+				SubmissionInterval:   5 * time.Second,
+				PeersRefreshInterval: 5 * time.Second,
 			},
 		})
 		require.NoError(t, err)
@@ -154,12 +154,70 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 		`})
 	require.NoError(t, err)
 
-	// Check that the devices are reachable from each other via ping.
-	log.Info("==> Checking that devices are reachable from each other via ping")
-	_, err = dn.Devices["la2-dz01"].Exec(t.Context(), []string{"ping", "-c", "1", dn.Devices["ny5-dz01"].CYOANetworkIP})
-	require.NoError(t, err)
-	_, err = dn.Devices["ny5-dz01"].Exec(t.Context(), []string{"ping", "-c", "1", dn.Devices["la2-dz01"].CYOANetworkIP})
-	require.NoError(t, err)
+	// Manually create tunnel interfaces on the devices.
+	// NOTE: This is a workaround until tunnels on devices are configured automatically when links
+	// are created.
+	la2ToNY5LinkTunnelLA2IP := "172.16.0.0" // 172.16.0.0/31 expected to be allocated to this link by the activator
+	la2ToNY5LinkTunnelNY5IP := "172.16.0.1" // 172.16.0.0/31 expected to be allocated to this link by the activator
+	ny5ToLD4LinkTunnelNY5IP := "172.16.0.2" // 172.16.0.2/31 expected to be allocated to this link by the activator
+	func() {
+		la2Device := dn.Devices["la2-dz01"]
+		ny5Device := dn.Devices["ny5-dz01"]
+		log.Info("==> Manually creating tunnel interfaces on the devices")
+		la2Client, err := la2Device.GetEAPIHTTPClient()
+		require.NoError(t, err)
+		resp, err := la2Client.RunCommands([]string{
+			"configure terminal",
+			"interface Tunnel1",
+			"ip address " + la2ToNY5LinkTunnelLA2IP + "/31",
+			"tunnel mode gre",
+			"tunnel source " + la2Device.CYOANetworkIP,
+			"tunnel destination " + ny5Device.CYOANetworkIP,
+			"no shutdown",
+		}, "json")
+		require.NoError(t, err)
+		require.Nil(t, resp.Error)
+		ny5Client, err := ny5Device.GetEAPIHTTPClient()
+		require.NoError(t, err)
+		resp, err = ny5Client.RunCommands([]string{
+			"configure terminal",
+			"interface Tunnel1",
+			"ip address " + la2ToNY5LinkTunnelNY5IP + "/31",
+			"tunnel mode gre",
+			"tunnel source " + ny5Device.CYOANetworkIP,
+			"tunnel destination " + la2Device.CYOANetworkIP,
+			"no shutdown",
+		}, "json")
+		require.NoError(t, err)
+		require.Nil(t, resp.Error)
+		resp, err = ny5Client.RunCommands([]string{
+			"configure terminal",
+			"interface Tunnel2",
+			"ip address " + ny5ToLD4LinkTunnelNY5IP + "/31",
+			"tunnel mode gre",
+			"tunnel source " + ny5Device.CYOANetworkIP,
+			"tunnel destination 10.157.67.17", // non-existent device
+			"no shutdown",
+		}, "json")
+		require.NoError(t, err)
+		require.Nil(t, resp.Error)
+	}()
+
+	// Wait for the devices to be reachable from each other via their link tunnel using ICMP ping.
+	log.Info("==> Waiting for devices to be reachable from each other via their link tunnel using ICMP ping")
+	require.Eventually(t, func() bool {
+		_, err := dn.Devices["la2-dz01"].Exec(t.Context(), []string{"ping", "-c", "1", la2ToNY5LinkTunnelNY5IP})
+		if err != nil {
+			log.Debug("Waiting for la2-dz01 to be reachable from ny5-dz01 via tunnel", "error", err)
+			return false
+		}
+		_, err = dn.Devices["ny5-dz01"].Exec(t.Context(), []string{"ping", "-c", "1", la2ToNY5LinkTunnelLA2IP})
+		if err != nil {
+			log.Debug("Waiting for ny5-dz01 to be reachable from la2-dz01 via tunnel", "error", err)
+			return false
+		}
+		return true
+	}, 10*time.Second, 1*time.Second)
 
 	// Check that TWAMP probes work between the devices.
 	log.Info("==> Checking that TWAMP probes work between the devices")
@@ -180,7 +238,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 		_, err := reflector.Exec(t.Context(), []string{"bash", "-c", fmt.Sprintf("ss -uln '( dport = :%d )' | grep -q .", port)})
 		return err == nil
 	}, 3*time.Second, 100*time.Millisecond)
-	output, err := sender.Exec(t.Context(), []string{"twamp-sender", "-q", fmt.Sprintf("%s:%d", reflector.CYOANetworkIP, port)})
+	output, err := sender.Exec(t.Context(), []string{"twamp-sender", "-q", fmt.Sprintf("%s:%d", la2ToNY5LinkTunnelLA2IP, port)})
 	require.NoError(t, err)
 	log.Info("TWAMP sender output", "output", string(output))
 	require.Contains(t, string(output), "RTT:")
@@ -281,7 +339,7 @@ func waitForDeviceLatencySamples(t *testing.T, dn *devnet.Devnet, originDevicePK
 			t.Fatalf("failed to get device latency samples: %v", err)
 		}
 		return account != nil && len(account.Samples) > waitForMinSamples
-	}, timeout, 1*time.Second)
+	}, timeout, 3*time.Second)
 
 	account, err := client.GetDeviceLatencySamples(t.Context(), originDevicePK, targetDevicePK, linkPK, epoch)
 	require.NoError(t, err)

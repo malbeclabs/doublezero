@@ -52,7 +52,6 @@ func (s *Submitter) Run(ctx context.Context) error {
 			s.log.Debug("Submission loop done")
 			return nil
 		case <-ticker.C:
-			s.log.Debug("Submission loop ticked")
 			s.Tick(ctx)
 		}
 	}

@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
+	aristapb "github.com/malbeclabs/doublezero/controlplane/proto/arista/gen/pb-go/arista/EosSdkRpc"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/arista"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
@@ -30,11 +32,12 @@ type PeerDiscovery interface {
 }
 
 type LedgerPeerDiscoveryConfig struct {
-	Logger          *slog.Logger
-	LocalDevicePK   solana.PublicKey
-	ProgramClient   ServiceabilityProgramClient
-	TWAMPPort       uint16
-	RefreshInterval time.Duration
+	Logger           *slog.Logger
+	LocalDevicePK    solana.PublicKey
+	ProgramClient    ServiceabilityProgramClient
+	AristaEAPIClient aristapb.EapiMgrServiceClient
+	TWAMPPort        uint16
+	RefreshInterval  time.Duration
 }
 
 // ledgerPeerDiscovery implements the PeerDiscovery interface by periodically
@@ -64,6 +67,9 @@ func NewLedgerPeerDiscovery(cfg *LedgerPeerDiscoveryConfig) (*ledgerPeerDiscover
 	if cfg.ProgramClient == nil {
 		return nil, errors.New("ProgramClient is required")
 	}
+	if cfg.AristaEAPIClient == nil {
+		return nil, errors.New("AristaEAPIClient is required")
+	}
 	if cfg.TWAMPPort == 0 {
 		return nil, errors.New("TWAMPPort is required")
 	}
@@ -88,7 +94,11 @@ func (p *ledgerPeerDiscovery) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			p.refresh(ctx)
+			err := p.refresh(ctx)
+			if err != nil {
+				p.log.Error("failed to refresh peers", "error", err)
+				continue
+			}
 		}
 	}
 }
@@ -99,10 +109,9 @@ func (p *ledgerPeerDiscovery) GetPeers() []*Peer {
 	return slices.Clone(p.peers)
 }
 
-func (p *ledgerPeerDiscovery) refresh(ctx context.Context) {
+func (p *ledgerPeerDiscovery) refresh(ctx context.Context) error {
 	if err := p.config.ProgramClient.Load(ctx); err != nil {
-		p.log.Error("Failed to load program from ledger", "error", err)
-		return
+		return fmt.Errorf("failed to load program from ledger: %w", err)
 	}
 
 	p.peersMu.Lock()
@@ -122,16 +131,31 @@ func (p *ledgerPeerDiscovery) refresh(ctx context.Context) {
 		links[pubkey.String()] = link
 	}
 
+	// Get the local tunnel target IPs from the Arista EAPI client.
+	localTunnelTargetIP4s, err := arista.GetLocalTunnelTargetIPs(ctx, p.log, p.config.AristaEAPIClient)
+	if err != nil {
+		return fmt.Errorf("failed to get local tunnel ips: %w", err)
+	}
+
 	peers := make([]*Peer, 0)
 	for _, link := range links {
+		// Ignore links that are not yet activated.
+		if link.Status != serviceability.LinkStatusActivated {
+			continue
+		}
+		// Ignore links that don't have a valid tunnel net.
+		if link.TunnelNet == [5]byte{0, 0, 0, 0, 0} {
+			continue
+		}
+
 		linkPubkey := solana.PublicKeyFromBytes(link.PubKey[:])
 		sideA := solana.PublicKeyFromBytes(link.SideAPubKey[:])
-		sideB := solana.PublicKeyFromBytes(link.SideZPubKey[:])
+		sideZ := solana.PublicKeyFromBytes(link.SideZPubKey[:])
 
 		var remote string
 		if sideA.Equals(p.config.LocalDevicePK) {
-			remote = sideB.String()
-		} else if sideB.Equals(p.config.LocalDevicePK) {
+			remote = sideZ.String()
+		} else if sideZ.Equals(p.config.LocalDevicePK) {
 			remote = sideA.String()
 		} else {
 			continue
@@ -139,7 +163,25 @@ func (p *ledgerPeerDiscovery) refresh(ctx context.Context) {
 
 		device, ok := devices[remote]
 		if !ok {
-			p.log.Debug("device not found", "targetDevicePubKey", remote)
+			p.log.Debug("Device not found", "targetDevicePubKey", remote)
+			continue
+		}
+
+		tunnelNet := bytesToIP4Net(link.TunnelNet)
+
+		// Find a local tunnel target IP that is within the link's tunnel net, and use it as the
+		// target IP for the peer.
+		// NOTE: This is a workaround to get the target IP for the peer until the specific tunnel
+		// IP for each side is saved onchain with the link.
+		var targetIP net.IP
+		for _, localTunnelIP := range localTunnelTargetIP4s {
+			if tunnelNet.Contains(localTunnelIP) {
+				targetIP = localTunnelIP
+				break
+			}
+		}
+		if targetIP == nil {
+			p.log.Debug("Target ip not found for link", "linkPubkey", linkPubkey, "targetDevicePubKey", remote, "tunnelNet", tunnelNet, "localTunnelTargetIP4s", localTunnelTargetIP4s)
 			continue
 		}
 
@@ -147,12 +189,20 @@ func (p *ledgerPeerDiscovery) refresh(ctx context.Context) {
 			LinkPK:   linkPubkey,
 			DevicePK: solana.PublicKeyFromBytes(device.PubKey[:]),
 			DeviceAddr: &net.UDPAddr{
-				IP:   net.IP(device.PublicIp[:]),
+				IP:   targetIP,
 				Port: int(p.config.TWAMPPort),
 			},
 		})
 	}
 
-	p.log.Debug("Refreshed peers", "devices", len(devices), "links", len(links), "peers", len(peers))
 	p.peers = peers
+	p.log.Debug("Refreshed peers", "devices", len(devices), "links", len(links), "peers", len(peers), "localTunnelTargetIP4s", len(localTunnelTargetIP4s))
+
+	return nil
+}
+
+func bytesToIP4Net(b [5]byte) *net.IPNet {
+	ip := net.IPv4(b[0], b[1], b[2], b[3])
+	mask := net.CIDRMask(int(b[4]), 32)
+	return &net.IPNet{IP: ip.To4(), Mask: mask}
 }

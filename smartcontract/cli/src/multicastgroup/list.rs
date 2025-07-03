@@ -3,7 +3,7 @@ use clap::Args;
 use doublezero_sdk::{commands::multicastgroup::list::ListMulticastGroupCommand, *};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
-use std::io::Write;
+use std::{io::Write, net::Ipv4Addr};
 use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
@@ -21,9 +21,7 @@ pub struct MulticastGroupDisplay {
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
     pub account: Pubkey,
     pub code: String,
-    #[serde(serialize_with = "crate::serializer::serialize_ipv4_as_string")]
-    #[tabled(display = "doublezero_serviceability::types::ipv4_to_string")]
-    pub multicast_ip: IpV4,
+    pub multicast_ip: Ipv4Addr,
     #[serde(serialize_with = "crate::serializer::serialize_bandwidth_as_string")]
     #[tabled(display = "doublezero_serviceability::types::bandwidth_to_string")]
     pub max_bandwidth: u64,
@@ -104,8 +102,8 @@ mod tests {
             location_pk: location1_pubkey,
             exchange_pk: exchange1_pubkey,
             device_type: DeviceType::Switch,
-            public_ip: [1, 2, 3, 4],
-            dz_prefixes: vec![([1, 2, 3, 4], 32)],
+            public_ip: [1, 2, 3, 4].into(),
+            dz_prefixes: "1.2.3.4/32".parse().unwrap(),
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::new_unique(),
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
@@ -119,8 +117,8 @@ mod tests {
             location_pk: location2_pubkey,
             exchange_pk: exchange2_pubkey,
             device_type: DeviceType::Switch,
-            public_ip: [1, 2, 3, 4],
-            dz_prefixes: vec![([1, 2, 3, 4], 32)],
+            public_ip: [1, 2, 3, 4].into(),
+            dz_prefixes: "1.2.3.4/32".parse().unwrap(),
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::new_unique(),
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
@@ -141,7 +139,7 @@ mod tests {
             bump_seed: 2,
             tenant_pk: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
             code: "multicastgroup_code".to_string(),
-            multicast_ip: [1, 2, 3, 4],
+            multicast_ip: [1, 2, 3, 4].into(),
             max_bandwidth: 1234,
             pub_allowlist: vec![],
             sub_allowlist: vec![],

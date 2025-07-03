@@ -1540,7 +1540,7 @@ name = "doublezero-serviceability"
 version = "0.2.2"
 dependencies = [
  "borsh 1.5.7",
- "eyre",
+ "byteorder",
  "ipnetwork",
  "serde",
  "solana-program",

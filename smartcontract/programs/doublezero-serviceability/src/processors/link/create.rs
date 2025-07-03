@@ -6,6 +6,7 @@ use crate::{
     helper::*,
     pda::get_link_pda,
     state::{accounttype::AccountType, link::*},
+    types::NetworkV4,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
@@ -107,7 +108,7 @@ pub fn process_create_link(
         delay_ns: value.delay_ns,
         jitter_ns: value.jitter_ns,
         tunnel_id: 0,
-        tunnel_net: ([0, 0, 0, 0], 0),
+        tunnel_net: NetworkV4::default(),
         status: LinkStatus::Pending,
     };
 

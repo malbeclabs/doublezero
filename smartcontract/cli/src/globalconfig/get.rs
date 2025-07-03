@@ -1,6 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_sdk::{commands::globalconfig::get::GetGlobalConfigCommand, *};
+use doublezero_sdk::commands::globalconfig::get::GetGlobalConfigCommand;
 use std::io::Write;
 use tabled::{settings::Style, Table, Tabled};
 
@@ -28,9 +28,9 @@ impl GetGlobalConfigCliCommand {
         let config_display = ConfigDisplay {
             local_asn: config.local_asn,
             remote_asn: config.remote_asn,
-            device_tunnel_block: networkv4_to_string(&config.device_tunnel_block),
-            user_tunnel_block: networkv4_to_string(&config.user_tunnel_block),
-            multicast_group_block: networkv4_to_string(&config.multicastgroup_block),
+            device_tunnel_block: config.device_tunnel_block.to_string(),
+            user_tunnel_block: config.user_tunnel_block.to_string(),
+            multicast_group_block: config.multicastgroup_block.to_string(),
         };
         let config_displays = vec![config_display];
         let table = Table::new(config_displays)
@@ -64,9 +64,9 @@ mod tests {
             bump_seed,
             local_asn: 1234,
             remote_asn: 5678,
-            device_tunnel_block: ([10, 1, 0, 0], 24),
-            user_tunnel_block: ([10, 5, 0, 0], 24),
-            multicastgroup_block: ([224, 2, 0, 0], 4),
+            device_tunnel_block: "10.1.0.0/24".parse().unwrap(),
+            user_tunnel_block: "10.5.0.0/24".parse().unwrap(),
+            multicastgroup_block: "224.2.0.0/4".parse().unwrap(),
         };
 
         client

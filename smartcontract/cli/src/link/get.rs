@@ -1,6 +1,6 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_code};
 use clap::Args;
-use doublezero_sdk::{commands::link::get::GetLinkCommand, networkv4_to_string};
+use doublezero_sdk::commands::link::get::GetLinkCommand;
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -27,7 +27,7 @@ impl GetLinkCliCommand {
             tunnel.mtu,
             tunnel.delay_ns as f32 / 1000000.0,
             tunnel.jitter_ns as f32 / 1000000.0,
-            networkv4_to_string(&tunnel.tunnel_net),
+            tunnel.tunnel_net,
             tunnel.status,
             tunnel.owner
             )?;
@@ -70,7 +70,7 @@ mod tests {
             delay_ns: 10000000000,
             jitter_ns: 5000000000,
             tunnel_id: 1,
-            tunnel_net: ([10, 0, 0, 1], 16),
+            tunnel_net: "10.0.0.1/16".parse().unwrap(),
             status: LinkStatus::Activated,
             owner: pda_pubkey,
         };

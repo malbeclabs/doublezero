@@ -3,6 +3,7 @@ use crate::{
     globalstate::globalstate_get,
     helper::*,
     state::{accounttype::AccountType, user::*},
+    types::NetworkV4,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
@@ -66,8 +67,8 @@ pub fn process_reject_user(
     }
 
     user.tunnel_id = 0;
-    user.tunnel_net = ([0, 0, 0, 0], 0);
-    user.dz_ip = [0, 0, 0, 0];
+    user.tunnel_net = NetworkV4::default();
+    user.dz_ip = std::net::Ipv4Addr::UNSPECIFIED;
     user.status = UserStatus::Rejected;
     msg!("Reason: {:?}", value.reason);
 

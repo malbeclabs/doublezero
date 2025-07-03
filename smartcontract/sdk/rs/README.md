@@ -84,7 +84,7 @@ classDiagram
         DeviceType device_type
         Pubkey location_pk
         Pubkey exchange_pk
-        IpV4 public_ip
+        Ipv4Addr public_ip
         NetworkV4List dz_prefixes
     }
     class Tunnel {
@@ -105,8 +105,8 @@ classDiagram
         UserType user_type
         Pubkey device_pk
         UserCYOA cyoa_type
-        IpV4 client_ip
-        IpV4 dz_ip
+        Ipv4Addr client_ip
+        Ipv4Addr dz_ip
         u16 tunnel_id
         NetworkV4 tunnel_net
     }
@@ -237,7 +237,7 @@ Creates a new device with the specified parameters. Returns the transaction sign
 - `location_pk: Pubkey` — Location public key
 - `exchange_pk: Pubkey` — Exchange public key
 - `device_type: DeviceType` — Device type enum
-- `public_ip: IpV4` — Public IPv4 address
+- `public_ip: Ipv4Addr` — Public IPv4 address
 - `dz_prefixes: NetworkV4List` — List of DoubleZero prefixes
 
 ### UpdateDeviceCommand
@@ -245,7 +245,7 @@ Updates the parameters of an existing device. Returns the transaction signature.
 - `index: u128` — Device index
 - `code: Option<String>` — Optional new code
 - `device_type: Option<DeviceType>` — Optional new type
-- `public_ip: Option<IpV4>` — Optional new public IP
+- `public_ip: Option<Ipv4Addr>` — Optional new public IP
 - `dz_prefixes: Option<NetworkV4List>` — Optional new prefixes
 
 ### GetDeviceCommand
@@ -267,7 +267,7 @@ Lists all devices in the program. Returns a map of device public keys to their o
 | device_type   | DeviceType     | Device type enum           |
 | location_pk   | Pubkey         | Location public key        |
 | exchange_pk   | Pubkey         | Exchange public key        |
-| public_ip     | IpV4           | Public IPv4 address        |
+| public_ip     | Ipv4Addr       | Public IPv4 address        |
 | dz_prefixes   | NetworkV4List  | List of DoubleZero prefixes|
 
 ### CloseAccountDeviceCommand
@@ -368,15 +368,15 @@ Creates a new user with the specified parameters. Returns the transaction signat
 - `user_type: UserType` — User type enum
 - `device_pk: Pubkey` — Device public key
 - `cyoa_type: UserCYOA` — CYOA type enum
-- `client_ip: IpV4` — User client IPv4 address
+- `client_ip: Ipv4Addr` — User client IPv4 address
 
 ### UpdateUserCommand
 Updates the parameters of an existing user. Returns the transaction signature.
 - `index: u128` — User index
 - `user_type: Option<UserType>` — Optional new user type
 - `cyoa_type: Option<UserCYOA>` — Optional new CYOA type
-- `client_ip: Option<IpV4>` — Optional new client IP
-- `dz_ip: Option<IpV4>` — Optional new DoubleZero IP
+- `client_ip: Option<Ipv4Addr>` — Optional new client IP
+- `dz_ip: Option<Ipv4Addr>` — Optional new DoubleZero IP
 - `tunnel_id: Option<u16>` — Optional new tunnel ID
 - `tunnel_net: Option<NetworkV4>` — Optional new tunnel network
 
@@ -398,8 +398,8 @@ Lists all users in the program. Returns a map of user public keys to their on-ch
 | user_type     | UserType    | User type enum             |
 | device_pk     | Pubkey      | Device public key          |
 | cyoa_type     | UserCYOA    | CYOA type enum             |
-| client_ip     | IpV4        | User client IPv4 address   |
-| dz_ip         | IpV4        | DoubleZero IP              |
+| client_ip     | Ipv4Addr    | User client IPv4 address   |
+| dz_ip         | Ipv4Addr    | DoubleZero IP              |
 | tunnel_id     | u16         | Tunnel ID                  |
 | tunnel_net    | NetworkV4   | Tunnel network (IPv4)      |
 

@@ -56,9 +56,9 @@ mod device_test {
             DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
                 local_asn: 65000,
                 remote_asn: 65001,
-                device_tunnel_block: ([10, 0, 0, 0], 24),
-                user_tunnel_block: ([10, 0, 0, 0], 24),
-                multicastgroup_block: ([224, 0, 0, 0], 4),
+                device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
+                user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
+                multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
             }),
             vec![
                 AccountMeta::new(config_pubkey, false),
@@ -151,8 +151,8 @@ mod device_test {
                 device_type: DeviceType::Switch,
                 location_pk: location_pubkey,
                 exchange_pk: exchange_pubkey,
-                public_ip: [10, 0, 0, 1],
-                dz_prefixes: vec![([10, 1, 0, 0], 23)],
+                public_ip: [10, 0, 0, 1].into(),
+                dz_prefixes: "10.1.0.0/23".parse().unwrap(),
                 metrics_publisher_pk: Pubkey::default(),
             }),
             vec![
@@ -258,8 +258,8 @@ mod device_test {
             DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
                 code: Some("la2".to_string()),
                 device_type: Some(DeviceType::Switch),
-                public_ip: Some([10, 2, 2, 1]),
-                dz_prefixes: Some(vec![([10, 1, 0, 0], 23)]),
+                public_ip: Some([10, 2, 2, 1].into()),
+                dz_prefixes: Some("10.1.0.0/23".parse().unwrap()),
                 metrics_publisher_pk: Some(Pubkey::default()),
             }),
             vec![
@@ -277,7 +277,7 @@ mod device_test {
             .unwrap();
         assert_eq!(device_la.account_type, AccountType::Device);
         assert_eq!(device_la.code, "la2".to_string());
-        assert_eq!(device_la.public_ip, [10, 2, 2, 1]);
+        assert_eq!(device_la.public_ip.to_string(), "10.2.2.1");
         assert_eq!(device_la.status, DeviceStatus::Activated);
 
         println!("✅ Device updated");
@@ -303,7 +303,7 @@ mod device_test {
             .unwrap();
         assert_eq!(device_la.account_type, AccountType::Device);
         assert_eq!(device_la.code, "la2".to_string());
-        assert_eq!(device_la.public_ip, [10, 2, 2, 1]);
+        assert_eq!(device_la.public_ip.to_string(), "10.2.2.1");
         assert_eq!(device_la.status, DeviceStatus::Deleting);
 
         /*****************************************************************************************************************************************************/

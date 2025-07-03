@@ -9,7 +9,7 @@ use doublezero_sdk::{
 };
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
-use std::{collections::HashMap, io::Write};
+use std::{collections::HashMap, io::Write, net::Ipv4Addr};
 use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
@@ -45,15 +45,9 @@ pub struct UserDisplay {
     #[tabled(rename = "location")]
     pub location_name: String,
     pub cyoa_type: UserCYOA,
-    #[tabled(display = "doublezero_serviceability::types::ipv4_to_string")]
-    #[serde(serialize_with = "crate::serializer::serialize_ipv4_as_string")]
-    pub client_ip: IpV4,
-    #[tabled(display = "doublezero_serviceability::types::ipv4_to_string")]
-    #[serde(serialize_with = "crate::serializer::serialize_ipv4_as_string")]
-    pub dz_ip: IpV4,
+    pub client_ip: Ipv4Addr,
+    pub dz_ip: Ipv4Addr,
     pub tunnel_id: u16,
-    #[tabled(display = "doublezero_serviceability::types::networkv4_to_string")]
-    #[serde(serialize_with = "crate::serializer::serialize_networkv4_as_string")]
     pub tunnel_net: NetworkV4,
     pub status: UserStatus,
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
@@ -249,8 +243,8 @@ mod tests {
             location_pk: location1_pubkey,
             exchange_pk: exchange1_pubkey,
             device_type: DeviceType::Switch,
-            public_ip: [1, 2, 3, 4],
-            dz_prefixes: vec![([1, 2, 3, 4], 32)],
+            public_ip: [1, 2, 3, 4].into(),
+            dz_prefixes: "1.2.3.4/32".parse().unwrap(),
             status: DeviceStatus::Activated,
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
             metrics_publisher_pk: Pubkey::default(),
@@ -264,8 +258,8 @@ mod tests {
             location_pk: location2_pubkey,
             exchange_pk: exchange2_pubkey,
             device_type: DeviceType::Switch,
-            public_ip: [1, 2, 3, 4],
-            dz_prefixes: vec![([1, 2, 3, 4], 32)],
+            public_ip: [1, 2, 3, 4].into(),
+            dz_prefixes: "1.2.3.4/32".parse().unwrap(),
             status: DeviceStatus::Activated,
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8"),
             metrics_publisher_pk: Pubkey::default(),
@@ -277,7 +271,7 @@ mod tests {
             bump_seed: 2,
             tenant_pk: Pubkey::default(),
             code: "m_code".to_string(),
-            multicast_ip: [1, 2, 3, 4],
+            multicast_ip: [1, 2, 3, 4].into(),
             max_bandwidth: 1000,
             pub_allowlist: vec![],
             sub_allowlist: vec![],
@@ -323,10 +317,10 @@ mod tests {
             tenant_pk: Pubkey::default(),
             device_pk: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
             cyoa_type: GREOverDIA,
-            client_ip: [1, 2, 3, 4],
-            dz_ip: [2, 3, 4, 5],
+            client_ip: [1, 2, 3, 4].into(),
+            dz_ip: [2, 3, 4, 5].into(),
             tunnel_id: 500,
-            tunnel_net: ([1, 2, 3, 5], 32),
+            tunnel_net: "1.2.3.5/32".parse().unwrap(),
             status: Activated,
             publishers: vec![],
             subscribers: vec![],
@@ -341,10 +335,10 @@ mod tests {
             tenant_pk: Pubkey::default(),
             device_pk: device1_pubkey,
             cyoa_type: GREOverDIA,
-            client_ip: [1, 2, 3, 4],
-            dz_ip: [2, 3, 4, 5],
+            client_ip: [1, 2, 3, 4].into(),
+            dz_ip: [2, 3, 4, 5].into(),
             tunnel_id: 500,
-            tunnel_net: ([1, 2, 3, 5], 32),
+            tunnel_net: "1.2.3.5/32".parse().unwrap(),
             status: Activated,
             publishers: vec![],
             subscribers: vec![mgroup1_pubkey],

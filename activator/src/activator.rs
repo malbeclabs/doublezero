@@ -17,9 +17,8 @@ use doublezero_sdk::{
         link::list::ListLinkCommand, location::list::ListLocationCommand,
         user::list::ListUserCommand,
     },
-    ipv4_to_string, networkv4_list_to_string, AccountData, DZClient, Device, DeviceStatus,
-    Exchange, GetGlobalConfigCommand, LinkStatus, Location, MulticastGroup, ProgramVersion,
-    UserStatus,
+    AccountData, DZClient, Device, DeviceStatus, Exchange, GetGlobalConfigCommand, LinkStatus,
+    Location, MulticastGroup, ProgramVersion, UserStatus,
 };
 use solana_sdk::pubkey::Pubkey;
 use std::{collections::HashMap, thread, time::Duration};
@@ -83,10 +82,10 @@ impl Activator {
 
         Ok(Self {
             client,
-            tunnel_tunnel_ips: IPBlockAllocator::new(config.device_tunnel_block),
+            tunnel_tunnel_ips: IPBlockAllocator::new(config.device_tunnel_block.into()),
             tunnel_tunnel_ids: IDAllocator::new(0, vec![]),
-            multicastgroup_tunnel_ips: IPBlockAllocator::new(config.multicastgroup_block),
-            user_tunnel_ips: IPBlockAllocator::new(config.user_tunnel_block),
+            multicastgroup_tunnel_ips: IPBlockAllocator::new(config.multicastgroup_block.into()),
+            user_tunnel_ips: IPBlockAllocator::new(config.user_tunnel_block.into()),
             devices: HashMap::new(),
             metrics: ActivatorMetrics::new(metrics_service),
             locations: HashMap::new(),
@@ -109,7 +108,8 @@ impl Activator {
             .filter(|(_, t)| t.status == LinkStatus::Activated)
         {
             self.tunnel_tunnel_ids.assign(tunnel.tunnel_id);
-            self.tunnel_tunnel_ips.assign_block(tunnel.tunnel_net);
+            self.tunnel_tunnel_ips
+                .assign_block(tunnel.tunnel_net.into());
         }
 
         for (pubkey, device) in devices
@@ -122,12 +122,22 @@ impl Activator {
         users
             .iter()
             .filter(|(_, u)| u.status == UserStatus::Activated)
-            .for_each(|(_, user)| {
+            .try_for_each(|(_, user)| {
                 if let Some(device_state) = self.devices.get_mut(&user.device_pk) {
-                    device_state.register(user.dz_ip, user.tunnel_id);
-                    self.user_tunnel_ips.assign_block(user.tunnel_net);
+                    device_state
+                        .register(user.dz_ip, user.tunnel_id)
+                        .map_err(|e| {
+                            eyre::eyre!(
+                                "Error registering user dz_ip={} tunnel_id={}: {}",
+                                user.dz_ip,
+                                user.tunnel_id,
+                                e
+                            )
+                        })?;
+                    self.user_tunnel_ips.assign_block(user.tunnel_net.into());
                 }
-            });
+                Ok::<(), eyre::Error>(())
+            })?;
 
         println!(
             "devices: {} tunnels: {} users: {}",
@@ -157,8 +167,8 @@ impl Activator {
             println!(
                 "Device code: {} public_ip: {} dz_prefixes: {} tunnels: {} tunnel_net: {} assigned: {}",
                 device.device.code,
-                ipv4_to_string(&device.device.public_ip),
-                networkv4_list_to_string(&device.device.dz_prefixes),
+                device.device.public_ip,
+                &device.device.dz_prefixes,
                 device.tunnel_ids.display_assigned(),
                 self.user_tunnel_ips.base_block,
                 self.user_tunnel_ips.display_assigned_ips(),
@@ -211,14 +221,17 @@ impl Activator {
                         process_exchange_event(pubkey, exchanges, exchange);
                     }
                     AccountData::MulticastGroup(multicastgroup) => {
-                        process_multicastgroup_event(
+                        let _ = process_multicastgroup_event(
                             client,
                             pubkey,
                             multicastgroup,
                             multicastgroups,
                             multicastgroup_tunnel_ips,
                             state_transitions,
-                        );
+                        )
+                        .inspect_err(|e| {
+                            eprintln!("Error processing multicast group event: {e}");
+                        });
                     }
                     _ => {}
                 };

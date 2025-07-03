@@ -28,7 +28,7 @@ pub fn process_tunnel_event(
                     let res = ActivateLinkCommand {
                         link_pubkey: *pubkey,
                         tunnel_id,
-                        tunnel_net,
+                        tunnel_net: tunnel_net.into(),
                     }
                     .execute(client);
 
@@ -67,7 +67,7 @@ pub fn process_tunnel_event(
             print!("Deleting Link {} ", tunnel.code);
 
             tunnel_tunnel_ids.unassign(tunnel.tunnel_id);
-            tunnel_tunnel_ips.unassign_block(tunnel.tunnel_net);
+            tunnel_tunnel_ips.unassign_block(tunnel.tunnel_net.into());
 
             let res = CloseAccountLinkCommand {
                 pubkey: *pubkey,
@@ -103,6 +103,7 @@ mod tests {
         processors::link::{
             activate::LinkActivateArgs, closeaccount::LinkCloseAccountArgs, reject::LinkRejectArgs,
         },
+        types::NetworkV4,
     };
     use mockall::{predicate, Sequence};
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
@@ -111,7 +112,7 @@ mod tests {
     #[test]
     fn test_process_tunnel_event_pending_to_deleted() {
         let mut seq = Sequence::new();
-        let mut tunnel_tunnel_ips = IPBlockAllocator::new(([10, 0, 0, 0], 16));
+        let mut tunnel_tunnel_ips = IPBlockAllocator::new("10.0.0.0/16".parse().unwrap());
         let mut tunnel_tunnel_ids = IDAllocator::new(500, vec![500, 501, 503]);
         let mut client = create_test_client();
 
@@ -129,7 +130,7 @@ mod tests {
             delay_ns: 100,
             jitter_ns: 100,
             tunnel_id: 1,
-            tunnel_net: ([0, 0, 0, 0], 0),
+            tunnel_net: NetworkV4::default(),
             status: LinkStatus::Pending,
             code: "TestLink".to_string(),
         };
@@ -141,7 +142,7 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
                     tunnel_id: 502,
-                    tunnel_net: ([10, 0, 0, 0], 31),
+                    tunnel_net: "10.0.0.0/31".parse().unwrap(),
                 })),
                 predicate::always(),
             )
@@ -159,12 +160,12 @@ mod tests {
         );
 
         assert!(tunnel_tunnel_ids.assigned.contains(&502_u16));
-        assert!(tunnel_tunnel_ips.contains([10, 0, 0, 42]));
+        assert!(tunnel_tunnel_ips.contains("10.0.0.42".parse().unwrap()));
 
         let mut tunnel = tunnel.clone();
         tunnel.status = LinkStatus::Deleting;
         tunnel.tunnel_id = 502;
-        tunnel.tunnel_net = ([10, 0, 0, 0], 31);
+        tunnel.tunnel_net = "10.0.0.0/31".parse().unwrap();
 
         client
             .expect_execute_transaction()
@@ -200,7 +201,7 @@ mod tests {
     #[test]
     fn test_process_tunnel_event_rejected() {
         let mut seq = Sequence::new();
-        let mut tunnel_tunnel_ips = IPBlockAllocator::new(([10, 0, 0, 0], 32));
+        let mut tunnel_tunnel_ips = IPBlockAllocator::new("10.0.0.0/32".parse().unwrap());
         let mut tunnel_tunnel_ids = IDAllocator::new(500, vec![500, 501, 503]);
         let mut client = create_test_client();
 
@@ -218,7 +219,7 @@ mod tests {
             delay_ns: 100,
             jitter_ns: 100,
             tunnel_id: 1,
-            tunnel_net: ([0, 0, 0, 0], 0),
+            tunnel_net: NetworkV4::default(),
             status: LinkStatus::Pending,
             code: "TestLink".to_string(),
         };

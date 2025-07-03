@@ -106,11 +106,11 @@ mod tests {
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             device_type: DeviceType::Switch,
-            public_ip: [192, 168, 1, 1],
+            public_ip: [192, 168, 1, 1].into(),
             status: DeviceStatus::Pending,
             code: "TestDevice".to_string(),
             metrics_publisher_pk: Pubkey::default(),
-            dz_prefixes: vec![([10, 0, 0, 0], 24), ([10, 0, 1, 0], 24)],
+            dz_prefixes: "10.0.0.0/24,10.0.1.0/24".parse().unwrap(),
         };
 
         let mut device = DeviceState::new(&device);
@@ -174,11 +174,11 @@ mod tests {
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             device_type: DeviceType::Switch,
-            public_ip: [192, 168, 1, 1],
+            public_ip: [192, 168, 1, 1].into(),
             status: DeviceStatus::Pending,
             metrics_publisher_pk: Pubkey::default(),
             code: "TestDevice".to_string(),
-            dz_prefixes: vec![([10, 0, 0, 0], 24)],
+            dz_prefixes: "10.0.0.0/24".parse().unwrap(),
         };
         devices.insert(device_pk, DeviceState::new(&device));
 

@@ -1,4 +1,4 @@
-use crate::types::{IpV4, NetworkV4};
+use crate::types::{NetworkV4, NetworkV4List};
 use solana_program::pubkey::Pubkey;
 use std::mem::size_of;
 
@@ -133,35 +133,35 @@ impl<'a> ByteReader<'a> {
         list
     }
 
-    pub fn read_ipv4(&mut self) -> IpV4 {
-        if self.has_no_space(size_of::<IpV4>()) {
-            return [0, 0, 0, 0];
+    pub fn read_ipv4(&mut self) -> std::net::Ipv4Addr {
+        if self.has_no_space(size_of::<std::net::Ipv4Addr>()) {
+            return std::net::Ipv4Addr::UNSPECIFIED;
         }
 
-        let value: IpV4 = self.data[self.position..self.position + size_of::<IpV4>()]
-            .try_into()
-            .unwrap();
-        self.position += size_of::<IpV4>();
+        let value = std::net::Ipv4Addr::new(
+            self.data[self.position],
+            self.data[self.position + 1],
+            self.data[self.position + 2],
+            self.data[self.position + 3],
+        );
+        self.position += size_of::<std::net::Ipv4Addr>();
 
         value
     }
 
     pub fn read_networkv4(&mut self) -> NetworkV4 {
         if self.has_no_space(size_of::<NetworkV4>()) {
-            return ([0, 0, 0, 0], 0);
+            return NetworkV4::default();
         }
 
-        let ip: IpV4 = self.data[self.position..self.position + size_of::<IpV4>()]
-            .try_into()
-            .unwrap();
-        let value = (ip, self.data[self.position + size_of::<IpV4>()]);
-        self.position += size_of::<NetworkV4>();
+        let ip = self.read_ipv4();
+        let bits = self.read_u8();
 
-        value
+        NetworkV4::new(ip, bits).unwrap_or_else(|_| NetworkV4::default())
     }
 
-    pub fn read_networkv4_vec(&mut self) -> Vec<NetworkV4> {
-        let mut list: Vec<NetworkV4> = Vec::new();
+    pub fn read_networkv4_list(&mut self) -> NetworkV4List {
+        let mut list = NetworkV4List::default();
 
         let length = self.read_u32() as usize;
         if !self.has_no_space(length * 5) {

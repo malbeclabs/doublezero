@@ -6,7 +6,7 @@ use crate::{
     pda::*,
     seeds::{SEED_CONFIG, SEED_PREFIX},
     state::{accounttype::AccountType, globalconfig::GlobalConfig},
-    types::{networkv4_to_string, NetworkV4},
+    types::NetworkV4,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
@@ -37,9 +37,9 @@ impl fmt::Debug for SetGlobalConfigArgs {
             "local_asn: {}, remote_asn: {}, tunnel_block: {}, user _block: {}, multicastgroup_block: {}",
             self.local_asn,
             self.remote_asn,
-            networkv4_to_string(&self.device_tunnel_block),
-            networkv4_to_string(&self.user_tunnel_block),
-            networkv4_to_string(&self.multicastgroup_block)
+            &self.device_tunnel_block,
+            &self.user_tunnel_block,
+            &self.multicastgroup_block,
         )
     }
 }

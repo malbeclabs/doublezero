@@ -3,7 +3,7 @@ use crate::{
     globalstate::globalstate_get,
     helper::account_write,
     state::user::{User, UserStatus},
-    types::{ipv4_to_string, networkv4_to_string, IpV4, NetworkV4},
+    types::NetworkV4,
 };
 use core::fmt;
 
@@ -15,11 +15,13 @@ use solana_program::{
     entrypoint::ProgramResult,
     pubkey::Pubkey,
 };
+use std::net::Ipv4Addr;
+
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct UserActivateArgs {
     pub tunnel_id: u16,
     pub tunnel_net: NetworkV4,
-    pub dz_ip: IpV4,
+    pub dz_ip: Ipv4Addr,
 }
 
 impl fmt::Debug for UserActivateArgs {
@@ -27,9 +29,7 @@ impl fmt::Debug for UserActivateArgs {
         write!(
             f,
             "tunnel_id: {}, tunnel_net: {}, dz_ip: {}",
-            self.tunnel_id,
-            networkv4_to_string(&self.tunnel_net),
-            ipv4_to_string(&self.dz_ip)
+            self.tunnel_id, &self.tunnel_net, &self.dz_ip,
         )
     }
 }

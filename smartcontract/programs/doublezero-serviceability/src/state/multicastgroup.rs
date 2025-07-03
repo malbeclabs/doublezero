@@ -2,12 +2,11 @@ use crate::{
     bytereader::ByteReader,
     seeds::SEED_MULTICAST_GROUP,
     state::accounttype::{AccountType, AccountTypeInfo},
-    types::{ipv4_to_string, IpV4},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::Serialize;
 use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
-use std::fmt;
+use std::{fmt, net::Ipv4Addr};
 
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
@@ -52,7 +51,7 @@ pub struct MulticastGroup {
     pub index: u128,                  // 16
     pub bump_seed: u8,                // 1
     pub tenant_pk: Pubkey,            // 32
-    pub multicast_ip: IpV4,           // 4
+    pub multicast_ip: Ipv4Addr,       // 4
     pub max_bandwidth: u64,           // 8
     pub status: MulticastGroupStatus, // 1
     pub code: String,                 // 4 + len
@@ -67,7 +66,7 @@ impl fmt::Display for MulticastGroup {
         write!(
             f,
             "account_type: {}, owner: {}, index: {}, bump_seed:{}, code: {}, multicast_ip: {}, max_bandwdith: {}, status: {}",
-            self.account_type, self.owner, self.index, self.bump_seed, self.code, ipv4_to_string(&self.multicast_ip), self.max_bandwidth,  self.status,
+            self.account_type, self.owner, self.index, self.bump_seed, self.code, &self.multicast_ip, self.max_bandwidth,  self.status,
         )
     }
 }
@@ -149,7 +148,7 @@ mod tests {
             index: 123,
             bump_seed: 1,
             tenant_pk: Pubkey::new_unique(),
-            multicast_ip: [239, 1, 1, 1],
+            multicast_ip: [239, 1, 1, 1].into(),
             max_bandwidth: 1000,
             status: MulticastGroupStatus::Activated,
             code: "test".to_string(),

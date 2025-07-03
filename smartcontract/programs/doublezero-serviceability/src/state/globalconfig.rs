@@ -1,8 +1,4 @@
-use crate::{
-    bytereader::ByteReader,
-    state::accounttype::AccountType,
-    types::{networkv4_to_string, NetworkV4},
-};
+use crate::{bytereader::ByteReader, state::accounttype::AccountType, types::NetworkV4};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
 use std::fmt;
@@ -25,9 +21,9 @@ impl fmt::Display for GlobalConfig {
             f,
             "account_type: {}, owner: {}, local_asn: {}, remote_asn: {}, device_tunnel_block: {}, user_tunnel_block: {}, multicastgroup_block: {}",
             self.account_type, self.owner, self.local_asn, self.remote_asn,
-            networkv4_to_string(&self.device_tunnel_block),
-            networkv4_to_string(&self.user_tunnel_block),
-            networkv4_to_string(&self.multicastgroup_block)
+            &self.device_tunnel_block,
+            &self.user_tunnel_block,
+            &self.multicastgroup_block,
         )
     }
 }
@@ -76,9 +72,9 @@ mod tests {
             bump_seed: 1,
             local_asn: 123,
             remote_asn: 456,
-            device_tunnel_block: ([10, 0, 0, 1], 24),
-            user_tunnel_block: ([10, 0, 0, 2], 24),
-            multicastgroup_block: ([224, 0, 0, 0], 4),
+            device_tunnel_block: "10.0.0.1/24".parse().unwrap(),
+            user_tunnel_block: "10.0.0.2/24".parse().unwrap(),
+            multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
         };
 
         let data = borsh::to_vec(&val).unwrap();

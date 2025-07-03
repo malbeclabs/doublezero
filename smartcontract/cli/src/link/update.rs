@@ -111,7 +111,7 @@ mod tests {
             delay_ns: 10000000000,
             jitter_ns: 5000000000,
             tunnel_id: 1,
-            tunnel_net: ([10, 0, 0, 1], 16),
+            tunnel_net: "10.0.0.1/16".parse().unwrap(),
             status: LinkStatus::Activated,
             owner: pda_pubkey,
         };

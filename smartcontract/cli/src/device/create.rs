@@ -2,10 +2,7 @@ use crate::{
     doublezerocommand::CliCommand,
     helpers::parse_pubkey,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-    validators::{
-        validate_code, validate_parse_ipv4, validate_parse_networkv4_list, validate_pubkey,
-        validate_pubkey_or_code,
-    },
+    validators::{validate_code, validate_pubkey, validate_pubkey_or_code},
 };
 use clap::Args;
 use doublezero_sdk::{
@@ -17,7 +14,7 @@ use doublezero_sdk::{
     *,
 };
 use solana_sdk::pubkey::Pubkey;
-use std::{io::Write, str::FromStr};
+use std::{io::Write, net::Ipv4Addr, str::FromStr};
 
 #[derive(Args, Debug)]
 pub struct CreateDeviceCliCommand {
@@ -31,10 +28,10 @@ pub struct CreateDeviceCliCommand {
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub exchange: String,
     /// Device public IPv4 address (e.g. 10.0.0.1)
-    #[arg(long, value_parser = validate_parse_ipv4)]
-    pub public_ip: IpV4,
+    #[arg(long)]
+    pub public_ip: Ipv4Addr,
     /// List of DZ prefixes in comma-separated CIDR format (e.g. 10.1.0.0/16,10.2.0.0/16)
-    #[arg(long, value_parser = validate_parse_networkv4_list)]
+    #[arg(long)]
     pub dz_prefixes: NetworkV4List,
     /// Metrics publisher public key (optional, defaults to zeroed pubkey)
     #[arg(long, value_parser = validate_pubkey)]
@@ -56,7 +53,7 @@ impl CreateDeviceCliCommand {
         if devices.iter().any(|(_, d)| d.public_ip == self.public_ip) {
             return Err(eyre::eyre!(
                 "Device with public ip '{}' already exists",
-                ipv4_to_string(&self.public_ip)
+                &self.public_ip
             ));
         }
 
@@ -200,8 +197,8 @@ mod tests {
                 location_pk,
                 exchange_pk,
                 device_type: DeviceType::Switch,
-                public_ip: [100, 0, 0, 1],
-                dz_prefixes: vec![([10, 1, 0, 0], 16)],
+                public_ip: [100, 0, 0, 1].into(),
+                dz_prefixes: "10.1.0.0/16".parse().unwrap(),
                 metrics_publisher: Pubkey::default(),
             }))
             .returning(move |_| Ok((signature, pda_pubkey)));
@@ -211,8 +208,8 @@ mod tests {
             code: "test".to_string(),
             location: location_pk.to_string(),
             exchange: exchange_pk.to_string(),
-            public_ip: [100, 0, 0, 1],
-            dz_prefixes: vec![([10, 1, 0, 0], 16)],
+            public_ip: [100, 0, 0, 1].into(),
+            dz_prefixes: "10.1.0.0/16".parse().unwrap(),
             metrics_publisher: Some(Pubkey::default().to_string()),
         }
         .execute(&client, &mut output);

@@ -3,9 +3,9 @@ use doublezero_serviceability::{
     pda::get_user_pda,
     processors::user::create::UserCreateArgs,
     state::user::{UserCYOA, UserType},
-    types::IpV4,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use std::net::Ipv4Addr;
 
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 
@@ -14,7 +14,7 @@ pub struct CreateUserCommand {
     pub user_type: UserType,
     pub device_pk: Pubkey,
     pub cyoa_type: UserCYOA,
-    pub client_ip: IpV4,
+    pub client_ip: Ipv4Addr,
 }
 
 impl CreateUserCommand {

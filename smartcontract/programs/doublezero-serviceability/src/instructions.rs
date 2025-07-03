@@ -396,9 +396,9 @@ mod tests {
             DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
                 local_asn: 100,
                 remote_asn: 200,
-                device_tunnel_block: ([1, 2, 3, 4], 1),
-                user_tunnel_block: ([1, 2, 3, 4], 1),
-                multicastgroup_block: ([1, 2, 3, 4], 1),
+                device_tunnel_block: "1.2.3.4/1".parse().unwrap(),
+                user_tunnel_block: "1.2.3.4/1".parse().unwrap(),
+                multicastgroup_block: "1.2.3.4/1".parse().unwrap(),
             }),
             "SetGlobalConfig",
         );
@@ -477,9 +477,9 @@ mod tests {
                 index: 123,
                 bump_seed: 255,
                 code: "test".to_string(),
-                public_ip: [1, 2, 3, 4],
+                public_ip: [1, 2, 3, 4].into(),
                 device_type: DeviceType::Switch,
-                dz_prefixes: vec![([1, 2, 3, 4], 1)],
+                dz_prefixes: "1.2.3.4/1".parse().unwrap(),
                 location_pk: Pubkey::new_unique(),
                 exchange_pk: Pubkey::new_unique(),
                 metrics_publisher_pk: Pubkey::new_unique(),
@@ -493,9 +493,9 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
                 code: Some("test".to_string()),
-                public_ip: Some([1, 2, 3, 4]),
+                public_ip: Some([1, 2, 3, 4].into()),
                 device_type: Some(DeviceType::Switch),
-                dz_prefixes: Some(vec![([1, 2, 3, 4], 1)]),
+                dz_prefixes: Some("1.2.3.4/1".parse().unwrap()),
                 metrics_publisher_pk: Some(Pubkey::new_unique()),
             }),
             "UpdateDevice",
@@ -530,7 +530,7 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
                 tunnel_id: 1,
-                tunnel_net: ([1, 2, 3, 4], 1),
+                tunnel_net: "1.2.3.4/1".parse().unwrap(),
             }),
             "ActivateLink",
         );
@@ -564,15 +564,15 @@ mod tests {
                 user_type: UserType::IBRL,
                 device_pk: Pubkey::new_unique(),
                 cyoa_type: UserCYOA::GREOverDIA,
-                client_ip: [1, 2, 3, 4],
+                client_ip: [1, 2, 3, 4].into(),
             }),
             "CreateUser",
         );
         test_instruction(
             DoubleZeroInstruction::ActivateUser(UserActivateArgs {
                 tunnel_id: 1,
-                tunnel_net: ([1, 2, 3, 4], 1),
-                dz_ip: [1, 2, 3, 4],
+                tunnel_net: "1.2.3.4/1".parse().unwrap(),
+                dz_ip: [1, 2, 3, 4].into(),
             }),
             "ActivateUser",
         );
@@ -580,10 +580,10 @@ mod tests {
             DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
                 user_type: Some(UserType::IBRL),
                 cyoa_type: Some(UserCYOA::GREOverDIA),
-                client_ip: Some([1, 2, 3, 4]),
-                dz_ip: Some([1, 2, 3, 4]),
+                client_ip: Some([1, 2, 3, 4].into()),
+                dz_ip: Some([1, 2, 3, 4].into()),
                 tunnel_id: Some(1),
-                tunnel_net: Some(([1, 2, 3, 4], 1)),
+                tunnel_net: Some("1.2.3.4/1".parse().unwrap()),
             }),
             "UpdateUser",
         );
@@ -684,7 +684,7 @@ mod tests {
 
         test_instruction(
             DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
-                multicast_ip: [1, 2, 3, 4],
+                multicast_ip: [1, 2, 3, 4].into(),
             }),
             "ActivateMulticastGroup",
         );
@@ -698,7 +698,7 @@ mod tests {
 
         test_instruction(
             DoubleZeroInstruction::UpdateMulticastGroup(MulticastGroupUpdateArgs {
-                multicast_ip: Some([1, 2, 3, 4]),
+                multicast_ip: Some([1, 2, 3, 4].into()),
                 max_bandwidth: Some(1000),
                 code: Some("test".to_string()),
             }),
@@ -771,7 +771,7 @@ mod tests {
                 user_type: UserType::IBRL,
                 device_pk: Pubkey::new_unique(),
                 cyoa_type: UserCYOA::GREOverDIA,
-                client_ip: [1, 2, 3, 4],
+                client_ip: [1, 2, 3, 4].into(),
                 publisher: false,
                 subscriber: true,
             }),

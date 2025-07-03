@@ -1,12 +1,12 @@
 use crate::{
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-    validators::{validate_parse_ipv4, validate_parse_networkv4, validate_pubkey},
+    validators::validate_pubkey,
 };
 use clap::Args;
 use doublezero_sdk::{commands::user::update::UpdateUserCommand, *};
 use solana_sdk::pubkey::Pubkey;
-use std::{io::Write, str::FromStr};
+use std::{io::Write, net::Ipv4Addr, str::FromStr};
 
 #[derive(Args, Debug)]
 pub struct UpdateUserCliCommand {
@@ -14,16 +14,16 @@ pub struct UpdateUserCliCommand {
     #[arg(long, value_parser = validate_pubkey)]
     pub pubkey: String,
     /// New Client IP address
-    #[arg(long, value_parser = validate_parse_ipv4)]
-    pub client_ip: Option<IpV4>,
+    #[arg(long)]
+    pub client_ip: Option<Ipv4Addr>,
     /// New DZ IP address
-    #[arg(long, value_parser = validate_parse_ipv4)]
-    pub dz_ip: Option<IpV4>,
+    #[arg(long)]
+    pub dz_ip: Option<Ipv4Addr>,
     /// New Tunnel ID
     #[arg(long)]
     pub tunnel_id: Option<u16>,
     /// New Tunnel Network in CIDR format
-    #[arg(long, value_parser = validate_parse_networkv4)]
+    #[arg(long)]
     pub tunnel_net: Option<NetworkV4>,
 }
 
@@ -86,10 +86,10 @@ mod tests {
             tenant_pk: Pubkey::default(),
             cyoa_type: UserCYOA::GREOverDIA,
             device_pk: Pubkey::default(),
-            client_ip: [10, 0, 0, 1],
-            dz_ip: [10, 0, 0, 2],
+            client_ip: [10, 0, 0, 1].into(),
+            dz_ip: [10, 0, 0, 2].into(),
             tunnel_id: 0,
-            tunnel_net: ([10, 2, 3, 4], 24),
+            tunnel_net: "10.2.3.4/24".parse().unwrap(),
             status: UserStatus::Activated,
             owner: pda_pubkey,
             publishers: vec![],
@@ -115,10 +115,10 @@ mod tests {
                 pubkey: pda_pubkey,
                 user_type: None,
                 cyoa_type: None,
-                client_ip: Some([10, 5, 4, 3]),
-                dz_ip: Some([2, 3, 4, 5]),
+                client_ip: Some([10, 5, 4, 3].into()),
+                dz_ip: Some([2, 3, 4, 5].into()),
                 tunnel_id: Some(1),
-                tunnel_net: Some(([10, 2, 2, 3], 24)),
+                tunnel_net: Some("10.2.2.3/24".parse().unwrap()),
             }))
             .returning(move |_| Ok(signature));
 
@@ -126,10 +126,10 @@ mod tests {
         let mut output = Vec::new();
         let res = UpdateUserCliCommand {
             pubkey: pda_pubkey.to_string(),
-            client_ip: Some([10, 5, 4, 3]),
-            dz_ip: Some([2, 3, 4, 5]),
+            client_ip: Some([10, 5, 4, 3].into()),
+            dz_ip: Some([2, 3, 4, 5].into()),
             tunnel_id: Some(1),
-            tunnel_net: Some(([10, 2, 2, 3], 24)),
+            tunnel_net: Some("10.2.2.3/24".parse().unwrap()),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

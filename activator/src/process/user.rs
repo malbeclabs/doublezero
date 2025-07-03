@@ -10,11 +10,13 @@ use doublezero_sdk::{
             closeaccount::CloseAccountUserCommand, reject::RejectUserCommand,
         },
     },
-    ipv4_to_string, networkv4_list_to_string, networkv4_to_string, DoubleZeroClient, User,
-    UserStatus, UserType,
+    DoubleZeroClient, NetworkV4, User, UserStatus, UserType,
 };
 use solana_sdk::pubkey::Pubkey;
-use std::collections::{hash_map::Entry, HashMap};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    net::Ipv4Addr,
+};
 
 pub fn process_user_event(
     client: &dyn DoubleZeroClient,
@@ -41,8 +43,7 @@ pub fn process_user_event(
 
             println!(
                 "Activating User: {}, for: {}",
-                ipv4_to_string(&user.client_ip),
-                device_state.device.code
+                &user.client_ip, device_state.device.code
             );
 
             // Try to get tunnel network
@@ -60,7 +61,7 @@ pub fn process_user_event(
                 }
             };
 
-            print!("tunnel_net: {} ", networkv4_to_string(&tunnel_net));
+            print!("tunnel_net: {} ", &tunnel_net);
 
             let tunnel_id = device_state.get_next_tunnel_id();
 
@@ -88,17 +89,13 @@ pub fn process_user_event(
                 user.client_ip
             };
 
-            print!(
-                "tunnel_id: {} dz_ip: {} ",
-                tunnel_id,
-                ipv4_to_string(&dz_ip)
-            );
+            print!("tunnel_id: {} dz_ip: {} ", tunnel_id, &dz_ip);
 
             // Activate the user
             let res = ActivateUserCommand {
                 user_pubkey: *pubkey,
                 tunnel_id,
-                tunnel_net,
+                tunnel_net: tunnel_net.into(),
                 dz_ip,
             }
             .execute(client);
@@ -128,8 +125,7 @@ pub fn process_user_event(
 
             println!(
                 "Activating User: {}, for: {}",
-                ipv4_to_string(&user.client_ip),
-                device_state.device.code
+                &user.client_ip, device_state.device.code
             );
 
             let need_dz_ip = match user.user_type {
@@ -158,9 +154,7 @@ pub fn process_user_event(
 
             print!(
                 "tunnel_net: {} tunnel_id: {} dz_ip: {} ",
-                networkv4_to_string(&user.tunnel_net),
-                user.tunnel_id,
-                ipv4_to_string(&dz_ip)
+                &user.tunnel_net, user.tunnel_id, &dz_ip
             );
 
             // Activate the user
@@ -184,26 +178,24 @@ pub fn process_user_event(
 
         // Delete User
         UserStatus::Deleting | UserStatus::PendingBan => {
-            print!("Deactivating User {} ", ipv4_to_string(&user.client_ip));
+            print!("Deactivating User {} ", &user.client_ip);
 
             if let Some(device_state) = devices.get_mut(&user.device_pk) {
                 print!("for {} ", device_state.device.code);
 
                 print!(
                     "tunnel_net: {} tunnel_id: {} dz_ip: {} ",
-                    networkv4_to_string(&user.tunnel_net),
-                    user.tunnel_id,
-                    ipv4_to_string(&user.dz_ip)
+                    &user.tunnel_net, user.tunnel_id, &user.dz_ip
                 );
 
                 if user.tunnel_id != 0 {
                     tunnel_tunnel_ids.unassign(user.tunnel_id);
                 }
-                if user.tunnel_net != ([0, 0, 0, 0], 0) {
-                    user_tunnel_ips.unassign_block(user.tunnel_net);
+                if user.tunnel_net != NetworkV4::default() {
+                    user_tunnel_ips.unassign_block(user.tunnel_net.into());
                 }
-                if user.dz_ip != [0, 0, 0, 0] {
-                    device_state.release(user.dz_ip, user.tunnel_id);
+                if user.dz_ip != Ipv4Addr::UNSPECIFIED {
+                    device_state.release(user.dz_ip, user.tunnel_id).unwrap();
                 }
 
                 if user.status == UserStatus::Deleting {
@@ -283,9 +275,7 @@ fn get_or_insert_device_state<'a>(
                 Ok((_, device)) => {
                     println!(
                         "Add Device: {} public_ip: {} dz_prefixes: {} ",
-                        device.code,
-                        ipv4_to_string(&device.public_ip),
-                        networkv4_list_to_string(&device.dz_prefixes)
+                        device.code, &device.public_ip, &device.dz_prefixes,
                     );
                     Some(entry.insert(DeviceState::new(&device)))
                 }
@@ -309,7 +299,7 @@ mod tests {
         tests::utils::{create_test_client, get_device_bump_seed, get_user_bump_seed},
     };
     use doublezero_sdk::{
-        AccountType, Device, DeviceStatus, DeviceType, IpV4, MockDoubleZeroClient, User, UserCYOA,
+        AccountType, Device, DeviceStatus, DeviceType, MockDoubleZeroClient, User, UserCYOA,
         UserStatus, UserType,
     };
     use doublezero_serviceability::{
@@ -318,17 +308,18 @@ mod tests {
             activate::UserActivateArgs, ban::UserBanArgs, closeaccount::UserCloseAccountArgs,
             reject::UserRejectArgs,
         },
+        types::NetworkV4,
     };
     use mockall::{predicate, Sequence};
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
-    use std::collections::HashMap;
+    use std::{collections::HashMap, net::Ipv4Addr};
 
     fn do_test_process_user_event_pending_to_activated(
         user_type: UserType,
-        expected_dz_ip: Option<IpV4>,
+        expected_dz_ip: Option<Ipv4Addr>,
     ) {
         let mut seq = Sequence::new();
-        let mut user_tunnel_ips = IPBlockAllocator::new(([10, 0, 0, 0], 16));
+        let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/16".parse().unwrap());
         let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
         let mut client = create_test_client();
 
@@ -341,11 +332,11 @@ mod tests {
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             device_type: DeviceType::Switch,
-            public_ip: [192, 168, 1, 2],
+            public_ip: [192, 168, 1, 2].into(),
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::default(),
             code: "TestDevice".to_string(),
-            dz_prefixes: vec![([10, 0, 0, 1], 24)],
+            dz_prefixes: "10.0.0.1/24".parse().unwrap(),
         };
 
         let user_pubkey = Pubkey::new_unique();
@@ -358,10 +349,10 @@ mod tests {
             tenant_pk: Pubkey::new_unique(),
             device_pk: device_pubkey,
             cyoa_type: UserCYOA::GREOverDIA,
-            client_ip: [192, 168, 1, 1],
-            dz_ip: [0, 0, 0, 0],
+            client_ip: [192, 168, 1, 1].into(),
+            dz_ip: Ipv4Addr::UNSPECIFIED,
             tunnel_id: 0,
-            tunnel_net: ([0, 0, 0, 0], 0),
+            tunnel_net: NetworkV4::default(),
             status: UserStatus::Pending,
             publishers: vec![],
             subscribers: vec![],
@@ -374,8 +365,8 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::ActivateUser(UserActivateArgs {
                     tunnel_id: 500,
-                    tunnel_net: ([10, 0, 0, 0], 31),
-                    dz_ip: expected_dz_ip.unwrap_or([0, 0, 0, 0]),
+                    tunnel_net: "10.0.0.0/31".parse().unwrap(),
+                    dz_ip: expected_dz_ip.unwrap_or(Ipv4Addr::UNSPECIFIED),
                 })),
                 predicate::always(),
             )
@@ -405,14 +396,17 @@ mod tests {
 
     #[test]
     fn test_process_user_event_pending_to_activated_ibrl() {
-        do_test_process_user_event_pending_to_activated(UserType::IBRL, Some([192, 168, 1, 1]));
+        do_test_process_user_event_pending_to_activated(
+            UserType::IBRL,
+            Some([192, 168, 1, 1].into()),
+        );
     }
 
     #[test]
     fn test_process_user_event_pending_to_activated_ibrl_with_allocated_ip() {
         do_test_process_user_event_pending_to_activated(
             UserType::IBRLWithAllocatedIP,
-            Some([10, 0, 0, 1]),
+            Some([10, 0, 0, 1].into()),
         );
     }
 
@@ -420,14 +414,14 @@ mod tests {
     fn test_process_user_event_pending_to_activated_edge_filtering() {
         do_test_process_user_event_pending_to_activated(
             UserType::EdgeFiltering,
-            Some([10, 0, 0, 1]),
+            Some([10, 0, 0, 1].into()),
         );
     }
 
     #[test]
     fn test_process_user_event_update_to_activated() {
         let mut seq = Sequence::new();
-        let mut user_tunnel_ips = IPBlockAllocator::new(([10, 0, 0, 0], 16));
+        let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/16".parse().unwrap());
         let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
         let mut client = create_test_client();
 
@@ -440,11 +434,11 @@ mod tests {
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             device_type: DeviceType::Switch,
-            public_ip: [192, 168, 1, 2],
+            public_ip: [192, 168, 1, 2].into(),
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::default(),
             code: "TestDevice".to_string(),
-            dz_prefixes: vec![([10, 0, 0, 1], 24)],
+            dz_prefixes: "10.0.0.1/24".parse().unwrap(),
         };
 
         let user_pubkey = Pubkey::new_unique();
@@ -457,10 +451,10 @@ mod tests {
             tenant_pk: Pubkey::new_unique(),
             device_pk: device_pubkey,
             cyoa_type: UserCYOA::GREOverDIA,
-            client_ip: [192, 168, 1, 1],
-            dz_ip: [192, 168, 1, 1],
+            client_ip: [192, 168, 1, 1].into(),
+            dz_ip: [192, 168, 1, 1].into(),
             tunnel_id: 500,
-            tunnel_net: ([10, 0, 0, 1], 29),
+            tunnel_net: "10.0.0.1/29".parse().unwrap(),
             status: UserStatus::Updating,
             publishers: vec![Pubkey::default()],
             subscribers: vec![Pubkey::default()],
@@ -473,8 +467,8 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::ActivateUser(UserActivateArgs {
                     tunnel_id: 500,
-                    tunnel_net: ([10, 0, 0, 1], 29),
-                    dz_ip: [10, 0, 0, 1],
+                    tunnel_net: "10.0.0.1/29".parse().unwrap(),
+                    dz_ip: [10, 0, 0, 1].into(),
                 })),
                 predicate::always(),
             )
@@ -505,7 +499,7 @@ mod tests {
     #[test]
     fn test_process_user_event_pending_to_rejected_by_get_device() {
         let mut seq = Sequence::new();
-        let mut user_tunnel_ips = IPBlockAllocator::new(([10, 0, 0, 0], 32));
+        let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/32".parse().unwrap());
         let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
         let mut client = create_test_client();
 
@@ -521,10 +515,10 @@ mod tests {
             tenant_pk: Pubkey::new_unique(),
             device_pk: device_pubkey,
             cyoa_type: UserCYOA::GREOverDIA,
-            client_ip: [192, 168, 1, 1],
-            dz_ip: [0, 0, 0, 0],
+            client_ip: [192, 168, 1, 1].into(),
+            dz_ip: Ipv4Addr::UNSPECIFIED,
             tunnel_id: 0,
-            tunnel_net: ([0, 0, 0, 0], 0),
+            tunnel_net: NetworkV4::default(),
             status: UserStatus::Pending,
             publishers: vec![],
             subscribers: vec![],
@@ -570,7 +564,7 @@ mod tests {
     #[test]
     fn test_process_user_event_pending_to_rejected_by_no_tunnel_block() {
         let mut seq = Sequence::new();
-        let mut user_tunnel_ips = IPBlockAllocator::new(([10, 0, 0, 0], 32));
+        let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/32".parse().unwrap());
         let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
         let mut client = create_test_client();
 
@@ -583,11 +577,11 @@ mod tests {
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             device_type: DeviceType::Switch,
-            public_ip: [192, 168, 1, 2],
+            public_ip: [192, 168, 1, 2].into(),
             status: DeviceStatus::Activated,
             code: "TestDevice".to_string(),
             metrics_publisher_pk: Pubkey::default(),
-            dz_prefixes: vec![([10, 0, 0, 0], 32)],
+            dz_prefixes: "10.0.0.0/32".parse().unwrap(),
         };
 
         let user_pubkey = Pubkey::new_unique();
@@ -600,10 +594,10 @@ mod tests {
             tenant_pk: Pubkey::new_unique(),
             device_pk: device_pubkey,
             cyoa_type: UserCYOA::GREOverDIA,
-            client_ip: [192, 168, 1, 1],
-            dz_ip: [0, 0, 0, 0],
+            client_ip: [192, 168, 1, 1].into(),
+            dz_ip: Ipv4Addr::UNSPECIFIED,
             tunnel_id: 0,
-            tunnel_net: ([0, 0, 0, 0], 0),
+            tunnel_net: NetworkV4::default(),
             status: UserStatus::Pending,
             publishers: vec![],
             subscribers: vec![],
@@ -650,7 +644,7 @@ mod tests {
     #[test]
     fn test_process_user_event_pending_to_rejected_by_no_user_block() {
         let mut seq = Sequence::new();
-        let mut user_tunnel_ips = IPBlockAllocator::new(([10, 0, 0, 0], 32));
+        let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/32".parse().unwrap());
         let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
         let mut client = create_test_client();
 
@@ -666,11 +660,11 @@ mod tests {
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             device_type: DeviceType::Switch,
-            public_ip: [192, 168, 1, 2],
+            public_ip: [192, 168, 1, 2].into(),
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::default(),
             code: "TestDevice".to_string(),
-            dz_prefixes: vec![([10, 0, 0, 1], 24)],
+            dz_prefixes: "10.0.0.1/24".parse().unwrap(),
         };
 
         let user_pubkey = Pubkey::new_unique();
@@ -683,10 +677,10 @@ mod tests {
             tenant_pk: Pubkey::new_unique(),
             device_pk: device_pubkey,
             cyoa_type: UserCYOA::GREOverDIA,
-            client_ip: [192, 168, 1, 1],
-            dz_ip: [0, 0, 0, 0],
+            client_ip: [192, 168, 1, 1].into(),
+            dz_ip: Ipv4Addr::UNSPECIFIED,
             tunnel_id: 0,
-            tunnel_net: ([0, 0, 0, 0], 0),
+            tunnel_net: NetworkV4::default(),
             status: UserStatus::Pending,
             publishers: vec![],
             subscribers: vec![],
@@ -735,7 +729,7 @@ mod tests {
 
         let mut seq = Sequence::new();
         let mut devices = HashMap::new();
-        let mut user_tunnel_ips = IPBlockAllocator::new(([10, 0, 0, 0], 16));
+        let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/16".parse().unwrap());
         let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
         let mut client = create_test_client();
 
@@ -752,10 +746,10 @@ mod tests {
             tenant_pk: Pubkey::new_unique(),
             device_pk: device_pubkey,
             cyoa_type: UserCYOA::GREOverDIA,
-            client_ip: [192, 168, 1, 1],
-            dz_ip: [0, 0, 0, 0],
+            client_ip: [192, 168, 1, 1].into(),
+            dz_ip: Ipv4Addr::UNSPECIFIED,
             tunnel_id: 102,
-            tunnel_net: ([10, 0, 0, 0], 31),
+            tunnel_net: "10.0.0.0/31".parse().unwrap(),
             status: user_status,
             publishers: vec![],
             subscribers: vec![],
@@ -769,11 +763,11 @@ mod tests {
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
             device_type: DeviceType::Switch,
-            public_ip: [192, 168, 1, 2],
+            public_ip: [192, 168, 1, 2].into(),
             status: DeviceStatus::Activated,
             code: "TestDevice".to_string(),
             metrics_publisher_pk: Pubkey::default(),
-            dz_prefixes: vec![([11, 0, 0, 0], 16)],
+            dz_prefixes: "11.0.0.0/16".parse().unwrap(),
         };
 
         devices.insert(device_pubkey, DeviceState::new(&device));

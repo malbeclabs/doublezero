@@ -6,9 +6,9 @@ use doublezero_serviceability::{
         multicastgroup::MulticastGroupStatus,
         user::{UserCYOA, UserType},
     },
-    types::IpV4,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use std::net::Ipv4Addr;
 
 use crate::{
     commands::{
@@ -22,7 +22,7 @@ pub struct CreateSubscribeUserCommand {
     pub user_type: UserType,
     pub device_pk: Pubkey,
     pub cyoa_type: UserCYOA,
-    pub client_ip: IpV4,
+    pub client_ip: Ipv4Addr,
     pub mgroup_pk: Pubkey,
     pub publisher: bool,
     pub subscriber: bool,

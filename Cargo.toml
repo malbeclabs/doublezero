@@ -31,6 +31,7 @@ base64 = "0.22.1"
 bincode = { version = "2", features = ["serde"] }
 bitvec = "1"
 borsh = "1"
+byteorder = "1"
 chrono = "0"
 clap = { version = "4", features = ["derive"] }
 clap_complete = { version = "4", features = ["unstable-dynamic"] }

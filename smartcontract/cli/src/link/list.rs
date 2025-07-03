@@ -42,8 +42,6 @@ pub struct LinkDisplay {
     #[tabled(display = "crate::util::display_as_ms", rename = "jitter_ms")]
     pub jitter_ns: u64,
     pub tunnel_id: u16,
-    #[tabled(display = "doublezero_serviceability::types::networkv4_to_string")]
-    #[serde(serialize_with = "crate::serializer::serialize_networkv4_as_string")]
     pub tunnel_net: NetworkV4,
     pub status: LinkStatus,
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
@@ -133,8 +131,8 @@ mod tests {
             location_pk: location1_pubkey,
             exchange_pk: exchange1_pubkey,
             device_type: DeviceType::Switch,
-            public_ip: [1, 2, 3, 4],
-            dz_prefixes: vec![([1, 2, 3, 4], 32)],
+            public_ip: [1, 2, 3, 4].into(),
+            dz_prefixes: "1.2.3.4/32".parse().unwrap(),
             status: DeviceStatus::Activated,
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
             metrics_publisher_pk: Pubkey::default(),
@@ -148,8 +146,8 @@ mod tests {
             location_pk: location2_pubkey,
             exchange_pk: exchange2_pubkey,
             device_type: DeviceType::Switch,
-            public_ip: [1, 2, 3, 4],
-            dz_prefixes: vec![([1, 2, 3, 4], 32)],
+            public_ip: [1, 2, 3, 4].into(),
+            dz_prefixes: "1.2.3.4/32".parse().unwrap(),
             status: DeviceStatus::Activated,
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
             metrics_publisher_pk: Pubkey::new_unique(),
@@ -176,7 +174,7 @@ mod tests {
             delay_ns: 1234,
             jitter_ns: 1121,
             tunnel_id: 1234,
-            tunnel_net: ([1, 2, 3, 4], 32),
+            tunnel_net: "1.2.3.4/32".parse().unwrap(),
             status: LinkStatus::Activated,
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
         };

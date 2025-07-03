@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    net::Ipv4Addr,
+    sync::{Arc, Mutex},
+};
 
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
@@ -20,6 +23,7 @@ use doublezero_serviceability::{
         globalstate::GlobalState,
         link::{Link, LinkLinkType},
     },
+    types::{NetworkV4, NetworkV4List},
 };
 use doublezero_telemetry::{
     entrypoint::process_instruction as telemetry_process_instruction,
@@ -113,8 +117,8 @@ impl DeviceCreateArgsExt for DeviceCreateArgs {
             location_pk: Pubkey::default(),
             exchange_pk: Pubkey::default(),
             device_type: DeviceType::Switch,
-            public_ip: [0; 4],
-            dz_prefixes: Vec::new(),
+            public_ip: Ipv4Addr::UNSPECIFIED,
+            dz_prefixes: NetworkV4List::default(),
             metrics_publisher_pk: Pubkey::default(),
         }
     }
@@ -316,8 +320,8 @@ impl LedgerHelper {
                 location_pk,
                 exchange_pk,
                 device_type: DeviceType::Switch,
-                public_ip: [1, 2, 3, 4],
-                dz_prefixes: Vec::new(),
+                public_ip: [1, 2, 3, 4].into(),
+                dz_prefixes: NetworkV4List::default(),
                 metrics_publisher_pk: origin_device_agent_pk,
             })
             .await?;
@@ -330,7 +334,7 @@ impl LedgerHelper {
                 location_pk,
                 exchange_pk,
                 device_type: DeviceType::Switch,
-                public_ip: [5, 6, 7, 8],
+                public_ip: [5, 6, 7, 8].into(),
                 metrics_publisher_pk: Pubkey::new_unique(),
                 ..DeviceCreateArgs::default()
             })
@@ -352,7 +356,7 @@ impl LedgerHelper {
                     ..LinkCreateArgs::default()
                 },
                 1,
-                ([10, 1, 1, 0], 30),
+                "10.1.1.0/30".parse().unwrap(),
             )
             .await?;
 
@@ -587,9 +591,9 @@ impl ServiceabilityProgramHelper {
                 DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
                     local_asn: 65000,
                     remote_asn: 65001,
-                    device_tunnel_block: ([10, 0, 0, 0], 24),
-                    user_tunnel_block: ([10, 0, 0, 0], 24),
-                    multicastgroup_block: ([224, 0, 0, 0], 4),
+                    device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
+                    user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
+                    multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
                 }),
                 vec![
                     AccountMeta::new(global_config_pubkey, false),
@@ -803,7 +807,7 @@ impl ServiceabilityProgramHelper {
         &mut self,
         link_pk: Pubkey,
         tunnel_id: u16,
-        tunnel_net: ([u8; 4], u8),
+        tunnel_net: NetworkV4,
     ) -> Result<(), BanksClientError> {
         self.execute_transaction(
             DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
@@ -841,7 +845,7 @@ impl ServiceabilityProgramHelper {
         &mut self,
         link: LinkCreateArgs,
         tunnel_id: u16,
-        tunnel_net: ([u8; 4], u8),
+        tunnel_net: NetworkV4,
     ) -> Result<Pubkey, BanksClientError> {
         let link_pk = self.create_link(link).await?;
         self.activate_link(link_pk, tunnel_id, tunnel_net).await?;

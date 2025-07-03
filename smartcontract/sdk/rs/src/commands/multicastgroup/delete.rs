@@ -67,6 +67,7 @@ mod tests {
     };
     use mockall::predicate;
     use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+    use std::net::Ipv4Addr;
 
     #[test]
     fn test_commands_multicastgroup_delete_command() {
@@ -81,7 +82,7 @@ mod tests {
             bump_seed,
             tenant_pk: Pubkey::default(),
             code: "mg01".to_string(),
-            multicast_ip: [0, 0, 0, 0],
+            multicast_ip: Ipv4Addr::UNSPECIFIED,
             max_bandwidth: 0,
             status: MulticastGroupStatus::Activated,
             pub_allowlist: vec![client.get_payer()],

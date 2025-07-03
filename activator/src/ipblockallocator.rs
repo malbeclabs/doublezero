@@ -1,7 +1,6 @@
 use std::net::Ipv4Addr;
 
 use bitvec::prelude::*;
-use doublezero_sdk::{networkv4_to_ipnetwork, IpV4, NetworkV4};
 use ipnetwork::Ipv4Network;
 
 #[derive(Debug)]
@@ -14,8 +13,7 @@ pub struct IPBlockAllocator {
 impl IPBlockAllocator {
     /// Creates a new IPBlockAllocator with the given base block.
     /// Initializes the bit vector to track assigned IPs.
-    pub fn new(base_block: NetworkV4) -> Self {
-        let base_block = networkv4_to_ipnetwork(&base_block);
+    pub fn new(base_block: Ipv4Network) -> Self {
         let total_ips = 2_usize.pow((32 - base_block.prefix()).into());
         Self {
             base_block,
@@ -24,8 +22,7 @@ impl IPBlockAllocator {
         }
     }
 
-    pub fn contains(&self, ip: IpV4) -> bool {
-        let ip = Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3]);
+    pub fn contains(&self, ip: Ipv4Addr) -> bool {
         let base_ip = u32::from(self.base_block.network());
         let ip_as_u32 = u32::from(ip);
 
@@ -38,8 +35,7 @@ impl IPBlockAllocator {
 
     /// Marks the given block of IPs as assigned.
     /// Updates the bit vector to reflect the assigned IPs.
-    pub fn assign_block(&mut self, block: NetworkV4) {
-        let block = networkv4_to_ipnetwork(&block);
+    pub fn assign_block(&mut self, block: Ipv4Network) {
         match self.ip_to_index(block.ip()) {
             Ok(start_index) => {
                 let block_size = 2_usize.pow((32 - block.prefix()).into());
@@ -56,8 +52,7 @@ impl IPBlockAllocator {
 
     /// Marks the given block of IPs as unassigned.
     /// Updates the bit vector to reflect the unassigned IPs.
-    pub fn unassign_block(&mut self, block: NetworkV4) {
-        let block = networkv4_to_ipnetwork(&block);
+    pub fn unassign_block(&mut self, block: Ipv4Network) {
         match self.ip_to_index(block.ip()) {
             Ok(start_index) => {
                 let block_size = 2_usize.pow((32 - block.prefix()).into());
@@ -74,7 +69,7 @@ impl IPBlockAllocator {
 
     /// Finds the next available block of IPs that can accommodate the given number of IPs.
     /// Returns an Ipv4Network representing the available block, or None if no block is available.
-    pub fn next_available_block(&mut self, reserve: usize, ip_count: usize) -> Option<NetworkV4> {
+    pub fn next_available_block(&mut self, reserve: usize, ip_count: usize) -> Option<Ipv4Network> {
         let block_prefix =
             (32 - (ip_count as f32).log2().ceil() as u8).max(self.base_block.prefix());
         let block_size = 2_usize.pow((32 - block_prefix).into());
@@ -93,8 +88,8 @@ impl IPBlockAllocator {
                 }
                 let start_ip = self.index_to_ip(start_index);
 
-                self.assign_block((start_ip.octets(), block_prefix));
-                return Some((start_ip.octets(), block_prefix));
+                let next_block = Ipv4Network::new(start_ip, block_prefix).ok()?;
+                return Some(next_block);
             }
 
             start_index += block_size;
@@ -138,24 +133,24 @@ mod tests {
 
     #[test]
     fn test_ipallocation() {
-        let block1 = IPBlockAllocator::new(([10, 0, 0, 1], 24))
+        let block1 = IPBlockAllocator::new("10.0.0.1/24".parse().unwrap())
             .next_available_block(1, 1)
             .unwrap();
-        assert_eq!(block1, ([10, 0, 0, 1], 32));
+        assert_eq!(block1, "10.0.0.1/32".parse().unwrap());
 
-        let block1 = IPBlockAllocator::new(([10, 0, 0, 1], 24))
+        let block1 = IPBlockAllocator::new("10.0.0.1/24".parse().unwrap())
             .next_available_block(1, 2)
             .unwrap();
-        assert_eq!(block1, ([10, 0, 0, 1], 31));
+        assert_eq!(block1, "10.0.0.1/31".parse().unwrap());
 
-        let block1 = IPBlockAllocator::new(([10, 0, 0, 1], 24))
+        let block1 = IPBlockAllocator::new("10.0.0.1/24".parse().unwrap())
             .next_available_block(1, 1)
             .unwrap();
-        assert_eq!(block1, ([10, 0, 0, 1], 32));
+        assert_eq!(block1, "10.0.0.1/32".parse().unwrap());
 
-        let block1 = IPBlockAllocator::new(([10, 0, 0, 1], 24))
+        let block1 = IPBlockAllocator::new("10.0.0.1/24".parse().unwrap())
             .next_available_block(2, 4)
             .unwrap();
-        assert_eq!(block1, ([10, 0, 0, 2], 30));
+        assert_eq!(block1, "10.0.0.2/30".parse().unwrap());
     }
 }

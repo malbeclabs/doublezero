@@ -3,8 +3,10 @@ use doublezero_sdk::{
     commands::multicastgroup::{
         activate::ActivateMulticastGroupCommand, deactivate::DeactivateMulticastGroupCommand,
     },
-    ipv4_to_string, DoubleZeroClient, MulticastGroup, MulticastGroupStatus,
+    DoubleZeroClient, MulticastGroup, MulticastGroupStatus,
 };
+use eyre;
+use ipnetwork::Ipv4Network;
 use solana_sdk::pubkey::Pubkey;
 use std::collections::{hash_map::Entry, HashMap};
 
@@ -15,15 +17,16 @@ pub fn process_multicastgroup_event(
     multicastgroups: &mut HashMap<Pubkey, MulticastGroup>,
     multicastgroup_tunnel_ips: &mut IPBlockAllocator,
     state_transitions: &mut HashMap<&'static str, usize>,
-) {
+) -> eyre::Result<()> {
     match multicastgroup.status {
         MulticastGroupStatus::Pending => {
             print!("New MulticastGroup {} ", multicastgroup.code);
 
             let res = multicastgroup_tunnel_ips.next_available_block(0, 1);
             match res {
-                Some((multicast_ip, _)) => {
-                    println!("multicast_ip: {} ", ipv4_to_string(&multicast_ip));
+                Some(multicast_group) => {
+                    let multicast_ip = multicast_group.ip();
+                    println!("multicast_ip: {} ", &multicast_ip);
 
                     let res = ActivateMulticastGroupCommand {
                         mgroup_pubkey: *pubkey,
@@ -54,13 +57,15 @@ pub fn process_multicastgroup_event(
                 println!("Add MulticastGroup: {} ", multicastgroup.code);
 
                 entry.insert(multicastgroup.clone());
-                multicastgroup_tunnel_ips.assign_block((multicastgroup.multicast_ip, 32));
+                multicastgroup_tunnel_ips
+                    .assign_block(Ipv4Network::new(multicastgroup.multicast_ip, 32)?);
             }
         }
         MulticastGroupStatus::Deleting => {
             print!("Deleting MulticastGroup {} ", multicastgroup.code);
 
-            multicastgroup_tunnel_ips.unassign_block((multicastgroup.multicast_ip, 32));
+            multicastgroup_tunnel_ips
+                .unassign_block(Ipv4Network::new(multicastgroup.multicast_ip, 32)?);
 
             let res = DeactivateMulticastGroupCommand {
                 pubkey: *pubkey,
@@ -81,6 +86,8 @@ pub fn process_multicastgroup_event(
         }
         _ => {}
     }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -99,7 +106,7 @@ mod tests {
     };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
-    use std::collections::HashMap;
+    use std::{collections::HashMap, net::Ipv4Addr};
 
     #[test]
     fn test_process_multicastgroup_event() {
@@ -111,7 +118,7 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::ActivateMulticastGroup(
                     MulticastGroupActivateArgs {
-                        multicast_ip: [224, 0, 0, 0],
+                        multicast_ip: [224, 0, 0, 0].into(),
                     },
                 )),
                 predicate::always(),
@@ -125,7 +132,7 @@ mod tests {
             owner: Pubkey::new_unique(),
             index: 1,
             bump_seed,
-            multicast_ip: [0, 0, 0, 0],
+            multicast_ip: Ipv4Addr::UNSPECIFIED,
             max_bandwidth: 10000,
             pub_allowlist: vec![client.get_payer()],
             sub_allowlist: vec![client.get_payer()],
@@ -147,14 +154,14 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::ActivateMulticastGroup(
                     MulticastGroupActivateArgs {
-                        multicast_ip: [224, 0, 0, 0],
+                        multicast_ip: [224, 0, 0, 0].into(),
                     },
                 )),
                 predicate::always(),
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        let mut multicastgroup_tunnel_ips = IPBlockAllocator::new(([224, 0, 0, 0], 4));
+        let mut multicastgroup_tunnel_ips = IPBlockAllocator::new("224.0.0.0/4".parse().unwrap());
         let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
 
         process_multicastgroup_event(
@@ -164,7 +171,8 @@ mod tests {
             &mut multicastgroups,
             &mut multicastgroup_tunnel_ips,
             &mut state_transitions,
-        );
+        )
+        .expect("Failed to process multicastgroup event");
 
         assert!(multicastgroups.contains_key(&pubkey));
         assert_eq!(*multicastgroups.get(&pubkey).unwrap(), multicastgroup);

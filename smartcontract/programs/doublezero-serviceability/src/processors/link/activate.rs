@@ -23,8 +23,7 @@ impl fmt::Debug for LinkActivateArgs {
         write!(
             f,
             "tunnel_id: {}, tunnel_net: {}",
-            self.tunnel_id,
-            networkv4_to_string(&self.tunnel_net)
+            self.tunnel_id, &self.tunnel_net,
         )
     }
 }

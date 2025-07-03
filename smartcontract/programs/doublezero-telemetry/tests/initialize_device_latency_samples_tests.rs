@@ -9,6 +9,7 @@ use doublezero_serviceability::{
         device::{Device, DeviceStatus, DeviceType},
         link::{Link, LinkLinkType, LinkStatus},
     },
+    types::{NetworkV4, NetworkV4List},
 };
 use doublezero_telemetry::{
     error::TelemetryError, instructions::TelemetryInstruction,
@@ -25,6 +26,7 @@ use solana_sdk::{
     signature::{Keypair, Signer},
     transaction::Transaction,
 };
+use std::net::Ipv4Addr;
 
 mod test_helpers;
 
@@ -323,11 +325,11 @@ async fn test_initialize_device_latency_samples_fail_origin_device_wrong_owner()
         owner: agent.pubkey(),
         exchange_pk: Pubkey::new_unique(),
         device_type: DeviceType::Switch,
-        public_ip: [0, 0, 0, 0],
+        public_ip: Ipv4Addr::UNSPECIFIED,
         status: DeviceStatus::Activated,
         metrics_publisher_pk: agent.pubkey(),
         location_pk: Pubkey::new_unique(),
-        dz_prefixes: vec![],
+        dz_prefixes: NetworkV4List::default(),
     };
 
     let mut device_data = Vec::new();
@@ -384,14 +386,14 @@ async fn test_initialize_device_latency_samples_fail_target_device_wrong_owner()
         status: DeviceStatus::Activated,
         metrics_publisher_pk: Pubkey::new_unique(), // doesn't matter for Z
         location_pk: Pubkey::new_unique(),
-        dz_prefixes: vec![],
+        dz_prefixes: NetworkV4List::default(),
         account_type: AccountType::Device,
         owner: wrong_owner,
         index: 0,
         bump_seed: 0,
         exchange_pk: Pubkey::new_unique(),
         device_type: DeviceType::Switch,
-        public_ip: [0, 0, 0, 0],
+        public_ip: Ipv4Addr::UNSPECIFIED,
         code: "invalid".to_string(),
     };
 
@@ -460,7 +462,7 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_owner() {
         link_type: LinkLinkType::L2,
         mtu: 0,
         tunnel_id: 0,
-        tunnel_net: ([0, 0, 0, 0], 0),
+        tunnel_net: NetworkV4::default(),
     };
 
     let mut data = Vec::new();
@@ -540,7 +542,7 @@ async fn test_initialize_device_latency_samples_fail_origin_device_not_activated
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
-            public_ip: [1, 2, 3, 4],
+            public_ip: [1, 2, 3, 4].into(),
             metrics_publisher_pk: agent.pubkey(),
             ..DeviceCreateArgs::default()
         })
@@ -555,7 +557,7 @@ async fn test_initialize_device_latency_samples_fail_origin_device_not_activated
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
-            public_ip: [5, 6, 7, 8],
+            public_ip: [5, 6, 7, 8].into(),
             metrics_publisher_pk: agent.pubkey(),
             ..DeviceCreateArgs::default()
         })
@@ -578,7 +580,7 @@ async fn test_initialize_device_latency_samples_fail_origin_device_not_activated
                 ..LinkCreateArgs::default()
             },
             1,
-            ([10, 1, 1, 0], 30),
+            "10.1.1.0/30".parse().unwrap(),
         )
         .await
         .unwrap();
@@ -641,7 +643,7 @@ async fn test_initialize_device_latency_samples_fail_target_device_not_activated
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
-            public_ip: [1, 2, 3, 4],
+            public_ip: [1, 2, 3, 4].into(),
             metrics_publisher_pk: agent.pubkey(),
             ..DeviceCreateArgs::default()
         })
@@ -656,7 +658,7 @@ async fn test_initialize_device_latency_samples_fail_target_device_not_activated
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
-            public_ip: [5, 6, 7, 8],
+            public_ip: [5, 6, 7, 8].into(),
             metrics_publisher_pk: agent.pubkey(),
             ..DeviceCreateArgs::default()
         })
@@ -679,7 +681,7 @@ async fn test_initialize_device_latency_samples_fail_target_device_not_activated
                 ..LinkCreateArgs::default()
             },
             1,
-            ([10, 1, 1, 0], 30),
+            "10.1.1.0/30".parse().unwrap(),
         )
         .await
         .unwrap();
@@ -741,7 +743,7 @@ async fn test_initialize_device_latency_samples_fail_link_not_activated() {
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
-            public_ip: [1, 2, 3, 4],
+            public_ip: [1, 2, 3, 4].into(),
             metrics_publisher_pk: agent.pubkey(),
             ..DeviceCreateArgs::default()
         })
@@ -755,7 +757,7 @@ async fn test_initialize_device_latency_samples_fail_link_not_activated() {
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
-            public_ip: [5, 6, 7, 8],
+            public_ip: [5, 6, 7, 8].into(),
             metrics_publisher_pk: agent.pubkey(),
             ..DeviceCreateArgs::default()
         })
@@ -837,7 +839,7 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
-            public_ip: [1, 1, 1, 1],
+            public_ip: [1, 1, 1, 1].into(),
             metrics_publisher_pk: agent.pubkey(),
             ..DeviceCreateArgs::default()
         })
@@ -851,7 +853,7 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
-            public_ip: [2, 2, 2, 2],
+            public_ip: [2, 2, 2, 2].into(),
             metrics_publisher_pk: agent.pubkey(),
             ..DeviceCreateArgs::default()
         })
@@ -866,7 +868,7 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
-            public_ip: [3, 3, 3, 3],
+            public_ip: [3, 3, 3, 3].into(),
             metrics_publisher_pk: agent.pubkey(),
             ..DeviceCreateArgs::default()
         })
@@ -880,7 +882,7 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
-            public_ip: [4, 4, 4, 4],
+            public_ip: [4, 4, 4, 4].into(),
             metrics_publisher_pk: agent.pubkey(),
             ..DeviceCreateArgs::default()
         })
@@ -903,7 +905,7 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
                 ..LinkCreateArgs::default()
             },
             1,
-            ([10, 1, 1, 0], 30),
+            "10.1.1.0/30".parse().unwrap(),
         )
         .await
         .unwrap();
@@ -965,7 +967,7 @@ async fn test_initialize_device_latency_samples_succeeds_with_reversed_link_side
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
-            public_ip: [10, 0, 0, 1],
+            public_ip: [10, 0, 0, 1].into(),
             metrics_publisher_pk: agent.pubkey(),
             ..DeviceCreateArgs::default()
         })
@@ -979,7 +981,7 @@ async fn test_initialize_device_latency_samples_succeeds_with_reversed_link_side
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
-            public_ip: [10, 0, 0, 2],
+            public_ip: [10, 0, 0, 2].into(),
             metrics_publisher_pk: agent.pubkey(),
             ..DeviceCreateArgs::default()
         })
@@ -1002,7 +1004,7 @@ async fn test_initialize_device_latency_samples_succeeds_with_reversed_link_side
                 ..LinkCreateArgs::default()
             },
             1,
-            ([192, 168, 0, 0], 24),
+            "192.168.0.0/24".parse().unwrap(),
         )
         .await
         .unwrap();
@@ -1201,7 +1203,7 @@ async fn test_initialize_device_latency_samples_fail_agent_not_owner_of_origin_d
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
-            public_ip: [1, 1, 1, 1],
+            public_ip: [1, 1, 1, 1].into(),
             metrics_publisher_pk: owner_agent.pubkey(),
             ..DeviceCreateArgs::default()
         })
@@ -1216,7 +1218,7 @@ async fn test_initialize_device_latency_samples_fail_agent_not_owner_of_origin_d
             location_pk,
             exchange_pk,
             device_type: DeviceType::Switch,
-            public_ip: [2, 2, 2, 2],
+            public_ip: [2, 2, 2, 2].into(),
             metrics_publisher_pk: unauthorized_agent.pubkey(),
             ..DeviceCreateArgs::default()
         })
@@ -1233,7 +1235,7 @@ async fn test_initialize_device_latency_samples_fail_agent_not_owner_of_origin_d
                 ..LinkCreateArgs::default()
             },
             1,
-            ([10, 0, 0, 0], 24),
+            "10.0.0.0/24".parse().unwrap(),
         )
         .await
         .unwrap();

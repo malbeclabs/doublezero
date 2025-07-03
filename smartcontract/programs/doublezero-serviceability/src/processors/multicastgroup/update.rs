@@ -3,7 +3,6 @@ use crate::{
     globalstate::globalstate_get,
     helper::*,
     state::{accounttype::AccountType, multicastgroup::*},
-    types::IpV4,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
@@ -14,10 +13,11 @@ use solana_program::{
     pubkey::Pubkey,
 };
 use std::fmt;
+
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct MulticastGroupUpdateArgs {
     pub code: Option<String>,
-    pub multicast_ip: Option<IpV4>,
+    pub multicast_ip: Option<std::net::Ipv4Addr>,
     pub max_bandwidth: Option<u64>,
 }
 

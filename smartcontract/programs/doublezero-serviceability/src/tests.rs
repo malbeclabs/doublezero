@@ -75,9 +75,9 @@ pub mod test {
             DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
                 local_asn: 65000,
                 remote_asn: 65001,
-                device_tunnel_block: ([10, 0, 0, 0], 24),
-                user_tunnel_block: ([10, 0, 0, 0], 24),
-                multicastgroup_block: ([224, 0, 0, 0], 4),
+                device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
+                user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
+                multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
             }),
             vec![
                 AccountMeta::new(globalconfig_pubkey, false),
@@ -285,8 +285,8 @@ pub mod test {
             location_pk: location_la_pubkey,
             exchange_pk: exchange_la_pubkey,
             device_type: DeviceType::Switch,
-            public_ip: [1, 0, 0, 1],
-            dz_prefixes: vec![],
+            public_ip: [1, 0, 0, 1].into(),
+            dz_prefixes: NetworkV4List::default(),
             metrics_publisher_pk: Pubkey::default(), // Assuming no metrics publisher for this test
         };
 
@@ -333,8 +333,8 @@ pub mod test {
             location_pk: location_ny_pubkey,
             exchange_pk: exchange_ny_pubkey,
             device_type: DeviceType::Switch,
-            public_ip: [1, 0, 0, 2],
-            dz_prefixes: vec![([10, 1, 0, 1], 24)],
+            public_ip: [1, 0, 0, 2].into(),
+            dz_prefixes: vec!["10.1.0.1/24".parse().unwrap()].into(),
             metrics_publisher_pk: Pubkey::default(), // Assuming no metrics publisher for this test
         };
 
@@ -467,7 +467,7 @@ pub mod test {
         );
 
         println!("Testing Link activation...");
-        let tunnel_net: NetworkV4 = networkv4_parse("10.31.0.0/31").unwrap();
+        let tunnel_net: NetworkV4 = "10.31.0.0/31".parse().unwrap();
         let tunnel_activate: LinkActivateArgs = LinkActivateArgs {
             tunnel_id: 1,
             tunnel_net,
@@ -505,8 +505,7 @@ pub mod test {
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 7);
 
-        // User 100.0.0.1
-        let user_ip = [100, 0, 0, 1];
+        let user_ip = "100.0.0.1".parse().unwrap();
         let (user1_pubkey, bump_seed) =
             get_user_pda(&program_id, globalstate_account.account_index + 1);
         let user1: UserCreateArgs = UserCreateArgs {
@@ -546,8 +545,8 @@ pub mod test {
             user1.index
         );
 
-        let tunnel_net: NetworkV4 = networkv4_parse("10.0.0.0/24").unwrap();
-        let dz_ip: IpV4 = ipv4_parse("10.2.0.1").unwrap();
+        let tunnel_net: NetworkV4 = "10.0.0.0/24".parse().unwrap();
+        let dz_ip: std::net::Ipv4Addr = "10.2.0.1".parse().unwrap();
 
         let update1: UserActivateArgs = UserActivateArgs {
             tunnel_id: 1,

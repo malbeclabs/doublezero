@@ -3,6 +3,7 @@ use crate::{
     globalstate::globalstate_get,
     helper::*,
     state::{accounttype::AccountType, link::*},
+    types::NetworkV4,
 };
 use std::fmt;
 
@@ -66,7 +67,7 @@ pub fn process_reject_link(
     }
 
     link.tunnel_id = 0;
-    link.tunnel_net = ([0, 0, 0, 0], 0);
+    link.tunnel_net = NetworkV4::default();
     link.status = LinkStatus::Rejected;
     msg!("Reason: {:?}", value.reason);
 

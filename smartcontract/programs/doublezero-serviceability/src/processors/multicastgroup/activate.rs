@@ -1,6 +1,5 @@
 use crate::{
     error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::multicastgroup::*,
-    types::IpV4,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
@@ -15,7 +14,7 @@ use solana_program::{
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct MulticastGroupActivateArgs {
-    pub multicast_ip: IpV4,
+    pub multicast_ip: std::net::Ipv4Addr,
 }
 
 impl fmt::Debug for MulticastGroupActivateArgs {

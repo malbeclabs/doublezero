@@ -1,15 +1,16 @@
 use crate::{DoubleZeroClient, GetGlobalStateCommand};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    processors::multicastgroup::update::MulticastGroupUpdateArgs, types::IpV4,
+    processors::multicastgroup::update::MulticastGroupUpdateArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use std::net::Ipv4Addr;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct UpdateMulticastGroupCommand {
     pub pubkey: Pubkey,
     pub code: Option<String>,
-    pub multicast_ip: Option<IpV4>,
+    pub multicast_ip: Option<Ipv4Addr>,
     pub max_bandwidth: Option<u64>,
 }
 
@@ -60,7 +61,7 @@ mod tests {
                 predicate::eq(DoubleZeroInstruction::UpdateMulticastGroup(
                     MulticastGroupUpdateArgs {
                         code: Some("test".to_string()),
-                        multicast_ip: Some([127, 0, 0, 1]),
+                        multicast_ip: Some("127.0.0.1".parse().unwrap()),
                         max_bandwidth: Some(1000),
                     },
                 )),
@@ -74,7 +75,7 @@ mod tests {
         let res = UpdateMulticastGroupCommand {
             pubkey: pda_pubkey,
             code: Some("test".to_string()),
-            multicast_ip: Some([127, 0, 0, 1]),
+            multicast_ip: Some("127.0.0.1".parse().unwrap()),
             max_bandwidth: Some(1000),
         }
         .execute(&client);

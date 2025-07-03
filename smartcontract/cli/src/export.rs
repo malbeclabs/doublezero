@@ -134,7 +134,7 @@ impl ExportCliCommand {
                         lng: exchange.lng,
                         owner: exchange.owner.to_string(),
                     },
-                    public_ip: ipv4_to_string(&data.public_ip),
+                    public_ip: data.public_ip.to_string(),
                     tunnels: tunnels
                         .clone()
                         .into_iter()
@@ -152,13 +152,13 @@ impl ExportCliCommand {
                             Some(LinkData {
                                 pubkey: key.to_string(),
                                 code: link.code.clone(),
-                                tunnel_net: networkv4_to_string(&link.tunnel_net),
+                                tunnel_net: link.tunnel_net.to_string(),
                                 side: LinkSideData {
                                     name: side_device.code.clone(),
                                     pubkey: side_pubkey.to_string(),
-                                    public_ip: ipv4_to_string(&side_device.public_ip),
+                                    public_ip: side_device.public_ip.to_string(),
                                     tunnel_id: link.tunnel_id,
-                                    tunnel_net: networkv4_to_string(&link.tunnel_net),
+                                    tunnel_net: link.tunnel_net.to_string(),
                                 },
                                 link_type: link.link_type.to_string(),
                                 bandwidth: bandwidth_to_string(&link.bandwidth),
@@ -175,11 +175,11 @@ impl ExportCliCommand {
                         .map(|(key, user)| UserData {
                             pubkey: key.to_string(),
                             user_type: user.user_type.to_string(),
-                            client_ip: ipv4_to_string(&user.client_ip),
+                            client_ip: user.client_ip.to_string(),
                             cyoa_type: user.cyoa_type.to_string(),
                             tunnel_id: user.tunnel_id,
-                            tunnel_net: networkv4_to_string(&user.tunnel_net),
-                            dz_ip: ipv4_to_string(&user.dz_ip),
+                            tunnel_net: user.tunnel_net.to_string(),
+                            dz_ip: user.dz_ip.to_string(),
                             status: user.status.to_string(),
                             owner: user.owner.to_string(),
                         })

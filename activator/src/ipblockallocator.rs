@@ -89,7 +89,6 @@ impl IPBlockAllocator {
                 let start_ip = self.index_to_ip(start_index);
 
                 let next_block = Ipv4Network::new(start_ip, block_prefix).ok()?;
-                self.assign_block(next_block);
                 return Some(next_block);
             }
 

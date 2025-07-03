@@ -221,7 +221,7 @@ impl Activator {
                         process_exchange_event(pubkey, exchanges, exchange);
                     }
                     AccountData::MulticastGroup(multicastgroup) => {
-                        process_multicastgroup_event(
+                        let _ = process_multicastgroup_event(
                             client,
                             pubkey,
                             multicastgroup,
@@ -229,7 +229,7 @@ impl Activator {
                             multicastgroup_tunnel_ips,
                             state_transitions,
                         )
-                        .unwrap_or_else(|e| {
+                        .inspect_err(|e| {
                             eprintln!("Error processing multicast group event: {e}");
                         });
                     }

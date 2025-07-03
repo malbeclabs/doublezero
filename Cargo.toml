@@ -7,7 +7,7 @@ members = [
     "smartcontract/sdk/rs",
     "smartcontract/programs/doublezero-serviceability",
     "smartcontract/programs/doublezero-telemetry",
-    "smartcontract/payment-tracker",
+    "smartcontract/doublezero-payment-tracker",
 ]
 default-members = []
 exclude = []
@@ -21,6 +21,7 @@ description = "Malbec Labs DoubleZero"
 homepage = "https://github.com/malbeclabs/doublezero"
 license = "Apache-2.0"
 repository = "https://github.com/malbeclabs/doublezero"
+version = "0.2.2"
 
 [workspace.dependencies]
 anyhow = "1"

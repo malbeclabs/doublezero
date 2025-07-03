@@ -1,18 +1,18 @@
 [package]
-name = "payment_tracker"
-version = "0.2.2"
+name = "doublezero_payment_tracker"
 
-description = "Library that tracks fee payments to validators"
+description = "Library that tracks payments"
 
 authors.workspace = true
-readme.workspace = true
 edition.workspace = true
 homepage.workspace = true
 license.workspace = true
+readme.workspace = true
 repository.workspace = true
+version.workspace =  true
 
 [lib]
-name = "payment_tracker"
+name = "doublezero_payment_tracker"
 
 [dependencies]
 anyhow.workspace = true

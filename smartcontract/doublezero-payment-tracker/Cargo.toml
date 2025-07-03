@@ -1,0 +1,25 @@
+[package]
+name = "doublezero_payment_tracker"
+
+description = "Library that tracks payments"
+
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+version.workspace =  true
+
+[lib]
+name = "doublezero_payment_tracker"
+
+[dependencies]
+anyhow.workspace = true
+eyre.workspace = true
+http.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+solana-client.workspace = true
+solana-sdk.workspace = true
+tokio.workspace = true

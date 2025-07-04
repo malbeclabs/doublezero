@@ -43,7 +43,7 @@ pub enum UserCommands {
     #[command(hide = true)]
     Delete(DeleteUserCliCommand),
     /// Manage user allowlist
-    #[command(hide = false)]
+    #[command()]
     Allowlist(UserAllowlistCliCommand),
     /// Request a ban for a user
     #[command(hide = true)]

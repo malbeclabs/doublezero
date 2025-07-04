@@ -80,12 +80,10 @@ mod tests {
             .expect_gets()
             .with(predicate::eq(AccountType::Contributor))
             .returning(move |_| {
-                let mut contributors = HashMap::new();
-                contributors.insert(
+                Ok(HashMap::from([(
                     contributor_pubkey,
                     AccountData::Contributor(contributor2.clone()),
-                );
-                Ok(contributors)
+                )]))
             });
 
         // Search by pubkey

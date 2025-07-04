@@ -5,7 +5,7 @@ use crate::{
 };
 use clap::Args;
 use doublezero_sdk::commands::contributor::{
-    get::GetContributorCommand, update::UpdateContributorCommand,
+    get::GetContributorCommand, list::ListContributorCommand, update::UpdateContributorCommand,
 };
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, str::FromStr};
@@ -27,6 +27,22 @@ impl UpdateContributorCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
+
+        let pubkey = Pubkey::from_str(&self.pubkey)
+            .map_err(|_| eyre::eyre!("Invalid contributor pubkey"))?;
+
+        if let Some(code) = &self.code {
+            let contributors = client.list_contributor(ListContributorCommand {})?;
+            if contributors
+                .iter()
+                .any(|(pk, d)| *pk != pubkey && d.code == *code)
+            {
+                return Err(eyre::eyre!(
+                    "Contributor with code '{}' already exists",
+                    code
+                ));
+            }
+        }
 
         let (pubkey, _) = client.get_contributor(GetContributorCommand {
             pubkey_or_code: self.pubkey,
@@ -66,7 +82,10 @@ mod tests {
         tests::utils::create_test_client,
     };
     use doublezero_sdk::{
-        commands::contributor::{get::GetContributorCommand, update::UpdateContributorCommand},
+        commands::contributor::{
+            get::GetContributorCommand, list::ListContributorCommand,
+            update::UpdateContributorCommand,
+        },
         get_contributor_pda, AccountType, Contributor, ContributorStatus,
     };
     use mockall::predicate;
@@ -95,6 +114,39 @@ mod tests {
         };
 
         client
+            .expect_list_contributor()
+            .with(predicate::eq(ListContributorCommand {}))
+            .returning(move |_| {
+                Ok(vec![
+                    (
+                        pda_pubkey,
+                        Contributor {
+                            account_type: AccountType::Contributor,
+                            owner: Pubkey::default(),
+                            index: 1,
+                            ata_owner_pk: Pubkey::default(),
+                            code: "test".to_string(),
+                            status: ContributorStatus::Activated,
+                            bump_seed: 0,
+                        },
+                    ),
+                    (
+                        Pubkey::new_unique(),
+                        Contributor {
+                            account_type: AccountType::Contributor,
+                            owner: Pubkey::default(),
+                            index: 1,
+                            ata_owner_pk: Pubkey::default(),
+                            code: "test2".to_string(),
+                            status: ContributorStatus::Activated,
+                            bump_seed: 0,
+                        },
+                    ),
+                ]
+                .into_iter()
+                .collect())
+            });
+        client
             .expect_check_requirements()
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
@@ -109,17 +161,27 @@ mod tests {
             .expect_update_contributor()
             .with(predicate::eq(UpdateContributorCommand {
                 pubkey: pda_pubkey,
-                code: Some("test".to_string()),
+                code: Some("test_new".to_string()),
                 ata_owner: Some(Pubkey::default()),
             }))
             .times(1)
             .returning(move |_| Ok(signature));
 
+        // Expected error
+        let mut output = Vec::new();
+        let res = UpdateContributorCliCommand {
+            pubkey: pda_pubkey.to_string(),
+            code: Some("test2".to_string()),
+            ata_owner: None,
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_err());
+
         // Expected success
         let mut output = Vec::new();
         let res = UpdateContributorCliCommand {
             pubkey: pda_pubkey.to_string(),
-            code: Some("test".to_string()),
+            code: Some("test_new".to_string()),
             ata_owner: Some(Pubkey::default().to_string()),
         }
         .execute(&client, &mut output);

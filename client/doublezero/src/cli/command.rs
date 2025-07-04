@@ -22,63 +22,63 @@ pub enum Command {
     #[command(hide = true)]
     Init(InitCliCommand),
     /// Connect your server to a doublezero device
-    #[command(hide = false)]
+    #[command()]
     Connect(ProvisioningCliCommand),
     /// Get the status of your service
-    #[command(hide = false)]
+    #[command()]
     Status(StatusCliCommand),
     /// Disconnect your server from the doublezero network
-    #[command(hide = false)]
+    #[command()]
     Disconnect(DecommissioningCliCommand),
     /// Get device latencies
-    #[command(hide = false)]
+    #[command()]
     Latency(LatencyCliCommand),
     /// Get your public key
-    #[command(hide = false)]
+    #[command()]
     Address(AddressCliCommand),
     /// Get your balance
-    #[command(hide = false)]
+    #[command()]
     Balance(BalanceCliCommand),
     /// local configuration
-    #[command(hide = false)]
+    #[command()]
     Config(ConfigCliCommand),
     /// Global network configuration
-    #[command(hide = false)]
+    #[command()]
     GlobalConfig(GlobalConfigCliCommand),
     /// Get Account
-    #[command(hide = false)]
+    #[command()]
     Account(GetAccountCliCommand),
     /// Manage locations
-    #[command(hide = false)]
+    #[command()]
     Location(LocationCliCommand),
     /// Manage exchanges
-    #[command(hide = false)]
+    #[command()]
     Exchange(ExchangeCliCommand),
     /// Manage contributors
-    #[command(hide = false)]
+    #[command()]
     Contributor(ContributorCliCommand),
-    #[command(hide = false)]
+    #[command()]
     Device(DeviceCliCommand),
     /// Manage tunnels between devices
-    #[command(hide = false)]
+    #[command()]
     Link(LinkCliCommand),
     /// Manage users
-    #[command(hide = false)]
+    #[command()]
     User(UserCliCommand),
     /// Manage multicast
-    #[command(hide = false)]
+    #[command()]
     Multicast(MulticastCliCommand),
     /// Export all data to files
-    #[command(hide = false)]
+    #[command()]
     Export(ExportCliCommand),
     /// Create a new user identity
-    #[command(hide = false)]
+    #[command()]
     Keygen(KeyGenCliCommand),
     /// Get logs
-    #[command(hide = false)]
+    #[command()]
     Log(LogCliCommand),
     /// Generate shell completions
-    #[command(hide = false)]
+    #[command()]
     Completion(CompletionCliCommand),
 }
 

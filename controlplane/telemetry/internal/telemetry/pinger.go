@@ -69,9 +69,11 @@ func (p *Pinger) Tick(ctx context.Context) {
 				Epoch:          DeriveEpoch(ts),
 			}
 
+			log := p.log.With("device", peer.DevicePK.String(), "link", peer.LinkPK.String(), "addr", peer.DeviceAddr.String())
+
 			sender := p.cfg.GetSender(peer)
 			if sender == nil {
-				p.log.Debug("Failed to create sender, recording loss", "peer", peer.String())
+				log.Debug("Failed to create sender, recording loss")
 				p.cfg.Buffer.Add(accountKey, Sample{
 					Timestamp: ts,
 					RTT:       0,
@@ -82,7 +84,7 @@ func (p *Pinger) Tick(ctx context.Context) {
 
 			rtt, err := sender.Probe(ctx)
 			if err != nil {
-				p.log.Debug("Probe failed, recording loss", "peer", peer.String(), "error", err)
+				log.Debug("Probe failed, recording loss", "error", err)
 				p.cfg.Buffer.Add(accountKey, Sample{
 					Timestamp: ts,
 					RTT:       0,

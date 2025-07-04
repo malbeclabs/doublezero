@@ -74,7 +74,7 @@ func NewLedgerPeerDiscovery(cfg *LedgerPeerDiscoveryConfig) (*ledgerPeerDiscover
 }
 
 func (p *ledgerPeerDiscovery) Run(ctx context.Context) error {
-	p.log.Info("==> Starting peer discovery")
+	p.log.Info("Starting peer discovery")
 	ticker := time.NewTicker(p.config.RefreshInterval)
 	defer ticker.Stop()
 
@@ -148,6 +148,6 @@ func (p *ledgerPeerDiscovery) refresh(ctx context.Context) {
 		}
 	}
 
-	p.log.Debug("==> Refreshed ledger data", "devices", len(devices), "links", len(links))
+	p.log.Debug("Refreshed ledger data", "devices", len(devices), "links", len(links))
 	p.peers = peers
 }

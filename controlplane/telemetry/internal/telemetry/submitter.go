@@ -13,13 +13,13 @@ import (
 )
 
 type SubmitterConfig struct {
-	Interval      time.Duration
-	Buffer        *AccountsBuffer
-	AgentPK       solana.PublicKey
-	ProbeInterval time.Duration
-	ProgramClient TelemetryProgramClient
-	BackoffFunc   func(attempt int) time.Duration // optional, defaults to exponential backoff
-	MaxAttempts   int                             // optional, defaults to 5
+	Interval           time.Duration
+	Buffer             *AccountsBuffer
+	MetricsPublisherPK solana.PublicKey
+	ProbeInterval      time.Duration
+	ProgramClient      TelemetryProgramClient
+	BackoffFunc        func(attempt int) time.Duration // optional, defaults to exponential backoff
+	MaxAttempts        int                             // optional, defaults to 5
 }
 
 // Submitter periodically flushes collected telemetry samples from the sample
@@ -41,7 +41,7 @@ func NewSubmitter(log *slog.Logger, cfg *SubmitterConfig) *Submitter {
 }
 
 func (s *Submitter) Run(ctx context.Context) error {
-	s.log.Info("==> Starting submission loop")
+	s.log.Info("Starting submission loop", "interval", s.cfg.Interval, "maxRetries", s.cfg.MaxAttempts, "metricsPublisherPK", s.cfg.MetricsPublisherPK)
 
 	ticker := time.NewTicker(s.cfg.Interval)
 	defer ticker.Stop()
@@ -49,10 +49,10 @@ func (s *Submitter) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			s.log.Debug("==> Submission loop done")
+			s.log.Debug("Submission loop done")
 			return nil
 		case <-ticker.C:
-			s.log.Debug("==> Submission loop ticked")
+			s.log.Debug("Submission loop ticked")
 			s.Tick(ctx)
 		}
 	}
@@ -62,7 +62,7 @@ func (s *Submitter) SubmitSamples(ctx context.Context, accountKey AccountKey, sa
 	log := s.log.With("account", accountKey)
 
 	if len(samples) == 0 {
-		log.Debug("==> No samples to submit, skipping")
+		log.Debug("No samples to submit, skipping")
 		return nil
 	}
 
@@ -74,7 +74,7 @@ func (s *Submitter) SubmitSamples(ctx context.Context, accountKey AccountKey, sa
 			rtts[i] = uint32(sample.RTT.Microseconds())
 		}
 	}
-	log.Debug("==> Submitting account samples", "count", len(samples), "samples", rtts)
+	log.Debug("Submitting account samples", "count", len(samples), "samples", rtts)
 
 	// Get earliest timestamp from samples.
 	var minTimestamp time.Time
@@ -86,7 +86,7 @@ func (s *Submitter) SubmitSamples(ctx context.Context, accountKey AccountKey, sa
 	startTimestampMicroseconds := uint64(minTimestamp.UnixMicro())
 
 	writeConfig := telemetry.WriteDeviceLatencySamplesInstructionConfig{
-		AgentPK:                    s.cfg.AgentPK,
+		AgentPK:                    s.cfg.MetricsPublisherPK,
 		OriginDevicePK:             accountKey.OriginDevicePK,
 		TargetDevicePK:             accountKey.TargetDevicePK,
 		LinkPK:                     accountKey.LinkPK,
@@ -97,9 +97,9 @@ func (s *Submitter) SubmitSamples(ctx context.Context, accountKey AccountKey, sa
 	_, _, err := s.cfg.ProgramClient.WriteDeviceLatencySamples(ctx, writeConfig)
 	if err != nil {
 		if errors.Is(err, telemetry.ErrAccountNotFound) {
-			log.Debug("==> Account not found, initializing")
+			log.Debug("Account not found, initializing")
 			_, _, err = s.cfg.ProgramClient.InitializeDeviceLatencySamples(ctx, telemetry.InitializeDeviceLatencySamplesInstructionConfig{
-				AgentPK:                      s.cfg.AgentPK,
+				AgentPK:                      s.cfg.MetricsPublisherPK,
 				OriginDevicePK:               accountKey.OriginDevicePK,
 				TargetDevicePK:               accountKey.TargetDevicePK,
 				LinkPK:                       accountKey.LinkPK,
@@ -119,7 +119,7 @@ func (s *Submitter) SubmitSamples(ctx context.Context, accountKey AccountKey, sa
 		}
 	}
 
-	log.Debug("==> Submitted account samples", "count", len(samples))
+	log.Debug("Submitted account samples", "count", len(samples))
 
 	return nil
 }
@@ -133,7 +133,7 @@ func (s *Submitter) Tick(ctx context.Context) {
 	for accountKey := range s.cfg.Buffer.FlushWithoutReset() {
 		tmp := s.cfg.Buffer.CopyAndReset(accountKey)
 
-		log := s.log.With("accountKey", accountKey)
+		log := s.log.With("account", accountKey)
 
 		log.Debug("Submitting samples", "count", len(tmp))
 

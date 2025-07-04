@@ -31,7 +31,7 @@ func NewPinger(log *slog.Logger, cfg *PingerConfig) *Pinger {
 }
 
 func (p *Pinger) Run(ctx context.Context) error {
-	p.log.Info("==> Starting probe loop")
+	p.log.Info("Starting probe loop")
 
 	ticker := time.NewTicker(p.cfg.Interval)
 	defer ticker.Stop()
@@ -39,7 +39,7 @@ func (p *Pinger) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			p.log.Debug("==> Probe loop done")
+			p.log.Debug("Probe loop done")
 			return nil
 		case <-ticker.C:
 			p.Tick(ctx)
@@ -56,7 +56,7 @@ func (p *Pinger) Tick(ctx context.Context) {
 			defer wg.Done()
 
 			if !sleepOrDone(ctx, time.Millisecond) {
-				p.log.Debug("==> Probe loop cancelled during iteration")
+				p.log.Debug("Probe loop cancelled during iteration")
 				return
 			}
 
@@ -71,7 +71,7 @@ func (p *Pinger) Tick(ctx context.Context) {
 
 			sender := p.cfg.GetSender(peerKey, peer)
 			if sender == nil {
-				p.log.Debug("==> Failed to create sender, recording loss", "peer", peerKey)
+				p.log.Debug("Failed to create sender, recording loss", "peer", peerKey)
 				p.cfg.Buffer.Add(accountKey, Sample{
 					Timestamp: ts,
 					RTT:       0,
@@ -82,7 +82,7 @@ func (p *Pinger) Tick(ctx context.Context) {
 
 			rtt, err := sender.Probe(ctx)
 			if err != nil {
-				p.log.Debug("==> Probe failed, recording loss", "peer", peerKey, "error", err)
+				p.log.Debug("Probe failed, recording loss", "peer", peerKey, "error", err)
 				p.cfg.Buffer.Add(accountKey, Sample{
 					Timestamp: ts,
 					RTT:       0,

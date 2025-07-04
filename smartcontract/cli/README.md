@@ -208,7 +208,7 @@ Below is a list of available CLI commands for each main on-chain structure:
     | --lat        | f64      | Latitude                   |
     | --lng        | f64      | Longitude                  |
 
--### Contributor
+### Contributor
 - `contributor create` — Create a new contributor
     | Argument     | Type     | Description                |
     |--------------|----------|----------------------------|

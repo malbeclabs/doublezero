@@ -16,7 +16,7 @@ The following Rust structures define the on-chain account types that the smart c
 - **Exchange**: Structure and enums for exchanges, including status.
 - **Contributor**: Structure and enums for contributors, including status.
 - **Device**: Structure and enums for devices, including device type and status.
-- **Link**: Structure and enums for tunnels, including tunnel type and status.
+- **Link**: Structure and enums for links, including tunnel type and status.
 - **User**: Structure and enums for users, including user type.
 - **MulticastGroup**: Structure and enums for multicast groups, including status.
 - **GlobalConfig**: Structure for global configuration parameters, such as ASNs and network blocks.
@@ -59,7 +59,7 @@ classDiagram
         u128 index
         u8 bump_seed
         ContributorStatus status
-        Pubkey ata_owner
+        Pubkey ata_owner_pk
         String code
     }
     class Device {
@@ -225,15 +225,15 @@ stateDiagram-v2
     Deleting --> [*]
 ```
 
-| Field        | Type             | Description        |
-| ------------ | ---------------- | ------------------ |
-| account_type | AccountType      | Type of account    |
-| owner        | Pubkey           | Contributor owner  |
-| index        | u128             | Contributor index  |
-| bump_seed    | u8               | PDA bump seed      |
-| status       | Contributortatus | Contributor status |
-| code         | String           | Location code      |
-| ata_owner    | Pubkey           | ATA identity       |
+| Field        | Type              | Description        |
+| ------------ | ----------------- | ------------------ |
+| account_type | AccountType       | Type of account    |
+| owner        | Pubkey            | Contributor owner  |
+| index        | u128              | Contributor index  |
+| bump_seed    | u8                | PDA bump seed      |
+| status       | ContributorStatus | Contributor status |
+| code         | String            | Contributor code   |
+| ata_owner    | Pubkey            | ATA identity       |
 
 ## Device
 

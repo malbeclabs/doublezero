@@ -143,7 +143,6 @@ Creates a new location with the specified parameters. Returns the transaction si
 
 ### UpdateLocationCommand
 Updates the parameters of an existing location. Returns the transaction signature.
-- `index: u128` — Location index
 - `code: Option<String>` — Optional new code
 - `name: Option<String>` — Optional new name
 - `country: Option<String>` — Optional new country
@@ -157,7 +156,7 @@ Fetches a location by its public key or code. Returns the location's public key 
 
 ### DeleteLocationCommand
 Deletes a location by index. Returns the transaction signature.
-- `index: u128` — Location index
+- `pubkey: Pubkey` — Pubkey
 
 ### ListLocationCommand
 Lists all locations in the program. Returns a map of location public keys to their on-chain data.
@@ -175,7 +174,7 @@ Lists all locations in the program. Returns a map of location public keys to the
 
 ### ResumeLocationCommand
 Resumes a previously suspended location by index. Returns the transaction signature.
-- `index: u128` — Location index
+- `pubkey: Pubkey` — Pubkey
 
 ## Exchange Commands
 
@@ -191,7 +190,7 @@ Creates a new exchange with the specified parameters. Returns the transaction si
 
 ### UpdateExchangeCommand
 Updates the parameters of an existing exchange. Returns the transaction signature.
-- `index: u128` — Exchange index
+- `pubkey: Pubkey` — Pubkey
 - `code: Option<String>` — Optional new code
 - `name: Option<String>` — Optional new name
 - `lat: Option<f64>` — Optional new latitude
@@ -204,7 +203,7 @@ Fetches an exchange by its public key or code. Returns the exchange's public key
 
 ### DeleteExchangeCommand
 Deletes an exchange by index. Returns the transaction signature.
-- `index: u128` — Exchange index
+- `pubkey: Pubkey` — Pubkey
 
 ### ListExchangeCommand
 Lists all exchanges in the program. Returns a map of exchange public keys to their on-chain data.
@@ -227,6 +226,38 @@ Creates a new location with the specified parameters. Returns the transaction si
 - `lng: f64` — Longitude
 - `loc_id: Option<u32>` — Optional location ID
 
+## Contributor Commands
+
+Network Contributors are responsible for administering devices and tunnels in the DoubleZero network. These users expand and maintain the network by adding and managing hardware and connectivity. The following commands allow you to manage contributor-related entities on the protocol. Each command is represented by a struct with the listed arguments.
+
+### CreateContributorCommand
+Creates a new network contributor with the specified parameters. Returns the transaction signature and the contributor's public key on success.
+- `code: String` — Unique contributor code
+- `ata_owner: Pubkey` — ATA Identity
+
+### UpdateContributorCommand
+Updates the parameters of an existing contributor. Returns the transaction signature.
+- `pubkey: Pubkey` — Pubkey
+- `code: Option<String>` — Optional new code
+- `ata_owner: Option<Pubkey>` — Optional new ATA identity
+
+### GetContributorCommand
+Fetches a contributor by its public key or code. Returns the contributor's public key and on-chain data if found.
+- `pubkey_or_code: String` — Contributor public key or code
+
+### DeleteContributorCommand
+Deletes a contributor by index. Returns the transaction signature.
+
+### ListContributorCommand
+Lists all contributors in the program. Returns a map of contributor public keys to their on-chain data.
+- *(no arguments)*
+
+| Field        | Type    | Description                  |
+|--------------|---------|------------------------------|
+| pda_pubkey   | Pubkey  | PDA public key (primary key) |
+| code         | String  | Unique contributor code      |
+| ata_owner    | Pubkey  | ATA Identity                 |
+
 ## Device Commands
 
 The following commands allow you to manage Device entities on the DoubleZero protocol. Each command is represented by a struct with the listed arguments.
@@ -242,7 +273,7 @@ Creates a new device with the specified parameters. Returns the transaction sign
 
 ### UpdateDeviceCommand
 Updates the parameters of an existing device. Returns the transaction signature.
-- `index: u128` — Device index
+- `pubkey: Pubkey` — Pubkey
 - `code: Option<String>` — Optional new code
 - `device_type: Option<DeviceType>` — Optional new type
 - `public_ip: Option<Ipv4Addr>` — Optional new public IP
@@ -254,7 +285,7 @@ Fetches a device by its public key or code. Returns the device's public key and 
 
 ### DeleteDeviceCommand
 Deletes a device by index. Returns the transaction signature.
-- `index: u128` — Device index
+- `pubkey: Pubkey` — Pubkey
 
 ### ListDeviceCommand
 Lists all devices in the program. Returns a map of device public keys to their on-chain data.
@@ -272,17 +303,17 @@ Lists all devices in the program. Returns a map of device public keys to their o
 
 ### CloseAccountDeviceCommand
 Closes the device account, releasing its resources. Returns the transaction signature.
-- `index: u128` — Device index
+- `pubkey: Pubkey` — Pubkey
 - `owner: Pubkey` — Owner public key
 
 ### RejectDeviceCommand
 Rejects a device by index, providing a reason. Returns the transaction signature.
-- `index: u128` — Device index
+- `pubkey: Pubkey` — Pubkey
 - `reason: String` — Rejection reason
 
 ### ResumeDeviceCommand
 Resumes a previously suspended device by index. Returns the transaction signature.
-- `index: u128` — Device index
+- `pubkey: Pubkey` — Pubkey
 
 ## Tunnel Commands
 
@@ -305,26 +336,26 @@ Fetches a tunnel by its public key or code. Returns the tunnel's public key and 
 
 ### RejectTunnelCommand
 Rejects a tunnel by index, providing a reason. Returns the transaction signature.
-- `index: u128` — Tunnel index
+- `pubkey: Pubkey` — Pubkey
 - `reason: String` — Rejection reason
 
 ### ResumeTunnelCommand
 Resumes a previously suspended tunnel by index. Returns the transaction signature.
-- `index: u128` — Tunnel index
+- `pubkey: Pubkey` — Pubkey
 
 ### DeleteTunnelCommand
 Deletes a tunnel by index. Returns the transaction signature.
-- `index: u128` — Tunnel index
+- `pubkey: Pubkey` — Pubkey
 
 ### ActivateTunnelCommand
 Activates a tunnel, assigning it a tunnel ID and network. Returns the transaction signature.
-- `index: u128` — Tunnel index
+- `pubkey: Pubkey` — Pubkey
 - `tunnel_id: u16` — Tunnel ID
 - `tunnel_net: NetworkV4` — Tunnel network (IPv4)
 
 ### CloseAccountTunnelCommand
 Closes the tunnel account, releasing its resources. Returns the transaction signature.
-- `index: u128` — Tunnel index
+- `pubkey: Pubkey` — Pubkey
 - `owner: Pubkey` — Owner public key
 
 ### ListTunnelCommand
@@ -347,7 +378,7 @@ Lists all tunnels in the program. Returns a map of tunnel public keys to their o
 
 ### UpdateTunnelCommand
 Updates the parameters of an existing tunnel. Returns the transaction signature.
-- `index: u128` — Tunnel index
+- `pubkey: Pubkey` — Pubkey
 - `code: Option<String>` — Optional new code
 - `tunnel_type: Option<TunnelTunnelType>` — Optional new type
 - `bandwidth: Option<u64>` — Optional new bandwidth
@@ -357,7 +388,7 @@ Updates the parameters of an existing tunnel. Returns the transaction signature.
 
 ### SuspendTunnelCommand
 Suspends a tunnel, disabling its operation without deleting it. Returns the transaction signature.
-- `index: u128` — Tunnel index
+- `pubkey: Pubkey` — Pubkey
 
 ## User Commands
 
@@ -372,7 +403,7 @@ Creates a new user with the specified parameters. Returns the transaction signat
 
 ### UpdateUserCommand
 Updates the parameters of an existing user. Returns the transaction signature.
-- `index: u128` — User index
+- `pubkey: Pubkey` — Pubkey
 - `user_type: Option<UserType>` — Optional new user type
 - `cyoa_type: Option<UserCYOA>` — Optional new CYOA type
 - `client_ip: Option<Ipv4Addr>` — Optional new client IP
@@ -386,7 +417,7 @@ Fetches a user by its public key or code. Returns the user's public key and its 
 
 ### DeleteUserCommand
 Deletes a user by index. Returns the transaction signature.
-- `index: u128` — User index
+- `pubkey: Pubkey` — Pubkey
 
 ### ListUserCommand
 Lists all users in the program. Returns a map of user public keys to their on-chain data.
@@ -405,19 +436,19 @@ Lists all users in the program. Returns a map of user public keys to their on-ch
 
 ### SuspendUserCommand
 Suspends a user, disabling their access without deleting the account. Returns the transaction signature.
-- `index: u128` — User index
+- `pubkey: Pubkey` — Pubkey
 
 ### ResumeUserCommand
 Resumes a previously suspended user by index. Returns the transaction signature.
-- `index: u128` — User index
+- `pubkey: Pubkey` — Pubkey
 
 ### CloseAccountUserCommand
 Closes the user account, releasing its resources. Returns the transaction signature.
-- `index: u128` — User index
+- `pubkey: Pubkey` — Pubkey
 - `owner: Pubkey` — Owner public key
 
 ### RejectUserCommand
 Rejects a user by index, providing a reason. Returns the transaction signature.
-- `index: u128` — User index
+- `pubkey: Pubkey` — Pubkey
 - `reason: String` — Rejection reason
 

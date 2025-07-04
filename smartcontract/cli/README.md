@@ -45,13 +45,20 @@ classDiagram
         String code
         String name
     }
+    class Contributor {
+        AccountType account_type
+        Pubkey owner
+        u128 index
+        u8 bump_seed
+        ContributorStatus status
+        Pubkey ata_owner
+        String code
+    }
     class Device {
         AccountType account_type
         Pubkey owner
         u128 index
         u8 bump_seed
-        Pubkey location_pk
-        Pubkey exchange_pk
         DeviceType device_type
         Ipv4Addr public_ip
         DeviceStatus status
@@ -63,8 +70,6 @@ classDiagram
         Pubkey owner
         u128 index
         u8 bump_seed
-        Pubkey side_a_pk
-        Pubkey side_z_pk
         TunnelTunnelType tunnel_type
         u64 bandwidth
         u32 mtu
@@ -82,7 +87,6 @@ classDiagram
         u8 bump_seed
         UserType user_type
         Pubkey tenant_pk
-        Pubkey device_pk
         UserCYOA cyoa_type
         Ipv4Addr client_ip
         Ipv4Addr dz_ip
@@ -90,7 +94,8 @@ classDiagram
         NetworkV4 tunnel_net
         UserStatus status
     }
-    Device --> Exchange : exchange_pk
+    Device --> Contributor : contributor_pk
+    Device --> Exchange : exchange_pk    
     Device --> Location  : location_pk
     Tunnel --> Device : side_a_pk
     Tunnel --> Device : side_z_pk
@@ -202,6 +207,36 @@ Below is a list of available CLI commands for each main on-chain structure:
     | --country    | String   | Country                    |
     | --lat        | f64      | Latitude                   |
     | --lng        | f64      | Longitude                  |
+
+-### Contributor
+- `contributor create` — Create a new contributor
+    | Argument     | Type     | Description                |
+    |--------------|----------|----------------------------|
+    | --code       | String   | Unique contributor code    |
+    | --ata-owner  | Pubkey   | ATA owner public key       |
+- `contributor delete` — Delete a contributor
+    | Argument   | Type   | Description                 |
+    |------------|--------|-----------------------------|
+    | --pubkey   | Pubkey | Contributor public key/code  |
+- `contributor get` — Get contributor details
+    | Argument   | Type   | Description                 |
+    |------------|--------|-----------------------------|
+    | --code     | String | Contributor public key/code  |
+- `contributor list` — List all contributors
+    *(none)*
+    | Field         | Type     | Description                |
+    |-------------- |----------|----------------------------|
+    | account       | Pubkey   | Contributor public key     |
+    | code          | String   | Contributor code           |
+    | ata_owner     | Pubkey   | ATA owner public key       |
+    | status        | Enum     | Contributor status         |
+    | owner         | Pubkey   | Owner's public key         |
+- `contributor update` — Update contributor information
+    | Argument     | Type     | Description                |
+    |--------------|----------|----------------------------|
+    | --pubkey     | Pubkey   | Contributor public key     |
+    | --code       | String   | New contributor code       |
+    | --ata-owner  | Pubkey   | New ATA owner public key   |
 
 ### Device
 - `device create` — Create a new device

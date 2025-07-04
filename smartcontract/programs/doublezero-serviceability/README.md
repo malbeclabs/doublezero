@@ -14,8 +14,9 @@ The following Rust structures define the on-chain account types that the smart c
 
 - **Location**: Structure and enums for locations, including status.
 - **Exchange**: Structure and enums for exchanges, including status.
+- **Contributor**: Structure and enums for contributors, including status.
 - **Device**: Structure and enums for devices, including device type and status.
-- **Link**: Structure and enums for tunnels, including tunnel type and status.
+- **Link**: Structure and enums for links, including tunnel type and status.
 - **User**: Structure and enums for users, including user type.
 - **MulticastGroup**: Structure and enums for multicast groups, including status.
 - **GlobalConfig**: Structure for global configuration parameters, such as ASNs and network blocks.
@@ -52,13 +53,20 @@ classDiagram
         String code
         String name
     }
+    class Contributor {
+        AccountType account_type
+        Pubkey owner
+        u128 index
+        u8 bump_seed
+        ContributorStatus status
+        Pubkey ata_owner_pk
+        String code
+    }
     class Device {
         AccountType account_type
         Pubkey owner
         u128 index
         u8 bump_seed
-        Pubkey location_pk
-        Pubkey exchange_pk
         DeviceType device_type
         Ipv4Addr public_ip
         DeviceStatus status
@@ -70,8 +78,6 @@ classDiagram
         Pubkey owner
         u128 index
         u8 bump_seed
-        Pubkey side_a_pk
-        Pubkey side_z_pk
         LinkLinkType tunnel_type
         u64 bandwidth
         u32 mtu
@@ -89,7 +95,6 @@ classDiagram
         u8 bump_seed
         UserType user_type
         Pubkey tenant_pk
-        Pubkey device_pk
         UserCYOA cyoa_type
         Ipv4Addr client_ip
         Ipv4Addr dz_ip
@@ -129,6 +134,7 @@ classDiagram
         Pubkey[] device_allowlist
         Pubkey[] user_allowlist
     }
+    Device --> Contributor : contributor_pk
     Device --> Exchange : exchange_pk
     Device --> Location  : location_pk
     Link --> Device : side_a_pk
@@ -203,6 +209,31 @@ stateDiagram-v2
 | status       | ExchangeStatus | Exchange status |
 | code         | String         | Exchange code   |
 | name         | String         | Exchange name   |
+
+
+## Contributor
+
+Network Contributors are responsible for administering devices and tunnels in the DoubleZero network. These users expand and maintain the network by adding and managing hardware and connectivity. 
+
+```mermaid
+stateDiagram-v2
+    [*] --> Activated
+    Activated --> Suspended: suspend
+    Activated --> Deleting: delete
+    Suspended --> Activated: resume
+    Suspended --> Deleting: delete
+    Deleting --> [*]
+```
+
+| Field        | Type              | Description        |
+| ------------ | ----------------- | ------------------ |
+| account_type | AccountType       | Type of account    |
+| owner        | Pubkey            | Contributor owner  |
+| index        | u128              | Contributor index  |
+| bump_seed    | u8                | PDA bump seed      |
+| status       | ContributorStatus | Contributor status |
+| code         | String            | Contributor code   |
+| ata_owner    | Pubkey            | ATA identity       |
 
 ## Device
 

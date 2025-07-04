@@ -478,7 +478,7 @@ func (d *Device) setState(ctx context.Context, containerID string) error {
 		return true, nil
 	}, timeout, 500*time.Millisecond)
 	if err != nil {
-		return fmt.Errorf("failed to wait for ledger RPC port to be exposed: %w", err)
+		return fmt.Errorf("failed to wait for EAPI HTTP port to be exposed: %w", err)
 	}
 	d.ExternalEAPIHTTPPort = port
 

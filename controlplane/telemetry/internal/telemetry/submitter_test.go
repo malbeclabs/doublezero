@@ -297,6 +297,79 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		samplesAfter := buffer.CopyAndReset(key)
 		assert.Len(t, samplesAfter, 1, "samples should be preserved if context cancels during retries")
 		assert.Less(t, attempts, int32(5), "should stop retrying when context is cancelled")
-
 	})
+
+	t.Run("removes_account_key_for_past_epoch_with_no_samples", func(t *testing.T) {
+		t.Parallel()
+
+		log := log.With("test", t.Name())
+
+		pastEpoch := telemetry.DeriveEpoch(time.Now().Add(-2 * 24 * time.Hour).UTC())
+		key := telemetry.AccountKey{
+			OriginDevicePK: solana.NewWallet().PublicKey(),
+			TargetDevicePK: solana.NewWallet().PublicKey(),
+			LinkPK:         solana.NewWallet().PublicKey(),
+			Epoch:          pastEpoch,
+		}
+
+		buffer := telemetry.NewAccountsBuffer()
+		buffer.Add(key, telemetry.Sample{}) // Add a sample just to register the key
+		_ = buffer.CopyAndReset(key)        // Now make it empty
+
+		assert.True(t, buffer.Has(key), "buffer should contain key before tick")
+
+		telemetryProgram := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(ctx context.Context, _ sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				t.Fatalf("should not call WriteDeviceLatencySamples for empty samples")
+				return solana.Signature{}, nil, nil
+			},
+		}
+
+		submitter := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+			Interval:      time.Hour,
+			Buffer:        buffer,
+			ProgramClient: telemetryProgram,
+			MaxAttempts:   1,
+			BackoffFunc:   func(_ int) time.Duration { return 0 },
+		})
+
+		submitter.Tick(context.Background())
+
+		assert.False(t, buffer.Has(key), "key from past epoch should be removed if buffer is empty")
+	})
+
+	t.Run("keeps_account_key_for_current_epoch_with_no_samples", func(t *testing.T) {
+		t.Parallel()
+
+		log := log.With("test", t.Name())
+
+		currentEpoch := telemetry.DeriveEpoch(time.Now().UTC())
+		key := telemetry.AccountKey{
+			OriginDevicePK: solana.NewWallet().PublicKey(),
+			TargetDevicePK: solana.NewWallet().PublicKey(),
+			LinkPK:         solana.NewWallet().PublicKey(),
+			Epoch:          currentEpoch,
+		}
+
+		buffer := telemetry.NewAccountsBuffer()
+		buffer.Add(key, telemetry.Sample{})
+		_ = buffer.CopyAndReset(key)
+
+		assert.True(t, buffer.Has(key), "buffer should contain key before tick")
+
+		telemetryProgram := &mockTelemetryProgramClient{}
+
+		submitter := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+			Interval:      time.Hour,
+			Buffer:        buffer,
+			ProgramClient: telemetryProgram,
+			MaxAttempts:   1,
+			BackoffFunc:   func(_ int) time.Duration { return 0 },
+		})
+
+		submitter.Tick(context.Background())
+
+		assert.True(t, buffer.Has(key), "buffer should retain key for current epoch even if empty")
+	})
+
 }

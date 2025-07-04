@@ -83,4 +83,25 @@ func TestAgentTelemetry_Buffer_AccountsBuffer(t *testing.T) {
 		buf.Add(k, newTestSample())
 		require.Len(t, buf.FlushWithoutReset()[k], 1)
 	})
+
+	t.Run("Remove removes account key", func(t *testing.T) {
+		buf := telemetry.NewAccountsBuffer()
+		k := newTestAccountKey()
+		buf.Add(k, newTestSample())
+		buf.Remove(k)
+		require.False(t, buf.Has(k))
+	})
+
+	t.Run("Has returns true if account key exists", func(t *testing.T) {
+		buf := telemetry.NewAccountsBuffer()
+		k := newTestAccountKey()
+		buf.Add(k, newTestSample())
+		require.True(t, buf.Has(k))
+	})
+
+	t.Run("Has returns false if account key does not exist", func(t *testing.T) {
+		buf := telemetry.NewAccountsBuffer()
+		k := newTestAccountKey()
+		require.False(t, buf.Has(k))
+	})
 }

@@ -15,7 +15,7 @@ type PingerConfig struct {
 	Interval      time.Duration
 	Peers         PeerDiscovery
 	Buffer        *AccountsBuffer
-	GetSender     func(peerKey string, peer *Peer) twamplight.Sender
+	GetSender     func(peer *Peer) twamplight.Sender
 }
 
 // Pinger is responsible for periodically probing remote peers using TWAMP.
@@ -50,9 +50,9 @@ func (p *Pinger) Run(ctx context.Context) error {
 func (p *Pinger) Tick(ctx context.Context) {
 	peers := p.cfg.Peers.GetPeers()
 	var wg sync.WaitGroup
-	for peerKey, peer := range peers {
+	for _, peer := range peers {
 		wg.Add(1)
-		go func(peerKey string, peer *Peer) {
+		go func(peer *Peer) {
 			defer wg.Done()
 
 			if !sleepOrDone(ctx, time.Millisecond) {
@@ -69,9 +69,9 @@ func (p *Pinger) Tick(ctx context.Context) {
 				Epoch:          DeriveEpoch(ts),
 			}
 
-			sender := p.cfg.GetSender(peerKey, peer)
+			sender := p.cfg.GetSender(peer)
 			if sender == nil {
-				p.log.Debug("Failed to create sender, recording loss", "peer", peerKey)
+				p.log.Debug("Failed to create sender, recording loss", "peer", peer.String())
 				p.cfg.Buffer.Add(accountKey, Sample{
 					Timestamp: ts,
 					RTT:       0,
@@ -82,7 +82,7 @@ func (p *Pinger) Tick(ctx context.Context) {
 
 			rtt, err := sender.Probe(ctx)
 			if err != nil {
-				p.log.Debug("Probe failed, recording loss", "peer", peerKey, "error", err)
+				p.log.Debug("Probe failed, recording loss", "peer", peer.String(), "error", err)
 				p.cfg.Buffer.Add(accountKey, Sample{
 					Timestamp: ts,
 					RTT:       0,
@@ -96,7 +96,7 @@ func (p *Pinger) Tick(ctx context.Context) {
 				RTT:       rtt,
 				Loss:      false,
 			})
-		}(peerKey, peer)
+		}(peer)
 	}
 	wg.Wait()
 }

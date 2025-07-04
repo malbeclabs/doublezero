@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -23,21 +24,27 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 		log := slog.With("test", t.Name())
 		localDevicePK := stringToPubkey("device1")
 
-		serviceabilityProgram := newMockServiceabilityProgramClient(func(c *mockServiceabilityProgramClient) error {
-			c.devices = []serviceability.Device{
-				{PubKey: localDevicePK, PublicIp: [4]uint8{192, 168, 1, 1}},
-				{PubKey: stringToPubkey("device2"), PublicIp: [4]uint8{192, 168, 1, 2}},
-				{PubKey: stringToPubkey("device3"), PublicIp: [4]uint8{192, 168, 1, 3}},
-				{PubKey: stringToPubkey("device4"), PublicIp: [4]uint8{192, 168, 1, 4}},
-			}
-			c.links = []serviceability.Link{
-				{PubKey: stringToPubkey("link_1-2"), SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device2")},
-				{PubKey: stringToPubkey("link_1-3"), SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device3")},
-				{PubKey: stringToPubkey("link_2-1"), SideAPubKey: stringToPubkey("device2"), SideZPubKey: localDevicePK},
-				{PubKey: stringToPubkey("link_2-3"), SideAPubKey: stringToPubkey("device2"), SideZPubKey: stringToPubkey("device3")},
-			}
-			return nil
-		})
+		serviceabilityProgram := &mockServiceabilityProgramClient{
+			LoadFunc: func(ctx context.Context) error {
+				return nil
+			},
+			GetDevicesFunc: func() []serviceability.Device {
+				return []serviceability.Device{
+					{PubKey: localDevicePK, PublicIp: [4]uint8{192, 168, 1, 1}},
+					{PubKey: stringToPubkey("device2"), PublicIp: [4]uint8{192, 168, 1, 2}},
+					{PubKey: stringToPubkey("device3"), PublicIp: [4]uint8{192, 168, 1, 3}},
+					{PubKey: stringToPubkey("device4"), PublicIp: [4]uint8{192, 168, 1, 4}},
+				}
+			},
+			GetLinksFunc: func() []serviceability.Link {
+				return []serviceability.Link{
+					{PubKey: stringToPubkey("link_1-2"), SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device2")},
+					{PubKey: stringToPubkey("link_1-3"), SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device3")},
+					{PubKey: stringToPubkey("link_2-1"), SideAPubKey: stringToPubkey("device2"), SideZPubKey: localDevicePK},
+					{PubKey: stringToPubkey("link_2-3"), SideAPubKey: stringToPubkey("device2"), SideZPubKey: stringToPubkey("device3")},
+				}
+			},
+		}
 
 		config := &telemetry.LedgerPeerDiscoveryConfig{
 			Logger:          log,
@@ -86,6 +93,78 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 		}
 	})
 
+	t.Run("removes_peer_when_link_removed_from_ledger", func(t *testing.T) {
+		t.Parallel()
+
+		log := slog.With("test", t.Name())
+		localDevicePK := stringToPubkey("device1")
+		device2PK := stringToPubkey("device2")
+		linkPK := stringToPubkey("link_1-2")
+
+		var mu sync.RWMutex
+		state := struct {
+			links   []serviceability.Link
+			devices []serviceability.Device
+		}{
+			devices: []serviceability.Device{
+				{PubKey: localDevicePK, PublicIp: [4]uint8{192, 168, 1, 1}},
+				{PubKey: device2PK, PublicIp: [4]uint8{192, 168, 1, 2}},
+			},
+			links: []serviceability.Link{
+				{PubKey: linkPK, SideAPubKey: localDevicePK, SideZPubKey: device2PK},
+			},
+		}
+
+		serviceabilityProgram := &mockServiceabilityProgramClient{
+			LoadFunc: func(ctx context.Context) error {
+				return nil
+			},
+			GetDevicesFunc: func() []serviceability.Device {
+				mu.RLock()
+				defer mu.RUnlock()
+				return state.devices
+			},
+			GetLinksFunc: func() []serviceability.Link {
+				mu.RLock()
+				defer mu.RUnlock()
+				return state.links
+			},
+		}
+
+		config := &telemetry.LedgerPeerDiscoveryConfig{
+			Logger:          log,
+			LocalDevicePK:   localDevicePK,
+			TWAMPPort:       12345,
+			RefreshInterval: 50 * time.Millisecond,
+			ProgramClient:   serviceabilityProgram,
+		}
+
+		peers, err := telemetry.NewLedgerPeerDiscovery(config)
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+
+		go func() {
+			require.NoError(t, peers.Run(ctx))
+		}()
+
+		// Wait for peer to appear
+		require.Eventually(t, func() bool {
+			return len(peers.GetPeers()) == 1
+		}, 2*time.Second, 50*time.Millisecond, "peer should be initially discovered")
+
+		// Remove the link (simulate on-chain deletion)
+		mu.Lock()
+		state.links = []serviceability.Link{}
+		mu.Unlock()
+
+		// Wait for peer to disappear
+		require.Eventually(t, func() bool {
+			return len(peers.GetPeers()) == 0
+		}, 2*time.Second, 50*time.Millisecond, "peer should be removed after link disappears")
+	})
+
 	t.Run("invalid config", func(t *testing.T) {
 		t.Parallel()
 
@@ -102,7 +181,17 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 			LocalDevicePK:   stringToPubkey("device1"),
 			TWAMPPort:       1234,
 			RefreshInterval: 100 * time.Millisecond,
-			ProgramClient:   newMockServiceabilityProgramClient(func(c *mockServiceabilityProgramClient) error { return nil }),
+			ProgramClient: &mockServiceabilityProgramClient{
+				LoadFunc: func(ctx context.Context) error {
+					return nil
+				},
+				GetDevicesFunc: func() []serviceability.Device {
+					return []serviceability.Device{}
+				},
+				GetLinksFunc: func() []serviceability.Link {
+					return []serviceability.Link{}
+				},
+			},
 		}
 
 		cfg := valid

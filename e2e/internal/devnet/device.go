@@ -338,7 +338,6 @@ func (d *Device) Start(ctx context.Context) error {
 		"-probe-interval", spec.Telemetry.ProbeInterval.String(),
 		"-submission-interval", spec.Telemetry.SubmissionInterval.String(),
 		"-peers-refresh-interval", spec.Telemetry.PeersRefreshInterval.String(),
-		"-verbose",
 	}
 	if spec.Telemetry.Verbose {
 		telemetryCommandArgs = append(telemetryCommandArgs, "-verbose")

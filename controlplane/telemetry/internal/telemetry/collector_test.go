@@ -217,6 +217,82 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 			return len(mockProgram.GetAccounts(t)) > 0
 		}, 2*time.Second, 100*time.Millisecond)
 	})
+
+	t.Run("updates_sender_when_peer_address_changes", func(t *testing.T) {
+		t.Parallel()
+
+		log := log.With("test", t.Name())
+		devicePK := stringToPubkey("device1")
+		peerPK := stringToPubkey("device2")
+		linkPK := stringToPubkey("link1-2")
+
+		reflector := newTestReflector(t)
+		telemetryProgram := newMemoryTelemetryProgramClient()
+
+		peerDiscovery := newMockPeerDiscovery()
+
+		// Initially peer points to valid reflector
+		peerDiscovery.UpdatePeers(t, []*telemetry.Peer{
+			{
+				DevicePK:   peerPK,
+				LinkPK:     linkPK,
+				DeviceAddr: reflector.LocalAddr().(*net.UDPAddr),
+			},
+		})
+
+		collector, err := telemetry.New(log, telemetry.Config{
+			LocalDevicePK:          devicePK,
+			ProbeInterval:          100 * time.Millisecond,
+			SubmissionInterval:     250 * time.Millisecond,
+			TWAMPSenderTimeout:     250 * time.Millisecond,
+			TWAMPReflector:         reflector,
+			PeerDiscovery:          peerDiscovery,
+			TelemetryProgramClient: telemetryProgram,
+		})
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+
+		go func() {
+			require.NoError(t, collector.Run(ctx))
+		}()
+
+		epoch := telemetry.DeriveEpoch(time.Now())
+
+		accountKey := telemetry.AccountKey{
+			OriginDevicePK: devicePK,
+			TargetDevicePK: peerPK,
+			LinkPK:         linkPK,
+			Epoch:          epoch,
+		}
+
+		// Wait for successful RTT submission
+		require.Eventually(t, func() bool {
+			samples := telemetryProgram.GetAccounts(t)[accountKey]
+			return len(samples) > 0 && !samples[len(samples)-1].Loss
+		}, 3*time.Second, 100*time.Millisecond, "should have working sender with real address")
+
+		// Simulate address change to non-working peer
+		peerDiscovery.UpdatePeers(t, []*telemetry.Peer{
+			{
+				DevicePK:   peerPK,
+				LinkPK:     linkPK,
+				DeviceAddr: &net.UDPAddr{IP: net.IPv4(203, 0, 113, 1), Port: 9999}, // dummy/test address
+			},
+		})
+
+		// Wait for RTT to show packet loss (indicating sender was updated and is now failing)
+		require.Eventually(t, func() bool {
+			samples := telemetryProgram.GetAccounts(t)[accountKey]
+			for _, s := range samples {
+				if s.Loss {
+					return true
+				}
+			}
+			return false
+		}, 5*time.Second, 100*time.Millisecond, "should reflect new address in updated sender")
+	})
 }
 
 func newTestReflector(t *testing.T) *twamplight.Reflector {

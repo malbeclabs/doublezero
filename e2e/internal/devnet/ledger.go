@@ -48,6 +48,9 @@ func (s *LedgerSpec) Validate() error {
 
 	// If the external host is not set, use localhost, assuming the test is running in a docker container.
 	localhost := os.Getenv("DIND_LOCALHOST")
+	if localhost == "" {
+		localhost = "localhost"
+	}
 	if s.ExternalHost == "" {
 		s.ExternalHost = localhost
 	}

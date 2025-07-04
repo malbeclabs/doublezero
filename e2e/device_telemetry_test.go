@@ -131,7 +131,6 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 			set -euo pipefail
 
-			doublezero contributor create --code co01 --ata-owner 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
 			doublezero device create --code ld4-dz01 --contributor co01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "195.219.120.72/29"
 			doublezero device create --code frk-dz01 --contributor co01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "195.219.220.88/29"
 			doublezero device create --code sg1-dz01 --contributor co01 --location sin --exchange xsin --public-ip "180.87.102.104" --dz-prefixes "180.87.102.104/29"

@@ -11,9 +11,9 @@ pub struct ConfigCliCommand {
 #[derive(Debug, Subcommand)]
 pub enum ConfigCommands {
     /// Get current config settings
-    #[command(hide = false)]
+    #[command()]
     Get(GetConfigCliCommand),
     /// Set a config setting
-    #[command(hide = false)]
+    #[command()]
     Set(SetConfigCliCommand),
 }

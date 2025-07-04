@@ -22,7 +22,7 @@ pub struct CreateDeviceCliCommand {
     /// Unique device code
     #[arg(long, value_parser = validate_code)]
     pub code: String,
-    /// Location (pubkey or code) associated with the device
+    /// Contributor (pubkey or code) associated with the device
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub contributor: String,
     /// Location (pubkey or code) associated with the device

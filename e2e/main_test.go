@@ -162,8 +162,7 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 	dn.Manager.Exec(ctx, []string{"bash", "-c", `
 		set -euo pipefail
 
-		echo "==> Populate device information onchain - DO NOT SHUFFLE THESE AS THE PUBKEYS WILL CHANGE"
-		doublezero contributor create --code co01 --ata-owner 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
+		echo "==> Populate device information onchain"
 		doublezero device create --code ld4-dz01 --contributor co01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "195.219.120.72/29"
 		doublezero device create --code frk-dz01 --contributor co01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "195.219.220.88/29"
 		doublezero device create --code sg1-dz01 --contributor co01 --location sin --exchange xsin --public-ip "180.87.102.104" --dz-prefixes "180.87.102.104/29"

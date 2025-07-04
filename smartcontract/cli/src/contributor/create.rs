@@ -4,7 +4,9 @@ use crate::{
     validators::{validate_code, validate_pubkey},
 };
 use clap::Args;
-use doublezero_sdk::commands::contributor::create::CreateContributorCommand;
+use doublezero_sdk::commands::contributor::{
+    create::CreateContributorCommand, list::ListContributorCommand,
+};
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, str::FromStr};
 
@@ -22,6 +24,14 @@ impl CreateContributorCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
+
+        let contributors = client.list_contributor(ListContributorCommand {})?;
+        if contributors.iter().any(|(_, d)| d.code == self.code) {
+            return Err(eyre::eyre!(
+                "Contributor with code '{}' already exists",
+                self.code
+            ));
+        }
 
         let ata_owner = Pubkey::from_str(&self.ata_owner)
             .map_err(|_| eyre::eyre!("Invalid ATA owner pubkey"))?;
@@ -46,7 +56,8 @@ mod tests {
         tests::utils::create_test_client,
     };
     use doublezero_sdk::{
-        commands::contributor::create::CreateContributorCommand, get_contributor_pda,
+        commands::contributor::{create::CreateContributorCommand, list::ListContributorCommand},
+        get_contributor_pda, AccountType, Contributor, ContributorStatus,
     };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
@@ -64,6 +75,25 @@ mod tests {
         ]);
 
         client
+            .expect_list_contributor()
+            .with(predicate::eq(ListContributorCommand {}))
+            .returning(move |_| {
+                Ok(vec![(
+                    pda_pubkey,
+                    Contributor {
+                        account_type: AccountType::Contributor,
+                        owner: Pubkey::default(),
+                        index: 1,
+                        ata_owner_pk: Pubkey::default(),
+                        code: "test2".to_string(),
+                        status: ContributorStatus::Activated,
+                        bump_seed: 0,
+                    },
+                )]
+                .into_iter()
+                .collect())
+            });
+        client
             .expect_check_requirements()
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
@@ -77,6 +107,14 @@ mod tests {
             .returning(move |_| Ok((signature, pda_pubkey)));
 
         /*****************************************************************************************************/
+        let mut output = Vec::new();
+        let res = CreateContributorCliCommand {
+            code: "test2".to_string(),
+            ata_owner: Pubkey::default().to_string(),
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_err());
+
         let mut output = Vec::new();
         let res = CreateContributorCliCommand {
             code: "test".to_string(),

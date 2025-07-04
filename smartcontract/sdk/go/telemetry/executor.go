@@ -164,7 +164,9 @@ func (e *executor) waitForTransactionFinalized(ctx context.Context, sig solana.S
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-time.After(1 * time.Second):
-			e.log.Debug("--> Waiting for transaction to be finalized", "sig", sig)
+			if time.Since(start)/time.Second%5 == 0 {
+				e.log.Debug("--> Still waiting for transaction to be finalized", "sig", sig, "elapsed", time.Since(start))
+			}
 		}
 	}
 

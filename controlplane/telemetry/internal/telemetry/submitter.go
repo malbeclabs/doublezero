@@ -13,13 +13,13 @@ import (
 )
 
 type SubmitterConfig struct {
-	Interval      time.Duration
-	Buffer        *AccountsBuffer
-	AgentPK       solana.PublicKey
-	ProbeInterval time.Duration
-	ProgramClient TelemetryProgramClient
-	BackoffFunc   func(attempt int) time.Duration // optional, defaults to exponential backoff
-	MaxAttempts   int                             // optional, defaults to 5
+	Interval           time.Duration
+	Buffer             *AccountsBuffer
+	MetricsPublisherPK solana.PublicKey
+	ProbeInterval      time.Duration
+	ProgramClient      TelemetryProgramClient
+	BackoffFunc        func(attempt int) time.Duration // optional, defaults to exponential backoff
+	MaxAttempts        int                             // optional, defaults to 5
 }
 
 // Submitter periodically flushes collected telemetry samples from the sample
@@ -41,7 +41,7 @@ func NewSubmitter(log *slog.Logger, cfg *SubmitterConfig) *Submitter {
 }
 
 func (s *Submitter) Run(ctx context.Context) error {
-	s.log.Info("==> Starting submission loop")
+	s.log.Info("Starting submission loop", "interval", s.cfg.Interval, "maxRetries", s.cfg.MaxAttempts, "metricsPublisherPK", s.cfg.MetricsPublisherPK)
 
 	ticker := time.NewTicker(s.cfg.Interval)
 	defer ticker.Stop()
@@ -49,10 +49,10 @@ func (s *Submitter) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			s.log.Debug("==> Submission loop done")
+			s.log.Debug("Submission loop done")
 			return nil
 		case <-ticker.C:
-			s.log.Debug("==> Submission loop ticked")
+			s.log.Debug("Submission loop ticked")
 			s.Tick(ctx)
 		}
 	}
@@ -62,7 +62,7 @@ func (s *Submitter) SubmitSamples(ctx context.Context, accountKey AccountKey, sa
 	log := s.log.With("account", accountKey)
 
 	if len(samples) == 0 {
-		log.Debug("==> No samples to submit, skipping")
+		log.Debug("No samples to submit, skipping")
 		return nil
 	}
 
@@ -74,7 +74,7 @@ func (s *Submitter) SubmitSamples(ctx context.Context, accountKey AccountKey, sa
 			rtts[i] = uint32(sample.RTT.Microseconds())
 		}
 	}
-	log.Debug("==> Submitting account samples", "count", len(samples), "samples", rtts)
+	log.Debug("Submitting account samples", "count", len(samples), "samples", rtts)
 
 	// Get earliest timestamp from samples.
 	var minTimestamp time.Time
@@ -86,7 +86,7 @@ func (s *Submitter) SubmitSamples(ctx context.Context, accountKey AccountKey, sa
 	startTimestampMicroseconds := uint64(minTimestamp.UnixMicro())
 
 	writeConfig := telemetry.WriteDeviceLatencySamplesInstructionConfig{
-		AgentPK:                    s.cfg.AgentPK,
+		AgentPK:                    s.cfg.MetricsPublisherPK,
 		OriginDevicePK:             accountKey.OriginDevicePK,
 		TargetDevicePK:             accountKey.TargetDevicePK,
 		LinkPK:                     accountKey.LinkPK,
@@ -97,9 +97,9 @@ func (s *Submitter) SubmitSamples(ctx context.Context, accountKey AccountKey, sa
 	_, _, err := s.cfg.ProgramClient.WriteDeviceLatencySamples(ctx, writeConfig)
 	if err != nil {
 		if errors.Is(err, telemetry.ErrAccountNotFound) {
-			log.Debug("==> Account not found, initializing")
+			log.Debug("Account not found, initializing")
 			_, _, err = s.cfg.ProgramClient.InitializeDeviceLatencySamples(ctx, telemetry.InitializeDeviceLatencySamplesInstructionConfig{
-				AgentPK:                      s.cfg.AgentPK,
+				AgentPK:                      s.cfg.MetricsPublisherPK,
 				OriginDevicePK:               accountKey.OriginDevicePK,
 				TargetDevicePK:               accountKey.TargetDevicePK,
 				LinkPK:                       accountKey.LinkPK,
@@ -119,7 +119,7 @@ func (s *Submitter) SubmitSamples(ctx context.Context, accountKey AccountKey, sa
 		}
 	}
 
-	log.Debug("==> Submitted account samples", "count", len(samples))
+	log.Debug("Submitted account samples", "count", len(samples))
 
 	return nil
 }
@@ -133,10 +133,12 @@ func (s *Submitter) Tick(ctx context.Context) {
 	for accountKey := range s.cfg.Buffer.FlushWithoutReset() {
 		tmp := s.cfg.Buffer.CopyAndReset(accountKey)
 
-		s.log.Debug("==> Submitting samples", "account", accountKey, "count", len(tmp))
+		log := s.log.With("account", accountKey)
+
+		log.Debug("Submitting samples", "count", len(tmp))
 
 		if len(tmp) == 0 {
-			s.log.Debug("==> No samples to submit, skipping")
+			log.Debug("No samples to submit, skipping")
 			s.cfg.Buffer.Recycle(accountKey, tmp)
 			continue
 		}
@@ -145,13 +147,8 @@ func (s *Submitter) Tick(ctx context.Context) {
 		for attempt := 1; attempt <= maxAttempts; attempt++ {
 			err := s.SubmitSamples(ctx, accountKey, tmp)
 			if err == nil {
-				s.log.Debug("==> Submitted samples", "count", len(tmp), "attempt", attempt)
+				log.Debug("Submitted samples", "count", len(tmp), "attempt", attempt)
 				success = true
-				break
-			}
-
-			if attempt == maxAttempts {
-				s.log.Error("==> Failed to submit samples after retries", "error", err, "accountKey", accountKey, "samplesCount", len(tmp))
 				break
 			}
 
@@ -159,15 +156,22 @@ func (s *Submitter) Tick(ctx context.Context) {
 			if s.cfg.BackoffFunc != nil {
 				backoff = s.cfg.BackoffFunc(attempt)
 			} else {
-				base := 250 * time.Millisecond
-				jitter := time.Duration(float64(base) * (0.5 + 0.5*s.rng.Float64()))
-				backoff = time.Duration(attempt) * jitter
+				backoff = s.defaultBackoff(attempt)
 			}
 
-			s.log.Warn("==> Submission failed, retrying", "attempt", attempt, "delay", backoff, "error", err)
+			switch attempt {
+			case 1:
+				log.Debug("Submission failed, retrying...", "attempt", attempt, "error", err)
+			case maxAttempts:
+				log.Error("Submission failed after all retries", "attempt", attempt, "samplesCount", len(tmp), "error", err)
+			case (maxAttempts + 1) / 2:
+				log.Debug("Submission failed, still retrying...", "attempt", attempt, "error", err)
+			default:
+				log.Debug("Submission failed, retrying...", "attempt", attempt, "delay", backoff, "error", err)
+			}
 
 			if !sleepOrDone(ctx, backoff) {
-				s.log.Debug("==> Submission retry aborted by context")
+				log.Debug("Submission retry aborted by context")
 				break
 			}
 		}
@@ -181,4 +185,16 @@ func (s *Submitter) Tick(ctx context.Context) {
 		// Always recycle the slice for reuse
 		s.cfg.Buffer.Recycle(accountKey, tmp)
 	}
+}
+
+func (s *Submitter) defaultBackoff(attempt int) time.Duration {
+	base := 500 * time.Millisecond
+	max := 5 * time.Second
+	jitter := 0.5 + 0.5*s.rng.Float64()
+	mult := 1 << uint(attempt-1)
+	backoff := time.Duration(float64(base) * float64(mult) * jitter)
+	if backoff > max {
+		return max
+	}
+	return backoff
 }

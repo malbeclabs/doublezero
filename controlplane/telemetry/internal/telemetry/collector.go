@@ -45,11 +45,11 @@ func New(log *slog.Logger, cfg Config) (*Collector, error) {
 	}
 
 	c.submitter = NewSubmitter(log, &SubmitterConfig{
-		Interval:      cfg.SubmissionInterval,
-		Buffer:        buffer,
-		AgentPK:       cfg.MetricsPublisherPK,
-		ProbeInterval: cfg.ProbeInterval,
-		ProgramClient: cfg.TelemetryProgramClient,
+		Interval:           cfg.SubmissionInterval,
+		Buffer:             buffer,
+		MetricsPublisherPK: cfg.MetricsPublisherPK,
+		ProbeInterval:      cfg.ProbeInterval,
+		ProgramClient:      cfg.TelemetryProgramClient,
 	})
 
 	c.pinger = NewPinger(log, &PingerConfig{
@@ -67,7 +67,7 @@ func New(log *slog.Logger, cfg Config) (*Collector, error) {
 // and blocks until shutdown or an unrecoverable error occurs.
 // Each component is started in its own goroutine with coordinated lifecycle management.
 func (c *Collector) Run(ctx context.Context) error {
-	c.log.Info("==> Starting telemetry collector",
+	c.log.Info("Starting telemetry collector",
 		"twampReflector", c.reflector.LocalAddr(),
 		"localDevicePK", c.cfg.LocalDevicePK,
 		"probeInterval", c.cfg.ProbeInterval,
@@ -137,7 +137,7 @@ func (c *Collector) Run(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
 	case e := <-errCh:
-		c.log.Error("==> Telemetry collector shutting down due to error", "error", e)
+		c.log.Error("Telemetry collector shutting down due to error", "error", e)
 		err = e
 		cancel()
 	}
@@ -145,7 +145,7 @@ func (c *Collector) Run(ctx context.Context) error {
 	wg.Wait()
 
 	if cerr := c.Close(runCtx); cerr != nil {
-		c.log.Warn("==> Failed to close telemetry collector", "error", cerr)
+		c.log.Warn("Failed to close telemetry collector", "error", cerr)
 	}
 
 	return err
@@ -154,18 +154,18 @@ func (c *Collector) Run(ctx context.Context) error {
 // Close gracefully shuts down the Collector by submitting remaining samples,
 // stopping the TWAMP reflector, and closing all active TWAMP senders.
 func (c *Collector) Close(ctx context.Context) error {
-	c.log.Info("==> Closing telemetry collector")
+	c.log.Info("Closing telemetry collector")
 
 	// Submit any buffered samples.
 	for accountKey, samples := range c.buffer.FlushWithoutReset() {
 		if len(samples) > 0 {
-			c.log.Debug("==> Submitting remaining samples", "account", accountKey, "count", len(samples))
+			c.log.Debug("Submitting remaining samples", "account", accountKey, "count", len(samples))
 			for attempt := 1; attempt <= 2; attempt++ {
 				err := c.submitter.SubmitSamples(ctx, accountKey, samples)
 				if err == nil {
 					break
 				}
-				c.log.Warn("==> Final sample submission failed", "attempt", attempt, "error", err)
+				c.log.Warn("Final sample submission failed", "attempt", attempt, "error", err)
 				sleepOrDone(ctx, time.Duration(attempt)*500*time.Millisecond)
 			}
 		}
@@ -173,13 +173,13 @@ func (c *Collector) Close(ctx context.Context) error {
 
 	// Close the TWAMP reflector.
 	if err := c.reflector.Close(); err != nil {
-		c.log.Warn("==> Failed to close TWAMP reflector", "error", err)
+		c.log.Warn("Failed to close TWAMP reflector", "error", err)
 	}
 
 	// Close the TWAMP senders.
 	for _, entry := range c.senders {
 		if err := entry.sender.Close(); err != nil {
-			c.log.Warn("==> Failed to close TWAMP sender", "error", err)
+			c.log.Warn("Failed to close TWAMP sender", "error", err)
 		}
 	}
 
@@ -203,7 +203,7 @@ func (c *Collector) getOrCreateSender(peerKey string, peer *Peer) twamplight.Sen
 
 	sender, err := twamplight.NewSender(c.log, peer.DeviceAddr, c.cfg.TWAMPSenderTimeout)
 	if err != nil {
-		c.log.Error("==> Failed to create sender", "error", err)
+		c.log.Error("Failed to create sender", "error", err)
 		return nil
 	}
 	c.senders[peerKey] = &senderEntry{sender: sender, lastUsed: time.Now()}
@@ -218,7 +218,7 @@ func (c *Collector) cleanupIdleSenders(maxIdle time.Duration) {
 
 	for key, entry := range c.senders {
 		if now.Sub(entry.lastUsed) > maxIdle {
-			c.log.Debug("==> Evicting idle sender", "peer", key)
+			c.log.Debug("Evicting idle sender", "peer", key)
 			_ = entry.sender.Close()
 			delete(c.senders, key)
 		}

@@ -28,3 +28,11 @@ RUN ARCH=$(uname -m) && \
     cp -r /opt/agave/solana-release/bin/* /opt/solana/bin/ && \
     rm -rf /tmp/agave.tar.bz2
 ENV PATH="/opt/solana/bin:${PATH}"
+
+# Alias to access the DinD container's published ports from inside the container,
+# since localhost does not route through NAT. Used in place of `localhost`.
+ENV DIND_LOCALHOST=host.docker.internal
+
+# Tell Testcontainers to connect to the Docker daemon via host.docker.internal,
+# so sidecar containers like Ryuk can reach the DinD container hosting the daemon.
+ENV TESTCONTAINERS_HOST_OVERRIDE=${DIND_LOCALHOST}

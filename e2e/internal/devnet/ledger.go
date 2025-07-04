@@ -47,8 +47,12 @@ func (s *LedgerSpec) Validate() error {
 	}
 
 	// If the external host is not set, use localhost, assuming the test is running in a docker container.
+	localhost := os.Getenv("DIND_LOCALHOST")
+	if localhost == "" {
+		localhost = "localhost"
+	}
 	if s.ExternalHost == "" {
-		s.ExternalHost = "localhost"
+		s.ExternalHost = localhost
 	}
 
 	return nil
@@ -133,7 +137,7 @@ func (l *Ledger) StartIfNotRunning(ctx context.Context) (bool, error) {
 		}
 
 		// Wait for the ledger to be healthy.
-		err = waitForSolanaReady(ctx, l.log, l.ExternalRPCPort)
+		err = waitForSolanaReady(ctx, l.log, l.dn.Spec.Ledger.ExternalHost, l.ExternalRPCPort)
 		if err != nil {
 			return false, fmt.Errorf("failed to wait for ledger to be healthy: %w", err)
 		}
@@ -217,7 +221,7 @@ func (l *Ledger) Start(ctx context.Context) error {
 	}
 
 	// Wait for the ledger to be healthy.
-	err = waitForSolanaReady(ctx, l.log, l.ExternalRPCPort)
+	err = waitForSolanaReady(ctx, l.log, l.dn.Spec.Ledger.ExternalHost, l.ExternalRPCPort)
 	if err != nil {
 		return fmt.Errorf("failed to wait for ledger to be healthy: %w", err)
 	}
@@ -267,14 +271,14 @@ func (l *Ledger) setState(ctx context.Context, containerID string) error {
 	return nil
 }
 
-func waitForSolanaReady(ctx context.Context, log *slog.Logger, rpcPort int) error {
+func waitForSolanaReady(ctx context.Context, log *slog.Logger, rpcHost string, rpcPort int) error {
 	var loggedWait bool
 	timeout := 20 * time.Second
 	var attempts int
 	err := pollUntil(ctx, func() (bool, error) {
 		attempts++
 		reqBody := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"getHealth"}`)
-		req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://localhost:%d/", rpcPort), reqBody)
+		req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://%s:%d/", rpcHost, rpcPort), reqBody)
 		if err != nil {
 			if !loggedWait && attempts > 1 {
 				log.Debug("--> Waiting for solana to be ready", "rpcPort", rpcPort, "timeout", timeout, "error", err)

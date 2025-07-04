@@ -1,5 +1,13 @@
 use core::fmt;
 
+use crate::{
+    error::DoubleZeroError,
+    globalstate::{globalstate_get_next, globalstate_write},
+    helper::*,
+    pda::*,
+    state::{accounttype::AccountType, device::*},
+    types::*,
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
 use solana_program::msg;
@@ -10,20 +18,12 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-use crate::{
-    error::DoubleZeroError,
-    globalstate::{globalstate_get_next, globalstate_write},
-    helper::*,
-    pda::*,
-    state::{accounttype::AccountType, device::*},
-    types::*,
-};
-
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct DeviceCreateArgs {
     pub index: u128,
     pub bump_seed: u8,
     pub code: String,
+    pub contributor_pk: Pubkey,
     pub location_pk: Pubkey,
     pub exchange_pk: Pubkey,
     pub device_type: DeviceType,
@@ -50,6 +50,7 @@ pub fn process_create_device(
     let accounts_iter = &mut accounts.iter();
 
     let pda_account = next_account_info(accounts_iter)?;
+    let contributor_account = next_account_info(accounts_iter)?;
     let location_account = next_account_info(accounts_iter)?;
     let exchange_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
@@ -58,6 +59,23 @@ pub fn process_create_device(
 
     #[cfg(test)]
     msg!("process_create_device({:?})", value);
+
+    assert_eq!(
+        contributor_account.owner, program_id,
+        "Invalid Contributor Account Owner"
+    );
+    assert_eq!(
+        location_account.owner, program_id,
+        "Invalid Location Account Owner"
+    );
+    assert_eq!(
+        exchange_account.owner, program_id,
+        "Invalid Exchange Account Owner"
+    );
+    assert_eq!(
+        globalstate_account.owner, program_id,
+        "Invalid GlobalState Account Owner"
+    );
 
     if !pda_account.data.borrow().is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);
@@ -83,6 +101,12 @@ pub fn process_create_device(
     assert!(bump_seed == value.bump_seed, "Invalid Device Bump Seed");
 
     // Check account Types
+    if contributor_account.data_is_empty()
+        || contributor_account.data.borrow()[0] != AccountType::Contributor as u8
+    {
+        return Err(DoubleZeroError::InvalidLocationPubkey.into());
+    }
+    // Check account Types
     if location_account.data_is_empty()
         || location_account.data.borrow()[0] != AccountType::Location as u8
     {
@@ -106,6 +130,7 @@ pub fn process_create_device(
         index: globalstate.account_index,
         bump_seed,
         code: value.code.clone(),
+        contributor_pk: value.contributor_pk,
         location_pk: value.location_pk,
         exchange_pk: value.exchange_pk,
         device_type: value.device_type,

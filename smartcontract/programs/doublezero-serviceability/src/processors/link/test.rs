@@ -5,10 +5,13 @@ mod tunnel_test {
         instructions::*,
         pda::*,
         processors::{
+            contributor::create::ContributorCreateArgs,
             link::{activate::*, create::*, delete::*, resume::*, suspend::*, update::*},
             *,
         },
-        state::{accounttype::AccountType, device::DeviceType, link::*},
+        state::{
+            accounttype::AccountType, contributor::ContributorStatus, device::DeviceType, link::*,
+        },
         tests::test::*,
     };
     use globalconfig::set::SetGlobalConfigArgs;
@@ -38,7 +41,7 @@ mod tunnel_test {
             &mut banks_client,
             recent_blockhash,
             program_id,
-            DoubleZeroInstruction::InitGlobalState,
+            DoubleZeroInstruction::InitGlobalState(),
             vec![
                 AccountMeta::new(program_config_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
@@ -129,10 +132,47 @@ mod tunnel_test {
         .await;
 
         /***********************************************************************************************************************************/
+        println!("🟢 5. Create Contributor...");
+        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+        let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+        assert_eq!(globalstate_account.account_index, 2);
+
+        let (contributor_pubkey, bump_seed) =
+            get_contributor_pda(&program_id, globalstate_account.account_index + 1);
+
+        execute_transaction(
+            &mut banks_client,
+            recent_blockhash,
+            program_id,
+            DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
+                index: globalstate_account.account_index + 1,
+                bump_seed,
+                code: "cont".to_string(),
+                ata_owner_pk: Pubkey::default(),
+            }),
+            vec![
+                AccountMeta::new(contributor_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
+            &payer,
+        )
+        .await;
+
+        let contributor = get_account_data(&mut banks_client, contributor_pubkey)
+            .await
+            .expect("Unable to get Account")
+            .get_contributor()
+            .unwrap();
+        assert_eq!(contributor.account_type, AccountType::Contributor);
+        assert_eq!(contributor.code, "cont".to_string());
+        assert_eq!(contributor.status, ContributorStatus::Activated);
+
+        println!("✅ Contributor initialized successfully",);
+        /***********************************************************************************************************************************/
         println!("🟢 3. Create Device...");
 
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-        assert_eq!(globalstate_account.account_index, 2);
+        assert_eq!(globalstate_account.account_index, 3);
 
         let (device_a_pubkey, bump_seed) =
             get_device_pda(&program_id, globalstate_account.account_index + 1);
@@ -146,6 +186,7 @@ mod tunnel_test {
                 bump_seed,
                 code: "A".to_string(),
                 device_type: DeviceType::Switch,
+                contributor_pk: contributor_pubkey,
                 location_pk: location_pubkey,
                 exchange_pk: exchange_pubkey,
                 public_ip: [10, 0, 0, 1].into(),
@@ -154,6 +195,7 @@ mod tunnel_test {
             }),
             vec![
                 AccountMeta::new(device_a_pubkey, false),
+                AccountMeta::new(contributor_pubkey, false),
                 AccountMeta::new(location_pubkey, false),
                 AccountMeta::new(exchange_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
@@ -166,7 +208,7 @@ mod tunnel_test {
         println!("🟢 4. Create Device...");
 
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-        assert_eq!(globalstate_account.account_index, 3);
+        assert_eq!(globalstate_account.account_index, 4);
 
         let (device_z_pubkey, bump_seed) =
             get_device_pda(&program_id, globalstate_account.account_index + 1);
@@ -180,6 +222,7 @@ mod tunnel_test {
                 bump_seed,
                 code: "Z".to_string(),
                 device_type: DeviceType::Switch,
+                contributor_pk: contributor_pubkey,
                 location_pk: location_pubkey,
                 exchange_pk: exchange_pubkey,
                 public_ip: [11, 0, 0, 1].into(),
@@ -188,6 +231,7 @@ mod tunnel_test {
             }),
             vec![
                 AccountMeta::new(device_z_pubkey, false),
+                AccountMeta::new(contributor_pubkey, false),
                 AccountMeta::new(location_pubkey, false),
                 AccountMeta::new(exchange_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
@@ -204,7 +248,7 @@ mod tunnel_test {
         let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-        assert_eq!(globalstate_account.account_index, 4);
+        assert_eq!(globalstate_account.account_index, 5);
 
         let (tunnel_pubkey, bump_seed) =
             get_link_pda(&program_id, globalstate_account.account_index + 1);

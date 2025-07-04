@@ -1,9 +1,9 @@
 use super::multicast::MulticastCliCommand;
 use crate::{
     cli::{
-        config::ConfigCliCommand, device::DeviceCliCommand, exchange::ExchangeCliCommand,
-        globalconfig::GlobalConfigCliCommand, link::LinkCliCommand, location::LocationCliCommand,
-        user::UserCliCommand,
+        config::ConfigCliCommand, contributor::ContributorCliCommand, device::DeviceCliCommand,
+        exchange::ExchangeCliCommand, globalconfig::GlobalConfigCliCommand, link::LinkCliCommand,
+        location::LocationCliCommand, user::UserCliCommand,
     },
     command::{
         connect::ProvisioningCliCommand, disconnect::DecommissioningCliCommand,
@@ -54,7 +54,9 @@ pub enum Command {
     /// Manage exchanges
     #[command(hide = false)]
     Exchange(ExchangeCliCommand),
-    /// Manage devices
+    /// Manage contributors
+    #[command(hide = false)]
+    Contributor(ContributorCliCommand),
     #[command(hide = false)]
     Device(DeviceCliCommand),
     /// Manage tunnels between devices

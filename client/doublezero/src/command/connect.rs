@@ -776,6 +776,7 @@ mod tests {
                 owner: Pubkey::new_unique(),
                 index: 1,
                 bump_seed: 1,
+                contributor_pk: Pubkey::new_unique(),
                 location_pk: Pubkey::new_unique(),
                 exchange_pk: Pubkey::new_unique(),
                 device_type: DeviceType::Switch,

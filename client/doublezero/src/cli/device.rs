@@ -1,5 +1,4 @@
 use clap::{Args, Subcommand};
-
 use doublezero_cli::{
     allowlist::device::{
         add::AddDeviceAllowlistCliCommand, list::ListDeviceAllowlistCliCommand,

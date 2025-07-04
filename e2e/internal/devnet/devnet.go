@@ -633,7 +633,7 @@ func (d *Devnet) GetOrCreateDeviceOnchain(ctx context.Context, deviceCode string
 	deviceAddress, err := d.GetDevicePubkeyOnchain(ctx, deviceCode)
 	if err != nil {
 		if errors.Is(err, ErrDeviceNotFoundOnchain) {
-			args := []string{"doublezero", "device", "create", "--code", deviceCode, "--location", location, "--exchange", exchange, "--public-ip", publicIP, "--dz-prefixes", strings.Join(prefixes, ",")}
+			args := []string{"doublezero", "device", "create", "--contributor", "co01", "--code", deviceCode, "--location", location, "--exchange", exchange, "--public-ip", publicIP, "--dz-prefixes", strings.Join(prefixes, ",")}
 			if metricsPublisherPK != "" {
 				args = append(args, "--metrics-publisher", metricsPublisherPK)
 			}
@@ -660,7 +660,7 @@ func (d *Devnet) CreateDeviceOnchain(ctx context.Context, deviceCode string, loc
 	d.onchainWriteMutex.Lock()
 	defer d.onchainWriteMutex.Unlock()
 
-	_, err := d.Manager.Exec(ctx, []string{"doublezero", "device", "create", "--code", deviceCode, "--location", location, "--exchange", exchange, "--public-ip", publicIP, "--dz-prefixes", strings.Join(prefixes, ",")})
+	_, err := d.Manager.Exec(ctx, []string{"doublezero", "device", "create", "--code", deviceCode, "--contributor", "co01", "--location", location, "--exchange", exchange, "--public-ip", publicIP, "--dz-prefixes", strings.Join(prefixes, ",")})
 	if err != nil {
 		return fmt.Errorf("failed to create device onchain: %w", err)
 	}

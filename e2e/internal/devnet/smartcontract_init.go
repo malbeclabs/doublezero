@@ -117,7 +117,11 @@ func (dn *Devnet) InitSmartContract(ctx context.Context) error {
 		echo "--> Exchange information onchain:"
 		doublezero exchange list
 
+		echo "==> Populating contributor information onchain"
+		doublezero contributor create --code co01 --ata-owner 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
+
 		echo "--> Smart contract initialized"
+
 	`})
 	if err != nil {
 		return fmt.Errorf("failed to execute script initializing smart contract: %w", err)

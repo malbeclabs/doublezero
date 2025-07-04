@@ -170,6 +170,7 @@ mod tests {
                 Ok(locations)
             });
 
+        let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let device_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1");
         let device = Device {
             account_type: AccountType::Device,
@@ -177,6 +178,7 @@ mod tests {
             bump_seed: 255,
             code: "test_device".to_string(),
             device_type: doublezero_sdk::DeviceType::Switch,
+            contributor_pk,
             location_pk: Pubkey::default(),
             status: DeviceStatus::Activated,
             owner: device_pubkey,

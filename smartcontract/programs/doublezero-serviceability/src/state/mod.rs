@@ -1,5 +1,6 @@
 pub mod accountdata;
 pub mod accounttype;
+pub mod contributor;
 pub mod device;
 pub mod exchange;
 pub mod globalconfig;

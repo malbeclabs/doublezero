@@ -83,14 +83,15 @@ pub struct Device {
     pub code: String,                 // 4 + len
     pub dz_prefixes: NetworkV4List,   // 4 + 5 * len
     pub metrics_publisher_pk: Pubkey, // 32
+    pub contributor_pk: Pubkey,       // 32
 }
 
 impl fmt::Display for Device {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, index: {}, location_pk: {}, exchange_pk: {}, device_type: {}, public_ip: {}, dz_prefixes: {}, status: {}, code: {}, metrics_publisher_pk: {}",
-            self.account_type, self.owner, self.index, self.location_pk, self.exchange_pk, self.device_type, &self.public_ip, &self.dz_prefixes, self.status, self.code, self.metrics_publisher_pk
+            "account_type: {}, owner: {}, index: {}, contributor_pk: {}, location_pk: {}, exchange_pk: {}, device_type: {}, public_ip: {}, dz_prefixes: {}, status: {}, code: {}, metrics_publisher_pk: {}",
+            self.account_type, self.owner, self.index, self.contributor_pk, self.location_pk, self.exchange_pk, self.device_type, &self.public_ip, &self.dz_prefixes, self.status, self.code, self.metrics_publisher_pk
         )
     }
 }
@@ -112,6 +113,7 @@ impl AccountTypeInfo for Device {
             + self.code.len()
             + 4
             + 5 * self.dz_prefixes.len()
+            + 32
             + 32
     }
     fn bump_seed(&self) -> u8 {
@@ -142,6 +144,7 @@ impl From<&[u8]> for Device {
             code: parser.read_string(),
             dz_prefixes: parser.read_networkv4_list(),
             metrics_publisher_pk: parser.read_pubkey(),
+            contributor_pk: parser.read_pubkey(),
         }
     }
 }
@@ -166,6 +169,7 @@ mod tests {
             owner: Pubkey::new_unique(),
             index: 123,
             bump_seed: 1,
+            contributor_pk: Pubkey::new_unique(),
             code: "test-321".to_string(),
             device_type: DeviceType::Switch,
             location_pk: Pubkey::new_unique(),
@@ -182,6 +186,9 @@ mod tests {
         assert_eq!(val.size(), val2.size());
         assert_eq!(val.owner, val2.owner);
         assert_eq!(val.code, val2.code);
+        assert_eq!(val.index, val2.index);
+        assert_eq!(val.contributor_pk, val2.contributor_pk);
+        assert_eq!(val.device_type, val2.device_type);
         assert_eq!(val.dz_prefixes, val2.dz_prefixes);
         assert_eq!(val.location_pk, val2.location_pk);
         assert_eq!(val.exchange_pk, val2.exchange_pk);

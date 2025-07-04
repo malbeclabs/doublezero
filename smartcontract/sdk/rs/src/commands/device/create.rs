@@ -10,6 +10,7 @@ use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient}
 #[derive(Debug, PartialEq, Clone)]
 pub struct CreateDeviceCommand {
     pub code: String,
+    pub contributor_pk: Pubkey,
     pub location_pk: Pubkey,
     pub exchange_pk: Pubkey,
     pub device_type: DeviceType,
@@ -32,6 +33,7 @@ impl CreateDeviceCommand {
                     index: globalstate.account_index + 1,
                     bump_seed,
                     code: self.code.clone(),
+                    contributor_pk: self.contributor_pk,
                     location_pk: self.location_pk,
                     exchange_pk: self.exchange_pk,
                     device_type: self.device_type,
@@ -41,6 +43,7 @@ impl CreateDeviceCommand {
                 }),
                 vec![
                     AccountMeta::new(pda_pubkey, false),
+                    AccountMeta::new(self.contributor_pk, false),
                     AccountMeta::new(self.location_pk, false),
                     AccountMeta::new(self.exchange_pk, false),
                     AccountMeta::new(globalstate_pubkey, false),
@@ -118,6 +121,7 @@ mod tests {
             .with(predicate::eq(exchange_pubkey))
             .returning(move |_| Ok(AccountData::Exchange(exchange.clone())));
 
+        let contributor_pubkey = Pubkey::default();
         let (device_pubkey, bump_seed) = get_device_pda(&client.get_program_id(), 3);
 
         client
@@ -127,6 +131,7 @@ mod tests {
                     index: 3,
                     bump_seed,
                     code: "test-device".to_string(),
+                    contributor_pk: contributor_pubkey,
                     location_pk: location_pubkey,
                     exchange_pk: Pubkey::new_unique(),
                     device_type: DeviceType::Switch,
@@ -145,6 +150,7 @@ mod tests {
 
         let res = CreateDeviceCommand {
             code: "test-device".to_string(),
+            contributor_pk: contributor_pubkey,
             location_pk: location_pubkey,
             exchange_pk: exchange_pubkey,
             device_type: DeviceType::Switch,

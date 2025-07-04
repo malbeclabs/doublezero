@@ -4,6 +4,7 @@ pub mod allowlist;
 pub mod balance;
 pub mod checkversion;
 pub mod config;
+pub mod contributor;
 pub mod device;
 pub mod doublezerocommand;
 pub mod exchange;

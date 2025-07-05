@@ -38,12 +38,15 @@
                     "--config",
                     "imports_granularity=Crate"
                 ],
-                "rust-analyzer.checkOnSave.command": "clippy",
-                "rust-analyzer.checkOnSave.extraArgs": [
-                    "--",
-                    "-Dclippy::all",
-                    "-Dwarnings"
-                ]
+                "rust-analyzer.checkOnSave": true,
+                "rust-analyzer.check": {
+                    "command": "clippy",
+                    "extraArgs": [
+                        "--",
+                        "-Dclippy::all",
+                        "-Dwarnings"
+                    ]
+                }
             }
         }
     },

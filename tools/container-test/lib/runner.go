@@ -40,9 +40,9 @@ type Runner struct {
 	containerBuildImage string
 
 	mu              sync.Mutex
-	failedTests     []string
-	passedTests     []string
-	incompleteTests []string
+	failedTests     map[string]struct{}
+	passedTests     map[string]struct{}
+	incompleteTests map[string]struct{}
 	testTimings     map[string]time.Duration
 	testsToRun      []string
 }
@@ -61,6 +61,11 @@ func NewRunner(config RunnerConfig) (*Runner, error) {
 
 	return &Runner{
 		config: config,
+
+		failedTests:     make(map[string]struct{}),
+		passedTests:     make(map[string]struct{}),
+		incompleteTests: make(map[string]struct{}),
+		testTimings:     make(map[string]time.Duration),
 	}, nil
 }
 
@@ -110,7 +115,9 @@ func (r *Runner) buildDockerImage() error {
 	}
 
 	// Build the docker image.
-	fmt.Printf("--- INFO: Building docker image %s (this may take a while)...\n", r.containerBuildImage)
+	if r.config.Verbosity > -1 {
+		fmt.Printf("--- INFO: Building docker image %s (this may take a while)...\n", r.containerBuildImage)
+	}
 	start := time.Now()
 	buildCmd := exec.Command("docker", "build",
 		"-t", r.containerBuildImage,
@@ -132,7 +139,9 @@ func (r *Runner) buildDockerImage() error {
 	if err != nil {
 		return fmt.Errorf("failed to build docker image\n%s", output)
 	}
-	fmt.Printf("--- OK: docker build (%.2fs)\n", time.Since(start).Seconds())
+	if r.config.Verbosity > -1 {
+		fmt.Printf("--- OK: docker build (%.2fs)\n", time.Since(start).Seconds())
+	}
 	return nil
 }
 
@@ -144,7 +153,7 @@ func (r *Runner) getTestsToRun() ([]string, error) {
 	// Match behaviour in https://pkg.go.dev/cmd/go/internal/test
 	var patterns []*regexp.Regexp
 	if r.config.TestPattern != "" {
-		for _, p := range strings.Split(r.config.TestPattern, "/") {
+		for p := range strings.SplitSeq(r.config.TestPattern, "/") {
 			re, err := regexp.Compile(p)
 			if err != nil {
 				return nil, fmt.Errorf("invalid test pattern: %v", err)
@@ -206,13 +215,15 @@ func (r *Runner) RunTests() error {
 	r.testTimings = make(map[string]time.Duration)
 
 	suiteStart := time.Now()
-	switch len(r.testsToRun) {
-	case 1:
-		fmt.Printf("--- INFO: Running 1 test...\n")
-	case 0:
-		fmt.Printf("--- INFO: No tests to run.\n")
-	default:
-		fmt.Printf("--- INFO: Running %d tests %s...\n", len(r.testsToRun), map[bool]string{true: "sequentially", false: fmt.Sprintf("in parallel (max %d)", r.config.Parallelism)}[r.config.NoParallel])
+	if r.config.Verbosity > -1 {
+		switch len(r.testsToRun) {
+		case 1:
+			fmt.Printf("--- INFO: Running 1 test...\n")
+		case 0:
+			fmt.Printf("--- INFO: No tests to run.\n")
+		default:
+			fmt.Printf("--- INFO: Running %d tests %s...\n", len(r.testsToRun), map[bool]string{true: "sequentially", false: fmt.Sprintf("in parallel (max %d)", r.config.Parallelism)}[r.config.NoParallel])
+		}
 	}
 
 	sem := make(chan struct{}, r.config.Parallelism)
@@ -236,7 +247,9 @@ func (r *Runner) RunTests() error {
 	}
 	suiteDuration := time.Since(suiteStart)
 
-	r.printSummary(suiteDuration)
+	if r.config.Verbosity > -1 {
+		r.printSummary(suiteDuration)
+	}
 
 	if len(r.failedTests) > 0 {
 		return fmt.Errorf("tests failed")
@@ -245,7 +258,9 @@ func (r *Runner) RunTests() error {
 }
 
 func (r *Runner) runTest(ctx context.Context, test string, cancel context.CancelFunc) {
-	fmt.Printf("=== RUN: %s\n", test)
+	if r.config.Verbosity > -1 {
+		fmt.Printf("=== RUN: %s\n", test)
+	}
 	start := time.Now()
 
 	args := []string{"run", "--rm", "--tty",
@@ -264,16 +279,18 @@ func (r *Runner) runTest(ctx context.Context, test string, cancel context.Cancel
 		fmt.Printf("--- DEBUG: Running: %s\n", strings.Join(cmd.Args, " "))
 	}
 
-	var output bytes.Buffer
+	var err error
+	var output []byte
 	if r.config.Verbosity > 0 {
-		cmd.Stdout = io.MultiWriter(os.Stdout, &output)
-		cmd.Stderr = io.MultiWriter(os.Stderr, &output)
+		var buf bytes.Buffer
+		cmd.Stdout = io.MultiWriter(os.Stdout, &buf)
+		cmd.Stderr = io.MultiWriter(os.Stderr, &buf)
+		err = cmd.Run()
+		output = buf.Bytes()
 	} else {
-		cmd.Stdout = &output
-		cmd.Stderr = &output
+		output, err = cmd.CombinedOutput()
 	}
-
-	if err := cmd.Run(); err != nil {
+	if err != nil {
 		r.mu.Lock()
 		if len(r.failedTests) == 0 {
 			if !r.config.NoFastFail {
@@ -284,62 +301,63 @@ func (r *Runner) runTest(ctx context.Context, test string, cancel context.Cancel
 						continue
 					}
 					ran := false
-					for _, pt := range r.passedTests {
-						if pt == t {
-							ran = true
-							break
-						}
+					if _, ok := r.passedTests[t]; ok {
+						ran = true
 					}
-					for _, ft := range r.failedTests {
-						if ft == t {
-							ran = true
-							break
-						}
+					if _, ok := r.failedTests[t]; ok {
+						ran = true
 					}
 					if !ran {
-						r.incompleteTests = append(r.incompleteTests, t)
+						r.incompleteTests[t] = struct{}{}
 					}
 				}
 			}
 		}
-		r.failedTests = append(r.failedTests, test)
+		if _, ok := r.incompleteTests[test]; !ok {
+			r.failedTests[test] = struct{}{}
+		}
 		r.testTimings[test] = time.Since(start)
 		r.mu.Unlock()
-		if test == r.failedTests[0] {
-			if r.config.Verbosity > 0 {
+		if r.config.Verbosity > -1 {
+			if _, ok := r.failedTests[test]; ok {
 				fmt.Printf("--- FAIL: %s (%.2fs)\n", test, r.testTimings[test].Seconds())
-			} else {
-				fmt.Printf("--- FAIL: %s (%.2fs)\n%s", test, r.testTimings[test].Seconds(), output.String())
+				if r.config.Verbosity == 0 && len(output) > 0 {
+					fmt.Printf("%s\n", string(output))
+				}
 			}
 		}
 	} else {
 		r.mu.Lock()
-		r.passedTests = append(r.passedTests, test)
+		r.passedTests[test] = struct{}{}
 		r.testTimings[test] = time.Since(start)
 		r.mu.Unlock()
-		fmt.Printf("--- PASS: %s (%.2fs)\n", test, r.testTimings[test].Seconds())
+		if r.config.Verbosity > -1 {
+			fmt.Printf("--- PASS: %s (%.2fs)\n", test, r.testTimings[test].Seconds())
+		}
 	}
 }
 
 func (r *Runner) printSummary(suiteDuration time.Duration) {
-	fmt.Println()
+	if r.config.Verbosity > -1 {
+		fmt.Println()
+	}
 	if len(r.failedTests) == 0 {
 		fmt.Printf("=== SUMMARY: PASS (%.2fs)\n", suiteDuration.Seconds())
-		for _, test := range r.passedTests {
-			fmt.Printf("PASS: %s (%.2fs)\n", test, r.testTimings[test].Seconds())
+		if r.config.Verbosity > -1 {
+			for test := range r.passedTests {
+				fmt.Printf("PASS: %s (%.2fs)\n", test, r.testTimings[test].Seconds())
+			}
 		}
 	} else {
 		fmt.Printf("=== SUMMARY: FAIL (%.2fs)\n", suiteDuration.Seconds())
-		for _, test := range r.passedTests {
-			fmt.Printf("PASS: %s (%.2fs)\n", test, r.testTimings[test].Seconds())
-		}
-		if !r.config.NoFastFail {
-			for _, test := range r.failedTests {
+		if r.config.Verbosity > -1 {
+			for test := range r.passedTests {
+				fmt.Printf("PASS: %s (%.2fs)\n", test, r.testTimings[test].Seconds())
+			}
+			for test := range r.failedTests {
 				fmt.Printf("FAIL: %s (%.2fs)\n", test, r.testTimings[test].Seconds())
 			}
-		} else {
-			fmt.Printf("FAIL: %s (%.2fs)\n", r.failedTests[0], r.testTimings[r.failedTests[0]].Seconds())
-			for _, test := range r.incompleteTests {
+			for test := range r.incompleteTests {
 				fmt.Printf("STOP: %s\n", test)
 			}
 		}
@@ -351,12 +369,12 @@ func sanitizeContainerName(testName string) string {
 	reg := regexp.MustCompile(`[^a-zA-Z0-9_.-]`)
 	name := reg.ReplaceAllString(testName, "-")
 	if !regexp.MustCompile(`^[a-zA-Z0-9]`).MatchString(name) {
-		name = "e2e-" + name
+		name = "container-test-" + name
 	}
 	if len(name) > 20 {
 		name = name[:20]
 	}
-	return fmt.Sprintf("e2e-%s-%s", name, randomShortID())
+	return fmt.Sprintf("container-test-%s-%s", name, randomShortID())
 }
 
 func randomShortID() string {

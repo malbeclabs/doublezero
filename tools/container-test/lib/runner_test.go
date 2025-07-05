@@ -33,11 +33,11 @@ import (
 	"testing"
 )
 
-func TestExample1(t *testing.T) {
+func TestExample_ExpectedToPass1(t *testing.T) {
 	t.Log("Hello, world 1!")
 }
 
-func TestExample2(t *testing.T) {
+func TestExample_ExpectedToPass2(t *testing.T) {
 	t.Log("Hello, world 2!")
 }
 `
@@ -51,11 +51,11 @@ import (
 	"testing"
 )
 
-func TestExample1(t *testing.T) {
+func TestExample_ExpectedToPass(t *testing.T) {
 	t.Log("Hello, world 1!")
 }
 
-func TestExample2(t *testing.T) {
+func TestExample_ExpectedToFail(t *testing.T) {
 	t.Log("Hello, world 2!")
 	t.Fail()
 }
@@ -89,11 +89,15 @@ func TestContainerTest_Runner_AllPassingTests(t *testing.T) {
 	}
 
 	// Create and setup a test runner.
+	verbosity := -1
+	if os.Getenv("DEBUG") != "" {
+		verbosity = 1
+	}
 	runner, err := containertest.NewRunner(containertest.RunnerConfig{
 		TestDir:     tmpDir,
 		Dockerfile:  dockerfilePath,
 		Parallelism: 1,
-		Verbosity:   2,
+		Verbosity:   verbosity,
 	})
 	if err != nil {
 		t.Fatalf("failed to create test runner: %v", err)
@@ -136,11 +140,15 @@ func TestContainerTest_Runner_SomeFailingTests(t *testing.T) {
 	}
 
 	// Create and setup a test runner.
+	verbosity := -1
+	if os.Getenv("DEBUG") != "" {
+		verbosity = 1
+	}
 	runner, err := containertest.NewRunner(containertest.RunnerConfig{
 		TestDir:     tmpDir,
 		Dockerfile:  dockerfilePath,
 		Parallelism: 1,
-		Verbosity:   2,
+		Verbosity:   verbosity,
 	})
 	if err != nil {
 		t.Fatalf("failed to create test runner: %v", err)

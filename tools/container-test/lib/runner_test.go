@@ -1,4 +1,4 @@
-package e2etest_test
+package containertest_test
 
 import (
 	"os"
@@ -6,14 +6,14 @@ import (
 	"strings"
 	"testing"
 
-	e2etest "github.com/malbeclabs/doublezero/tools/e2e-test/lib"
+	containertest "github.com/malbeclabs/doublezero/tools/container-test/lib"
 )
 
 const (
 	dockerfile = `FROM golang:1.24.3-alpine AS builder
 WORKDIR /work
 COPY . .
-RUN go test -c -o /bin/example.test -tags e2e
+RUN go test -c -o /bin/example.test -tags container_tests
 
 FROM ubuntu:22.04
 RUN apt-get update && \
@@ -25,7 +25,7 @@ CMD ["-test.v"]
 `
 
 	allPassingTestFile = `
-//go:build e2e
+//go:build container_tests
 
 package example
 
@@ -43,7 +43,7 @@ func TestExample2(t *testing.T) {
 `
 
 	someFailingTestFile = `
-//go:build e2e
+//go:build container_tests
 
 package example
 
@@ -62,16 +62,16 @@ func TestExample2(t *testing.T) {
 `
 )
 
-func TestE2ERunner_AllPassingTests(t *testing.T) {
+func TestContainerTest_Runner_AllPassingTests(t *testing.T) {
 	// Create temporary directory for the test project.
-	tmpDir, err := os.MkdirTemp("", "e2e-test-*")
+	tmpDir, err := os.MkdirTemp("", "container-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
 	// Add a Dockerfile to the temporary directory.
-	dockerfilePath := filepath.Join(tmpDir, "e2e.dockerfile")
+	dockerfilePath := filepath.Join(tmpDir, "test.dockerfile")
 	if err := os.WriteFile(dockerfilePath, []byte(dockerfile), 0644); err != nil {
 		t.Fatalf("failed to write Dockerfile: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestE2ERunner_AllPassingTests(t *testing.T) {
 	}
 
 	// Create and setup a test runner.
-	runner, err := e2etest.NewRunner(e2etest.RunnerConfig{
+	runner, err := containertest.NewRunner(containertest.RunnerConfig{
 		TestDir:     tmpDir,
 		Dockerfile:  dockerfilePath,
 		Parallelism: 1,
@@ -109,16 +109,16 @@ func TestE2ERunner_AllPassingTests(t *testing.T) {
 	}
 }
 
-func TestE2ERunner_SomeFailingTests(t *testing.T) {
+func TestContainerTest_Runner_SomeFailingTests(t *testing.T) {
 	// Create temporary directory for the test project.
-	tmpDir, err := os.MkdirTemp("", "e2e-test-*")
+	tmpDir, err := os.MkdirTemp("", "container-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
 	// Add a Dockerfile to the temporary directory.
-	dockerfilePath := filepath.Join(tmpDir, "e2e.dockerfile")
+	dockerfilePath := filepath.Join(tmpDir, "test.dockerfile")
 	if err := os.WriteFile(dockerfilePath, []byte(dockerfile), 0644); err != nil {
 		t.Fatalf("failed to write Dockerfile: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestE2ERunner_SomeFailingTests(t *testing.T) {
 	}
 
 	// Create and setup a test runner.
-	runner, err := e2etest.NewRunner(e2etest.RunnerConfig{
+	runner, err := containertest.NewRunner(containertest.RunnerConfig{
 		TestDir:     tmpDir,
 		Dockerfile:  dockerfilePath,
 		Parallelism: 1,

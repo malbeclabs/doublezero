@@ -1,4 +1,4 @@
-package e2etest
+package containertest
 
 import (
 	"bytes"
@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	containerBuildImagePrefix = "e2e-test-runner"
+	containerBuildImagePrefix = "container-test-runner"
 )
 
 type RunnerConfig struct {

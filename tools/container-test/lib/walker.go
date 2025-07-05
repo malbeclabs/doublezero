@@ -1,4 +1,4 @@
-package e2etest
+package containertest
 
 import (
 	"fmt"
@@ -59,7 +59,7 @@ func (w *FileWalker) FindConfigFiles() ([]string, error) {
 
 		if !info.IsDir() && info.Name() == filepath.Base(w.fileName) {
 			if w.verbosity > 2 {
-				fmt.Printf("--- INFO: Found e2e.yaml file: %s\n", path)
+				fmt.Printf("--- INFO: Found container-test.yaml file: %s\n", path)
 			}
 			relPath, err := filepath.Rel(w.baseDir, path)
 			if err != nil {

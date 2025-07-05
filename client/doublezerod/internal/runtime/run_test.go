@@ -1,4 +1,4 @@
-//go:build !race && e2e
+//go:build !race && container_tests
 
 package runtime_test
 

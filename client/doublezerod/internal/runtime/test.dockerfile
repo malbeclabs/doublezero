@@ -4,7 +4,7 @@ COPY . .
 WORKDIR /work/client/doublezerod/internal/runtime
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    go test -c -o /bin/runtime.test -tags e2e .
+    go test -c -o /bin/runtime.test -tags container_tests .
 
 FROM ubuntu:22.04
 RUN apt-get update && \

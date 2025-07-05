@@ -47,12 +47,9 @@ nocontainertest:
 go-fuzz:
 	cd tools/twamp && $(MAKE) fuzz
 
-# NOTE: The naming of `tools/e2e-test` is confusing. It's not running the `./e2e` tests, but rather
-# the containerized tests in `client/doublezerod`. This package should be renamed to something
-# like `tools/container-test` at some point.
 .PHONY: go-container-test
 go-container-test:
-	go run tools/e2e-test/main.go -v
+	go run tools/container-test/main.go -v
 
 .PHONY: go-ci
 go-ci: go-build go-lint go-test go-fuzz

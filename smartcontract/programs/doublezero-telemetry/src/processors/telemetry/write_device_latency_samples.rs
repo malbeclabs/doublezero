@@ -202,6 +202,14 @@ fn realloc_samples_account_if_needed<'a>(
                     new_data.epoch,
                 );
 
+                msg!(
+                    "Funding PDA: required={}, actual={}, agent={}, payment={}",
+                    required_lamports,
+                    account.lamports(),
+                    agent.lamports(),
+                    payment,
+                );
+
                 invoke_signed(
                     &system_instruction::transfer(agent.key, account.key, payment),
                     &[account.clone(), agent.clone(), system_program.clone()],

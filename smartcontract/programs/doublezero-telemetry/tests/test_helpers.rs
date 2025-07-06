@@ -309,7 +309,7 @@ impl LedgerHelper {
         // Create and fund origin device agent account.
         let origin_device_agent = Keypair::new();
         let origin_device_agent_pk = origin_device_agent.pubkey();
-        self.fund_account(&origin_device_agent_pk, 10_000_000_000)
+        self.fund_account(&origin_device_agent_pk, 1_000_000_000_000)
             .await?;
 
         let contributor_pk = self
@@ -521,6 +521,60 @@ impl TelemetryProgramHelper {
 
         let tx = Transaction::new_signed_with_payer(
             &[instruction],
+            Some(&payer.pubkey()),
+            &[&payer, agent],
+            recent_blockhash,
+        );
+
+        banks_client.process_transaction(tx).await
+    }
+
+    #[allow(dead_code)]
+    pub async fn write_device_latency_samples_with_compute_budget(
+        &self,
+        agent: &Keypair,
+        latency_samples_pda: Pubkey,
+        samples: Vec<u32>,
+        timestamp: u64,
+        compute_units: u32,
+    ) -> Result<(), BanksClientError> {
+        let args = WriteDeviceLatencySamplesArgs {
+            start_timestamp_microseconds: timestamp,
+            samples,
+        };
+
+        let ix = TelemetryInstruction::WriteDeviceLatencySamples(args)
+            .pack()
+            .expect("failed to pack");
+
+        let accounts = vec![
+            AccountMeta::new(latency_samples_pda, false),
+            AccountMeta::new(agent.pubkey(), true),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+        ];
+
+        let instruction = solana_sdk::instruction::Instruction {
+            program_id: self.program_id,
+            accounts,
+            data: ix,
+        };
+
+        let compute_budget_ix =
+            solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(
+                compute_units,
+            );
+
+        let (banks_client, payer, recent_blockhash) = {
+            let ctx = self.context.lock().unwrap();
+            (
+                ctx.banks_client.clone(),
+                ctx.payer.insecure_clone(),
+                ctx.recent_blockhash,
+            )
+        };
+
+        let tx = Transaction::new_signed_with_payer(
+            &[compute_budget_ix, instruction],
             Some(&payer.pubkey()),
             &[&payer, agent],
             recent_blockhash,
@@ -992,7 +1046,6 @@ pub async fn execute_serviceability_instruction(
 
 pub fn setup_test_programs() -> (ProgramTest, Pubkey, Pubkey) {
     let mut program_test = ProgramTest::default();
-    program_test.set_compute_max_units(1_000_000);
 
     // Add telemetry program
     let telemetry_program_id = Pubkey::new_unique();

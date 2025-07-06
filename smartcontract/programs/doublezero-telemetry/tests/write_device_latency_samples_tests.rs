@@ -663,3 +663,148 @@ async fn test_write_device_latency_samples_fail_agent_mismatch() {
         other => panic!("Unexpected error: {other:?}"),
     }
 }
+
+#[tokio::test]
+async fn test_write_device_latency_samples_incremental_with_dynamic_compute_budget() {
+    let mut ledger = LedgerHelper::new().await.unwrap();
+
+    let (agent, origin_device_pk, target_device_pk, link_pk) =
+        ledger.seed_with_two_linked_devices().await.unwrap();
+    ledger.wait_for_new_blockhash().await.unwrap();
+
+    let latency_samples_pda = ledger
+        .telemetry
+        .initialize_device_latency_samples(
+            &agent,
+            origin_device_pk,
+            target_device_pk,
+            link_pk,
+            1,
+            5_000_000,
+        )
+        .await
+        .unwrap();
+
+    let mut total_written = 0;
+    let chunk_size = 100;
+    let mut timestamp = 1_700_000_000_000_000;
+    let mut compute_budget = 200_000; // Start with default
+
+    while total_written < MAX_SAMPLES {
+        let remaining = MAX_SAMPLES - total_written;
+        let chunk = vec![1234u32; chunk_size.min(remaining)];
+
+        let result = ledger
+            .telemetry
+            .write_device_latency_samples_with_compute_budget(
+                &agent,
+                latency_samples_pda,
+                chunk.clone(),
+                timestamp,
+                compute_budget,
+            )
+            .await;
+
+        match result {
+            Ok(_) => {
+                total_written += chunk.len();
+                timestamp += 1;
+            }
+            Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+                _,
+                InstructionError::Custom(code),
+            ))) if code == TelemetryError::SamplesAccountFull as u32 => {
+                panic!("Unexpected account full before MAX_SAMPLES reached");
+            }
+            Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+                _,
+                InstructionError::Custom(_),
+            ))) => {
+                panic!("Unexpected custom error");
+            }
+            Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+                _,
+                InstructionError::ProgramFailedToComplete,
+            ))) => {
+                compute_budget += 50_000;
+                assert!(
+                    compute_budget <= 1_400_000,
+                    "Exceeded max allowable compute budget"
+                );
+                println!(
+                    "Compute units exhausted at {} samples written. Retrying with {} CUs",
+                    total_written, compute_budget
+                );
+            }
+            Err(e) => panic!("Unexpected error: {e:?}"),
+        }
+    }
+
+    let account = ledger
+        .get_account(latency_samples_pda)
+        .await
+        .unwrap()
+        .unwrap();
+    let data = DeviceLatencySamples::try_from(&account.data[..]).unwrap();
+    assert_eq!(data.samples.len(), MAX_SAMPLES);
+}
+
+#[tokio::test]
+async fn test_write_device_latency_samples_fail_due_to_cu_exhaustion() {
+    let mut ledger = LedgerHelper::new().await.unwrap();
+
+    let (agent, origin_device_pk, target_device_pk, link_pk) =
+        ledger.seed_with_two_linked_devices().await.unwrap();
+
+    ledger.wait_for_new_blockhash().await.unwrap();
+
+    let latency_samples_pda = ledger
+        .telemetry
+        .initialize_device_latency_samples(
+            &agent,
+            origin_device_pk,
+            target_device_pk,
+            link_pk,
+            1,
+            // Preallocate close to max realloc size
+            // We'll let it realloc up to 10240 during writes
+            5_000_000,
+        )
+        .await
+        .unwrap();
+
+    // Pre-fill account to just under realloc limit
+    let mut total_written = 0;
+    let max_safe_samples = (10_000 - DZ_LATENCY_SAMPLES_HEADER_SIZE) / 4;
+    let chunk = vec![1234u32; 100];
+    let mut timestamp = 1_700_000_000_000_000;
+
+    while total_written + chunk.len() < max_safe_samples {
+        ledger
+            .telemetry
+            .write_device_latency_samples(&agent, latency_samples_pda, chunk.clone(), timestamp)
+            .await
+            .unwrap();
+        total_written += chunk.len();
+        timestamp += 1;
+    }
+
+    // Now submit a small batch to trigger a realloc + rent top-up + CU exhaustion
+    let result = ledger
+        .telemetry
+        .write_device_latency_samples(
+            &agent,
+            latency_samples_pda,
+            vec![1, 2, 3, 4, 5, 6],
+            timestamp,
+        )
+        .await;
+
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            _,
+            InstructionError::ProgramFailedToComplete,
+        ))) => { /* expected */ }
+        other => panic!("Expected CU exhaustion, got {other:?}"),
+    }
+}

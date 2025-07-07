@@ -4,7 +4,10 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::pubkey::Pubkey;
-use std::fmt;
+use std::{
+    fmt,
+    io::{self, Read, Write},
+};
 
 /// Maximum number of RTT samples storable in a single account.
 /// With 5-second intervals, 35,000 samples ~= 48 hours of data.
@@ -19,17 +22,16 @@ pub const MAX_SAMPLES: usize = 35_000;
 /// - 8 bytes: `sampling_interval_microseconds`
 /// - 8 bytes: `start_timestamp_microseconds`
 /// - 4 bytes: `next_sample_index`
-/// - 4 bytes: encoded length prefix for the `samples` vector
 /// - 128 bytes: reserved for future use
 ///
-/// Total size: 354 bytes
-pub const DZ_LATENCY_SAMPLES_HEADER_SIZE: usize =
-    1 + 1 + 8 + 32 + 32 + 32 + 32 + 32 + 32 + 8 + 8 + 4 + 4 + 128;
+/// Total size: 350 bytes
+pub const DEVICE_LATENCY_SAMPLES_HEADER_SIZE: usize =
+    1 + 1 + 8 + 32 + 32 + 32 + 32 + 32 + 32 + 8 + 8 + 4 + 128;
 
-/// Onchain data structure representing a latency sample stream between two devices
+/// Onchain data structure representing a latency samples account header between two devices
 /// over a link for a specific epoch, written by a single authorized agent.
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
-pub struct DeviceLatencySamples {
+pub struct DeviceLatencySamplesHeader {
     // Used to distinguish this account type during deserialization
     pub account_type: AccountType, // 1
 
@@ -69,9 +71,30 @@ pub struct DeviceLatencySamples {
 
     // Reserved for future use.
     pub _unused: [u8; 128], // 128
+}
 
-    // RTT samples in microseconds, one per entry (with length prefix).
-    pub samples: Vec<u32>, // 4 + n*4 (RTT values in microseconds)
+impl TryFrom<&[u8]> for DeviceLatencySamplesHeader {
+    type Error = borsh::io::Error;
+
+    fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
+        if data.len() < DEVICE_LATENCY_SAMPLES_HEADER_SIZE {
+            return Err(borsh::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "account data too short for header",
+            ));
+        }
+
+        Ok(Self::deserialize(&mut &data[..])?)
+    }
+}
+
+/// Structured representation of a latency samples account.
+///
+/// This is not the onchain data structure, but a convenience wrapper for the header and samples.
+#[derive(Debug, PartialEq, Clone)]
+pub struct DeviceLatencySamples {
+    pub header: DeviceLatencySamplesHeader,
+    pub samples: Vec<u32>,
 }
 
 impl fmt::Display for DeviceLatencySamples {
@@ -79,8 +102,44 @@ impl fmt::Display for DeviceLatencySamples {
         write!(
             f,
             "account_type: {}, epoch: {}, origin_device_agent: {}, origin_device: {}, target_device: {}, link: {}, samples: {}",
-            self.account_type, self.epoch, self.origin_device_agent_pk, self.origin_device_pk, self.target_device_pk, self.link_pk, self.samples.len()
+            self.header.account_type, self.header.epoch, self.header.origin_device_agent_pk, self.header.origin_device_pk, self.header.target_device_pk, self.header.link_pk, self.samples.len()
         )
+    }
+}
+
+impl BorshSerialize for DeviceLatencySamples {
+    fn serialize<W: Write>(&self, writer: &mut W) -> io::Result<()> {
+        self.header.serialize(writer)?;
+        for sample in &self.samples {
+            writer.write_all(&sample.to_le_bytes())?;
+        }
+        Ok(())
+    }
+}
+
+impl BorshDeserialize for DeviceLatencySamples {
+    fn deserialize_reader<R: Read>(reader: &mut R) -> io::Result<Self> {
+        let header = DeviceLatencySamplesHeader::deserialize_reader(reader)?;
+
+        let num_samples = header.next_sample_index as usize;
+        let mut samples = Vec::with_capacity(num_samples);
+        let mut buf = [0u8; 4];
+
+        for _ in 0..num_samples {
+            reader.read_exact(&mut buf)?;
+            samples.push(u32::from_le_bytes(buf));
+        }
+
+        Ok(DeviceLatencySamples { header, samples })
+    }
+}
+
+impl TryFrom<&[u8]> for DeviceLatencySamples {
+    type Error = borsh::io::Error;
+
+    /// Enables deserializing from raw Solana account data.
+    fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
+        borsh::from_slice(data)
     }
 }
 
@@ -93,26 +152,17 @@ impl AccountTypeInfo for DeviceLatencySamples {
     /// Computes the full serialized size of this account (for realloc).
     /// Used when dynamically resizing to accommodate more samples.
     fn size(&self) -> usize {
-        DZ_LATENCY_SAMPLES_HEADER_SIZE + self.samples.len() * 4
+        DEVICE_LATENCY_SAMPLES_HEADER_SIZE + self.samples.len() * 4
     }
 
     /// Returns the bump seed used during PDA derivation.
     fn bump_seed(&self) -> u8 {
-        self.bump_seed
+        self.header.bump_seed
     }
 
     /// Returns the public key of the agent who owns/writes to this account.
     fn owner(&self) -> Pubkey {
-        self.origin_device_agent_pk
-    }
-}
-
-impl TryFrom<&[u8]> for DeviceLatencySamples {
-    type Error = borsh::io::Error;
-
-    /// Enables deserializing from raw Solana account data.
-    fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
-        DeviceLatencySamples::deserialize(&mut &data[..])
+        self.header.origin_device_agent_pk
     }
 }
 
@@ -124,49 +174,59 @@ mod tests {
     fn test_device_latency_samples_serialization() {
         let samples = vec![100u32, 200u32, 300u32, 400u32, 500u32];
         let val = DeviceLatencySamples {
-            account_type: AccountType::DeviceLatencySamples,
-            bump_seed: 255,
-            epoch: 19800,
-            origin_device_agent_pk: Pubkey::new_unique(),
-            origin_device_pk: Pubkey::new_unique(),
-            target_device_pk: Pubkey::new_unique(),
-            origin_device_location_pk: Pubkey::new_unique(),
-            target_device_location_pk: Pubkey::new_unique(),
-            link_pk: Pubkey::new_unique(),
-            sampling_interval_microseconds: 5_000_000,
-            start_timestamp_microseconds: 1_700_000_000_000_000,
-            next_sample_index: samples.len() as u32,
+            header: DeviceLatencySamplesHeader {
+                account_type: AccountType::DeviceLatencySamples,
+                bump_seed: 255,
+                epoch: 19800,
+                origin_device_agent_pk: Pubkey::new_unique(),
+                origin_device_pk: Pubkey::new_unique(),
+                target_device_pk: Pubkey::new_unique(),
+                origin_device_location_pk: Pubkey::new_unique(),
+                target_device_location_pk: Pubkey::new_unique(),
+                link_pk: Pubkey::new_unique(),
+                sampling_interval_microseconds: 5_000_000,
+                start_timestamp_microseconds: 1_700_000_000_000_000,
+                next_sample_index: samples.len() as u32,
+                _unused: [0; 128],
+            },
             samples: samples.clone(),
-            _unused: [0; 128],
         };
+        let header = val.header.clone();
 
+        let header_bytes = borsh::to_vec(&val.header).unwrap();
+        println!("Serialized header: {:?}", header_bytes);
         let data = borsh::to_vec(&val).unwrap();
+        println!("Serialized data: {:?}", data);
         let val2 = DeviceLatencySamples::try_from_slice(&data).unwrap();
+        let header2 = val2.header.clone();
 
-        assert_eq!(val.account_type, val2.account_type);
-        assert_eq!(val.bump_seed, val2.bump_seed);
-        assert_eq!(val.epoch, val2.epoch);
-        assert_eq!(val.origin_device_pk, val2.origin_device_pk);
-        assert_eq!(val.target_device_pk, val2.target_device_pk);
+        assert_eq!(header.account_type, header2.account_type);
+        assert_eq!(header.bump_seed, header2.bump_seed);
+        assert_eq!(header.epoch, header2.epoch);
+        assert_eq!(header.origin_device_pk, header2.origin_device_pk);
+        assert_eq!(header.target_device_pk, header2.target_device_pk);
         assert_eq!(
-            val.origin_device_location_pk,
-            val2.origin_device_location_pk
+            header.origin_device_location_pk,
+            header2.origin_device_location_pk
         );
         assert_eq!(
-            val.target_device_location_pk,
-            val2.target_device_location_pk
+            header.target_device_location_pk,
+            header2.target_device_location_pk
         );
-        assert_eq!(val.link_pk, val2.link_pk);
-        assert_eq!(val.origin_device_agent_pk, val2.origin_device_agent_pk);
+        assert_eq!(header.link_pk, header2.link_pk);
         assert_eq!(
-            val.sampling_interval_microseconds,
-            val2.sampling_interval_microseconds
+            header.origin_device_agent_pk,
+            header2.origin_device_agent_pk
         );
         assert_eq!(
-            val.start_timestamp_microseconds,
-            val2.start_timestamp_microseconds
+            header.sampling_interval_microseconds,
+            header2.sampling_interval_microseconds
         );
-        assert_eq!(val.next_sample_index, val2.next_sample_index);
+        assert_eq!(
+            header.start_timestamp_microseconds,
+            header2.start_timestamp_microseconds
+        );
+        assert_eq!(header.next_sample_index, header2.next_sample_index);
         assert_eq!(val.samples, val2.samples);
         assert_eq!(data.len(), val.size(), "Invalid Size");
     }

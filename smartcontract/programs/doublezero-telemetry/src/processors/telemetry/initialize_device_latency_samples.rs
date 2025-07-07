@@ -5,7 +5,7 @@ use crate::{
     serviceability_program_id,
     state::{
         accounttype::AccountType,
-        device_latency_samples::{DeviceLatencySamples, DZ_LATENCY_SAMPLES_HEADER_SIZE},
+        device_latency_samples::{DeviceLatencySamplesHeader, DEVICE_LATENCY_SAMPLES_HEADER_SIZE},
     },
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -172,7 +172,7 @@ pub fn process_initialize_device_latency_samples(
 
     // Create the account with the minimum rent-exempt balance.
     let rent = Rent::get()?;
-    let space = DZ_LATENCY_SAMPLES_HEADER_SIZE;
+    let space = DEVICE_LATENCY_SAMPLES_HEADER_SIZE;
     let lamports = rent.minimum_balance(space);
 
     msg!(
@@ -211,7 +211,7 @@ pub fn process_initialize_device_latency_samples(
     )?;
 
     // Initialize account contents with metadata and an empty sample list.
-    let samples = DeviceLatencySamples {
+    let header = DeviceLatencySamplesHeader {
         account_type: AccountType::DeviceLatencySamples,
         epoch: args.epoch,
         origin_device_agent_pk: *agent.key,
@@ -225,12 +225,11 @@ pub fn process_initialize_device_latency_samples(
         next_sample_index: 0,
         bump_seed: latency_samples_bump_seed,
         _unused: [0; 128],
-        samples: Vec::new(),
     };
 
     // Write the account data.
     let mut data = &mut latency_samples_account.data.borrow_mut()[..];
-    samples.serialize(&mut data)?;
+    header.serialize(&mut data)?;
 
     Ok(())
 }

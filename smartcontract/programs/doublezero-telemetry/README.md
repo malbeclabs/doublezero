@@ -27,7 +27,7 @@ Stores metadata and RTT samples (in microseconds):
 Constants:
 
 - `MAX_SAMPLES = 35_000`
-- `DZ_LATENCY_SAMPLES_HEADER_SIZE = 229` bytes
+- `DEVICE_LATENCY_SAMPLES_HEADER_SIZE = 350` bytes
 
 ---
 
@@ -117,4 +117,4 @@ pub struct WriteDeviceLatencySamplesArgs {
 ## Constants
 
 - `MAX_SAMPLES = 35_000` — upper bound on total RTT samples.
-- `DZ_LATENCY_SAMPLES_HEADER_SIZE = 354` — base size excluding sample vector.
+- `DEVICE_LATENCY_SAMPLES_HEADER_SIZE = 350` — base size excluding sample vector.

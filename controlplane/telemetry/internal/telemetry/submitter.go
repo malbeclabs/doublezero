@@ -97,7 +97,21 @@ func (s *Submitter) SubmitSamples(ctx context.Context, accountKey AccountKey, sa
 	_, _, err := s.cfg.ProgramClient.WriteDeviceLatencySamples(ctx, writeConfig)
 	if err != nil {
 		if errors.Is(err, telemetry.ErrAccountNotFound) {
-			log.Debug("Account not found, initializing")
+			log.Debug("Account not found, creating and initializing")
+
+			// Create the account.
+			log.Debug("Creating account")
+			_, _, _, err = s.cfg.ProgramClient.CreateDeviceLatencySamplesAccount(ctx, s.cfg.MetricsPublisherPK, accountKey.OriginDevicePK, accountKey.TargetDevicePK, accountKey.LinkPK, accountKey.Epoch)
+			if err != nil {
+				if errors.Is(err, telemetry.ErrAccountAlreadyExists) {
+					log.Debug("Account already exists, initializing")
+				} else {
+					return fmt.Errorf("failed to create device latency samples account: %w", err)
+				}
+			}
+
+			// Initialize the account.
+			log.Debug("Initializing account")
 			_, _, err = s.cfg.ProgramClient.InitializeDeviceLatencySamples(ctx, telemetry.InitializeDeviceLatencySamplesInstructionConfig{
 				AgentPK:                      s.cfg.MetricsPublisherPK,
 				OriginDevicePK:               accountKey.OriginDevicePK,

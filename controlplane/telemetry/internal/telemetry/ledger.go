@@ -26,6 +26,9 @@ type ServiceabilityProgramClient interface {
 
 // TelemetryProgramClient is the client to the telemetry program.
 type TelemetryProgramClient interface {
+	// CreateDeviceLatencySamplesAccount creates the device latency samples account.
+	CreateDeviceLatencySamplesAccount(ctx context.Context, agentPK solana.PublicKey, originDevicePK solana.PublicKey, targetDevicePK solana.PublicKey, linkPK solana.PublicKey, epoch uint64) (solana.PublicKey, solana.Signature, *solanarpc.GetTransactionResult, error)
+
 	// InitializeDeviceLatencySamples initializes the device latency samples account.
 	InitializeDeviceLatencySamples(ctx context.Context, config telemetry.InitializeDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error)
 

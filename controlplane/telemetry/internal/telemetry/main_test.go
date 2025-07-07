@@ -96,9 +96,14 @@ func (c *mockServiceabilityProgramClient) GetLinks() []serviceability.Link {
 }
 
 type mockTelemetryProgramClient struct {
-	InitializeDeviceLatencySamplesFunc func(ctx context.Context, config sdktelemetry.InitializeDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error)
-	WriteDeviceLatencySamplesFunc      func(ctx context.Context, config sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error)
-	GetDeviceLatencySamplesFunc        func(ctx context.Context, originDevicePK solana.PublicKey, targetDevicePK solana.PublicKey, linkPK solana.PublicKey, epoch uint64) (*sdktelemetry.DeviceLatencySamples, error)
+	CreateDeviceLatencySamplesAccountFunc func(ctx context.Context, agentPK solana.PublicKey, originDevicePK solana.PublicKey, targetDevicePK solana.PublicKey, linkPK solana.PublicKey, epoch uint64) (solana.PublicKey, solana.Signature, *solanarpc.GetTransactionResult, error)
+	InitializeDeviceLatencySamplesFunc    func(ctx context.Context, config sdktelemetry.InitializeDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error)
+	WriteDeviceLatencySamplesFunc         func(ctx context.Context, config sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error)
+	GetDeviceLatencySamplesFunc           func(ctx context.Context, originDevicePK solana.PublicKey, targetDevicePK solana.PublicKey, linkPK solana.PublicKey, epoch uint64) (*sdktelemetry.DeviceLatencySamples, error)
+}
+
+func (c *mockTelemetryProgramClient) CreateDeviceLatencySamplesAccount(ctx context.Context, agentPK solana.PublicKey, originDevicePK solana.PublicKey, targetDevicePK solana.PublicKey, linkPK solana.PublicKey, epoch uint64) (solana.PublicKey, solana.Signature, *solanarpc.GetTransactionResult, error) {
+	return c.CreateDeviceLatencySamplesAccountFunc(ctx, agentPK, originDevicePK, targetDevicePK, linkPK, epoch)
 }
 
 func (c *mockTelemetryProgramClient) InitializeDeviceLatencySamples(ctx context.Context, config sdktelemetry.InitializeDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
@@ -123,6 +128,13 @@ func newMemoryTelemetryProgramClient() *memoryTelemetryProgramClient {
 	return &memoryTelemetryProgramClient{
 		accounts: make(map[telemetry.AccountKey][]telemetry.Sample),
 	}
+}
+
+func (c *memoryTelemetryProgramClient) CreateDeviceLatencySamplesAccount(ctx context.Context, agentPK solana.PublicKey, originDevicePK solana.PublicKey, targetDevicePK solana.PublicKey, linkPK solana.PublicKey, epoch uint64) (solana.PublicKey, solana.Signature, *solanarpc.GetTransactionResult, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return solana.PublicKey{}, solana.Signature{}, nil, nil
 }
 
 func (c *memoryTelemetryProgramClient) InitializeDeviceLatencySamples(ctx context.Context, config sdktelemetry.InitializeDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {

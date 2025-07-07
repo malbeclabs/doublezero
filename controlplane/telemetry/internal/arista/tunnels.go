@@ -140,7 +140,7 @@ func GetLocalTunnelTargetIPs(ctx context.Context, log *slog.Logger, client arist
 					log.Warn("Failed to get peer ip in /31", "error", err, "ip", iface.InterfaceAddress.IPAddr.Address, "name", iface.Name, "maskLen", iface.InterfaceAddress.IPAddr.MaskLen)
 					continue
 				}
-				ip4s = append(ip4s, net.ParseIP(peerIP).To4())
+				ip4s = append(ip4s, peerIP.To4())
 			}
 		}
 	}
@@ -148,16 +148,17 @@ func GetLocalTunnelTargetIPs(ctx context.Context, log *slog.Logger, client arist
 	return ip4s, nil
 }
 
-func getPeerIPIn31(ipStr string) (string, error) {
+func getPeerIPIn31(ipStr string) (net.IP, error) {
 	ip := net.ParseIP(ipStr)
 	if ip == nil {
-		return "", fmt.Errorf("invalid IP: %s", ipStr)
+		return nil, fmt.Errorf("invalid IP: %s", ipStr)
 	}
 	ip = ip.To4()
 	if ip == nil {
-		return "", fmt.Errorf("not an IPv4 address: %s", ipStr)
+		return nil, fmt.Errorf("not an IPv4 address: %s", ipStr)
 	}
 	ipInt := uint32(ip[0])<<24 | uint32(ip[1])<<16 | uint32(ip[2])<<8 | uint32(ip[3])
 	peerInt := ipInt ^ 1
-	return fmt.Sprintf("%d.%d.%d.%d", byte(peerInt>>24), byte(peerInt>>16), byte(peerInt>>8), byte(peerInt)), nil
+	peerIP := net.IPv4(byte(peerInt>>24), byte(peerInt>>16), byte(peerInt>>8), byte(peerInt))
+	return peerIP, nil
 }

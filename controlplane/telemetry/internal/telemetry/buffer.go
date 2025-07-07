@@ -62,6 +62,19 @@ func (b *AccountsBuffer) Recycle(accountKey AccountKey, samples []Sample) {
 	b.accounts[accountKey].Recycle(samples)
 }
 
+func (b *AccountsBuffer) Remove(key AccountKey) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	delete(b.accounts, key)
+}
+
+func (b *AccountsBuffer) Has(key AccountKey) bool {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	_, ok := b.accounts[key]
+	return ok
+}
+
 func (b *AccountsBuffer) CopyAndReset(key AccountKey) []Sample {
 	b.mu.Lock()
 	defer b.mu.Unlock()

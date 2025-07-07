@@ -140,6 +140,12 @@ func (s *Submitter) Tick(ctx context.Context) {
 		if len(tmp) == 0 {
 			log.Debug("No samples to submit, skipping")
 			s.cfg.Buffer.Recycle(accountKey, tmp)
+
+			// If the account is for a past epoch, remove it.
+			if accountKey.Epoch < DeriveEpoch(time.Now().UTC()) {
+				s.cfg.Buffer.Remove(accountKey)
+				log.Debug("Removed account key")
+			}
 			continue
 		}
 

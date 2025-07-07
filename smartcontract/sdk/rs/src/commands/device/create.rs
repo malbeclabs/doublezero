@@ -72,16 +72,13 @@ mod tests {
         },
     };
     use mockall::predicate;
-    use solana_sdk::{
-        instruction::AccountMeta, pubkey::Pubkey, signature::Signature, system_program,
-    };
+    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_commands_device_create_command() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let payer = client.get_payer();
+        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
 
         let location_pubkey = Pubkey::new_unique();
         let location = Location {
@@ -122,28 +119,31 @@ mod tests {
             .returning(move |_| Ok(AccountData::Exchange(exchange.clone())));
 
         let contributor_pubkey = Pubkey::default();
-        let (device_pubkey, bump_seed) = get_device_pda(&client.get_program_id(), 3);
+        let (device_pubkey, bump_seed) = get_device_pda(&client.get_program_id(), 1);
+
+        let pubmetrics_publisher = Pubkey::default();
 
         client
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
-                    index: 3,
+                    index: 1,
                     bump_seed,
                     code: "test-device".to_string(),
                     contributor_pk: contributor_pubkey,
                     location_pk: location_pubkey,
-                    exchange_pk: Pubkey::new_unique(),
+                    exchange_pk: exchange_pubkey,
                     device_type: DeviceType::Switch,
                     public_ip: [10, 0, 0, 1].into(),
                     dz_prefixes: "10.0.0.0/8".parse().unwrap(),
-                    metrics_publisher_pk: Pubkey::default(),
+                    metrics_publisher_pk: pubmetrics_publisher,
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(device_pubkey, false),
+                    AccountMeta::new(contributor_pubkey, false),
+                    AccountMeta::new(location_pubkey, false),
+                    AccountMeta::new(exchange_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),
-                    AccountMeta::new(payer, true),
-                    AccountMeta::new(system_program::id(), false),
                 ]),
             )
             .returning(|_, _| Ok(Signature::new_unique()));
@@ -156,7 +156,7 @@ mod tests {
             device_type: DeviceType::Switch,
             public_ip: [10, 0, 0, 1].into(),
             dz_prefixes: "10.0.0.0/8".parse().unwrap(),
-            metrics_publisher: Pubkey::default(),
+            metrics_publisher: pubmetrics_publisher,
         }
         .execute(&client);
         assert!(res.is_ok());

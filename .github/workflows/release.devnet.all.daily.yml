@@ -26,3 +26,9 @@ jobs:
     permissions:
       contents: write
       packages: write
+  smartcontract:
+    uses: ./.github/workflows/release.devnet.smartcontract.daily.yml
+    secrets: inherit
+    permissions:
+      contents: write
+      packages: write

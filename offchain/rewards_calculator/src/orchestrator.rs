@@ -7,7 +7,6 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use db_engine::{DuckDbEngine, types::RewardsData};
 use rust_decimal::{Decimal, dec};
-use s3_publisher::S3Publisher;
 use std::{collections::BTreeMap, path::PathBuf};
 use tracing::info;
 use verification_generator::{
@@ -21,23 +20,15 @@ pub struct Orchestrator {
     settings: Settings,
     after_us: u64,
     before_us: u64,
-    s3_publisher: Option<S3Publisher>,
 }
 
 impl Orchestrator {
-    pub fn new(
-        cli: Cli,
-        settings: Settings,
-        after_us: u64,
-        before_us: u64,
-        s3_publisher: Option<S3Publisher>,
-    ) -> Self {
+    pub fn new(cli: Cli, settings: Settings, after_us: u64, before_us: u64) -> Self {
         Self {
             cli,
             settings,
             after_us,
             before_us,
-            s3_publisher,
         }
     }
 
@@ -70,7 +61,7 @@ impl Orchestrator {
             DuckDbEngine::new_with_file(load_db_path).context("Failed to open cached DuckDB")?
         } else {
             // Phase 2: Data Insertion
-            info!("Phase 2: Inserting data into DuckDB");
+            info!("Phase 2: Preparing metrics processing");
             self.insert_data_into_duckdb(&rewards_data).await?
         };
 
@@ -89,19 +80,11 @@ impl Orchestrator {
         let (verification_packet, verification_fingerprint) = self
             .generate_verification(&rewards_data, &rewards, &shapley_inputs)
             .await?;
+        info!("verification_packet: {verification_packet:#?}");
+        info!("verification_fingerprint: {verification_fingerprint:?}");
 
-        // Phase 6: Publishing
-        if !self.settings.dry_run && self.s3_publisher.is_some() {
-            info!("Phase 6: Publishing results to S3");
-            self.publish_results(&rewards, &verification_packet, &verification_fingerprint)
-                .await?;
-        } else if self.settings.dry_run {
-            info!("Phase 6: Skipping S3 publish (dry run mode)");
-        } else if self.s3_publisher.is_none() {
-            info!("Phase 6: Skipping S3 publish (S3 not configured)");
-        }
-
-        Ok(())
+        // Phase 6: Invoke program to publish to DZ Ledger
+        todo!("Phase 6: Invoke program to publish artifacts to DZ Ledger");
     }
 
     async fn fetch_all_data(&self) -> Result<RewardsData> {
@@ -172,7 +155,6 @@ impl Orchestrator {
             info!("Creating cached DuckDB at: {}", cache_path.display());
             DuckDbEngine::new_with_file(&cache_path).context("Failed to create cached DuckDB")?
         } else {
-            info!("Creating in-memory DuckDB instance");
             DuckDbEngine::new_in_memory().context("Failed to create in-memory DuckDB")?
         };
 
@@ -191,12 +173,7 @@ impl Orchestrator {
         info!("Running SQL queries to aggregate metrics");
 
         // Create metrics processor with optional seed for reproducibility
-        let seed = if self.settings.dry_run {
-            Some(42)
-        } else {
-            None
-        };
-        let mut processor = metrics_processor::processor::MetricsProcessor::new(db_engine, seed);
+        let mut processor = metrics_processor::processor::MetricsProcessor::new(db_engine, None);
 
         // Process metrics with configured reward pool
         let reward_pool = Decimal::from(self.settings.epoch.reward_pool);
@@ -323,45 +300,5 @@ impl Orchestrator {
         info!("Generated verification fingerprint: {}", fingerprint.hash);
 
         Ok((packet, fingerprint))
-    }
-
-    async fn publish_results(
-        &self,
-        rewards: &[OperatorReward],
-        verification_packet: &verification_generator::VerificationPacket,
-        verification_fingerprint: &verification_generator::VerificationFingerprint,
-    ) -> Result<()> {
-        info!("Publishing artifacts to S3");
-
-        let publisher = self
-            .s3_publisher
-            .as_ref()
-            .context("S3 publisher not configured")?;
-
-        let timestamp = Utc::now();
-
-        // Convert rewards to S3Publisher's OperatorReward type
-        let s3_rewards: Vec<s3_publisher::OperatorReward> = rewards
-            .iter()
-            .map(|r| s3_publisher::OperatorReward {
-                operator: r.operator.clone(),
-                amount: r.amount,
-                percent: r.percent,
-            })
-            .collect();
-
-        // Publish atomically
-        publisher
-            .publish_reward_artifacts(
-                self.before_us, // epoch is the end timestamp
-                timestamp,
-                &s3_rewards,
-                verification_packet,
-                &verification_fingerprint.hash,
-            )
-            .await
-            .context("Failed to publish reward artifacts")?;
-
-        Ok(())
     }
 }

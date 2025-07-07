@@ -8,7 +8,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
-use tracing::{debug, info};
+use tracing::debug;
 
 /// DuckDB engine for managing in-memory or file-based databases
 pub struct DuckDbEngine {
@@ -19,7 +19,6 @@ pub struct DuckDbEngine {
 impl DuckDbEngine {
     /// Create a new in-memory DuckDB instance
     pub fn new_in_memory() -> Result<Arc<Self>> {
-        info!("Creating in-memory DuckDB instance");
         let conn = Connection::open_in_memory()?;
 
         let engine = Self {
@@ -34,7 +33,7 @@ impl DuckDbEngine {
     /// Create or open a file-based DuckDB instance
     pub fn new_with_file<P: AsRef<Path>>(path: P) -> Result<Arc<Self>> {
         let path = path.as_ref().to_path_buf();
-        info!("Opening DuckDB file: {}", path.display());
+        debug!("Opening DuckDB file: {}", path.display());
 
         let conn = Connection::open(&path)?;
 
@@ -84,7 +83,7 @@ impl DuckDbEngine {
 
     /// Insert rewards data into the database
     pub fn insert_rewards_data(&self, data: &RewardsData) -> Result<()> {
-        info!("Inserting rewards data into DuckDB");
+        debug!("Inserting rewards data into DuckDB");
 
         // Insert metadata
         self.insert_metadata(data)?;
@@ -95,7 +94,7 @@ impl DuckDbEngine {
         // Insert telemetry data
         self.insert_telemetry_data(&data.telemetry)?;
 
-        info!("Successfully inserted all data into DuckDB");
+        debug!("Successfully inserted all data into DuckDB");
         Ok(())
     }
 

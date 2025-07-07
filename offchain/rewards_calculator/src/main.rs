@@ -1,8 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 use rewards_calculator::{cli::Cli, orchestrator::Orchestrator, settings::Settings, util};
-use s3_publisher::S3Publisher;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
@@ -14,10 +13,6 @@ async fn main() -> Result<()> {
     if let Some(log_level) = &cli.log_level {
         settings.log_level = log_level.clone();
     }
-    if cli.dry_run {
-        settings.dry_run = true;
-    }
-
     init_logging(&settings.log_level)?;
 
     // Log startup information
@@ -42,10 +37,6 @@ async fn main() -> Result<()> {
         duration_secs
     );
 
-    if settings.dry_run {
-        warn!("Running in DRY RUN mode - no S3 uploads will be performed");
-    }
-
     if cli.cache_db {
         info!("Cache mode enabled - will save fetched data to DuckDB file");
     }
@@ -54,40 +45,8 @@ async fn main() -> Result<()> {
         info!("Loading from cached DuckDB: {}", load_db);
     }
 
-    // Create S3Publisher if configured
-    let s3_publisher = match &settings.s3 {
-        Some(s3_settings) => {
-            info!("Initializing S3 publisher");
-
-            // Convert to s3_publisher::settings::Settings
-            let s3_pub_settings = s3_publisher::settings::Settings {
-                bucket: s3_settings.bucket.to_string(),
-                region: s3_settings.region.to_string(),
-                access_key_id: s3_settings.access_key_id.to_string(),
-                secret_access_key: s3_settings.secret_access_key.to_string(),
-                prefix: s3_settings.prefix.to_string(),
-                endpoint_url: s3_settings.endpoint_url.to_string(),
-            };
-
-            match S3Publisher::new(&s3_pub_settings).await {
-                Ok(publisher) => {
-                    info!("S3 publisher initialized successfully");
-                    Some(publisher)
-                }
-                Err(e) => {
-                    error!("Failed to initialize S3 publisher: {:#}", e);
-                    return Err(e);
-                }
-            }
-        }
-        None => {
-            info!("S3 configuration not found - S3 publishing will be disabled");
-            None
-        }
-    };
-
     // Create and run orchestrator
-    let orchestrator = Orchestrator::new(cli, settings, after_us, before_us, s3_publisher);
+    let orchestrator = Orchestrator::new(cli, settings, after_us, before_us);
 
     match orchestrator.run().await {
         Ok(()) => {

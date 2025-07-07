@@ -27,7 +27,6 @@ tracing-subscriber.workspace = true
 data_fetcher = { path = "../data_fetcher" }
 db_engine = { path = "../db_engine" }
 metrics_processor = { path = "../metrics_processor" }
-s3_publisher = { path = "../s3_publisher" }
 verification_generator = { path = "../verification_generator" }
 
 [build-dependencies]

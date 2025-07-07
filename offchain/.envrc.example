@@ -27,15 +27,6 @@ export DZ_PROGRAMS__TELEMETRY_PROGRAM_ID="YOUR_TELEMETRY_PROGRAM_ID_HERE"
 # Optional: defaults are usually fine
 # export DZ_METRICS__UPTIME_THRESHOLD="0.95"
 
-# === S3 Publisher Settings ===
-# Required for production (not needed for dry runs)
-# export DZ_S3__BUCKET="doublezero-rewards"
-# export DZ_S3__REGION="us-east-1"
-# export DZ_S3__ACCESS_KEY_ID="your-access-key"
-# export DZ_S3__SECRET_ACCESS_KEY="your-secret-key"
-# export DZ_S3__PREFIX="rewards"
-# export DZ_S3__ENDPOINT_URL="http://localhost:9000"
-
 # === Verification Generator Settings ===
 # Optional: defaults are usually fine
 # export DZ_VERIFICATION__HASH_ALGORITHM="sha256"

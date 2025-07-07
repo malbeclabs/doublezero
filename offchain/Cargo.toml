@@ -4,7 +4,6 @@ members = [
     "db_engine",
     "metrics_processor",
     "rewards_calculator",
-    "s3_publisher",
     "verification_generator",
 ]
 
@@ -14,8 +13,6 @@ resolver = "2"
 [workspace.dependencies]
 anyhow = "1"
 arrow = { version = "55", features = ["prettyprint"] }
-aws-config = { version = "1", features = ["behavior-version-latest"] }
-aws-sdk-s3 = "1"
 base64 = "0"
 chrono = { version = "0", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }

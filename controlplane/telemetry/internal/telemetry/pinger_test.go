@@ -33,8 +33,8 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 		linkPK := newPK(3)
 
 		mockPeers := newMockPeerDiscovery()
-		mockPeers.UpdatePeers(t, map[string]*telemetry.Peer{
-			"peer1": {
+		mockPeers.UpdatePeers(t, []*telemetry.Peer{
+			{
 				DevicePK:   peerPK,
 				LinkPK:     linkPK,
 				DeviceAddr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 10001},
@@ -42,7 +42,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 		})
 
 		mockSender := &mockSender{rtt: 42 * time.Millisecond}
-		getSender := func(_ string, _ *telemetry.Peer) twamplight.Sender { return mockSender }
+		getSender := func(_ *telemetry.Peer) twamplight.Sender { return mockSender }
 
 		buffer := telemetry.NewAccountsBuffer()
 		pinger := telemetry.NewPinger(slog.Default(), &telemetry.PingerConfig{
@@ -77,8 +77,8 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 		linkPK := newPK(6)
 
 		mockPeers := newMockPeerDiscovery()
-		mockPeers.UpdatePeers(t, map[string]*telemetry.Peer{
-			"peer2": {
+		mockPeers.UpdatePeers(t, []*telemetry.Peer{
+			{
 				DevicePK:   peerPK,
 				LinkPK:     linkPK,
 				DeviceAddr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 10002},
@@ -90,7 +90,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 			LocalDevicePK: devicePK,
 			Peers:         mockPeers,
 			Buffer:        buffer,
-			GetSender:     func(string, *telemetry.Peer) twamplight.Sender { return nil },
+			GetSender:     func(*telemetry.Peer) twamplight.Sender { return nil },
 		})
 
 		pinger.Tick(context.Background())
@@ -116,8 +116,8 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 		linkPK := newPK(9)
 
 		mockPeers := newMockPeerDiscovery()
-		mockPeers.UpdatePeers(t, map[string]*telemetry.Peer{
-			"peer3": {
+		mockPeers.UpdatePeers(t, []*telemetry.Peer{
+			{
 				DevicePK:   peerPK,
 				LinkPK:     linkPK,
 				DeviceAddr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 10003},
@@ -130,7 +130,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 			LocalDevicePK: devicePK,
 			Peers:         mockPeers,
 			Buffer:        buffer,
-			GetSender:     func(string, *telemetry.Peer) twamplight.Sender { return mockSender },
+			GetSender:     func(*telemetry.Peer) twamplight.Sender { return mockSender },
 		})
 
 		pinger.Tick(context.Background())

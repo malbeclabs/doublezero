@@ -3,9 +3,10 @@ package telemetry
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
-	"maps"
 	"net"
+	"slices"
 	"sync"
 	"time"
 
@@ -19,9 +20,13 @@ type Peer struct {
 	DeviceAddr *net.UDPAddr
 }
 
+func (p *Peer) String() string {
+	return fmt.Sprintf("device=%s,addr=%s,link=%s", p.DevicePK.String(), p.DeviceAddr.String(), p.LinkPK.String())
+}
+
 type PeerDiscovery interface {
 	Run(ctx context.Context) error
-	GetPeers() map[string]*Peer
+	GetPeers() []*Peer
 }
 
 type LedgerPeerDiscoveryConfig struct {
@@ -42,7 +47,7 @@ type LedgerPeerDiscoveryConfig struct {
 type ledgerPeerDiscovery struct {
 	log     *slog.Logger
 	config  *LedgerPeerDiscoveryConfig
-	peers   map[string]*Peer
+	peers   []*Peer
 	peersMu sync.RWMutex
 }
 
@@ -69,7 +74,7 @@ func NewLedgerPeerDiscovery(cfg *LedgerPeerDiscoveryConfig) (*ledgerPeerDiscover
 	return &ledgerPeerDiscovery{
 		log:    cfg.Logger,
 		config: cfg,
-		peers:  make(map[string]*Peer),
+		peers:  make([]*Peer, 0),
 	}, nil
 }
 
@@ -88,15 +93,13 @@ func (p *ledgerPeerDiscovery) Run(ctx context.Context) error {
 	}
 }
 
-func (p *ledgerPeerDiscovery) GetPeers() map[string]*Peer {
+func (p *ledgerPeerDiscovery) GetPeers() []*Peer {
 	p.peersMu.RLock()
 	defer p.peersMu.RUnlock()
-	return maps.Clone(p.peers)
+	return slices.Clone(p.peers)
 }
 
 func (p *ledgerPeerDiscovery) refresh(ctx context.Context) {
-	p.log.Debug("Refreshing ledger data")
-
 	if err := p.config.ProgramClient.Load(ctx); err != nil {
 		p.log.Error("Failed to load program from ledger", "error", err)
 		return
@@ -104,6 +107,8 @@ func (p *ledgerPeerDiscovery) refresh(ctx context.Context) {
 
 	p.peersMu.Lock()
 	defer p.peersMu.Unlock()
+
+	p.peers = make([]*Peer, 0, len(p.peers))
 
 	devices := make(map[string]serviceability.Device)
 	for _, device := range p.config.ProgramClient.GetDevices() {
@@ -117,7 +122,7 @@ func (p *ledgerPeerDiscovery) refresh(ctx context.Context) {
 		links[pubkey.String()] = link
 	}
 
-	peers := make(map[string]*Peer)
+	peers := make([]*Peer, 0)
 	for _, link := range links {
 		linkPubkey := solana.PublicKeyFromBytes(link.PubKey[:])
 		sideA := solana.PublicKeyFromBytes(link.SideAPubKey[:])
@@ -138,16 +143,16 @@ func (p *ledgerPeerDiscovery) refresh(ctx context.Context) {
 			continue
 		}
 
-		peers[linkPubkey.String()] = &Peer{
+		peers = append(peers, &Peer{
 			LinkPK:   linkPubkey,
 			DevicePK: solana.PublicKeyFromBytes(device.PubKey[:]),
 			DeviceAddr: &net.UDPAddr{
 				IP:   net.IP(device.PublicIp[:]),
 				Port: int(p.config.TWAMPPort),
 			},
-		}
+		})
 	}
 
-	p.log.Debug("Refreshed ledger data", "devices", len(devices), "links", len(links))
+	p.log.Debug("Refreshed peers", "devices", len(devices), "links", len(links), "peers", len(peers))
 	p.peers = peers
 }

@@ -22,7 +22,7 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 		reflector := newTestReflector(t)
 		devicePK := stringToPubkey("device")
 		telemetryProgram := newMemoryTelemetryProgramClient()
-		collector := newTestCollector(t, log, devicePK, reflector, map[string]*telemetry.Peer{}, telemetryProgram, 250*time.Millisecond)
+		collector := newTestCollector(t, log, devicePK, reflector, []*telemetry.Peer{}, telemetryProgram, 250*time.Millisecond)
 
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
@@ -40,7 +40,7 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 		t.Parallel()
 
 		log := log.With("test", t.Name())
-		collector := newTestCollector(t, log, stringToPubkey("device"), newTestReflector(t), map[string]*telemetry.Peer{}, newMemoryTelemetryProgramClient(), 250*time.Millisecond)
+		collector := newTestCollector(t, log, stringToPubkey("device"), newTestReflector(t), []*telemetry.Peer{}, newMemoryTelemetryProgramClient(), 250*time.Millisecond)
 		ctx, cancel := context.WithCancel(t.Context())
 
 		done := make(chan struct{})
@@ -102,13 +102,13 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 		}
 
 		telemetryProgram1 := newMemoryTelemetryProgramClient()
-		collector1 := newTestCollector(t, log.With("runtime", "collector1"), device1PK, reflector1, map[string]*telemetry.Peer{
-			"link1-2": {
+		collector1 := newTestCollector(t, log.With("runtime", "collector1"), device1PK, reflector1, []*telemetry.Peer{
+			{
 				DevicePK:   device2PK,
 				LinkPK:     link1_2,
 				DeviceAddr: reflector2.LocalAddr().(*net.UDPAddr),
 			},
-			"link1-3": {
+			{
 				DevicePK:   device3PK,
 				LinkPK:     link1_3,
 				DeviceAddr: &net.UDPAddr{IP: net.IPv4(10, 241, 1, 3), Port: 1862},
@@ -116,13 +116,13 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 		}, telemetryProgram1, 250*time.Millisecond)
 
 		telemetryProgram2 := newMemoryTelemetryProgramClient()
-		collector2 := newTestCollector(t, log.With("runtime", "collector2"), device2PK, reflector2, map[string]*telemetry.Peer{
-			"link2-1": {
+		collector2 := newTestCollector(t, log.With("runtime", "collector2"), device2PK, reflector2, []*telemetry.Peer{
+			{
 				DevicePK:   device1PK,
 				LinkPK:     link2_1,
 				DeviceAddr: reflector1.LocalAddr().(*net.UDPAddr),
 			},
-			"link2-3": {
+			{
 				DevicePK:   device3PK,
 				LinkPK:     link2_3,
 				DeviceAddr: &net.UDPAddr{IP: net.IPv4(10, 241, 1, 3), Port: 1862},
@@ -202,9 +202,9 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 		mockProgram := newMemoryTelemetryProgramClient()
 		mockDiscovery := newMockPeerDiscovery()
 
-		mockDiscovery.UpdatePeers(t, map[string]*telemetry.Peer{})
+		mockDiscovery.UpdatePeers(t, []*telemetry.Peer{})
 
-		collector := newTestCollector(t, log, stringToPubkey("device-x"), reflector, map[string]*telemetry.Peer{}, mockProgram, 250*time.Millisecond)
+		collector := newTestCollector(t, log, stringToPubkey("device-x"), reflector, []*telemetry.Peer{}, mockProgram, 250*time.Millisecond)
 
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
@@ -216,6 +216,103 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 		require.Never(t, func() bool {
 			return len(mockProgram.GetAccounts(t)) > 0
 		}, 2*time.Second, 100*time.Millisecond)
+	})
+
+	t.Run("updates_sender_when_peer_address_changes", func(t *testing.T) {
+		t.Parallel()
+
+		log := log.With("test", t.Name())
+		devicePK := stringToPubkey("device1")
+		peerPK := stringToPubkey("device2")
+		linkPK := stringToPubkey("link1-2")
+
+		reflector := newTestReflector(t)
+		telemetryProgram := newMemoryTelemetryProgramClient()
+
+		peerDiscovery := newMockPeerDiscovery()
+
+		// Initially peer points to valid reflector
+		peerDiscovery.UpdatePeers(t, []*telemetry.Peer{
+			{
+				DevicePK:   peerPK,
+				LinkPK:     linkPK,
+				DeviceAddr: reflector.LocalAddr().(*net.UDPAddr),
+			},
+		})
+
+		collector, err := telemetry.New(log, telemetry.Config{
+			LocalDevicePK:          devicePK,
+			ProbeInterval:          100 * time.Millisecond,
+			SubmissionInterval:     250 * time.Millisecond,
+			TWAMPSenderTimeout:     250 * time.Millisecond,
+			TWAMPReflector:         reflector,
+			PeerDiscovery:          peerDiscovery,
+			TelemetryProgramClient: telemetryProgram,
+		})
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+
+		go func() {
+			require.NoError(t, collector.Run(ctx))
+		}()
+
+		epoch := telemetry.DeriveEpoch(time.Now())
+
+		accountKey := telemetry.AccountKey{
+			OriginDevicePK: devicePK,
+			TargetDevicePK: peerPK,
+			LinkPK:         linkPK,
+			Epoch:          epoch,
+		}
+
+		// Wait for successful RTT submission
+		require.Eventually(t, func() bool {
+			samples := telemetryProgram.GetAccounts(t)[accountKey]
+			return len(samples) > 0 && !samples[len(samples)-1].Loss
+		}, 3*time.Second, 100*time.Millisecond, "should have working sender with real address")
+
+		// Simulate address change to non-working peer
+		peerDiscovery.UpdatePeers(t, []*telemetry.Peer{
+			{
+				DevicePK:   peerPK,
+				LinkPK:     linkPK,
+				DeviceAddr: &net.UDPAddr{IP: net.IPv4(203, 0, 113, 1), Port: 9999}, // dummy/test address
+			},
+		})
+
+		// Wait for RTT to show packet loss (indicating sender was updated and is now failing)
+		require.Eventually(t, func() bool {
+			samples := telemetryProgram.GetAccounts(t)[accountKey]
+			for _, s := range samples {
+				if s.Loss {
+					return true
+				}
+			}
+			return false
+		}, 5*time.Second, 100*time.Millisecond, "should reflect new address in updated sender")
+
+		// Simulate reverting to valid address
+		peerDiscovery.UpdatePeers(t, []*telemetry.Peer{
+			{
+				DevicePK:   peerPK,
+				LinkPK:     linkPK,
+				DeviceAddr: reflector.LocalAddr().(*net.UDPAddr),
+			},
+		})
+
+		// Wait for RTT to resume with success (no packet loss)
+		require.Eventually(t, func() bool {
+			samples := telemetryProgram.GetAccounts(t)[accountKey]
+			for _, s := range samples {
+				if !s.Loss {
+					return true
+				}
+			}
+			return false
+		}, 5*time.Second, 100*time.Millisecond, "should resume working after peer address is fixed")
+
 	})
 }
 
@@ -230,7 +327,7 @@ func newTestReflector(t *testing.T) *twamplight.Reflector {
 	return reflector
 }
 
-func newTestCollector(t *testing.T, log *slog.Logger, localDevicePK solana.PublicKey, reflector *twamplight.Reflector, peers map[string]*telemetry.Peer, telemetryProgramClient telemetry.TelemetryProgramClient, submissionInterval time.Duration) *telemetry.Collector {
+func newTestCollector(t *testing.T, log *slog.Logger, localDevicePK solana.PublicKey, reflector *twamplight.Reflector, peers []*telemetry.Peer, telemetryProgramClient telemetry.TelemetryProgramClient, submissionInterval time.Duration) *telemetry.Collector {
 	peerDiscovery := newMockPeerDiscovery()
 	peerDiscovery.UpdatePeers(t, peers)
 

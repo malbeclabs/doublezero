@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"maps"
 	"os"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -60,39 +61,21 @@ func newTestAccountKey() telemetry.AccountKey {
 }
 
 type mockServiceabilityProgramClient struct {
-	devices []serviceability.Device
-	links   []serviceability.Link
-
-	loadFn func(c *mockServiceabilityProgramClient) error
-
-	mu sync.RWMutex
-}
-
-func newMockServiceabilityProgramClient(loadFn func(c *mockServiceabilityProgramClient) error) *mockServiceabilityProgramClient {
-	return &mockServiceabilityProgramClient{
-		loadFn: loadFn,
-	}
+	LoadFunc       func(ctx context.Context) error
+	GetDevicesFunc func() []serviceability.Device
+	GetLinksFunc   func() []serviceability.Link
 }
 
 func (c *mockServiceabilityProgramClient) Load(ctx context.Context) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	return c.loadFn(c)
+	return c.LoadFunc(ctx)
 }
 
 func (c *mockServiceabilityProgramClient) GetDevices() []serviceability.Device {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	return c.devices
+	return c.GetDevicesFunc()
 }
 
 func (c *mockServiceabilityProgramClient) GetLinks() []serviceability.Link {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	return c.links
+	return c.GetLinksFunc()
 }
 
 type mockTelemetryProgramClient struct {
@@ -191,14 +174,14 @@ func (c *memoryTelemetryProgramClient) ClearSamples() {
 }
 
 type mockPeerDiscovery struct {
-	peers map[string]*telemetry.Peer
+	peers []*telemetry.Peer
 
 	mu sync.RWMutex
 }
 
 func newMockPeerDiscovery() *mockPeerDiscovery {
 	return &mockPeerDiscovery{
-		peers: make(map[string]*telemetry.Peer),
+		peers: make([]*telemetry.Peer, 0),
 	}
 }
 
@@ -208,14 +191,14 @@ func (p *mockPeerDiscovery) Run(ctx context.Context) error {
 	return nil
 }
 
-func (p *mockPeerDiscovery) GetPeers() map[string]*telemetry.Peer {
+func (p *mockPeerDiscovery) GetPeers() []*telemetry.Peer {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	return maps.Clone(p.peers)
+	return slices.Clone(p.peers)
 }
 
-func (p *mockPeerDiscovery) UpdatePeers(t *testing.T, peers map[string]*telemetry.Peer) {
+func (p *mockPeerDiscovery) UpdatePeers(t *testing.T, peers []*telemetry.Peer) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 

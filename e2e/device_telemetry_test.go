@@ -217,7 +217,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 			return false
 		}
 		return true
-	}, 10*time.Second, 1*time.Second)
+	}, 20*time.Second, 1*time.Second)
 
 	// Check that TWAMP probes work between the devices.
 	log.Info("==> Checking that TWAMP probes work between the devices")

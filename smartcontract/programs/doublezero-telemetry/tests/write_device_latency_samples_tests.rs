@@ -719,7 +719,7 @@ async fn test_write_device_latency_samples_to_max_samples() {
                 timestamp += 1;
             }
             Err(e) => {
-                panic!("Write failed after {} samples: {e:?}", total_written);
+                panic!("Write failed after {total_written} samples: {e:?}");
             }
         }
     }

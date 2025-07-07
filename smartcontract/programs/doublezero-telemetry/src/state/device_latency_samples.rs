@@ -84,7 +84,7 @@ impl TryFrom<&[u8]> for DeviceLatencySamplesHeader {
             ));
         }
 
-        Ok(Self::deserialize(&mut &data[..])?)
+        Self::deserialize(&mut &data[..])
     }
 }
 
@@ -193,7 +193,6 @@ mod tests {
         };
         let header = val.header.clone();
 
-        let header_bytes = borsh::to_vec(&val.header).unwrap();
         let data = borsh::to_vec(&val).unwrap();
         let val2 = DeviceLatencySamples::try_from_slice(&data).unwrap();
         let header2 = val2.header.clone();

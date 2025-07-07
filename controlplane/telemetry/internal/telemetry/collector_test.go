@@ -292,6 +292,27 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 			}
 			return false
 		}, 5*time.Second, 100*time.Millisecond, "should reflect new address in updated sender")
+
+		// Simulate reverting to valid address
+		peerDiscovery.UpdatePeers(t, []*telemetry.Peer{
+			{
+				DevicePK:   peerPK,
+				LinkPK:     linkPK,
+				DeviceAddr: reflector.LocalAddr().(*net.UDPAddr),
+			},
+		})
+
+		// Wait for RTT to resume with success (no packet loss)
+		require.Eventually(t, func() bool {
+			samples := telemetryProgram.GetAccounts(t)[accountKey]
+			for _, s := range samples {
+				if !s.Loss {
+					return true
+				}
+			}
+			return false
+		}, 5*time.Second, 100*time.Millisecond, "should resume working after peer address is fixed")
+
 	})
 }
 

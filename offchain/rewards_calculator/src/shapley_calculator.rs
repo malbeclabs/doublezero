@@ -1,6 +1,8 @@
 use anyhow::{Context, Result};
-use db_engine::DuckDbEngine;
-use metrics_processor::shapley_types::{Demand, Link};
+use metrics_processor::{
+    engine::DuckDbEngine,
+    shapley_types::{Demand, Link},
+};
 use rust_decimal::Decimal;
 use shapley::{DemandMatrix, NetworkShapleyBuilder, PrivateLinks, PublicLinks};
 use tracing::{debug, info};

@@ -8,9 +8,12 @@ edition.workspace = true
 [dependencies]
 anyhow.workspace = true
 chrono.workspace = true
-data_fetcher = { path = "../data_fetcher" }
-db_engine = { path = "../db_engine" }
+csv.workspace = true
+doublezero-serviceability.workspace = true
+doublezero-telemetry.workspace = true
+duckdb.workspace = true
 figment.workspace = true
+rand.workspace = true
 rust_decimal.workspace = true
 serde.workspace = true
 serde_json.workspace = true

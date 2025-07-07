@@ -1,3 +1,4 @@
+pub mod engine;
 pub mod processor;
 pub mod settings;
 pub mod shapley_types;

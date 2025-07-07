@@ -25,7 +25,6 @@ tracing-subscriber.workspace = true
 
 # Internal crates
 data_fetcher = { path = "../data_fetcher" }
-db_engine = { path = "../db_engine" }
 metrics_processor = { path = "../metrics_processor" }
 verification_generator = { path = "../verification_generator" }
 

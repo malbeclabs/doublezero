@@ -1,7 +1,7 @@
 //! End-to-end integration tests for verification packet generation
 
 use anyhow::Result;
-use db_engine::types::RewardsData;
+use metrics_processor::engine::types::RewardsData;
 use rust_decimal::dec;
 use std::collections::BTreeMap;
 use verification_generator::{

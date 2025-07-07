@@ -4,7 +4,7 @@ use crate::{
 };
 use anyhow::{Context, Result, anyhow, bail};
 use chrono::Utc;
-use db_engine::types::RewardsData;
+use metrics_processor::engine::types::RewardsData;
 use rust_decimal::{Decimal, prelude::ToPrimitive};
 use std::collections::BTreeMap;
 

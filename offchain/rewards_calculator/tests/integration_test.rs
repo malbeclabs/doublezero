@@ -5,8 +5,10 @@
 
 use anyhow::Result;
 use chrono::Utc;
-use db_engine::{DuckDbEngine, types::*};
-use metrics_processor::processor::MetricsProcessor;
+use metrics_processor::{
+    engine::{DuckDbEngine, types::*},
+    processor::MetricsProcessor,
+};
 use rewards_calculator::shapley_calculator::{ShapleyParams, calculate_rewards};
 use rust_decimal::Decimal;
 use solana_sdk::pubkey::Pubkey;

@@ -1,4 +1,3 @@
-pub mod baseline_generator;
 pub mod rpc;
 pub mod serviceability;
 pub mod settings;
@@ -6,7 +5,7 @@ pub mod telemetry;
 
 use anyhow::Result;
 use chrono::Utc;
-use db_engine::types::RewardsData;
+use metrics_processor::engine::types::RewardsData;
 use settings::Settings;
 use tracing::info;
 

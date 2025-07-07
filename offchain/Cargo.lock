@@ -1415,36 +1415,17 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
- "db_engine",
  "doublezero-serviceability",
  "doublezero-telemetry",
  "figment",
  "futures-util",
- "rand 0.9.1",
+ "metrics_processor",
  "serde",
  "serde_json",
  "solana-account-decoder",
  "solana-client",
  "solana-sdk",
  "tokio",
- "tracing",
-]
-
-[[package]]
-name = "db_engine"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "csv",
- "doublezero-serviceability",
- "doublezero-telemetry",
- "duckdb",
- "figment",
- "rust_decimal",
- "serde",
- "serde_json",
- "solana-sdk",
  "tracing",
 ]
 
@@ -1613,7 +1594,7 @@ dependencies = [
 [[package]]
 name = "doublezero-serviceability"
 version = "0.2.2"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#ba5b080d2aae7ef3028c14043f2c119822e7f7e3"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#11d99b95622698dc2c5e0d5c92f515c2739319b2"
 dependencies = [
  "borsh 1.5.7",
  "byteorder",
@@ -1626,7 +1607,7 @@ dependencies = [
 [[package]]
 name = "doublezero-telemetry"
 version = "0.2.0"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#ba5b080d2aae7ef3028c14043f2c119822e7f7e3"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#11d99b95622698dc2c5e0d5c92f515c2739319b2"
 dependencies = [
  "borsh 1.5.7",
  "doublezero-serviceability",
@@ -2553,9 +2534,9 @@ dependencies = [
 
 [[package]]
 name = "hyper-util"
-version = "0.1.14"
+version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc2fdfdbff08affe55bb779f33b053aa1fe5dd5b54c257343c17edfa55711bdb"
+checksum = "7f66d5bd4c6f02bf0542fad85d626775bab9258cf795a4256dcaf3161114d1df"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -3173,9 +3154,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
- "data_fetcher",
- "db_engine",
+ "csv",
+ "doublezero-serviceability",
+ "doublezero-telemetry",
+ "duckdb",
  "figment",
+ "rand 0.9.1",
  "rust_decimal",
  "serde",
  "serde_json",
@@ -4317,7 +4301,6 @@ dependencies = [
  "chrono",
  "clap",
  "data_fetcher",
- "db_engine",
  "duckdb",
  "figment",
  "humantime",
@@ -8006,9 +7989,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
- "db_engine",
  "figment",
  "hex",
+ "metrics_processor",
  "rust_decimal",
  "serde",
  "serde_json",

@@ -1,7 +1,7 @@
 use crate::rpc;
 use anyhow::{Context, Result};
-use db_engine::types::{DbDeviceLatencySamples, TelemetryData};
 use doublezero_telemetry::state::device_latency_samples::DeviceLatencySamples;
+use metrics_processor::engine::types::{DbDeviceLatencySamples, TelemetryData};
 use solana_account_decoder::UiAccountEncoding;
 use solana_client::{
     rpc_client::RpcClient,

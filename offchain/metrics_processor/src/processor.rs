@@ -1,10 +1,11 @@
-use crate::shapley_types::{CostParameters, ShapleyInputs};
-use anyhow::Result;
-use data_fetcher::baseline_generator::BaselineGenerator;
-use db_engine::{
-    DuckDbEngine,
-    sql::{CommonQueries, DemandMatrixQuery, LinkTelemetryQuery, MetricsQueries},
+use crate::{
+    engine::{
+        DuckDbEngine, InternetBaseline, baseline_generator,
+        queries::{CommonQueries, DemandMatrixQuery, LinkTelemetryQuery, MetricsQueries},
+    },
+    shapley_types::{CostParameters, ShapleyInputs},
 };
+use anyhow::Result;
 use rust_decimal::{Decimal, prelude::*};
 use shapley::{Demand, DemandBuilder, Link, LinkBuilder};
 use std::sync::Arc;
@@ -13,7 +14,7 @@ use tracing::{debug, info};
 pub struct MetricsProcessor {
     db_engine: Arc<DuckDbEngine>,
     cost_params: CostParameters,
-    baseline_generator: BaselineGenerator,
+    baseline_generator: baseline_generator::BaselineGenerator,
 }
 
 impl MetricsProcessor {
@@ -22,7 +23,7 @@ impl MetricsProcessor {
         Self {
             db_engine,
             cost_params: CostParameters::default(),
-            baseline_generator: BaselineGenerator::new(seed),
+            baseline_generator: baseline_generator::BaselineGenerator::new(seed),
         }
     }
 
@@ -207,12 +208,11 @@ impl MetricsProcessor {
                 .generate_baseline(from_lat, from_lng, to_lat, to_lng);
 
             // Calculate distance for storage
-            let distance_km = data_fetcher::baseline_generator::haversine_distance(
-                from_lat, from_lng, to_lat, to_lng,
-            );
+            let distance_km =
+                baseline_generator::haversine_distance(from_lat, from_lng, to_lat, to_lng);
 
             // Store in database
-            let db_baseline = db_engine::types::InternetBaseline {
+            let db_baseline = InternetBaseline {
                 from_location_code: from_code.clone(),
                 to_location_code: to_code.clone(),
                 from_lat,
@@ -323,8 +323,8 @@ impl MetricsProcessor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::types::{DbDevice, DbLink, DbLocation};
     use chrono::Utc;
-    use db_engine::types::{DbDevice, DbLink, DbLocation};
     use solana_sdk::pubkey::Pubkey;
 
     #[test]
@@ -457,7 +457,7 @@ mod tests {
         };
 
         // Store test data in database
-        let network_data = db_engine::types::NetworkData {
+        let network_data = crate::engine::types::NetworkData {
             locations: vec![location1, location2],
             devices: vec![device1_same_op, device2_same_op, device3_diff_op],
             links: vec![link_same_operator, link_shared_operator],
@@ -466,9 +466,9 @@ mod tests {
             multicast_groups: vec![],
         };
 
-        let rewards_data = db_engine::types::RewardsData {
+        let rewards_data = crate::engine::types::RewardsData {
             network: network_data,
-            telemetry: db_engine::types::TelemetryData::default(),
+            telemetry: crate::engine::types::TelemetryData::default(),
             after_us: 0,
             before_us: 0,
             fetched_at: Utc::now(),

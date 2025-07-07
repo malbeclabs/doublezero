@@ -1,11 +1,11 @@
 use crate::rpc;
 use anyhow::{Context, Result};
-use db_engine::types::{
-    DbDevice, DbExchange, DbLink, DbLocation, DbMulticastGroup, DbUser, NetworkData,
-};
 use doublezero_serviceability::state::{
     accounttype::AccountType, device::Device, exchange::Exchange, link::Link, location::Location,
     multicastgroup::MulticastGroup, user::User,
+};
+use metrics_processor::engine::types::{
+    DbDevice, DbExchange, DbLink, DbLocation, DbMulticastGroup, DbUser, NetworkData,
 };
 use solana_account_decoder::UiAccountEncoding;
 use solana_client::{

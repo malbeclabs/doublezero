@@ -1,6 +1,6 @@
 // XXX: This should all go away once we have some 3rd party api/data/on-chain accounts
 
-use rand::{Rng, SeedableRng, rngs::StdRng};
+use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Represents synthetic internet baseline metrics between two locations

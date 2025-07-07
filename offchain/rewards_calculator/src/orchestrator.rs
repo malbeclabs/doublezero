@@ -5,7 +5,7 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use chrono::Utc;
-use db_engine::{DuckDbEngine, types::RewardsData};
+use metrics_processor::engine::{DuckDbEngine, types::RewardsData};
 use rust_decimal::{Decimal, dec};
 use std::{collections::BTreeMap, path::PathBuf};
 use tracing::info;
@@ -36,6 +36,7 @@ impl Orchestrator {
     pub async fn run(&self) -> Result<()> {
         info!("Starting rewards calculation pipeline");
 
+        // Phase 1: Data Fetching
         // Fetch data (needed for verification even when loading from cache)
         let rewards_data = if self.cli.load_db.is_some() {
             // When loading from cache, we still need the rewards data structure
@@ -50,41 +51,38 @@ impl Orchestrator {
                 fetched_at: Utc::now(),
             }
         } else {
-            // Phase 1: Data Fetching
             info!("Phase 1: Fetching data from Solana and third-party sources");
             self.fetch_all_data().await?
         };
 
+        // Phase 2: Process metrics
+        info!("Phase 2: Processing metrics to construct shapley inputs");
         // Check if we should load from cached DB
         let db_engine = if let Some(load_db_path) = &self.cli.load_db {
             info!("Loading data from cached DuckDB: {}", load_db_path);
             DuckDbEngine::new_with_file(load_db_path).context("Failed to open cached DuckDB")?
         } else {
-            // Phase 2: Data Insertion
-            info!("Phase 2: Preparing metrics processing");
             self.insert_data_into_duckdb(&rewards_data).await?
         };
-
-        // Phase 3: Metrics Processing
-        info!("Phase 3: Processing metrics");
         let shapley_inputs = self.process_metrics(db_engine.clone()).await?;
+        info!("Shapley inputs: {shapley_inputs:?}");
 
-        // Phase 4: Shapley Calculation
-        info!("Phase 4: Calculating rewards using Shapley values");
+        // Phase 3: Shapley Calculation
+        info!("Phase 3: Calculating rewards using Shapley values");
         let rewards = self
             .calculate_rewards(shapley_inputs.clone(), &db_engine)
             .await?;
 
-        // Phase 5: Verification Generation
-        info!("Phase 5: Generating verification artifacts");
+        // Phase 4: Verification Generation
+        info!("Phase 4: Generating verification artifacts");
         let (verification_packet, verification_fingerprint) = self
             .generate_verification(&rewards_data, &rewards, &shapley_inputs)
             .await?;
         info!("verification_packet: {verification_packet:#?}");
         info!("verification_fingerprint: {verification_fingerprint:?}");
 
-        // Phase 6: Invoke program to publish to DZ Ledger
-        todo!("Phase 6: Invoke program to publish artifacts to DZ Ledger");
+        // Phase 5: Invoke program to publish to DZ Ledger
+        todo!("Phase 5: Invoke program to publish artifacts to DZ Ledger");
     }
 
     async fn fetch_all_data(&self) -> Result<RewardsData> {

@@ -8,7 +8,7 @@ edition.workspace = true
 [dependencies]
 anyhow.workspace = true
 chrono.workspace = true
-db_engine = { path = "../db_engine" }
+metrics_processor = { path = "../metrics_processor" }
 figment.workspace = true
 hex.workspace = true
 rust_decimal.workspace = true

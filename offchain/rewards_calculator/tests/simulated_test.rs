@@ -2,8 +2,10 @@
 //! as the network-shapley-rs library's simulated example.
 
 use anyhow::Result;
-use db_engine::test_data;
-use metrics_processor::shapley_types::{Demand, Link};
+use metrics_processor::{
+    engine::test_data,
+    shapley_types::{Demand, Link},
+};
 use rewards_calculator::shapley_calculator::{ShapleyParams, calculate_rewards};
 use rust_decimal::{Decimal, prelude::*};
 use std::{fs::read_to_string, str::FromStr};

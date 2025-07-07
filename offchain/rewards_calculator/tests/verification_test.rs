@@ -19,7 +19,7 @@ async fn test_verification_reproducibility() -> Result<()> {
     let scenario = test_data::single_operator_scenario();
 
     // Create and populate test database
-    let engine = db_engine::DuckDbEngine::new_in_memory()?;
+    let engine = metrics_processor::engine::DuckDbEngine::new_in_memory()?;
     engine.insert_rewards_data(&scenario)?;
 
     // Process metrics to get shapley inputs

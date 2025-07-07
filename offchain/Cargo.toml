@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "data_fetcher",
-    "db_engine",
     "metrics_processor",
     "rewards_calculator",
     "verification_generator",
@@ -28,7 +27,7 @@ doublezero-serviceability = { git = "ssh://git@github.com/malbeclabs/doublezero"
 doublezero-telemetry = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint" ] }
 md5 = "0"
 parquet = { version = "55", features = ["arrow", "async"] }
-rand = "0"
+rand = { version = "0", features = [ "thread_rng" ] }
 rust_decimal = { version = "1", features = ["serde"] }
 sha2 = "0"
 shapley = { git = "https://github.com/doublezerofoundation/network-shapley-rs", features = ["csv"] }

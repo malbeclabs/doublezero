@@ -1,4 +1,4 @@
-use crate::sql::CommonQueries;
+use crate::engine::queries::CommonQueries;
 
 pub struct MetricsQueries;
 

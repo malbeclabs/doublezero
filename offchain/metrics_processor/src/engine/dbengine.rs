@@ -1,6 +1,6 @@
-use crate::{
-    sql::{CommonQueries, SchemaQueries},
-    types::{NetworkData, RewardsData, TelemetryData},
+use crate::engine::{
+    queries::{CommonQueries, SchemaQueries},
+    types::{InternetBaseline, NetworkData, RewardsData, TelemetryData},
 };
 use anyhow::Result;
 use duckdb::{Connection, params};
@@ -322,7 +322,7 @@ impl DuckDbEngine {
     }
 
     /// Store internet baseline metrics
-    pub fn store_internet_baseline(&self, baseline: &crate::types::InternetBaseline) -> Result<()> {
+    pub fn store_internet_baseline(&self, baseline: &InternetBaseline) -> Result<()> {
         self.conn.lock().unwrap().execute(
             CommonQueries::insert_internet_baseline(),
             params![
@@ -438,7 +438,7 @@ impl DuckDbEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::DbLocation;
+    use crate::engine::types::DbLocation;
     use chrono::Utc;
     use solana_sdk::pubkey::Pubkey;
 

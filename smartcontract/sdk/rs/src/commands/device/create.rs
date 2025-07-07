@@ -141,6 +141,9 @@ mod tests {
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(device_pubkey, false),
+                    AccountMeta::new(contributor_pubkey, false),
+                    AccountMeta::new(location_pubkey, false),
+                    AccountMeta::new(exchange_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),
                     AccountMeta::new(payer, true),
                     AccountMeta::new(system_program::id(), false),

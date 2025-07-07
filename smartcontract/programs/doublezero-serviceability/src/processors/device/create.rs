@@ -3,9 +3,12 @@ use core::fmt;
 use crate::{
     error::DoubleZeroError,
     globalstate::{globalstate_get_next, globalstate_write},
-    helper::*,
-    pda::*,
-    state::{accounttype::AccountType, device::*},
+    helper::account_create,
+    pda::get_device_pda,
+    state::{
+        accounttype::AccountType, contributor::Contributor, device::*, exchange::Exchange,
+        location::Location,
+    },
     types::*,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -100,29 +103,24 @@ pub fn process_create_device(
     );
     assert!(bump_seed == value.bump_seed, "Invalid Device Bump Seed");
 
-    // Check account Types
-    if contributor_account.data_is_empty()
-        || contributor_account.data.borrow()[0] != AccountType::Contributor as u8
-    {
+    let contributor = Contributor::try_from(contributor_account)?;
+    if contributor.account_type != AccountType::Contributor {
+        return Err(DoubleZeroError::InvalidContributorPubkey.into());
+    }
+    if contributor.owner != *payer_account.key {
+        return Err(DoubleZeroError::InvalidOwnerPubkey.into());
+    }
+    // TODO: add reference counters on contributor
+    let location = Location::try_from(location_account)?;
+    if location.account_type != AccountType::Location {
         return Err(DoubleZeroError::InvalidLocationPubkey.into());
     }
-    // Check account Types
-    if location_account.data_is_empty()
-        || location_account.data.borrow()[0] != AccountType::Location as u8
-    {
-        return Err(DoubleZeroError::InvalidLocationPubkey.into());
-    }
-    if location_account.owner != program_id {
-        return Err(ProgramError::IncorrectProgramId);
-    }
-    if exchange_account.data_is_empty()
-        || exchange_account.data.borrow()[0] != AccountType::Exchange as u8
-    {
+    // TODO: add reference counters on location
+    let exchange = Exchange::try_from(exchange_account)?;
+    if exchange.account_type != AccountType::Exchange {
         return Err(DoubleZeroError::InvalidExchangePubkey.into());
     }
-    if exchange_account.owner != program_id {
-        return Err(ProgramError::IncorrectProgramId);
-    }
+    // TODO: add reference counters on exchange
 
     let device: Device = Device {
         account_type: AccountType::Device,

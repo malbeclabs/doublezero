@@ -13,7 +13,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
-    entrypoint::{ProgramResult, MAX_PERMITTED_DATA_INCREASE},
+    entrypoint::ProgramResult,
     msg,
     program::invoke_signed,
     program_error::ProgramError,
@@ -127,17 +127,6 @@ pub fn process_write_device_latency_samples(
     // Set the first-write timestamp exactly once.
     if samples_data.start_timestamp_microseconds == 0 {
         samples_data.start_timestamp_microseconds = args.start_timestamp_microseconds;
-    }
-
-    // Pre-check the total size after append to avoid realloc panics.
-    let new_total_samples = samples_data.samples.len() + args.samples.len();
-    let future_total_len = DZ_LATENCY_SAMPLES_HEADER_SIZE + new_total_samples * 4;
-    if future_total_len > MAX_PERMITTED_DATA_INCREASE {
-        msg!(
-            "Cannot realloc to {}, would exceed Solana inner instruction limit",
-            future_total_len
-        );
-        return Err(TelemetryError::SamplesAccountFull.into());
     }
 
     // Append new samples and update sample index.

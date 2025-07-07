@@ -45,7 +45,7 @@ type mockRPCClient struct {
 	SendTransactionWithOptsFunc func(context.Context, *solana.Transaction, solanarpc.TransactionOpts) (solana.Signature, error)
 	GetSignatureStatusesFunc    func(context.Context, bool, ...solana.Signature) (*solanarpc.GetSignatureStatusesResult, error)
 	GetTransactionFunc          func(context.Context, solana.Signature, *solanarpc.GetTransactionOpts) (*solanarpc.GetTransactionResult, error)
-	GetAccountDataBorshIntoFunc func(context.Context, solana.PublicKey, any) (err error)
+	GetAccountInfoFunc          func(context.Context, solana.PublicKey) (*solanarpc.GetAccountInfoResult, error)
 }
 
 func (m *mockRPCClient) GetLatestBlockhash(ctx context.Context, ct solanarpc.CommitmentType) (*solanarpc.GetLatestBlockhashResult, error) {
@@ -64,6 +64,6 @@ func (m *mockRPCClient) GetTransaction(ctx context.Context, sig solana.Signature
 	return m.GetTransactionFunc(ctx, sig, opts)
 }
 
-func (m *mockRPCClient) GetAccountDataBorshInto(ctx context.Context, account solana.PublicKey, inVar any) (err error) {
-	return m.GetAccountDataBorshIntoFunc(ctx, account, inVar)
+func (m *mockRPCClient) GetAccountInfo(ctx context.Context, account solana.PublicKey) (out *solanarpc.GetAccountInfoResult, err error) {
+	return m.GetAccountInfoFunc(ctx, account)
 }

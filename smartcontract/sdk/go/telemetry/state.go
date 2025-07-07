@@ -1,6 +1,11 @@
 package telemetry
 
-import "github.com/gagliardetto/solana-go"
+import (
+	"encoding/binary"
+	"io"
+
+	"github.com/gagliardetto/solana-go"
+)
 
 type AccountType uint8
 
@@ -8,7 +13,7 @@ const (
 	AccountTypeDeviceLatencySamples AccountType = iota + 1
 )
 
-type DeviceLatencySamples struct {
+type DeviceLatencySamplesHeader struct {
 	// Used to distinguish this account type during deserialization
 	AccountType AccountType // 1
 
@@ -48,7 +53,35 @@ type DeviceLatencySamples struct {
 
 	// Reserved for future use.
 	Unused [128]uint8 // 128
+}
 
-	// RTT samples in microseconds, one per entry (with length prefix).
+type DeviceLatencySamples struct {
+	DeviceLatencySamplesHeader
 	Samples []uint32 // 4 + n*4 (RTT values in microseconds)
+}
+
+func (d *DeviceLatencySamples) Serialize(w io.Writer) error {
+	if err := binary.Write(w, binary.LittleEndian, &d.DeviceLatencySamplesHeader); err != nil {
+		return err
+	}
+	for _, sample := range d.Samples {
+		if err := binary.Write(w, binary.LittleEndian, sample); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (d *DeviceLatencySamples) Deserialize(r io.Reader) error {
+	if err := binary.Read(r, binary.LittleEndian, &d.DeviceLatencySamplesHeader); err != nil {
+		return err
+	}
+
+	d.Samples = make([]uint32, d.DeviceLatencySamplesHeader.NextSampleIndex)
+	for i := 0; i < int(d.DeviceLatencySamplesHeader.NextSampleIndex); i++ {
+		if err := binary.Read(r, binary.LittleEndian, &d.Samples[i]); err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -1,0 +1,20 @@
+[package]
+name = "db_engine"
+version = "0.1.0"
+
+# Inherited
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+csv.workspace = true
+doublezero-serviceability.workspace = true
+doublezero-telemetry.workspace = true
+duckdb.workspace = true
+figment.workspace = true
+rust_decimal.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+solana-sdk.workspace = true
+tracing.workspace = true

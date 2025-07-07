@@ -1,0 +1,27 @@
+/target
+
+# Secrets
+.env
+.envrc
+
+# DB
+*.db
+*.wal
+
+# Cache directories
+cache/
+.cache/
+
+# Temporary files
+*.tmp
+*.bak
+*.txt
+*.log
+
+# Local test data
+test-data/
+*.parquet
+*.json.gz
+*.info
+*.py
+*.xml

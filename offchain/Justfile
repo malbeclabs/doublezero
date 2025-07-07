@@ -1,0 +1,39 @@
+# Default (list of commands)
+default:
+    just -l
+
+# Run fmt
+fmt:
+    cargo +nightly fmt --all -- --config imports_granularity=Crate
+
+# Check fmt
+fmt-check:
+    cargo fmt --check
+
+# Build (release)
+build:
+    cargo build --release
+
+# Run clippy
+clippy:
+    cargo clippy -- -Dclippy::all -D warnings
+
+# Run tests
+test:
+    cargo nextest run --release
+
+# Clean
+clean:
+    cargo clean
+
+# Coverage
+cov:
+    cargo llvm-cov nextest --lcov --output-path lcov.info
+
+# Run CI pipeline
+ci:
+    @just fmt
+    @just fmt-check
+    @just clippy
+    @just test
+    @just build

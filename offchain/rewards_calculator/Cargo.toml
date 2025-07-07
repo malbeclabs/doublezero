@@ -1,0 +1,38 @@
+[package]
+name = "rewards_calculator"
+version = "0.1.0"
+
+# Inherited
+edition.workspace = true
+
+[lib]
+name = "rewards_calculator"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+clap.workspace = true
+figment.workspace = true
+humantime.workspace = true
+rust_decimal.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+shapley.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+# Internal crates
+data_fetcher = { path = "../data_fetcher" }
+db_engine = { path = "../db_engine" }
+metrics_processor = { path = "../metrics_processor" }
+s3_publisher = { path = "../s3_publisher" }
+verification_generator = { path = "../verification_generator" }
+
+[build-dependencies]
+toml.workspace = true
+
+[dev-dependencies]
+solana-sdk.workspace = true
+duckdb.workspace = true

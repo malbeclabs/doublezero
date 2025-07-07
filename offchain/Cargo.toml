@@ -1,0 +1,48 @@
+[workspace]
+members = [
+    "data_fetcher",
+    "db_engine",
+    "metrics_processor",
+    "rewards_calculator",
+    "s3_publisher",
+    "verification_generator",
+]
+
+package = { edition = "2024" }
+resolver = "2"
+
+[workspace.dependencies]
+anyhow = "1"
+arrow = { version = "55", features = ["prettyprint"] }
+aws-config = { version = "1", features = ["behavior-version-latest"] }
+aws-sdk-s3 = "1"
+base64 = "0"
+chrono = { version = "0", features = ["serde"] }
+clap = { version = "4", features = ["derive"] }
+csv = "1"
+duckdb = { version = "1", features = ["bundled"] }
+flate2 = "1"
+figment = { version = "0", features = ["env", "toml"] }
+futures-util = "0"
+hex = "0"
+humantime = "2"
+humantime-serde = "1"
+doublezero-serviceability = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint" ] }
+doublezero-telemetry = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint" ] }
+md5 = "0"
+parquet = { version = "55", features = ["arrow", "async"] }
+rand = "0"
+rust_decimal = { version = "1", features = ["serde"] }
+sha2 = "0"
+shapley = { git = "https://github.com/doublezerofoundation/network-shapley-rs", features = ["csv"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+solana-client = "2.2.7"
+solana-account-decoder = "2.2.7"
+solana-sdk = "2.2.2"
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0" }
+toml = "0"
+tracing = "0"
+tracing-subscriber = { version = "0", features = ["env-filter"] }

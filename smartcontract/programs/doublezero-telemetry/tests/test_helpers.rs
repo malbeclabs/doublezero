@@ -43,10 +43,11 @@ use solana_sdk::{
     commitment_config::CommitmentLevel,
     hash::Hash,
     instruction::{AccountMeta, Instruction, InstructionError},
+    message::{v0::Message, VersionedMessage},
     pubkey::Pubkey,
     signature::{Keypair, Signer},
     system_program,
-    transaction::{Transaction, TransactionError},
+    transaction::{Transaction, TransactionError, VersionedTransaction},
 };
 
 #[ctor::ctor]
@@ -944,15 +945,19 @@ pub async fn execute_transaction(
         .map_err(|_| BanksClientError::ClientError("Failed to pack instruction"))?;
 
     let payer = signers[0]; // First signer is always the payer
-    let mut transaction = Transaction::new_with_payer(
-        &[Instruction {
-            program_id,
-            accounts,
-            data: instruction_data,
-        }],
-        Some(&payer.pubkey()),
-    );
-    transaction.sign(signers, recent_blockhash);
+
+    let instruction = Instruction {
+        program_id,
+        accounts,
+        data: instruction_data,
+    };
+
+    let message =
+        Message::try_compile(&payer.pubkey(), &[instruction], &[], recent_blockhash).unwrap();
+
+    let transaction =
+        VersionedTransaction::try_new(VersionedMessage::V0(message), signers).unwrap();
+
     banks_client
         .process_transaction_with_commitment(transaction, CommitmentLevel::Processed)
         .await

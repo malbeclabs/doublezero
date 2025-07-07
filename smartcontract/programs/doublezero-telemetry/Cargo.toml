@@ -14,11 +14,13 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 borsh.workspace = true
+bs58.workspace = true
 serde.workspace = true
 solana-program.workspace = true
 doublezero-serviceability = { path = "../doublezero-serviceability", features = [
     "no-entrypoint",
 ] }
+sha2.workspace = true
 
 [dev-dependencies]
 bincode.workspace = true

@@ -1,6 +1,6 @@
 # Device Telemetry Program
 
-A Solana smart contract for collecting round-trip time (RTT) latency samples between two devices over a link during a specific epoch. Authorized telemetry agents initialize and write data to deterministic per-epoch accounts.
+A Solana program for collecting RTT latency measurements between devices over a link, using preallocated per-epoch accounts and append-only writes by authorized agents.
 
 ---
 
@@ -11,7 +11,6 @@ Stores metadata and RTT samples (in microseconds):
 | Field | Type | Description |
 | --- | --- | --- |
 | `account_type` | `DeviceLatencySamples` enum | Type marker |
-| `bump_seed` | `u8` | PDA bump seed |
 | `epoch` | `u64` | Collection epoch |
 | `origin_device_agent_pk` | `Pubkey` | Authorized agent |
 | `origin_device_pk` | `Pubkey` | Sampling initiator |
@@ -22,26 +21,23 @@ Stores metadata and RTT samples (in microseconds):
 | `sampling_interval_microseconds` | `u64` | Sampling interval |
 | `start_timestamp_microseconds` | `u64` | Set on first write |
 | `next_sample_index` | `u32` | Current sample count |
-| `samples` | `Vec<u32>` | RTT samples (µs) |
+| `samples` | `[u32; MAX_DEVICE_LATENCY_SAMPLES]` | Fixed-size region for RTT samples (`µs`) |
 
 Constants:
 
-- `MAX_SAMPLES = 35_000`
-- `DZ_LATENCY_SAMPLES_HEADER_SIZE = 229` bytes
+- `MAX_DEVICE_LATENCY_SAMPLES = 35_000`
+- `DEVICE_LATENCY_SAMPLES_HEADER_SIZE = 349` bytes
 
 ---
 
 ## Instruction: `InitializeDeviceLatencySamples`
 
-Creates a new latency samples account for a specific device pair, link, and epoch.
+Initializes a preallocated latency samples account for a specific device pair, link, and epoch. The account must be fully created and allocated by the client using `create_account_with_seed`.
 
 ### Arguments
 
 ```rust
 pub struct InitializeDeviceLatencySamplesArgs {
-    pub origin_device_pk: Pubkey,
-    pub target_device_pk: Pubkey,
-    pub link_pk: Pubkey,
     pub epoch: u64,
     pub sampling_interval_microseconds: u64,
 }
@@ -51,7 +47,7 @@ pub struct InitializeDeviceLatencySamplesArgs {
 
 | Index | Role | Signer | Writable | Description |
 | --- | --- | --- | --- | --- |
-| 0 | `latency_samples_account` | No | Yes | PDA to be created |
+| 0 | `latency_samples_account` | No | Yes | Seeded address to be created externally |
 | 1 | `agent` | Yes | No | Must match origin device's publisher |
 | 2 | `origin_device` | No | No | Must be activated |
 | 3 | `target_device` | No | No | Must be activated |
@@ -59,11 +55,30 @@ pub struct InitializeDeviceLatencySamplesArgs {
 | 5 | `system_program` | No | No | System program for allocation |
 | 6 | `serviceability_program` | No | No | Device/link registry owner |
 
-### PDA Derivation
+### Address Derivation
+
+The account is derived using `Pubkey::create_with_seed(agent, seed, program_id)` where seed is the first 32 characters of a base58-encoded SHA-256 hash over the following inputs:
 
 ```
-["device_latency_samples", origin_device, target_device, link, epoch]
+[program_id, "telemetry", "device-latency-samples", origin_device, target_device, link, epoch]
 ```
+
+```rust
+let mut hasher = Sha256::new();
+hasher.update(program_id.as_ref());
+hasher.update(b"telemetry");
+hasher.update(b"device-latency-samples");
+hasher.update(origin_device.as_ref());
+hasher.update(target_device.as_ref());
+hasher.update(link.as_ref());
+hasher.update(&epoch.to_le_bytes());
+
+let hash = hasher.finalize();
+let seed = bs58::encode(hash).into_string();
+let seed = &seed[..32];
+```
+
+The resulting account address is fully deterministic and must be computed off-chain before calling `InitializeDeviceLatencySamples`.
 
 ---
 
@@ -86,20 +101,19 @@ pub struct WriteDeviceLatencySamplesArgs {
 | --- | --- | --- | --- | --- |
 | 0 | `latency_samples_account` | No | Yes | Existing account to write to |
 | 1 | `agent` | Yes | No | Must match `origin_device_agent_pk` |
-| 2 | `system_program` | No | No | Used for rent adjustment if resizing |
 
 ### Behavior
 
 - First write sets `start_timestamp_microseconds` if unset.
 - Validates account ownership and agent authorization.
-- Appends samples without exceeding `MAX_SAMPLES` or `MAX_PERMITTED_DATA_INCREASE` (10,240 bytes).
-- Performs rent transfer and account resize if needed.
+- Appends samples up to the preallocated capacity (`MAX_DEVICE_LATENCY_SAMPLES`), within Solana's 10,240-byte data size limit.
+- Fails if writes would exceed the fixed preallocated account size (10,240 bytes).
 
 ---
 
 ## Usage Flow
 
-1. Devices and links are created and activated using the `doublezero_serviceability` program.
+1. Devices and links are provisioned via the `doublezero_serviceability` program and must be in `Activated` or `Suspended` status.
 2. An authorized agent initializes the telemetry stream via `InitializeDeviceLatencySamples`.
 3. The agent periodically calls `WriteDeviceLatencySamples` to append RTT measurements.
 4. Consumers read the account off-chain to analyze latency data.
@@ -110,11 +124,11 @@ pub struct WriteDeviceLatencySamplesArgs {
 
 - Designed for Solana's runtime constraints, including heap and account size limits.
 - RTT values are stored as raw `u32` values in microseconds.
-- This program does not perform aggregation, verification, or reward calculation — it is strictly responsible for on-chain collection and storage.
+- This program is solely responsible for on-chain collection and storage. Aggregation, verification, and incentives are out of scope.
 
 ---
 
 ## Constants
 
-- `MAX_SAMPLES = 35_000` — upper bound on total RTT samples.
-- `DZ_LATENCY_SAMPLES_HEADER_SIZE = 354` — base size excluding sample vector.
+- `MAX_DEVICE_LATENCY_SAMPLES = 35_000` — upper bound on total RTT samples.
+- `DEVICE_LATENCY_SAMPLES_HEADER_SIZE = 349` — size of the serialized header in bytes, excluding the sample region.

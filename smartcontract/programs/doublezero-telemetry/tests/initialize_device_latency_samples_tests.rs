@@ -5,17 +5,23 @@ use doublezero_serviceability::{
         link::create::LinkCreateArgs, location::create::LocationCreateArgs,
     },
     state::{
-        accounttype::AccountType,
+        accounttype::AccountType as ServiceabilityAccountType,
         device::{Device, DeviceStatus, DeviceType},
         link::{Link, LinkLinkType, LinkStatus},
     },
     types::{NetworkV4, NetworkV4List},
 };
 use doublezero_telemetry::{
-    error::TelemetryError, instructions::TelemetryInstruction,
-    pda::derive_device_latency_samples_pda,
+    account::derive_device_latency_samples_account,
+    error::TelemetryError,
+    instructions::TelemetryInstruction,
     processors::telemetry::initialize_device_latency_samples::InitializeDeviceLatencySamplesArgs,
-    state::device_latency_samples::DZ_LATENCY_SAMPLES_HEADER_SIZE,
+    state::{
+        accounttype::AccountType as TelemetryAccountType,
+        device_latency_samples::{
+            DeviceLatencySamplesHeader, DEVICE_LATENCY_SAMPLES_ALLOCATED_SIZE,
+        },
+    },
 };
 use solana_program::example_mocks::solana_sdk::system_program;
 use solana_program_test::*;
@@ -32,6 +38,8 @@ mod test_helpers;
 
 use test_helpers::*;
 
+const EXPECTED_LAMPORTS_USED_FOR_ACCOUNT_CREATION: u64 = 977719920;
+
 #[tokio::test]
 async fn test_initialize_device_latency_samples_success_active_devices_and_link() {
     let mut ledger = LedgerHelper::new().await.unwrap();
@@ -44,7 +52,7 @@ async fn test_initialize_device_latency_samples_success_active_devices_and_link(
     ledger.wait_for_new_blockhash().await.unwrap();
 
     // Execute initialize latency samples transaction.
-    let latency_samples_pda = ledger
+    let latency_samples_pk = ledger
         .telemetry
         .initialize_device_latency_samples(
             &origin_device_agent,
@@ -59,13 +67,31 @@ async fn test_initialize_device_latency_samples_success_active_devices_and_link(
 
     // Verify account creation and data.
     let account = ledger
-        .get_account(latency_samples_pda)
+        .get_account(latency_samples_pk)
         .await
         .unwrap()
         .unwrap();
     assert_eq!(account.owner, ledger.telemetry.program_id);
-    assert_eq!(account.data.len(), DZ_LATENCY_SAMPLES_HEADER_SIZE);
-    assert_eq!(account.lamports, 3354720);
+    assert_eq!(account.data.len(), DEVICE_LATENCY_SAMPLES_ALLOCATED_SIZE);
+    assert_eq!(
+        account.lamports,
+        EXPECTED_LAMPORTS_USED_FOR_ACCOUNT_CREATION
+    );
+
+    let (header, samples) =
+        DeviceLatencySamplesHeader::from_account_data(&account.data[..]).unwrap();
+    assert_eq!(
+        header.account_type,
+        TelemetryAccountType::DeviceLatencySamples
+    );
+    assert_eq!(header.origin_device_agent_pk, origin_device_agent.pubkey());
+    assert_eq!(header.origin_device_pk, origin_device_pk);
+    assert_eq!(header.target_device_pk, target_device_pk);
+    assert_eq!(header.link_pk, link_pk);
+    assert_eq!(header.sampling_interval_microseconds, 5_000_000);
+    assert_eq!(header.start_timestamp_microseconds, 0);
+    assert_eq!(header.next_sample_index, 0);
+    assert_eq!(samples.len(), 0);
 }
 
 #[tokio::test]
@@ -95,7 +121,7 @@ async fn test_initialize_device_latency_samples_success_suspended_origin_device(
     assert_eq!(device.status, DeviceStatus::Suspended);
 
     // Execute initialize latency samples transaction.
-    let latency_samples_pda = ledger
+    let latency_samples_pk = ledger
         .telemetry
         .initialize_device_latency_samples(
             &origin_device_agent,
@@ -110,13 +136,16 @@ async fn test_initialize_device_latency_samples_success_suspended_origin_device(
 
     // Verify account creation and data.
     let account = ledger
-        .get_account(latency_samples_pda)
+        .get_account(latency_samples_pk)
         .await
         .unwrap()
         .unwrap();
     assert_eq!(account.owner, ledger.telemetry.program_id);
-    assert_eq!(account.data.len(), DZ_LATENCY_SAMPLES_HEADER_SIZE);
-    assert_eq!(account.lamports, 3354720);
+    assert_eq!(account.data.len(), DEVICE_LATENCY_SAMPLES_ALLOCATED_SIZE);
+    assert_eq!(
+        account.lamports,
+        EXPECTED_LAMPORTS_USED_FOR_ACCOUNT_CREATION
+    );
 }
 
 #[tokio::test]
@@ -146,7 +175,7 @@ async fn test_initialize_device_latency_samples_success_suspended_target_device(
     assert_eq!(device.status, DeviceStatus::Suspended);
 
     // Execute initialize latency samples transaction.
-    let latency_samples_pda = ledger
+    let latency_samples_pk = ledger
         .telemetry
         .initialize_device_latency_samples(
             &origin_device_agent,
@@ -161,13 +190,16 @@ async fn test_initialize_device_latency_samples_success_suspended_target_device(
 
     // Verify account creation and data.
     let account = ledger
-        .get_account(latency_samples_pda)
+        .get_account(latency_samples_pk)
         .await
         .unwrap()
         .unwrap();
     assert_eq!(account.owner, ledger.telemetry.program_id);
-    assert_eq!(account.data.len(), DZ_LATENCY_SAMPLES_HEADER_SIZE);
-    assert_eq!(account.lamports, 3354720);
+    assert_eq!(account.data.len(), DEVICE_LATENCY_SAMPLES_ALLOCATED_SIZE);
+    assert_eq!(
+        account.lamports,
+        EXPECTED_LAMPORTS_USED_FOR_ACCOUNT_CREATION
+    );
 }
 
 #[tokio::test]
@@ -189,7 +221,7 @@ async fn test_initialize_device_latency_samples_success_suspended_link() {
     assert_eq!(link.status, LinkStatus::Suspended);
 
     // Execute initialize latency samples transaction.
-    let latency_samples_pda = ledger
+    let latency_samples_pk = ledger
         .telemetry
         .initialize_device_latency_samples(
             &origin_device_agent,
@@ -204,13 +236,16 @@ async fn test_initialize_device_latency_samples_success_suspended_link() {
 
     // Verify account creation and data.
     let account = ledger
-        .get_account(latency_samples_pda)
+        .get_account(latency_samples_pk)
         .await
         .unwrap()
         .unwrap();
     assert_eq!(account.owner, ledger.telemetry.program_id);
-    assert_eq!(account.data.len(), DZ_LATENCY_SAMPLES_HEADER_SIZE);
-    assert_eq!(account.lamports, 3354720);
+    assert_eq!(account.data.len(), DEVICE_LATENCY_SAMPLES_ALLOCATED_SIZE);
+    assert_eq!(
+        account.lamports,
+        EXPECTED_LAMPORTS_USED_FOR_ACCOUNT_CREATION
+    );
 }
 
 #[tokio::test]
@@ -259,13 +294,15 @@ async fn test_initialize_device_latency_samples_fail_agent_not_signer() {
     ledger.wait_for_new_blockhash().await.unwrap();
 
     // Create PDA manually.
-    let (latency_samples_pda, _) = derive_device_latency_samples_pda(
+    let latency_samples_pk = derive_device_latency_samples_account(
+        &origin_device_agent.pubkey(),
         &ledger.telemetry.program_id,
         &origin_device_pk,
         &target_device_pk,
         &link_pk,
         1,
-    );
+    )
+    .unwrap();
 
     // Construct instruction manually with agent NOT a signer.
     let args = InitializeDeviceLatencySamplesArgs {
@@ -277,7 +314,7 @@ async fn test_initialize_device_latency_samples_fail_agent_not_signer() {
     let data = instruction.pack().unwrap();
 
     let accounts = vec![
-        AccountMeta::new(latency_samples_pda, false),
+        AccountMeta::new(latency_samples_pk, false),
         AccountMeta::new_readonly(origin_device_agent.pubkey(), false), // Not signer
         AccountMeta::new_readonly(origin_device_pk, false),
         AccountMeta::new_readonly(target_device_pk, false),
@@ -320,7 +357,7 @@ async fn test_initialize_device_latency_samples_fail_origin_device_wrong_owner()
     let fake_origin_device = Device {
         index: 0,
         bump_seed: 0,
-        account_type: AccountType::Device,
+        account_type: ServiceabilityAccountType::Device,
         code: "invalid".to_string(),
         owner: agent.pubkey(),
         contributor_pk: Pubkey::new_unique(),
@@ -388,7 +425,7 @@ async fn test_initialize_device_latency_samples_fail_target_device_wrong_owner()
         metrics_publisher_pk: Pubkey::new_unique(), // doesn't matter for Z
         location_pk: Pubkey::new_unique(),
         dz_prefixes: NetworkV4List::default(),
-        account_type: AccountType::Device,
+        account_type: ServiceabilityAccountType::Device,
         owner: wrong_owner,
         index: 0,
         bump_seed: 0,
@@ -453,7 +490,7 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_owner() {
         status: LinkStatus::Activated,
         side_a_pk: origin_device_pk,
         side_z_pk: target_device_pk,
-        account_type: AccountType::Link,
+        account_type: ServiceabilityAccountType::Link,
         owner: wrong_owner,
         index: 0,
         bump_seed: 0,
@@ -1070,7 +1107,7 @@ async fn test_initialize_device_latency_samples_succeeds_with_reversed_link_side
 }
 
 #[tokio::test]
-async fn test_initialize_device_latency_samples_fail_account_already_exists() {
+async fn test_initialize_device_latency_samples_fail_if_account_not_precreated_on_chain() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 
     let (agent, origin_device_pk, target_device_pk, link_pk) =
@@ -1078,29 +1115,23 @@ async fn test_initialize_device_latency_samples_fail_account_already_exists() {
 
     ledger.wait_for_new_blockhash().await.unwrap();
 
-    // First call: succeed and create the account
-    let latency_samples_pda = ledger
-        .telemetry
-        .initialize_device_latency_samples(
-            &agent,
-            origin_device_pk,
-            target_device_pk,
-            link_pk,
-            999,
-            5_000_000,
-        )
-        .await
-        .unwrap();
+    // Derive account but do not create it
+    let latency_samples_pk = derive_device_latency_samples_account(
+        &agent.pubkey(),
+        &ledger.telemetry.program_id,
+        &origin_device_pk,
+        &target_device_pk,
+        &link_pk,
+        999,
+    )
+    .unwrap();
 
-    // Wait for a new blockhash before moving on.
-    ledger.wait_for_new_blockhash().await.unwrap();
-
-    // Second call: explicitly pass the same latency_samples_pda as the account
+    // Call initialize with a account that exists only logically, not on-chain
     let result = ledger
         .telemetry
-        .initialize_device_latency_samples_with_pda(
+        .initialize_device_latency_samples_without_create_account(
             &agent,
-            latency_samples_pda,
+            latency_samples_pk,
             origin_device_pk,
             target_device_pk,
             link_pk,
@@ -1109,11 +1140,11 @@ async fn test_initialize_device_latency_samples_fail_account_already_exists() {
         )
         .await;
 
-    assert_telemetry_error(result, TelemetryError::AccountAlreadyExists);
+    assert_telemetry_error(result, TelemetryError::InvalidAccountOwner);
 }
 
 #[tokio::test]
-async fn test_initialize_device_latency_samples_fail_invalid_pda() {
+async fn test_initialize_device_latency_samples_fail_invalid_account_address() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 
     let (agent, origin_device_pk, target_device_pk, link_pk) =
@@ -1121,23 +1152,32 @@ async fn test_initialize_device_latency_samples_fail_invalid_pda() {
 
     ledger.wait_for_new_blockhash().await.unwrap();
 
-    // Derive correct PDA (but we won't use it)
-    let (_correct_pda, _bump) = derive_device_latency_samples_pda(
+    // Derive correct account (but we won't use it)
+    let _correct_pk = derive_device_latency_samples_account(
+        &agent.pubkey(),
         &ledger.telemetry.program_id,
         &origin_device_pk,
         &target_device_pk,
         &link_pk,
         42,
-    );
+    )
+    .unwrap();
 
-    // Use a wrong/fake PDA
-    let fake_pda = Pubkey::new_unique();
+    // Use a wrong/fake account
+    let fake_pk = Pubkey::new_unique();
+
+    ledger
+        .fund_account(&agent.pubkey(), 10_000_000_000)
+        .await
+        .unwrap();
+
+    ledger.wait_for_new_blockhash().await.unwrap();
 
     let result = ledger
         .telemetry
-        .initialize_device_latency_samples_with_pda(
+        .initialize_device_latency_samples_with_account(
             &agent,
-            fake_pda,
+            fake_pk,
             origin_device_pk,
             target_device_pk,
             link_pk,
@@ -1146,7 +1186,27 @@ async fn test_initialize_device_latency_samples_fail_invalid_pda() {
         )
         .await;
 
-    assert_telemetry_error(result, TelemetryError::InvalidPDA);
+    // NOTE: This is the error code returned from create_account_with_seed when the account is incorrect.
+    const SYSTEM_ERROR_INCORRECT_PDA: u32 = 5;
+    match result {
+        Ok(_) => panic!("Expected system error {SYSTEM_ERROR_INCORRECT_PDA}, but got Ok"),
+        Err(BanksClientError::TransactionError(
+            solana_sdk::transaction::TransactionError::InstructionError(
+                0, // <-- index of the failing instruction: system program
+                solana_sdk::instruction::InstructionError::Custom(error_code),
+            ),
+        )) => {
+            assert_eq!(
+                error_code, SYSTEM_ERROR_INCORRECT_PDA,
+                "Expected IncorrectProgramDerivedAddress ({}), got {}",
+                SYSTEM_ERROR_INCORRECT_PDA, error_code
+            );
+        }
+        Err(other) => panic!(
+            "Expected IncorrectProgramDerivedAddress ({}), got: {:?}",
+            SYSTEM_ERROR_INCORRECT_PDA, other
+        ),
+    }
 }
 
 #[tokio::test]
@@ -1308,4 +1368,57 @@ async fn test_initialize_device_latency_samples_fail_agent_not_owner_of_origin_d
         .await;
 
     assert_telemetry_error(result, TelemetryError::UnauthorizedAgent);
+}
+
+#[tokio::test]
+async fn test_initialize_device_latency_samples_fail_already_initialized() {
+    let mut ledger = LedgerHelper::new().await.unwrap();
+    let (agent, origin_device_pk, target_device_pk, link_pk) =
+        ledger.seed_with_two_linked_devices().await.unwrap();
+
+    ledger
+        .fund_account(&agent.pubkey(), 10_000_000_000)
+        .await
+        .unwrap();
+    ledger.wait_for_new_blockhash().await.unwrap();
+
+    ledger
+        .telemetry
+        .initialize_device_latency_samples(
+            &agent,
+            origin_device_pk,
+            target_device_pk,
+            link_pk,
+            100,
+            5_000_000,
+        )
+        .await
+        .unwrap();
+
+    ledger.wait_for_new_blockhash().await.unwrap();
+
+    let latency_samples_pk = derive_device_latency_samples_account(
+        &agent.pubkey(),
+        &ledger.telemetry.program_id,
+        &origin_device_pk,
+        &target_device_pk,
+        &link_pk,
+        100,
+    )
+    .unwrap();
+
+    let result = ledger
+        .telemetry
+        .initialize_device_latency_samples_without_create_account(
+            &agent,
+            latency_samples_pk,
+            origin_device_pk,
+            target_device_pk,
+            link_pk,
+            100,
+            5_000_000,
+        )
+        .await;
+
+    assert_telemetry_error(result, TelemetryError::AccountAlreadyInitialized);
 }

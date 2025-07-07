@@ -27,15 +27,16 @@ use doublezero_serviceability::{
     types::{NetworkV4, NetworkV4List},
 };
 use doublezero_telemetry::{
+    account::{derive_device_latency_samples_account, derive_device_latency_samples_account_seed},
     entrypoint::process_instruction as telemetry_process_instruction,
     error::TelemetryError,
     instructions::{TelemetryInstruction, INITIALIZE_DEVICE_LATENCY_SAMPLES_INSTRUCTION_INDEX},
-    pda::derive_device_latency_samples_pda,
     processors::telemetry::{
         initialize_device_latency_samples::InitializeDeviceLatencySamplesArgs,
         write_device_latency_samples::WriteDeviceLatencySamplesArgs,
     },
     serviceability_program_id,
+    state::device_latency_samples::DEVICE_LATENCY_SAMPLES_ALLOCATED_SIZE,
 };
 use solana_program_test::*;
 use solana_sdk::{
@@ -394,6 +395,49 @@ impl TelemetryProgramHelper {
         })
     }
 
+    pub async fn create_account_with_seed(
+        &self,
+        payer: &Keypair,
+        base: &Pubkey,
+        seed: &str,
+        derived_address: &Pubkey,
+        lamports: u64,
+        space: u64,
+        program_id: &Pubkey,
+    ) -> Result<(), BanksClientError> {
+        let create_ix = solana_sdk::system_instruction::create_account_with_seed(
+            &payer.pubkey(),
+            derived_address,
+            base,
+            seed,
+            lamports,
+            space,
+            program_id,
+        );
+
+        let (banks_client, recent_blockhash) = {
+            let context = self.context.lock().unwrap();
+            (context.banks_client.clone(), context.recent_blockhash)
+        };
+
+        let tx = Transaction::new_signed_with_payer(
+            &[create_ix],
+            Some(&payer.pubkey()),
+            &[payer],
+            recent_blockhash,
+        );
+
+        banks_client
+            .process_transaction_with_commitment(tx, CommitmentLevel::Processed)
+            .await
+            .map_err(|e| {
+                println!("Transaction failed: {e:?}");
+                e
+            })?;
+
+        Ok(())
+    }
+
     pub async fn initialize_device_latency_samples(
         &mut self,
         agent: &Keypair,
@@ -403,17 +447,19 @@ impl TelemetryProgramHelper {
         epoch: u64,
         sampling_interval_microseconds: u64,
     ) -> Result<Pubkey, BanksClientError> {
-        let (pda, _) = derive_device_latency_samples_pda(
+        let account_pk = derive_device_latency_samples_account(
+            &agent.pubkey(),
             &self.program_id,
             &origin_device_pk,
             &target_device_pk,
             &link_pk,
             epoch,
-        );
+        )
+        .unwrap();
 
-        self.initialize_device_latency_samples_with_pda(
+        self.initialize_device_latency_samples_with_account(
             agent,
-            pda,
+            account_pk,
             origin_device_pk,
             target_device_pk,
             link_pk,
@@ -422,14 +468,14 @@ impl TelemetryProgramHelper {
         )
         .await?;
 
-        Ok(pda)
+        Ok(account_pk)
     }
 
     #[allow(dead_code)]
     pub async fn write_device_latency_samples(
         &mut self,
         agent: &Keypair,
-        latency_samples_pda: Pubkey,
+        latency_samples_pk: Pubkey,
         samples: Vec<u32>,
         start_timestamp_microseconds: u64,
     ) -> Result<(), BanksClientError> {
@@ -440,7 +486,7 @@ impl TelemetryProgramHelper {
             }),
             &[agent],
             vec![
-                AccountMeta::new(latency_samples_pda, false),
+                AccountMeta::new(latency_samples_pk, false),
                 AccountMeta::new(agent.pubkey(), true),
                 AccountMeta::new_readonly(system_program::id(), false),
             ],
@@ -449,10 +495,55 @@ impl TelemetryProgramHelper {
     }
 
     #[allow(clippy::too_many_arguments, dead_code)]
-    pub async fn initialize_device_latency_samples_with_pda(
+    pub async fn initialize_device_latency_samples_with_account(
         &mut self,
         agent: &Keypair,
-        latency_samples_pda: Pubkey,
+        latency_samples_pk: Pubkey,
+        origin_device_pk: Pubkey,
+        target_device_pk: Pubkey,
+        link_pk: Pubkey,
+        epoch: u64,
+        interval_us: u64,
+    ) -> Result<Pubkey, BanksClientError> {
+        let space = DEVICE_LATENCY_SAMPLES_ALLOCATED_SIZE;
+        let rent = solana_sdk::rent::Rent::default();
+        let lamports = rent.minimum_balance(space);
+
+        let seed = derive_device_latency_samples_account_seed(
+            &self.program_id,
+            &origin_device_pk,
+            &target_device_pk,
+            &link_pk,
+            epoch,
+        );
+        self.create_account_with_seed(
+            agent,
+            &agent.pubkey(),
+            &seed,
+            &latency_samples_pk,
+            lamports,
+            space as u64,
+            &self.program_id,
+        )
+        .await?;
+
+        self.initialize_device_latency_samples_without_create_account(
+            agent,
+            latency_samples_pk,
+            origin_device_pk,
+            target_device_pk,
+            link_pk,
+            epoch,
+            interval_us,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments, dead_code)]
+    pub async fn initialize_device_latency_samples_without_create_account(
+        &mut self,
+        agent: &Keypair,
+        latency_samples_pk: Pubkey,
         origin_device_pk: Pubkey,
         target_device_pk: Pubkey,
         link_pk: Pubkey,
@@ -468,7 +559,7 @@ impl TelemetryProgramHelper {
             TelemetryInstruction::InitializeDeviceLatencySamples(args),
             &[agent],
             vec![
-                AccountMeta::new(latency_samples_pda, false),
+                AccountMeta::new(latency_samples_pk, false),
                 AccountMeta::new_readonly(agent.pubkey(), true),
                 AccountMeta::new_readonly(origin_device_pk, false),
                 AccountMeta::new_readonly(target_device_pk, false),
@@ -478,14 +569,14 @@ impl TelemetryProgramHelper {
         )
         .await?;
 
-        Ok(latency_samples_pda)
+        Ok(latency_samples_pk)
     }
 
     #[allow(dead_code)]
-    pub async fn write_device_latency_samples_with_pda(
+    pub async fn write_device_latency_samples_with_account(
         &self,
         agent: &Keypair,
-        latency_samples_pda: Pubkey,
+        latency_samples_pk: Pubkey,
         samples: Vec<u32>,
         timestamp: u64,
     ) -> Result<(), BanksClientError> {
@@ -499,9 +590,8 @@ impl TelemetryProgramHelper {
             .expect("failed to pack");
 
         let accounts = vec![
-            AccountMeta::new(latency_samples_pda, false),
+            AccountMeta::new(latency_samples_pk, false),
             AccountMeta::new_readonly(agent.pubkey(), true),
-            AccountMeta::new_readonly(solana_program::system_program::id(), false),
         ];
 
         let instruction = solana_sdk::instruction::Instruction {
@@ -521,60 +611,6 @@ impl TelemetryProgramHelper {
 
         let tx = Transaction::new_signed_with_payer(
             &[instruction],
-            Some(&payer.pubkey()),
-            &[&payer, agent],
-            recent_blockhash,
-        );
-
-        banks_client.process_transaction(tx).await
-    }
-
-    #[allow(dead_code)]
-    pub async fn write_device_latency_samples_with_compute_budget(
-        &self,
-        agent: &Keypair,
-        latency_samples_pda: Pubkey,
-        samples: Vec<u32>,
-        timestamp: u64,
-        compute_units: u32,
-    ) -> Result<(), BanksClientError> {
-        let args = WriteDeviceLatencySamplesArgs {
-            start_timestamp_microseconds: timestamp,
-            samples,
-        };
-
-        let ix = TelemetryInstruction::WriteDeviceLatencySamples(args)
-            .pack()
-            .expect("failed to pack");
-
-        let accounts = vec![
-            AccountMeta::new(latency_samples_pda, false),
-            AccountMeta::new(agent.pubkey(), true),
-            AccountMeta::new_readonly(solana_program::system_program::id(), false),
-        ];
-
-        let instruction = solana_sdk::instruction::Instruction {
-            program_id: self.program_id,
-            accounts,
-            data: ix,
-        };
-
-        let compute_budget_ix =
-            solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(
-                compute_units,
-            );
-
-        let (banks_client, payer, recent_blockhash) = {
-            let ctx = self.context.lock().unwrap();
-            (
-                ctx.banks_client.clone(),
-                ctx.payer.insecure_clone(),
-                ctx.recent_blockhash,
-            )
-        };
-
-        let tx = Transaction::new_signed_with_payer(
-            &[compute_budget_ix, instruction],
             Some(&payer.pubkey()),
             &[&payer, agent],
             recent_blockhash,
@@ -609,9 +645,9 @@ pub struct ServiceabilityProgramHelper {
     context: Arc<Mutex<LedgerContext>>,
     pub program_id: Pubkey,
 
-    pub global_state_pubkey: Pubkey,
+    pub global_state_pda: Pubkey,
     #[allow(dead_code)]
-    pub global_config_pubkey: Pubkey,
+    pub global_config_pda: Pubkey,
 }
 
 impl ServiceabilityProgramHelper {
@@ -619,7 +655,7 @@ impl ServiceabilityProgramHelper {
         context: Arc<Mutex<LedgerContext>>,
         program_id: Pubkey,
     ) -> Result<Self, BanksClientError> {
-        let (global_state_pubkey, global_config_pubkey) = {
+        let (global_state_pda, global_config_pda) = {
             let (mut banks_client, payer, recent_blockhash) = {
                 let context = context.lock().unwrap();
                 (
@@ -629,9 +665,9 @@ impl ServiceabilityProgramHelper {
                 )
             };
 
-            let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+            let (program_config_pda, _) = get_program_config_pda(&program_id);
 
-            let (global_state_pubkey, _) = get_globalstate_pda(&program_id);
+            let (global_state_pda, _) = get_globalstate_pda(&program_id);
             execute_serviceability_instruction(
                 &mut banks_client,
                 &payer,
@@ -639,13 +675,13 @@ impl ServiceabilityProgramHelper {
                 program_id,
                 DoubleZeroInstruction::InitGlobalState(),
                 vec![
-                    AccountMeta::new(program_config_pubkey, false),
-                    AccountMeta::new(global_state_pubkey, false),
+                    AccountMeta::new(program_config_pda, false),
+                    AccountMeta::new(global_state_pda, false),
                 ],
             )
             .await?;
 
-            let (global_config_pubkey, _) = get_globalconfig_pda(&program_id);
+            let (global_config_pda, _) = get_globalconfig_pda(&program_id);
             execute_serviceability_instruction(
                 &mut banks_client,
                 &payer,
@@ -659,21 +695,21 @@ impl ServiceabilityProgramHelper {
                     multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
                 }),
                 vec![
-                    AccountMeta::new(global_config_pubkey, false),
-                    AccountMeta::new(global_state_pubkey, false),
+                    AccountMeta::new(global_config_pda, false),
+                    AccountMeta::new(global_state_pda, false),
                 ],
             )
             .await?;
 
-            (global_state_pubkey, global_config_pubkey)
+            (global_state_pda, global_config_pda)
         };
 
         Ok(Self {
             context,
             program_id,
 
-            global_state_pubkey,
-            global_config_pubkey,
+            global_state_pda,
+            global_config_pda,
         })
     }
 
@@ -684,7 +720,7 @@ impl ServiceabilityProgramHelper {
         };
         let banks_client = banks_client.clone();
         let account = banks_client
-            .get_account(self.global_state_pubkey)
+            .get_account(self.global_state_pda)
             .await
             .map_err(|e| {
                 println!("Error getting global state account: {e:?}");
@@ -720,7 +756,7 @@ impl ServiceabilityProgramHelper {
             }),
             vec![
                 AccountMeta::new(location_pubkey, false),
-                AccountMeta::new(self.global_state_pubkey, false),
+                AccountMeta::new(self.global_state_pda, false),
             ],
         )
         .await?;
@@ -750,7 +786,7 @@ impl ServiceabilityProgramHelper {
             }),
             vec![
                 AccountMeta::new(exchange_pubkey, false),
-                AccountMeta::new(self.global_state_pubkey, false),
+                AccountMeta::new(self.global_state_pda, false),
             ],
         )
         .await?;
@@ -771,7 +807,7 @@ impl ServiceabilityProgramHelper {
             }),
             vec![
                 AccountMeta::new(contributor_pk, false),
-                AccountMeta::new(self.global_state_pubkey, false),
+                AccountMeta::new(self.global_state_pda, false),
             ],
         )
         .await?;
@@ -807,7 +843,7 @@ impl ServiceabilityProgramHelper {
                 AccountMeta::new_readonly(device.contributor_pk, false),
                 AccountMeta::new_readonly(device.location_pk, false),
                 AccountMeta::new_readonly(device.exchange_pk, false),
-                AccountMeta::new(self.global_state_pubkey, false),
+                AccountMeta::new(self.global_state_pda, false),
             ],
         )
         .await?;
@@ -820,7 +856,7 @@ impl ServiceabilityProgramHelper {
             DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs),
             vec![
                 AccountMeta::new(device_pk, false),
-                AccountMeta::new(self.global_state_pubkey, false),
+                AccountMeta::new(self.global_state_pda, false),
             ],
         )
         .await
@@ -842,7 +878,7 @@ impl ServiceabilityProgramHelper {
             DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs {}),
             vec![
                 AccountMeta::new(pubkey, false),
-                AccountMeta::new(self.global_state_pubkey, false),
+                AccountMeta::new(self.global_state_pda, false),
             ],
         )
         .await
@@ -881,7 +917,7 @@ impl ServiceabilityProgramHelper {
                 AccountMeta::new(link_pk, false),
                 AccountMeta::new_readonly(link.side_a_pk, false),
                 AccountMeta::new_readonly(link.side_z_pk, false),
-                AccountMeta::new(self.global_state_pubkey, false),
+                AccountMeta::new(self.global_state_pda, false),
             ],
         )
         .await?;
@@ -902,7 +938,7 @@ impl ServiceabilityProgramHelper {
             }),
             vec![
                 AccountMeta::new(link_pk, false),
-                AccountMeta::new(self.global_state_pubkey, false),
+                AccountMeta::new(self.global_state_pda, false),
             ],
         )
         .await

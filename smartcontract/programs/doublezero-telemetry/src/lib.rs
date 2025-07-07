@@ -3,11 +3,10 @@
 #[cfg(any(not(feature = "no-entrypoint"), test))]
 pub mod entrypoint;
 
+pub mod account;
 pub mod error;
 pub mod instructions;
-pub mod pda;
 pub mod processors;
-pub mod seeds;
 pub mod state;
 
 use solana_program::pubkey::Pubkey;

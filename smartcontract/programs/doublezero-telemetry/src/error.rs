@@ -21,12 +21,14 @@ pub enum TelemetryError {
     InvalidAccountOwner = 1008,
     /// Invalid PDA
     InvalidPDA = 1009,
-    /// Account already exists
-    AccountAlreadyExists = 1010,
+    /// Account has already been initialized
+    AccountAlreadyInitialized = 1010,
     /// Account does not exist
     AccountDoesNotExist = 1011,
     /// Invalid sampling interval
     InvalidSamplingInterval = 1012,
+    /// Invalid account data size
+    InvalidAccountDataSize = 1013,
 }
 
 impl From<TelemetryError> for ProgramError {
@@ -56,9 +58,12 @@ impl fmt::Display for TelemetryError {
             TelemetryError::InvalidAccountType => write!(f, "Invalid account type"),
             TelemetryError::InvalidAccountOwner => write!(f, "Account owner mismatch"),
             TelemetryError::InvalidPDA => write!(f, "Invalid PDA"),
-            TelemetryError::AccountAlreadyExists => write!(f, "Account already exists"),
+            TelemetryError::AccountAlreadyInitialized => {
+                write!(f, "Account has already been initialized")
+            }
             TelemetryError::AccountDoesNotExist => write!(f, "Account does not exist"),
             TelemetryError::InvalidSamplingInterval => write!(f, "Invalid sampling interval"),
+            TelemetryError::InvalidAccountDataSize => write!(f, "Invalid account data size"),
         }
     }
 }

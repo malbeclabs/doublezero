@@ -1,6 +1,6 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::Serialize;
-use solana_program::{program_error::ProgramError, pubkey::Pubkey};
+use solana_program::program_error::ProgramError;
 use std::fmt;
 
 #[repr(u8)]
@@ -27,11 +27,4 @@ impl fmt::Display for AccountType {
             AccountType::DeviceLatencySamples => write!(f, "DeviceLatencySamples"),
         }
     }
-}
-
-pub trait AccountTypeInfo {
-    fn seed(&self) -> &[u8];
-    fn size(&self) -> usize;
-    fn bump_seed(&self) -> u8;
-    fn owner(&self) -> Pubkey;
 }

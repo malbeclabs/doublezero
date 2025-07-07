@@ -1555,11 +1555,13 @@ version = "0.2.0"
 dependencies = [
  "bincode 2.0.1",
  "borsh 1.5.7",
+ "bs58",
  "ctor",
  "doublezero-serviceability",
  "env_logger 0.11.8",
  "log",
  "serde",
+ "sha2 0.9.9",
  "solana-program",
  "solana-program-test",
  "solana-sdk",

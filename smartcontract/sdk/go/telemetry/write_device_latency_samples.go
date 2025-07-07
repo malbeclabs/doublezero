@@ -60,7 +60,8 @@ func BuildWriteDeviceLatencySamplesInstruction(
 	}
 
 	// Derive the PDA.
-	pda, _, err := DeriveDeviceLatencySamplesPDA(
+	pda, _, err := DeriveDeviceLatencySamplesAddress(
+		config.AgentPK,
 		programID,
 		config.OriginDevicePK,
 		config.TargetDevicePK,

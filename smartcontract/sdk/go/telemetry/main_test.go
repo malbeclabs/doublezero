@@ -41,11 +41,12 @@ func TestMain(m *testing.M) {
 type mockRPCClient struct {
 	telemetry.RPCClient
 
-	GetLatestBlockhashFunc      func(context.Context, solanarpc.CommitmentType) (*solanarpc.GetLatestBlockhashResult, error)
-	SendTransactionWithOptsFunc func(context.Context, *solana.Transaction, solanarpc.TransactionOpts) (solana.Signature, error)
-	GetSignatureStatusesFunc    func(context.Context, bool, ...solana.Signature) (*solanarpc.GetSignatureStatusesResult, error)
-	GetTransactionFunc          func(context.Context, solana.Signature, *solanarpc.GetTransactionOpts) (*solanarpc.GetTransactionResult, error)
-	GetAccountDataBorshIntoFunc func(context.Context, solana.PublicKey, any) (err error)
+	GetLatestBlockhashFunc                func(context.Context, solanarpc.CommitmentType) (*solanarpc.GetLatestBlockhashResult, error)
+	SendTransactionWithOptsFunc           func(context.Context, *solana.Transaction, solanarpc.TransactionOpts) (solana.Signature, error)
+	GetSignatureStatusesFunc              func(context.Context, bool, ...solana.Signature) (*solanarpc.GetSignatureStatusesResult, error)
+	GetTransactionFunc                    func(context.Context, solana.Signature, *solanarpc.GetTransactionOpts) (*solanarpc.GetTransactionResult, error)
+	GetAccountDataIntoFunc                func(context.Context, solana.PublicKey, any) (err error)
+	GetMinimumBalanceForRentExemptionFunc func(context.Context, uint64, solanarpc.CommitmentType) (uint64, error)
 }
 
 func (m *mockRPCClient) GetLatestBlockhash(ctx context.Context, ct solanarpc.CommitmentType) (*solanarpc.GetLatestBlockhashResult, error) {
@@ -64,6 +65,10 @@ func (m *mockRPCClient) GetTransaction(ctx context.Context, sig solana.Signature
 	return m.GetTransactionFunc(ctx, sig, opts)
 }
 
-func (m *mockRPCClient) GetAccountDataBorshInto(ctx context.Context, account solana.PublicKey, inVar any) (err error) {
-	return m.GetAccountDataBorshIntoFunc(ctx, account, inVar)
+func (m *mockRPCClient) GetAccountDataInto(ctx context.Context, account solana.PublicKey, out any) (err error) {
+	return m.GetAccountDataIntoFunc(ctx, account, out)
+}
+
+func (m *mockRPCClient) GetMinimumBalanceForRentExemption(ctx context.Context, dataSize uint64, commitment solanarpc.CommitmentType) (uint64, error) {
+	return m.GetMinimumBalanceForRentExemptionFunc(ctx, dataSize, commitment)
 }

@@ -1,6 +1,13 @@
 package telemetry
 
-import "github.com/gagliardetto/solana-go"
+import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
+
+	"github.com/gagliardetto/solana-go"
+	"github.com/near/borsh-go"
+)
 
 type AccountType uint8
 
@@ -8,12 +15,9 @@ const (
 	AccountTypeDeviceLatencySamples AccountType = iota + 1
 )
 
-type DeviceLatencySamples struct {
+type DeviceLatencySamplesHeader struct {
 	// Used to distinguish this account type during deserialization
 	AccountType AccountType // 1
-
-	// Required for recreating the PDA (seed authority)
-	BumpSeed uint8 // 1
 
 	// Epoch number in which samples were collected
 	Epoch uint64 // 8
@@ -48,7 +52,53 @@ type DeviceLatencySamples struct {
 
 	// Reserved for future use.
 	Unused [128]uint8 // 128
+}
 
-	// RTT samples in microseconds, one per entry (with length prefix).
-	Samples []uint32 // 4 + n*4 (RTT values in microseconds)
+type DeviceLatencySamples struct {
+	// Header of the account.
+	DeviceLatencySamplesHeader
+
+	// RTT samples in microseconds, one per entry.
+	Samples []uint32
+}
+
+func DeserializeDeviceLatencySamples(data []byte) (*DeviceLatencySamples, error) {
+	if len(data) < DEVICE_LATENCY_SAMPLES_HEADER_SIZE {
+		return nil, fmt.Errorf("account data too short for header: %d < %d", len(data), DEVICE_LATENCY_SAMPLES_HEADER_SIZE)
+	}
+
+	var hdr DeviceLatencySamplesHeader
+	if err := borsh.Deserialize(&hdr, data[:DEVICE_LATENCY_SAMPLES_HEADER_SIZE]); err != nil {
+		return nil, fmt.Errorf("failed to deserialize header: %w", err)
+	}
+
+	expectedSamples := int(hdr.NextSampleIndex)
+	sampleBytes := data[DEVICE_LATENCY_SAMPLES_HEADER_SIZE:]
+	if len(sampleBytes) < expectedSamples*4 {
+		return nil, fmt.Errorf("account data too short for sample count: %d < %d", len(sampleBytes), expectedSamples*4)
+	}
+
+	samples := make([]uint32, expectedSamples)
+	for i := 0; i < expectedSamples; i++ {
+		samples[i] = binary.LittleEndian.Uint32(sampleBytes[i*4 : (i+1)*4])
+	}
+
+	return &DeviceLatencySamples{DeviceLatencySamplesHeader: hdr, Samples: samples}, nil
+}
+
+func (d *DeviceLatencySamples) Serialize() ([]byte, error) {
+	buf := bytes.NewBuffer(make([]byte, 0, DEVICE_LATENCY_SAMPLES_HEADER_SIZE+len(d.Samples)*4))
+	headerBuf, err := borsh.Serialize(d.DeviceLatencySamplesHeader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize header: %w", err)
+	}
+	if _, err := buf.Write(headerBuf); err != nil {
+		return nil, fmt.Errorf("failed to write header: %w", err)
+	}
+	for _, sample := range d.Samples {
+		if err := binary.Write(buf, binary.LittleEndian, sample); err != nil {
+			return nil, fmt.Errorf("failed to write sample: %w", err)
+		}
+	}
+	return buf.Bytes(), nil
 }

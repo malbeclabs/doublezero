@@ -61,7 +61,8 @@ func BuildInitializeDeviceLatencySamplesInstruction(
 	}
 
 	// Derive the PDA.
-	pda, _, err := DeriveDeviceLatencySamplesPDA(
+	pda, _, err := DeriveDeviceLatencySamplesAddress(
+		config.AgentPK,
 		programID,
 		config.OriginDevicePK,
 		config.TargetDevicePK,
@@ -79,7 +80,6 @@ func BuildInitializeDeviceLatencySamplesInstruction(
 		{PublicKey: config.OriginDevicePK, IsSigner: false, IsWritable: false},
 		{PublicKey: config.TargetDevicePK, IsSigner: false, IsWritable: false},
 		{PublicKey: config.LinkPK, IsSigner: false, IsWritable: false},
-		{PublicKey: solana.SystemProgramID, IsSigner: false, IsWritable: false},
 	}
 
 	return &solana.GenericInstruction{

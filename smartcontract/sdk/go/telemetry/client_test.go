@@ -22,25 +22,30 @@ func TestSDK_Telemetry_Client_GetDeviceLatencySamples_HappyPath(t *testing.T) {
 	programID := solana.NewWallet().PublicKey()
 
 	expected := &telemetry.DeviceLatencySamples{
-		AccountType:                  telemetry.AccountTypeDeviceLatencySamples,
-		BumpSeed:                     1,
-		Epoch:                        42,
-		OriginDeviceAgentPK:          solana.NewWallet().PublicKey(),
-		OriginDevicePK:               solana.NewWallet().PublicKey(),
-		TargetDevicePK:               solana.NewWallet().PublicKey(),
-		OriginDeviceLocationPK:       solana.NewWallet().PublicKey(),
-		TargetDeviceLocationPK:       solana.NewWallet().PublicKey(),
-		LinkPK:                       solana.NewWallet().PublicKey(),
-		SamplingIntervalMicroseconds: 100_000,
-		StartTimestampMicroseconds:   1_600_000_000,
-		NextSampleIndex:              3,
-		Samples:                      []uint32{10, 20, 30},
+		DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
+			AccountType:                  telemetry.AccountTypeDeviceLatencySamples,
+			Epoch:                        42,
+			OriginDeviceAgentPK:          solana.NewWallet().PublicKey(),
+			OriginDevicePK:               solana.NewWallet().PublicKey(),
+			TargetDevicePK:               solana.NewWallet().PublicKey(),
+			OriginDeviceLocationPK:       solana.NewWallet().PublicKey(),
+			TargetDeviceLocationPK:       solana.NewWallet().PublicKey(),
+			LinkPK:                       solana.NewWallet().PublicKey(),
+			SamplingIntervalMicroseconds: 100_000,
+			StartTimestampMicroseconds:   1_600_000_000,
+			NextSampleIndex:              3,
+		},
+		Samples: []uint32{10, 20, 30},
 	}
 
 	mockRPC := &mockRPCClient{
-		GetAccountDataBorshIntoFunc: func(_ context.Context, _ solana.PublicKey, out any) error {
-			ptr := out.(*telemetry.DeviceLatencySamples)
-			*ptr = *expected
+		GetAccountDataIntoFunc: func(_ context.Context, _ solana.PublicKey, out any) error {
+			ptr := out.(*[telemetry.DEVICE_LATENCY_SAMPLES_ALLOCATED_SIZE]byte)
+			serialized, err := expected.Serialize()
+			if err != nil {
+				return err
+			}
+			copy(ptr[:], serialized)
 			return nil
 		},
 	}
@@ -49,6 +54,7 @@ func TestSDK_Telemetry_Client_GetDeviceLatencySamples_HappyPath(t *testing.T) {
 
 	got, err := client.GetDeviceLatencySamples(
 		context.Background(),
+		signer.PublicKey(),
 		expected.OriginDevicePK,
 		expected.TargetDevicePK,
 		expected.LinkPK,
@@ -66,7 +72,7 @@ func TestSDK_Telemetry_Client_GetDeviceLatencySamples_AccountNotFound(t *testing
 	programID := solana.NewWallet().PublicKey()
 
 	mockRPC := &mockRPCClient{
-		GetAccountDataBorshIntoFunc: func(_ context.Context, _ solana.PublicKey, _ any) error {
+		GetAccountDataIntoFunc: func(_ context.Context, _ solana.PublicKey, _ any) error {
 			return solanarpc.ErrNotFound
 		},
 	}
@@ -75,6 +81,7 @@ func TestSDK_Telemetry_Client_GetDeviceLatencySamples_AccountNotFound(t *testing
 
 	_, err := client.GetDeviceLatencySamples(
 		context.Background(),
+		signer.PublicKey(),
 		solana.NewWallet().PublicKey(),
 		solana.NewWallet().PublicKey(),
 		solana.NewWallet().PublicKey(),
@@ -91,7 +98,7 @@ func TestSDK_Telemetry_Client_GetDeviceLatencySamples_UnexpectedError(t *testing
 	programID := solana.NewWallet().PublicKey()
 
 	mockRPC := &mockRPCClient{
-		GetAccountDataBorshIntoFunc: func(_ context.Context, _ solana.PublicKey, _ any) error {
+		GetAccountDataIntoFunc: func(_ context.Context, _ solana.PublicKey, _ any) error {
 			return fmt.Errorf("rpc explosion")
 		},
 	}
@@ -100,6 +107,7 @@ func TestSDK_Telemetry_Client_GetDeviceLatencySamples_UnexpectedError(t *testing
 
 	_, err := client.GetDeviceLatencySamples(
 		context.Background(),
+		signer.PublicKey(),
 		solana.NewWallet().PublicKey(),
 		solana.NewWallet().PublicKey(),
 		solana.NewWallet().PublicKey(),
@@ -126,7 +134,7 @@ func TestSDK_Telemetry_Client_InitializeDeviceLatencySamples_HappyPath(t *testin
 			}, nil
 		},
 		SendTransactionWithOptsFunc: func(_ context.Context, tx *solana.Transaction, opts solanarpc.TransactionOpts) (solana.Signature, error) {
-			require.True(t, opts.SkipPreflight, "SkipPreflight must be true for initialize")
+			require.False(t, opts.SkipPreflight, "SkipPreflight must be false for initialize account")
 			return expectedSig, nil
 		},
 		GetSignatureStatusesFunc: func(_ context.Context, _ bool, _ ...solana.Signature) (*solanarpc.GetSignatureStatusesResult, error) {
@@ -138,6 +146,9 @@ func TestSDK_Telemetry_Client_InitializeDeviceLatencySamples_HappyPath(t *testin
 		},
 		GetTransactionFunc: func(_ context.Context, _ solana.Signature, _ *solanarpc.GetTransactionOpts) (*solanarpc.GetTransactionResult, error) {
 			return &solanarpc.GetTransactionResult{Meta: &solanarpc.TransactionMeta{}}, nil
+		},
+		GetMinimumBalanceForRentExemptionFunc: func(_ context.Context, _ uint64, _ solanarpc.CommitmentType) (uint64, error) {
+			return 1000000, nil
 		},
 	}
 
@@ -159,13 +170,13 @@ func TestSDK_Telemetry_Client_InitializeDeviceLatencySamples_HappyPath(t *testin
 	require.NotNil(t, tx)
 }
 
-func TestSDK_Telemetry_Client_InitializeDeviceLatencySamples_BuildFails(t *testing.T) {
+func TestSDK_Telemetry_Client_InitializeDeviceLatencySamples_ValidationFails(t *testing.T) {
 	t.Parallel()
 
 	signer := solana.NewWallet().PrivateKey
 	programID := solana.NewWallet().PublicKey()
 
-	mockRPC := &mockRPCClient{} // won't be called
+	mockRPC := &mockRPCClient{}
 
 	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
 
@@ -181,8 +192,7 @@ func TestSDK_Telemetry_Client_InitializeDeviceLatencySamples_BuildFails(t *testi
 
 	sig, tx, err := client.InitializeDeviceLatencySamples(context.Background(), config)
 
-	require.ErrorContains(t, err, "failed to build instruction")
-	require.Contains(t, err.Error(), "agent public key is required")
+	require.ErrorContains(t, err, "agent public key is required")
 	require.Equal(t, solana.Signature{}, sig)
 	require.Nil(t, tx)
 }
@@ -210,6 +220,9 @@ func TestSDK_Telemetry_Client_InitializeDeviceLatencySamples_ExecutionFails(t *t
 		GetTransactionFunc: func(_ context.Context, _ solana.Signature, _ *solanarpc.GetTransactionOpts) (*solanarpc.GetTransactionResult, error) {
 			return nil, nil
 		},
+		GetMinimumBalanceForRentExemptionFunc: func(_ context.Context, _ uint64, _ solanarpc.CommitmentType) (uint64, error) {
+			return 1000000, nil
+		},
 	}
 
 	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
@@ -225,8 +238,8 @@ func TestSDK_Telemetry_Client_InitializeDeviceLatencySamples_ExecutionFails(t *t
 
 	sig, tx, err := client.InitializeDeviceLatencySamples(context.Background(), config)
 
-	require.ErrorContains(t, err, "failed to execute instruction")
-	require.Contains(t, err.Error(), "rpc send failure")
+	require.ErrorContains(t, err, "failed to initialize account")
+	require.ErrorContains(t, err, "rpc send failure")
 	require.Equal(t, solana.Signature{}, sig)
 	require.Nil(t, tx)
 }
@@ -259,6 +272,9 @@ func TestSDK_Telemetry_Client_WriteDeviceLatencySamples_HappyPath(t *testing.T) 
 		},
 		GetTransactionFunc: func(_ context.Context, _ solana.Signature, _ *solanarpc.GetTransactionOpts) (*solanarpc.GetTransactionResult, error) {
 			return &solanarpc.GetTransactionResult{Meta: &solanarpc.TransactionMeta{}}, nil
+		},
+		GetMinimumBalanceForRentExemptionFunc: func(_ context.Context, _ uint64, _ solanarpc.CommitmentType) (uint64, error) {
+			return 1000000, nil
 		},
 	}
 
@@ -347,7 +363,7 @@ func TestSDK_Telemetry_Client_WriteDeviceLatencySamples_CustomInstructionErrorAc
 				"InstructionError": []any{
 					0,
 					map[string]any{
-						"Custom": json.Number(strconv.Itoa(telemetry.InstructionErrorAccountDoesNotExist)),
+						"Custom": json.Number(strconv.Itoa(int(telemetry.InstructionErrorAccountDoesNotExist))),
 					},
 				},
 			},
@@ -416,7 +432,7 @@ func TestSDK_Telemetry_Client_WriteDeviceLatencySamples_BuildFails(t *testing.T)
 	sig, tx, err := client.WriteDeviceLatencySamples(context.Background(), config)
 
 	require.ErrorContains(t, err, "failed to build instruction")
-	require.Contains(t, err.Error(), "agent public key is required")
+	require.ErrorContains(t, err, "agent public key is required")
 	require.Equal(t, solana.Signature{}, sig)
 	require.Nil(t, tx)
 }
@@ -460,8 +476,290 @@ func TestSDK_Telemetry_Client_WriteDeviceLatencySamples_ExecutionFails(t *testin
 
 	sig, tx, err := client.WriteDeviceLatencySamples(context.Background(), config)
 
-	require.ErrorContains(t, err, "failed to execute instruction")
-	require.Contains(t, err.Error(), "simulated send failure")
+	require.ErrorContains(t, err, "failed to write account")
+	require.ErrorContains(t, err, "simulated send failure")
 	require.Equal(t, solana.Signature{}, sig)
 	require.Nil(t, tx)
+}
+
+func TestSDK_Telemetry_Client_CreateDeviceLatencySamplesAccount_RentFails(t *testing.T) {
+	t.Parallel()
+
+	signer := solana.NewWallet().PrivateKey
+	programID := solana.NewWallet().PublicKey()
+
+	mockRPC := &mockRPCClient{
+		GetMinimumBalanceForRentExemptionFunc: func(_ context.Context, _ uint64, _ solanarpc.CommitmentType) (uint64, error) {
+			return 0, fmt.Errorf("rent fetch failed")
+		},
+	}
+
+	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
+
+	_, _, _, err := client.CreateDeviceLatencySamplesAccount(
+		context.Background(),
+		signer.PublicKey(),
+		solana.NewWallet().PublicKey(),
+		solana.NewWallet().PublicKey(),
+		solana.NewWallet().PublicKey(),
+		42,
+	)
+
+	require.ErrorContains(t, err, "failed to get rent")
+}
+
+func TestSDK_Telemetry_Client_CreateDeviceLatencySamplesAccount_HappyPath(t *testing.T) {
+	t.Parallel()
+
+	signer := solana.NewWallet().PrivateKey
+	programID := solana.NewWallet().PublicKey()
+
+	var derivedAddr solana.PublicKey
+
+	mockRPC := &mockRPCClient{
+		GetMinimumBalanceForRentExemptionFunc: func(_ context.Context, space uint64, _ solanarpc.CommitmentType) (uint64, error) {
+			require.Greater(t, space, uint64(0))
+			return 1_000_000, nil
+		},
+		SendTransactionWithOptsFunc: func(_ context.Context, tx *solana.Transaction, _ solanarpc.TransactionOpts) (solana.Signature, error) {
+			require.NotNil(t, tx)
+			require.Greater(t, len(tx.Message.Instructions), 0)
+
+			// Capture the derived address from the instruction
+			var found bool
+			for _, acct := range tx.Message.AccountKeys {
+				if acct.Equals(derivedAddr) {
+					found = true
+					break
+				}
+			}
+			require.True(t, found, "created account must be in transaction")
+			return solana.Signature{}, nil
+		},
+		GetLatestBlockhashFunc: func(_ context.Context, _ solanarpc.CommitmentType) (*solanarpc.GetLatestBlockhashResult, error) {
+			return &solanarpc.GetLatestBlockhashResult{
+				Value: &solanarpc.LatestBlockhashResult{Blockhash: solana.Hash{}},
+			}, nil
+		},
+		GetSignatureStatusesFunc: func(_ context.Context, _ bool, _ ...solana.Signature) (*solanarpc.GetSignatureStatusesResult, error) {
+			return &solanarpc.GetSignatureStatusesResult{
+				Value: []*solanarpc.SignatureStatusesResult{
+					{ConfirmationStatus: solanarpc.ConfirmationStatusFinalized},
+				},
+			}, nil
+		},
+		GetTransactionFunc: func(_ context.Context, _ solana.Signature, _ *solanarpc.GetTransactionOpts) (*solanarpc.GetTransactionResult, error) {
+			return &solanarpc.GetTransactionResult{Meta: &solanarpc.TransactionMeta{}}, nil
+		},
+	}
+
+	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
+
+	origin := solana.NewWallet().PublicKey()
+	target := solana.NewWallet().PublicKey()
+	link := solana.NewWallet().PublicKey()
+	epoch := uint64(42)
+
+	var err error
+	derivedAddr, _, err = telemetry.DeriveDeviceLatencySamplesAddress(
+		signer.PublicKey(), programID, origin, target, link, epoch,
+	)
+	require.NoError(t, err)
+
+	accountAddr, _, _, err := client.CreateDeviceLatencySamplesAccount(
+		context.Background(),
+		signer.PublicKey(),
+		origin,
+		target,
+		link,
+		epoch,
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, derivedAddr, accountAddr)
+}
+
+func TestSDK_Telemetry_Client_InitializeDeviceLatencySamples_CustomInstructionErrorAccountAlreadyInitialized(t *testing.T) {
+	t.Parallel()
+
+	signer := solana.NewWallet().PrivateKey
+	programID := solana.NewWallet().PublicKey()
+
+	customErr := &jsonrpc.RPCError{
+		Code:    -32002,
+		Message: "Transaction simulation failed",
+		Data: map[string]any{
+			"err": map[string]any{
+				"InstructionError": []any{
+					0,
+					map[string]any{
+						"Custom": json.Number(strconv.Itoa(int(telemetry.InstructionErrorAccountAlreadyInitialized))),
+					},
+				},
+			},
+		},
+	}
+
+	mockRPC := &mockRPCClient{
+		GetLatestBlockhashFunc: func(_ context.Context, _ solanarpc.CommitmentType) (*solanarpc.GetLatestBlockhashResult, error) {
+			return &solanarpc.GetLatestBlockhashResult{
+				Value: &solanarpc.LatestBlockhashResult{
+					Blockhash: solana.MustHashFromBase58("5NzX7jrPWeTkGsDnVnszdEa7T3Yyr3nSgyc78z3CwjWQ"),
+				},
+			}, nil
+		},
+		SendTransactionWithOptsFunc: func(_ context.Context, _ *solana.Transaction, _ solanarpc.TransactionOpts) (solana.Signature, error) {
+			return solana.Signature{}, customErr
+		},
+		GetSignatureStatusesFunc: func(_ context.Context, _ bool, _ ...solana.Signature) (*solanarpc.GetSignatureStatusesResult, error) {
+			return nil, nil
+		},
+		GetTransactionFunc: func(_ context.Context, _ solana.Signature, _ *solanarpc.GetTransactionOpts) (*solanarpc.GetTransactionResult, error) {
+			return nil, nil
+		},
+		GetMinimumBalanceForRentExemptionFunc: func(_ context.Context, _ uint64, _ solanarpc.CommitmentType) (uint64, error) {
+			return 1000000, nil
+		},
+	}
+
+	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
+
+	config := telemetry.InitializeDeviceLatencySamplesInstructionConfig{
+		AgentPK:                      signer.PublicKey(),
+		OriginDevicePK:               solana.NewWallet().PublicKey(),
+		TargetDevicePK:               solana.NewWallet().PublicKey(),
+		LinkPK:                       solana.NewWallet().PublicKey(),
+		Epoch:                        42,
+		SamplingIntervalMicroseconds: 100_000,
+	}
+
+	sig, tx, err := client.InitializeDeviceLatencySamples(context.Background(), config)
+
+	require.ErrorIs(t, err, telemetry.ErrAccountAlreadyInitialized)
+	require.Equal(t, solana.Signature{}, sig)
+	require.Nil(t, tx)
+}
+
+func TestSDK_Telemetry_Client_InitializeDeviceLatencySamples_TransactionMetaErrorAccountAlreadyInitialized(t *testing.T) {
+	t.Parallel()
+
+	signer := solana.NewWallet().PrivateKey
+	programID := solana.NewWallet().PublicKey()
+	expectedSig := solana.MustSignatureFromBase58("5KMdNedHzFX2TZtAj8fKP8pJzzRgU8xydqNBFUD2T2GfbBDPtbA1gJEXFhCRw8vERmkUs8YDQ3cBduzZ8wMEYx7k")
+
+	mockRPC := &mockRPCClient{
+		GetLatestBlockhashFunc: func(_ context.Context, _ solanarpc.CommitmentType) (*solanarpc.GetLatestBlockhashResult, error) {
+			return &solanarpc.GetLatestBlockhashResult{
+				Value: &solanarpc.LatestBlockhashResult{
+					Blockhash: solana.MustHashFromBase58("5NzX7jrPWeTkGsDnVnszdEa7T3Yyr3nSgyc78z3CwjWQ"),
+				},
+			}, nil
+		},
+		SendTransactionWithOptsFunc: func(_ context.Context, _ *solana.Transaction, _ solanarpc.TransactionOpts) (solana.Signature, error) {
+			return expectedSig, nil
+		},
+		GetSignatureStatusesFunc: func(_ context.Context, _ bool, _ ...solana.Signature) (*solanarpc.GetSignatureStatusesResult, error) {
+			return &solanarpc.GetSignatureStatusesResult{
+				Value: []*solanarpc.SignatureStatusesResult{
+					{ConfirmationStatus: solanarpc.ConfirmationStatusFinalized},
+				},
+			}, nil
+		},
+		GetTransactionFunc: func(_ context.Context, _ solana.Signature, _ *solanarpc.GetTransactionOpts) (*solanarpc.GetTransactionResult, error) {
+			return &solanarpc.GetTransactionResult{
+				Meta: &solanarpc.TransactionMeta{
+					Err: map[string]any{
+						"InstructionError": []any{
+							0,
+							map[string]any{
+								"Custom": json.Number(strconv.Itoa(int(telemetry.InstructionErrorAccountAlreadyInitialized))),
+							},
+						},
+					},
+				},
+			}, nil
+		},
+		GetMinimumBalanceForRentExemptionFunc: func(_ context.Context, _ uint64, _ solanarpc.CommitmentType) (uint64, error) {
+			return 1000000, nil
+		},
+	}
+
+	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
+
+	config := telemetry.InitializeDeviceLatencySamplesInstructionConfig{
+		AgentPK:                      signer.PublicKey(),
+		OriginDevicePK:               solana.NewWallet().PublicKey(),
+		TargetDevicePK:               solana.NewWallet().PublicKey(),
+		LinkPK:                       solana.NewWallet().PublicKey(),
+		Epoch:                        42,
+		SamplingIntervalMicroseconds: 100_000,
+	}
+
+	sig, tx, err := client.InitializeDeviceLatencySamples(context.Background(), config)
+
+	require.ErrorIs(t, err, telemetry.ErrAccountAlreadyInitialized)
+	require.Equal(t, expectedSig, sig)
+	require.NotNil(t, tx)
+}
+
+func TestSDK_Telemetry_Client_CreateDeviceLatencySamplesAccount_AlreadyExistsFromLogs(t *testing.T) {
+	t.Parallel()
+
+	signer := solana.NewWallet().PrivateKey
+	programID := solana.NewWallet().PublicKey()
+
+	origin := solana.NewWallet().PublicKey()
+	target := solana.NewWallet().PublicKey()
+	link := solana.NewWallet().PublicKey()
+	epoch := uint64(42)
+
+	derivedAddr, _, err := telemetry.DeriveDeviceLatencySamplesAddress(
+		signer.PublicKey(), programID, origin, target, link, epoch,
+	)
+	require.NoError(t, err)
+
+	mockRPC := &mockRPCClient{
+		GetMinimumBalanceForRentExemptionFunc: func(_ context.Context, _ uint64, _ solanarpc.CommitmentType) (uint64, error) {
+			return 1000000, nil
+		},
+		GetLatestBlockhashFunc: func(_ context.Context, _ solanarpc.CommitmentType) (*solanarpc.GetLatestBlockhashResult, error) {
+			return &solanarpc.GetLatestBlockhashResult{
+				Value: &solanarpc.LatestBlockhashResult{Blockhash: solana.Hash{}},
+			}, nil
+		},
+		SendTransactionWithOptsFunc: func(_ context.Context, _ *solana.Transaction, _ solanarpc.TransactionOpts) (solana.Signature, error) {
+			return solana.MustSignatureFromBase58("5KMdNedHzFX2TZtAj8fKP8pJzzRgU8xydqNBFUD2T2GfbBDPtbA1gJEXFhCRw8vERmkUs8YDQ3cBduzZ8wMEYx7k"), nil
+		},
+		GetSignatureStatusesFunc: func(_ context.Context, _ bool, _ ...solana.Signature) (*solanarpc.GetSignatureStatusesResult, error) {
+			return &solanarpc.GetSignatureStatusesResult{
+				Value: []*solanarpc.SignatureStatusesResult{
+					{ConfirmationStatus: solanarpc.ConfirmationStatusFinalized},
+				},
+			}, nil
+		},
+		GetTransactionFunc: func(_ context.Context, _ solana.Signature, _ *solanarpc.GetTransactionOpts) (*solanarpc.GetTransactionResult, error) {
+			return &solanarpc.GetTransactionResult{
+				Meta: &solanarpc.TransactionMeta{
+					Err:         map[string]any{"InstructionError": []any{"mocked"}},
+					LogMessages: []string{"Program log: create account: already in use"},
+				},
+			}, nil
+		},
+	}
+
+	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
+
+	addr, sig, res, err := client.CreateDeviceLatencySamplesAccount(
+		context.Background(),
+		signer.PublicKey(),
+		origin,
+		target,
+		link,
+		epoch,
+	)
+
+	require.ErrorIs(t, err, telemetry.ErrAccountAlreadyExists)
+	require.Equal(t, derivedAddr, addr)
+	require.NotNil(t, sig)
+	require.NotNil(t, res)
 }

@@ -65,7 +65,7 @@ impl Orchestrator {
             self.insert_data_into_duckdb(&rewards_data).await?
         };
         let shapley_inputs = self.process_metrics(db_engine.clone()).await?;
-        info!("Shapley inputs: {shapley_inputs:?}");
+        info!("Shapley inputs: {shapley_inputs:#?}");
 
         // Phase 3: Shapley Calculation
         info!("Phase 3: Calculating rewards using Shapley values");

@@ -506,6 +506,11 @@ mod tests {
                 location_pk: Pubkey::new_unique(),
                 exchange_pk: Pubkey::new_unique(),
                 metrics_publisher_pk: Pubkey::new_unique(),
+                bgp_asn: 100,
+                dia_bgp_asn: 200,
+                mgmt_vrf: "mgmt".to_string(),
+                dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+                ntp_servers: vec![[1, 2, 3, 4].into(), [5, 6, 7, 8].into()],
             }),
             "CreateDevice",
         );
@@ -521,6 +526,12 @@ mod tests {
                 device_type: Some(DeviceType::Switch),
                 dz_prefixes: Some("1.2.3.4/1".parse().unwrap()),
                 metrics_publisher_pk: Some(Pubkey::new_unique()),
+                bgp_asn: Some(42),
+                dia_bgp_asn: Some(4242),
+                mgmt_vrf: Some("mgmt".to_string()),
+                dns_servers: Some(vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()]),
+                ntp_servers: Some(vec![[1, 2, 3, 4].into(), [5, 6, 7, 8].into()]),
+                interfaces: None,
             }),
             "UpdateDevice",
         );
@@ -547,6 +558,8 @@ mod tests {
                 mtu: 1500,
                 delay_ns: 1000,
                 jitter_ns: 100,
+                side_a_iface_name: "eth0".to_string(),
+                side_z_iface_name: "eth1".to_string(),
             }),
             "CreateLink",
         );

@@ -117,6 +117,35 @@ impl DeviceCreateArgsExt for DeviceCreateArgs {
             public_ip: Ipv4Addr::UNSPECIFIED,
             dz_prefixes: NetworkV4List::default(),
             metrics_publisher_pk: Pubkey::default(),
+            bgp_asn: 0,
+            dia_bgp_asn: 0,
+            mgmt_vrf: String::default(),
+            dns_servers: vec![],
+            ntp_servers: vec![],
+        }
+    }
+}
+
+pub trait LinkCreateArgsExt {
+    fn default() -> LinkCreateArgs;
+}
+
+impl LinkCreateArgsExt for LinkCreateArgs {
+    fn default() -> LinkCreateArgs {
+        LinkCreateArgs {
+            index: 0,
+            bump_seed: 0,
+            code: "".to_string(),
+            contributor_pk: Pubkey::default(),
+            side_a_pk: Pubkey::default(),
+            side_z_pk: Pubkey::default(),
+            link_type: LinkLinkType::L3,
+            bandwidth: 0,
+            mtu: 0,
+            delay_ns: 0,
+            jitter_ns: 0,
+            side_a_iface_name: String::default(),
+            side_z_iface_name: String::default(),
         }
     }
 }
@@ -303,6 +332,7 @@ impl LedgerHelper {
                 public_ip: [1, 2, 3, 4].into(),
                 dz_prefixes: NetworkV4List::default(),
                 metrics_publisher_pk: origin_device_agent_pk,
+                ..DeviceCreateArgs::default()
             })
             .await?;
 
@@ -703,6 +733,12 @@ impl ServiceabilityProgramHelper {
                 public_ip: device.public_ip,
                 dz_prefixes: device.dz_prefixes,
                 metrics_publisher_pk: device.metrics_publisher_pk,
+                bgp_asn: device.bgp_asn,
+                dia_bgp_asn: device.dia_bgp_asn,
+                mgmt_vrf: device.mgmt_vrf,
+                dns_servers: device.dns_servers.clone(),
+                ntp_servers: device.ntp_servers.clone(),
+                interfaces: device.interfaces.clone(),
             }),
             vec![
                 AccountMeta::new(device_pk, false),
@@ -774,6 +810,8 @@ impl ServiceabilityProgramHelper {
                 mtu: link.mtu,
                 delay_ns: link.delay_ns,
                 jitter_ns: link.jitter_ns,
+                side_a_iface_name: link.side_a_iface_name,
+                side_z_iface_name: link.side_z_iface_name,
             }),
             vec![
                 AccountMeta::new(link_pk, false),

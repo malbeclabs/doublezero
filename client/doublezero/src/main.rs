@@ -7,7 +7,7 @@ mod servicecontroller;
 use crate::cli::{
     command::Command,
     config::ConfigCommands,
-    device::{DeviceAllowlistCommands, DeviceCommands},
+    device::{DeviceAllowlistCommands, DeviceCommands, InterfaceCommands},
     exchange::ExchangeCommands,
     globalconfig::{FoundationAllowlistCommands, GlobalConfigCommands},
     link::LinkCommands,
@@ -117,6 +117,13 @@ async fn main() -> eyre::Result<()> {
                 DeviceAllowlistCommands::List(args) => args.execute(&client, &mut handle),
                 DeviceAllowlistCommands::Add(args) => args.execute(&client, &mut handle),
                 DeviceAllowlistCommands::Remove(args) => args.execute(&client, &mut handle),
+            },
+            DeviceCommands::Interface(command) => match command.command {
+                InterfaceCommands::Create(args) => args.execute(&client, &mut handle),
+                InterfaceCommands::Update(args) => args.execute(&client, &mut handle),
+                InterfaceCommands::List(args) => args.execute(&client, &mut handle),
+                InterfaceCommands::Get(args) => args.execute(&client, &mut handle),
+                InterfaceCommands::Delete(args) => args.execute(&client, &mut handle),
             },
         },
         Command::Link(command) => match command.command {

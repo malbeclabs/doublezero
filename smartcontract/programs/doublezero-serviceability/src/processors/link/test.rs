@@ -185,6 +185,11 @@ mod tunnel_test {
                 public_ip: [10, 0, 0, 1].into(),
                 dz_prefixes: "10.1.0.0/24".parse().unwrap(),
                 metrics_publisher_pk: Pubkey::default(),
+                bgp_asn: 42,
+                dia_bgp_asn: 4242,
+                mgmt_vrf: "mgmt".to_string(),
+                dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+                ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
             }),
             vec![
                 AccountMeta::new(device_a_pubkey, false),
@@ -219,6 +224,11 @@ mod tunnel_test {
                 public_ip: [11, 0, 0, 1].into(),
                 dz_prefixes: "11.1.0.0/23".parse().unwrap(),
                 metrics_publisher_pk: Pubkey::default(),
+                bgp_asn: 42,
+                dia_bgp_asn: 4242,
+                mgmt_vrf: "mgmt".to_string(),
+                dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+                ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
             }),
             vec![
                 AccountMeta::new(device_z_pubkey, false),
@@ -257,6 +267,8 @@ mod tunnel_test {
                 mtu: 9000,
                 delay_ns: 150000,
                 jitter_ns: 5000,
+                side_a_iface_name: "eth0".to_string(),
+                side_z_iface_name: "eth1".to_string(),
             }),
             vec![
                 AccountMeta::new(tunnel_pubkey, false),

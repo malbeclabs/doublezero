@@ -186,6 +186,12 @@ mod tests {
             public_ip: [10, 0, 0, 1].into(),
             dz_prefixes: "10.0.0.0/32".parse().unwrap(),
             metrics_publisher_pk: Pubkey::new_unique(),
+            bgp_asn: 0,
+            dia_bgp_asn: 0,
+            mgmt_vrf: "default".to_string(),
+            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+            ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
+            interfaces: vec![],
         };
 
         let cloned_device = device.clone();

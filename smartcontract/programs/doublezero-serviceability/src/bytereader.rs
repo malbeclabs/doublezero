@@ -149,6 +149,19 @@ impl<'a> ByteReader<'a> {
         value
     }
 
+    pub fn read_ipv4_list(&mut self) -> Vec<std::net::Ipv4Addr> {
+        let mut list = Vec::<std::net::Ipv4Addr>::default();
+
+        let length = self.read_u32() as usize;
+        if !self.has_no_space(length * size_of::<std::net::Ipv4Addr>()) {
+            for _ in 0..length {
+                list.push(self.read_ipv4());
+            }
+        }
+
+        list
+    }
+
     pub fn read_networkv4(&mut self) -> NetworkV4 {
         if self.has_no_space(size_of::<NetworkV4>()) {
             return NetworkV4::default();
@@ -182,5 +195,19 @@ impl<'a> ByteReader<'a> {
             String::from_utf8_lossy(&self.data[self.position..self.position + length]).to_string();
         self.position += length;
         value
+    }
+
+    pub fn read_vec<T>(&mut self) -> Vec<T>
+    where
+        for<'z> T: From<&'z mut ByteReader<'a>>,
+    {
+        let length = self.read_u32() as usize;
+
+        let mut vec = Vec::with_capacity(length);
+
+        for _ in 0..length {
+            vec.push(T::from(self));
+        }
+        vec
     }
 }

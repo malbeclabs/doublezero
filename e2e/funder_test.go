@@ -81,7 +81,7 @@ func TestE2E_Funder(t *testing.T) {
 	// Add a device onchain with metrics publisher pubkey.
 	log.Debug("==> Creating LA device onchain")
 	laDeviceMetricsPublisherWallet := solana.NewWallet()
-	laDevicePK, err := dn.GetOrCreateDeviceOnchain(ctx, "la2-dz01", "lax", "xlax", laDeviceMetricsPublisherWallet.PublicKey().String(), "207.45.216.134", []string{"207.45.216.136/30"})
+	laDevicePK, err := dn.GetOrCreateDeviceOnchain(ctx, "la2-dz01", "lax", "xlax", laDeviceMetricsPublisherWallet.PublicKey().String(), "207.45.216.134", []string{"207.45.216.136/30"}, 0, 0, "default", []string{"8.8.8.8"}, []string{"1.2.3.4"})
 	require.NoError(t, err)
 	log.Info("--> LA device created", "pubkey", laDevicePK, "metricsPublisher", laDeviceMetricsPublisherWallet.PublicKey())
 
@@ -93,7 +93,7 @@ func TestE2E_Funder(t *testing.T) {
 
 	// Add another device onchain with metrics publisher pubkey.
 	nyDeviceMetricsPublisherWallet := solana.NewWallet()
-	nyDevicePK, err := dn.GetOrCreateDeviceOnchain(ctx, "ny-dz01", "ewr", "xewr", nyDeviceMetricsPublisherWallet.PublicKey().String(), "207.45.217.134", []string{"207.45.217.136/30"})
+	nyDevicePK, err := dn.GetOrCreateDeviceOnchain(ctx, "ny-dz01", "ewr", "xewr", nyDeviceMetricsPublisherWallet.PublicKey().String(), "207.45.217.134", []string{"207.45.217.136/30"}, 0, 0, "default", []string{"8.8.8.8"}, []string{"1.2.3.4"})
 	require.NoError(t, err)
 	log.Info("--> NY device created", "pubkey", nyDevicePK, "metricsPublisher", nyDeviceMetricsPublisherWallet.PublicKey())
 

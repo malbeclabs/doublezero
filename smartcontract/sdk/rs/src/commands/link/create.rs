@@ -17,6 +17,8 @@ pub struct CreateLinkCommand {
     pub mtu: u32,
     pub delay_ns: u64,
     pub jitter_ns: u64,
+    pub side_a_iface_name: String,
+    pub side_z_iface_name: String,
 }
 
 impl CreateLinkCommand {
@@ -38,6 +40,8 @@ impl CreateLinkCommand {
                     mtu: self.mtu,
                     delay_ns: self.delay_ns,
                     jitter_ns: self.jitter_ns,
+                    side_a_iface_name: self.side_a_iface_name.clone(),
+                    side_z_iface_name: self.side_z_iface_name.clone(),
                 }),
                 vec![
                     AccountMeta::new(pda_pubkey, false),

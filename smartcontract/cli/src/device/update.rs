@@ -33,6 +33,21 @@ pub struct UpdateDeviceCliCommand {
     /// Contributor Pubkey (optional)
     #[arg(long, value_parser = validate_pubkey)]
     pub contributor: Option<String>,
+    /// BGP ASN for the device
+    #[arg(long)]
+    pub bgp_asn: Option<u32>,
+    /// DIA BGP ASN for the device
+    #[arg(long)]
+    pub dia_bgp_asn: Option<u32>,
+    /// Management VRF name (optional)
+    #[arg(long)]
+    pub mgmt_vrf: Option<String>,
+    /// List of DNS servers in comma-separated IPv4 format (e.g. 8.8.8.8,8.8.4.4)
+    #[arg(long, num_args = 1.., value_delimiter = ',')]
+    pub dns_servers: Option<Vec<std::net::Ipv4Addr>>,
+    /// List of NTP servers in comma-separated IPv4 format (e.g. 1.2.3.4,5.6.7.8)
+    #[arg(long, num_args = 1.., value_delimiter = ',')]
+    pub ntp_servers: Option<Vec<std::net::Ipv4Addr>>,
 }
 
 impl UpdateDeviceCliCommand {
@@ -99,6 +114,12 @@ impl UpdateDeviceCliCommand {
             dz_prefixes: self.dz_prefixes,
             metrics_publisher,
             contributor_pk: contributor,
+            bgp_asn: self.bgp_asn,
+            dia_bgp_asn: self.dia_bgp_asn,
+            mgmt_vrf: self.mgmt_vrf,
+            dns_servers: self.dns_servers.clone(),
+            ntp_servers: self.ntp_servers.clone(),
+            interfaces: None,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -154,6 +175,12 @@ mod tests {
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::default(),
             owner: pda_pubkey,
+            bgp_asn: 0,
+            dia_bgp_asn: 0,
+            mgmt_vrf: "default".to_string(),
+            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+            ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
+            interfaces: vec![],
         };
         let device2 = Device {
             account_type: AccountType::Device,
@@ -169,6 +196,12 @@ mod tests {
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::default(),
             owner: pda_pubkey,
+            bgp_asn: 0,
+            dia_bgp_asn: 0,
+            mgmt_vrf: "default".to_string(),
+            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+            ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
+            interfaces: vec![],
         };
         let device3 = Device {
             account_type: AccountType::Device,
@@ -184,6 +217,12 @@ mod tests {
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::default(),
             owner: pda_pubkey,
+            bgp_asn: 0,
+            dia_bgp_asn: 0,
+            mgmt_vrf: "default".to_string(),
+            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+            ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
+            interfaces: vec![],
         };
         let device_list = HashMap::from([
             (pda_pubkey, device1.clone()),
@@ -220,6 +259,12 @@ mod tests {
                 contributor_pk: Some(Pubkey::from_str_const(
                     "HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx",
                 )),
+                bgp_asn: Some(42),
+                dia_bgp_asn: Some(4242),
+                mgmt_vrf: Some("default".to_string()),
+                dns_servers: Some(vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()]),
+                ntp_servers: Some(vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()]),
+                interfaces: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -233,6 +278,11 @@ mod tests {
             dz_prefixes: Some("1.2.3.4/32".parse().unwrap()),
             metrics_publisher: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
             contributor: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
+            bgp_asn: Some(42),
+            dia_bgp_asn: Some(4242),
+            mgmt_vrf: Some("default".to_string()),
+            dns_servers: Some(vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()]),
+            ntp_servers: Some(vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()]),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok(), "{}", res.err().unwrap());
@@ -266,6 +316,12 @@ mod tests {
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::default(),
             owner: pda_pubkey,
+            bgp_asn: 0,
+            dia_bgp_asn: 0,
+            mgmt_vrf: "default".to_string(),
+            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+            ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
+            interfaces: vec![],
         };
         let device2 = Device {
             account_type: AccountType::Device,
@@ -281,6 +337,12 @@ mod tests {
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::default(),
             owner: other_pubkey,
+            bgp_asn: 0,
+            dia_bgp_asn: 0,
+            mgmt_vrf: "default".to_string(),
+            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+            ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
+            interfaces: vec![],
         };
         let device_list = HashMap::from([(pda_pubkey, device1.clone()), (other_pubkey, device2)]);
 
@@ -302,6 +364,11 @@ mod tests {
             dz_prefixes: None,
             metrics_publisher: None,
             contributor: None,
+            bgp_asn: None,
+            dia_bgp_asn: None,
+            mgmt_vrf: None,
+            dns_servers: None,
+            ntp_servers: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_err());
@@ -335,6 +402,12 @@ mod tests {
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::default(),
             owner: pda_pubkey,
+            bgp_asn: 0,
+            dia_bgp_asn: 0,
+            mgmt_vrf: "default".to_string(),
+            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+            ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
+            interfaces: vec![],
         };
         let device2 = Device {
             account_type: AccountType::Device,
@@ -350,6 +423,12 @@ mod tests {
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::default(),
             owner: other_pubkey,
+            bgp_asn: 0,
+            dia_bgp_asn: 0,
+            mgmt_vrf: "default".to_string(),
+            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+            ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
+            interfaces: vec![],
         };
         let device_list = HashMap::from([(pda_pubkey, device1.clone()), (other_pubkey, device2)]);
 
@@ -371,6 +450,11 @@ mod tests {
             dz_prefixes: None,
             metrics_publisher: None,
             contributor: None,
+            bgp_asn: None,
+            dia_bgp_asn: None,
+            mgmt_vrf: None,
+            dns_servers: None,
+            ntp_servers: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_err());

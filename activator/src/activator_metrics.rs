@@ -112,6 +112,12 @@ mod tests {
             code: "TestDevice".to_string(),
             metrics_publisher_pk: Pubkey::default(),
             dz_prefixes: "10.0.0.0/24,10.0.1.0/24".parse().unwrap(),
+            bgp_asn: 42,
+            dia_bgp_asn: 4242,
+            mgmt_vrf: "mgmt".to_string(),
+            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+            ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
+            interfaces: vec![],
         };
 
         let mut device = DeviceState::new(&device);
@@ -181,6 +187,12 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             code: "TestDevice".to_string(),
             dz_prefixes: "10.0.0.0/24".parse().unwrap(),
+            bgp_asn: 42,
+            dia_bgp_asn: 4242,
+            mgmt_vrf: "mgmt".to_string(),
+            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+            ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
+            interfaces: vec![],
         };
         devices.insert(device_pk, DeviceState::new(&device));
 

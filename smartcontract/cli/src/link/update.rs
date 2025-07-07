@@ -146,6 +146,8 @@ mod tests {
             tunnel_net: "10.0.0.1/16".parse().unwrap(),
             status: LinkStatus::Activated,
             owner: pda_pubkey,
+            side_a_iface_name: "eth0".to_string(),
+            side_z_iface_name: "eth1".to_string(),
         };
 
         client

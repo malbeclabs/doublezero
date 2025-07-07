@@ -404,6 +404,12 @@ async fn test_initialize_device_latency_samples_fail_origin_device_wrong_owner()
         metrics_publisher_pk: agent.pubkey(),
         location_pk: Pubkey::new_unique(),
         dz_prefixes: NetworkV4List::default(),
+        bgp_asn: 0,
+        dia_bgp_asn: 0,
+        mgmt_vrf: "default".to_string(),
+        dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+        ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
+        interfaces: vec![],
     };
 
     let mut device_data = Vec::new();
@@ -470,6 +476,12 @@ async fn test_initialize_device_latency_samples_fail_target_device_wrong_owner()
         device_type: DeviceType::Switch,
         public_ip: Ipv4Addr::UNSPECIFIED,
         code: "invalid".to_string(),
+        bgp_asn: 0,
+        dia_bgp_asn: 0,
+        mgmt_vrf: "default".to_string(),
+        dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+        ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
+        interfaces: vec![],
     };
 
     let mut data = Vec::new();
@@ -539,6 +551,8 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_owner() {
         mtu: 0,
         tunnel_id: 0,
         tunnel_net: NetworkV4::default(),
+        side_a_iface_name: "eth0".to_string(),
+        side_z_iface_name: "eth1".to_string(),
     };
 
     let mut data = Vec::new();

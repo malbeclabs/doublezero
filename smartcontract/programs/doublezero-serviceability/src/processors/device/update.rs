@@ -23,17 +23,33 @@ pub struct DeviceUpdateArgs {
     pub public_ip: Option<std::net::Ipv4Addr>,
     pub dz_prefixes: Option<NetworkV4List>,
     pub metrics_publisher_pk: Option<Pubkey>,
+    pub bgp_asn: Option<u32>,
+    pub dia_bgp_asn: Option<u32>,
+    pub mgmt_vrf: Option<String>,
+    pub dns_servers: Option<Vec<std::net::Ipv4Addr>>,
+    pub ntp_servers: Option<Vec<std::net::Ipv4Addr>>,
+    pub interfaces: Option<Vec<Interface>>,
 }
 
 impl fmt::Debug for DeviceUpdateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "code: {:?}, device_type: {:?}, public_ip: {:?}, dz_prefixes: {:?}",
+            "code: {:?}, device_type: {:?}, contributor_pk: {:?}, \
+public_ip: {:?}, dz_prefixes: {:?}, metrics_publisher_pk: {:?}, \
+bgp_asn: {:?}, dia_bgp_asn: {:?}, mgmt_vrf: {:?}, dns_servers: {:?}, \
+ntp_servers: {:?}",
             self.code,
             self.device_type,
-            self.public_ip.map(|public_ip| public_ip.to_string(),),
-            self.dz_prefixes.as_ref().map(|net| net.to_string())
+            self.contributor_pk,
+            self.public_ip.map(|public_ip| public_ip.to_string()),
+            self.dz_prefixes.as_ref().map(|net| net.to_string()),
+            self.metrics_publisher_pk,
+            self.bgp_asn,
+            self.dia_bgp_asn,
+            self.mgmt_vrf.as_ref(),
+            self.dns_servers,
+            self.ntp_servers,
         )
     }
 }
@@ -103,6 +119,24 @@ pub fn process_update_device(
     }
     if let Some(metrics_publisher_pk) = &value.metrics_publisher_pk {
         device.metrics_publisher_pk = *metrics_publisher_pk;
+    }
+    if let Some(bgp_asn) = value.bgp_asn {
+        device.bgp_asn = bgp_asn;
+    }
+    if let Some(dia_bgp_asn) = value.dia_bgp_asn {
+        device.dia_bgp_asn = dia_bgp_asn;
+    }
+    if let Some(mgmt_vrf) = &value.mgmt_vrf {
+        device.mgmt_vrf = mgmt_vrf.clone();
+    }
+    if let Some(dns_servers) = &value.dns_servers {
+        device.dns_servers = dns_servers.clone();
+    }
+    if let Some(ntp_servers) = &value.ntp_servers {
+        device.ntp_servers = ntp_servers.clone();
+    }
+    if let Some(interfaces) = &value.interfaces {
+        device.interfaces = interfaces.clone();
     }
 
     account_write(device_account, &device, payer_account, system_program);

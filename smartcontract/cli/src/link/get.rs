@@ -17,11 +17,13 @@ impl GetLinkCliCommand {
         })?;
 
         writeln!(out,
-            "account: {}\r\ncode: {}\r\nside_a: {}\r\nside_z: {}\r\ntunnel_type: {}\r\nbandwidth: {}\r\nmtu: {}\r\ndelay: {}ms\r\njitter: {}ms\r\ntunnel_net: {}\r\nstatus: {}\r\nowner: {}",
+            "account: {}\r\ncode: {}\r\nside_a: {}\r\nside_a_iface_name: {}\r\nside_z: {}\r\nside_z_iface_name: {}\r\ntunnel_type: {}\r\nbandwidth: {}\r\nmtu: {}\r\ndelay: {}ms\r\njitter: {}ms\r\ntunnel_net: {}\r\nstatus: {}\r\nowner: {}",
             pubkey,
             tunnel.code,
             tunnel.side_a_pk,
+            tunnel.side_a_iface_name,
             tunnel.side_z_pk,
+            tunnel.side_z_iface_name,
             tunnel.link_type,
             tunnel.bandwidth,
             tunnel.mtu,
@@ -75,6 +77,8 @@ mod tests {
             tunnel_net: "10.0.0.1/16".parse().unwrap(),
             status: LinkStatus::Activated,
             owner: pda_pubkey,
+            side_a_iface_name: "eth0".to_string(),
+            side_z_iface_name: "eth1".to_string(),
         };
 
         let tunnel2 = tunnel.clone();
@@ -110,7 +114,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: 313hjD3qvP9CCxdbTGKpuACJrBwh8DhXjdVoL6gc6rf9\r\ncode: test\r\nside_a: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb\r\nside_z: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf\r\ntunnel_type: L3\r\nbandwidth: 1000000000\r\nmtu: 1500\r\ndelay: 10000ms\r\njitter: 5000ms\r\ntunnel_net: 10.0.0.1/16\r\nstatus: activated\r\nowner: 313hjD3qvP9CCxdbTGKpuACJrBwh8DhXjdVoL6gc6rf9\n");
+        assert_eq!(output_str, "account: 313hjD3qvP9CCxdbTGKpuACJrBwh8DhXjdVoL6gc6rf9\r\ncode: test\r\nside_a: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb\r\nside_a_iface_name: eth0\r\nside_z: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf\r\nside_z_iface_name: eth1\r\ntunnel_type: L3\r\nbandwidth: 1000000000\r\nmtu: 1500\r\ndelay: 10000ms\r\njitter: 5000ms\r\ntunnel_net: 10.0.0.1/16\r\nstatus: activated\r\nowner: 313hjD3qvP9CCxdbTGKpuACJrBwh8DhXjdVoL6gc6rf9\n");
 
         // Expected success
         let mut output = Vec::new();
@@ -120,6 +124,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by code");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: 313hjD3qvP9CCxdbTGKpuACJrBwh8DhXjdVoL6gc6rf9\r\ncode: test\r\nside_a: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb\r\nside_z: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf\r\ntunnel_type: L3\r\nbandwidth: 1000000000\r\nmtu: 1500\r\ndelay: 10000ms\r\njitter: 5000ms\r\ntunnel_net: 10.0.0.1/16\r\nstatus: activated\r\nowner: 313hjD3qvP9CCxdbTGKpuACJrBwh8DhXjdVoL6gc6rf9\n");
+        assert_eq!(output_str, "account: 313hjD3qvP9CCxdbTGKpuACJrBwh8DhXjdVoL6gc6rf9\r\ncode: test\r\nside_a: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb\r\nside_a_iface_name: eth0\r\nside_z: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf\r\nside_z_iface_name: eth1\r\ntunnel_type: L3\r\nbandwidth: 1000000000\r\nmtu: 1500\r\ndelay: 10000ms\r\njitter: 5000ms\r\ntunnel_net: 10.0.0.1/16\r\nstatus: activated\r\nowner: 313hjD3qvP9CCxdbTGKpuACJrBwh8DhXjdVoL6gc6rf9\n");
     }
 }

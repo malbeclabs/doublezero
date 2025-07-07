@@ -69,6 +69,105 @@ impl fmt::Display for DeviceStatus {
     }
 }
 
+#[repr(u8)]
+#[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone, Copy, Serialize)]
+#[borsh(use_discriminant = true)]
+pub enum InterfaceType {
+    Loopback = 0,
+    Physical = 1,
+    Virtual = 2,
+}
+
+impl From<u8> for InterfaceType {
+    fn from(value: u8) -> Self {
+        match value {
+            1 => InterfaceType::Physical,
+            2 => InterfaceType::Virtual,
+            _ => InterfaceType::Loopback, // Default case
+        }
+    }
+}
+
+impl fmt::Display for InterfaceType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            InterfaceType::Loopback => write!(f, "loopback"),
+            InterfaceType::Physical => write!(f, "physical"),
+            InterfaceType::Virtual => write!(f, "virtual"),
+        }
+    }
+}
+
+#[repr(u8)]
+#[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone, Copy, Serialize)]
+#[borsh(use_discriminant = true)]
+pub enum LoopbackType {
+    None = 0,
+    Vpnv4 = 1,
+    Ipv4 = 2,
+    PimRpAddr = 3,
+    Reserved = 4,
+}
+
+impl fmt::Display for LoopbackType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LoopbackType::None => write!(f, "none"),
+            LoopbackType::Vpnv4 => write!(f, "vpnv4"),
+            LoopbackType::Ipv4 => write!(f, "ipv4"),
+            LoopbackType::PimRpAddr => write!(f, "pim_rp_addr"),
+            LoopbackType::Reserved => write!(f, "reserved"),
+        }
+    }
+}
+
+impl From<u8> for LoopbackType {
+    fn from(value: u8) -> Self {
+        match value {
+            1 => LoopbackType::Vpnv4,
+            2 => LoopbackType::Ipv4,
+            3 => LoopbackType::PimRpAddr,
+            4 => LoopbackType::Reserved,
+            _ => LoopbackType::None, // Default case
+        }
+    }
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone, Serialize)]
+pub struct Interface {
+    pub name: String,                  // 4 + len
+    pub interface_type: InterfaceType, // 1
+    pub loopback_type: LoopbackType,   // 1
+    pub vlan_id: u16,                  // 2
+    pub ip_net: NetworkV4,             // 4 IPv4 address + 1 subnet mask
+    pub node_segment_idx: u16,         // 2
+    pub user_tunnel_endpoint: bool,    // 1
+}
+
+impl Interface {
+    pub fn size(&self) -> usize {
+        Self::size_given_name_len(self.name.len())
+    }
+
+    pub fn size_given_name_len(name_len: usize) -> usize {
+        4 + name_len + 1 + 1 + 2 + 5 + 2 + 1
+    }
+}
+
+impl From<&mut ByteReader<'_>> for Interface {
+    fn from(parser: &mut ByteReader<'_>) -> Self {
+        Self {
+            name: parser.read_string(),
+            interface_type: parser.read_enum(),
+            loopback_type: parser.read_enum(),
+            vlan_id: parser.read_u16(),
+            ip_net: parser.read_networkv4(),
+            node_segment_idx: parser.read_u16(),
+            user_tunnel_endpoint: (parser.read_u8() != 0),
+        }
+    }
+}
+
 #[derive(BorshSerialize, Debug, PartialEq, Clone, Serialize)]
 pub struct Device {
     pub account_type: AccountType,    // 1
@@ -84,14 +183,20 @@ pub struct Device {
     pub dz_prefixes: NetworkV4List,   // 4 + 5 * len
     pub metrics_publisher_pk: Pubkey, // 32
     pub contributor_pk: Pubkey,       // 32
+    pub bgp_asn: u32,                 // 4
+    pub dia_bgp_asn: u32,             // 4
+    pub mgmt_vrf: String,             // 4 + len
+    pub dns_servers: Vec<Ipv4Addr>,   // 4 + 4 * len
+    pub ntp_servers: Vec<Ipv4Addr>,   // 4 + 4 * len
+    pub interfaces: Vec<Interface>,   // 4 + (14 + len(name)) * len
 }
 
 impl fmt::Display for Device {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, index: {}, contributor_pk: {}, location_pk: {}, exchange_pk: {}, device_type: {}, public_ip: {}, dz_prefixes: {}, status: {}, code: {}, metrics_publisher_pk: {}",
-            self.account_type, self.owner, self.index, self.contributor_pk, self.location_pk, self.exchange_pk, self.device_type, &self.public_ip, &self.dz_prefixes, self.status, self.code, self.metrics_publisher_pk
+            "account_type: {}, owner: {}, index: {}, contributor_pk: {}, location_pk: {}, exchange_pk: {}, device_type: {}, public_ip: {}, dz_prefixes: {}, status: {}, code: {}, metrics_publisher_pk: {}, bgp_asn: {}",
+            self.account_type, self.owner, self.index, self.contributor_pk, self.location_pk, self.exchange_pk, self.device_type, &self.public_ip, &self.dz_prefixes, self.status, self.code, self.metrics_publisher_pk, self.bgp_asn
         )
     }
 }
@@ -115,6 +220,20 @@ impl AccountTypeInfo for Device {
             + 5 * self.dz_prefixes.len()
             + 32
             + 32
+            + 4
+            + 4
+            + 4
+            + self.mgmt_vrf.len()
+            + 4
+            + 4 * self.dns_servers.len()
+            + 4
+            + 4 * self.ntp_servers.len()
+            + 4
+            + self
+                .interfaces
+                .iter()
+                .map(|iface| iface.size())
+                .sum::<usize>()
     }
     fn bump_seed(&self) -> u8 {
         self.bump_seed
@@ -145,6 +264,12 @@ impl From<&[u8]> for Device {
             dz_prefixes: parser.read_networkv4_list(),
             metrics_publisher_pk: parser.read_pubkey(),
             contributor_pk: parser.read_pubkey(),
+            bgp_asn: parser.read_u32(),
+            dia_bgp_asn: parser.read_u32(),
+            mgmt_vrf: parser.read_string(),
+            dns_servers: parser.read_ipv4_list(),
+            ntp_servers: parser.read_ipv4_list(),
+            interfaces: parser.read_vec(),
         }
     }
 }
@@ -178,6 +303,31 @@ mod tests {
             public_ip: [1, 2, 3, 4].into(),
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::new_unique(),
+            bgp_asn: 12345,
+            dia_bgp_asn: 6789,
+            mgmt_vrf: "default".to_string(),
+            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+            ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
+            interfaces: vec![
+                Interface {
+                    name: "eth0".to_string(),
+                    interface_type: InterfaceType::Physical,
+                    loopback_type: LoopbackType::None,
+                    vlan_id: 100,
+                    ip_net: "10.0.0.1/24".parse().unwrap(),
+                    node_segment_idx: 42,
+                    user_tunnel_endpoint: true,
+                },
+                Interface {
+                    name: "eth1".to_string(),
+                    interface_type: InterfaceType::Physical,
+                    loopback_type: LoopbackType::None,
+                    vlan_id: 101,
+                    ip_net: "10.0.1.1/24".parse().unwrap(),
+                    node_segment_idx: 24,
+                    user_tunnel_endpoint: false,
+                },
+            ],
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -196,6 +346,12 @@ mod tests {
         assert_eq!(val.dz_prefixes, val2.dz_prefixes);
         assert_eq!(val.status, val2.status);
         assert_eq!(val.metrics_publisher_pk, val2.metrics_publisher_pk);
+        assert_eq!(val.bgp_asn, val2.bgp_asn);
+        assert_eq!(val.dia_bgp_asn, val2.dia_bgp_asn);
+        assert_eq!(val.mgmt_vrf, val2.mgmt_vrf);
+        assert_eq!(val.dns_servers, val2.dns_servers);
+        assert_eq!(val.ntp_servers, val2.ntp_servers);
+        assert_eq!(val.interfaces, val2.interfaces);
         assert_eq!(data.len(), val.size(), "Invalid Size");
     }
 }

@@ -79,6 +79,12 @@ mod tests {
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::default(),
             owner: pda_pubkey,
+            bgp_asn: 0,
+            dia_bgp_asn: 0,
+            mgmt_vrf: "default".to_string(),
+            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+            ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
+            interfaces: vec![],
         };
         let location2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let exchange2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkce");
@@ -97,6 +103,12 @@ mod tests {
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::default(),
             owner: pda_pubkey,
+            bgp_asn: 0,
+            dia_bgp_asn: 0,
+            mgmt_vrf: "default".to_string(),
+            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+            ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
+            interfaces: vec![],
         };
 
         let tunnel = Link {
@@ -116,6 +128,8 @@ mod tests {
             tunnel_net: "10.0.0.1/16".parse().unwrap(),
             status: LinkStatus::Activated,
             owner: pda_pubkey,
+            side_a_iface_name: "eth0".to_string(),
+            side_z_iface_name: "eth1".to_string(),
         };
 
         client

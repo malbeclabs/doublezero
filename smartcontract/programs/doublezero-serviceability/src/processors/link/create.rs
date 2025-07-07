@@ -29,14 +29,16 @@ pub struct LinkCreateArgs {
     pub mtu: u32,
     pub delay_ns: u64,
     pub jitter_ns: u64,
+    pub side_a_iface_name: String,
+    pub side_z_iface_name: String,
 }
 
 impl fmt::Debug for LinkCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "code: {}, side_a_pk: {}, side_z_pk: {}, link_type: {:?}, bandwidth: {}, mtu: {}, delay_ns: {}, jitter_ns: {}",
-            self.code, self.side_a_pk, self.side_z_pk, self.link_type, self.bandwidth, self.mtu, self.delay_ns, self.jitter_ns
+            "code: {}, side_a_pk: {}, side_z_pk: {}, link_type: {:?}, bandwidth: {}, mtu: {}, delay_ns: {}, jitter_ns: {}, side_a_iface_name: {}, side_z_iface_name: {}",
+            self.code, self.side_a_pk, self.side_z_pk, self.link_type, self.bandwidth, self.mtu, self.delay_ns, self.jitter_ns, self.side_a_iface_name, self.side_z_iface_name
         )
     }
 }
@@ -130,6 +132,8 @@ pub fn process_create_link(
         tunnel_id: 0,
         tunnel_net: NetworkV4::default(),
         status: LinkStatus::Pending,
+        side_a_iface_name: value.side_a_iface_name.clone(),
+        side_z_iface_name: value.side_z_iface_name.clone(),
     };
 
     account_create(

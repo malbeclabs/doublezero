@@ -1,6 +1,9 @@
 # DoubleZero Oracle Environment Variables
 # Copy this file to .envrc and fill in the values
 
+# This is required to build doublezero
+export SERVICEABILITY_PROGRAM_ID="program_id"
+
 # === Data Fetcher Settings ===
 # Required: RPC configuration
 export DZ_RPC__URL="https://api.devnet.solana.com"

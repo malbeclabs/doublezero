@@ -663,3 +663,76 @@ async fn test_write_device_latency_samples_fail_agent_mismatch() {
         other => panic!("Unexpected error: {other:?}"),
     }
 }
+
+#[tokio::test]
+async fn test_write_device_latency_samples_to_max_samples() {
+    let mut ledger = LedgerHelper::new().await.unwrap();
+
+    let (agent, origin_device_pk, target_device_pk, link_pk) =
+        ledger.seed_with_two_linked_devices().await.unwrap();
+    ledger.wait_for_new_blockhash().await.unwrap();
+
+    let latency_samples_pk = ledger
+        .telemetry
+        .initialize_device_latency_samples(
+            &agent,
+            origin_device_pk,
+            target_device_pk,
+            link_pk,
+            1,
+            5_000_000,
+        )
+        .await
+        .unwrap();
+
+    let mut total_written = 0;
+    let mut timestamp = 1_700_000_000_000_000;
+
+    // NOTE: Any more than 4096 chunk size and we get: "memory allocation failed, out of memory".
+    let chunk_size = 4096;
+
+    while total_written < MAX_SAMPLES {
+        if total_written % 500 == 0 {
+            ledger.wait_for_new_blockhash().await.unwrap();
+        }
+
+        let remaining = MAX_SAMPLES - total_written;
+        let chunk = vec![1234u32; chunk_size.min(remaining)];
+
+        // TODO(snormore): After a few iterations/chunks, this fails with:
+        // `Cannot realloc to 16738, would exceed Solana inner instruction limit`
+
+        let result = ledger
+            .telemetry
+            .write_device_latency_samples(&agent, latency_samples_pk, chunk.clone(), timestamp)
+            .await;
+
+        match result {
+            Ok(_) => {
+                total_written += chunk.len();
+                timestamp += 1;
+            }
+            Err(e) => {
+                panic!("Write failed after {} samples: {e:?}", total_written);
+            }
+        }
+    }
+
+    let account = ledger
+        .get_account(latency_samples_pk)
+        .await
+        .unwrap()
+        .unwrap();
+    let state = DeviceLatencySamples::try_from(&account.data[..]).unwrap();
+
+    assert_eq!(
+        state.next_sample_index as usize, MAX_SAMPLES,
+        "Final header index mismatch"
+    );
+    assert_eq!(
+        state.samples.len(),
+        MAX_SAMPLES,
+        "Sample buffer length mismatch"
+    );
+    assert!(state.samples.iter().all(|&s| s == 1234));
+}

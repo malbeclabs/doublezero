@@ -194,9 +194,7 @@ mod tests {
         let header = val.header.clone();
 
         let header_bytes = borsh::to_vec(&val.header).unwrap();
-        println!("Serialized header: {:?}", header_bytes);
         let data = borsh::to_vec(&val).unwrap();
-        println!("Serialized data: {:?}", data);
         let val2 = DeviceLatencySamples::try_from_slice(&data).unwrap();
         let header2 = val2.header.clone();
 

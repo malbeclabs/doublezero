@@ -152,7 +152,7 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 			},
 		}
 
-		assert.Equal(t, expected, peers.GetPeers())
+		assert.ElementsMatch(t, expected, peers.GetPeers())
 	})
 
 	t.Run("skips pending links", func(t *testing.T) {

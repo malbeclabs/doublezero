@@ -3,7 +3,6 @@ package telemetry_test
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -22,6 +21,8 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 
 	t.Run("submits_buffered_samples", func(t *testing.T) {
 		t.Parallel()
+
+		log := log.With("test", t.Name())
 
 		var received []telemetry.Sample
 		var receivedKey telemetry.AccountKey
@@ -51,7 +52,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		key := newTestAccountKey()
 		buffer.Add(key, newTestSample())
 
-		submitter := telemetry.NewSubmitter(slog.Default(), &telemetry.SubmitterConfig{
+		submitter := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
 			Interval:      time.Hour, // unused
 			Buffer:        buffer,
 			ProgramClient: telemetryProgram,
@@ -90,7 +91,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			Loss:      false,
 		})
 
-		submitter := telemetry.NewSubmitter(slog.Default(), &telemetry.SubmitterConfig{
+		submitter := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
 			Interval:      time.Hour, // unused
 			Buffer:        buffer,
 			ProgramClient: telemetryProgram,
@@ -107,6 +108,8 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 
 	t.Run("aborts_retries_when_context_is_cancelled", func(t *testing.T) {
 		t.Parallel()
+
+		log := log.With("test", t.Name())
 
 		var mu sync.Mutex
 		var callCount int
@@ -127,7 +130,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			Loss:      false,
 		})
 
-		submitter := telemetry.NewSubmitter(slog.Default(), &telemetry.SubmitterConfig{
+		submitter := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
 			Interval:      time.Hour, // unused
 			Buffer:        buffer,
 			ProgramClient: telemetryProgram,
@@ -164,7 +167,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		buffer := telemetry.NewAccountsBuffer()
 		buffer.Add(key, sample)
 
-		submitter := telemetry.NewSubmitter(slog.Default(), &telemetry.SubmitterConfig{
+		submitter := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
 			Interval:      time.Hour, // unused
 			Buffer:        buffer,
 			ProgramClient: telemetryProgram,
@@ -185,6 +188,8 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 	t.Run("drops_samples_after_successful_submission", func(t *testing.T) {
 		t.Parallel()
 
+		log := log.With("test", t.Name())
+
 		key := newTestAccountKey()
 		sample := telemetry.Sample{
 			Timestamp: time.Now(),
@@ -203,7 +208,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		buffer := telemetry.NewAccountsBuffer()
 		buffer.Add(key, sample)
 
-		submitter := telemetry.NewSubmitter(slog.Default(), &telemetry.SubmitterConfig{
+		submitter := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
 			Interval:      time.Hour,
 			Buffer:        buffer,
 			ProgramClient: telemetryProgram,
@@ -220,6 +225,8 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 
 	t.Run("retries_then_drops_samples_on_eventual_success", func(t *testing.T) {
 		t.Parallel()
+
+		log := log.With("test", t.Name())
 
 		key := newTestAccountKey()
 		sample := telemetry.Sample{
@@ -242,7 +249,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		buffer := telemetry.NewAccountsBuffer()
 		buffer.Add(key, sample)
 
-		submitter := telemetry.NewSubmitter(slog.Default(), &telemetry.SubmitterConfig{
+		submitter := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
 			Interval:      time.Hour,
 			Buffer:        buffer,
 			ProgramClient: telemetryProgram,
@@ -259,6 +266,8 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 
 	t.Run("preserves_samples_when_context_cancelled_mid_retry", func(t *testing.T) {
 		t.Parallel()
+
+		log := log.With("test", t.Name())
 
 		key := newTestAccountKey()
 		sample := telemetry.Sample{
@@ -281,7 +290,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		submitter := telemetry.NewSubmitter(slog.Default(), &telemetry.SubmitterConfig{
+		submitter := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
 			Interval:      time.Hour,
 			Buffer:        buffer,
 			ProgramClient: telemetryProgram,
@@ -402,7 +411,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			})
 		}
 
-		submitter := telemetry.NewSubmitter(slog.Default(), &telemetry.SubmitterConfig{
+		submitter := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
 			Interval:      time.Hour,
 			Buffer:        buffer,
 			ProgramClient: telemetryProgram,

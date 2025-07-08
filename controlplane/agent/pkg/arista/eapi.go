@@ -1,16 +1,17 @@
-package agent
+package arista
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"os/exec"
 	"slices"
 	"strings"
 	"time"
 
-	arista "github.com/malbeclabs/doublezero/controlplane/proto/arista/gen/pb-go/arista/EosSdkRpc"
+	aristapb "github.com/malbeclabs/doublezero/controlplane/proto/arista/gen/pb-go/arista/EosSdkRpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -63,13 +64,13 @@ func NewClientConn(device string) (*grpc.ClientConn, error) {
 	return rpcConn, err
 }
 
-// NewEapiClient creates a new instance of EapiClient with the provided context and device address.
+// NewEAPIClient creates a new instance of EAPIClient with the provided context and device address.
 // If clientConn is set to nil, generate a new clientConn using the specified device. Unit tests can use this
 // to pass in a mock clientConn.
-func NewEapiClient(device string, clientConn *grpc.ClientConn) *EapiClient {
-	client := arista.NewEapiMgrServiceClient(clientConn)
+func NewEAPIClient(log *slog.Logger, client aristapb.EapiMgrServiceClient) *EAPIClient {
 
-	return &EapiClient{
+	return &EAPIClient{
+		log:    log,
 		Client: client,
 	}
 }
@@ -80,13 +81,14 @@ func getEosConfigurationSessionDistinguisher() string {
 	return fmt.Sprintf("%d", time.Now().Unix())
 }
 
-// EapiClient encapsulates the gRPC client and connection logic for interacting with the Arista device
-type EapiClient struct {
-	Client arista.EapiMgrServiceClient
+// EAPIClient encapsulates the gRPC client and connection logic for interacting with the Arista device
+type EAPIClient struct {
+	log    *slog.Logger
+	Client aristapb.EapiMgrServiceClient
 }
 
-func (e *EapiClient) clearStaleConfigSessions(ctx context.Context) error {
-	cmd := &arista.RunShowCmdRequest{
+func (e *EAPIClient) clearStaleConfigSessions(ctx context.Context) error {
+	cmd := &aristapb.RunShowCmdRequest{
 		Command: "show configuration sessions",
 	}
 
@@ -117,10 +119,10 @@ func (e *EapiClient) clearStaleConfigSessions(ctx context.Context) error {
 	return nil
 }
 
-func (e *EapiClient) clearConfigSession(ctx context.Context, sessionName string) error {
+func (e *EAPIClient) clearConfigSession(ctx context.Context, sessionName string) error {
 	log.Printf("Found stale Arista EOS configuration session \"%s\", attempting to remove", sessionName)
 
-	cmd := &arista.RunShowCmdRequest{
+	cmd := &aristapb.RunShowCmdRequest{
 		Command: fmt.Sprintf("configure session %s abort", sessionName),
 	}
 
@@ -136,10 +138,10 @@ func (e *EapiClient) clearConfigSession(ctx context.Context, sessionName string)
 	return nil
 }
 
-func (e *EapiClient) getLock(ctx context.Context) (ShowConfigurationLock, error) {
+func (e *EAPIClient) getLock(ctx context.Context) (ShowConfigurationLock, error) {
 	var configLock ShowConfigurationLock
 
-	cmd := &arista.RunShowCmdRequest{
+	cmd := &aristapb.RunShowCmdRequest{
 		Command: "show configuration lock",
 	}
 
@@ -159,8 +161,8 @@ func (e *EapiClient) getLock(ctx context.Context) (ShowConfigurationLock, error)
 	return configLock, nil
 }
 
-func (e *EapiClient) forceConfigUnlock(ctx context.Context) error {
-	cmd := &arista.RunConfigCmdsRequest{
+func (e *EAPIClient) forceConfigUnlock(ctx context.Context) error {
+	cmd := &aristapb.RunConfigCmdsRequest{
 		Commands: []string{
 			"configure unlock force",
 		},
@@ -177,7 +179,7 @@ func (e *EapiClient) forceConfigUnlock(ctx context.Context) error {
 	return nil
 }
 
-func (e *EapiClient) startLock(ctx context.Context, maxLockAge int) error {
+func (e *EAPIClient) startLock(ctx context.Context, maxLockAge int) error {
 	configLock, err := e.getLock(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to call getLock: %w", err)
@@ -210,12 +212,12 @@ func (e *EapiClient) startLock(ctx context.Context, maxLockAge int) error {
 }
 
 // Start a configuration session and apply the received config commands to it.
-func (e *EapiClient) startConfigSession(ctx context.Context, config string) ([]string, string, error) {
+func (e *EAPIClient) startConfigSession(ctx context.Context, config string) ([]string, string, error) {
 	configSlice := strings.Split(config, "\n")
 	log.Printf("Received %d lines of configuration from controller", len(configSlice))
 	sessionName := fmt.Sprintf("doublezero-agent-%s", getEosConfigurationSessionDistinguisher())
 	configSlice = append([]string{fmt.Sprintf("configure session %s", sessionName)}, configSlice...)
-	cmd := &arista.RunConfigCmdsRequest{
+	cmd := &aristapb.RunConfigCmdsRequest{
 		Commands: configSlice,
 	}
 
@@ -232,7 +234,7 @@ func (e *EapiClient) startConfigSession(ctx context.Context, config string) ([]s
 }
 
 // CheckConfigChanges determines whether any changes were made during the configuration session.
-func (e *EapiClient) CheckConfigChanges(sessionName string, diffCmd *exec.Cmd) (string, error) {
+func (e *EAPIClient) CheckConfigChanges(sessionName string, diffCmd *exec.Cmd) (string, error) {
 	if diffCmd == nil {
 		diffCmd = exec.Command("ip", "netns", "exec", "default", "/usr/bin/Cli", "-p", "15", "-c", fmt.Sprintf("show session-config named %s diffs", sessionName))
 	}
@@ -262,7 +264,7 @@ func (e *EapiClient) CheckConfigChanges(sessionName string, diffCmd *exec.Cmd) (
 }
 
 // commitOrCancelSession commits the configuration session if changes were made, otherwise cancels it.
-func (e *EapiClient) commitOrCancelSession(ctx context.Context, sessionName, diffs string) error {
+func (e *EAPIClient) commitOrCancelSession(ctx context.Context, sessionName, diffs string) error {
 	var commitCommand string
 	if diffs == "" {
 		log.Println("No changes detected, exiting config session without committing")
@@ -272,7 +274,7 @@ func (e *EapiClient) commitOrCancelSession(ctx context.Context, sessionName, dif
 		commitCommand = fmt.Sprintf("configure session %s commit", sessionName)
 	}
 
-	cmd := &arista.RunConfigCmdsRequest{
+	cmd := &aristapb.RunConfigCmdsRequest{
 		Commands: []string{
 			commitCommand,
 			"configure unlock transaction doublezero",
@@ -293,7 +295,7 @@ func (e *EapiClient) commitOrCancelSession(ctx context.Context, sessionName, dif
 }
 
 // Apply the Arista EOS configuration commands we received from the controller to the local device
-func (e *EapiClient) AddConfigToDevice(ctx context.Context, config string, diffCmd *exec.Cmd, maxLockAge int) ([]string, error) {
+func (e *EAPIClient) AddConfigToDevice(ctx context.Context, config string, diffCmd *exec.Cmd, maxLockAge int) ([]string, error) {
 	// Remove any stale doublezero configuration sessions
 	err := e.clearStaleConfigSessions(ctx)
 	if err != nil {
@@ -325,8 +327,8 @@ func (e *EapiClient) AddConfigToDevice(ctx context.Context, config string, diffC
 
 // Retrieve a list of BGP neighbor IP addresses from the local switch.
 // (The slice of strings return value is intended to be used only by unit tests)
-func (e *EapiClient) GetBgpNeighbors(ctx context.Context) (map[string][]string, error) {
-	cmd := &arista.RunShowCmdRequest{
+func (e *EAPIClient) GetBgpNeighbors(ctx context.Context) (map[string][]string, error) {
+	cmd := &aristapb.RunShowCmdRequest{
 		Command: "show ip bgp neighbors vrf all",
 	}
 

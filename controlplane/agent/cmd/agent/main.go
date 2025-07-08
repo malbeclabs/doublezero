@@ -5,12 +5,15 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	agent "github.com/malbeclabs/doublezero/controlplane/agent/internal/agent"
+	arista "github.com/malbeclabs/doublezero/controlplane/agent/pkg/arista"
+	aristapb "github.com/malbeclabs/doublezero/controlplane/proto/arista/gen/pb-go/arista/EosSdkRpc"
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
 )
 
@@ -27,7 +30,7 @@ var (
 	Build   string
 )
 
-func pollControllerAndConfigureDevice(ctx context.Context, dzclient pb.ControllerClient, eapiClient *agent.EapiClient, pubkey string, verbose *bool, maxLockAge int) error {
+func pollControllerAndConfigureDevice(ctx context.Context, dzclient pb.ControllerClient, eapiClient *arista.EAPIClient, pubkey string, verbose *bool, maxLockAge int) error {
 	var err error
 
 	// The dz controller needs to know what BGP sessions we have configured locally
@@ -92,14 +95,15 @@ func main() {
 
 	ticker := time.NewTicker(time.Duration(*sleepIntervalInSeconds * float64(time.Second)))
 
-	var eapiClient *agent.EapiClient
+	var eapiClient *arista.EAPIClient
 
-	clientConn, err := agent.NewClientConn(*device)
+	clientConn, err := arista.NewClientConn(*device)
 	if err != nil {
 		log.Fatalf("call to NewClientConn failed: %v\n", err)
 	}
 
-	eapiClient = agent.NewEapiClient(*device, clientConn)
+	client := aristapb.NewEapiMgrServiceClient(clientConn)
+	eapiClient = arista.NewEAPIClient(slog.Default(), client)
 
 	for {
 		select {

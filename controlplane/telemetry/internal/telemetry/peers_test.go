@@ -2,6 +2,7 @@ package telemetry_test
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net"
 	"sync"
@@ -9,10 +10,13 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
+	"github.com/malbeclabs/doublezero/controlplane/agent/pkg/arista"
+	aristapb "github.com/malbeclabs/doublezero/controlplane/proto/arista/gen/pb-go/arista/EosSdkRpc"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 )
 
 func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
@@ -21,7 +25,7 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 	t.Run("successful peer discovery", func(t *testing.T) {
 		t.Parallel()
 
-		log := slog.With("test", t.Name())
+		log := log.With("test", t.Name())
 		localDevicePK := stringToPubkey("device1")
 
 		serviceabilityProgram := &mockServiceabilityProgramClient{
@@ -38,59 +42,273 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 			},
 			GetLinksFunc: func() []serviceability.Link {
 				return []serviceability.Link{
-					{PubKey: stringToPubkey("link_1-2"), SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device2")},
-					{PubKey: stringToPubkey("link_1-3"), SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device3")},
-					{PubKey: stringToPubkey("link_2-1"), SideAPubKey: stringToPubkey("device2"), SideZPubKey: localDevicePK},
-					{PubKey: stringToPubkey("link_2-3"), SideAPubKey: stringToPubkey("device2"), SideZPubKey: stringToPubkey("device3")},
+					{PubKey: stringToPubkey("link_1-2"), Status: serviceability.LinkStatusActivated, SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device2"), TunnelNet: [5]uint8{10, 1, 1, 0, 31}},
+					{PubKey: stringToPubkey("link_1-3"), Status: serviceability.LinkStatusActivated, SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device3"), TunnelNet: [5]uint8{10, 1, 1, 2, 31}},
+					{PubKey: stringToPubkey("link_2-1"), Status: serviceability.LinkStatusActivated, SideAPubKey: stringToPubkey("device2"), SideZPubKey: localDevicePK, TunnelNet: [5]uint8{10, 1, 1, 5, 31}},
+					{PubKey: stringToPubkey("link_2-3"), Status: serviceability.LinkStatusActivated, SideAPubKey: stringToPubkey("device2"), SideZPubKey: stringToPubkey("device3"), TunnelNet: [5]uint8{10, 1, 1, 6, 31}},
 				}
 			},
 		}
 
+		aristaEAPIClient := &arista.MockEAPIClient{
+			RunShowCmdFunc: func(ctx context.Context, req *aristapb.RunShowCmdRequest, opts ...grpc.CallOption) (*aristapb.RunShowCmdResponse, error) {
+				resp := arista.IPInterfacesBriefResponse{
+					Interfaces: map[string]arista.IPInterfaceBrief{
+						"Tunnel1-2": {
+							InterfaceStatus:    arista.IPInterfaceInterfaceStatusConnected,
+							LineProtocolStatus: arista.IPInterfaceLineProtocolStatusUp,
+							InterfaceAddress: arista.IPInterfaceAddress{
+								IPAddr: arista.IPInterfaceAddressIPAddr{
+									Address: "10.1.1.0",
+									MaskLen: 31,
+								},
+							},
+						},
+						"Tunnel1-3": {
+							InterfaceStatus:    arista.IPInterfaceInterfaceStatusConnected,
+							LineProtocolStatus: arista.IPInterfaceLineProtocolStatusUp,
+							InterfaceAddress: arista.IPInterfaceAddress{
+								IPAddr: arista.IPInterfaceAddressIPAddr{
+									Address: "10.1.1.2",
+									MaskLen: 31,
+								},
+							},
+						},
+						"Tunnel2-1": {
+							InterfaceStatus:    arista.IPInterfaceInterfaceStatusConnected,
+							LineProtocolStatus: arista.IPInterfaceLineProtocolStatusUp,
+							InterfaceAddress: arista.IPInterfaceAddress{
+								IPAddr: arista.IPInterfaceAddressIPAddr{
+									Address: "10.1.1.5",
+									MaskLen: 31,
+								},
+							},
+						},
+						"TunnelOther": {
+							InterfaceStatus:    arista.IPInterfaceInterfaceStatusConnected,
+							LineProtocolStatus: arista.IPInterfaceLineProtocolStatusUp,
+							InterfaceAddress: arista.IPInterfaceAddress{
+								IPAddr: arista.IPInterfaceAddressIPAddr{
+									Address: "10.1.1.100",
+									MaskLen: 31,
+								},
+							},
+						},
+					},
+				}
+
+				respJSON, err := json.Marshal(resp)
+				require.NoError(t, err)
+
+				return &aristapb.RunShowCmdResponse{
+					Response: &aristapb.EapiResponse{
+						Success:   true,
+						Responses: []string{string(respJSON)},
+					},
+				}, nil
+			},
+		}
+
 		config := &telemetry.LedgerPeerDiscoveryConfig{
-			Logger:          log,
-			LocalDevicePK:   localDevicePK,
-			TWAMPPort:       12345,
-			RefreshInterval: 100 * time.Millisecond,
-			ProgramClient:   serviceabilityProgram,
+			Logger:           log,
+			LocalDevicePK:    localDevicePK,
+			TWAMPPort:        12345,
+			RefreshInterval:  100 * time.Millisecond,
+			ProgramClient:    serviceabilityProgram,
+			AristaEAPIClient: arista.NewEAPIClient(log, aristaEAPIClient),
 		}
 
 		peers, err := telemetry.NewLedgerPeerDiscovery(config)
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithCancel(t.Context())
-		defer cancel()
+		errCh := make(chan error, 1)
 		go func() {
-			require.NoError(t, peers.Run(ctx))
+			errCh <- peers.Run(ctx)
 		}()
 
 		require.Eventually(t, func() bool {
-			peers := peers.GetPeers()
-			return len(peers) == 3
+			return len(peers.GetPeers()) == 3
 		}, 2*time.Second, 100*time.Millisecond)
 
-		links := serviceabilityProgram.GetLinks()
-		expected := map[string]*telemetry.Peer{
-			solana.PublicKeyFromBytes(links[0].PubKey[:]).String(): {
+		cancel()
+		assert.NoError(t, <-errCh)
+
+		expected := []*telemetry.Peer{
+			{
 				LinkPK:     stringToPubkey("link_1-2"),
 				DevicePK:   stringToPubkey("device2"),
-				DeviceAddr: &net.UDPAddr{IP: ipv4([4]uint8{192, 168, 1, 2}), Port: 12345},
+				DeviceAddr: &net.UDPAddr{IP: ipv4([4]uint8{10, 1, 1, 1}), Port: 12345},
 			},
-			solana.PublicKeyFromBytes(links[1].PubKey[:]).String(): {
+			{
 				LinkPK:     stringToPubkey("link_1-3"),
 				DevicePK:   stringToPubkey("device3"),
-				DeviceAddr: &net.UDPAddr{IP: ipv4([4]uint8{192, 168, 1, 3}), Port: 12345},
+				DeviceAddr: &net.UDPAddr{IP: ipv4([4]uint8{10, 1, 1, 3}), Port: 12345},
 			},
-			solana.PublicKeyFromBytes(links[2].PubKey[:]).String(): {
+			{
 				LinkPK:     stringToPubkey("link_2-1"),
 				DevicePK:   stringToPubkey("device2"),
-				DeviceAddr: &net.UDPAddr{IP: ipv4([4]uint8{192, 168, 1, 2}), Port: 12345},
+				DeviceAddr: &net.UDPAddr{IP: ipv4([4]uint8{10, 1, 1, 4}), Port: 12345},
 			},
 		}
 
-		require.Len(t, peers.GetPeers(), len(expected))
-		for _, peer := range peers.GetPeers() {
-			assert.Equal(t, expected[peer.LinkPK.String()], peer)
+		assert.ElementsMatch(t, expected, peers.GetPeers())
+	})
+
+	t.Run("skips pending links", func(t *testing.T) {
+		t.Parallel()
+
+		log := log.With("test", t.Name())
+		localDevicePK := stringToPubkey("device1")
+
+		serviceabilityProgram := &mockServiceabilityProgramClient{
+			LoadFunc: func(ctx context.Context) error {
+				return nil
+			},
+			GetDevicesFunc: func() []serviceability.Device {
+				return []serviceability.Device{
+					{PubKey: localDevicePK},
+					{PubKey: stringToPubkey("device2")},
+				}
+			},
+			GetLinksFunc: func() []serviceability.Link {
+				return []serviceability.Link{
+					{
+						PubKey:      stringToPubkey("inactive_link"),
+						Status:      serviceability.LinkStatusPending,
+						SideAPubKey: localDevicePK,
+						SideZPubKey: stringToPubkey("device2"),
+						TunnelNet:   [5]uint8{10, 1, 2, 0, 31},
+					},
+				}
+			},
 		}
+
+		aristaEAPIClient := &arista.MockEAPIClient{
+			RunShowCmdFunc: func(ctx context.Context, req *aristapb.RunShowCmdRequest, opts ...grpc.CallOption) (*aristapb.RunShowCmdResponse, error) {
+				resp := arista.IPInterfacesBriefResponse{
+					Interfaces: map[string]arista.IPInterfaceBrief{
+						"TunnelX": {
+							InterfaceStatus:    arista.IPInterfaceInterfaceStatusConnected,
+							LineProtocolStatus: arista.IPInterfaceLineProtocolStatusUp,
+							InterfaceAddress: arista.IPInterfaceAddress{
+								IPAddr: arista.IPInterfaceAddressIPAddr{
+									Address: "10.1.2.0",
+									MaskLen: 31,
+								},
+							},
+						},
+					},
+				}
+				j, _ := json.Marshal(resp)
+				return &aristapb.RunShowCmdResponse{
+					Response: &aristapb.EapiResponse{Success: true, Responses: []string{string(j)}},
+				}, nil
+			},
+		}
+
+		cfg := &telemetry.LedgerPeerDiscoveryConfig{
+			Logger:           log,
+			LocalDevicePK:    localDevicePK,
+			ProgramClient:    serviceabilityProgram,
+			AristaEAPIClient: arista.NewEAPIClient(log, aristaEAPIClient),
+			TWAMPPort:        1234,
+			RefreshInterval:  50 * time.Millisecond,
+		}
+
+		peerDiscovery, err := telemetry.NewLedgerPeerDiscovery(cfg)
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		errCh := make(chan error, 1)
+		go func() {
+			errCh <- peerDiscovery.Run(ctx)
+		}()
+
+		require.Never(t, func() bool {
+			return len(peerDiscovery.GetPeers()) > 0
+		}, 500*time.Millisecond, 50*time.Millisecond)
+
+		cancel()
+		assert.NoError(t, <-errCh)
+	})
+
+	t.Run("skips links with invalid tunnel_net", func(t *testing.T) {
+		t.Parallel()
+
+		log := log.With("test", t.Name())
+		localDevicePK := stringToPubkey("device1")
+
+		serviceabilityProgram := &mockServiceabilityProgramClient{
+			LoadFunc: func(ctx context.Context) error {
+				return nil
+			},
+			GetDevicesFunc: func() []serviceability.Device {
+				return []serviceability.Device{
+					{PubKey: localDevicePK},
+					{PubKey: stringToPubkey("device2")},
+				}
+			},
+			GetLinksFunc: func() []serviceability.Link {
+				return []serviceability.Link{
+					{
+						PubKey:      stringToPubkey("bad_tunnel_net"),
+						Status:      serviceability.LinkStatusActivated,
+						SideAPubKey: localDevicePK,
+						SideZPubKey: stringToPubkey("device2"),
+						TunnelNet:   [5]uint8{0, 0, 0, 0, 0}, // invalid
+					},
+				}
+			},
+		}
+
+		aristaEAPIClient := &arista.MockEAPIClient{
+			RunShowCmdFunc: func(ctx context.Context, req *aristapb.RunShowCmdRequest, opts ...grpc.CallOption) (*aristapb.RunShowCmdResponse, error) {
+				resp := arista.IPInterfacesBriefResponse{
+					Interfaces: map[string]arista.IPInterfaceBrief{
+						"TunnelX": {
+							InterfaceStatus:    arista.IPInterfaceInterfaceStatusConnected,
+							LineProtocolStatus: arista.IPInterfaceLineProtocolStatusUp,
+							InterfaceAddress: arista.IPInterfaceAddress{
+								IPAddr: arista.IPInterfaceAddressIPAddr{
+									Address: "10.2.2.0",
+									MaskLen: 31,
+								},
+							},
+						},
+					},
+				}
+				j, _ := json.Marshal(resp)
+				return &aristapb.RunShowCmdResponse{
+					Response: &aristapb.EapiResponse{Success: true, Responses: []string{string(j)}},
+				}, nil
+			},
+		}
+
+		cfg := &telemetry.LedgerPeerDiscoveryConfig{
+			Logger:           log,
+			LocalDevicePK:    localDevicePK,
+			ProgramClient:    serviceabilityProgram,
+			AristaEAPIClient: arista.NewEAPIClient(log, aristaEAPIClient),
+			TWAMPPort:        1234,
+			RefreshInterval:  50 * time.Millisecond,
+		}
+
+		peerDiscovery, err := telemetry.NewLedgerPeerDiscovery(cfg)
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		errCh := make(chan error, 1)
+		go func() {
+			errCh <- peerDiscovery.Run(ctx)
+		}()
+
+		require.Never(t, func() bool {
+			return len(peerDiscovery.GetPeers()) > 0
+		}, 500*time.Millisecond, 50*time.Millisecond)
+
+		cancel()
+		assert.NoError(t, <-errCh)
 	})
 
 	t.Run("removes_peer_when_link_removed_from_ledger", func(t *testing.T) {
@@ -111,7 +329,7 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 				{PubKey: device2PK, PublicIp: [4]uint8{192, 168, 1, 2}},
 			},
 			links: []serviceability.Link{
-				{PubKey: linkPK, SideAPubKey: localDevicePK, SideZPubKey: device2PK},
+				{PubKey: linkPK, Status: serviceability.LinkStatusActivated, SideAPubKey: localDevicePK, SideZPubKey: device2PK, TunnelNet: [5]uint8{10, 1, 1, 0, 31}},
 			},
 		}
 
@@ -137,6 +355,28 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 			TWAMPPort:       12345,
 			RefreshInterval: 50 * time.Millisecond,
 			ProgramClient:   serviceabilityProgram,
+			AristaEAPIClient: arista.NewEAPIClient(log, &arista.MockEAPIClient{
+				RunShowCmdFunc: func(ctx context.Context, req *aristapb.RunShowCmdRequest, opts ...grpc.CallOption) (*aristapb.RunShowCmdResponse, error) {
+					resp := arista.IPInterfacesBriefResponse{
+						Interfaces: map[string]arista.IPInterfaceBrief{
+							"TunnelX": {
+								InterfaceStatus:    arista.IPInterfaceInterfaceStatusConnected,
+								LineProtocolStatus: arista.IPInterfaceLineProtocolStatusUp,
+								InterfaceAddress: arista.IPInterfaceAddress{
+									IPAddr: arista.IPInterfaceAddressIPAddr{
+										Address: "10.1.1.0",
+										MaskLen: 31,
+									},
+								},
+							},
+						},
+					}
+					j, _ := json.Marshal(resp)
+					return &aristapb.RunShowCmdResponse{
+						Response: &aristapb.EapiResponse{Success: true, Responses: []string{string(j)}},
+					}, nil
+				},
+			}),
 		}
 
 		peers, err := telemetry.NewLedgerPeerDiscovery(config)
@@ -169,6 +409,7 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 		t.Parallel()
 
 		base := func(cfg telemetry.LedgerPeerDiscoveryConfig, msg string) {
+			t.Helper()
 			t.Run(msg, func(t *testing.T) {
 				t.Parallel()
 				_, err := telemetry.NewLedgerPeerDiscovery(&cfg)
@@ -192,6 +433,11 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 					return []serviceability.Link{}
 				},
 			},
+			AristaEAPIClient: arista.NewEAPIClient(log, &arista.MockEAPIClient{
+				RunShowCmdFunc: func(ctx context.Context, req *aristapb.RunShowCmdRequest, opts ...grpc.CallOption) (*aristapb.RunShowCmdResponse, error) {
+					return nil, nil
+				},
+			}),
 		}
 
 		cfg := valid
@@ -205,6 +451,10 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 		cfg = valid
 		cfg.ProgramClient = nil
 		base(cfg, "nil serviceability client")
+
+		cfg = valid
+		cfg.AristaEAPIClient = nil
+		base(cfg, "nil arista EAPI client")
 
 		cfg = valid
 		cfg.TWAMPPort = 0

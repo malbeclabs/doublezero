@@ -23,6 +23,8 @@ jobs:
             languages: ["go", "rust"]
           - release: controller
             languages: ["go"]
+          - release: device-telemetry-agent
+            languages: ["go"]
     name: release-validation-${{ matrix.release }}
     steps:
       - name: Checkout

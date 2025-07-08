@@ -1,0 +1,15 @@
+name: release.devnet.device-telemetry-agent.daily
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    uses: ./.github/workflows/release.daily.yml
+    with:
+      component: device-telemetry-agent
+      playbook: playbooks/device_telemetry_agent.yml
+    secrets: inherit
+    permissions:
+      contents: write
+      packages: write

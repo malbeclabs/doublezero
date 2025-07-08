@@ -11,6 +11,8 @@ for tag in $(git tag --contains $COMMIT_ID) ; do
 		CONTROLLER_VERSION=$(echo $tag | cut -f2 -d/)
 	elif [[ $tag == agent/* ]] ; then
 		AGENT_VERSION=$(echo $tag | cut -f2 -d/)
+	elif [[ $tag == device-telemetry-agent/* ]] ; then
+		DEVICE_TELEMETRY_AGENT_VERSION=$(echo $tag | cut -f2 -d/)
 	elif [[ $tag == client/* ]] ; then
 		CLIENT_VERSION=$(echo $tag | cut -f2 -d/)
 	fi
@@ -19,4 +21,5 @@ done
 echo ACTIVATOR_VERSION=$ACTIVATOR_VERSION
 echo CONTROLLER_VERSION=$CONTROLLER_VERSION
 echo AGENT_VERSION=$AGENT_VERSION
+echo DEVICE_TELEMETRY_AGENT_VERSION=$DEVICE_TELEMETRY_AGENT_VERSION
 echo CLIENT_VERSION=$CLIENT_VERSION

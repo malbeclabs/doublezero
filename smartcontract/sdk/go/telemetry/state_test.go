@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"bytes"
+	"encoding/binary"
 	"testing"
 
 	"github.com/gagliardetto/solana-go"
@@ -86,5 +87,25 @@ func TestSDK_Telemetry_State_DeviceLatencySamples(t *testing.T) {
 		}
 		require.GreaterOrEqual(t, len(b), len(expected))
 		require.Equal(t, expected, b[len(b)-len(expected):])
+	})
+
+	t.Run("rejects deserialization with NextSampleIndex over MaxSamples", func(t *testing.T) {
+		header := DeviceLatencySamplesHeader{
+			AccountType:                  AccountTypeDeviceLatencySamples,
+			SamplingIntervalMicroseconds: 100_000,
+			NextSampleIndex:              MaxSamples + 1,
+		}
+
+		var buf bytes.Buffer
+		require.NoError(t, binary.Write(&buf, binary.LittleEndian, header))
+
+		// Add dummy data to simulate the start of the samples section.
+		// It won't be read since it should fail before then.
+		_, _ = buf.Write(make([]byte, 4)) // one sample's worth of padding
+
+		var decoded DeviceLatencySamples
+		err := decoded.Deserialize(&buf)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "exceeds max allowed samples")
 	})
 }

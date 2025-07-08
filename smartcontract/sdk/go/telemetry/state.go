@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 
 	"github.com/gagliardetto/solana-go"
@@ -75,6 +76,10 @@ func (d *DeviceLatencySamples) Serialize(w io.Writer) error {
 func (d *DeviceLatencySamples) Deserialize(r io.Reader) error {
 	if err := binary.Read(r, binary.LittleEndian, &d.DeviceLatencySamplesHeader); err != nil {
 		return err
+	}
+
+	if d.DeviceLatencySamplesHeader.NextSampleIndex > MaxSamples {
+		return fmt.Errorf("next sample index %d exceeds max allowed samples %d", d.DeviceLatencySamplesHeader.NextSampleIndex, MaxSamples)
 	}
 
 	d.Samples = make([]uint32, d.DeviceLatencySamplesHeader.NextSampleIndex)

@@ -20,6 +20,9 @@ const (
 
 	// MaxSamplesPerBatch is the maximum number of samples that can be written in a single batch.
 	MaxSamplesPerBatch = SolanaMaxPermittedDataIncrease / 4
+
+	// MaxSamples is the maximum number of samples that can be written to a single account.
+	MaxSamples = 35_000
 )
 
 // Telemetry Program IDs

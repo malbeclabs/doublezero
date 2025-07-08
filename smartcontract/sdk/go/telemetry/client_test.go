@@ -281,6 +281,55 @@ func TestSDK_Telemetry_Client_WriteDeviceLatencySamples_HappyPath(t *testing.T) 
 	require.NotNil(t, tx)
 }
 
+func TestSDK_Telemetry_Client_WriteDeviceLatencySamples_SamplesBatchTooLarge(t *testing.T) {
+	t.Parallel()
+
+	signer := solana.NewWallet().PrivateKey
+	programID := solana.NewWallet().PublicKey()
+	expectedSig := solana.MustSignatureFromBase58("5KMdNedHzFX2TZtAj8fKP8pJzzRgU8xydqNBFUD2T2GfbBDPtbA1gJEXFhCRw8vERmkUs8YDQ3cBduzZ8wMEYx7k")
+
+	mockRPC := &mockRPCClient{
+		GetLatestBlockhashFunc: func(_ context.Context, _ solanarpc.CommitmentType) (*solanarpc.GetLatestBlockhashResult, error) {
+			return &solanarpc.GetLatestBlockhashResult{
+				Value: &solanarpc.LatestBlockhashResult{
+					Blockhash: solana.MustHashFromBase58("5NzX7jrPWeTkGsDnVnszdEa7T3Yyr3nSgyc78z3CwjWQ"),
+				},
+			}, nil
+		},
+		SendTransactionWithOptsFunc: func(_ context.Context, tx *solana.Transaction, opts solanarpc.TransactionOpts) (solana.Signature, error) {
+			require.False(t, opts.SkipPreflight, "SkipPreflight must be false for write")
+			return expectedSig, nil
+		},
+		GetSignatureStatusesFunc: func(_ context.Context, _ bool, _ ...solana.Signature) (*solanarpc.GetSignatureStatusesResult, error) {
+			return &solanarpc.GetSignatureStatusesResult{
+				Value: []*solanarpc.SignatureStatusesResult{
+					{ConfirmationStatus: solanarpc.ConfirmationStatusFinalized},
+				},
+			}, nil
+		},
+		GetTransactionFunc: func(_ context.Context, _ solana.Signature, _ *solanarpc.GetTransactionOpts) (*solanarpc.GetTransactionResult, error) {
+			return &solanarpc.GetTransactionResult{Meta: &solanarpc.TransactionMeta{}}, nil
+		},
+	}
+
+	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
+
+	config := telemetry.WriteDeviceLatencySamplesInstructionConfig{
+		AgentPK:                    signer.PublicKey(), // must match signer
+		OriginDevicePK:             solana.NewWallet().PublicKey(),
+		TargetDevicePK:             solana.NewWallet().PublicKey(),
+		LinkPK:                     solana.NewWallet().PublicKey(),
+		Epoch:                      42,
+		StartTimestampMicroseconds: 1_600_000_000,
+		Samples:                    make([]uint32, telemetry.MaxSamplesPerBatch+1),
+	}
+
+	sig, tx, err := client.WriteDeviceLatencySamples(context.Background(), config)
+
+	require.ErrorIs(t, err, telemetry.ErrSamplesBatchTooLarge)
+	require.Equal(t, solana.Signature{}, sig)
+	require.Nil(t, tx)
+}
 func TestSDK_Telemetry_Client_WriteDeviceLatencySamples_PreflightAccountNotFound(t *testing.T) {
 	t.Parallel()
 

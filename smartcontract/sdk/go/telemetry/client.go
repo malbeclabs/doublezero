@@ -14,7 +14,8 @@ import (
 )
 
 var (
-	ErrAccountNotFound = errors.New("account not found")
+	ErrAccountNotFound      = errors.New("account not found")
+	ErrSamplesBatchTooLarge = fmt.Errorf("samples batch too large, must not exceed %d samples", MaxSamplesPerBatch)
 )
 
 type Client struct {
@@ -99,6 +100,11 @@ func (c *Client) WriteDeviceLatencySamples(
 	ctx context.Context,
 	config WriteDeviceLatencySamplesInstructionConfig,
 ) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+
+	if len(config.Samples) > MaxSamplesPerBatch {
+		return solana.Signature{}, nil, ErrSamplesBatchTooLarge
+	}
+
 	instruction, err := BuildWriteDeviceLatencySamplesInstruction(c.executor.programID, config)
 	if err != nil {
 		return solana.Signature{}, nil, fmt.Errorf("failed to build instruction: %w", err)

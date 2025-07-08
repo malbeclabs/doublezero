@@ -42,10 +42,10 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 			},
 			GetLinksFunc: func() []serviceability.Link {
 				return []serviceability.Link{
-					{PubKey: stringToPubkey("link_1-2"), Status: serviceability.LinkStatusActivated, SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device2")},
-					{PubKey: stringToPubkey("link_1-3"), Status: serviceability.LinkStatusActivated, SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device3")},
-					{PubKey: stringToPubkey("link_2-1"), Status: serviceability.LinkStatusActivated, SideAPubKey: stringToPubkey("device2"), SideZPubKey: localDevicePK},
-					{PubKey: stringToPubkey("link_2-3"), Status: serviceability.LinkStatusActivated, SideAPubKey: stringToPubkey("device2"), SideZPubKey: stringToPubkey("device3")},
+					{PubKey: stringToPubkey("link_1-2"), Status: serviceability.LinkStatusActivated, SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device2"), TunnelNet: [5]uint8{10, 1, 1, 0, 31}},
+					{PubKey: stringToPubkey("link_1-3"), Status: serviceability.LinkStatusActivated, SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device3"), TunnelNet: [5]uint8{10, 1, 1, 2, 31}},
+					{PubKey: stringToPubkey("link_2-1"), Status: serviceability.LinkStatusActivated, SideAPubKey: stringToPubkey("device2"), SideZPubKey: localDevicePK, TunnelNet: [5]uint8{10, 1, 1, 5, 31}},
+					{PubKey: stringToPubkey("link_2-3"), Status: serviceability.LinkStatusActivated, SideAPubKey: stringToPubkey("device2"), SideZPubKey: stringToPubkey("device3"), TunnelNet: [5]uint8{10, 1, 1, 6, 31}},
 				}
 			},
 		}
@@ -134,19 +134,18 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 		cancel()
 		assert.NoError(t, <-errCh)
 
-		links := serviceabilityProgram.GetLinks()
-		expected := map[string]*telemetry.Peer{
-			solana.PublicKeyFromBytes(links[0].PubKey[:]).String(): {
+		expected := []*telemetry.Peer{
+			{
 				LinkPK:     stringToPubkey("link_1-2"),
 				DevicePK:   stringToPubkey("device2"),
 				DeviceAddr: &net.UDPAddr{IP: ipv4([4]uint8{10, 1, 1, 1}), Port: 12345},
 			},
-			solana.PublicKeyFromBytes(links[1].PubKey[:]).String(): {
+			{
 				LinkPK:     stringToPubkey("link_1-3"),
 				DevicePK:   stringToPubkey("device3"),
 				DeviceAddr: &net.UDPAddr{IP: ipv4([4]uint8{10, 1, 1, 3}), Port: 12345},
 			},
-			solana.PublicKeyFromBytes(links[2].PubKey[:]).String(): {
+			{
 				LinkPK:     stringToPubkey("link_2-1"),
 				DevicePK:   stringToPubkey("device2"),
 				DeviceAddr: &net.UDPAddr{IP: ipv4([4]uint8{10, 1, 1, 4}), Port: 12345},
@@ -162,22 +161,28 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 		log := log.With("test", t.Name())
 		localDevicePK := stringToPubkey("device1")
 
-		serviceabilityProgram := newMockServiceabilityProgramClient(func(c *mockServiceabilityProgramClient) error {
-			c.devices = []serviceability.Device{
-				{PubKey: localDevicePK},
-				{PubKey: stringToPubkey("device2")},
-			}
-			c.links = []serviceability.Link{
-				{
-					PubKey:      stringToPubkey("inactive_link"),
-					Status:      serviceability.LinkStatusPending,
-					SideAPubKey: localDevicePK,
-					SideZPubKey: stringToPubkey("device2"),
-					TunnelNet:   [5]uint8{10, 1, 2, 0, 31},
-				},
-			}
-			return nil
-		})
+		serviceabilityProgram := &mockServiceabilityProgramClient{
+			LoadFunc: func(ctx context.Context) error {
+				return nil
+			},
+			GetDevicesFunc: func() []serviceability.Device {
+				return []serviceability.Device{
+					{PubKey: localDevicePK},
+					{PubKey: stringToPubkey("device2")},
+				}
+			},
+			GetLinksFunc: func() []serviceability.Link {
+				return []serviceability.Link{
+					{
+						PubKey:      stringToPubkey("inactive_link"),
+						Status:      serviceability.LinkStatusPending,
+						SideAPubKey: localDevicePK,
+						SideZPubKey: stringToPubkey("device2"),
+						TunnelNet:   [5]uint8{10, 1, 2, 0, 31},
+					},
+				}
+			},
+		}
 
 		aristaEAPIClient := &arista.MockEAPIClient{
 			RunShowCmdFunc: func(ctx context.Context, req *aristapb.RunShowCmdRequest, opts ...grpc.CallOption) (*aristapb.RunShowCmdResponse, error) {
@@ -234,22 +239,28 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 		log := log.With("test", t.Name())
 		localDevicePK := stringToPubkey("device1")
 
-		serviceabilityProgram := newMockServiceabilityProgramClient(func(c *mockServiceabilityProgramClient) error {
-			c.devices = []serviceability.Device{
-				{PubKey: localDevicePK},
-				{PubKey: stringToPubkey("device2")},
-			}
-			c.links = []serviceability.Link{
-				{
-					PubKey:      stringToPubkey("bad_tunnel_net"),
-					Status:      serviceability.LinkStatusActivated,
-					SideAPubKey: localDevicePK,
-					SideZPubKey: stringToPubkey("device2"),
-					TunnelNet:   [5]uint8{0, 0, 0, 0, 0}, // invalid
-				},
-			}
-			return nil
-		})
+		serviceabilityProgram := &mockServiceabilityProgramClient{
+			LoadFunc: func(ctx context.Context) error {
+				return nil
+			},
+			GetDevicesFunc: func() []serviceability.Device {
+				return []serviceability.Device{
+					{PubKey: localDevicePK},
+					{PubKey: stringToPubkey("device2")},
+				}
+			},
+			GetLinksFunc: func() []serviceability.Link {
+				return []serviceability.Link{
+					{
+						PubKey:      stringToPubkey("bad_tunnel_net"),
+						Status:      serviceability.LinkStatusActivated,
+						SideAPubKey: localDevicePK,
+						SideZPubKey: stringToPubkey("device2"),
+						TunnelNet:   [5]uint8{0, 0, 0, 0, 0}, // invalid
+					},
+				}
+			},
+		}
 
 		aristaEAPIClient := &arista.MockEAPIClient{
 			RunShowCmdFunc: func(ctx context.Context, req *aristapb.RunShowCmdRequest, opts ...grpc.CallOption) (*aristapb.RunShowCmdResponse, error) {
@@ -318,7 +329,7 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 				{PubKey: device2PK, PublicIp: [4]uint8{192, 168, 1, 2}},
 			},
 			links: []serviceability.Link{
-				{PubKey: linkPK, SideAPubKey: localDevicePK, SideZPubKey: device2PK},
+				{PubKey: linkPK, Status: serviceability.LinkStatusActivated, SideAPubKey: localDevicePK, SideZPubKey: device2PK, TunnelNet: [5]uint8{10, 1, 1, 0, 31}},
 			},
 		}
 
@@ -344,6 +355,28 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 			TWAMPPort:       12345,
 			RefreshInterval: 50 * time.Millisecond,
 			ProgramClient:   serviceabilityProgram,
+			AristaEAPIClient: &arista.MockEAPIClient{
+				RunShowCmdFunc: func(ctx context.Context, req *aristapb.RunShowCmdRequest, opts ...grpc.CallOption) (*aristapb.RunShowCmdResponse, error) {
+					resp := arista.IPInterfacesBriefResponse{
+						Interfaces: map[string]arista.IPInterfaceBrief{
+							"TunnelX": {
+								InterfaceStatus:    arista.IPInterfaceInterfaceStatusConnected,
+								LineProtocolStatus: arista.IPInterfaceLineProtocolStatusUp,
+								InterfaceAddress: arista.IPInterfaceAddress{
+									IPAddr: arista.IPInterfaceAddressIPAddr{
+										Address: "10.1.1.0",
+										MaskLen: 31,
+									},
+								},
+							},
+						},
+					}
+					j, _ := json.Marshal(resp)
+					return &aristapb.RunShowCmdResponse{
+						Response: &aristapb.EapiResponse{Success: true, Responses: []string{string(j)}},
+					}, nil
+				},
+			},
 		}
 
 		peers, err := telemetry.NewLedgerPeerDiscovery(config)

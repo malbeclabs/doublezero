@@ -20,6 +20,7 @@ doublezero-program-common.workspace = true
 doublezero-serviceability = { path = "../doublezero-serviceability", features = [
     "no-entrypoint",
 ] }
+solana-system-interface.workspace = true
 
 [dev-dependencies]
 bincode.workspace = true

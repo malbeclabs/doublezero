@@ -9,9 +9,26 @@
 use futures::{stream, StreamExt};
 use reqwest;
 use serde::Deserialize;
-use solana_client::{nonblocking::rpc_client::RpcClient, rpc_config::RpcGetVoteAccountsConfig};
-use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
+use solana_client::{
+    nonblocking::rpc_client::RpcClient,
+    rpc_config::{RpcBlockConfig, RpcGetVoteAccountsConfig, RpcLeaderScheduleConfig},
+};
+use solana_sdk::{
+    clock::DEFAULT_SLOTS_PER_EPOCH, commitment_config::CommitmentConfig, pubkey::Pubkey,
+};
+
+use solana_transaction_status_client_types::{
+    TransactionDetails, UiConfirmedBlock, UiTransactionEncoding,
+};
+
 use std::{collections::HashMap, str::FromStr};
+
+const JITO_BASE_URL: &str = "https://kobe.mainnet.jito.network/api/v1/validator_rewards";
+
+#[allow(dead_code)]
+const fn get_first_slot_for_epoch(target_epoch: u64) -> u64 {
+    DEFAULT_SLOTS_PER_EPOCH * target_epoch
+}
 
 #[derive(Deserialize, Debug)]
 struct JitoRewards {
@@ -37,7 +54,7 @@ pub async fn get_jito_rewards(
     let url = format!(
         // TODO: make limit an env var
         // based on very unscientific checking of a number of epochs, 1200 is the highest count
-        "https://kobe.mainnet.jito.network/api/v1/validator_rewards?epoch={epoch}&limit=1500"
+        "{JITO_BASE_URL}?epoch={epoch}&limit=1500"
     );
 
     let rewards = match reqwest::get(url).await {
@@ -129,6 +146,34 @@ pub async fn get_inflation_rewards(
     let inflation_rewards: HashMap<String, u64> =
         validator_ids.iter().cloned().zip(rewards).collect();
     Ok(inflation_rewards)
+}
+
+/// wrapper for get_block_with_config rpc
+pub async fn get_block(client: &RpcClient, slot_num: u64) -> eyre::Result<UiConfirmedBlock> {
+    let config = RpcBlockConfig {
+        encoding: Some(UiTransactionEncoding::Base58),
+        transaction_details: Some(TransactionDetails::None),
+        rewards: Some(true),
+        commitment: Some(CommitmentConfig::finalized()),
+        max_supported_transaction_version: Some(0),
+    };
+
+    Ok(client.get_block_with_config(slot_num, config).await?)
+}
+
+pub async fn get_leader_schedule(
+    client: &RpcClient,
+
+    slot: Option<u64>,
+) -> eyre::Result<Option<HashMap<String, Vec<usize>>>> {
+    let config = RpcLeaderScheduleConfig {
+        identity: None,
+
+        //Some(validator_id.to_string()),
+        commitment: Some(CommitmentConfig::finalized()),
+    };
+
+    Ok(client.get_leader_schedule_with_config(slot, config).await?)
 }
 
 #[cfg(test)]

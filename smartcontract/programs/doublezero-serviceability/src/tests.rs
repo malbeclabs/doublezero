@@ -31,9 +31,10 @@ pub mod test {
         instruction::{AccountMeta, Instruction},
         pubkey::Pubkey,
         signature::{Keypair, Signer},
-        system_program,
         transaction::Transaction,
     };
+
+    use solana_system_interface;
 
     #[tokio::test]
     async fn test_doublezero_program() {
@@ -707,7 +708,7 @@ pub mod test {
                     accounts,
                     vec![
                         AccountMeta::new(payer.pubkey(), true),
-                        AccountMeta::new(system_program::id(), false),
+                        AccountMeta::new(solana_system_interface::program::id(), false),
                     ],
                 ]
                 .concat(),

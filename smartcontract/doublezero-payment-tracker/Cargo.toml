@@ -15,7 +15,6 @@ version.workspace =  true
 name = "doublezero_payment_tracker"
 
 [dependencies]
-anyhow.workspace = true
 eyre.workspace = true
 futures.workspace = true
 http.workspace = true
@@ -24,4 +23,5 @@ serde.workspace = true
 serde_json.workspace = true
 solana-client.workspace = true
 solana-sdk.workspace = true
+solana-transaction-status-client-types = "2.3.3"
 tokio.workspace = true

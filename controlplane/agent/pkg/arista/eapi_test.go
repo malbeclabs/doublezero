@@ -111,7 +111,7 @@ func TestCheckConfigChanges(t *testing.T) {
 		{
 			Name:        "diff_found",
 			ExpectError: false,
-			diffCmd:     exec.Command("echo", fmt.Sprintf("if this was not a test I'd run \"show session-config named XXXXX diffs\"")),
+			diffCmd:     exec.Command("echo", "if this was not a test I'd run \"show session-config named XXXXX diffs\""),
 		},
 		{
 			Name:        "no_diff_found",

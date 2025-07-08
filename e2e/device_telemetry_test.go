@@ -206,12 +206,12 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	// Wait for the devices to be reachable from each other via their link tunnel using ICMP ping.
 	log.Info("==> Waiting for devices to be reachable from each other via their link tunnel using ICMP ping")
 	require.Eventually(t, func() bool {
-		_, err := dn.Devices["la2-dz01"].Exec(t.Context(), []string{"ping", "-c", "1", la2ToNY5LinkTunnelNY5IP})
+		_, err := dn.Devices["la2-dz01"].Exec(t.Context(), []string{"ping", "-c", "1", "-w", "1", la2ToNY5LinkTunnelNY5IP})
 		if err != nil {
 			log.Debug("Waiting for la2-dz01 to be reachable from ny5-dz01 via tunnel", "error", err)
 			return false
 		}
-		_, err = dn.Devices["ny5-dz01"].Exec(t.Context(), []string{"ping", "-c", "1", la2ToNY5LinkTunnelLA2IP})
+		_, err = dn.Devices["ny5-dz01"].Exec(t.Context(), []string{"ping", "-c", "1", "-w", "1", la2ToNY5LinkTunnelLA2IP})
 		if err != nil {
 			log.Debug("Waiting for ny5-dz01 to be reachable from la2-dz01 via tunnel", "error", err)
 			return false

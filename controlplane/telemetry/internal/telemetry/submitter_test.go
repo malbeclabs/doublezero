@@ -411,7 +411,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			})
 		}
 
-		submitter := telemetry.NewSubmitter(slog.Default(), &telemetry.SubmitterConfig{
+		submitter := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
 			Interval:      time.Hour,
 			Buffer:        buffer,
 			ProgramClient: telemetryProgram,

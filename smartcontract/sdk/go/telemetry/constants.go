@@ -12,6 +12,14 @@ const (
 	// InstructionErrorAccountDoesNotExist is the error code that the telemetry program returns
 	// when the given PDA does not exist.
 	InstructionErrorAccountDoesNotExist = 1011
+
+	// SolanaMaxPermittedDataIncrease is the maximum number of bytes a program may add to an
+	// account during a single realloc.
+	// This is the samples batch size limit in bytes.
+	SolanaMaxPermittedDataIncrease = 10_240
+
+	// MaxSamplesPerBatch is the maximum number of samples that can be written in a single batch.
+	MaxSamplesPerBatch = SolanaMaxPermittedDataIncrease / 4
 )
 
 // Telemetry Program IDs

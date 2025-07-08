@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
+	"github.com/malbeclabs/doublezero/controlplane/agent/pkg/arista"
 	aristapb "github.com/malbeclabs/doublezero/controlplane/proto/arista/gen/pb-go/arista/EosSdkRpc"
-	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/arista"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/stretchr/testify/assert"
@@ -115,7 +115,7 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 			TWAMPPort:        12345,
 			RefreshInterval:  100 * time.Millisecond,
 			ProgramClient:    serviceabilityProgram,
-			AristaEAPIClient: aristaEAPIClient,
+			AristaEAPIClient: arista.NewEAPIClient(log, aristaEAPIClient),
 		}
 
 		peers, err := telemetry.NewLedgerPeerDiscovery(config)
@@ -211,7 +211,7 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 			Logger:           log,
 			LocalDevicePK:    localDevicePK,
 			ProgramClient:    serviceabilityProgram,
-			AristaEAPIClient: aristaEAPIClient,
+			AristaEAPIClient: arista.NewEAPIClient(log, aristaEAPIClient),
 			TWAMPPort:        1234,
 			RefreshInterval:  50 * time.Millisecond,
 		}
@@ -289,7 +289,7 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 			Logger:           log,
 			LocalDevicePK:    localDevicePK,
 			ProgramClient:    serviceabilityProgram,
-			AristaEAPIClient: aristaEAPIClient,
+			AristaEAPIClient: arista.NewEAPIClient(log, aristaEAPIClient),
 			TWAMPPort:        1234,
 			RefreshInterval:  50 * time.Millisecond,
 		}
@@ -355,7 +355,7 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 			TWAMPPort:       12345,
 			RefreshInterval: 50 * time.Millisecond,
 			ProgramClient:   serviceabilityProgram,
-			AristaEAPIClient: &arista.MockEAPIClient{
+			AristaEAPIClient: arista.NewEAPIClient(log, &arista.MockEAPIClient{
 				RunShowCmdFunc: func(ctx context.Context, req *aristapb.RunShowCmdRequest, opts ...grpc.CallOption) (*aristapb.RunShowCmdResponse, error) {
 					resp := arista.IPInterfacesBriefResponse{
 						Interfaces: map[string]arista.IPInterfaceBrief{
@@ -376,7 +376,7 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 						Response: &aristapb.EapiResponse{Success: true, Responses: []string{string(j)}},
 					}, nil
 				},
-			},
+			}),
 		}
 
 		peers, err := telemetry.NewLedgerPeerDiscovery(config)
@@ -433,11 +433,11 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 					return []serviceability.Link{}
 				},
 			},
-			AristaEAPIClient: &arista.MockEAPIClient{
+			AristaEAPIClient: arista.NewEAPIClient(log, &arista.MockEAPIClient{
 				RunShowCmdFunc: func(ctx context.Context, req *aristapb.RunShowCmdRequest, opts ...grpc.CallOption) (*aristapb.RunShowCmdResponse, error) {
 					return nil, nil
 				},
-			},
+			}),
 		}
 
 		cfg := valid

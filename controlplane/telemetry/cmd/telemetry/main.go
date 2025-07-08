@@ -12,6 +12,7 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
+	"github.com/malbeclabs/doublezero/controlplane/agent/pkg/arista"
 	aristapb "github.com/malbeclabs/doublezero/controlplane/proto/arista/gen/pb-go/arista/EosSdkRpc"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -159,7 +160,7 @@ func main() {
 		log.Error("failed to create arista eapi client", "error", err)
 		os.Exit(1)
 	}
-	aristaEAPIClient := aristapb.NewEapiMgrServiceClient(eapiRPCConn)
+	aristaEAPIClient := arista.NewEAPIClient(log, aristapb.NewEapiMgrServiceClient(eapiRPCConn))
 	peerDiscovery, err := telemetry.NewLedgerPeerDiscovery(
 		&telemetry.LedgerPeerDiscoveryConfig{
 			Logger:           log,

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/malbeclabs/doublezero/controlplane/agent/pkg/arista"
 	aristapb "github.com/malbeclabs/doublezero/controlplane/proto/arista/gen/pb-go/arista/EosSdkRpc"
-	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/arista"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 )
@@ -207,7 +207,8 @@ func TestArista_GetLocalTunnelTargetIPs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			logBuf := &strings.Builder{}
 			log := slog.New(slog.NewTextHandler(logBuf, nil))
-			ips, err := arista.GetLocalTunnelTargetIPs(context.Background(), log, tt.clientFn())
+			client := arista.NewEAPIClient(log, tt.clientFn())
+			ips, err := client.GetLocalTunnelTargetIPs(context.Background())
 
 			if tt.expectErr != "" {
 				require.ErrorContains(t, err, tt.expectErr)

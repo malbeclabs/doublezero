@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net"
 
 	aristapb "github.com/malbeclabs/doublezero/controlplane/proto/arista/gen/pb-go/arista/EosSdkRpc"
@@ -103,8 +102,8 @@ type IPInterfaceAddressIPAddr struct {
 //	    }
 //	  }
 //	}
-func GetLocalTunnelTargetIPs(ctx context.Context, log *slog.Logger, client aristapb.EapiMgrServiceClient) ([]net.IP, error) {
-	response, err := client.RunShowCmd(ctx, &aristapb.RunShowCmdRequest{
+func (e *EAPIClient) GetLocalTunnelTargetIPs(ctx context.Context) ([]net.IP, error) {
+	response, err := e.Client.RunShowCmd(ctx, &aristapb.RunShowCmdRequest{
 		Command: "show ip interface brief",
 	})
 	if err != nil {
@@ -134,7 +133,7 @@ func GetLocalTunnelTargetIPs(ctx context.Context, log *slog.Logger, client arist
 			if ip4 != nil {
 				peerIP, err := getPeerIPIn31(iface.InterfaceAddress.IPAddr.Address)
 				if err != nil {
-					log.Warn("Failed to get peer ip in /31", "error", err, "ip", iface.InterfaceAddress.IPAddr.Address, "name", iface.Name, "maskLen", iface.InterfaceAddress.IPAddr.MaskLen)
+					e.log.Warn("Failed to get peer ip in /31", "error", err, "ip", iface.InterfaceAddress.IPAddr.Address, "name", iface.Name, "maskLen", iface.InterfaceAddress.IPAddr.MaskLen)
 					continue
 				}
 				ip4s = append(ip4s, peerIP.To4())

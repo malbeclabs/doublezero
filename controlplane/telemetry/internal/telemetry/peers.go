@@ -11,8 +11,7 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
-	aristapb "github.com/malbeclabs/doublezero/controlplane/proto/arista/gen/pb-go/arista/EosSdkRpc"
-	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/arista"
+	"github.com/malbeclabs/doublezero/controlplane/agent/pkg/arista"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
@@ -35,7 +34,7 @@ type LedgerPeerDiscoveryConfig struct {
 	Logger           *slog.Logger
 	LocalDevicePK    solana.PublicKey
 	ProgramClient    ServiceabilityProgramClient
-	AristaEAPIClient aristapb.EapiMgrServiceClient
+	AristaEAPIClient *arista.EAPIClient
 	TWAMPPort        uint16
 	RefreshInterval  time.Duration
 }
@@ -132,7 +131,7 @@ func (p *ledgerPeerDiscovery) refresh(ctx context.Context) error {
 	}
 
 	// Get the local tunnel target IPs from the Arista EAPI client.
-	localTunnelTargetIP4s, err := arista.GetLocalTunnelTargetIPs(ctx, p.log, p.config.AristaEAPIClient)
+	localTunnelTargetIP4s, err := p.config.AristaEAPIClient.GetLocalTunnelTargetIPs(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get local tunnel ips: %w", err)
 	}

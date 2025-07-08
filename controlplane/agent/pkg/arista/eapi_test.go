@@ -1,9 +1,10 @@
-package agent
+package arista
 
 import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"net"
 	"os/exec"
 	"reflect"
@@ -12,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/malbeclabs/doublezero/controlplane/proto/arista/gen/pb-go/arista/EosSdkRpc"
+	aristapb "github.com/malbeclabs/doublezero/controlplane/proto/arista/gen/pb-go/arista/EosSdkRpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
@@ -21,19 +22,19 @@ import (
 var mockResponseSelector = 0
 
 type mockAristaEapiMgr struct {
-	pb.UnimplementedEapiMgrServiceServer
+	aristapb.UnimplementedEapiMgrServiceServer
 }
 
-func (*mockAristaEapiMgr) RunConfigCmds(ctx context.Context, req *pb.RunConfigCmdsRequest) (*pb.RunConfigCmdsResponse, error) {
-	return &pb.RunConfigCmdsResponse{
-		Response: &pb.EapiResponse{
+func (*mockAristaEapiMgr) RunConfigCmds(ctx context.Context, req *aristapb.RunConfigCmdsRequest) (*aristapb.RunConfigCmdsResponse, error) {
+	return &aristapb.RunConfigCmdsResponse{
+		Response: &aristapb.EapiResponse{
 			Success:   true,
 			Responses: []string{string("Bro")},
 		},
 	}, nil
 }
 
-func (*mockAristaEapiMgr) RunShowCmd(ctx context.Context, req *pb.RunShowCmdRequest) (*pb.RunShowCmdResponse, error) {
+func (*mockAristaEapiMgr) RunShowCmd(ctx context.Context, req *aristapb.RunShowCmdRequest) (*aristapb.RunShowCmdResponse, error) {
 	var resp []string
 	switch req.Command {
 	case "show ip bgp neighbors vrf all":
@@ -52,8 +53,8 @@ func (*mockAristaEapiMgr) RunShowCmd(ctx context.Context, req *pb.RunShowCmdRequ
 	default:
 		return nil, fmt.Errorf("Unknown RunShowCmd request \"%s\"", req)
 	}
-	return &pb.RunShowCmdResponse{
-		Response: &pb.EapiResponse{
+	return &aristapb.RunShowCmdResponse{
+		Response: &aristapb.EapiResponse{
 			Success:   true,
 			Responses: resp,
 		},
@@ -65,7 +66,7 @@ func newMockDialer() func(context.Context, string) (net.Conn, error) {
 	listener := bufconn.Listen(1024 * 1024)
 	server := grpc.NewServer()
 
-	pb.RegisterEapiMgrServiceServer(server, &mockAristaEapiMgr{})
+	aristapb.RegisterEapiMgrServiceServer(server, &mockAristaEapiMgr{})
 
 	go func() {
 		if err := server.Serve(listener); err != nil {
@@ -131,7 +132,8 @@ func TestCheckConfigChanges(t *testing.T) {
 	}
 	defer mockClientConn.Close()
 
-	eapiClient := NewEapiClient("127.0.0.1:9543", mockClientConn)
+	client := aristapb.NewEapiMgrServiceClient(mockClientConn)
+	eapiClient := NewEAPIClient(slog.Default(), client)
 
 	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
@@ -168,7 +170,8 @@ func TestAddConfigToDevice(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
-			eapiClient := NewEapiClient(test.Device, test.ClientConn)
+			client := aristapb.NewEapiMgrServiceClient(test.ClientConn)
+			eapiClient := NewEAPIClient(slog.Default(), client)
 
 			var configSlice []string
 			diffCmd := exec.Command("echo", "if this was not a test I'd run \"show session-config named XXXXX diffs\"")
@@ -230,7 +233,8 @@ func TestGetBgpNeighbors(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
-			eapiClient := NewEapiClient(test.Device, test.ClientConn)
+			client := aristapb.NewEapiMgrServiceClient(test.ClientConn)
+			eapiClient := NewEAPIClient(slog.Default(), client)
 
 			resp, err := eapiClient.GetBgpNeighbors(test.Ctx)
 			if test.ExpectError {
@@ -274,7 +278,8 @@ func TestClearStaleConfigSessions(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
-			eapiClient := NewEapiClient(test.Device, test.ClientConn)
+			client := aristapb.NewEapiMgrServiceClient(test.ClientConn)
+			eapiClient := NewEAPIClient(slog.Default(), client)
 
 			_ = eapiClient.clearStaleConfigSessions(test.Ctx)
 		})

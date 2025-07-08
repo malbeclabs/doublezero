@@ -372,4 +372,50 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		assert.True(t, buffer.Has(key), "buffer should retain key for current epoch even if empty")
 	})
 
+	t.Run("chunks_large_batches_into_multiple_submissions", func(t *testing.T) {
+		t.Parallel()
+
+		const totalSamples = 5500
+
+		var mu sync.Mutex
+		var calls int
+		var samplesPerCall []int
+
+		telemetryProgram := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(ctx context.Context, config sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				mu.Lock()
+				defer mu.Unlock()
+				calls++
+				samplesPerCall = append(samplesPerCall, len(config.Samples))
+				return solana.Signature{}, nil, nil
+			},
+		}
+
+		key := newTestAccountKey()
+		buffer := telemetry.NewAccountsBuffer()
+
+		for i := range totalSamples {
+			buffer.Add(key, telemetry.Sample{
+				Timestamp: time.Now(),
+				RTT:       time.Duration(i+1) * time.Microsecond,
+				Loss:      false,
+			})
+		}
+
+		submitter := telemetry.NewSubmitter(slog.Default(), &telemetry.SubmitterConfig{
+			Interval:      time.Hour,
+			Buffer:        buffer,
+			ProgramClient: telemetryProgram,
+			MaxAttempts:   1,
+			BackoffFunc:   func(_ int) time.Duration { return 0 },
+		})
+
+		submitter.Tick(context.Background())
+
+		mu.Lock()
+		defer mu.Unlock()
+
+		require.Equal(t, 3, calls, "expected 3 submission calls for 5500 samples with max 2560 per call")
+		assert.Equal(t, []int{sdktelemetry.MaxSamplesPerBatch, sdktelemetry.MaxSamplesPerBatch, 380}, samplesPerCall, "each call should contain at most 2560 samples")
+	})
 }

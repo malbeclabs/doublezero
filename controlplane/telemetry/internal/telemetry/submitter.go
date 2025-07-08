@@ -66,61 +66,59 @@ func (s *Submitter) SubmitSamples(ctx context.Context, accountKey AccountKey, sa
 		return nil
 	}
 
-	rtts := make([]uint32, len(samples))
-	for i, sample := range samples {
-		if sample.Loss {
-			rtts[i] = 0
-		} else {
-			rtts[i] = uint32(sample.RTT.Microseconds())
-		}
-	}
-	log.Debug("Submitting account samples", "count", len(samples), "samples", rtts)
+	for i := 0; i < len(samples); i += telemetry.MaxSamplesPerBatch {
+		end := min(i+telemetry.MaxSamplesPerBatch, len(samples))
+		batch := samples[i:end]
 
-	// Get earliest timestamp from samples.
-	var minTimestamp time.Time
-	for _, sample := range samples {
-		if minTimestamp.IsZero() || sample.Timestamp.Before(minTimestamp) {
-			minTimestamp = sample.Timestamp
-		}
-	}
-	startTimestampMicroseconds := uint64(minTimestamp.UnixMicro())
-
-	writeConfig := telemetry.WriteDeviceLatencySamplesInstructionConfig{
-		AgentPK:                    s.cfg.MetricsPublisherPK,
-		OriginDevicePK:             accountKey.OriginDevicePK,
-		TargetDevicePK:             accountKey.TargetDevicePK,
-		LinkPK:                     accountKey.LinkPK,
-		Epoch:                      accountKey.Epoch,
-		StartTimestampMicroseconds: startTimestampMicroseconds,
-		Samples:                    rtts,
-	}
-	_, _, err := s.cfg.ProgramClient.WriteDeviceLatencySamples(ctx, writeConfig)
-	if err != nil {
-		if errors.Is(err, telemetry.ErrAccountNotFound) {
-			log.Debug("Account not found, initializing")
-			_, _, err = s.cfg.ProgramClient.InitializeDeviceLatencySamples(ctx, telemetry.InitializeDeviceLatencySamplesInstructionConfig{
-				AgentPK:                      s.cfg.MetricsPublisherPK,
-				OriginDevicePK:               accountKey.OriginDevicePK,
-				TargetDevicePK:               accountKey.TargetDevicePK,
-				LinkPK:                       accountKey.LinkPK,
-				Epoch:                        accountKey.Epoch,
-				SamplingIntervalMicroseconds: uint64(s.cfg.ProbeInterval.Microseconds()),
-			})
-			if err != nil {
-				return fmt.Errorf("failed to initialize device latency samples: %w", err)
+		rtts := make([]uint32, len(batch))
+		var minTimestamp time.Time
+		for j, sample := range batch {
+			if sample.Loss {
+				rtts[j] = 0
+			} else {
+				rtts[j] = uint32(sample.RTT.Microseconds())
 			}
+			if minTimestamp.IsZero() || sample.Timestamp.Before(minTimestamp) {
+				minTimestamp = sample.Timestamp
+			}
+		}
 
-			_, _, err = s.cfg.ProgramClient.WriteDeviceLatencySamples(ctx, writeConfig)
-			if err != nil {
+		writeConfig := telemetry.WriteDeviceLatencySamplesInstructionConfig{
+			AgentPK:                    s.cfg.MetricsPublisherPK,
+			OriginDevicePK:             accountKey.OriginDevicePK,
+			TargetDevicePK:             accountKey.TargetDevicePK,
+			LinkPK:                     accountKey.LinkPK,
+			Epoch:                      accountKey.Epoch,
+			StartTimestampMicroseconds: uint64(minTimestamp.UnixMicro()),
+			Samples:                    rtts,
+		}
+
+		_, _, err := s.cfg.ProgramClient.WriteDeviceLatencySamples(ctx, writeConfig)
+		if err != nil {
+			if errors.Is(err, telemetry.ErrAccountNotFound) {
+				log.Debug("Account not found, initializing")
+				_, _, err = s.cfg.ProgramClient.InitializeDeviceLatencySamples(ctx, telemetry.InitializeDeviceLatencySamplesInstructionConfig{
+					AgentPK:                      s.cfg.MetricsPublisherPK,
+					OriginDevicePK:               accountKey.OriginDevicePK,
+					TargetDevicePK:               accountKey.TargetDevicePK,
+					LinkPK:                       accountKey.LinkPK,
+					Epoch:                        accountKey.Epoch,
+					SamplingIntervalMicroseconds: uint64(s.cfg.ProbeInterval.Microseconds()),
+				})
+				if err != nil {
+					return fmt.Errorf("failed to initialize device latency samples: %w", err)
+				}
+				_, _, err = s.cfg.ProgramClient.WriteDeviceLatencySamples(ctx, writeConfig)
+				if err != nil {
+					return fmt.Errorf("failed to write device latency samples after init: %w", err)
+				}
+			} else {
 				return fmt.Errorf("failed to write device latency samples: %w", err)
 			}
-		} else {
-			return fmt.Errorf("failed to write device latency samples: %w", err)
 		}
 	}
 
-	log.Debug("Submitted account samples", "count", len(samples))
-
+	log.Debug("Submitted account samples", "totalCount", len(samples))
 	return nil
 }
 

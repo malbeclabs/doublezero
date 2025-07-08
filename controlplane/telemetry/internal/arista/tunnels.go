@@ -127,9 +127,6 @@ func GetLocalTunnelTargetIPs(ctx context.Context, log *slog.Logger, client arist
 			return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 		}
 		for _, iface := range resp.Interfaces {
-			if iface.InterfaceStatus != IPInterfaceInterfaceStatusConnected || iface.LineProtocolStatus != IPInterfaceLineProtocolStatusUp {
-				continue
-			}
 			if iface.InterfaceAddress.IPAddr.MaskLen != 31 {
 				continue
 			}

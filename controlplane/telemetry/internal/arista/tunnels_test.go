@@ -54,6 +54,68 @@ func TestArista_GetLocalTunnelTargetIPs(t *testing.T) {
 			wantIPs: []net.IP{net.ParseIP("172.16.0.0").To4()},
 		},
 		{
+			name: "successful interface not connected but up",
+			clientFn: func() *arista.MockEAPIClient {
+				resp := arista.IPInterfacesBriefResponse{
+					Interfaces: map[string]arista.IPInterfaceBrief{
+						"Tunnel1": {
+							Name:               "Tunnel1",
+							InterfaceStatus:    "not-connected",
+							LineProtocolStatus: arista.IPInterfaceLineProtocolStatusUp,
+							InterfaceAddress: arista.IPInterfaceAddress{
+								IPAddr: arista.IPInterfaceAddressIPAddr{
+									Address: "172.16.0.1", MaskLen: 31,
+								},
+							},
+						},
+					},
+				}
+				j, _ := json.Marshal(resp)
+				return &arista.MockEAPIClient{
+					RunShowCmdFunc: func(_ context.Context, _ *aristapb.RunShowCmdRequest, _ ...grpc.CallOption) (*aristapb.RunShowCmdResponse, error) {
+						return &aristapb.RunShowCmdResponse{
+							Response: &aristapb.EapiResponse{
+								Success:   true,
+								Responses: []string{string(j)},
+							},
+						}, nil
+					},
+				}
+			},
+			wantIPs: []net.IP{net.ParseIP("172.16.0.0").To4()},
+		},
+		{
+			name: "successful interface connected but not up",
+			clientFn: func() *arista.MockEAPIClient {
+				resp := arista.IPInterfacesBriefResponse{
+					Interfaces: map[string]arista.IPInterfaceBrief{
+						"Tunnel1": {
+							Name:               "Tunnel1",
+							InterfaceStatus:    arista.IPInterfaceInterfaceStatusConnected,
+							LineProtocolStatus: "not-up",
+							InterfaceAddress: arista.IPInterfaceAddress{
+								IPAddr: arista.IPInterfaceAddressIPAddr{
+									Address: "172.16.0.1", MaskLen: 31,
+								},
+							},
+						},
+					},
+				}
+				j, _ := json.Marshal(resp)
+				return &arista.MockEAPIClient{
+					RunShowCmdFunc: func(_ context.Context, _ *aristapb.RunShowCmdRequest, _ ...grpc.CallOption) (*aristapb.RunShowCmdResponse, error) {
+						return &aristapb.RunShowCmdResponse{
+							Response: &aristapb.EapiResponse{
+								Success:   true,
+								Responses: []string{string(j)},
+							},
+						}, nil
+					},
+				}
+			},
+			wantIPs: []net.IP{net.ParseIP("172.16.0.0").To4()},
+		},
+		{
 			name: "skips non 31 masklen interface",
 			clientFn: func() *arista.MockEAPIClient {
 				resp := arista.IPInterfacesBriefResponse{

@@ -118,30 +118,24 @@ async fn test_simulated_shapley_calculation() -> Result<()> {
     println!("Loaded {} demand entries", demands.len());
 
     // 4. Calculate Shapley values using same parameters as network-shapley-rs example
-    let reward_pool = Decimal::from(25833); // Example reward pool
+    // reward_pool removed - now calculating proportions only
     let params = ShapleyParams {
         demand_multiplier: Some(Decimal::from_str("1.2")?),
         operator_uptime: Some(Decimal::from_str("0.98")?),
         hybrid_penalty: Some(Decimal::from(5)),
     };
-    let rewards =
-        calculate_rewards(private_links, public_links, demands, reward_pool, params).await?;
+    let rewards = calculate_rewards(private_links, public_links, demands, params).await?;
 
     println!("rewards: {rewards:#?}");
 
     // 5. Display results
-    println!("\n operator | value   | percent");
-    println!(" ---------+---------+---------");
+    println!("\n operator | percent");
+    println!(" ---------+---------");
 
     let mut total_percent = Decimal::ZERO;
     for reward in &rewards {
         let percent_display = (reward.percent * Decimal::from(100)).round_dp(2);
-        println!(
-            " {:8} | {:7.4} | {:6.2}%",
-            reward.operator,
-            reward.amount.round_dp(4),
-            percent_display
-        );
+        println!(" {:8} | {:6.2}%", reward.operator, percent_display);
         total_percent += reward.percent;
     }
 

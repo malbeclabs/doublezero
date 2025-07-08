@@ -11,6 +11,7 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow.workspace = true
+borsh.workspace = true
 chrono.workspace = true
 clap.workspace = true
 figment.workspace = true
@@ -19,6 +20,8 @@ rust_decimal.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 shapley.workspace = true
+solana-sdk.workspace = true
+svm-hash.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
@@ -26,7 +29,6 @@ tracing-subscriber.workspace = true
 # Internal crates
 data_fetcher = { path = "../data_fetcher" }
 metrics_processor = { path = "../metrics_processor" }
-verification_generator = { path = "../verification_generator" }
 
 [build-dependencies]
 toml.workspace = true

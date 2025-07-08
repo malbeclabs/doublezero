@@ -11,7 +11,6 @@ use tracing::{debug, info};
 #[derive(Debug, Clone)]
 pub struct OperatorReward {
     pub operator: String,
-    pub amount: Decimal,
     pub percent: Decimal,
 }
 
@@ -28,7 +27,6 @@ pub async fn calculate_rewards(
     private_links: Vec<Link>,
     public_links: Vec<Link>,
     demand_matrix: Vec<Demand>,
-    reward_pool: Decimal,
     params: ShapleyParams,
 ) -> Result<Vec<OperatorReward>> {
     info!(
@@ -60,16 +58,12 @@ pub async fn calculate_rewards(
         .compute()
         .context("Failed to compute Shapley values")?;
 
-    // Convert Shapley values to operator rewards
+    // Convert Shapley values to operator rewards (proportions only)
     let rewards = shapley_values
         .into_iter()
-        .map(|sv| {
-            let amount = sv.percent * reward_pool;
-            OperatorReward {
-                operator: sv.operator,
-                amount,
-                percent: sv.percent,
-            }
+        .map(|sv| OperatorReward {
+            operator: sv.operator,
+            percent: sv.percent,
         })
         .collect();
 
@@ -89,9 +83,10 @@ pub async fn store_rewards(
 
     // Insert rewards
     for reward in rewards {
+        // Store with amount as 0.0 since we only have proportions now
         db_engine.store_reward(
             &reward.operator,
-            reward.amount.to_string().parse::<f64>()?,
+            0.0, // Amount will be calculated on-chain
             reward.percent.to_string().parse::<f64>()?,
             epoch_id,
         )?;

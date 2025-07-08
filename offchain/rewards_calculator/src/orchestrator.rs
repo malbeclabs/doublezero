@@ -1,5 +1,6 @@
 use crate::{
     cli::Cli,
+    merkle_generator,
     settings::Settings,
     shapley_calculator::{OperatorReward, ShapleyParams, calculate_rewards, store_rewards},
 };
@@ -7,12 +8,8 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use metrics_processor::engine::{DuckDbEngine, types::RewardsData};
 use rust_decimal::{Decimal, dec};
-use std::{collections::BTreeMap, path::PathBuf};
+use std::path::PathBuf;
 use tracing::info;
-use verification_generator::{
-    Settings as VerificationSettings,
-    generator::{VerificationGenerator, create_full_config_from_settings},
-};
 
 /// Main orchestrator for the rewards calculation pipeline
 pub struct Orchestrator {
@@ -73,16 +70,36 @@ impl Orchestrator {
             .calculate_rewards(shapley_inputs.clone(), &db_engine)
             .await?;
 
-        // Phase 4: Verification Generation
-        info!("Phase 4: Generating verification artifacts");
-        let (verification_packet, verification_fingerprint) = self
-            .generate_verification(&rewards_data, &rewards, &shapley_inputs)
-            .await?;
-        info!("verification_packet: {verification_packet:#?}");
-        info!("verification_fingerprint: {verification_fingerprint:?}");
+        // Phase 4: Merkle Generation
+        info!("Phase 4: Generating merkle tree");
+
+        // Convert rewards to format expected by merkle generator
+        let reward_tuples: Vec<(String, Decimal)> = rewards
+            .iter()
+            .map(|r| (r.operator.clone(), r.percent))
+            .collect();
+
+        // TODO: Replace epoch approximation with canonical source
+        // Currently using timestamp as epoch approximation. This should be replaced
+        // with the actual epoch number from the on-chain program once available.
+        let epoch = self.before_us / 1_000_000; // Convert microseconds to seconds as epoch approximation
+        let burn_rate = merkle_generator::calculate_burn_rate(
+            epoch,
+            self.settings.burn.coefficient,
+            self.settings.burn.max_rate,
+        );
+
+        let merkle_tree = merkle_generator::generate_tree(&reward_tuples, burn_rate)
+            .context("Failed to generate merkle tree")?;
+
+        info!("Generated merkle root: {}", merkle_tree.root);
+        info!(
+            "Generated {} merkle leaves",
+            merkle_tree.original_leaves.len()
+        );
 
         // Phase 5: Invoke program to publish to DZ Ledger
-        todo!("Phase 5: Invoke program to publish artifacts to DZ Ledger");
+        todo!("Phase 5: Publish merkle root to Solana and leaves to DZ Ledger");
     }
 
     async fn fetch_all_data(&self) -> Result<RewardsData> {
@@ -173,10 +190,9 @@ impl Orchestrator {
         // Create metrics processor with optional seed for reproducibility
         let mut processor = metrics_processor::processor::MetricsProcessor::new(db_engine, None);
 
-        // Process metrics with configured reward pool
-        let reward_pool = Decimal::from(self.settings.epoch.reward_pool);
+        // Process metrics
         let shapley_inputs = processor
-            .process_metrics(reward_pool)
+            .process_metrics()
             .await
             .context("Failed to process metrics")?;
 
@@ -205,7 +221,6 @@ impl Orchestrator {
             shapley_inputs.private_links,
             shapley_inputs.public_links,
             shapley_inputs.demand_matrix,
-            shapley_inputs.reward_pool,
             params,
         )
         .await
@@ -213,12 +228,7 @@ impl Orchestrator {
 
         info!("Calculated rewards for {} operators", rewards.len());
         for reward in &rewards {
-            info!(
-                "  - {}: {} ({}%)",
-                reward.operator,
-                reward.amount,
-                reward.percent * dec!(100)
-            );
+            info!("  - {}: {}%", reward.operator, reward.percent * dec!(100));
         }
 
         // Store rewards in DuckDB for verification packet
@@ -229,74 +239,5 @@ impl Orchestrator {
             .context("Failed to store rewards in DuckDB")?;
 
         Ok(rewards)
-    }
-
-    async fn generate_verification(
-        &self,
-        rewards_data: &RewardsData,
-        rewards: &[OperatorReward],
-        shapley_inputs: &metrics_processor::shapley_types::ShapleyInputs,
-    ) -> Result<(
-        verification_generator::VerificationPacket,
-        verification_generator::VerificationFingerprint,
-    )> {
-        info!("Generating verification packet and fingerprint");
-
-        // Convert rewards to BTreeMap for deterministic ordering
-        let mut rewards_map = BTreeMap::new();
-        for reward in rewards {
-            rewards_map.insert(reward.operator.clone(), reward.amount);
-        }
-
-        // Create verification settings from main settings
-        let verification_settings = VerificationSettings {
-            hash_algorithm: "sha256".to_string(),
-            include_raw_data: false,
-            shapley_parameters: self.settings.verification.shapley_parameters.clone(),
-            reward_parameters: self.settings.verification.reward_parameters.clone(),
-        };
-
-        // Override demand_multiplier from shapley_inputs if not set in config
-        let mut final_verification_settings = verification_settings;
-        if final_verification_settings
-            .shapley_parameters
-            .demand_multiplier
-            .is_none()
-        {
-            final_verification_settings
-                .shapley_parameters
-                .demand_multiplier = Some(shapley_inputs.demand_multiplier);
-        }
-
-        // Create full configuration with validation
-        let full_config = create_full_config_from_settings(
-            self.settings.epoch.reward_pool,
-            self.settings.epoch.grace_period_secs,
-            &final_verification_settings,
-        )?;
-
-        // Get version information
-        let software_version = env!("CARGO_PKG_VERSION").to_string();
-        let shapley_version = env!("SHAPLEY_VERSION").to_string();
-
-        // Determine epoch and slot
-        // Using the end timestamp as epoch ID (as done in store_rewards)
-        let epoch = self.before_us; // TODO: Get actual epoch from chain
-        let slot = self.before_us; // TODO: Get actual slot from chain
-
-        // Generate verification packet and fingerprint
-        let (packet, fingerprint) = VerificationGenerator::generate(
-            rewards_data,
-            &full_config,
-            &rewards_map,
-            software_version,
-            shapley_version,
-            epoch,
-            slot,
-        )?;
-
-        info!("Generated verification fingerprint: {}", fingerprint.hash);
-
-        Ok((packet, fingerprint))
     }
 }

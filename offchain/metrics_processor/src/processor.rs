@@ -28,7 +28,7 @@ impl MetricsProcessor {
     }
 
     /// Process all metrics and prepare inputs for Shapley calculation
-    pub async fn process_metrics(&mut self, reward_pool: Decimal) -> Result<ShapleyInputs> {
+    pub async fn process_metrics(&mut self) -> Result<ShapleyInputs> {
         info!("Processing metrics for Shapley calculation");
 
         // Step 1. Process private links from actual Link entities with telemetry
@@ -47,7 +47,6 @@ impl MetricsProcessor {
             private_links,
             public_links,
             demand_matrix,
-            reward_pool,
             demand_multiplier: Decimal::from_str_exact("1.2")?, // Default multiplier
         })
     }
@@ -511,6 +510,168 @@ mod tests {
         assert_eq!(shared_op_link.operator2, expected_op2);
         assert_eq!(shared_op_link.shared, 1);
         assert_eq!(shared_op_link.bandwidth, Decimal::from(2000)); // 2 Gbps
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_self_loop_filtering() -> Result<()> {
+        // Create an in-memory DuckDB instance
+        let db_engine = DuckDbEngine::new_in_memory()?;
+
+        // Create test data
+        let operator = Pubkey::new_unique();
+
+        // Create a single location (Chicago)
+        let chicago = DbLocation {
+            pubkey: Pubkey::new_unique(),
+            owner: Pubkey::new_unique(),
+            index: 1,
+            bump_seed: 0,
+            code: "CHI".to_string(),
+            name: "Chicago".to_string(),
+            country: "US".to_string(),
+            lat: 41.8781,
+            lng: -87.6298,
+            loc_id: 1,
+            status: "active".to_string(),
+        };
+
+        // Create another location (New York)
+        let new_york = DbLocation {
+            pubkey: Pubkey::new_unique(),
+            owner: Pubkey::new_unique(),
+            index: 2,
+            bump_seed: 0,
+            code: "NYC".to_string(),
+            name: "New York".to_string(),
+            country: "US".to_string(),
+            lat: 40.7128,
+            lng: -74.0060,
+            loc_id: 2,
+            status: "active".to_string(),
+        };
+
+        // Create devices in Chicago
+        let device1_chi = DbDevice {
+            pubkey: Pubkey::new_unique(),
+            owner: operator,
+            index: 1,
+            bump_seed: 0,
+            location_pubkey: Some(chicago.pubkey),
+            exchange_pubkey: None,
+            device_type: "border".to_string(),
+            public_ip: "192.168.1.1".to_string(),
+            status: "activated".to_string(),
+            code: "CHI_DEV1".to_string(),
+            dz_prefixes: serde_json::json!([]),
+            metrics_publisher_pk: Pubkey::new_unique(),
+        };
+
+        let device2_chi = DbDevice {
+            pubkey: Pubkey::new_unique(),
+            owner: operator,
+            index: 2,
+            bump_seed: 0,
+            location_pubkey: Some(chicago.pubkey),
+            exchange_pubkey: None,
+            device_type: "border".to_string(),
+            public_ip: "192.168.1.2".to_string(),
+            status: "activated".to_string(),
+            code: "CHI_DEV2".to_string(),
+            dz_prefixes: serde_json::json!([]),
+            metrics_publisher_pk: Pubkey::new_unique(),
+        };
+
+        // Create device in New York
+        let device_nyc = DbDevice {
+            pubkey: Pubkey::new_unique(),
+            owner: operator,
+            index: 3,
+            bump_seed: 0,
+            location_pubkey: Some(new_york.pubkey),
+            exchange_pubkey: None,
+            device_type: "border".to_string(),
+            public_ip: "192.168.1.3".to_string(),
+            status: "activated".to_string(),
+            code: "NYC_DEV1".to_string(),
+            dz_prefixes: serde_json::json!([]),
+            metrics_publisher_pk: Pubkey::new_unique(),
+        };
+
+        // Create self-looping link (CHI -> CHI) - should be filtered out
+        let self_loop_link = DbLink {
+            pubkey: Pubkey::new_unique(),
+            owner: Pubkey::new_unique(),
+            index: 1,
+            bump_seed: 0,
+            from_device_pubkey: Some(device1_chi.pubkey),
+            to_device_pubkey: Some(device2_chi.pubkey),
+            link_type: "private".to_string(),
+            bandwidth: 125_000_000, // 1 Gbps
+            mtu: 1500,
+            delay_ns: 100_000_000,
+            jitter_ns: 20_000_000,
+            tunnel_id: 1,
+            tunnel_net: serde_json::json!({"ip": "10.0.0.0", "prefix": 24}),
+            status: "activated".to_string(),
+            code: "SELF_LOOP".to_string(),
+        };
+
+        // Create valid inter-city link (CHI -> NYC) - should be included
+        let valid_link = DbLink {
+            pubkey: Pubkey::new_unique(),
+            owner: Pubkey::new_unique(),
+            index: 2,
+            bump_seed: 0,
+            from_device_pubkey: Some(device1_chi.pubkey),
+            to_device_pubkey: Some(device_nyc.pubkey),
+            link_type: "private".to_string(),
+            bandwidth: 250_000_000, // 2 Gbps
+            mtu: 1500,
+            delay_ns: 100_000_000,
+            jitter_ns: 20_000_000,
+            tunnel_id: 2,
+            tunnel_net: serde_json::json!({"ip": "10.0.1.0", "prefix": 24}),
+            status: "activated".to_string(),
+            code: "VALID_LINK".to_string(),
+        };
+
+        // Store test data in database
+        let network_data = crate::engine::types::NetworkData {
+            locations: vec![chicago, new_york],
+            devices: vec![device1_chi, device2_chi, device_nyc],
+            links: vec![self_loop_link, valid_link],
+            exchanges: vec![],
+            users: vec![],
+            multicast_groups: vec![],
+        };
+
+        let rewards_data = crate::engine::types::RewardsData {
+            network: network_data,
+            telemetry: crate::engine::types::TelemetryData::default(),
+            after_us: 0,
+            before_us: 0,
+            fetched_at: Utc::now(),
+        };
+
+        db_engine.insert_rewards_data(&rewards_data)?;
+
+        // Create processor and process links
+        let mut processor = MetricsProcessor::new(db_engine.clone(), None);
+        let private_links = processor.process_private_links().await?;
+
+        // Verify results - should only have 1 link (the valid inter-city link)
+        assert_eq!(
+            private_links.len(),
+            1,
+            "Should have filtered out the self-loop link"
+        );
+
+        let link = &private_links[0];
+        assert_eq!(link.start, "CHI1");
+        assert_eq!(link.end, "NYC1");
+        assert_eq!(link.bandwidth, Decimal::from(2000)); // 2 Gbps
 
         Ok(())
     }

@@ -78,7 +78,9 @@ impl MetricsQueries {
         FROM link_with_locations lwl
         LEFT JOIN link_telemetry lt ON lwl.pubkey::TEXT = lt.link_pubkey
         -- Only include links with at least one valid device owner
-        WHERE lwl.from_device_owner IS NOT NULL OR lwl.to_device_owner IS NOT NULL
+        WHERE (lwl.from_device_owner IS NOT NULL OR lwl.to_device_owner IS NOT NULL)
+        -- Filter out self-looping links (same location to same location)
+        AND lwl.from_code != lwl.to_code
         "#
     }
 

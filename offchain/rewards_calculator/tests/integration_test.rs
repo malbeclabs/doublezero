@@ -14,8 +14,7 @@ use rust_decimal::Decimal;
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 
-/// Standard reward pool for tests
-const REWARD_POOL: Decimal = Decimal::ONE_THOUSAND;
+// Removed REWARD_POOL constant - now testing proportions only
 
 /// Test data generators module
 pub mod test_data {
@@ -253,7 +252,7 @@ async fn test_single_operator_gets_full_rewards() -> Result<()> {
 
     // 3. Process metrics
     let mut processor = MetricsProcessor::new(db.clone(), Some(42)); // Seed for determinism
-    let shapley_inputs = processor.process_metrics(REWARD_POOL).await?;
+    let shapley_inputs = processor.process_metrics().await?;
 
     // Debug output
     println!("Private links: {}", shapley_inputs.private_links.len());
@@ -287,7 +286,6 @@ async fn test_single_operator_gets_full_rewards() -> Result<()> {
         shapley_inputs.private_links,
         shapley_inputs.public_links,
         shapley_inputs.demand_matrix,
-        REWARD_POOL,
         params,
     )
     .await?;
@@ -345,7 +343,7 @@ async fn test_two_operators_fair_distribution() -> Result<()> {
 
     // 3. Process metrics
     let mut processor = MetricsProcessor::new(db.clone(), Some(42));
-    let shapley_inputs = processor.process_metrics(REWARD_POOL).await?;
+    let shapley_inputs = processor.process_metrics().await?;
 
     // Debug output
     println!(
@@ -369,7 +367,6 @@ async fn test_two_operators_fair_distribution() -> Result<()> {
         shapley_inputs.private_links,
         shapley_inputs.public_links,
         shapley_inputs.demand_matrix,
-        REWARD_POOL,
         params,
     )
     .await?;
@@ -421,7 +418,7 @@ async fn test_shared_link_split_rewards() -> Result<()> {
 
     // 3. Process metrics
     let mut processor = MetricsProcessor::new(db.clone(), Some(42));
-    let shapley_inputs = processor.process_metrics(REWARD_POOL).await?;
+    let shapley_inputs = processor.process_metrics().await?;
 
     // Verify the link is marked as shared
     assert_eq!(shapley_inputs.private_links.len(), 1);
@@ -440,7 +437,6 @@ async fn test_shared_link_split_rewards() -> Result<()> {
         shapley_inputs.private_links,
         shapley_inputs.public_links,
         shapley_inputs.demand_matrix,
-        REWARD_POOL,
         params,
     )
     .await?;
@@ -479,7 +475,7 @@ async fn test_zero_demand_zero_rewards() -> Result<()> {
     db.insert_rewards_data(&rewards_data)?;
 
     let mut processor = MetricsProcessor::new(db.clone(), Some(42));
-    let shapley_inputs = processor.process_metrics(REWARD_POOL).await?;
+    let shapley_inputs = processor.process_metrics().await?;
 
     // Debug output
     println!(
@@ -504,7 +500,6 @@ async fn test_zero_demand_zero_rewards() -> Result<()> {
         shapley_inputs.private_links,
         shapley_inputs.public_links,
         shapley_inputs.demand_matrix,
-        REWARD_POOL,
         params,
     )
     .await?;

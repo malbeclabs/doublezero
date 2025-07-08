@@ -3,7 +3,6 @@ members = [
     "data_fetcher",
     "metrics_processor",
     "rewards_calculator",
-    "verification_generator",
 ]
 
 package = { edition = "2024" }
@@ -13,6 +12,7 @@ resolver = "2"
 anyhow = "1"
 arrow = { version = "55", features = ["prettyprint"] }
 base64 = "0"
+borsh = "1"
 chrono = { version = "0", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }
 csv = "1"
@@ -25,6 +25,7 @@ humantime = "2"
 humantime-serde = "1"
 doublezero-serviceability = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint" ] }
 doublezero-telemetry = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint" ] }
+svm-hash = { git = "ssh://git@github.com/doublezerofoundation/svm-hash-rs", branch = "rg/optimize", features = [ "bytemuck" ] }
 md5 = "0"
 parquet = { version = "55", features = ["arrow", "async"] }
 rand = { version = "0", features = [ "thread_rng" ] }

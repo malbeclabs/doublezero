@@ -1,30 +1,20 @@
 use anyhow::Result;
 use figment::{Figment, providers::Env};
 use serde::{Deserialize, Serialize};
-use verification_generator::{RewardParametersConfig, ShapleyParametersConfig};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default = "default_log_level")]
     pub log_level: String,
-    pub epoch: EpochSettings,
-    #[serde(default)]
-    pub verification: VerificationSettings,
+    pub burn: BurnSettings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EpochSettings {
-    pub reward_pool: u64,
-    #[serde(default = "default_grace_period_secs")]
-    pub grace_period_secs: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct VerificationSettings {
-    #[serde(default)]
-    pub shapley_parameters: ShapleyParametersConfig,
-    #[serde(default)]
-    pub reward_parameters: RewardParametersConfig,
+pub struct BurnSettings {
+    #[serde(default = "default_burn_rate_coefficient")]
+    pub coefficient: u64,
+    #[serde(default = "default_max_burn_rate")]
+    pub max_rate: u64,
 }
 
 impl Settings {
@@ -40,7 +30,10 @@ fn default_log_level() -> String {
     "info".to_string()
 }
 
-fn default_grace_period_secs() -> u64 {
-    // 6 hours
-    6 * 60 * 60
+fn default_burn_rate_coefficient() -> u64 {
+    1
+}
+
+fn default_max_burn_rate() -> u64 {
+    1000
 }

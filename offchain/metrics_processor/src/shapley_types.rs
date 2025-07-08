@@ -58,7 +58,6 @@ pub struct ShapleyInputs {
     pub private_links: Vec<Link>,
     pub public_links: Vec<Link>,
     pub demand_matrix: Vec<Demand>,
-    pub reward_pool: Decimal,
     pub demand_multiplier: Decimal,
 }
 

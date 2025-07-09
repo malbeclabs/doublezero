@@ -1,6 +1,7 @@
 package telemetry_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -22,26 +23,34 @@ func TestSDK_Telemetry_Client_GetDeviceLatencySamples_HappyPath(t *testing.T) {
 	programID := solana.NewWallet().PublicKey()
 
 	expected := &telemetry.DeviceLatencySamples{
-		AccountType:                  telemetry.AccountTypeDeviceLatencySamples,
-		BumpSeed:                     1,
-		Epoch:                        42,
-		OriginDeviceAgentPK:          solana.NewWallet().PublicKey(),
-		OriginDevicePK:               solana.NewWallet().PublicKey(),
-		TargetDevicePK:               solana.NewWallet().PublicKey(),
-		OriginDeviceLocationPK:       solana.NewWallet().PublicKey(),
-		TargetDeviceLocationPK:       solana.NewWallet().PublicKey(),
-		LinkPK:                       solana.NewWallet().PublicKey(),
-		SamplingIntervalMicroseconds: 100_000,
-		StartTimestampMicroseconds:   1_600_000_000,
-		NextSampleIndex:              3,
-		Samples:                      []uint32{10, 20, 30},
+		DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
+			AccountType:                  telemetry.AccountTypeDeviceLatencySamples,
+			BumpSeed:                     1,
+			Epoch:                        42,
+			OriginDeviceAgentPK:          solana.NewWallet().PublicKey(),
+			OriginDevicePK:               solana.NewWallet().PublicKey(),
+			TargetDevicePK:               solana.NewWallet().PublicKey(),
+			OriginDeviceLocationPK:       solana.NewWallet().PublicKey(),
+			TargetDeviceLocationPK:       solana.NewWallet().PublicKey(),
+			LinkPK:                       solana.NewWallet().PublicKey(),
+			SamplingIntervalMicroseconds: 100_000,
+			StartTimestampMicroseconds:   1_600_000_000,
+			NextSampleIndex:              3,
+		},
+		Samples: []uint32{10, 20, 30},
 	}
 
 	mockRPC := &mockRPCClient{
-		GetAccountDataBorshIntoFunc: func(_ context.Context, _ solana.PublicKey, out any) error {
-			ptr := out.(*telemetry.DeviceLatencySamples)
-			*ptr = *expected
-			return nil
+		GetAccountInfoFunc: func(_ context.Context, _ solana.PublicKey) (*solanarpc.GetAccountInfoResult, error) {
+			buf := new(bytes.Buffer)
+			if err := expected.Serialize(buf); err != nil {
+				return nil, fmt.Errorf("mock serialize: %w", err)
+			}
+			return &solanarpc.GetAccountInfoResult{
+				Value: &solanarpc.Account{
+					Data: solanarpc.DataBytesOrJSONFromBytes(buf.Bytes()),
+				},
+			}, nil
 		},
 	}
 
@@ -66,8 +75,8 @@ func TestSDK_Telemetry_Client_GetDeviceLatencySamples_AccountNotFound(t *testing
 	programID := solana.NewWallet().PublicKey()
 
 	mockRPC := &mockRPCClient{
-		GetAccountDataBorshIntoFunc: func(_ context.Context, _ solana.PublicKey, _ any) error {
-			return solanarpc.ErrNotFound
+		GetAccountInfoFunc: func(_ context.Context, _ solana.PublicKey) (*solanarpc.GetAccountInfoResult, error) {
+			return nil, solanarpc.ErrNotFound
 		},
 	}
 
@@ -91,8 +100,8 @@ func TestSDK_Telemetry_Client_GetDeviceLatencySamples_UnexpectedError(t *testing
 	programID := solana.NewWallet().PublicKey()
 
 	mockRPC := &mockRPCClient{
-		GetAccountDataBorshIntoFunc: func(_ context.Context, _ solana.PublicKey, _ any) error {
-			return fmt.Errorf("rpc explosion")
+		GetAccountInfoFunc: func(_ context.Context, _ solana.PublicKey) (*solanarpc.GetAccountInfoResult, error) {
+			return nil, fmt.Errorf("rpc explosion")
 		},
 	}
 

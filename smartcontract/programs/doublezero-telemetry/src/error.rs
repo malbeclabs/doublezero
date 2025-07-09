@@ -27,6 +27,8 @@ pub enum TelemetryError {
     AccountDoesNotExist = 1011,
     /// Invalid sampling interval
     InvalidSamplingInterval = 1012,
+    /// Samples batch too large
+    SamplesBatchTooLarge = 1013,
 }
 
 impl From<TelemetryError> for ProgramError {
@@ -59,6 +61,9 @@ impl fmt::Display for TelemetryError {
             TelemetryError::AccountAlreadyExists => write!(f, "Account already exists"),
             TelemetryError::AccountDoesNotExist => write!(f, "Account does not exist"),
             TelemetryError::InvalidSamplingInterval => write!(f, "Invalid sampling interval"),
+            TelemetryError::SamplesBatchTooLarge => {
+                write!(f, "Samples batch too large")
+            }
         }
     }
 }

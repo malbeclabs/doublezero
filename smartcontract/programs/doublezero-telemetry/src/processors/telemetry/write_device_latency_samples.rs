@@ -5,7 +5,7 @@ use crate::{
     state::{
         accounttype::AccountType,
         device_latency_samples::{
-            DeviceLatencySamples, DZ_LATENCY_SAMPLES_HEADER_SIZE, MAX_SAMPLES,
+            DeviceLatencySamplesHeader, DEVICE_LATENCY_SAMPLES_HEADER_SIZE, MAX_SAMPLES,
         },
     },
 };
@@ -92,8 +92,8 @@ pub fn process_write_device_latency_samples(
     msg!("Updating existing DZ latency samples account");
 
     // Deserialize existing account data.
-    let mut samples_data = DeviceLatencySamples::try_from(
-        &latency_samples_account.try_borrow_data()?[..],
+    let mut header = DeviceLatencySamplesHeader::try_from(
+        &latency_samples_account.try_borrow_data()?[..DEVICE_LATENCY_SAMPLES_HEADER_SIZE],
     )
     .map_err(|e| {
         msg!("Failed to deserialize DeviceLatencySamples: {}", e);
@@ -101,22 +101,22 @@ pub fn process_write_device_latency_samples(
     })?;
 
     // Validate account type to protect against mismatched struct types.
-    if samples_data.account_type != AccountType::DeviceLatencySamples {
+    if header.account_type != AccountType::DeviceLatencySamples {
         return Err(TelemetryError::InvalidAccountType.into());
     }
 
     // Confirm the writing agent matches the account owner.
-    if samples_data.origin_device_agent_pk != *agent.key {
+    if header.origin_device_agent_pk != *agent.key {
         msg!(
             "Agent mismatch: account expects {}, got {}",
-            samples_data.origin_device_agent_pk,
+            header.origin_device_agent_pk,
             agent.key
         );
         return Err(TelemetryError::UnauthorizedAgent.into());
     }
 
     // Ensure we won't exceed sample capacity.
-    if samples_data.samples.len() + args.samples.len() > MAX_SAMPLES {
+    if header.next_sample_index as usize + args.samples.len() > MAX_SAMPLES {
         msg!(
             "Cannot add {} samples, would exceed max capacity",
             args.samples.len()
@@ -125,41 +125,48 @@ pub fn process_write_device_latency_samples(
     }
 
     // Set the first-write timestamp exactly once.
-    if samples_data.start_timestamp_microseconds == 0 {
-        samples_data.start_timestamp_microseconds = args.start_timestamp_microseconds;
+    if header.start_timestamp_microseconds == 0 {
+        header.start_timestamp_microseconds = args.start_timestamp_microseconds;
     }
 
     // Pre-check the total size after append to avoid realloc panics.
-    let new_total_samples = samples_data.samples.len() + args.samples.len();
-    let future_total_len = DZ_LATENCY_SAMPLES_HEADER_SIZE + new_total_samples * 4;
-    if future_total_len > MAX_PERMITTED_DATA_INCREASE {
+    if args.samples.len() > MAX_PERMITTED_DATA_INCREASE / 4 {
         msg!(
-            "Cannot realloc to {}, would exceed Solana inner instruction limit",
-            future_total_len
+            "Cannot increase by {} samples in one transaction, realloc would exceed Solana inner instruction limit ({} bytes)",
+            args.samples.len(),
+            MAX_PERMITTED_DATA_INCREASE
         );
-        return Err(TelemetryError::SamplesAccountFull.into());
+        return Err(TelemetryError::SamplesBatchTooLarge.into());
     }
 
     // Append new samples and update sample index.
-    samples_data.samples.extend(&args.samples);
-    samples_data.next_sample_index = samples_data.samples.len() as u32;
+    let write_index = header.next_sample_index as usize;
+    header.next_sample_index += args.samples.len() as u32;
 
     // Determine whether the account needs to be resized to hold the new data.
     realloc_samples_account_if_needed(
         program_id,
         latency_samples_account,
-        &samples_data,
+        &header,
         agent,
         system_program,
     )?;
 
     // Serialize the updated struct back into the account.
     {
+        // Serialize the header to the account.
         let mut data = &mut latency_samples_account.data.borrow_mut()[..];
-        samples_data.serialize(&mut data)?;
+        header.serialize(&mut data)?;
+
+        // Write each u32 sample to the account's sample region at the correct offset.
+        for (i, sample) in args.samples.iter().enumerate() {
+            let offset = (write_index + i) * 4;
+            data[offset..offset + 4].copy_from_slice(&sample.to_le_bytes());
+        }
+
         msg!(
             "Updated account, now has {} samples",
-            samples_data.samples.len()
+            header.next_sample_index
         );
     }
 
@@ -172,12 +179,12 @@ pub fn process_write_device_latency_samples(
 fn realloc_samples_account_if_needed<'a>(
     program_id: &Pubkey,
     account: &AccountInfo<'a>,
-    new_data: &DeviceLatencySamples,
+    header: &DeviceLatencySamplesHeader,
     agent: &AccountInfo<'a>,
     system_program: &AccountInfo<'a>,
 ) -> ProgramResult {
     let actual_len = account.data_len();
-    let new_len = DZ_LATENCY_SAMPLES_HEADER_SIZE + new_data.samples.len() * 4; // 4 bytes per RTT (microseconds) sample
+    let new_len = DEVICE_LATENCY_SAMPLES_HEADER_SIZE + header.next_sample_index as usize * 4; // 4 bytes per RTT (microseconds) sample
 
     if actual_len != new_len {
         // If the account grows, we must ensure it's funded for the new size.
@@ -196,10 +203,10 @@ fn realloc_samples_account_if_needed<'a>(
                 // Derive PDA and pay for the rent from the agent account.
                 let (_pda, bump_seed) = derive_device_latency_samples_pda(
                     program_id,
-                    &new_data.origin_device_pk,
-                    &new_data.target_device_pk,
-                    &new_data.link_pk,
-                    new_data.epoch,
+                    &header.origin_device_pk,
+                    &header.target_device_pk,
+                    &header.link_pk,
+                    header.epoch,
                 );
 
                 invoke_signed(
@@ -208,10 +215,10 @@ fn realloc_samples_account_if_needed<'a>(
                     &[&[
                         SEED_PREFIX,
                         SEED_DZ_LATENCY_SAMPLES,
-                        new_data.origin_device_pk.as_ref(),
-                        new_data.target_device_pk.as_ref(),
-                        new_data.link_pk.as_ref(),
-                        &new_data.epoch.to_le_bytes(),
+                        header.origin_device_pk.as_ref(),
+                        header.target_device_pk.as_ref(),
+                        header.link_pk.as_ref(),
+                        &header.epoch.to_le_bytes(),
                         &[bump_seed],
                     ]],
                 )
@@ -223,6 +230,7 @@ fn realloc_samples_account_if_needed<'a>(
         account
             .realloc(new_len, false)
             .expect("Unable to realloc the account");
+        msg!("Resized account from {} to {}", actual_len, new_len);
     }
 
     Ok(())

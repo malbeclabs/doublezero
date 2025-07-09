@@ -15,7 +15,7 @@ use doublezero_telemetry::{
     error::TelemetryError, instructions::TelemetryInstruction,
     pda::derive_device_latency_samples_pda,
     processors::telemetry::initialize_device_latency_samples::InitializeDeviceLatencySamplesArgs,
-    state::device_latency_samples::DZ_LATENCY_SAMPLES_HEADER_SIZE,
+    state::device_latency_samples::DEVICE_LATENCY_SAMPLES_HEADER_SIZE,
 };
 use solana_program::example_mocks::solana_sdk::system_program;
 use solana_program_test::*;
@@ -31,6 +31,8 @@ use std::net::Ipv4Addr;
 mod test_helpers;
 
 use test_helpers::*;
+
+const EXPECTED_LAMPORTS_USED_FOR_ACCOUNT_CREATION: u64 = 3326880;
 
 #[tokio::test]
 async fn test_initialize_device_latency_samples_success_active_devices_and_link() {
@@ -64,8 +66,11 @@ async fn test_initialize_device_latency_samples_success_active_devices_and_link(
         .unwrap()
         .unwrap();
     assert_eq!(account.owner, ledger.telemetry.program_id);
-    assert_eq!(account.data.len(), DZ_LATENCY_SAMPLES_HEADER_SIZE);
-    assert_eq!(account.lamports, 3354720);
+    assert_eq!(account.data.len(), DEVICE_LATENCY_SAMPLES_HEADER_SIZE);
+    assert_eq!(
+        account.lamports,
+        EXPECTED_LAMPORTS_USED_FOR_ACCOUNT_CREATION
+    );
 }
 
 #[tokio::test]
@@ -115,8 +120,11 @@ async fn test_initialize_device_latency_samples_success_suspended_origin_device(
         .unwrap()
         .unwrap();
     assert_eq!(account.owner, ledger.telemetry.program_id);
-    assert_eq!(account.data.len(), DZ_LATENCY_SAMPLES_HEADER_SIZE);
-    assert_eq!(account.lamports, 3354720);
+    assert_eq!(account.data.len(), DEVICE_LATENCY_SAMPLES_HEADER_SIZE);
+    assert_eq!(
+        account.lamports,
+        EXPECTED_LAMPORTS_USED_FOR_ACCOUNT_CREATION
+    );
 }
 
 #[tokio::test]
@@ -166,8 +174,11 @@ async fn test_initialize_device_latency_samples_success_suspended_target_device(
         .unwrap()
         .unwrap();
     assert_eq!(account.owner, ledger.telemetry.program_id);
-    assert_eq!(account.data.len(), DZ_LATENCY_SAMPLES_HEADER_SIZE);
-    assert_eq!(account.lamports, 3354720);
+    assert_eq!(account.data.len(), DEVICE_LATENCY_SAMPLES_HEADER_SIZE);
+    assert_eq!(
+        account.lamports,
+        EXPECTED_LAMPORTS_USED_FOR_ACCOUNT_CREATION
+    );
 }
 
 #[tokio::test]
@@ -209,8 +220,11 @@ async fn test_initialize_device_latency_samples_success_suspended_link() {
         .unwrap()
         .unwrap();
     assert_eq!(account.owner, ledger.telemetry.program_id);
-    assert_eq!(account.data.len(), DZ_LATENCY_SAMPLES_HEADER_SIZE);
-    assert_eq!(account.lamports, 3354720);
+    assert_eq!(account.data.len(), DEVICE_LATENCY_SAMPLES_HEADER_SIZE);
+    assert_eq!(
+        account.lamports,
+        EXPECTED_LAMPORTS_USED_FOR_ACCOUNT_CREATION
+    );
 }
 
 #[tokio::test]

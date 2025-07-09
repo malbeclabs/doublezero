@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -64,12 +65,20 @@ func (c *Client) GetDeviceLatencySamples(
 		return nil, fmt.Errorf("failed to derive PDA: %w", err)
 	}
 
-	var deviceLatencySamples DeviceLatencySamples
-	if err := c.rpc.GetAccountDataBorshInto(ctx, pda, &deviceLatencySamples); err != nil {
+	account, err := c.rpc.GetAccountInfo(ctx, pda)
+	if err != nil {
 		if errors.Is(err, solanarpc.ErrNotFound) {
 			return nil, ErrAccountNotFound
 		}
 		return nil, fmt.Errorf("failed to get account data: %w", err)
+	}
+	if account.Value == nil {
+		return nil, ErrAccountNotFound
+	}
+
+	var deviceLatencySamples DeviceLatencySamples
+	if err := deviceLatencySamples.Deserialize(bytes.NewReader(account.Value.Data.GetBinary())); err != nil {
+		return nil, fmt.Errorf("failed to deserialize DeviceLatencySamples: %w", err)
 	}
 
 	return &deviceLatencySamples, nil

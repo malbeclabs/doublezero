@@ -14,5 +14,5 @@ type RPCClient interface {
 	GetLatestBlockhash(context.Context, solanarpc.CommitmentType) (*solanarpc.GetLatestBlockhashResult, error)
 	GetSignatureStatuses(ctx context.Context, searchTransactionHistory bool, transactionSignatures ...solana.Signature) (out *solanarpc.GetSignatureStatusesResult, err error)
 	GetTransaction(ctx context.Context, txSig solana.Signature, opts *solanarpc.GetTransactionOpts) (*solanarpc.GetTransactionResult, error)
-	GetAccountDataBorshInto(ctx context.Context, account solana.PublicKey, inVar any) (err error)
+	GetAccountInfo(ctx context.Context, account solana.PublicKey) (out *solanarpc.GetAccountInfoResult, err error)
 }

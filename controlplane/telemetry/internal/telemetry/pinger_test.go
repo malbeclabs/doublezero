@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"net"
 	"testing"
 	"time"
 
 	"github.com/gagliardetto/solana-go"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/net"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 	"github.com/stretchr/testify/assert"
@@ -35,14 +35,18 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 		mockPeers := newMockPeerDiscovery()
 		mockPeers.UpdatePeers(t, []*telemetry.Peer{
 			{
-				DevicePK:   peerPK,
-				LinkPK:     linkPK,
-				DeviceAddr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 10001},
+				DevicePK: peerPK,
+				LinkPK:   linkPK,
+				Tunnel: &net.LocalTunnel{
+					Interface: "tun1-2",
+					SourceIP:  ipv4([4]uint8{127, 0, 0, 1}),
+					TargetIP:  ipv4([4]uint8{127, 0, 0, 2}),
+				},
 			},
 		})
 
 		mockSender := &mockSender{rtt: 42 * time.Millisecond}
-		getSender := func(_ *telemetry.Peer) twamplight.Sender { return mockSender }
+		getSender := func(_ context.Context, _ *telemetry.Peer) twamplight.Sender { return mockSender }
 
 		buffer := telemetry.NewAccountsBuffer()
 		pinger := telemetry.NewPinger(slog.Default(), &telemetry.PingerConfig{
@@ -79,9 +83,13 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 		mockPeers := newMockPeerDiscovery()
 		mockPeers.UpdatePeers(t, []*telemetry.Peer{
 			{
-				DevicePK:   peerPK,
-				LinkPK:     linkPK,
-				DeviceAddr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 10002},
+				DevicePK: peerPK,
+				LinkPK:   linkPK,
+				Tunnel: &net.LocalTunnel{
+					Interface: "tun1-2",
+					SourceIP:  ipv4([4]uint8{127, 0, 0, 1}),
+					TargetIP:  ipv4([4]uint8{127, 0, 0, 2}),
+				},
 			},
 		})
 
@@ -90,7 +98,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 			LocalDevicePK: devicePK,
 			Peers:         mockPeers,
 			Buffer:        buffer,
-			GetSender:     func(*telemetry.Peer) twamplight.Sender { return nil },
+			GetSender:     func(_ context.Context, _ *telemetry.Peer) twamplight.Sender { return nil },
 		})
 
 		pinger.Tick(context.Background())
@@ -118,9 +126,13 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 		mockPeers := newMockPeerDiscovery()
 		mockPeers.UpdatePeers(t, []*telemetry.Peer{
 			{
-				DevicePK:   peerPK,
-				LinkPK:     linkPK,
-				DeviceAddr: &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 10003},
+				DevicePK: peerPK,
+				LinkPK:   linkPK,
+				Tunnel: &net.LocalTunnel{
+					Interface: "tun1-2",
+					SourceIP:  ipv4([4]uint8{127, 0, 0, 1}),
+					TargetIP:  ipv4([4]uint8{127, 0, 0, 2}),
+				},
 			},
 		})
 
@@ -130,7 +142,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 			LocalDevicePK: devicePK,
 			Peers:         mockPeers,
 			Buffer:        buffer,
-			GetSender:     func(*telemetry.Peer) twamplight.Sender { return mockSender },
+			GetSender:     func(_ context.Context, _ *telemetry.Peer) twamplight.Sender { return mockSender },
 		})
 
 		pinger.Tick(context.Background())

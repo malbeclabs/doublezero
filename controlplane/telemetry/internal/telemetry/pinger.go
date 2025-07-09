@@ -15,7 +15,7 @@ type PingerConfig struct {
 	Interval      time.Duration
 	Peers         PeerDiscovery
 	Buffer        *AccountsBuffer
-	GetSender     func(peer *Peer) twamplight.Sender
+	GetSender     func(ctx context.Context, peer *Peer) twamplight.Sender
 }
 
 // Pinger is responsible for periodically probing remote peers using TWAMP.
@@ -69,9 +69,9 @@ func (p *Pinger) Tick(ctx context.Context) {
 				Epoch:          DeriveEpoch(ts),
 			}
 
-			log := p.log.With("device", peer.DevicePK.String(), "link", peer.LinkPK.String(), "addr", peer.DeviceAddr.String())
+			log := p.log.With("device", peer.DevicePK.String(), "link", peer.LinkPK.String(), "addr", peer.Tunnel.TargetIP.String())
 
-			sender := p.cfg.GetSender(peer)
+			sender := p.cfg.GetSender(ctx, peer)
 			if sender == nil {
 				log.Debug("Failed to create sender, recording loss")
 				p.cfg.Buffer.Add(accountKey, Sample{
@@ -82,6 +82,7 @@ func (p *Pinger) Tick(ctx context.Context) {
 				return
 			}
 
+			log.Debug("Probing", "source", peer.Tunnel.SourceIP, "interface", peer.Tunnel.Interface, "remote", peer.Tunnel.TargetIP)
 			rtt, err := sender.Probe(ctx)
 			if err != nil {
 				log.Debug("Probe failed, recording loss", "error", err)

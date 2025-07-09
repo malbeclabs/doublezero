@@ -238,7 +238,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 		_, err := reflector.Exec(t.Context(), []string{"bash", "-c", fmt.Sprintf("ss -uln '( dport = :%d )' | grep -q .", port)})
 		return err == nil
 	}, 3*time.Second, 100*time.Millisecond)
-	output, err := sender.Exec(t.Context(), []string{"twamp-sender", "-q", fmt.Sprintf("%s:%d", la2ToNY5LinkTunnelLA2IP, port)})
+	output, err := sender.Exec(t.Context(), []string{"twamp-sender", "-q", "-local-addr", fmt.Sprintf("%s:%d", la2ToNY5LinkTunnelNY5IP, 0), "-remote-addr", fmt.Sprintf("%s:%d", la2ToNY5LinkTunnelLA2IP, port)})
 	require.NoError(t, err)
 	log.Info("TWAMP sender output", "output", string(output))
 	require.Contains(t, string(output), "RTT:")

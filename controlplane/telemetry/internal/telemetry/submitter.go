@@ -117,7 +117,16 @@ func (s *Submitter) SubmitSamples(ctx context.Context, accountKey AccountKey, sa
 		}
 	}
 
-	log.Debug("Submitted account samples", "totalCount", len(samples))
+	rtts := make([]uint32, len(samples))
+	for i, sample := range samples {
+		if sample.Loss {
+			rtts[i] = 0
+		} else {
+			rtts[i] = uint32(sample.RTT.Microseconds())
+		}
+	}
+	log.Debug("Submitted account samples", "totalCount", len(samples), "samples", rtts)
+
 	return nil
 }
 

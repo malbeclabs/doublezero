@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"sync"
 	"time"
 
@@ -191,7 +192,7 @@ type senderEntry struct {
 	lastUsed time.Time
 }
 
-func (c *Collector) getOrCreateSender(peer *Peer) twamplight.Sender {
+func (c *Collector) getOrCreateSender(ctx context.Context, peer *Peer) twamplight.Sender {
 	c.sendersMu.Lock()
 	defer c.sendersMu.Unlock()
 
@@ -201,7 +202,9 @@ func (c *Collector) getOrCreateSender(peer *Peer) twamplight.Sender {
 		return entry.sender
 	}
 
-	sender, err := twamplight.NewSender(c.log, peer.DeviceAddr, c.cfg.TWAMPSenderTimeout)
+	sourceAddr := &net.UDPAddr{IP: peer.Tunnel.SourceIP, Port: 0}
+	targetAddr := &net.UDPAddr{IP: peer.Tunnel.TargetIP, Port: int(peer.TWAMPPort)}
+	sender, err := twamplight.NewSender(ctx, c.log, peer.Tunnel.Interface, sourceAddr, targetAddr, c.cfg.TWAMPSenderTimeout)
 	if err != nil {
 		c.log.Error("Failed to create sender", "error", err)
 		return nil

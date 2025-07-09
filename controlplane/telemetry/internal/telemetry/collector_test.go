@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
+	netutil "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/net"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 	"github.com/stretchr/testify/require"
@@ -104,28 +105,47 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 		telemetryProgram1 := newMemoryTelemetryProgramClient()
 		collector1 := newTestCollector(t, log.With("runtime", "collector1"), device1PK, reflector1, []*telemetry.Peer{
 			{
-				DevicePK:   device2PK,
-				LinkPK:     link1_2,
-				DeviceAddr: reflector2.LocalAddr().(*net.UDPAddr),
+				DevicePK: device2PK,
+				LinkPK:   link1_2,
+				Tunnel: &netutil.LocalTunnel{
+					Interface: loopbackInterface(t),
+					SourceIP:  reflector1.LocalAddr().(*net.UDPAddr).IP,
+					TargetIP:  reflector2.LocalAddr().(*net.UDPAddr).IP,
+				},
+				TWAMPPort: uint16(reflector2.LocalAddr().(*net.UDPAddr).Port),
 			},
 			{
-				DevicePK:   device3PK,
-				LinkPK:     link1_3,
-				DeviceAddr: &net.UDPAddr{IP: net.IPv4(10, 241, 1, 3), Port: 1862},
+				DevicePK: device3PK,
+				LinkPK:   link1_3,
+				Tunnel: &netutil.LocalTunnel{
+					Interface: loopbackInterface(t),
+					SourceIP:  net.IPv4(10, 241, 1, 2),
+					TargetIP:  net.IPv4(10, 241, 1, 3),
+				},
+				TWAMPPort: 1862,
 			},
 		}, telemetryProgram1, 250*time.Millisecond)
 
 		telemetryProgram2 := newMemoryTelemetryProgramClient()
 		collector2 := newTestCollector(t, log.With("runtime", "collector2"), device2PK, reflector2, []*telemetry.Peer{
 			{
-				DevicePK:   device1PK,
-				LinkPK:     link2_1,
-				DeviceAddr: reflector1.LocalAddr().(*net.UDPAddr),
+				DevicePK: device1PK,
+				LinkPK:   link2_1,
+				Tunnel: &netutil.LocalTunnel{
+					Interface: loopbackInterface(t),
+					SourceIP:  reflector2.LocalAddr().(*net.UDPAddr).IP,
+					TargetIP:  reflector1.LocalAddr().(*net.UDPAddr).IP,
+				},
+				TWAMPPort: uint16(reflector2.LocalAddr().(*net.UDPAddr).Port),
 			},
 			{
-				DevicePK:   device3PK,
-				LinkPK:     link2_3,
-				DeviceAddr: &net.UDPAddr{IP: net.IPv4(10, 241, 1, 3), Port: 1862},
+				DevicePK: device3PK,
+				LinkPK:   link2_3,
+				Tunnel: &netutil.LocalTunnel{
+					Interface: loopbackInterface(t),
+					SourceIP:  net.IPv4(10, 241, 1, 2),
+					TargetIP:  net.IPv4(10, 241, 1, 3),
+				},
 			},
 		}, telemetryProgram2, 250*time.Millisecond)
 
@@ -234,9 +254,14 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 		// Initially peer points to valid reflector
 		peerDiscovery.UpdatePeers(t, []*telemetry.Peer{
 			{
-				DevicePK:   peerPK,
-				LinkPK:     linkPK,
-				DeviceAddr: reflector.LocalAddr().(*net.UDPAddr),
+				DevicePK: peerPK,
+				LinkPK:   linkPK,
+				Tunnel: &netutil.LocalTunnel{
+					Interface: loopbackInterface(t),
+					SourceIP:  net.ParseIP("127.0.0.1"),
+					TargetIP:  reflector.LocalAddr().(*net.UDPAddr).IP,
+				},
+				TWAMPPort: uint16(reflector.LocalAddr().(*net.UDPAddr).Port),
 			},
 		})
 
@@ -276,9 +301,14 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 		// Simulate address change to non-working peer
 		peerDiscovery.UpdatePeers(t, []*telemetry.Peer{
 			{
-				DevicePK:   peerPK,
-				LinkPK:     linkPK,
-				DeviceAddr: &net.UDPAddr{IP: net.IPv4(203, 0, 113, 1), Port: 9999}, // dummy/test address
+				DevicePK: peerPK,
+				LinkPK:   linkPK,
+				Tunnel: &netutil.LocalTunnel{
+					Interface: loopbackInterface(t),
+					SourceIP:  net.ParseIP("127.0.0.1"),
+					TargetIP:  net.IPv4(203, 0, 113, 1),
+				},
+				TWAMPPort: 9999,
 			},
 		})
 
@@ -296,9 +326,14 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 		// Simulate reverting to valid address
 		peerDiscovery.UpdatePeers(t, []*telemetry.Peer{
 			{
-				DevicePK:   peerPK,
-				LinkPK:     linkPK,
-				DeviceAddr: reflector.LocalAddr().(*net.UDPAddr),
+				DevicePK: peerPK,
+				LinkPK:   linkPK,
+				Tunnel: &netutil.LocalTunnel{
+					Interface: loopbackInterface(t),
+					SourceIP:  net.IPv4(10, 241, 1, 1),
+					TargetIP:  reflector.LocalAddr().(*net.UDPAddr).IP,
+				},
+				TWAMPPort: uint16(reflector.LocalAddr().(*net.UDPAddr).Port),
 			},
 		})
 

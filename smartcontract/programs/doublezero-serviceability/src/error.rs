@@ -23,6 +23,8 @@ pub enum DoubleZeroError {
     NotAllowed, // variant 8
     #[error("Invalid Account Type")]
     InvalidAccountType, // variant 9
+    #[error("You are trying to assign a Pubkey that does not correspond to a Contributor")]
+    InvalidContributorPubkey, // variant 10
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -38,6 +40,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InvalidStatus => ProgramError::Custom(7),
             DoubleZeroError::NotAllowed => ProgramError::Custom(8),
             DoubleZeroError::InvalidAccountType => ProgramError::Custom(9),
+            DoubleZeroError::InvalidContributorPubkey => ProgramError::Custom(10),
         }
     }
 }
@@ -54,6 +57,9 @@ impl From<ProgramError> for DoubleZeroError {
                 6 => DoubleZeroError::InvalidDevicePubkey,
                 7 => DoubleZeroError::InvalidStatus,
                 8 => DoubleZeroError::NotAllowed,
+                9 => DoubleZeroError::InvalidAccountType,
+                10 => DoubleZeroError::InvalidContributorPubkey,
+
                 _ => DoubleZeroError::Custom(e),
             },
             _ => DoubleZeroError::Custom(0),

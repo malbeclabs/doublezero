@@ -19,6 +19,7 @@ ipnetwork.workspace = true
 serde.workspace = true
 solana-program.workspace = true
 thiserror.workspace = true
+solana-system-interface.workspace = true
 
 [dev-dependencies]
 solana-sdk.workspace = true

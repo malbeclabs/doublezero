@@ -46,9 +46,10 @@ use solana_sdk::{
     message::{v0::Message, VersionedMessage},
     pubkey::Pubkey,
     signature::{Keypair, Signer},
-    system_program,
     transaction::{Transaction, TransactionError, VersionedTransaction},
 };
+
+use solana_system_interface::program;
 
 #[ctor::ctor]
 fn init_logger() {
@@ -474,7 +475,7 @@ impl TelemetryProgramHelper {
                 AccountMeta::new_readonly(origin_device_pk, false),
                 AccountMeta::new_readonly(target_device_pk, false),
                 AccountMeta::new_readonly(link_pk, false),
-                AccountMeta::new_readonly(solana_program::system_program::id(), false),
+                AccountMeta::new_readonly(program::system_program::id(), false),
             ],
         )
         .await?;

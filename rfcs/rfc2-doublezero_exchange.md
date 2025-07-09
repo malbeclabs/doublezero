@@ -123,8 +123,9 @@ Cons
   - Would likely require traffic shaping on DZDs
 - Limitations of scaling a single broadcast domain, for example the DZX topology MUST remain loop-free and MUST NOT rely on spanning-tree protocols
   - Limited to two DZX switches
+  - Requires uses of layer 2 protocols such as spanning-tree protocol, storm-control
 - Complex to integrate within a hybrid community/vendor model
-  - Layer 2 hand-off complexity
+  - Layer 2 hand-off complexity e.g. mapping between VLANs
 
 
 #### DZX as a Layer 3 Fabric

@@ -307,15 +307,15 @@ impl DbDeviceLatencySamples {
     pub fn from_solana(pubkey: Pubkey, samples: &DeviceLatencySamples) -> Self {
         Self {
             pubkey,
-            epoch: samples.epoch,
-            origin_device_pk: samples.origin_device_pk,
-            target_device_pk: samples.target_device_pk,
-            link_pk: samples.link_pk,
-            origin_device_location_pk: samples.origin_device_location_pk,
-            target_device_location_pk: samples.target_device_location_pk,
-            origin_device_agent_pk: samples.origin_device_agent_pk,
-            sampling_interval_us: samples.sampling_interval_microseconds,
-            start_timestamp_us: samples.start_timestamp_microseconds,
+            epoch: samples.header.epoch,
+            origin_device_pk: samples.header.origin_device_pk,
+            target_device_pk: samples.header.target_device_pk,
+            link_pk: samples.header.link_pk,
+            origin_device_location_pk: samples.header.origin_device_location_pk,
+            target_device_location_pk: samples.header.target_device_location_pk,
+            origin_device_agent_pk: samples.header.origin_device_agent_pk,
+            sampling_interval_us: samples.header.sampling_interval_microseconds,
+            start_timestamp_us: samples.header.start_timestamp_microseconds,
             samples: samples.samples.clone(),
         }
     }
@@ -340,6 +340,7 @@ pub struct RewardsData {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use doublezero_telemetry::state::device_latency_samples::DeviceLatencySamplesHeader;
     use solana_sdk::pubkey::Pubkey;
     use std::net::Ipv4Addr;
 
@@ -408,20 +409,22 @@ mod tests {
     fn test_db_device_latency_samples_from_solana() {
         let pubkey = test_pubkey(1);
         let samples = DeviceLatencySamples {
-            account_type:
-                doublezero_telemetry::state::accounttype::AccountType::DeviceLatencySamples,
-            bump_seed: 255,
-            epoch: 100,
-            origin_device_agent_pk: test_pubkey(2),
-            origin_device_pk: test_pubkey(3),
-            target_device_pk: test_pubkey(4),
-            origin_device_location_pk: test_pubkey(5),
-            target_device_location_pk: test_pubkey(6),
-            link_pk: test_pubkey(7),
-            sampling_interval_microseconds: 5_000_000,
-            start_timestamp_microseconds: 1_700_000_000_000_000,
-            next_sample_index: 3,
-            _unused: [0; 128],
+            header: DeviceLatencySamplesHeader {
+                account_type:
+                    doublezero_telemetry::state::accounttype::AccountType::DeviceLatencySamples,
+                bump_seed: 255,
+                epoch: 100,
+                origin_device_agent_pk: test_pubkey(2),
+                origin_device_pk: test_pubkey(3),
+                target_device_pk: test_pubkey(4),
+                origin_device_location_pk: test_pubkey(5),
+                target_device_location_pk: test_pubkey(6),
+                link_pk: test_pubkey(7),
+                sampling_interval_microseconds: 5_000_000,
+                start_timestamp_microseconds: 1_700_000_000_000_000,
+                next_sample_index: 3,
+                _unused: [0; 128],
+            },
             samples: vec![100, 200, 300],
         };
 

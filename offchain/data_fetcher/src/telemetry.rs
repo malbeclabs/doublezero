@@ -81,8 +81,8 @@ pub async fn fetch_telemetry_data(
             match deserialize_latency_samples(&account.data) {
                 Ok(samples) => {
                     // Filter by timestamp range
-                    if samples.start_timestamp_microseconds >= after_us
-                        && samples.start_timestamp_microseconds <= before_us
+                    if samples.header.start_timestamp_microseconds >= after_us
+                        && samples.header.start_timestamp_microseconds <= before_us
                     {
                         let db_samples = DbDeviceLatencySamples::from_solana(*pubkey, &samples);
                         batch_samples.push(db_samples);

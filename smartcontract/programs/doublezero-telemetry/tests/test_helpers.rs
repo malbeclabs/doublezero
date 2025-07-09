@@ -444,7 +444,7 @@ impl TelemetryProgramHelper {
             vec![
                 AccountMeta::new(latency_samples_pda, false),
                 AccountMeta::new(agent.pubkey(), true),
-                AccountMeta::new_readonly(system_program::id(), false),
+                AccountMeta::new_readonly(program::id(), false),
             ],
         )
         .await
@@ -503,7 +503,7 @@ impl TelemetryProgramHelper {
         let accounts = vec![
             AccountMeta::new(latency_samples_pda, false),
             AccountMeta::new_readonly(agent.pubkey(), true),
-            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(program::system_program::id(), false),
         ];
 
         let instruction = solana_sdk::instruction::Instruction {
@@ -980,7 +980,7 @@ pub async fn execute_serviceability_instruction(
 ) -> Result<(), BanksClientError> {
     // Automatically append payer and system_program
     accounts.push(AccountMeta::new(payer.pubkey(), true));
-    accounts.push(AccountMeta::new_readonly(system_program::id(), false));
+    accounts.push(AccountMeta::new_readonly(program::id(), false));
 
     let instruction_data = borsh::to_vec(&instruction).unwrap();
 

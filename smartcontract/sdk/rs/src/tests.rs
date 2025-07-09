@@ -4,7 +4,7 @@ pub mod utils {
         state::{accountdata::AccountData, accounttype::AccountType, globalstate::GlobalState},
     };
     use mockall::predicate;
-    use solana_sdk::{pubkey::Pubkey, signature::Signature};
+    use solana_sdk::pubkey::Pubkey;
     use std::env;
     use tempfile::TempDir;
 
@@ -37,9 +37,6 @@ pub mod utils {
             .expect_get()
             .with(predicate::eq(globalstate_pubkey))
             .returning(move |_| Ok(AccountData::GlobalState(globalstate.clone())));
-        client
-            .expect_execute_transaction()
-            .returning(|_, _| Ok(Signature::new_unique()));
         client
     }
 

@@ -318,6 +318,7 @@ impl DoubleZeroClient for DZClient {
             .client
             .simulate_transaction(&transaction)
             .map_err(|e| eyre!(e))?;
+
         if result.value.err.is_some() {
             println!("Program Logs:");
             if let Some(logs) = result.value.logs {

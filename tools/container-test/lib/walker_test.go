@@ -1,16 +1,16 @@
-package e2etest_test
+package containertest_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 
-	e2etest "github.com/malbeclabs/doublezero/tools/e2e-test/lib"
+	containertest "github.com/malbeclabs/doublezero/tools/container-test/lib"
 )
 
 func TestFileWalker(t *testing.T) {
 	// Create a temporary directory structure
-	tmpDir, err := os.MkdirTemp("", "e2e-test-*")
+	tmpDir, err := os.MkdirTemp("", "container-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
@@ -32,8 +32,8 @@ func TestFileWalker(t *testing.T) {
 
 	// Create config files in some directories
 	configFiles := []string{
-		"dir1/e2e.yaml",
-		"dir2/subdir2/e2e.yaml",
+		"dir1/container-test.yaml",
+		"dir2/subdir2/container-test.yaml",
 	}
 
 	for _, file := range configFiles {
@@ -43,7 +43,7 @@ func TestFileWalker(t *testing.T) {
 	}
 
 	// Test finding config files
-	walker := e2etest.NewFileWalker("e2e.yaml", 0, tmpDir)
+	walker := containertest.NewFileWalker("container-test.yaml", 0, tmpDir)
 	files, err := walker.FindConfigFiles()
 	if err != nil {
 		t.Fatalf("failed to find config files: %v", err)
@@ -68,13 +68,13 @@ func TestFileWalker(t *testing.T) {
 
 func TestFileWalkerWithNoConfigFiles(t *testing.T) {
 	// Create a temporary directory with no config files
-	tmpDir, err := os.MkdirTemp("", "e2e-test-*")
+	tmpDir, err := os.MkdirTemp("", "container-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
-	walker := e2etest.NewFileWalker("e2e.yaml", 0, tmpDir)
+	walker := containertest.NewFileWalker("container-test.yaml", 0, tmpDir)
 	files, err := walker.FindConfigFiles()
 	if err != nil {
 		t.Fatalf("failed to find config files: %v", err)
@@ -87,7 +87,7 @@ func TestFileWalkerWithNoConfigFiles(t *testing.T) {
 
 func TestFileWalkerWithCustomConfigName(t *testing.T) {
 	// Create a temporary directory with a custom config file
-	tmpDir, err := os.MkdirTemp("", "e2e-test-*")
+	tmpDir, err := os.MkdirTemp("", "container-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestFileWalkerWithCustomConfigName(t *testing.T) {
 		t.Fatalf("failed to write config file: %v", err)
 	}
 
-	walker := e2etest.NewFileWalker(customConfig, 0, tmpDir)
+	walker := containertest.NewFileWalker(customConfig, 0, tmpDir)
 	files, err := walker.FindConfigFiles()
 	if err != nil {
 		t.Fatalf("failed to find config files: %v", err)

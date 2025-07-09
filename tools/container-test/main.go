@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"strings"
 
-	e2etest "github.com/malbeclabs/doublezero/tools/e2e-test/lib"
+	containertest "github.com/malbeclabs/doublezero/tools/container-test/lib"
 	"gopkg.in/yaml.v3"
 )
 
@@ -31,11 +31,11 @@ func run() error {
 	var parallelism int
 	var testPattern string
 
-	config := e2etest.RunnerConfig{}
+	config := containertest.RunnerConfig{}
 
 	preprocessArgsForVerbosity()
 
-	flag.StringVar(&configFile, "f", "e2e.yaml", "Config filename to search for recursively (default: e2e.yaml)")
+	flag.StringVar(&configFile, "f", "container-test.yaml", "Config filename to search for recursively (default: container-test.yaml)")
 	flag.IntVar(&verbosity, "verbose", 0, "Verbosity level (default: 0)")
 	flag.BoolVar(&noFastFail, "no-fast-fail", false, "Run all tests even if one fails (default: false)")
 	flag.BoolVar(&noParallel, "no-parallel", false, "Run tests sequentially instead of in parallel (default: false)")
@@ -59,19 +59,19 @@ func run() error {
 	config.Parallelism = parallelism
 	config.TestPattern = testPattern
 
-	// Find all e2e.yaml files recursively
+	// Find all container-test.yaml files recursively
 	if verbosity > 2 {
-		fmt.Printf("--- INFO: Finding e2e.yaml files recursively\n")
+		fmt.Printf("--- INFO: Finding container-test.yaml files recursively\n")
 	}
 
-	walker := e2etest.NewFileWalker(configFile, verbosity, ".")
+	walker := containertest.NewFileWalker(configFile, verbosity, ".")
 	configFiles, err := walker.FindConfigFiles()
 	if err != nil {
-		return fmt.Errorf("failed to find e2e config files: %v", err)
+		return fmt.Errorf("failed to find container-test config files: %v", err)
 	}
 
 	if len(configFiles) == 0 {
-		return fmt.Errorf("no e2e.yaml files found")
+		return fmt.Errorf("no container-test.yaml files found")
 	}
 
 	// Run each config file
@@ -104,7 +104,7 @@ func run() error {
 		// The test dir for this run is the directory of the config file.
 		config.TestDir = configDir
 
-		runner, err := e2etest.NewRunner(config)
+		runner, err := containertest.NewRunner(config)
 		if err != nil {
 			return err
 		}

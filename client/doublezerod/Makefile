@@ -9,7 +9,7 @@ test:
 
 .PHONY: test-e2e
 test-e2e:
-	go run ../../tools/e2e-test/main.go -v
+	go run ../../tools/container-test/main.go -v
 
 .PHONY: lint
 lint:

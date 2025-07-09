@@ -179,7 +179,7 @@ fn test_edge_cases_integration() {
     // Many rewards
     let many_rewards: Vec<(String, rust_decimal::Decimal)> = (0..100)
         .map(|i| {
-            let pubkey = format!("USER{:03}111111111111111111111111111111111111", i);
+            let pubkey = format!("USER{i:03}111111111111111111111111111111111111");
             let proportion = dec!(1.0) / dec!(100);
             (pubkey, proportion)
         })

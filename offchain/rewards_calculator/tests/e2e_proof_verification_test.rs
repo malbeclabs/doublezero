@@ -33,18 +33,17 @@ fn test_e2e_verify_all_leaves() {
         let sorted_index = tree_data
             .sorted_serialized_leaves
             .binary_search(&leaf_bytes)
-            .expect(&format!("Leaf {} should be in sorted list", index));
+            .expect(&format!("Leaf {index} should be in sorted list"));
 
         // Generate proof
         let proof = svm_hash::merkle::MerkleProof::from_leaves(&leaf_slices, sorted_index)
-            .expect(&format!("Should generate proof for leaf {}", index));
+            .expect(&format!("Should generate proof for leaf {index}"));
 
         // Verify the proof produces the expected root
         let computed_root = proof.root_from_leaf(&leaf_bytes);
         assert_eq!(
             computed_root, tree_data.root,
-            "Proof verification failed for leaf {} (index {})",
-            index, sorted_index
+            "Proof verification failed for leaf {index} (index {sorted_index})",
         );
     }
 }
@@ -256,8 +255,7 @@ fn test_e2e_realistic_epoch() {
         let leaf_bytes = borsh::to_vec(leaf).unwrap();
         assert!(
             tree.verify_proof(&proof, &leaf_bytes),
-            "Failed to verify contributor at index {}",
-            idx
+            "Failed to verify contributor at index {idx}",
         );
     }
 }

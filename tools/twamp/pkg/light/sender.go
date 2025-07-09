@@ -9,6 +9,8 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	"github.com/malbeclabs/doublezero/tools/twamp/pkg/udp"
 )
 
 var (
@@ -38,8 +40,9 @@ type sender struct {
 	mu      sync.Mutex // protects seq
 }
 
-func NewSender(log *slog.Logger, remote *net.UDPAddr, timeout time.Duration) (*sender, error) {
-	conn, err := net.DialUDP("udp", nil, remote)
+func NewSender(ctx context.Context, log *slog.Logger, iface string, localAddr, remoteAddr *net.UDPAddr, timeout time.Duration) (*sender, error) {
+	dialer := udp.NewDialer(log)
+	conn, err := dialer.Dial(ctx, iface, localAddr, remoteAddr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial UDP: %w", err)
 	}

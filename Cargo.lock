@@ -1629,6 +1629,7 @@ dependencies = [
  "solana-pubsub-client",
  "solana-rpc-client-api",
  "solana-sdk",
+ "solana-system-interface",
  "solana-transaction-status",
  "tempfile",
  "thiserror 2.0.12",

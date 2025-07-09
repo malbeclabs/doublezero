@@ -17,9 +17,10 @@ use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
     signature::{Keypair, Signature, Signer},
-    system_program,
     transaction::Transaction,
 };
+
+use solana_system_interface::program;
 use solana_transaction_status::{
     option_serializer::OptionSerializer, EncodedTransaction, TransactionBinaryEncoding,
     UiTransactionEncoding,
@@ -302,7 +303,7 @@ impl DoubleZeroClient for DZClient {
                     accounts,
                     vec![
                         AccountMeta::new(payer.pubkey(), true),
-                        AccountMeta::new(system_program::id(), false),
+                        AccountMeta::new(program::id(), false),
                     ],
                 ]
                 .concat(),

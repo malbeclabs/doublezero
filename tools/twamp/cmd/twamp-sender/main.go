@@ -17,6 +17,7 @@ func main() {
 	quiet := flag.Bool("q", false, "Quiet mode - only show RTT")
 	localAddr := flag.String("local-addr", "", "Source address (host:port)")
 	remoteAddr := flag.String("remote-addr", "", "Remote address (host:port)")
+	timeout := flag.Duration("timeout", 10*time.Second, "Timeout")
 	flag.Parse()
 
 	if *remoteAddr == "" {
@@ -85,14 +86,16 @@ func main() {
 
 	remoteUDPAddr := &net.UDPAddr{IP: ips[0], Port: int(port)}
 
-	sender, err := twamplight.NewSender(context.Background(), log, "", localUDPAddr, remoteUDPAddr, 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
+	defer cancel()
+
+	sender, err := twamplight.NewSender(ctx, log, "", localUDPAddr, remoteUDPAddr, 5*time.Second)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: failed to create sender: %v\n", err)
 		os.Exit(1)
 	}
 	defer sender.Close()
 
-	ctx := context.Background()
 	rtt, err := sender.Probe(ctx)
 	if err != nil {
 		if err == twamplight.ErrTimeout {

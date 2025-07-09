@@ -3,10 +3,13 @@ package telemetry_test
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"maps"
+	"net"
 	"os"
 	"slices"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -17,6 +20,8 @@ import (
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	sdktelemetry "github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -213,4 +218,28 @@ func stringToPubkey(s string) solana.PublicKey {
 	var b [32]byte
 	copy(b[:], s) // copies up to 32 bytes; extra bytes are ignored, rest are zero-padded
 	return solana.PublicKeyFromBytes(b[:])
+}
+
+func requireUnorderedEqual[T fmt.Stringer](t *testing.T, expected, actual []T) {
+	t.Helper()
+	sort.Slice(expected, func(i, j int) bool {
+		return expected[i].String() < expected[j].String()
+	})
+	sort.Slice(actual, func(i, j int) bool {
+		return actual[i].String() < actual[j].String()
+	})
+	assert.Equal(t, expected, actual)
+}
+
+func loopbackInterface(t *testing.T) string {
+	t.Helper()
+
+	ifaces, err := net.Interfaces()
+	require.NoError(t, err)
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagLoopback != 0 {
+			return iface.Name
+		}
+	}
+	return ""
 }

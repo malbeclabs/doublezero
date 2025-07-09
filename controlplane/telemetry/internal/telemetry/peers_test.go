@@ -2,7 +2,6 @@ package telemetry_test
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net"
 	"sync"
@@ -10,13 +9,11 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
-	"github.com/malbeclabs/doublezero/controlplane/agent/pkg/arista"
-	aristapb "github.com/malbeclabs/doublezero/controlplane/proto/arista/gen/pb-go/arista/EosSdkRpc"
+	netutil "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/net"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 )
 
 func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
@@ -50,72 +47,48 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 			},
 		}
 
-		aristaEAPIClient := &arista.MockEAPIClient{
-			RunShowCmdFunc: func(ctx context.Context, req *aristapb.RunShowCmdRequest, opts ...grpc.CallOption) (*aristapb.RunShowCmdResponse, error) {
-				resp := arista.IPInterfacesBriefResponse{
-					Interfaces: map[string]arista.IPInterfaceBrief{
-						"Tunnel1-2": {
-							InterfaceStatus:    arista.IPInterfaceInterfaceStatusConnected,
-							LineProtocolStatus: arista.IPInterfaceLineProtocolStatusUp,
-							InterfaceAddress: arista.IPInterfaceAddress{
-								IPAddr: arista.IPInterfaceAddressIPAddr{
-									Address: "10.1.1.0",
-									MaskLen: 31,
-								},
-							},
-						},
-						"Tunnel1-3": {
-							InterfaceStatus:    arista.IPInterfaceInterfaceStatusConnected,
-							LineProtocolStatus: arista.IPInterfaceLineProtocolStatusUp,
-							InterfaceAddress: arista.IPInterfaceAddress{
-								IPAddr: arista.IPInterfaceAddressIPAddr{
-									Address: "10.1.1.2",
-									MaskLen: 31,
-								},
-							},
-						},
-						"Tunnel2-1": {
-							InterfaceStatus:    arista.IPInterfaceInterfaceStatusConnected,
-							LineProtocolStatus: arista.IPInterfaceLineProtocolStatusUp,
-							InterfaceAddress: arista.IPInterfaceAddress{
-								IPAddr: arista.IPInterfaceAddressIPAddr{
-									Address: "10.1.1.5",
-									MaskLen: 31,
-								},
-							},
-						},
-						"TunnelOther": {
-							InterfaceStatus:    arista.IPInterfaceInterfaceStatusConnected,
-							LineProtocolStatus: arista.IPInterfaceLineProtocolStatusUp,
-							InterfaceAddress: arista.IPInterfaceAddress{
-								IPAddr: arista.IPInterfaceAddressIPAddr{
-									Address: "10.1.1.100",
-									MaskLen: 31,
-								},
-							},
-						},
-					},
-				}
-
-				respJSON, err := json.Marshal(resp)
-				require.NoError(t, err)
-
-				return &aristapb.RunShowCmdResponse{
-					Response: &aristapb.EapiResponse{
-						Success:   true,
-						Responses: []string{string(respJSON)},
-					},
-				}, nil
+		localInterfacesByIP := map[string]netutil.Interface{
+			"10.1.1.0": {
+				Name: "tun1-2",
+				Addrs: []net.Addr{
+					&net.IPNet{IP: ipv4([4]uint8{10, 1, 1, 0}), Mask: net.CIDRMask(31, 32)},
+				},
+			},
+			"10.1.1.2": {
+				Name: "tun1-3",
+				Addrs: []net.Addr{
+					&net.IPNet{IP: ipv4([4]uint8{10, 1, 1, 2}), Mask: net.CIDRMask(31, 32)},
+				},
+			},
+			"10.1.1.5": {
+				Name: "tun2-1",
+				Addrs: []net.Addr{
+					&net.IPNet{IP: ipv4([4]uint8{10, 1, 1, 5}), Mask: net.CIDRMask(31, 32)},
+				},
+			},
+			"10.1.1.100": {
+				Name: "tunOther",
+				Addrs: []net.Addr{
+					&net.IPNet{IP: ipv4([4]uint8{10, 1, 1, 100}), Mask: net.CIDRMask(31, 32)},
+				},
 			},
 		}
 
 		config := &telemetry.LedgerPeerDiscoveryConfig{
-			Logger:           log,
-			LocalDevicePK:    localDevicePK,
-			TWAMPPort:        12345,
-			RefreshInterval:  100 * time.Millisecond,
-			ProgramClient:    serviceabilityProgram,
-			AristaEAPIClient: arista.NewEAPIClient(log, aristaEAPIClient),
+			Logger:          log,
+			LocalDevicePK:   localDevicePK,
+			TWAMPPort:       12345,
+			RefreshInterval: 100 * time.Millisecond,
+			ProgramClient:   serviceabilityProgram,
+			LocalNet: &netutil.MockLocalNet{
+				InterfacesFunc: func() ([]netutil.Interface, error) {
+					interfaces := make([]netutil.Interface, 0, len(localInterfacesByIP))
+					for _, iface := range localInterfacesByIP {
+						interfaces = append(interfaces, iface)
+					}
+					return interfaces, nil
+				},
+			},
 		}
 
 		peers, err := telemetry.NewLedgerPeerDiscovery(config)
@@ -136,23 +109,38 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 
 		expected := []*telemetry.Peer{
 			{
-				LinkPK:     stringToPubkey("link_1-2"),
-				DevicePK:   stringToPubkey("device2"),
-				DeviceAddr: &net.UDPAddr{IP: ipv4([4]uint8{10, 1, 1, 1}), Port: 12345},
+				LinkPK:   stringToPubkey("link_1-2"),
+				DevicePK: stringToPubkey("device2"),
+				Tunnel: &netutil.LocalTunnel{
+					Interface: "tun1-2",
+					SourceIP:  ipv4([4]uint8{10, 1, 1, 0}),
+					TargetIP:  ipv4([4]uint8{10, 1, 1, 1}),
+				},
+				TWAMPPort: 12345,
 			},
 			{
-				LinkPK:     stringToPubkey("link_1-3"),
-				DevicePK:   stringToPubkey("device3"),
-				DeviceAddr: &net.UDPAddr{IP: ipv4([4]uint8{10, 1, 1, 3}), Port: 12345},
+				LinkPK:   stringToPubkey("link_1-3"),
+				DevicePK: stringToPubkey("device3"),
+				Tunnel: &netutil.LocalTunnel{
+					Interface: "tun1-3",
+					SourceIP:  ipv4([4]uint8{10, 1, 1, 2}),
+					TargetIP:  ipv4([4]uint8{10, 1, 1, 3}),
+				},
+				TWAMPPort: 12345,
 			},
 			{
-				LinkPK:     stringToPubkey("link_2-1"),
-				DevicePK:   stringToPubkey("device2"),
-				DeviceAddr: &net.UDPAddr{IP: ipv4([4]uint8{10, 1, 1, 4}), Port: 12345},
+				LinkPK:   stringToPubkey("link_2-1"),
+				DevicePK: stringToPubkey("device2"),
+				Tunnel: &netutil.LocalTunnel{
+					Interface: "tun2-1",
+					SourceIP:  ipv4([4]uint8{10, 1, 1, 5}),
+					TargetIP:  ipv4([4]uint8{10, 1, 1, 4}),
+				},
+				TWAMPPort: 12345,
 			},
 		}
 
-		assert.ElementsMatch(t, expected, peers.GetPeers())
+		requireUnorderedEqual(t, expected, peers.GetPeers())
 	})
 
 	t.Run("skips pending links", func(t *testing.T) {
@@ -184,36 +172,19 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 			},
 		}
 
-		aristaEAPIClient := &arista.MockEAPIClient{
-			RunShowCmdFunc: func(ctx context.Context, req *aristapb.RunShowCmdRequest, opts ...grpc.CallOption) (*aristapb.RunShowCmdResponse, error) {
-				resp := arista.IPInterfacesBriefResponse{
-					Interfaces: map[string]arista.IPInterfaceBrief{
-						"TunnelX": {
-							InterfaceStatus:    arista.IPInterfaceInterfaceStatusConnected,
-							LineProtocolStatus: arista.IPInterfaceLineProtocolStatusUp,
-							InterfaceAddress: arista.IPInterfaceAddress{
-								IPAddr: arista.IPInterfaceAddressIPAddr{
-									Address: "10.1.2.0",
-									MaskLen: 31,
-								},
-							},
-						},
-					},
-				}
-				j, _ := json.Marshal(resp)
-				return &aristapb.RunShowCmdResponse{
-					Response: &aristapb.EapiResponse{Success: true, Responses: []string{string(j)}},
-				}, nil
-			},
-		}
-
 		cfg := &telemetry.LedgerPeerDiscoveryConfig{
-			Logger:           log,
-			LocalDevicePK:    localDevicePK,
-			ProgramClient:    serviceabilityProgram,
-			AristaEAPIClient: arista.NewEAPIClient(log, aristaEAPIClient),
-			TWAMPPort:        1234,
-			RefreshInterval:  50 * time.Millisecond,
+			Logger:        log,
+			LocalDevicePK: localDevicePK,
+			ProgramClient: serviceabilityProgram,
+			LocalNet: &netutil.MockLocalNet{
+				InterfacesFunc: func() ([]netutil.Interface, error) {
+					return []netutil.Interface{
+						{Name: "tunX", Addrs: []net.Addr{&net.IPNet{IP: ipv4([4]uint8{10, 1, 2, 0}), Mask: net.CIDRMask(31, 32)}}},
+					}, nil
+				},
+			},
+			TWAMPPort:       1234,
+			RefreshInterval: 50 * time.Millisecond,
 		}
 
 		peerDiscovery, err := telemetry.NewLedgerPeerDiscovery(cfg)
@@ -262,36 +233,19 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 			},
 		}
 
-		aristaEAPIClient := &arista.MockEAPIClient{
-			RunShowCmdFunc: func(ctx context.Context, req *aristapb.RunShowCmdRequest, opts ...grpc.CallOption) (*aristapb.RunShowCmdResponse, error) {
-				resp := arista.IPInterfacesBriefResponse{
-					Interfaces: map[string]arista.IPInterfaceBrief{
-						"TunnelX": {
-							InterfaceStatus:    arista.IPInterfaceInterfaceStatusConnected,
-							LineProtocolStatus: arista.IPInterfaceLineProtocolStatusUp,
-							InterfaceAddress: arista.IPInterfaceAddress{
-								IPAddr: arista.IPInterfaceAddressIPAddr{
-									Address: "10.2.2.0",
-									MaskLen: 31,
-								},
-							},
-						},
-					},
-				}
-				j, _ := json.Marshal(resp)
-				return &aristapb.RunShowCmdResponse{
-					Response: &aristapb.EapiResponse{Success: true, Responses: []string{string(j)}},
-				}, nil
-			},
-		}
-
 		cfg := &telemetry.LedgerPeerDiscoveryConfig{
-			Logger:           log,
-			LocalDevicePK:    localDevicePK,
-			ProgramClient:    serviceabilityProgram,
-			AristaEAPIClient: arista.NewEAPIClient(log, aristaEAPIClient),
-			TWAMPPort:        1234,
-			RefreshInterval:  50 * time.Millisecond,
+			Logger:        log,
+			LocalDevicePK: localDevicePK,
+			ProgramClient: serviceabilityProgram,
+			LocalNet: &netutil.MockLocalNet{
+				InterfacesFunc: func() ([]netutil.Interface, error) {
+					return []netutil.Interface{
+						{Name: "tunX", Addrs: []net.Addr{&net.IPNet{IP: ipv4([4]uint8{10, 2, 2, 0}), Mask: net.CIDRMask(31, 32)}}},
+					}, nil
+				},
+			},
+			TWAMPPort:       1234,
+			RefreshInterval: 50 * time.Millisecond,
 		}
 
 		peerDiscovery, err := telemetry.NewLedgerPeerDiscovery(cfg)
@@ -355,28 +309,16 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 			TWAMPPort:       12345,
 			RefreshInterval: 50 * time.Millisecond,
 			ProgramClient:   serviceabilityProgram,
-			AristaEAPIClient: arista.NewEAPIClient(log, &arista.MockEAPIClient{
-				RunShowCmdFunc: func(ctx context.Context, req *aristapb.RunShowCmdRequest, opts ...grpc.CallOption) (*aristapb.RunShowCmdResponse, error) {
-					resp := arista.IPInterfacesBriefResponse{
-						Interfaces: map[string]arista.IPInterfaceBrief{
-							"TunnelX": {
-								InterfaceStatus:    arista.IPInterfaceInterfaceStatusConnected,
-								LineProtocolStatus: arista.IPInterfaceLineProtocolStatusUp,
-								InterfaceAddress: arista.IPInterfaceAddress{
-									IPAddr: arista.IPInterfaceAddressIPAddr{
-										Address: "10.1.1.0",
-										MaskLen: 31,
-									},
-								},
-							},
-						},
-					}
-					j, _ := json.Marshal(resp)
-					return &aristapb.RunShowCmdResponse{
-						Response: &aristapb.EapiResponse{Success: true, Responses: []string{string(j)}},
+			LocalNet: &netutil.MockLocalNet{
+				InterfacesFunc: func() ([]netutil.Interface, error) {
+					return []netutil.Interface{
+						{Name: "tunX", Addrs: []net.Addr{
+							&net.IPNet{IP: ipv4([4]uint8{10, 1, 1, 0}), Mask: net.CIDRMask(31, 32)},
+							&net.IPNet{IP: ipv4([4]uint8{10, 1, 1, 1}), Mask: net.CIDRMask(31, 32)},
+						}},
 					}, nil
 				},
-			}),
+			},
 		}
 
 		peers, err := telemetry.NewLedgerPeerDiscovery(config)
@@ -433,11 +375,11 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 					return []serviceability.Link{}
 				},
 			},
-			AristaEAPIClient: arista.NewEAPIClient(log, &arista.MockEAPIClient{
-				RunShowCmdFunc: func(ctx context.Context, req *aristapb.RunShowCmdRequest, opts ...grpc.CallOption) (*aristapb.RunShowCmdResponse, error) {
-					return nil, nil
+			LocalNet: &netutil.MockLocalNet{
+				InterfacesFunc: func() ([]netutil.Interface, error) {
+					return []netutil.Interface{}, nil
 				},
-			}),
+			},
 		}
 
 		cfg := valid
@@ -453,8 +395,8 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 		base(cfg, "nil serviceability client")
 
 		cfg = valid
-		cfg.AristaEAPIClient = nil
-		base(cfg, "nil arista EAPI client")
+		cfg.LocalNet = nil
+		base(cfg, "nil local net")
 
 		cfg = valid
 		cfg.TWAMPPort = 0

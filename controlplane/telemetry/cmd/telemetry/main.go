@@ -12,14 +12,11 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
-	"github.com/malbeclabs/doublezero/controlplane/agent/pkg/arista"
-	aristapb "github.com/malbeclabs/doublezero/controlplane/proto/arista/gen/pb-go/arista/EosSdkRpc"
+	netutil "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/net"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	sdktelemetry "github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 const (
@@ -155,20 +152,15 @@ func main() {
 		log.Error("failed to create serviceability client", "error", err)
 		os.Exit(1)
 	}
-	eapiRPCConn, err := grpc.NewClient(defaultAristaEAPIGRPCAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		log.Error("failed to create arista eapi client", "error", err)
-		os.Exit(1)
-	}
-	aristaEAPIClient := arista.NewEAPIClient(log, aristapb.NewEapiMgrServiceClient(eapiRPCConn))
+	localNet := netutil.NewLocalNet(log)
 	peerDiscovery, err := telemetry.NewLedgerPeerDiscovery(
 		&telemetry.LedgerPeerDiscoveryConfig{
-			Logger:           log,
-			LocalDevicePK:    localDevicePK,
-			ProgramClient:    serviceabilityClient,
-			AristaEAPIClient: aristaEAPIClient,
-			TWAMPPort:        uint16(*twampListenPort),
-			RefreshInterval:  *peersRefreshInterval,
+			Logger:          log,
+			LocalDevicePK:   localDevicePK,
+			ProgramClient:   serviceabilityClient,
+			LocalNet:        localNet,
+			TWAMPPort:       uint16(*twampListenPort),
+			RefreshInterval: *peersRefreshInterval,
 		},
 	)
 	if err != nil {

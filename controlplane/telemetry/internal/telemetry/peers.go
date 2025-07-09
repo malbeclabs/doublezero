@@ -11,18 +11,19 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
-	"github.com/malbeclabs/doublezero/controlplane/agent/pkg/arista"
+	netutil "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/net"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
 type Peer struct {
-	LinkPK     solana.PublicKey
-	DevicePK   solana.PublicKey
-	DeviceAddr *net.UDPAddr
+	LinkPK    solana.PublicKey
+	DevicePK  solana.PublicKey
+	Tunnel    *netutil.LocalTunnel
+	TWAMPPort uint16
 }
 
 func (p *Peer) String() string {
-	return fmt.Sprintf("device=%s,addr=%s,link=%s", p.DevicePK.String(), p.DeviceAddr.String(), p.LinkPK.String())
+	return fmt.Sprintf("device=%s,addr=%s,link=%s", p.DevicePK.String(), p.Tunnel.TargetIP.String(), p.LinkPK.String())
 }
 
 type PeerDiscovery interface {
@@ -31,12 +32,12 @@ type PeerDiscovery interface {
 }
 
 type LedgerPeerDiscoveryConfig struct {
-	Logger           *slog.Logger
-	LocalDevicePK    solana.PublicKey
-	ProgramClient    ServiceabilityProgramClient
-	AristaEAPIClient *arista.EAPIClient
-	TWAMPPort        uint16
-	RefreshInterval  time.Duration
+	Logger          *slog.Logger
+	LocalDevicePK   solana.PublicKey
+	ProgramClient   ServiceabilityProgramClient
+	LocalNet        netutil.LocalNet
+	TWAMPPort       uint16
+	RefreshInterval time.Duration
 }
 
 // ledgerPeerDiscovery implements the PeerDiscovery interface by periodically
@@ -66,8 +67,8 @@ func NewLedgerPeerDiscovery(cfg *LedgerPeerDiscoveryConfig) (*ledgerPeerDiscover
 	if cfg.ProgramClient == nil {
 		return nil, errors.New("ProgramClient is required")
 	}
-	if cfg.AristaEAPIClient == nil {
-		return nil, errors.New("AristaEAPIClient is required")
+	if cfg.LocalNet == nil {
+		return nil, errors.New("LocalNet is required")
 	}
 	if cfg.TWAMPPort == 0 {
 		return nil, errors.New("TWAMPPort is required")
@@ -130,10 +131,10 @@ func (p *ledgerPeerDiscovery) refresh(ctx context.Context) error {
 		links[pubkey.String()] = link
 	}
 
-	// Get the local tunnel target IPs from the Arista EAPI client.
-	localTunnelTargetIP4s, err := p.config.AristaEAPIClient.GetLocalTunnelTargetIPs(ctx)
+	// Get all local interfaces.
+	interfaces, err := p.config.LocalNet.Interfaces()
 	if err != nil {
-		return fmt.Errorf("failed to get local tunnel ips: %w", err)
+		return fmt.Errorf("failed to get local interfaces: %w", err)
 	}
 
 	peers := make([]*Peer, 0)
@@ -166,36 +167,31 @@ func (p *ledgerPeerDiscovery) refresh(ctx context.Context) error {
 			continue
 		}
 
-		tunnelNet := bytesToIP4Net(link.TunnelNet)
-
 		// Find a local tunnel target IP that is within the link's tunnel net, and use it as the
 		// target IP for the peer.
 		// NOTE: This is a workaround to get the target IP for the peer until the specific tunnel
 		// IP for each side is saved onchain with the link.
-		var targetIP net.IP
-		for _, localTunnelIP := range localTunnelTargetIP4s {
-			if tunnelNet.Contains(localTunnelIP) {
-				targetIP = localTunnelIP
-				break
-			}
+		tunnelNet := bytesToIP4Net(link.TunnelNet)
+		tunnel, err := netutil.FindLocalTunnel(interfaces, tunnelNet)
+		if err != nil {
+			p.log.Debug("Failed to find local tunnel interface", "error", err, "linkPubkey", linkPubkey, "targetDevicePubKey", remote, "tunnelNet", tunnelNet)
+			continue
 		}
-		if targetIP == nil {
-			p.log.Debug("Target ip not found for link", "linkPubkey", linkPubkey, "targetDevicePubKey", remote, "tunnelNet", tunnelNet, "localTunnelTargetIP4s", localTunnelTargetIP4s)
+		if tunnel == nil {
+			p.log.Debug("Failed to find local tunnel interface", "linkPubkey", linkPubkey, "targetDevicePubKey", remote, "tunnelNet", tunnelNet)
 			continue
 		}
 
 		peers = append(peers, &Peer{
-			LinkPK:   linkPubkey,
-			DevicePK: solana.PublicKeyFromBytes(device.PubKey[:]),
-			DeviceAddr: &net.UDPAddr{
-				IP:   targetIP,
-				Port: int(p.config.TWAMPPort),
-			},
+			LinkPK:    linkPubkey,
+			DevicePK:  solana.PublicKeyFromBytes(device.PubKey[:]),
+			Tunnel:    tunnel,
+			TWAMPPort: p.config.TWAMPPort,
 		})
 	}
 
 	p.peers = peers
-	p.log.Debug("Refreshed peers", "devices", len(devices), "links", len(links), "peers", len(peers), "localTunnelTargetIP4s", len(localTunnelTargetIP4s))
+	p.log.Debug("Refreshed peers", "devices", len(devices), "links", len(links), "peers", len(peers))
 
 	return nil
 }

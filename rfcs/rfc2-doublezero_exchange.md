@@ -83,13 +83,13 @@ Figure 1: DZX Topology Options
 
 ### 7280CR3A port speed options: 
 
-<img src="rfc2/images/DZX-Arista7280-PortOptions.png" alt="DZX Option 1 Arista 7280 Port Options" width="600" />
+<img src="rfc2/images/DZX-Arista7280-PortOptions.png" alt="DZX Option 1 Arista 7280 Port Options" style="max-width: 100%;" />
 
 [Arista 7280 Datasheet](https://www.arista.com/assets/data/pdf/Datasheets/7280R3A-Datasheet.pdf) 
 
 ### DZX Logical Topology
 
-<img src="rfc2/images/DZX-Logical-Combined.png" alt="DZX Logical" width="1700" height="450"/>
+<img src="rfc2/images/DZX-Logical-Combined.png" alt="DZX Logical" style="max-width: 100%;"/>
 
 Figure 2: DZX Logical Layer 2
 

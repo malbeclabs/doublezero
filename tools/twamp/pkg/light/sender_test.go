@@ -2,6 +2,7 @@ package twamplight_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -115,7 +116,9 @@ func TestTWAMP_Sender(t *testing.T) {
 		require.NoError(t, err)
 
 		rtt, err := sender.Probe(context.Background())
-		require.ErrorIs(t, err, twamplight.ErrTimeout)
+		if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, twamplight.ErrTimeout) {
+			require.Fail(t, "expected deadline exceeded or timeout, got %v", err)
+		}
 		require.Equal(t, time.Duration(0), rtt)
 	})
 

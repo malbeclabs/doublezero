@@ -89,7 +89,15 @@ func (s *sender) Probe(ctx context.Context) (time.Duration, error) {
 	start := s.reader.Now()
 
 	// Configure read and write deadlines.
-	if deadline, ok := ctx.Deadline(); ok {
+	if s.timeout > 0 {
+		deadline := time.Now().Add(s.timeout)
+		if err := s.conn.SetReadDeadline(deadline); err != nil {
+			return 0, fmt.Errorf("error setting read deadline: %w", err)
+		}
+		if err := s.conn.SetWriteDeadline(deadline); err != nil {
+			return 0, fmt.Errorf("error setting write deadline: %w", err)
+		}
+	} else if deadline, ok := ctx.Deadline(); ok {
 		if err := s.conn.SetReadDeadline(deadline); err != nil {
 			return 0, fmt.Errorf("error setting read deadline: %w", err)
 		}

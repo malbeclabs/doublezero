@@ -89,7 +89,7 @@ Figure 1: DZX Topology Options
 
 ### DZX Logical Topology
 
-<img src="rfc2/images/DZX-Logical-Combined.png" alt="DZX Logical" style="max-width: 100%;"/>
+<img src="rfc2/images/DZX-Logical-Combined.png" alt="DZX Logical" width="1700" height="1000"/>
 
 Figure 2: DZX Logical Layer 2
 

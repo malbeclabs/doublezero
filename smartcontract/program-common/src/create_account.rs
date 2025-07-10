@@ -24,7 +24,7 @@ pub fn try_create_account(
     accounts: &[AccountInfo],
     new_account_signer_seeds: &[&[u8]],
 ) -> ProgramResult {
-    let lamports = Rent::get().unwrap().minimum_balance(data_len);
+    let lamports = Rent::get().expect("Unable to get rent").minimum_balance(data_len);
 
     if current_lamports == 0 {
         let create_account_ix = system_instruction::create_account(

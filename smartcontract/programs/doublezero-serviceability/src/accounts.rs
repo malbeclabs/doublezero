@@ -1,4 +1,5 @@
 use borsh::BorshSerialize;
+use doublezero_program_common::create_account::try_create_account;
 use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
@@ -34,16 +35,14 @@ pub fn write_account<'a, D: BorshSerialize + AccountSize + AccountSeed>(
     data.seed(&mut seed);
 
     if account.try_borrow_data()?.is_empty() {
-        invoke_signed(
-            &system_instruction::create_account(
-                payer.key,
-                account.key,
-                required_lamports,
-                required_space as u64,
-                program_id,
-            ),
+        try_create_account(
+            payer.key,
+            account.key,
+            account.lamports(),
+            required_space,
+            program_id,
             &[account.clone(), payer.clone(), system_program.clone()],
-            &[&[seed.as_slice()]],
+            &[seed.as_slice()],
         )?;
     } else {
         // If the account is already initialized, we need to check if it has enough space

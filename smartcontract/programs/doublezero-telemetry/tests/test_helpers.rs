@@ -49,8 +49,6 @@ use solana_sdk::{
     transaction::{Transaction, TransactionError, VersionedTransaction},
 };
 
-use solana_system_interface;
-
 #[ctor::ctor]
 fn init_logger() {
     static ONCE: std::sync::Once = std::sync::Once::new();

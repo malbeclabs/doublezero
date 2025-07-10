@@ -8,6 +8,7 @@ members = [
     "smartcontract/programs/doublezero-serviceability",
     "smartcontract/programs/doublezero-telemetry",
     "smartcontract/doublezero-payment-tracker",
+    "smartcontract/program-common",
 ]
 default-members = []
 exclude = []

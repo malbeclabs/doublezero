@@ -1536,6 +1536,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "doublezero-program-common"
+version = "0.2.2"
+dependencies = [
+ "solana-program",
+]
+
+[[package]]
 name = "doublezero-serviceability"
 version = "0.2.2"
 dependencies = [

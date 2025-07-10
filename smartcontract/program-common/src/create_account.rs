@@ -24,7 +24,7 @@ pub fn try_create_account(
     accounts: &[AccountInfo],
     new_account_signer_seeds: &[&[u8]],
 ) -> ProgramResult {
-    let lamports = Rent::get()
+    let rent_exemption_lamports = Rent::get()
         .expect("Unable to get rent")
         .minimum_balance(data_len);
 
@@ -32,7 +32,7 @@ pub fn try_create_account(
         let create_account_ix = system_instruction::create_account(
             payer_key,
             new_account_key,
-            lamports,
+            rent_exemption_lamports,
             data_len as u64,
             program_id,
         );
@@ -44,7 +44,7 @@ pub fn try_create_account(
         let assign_ix = system_instruction::assign(new_account_key, program_id);
         invoke_signed_unchecked(&assign_ix, accounts, &[new_account_signer_seeds])?;
 
-        let lamport_diff = lamports.saturating_sub(current_lamports);
+        let lamport_diff = rent_exemption_lamports.saturating_sub(current_lamports);
 
         // Transfer as much as we need for this account to be rent-exempt.
         if lamport_diff != 0 {

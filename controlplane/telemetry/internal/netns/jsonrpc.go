@@ -3,6 +3,7 @@ package netns
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"errors"
 	"io"
 	"net"
@@ -76,6 +77,7 @@ func NewNamespacedJSONRPCClient(url string, namespace string, opts *JSONRPCClien
 // single-request usage patterns where full-featured HTTP transport is unnecessary.
 type SingleThreadTransport struct {
 	DialContext func(ctx context.Context, network, addr string) (net.Conn, error)
+	TLSConfig   *tls.Config
 }
 
 func (t *SingleThreadTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -85,9 +87,28 @@ func (t *SingleThreadTransport) RoundTrip(req *http.Request) (*http.Response, er
 
 	addr := canonicalAddr(req.URL)
 
-	conn, err := t.DialContext(req.Context(), "tcp", addr)
+	rawConn, err := t.DialContext(req.Context(), "tcp", addr)
 	if err != nil {
 		return nil, err
+	}
+
+	var conn net.Conn
+	if req.URL.Scheme == "https" {
+		tlsConf := t.TLSConfig
+		if tlsConf == nil {
+			tlsConf = &tls.Config{ServerName: req.URL.Hostname()}
+		} else if tlsConf.ServerName == "" {
+			tlsConf = tlsConf.Clone()
+			tlsConf.ServerName = req.URL.Hostname()
+		}
+		tlsConn := tls.Client(rawConn, tlsConf)
+		if err := tlsConn.Handshake(); err != nil {
+			rawConn.Close()
+			return nil, err
+		}
+		conn = tlsConn
+	} else {
+		conn = rawConn
 	}
 
 	// Write the HTTP request manually

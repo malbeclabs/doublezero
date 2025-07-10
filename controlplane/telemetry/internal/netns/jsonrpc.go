@@ -44,8 +44,10 @@ func NewNamespacedJSONRPCClient(url string, namespace string, opts *JSONRPCClien
 			err := RunInNamespace(namespace, func() error {
 				var dialErr error
 				conn, dialErr = (&net.Dialer{
-					Timeout:       opts.DialTimeout,
-					KeepAlive:     opts.DialKeepAlive,
+					Timeout:   opts.DialTimeout,
+					KeepAlive: opts.DialKeepAlive,
+					// Disable DualStack and FallbackDelay to avoid "Happy Eyeballs" behavior,
+					// which races IPv6 and IPv4 connection attempts in separate goroutines.
 					DualStack:     false,
 					FallbackDelay: -1,
 				}).DialContext(ctx, network, address)

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
-	netutil "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/net"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netutil"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
@@ -23,7 +23,11 @@ type Peer struct {
 }
 
 func (p *Peer) String() string {
-	return fmt.Sprintf("device=%s,addr=%s,link=%s", p.DevicePK.String(), p.Tunnel.TargetIP.String(), p.LinkPK.String())
+	targetIP := ""
+	if p.Tunnel != nil {
+		targetIP = p.Tunnel.TargetIP.String()
+	}
+	return fmt.Sprintf("device=%s,addr=%s,link=%s", p.DevicePK.String(), targetIP, p.LinkPK.String())
 }
 
 type PeerDiscovery interface {
@@ -85,7 +89,7 @@ func NewLedgerPeerDiscovery(cfg *LedgerPeerDiscoveryConfig) (*ledgerPeerDiscover
 }
 
 func (p *ledgerPeerDiscovery) Run(ctx context.Context) error {
-	p.log.Info("Starting peer discovery")
+	p.log.Info("Starting peer discovery", "refreshInterval", p.config.RefreshInterval)
 	ticker := time.NewTicker(p.config.RefreshInterval)
 	defer ticker.Stop()
 
@@ -173,14 +177,12 @@ func (p *ledgerPeerDiscovery) refresh(ctx context.Context) error {
 		// IP for each side is saved onchain with the link.
 		tunnelNet := bytesToIP4Net(link.TunnelNet)
 		tunnel, err := netutil.FindLocalTunnel(interfaces, tunnelNet)
-		if err != nil {
+		if err != nil && !errors.Is(err, netutil.ErrLocalTunnelNotFound) {
 			p.log.Debug("Failed to find local tunnel interface", "error", err, "linkPubkey", linkPubkey, "targetDevicePubKey", remote, "tunnelNet", tunnelNet)
 			continue
 		}
-		if tunnel == nil {
-			p.log.Debug("Failed to find local tunnel interface", "linkPubkey", linkPubkey, "targetDevicePubKey", remote, "tunnelNet", tunnelNet)
-			continue
-		}
+		// NOTE: If the tunnel was not found, it will be nil here, so downstream usage should check
+		// for that.
 
 		peers = append(peers, &Peer{
 			LinkPK:    linkPubkey,

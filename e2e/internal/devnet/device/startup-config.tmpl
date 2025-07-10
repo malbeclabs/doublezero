@@ -10,8 +10,15 @@ service configuration session commit merge
 vrf instance vrf1
 ip routing vrf vrf1
 !
+{{- if .ManagementNS }}
+vrf instance management
+ip routing vrf management
+ip route vrf management 0.0.0.0/0 {{.DefaultNetworkGateway}}
+ip name-server vrf management 8.8.8.8
+!
+{{- end }}
 daemon doublezero-agent
-   exec /mnt/flash/doublezero-agent {{.AgentCommandArgs}}
+   exec /mnt/flash/start-config-agent.sh {{.AgentCommandArgs}}
    no shutdown
 !
 {{- if .TelemetryEnabled }}
@@ -20,19 +27,32 @@ daemon doublezero-telemetry
    no shutdown
 !
 {{- end }}
+ip access-list standard allow-all
+   permit any
+!
 management api http-commands
    protocol http
-   ip access-group 0.0.0.0/0
+{{- if not .ManagementNS }}
+   ip access-group allow-all
+{{- end }}
    no shutdown
+{{- if .ManagementNS }}
+   vrf management
+      ip access-group allow-all
+      no shutdown
+{{- end }}
 !
 management api eos-sdk-rpc
    transport grpc foo
-      localhost loopback
+      localhost loopback {{- if .ManagementNS }}vrf management{{- end }}
       service all
       no disabled
 !
 management api gnmi
    transport grpc gnmi
+{{- if .ManagementNS }}
+   vrf management
+{{- end }}
 !
 no service interface inactive port-id allocation disabled
 !
@@ -64,6 +84,9 @@ interface Ethernet1
    ip address {{.CYOANetworkIP}}/{{.CYOANetworkCIDRPrefix}}
 !
 interface Management0
+{{- if .ManagementNS }}
+   vrf management
+{{- end }}
    no shutdown
    ip address {{.DefaultNetworkIP}}/{{.DefaultNetworkCIDRPrefix}}
 !

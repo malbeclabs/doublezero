@@ -80,12 +80,16 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 			CYOANetworkIPHostID:          8,
 			CYOANetworkAllocatablePrefix: 29,
 			Telemetry: devnet.DeviceTelemetrySpec{
-				Enabled:              true,
-				KeypairPath:          telemetryKeypairPath,
+				Enabled:     true,
+				KeypairPath: telemetryKeypairPath,
+				// NOTE: We intentionally do not set the management namespace here, so that we can
+				// test the case where a device does not use one.
+				ManagementNS:         "",
 				TWAMPListenPort:      862,
 				ProbeInterval:        1 * time.Second,
 				SubmissionInterval:   5 * time.Second,
 				PeersRefreshInterval: 5 * time.Second,
+				Verbose:              true,
 			},
 		})
 		require.NoError(t, err)
@@ -116,10 +120,12 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 			Telemetry: devnet.DeviceTelemetrySpec{
 				Enabled:              true,
 				KeypairPath:          telemetryKeypairPath,
+				ManagementNS:         "ns-management",
 				TWAMPListenPort:      862,
 				ProbeInterval:        1 * time.Second,
 				SubmissionInterval:   5 * time.Second,
 				PeersRefreshInterval: 5 * time.Second,
+				Verbose:              true,
 			},
 		})
 		require.NoError(t, err)

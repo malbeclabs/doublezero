@@ -11,8 +11,9 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
-	"github.com/gagliardetto/solana-go/rpc"
-	netutil "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/net"
+	solanarpc "github.com/gagliardetto/solana-go/rpc"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netns"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netutil"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	sdktelemetry "github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
@@ -30,6 +31,8 @@ const (
 	defaultProgramId             = ""
 	defaultLocalDevicePubkey     = ""
 	defaultAristaEAPIGRPCAddress = "127.0.0.1:9543"
+
+	waitForNamespaceTimeout = 30 * time.Second
 )
 
 var version = "dev"
@@ -46,6 +49,7 @@ var (
 	twampSenderTimeout      = flag.Duration("twamp-sender-timeout", defaultTWAMPSenderTimeout, "the timeout for sending twamp probes")
 	twampReflectorTimeout   = flag.Duration("twamp-reflector-timeout", defaultTWAMPReflectorTimeout, "the timeout for the twamp reflector")
 	peersRefreshInterval    = flag.Duration("peers-refresh-interval", defaultPeersRefreshInterval, "the interval to refresh the peer discovery")
+	managementNamespace     = flag.String("management-namespace", "", "the name of the management namespace to use for ledger communication. If not provided, the default namespace will be used. (default: '')")
 	verbose                 = flag.Bool("verbose", false, "enable verbose logging")
 	showVersion             = flag.Bool("version", false, "print version and exit")
 )
@@ -140,16 +144,29 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Build solana RPC client.
+	var rpcClient *solanarpc.Client
+	if *managementNamespace != "" {
+		_, err := netns.WaitForNamespace(log, *managementNamespace, waitForNamespaceTimeout)
+		if err != nil {
+			log.Error("failed to wait for namespace", "error", err)
+			os.Exit(1)
+		}
+
+		jsonrpcClient, err := netns.NewNamespacedJSONRPCClient(*ledgerRPCURL, *managementNamespace, nil)
+		if err != nil {
+			log.Error("failed to create namespace-safe solana RPC client", "error", err)
+			os.Exit(1)
+		}
+		rpcClient = solanarpc.NewWithCustomRPCClient(jsonrpcClient)
+	} else {
+		rpcClient = solanarpc.New(*ledgerRPCURL)
+	}
+
 	// Set up real peer discovery.
 	serviceabilityProgramID, err := solana.PublicKeyFromBase58(*serviceabilityProgramID)
 	if err != nil {
 		log.Error("failed to parse program ID", "error", err)
-		os.Exit(1)
-	}
-	rpcClient := rpc.New(*ledgerRPCURL)
-	serviceabilityClient := serviceability.New(rpcClient, serviceabilityProgramID)
-	if err != nil {
-		log.Error("failed to create serviceability client", "error", err)
 		os.Exit(1)
 	}
 	localNet := netutil.NewLocalNet(log)
@@ -157,7 +174,7 @@ func main() {
 		&telemetry.LedgerPeerDiscoveryConfig{
 			Logger:          log,
 			LocalDevicePK:   localDevicePK,
-			ProgramClient:   serviceabilityClient,
+			ProgramClient:   serviceability.New(rpcClient, serviceabilityProgramID),
 			LocalNet:        localNet,
 			TWAMPPort:       uint16(*twampListenPort),
 			RefreshInterval: *peersRefreshInterval,
@@ -174,7 +191,6 @@ func main() {
 		log.Error("failed to parse program ID", "error", err)
 		os.Exit(1)
 	}
-	telemetryClient := sdktelemetry.New(log, rpcClient, &keypair, telemetryProgramID)
 
 	// Initialize collector.
 	collector, err := telemetry.New(log, telemetry.Config{
@@ -185,7 +201,7 @@ func main() {
 		TWAMPSenderTimeout:     *twampSenderTimeout,
 		TWAMPReflector:         reflector,
 		PeerDiscovery:          peerDiscovery,
-		TelemetryProgramClient: telemetryClient,
+		TelemetryProgramClient: sdktelemetry.New(log, rpcClient, &keypair, telemetryProgramID),
 	})
 	if err != nil {
 		log.Error("failed to create telemetry collector", "error", err)

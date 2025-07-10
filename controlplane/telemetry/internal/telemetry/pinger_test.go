@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
-	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/net"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netutil"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 	"github.com/stretchr/testify/assert"
@@ -37,7 +37,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 			{
 				DevicePK: peerPK,
 				LinkPK:   linkPK,
-				Tunnel: &net.LocalTunnel{
+				Tunnel: &netutil.LocalTunnel{
 					Interface: "tun1-2",
 					SourceIP:  ipv4([4]uint8{127, 0, 0, 1}),
 					TargetIP:  ipv4([4]uint8{127, 0, 0, 2}),
@@ -73,6 +73,45 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 		assert.Equal(t, 42*time.Millisecond, s[0].RTT)
 	})
 
+	t.Run("records loss when tunnel is nil", func(t *testing.T) {
+		t.Parallel()
+
+		devicePK := newPK(4)
+		peerPK := newPK(5)
+		linkPK := newPK(6)
+
+		mockPeers := newMockPeerDiscovery()
+		mockPeers.UpdatePeers(t, []*telemetry.Peer{
+			{
+				DevicePK: peerPK,
+				LinkPK:   linkPK,
+				Tunnel:   nil,
+			},
+		})
+
+		buffer := telemetry.NewAccountsBuffer()
+		pinger := telemetry.NewPinger(slog.Default(), &telemetry.PingerConfig{
+			LocalDevicePK: devicePK,
+			Peers:         mockPeers,
+			Buffer:        buffer,
+			GetSender:     func(_ context.Context, _ *telemetry.Peer) twamplight.Sender { return nil },
+		})
+
+		pinger.Tick(context.Background())
+
+		samples := buffer.FlushWithoutReset()
+		var found bool
+		for key, val := range samples {
+			if key.OriginDevicePK == devicePK && key.TargetDevicePK == peerPK && key.LinkPK == linkPK {
+				require.Len(t, val, 1)
+				assert.True(t, val[0].Loss)
+				assert.Zero(t, val[0].RTT)
+				found = true
+			}
+		}
+		assert.True(t, found, "expected loss sample for peer")
+	})
+
 	t.Run("records loss when sender is nil", func(t *testing.T) {
 		t.Parallel()
 
@@ -85,7 +124,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 			{
 				DevicePK: peerPK,
 				LinkPK:   linkPK,
-				Tunnel: &net.LocalTunnel{
+				Tunnel: &netutil.LocalTunnel{
 					Interface: "tun1-2",
 					SourceIP:  ipv4([4]uint8{127, 0, 0, 1}),
 					TargetIP:  ipv4([4]uint8{127, 0, 0, 2}),
@@ -128,7 +167,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 			{
 				DevicePK: peerPK,
 				LinkPK:   linkPK,
-				Tunnel: &net.LocalTunnel{
+				Tunnel: &netutil.LocalTunnel{
 					Interface: "tun1-2",
 					SourceIP:  ipv4([4]uint8{127, 0, 0, 1}),
 					TargetIP:  ipv4([4]uint8{127, 0, 0, 2}),

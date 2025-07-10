@@ -1,8 +1,13 @@
-package net
+package netutil
 
 import (
+	"errors"
 	"fmt"
 	"net"
+)
+
+var (
+	ErrLocalTunnelNotFound = errors.New("no local tunnel found")
 )
 
 type LocalTunnel struct {
@@ -51,7 +56,7 @@ func FindLocalTunnel(interfaces []Interface, tunnelNet *net.IPNet) (*LocalTunnel
 		}
 	}
 
-	return nil, fmt.Errorf("no local tunnel found for subnet %s", tunnelNet)
+	return nil, ErrLocalTunnelNotFound
 }
 
 func getPeerIPIn31(ipStr string) (net.IP, error) {

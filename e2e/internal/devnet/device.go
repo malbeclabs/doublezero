@@ -82,6 +82,10 @@ type DeviceTelemetrySpec struct {
 	// PeersRefreshInterval is the interval at which to refresh peers.
 	PeersRefreshInterval time.Duration
 
+	// ManagementNS is the name of the management namespace to use for ledger communication.
+	// If not provided, the default namespace will be used.
+	ManagementNS string
+
 	// Verbose is whether to enable verbose logging.
 	Verbose bool
 }
@@ -274,6 +278,11 @@ func (d *Device) Start(ctx context.Context) error {
 		}
 	}
 
+	env := map[string]string{}
+	if spec.Telemetry.ManagementNS != "" {
+		env["DZ_MANAGEMENT_NAMESPACE"] = spec.Telemetry.ManagementNS
+	}
+
 	// Create the device container, but don't start it yet.
 	req := testcontainers.ContainerRequest{
 		Image: spec.ContainerImage,
@@ -295,6 +304,7 @@ func (d *Device) Start(ctx context.Context) error {
 			Memory:   deviceContainerMemory,
 		},
 		Labels: d.dn.labels,
+		Env:    env,
 	}
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
@@ -327,6 +337,7 @@ func (d *Device) Start(ctx context.Context) error {
 		return fmt.Errorf("default network not found for container %s", container.GetContainerID())
 	}
 	defaultNetworkCIDRPrefix := inspect.NetworkSettings.Networks[d.dn.DefaultNetwork.Name].IPPrefixLen
+	defaultNetworkGateway := inspect.NetworkSettings.Networks[d.dn.DefaultNetwork.Name].Gateway
 
 	telemetryCommandArgs := []string{
 		"-ledger-rpc-url", d.dn.Ledger.InternalIPRPCURL,
@@ -334,10 +345,21 @@ func (d *Device) Start(ctx context.Context) error {
 		"-telemetry-program-id", d.dn.Ledger.dn.Manager.TelemetryProgramID,
 		"-keypair", containerTelemetryKeypairPath,
 		"-local-device-pubkey", onchainID,
-		"-twamp-listen-port", strconv.Itoa(int(spec.Telemetry.TWAMPListenPort)),
-		"-probe-interval", spec.Telemetry.ProbeInterval.String(),
-		"-submission-interval", spec.Telemetry.SubmissionInterval.String(),
-		"-peers-refresh-interval", spec.Telemetry.PeersRefreshInterval.String(),
+	}
+	if spec.Telemetry.TWAMPListenPort > 0 {
+		telemetryCommandArgs = append(telemetryCommandArgs, "-twamp-listen-port", strconv.Itoa(int(spec.Telemetry.TWAMPListenPort)))
+	}
+	if spec.Telemetry.ProbeInterval > 0 {
+		telemetryCommandArgs = append(telemetryCommandArgs, "-probe-interval", spec.Telemetry.ProbeInterval.String())
+	}
+	if spec.Telemetry.SubmissionInterval > 0 {
+		telemetryCommandArgs = append(telemetryCommandArgs, "-submission-interval", spec.Telemetry.SubmissionInterval.String())
+	}
+	if spec.Telemetry.PeersRefreshInterval > 0 {
+		telemetryCommandArgs = append(telemetryCommandArgs, "-peers-refresh-interval", spec.Telemetry.PeersRefreshInterval.String())
+	}
+	if spec.Telemetry.ManagementNS != "" {
+		telemetryCommandArgs = append(telemetryCommandArgs, "-management-namespace", spec.Telemetry.ManagementNS)
 	}
 	if spec.Telemetry.Verbose {
 		telemetryCommandArgs = append(telemetryCommandArgs, "-verbose")
@@ -372,6 +394,8 @@ func (d *Device) Start(ctx context.Context) error {
 		"CYOANetworkCIDRPrefix":    strconv.Itoa(d.dn.Spec.CYOANetwork.CIDRPrefix),
 		"DefaultNetworkIP":         defaultNetworkIP,
 		"DefaultNetworkCIDRPrefix": strconv.Itoa(defaultNetworkCIDRPrefix),
+		"DefaultNetworkGateway":    defaultNetworkGateway,
+		"ManagementNS":             spec.Telemetry.ManagementNS,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to execute template: %w", err)

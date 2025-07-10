@@ -364,6 +364,22 @@ func (d *Devnet) Start(ctx context.Context, buildConfig *BuildConfig) error {
 }
 
 func (d *Devnet) AddDevice(ctx context.Context, spec DeviceSpec) (*Device, error) {
+	// If the telemetry keypair path is not provided, generate a new keypair or use an existing one
+	// in the deploy directory if it exists.
+	if spec.Telemetry.KeypairPath == "" {
+		telemetryKeypairPath := filepath.Join(d.Spec.DeployDir, "device-"+spec.Code+"-telemetry-keypair.json")
+		generated, err := generateKeypairIfNotExists(telemetryKeypairPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate telemetry keypair: %w", err)
+		}
+		spec.Telemetry.KeypairPath = telemetryKeypairPath
+		if generated {
+			d.log.Info("--> Generated telemetry keypair", "path", telemetryKeypairPath)
+		} else {
+			d.log.Info("--> Using existing telemetry keypair", "path", telemetryKeypairPath)
+		}
+	}
+
 	if err := spec.Validate(d.Spec.CYOANetwork); err != nil {
 		return nil, fmt.Errorf("failed to validate device spec: %w", err)
 	}

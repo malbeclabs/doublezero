@@ -29,8 +29,10 @@ var (
 	}
 )
 
-// NewNamespaceSafeJSONRPCClient creates a JSONRPC client that is safe to use in a
-// network namespace.
+// NewNamespaceSafeJSONRPCClient returns a JSON-RPC client that performs network
+// operations within the context of a given network namespace. It constructs a
+// custom HTTP transport using a single-threaded dialer wrapped in RunInNamespace,
+// allowing requests to be issued from inside the specified namespace.
 func NewNamespaceSafeJSONRPCClient(url string, namespace string, opts *JSONRPCClientOptions) (jsonrpc.RPCClient, error) {
 	if opts == nil {
 		opts = defaultJSONRPCClientOptions
@@ -65,6 +67,11 @@ func NewNamespaceSafeJSONRPCClient(url string, namespace string, opts *JSONRPCCl
 	return client, nil
 }
 
+// SingleThreadTransport is a minimal, non-concurrent HTTP transport that uses a
+// manually specified DialContext to establish TCP connections. It is designed for
+// environments like network namespaces where custom dialing logic is required.
+// It does not support connection reuse or pipelining and is intended for low-level,
+// single-request usage patterns where full-featured HTTP transport is unnecessary.
 type SingleThreadTransport struct {
 	DialContext func(ctx context.Context, network, addr string) (net.Conn, error)
 }

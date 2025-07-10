@@ -7,8 +7,14 @@ import (
 	"github.com/vishvananda/netns"
 )
 
-// RunInNamespace executes fn within the named network namespace.
-// It locks the OS thread, switches namespaces, restores the original namespace, and unlocks.
+// RunInNamespace executes the given function within the context of the specified
+// Linux network namespace. It locks the current OS thread, switches to the target
+// namespace using setns, invokes the function, and then restores the original
+// namespace. This allows thread-local operations like dialing sockets to be scoped
+// to a namespace without affecting the rest of the program.
+//
+// This is safe for use in single-threaded, short-lived operations; not safe for
+// concurrent use.
 func RunInNamespace(nsName string, fn func() error) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()

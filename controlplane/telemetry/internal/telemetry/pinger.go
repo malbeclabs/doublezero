@@ -69,6 +69,16 @@ func (p *Pinger) Tick(ctx context.Context) {
 				Epoch:          DeriveEpoch(ts),
 			}
 
+			if peer.Tunnel == nil {
+				p.log.Debug("Tunnel not found, recording loss", "device", peer.DevicePK.String(), "link", peer.LinkPK.String())
+				p.cfg.Buffer.Add(accountKey, Sample{
+					Timestamp: ts,
+					RTT:       0,
+					Loss:      true,
+				})
+				return
+			}
+
 			log := p.log.With("device", peer.DevicePK.String(), "link", peer.LinkPK.String(), "addr", peer.Tunnel.TargetIP.String())
 
 			sender := p.cfg.GetSender(ctx, peer)

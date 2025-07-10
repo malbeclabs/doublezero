@@ -143,6 +143,120 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 		requireUnorderedEqual(t, expected, peers.GetPeers())
 	})
 
+	t.Run("includes not found tunnel as nil tunnel", func(t *testing.T) {
+		t.Parallel()
+
+		log := log.With("test", t.Name())
+		localDevicePK := stringToPubkey("device1")
+
+		serviceabilityProgram := &mockServiceabilityProgramClient{
+			LoadFunc: func(ctx context.Context) error {
+				return nil
+			},
+			GetDevicesFunc: func() []serviceability.Device {
+				return []serviceability.Device{
+					{PubKey: localDevicePK, PublicIp: [4]uint8{192, 168, 1, 1}},
+					{PubKey: stringToPubkey("device2"), PublicIp: [4]uint8{192, 168, 1, 2}},
+					{PubKey: stringToPubkey("device3"), PublicIp: [4]uint8{192, 168, 1, 3}},
+					{PubKey: stringToPubkey("device4"), PublicIp: [4]uint8{192, 168, 1, 4}},
+				}
+			},
+			GetLinksFunc: func() []serviceability.Link {
+				return []serviceability.Link{
+					{PubKey: stringToPubkey("link_1-2"), Status: serviceability.LinkStatusActivated, SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device2"), TunnelNet: [5]uint8{10, 1, 1, 0, 31}},
+					{PubKey: stringToPubkey("link_1-3"), Status: serviceability.LinkStatusActivated, SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device3"), TunnelNet: [5]uint8{10, 1, 1, 2, 31}},
+					{PubKey: stringToPubkey("link_2-1"), Status: serviceability.LinkStatusActivated, SideAPubKey: stringToPubkey("device2"), SideZPubKey: localDevicePK, TunnelNet: [5]uint8{10, 1, 1, 5, 31}},
+					{PubKey: stringToPubkey("link_2-3"), Status: serviceability.LinkStatusActivated, SideAPubKey: stringToPubkey("device2"), SideZPubKey: stringToPubkey("device3"), TunnelNet: [5]uint8{10, 1, 1, 6, 31}},
+				}
+			},
+		}
+
+		localInterfaces := []netutil.Interface{
+			{
+				Name: "tun1-2",
+				Addrs: []net.Addr{
+					&net.IPNet{IP: ipv4([4]uint8{10, 1, 1, 0}), Mask: net.CIDRMask(31, 32)},
+				},
+			},
+			{
+				Name:  "tun1-3",
+				Addrs: []net.Addr{},
+			},
+			{
+				Name: "tun2-1",
+				Addrs: []net.Addr{
+					&net.IPNet{IP: ipv4([4]uint8{10, 1, 1, 5}), Mask: net.CIDRMask(31, 32)},
+				},
+			},
+			{
+				Name: "tunOther",
+				Addrs: []net.Addr{
+					&net.IPNet{IP: ipv4([4]uint8{10, 1, 1, 100}), Mask: net.CIDRMask(31, 32)},
+				},
+			},
+		}
+
+		config := &telemetry.LedgerPeerDiscoveryConfig{
+			Logger:          log,
+			LocalDevicePK:   localDevicePK,
+			TWAMPPort:       12345,
+			RefreshInterval: 100 * time.Millisecond,
+			ProgramClient:   serviceabilityProgram,
+			LocalNet: &netutil.MockLocalNet{
+				InterfacesFunc: func() ([]netutil.Interface, error) {
+					return localInterfaces, nil
+				},
+			},
+		}
+
+		peers, err := telemetry.NewLedgerPeerDiscovery(config)
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		errCh := make(chan error, 1)
+		go func() {
+			errCh <- peers.Run(ctx)
+		}()
+
+		require.Eventually(t, func() bool {
+			return len(peers.GetPeers()) == 3
+		}, 2*time.Second, 100*time.Millisecond)
+
+		cancel()
+		assert.NoError(t, <-errCh)
+
+		expected := []*telemetry.Peer{
+			{
+				LinkPK:   stringToPubkey("link_1-2"),
+				DevicePK: stringToPubkey("device2"),
+				Tunnel: &netutil.LocalTunnel{
+					Interface: "tun1-2",
+					SourceIP:  ipv4([4]uint8{10, 1, 1, 0}),
+					TargetIP:  ipv4([4]uint8{10, 1, 1, 1}),
+				},
+				TWAMPPort: 12345,
+			},
+			{
+				LinkPK:    stringToPubkey("link_1-3"),
+				DevicePK:  stringToPubkey("device3"),
+				Tunnel:    nil,
+				TWAMPPort: 12345,
+			},
+			{
+				LinkPK:   stringToPubkey("link_2-1"),
+				DevicePK: stringToPubkey("device2"),
+				Tunnel: &netutil.LocalTunnel{
+					Interface: "tun2-1",
+					SourceIP:  ipv4([4]uint8{10, 1, 1, 5}),
+					TargetIP:  ipv4([4]uint8{10, 1, 1, 4}),
+				},
+				TWAMPPort: 12345,
+			},
+		}
+
+		requireUnorderedEqual(t, expected, peers.GetPeers())
+	})
+
 	t.Run("skips pending links", func(t *testing.T) {
 		t.Parallel()
 

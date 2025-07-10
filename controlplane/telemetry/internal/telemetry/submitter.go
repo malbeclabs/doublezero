@@ -75,7 +75,14 @@ func (s *Submitter) SubmitSamples(ctx context.Context, accountKey AccountKey, sa
 			if sample.Loss {
 				rtts[j] = 0
 			} else {
-				rtts[j] = uint32(sample.RTT.Microseconds())
+				if sample.RTT == 0 {
+					// If the RTT is 0 but it was not a loss, we assume it's a spurious negative RTT
+					// and set it to 1 microsecond to avoid representing it as a loss in the telemetry
+					// program samples, which is what 0 means there.
+					rtts[j] = 1
+				} else {
+					rtts[j] = uint32(sample.RTT.Microseconds())
+				}
 			}
 			if minTimestamp.IsZero() || sample.Timestamp.Before(minTimestamp) {
 				minTimestamp = sample.Timestamp
@@ -115,17 +122,9 @@ func (s *Submitter) SubmitSamples(ctx context.Context, accountKey AccountKey, sa
 				return fmt.Errorf("failed to write device latency samples: %w", err)
 			}
 		}
-	}
 
-	rtts := make([]uint32, len(samples))
-	for i, sample := range samples {
-		if sample.Loss {
-			rtts[i] = 0
-		} else {
-			rtts[i] = uint32(sample.RTT.Microseconds())
-		}
+		log.Debug("Submitted account samples batch", "count", len(samples), "samples", rtts)
 	}
-	log.Debug("Submitted account samples", "totalCount", len(samples), "samples", rtts)
 
 	return nil
 }

@@ -427,4 +427,43 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		require.Equal(t, 3, calls, "expected 3 submission calls for 5500 samples with max 2560 per call")
 		assert.Equal(t, []int{sdktelemetry.MaxSamplesPerBatch, sdktelemetry.MaxSamplesPerBatch, 380}, samplesPerCall, "each call should contain at most 2560 samples")
 	})
+
+	t.Run("negative_rtts_are_submitted_as_one", func(t *testing.T) {
+		t.Parallel()
+
+		log := log.With("test", t.Name())
+
+		key := newTestAccountKey()
+		now := time.Now()
+
+		sample := telemetry.Sample{
+			Timestamp: now,
+			RTT:       0,
+			Loss:      false,
+		}
+
+		var receivedRTTs []uint32
+		telemetryProgram := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(ctx context.Context, config sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				receivedRTTs = append(receivedRTTs, config.Samples...)
+				return solana.Signature{}, nil, nil
+			},
+		}
+
+		buffer := telemetry.NewAccountsBuffer()
+		buffer.Add(key, sample)
+
+		submitter := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+			Interval:      time.Hour,
+			Buffer:        buffer,
+			ProgramClient: telemetryProgram,
+			MaxAttempts:   1,
+			BackoffFunc:   func(_ int) time.Duration { return 0 },
+		})
+
+		submitter.Tick(context.Background())
+
+		require.Len(t, receivedRTTs, 1, "should have submitted one sample")
+		assert.Equal(t, uint32(1), receivedRTTs[0], "RTT of 0 should be coerced to 1")
+	})
 }

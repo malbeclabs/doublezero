@@ -1,10 +1,10 @@
-package net_test
+package netutil_test
 
 import (
 	"net"
 	"testing"
 
-	netutil "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/net"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netutil"
 	"github.com/stretchr/testify/require"
 )
 

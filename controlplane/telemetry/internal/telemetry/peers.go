@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
-	netutil "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/net"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netutil"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
@@ -85,7 +85,7 @@ func NewLedgerPeerDiscovery(cfg *LedgerPeerDiscoveryConfig) (*ledgerPeerDiscover
 }
 
 func (p *ledgerPeerDiscovery) Run(ctx context.Context) error {
-	p.log.Info("Starting peer discovery")
+	p.log.Info("Starting peer discovery", "refreshInterval", p.config.RefreshInterval)
 	ticker := time.NewTicker(p.config.RefreshInterval)
 	defer ticker.Stop()
 

@@ -36,6 +36,11 @@ func (c *AddDeviceCmd) Command() *cobra.Command {
 				Exchange:                     exchange,
 				CYOANetworkIPHostID:          cyoaNetworkHostID,
 				CYOANetworkAllocatablePrefix: cyoaNetworkAllocatablePrefix,
+				Telemetry: devnet.DeviceTelemetrySpec{
+					Enabled:      true,
+					ManagementNS: "ns-management",
+					Verbose:      true,
+				},
 			})
 			if err != nil {
 				return fmt.Errorf("failed to add device: %w", err)

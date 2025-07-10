@@ -48,7 +48,10 @@ ENV container=docker
 EXPOSE 80
 
 # Define a HTTP healthcheck for the device
-HEALTHCHECK --interval=10s --timeout=3s --retries=18 CMD curl --silent --fail http://localhost/ || exit 1
+HEALTHCHECK --interval=10s --timeout=3s --retries=18 CMD ip netns exec ns-management curl --silent --fail http://localhost/ || exit 1
+
+# Copy the start-config-agent script
+COPY ${DOCKERFILE_DIR}/start-config-agent.sh /mnt/flash/start-config-agent.sh
 
 # Copy and configure the entrypoint
 COPY ${DOCKERFILE_DIR}/entrypoint.sh /entrypoint.sh

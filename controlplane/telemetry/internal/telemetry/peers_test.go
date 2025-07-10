@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
-	netutil "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/net"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netutil"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/stretchr/testify/assert"

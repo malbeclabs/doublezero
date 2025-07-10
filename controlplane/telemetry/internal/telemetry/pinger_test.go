@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
-	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/net"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netutil"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 	"github.com/stretchr/testify/assert"
@@ -37,7 +37,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 			{
 				DevicePK: peerPK,
 				LinkPK:   linkPK,
-				Tunnel: &net.LocalTunnel{
+				Tunnel: &netutil.LocalTunnel{
 					Interface: "tun1-2",
 					SourceIP:  ipv4([4]uint8{127, 0, 0, 1}),
 					TargetIP:  ipv4([4]uint8{127, 0, 0, 2}),
@@ -85,7 +85,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 			{
 				DevicePK: peerPK,
 				LinkPK:   linkPK,
-				Tunnel: &net.LocalTunnel{
+				Tunnel: &netutil.LocalTunnel{
 					Interface: "tun1-2",
 					SourceIP:  ipv4([4]uint8{127, 0, 0, 1}),
 					TargetIP:  ipv4([4]uint8{127, 0, 0, 2}),
@@ -128,7 +128,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 			{
 				DevicePK: peerPK,
 				LinkPK:   linkPK,
-				Tunnel: &net.LocalTunnel{
+				Tunnel: &netutil.LocalTunnel{
 					Interface: "tun1-2",
 					SourceIP:  ipv4([4]uint8{127, 0, 0, 1}),
 					TargetIP:  ipv4([4]uint8{127, 0, 0, 2}),

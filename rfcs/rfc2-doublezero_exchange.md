@@ -70,148 +70,36 @@ The motivation for the DZX is to allow DZ to scale to maximize reach and decentr
 
 ### High-Level Physical Topology Options
 
-<img src="rfc2/images/DZX-Topologies.png" alt="DZX Physical Topologies" width="1000"/>
+<img src="rfc2/images/DZX-Topologies.png" alt="DZX Physical Topologies" width="1700" height="450"/>
 
 Figure 1: DZX Topology Options
 
-| Option     | Description | Pros | Cons |
-|------------|-------------|------|------|
+| Option     | Description | Pros | Cons | Recommendation |
+|------------|-------------|------|------|----------------|
 | **Option 1** | - Simplest DZX setup<br>- Single switch requiring links from each contributor in the metro<br>  - Links may be:<br>    - Cross-connects within a campus<br>    - Tail circuits across cities | - Simple<br>- Cheap<br>- Quickest time to market | - Highly centralized<br>- Single point of failure<br>- Scalability limited to at most the number of ports on the switch (see section below) |
 | **Option 2** | - Redundant DZX switches operated by multiple Operators across two strategic data centers<br>- Requires only one DZX connection per DZD<br>- Requires interconnect between DZX switches | - Increased decentralization<br>- No single point of failure<br>- Contributors can choose their DZX Operator | - Risk of network discontinuity if interconnect fails or an Operator stops participating<br>- Scalability limited to ~2× switch port count |
 | **Option 3** | - Redundant DZX switches operated by multiple Operators across two strategic data centers<br>- Each contributor must purchase links to both DZXs<br>- No interdependence between DZX Operators | - Most decentralized<br>- Highest redundancy | - Most expensive for Network Contributors |
-| **Option 4** | - Redundant DZX switches operated by multiple Operators across two strategic data centers<br>- Each contributor must purchase at least one link to a DZX<br>  | - Highly decentralized<br>-  Highly redundant <br>- Optionality for Network Contributors | - Risk of network discontinuity if interconnect fails or an Operator stops participating <br>- Scalability limited to ~2× switch port count |
+| **Option 4** | - Redundant DZX switches operated by multiple Operators across two strategic data centers<br>- Each contributor must purchase at least one link to a DZX<br>  | - Highly decentralized<br>-  Highly redundant <br>- Optionality for Network Contributors | - Risk of network discontinuity if interconnect fails or an Operator stops participating <br>- Scalability limited to ~2× switch port count | ⭐ <br>- Sweet spot that balances cost to contributors, redundancy and decentralization 
 
 ### 7280CR3A port speed options: 
 
-<img src="rfc2/images/DZX-Arista7280-PortOptions.png" alt="DZX Option 1 Arista 7280 Port Options" width="600"/>
+<img src="rfc2/images/DZX-Arista7280-PortOptions.png" alt="DZX Option 1 Arista 7280 Port Options" width="600" />
 
 [Arista 7280 Datasheet](https://www.arista.com/assets/data/pdf/Datasheets/7280R3A-Datasheet.pdf) 
 
-### Recommendation
-- Option 4:
-  - Sweet spot that balances cost to contributors, redundancy and decentralization
-
 ### DZX Logical Topology
 
-#### DZX as a Layer 2 Fabric
-- DZX operated by DZ community members
-- Each DZX switch operates at layer 2
-- A single subnet (broadcast domain) is used to address all DZD NNIs facing the DZX
-- The existing DZ network routing is extended across the DZX
-  - A full-mesh of IS-IS/PIM neighbors is formed across the DZX
-  - The DZX is transparent from a routing perspective
-- All links are assumed to be of equal latency
-  - Helps incentivize diversification out of a single data center
-  - Prevents an arms race in the metro
-- The DZX switch maintains a layer 3 connection for telemetry
-
-<img src="rfc2/images/DZX-Logical-L2.png" alt="DZX Logical Layer 2" width="600"/>
+<img src="rfc2/images/DZX-Logical-Combined.png" alt="DZX Logical" width="1700" height="450"/>
 
 Figure 2: DZX Logical Layer 2
 
-Pros
-- The DZX switch requires a simpler feature set (layer 2 only) than a DZD
-- Allows the DZX operator to purchase less expensive switch platforms e.g. Arista 7060X6 Tomahawk
-- All links are assumed to be of equal latency
-  - Helps incentivize diversification out of a single data center
-  - Prevents an arms race in the metro
-- Full visibility for monitoring and troubleshooting
-
-Cons
-- New automation and configuration model to support DZX layer 2 switch use-case
-- Small switch buffers with Tomahawk may not be sufficient to absorb traffic bursts towards busy DZDs in the metro
-  - Would likely require traffic shaping on DZDs
-- Limitations of scaling a single broadcast domain, for example the DZX topology MUST remain loop-free and MUST NOT rely on spanning-tree protocols
-  - Limited to two DZX switches
-  - Requires uses of layer 2 protocols such as spanning-tree protocol, storm-control
-- Complex to integrate within a hybrid community/vendor model
-  - Layer 2 hand-off complexity e.g. mapping between VLANs
-
-
-#### DZX as a Layer 3 Fabric
-- DZX operated by DZ community members
-- Each DZX switch operates at layer 3
-- Allows a DZD to become a DZDx
-  - The DZD terminates DZX links from multiple contributors originating within the same metro
-- A layer 3 connection (single subnet) is built between DZD to DZX/DZDx per NNI
-- The existing DZ network routing is extended to the DZX/DZDx
-  - IS-IS/PIM neighbors are established between each DZD and/or DZDx
-- The DZX/DZDx fully participates in routing
-- All links are assumed to be of equal latency
-  - Helps incentivize diversification out of a single data center
-  - Prevents an arms race in the metro
-
-<img src="rfc2/images/DZX-Logical-L3.png" alt="DZX Logical Layer 3" width="600"/>
-
-Figure 3: DZX Logical Layer 3
-
-<img src="rfc2/images/DZDx-Logical-Layer-3.png" alt="DZDx Logical Layer 3" width="600"/>
-
-Figure 4: DZDx Logical Layer 3
-
-Pros
-- DZX has equivalent functionality to DZD, either as a dedicated device or as a DZDx
-- By participating in routing, in future it can support end-to-end traffic-engineering planning
-- Requires minimal additional development support in the controller/configuration templates
-- Full visibility for monitoring and troubleshooting
-- Likely simplifies integration of any potential hybrid community/vendor model
-  - Simple routed hand-offs to vendors
-
-Cons
-- More expensive switches if using dedicated layer 3 devices rather than DZDx i.e. Jericho2/7280CR3
-
-#### DZX as a Vendor Fabric Solution
-- Various commercial solutions exist to create last mile connectivity similar to the DZX, e.g.:
-  - Packetfabric
-  - MegaPort
-  - Equinix Fabric
-- Likely facilitates logical cross-connects between DZDs e.g. Virtual Cross-Connects (VXC)
-- Access to immediate scale, fastest time-to-market
-- All links are assumed to be of equal latency
-  - Helps incentivize diversification out of a single data center
-  - Prevents an arms race in the metro
-
-<img src="rfc2/images/DZX-Logical-vendor.png" alt="DZX Logical Vendor" width="600"/>
-
-Figure 5: DZX Logical Vendor
-
-Pros
-- Vendor solution abstracts away operational overhead of operating DZX for a cost
-- Fastest time-to-market
-- Easiest to scale across multiple metros
-- Automated provisioning already developed by vendor, including LOA management
-
-Cons
-- Lack of visibility into network fabric
-- Dependency on Web2 businesses for supporting Web3 project e.g. MSAs
-- Assumed to be most expensive
-
-#### Hybrid Models
-- Combine DZX community and vendor solution
-- DZX community layer 2 and layer 3 options are mutually exclusive
-- Interconnect DZX switches with vendor network fabrics
-- All links are assumed to be of equal latency
-  - Helps incentivize diversification out of a single data center
-  - Prevents an arms race in the metro
-
-<img src="rfc2/images/DZX-Logical-hybrid.png" alt="DZX Logical Hybrid" width="600"/>
-
-Figure 6: DZX Logical Vendor
-
-Pros
-- Combines the best of Web3 decentralization with scale of existing Web2 offering
-
-Cons
-- Lack of visibility into network fabric
-- Complexity increases
-
-### Recommendation:
-- DZX as a Layer 3 Fabric:
-  - Results in the most visibility in to, and control of, end-to-end traffic flows
-  - Creation of DZDx allows reuse of existing hardware with nominal further capital expense
-    - Optics and cabling
-  - DZDx option also has relatively fast time-to-market
-
+| Option | Description | Pros | Cons | Recommendation |
+|--------|-------------|------|------|----------------|
+| **1. DZX as a Layer 2 Fabric**    | - DZX operated by DZ community members<br>- Each DZX switch operates at layer 2<br>- A single subnet (broadcast domain) is used to address all DZD NNIs facing the DZX<br>- The existing DZ network routing is extended across the DZX<br>&nbsp;&nbsp;&nbsp;- A full-mesh of IS-IS/PIM neighbors is formed across the DZX<br>&nbsp;&nbsp;&nbsp;- The DZX is transparent from a routing perspective<br>- All links are assumed to be of equal latency<br>&nbsp;&nbsp;&nbsp;- Helps incentivize diversification out of a single data center<br>&nbsp;&nbsp;&nbsp;- Prevents an arms race in the metro<br>- The DZX switch maintains a layer 3 connection for telemetry | - The DZX switch requires a simpler feature set (layer 2 only) than a DZD<br>- Allows the DZX operator to purchase less expensive switch platforms e.g. Arista 7060X6 Tomahawk<br>- All links are assumed to be of equal latency<br>&nbsp;&nbsp;&nbsp;- Helps incentivize diversification out of a single data center<br>&nbsp;&nbsp;&nbsp;- Prevents an arms race in the metro<br>- Full visibility for monitoring and troubleshooting | - New automation and configuration model to support DZX layer 2 switch use-case<br>- Small switch buffers with Tomahawk may not be sufficient to absorb traffic bursts towards busy DZDs in the metro<br>&nbsp;&nbsp;&nbsp;- Would likely require traffic shaping on DZDs<br>- Limitations of scaling a single broadcast domain, for example the DZX topology MUST remain loop-free and MUST NOT rely on spanning-tree protocols<br>&nbsp;&nbsp;&nbsp;- Limited to two DZX switches<br>&nbsp;&nbsp;&nbsp;- Requires uses of layer 2 protocols such as spanning-tree protocol, storm-control<br>- Complex to integrate within a hybrid community/vendor model<br>&nbsp;&nbsp;&nbsp;- Layer 2 hand-off complexity e.g. mapping between VLANs |                 |
+| **2. DZX as a Layer 3 Fabric**    | - DZX operated by DZ community members<br>- Each DZX switch operates at layer 3<br>- Allows a DZD to become a DZDx<br>&nbsp;&nbsp;&nbsp;- The DZD terminates DZX links from multiple contributors originating within the same metro<br>- A layer 3 connection (single subnet) is built between DZD to DZX/DZDx per NNI<br>- The existing DZ network routing is extended to the DZX/DZDx<br>&nbsp;&nbsp;&nbsp;- IS-IS/PIM neighbors are established between each DZD and/or DZDx<br>- The DZX/DZDx fully participates in routing<br>- All links are assumed to be of equal latency<br>&nbsp;&nbsp;&nbsp;- Helps incentivize diversification out of a single data center<br>&nbsp;&nbsp;&nbsp;- Prevents an arms race in the metro | - DZX has equivalent functionality to DZD, either as a dedicated device or as a DZDx<br>- By participating in routing, in future it can support end-to-end traffic-engineering planning<br>- Requires minimal additional development support in the controller/configuration templates<br>- Full visibility for monitoring and troubleshooting<br>- Likely simplifies integration of any potential hybrid community/vendor model<br>&nbsp;&nbsp;&nbsp;- Simple routed hand-offs to vendors | - More expensive switches if using dedicated layer 3 devices rather than DZDx i.e. Jericho2/7280CR3 |  ⭐   <br>- Results in the most visibility in to, and control of, end-to-end traffic flows <br>- Creation of DZDx allows reuse of existing hardware with nominal further capital expense <br>&nbsp;&nbsp;&nbsp;- Optics and cabling <br>&nbsp;&nbsp;&nbsp;- DZDx option also has relatively fast time-to-market             |
+| **3. DZX as a Vendor Fabric**     | - Various commercial solutions exist to create last mile connectivity similar to the DZX, e.g.:<br>&nbsp;&nbsp;&nbsp;- Packetfabric<br>&nbsp;&nbsp;&nbsp;- MegaPort<br>&nbsp;&nbsp;&nbsp;- Equinix Fabric<br>- Likely facilitates logical cross-connects between DZDs e.g. Virtual Cross-Connects (VXC)<br>- Access to immediate scale, fastest time-to-market<br>- All links are assumed to be of equal latency<br>&nbsp;&nbsp;&nbsp;- Helps incentivize diversification out of a single data center<br>&nbsp;&nbsp;&nbsp;- Prevents an arms race in the metro | - Vendor solution abstracts away operational overhead of operating DZX for a cost<br>- Fastest time-to-market<br>- Easiest to scale across multiple metros<br>- Automated provisioning already developed by vendor, including LOA management | - Lack of visibility into network fabric<br>- Dependency on Web2 businesses for supporting Web3 project e.g. MSAs<br>- Assumed to be most expensive |                 |
+| **4. Hybrid Models**              | - Combine DZX community and vendor solution<br>- DZX community layer 2 and layer 3 options are mutually exclusive<br>- Interconnect DZX switches with vendor network fabrics<br>- All links are assumed to be of equal latency<br>&nbsp;&nbsp;&nbsp;- Helps incentivize diversification out of a single data center<br>&nbsp;&nbsp;&nbsp;- Prevents an arms race in the metro | - Combines the best of Web3 decentralization with scale of existing Web2 offering | - Lack of visibility into network fabric<br>- Significant increase in complexity supporting different modes of operation  |                 |
+ 
 ## Impact
 
 - Fundamentally affects the ability of DZ to deliver its core product

@@ -40,7 +40,8 @@ func TestNetNS_SingleThreadTransport(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			io.Copy(io.Discard, r.Body)
+			_, err := io.Copy(io.Discard, r.Body)
+			require.NoError(t, err)
 			w.WriteHeader(204)
 		}))
 		defer srv.Close()
@@ -62,7 +63,8 @@ func TestNetNS_SingleThreadTransport(t *testing.T) {
 		ln, _ := net.Listen("tcp", "127.0.0.1:0")
 		go func() {
 			conn, _ := ln.Accept()
-			conn.Write([]byte("invalid response"))
+			_, err := conn.Write([]byte("invalid response"))
+			require.NoError(t, err)
 			conn.Close()
 		}()
 		tp := &netns.SingleThreadTransport{

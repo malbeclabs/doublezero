@@ -13,7 +13,6 @@ repository.workspace = true
 name = "doublezero_cli"
 
 [dependencies]
-anyhow.workspace = true
 ipnetwork.workspace = true
 chrono.workspace = true
 clap.workspace = true

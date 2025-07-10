@@ -153,7 +153,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		jsonrpcClient, err := netns.NewNamespaceSafeJSONRPCClient(*ledgerRPCURL, *managementNamespace, nil)
+		jsonrpcClient, err := netns.NewNamespacedJSONRPCClient(*ledgerRPCURL, *managementNamespace, nil)
 		if err != nil {
 			log.Error("failed to create namespace-safe solana RPC client", "error", err)
 			os.Exit(1)

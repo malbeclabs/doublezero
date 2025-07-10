@@ -29,11 +29,11 @@ var (
 	}
 )
 
-// NewNamespaceSafeJSONRPCClient returns a JSON-RPC client that performs network
+// NewNamespacedJSONRPCClient returns a JSON-RPC client that performs network
 // operations within the context of a given network namespace. It constructs a
 // custom HTTP transport using a single-threaded dialer wrapped in RunInNamespace,
 // allowing requests to be issued from inside the specified namespace.
-func NewNamespaceSafeJSONRPCClient(url string, namespace string, opts *JSONRPCClientOptions) (jsonrpc.RPCClient, error) {
+func NewNamespacedJSONRPCClient(url string, namespace string, opts *JSONRPCClientOptions) (jsonrpc.RPCClient, error) {
 	if opts == nil {
 		opts = defaultJSONRPCClientOptions
 	}

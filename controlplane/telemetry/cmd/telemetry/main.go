@@ -49,7 +49,7 @@ var (
 	twampSenderTimeout      = flag.Duration("twamp-sender-timeout", defaultTWAMPSenderTimeout, "the timeout for sending twamp probes")
 	twampReflectorTimeout   = flag.Duration("twamp-reflector-timeout", defaultTWAMPReflectorTimeout, "the timeout for the twamp reflector")
 	peersRefreshInterval    = flag.Duration("peers-refresh-interval", defaultPeersRefreshInterval, "the interval to refresh the peer discovery")
-	managementNS            = flag.String("management-ns", "", "the name of the management namespace to use for ledger communication. If not provided, the default namespace will be used. (default: '')")
+	managementNamespace     = flag.String("management-namespace", "", "the name of the management namespace to use for ledger communication. If not provided, the default namespace will be used. (default: '')")
 	verbose                 = flag.Bool("verbose", false, "enable verbose logging")
 	showVersion             = flag.Bool("version", false, "print version and exit")
 )
@@ -146,14 +146,14 @@ func main() {
 
 	// Build solana RPC client.
 	var rpcClient *solanarpc.Client
-	if *managementNS != "" {
-		_, err := netns.WaitForNamespace(log, *managementNS, waitForNamespaceTimeout)
+	if *managementNamespace != "" {
+		_, err := netns.WaitForNamespace(log, *managementNamespace, waitForNamespaceTimeout)
 		if err != nil {
 			log.Error("failed to wait for namespace", "error", err)
 			os.Exit(1)
 		}
 
-		jsonrpcClient, err := netns.NewNamespaceSafeJSONRPCClient(*ledgerRPCURL, *managementNS, nil)
+		jsonrpcClient, err := netns.NewNamespaceSafeJSONRPCClient(*ledgerRPCURL, *managementNamespace, nil)
 		if err != nil {
 			log.Error("failed to create namespace-safe solana RPC client", "error", err)
 			os.Exit(1)

@@ -353,7 +353,7 @@ func (d *Device) Start(ctx context.Context) error {
 		telemetryCommandArgs = append(telemetryCommandArgs, "-peers-refresh-interval", spec.Telemetry.PeersRefreshInterval.String())
 	}
 	if spec.Telemetry.ManagementNS != "" {
-		telemetryCommandArgs = append(telemetryCommandArgs, "-management-ns", spec.Telemetry.ManagementNS)
+		telemetryCommandArgs = append(telemetryCommandArgs, "-management-namespace", spec.Telemetry.ManagementNS)
 	}
 	if spec.Telemetry.Verbose {
 		telemetryCommandArgs = append(telemetryCommandArgs, "-verbose")

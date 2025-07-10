@@ -89,7 +89,10 @@ Figure 1: DZX Topology Options
 
 ### DZX Logical Topology
 
-<img src="rfc2/images/DZX-Logical-Option1.png" alt="DZX Logical" width="400" height="400"/><img src="rfc2/images/DZX-Logical-Option2.png" alt="DZX Logical" width="400" height="400"/><img src="rfc2/images/DZX-Logical-Option3.png" alt="DZX Logical" width="400" height="400"/><img src="rfc2/images/DZX-Logical-Option4.png" alt="DZX Logical" width="400" height="400"/>
+<img src="rfc2/images/DZX-Logical-Option1.png" alt="DZX Logical" width="400" height="400"/>
+<img src="rfc2/images/DZX-Logical-Option2.png" alt="DZX Logical" width="400" height="400"/>
+<img src="rfc2/images/DZX-Logical-Option3.png" alt="DZX Logical" width="400" height="400"/>
+<img src="rfc2/images/DZX-Logical-Option4.png" alt="DZX Logical" width="400" height="400"/>
 
 Figure 2: DZX Logical Layer 2
 

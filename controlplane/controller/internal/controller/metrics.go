@@ -5,6 +5,13 @@ import (
 )
 
 var (
+	BuildInfo = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "controller_build_info",
+		Help: "Build information of the agent",
+	},
+		[]string{"version", "commit", "date"},
+	)
+
 	// gRPC metrics
 	getConfigPubkeyErrors = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "controller_grpc_getconfig_pubkey_errors_total",
@@ -45,6 +52,9 @@ var (
 )
 
 func init() {
+	// build info
+	prometheus.MustRegister(BuildInfo)
+
 	// gRPC metrics
 	prometheus.MustRegister(getConfigPubkeyErrors)
 	prometheus.MustRegister(getConfigRenderErrors)

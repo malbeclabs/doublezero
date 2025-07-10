@@ -21,6 +21,13 @@ import (
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
 )
 
+var (
+	// set by LDFLAGS
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 type Runner interface {
 	Init([]string) error
 	Run() error
@@ -105,6 +112,7 @@ func NewControllerCommand() *ControllerCommand {
 	c.fs.StringVar(&c.programId, "program-id", "", "smartcontract program id to monitor")
 	c.fs.StringVar(&c.rpcEndpoint, "solana-rpc-endpoint", "", "override solana rpc endpoint (default: devnet)")
 	c.fs.BoolVar(&c.noHardware, "no-hardware", false, "exclude config commands that will fail when not running on the real hardware")
+	c.fs.BoolVar(&c.showVersion, "version", false, "show version information and exit")
 	return c
 }
 
@@ -116,6 +124,7 @@ type ControllerCommand struct {
 	programId   string
 	rpcEndpoint string
 	noHardware  bool
+	showVersion bool
 }
 
 func (c *ControllerCommand) Fs() *flag.FlagSet {
@@ -135,6 +144,14 @@ func (c *ControllerCommand) Init(args []string) error {
 }
 
 func (c *ControllerCommand) Run() error {
+	if c.showVersion {
+		fmt.Printf("version: %s, commit: %s, date: %s\n", version, commit, date)
+		os.Exit(0)
+	}
+
+	// set build info prometheus metric
+	controller.BuildInfo.WithLabelValues(version, commit, date).Set(1)
+
 	// start controller
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

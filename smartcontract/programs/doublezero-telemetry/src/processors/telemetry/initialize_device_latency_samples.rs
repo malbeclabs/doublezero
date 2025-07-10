@@ -10,6 +10,7 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
+use doublezero_program_common::create_account::try_create_account;
 use doublezero_serviceability::state::{
     device::{Device, DeviceStatus},
     link::{Link, LinkStatus},
@@ -18,11 +19,9 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     msg,
-    program::invoke_signed,
     program_error::ProgramError,
     pubkey::Pubkey,
     rent::Rent,
-    system_instruction,
     sysvar::Sysvar,
 };
 
@@ -186,20 +185,14 @@ pub fn process_initialize_device_latency_samples(
     msg!("System program: {}", system_program.key);
 
     // Allocate the account with the correct seed.
-    invoke_signed(
-        &system_instruction::create_account(
-            agent.key,
-            &latency_samples_pda,
-            lamports,
-            space as u64,
-            program_id,
-        ),
+    try_create_account(
+        agent.key,
+        &latency_samples_pda,
+        latency_samples_account.lamports(),
+        space,
+        program_id,
+        accounts,
         &[
-            agent.clone(),
-            latency_samples_account.clone(),
-            system_program.clone(),
-        ],
-        &[&[
             SEED_PREFIX,
             SEED_DZ_LATENCY_SAMPLES,
             origin_device_account.key.as_ref(),
@@ -207,7 +200,7 @@ pub fn process_initialize_device_latency_samples(
             link_account.key.as_ref(),
             &args.epoch.to_le_bytes(),
             &[latency_samples_bump_seed],
-        ]],
+        ],
     )?;
 
     // Initialize account contents with metadata and an empty sample list.

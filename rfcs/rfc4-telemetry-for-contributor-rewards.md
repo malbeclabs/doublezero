@@ -36,7 +36,7 @@ graph LR
     A[DZ Latency Measurement]  --> B[Periodic submission]
     A1[Internet Latency Measurement] --> B[Periodic submission]
     B --> C[Acumulate on-chain]
-    C --> D((Epoth ends)):::dashed
+    C --> D((Epoch ends)):::dashed
     D --> E[95p Latencies]
     E --> F[Calculate Shapley value]
     F --> G[Calculate rewards]
@@ -152,7 +152,7 @@ Data collected from DZDs includes latency between each DZD pair over the public 
 1. Accumulate data in memory (and on disk in case of agent restart)
 1. Probes should NOT use ping since results would depend on how EOS prioritizes processing of icmp echo requests/replies
 
-### Design - DZD-to-DZD latency (controlplane/telemtry)
+### Design - DZD-to-DZD latency (controlplane/telemetry)
 
 | Method | Pros | Cons |
 | --- | --- | --- |
@@ -300,6 +300,6 @@ gantt
 - Who should generate the metrics to avoid a conflict of interest with the reward recipient?
     - The contributor (owner of the DZD) will self-attest to the performance for the first version of this implementation
 - Should telemetry data be pruned or archived off-chain after a certain period?
-    - No, all data will be retained on the DZ Serviceability indefinitely. Based on the current design, the scale of the DZ telemetry data is not large enough to require an off-chain archival solution.
+    - No, all data will be retained on the DZ Serviceability indefinitely. Based on the current design, the scale of the DZ telemetry data is not large enough to require an off-chain archival solution. (A 30-node network, at 10KB per node pair per epoch, with measurements in both directions, will need roughly 18MB in storage per epoch. 10KB * 30^2 * 2 = 18MB.)
 - For mainnet, do we need a way to prevent contributors from tampering with the metrics produced by their DZDs?
     - No, for mainnet we will not be permissionless, we will be working with trusted contributor partners.

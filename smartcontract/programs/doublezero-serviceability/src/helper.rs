@@ -11,6 +11,7 @@ use solana_program::{
 };
 use std::{fmt, fmt::Debug};
 
+use doublezero_program_common::create_account::try_create_account;
 #[cfg(test)]
 use solana_program::msg;
 
@@ -25,31 +26,31 @@ where
     T: AccountTypeInfo + BorshSerialize + Debug,
 {
     let account_space = AccountTypeInfo::size(instance);
-    let rent = Rent::get().expect("Unable to get rent");
-    let required_lamports = rent.minimum_balance(account_space);
 
     #[cfg(test)]
-    msg!("Rent: {}", required_lamports);
+    {
+        let rent = Rent::get().expect("Unable to get rent");
+        let required_lamports = rent.minimum_balance(account_space);
+        msg!("Rent: {}", required_lamports);
+    }
     // Create the index account
-    invoke_signed(
-        &system_instruction::create_account(
-            payer_account.key,    // Account paying for the new account
-            account.key,          // Account to be created
-            required_lamports,    // Amount of lamports to transfer to the new account
-            account_space as u64, // Size in bytes to allocate for the data field
-            program_id,           // Set program owner to our program
-        ),
+    try_create_account(
+        payer_account.key,  // Account paying for the new account
+        account.key,        // Account to be created
+        account.lamports(), // Current amount of lamports on the new account
+        account_space,      // Size in bytes to allocate for the data field
+        program_id,         // Set program owner to our program
         &[
             account.clone(),
             payer_account.clone(),
             system_program.clone(),
         ],
-        &[&[
+        &[
             SEED_PREFIX,
             instance.seed(),
             &instance.index().to_le_bytes(),
             &[instance.bump_seed()],
-        ]],
+        ],
     )?;
 
     let mut account_data = &mut account.data.borrow_mut()[..];

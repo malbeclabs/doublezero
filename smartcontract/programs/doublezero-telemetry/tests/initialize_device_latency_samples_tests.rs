@@ -74,6 +74,65 @@ async fn test_initialize_device_latency_samples_success_active_devices_and_link(
 }
 
 #[tokio::test]
+async fn test_initialize_device_latency_samples_already_with_lamports() {
+    let mut ledger = LedgerHelper::new().await.unwrap();
+
+    // Seed ledger with two linked devices, and a funded origin device agent.
+    let (origin_device_agent, origin_device_pk, target_device_pk, link_pk) =
+        ledger.seed_with_two_linked_devices().await.unwrap();
+
+    // Wait for a new blockhash before moving on.
+    ledger.wait_for_new_blockhash().await.unwrap();
+
+    let epoch = 1;
+
+    // Derive the samples PDA first so we can transfer lamports to it.
+    let (latency_samples_pda, _) = derive_device_latency_samples_pda(
+        &ledger.telemetry.program_id,
+        &origin_device_pk,
+        &target_device_pk,
+        &link_pk,
+        epoch,
+    );
+
+    // Transfer just enough for zero-byte rent exemption.
+    ledger
+        .fund_account(&latency_samples_pda, 6_960 * 128)
+        .await
+        .unwrap();
+
+    // Wait for a new blockhash before moving on.
+    ledger.wait_for_new_blockhash().await.unwrap();
+
+    // Execute initialize latency samples transaction.
+    ledger
+        .telemetry
+        .initialize_device_latency_samples(
+            &origin_device_agent,
+            origin_device_pk,
+            target_device_pk,
+            link_pk,
+            epoch,
+            5_000_000,
+        )
+        .await
+        .unwrap();
+
+    // Verify account creation and data.
+    let account = ledger
+        .get_account(latency_samples_pda)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(account.owner, ledger.telemetry.program_id);
+    assert_eq!(account.data.len(), DEVICE_LATENCY_SAMPLES_HEADER_SIZE);
+    assert_eq!(
+        account.lamports,
+        EXPECTED_LAMPORTS_USED_FOR_ACCOUNT_CREATION
+    );
+}
+
+#[tokio::test]
 async fn test_initialize_device_latency_samples_success_suspended_origin_device() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 

@@ -6,15 +6,13 @@ use crate::{
     state::{accounttype::AccountType, globalstate::GlobalState, programconfig::ProgramConfig},
 };
 use borsh::BorshSerialize;
+use doublezero_program_common::create_account::try_create_account;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
-    program::invoke_signed,
     pubkey::Pubkey,
-    system_instruction,
-    sysvar::{rent::Rent, Sysvar},
 };
 
 pub fn initialize_global_state(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
@@ -69,26 +67,16 @@ pub fn initialize_global_state(program_id: &Pubkey, accounts: &[AccountInfo]) ->
     // Size of our index account
     let account_space = data.size();
 
-    // Calculate minimum balance for rent exemption
-    let rent = Rent::get()?;
-    let required_lamports = rent.minimum_balance(account_space);
-
     if pda_account.try_borrow_data()?.is_empty() {
         // Create the index account
-        invoke_signed(
-            &system_instruction::create_account(
-                payer_account.key,    // Account paying for the new account
-                pda_account.key,      // Account to be created
-                required_lamports,    // Amount of lamports to transfer to the new account
-                account_space as u64, // Size in bytes to allocate for the data field
-                program_id,           // Set program owner to our program
-            ),
-            &[
-                pda_account.clone(),
-                payer_account.clone(),
-                system_program.clone(),
-            ],
-            &[&[SEED_PREFIX, SEED_GLOBALSTATE, &[bump_seed]]],
+        try_create_account(
+            payer_account.key,      // Account paying for the new account
+            pda_account.key,        // Account to be created
+            pda_account.lamports(), // Current amount of lamports on the new account
+            account_space,          // Size in bytes to allocate for the data field
+            program_id,             // Set program owner to our program
+            accounts,
+            &[SEED_PREFIX, SEED_GLOBALSTATE, &[bump_seed]],
         )?;
     }
 

@@ -1536,11 +1536,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "doublezero-program-common"
+version = "0.2.2"
+dependencies = [
+ "solana-program",
+]
+
+[[package]]
 name = "doublezero-serviceability"
 version = "0.2.2"
 dependencies = [
  "borsh 1.5.7",
  "byteorder",
+ "doublezero-program-common",
  "ipnetwork",
  "serde",
  "solana-program",
@@ -1556,6 +1564,7 @@ dependencies = [
  "bincode 2.0.1",
  "borsh 1.5.7",
  "ctor",
+ "doublezero-program-common",
  "doublezero-serviceability",
  "env_logger 0.11.8",
  "log",

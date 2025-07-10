@@ -82,8 +82,9 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 			Telemetry: devnet.DeviceTelemetrySpec{
 				Enabled:     true,
 				KeypairPath: telemetryKeypairPath,
-				// TODO(snormore): We should support not providing the management namespace too, so that we can test both cases.
-				ManagementNS:         "ns-management",
+				// NOTE: We intentionally do not set the management namespace here, so that we can
+				// test the case where a device does not use one.
+				ManagementNS:         "",
 				TWAMPListenPort:      862,
 				ProbeInterval:        1 * time.Second,
 				SubmissionInterval:   5 * time.Second,

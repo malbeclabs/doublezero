@@ -47,8 +47,11 @@ ENV container=docker
 # Advertise port 80 for the device
 EXPOSE 80
 
+# Copy healthcheck script
+COPY ${DOCKERFILE_DIR}/healthcheck.sh /opt/healthcheck.sh
+
 # Define a HTTP healthcheck for the device
-HEALTHCHECK --interval=10s --timeout=3s --retries=18 CMD ip netns exec ns-management curl --silent --fail http://localhost/ || exit 1
+HEALTHCHECK --interval=10s --timeout=3s --retries=18 CMD /opt/healthcheck.sh
 
 # Copy the start-config-agent script
 COPY ${DOCKERFILE_DIR}/start-config-agent.sh /mnt/flash/start-config-agent.sh

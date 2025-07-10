@@ -278,6 +278,11 @@ func (d *Device) Start(ctx context.Context) error {
 		}
 	}
 
+	env := map[string]string{}
+	if spec.Telemetry.ManagementNS != "" {
+		env["DZ_MANAGEMENT_NAMESPACE"] = spec.Telemetry.ManagementNS
+	}
+
 	// Create the device container, but don't start it yet.
 	req := testcontainers.ContainerRequest{
 		Image: spec.ContainerImage,
@@ -299,6 +304,7 @@ func (d *Device) Start(ctx context.Context) error {
 			Memory:   deviceContainerMemory,
 		},
 		Labels: d.dn.labels,
+		Env:    env,
 	}
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
@@ -389,6 +395,7 @@ func (d *Device) Start(ctx context.Context) error {
 		"DefaultNetworkIP":         defaultNetworkIP,
 		"DefaultNetworkCIDRPrefix": strconv.Itoa(defaultNetworkCIDRPrefix),
 		"DefaultNetworkGateway":    defaultNetworkGateway,
+		"ManagementNS":             spec.Telemetry.ManagementNS,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to execute template: %w", err)

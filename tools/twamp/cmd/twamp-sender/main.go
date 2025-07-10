@@ -98,7 +98,7 @@ func main() {
 
 	rtt, err := sender.Probe(ctx)
 	if err != nil {
-		if err == twamplight.ErrTimeout {
+		if err == context.DeadlineExceeded {
 			fmt.Fprintf(os.Stderr, "Error: timeout\n")
 		} else {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)

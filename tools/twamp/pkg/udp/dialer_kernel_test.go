@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewDialer_UsesKernelDialerOnLinux(t *testing.T) {
+func TestUDP_NewDialer_UsesKernelDialerOnLinux(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(nil, nil))
 	d := udp.NewDialer(log)
 

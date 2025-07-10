@@ -17,7 +17,11 @@ build:
 
 .PHONY: bench
 bench:
-	go test -bench=. -run=^$$ ./...
+	go test -bench=. -run=^$$ ./... -benchtime=10s
+
+.PHONY: bench
+bench-udp:
+	go test -bench=. -run=^$$ ./pkg/udp -benchtime=10s
 
 .PHONY: fuzz
 fuzz:

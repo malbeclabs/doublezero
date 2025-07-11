@@ -8,6 +8,7 @@ router pim sparse-mode
 vrf instance vrf1
 ip routing vrf vrf1
 !
+no ip access-list MAIN-CONTROL-PLANE-ACL
 ip access-list MAIN-CONTROL-PLANE-ACL
    counters per-entry
    10 permit icmp any any

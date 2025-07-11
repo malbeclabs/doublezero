@@ -13,6 +13,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
+	telemetryconfig "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/config"
 	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/mr-tron/base58"
@@ -368,10 +369,11 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 	multicastGroupBlock := formatCIDR(&c.cache.Config.MulticastGroupBlock)
 
 	data := templateData{
-		MulticastGroupBlock: multicastGroupBlock,
-		Device:              device,
-		UnknownBgpPeers:     unknownPeers,
-		NoHardware:          c.noHardware,
+		MulticastGroupBlock:      multicastGroupBlock,
+		Device:                   device,
+		UnknownBgpPeers:          unknownPeers,
+		NoHardware:               c.noHardware,
+		TelemetryTWAMPListenPort: telemetryconfig.TWAMPListenPort,
 	}
 
 	config, err := renderConfig(data)

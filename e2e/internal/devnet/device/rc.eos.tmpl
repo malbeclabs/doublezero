@@ -1,4 +1,0 @@
-#!/bin/bash
-{{- if .TelemetryEnabled }}
-iptables -I INPUT -p udp --dport {{.TelemetryTWAMPListenPort}} -j ACCEPT
-{{- end }}

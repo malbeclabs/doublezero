@@ -29,9 +29,6 @@ import (
 //go:embed device/startup-config.tmpl
 var deviceStartupConfigTemplate string
 
-//go:embed device/rc.eos.tmpl
-var deviceRCEOS string
-
 const (
 	internalEAPIHTTPPort = 80
 )
@@ -363,23 +360,6 @@ func (d *Device) Start(ctx context.Context) error {
 	}
 	if spec.Telemetry.Verbose {
 		telemetryCommandArgs = append(telemetryCommandArgs, "-verbose")
-	}
-
-	// Render the device rc.eos script.
-	var rcEosContents bytes.Buffer
-	rcEOSTemplate := template.Must(template.New("rc.eos").Parse(deviceRCEOS))
-	err = rcEOSTemplate.Execute(&rcEosContents, map[string]any{
-		"TelemetryEnabled":         spec.Telemetry.Enabled,
-		"TelemetryTWAMPListenPort": strconv.Itoa(int(spec.Telemetry.TWAMPListenPort)),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to execute template: %w", err)
-	}
-	containerRCEOSPath := "/mnt/flash/rc.eos"
-	d.log.Info("==> Writing device /mnt/flash/rc.eos script", "path", containerRCEOSPath)
-	err = container.CopyToContainer(ctx, rcEosContents.Bytes(), containerRCEOSPath, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to write device rc.eos script: %w", err)
 	}
 
 	// Render the device config from go template.

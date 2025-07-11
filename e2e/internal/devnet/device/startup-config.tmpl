@@ -18,7 +18,7 @@ ip name-server vrf management 8.8.8.8
 !
 {{- end }}
 daemon doublezero-agent
-   exec /mnt/flash/start-config-agent.sh {{.AgentCommandArgs}}
+   exec /mnt/flash/start-config-agent.sh {{.ManagementNS}} {{.AgentCommandArgs}}
    no shutdown
 !
 {{- if .TelemetryEnabled }}
@@ -44,7 +44,7 @@ management api http-commands
 !
 management api eos-sdk-rpc
    transport grpc foo
-      localhost loopback {{- if .ManagementNS }}vrf management{{- end }}
+      localhost loopback {{ if .ManagementNS }}vrf management{{ end }}
       service all
       no disabled
 !

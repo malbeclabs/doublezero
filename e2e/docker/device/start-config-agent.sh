@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
 
+if [ -n "$1" ] && [[ "$1" != "-"* ]]; then
+  export DZ_MANAGEMENT_NAMESPACE="$1"
+  shift
+fi
+
 # If DZ_MANAGEMENT_NAMESPACE is set, wait for it to appear.
 if [ -n "$DZ_MANAGEMENT_NAMESPACE" ]; then
   for i in {1..20}; do

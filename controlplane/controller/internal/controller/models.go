@@ -60,8 +60,9 @@ type Tunnel struct {
 }
 
 type templateData struct {
-	Device              *Device
-	UnknownBgpPeers     []net.IP
-	MulticastGroupBlock string
-	NoHardware          bool
+	Device                   *Device
+	UnknownBgpPeers          []net.IP
+	MulticastGroupBlock      string
+	NoHardware               bool
+	TelemetryTWAMPListenPort int
 }

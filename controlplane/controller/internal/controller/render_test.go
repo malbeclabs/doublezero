@@ -19,7 +19,8 @@ func TestRenderConfig(t *testing.T) {
 			Name:        "render_unicast_tunnels_successfully",
 			Description: "render config for a set of unicast tunnels",
 			Data: templateData{
-				MulticastGroupBlock: "239.0.0.0/24",
+				MulticastGroupBlock:      "239.0.0.0/24",
+				TelemetryTWAMPListenPort: 862,
 				Device: &Device{
 					PublicIP: net.IP{7, 7, 7, 7},
 					Tunnels: []*Tunnel{
@@ -60,7 +61,8 @@ func TestRenderConfig(t *testing.T) {
 			Name:        "render_peer_removal_successfully",
 			Description: "render config for removal of unknown peers successfully",
 			Data: templateData{
-				MulticastGroupBlock: "239.0.0.0/24",
+				MulticastGroupBlock:      "239.0.0.0/24",
+				TelemetryTWAMPListenPort: 862,
 				Device: &Device{
 					PublicIP: net.IP{7, 7, 7, 7},
 					Tunnels: []*Tunnel{
@@ -103,7 +105,8 @@ func TestRenderConfig(t *testing.T) {
 			Name:        "render_multicast_tunnel_successfully",
 			Description: "render config for a multicast tunnel",
 			Data: templateData{
-				MulticastGroupBlock: "239.0.0.0/24",
+				MulticastGroupBlock:      "239.0.0.0/24",
+				TelemetryTWAMPListenPort: 862,
 				Device: &Device{
 					PublicIP: net.IP{7, 7, 7, 7},
 					Tunnels: []*Tunnel{
@@ -177,7 +180,8 @@ func TestRenderConfig(t *testing.T) {
 			Name:        "render_mixed_tunnels_successfully",
 			Description: "render config for a mix of unicast and multicast tunnels",
 			Data: templateData{
-				MulticastGroupBlock: "239.0.0.0/24",
+				MulticastGroupBlock:      "239.0.0.0/24",
+				TelemetryTWAMPListenPort: 862,
 				Device: &Device{
 					PublicIP: net.IP{7, 7, 7, 7},
 					Tunnels: []*Tunnel{
@@ -262,8 +266,9 @@ func TestRenderConfig(t *testing.T) {
 			Name:        "render_nohardware_tunnels_successfully",
 			Description: "render config for a mix of unicast and multicast tunnels with no hardware option",
 			Data: templateData{
-				NoHardware:          true,
-				MulticastGroupBlock: "239.0.0.0/24",
+				NoHardware:               true,
+				MulticastGroupBlock:      "239.0.0.0/24",
+				TelemetryTWAMPListenPort: 862,
 				Device: &Device{
 					PublicIP: net.IP{7, 7, 7, 7},
 					Tunnels: []*Tunnel{

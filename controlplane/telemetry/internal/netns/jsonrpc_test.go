@@ -2,6 +2,7 @@ package netns_test
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"io"
 	"net"
@@ -75,5 +76,30 @@ func TestNetNS_SingleThreadTransport(t *testing.T) {
 		req, _ := http.NewRequest("POST", "http://fake", io.NopCloser(strings.NewReader("x")))
 		_, err := tp.RoundTrip(req)
 		require.Error(t, err)
+	})
+
+	t.Run("https success", func(t *testing.T) {
+		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, err := io.Copy(io.Discard, r.Body)
+			require.NoError(t, err)
+			w.WriteHeader(204)
+		}))
+		defer srv.Close()
+
+		req, _ := http.NewRequest("POST", srv.URL, io.NopCloser(strings.NewReader("hi")))
+
+		tp := &netns.SingleThreadTransport{
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				return net.Dial("tcp", addr)
+			},
+			TLSConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		}
+
+		resp, err := tp.RoundTrip(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, 204, resp.StatusCode)
 	})
 }

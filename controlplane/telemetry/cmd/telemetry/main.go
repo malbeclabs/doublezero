@@ -15,6 +15,7 @@ import (
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netns"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netutil"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
+	telemetryconfig "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/config"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	sdktelemetry "github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
@@ -23,7 +24,7 @@ import (
 const (
 	defaultProbeInterval         = 10 * time.Second
 	defaultSubmissionInterval    = 60 * time.Second
-	defaultTWAMPListenPort       = telemetry.DefaultTWAMPListenPort
+	defaultTWAMPListenPort       = telemetryconfig.TWAMPListenPort
 	defaultTWAMPReflectorTimeout = 1 * time.Second
 	defaultPeersRefreshInterval  = 10 * time.Second
 	defaultTWAMPSenderTimeout    = 1 * time.Second

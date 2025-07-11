@@ -8,10 +8,6 @@ import (
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 )
 
-const (
-	DefaultTWAMPListenPort = uint16(862)
-)
-
 type Config struct {
 	// TWAMPReflector is the reflector for TWAMP probes.
 	TWAMPReflector *twamplight.Reflector

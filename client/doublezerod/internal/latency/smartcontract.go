@@ -6,7 +6,6 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
-	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
@@ -19,9 +18,6 @@ type ContractData struct {
 }
 
 func FetchContractData(ctx context.Context, programId string, rpcEndpoint string) (*ContractData, error) {
-	if rpcEndpoint == "" {
-		rpcEndpoint = dzsdk.DZ_LEDGER_RPC_URL
-	}
 	programID, err := solana.PublicKeyFromBase58(programId)
 	if err != nil {
 		return nil, err

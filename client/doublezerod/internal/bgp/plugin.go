@@ -57,6 +57,7 @@ func (p *Plugin) OnOpenMessage(peer corebgp.PeerConfig, routerID netip.Addr, cap
 		PeerAddr: net.ParseIP(peer.RemoteAddress.String()),
 		Session:  Session{SessionStatus: SessionStatusInitializing, LastSessionUpdate: time.Now().Unix()},
 	}
+	MetricSessionStatus.Set(0)
 	return nil
 }
 
@@ -76,6 +77,7 @@ func (p *Plugin) OnEstablished(peer corebgp.PeerConfig, writer corebgp.UpdateMes
 		PeerAddr: net.ParseIP(peer.RemoteAddress.String()),
 		Session:  Session{SessionStatus: SessionStatusUp, LastSessionUpdate: time.Now().Unix()},
 	}
+	MetricSessionStatus.Set(1)
 	return p.handleUpdate
 }
 
@@ -100,6 +102,7 @@ func (p *Plugin) OnClose(peer corebgp.PeerConfig) {
 			}
 		}
 	}
+	MetricSessionStatus.Set(0)
 }
 
 func (p *Plugin) handleUpdate(peer corebgp.PeerConfig, u []byte) *corebgp.Notification {

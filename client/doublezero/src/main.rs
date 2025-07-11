@@ -20,7 +20,7 @@ use doublezero_sdk::{DZClient, ProgramVersion};
 #[derive(Parser, Debug)]
 #[command(term_width = 0)]
 #[command(name = "DoubleZero")]
-#[command(version = env!("CARGO_PKG_VERSION"))]
+#[command(version = option_env!("BUILD_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")))]
 #[command(about = "DoubleZero client tool", long_about = None)]
 struct App {
     #[command(subcommand)]

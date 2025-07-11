@@ -64,14 +64,27 @@ func (r *Reflector) Run(ctx context.Context) error {
 			return nil
 		default:
 		}
-		err := r.conn.SetReadDeadline(time.Now().Add(r.timeout))
-		if err != nil {
-			if isClosedErr(err) {
-				r.log.Debug("TWAMP reflector socket closed")
-				return nil
+
+		if r.timeout > 0 {
+			err := r.conn.SetReadDeadline(time.Now().Add(r.timeout))
+			if err != nil {
+				if isClosedErr(err) {
+					r.log.Debug("TWAMP reflector socket closed")
+					return nil
+				}
+				return fmt.Errorf("error setting read deadline: %w", err)
 			}
-			return fmt.Errorf("error setting read deadline: %w", err)
+		} else if deadline, ok := ctx.Deadline(); ok {
+			err := r.conn.SetReadDeadline(deadline)
+			if err != nil {
+				if isClosedErr(err) {
+					r.log.Debug("TWAMP reflector socket closed")
+					return nil
+				}
+				return fmt.Errorf("error setting read deadline: %w", err)
+			}
 		}
+
 		n, addr, err := r.conn.ReadFromUDP(buf)
 		if err != nil {
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
@@ -104,6 +117,20 @@ func (r *Reflector) Run(ctx context.Context) error {
 
 		if !validPadding {
 			continue
+		}
+
+		if r.timeout > 0 {
+			err := r.conn.SetWriteDeadline(time.Now().Add(r.timeout))
+			if err != nil {
+				r.log.Error("error setting write deadline", "error", err)
+				continue
+			}
+		} else if deadline, ok := ctx.Deadline(); ok {
+			err := r.conn.SetWriteDeadline(deadline)
+			if err != nil {
+				r.log.Error("error setting write deadline", "error", err)
+				continue
+			}
 		}
 
 		_, err = r.conn.WriteToUDP(buf[:n], addr)

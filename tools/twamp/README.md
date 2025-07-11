@@ -6,18 +6,21 @@ A Go implementation of [TWAMP Light](https://datatracker.ietf.org/doc/html/rfc53
 
 TWAMP Light eliminates the control protocol, authentication, and session management overhead of full TWAMP while maintaining the core concept: sending probe packets and measuring round-trip time from their reflection.
 
-**Key Features:**
+### Key Features
+
 - Direct UDP communication without TCP session establishment
 - 48-byte probe packets with NTP timestamps and sequence numbers
 - Simple packet reflection without modification
 - Thread-safe sender with shared UDP connection
 - Single-threaded reflector for test environments
+- Kernel-level receive timestamping using `SO_TIMESTAMPNS` (when supported)
 
 ## Protocol
 
 This implementation follows the TWAMP Light concept from [RFC 5357](https://datatracker.ietf.org/doc/html/rfc5357) Appendix I, which describes a simplified architectural approach for two-way measurement. The packet format has been simplified from the complex RFC 5357 TWAMP-Test specification to a practical 48-byte fixed size for easy deployment and debugging.
 
-**Packet Structure:**
+### Packet Structure
+
 ```
 Offset  Size  Field
 0-3     4     Sequence Number (big-endian)
@@ -28,20 +31,37 @@ Offset  Size  Field
 
 The sequence number increments with each probe for packet ordering. NTP timestamps provide ~233 picosecond precision using the NTP epoch (January 1, 1900) as required by RFC 5357. Padding ensures consistent packet size for predictable network behavior.
 
-**Implementation Characteristics:**
+## Implementation
+
 - Single probe mode: one measurement per call
 - RTT-only measurement: no loss/jitter statistics
 - Dual timeout system: socket timeout + context cancellation
 - Error handling: `ErrTimeout` and `ErrInvalidPacket` for specific failure modes
 - Packet validation: reflector validates size and format, sender validates size only
 
-**TWAMP Light Conformance:**
+### Timestamping Precision
+
+This implementation uses the Linux kernel’s `SO_TIMESTAMPNS` socket option to obtain nanosecond-precision receive timestamps directly from the kernel when supported. This minimizes userspace jitter and syscall latency in round-trip time (RTT) measurements. If kernel timestamping is unavailable (e.g. non-Linux platforms), the implementation falls back to using `time.Now()` in userspace.
+
+- **Kernel Timestamps**: Enabled via `recvmsg` and `SO_TIMESTAMPNS` on supported platforms
+- **Fallback**: Transparent fallback to userspace wallclock timestamps
+- **Clamping**: RTTs that appear negative due to clock inconsistencies are conservatively clamped to zero
+
+A benchmark is included that compares the implementations:
+```console
+$ make bench-udp
+
+BenchmarkUDPTimestampedReader_Kernel-8           3420692              3553 ns/op                 1.304 avgRTT_us              1341 worstRTT_us
+BenchmarkUDPTimestampedReader_Wallclock-8        4451139              2700 ns/op                 2.560 avgRTT_us              3934 worstRTT_us
+```
+
+### TWAMP Light Conformance
 - **Core Concept**: ✅ Simple packet reflection with timestamps (matches RFC 5357 Appendix I)
 - **No Control Protocol**: ✅ Direct UDP communication without TCP session establishment
 - **NTP Timestamps**: ✅ Uses NTP epoch and format per RFC 5905 (required by RFC 5357)
 - **Main Deviation**: Packet format simplified from complex RFC 5357 TWAMP-Test to 48-byte fixed size
 
-## NTP Timestamp Implementation
+### NTP Timestamp
 
 Timestamps follow RFC 5905 with 32-bit seconds and fractional parts:
 
@@ -55,7 +75,6 @@ func ntpTimestamp(t time.Time) (uint32, uint32) {
 }
 ```
 
-**Characteristics:**
 - Epoch: January 1, 1900 00:00:00 UTC
 - Precision: ~233 picoseconds (2^-32 seconds)
 - Monotonic: Always increases with time

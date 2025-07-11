@@ -72,6 +72,13 @@ classDiagram
         DeviceStatus status
         String code
         NetworkV4List dz_prefixes
+        Pubkey metrics_publisher_pk
+        Pubkey contributor_pk
+        u32 bgp_asn
+        String mgmt_vrf
+        Ipv4Addr[] dns_servers
+        Ipv4Addr[] ntp_servers
+        Interface[] interfaces
     }
     class Link {
         AccountType account_type
@@ -87,6 +94,8 @@ classDiagram
         NetworkV4 tunnel_net
         LinkStatus status
         String code
+        String side_a_iface_name
+        String side_z_iface_name
     }
     class User {
         AccountType account_type
@@ -252,19 +261,53 @@ stateDiagram-v2
     Deleting --> [*]
 ```
 
-| Field        | Type          | Description               |
-| ------------ | ------------- | ------------------------- |
-| account_type | AccountType   | Type of account           |
-| owner        | Pubkey        | Device owner              |
-| index        | u128          | Device index              |
-| bump_seed    | u8            | PDA bump seed             |
-| location_pk  | Pubkey        | Location public key       |
-| exchange_pk  | Pubkey        | Exchange public key       |
-| device_type  | DeviceType    | Device type (e.g. Switch) |
-| public_ip    | Ipv4Addr      | Public IP address         |
-| status       | DeviceStatus  | Device status             |
-| code         | String        | Device code               |
-| dz_prefixes  | NetworkV4List | List of network prefixes  |
+| Field                  | Type             | Description                                 |
+|------------------------|------------------|---------------------------------------------|
+| account_type           | AccountType      | Type of account                             |
+| owner                  | Pubkey           | Device owner                                |
+| index                  | u128             | Device index                                |
+| bump_seed              | u8               | PDA bump seed                               |
+| location_pk            | Pubkey           | Location public key                         |
+| exchange_pk            | Pubkey           | Exchange public key                         |
+| device_type            | DeviceType       | Device type (e.g. Switch)                   |
+| public_ip              | Ipv4Addr         | Public IP address                           |
+| status                 | DeviceStatus     | Device status                               |
+| code                   | String           | Device code                                 |
+| dz_prefixes            | NetworkV4List    | List of network prefixes                    |
+| metrics_publisher_pk   | Pubkey           | Metrics publisher public key                |
+| contributor_pk         | Pubkey           | Contributor public key                      |
+| bgp_asn                | u32              | BGP ASN for the device                      |
+| mgmt_vrf               | String           | Management VRF name or "" for not set       |
+| dns_servers            | Vec of Ipv4Addr  | List of DNS servers                         |
+| ntp_servers            | Vec of Ipv4Addr  | List of NTP servers                         |
+| interfaces             | Vec of Interface | List of device interfaces                   |
+
+```mermaid
+classDiagram
+    class InterfaceType {
+        <<enumeration>>
+        Loopback
+        Physical
+        Virtual
+    }
+    class LoopbackType {
+        <<enumeration>>
+        None
+        Vpnv4
+        Ipv4
+        PimRpAddr
+        Reserved
+    }
+    class Interface {
+        String name
+        InterfaceType interface_type
+        LoopbackType loopback_type
+        u16 vlan_id
+        u16 node_segment_idx
+        NetworkV4 ip_net
+        boolean user_tunnel_endpoint
+    }
+```
 
 ## Link
 
@@ -283,23 +326,25 @@ stateDiagram-v2
     Deleting --> [*]
 ```
 
-| Field        | Type         | Description           |
-| ------------ | ------------ | --------------------- |
-| account_type | AccountType  | Type of account       |
-| owner        | Pubkey       | Link owner            |
-| index        | u128         | Link index            |
-| bump_seed    | u8           | PDA bump seed         |
-| side_a_pk    | Pubkey       | Side A public key     |
-| side_z_pk    | Pubkey       | Side Z public key     |
-| tunnel_type  | LinkLinkType | Tunnel type           |
-| bandwidth    | u64          | Bandwidth             |
-| mtu          | u32          | MTU                   |
-| delay_ns     | u64          | Delay in nanoseconds  |
-| jitter_ns    | u64          | Jitter in nanoseconds |
-| tunnel_id    | u16          | Tunnel ID             |
-| tunnel_net   | NetworkV4    | Tunnel network        |
-| status       | LinkStatus   | Link status           |
-| code         | String       | Link code             |
+| Field             | Type         | Description             |
+|-------------------|--------------|-------------------------|
+| account_type      | AccountType  | Type of account         |
+| owner             | Pubkey       | Link owner              |
+| index             | u128         | Link index              |
+| bump_seed         | u8           | PDA bump seed           |
+| side_a_pk         | Pubkey       | Side A public key       |
+| side_z_pk         | Pubkey       | Side Z public key       |
+| tunnel_type       | LinkLinkType | Tunnel type             |
+| bandwidth         | u64          | Bandwidth               |
+| mtu               | u32          | MTU                     |
+| delay_ns          | u64          | Delay in nanoseconds    |
+| jitter_ns         | u64          | Jitter in nanoseconds   |
+| tunnel_id         | u16          | Tunnel ID               |
+| tunnel_net        | NetworkV4    | Tunnel network          |
+| status            | LinkStatus   | Link status             |
+| code              | String       | Link code               |
+| side_a_iface_name | String       | Side A interface name   |
+| side_z_iface_name | String       | Side Z interface name   |
 
 ## User
 

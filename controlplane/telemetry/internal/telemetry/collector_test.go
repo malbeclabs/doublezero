@@ -349,6 +349,66 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 		}, 5*time.Second, 100*time.Millisecond, "should resume working after peer address is fixed")
 
 	})
+
+	t.Run("deduplicates senders for semantically equal peers", func(t *testing.T) {
+		t.Parallel()
+
+		log := log.With("test", t.Name())
+		reflector := newTestReflector(t)
+		devicePK := stringToPubkey("device")
+		peerPK := stringToPubkey("peer")
+		linkPK := stringToPubkey("link")
+
+		// Two distinct *Peer values with equivalent content
+		peer1 := &telemetry.Peer{
+			DevicePK: peerPK,
+			LinkPK:   linkPK,
+			Tunnel: &netutil.LocalTunnel{
+				Interface: loopbackInterface(t),
+				SourceIP:  reflector.LocalAddr().(*net.UDPAddr).IP,
+				TargetIP:  reflector.LocalAddr().(*net.UDPAddr).IP,
+			},
+			TWAMPPort: uint16(reflector.LocalAddr().(*net.UDPAddr).Port),
+		}
+		peer2 := &telemetry.Peer{
+			DevicePK: peerPK,
+			LinkPK:   linkPK,
+			Tunnel: &netutil.LocalTunnel{
+				Interface: loopbackInterface(t),
+				SourceIP:  reflector.LocalAddr().(*net.UDPAddr).IP,
+				TargetIP:  reflector.LocalAddr().(*net.UDPAddr).IP,
+			},
+			TWAMPPort: uint16(reflector.LocalAddr().(*net.UDPAddr).Port),
+		}
+
+		require.Equal(t, peer1.String(), peer2.String())
+
+		program := newMemoryTelemetryProgramClient()
+		collector := newTestCollector(t, log, devicePK, reflector, []*telemetry.Peer{peer1, peer2}, program, 250*time.Millisecond)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+
+		go func() {
+			require.NoError(t, collector.Run(ctx))
+		}()
+
+		key := telemetry.AccountKey{
+			OriginDevicePK: devicePK,
+			TargetDevicePK: peerPK,
+			LinkPK:         linkPK,
+			Epoch:          telemetry.DeriveEpoch(time.Now()),
+		}
+
+		// Wait for multiple samples
+		require.Eventually(t, func() bool {
+			return len(program.GetAccounts(t)[key]) >= 3
+		}, 4*time.Second, 100*time.Millisecond)
+
+		// Assert that only one account was used (i.e., peer.String() deduplicated senders)
+		require.Len(t, program.GetAccounts(t), 1, "expected only one sender to be used for logically equal peers")
+	})
+
 }
 
 func newTestReflector(t *testing.T) *twamplight.Reflector {

@@ -23,7 +23,7 @@ type Collector struct {
 	pinger    *Pinger
 	submitter *Submitter
 
-	senders   map[Peer]*senderEntry
+	senders   map[string]*senderEntry
 	sendersMu sync.Mutex
 
 	buffer *AccountsBuffer
@@ -41,7 +41,7 @@ func New(log *slog.Logger, cfg Config) (*Collector, error) {
 		cfg:       cfg,
 		peers:     cfg.PeerDiscovery,
 		reflector: cfg.TWAMPReflector,
-		senders:   make(map[Peer]*senderEntry),
+		senders:   make(map[string]*senderEntry),
 		buffer:    buffer,
 	}
 
@@ -196,7 +196,7 @@ func (c *Collector) getOrCreateSender(ctx context.Context, peer *Peer) twampligh
 	c.sendersMu.Lock()
 	defer c.sendersMu.Unlock()
 
-	entry, ok := c.senders[*peer]
+	entry, ok := c.senders[peer.String()]
 	if ok {
 		entry.lastUsed = time.Now()
 		return entry.sender
@@ -209,7 +209,7 @@ func (c *Collector) getOrCreateSender(ctx context.Context, peer *Peer) twampligh
 		c.log.Error("Failed to create sender", "error", err)
 		return nil
 	}
-	c.senders[*peer] = &senderEntry{sender: sender, lastUsed: time.Now()}
+	c.senders[peer.String()] = &senderEntry{sender: sender, lastUsed: time.Now()}
 	return sender
 }
 

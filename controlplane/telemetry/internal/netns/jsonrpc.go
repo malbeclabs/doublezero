@@ -41,10 +41,8 @@ func NewNamespacedJSONRPCClient(url string, namespace string, opts *JSONRPCClien
 
 	transport := &SingleThreadTransport{
 		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
-			var conn net.Conn
-			err := RunInNamespace(namespace, func() error {
-				var dialErr error
-				conn, dialErr = (&net.Dialer{
+			return RunInNamespace(namespace, func() (net.Conn, error) {
+				return (&net.Dialer{
 					Timeout:   opts.DialTimeout,
 					KeepAlive: opts.DialKeepAlive,
 					// Disable DualStack and FallbackDelay to avoid "Happy Eyeballs" behavior,
@@ -52,9 +50,7 @@ func NewNamespacedJSONRPCClient(url string, namespace string, opts *JSONRPCClien
 					DualStack:     false,
 					FallbackDelay: -1,
 				}).DialContext(ctx, network, address)
-				return dialErr
 			})
-			return conn, err
 		},
 	}
 

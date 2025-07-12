@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -147,12 +148,40 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
+	// If using a management namespace, wait for it to be ready.
+	if *managementNamespace != "" {
+		_, err := netns.WaitForNamespace(log, *managementNamespace, waitForNamespaceTimeout)
+		if err != nil {
+			log.Error("failed to wait for namespace", "error", err)
+			os.Exit(1)
+		}
+	}
+
 	// Set up prometheus metrics server if enabled.
 	if *metricsEnable {
 		metrics.BuildInfo.WithLabelValues(version, commit, date).Set(1)
 		go func() {
+			var listener net.Listener
+			if *managementNamespace != "" {
+				// If the management namespace is provided, we need to run the metrics server in that namespace.
+				listener, err = netns.RunInNamespace(*managementNamespace, func() (net.Listener, error) {
+					return net.Listen("tcp", *metricsAddr)
+				})
+				if err != nil {
+					log.Error("Failed to start prometheus metrics server listener in namespace", "error", err, "namespace", *managementNamespace)
+					return
+				}
+				log.Info("Prometheus metrics server listening", "namespace", *managementNamespace, "address", listener.Addr())
+			} else {
+				listener, err = net.Listen("tcp", *metricsAddr)
+				if err != nil {
+					log.Error("Failed to start prometheus metrics server listener", "error", err)
+					return
+				}
+				log.Info("Prometheus metrics server listening", "address", listener.Addr())
+			}
 			http.Handle("/metrics", promhttp.Handler())
-			if err := http.ListenAndServe(*metricsAddr, nil); err != nil {
+			if err := http.Serve(listener, nil); err != nil {
 				log.Error("Failed to start prometheus metrics server", "error", err)
 			}
 		}()
@@ -168,12 +197,6 @@ func main() {
 	// Build solana RPC client.
 	var rpcClient *solanarpc.Client
 	if *managementNamespace != "" {
-		_, err := netns.WaitForNamespace(log, *managementNamespace, waitForNamespaceTimeout)
-		if err != nil {
-			log.Error("failed to wait for namespace", "error", err)
-			os.Exit(1)
-		}
-
 		jsonrpcClient, err := netns.NewNamespacedJSONRPCClient(*ledgerRPCURL, *managementNamespace, nil)
 		if err != nil {
 			log.Error("failed to create namespace-safe solana RPC client", "error", err)

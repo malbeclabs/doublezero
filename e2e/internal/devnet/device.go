@@ -85,6 +85,9 @@ type DeviceTelemetrySpec struct {
 
 	// Verbose is whether to enable verbose logging.
 	Verbose bool
+
+	// MetricsEnable is whether to enable prometheus metrics.
+	MetricsEnable bool
 }
 
 func (s *DeviceSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
@@ -342,6 +345,9 @@ func (d *Device) Start(ctx context.Context) error {
 		"-telemetry-program-id", d.dn.Ledger.dn.Manager.TelemetryProgramID,
 		"-keypair", containerTelemetryKeypairPath,
 		"-local-device-pubkey", onchainID,
+	}
+	if spec.Telemetry.MetricsEnable {
+		telemetryCommandArgs = append(telemetryCommandArgs, "-metrics-enable")
 	}
 	if spec.Telemetry.TWAMPListenPort > 0 {
 		telemetryCommandArgs = append(telemetryCommandArgs, "-twamp-listen-port", strconv.Itoa(int(spec.Telemetry.TWAMPListenPort)))

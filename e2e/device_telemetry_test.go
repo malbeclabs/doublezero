@@ -90,6 +90,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 				SubmissionInterval:   5 * time.Second,
 				PeersRefreshInterval: 5 * time.Second,
 				Verbose:              true,
+				MetricsEnable:        true,
 			},
 		})
 		require.NoError(t, err)
@@ -126,6 +127,9 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 				SubmissionInterval:   5 * time.Second,
 				PeersRefreshInterval: 5 * time.Second,
 				Verbose:              true,
+				// NOTE: We intentionally do not enable metrics here, so that we can test the case
+				// where a device does not expose prometheus metrics.
+				MetricsEnable: false,
 			},
 		})
 		require.NoError(t, err)

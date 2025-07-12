@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/metrics"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 )
 
@@ -167,7 +168,8 @@ func (c *Collector) Close(ctx context.Context) error {
 				if err == nil {
 					break
 				}
-				c.log.Warn("Final sample submission failed", "attempt", attempt, "error", err)
+				metrics.Errors.WithLabelValues(metrics.ErrorTypeCollectorSubmitSamplesOnClose).Inc()
+				c.log.Warn("Final sample submission failed", "attempt", attempt, "samples", len(samples), "error", err)
 				sleepOrDone(ctx, time.Duration(attempt)*500*time.Millisecond)
 			}
 		}

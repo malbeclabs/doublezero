@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/metrics"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 )
 
@@ -112,13 +113,16 @@ func (s *Submitter) SubmitSamples(ctx context.Context, accountKey AccountKey, sa
 					SamplingIntervalMicroseconds: uint64(s.cfg.ProbeInterval.Microseconds()),
 				})
 				if err != nil {
+					metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterFailedToInitializeAccount).Inc()
 					return fmt.Errorf("failed to initialize device latency samples: %w", err)
 				}
 				_, _, err = s.cfg.ProgramClient.WriteDeviceLatencySamples(ctx, writeConfig)
 				if err != nil {
+					metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterFailedToWriteSamples).Inc()
 					return fmt.Errorf("failed to write device latency samples after init: %w", err)
 				}
 			} else {
+				metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterFailedToWriteSamples).Inc()
 				return fmt.Errorf("failed to write device latency samples: %w", err)
 			}
 		}
@@ -174,6 +178,7 @@ func (s *Submitter) Tick(ctx context.Context) {
 			case 1:
 				log.Debug("Submission failed, retrying...", "attempt", attempt, "error", err)
 			case maxAttempts:
+				metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterRetriesExhausted).Inc()
 				log.Error("Submission failed after all retries", "attempt", attempt, "samplesCount", len(tmp), "error", err)
 			case (maxAttempts + 1) / 2:
 				log.Debug("Submission failed, still retrying...", "attempt", attempt, "error", err)

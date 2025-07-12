@@ -16,7 +16,7 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      -X main.Build={{.Env.DEVICE_TELEMETRY_AGENT_VERSION}}
+      -X main.version={{.Version}} -X main.commit={{.ShortCommit}} -X main.date={{.Date}}
     goos:
       - linux
     goarch:

@@ -13,6 +13,11 @@ const (
 	MetricNameGoGoroutines         = "go_goroutines"
 )
 
+type LabeledValue struct {
+	Labels map[string]string
+	Value  float64
+}
+
 type MetricsClient struct {
 	url      string
 	families map[string]*prom.MetricFamily
@@ -42,20 +47,46 @@ func (m *MetricsClient) Fetch(ctx context.Context) error {
 	return nil
 }
 
-func (m *MetricsClient) GetCounter(name string) *prom.Counter {
+func (m *MetricsClient) GetGaugeValues(name string) []LabeledValue {
 	family, ok := m.families[name]
 	if !ok {
 		return nil
 	}
 
-	return family.Metric[0].Counter
+	var values []LabeledValue
+	for _, metric := range family.Metric {
+		labels := make(map[string]string)
+		for _, label := range metric.Label {
+			labels[label.GetName()] = label.GetValue()
+		}
+		if metric.Gauge != nil {
+			values = append(values, LabeledValue{
+				Labels: labels,
+				Value:  metric.Gauge.GetValue(),
+			})
+		}
+	}
+	return values
 }
 
-func (m *MetricsClient) GetGauge(name string) *prom.Gauge {
+func (m *MetricsClient) GetCounterValues(name string) []LabeledValue {
 	family, ok := m.families[name]
 	if !ok {
 		return nil
 	}
 
-	return family.Metric[0].Gauge
+	var values []LabeledValue
+	for _, metric := range family.Metric {
+		labels := make(map[string]string)
+		for _, label := range metric.Label {
+			labels[label.GetName()] = label.GetValue()
+		}
+		if metric.Counter != nil {
+			values = append(values, LabeledValue{
+				Labels: labels,
+				Value:  metric.Counter.GetValue(),
+			})
+		}
+	}
+	return values
 }

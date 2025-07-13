@@ -245,14 +245,14 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	require.NoError(t, err)
 
 	// Get the post-reachability "tunnel not found" metric for the la2 device, so we can check that it doesn't increase from here at the end.
-	la2TunnelNotFoundGauge := la2MetricsClient.GetGauge("doublezero_device_telemetry_agent_peer_discovery_not_found_tunnels")
-	require.NotNil(t, la2TunnelNotFoundGauge)
-	prevLA2TunnelNotFoundCount := int(*la2TunnelNotFoundGauge.Value)
+	la2TunnelNotFoundGaugeValues := la2MetricsClient.GetGaugeValues("doublezero_device_telemetry_agent_peer_discovery_not_found_tunnels")
+	require.NotNil(t, la2TunnelNotFoundGaugeValues)
+	prevLA2TunnelNotFoundCount := int(la2TunnelNotFoundGaugeValues[0].Value)
 
 	// Get the post-reachability "tunnel not found" metric for the ny5 device, so we can check that it increases from here at the end.
-	ny5TunnelNotFoundGauge := ny5MetricsClient.GetGauge("doublezero_device_telemetry_agent_peer_discovery_not_found_tunnels")
-	require.NotNil(t, ny5TunnelNotFoundGauge)
-	prevNY5TunnelNotFoundCount := int(*ny5TunnelNotFoundGauge.Value)
+	ny5TunnelNotFoundGaugeValues := ny5MetricsClient.GetGaugeValues("doublezero_device_telemetry_agent_peer_discovery_not_found_tunnels")
+	require.NotNil(t, ny5TunnelNotFoundGaugeValues)
+	prevNY5TunnelNotFoundCount := int(ny5TunnelNotFoundGaugeValues[0].Value)
 
 	// Check that TWAMP probes work between the devices.
 	log.Info("==> Checking that TWAMP probes work between the devices")
@@ -369,41 +369,55 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	require.NoError(t, err)
 
 	// Check that la2 has 0 "tunnel not found" metric counted, since it has no links with non-existent devices.
-	log.Info("==> Checking that la2 has 0 'tunnel not found' metric counted")
-	la2TunnelNotFoundGauge = la2MetricsClient.GetGauge("doublezero_device_telemetry_agent_peer_discovery_not_found_tunnels")
-	require.NotNil(t, la2TunnelNotFoundGauge)
-	require.Equal(t, prevLA2TunnelNotFoundCount, int(*la2TunnelNotFoundGauge.Value))
+	log.Info("==> Checking that la2 has 0 not found tunnels")
+	la2NotFoundTunnelsGaugeValues := la2MetricsClient.GetGaugeValues("doublezero_device_telemetry_agent_peer_discovery_not_found_tunnels")
+	require.NotNil(t, la2NotFoundTunnelsGaugeValues)
+	require.Equal(t, 1, len(la2NotFoundTunnelsGaugeValues))
+	require.Contains(t, la2NotFoundTunnelsGaugeValues[0].Labels, "local_device_pk")
+	require.Equal(t, la2DevicePK.String(), la2NotFoundTunnelsGaugeValues[0].Labels["local_device_pk"])
+	la2TNotFoundTunnelsCount := int(la2NotFoundTunnelsGaugeValues[0].Value)
+	require.Equal(t, prevLA2TunnelNotFoundCount, la2TNotFoundTunnelsCount)
 
 	// Check that ny5 has more than 0 "tunnel not found" metric counted, since it has a link with a non-existent device.
-	log.Info("==> Checking that ny5 has more than 0 'tunnel not found' metric counted")
-	ny5TunnelNotFoundGauge = ny5MetricsClient.GetGauge("doublezero_device_telemetry_agent_peer_discovery_not_found_tunnels")
-	require.NotNil(t, ny5TunnelNotFoundGauge)
-	require.Greater(t, int(*ny5TunnelNotFoundGauge.Value), prevNY5TunnelNotFoundCount)
+	log.Info("==> Checking that ny5 has more than 0 not found tunnels")
+	ny5NotFoundTunnelsGaugeValues := ny5MetricsClient.GetGaugeValues("doublezero_device_telemetry_agent_peer_discovery_not_found_tunnels")
+	require.NotNil(t, ny5NotFoundTunnelsGaugeValues)
+	require.Equal(t, 1, len(ny5NotFoundTunnelsGaugeValues))
+	require.Contains(t, ny5NotFoundTunnelsGaugeValues[0].Labels, "local_device_pk")
+	require.Equal(t, ny5DevicePK.String(), ny5NotFoundTunnelsGaugeValues[0].Labels["local_device_pk"])
+	ny5TNotFoundTunnelsCount := int(ny5NotFoundTunnelsGaugeValues[0].Value)
+	require.Greater(t, ny5TNotFoundTunnelsCount, prevNY5TunnelNotFoundCount)
 
 	// Check that the "errors_total" counter is 0 (not present) on both devices.
 	log.Info("==> Checking that errors_total counter is 0 (not present) on both devices")
-	la2ErrorsTotal := la2MetricsClient.GetCounter("doublezero_device_telemetry_agent_errors_total")
-	require.Nil(t, la2ErrorsTotal)
-	ny5ErrorsTotal := ny5MetricsClient.GetCounter("doublezero_device_telemetry_agent_errors_total")
-	require.Nil(t, ny5ErrorsTotal)
+	la2ErrorsCounterValues := la2MetricsClient.GetCounterValues("doublezero_device_telemetry_agent_errors_total")
+	if la2ErrorsCounterValues != nil {
+		fmt.Println("doublezero_device_telemetry_agent_errors_total", la2ErrorsCounterValues)
+		require.Fail(t, "la2ErrorsTotal should be nil")
+	}
+	ny5ErrorsCounterValues := ny5MetricsClient.GetCounterValues("doublezero_device_telemetry_agent_errors_total")
+	if ny5ErrorsCounterValues != nil {
+		fmt.Println("doublezero_device_telemetry_agent_errors_total", ny5ErrorsCounterValues)
+		require.Fail(t, "ny5ErrorsTotal should be nil")
+	}
 
 	// Check that go_memstats_alloc_bytes gauge is less than 3MB.
 	log.Info("==> Checking that go_memstats_alloc_bytes gauge is less than 3MB on both devices")
-	la2MemStatsAllocBytes := la2MetricsClient.GetGauge(prometheus.MetricNameGoMemstatsAllocBytes)
+	la2MemStatsAllocBytes := la2MetricsClient.GetGaugeValues(prometheus.MetricNameGoMemstatsAllocBytes)
 	require.NotNil(t, la2MemStatsAllocBytes)
-	require.Less(t, int(*la2MemStatsAllocBytes.Value), int(3*1024*1024))
-	ny5MemStatsAllocBytes := ny5MetricsClient.GetGauge(prometheus.MetricNameGoMemstatsAllocBytes)
+	require.Less(t, int(la2MemStatsAllocBytes[0].Value), int(3*1024*1024))
+	ny5MemStatsAllocBytes := ny5MetricsClient.GetGaugeValues(prometheus.MetricNameGoMemstatsAllocBytes)
 	require.NotNil(t, ny5MemStatsAllocBytes)
-	require.Less(t, int(*ny5MemStatsAllocBytes.Value), int(3*1024*1024))
+	require.Less(t, int(ny5MemStatsAllocBytes[0].Value), int(3*1024*1024))
 
 	// Check that go_goroutines gauge is less than 20.
 	log.Info("==> Checking that go_goroutines gauge is less than 30 on both devices")
-	la2GoGoroutines := la2MetricsClient.GetGauge(prometheus.MetricNameGoGoroutines)
-	require.NotNil(t, la2GoGoroutines)
-	require.Less(t, int(*la2GoGoroutines.Value), 30)
-	ny5GoGoroutines := ny5MetricsClient.GetGauge(prometheus.MetricNameGoGoroutines)
-	require.NotNil(t, ny5GoGoroutines)
-	require.Less(t, int(*ny5GoGoroutines.Value), 30)
+	la2GoGoroutinesCounterValues := la2MetricsClient.GetGaugeValues(prometheus.MetricNameGoGoroutines)
+	require.NotNil(t, la2GoGoroutinesCounterValues)
+	require.Less(t, int(la2GoGoroutinesCounterValues[0].Value), 30)
+	ny5GoGoroutinesCounterValues := ny5MetricsClient.GetGaugeValues(prometheus.MetricNameGoGoroutines)
+	require.NotNil(t, ny5GoGoroutinesCounterValues)
+	require.Less(t, int(ny5GoGoroutinesCounterValues[0].Value), 30)
 }
 
 func waitForDeviceLatencySamples(t *testing.T, dn *devnet.Devnet, originDevicePK, targetDevicePK, linkPK solana.PublicKey, epoch uint64, waitForMinSamples int, timeout time.Duration) (*telemetrysdk.DeviceLatencySamples, time.Duration) {

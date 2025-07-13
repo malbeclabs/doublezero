@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"testing"
 	"time"
 
@@ -210,3 +211,5 @@ func (m *mockSender) Probe(context.Context) (time.Duration, error) {
 }
 
 func (m *mockSender) Close() error { return nil }
+
+func (m *mockSender) LocalAddr() *net.UDPAddr { return nil }

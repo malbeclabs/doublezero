@@ -139,7 +139,7 @@ func main() {
 	defer cancel()
 
 	// Set up TWAMP reflector
-	reflector, err := twamplight.NewReflector(log, uint16(*twampListenPort), *twampReflectorTimeout)
+	reflector, err := twamplight.NewReflector(log, fmt.Sprintf("0.0.0.0:%d", *twampListenPort), *twampReflectorTimeout)
 	if err != nil {
 		log.Error("failed to create TWAMP reflector", "error", err)
 		os.Exit(1)

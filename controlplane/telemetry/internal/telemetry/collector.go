@@ -19,7 +19,7 @@ type Collector struct {
 	cfg Config
 
 	peers     PeerDiscovery
-	reflector *twamplight.Reflector
+	reflector twamplight.Reflector
 	pinger    *Pinger
 	submitter *Submitter
 
@@ -56,6 +56,7 @@ func New(log *slog.Logger, cfg Config) (*Collector, error) {
 	c.pinger = NewPinger(log, &PingerConfig{
 		LocalDevicePK: cfg.LocalDevicePK,
 		Interval:      cfg.ProbeInterval,
+		ProbeTimeout:  cfg.TWAMPSenderTimeout,
 		Peers:         cfg.PeerDiscovery,
 		Buffer:        buffer,
 		GetSender:     c.getOrCreateSender,
@@ -204,7 +205,7 @@ func (c *Collector) getOrCreateSender(ctx context.Context, peer *Peer) twampligh
 
 	sourceAddr := &net.UDPAddr{IP: peer.Tunnel.SourceIP, Port: 0}
 	targetAddr := &net.UDPAddr{IP: peer.Tunnel.TargetIP, Port: int(peer.TWAMPPort)}
-	sender, err := twamplight.NewSender(ctx, c.log, peer.Tunnel.Interface, sourceAddr, targetAddr, c.cfg.TWAMPSenderTimeout)
+	sender, err := twamplight.NewSender(ctx, c.log, peer.Tunnel.Interface, sourceAddr, targetAddr)
 	if err != nil {
 		c.log.Error("Failed to create sender", "error", err)
 		return nil

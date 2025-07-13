@@ -7,7 +7,9 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
 
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
@@ -86,17 +88,20 @@ func main() {
 
 	remoteUDPAddr := &net.UDPAddr{IP: ips[0], Port: int(port)}
 
-	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	sender, err := twamplight.NewSender(ctx, log, "", localUDPAddr, remoteUDPAddr, 5*time.Second)
+	sender, err := twamplight.NewSender(ctx, log, "", localUDPAddr, remoteUDPAddr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: failed to create sender: %v\n", err)
 		os.Exit(1)
 	}
 	defer sender.Close()
 
-	rtt, err := sender.Probe(ctx)
+	probeCtx, cancel := context.WithTimeout(ctx, *timeout)
+	defer cancel()
+
+	rtt, err := sender.Probe(probeCtx)
 	if err != nil {
 		if err == context.DeadlineExceeded {
 			fmt.Fprintf(os.Stderr, "Error: timeout\n")

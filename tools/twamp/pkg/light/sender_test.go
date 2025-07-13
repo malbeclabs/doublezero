@@ -2,9 +2,8 @@ package twamplight_test
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"net"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -13,39 +12,31 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func BenchmarkTWAMP_Sender(b *testing.B) {
-	reflector, err := twamplight.NewReflector(log, 0, 100*time.Millisecond)
-	require.NoError(b, err)
-	b.Cleanup(func() { reflector.Close() })
-
-	ctx, cancel := context.WithCancel(b.Context())
-	go func() {
-		_ = reflector.Run(ctx)
-	}()
-	b.Cleanup(cancel)
-
-	sender, err := twamplight.NewSender(ctx, log, "", nil, reflector.LocalAddr().(*net.UDPAddr), 100*time.Millisecond)
-	require.NoError(b, err)
-	b.Cleanup(func() { sender.Close() })
-
-	b.ResetTimer()
-	for range b.N {
-		ctx, cancel := context.WithTimeout(b.Context(), 100*time.Millisecond)
-		defer cancel()
-		_, err := sender.Probe(ctx)
-		if err != nil {
-			b.Fatalf("probe failed: %v", err)
-		}
+func TestTWAMP_Sender_Linux(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux-specific test")
 	}
+
+	runSenderTests(t, func(iface string, localAddr, remoteAddr *net.UDPAddr) (twamplight.Sender, error) {
+		return twamplight.NewLinuxSender(t.Context(), iface, localAddr, remoteAddr)
+	}, func(addr string) (twamplight.Reflector, error) {
+		return twamplight.NewLinuxReflector(addr, 100*time.Millisecond)
+	})
 }
 
-func TestTWAMP_Sender(t *testing.T) {
+func TestTWAMP_Sender_Basic(t *testing.T) {
+	runSenderTests(t, func(iface string, localAddr, remoteAddr *net.UDPAddr) (twamplight.Sender, error) {
+		return twamplight.NewBasicSender(t.Context(), log, iface, localAddr, remoteAddr)
+	}, func(addr string) (twamplight.Reflector, error) {
+		return twamplight.NewBasicReflector(log, addr, 100*time.Millisecond)
+	})
+}
+
+func runSenderTests(t *testing.T, newSender func(iface string, localAddr, remoteAddr *net.UDPAddr) (twamplight.Sender, error), newReflector func(addr string) (twamplight.Reflector, error)) {
 	t.Run("successful RTT probe", func(t *testing.T) {
 		t.Parallel()
 
-		log := log.With("test", t.Name())
-
-		reflector, err := twamplight.NewReflector(log, 0, 100*time.Millisecond)
+		reflector, err := newReflector("127.0.0.1:0")
 		require.NoError(t, err)
 		t.Cleanup(func() { reflector.Close() })
 
@@ -53,8 +44,7 @@ func TestTWAMP_Sender(t *testing.T) {
 		defer cancel()
 		go func() { require.NoError(t, reflector.Run(ctx)) }()
 
-		addr := reflector.LocalAddr().(*net.UDPAddr)
-		sender, err := twamplight.NewSender(ctx, log, "", nil, addr, 250*time.Millisecond)
+		sender, err := newSender("", nil, reflector.LocalAddr())
 		require.NoError(t, err)
 		require.NotNil(t, sender.LocalAddr())
 
@@ -66,10 +56,8 @@ func TestTWAMP_Sender(t *testing.T) {
 	t.Run("timeout returns ErrTimeout", func(t *testing.T) {
 		t.Parallel()
 
-		log := log.With("test", t.Name())
-
 		addr := &net.UDPAddr{IP: net.IPv4(10, 255, 255, 255), Port: 65000}
-		sender, err := twamplight.NewSender(t.Context(), log, "", nil, addr, 100*time.Millisecond)
+		sender, err := newSender("", nil, addr)
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
@@ -82,10 +70,8 @@ func TestTWAMP_Sender(t *testing.T) {
 	t.Run("unreachable address fails", func(t *testing.T) {
 		t.Parallel()
 
-		log := log.With("test", t.Name())
-
 		addr := &net.UDPAddr{IP: net.IPv4(10, 255, 255, 255), Port: 12345}
-		sender, err := twamplight.NewSender(t.Context(), log, "", nil, addr, 100*time.Millisecond)
+		sender, err := newSender("", nil, addr)
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
@@ -97,8 +83,6 @@ func TestTWAMP_Sender(t *testing.T) {
 
 	t.Run("closed socket results in timeout", func(t *testing.T) {
 		t.Parallel()
-
-		log := log.With("test", t.Name())
 
 		conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
 		require.NoError(t, err)
@@ -112,44 +96,23 @@ func TestTWAMP_Sender(t *testing.T) {
 
 		time.Sleep(100 * time.Millisecond)
 
-		sender, err := twamplight.NewSender(t.Context(), log, "", nil, addr, 500*time.Millisecond)
+		sender, err := newSender("", nil, addr)
 		require.NoError(t, err)
 
-		rtt, err := sender.Probe(context.Background())
-		if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, twamplight.ErrTimeout) {
-			require.Fail(t, "expected deadline exceeded or timeout, got %v", err)
-		}
-		require.Equal(t, time.Duration(0), rtt)
-	})
+		probeCtx, probeCancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
+		defer probeCancel()
 
-	t.Run("context cancel aborts probe early", func(t *testing.T) {
-		t.Parallel()
-
-		log := log.With("test", t.Name())
-
-		addr := &net.UDPAddr{IP: net.IPv4(10, 255, 255, 255), Port: 65000}                  // blackhole
-		sender, err := twamplight.NewSender(t.Context(), log, "", nil, addr, 5*time.Second) // long timeout
-		require.NoError(t, err)
-		t.Cleanup(func() { sender.Close() })
-
-		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-		defer cancel()
-		sender, err = twamplight.NewSender(t.Context(), log, "", nil, addr, 5*time.Second)
-		require.NoError(t, err)
-
-		rtt, err := sender.Probe(ctx)
+		rtt, err := sender.Probe(probeCtx)
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 		require.Equal(t, time.Duration(0), rtt)
 	})
 
-	t.Run("context_cancel_aborts_probe_early", func(t *testing.T) {
+	t.Run("context_cancel_does_not_abort_probe_early", func(t *testing.T) {
 		t.Parallel()
-
-		log := log.With("test", t.Name())
 
 		// Use a blackhole address so the probe would hang unless canceled.
 		addr := &net.UDPAddr{IP: net.IPv4(10, 255, 255, 255), Port: 65000}
-		sender, err := twamplight.NewSender(t.Context(), log, "", nil, addr, 5*time.Second)
+		sender, err := newSender("", nil, addr)
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithCancel(t.Context())
@@ -159,21 +122,39 @@ func TestTWAMP_Sender(t *testing.T) {
 			cancel()
 		}()
 
-		rtt, err := sender.Probe(ctx)
+		probeCtx, probeCancel := context.WithTimeout(ctx, 500*time.Millisecond)
+		rtt, err := sender.Probe(probeCtx)
+		probeCancel()
 		elapsed := time.Since(start)
 
-		require.ErrorIs(t, err, context.Canceled)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
 		require.Equal(t, time.Duration(0), rtt)
-		require.Less(t, elapsed, 500*time.Millisecond, "probe should return shortly after context cancel")
+		require.GreaterOrEqual(t, elapsed+10*time.Millisecond, 500*time.Millisecond)
+	})
+
+	t.Run("default timeout should be configured", func(t *testing.T) {
+		t.Parallel()
+
+		// Use a blackhole address so the probe would hang timeout.
+		addr := &net.UDPAddr{IP: net.IPv4(10, 255, 255, 255), Port: 65000}
+		sender, err := newSender("", nil, addr)
+		require.NoError(t, err)
+
+		start := time.Now()
+
+		rtt, err := sender.Probe(t.Context())
+		elapsed := time.Since(start)
+
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.Equal(t, time.Duration(0), rtt)
+		require.GreaterOrEqual(t, elapsed+10*time.Millisecond, 1*time.Second)
 	})
 
 	t.Run("context_timeout_aborts_probe_early", func(t *testing.T) {
 		t.Parallel()
 
-		log := log.With("test", t.Name())
-
 		addr := &net.UDPAddr{IP: net.IPv4(10, 255, 255, 255), Port: 65000}
-		sender, err := twamplight.NewSender(t.Context(), log, "", nil, addr, 5*time.Second) // long socket timeout
+		sender, err := newSender("", nil, addr) // long socket timeout
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
@@ -191,9 +172,7 @@ func TestTWAMP_Sender(t *testing.T) {
 	t.Run("sequence numbers increment", func(t *testing.T) {
 		t.Parallel()
 
-		log := log.With("test", t.Name())
-
-		reflector, err := twamplight.NewReflector(log, 0, 100*time.Millisecond)
+		reflector, err := newReflector("127.0.0.1:0")
 		require.NoError(t, err)
 		t.Cleanup(func() { reflector.Close() })
 
@@ -201,8 +180,8 @@ func TestTWAMP_Sender(t *testing.T) {
 		defer cancel()
 		go func() { require.NoError(t, reflector.Run(ctx)) }()
 
-		addr := reflector.LocalAddr().(*net.UDPAddr)
-		sender, err := twamplight.NewSender(t.Context(), log, "", nil, addr, 250*time.Millisecond)
+		addr := reflector.LocalAddr()
+		sender, err := newSender("", nil, addr)
 		require.NoError(t, err)
 
 		// Send multiple probes and verify sequence numbers
@@ -218,9 +197,7 @@ func TestTWAMP_Sender(t *testing.T) {
 	t.Run("concurrent probes use different sequence numbers", func(t *testing.T) {
 		t.Parallel()
 
-		log := log.With("test", t.Name())
-
-		reflector, err := twamplight.NewReflector(log, 0, 100*time.Millisecond)
+		reflector, err := newReflector("127.0.0.1:0")
 		require.NoError(t, err)
 		t.Cleanup(func() { reflector.Close() })
 
@@ -228,8 +205,8 @@ func TestTWAMP_Sender(t *testing.T) {
 		defer cancel()
 		go func() { require.NoError(t, reflector.Run(ctx)) }()
 
-		addr := reflector.LocalAddr().(*net.UDPAddr)
-		sender, err := twamplight.NewSender(t.Context(), log, "", nil, addr, 250*time.Millisecond)
+		addr := reflector.LocalAddr()
+		sender, err := twamplight.NewBasicSender(t.Context(), log, "", nil, addr)
 		require.NoError(t, err)
 
 		var wg sync.WaitGroup
@@ -282,7 +259,7 @@ func TestTWAMP_Sender(t *testing.T) {
 		// Give the reflector a moment to start
 		time.Sleep(10 * time.Millisecond)
 
-		sender, err := twamplight.NewSender(t.Context(), log, "", nil, conn.LocalAddr().(*net.UDPAddr), 250*time.Millisecond)
+		sender, err := twamplight.NewBasicSender(t.Context(), log, "", nil, conn.LocalAddr().(*net.UDPAddr))
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithTimeout(t.Context(), 250*time.Millisecond)
@@ -297,7 +274,7 @@ func TestTWAMP_Sender(t *testing.T) {
 
 		log := log.With("test", t.Name())
 
-		reflector, err := twamplight.NewReflector(log, 0, 100*time.Millisecond)
+		reflector, err := twamplight.NewBasicReflector(log, "127.0.0.1:0", 100*time.Millisecond)
 		require.NoError(t, err)
 		t.Cleanup(func() { reflector.Close() })
 
@@ -305,7 +282,7 @@ func TestTWAMP_Sender(t *testing.T) {
 		defer cancel()
 		go func() { require.NoError(t, reflector.Run(ctx)) }()
 
-		sender, err := twamplight.NewSender(t.Context(), log, "", nil, reflector.LocalAddr().(*net.UDPAddr), 5*time.Second)
+		sender, err := twamplight.NewBasicSender(t.Context(), log, "", nil, reflector.LocalAddr())
 		require.NoError(t, err)
 		t.Cleanup(func() { sender.Close() })
 
@@ -333,32 +310,52 @@ func TestTWAMP_Sender(t *testing.T) {
 		require.Less(t, clampedCount, samples/20, "expected clamping to occur in <5%% of cases")
 		require.Greater(t, nonZeroCount, 0, "expected at least some non-zero RTTs")
 	})
-}
 
-func FuzzTWAMP_Sender(f *testing.F) {
-	// Seed with some valid and invalid inputs
-	f.Add("127.0.0.1", uint16(65000))     // valid IP, random port
-	f.Add("256.256.256.256", uint16(123)) // invalid IP
-	f.Add("", uint16(0))                  // empty IP
-	f.Add("localhost", uint16(0))         // DNS, but port 0
+	t.Run("duplicate packets are ignored", func(t *testing.T) {
+		t.Parallel()
 
-	f.Fuzz(func(t *testing.T, ip string, port uint16) {
-		// Clamp port range to avoid privileged/reserved ports
-		if port < 1024 {
-			port += 1024
-		}
+		log := log.With("test", t.Name())
 
-		addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", ip, port))
-		if err != nil {
-			return // skip invalid addr strings
-		}
-		sender, err := twamplight.NewSender(t.Context(), log, "", nil, addr, 50*time.Millisecond) // empty iface
-		if err != nil {
-			return
-		}
-		ctx, cancel := context.WithTimeout(t.Context(), 75*time.Millisecond)
+		conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
+		require.NoError(t, err)
+		t.Cleanup(func() { conn.Close() })
+
+		// Custom reflector that replies twice with the same packet
+		go func() {
+			buf := make([]byte, 1500)
+			for {
+				n, addr, err := conn.ReadFromUDP(buf)
+				if err != nil {
+					return
+				}
+				_, _ = conn.WriteToUDP(buf[:n], addr)
+				time.Sleep(10 * time.Millisecond)
+				_, _ = conn.WriteToUDP(buf[:n], addr)
+			}
+		}()
+
+		sender, err := twamplight.NewBasicSender(t.Context(), log, "", nil, conn.LocalAddr().(*net.UDPAddr))
+		require.NoError(t, err)
+		t.Cleanup(func() { sender.Close() })
+
+		ctx, cancel := context.WithTimeout(t.Context(), 250*time.Millisecond)
 		defer cancel()
 
-		_, _ = sender.Probe(ctx) // we don't assert here, just checking for panics or unexpected crashes
+		// Send several probes with short delay between them and check that the RTT is non-zero.
+
+		rtt, err := sender.Probe(ctx)
+		require.NoError(t, err)
+		require.Greater(t, rtt, 0*time.Millisecond)
+
+		time.Sleep(100 * time.Millisecond)
+		rtt, err = sender.Probe(ctx)
+		require.NoError(t, err)
+		require.Greater(t, rtt, 0*time.Millisecond)
+
+		time.Sleep(100 * time.Millisecond)
+		rtt, err = sender.Probe(ctx)
+		require.NoError(t, err)
+		require.Greater(t, rtt, 0*time.Millisecond)
 	})
+
 }

@@ -144,6 +144,8 @@ func (p *ledgerPeerDiscovery) refresh(ctx context.Context) error {
 		return fmt.Errorf("failed to get local interfaces: %w", err)
 	}
 
+	var tunnelsNotFound int
+
 	peers := make([]*Peer, 0)
 	for _, link := range links {
 		// Ignore links that are not yet activated.
@@ -189,7 +191,7 @@ func (p *ledgerPeerDiscovery) refresh(ctx context.Context) error {
 		// NOTE: If the tunnel was not found, it will be nil here, so downstream usage should check
 		// for that.
 		if tunnel == nil {
-			metrics.PeerDiscoveryLocalTunnelNotFound.Inc()
+			tunnelsNotFound++
 		}
 
 		peers = append(peers, &Peer{
@@ -201,7 +203,10 @@ func (p *ledgerPeerDiscovery) refresh(ctx context.Context) error {
 	}
 
 	p.peers = peers
-	p.log.Debug("Refreshed peers", "devices", len(devices), "links", len(links), "peers", len(peers))
+	p.log.Debug("Refreshed peers", "devices", len(devices), "links", len(links), "peers", len(peers), "tunnelsNotFound", tunnelsNotFound)
+
+	// Record the number of tunnels not found.
+	metrics.PeerDiscoveryLocalTunnelNotFound.WithLabelValues(p.config.LocalDevicePK.String()).Set(float64(tunnelsNotFound))
 
 	return nil
 }

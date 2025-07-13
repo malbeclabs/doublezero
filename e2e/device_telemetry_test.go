@@ -245,14 +245,14 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	require.NoError(t, err)
 
 	// Get the post-reachability "tunnel not found" metric for the la2 device, so we can check that it doesn't increase from here at the end.
-	la2TunnelNotFoundCounter := la2MetricsClient.GetCounter("doublezero_device_telemetry_agent_peer_discovery_local_tunnel_not_found_total")
-	require.NotNil(t, la2TunnelNotFoundCounter)
-	prevLA2TunnelNotFoundCount := int(*la2TunnelNotFoundCounter.Value)
+	la2TunnelNotFoundGauge := la2MetricsClient.GetGauge("doublezero_device_telemetry_agent_peer_discovery_not_found_tunnels")
+	require.NotNil(t, la2TunnelNotFoundGauge)
+	prevLA2TunnelNotFoundCount := int(*la2TunnelNotFoundGauge.Value)
 
 	// Get the post-reachability "tunnel not found" metric for the ny5 device, so we can check that it increases from here at the end.
-	ny5TunnelNotFoundCounter := ny5MetricsClient.GetCounter("doublezero_device_telemetry_agent_peer_discovery_local_tunnel_not_found_total")
-	require.NotNil(t, ny5TunnelNotFoundCounter)
-	prevNY5TunnelNotFoundCount := int(*ny5TunnelNotFoundCounter.Value)
+	ny5TunnelNotFoundGauge := ny5MetricsClient.GetGauge("doublezero_device_telemetry_agent_peer_discovery_not_found_tunnels")
+	require.NotNil(t, ny5TunnelNotFoundGauge)
+	prevNY5TunnelNotFoundCount := int(*ny5TunnelNotFoundGauge.Value)
 
 	// Check that TWAMP probes work between the devices.
 	log.Info("==> Checking that TWAMP probes work between the devices")
@@ -370,15 +370,15 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 
 	// Check that la2 has 0 "tunnel not found" metric counted, since it has no links with non-existent devices.
 	log.Info("==> Checking that la2 has 0 'tunnel not found' metric counted")
-	la2TunnelNotFoundCounter = la2MetricsClient.GetCounter("doublezero_device_telemetry_agent_peer_discovery_local_tunnel_not_found_total")
-	require.NotNil(t, la2TunnelNotFoundCounter)
-	require.Equal(t, prevLA2TunnelNotFoundCount, int(*la2TunnelNotFoundCounter.Value))
+	la2TunnelNotFoundGauge = la2MetricsClient.GetGauge("doublezero_device_telemetry_agent_peer_discovery_not_found_tunnels")
+	require.NotNil(t, la2TunnelNotFoundGauge)
+	require.Equal(t, prevLA2TunnelNotFoundCount, int(*la2TunnelNotFoundGauge.Value))
 
 	// Check that ny5 has more than 0 "tunnel not found" metric counted, since it has a link with a non-existent device.
 	log.Info("==> Checking that ny5 has more than 0 'tunnel not found' metric counted")
-	ny5TunnelNotFoundCounter = ny5MetricsClient.GetCounter("doublezero_device_telemetry_agent_peer_discovery_local_tunnel_not_found_total")
-	require.NotNil(t, ny5TunnelNotFoundCounter)
-	require.Greater(t, int(*ny5TunnelNotFoundCounter.Value), prevNY5TunnelNotFoundCount)
+	ny5TunnelNotFoundGauge = ny5MetricsClient.GetGauge("doublezero_device_telemetry_agent_peer_discovery_not_found_tunnels")
+	require.NotNil(t, ny5TunnelNotFoundGauge)
+	require.Greater(t, int(*ny5TunnelNotFoundGauge.Value), prevNY5TunnelNotFoundCount)
 
 	// Check that the "errors_total" counter is 0 (not present) on both devices.
 	log.Info("==> Checking that errors_total counter is 0 (not present) on both devices")

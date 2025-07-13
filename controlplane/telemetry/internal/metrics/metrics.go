@@ -6,18 +6,17 @@ import (
 )
 
 const (
-	Namespace = "doublezero_device_telemetry_agent"
-
 	// Metrics names.
-	MetricNameBuildInfo                        = Namespace + "_build_info"
-	MetricNameErrors                           = Namespace + "_errors_total"
-	MetricNamePeerDiscoveryLocalTunnelNotFound = Namespace + "_peer_discovery_local_tunnel_not_found_total"
+	MetricNameBuildInfo                        = "doublezero_device_telemetry_agent_build_info"
+	MetricNameErrors                           = "doublezero_device_telemetry_agent_errors_total"
+	MetricNamePeerDiscoveryLocalTunnelNotFound = "doublezero_device_telemetry_agent_peer_discovery_not_found_tunnels"
 
 	// Labels.
-	LabelVersion   = "version"
-	LabelCommit    = "commit"
-	LabelDate      = "date"
-	LabelErrorType = "error_type"
+	LabelVersion       = "version"
+	LabelCommit        = "commit"
+	LabelDate          = "date"
+	LabelErrorType     = "error_type"
+	LabelLocalDevicePK = "local_device_pk"
 
 	// Error types.
 	ErrorTypeCollectorSubmitSamplesOnClose       = "collector_submit_samples_on_close"
@@ -47,10 +46,11 @@ var (
 		[]string{LabelErrorType},
 	)
 
-	PeerDiscoveryLocalTunnelNotFound = promauto.NewCounter(
-		prometheus.CounterOpts{
+	PeerDiscoveryLocalTunnelNotFound = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
 			Name: MetricNamePeerDiscoveryLocalTunnelNotFound,
 			Help: "Number of local tunnel interfaces not found encountered during peer discovery",
 		},
+		[]string{LabelLocalDevicePK},
 	)
 )

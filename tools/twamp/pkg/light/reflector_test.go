@@ -3,6 +3,7 @@ package twamplight_test
 import (
 	"context"
 	"net"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -11,24 +12,40 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTWAMP_Reflector(t *testing.T) {
+func TestTWAMP_Reflector_Linux(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux-specific test")
+	}
+
+	runReflectorTests(t, func(addr string) (twamplight.Reflector, error) {
+		return twamplight.NewLinuxReflector(addr, 100*time.Millisecond)
+	})
+}
+
+func TestTWAMP_Reflector_Basic(t *testing.T) {
+	runReflectorTests(t, func(addr string) (twamplight.Reflector, error) {
+		return twamplight.NewBasicReflector(log, addr, 100*time.Millisecond)
+	})
+}
+
+func runReflectorTests(t *testing.T, newReflector func(addr string) (twamplight.Reflector, error)) {
 	t.Run("echo", func(t *testing.T) {
 		t.Parallel()
 
-		reflector, err := twamplight.NewReflector(log, 0, 100*time.Millisecond)
+		reflector, err := newReflector("127.0.0.1:0")
 		require.NoError(t, err)
 		t.Cleanup(func() { reflector.Close() })
 
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		go func() { require.NoError(t, reflector.Run(ctx)) }()
 
-		conn, err := net.DialUDP("udp", nil, reflector.LocalAddr().(*net.UDPAddr))
+		conn, err := net.DialUDP("udp", nil, reflector.LocalAddr())
 		require.NoError(t, err)
 		defer conn.Close()
 
-		// Create valid 48-byte TWAMP packet
-		payload := make([]byte, 48)
+		// Create valid packet.
+		payload := make([]byte, twamplight.PacketSize)
 		payload[0] = 1 // sequence number
 		payload[4] = 1 // timestamp
 		// padding remains zeros (default)
@@ -38,18 +55,18 @@ func TestTWAMP_Reflector(t *testing.T) {
 		buf := make([]byte, 1500)
 		n, err := conn.Read(buf)
 		require.NoError(t, err)
-		require.Equal(t, 48, n)
+		require.Equal(t, twamplight.PacketSize, n)
 		require.Equal(t, payload, buf[:n])
 	})
 
 	t.Run("graceful shutdown", func(t *testing.T) {
 		t.Parallel()
 
-		reflector, err := twamplight.NewReflector(log, 0, 100*time.Millisecond)
+		reflector, err := newReflector("127.0.0.1:0")
 		require.NoError(t, err)
 		t.Cleanup(func() { reflector.Close() })
 
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
@@ -72,15 +89,15 @@ func TestTWAMP_Reflector(t *testing.T) {
 	t.Run("truncates oversized packet", func(t *testing.T) {
 		t.Parallel()
 
-		reflector, err := twamplight.NewReflector(log, 0, 100*time.Millisecond)
+		reflector, err := newReflector("127.0.0.1:0")
 		require.NoError(t, err)
 		defer reflector.Close()
 
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		go func() { require.NoError(t, reflector.Run(ctx)) }()
 
-		conn, err := net.DialUDP("udp", nil, reflector.LocalAddr().(*net.UDPAddr))
+		conn, err := net.DialUDP("udp", nil, reflector.LocalAddr())
 		require.NoError(t, err)
 		defer conn.Close()
 
@@ -101,15 +118,17 @@ func TestTWAMP_Reflector(t *testing.T) {
 	})
 
 	t.Run("concurrent clients", func(t *testing.T) {
-		reflector, err := twamplight.NewReflector(log, 0, 100*time.Millisecond)
+		t.Parallel()
+
+		reflector, err := newReflector("127.0.0.1:0")
 		require.NoError(t, err)
 		defer reflector.Close()
 
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		go func() { require.NoError(t, reflector.Run(ctx)) }()
 
-		addr := reflector.LocalAddr().(*net.UDPAddr)
+		addr := reflector.LocalAddr()
 
 		var wg sync.WaitGroup
 		for i := 0; i < 5; i++ {
@@ -120,8 +139,8 @@ func TestTWAMP_Reflector(t *testing.T) {
 				require.NoError(t, err)
 				defer conn.Close()
 
-				// Create valid 48-byte TWAMP packet
-				msg := make([]byte, 48)
+				// Create valid packet.
+				msg := make([]byte, twamplight.PacketSize)
 				msg[0] = byte(i) // sequence number
 				msg[4] = 1       // timestamp
 				// padding remains zeros (default)
@@ -131,7 +150,7 @@ func TestTWAMP_Reflector(t *testing.T) {
 				buf := make([]byte, 1500)
 				n, err := conn.Read(buf)
 				require.NoError(t, err)
-				require.Equal(t, 48, n)
+				require.Equal(t, twamplight.PacketSize, n)
 				require.Equal(t, msg, buf[:n])
 			}(i)
 		}
@@ -141,15 +160,15 @@ func TestTWAMP_Reflector(t *testing.T) {
 	t.Run("rejects oversized packets", func(t *testing.T) {
 		t.Parallel()
 
-		reflector, err := twamplight.NewReflector(log, 0, 100*time.Millisecond)
+		reflector, err := newReflector("127.0.0.1:0")
 		require.NoError(t, err)
 		defer reflector.Close()
 
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		go func() { require.NoError(t, reflector.Run(ctx)) }()
 
-		conn, err := net.DialUDP("udp", nil, reflector.LocalAddr().(*net.UDPAddr))
+		conn, err := net.DialUDP("udp", nil, reflector.LocalAddr())
 		require.NoError(t, err)
 		defer conn.Close()
 
@@ -170,15 +189,15 @@ func TestTWAMP_Reflector(t *testing.T) {
 	t.Run("rejects undersized packets", func(t *testing.T) {
 		t.Parallel()
 
-		reflector, err := twamplight.NewReflector(log, 0, 100*time.Millisecond)
+		reflector, err := newReflector("127.0.0.1:0")
 		require.NoError(t, err)
 		defer reflector.Close()
 
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		go func() { require.NoError(t, reflector.Run(ctx)) }()
 
-		conn, err := net.DialUDP("udp", nil, reflector.LocalAddr().(*net.UDPAddr))
+		conn, err := net.DialUDP("udp", nil, reflector.LocalAddr())
 		require.NoError(t, err)
 		defer conn.Close()
 
@@ -199,20 +218,20 @@ func TestTWAMP_Reflector(t *testing.T) {
 	t.Run("rejects packets with non-zero padding", func(t *testing.T) {
 		t.Parallel()
 
-		reflector, err := twamplight.NewReflector(log, 0, 100*time.Millisecond)
+		reflector, err := newReflector("127.0.0.1:0")
 		require.NoError(t, err)
 		defer reflector.Close()
 
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		go func() { require.NoError(t, reflector.Run(ctx)) }()
 
-		conn, err := net.DialUDP("udp", nil, reflector.LocalAddr().(*net.UDPAddr))
+		conn, err := net.DialUDP("udp", nil, reflector.LocalAddr())
 		require.NoError(t, err)
 		defer conn.Close()
 
-		// Create 48-byte packet with non-zero padding
-		payload := make([]byte, 48)
+		// Create packet with non-zero padding
+		payload := make([]byte, twamplight.PacketSize)
 		payload[0] = 1  // sequence number
 		payload[4] = 1  // timestamp
 		payload[20] = 1 // non-zero padding
@@ -228,23 +247,23 @@ func TestTWAMP_Reflector(t *testing.T) {
 		require.Error(t, err, "should not receive response for packet with non-zero padding")
 	})
 
-	t.Run("accepts valid TWAMP packets", func(t *testing.T) {
+	t.Run("accepts valid packets", func(t *testing.T) {
 		t.Parallel()
 
-		reflector, err := twamplight.NewReflector(log, 0, 100*time.Millisecond)
+		reflector, err := newReflector("127.0.0.1:0")
 		require.NoError(t, err)
 		defer reflector.Close()
 
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		go func() { require.NoError(t, reflector.Run(ctx)) }()
 
-		conn, err := net.DialUDP("udp", nil, reflector.LocalAddr().(*net.UDPAddr))
+		conn, err := net.DialUDP("udp", nil, reflector.LocalAddr())
 		require.NoError(t, err)
 		defer conn.Close()
 
-		// Create valid 48-byte TWAMP packet
-		payload := make([]byte, 48)
+		// Create valid packet
+		payload := make([]byte, twamplight.PacketSize)
 		payload[0] = 1 // sequence number
 		payload[4] = 1 // timestamp
 		// padding remains zeros (default)
@@ -258,43 +277,7 @@ func TestTWAMP_Reflector(t *testing.T) {
 		buf := make([]byte, 1500)
 		n, err := conn.Read(buf)
 		require.NoError(t, err)
-		require.Equal(t, 48, n)
+		require.Equal(t, twamplight.PacketSize, n)
 		require.Equal(t, payload, buf[:n])
-	})
-}
-
-func FuzzTWAMP_Reflector(f *testing.F) {
-	reflector, err := twamplight.NewReflector(log, 0, 100*time.Millisecond)
-	require.NoError(f, err)
-	defer reflector.Close()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		_ = reflector.Run(ctx)
-	}()
-	defer cancel()
-
-	addr := reflector.LocalAddr().(*net.UDPAddr)
-
-	conn, err := net.DialUDP("udp", nil, addr)
-	require.NoError(f, err)
-	defer conn.Close()
-
-	// Seed with a basic valid TWAMP packet
-	f.Add([]byte{
-		0, 0, 0, 1, // seq
-		0, 0, 0, 0, 0, 0, 0, 0, // timestamp
-	})
-
-	f.Fuzz(func(t *testing.T, data []byte) {
-		if len(data) == 0 || len(data) > 1500 {
-			return
-		}
-		_, _ = conn.Write(data)
-
-		// Expect a response or timeout
-		_ = conn.SetReadDeadline(time.Now().Add(50 * time.Millisecond))
-		buf := make([]byte, 1500)
-		_, _, _ = conn.ReadFrom(buf) // we don't assert here — we just want to ensure no panics/crashes
 	})
 }

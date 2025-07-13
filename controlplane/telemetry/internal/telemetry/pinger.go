@@ -13,6 +13,7 @@ import (
 type PingerConfig struct {
 	LocalDevicePK solana.PublicKey
 	Interval      time.Duration
+	ProbeTimeout  time.Duration
 	Peers         PeerDiscovery
 	Buffer        *AccountsBuffer
 	GetSender     func(ctx context.Context, peer *Peer) twamplight.Sender
@@ -92,8 +93,17 @@ func (p *Pinger) Tick(ctx context.Context) {
 				return
 			}
 
-			log.Debug("Probing", "source", peer.Tunnel.SourceIP, "interface", peer.Tunnel.Interface, "remote", peer.Tunnel.TargetIP)
-			rtt, err := sender.Probe(ctx)
+			var probeCtx context.Context
+			var cancel context.CancelFunc
+			if p.cfg.ProbeTimeout > 0 {
+				probeCtx, cancel = context.WithTimeout(ctx, p.cfg.ProbeTimeout)
+				defer cancel()
+			} else {
+				probeCtx = ctx
+			}
+
+			log.Debug("Probing", "source", peer.Tunnel.SourceIP, "interface", peer.Tunnel.Interface, "remote", peer.Tunnel.TargetIP, "timeout", p.cfg.ProbeTimeout)
+			rtt, err := sender.Probe(probeCtx)
 			if err != nil {
 				log.Debug("Probe failed, recording loss", "error", err)
 				p.cfg.Buffer.Add(accountKey, Sample{

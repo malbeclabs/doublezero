@@ -44,6 +44,7 @@ type Config struct {
 	TelemetryProgramID      string
 	Epoch                   uint64
 	RecentEpochs            uint64
+	RecentSamples           uint64
 	Verbose                 bool
 }
 
@@ -58,7 +59,7 @@ func main() {
 	summaries, err := buildSummaries(
 		context.Background(), log,
 		cfg.RPCEndpoint, cfg.ServiceabilityProgramID, cfg.TelemetryProgramID,
-		cfg.Epoch, cfg.RecentEpochs,
+		cfg.Epoch, cfg.RecentEpochs, cfg.RecentSamples,
 	)
 	if err != nil {
 		log.Error("Failed to build summaries", "error", err)
@@ -75,6 +76,7 @@ func parseFlags() *Config {
 	flag.StringVar(&cfg.TelemetryProgramID, "telemetry-program-id", telemetry.TELEMETRY_PROGRAM_ID_DEVNET, "Telemetry program ID")
 	flag.Uint64Var(&cfg.Epoch, "epoch", 0, "Epoch to query (0 for current epoch)")
 	flag.Uint64Var(&cfg.RecentEpochs, "recent-epochs", 1, "Aggregate over the last N epochs ending at --epoch")
+	flag.Uint64Var(&cfg.RecentSamples, "recent-samples", 0, "Aggregate over the last N samples per group")
 	flag.BoolVar(&cfg.Verbose, "verbose", false, "Enable verbose logging")
 	flag.Parse()
 	return cfg
@@ -100,6 +102,10 @@ func printSummaries(summaries []*Summary, cfg *Config) {
 	epochLabel := fmt.Sprintf("Epochs: %d–%d", start, cfg.Epoch)
 	if cfg.RecentEpochs == 1 {
 		epochLabel = fmt.Sprintf("Epoch: %d", cfg.Epoch)
+	}
+
+	if cfg.RecentSamples > 0 {
+		epochLabel += fmt.Sprintf(" (last %d samples)", cfg.RecentSamples)
 	}
 
 	fmt.Println(epochLabel)
@@ -155,7 +161,7 @@ func printSummaries(summaries []*Summary, cfg *Config) {
 	table.Render()
 }
 
-func buildSummaries(ctx context.Context, log *slog.Logger, rpcEndpoint, serviceabilityProgramID, telemetryProgramID string, epoch, recent uint64) ([]*Summary, error) {
+func buildSummaries(ctx context.Context, log *slog.Logger, rpcEndpoint, serviceabilityProgramID, telemetryProgramID string, epoch, recentEpochs, recentSamples uint64) ([]*Summary, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
@@ -205,7 +211,7 @@ func buildSummaries(ctx context.Context, log *slog.Logger, rpcEndpoint, servicea
 			if origin == nil || target == nil {
 				continue
 			}
-			for e := int64(epoch) - int64(recent) + 1; e <= int64(epoch); e++ {
+			for e := int64(epoch) - int64(recentEpochs) + 1; e <= int64(epoch); e++ {
 				queries = append(queries, query{
 					origin: origin,
 					target: target,
@@ -229,7 +235,7 @@ func buildSummaries(ctx context.Context, log *slog.Logger, rpcEndpoint, servicea
 					return
 				}
 
-				for e := int64(epoch) - int64(recent) + 1; e <= int64(epoch); e++ {
+				for e := int64(epoch) - int64(recentEpochs) + 1; e <= int64(epoch); e++ {
 					groupsMu.Lock()
 					groupKey := groupKey{
 						origin: q.origin.Code,
@@ -258,6 +264,10 @@ func buildSummaries(ctx context.Context, log *slog.Logger, rpcEndpoint, servicea
 			Origin: key.origin,
 			Target: key.target,
 			Link:   key.link,
+		}
+
+		if recentSamples > 0 {
+			samples = samples[len(samples)-int(recentSamples):]
 		}
 
 		successSamples := make([]uint32, 0, len(samples))

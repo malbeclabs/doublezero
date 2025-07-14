@@ -151,6 +151,8 @@ impl Orchestrator {
             merkle_tree.original_leaves.len()
         );
 
+        // TODO: Store merkle root and leaves in duckdb as well
+
         Ok(())
     }
 

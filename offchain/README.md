@@ -2,23 +2,12 @@
 
 Construct off-chain reward distribution from on-chain DZ telemetry data.
 
-## RFC (in progress)
-
-[DoubleZero#672](https://github.com/malbeclabs/doublezero/pull/672)
-
-# TODO
-
-- [ ] 3rd party latency data is undefined (therefore mocked)
-- [ ] Substantially more testing required for correctness, verification and reproducibility
-- [ ] All rewards are 0 because telemetry samples from devnet are 0s
-- [ ] Last step of publishing artefacts to DZ Ledger is unimplemented
-
 ## Usage
 
 - CLI
 
 ```bash
-$ ./target/release/rewards_calculator -h
+$ ./target/release/rewards_calculator --help
 Off-chain rewards calculation for DoubleZero network
 
 Usage: rewards_calculator [OPTIONS] --before <BEFORE> --after <AFTER>

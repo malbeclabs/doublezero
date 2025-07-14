@@ -12,6 +12,7 @@ ip routing vrf vrf1
 hardware access-list update default-result permit
 !
 {{- end }}
+no ip access-list MAIN-CONTROL-PLANE-ACL
 ip access-list MAIN-CONTROL-PLANE-ACL
    counters per-entry
    10 permit icmp any any

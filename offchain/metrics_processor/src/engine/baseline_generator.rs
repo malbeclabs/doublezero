@@ -31,11 +31,15 @@ impl BaselineGenerator {
     ) -> InternetBaseline {
         let distance_km = haversine_distance(from_lat, from_lng, to_lat, to_lng);
 
+        // Ensure minimum distance for realistic baseline metrics
+        // This handles edge cases where distinct locations might be very close
+        let effective_distance_km = distance_km.max(10.0); // Minimum 10km for baseline calculations
+
         InternetBaseline {
-            latency_ms: self.estimate_latency(distance_km),
-            jitter_ms: self.estimate_jitter(distance_km),
-            packet_loss: self.estimate_packet_loss(distance_km),
-            bandwidth_mbps: self.estimate_bandwidth(distance_km),
+            latency_ms: self.estimate_latency(effective_distance_km),
+            jitter_ms: self.estimate_jitter(effective_distance_km),
+            packet_loss: self.estimate_packet_loss(effective_distance_km),
+            bandwidth_mbps: self.estimate_bandwidth(effective_distance_km),
         }
     }
 

@@ -301,6 +301,7 @@ pub struct DbDeviceLatencySamples {
     pub sampling_interval_us: u64,
     pub start_timestamp_us: u64,
     pub samples: Vec<u32>, // Store latency samples in microseconds
+    pub sample_count: u32, // Number of samples (from next_sample_index)
 }
 
 impl DbDeviceLatencySamples {
@@ -317,6 +318,7 @@ impl DbDeviceLatencySamples {
             sampling_interval_us: samples.header.sampling_interval_microseconds,
             start_timestamp_us: samples.header.start_timestamp_microseconds,
             samples: samples.samples.clone(),
+            sample_count: samples.header.next_sample_index,
         }
     }
 }
@@ -441,6 +443,7 @@ mod tests {
         assert_eq!(db_samples.sampling_interval_us, 5_000_000);
         assert_eq!(db_samples.start_timestamp_us, 1_700_000_000_000_000);
         assert_eq!(db_samples.samples, vec![100, 200, 300]);
+        assert_eq!(db_samples.sample_count, 3);
     }
 
     #[test]

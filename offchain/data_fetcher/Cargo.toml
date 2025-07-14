@@ -7,6 +7,7 @@ edition.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+borsh.workspace = true
 chrono.workspace = true
 metrics_processor = { path = "../metrics_processor" }
 doublezero-serviceability.workspace = true

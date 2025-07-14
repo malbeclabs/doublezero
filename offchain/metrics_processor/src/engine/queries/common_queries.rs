@@ -48,8 +48,8 @@ impl CommonQueries {
         r#"
         INSERT INTO telemetry_samples (pubkey, epoch, origin_device_pk, target_device_pk, link_pk,
                                      origin_device_location_pk, target_device_location_pk,
-                                     origin_device_agent_pk, sampling_interval_us, start_timestamp_us, samples)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                     origin_device_agent_pk, sampling_interval_us, start_timestamp_us, samples, sample_count)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#
     }
 

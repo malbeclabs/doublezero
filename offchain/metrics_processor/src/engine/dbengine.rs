@@ -314,7 +314,8 @@ impl DuckDbEngine {
                 sample_account.origin_device_agent_pk.to_string(),
                 sample_account.sampling_interval_us,
                 sample_account.start_timestamp_us,
-                samples_json
+                samples_json,
+                sample_account.sample_count
             ])?;
         }
 

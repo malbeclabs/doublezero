@@ -6,9 +6,13 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use chrono::Utc;
-use metrics_processor::engine::{DuckDbEngine, types::RewardsData};
+use metrics_processor::{
+    engine::{DuckDbEngine, types::RewardsData},
+    processor::MetricsProcessor,
+    shapley_types::ShapleyInputs,
+};
 use rust_decimal::{Decimal, dec};
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 use tracing::info;
 
 /// Main orchestrator for the rewards calculation pipeline
@@ -36,9 +40,6 @@ impl Orchestrator {
         // Phase 1: Data Fetching
         // Fetch data (needed for verification even when loading from cache)
         let rewards_data = if self.cli.load_db.is_some() {
-            // When loading from cache, we still need the rewards data structure
-            // for verification packet generation
-            // TODO: Consider serializing rewards_data to the cached DB
             info!("Loading from cached DB - using minimal rewards data");
             RewardsData {
                 network: Default::default(),
@@ -82,6 +83,46 @@ impl Orchestrator {
         // TODO: Replace epoch approximation with canonical source
         // Currently using timestamp as epoch approximation. This should be replaced
         // with the actual epoch number from the on-chain program once available.
+        // TODO: Epoch id is available in the telemetry_samples
+        /*
+        D show table telemetry_samples;
+        ┌───────────────────────────┬─────────────┬─────────┬─────────┬─────────┬─────────┐
+        │        column_name        │ column_type │  null   │   key   │ default │  extra  │
+        │          varchar          │   varchar   │ varchar │ varchar │ varchar │ varchar │
+        ├───────────────────────────┼─────────────┼─────────┼─────────┼─────────┼─────────┤
+        │ pubkey                    │ VARCHAR     │ NO      │ NULL    │ NULL    │ NULL    │
+        │ epoch                     │ UBIGINT     │ NO      │ NULL    │ NULL    │ NULL    │
+        │ origin_device_pk          │ VARCHAR     │ NO      │ NULL    │ NULL    │ NULL    │
+        │ target_device_pk          │ VARCHAR     │ NO      │ NULL    │ NULL    │ NULL    │
+        │ link_pk                   │ VARCHAR     │ NO      │ NULL    │ NULL    │ NULL    │
+        │ origin_device_location_pk │ VARCHAR     │ NO      │ NULL    │ NULL    │ NULL    │
+        │ target_device_location_pk │ VARCHAR     │ NO      │ NULL    │ NULL    │ NULL    │
+        │ origin_device_agent_pk    │ VARCHAR     │ NO      │ NULL    │ NULL    │ NULL    │
+        │ sampling_interval_us      │ UBIGINT     │ NO      │ NULL    │ NULL    │ NULL    │
+        │ start_timestamp_us        │ UBIGINT     │ NO      │ NULL    │ NULL    │ NULL    │
+        │ samples                   │ JSON        │ NO      │ NULL    │ NULL    │ NULL    │
+        │ sample_count              │ UINTEGER    │ NO      │ NULL    │ NULL    │ NULL    │
+        ├───────────────────────────┴─────────────┴─────────┴─────────┴─────────┴─────────┤
+        │ 12 rows                                                               6 columns │
+        └─────────────────────────────────────────────────────────────────────────────────┘
+        D select * from telemetry_samples;
+        ┌──────────────────────┬────────┬──────────────────────┬──────────────────────┬──────────────────────┬───┬──────────────────────┬────────────────────┬──────────────────────┬──────────────┐
+        │        pubkey        │ epoch  │   origin_device_pk   │   target_device_pk   │       link_pk        │ … │ sampling_interval_us │ start_timestamp_us │       samples        │ sample_count │
+        │       varchar        │ uint64 │       varchar        │       varchar        │       varchar        │   │        uint64        │       uint64       │         json         │    uint32    │
+        ├──────────────────────┼────────┼──────────────────────┼──────────────────────┼──────────────────────┼───┼──────────────────────┼────────────────────┼──────────────────────┼──────────────┤
+        │ CS1J27FNrr7Wewx98h…  │  10141 │ B9xjyQCvhVJSAZW9xN…  │ 5JcwAoBnsuwng78a21…  │ 4CEJN5dMT2fBf5bfWv…  │ … │             10000000 │   1752364802195997 │ [252,240,217,226,2…  │        10965 │
+        │ Df5BXQ7vN3guquiHo7…  │  10141 │ 5z5NQTAEwHzARf2f7f…  │ 5JcwAoBnsuwng78a21…  │ 6aYy3mh5zF1fWvoLip…  │ … │             10000000 │   1752364802435659 │ [155,174,158,176,1…  │        10963 │
+        │ 53ydQbiYCSpKRXbiqj…  │  10141 │ 5JcwAoBnsuwng78a21…  │ 5z5NQTAEwHzARf2f7f…  │ 6aYy3mh5zF1fWvoLip…  │ … │             10000000 │   1752364800027481 │ [209,131,186,172,1…  │        10965 │
+        │ A54VqNCAwYHuVuXojM…  │  10141 │ B9xjyQCvhVJSAZW9xN…  │ CwwyhnxnUnY1XqM3A6…  │ GA9XU8L2ujs6e6jRfB…  │ … │             10000000 │   1752364802196005 │ [186,183,147,125,1…  │        10963 │
+        │ FY3HQP2DJepaq8pkVo…  │  10141 │ CwwyhnxnUnY1XqM3A6…  │ B9xjyQCvhVJSAZW9xN…  │ GA9XU8L2ujs6e6jRfB…  │ … │             10000000 │   1752364802718453 │ [184,127,154,136,1…  │        10963 │
+        │ 8PgJQDXsuBxaTZ7Xj6…  │  10141 │ CwwyhnxnUnY1XqM3A6…  │ 5z5NQTAEwHzARf2f7f…  │ 8E2eW7xesMXAXcpS4p…  │ … │             10000000 │   1752364802718461 │ [164,162,152,179,1…  │        10965 │
+        │ C4KiDmL4nN1yWkWqiQ…  │  10141 │ 5z5NQTAEwHzARf2f7f…  │ CwwyhnxnUnY1XqM3A6…  │ 8E2eW7xesMXAXcpS4p…  │ … │             10000000 │   1752364802435650 │ [144,139,120,128,1…  │        10965 │
+        │ 45jPxVXSXjN5vaX1Cp…  │  10141 │ 5JcwAoBnsuwng78a21…  │ B9xjyQCvhVJSAZW9xN…  │ 4CEJN5dMT2fBf5bfWv…  │ … │             10000000 │   1752364800027475 │ [192,156,204,159,1…  │        10963 │
+        ├──────────────────────┴────────┴──────────────────────┴──────────────────────┴──────────────────────┴───┴──────────────────────┴────────────────────┴──────────────────────┴──────────────┤
+        │ 8 rows                                                                                                                                                              12 columns (9 shown) │
+        └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+        */
+
         let epoch = self.before_us / 1_000_000; // Convert microseconds to seconds as epoch approximation
         let burn_rate = merkle_generator::calculate_burn_rate(
             epoch,
@@ -97,9 +138,20 @@ impl Orchestrator {
             "Generated {} merkle leaves",
             merkle_tree.original_leaves.len()
         );
+        info!("Leaves: {:#?}", merkle_tree.original_leaves);
 
-        // Phase 5: Invoke program to publish to DZ Ledger
-        todo!("Phase 5: Publish merkle root to Solana and leaves to DZ Ledger");
+        // Phase 5: Results are ready for publication
+        info!("Phase 5: Merkle root and leaves are ready for publication");
+        info!(
+            "Merkle root {} can be published to Solana",
+            merkle_tree.root
+        );
+        info!(
+            "{} leaves are ready to be published to DZ Ledger",
+            merkle_tree.original_leaves.len()
+        );
+
+        Ok(())
     }
 
     async fn fetch_all_data(&self) -> Result<RewardsData> {
@@ -157,7 +209,7 @@ impl Orchestrator {
     async fn insert_data_into_duckdb(
         &self,
         rewards_data: &RewardsData,
-    ) -> Result<std::sync::Arc<DuckDbEngine>> {
+    ) -> Result<Arc<DuckDbEngine>> {
         let db_engine = if self.cli.cache_db {
             // TODO: Make the cache db dir configurable via settings and default it to `/tmp/doublzero-rewarder/cache`
             // Create timestamped cache file
@@ -181,14 +233,11 @@ impl Orchestrator {
         Ok(db_engine)
     }
 
-    async fn process_metrics(
-        &self,
-        db_engine: std::sync::Arc<DuckDbEngine>,
-    ) -> Result<metrics_processor::shapley_types::ShapleyInputs> {
+    async fn process_metrics(&self, db_engine: Arc<DuckDbEngine>) -> Result<ShapleyInputs> {
         info!("Running SQL queries to aggregate metrics");
 
         // Create metrics processor with optional seed for reproducibility
-        let mut processor = metrics_processor::processor::MetricsProcessor::new(db_engine, None);
+        let mut processor = MetricsProcessor::new(db_engine, None, self.after_us, self.before_us);
 
         // Process metrics
         let shapley_inputs = processor
@@ -206,15 +255,15 @@ impl Orchestrator {
 
     async fn calculate_rewards(
         &self,
-        shapley_inputs: metrics_processor::shapley_types::ShapleyInputs,
+        shapley_inputs: ShapleyInputs,
         db_engine: &DuckDbEngine,
     ) -> Result<Vec<OperatorReward>> {
         info!("Calculating rewards distribution");
 
         let params = ShapleyParams {
             demand_multiplier: Some(shapley_inputs.demand_multiplier),
-            operator_uptime: None, // TODO: Make this configurable
-            hybrid_penalty: None,  // TODO: Make this configurable
+            operator_uptime: None, // TODO: This needs to come from somewhere
+            hybrid_penalty: None,  // TODO: This needs to come from somewhere
         };
 
         let rewards = calculate_rewards(

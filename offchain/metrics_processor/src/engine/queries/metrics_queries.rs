@@ -8,21 +8,26 @@ impl MetricsQueries {
         r#"
         WITH link_telemetry AS (
             -- Aggregate telemetry data per link
-            -- Note: samples is a JSON array, we'll use simple count for now
+            -- Sum the sample counts from each telemetry account
             SELECT
                 link_pk as link_pubkey,
-                COUNT(*) as sample_count,
+                SUM(sample_count) as sample_count,
                 COUNT(DISTINCT start_timestamp_us) as unique_timestamps,
                 MIN(start_timestamp_us) as min_timestamp,
-                MAX(start_timestamp_us) as max_timestamp
+                MAX(start_timestamp_us) as max_timestamp,
+                MAX(sampling_interval_us) as sampling_interval_us
             FROM telemetry_samples
             GROUP BY link_pk
         ),
         link_with_locations AS (
             -- Join links with devices and then locations
-            -- Now also fetching device owners for proper operator attribution
+            -- Also fetch device owners for proper operator attribution
             SELECT
                 l.pubkey,
+                l.from_device_pubkey,
+                l.to_device_pubkey,
+                dev_from.code as from_device_code,
+                dev_to.code as to_device_code,
                 dev_from.owner as from_device_owner,
                 dev_to.owner as to_device_owner,
                 COALESCE(loc_from.code, 'UNK') as from_code,
@@ -41,8 +46,8 @@ impl MetricsQueries {
         )
         SELECT
             lwl.pubkey::TEXT as link_pubkey,
-            lwl.from_code || '1' as start_code,
-            lwl.to_code || '1' as end_code,
+            lwl.from_device_code as start_code,
+            lwl.to_device_code as end_code,
             -- Canonical ordering of operators: operator1 <= operator2
             CASE
                 WHEN lwl.from_device_owner IS NULL OR lwl.to_device_owner IS NULL THEN
@@ -67,75 +72,45 @@ impl MetricsQueries {
             10.0 as latency_ms,
             2.0 as jitter_ms,
             0.0001 as packet_loss,
-            COALESCE(
-                CASE
-                    WHEN lt.max_timestamp > lt.min_timestamp
-                    THEN lt.unique_timestamps * 1.0 / ((lt.max_timestamp - lt.min_timestamp) / 1000000.0)
-                    ELSE 1.0
-                END,
-                0.9
-            ) as uptime
+            LEAST(
+                1.0,
+                COALESCE(
+                    CAST(lt.sample_count AS REAL) / NULLIF(((? - ?) / lt.sampling_interval_us), 0),
+                    0.0
+                )
+            ) AS uptime
         FROM link_with_locations lwl
         LEFT JOIN link_telemetry lt ON lwl.pubkey::TEXT = lt.link_pubkey
         -- Only include links with at least one valid device owner
         WHERE (lwl.from_device_owner IS NOT NULL OR lwl.to_device_owner IS NOT NULL)
-        -- Filter out self-looping links (same location to same location)
-        AND lwl.from_code != lwl.to_code
+        -- Filter out self-looping links (same device to same device)
+        AND lwl.from_device_pubkey != lwl.to_device_pubkey
         "#
     }
 
-    /// Get the query for calculating demand matrix from telemetry
+    // TODO: This should go away, testing only
+    /// Get the query for calculating demand matrix
     pub const fn calculate_demand_matrix() -> &'static str {
         r#"
-        WITH traffic_patterns AS (
-            SELECT
-                COALESCE(loc_from.code, 'UNK') as from_code,
-                COALESCE(loc_to.code, 'UNK') as to_code,
-                COUNT(DISTINCT t.origin_device_pk) as unique_devices,
-                COUNT(*) as total_samples
-            FROM telemetry_samples t
-            JOIN links l ON t.link_pk = l.pubkey
-            LEFT JOIN devices dev_from ON l.from_device_pubkey = dev_from.pubkey
-            LEFT JOIN devices dev_to ON l.to_device_pubkey = dev_to.pubkey
-            LEFT JOIN locations loc_from ON dev_from.location_pubkey = loc_from.pubkey
-            LEFT JOIN locations loc_to ON dev_to.location_pubkey = loc_to.pubkey
-            GROUP BY loc_from.code, loc_to.code
-        ),
-        normalized_traffic AS (
-            SELECT
-                from_code,
-                to_code,
-                unique_devices,
-                total_samples,
-                -- Normalize traffic volume based on samples and unique devices
-                (unique_devices * 0.7 + total_samples * 0.3) /
-                    NULLIF((SELECT MAX(unique_devices * 0.7 + total_samples * 0.3) FROM traffic_patterns), 0)
-                    as normalized_volume
-            FROM traffic_patterns
-        )
-        SELECT
-            from_code as start_code,
-            to_code as end_code,
-            COALESCE(normalized_volume * 10.0, 1.0) as traffic_volume -- Scale to 0-10 range
-        FROM normalized_traffic
-        WHERE COALESCE(normalized_volume, 0) > 0.01 -- Filter out very low traffic
-        ORDER BY normalized_volume DESC
+        -- Generate device-level demands with fixed traffic volume
+        -- This ensures demand is calculated at device level for proper reward distribution.
+        SELECT DISTINCT
+            dev_from.code AS start_code,
+            dev_to.code AS end_code,
+            1.0 AS traffic_volume -- Fixed volume for all device pairs with active links
+        FROM links l
+        JOIN devices dev_from ON l.from_device_pubkey = dev_from.pubkey
+        JOIN devices dev_to ON l.to_device_pubkey = dev_to.pubkey
+        WHERE l.status = 'activated'
+          AND dev_from.status = 'activated'
+          AND dev_to.status = 'activated'
         "#
     }
 
-    /// Get the fallback query for demand matrix when no telemetry exists
+    /// Get the fallback query for demand matrix
     pub const fn calculate_demand_matrix_fallback() -> &'static str {
-        r#"
-        SELECT DISTINCT
-            COALESCE(loc_from.code, 'UNK') as from_code,
-            COALESCE(loc_to.code, 'UNK') as to_code
-        FROM links l
-        LEFT JOIN devices dev_from ON l.from_device_pubkey = dev_from.pubkey
-        LEFT JOIN devices dev_to ON l.to_device_pubkey = dev_to.pubkey
-        LEFT JOIN locations loc_from ON dev_from.location_pubkey = loc_from.pubkey
-        LEFT JOIN locations loc_to ON dev_to.location_pubkey = loc_to.pubkey
-        WHERE l.status = 'activated'
-        "#
+        // Fallback is the same as the primary for now
+        Self::calculate_demand_matrix()
     }
 }
 
@@ -285,7 +260,9 @@ mod tests {
             .with_scale(100.0)
             .build();
 
-        assert!(query.contains("100"));
-        assert!(query.contains("0.05"));
+        // Check that the query contains the device-level demand structure
+        assert!(query.contains("dev_from.code"));
+        assert!(query.contains("dev_to.code"));
+        assert!(query.contains("1.0 AS traffic_volume"));
     }
 }

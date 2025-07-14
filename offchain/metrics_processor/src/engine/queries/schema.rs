@@ -112,7 +112,8 @@ impl SchemaQueries {
             origin_device_agent_pk VARCHAR NOT NULL,
             sampling_interval_us UBIGINT NOT NULL,
             start_timestamp_us UBIGINT NOT NULL,
-            samples JSON NOT NULL
+            samples JSON NOT NULL,
+            sample_count UINTEGER NOT NULL
         );
 
         -- Metadata Table
@@ -222,7 +223,8 @@ impl SchemaQueries {
             origin_device_agent_pk VARCHAR NOT NULL,
             sampling_interval_us UBIGINT NOT NULL,
             start_timestamp_us UBIGINT NOT NULL,
-            samples JSON NOT NULL
+            samples JSON NOT NULL,
+            sample_count UINTEGER NOT NULL
         )
         "#
     }

@@ -109,10 +109,10 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 				LinkPK:   link1_2,
 				Tunnel: &netutil.LocalTunnel{
 					Interface: loopbackInterface(t),
-					SourceIP:  reflector1.LocalAddr().(*net.UDPAddr).IP,
-					TargetIP:  reflector2.LocalAddr().(*net.UDPAddr).IP,
+					SourceIP:  reflector1.LocalAddr().IP,
+					TargetIP:  reflector2.LocalAddr().IP,
 				},
-				TWAMPPort: uint16(reflector2.LocalAddr().(*net.UDPAddr).Port),
+				TWAMPPort: uint16(reflector2.LocalAddr().Port),
 			},
 			{
 				DevicePK: device3PK,
@@ -133,10 +133,10 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 				LinkPK:   link2_1,
 				Tunnel: &netutil.LocalTunnel{
 					Interface: loopbackInterface(t),
-					SourceIP:  reflector2.LocalAddr().(*net.UDPAddr).IP,
-					TargetIP:  reflector1.LocalAddr().(*net.UDPAddr).IP,
+					SourceIP:  reflector2.LocalAddr().IP,
+					TargetIP:  reflector1.LocalAddr().IP,
 				},
-				TWAMPPort: uint16(reflector2.LocalAddr().(*net.UDPAddr).Port),
+				TWAMPPort: uint16(reflector2.LocalAddr().Port),
 			},
 			{
 				DevicePK: device3PK,
@@ -259,9 +259,9 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 				Tunnel: &netutil.LocalTunnel{
 					Interface: loopbackInterface(t),
 					SourceIP:  net.ParseIP("127.0.0.1"),
-					TargetIP:  reflector.LocalAddr().(*net.UDPAddr).IP,
+					TargetIP:  reflector.LocalAddr().IP,
 				},
-				TWAMPPort: uint16(reflector.LocalAddr().(*net.UDPAddr).Port),
+				TWAMPPort: uint16(reflector.LocalAddr().Port),
 			},
 		})
 
@@ -331,9 +331,9 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 				Tunnel: &netutil.LocalTunnel{
 					Interface: loopbackInterface(t),
 					SourceIP:  net.IPv4(10, 241, 1, 1),
-					TargetIP:  reflector.LocalAddr().(*net.UDPAddr).IP,
+					TargetIP:  reflector.LocalAddr().IP,
 				},
-				TWAMPPort: uint16(reflector.LocalAddr().(*net.UDPAddr).Port),
+				TWAMPPort: uint16(reflector.LocalAddr().Port),
 			},
 		})
 
@@ -365,20 +365,20 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 			LinkPK:   linkPK,
 			Tunnel: &netutil.LocalTunnel{
 				Interface: loopbackInterface(t),
-				SourceIP:  reflector.LocalAddr().(*net.UDPAddr).IP,
-				TargetIP:  reflector.LocalAddr().(*net.UDPAddr).IP,
+				SourceIP:  reflector.LocalAddr().IP,
+				TargetIP:  reflector.LocalAddr().IP,
 			},
-			TWAMPPort: uint16(reflector.LocalAddr().(*net.UDPAddr).Port),
+			TWAMPPort: uint16(reflector.LocalAddr().Port),
 		}
 		peer2 := &telemetry.Peer{
 			DevicePK: peerPK,
 			LinkPK:   linkPK,
 			Tunnel: &netutil.LocalTunnel{
 				Interface: loopbackInterface(t),
-				SourceIP:  reflector.LocalAddr().(*net.UDPAddr).IP,
-				TargetIP:  reflector.LocalAddr().(*net.UDPAddr).IP,
+				SourceIP:  reflector.LocalAddr().IP,
+				TargetIP:  reflector.LocalAddr().IP,
 			},
-			TWAMPPort: uint16(reflector.LocalAddr().(*net.UDPAddr).Port),
+			TWAMPPort: uint16(reflector.LocalAddr().Port),
 		}
 
 		require.Equal(t, peer1.String(), peer2.String())
@@ -411,8 +411,8 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 
 }
 
-func newTestReflector(t *testing.T) *twamplight.Reflector {
-	reflector, err := twamplight.NewReflector(log, 0, 1*time.Second)
+func newTestReflector(t *testing.T) twamplight.Reflector {
+	reflector, err := twamplight.NewReflector(log, "127.0.0.1:0", 1*time.Second)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -422,7 +422,7 @@ func newTestReflector(t *testing.T) *twamplight.Reflector {
 	return reflector
 }
 
-func newTestCollector(t *testing.T, log *slog.Logger, localDevicePK solana.PublicKey, reflector *twamplight.Reflector, peers []*telemetry.Peer, telemetryProgramClient telemetry.TelemetryProgramClient, submissionInterval time.Duration) *telemetry.Collector {
+func newTestCollector(t *testing.T, log *slog.Logger, localDevicePK solana.PublicKey, reflector twamplight.Reflector, peers []*telemetry.Peer, telemetryProgramClient telemetry.TelemetryProgramClient, submissionInterval time.Duration) *telemetry.Collector {
 	peerDiscovery := newMockPeerDiscovery()
 	peerDiscovery.UpdatePeers(t, peers)
 

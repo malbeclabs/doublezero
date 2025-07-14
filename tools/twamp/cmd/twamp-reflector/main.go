@@ -4,10 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -24,21 +22,10 @@ func main() {
 	if len(os.Args) == 2 {
 		listenAddr = os.Args[1]
 	}
+
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
-	_, portStr, err := net.SplitHostPort(listenAddr)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: invalid address %s: %v\n", listenAddr, err)
-		os.Exit(1)
-	}
-
-	port, err := strconv.ParseUint(portStr, 10, 16)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: invalid port %s: %v\n", portStr, err)
-		os.Exit(1)
-	}
-
-	reflector, err := twamplight.NewReflector(log, uint16(port), 5*time.Second)
+	reflector, err := twamplight.NewReflector(log, listenAddr, 5*time.Second)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: failed to create reflector: %v\n", err)
 		os.Exit(1)

@@ -10,7 +10,7 @@ import (
 
 type Config struct {
 	// TWAMPReflector is the reflector for TWAMP probes.
-	TWAMPReflector *twamplight.Reflector
+	TWAMPReflector twamplight.Reflector
 
 	// PeerDiscovery is the configured peer discovery implementation.
 	PeerDiscovery PeerDiscovery

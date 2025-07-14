@@ -24,9 +24,9 @@ import (
 
 type Summary struct {
 	Origin, Target, Link string
-	TotalRTT             int64
-	SuccessCount         int64
-	LossCount            int64
+	TotalRTT             uint64
+	SuccessCount         uint64
+	LossCount            uint64
 	LossRate             float64
 	Avg                  float64
 	Median               float64
@@ -181,8 +181,12 @@ func buildSummaries(ctx context.Context, log *slog.Logger, rpcEndpoint, servicea
 		devices[solana.PublicKeyFromBytes(d.PubKey[:])] = &d
 	}
 
-	var summariesMu sync.Mutex
-	var summaries []*Summary
+	type groupKey struct {
+		origin, target, link string
+	}
+	var groupsMu sync.Mutex
+	groups := make(map[groupKey][]uint32)
+
 	for _, link := range svc.GetLinks() {
 		linkPK := solana.PublicKeyFromBytes(link.PubKey[:])
 		sideA := solana.PublicKeyFromBytes(link.SideAPubKey[:])
@@ -225,34 +229,19 @@ func buildSummaries(ctx context.Context, log *slog.Logger, rpcEndpoint, servicea
 					return
 				}
 
-				summary := Summary{
-					Origin: q.origin.Code,
-					Target: q.target.Code,
-					Link:   link.Code,
-				}
-				var samples []int64
 				for e := int64(epoch) - int64(recent) + 1; e <= int64(epoch); e++ {
-					for _, s := range account.Samples {
-						if s > 0 {
-							summary.TotalRTT += int64(s)
-							summary.SuccessCount++
-							samples = append(samples, int64(s))
-						} else {
-							summary.LossCount++
-						}
+					groupsMu.Lock()
+					groupKey := groupKey{
+						origin: q.origin.Code,
+						target: q.target.Code,
+						link:   link.Code,
 					}
+					if _, ok := groups[groupKey]; !ok {
+						groups[groupKey] = []uint32{}
+					}
+					groups[groupKey] = append(groups[groupKey], account.Samples...)
+					groupsMu.Unlock()
 				}
-				if summary.SuccessCount == 0 {
-					summariesMu.Lock()
-					summaries = append(summaries, &summary)
-					summariesMu.Unlock()
-					return
-				}
-				summary.LossRate, summary.Avg, summary.Median, summary.Jitter, summary.MAD, summary.P95, summary.P99, summary.Min, summary.Max =
-					computeStats(samples, summary.TotalRTT, summary.SuccessCount, summary.LossCount)
-				summariesMu.Lock()
-				summaries = append(summaries, &summary)
-				summariesMu.Unlock()
 			}(q)
 		}
 		wg.Wait()
@@ -261,10 +250,39 @@ func buildSummaries(ctx context.Context, log *slog.Logger, rpcEndpoint, servicea
 			return nil, err
 		}
 	}
+
+	summaries := make([]*Summary, 0, len(groups))
+
+	for key, samples := range groups {
+		summary := &Summary{
+			Origin: key.origin,
+			Target: key.target,
+			Link:   key.link,
+		}
+
+		successSamples := make([]uint32, 0, len(samples))
+		for _, rtt := range samples {
+			if rtt > 0 {
+				summary.TotalRTT += uint64(rtt)
+				summary.SuccessCount++
+				successSamples = append(successSamples, rtt)
+			} else {
+				summary.LossCount++
+			}
+		}
+
+		if summary.SuccessCount > 0 {
+			summary.LossRate, summary.Avg, summary.Median, summary.Jitter, summary.MAD, summary.P95, summary.P99, summary.Min, summary.Max =
+				computeStats(successSamples, summary.TotalRTT, summary.SuccessCount, summary.LossCount)
+		}
+
+		summaries = append(summaries, summary)
+	}
+
 	return summaries, nil
 }
 
-func computeStats(samples []int64, totalRTT, successCount, lossCount int64) (lossRate, avg, median, jitter, mad, p95, p99, min, max float64) {
+func computeStats(samples []uint32, totalRTT, successCount, lossCount uint64) (lossRate, avg, median, jitter, mad, p95, p99, min, max float64) {
 	n := len(samples)
 	if n == 0 {
 		return

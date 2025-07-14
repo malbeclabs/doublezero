@@ -12,12 +12,17 @@ use doublezero_sdk::{
     },
     DoubleZeroClient, NetworkV4, User, UserStatus, UserType,
 };
-use solana_sdk::pubkey::Pubkey;
+use log::info;
+use solana_client::rpc_response::RpcContactInfo;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 use std::{
     collections::{hash_map::Entry, HashMap},
-    net::Ipv4Addr,
+    fmt::Write,
+    net::{IpAddr, Ipv4Addr},
+    str::FromStr,
 };
 
+#[allow(clippy::too_many_arguments)]
 pub fn process_user_event(
     client: &dyn DoubleZeroClient,
     pubkey: &Pubkey,
@@ -25,11 +30,20 @@ pub fn process_user_event(
     user_tunnel_ips: &mut IPBlockAllocator,
     tunnel_tunnel_ids: &mut IDAllocator,
     user: &User,
+    clusters: Vec<RpcContactInfo>,
     state_transitions: &mut HashMap<&'static str, usize>,
 ) {
     match user.status {
         // Create User
         UserStatus::Pending => {
+            let mut log_msg = String::new();
+            write!(
+                &mut log_msg,
+                "Event:User(Pending) {} ({}) ",
+                pubkey, user.client_ip
+            )
+            .unwrap();
+
             let device_state = match get_or_insert_device_state(
                 client,
                 pubkey,
@@ -38,30 +52,76 @@ pub fn process_user_event(
                 state_transitions,
             ) {
                 Some(ds) => ds,
-                None => return,
+                None => {
+                    // Reject user since we couldn't get their user block
+                    let res =
+                        reject_user(client, pubkey, "Error: Device not found", state_transitions);
+
+                    match res {
+                        Ok(signature) => {
+                            write!(
+                                &mut log_msg,
+                                " Reject(Device not found) Rejected {signature}"
+                            )
+                            .unwrap();
+                        }
+                        Err(e) => {
+                            write!(&mut log_msg, " Reject(Device not found) Error: {e}").unwrap();
+                        }
+                    }
+                    info!("{log_msg}");
+                    return;
+                }
             };
 
-            println!(
-                "Activating User: {}, for: {}",
-                &user.client_ip, device_state.device.code
-            );
+            write!(&mut log_msg, " for: {}", device_state.device.code).unwrap();
+
+            let ip: IpAddr = user.client_ip.into();
+            let cluster = clusters.iter().find(|c| match c.gossip {
+                Some(addr) => addr.ip() == ip,
+                None => false,
+            });
+
+            write!(
+                &mut log_msg,
+                " ValidatorPubkey: {} ",
+                &cluster
+                    .map(|c| c.pubkey.to_string())
+                    .unwrap_or_else(|| "None".to_string())
+            )
+            .unwrap();
 
             // Try to get tunnel network
             let tunnel_net = match user_tunnel_ips.next_available_block(0, 2) {
                 Some(net) => net,
                 None => {
                     // Reject user since we couldn't get their user block
-                    reject_user(
+                    let res = reject_user(
                         client,
                         pubkey,
                         "Error: No available user block",
                         state_transitions,
                     );
+
+                    match res {
+                        Ok(signature) => {
+                            write!(
+                                &mut log_msg,
+                                " Reject(No available user block) Rejected {signature}"
+                            )
+                            .unwrap();
+                        }
+                        Err(e) => {
+                            write!(&mut log_msg, " Reject(No available user block) Error: {e}")
+                                .unwrap();
+                        }
+                    }
+                    info!("{log_msg}");
                     return;
                 }
             };
 
-            print!("tunnel_net: {} ", &tunnel_net);
+            write!(&mut log_msg, " tunnel_net: {} ", &tunnel_net).unwrap();
 
             let tunnel_id = device_state.get_next_tunnel_id();
 
@@ -75,13 +135,30 @@ pub fn process_user_event(
                 match device_state.get_next_dz_ip() {
                     Some(ip) => ip,
                     None => {
-                        eprintln!("Error: No available dz_ip to allocate");
-                        reject_user(
+                        let res = reject_user(
                             client,
                             pubkey,
                             "Error: No available dz_ip to allocate",
                             state_transitions,
                         );
+
+                        match res {
+                            Ok(signature) => {
+                                write!(
+                                    &mut log_msg,
+                                    " Reject(No available dz_ip to allocate) Rejected {signature}"
+                                )
+                                .unwrap();
+                            }
+                            Err(e) => {
+                                write!(
+                                    &mut log_msg,
+                                    " Reject(No available dz_ip to allocate) Error: {e}"
+                                )
+                                .unwrap();
+                            }
+                        }
+                        info!("{log_msg}");
                         return;
                     }
                 }
@@ -89,7 +166,13 @@ pub fn process_user_event(
                 user.client_ip
             };
 
-            print!("tunnel_id: {} dz_ip: {} ", tunnel_id, &dz_ip);
+            write!(&mut log_msg, " tunnel_id: {} dz_ip: {} ", tunnel_id, &dz_ip).unwrap();
+
+            let validator_pubkey = if let Some(v) = &cluster {
+                Pubkey::from_str(&v.pubkey).ok()
+            } else {
+                None
+            };
 
             // Activate the user
             let res = ActivateUserCommand {
@@ -97,21 +180,34 @@ pub fn process_user_event(
                 tunnel_id,
                 tunnel_net: tunnel_net.into(),
                 dz_ip,
+                validator_pubkey,
             }
             .execute(client);
 
             match res {
                 Ok(signature) => {
-                    println!("Activated   {signature}");
+                    write!(&mut log_msg, " Activated   {signature}").unwrap();
                     *state_transitions
                         .entry("user-pending-to-activated")
                         .or_insert(0) += 1;
                 }
-                Err(e) => println!("Error: {e}"),
+                Err(e) => {
+                    write!(&mut log_msg, " Error: {e}").unwrap();
+                }
             }
-        }
 
+            info!("{log_msg}");
+        }
         UserStatus::Updating => {
+            let mut log_msg = String::new();
+
+            write!(
+                &mut log_msg,
+                "Event:User(Updating) {} ({}) ",
+                pubkey, user.client_ip
+            )
+            .unwrap();
+
             let device_state = match get_or_insert_device_state(
                 client,
                 pubkey,
@@ -123,10 +219,12 @@ pub fn process_user_event(
                 None => return,
             };
 
-            println!(
-                "Activating User: {}, for: {}",
+            write!(
+                &mut log_msg,
+                " Activating User: {}, for: {}",
                 &user.client_ip, device_state.device.code
-            );
+            )
+            .unwrap();
 
             let need_dz_ip = match user.user_type {
                 UserType::IBRLWithAllocatedIP | UserType::EdgeFiltering => true,
@@ -138,13 +236,27 @@ pub fn process_user_event(
                 match device_state.get_next_dz_ip() {
                     Some(ip) => ip,
                     None => {
-                        eprintln!("Error: No available dz_ip to allocate");
-                        reject_user(
+                        let res = reject_user(
                             client,
                             pubkey,
                             "Error: No available dz_ip to allocate",
                             state_transitions,
                         );
+
+                        match res {
+                            Ok(signature) => {
+                                write!(
+                                    &mut log_msg,
+                                    " Reject(No available user block) Rejected {signature}"
+                                )
+                                .unwrap();
+                            }
+                            Err(e) => {
+                                write!(&mut log_msg, " Reject(No available user block) Error: {e}")
+                                    .unwrap();
+                            }
+                        }
+                        info!("{log_msg}");
                         return;
                     }
                 }
@@ -152,10 +264,12 @@ pub fn process_user_event(
                 user.dz_ip
             };
 
-            print!(
-                "tunnel_net: {} tunnel_id: {} dz_ip: {} ",
+            write!(
+                &mut log_msg,
+                " tunnel_net: {} tunnel_id: {} dz_ip: {} ",
                 &user.tunnel_net, user.tunnel_id, &dz_ip
-            );
+            )
+            .unwrap();
 
             // Activate the user
             let res = ActivateUserCommand {
@@ -163,30 +277,43 @@ pub fn process_user_event(
                 tunnel_id: user.tunnel_id,
                 tunnel_net: user.tunnel_net,
                 dz_ip,
+                validator_pubkey: Some(user.validator_pubkey),
             }
             .execute(client);
             match res {
                 Ok(signature) => {
-                    println!("Reactivated   {signature}");
+                    write!(&mut log_msg, "Reactivated   {signature}").unwrap();
+
                     *state_transitions
                         .entry("user-updating-to-activated")
                         .or_insert(0) += 1;
                 }
-                Err(e) => println!("Error: {e}"),
+                Err(e) => {
+                    write!(&mut log_msg, " Error {e}").unwrap();
+                }
             }
+
+            info!("{log_msg}");
         }
 
         // Delete User
         UserStatus::Deleting | UserStatus::PendingBan => {
-            print!("Deactivating User {} ", &user.client_ip);
+            let mut log_msg = String::new();
+
+            write!(
+                &mut log_msg,
+                "Event:User(Deleting) {} ({}) ",
+                pubkey, user.client_ip
+            )
+            .unwrap();
 
             if let Some(device_state) = devices.get_mut(&user.device_pk) {
-                print!("for {} ", device_state.device.code);
-
-                print!(
-                    "tunnel_net: {} tunnel_id: {} dz_ip: {} ",
-                    &user.tunnel_net, user.tunnel_id, &user.dz_ip
-                );
+                write!(
+                    &mut log_msg,
+                    "for {} tunnel_net: {} tunnel_id: {} dz_ip: {}",
+                    device_state.device.code, &user.tunnel_net, user.tunnel_id, &user.dz_ip
+                )
+                .unwrap();
 
                 if user.tunnel_id != 0 {
                     tunnel_tunnel_ids.unassign(user.tunnel_id);
@@ -207,27 +334,33 @@ pub fn process_user_event(
 
                     match res {
                         Ok(signature) => {
-                            println!("Deactivated {signature}");
+                            write!(&mut log_msg, " Deactivated {signature}").unwrap();
+
                             *state_transitions
                                 .entry("user-deleting-to-deactivated")
                                 .or_insert(0) += 1;
                         }
-                        Err(e) => println!("Error: {e}"),
+                        Err(e) => info!("Error: {e}"),
                     }
                 } else if user.status == UserStatus::PendingBan {
                     let res = BanUserCommand { pubkey: *pubkey }.execute(client);
 
                     match res {
                         Ok(signature) => {
-                            println!("Banned {signature}");
+                            write!(&mut log_msg, " Banned {signature}").unwrap();
+
                             *state_transitions
                                 .entry("user-pending-ban-to-banned")
                                 .or_insert(0) += 1;
                         }
-                        Err(e) => println!("Error: {e}"),
+                        Err(e) => {
+                            write!(&mut log_msg, " Error {e}").unwrap();
+                        }
                     }
                 }
             }
+
+            info!("{log_msg}");
         }
         _ => {}
     }
@@ -238,30 +371,26 @@ fn reject_user(
     pubkey: &Pubkey,
     reason: &str,
     state_transitions: &mut HashMap<&str, usize>,
-) {
-    let res = RejectUserCommand {
+) -> eyre::Result<Signature> {
+    let signature = RejectUserCommand {
         pubkey: *pubkey,
         reason: reason.to_string(),
     }
-    .execute(client);
+    .execute(client)?;
 
-    match res {
-        Ok(signature) => {
-            println!("Rejected {signature}");
-            *state_transitions
-                .entry("user-pending-to-rejected")
-                .or_insert(0) += 1;
-        }
-        Err(e) => println!("Error: {e}"),
-    }
+    *state_transitions
+        .entry("user-pending-to-rejected")
+        .or_insert(0) += 1;
+
+    Ok(signature)
 }
 
 fn get_or_insert_device_state<'a>(
     client: &dyn DoubleZeroClient,
-    pubkey: &Pubkey,
+    _pubkey: &Pubkey,
     devices: &'a mut DeviceMap,
     user: &User,
-    state_transitions: &mut HashMap<&'static str, usize>,
+    _state_transitions: &mut HashMap<&'static str, usize>,
 ) -> Option<&'a mut DeviceState> {
     match devices.entry(user.device_pk) {
         Entry::Occupied(entry) => Some(entry.into_mut()),
@@ -273,17 +402,13 @@ fn get_or_insert_device_state<'a>(
 
             match res {
                 Ok((_, device)) => {
-                    println!(
+                    info!(
                         "Add Device: {} public_ip: {} dz_prefixes: {} ",
                         device.code, &device.public_ip, &device.dz_prefixes,
                     );
                     Some(entry.insert(DeviceState::new(&device)))
                 }
-                Err(_) => {
-                    // Reject user since we couldn't load the device
-                    reject_user(client, pubkey, "Error: Device not found", state_transitions);
-                    None
-                }
+                Err(_) => None,
             }
         }
     }
@@ -311,6 +436,7 @@ mod tests {
         types::NetworkV4,
     };
     use mockall::{predicate, Sequence};
+    use solana_client::rpc_response::RpcContactInfo;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
     use std::{collections::HashMap, net::Ipv4Addr};
 
@@ -322,6 +448,25 @@ mod tests {
         let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/16".parse().unwrap());
         let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
         let mut client = create_test_client();
+
+        let validator_pubkey = Pubkey::new_unique();
+        let cluster = RpcContactInfo {
+            gossip: Some("192.168.1.1:5000".parse().unwrap()),
+            pubkey: validator_pubkey.to_string(),
+            version: Some("1.2.3".to_string()),
+            feature_set: None,
+            rpc: Some("192.168.1.1:8899".parse().unwrap()),
+            tvu: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu_quic: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu_forwards: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu_forwards_quic: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu_vote: Some("192.168.1.1:8899".parse().unwrap()),
+            serve_repair: Some("192.168.1.1:8899".parse().unwrap()),
+            pubsub: Some("192.168.1.1:8899".parse().unwrap()),
+            shred_version: None,
+        };
+        let clusters: Vec<RpcContactInfo> = vec![cluster];
 
         let device_pubkey = Pubkey::new_unique();
         let device = Device {
@@ -357,6 +502,7 @@ mod tests {
             status: UserStatus::Pending,
             publishers: vec![],
             subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
         };
 
         client
@@ -368,6 +514,7 @@ mod tests {
                     tunnel_id: 500,
                     tunnel_net: "10.0.0.0/31".parse().unwrap(),
                     dz_ip: expected_dz_ip.unwrap_or(Ipv4Addr::UNSPECIFIED),
+                    validator_pubkey: Some(validator_pubkey),
                 })),
                 predicate::always(),
             )
@@ -385,6 +532,7 @@ mod tests {
             &mut user_tunnel_ips,
             &mut tunnel_tunnel_ids,
             &user,
+            clusters,
             &mut state_transitions,
         );
 
@@ -426,6 +574,25 @@ mod tests {
         let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
         let mut client = create_test_client();
 
+        let validator_pubkey = Pubkey::new_unique();
+        let cluster = RpcContactInfo {
+            gossip: Some("192.168.1.1:5000".parse().unwrap()),
+            pubkey: validator_pubkey.to_string(),
+            version: Some("1.2.3".to_string()),
+            feature_set: None,
+            rpc: Some("192.168.1.1:8899".parse().unwrap()),
+            tvu: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu_quic: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu_forwards: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu_forwards_quic: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu_vote: Some("192.168.1.1:8899".parse().unwrap()),
+            serve_repair: Some("192.168.1.1:8899".parse().unwrap()),
+            pubsub: Some("192.168.1.1:8899".parse().unwrap()),
+            shred_version: None,
+        };
+        let clusters: Vec<RpcContactInfo> = vec![cluster];
+
         let device_pubkey = Pubkey::new_unique();
         let device = Device {
             account_type: AccountType::Device,
@@ -460,6 +627,7 @@ mod tests {
             status: UserStatus::Updating,
             publishers: vec![Pubkey::default()],
             subscribers: vec![Pubkey::default()],
+            validator_pubkey,
         };
 
         client
@@ -471,6 +639,7 @@ mod tests {
                     tunnel_id: 500,
                     tunnel_net: "10.0.0.1/29".parse().unwrap(),
                     dz_ip: [10, 0, 0, 1].into(),
+                    validator_pubkey: Some(validator_pubkey),
                 })),
                 predicate::always(),
             )
@@ -488,6 +657,7 @@ mod tests {
             &mut user_tunnel_ips,
             &mut tunnel_tunnel_ids,
             &user,
+            clusters,
             &mut state_transitions,
         );
 
@@ -504,6 +674,25 @@ mod tests {
         let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/32".parse().unwrap());
         let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
         let mut client = create_test_client();
+
+        let validator_pubkey = Pubkey::new_unique();
+        let cluster = RpcContactInfo {
+            gossip: Some("192.168.1.1:5000".parse().unwrap()),
+            pubkey: validator_pubkey.to_string(),
+            version: Some("1.2.3".to_string()),
+            feature_set: None,
+            rpc: Some("192.168.1.1:8899".parse().unwrap()),
+            tvu: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu_quic: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu_forwards: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu_forwards_quic: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu_vote: Some("192.168.1.1:8899".parse().unwrap()),
+            serve_repair: Some("192.168.1.1:8899".parse().unwrap()),
+            pubsub: Some("192.168.1.1:8899".parse().unwrap()),
+            shred_version: None,
+        };
+        let clusters: Vec<RpcContactInfo> = vec![cluster];
 
         let device_pubkey = Pubkey::new_unique();
 
@@ -524,6 +713,7 @@ mod tests {
             status: UserStatus::Pending,
             publishers: vec![],
             subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
         };
 
         client
@@ -556,6 +746,7 @@ mod tests {
             &mut user_tunnel_ips,
             &mut tunnel_tunnel_ids,
             &user,
+            clusters,
             &mut state_transitions,
         );
 
@@ -569,6 +760,25 @@ mod tests {
         let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/32".parse().unwrap());
         let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
         let mut client = create_test_client();
+
+        let validator_pubkey = Pubkey::new_unique();
+        let cluster = RpcContactInfo {
+            gossip: Some("192.168.1.1:5000".parse().unwrap()),
+            pubkey: validator_pubkey.to_string(),
+            version: Some("1.2.3".to_string()),
+            feature_set: None,
+            rpc: Some("192.168.1.1:8899".parse().unwrap()),
+            tvu: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu_quic: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu_forwards: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu_forwards_quic: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu_vote: Some("192.168.1.1:8899".parse().unwrap()),
+            serve_repair: Some("192.168.1.1:8899".parse().unwrap()),
+            pubsub: Some("192.168.1.1:8899".parse().unwrap()),
+            shred_version: None,
+        };
+        let clusters: Vec<RpcContactInfo> = vec![cluster];
 
         let device_pubkey = Pubkey::new_unique();
         let device = Device {
@@ -604,6 +814,7 @@ mod tests {
             status: UserStatus::Pending,
             publishers: vec![],
             subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
         };
 
         client
@@ -637,6 +848,7 @@ mod tests {
             &mut user_tunnel_ips,
             &mut tunnel_tunnel_ids,
             &user,
+            clusters,
             &mut state_transitions,
         );
 
@@ -650,6 +862,25 @@ mod tests {
         let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/32".parse().unwrap());
         let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
         let mut client = create_test_client();
+
+        let validator_pubkey = Pubkey::new_unique();
+        let cluster = RpcContactInfo {
+            gossip: Some("192.168.1.1:5000".parse().unwrap()),
+            pubkey: validator_pubkey.to_string(),
+            version: Some("1.2.3".to_string()),
+            feature_set: None,
+            rpc: Some("192.168.1.1:8899".parse().unwrap()),
+            tvu: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu_quic: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu_forwards: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu_forwards_quic: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu_vote: Some("192.168.1.1:8899".parse().unwrap()),
+            serve_repair: Some("192.168.1.1:8899".parse().unwrap()),
+            pubsub: Some("192.168.1.1:8899".parse().unwrap()),
+            shred_version: None,
+        };
+        let clusters: Vec<RpcContactInfo> = vec![cluster];
 
         // eat a blocok
         let _ = user_tunnel_ips.next_available_block(0, 2);
@@ -688,6 +919,7 @@ mod tests {
             status: UserStatus::Pending,
             publishers: vec![],
             subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
         };
 
         client
@@ -715,6 +947,7 @@ mod tests {
             &mut user_tunnel_ips,
             &mut tunnel_tunnel_ids,
             &user,
+            clusters,
             &mut state_transitions,
         );
 
@@ -737,6 +970,25 @@ mod tests {
         let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
         let mut client = create_test_client();
 
+        let validator_pubkey = Pubkey::new_unique();
+        let cluster = RpcContactInfo {
+            gossip: Some("192.168.1.1:5000".parse().unwrap()),
+            pubkey: validator_pubkey.to_string(),
+            version: Some("1.2.3".to_string()),
+            feature_set: None,
+            rpc: Some("192.168.1.1:8899".parse().unwrap()),
+            tvu: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu_quic: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu_forwards: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu_forwards_quic: Some("192.168.1.1:8899".parse().unwrap()),
+            tpu_vote: Some("192.168.1.1:8899".parse().unwrap()),
+            serve_repair: Some("192.168.1.1:8899".parse().unwrap()),
+            pubsub: Some("192.168.1.1:8899".parse().unwrap()),
+            shred_version: None,
+        };
+        let clusters: Vec<RpcContactInfo> = vec![cluster];
+
         let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
 
         let device_pubkey = Pubkey::new_unique();
@@ -757,6 +1009,7 @@ mod tests {
             status: user_status,
             publishers: vec![],
             subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
         };
 
         let device = Device {
@@ -788,6 +1041,7 @@ mod tests {
             &mut user_tunnel_ips,
             &mut tunnel_tunnel_ids,
             &user,
+            clusters,
             &mut state_transitions,
         );
 

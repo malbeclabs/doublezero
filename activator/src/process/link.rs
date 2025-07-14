@@ -6,20 +6,27 @@ use doublezero_sdk::{
     },
     DoubleZeroClient, Link, LinkStatus,
 };
+use log::info;
 use solana_sdk::pubkey::Pubkey;
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Write};
 
 pub fn process_tunnel_event(
     client: &dyn DoubleZeroClient,
     pubkey: &Pubkey,
     tunnel_tunnel_ips: &mut IPBlockAllocator,
     tunnel_tunnel_ids: &mut IDAllocator,
-    tunnel: &Link,
+    link: &Link,
     state_transitions: &mut HashMap<&'static str, usize>,
 ) {
-    match tunnel.status {
+    match link.status {
         LinkStatus::Pending => {
-            print!("New Link {} ", tunnel.code);
+            let mut log_msg = String::new();
+            write!(
+                &mut log_msg,
+                "Event:Link(Pending) {} ({}) ",
+                pubkey, link.code
+            )
+            .unwrap();
 
             match tunnel_tunnel_ips.next_available_block(0, 2) {
                 Some(tunnel_net) => {
@@ -34,16 +41,17 @@ pub fn process_tunnel_event(
 
                     match res {
                         Ok(signature) => {
-                            println!("Activated {signature}");
+                            write!(&mut log_msg, " Activated {signature}").unwrap();
+
                             *state_transitions
                                 .entry("tunnel-pending-to-activated")
                                 .or_insert(0) += 1;
                         }
-                        Err(e) => println!("Error: activate_tunnel: {e}"),
+                        Err(e) => write!(&mut log_msg, " Error {e}").unwrap(),
                     }
                 }
                 None => {
-                    println!("Error: No available tunnel block");
+                    write!(&mut log_msg, " Error: No available tunnel block").unwrap();
 
                     let res = RejectLinkCommand {
                         pubkey: *pubkey,
@@ -53,36 +61,45 @@ pub fn process_tunnel_event(
 
                     match res {
                         Ok(signature) => {
-                            println!("Rejected {signature}");
+                            write!(&mut log_msg, " Rejected {signature}").unwrap();
+
                             *state_transitions
                                 .entry("tunnel-pending-to-rejected")
                                 .or_insert(0) += 1;
                         }
-                        Err(e) => println!("Error: reject_tunnel: {e}"),
+                        Err(e) => write!(&mut log_msg, " Error {e}").unwrap(),
                     }
                 }
             }
+            info!("{log_msg}");
         }
         LinkStatus::Deleting => {
-            print!("Deleting Link {} ", tunnel.code);
+            let mut log_msg = String::new();
+            write!(
+                &mut log_msg,
+                "Event:Link(Deleting) {} ({}) ",
+                pubkey, link.code
+            )
+            .unwrap();
 
-            tunnel_tunnel_ids.unassign(tunnel.tunnel_id);
-            tunnel_tunnel_ips.unassign_block(tunnel.tunnel_net.into());
+            tunnel_tunnel_ids.unassign(link.tunnel_id);
+            tunnel_tunnel_ips.unassign_block(link.tunnel_net.into());
 
             let res = CloseAccountLinkCommand {
                 pubkey: *pubkey,
-                owner: tunnel.owner,
+                owner: link.owner,
             }
             .execute(client);
 
             match res {
                 Ok(signature) => {
-                    println!("Deactivated {signature}");
+                    write!(&mut log_msg, " Deactivated {signature}").unwrap();
+
                     *state_transitions
                         .entry("tunnel-deleting-to-deactivated")
                         .or_insert(0) += 1;
                 }
-                Err(e) => println!("Error: deactivate_tunnel: {e}"),
+                Err(e) => write!(&mut log_msg, " Error {e}").unwrap(),
             }
         }
         _ => {}

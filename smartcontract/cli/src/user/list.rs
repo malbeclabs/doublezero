@@ -327,6 +327,7 @@ mod tests {
             status: Activated,
             publishers: vec![],
             subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
         };
 
         let user2 = User {
@@ -345,6 +346,7 @@ mod tests {
             status: Activated,
             publishers: vec![],
             subscribers: vec![mgroup1_pubkey],
+            validator_pubkey: Pubkey::default(),
         };
 
         client.expect_list_user().returning(move |_| {

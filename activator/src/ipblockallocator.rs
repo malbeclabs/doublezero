@@ -2,6 +2,7 @@ use std::net::Ipv4Addr;
 
 use bitvec::prelude::*;
 use ipnetwork::Ipv4Network;
+use log::info;
 
 #[derive(Debug)]
 pub struct IPBlockAllocator {
@@ -45,7 +46,7 @@ impl IPBlockAllocator {
                 }
             }
             Err(e) => {
-                print!(" {e} ");
+                info!(" {e} ");
             }
         }
     }
@@ -62,7 +63,7 @@ impl IPBlockAllocator {
                 }
             }
             Err(e) => {
-                print!(" {e} ");
+                info!(" {e} ");
             }
         }
     }

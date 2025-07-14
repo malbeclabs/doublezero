@@ -1,4 +1,5 @@
 use clap::Parser;
+use log::info;
 use std::thread;
 
 mod activator;
@@ -9,6 +10,7 @@ mod ipblockallocator;
 mod metrics_service;
 mod process;
 mod states;
+mod tenants;
 pub mod tests;
 mod utils;
 
@@ -45,9 +47,10 @@ struct AppArgs {
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
+    env_logger::init();
     let args = AppArgs::parse();
 
-    println!("DoubleZero Activator");
+    info!("DoubleZero Activator");
 
     let (metrics_service, mut metrics_submitter) =
         influxdb_metrics_service::create_influxdb_metrics_service(
@@ -66,21 +69,21 @@ async fn main() -> eyre::Result<()> {
     )
     .await?;
 
-    println!("Activator started");
+    info!("Activator started");
 
     activator.init().await?;
 
-    println!("Initialized");
+    info!("Initialized");
 
     // background blocking code so we can continue to run the metrics submitter in this async task
     thread::spawn(move || {
-        println!("Acivator thread started");
+        info!("Acivator thread started");
         activator.run().unwrap_or_default()
     });
 
-    println!("Activator metrics submitter started");
+    info!("Activator metrics submitter started");
     metrics_submitter.run().await;
-    println!("Activator metrics submitter finished");
+    info!("Activator metrics submitter finished");
 
     Ok(())
 }

@@ -1,6 +1,7 @@
 use crate::{idallocator::IDAllocator, ipblockallocator::IPBlockAllocator};
 use doublezero_sdk::Device;
 use ipnetwork::Ipv4Network;
+use log::info;
 use std::net::Ipv4Addr;
 
 #[derive(Debug)]
@@ -33,7 +34,7 @@ impl DeviceState {
                 .map(|b| IPBlockAllocator::new((*b).into()))
                 .collect();
 
-            println!(
+            info!(
                 "Update Device: {} public_ip: {} dz_prefixes: {} ",
                 self.device.code, &self.device.public_ip, &self.device.dz_prefixes,
             );

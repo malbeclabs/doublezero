@@ -299,6 +299,7 @@ mod user_test {
                 tunnel_id: 500,
                 tunnel_net: "10.1.2.3/21".parse().unwrap(),
                 dz_ip: [200, 0, 0, 1].into(),
+                validator_pubkey: None,
             }),
             vec![
                 AccountMeta::new(user_pubkey, false),

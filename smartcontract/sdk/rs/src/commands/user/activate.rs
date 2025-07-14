@@ -13,6 +13,7 @@ pub struct ActivateUserCommand {
     pub tunnel_id: u16,
     pub tunnel_net: NetworkV4,
     pub dz_ip: Ipv4Addr,
+    pub validator_pubkey: Option<Pubkey>,
 }
 
 impl ActivateUserCommand {
@@ -26,6 +27,7 @@ impl ActivateUserCommand {
                 tunnel_id: self.tunnel_id,
                 tunnel_net: self.tunnel_net,
                 dz_ip: self.dz_ip,
+                validator_pubkey: self.validator_pubkey,
             }),
             vec![
                 AccountMeta::new(self.user_pubkey, false),

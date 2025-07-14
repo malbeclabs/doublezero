@@ -5,11 +5,10 @@ use crate::{
     state::{accounttype::AccountType, multicastgroup::*},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-#[cfg(test)]
-use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
     pubkey::Pubkey,
 };
 use std::fmt;
@@ -95,7 +94,6 @@ pub fn process_update_multicastgroup(
         system_program,
     );
 
-    #[cfg(test)]
     msg!("Updated: {:?}", multicastgroup);
 
     Ok(())

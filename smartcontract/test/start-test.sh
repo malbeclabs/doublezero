@@ -47,7 +47,7 @@ solana logs >./logs/instruction.log 2>&1 &
 
 # Build the activator
 echo "Start the activator"
-./target/doublezero-activator --program-id 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX --ws ws://127.0.0.1:8900 >./logs/activator.log 2>&1 &
+RUST_LOG=info ./target/doublezero-activator --program-id 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX --ws ws://127.0.0.1:8900 >./logs/activator.log 2>&1 &
 
 echo "Add allowlist"
 ./target/doublezero global-config allowlist add --pubkey 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
@@ -108,15 +108,16 @@ echo "Creating links"
 
 # create a user
 echo "Creating users"
-./target/doublezero user create --device ld4-dz01 --client-ip 100.0.0.1
-./target/doublezero user create --device ld4-dz01 --client-ip 100.0.0.2
-./target/doublezero user create --device ld4-dz01 --client-ip 100.0.0.3
-./target/doublezero user create --device ld4-dz01 --client-ip 100.0.0.4
+./target/doublezero user create --device ld4-dz01 --client-ip 177.54.159.95
+./target/doublezero user create --device ld4-dz01 --client-ip 147.28.171.51
+./target/doublezero user create --device ld4-dz01 --client-ip 100.100.100.100
+./target/doublezero user create --device ld4-dz01 --client-ip 200.200.200.200
 
 echo "Creating multicast groups"
 ./target/doublezero multicast group create --code mg01 --max-bandwidth 1Gbps --owner me
 ./target/doublezero multicast group create --code mg02 --max-bandwidth 1Gbps --owner me
 ./target/doublezero multicast group create --code mg03 --max-bandwidth 1Gbps --owner me
+sleep 10
 
 echo "Add me to multicast group allowlist"
 ./target/doublezero multicast group allowlist subscriber add --code mg01 --pubkey me
@@ -125,12 +126,12 @@ echo "Add me to multicast group allowlist"
 ./target/doublezero multicast group allowlist publisher add --code mg01 --pubkey me
 ./target/doublezero multicast group allowlist publisher add --code mg02 --pubkey me
 ./target/doublezero multicast group allowlist publisher add --code mg03 --pubkey me
-sleep 2
 
 echo "Creating multicast user & subscribe"
 ./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 100.0.0.5 --subscriber mg01
 ./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 100.0.0.6 --subscriber mg01
-sleep 2
+sleep 10
+
 ./target/doublezero user subscribe --user 9gYCNwLTNHveZiNGA62Z1PMRiYFYbmUz3VTx9FgVuSEH --group mg01 --publisher
 ./target/doublezero user subscribe --user 9gYCNwLTNHveZiNGA62Z1PMRiYFYbmUz3VTx9FgVuSEH --group mg02 --publisher
 ./target/doublezero user subscribe --user 83Yz9TX1uN5VUnd2rBRueBBJHy61RxFEoj4nSKL3DZuh --group mg01 --subscriber

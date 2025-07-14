@@ -9,6 +9,7 @@ use crate::{
         user::process_user_event,
     },
     states::devicestate::DeviceState,
+    tenants::solana::{SolanaInfo, SolanaRpcInfo},
 };
 use doublezero_cli::{checkversion::check_version, doublezerocommand::CliCommandImpl};
 use doublezero_sdk::{
@@ -20,6 +21,7 @@ use doublezero_sdk::{
     AccountData, DZClient, Device, DeviceStatus, Exchange, GetGlobalConfigCommand, LinkStatus,
     Location, MulticastGroup, ProgramVersion, UserStatus,
 };
+use log::{debug, error, info};
 use solana_sdk::pubkey::Pubkey;
 use std::{collections::HashMap, thread, time::Duration};
 
@@ -40,6 +42,7 @@ pub struct Activator {
     multicastgroups: HashMap<Pubkey, MulticastGroup>,
     metrics: ActivatorMetrics,
     state_transitions: HashMap<&'static str, usize>,
+    solana_info: SolanaRpcInfo,
 }
 
 impl Activator {
@@ -54,7 +57,7 @@ impl Activator {
     ) -> eyre::Result<Self> {
         let client = DZClient::new(rpc_url, websocket_url, program_id, kaypair)?;
 
-        print!(
+        info!(
             "Connected to url: {} ws: {} program_id: {} ",
             client.get_rpc(),
             client.get_ws(),
@@ -74,7 +77,7 @@ impl Activator {
             match GetGlobalConfigCommand.execute(&client) {
                 Ok(result) => break result,
                 Err(_) => {
-                    println!("Waiting for config...");
+                    info!("Waiting for config...");
                     thread::sleep(Duration::from_secs(10));
                 }
             }
@@ -92,6 +95,9 @@ impl Activator {
             exchanges: HashMap::new(),
             multicastgroups: HashMap::new(),
             state_transitions: HashMap::new(),
+            solana_info: SolanaRpcInfo {
+                url: "https://api.mainnet-beta.solana.com".to_string(),
+            },
         })
     }
 
@@ -139,7 +145,7 @@ impl Activator {
                 Ok::<(), eyre::Error>(())
             })?;
 
-        println!(
+        info!(
             "devices: {} tunnels: {} users: {}",
             devices.len(),
             tunnels.len(),
@@ -164,7 +170,7 @@ impl Activator {
         )?;
 
         self.devices.iter().for_each(|(_pubkey, device)| {
-            println!(
+            info!(
                 "Device code: {} public_ip: {} dz_prefixes: {} tunnels: {} tunnel_net: {} assigned: {}",
                 device.device.code,
                 device.device.public_ip,
@@ -185,10 +191,13 @@ impl Activator {
         let locations = &mut self.locations;
         let exchanges = &mut self.exchanges;
         let multicastgroups = &mut self.multicastgroups;
+        let solana_info = &self.solana_info;
         let state_transitions = &mut self.state_transitions;
 
         self.client
             .gets_and_subscribe(move |client, pubkey, data| {
+                debug!("Event: {pubkey} {data:?}");
+
                 match data {
                     AccountData::Device(device) => {
                         process_device_event(client, pubkey, devices, device, state_transitions);
@@ -203,17 +212,24 @@ impl Activator {
                             state_transitions,
                         );
                     }
-                    AccountData::User(user) => {
-                        process_user_event(
-                            client,
-                            pubkey,
-                            devices,
-                            user_tunnel_ips,
-                            tunnel_tunnel_ids,
-                            user,
-                            state_transitions,
-                        );
-                    }
+                    AccountData::User(user) => match solana_info.get_cluster_nodes() {
+                        Ok(clusters) => {
+                            process_user_event(
+                                client,
+                                pubkey,
+                                devices,
+                                user_tunnel_ips,
+                                tunnel_tunnel_ids,
+                                user,
+                                clusters,
+                                state_transitions,
+                            );
+                        }
+                        Err(e) => {
+                            error!("Error fetching cluster nodes: {e}");
+                            return;
+                        }
+                    },
                     AccountData::Location(location) => {
                         process_location_event(pubkey, locations, location);
                     }
@@ -230,7 +246,7 @@ impl Activator {
                             state_transitions,
                         )
                         .inspect_err(|e| {
-                            eprintln!("Error processing multicast group event: {e}");
+                            error!("Error processing multicast group event: {e}");
                         });
                     }
                     _ => {}
@@ -239,7 +255,7 @@ impl Activator {
                     metrics.record_metrics(devices, locations, exchanges, state_transitions)
                 {
                     // Just log the error
-                    eprintln!("error on record_metrics: {e}")
+                    error!("error on record_metrics: {e}")
                 }
             })?;
         Ok(())

@@ -17,7 +17,7 @@ impl GetUserCliCommand {
         let (pubkey, user) = client.get_user(GetUserCommand { pubkey })?;
 
         writeln!(out,
-                "account: {}\r\nuser_type: {}\r\ndevice: {}\r\ncyoa_type: {}\r\nclient_ip: {}\r\ntunnel_net: {}\r\ndz_ip: {}\r\npublishers: {}\r\nsuscribers: {}\r\nstatus: {}\r\nowner: {}",
+                "account: {}\r\nuser_type: {}\r\ndevice: {}\r\ncyoa_type: {}\r\nclient_ip: {}\r\ntunnel_net: {}\r\ndz_ip: {}\r\npublishers: {}\r\nsubscribers: {}\r\nstatus: {}\r\nvalidator_pubkey: {}\r\nowner: {}",
                 pubkey,
                 user.user_type,
                 user.device_pk,
@@ -28,6 +28,7 @@ impl GetUserCliCommand {
                 user.publishers.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "),
                 user.subscribers.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "),
                 user.status,
+                user.validator_pubkey,
                 user.owner
             )?;
 
@@ -77,6 +78,7 @@ mod tests {
             owner: pda_pubkey,
             publishers: vec![],
             subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
         };
 
         client
@@ -98,6 +100,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by code");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: CwpwPjV6LsVxHQ1Ye5bizyrXSa9j2Gk5C6y3WyMyYaA1\r\nuser_type: IBRL\r\ndevice: 11111111111111111111111111111111\r\ncyoa_type: GREOverDIA\r\nclient_ip: 10.0.0.1\r\ntunnel_net: 10.2.3.4/24\r\ndz_ip: 10.0.0.2\r\npublishers: \r\nsuscribers: \r\nstatus: activated\r\nowner: CwpwPjV6LsVxHQ1Ye5bizyrXSa9j2Gk5C6y3WyMyYaA1\n");
+        assert_eq!(output_str, "account: CwpwPjV6LsVxHQ1Ye5bizyrXSa9j2Gk5C6y3WyMyYaA1\r\nuser_type: IBRL\r\ndevice: 11111111111111111111111111111111\r\ncyoa_type: GREOverDIA\r\nclient_ip: 10.0.0.1\r\ntunnel_net: 10.2.3.4/24\r\ndz_ip: 10.0.0.2\r\npublishers: \r\nsubscribers: \r\nstatus: activated\r\nvalidator_pubkey: 11111111111111111111111111111111\r\nowner: CwpwPjV6LsVxHQ1Ye5bizyrXSa9j2Gk5C6y3WyMyYaA1\n");
     }
 }

@@ -16,11 +16,14 @@ ipnetwork.workspace = true
 mockall.workspace = true
 solana-sdk.workspace = true
 tokio.workspace = true
-
+solana-client.workspace = true
+env_logger.workspace = true
+log.workspace = true
 # Dependencies from this workspace
 doublezero_sdk.workspace = true
 doublezero_cli.workspace = true
 doublezero-serviceability.workspace = true
+
 
 [dev-dependencies]
 

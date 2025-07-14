@@ -3,12 +3,10 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
-
-#[cfg(test)]
-use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
     pubkey::Pubkey,
 };
 
@@ -74,7 +72,6 @@ pub fn process_activate_multicastgroup(
         system_program,
     );
 
-    #[cfg(test)]
     msg!("Activated: {:?}", multicastgroup);
 
     Ok(())

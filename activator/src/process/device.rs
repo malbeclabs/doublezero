@@ -2,8 +2,12 @@ use doublezero_sdk::{
     commands::device::{activate::ActivateDeviceCommand, closeaccount::CloseAccountDeviceCommand},
     Device, DeviceStatus, DoubleZeroClient,
 };
+use log::info;
 use solana_sdk::pubkey::Pubkey;
-use std::collections::{hash_map::Entry, HashMap};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    fmt::Write,
+};
 
 use crate::{activator::DeviceMap, states::devicestate::DeviceState};
 
@@ -16,7 +20,13 @@ pub fn process_device_event(
 ) {
     match device.status {
         DeviceStatus::Pending => {
-            print!("New Device {} ", device.code);
+            let mut log_msg = String::new();
+            write!(
+                &mut log_msg,
+                "Event:Device(Pending) {} ({}) public_ip: {} dz_prefixes: {} ",
+                pubkey, device.code, &device.public_ip, &device.dz_prefixes,
+            )
+            .unwrap();
 
             let res = ActivateDeviceCommand {
                 device_pubkey: *pubkey,
@@ -24,25 +34,22 @@ pub fn process_device_event(
             .execute(client);
 
             match res {
-                Err(e) => println!("Error: {e}"),
                 Ok(signature) => {
-                    println!("Activated {signature}");
+                    write!(&mut log_msg, " Activated {signature}").unwrap();
 
-                    println!(
-                        "Add Device: {} public_ip: {} dz_prefixes: {} ",
-                        device.code, &device.public_ip, &device.dz_prefixes,
-                    );
                     devices.insert(*pubkey, DeviceState::new(device));
                     *state_transitions
                         .entry("device-pending-to-activated")
                         .or_insert(0) += 1;
                 }
+                Err(e) => write!(&mut log_msg, " Error {e}").unwrap(),
             }
+            info!("{log_msg}");
         }
         DeviceStatus::Activated => match devices.entry(*pubkey) {
             Entry::Occupied(mut entry) => entry.get_mut().update(device),
             Entry::Vacant(entry) => {
-                println!(
+                info!(
                     "Add Device: {} public_ip: {} dz_prefixes: {} ",
                     device.code, &device.public_ip, &device.dz_prefixes,
                 );
@@ -50,7 +57,13 @@ pub fn process_device_event(
             }
         },
         DeviceStatus::Deleting => {
-            print!("Deleting Device {} ", device.code);
+            let mut log_msg = String::new();
+            write!(
+                &mut log_msg,
+                "Event:Device(Deleting) {} ({}) ",
+                pubkey, device.code
+            )
+            .unwrap();
 
             let res = CloseAccountDeviceCommand {
                 pubkey: *pubkey,
@@ -59,14 +72,14 @@ pub fn process_device_event(
             .execute(client);
 
             match res {
-                Err(e) => println!("Error: {e}"),
                 Ok(signature) => {
-                    println!("Deactivated {signature}");
+                    write!(&mut log_msg, " Deactivated {signature}").unwrap();
                     devices.remove(pubkey);
                     *state_transitions
                         .entry("device-deleting-to-deactivated")
                         .or_insert(0) += 1;
                 }
+                Err(e) => write!(&mut log_msg, " Error {e}").unwrap(),
             }
         }
         _ => {}

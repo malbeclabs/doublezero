@@ -3,6 +3,7 @@ use crate::{
     utils::{get_utc_nanoseconds_since_epoch, kvpair_string},
 };
 use influxdb2::Client;
+use log::error;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 pub struct InfluxDBMetricsService {
@@ -58,7 +59,7 @@ impl InfluxDBMetricsService {
         _ = self
             .sender
             .blocking_send(lines)
-            .inspect_err(|err| eprintln!("Error sending metrics: {err}"));
+            .inspect_err(|err| error!("Error sending metrics: {err}"));
     }
 }
 
@@ -97,7 +98,7 @@ impl InfluxDBMetricsSubmitter {
                     .write_line_protocol(&client.org, self.bucket.as_str(), msg)
                     .await
                 {
-                    eprintln!("Error writing metric to InfluxDB: {e}");
+                    error!("Error writing metric to InfluxDB: {e}");
                 }
             }
         }

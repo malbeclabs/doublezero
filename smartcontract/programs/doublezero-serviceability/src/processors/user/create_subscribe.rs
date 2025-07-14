@@ -128,6 +128,7 @@ pub fn process_create_subscribe_user(
             true => vec![*mgroup_account.key],
             false => vec![],
         },
+        validator_pubkey: Pubkey::default(),
     };
 
     if value.publisher && !mgroup.publishers.contains(pda_account.key) {

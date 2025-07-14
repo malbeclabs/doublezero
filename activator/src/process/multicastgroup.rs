@@ -7,8 +7,12 @@ use doublezero_sdk::{
 };
 use eyre;
 use ipnetwork::Ipv4Network;
+use log::info;
 use solana_sdk::pubkey::Pubkey;
-use std::collections::{hash_map::Entry, HashMap};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    fmt::Write,
+};
 
 pub fn process_multicastgroup_event(
     client: &dyn DoubleZeroClient,
@@ -20,13 +24,19 @@ pub fn process_multicastgroup_event(
 ) -> eyre::Result<()> {
     match multicastgroup.status {
         MulticastGroupStatus::Pending => {
-            print!("New MulticastGroup {} ", multicastgroup.code);
+            let mut log_msg = String::new();
+            write!(
+                &mut log_msg,
+                "Event:MulticastGroup(Pending) {} ({}) ",
+                pubkey, multicastgroup.code
+            )
+            .unwrap();
 
             let res = multicastgroup_tunnel_ips.next_available_block(0, 1);
             match res {
                 Some(multicast_group) => {
                     let multicast_ip = multicast_group.ip();
-                    println!("multicast_ip: {} ", &multicast_ip);
+                    write!(&mut log_msg, "multicast_ip: {multicast_ip} ",).unwrap();
 
                     let res = ActivateMulticastGroupCommand {
                         mgroup_pubkey: *pubkey,
@@ -36,25 +46,27 @@ pub fn process_multicastgroup_event(
 
                     match res {
                         Ok(signature) => {
-                            println!("Activated {signature}");
+                            write!(&mut log_msg, "Activated: {signature} ",).unwrap();
 
-                            println!("Add MulticastGroup: {} ", multicastgroup.code,);
                             multicastgroups.insert(*pubkey, multicastgroup.clone());
                             *state_transitions
                                 .entry("multicastgroup-pending-to-activated")
                                 .or_insert(0) += 1;
                         }
-                        Err(e) => println!("Error: {e}"),
+                        Err(e) => {
+                            write!(&mut log_msg, "Error: {e} ",).unwrap();
+                        }
                     }
                 }
                 None => {
-                    println!("Error: No available multicast block");
+                    write!(&mut log_msg, "Error: No available multicast block",).unwrap();
                 }
             }
+            info!("{log_msg}");
         }
         MulticastGroupStatus::Activated => {
             if let Entry::Vacant(entry) = multicastgroups.entry(*pubkey) {
-                println!("Add MulticastGroup: {} ", multicastgroup.code);
+                info!("Add MulticastGroup: {} ", multicastgroup.code);
 
                 entry.insert(multicastgroup.clone());
                 multicastgroup_tunnel_ips
@@ -62,7 +74,13 @@ pub fn process_multicastgroup_event(
             }
         }
         MulticastGroupStatus::Deleting => {
-            print!("Deleting MulticastGroup {} ", multicastgroup.code);
+            let mut log_msg = String::new();
+            write!(
+                &mut log_msg,
+                "Event:MulticastGroup(Deleting) {} ({}) ",
+                pubkey, multicastgroup.code
+            )
+            .unwrap();
 
             multicastgroup_tunnel_ips
                 .unassign_block(Ipv4Network::new(multicastgroup.multicast_ip, 32)?);
@@ -75,14 +93,18 @@ pub fn process_multicastgroup_event(
 
             match res {
                 Ok(signature) => {
-                    println!("Deactivated {signature}");
+                    write!(&mut log_msg, " Deactivated {signature}",).unwrap();
+
                     multicastgroups.remove(pubkey);
                     *state_transitions
                         .entry("multicastgroup-deleting-to-deactivated")
                         .or_insert(0) += 1;
                 }
-                Err(e) => println!("Error: {e}"),
+                Err(e) => {
+                    write!(&mut log_msg, " Error {e}",).unwrap();
+                }
             }
+            info!("{log_msg}");
         }
         _ => {}
     }

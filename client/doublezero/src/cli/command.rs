@@ -14,7 +14,8 @@ use clap::{Args, Subcommand};
 use clap_complete::Shell;
 use doublezero_cli::{
     account::GetAccountCliCommand, address::AddressCliCommand, balance::BalanceCliCommand,
-    export::ExportCliCommand, init::InitCliCommand, keygen::KeyGenCliCommand, log::LogCliCommand,
+    export::ExportCliCommand, init::InitCliCommand, keygen::KeyGenCliCommand,
+    logcommand::LogCliCommand,
 };
 
 #[derive(Subcommand, Debug)]

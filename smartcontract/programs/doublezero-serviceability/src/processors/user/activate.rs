@@ -22,6 +22,7 @@ pub struct UserActivateArgs {
     pub tunnel_id: u16,
     pub tunnel_net: NetworkV4,
     pub dz_ip: Ipv4Addr,
+    pub validator_pubkey: Option<Pubkey>,
 }
 
 impl fmt::Debug for UserActivateArgs {
@@ -78,6 +79,8 @@ pub fn process_activate_user(
     user.tunnel_net = value.tunnel_net;
     user.dz_ip = value.dz_ip;
     user.status = UserStatus::Activated;
+
+    user.validator_pubkey = value.validator_pubkey.unwrap_or_default();
 
     account_write(user_account, &user, payer_account, system_program);
 

@@ -225,6 +225,7 @@ mod tests {
             subscribers: vec![],
             status: UserStatus::Activated,
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1"),
+            validator_pubkey: Pubkey::default(),
         };
 
         let multicastgroup = MulticastGroup {

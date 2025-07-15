@@ -1498,6 +1498,7 @@ dependencies = [
  "doublezero_sdk",
  "env_logger 0.9.3",
  "eyre",
+ "futures",
  "indexmap",
  "influxdb2",
  "influxdb2-derive",

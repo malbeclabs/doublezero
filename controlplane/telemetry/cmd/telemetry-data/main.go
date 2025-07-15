@@ -267,7 +267,9 @@ func buildSummaries(ctx context.Context, log *slog.Logger, rpcEndpoint, servicea
 		}
 
 		if recentSamples > 0 {
-			samples = samples[len(samples)-int(recentSamples):]
+			if int(recentSamples) <= len(samples) {
+				samples = samples[len(samples)-int(recentSamples):]
+			}
 		}
 
 		successSamples := make([]uint32, 0, len(samples))

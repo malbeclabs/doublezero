@@ -24,9 +24,9 @@ import (
 
 type Summary struct {
 	Origin, Target, Link string
-	TotalRTT             int64
-	SuccessCount         int64
-	LossCount            int64
+	TotalRTT             uint64
+	SuccessCount         uint64
+	LossCount            uint64
 	LossRate             float64
 	Avg                  float64
 	Median               float64
@@ -44,6 +44,7 @@ type Config struct {
 	TelemetryProgramID      string
 	Epoch                   uint64
 	RecentEpochs            uint64
+	RecentSamples           uint64
 	Verbose                 bool
 }
 
@@ -58,7 +59,7 @@ func main() {
 	summaries, err := buildSummaries(
 		context.Background(), log,
 		cfg.RPCEndpoint, cfg.ServiceabilityProgramID, cfg.TelemetryProgramID,
-		cfg.Epoch, cfg.RecentEpochs,
+		cfg.Epoch, cfg.RecentEpochs, cfg.RecentSamples,
 	)
 	if err != nil {
 		log.Error("Failed to build summaries", "error", err)
@@ -75,6 +76,7 @@ func parseFlags() *Config {
 	flag.StringVar(&cfg.TelemetryProgramID, "telemetry-program-id", telemetry.TELEMETRY_PROGRAM_ID_DEVNET, "Telemetry program ID")
 	flag.Uint64Var(&cfg.Epoch, "epoch", 0, "Epoch to query (0 for current epoch)")
 	flag.Uint64Var(&cfg.RecentEpochs, "recent-epochs", 1, "Aggregate over the last N epochs ending at --epoch")
+	flag.Uint64Var(&cfg.RecentSamples, "recent-samples", 0, "Aggregate over the last N samples per group")
 	flag.BoolVar(&cfg.Verbose, "verbose", false, "Enable verbose logging")
 	flag.Parse()
 	return cfg
@@ -100,6 +102,10 @@ func printSummaries(summaries []*Summary, cfg *Config) {
 	epochLabel := fmt.Sprintf("Epochs: %d–%d", start, cfg.Epoch)
 	if cfg.RecentEpochs == 1 {
 		epochLabel = fmt.Sprintf("Epoch: %d", cfg.Epoch)
+	}
+
+	if cfg.RecentSamples > 0 {
+		epochLabel += fmt.Sprintf(" (last %d samples)", cfg.RecentSamples)
 	}
 
 	fmt.Println(epochLabel)
@@ -155,7 +161,7 @@ func printSummaries(summaries []*Summary, cfg *Config) {
 	table.Render()
 }
 
-func buildSummaries(ctx context.Context, log *slog.Logger, rpcEndpoint, serviceabilityProgramID, telemetryProgramID string, epoch, recent uint64) ([]*Summary, error) {
+func buildSummaries(ctx context.Context, log *slog.Logger, rpcEndpoint, serviceabilityProgramID, telemetryProgramID string, epoch, recentEpochs, recentSamples uint64) ([]*Summary, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
@@ -181,8 +187,12 @@ func buildSummaries(ctx context.Context, log *slog.Logger, rpcEndpoint, servicea
 		devices[solana.PublicKeyFromBytes(d.PubKey[:])] = &d
 	}
 
-	var summariesMu sync.Mutex
-	var summaries []*Summary
+	type groupKey struct {
+		origin, target, link string
+	}
+	var groupsMu sync.Mutex
+	groups := make(map[groupKey][]uint32)
+
 	for _, link := range svc.GetLinks() {
 		linkPK := solana.PublicKeyFromBytes(link.PubKey[:])
 		sideA := solana.PublicKeyFromBytes(link.SideAPubKey[:])
@@ -201,7 +211,7 @@ func buildSummaries(ctx context.Context, log *slog.Logger, rpcEndpoint, servicea
 			if origin == nil || target == nil {
 				continue
 			}
-			for e := int64(epoch) - int64(recent) + 1; e <= int64(epoch); e++ {
+			for e := int64(epoch) - int64(recentEpochs) + 1; e <= int64(epoch); e++ {
 				queries = append(queries, query{
 					origin: origin,
 					target: target,
@@ -225,34 +235,19 @@ func buildSummaries(ctx context.Context, log *slog.Logger, rpcEndpoint, servicea
 					return
 				}
 
-				summary := Summary{
-					Origin: q.origin.Code,
-					Target: q.target.Code,
-					Link:   link.Code,
-				}
-				var samples []int64
-				for e := int64(epoch) - int64(recent) + 1; e <= int64(epoch); e++ {
-					for _, s := range account.Samples {
-						if s > 0 {
-							summary.TotalRTT += int64(s)
-							summary.SuccessCount++
-							samples = append(samples, int64(s))
-						} else {
-							summary.LossCount++
-						}
+				for e := int64(epoch) - int64(recentEpochs) + 1; e <= int64(epoch); e++ {
+					groupsMu.Lock()
+					groupKey := groupKey{
+						origin: q.origin.Code,
+						target: q.target.Code,
+						link:   link.Code,
 					}
+					if _, ok := groups[groupKey]; !ok {
+						groups[groupKey] = []uint32{}
+					}
+					groups[groupKey] = append(groups[groupKey], account.Samples...)
+					groupsMu.Unlock()
 				}
-				if summary.SuccessCount == 0 {
-					summariesMu.Lock()
-					summaries = append(summaries, &summary)
-					summariesMu.Unlock()
-					return
-				}
-				summary.LossRate, summary.Avg, summary.Median, summary.Jitter, summary.MAD, summary.P95, summary.P99, summary.Min, summary.Max =
-					computeStats(samples, summary.TotalRTT, summary.SuccessCount, summary.LossCount)
-				summariesMu.Lock()
-				summaries = append(summaries, &summary)
-				summariesMu.Unlock()
 			}(q)
 		}
 		wg.Wait()
@@ -261,10 +256,45 @@ func buildSummaries(ctx context.Context, log *slog.Logger, rpcEndpoint, servicea
 			return nil, err
 		}
 	}
+
+	summaries := make([]*Summary, 0, len(groups))
+
+	for key, samples := range groups {
+		summary := &Summary{
+			Origin: key.origin,
+			Target: key.target,
+			Link:   key.link,
+		}
+
+		if recentSamples > 0 {
+			if int(recentSamples) <= len(samples) {
+				samples = samples[len(samples)-int(recentSamples):]
+			}
+		}
+
+		successSamples := make([]uint32, 0, len(samples))
+		for _, rtt := range samples {
+			if rtt > 0 {
+				summary.TotalRTT += uint64(rtt)
+				summary.SuccessCount++
+				successSamples = append(successSamples, rtt)
+			} else {
+				summary.LossCount++
+			}
+		}
+
+		if summary.SuccessCount > 0 {
+			summary.LossRate, summary.Avg, summary.Median, summary.Jitter, summary.MAD, summary.P95, summary.P99, summary.Min, summary.Max =
+				computeStats(successSamples, summary.TotalRTT, summary.SuccessCount, summary.LossCount)
+		}
+
+		summaries = append(summaries, summary)
+	}
+
 	return summaries, nil
 }
 
-func computeStats(samples []int64, totalRTT, successCount, lossCount int64) (lossRate, avg, median, jitter, mad, p95, p99, min, max float64) {
+func computeStats(samples []uint32, totalRTT, successCount, lossCount uint64) (lossRate, avg, median, jitter, mad, p95, p99, min, max float64) {
 	n := len(samples)
 	if n == 0 {
 		return

@@ -28,10 +28,8 @@ const (
 // Telemetry Program IDs
 const (
 	// TELEMETRY_PROGRAM_ID_TESTNET is the telemetry program ID for testnet
-	// TODO: placeholder
-	TELEMETRY_PROGRAM_ID_TESTNET = "TeLemTest1111111111111111111111111111111111"
+	TELEMETRY_PROGRAM_ID_TESTNET = "3KogTMmVxc5eUHtjZnwm136H5P8tvPwVu4ufbGPvM7p1"
 	// TELEMETRY_PROGRAM_ID_DEVNET is the telemetry program ID for devnet
-	// TODO: placeholder
 	TELEMETRY_PROGRAM_ID_DEVNET = "C9xqH76NSm11pBS6maNnY163tWHT8Govww47uyEmSnoG"
 )
 

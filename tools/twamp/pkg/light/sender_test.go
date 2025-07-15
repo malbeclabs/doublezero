@@ -17,22 +17,22 @@ func TestTWAMP_Sender_Linux(t *testing.T) {
 		t.Skip("Linux-specific test")
 	}
 
-	runSenderTests(t, func(iface string, localAddr, remoteAddr *net.UDPAddr) (twamplight.Sender, error) {
-		return twamplight.NewLinuxSender(t.Context(), iface, localAddr, remoteAddr)
+	runSenderTests(t, func(cfg twamplight.SenderConfig) (twamplight.Sender, error) {
+		return twamplight.NewLinuxSender(t.Context(), cfg)
 	}, func(addr string) (twamplight.Reflector, error) {
 		return twamplight.NewLinuxReflector(addr, 100*time.Millisecond)
 	})
 }
 
 func TestTWAMP_Sender_Basic(t *testing.T) {
-	runSenderTests(t, func(iface string, localAddr, remoteAddr *net.UDPAddr) (twamplight.Sender, error) {
-		return twamplight.NewBasicSender(t.Context(), log, iface, localAddr, remoteAddr)
+	runSenderTests(t, func(cfg twamplight.SenderConfig) (twamplight.Sender, error) {
+		return twamplight.NewBasicSender(t.Context(), cfg)
 	}, func(addr string) (twamplight.Reflector, error) {
 		return twamplight.NewBasicReflector(log, addr, 100*time.Millisecond)
 	})
 }
 
-func runSenderTests(t *testing.T, newSender func(iface string, localAddr, remoteAddr *net.UDPAddr) (twamplight.Sender, error), newReflector func(addr string) (twamplight.Reflector, error)) {
+func runSenderTests(t *testing.T, newSender func(cfg twamplight.SenderConfig) (twamplight.Sender, error), newReflector func(addr string) (twamplight.Reflector, error)) {
 	t.Run("successful RTT probe", func(t *testing.T) {
 		t.Parallel()
 
@@ -44,7 +44,10 @@ func runSenderTests(t *testing.T, newSender func(iface string, localAddr, remote
 		defer cancel()
 		go func() { require.NoError(t, reflector.Run(ctx)) }()
 
-		sender, err := newSender("", nil, reflector.LocalAddr())
+		sender, err := newSender(twamplight.SenderConfig{
+			Logger:    log,
+			LocalAddr: reflector.LocalAddr(),
+		})
 		require.NoError(t, err)
 		require.NotNil(t, sender.LocalAddr())
 
@@ -57,7 +60,10 @@ func runSenderTests(t *testing.T, newSender func(iface string, localAddr, remote
 		t.Parallel()
 
 		addr := &net.UDPAddr{IP: net.IPv4(10, 255, 255, 255), Port: 65000}
-		sender, err := newSender("", nil, addr)
+		sender, err := newSender(twamplight.SenderConfig{
+			Logger:    log,
+			LocalAddr: addr,
+		})
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
@@ -71,7 +77,10 @@ func runSenderTests(t *testing.T, newSender func(iface string, localAddr, remote
 		t.Parallel()
 
 		addr := &net.UDPAddr{IP: net.IPv4(10, 255, 255, 255), Port: 12345}
-		sender, err := newSender("", nil, addr)
+		sender, err := newSender(twamplight.SenderConfig{
+			Logger:    log,
+			LocalAddr: addr,
+		})
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
@@ -96,7 +105,10 @@ func runSenderTests(t *testing.T, newSender func(iface string, localAddr, remote
 
 		time.Sleep(100 * time.Millisecond)
 
-		sender, err := newSender("", nil, addr)
+		sender, err := newSender(twamplight.SenderConfig{
+			Logger:    log,
+			LocalAddr: addr,
+		})
 		require.NoError(t, err)
 
 		probeCtx, probeCancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
@@ -112,7 +124,10 @@ func runSenderTests(t *testing.T, newSender func(iface string, localAddr, remote
 
 		// Use a blackhole address so the probe would hang unless canceled.
 		addr := &net.UDPAddr{IP: net.IPv4(10, 255, 255, 255), Port: 65000}
-		sender, err := newSender("", nil, addr)
+		sender, err := newSender(twamplight.SenderConfig{
+			Logger:    log,
+			LocalAddr: addr,
+		})
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithCancel(t.Context())
@@ -137,7 +152,10 @@ func runSenderTests(t *testing.T, newSender func(iface string, localAddr, remote
 
 		// Use a blackhole address so the probe would hang timeout.
 		addr := &net.UDPAddr{IP: net.IPv4(10, 255, 255, 255), Port: 65000}
-		sender, err := newSender("", nil, addr)
+		sender, err := newSender(twamplight.SenderConfig{
+			Logger:    log,
+			LocalAddr: addr,
+		})
 		require.NoError(t, err)
 
 		start := time.Now()
@@ -154,7 +172,10 @@ func runSenderTests(t *testing.T, newSender func(iface string, localAddr, remote
 		t.Parallel()
 
 		addr := &net.UDPAddr{IP: net.IPv4(10, 255, 255, 255), Port: 65000}
-		sender, err := newSender("", nil, addr) // long socket timeout
+		sender, err := newSender(twamplight.SenderConfig{
+			Logger:    log,
+			LocalAddr: addr,
+		}) // long socket timeout
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
@@ -181,7 +202,10 @@ func runSenderTests(t *testing.T, newSender func(iface string, localAddr, remote
 		go func() { require.NoError(t, reflector.Run(ctx)) }()
 
 		addr := reflector.LocalAddr()
-		sender, err := newSender("", nil, addr)
+		sender, err := newSender(twamplight.SenderConfig{
+			Logger:    log,
+			LocalAddr: addr,
+		})
 		require.NoError(t, err)
 
 		// Send multiple probes and verify sequence numbers
@@ -206,7 +230,10 @@ func runSenderTests(t *testing.T, newSender func(iface string, localAddr, remote
 		go func() { require.NoError(t, reflector.Run(ctx)) }()
 
 		addr := reflector.LocalAddr()
-		sender, err := twamplight.NewBasicSender(t.Context(), log, "", nil, addr)
+		sender, err := twamplight.NewBasicSender(t.Context(), twamplight.SenderConfig{
+			Logger:    log,
+			LocalAddr: addr,
+		})
 		require.NoError(t, err)
 
 		var wg sync.WaitGroup
@@ -259,7 +286,10 @@ func runSenderTests(t *testing.T, newSender func(iface string, localAddr, remote
 		// Give the reflector a moment to start
 		time.Sleep(10 * time.Millisecond)
 
-		sender, err := twamplight.NewBasicSender(t.Context(), log, "", nil, conn.LocalAddr().(*net.UDPAddr))
+		sender, err := twamplight.NewBasicSender(t.Context(), twamplight.SenderConfig{
+			Logger:    log,
+			LocalAddr: conn.LocalAddr().(*net.UDPAddr),
+		})
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithTimeout(t.Context(), 250*time.Millisecond)
@@ -282,7 +312,10 @@ func runSenderTests(t *testing.T, newSender func(iface string, localAddr, remote
 		defer cancel()
 		go func() { require.NoError(t, reflector.Run(ctx)) }()
 
-		sender, err := twamplight.NewBasicSender(t.Context(), log, "", nil, reflector.LocalAddr())
+		sender, err := twamplight.NewBasicSender(t.Context(), twamplight.SenderConfig{
+			Logger:    log,
+			LocalAddr: reflector.LocalAddr(),
+		})
 		require.NoError(t, err)
 		t.Cleanup(func() { sender.Close() })
 
@@ -334,7 +367,10 @@ func runSenderTests(t *testing.T, newSender func(iface string, localAddr, remote
 			}
 		}()
 
-		sender, err := twamplight.NewBasicSender(t.Context(), log, "", nil, conn.LocalAddr().(*net.UDPAddr))
+		sender, err := twamplight.NewBasicSender(t.Context(), twamplight.SenderConfig{
+			Logger:    log,
+			LocalAddr: conn.LocalAddr().(*net.UDPAddr),
+		})
 		require.NoError(t, err)
 		t.Cleanup(func() { sender.Close() })
 

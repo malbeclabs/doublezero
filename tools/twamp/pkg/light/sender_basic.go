@@ -22,23 +22,23 @@ type BasicSender struct {
 	receivedMu sync.Mutex
 }
 
-func NewBasicSender(ctx context.Context, log *slog.Logger, iface string, localAddr, remoteAddr *net.UDPAddr) (*BasicSender, error) {
-	if iface != "" {
-		_, err := net.InterfaceByName(iface)
+func NewBasicSender(ctx context.Context, cfg SenderConfig) (*BasicSender, error) {
+	if cfg.LocalInterface != "" {
+		_, err := net.InterfaceByName(cfg.LocalInterface)
 		if err != nil {
 			return nil, fmt.Errorf("failed to dial: %w", err)
 		}
 	}
 	dialer := net.Dialer{
-		LocalAddr: localAddr,
+		LocalAddr: cfg.LocalAddr,
 	}
-	conn, err := dialer.DialContext(ctx, "udp", remoteAddr.String())
+	conn, err := dialer.DialContext(ctx, "udp", cfg.RemoteAddr.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial: %w", err)
 	}
 	s := &BasicSender{
-		log:      log,
-		remote:   remoteAddr,
+		log:      cfg.Logger,
+		remote:   cfg.RemoteAddr,
 		conn:     conn.(*net.UDPConn),
 		nowFunc:  time.Now,
 		buf:      make([]byte, PacketSize),
@@ -111,7 +111,9 @@ func (s *BasicSender) Probe(ctx context.Context) (time.Duration, error) {
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
 				return 0, context.DeadlineExceeded
 			}
-			s.log.Debug("failed to read from UDP", "error", err)
+			if s.log != nil {
+				s.log.Debug("failed to read from UDP", "error", err)
+			}
 			return 0, fmt.Errorf("failed to read from UDP: %w", err)
 		}
 
@@ -134,7 +136,9 @@ func (s *BasicSender) Probe(ctx context.Context) (time.Duration, error) {
 		_, ok := s.received[*packet]
 		s.receivedMu.Unlock()
 		if ok {
-			s.log.Debug("Ignoring duplicate packet", "packet", packet)
+			if s.log != nil {
+				s.log.Debug("Ignoring duplicate packet", "packet", packet)
+			}
 			continue
 		}
 
@@ -152,7 +156,9 @@ func (s *BasicSender) Probe(ctx context.Context) (time.Duration, error) {
 		// than the user-space send time. This results in a spurious negative RTT, which we
 		// conservatively clamp to 0.
 		if rtt < 0 {
-			s.log.Warn("Negative RTT detected, clamping to 0", "rtt", rtt)
+			if s.log != nil {
+				s.log.Warn("Negative RTT detected, clamping to 0", "rtt", rtt)
+			}
 			rtt = 0
 		}
 

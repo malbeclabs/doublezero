@@ -17,10 +17,19 @@ type Sender interface {
 	LocalAddr() *net.UDPAddr
 }
 
-func NewSender(ctx context.Context, log *slog.Logger, iface string, localAddr, remoteAddr *net.UDPAddr) (Sender, error) {
-	sender, err := NewLinuxSender(ctx, iface, localAddr, remoteAddr)
+type SenderConfig struct {
+	Logger            *slog.Logger
+	LocalInterface    string
+	LocalAddr         *net.UDPAddr
+	RemoteAddr        *net.UDPAddr
+	SchedulerPriority *int
+	PinToCPU          *int
+}
+
+func NewSender(ctx context.Context, cfg SenderConfig) (Sender, error) {
+	sender, err := NewLinuxSender(ctx, cfg)
 	if err == ErrPlatformNotSupported {
-		return NewBasicSender(ctx, log, iface, localAddr, remoteAddr)
+		return NewBasicSender(ctx, cfg)
 	}
 	return sender, err
 }

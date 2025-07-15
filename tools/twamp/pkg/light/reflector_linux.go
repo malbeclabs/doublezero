@@ -70,6 +70,14 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 	defer unix.Close(r.fd)
 	defer unix.Close(r.epfd)
 
+	if err := SetRealtimePriority(80); err != nil {
+		return fmt.Errorf("set realtime priority: %w", err)
+	}
+
+	if err := PinCurrentThreadToCPU(0); err != nil {
+		return fmt.Errorf("pin current thread to cpu: %w", err)
+	}
+
 	events := make([]unix.EpollEvent, 1)
 	buf := make([]byte, 1500)
 

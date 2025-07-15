@@ -26,43 +26,89 @@ func BenchmarkTWAMP_Linux(b *testing.B) {
 	}
 
 	b.Run("linux sender and linux reflector", func(b *testing.B) {
-		runBench(b, func(iface string, localAddr, remoteAddr *net.UDPAddr) (twamplight.Sender, error) {
-			return twamplight.NewLinuxSender(b.Context(), iface, localAddr, remoteAddr)
-		}, startLinuxReflector)
+		b.Run("no priority or pinning", func(b *testing.B) {
+			runBench(b, func(cfg twamplight.SenderConfig) (twamplight.Sender, error) {
+				return twamplight.NewLinuxSender(b.Context(), cfg)
+			}, startLinuxReflector)
+		})
+
+		b.Run("high scheduler priority", func(b *testing.B) {
+			runBench(b, func(cfg twamplight.SenderConfig) (twamplight.Sender, error) {
+				cfg.SchedulerPriority = &[]int{80}[0]
+				return twamplight.NewLinuxSender(b.Context(), cfg)
+			}, startLinuxReflector)
+		})
+
+		b.Run("pin to cpu", func(b *testing.B) {
+			runBench(b, func(cfg twamplight.SenderConfig) (twamplight.Sender, error) {
+				cfg.PinToCPU = &[]int{0}[0]
+				return twamplight.NewLinuxSender(b.Context(), cfg)
+			}, startLinuxReflector)
+		})
+
+		b.Run("high priority and pin to cpu", func(b *testing.B) {
+			runBench(b, func(cfg twamplight.SenderConfig) (twamplight.Sender, error) {
+				cfg.SchedulerPriority = &[]int{80}[0]
+				cfg.PinToCPU = &[]int{0}[0]
+				return twamplight.NewLinuxSender(b.Context(), cfg)
+			}, startLinuxReflector)
+		})
 	})
 
 	b.Run("linux sender and basic reflector", func(b *testing.B) {
-		runBench(b, func(iface string, localAddr, remoteAddr *net.UDPAddr) (twamplight.Sender, error) {
-			return twamplight.NewLinuxSender(b.Context(), iface, localAddr, remoteAddr)
+		runBench(b, func(cfg twamplight.SenderConfig) (twamplight.Sender, error) {
+			return twamplight.NewLinuxSender(b.Context(), cfg)
 		}, startBasicReflector)
 	})
 
 	b.Run("linux sender and container reflector", func(b *testing.B) {
-		runBench(b, func(iface string, localAddr, remoteAddr *net.UDPAddr) (twamplight.Sender, error) {
-			return twamplight.NewLinuxSender(b.Context(), iface, localAddr, remoteAddr)
-		}, startContainerReflector)
+		b.Run("no priority or pinning", func(b *testing.B) {
+			runBench(b, func(cfg twamplight.SenderConfig) (twamplight.Sender, error) {
+				return twamplight.NewLinuxSender(b.Context(), cfg)
+			}, startContainerReflector)
+		})
+
+		b.Run("high scheduler priority", func(b *testing.B) {
+			runBench(b, func(cfg twamplight.SenderConfig) (twamplight.Sender, error) {
+				cfg.SchedulerPriority = &[]int{80}[0]
+				return twamplight.NewLinuxSender(b.Context(), cfg)
+			}, startBasicReflector)
+		})
+
+		b.Run("pin to cpu", func(b *testing.B) {
+			runBench(b, func(cfg twamplight.SenderConfig) (twamplight.Sender, error) {
+				cfg.PinToCPU = &[]int{0}[0]
+				return twamplight.NewLinuxSender(b.Context(), cfg)
+			}, startBasicReflector)
+		})
+
+		b.Run("high priority and pin to cpu", func(b *testing.B) {
+			runBench(b, func(cfg twamplight.SenderConfig) (twamplight.Sender, error) {
+				cfg.SchedulerPriority = &[]int{80}[0]
+				cfg.PinToCPU = &[]int{0}[0]
+				return twamplight.NewLinuxSender(b.Context(), cfg)
+			}, startBasicReflector)
+		})
 	})
 }
 
 func BenchmarkTWAMP_Basic(b *testing.B) {
 	b.Run("basic sender and basic reflector", func(b *testing.B) {
-		log := slog.New(slog.NewTextHandler(io.Discard, nil))
-
-		runBench(b, func(iface string, localAddr, remoteAddr *net.UDPAddr) (twamplight.Sender, error) {
-			return twamplight.NewBasicSender(b.Context(), log, iface, localAddr, remoteAddr)
+		runBench(b, func(cfg twamplight.SenderConfig) (twamplight.Sender, error) {
+			return twamplight.NewBasicSender(b.Context(), cfg)
 		}, startBasicReflector)
 	})
 
 	b.Run("basic sender and container reflector", func(b *testing.B) {
-		runBench(b, func(iface string, localAddr, remoteAddr *net.UDPAddr) (twamplight.Sender, error) {
-			return twamplight.NewBasicSender(b.Context(), log, iface, localAddr, remoteAddr)
+		runBench(b, func(cfg twamplight.SenderConfig) (twamplight.Sender, error) {
+			return twamplight.NewBasicSender(b.Context(), cfg)
 		}, startContainerReflector)
 	})
 }
 
 func runBench(
 	b *testing.B,
-	newSender func(iface string, localAddr, remoteAddr *net.UDPAddr) (twamplight.Sender, error),
+	newSender func(cfg twamplight.SenderConfig) (twamplight.Sender, error),
 	newReflector func(ctx context.Context, b *testing.B) *net.UDPAddr,
 ) {
 	ctx, cancel := context.WithCancel(b.Context())
@@ -70,7 +116,10 @@ func runBench(
 
 	remoteAddr := newReflector(ctx, b)
 
-	sender, err := newSender("", nil, remoteAddr)
+	sender, err := newSender(twamplight.SenderConfig{
+		Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		RemoteAddr: remoteAddr,
+	})
 	require.NoError(b, err)
 	b.Cleanup(func() { sender.Close() })
 
@@ -205,6 +254,7 @@ func startContainerReflector(ctx context.Context, b *testing.B) *net.UDPAddr {
 					},
 				},
 			}
+			hc.CapAdd = []string{"CAP_SYS_NICE"}
 		},
 	}
 

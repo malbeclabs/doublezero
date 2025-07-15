@@ -91,7 +91,11 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	sender, err := twamplight.NewSender(ctx, log, "", localUDPAddr, remoteUDPAddr)
+	sender, err := twamplight.NewSender(ctx, twamplight.SenderConfig{
+		Logger:     log,
+		LocalAddr:  localUDPAddr,
+		RemoteAddr: remoteUDPAddr,
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: failed to create sender: %v\n", err)
 		os.Exit(1)

@@ -31,7 +31,12 @@ func NewMetricsClient(url string) *MetricsClient {
 }
 
 func (m *MetricsClient) Fetch(ctx context.Context) error {
-	resp, err := http.Get(m.url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, m.url, nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
 	}

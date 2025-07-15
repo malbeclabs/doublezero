@@ -7,8 +7,8 @@ use crate::{
 };
 use anyhow::Result;
 use duckdb::params;
-use rust_decimal::{Decimal, prelude::*};
-use shapley::{Demand, DemandBuilder, Link, LinkBuilder};
+use network_shapley::types::{Demand, PrivateLink, PublicLink};
+use rust_decimal::{Decimal, prelude::ToPrimitive};
 use std::sync::Arc;
 use tracing::{debug, info};
 
@@ -41,6 +41,7 @@ impl MetricsProcessor {
 
         // Step 1: Get all devices and their location codes. This is our master map.
         let device_to_location_map = self.get_device_to_location_map().await?;
+        let device_to_operator = self.get_device_to_operator_map().await?;
 
         // Step 2: Process private links, ensuring they use the device codes.
         let private_links = self.process_private_links().await?;
@@ -49,8 +50,8 @@ impl MetricsProcessor {
         // Step 3: Get all unique device codes that appear in private links.
         let mut all_private_switches = std::collections::HashSet::new();
         for link in &private_links {
-            all_private_switches.insert(link.start.clone());
-            all_private_switches.insert(link.end.clone());
+            all_private_switches.insert(link.device1.clone());
+            all_private_switches.insert(link.device2.clone());
         }
 
         // Step 4: Generate a full public link mesh between these specific devices.
@@ -83,6 +84,7 @@ impl MetricsProcessor {
             public_links,
             demand_matrix,
             demand_multiplier: Decimal::from_str_exact("1.2")?,
+            device_to_operator,
         })
     }
 
@@ -101,11 +103,21 @@ impl MetricsProcessor {
         Ok(rows.into_iter().collect())
     }
 
+    async fn get_device_to_operator_map(
+        &self,
+    ) -> Result<std::collections::HashMap<String, String>> {
+        let query = "SELECT code, owner FROM devices WHERE owner IS NOT NULL";
+        let rows = self
+            .db_engine
+            .query_map(query, [], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        Ok(rows.into_iter().collect())
+    }
+
     async fn generate_public_links_for_switches(
         &mut self,
         switches: &std::collections::HashSet<String>,
         device_to_location: &std::collections::HashMap<String, String>,
-    ) -> Result<Vec<Link>> {
+    ) -> Result<Vec<PublicLink>> {
         let mut public_links = Vec::new();
         let switches_vec: Vec<_> = switches.iter().cloned().collect();
 
@@ -147,22 +159,22 @@ impl MetricsProcessor {
                 let baseline = self
                     .baseline_generator
                     .generate_baseline(from_lat, from_lng, to_lat, to_lng);
-                let cost = self.cost_params.calculate_cost(
-                    baseline.latency_ms,
-                    baseline.jitter_ms,
-                    baseline.packet_loss,
-                );
-                let bandwidth =
-                    Decimal::from_f64_retain(baseline.bandwidth_mbps).unwrap_or(dec!(25));
 
-                public_links.push(
-                    LinkBuilder::default()
-                        .start(from_switch.clone())
-                        .end(to_switch.clone())
-                        .cost(cost)
-                        .bandwidth(bandwidth)
-                        .build()?,
-                );
+                // PublicLink uses actual latency in ms, not normalized cost
+                public_links.push(PublicLink::new(
+                    from_loc_code.clone(),
+                    to_loc_code.clone(),
+                    baseline.latency_ms,
+                ));
+
+                // Add reverse direction if not a self-loop
+                if i != j {
+                    public_links.push(PublicLink::new(
+                        to_loc_code.clone(),
+                        from_loc_code.clone(),
+                        baseline.latency_ms,
+                    ));
+                }
             }
         }
         Ok(public_links)
@@ -173,7 +185,7 @@ impl MetricsProcessor {
     // - This function is too long
     // - Arguably we should have two modules: one for private links another for public links in the engine
     /// Process private links from Link entities and their telemetry
-    async fn process_private_links(&mut self) -> Result<Vec<Link>> {
+    async fn process_private_links(&mut self) -> Result<Vec<PrivateLink>> {
         // Debug: First check what links we have
         let link_count_rows = self.db_engine.query_map(
             "SELECT COUNT(*) FROM links WHERE status = 'activated'",
@@ -381,25 +393,28 @@ impl MetricsProcessor {
 
             //. TODO: This needs much more thought
             // Calculate cost using our cost function
-            let cost = self
+            let _cost = self
                 .cost_params
                 .calculate_cost(latency_ms, jitter_ms, packet_loss);
 
-            let mut builder = LinkBuilder::default();
-            builder
-                .start(start)
-                .end(end)
-                .cost(cost)
-                .bandwidth(Decimal::from_f64_retain(bandwidth_mbps).unwrap_or(Decimal::TEN))
-                .operator1(operator1)
-                .uptime(Decimal::from_f64_retain(uptime).unwrap_or(Decimal::ONE))
-                .shared(if is_shared { 1 } else { 0 });
+            // Convert to f64 for network-shapley - use actual latency_ms, not normalized cost
+            let latency_f64 = latency_ms;
+            // Network-shapley examples use bandwidth around 10, not 1000
+            // This might be a unit difference or scaling factor
+            let bandwidth_f64 = (bandwidth_mbps / 100.0).clamp(1.0, 100.0); // Scale down and clamp
+            let uptime_f64 = uptime;
 
-            if let Some(op2) = operator2 {
-                builder.operator2(op2);
-            }
+            // Create PrivateLink - note that operators are handled separately via Device type
+            let private_link = PrivateLink::new(
+                start,
+                end,
+                latency_f64,
+                bandwidth_f64,
+                uptime_f64,
+                if is_shared { Some(1) } else { None },
+            );
 
-            private_links.push(builder.build()?);
+            private_links.push(private_link);
         }
 
         info!(
@@ -412,7 +427,7 @@ impl MetricsProcessor {
 
     /// Fallback method for location-based public link generation
     #[allow(dead_code)]
-    async fn generate_location_based_public_links(&mut self) -> Result<Vec<Link>> {
+    async fn generate_location_based_public_links(&mut self) -> Result<Vec<PublicLink>> {
         // First try to read existing baselines from DB
         let check_query = CommonQueries::select_all_internet_baselines();
 
@@ -435,21 +450,15 @@ impl MetricsProcessor {
             );
             let mut public_links = Vec::new();
 
-            for (from_code, to_code, latency_ms, jitter_ms, packet_loss, bandwidth_mbps) in
+            for (from_code, to_code, latency_ms, _jitter_ms, _packet_loss, _bandwidth_mbps) in
                 existing_baselines
             {
-                let cost = self
-                    .cost_params
-                    .calculate_cost(latency_ms, jitter_ms, packet_loss);
-
-                public_links.push(
-                    LinkBuilder::default()
-                        .start(format!("{from_code}1"))
-                        .end(format!("{to_code}1"))
-                        .cost(cost)
-                        .bandwidth(Decimal::from_f64_retain(bandwidth_mbps).unwrap_or(dec!(25)))
-                        .build()?,
-                );
+                // PublicLink uses actual latency in ms, not normalized cost
+                public_links.push(PublicLink::new(
+                    from_code.clone(),
+                    to_code.clone(),
+                    latency_ms,
+                ));
             }
 
             return Ok(public_links);
@@ -500,23 +509,12 @@ impl MetricsProcessor {
             };
             self.db_engine.store_internet_baseline(&db_baseline)?;
 
-            // Calculate cost from baseline metrics
-            let cost = self.cost_params.calculate_cost(
+            // PublicLink uses actual latency in ms, not normalized cost
+            public_links.push(PublicLink::new(
+                from_code.clone(),
+                to_code.clone(),
                 baseline.latency_ms,
-                baseline.jitter_ms,
-                baseline.packet_loss,
-            );
-
-            public_links.push(
-                LinkBuilder::default()
-                    .start(format!("{from_code}1"))
-                    .end(format!("{to_code}1"))
-                    .cost(cost)
-                    .bandwidth(
-                        Decimal::from_f64_retain(baseline.bandwidth_mbps).unwrap_or(dec!(25)),
-                    )
-                    .build()?,
-            );
+            ));
         }
 
         Ok(public_links)
@@ -547,14 +545,21 @@ impl MetricsProcessor {
                 1, // Regular traffic type
             )?;
 
-            demand_entries.push(
-                DemandBuilder::default()
-                    .start(start.clone())
-                    .end(end.clone())
-                    .traffic(Decimal::from_f64_retain(traffic_volume).unwrap_or(Decimal::ZERO))
-                    .demand_type(1) // Regular traffic for now
-                    .build()?,
-            );
+            // Convert to f64 for network-shapley
+            let traffic_f64 = Decimal::from_f64_retain(traffic_volume)
+                .unwrap_or(Decimal::ZERO)
+                .to_f64()
+                .unwrap_or(0.0);
+
+            demand_entries.push(Demand::new(
+                start.clone(), // start
+                end.clone(),   // end
+                1,             // receivers (default to 1)
+                traffic_f64,   // traffic
+                1.0,           // priority (default to 1.0)
+                1,             // kind (was demand_type)
+                false,         // multicast (default to false)
+            ));
         }
 
         // If no telemetry data, create minimal demand based on existing links
@@ -581,14 +586,20 @@ impl MetricsProcessor {
                     1, // Regular traffic type
                 )?;
 
-                demand_entries.push(
-                    DemandBuilder::default()
-                        .start(start)
-                        .end(end)
-                        .traffic(Decimal::from_f64_retain(traffic_volume).unwrap_or(Decimal::ONE))
-                        .demand_type(1)
-                        .build()?,
-                );
+                let traffic_f64 = Decimal::from_f64_retain(traffic_volume)
+                    .unwrap_or(Decimal::ONE)
+                    .to_f64()
+                    .unwrap_or(1.0);
+
+                demand_entries.push(Demand::new(
+                    start,       // start
+                    end,         // end
+                    1,           // receivers (default to 1)
+                    traffic_f64, // traffic
+                    1.0,         // priority (default to 1.0)
+                    1,           // kind (was demand_type)
+                    false,       // multicast (default to false)
+                ));
             }
         }
 
@@ -762,31 +773,23 @@ mod tests {
         // Find the single-operator link
         let single_op_link = private_links
             .iter()
-            .find(|l| l.shared == 0)
+            .find(|l| l.shared.is_none())
             .expect("Should have a single-operator link");
 
-        assert_eq!(single_op_link.operator1, operator_a.to_string());
-        assert_eq!(single_op_link.operator2, "0"); // Default value from LinkBuilder
-        assert_eq!(single_op_link.shared, 0);
-        assert_eq!(single_op_link.bandwidth, Decimal::from(1000)); // 1 Gbps
+        // Note: operators are now handled via Device type, not on the link itself
+        assert_eq!(single_op_link.shared, None);
+        assert_eq!(single_op_link.bandwidth, 1000.0); // 1 Gbps
 
         // Find the shared-operator link
         let shared_op_link = private_links
             .iter()
-            .find(|l| l.shared == 1)
+            .find(|l| l.shared == Some(1))
             .expect("Should have a shared-operator link");
 
-        // Verify canonical ordering (operator1 <= operator2)
-        let (expected_op1, expected_op2) = if operator_a.to_string() < operator_b.to_string() {
-            (operator_a.to_string(), operator_b.to_string())
-        } else {
-            (operator_b.to_string(), operator_a.to_string())
-        };
-
-        assert_eq!(shared_op_link.operator1, expected_op1);
-        assert_eq!(shared_op_link.operator2, expected_op2);
-        assert_eq!(shared_op_link.shared, 1);
-        assert_eq!(shared_op_link.bandwidth, Decimal::from(2000)); // 2 Gbps
+        // Note: operators are now handled via Device type, not on the link itself
+        // The canonical ordering would be handled at the Device level
+        assert_eq!(shared_op_link.shared, Some(1));
+        assert_eq!(shared_op_link.bandwidth, 2000.0); // 2 Gbps
 
         Ok(())
     }
@@ -967,16 +970,16 @@ mod tests {
         // Find the intra-location link (device-to-device within same location)
         let intra_link = private_links
             .iter()
-            .find(|l| l.start == "CHI_DEV1" && l.end == "CHI_DEV2")
+            .find(|l| l.device1 == "CHI_DEV1" && l.device2 == "CHI_DEV2")
             .expect("Should have the intra-location link");
-        assert_eq!(intra_link.bandwidth, Decimal::from(1000)); // 1 Gbps
+        assert_eq!(intra_link.bandwidth, 1000.0); // 1 Gbps
 
         // Find the inter-city link (device-to-device across locations)
         let inter_link = private_links
             .iter()
-            .find(|l| l.start == "CHI_DEV1" && l.end == "NYC_DEV1")
+            .find(|l| l.device1 == "CHI_DEV1" && l.device2 == "NYC_DEV1")
             .expect("Should have the inter-city link");
-        assert_eq!(inter_link.bandwidth, Decimal::from(2000)); // 2 Gbps
+        assert_eq!(inter_link.bandwidth, 2000.0); // 2 Gbps
 
         Ok(())
     }

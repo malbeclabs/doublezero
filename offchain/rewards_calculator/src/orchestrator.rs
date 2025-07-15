@@ -1,25 +1,23 @@
 use crate::{
     cli::Cli,
-    merkle_generator,
     settings::Settings,
-    shapley_calculator::{OperatorReward, ShapleyParams, calculate_rewards, store_rewards},
+    shapley_calculator::{OperatorReward, ShapleyParams, calculate_rewards},
 };
 use anyhow::{Context, Result};
 use chrono::Utc;
 use metrics_processor::{
     engine::{DuckDbEngine, types::RewardsData},
-    processor::MetricsProcessor,
     shapley_types::ShapleyInputs,
 };
-use rust_decimal::{Decimal, dec};
+use rust_decimal::dec;
 use std::{path::PathBuf, sync::Arc};
 use tracing::info;
 
 /// Main orchestrator for the rewards calculation pipeline
 pub struct Orchestrator {
-    cli: Cli,
-    settings: Settings,
-    after_us: u64,
+    pub cli: Cli,
+    pub settings: Settings,
+    pub after_us: u64,
     before_us: u64,
 }
 
@@ -53,105 +51,78 @@ impl Orchestrator {
             self.fetch_all_data().await?
         };
 
-        // Phase 2: Process metrics
-        info!("Phase 2: Processing metrics to construct shapley inputs");
-        // Check if we should load from cached DB
-        let db_engine = if let Some(load_db_path) = &self.cli.load_db {
-            info!("Loading data from cached DuckDB: {}", load_db_path);
-            DuckDbEngine::new_with_file(load_db_path).context("Failed to open cached DuckDB")?
-        } else {
-            self.insert_data_into_duckdb(&rewards_data).await?
-        };
-        let shapley_inputs = self.process_metrics(db_engine.clone()).await?;
-        info!("Shapley inputs: {shapley_inputs:#?}");
+        info!("Rewards Data: {}", rewards_data);
 
-        // Phase 3: Shapley Calculation
-        info!("Phase 3: Calculating rewards using Shapley values");
-        let rewards = self
-            .calculate_rewards(shapley_inputs.clone(), &db_engine)
-            .await?;
-
-        // Phase 4: Merkle Generation
-        info!("Phase 4: Generating merkle tree");
-
-        // Convert rewards to format expected by merkle generator
-        let reward_tuples: Vec<(String, Decimal)> = rewards
-            .iter()
-            .map(|r| (r.operator.clone(), r.percent))
-            .collect();
-
-        // TODO: Replace epoch approximation with canonical source
-        // Currently using timestamp as epoch approximation. This should be replaced
-        // with the actual epoch number from the on-chain program once available.
-        // TODO: Epoch id is available in the telemetry_samples
-        /*
-        D show table telemetry_samples;
-        ┌───────────────────────────┬─────────────┬─────────┬─────────┬─────────┬─────────┐
-        │        column_name        │ column_type │  null   │   key   │ default │  extra  │
-        │          varchar          │   varchar   │ varchar │ varchar │ varchar │ varchar │
-        ├───────────────────────────┼─────────────┼─────────┼─────────┼─────────┼─────────┤
-        │ pubkey                    │ VARCHAR     │ NO      │ NULL    │ NULL    │ NULL    │
-        │ epoch                     │ UBIGINT     │ NO      │ NULL    │ NULL    │ NULL    │
-        │ origin_device_pk          │ VARCHAR     │ NO      │ NULL    │ NULL    │ NULL    │
-        │ target_device_pk          │ VARCHAR     │ NO      │ NULL    │ NULL    │ NULL    │
-        │ link_pk                   │ VARCHAR     │ NO      │ NULL    │ NULL    │ NULL    │
-        │ origin_device_location_pk │ VARCHAR     │ NO      │ NULL    │ NULL    │ NULL    │
-        │ target_device_location_pk │ VARCHAR     │ NO      │ NULL    │ NULL    │ NULL    │
-        │ origin_device_agent_pk    │ VARCHAR     │ NO      │ NULL    │ NULL    │ NULL    │
-        │ sampling_interval_us      │ UBIGINT     │ NO      │ NULL    │ NULL    │ NULL    │
-        │ start_timestamp_us        │ UBIGINT     │ NO      │ NULL    │ NULL    │ NULL    │
-        │ samples                   │ JSON        │ NO      │ NULL    │ NULL    │ NULL    │
-        │ sample_count              │ UINTEGER    │ NO      │ NULL    │ NULL    │ NULL    │
-        ├───────────────────────────┴─────────────┴─────────┴─────────┴─────────┴─────────┤
-        │ 12 rows                                                               6 columns │
-        └─────────────────────────────────────────────────────────────────────────────────┘
-        D select * from telemetry_samples;
-        ┌──────────────────────┬────────┬──────────────────────┬──────────────────────┬──────────────────────┬───┬──────────────────────┬────────────────────┬──────────────────────┬──────────────┐
-        │        pubkey        │ epoch  │   origin_device_pk   │   target_device_pk   │       link_pk        │ … │ sampling_interval_us │ start_timestamp_us │       samples        │ sample_count │
-        │       varchar        │ uint64 │       varchar        │       varchar        │       varchar        │   │        uint64        │       uint64       │         json         │    uint32    │
-        ├──────────────────────┼────────┼──────────────────────┼──────────────────────┼──────────────────────┼───┼──────────────────────┼────────────────────┼──────────────────────┼──────────────┤
-        │ CS1J27FNrr7Wewx98h…  │  10141 │ B9xjyQCvhVJSAZW9xN…  │ 5JcwAoBnsuwng78a21…  │ 4CEJN5dMT2fBf5bfWv…  │ … │             10000000 │   1752364802195997 │ [252,240,217,226,2…  │        10965 │
-        │ Df5BXQ7vN3guquiHo7…  │  10141 │ 5z5NQTAEwHzARf2f7f…  │ 5JcwAoBnsuwng78a21…  │ 6aYy3mh5zF1fWvoLip…  │ … │             10000000 │   1752364802435659 │ [155,174,158,176,1…  │        10963 │
-        │ 53ydQbiYCSpKRXbiqj…  │  10141 │ 5JcwAoBnsuwng78a21…  │ 5z5NQTAEwHzARf2f7f…  │ 6aYy3mh5zF1fWvoLip…  │ … │             10000000 │   1752364800027481 │ [209,131,186,172,1…  │        10965 │
-        │ A54VqNCAwYHuVuXojM…  │  10141 │ B9xjyQCvhVJSAZW9xN…  │ CwwyhnxnUnY1XqM3A6…  │ GA9XU8L2ujs6e6jRfB…  │ … │             10000000 │   1752364802196005 │ [186,183,147,125,1…  │        10963 │
-        │ FY3HQP2DJepaq8pkVo…  │  10141 │ CwwyhnxnUnY1XqM3A6…  │ B9xjyQCvhVJSAZW9xN…  │ GA9XU8L2ujs6e6jRfB…  │ … │             10000000 │   1752364802718453 │ [184,127,154,136,1…  │        10963 │
-        │ 8PgJQDXsuBxaTZ7Xj6…  │  10141 │ CwwyhnxnUnY1XqM3A6…  │ 5z5NQTAEwHzARf2f7f…  │ 8E2eW7xesMXAXcpS4p…  │ … │             10000000 │   1752364802718461 │ [164,162,152,179,1…  │        10965 │
-        │ C4KiDmL4nN1yWkWqiQ…  │  10141 │ 5z5NQTAEwHzARf2f7f…  │ CwwyhnxnUnY1XqM3A6…  │ 8E2eW7xesMXAXcpS4p…  │ … │             10000000 │   1752364802435650 │ [144,139,120,128,1…  │        10965 │
-        │ 45jPxVXSXjN5vaX1Cp…  │  10141 │ 5JcwAoBnsuwng78a21…  │ B9xjyQCvhVJSAZW9xN…  │ 4CEJN5dMT2fBf5bfWv…  │ … │             10000000 │   1752364800027475 │ [192,156,204,159,1…  │        10963 │
-        ├──────────────────────┴────────┴──────────────────────┴──────────────────────┴──────────────────────┴───┴──────────────────────┴────────────────────┴──────────────────────┴──────────────┤
-        │ 8 rows                                                                                                                                                              12 columns (9 shown) │
-        └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-        */
-
-        let epoch = self.before_us / 1_000_000; // Convert microseconds to seconds as epoch approximation
-        let burn_rate = merkle_generator::calculate_burn_rate(
-            epoch,
-            self.settings.burn.coefficient,
-            self.settings.burn.max_rate,
-        );
-
-        let merkle_tree = merkle_generator::generate_tree(&reward_tuples, burn_rate)
-            .context("Failed to generate merkle tree")?;
-
-        info!("Generated merkle root: {}", merkle_tree.root);
-        info!(
-            "Generated {} merkle leaves",
-            merkle_tree.original_leaves.len()
-        );
-        info!("Leaves: {:#?}", merkle_tree.original_leaves);
-
-        // Phase 5: Results are ready for publication
-        info!("Phase 5: Merkle root and leaves are ready for publication");
-        info!(
-            "Merkle root {} can be published to Solana",
-            merkle_tree.root
-        );
-        info!(
-            "{} leaves are ready to be published to DZ Ledger",
-            merkle_tree.original_leaves.len()
-        );
-
-        // TODO: Store merkle root and leaves in duckdb as well
+        // // Phase 2: Loading static data for Shapley calculation
+        // info!("Phase 2: Loading static data for Shapley calculation");
+        // use metrics_processor::shapley_types::ShapleyInputs;
+        // use rust_decimal::Decimal;
+        // use shapley::{DemandMatrix, PrivateLinks, PublicLinks};
+        // use std::str::FromStr;
+        //
+        // let private_links =
+        //     PrivateLinks::from_csv("rewards_calculator/src/test_data/private_links.csv")?;
+        // let mut public_links =
+        //     PublicLinks::from_csv("rewards_calculator/src/test_data/public_links.csv")?;
+        // let demand_matrix = DemandMatrix::from_csv("rewards_calculator/src/test_data/demand.csv")?;
+        //
+        // // The shapley library expects helper links to have operator "0" and no bandwidth.
+        // // Our LinkBuilder does this by default, but we must ensure it here.
+        // for link in &mut public_links.links {
+        //     if link.cost == Decimal::ZERO {
+        //         link.operator1 = "0".to_string();
+        //         link.operator2 = "0".to_string();
+        //         link.bandwidth = Decimal::ZERO;
+        //     }
+        // }
+        //
+        // let shapley_inputs = ShapleyInputs {
+        //     private_links: private_links.links,
+        //     public_links: public_links.links,
+        //     demand_matrix: demand_matrix.demands,
+        //     demand_multiplier: Decimal::from_str("1.2")?,
+        // };
+        // info!("Shapley inputs: {shapley_inputs:#?}");
+        //
+        // // TODO: Temporarily comment out DB engine for Phase 2
+        // // Check if we should load from cached DB
+        // let db_engine = if let Some(load_db_path) = &self.cli.load_db {
+        //     info!("Loading data from cached DuckDB: {}", load_db_path);
+        //     DuckDbEngine::new_with_file(load_db_path).context("Failed to open cached DuckDB")?
+        // } else {
+        //     self.insert_data_into_duckdb(&rewards_data).await?
+        // };
+        //
+        // // Phase 3: Shapley Calculation
+        // info!("Phase 3: Calculating rewards using Shapley values");
+        // let rewards = self.calculate_rewards(shapley_inputs.clone()).await?;
+        //
+        // // Phase 4: Merkle Generation
+        // info!("Phase 4: Generating merkle tree");
+        //
+        // // Convert rewards to format expected by merkle generator
+        // let reward_tuples: Vec<(String, Decimal)> = rewards
+        //     .iter()
+        //     .map(|r| (r.operator.clone(), r.percent))
+        //     .collect();
+        // info!("Rewards: {:#?}", reward_tuples);
+        //
+        // // Get the actual epoch from telemetry samples
+        // let epoch = db_engine
+        //     .get_epoch_from_telemetry()
+        //     .context("Failed to get epoch from telemetry")?
+        //     .unwrap_or_else(|| {
+        //         // Fallback to timestamp approximation if no telemetry data
+        //         warn!("No epoch found in telemetry_samples, using timestamp approximation");
+        //         self.before_us / 1_000_000 // Convert microseconds to seconds as epoch approximation
+        //     });
+        // info!("Epoch: {:#?}", epoch);
+        //
+        // // Phase4: Use svm_hash to construct merkle proof (root) and merkle leaves
+        // todo!("create merkle proof and leaves");
+        //
+        // // Phase 5: Results are ready for publication
+        // // todo!("publish merkle proof and leaves");
 
         Ok(())
     }
@@ -208,7 +179,7 @@ impl Orchestrator {
         }
     }
 
-    async fn insert_data_into_duckdb(
+    async fn _insert_data_into_duckdb(
         &self,
         rewards_data: &RewardsData,
     ) -> Result<Arc<DuckDbEngine>> {
@@ -235,30 +206,11 @@ impl Orchestrator {
         Ok(db_engine)
     }
 
-    async fn process_metrics(&self, db_engine: Arc<DuckDbEngine>) -> Result<ShapleyInputs> {
-        info!("Running SQL queries to aggregate metrics");
+    // TODO: Removed process_metrics function since we're bypassing MetricsProcessor for static data mode
 
-        // Create metrics processor with optional seed for reproducibility
-        let mut processor = MetricsProcessor::new(db_engine, None, self.after_us, self.before_us);
-
-        // Process metrics
-        let shapley_inputs = processor
-            .process_metrics()
-            .await
-            .context("Failed to process metrics")?;
-
-        info!("Metrics processing complete:");
-        info!("  - Private links: {}", shapley_inputs.private_links.len());
-        info!("  - Public links: {}", shapley_inputs.public_links.len());
-        info!("  - Demand entries: {}", shapley_inputs.demand_matrix.len());
-
-        Ok(shapley_inputs)
-    }
-
-    async fn calculate_rewards(
+    async fn _calculate_rewards(
         &self,
         shapley_inputs: ShapleyInputs,
-        db_engine: &DuckDbEngine,
     ) -> Result<Vec<OperatorReward>> {
         info!("Calculating rewards distribution");
 
@@ -273,6 +225,7 @@ impl Orchestrator {
             shapley_inputs.public_links,
             shapley_inputs.demand_matrix,
             params,
+            &shapley_inputs.device_to_operator,
         )
         .await
         .context("Failed to calculate Shapley values")?;
@@ -282,12 +235,7 @@ impl Orchestrator {
             info!("  - {}: {}%", reward.operator, reward.percent * dec!(100));
         }
 
-        // Store rewards in DuckDB for verification packet
-        // NOTE: Use end timestamp as epoch ID
-        let epoch_id = self.before_us as i64;
-        store_rewards(db_engine, &rewards, epoch_id)
-            .await
-            .context("Failed to store rewards in DuckDB")?;
+        // TODO: Store rewards in DuckDB for verification packet (bypassed for static data mode)
 
         Ok(rewards)
     }

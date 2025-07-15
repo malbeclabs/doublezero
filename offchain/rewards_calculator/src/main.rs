@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 use rewards_calculator::{cli::Cli, orchestrator::Orchestrator, settings::Settings, util};
-use tracing::{error, info};
+use tracing::info;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
@@ -48,16 +48,7 @@ async fn main() -> Result<()> {
     // Create and run orchestrator
     let orchestrator = Orchestrator::new(cli, settings, after_us, before_us);
 
-    match orchestrator.run().await {
-        Ok(()) => {
-            info!("Rewards calculation completed successfully");
-            Ok(())
-        }
-        Err(e) => {
-            error!("Rewards calculation failed: {:#}", e);
-            Err(e)
-        }
-    }
+    orchestrator.run().await
 }
 
 fn init_logging(log_level: &str) -> Result<()> {

@@ -9,6 +9,7 @@ use doublezero_serviceability::{
 use doublezero_telemetry::state::device_latency_samples::DeviceLatencySamples;
 use serde::{Deserialize, Serialize};
 use solana_sdk::pubkey::Pubkey;
+use std::fmt::{Display, Formatter};
 
 /// DB representation of a Location
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -300,8 +301,12 @@ pub struct DbDeviceLatencySamples {
     pub origin_device_agent_pk: Pubkey,
     pub sampling_interval_us: u64,
     pub start_timestamp_us: u64,
-    pub samples: Vec<u32>, // Store latency samples in microseconds
-    pub sample_count: u32, // Number of samples (from next_sample_index)
+    // Store latency samples in microseconds
+    pub samples: Vec<u32>,
+    // TODO: What exactly does next_sample_index indicate?
+    // Double check doublezero_telemetry program
+    // Number of samples (from next_sample_index)
+    pub sample_count: u32,
 }
 
 impl DbDeviceLatencySamples {
@@ -337,6 +342,27 @@ pub struct RewardsData {
     pub after_us: u64,
     pub before_us: u64,
     pub fetched_at: DateTime<Utc>,
+}
+
+impl Display for RewardsData {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "samples (count): {}, after_us: {}, before_us: {}, fetched_at: {}",
+            self.telemetry.device_latency_samples.len(),
+            self.after_us,
+            self.before_us,
+            self.fetched_at
+        )
+    }
+}
+
+/// Represents a single contributor's calculated reward proportion.
+#[derive(Debug, Clone)]
+pub struct ContributorReward {
+    pub entity: Pubkey,
+    pub proportion: u64,
+    pub economic_burn_rate: u64,
 }
 
 #[cfg(test)]
@@ -386,25 +412,6 @@ mod tests {
         assert_eq!(arr[0]["prefix"], 24);
         assert_eq!(arr[1]["ip"], "10.0.0.0");
         assert_eq!(arr[1]["prefix"], 8);
-    }
-
-    #[test]
-    fn test_db_location_from_solana() {
-        // Note: We can't directly construct Location since it doesn't have a public constructor
-        // We'll test the conversion logic by mocking the expected fields
-        // let pubkey = test_pubkey(1);
-
-        // For now, we'll skip this test since Location doesn't expose a constructor
-        // In a real scenario, we'd either:
-        // 1. Use a builder pattern if available
-        // 2. Deserialize from bytes
-        // 3. Request the doublezero team to add test utilities
-    }
-
-    #[test]
-    fn test_db_device_from_solana() {
-        // Similar issue - Device struct fields are not publicly constructible
-        // We'll focus on testing our helper functions instead
     }
 
     #[test]

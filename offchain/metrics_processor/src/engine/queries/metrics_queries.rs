@@ -76,7 +76,7 @@ impl MetricsQueries {
                 1.0,
                 COALESCE(
                     CAST(lt.sample_count AS REAL) / NULLIF(((? - ?) / lt.sampling_interval_us), 0),
-                    0.0
+                    1.0  -- Default to 1.0 if no telemetry data
                 )
             ) AS uptime
         FROM link_with_locations lwl

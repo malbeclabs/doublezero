@@ -3,7 +3,8 @@ use crate::engine::{
     types::{InternetBaseline, NetworkData, RewardsData, TelemetryData},
 };
 use anyhow::Result;
-use duckdb::{Connection, params};
+use chrono::Utc;
+use duckdb::{Connection, OptionalExt, params};
 use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -374,6 +375,43 @@ impl DuckDbEngine {
         Ok(())
     }
 
+    /// Create merkle tables if they don't exist
+    pub fn create_merkle_tables(&self) -> Result<()> {
+        self.conn.lock().unwrap().execute_batch(
+            r#"
+            -- Merkle Roots Table
+            CREATE TABLE IF NOT EXISTS merkle_roots (
+                merkle_root VARCHAR PRIMARY KEY,
+                epoch_id UBIGINT NOT NULL,
+                leaf_count INTEGER NOT NULL,
+                burn_rate DOUBLE NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL
+            );
+
+            -- Merkle Leaves Table
+            CREATE TABLE IF NOT EXISTS merkle_leaves (
+                merkle_root VARCHAR NOT NULL,
+                leaf_index INTEGER NOT NULL,
+                leaf_hash VARCHAR NOT NULL,
+                leaf_type VARCHAR NOT NULL,
+                -- ContributorReward variant fields
+                payee VARCHAR,
+                proportion UBIGINT,
+                -- Burn variant fields
+                rate UBIGINT,
+                -- Constraints
+                PRIMARY KEY(merkle_root, leaf_index),
+                FOREIGN KEY (merkle_root) REFERENCES merkle_roots(merkle_root)
+            );
+
+            -- Indices
+            CREATE INDEX IF NOT EXISTS idx_merkle_leaves_payee ON merkle_leaves(payee);
+            CREATE INDEX IF NOT EXISTS idx_merkle_roots_epoch ON merkle_roots(epoch_id);
+            "#,
+        )?;
+        Ok(())
+    }
+
     /// Store reward entry
     pub fn store_reward(
         &self,
@@ -387,6 +425,34 @@ impl DuckDbEngine {
             params![operator, amount, percent, epoch_id],
         )?;
         Ok(())
+    }
+
+    /// Store merkle root
+    pub fn store_merkle_root(
+        &self,
+        merkle_root: &str,
+        epoch_id: u64,
+        leaf_count: i32,
+        burn_rate: f64,
+    ) -> Result<()> {
+        self.conn.lock().unwrap().execute(
+            "INSERT INTO merkle_roots (merkle_root, epoch_id, leaf_count, burn_rate, created_at) VALUES (?, ?, ?, ?, ?)",
+            params![merkle_root, epoch_id, leaf_count, burn_rate, Utc::now().to_rfc3339()],
+        )?;
+        Ok(())
+    }
+
+    // TODO: Inspect closely whether this is the actual epoch we care about
+    /// Get the epoch from telemetry_samples
+    pub fn get_epoch_from_telemetry(&self) -> Result<Option<u64>> {
+        let conn = self.conn.lock().unwrap();
+
+        // TODO: Presumably it's a guarantee that epoch is exactly the same, but we should double
+        // check anyway and figure out how to handle it properly
+        let mut stmt = conn.prepare("SELECT DISTINCT epoch FROM telemetry_samples LIMIT 1")?;
+
+        let epoch = stmt.query_row([], |row| row.get::<_, u64>(0)).optional()?;
+        Ok(epoch)
     }
 
     /// Get summary statistics about the loaded data

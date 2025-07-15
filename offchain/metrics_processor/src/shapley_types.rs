@@ -2,7 +2,7 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 // Re-export shapley types that we use
-pub use shapley::{Demand, Link};
+pub use network_shapley::types::{Demand, PrivateLink, PublicLink};
 
 /// Cost function parameters for converting metrics to cost
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -55,10 +55,11 @@ impl CostParameters {
 /// Processed data ready for Shapley calculation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShapleyInputs {
-    pub private_links: Vec<Link>,
-    pub public_links: Vec<Link>,
+    pub private_links: Vec<PrivateLink>,
+    pub public_links: Vec<PublicLink>,
     pub demand_matrix: Vec<Demand>,
     pub demand_multiplier: Decimal,
+    pub device_to_operator: std::collections::HashMap<String, String>,
 }
 
 #[cfg(test)]

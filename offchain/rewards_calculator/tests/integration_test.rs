@@ -134,7 +134,8 @@ pub mod test_data {
         let link1 = link("nyc_chi", &dev_nyc, &dev_chi, 1000); // 1 Gbps
 
         // Create telemetry with 10ms average latency
-        let samples = vec![10000; 100]; // 100 samples of 10ms (in microseconds)
+        // For 1 hour with 10s intervals, we need 360 samples for 100% uptime
+        let samples = vec![10000; 360]; // 360 samples of 10ms (in microseconds)
         let telemetry1 = telemetry(&link1, &dev_nyc, &dev_chi, samples);
 
         RewardsData {
@@ -149,7 +150,8 @@ pub mod test_data {
             telemetry: TelemetryData {
                 device_latency_samples: vec![telemetry1],
             },
-            after_us: 0,
+            // Use a 1-hour time window for testing
+            after_us: Utc::now().timestamp_micros() as u64 - 3_600_000_000, // 1 hour ago
             before_us: Utc::now().timestamp_micros() as u64,
             fetched_at: Utc::now(),
         }
@@ -195,7 +197,8 @@ pub mod test_data {
             telemetry: TelemetryData {
                 device_latency_samples: vec![telemetry1, telemetry2],
             },
-            after_us: 0,
+            // Use a 1-hour time window for testing
+            after_us: Utc::now().timestamp_micros() as u64 - 3_600_000_000, // 1 hour ago
             before_us: Utc::now().timestamp_micros() as u64,
             fetched_at: Utc::now(),
         }
@@ -218,7 +221,7 @@ pub mod test_data {
         let link1 = link("nyc_chi_shared", &dev_nyc, &dev_chi, 1000);
 
         // Create telemetry
-        let samples = vec![10000; 100]; // 10ms latency
+        let samples = vec![10000; 360]; // 360 samples for 100% uptime
         let telemetry1 = telemetry(&link1, &dev_nyc, &dev_chi, samples);
 
         RewardsData {
@@ -233,7 +236,8 @@ pub mod test_data {
             telemetry: TelemetryData {
                 device_latency_samples: vec![telemetry1],
             },
-            after_us: 0,
+            // Use a 1-hour time window for testing
+            after_us: Utc::now().timestamp_micros() as u64 - 3_600_000_000, // 1 hour ago
             before_us: Utc::now().timestamp_micros() as u64,
             fetched_at: Utc::now(),
         }
@@ -261,9 +265,18 @@ async fn test_single_operator_gets_full_rewards() -> Result<()> {
     // Debug output
     println!("Private links: {}", shapley_inputs.private_links.len());
     for link in &shapley_inputs.private_links {
-        println!("  Link {} -> {}, cost: {}", link.start, link.end, link.cost);
+        println!(
+            "  Link {} -> {}, latency: {}, bandwidth: {}, uptime: {}, shared: {:?}",
+            link.device1, link.device2, link.latency, link.bandwidth, link.uptime, link.shared
+        );
     }
     println!("Public links: {}", shapley_inputs.public_links.len());
+    for link in &shapley_inputs.public_links {
+        println!(
+            "  Public link {} -> {}, latency: {}",
+            link.city1, link.city2, link.latency
+        );
+    }
     println!(
         "Demand matrix entries: {}",
         shapley_inputs.demand_matrix.len()
@@ -277,9 +290,8 @@ async fn test_single_operator_gets_full_rewards() -> Result<()> {
 
     // Verify we have the expected links and demand
     assert_eq!(shapley_inputs.private_links.len(), 1); // One private link
-    // With device codes nyc1, chi1 and stripped endpoints nyc0, chi0
-    // we get a full mesh: 4 choose 2 + 4 self-loops = 6 + 4 = 10 links
-    assert_eq!(shapley_inputs.public_links.len(), 3,);
+    // We should have: nyc->nyc, chi->chi (self-loops) and nyc->chi, chi->nyc (bidirectional)
+    assert_eq!(shapley_inputs.public_links.len(), 4);
     assert_eq!(shapley_inputs.demand_matrix.len(), 1); // One demand entry
     assert_eq!(shapley_inputs.demand_matrix[0].start, "nyc");
     assert_eq!(shapley_inputs.demand_matrix[0].end, "chi");
@@ -295,6 +307,7 @@ async fn test_single_operator_gets_full_rewards() -> Result<()> {
         shapley_inputs.public_links,
         shapley_inputs.demand_matrix,
         params,
+        &shapley_inputs.device_to_operator,
     )
     .await?;
 
@@ -365,8 +378,8 @@ async fn test_two_operators_fair_distribution() -> Result<()> {
     );
     for link in &shapley_inputs.private_links {
         println!(
-            "  Link {} -> {}, cost: {}, operator1: {}, operator2: {}",
-            link.start, link.end, link.cost, link.operator1, link.operator2
+            "  Link {} -> {}, latency: {}, bandwidth: {}, shared: {:?}",
+            link.device1, link.device2, link.latency, link.bandwidth, link.shared
         );
     }
 
@@ -388,6 +401,7 @@ async fn test_two_operators_fair_distribution() -> Result<()> {
         shapley_inputs.public_links,
         shapley_inputs.demand_matrix,
         params,
+        &shapley_inputs.device_to_operator,
     )
     .await?;
 
@@ -448,7 +462,8 @@ async fn test_shared_link_split_rewards() -> Result<()> {
     // Verify the link is marked as shared
     assert_eq!(shapley_inputs.private_links.len(), 1);
     assert_eq!(
-        shapley_inputs.private_links[0].shared, 1,
+        shapley_inputs.private_links[0].shared,
+        Some(1),
         "Link should be marked as shared"
     );
 
@@ -468,6 +483,7 @@ async fn test_shared_link_split_rewards() -> Result<()> {
         shapley_inputs.public_links,
         shapley_inputs.demand_matrix,
         params,
+        &shapley_inputs.device_to_operator,
     )
     .await?;
 
@@ -546,6 +562,7 @@ async fn test_zero_demand_zero_rewards() -> Result<()> {
         shapley_inputs.public_links,
         shapley_inputs.demand_matrix,
         params,
+        &shapley_inputs.device_to_operator,
     )
     .await?;
 

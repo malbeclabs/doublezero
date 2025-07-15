@@ -49,7 +49,7 @@ var (
 	PeerDiscoveryLocalTunnelNotFound = promauto.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: MetricNamePeerDiscoveryLocalTunnelNotFound,
-			Help: "Number of local tunnel interfaces not found encountered during peer discovery",
+			Help: "Number of local tunnel interfaces not found during peer discovery",
 		},
 		[]string{LabelLocalDevicePK},
 	)

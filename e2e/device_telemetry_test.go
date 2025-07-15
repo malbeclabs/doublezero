@@ -240,6 +240,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	la2MetricsClient := dn.Devices["la2-dz01"].GetTelemetryMetricsClient()
 	err = la2MetricsClient.Fetch(t.Context())
 	require.NoError(t, err)
+	require.NoError(t, err)
 	ny5MetricsClient := dn.Devices["ny5-dz01"].GetTelemetryMetricsClient()
 	err = ny5MetricsClient.Fetch(t.Context())
 	require.NoError(t, err)

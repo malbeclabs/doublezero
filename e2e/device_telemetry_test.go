@@ -17,6 +17,7 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
+	"github.com/malbeclabs/doublezero/e2e/internal/prometheus"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	telemetrysdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
@@ -90,6 +91,8 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 				SubmissionInterval:   5 * time.Second,
 				PeersRefreshInterval: 5 * time.Second,
 				Verbose:              true,
+				MetricsEnable:        true,
+				MetricsAddr:          "0.0.0.0:2114",
 			},
 		})
 		require.NoError(t, err)
@@ -126,6 +129,8 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 				SubmissionInterval:   5 * time.Second,
 				PeersRefreshInterval: 5 * time.Second,
 				Verbose:              true,
+				MetricsEnable:        true,
+				MetricsAddr:          "0.0.0.0:2114",
 			},
 		})
 		require.NoError(t, err)
@@ -156,7 +161,6 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 			doublezero link create --code "ld4-dz01:frk-dz01" --side-a ld4-dz01 --side-z frk-dz01 --link-type L2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10
 			doublezero link create --code "ld4-dz01:sg1-dz01" --side-a ld4-dz01 --side-z sg1-dz01 --link-type L2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9
 			doublezero link create --code "sg1-dz01:ty2-dz01" --side-a sg1-dz01 --side-z ty2-dz01 --link-type L2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7
-			doublezero link create --code "ty2-dz01:la2-dz01" --side-a ty2-dz01 --side-z la2-dz01 --link-type L2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 10
 		`})
 	require.NoError(t, err)
 
@@ -225,6 +229,33 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 		return true
 	}, 20*time.Second, 1*time.Second)
 
+	// Before checking metrics, the la2 device is not using a management namespace, so we need to expose the metrics port via iptables.
+	// This isn't needed for the ny5 device because it's using a management namespace and has a control plane ACL configured for it.
+	la2InternalTelemetryMetricsPort, err := dn.Devices["la2-dz01"].InternalTelemetryMetricsPort()
+	require.NoError(t, err)
+	_, err = dn.Devices["la2-dz01"].Exec(t.Context(), []string{"iptables", "-I", "INPUT", "-p", "tcp", "--dport", strconv.Itoa(la2InternalTelemetryMetricsPort), "-j", "ACCEPT"})
+	require.NoError(t, err)
+
+	// Fetch metrics from both devices.
+	la2MetricsClient := dn.Devices["la2-dz01"].GetTelemetryMetricsClient()
+	err = la2MetricsClient.Fetch(t.Context())
+	require.NoError(t, err)
+	require.NoError(t, err)
+	ny5MetricsClient := dn.Devices["ny5-dz01"].GetTelemetryMetricsClient()
+	err = ny5MetricsClient.Fetch(t.Context())
+	require.NoError(t, err)
+	require.NoError(t, err)
+
+	// Get the post-reachability "tunnel not found" metric for the la2 device, so we can check that it doesn't increase from here at the end.
+	la2TunnelNotFoundGaugeValues := la2MetricsClient.GetGaugeValues("doublezero_device_telemetry_agent_peer_discovery_not_found_tunnels")
+	require.NotNil(t, la2TunnelNotFoundGaugeValues)
+	prevLA2TunnelNotFoundCount := int(la2TunnelNotFoundGaugeValues[0].Value)
+
+	// Get the post-reachability "tunnel not found" metric for the ny5 device, so we can check that it increases from here at the end.
+	ny5TunnelNotFoundGaugeValues := ny5MetricsClient.GetGaugeValues("doublezero_device_telemetry_agent_peer_discovery_not_found_tunnels")
+	require.NotNil(t, ny5TunnelNotFoundGaugeValues)
+	prevNY5TunnelNotFoundCount := int(ny5TunnelNotFoundGaugeValues[0].Value)
+
 	// Check that TWAMP probes work between the devices.
 	log.Info("==> Checking that TWAMP probes work between the devices")
 	ctx, cancel := context.WithCancel(t.Context())
@@ -254,7 +285,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 
 	// Get devices and links from the serviceability program.
 	log.Info("==> Waiting for devices and links to be available onchain")
-	devices, links, _ := waitForDevicesAndLinks(t, dn, 8, 6, 30*time.Second)
+	devices, links, _ := waitForDevicesAndLinks(t, dn, 8, 5, 30*time.Second)
 
 	// Get the device and link public keys.
 	la2Device, ok := devices["la2-dz01"]
@@ -332,6 +363,63 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	for _, rtt := range account.Samples {
 		require.Equal(t, uint32(0), rtt)
 	}
+
+	// Fetch metrics from both devices.
+	err = la2MetricsClient.Fetch(t.Context())
+	require.NoError(t, err)
+	err = ny5MetricsClient.Fetch(t.Context())
+	require.NoError(t, err)
+
+	// Check that la2 has 0 "tunnel not found" metric counted, since it has no links with non-existent devices.
+	log.Info("==> Checking that la2 has 0 not found tunnels")
+	la2NotFoundTunnelsGaugeValues := la2MetricsClient.GetGaugeValues("doublezero_device_telemetry_agent_peer_discovery_not_found_tunnels")
+	require.NotNil(t, la2NotFoundTunnelsGaugeValues)
+	require.Equal(t, 1, len(la2NotFoundTunnelsGaugeValues))
+	require.Contains(t, la2NotFoundTunnelsGaugeValues[0].Labels, "local_device_pk")
+	require.Equal(t, la2DevicePK.String(), la2NotFoundTunnelsGaugeValues[0].Labels["local_device_pk"])
+	la2TNotFoundTunnelsCount := int(la2NotFoundTunnelsGaugeValues[0].Value)
+	require.Equal(t, prevLA2TunnelNotFoundCount, la2TNotFoundTunnelsCount)
+
+	// Check that ny5 has more than 0 "tunnel not found" metric counted, since it has a link with a non-existent device.
+	log.Info("==> Checking that ny5 has more than 0 not found tunnels")
+	ny5NotFoundTunnelsGaugeValues := ny5MetricsClient.GetGaugeValues("doublezero_device_telemetry_agent_peer_discovery_not_found_tunnels")
+	require.NotNil(t, ny5NotFoundTunnelsGaugeValues)
+	require.Equal(t, 1, len(ny5NotFoundTunnelsGaugeValues))
+	require.Contains(t, ny5NotFoundTunnelsGaugeValues[0].Labels, "local_device_pk")
+	require.Equal(t, ny5DevicePK.String(), ny5NotFoundTunnelsGaugeValues[0].Labels["local_device_pk"])
+	ny5TNotFoundTunnelsCount := int(ny5NotFoundTunnelsGaugeValues[0].Value)
+	require.Greater(t, ny5TNotFoundTunnelsCount, prevNY5TunnelNotFoundCount)
+
+	// Check that the "errors_total" counter is 0 (not present) on both devices.
+	log.Info("==> Checking that errors_total counter is 0 (not present) on both devices")
+	la2ErrorsCounterValues := la2MetricsClient.GetCounterValues("doublezero_device_telemetry_agent_errors_total")
+	if la2ErrorsCounterValues != nil {
+		fmt.Println("doublezero_device_telemetry_agent_errors_total", la2ErrorsCounterValues)
+		require.Fail(t, "la2ErrorsTotal should be nil")
+	}
+	ny5ErrorsCounterValues := ny5MetricsClient.GetCounterValues("doublezero_device_telemetry_agent_errors_total")
+	if ny5ErrorsCounterValues != nil {
+		fmt.Println("doublezero_device_telemetry_agent_errors_total", ny5ErrorsCounterValues)
+		require.Fail(t, "ny5ErrorsTotal should be nil")
+	}
+
+	// Check that go_memstats_alloc_bytes gauge is less than 3MB.
+	log.Info("==> Checking that go_memstats_alloc_bytes gauge is less than 3MB on both devices")
+	la2MemStatsAllocBytes := la2MetricsClient.GetGaugeValues(prometheus.MetricNameGoMemstatsAllocBytes)
+	require.NotNil(t, la2MemStatsAllocBytes)
+	require.Less(t, int(la2MemStatsAllocBytes[0].Value), int(3*1024*1024))
+	ny5MemStatsAllocBytes := ny5MetricsClient.GetGaugeValues(prometheus.MetricNameGoMemstatsAllocBytes)
+	require.NotNil(t, ny5MemStatsAllocBytes)
+	require.Less(t, int(ny5MemStatsAllocBytes[0].Value), int(3*1024*1024))
+
+	// Check that go_goroutines gauge is less than 20.
+	log.Info("==> Checking that go_goroutines gauge is less than 30 on both devices")
+	la2GoGoroutinesCounterValues := la2MetricsClient.GetGaugeValues(prometheus.MetricNameGoGoroutines)
+	require.NotNil(t, la2GoGoroutinesCounterValues)
+	require.Less(t, int(la2GoGoroutinesCounterValues[0].Value), 30)
+	ny5GoGoroutinesCounterValues := ny5MetricsClient.GetGaugeValues(prometheus.MetricNameGoGoroutines)
+	require.NotNil(t, ny5GoGoroutinesCounterValues)
+	require.Less(t, int(ny5GoGoroutinesCounterValues[0].Value), 30)
 }
 
 func waitForDeviceLatencySamples(t *testing.T, dn *devnet.Devnet, originDevicePK, targetDevicePK, linkPK solana.PublicKey, epoch uint64, waitForMinSamples int, timeout time.Duration) (*telemetrysdk.DeviceLatencySamples, time.Duration) {

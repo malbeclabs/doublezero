@@ -15,31 +15,33 @@ import (
 //
 // This is safe for use in single-threaded, short-lived operations; not safe for
 // concurrent use.
-func RunInNamespace(nsName string, fn func() error) error {
+func RunInNamespace[T any](nsName string, fn func() (T, error)) (T, error) {
+	var zero T
+
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
 	origNS, err := netns.Get()
 	if err != nil {
-		return fmt.Errorf("get current netns: %w", err)
+		return zero, fmt.Errorf("get current netns: %w", err)
 	}
 	defer origNS.Close()
 
 	targetNS, err := netns.GetFromName(nsName)
 	if err != nil {
-		return fmt.Errorf("get target netns %q: %w", nsName, err)
+		return zero, fmt.Errorf("get target netns %q: %w", nsName, err)
 	}
 	defer targetNS.Close()
 
 	if err := netns.Set(targetNS); err != nil {
-		return fmt.Errorf("setns to %q: %w", nsName, err)
+		return zero, fmt.Errorf("setns to %q: %w", nsName, err)
 	}
 
-	fnErr := fn()
+	result, fnErr := fn()
 
 	if err := netns.Set(origNS); err != nil {
-		return fmt.Errorf("restore original netns: %w", err)
+		return zero, fmt.Errorf("restore original netns: %w", err)
 	}
 
-	return fnErr
+	return result, fnErr
 }

@@ -23,6 +23,7 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
+	"github.com/malbeclabs/doublezero/e2e/internal/prometheus"
 	"github.com/testcontainers/testcontainers-go"
 )
 
@@ -85,6 +86,12 @@ type DeviceTelemetrySpec struct {
 
 	// Verbose is whether to enable verbose logging.
 	Verbose bool
+
+	// MetricsEnable is whether to enable prometheus metrics.
+	MetricsEnable bool
+
+	// MetricsAddr is the listen address for the prometheus metrics server.
+	MetricsAddr string
 }
 
 func (s *DeviceSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
@@ -159,6 +166,9 @@ type Device struct {
 
 	// ExternalEAPIHTTPPort is the port on which the device's EAPI HTTP server is exposed.
 	ExternalEAPIHTTPPort int
+
+	// ExternalTelemetryMetricsPort is the port on which the device's telemetry metrics server is exposed.
+	ExternalTelemetryMetricsPort int
 }
 
 func (d *Device) dockerContainerHostname() string {
@@ -280,6 +290,16 @@ func (d *Device) Start(ctx context.Context) error {
 		env["DZ_MANAGEMENT_NAMESPACE"] = spec.Telemetry.ManagementNS
 	}
 
+	telemetryMetricsPort, err := d.InternalTelemetryMetricsPort()
+	if err != nil {
+		return fmt.Errorf("failed to get internal metrics port: %w", err)
+	}
+
+	exposedPorts := []string{fmt.Sprintf("%d/tcp", internalEAPIHTTPPort)}
+	if spec.Telemetry.MetricsEnable {
+		exposedPorts = append(exposedPorts, fmt.Sprintf("%d/tcp", telemetryMetricsPort))
+	}
+
 	// Create the device container, but don't start it yet.
 	req := testcontainers.ContainerRequest{
 		Image: spec.ContainerImage,
@@ -287,7 +307,7 @@ func (d *Device) Start(ctx context.Context) error {
 		ConfigModifier: func(cfg *dockercontainer.Config) {
 			cfg.Hostname = d.dockerContainerHostname()
 		},
-		ExposedPorts: []string{fmt.Sprintf("%d/tcp", internalEAPIHTTPPort)},
+		ExposedPorts: exposedPorts,
 		Privileged:   true,
 		Networks: []string{
 			d.dn.DefaultNetwork.Name,
@@ -343,6 +363,12 @@ func (d *Device) Start(ctx context.Context) error {
 		"-keypair", containerTelemetryKeypairPath,
 		"-local-device-pubkey", onchainID,
 	}
+	if spec.Telemetry.MetricsEnable {
+		telemetryCommandArgs = append(telemetryCommandArgs, "-metrics-enable")
+		if spec.Telemetry.MetricsAddr != "" {
+			telemetryCommandArgs = append(telemetryCommandArgs, "-metrics-addr", spec.Telemetry.MetricsAddr)
+		}
+	}
 	if spec.Telemetry.TWAMPListenPort > 0 {
 		telemetryCommandArgs = append(telemetryCommandArgs, "-twamp-listen-port", strconv.Itoa(int(spec.Telemetry.TWAMPListenPort)))
 	}
@@ -370,6 +396,8 @@ func (d *Device) Start(ctx context.Context) error {
 		"AgentCommandArgs":         strings.Join(commandArgs, " "),
 		"TelemetryEnabled":         spec.Telemetry.Enabled,
 		"TelemetryCommandArgs":     strings.Join(telemetryCommandArgs, " "),
+		"TelemetryMetricsEnable":   spec.Telemetry.MetricsEnable,
+		"TelemetryMetricsPort":     telemetryMetricsPort,
 		"CYOANetworkIP":            cyoaNetworkIP,
 		"CYOANetworkCIDRPrefix":    strconv.Itoa(d.dn.Spec.CYOANetwork.CIDRPrefix),
 		"DefaultNetworkIP":         defaultNetworkIP,
@@ -486,6 +514,41 @@ func (d *Device) setState(ctx context.Context, containerID string) error {
 	}
 	d.ExternalEAPIHTTPPort = port
 
+	if d.Spec.Telemetry.Enabled && d.Spec.Telemetry.MetricsEnable {
+		// Wait for telemetry metrics port to be exposed.
+		telemetryMetricsPort, err := d.InternalTelemetryMetricsPort()
+		if err != nil {
+			return fmt.Errorf("failed to get internal metrics port: %w", err)
+		}
+		loggedWait = false
+		timeout = 10 * time.Second
+		err = pollUntil(ctx, func() (bool, error) {
+			attempts++
+			var err error
+			container, err = d.dn.dockerClient.ContainerInspect(ctx, containerID)
+			if err != nil {
+				return false, fmt.Errorf("failed to inspect container: %w", err)
+			}
+			ports, ok := container.NetworkSettings.Ports[nat.Port(fmt.Sprintf("%d/tcp", telemetryMetricsPort))]
+			if !ok || len(ports) == 0 {
+				if !loggedWait && attempts > 1 {
+					d.log.Debug("--> Waiting for telemetry metrics port to be exposed", "container", shortContainerID(container.ID), "timeout", timeout)
+					loggedWait = true
+				}
+				return false, nil
+			}
+			port, err = strconv.Atoi(ports[0].HostPort)
+			if err != nil {
+				return false, fmt.Errorf("failed to get telemetry metrics port: %w", err)
+			}
+			return true, nil
+		}, timeout, 500*time.Millisecond)
+		if err != nil {
+			return fmt.Errorf("failed to wait for telemetry metrics port to be exposed: %w", err)
+		}
+		d.ExternalTelemetryMetricsPort = port
+	}
+
 	d.ContainerID = shortContainerID(container.ID)
 	d.ID = onchainID
 	d.CYOANetworkIP = ip
@@ -493,8 +556,24 @@ func (d *Device) setState(ctx context.Context, containerID string) error {
 	return nil
 }
 
+func (d *Device) InternalTelemetryMetricsPort() (int, error) {
+	port := 0
+	if d.Spec.Telemetry.MetricsEnable && d.Spec.Telemetry.MetricsAddr != "" {
+		var err error
+		port, err = strconv.Atoi(strings.Split(d.Spec.Telemetry.MetricsAddr, ":")[1])
+		if err != nil {
+			return 0, fmt.Errorf("failed to get telemetry metrics port: %w", err)
+		}
+	}
+	return port, nil
+}
+
 func (d *Device) GetEAPIHTTPClient() (*goeapi.Node, error) {
 	return goeapi.Connect("http", d.Spec.ExternalHost, "admin", "admin", d.ExternalEAPIHTTPPort)
+}
+
+func (d *Device) GetTelemetryMetricsClient() *prometheus.MetricsClient {
+	return prometheus.NewMetricsClient(fmt.Sprintf("http://%s:%d/metrics", d.Spec.ExternalHost, d.ExternalTelemetryMetricsPort))
 }
 
 // ExecCliReturnJSONObject executes a command on the device using the Cli tool and returns the

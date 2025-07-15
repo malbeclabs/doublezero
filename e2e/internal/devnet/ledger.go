@@ -316,7 +316,6 @@ func waitForSolanaReady(ctx context.Context, log *slog.Logger, rpcHost string, r
 }
 
 func (l *Ledger) GetServiceabilityClient() (*serviceability.Client, error) {
-	l.log.Debug("--> Building serviceability program client", "externalHost", l.dn.Spec.Ledger.ExternalHost, "externalRPCPort", l.ExternalRPCPort, "serviceabilityProgramID", l.dn.Manager.ServiceabilityProgramID)
 	endpoint := "http://" + net.JoinHostPort(l.dn.Spec.Ledger.ExternalHost, strconv.Itoa(l.ExternalRPCPort))
 	rpcClient := rpc.New(endpoint)
 	programID, err := solana.PublicKeyFromBase58(l.dn.Manager.ServiceabilityProgramID)
@@ -333,7 +332,6 @@ func (l *Ledger) GetRPCClient() *rpc.Client {
 }
 
 func (l *Ledger) GetTelemetryClient(agentPrivateKey *solana.PrivateKey) (*telemetry.Client, error) {
-	l.log.Debug("--> Building telemetry program client", "externalHost", l.dn.Spec.Ledger.ExternalHost, "externalRPCPort", l.ExternalRPCPort, "telemetryProgramID", l.dn.Manager.TelemetryProgramID)
 	endpoint := "http://" + net.JoinHostPort(l.dn.Spec.Ledger.ExternalHost, strconv.Itoa(l.ExternalRPCPort))
 	rpcClient := rpc.New(endpoint)
 	programID, err := solana.PublicKeyFromBase58(l.dn.Manager.TelemetryProgramID)

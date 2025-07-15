@@ -5,6 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/metrics"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netns"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netutil"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
@@ -19,6 +22,7 @@ import (
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	sdktelemetry "github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const (
@@ -36,8 +40,6 @@ const (
 	waitForNamespaceTimeout = 30 * time.Second
 )
 
-var version = "dev"
-
 var (
 	ledgerRPCURL            = flag.String("ledger-rpc-url", defaultLedgerRPCURL, "the url of the ledger rpc")
 	serviceabilityProgramID = flag.String("serviceability-program-id", defaultProgramId, "the id of the serviceability program")
@@ -52,7 +54,14 @@ var (
 	peersRefreshInterval    = flag.Duration("peers-refresh-interval", defaultPeersRefreshInterval, "the interval to refresh the peer discovery")
 	managementNamespace     = flag.String("management-namespace", "", "the name of the management namespace to use for ledger communication. If not provided, the default namespace will be used. (default: '')")
 	verbose                 = flag.Bool("verbose", false, "enable verbose logging")
-	showVersion             = flag.Bool("version", false, "print version and exit")
+	showVersion             = flag.Bool("version", false, "Print the version of the doublezero-agent and exit")
+	metricsEnable           = flag.Bool("metrics-enable", false, "Enable prometheus metrics")
+	metricsAddr             = flag.String("metrics-addr", ":8080", "Address to listen on for prometheus metrics")
+
+	// Set by LDFLAGS
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
 )
 
 func main() {
@@ -64,7 +73,7 @@ func main() {
 	}
 
 	if *showVersion {
-		fmt.Println(version)
+		fmt.Printf("version: %s, commit: %s, date: %s\n", version, commit, date)
 		os.Exit(0)
 	}
 
@@ -125,6 +134,7 @@ func main() {
 	}
 
 	log.Info("Starting telemetry collector",
+		"version", version,
 		"ledgerRPCURL", *ledgerRPCURL,
 		"serviceabilityProgramID", *serviceabilityProgramID,
 		"telemetryProgramID", *telemetryProgramID,
@@ -138,6 +148,45 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
+	// If using a management namespace, wait for it to be ready.
+	if *managementNamespace != "" {
+		_, err := netns.WaitForNamespace(log, *managementNamespace, waitForNamespaceTimeout)
+		if err != nil {
+			log.Error("failed to wait for namespace", "error", err)
+			os.Exit(1)
+		}
+	}
+
+	// Set up prometheus metrics server if enabled.
+	if *metricsEnable {
+		metrics.BuildInfo.WithLabelValues(version, commit, date).Set(1)
+		go func() {
+			var listener net.Listener
+			if *managementNamespace != "" {
+				// If the management namespace is provided, we need to run the metrics server in that namespace.
+				listener, err = netns.RunInNamespace(*managementNamespace, func() (net.Listener, error) {
+					return net.Listen("tcp", *metricsAddr)
+				})
+				if err != nil {
+					log.Error("Failed to start prometheus metrics server listener in namespace", "error", err, "namespace", *managementNamespace)
+					return
+				}
+				log.Info("Prometheus metrics server listening", "namespace", *managementNamespace, "address", listener.Addr())
+			} else {
+				listener, err = net.Listen("tcp", *metricsAddr)
+				if err != nil {
+					log.Error("Failed to start prometheus metrics server listener", "error", err)
+					return
+				}
+				log.Info("Prometheus metrics server listening", "address", listener.Addr())
+			}
+			http.Handle("/metrics", promhttp.Handler())
+			if err := http.Serve(listener, nil); err != nil {
+				log.Error("Failed to start prometheus metrics server", "error", err)
+			}
+		}()
+	}
+
 	// Set up TWAMP reflector
 	reflector, err := twamplight.NewReflector(log, fmt.Sprintf("0.0.0.0:%d", *twampListenPort), *twampReflectorTimeout)
 	if err != nil {
@@ -148,12 +197,6 @@ func main() {
 	// Build solana RPC client.
 	var rpcClient *solanarpc.Client
 	if *managementNamespace != "" {
-		_, err := netns.WaitForNamespace(log, *managementNamespace, waitForNamespaceTimeout)
-		if err != nil {
-			log.Error("failed to wait for namespace", "error", err)
-			os.Exit(1)
-		}
-
 		jsonrpcClient, err := netns.NewNamespacedJSONRPCClient(*ledgerRPCURL, *managementNamespace, nil)
 		if err != nil {
 			log.Error("failed to create namespace-safe solana RPC client", "error", err)

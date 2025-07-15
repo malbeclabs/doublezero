@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/metrics"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netutil"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
@@ -115,6 +116,7 @@ func (p *ledgerPeerDiscovery) GetPeers() []*Peer {
 
 func (p *ledgerPeerDiscovery) refresh(ctx context.Context) error {
 	if err := p.config.ProgramClient.Load(ctx); err != nil {
+		metrics.Errors.WithLabelValues(metrics.ErrorTypePeerDiscoveryProgramLoad).Inc()
 		return fmt.Errorf("failed to load program from ledger: %w", err)
 	}
 
@@ -138,8 +140,11 @@ func (p *ledgerPeerDiscovery) refresh(ctx context.Context) error {
 	// Get all local interfaces.
 	interfaces, err := p.config.LocalNet.Interfaces()
 	if err != nil {
+		metrics.Errors.WithLabelValues(metrics.ErrorTypePeerDiscoveryGettingLocalInterfaces).Inc()
 		return fmt.Errorf("failed to get local interfaces: %w", err)
 	}
+
+	var tunnelsNotFound int
 
 	peers := make([]*Peer, 0)
 	for _, link := range links {
@@ -149,6 +154,7 @@ func (p *ledgerPeerDiscovery) refresh(ctx context.Context) error {
 		}
 		// Ignore links that don't have a valid tunnel net.
 		if link.TunnelNet == [5]byte{0, 0, 0, 0, 0} {
+			metrics.Errors.WithLabelValues(metrics.ErrorTypePeerDiscoveryLinkTunnelNetInvalid).Inc()
 			continue
 		}
 
@@ -179,10 +185,14 @@ func (p *ledgerPeerDiscovery) refresh(ctx context.Context) error {
 		tunnel, err := netutil.FindLocalTunnel(interfaces, tunnelNet)
 		if err != nil && !errors.Is(err, netutil.ErrLocalTunnelNotFound) {
 			p.log.Debug("Failed to find local tunnel interface", "error", err, "linkPubkey", linkPubkey, "targetDevicePubKey", remote, "tunnelNet", tunnelNet)
+			metrics.Errors.WithLabelValues(metrics.ErrorTypePeerDiscoveryFindingLocalTunnel).Inc()
 			continue
 		}
 		// NOTE: If the tunnel was not found, it will be nil here, so downstream usage should check
 		// for that.
+		if tunnel == nil {
+			tunnelsNotFound++
+		}
 
 		peers = append(peers, &Peer{
 			LinkPK:    linkPubkey,
@@ -193,7 +203,10 @@ func (p *ledgerPeerDiscovery) refresh(ctx context.Context) error {
 	}
 
 	p.peers = peers
-	p.log.Debug("Refreshed peers", "devices", len(devices), "links", len(links), "peers", len(peers))
+	p.log.Debug("Refreshed peers", "devices", len(devices), "links", len(links), "peers", len(peers), "tunnelsNotFound", tunnelsNotFound)
+
+	// Record the number of tunnels not found.
+	metrics.PeerDiscoveryLocalTunnelNotFound.WithLabelValues(p.config.LocalDevicePK.String()).Set(float64(tunnelsNotFound))
 
 	return nil
 }

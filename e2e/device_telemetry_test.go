@@ -256,6 +256,20 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	require.NotNil(t, ny5TunnelNotFoundGaugeValues)
 	prevNY5TunnelNotFoundCount := int(ny5TunnelNotFoundGaugeValues[0].Value)
 
+	// Get post-startup "errors_total" metric for the la2 device, so we can check that it's 0 at the end.
+	la2ErrorsCounterValues := la2MetricsClient.GetCounterValues("doublezero_device_telemetry_agent_errors_total")
+	require.NotNil(t, la2ErrorsCounterValues)
+	var prevLA2ErrorsCount int
+	if la2ErrorsCounterValues != nil && len(la2ErrorsCounterValues) > 0 {
+		prevLA2ErrorsCount = int(la2ErrorsCounterValues[0].Value)
+	}
+	ny5ErrorsCounterValues := ny5MetricsClient.GetCounterValues("doublezero_device_telemetry_agent_errors_total")
+	require.NotNil(t, ny5ErrorsCounterValues)
+	var prevNY5ErrorsCount int
+	if ny5ErrorsCounterValues != nil && len(ny5ErrorsCounterValues) > 0 {
+		prevNY5ErrorsCount = int(ny5ErrorsCounterValues[0].Value)
+	}
+
 	// Check that TWAMP probes work between the devices.
 	log.Info("==> Checking that TWAMP probes work between the devices")
 	ctx, cancel := context.WithCancel(t.Context())
@@ -392,16 +406,10 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 
 	// Check that the "errors_total" counter is 0 (not present) on both devices.
 	log.Info("==> Checking that errors_total counter is 0 (not present) on both devices")
-	la2ErrorsCounterValues := la2MetricsClient.GetCounterValues("doublezero_device_telemetry_agent_errors_total")
-	if la2ErrorsCounterValues != nil {
-		fmt.Println("doublezero_device_telemetry_agent_errors_total", la2ErrorsCounterValues)
-		require.Fail(t, "la2ErrorsTotal should be nil")
-	}
-	ny5ErrorsCounterValues := ny5MetricsClient.GetCounterValues("doublezero_device_telemetry_agent_errors_total")
-	if ny5ErrorsCounterValues != nil {
-		fmt.Println("doublezero_device_telemetry_agent_errors_total", ny5ErrorsCounterValues)
-		require.Fail(t, "ny5ErrorsTotal should be nil")
-	}
+	la2ErrorsCounterValues = la2MetricsClient.GetCounterValues("doublezero_device_telemetry_agent_errors_total")
+	require.Equal(t, prevLA2ErrorsCount, int(la2ErrorsCounterValues[0].Value), "la2 errors_total should be 0: %v", la2ErrorsCounterValues)
+	ny5ErrorsCounterValues = ny5MetricsClient.GetCounterValues("doublezero_device_telemetry_agent_errors_total")
+	require.Equal(t, prevNY5ErrorsCount, int(ny5ErrorsCounterValues[0].Value), "ny5 errors_total should be 0: %v", ny5ErrorsCounterValues)
 
 	// Check that go_memstats_alloc_bytes gauge is less than 3MB.
 	log.Info("==> Checking that go_memstats_alloc_bytes gauge is less than 3MB on both devices")

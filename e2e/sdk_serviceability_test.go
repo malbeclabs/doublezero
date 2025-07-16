@@ -45,32 +45,22 @@ func TestE2E_SDK_Serviceability(t *testing.T) {
     require.NoError(t, err)
 
     t.Run("update global config", func(t *testing.T) {
-    	initOutput, err := dn.Manager.Exec(ctx, []string{"bash", "-c", `
-    		set -euo pipefail
-
-    		echo "==> Fetching initial global configuration onchain"
-    		doublezero global-config get
-    	`})
+        initOutput, err := dn.Manager.Exec(ctx, []string{"doublezero", "global-config", "get"})
         require.NoError(t, err, "error fetching initial global config")
 
-        remoteAsn, err := ParseValuesFromOutput(strings.SplitAfter(string(initOutput), "\n"), "remote asn", 1)
+        remoteAsn, err := ParseValuesFromOutput(strings.SplitAfter(string(initOutput), "\n"), "remote asn")
         require.NoError(t, err, "error fetching initial remote asn from output")
 
         remoteAsnInt, err := strconv.Atoi(remoteAsn)
         require.NoError(t, err, "error parsing initial remote asn")
 
         newAsn := remoteAsnInt + 100
-        finalOutput, err := dn.Manager.Exec(ctx, []string{"bash", "-c", `
-        	set -euo pipefail
+        _, err = dn.Manager.Exec(ctx, []string{"doublezero", "global-config", "set", "--remote-asn", strconv.Itoa(newAsn)})
+        require.NoError(t, err, "error setting global config value")
+        finalOutput, err := dn.Manager.Exec(ctx, []string{"doublezero", "global-config", "get"})
+        require.NoError(t, err, "error fetching updated global config")
 
-            echo "==> Updating global configuration onchain"
-    		doublezero global-config set --remote-asn 75342
-    		echo "--> Global configuration onchain:"
-    		doublezero global-config get
-        `})
-        require.NoError(t, err, "error updating global config and fetching response")
-
-        newAsnOut, err := ParseValuesFromOutput(strings.SplitAfter(string(finalOutput), "\n"), "remote asn", 1)
+        newAsnOut, err := ParseValuesFromOutput(strings.SplitAfter(string(finalOutput), "\n"), "remote asn")
         require.NoError(t, err, "error fextching new remote asn from output")
 
         newAsnInt, err := strconv.Atoi(newAsnOut)
@@ -80,12 +70,18 @@ func TestE2E_SDK_Serviceability(t *testing.T) {
     })
 }
 
-func ParseValuesFromOutput(lines []string, columnName string, rowIdx int) (string, error) {
-	headers := strings.Fields(lines[0])
-	if rowIdx >= len(lines) - 1 {
-		return "", fmt.Errorf("no such row %d", rowIdx)
+func ParseValuesFromOutput(lines []string, columnName string) (string, error) {
+	headers := strings.Split(lines[0], "|")
+	for header := range headers {
+		headers[header] = strings.TrimSpace(headers[header])
 	}
-	data := strings.Fields(lines[rowIdx+1])
+	if len(lines) < 2 {
+		return "", fmt.Errorf("incorrect number of rows in output")
+	}
+	data := strings.Split(lines[1], "|")
+	for item := range data {
+		data[item] = strings.TrimSpace(data[item])
+	}
 	for idx, header := range headers {
 		if header == columnName {
 			if idx >= len(data) {

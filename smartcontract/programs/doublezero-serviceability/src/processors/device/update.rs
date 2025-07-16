@@ -66,21 +66,22 @@ pub fn process_update_device(
     );
     // Check if the account is writable
     assert!(device_account.is_writable, "PDA Account is not writable");
+
+    let mut device: Device = Device::try_from(device_account)?;
+
     // Parse the global state account & check if the payer is in the allowlist
     let globalstate = globalstate_get(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
+    if !globalstate.foundation_allowlist.contains(payer_account.key)
+        && device.owner != *payer_account.key
+    {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    let mut device: Device = Device::try_from(device_account)?;
     assert_eq!(device.index, value.index, "Invalid PDA Account Index");
     assert_eq!(
         device.bump_seed, value.bump_seed,
         "Invalid PDA Account Bump Seed"
     );
-    if device.owner != *payer_account.key {
-        return Err(solana_program::program_error::ProgramError::Custom(0));
-    }
 
     if let Some(code) = &value.code {
         device.code = code.clone();

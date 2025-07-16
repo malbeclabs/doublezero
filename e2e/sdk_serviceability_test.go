@@ -3,12 +3,11 @@
 package e2e_test
 
 import (
-	    "fmt"
         "os"
         "path/filepath"
         "strconv"
-        "strings"
         "testing"
+        "time"
 
         "github.com/malbeclabs/doublezero/e2e/internal/devnet"
         "github.com/malbeclabs/doublezero/e2e/internal/random"
@@ -45,50 +44,26 @@ func TestE2E_SDK_Serviceability(t *testing.T) {
     require.NoError(t, err)
 
     t.Run("update global config", func(t *testing.T) {
-        initOutput, err := dn.Manager.Exec(ctx, []string{"doublezero", "global-config", "get"})
-        require.NoError(t, err, "error fetching initial global config")
+        client, err := dn.Ledger.GetServiceabilityClient()
+        require.NoError(t, err, "error getting serviceability program client")
 
-        remoteAsn, err := ParseValuesFromOutput(strings.SplitAfter(string(initOutput), "\n"), "remote asn")
-        require.NoError(t, err, "error fetching initial remote asn from output")
+        err = client.Load(ctx)
+        require.NoError(t, err, "error loading accounts into context")
 
-        remoteAsnInt, err := strconv.Atoi(remoteAsn)
-        require.NoError(t, err, "error parsing initial remote asn")
+        config := client.GetConfig()
 
-        newAsn := remoteAsnInt + 100
-        _, err = dn.Manager.Exec(ctx, []string{"doublezero", "global-config", "set", "--remote-asn", strconv.Itoa(newAsn)})
+        oldAsn := config.Remote_asn
+        newAsn := oldAsn + 100
+
+        _, err = dn.Manager.Exec(ctx, []string{"doublezero", "global-config", "set", "--remote-asn", strconv.Itoa(int(newAsn))})
         require.NoError(t, err, "error setting global config value")
-        finalOutput, err := dn.Manager.Exec(ctx, []string{"doublezero", "global-config", "get"})
-        require.NoError(t, err, "error fetching updated global config")
 
-        newAsnOut, err := ParseValuesFromOutput(strings.SplitAfter(string(finalOutput), "\n"), "remote asn")
-        require.NoError(t, err, "error fextching new remote asn from output")
+        require.Eventually(t, func() bool {
+            err := client.Load(ctx)
+            require.NoError(t, err, "error while reloading onchain state to verify update")
 
-        newAsnInt, err := strconv.Atoi(newAsnOut)
-        require.NoError(t, err, "error parsing new remote asn from output")
-
-        require.Equal(t, newAsn, newAsnInt, "expected remote asn updated to: %d, got %d\n", newAsn, newAsnInt)
+            config = client.GetConfig()
+            return newAsn == config.Remote_asn
+        }, 30*time.Second, 1*time.Second)
     })
 }
-
-func ParseValuesFromOutput(lines []string, columnName string) (string, error) {
-	headers := strings.Split(lines[0], "|")
-	for header := range headers {
-		headers[header] = strings.TrimSpace(headers[header])
-	}
-	if len(lines) < 2 {
-		return "", fmt.Errorf("incorrect number of rows in output")
-	}
-	data := strings.Split(lines[1], "|")
-	for item := range data {
-		data[item] = strings.TrimSpace(data[item])
-	}
-	for idx, header := range headers {
-		if header == columnName {
-			if idx >= len(data) {
-				return "", fmt.Errorf("column index %d out of range", idx)
-			}
-			return data[idx], nil
-		}
-	}
-	return "", fmt.Errorf("column %s not found", columnName)
-} 

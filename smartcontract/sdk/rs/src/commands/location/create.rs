@@ -1,6 +1,7 @@
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
+use crate::{index::nextindex, DoubleZeroClient};
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_location_pda,
+    instructions::DoubleZeroInstruction,
+    pda::{get_globalconfig_pda, get_location_pda},
     processors::location::create::LocationCreateArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
@@ -17,16 +18,14 @@ pub struct CreateLocationCommand {
 
 impl CreateLocationCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
-        let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
+        let index = nextindex();
+        let (globalstate_pubkey, _) = get_globalconfig_pda(&client.get_program_id());
+        let (pda_pubkey, bump_seed) = get_location_pda(&client.get_program_id(), index);
 
-        let (pda_pubkey, bump_seed) =
-            get_location_pda(&client.get_program_id(), globalstate.account_index + 1);
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
-                    index: globalstate.account_index + 1,
+                    index,
                     bump_seed,
                     code: self.code.clone(),
                     name: self.name.clone(),

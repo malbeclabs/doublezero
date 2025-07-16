@@ -1,10 +1,10 @@
+use crate::{index::nextindex, DoubleZeroClient};
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_exchange_pda,
+    instructions::DoubleZeroInstruction,
+    pda::{get_exchange_pda, get_globalconfig_pda},
     processors::exchange::create::ExchangeCreateArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
-
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CreateExchangeCommand {
@@ -17,16 +17,13 @@ pub struct CreateExchangeCommand {
 
 impl CreateExchangeCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
-        let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
-        let (pda_pubkey, bump_seed) =
-            get_exchange_pda(&client.get_program_id(), globalstate.account_index + 1);
+        let index = nextindex();
+        let (globalstate_pubkey, _) = get_globalconfig_pda(&client.get_program_id());
+        let (pda_pubkey, bump_seed) = get_exchange_pda(&client.get_program_id(), index);
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
-                    index: globalstate.account_index + 1,
+                    index,
                     bump_seed,
                     code: self.code.clone(),
                     name: self.name.clone(),

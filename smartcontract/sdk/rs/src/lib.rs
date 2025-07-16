@@ -30,6 +30,7 @@ mod consts;
 mod doublezeroclient;
 mod dztransaction;
 mod errors;
+mod index;
 
 pub mod commands;
 pub mod tests;

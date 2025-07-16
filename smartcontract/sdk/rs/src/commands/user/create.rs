@@ -1,13 +1,12 @@
+use crate::{index::nextindex, DoubleZeroClient};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    pda::get_user_pda,
+    pda::{get_globalconfig_pda, get_user_pda},
     processors::user::create::UserCreateArgs,
     state::user::{UserCYOA, UserType},
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 use std::net::Ipv4Addr;
-
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CreateUserCommand {
@@ -19,16 +18,13 @@ pub struct CreateUserCommand {
 
 impl CreateUserCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
-        let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
-        let (pda_pubkey, bump_seed) =
-            get_user_pda(&client.get_program_id(), globalstate.account_index + 1);
+        let index = nextindex();
+        let (globalstate_pubkey, _) = get_globalconfig_pda(&client.get_program_id());
+        let (pda_pubkey, bump_seed) = get_user_pda(&client.get_program_id(), index);
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateUser(UserCreateArgs {
-                    index: globalstate.account_index + 1,
+                    index,
                     bump_seed,
                     user_type: self.user_type,
                     device_pk: self.device_pk,

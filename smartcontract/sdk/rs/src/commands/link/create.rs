@@ -1,10 +1,11 @@
+use crate::{index::nextindex, DoubleZeroClient};
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_link_pda,
-    processors::link::create::LinkCreateArgs, state::link::LinkLinkType,
+    instructions::DoubleZeroInstruction,
+    pda::{get_globalconfig_pda, get_link_pda},
+    processors::link::create::LinkCreateArgs,
+    state::link::LinkLinkType,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
-
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CreateLinkCommand {
@@ -20,16 +21,13 @@ pub struct CreateLinkCommand {
 
 impl CreateLinkCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
-        let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
-        let (pda_pubkey, bump_seed) =
-            get_link_pda(&client.get_program_id(), globalstate.account_index + 1);
+        let index = nextindex();
+        let (globalstate_pubkey, _) = get_globalconfig_pda(&client.get_program_id());
+        let (pda_pubkey, bump_seed) = get_link_pda(&client.get_program_id(), index);
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateLink(LinkCreateArgs {
-                    index: globalstate.account_index + 1,
+                    index,
                     bump_seed,
                     code: self.code.to_string(),
                     side_a_pk: self.side_a_pk,

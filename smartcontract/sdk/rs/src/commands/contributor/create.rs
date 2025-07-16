@@ -1,28 +1,27 @@
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
+use crate::DoubleZeroClient;
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_contributor_pda,
+    instructions::DoubleZeroInstruction,
+    pda::{get_contributor_pda, get_globalconfig_pda},
     processors::contributor::create::ContributorCreateArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CreateContributorCommand {
+    pub index: u128,
     pub code: String,
     pub ata_owner_pk: Pubkey,
 }
 
 impl CreateContributorCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
-        let (globalstate_pubkey, globalstate) = GetGlobalStateCommand {}
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
+        let (globalstate_pubkey, _) = get_globalconfig_pda(&client.get_program_id());
+        let (pda_pubkey, bump_seed) = get_contributor_pda(&client.get_program_id(), self.index);
 
-        let (pda_pubkey, bump_seed) =
-            get_contributor_pda(&client.get_program_id(), globalstate.account_index + 1);
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
-                    index: globalstate.account_index + 1,
+                    index: self.index,
                     bump_seed,
                     code: self.code.clone(),
                     ata_owner_pk: self.ata_owner_pk,
@@ -39,8 +38,8 @@ impl CreateContributorCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::contributor::create::CreateContributorCommand, tests::utils::create_test_client,
-        DoubleZeroClient,
+        commands::contributor::create::CreateContributorCommand, index::nextindex,
+        tests::utils::create_test_client, DoubleZeroClient,
     };
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
@@ -54,15 +53,16 @@ mod tests {
     fn test_commands_contributor_create_command() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, bump_seed) = get_contributor_pda(&client.get_program_id(), 1);
+        let index = nextindex();
+        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
+        let (pda_pubkey, bump_seed) = get_contributor_pda(&client.get_program_id(), index);
 
         client
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateContributor(
                     ContributorCreateArgs {
-                        index: 1,
+                        index,
                         bump_seed,
                         code: "test".to_string(),
                         ata_owner_pk: Pubkey::default(),
@@ -76,6 +76,7 @@ mod tests {
             .returning(|_, _| Ok(Signature::new_unique()));
 
         let res = CreateContributorCommand {
+            index,
             code: "test".to_string(),
             ata_owner_pk: Pubkey::default(),
         }

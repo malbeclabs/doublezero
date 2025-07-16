@@ -1,6 +1,9 @@
+use crate::{
+    commands::multicastgroup::get::GetMulticastGroupCommand, index::nextindex, DoubleZeroClient,
+};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    pda::get_user_pda,
+    pda::{get_globalconfig_pda, get_user_pda},
     processors::user::create_subscribe::UserCreateSubscribeArgs,
     state::{
         multicastgroup::MulticastGroupStatus,
@@ -9,13 +12,6 @@ use doublezero_serviceability::{
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 use std::net::Ipv4Addr;
-
-use crate::{
-    commands::{
-        globalstate::get::GetGlobalStateCommand, multicastgroup::get::GetMulticastGroupCommand,
-    },
-    DoubleZeroClient,
-};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CreateSubscribeUserCommand {
@@ -30,10 +26,8 @@ pub struct CreateSubscribeUserCommand {
 
 impl CreateSubscribeUserCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
-        let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
+        let index = nextindex();
+        let (globalstate_pubkey, _) = get_globalconfig_pda(&client.get_program_id());
         let (_, mgroup) = GetMulticastGroupCommand {
             pubkey_or_code: self.mgroup_pk.to_string(),
         }
@@ -50,12 +44,11 @@ impl CreateSubscribeUserCommand {
             eyre::bail!("Subscriber not allowed");
         }
 
-        let (pda_pubkey, bump_seed) =
-            get_user_pda(&client.get_program_id(), globalstate.account_index + 1);
+        let (pda_pubkey, bump_seed) = get_user_pda(&client.get_program_id(), index);
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
-                    index: globalstate.account_index + 1,
+                    index,
                     bump_seed,
                     user_type: self.user_type,
                     device_pk: self.device_pk,

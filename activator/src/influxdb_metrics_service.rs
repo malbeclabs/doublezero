@@ -4,6 +4,10 @@ use crate::{
 };
 use influxdb2::Client;
 use log::error;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use tokio::sync::mpsc::{Receiver, Sender};
 
 pub struct InfluxDBMetricsService {
@@ -91,15 +95,16 @@ impl InfluxDBMetricsSubmitter {
         }
     }
 
-    pub async fn run(&mut self) {
-        while let Some(msg) = self.receiver.recv().await {
+    pub async fn run(&mut self, stop_signal: Arc<AtomicBool>) {
+        while let (Some(msg), false) = (
+            self.receiver.recv().await,
+            stop_signal.load(Ordering::Relaxed),
+        ) {
             if let Some(client) = &self.client {
-                if let Err(e) = client
+                _ = client
                     .write_line_protocol(&client.org, self.bucket.as_str(), msg)
                     .await
-                {
-                    error!("Error writing metric to InfluxDB: {e}");
-                }
+                    .inspect_err(|e| error!("Error writing metric to InfluxDB: {e}"));
             }
         }
     }

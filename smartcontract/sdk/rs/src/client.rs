@@ -25,7 +25,14 @@ use solana_transaction_status::{
     option_serializer::OptionSerializer, EncodedTransaction, TransactionBinaryEncoding,
     UiTransactionEncoding,
 };
-use std::{collections::HashMap, str::FromStr};
+use std::{
+    collections::HashMap,
+    str::FromStr,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
 
 use crate::{
     config::*, doublezeroclient::DoubleZeroClient, dztransaction::DZTransaction, utils::*,
@@ -174,11 +181,15 @@ impl DZClient {
         Ok(list)
     }
 
-    pub fn gets_and_subscribe<F>(&self, mut action: F) -> eyre::Result<()>
+    pub fn gets_and_subscribe<F>(
+        &self,
+        mut action: F,
+        stop_signal: Arc<AtomicBool>,
+    ) -> eyre::Result<()>
     where
         F: FnMut(&DZClient, &Pubkey, &AccountData),
     {
-        loop {
+        while !stop_signal.load(Ordering::Relaxed) {
             match self.get_all() {
                 Ok(accounts) => {
                     for (pubkey, account) in accounts {
@@ -191,17 +202,19 @@ impl DZClient {
             }
 
             _ = self
-                .subscribe(&mut action)
+                .subscribe(&mut action, stop_signal.clone())
                 .inspect_err(|e| eprintln!("Error: {e}"));
         }
+
+        Ok(())
     }
 
     #[allow(clippy::collapsible_match)]
-    pub fn subscribe<F>(&self, mut action: F) -> eyre::Result<()>
+    pub fn subscribe<F>(&self, mut action: F, stop_signal: Arc<AtomicBool>) -> eyre::Result<()>
     where
         F: FnMut(&DZClient, &Pubkey, &AccountData),
     {
-        loop {
+        while !stop_signal.load(Ordering::Relaxed) {
             let options = RpcProgramAccountsConfig {
                 filters: None,
                 account_config: RpcAccountInfoConfig {
@@ -234,6 +247,8 @@ impl DZClient {
                 }
             }
         }
+
+        Ok(())
     }
 
     pub fn get_logs(&self, pubkey: &Pubkey) -> eyre::Result<Vec<String>> {

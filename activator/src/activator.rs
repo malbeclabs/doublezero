@@ -23,7 +23,12 @@ use doublezero_sdk::{
 };
 use log::{debug, error, info};
 use solana_sdk::pubkey::Pubkey;
-use std::{collections::HashMap, thread, time::Duration};
+use std::{
+    collections::HashMap,
+    sync::{atomic::AtomicBool, Arc},
+    thread,
+    time::Duration,
+};
 
 pub type DeviceMap = HashMap<Pubkey, DeviceState>;
 
@@ -161,7 +166,7 @@ impl Activator {
             .or_insert_with(|| DeviceState::new(device));
     }
 
-    pub fn run(&mut self) -> eyre::Result<()> {
+    pub fn run(&mut self, stop_signal: Arc<AtomicBool>) -> eyre::Result<()> {
         self.metrics.record_metrics(
             &self.devices,
             &self.locations,
@@ -194,8 +199,8 @@ impl Activator {
         let solana_info = &self.solana_info;
         let state_transitions = &mut self.state_transitions;
 
-        self.client
-            .gets_and_subscribe(move |client, pubkey, data| {
+        self.client.gets_and_subscribe(
+            move |client, pubkey, data| {
                 debug!("Event: {pubkey} {data:?}");
 
                 match data {
@@ -257,7 +262,9 @@ impl Activator {
                     // Just log the error
                     error!("error on record_metrics: {e}")
                 }
-            })?;
+            },
+            stop_signal,
+        )?;
         Ok(())
     }
 }

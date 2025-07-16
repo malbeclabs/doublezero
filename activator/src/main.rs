@@ -1,6 +1,11 @@
 use clap::Parser;
-use log::info;
-use std::thread;
+use futures::{future::LocalBoxFuture, FutureExt};
+use log::{error, info};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+use tokio::signal;
 
 mod activator;
 mod activator_metrics;
@@ -70,20 +75,48 @@ async fn main() -> eyre::Result<()> {
     .await?;
 
     info!("Activator started");
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let shutdown_clone = shutdown.clone();
 
     activator.init().await?;
 
     info!("Initialized");
 
-    // background blocking code so we can continue to run the metrics submitter in this async task
-    thread::spawn(move || {
-        info!("Acivator thread started");
-        activator.run().unwrap_or_default()
+    // run on the tokio blocking thread pool so we can continue to run the metrics submitter in this async task
+    let activator_handle = tokio::task::spawn_blocking(move || {
+        info!("Activator thread started");
+        activator.run(shutdown_clone).unwrap_or_default()
     });
 
     info!("Activator metrics submitter started");
-    metrics_submitter.run().await;
+
+    tokio::select! {
+        biased;
+        _ = listen_for_shutdown()? => {
+            shutdown.store(true, Ordering::Relaxed);
+        }
+        activator_res = activator_handle => {
+            if let Err(err) = activator_res {
+                error!("Activator thread exited unexpectedly with reason: {err:?}");
+            }
+        }
+        _ = metrics_submitter.run(shutdown.clone()) => {}
+    }
+
+    info!("Activator handler finished");
     info!("Activator metrics submitter finished");
 
     Ok(())
+}
+
+fn listen_for_shutdown() -> eyre::Result<LocalBoxFuture<'static, ()>> {
+    let mut sigterm = signal::unix::signal(signal::unix::SignalKind::terminate())?;
+    let shutdown = Box::pin(
+        futures::future::select(
+            Box::pin(async move { sigterm.recv().await }),
+            Box::pin(signal::ctrl_c()),
+        )
+        .map(|_| ()),
+    );
+    Ok(shutdown)
 }

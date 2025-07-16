@@ -91,6 +91,7 @@ Note: Timestamps have at least microsecond resolution (the standard in the high-
     - epoch: u64
     - location_a_pk: Pubkey
     - location_z_pk: Pubkey
+    - sampling_interval_microseconds: u64
     - start_timestamp_microseconds: u64
     - next_sample_index: u32
     - samples: [u32] (RTT values in microseconds) *The rest of the buffer contains latency samples as u32 values for each period. Blanks are filled with 0.*
@@ -170,7 +171,7 @@ Selected approach: roll our own TWAMP Light. A new Arista telemtery collector, t
 1. Providers must allow us to measure latency between pairs of their probes. We will disqualifyproviders that require the user to provide the test target, because we don't want to get into thebusiness of managing a fleet of probes.
 1. Providers must provide the geographic location of each probe. Latitude and longitude are ideal,but city name may work.
 1. Providers must have an API that supports all needed functionality
-### Design - Location-to-location internet latency (controlplane/collector)
+### Design - Location-to-location internet latency (controlplane/internet-latency-collector)
 This component collects internet latencdy data from 3rd party providers and publishes it to the `ThirdPartyLatencySamples` data structure described above. This component performs two primary tasks. 
 
 **1. Configuration.** (Frequency: daily) First, it collects a list of DZ locations with active DZDs from the Serviceability program. Using that list, it configures each 3rd party provider to collect measurements between each pair of locations.
@@ -186,7 +187,7 @@ We considered the following 3rd party providers (sorted alphabetically by name).
 | Catchpoint | | - No probe-to-probe measurements (3rd party requirement #4)  | Pending disqualification
 | RIPE Atlas | | - Users must operate probes to earn credits to use Atlas | ✅ Qualified |
 | ThousandEyes | | - Costs $20K+ per year | Pending
-| Wheresitup | | | Pending
+| Wheresitup | | | ✅ Qualified |
 | WonderNetwork Ping | | - No API (3rd party requirement #6) | ❌ Disqualified
 
 #### Sequence diagram - 3rd party provider configuration

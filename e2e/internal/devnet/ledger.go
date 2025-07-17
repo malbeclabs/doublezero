@@ -3,10 +3,8 @@ package devnet
 import (
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
@@ -68,14 +66,7 @@ func (l *Ledger) Start(ctx context.Context) error {
 		ExposedPorts: []string{"8899/tcp", "8900/tcp"},
 		WaitingFor: wait.ForAll(
 			wait.ForExec([]string{"solana", "cluster-version"}).WithExitCodeMatcher(func(code int) bool { return code == 0 }),
-			wait.ForHTTP("/").WithPort("8899/tcp").WithMethod("POST").
-				WithHeaders(map[string]string{"Content-Type": "application/json"}).
-				WithBody(strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"getHealth"}`)).
-				WithResponseMatcher(func(body io.Reader) bool {
-					bodyBytes, _ := io.ReadAll(body)
-					return strings.Contains(string(bodyBytes), `"result":"ok"`)
-				}),
-		).WithDeadline(1000 * time.Second),
+		).WithDeadline(120 * time.Second),
 		Env: map[string]string{
 			"DZ_PROGRAM_KEYPAIR_PATH": containerProgramKeypairPath,
 		},

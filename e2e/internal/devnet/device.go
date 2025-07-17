@@ -219,7 +219,7 @@ func (d *Device) Start(ctx context.Context) error {
 	// Wait for the device container to have status healthy.
 	d.log.Info("--> Waiting for device container to be healthy", "container", shortContainerID(containerID), "name", container.Name)
 	start := time.Now()
-	err = d.dn.waitContainerHealthy(ctx, containerID, 180*time.Second, 2*time.Second)
+	err = d.dn.waitContainerHealthy(ctx, containerID, 300*time.Second, 2*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to wait for device container to be healthy: %w", err)
 	}

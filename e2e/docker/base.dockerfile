@@ -1,13 +1,33 @@
 # ----------------------------------------------------------------------------
 # Solana stage with a platform-specific image.
 # ----------------------------------------------------------------------------
-FROM ghcr.io/malbeclabs/solana:latest AS solana
+FROM ubuntu:24.04 AS solana
+
+RUN apt update -qq && \
+    apt install --no-install-recommends -y ca-certificates curl bzip2
+
+# Install agave/solana tools
+# https://github.com/anza-xyz/agave/issues/1734
+ARG SOLANA_VERSION=2.2.17
+RUN ARCH=$(uname -m) && \
+    case "$ARCH" in \
+    x86_64) ARCH_TAG=x86_64 ;; \
+    aarch64) ARCH_TAG=aarch64 ;; \
+    *) echo "Unsupported architecture: $ARCH" && exit 1 ;; \
+    esac && \
+    mkdir -p /opt/agave && \
+    curl -sL "https://github.com/staratlasmeta/agave-dist/releases/download/v${SOLANA_VERSION}/solana-release-${ARCH_TAG}-unknown-linux-gnu.tar.bz2" -o /tmp/agave.tar.bz2 && \
+    tar -xjf /tmp/agave.tar.bz2 -C /opt/agave && \
+    mkdir -p /opt/solana/bin && \
+    cp -r /opt/agave/solana-release/bin/* /opt/solana/bin/ && \
+    rm -rf /tmp/agave.tar.bz2
+ENV PATH="/opt/solana/bin:${PATH}"
 
 
 # ----------------------------------------------------------------------------
 # Builder stage for the doublezero components.
 # ----------------------------------------------------------------------------
-FROM golang:1.24-bookworm AS builder-base
+FROM ubuntu:24.04 AS builder-base
 
 # Install build dependencies and other utilities
 RUN apt update -qq && \
@@ -20,12 +40,23 @@ RUN apt update -qq && \
     libudev-dev llvm libclang-dev \
     protobuf-compiler libssl-dev git iproute2 iputils-ping net-tools tcpdump
 
+# Install go
+ARG GO_VERSION=1.24.3
+RUN ARCH="$(uname -m)" && \
+    case "$ARCH" in \
+    x86_64) GOARCH=amd64 ;; \
+    aarch64) GOARCH=arm64 ;; \
+    *) echo "Unsupported architecture: $ARCH" && exit 1 ;; \
+    esac && \
+    curl -sSL "https://go.dev/dl/go${GO_VERSION}.linux-${GOARCH}.tar.gz" | tar -C /usr/local -xz
+ENV PATH="/usr/local/go/bin:/root/go/bin:${PATH}"
+
 # Install rust
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Copy all the solana binaries
-COPY --from=solana /usr/local/bin/. /usr/local/bin/.
+COPY --from=solana /opt/solana/bin/. /usr/local/bin/.
 
 
 # -----------------------------------------------------------------------------
@@ -135,9 +166,9 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 FROM ubuntu:24.04
 
 # Copy binaries from the builder stage.
-COPY --from=solana /usr/local/bin/solana-test-validator /usr/local/bin/.
-COPY --from=solana /usr/local/bin/solana /usr/local/bin/.
-COPY --from=solana /usr/local/bin/solana-keygen /usr/local/bin/.
+COPY --from=solana /opt/solana/bin/solana-test-validator /usr/local/bin/.
+COPY --from=solana /opt/solana/bin/solana /usr/local/bin/.
+COPY --from=solana /opt/solana/bin/solana-keygen /usr/local/bin/.
 COPY --from=builder-rust /doublezero/bin/. /doublezero/bin/.
 COPY --from=builder-rust-sbf /doublezero/bin/. /doublezero/bin/.
 COPY --from=builder-go /doublezero/bin/. /doublezero/bin/.

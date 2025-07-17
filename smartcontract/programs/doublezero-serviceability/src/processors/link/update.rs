@@ -16,6 +16,7 @@ use solana_program::{
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct LinkUpdateArgs {
     pub code: Option<String>,
+    pub contributor_pk: Option<Pubkey>,
     pub tunnel_type: Option<LinkLinkType>,
     pub bandwidth: Option<u64>,
     pub mtu: Option<u32>,
@@ -77,6 +78,9 @@ pub fn process_update_link(
     //tunnel.tunnel_type = value.tunnel_type;
     if let Some(code) = &value.code {
         link.code = code.clone();
+    }
+    if let Some(contributor_pk) = value.contributor_pk {
+        link.contributor_pk = contributor_pk;
     }
     if let Some(tunnel_type) = value.tunnel_type {
         link.link_type = tunnel_type;

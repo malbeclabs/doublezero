@@ -104,6 +104,7 @@ mod tests {
             index: 1,
             bump_seed: 255,
             code: "test".to_string(),
+            contributor_pk,
             side_a_pk: device1_pk,
             side_z_pk: device2_pk,
             link_type: LinkLinkType::L3,

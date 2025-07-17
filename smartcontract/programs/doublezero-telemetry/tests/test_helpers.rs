@@ -137,6 +137,7 @@ impl LinkCreateArgsExt for LinkCreateArgs {
             index: 0,
             bump_seed: 0,
             code: "".to_string(),
+            contributor_pk: Pubkey::default(),
             side_a_pk: Pubkey::default(),
             side_z_pk: Pubkey::default(),
             link_type: LinkLinkType::L3,
@@ -356,6 +357,7 @@ impl LedgerHelper {
             .create_and_activate_link(
                 LinkCreateArgs {
                     code: "LINK1".to_string(),
+                    contributor_pk,
                     side_a_pk: origin_device_pk,
                     side_z_pk: target_device_pk,
                     link_type: LinkLinkType::L3,
@@ -815,6 +817,7 @@ impl ServiceabilityProgramHelper {
                 index: link.index,
                 bump_seed,
                 code: link.code,
+                contributor_pk: link.contributor_pk,
                 side_a_pk: link.side_a_pk,
                 side_z_pk: link.side_z_pk,
                 link_type: link.link_type,
@@ -825,6 +828,7 @@ impl ServiceabilityProgramHelper {
             }),
             vec![
                 AccountMeta::new(link_pk, false),
+                AccountMeta::new(link.contributor_pk, false),
                 AccountMeta::new_readonly(link.side_a_pk, false),
                 AccountMeta::new_readonly(link.side_z_pk, false),
                 AccountMeta::new(self.global_state_pubkey, false),

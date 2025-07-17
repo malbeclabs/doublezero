@@ -105,14 +105,15 @@ pub struct Link {
     pub tunnel_net: NetworkV4,     // 5 (IP(4 x u8) + Prefix (u8) CIDR)
     pub status: LinkStatus,        // 1
     pub code: String,              // 4 + len
+    pub contributor_pk: Pubkey,    // 32
 }
 
 impl fmt::Display for Link {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, index: {}, side_a_pk: {}, side_z_pk: {}, tunnel_type: {}, bandwidth: {}, mtu: {}, delay_ns: {}, jitter_ns: {}, tunnel_id: {}, tunnel_net: {}, status: {}, code: {}",
-            self.account_type, self.owner, self.index, self.side_a_pk, self.side_z_pk, self.link_type, self.bandwidth, self.mtu, self.delay_ns, self.jitter_ns, self.tunnel_id, &self.tunnel_net, self.status, self.code
+            "account_type: {}, owner: {}, index: {}, side_a_pk: {}, side_z_pk: {}, tunnel_type: {}, bandwidth: {}, mtu: {}, delay_ns: {}, jitter_ns: {}, tunnel_id: {}, tunnel_net: {}, status: {}, code: {}, contributor_pk: {}",
+            self.account_type, self.owner, self.index, self.side_a_pk, self.side_z_pk, self.link_type, self.bandwidth, self.mtu, self.delay_ns, self.jitter_ns, self.tunnel_id, &self.tunnel_net, self.status, self.code, self.contributor_pk
         )
     }
 }
@@ -122,7 +123,7 @@ impl AccountTypeInfo for Link {
         SEED_LINK
     }
     fn size(&self) -> usize {
-        1 + 32 + 16 + 1 + 32 + 32 + 1 + 8 + 4 + 8 + 8 + 2 + 5 + 1 + 4 + self.code.len()
+        1 + 32 + 16 + 1 + 32 + 32 + 1 + 8 + 4 + 8 + 8 + 2 + 5 + 1 + 4 + self.code.len() + 32
     }
     fn index(&self) -> u128 {
         self.index
@@ -155,6 +156,7 @@ impl From<&[u8]> for Link {
             tunnel_net: parser.read_networkv4(),
             status: parser.read_enum(),
             code: parser.read_string(),
+            contributor_pk: parser.read_pubkey(),
         }
     }
 }
@@ -179,6 +181,7 @@ mod tests {
             owner: Pubkey::new_unique(),
             index: 123,
             bump_seed: 1,
+            contributor_pk: Pubkey::new_unique(),
             side_a_pk: Pubkey::new_unique(),
             side_z_pk: Pubkey::new_unique(),
             link_type: LinkLinkType::L3,
@@ -197,6 +200,7 @@ mod tests {
 
         assert_eq!(val.size(), val2.size());
         assert_eq!(val.owner, val2.owner);
+        assert_eq!(val.contributor_pk, val2.contributor_pk);
         assert_eq!(val.side_a_pk, val2.side_a_pk);
         assert_eq!(val.side_z_pk, val2.side_z_pk);
         assert_eq!(val.mtu, val2.mtu);

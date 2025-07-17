@@ -1,6 +1,6 @@
 # **DoubleZero System Overview**
 
-DoubleZero is a permissionless, multi-contributor network designed to facilitate the decentralized interconnection of devices, tunnels, and users on the Solana blockchain. Its primary purpose is to enable multiple organizations or individuals to contribute, manage, and configure network resources—such as devices and tunnels—without relying on a central authority. This approach fosters openness, interoperability, and resilience within the network infrastructure.
+DoubleZero is a permissionless, multi-contributor network designed to facilitate the decentralized interconnection of devices, links, and users on the Solana blockchain. Its primary purpose is to enable multiple organizations or individuals to contribute, manage, and configure network resources—such as devices and tunnels—without relying on a central authority. This approach fosters openness, interoperability, and resilience within the network infrastructure.
 
 ```mermaid
 flowchart LR

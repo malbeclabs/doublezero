@@ -524,6 +524,7 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_owner() {
 
     let fake_link = Link {
         status: LinkStatus::Activated,
+        contributor_pk: Pubkey::default(),
         side_a_pk: origin_device_pk,
         side_z_pk: target_device_pk,
         account_type: AccountType::Link,

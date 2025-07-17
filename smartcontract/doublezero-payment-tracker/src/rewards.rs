@@ -6,10 +6,7 @@
 //!
 //! The rewards from all sources for an epoch are summed and associated with a validator_id
 //!
-use futures::{
-    stream::{self, StreamExt},
-    SinkExt,
-};
+use futures::{stream, StreamExt};
 use reqwest;
 use serde::Deserialize;
 use solana_client::{nonblocking::rpc_client::RpcClient, rpc_config::RpcGetVoteAccountsConfig};

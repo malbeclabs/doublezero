@@ -169,6 +169,7 @@ mod tests {
             index: 1,
             bump_seed: 2,
             code: "tunnel_code".to_string(),
+            contributor_pk,
             side_a_pk: device1_pubkey,
             side_z_pk: device2_pubkey,
             link_type: LinkLinkType::L3,

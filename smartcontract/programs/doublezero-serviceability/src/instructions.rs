@@ -547,6 +547,7 @@ mod tests {
                 index: 123,
                 bump_seed: 255,
                 code: "test".to_string(),
+                contributor_pk: Pubkey::new_unique(),
                 side_a_pk: Pubkey::new_unique(),
                 side_z_pk: Pubkey::new_unique(),
                 link_type: LinkLinkType::L3,

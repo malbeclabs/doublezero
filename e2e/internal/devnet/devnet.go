@@ -317,19 +317,39 @@ func (d *Devnet) Start(ctx context.Context, buildConfig *BuildConfig) error {
 		return fmt.Errorf("failed to start manager: %w", err)
 	}
 
-	// Deploy the serviceability program if it's not already deployed.
-	if _, err := d.DeployServiceabilityProgramIfNotDeployed(ctx); err != nil {
-		return fmt.Errorf("failed to deploy serviceability program: %w", err)
-	}
+	var wg sync.WaitGroup
+	errChan := make(chan error, 2)
 
-	// Initialize the smart contract.
-	if _, err := d.InitSmartContractIfNotInitialized(ctx); err != nil {
-		return fmt.Errorf("failed to initialize smart contract: %w", err)
-	}
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
 
-	// Deploy the telemetry program if it's not already deployed.
-	if _, err := d.DeployTelemetryProgramIfNotDeployed(ctx); err != nil {
-		return fmt.Errorf("failed to deploy telemetry program: %w", err)
+		// Deploy the serviceability program if it's not already deployed.
+		if _, err := d.DeployServiceabilityProgramIfNotDeployed(ctx); err != nil {
+			errChan <- fmt.Errorf("failed to deploy serviceability program: %w", err)
+		}
+
+		// Initialize the smart contract.
+		if _, err := d.InitSmartContractIfNotInitialized(ctx); err != nil {
+			errChan <- fmt.Errorf("failed to initialize smart contract: %w", err)
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+
+		// Deploy the telemetry program if it's not already deployed.
+		if _, err := d.DeployTelemetryProgramIfNotDeployed(ctx); err != nil {
+			errChan <- fmt.Errorf("failed to deploy telemetry program: %w", err)
+		}
+	}()
+
+	wg.Wait()
+	close(errChan)
+	for err := range errChan {
+		if err != nil {
+			return fmt.Errorf("failed to deploy programs: %w", err)
+		}
 	}
 
 	// Start the controller if it's not already running.

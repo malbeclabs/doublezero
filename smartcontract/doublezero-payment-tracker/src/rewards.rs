@@ -29,6 +29,7 @@ struct JitoReward {
     // mev_commission: u64,
 }
 
+#[allow(dead_code)] // These fields will only be used by consumers of the API (like in the test)
 #[derive(Deserialize, Debug)]
 pub struct Reward {
     validator_id: String,
@@ -47,15 +48,18 @@ pub async fn get_rewards(
     let inflation_rewards = get_inflation_rewards(&client, validator_ids, epoch).await?;
     let jito_rewards = get_jito_rewards(validator_ids, epoch).await?;
     for validator_id in validator_ids {
-        let jito_reward = jito_rewards.get(validator_id).unwrap();
-        let inflation_reward = inflation_rewards.get(validator_id).unwrap();
+        let jito_reward = jito_rewards.get(validator_id).cloned().unwrap_or_default();
+        let inflation_reward = inflation_rewards
+            .get(validator_id)
+            .cloned()
+            .unwrap_or_default();
         let mut total_reward: u64 = 0;
         // TODO add block_rewards
         total_reward += jito_reward + inflation_reward;
         let rewards = Reward {
             validator_id: validator_id.to_string(),
-            jito: *jito_reward,
-            inflation: *inflation_reward,
+            jito: jito_reward,
+            inflation: inflation_reward,
             total: total_reward,
         };
         validator_rewards.push(rewards);
@@ -83,7 +87,7 @@ async fn get_jito_rewards(
 ) -> eyre::Result<HashMap<String, u64>> {
     let jito_rewards_vec: Vec<u64> = stream::iter(validator_ids).map(|validator_id| {
         async move {
-                let url = format!("https://kobe.mainnet.jito.network/api/v1/validator_rewards?epoch={epoch}&vote_account={validator_id}");
+            let url = format!("https://kobe.mainnet.jito.network/api/v1/validator_rewards?epoch={epoch}&vote_account={validator_id}");
                 match reqwest::get(url).await {
                     Ok(resp) => match resp.json::<JitoRewards>().await {
                         Ok(rewards) => rewards.rewards.iter().map(|reward| reward.mev_revenue).sum::<u64>(),

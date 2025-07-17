@@ -231,7 +231,7 @@ func buildSummaries(ctx context.Context, log *slog.Logger, rpcEndpoint, servicea
 
 				account, err := tel.GetDeviceLatencySamples(ctx, q.origin.PubKey, q.target.PubKey, linkPK, q.epoch)
 				if err != nil {
-					errChan <- fmt.Errorf("failed to get device latency samples: %w", err)
+					log.Warn("Failed to get device latency samples", "error", err, "origin", q.origin.Code, "target", q.target.Code, "link", link.Code, "epoch", q.epoch)
 					return
 				}
 

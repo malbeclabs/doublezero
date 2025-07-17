@@ -1,0 +1,25 @@
+[package]
+name = "doublezero-program-tools"
+description = "DoubleZero SVM Utilities"
+publish = false
+
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+bincode.workspace = true
+borsh = { workspace = true, features = ["derive"] }
+bytemuck = { workspace = true, features = ["derive"] }
+sha2-const-stable.workspace = true
+solana-account-info.workspace = true
+solana-cpi.workspace = true
+solana-loader-v3-interface = { workspace = true, features = ["serde"] }
+solana-msg.workspace = true
+solana-program-error.workspace = true
+solana-pubkey.workspace = true
+solana-system-interface.workspace = true
+solana-sysvar = { workspace = true, features = ["bincode"] }

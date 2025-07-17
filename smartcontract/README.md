@@ -28,9 +28,9 @@ flowchart LR
         U3["User 3<br/>Server"]
     end
 
-    U1 -->|GRE Tunnel| A1
-    U2 -->|GRE Tunnel| B1
-    U3 -->|GRE Tunnel| B2
+    U1 -->|GRE Tunnel| A1:::circuit
+    U2 -->|GRE Tunnel| B1:::circuit
+    U3 -->|GRE Tunnel| B2:::circuit
 
     classDef device fill:#f0f9ff,stroke:#0c4a6e,stroke-width:1px;
     classDef circuit stroke-dasharray: 5 5,stroke:#3b82f6,stroke-width:2px;

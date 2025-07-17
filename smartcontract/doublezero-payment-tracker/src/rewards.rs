@@ -6,7 +6,10 @@
 //!
 //! The rewards from all sources for an epoch are summed and associated with a validator_id
 //!
-use futures::stream::{self, StreamExt};
+use futures::{
+    stream::{self, StreamExt},
+    SinkExt,
+};
 use reqwest;
 use serde::Deserialize;
 use solana_client::{nonblocking::rpc_client::RpcClient, rpc_config::RpcGetVoteAccountsConfig};
@@ -17,13 +20,13 @@ use std::{collections::HashMap, str::FromStr};
 struct JitoRewards {
     // TODO: check total_count to see if it exceeds entries in a single response
     // limit - default: 100, max: 10000
-    // total_count: u64,
+    total_count: u64,
     rewards: Vec<JitoReward>,
 }
 
 #[derive(Deserialize, Debug)]
 struct JitoReward {
-    // vote_account: String,
+    vote_account: String,
     // epoch: u64,
     mev_revenue: u64,
     // mev_commission: u64,
@@ -85,36 +88,54 @@ async fn get_jito_rewards(
     validator_ids: &[String],
     epoch: u64,
 ) -> eyre::Result<HashMap<String, u64>> {
-    let jito_rewards_vec: Vec<u64> = stream::iter(validator_ids).map(|validator_id| {
-        async move {
-            let url = format!("https://kobe.mainnet.jito.network/api/v1/validator_rewards?epoch={epoch}&vote_account={validator_id}");
-                match reqwest::get(url).await {
-                    Ok(resp) => match resp.json::<JitoRewards>().await {
-                        Ok(rewards) => rewards.rewards.iter().map(|reward| reward.mev_revenue).sum::<u64>(),
-                        Err(e) => {
-                            eprintln!("Failed to parse jito reward for {validator_id} with error: {e:#?}");
-                            // should it return something other than zero to denote an error?
-                            0
-                        }
-                    },
-                    Err(e) => {
-                        eprintln!("Failed to fetch jito reward for {validator_id} with error: {e:#?}");
-                        // should we have retry/backoff?
-                        0
-                    }
+    let url = format!(
+        // TODO: make limit an env var
+        // based on very unscientific checking of a number of epochs, 1200 is the highest count
+        "https://kobe.mainnet.jito.network/api/v1/validator_rewards?epoch={epoch}&limit=1500"
+    );
+
+    let rewards = match reqwest::get(url).await {
+        Ok(resp) => match resp.json::<JitoRewards>().await {
+            Ok(jito_rewards) => {
+                if jito_rewards.total_count > 1500 {
+                    println!(
+                        "Unexpectedly received total count higher than 1500; actual count is {}",
+                        jito_rewards.total_count
+                    );
                 }
+                jito_rewards
+            }
 
+            Err(e) => {
+                return Err(eyre::eyre!(
+                    "Failed to parse Jito rewards for epoch {epoch}: {e:#?}"
+                ));
+            }
+        },
+        Err(e) => {
+            return Err(eyre::eyre!(
+                "Failed to fetch Jito rewards for epoch {epoch}: {e:#?}"
+            ));
         }
-    })
-    .buffer_unordered(20)
-    .collect()
-    .await;
+    };
 
-    let jito_rewards: HashMap<String, u64> = validator_ids
-        .iter()
-        .cloned()
-        .zip(jito_rewards_vec)
-        .collect();
+    let jito_rewards: HashMap<String, u64> = stream::iter(validator_ids)
+        .map(|validator_id| {
+            let validator_id = validator_id.to_string();
+            let rewards = &rewards.rewards;
+            async move {
+                let mev_revenue = rewards
+                    .iter()
+                    .find(|reward| *validator_id == reward.vote_account)
+                    .map(|reward| reward.mev_revenue)
+                    .unwrap_or(0);
+                (validator_id, mev_revenue)
+            }
+        })
+        .buffer_unordered(10)
+        .collect()
+        .await;
+
     Ok(jito_rewards)
 }
 

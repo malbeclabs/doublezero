@@ -10,19 +10,19 @@ use std::io::Write;
 pub struct SetGlobalConfigCliCommand {
     /// Local ASN (Autonomous System Number)
     #[arg(long)]
-    pub local_asn: u32,
+    pub local_asn: Option<u32>,
     /// Remote ASN (Autonomous System Number)
     #[arg(long)]
-    pub remote_asn: u32,
+    pub remote_asn: Option<u32>,
     /// Link tunnel block in CIDR format
     #[arg(long)]
-    device_tunnel_block: NetworkV4,
+    device_tunnel_block: Option<NetworkV4>,
     /// Device tunnel block in CIDR format
     #[arg(long)]
-    user_tunnel_block: NetworkV4,
+    user_tunnel_block: Option<NetworkV4>,
     /// Multicast group block in CIDR format
     #[arg(long)]
-    multicastgroup_block: NetworkV4,
+    multicastgroup_block: Option<NetworkV4>,
 }
 
 impl SetGlobalConfigCliCommand {
@@ -72,28 +72,90 @@ mod tests {
         client
             .expect_set_globalconfig()
             .with(predicate::eq(SetGlobalConfigCommand {
-                local_asn: 1234,
-                remote_asn: 5678,
-                device_tunnel_block: "10.20.0.0/16".parse().unwrap(),
-                user_tunnel_block: "10.10.0.0/16".parse().unwrap(),
-                multicastgroup_block: "224.2.0.0/4".parse().unwrap(),
+                local_asn: Some(1234),
+                remote_asn: Some(5678),
+                device_tunnel_block: "10.20.0.0/16".parse().ok(),
+                user_tunnel_block: "10.10.0.0/16".parse().ok(),
+                multicastgroup_block: "224.2.0.0/4".parse().ok(),
             }))
             .returning(move |_| Ok(signature));
 
         /*****************************************************************************************************/
-        let mut output = Vec::new();
+        // Set all global config; reflects initializing global config or updating all config values
+        let mut output1 = Vec::new();
         let res = SetGlobalConfigCliCommand {
-            local_asn: 1234,
-            remote_asn: 5678,
-            device_tunnel_block: "10.20.0.0/16".parse().unwrap(),
-            user_tunnel_block: "10.10.0.0/16".parse().unwrap(),
-            multicastgroup_block: "224.2.0.0/4".parse().unwrap(),
+            local_asn: Some(1234),
+            remote_asn: Some(5678),
+            device_tunnel_block: "10.20.0.0/16".parse().ok(),
+            user_tunnel_block: "10.10.0.0/16".parse().ok(),
+            multicastgroup_block: "224.2.0.0/4".parse().ok(),
+        }
+        .execute(&client, &mut output1);
+        assert!(res.is_ok());
+        let output_str1 = String::from_utf8(output1).unwrap();
+        assert_eq!(
+            output_str1,"Signature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n"
+        );
+
+        // Set partial global config; updating select config values
+        client
+            .expect_set_globalconfig()
+            .with(predicate::eq(SetGlobalConfigCommand {
+                local_asn: Some(9876),
+                remote_asn: Some(5432),
+                device_tunnel_block: None,
+                user_tunnel_block: None,
+                multicastgroup_block: None,
+            }))
+            .returning(move |_| Ok(signature));
+        let mut output2 = Vec::new();
+        let res = SetGlobalConfigCliCommand {
+            local_asn: Some(9876),
+            remote_asn: Some(5432),
+            device_tunnel_block: None,
+            user_tunnel_block: None,
+            multicastgroup_block: None,
+        }
+        .execute(&client, &mut output2);
+        assert!(res.is_ok());
+        let output_str2 = String::from_utf8(output2).unwrap();
+        assert_eq!(
+            output_str2,"Signature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n"
+        );
+    }
+
+    #[test]
+    fn test_cli_globalconfig_set_empty() {
+        let mut client = create_test_client();
+
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_set_globalconfig()
+            .with(predicate::eq(SetGlobalConfigCommand {
+                local_asn: None,
+                remote_asn: None,
+                device_tunnel_block: None,
+                user_tunnel_block: None,
+                multicastgroup_block: None,
+            }))
+            .returning(move |_| {
+                Err(eyre::eyre!(
+                    "Invalid SetGlobalConfigCommand; no updates specified"
+                ))
+            });
+
+        let mut output = vec![];
+        let res = SetGlobalConfigCliCommand {
+            local_asn: None,
+            remote_asn: None,
+            device_tunnel_block: None,
+            user_tunnel_block: None,
+            multicastgroup_block: None,
         }
         .execute(&client, &mut output);
-        assert!(res.is_ok());
-        let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(
-            output_str,"Signature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n"
-        );
+        assert!(res.is_err());
     }
 }

@@ -263,7 +263,7 @@ stateDiagram-v2
 
 ```
 
-In the DoubleZero system, each Link follows a defined lifecycle that ensures it is properly validated and provisioned before it becomes active in the network. The diagram above illustrates the possible states a  can transition through:
+In the DoubleZero system, each Link follows a defined lifecycle that ensures it is properly validated and provisioned before it becomes active in the network. The diagram above illustrates the possible states a Link can transition through:
 
 - **Pending**: This is the initial state when a contributor creates a link. At this stage, the link information is registered on-chain but it is not yet active or usable. It is awaiting review and approval by the activator process to change it to Activated. But if it fails the approval process, the Activator can change the state to Rejected.
 - **Activated**: Once a Link is approved—by an off-chain oracle process known as the *Activator*—it transitions to the `Activated` state. During this step, the Activator allocates the necessary resources (such as GRE configurations, IP allocations, and controller settings) and registers the device so it can begin serving users. While in this state, an actor can change the link’s state to Suspended or Deleting.

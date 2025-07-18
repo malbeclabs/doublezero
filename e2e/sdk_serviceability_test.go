@@ -52,12 +52,7 @@ func TestE2E_SDK_Serviceability(t *testing.T) {
 
 		config := client.GetConfig()
 
-		initialLocalAsn := config.Local_asn
-		initialRemoteAsn := config.Remote_asn
-		initialDeviceBlock := config.TunnelTunnelBlock
-		initialUserBlock := config.UserTunnelBlock
-		initialMulticastBlock := config.MulticastGroupBlock
-		newAsn := initialRemoteAsn + 100
+		newAsn := config.Remote_asn + 100
 
 		_, err = dn.Manager.Exec(ctx, []string{"doublezero", "global-config", "set", "--remote-asn", strconv.Itoa(int(newAsn))})
 		require.NoError(t, err, "error setting global config value")
@@ -66,8 +61,16 @@ func TestE2E_SDK_Serviceability(t *testing.T) {
 			err := client.Load(ctx)
 			require.NoError(t, err, "error while reloading onchain state to verify update")
 
-			config = client.GetConfig()
-			return newAsn == config.Remote_asn && initialLocalAsn == config.Local_asn && initialDeviceBlock == config.TunnelTunnelBlock && initialUserBlock == config.UserTunnelBlock && initialMulticastBlock == config.MulticastGroupBlock
-		}, 30*time.Second, 1*time.Second)
+			got := client.GetConfig()
+			want := config
+			want.Remote_asn = newAsn
+
+			if want == got {
+				return true
+			}
+
+			log.Debug("--> Waiting for global config update", "want", want, "got", got)
+			return false
+		}, 30*time.Second, 3*time.Second)
 	})
 }

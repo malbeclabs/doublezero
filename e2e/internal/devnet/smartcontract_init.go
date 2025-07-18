@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 )
@@ -125,6 +126,30 @@ func (dn *Devnet) InitSmartContract(ctx context.Context) error {
 	`})
 	if err != nil {
 		return fmt.Errorf("failed to execute script initializing smart contract: %w", err)
+	}
+
+	client, err := dn.Ledger.GetServiceabilityClient()
+	if err != nil {
+		return fmt.Errorf("failed to get serviceability program client: %w", err)
+	}
+
+	// Wait for the global config to be populated.
+	err = pollUntil(ctx, func() (bool, error) {
+		err := client.Load(ctx)
+		if err != nil {
+			return false, fmt.Errorf("failed to load serviceability program client: %w", err)
+		}
+		config := client.GetConfig()
+
+		if config.Local_asn != 0 {
+			return true, nil
+		}
+
+		dn.log.Debug("--> Waiting for global config update", "config", config)
+		return false, nil
+	}, 30*time.Second, 3*time.Second)
+	if err != nil {
+		return fmt.Errorf("failed to wait for global config to be populated: %w", err)
 	}
 
 	dn.log.Info("--> Smart contract initialized")

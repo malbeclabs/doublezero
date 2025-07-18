@@ -56,12 +56,12 @@ func (f *Funder) Run(ctx context.Context) error {
 				f.log.Error("Failed to get balance", "error", err)
 				continue
 			}
-			balanceSOL := float64(balance.Value) / float64(solana.LAMPORTS_PER_SOL)
-			f.log.Debug("Funder balance", "balance", balanceSOL)
+			balanceLamports := balance.Value
+			f.log.Debug("Funder balance", "balance", balanceLamports)
 
 			// Check that we have enough SOL to top up metrics publishers.
-			if balanceSOL < f.cfg.TopUpSOL {
-				f.log.Error("Funder balance is below minimum", "balance", balanceSOL, "minBalance", f.cfg.TopUpSOL)
+			if balanceLamports < uint64(f.cfg.TopUpSOL*float64(solana.LAMPORTS_PER_SOL)) {
+				f.log.Error("Funder balance is below minimum", "balance", balanceLamports, "minBalance", f.cfg.TopUpSOL)
 				continue
 			}
 
@@ -82,12 +82,12 @@ func (f *Funder) Run(ctx context.Context) error {
 					f.log.Error("Failed to get balance", "error", err)
 					continue
 				}
-				balanceSOL := float64(balance.Value) / float64(solana.LAMPORTS_PER_SOL)
-				f.log.Debug("Metrics publisher balance", "device", devicePK, "metricsPublisher", metricsPublisherPK, "balance", balanceSOL, "minBalance", f.cfg.MinBalanceSOL)
+				balanceLamports := balance.Value
+				f.log.Debug("Metrics publisher balance", "device", devicePK, "metricsPublisher", metricsPublisherPK, "balance", balanceLamports, "minBalance", f.cfg.MinBalanceSOL)
 
 				// If balance is below minimum, top it up.
-				if balanceSOL < f.cfg.MinBalanceSOL {
-					f.log.Info("Topping up metrics publisher", "device", devicePK, "metricsPublisher", metricsPublisherPK, "balance", balanceSOL, "topUp", f.cfg.TopUpSOL)
+				if balanceLamports < uint64(f.cfg.MinBalanceSOL*float64(solana.LAMPORTS_PER_SOL)) {
+					f.log.Info("Topping up metrics publisher", "device", devicePK, "metricsPublisher", metricsPublisherPK, "balance", balanceLamports, "topUp", f.cfg.TopUpSOL)
 
 					_, err := transferFunds(ctx, f.cfg.Solana, f.cfg.Signer, metricsPublisherPK, uint64(f.cfg.TopUpSOL*float64(solana.LAMPORTS_PER_SOL)), nil)
 					if err != nil {
@@ -118,8 +118,8 @@ func waitForBalance(ctx context.Context, client SolanaClient, account solana.Pub
 		if err != nil {
 			return fmt.Errorf("failed to get balance: %w", err)
 		}
-		balanceSOL := float64(balance.Value) / float64(solana.LAMPORTS_PER_SOL)
-		if balanceSOL >= minBalanceSOL {
+		balanceLamports := balance.Value
+		if balanceLamports >= uint64(minBalanceSOL*float64(solana.LAMPORTS_PER_SOL)) {
 			return nil
 		}
 

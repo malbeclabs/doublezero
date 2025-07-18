@@ -21,7 +21,7 @@ use solana_transaction_status_client_types::{
     TransactionDetails, UiConfirmedBlock, UiTransactionEncoding,
 };
 
-use std::{collections::HashMap, str::FromStr};
+use std::{collections::HashMap, env, str::FromStr};
 
 const JITO_BASE_URL: &str = "https://kobe.mainnet.jito.network/api/v1/validator_rewards";
 

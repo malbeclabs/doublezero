@@ -10,7 +10,6 @@ PermissionsStartOnly=True
 RuntimeDirectory=doublezero-activator
 RuntimeDirectoryMode=0775
 ExecStart=/usr/local/bin/doublezero-activator
-PIDFile=/var/run/doublezero-activator
 Restart=always
 RestartSec=15
 

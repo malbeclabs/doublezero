@@ -857,6 +857,55 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		require.GreaterOrEqual(t, balanceCheckCount.Load(), int32(2), "should retry balance during wait")
 	})
 
+	t.Run("returns nil on context cancellation", func(t *testing.T) {
+		t.Parallel()
+
+		signer := solana.NewWallet().PrivateKey
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		svc := &mockServiceability{
+			LoadFunc: func(context.Context) error { return nil },
+			GetDevicesFunc: func() []serviceability.Device {
+				// Minimal valid device to trigger loop
+				return nil
+			},
+			ProgramIDFunc: func() solana.PublicKey { return solana.PublicKey{} },
+		}
+
+		sol := &mockSolana{
+			GetBalanceFunc: func(context.Context, solana.PublicKey, solanarpc.CommitmentType) (*solanarpc.GetBalanceResult, error) {
+				return &solanarpc.GetBalanceResult{Value: 10 * solana.LAMPORTS_PER_SOL}, nil
+			},
+		}
+
+		f, err := funder.New(funder.Config{
+			Logger:         logger,
+			Serviceability: svc,
+			Solana:         sol,
+			Signer:         signer,
+			MinBalanceSOL:  1,
+			TopUpSOL:       1,
+			Interval:       10 * time.Millisecond,
+		})
+		require.NoError(t, err)
+
+		done := make(chan error, 1)
+		go func() {
+			done <- f.Run(ctx)
+		}()
+
+		time.Sleep(10 * time.Millisecond)
+		cancel()
+
+		select {
+		case err := <-done:
+			require.NoError(t, err, "expected nil, got %v", err)
+		case <-time.After(100 * time.Millisecond):
+			t.Fatal("timeout waiting for Run to return")
+		}
+	})
 }
 
 type callTracker struct {

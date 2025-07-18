@@ -41,7 +41,8 @@ func (f *Funder) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			f.log.Info("Funder stopped by context", "error", ctx.Err())
+			return nil
 		case <-ticker.C:
 			err := f.cfg.Serviceability.Load(ctx)
 			if err != nil {

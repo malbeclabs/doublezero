@@ -55,6 +55,7 @@ type DevnetSpec struct {
 
 	Ledger     LedgerSpec
 	Manager    ManagerSpec
+	Funder     FunderSpec
 	Controller ControllerSpec
 	Activator  ActivatorSpec
 	Devices    map[string]DeviceSpec
@@ -77,6 +78,7 @@ type Devnet struct {
 
 	Ledger     *Ledger
 	Manager    *Manager
+	Funder     *Funder
 	Controller *Controller
 	Activator  *Activator
 	Devices    map[string]*Device
@@ -107,6 +109,10 @@ func (s *DevnetSpec) Validate() error {
 
 	if err := s.Manager.Validate(); err != nil {
 		return fmt.Errorf("manager: %w", err)
+	}
+
+	if err := s.Funder.Validate(); err != nil {
+		return fmt.Errorf("funder: %w", err)
 	}
 
 	if err := s.Controller.Validate(s.CYOANetwork); err != nil {
@@ -174,6 +180,11 @@ func New(spec DevnetSpec, log *slog.Logger, dockerClient *client.Client, subnetA
 		} else {
 			log.Info("--> Using existing manager keypair", "path", managerKeypairPath)
 		}
+	}
+
+	// If the funder keypair path is not provided, use the manager keypair path.
+	if spec.Funder.KeypairPath == "" {
+		spec.Funder.KeypairPath = spec.Manager.ManagerKeypairPath
 	}
 
 	// If the serviceability program keypair path is not provided, generate a new keypair or use an
@@ -254,6 +265,10 @@ func New(spec DevnetSpec, log *slog.Logger, dockerClient *client.Client, subnetA
 		dn:  dn,
 		log: log.With("component", "manager"),
 	}
+	dn.Funder = &Funder{
+		dn:  dn,
+		log: log.With("component", "funder"),
+	}
 	dn.Controller = &Controller{
 		dn:  dn,
 		log: log.With("component", "controller"),
@@ -315,6 +330,11 @@ func (d *Devnet) Start(ctx context.Context, buildConfig *BuildConfig) error {
 	// Start the manager.
 	if _, err := d.Manager.StartIfNotRunning(ctx); err != nil {
 		return fmt.Errorf("failed to start manager: %w", err)
+	}
+
+	// Start the funder if it's not already running.
+	if _, err := d.Funder.StartIfNotRunning(ctx); err != nil {
+		return fmt.Errorf("failed to start funder: %w", err)
 	}
 
 	var wg sync.WaitGroup

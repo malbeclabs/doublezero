@@ -16,7 +16,6 @@ import (
 	dockercontainer "github.com/docker/docker/api/types/container"
 	dockerfilters "github.com/docker/docker/api/types/filters"
 	dockervolume "github.com/docker/docker/api/types/volume"
-	"github.com/docker/go-connections/nat"
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
@@ -36,7 +35,6 @@ const (
 
 type LedgerSpec struct {
 	ContainerImage string
-	ExternalHost   string
 }
 
 func (s *LedgerSpec) Validate() error {
@@ -44,15 +42,6 @@ func (s *LedgerSpec) Validate() error {
 	// If the container image is not set, use the DZ_LEDGER_IMAGE environment variable.
 	if s.ContainerImage == "" {
 		s.ContainerImage = os.Getenv("DZ_LEDGER_IMAGE")
-	}
-
-	// If the external host is not set, use localhost, assuming the test is running in a docker container.
-	localhost := os.Getenv("DIND_LOCALHOST")
-	if localhost == "" {
-		localhost = "localhost"
-	}
-	if s.ExternalHost == "" {
-		s.ExternalHost = localhost
 	}
 
 	return nil
@@ -137,7 +126,7 @@ func (l *Ledger) StartIfNotRunning(ctx context.Context) (bool, error) {
 		}
 
 		// Wait for the ledger to be healthy.
-		err = waitForSolanaReady(ctx, l.log, l.dn.Spec.Ledger.ExternalHost, l.ExternalRPCPort)
+		err = waitForSolanaReady(ctx, l.log, l.dn.ExternalHost, l.ExternalRPCPort)
 		if err != nil {
 			return false, fmt.Errorf("failed to wait for ledger to be healthy: %w", err)
 		}
@@ -221,7 +210,7 @@ func (l *Ledger) Start(ctx context.Context) error {
 	}
 
 	// Wait for the ledger to be healthy.
-	err = waitForSolanaReady(ctx, l.log, l.dn.Spec.Ledger.ExternalHost, l.ExternalRPCPort)
+	err = waitForSolanaReady(ctx, l.log, l.dn.ExternalHost, l.ExternalRPCPort)
 	if err != nil {
 		return fmt.Errorf("failed to wait for ledger to be healthy: %w", err)
 	}
@@ -232,34 +221,14 @@ func (l *Ledger) Start(ctx context.Context) error {
 
 func (l *Ledger) setState(ctx context.Context, containerID string) error {
 	// Wait for RPC port to be exposed.
-	var loggedWait bool
-	timeout := 10 * time.Second
-	var attempts int
-	var container dockercontainer.InspectResponse
-	var port int
-	err := pollUntil(ctx, func() (bool, error) {
-		attempts++
-		var err error
-		container, err = l.dn.dockerClient.ContainerInspect(ctx, containerID)
-		if err != nil {
-			return false, fmt.Errorf("failed to inspect container: %w", err)
-		}
-		ports, ok := container.NetworkSettings.Ports[nat.Port(fmt.Sprintf("%d/tcp", internalLedgerRPCPort))]
-		if !ok || len(ports) == 0 {
-			if !loggedWait && attempts > 1 {
-				l.log.Debug("--> Waiting for ledger RPC port to be exposed", "container", shortContainerID(container.ID), "timeout", timeout)
-				loggedWait = true
-			}
-			return false, nil
-		}
-		port, err = strconv.Atoi(ports[0].HostPort)
-		if err != nil {
-			return false, fmt.Errorf("failed to get RPC port: %w", err)
-		}
-		return true, nil
-	}, timeout, 500*time.Millisecond)
+	port, err := l.dn.waitForContainerPortExposed(ctx, containerID, internalLedgerRPCPort, 10*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to wait for ledger RPC port to be exposed: %w", err)
+	}
+
+	container, err := l.dn.dockerClient.ContainerInspect(ctx, containerID)
+	if err != nil {
+		return fmt.Errorf("failed to inspect container: %w", err)
 	}
 
 	l.ContainerID = shortContainerID(container.ID)
@@ -316,7 +285,7 @@ func waitForSolanaReady(ctx context.Context, log *slog.Logger, rpcHost string, r
 }
 
 func (l *Ledger) GetServiceabilityClient() (*serviceability.Client, error) {
-	endpoint := "http://" + net.JoinHostPort(l.dn.Spec.Ledger.ExternalHost, strconv.Itoa(l.ExternalRPCPort))
+	endpoint := "http://" + net.JoinHostPort(l.dn.ExternalHost, strconv.Itoa(l.ExternalRPCPort))
 	rpcClient := rpc.New(endpoint)
 	programID, err := solana.PublicKeyFromBase58(l.dn.Manager.ServiceabilityProgramID)
 	if err != nil {
@@ -327,12 +296,12 @@ func (l *Ledger) GetServiceabilityClient() (*serviceability.Client, error) {
 }
 
 func (l *Ledger) GetRPCClient() *rpc.Client {
-	endpoint := "http://" + net.JoinHostPort(l.dn.Spec.Ledger.ExternalHost, strconv.Itoa(l.ExternalRPCPort))
+	endpoint := "http://" + net.JoinHostPort(l.dn.ExternalHost, strconv.Itoa(l.ExternalRPCPort))
 	return rpc.New(endpoint)
 }
 
 func (l *Ledger) GetTelemetryClient(agentPrivateKey *solana.PrivateKey) (*telemetry.Client, error) {
-	endpoint := "http://" + net.JoinHostPort(l.dn.Spec.Ledger.ExternalHost, strconv.Itoa(l.ExternalRPCPort))
+	endpoint := "http://" + net.JoinHostPort(l.dn.ExternalHost, strconv.Itoa(l.ExternalRPCPort))
 	rpcClient := rpc.New(endpoint)
 	programID, err := solana.PublicKeyFromBase58(l.dn.Manager.TelemetryProgramID)
 	if err != nil {

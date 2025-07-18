@@ -37,6 +37,8 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	require.NoError(t, err)
 	serviceabilityProgramKeypairPath := filepath.Join(currentDir, "data", "serviceability-program-keypair.json")
 
+	minBalanceSOL := 3.0
+	topUpSOL := 5.0
 	dn, err := devnet.New(devnet.DevnetSpec{
 		DeployID:  deployID,
 		DeployDir: t.TempDir(),
@@ -46,6 +48,12 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 		},
 		Manager: devnet.ManagerSpec{
 			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
+		},
+		Funder: devnet.FunderSpec{
+			Verbose:       true,
+			MinBalanceSOL: minBalanceSOL,
+			TopUpSOL:      topUpSOL,
+			Interval:      3 * time.Second,
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
@@ -66,10 +74,6 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 		telemetryKeypairPath := t.TempDir() + "/la2-dz01-telemetry-keypair.json"
 		require.NoError(t, os.WriteFile(telemetryKeypairPath, telemetryKeypairJSON, 0600))
 		telemetryKeypairPK := telemetryKeypair.PublicKey()
-
-		// Fund the telemetry publisher account.
-		err = airdropAndWait(t.Context(), dn.Ledger.GetRPCClient(), telemetryKeypairPK, 10_000_000_000)
-		require.NoError(t, err)
 
 		// Add the la2-dz01 device.
 		_, err = dn.AddDevice(t.Context(), devnet.DeviceSpec{
@@ -96,6 +100,9 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
+
+		// Wait for the telemetry publisher account to be funded.
+		requireEventuallyFunded(t, log, dn.Ledger.GetRPCClient(), telemetryKeypairPK, minBalanceSOL, "telemetry publisher")
 	}()
 	go func() {
 		defer wg.Done()
@@ -106,10 +113,6 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 		telemetryKeypairPath := t.TempDir() + "/ny5-dz01-telemetry-keypair.json"
 		require.NoError(t, os.WriteFile(telemetryKeypairPath, telemetryKeypairJSON, 0600))
 		telemetryKeypairPK := telemetryKeypair.PublicKey()
-
-		// Fund the telemetry publisher account.
-		err = airdropAndWait(t.Context(), dn.Ledger.GetRPCClient(), telemetryKeypairPK, 10_000_000_000)
-		require.NoError(t, err)
 
 		// Add the ny5-dz01 device.
 		_, err = dn.AddDevice(t.Context(), devnet.DeviceSpec{
@@ -134,6 +137,9 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
+
+		// Wait for the telemetry publisher account to be funded.
+		requireEventuallyFunded(t, log, dn.Ledger.GetRPCClient(), telemetryKeypairPK, minBalanceSOL, "telemetry publisher")
 	}()
 	wg.Wait()
 

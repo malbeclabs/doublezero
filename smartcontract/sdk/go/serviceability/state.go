@@ -87,18 +87,19 @@ const (
 )
 
 type Device struct {
-	AccountType    AccountType
-	Owner          [32]uint8
-	Index          Uint128
-	Bump_seed      uint8
-	LocationPubKey [32]uint8
-	ExchangePubKey [32]uint8
-	DeviceType     uint8
-	PublicIp       [4]uint8
-	Status         DeviceStatus
-	Code           string
-	DzPrefixes     [][5]uint8
-	PubKey         [32]byte
+	AccountType            AccountType
+	Owner                  [32]uint8
+	Index                  Uint128
+	Bump_seed              uint8
+	LocationPubKey         [32]uint8
+	ExchangePubKey         [32]uint8
+	DeviceType             uint8
+	PublicIp               [4]uint8
+	Status                 DeviceStatus
+	Code                   string
+	DzPrefixes             [][5]uint8
+	MetricsPublisherPubKey [32]uint8
+	PubKey                 [32]byte
 }
 
 type LinkLinkType uint8

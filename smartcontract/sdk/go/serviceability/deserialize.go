@@ -53,6 +53,7 @@ func DeserializeDevice(reader *ByteReader, dev *Device) {
 	dev.Status = DeviceStatus(reader.ReadU8())
 	dev.Code = reader.ReadString()
 	dev.DzPrefixes = reader.ReadNetworkV4Slice()
+	dev.MetricsPublisherPubKey = reader.ReadPubkey()
 	dev.PubKey = reader.ReadPubkey()
 }
 

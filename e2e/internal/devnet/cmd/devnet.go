@@ -78,6 +78,10 @@ func NewLocalDevnet(log *slog.Logger, deployID string) (*LocalDevnet, error) {
 		Manager: devnet.ManagerSpec{
 			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
 		},
+		Funder: devnet.FunderSpec{
+			Verbose:  true,
+			Interval: 10 * time.Second,
+		},
 	}, log, dockerClient, subnetAllocator)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create devnet: %w", err)

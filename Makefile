@@ -100,7 +100,7 @@ rust-ci: rust-build rust-lint rust-test
 # -----------------------------------------------------------------------------
 .PHONY: e2e-test
 e2e-test:
-	cd e2e && $(MAKE) test $(if $(parallel),parallel=$(parallel)) $(if $(run),run=$(run))
+	cd e2e && $(MAKE) test
 
 .PHONY: e2e-build
 e2e-build:

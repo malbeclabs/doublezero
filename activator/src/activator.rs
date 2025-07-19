@@ -21,7 +21,7 @@ use doublezero_sdk::{
     AccountData, DZClient, Device, DeviceStatus, Exchange, GetGlobalConfigCommand, LinkStatus,
     Location, MulticastGroup, ProgramVersion, UserStatus,
 };
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use solana_sdk::pubkey::Pubkey;
 use std::{
     collections::HashMap,
@@ -82,7 +82,7 @@ impl Activator {
             match GetGlobalConfigCommand.execute(&client) {
                 Ok(result) => break result,
                 Err(_) => {
-                    info!("Waiting for config...");
+                    warn!("Waiting for config...");
                     thread::sleep(Duration::from_secs(10));
                 }
             }

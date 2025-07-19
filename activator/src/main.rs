@@ -1,6 +1,6 @@
 use clap::Parser;
 use futures::{future::LocalBoxFuture, FutureExt};
-use log::{error, info};
+use log::{error, info, LevelFilter};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -21,9 +21,9 @@ mod utils;
 
 #[derive(Parser, Debug)]
 #[command(term_width = 0)]
-#[command(name = "Doublezero Activator")]
+#[command(name = "DoubleZero Activator")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
-#[command(about = "Double Zero")]
+#[command(about = "DoubleZero")]
 struct AppArgs {
     #[arg(long)]
     rpc: Option<String>,
@@ -48,12 +48,15 @@ struct AppArgs {
 
     #[arg(long)]
     influxdb_bucket: Option<String>,
+
+    #[arg(long, default_value = "warn")]
+    log_level: String,
 }
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
-    env_logger::init();
     let args = AppArgs::parse();
+    init_logger(&args.log_level);
 
     info!("DoubleZero Activator");
 
@@ -119,4 +122,20 @@ fn listen_for_shutdown() -> eyre::Result<LocalBoxFuture<'static, ()>> {
         .map(|_| ()),
     );
     Ok(shutdown)
+}
+
+fn init_logger(log_level: &str) {
+    let log_level = match log_level.to_lowercase().as_str() {
+        "trace" => LevelFilter::Trace,
+        "debug" => LevelFilter::Debug,
+        "info" => LevelFilter::Info,
+        "warn" => LevelFilter::Warn,
+        "error" => LevelFilter::Error,
+        _ => {
+            eprintln!("Invalid log level: {log_level}. Using default 'warn'");
+            LevelFilter::Warn
+        }
+    };
+
+    env_logger::Builder::new().filter_level(log_level).init();
 }

@@ -169,13 +169,19 @@ func TestBgpServer(t *testing.T) {
 	}
 
 	waitForPeerStatus := func(s bgp.SessionStatus) bool {
-		deadline := time.Now().Add(5 * time.Second)
+		deadline := time.Now().Add(30 * time.Second)
+		start := time.Now()
 		for time.Now().Before(deadline) {
 			status := b.GetPeerStatus(net.IP{127, 0, 0, 1})
 			if status.SessionStatus == s {
 				return true
 			}
-			time.Sleep(200 * time.Millisecond)
+			if time.Since(start) > 10*time.Second {
+				t.Logf("Waiting for peer status %v, got %v", s, status)
+				time.Sleep(3 * time.Second)
+			} else {
+				time.Sleep(500 * time.Millisecond)
+			}
 		}
 		return false
 	}

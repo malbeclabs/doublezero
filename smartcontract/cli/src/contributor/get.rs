@@ -18,12 +18,8 @@ impl GetContributorCliCommand {
 
         writeln!(
             out,
-            "account: {},\r\ncode: {}\r\nata_owner_pk: {}\r\nstatus: {}\r\nowner: {}",
-            pubkey,
-            contributor.code,
-            contributor.ata_owner_pk,
-            contributor.status,
-            contributor.owner
+            "account: {},\r\ncode: {}\r\nstatus: {}\r\nowner: {}",
+            pubkey, contributor.code, contributor.status, contributor.owner
         )?;
 
         Ok(())
@@ -52,7 +48,7 @@ mod tests {
             index: 1,
             bump_seed: 255,
             code: "test".to_string(),
-            ata_owner_pk: Pubkey::default(),
+
             status: ContributorStatus::Activated,
             owner: contributor1_pubkey,
         };
@@ -96,7 +92,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nata_owner_pk: 11111111111111111111111111111111\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
+        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
 
         // Expected success
         let mut output = Vec::new();
@@ -106,6 +102,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by code");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nata_owner_pk: 11111111111111111111111111111111\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
+        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
     }
 }

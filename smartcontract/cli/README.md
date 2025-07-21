@@ -213,7 +213,6 @@ Below is a list of available CLI commands for each main on-chain structure:
     | Argument     | Type     | Description                |
     |--------------|----------|----------------------------|
     | --code       | String   | Unique contributor code    |
-    | --ata-owner  | Pubkey   | ATA owner public key       |
 - `contributor delete` — Delete a contributor
     | Argument   | Type   | Description                 |
     |------------|--------|-----------------------------|
@@ -236,7 +235,6 @@ Below is a list of available CLI commands for each main on-chain structure:
     |--------------|----------|----------------------------|
     | --pubkey     | Pubkey   | Contributor public key     |
     | --code       | String   | New contributor code       |
-    | --ata-owner  | Pubkey   | New ATA owner public key   |
 
 ### Device
 - `device create` — Create a new device

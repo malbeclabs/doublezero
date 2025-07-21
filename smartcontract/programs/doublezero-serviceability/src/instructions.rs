@@ -813,14 +813,12 @@ mod tests {
                 index: 123,
                 bump_seed: 255,
                 code: "test".to_string(),
-                ata_owner_pk: Pubkey::default(),
             }),
             "CreateContributor",
         );
         test_instruction(
             DoubleZeroInstruction::UpdateContributor(ContributorUpdateArgs {
                 code: Some("test".to_string()),
-                ata_owner_pk: Some(Pubkey::default()),
             }),
             "UpdateContributor",
         );

@@ -148,7 +148,6 @@ mod tunnel_test {
                 index: globalstate_account.account_index + 1,
                 bump_seed,
                 code: "cont".to_string(),
-                ata_owner_pk: Pubkey::default(),
             }),
             vec![
                 AccountMeta::new(contributor_pubkey, false),

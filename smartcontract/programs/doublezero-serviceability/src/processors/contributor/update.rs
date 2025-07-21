@@ -13,16 +13,11 @@ use std::fmt;
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct ContributorUpdateArgs {
     pub code: Option<String>,
-    pub ata_owner_pk: Option<Pubkey>,
 }
 
 impl fmt::Debug for ContributorUpdateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "code: {:?}, ata_owner_pk: {:?}",
-            self.code, self.ata_owner_pk
-        )
+        write!(f, "code: {:?}", self.code)
     }
 }
 
@@ -70,9 +65,6 @@ pub fn process_update_contributor(
 
     if let Some(ref code) = value.code {
         contributor.code = code.clone();
-    }
-    if let Some(ref ata_owner_pk) = value.ata_owner_pk {
-        contributor.ata_owner_pk = *ata_owner_pk;
     }
 
     account_write(

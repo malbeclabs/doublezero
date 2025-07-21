@@ -50,7 +50,6 @@ mod tests {
             index: 1,
             bump_seed: 2,
             code: "contributor1_code".to_string(),
-            ata_owner_pk: Pubkey::new_unique(),
             status: ContributorStatus::Activated,
             owner: Pubkey::new_unique(),
         };
@@ -61,7 +60,7 @@ mod tests {
             index: 1,
             bump_seed: 2,
             code: "contributor2_code".to_string(),
-            ata_owner_pk: Pubkey::new_unique(),
+
             status: ContributorStatus::Activated,
             owner: Pubkey::new_unique(),
         };

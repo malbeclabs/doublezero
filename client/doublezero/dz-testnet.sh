@@ -30,7 +30,7 @@ cargo build
 ./target/debug/doublezero exchange create --code xam --name "Amsterdam" --lat 52.30085793004002 --lng 4.942241140085309
 
 ### Contributors
-./target/doublezero contributor create --code co01 --ata-owner 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
+./target/doublezero contributor create --code co01
 
 ### Devices
 ./target/debug/doublezero device create --code la2-dz01 --contributor co01 --location la --exchange xla --public-ip "207.45.216.136" --dz-prefix "207.45.216.136/29"

@@ -84,7 +84,7 @@ echo "Update exchanges"
 
 ### Initialice controbutor
 echo "Creating contributor"
-./target/doublezero contributor create --code co01 --ata-owner 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
+./target/doublezero contributor create --code co01
 
 ### Initialice devices
 echo "Creating devices"

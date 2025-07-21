@@ -155,7 +155,7 @@ The Latency Smart Contract functions as the on-chain registry for all network la
 To start contributing to DoubleZero, a contributor account must be registered. This is done using the DoubleZero CLI, where a code and the pubkey of the identity that will receive the rewards (ATA account) must be provided. The code is a short, space-free name used to identify the contributor. It doesn't need to reference the actual company—it can be something like a color or a flower name, for example. The ATA Owner is the pubkey that will be used to transfer the tokens generated from rewards.
 
 ```bash
-$ doublezero contributor create --code flower_power --ata-owner Do1iXv6tNMHRzF1yYHBcLNfNngCK6Yyr9izpLZc1rrwW
+$ doublezero contributor create --code flower_power
 Signature: 2gpYMUZ5U8r8SxfRNvBN6i4LAawG3yHg5dQ3jDdUZriPv2rqDEJTe6EqTxt8SKurkeKdrHfTLdXdyaEdYg1SGWbU
 ```
 

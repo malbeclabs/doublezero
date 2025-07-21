@@ -21,7 +21,6 @@ pub struct ContributorDisplay {
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
     pub account: Pubkey,
     pub code: String,
-    pub ata_owner: String,
     pub status: ContributorStatus,
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
@@ -40,7 +39,6 @@ impl ListContributorCliCommand {
             .map(|(pubkey, tunnel)| ContributorDisplay {
                 account: pubkey,
                 code: tunnel.code,
-                ata_owner: tunnel.ata_owner_pk.to_string(),
                 status: tunnel.status,
                 owner: tunnel.owner,
             })
@@ -83,7 +81,7 @@ mod tests {
             index: 1,
             bump_seed: 255,
             code: "some code".to_string(),
-            ata_owner_pk: Pubkey::default(),
+
             status: Activated,
             owner: contributor1_pubkey,
         };
@@ -99,7 +97,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | code      | ata_owner                        | status    | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | some code | 11111111111111111111111111111111 | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
+        assert_eq!(output_str, " account                                   | code      | status    | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | some code | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
 
         let mut output = Vec::new();
         let res = ListContributorCliCommand {
@@ -110,6 +108,6 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"code\":\"some code\",\"ata_owner\":\"11111111111111111111111111111111\",\"status\":\"Activated\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"code\":\"some code\",\"status\":\"Activated\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
     }
 }

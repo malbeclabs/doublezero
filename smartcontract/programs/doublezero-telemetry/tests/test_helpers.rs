@@ -714,7 +714,6 @@ impl ServiceabilityProgramHelper {
                 index,
                 bump_seed,
                 code,
-                ata_owner_pk: Pubkey::default(), // Default ATA owner
             }),
             vec![
                 AccountMeta::new(contributor_pk, false),

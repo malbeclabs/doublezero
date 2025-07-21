@@ -1,7 +1,7 @@
 use crate::{
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-    validators::{validate_code, validate_pubkey, validate_pubkey_or_code},
+    validators::{validate_code, validate_pubkey_or_code},
 };
 use clap::Args;
 use doublezero_sdk::commands::contributor::{
@@ -18,9 +18,6 @@ pub struct UpdateContributorCliCommand {
     /// Updated code for the contributor
     #[arg(long, value_parser = validate_code)]
     pub code: Option<String>,
-    /// ATA owner pubkey
-    #[arg(long, value_parser = validate_pubkey)]
-    pub ata_owner: Option<String>,
 }
 
 impl UpdateContributorCliCommand {
@@ -48,23 +45,9 @@ impl UpdateContributorCliCommand {
             pubkey_or_code: self.pubkey,
         })?;
 
-        let ata_owner = if let Some(ata_owner) = &self.ata_owner {
-            if ata_owner == "me" {
-                Some(client.get_payer())
-            } else {
-                match Pubkey::from_str(ata_owner) {
-                    Ok(pk) => Some(pk),
-                    Err(_) => return Err(eyre::eyre!("Invalid ata_owner Pubkey")),
-                }
-            }
-        } else {
-            None
-        };
-
         let signature = client.update_contributor(UpdateContributorCommand {
             pubkey,
             code: self.code,
-            ata_owner,
         })?;
 
         writeln!(out, "Signature: {signature}",)?;
@@ -108,7 +91,7 @@ mod tests {
             index: 1,
             bump_seed: 255,
             code: "test".to_string(),
-            ata_owner_pk: Pubkey::default(),
+
             status: ContributorStatus::Activated,
             owner: Pubkey::new_unique(),
         };
@@ -124,7 +107,7 @@ mod tests {
                             account_type: AccountType::Contributor,
                             owner: Pubkey::default(),
                             index: 1,
-                            ata_owner_pk: Pubkey::default(),
+
                             code: "test".to_string(),
                             status: ContributorStatus::Activated,
                             bump_seed: 0,
@@ -136,7 +119,7 @@ mod tests {
                             account_type: AccountType::Contributor,
                             owner: Pubkey::default(),
                             index: 1,
-                            ata_owner_pk: Pubkey::default(),
+
                             code: "test2".to_string(),
                             status: ContributorStatus::Activated,
                             bump_seed: 0,
@@ -162,7 +145,6 @@ mod tests {
             .with(predicate::eq(UpdateContributorCommand {
                 pubkey: pda_pubkey,
                 code: Some("test_new".to_string()),
-                ata_owner: Some(Pubkey::default()),
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -172,7 +154,6 @@ mod tests {
         let res = UpdateContributorCliCommand {
             pubkey: pda_pubkey.to_string(),
             code: Some("test2".to_string()),
-            ata_owner: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_err());
@@ -182,7 +163,6 @@ mod tests {
         let res = UpdateContributorCliCommand {
             pubkey: pda_pubkey.to_string(),
             code: Some("test_new".to_string()),
-            ata_owner: Some(Pubkey::default().to_string()),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

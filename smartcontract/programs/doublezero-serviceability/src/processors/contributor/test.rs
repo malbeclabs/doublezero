@@ -62,7 +62,6 @@ mod contributor_test {
                 index: globalstate_account.account_index + 1,
                 bump_seed,
                 code: "la".to_string(),
-                ata_owner_pk: Pubkey::default(),
             }),
             vec![
                 AccountMeta::new(contributor_pubkey, false),
@@ -138,7 +137,6 @@ mod contributor_test {
             program_id,
             DoubleZeroInstruction::UpdateContributor(ContributorUpdateArgs {
                 code: Some("la2".to_string()),
-                ata_owner_pk: Some(Pubkey::default()),
             }),
             vec![
                 AccountMeta::new(contributor_pubkey, false),

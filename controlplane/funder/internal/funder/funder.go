@@ -9,6 +9,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/programs/system"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
+	"github.com/malbeclabs/doublezero/controlplane/funder/internal/metrics"
 )
 
 type Funder struct {
@@ -27,11 +28,14 @@ func New(cfg Config) (*Funder, error) {
 }
 
 func (f *Funder) Run(ctx context.Context) error {
+	minBalanceLamports := f.cfg.MinBalanceLamports()
+	topUpLamports := f.cfg.TopUpLamports()
+
 	f.log.Info("Starting funder",
 		"interval", f.cfg.Interval,
 		"signer", f.cfg.Signer.PublicKey(),
-		"minBalanceSOL", f.cfg.MinBalanceSOL,
-		"topUpSOL", f.cfg.TopUpSOL,
+		"minBalanceLamports", minBalanceLamports,
+		"topUpLamports", topUpLamports,
 		"serviceabilityProgramID", f.cfg.Serviceability.ProgramID(),
 	)
 
@@ -47,6 +51,7 @@ func (f *Funder) Run(ctx context.Context) error {
 			err := f.cfg.Serviceability.Load(ctx)
 			if err != nil {
 				f.log.Error("Failed to load serviceability state", "error", err)
+				metrics.Errors.WithLabelValues(metrics.ErrorTypeLoadServiceabilityState).Inc()
 				continue
 			}
 
@@ -54,14 +59,18 @@ func (f *Funder) Run(ctx context.Context) error {
 			balance, err := f.cfg.Solana.GetBalance(ctx, f.cfg.Signer.PublicKey(), solanarpc.CommitmentFinalized)
 			if err != nil {
 				f.log.Error("Failed to get balance", "error", err)
+				metrics.Errors.WithLabelValues(metrics.ErrorTypeGetFunderAccountBalance).Inc()
 				continue
 			}
 			balanceLamports := balance.Value
-			f.log.Debug("Funder balance", "balance", balanceLamports)
+			f.log.Debug("Funder balance", "account", f.cfg.Signer.PublicKey(), "balanceLamports", balanceLamports)
+			balanceSOL := float64(balanceLamports) / float64(solana.LAMPORTS_PER_SOL)
+			metrics.FunderAccountBalanceSOL.WithLabelValues(f.cfg.Signer.PublicKey().String()).Set(balanceSOL)
 
 			// Check that we have enough SOL to top up metrics publishers.
-			if balanceLamports < uint64(f.cfg.TopUpSOL*float64(solana.LAMPORTS_PER_SOL)) {
-				f.log.Error("Funder balance is below minimum", "balance", balanceLamports, "minBalance", f.cfg.TopUpSOL)
+			if balanceLamports < topUpLamports {
+				f.log.Error("Funder balance is below minimum", "balanceLamports", balanceLamports, "minBalanceLamports", minBalanceLamports)
+				metrics.Errors.WithLabelValues(metrics.ErrorTypeFunderAccountBalanceBelowMinimum).Inc()
 				continue
 			}
 
@@ -80,36 +89,40 @@ func (f *Funder) Run(ctx context.Context) error {
 				balance, err := f.cfg.Solana.GetBalance(ctx, metricsPublisherPK, solanarpc.CommitmentFinalized)
 				if err != nil {
 					f.log.Error("Failed to get balance", "error", err)
+					metrics.Errors.WithLabelValues(metrics.ErrorTypeGetMetricsPublisherAccountBalance).Inc()
 					continue
 				}
 				balanceLamports := balance.Value
-				f.log.Debug("Metrics publisher balance", "device", devicePK, "metricsPublisher", metricsPublisherPK, "balance", balanceLamports, "minBalance", f.cfg.MinBalanceSOL)
+				f.log.Debug("Metrics publisher balance", "device", devicePK, "metricsPublisher", metricsPublisherPK, "balanceLamports", balanceLamports, "minBalanceLamports", minBalanceLamports)
 
 				// If balance is below minimum, top it up.
-				if balanceLamports < uint64(f.cfg.MinBalanceSOL*float64(solana.LAMPORTS_PER_SOL)) {
-					f.log.Info("Topping up metrics publisher", "device", devicePK, "metricsPublisher", metricsPublisherPK, "balance", balanceLamports, "topUp", f.cfg.TopUpSOL)
+				if balanceLamports < minBalanceLamports {
+					f.log.Info("Topping up metrics publisher", "device", devicePK, "metricsPublisher", metricsPublisherPK, "balanceLamports", balanceLamports, "topUpLamports", topUpLamports)
 
-					_, err := transferFunds(ctx, f.cfg.Solana, f.cfg.Signer, metricsPublisherPK, uint64(f.cfg.TopUpSOL*float64(solana.LAMPORTS_PER_SOL)), nil)
+					_, err := transferFunds(ctx, f.cfg.Solana, f.cfg.Signer, metricsPublisherPK, topUpLamports, nil)
 					if err != nil {
 						f.log.Error("Failed to transfer SOL", "error", err)
+						metrics.Errors.WithLabelValues(metrics.ErrorTypeTransferFundsToMetricsPublisher).Inc()
 						continue
 					}
 
 					// Wait for the transfer to complete.
-					err = waitForBalance(ctx, f.cfg.Solana, metricsPublisherPK, f.cfg.MinBalanceSOL, f.cfg.WaitForBalanceTimeout, f.cfg.WaitForBalancePollInterval)
+					f.log.Debug("Waiting for balance", "account", metricsPublisherPK, "expected", minBalanceLamports, "current", balanceLamports)
+					err = waitForBalance(ctx, f.cfg.Solana, metricsPublisherPK, minBalanceLamports, f.cfg.WaitForBalanceTimeout, f.cfg.WaitForBalancePollInterval)
 					if err != nil {
 						f.log.Error("Failed to wait for balance", "error", err)
+						metrics.Errors.WithLabelValues(metrics.ErrorTypeWaitForMetricsPublisherBalance).Inc()
 						continue
 					}
 
-					f.log.Info("Transferred SOL to metrics publisher", "device", devicePK, "metricsPublisher", metricsPublisherPK, "amount", f.cfg.TopUpSOL)
+					f.log.Info("Transferred SOL to metrics publisher", "device", devicePK, "metricsPublisher", metricsPublisherPK, "topUpLamports", topUpLamports)
 				}
 			}
 		}
 	}
 }
 
-func waitForBalance(ctx context.Context, client SolanaClient, account solana.PublicKey, minBalanceSOL float64, timeout time.Duration, pollInterval time.Duration) error {
+func waitForBalance(ctx context.Context, client SolanaClient, account solana.PublicKey, minBalanceLamports uint64, timeout time.Duration, pollInterval time.Duration) error {
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 
@@ -119,7 +132,7 @@ func waitForBalance(ctx context.Context, client SolanaClient, account solana.Pub
 			return fmt.Errorf("failed to get balance: %w", err)
 		}
 		balanceLamports := balance.Value
-		if balanceLamports >= uint64(minBalanceSOL*float64(solana.LAMPORTS_PER_SOL)) {
+		if balanceLamports >= minBalanceLamports {
 			return nil
 		}
 
@@ -127,7 +140,7 @@ func waitForBalance(ctx context.Context, client SolanaClient, account solana.Pub
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-timer.C:
-			return fmt.Errorf("timeout waiting for balance: account=%s, expected balance=%.2f SOL", account, minBalanceSOL)
+			return fmt.Errorf("timeout waiting for balance: account=%s, expected balance=%d, current balance=%d", account, minBalanceLamports, balanceLamports)
 		case <-time.After(pollInterval):
 			// continue polling
 		}

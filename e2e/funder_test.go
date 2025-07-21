@@ -3,6 +3,7 @@
 package e2e_test
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -59,6 +60,24 @@ func TestE2E_Funder(t *testing.T) {
 	require.NoError(t, err)
 	funderPK := funderPrivateKey.PublicKey()
 
+	// Check that the errors metric only contains "funder_account_balance_below_minimum" errors,
+	// which occur on startup while waiting for the manager/funder account to be funded.
+	metricsClient := dn.Funder.GetMetricsClient()
+	require.NoError(t, metricsClient.Fetch(ctx))
+	errors := metricsClient.GetCounterValues("doublezero_funder_errors_total")
+	require.NotNil(t, errors)
+	require.Len(t, errors, 1)
+	require.Equal(t, "funder_account_balance_below_minimum", errors[0].Labels["error_type"])
+	prevFunderAccountBalanceBelowMinimumCount := int(errors[0].Value)
+
+	// Check the funder account balance metric.
+	require.NoError(t, metricsClient.Fetch(ctx))
+	funderBalance := metricsClient.GetGaugeValues("doublezero_funder_account_balance_sol")
+	require.NotNil(t, funderBalance)
+	// The funder account is the manager account, which we fund with 100 SOL during devnet setup.
+	require.Greater(t, funderBalance[0].Value, 50.0)
+	prevFunderBalance := funderBalance[0].Value
+
 	// Add a device onchain with metrics publisher pubkey.
 	log.Debug("==> Creating LA device onchain")
 	laDeviceMetricsPublisherWallet := solana.NewWallet()
@@ -84,20 +103,78 @@ func TestE2E_Funder(t *testing.T) {
 	// Check that the metrics publisher pubkey is eventually funded.
 	requireEventuallyFunded(t, log, rpcClient, nyDeviceMetricsPublisherWallet.PublicKey(), minBalanceSOL, "NY device metrics publisher")
 
+	// Check that the funder account balance is now lower.
+	require.NoError(t, metricsClient.Fetch(ctx))
+	funderBalance = metricsClient.GetGaugeValues("doublezero_funder_account_balance_sol")
+	require.NotNil(t, funderBalance)
+	require.Less(t, funderBalance[0].Value, prevFunderBalance)
+
 	// Drain current balance from the devices onchain.
-	drainFunds(t, rpcClient, laDeviceMetricsPublisherWallet.PrivateKey, funderPK, 0.01)
-	drainFunds(t, rpcClient, nyDeviceMetricsPublisherWallet.PrivateKey, funderPK, 0.01)
+	drainWallet := solana.NewWallet()
+	log.Debug("--> Draining LA device balance", "account", laDeviceMetricsPublisherWallet.PublicKey())
+	drainFunds(t, rpcClient, laDeviceMetricsPublisherWallet.PrivateKey, drainWallet.PublicKey(), 0.01)
+	log.Debug("--> Draining NY device balance", "account", nyDeviceMetricsPublisherWallet.PublicKey())
+	drainFunds(t, rpcClient, nyDeviceMetricsPublisherWallet.PrivateKey, drainWallet.PublicKey(), 0.01)
 
 	// Check that the devices are eventually funded again.
+	beforeFunderBalance := getBalance(t, rpcClient, funderPK)
 	requireEventuallyFunded(t, log, rpcClient, laDeviceMetricsPublisherWallet.PublicKey(), minBalanceSOL, "LA device metrics publisher")
 	requireEventuallyFunded(t, log, rpcClient, nyDeviceMetricsPublisherWallet.PublicKey(), minBalanceSOL, "NY device metrics publisher")
+
+	// Wait for the funder account balance to show the top up.
+	require.Eventually(t, func() bool {
+		funderBalance := getBalance(t, rpcClient, funderPK)
+		return funderBalance <= beforeFunderBalance-2*topUpSOL
+	}, 60*time.Second, 5*time.Second)
+
+	// Drain the funder account balance to near 0.
+	log.Debug("--> Draining funder account balance", "account", funderPK)
+	drainFunds(t, rpcClient, funderPrivateKey, drainWallet.PublicKey(), 0.01)
+
+	// Check that the errors metric for "funder_account_balance_below_minimum" eventually increases,
+	// which occurs when the funder account balance is drained to below the minimum.
+	require.Eventually(t, func() bool {
+		require.NoError(t, metricsClient.Fetch(ctx))
+		errors = metricsClient.GetCounterValues("doublezero_funder_errors_total")
+		require.NotNil(t, errors)
+		require.Len(t, errors, 1)
+		require.Equal(t, "funder_account_balance_below_minimum", errors[0].Labels["error_type"])
+		if int(errors[0].Value) > prevFunderAccountBalanceBelowMinimumCount {
+			return true
+		}
+		log.Debug("--> Waiting for funder account balance below minimum error to increase", "account", funderPK, "prevCount", prevFunderAccountBalanceBelowMinimumCount, "currentCount", int(errors[0].Value))
+		return false
+	}, 60*time.Second, 5*time.Second)
+
+	// Check that the funder account balance gauge metric is now near 0.
+	require.NoError(t, metricsClient.Fetch(ctx))
+	funderBalance = metricsClient.GetGaugeValues("doublezero_funder_account_balance_sol")
+	require.NotNil(t, funderBalance)
+	require.LessOrEqual(t, funderBalance[0].Value, 0.01)
+
+	// Transfer the drained funds back to the funder account.
+	expectedFunderBalance := drainFunds(t, rpcClient, drainWallet.PrivateKey, funderPrivateKey.PublicKey(), 0.01)
+
+	// Check that the funder account balance is eventually back near the previous value.
+	require.Eventually(t, func() bool {
+		require.NoError(t, metricsClient.Fetch(ctx))
+		funderBalance = metricsClient.GetGaugeValues("doublezero_funder_account_balance_sol")
+		require.NotNil(t, funderBalance)
+		if funderBalance[0].Value > expectedFunderBalance-0.01 && funderBalance[0].Value < expectedFunderBalance+0.01 {
+			return true
+		}
+		log.Debug("--> Waiting for funder account balance to be back near previous value", "account", funderPK, "expectedBalance", expectedFunderBalance, "currentBalance", funderBalance[0].Value)
+		return false
+	}, 60*time.Second, 5*time.Second)
 }
 
-func drainFunds(t *testing.T, client *solanarpc.Client, from solana.PrivateKey, to solana.PublicKey, amount float64) {
+func drainFunds(t *testing.T, client *solanarpc.Client, from solana.PrivateKey, to solana.PublicKey, remainingBalanceSOL float64) float64 {
 	t.Helper()
 
 	balanceSOL := getBalance(t, client, from.PublicKey())
-	transferFunds(t, client, from, to, balanceSOL-amount, nil)
+	transferFunds(t, client, from, to, balanceSOL-remainingBalanceSOL, nil)
+
+	return balanceSOL - remainingBalanceSOL
 }
 
 func requireEventuallyFunded(t *testing.T, log *slog.Logger, client *solanarpc.Client, account solana.PublicKey, minBalanceSOL float64, name string) {
@@ -108,7 +185,7 @@ func requireEventuallyFunded(t *testing.T, log *slog.Logger, client *solanarpc.C
 		require.NoError(t, err)
 		balanceSOL := float64(balance.Value) / float64(solana.LAMPORTS_PER_SOL)
 		if balanceSOL < minBalanceSOL {
-			log.Debug("--> Waiting for %s to be funded", "name", name)
+			log.Debug(fmt.Sprintf("--> Waiting for %s to be funded", name), "account", account, "minBalance", minBalanceSOL, "balance", balanceSOL)
 			return false
 		}
 		return true

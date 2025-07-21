@@ -23,7 +23,7 @@ var (
 )
 
 const (
-	defaultWaitForBalanceTimeout      = 20 * time.Second
+	defaultWaitForBalanceTimeout      = 60 * time.Second
 	defaultWaitForBalancePollInterval = 1 * time.Second
 )
 
@@ -38,6 +38,14 @@ type Config struct {
 	Interval                   time.Duration
 	WaitForBalanceTimeout      time.Duration
 	WaitForBalancePollInterval time.Duration
+}
+
+func (c *Config) MinBalanceLamports() uint64 {
+	return uint64(c.MinBalanceSOL * float64(solana.LAMPORTS_PER_SOL))
+}
+
+func (c *Config) TopUpLamports() uint64 {
+	return uint64(c.TopUpSOL * float64(solana.LAMPORTS_PER_SOL))
 }
 
 func (c *Config) Validate() error {

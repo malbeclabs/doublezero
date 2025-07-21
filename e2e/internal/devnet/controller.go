@@ -11,7 +11,6 @@ import (
 
 	dockercontainer "github.com/docker/docker/api/types/container"
 	dockerfilters "github.com/docker/docker/api/types/filters"
-	"github.com/docker/go-connections/nat"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -27,23 +26,12 @@ const (
 
 type ControllerSpec struct {
 	ContainerImage string
-	ExternalHost   string
 }
 
 func (s *ControllerSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
 	// If the container image is not set, use the DZ_CONTROLLER_IMAGE environment variable.
 	if s.ContainerImage == "" {
 		s.ContainerImage = os.Getenv("DZ_CONTROLLER_IMAGE")
-	}
-
-	// Check for required fields.
-	localhost := os.Getenv("DIND_LOCALHOST")
-	if localhost == "" {
-		localhost = "localhost"
-	}
-	if s.ExternalHost == "" {
-		// If the external host is not set, use localhost, assuming the test is running in a docker container.
-		s.ExternalHost = localhost
 	}
 
 	return nil
@@ -119,7 +107,7 @@ func (c *Controller) StartIfNotRunning(ctx context.Context) (bool, error) {
 }
 
 func (c *Controller) Start(ctx context.Context) error {
-	c.log.Info("==> Starting controller", "image", c.dn.Spec.Controller.ContainerImage, "externalHost", c.dn.Spec.Controller.ExternalHost)
+	c.log.Info("==> Starting controller", "image", c.dn.Spec.Controller.ContainerImage)
 
 	req := testcontainers.ContainerRequest{
 		Image: c.dn.Spec.Controller.ContainerImage,
@@ -175,38 +163,16 @@ func (c *Controller) dockerContainerName() string {
 
 func (c *Controller) setState(ctx context.Context, containerID string) error {
 	// Wait for the controller's public/host-exposed port to be exposed.
-	var loggedWait bool
-	timeout := 10 * time.Second
-	var attempts int
-	var container dockercontainer.InspectResponse
-	var port int
-	err := pollUntil(ctx, func() (bool, error) {
-		attempts++
-		var err error
-		container, err = c.dn.dockerClient.ContainerInspect(ctx, containerID)
-		if err != nil {
-			return false, fmt.Errorf("failed to inspect container: %w", err)
-		}
-
-		ports, ok := container.NetworkSettings.Ports[nat.Port(fmt.Sprintf("%d/tcp", internalControllerPort))]
-		if !ok || len(ports) == 0 {
-			if !loggedWait && attempts > 1 {
-				c.log.Debug("--> Waiting for controller port to be exposed", "container", shortContainerID(container.ID), "timeout", timeout)
-				loggedWait = true
-			}
-			return false, nil
-		}
-		port, err = strconv.Atoi(ports[0].HostPort)
-		if err != nil {
-			return false, fmt.Errorf("failed to get controller port: %w", err)
-		}
-		return true, nil
-	}, timeout, 500*time.Millisecond)
+	port, err := c.dn.waitForContainerPortExposed(ctx, containerID, internalControllerPort, 10*time.Second)
 	if err != nil {
-		return fmt.Errorf("failed to get controller port: %w", err)
+		return fmt.Errorf("failed to wait for controller port to be exposed: %w", err)
 	}
 
 	// Get the controller's IP address on the default network.
+	container, err := c.dn.dockerClient.ContainerInspect(ctx, containerID)
+	if err != nil {
+		return fmt.Errorf("failed to inspect container: %w", err)
+	}
 	if container.NetworkSettings.Networks[c.dn.DefaultNetwork.Name] == nil {
 		return fmt.Errorf("failed to get controller IP")
 	}
@@ -220,7 +186,7 @@ func (c *Controller) setState(ctx context.Context, containerID string) error {
 }
 
 func (c *Controller) GetAgentConfig(ctx context.Context, deviceAgentPubkey string) (*pb.ConfigResponse, error) {
-	controllerAddr := net.JoinHostPort(c.dn.Spec.Controller.ExternalHost, strconv.Itoa(c.ExternalPort))
+	controllerAddr := net.JoinHostPort(c.dn.ExternalHost, strconv.Itoa(c.ExternalPort))
 	c.log.Debug("==> Getting agent config from controller", "controllerAddr", controllerAddr, "agentPubkey", deviceAgentPubkey)
 
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)

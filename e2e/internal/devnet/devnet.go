@@ -8,6 +8,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +18,7 @@ import (
 	dockernetwork "github.com/docker/docker/api/types/network"
 	dockervolume "github.com/docker/docker/api/types/volume"
 	"github.com/docker/docker/client"
+	"github.com/docker/go-connections/nat"
 	"github.com/joho/godotenv"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/gomod"
@@ -72,6 +74,8 @@ type Devnet struct {
 	labels            map[string]string
 	mu                sync.RWMutex
 	onchainWriteMutex sync.Mutex
+
+	ExternalHost string
 
 	DefaultNetwork *DefaultNetwork
 	CYOANetwork    *CYOANetwork
@@ -279,6 +283,13 @@ func New(spec DevnetSpec, log *slog.Logger, dockerClient *client.Client, subnetA
 	}
 	dn.Devices = make(map[string]*Device)
 	dn.Clients = make(map[string]*Client)
+
+	// Set the external host.
+	localhost := os.Getenv("DIND_LOCALHOST")
+	if localhost == "" {
+		localhost = "localhost"
+	}
+	dn.ExternalHost = localhost
 
 	return dn, nil
 }
@@ -805,4 +816,36 @@ func generateKeypairIfNotExists(keypairPath string) (bool, error) {
 	}
 
 	return false, nil
+}
+
+func (d *Devnet) waitForContainerPortExposed(ctx context.Context, containerID string, port int, timeout time.Duration) (int, error) {
+	loggedWait := false
+	attempts := 0
+	var container dockercontainer.InspectResponse
+	var exposedPort int
+	err := pollUntil(ctx, func() (bool, error) {
+		attempts++
+		var err error
+		container, err = d.dockerClient.ContainerInspect(ctx, containerID)
+		if err != nil {
+			return false, fmt.Errorf("failed to inspect container: %w", err)
+		}
+		ports, ok := container.NetworkSettings.Ports[nat.Port(fmt.Sprintf("%d/tcp", port))]
+		if !ok || len(ports) == 0 {
+			if !loggedWait && attempts > 1 {
+				d.log.Debug("--> Waiting for port to be exposed", "container", shortContainerID(container.ID), "timeout", timeout)
+				loggedWait = true
+			}
+			return false, nil
+		}
+		exposedPort, err = strconv.Atoi(ports[0].HostPort)
+		if err != nil {
+			return false, fmt.Errorf("failed to get port: %w", err)
+		}
+		return true, nil
+	}, timeout, 500*time.Millisecond)
+	if err != nil {
+		return 0, fmt.Errorf("failed to wait for port to be exposed: %w", err)
+	}
+	return exposedPort, nil
 }

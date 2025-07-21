@@ -21,7 +21,7 @@ use solana_transaction_status_client_types::{
     TransactionDetails, UiConfirmedBlock, UiTransactionEncoding,
 };
 
-use std::{collections::HashMap, env, str::FromStr};
+use std::{collections::HashMap, str::FromStr};
 
 const JITO_BASE_URL: &str = "https://kobe.mainnet.jito.network/api/v1/validator_rewards";
 
@@ -32,7 +32,6 @@ const fn get_first_slot_for_epoch(target_epoch: u64) -> u64 {
 
 #[derive(Deserialize, Debug)]
 struct JitoRewards {
-    // TODO: check total_count to see if it exceeds entries in a single response
     // limit - default: 100, max: 10000
     total_count: u64,
     rewards: Vec<JitoReward>,
@@ -168,8 +167,6 @@ pub async fn get_leader_schedule(
 ) -> eyre::Result<Option<HashMap<String, Vec<usize>>>> {
     let config = RpcLeaderScheduleConfig {
         identity: None,
-
-        //Some(validator_id.to_string()),
         commitment: Some(CommitmentConfig::finalized()),
     };
 
@@ -193,5 +190,20 @@ mod tests {
 
         assert_eq!(reward.keys().next().unwrap(), pubkey);
         assert_eq!(*mev_revenue, 503423196855);
+    }
+
+    #[tokio::test]
+    async fn inflation_rewards() {
+        let mock_client = RpcClient::new_mock("succeeds".to_string());
+        let pubkey = "6WgdYhhGE53WrZ7ywJA15hBVkw7CRbQ8yDBBTwmBtAHN";
+        let validator_ids: &[String] = &[String::from(pubkey)];
+        let epoch = 812;
+
+        let rewards = get_inflation_rewards(&mock_client, validator_ids, epoch)
+            .await
+            .unwrap();
+        let reward = rewards.get(pubkey).unwrap();
+        assert_eq!(rewards.keys().next().unwrap(), pubkey);
+        assert_eq!(*reward, 2500);
     }
 }

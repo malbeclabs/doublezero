@@ -104,7 +104,10 @@ impl InfluxDBMetricsSubmitter {
                 _ = client
                     .write_line_protocol(&client.org, self.bucket.as_str(), msg)
                     .await
-                    .inspect_err(|e| error!("Error writing metric to InfluxDB: {e}"));
+                    .inspect_err(|e| {
+                        metrics::counter!("doublezero_activator_influx_line_written").increment(1);
+                        error!("Error writing metric to InfluxDB: {e}");
+                    });
             }
         }
     }

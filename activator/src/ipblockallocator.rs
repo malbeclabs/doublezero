@@ -2,7 +2,7 @@ use std::net::Ipv4Addr;
 
 use bitvec::prelude::*;
 use ipnetwork::Ipv4Network;
-use log::info;
+use log::warn;
 
 #[derive(Debug)]
 pub struct IPBlockAllocator {
@@ -27,11 +27,7 @@ impl IPBlockAllocator {
         let base_ip = u32::from(self.base_block.network());
         let ip_as_u32 = u32::from(ip);
 
-        if base_ip <= ip_as_u32 && ip_as_u32 < base_ip + self.total_ips as u32 {
-            return true;
-        }
-
-        false
+        base_ip <= ip_as_u32 && ip_as_u32 < base_ip + self.total_ips as u32
     }
 
     /// Marks the given block of IPs as assigned.
@@ -46,7 +42,7 @@ impl IPBlockAllocator {
                 }
             }
             Err(e) => {
-                info!(" {e} ");
+                warn!(" {e} ");
             }
         }
     }
@@ -63,7 +59,7 @@ impl IPBlockAllocator {
                 }
             }
             Err(e) => {
-                info!(" {e} ");
+                warn!(" {e} ");
             }
         }
     }

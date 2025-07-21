@@ -467,6 +467,7 @@ pub mod test {
             index: globalstate_account.account_index + 1,
             bump_seed,
             code: tunnel_la_ny_code.clone(),
+            contributor_pk: contributor_pubkey,
             side_a_pk: device_la_pubkey,
             side_z_pk: device_ny_pubkey,
             link_type: LinkLinkType::L3,
@@ -484,6 +485,7 @@ pub mod test {
             DoubleZeroInstruction::CreateLink(tunnel_la_ny),
             vec![
                 AccountMeta::new(tunnel_la_ny_pubkey, false),
+                AccountMeta::new(contributor_pubkey, false),
                 AccountMeta::new(device_la_pubkey, false),
                 AccountMeta::new(device_ny_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),

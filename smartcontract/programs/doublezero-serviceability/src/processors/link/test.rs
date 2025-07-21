@@ -261,6 +261,7 @@ mod tunnel_test {
                 bump_seed,
                 code: "la".to_string(),
                 link_type: LinkLinkType::L3,
+                contributor_pk: contributor_pubkey,
                 side_a_pk: device_a_pubkey,
                 side_z_pk: device_z_pubkey,
                 bandwidth: 100000000,
@@ -270,6 +271,7 @@ mod tunnel_test {
             }),
             vec![
                 AccountMeta::new(tunnel_pubkey, false),
+                AccountMeta::new(contributor_pubkey, false),
                 AccountMeta::new(device_a_pubkey, false),
                 AccountMeta::new(device_z_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
@@ -368,6 +370,7 @@ mod tunnel_test {
             program_id,
             DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
                 code: Some("la2".to_string()),
+                contributor_pk: Some(contributor_pubkey),
                 tunnel_type: Some(LinkLinkType::L3),
                 bandwidth: Some(2000000000),
                 mtu: Some(8900),

@@ -7,7 +7,10 @@ use crate::{
     },
 };
 use clap::Args;
-use doublezero_sdk::commands::link::{get::GetLinkCommand, update::UpdateLinkCommand};
+use doublezero_sdk::commands::{
+    contributor::get::GetContributorCommand,
+    link::{get::GetLinkCommand, update::UpdateLinkCommand},
+};
 use eyre::eyre;
 use std::io::Write;
 
@@ -16,6 +19,9 @@ pub struct UpdateLinkCliCommand {
     /// Link Pubkey or code to update
     #[arg(long, value_parser = validate_pubkey)]
     pub pubkey: String,
+    /// Contributor (pubkey or code) associated with the device
+    #[arg(long, value_parser = validate_pubkey)]
+    pub contributor: Option<String>,
     /// Updated code for the link
     #[arg(long, value_parser = validate_code)]
     pub code: Option<String>,
@@ -45,6 +51,18 @@ impl UpdateLinkCliCommand {
             pubkey_or_code: self.pubkey,
         })?;
 
+        let contributor_pk = match self.contributor {
+            Some(contributor) => {
+                match client.get_contributor(GetContributorCommand {
+                    pubkey_or_code: contributor.clone(),
+                }) {
+                    Ok((contributor, _)) => Some(contributor),
+                    Err(_) => None,
+                }
+            }
+            None => None,
+        };
+
         let tunnel_type = self
             .tunnel_type
             .map(|t| t.parse())
@@ -54,6 +72,7 @@ impl UpdateLinkCliCommand {
         let signature = client.update_link(UpdateLinkCommand {
             pubkey,
             code: self.code.clone(),
+            contributor_pk,
             tunnel_type,
             bandwidth: self.bandwidth,
             mtu: self.mtu,
@@ -77,8 +96,11 @@ mod tests {
         tests::utils::create_test_client,
     };
     use doublezero_sdk::{
-        commands::link::{get::GetLinkCommand, update::UpdateLinkCommand},
-        get_link_pda, AccountType, Link, LinkLinkType, LinkStatus,
+        commands::{
+            contributor::get::GetContributorCommand,
+            link::{get::GetLinkCommand, update::UpdateLinkCommand},
+        },
+        get_link_pda, AccountType, Contributor, ContributorStatus, Link, LinkLinkType, LinkStatus,
     };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
@@ -87,6 +109,15 @@ mod tests {
     fn test_cli_link_update() {
         let mut client = create_test_client();
 
+        let contributor_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcd");
+        let contributor = Contributor {
+            account_type: AccountType::Contributor,
+            owner: Pubkey::default(),
+            bump_seed: 255,
+            index: 1,
+            status: ContributorStatus::Activated,
+            code: "co01".to_string(),
+        };
         let (pda_pubkey, _bump_seed) = get_link_pda(&client.get_program_id(), 1);
         let signature = Signature::from([
             120, 138, 162, 185, 59, 209, 241, 157, 71, 157, 74, 131, 4, 87, 54, 28, 38, 180, 222,
@@ -103,6 +134,7 @@ mod tests {
             index: 1,
             bump_seed: 255,
             code: "test".to_string(),
+            contributor_pk,
             side_a_pk: device1_pk,
             side_z_pk: device2_pk,
             link_type: LinkLinkType::L3,
@@ -116,6 +148,12 @@ mod tests {
             owner: pda_pubkey,
         };
 
+        client
+            .expect_get_contributor()
+            .with(predicate::eq(GetContributorCommand {
+                pubkey_or_code: contributor_pk.to_string(),
+            }))
+            .returning(move |_| Ok((contributor_pk, contributor.clone())));
         client
             .expect_check_requirements()
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
@@ -131,6 +169,7 @@ mod tests {
             .with(predicate::eq(UpdateLinkCommand {
                 pubkey: pda_pubkey,
                 code: Some("new_code".to_string()),
+                contributor_pk: Some(contributor_pk),
                 tunnel_type: None,
                 bandwidth: Some(1000000000),
                 mtu: Some(1500),
@@ -144,6 +183,7 @@ mod tests {
         let res = UpdateLinkCliCommand {
             pubkey: pda_pubkey.to_string(),
             code: Some("new_code".to_string()),
+            contributor: Some(contributor_pk.to_string()),
             tunnel_type: None,
             bandwidth: Some(1000000000),
             mtu: Some(1500),

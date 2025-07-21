@@ -256,6 +256,7 @@ impl Activator {
                     }
                     _ => {}
                 };
+                metrics::counter!("doublezero_activator_event_handled").increment(1);
                 if let Err(e) =
                     metrics.record_metrics(devices, locations, exchanges, state_transitions)
                 {

@@ -1,6 +1,8 @@
 use clap::Parser;
+use doublezero_sdk::ProgramVersion;
 use futures::{future::LocalBoxFuture, FutureExt};
 use log::{error, info, LevelFilter};
+use metrics_exporter_prometheus::PrometheusBuilder;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -57,6 +59,10 @@ struct AppArgs {
 async fn main() -> eyre::Result<()> {
     let args = AppArgs::parse();
     init_logger(&args.log_level);
+
+    PrometheusBuilder::new().install()?;
+
+    export_build_info();
 
     info!("DoubleZero Activator");
 
@@ -138,4 +144,11 @@ fn init_logger(log_level: &str) {
     };
 
     env_logger::Builder::new().filter_level(log_level).init();
+}
+
+fn export_build_info() {
+    let pkg_version = env!("CARGO_PKG_VERSION");
+    let program_version = ProgramVersion::current().to_string();
+
+    metrics::gauge!("doublezero_activator_build_info", "pkg_version" => pkg_version, "program_version" => program_version).set(1);
 }

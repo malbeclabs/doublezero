@@ -27,11 +27,7 @@ impl IPBlockAllocator {
         let base_ip = u32::from(self.base_block.network());
         let ip_as_u32 = u32::from(ip);
 
-        if base_ip <= ip_as_u32 && ip_as_u32 < base_ip + self.total_ips as u32 {
-            return true;
-        }
-
-        false
+        base_ip <= ip_as_u32 && ip_as_u32 < base_ip + self.total_ips as u32
     }
 
     /// Marks the given block of IPs as assigned.

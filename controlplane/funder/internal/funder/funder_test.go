@@ -146,7 +146,10 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 			ProgramIDFunc: func() solana.PublicKey { return solana.PublicKey{} },
 		}
 
-		var transferAmount uint64
+		var (
+			transferAmount uint64
+			mu             sync.Mutex
+		)
 
 		sol := &mockSolana{
 			GetBalanceFunc: func(ctx context.Context, pubkey solana.PublicKey, _ solanarpc.CommitmentType) (*solanarpc.GetBalanceResult, error) {
@@ -175,7 +178,10 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 				require.Equal(t, devicePK, to)
 				require.Equal(t, 5*solana.LAMPORTS_PER_SOL, amount)
 
+				mu.Lock()
 				transferAmount = amount
+				mu.Unlock()
+
 				tracker.mark("transfer")
 				cancel()
 				return solana.Signature{}, nil
@@ -197,7 +203,11 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 
 		tracker.wait(t, 200*time.Millisecond)
 
-		require.Equal(t, 5*solana.LAMPORTS_PER_SOL, transferAmount)
+		mu.Lock()
+		got := transferAmount
+		mu.Unlock()
+
+		require.Equal(t, 5*solana.LAMPORTS_PER_SOL, got)
 	})
 
 	t.Run("no top up when device balance is above min", func(t *testing.T) {
@@ -602,6 +612,7 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 
 		tracker.wait(t, 200*time.Millisecond)
 	})
+
 	t.Run("handles multiple devices with mixed balances", func(t *testing.T) {
 		t.Parallel()
 
@@ -639,6 +650,7 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		var (
 			transferTo            solana.PublicKey
 			deviceLowBalanceCalls atomic.Int32
+			mu                    sync.Mutex
 		)
 
 		sol := &mockSolana{
@@ -651,7 +663,6 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 					return &solanarpc.GetBalanceResult{Value: 5 * solana.LAMPORTS_PER_SOL}, nil
 				case deviceLow:
 					tracker.mark("device-low")
-					// Simulate balance increasing after the first poll in waitForBalance
 					if deviceLowBalanceCalls.Add(1) >= 2 {
 						return &solanarpc.GetBalanceResult{Value: 5 * solana.LAMPORTS_PER_SOL}, nil
 					}
@@ -677,7 +688,10 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 				require.Equal(t, deviceLow, to)
 				require.Equal(t, 5*solana.LAMPORTS_PER_SOL, amount)
 
+				mu.Lock()
 				transferTo = to
+				mu.Unlock()
+
 				tracker.mark("transfer")
 				return solana.Signature{}, nil
 			},
@@ -698,7 +712,10 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		tracker.wait(t, 500*time.Millisecond)
 		cancel()
 
-		require.Equal(t, deviceLow, transferTo, "should only transfer to underfunded device")
+		mu.Lock()
+		got := transferTo
+		mu.Unlock()
+		require.Equal(t, deviceLow, got, "should only transfer to underfunded device")
 	})
 
 	t.Run("skips devices with zero MetricsPublisherPubKey", func(t *testing.T) {
@@ -781,7 +798,6 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		// Make this short so test runs quickly
 		const waitForBalanceTimeout = 100 * time.Millisecond
 
 		svc := &mockServiceability{
@@ -794,9 +810,10 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 			ProgramIDFunc: func() solana.PublicKey { return solana.PublicKey{} },
 		}
 
-		// Track calls to waitForBalance internally
-		var transferCalled atomic.Bool
-		var balanceCheckCount atomic.Int32
+		var (
+			transferCalled    atomic.Bool
+			balanceCheckCount atomic.Int32
+		)
 
 		sol := &mockSolana{
 			GetBalanceFunc: func(ctx context.Context, pubkey solana.PublicKey, _ solanarpc.CommitmentType) (*solanarpc.GetBalanceResult, error) {
@@ -806,7 +823,7 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 				case devicePK:
 					if transferCalled.Load() {
 						balanceCheckCount.Add(1)
-						return &solanarpc.GetBalanceResult{Value: uint64(0.01 * float64(solana.LAMPORTS_PER_SOL))}, nil // never enough
+						return &solanarpc.GetBalanceResult{Value: uint64(0.01 * float64(solana.LAMPORTS_PER_SOL))}, nil
 					}
 					return &solanarpc.GetBalanceResult{Value: uint64(0.01 * float64(solana.LAMPORTS_PER_SOL))}, nil
 				default:
@@ -844,16 +861,19 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		require.NoError(t, err)
 
 		errCh := make(chan error, 1)
-		go func() { errCh <- f.Run(ctx) }()
+		var once sync.Once
+		go func() {
+			err := f.Run(ctx)
+			once.Do(func() { errCh <- err })
+		}()
 
 		select {
-		case <-errCh:
-			t.Fatal("funder unexpectedly exited early")
+		case err := <-errCh:
+			t.Fatalf("funder unexpectedly exited early: %v", err)
 		case <-time.After(waitForBalanceTimeout + 200*time.Millisecond):
 			cancel()
 		}
 
-		// Ensure it checked balance multiple times (wait loop kicked in)
 		require.GreaterOrEqual(t, balanceCheckCount.Load(), int32(2), "should retry balance during wait")
 	})
 

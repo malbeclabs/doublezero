@@ -31,3 +31,18 @@ jobs:
   smartcontract:
     uses: ./.github/workflows/release.devnet.smartcontract.daily.yml
     secrets: inherit
+  notify:
+    name: Post failure to slack
+    runs-on: ubuntu-24.04-16c-64gb
+    needs:
+      - release
+      - smartcontract
+    if: failure()
+    steps:
+      - uses: malbeclabs/action-slack-notify@v2
+        env:
+          SLACK_COLOR: failure
+          SLACK_USERNAME: Doublezero Releaser
+          SLACK_TITLE: Daily Release Failure
+          MSG_MINIMAL: actions url
+          SLACK_WEBHOOK: ${{ secrets.SLACK_ALERTS_WEBHOOK }}

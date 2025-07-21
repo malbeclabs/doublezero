@@ -424,8 +424,11 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		mu.Lock()
 		defer mu.Unlock()
 
-		require.Equal(t, 3, calls, "expected 3 submission calls for 5500 samples with max 2560 per call")
-		assert.Equal(t, []int{sdktelemetry.MaxSamplesPerBatch, sdktelemetry.MaxSamplesPerBatch, 380}, samplesPerCall, "each call should contain at most 2560 samples")
+		require.Equal(t, 23, calls, "expected 23 submission calls for 5500 samples with max 245 per call")
+		for i := range 22 {
+			assert.Equal(t, sdktelemetry.MaxSamplesPerBatch, samplesPerCall[i])
+		}
+		assert.Equal(t, 110, samplesPerCall[22], "last call should contain 110 samples")
 	})
 
 	t.Run("negative_rtts_are_submitted_as_one", func(t *testing.T) {

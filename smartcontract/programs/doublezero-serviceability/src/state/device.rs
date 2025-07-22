@@ -396,4 +396,42 @@ mod tests {
         assert_eq!(val.interfaces, val2.interfaces);
         assert_eq!(data.len(), val.size(), "Invalid Size");
     }
+
+    fn size_of_pre_dzd_metadata_device(code_len: usize, dz_prefixes_len: usize) -> usize {
+        1 + 32 + 16 + 1 + 32 + 32 + 1 + 4 + 1 + 4 + code_len + 4 + 5 * dz_prefixes_len + 32 + 32
+    }
+
+    #[test]
+    fn test_device_pre_dzd_metadata_deserialization() {
+        let val = Device {
+            account_type: AccountType::Device,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            contributor_pk: Pubkey::new_unique(),
+            code: "test-321".to_string(),
+            device_type: DeviceType::Switch,
+            location_pk: Pubkey::new_unique(),
+            exchange_pk: Pubkey::new_unique(),
+            dz_prefixes: "10.0.0.1/24,11.0.0.1/24".parse().unwrap(),
+            public_ip: [1, 2, 3, 4].into(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::new_unique(),
+            bgp_asn: 0,
+            dia_bgp_asn: 0,
+            mgmt_vrf: "".to_string(),
+            dns_servers: vec![],
+            ntp_servers: vec![],
+            interfaces: vec![],
+        };
+
+        let oldsize = size_of_pre_dzd_metadata_device(val.code.len(), val.dz_prefixes.len());
+        let data = borsh::to_vec(&val).unwrap();
+
+        // trim data to oldsize
+        let val2 = Device::from(&data[..oldsize]);
+
+        assert_eq!(val.size(), val2.size());
+        assert_eq!(val, val2);
+    }
 }

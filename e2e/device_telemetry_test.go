@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/data"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/prometheus"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
@@ -325,7 +326,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	require.True(t, isDeployed)
 
 	// Check that the telemetry samples are being submitted to the telemetry program.
-	epoch := deriveEpoch(time.Now().UTC())
+	epoch := data.DeriveEpoch(time.Now().UTC())
 	log.Info("==> Checking that telemetry samples are being submitted to the telemetry program", "epoch", epoch)
 	account, duration := waitForDeviceLatencySamples(t, dn, la2DevicePK, ny5DevicePK, la2ToNy5LinkPK, epoch, 1, 90*time.Second)
 	log.Info("==> Got telemetry samples", "duration", duration, "epoch", account.Epoch, "originDevicePK", account.OriginDevicePK, "targetDevicePK", account.TargetDevicePK, "linkPK", account.LinkPK, "samplingIntervalMicroseconds", account.SamplingIntervalMicroseconds, "nextSampleIndex", account.NextSampleIndex, "samples", account.Samples)
@@ -480,8 +481,4 @@ func waitForDevicesAndLinks(t *testing.T, dn *devnet.Devnet, expectedDevices, ex
 	}
 
 	return devices, links, time.Since(start)
-}
-
-func deriveEpoch(now time.Time) uint64 {
-	return uint64(now.Unix() / (60 * 60 * 24 * 2))
 }

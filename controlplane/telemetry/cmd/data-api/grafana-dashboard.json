@@ -1,0 +1,1004 @@
+{
+    "annotations": {
+        "list": [
+            {
+                "builtIn": 1,
+                "datasource": {
+                    "type": "grafana",
+                    "uid": "-- Grafana --"
+                },
+                "enable": true,
+                "hide": true,
+                "iconColor": "rgba(0, 211, 255, 1)",
+                "name": "Annotations & Alerts",
+                "type": "dashboard"
+            }
+        ]
+    },
+    "editable": true,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 0,
+    "id": 3,
+    "links": [],
+    "panels": [
+        {
+            "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "ceseusebqihoga"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "custom": {
+                        "align": "auto",
+                        "cellOptions": {
+                            "type": "auto"
+                        },
+                        "inspect": false
+                    },
+                    "fieldMinMax": false,
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "percentage",
+                        "steps": [
+                            {
+                                "color": "text"
+                            },
+                            {
+                                "color": "yellow",
+                                "value": 70
+                            },
+                            {
+                                "color": "orange",
+                                "value": 90
+                            }
+                        ]
+                    },
+                    "unit": "µs"
+                },
+                "overrides": [
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Circuit"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.width",
+                                "value": 427
+                            },
+                            {
+                                "id": "custom.cellOptions",
+                                "value": {
+                                    "type": "auto"
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Success (#)"
+                        },
+                        "properties": [
+                            {
+                                "id": "color",
+                                "value": {
+                                    "fixedColor": "text",
+                                    "mode": "fixed"
+                                }
+                            },
+                            {
+                                "id": "unit",
+                                "value": "locale"
+                            },
+                            {
+                                "id": "custom.width",
+                                "value": 99
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Loss (#)"
+                        },
+                        "properties": [
+                            {
+                                "id": "color",
+                                "value": {
+                                    "mode": "thresholds"
+                                }
+                            },
+                            {
+                                "id": "thresholds",
+                                "value": {
+                                    "mode": "absolute",
+                                    "steps": [
+                                        {
+                                            "color": "text"
+                                        },
+                                        {
+                                            "color": "#EAB839",
+                                            "value": 1
+                                        },
+                                        {
+                                            "color": "orange",
+                                            "value": 10
+                                        }
+                                    ]
+                                }
+                            },
+                            {
+                                "id": "unit",
+                                "value": "locale"
+                            },
+                            {
+                                "id": "custom.width",
+                                "value": 74
+                            },
+                            {
+                                "id": "custom.align",
+                                "value": "auto"
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Loss (%)"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "percentunit"
+                            },
+                            {
+                                "id": "thresholds",
+                                "value": {
+                                    "mode": "absolute",
+                                    "steps": [
+                                        {
+                                            "color": "text"
+                                        },
+                                        {
+                                            "color": "#EAB839",
+                                            "value": 1
+                                        },
+                                        {
+                                            "color": "orange",
+                                            "value": 10
+                                        },
+                                        {
+                                            "color": "red",
+                                            "value": 20
+                                        }
+                                    ]
+                                }
+                            },
+                            {
+                                "id": "custom.width",
+                                "value": 91
+                            },
+                            {
+                                "id": "custom.align",
+                                "value": "right"
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "RTT max"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.width",
+                                "value": 95
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "RTT mean"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.width",
+                                "value": 100
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "RTT p95"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.width",
+                                "value": 84
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "RTT p99"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.width",
+                                "value": 82
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "RTT min"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.width",
+                                "value": 81
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "RTT median"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.width",
+                                "value": 99
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Jitter Avg"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.width",
+                                "value": 108
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Jitter Max"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.width",
+                                "value": 94
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "RTT StdDev"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.width",
+                                "value": 96
+                            },
+                            {
+                                "id": "custom.align",
+                                "value": "right"
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Jitter EWMA"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.width",
+                                "value": 101
+                            }
+                        ]
+                    }
+                ]
+            },
+            "gridPos": {
+                "h": 11,
+                "w": 24,
+                "x": 0,
+                "y": 0
+            },
+            "id": 1,
+            "options": {
+                "cellHeight": "sm",
+                "footer": {
+                    "countRows": false,
+                    "fields": "",
+                    "reducer": [
+                        "sum"
+                    ],
+                    "show": false
+                },
+                "showHeader": true,
+                "sortBy": [
+                    {
+                        "desc": false,
+                        "displayName": "Circuit (origin, target, link)"
+                    }
+                ]
+            },
+            "pluginVersion": "12.0.2",
+            "targets": [
+                {
+                    "columns": [
+                        {
+                            "selector": "rtt_mean",
+                            "text": "RTT mean",
+                            "type": "number"
+                        },
+                        {
+                            "selector": "circuit",
+                            "text": "Circuit",
+                            "type": "string"
+                        },
+                        {
+                            "selector": "rtt_min",
+                            "text": "RTT min",
+                            "type": "number"
+                        },
+                        {
+                            "selector": "rtt_max",
+                            "text": "RTT max",
+                            "type": "number"
+                        },
+                        {
+                            "selector": "jitter_avg",
+                            "text": "Jitter Avg",
+                            "type": "number"
+                        },
+                        {
+                            "selector": "jitter_ewma",
+                            "text": "Jitter EWMA",
+                            "type": "number"
+                        },
+                        {
+                            "selector": "rtt_p95",
+                            "text": "RTT p95",
+                            "type": "number"
+                        },
+                        {
+                            "selector": "rtt_p99",
+                            "text": "RTT p99",
+                            "type": "number"
+                        },
+                        {
+                            "selector": "success_count",
+                            "text": "Success (#)",
+                            "type": "string"
+                        },
+                        {
+                            "selector": "loss_count",
+                            "text": "Loss (#)",
+                            "type": "string"
+                        },
+                        {
+                            "selector": "loss_rate",
+                            "text": "Loss (%)",
+                            "type": "string"
+                        },
+                        {
+                            "selector": "jitter_max",
+                            "text": "Jitter Max",
+                            "type": "number"
+                        },
+                        {
+                            "selector": "rtt_median",
+                            "text": "RTT median",
+                            "type": "number"
+                        },
+                        {
+                            "selector": "rtt_stddev",
+                            "text": "RTT StdDev",
+                            "type": "string"
+                        }
+                    ],
+                    "computed_columns": [],
+                    "datasource": {
+                        "type": "yesoreyeram-infinity-datasource",
+                        "uid": "ceseusebqihoga"
+                    },
+                    "filters": [],
+                    "format": "dataframe",
+                    "global_query_id": "",
+                    "hide": false,
+                    "json_options": {
+                        "columns": [
+                            {
+                                "selector": "timestamp",
+                                "type": "time"
+                            },
+                            {
+                                "selector": "rtt",
+                                "type": "number"
+                            }
+                        ],
+                        "root_selector": ""
+                    },
+                    "parser": "backend",
+                    "refId": "A",
+                    "root_selector": "",
+                    "source": "url",
+                    "summarizeBy": "",
+                    "type": "json",
+                    "url": "http://host.docker.internal:8080/device-circuit-latencies?env=${env}&max_points=1&circuit=${circuit}&from=${__from:date}&to=${__to:date}",
+                    "url_options": {
+                        "data": "",
+                        "method": "GET"
+                    }
+                }
+            ],
+            "title": "Summary",
+            "transformations": [
+                {
+                    "id": "organize",
+                    "options": {
+                        "excludeByName": {},
+                        "includeByName": {},
+                        "indexByName": {
+                            "Circuit": 0,
+                            "Jitter Avg": 2,
+                            "Jitter EWMA": 3,
+                            "Jitter Max": 4,
+                            "Loss (#)": 12,
+                            "Loss (%)": 11,
+                            "RTT StdDev": 5,
+                            "RTT max": 7,
+                            "RTT mean": 1,
+                            "RTT median": 10,
+                            "RTT min": 6,
+                            "RTT p95": 8,
+                            "RTT p99": 9,
+                            "Success (#)": 13
+                        },
+                        "renameByName": {
+                            "Circuit": "Circuit (origin, target, link)"
+                        }
+                    }
+                }
+            ],
+            "type": "table"
+        },
+        {
+            "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "ceseusebqihoga"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 0,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineStyle": {
+                            "fill": "solid"
+                        },
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "auto",
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "fieldMinMax": false,
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green"
+                            },
+                            {
+                                "color": "red",
+                                "value": 80
+                            }
+                        ]
+                    },
+                    "unit": "µs"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 9,
+                "w": 24,
+                "x": 0,
+                "y": 11
+            },
+            "id": 3,
+            "options": {
+                "legend": {
+                    "calcs": [],
+                    "displayMode": "list",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "hideZeros": false,
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "pluginVersion": "12.0.2",
+            "targets": [
+                {
+                    "columns": [
+                        {
+                            "selector": "timestamp",
+                            "text": "Timestamp",
+                            "type": "timestamp"
+                        },
+                        {
+                            "selector": "rtt_mean",
+                            "text": "RTT (mean)",
+                            "type": "number"
+                        },
+                        {
+                            "selector": "circuit",
+                            "text": "Circuit",
+                            "type": "string"
+                        }
+                    ],
+                    "computed_columns": [],
+                    "datasource": {
+                        "type": "yesoreyeram-infinity-datasource",
+                        "uid": "ceseusebqihoga"
+                    },
+                    "filters": [],
+                    "format": "timeseries",
+                    "global_query_id": "",
+                    "hide": false,
+                    "json_options": {
+                        "columns": [
+                            {
+                                "selector": "timestamp",
+                                "type": "time"
+                            },
+                            {
+                                "selector": "rtt",
+                                "type": "number"
+                            }
+                        ],
+                        "root_selector": ""
+                    },
+                    "parser": "backend",
+                    "refId": "A",
+                    "root_selector": "$filter($, function($v) { $v.rtt_p99 != 0 })",
+                    "source": "url",
+                    "summarizeBy": "",
+                    "type": "json",
+                    "url": "http://host.docker.internal:8080/device-circuit-latencies?env=${env}&circuit=${circuit}&from=${__from:date}&to=${__to:date}",
+                    "url_options": {
+                        "data": "",
+                        "method": "GET"
+                    }
+                }
+            ],
+            "title": "RTT mean over time",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "ceseusebqihoga"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 0,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineStyle": {
+                            "fill": "solid"
+                        },
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "auto",
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green"
+                            },
+                            {
+                                "color": "red",
+                                "value": 80
+                            }
+                        ]
+                    },
+                    "unit": "µs"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 9,
+                "w": 24,
+                "x": 0,
+                "y": 20
+            },
+            "id": 2,
+            "options": {
+                "legend": {
+                    "calcs": [],
+                    "displayMode": "list",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "hideZeros": false,
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "pluginVersion": "12.0.2",
+            "targets": [
+                {
+                    "columns": [
+                        {
+                            "selector": "timestamp",
+                            "text": "Timestamp",
+                            "type": "timestamp"
+                        },
+                        {
+                            "selector": "rtt_p99",
+                            "text": "RTT (p99)",
+                            "type": "number"
+                        },
+                        {
+                            "selector": "circuit",
+                            "text": "Circuit",
+                            "type": "string"
+                        }
+                    ],
+                    "computed_columns": [],
+                    "datasource": {
+                        "type": "yesoreyeram-infinity-datasource",
+                        "uid": "ceseusebqihoga"
+                    },
+                    "filterExpression": "",
+                    "filters": [],
+                    "format": "timeseries",
+                    "global_query_id": "",
+                    "hide": false,
+                    "json_options": {
+                        "columns": [
+                            {
+                                "selector": "timestamp",
+                                "type": "time"
+                            },
+                            {
+                                "selector": "rtt",
+                                "type": "number"
+                            }
+                        ],
+                        "root_selector": ""
+                    },
+                    "parser": "backend",
+                    "refId": "A",
+                    "root_selector": "$filter($, function($v) { $v.rtt_p99 != 0 })",
+                    "source": "url",
+                    "summarizeBy": "",
+                    "type": "json",
+                    "url": "http://host.docker.internal:8080/device-circuit-latencies?env=${env}&circuit=${circuit}&from=${__from:date}&to=${__to:date}",
+                    "url_options": {
+                        "data": "",
+                        "method": "GET"
+                    }
+                }
+            ],
+            "title": "RTT p99 over time",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "ceseusebqihoga"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.6,
+                        "drawStyle": "line",
+                        "fillOpacity": 0,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineStyle": {
+                            "fill": "solid"
+                        },
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "auto",
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "fieldMinMax": false,
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green"
+                            },
+                            {
+                                "color": "red",
+                                "value": 80
+                            }
+                        ]
+                    },
+                    "unit": "µs"
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 9,
+                "w": 24,
+                "x": 0,
+                "y": 29
+            },
+            "id": 4,
+            "options": {
+                "legend": {
+                    "calcs": [],
+                    "displayMode": "list",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "hideZeros": false,
+                    "mode": "multi",
+                    "sort": "none"
+                }
+            },
+            "pluginVersion": "12.0.2",
+            "targets": [
+                {
+                    "columns": [
+                        {
+                            "selector": "timestamp",
+                            "text": "Timestamp",
+                            "type": "timestamp"
+                        },
+                        {
+                            "selector": "jitter_ewma",
+                            "text": "Jitter EWMA",
+                            "type": "number"
+                        },
+                        {
+                            "selector": "circuit",
+                            "text": "Circuit",
+                            "type": "string"
+                        }
+                    ],
+                    "computed_columns": [],
+                    "datasource": {
+                        "type": "yesoreyeram-infinity-datasource",
+                        "uid": "ceseusebqihoga"
+                    },
+                    "filters": [],
+                    "format": "timeseries",
+                    "global_query_id": "",
+                    "hide": false,
+                    "json_options": {
+                        "columns": [
+                            {
+                                "selector": "timestamp",
+                                "type": "time"
+                            },
+                            {
+                                "selector": "rtt",
+                                "type": "number"
+                            }
+                        ],
+                        "root_selector": ""
+                    },
+                    "parser": "backend",
+                    "refId": "A",
+                    "root_selector": "$filter($, function($v) { $v.rtt_p99 != 0 })",
+                    "source": "url",
+                    "summarizeBy": "",
+                    "type": "json",
+                    "url": "http://host.docker.internal:8080/device-circuit-latencies?env=${env}&circuit=${circuit}&from=${__from:date}&to=${__to:date}",
+                    "url_options": {
+                        "data": "",
+                        "method": "GET"
+                    }
+                }
+            ],
+            "title": "Jitter EWMA over time",
+            "type": "timeseries"
+        }
+    ],
+    "preload": false,
+    "refresh": "5m",
+    "schemaVersion": 41,
+    "tags": [],
+    "templating": {
+        "list": [
+            {
+                "allowCustomValue": false,
+                "current": {
+                    "text": "devnet",
+                    "value": "devnet"
+                },
+                "datasource": {
+                    "type": "yesoreyeram-infinity-datasource",
+                    "uid": "ceseusebqihoga"
+                },
+                "definition": "",
+                "description": "The network environment (devnet, testnet)",
+                "label": "Environment",
+                "name": "env",
+                "options": [],
+                "query": {
+                    "infinityQuery": {
+                        "columns": [],
+                        "filters": [],
+                        "format": "table",
+                        "parser": "backend",
+                        "refId": "variable",
+                        "root_selector": "",
+                        "source": "url",
+                        "type": "json",
+                        "url": "http://host.docker.internal:8080/envs",
+                        "url_options": {
+                            "data": "",
+                            "method": "GET"
+                        }
+                    },
+                    "query": "",
+                    "queryType": "infinity"
+                },
+                "refresh": 1,
+                "regex": "",
+                "type": "query"
+            },
+            {
+                "current": {
+                    "text": "All",
+                    "value": [
+                        "$__all"
+                    ]
+                },
+                "datasource": {
+                    "type": "yesoreyeram-infinity-datasource",
+                    "uid": "ceseusebqihoga"
+                },
+                "definition": "",
+                "includeAll": true,
+                "label": "Device Circuits",
+                "multi": true,
+                "name": "circuit",
+                "options": [],
+                "query": {
+                    "infinityQuery": {
+                        "columns": [],
+                        "filters": [],
+                        "format": "table",
+                        "parser": "backend",
+                        "refId": "",
+                        "root_selector": "",
+                        "source": "url",
+                        "type": "json",
+                        "url": "http://host.docker.internal:8080/device-circuits?env=${env}",
+                        "url_options": {
+                            "data": "",
+                            "method": "GET"
+                        }
+                    },
+                    "query": "",
+                    "queryType": "infinity"
+                },
+                "refresh": 1,
+                "type": "query"
+            }
+        ]
+    },
+    "time": {
+        "from": "now-24h",
+        "to": "now"
+    },
+    "timepicker": {},
+    "timezone": "America/Toronto",
+    "title": "DoubleZero Telemetry / Device Circuit Latencies",
+    "uid": "9dc316d2-68cb-4dda-a114-0d188bd62a2f",
+    "version": 29
+}

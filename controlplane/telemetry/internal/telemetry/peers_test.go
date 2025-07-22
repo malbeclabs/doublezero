@@ -26,24 +26,21 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 		localDevicePK := stringToPubkey("device1")
 
 		serviceabilityProgram := &mockServiceabilityProgramClient{
-			LoadFunc: func(ctx context.Context) error {
-				return nil
-			},
-			GetDevicesFunc: func() []serviceability.Device {
-				return []serviceability.Device{
-					{PubKey: localDevicePK, PublicIp: [4]uint8{192, 168, 1, 1}},
-					{PubKey: stringToPubkey("device2"), PublicIp: [4]uint8{192, 168, 1, 2}},
-					{PubKey: stringToPubkey("device3"), PublicIp: [4]uint8{192, 168, 1, 3}},
-					{PubKey: stringToPubkey("device4"), PublicIp: [4]uint8{192, 168, 1, 4}},
-				}
-			},
-			GetLinksFunc: func() []serviceability.Link {
-				return []serviceability.Link{
-					{PubKey: stringToPubkey("link_1-2"), Status: serviceability.LinkStatusActivated, SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device2"), TunnelNet: [5]uint8{10, 1, 1, 0, 31}},
-					{PubKey: stringToPubkey("link_1-3"), Status: serviceability.LinkStatusActivated, SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device3"), TunnelNet: [5]uint8{10, 1, 1, 2, 31}},
-					{PubKey: stringToPubkey("link_2-1"), Status: serviceability.LinkStatusActivated, SideAPubKey: stringToPubkey("device2"), SideZPubKey: localDevicePK, TunnelNet: [5]uint8{10, 1, 1, 5, 31}},
-					{PubKey: stringToPubkey("link_2-3"), Status: serviceability.LinkStatusActivated, SideAPubKey: stringToPubkey("device2"), SideZPubKey: stringToPubkey("device3"), TunnelNet: [5]uint8{10, 1, 1, 6, 31}},
-				}
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				return &serviceability.ProgramData{
+					Devices: []serviceability.Device{
+						{PubKey: localDevicePK, PublicIp: [4]uint8{192, 168, 1, 1}},
+						{PubKey: stringToPubkey("device2"), PublicIp: [4]uint8{192, 168, 1, 2}},
+						{PubKey: stringToPubkey("device3"), PublicIp: [4]uint8{192, 168, 1, 3}},
+						{PubKey: stringToPubkey("device4"), PublicIp: [4]uint8{192, 168, 1, 4}},
+					},
+					Links: []serviceability.Link{
+						{PubKey: stringToPubkey("link_1-2"), Status: serviceability.LinkStatusActivated, SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device2"), TunnelNet: [5]uint8{10, 1, 1, 0, 31}},
+						{PubKey: stringToPubkey("link_1-3"), Status: serviceability.LinkStatusActivated, SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device3"), TunnelNet: [5]uint8{10, 1, 1, 2, 31}},
+						{PubKey: stringToPubkey("link_2-1"), Status: serviceability.LinkStatusActivated, SideAPubKey: stringToPubkey("device2"), SideZPubKey: localDevicePK, TunnelNet: [5]uint8{10, 1, 1, 5, 31}},
+						{PubKey: stringToPubkey("link_2-3"), Status: serviceability.LinkStatusActivated, SideAPubKey: stringToPubkey("device2"), SideZPubKey: stringToPubkey("device3"), TunnelNet: [5]uint8{10, 1, 1, 6, 31}},
+					},
+				}, nil
 			},
 		}
 
@@ -150,24 +147,21 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 		localDevicePK := stringToPubkey("device1")
 
 		serviceabilityProgram := &mockServiceabilityProgramClient{
-			LoadFunc: func(ctx context.Context) error {
-				return nil
-			},
-			GetDevicesFunc: func() []serviceability.Device {
-				return []serviceability.Device{
-					{PubKey: localDevicePK, PublicIp: [4]uint8{192, 168, 1, 1}},
-					{PubKey: stringToPubkey("device2"), PublicIp: [4]uint8{192, 168, 1, 2}},
-					{PubKey: stringToPubkey("device3"), PublicIp: [4]uint8{192, 168, 1, 3}},
-					{PubKey: stringToPubkey("device4"), PublicIp: [4]uint8{192, 168, 1, 4}},
-				}
-			},
-			GetLinksFunc: func() []serviceability.Link {
-				return []serviceability.Link{
-					{PubKey: stringToPubkey("link_1-2"), Status: serviceability.LinkStatusActivated, SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device2"), TunnelNet: [5]uint8{10, 1, 1, 0, 31}},
-					{PubKey: stringToPubkey("link_1-3"), Status: serviceability.LinkStatusActivated, SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device3"), TunnelNet: [5]uint8{10, 1, 1, 2, 31}},
-					{PubKey: stringToPubkey("link_2-1"), Status: serviceability.LinkStatusActivated, SideAPubKey: stringToPubkey("device2"), SideZPubKey: localDevicePK, TunnelNet: [5]uint8{10, 1, 1, 5, 31}},
-					{PubKey: stringToPubkey("link_2-3"), Status: serviceability.LinkStatusActivated, SideAPubKey: stringToPubkey("device2"), SideZPubKey: stringToPubkey("device3"), TunnelNet: [5]uint8{10, 1, 1, 6, 31}},
-				}
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				return &serviceability.ProgramData{
+					Devices: []serviceability.Device{
+						{PubKey: localDevicePK, PublicIp: [4]uint8{192, 168, 1, 1}},
+						{PubKey: stringToPubkey("device2"), PublicIp: [4]uint8{192, 168, 1, 2}},
+						{PubKey: stringToPubkey("device3"), PublicIp: [4]uint8{192, 168, 1, 3}},
+						{PubKey: stringToPubkey("device4"), PublicIp: [4]uint8{192, 168, 1, 4}},
+					},
+					Links: []serviceability.Link{
+						{PubKey: stringToPubkey("link_1-2"), Status: serviceability.LinkStatusActivated, SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device2"), TunnelNet: [5]uint8{10, 1, 1, 0, 31}},
+						{PubKey: stringToPubkey("link_1-3"), Status: serviceability.LinkStatusActivated, SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device3"), TunnelNet: [5]uint8{10, 1, 1, 2, 31}},
+						{PubKey: stringToPubkey("link_2-1"), Status: serviceability.LinkStatusActivated, SideAPubKey: stringToPubkey("device2"), SideZPubKey: localDevicePK, TunnelNet: [5]uint8{10, 1, 1, 5, 31}},
+						{PubKey: stringToPubkey("link_2-3"), Status: serviceability.LinkStatusActivated, SideAPubKey: stringToPubkey("device2"), SideZPubKey: stringToPubkey("device3"), TunnelNet: [5]uint8{10, 1, 1, 6, 31}},
+					},
+				}, nil
 			},
 		}
 
@@ -264,25 +258,22 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 		localDevicePK := stringToPubkey("device1")
 
 		serviceabilityProgram := &mockServiceabilityProgramClient{
-			LoadFunc: func(ctx context.Context) error {
-				return nil
-			},
-			GetDevicesFunc: func() []serviceability.Device {
-				return []serviceability.Device{
-					{PubKey: localDevicePK},
-					{PubKey: stringToPubkey("device2")},
-				}
-			},
-			GetLinksFunc: func() []serviceability.Link {
-				return []serviceability.Link{
-					{
-						PubKey:      stringToPubkey("inactive_link"),
-						Status:      serviceability.LinkStatusPending,
-						SideAPubKey: localDevicePK,
-						SideZPubKey: stringToPubkey("device2"),
-						TunnelNet:   [5]uint8{10, 1, 2, 0, 31},
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				return &serviceability.ProgramData{
+					Devices: []serviceability.Device{
+						{PubKey: localDevicePK},
+						{PubKey: stringToPubkey("device2")},
 					},
-				}
+					Links: []serviceability.Link{
+						{
+							PubKey:      stringToPubkey("inactive_link"),
+							Status:      serviceability.LinkStatusPending,
+							SideAPubKey: localDevicePK,
+							SideZPubKey: stringToPubkey("device2"),
+							TunnelNet:   [5]uint8{10, 1, 2, 0, 31},
+						},
+					},
+				}, nil
 			},
 		}
 
@@ -325,25 +316,22 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 		localDevicePK := stringToPubkey("device1")
 
 		serviceabilityProgram := &mockServiceabilityProgramClient{
-			LoadFunc: func(ctx context.Context) error {
-				return nil
-			},
-			GetDevicesFunc: func() []serviceability.Device {
-				return []serviceability.Device{
-					{PubKey: localDevicePK},
-					{PubKey: stringToPubkey("device2")},
-				}
-			},
-			GetLinksFunc: func() []serviceability.Link {
-				return []serviceability.Link{
-					{
-						PubKey:      stringToPubkey("bad_tunnel_net"),
-						Status:      serviceability.LinkStatusActivated,
-						SideAPubKey: localDevicePK,
-						SideZPubKey: stringToPubkey("device2"),
-						TunnelNet:   [5]uint8{0, 0, 0, 0, 0}, // invalid
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				return &serviceability.ProgramData{
+					Devices: []serviceability.Device{
+						{PubKey: localDevicePK},
+						{PubKey: stringToPubkey("device2")},
 					},
-				}
+					Links: []serviceability.Link{
+						{
+							PubKey:      stringToPubkey("bad_tunnel_net"),
+							Status:      serviceability.LinkStatusActivated,
+							SideAPubKey: localDevicePK,
+							SideZPubKey: stringToPubkey("device2"),
+							TunnelNet:   [5]uint8{0, 0, 0, 0, 0}, // invalid
+						},
+					},
+				}, nil
 			},
 		}
 
@@ -402,18 +390,13 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 		}
 
 		serviceabilityProgram := &mockServiceabilityProgramClient{
-			LoadFunc: func(ctx context.Context) error {
-				return nil
-			},
-			GetDevicesFunc: func() []serviceability.Device {
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 				mu.RLock()
 				defer mu.RUnlock()
-				return state.devices
-			},
-			GetLinksFunc: func() []serviceability.Link {
-				mu.RLock()
-				defer mu.RUnlock()
-				return state.links
+				return &serviceability.ProgramData{
+					Devices: state.devices,
+					Links:   state.links,
+				}, nil
 			},
 		}
 
@@ -479,14 +462,8 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 			TWAMPPort:       1234,
 			RefreshInterval: 100 * time.Millisecond,
 			ProgramClient: &mockServiceabilityProgramClient{
-				LoadFunc: func(ctx context.Context) error {
-					return nil
-				},
-				GetDevicesFunc: func() []serviceability.Device {
-					return []serviceability.Device{}
-				},
-				GetLinksFunc: func() []serviceability.Link {
-					return []serviceability.Link{}
+				GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+					return &serviceability.ProgramData{}, nil
 				},
 			},
 			LocalNet: &netutil.MockLocalNet{

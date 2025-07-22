@@ -384,30 +384,11 @@ func TestGetConfig(t *testing.T) {
 }
 
 type mockAccountFetcher struct {
-	Users           []serviceability.User
-	Devices         []serviceability.Device
-	MulticastGroups []serviceability.MulticastGroup
-	Config          serviceability.Config
+	GetProgramDataFunc func(ctx context.Context) (*serviceability.ProgramData, error)
 }
 
-func (m *mockAccountFetcher) Load(context.Context) error {
-	return nil
-}
-
-func (m *mockAccountFetcher) GetDevices() []serviceability.Device {
-	return m.Devices
-}
-
-func (m *mockAccountFetcher) GetUsers() []serviceability.User {
-	return m.Users
-}
-
-func (m *mockAccountFetcher) GetMulticastGroups() []serviceability.MulticastGroup {
-	return m.MulticastGroups
-}
-
-func (m *mockAccountFetcher) GetConfig() serviceability.Config {
-	return m.Config
+func (m *mockAccountFetcher) GetProgramData(ctx context.Context) (*serviceability.ProgramData, error) {
+	return m.GetProgramDataFunc(ctx)
 }
 
 func TestStateCache(t *testing.T) {
@@ -599,10 +580,14 @@ func TestStateCache(t *testing.T) {
 			}
 
 			m := &mockAccountFetcher{
-				Config:          test.Config,
-				Users:           test.Users,
-				Devices:         test.Devices,
-				MulticastGroups: test.MulticastGroups,
+				GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+					return &serviceability.ProgramData{
+						Config:          test.Config,
+						Users:           test.Users,
+						Devices:         test.Devices,
+						MulticastGroups: test.MulticastGroups,
+					}, nil
+				},
 			}
 			controller, err := NewController(WithAccountFetcher(m), WithListener(lis))
 			if err != nil {
@@ -842,10 +827,14 @@ func TestEndToEnd(t *testing.T) {
 		t.Run(test.Name, func(t *testing.T) {
 			listener := bufconn.Listen(1024 * 1024)
 			m := &mockAccountFetcher{
-				Users:           test.Users,
-				Devices:         test.Devices,
-				MulticastGroups: test.MulticastGroups,
-				Config:          test.Config,
+				GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+					return &serviceability.ProgramData{
+						Config:          test.Config,
+						Users:           test.Users,
+						Devices:         test.Devices,
+						MulticastGroups: test.MulticastGroups,
+					}, nil
+				},
 			}
 
 			controller, err := NewController(

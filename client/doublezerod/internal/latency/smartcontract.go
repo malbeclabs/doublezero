@@ -25,12 +25,13 @@ func FetchContractData(ctx context.Context, programId string, rpcEndpoint string
 	client := serviceability.New(rpc.New(rpcEndpoint), programID)
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	if err := client.Load(ctx); err != nil {
+	data, err := client.GetProgramData(ctx)
+	if err != nil {
 		return nil, err
 	}
 
 	// only extract devices for now
 	return &ContractData{
-		Devices: client.Devices,
+		Devices: data.Devices,
 	}, nil
 }

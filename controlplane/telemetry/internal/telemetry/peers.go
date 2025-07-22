@@ -115,7 +115,8 @@ func (p *ledgerPeerDiscovery) GetPeers() []*Peer {
 }
 
 func (p *ledgerPeerDiscovery) refresh(ctx context.Context) error {
-	if err := p.config.ProgramClient.Load(ctx); err != nil {
+	data, err := p.config.ProgramClient.GetProgramData(ctx)
+	if err != nil {
 		metrics.Errors.WithLabelValues(metrics.ErrorTypePeerDiscoveryProgramLoad).Inc()
 		return fmt.Errorf("failed to load program from ledger: %w", err)
 	}
@@ -126,13 +127,13 @@ func (p *ledgerPeerDiscovery) refresh(ctx context.Context) error {
 	p.peers = make([]*Peer, 0, len(p.peers))
 
 	devices := make(map[string]serviceability.Device)
-	for _, device := range p.config.ProgramClient.GetDevices() {
+	for _, device := range data.Devices {
 		pubkey := solana.PublicKeyFromBytes(device.PubKey[:])
 		devices[pubkey.String()] = device
 	}
 
 	links := make(map[string]serviceability.Link)
-	for _, link := range p.config.ProgramClient.GetLinks() {
+	for _, link := range data.Links {
 		pubkey := solana.PublicKeyFromBytes(link.PubKey[:])
 		links[pubkey.String()] = link
 	}

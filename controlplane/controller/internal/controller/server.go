@@ -24,11 +24,7 @@ import (
 )
 
 type accountFetcher interface {
-	Load(context.Context) error
-	GetDevices() []serviceability.Device
-	GetUsers() []serviceability.User
-	GetMulticastGroups() []serviceability.MulticastGroup
-	GetConfig() serviceability.Config
+	GetProgramData(context.Context) (*serviceability.ProgramData, error)
 }
 
 type stateCache struct {
@@ -129,21 +125,21 @@ func WithNoHardware() Option {
 // are converted into a list of tunnels, stored under their respective device, and placed in a map,
 // keyed by the device's public key.
 func (c *Controller) updateStateCache(ctx context.Context) error {
-	if err := c.accountFetcher.Load(ctx); err != nil {
-		cacheUpdateFetchErrors.Inc()
-		return fmt.Errorf("error while loading accounts: %v", err)
+	data, err := c.accountFetcher.GetProgramData(ctx)
+	if err != nil {
+		return fmt.Errorf("error while loading program data: %v", err)
 	}
 
-	devices := c.accountFetcher.GetDevices()
+	devices := data.Devices
 	if len(devices) == 0 {
 		return fmt.Errorf("0 devices found on-chain")
 	}
-	users := c.accountFetcher.GetUsers()
+	users := data.Users
 	if len(users) == 0 {
 		slog.Debug("0 users found on-chain")
 	}
 	cache := stateCache{
-		Config:          c.accountFetcher.GetConfig(),
+		Config:          data.Config,
 		Devices:         make(map[string]*Device),
 		MulticastGroups: make(map[string]serviceability.MulticastGroup),
 	}
@@ -161,7 +157,7 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 	}
 
 	// Build cache of multicast groups.
-	for _, group := range c.accountFetcher.GetMulticastGroups() {
+	for _, group := range data.MulticastGroups {
 		cache.MulticastGroups[base58.Encode(group.PubKey[:])] = group
 	}
 

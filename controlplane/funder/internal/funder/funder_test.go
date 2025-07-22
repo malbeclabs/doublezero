@@ -139,9 +139,10 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		tracker := newTracker("funder-balance", "device-balance", "transfer")
 
 		svc := &mockServiceability{
-			LoadFunc: func(context.Context) error { return nil },
-			GetDevicesFunc: func() []serviceability.Device {
-				return []serviceability.Device{{MetricsPublisherPubKey: devicePK}}
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				return &serviceability.ProgramData{
+					Devices: []serviceability.Device{{MetricsPublisherPubKey: devicePK}},
+				}, nil
 			},
 			ProgramIDFunc: func() solana.PublicKey { return solana.PublicKey{} },
 		}
@@ -220,11 +221,12 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		defer cancel()
 
 		svc := &mockServiceability{
-			LoadFunc: func(ctx context.Context) error { return nil },
-			GetDevicesFunc: func() []serviceability.Device {
-				return []serviceability.Device{
-					{MetricsPublisherPubKey: devicePK},
-				}
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				return &serviceability.ProgramData{
+					Devices: []serviceability.Device{
+						{MetricsPublisherPubKey: devicePK},
+					},
+				}, nil
 			},
 			ProgramIDFunc: func() solana.PublicKey { return solana.PublicKey{} },
 		}
@@ -279,11 +281,12 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		defer cancel()
 
 		svc := &mockServiceability{
-			LoadFunc: func(ctx context.Context) error { return nil },
-			GetDevicesFunc: func() []serviceability.Device {
-				return []serviceability.Device{
-					{MetricsPublisherPubKey: devicePK},
-				}
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				return &serviceability.ProgramData{
+					Devices: []serviceability.Device{
+						{MetricsPublisherPubKey: devicePK},
+					},
+				}, nil
 			},
 			ProgramIDFunc: func() solana.PublicKey { return solana.PublicKey{} },
 		}
@@ -344,13 +347,9 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		}
 
 		svc := &mockServiceability{
-			LoadFunc: func(ctx context.Context) error {
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 				loadCalled <- struct{}{}
-				return context.DeadlineExceeded
-			},
-			GetDevicesFunc: func() []serviceability.Device {
-				called.getDevices = true
-				return nil
+				return nil, context.DeadlineExceeded
 			},
 			ProgramIDFunc: func() solana.PublicKey { return solana.PublicKey{} },
 		}
@@ -411,15 +410,13 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		}
 
 		svc := &mockServiceability{
-			LoadFunc: func(ctx context.Context) error {
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 				loadCalled <- struct{}{}
-				return nil
-			},
-			GetDevicesFunc: func() []serviceability.Device {
-				called.getDevices = true
-				return []serviceability.Device{
-					{MetricsPublisherPubKey: devicePK},
-				}
+				return &serviceability.ProgramData{
+					Devices: []serviceability.Device{
+						{MetricsPublisherPubKey: devicePK},
+					},
+				}, nil
 			},
 			ProgramIDFunc: func() solana.PublicKey { return solana.PublicKey{} },
 		}
@@ -483,14 +480,13 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		}
 
 		svc := &mockServiceability{
-			LoadFunc: func(ctx context.Context) error {
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 				loadCalled <- struct{}{}
-				return nil
-			},
-			GetDevicesFunc: func() []serviceability.Device {
-				return []serviceability.Device{
-					{MetricsPublisherPubKey: devicePK},
-				}
+				return &serviceability.ProgramData{
+					Devices: []serviceability.Device{
+						{MetricsPublisherPubKey: devicePK},
+					},
+				}, nil
 			},
 			ProgramIDFunc: func() solana.PublicKey { return solana.PublicKey{} },
 		}
@@ -552,14 +548,13 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		tracker := newTracker("load", "transfer")
 
 		svc := &mockServiceability{
-			LoadFunc: func(context.Context) error {
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 				tracker.mark("load")
-				return nil
-			},
-			GetDevicesFunc: func() []serviceability.Device {
-				return []serviceability.Device{
-					{MetricsPublisherPubKey: devicePK},
-				}
+				return &serviceability.ProgramData{
+					Devices: []serviceability.Device{
+						{MetricsPublisherPubKey: devicePK},
+					},
+				}, nil
 			},
 			ProgramIDFunc: func() solana.PublicKey { return solana.NewWallet().PublicKey() },
 		}
@@ -633,16 +628,15 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		)
 
 		svc := &mockServiceability{
-			LoadFunc: func(context.Context) error {
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 				tracker.mark("load")
-				return nil
-			},
-			GetDevicesFunc: func() []serviceability.Device {
-				return []serviceability.Device{
-					{MetricsPublisherPubKey: deviceOK},
-					{MetricsPublisherPubKey: deviceLow},
-					{MetricsPublisherPubKey: deviceError},
-				}
+				return &serviceability.ProgramData{
+					Devices: []serviceability.Device{
+						{MetricsPublisherPubKey: deviceOK},
+						{MetricsPublisherPubKey: deviceLow},
+						{MetricsPublisherPubKey: deviceError},
+					},
+				}, nil
 			},
 			ProgramIDFunc: func() solana.PublicKey { return solana.PublicKey{} },
 		}
@@ -731,15 +725,14 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		tracker := newTracker("load", "valid-device-checked")
 
 		svc := &mockServiceability{
-			LoadFunc: func(context.Context) error {
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 				tracker.mark("load")
-				return nil
-			},
-			GetDevicesFunc: func() []serviceability.Device {
-				return []serviceability.Device{
-					{MetricsPublisherPubKey: validPK},
-					{MetricsPublisherPubKey: zeroPK},
-				}
+				return &serviceability.ProgramData{
+					Devices: []serviceability.Device{
+						{MetricsPublisherPubKey: validPK},
+						{MetricsPublisherPubKey: zeroPK},
+					},
+				}, nil
 			},
 			ProgramIDFunc: func() solana.PublicKey { return solana.PublicKey{} },
 		}
@@ -801,11 +794,12 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		const waitForBalanceTimeout = 100 * time.Millisecond
 
 		svc := &mockServiceability{
-			LoadFunc: func(context.Context) error { return nil },
-			GetDevicesFunc: func() []serviceability.Device {
-				return []serviceability.Device{
-					{MetricsPublisherPubKey: devicePK},
-				}
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				return &serviceability.ProgramData{
+					Devices: []serviceability.Device{
+						{MetricsPublisherPubKey: devicePK},
+					},
+				}, nil
 			},
 			ProgramIDFunc: func() solana.PublicKey { return solana.PublicKey{} },
 		}
@@ -886,10 +880,8 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		defer cancel()
 
 		svc := &mockServiceability{
-			LoadFunc: func(context.Context) error { return nil },
-			GetDevicesFunc: func() []serviceability.Device {
-				// Minimal valid device to trigger loop
-				return nil
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				return &serviceability.ProgramData{}, nil
 			},
 			ProgramIDFunc: func() solana.PublicKey { return solana.PublicKey{} },
 		}

@@ -465,18 +465,21 @@ func waitForDevicesAndLinks(t *testing.T, dn *devnet.Devnet, expectedDevices, ex
 
 	start := time.Now()
 	require.Eventually(t, func() bool {
-		err := client.Load(t.Context())
+		data, err := client.GetProgramData(t.Context())
 		require.NoError(t, err)
-		return len(client.GetDevices()) == expectedDevices && len(client.GetLinks()) == expectedLinks
+		return len(data.Devices) == expectedDevices && len(data.Links) == expectedLinks
 	}, timeout, 1*time.Second)
 
+	data, err := client.GetProgramData(t.Context())
+	require.NoError(t, err)
+
 	links := map[string]*serviceability.Link{}
-	for _, link := range client.GetLinks() {
+	for _, link := range data.Links {
 		links[link.Code] = &link
 	}
 
 	devices := map[string]*serviceability.Device{}
-	for _, device := range client.GetDevices() {
+	for _, device := range data.Devices {
 		devices[device.Code] = &device
 	}
 

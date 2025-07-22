@@ -3,7 +3,6 @@ package data_test
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -37,14 +36,11 @@ func TestTelemetry_Data_Provider_GetCircuits(t *testing.T) {
 		}
 
 		client := &mockServiceabilityClient{
-			LoadFunc: func(ctx context.Context) error {
-				return nil
-			},
-			GetDevicesFunc: func() []serviceability.Device {
-				return []serviceability.Device{devA, devB}
-			},
-			GetLinksFunc: func() []serviceability.Link {
-				return []serviceability.Link{link}
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				return &serviceability.ProgramData{
+					Devices: []serviceability.Device{devA, devB},
+					Links:   []serviceability.Link{link},
+				}, nil
 			},
 		}
 		provider, err := data.NewProvider(&data.ProviderConfig{
@@ -82,14 +78,11 @@ func TestTelemetry_Data_Provider_GetCircuits(t *testing.T) {
 			SideZPubKey: toPubKeyBytes(solana.NewWallet().PublicKey()), // Missing device
 		}
 		client := &mockServiceabilityClient{
-			LoadFunc: func(ctx context.Context) error {
-				return nil
-			},
-			GetDevicesFunc: func() []serviceability.Device {
-				return []serviceability.Device{devA}
-			},
-			GetLinksFunc: func() []serviceability.Link {
-				return []serviceability.Link{link}
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				return &serviceability.ProgramData{
+					Devices: []serviceability.Device{devA},
+					Links:   []serviceability.Link{link},
+				}, nil
 			},
 		}
 		provider, err := data.NewProvider(&data.ProviderConfig{
@@ -108,8 +101,8 @@ func TestTelemetry_Data_Provider_GetCircuits(t *testing.T) {
 		t.Parallel()
 
 		client := &mockServiceabilityClient{
-			LoadFunc: func(ctx context.Context) error {
-				return errors.New("load failed")
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				return nil, errors.New("load failed")
 			},
 		}
 		provider, err := data.NewProvider(&data.ProviderConfig{
@@ -145,24 +138,15 @@ func TestTelemetry_Data_Provider_GetCircuits(t *testing.T) {
 		}
 
 		client := &mockServiceabilityClient{
-			LoadFunc: func(ctx context.Context) error {
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 				if called > 0 {
-					return errors.New("Load should not be called more than once")
+					return nil, errors.New("GetProgramData should not be called more than once")
 				}
 				called++
-				return nil
-			},
-			GetDevicesFunc: func() []serviceability.Device {
-				if called > 1 {
-					require.Fail(t, "GetDevices called after cache populated")
-				}
-				return []serviceability.Device{devA, devB}
-			},
-			GetLinksFunc: func() []serviceability.Link {
-				if called > 1 {
-					require.Fail(t, "GetLinks called after cache populated")
-				}
-				return []serviceability.Link{link}
+				return &serviceability.ProgramData{
+					Devices: []serviceability.Device{devA, devB},
+					Links:   []serviceability.Link{link},
+				}, nil
 			},
 		}
 
@@ -186,15 +170,19 @@ func TestTelemetry_Data_Provider_GetCircuits(t *testing.T) {
 	t.Run("concurrent GetCircuits triggers race without lock", func(t *testing.T) {
 		t.Parallel()
 
-		racey := &raceyMockClient{
-			devices: make(map[string]serviceability.Device),
-		}
-
 		provider, err := data.NewProvider(&data.ProviderConfig{
-			Logger:               logger,
-			ServiceabilityClient: racey,
-			TelemetryClient:      &mockTelemetryClient{},
-			CircuitsCacheTTL:     0, // Disable cache so every call invokes Load()
+			Logger: logger,
+			ServiceabilityClient: &mockServiceabilityClient{
+				GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+					return &serviceability.ProgramData{
+						Devices: []serviceability.Device{
+							{PubKey: toPubKeyBytes(solana.NewWallet().PublicKey())},
+						},
+					}, nil
+				},
+			},
+			TelemetryClient:  &mockTelemetryClient{},
+			CircuitsCacheTTL: 0, // Disable cache so every call invokes Load()
 		})
 		require.NoError(t, err)
 
@@ -222,40 +210,4 @@ func toPubKeyBytes(pk solana.PublicKey) [32]byte {
 	var arr [32]byte
 	copy(arr[:], pk.Bytes())
 	return arr
-}
-
-type raceyMockClient struct {
-	devices map[string]serviceability.Device
-}
-
-func (m *raceyMockClient) Load(ctx context.Context) error {
-	for i := range 10 {
-		m.devices[fmt.Sprintf("dev-%d", i)] = serviceability.Device{
-			Code:   fmt.Sprintf("dev-%d", i),
-			PubKey: toPubKeyBytes(solana.NewWallet().PublicKey()),
-		}
-	}
-	return nil
-}
-
-func (m *raceyMockClient) GetDevices() []serviceability.Device {
-	devs := make([]serviceability.Device, 0, len(m.devices))
-	for _, d := range m.devices {
-		devs = append(devs, d)
-	}
-	return devs
-}
-
-func (m *raceyMockClient) GetLinks() []serviceability.Link {
-	devs := m.GetDevices()
-	if len(devs) < 2 {
-		return nil
-	}
-	return []serviceability.Link{
-		{
-			Code:        "L1",
-			SideAPubKey: devs[0].PubKey,
-			SideZPubKey: devs[1].PubKey,
-		},
-	}
 }

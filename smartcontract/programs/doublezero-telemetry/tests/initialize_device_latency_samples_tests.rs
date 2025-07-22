@@ -660,7 +660,6 @@ async fn test_initialize_device_latency_samples_fail_origin_device_not_activated
                 mtu: 1500,
                 delay_ns: 10,
                 jitter_ns: 1,
-                ..LinkCreateArgs::default()
             },
             1,
             "10.1.1.0/30".parse().unwrap(),
@@ -769,7 +768,6 @@ async fn test_initialize_device_latency_samples_fail_target_device_not_activated
                 mtu: 1500,
                 delay_ns: 10,
                 jitter_ns: 1,
-                ..LinkCreateArgs::default()
             },
             1,
             "10.1.1.0/30".parse().unwrap(),
@@ -875,7 +873,6 @@ async fn test_initialize_device_latency_samples_fail_link_not_activated() {
             mtu: 1500,
             delay_ns: 10,
             jitter_ns: 1,
-            ..LinkCreateArgs::default()
         })
         .await
         .unwrap();
@@ -1010,7 +1007,6 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
                 mtu: 1500,
                 delay_ns: 10,
                 jitter_ns: 1,
-                ..LinkCreateArgs::default()
             },
             1,
             "10.1.1.0/30".parse().unwrap(),
@@ -1117,7 +1113,6 @@ async fn test_initialize_device_latency_samples_succeeds_with_reversed_link_side
                 mtu: 1500,
                 delay_ns: 1,
                 jitter_ns: 1,
-                ..LinkCreateArgs::default()
             },
             1,
             "192.168.0.0/24".parse().unwrap(),
@@ -1354,9 +1349,13 @@ async fn test_initialize_device_latency_samples_fail_agent_not_owner_of_origin_d
         .create_and_activate_link(
             LinkCreateArgs {
                 code: "LNK".to_string(),
+                link_type: LinkLinkType::L2,
+                bandwidth: 1000,
+                mtu: 1500,
+                delay_ns: 10,
+                jitter_ns: 1,
                 side_a_pk: origin_device_pk,
                 side_z_pk: target_device_pk,
-                ..LinkCreateArgs::default()
             },
             1,
             "10.0.0.0/24".parse().unwrap(),

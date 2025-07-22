@@ -121,25 +121,6 @@ impl DeviceCreateArgsExt for DeviceCreateArgs {
     }
 }
 
-pub trait LinkCreateArgsExt {
-    fn default() -> LinkCreateArgs;
-}
-
-impl LinkCreateArgsExt for LinkCreateArgs {
-    fn default() -> LinkCreateArgs {
-        LinkCreateArgs {
-            code: "".to_string(),
-            side_a_pk: Pubkey::default(),
-            side_z_pk: Pubkey::default(),
-            link_type: LinkLinkType::L3,
-            bandwidth: 0,
-            mtu: 0,
-            delay_ns: 0,
-            jitter_ns: 0,
-        }
-    }
-}
-
 pub struct LedgerContext {
     pub banks_client: BanksClient,
     pub payer: Keypair,
@@ -353,7 +334,6 @@ impl LedgerHelper {
                     mtu: 1500,
                     delay_ns: 10,
                     jitter_ns: 1,
-                    ..LinkCreateArgs::default()
                 },
                 1,
                 "10.1.1.0/30".parse().unwrap(),

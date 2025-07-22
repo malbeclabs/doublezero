@@ -63,7 +63,6 @@ pub fn process_create_exchange(
     );
     // Check if the account is writable
     assert!(pda_account.is_writable, "PDA Account is not writable");
-    // get the PDA pubkey and bump seed for the account location & check if it matches the account
     // Parse the global state account & check if the payer is in the allowlist
     let globalstate = globalstate_get_next(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {

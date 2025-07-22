@@ -266,6 +266,7 @@ func TestE2E_SDK_Telemetry(t *testing.T) {
 		900000,
 		1000000,
 	}
+
 	t.Run("write second device latency samples", func(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(30*time.Second))
 		defer cancel()
@@ -308,6 +309,44 @@ func TestE2E_SDK_Telemetry(t *testing.T) {
 		combinedSamples := append(firstSamples, secondSamples...)
 		require.Equal(t, uint32(len(combinedSamples)), deviceLatencySamples.NextSampleIndex)
 		require.Equal(t, combinedSamples, deviceLatencySamples.Samples)
+	})
+
+	t.Run("write largest possible batch of samples per transaction", func(t *testing.T) {
+		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(30*time.Second))
+		defer cancel()
+		start := time.Now()
+		log.Info("==> Writing largest possible batch of samples per transaction")
+		sig, res, err := la2AgentTelemetryClient.WriteDeviceLatencySamples(ctx, telemetry.WriteDeviceLatencySamplesInstructionConfig{
+			AgentPK:                    la2DeviceAgentPrivateKey.PublicKey(),
+			OriginDevicePK:             la2DevicePK,
+			TargetDevicePK:             ny5DevicePK,
+			LinkPK:                     la2ToNy5LinkPK,
+			Epoch:                      epoch,
+			StartTimestampMicroseconds: secondStartTimestampMicroseconds,
+			Samples:                    make([]uint32, telemetry.MaxSamplesPerBatch),
+		})
+		require.NoError(t, err)
+		for _, msg := range res.Meta.LogMessages {
+			log.Debug("solana log message", "msg", msg)
+		}
+		require.Nil(t, res.Meta.Err, "transaction failed: %+v", res.Meta.Err)
+		log.Info("==> Wrote largest possible batch of samples per transaction", "sig", sig, "tx", res, "duration", time.Since(start))
+	})
+
+	t.Run("write largest possible batch of samples per transaction +1 (should fail)", func(t *testing.T) {
+		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(30*time.Second))
+		defer cancel()
+		log.Info("==> Writing largest possible batch of samples per transaction +1 (should fail)")
+		_, _, err := la2AgentTelemetryClient.WriteDeviceLatencySamples(ctx, telemetry.WriteDeviceLatencySamplesInstructionConfig{
+			AgentPK:                    la2DeviceAgentPrivateKey.PublicKey(),
+			OriginDevicePK:             la2DevicePK,
+			TargetDevicePK:             ny5DevicePK,
+			LinkPK:                     la2ToNy5LinkPK,
+			Epoch:                      epoch,
+			StartTimestampMicroseconds: secondStartTimestampMicroseconds,
+			Samples:                    make([]uint32, telemetry.MaxSamplesPerBatch+1),
+		})
+		require.ErrorIs(t, err, telemetry.ErrSamplesBatchTooLarge)
 	})
 }
 

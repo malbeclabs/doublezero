@@ -133,7 +133,7 @@ fn create_test_data_store_full() -> DataStore {
             jitter_ns: 2000000,
             tunnel_id: 100,
             tunnel_net: vec!["192.168.1.0/30".to_string()],
-            status: "active".to_string(),
+            status: "activated".to_string(),
             code: "NYC-LON-1".to_string(),
         },
     );
@@ -154,7 +154,7 @@ fn create_test_data_store_full() -> DataStore {
             jitter_ns: 10000000,
             tunnel_id: 101,
             tunnel_net: vec!["192.168.2.0/30".to_string()],
-            status: "active".to_string(),
+            status: "activated".to_string(),
             code: "LON-TYO-1".to_string(),
         },
     );

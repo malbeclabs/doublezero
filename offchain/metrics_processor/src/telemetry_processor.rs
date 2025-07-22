@@ -400,10 +400,10 @@ mod tests {
         let samples = vec![100, 150, 200, 250, 300];
         let stats = TelemetryProcessor::calculate_stats_from_samples(&samples);
 
-        assert_eq!(stats.rtt_mean_us, 0.2);
-        assert_eq!(stats.rtt_median_us, 0.2);
-        assert_eq!(stats.rtt_min_us, 0.1);
-        assert_eq!(stats.rtt_max_us, 0.3);
+        assert_eq!(stats.rtt_mean_us, 200.0);
+        assert_eq!(stats.rtt_median_us, 200.0);
+        assert_eq!(stats.rtt_min_us, 100.0);
+        assert_eq!(stats.rtt_max_us, 300.0);
         assert_eq!(stats.sample_count, 5);
     }
 
@@ -412,8 +412,8 @@ mod tests {
         let samples = vec![100, 150, 200, 250, 300];
         let stats = TelemetryProcessor::calculate_stats_from_samples(&samples);
 
-        assert_eq!(stats.jitter_avg_us, 0.05);
-        assert_eq!(stats.jitter_max_us, 0.05);
+        assert_eq!(stats.jitter_avg_us, 50.0);
+        assert_eq!(stats.jitter_max_us, 50.0);
     }
 
     #[test]

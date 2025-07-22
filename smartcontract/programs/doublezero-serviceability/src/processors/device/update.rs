@@ -136,6 +136,12 @@ pub fn process_update_device(
         device.ntp_servers = ntp_servers.clone();
     }
     if let Some(interfaces) = &value.interfaces {
+        if interfaces
+            .iter()
+            .any(|i| i.version != CURRENT_INTERFACE_VERSION)
+        {
+            return Err(DoubleZeroError::InvalidInterfaceVersion.into());
+        }
         device.interfaces = interfaces.clone();
     }
 

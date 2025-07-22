@@ -133,8 +133,28 @@ impl From<u8> for LoopbackType {
     }
 }
 
+#[repr(u8)]
+#[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone, Copy, Serialize)]
+#[borsh(use_discriminant = true)]
+pub enum InterfaceVersion {
+    Unsupported = 0,
+    V1 = 1,
+}
+
+impl From<u8> for InterfaceVersion {
+    fn from(value: u8) -> Self {
+        match value {
+            1 => InterfaceVersion::V1,
+            _ => InterfaceVersion::Unsupported, // Default case
+        }
+    }
+}
+
+pub const CURRENT_INTERFACE_VERSION: InterfaceVersion = InterfaceVersion::V1;
+
 #[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone, Serialize)]
 pub struct Interface {
+    pub version: InterfaceVersion,     // 1
     pub name: String,                  // 4 + len
     pub interface_type: InterfaceType, // 1
     pub loopback_type: LoopbackType,   // 1
@@ -150,13 +170,18 @@ impl Interface {
     }
 
     pub fn size_given_name_len(name_len: usize) -> usize {
-        4 + name_len + 1 + 1 + 2 + 5 + 2 + 1
+        1 + 4 + name_len + 1 + 1 + 2 + 5 + 2 + 1
     }
 }
 
 impl From<&mut ByteReader<'_>> for Interface {
     fn from(parser: &mut ByteReader<'_>) -> Self {
+        let version = parser.read_enum::<InterfaceVersion>();
+        if version != CURRENT_INTERFACE_VERSION {
+            panic!("Unsupported interface version: {},", version as u8);
+        }
         Self {
+            version,
             name: parser.read_string(),
             interface_type: parser.read_enum(),
             loopback_type: parser.read_enum(),
@@ -310,6 +335,7 @@ mod tests {
             ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
             interfaces: vec![
                 Interface {
+                    version: CURRENT_INTERFACE_VERSION,
                     name: "eth0".to_string(),
                     interface_type: InterfaceType::Physical,
                     loopback_type: LoopbackType::None,
@@ -319,6 +345,7 @@ mod tests {
                     user_tunnel_endpoint: true,
                 },
                 Interface {
+                    version: CURRENT_INTERFACE_VERSION,
                     name: "eth1".to_string(),
                     interface_type: InterfaceType::Physical,
                     loopback_type: LoopbackType::None,

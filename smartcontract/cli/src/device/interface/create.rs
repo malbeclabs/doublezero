@@ -76,6 +76,7 @@ impl CreateDeviceInterfaceCliCommand {
 
         let mut interfaces = device.interfaces;
         interfaces.push(device::Interface {
+            version: device::CURRENT_INTERFACE_VERSION,
             name: self.name.clone(),
             interface_type: self.interface_type.into(),
             loopback_type: self.loopback_type.into(),
@@ -154,6 +155,7 @@ mod tests {
             dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
             ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
             interfaces: vec![Interface {
+                version: super::device::CURRENT_INTERFACE_VERSION,
                 name: "eth0".to_string(),
                 interface_type: InterfaceType::Physical,
                 loopback_type: LoopbackType::None,
@@ -192,6 +194,7 @@ mod tests {
                 ntp_servers: None,
                 interfaces: Some(vec![
                     Interface {
+                        version: super::device::CURRENT_INTERFACE_VERSION,
                         name: "eth0".to_string(),
                         interface_type: InterfaceType::Physical,
                         loopback_type: LoopbackType::None,
@@ -201,6 +204,7 @@ mod tests {
                         user_tunnel_endpoint: true,
                     },
                     Interface {
+                        version: super::device::CURRENT_INTERFACE_VERSION,
                         name: "lo0".to_string(),
                         interface_type: InterfaceType::Loopback,
                         loopback_type: LoopbackType::Ipv4,

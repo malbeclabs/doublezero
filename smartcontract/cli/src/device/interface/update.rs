@@ -121,7 +121,7 @@ mod tests {
     };
     use doublezero_sdk::{
         commands::device::{get::GetDeviceCommand, update::UpdateDeviceCommand},
-        AccountType, Device, DeviceStatus, DeviceType,
+        AccountType, Device, DeviceStatus, DeviceType, CURRENT_INTERFACE_VERSION,
     };
     use doublezero_serviceability::state::device::{Interface, InterfaceType, LoopbackType};
     use mockall::predicate;
@@ -155,6 +155,7 @@ mod tests {
             ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
             interfaces: vec![
                 Interface {
+                    version: CURRENT_INTERFACE_VERSION,
                     name: "eth0".to_string(),
                     interface_type: InterfaceType::Physical,
                     loopback_type: LoopbackType::None,
@@ -164,6 +165,7 @@ mod tests {
                     user_tunnel_endpoint: true,
                 },
                 Interface {
+                    version: CURRENT_INTERFACE_VERSION,
                     name: "lo0".to_string(),
                     interface_type: InterfaceType::Loopback,
                     loopback_type: LoopbackType::Vpnv4,
@@ -203,6 +205,7 @@ mod tests {
                 ntp_servers: None,
                 interfaces: Some(vec![
                     Interface {
+                        version: CURRENT_INTERFACE_VERSION,
                         name: "eth0".to_string(),
                         interface_type: InterfaceType::Physical,
                         loopback_type: LoopbackType::None,
@@ -212,6 +215,7 @@ mod tests {
                         user_tunnel_endpoint: true,
                     },
                     Interface {
+                        version: CURRENT_INTERFACE_VERSION,
                         name: "lo0".to_string(),
                         interface_type: InterfaceType::Loopback,
                         loopback_type: LoopbackType::Ipv4,

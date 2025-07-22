@@ -144,6 +144,7 @@ mod tests {
     use doublezero_sdk::{
         commands::{device::get::GetDeviceCommand, link::create::CreateLinkCommand},
         get_device_pda, AccountType, Device, DeviceStatus, DeviceType, LinkLinkType,
+        CURRENT_INTERFACE_VERSION,
     };
     use doublezero_serviceability::state::device::{Interface, InterfaceType, LoopbackType};
     use mockall::predicate;
@@ -185,6 +186,7 @@ mod tests {
             dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
             ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
             interfaces: vec![Interface {
+                version: CURRENT_INTERFACE_VERSION,
                 name: "eth0".to_string(),
                 interface_type: InterfaceType::Physical,
                 loopback_type: LoopbackType::None,
@@ -217,6 +219,7 @@ mod tests {
             dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
             ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
             interfaces: vec![Interface {
+                version: CURRENT_INTERFACE_VERSION,
                 name: "eth1".to_string(),
                 interface_type: InterfaceType::Physical,
                 loopback_type: LoopbackType::None,

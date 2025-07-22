@@ -1,5 +1,8 @@
 use crate::{seeds::*, state::accounttype::*};
 use borsh::BorshSerialize;
+use doublezero_program_common::create_account::try_create_account;
+#[cfg(test)]
+use solana_program::msg;
 use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
@@ -8,11 +11,8 @@ use solana_program::{
     pubkey::Pubkey,
     sysvar::{rent::Rent, Sysvar},
 };
-use std::{fmt, fmt::Debug};
 use solana_system_interface::instruction;
-use doublezero_program_common::create_account::try_create_account;
-#[cfg(test)]
-use solana_program::msg;
+use std::{fmt, fmt::Debug};
 
 pub fn account_create<'a, T>(
     account: &AccountInfo<'a>,

@@ -10,8 +10,8 @@ use solana_program::{
     program::invoke_signed,
     sysvar::{rent::Rent, Sysvar},
 };
-use std::io::Result;
 use solana_system_interface::instruction;
+use std::io::Result;
 
 pub fn globalstate_get(globalstate_account: &AccountInfo) -> Result<GlobalState> {
     let data = &globalstate_account.data.borrow_mut();

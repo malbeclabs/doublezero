@@ -10,7 +10,6 @@ use solana_program::{
 };
 use solana_system_interface::instruction;
 
-
 pub trait AccountSize {
     fn size(&self) -> usize;
 }

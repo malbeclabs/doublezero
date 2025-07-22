@@ -1649,6 +1649,7 @@ name = "doublezero-program-common"
 version = "0.2.2"
 dependencies = [
  "solana-program",
+ "solana-system-interface",
 ]
 
 [[package]]

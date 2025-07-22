@@ -31,6 +31,7 @@ func main() {
 		log.Error("failed to create testnet provider", "error", err)
 		os.Exit(1)
 	}
+
 	devnetProvider, err := devnetProvider(log)
 	if err != nil {
 		log.Error("failed to create devnet provider", "error", err)

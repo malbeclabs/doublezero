@@ -58,12 +58,12 @@ func (p *provider) GetCircuits(ctx context.Context) ([]Circuit, error) {
 
 		deviceA, ok := devicesByPK[deviceAPK.String()]
 		if !ok {
-			p.cfg.Logger.Warn("device A not found, skipping link", "link_code", link.Code, "device_a_code", deviceAPK.String(), "devicesByPK", len(devicesByPK), "devices", len(devices))
+			p.cfg.Logger.Warn("device A not found, skipping link", "link_code", link.Code, "device_a_pk", deviceAPK.String())
 			continue
 		}
 		deviceZ, ok := devicesByPK[deviceZPK.String()]
 		if !ok {
-			p.cfg.Logger.Warn("device Z not found, skipping link", "link_code", link.Code, "device_z_code", deviceZPK.String(), "devicesByPK", len(devicesByPK), "devices", len(devices))
+			p.cfg.Logger.Warn("device Z not found, skipping link", "link_code", link.Code, "device_z_pk", deviceZPK.String())
 			continue
 		}
 

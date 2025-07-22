@@ -1,7 +1,7 @@
 use crate::{
     data_store::{DataStore, ProcessedMetrics},
     shapley_types::ShapleyInputs,
-    telemetry_processor::{TelemetryProcessor, TelemetryStats},
+    telemetry_processor::{TelemetryProcessor, TelemetryStats, print_telemetry_stats},
 };
 use anyhow::Result;
 use network_shapley::types::{Demand, PrivateLink, PublicLink};
@@ -9,13 +9,13 @@ use rust_decimal::{Decimal, prelude::ToPrimitive};
 use std::collections::{HashMap, HashSet};
 use tracing::info;
 
-pub struct MetricsProcessorV2 {
+pub struct MetricsProcessor {
     data_store: DataStore,
     after_us: u64,
     before_us: u64,
 }
 
-impl MetricsProcessorV2 {
+impl MetricsProcessor {
     pub fn new(data_store: DataStore) -> Self {
         let after_us = data_store.metadata.after_us;
         let before_us = data_store.metadata.before_us;
@@ -45,11 +45,16 @@ impl MetricsProcessorV2 {
         let device_to_location_map = self.get_device_to_location_map();
         let device_to_operator = self.get_device_to_operator_map();
 
+        info!("device_to_location_map: {device_to_location_map:?}");
+        info!("device_to_operator: {device_to_operator:?}");
+
         let telemetry_stats = TelemetryProcessor::calculate_all_stats(&self.data_store);
         info!(
             "Calculated telemetry stats for {} links",
             telemetry_stats.len()
         );
+
+        info!("\n{}", print_telemetry_stats(&telemetry_stats));
 
         let private_links = self.process_private_links(&telemetry_stats)?;
         info!("Processed {} private links", private_links.len());
@@ -132,46 +137,32 @@ impl MetricsProcessorV2 {
         let mut private_links = Vec::new();
 
         for link in self.data_store.links.values() {
-            if link.link_type != "private" || link.status != "active" {
+            if link.status != "activated" {
                 continue;
             }
 
-            let (from_device, to_device) = self.data_store.get_link_devices(link);
-
-            let (from_device, to_device) = match (from_device, to_device) {
+            let (from_device, to_device) = match self.data_store.get_link_devices(link) {
                 (Some(f), Some(t)) if f.status == "activated" && t.status == "activated" => (f, t),
                 _ => continue,
             };
 
-            let from_location = self.data_store.get_device_location(&from_device.pubkey);
-            let to_location = self.data_store.get_device_location(&to_device.pubkey);
-
-            let (_from_location, _to_location) = match (from_location, to_location) {
-                (Some(f), Some(t)) => (f, t),
-                _ => continue,
-            };
-
-            let _operator = if from_device.owner == to_device.owner {
-                from_device.owner.clone()
-            } else {
-                "0".to_string()
-            };
-
             let bandwidth_mbps = (link.bandwidth / 1_000_000) as f64;
 
-            let (latency_ms, _jitter_ms, _packet_loss) =
+            let (latency_us, _jitter_us, _packet_loss) =
                 if let Some(stats) = telemetry_stats.get(&link.pubkey) {
-                    (
-                        stats.mean_latency_ms,
-                        stats.avg_jitter_ms,
-                        stats.packet_loss,
-                    )
+                    (stats.rtt_mean_us, stats.avg_jitter_us, stats.packet_loss)
                 } else {
                     (10.0, 2.0, 0.0001)
                 };
 
-            let utilization = telemetry_stats
-                .get(&link.pubkey)
+            // Create circuit key to match telemetry stats
+            let circuit_key = format!(
+                "{}:{}:{}",
+                from_device.pubkey, to_device.pubkey, link.pubkey
+            );
+
+            let uptime = telemetry_stats
+                .get(&circuit_key)
                 .map(|stats| {
                     let sample_rate = if self.before_us > self.after_us {
                         (stats.total_samples as f64)
@@ -179,20 +170,20 @@ impl MetricsProcessorV2 {
                     } else {
                         0.0
                     };
-                    (sample_rate / 10.0).clamp(0.5, 1.0)
+                    (sample_rate / 10.0).clamp(0.0, 1.0)
                 })
-                .unwrap_or(0.5);
+                .unwrap_or(1.0);
 
             // For now, just use latency as the cost (similar to network-shapley examples)
             // TODO: Add more sophisticated cost calculation if needed
-            let cost = latency_ms;
+            let cost = latency_us / 1000.0;
 
             private_links.push(PrivateLink::new(
                 from_device.code.clone(),
                 to_device.code.clone(),
                 cost,
                 bandwidth_mbps,
-                utilization,
+                uptime,
                 None,
             ));
         }

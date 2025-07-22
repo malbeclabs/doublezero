@@ -71,7 +71,7 @@ pub async fn fetch_telemetry_data(
     let mut error_count = 0;
 
     for (i, chunk) in accounts.chunks(batch_size).enumerate() {
-        debug!(
+        info!(
             "Processing telemetry batch {}/{}",
             i + 1,
             accounts.len().div_ceil(batch_size)
@@ -82,12 +82,35 @@ pub async fn fetch_telemetry_data(
         for (pubkey, account) in chunk {
             match deserialize_latency_samples(&account.data) {
                 Ok(samples) => {
-                    // Filter by timestamp range
-                    if samples.header.start_timestamp_microseconds >= after_us
-                        && samples.header.start_timestamp_microseconds <= before_us
+                    // Calculate end timestamp based on number of samples and interval
+                    let sample_count = samples.header.next_sample_index as u64;
+                    let end_timestamp_us = samples.header.start_timestamp_microseconds
+                        + (sample_count * samples.header.sampling_interval_microseconds);
+
+                    // Check if the sample collection period overlaps with our query range
+                    // Sample period: [start_timestamp, end_timestamp]
+                    // Query period: [after_us, before_us]
+                    // Overlap exists if: start < before_us && end > after_us
+                    if samples.header.start_timestamp_microseconds < before_us
+                        && end_timestamp_us > after_us
                     {
+                        info!(
+                            "Including samples: start={}, end={}, samples={}, interval={}μs",
+                            samples.header.start_timestamp_microseconds,
+                            end_timestamp_us,
+                            sample_count,
+                            samples.header.sampling_interval_microseconds
+                        );
                         let db_samples = DbDeviceLatencySamples::from_solana(*pubkey, &samples);
                         batch_samples.push(db_samples);
+                    } else {
+                        debug!(
+                            "Excluding samples: start={}, end={}, query_range=[{}, {}]",
+                            samples.header.start_timestamp_microseconds,
+                            end_timestamp_us,
+                            after_us,
+                            before_us
+                        );
                     }
                 }
                 Err(e) => {

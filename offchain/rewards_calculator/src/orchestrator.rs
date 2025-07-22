@@ -1,9 +1,6 @@
 use anyhow::{Context, Result};
 use metrics_processor::{
-    cache::{CacheFormat, CacheManager},
-    data_converter,
-    data_store::DataStore,
-    processor::MetricsProcessorV2,
+    cache::CacheManager, data_converter, data_store::DataStore, processor::MetricsProcessor,
 };
 use network_shapley::{
     shapley::ShapleyInput,
@@ -14,12 +11,12 @@ use tracing::info;
 
 /// Orchestrator v2 for in-memory processing
 #[derive(Default)]
-pub struct OrchestratorV2 {
+pub struct Orchestrator {
     cache_manager: Option<CacheManager>,
     data_store: Option<DataStore>,
 }
 
-impl OrchestratorV2 {
+impl Orchestrator {
     /// Create a new orchestrator
     pub fn new() -> Self {
         Self {
@@ -29,8 +26,8 @@ impl OrchestratorV2 {
     }
 
     /// Set cache manager for saving/loading data
-    pub fn with_cache(mut self, format: CacheFormat) -> Self {
-        self.cache_manager = Some(CacheManager::new(format));
+    pub fn with_cache(mut self) -> Self {
+        self.cache_manager = Some(CacheManager::default());
         self
     }
 
@@ -108,7 +105,7 @@ impl OrchestratorV2 {
         info!("Processing metrics using in-memory processor");
 
         // Create processor
-        let processor = MetricsProcessorV2::new(data_store.clone());
+        let processor = MetricsProcessor::new(data_store.clone());
 
         // Process metrics to get Shapley inputs
         let (shapley_inputs, _processed_metrics) = processor.process_metrics()?;
@@ -221,10 +218,7 @@ impl OrchestratorV2 {
 
         // Configure cache if requested
         if cli.cache_dir.is_some() || cli.load_cache.is_some() {
-            orchestrator = orchestrator.with_cache(match cli.cache_format {
-                crate::cli::CacheFormat::Json => CacheFormat::Json,
-                crate::cli::CacheFormat::Structured => CacheFormat::Structured,
-            });
+            orchestrator = orchestrator.with_cache()
         }
 
         // Load from cache or fetch from chain
@@ -240,13 +234,7 @@ impl OrchestratorV2 {
 
             // Save to cache if requested
             if let Some(cache_dir) = &cli.cache_dir {
-                let cache_path = if matches!(cli.cache_format, crate::cli::CacheFormat::Structured)
-                {
-                    Path::new(cache_dir).to_path_buf()
-                } else {
-                    Path::new(cache_dir).join("rewards_data.json")
-                };
-
+                let cache_path = Path::new(cache_dir).join("rewards_data.json");
                 orchestrator
                     .save_to_cache(&cache_path, cli.cache_processed)
                     .await?;

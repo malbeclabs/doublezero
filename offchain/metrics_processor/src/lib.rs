@@ -5,7 +5,6 @@ pub mod processor;
 pub mod settings;
 pub mod shapley_types;
 pub mod telemetry_processor;
-pub mod telemetry_stats;
 pub mod types;
 
 use chrono::{DateTime, Utc};

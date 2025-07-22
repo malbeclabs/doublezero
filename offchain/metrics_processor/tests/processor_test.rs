@@ -1,6 +1,6 @@
 use metrics_processor::{
     data_store::{DataStore, Device, Link, Location, TelemetrySample, User},
-    processor::{MetricsProcessorV2, haversine_distance},
+    processor::{MetricsProcessor, haversine_distance},
     telemetry_processor::TelemetryProcessor,
 };
 use rust_decimal::{Decimal, prelude::ToPrimitive};
@@ -218,7 +218,7 @@ fn create_test_data_store_full() -> DataStore {
 #[test]
 fn test_device_to_location_map() {
     let ds = create_test_data_store_full();
-    let processor = MetricsProcessorV2::new(ds);
+    let processor = MetricsProcessor::new(ds);
 
     let map = processor.get_device_to_location_map();
     assert_eq!(map.get("NYC-R1"), Some(&"NYC".to_string()));
@@ -229,7 +229,7 @@ fn test_device_to_location_map() {
 #[test]
 fn test_device_to_operator_map() {
     let ds = create_test_data_store_full();
-    let processor = MetricsProcessorV2::new(ds);
+    let processor = MetricsProcessor::new(ds);
 
     let map = processor.get_device_to_operator_map();
     assert_eq!(map.get("NYC-R1"), Some(&"operator1".to_string()));
@@ -240,7 +240,7 @@ fn test_device_to_operator_map() {
 #[test]
 fn test_process_private_links() {
     let ds = create_test_data_store_full();
-    let processor = MetricsProcessorV2::new(ds);
+    let processor = MetricsProcessor::new(ds);
 
     let telemetry_stats = TelemetryProcessor::calculate_all_stats(processor.get_data_store());
     let private_links = processor.process_private_links(&telemetry_stats).unwrap();
@@ -269,7 +269,7 @@ fn test_process_private_links() {
 #[test]
 fn test_generate_public_links() {
     let ds = create_test_data_store_full();
-    let processor = MetricsProcessorV2::new(ds);
+    let processor = MetricsProcessor::new(ds);
 
     let mut switches = HashSet::new();
     switches.insert("NYC-R1".to_string());
@@ -304,7 +304,7 @@ fn test_generate_public_links() {
 #[test]
 fn test_calculate_demand_matrix() {
     let ds = create_test_data_store_full();
-    let processor = MetricsProcessorV2::new(ds);
+    let processor = MetricsProcessor::new(ds);
 
     let demand = processor.calculate_demand_matrix().unwrap();
 
@@ -325,7 +325,7 @@ fn test_calculate_demand_matrix() {
 #[test]
 fn test_process_metrics_full() {
     let ds = create_test_data_store_full();
-    let processor = MetricsProcessorV2::new(ds);
+    let processor = MetricsProcessor::new(ds);
 
     let (shapley_inputs, processed_metrics) = processor.process_metrics().unwrap();
 
@@ -359,7 +359,7 @@ fn test_haversine_distance() {
 #[test]
 fn test_baseline_generation() {
     let ds = create_test_data_store_full();
-    let processor = MetricsProcessorV2::new(ds);
+    let processor = MetricsProcessor::new(ds);
 
     let baseline = processor.find_or_generate_baseline("NYC", "LON");
 

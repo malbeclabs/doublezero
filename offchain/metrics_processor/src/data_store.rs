@@ -256,14 +256,14 @@ impl CachedData {
         }
     }
 
-    pub fn save_to_json(&self, path: &Path) -> Result<()> {
+    pub fn save(&self, path: &Path) -> Result<()> {
         let json = serde_json::to_string_pretty(self)?;
         std::fs::create_dir_all(path.parent().unwrap_or(Path::new(".")))?;
         std::fs::write(path, json)?;
         Ok(())
     }
 
-    pub fn load_from_json(path: &Path) -> Result<Self> {
+    pub fn load(path: &Path) -> Result<Self> {
         let json = std::fs::read_to_string(path)?;
         let cached: CachedData = serde_json::from_str(&json)?;
         Ok(cached)

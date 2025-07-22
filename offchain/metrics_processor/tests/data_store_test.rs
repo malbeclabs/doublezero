@@ -194,7 +194,7 @@ fn test_json_serialization() {
 }
 
 #[test]
-fn test_save_and_load_json() {
+fn test_save_and_load() {
     let temp_dir = TempDir::new().unwrap();
     let cache_path = temp_dir.path().join("cache.json");
 
@@ -202,11 +202,11 @@ fn test_save_and_load_json() {
     let cached = CachedData::new(ds);
 
     // Save to file
-    cached.save_to_json(&cache_path).unwrap();
+    cached.save(&cache_path).unwrap();
     assert!(cache_path.exists());
 
     // Load from file
-    let loaded = CachedData::load_from_json(&cache_path).unwrap();
+    let loaded = CachedData::load(&cache_path).unwrap();
     assert_eq!(loaded.data_store.device_count(), 2);
     assert_eq!(loaded.data_store.location_count(), 2);
     assert_eq!(loaded.data_store.link_count(), 1);

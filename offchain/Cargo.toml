@@ -37,6 +37,7 @@ serde_json = "1"
 solana-client = "2.2.7"
 solana-account-decoder = "2.2.7"
 solana-sdk = "2.2.2"
+tabled = { version = "0", features = [ "std", "derive" ]}
 thiserror = "2"
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0" }

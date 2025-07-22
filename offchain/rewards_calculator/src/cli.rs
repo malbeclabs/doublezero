@@ -49,10 +49,6 @@ pub struct Cli {
     /// Include processed metrics and Shapley inputs in cache
     #[arg(long, requires = "cache_dir")]
     pub cache_processed: bool,
-
-    /// Cache format: json or structured (default: json)
-    #[arg(long, value_enum, default_value = "json")]
-    pub cache_format: CacheFormat,
 }
 
 #[cfg(test)]

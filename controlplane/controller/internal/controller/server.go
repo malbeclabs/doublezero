@@ -127,6 +127,7 @@ func WithNoHardware() Option {
 func (c *Controller) updateStateCache(ctx context.Context) error {
 	data, err := c.accountFetcher.GetProgramData(ctx)
 	if err != nil {
+		cacheUpdateFetchErrors.Inc()
 		return fmt.Errorf("error while loading program data: %v", err)
 	}
 

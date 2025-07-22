@@ -36,4 +36,3 @@ toml.workspace = true
 
 [dev-dependencies]
 solana-sdk.workspace = true
-duckdb.workspace = true

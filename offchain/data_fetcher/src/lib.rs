@@ -5,7 +5,7 @@ pub mod telemetry;
 
 use anyhow::Result;
 use chrono::Utc;
-use metrics_processor::engine::types::RewardsData;
+use metrics_processor::types::RewardsData;
 use settings::Settings;
 use tracing::info;
 

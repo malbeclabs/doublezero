@@ -1,8 +1,5 @@
 use anyhow::{Context, Result};
-use metrics_processor::{
-    engine::DuckDbEngine,
-    shapley_types::{Demand, PrivateLink, PublicLink},
-};
+use metrics_processor::shapley_types::{Demand, PrivateLink, PublicLink};
 use network_shapley::{
     shapley::ShapleyInput,
     types::{Device, Devices},
@@ -150,30 +147,4 @@ pub async fn calculate_rewards(
         .collect();
 
     Ok(rewards)
-}
-
-/// Store calculated rewards in DuckDB
-pub async fn store_rewards(
-    db_engine: &DuckDbEngine,
-    rewards: &[OperatorReward],
-    epoch_id: i64,
-) -> Result<()> {
-    debug!("Storing {} rewards in database", rewards.len());
-
-    // Create rewards table if it doesn't exist
-    db_engine.create_rewards_table()?;
-
-    // Insert rewards
-    for reward in rewards {
-        // Store with amount as 0.0 since we only have proportions now
-        db_engine.store_reward(
-            &reward.operator,
-            0.0, // Amount will be calculated on-chain
-            reward.percent.to_string().parse::<f64>()?,
-            epoch_id,
-        )?;
-    }
-
-    info!("Stored {} rewards for epoch {}", rewards.len(), epoch_id);
-    Ok(())
 }

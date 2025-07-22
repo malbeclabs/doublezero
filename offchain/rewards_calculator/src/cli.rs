@@ -1,4 +1,12 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum CacheFormat {
+    /// Human-readable JSON format
+    Json,
+    /// Structured directory with separate files
+    Structured,
+}
 
 #[derive(Parser, Debug)]
 #[command(
@@ -30,13 +38,21 @@ pub struct Cli {
     #[arg(short, long)]
     pub skip_third_party: bool,
 
-    /// Cache fetched data to DuckDB file for development
-    #[arg(hide = true, long, conflicts_with = "load_db")]
-    pub cache_db: bool,
+    /// Directory to save cache files for inspection
+    #[arg(long, value_name = "DIR", conflicts_with = "load_cache")]
+    pub cache_dir: Option<String>,
 
-    /// Load data from cached DuckDB file instead of fetching
-    #[arg(hide = true, long, value_name = "PATH", conflicts_with = "cache_db")]
-    pub load_db: Option<String>,
+    /// Load data from cache directory instead of fetching
+    #[arg(long, value_name = "DIR", conflicts_with = "cache_dir")]
+    pub load_cache: Option<String>,
+
+    /// Include processed metrics and Shapley inputs in cache
+    #[arg(long, requires = "cache_dir")]
+    pub cache_processed: bool,
+
+    /// Cache format: json or structured (default: json)
+    #[arg(long, value_enum, default_value = "json")]
+    pub cache_format: CacheFormat,
 }
 
 #[cfg(test)]

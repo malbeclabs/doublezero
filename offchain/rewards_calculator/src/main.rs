@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use rewards_calculator::{cli::Cli, orchestrator::Orchestrator, settings::Settings, util};
+use rewards_calculator::{cli::Cli, orchestrator_v2::OrchestratorV2, settings::Settings, util};
 use tracing::info;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -37,18 +37,9 @@ async fn main() -> Result<()> {
         duration_secs
     );
 
-    if cli.cache_db {
-        info!("Cache mode enabled - will save fetched data to DuckDB file");
-    }
-
-    if let Some(load_db) = &cli.load_db {
-        info!("Loading from cached DuckDB: {}", load_db);
-    }
-
-    // Create and run orchestrator
-    let orchestrator = Orchestrator::new(cli, settings, after_us, before_us);
-
-    orchestrator.run().await
+    // Use in-memory processing
+    info!("Using in-memory processing");
+    OrchestratorV2::run_with_cli(&cli).await
 }
 
 fn init_logging(log_level: &str) -> Result<()> {

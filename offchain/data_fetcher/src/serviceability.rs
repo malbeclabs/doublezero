@@ -4,7 +4,7 @@ use doublezero_serviceability::state::{
     accounttype::AccountType, device::Device, exchange::Exchange, link::Link, location::Location,
     multicastgroup::MulticastGroup, user::User,
 };
-use metrics_processor::engine::types::{
+use metrics_processor::types::{
     DbDevice, DbExchange, DbLink, DbLocation, DbMulticastGroup, DbUser, NetworkData,
 };
 use solana_account_decoder::UiAccountEncoding;

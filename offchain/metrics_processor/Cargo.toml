@@ -11,7 +11,6 @@ chrono.workspace = true
 csv.workspace = true
 doublezero-serviceability.workspace = true
 doublezero-telemetry.workspace = true
-duckdb.workspace = true
 figment.workspace = true
 rand.workspace = true
 rust_decimal.workspace = true
@@ -21,3 +20,6 @@ network-shapley.workspace = true
 solana-sdk.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

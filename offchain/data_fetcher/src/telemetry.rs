@@ -3,7 +3,7 @@ use anyhow::{Context, Result, bail};
 use doublezero_telemetry::state::device_latency_samples::{
     DEVICE_LATENCY_SAMPLES_HEADER_SIZE, DeviceLatencySamples, DeviceLatencySamplesHeader,
 };
-use metrics_processor::engine::types::{DbDeviceLatencySamples, TelemetryData};
+use metrics_processor::types::{DbDeviceLatencySamples, TelemetryData};
 use solana_account_decoder::UiAccountEncoding;
 use solana_client::{
     rpc_client::RpcClient,

@@ -17,6 +17,8 @@ jobs:
             playbook: playbooks/activators.yml
           - component: controller
             playbook: playbooks/controllers.yml
+          - component: funder
+            playbook: playbooks/funder.yml
           - component: client
             playbook: playbooks/validators.yml
           - component: device-telemetry-agent

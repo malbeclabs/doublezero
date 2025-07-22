@@ -4,7 +4,7 @@ use std::{error::Error, fs, str::FromStr};
 pub fn read_keypair_from_file(file: String) -> eyre::Result<Keypair, Box<dyn Error>> {
     let file_content = fs::read_to_string(file)?;
     let secret_key_bytes: Vec<u8> = serde_json::from_str(&file_content)?;
-     #[allow(deprecated)] //TOOD: not sure why this is being triggered
+    #[allow(deprecated)] //TOOD: not sure why this is being triggered
     let keypair = Keypair::from_bytes(&secret_key_bytes)?;
 
     Ok(keypair)

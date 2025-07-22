@@ -66,21 +66,11 @@ func newTestAccountKey() telemetry.AccountKey {
 }
 
 type mockServiceabilityProgramClient struct {
-	LoadFunc       func(ctx context.Context) error
-	GetDevicesFunc func() []serviceability.Device
-	GetLinksFunc   func() []serviceability.Link
+	GetProgramDataFunc func(ctx context.Context) (*serviceability.ProgramData, error)
 }
 
-func (c *mockServiceabilityProgramClient) Load(ctx context.Context) error {
-	return c.LoadFunc(ctx)
-}
-
-func (c *mockServiceabilityProgramClient) GetDevices() []serviceability.Device {
-	return c.GetDevicesFunc()
-}
-
-func (c *mockServiceabilityProgramClient) GetLinks() []serviceability.Link {
-	return c.GetLinksFunc()
+func (c *mockServiceabilityProgramClient) GetProgramData(ctx context.Context) (*serviceability.ProgramData, error) {
+	return c.GetProgramDataFunc(ctx)
 }
 
 type mockTelemetryProgramClient struct {

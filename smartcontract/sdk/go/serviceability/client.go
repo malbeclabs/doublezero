@@ -3,14 +3,15 @@ package serviceability
 import (
 	"context"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/gagliardetto/solana-go"
 )
 
 type Client struct {
 	rpc       RPCClient
 	programID solana.PublicKey
+}
 
+type ProgramData struct {
 	Config          Config
 	Locations       []Location
 	Exchanges       []Exchange
@@ -28,20 +29,21 @@ func (c *Client) ProgramID() solana.PublicKey {
 	return c.programID
 }
 
-func (c *Client) Load(ctx context.Context) error {
+func (c *Client) GetProgramData(ctx context.Context) (*ProgramData, error) {
 	out, err := c.rpc.GetProgramAccounts(ctx, c.programID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// We need to re-init these fields to prevent appending if this client is reused
 	// and Load() is called multiple times.
-	c.Locations = []Location{}
-	c.Exchanges = []Exchange{}
-	c.Devices = []Device{}
-	c.Links = []Link{}
-	c.Users = []User{}
-	c.MulticastGroups = []MulticastGroup{}
+	config := Config{}
+	locations := []Location{}
+	exchanges := []Exchange{}
+	devices := []Device{}
+	links := []Link{}
+	users := []User{}
+	multicastGroups := []MulticastGroup{}
 
 	var errs error
 	for _, element := range out {
@@ -54,73 +56,48 @@ func (c *Client) Load(ctx context.Context) error {
 
 		switch account_type := data[0]; account_type {
 		case byte(ConfigType):
-			DeserializeConfig(reader, &c.Config)
-			c.Config.PubKey = element.Pubkey
+			DeserializeConfig(reader, &config)
+			config.PubKey = element.Pubkey
 		case byte(LocationType):
 			var location Location
 			DeserializeLocation(reader, &location)
 			location.PubKey = element.Pubkey
-			c.Locations = append(c.Locations, location)
+			locations = append(locations, location)
 		case byte(ExchangeType):
 			var exchange Exchange
 			DeserializeExchange(reader, &exchange)
 			exchange.PubKey = element.Pubkey
-			c.Exchanges = append(c.Exchanges, exchange)
+			exchanges = append(exchanges, exchange)
 		case byte(DeviceType):
 			var device Device
 			DeserializeDevice(reader, &device)
 			device.PubKey = element.Pubkey
-			c.Devices = append(c.Devices, device)
+			devices = append(devices, device)
 		case byte(LinkType):
 			var link Link
 			DeserializeLink(reader, &link)
 			link.PubKey = element.Pubkey
-			c.Links = append(c.Links, link)
+			links = append(links, link)
 		case byte(UserType):
 			var user User
 			DeserializeUser(reader, &user)
 			user.PubKey = element.Pubkey
-			c.Users = append(c.Users, user)
+			users = append(users, user)
 		case byte(MulticastGroupType):
 			var multicastgroup MulticastGroup
 			DeserializeMulticastGroup(reader, &multicastgroup)
 			multicastgroup.PubKey = element.Pubkey
-			c.MulticastGroups = append(c.MulticastGroups, multicastgroup)
+			multicastGroups = append(multicastGroups, multicastgroup)
 		}
 	}
-	return errs
-}
 
-func (c *Client) GetDevices() []Device {
-	return c.Devices
-}
-
-func (c *Client) GetLocations() []Location {
-	return c.Locations
-}
-
-func (c *Client) GetExchanges() []Exchange {
-	return c.Exchanges
-}
-
-func (c *Client) GetUsers() []User {
-	return c.Users
-}
-
-func (c *Client) GetConfig() Config {
-	return c.Config
-}
-
-func (c *Client) GetLinks() []Link {
-	return c.Links
-}
-
-func (c *Client) GetMulticastGroups() []MulticastGroup {
-	return c.MulticastGroups
-}
-
-func (c *Client) List() {
-	for _, item := range c.Locations {
-		spew.Dump(item)
-	}
+	return &ProgramData{
+		Config:          config,
+		Locations:       locations,
+		Exchanges:       exchanges,
+		Devices:         devices,
+		Links:           links,
+		Users:           users,
+		MulticastGroups: multicastGroups,
+	}, errs
 }

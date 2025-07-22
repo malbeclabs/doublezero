@@ -17,42 +17,26 @@ type Circuit struct {
 	Link         serviceability.Link   `json:"-"`
 }
 
-func (p *provider) loadServiceabilityData(ctx context.Context) ([]serviceability.Device, []serviceability.Link, error) {
-	p.serviceabilityClientMu.Lock()
-	defer p.serviceabilityClientMu.Unlock()
-
-	err := p.cfg.ServiceabilityClient.Load(ctx)
-	if err != nil {
-		p.cfg.Logger.Error("failed to load serviceability data", "error", err)
-		return nil, nil, err
-	}
-
-	devices := p.cfg.ServiceabilityClient.GetDevices()
-	links := p.cfg.ServiceabilityClient.GetLinks()
-
-	return devices, links, nil
-}
-
 func (p *provider) GetCircuits(ctx context.Context) ([]Circuit, error) {
 	cached := p.GetCachedCircuits(ctx)
 	if cached != nil {
 		return cached, nil
 	}
 
-	devices, links, err := p.loadServiceabilityData(ctx)
+	data, err := p.cfg.ServiceabilityClient.GetProgramData(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load serviceability data: %w", err)
 	}
 
-	circuits := make([]Circuit, 0, 2*len(links))
+	circuits := make([]Circuit, 0, 2*len(data.Links))
 
 	devicesByPK := map[string]serviceability.Device{}
-	for _, device := range devices {
+	for _, device := range data.Devices {
 		pk := solana.PublicKeyFromBytes(device.PubKey[:])
 		devicesByPK[pk.String()] = device
 	}
 
-	for _, link := range links {
+	for _, link := range data.Links {
 		deviceAPK := solana.PublicKeyFromBytes(link.SideAPubKey[:])
 		deviceZPK := solana.PublicKeyFromBytes(link.SideZPubKey[:])
 

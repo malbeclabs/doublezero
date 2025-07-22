@@ -48,7 +48,7 @@ func (f *Funder) Run(ctx context.Context) error {
 			f.log.Info("Funder stopped by context", "error", ctx.Err())
 			return nil
 		case <-ticker.C:
-			err := f.cfg.Serviceability.Load(ctx)
+			data, err := f.cfg.Serviceability.GetProgramData(ctx)
 			if err != nil {
 				f.log.Error("Failed to load serviceability state", "error", err)
 				metrics.Errors.WithLabelValues(metrics.ErrorTypeLoadServiceabilityState).Inc()
@@ -75,9 +75,8 @@ func (f *Funder) Run(ctx context.Context) error {
 			}
 
 			// Check balance of metrics publishers.
-			devices := f.cfg.Serviceability.GetDevices()
-			f.log.Debug("Checking devices", "count", len(devices))
-			for _, device := range devices {
+			f.log.Debug("Checking devices", "count", len(data.Devices))
+			for _, device := range data.Devices {
 				devicePK := solana.PublicKeyFromBytes(device.PubKey[:])
 				metricsPublisherPK := solana.PublicKeyFromBytes(device.MetricsPublisherPubKey[:])
 				if metricsPublisherPK.IsZero() {

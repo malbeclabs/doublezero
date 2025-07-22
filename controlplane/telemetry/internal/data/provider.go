@@ -36,8 +36,6 @@ type provider struct {
 	cacheMu sync.RWMutex
 
 	getCircuitLatenciesPool pond.ResultPool[[]CircuitLatencySample]
-
-	serviceabilityClientMu sync.Mutex
 }
 
 type ProviderConfig struct {
@@ -96,9 +94,7 @@ func NewProvider(cfg *ProviderConfig) (*provider, error) {
 }
 
 type ServiceabilityClient interface {
-	Load(ctx context.Context) error
-	GetDevices() []serviceability.Device
-	GetLinks() []serviceability.Link
+	GetProgramData(ctx context.Context) (*serviceability.ProgramData, error)
 }
 
 type TelemetryClient interface {

@@ -135,11 +135,11 @@ func (dn *Devnet) InitSmartContract(ctx context.Context) error {
 
 	// Wait for the global config to be populated.
 	err = pollUntil(ctx, func() (bool, error) {
-		err := client.Load(ctx)
+		data, err := client.GetProgramData(ctx)
 		if err != nil {
 			return false, fmt.Errorf("failed to load serviceability program client: %w", err)
 		}
-		config := client.GetConfig()
+		config := data.Config
 
 		if config.Local_asn != 0 {
 			return true, nil

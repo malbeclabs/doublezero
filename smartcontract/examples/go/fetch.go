@@ -21,12 +21,13 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := client.Load(ctx); err != nil {
+	data, err := client.GetProgramData(ctx)
+	if err != nil {
 		log.Fatalf("error while loading data: %v", err)
 	}
 
 	fmt.Print("Users:\n")
-	for _, user := range client.Users {
+	for _, user := range data.Users {
 		fmt.Printf("%+v\n\n", user)
 	}
 }

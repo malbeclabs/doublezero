@@ -83,8 +83,7 @@ func (c *Config) Validate() error {
 }
 
 type ServiceabilityClient interface {
-	Load(ctx context.Context) error
-	GetDevices() []serviceability.Device
+	GetProgramData(ctx context.Context) (*serviceability.ProgramData, error)
 	ProgramID() solana.PublicKey
 }
 

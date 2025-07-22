@@ -19,18 +19,12 @@ use solana_program::msg;
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct ContributorCreateArgs {
-    pub index: u128,
-    pub bump_seed: u8,
     pub code: String,
 }
 
 impl fmt::Debug for ContributorCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "index: {}, bump_seed: {}, code: {}",
-            self.index, self.bump_seed, self.code
-        )
+        write!(f, "code: {}", self.code)
     }
 }
 
@@ -61,18 +55,18 @@ pub fn process_create_contributor(
     );
     // Check if the account is writable
     assert!(pda_account.is_writable, "PDA Account is not writable");
-    // get the PDA pubkey and bump seed for the account contributor & check if it matches the account
-    let (expected_pda_account, bump_seed) = get_contributor_pda(program_id, value.index);
-    assert_eq!(
-        pda_account.key, &expected_pda_account,
-        "Invalid Contributor PubKey"
-    );
-    assert_eq!(bump_seed, value.bump_seed, "Invalid Contributor Bump Seed");
     // Parse the global state account & check if the payer is in the allowlist
     let globalstate = globalstate_get_next(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
+    // get the PDA pubkey and bump seed for the account contributor & check if it matches the account
+    let (expected_pda_account, bump_seed) =
+        get_contributor_pda(program_id, globalstate.account_index);
+    assert_eq!(
+        pda_account.key, &expected_pda_account,
+        "Invalid Contributor PubKey"
+    );
 
     // Check if the account is already initialized
     if !pda_account.data.borrow().is_empty() {

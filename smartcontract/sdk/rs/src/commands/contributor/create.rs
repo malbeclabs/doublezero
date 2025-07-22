@@ -16,13 +16,11 @@ impl CreateContributorCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, bump_seed) =
+        let (pda_pubkey, _) =
             get_contributor_pda(&client.get_program_id(), globalstate.account_index + 1);
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
-                    index: globalstate.account_index + 1,
-                    bump_seed,
                     code: self.code.clone(),
                 }),
                 vec![
@@ -53,15 +51,13 @@ mod tests {
         let mut client = create_test_client();
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, bump_seed) = get_contributor_pda(&client.get_program_id(), 1);
+        let (pda_pubkey, _) = get_contributor_pda(&client.get_program_id(), 1);
 
         client
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateContributor(
                     ContributorCreateArgs {
-                        index: 1,
-                        bump_seed,
                         code: "test".to_string(),
                     },
                 )),

@@ -136,7 +136,7 @@ mod tunnel_test {
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 2);
 
-        let (contributor_pubkey, bump_seed) =
+        let (contributor_pubkey, _) =
             get_contributor_pda(&program_id, globalstate_account.account_index + 1);
 
         execute_transaction(
@@ -144,8 +144,6 @@ mod tunnel_test {
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
-                index: globalstate_account.account_index + 1,
-                bump_seed,
                 code: "cont".to_string(),
             }),
             vec![
@@ -182,9 +180,6 @@ mod tunnel_test {
             DoubleZeroInstruction::CreateDevice(device::create::DeviceCreateArgs {
                 code: "A".to_string(),
                 device_type: DeviceType::Switch,
-                contributor_pk: contributor_pubkey,
-                location_pk: location_pubkey,
-                exchange_pk: exchange_pubkey,
                 public_ip: [10, 0, 0, 1].into(),
                 dz_prefixes: "10.1.0.0/24".parse().unwrap(),
                 metrics_publisher_pk: Pubkey::default(),
@@ -226,9 +221,6 @@ mod tunnel_test {
             DoubleZeroInstruction::CreateDevice(device::create::DeviceCreateArgs {
                 code: "Z".to_string(),
                 device_type: DeviceType::Switch,
-                contributor_pk: contributor_pubkey,
-                location_pk: location_pubkey,
-                exchange_pk: exchange_pubkey,
                 public_ip: [11, 0, 0, 1].into(),
                 dz_prefixes: "11.1.0.0/23".parse().unwrap(),
                 metrics_publisher_pk: Pubkey::default(),
@@ -273,9 +265,6 @@ mod tunnel_test {
             DoubleZeroInstruction::CreateLink(LinkCreateArgs {
                 code: "la".to_string(),
                 link_type: LinkLinkType::L3,
-                contributor_pk: contributor_pubkey,
-                side_a_pk: device_a_pubkey,
-                side_z_pk: device_z_pubkey,
                 bandwidth: 100000000,
                 mtu: 9000,
                 delay_ns: 150000,

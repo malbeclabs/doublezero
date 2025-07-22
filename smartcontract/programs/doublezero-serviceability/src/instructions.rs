@@ -500,11 +500,8 @@ mod tests {
             DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
                 code: "test".to_string(),
                 public_ip: [1, 2, 3, 4].into(),
-                contributor_pk: Pubkey::new_unique(),
                 device_type: DeviceType::Switch,
                 dz_prefixes: "1.2.3.4/1".parse().unwrap(),
-                location_pk: Pubkey::new_unique(),
-                exchange_pk: Pubkey::new_unique(),
                 metrics_publisher_pk: Pubkey::new_unique(),
                 bgp_asn: 100,
                 dia_bgp_asn: 200,
@@ -551,9 +548,6 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::CreateLink(LinkCreateArgs {
                 code: "test".to_string(),
-                contributor_pk: Pubkey::new_unique(),
-                side_a_pk: Pubkey::new_unique(),
-                side_z_pk: Pubkey::new_unique(),
                 link_type: LinkLinkType::L3,
                 bandwidth: 100,
                 mtu: 1500,
@@ -598,7 +592,6 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::CreateUser(UserCreateArgs {
                 user_type: UserType::IBRL,
-                device_pk: Pubkey::new_unique(),
                 cyoa_type: UserCYOA::GREOverDIA,
                 client_ip: [1, 2, 3, 4].into(),
             }),
@@ -804,7 +797,6 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
                 user_type: UserType::IBRL,
-                device_pk: Pubkey::new_unique(),
                 cyoa_type: UserCYOA::GREOverDIA,
                 client_ip: [1, 2, 3, 4].into(),
                 publisher: false,
@@ -814,8 +806,6 @@ mod tests {
         );
         test_instruction(
             DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
-                index: 123,
-                bump_seed: 255,
                 code: "test".to_string(),
             }),
             "CreateContributor",

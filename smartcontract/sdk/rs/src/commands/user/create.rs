@@ -28,7 +28,6 @@ impl CreateUserCommand {
             .execute_transaction(
                 DoubleZeroInstruction::CreateUser(UserCreateArgs {
                     user_type: self.user_type,
-                    device_pk: self.device_pk,
                     cyoa_type: self.cyoa_type,
                     client_ip: self.client_ip,
                 }),

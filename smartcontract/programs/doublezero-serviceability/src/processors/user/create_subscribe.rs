@@ -25,7 +25,6 @@ use solana_program::{
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct UserCreateSubscribeArgs {
     pub user_type: UserType,
-    pub device_pk: Pubkey,
     pub cyoa_type: UserCYOA,
     pub client_ip: std::net::Ipv4Addr,
     pub publisher: bool,
@@ -36,8 +35,8 @@ impl fmt::Debug for UserCreateSubscribeArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "user_type: {}, device_pk: {}, cyoa_type: {}, client_ip: {}",
-            self.user_type, self.device_pk, self.cyoa_type, &self.client_ip,
+            "user_type: {}, cyoa_type: {}, client_ip: {}",
+            self.user_type, self.cyoa_type, &self.client_ip,
         )
     }
 }
@@ -105,7 +104,7 @@ pub fn process_create_subscribe_user(
         index: globalstate.account_index,
         tenant_pk: Pubkey::default(),
         user_type: value.user_type,
-        device_pk: value.device_pk,
+        device_pk: *device_account.key,
         cyoa_type: value.cyoa_type,
         client_ip: value.client_ip,
         dz_ip: std::net::Ipv4Addr::UNSPECIFIED,

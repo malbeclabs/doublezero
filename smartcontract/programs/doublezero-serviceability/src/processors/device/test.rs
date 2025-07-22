@@ -130,7 +130,7 @@ mod device_test {
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 2);
 
-        let (contributor_pubkey, bump_seed) =
+        let (contributor_pubkey, _) =
             get_contributor_pda(&program_id, globalstate_account.account_index + 1);
 
         execute_transaction(
@@ -138,8 +138,6 @@ mod device_test {
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
-                index: globalstate_account.account_index + 1,
-                bump_seed,
                 code: "cont".to_string(),
             }),
             vec![
@@ -177,9 +175,6 @@ mod device_test {
             DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
                 code: "la".to_string(),
                 device_type: DeviceType::Switch,
-                contributor_pk: contributor_pubkey,
-                location_pk: location_pubkey,
-                exchange_pk: exchange_pubkey,
                 public_ip: [10, 0, 0, 1].into(),
                 dz_prefixes: "10.1.0.0/23".parse().unwrap(),
                 metrics_publisher_pk: Pubkey::default(),
@@ -398,9 +393,6 @@ mod device_test {
             DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
                 code: "la".to_string(),
                 device_type: DeviceType::Switch,
-                contributor_pk: contributor_pubkey,
-                location_pk: location_pubkey,
-                exchange_pk: exchange_pubkey,
                 public_ip: [10, 0, 0, 1].into(),
                 dz_prefixes: "10.1.0.0/23".parse().unwrap(),
                 metrics_publisher_pk: Pubkey::default(),
@@ -575,7 +567,7 @@ mod device_test {
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 2);
 
-        let (contributor_pubkey, bump_seed) =
+        let (contributor_pubkey, _) =
             get_contributor_pda(&program_id, globalstate_account.account_index + 1);
 
         execute_transaction(
@@ -583,8 +575,6 @@ mod device_test {
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
-                index: globalstate_account.account_index + 1,
-                bump_seed,
                 code: "cont".to_string(),
             }),
             vec![

@@ -52,7 +52,7 @@ nfpms:
     release: "1"
     section: default
     contents:
-      - src: controlplane/funder/cmd/doublezero-funder.service
+      - src: controlplane/funder/cmd/funder/doublezero-funder.service
         dst: /etc/systemd/system/doublezero-funder.service
     overrides:
       deb:

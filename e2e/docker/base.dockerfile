@@ -177,7 +177,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Build the funder (golang)
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    go build -o ${BIN_DIR}/doublezero-funder controlplane/funder/cmd/main.go
+    go build -o ${BIN_DIR}/doublezero-funder controlplane/funder/cmd/funder/main.go
 
 
 # ----------------------------------------------------------------------------

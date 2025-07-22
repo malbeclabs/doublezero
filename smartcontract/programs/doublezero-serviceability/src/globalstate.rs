@@ -8,10 +8,10 @@ use solana_program::msg;
 use solana_program::{
     account_info::AccountInfo,
     program::invoke_signed,
-    system_instruction,
     sysvar::{rent::Rent, Sysvar},
 };
 use std::io::Result;
+use solana_system_interface::instruction;
 
 pub fn globalstate_get(globalstate_account: &AccountInfo) -> Result<GlobalState> {
     let data = &globalstate_account.data.borrow_mut();
@@ -68,7 +68,7 @@ pub fn globalstate_write_with_realloc<'a>(
     {
         if actual_len != new_len {
             account
-                .realloc(new_len, false)
+                .resize(new_len)
                 .expect("Unable to realloc the account");
         }
 
@@ -97,7 +97,7 @@ pub fn globalstate_write_with_realloc<'a>(
             );
 
             invoke_signed(
-                &system_instruction::transfer(payer_account.key, account.key, payment),
+                &instruction::transfer(payer_account.key, account.key, payment),
                 &[
                     account.clone(),
                     payer_account.clone(),
@@ -126,7 +126,7 @@ pub fn globalconfig_write_with_realloc<'a>(
     {
         if actual_len != new_len {
             account
-                .realloc(new_len, false)
+                .resize(new_len)
                 .expect("Unable to realloc the account");
         }
 
@@ -155,7 +155,7 @@ pub fn globalconfig_write_with_realloc<'a>(
             );
 
             invoke_signed(
-                &system_instruction::transfer(payer_account.key, account.key, payment),
+                &instruction::transfer(payer_account.key, account.key, payment),
                 &[
                     account.clone(),
                     payer_account.clone(),

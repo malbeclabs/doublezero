@@ -6,11 +6,10 @@ use solana_program::{
     program::invoke_signed,
     program_error::ProgramError,
     pubkey::Pubkey,
-    system_instruction, system_program,
     sysvar::{rent::Rent, Sysvar},
 };
 use std::{fmt, fmt::Debug};
-
+use solana_system_interface::instruction;
 use doublezero_program_common::create_account::try_create_account;
 #[cfg(test)]
 use solana_program::msg;
@@ -75,7 +74,7 @@ pub fn account_write<'a, T>(
     {
         if actual_len != new_len {
             account
-                .realloc(new_len, false)
+                .resize(new_len)
                 .expect("Unable to realoc the account");
         }
 
@@ -101,7 +100,7 @@ pub fn account_write<'a, T>(
             );
 
             invoke_signed(
-                &system_instruction::transfer(payer_account.key, account.key, payment),
+                &instruction::transfer(payer_account.key, account.key, payment),
                 &[
                     account.clone(),
                     payer_account.clone(),
@@ -131,8 +130,8 @@ pub fn account_close(
     **close_account.lamports.borrow_mut() = 0;
 
     // Close the account
-    close_account.realloc(0, false)?;
-    close_account.assign(&system_program::ID);
+    close_account.resize(0)?;
+    close_account.assign(&solana_system_interface::program::ID);
 
     Ok(())
 }

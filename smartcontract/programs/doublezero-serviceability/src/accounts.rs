@@ -6,9 +6,10 @@ use solana_program::{
     program::invoke_signed,
     program_error::ProgramError,
     pubkey::Pubkey,
-    system_instruction, system_program,
     sysvar::{rent::Rent, Sysvar},
 };
+use solana_system_interface::instruction;
+
 
 pub trait AccountSize {
     fn size(&self) -> usize;
@@ -47,14 +48,14 @@ pub fn write_account<'a, D: BorshSerialize + AccountSize + AccountSeed>(
     } else {
         // If the account is already initialized, we need to check if it has enough space
         if account.data_len() != required_space {
-            account.realloc(required_space, false)?;
+            account.resize(required_space)?;
 
             // If the account is not large enough, we need to transfer more lamports
             if required_space > account.data_len() {
                 let payment = required_lamports - account.lamports();
 
                 invoke_signed(
-                    &system_instruction::transfer(payer.key, account.key, payment),
+                    &instruction::transfer(payer.key, account.key, payment),
                     &[account.clone(), payer.clone(), system_program.clone()],
                     &[&[seed.as_slice()]],
                 )?;
@@ -80,8 +81,8 @@ pub fn account_close(
     **close_account.lamports.borrow_mut() = 0;
 
     // Close the account
-    close_account.realloc(0, false)?;
-    close_account.assign(&system_program::ID);
+    close_account.resize(0)?;
+    close_account.assign(&solana_system_interface::program::ID);
 
     Ok(())
 }

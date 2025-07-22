@@ -432,8 +432,6 @@ mod tests {
         );
         test_instruction(
             DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
-                index: 123,
-                bump_seed: 255,
                 lat: 1.0,
                 lng: 2.0,
                 loc_id: 123,
@@ -468,8 +466,6 @@ mod tests {
         );
         test_instruction(
             DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
-                index: 123,
-                bump_seed: 255,
                 code: "test".to_string(),
                 name: "test".to_string(),
                 lat: 1.0,
@@ -502,8 +498,6 @@ mod tests {
         );
         test_instruction(
             DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
-                index: 123,
-                bump_seed: 255,
                 code: "test".to_string(),
                 public_ip: [1, 2, 3, 4].into(),
                 contributor_pk: Pubkey::new_unique(),
@@ -544,8 +538,6 @@ mod tests {
         );
         test_instruction(
             DoubleZeroInstruction::CreateLink(LinkCreateArgs {
-                index: 123,
-                bump_seed: 255,
                 code: "test".to_string(),
                 side_a_pk: Pubkey::new_unique(),
                 side_z_pk: Pubkey::new_unique(),
@@ -589,8 +581,6 @@ mod tests {
         );
         test_instruction(
             DoubleZeroInstruction::CreateUser(UserCreateArgs {
-                index: 123,
-                bump_seed: 255,
                 user_type: UserType::IBRL,
                 device_pk: Pubkey::new_unique(),
                 cyoa_type: UserCYOA::GREOverDIA,
@@ -797,8 +787,6 @@ mod tests {
         );
         test_instruction(
             DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
-                index: 123,
-                bump_seed: 255,
                 user_type: UserType::IBRL,
                 device_pk: Pubkey::new_unique(),
                 cyoa_type: UserCYOA::GREOverDIA,

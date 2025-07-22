@@ -19,8 +19,6 @@ use solana_program::{
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct ExchangeCreateArgs {
-    pub index: u128,
-    pub bump_seed: u8,
     pub code: String,
     pub name: String,
     pub lat: f64,
@@ -66,18 +64,8 @@ pub fn process_create_exchange(
     // Check if the account is writable
     assert!(pda_account.is_writable, "PDA Account is not writable");
     // get the PDA pubkey and bump seed for the account location & check if it matches the account
-    let (expected_pda_account, bump_seed) = get_exchange_pda(program_id, value.index);
-    assert_eq!(
-        pda_account.key, &expected_pda_account,
-        "Invalid Location PubKey"
-    );
-    assert_eq!(bump_seed, value.bump_seed, "Invalid Location Bump Seed");
     // Parse the global state account & check if the payer is in the allowlist
     let globalstate = globalstate_get_next(globalstate_account)?;
-    assert_eq!(
-        value.index, globalstate.account_index,
-        "Invalid Value Index"
-    );
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }

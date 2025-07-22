@@ -17,10 +17,17 @@ use std::fmt;
 #[cfg(test)]
 use solana_program::msg;
 
+/// Processes the instruction to create a new location.
+///
+/// # Accounts
+///
+/// 1. `pda_account` - PDA account where the location information will be stored. Must be writable and match the expected PDA.
+/// 2. `globalstate_account` - Program's global state account. Must be owned by the program and writable.
+/// 3. `payer_account` - Payer account covering the creation costs. Must be included in the global state's allowlist.
+/// 4. `system_program` - Solana system program account.
+///
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct LocationCreateArgs {
-    pub index: u128,
-    pub bump_seed: u8,
     pub code: String,
     pub name: String,
     pub country: String,
@@ -66,18 +73,18 @@ pub fn process_create_location(
     );
     // Check if the account is writable
     assert!(pda_account.is_writable, "PDA Account is not writable");
-    // get the PDA pubkey and bump seed for the account location & check if it matches the account
-    let (expected_pda_account, bump_seed) = get_location_pda(program_id, value.index);
-    assert_eq!(
-        pda_account.key, &expected_pda_account,
-        "Invalid Location PubKey"
-    );
-    assert_eq!(bump_seed, value.bump_seed, "Invalid Location Bump Seed");
+
     // Parse the global state account & check if the payer is in the allowlist
     let globalstate = globalstate_get_next(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
+    // get the PDA pubkey and bump seed for the account location & check if it matches the account
+    let (expected_pda_account, bump_seed) = get_location_pda(program_id, globalstate.account_index);
+    assert_eq!(
+        pda_account.key, &expected_pda_account,
+        "Invalid Location PubKey"
+    );
 
     // Check if the account is already initialized
     if !pda_account.data.borrow().is_empty() {

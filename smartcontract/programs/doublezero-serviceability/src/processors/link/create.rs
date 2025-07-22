@@ -20,8 +20,6 @@ use solana_program::{
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct LinkCreateArgs {
-    pub index: u128,
-    pub bump_seed: u8,
     pub code: String,
     pub side_a_pk: Pubkey,
     pub side_z_pk: Pubkey,
@@ -66,10 +64,6 @@ pub fn process_create_link(
         return Err(ProgramError::UninitializedAccount);
     }
     let globalstate = globalstate_get_next(globalstate_account)?;
-    assert_eq!(
-        value.index, globalstate.account_index,
-        "Invalid Value Index"
-    );
 
     if !globalstate.device_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
@@ -78,9 +72,8 @@ pub fn process_create_link(
     let (expected_pda_account, bump_seed) = get_link_pda(program_id, globalstate.account_index);
     assert_eq!(
         pda_account.key, &expected_pda_account,
-        "Invalid Location PubKey"
+        "Invalid Link PubKey"
     );
-    assert!(bump_seed == value.bump_seed, "Invalid Location Bump Seed");
 
     // Check account Types
     if side_a_account.data_is_empty()

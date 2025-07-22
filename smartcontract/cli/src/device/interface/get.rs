@@ -6,17 +6,17 @@ use std::io::Write;
 #[derive(Args, Debug)]
 pub struct GetDeviceInterfaceCliCommand {
     /// Device Pubkey or Code
-    #[arg(long, value_parser = validate_pubkey_or_code, required = true)]
-    pub pubkey_or_code: String,
+    #[arg(value_parser = validate_pubkey_or_code, required = true)]
+    pub device: String,
     /// Interface name
-    #[arg(long, required = true)]
+    #[arg(required = true)]
     pub name: String,
 }
 
 impl GetDeviceInterfaceCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let (device_pk, device) = client.get_device(GetDeviceCommand {
-            pubkey_or_code: self.pubkey_or_code,
+            pubkey_or_code: self.device,
         })?;
 
         let interface = device
@@ -116,7 +116,7 @@ mod tests {
         // Expected failure
         let mut output = Vec::new();
         let res = GetDeviceInterfaceCliCommand {
-            pubkey_or_code: Pubkey::new_unique().to_string(),
+            device: Pubkey::new_unique().to_string(),
             name: "eth0".to_string(),
         }
         .execute(&client, &mut output);
@@ -125,7 +125,7 @@ mod tests {
         // Expected success
         let mut output = Vec::new();
         let res = GetDeviceInterfaceCliCommand {
-            pubkey_or_code: device1_pubkey.to_string(),
+            device: device1_pubkey.to_string(),
             name: "eth0".to_string(),
         }
         .execute(&client, &mut output);

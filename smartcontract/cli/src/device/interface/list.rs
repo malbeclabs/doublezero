@@ -12,8 +12,8 @@ use tabled::{settings::Style, Table, Tabled};
 #[derive(Args, Debug)]
 pub struct ListDeviceInterfaceCliCommand {
     /// Device Pubkey or Code
-    #[arg(long, value_parser = validate_pubkey_or_code, required = true)]
-    pub pubkey_or_code: String,
+    #[arg(value_parser = validate_pubkey_or_code, required = true)]
+    pub device: String,
     /// Output as pretty JSON
     #[arg(long, default_value_t = false)]
     pub json: bool,
@@ -37,7 +37,7 @@ impl ListDeviceInterfaceCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let (_, device) = client
             .get_device(GetDeviceCommand {
-                pubkey_or_code: self.pubkey_or_code.clone(),
+                pubkey_or_code: self.device,
             })
             .map_err(|_| eyre::eyre!("Device not found"))?;
 
@@ -146,7 +146,7 @@ mod tests {
 
         let mut output = Vec::new();
         let res = ListDeviceInterfaceCliCommand {
-            pubkey_or_code: device1_pubkey.to_string(),
+            device: device1_pubkey.to_string(),
             json: false,
             json_compact: false,
         }
@@ -157,7 +157,7 @@ mod tests {
 
         let mut output = Vec::new();
         let res = ListDeviceInterfaceCliCommand {
-            pubkey_or_code: device1_pubkey.to_string(),
+            device: device1_pubkey.to_string(),
             json: false,
             json_compact: true,
         }

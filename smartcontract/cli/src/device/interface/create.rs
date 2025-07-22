@@ -15,7 +15,7 @@ pub struct CreateDeviceInterfaceCliCommand {
     #[arg(value_parser = validate_pubkey_or_code, required = true)]
     pub device: String,
     /// Interface name
-    #[arg()]
+    #[arg(required = true)]
     pub name: String,
     /// Interface type
     #[arg()]

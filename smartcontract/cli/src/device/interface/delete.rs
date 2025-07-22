@@ -10,10 +10,10 @@ use std::io::Write;
 #[derive(Args, Debug)]
 pub struct DeleteDeviceInterfaceCliCommand {
     /// Device Pubkey or Code
-    #[arg(long, value_parser = validate_pubkey_or_code, required = true)]
-    pub pubkey_or_code: String,
+    #[arg(value_parser = validate_pubkey_or_code, required = true)]
+    pub device: String,
     /// Interface name
-    #[arg(long, required = true)]
+    #[arg(required = true)]
     pub name: String,
 }
 
@@ -24,7 +24,7 @@ impl DeleteDeviceInterfaceCliCommand {
 
         let (pubkey, mut device) = client
             .get_device(GetDeviceCommand {
-                pubkey_or_code: self.pubkey_or_code.clone(),
+                pubkey_or_code: self.device,
             })
             .map_err(|_| eyre::eyre!("Device not found"))?;
 
@@ -161,7 +161,7 @@ mod tests {
 
         let mut output = Vec::new();
         let res = DeleteDeviceInterfaceCliCommand {
-            pubkey_or_code: device_pk.to_string(),
+            device: device_pk.to_string(),
             name: "eth0".to_string(),
         }
         .execute(&client, &mut output);

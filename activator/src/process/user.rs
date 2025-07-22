@@ -483,6 +483,12 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             code: "TestDevice".to_string(),
             dz_prefixes: "10.0.0.1/24".parse().unwrap(),
+            bgp_asn: 0,
+            dia_bgp_asn: 0,
+            mgmt_vrf: "default".to_string(),
+            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+            ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
+            interfaces: vec![],
         };
 
         let user_pubkey = Pubkey::new_unique();
@@ -608,6 +614,12 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             code: "TestDevice".to_string(),
             dz_prefixes: "10.0.0.1/24".parse().unwrap(),
+            bgp_asn: 0,
+            dia_bgp_asn: 0,
+            mgmt_vrf: "default".to_string(),
+            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+            ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
+            interfaces: vec![],
         };
 
         let user_pubkey = Pubkey::new_unique();
@@ -795,6 +807,12 @@ mod tests {
             code: "TestDevice".to_string(),
             metrics_publisher_pk: Pubkey::default(),
             dz_prefixes: "10.0.0.0/32".parse().unwrap(),
+            bgp_asn: 0,
+            dia_bgp_asn: 0,
+            mgmt_vrf: "default".to_string(),
+            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+            ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
+            interfaces: vec![],
         };
 
         let user_pubkey = Pubkey::new_unique();
@@ -900,6 +918,12 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             code: "TestDevice".to_string(),
             dz_prefixes: "10.0.0.1/24".parse().unwrap(),
+            bgp_asn: 0,
+            dia_bgp_asn: 0,
+            mgmt_vrf: "default".to_string(),
+            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+            ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
+            interfaces: vec![],
         };
 
         let user_pubkey = Pubkey::new_unique();
@@ -1026,6 +1050,12 @@ mod tests {
             code: "TestDevice".to_string(),
             metrics_publisher_pk: Pubkey::default(),
             dz_prefixes: "11.0.0.0/16".parse().unwrap(),
+            bgp_asn: 0,
+            dia_bgp_asn: 0,
+            mgmt_vrf: "default".to_string(),
+            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+            ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
+            interfaces: vec![],
         };
 
         devices.insert(device_pubkey, DeviceState::new(&device));

@@ -58,6 +58,7 @@ pub enum Command {
     /// Manage contributors
     #[command()]
     Contributor(ContributorCliCommand),
+    /// Manage devices
     #[command()]
     Device(DeviceCliCommand),
     /// Manage tunnels between devices

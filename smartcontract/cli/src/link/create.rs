@@ -1,6 +1,6 @@
 use crate::{
     doublezerocommand::CliCommand,
-    helpers::parse_pubkey,
+    link::create::utils::parse_pubkey,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::{
         validate_code, validate_parse_bandwidth, validate_parse_delay_ms, validate_parse_jitter_ms,
@@ -29,9 +29,15 @@ pub struct CreateLinkCliCommand {
     /// Device Pubkey or code for side A.
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub side_a: String,
+    /// Device interface name for side A.
+    #[arg(long)]
+    pub side_a_interface: String,
     /// Device Pubkey or code for side Z.
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub side_z: String,
+    /// Device interface name for side Z.
+    #[arg(long)]
+    pub side_z_interface: String,
     /// Link type: L1, L2, or L3.
     #[arg(long)]
     pub link_type: Option<String>,
@@ -66,29 +72,39 @@ impl CreateLinkCliCommand {
             }
         };
 
-        let side_a_pk = match parse_pubkey(&self.side_a) {
-            Some(pk) => pk,
-            None => {
-                let (pubkey, _) = client
-                    .get_device(GetDeviceCommand {
-                        pubkey_or_code: self.side_a.clone(),
-                    })
-                    .map_err(|_| eyre::eyre!("Device not found"))?;
-                pubkey
-            }
-        };
+        let (side_a_pk, side_a_dev) = client
+            .get_device(GetDeviceCommand {
+                pubkey_or_code: self.side_a.clone(),
+            })
+            .map_err(|_| eyre::eyre!("Device not found"))?;
 
-        let side_z_pk = match parse_pubkey(&self.side_z) {
-            Some(pk) => pk,
-            None => {
-                let (pubkey, _) = client
-                    .get_device(GetDeviceCommand {
-                        pubkey_or_code: self.side_z.clone(),
-                    })
-                    .map_err(|_| eyre::eyre!("Device not found"))?;
-                pubkey
-            }
-        };
+        let (side_z_pk, side_z_dev) = client
+            .get_device(GetDeviceCommand {
+                pubkey_or_code: self.side_z.clone(),
+            })
+            .map_err(|_| eyre::eyre!("Device not found"))?;
+
+        if !side_a_dev
+            .interfaces
+            .iter()
+            .any(|i| i.name == self.side_a_interface)
+        {
+            return Err(eyre!(
+                "Interface '{}' not found on side A device",
+                self.side_a_interface
+            ));
+        }
+
+        if !side_z_dev
+            .interfaces
+            .iter()
+            .any(|i| i.name == self.side_z_interface)
+        {
+            return Err(eyre!(
+                "Interface '{}' not found on side Z device",
+                self.side_z_interface
+            ));
+        }
 
         let link_type = match self.link_type.as_ref() {
             Some(t) => t
@@ -107,6 +123,8 @@ impl CreateLinkCliCommand {
             mtu: self.mtu,
             delay_ns: (self.delay_ms * 1000000.0) as u64,
             jitter_ns: (self.jitter_ms * 1000000.0) as u64,
+            side_a_iface_name: self.side_a_interface.clone(),
+            side_z_iface_name: self.side_z_interface.clone(),
         })?;
 
         writeln!(out, "Signature: {signature}",)?;
@@ -126,7 +144,9 @@ mod tests {
     use doublezero_sdk::{
         commands::{device::get::GetDeviceCommand, link::create::CreateLinkCommand},
         get_device_pda, AccountType, Device, DeviceStatus, DeviceType, LinkLinkType,
+        CURRENT_INTERFACE_VERSION,
     };
+    use doublezero_serviceability::state::device::{Interface, InterfaceType, LoopbackType};
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
@@ -160,6 +180,21 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             status: DeviceStatus::Activated,
             owner: pda_pubkey,
+            bgp_asn: 0,
+            dia_bgp_asn: 0,
+            mgmt_vrf: "default".to_string(),
+            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+            ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
+            interfaces: vec![Interface {
+                version: CURRENT_INTERFACE_VERSION,
+                name: "eth0".to_string(),
+                interface_type: InterfaceType::Physical,
+                loopback_type: LoopbackType::None,
+                vlan_id: 16,
+                ip_net: "10.2.0.1/24".parse().unwrap(),
+                node_segment_idx: 0,
+                user_tunnel_endpoint: true,
+            }],
         };
         let location2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let exchange2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkce");
@@ -178,6 +213,21 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             status: DeviceStatus::Activated,
             owner: pda_pubkey,
+            bgp_asn: 0,
+            dia_bgp_asn: 0,
+            mgmt_vrf: "default".to_string(),
+            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+            ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
+            interfaces: vec![Interface {
+                version: CURRENT_INTERFACE_VERSION,
+                name: "eth1".to_string(),
+                interface_type: InterfaceType::Physical,
+                loopback_type: LoopbackType::None,
+                vlan_id: 16,
+                ip_net: "10.2.0.2/24".parse().unwrap(),
+                node_segment_idx: 0,
+                user_tunnel_endpoint: true,
+            }],
         };
 
         client
@@ -208,6 +258,8 @@ mod tests {
                 mtu: 1500,
                 delay_ns: 10000000000,
                 jitter_ns: 5000000000,
+                side_a_iface_name: "eth0".to_string(),
+                side_z_iface_name: "eth1".to_string(),
             }))
             .times(1)
             .returning(move |_| Ok((signature, pda_pubkey)));
@@ -224,6 +276,8 @@ mod tests {
             mtu: 1500,
             delay_ms: 10000.0,
             jitter_ms: 5000.0,
+            side_a_interface: "eth0".to_string(),
+            side_z_interface: "eth1".to_string(),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

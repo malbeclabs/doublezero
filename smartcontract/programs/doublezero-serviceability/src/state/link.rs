@@ -106,6 +106,8 @@ pub struct Link {
     pub status: LinkStatus,        // 1
     pub code: String,              // 4 + len
     pub contributor_pk: Pubkey,    // 32
+    pub side_a_iface_name: String, // 4 + len
+    pub side_z_iface_name: String, // 4 + len
 }
 
 impl fmt::Display for Link {
@@ -123,7 +125,26 @@ impl AccountTypeInfo for Link {
         SEED_LINK
     }
     fn size(&self) -> usize {
-        1 + 32 + 16 + 1 + 32 + 32 + 1 + 8 + 4 + 8 + 8 + 2 + 5 + 1 + 4 + self.code.len() + 32
+        1 + 32
+            + 16
+            + 1
+            + 32
+            + 32
+            + 1
+            + 8
+            + 4
+            + 8
+            + 8
+            + 2
+            + 5
+            + 1
+            + 4
+            + self.code.len()
+            + 32
+            + 4
+            + self.side_a_iface_name.len()
+            + 4
+            + self.side_z_iface_name.len()
     }
     fn index(&self) -> u128 {
         self.index
@@ -157,6 +178,8 @@ impl From<&[u8]> for Link {
             status: parser.read_enum(),
             code: parser.read_string(),
             contributor_pk: parser.read_pubkey(),
+            side_a_iface_name: parser.read_string(),
+            side_z_iface_name: parser.read_string(),
         }
     }
 }
@@ -175,7 +198,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_state_tunnel_serialization() {
+    fn test_state_link_serialization() {
         let val = Link {
             account_type: AccountType::Link,
             owner: Pubkey::new_unique(),
@@ -193,6 +216,8 @@ mod tests {
             tunnel_net: "1.2.3.4/32".parse().unwrap(),
             code: "test-123".to_string(),
             status: LinkStatus::Activated,
+            side_a_iface_name: "eth0".to_string(),
+            side_z_iface_name: "eth1".to_string(),
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -207,6 +232,8 @@ mod tests {
         assert_eq!(val.bandwidth, val2.bandwidth);
         assert_eq!(val.tunnel_net, val2.tunnel_net);
         assert_eq!(val.code, val2.code);
+        assert_eq!(val.side_a_iface_name, val2.side_a_iface_name);
+        assert_eq!(val.side_z_iface_name, val2.side_z_iface_name);
         assert_eq!(data.len(), val.size(), "Invalid Size");
     }
 }

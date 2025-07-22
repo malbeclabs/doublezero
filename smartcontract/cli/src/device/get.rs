@@ -1,4 +1,4 @@
-use crate::{doublezerocommand::CliCommand, validators::validate_code};
+use crate::{doublezerocommand::CliCommand, formatters::DisplayVec, validators::validate_code};
 use clap::Args;
 use doublezero_sdk::commands::device::get::GetDeviceCommand;
 use std::io::Write;
@@ -16,8 +16,23 @@ impl GetDeviceCliCommand {
             pubkey_or_code: self.code,
         })?;
 
-        writeln!(out,
-            "account: {}\r\ncode: {}\r\nlocation: {}\r\nexchange: {}\r\ndevice_type: {}\r\npublic_ip: {}\r\ndz_prefixes: {}\r\nmetrics_publisher: {}\r\nstatus: {}\r\nowner: {}",
+        writeln!(
+            out,
+            "account: {}\r\n\
+code: {}\r\n\
+location: {}\r\n\
+exchange: {}\r\n\
+device_type: {}\r\n\
+public_ip: {}\r\n\
+dz_prefixes: {}\r\n\
+metrics_publisher: {}\r\n\
+bgp_asn: {}\r\n\
+dia_bgp_asn: {}\r\n\
+mgmt_vrf: {}\r\n\
+dns_servers: {}\r\n\
+ntp_servers: {}\r\n\
+status: {}\r\n\
+owner: {}",
             pubkey,
             device.code,
             device.location_pk,
@@ -26,9 +41,14 @@ impl GetDeviceCliCommand {
             &device.public_ip,
             &device.dz_prefixes,
             device.metrics_publisher_pk,
+            device.bgp_asn,
+            device.dia_bgp_asn,
+            device.mgmt_vrf,
+            DisplayVec(&device.dns_servers),
+            DisplayVec(&device.ntp_servers),
             device.status,
             device.owner
-            )?;
+        )?;
 
         Ok(())
     }
@@ -69,6 +89,12 @@ mod tests {
                 "1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR",
             ),
             owner: device1_pubkey,
+            bgp_asn: 0,
+            dia_bgp_asn: 0,
+            mgmt_vrf: "default".to_string(),
+            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+            ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
+            interfaces: vec![],
         };
 
         client
@@ -97,6 +123,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\r\ncode: test\r\nlocation: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx\r\nexchange: GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc\r\ndevice_type: switch\r\npublic_ip: 1.2.3.4\r\ndz_prefixes: 1.2.3.4/32\r\nmetrics_publisher: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
+        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\r\ncode: test\r\nlocation: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx\r\nexchange: GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc\r\ndevice_type: switch\r\npublic_ip: 1.2.3.4\r\ndz_prefixes: 1.2.3.4/32\r\nmetrics_publisher: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\r\nbgp_asn: 0\r\ndia_bgp_asn: 0\r\nmgmt_vrf: default\r\ndns_servers: 8.8.8.8,8.8.4.4\r\nntp_servers: 192.168.1.1,192.168.1.2\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
     }
 }

@@ -193,6 +193,12 @@ mod user_test {
                 public_ip: [10, 0, 0, 1].into(),
                 dz_prefixes: "10.1.0.0/23".parse().unwrap(),
                 metrics_publisher_pk: Pubkey::default(),
+                bgp_asn: 42,
+                dia_bgp_asn: 4242,
+                mgmt_vrf: "mgmt".to_string(),
+                dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+                ntp_servers: vec![[1, 2, 3, 4].into(), [5, 6, 7, 8].into()],
+                interfaces: vec![],
             }),
             vec![
                 AccountMeta::new(device_pubkey, false),

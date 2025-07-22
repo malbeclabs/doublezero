@@ -17,6 +17,11 @@ pub struct CreateDeviceCommand {
     pub public_ip: Ipv4Addr,
     pub dz_prefixes: NetworkV4List,
     pub metrics_publisher: Pubkey,
+    pub bgp_asn: u32,
+    pub dia_bgp_asn: u32,
+    pub mgmt_vrf: String,
+    pub dns_servers: Vec<std::net::Ipv4Addr>,
+    pub ntp_servers: Vec<std::net::Ipv4Addr>,
 }
 
 impl CreateDeviceCommand {
@@ -38,6 +43,12 @@ impl CreateDeviceCommand {
                     public_ip: self.public_ip,
                     dz_prefixes: self.dz_prefixes.clone(),
                     metrics_publisher_pk: self.metrics_publisher,
+                    bgp_asn: self.bgp_asn,
+                    dia_bgp_asn: self.dia_bgp_asn,
+                    mgmt_vrf: self.mgmt_vrf.clone(),
+                    dns_servers: self.dns_servers.clone(),
+                    ntp_servers: self.ntp_servers.clone(),
+                    interfaces: vec![],
                 }),
                 vec![
                     AccountMeta::new(pda_pubkey, false),
@@ -133,6 +144,12 @@ mod tests {
                     public_ip: [10, 0, 0, 1].into(),
                     dz_prefixes: "10.0.0.0/8".parse().unwrap(),
                     metrics_publisher_pk: pubmetrics_publisher,
+                    bgp_asn: 42,
+                    dia_bgp_asn: 4242,
+                    mgmt_vrf: "mgmt".to_string(),
+                    dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+                    ntp_servers: vec![[1, 2, 3, 4].into(), [5, 6, 7, 8].into()],
+                    interfaces: vec![],
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(device_pubkey, false),
@@ -153,6 +170,11 @@ mod tests {
             public_ip: [10, 0, 0, 1].into(),
             dz_prefixes: "10.0.0.0/8".parse().unwrap(),
             metrics_publisher: pubmetrics_publisher,
+            bgp_asn: 42,
+            dia_bgp_asn: 4242,
+            mgmt_vrf: "mgmt".to_string(),
+            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
+            ntp_servers: vec![[1, 2, 3, 4].into(), [5, 6, 7, 8].into()],
         }
         .execute(&client);
         assert!(res.is_ok());

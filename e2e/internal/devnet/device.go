@@ -248,7 +248,7 @@ func (d *Device) Start(ctx context.Context) error {
 	cyoaNetworkIP := ip.To4().String()
 
 	// Create the device onchain.
-	onchainID, err := d.dn.GetOrCreateDeviceOnchain(ctx, spec.Code, spec.Location, spec.Exchange, spec.MetricsPublisherPK, cyoaNetworkIP, []string{cyoaNetworkIP + "/" + strconv.Itoa(int(spec.CYOANetworkAllocatablePrefix))})
+	onchainID, err := d.dn.GetOrCreateDeviceOnchain(ctx, spec.Code, spec.Location, spec.Exchange, spec.MetricsPublisherPK, cyoaNetworkIP, []string{cyoaNetworkIP + "/" + strconv.Itoa(int(spec.CYOANetworkAllocatablePrefix))}, 42, 4242, "mgmt", []string{"8.8.8.8", "8.8.4.4"}, []string{"1.2.3.4"})
 	if err != nil {
 		return fmt.Errorf("failed to create device %s onchain: %w", spec.Code, err)
 	}

@@ -9,6 +9,7 @@ pub mod device;
 pub mod doublezerocommand;
 pub mod exchange;
 pub mod export;
+pub mod formatters;
 pub mod globalconfig;
 pub mod helpers;
 pub mod init;

@@ -151,6 +151,8 @@ mod tests {
             tunnel_net: NetworkV4::default(),
             status: LinkStatus::Pending,
             code: "TestLink".to_string(),
+            side_a_iface_name: "eth0".to_string(),
+            side_z_iface_name: "eth1".to_string(),
         };
 
         client
@@ -241,6 +243,8 @@ mod tests {
             tunnel_net: NetworkV4::default(),
             status: LinkStatus::Pending,
             code: "TestLink".to_string(),
+            side_a_iface_name: "eth0".to_string(),
+            side_z_iface_name: "eth1".to_string(),
         };
 
         let _ = tunnel_tunnel_ips.next_available_block(0, 2);

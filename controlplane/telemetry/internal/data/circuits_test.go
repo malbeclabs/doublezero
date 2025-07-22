@@ -3,6 +3,8 @@ package data_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -181,10 +183,79 @@ func TestTelemetry_Data_Provider_GetCircuits(t *testing.T) {
 		assert.Equal(t, first, second)
 	})
 
+	t.Run("concurrent GetCircuits triggers race without lock", func(t *testing.T) {
+		t.Parallel()
+
+		racey := &raceyMockClient{
+			devices: make(map[string]serviceability.Device),
+		}
+
+		provider, err := data.NewProvider(&data.ProviderConfig{
+			Logger:               logger,
+			ServiceabilityClient: racey,
+			TelemetryClient:      &mockTelemetryClient{},
+			CircuitsCacheTTL:     0, // Disable cache so every call invokes Load()
+		})
+		require.NoError(t, err)
+
+		const concurrency = 10
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+
+		for i := 0; i < concurrency; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				_, _ = provider.GetCircuits(context.Background())
+			}()
+		}
+
+		// Give all goroutines time to reach the start line
+		time.Sleep(100 * time.Millisecond)
+		close(start)
+		wg.Wait()
+	})
 }
 
 func toPubKeyBytes(pk solana.PublicKey) [32]byte {
 	var arr [32]byte
 	copy(arr[:], pk.Bytes())
 	return arr
+}
+
+type raceyMockClient struct {
+	devices map[string]serviceability.Device
+}
+
+func (m *raceyMockClient) Load(ctx context.Context) error {
+	for i := range 10 {
+		m.devices[fmt.Sprintf("dev-%d", i)] = serviceability.Device{
+			Code:   fmt.Sprintf("dev-%d", i),
+			PubKey: toPubKeyBytes(solana.NewWallet().PublicKey()),
+		}
+	}
+	return nil
+}
+
+func (m *raceyMockClient) GetDevices() []serviceability.Device {
+	devs := make([]serviceability.Device, 0, len(m.devices))
+	for _, d := range m.devices {
+		devs = append(devs, d)
+	}
+	return devs
+}
+
+func (m *raceyMockClient) GetLinks() []serviceability.Link {
+	devs := m.GetDevices()
+	if len(devs) < 2 {
+		return nil
+	}
+	return []serviceability.Link{
+		{
+			Code:        "L1",
+			SideAPubKey: devs[0].PubKey,
+			SideZPubKey: devs[1].PubKey,
+		},
+	}
 }

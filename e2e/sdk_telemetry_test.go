@@ -79,18 +79,21 @@ func TestE2E_SDK_Telemetry(t *testing.T) {
 
 	log.Info("==> Waiting for devices and links to be created onchain")
 	require.Eventually(t, func() bool {
-		err := serviceabilityClient.Load(ctx)
+		data, err := serviceabilityClient.GetProgramData(ctx)
 		require.NoError(t, err)
-		return len(serviceabilityClient.GetDevices()) == 4 && len(serviceabilityClient.GetLinks()) == 3
+		return len(data.Devices) == 4 && len(data.Links) == 3
 	}, 20*time.Second, 1*time.Second)
 
+	data, err := serviceabilityClient.GetProgramData(ctx)
+	require.NoError(t, err)
+
 	links := map[string]*serviceability.Link{}
-	for _, link := range serviceabilityClient.GetLinks() {
+	for _, link := range data.Links {
 		links[link.Code] = &link
 	}
 
 	devices := map[string]*serviceability.Device{}
-	for _, device := range serviceabilityClient.GetDevices() {
+	for _, device := range data.Devices {
 		devices[device.Code] = &device
 	}
 

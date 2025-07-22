@@ -16,6 +16,7 @@ import (
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/controlplane/funder/internal/funder"
 	"github.com/malbeclabs/doublezero/controlplane/funder/internal/metrics"
+	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -24,9 +25,13 @@ const (
 	defaultInterval      = 1 * time.Minute
 	defaultMinBalanceSOL = 3
 	defaultTopUpSOL      = 5
+
+	envTestnet = "testnet"
+	envDevnet  = "devnet"
 )
 
 var (
+	env                     = flag.String("env", "", "the environment to run the funder in")
 	ledgerRPCURL            = flag.String("ledger-rpc-url", "", "the url of the ledger rpc")
 	serviceabilityProgramID = flag.String("serviceability-program-id", "", "the id of the serviceability program")
 	keypairPath             = flag.String("keypair", "", "the path to the metrics publisher keypair")
@@ -62,15 +67,30 @@ func main() {
 	}))
 
 	// Validate required flags.
-	if *ledgerRPCURL == "" {
-		log.Error("Missing required flag", "flag", "ledger-rpc-url")
-		flag.Usage()
-		os.Exit(1)
-	}
-	if *serviceabilityProgramID == "" {
-		log.Error("Missing required flag", "flag", "serviceability-program-id")
-		flag.Usage()
-		os.Exit(1)
+	if *env == "" {
+		if *ledgerRPCURL == "" {
+			log.Error("Missing required flag", "flag", "ledger-rpc-url")
+			flag.Usage()
+			os.Exit(1)
+		}
+		if *serviceabilityProgramID == "" {
+			log.Error("Missing required flag", "flag", "serviceability-program-id")
+			flag.Usage()
+			os.Exit(1)
+		}
+	} else {
+		switch *env {
+		case envTestnet:
+			*ledgerRPCURL = dzsdk.DZ_LEDGER_RPC_URL
+			*serviceabilityProgramID = serviceability.SERVICEABILITY_PROGRAM_ID_TESTNET
+		case envDevnet:
+			*ledgerRPCURL = dzsdk.DZ_LEDGER_RPC_URL
+			*serviceabilityProgramID = serviceability.SERVICEABILITY_PROGRAM_ID_DEVNET
+		default:
+			log.Error("Invalid environment, must be testnet or devnet", "env", *env)
+			flag.Usage()
+			os.Exit(1)
+		}
 	}
 	if *keypairPath == "" {
 		log.Error("Missing required flag", "flag", "keypair")

@@ -47,10 +47,10 @@ func TestE2E_SDK_Serviceability(t *testing.T) {
 		client, err := dn.Ledger.GetServiceabilityClient()
 		require.NoError(t, err, "error getting serviceability program client")
 
-		err = client.Load(ctx)
+		data, err := client.GetProgramData(ctx)
 		require.NoError(t, err, "error loading accounts into context")
 
-		config := client.GetConfig()
+		config := data.Config
 
 		newAsn := config.Remote_asn + 100
 
@@ -58,10 +58,10 @@ func TestE2E_SDK_Serviceability(t *testing.T) {
 		require.NoError(t, err, "error setting global config value")
 
 		require.Eventually(t, func() bool {
-			err := client.Load(ctx)
+			data, err := client.GetProgramData(ctx)
 			require.NoError(t, err, "error while reloading onchain state to verify update")
 
-			got := client.GetConfig()
+			got := data.Config
 			want := config
 			want.Remote_asn = newAsn
 

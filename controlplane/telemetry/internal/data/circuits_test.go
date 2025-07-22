@@ -3,6 +3,7 @@ package data_test
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -35,14 +36,11 @@ func TestTelemetry_Data_Provider_GetCircuits(t *testing.T) {
 		}
 
 		client := &mockServiceabilityClient{
-			LoadFunc: func(ctx context.Context) error {
-				return nil
-			},
-			GetDevicesFunc: func() []serviceability.Device {
-				return []serviceability.Device{devA, devB}
-			},
-			GetLinksFunc: func() []serviceability.Link {
-				return []serviceability.Link{link}
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				return &serviceability.ProgramData{
+					Devices: []serviceability.Device{devA, devB},
+					Links:   []serviceability.Link{link},
+				}, nil
 			},
 		}
 		provider, err := data.NewProvider(&data.ProviderConfig{
@@ -80,14 +78,11 @@ func TestTelemetry_Data_Provider_GetCircuits(t *testing.T) {
 			SideZPubKey: toPubKeyBytes(solana.NewWallet().PublicKey()), // Missing device
 		}
 		client := &mockServiceabilityClient{
-			LoadFunc: func(ctx context.Context) error {
-				return nil
-			},
-			GetDevicesFunc: func() []serviceability.Device {
-				return []serviceability.Device{devA}
-			},
-			GetLinksFunc: func() []serviceability.Link {
-				return []serviceability.Link{link}
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				return &serviceability.ProgramData{
+					Devices: []serviceability.Device{devA},
+					Links:   []serviceability.Link{link},
+				}, nil
 			},
 		}
 		provider, err := data.NewProvider(&data.ProviderConfig{
@@ -106,8 +101,8 @@ func TestTelemetry_Data_Provider_GetCircuits(t *testing.T) {
 		t.Parallel()
 
 		client := &mockServiceabilityClient{
-			LoadFunc: func(ctx context.Context) error {
-				return errors.New("load failed")
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				return nil, errors.New("load failed")
 			},
 		}
 		provider, err := data.NewProvider(&data.ProviderConfig{
@@ -143,24 +138,15 @@ func TestTelemetry_Data_Provider_GetCircuits(t *testing.T) {
 		}
 
 		client := &mockServiceabilityClient{
-			LoadFunc: func(ctx context.Context) error {
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 				if called > 0 {
-					return errors.New("Load should not be called more than once")
+					return nil, errors.New("GetProgramData should not be called more than once")
 				}
 				called++
-				return nil
-			},
-			GetDevicesFunc: func() []serviceability.Device {
-				if called > 1 {
-					require.Fail(t, "GetDevices called after cache populated")
-				}
-				return []serviceability.Device{devA, devB}
-			},
-			GetLinksFunc: func() []serviceability.Link {
-				if called > 1 {
-					require.Fail(t, "GetLinks called after cache populated")
-				}
-				return []serviceability.Link{link}
+				return &serviceability.ProgramData{
+					Devices: []serviceability.Device{devA, devB},
+					Links:   []serviceability.Link{link},
+				}, nil
 			},
 		}
 
@@ -181,6 +167,43 @@ func TestTelemetry_Data_Provider_GetCircuits(t *testing.T) {
 		assert.Equal(t, first, second)
 	})
 
+	t.Run("concurrent GetCircuits triggers race without lock", func(t *testing.T) {
+		t.Parallel()
+
+		provider, err := data.NewProvider(&data.ProviderConfig{
+			Logger: logger,
+			ServiceabilityClient: &mockServiceabilityClient{
+				GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+					return &serviceability.ProgramData{
+						Devices: []serviceability.Device{
+							{PubKey: toPubKeyBytes(solana.NewWallet().PublicKey())},
+						},
+					}, nil
+				},
+			},
+			TelemetryClient:  &mockTelemetryClient{},
+			CircuitsCacheTTL: 0, // Disable cache so every call invokes Load()
+		})
+		require.NoError(t, err)
+
+		const concurrency = 10
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+
+		for i := 0; i < concurrency; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				_, _ = provider.GetCircuits(context.Background())
+			}()
+		}
+
+		// Give all goroutines time to reach the start line
+		time.Sleep(100 * time.Millisecond)
+		close(start)
+		wg.Wait()
+	})
 }
 
 func toPubKeyBytes(pk solana.PublicKey) [32]byte {

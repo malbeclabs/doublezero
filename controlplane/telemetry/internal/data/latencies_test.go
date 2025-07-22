@@ -187,13 +187,11 @@ func newTestProvider(
 	provider, err := data.NewProvider(&data.ProviderConfig{
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		ServiceabilityClient: &mockServiceabilityClient{
-			LoadFunc: func(ctx context.Context) error { return nil },
-			GetDevicesFunc: func() []serviceability.Device {
-				dev := circuits[0].OriginDevice
-				return []serviceability.Device{dev, circuits[0].TargetDevice}
-			},
-			GetLinksFunc: func() []serviceability.Link {
-				return []serviceability.Link{circuits[0].Link}
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				return &serviceability.ProgramData{
+					Devices: []serviceability.Device{circuits[0].OriginDevice, circuits[0].TargetDevice},
+					Links:   []serviceability.Link{circuits[0].Link},
+				}, nil
 			},
 		},
 		TelemetryClient: &mockTelemetryClient{

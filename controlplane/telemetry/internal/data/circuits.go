@@ -23,35 +23,31 @@ func (p *provider) GetCircuits(ctx context.Context) ([]Circuit, error) {
 		return cached, nil
 	}
 
-	err := p.cfg.ServiceabilityClient.Load(ctx)
+	data, err := p.cfg.ServiceabilityClient.GetProgramData(ctx)
 	if err != nil {
-		p.cfg.Logger.Error("failed to load serviceability data", "error", err)
 		return nil, fmt.Errorf("failed to load serviceability data: %w", err)
 	}
 
-	devices := p.cfg.ServiceabilityClient.GetDevices()
-	links := p.cfg.ServiceabilityClient.GetLinks()
-
-	circuits := make([]Circuit, 0, 2*len(links))
+	circuits := make([]Circuit, 0, 2*len(data.Links))
 
 	devicesByPK := map[string]serviceability.Device{}
-	for _, device := range devices {
+	for _, device := range data.Devices {
 		pk := solana.PublicKeyFromBytes(device.PubKey[:])
 		devicesByPK[pk.String()] = device
 	}
 
-	for _, link := range links {
+	for _, link := range data.Links {
 		deviceAPK := solana.PublicKeyFromBytes(link.SideAPubKey[:])
 		deviceZPK := solana.PublicKeyFromBytes(link.SideZPubKey[:])
 
 		deviceA, ok := devicesByPK[deviceAPK.String()]
 		if !ok {
-			p.cfg.Logger.Debug("device A not found, skipping link", "link_code", link.Code, "device_a_pk", deviceAPK.String())
+			p.cfg.Logger.Warn("device A not found, skipping link", "link_code", link.Code, "device_a_pk", deviceAPK.String())
 			continue
 		}
 		deviceZ, ok := devicesByPK[deviceZPK.String()]
 		if !ok {
-			p.cfg.Logger.Debug("device Z not found, skipping link", "link_code", link.Code, "device_z_pk", deviceZPK.String())
+			p.cfg.Logger.Warn("device Z not found, skipping link", "link_code", link.Code, "device_z_pk", deviceZPK.String())
 			continue
 		}
 

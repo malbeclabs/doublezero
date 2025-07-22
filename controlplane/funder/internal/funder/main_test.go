@@ -40,17 +40,12 @@ func TestMain(m *testing.M) {
 }
 
 type mockServiceability struct {
-	LoadFunc       func(ctx context.Context) error
-	GetDevicesFunc func() []serviceability.Device
-	ProgramIDFunc  func() solana.PublicKey
+	GetProgramDataFunc func(ctx context.Context) (*serviceability.ProgramData, error)
+	ProgramIDFunc      func() solana.PublicKey
 }
 
-func (m *mockServiceability) Load(ctx context.Context) error {
-	return m.LoadFunc(ctx)
-}
-
-func (m *mockServiceability) GetDevices() []serviceability.Device {
-	return m.GetDevicesFunc()
+func (m *mockServiceability) GetProgramData(ctx context.Context) (*serviceability.ProgramData, error) {
+	return m.GetProgramDataFunc(ctx)
 }
 
 func (m *mockServiceability) ProgramID() solana.PublicKey {

@@ -25,6 +25,8 @@ jobs:
             languages: ["go"]
           - release: device-telemetry-agent
             languages: ["go"]
+          - release: funder
+            languages: ["go"]
     name: release-validation-${{ matrix.release }}
     steps:
       - name: Checkout

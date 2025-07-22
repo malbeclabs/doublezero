@@ -1,0 +1,13 @@
+[Unit]
+Description=DoubleZero funder
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+ExecStart=/usr/local/bin/doublezero-funder -env testnet -keypair /etc/doublezero/funder-keypair.json
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target

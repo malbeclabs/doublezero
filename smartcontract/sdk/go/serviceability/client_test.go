@@ -9,7 +9,6 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 var configPayload = `
@@ -112,7 +111,7 @@ func getPubKeyOffset(payload string, start, end int) [32]byte {
 	return d
 }
 
-func TestRpcClient(t *testing.T) {
+func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 	pubkeys := [][32]uint8{
 		{0xb0, 0x45, 0xf9, 0x21, 0x83, 0xe1, 0xb4, 0x09, 0xbb, 0x70, 0x06, 0x56, 0x0f, 0x85, 0x8c, 0xf3,
 			0xbf, 0xa5, 0x57, 0xc7, 0x5c, 0xd9, 0x67, 0x18, 0x2a, 0x00, 0x39, 0x22, 0x00, 0xb5, 0xde, 0x78},
@@ -133,14 +132,14 @@ func TestRpcClient(t *testing.T) {
 		Name        string
 		Description string
 		Payload     string
-		Want        *Client
+		Want        *ProgramData
 	}{
 
 		{
 			Name:        "parse_valid_config",
 			Description: "parse and populate a valid config struct",
 			Payload:     strings.TrimSuffix(configPayload, "\n"),
-			Want: &Client{
+			Want: &ProgramData{
 				Config: Config{
 					AccountType:         ConfigType,
 					Owner:               getOwner(configPayload),
@@ -164,7 +163,7 @@ func TestRpcClient(t *testing.T) {
 			Name:        "parse_valid_exchange",
 			Description: "parse and populate a valid exchange struct",
 			Payload:     strings.TrimSuffix(exchangePayload, "\n"),
-			Want: &Client{
+			Want: &ProgramData{
 				Exchanges: []Exchange{
 					{
 						AccountType: ExchangeType,
@@ -191,7 +190,7 @@ func TestRpcClient(t *testing.T) {
 			Name:        "parse_valid_device",
 			Description: "parse and populate a valid device struct",
 			Payload:     strings.TrimSuffix(devicePayload, "\n"),
-			Want: &Client{
+			Want: &ProgramData{
 				Devices: []Device{
 					{
 						AccountType:    DeviceType,
@@ -219,7 +218,7 @@ func TestRpcClient(t *testing.T) {
 			Name:        "parse_valid_location",
 			Description: "parse and populate a valid location struct",
 			Payload:     strings.TrimSuffix(locationPayload, "\n"),
-			Want: &Client{
+			Want: &ProgramData{
 				Locations: []Location{
 					{
 						AccountType: LocationType,
@@ -247,7 +246,7 @@ func TestRpcClient(t *testing.T) {
 			Name:        "parse_valid_user",
 			Description: "parse and populate a valid user struct",
 			Payload:     strings.TrimSuffix(userPayload, "\n"),
-			Want: &Client{
+			Want: &ProgramData{
 				Users: []User{
 					{
 						AccountType:  UserType,
@@ -277,7 +276,7 @@ func TestRpcClient(t *testing.T) {
 			Name:        "parse_valid_tunnel",
 			Description: "parse and populate a valid tunnel struct",
 			Payload:     strings.TrimSuffix(tunnelPayload, "\n"),
-			Want: &Client{
+			Want: &ProgramData{
 				Links: []Link{
 					{
 						AccountType: LinkType,
@@ -309,7 +308,7 @@ func TestRpcClient(t *testing.T) {
 			Name:        "parse_valid_multicastgroup",
 			Description: "parse and populate a valid multicastgroup struct",
 			Payload:     strings.TrimSuffix(multicastgroupPayload, "\n"),
-			Want: &Client{
+			Want: &ProgramData{
 				Links:     []Link{},
 				Locations: []Location{},
 				Devices:   []Device{},
@@ -337,16 +336,14 @@ func TestRpcClient(t *testing.T) {
 		},
 	}
 
-	t.Log("Start testing")
 	for idx, test := range tests {
-		t.Log(test.Name)
-
-		client := &Client{rpc: &mockSolanaClient{payload: test.Payload, pubkey: pubkeys[idx]}}
-		if err := client.Load(context.Background()); err != nil {
-			t.Fatalf("error while loading data: %v", err)
-		}
 		t.Run(test.Name, func(t *testing.T) {
-			if diff := cmp.Diff(test.Want, client, cmpopts.IgnoreUnexported(Client{})); diff != "" {
+			client := &Client{rpc: &mockSolanaClient{payload: test.Payload, pubkey: pubkeys[idx]}}
+			got, err := client.GetProgramData(t.Context())
+			if err != nil {
+				t.Fatalf("error while loading data: %v", err)
+			}
+			if diff := cmp.Diff(test.Want, got); diff != "" {
 				t.Fatalf("Client diff found; -want, +got: %s", diff)
 			}
 		})

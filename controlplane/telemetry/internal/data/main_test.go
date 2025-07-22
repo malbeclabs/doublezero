@@ -40,21 +40,11 @@ func TestMain(m *testing.M) {
 }
 
 type mockServiceabilityClient struct {
-	LoadFunc       func(ctx context.Context) error
-	GetDevicesFunc func() []serviceability.Device
-	GetLinksFunc   func() []serviceability.Link
+	GetProgramDataFunc func(ctx context.Context) (*serviceability.ProgramData, error)
 }
 
-func (m *mockServiceabilityClient) Load(ctx context.Context) error {
-	return m.LoadFunc(ctx)
-}
-
-func (m *mockServiceabilityClient) GetDevices() []serviceability.Device {
-	return m.GetDevicesFunc()
-}
-
-func (m *mockServiceabilityClient) GetLinks() []serviceability.Link {
-	return m.GetLinksFunc()
+func (m *mockServiceabilityClient) GetProgramData(ctx context.Context) (*serviceability.ProgramData, error) {
+	return m.GetProgramDataFunc(ctx)
 }
 
 type mockTelemetryClient struct {

@@ -24,8 +24,6 @@ use solana_program::{
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct UserCreateSubscribeArgs {
-    pub index: u128,
-    pub bump_seed: u8,
     pub user_type: UserType,
     pub device_pk: Pubkey,
     pub cyoa_type: UserCYOA,
@@ -68,11 +66,6 @@ pub fn process_create_subscribe_user(
         return Err(ProgramError::UninitializedAccount);
     }
     let globalstate = globalstate_get_next(globalstate_account)?;
-    assert_eq!(
-        value.index, globalstate.account_index,
-        "Invalid Value Index"
-    );
-
     if !globalstate.user_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -82,7 +75,6 @@ pub fn process_create_subscribe_user(
         pda_account.key, &expected_pda_account,
         "Invalid User PubKey"
     );
-    assert_eq!(bump_seed, value.bump_seed, "Invalid User Bump Seed");
 
     // Check account Types
     if device_account.data_is_empty()

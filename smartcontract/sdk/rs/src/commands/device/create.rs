@@ -25,13 +25,11 @@ impl CreateDeviceCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, bump_seed) =
+        let (pda_pubkey, _) =
             get_device_pda(&client.get_program_id(), globalstate.account_index + 1);
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
-                    index: globalstate.account_index + 1,
-                    bump_seed,
                     code: self.code.clone(),
                     contributor_pk: self.contributor_pk,
                     location_pk: self.location_pk,
@@ -119,7 +117,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::Exchange(exchange.clone())));
 
         let contributor_pubkey = Pubkey::default();
-        let (device_pubkey, bump_seed) = get_device_pda(&client.get_program_id(), 1);
+        let (device_pubkey, _) = get_device_pda(&client.get_program_id(), 1);
 
         let pubmetrics_publisher = Pubkey::default();
 
@@ -127,8 +125,6 @@ mod tests {
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
-                    index: 1,
-                    bump_seed,
                     code: "test-device".to_string(),
                     contributor_pk: contributor_pubkey,
                     location_pk: location_pubkey,

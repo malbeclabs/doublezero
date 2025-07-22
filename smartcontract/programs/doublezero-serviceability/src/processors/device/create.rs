@@ -23,8 +23,6 @@ use solana_program::{
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct DeviceCreateArgs {
-    pub index: u128,
-    pub bump_seed: u8,
     pub code: String,
     pub contributor_pk: Pubkey,
     pub location_pk: Pubkey,
@@ -87,11 +85,6 @@ pub fn process_create_device(
         return Err(ProgramError::UninitializedAccount);
     }
     let globalstate = globalstate_get_next(globalstate_account)?;
-    assert_eq!(
-        value.index, globalstate.account_index,
-        "Invalid Value Index"
-    );
-
     if !globalstate.device_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -101,8 +94,6 @@ pub fn process_create_device(
         pda_account.key, &expected_pda_account,
         "Invalid Device PubKey"
     );
-    assert!(bump_seed == value.bump_seed, "Invalid Device Bump Seed");
-
     let contributor = Contributor::try_from(contributor_account)?;
     if contributor.account_type != AccountType::Contributor {
         return Err(DoubleZeroError::InvalidContributorPubkey.into());

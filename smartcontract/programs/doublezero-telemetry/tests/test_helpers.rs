@@ -76,8 +76,6 @@ pub trait LocationCreateArgsExt {
 impl LocationCreateArgsExt for LocationCreateArgs {
     fn default() -> LocationCreateArgs {
         LocationCreateArgs {
-            index: 0,
-            bump_seed: 0,
             code: "".to_string(),
             name: "".to_string(),
             country: "".to_string(),
@@ -95,8 +93,6 @@ pub trait ExchangeCreateArgsExt {
 impl ExchangeCreateArgsExt for ExchangeCreateArgs {
     fn default() -> ExchangeCreateArgs {
         ExchangeCreateArgs {
-            index: 0,
-            bump_seed: 0,
             code: "".to_string(),
             name: "".to_string(),
             lat: 0.0,
@@ -113,8 +109,6 @@ pub trait DeviceCreateArgsExt {
 impl DeviceCreateArgsExt for DeviceCreateArgs {
     fn default() -> DeviceCreateArgs {
         DeviceCreateArgs {
-            index: 0,
-            bump_seed: 0,
             code: "".to_string(),
             contributor_pk: Pubkey::default(),
             location_pk: Pubkey::default(),
@@ -123,28 +117,6 @@ impl DeviceCreateArgsExt for DeviceCreateArgs {
             public_ip: Ipv4Addr::UNSPECIFIED,
             dz_prefixes: NetworkV4List::default(),
             metrics_publisher_pk: Pubkey::default(),
-        }
-    }
-}
-
-pub trait LinkCreateArgsExt {
-    fn default() -> LinkCreateArgs;
-}
-
-impl LinkCreateArgsExt for LinkCreateArgs {
-    fn default() -> LinkCreateArgs {
-        LinkCreateArgs {
-            index: 0,
-            bump_seed: 0,
-            code: "".to_string(),
-            contributor_pk: Pubkey::default(),
-            side_a_pk: Pubkey::default(),
-            side_z_pk: Pubkey::default(),
-            link_type: LinkLinkType::L3,
-            bandwidth: 0,
-            mtu: 0,
-            delay_ns: 0,
-            jitter_ns: 0,
         }
     }
 }
@@ -323,8 +295,6 @@ impl LedgerHelper {
         let origin_device_pk = self
             .serviceability
             .create_and_activate_device(DeviceCreateArgs {
-                index: 0,     // set by the helper
-                bump_seed: 0, // set by the helper
                 code: "origin_device".to_string(),
                 contributor_pk,
                 location_pk,
@@ -365,7 +335,6 @@ impl LedgerHelper {
                     mtu: 1500,
                     delay_ns: 10,
                     jitter_ns: 1,
-                    ..LinkCreateArgs::default()
                 },
                 1,
                 "10.1.1.0/30".parse().unwrap(),
@@ -650,16 +619,11 @@ impl ServiceabilityProgramHelper {
         &mut self,
         location: LocationCreateArgs,
     ) -> Result<Pubkey, BanksClientError> {
-        let mut location = location;
-        if location.index == 0 {
-            location.index = self.get_next_global_state_index().await?;
-        }
-        let (location_pubkey, bump_seed) = get_location_pda(&self.program_id, location.index);
+        let index = self.get_next_global_state_index().await?;
+        let (location_pubkey, _) = get_location_pda(&self.program_id, index);
 
         self.execute_transaction(
             DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
-                index: location.index,
-                bump_seed,
                 code: location.code,
                 name: location.name,
                 country: location.country,
@@ -681,16 +645,11 @@ impl ServiceabilityProgramHelper {
         &mut self,
         exchange: ExchangeCreateArgs,
     ) -> Result<Pubkey, BanksClientError> {
-        let mut exchange = exchange;
-        if exchange.index == 0 {
-            exchange.index = self.get_next_global_state_index().await?;
-        }
-        let (exchange_pubkey, bump_seed) = get_exchange_pda(&self.program_id, exchange.index);
+        let index = self.get_next_global_state_index().await?;
+        let (exchange_pubkey, _) = get_exchange_pda(&self.program_id, index);
 
         self.execute_transaction(
             DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
-                index: exchange.index,
-                bump_seed,
                 code: exchange.code,
                 name: exchange.name,
                 lat: exchange.lat,
@@ -731,16 +690,11 @@ impl ServiceabilityProgramHelper {
         &mut self,
         device: DeviceCreateArgs,
     ) -> Result<Pubkey, BanksClientError> {
-        let mut device = device;
-        if device.index == 0 {
-            device.index = self.get_next_global_state_index().await?;
-        }
-        let (device_pk, bump_seed) = get_device_pda(&self.program_id, device.index);
+        let index = self.get_next_global_state_index().await?;
+        let (device_pk, _) = get_device_pda(&self.program_id, index);
 
         self.execute_transaction(
             DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
-                index: device.index,
-                bump_seed,
                 code: device.code,
                 contributor_pk: device.contributor_pk,
                 location_pk: device.location_pk,
@@ -806,16 +760,11 @@ impl ServiceabilityProgramHelper {
     }
 
     pub async fn create_link(&mut self, link: LinkCreateArgs) -> Result<Pubkey, BanksClientError> {
-        let mut link = link;
-        if link.index == 0 {
-            link.index = self.get_next_global_state_index().await?;
-        }
-        let (link_pk, bump_seed) = get_link_pda(&self.program_id, link.index);
+        let index = self.get_next_global_state_index().await?;
+        let (link_pk, _) = get_link_pda(&self.program_id, index);
 
         self.execute_transaction(
             DoubleZeroInstruction::CreateLink(LinkCreateArgs {
-                index: link.index,
-                bump_seed,
                 code: link.code,
                 contributor_pk: link.contributor_pk,
                 side_a_pk: link.side_a_pk,

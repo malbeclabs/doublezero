@@ -51,7 +51,7 @@ mod location_test {
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 0);
 
-        let (location_pubkey, bump_seed) =
+        let (location_pubkey, _) =
             get_location_pda(&program_id, globalstate_account.account_index + 1);
 
         execute_transaction(
@@ -59,8 +59,6 @@ mod location_test {
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
-                index: globalstate_account.account_index + 1,
-                bump_seed,
                 code: "la".to_string(),
                 name: "Los Angeles".to_string(),
                 country: "us".to_string(),

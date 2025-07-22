@@ -25,13 +25,10 @@ impl CreateLinkCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, bump_seed) =
-            get_link_pda(&client.get_program_id(), globalstate.account_index + 1);
+        let (pda_pubkey, _) = get_link_pda(&client.get_program_id(), globalstate.account_index + 1);
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateLink(LinkCreateArgs {
-                    index: globalstate.account_index + 1,
-                    bump_seed,
                     code: self.code.to_string(),
                     contributor_pk: self.contributor_pk,
                     side_a_pk: self.side_a_pk,

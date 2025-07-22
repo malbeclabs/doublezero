@@ -75,7 +75,7 @@ mod device_test {
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 0);
 
-        let (location_pubkey, bump_seed) =
+        let (location_pubkey, _) =
             get_location_pda(&program_id, globalstate_account.account_index + 1);
 
         execute_transaction(
@@ -83,8 +83,6 @@ mod device_test {
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::CreateLocation(location::create::LocationCreateArgs {
-                index: globalstate_account.account_index + 1,
-                bump_seed,
                 code: "la".to_string(),
                 name: "Los Angeles".to_string(),
                 country: "us".to_string(),
@@ -105,7 +103,7 @@ mod device_test {
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 1);
 
-        let (exchange_pubkey, bump_seed) =
+        let (exchange_pubkey, _) =
             get_exchange_pda(&program_id, globalstate_account.account_index + 1);
 
         execute_transaction(
@@ -113,8 +111,6 @@ mod device_test {
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::CreateExchange(exchange::create::ExchangeCreateArgs {
-                index: globalstate_account.account_index + 1,
-                bump_seed,
                 code: "la".to_string(),
                 name: "Los Angeles".to_string(),
                 lat: 1.234,
@@ -172,16 +168,13 @@ mod device_test {
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 3);
 
-        let (device_pubkey, bump_seed) =
-            get_device_pda(&program_id, globalstate_account.account_index + 1);
+        let (device_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
 
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
-                index: globalstate_account.account_index + 1,
-                bump_seed,
                 code: "la".to_string(),
                 device_type: DeviceType::Switch,
                 contributor_pk: contributor_pubkey,
@@ -385,15 +378,12 @@ mod device_test {
         let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 3);
-        let (device_pubkey, bump_seed) =
-            get_device_pda(&program_id, globalstate_account.account_index + 1);
+        let (device_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
-                index: globalstate_account.account_index + 1,
-                bump_seed,
                 code: "la".to_string(),
                 device_type: DeviceType::Switch,
                 contributor_pk: contributor_pubkey,
@@ -507,7 +497,7 @@ mod device_test {
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 0);
 
-        let (location_pubkey, bump_seed) =
+        let (location_pubkey, _) =
             get_location_pda(&program_id, globalstate_account.account_index + 1);
 
         execute_transaction(
@@ -515,8 +505,6 @@ mod device_test {
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::CreateLocation(location::create::LocationCreateArgs {
-                index: globalstate_account.account_index + 1,
-                bump_seed,
                 code: "la".to_string(),
                 name: "Los Angeles".to_string(),
                 country: "us".to_string(),
@@ -536,7 +524,7 @@ mod device_test {
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 1);
 
-        let (exchange_pubkey, bump_seed) =
+        let (exchange_pubkey, _) =
             get_exchange_pda(&program_id, globalstate_account.account_index + 1);
 
         execute_transaction(
@@ -544,8 +532,6 @@ mod device_test {
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::CreateExchange(exchange::create::ExchangeCreateArgs {
-                index: globalstate_account.account_index + 1,
-                bump_seed,
                 code: "la".to_string(),
                 name: "Los Angeles".to_string(),
                 lat: 1.234,

@@ -50,13 +50,10 @@ impl CreateSubscribeUserCommand {
             eyre::bail!("Subscriber not allowed");
         }
 
-        let (pda_pubkey, bump_seed) =
-            get_user_pda(&client.get_program_id(), globalstate.account_index + 1);
+        let (pda_pubkey, _) = get_user_pda(&client.get_program_id(), globalstate.account_index + 1);
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
-                    index: globalstate.account_index + 1,
-                    bump_seed,
                     user_type: self.user_type,
                     device_pk: self.device_pk,
                     cyoa_type: self.cyoa_type,

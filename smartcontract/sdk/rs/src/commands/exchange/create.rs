@@ -21,13 +21,11 @@ impl CreateExchangeCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, bump_seed) =
+        let (pda_pubkey, _) =
             get_exchange_pda(&client.get_program_id(), globalstate.account_index + 1);
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
-                    index: globalstate.account_index + 1,
-                    bump_seed,
                     code: self.code.clone(),
                     name: self.name.clone(),
                     lat: self.lat,
@@ -62,14 +60,12 @@ mod tests {
         let mut client = create_test_client();
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, bump_seed) = get_exchange_pda(&client.get_program_id(), 1);
+        let (pda_pubkey, _) = get_exchange_pda(&client.get_program_id(), 1);
 
         client
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
-                    index: 1,
-                    bump_seed,
                     code: "test".to_string(),
                     name: "Test Exchange".to_string(),
                     lat: 0.0,

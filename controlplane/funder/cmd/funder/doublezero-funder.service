@@ -5,7 +5,7 @@ StartLimitIntervalSec=60
 StartLimitBurst=3
 
 [Service]
-ExecStart=/usr/local/bin/doublezero-funder -env testnet -keypair /etc/doublezero/funder-keypair.json
+ExecStart=/usr/local/bin/doublezero-funder -env testnet -keypair /etc/doublezero/funder-keypair.json -metrics-enable
 Restart=always
 RestartSec=15
 

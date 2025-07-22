@@ -175,7 +175,7 @@ impl MetricsProcessor {
                 .unwrap_or(1.0);
 
             // For now, just use latency as the cost (similar to network-shapley examples)
-            // TODO: Add more sophisticated cost calculation if needed
+            // TODO: Add more sophisticated cost calculation when ready
             let cost = latency_us / 1000.0;
 
             private_links.push(PrivateLink::new(

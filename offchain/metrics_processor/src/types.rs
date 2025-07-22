@@ -301,11 +301,7 @@ pub struct DbDeviceLatencySamples {
     pub origin_device_agent_pk: Pubkey,
     pub sampling_interval_us: u64,
     pub start_timestamp_us: u64,
-    // Store latency samples in microseconds
     pub samples: Vec<u32>,
-    // TODO: What exactly does next_sample_index indicate?
-    // Double check doublezero_telemetry program
-    // Number of samples (from next_sample_index)
     pub sample_count: u32,
 }
 

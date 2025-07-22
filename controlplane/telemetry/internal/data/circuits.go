@@ -17,20 +17,32 @@ type Circuit struct {
 	Link         serviceability.Link   `json:"-"`
 }
 
+func (p *provider) loadServiceabilityData(ctx context.Context) ([]serviceability.Device, []serviceability.Link, error) {
+	p.serviceabilityClientMu.Lock()
+	defer p.serviceabilityClientMu.Unlock()
+
+	err := p.cfg.ServiceabilityClient.Load(ctx)
+	if err != nil {
+		p.cfg.Logger.Error("failed to load serviceability data", "error", err)
+		return nil, nil, err
+	}
+
+	devices := p.cfg.ServiceabilityClient.GetDevices()
+	links := p.cfg.ServiceabilityClient.GetLinks()
+
+	return devices, links, nil
+}
+
 func (p *provider) GetCircuits(ctx context.Context) ([]Circuit, error) {
 	cached := p.GetCachedCircuits(ctx)
 	if cached != nil {
 		return cached, nil
 	}
 
-	err := p.cfg.ServiceabilityClient.Load(ctx)
+	devices, links, err := p.loadServiceabilityData(ctx)
 	if err != nil {
-		p.cfg.Logger.Error("failed to load serviceability data", "error", err)
 		return nil, fmt.Errorf("failed to load serviceability data: %w", err)
 	}
-
-	devices := p.cfg.ServiceabilityClient.GetDevices()
-	links := p.cfg.ServiceabilityClient.GetLinks()
 
 	circuits := make([]Circuit, 0, 2*len(links))
 
@@ -46,12 +58,12 @@ func (p *provider) GetCircuits(ctx context.Context) ([]Circuit, error) {
 
 		deviceA, ok := devicesByPK[deviceAPK.String()]
 		if !ok {
-			p.cfg.Logger.Debug("device A not found, skipping link", "link_code", link.Code, "device_a_pk", deviceAPK.String())
+			p.cfg.Logger.Warn("device A not found, skipping link", "link_code", link.Code, "device_a_code", deviceAPK.String(), "devicesByPK", len(devicesByPK), "devices", len(devices))
 			continue
 		}
 		deviceZ, ok := devicesByPK[deviceZPK.String()]
 		if !ok {
-			p.cfg.Logger.Debug("device Z not found, skipping link", "link_code", link.Code, "device_z_pk", deviceZPK.String())
+			p.cfg.Logger.Warn("device Z not found, skipping link", "link_code", link.Code, "device_z_code", deviceZPK.String(), "devicesByPK", len(devicesByPK), "devices", len(devices))
 			continue
 		}
 

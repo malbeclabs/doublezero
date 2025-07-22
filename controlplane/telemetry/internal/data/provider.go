@@ -36,6 +36,8 @@ type provider struct {
 	cacheMu sync.RWMutex
 
 	getCircuitLatenciesPool pond.ResultPool[[]CircuitLatencySample]
+
+	serviceabilityClientMu sync.Mutex
 }
 
 type ProviderConfig struct {

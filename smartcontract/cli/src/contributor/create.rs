@@ -1,23 +1,19 @@
 use crate::{
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-    validators::{validate_code, validate_pubkey},
+    validators::validate_code,
 };
 use clap::Args;
 use doublezero_sdk::commands::contributor::{
     create::CreateContributorCommand, list::ListContributorCommand,
 };
-use solana_sdk::pubkey::Pubkey;
-use std::{io::Write, str::FromStr};
+use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct CreateContributorCliCommand {
     /// Unique contributor code
     #[arg(long, value_parser = validate_code)]
     pub code: String,
-    /// ATA owner pubkey
-    #[arg(long, value_parser = validate_pubkey)]
-    pub ata_owner: String,
 }
 
 impl CreateContributorCliCommand {
@@ -33,12 +29,8 @@ impl CreateContributorCliCommand {
             ));
         }
 
-        let ata_owner = Pubkey::from_str(&self.ata_owner)
-            .map_err(|_| eyre::eyre!("Invalid ATA owner pubkey"))?;
-
         let (signature, _pubkey) = client.create_contributor(CreateContributorCommand {
             code: self.code.clone(),
-            ata_owner_pk: ata_owner,
         })?;
 
         writeln!(out, "Signature: {signature}",)?;
@@ -84,7 +76,7 @@ mod tests {
                         account_type: AccountType::Contributor,
                         owner: Pubkey::default(),
                         index: 1,
-                        ata_owner_pk: Pubkey::default(),
+
                         code: "test2".to_string(),
                         status: ContributorStatus::Activated,
                         bump_seed: 0,
@@ -101,7 +93,6 @@ mod tests {
             .expect_create_contributor()
             .with(predicate::eq(CreateContributorCommand {
                 code: "test".to_string(),
-                ata_owner_pk: Pubkey::default(),
             }))
             .times(1)
             .returning(move |_| Ok((signature, pda_pubkey)));
@@ -110,7 +101,6 @@ mod tests {
         let mut output = Vec::new();
         let res = CreateContributorCliCommand {
             code: "test2".to_string(),
-            ata_owner: Pubkey::default().to_string(),
         }
         .execute(&client, &mut output);
         assert!(res.is_err());
@@ -118,7 +108,6 @@ mod tests {
         let mut output = Vec::new();
         let res = CreateContributorCliCommand {
             code: "test".to_string(),
-            ata_owner: Pubkey::default().to_string(),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

@@ -279,7 +279,6 @@ pub mod test {
                 index: globalstate_account.account_index + 1,
                 bump_seed,
                 code: "cont".to_string(),
-                ata_owner_pk: Pubkey::default(),
             }),
             vec![
                 AccountMeta::new(contributor_pubkey, false),
@@ -454,6 +453,7 @@ pub mod test {
             get_link_pda(&program_id, globalstate_account.account_index + 1);
         let tunnel_la_ny: LinkCreateArgs = LinkCreateArgs {
             code: tunnel_la_ny_code.clone(),
+            contributor_pk: contributor_pubkey,
             side_a_pk: device_la_pubkey,
             side_z_pk: device_ny_pubkey,
             link_type: LinkLinkType::L3,
@@ -471,6 +471,7 @@ pub mod test {
             DoubleZeroInstruction::CreateLink(tunnel_la_ny),
             vec![
                 AccountMeta::new(tunnel_la_ny_pubkey, false),
+                AccountMeta::new(contributor_pubkey, false),
                 AccountMeta::new(device_la_pubkey, false),
                 AccountMeta::new(device_ny_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),

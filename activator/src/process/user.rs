@@ -12,7 +12,7 @@ use doublezero_sdk::{
     },
     DoubleZeroClient, NetworkV4, User, UserStatus, UserType,
 };
-use log::info;
+use log::{info, warn};
 use solana_client::rpc_response::RpcContactInfo;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 use std::{
@@ -340,7 +340,7 @@ pub fn process_user_event(
                                 .entry("user-deleting-to-deactivated")
                                 .or_insert(0) += 1;
                         }
-                        Err(e) => info!("Error: {e}"),
+                        Err(e) => warn!("Error: {e}"),
                     }
                 } else if user.status == UserStatus::PendingBan {
                     let res = BanUserCommand { pubkey: *pubkey }.execute(client);

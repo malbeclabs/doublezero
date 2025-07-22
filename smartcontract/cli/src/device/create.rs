@@ -194,7 +194,7 @@ mod tests {
             index: 1,
             bump_seed: 255,
             code: "test".to_string(),
-            ata_owner_pk: Pubkey::default(),
+
             status: ContributorStatus::Activated,
             owner: contributor_pk,
         };

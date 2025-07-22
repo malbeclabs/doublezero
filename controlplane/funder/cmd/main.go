@@ -5,6 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -13,7 +15,9 @@ import (
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/controlplane/funder/internal/funder"
+	"github.com/malbeclabs/doublezero/controlplane/funder/internal/metrics"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const (
@@ -31,6 +35,8 @@ var (
 	topUpSOL                = flag.Float64("top-up-sol", defaultTopUpSOL, "the amount of SOL to top up the funder with")
 	verbose                 = flag.Bool("verbose", false, "enable verbose logging")
 	showVersion             = flag.Bool("version", false, "Print the version of the doublezero-agent and exit")
+	metricsEnable           = flag.Bool("metrics-enable", false, "Enable prometheus metrics")
+	metricsAddr             = flag.String("metrics-addr", ":8080", "Address to listen on for prometheus metrics")
 
 	// Set by LDFLAGS
 	version = "dev"
@@ -70,6 +76,23 @@ func main() {
 		log.Error("Missing required flag", "flag", "keypair")
 		flag.Usage()
 		os.Exit(1)
+	}
+
+	// Set up prometheus metrics server if enabled.
+	if *metricsEnable {
+		metrics.BuildInfo.WithLabelValues(version, commit, date).Set(1)
+		go func() {
+			listener, err := net.Listen("tcp", *metricsAddr)
+			if err != nil {
+				log.Error("Failed to start prometheus metrics server listener", "error", err)
+				return
+			}
+			log.Info("Prometheus metrics server listening", "address", listener.Addr())
+			http.Handle("/metrics", promhttp.Handler())
+			if err := http.Serve(listener, nil); err != nil {
+				log.Error("Failed to start prometheus metrics server", "error", err)
+			}
+		}()
 	}
 
 	// Check that keypair path exists.

@@ -9,6 +9,7 @@ use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient}
 #[derive(Debug, PartialEq, Clone)]
 pub struct CreateLinkCommand {
     pub code: String,
+    pub contributor_pk: Pubkey,
     pub side_a_pk: Pubkey,
     pub side_z_pk: Pubkey,
     pub link_type: LinkLinkType,
@@ -29,6 +30,7 @@ impl CreateLinkCommand {
             .execute_transaction(
                 DoubleZeroInstruction::CreateLink(LinkCreateArgs {
                     code: self.code.to_string(),
+                    contributor_pk: self.contributor_pk,
                     side_a_pk: self.side_a_pk,
                     side_z_pk: self.side_z_pk,
                     link_type: self.link_type,
@@ -39,6 +41,7 @@ impl CreateLinkCommand {
                 }),
                 vec![
                     AccountMeta::new(pda_pubkey, false),
+                    AccountMeta::new(self.contributor_pk, false),
                     AccountMeta::new(self.side_a_pk, false),
                     AccountMeta::new(self.side_z_pk, false),
                     AccountMeta::new(globalstate_pubkey, false),

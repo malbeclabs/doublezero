@@ -19,7 +19,6 @@ import (
 	dockercontainer "github.com/docker/docker/api/types/container"
 	dockerfilters "github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
-	"github.com/docker/go-connections/nat"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
@@ -48,8 +47,6 @@ type DeviceSpec struct {
 	Location           string
 	Exchange           string
 	MetricsPublisherPK string
-
-	ExternalHost string
 
 	// CYOANetworkIPHostID is the offset into the host portion of the subnet (must be < 2^(32 - prefixLen)).
 	CYOANetworkIPHostID uint32
@@ -129,15 +126,6 @@ func (s *DeviceSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
 		if err := s.Telemetry.Validate(); err != nil {
 			return fmt.Errorf("telemetry: %w", err)
 		}
-	}
-
-	// If the external host is not set, use the default.
-	localhost := os.Getenv("DIND_LOCALHOST")
-	if localhost == "" {
-		localhost = "localhost"
-	}
-	if s.ExternalHost == "" {
-		s.ExternalHost = localhost
 	}
 
 	return nil
@@ -485,30 +473,7 @@ func (d *Device) setState(ctx context.Context, containerID string) error {
 	ip := container.NetworkSettings.Networks[d.dn.CYOANetwork.Name].IPAddress
 
 	// Wait for EAPI HTTP port to be exposed.
-	loggedWait = false
-	timeout = 10 * time.Second
-	var port int
-	err = pollUntil(ctx, func() (bool, error) {
-		attempts++
-		var err error
-		container, err = d.dn.dockerClient.ContainerInspect(ctx, containerID)
-		if err != nil {
-			return false, fmt.Errorf("failed to inspect container: %w", err)
-		}
-		ports, ok := container.NetworkSettings.Ports[nat.Port(fmt.Sprintf("%d/tcp", internalEAPIHTTPPort))]
-		if !ok || len(ports) == 0 {
-			if !loggedWait && attempts > 1 {
-				d.log.Debug("--> Waiting for EAPI HTTP port to be exposed", "container", shortContainerID(container.ID), "timeout", timeout)
-				loggedWait = true
-			}
-			return false, nil
-		}
-		port, err = strconv.Atoi(ports[0].HostPort)
-		if err != nil {
-			return false, fmt.Errorf("failed to get RPC port: %w", err)
-		}
-		return true, nil
-	}, timeout, 500*time.Millisecond)
+	port, err := d.dn.waitForContainerPortExposed(ctx, containerID, internalEAPIHTTPPort, 10*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to wait for EAPI HTTP port to be exposed: %w", err)
 	}
@@ -520,29 +485,7 @@ func (d *Device) setState(ctx context.Context, containerID string) error {
 		if err != nil {
 			return fmt.Errorf("failed to get internal metrics port: %w", err)
 		}
-		loggedWait = false
-		timeout = 10 * time.Second
-		err = pollUntil(ctx, func() (bool, error) {
-			attempts++
-			var err error
-			container, err = d.dn.dockerClient.ContainerInspect(ctx, containerID)
-			if err != nil {
-				return false, fmt.Errorf("failed to inspect container: %w", err)
-			}
-			ports, ok := container.NetworkSettings.Ports[nat.Port(fmt.Sprintf("%d/tcp", telemetryMetricsPort))]
-			if !ok || len(ports) == 0 {
-				if !loggedWait && attempts > 1 {
-					d.log.Debug("--> Waiting for telemetry metrics port to be exposed", "container", shortContainerID(container.ID), "timeout", timeout)
-					loggedWait = true
-				}
-				return false, nil
-			}
-			port, err = strconv.Atoi(ports[0].HostPort)
-			if err != nil {
-				return false, fmt.Errorf("failed to get telemetry metrics port: %w", err)
-			}
-			return true, nil
-		}, timeout, 500*time.Millisecond)
+		port, err := d.dn.waitForContainerPortExposed(ctx, containerID, telemetryMetricsPort, 10*time.Second)
 		if err != nil {
 			return fmt.Errorf("failed to wait for telemetry metrics port to be exposed: %w", err)
 		}
@@ -569,11 +512,11 @@ func (d *Device) InternalTelemetryMetricsPort() (int, error) {
 }
 
 func (d *Device) GetEAPIHTTPClient() (*goeapi.Node, error) {
-	return goeapi.Connect("http", d.Spec.ExternalHost, "admin", "admin", d.ExternalEAPIHTTPPort)
+	return goeapi.Connect("http", d.dn.ExternalHost, "admin", "admin", d.ExternalEAPIHTTPPort)
 }
 
 func (d *Device) GetTelemetryMetricsClient() *prometheus.MetricsClient {
-	return prometheus.NewMetricsClient(fmt.Sprintf("http://%s:%d/metrics", d.Spec.ExternalHost, d.ExternalTelemetryMetricsPort))
+	return prometheus.NewMetricsClient(fmt.Sprintf("http://%s:%d/metrics", d.dn.ExternalHost, d.ExternalTelemetryMetricsPort))
 }
 
 // ExecCliReturnJSONObject executes a command on the device using the Cli tool and returns the

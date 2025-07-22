@@ -21,7 +21,6 @@ use solana_program::msg;
 pub struct ContributorCreateArgs {
     pub index: u128,
     pub bump_seed: u8,
-    pub ata_owner_pk: Pubkey,
     pub code: String,
 }
 
@@ -29,8 +28,8 @@ impl fmt::Debug for ContributorCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "index: {}, bump_seed: {}, code: {}, ata_owner_pk: {}",
-            self.index, self.bump_seed, self.code, self.ata_owner_pk
+            "index: {}, bump_seed: {}, code: {}",
+            self.index, self.bump_seed, self.code
         )
     }
 }
@@ -86,7 +85,6 @@ pub fn process_create_contributor(
         index: globalstate.account_index,
         bump_seed,
         code: value.code.clone(),
-        ata_owner_pk: value.ata_owner_pk,
         status: ContributorStatus::Activated,
     };
 

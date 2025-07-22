@@ -71,7 +71,6 @@ pub struct Contributor {
     pub owner: Pubkey,             // 32
     pub index: u128,               // 16
     pub bump_seed: u8,             // 1
-    pub ata_owner_pk: Pubkey,      // 32
     pub status: ContributorStatus, // 1
     pub code: String,              // 4 + len
 }
@@ -80,8 +79,8 @@ impl fmt::Display for Contributor {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, index: {}, bump_seed: {}, ata_owner_pk: {}, code: {}",
-            self.account_type, self.owner, self.index, self.bump_seed, self.ata_owner_pk, self.code
+            "account_type: {}, owner: {}, index: {}, bump_seed: {}, code: {}",
+            self.account_type, self.owner, self.index, self.bump_seed, self.code
         )
     }
 }
@@ -91,7 +90,7 @@ impl AccountTypeInfo for Contributor {
         SEED_CONTRIBUTOR
     }
     fn size(&self) -> usize {
-        1 + 32 + 16 + 1 + 32 + 1 + 4 + self.code.len()
+        1 + 32 + 16 + 1 + 1 + 4 + self.code.len()
     }
     fn bump_seed(&self) -> u8 {
         self.bump_seed
@@ -113,7 +112,6 @@ impl From<&[u8]> for Contributor {
             owner: parser.read_pubkey(),
             index: parser.read_u128(),
             bump_seed: parser.read_u8(),
-            ata_owner_pk: parser.read_pubkey(),
             status: parser.read_enum(),
             code: parser.read_string(),
         }
@@ -140,7 +138,6 @@ mod tests {
             owner: Pubkey::default(),
             index: 123,
             bump_seed: 1,
-            ata_owner_pk: Pubkey::default(),
             status: ContributorStatus::Activated,
             code: "test".to_string(),
         };
@@ -153,7 +150,6 @@ mod tests {
         assert_eq!(val.code, val2.code);
         assert_eq!(val.index, val2.index);
         assert_eq!(val.bump_seed, val2.bump_seed);
-        assert_eq!(val.ata_owner_pk, val2.ata_owner_pk);
         assert_eq!(val.status, val2.status);
         assert_eq!(val.account_type, val2.account_type);
         assert_eq!(data.len(), val.size(), "Invalid Size");

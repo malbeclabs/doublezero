@@ -524,6 +524,7 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_owner() {
 
     let fake_link = Link {
         status: LinkStatus::Activated,
+        contributor_pk: Pubkey::default(),
         side_a_pk: origin_device_pk,
         side_z_pk: target_device_pk,
         account_type: AccountType::Link,
@@ -653,6 +654,7 @@ async fn test_initialize_device_latency_samples_fail_origin_device_not_activated
         .create_and_activate_link(
             LinkCreateArgs {
                 code: "LINK1".to_string(),
+                contributor_pk,
                 side_a_pk: origin_device_pk,
                 side_z_pk: target_device_pk,
                 link_type: LinkLinkType::L3,
@@ -761,6 +763,7 @@ async fn test_initialize_device_latency_samples_fail_target_device_not_activated
         .create_and_activate_link(
             LinkCreateArgs {
                 code: "LINK1".to_string(),
+                contributor_pk,
                 side_a_pk: origin_device_pk,
                 side_z_pk: target_device_pk,
                 link_type: LinkLinkType::L3,
@@ -866,6 +869,7 @@ async fn test_initialize_device_latency_samples_fail_link_not_activated() {
         .serviceability
         .create_link(LinkCreateArgs {
             code: "LINK1".to_string(),
+            contributor_pk,
             side_a_pk: origin_device_pk,
             side_z_pk: target_device_pk,
             link_type: LinkLinkType::L3,
@@ -1000,6 +1004,7 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
         .create_and_activate_link(
             LinkCreateArgs {
                 code: "LINK1".to_string(),
+                contributor_pk,
                 side_a_pk: device_x_pk,
                 side_z_pk: device_y_pk,
                 link_type: LinkLinkType::L2,
@@ -1106,6 +1111,7 @@ async fn test_initialize_device_latency_samples_succeeds_with_reversed_link_side
         .create_and_activate_link(
             LinkCreateArgs {
                 code: "LINK1".into(),
+                contributor_pk,
                 side_a_pk: target_device_pk,
                 side_z_pk: origin_device_pk,
                 link_type: LinkLinkType::L2,
@@ -1354,6 +1360,7 @@ async fn test_initialize_device_latency_samples_fail_agent_not_owner_of_origin_d
                 mtu: 1500,
                 delay_ns: 10,
                 jitter_ns: 1,
+                contributor_pk,
                 side_a_pk: origin_device_pk,
                 side_z_pk: target_device_pk,
             },

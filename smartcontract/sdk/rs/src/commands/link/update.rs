@@ -9,6 +9,7 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature}
 pub struct UpdateLinkCommand {
     pub pubkey: Pubkey,
     pub code: Option<String>,
+    pub contributor_pk: Option<Pubkey>,
     pub tunnel_type: Option<LinkLinkType>,
     pub bandwidth: Option<u64>,
     pub mtu: Option<u32>,
@@ -21,6 +22,7 @@ impl UpdateLinkCommand {
         client.execute_transaction(
             DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
                 code: self.code.clone(),
+                contributor_pk: self.contributor_pk,
                 tunnel_type: self.tunnel_type,
                 bandwidth: self.bandwidth,
                 mtu: self.mtu,

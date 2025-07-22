@@ -13,13 +13,14 @@ const (
 	// when the given PDA does not exist.
 	InstructionErrorAccountDoesNotExist = 1011
 
-	// SolanaMaxPermittedDataIncrease is the maximum number of bytes a program may add to an
-	// account during a single realloc.
-	// This is the samples batch size limit in bytes.
-	SolanaMaxPermittedDataIncrease = 10_240
-
 	// MaxSamplesPerBatch is the maximum number of samples that can be written in a single batch.
-	MaxSamplesPerBatch = SolanaMaxPermittedDataIncrease / 4
+	//
+	// Messages transmitted to Solana validators must not exceed the IPv6 MTU size to ensure fast
+	// and reliable network transmission of cluster info over UDP. Solana's networking stack uses a
+	// conservative MTU size of 1280 bytes which, after accounting for headers, leaves 1232 bytes
+	// for packet data like serialized transactions.
+	// https://docs.anza.xyz/proposals/versioned-transactions#problem
+	MaxSamplesPerBatch = 245 // 980 bytes
 
 	// MaxSamples is the maximum number of samples that can be written to a single account.
 	MaxSamples = 35_000

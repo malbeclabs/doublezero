@@ -539,6 +539,7 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::CreateLink(LinkCreateArgs {
                 code: "test".to_string(),
+                contributor_pk: Pubkey::new_unique(),
                 side_a_pk: Pubkey::new_unique(),
                 side_z_pk: Pubkey::new_unique(),
                 link_type: LinkLinkType::L3,
@@ -559,6 +560,7 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
                 code: Some("test".to_string()),
+                contributor_pk: Some(Pubkey::new_unique()),
                 tunnel_type: Some(LinkLinkType::L3),
                 bandwidth: Some(100),
                 mtu: Some(1500),
@@ -801,14 +803,12 @@ mod tests {
                 index: 123,
                 bump_seed: 255,
                 code: "test".to_string(),
-                ata_owner_pk: Pubkey::default(),
             }),
             "CreateContributor",
         );
         test_instruction(
             DoubleZeroInstruction::UpdateContributor(ContributorUpdateArgs {
                 code: Some("test".to_string()),
-                ata_owner_pk: Some(Pubkey::default()),
             }),
             "UpdateContributor",
         );

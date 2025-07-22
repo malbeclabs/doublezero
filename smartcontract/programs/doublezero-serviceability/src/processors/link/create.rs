@@ -5,7 +5,7 @@ use crate::{
     globalstate::{globalstate_get_next, globalstate_write},
     helper::*,
     pda::get_link_pda,
-    state::{accounttype::AccountType, link::*},
+    state::{accounttype::AccountType, contributor::Contributor, link::*},
     types::NetworkV4,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -21,6 +21,7 @@ use solana_program::{
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct LinkCreateArgs {
     pub code: String,
+    pub contributor_pk: Pubkey,
     pub side_a_pk: Pubkey,
     pub side_z_pk: Pubkey,
     pub link_type: LinkLinkType,
@@ -48,6 +49,7 @@ pub fn process_create_link(
     let accounts_iter = &mut accounts.iter();
 
     let pda_account = next_account_info(accounts_iter)?;
+    let contributor_account = next_account_info(accounts_iter)?;
     let side_a_account = next_account_info(accounts_iter)?;
     let side_z_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
@@ -56,6 +58,23 @@ pub fn process_create_link(
 
     #[cfg(test)]
     msg!("process_create_link({:?})", value);
+
+    assert_eq!(
+        contributor_account.owner, program_id,
+        "Invalid Contributor Account Owner"
+    );
+    assert_eq!(
+        side_a_account.owner, program_id,
+        "Invalid Side A Account Owner"
+    );
+    assert_eq!(
+        side_z_account.owner, program_id,
+        "Invalid Side Z Account Owner"
+    );
+    assert_eq!(
+        globalstate_account.owner, program_id,
+        "Invalid GlobalState Account Owner"
+    );
 
     if !pda_account.data.borrow().is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);
@@ -75,6 +94,13 @@ pub fn process_create_link(
         "Invalid Link PubKey"
     );
 
+    let contributor = Contributor::try_from(contributor_account)?;
+    if contributor.account_type != AccountType::Contributor {
+        return Err(DoubleZeroError::InvalidContributorPubkey.into());
+    }
+    if contributor.owner != *payer_account.key {
+        return Err(DoubleZeroError::InvalidOwnerPubkey.into());
+    }
     // Check account Types
     if side_a_account.data_is_empty()
         || side_a_account.data.borrow()[0] != AccountType::Device as u8
@@ -93,6 +119,7 @@ pub fn process_create_link(
         index: globalstate.account_index,
         bump_seed,
         code: value.code.clone(),
+        contributor_pk: value.contributor_pk,
         side_a_pk: value.side_a_pk,
         side_z_pk: value.side_z_pk,
         link_type: value.link_type,

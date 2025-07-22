@@ -4,6 +4,7 @@ go 1.24
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.37.2
+	github.com/alitto/pond/v2 v2.5.0
 	github.com/aristanetworks/goeapi v1.0.1-0.20250411124937-7090068b8735
 	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/docker v28.3.2+incompatible
@@ -12,6 +13,7 @@ require (
 	github.com/gagliardetto/solana-go v1.12.0
 	github.com/google/go-cmp v0.7.0
 	github.com/google/gopacket v1.1.19
+	github.com/jellydator/ttlcache/v3 v3.4.0
 	github.com/joho/godotenv v1.5.1
 	github.com/jwhited/corebgp v0.8.5
 	github.com/klauspost/compress v1.18.0

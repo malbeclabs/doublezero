@@ -30,7 +30,7 @@ cargo build
 ./target/debug/doublezero exchange create --code xam --name "Amsterdam" --lat 52.30085793004002 --lng 4.942241140085309
 
 ### Contributors
-./target/doublezero contributor create --code co01 --ata-owner 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
+./target/doublezero contributor create --code co01
 
 ### Devices
 ./target/debug/doublezero device create --code la2-dz01 --contributor co01 --location la --exchange xla --public-ip "207.45.216.136" --dz-prefix "207.45.216.136/29"
@@ -44,12 +44,12 @@ cargo build
 
 
 ### Links
-./target/debug/doublezero Link create --code "la2-dz01:ny5-dz01" --side-a la2-dz01 --side-z ny5-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
-./target/debug/doublezero Link create --code "ny5-dz01:ld4-dz01" --side-a ny5-dz01 --side-z ld4-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
-./target/debug/doublezero Link create --code "ld4-dz01:frk-dz01" --side-a ld4-dz01 --side-z frk-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10
-./target/debug/doublezero Link create --code "ld4-dz01:sg1-dz01" --side-a ld4-dz01 --side-z sg1-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9
-./target/debug/doublezero Link create --code "sg1-dz01:ty2-dz01" --side-a sg1-dz01 --side-z ty2-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7
-./target/debug/doublezero Link create --code "ty2-dz01:la2-dz01" --side-a ty2-dz01 --side-z la2-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 10
+./target/debug/doublezero Link create --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-z ny5-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
+./target/debug/doublezero Link create --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-z ld4-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
+./target/debug/doublezero Link create --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-z frk-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10
+./target/debug/doublezero Link create --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-z sg1-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9
+./target/debug/doublezero Link create --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-z ty2-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7
+./target/debug/doublezero Link create --code "ty2-dz01:la2-dz01" --contributor co01 --side-a ty2-dz01 --side-z la2-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 10
 
 
 # pit

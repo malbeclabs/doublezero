@@ -9,7 +9,10 @@ use crate::{
 };
 use clap::Args;
 use doublezero_sdk::{
-    commands::{device::get::GetDeviceCommand, link::create::CreateLinkCommand},
+    commands::{
+        contributor::get::GetContributorCommand, device::get::GetDeviceCommand,
+        link::create::CreateLinkCommand,
+    },
     *,
 };
 use eyre::eyre;
@@ -20,6 +23,9 @@ pub struct CreateLinkCliCommand {
     /// Link code, must be unique.
     #[arg(long, value_parser = validate_code)]
     pub code: String,
+    /// Contributor (pubkey or code) associated with the device
+    #[arg(long, value_parser = validate_pubkey_or_code)]
+    pub contributor: String,
     /// Device Pubkey or code for side A.
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub side_a: String,
@@ -47,6 +53,18 @@ impl CreateLinkCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
+
+        let contributor_pk = match parse_pubkey(&self.contributor) {
+            Some(pk) => pk,
+            None => {
+                let (pubkey, _) = client
+                    .get_contributor(GetContributorCommand {
+                        pubkey_or_code: self.contributor.clone(),
+                    })
+                    .map_err(|_| eyre::eyre!("Contributor not found"))?;
+                pubkey
+            }
+        };
 
         let side_a_pk = match parse_pubkey(&self.side_a) {
             Some(pk) => pk,
@@ -81,6 +99,7 @@ impl CreateLinkCliCommand {
 
         let (signature, _pubkey) = client.create_link(CreateLinkCommand {
             code: self.code.clone(),
+            contributor_pk,
             side_a_pk,
             side_z_pk,
             link_type,
@@ -181,6 +200,7 @@ mod tests {
             .expect_create_link()
             .with(predicate::eq(CreateLinkCommand {
                 code: "test".to_string(),
+                contributor_pk,
                 side_a_pk: device1_pk,
                 side_z_pk: device2_pk,
                 link_type: LinkLinkType::L3,
@@ -196,6 +216,7 @@ mod tests {
         let mut output = Vec::new();
         let res = CreateLinkCliCommand {
             code: "test".to_string(),
+            contributor: contributor_pk.to_string(),
             side_a: device1_pk.to_string(),
             side_z: device2_pk.to_string(),
             link_type: Some("L3".to_string()),

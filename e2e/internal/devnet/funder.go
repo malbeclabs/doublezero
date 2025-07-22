@@ -12,7 +12,12 @@ import (
 	dockerfilters "github.com/docker/docker/api/types/filters"
 	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
+	"github.com/malbeclabs/doublezero/e2e/internal/prometheus"
 	"github.com/testcontainers/testcontainers-go"
+)
+
+const (
+	funderInternalMetricsPort = 8080
 )
 
 type FunderSpec struct {
@@ -50,7 +55,8 @@ type Funder struct {
 	dn  *Devnet
 	log *slog.Logger
 
-	ContainerID string
+	ContainerID         string
+	ExternalMetricsPort int
 }
 
 // Exists checks if the funder container exists.
@@ -120,6 +126,8 @@ func (c *Funder) Start(ctx context.Context) error {
 		"-ledger-rpc-url", c.dn.Ledger.InternalRPCURL,
 		"-serviceability-program-id", c.dn.Manager.ServiceabilityProgramID,
 		"-keypair", containerSolanaKeypairPath,
+		"-metrics-enable",
+		"-metrics-addr", fmt.Sprintf(":%d", funderInternalMetricsPort),
 	}
 
 	if c.dn.Spec.Funder.Interval > 0 {
@@ -141,7 +149,8 @@ func (c *Funder) Start(ctx context.Context) error {
 		ConfigModifier: func(cfg *dockercontainer.Config) {
 			cfg.Hostname = c.dockerContainerHostname()
 		},
-		Networks: []string{c.dn.DefaultNetwork.Name},
+		ExposedPorts: []string{fmt.Sprintf("%d/tcp", funderInternalMetricsPort)},
+		Networks:     []string{c.dn.DefaultNetwork.Name},
 		NetworkAliases: map[string][]string{
 			c.dn.DefaultNetwork.Name: {"funder"},
 		},
@@ -195,6 +204,13 @@ func (c *Funder) dockerContainerName() string {
 func (c *Funder) setState(ctx context.Context, containerID string) error {
 	c.ContainerID = shortContainerID(containerID)
 
+	// Wait for metrics port to be exposed.
+	port, err := c.dn.waitForContainerPortExposed(ctx, containerID, funderInternalMetricsPort, 10*time.Second)
+	if err != nil {
+		return fmt.Errorf("failed to wait for metrics port to be exposed: %w", err)
+	}
+	c.ExternalMetricsPort = port
+
 	return nil
 }
 
@@ -204,4 +220,8 @@ func (c *Funder) PrivateKey() (solana.PrivateKey, error) {
 		return solana.PrivateKey{}, fmt.Errorf("failed to load funder keypair: %w", err)
 	}
 	return solanaKeypair, nil
+}
+
+func (c *Funder) GetMetricsClient() *prometheus.MetricsClient {
+	return prometheus.NewMetricsClient(fmt.Sprintf("http://%s:%d/metrics", c.dn.ExternalHost, c.ExternalMetricsPort))
 }

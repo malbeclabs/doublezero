@@ -157,14 +157,14 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 			doublezero device create --code ams-dz001 --contributor co01 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "195.219.138.56/29" --bgp-asn 42 --dia-bgp-asn 4242 --mgmt-vrf mgmt --dns-servers 8.8.8.8,8.8.4.4 --ntp-servers 1.2.3.4
 
 			# TODO: When the controller supports dzd metadata, this will have to be updated to reflect actual interfaces
-			doublezero device interface create --pubkey-or-code la2-dz01 --name "Switch1/1/1" --interface-type physical
-			doublezero device interface create --pubkey-or-code ny5-dz01 --name "Switch1/1/1" --interface-type physical
-			doublezero device interface create --pubkey-or-code ld4-dz01 --name "Switch1/1/1" --interface-type physical
-			doublezero device interface create --pubkey-or-code frk-dz01 --name "Switch1/1/1" --interface-type physical
-			doublezero device interface create --pubkey-or-code sg1-dz01 --name "Switch1/1/1" --interface-type physical
-			doublezero device interface create --pubkey-or-code ty2-dz01 --name "Switch1/1/1" --interface-type physical
-			doublezero device interface create --pubkey-or-code pit-dzd01 --name "Switch1/1/1" --interface-type physical
-			doublezero device interface create --pubkey-or-code ams-dz001 --name "Switch1/1/1" --interface-type physical
+			doublezero device interface create la2-dz01 "Switch1/1/1" physical
+			doublezero device interface create ny5-dz01 "Switch1/1/1" physical
+			doublezero device interface create ld4-dz01 "Switch1/1/1" physical
+			doublezero device interface create frk-dz01 "Switch1/1/1" physical
+			doublezero device interface create sg1-dz01 "Switch1/1/1" physical
+			doublezero device interface create ty2-dz01 "Switch1/1/1" physical
+			doublezero device interface create pit-dzd01 "Switch1/1/1" physical
+			doublezero device interface create ams-dz001 "Switch1/1/1" physical
 	`})
 	require.NoError(t, err)
 

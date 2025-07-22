@@ -73,17 +73,17 @@ impl fmt::Display for DeviceStatus {
 #[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone, Copy, Serialize)]
 #[borsh(use_discriminant = true)]
 pub enum InterfaceType {
-    Loopback = 0,
-    Physical = 1,
-    Virtual = 2,
+    Invalid = 0,
+    Loopback = 1,
+    Physical = 2,
 }
 
 impl From<u8> for InterfaceType {
     fn from(value: u8) -> Self {
         match value {
-            1 => InterfaceType::Physical,
-            2 => InterfaceType::Virtual,
-            _ => InterfaceType::Loopback, // Default case
+            1 => InterfaceType::Loopback,
+            2 => InterfaceType::Physical,
+            _ => InterfaceType::Invalid,
         }
     }
 }
@@ -93,7 +93,7 @@ impl fmt::Display for InterfaceType {
         match self {
             InterfaceType::Loopback => write!(f, "loopback"),
             InterfaceType::Physical => write!(f, "physical"),
-            InterfaceType::Virtual => write!(f, "virtual"),
+            _ => write!(f, "invalid"),
         }
     }
 }

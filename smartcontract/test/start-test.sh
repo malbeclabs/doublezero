@@ -104,22 +104,22 @@ echo "Creating devices"
 
 ### Initialize device interfaces
 echo "Creating device interfaces"
-./target/doublezero device interface create --pubkey-or-code la2-dz01 --name "Switch1/1/1" --interface-type physical
-./target/doublezero device interface create --pubkey-or-code la2-dz01 --name "Switch1/1/2" --interface-type physical
-./target/doublezero device interface create --pubkey-or-code ny5-dz01 --name "Switch1/1/1" --interface-type physical
-./target/doublezero device interface create --pubkey-or-code ny5-dz01 --name "Switch1/1/2" --interface-type physical
-./target/doublezero device interface create --pubkey-or-code ld4-dz01 --name "Switch1/1/1" --interface-type physical
-./target/doublezero device interface create --pubkey-or-code ld4-dz01 --name "Switch1/1/2" --interface-type physical
-./target/doublezero device interface create --pubkey-or-code frk-dz01 --name "Switch1/1/1" --interface-type physical
-./target/doublezero device interface create --pubkey-or-code frk-dz01 --name "Switch1/1/2" --interface-type physical
-./target/doublezero device interface create --pubkey-or-code sg1-dz01 --name "Switch1/1/1" --interface-type physical
-./target/doublezero device interface create --pubkey-or-code sg1-dz01 --name "Switch1/1/2" --interface-type physical
-./target/doublezero device interface create --pubkey-or-code ty2-dz01 --name "Switch1/1/1" --interface-type physical
-./target/doublezero device interface create --pubkey-or-code ty2-dz01 --name "Switch1/1/2" --interface-type physical
-./target/doublezero device interface create --pubkey-or-code pit-dzd01 --name "Switch1/1/1" --interface-type physical
-./target/doublezero device interface create --pubkey-or-code pit-dzd01 --name "Switch1/1/2" --interface-type physical
-./target/doublezero device interface create --pubkey-or-code ams-dz001 --name "Switch1/1/1" --interface-type physical
-./target/doublezero device interface create --pubkey-or-code ams-dz001 --name "Switch1/1/2" --interface-type physical
+./target/doublezero device interface create la2-dz01 "Switch1/1/1" physical
+./target/doublezero device interface create la2-dz01 "Switch1/1/2" physical
+./target/doublezero device interface create ny5-dz01 "Switch1/1/1" physical
+./target/doublezero device interface create ny5-dz01 "Switch1/1/2" physical
+./target/doublezero device interface create ld4-dz01 "Switch1/1/1" physical
+./target/doublezero device interface create ld4-dz01 "Switch1/1/2" physical
+./target/doublezero device interface create frk-dz01 "Switch1/1/1" physical
+./target/doublezero device interface create frk-dz01 "Switch1/1/2" physical
+./target/doublezero device interface create sg1-dz01 "Switch1/1/1" physical
+./target/doublezero device interface create sg1-dz01 "Switch1/1/2" physical
+./target/doublezero device interface create ty2-dz01 "Switch1/1/1" physical
+./target/doublezero device interface create ty2-dz01 "Switch1/1/2" physical
+./target/doublezero device interface create pit-dzd01 "Switch1/1/1" physical
+./target/doublezero device interface create pit-dzd01 "Switch1/1/2" physical
+./target/doublezero device interface create ams-dz001 "Switch1/1/1" physical
+./target/doublezero device interface create ams-dz001 "Switch1/1/2" physical
 
 ### Initialice links
 echo "Creating links"

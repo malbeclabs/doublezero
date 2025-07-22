@@ -174,14 +174,14 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 
 		echo "==> Populate device interface information onchain"
 		# TODO: When the controller supports dzd metadata, this will have to be updated to reflect actual interfaces
-		doublezero device interface create --pubkey-or-code ny5-dz01 --name "Switch1/1/1" --interface-type physical
-		doublezero device interface create --pubkey-or-code la2-dz01 --name "Switch1/1/1" --interface-type physical
-		doublezero device interface create --pubkey-or-code ld4-dz01 --name "Switch1/1/1" --interface-type physical
-		doublezero device interface create --pubkey-or-code frk-dz01 --name "Switch1/1/1" --interface-type physical
-		doublezero device interface create --pubkey-or-code sg1-dz01 --name "Switch1/1/1" --interface-type physical
-		doublezero device interface create --pubkey-or-code ty2-dz01 --name "Switch1/1/1" --interface-type physical
-		doublezero device interface create --pubkey-or-code pit-dzd01 --name "Switch1/1/1" --interface-type physical
-		doublezero device interface create --pubkey-or-code ams-dz001 --name "Switch1/1/1" --interface-type physical
+		doublezero device interface create ny5-dz01 "Switch1/1/1" physical
+		doublezero device interface create la2-dz01 "Switch1/1/1" physical
+		doublezero device interface create ld4-dz01 "Switch1/1/1" physical
+		doublezero device interface create frk-dz01 "Switch1/1/1" physical
+		doublezero device interface create sg1-dz01 "Switch1/1/1" physical
+		doublezero device interface create ty2-dz01 "Switch1/1/1" physical
+		doublezero device interface create pit-dzd01 "Switch1/1/1" physical
+		doublezero device interface create ams-dz001 "Switch1/1/1" physical
 
 		echo "==> Populate link information onchain"
 		doublezero link create --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Switch1/1/1 --side-z ny5-dz01 --side-z-interface Switch1/1/1 --link-type L2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3

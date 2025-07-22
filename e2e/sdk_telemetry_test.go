@@ -63,10 +63,10 @@ func TestE2E_SDK_Telemetry(t *testing.T) {
 		doublezero device create --code frk-dz01 --contributor co01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "195.219.220.88/29" --bgp-asn 42 --dia-bgp-asn 4242 --mgmt-vrf mgmt --dns-servers 8.8.8.8,8.8.4.4 --ntp-servers 1.2.3.4
 
 		# TODO: When the controller supports dzd metadata, this will have to be updated to reflect actual interfaces
-		doublezero device interface create --pubkey-or-code la2-dz01 --name "Switch1/1/1" --interface-type physical
-		doublezero device interface create --pubkey-or-code ny5-dz01 --name "Switch1/1/1" --interface-type physical
-		doublezero device interface create --pubkey-or-code ld4-dz01 --name "Switch1/1/1" --interface-type physical
-		doublezero device interface create --pubkey-or-code frk-dz01 --name "Switch1/1/1" --interface-type physical
+		doublezero device interface create la2-dz01 "Switch1/1/1" physical
+		doublezero device interface create ny5-dz01 "Switch1/1/1" physical
+		doublezero device interface create ld4-dz01 "Switch1/1/1" physical
+		doublezero device interface create frk-dz01 "Switch1/1/1" physical
 
 		doublezero link create --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Switch1/1/1 --side-z ny5-dz01 --side-z-interface Switch1/1/1 --link-type L2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
 		doublezero link create --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Switch1/1/1 --side-z ld4-dz01 --side-z-interface Switch1/1/1 --link-type L2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3

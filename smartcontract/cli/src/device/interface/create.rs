@@ -12,13 +12,13 @@ use std::io::Write;
 #[derive(Args, Debug)]
 pub struct CreateDeviceInterfaceCliCommand {
     /// Device Pubkey or Code
-    #[arg(long, value_parser = validate_pubkey_or_code, required = true)]
-    pub pubkey_or_code: String,
+    #[arg(value_parser = validate_pubkey_or_code, required = true)]
+    pub device: String,
     /// Interface name
-    #[arg(long)]
+    #[arg()]
     pub name: String,
-    /// Interface type (Loopback or Physical)
-    #[arg(long)]
+    /// Interface type
+    #[arg()]
     pub interface_type: InterfaceType,
     /// Loopback type (if applicable)
     #[arg(long, default_value = "none")]
@@ -38,14 +38,9 @@ impl CreateDeviceInterfaceCliCommand {
 
         let (device_pk, device) = client
             .get_device(GetDeviceCommand {
-                pubkey_or_code: self.pubkey_or_code.clone(),
+                pubkey_or_code: self.device.clone(),
             })
-            .map_err(|_| {
-                eyre::eyre!(
-                    "Device with pubkey/code '{}' not found",
-                    self.pubkey_or_code
-                )
-            })?;
+            .map_err(|_| eyre::eyre!("Device with pubkey/code '{}' not found", self.device))?;
 
         device
             .interfaces
@@ -220,7 +215,7 @@ mod tests {
 
         let mut output = Vec::new();
         let res = CreateDeviceInterfaceCliCommand {
-            pubkey_or_code: device1_pubkey.to_string(),
+            device: device1_pubkey.to_string(),
             name: "lo0".to_string(),
             interface_type: super::InterfaceType::Loopback,
             loopback_type: super::LoopbackType::Ipv4,

@@ -11,10 +11,10 @@ use std::io::Write;
 #[derive(Args, Debug)]
 pub struct UpdateDeviceInterfaceCliCommand {
     /// Device Pubkey or Code
-    #[arg(long, value_parser = validate_pubkey_or_code, required = true)]
+    #[arg(value_parser = validate_pubkey_or_code, required = true)]
     pub pubkey_or_code: String,
     /// Interface name
-    #[arg(long, required = true)]
+    #[arg(required = true)]
     pub name: String,
     /// Interface type (Loopback or Physical)
     #[arg(long)]

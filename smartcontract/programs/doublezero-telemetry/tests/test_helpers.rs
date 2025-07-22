@@ -20,7 +20,7 @@ use doublezero_serviceability::{
         location::create::LocationCreateArgs,
     },
     state::{
-        device::{Device, DeviceType},
+        device::{Device, DeviceType, Interface, CURRENT_INTERFACE_VERSION},
         globalstate::GlobalState,
         link::{Link, LinkLinkType},
     },
@@ -122,10 +122,12 @@ impl DeviceCreateArgsExt for DeviceCreateArgs {
             mgmt_vrf: String::default(),
             dns_servers: vec![],
             ntp_servers: vec![],
+            interfaces: vec![],
         }
     }
 }
 
+#[allow(dead_code)]
 pub trait LinkCreateArgsExt {
     fn default() -> LinkCreateArgs;
 }
@@ -133,8 +135,6 @@ pub trait LinkCreateArgsExt {
 impl LinkCreateArgsExt for LinkCreateArgs {
     fn default() -> LinkCreateArgs {
         LinkCreateArgs {
-            index: 0,
-            bump_seed: 0,
             code: "".to_string(),
             contributor_pk: Pubkey::default(),
             side_a_pk: Pubkey::default(),
@@ -332,6 +332,11 @@ impl LedgerHelper {
                 public_ip: [1, 2, 3, 4].into(),
                 dz_prefixes: NetworkV4List::default(),
                 metrics_publisher_pk: origin_device_agent_pk,
+                interfaces: vec![Interface {
+                    version: CURRENT_INTERFACE_VERSION,
+                    name: "eth0".to_string(),
+                    ..Interface::default()
+                }],
                 ..DeviceCreateArgs::default()
             })
             .await?;
@@ -347,6 +352,11 @@ impl LedgerHelper {
                 contributor_pk,
                 public_ip: [5, 6, 7, 8].into(),
                 metrics_publisher_pk: Pubkey::new_unique(),
+                interfaces: vec![Interface {
+                    version: CURRENT_INTERFACE_VERSION,
+                    name: "eth1".to_string(),
+                    ..Interface::default()
+                }],
                 ..DeviceCreateArgs::default()
             })
             .await?;
@@ -365,6 +375,8 @@ impl LedgerHelper {
                     mtu: 1500,
                     delay_ns: 10,
                     jitter_ns: 1,
+                    side_a_iface_name: "eth0".to_string(),
+                    side_z_iface_name: "eth1".to_string(),
                 },
                 1,
                 "10.1.1.0/30".parse().unwrap(),

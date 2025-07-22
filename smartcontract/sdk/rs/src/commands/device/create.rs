@@ -48,6 +48,7 @@ impl CreateDeviceCommand {
                     mgmt_vrf: self.mgmt_vrf.clone(),
                     dns_servers: self.dns_servers.clone(),
                     ntp_servers: self.ntp_servers.clone(),
+                    interfaces: vec![],
                 }),
                 vec![
                     AccountMeta::new(pda_pubkey, false),
@@ -148,6 +149,7 @@ mod tests {
                     mgmt_vrf: "mgmt".to_string(),
                     dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
                     ntp_servers: vec![[1, 2, 3, 4].into(), [5, 6, 7, 8].into()],
+                    interfaces: vec![],
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(device_pubkey, false),

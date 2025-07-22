@@ -27,6 +27,8 @@ pub enum DoubleZeroError {
     InvalidContributorPubkey, // variant 10
     #[error("Invalid Interface Version")]
     InvalidInterfaceVersion, // variant 11
+    #[error("Invalid Interface Name")]
+    InvalidInterfaceName, // variant 12
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -44,6 +46,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InvalidAccountType => ProgramError::Custom(9),
             DoubleZeroError::InvalidContributorPubkey => ProgramError::Custom(10),
             DoubleZeroError::InvalidInterfaceVersion => ProgramError::Custom(11),
+            DoubleZeroError::InvalidInterfaceName => ProgramError::Custom(12),
         }
     }
 }
@@ -63,6 +66,7 @@ impl From<ProgramError> for DoubleZeroError {
                 9 => DoubleZeroError::InvalidAccountType,
                 10 => DoubleZeroError::InvalidContributorPubkey,
                 11 => DoubleZeroError::InvalidInterfaceVersion,
+                12 => DoubleZeroError::InvalidInterfaceName,
 
                 _ => DoubleZeroError::Custom(e),
             },

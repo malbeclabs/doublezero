@@ -5,7 +5,7 @@ use crate::{
     globalstate::{globalstate_get_next, globalstate_write},
     helper::*,
     pda::get_link_pda,
-    state::{accounttype::AccountType, contributor::Contributor, link::*},
+    state::{accounttype::AccountType, contributor::Contributor, device::Device, link::*},
     types::NetworkV4,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -113,6 +113,24 @@ pub fn process_create_link(
         || side_z_account.data.borrow()[0] != AccountType::Device as u8
     {
         return Err(DoubleZeroError::InvalidDeviceZPubkey.into());
+    }
+
+    let side_a_dev = Device::try_from(side_a_account)?;
+    let side_z_dev = Device::try_from(side_z_account)?;
+
+    if !side_a_dev
+        .interfaces
+        .iter()
+        .any(|iface| iface.name == value.side_a_iface_name)
+    {
+        return Err(DoubleZeroError::InvalidInterfaceName.into());
+    }
+    if !side_z_dev
+        .interfaces
+        .iter()
+        .any(|iface| iface.name == value.side_z_iface_name)
+    {
+        return Err(DoubleZeroError::InvalidInterfaceName.into());
     }
 
     let tunnel: Link = Link {

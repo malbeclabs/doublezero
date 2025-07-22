@@ -321,6 +321,11 @@ pub mod test {
             mgmt_vrf: "mgmt".to_string(),
             dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
             ntp_servers: vec![[1, 2, 3, 4].into(), [5, 6, 7, 8].into()],
+            interfaces: vec![Interface {
+                version: CURRENT_INTERFACE_VERSION,
+                name: "eth0".to_string(),
+                ..Interface::default()
+            }],
         };
 
         println!("Testing Device LA initialization...");
@@ -374,6 +379,11 @@ pub mod test {
             mgmt_vrf: "mgmt".to_string(),
             dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
             ntp_servers: vec![[1, 2, 3, 4].into(), [5, 6, 7, 8].into()],
+            interfaces: vec![Interface {
+                version: CURRENT_INTERFACE_VERSION,
+                name: "eth1".to_string(),
+                ..Interface::default()
+            }],
         };
 
         execute_transaction(

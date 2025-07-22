@@ -188,6 +188,7 @@ mod device_test {
                 mgmt_vrf: "mgmt".to_string(),
                 dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
                 ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
+                interfaces: vec![],
             }),
             vec![
                 AccountMeta::new(device_pubkey, false),
@@ -408,6 +409,7 @@ mod device_test {
                 mgmt_vrf: "mgmt".to_string(),
                 dns_servers: vec![[8, 8, 8, 8].into()],
                 ntp_servers: vec![[192, 168, 1, 1].into()],
+                interfaces: vec![],
             }),
             vec![
                 AccountMeta::new(device_pubkey, false),

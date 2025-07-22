@@ -10,7 +10,10 @@ mod tunnel_test {
             *,
         },
         state::{
-            accounttype::AccountType, contributor::ContributorStatus, device::DeviceType, link::*,
+            accounttype::AccountType,
+            contributor::ContributorStatus,
+            device::{DeviceType, Interface, CURRENT_INTERFACE_VERSION},
+            link::*,
         },
         tests::test::*,
     };
@@ -190,6 +193,11 @@ mod tunnel_test {
                 mgmt_vrf: "mgmt".to_string(),
                 dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
                 ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
+                interfaces: vec![Interface {
+                    version: CURRENT_INTERFACE_VERSION,
+                    name: "eth0".to_string(),
+                    ..Interface::default()
+                }],
             }),
             vec![
                 AccountMeta::new(device_a_pubkey, false),
@@ -229,6 +237,11 @@ mod tunnel_test {
                 mgmt_vrf: "mgmt".to_string(),
                 dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
                 ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
+                interfaces: vec![Interface {
+                    version: CURRENT_INTERFACE_VERSION,
+                    name: "eth1".to_string(),
+                    ..Interface::default()
+                }],
             }),
             vec![
                 AccountMeta::new(device_z_pubkey, false),

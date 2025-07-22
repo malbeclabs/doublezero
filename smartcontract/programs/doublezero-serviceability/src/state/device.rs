@@ -193,6 +193,21 @@ impl From<&mut ByteReader<'_>> for Interface {
     }
 }
 
+impl Default for Interface {
+    fn default() -> Self {
+        Self {
+            version: CURRENT_INTERFACE_VERSION,
+            name: String::default(),
+            interface_type: InterfaceType::Invalid,
+            loopback_type: LoopbackType::None,
+            vlan_id: 0,
+            ip_net: NetworkV4::default(),
+            node_segment_idx: 0,
+            user_tunnel_endpoint: false,
+        }
+    }
+}
+
 #[derive(BorshSerialize, Debug, PartialEq, Clone, Serialize)]
 pub struct Device {
     pub account_type: AccountType,    // 1

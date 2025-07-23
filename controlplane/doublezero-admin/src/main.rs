@@ -8,6 +8,7 @@ use cli::{
     device::{DeviceAllowlistCommands, DeviceCommands},
     exchange::ExchangeCommands,
     globalconfig::{FoundationAllowlistCommands, GlobalConfigCommands},
+    globalstate::GlobalStateCommands,
     link::LinkCommands,
     location::LocationCommands,
     user::{UserAllowlistCommands, UserCommands},
@@ -71,6 +72,11 @@ async fn main() -> eyre::Result<()> {
                 FoundationAllowlistCommands::Add(args) => args.execute(&client, &mut handle),
                 FoundationAllowlistCommands::Remove(args) => args.execute(&client, &mut handle),
             },
+        },
+        Command::GlobalState(command) => match command.command {
+            GlobalStateCommands::SetInternetLatencyCollector(args) => {
+                args.execute(&client, &mut handle)
+            }
         },
         Command::Account(args) => args.execute(&dzclient, &mut handle),
         Command::Location(command) => match command.command {

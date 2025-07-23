@@ -188,6 +188,7 @@ mod tests {
 
     #[tokio::test]
     // TODO: can we mock the JITO api
+    #[ignore]
     async fn jito_rewards() {
         let pubkey = "CvSb7wdQAFpHuSpTYTJnX5SYH4hCfQ9VuGnqrKaKwycB";
         let validator_ids: &[String] = &[String::from(pubkey)];
@@ -202,6 +203,7 @@ mod tests {
 
     #[tokio::test]
     // TODO:  use the mock solana calls once these three PRs are done
+    #[ignore]
     async fn get_inflation_rewards_for_validators() {
         let pubkey = "6WgdYhhGE53WrZ7ywJA15hBVkw7CRbQ8yDBBTwmBtAHN";
         let validator_ids: &[String] = &[String::from(pubkey)];

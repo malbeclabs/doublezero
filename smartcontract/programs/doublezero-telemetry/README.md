@@ -6,7 +6,7 @@ A Solana smart contract for collecting round-trip time (RTT) latency samples bet
 
 ## Account Structure: `DeviceLatencySamples`
 
-Stores metadata and RTT samples (in microseconds):
+Stores metadata (collectively the "header") and RTT samples in microseconds (samples):
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -22,7 +22,8 @@ Stores metadata and RTT samples (in microseconds):
 | `sampling_interval_microseconds` | `u64` | Sampling interval |
 | `start_timestamp_microseconds` | `u64` | Set on first write |
 | `next_sample_index` | `u32` | Current sample count |
-| `samples` | `Vec<u32>` | RTT samples (µs) |
+| `_unused` | [u8; 128] | Reserved for future use |
+| `samples` | `[u8]` (variable - up to account max) | RTT samples (µs) as raw bytes |
 
 Constants:
 
@@ -95,13 +96,13 @@ pub struct WriteDeviceLatencySamplesArgs {
 - Appends samples without exceeding `MAX_SAMPLES` or `MAX_PERMITTED_DATA_INCREASE` (10,240 bytes).
 - Performs rent transfer and account resize if needed.
 
-## Account Structure: `ThirdPartyLatencySamples`
+## Account Structure: `InternetLatencySamples`
 
-Stores metadata and RTT samples (in microseconds):
+Stores metadata (collectively the "header") and RTT samples in microseconds (samples):
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `account_type` | `ThirdPartyLatencySamples` enum | Type marker |
+| `account_type` | `InternetLatencySamples` enum | Type marker |
 | `bump seed` | `u8` | PDA bump seed |
 | `data_provider_name` | `String` | The name of the third party probe provider (32-byte max) |
 | `epoch` | `u64` | Collection epoch |
@@ -110,7 +111,8 @@ Stores metadata and RTT samples (in microseconds):
 | `target_location_pk` | `Pubkey` | Location of target |
 | `start_timestamp_microseconds` | `u64` | Set on first write |
 | `next_sample_index` | `u32` | Current sample count |
-| `samples` | `Vec<u32>` | RTT samples (µs) |
+| `_unused` | [u8; 128] | Reserved for future use |
+| `samples` | `[u8]` (variable) | RTT samples (µs) as raw bytes |
 
 Constants:
 
@@ -119,14 +121,14 @@ Constants:
 
 ---
 
-## Instruction: `InitializeThirdPartyLatencySamples`
+## Instruction: `InitializeInternetLatencySamples`
 
 Creates a new latency samples account for a specific combination of provider, origin, target, epoch
 
 ### Arguments
 
 ```rust
-pub struct InitializeThirdPartyLatencySamplesArgs {
+pub struct InitializeInternetLatencySamplesArgs {
     pub data_provider_name: String,
     pub origin_location_pk: Pubkey,
     pub target_location_pk: Pubkey,
@@ -138,7 +140,7 @@ pub struct InitializeThirdPartyLatencySamplesArgs {
 | Index | Role | Signer | Writable | Description |
 | --- | --- | --- | --- | --- |
 | 0 | `latency_samples_account` | No | Yes | PDA to be created |
-| 1 | `agent` | Yes | No | Must be the Third Party Latency oracle's publisher |
+| 1 | `agent` | Yes | No | Must be the Internet Latency Collector |
 | 2 | `origin_location` | No | Must be activated |
 | 3 | `target_location` | No | Must be activated |
 | 4 | `system_program` | No | No | System program for allocation |
@@ -152,14 +154,14 @@ pub struct InitializeThirdPartyLatencySamplesArgs {
 
 ---
 
-## Instruction: `WriteThirdPartyLatencySamples`
+## Instruction: `WriteInternetLatencySamples`
 
 Appends RTT samples to an existing latency samples account.
 
 ### Arguments
 
 ```rust
-pub struct WriteThirdPartyLatencySamplesArgs {
+pub struct WriteInternetLatencySamplesArgs {
     pub start_timestamp_microseconds: u64,
     pub samples: Vec<u32>,
 }
@@ -185,9 +187,9 @@ pub struct WriteThirdPartyLatencySamplesArgs {
 ## Usage Flow
 
 1. Locations, devices and links are created and activated using the `doublezero_serviceability` program.
-2. An authorized device agent initializes the telemetry stream via `InitializeDeviceLatencySamples` while an oracle agent initializes the internet control telemetry stream via `InitializeThirdPartyLatencySamples`.
+2. An authorized device agent initializes the telemetry stream via `InitializeDeviceLatencySamples` while an oracle agent initializes the internet control telemetry stream via `InitializeInternetLatencySamples`.
 3. The device agent periodically calls `WriteDeviceLatencySamples` to append RTT measurements based on the account initialized sampling interval.
-4. The oracle agent periodically calls `WriteThirdPartyLatencySamples` to append RTT measurements based on a fixed interval (hourly).
+4. The oracle agent periodically calls `WriteInternetLatencySamples` to append RTT measurements based on a fixed interval (hourly).
 5. Consumers read the account off-chain to analyze latency data.
 
 ---

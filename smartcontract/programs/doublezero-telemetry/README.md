@@ -184,7 +184,7 @@ pub struct WriteThirdPartyLatencySamplesArgs {
 
 ## Usage Flow
 
-1. Locatios, devices and links are created and activated using the `doublezero_serviceability` program.
+1. Locations, devices and links are created and activated using the `doublezero_serviceability` program.
 2. An authorized device agent initializes the telemetry stream via `InitializeDeviceLatencySamples` while an oracle agent initializes the internet control telemetry stream via `InitializeThirdPartyLatencySamples`.
 3. The device agent periodically calls `WriteDeviceLatencySamples` to append RTT measurements based on the account initialized sampling interval.
 4. The oracle agent periodically calls `WriteThirdPartyLatencySamples` to append RTT measurements based on a fixed interval (hourly).

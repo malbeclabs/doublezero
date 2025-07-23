@@ -62,6 +62,7 @@ pub fn initialize_global_state(program_id: &Pubkey, accounts: &[AccountInfo]) ->
         foundation_allowlist: vec![*payer_account.key],
         device_allowlist: vec![*payer_account.key],
         user_allowlist: vec![*payer_account.key],
+        internet_latency_collector: *payer_account.key,
     };
 
     // Size of our index account

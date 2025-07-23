@@ -8,5 +8,4 @@ pub mod reject;
 pub mod requestban;
 pub mod resume;
 pub mod suspend;
-pub mod tests;
 pub mod update;

@@ -60,7 +60,7 @@ pub fn process_suspend_link(
 
     link.status = LinkStatus::Suspended;
 
-    account_write(link_account, &link, payer_account, system_program);
+    account_write(link_account, &link, payer_account, system_program)?;
 
     msg!("Suspended: {:?}", link);
 

@@ -92,7 +92,7 @@ pub fn process_update_multicastgroup(
         &multicastgroup,
         payer_account,
         system_program,
-    );
+    )?;
 
     msg!("Updated: {:?}", multicastgroup);
 

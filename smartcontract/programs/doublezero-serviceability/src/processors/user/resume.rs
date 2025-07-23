@@ -55,7 +55,7 @@ pub fn process_resume_user(
 
     user.status = UserStatus::Activated;
 
-    account_write(user_account, &user, payer_account, system_program);
+    account_write(user_account, &user, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Resumed: {:?}", user);

@@ -52,6 +52,7 @@ mod tests {
             account_type: AccountType::Exchange,
             index: 1,
             bump_seed: 255,
+            reference_count: 0,
             code: "test".to_string(),
             name: "Test Exchange".to_string(),
             lat: 12.34,

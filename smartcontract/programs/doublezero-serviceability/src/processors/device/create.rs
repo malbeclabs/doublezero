@@ -1,9 +1,7 @@
-use core::fmt;
-
 use crate::{
     error::DoubleZeroError,
     globalstate::{globalstate_get_next, globalstate_write},
-    helper::account_create,
+    helper::{account_create, account_write},
     pda::get_device_pda,
     state::{
         accounttype::AccountType, contributor::Contributor, device::*, exchange::Exchange,
@@ -12,6 +10,7 @@ use crate::{
     types::*,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
+use core::fmt;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -109,30 +108,34 @@ pub fn process_create_device(
         pda_account.key, &expected_pda_account,
         "Invalid Device PubKey"
     );
-    let contributor = Contributor::try_from(contributor_account)?;
+    let mut contributor = Contributor::try_from(contributor_account)?;
     if contributor.account_type != AccountType::Contributor {
         return Err(DoubleZeroError::InvalidContributorPubkey.into());
     }
     if contributor.owner != *payer_account.key {
         return Err(DoubleZeroError::InvalidOwnerPubkey.into());
     }
-    // TODO: add reference counters on contributor
-    let location = Location::try_from(location_account)?;
+
+    let mut location = Location::try_from(location_account)?;
     if location.account_type != AccountType::Location {
         return Err(DoubleZeroError::InvalidLocationPubkey.into());
     }
-    // TODO: add reference counters on location
-    let exchange = Exchange::try_from(exchange_account)?;
+
+    let mut exchange = Exchange::try_from(exchange_account)?;
     if exchange.account_type != AccountType::Exchange {
         return Err(DoubleZeroError::InvalidExchangePubkey.into());
     }
-    // TODO: add reference counters on exchange
+
+    contributor.reference_count += 1;
+    location.reference_count += 1;
+    exchange.reference_count += 1;
 
     let device: Device = Device {
         account_type: AccountType::Device,
         owner: *payer_account.key,
         index: globalstate.account_index,
         bump_seed,
+        reference_count: 0,
         code: value.code.clone(),
         contributor_pk: *contributor_account.key,
         location_pk: *location_account.key,
@@ -157,7 +160,14 @@ pub fn process_create_device(
         system_program,
         program_id,
     )?;
-
+    account_write(
+        contributor_account,
+        &contributor,
+        payer_account,
+        system_program,
+    )?;
+    account_write(location_account, &location, payer_account, system_program)?;
+    account_write(exchange_account, &exchange, payer_account, system_program)?;
     globalstate_write(globalstate_account, &globalstate)?;
 
     Ok(())

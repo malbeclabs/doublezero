@@ -64,6 +64,9 @@ pub fn process_delete_contributor(
     if contributor.status != ContributorStatus::Activated {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
+    if contributor.reference_count > 0 {
+        return Err(DoubleZeroError::ReferenceCountNotZero.into());
+    }
 
     account_close(contributor_account, payer_account)?;
 

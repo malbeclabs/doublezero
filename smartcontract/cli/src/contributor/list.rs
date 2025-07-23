@@ -81,7 +81,7 @@ mod tests {
             index: 1,
             bump_seed: 255,
             code: "some code".to_string(),
-
+            reference_count: 0,
             status: Activated,
             owner: contributor1_pubkey,
         };

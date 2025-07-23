@@ -67,10 +67,13 @@ pub fn process_delete_device(
     {
         return Err(DoubleZeroError::NotAllowed.into());
     }
+    if device.reference_count > 0 {
+        return Err(DoubleZeroError::ReferenceCountNotZero.into());
+    }
 
     device.status = DeviceStatus::Deleting;
 
-    account_write(device_account, &device, payer_account, system_program);
+    account_write(device_account, &device, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Deleting: {:?}", device);

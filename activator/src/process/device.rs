@@ -91,7 +91,7 @@ mod tests {
     use crate::tests::utils::{create_test_client, get_device_bump_seed};
 
     use super::*;
-    use doublezero_sdk::{AccountType, DeviceType};
+    use doublezero_sdk::{AccountData, AccountType, DeviceType};
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
         processors::device::{activate::DeviceActivateArgs, closeaccount::DeviceCloseAccountArgs},
@@ -106,12 +106,13 @@ mod tests {
         let mut devices = HashMap::new();
         let mut client = create_test_client();
 
-        let device_pubkey = Pubkey::new_unique();
+        let device_pubkey = Pubkey::from_str_const("8KvLQiyKgrK3KyVGVVyT1Pmg7ahPVFsvHUVPg97oYynV");
         let mut device = Device {
             account_type: AccountType::Device,
             owner: Pubkey::new_unique(),
             index: 0,
             bump_seed: get_device_bump_seed(&client),
+            reference_count: 0,
             contributor_pk: Pubkey::new_unique(),
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),
@@ -155,6 +156,15 @@ mod tests {
         device.status = DeviceStatus::Deleting;
 
         let mut client = create_test_client();
+
+        let device2 = device.clone();
+        client
+            .expect_get()
+            .times(1)
+            .in_sequence(&mut seq)
+            .with(predicate::eq(device_pubkey))
+            .returning(move |_| Ok(AccountData::Device(device2.clone())));
+
         client
             .expect_execute_transaction()
             .times(1)
@@ -191,6 +201,7 @@ mod tests {
             owner: Pubkey::new_unique(),
             index: 0,
             bump_seed: get_device_bump_seed(&client),
+            reference_count: 0,
             contributor_pk: Pubkey::new_unique(),
             location_pk: Pubkey::new_unique(),
             exchange_pk: Pubkey::new_unique(),

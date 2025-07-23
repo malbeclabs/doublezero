@@ -63,8 +63,8 @@ mod tests {
             account_type: AccountType::Contributor,
             index: 1,
             bump_seed: 2,
+            reference_count: 0,
             code: "contributor_code".to_string(),
-
             status: ContributorStatus::Activated,
             owner: Pubkey::new_unique(),
         };

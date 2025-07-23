@@ -185,6 +185,7 @@ mod tests {
             account_type: AccountType::Location,
             index: 1,
             bump_seed: 255,
+            reference_count: 0,
             code: "test".to_string(),
             name: "Test Location".to_string(),
             country: "Test Country".to_string(),
@@ -199,6 +200,7 @@ mod tests {
             account_type: AccountType::Exchange,
             index: 1,
             bump_seed: 255,
+            reference_count: 0,
             code: "test".to_string(),
             name: "Test Exchange".to_string(),
             lat: 0.0,
@@ -213,8 +215,8 @@ mod tests {
             account_type: AccountType::Contributor,
             index: 1,
             bump_seed: 255,
+            reference_count: 0,
             code: "test".to_string(),
-
             status: ContributorStatus::Activated,
             owner: contributor_pk,
         };

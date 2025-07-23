@@ -138,6 +138,7 @@ mod tests {
             account_type: AccountType::Device,
             index: 1,
             bump_seed: 2,
+            reference_count: 0,
             code: "device1_code".to_string(),
             contributor_pk: Pubkey::default(),
             location_pk: Pubkey::default(),

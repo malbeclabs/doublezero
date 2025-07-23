@@ -70,7 +70,7 @@ pub fn process_activate_multicastgroup(
         &multicastgroup,
         payer_account,
         system_program,
-    );
+    )?;
 
     msg!("Activated: {:?}", multicastgroup);
 

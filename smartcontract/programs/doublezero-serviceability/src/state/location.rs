@@ -47,6 +47,7 @@ pub struct Location {
     pub code: String,              // 4 + len
     pub name: String,              // 4 + len
     pub country: String,           // 4 + len
+    pub reference_count: u32,      // 4
 }
 
 impl fmt::Display for Location {
@@ -77,6 +78,7 @@ impl AccountTypeInfo for Location {
             + self.name.len()
             + 4
             + self.country.len()
+            + 4 // reference_count
     }
     fn index(&self) -> u128 {
         self.index
@@ -105,6 +107,7 @@ impl From<&[u8]> for Location {
             code: parser.read_string(),
             name: parser.read_string(),
             country: parser.read_string(),
+            reference_count: parser.read_u32(),
         }
     }
 }
@@ -129,6 +132,7 @@ mod tests {
             owner: Pubkey::new_unique(),
             index: 123,
             bump_seed: 1,
+            reference_count: 0,
             lat: 123.45,
             lng: 345.678,
             loc_id: 1212121,

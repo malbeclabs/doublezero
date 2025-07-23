@@ -76,7 +76,7 @@ pub fn process_resume_contributor(
         &contributor,
         payer_account,
         system_program,
-    );
+    )?;
 
     #[cfg(test)]
     msg!("Resumed: {:?}", contributor);

@@ -417,6 +417,7 @@ async fn test_user() {
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(user.owner, false),
+            AccountMeta::new(user.device_pk, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,

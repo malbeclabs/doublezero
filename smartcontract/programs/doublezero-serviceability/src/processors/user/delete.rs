@@ -64,7 +64,7 @@ pub fn process_delete_user(
 
     user.status = UserStatus::Deleting;
 
-    account_write(user_account, &user, payer_account, system_program);
+    account_write(user_account, &user, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Deleting: {:?}", user);

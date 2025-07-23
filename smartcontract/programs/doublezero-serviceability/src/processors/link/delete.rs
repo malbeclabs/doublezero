@@ -62,7 +62,7 @@ pub fn process_delete_link(
 
     link.status = LinkStatus::Deleting;
 
-    account_write(link_account, &link, payer_account, system_program);
+    account_write(link_account, &link, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Deleting: {:?}", link);

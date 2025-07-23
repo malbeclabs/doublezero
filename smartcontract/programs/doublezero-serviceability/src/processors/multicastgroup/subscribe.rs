@@ -139,8 +139,8 @@ pub fn process_subscribe_multicastgroup(
         &mgroup,
         payer_account,
         system_program,
-    );
-    account_write(user_account, &user, payer_account, system_program);
+    )?;
+    account_write(user_account, &user, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Updated: {:?}", mgroup);

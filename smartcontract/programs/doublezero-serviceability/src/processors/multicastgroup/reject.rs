@@ -82,7 +82,7 @@ pub fn process_reject_multicastgroup(
         &multicastgroup,
         payer_account,
         system_program,
-    );
+    )?;
 
     #[cfg(test)]
     msg!("Rejectd: {:?}", multicastgroup);

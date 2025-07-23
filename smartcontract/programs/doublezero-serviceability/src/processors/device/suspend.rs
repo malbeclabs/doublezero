@@ -71,7 +71,7 @@ pub fn process_suspend_device(
 
     device.status = DeviceStatus::Suspended;
 
-    account_write(device_account, &device, payer_account, system_program);
+    account_write(device_account, &device, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Suspended: {:?}", device);

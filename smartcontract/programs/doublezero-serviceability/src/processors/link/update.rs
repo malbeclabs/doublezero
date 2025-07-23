@@ -98,7 +98,7 @@ pub fn process_update_link(
         link.jitter_ns = jitter_ns;
     }
 
-    account_write(link_account, &link, payer_account, system_program);
+    account_write(link_account, &link, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Updated: {:?}", link);

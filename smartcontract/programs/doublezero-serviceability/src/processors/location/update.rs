@@ -96,7 +96,7 @@ pub fn process_update_location(
         location.loc_id = loc_id;
     }
 
-    account_write(location_account, &location, payer_account, system_program);
+    account_write(location_account, &location, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Updated: {:?}", location);

@@ -77,6 +77,7 @@ mod tests {
             account_type: AccountType::Device,
             index: 1,
             bump_seed: 255,
+            reference_count: 0,
             code: "test".to_string(),
             contributor_pk,
             location_pk,

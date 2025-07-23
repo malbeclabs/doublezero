@@ -56,7 +56,7 @@ pub fn process_resume_link(
 
     link.status = LinkStatus::Activated;
 
-    account_write(link_account, &link, payer_account, system_program);
+    account_write(link_account, &link, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Resumed: {:?}", link);

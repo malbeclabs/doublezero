@@ -4,10 +4,7 @@ use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get,
     helper::*,
-    state::{
-        accounttype::AccountType,
-        exchange::{Exchange, ExchangeStatus},
-    },
+    state::{accounttype::AccountType, exchange::Exchange},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
@@ -70,8 +67,8 @@ pub fn process_delete_exchange(
         AccountType::Exchange,
         "Invalid Account Type"
     );
-    if exchange.status != ExchangeStatus::Activated {
-        return Err(DoubleZeroError::InvalidStatus.into());
+    if exchange.reference_count > 0 {
+        return Err(DoubleZeroError::ReferenceCountNotZero.into());
     }
 
     account_close(exchange_account, payer_account)?;

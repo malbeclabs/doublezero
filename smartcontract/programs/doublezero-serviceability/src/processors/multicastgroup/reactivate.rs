@@ -76,7 +76,7 @@ pub fn process_reactivate_multicastgroup(
         &multicastgroup,
         payer_account,
         system_program,
-    );
+    )?;
 
     #[cfg(test)]
     msg!("Suspended: {:?}", multicastgroup);

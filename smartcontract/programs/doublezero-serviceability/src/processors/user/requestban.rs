@@ -62,7 +62,7 @@ pub fn process_request_ban_user(
 
     user.status = UserStatus::PendingBan;
 
-    account_write(user_account, &user, payer_account, system_program);
+    account_write(user_account, &user, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Deleting: {:?}", user);

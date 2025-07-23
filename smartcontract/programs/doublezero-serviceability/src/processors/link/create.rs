@@ -1,5 +1,3 @@
-use core::fmt;
-
 use crate::{
     error::DoubleZeroError,
     globalstate::{globalstate_get_next, globalstate_write},
@@ -9,6 +7,7 @@ use crate::{
     types::NetworkV4,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
+use core::fmt;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -93,11 +92,11 @@ pub fn process_create_link(
         "Invalid Link PubKey"
     );
 
-    let contributor = Contributor::try_from(contributor_account)?;
+    let mut contributor = Contributor::try_from(contributor_account)?;
     assert_eq!(contributor.account_type, AccountType::Contributor);
-    let side_a_dev = Device::try_from(side_a_account)?;
+    let mut side_a_dev = Device::try_from(side_a_account)?;
     assert_eq!(side_a_dev.account_type, AccountType::Device);
-    let side_z_dev = Device::try_from(side_z_account)?;
+    let mut side_z_dev = Device::try_from(side_z_account)?;
     assert_eq!(side_z_dev.account_type, AccountType::Device);
 
     if !side_a_dev
@@ -120,6 +119,10 @@ pub fn process_create_link(
 
         return Err(DoubleZeroError::InvalidInterfaceName.into());
     }
+
+    contributor.reference_count += 1;
+    side_a_dev.reference_count += 1;
+    side_z_dev.reference_count += 1;
 
     let tunnel: Link = Link {
         account_type: AccountType::Link,
@@ -149,6 +152,14 @@ pub fn process_create_link(
         system_program,
         program_id,
     )?;
+    account_write(
+        contributor_account,
+        &contributor,
+        payer_account,
+        system_program,
+    )?;
+    account_write(side_a_account, &side_a_dev, payer_account, system_program)?;
+    account_write(side_z_account, &side_z_dev, payer_account, system_program)?;
     globalstate_write(globalstate_account, &globalstate)?;
 
     Ok(())

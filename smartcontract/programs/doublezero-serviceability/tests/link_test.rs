@@ -211,6 +211,28 @@ async fn test_link() {
     assert_eq!(device_a.code, "A".to_string());
     assert_eq!(device_a.status, DeviceStatus::Pending);
 
+    // check reference counts
+    let contributor = get_account_data(&mut banks_client, contributor_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_contributor()
+        .unwrap();
+    assert_eq!(contributor.reference_count, 1);
+    //check reference counts
+    let location = get_account_data(&mut banks_client, location_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_location()
+        .unwrap();
+    assert_eq!(location.reference_count, 1);
+    //check reference counts
+    let exchange = get_account_data(&mut banks_client, exchange_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_exchange()
+        .unwrap();
+    assert_eq!(exchange.reference_count, 1);
+
     /***********************************************************************************************************************************/
     println!("🟢 6. Create Device...");
 
@@ -260,6 +282,28 @@ async fn test_link() {
     assert_eq!(device_z.code, "Z".to_string());
     assert_eq!(device_z.status, DeviceStatus::Pending);
 
+    // check reference counts
+    let contributor = get_account_data(&mut banks_client, contributor_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_contributor()
+        .unwrap();
+    assert_eq!(contributor.reference_count, 2);
+    //check reference counts
+    let location = get_account_data(&mut banks_client, location_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_location()
+        .unwrap();
+    assert_eq!(location.reference_count, 2);
+    //check reference counts
+    let exchange = get_account_data(&mut banks_client, exchange_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_exchange()
+        .unwrap();
+    assert_eq!(exchange.reference_count, 2);
+
     /***********************************************************************************************************************************/
     /***********************************************************************************************************************************/
     // Link _la
@@ -305,6 +349,28 @@ async fn test_link() {
     assert_eq!(tunnel_la.account_type, AccountType::Link);
     assert_eq!(tunnel_la.code, "la".to_string());
     assert_eq!(tunnel_la.status, LinkStatus::Pending);
+
+    // check reference counts
+    let contributor = get_account_data(&mut banks_client, contributor_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_contributor()
+        .unwrap();
+    assert_eq!(contributor.reference_count, 3);
+    //check reference counts
+    let device_a = get_account_data(&mut banks_client, device_a_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_device()
+        .unwrap();
+    assert_eq!(device_a.reference_count, 1);
+    //check reference counts
+    let device_z = get_account_data(&mut banks_client, device_z_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_device()
+        .unwrap();
+    assert_eq!(device_z.reference_count, 1);
 
     println!("✅ Link initialized successfully",);
     /*****************************************************************************************************************************************************/
@@ -370,13 +436,13 @@ async fn test_link() {
     )
     .await;
 
-    let tunnel = get_account_data(&mut banks_client, tunnel_pubkey)
+    let link = get_account_data(&mut banks_client, tunnel_pubkey)
         .await
         .expect("Unable to get Account")
         .get_tunnel()
         .unwrap();
-    assert_eq!(tunnel.account_type, AccountType::Link);
-    assert_eq!(tunnel.status, LinkStatus::Activated);
+    assert_eq!(link.account_type, AccountType::Link);
+    assert_eq!(link.status, LinkStatus::Activated);
 
     println!("✅ Link resumed");
     /*****************************************************************************************************************************************************/
@@ -454,7 +520,10 @@ async fn test_link() {
         DoubleZeroInstruction::CloseAccountLink(LinkCloseAccountArgs {}),
         vec![
             AccountMeta::new(tunnel_pubkey, false),
-            AccountMeta::new(tunnel.owner, false),
+            AccountMeta::new(link.owner, false),
+            AccountMeta::new(link.contributor_pk, false),
+            AccountMeta::new(link.side_a_pk, false),
+            AccountMeta::new(link.side_z_pk, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
@@ -463,6 +532,28 @@ async fn test_link() {
 
     let tunnel_la = get_account_data(&mut banks_client, tunnel_pubkey).await;
     assert_eq!(tunnel_la, None);
+
+    // check reference counts
+    let contributor = get_account_data(&mut banks_client, contributor_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_contributor()
+        .unwrap();
+    assert_eq!(contributor.reference_count, 2);
+    //check reference counts
+    let device_a = get_account_data(&mut banks_client, device_a_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_device()
+        .unwrap();
+    assert_eq!(device_a.reference_count, 0);
+    //check reference counts
+    let device_z = get_account_data(&mut banks_client, device_z_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_device()
+        .unwrap();
+    assert_eq!(device_z.reference_count, 0);
 
     println!("✅ Link deleted successfully");
     println!("🟢🟢🟢  End test_link  🟢🟢🟢");

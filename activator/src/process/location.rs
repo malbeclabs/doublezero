@@ -29,6 +29,7 @@ mod tests {
             owner: Pubkey::new_unique(),
             index: 0,
             bump_seed: 42,
+            reference_count: 0,
             lat: 50.0,
             lng: 20.0,
             loc_id: 1234,

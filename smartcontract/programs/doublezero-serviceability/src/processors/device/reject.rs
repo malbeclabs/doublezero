@@ -76,7 +76,7 @@ pub fn process_reject_device(
     device.status = DeviceStatus::Rejected;
     msg!("Reason: {:?}", value.reason);
 
-    account_write(device_account, &device, payer_account, system_program);
+    account_write(device_account, &device, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Rejectd: {:?}", device);

@@ -145,7 +145,7 @@ pub fn process_update_device(
         device.interfaces = interfaces.clone();
     }
 
-    account_write(device_account, &device, payer_account, system_program);
+    account_write(device_account, &device, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Updated: {:?}", device);

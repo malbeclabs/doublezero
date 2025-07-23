@@ -55,7 +55,7 @@ pub fn process_remove_multicast_sub_allowlist(
 
     mgroup.sub_allowlist.retain(|x| x != &value.pubkey);
 
-    account_write(mgroup_account, &mgroup, payer_account, system_program);
+    account_write(mgroup_account, &mgroup, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Updated: {:?}", mgroup);

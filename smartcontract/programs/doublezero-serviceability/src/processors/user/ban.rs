@@ -67,7 +67,7 @@ pub fn process_ban_user(
 
     user.status = UserStatus::Banned;
 
-    account_write(user_account, &user, payer_account, system_program);
+    account_write(user_account, &user, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Banned: {:?}", user);

@@ -91,7 +91,7 @@ mod tests {
             index: 1,
             bump_seed: 255,
             code: "test".to_string(),
-
+            reference_count: 0,
             status: ContributorStatus::Activated,
             owner: Pubkey::new_unique(),
         };
@@ -107,7 +107,7 @@ mod tests {
                             account_type: AccountType::Contributor,
                             owner: Pubkey::default(),
                             index: 1,
-
+                            reference_count: 0,
                             code: "test".to_string(),
                             status: ContributorStatus::Activated,
                             bump_seed: 0,
@@ -119,7 +119,7 @@ mod tests {
                             account_type: AccountType::Contributor,
                             owner: Pubkey::default(),
                             index: 1,
-
+                            reference_count: 0,
                             code: "test2".to_string(),
                             status: ContributorStatus::Activated,
                             bump_seed: 0,

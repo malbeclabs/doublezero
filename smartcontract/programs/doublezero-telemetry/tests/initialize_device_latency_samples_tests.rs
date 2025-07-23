@@ -393,6 +393,7 @@ async fn test_initialize_device_latency_samples_fail_origin_device_wrong_owner()
     let fake_origin_device = Device {
         index: 0,
         bump_seed: 0,
+        reference_count: 0,
         account_type: AccountType::Device,
         code: "invalid".to_string(),
         owner: agent.pubkey(),
@@ -471,6 +472,7 @@ async fn test_initialize_device_latency_samples_fail_target_device_wrong_owner()
         owner: wrong_owner,
         index: 0,
         bump_seed: 0,
+        reference_count: 0,
         contributor_pk: Pubkey::new_unique(),
         exchange_pk: Pubkey::new_unique(),
         device_type: DeviceType::Switch,

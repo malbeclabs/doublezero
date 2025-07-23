@@ -72,7 +72,7 @@ pub fn process_suspend_exchange(
 
     exchange.status = ExchangeStatus::Suspended;
 
-    account_write(exchange_account, &exchange, payer_account, system_program);
+    account_write(exchange_account, &exchange, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Suspended: {:?}", exchange);

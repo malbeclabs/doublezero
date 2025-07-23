@@ -94,7 +94,7 @@ pub fn process_update_user(
     if let Some(value) = value.client_ip {
         user.client_ip = value;
     }
-    account_write(user_account, &user, payer_account, system_program);
+    account_write(user_account, &user, payer_account, system_program)?;
     #[cfg(test)]
     msg!("Updated: {:?}", user);
 

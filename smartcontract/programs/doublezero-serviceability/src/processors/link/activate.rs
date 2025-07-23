@@ -67,7 +67,7 @@ pub fn process_activate_link(
     link.tunnel_net = value.tunnel_net;
     link.status = LinkStatus::Activated;
 
-    account_write(link_account, &link, payer_account, system_program);
+    account_write(link_account, &link, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Activated: {:?}", link);

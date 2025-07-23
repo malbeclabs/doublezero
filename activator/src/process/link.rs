@@ -114,7 +114,7 @@ mod tests {
         process::link::process_tunnel_event,
         tests::utils::{create_test_client, get_tunnel_bump_seed},
     };
-    use doublezero_sdk::{AccountType, Link, LinkLinkType, LinkStatus};
+    use doublezero_sdk::{AccountData, AccountType, Link, LinkLinkType, LinkStatus};
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
         processors::link::{
@@ -186,6 +186,12 @@ mod tests {
         tunnel.status = LinkStatus::Deleting;
         tunnel.tunnel_id = 502;
         tunnel.tunnel_net = "10.0.0.0/31".parse().unwrap();
+
+        let tunnel2 = tunnel.clone();
+        client
+            .expect_get()
+            .with(predicate::eq(tunnel_pubkey))
+            .returning(move |_| Ok(AccountData::Link(tunnel2.clone())));
 
         client
             .expect_execute_transaction()

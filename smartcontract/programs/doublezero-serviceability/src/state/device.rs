@@ -229,6 +229,7 @@ pub struct Device {
     pub dns_servers: Vec<Ipv4Addr>,   // 4 + 4 * len
     pub ntp_servers: Vec<Ipv4Addr>,   // 4 + 4 * len
     pub interfaces: Vec<Interface>,   // 4 + (14 + len(name)) * len
+    pub reference_count: u32,         // 4
 }
 
 impl fmt::Display for Device {
@@ -274,6 +275,7 @@ impl AccountTypeInfo for Device {
                 .iter()
                 .map(|iface| iface.size())
                 .sum::<usize>()
+            + 4
     }
     fn bump_seed(&self) -> u8 {
         self.bump_seed
@@ -310,6 +312,7 @@ impl From<&[u8]> for Device {
             dns_servers: parser.read_ipv4_list(),
             ntp_servers: parser.read_ipv4_list(),
             interfaces: parser.read_vec(),
+            reference_count: parser.read_u32(),
         }
     }
 }
@@ -334,6 +337,7 @@ mod tests {
             owner: Pubkey::new_unique(),
             index: 123,
             bump_seed: 1,
+            reference_count: 0,
             contributor_pk: Pubkey::new_unique(),
             code: "test-321".to_string(),
             device_type: DeviceType::Switch,
@@ -379,6 +383,7 @@ mod tests {
         assert_eq!(val.owner, val2.owner);
         assert_eq!(val.code, val2.code);
         assert_eq!(val.index, val2.index);
+        assert_eq!(val.reference_count, val2.reference_count);
         assert_eq!(val.contributor_pk, val2.contributor_pk);
         assert_eq!(val.device_type, val2.device_type);
         assert_eq!(val.dz_prefixes, val2.dz_prefixes);
@@ -408,6 +413,7 @@ mod tests {
             owner: Pubkey::new_unique(),
             index: 123,
             bump_seed: 1,
+            reference_count: 0,
             contributor_pk: Pubkey::new_unique(),
             code: "test-321".to_string(),
             device_type: DeviceType::Switch,

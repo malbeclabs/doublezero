@@ -1,8 +1,9 @@
 use super::multicast::MulticastCliCommand;
 use crate::cli::{
     config::ConfigCliCommand, contributor::ContributorCliCommand, device::DeviceCliCommand,
-    exchange::ExchangeCliCommand, globalconfig::GlobalConfigCliCommand, link::LinkCliCommand,
-    location::LocationCliCommand, user::UserCliCommand,
+    exchange::ExchangeCliCommand, globalconfig::GlobalConfigCliCommand,
+    globalstate::GlobalStateCliCommand, link::LinkCliCommand, location::LocationCliCommand,
+    user::UserCliCommand,
 };
 use clap::{Args, Subcommand};
 use clap_complete::Shell;
@@ -28,6 +29,9 @@ pub enum Command {
     /// Global network configuration
     #[command()]
     GlobalConfig(GlobalConfigCliCommand),
+    /// Global network state settings
+    #[command()]
+    GlobalState(GlobalStateCliCommand),
     /// Get Account
     #[command()]
     Account(GetAccountCliCommand),

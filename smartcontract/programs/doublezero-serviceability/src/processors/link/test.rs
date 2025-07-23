@@ -12,7 +12,7 @@ mod tunnel_test {
         state::{
             accounttype::AccountType,
             contributor::ContributorStatus,
-            device::{DeviceType, Interface, CURRENT_INTERFACE_VERSION},
+            device::{DeviceStatus, DeviceType, Interface, CURRENT_INTERFACE_VERSION},
             link::*,
         },
         tests::test::*,
@@ -131,7 +131,7 @@ mod tunnel_test {
         .await;
 
         /***********************************************************************************************************************************/
-        println!("🟢 5. Create Contributor...");
+        println!("🟢 4. Create Contributor...");
         let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 2);
@@ -165,7 +165,7 @@ mod tunnel_test {
 
         println!("✅ Contributor initialized successfully",);
         /***********************************************************************************************************************************/
-        println!("🟢 3. Create Device...");
+        println!("🟢 5. Create Device...");
 
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 3);
@@ -205,8 +205,17 @@ mod tunnel_test {
         )
         .await;
 
+        let device_a = get_account_data(&mut banks_client, device_a_pubkey)
+            .await
+            .expect("Unable to get Account")
+            .get_device()
+            .unwrap();
+        assert_eq!(device_a.account_type, AccountType::Device);
+        assert_eq!(device_a.code, "A".to_string());
+        assert_eq!(device_a.status, DeviceStatus::Pending);
+
         /***********************************************************************************************************************************/
-        println!("🟢 4. Create Device...");
+        println!("🟢 6. Create Device...");
 
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 4);
@@ -246,10 +255,19 @@ mod tunnel_test {
         )
         .await;
 
+        let device_z = get_account_data(&mut banks_client, device_z_pubkey)
+            .await
+            .expect("Unable to get Account")
+            .get_device()
+            .unwrap();
+        assert_eq!(device_z.account_type, AccountType::Device);
+        assert_eq!(device_z.code, "Z".to_string());
+        assert_eq!(device_z.status, DeviceStatus::Pending);
+
         /***********************************************************************************************************************************/
         /***********************************************************************************************************************************/
         // Link _la
-        println!("🟢 5. Create Link...");
+        println!("🟢 7. Create Link...");
 
         let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
@@ -294,7 +312,7 @@ mod tunnel_test {
 
         println!("✅ Link initialized successfully",);
         /*****************************************************************************************************************************************************/
-        println!("🟢 6. Activate Link...");
+        println!("🟢 8. Activate Link...");
 
         execute_transaction(
             &mut banks_client,
@@ -324,7 +342,7 @@ mod tunnel_test {
 
         println!("✅ Link activated");
         /*****************************************************************************************************************************************************/
-        println!("🟢 7. Suspend Link...");
+        println!("🟢 9. Suspend Link...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
@@ -345,7 +363,7 @@ mod tunnel_test {
 
         println!("✅ Link suspended");
         /*****************************************************************************************************************************************************/
-        println!("🟢 8. Resume Link...");
+        println!("🟢 10. Resume Link...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
@@ -366,7 +384,7 @@ mod tunnel_test {
 
         println!("✅ Link resumed");
         /*****************************************************************************************************************************************************/
-        println!("🟢 9. Update Link...");
+        println!("🟢 11. Update Link...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
@@ -403,7 +421,7 @@ mod tunnel_test {
         println!("✅ Link updated");
 
         /*****************************************************************************************************************************************************/
-        println!("🟢 9. Deleting Link...");
+        println!("🟢 12. Deleting Link...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,
@@ -432,7 +450,7 @@ mod tunnel_test {
         println!("✅ Link deleting");
 
         /*****************************************************************************************************************************************************/
-        println!("🟢 9. CloseAccount Link...");
+        println!("🟢 13. CloseAccount Link...");
         execute_transaction(
             &mut banks_client,
             recent_blockhash,

@@ -8,7 +8,7 @@ jobs:
     uses: ./.github/workflows/release.daily.yml
     with:
       component: funder
-      playbook: playbooks/funder.yml
+      playbook: playbooks/funders.yml
     secrets: inherit
     permissions:
       contents: write

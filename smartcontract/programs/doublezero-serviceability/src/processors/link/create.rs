@@ -94,32 +94,20 @@ pub fn process_create_link(
     );
 
     let contributor = Contributor::try_from(contributor_account)?;
-    if contributor.account_type != AccountType::Contributor {
-        return Err(DoubleZeroError::InvalidContributorPubkey.into());
-    }
-    if contributor.owner != *payer_account.key {
-        return Err(DoubleZeroError::InvalidOwnerPubkey.into());
-    }
-    // Check account Types
-    if side_a_account.data_is_empty()
-        || side_a_account.data.borrow()[0] != AccountType::Device as u8
-    {
-        return Err(DoubleZeroError::InvalidDeviceAPubkey.into());
-    }
-    if side_z_account.data_is_empty()
-        || side_z_account.data.borrow()[0] != AccountType::Device as u8
-    {
-        return Err(DoubleZeroError::InvalidDeviceZPubkey.into());
-    }
-
+    assert_eq!(contributor.account_type, AccountType::Contributor);
     let side_a_dev = Device::try_from(side_a_account)?;
+    assert_eq!(side_a_dev.account_type, AccountType::Device);
     let side_z_dev = Device::try_from(side_z_account)?;
+    assert_eq!(side_z_dev.account_type, AccountType::Device);
 
     if !side_a_dev
         .interfaces
         .iter()
         .any(|iface| iface.name == value.side_a_iface_name)
     {
+        #[cfg(test)]
+        msg!("{:?}", side_a_dev);
+
         return Err(DoubleZeroError::InvalidInterfaceName.into());
     }
     if !side_z_dev
@@ -127,6 +115,9 @@ pub fn process_create_link(
         .iter()
         .any(|iface| iface.name == value.side_z_iface_name)
     {
+        #[cfg(test)]
+        msg!("{:?}", side_z_dev);
+
         return Err(DoubleZeroError::InvalidInterfaceName.into());
     }
 

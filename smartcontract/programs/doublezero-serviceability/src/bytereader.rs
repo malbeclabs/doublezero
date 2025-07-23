@@ -121,13 +121,13 @@ impl<'a> ByteReader<'a> {
     }
 
     pub fn read_pubkey_vec(&mut self) -> Vec<Pubkey> {
-        let mut list = Vec::new();
-
         let length = self.read_u32() as usize;
-        if !self.has_no_space(length * 32) {
-            for _ in 0..length {
-                list.push(self.read_pubkey());
-            }
+        if self.has_no_space(size_of::<Pubkey>() * length) {
+            return Vec::new();
+        }
+        let mut list = Vec::with_capacity(length + 1);
+        for _ in 0..length {
+            list.push(self.read_pubkey());
         }
 
         list
@@ -150,13 +150,14 @@ impl<'a> ByteReader<'a> {
     }
 
     pub fn read_ipv4_list(&mut self) -> Vec<std::net::Ipv4Addr> {
-        let mut list = Vec::<std::net::Ipv4Addr>::default();
-
         let length = self.read_u32() as usize;
-        if !self.has_no_space(length * size_of::<std::net::Ipv4Addr>()) {
-            for _ in 0..length {
-                list.push(self.read_ipv4());
-            }
+        if self.has_no_space(size_of::<std::net::Ipv4Addr>() * length) {
+            return Vec::new();
+        }
+
+        let mut list = Vec::with_capacity(length + 1);
+        for _ in 0..length {
+            list.push(self.read_ipv4());
         }
 
         list
@@ -174,16 +175,17 @@ impl<'a> ByteReader<'a> {
     }
 
     pub fn read_networkv4_list(&mut self) -> NetworkV4List {
-        let mut list = NetworkV4List::default();
-
         let length = self.read_u32() as usize;
-        if !self.has_no_space(length * 5) {
-            for _ in 0..length {
-                list.push(self.read_networkv4());
-            }
+        if self.has_no_space(size_of::<NetworkV4>() * length) {
+            return NetworkV4List::default();
         }
 
-        list
+        let mut list = Vec::with_capacity(length + 1);
+        for _ in 0..length {
+            list.push(self.read_networkv4());
+        }
+
+        list.into()
     }
 
     pub fn read_string(&mut self) -> String {
@@ -202,7 +204,6 @@ impl<'a> ByteReader<'a> {
         for<'z> T: From<&'z mut ByteReader<'a>>,
     {
         let length = self.read_u32() as usize;
-
         let mut vec = Vec::with_capacity(length);
 
         for _ in 0..length {

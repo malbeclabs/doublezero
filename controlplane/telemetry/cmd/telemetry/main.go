@@ -14,6 +14,7 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
+	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/metrics"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netns"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netutil"
@@ -41,22 +42,23 @@ const (
 )
 
 var (
-	ledgerRPCURL            = flag.String("ledger-rpc-url", defaultLedgerRPCURL, "the url of the ledger rpc")
-	serviceabilityProgramID = flag.String("serviceability-program-id", defaultProgramId, "the id of the serviceability program")
-	telemetryProgramID      = flag.String("telemetry-program-id", defaultProgramId, "the id of the telemetry program")
-	keypairPath             = flag.String("keypair", "", "the path to the metrics publisher keypair")
-	localDevicePK           = flag.String("local-device-pubkey", defaultLocalDevicePubkey, "the pubkey of the local device")
-	twampListenPort         = flag.Uint("twamp-listen-port", uint(defaultTWAMPListenPort), "the port to listen for twamp probes")
-	probeInterval           = flag.Duration("probe-interval", defaultProbeInterval, "the interval to probe peers")
-	submissionInterval      = flag.Duration("submission-interval", defaultSubmissionInterval, "the interval to submit samples")
-	twampSenderTimeout      = flag.Duration("twamp-sender-timeout", defaultTWAMPSenderTimeout, "the timeout for sending twamp probes")
-	twampReflectorTimeout   = flag.Duration("twamp-reflector-timeout", defaultTWAMPReflectorTimeout, "the timeout for the twamp reflector")
-	peersRefreshInterval    = flag.Duration("peers-refresh-interval", defaultPeersRefreshInterval, "the interval to refresh the peer discovery")
-	managementNamespace     = flag.String("management-namespace", "", "the name of the management namespace to use for ledger communication. If not provided, the default namespace will be used. (default: '')")
-	verbose                 = flag.Bool("verbose", false, "enable verbose logging")
-	showVersion             = flag.Bool("version", false, "Print the version of the doublezero-agent and exit")
-	metricsEnable           = flag.Bool("metrics-enable", false, "Enable prometheus metrics")
-	metricsAddr             = flag.String("metrics-addr", ":8080", "Address to listen on for prometheus metrics")
+	env                     = flag.String("env", "", "The network environment to use (devnet, testnet).")
+	ledgerRPCURL            = flag.String("ledger-rpc-url", defaultLedgerRPCURL, "The url of the ledger rpc. If env is provided, this flag is ignored.")
+	serviceabilityProgramID = flag.String("serviceability-program-id", defaultProgramId, "The id of the serviceability program. If env is provided, this flag is ignored.")
+	telemetryProgramID      = flag.String("telemetry-program-id", defaultProgramId, "The id of the telemetry program. If env is provided, this flag is ignored.")
+	keypairPath             = flag.String("keypair", "", "The path to the metrics publisher keypair.")
+	localDevicePK           = flag.String("local-device-pubkey", defaultLocalDevicePubkey, "The pubkey of the local device.")
+	twampListenPort         = flag.Uint("twamp-listen-port", uint(defaultTWAMPListenPort), "The port to listen for twamp probes.")
+	probeInterval           = flag.Duration("probe-interval", defaultProbeInterval, "The interval to probe peers.")
+	submissionInterval      = flag.Duration("submission-interval", defaultSubmissionInterval, "The interval to submit samples.")
+	twampSenderTimeout      = flag.Duration("twamp-sender-timeout", defaultTWAMPSenderTimeout, "The timeout for sending twamp probes.")
+	twampReflectorTimeout   = flag.Duration("twamp-reflector-timeout", defaultTWAMPReflectorTimeout, "The timeout for the twamp reflector.")
+	peersRefreshInterval    = flag.Duration("peers-refresh-interval", defaultPeersRefreshInterval, "The interval to refresh the peer discovery.")
+	managementNamespace     = flag.String("management-namespace", "", "The name of the management namespace to use for ledger communication. If not provided, the default namespace will be used. (default: '')")
+	verbose                 = flag.Bool("verbose", false, "Enable verbose logging.")
+	showVersion             = flag.Bool("version", false, "Print the version of the doublezero-agent and exit.")
+	metricsEnable           = flag.Bool("metrics-enable", false, "Enable prometheus metrics.")
+	metricsAddr             = flag.String("metrics-addr", ":8080", "Address to listen on for prometheus metrics.")
 
 	// Set by LDFLAGS
 	version = "dev"
@@ -87,21 +89,34 @@ func main() {
 	}))
 
 	// Validate required flags.
-	if *ledgerRPCURL == "" {
-		log.Error("Missing required flag", "flag", "ledger-rpc-url")
-		flag.Usage()
-		os.Exit(1)
+	if *env == "" {
+		if *ledgerRPCURL == "" {
+			log.Error("Missing required flag", "flag", "ledger-rpc-url")
+			flag.Usage()
+			os.Exit(1)
+		}
+		if *serviceabilityProgramID == "" {
+			log.Error("Missing required flag", "flag", "serviceability-program-id")
+			flag.Usage()
+			os.Exit(1)
+		}
+		if *telemetryProgramID == "" {
+			log.Error("Missing required flag", "flag", "telemetry-program-id")
+			flag.Usage()
+			os.Exit(1)
+		}
+	} else {
+		networkConfig, err := config.NetworkConfigForEnv(*env)
+		if err != nil {
+			log.Error("Failed to get network config", "error", err)
+			flag.Usage()
+			os.Exit(1)
+		}
+		*ledgerRPCURL = networkConfig.LedgerRPCURL
+		*serviceabilityProgramID = networkConfig.ServiceabilityProgramID.String()
+		*telemetryProgramID = networkConfig.TelemetryProgramID.String()
 	}
-	if *serviceabilityProgramID == "" {
-		log.Error("Missing required flag", "flag", "serviceability-program-id")
-		flag.Usage()
-		os.Exit(1)
-	}
-	if *telemetryProgramID == "" {
-		log.Error("Missing required flag", "flag", "telemetry-program-id")
-		flag.Usage()
-		os.Exit(1)
-	}
+
 	if *localDevicePK == "" {
 		log.Error("Missing required flag", "flag", "local-device-pubkey")
 		flag.Usage()

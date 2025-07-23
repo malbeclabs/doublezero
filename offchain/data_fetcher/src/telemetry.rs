@@ -2,10 +2,8 @@ use crate::{
     rpc,
     types::{DZDTelemetryData, DbDeviceLatencySamples},
 };
-use anyhow::{Context, Result, bail};
-use doublezero_telemetry::state::device_latency_samples::{
-    DEVICE_LATENCY_SAMPLES_HEADER_SIZE, DeviceLatencySamples, DeviceLatencySamplesHeader,
-};
+use anyhow::{Context, Result};
+use doublezero_telemetry::state::device_latency_samples::DeviceLatencySamples;
 use solana_account_decoder::UiAccountEncoding;
 use solana_client::{
     rpc_client::RpcClient,
@@ -82,7 +80,7 @@ pub async fn fetch(
         let mut batch_samples = Vec::new();
 
         for (pubkey, account) in chunk {
-            match deserialize_latency_samples(&account.data) {
+            match DeviceLatencySamples::try_from(&account.data[..]) {
                 Ok(samples) => {
                     // Calculate end timestamp based on number of samples and interval
                     let sample_count = samples.header.next_sample_index as u64;
@@ -148,64 +146,4 @@ pub async fn fetch(
     Ok(DZDTelemetryData {
         device_latency_samples,
     })
-}
-
-// TODO: This is a hack, we should ideally put this in telemetry program
-/// Custom deserializer that handles accounts with extra allocated space
-fn deserialize_latency_samples(data: &[u8]) -> Result<DeviceLatencySamples> {
-    // Check if we have at least the header size
-    if data.len() < DEVICE_LATENCY_SAMPLES_HEADER_SIZE {
-        bail!(
-            "Account data too small: {} bytes, expected at least {} for header",
-            data.len(),
-            DEVICE_LATENCY_SAMPLES_HEADER_SIZE
-        );
-    }
-
-    // Deserialize the header
-    let header_bytes = &data[..DEVICE_LATENCY_SAMPLES_HEADER_SIZE];
-    let header = DeviceLatencySamplesHeader::try_from(header_bytes)?;
-
-    // Calculate expected data size based on next_sample_index
-    let expected_samples_size = header.next_sample_index as usize * 4;
-    let expected_total_size = DEVICE_LATENCY_SAMPLES_HEADER_SIZE + expected_samples_size;
-
-    // Check if we have enough data for the samples
-    if data.len() < expected_total_size {
-        bail!(
-            "Account data too small for samples: {} bytes, expected {} bytes ({} header + {} samples)",
-            data.len(),
-            expected_total_size,
-            DEVICE_LATENCY_SAMPLES_HEADER_SIZE,
-            expected_samples_size
-        );
-    }
-
-    // Read the samples manually
-    let mut samples = Vec::with_capacity(header.next_sample_index as usize);
-    let samples_start = DEVICE_LATENCY_SAMPLES_HEADER_SIZE;
-
-    for i in 0..header.next_sample_index as usize {
-        let offset = samples_start + i * 4;
-        let sample_bytes = &data[offset..offset + 4];
-        let sample = u32::from_le_bytes([
-            sample_bytes[0],
-            sample_bytes[1],
-            sample_bytes[2],
-            sample_bytes[3],
-        ]);
-        samples.push(sample);
-    }
-
-    // Log if there's extra data (for debugging)
-    if data.len() > expected_total_size {
-        debug!(
-            "Account has {} extra bytes allocated (total: {}, used: {})",
-            data.len() - expected_total_size,
-            data.len(),
-            expected_total_size
-        );
-    }
-
-    Ok(DeviceLatencySamples { header, samples })
 }

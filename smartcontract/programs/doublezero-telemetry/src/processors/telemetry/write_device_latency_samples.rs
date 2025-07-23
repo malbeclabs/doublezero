@@ -1,7 +1,5 @@
 use crate::{
     error::TelemetryError,
-    pda::derive_device_latency_samples_pda,
-    seeds::{SEED_DZ_LATENCY_SAMPLES, SEED_PREFIX},
     state::{
         accounttype::AccountType,
         device_latency_samples::{
@@ -15,7 +13,7 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::{ProgramResult, MAX_PERMITTED_DATA_INCREASE},
     msg,
-    program::invoke_signed,
+    program::invoke,
     program_error::ProgramError,
     pubkey::Pubkey,
     system_instruction,
@@ -65,7 +63,6 @@ pub fn process_write_device_latency_samples(
     // Expected order: [latency_samples_account, agent, system_program]
     let latency_samples_account = next_account_info(accounts_iter)?;
     let agent = next_account_info(accounts_iter)?;
-    let system_program = next_account_info(accounts_iter)?;
 
     // Only the authorized agent may sign this instruction.
     if !agent.is_signer {
@@ -144,13 +141,7 @@ pub fn process_write_device_latency_samples(
     header.next_sample_index += args.samples.len() as u32;
 
     // Determine whether the account needs to be resized to hold the new data.
-    realloc_samples_account_if_needed(
-        program_id,
-        latency_samples_account,
-        &header,
-        agent,
-        system_program,
-    )?;
+    realloc_samples_account_if_needed(accounts, &header)?;
 
     // Serialize the updated struct back into the account.
     {
@@ -176,14 +167,17 @@ pub fn process_write_device_latency_samples(
 // Determine whether the account needs to be resized to hold the new data.
 // If so, determine if the account needs to be funded for the new size, and
 // pay for the rent if needed.
-fn realloc_samples_account_if_needed<'a>(
-    program_id: &Pubkey,
-    account: &AccountInfo<'a>,
+fn realloc_samples_account_if_needed(
+    accounts: &[AccountInfo],
     header: &DeviceLatencySamplesHeader,
-    agent: &AccountInfo<'a>,
-    system_program: &AccountInfo<'a>,
 ) -> ProgramResult {
-    let actual_len = account.data_len();
+    let accounts_iter = &mut accounts.iter();
+
+    // Expected order: [latency_samples_account, agent, system_program]
+    let samples_account = next_account_info(accounts_iter)?;
+    let agent = next_account_info(accounts_iter)?;
+
+    let actual_len = samples_account.data_len();
     let new_len = DEVICE_LATENCY_SAMPLES_HEADER_SIZE + header.next_sample_index as usize * 4; // 4 bytes per RTT (microseconds) sample
 
     if actual_len != new_len {
@@ -191,43 +185,26 @@ fn realloc_samples_account_if_needed<'a>(
         if new_len > actual_len {
             let rent: Rent = Rent::get().expect("Unable to read rent");
             let required_lamports: u64 = rent.minimum_balance(new_len);
+            let current_lamports: u64 = samples_account.lamports();
 
-            if required_lamports > account.lamports() {
+            if required_lamports > current_lamports {
                 msg!(
                     "Rent required: {}, actual: {}",
                     required_lamports,
-                    account.lamports()
+                    current_lamports,
                 );
-                let payment: u64 = required_lamports - account.lamports();
+                let payment: u64 = required_lamports - current_lamports;
 
-                // Derive PDA and pay for the rent from the agent account.
-                let (_pda, bump_seed) = derive_device_latency_samples_pda(
-                    program_id,
-                    &header.origin_device_pk,
-                    &header.target_device_pk,
-                    &header.link_pk,
-                    header.epoch,
-                );
-
-                invoke_signed(
-                    &system_instruction::transfer(agent.key, account.key, payment),
-                    &[account.clone(), agent.clone(), system_program.clone()],
-                    &[&[
-                        SEED_PREFIX,
-                        SEED_DZ_LATENCY_SAMPLES,
-                        header.origin_device_pk.as_ref(),
-                        header.target_device_pk.as_ref(),
-                        header.link_pk.as_ref(),
-                        &header.epoch.to_le_bytes(),
-                        &[bump_seed],
-                    ]],
+                invoke(
+                    &system_instruction::transfer(agent.key, samples_account.key, payment),
+                    accounts,
                 )
                 .expect("Unable to pay rent");
             }
         }
 
         // Resize the account to accommodate the expanded data.
-        account
+        samples_account
             .realloc(new_len, false)
             .expect("Unable to realloc the account");
         msg!("Resized account from {} to {}", actual_len, new_len);

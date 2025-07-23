@@ -11,12 +11,6 @@ use std::{
 pub struct NetworkV4List(Vec<NetworkV4>);
 
 impl NetworkV4List {
-    pub fn new() -> Self {
-        NetworkV4List(Vec::new())
-    }
-    pub fn from_vec(vec: Vec<NetworkV4>) -> Self {
-        NetworkV4List(vec)
-    }
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }

@@ -24,7 +24,7 @@ mod utils;
 #[derive(Parser, Debug)]
 #[command(term_width = 0)]
 #[command(name = "DoubleZero Activator")]
-#[command(version = env!("CARGO_PKG_VERSION"))]
+#[command(version = option_env!("BUILD_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")))]
 #[command(about = "DoubleZero")]
 struct AppArgs {
     #[arg(long)]
@@ -147,8 +147,19 @@ fn init_logger(log_level: &str) {
 }
 
 fn export_build_info() {
+    let version = option_env!("BUILD_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
+    let build_commit = option_env!("BUILD_COMMIT").unwrap_or("unknown");
+    let build_date = option_env!("DATE").unwrap_or("unknown");
     let pkg_version = env!("CARGO_PKG_VERSION");
     let program_version = ProgramVersion::current().to_string();
 
-    metrics::gauge!("doublezero_activator_build_info", "pkg_version" => pkg_version, "program_version" => program_version).set(1);
+    metrics::gauge!(
+        "doublezero_activator_build_info",
+        "version" => version,
+        "commit" => build_commit,
+        "date" => build_date,
+        "pkg_version" => pkg_version,
+        "program_version" => program_version
+    )
+    .set(1);
 }

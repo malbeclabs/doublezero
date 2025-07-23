@@ -268,7 +268,7 @@ pub mod test {
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 4);
 
-        let (contributor_pubkey, bump_seed) =
+        let (contributor_pubkey, _) =
             get_contributor_pda(&program_id, globalstate_account.account_index + 1);
 
         execute_transaction(
@@ -276,8 +276,6 @@ pub mod test {
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
-                index: globalstate_account.account_index + 1,
-                bump_seed,
                 code: "cont".to_string(),
             }),
             vec![
@@ -309,9 +307,6 @@ pub mod test {
             get_device_pda(&program_id, globalstate_account.account_index + 1);
         let device_la: DeviceCreateArgs = DeviceCreateArgs {
             code: device_la_code.clone(),
-            contributor_pk: contributor_pubkey,
-            location_pk: location_la_pubkey,
-            exchange_pk: exchange_la_pubkey,
             device_type: DeviceType::Switch,
             public_ip: [1, 0, 0, 1].into(),
             dz_prefixes: NetworkV4List::default(),
@@ -367,9 +362,6 @@ pub mod test {
             get_device_pda(&program_id, globalstate_account.account_index + 1);
         let device_ny: DeviceCreateArgs = DeviceCreateArgs {
             code: device_ny_code.clone(),
-            contributor_pk: contributor_pubkey,
-            location_pk: location_ny_pubkey,
-            exchange_pk: exchange_ny_pubkey,
             device_type: DeviceType::Switch,
             public_ip: [1, 0, 0, 2].into(),
             dz_prefixes: vec!["10.1.0.1/24".parse().unwrap()].into(),
@@ -473,9 +465,6 @@ pub mod test {
             get_link_pda(&program_id, globalstate_account.account_index + 1);
         let tunnel_la_ny: LinkCreateArgs = LinkCreateArgs {
             code: tunnel_la_ny_code.clone(),
-            contributor_pk: contributor_pubkey,
-            side_a_pk: device_la_pubkey,
-            side_z_pk: device_ny_pubkey,
             link_type: LinkLinkType::L3,
             bandwidth: 100,
             mtu: 1900,
@@ -560,7 +549,6 @@ pub mod test {
         let (user1_pubkey, _) = get_user_pda(&program_id, globalstate_account.account_index + 1);
         let user1: UserCreateArgs = UserCreateArgs {
             user_type: UserType::IBRL,
-            device_pk: device_la_pubkey,
             cyoa_type: UserCYOA::GREOverDIA,
             client_ip: user_ip,
         };

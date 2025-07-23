@@ -110,9 +110,6 @@ impl DeviceCreateArgsExt for DeviceCreateArgs {
     fn default() -> DeviceCreateArgs {
         DeviceCreateArgs {
             code: "".to_string(),
-            contributor_pk: Pubkey::default(),
-            location_pk: Pubkey::default(),
-            exchange_pk: Pubkey::default(),
             device_type: DeviceType::Switch,
             public_ip: Ipv4Addr::UNSPECIFIED,
             dz_prefixes: NetworkV4List::default(),
@@ -136,9 +133,6 @@ impl LinkCreateArgsExt for LinkCreateArgs {
     fn default() -> LinkCreateArgs {
         LinkCreateArgs {
             code: "".to_string(),
-            contributor_pk: Pubkey::default(),
-            side_a_pk: Pubkey::default(),
-            side_z_pk: Pubkey::default(),
             link_type: LinkLinkType::L3,
             bandwidth: 0,
             mtu: 0,
@@ -323,42 +317,46 @@ impl LedgerHelper {
         // Create and activate origin device.
         let origin_device_pk = self
             .serviceability
-            .create_and_activate_device(DeviceCreateArgs {
-                code: "origin_device".to_string(),
+            .create_and_activate_device(
+                DeviceCreateArgs {
+                    code: "origin_device".to_string(),
+                    device_type: DeviceType::Switch,
+                    public_ip: [1, 2, 3, 4].into(),
+                    dz_prefixes: NetworkV4List::default(),
+                    metrics_publisher_pk: origin_device_agent_pk,
+                    interfaces: vec![Interface {
+                        version: CURRENT_INTERFACE_VERSION,
+                        name: "eth0".to_string(),
+                        ..Interface::default()
+                    }],
+                    ..DeviceCreateArgs::default()
+                },
                 contributor_pk,
                 location_pk,
                 exchange_pk,
-                device_type: DeviceType::Switch,
-                public_ip: [1, 2, 3, 4].into(),
-                dz_prefixes: NetworkV4List::default(),
-                metrics_publisher_pk: origin_device_agent_pk,
-                interfaces: vec![Interface {
-                    version: CURRENT_INTERFACE_VERSION,
-                    name: "eth0".to_string(),
-                    ..Interface::default()
-                }],
-                ..DeviceCreateArgs::default()
-            })
+            )
             .await?;
 
         // Create and activate target device.
         let target_device_pk = self
             .serviceability
-            .create_and_activate_device(DeviceCreateArgs {
-                code: "target_device".to_string(),
+            .create_and_activate_device(
+                DeviceCreateArgs {
+                    code: "target_device".to_string(),
+                    device_type: DeviceType::Switch,
+                    public_ip: [5, 6, 7, 8].into(),
+                    metrics_publisher_pk: Pubkey::new_unique(),
+                    interfaces: vec![Interface {
+                        version: CURRENT_INTERFACE_VERSION,
+                        name: "eth1".to_string(),
+                        ..Interface::default()
+                    }],
+                    ..DeviceCreateArgs::default()
+                },
+                contributor_pk,
                 location_pk,
                 exchange_pk,
-                device_type: DeviceType::Switch,
-                contributor_pk,
-                public_ip: [5, 6, 7, 8].into(),
-                metrics_publisher_pk: Pubkey::new_unique(),
-                interfaces: vec![Interface {
-                    version: CURRENT_INTERFACE_VERSION,
-                    name: "eth1".to_string(),
-                    ..Interface::default()
-                }],
-                ..DeviceCreateArgs::default()
-            })
+            )
             .await?;
 
         // Create and activate link.
@@ -367,9 +365,6 @@ impl LedgerHelper {
             .create_and_activate_link(
                 LinkCreateArgs {
                     code: "LINK1".to_string(),
-                    contributor_pk,
-                    side_a_pk: origin_device_pk,
-                    side_z_pk: target_device_pk,
                     link_type: LinkLinkType::L3,
                     bandwidth: 1000,
                     mtu: 1500,
@@ -378,6 +373,9 @@ impl LedgerHelper {
                     side_a_iface_name: "eth0".to_string(),
                     side_z_iface_name: "eth1".to_string(),
                 },
+                contributor_pk,
+                origin_device_pk,
+                target_device_pk,
                 1,
                 "10.1.1.0/30".parse().unwrap(),
             )
@@ -710,14 +708,10 @@ impl ServiceabilityProgramHelper {
 
     pub async fn create_contributor(&mut self, code: String) -> Result<Pubkey, BanksClientError> {
         let index = self.get_next_global_state_index().await.unwrap();
-        let (contributor_pk, bump_seed) = get_contributor_pda(&self.program_id, index);
+        let (contributor_pk, _) = get_contributor_pda(&self.program_id, index);
 
         self.execute_transaction(
-            DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
-                index,
-                bump_seed,
-                code,
-            }),
+            DoubleZeroInstruction::CreateContributor(ContributorCreateArgs { code }),
             vec![
                 AccountMeta::new(contributor_pk, false),
                 AccountMeta::new(self.global_state_pubkey, false),
@@ -731,6 +725,9 @@ impl ServiceabilityProgramHelper {
     pub async fn create_device(
         &mut self,
         device: DeviceCreateArgs,
+        contributor_pk: Pubkey,
+        location_pk: Pubkey,
+        exchange_pk: Pubkey,
     ) -> Result<Pubkey, BanksClientError> {
         let index = self.get_next_global_state_index().await?;
         let (device_pk, _) = get_device_pda(&self.program_id, index);
@@ -738,9 +735,6 @@ impl ServiceabilityProgramHelper {
         self.execute_transaction(
             DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
                 code: device.code,
-                contributor_pk: device.contributor_pk,
-                location_pk: device.location_pk,
-                exchange_pk: device.exchange_pk,
                 device_type: device.device_type,
                 public_ip: device.public_ip,
                 dz_prefixes: device.dz_prefixes,
@@ -754,9 +748,9 @@ impl ServiceabilityProgramHelper {
             }),
             vec![
                 AccountMeta::new(device_pk, false),
-                AccountMeta::new_readonly(device.contributor_pk, false),
-                AccountMeta::new_readonly(device.location_pk, false),
-                AccountMeta::new_readonly(device.exchange_pk, false),
+                AccountMeta::new_readonly(contributor_pk, false),
+                AccountMeta::new_readonly(location_pk, false),
+                AccountMeta::new_readonly(exchange_pk, false),
                 AccountMeta::new(self.global_state_pubkey, false),
             ],
         )
@@ -801,22 +795,30 @@ impl ServiceabilityProgramHelper {
     pub async fn create_and_activate_device(
         &mut self,
         device: DeviceCreateArgs,
+        contributor_pk: Pubkey,
+        location_pk: Pubkey,
+        exchange_pk: Pubkey,
     ) -> Result<Pubkey, BanksClientError> {
-        let device_pk = self.create_device(device).await?;
+        let device_pk = self
+            .create_device(device, contributor_pk, location_pk, exchange_pk)
+            .await?;
         self.activate_device(device_pk).await?;
         Ok(device_pk)
     }
 
-    pub async fn create_link(&mut self, link: LinkCreateArgs) -> Result<Pubkey, BanksClientError> {
+    pub async fn create_link(
+        &mut self,
+        link: LinkCreateArgs,
+        contributor_pk: Pubkey,
+        side_a_pk: Pubkey,
+        side_z_pk: Pubkey,
+    ) -> Result<Pubkey, BanksClientError> {
         let index = self.get_next_global_state_index().await?;
         let (link_pk, _) = get_link_pda(&self.program_id, index);
 
         self.execute_transaction(
             DoubleZeroInstruction::CreateLink(LinkCreateArgs {
                 code: link.code,
-                contributor_pk: link.contributor_pk,
-                side_a_pk: link.side_a_pk,
-                side_z_pk: link.side_z_pk,
                 link_type: link.link_type,
                 bandwidth: link.bandwidth,
                 mtu: link.mtu,
@@ -827,9 +829,9 @@ impl ServiceabilityProgramHelper {
             }),
             vec![
                 AccountMeta::new(link_pk, false),
-                AccountMeta::new(link.contributor_pk, false),
-                AccountMeta::new_readonly(link.side_a_pk, false),
-                AccountMeta::new_readonly(link.side_z_pk, false),
+                AccountMeta::new(contributor_pk, false),
+                AccountMeta::new_readonly(side_a_pk, false),
+                AccountMeta::new_readonly(side_z_pk, false),
                 AccountMeta::new(self.global_state_pubkey, false),
             ],
         )
@@ -879,10 +881,15 @@ impl ServiceabilityProgramHelper {
     pub async fn create_and_activate_link(
         &mut self,
         link: LinkCreateArgs,
+        contributor_pk: Pubkey,
+        side_a_pk: Pubkey,
+        side_z_pk: Pubkey,
         tunnel_id: u16,
         tunnel_net: NetworkV4,
     ) -> Result<Pubkey, BanksClientError> {
-        let link_pk = self.create_link(link).await?;
+        let link_pk = self
+            .create_link(link, contributor_pk, side_a_pk, side_z_pk)
+            .await?;
         self.activate_link(link_pk, tunnel_id, tunnel_net).await?;
         Ok(link_pk)
     }

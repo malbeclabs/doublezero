@@ -24,9 +24,6 @@ use solana_program::{
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct DeviceCreateArgs {
     pub code: String,
-    pub contributor_pk: Pubkey,
-    pub location_pk: Pubkey,
-    pub exchange_pk: Pubkey,
     pub device_type: DeviceType,
     pub public_ip: std::net::Ipv4Addr,
     pub dz_prefixes: NetworkV4List,
@@ -43,14 +40,10 @@ impl fmt::Debug for DeviceCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "code: {}, contributor_pk: {}, location_pk: {}, \
-exchange_pk: {}, device_type: {:?}, public_ip: {}, dz_prefixes: {}, \
+            "code: {}, device_type: {:?}, public_ip: {}, dz_prefixes: {}, \
 metrics_publisher_pk: {}, bgp_asn: {}, dia_bgp_asn: {}, mgmt_vrf: {}, \
 dns_servers: {:?}, ntp_servers: {:?}, interfaces: {:?}",
             self.code,
-            self.contributor_pk,
-            self.location_pk,
-            self.exchange_pk,
             self.device_type,
             self.public_ip,
             self.dz_prefixes,
@@ -141,9 +134,9 @@ pub fn process_create_device(
         index: globalstate.account_index,
         bump_seed,
         code: value.code.clone(),
-        contributor_pk: value.contributor_pk,
-        location_pk: value.location_pk,
-        exchange_pk: value.exchange_pk,
+        contributor_pk: *contributor_account.key,
+        location_pk: *location_account.key,
+        exchange_pk: *exchange_account.key,
         device_type: value.device_type,
         public_ip: value.public_ip,
         dz_prefixes: value.dz_prefixes.clone(),

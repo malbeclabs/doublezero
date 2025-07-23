@@ -51,7 +51,7 @@ mod contributor_test {
         let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
         assert_eq!(globalstate_account.account_index, 0);
 
-        let (contributor_pubkey, bump_seed) =
+        let (contributor_pubkey, _) =
             get_contributor_pda(&program_id, globalstate_account.account_index + 1);
 
         execute_transaction(
@@ -59,8 +59,6 @@ mod contributor_test {
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
-                index: globalstate_account.account_index + 1,
-                bump_seed,
                 code: "la".to_string(),
             }),
             vec![

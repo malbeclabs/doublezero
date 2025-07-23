@@ -633,42 +633,46 @@ async fn test_initialize_device_latency_samples_fail_origin_device_not_activated
     // Origin device: not activated
     let origin_device_pk = ledger
         .serviceability
-        .create_device(DeviceCreateArgs {
-            code: "OriginDevice".to_string(),
+        .create_device(
+            DeviceCreateArgs {
+                code: "OriginDevice".to_string(),
+                device_type: DeviceType::Switch,
+                public_ip: [1, 2, 3, 4].into(),
+                metrics_publisher_pk: agent.pubkey(),
+                interfaces: vec![Interface {
+                    version: CURRENT_INTERFACE_VERSION,
+                    name: "eth0".to_string(),
+                    ..Interface::default()
+                }],
+                ..DeviceCreateArgs::default()
+            },
             contributor_pk,
             location_pk,
             exchange_pk,
-            device_type: DeviceType::Switch,
-            public_ip: [1, 2, 3, 4].into(),
-            metrics_publisher_pk: agent.pubkey(),
-            interfaces: vec![Interface {
-                version: CURRENT_INTERFACE_VERSION,
-                name: "eth0".to_string(),
-                ..Interface::default()
-            }],
-            ..DeviceCreateArgs::default()
-        })
+        )
         .await
         .unwrap();
 
     // Target device: activated
     let target_device_pk = ledger
         .serviceability
-        .create_and_activate_device(DeviceCreateArgs {
-            code: "TargetDevice".to_string(),
+        .create_and_activate_device(
+            DeviceCreateArgs {
+                code: "TargetDevice".to_string(),
+                device_type: DeviceType::Switch,
+                public_ip: [5, 6, 7, 8].into(),
+                metrics_publisher_pk: agent.pubkey(),
+                interfaces: vec![Interface {
+                    version: CURRENT_INTERFACE_VERSION,
+                    name: "eth1".to_string(),
+                    ..Interface::default()
+                }],
+                ..DeviceCreateArgs::default()
+            },
             contributor_pk,
             location_pk,
             exchange_pk,
-            device_type: DeviceType::Switch,
-            public_ip: [5, 6, 7, 8].into(),
-            metrics_publisher_pk: agent.pubkey(),
-            interfaces: vec![Interface {
-                version: CURRENT_INTERFACE_VERSION,
-                name: "eth1".to_string(),
-                ..Interface::default()
-            }],
-            ..DeviceCreateArgs::default()
-        })
+        )
         .await
         .unwrap();
 
@@ -678,9 +682,6 @@ async fn test_initialize_device_latency_samples_fail_origin_device_not_activated
         .create_and_activate_link(
             LinkCreateArgs {
                 code: "LINK1".to_string(),
-                contributor_pk,
-                side_a_pk: origin_device_pk,
-                side_z_pk: target_device_pk,
                 link_type: LinkLinkType::L3,
                 bandwidth: 1000,
                 mtu: 1500,
@@ -689,6 +690,9 @@ async fn test_initialize_device_latency_samples_fail_origin_device_not_activated
                 side_a_iface_name: "eth0".to_string(),
                 side_z_iface_name: "eth1".to_string(),
             },
+            contributor_pk,
+            origin_device_pk,
+            target_device_pk,
             1,
             "10.1.1.0/30".parse().unwrap(),
         )
@@ -754,42 +758,46 @@ async fn test_initialize_device_latency_samples_fail_target_device_not_activated
     // Origin device: activated
     let origin_device_pk = ledger
         .serviceability
-        .create_and_activate_device(DeviceCreateArgs {
-            code: "OriginDevice".to_string(),
+        .create_and_activate_device(
+            DeviceCreateArgs {
+                code: "OriginDevice".to_string(),
+                device_type: DeviceType::Switch,
+                public_ip: [1, 2, 3, 4].into(),
+                metrics_publisher_pk: agent.pubkey(),
+                interfaces: vec![Interface {
+                    version: CURRENT_INTERFACE_VERSION,
+                    name: "eth0".to_string(),
+                    ..Interface::default()
+                }],
+                ..DeviceCreateArgs::default()
+            },
             contributor_pk,
             location_pk,
             exchange_pk,
-            device_type: DeviceType::Switch,
-            public_ip: [1, 2, 3, 4].into(),
-            metrics_publisher_pk: agent.pubkey(),
-            interfaces: vec![Interface {
-                version: CURRENT_INTERFACE_VERSION,
-                name: "eth0".to_string(),
-                ..Interface::default()
-            }],
-            ..DeviceCreateArgs::default()
-        })
+        )
         .await
         .unwrap();
 
     // Target device: not activated
     let target_device_pk = ledger
         .serviceability
-        .create_device(DeviceCreateArgs {
-            code: "TargetDevice".to_string(),
+        .create_device(
+            DeviceCreateArgs {
+                code: "TargetDevice".to_string(),
+                device_type: DeviceType::Switch,
+                public_ip: [5, 6, 7, 8].into(),
+                metrics_publisher_pk: agent.pubkey(),
+                interfaces: vec![Interface {
+                    version: CURRENT_INTERFACE_VERSION,
+                    name: "eth1".to_string(),
+                    ..Interface::default()
+                }],
+                ..DeviceCreateArgs::default()
+            },
             contributor_pk,
             location_pk,
             exchange_pk,
-            device_type: DeviceType::Switch,
-            public_ip: [5, 6, 7, 8].into(),
-            metrics_publisher_pk: agent.pubkey(),
-            interfaces: vec![Interface {
-                version: CURRENT_INTERFACE_VERSION,
-                name: "eth1".to_string(),
-                ..Interface::default()
-            }],
-            ..DeviceCreateArgs::default()
-        })
+        )
         .await
         .unwrap();
 
@@ -799,9 +807,6 @@ async fn test_initialize_device_latency_samples_fail_target_device_not_activated
         .create_and_activate_link(
             LinkCreateArgs {
                 code: "LINK1".to_string(),
-                contributor_pk,
-                side_a_pk: origin_device_pk,
-                side_z_pk: target_device_pk,
                 link_type: LinkLinkType::L3,
                 bandwidth: 1000,
                 mtu: 1500,
@@ -810,6 +815,9 @@ async fn test_initialize_device_latency_samples_fail_target_device_not_activated
                 side_a_iface_name: "eth0".to_string(),
                 side_z_iface_name: "eth1".to_string(),
             },
+            contributor_pk,
+            origin_device_pk,
+            target_device_pk,
             1,
             "10.1.1.0/30".parse().unwrap(),
         )
@@ -874,60 +882,66 @@ async fn test_initialize_device_latency_samples_fail_link_not_activated() {
 
     let origin_device_pk = ledger
         .serviceability
-        .create_and_activate_device(DeviceCreateArgs {
-            code: "OriginDevice".to_string(),
+        .create_and_activate_device(
+            DeviceCreateArgs {
+                code: "OriginDevice".to_string(),
+                device_type: DeviceType::Switch,
+                public_ip: [1, 2, 3, 4].into(),
+                metrics_publisher_pk: agent.pubkey(),
+                interfaces: vec![Interface {
+                    version: CURRENT_INTERFACE_VERSION,
+                    name: "eth0".to_string(),
+                    ..Interface::default()
+                }],
+                ..DeviceCreateArgs::default()
+            },
             contributor_pk,
             location_pk,
             exchange_pk,
-            device_type: DeviceType::Switch,
-            public_ip: [1, 2, 3, 4].into(),
-            metrics_publisher_pk: agent.pubkey(),
-            interfaces: vec![Interface {
-                version: CURRENT_INTERFACE_VERSION,
-                name: "eth0".to_string(),
-                ..Interface::default()
-            }],
-            ..DeviceCreateArgs::default()
-        })
+        )
         .await
         .unwrap();
 
     let target_device_pk = ledger
         .serviceability
-        .create_and_activate_device(DeviceCreateArgs {
-            code: "TargetDevice".to_string(),
+        .create_and_activate_device(
+            DeviceCreateArgs {
+                code: "TargetDevice".to_string(),
+                device_type: DeviceType::Switch,
+                public_ip: [5, 6, 7, 8].into(),
+                metrics_publisher_pk: agent.pubkey(),
+                interfaces: vec![Interface {
+                    version: CURRENT_INTERFACE_VERSION,
+                    name: "eth1".to_string(),
+                    ..Interface::default()
+                }],
+                ..DeviceCreateArgs::default()
+            },
             contributor_pk,
             location_pk,
             exchange_pk,
-            device_type: DeviceType::Switch,
-            public_ip: [5, 6, 7, 8].into(),
-            metrics_publisher_pk: agent.pubkey(),
-            interfaces: vec![Interface {
-                version: CURRENT_INTERFACE_VERSION,
-                name: "eth1".to_string(),
-                ..Interface::default()
-            }],
-            ..DeviceCreateArgs::default()
-        })
+        )
         .await
         .unwrap();
 
     // Create link but do not activate
     let link_pk = ledger
         .serviceability
-        .create_link(LinkCreateArgs {
-            code: "LINK1".to_string(),
+        .create_link(
+            LinkCreateArgs {
+                code: "LINK1".to_string(),
+                link_type: LinkLinkType::L3,
+                bandwidth: 1000,
+                mtu: 1500,
+                delay_ns: 10,
+                jitter_ns: 1,
+                side_a_iface_name: "eth0".to_string(),
+                side_z_iface_name: "eth1".to_string(),
+            },
             contributor_pk,
-            side_a_pk: origin_device_pk,
-            side_z_pk: target_device_pk,
-            link_type: LinkLinkType::L3,
-            bandwidth: 1000,
-            mtu: 1500,
-            delay_ns: 10,
-            jitter_ns: 1,
-            side_a_iface_name: "eth0".to_string(),
-            side_z_iface_name: "eth1".to_string(),
-        })
+            origin_device_pk,
+            target_device_pk,
+        )
         .await
         .unwrap();
 
@@ -989,82 +1003,90 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
     // Origin device and target device: activated
     let origin_device_pk = ledger
         .serviceability
-        .create_and_activate_device(DeviceCreateArgs {
-            code: "OriginDevice".to_string(),
+        .create_and_activate_device(
+            DeviceCreateArgs {
+                code: "OriginDevice".to_string(),
+                device_type: DeviceType::Switch,
+                public_ip: [1, 1, 1, 1].into(),
+                metrics_publisher_pk: agent.pubkey(),
+                interfaces: vec![Interface {
+                    version: CURRENT_INTERFACE_VERSION,
+                    name: "eth0".to_string(),
+                    ..Interface::default()
+                }],
+                ..DeviceCreateArgs::default()
+            },
             contributor_pk,
             location_pk,
             exchange_pk,
-            device_type: DeviceType::Switch,
-            public_ip: [1, 1, 1, 1].into(),
-            metrics_publisher_pk: agent.pubkey(),
-            interfaces: vec![Interface {
-                version: CURRENT_INTERFACE_VERSION,
-                name: "eth0".to_string(),
-                ..Interface::default()
-            }],
-            ..DeviceCreateArgs::default()
-        })
+        )
         .await
         .unwrap();
 
     let target_device_pk = ledger
         .serviceability
-        .create_and_activate_device(DeviceCreateArgs {
-            code: "TargetDevice".to_string(),
+        .create_and_activate_device(
+            DeviceCreateArgs {
+                code: "TargetDevice".to_string(),
+                device_type: DeviceType::Switch,
+                public_ip: [2, 2, 2, 2].into(),
+                metrics_publisher_pk: agent.pubkey(),
+                interfaces: vec![Interface {
+                    version: CURRENT_INTERFACE_VERSION,
+                    name: "eth0".to_string(),
+                    ..Interface::default()
+                }],
+                ..DeviceCreateArgs::default()
+            },
             contributor_pk,
             location_pk,
             exchange_pk,
-            device_type: DeviceType::Switch,
-            public_ip: [2, 2, 2, 2].into(),
-            metrics_publisher_pk: agent.pubkey(),
-            interfaces: vec![Interface {
-                version: CURRENT_INTERFACE_VERSION,
-                name: "eth0".to_string(),
-                ..Interface::default()
-            }],
-            ..DeviceCreateArgs::default()
-        })
+        )
         .await
         .unwrap();
 
     // Other devices for the link
     let device_x_pk = ledger
         .serviceability
-        .create_and_activate_device(DeviceCreateArgs {
-            code: "DeviceX".to_string(),
+        .create_and_activate_device(
+            DeviceCreateArgs {
+                code: "DeviceX".to_string(),
+                device_type: DeviceType::Switch,
+                public_ip: [3, 3, 3, 3].into(),
+                metrics_publisher_pk: agent.pubkey(),
+                interfaces: vec![Interface {
+                    version: CURRENT_INTERFACE_VERSION,
+                    name: "eth0".to_string(),
+                    ..Interface::default()
+                }],
+                ..DeviceCreateArgs::default()
+            },
             contributor_pk,
             location_pk,
             exchange_pk,
-            device_type: DeviceType::Switch,
-            public_ip: [3, 3, 3, 3].into(),
-            metrics_publisher_pk: agent.pubkey(),
-            interfaces: vec![Interface {
-                version: CURRENT_INTERFACE_VERSION,
-                name: "eth0".to_string(),
-                ..Interface::default()
-            }],
-            ..DeviceCreateArgs::default()
-        })
+        )
         .await
         .unwrap();
 
     let device_y_pk = ledger
         .serviceability
-        .create_and_activate_device(DeviceCreateArgs {
-            code: "DeviceY".to_string(),
+        .create_and_activate_device(
+            DeviceCreateArgs {
+                code: "DeviceY".to_string(),
+                device_type: DeviceType::Switch,
+                public_ip: [4, 4, 4, 4].into(),
+                metrics_publisher_pk: agent.pubkey(),
+                interfaces: vec![Interface {
+                    version: CURRENT_INTERFACE_VERSION,
+                    name: "eth1".to_string(),
+                    ..Interface::default()
+                }],
+                ..DeviceCreateArgs::default()
+            },
             contributor_pk,
             location_pk,
             exchange_pk,
-            device_type: DeviceType::Switch,
-            public_ip: [4, 4, 4, 4].into(),
-            metrics_publisher_pk: agent.pubkey(),
-            interfaces: vec![Interface {
-                version: CURRENT_INTERFACE_VERSION,
-                name: "eth1".to_string(),
-                ..Interface::default()
-            }],
-            ..DeviceCreateArgs::default()
-        })
+        )
         .await
         .unwrap();
 
@@ -1074,9 +1096,6 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
         .create_and_activate_link(
             LinkCreateArgs {
                 code: "LINK1".to_string(),
-                contributor_pk,
-                side_a_pk: device_x_pk,
-                side_z_pk: device_y_pk,
                 link_type: LinkLinkType::L2,
                 bandwidth: 1000,
                 mtu: 1500,
@@ -1085,6 +1104,9 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
                 side_a_iface_name: "eth0".to_string(),
                 side_z_iface_name: "eth1".to_string(),
             },
+            contributor_pk,
+            device_x_pk,
+            device_y_pk,
             1,
             "10.1.1.0/30".parse().unwrap(),
         )
@@ -1149,41 +1171,45 @@ async fn test_initialize_device_latency_samples_succeeds_with_reversed_link_side
 
     let origin_device_pk = ledger
         .serviceability
-        .create_and_activate_device(DeviceCreateArgs {
-            code: "OriginDevice".into(),
+        .create_and_activate_device(
+            DeviceCreateArgs {
+                code: "OriginDevice".into(),
+                device_type: DeviceType::Switch,
+                public_ip: [10, 0, 0, 1].into(),
+                metrics_publisher_pk: agent.pubkey(),
+                interfaces: vec![Interface {
+                    version: CURRENT_INTERFACE_VERSION,
+                    name: "eth0".to_string(),
+                    ..Interface::default()
+                }],
+                ..DeviceCreateArgs::default()
+            },
             contributor_pk,
             location_pk,
             exchange_pk,
-            device_type: DeviceType::Switch,
-            public_ip: [10, 0, 0, 1].into(),
-            metrics_publisher_pk: agent.pubkey(),
-            interfaces: vec![Interface {
-                version: CURRENT_INTERFACE_VERSION,
-                name: "eth0".to_string(),
-                ..Interface::default()
-            }],
-            ..DeviceCreateArgs::default()
-        })
+        )
         .await
         .unwrap();
 
     let target_device_pk = ledger
         .serviceability
-        .create_and_activate_device(DeviceCreateArgs {
-            code: "TargetDevice".into(),
+        .create_and_activate_device(
+            DeviceCreateArgs {
+                code: "TargetDevice".into(),
+                device_type: DeviceType::Switch,
+                public_ip: [10, 0, 0, 2].into(),
+                metrics_publisher_pk: agent.pubkey(),
+                interfaces: vec![Interface {
+                    version: CURRENT_INTERFACE_VERSION,
+                    name: "eth1".to_string(),
+                    ..Interface::default()
+                }],
+                ..DeviceCreateArgs::default()
+            },
             contributor_pk,
             location_pk,
             exchange_pk,
-            device_type: DeviceType::Switch,
-            public_ip: [10, 0, 0, 2].into(),
-            metrics_publisher_pk: agent.pubkey(),
-            interfaces: vec![Interface {
-                version: CURRENT_INTERFACE_VERSION,
-                name: "eth1".to_string(),
-                ..Interface::default()
-            }],
-            ..DeviceCreateArgs::default()
-        })
+        )
         .await
         .unwrap();
 
@@ -1193,9 +1219,6 @@ async fn test_initialize_device_latency_samples_succeeds_with_reversed_link_side
         .create_and_activate_link(
             LinkCreateArgs {
                 code: "LINK1".into(),
-                contributor_pk,
-                side_a_pk: target_device_pk,
-                side_z_pk: origin_device_pk,
                 link_type: LinkLinkType::L2,
                 bandwidth: 1000,
                 mtu: 1500,
@@ -1204,6 +1227,9 @@ async fn test_initialize_device_latency_samples_succeeds_with_reversed_link_side
                 side_a_iface_name: "eth1".to_string(),
                 side_z_iface_name: "eth0".to_string(),
             },
+            contributor_pk,
+            target_device_pk,
+            origin_device_pk,
             1,
             "192.168.0.0/24".parse().unwrap(),
         )
@@ -1405,42 +1431,46 @@ async fn test_initialize_device_latency_samples_fail_agent_not_owner_of_origin_d
     // Origin device: activated, owned by owner_agent
     let origin_device_pk = ledger
         .serviceability
-        .create_and_activate_device(DeviceCreateArgs {
-            code: "A".to_string(),
+        .create_and_activate_device(
+            DeviceCreateArgs {
+                code: "A".to_string(),
+                device_type: DeviceType::Switch,
+                public_ip: [1, 1, 1, 1].into(),
+                metrics_publisher_pk: owner_agent.pubkey(),
+                interfaces: vec![Interface {
+                    version: CURRENT_INTERFACE_VERSION,
+                    name: "eth0".to_string(),
+                    ..Interface::default()
+                }],
+                ..DeviceCreateArgs::default()
+            },
             contributor_pk,
             location_pk,
             exchange_pk,
-            device_type: DeviceType::Switch,
-            public_ip: [1, 1, 1, 1].into(),
-            metrics_publisher_pk: owner_agent.pubkey(),
-            interfaces: vec![Interface {
-                version: CURRENT_INTERFACE_VERSION,
-                name: "eth0".to_string(),
-                ..Interface::default()
-            }],
-            ..DeviceCreateArgs::default()
-        })
+        )
         .await
         .unwrap();
 
     // Target device: also valid
     let target_device_pk = ledger
         .serviceability
-        .create_and_activate_device(DeviceCreateArgs {
-            code: "Z".to_string(),
+        .create_and_activate_device(
+            DeviceCreateArgs {
+                code: "Z".to_string(),
+                device_type: DeviceType::Switch,
+                public_ip: [2, 2, 2, 2].into(),
+                metrics_publisher_pk: unauthorized_agent.pubkey(),
+                interfaces: vec![Interface {
+                    version: CURRENT_INTERFACE_VERSION,
+                    name: "eth1".to_string(),
+                    ..Interface::default()
+                }],
+                ..DeviceCreateArgs::default()
+            },
             contributor_pk,
             location_pk,
             exchange_pk,
-            device_type: DeviceType::Switch,
-            public_ip: [2, 2, 2, 2].into(),
-            metrics_publisher_pk: unauthorized_agent.pubkey(),
-            interfaces: vec![Interface {
-                version: CURRENT_INTERFACE_VERSION,
-                name: "eth1".to_string(),
-                ..Interface::default()
-            }],
-            ..DeviceCreateArgs::default()
-        })
+        )
         .await
         .unwrap();
 
@@ -1454,12 +1484,12 @@ async fn test_initialize_device_latency_samples_fail_agent_not_owner_of_origin_d
                 mtu: 1500,
                 delay_ns: 10,
                 jitter_ns: 1,
-                contributor_pk,
-                side_a_pk: origin_device_pk,
-                side_z_pk: target_device_pk,
                 side_a_iface_name: "eth0".to_string(),
                 side_z_iface_name: "eth1".to_string(),
             },
+            contributor_pk,
+            origin_device_pk,
+            target_device_pk,
             1,
             "10.0.0.0/24".parse().unwrap(),
         )

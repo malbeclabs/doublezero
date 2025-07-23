@@ -32,9 +32,6 @@ impl CreateLinkCommand {
             .execute_transaction(
                 DoubleZeroInstruction::CreateLink(LinkCreateArgs {
                     code: self.code.to_string(),
-                    contributor_pk: self.contributor_pk,
-                    side_a_pk: self.side_a_pk,
-                    side_z_pk: self.side_z_pk,
                     link_type: self.link_type,
                     bandwidth: self.bandwidth,
                     mtu: self.mtu,

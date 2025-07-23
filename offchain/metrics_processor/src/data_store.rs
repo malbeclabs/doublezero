@@ -1,8 +1,8 @@
-use anyhow::Result;
 use chrono::{DateTime, Utc};
+use data_fetcher::fetcher::FetchData;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::Path};
+use std::{collections::HashMap, convert::TryInto};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DataStore {
@@ -13,9 +13,193 @@ pub struct DataStore {
     pub users: HashMap<String, User>,
     pub multicast_groups: HashMap<String, MulticastGroup>,
     pub telemetry_samples: Vec<TelemetrySample>,
-    pub internet_baselines: Vec<InternetBaseline>,
     pub demand_matrix: Vec<DemandEntry>,
     pub metadata: FetchMetadata,
+}
+
+impl TryFrom<FetchData> for DataStore {
+    type Error = anyhow::Error;
+
+    fn try_from(fetch_data: FetchData) -> std::result::Result<Self, Self::Error> {
+        let mut data_store = DataStore::new(fetch_data.after_us, fetch_data.before_us);
+
+        // Convert locations
+        for dz_loc in fetch_data.dz_serviceability.locations {
+            let location = Location {
+                pubkey: dz_loc.pubkey.to_string(),
+                owner: dz_loc.owner.to_string(),
+                index: dz_loc.index.try_into().map_err(|_| {
+                    anyhow::anyhow!("Location index {} too large for u64", dz_loc.index)
+                })?,
+                bump_seed: dz_loc.bump_seed,
+                lat: dz_loc.lat,
+                lng: dz_loc.lng,
+                loc_id: dz_loc.loc_id,
+                status: dz_loc.status,
+                code: dz_loc.code,
+                name: dz_loc.name,
+                country: dz_loc.country,
+            };
+            data_store
+                .locations
+                .insert(location.pubkey.clone(), location);
+        }
+
+        // Convert exchanges
+        for dz_ex in fetch_data.dz_serviceability.exchanges {
+            let exchange = Exchange {
+                pubkey: dz_ex.pubkey.to_string(),
+                owner: dz_ex.owner.to_string(),
+                index: dz_ex.index.try_into().map_err(|_| {
+                    anyhow::anyhow!("Exchange index {} too large for u64", dz_ex.index)
+                })?,
+                bump_seed: dz_ex.bump_seed,
+                lat: dz_ex.lat,
+                lng: dz_ex.lng,
+                loc_id: dz_ex.loc_id,
+                status: dz_ex.status,
+                code: dz_ex.code,
+                name: dz_ex.name,
+            };
+            data_store
+                .exchanges
+                .insert(exchange.pubkey.clone(), exchange);
+        }
+
+        // Convert devices
+        for dz_dev in fetch_data.dz_serviceability.devices {
+            let device = Device {
+                pubkey: dz_dev.pubkey.to_string(),
+                owner: dz_dev.owner.to_string(),
+                index: dz_dev.index.try_into().map_err(|_| {
+                    anyhow::anyhow!("Device index {} too large for u64", dz_dev.index)
+                })?,
+                bump_seed: dz_dev.bump_seed,
+                location_pubkey: dz_dev.location_pubkey.map(|pk| pk.to_string()),
+                exchange_pubkey: dz_dev.exchange_pubkey.map(|pk| pk.to_string()),
+                device_type: dz_dev.device_type,
+                public_ip: dz_dev.public_ip,
+                status: dz_dev.status,
+                code: dz_dev.code,
+                dz_prefixes: dz_dev.dz_prefixes,
+                metrics_publisher_pk: dz_dev.metrics_publisher_pk.to_string(),
+            };
+            data_store.devices.insert(device.pubkey.clone(), device);
+        }
+
+        // Convert links
+        for dz_link in fetch_data.dz_serviceability.links {
+            let link = Link {
+                pubkey: dz_link.pubkey.to_string(),
+                owner: dz_link.owner.to_string(),
+                index: dz_link.index.try_into().map_err(|_| {
+                    anyhow::anyhow!("Link index {} too large for u64", dz_link.index)
+                })?,
+                bump_seed: dz_link.bump_seed,
+                from_device_pubkey: dz_link.from_device_pubkey.map(|pk| pk.to_string()),
+                to_device_pubkey: dz_link.to_device_pubkey.map(|pk| pk.to_string()),
+                link_type: dz_link.link_type,
+                bandwidth: dz_link.bandwidth,
+                mtu: dz_link.mtu,
+                delay_ns: dz_link.delay_ns,
+                jitter_ns: dz_link.jitter_ns,
+                tunnel_id: dz_link.tunnel_id,
+                tunnel_net: vec![dz_link.tunnel_net],
+                status: dz_link.status,
+                code: dz_link.code,
+            };
+            data_store.links.insert(link.pubkey.clone(), link);
+        }
+
+        // Convert users
+        for dz_user in fetch_data.dz_serviceability.users {
+            let user = User {
+                pubkey: dz_user.pubkey.to_string(),
+                owner: dz_user.owner.to_string(),
+                index: dz_user.index.try_into().map_err(|_| {
+                    anyhow::anyhow!("User index {} too large for u64", dz_user.index)
+                })?,
+                bump_seed: dz_user.bump_seed,
+                user_type: dz_user.user_type,
+                tenant_pk: dz_user.tenant_pk.to_string(),
+                device_pk: dz_user.device_pk.map(|pk| pk.to_string()),
+                cyoa_type: dz_user.cyoa_type,
+                client_ip: dz_user.client_ip,
+                dz_ip: dz_user.dz_ip,
+                tunnel_id: dz_user.tunnel_id,
+                tunnel_net: vec![dz_user.tunnel_net],
+                status: dz_user.status,
+                publishers: dz_user.publishers.iter().map(|pk| pk.to_string()).collect(),
+                subscribers: dz_user
+                    .subscribers
+                    .iter()
+                    .map(|pk| pk.to_string())
+                    .collect(),
+            };
+            data_store.users.insert(user.pubkey.clone(), user);
+        }
+
+        // Convert multicast groups
+        for dz_group in fetch_data.dz_serviceability.multicast_groups {
+            let group = MulticastGroup {
+                pubkey: dz_group.pubkey.to_string(),
+                owner: dz_group.owner.to_string(),
+                index: dz_group.index.try_into().map_err(|_| {
+                    anyhow::anyhow!("MulticastGroup index {} too large for u64", dz_group.index)
+                })?,
+                bump_seed: dz_group.bump_seed,
+                tenant_pk: dz_group.tenant_pk.to_string(),
+                multicast_ip: dz_group.multicast_ip,
+                max_bandwidth: dz_group.max_bandwidth,
+                status: dz_group.status,
+                code: dz_group.code,
+                pub_allowlist: dz_group
+                    .pub_allowlist
+                    .iter()
+                    .map(|pk| pk.to_string())
+                    .collect(),
+                sub_allowlist: dz_group
+                    .sub_allowlist
+                    .iter()
+                    .map(|pk| pk.to_string())
+                    .collect(),
+                publishers: dz_group
+                    .publishers
+                    .iter()
+                    .map(|pk| pk.to_string())
+                    .collect(),
+                subscribers: dz_group
+                    .subscribers
+                    .iter()
+                    .map(|pk| pk.to_string())
+                    .collect(),
+            };
+            data_store
+                .multicast_groups
+                .insert(group.pubkey.clone(), group);
+        }
+
+        // Convert telemetry samples
+        for db_sample in fetch_data.dz_telemetry.device_latency_samples {
+            let sample = TelemetrySample {
+                pubkey: db_sample.pubkey.to_string(),
+                epoch: db_sample.epoch,
+                origin_device_pk: db_sample.origin_device_pk.to_string(),
+                target_device_pk: db_sample.target_device_pk.to_string(),
+                link_pk: db_sample.link_pk.to_string(),
+                origin_device_location_pk: db_sample.origin_device_location_pk.to_string(),
+                target_device_location_pk: db_sample.target_device_location_pk.to_string(),
+                origin_device_agent_pk: db_sample.origin_device_agent_pk.to_string(),
+                sampling_interval_us: db_sample.sampling_interval_us,
+                start_timestamp_us: db_sample.start_timestamp_us,
+                samples: db_sample.samples,
+                sample_count: db_sample.sample_count,
+            };
+            data_store.telemetry_samples.push(sample);
+        }
+
+        Ok(data_store)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -135,21 +319,6 @@ pub struct TelemetrySample {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InternetBaseline {
-    pub from_location_code: String,
-    pub to_location_code: String,
-    pub from_lat: f64,
-    pub from_lng: f64,
-    pub to_lat: f64,
-    pub to_lng: f64,
-    pub distance_km: Decimal,
-    pub latency_ms: Decimal,
-    pub jitter_ms: Decimal,
-    pub packet_loss: Decimal,
-    pub bandwidth_mbps: Decimal,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DemandEntry {
     pub start_code: String,
     pub end_code: String,
@@ -174,7 +343,6 @@ impl DataStore {
             users: HashMap::new(),
             multicast_groups: HashMap::new(),
             telemetry_samples: Vec::new(),
-            internet_baselines: Vec::new(),
             demand_matrix: Vec::new(),
             metadata: FetchMetadata {
                 after_us,
@@ -225,47 +393,5 @@ impl DataStore {
             .as_ref()
             .and_then(|pk| self.devices.get(pk));
         (from_device, to_device)
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CachedData {
-    pub version: String,
-    pub timestamp: DateTime<Utc>,
-    pub data_store: DataStore,
-    pub processed_metrics: Option<ProcessedMetrics>,
-    pub shapley_inputs: Option<crate::shapley_types::ShapleyInputs>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProcessedMetrics {
-    pub private_links_count: usize,
-    pub public_links_count: usize,
-    pub demand_entries_count: usize,
-    pub telemetry_stats_count: usize,
-}
-
-impl CachedData {
-    pub fn new(data_store: DataStore) -> Self {
-        Self {
-            version: env!("CARGO_PKG_VERSION").to_string(),
-            timestamp: Utc::now(),
-            data_store,
-            processed_metrics: None,
-            shapley_inputs: None,
-        }
-    }
-
-    pub fn save(&self, path: &Path) -> Result<()> {
-        let json = serde_json::to_string_pretty(self)?;
-        std::fs::create_dir_all(path.parent().unwrap_or(Path::new(".")))?;
-        std::fs::write(path, json)?;
-        Ok(())
-    }
-
-    pub fn load(path: &Path) -> Result<Self> {
-        let json = std::fs::read_to_string(path)?;
-        let cached: CachedData = serde_json::from_str(&json)?;
-        Ok(cached)
     }
 }

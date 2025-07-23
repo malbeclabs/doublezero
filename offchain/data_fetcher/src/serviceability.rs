@@ -1,11 +1,13 @@
-use crate::rpc;
+use crate::{
+    rpc,
+    types::{
+        DZDevice, DZExchange, DZLink, DZLocation, DZMulticastGroup, DZServiceabilityData, DZUser,
+    },
+};
 use anyhow::{Context, Result};
 use doublezero_serviceability::state::{
     accounttype::AccountType, device::Device, exchange::Exchange, link::Link, location::Location,
     multicastgroup::MulticastGroup, user::User,
-};
-use metrics_processor::types::{
-    DbDevice, DbExchange, DbLink, DbLocation, DbMulticastGroup, DbUser, NetworkData,
 };
 use solana_account_decoder::UiAccountEncoding;
 use solana_client::{
@@ -18,11 +20,11 @@ use tracing::{debug, info};
 
 /// Fetch all network serviceability data at a given timestamp
 /// For now, we fetch the latest state (no historical slot lookup)
-pub async fn fetch_network_data(
+pub async fn fetch(
     rpc_client: &RpcClient,
     program_id: &str,
     timestamp_us: u64,
-) -> Result<NetworkData> {
+) -> Result<DZServiceabilityData> {
     let program_pubkey = Pubkey::from_str(program_id)
         .with_context(|| format!("Invalid serviceability program ID: {program_id}"))?;
 
@@ -59,7 +61,7 @@ pub async fn fetch_network_data(
     );
 
     // Process accounts by type
-    let mut network_data = NetworkData::default();
+    let mut serviceability_data = DZServiceabilityData::default();
     let mut processed_count = 0;
 
     // TODO: rayon?
@@ -74,40 +76,44 @@ pub async fn fetch_network_data(
         match account_type {
             AccountType::Location => {
                 let location = Location::from(&account.data[..]);
-                network_data
+                serviceability_data
                     .locations
-                    .push(DbLocation::from_solana(*pubkey, &location));
+                    .push(DZLocation::from_solana(*pubkey, &location));
                 processed_count += 1;
             }
             AccountType::Exchange => {
                 let exchange = Exchange::from(&account.data[..]);
-                network_data
+                serviceability_data
                     .exchanges
-                    .push(DbExchange::from_solana(*pubkey, &exchange));
+                    .push(DZExchange::from_solana(*pubkey, &exchange));
                 processed_count += 1;
             }
             AccountType::Device => {
                 let device = Device::from(&account.data[..]);
-                network_data
+                serviceability_data
                     .devices
-                    .push(DbDevice::from_solana(*pubkey, &device));
+                    .push(DZDevice::from_solana(*pubkey, &device));
                 processed_count += 1;
             }
             AccountType::Link => {
                 let link = Link::from(&account.data[..]);
-                network_data.links.push(DbLink::from_solana(*pubkey, &link));
+                serviceability_data
+                    .links
+                    .push(DZLink::from_solana(*pubkey, &link));
                 processed_count += 1;
             }
             AccountType::User => {
                 let user = User::from(&account.data[..]);
-                network_data.users.push(DbUser::from_solana(*pubkey, &user));
+                serviceability_data
+                    .users
+                    .push(DZUser::from_solana(*pubkey, &user));
                 processed_count += 1;
             }
             AccountType::MulticastGroup => {
                 let group = MulticastGroup::from(&account.data[..]);
-                network_data
+                serviceability_data
                     .multicast_groups
-                    .push(DbMulticastGroup::from_solana(*pubkey, &group));
+                    .push(DZMulticastGroup::from_solana(*pubkey, &group));
                 processed_count += 1;
             }
             _ => {
@@ -124,30 +130,13 @@ pub async fn fetch_network_data(
     info!(
         "Processed {} serviceability accounts: {} locations, {} exchanges, {} devices, {} links, {} users, {} multicast groups",
         processed_count,
-        network_data.locations.len(),
-        network_data.exchanges.len(),
-        network_data.devices.len(),
-        network_data.links.len(),
-        network_data.users.len(),
-        network_data.multicast_groups.len(),
+        serviceability_data.locations.len(),
+        serviceability_data.exchanges.len(),
+        serviceability_data.devices.len(),
+        serviceability_data.links.len(),
+        serviceability_data.users.len(),
+        serviceability_data.multicast_groups.len(),
     );
 
-    Ok(network_data)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_network_data_default() {
-        let network_data = NetworkData::default();
-
-        assert_eq!(network_data.locations.len(), 0);
-        assert_eq!(network_data.exchanges.len(), 0);
-        assert_eq!(network_data.devices.len(), 0);
-        assert_eq!(network_data.links.len(), 0);
-        assert_eq!(network_data.users.len(), 0);
-        assert_eq!(network_data.multicast_groups.len(), 0);
-    }
+    Ok(serviceability_data)
 }

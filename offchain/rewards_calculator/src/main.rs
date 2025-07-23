@@ -39,7 +39,7 @@ async fn main() -> Result<()> {
 
     // Use in-memory processing
     info!("Using in-memory processing");
-    Orchestrator::run_with_cli(&cli).await
+    Orchestrator::run(&cli).await
 }
 
 fn init_logging(log_level: &str) -> Result<()> {

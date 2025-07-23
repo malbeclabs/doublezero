@@ -1,19 +1,14 @@
-use chrono::{DateTime, Utc};
-use doublezero_serviceability::{
-    state::{
-        device::Device, exchange::Exchange, link::Link, location::Location,
-        multicastgroup::MulticastGroup, user::User,
-    },
-    types::{NetworkV4, NetworkV4List},
+use doublezero_serviceability::state::{
+    device::Device, exchange::Exchange, link::Link, location::Location,
+    multicastgroup::MulticastGroup, user::User,
 };
 use doublezero_telemetry::state::device_latency_samples::DeviceLatencySamples;
 use serde::{Deserialize, Serialize};
 use solana_sdk::pubkey::Pubkey;
-use std::fmt::{Display, Formatter};
 
 /// DB representation of a Location
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DbLocation {
+pub struct DZLocation {
     pub pubkey: Pubkey,
     pub owner: Pubkey,
     pub index: u128,
@@ -27,7 +22,7 @@ pub struct DbLocation {
     pub country: String,
 }
 
-impl DbLocation {
+impl DZLocation {
     pub fn from_solana(pubkey: Pubkey, location: &Location) -> Self {
         Self {
             pubkey,
@@ -47,7 +42,7 @@ impl DbLocation {
 
 /// DB representation of an Exchange
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DbExchange {
+pub struct DZExchange {
     pub pubkey: Pubkey,
     pub owner: Pubkey,
     pub index: u128,
@@ -60,7 +55,7 @@ pub struct DbExchange {
     pub name: String,
 }
 
-impl DbExchange {
+impl DZExchange {
     pub fn from_solana(pubkey: Pubkey, exchange: &Exchange) -> Self {
         Self {
             pubkey,
@@ -79,7 +74,7 @@ impl DbExchange {
 
 /// DB representation of a Device
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DbDevice {
+pub struct DZDevice {
     pub pubkey: Pubkey,
     pub owner: Pubkey,
     pub index: u128,
@@ -90,11 +85,11 @@ pub struct DbDevice {
     pub public_ip: String,
     pub status: String,
     pub code: String,
-    pub dz_prefixes: serde_json::Value,
+    pub dz_prefixes: Vec<String>,
     pub metrics_publisher_pk: Pubkey,
 }
 
-impl DbDevice {
+impl DZDevice {
     pub fn from_solana(pubkey: Pubkey, device: &Device) -> Self {
         Self {
             pubkey,
@@ -115,37 +110,19 @@ impl DbDevice {
             public_ip: device.public_ip.to_string(),
             status: device.status.to_string(),
             code: device.code.clone(),
-            dz_prefixes: networkv4_list_to_json(&device.dz_prefixes),
+            dz_prefixes: device
+                .dz_prefixes
+                .iter()
+                .map(|net| format!("{}/{}", net.ip(), net.prefix()))
+                .collect(),
             metrics_publisher_pk: device.metrics_publisher_pk,
         }
     }
 }
 
-/// Helper to convert NetworkV4 to JSON
-fn networkv4_to_json(network: &NetworkV4) -> serde_json::Value {
-    serde_json::json!({
-        "ip": network.ip().to_string(),
-        "prefix": network.prefix()
-    })
-}
-
-/// Helper to convert NetworkV4List to JSON
-fn networkv4_list_to_json(networks: &NetworkV4List) -> serde_json::Value {
-    let networks: Vec<_> = networks
-        .iter()
-        .map(|network| {
-            serde_json::json!({
-                "ip": network.ip().to_string(),
-                "prefix": network.prefix()
-            })
-        })
-        .collect();
-    serde_json::json!(networks)
-}
-
 /// DB representation of a Link
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DbLink {
+pub struct DZLink {
     pub pubkey: Pubkey,
     pub owner: Pubkey,
     pub index: u128,
@@ -158,12 +135,12 @@ pub struct DbLink {
     pub delay_ns: u64,
     pub jitter_ns: u64,
     pub tunnel_id: u16,
-    pub tunnel_net: serde_json::Value,
+    pub tunnel_net: String,
     pub status: String,
     pub code: String,
 }
 
-impl DbLink {
+impl DZLink {
     pub fn from_solana(pubkey: Pubkey, link: &Link) -> Self {
         Self {
             pubkey,
@@ -186,7 +163,7 @@ impl DbLink {
             delay_ns: link.delay_ns,
             jitter_ns: link.jitter_ns,
             tunnel_id: link.tunnel_id,
-            tunnel_net: networkv4_to_json(&link.tunnel_net),
+            tunnel_net: format!("{}/{}", link.tunnel_net.ip(), link.tunnel_net.prefix()),
             status: link.status.to_string(),
             code: link.code.clone(),
         }
@@ -195,7 +172,7 @@ impl DbLink {
 
 /// DB representation of a User
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DbUser {
+pub struct DZUser {
     pub pubkey: Pubkey,
     pub owner: Pubkey,
     pub index: u128,
@@ -207,13 +184,13 @@ pub struct DbUser {
     pub client_ip: String,
     pub dz_ip: String,
     pub tunnel_id: u16,
-    pub tunnel_net: serde_json::Value,
+    pub tunnel_net: String,
     pub status: String,
     pub publishers: Vec<String>,
     pub subscribers: Vec<String>,
 }
 
-impl DbUser {
+impl DZUser {
     pub fn from_solana(pubkey: Pubkey, user: &User) -> Self {
         Self {
             pubkey,
@@ -231,7 +208,7 @@ impl DbUser {
             client_ip: user.client_ip.to_string(),
             dz_ip: user.dz_ip.to_string(),
             tunnel_id: user.tunnel_id,
-            tunnel_net: networkv4_to_json(&user.tunnel_net),
+            tunnel_net: format!("{}/{}", user.tunnel_net.ip(), user.tunnel_net.prefix()),
             status: user.status.to_string(),
             publishers: user.publishers.iter().map(|p| p.to_string()).collect(),
             subscribers: user.subscribers.iter().map(|s| s.to_string()).collect(),
@@ -241,7 +218,7 @@ impl DbUser {
 
 /// DB representation of a Multicast Group
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DbMulticastGroup {
+pub struct DZMulticastGroup {
     pub pubkey: Pubkey,
     pub owner: Pubkey,
     pub index: u128,
@@ -257,7 +234,7 @@ pub struct DbMulticastGroup {
     pub subscribers: Vec<String>,
 }
 
-impl DbMulticastGroup {
+impl DZMulticastGroup {
     pub fn from_solana(pubkey: Pubkey, group: &MulticastGroup) -> Self {
         Self {
             pubkey,
@@ -279,13 +256,13 @@ impl DbMulticastGroup {
 
 /// Struct for all network data
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct NetworkData {
-    pub locations: Vec<DbLocation>,
-    pub exchanges: Vec<DbExchange>,
-    pub devices: Vec<DbDevice>,
-    pub links: Vec<DbLink>,
-    pub users: Vec<DbUser>,
-    pub multicast_groups: Vec<DbMulticastGroup>,
+pub struct DZServiceabilityData {
+    pub locations: Vec<DZLocation>,
+    pub exchanges: Vec<DZExchange>,
+    pub devices: Vec<DZDevice>,
+    pub links: Vec<DZLink>,
+    pub users: Vec<DZUser>,
+    pub multicast_groups: Vec<DZMulticastGroup>,
 }
 
 /// DB representation of DeviceLatencySamples
@@ -326,39 +303,8 @@ impl DbDeviceLatencySamples {
 
 /// Telemetry data container
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct TelemetryData {
+pub struct DZDTelemetryData {
     pub device_latency_samples: Vec<DbDeviceLatencySamples>,
-}
-
-/// Combined network and telemetry data
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct RewardsData {
-    pub network: NetworkData,
-    pub telemetry: TelemetryData,
-    pub after_us: u64,
-    pub before_us: u64,
-    pub fetched_at: DateTime<Utc>,
-}
-
-impl Display for RewardsData {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "samples (count): {}, after_us: {}, before_us: {}, fetched_at: {}",
-            self.telemetry.device_latency_samples.len(),
-            self.after_us,
-            self.before_us,
-            self.fetched_at
-        )
-    }
-}
-
-/// Represents a single contributor's calculated reward proportion.
-#[derive(Debug, Clone)]
-pub struct ContributorReward {
-    pub entity: Pubkey,
-    pub proportion: u64,
-    pub economic_burn_rate: u64,
 }
 
 #[cfg(test)]
@@ -381,33 +327,6 @@ mod tests {
             Ipv4Addr::new(255, 255, 255, 255).to_string(),
             "255.255.255.255"
         );
-    }
-
-    #[test]
-    fn test_networkv4_to_json() {
-        let network = NetworkV4::new(Ipv4Addr::new(192, 168, 1, 0), 24).unwrap();
-        let json = networkv4_to_json(&network);
-
-        assert!(json.is_object());
-        assert_eq!(json["ip"], "192.168.1.0");
-        assert_eq!(json["prefix"], 24);
-    }
-
-    #[test]
-    fn test_networkv4_list_to_json() {
-        let networks = NetworkV4List::from(vec![
-            NetworkV4::new(Ipv4Addr::new(192, 168, 1, 0), 24).unwrap(),
-            NetworkV4::new(Ipv4Addr::new(10, 0, 0, 0), 8).unwrap(),
-        ]);
-        let json = networkv4_list_to_json(&networks);
-
-        assert!(json.is_array());
-        let arr = json.as_array().unwrap();
-        assert_eq!(arr.len(), 2);
-        assert_eq!(arr[0]["ip"], "192.168.1.0");
-        assert_eq!(arr[0]["prefix"], 24);
-        assert_eq!(arr[1]["ip"], "10.0.0.0");
-        assert_eq!(arr[1]["prefix"], 8);
     }
 
     #[test]
@@ -448,34 +367,4 @@ mod tests {
         assert_eq!(db_samples.samples, vec![100, 200, 300]);
         assert_eq!(db_samples.sample_count, 3);
     }
-
-    #[test]
-    fn test_rewards_data_default() {
-        let rewards_data = RewardsData::default();
-
-        assert_eq!(rewards_data.network.locations.len(), 0);
-        assert_eq!(rewards_data.network.exchanges.len(), 0);
-        assert_eq!(rewards_data.network.devices.len(), 0);
-        assert_eq!(rewards_data.network.links.len(), 0);
-        assert_eq!(rewards_data.network.users.len(), 0);
-        assert_eq!(rewards_data.network.multicast_groups.len(), 0);
-        assert_eq!(rewards_data.telemetry.device_latency_samples.len(), 0);
-    }
-}
-
-// TODO: This should go away
-/// Internet baseline metrics between two locations
-#[derive(Debug, Clone)]
-pub struct InternetBaseline {
-    pub from_location_code: String,
-    pub to_location_code: String,
-    pub from_lat: f64,
-    pub from_lng: f64,
-    pub to_lat: f64,
-    pub to_lng: f64,
-    pub distance_km: f64,
-    pub latency_ms: f64,
-    pub jitter_ms: f64,
-    pub packet_loss: f64,
-    pub bandwidth_mbps: f64,
 }

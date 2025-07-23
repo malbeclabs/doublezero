@@ -1,9 +1,11 @@
-use crate::rpc;
+use crate::{
+    rpc,
+    types::{DZDTelemetryData, DbDeviceLatencySamples},
+};
 use anyhow::{Context, Result, bail};
 use doublezero_telemetry::state::device_latency_samples::{
     DEVICE_LATENCY_SAMPLES_HEADER_SIZE, DeviceLatencySamples, DeviceLatencySamplesHeader,
 };
-use metrics_processor::types::{DbDeviceLatencySamples, TelemetryData};
 use solana_account_decoder::UiAccountEncoding;
 use solana_client::{
     rpc_client::RpcClient,
@@ -18,12 +20,12 @@ use tracing::{debug, info, warn};
 const ACCOUNT_TYPE_DISCRIMINATOR: u8 = 1;
 
 /// Fetch all telemetry data within a given time range
-pub async fn fetch_telemetry_data(
+pub async fn fetch(
     rpc_client: &RpcClient,
     program_id: &str,
     after_us: u64,
     before_us: u64,
-) -> Result<TelemetryData> {
+) -> Result<DZDTelemetryData> {
     let program_pubkey = Pubkey::from_str(program_id)
         .with_context(|| format!("Invalid telemetry program ID: {program_id}"))?;
 
@@ -143,7 +145,7 @@ pub async fn fetch_telemetry_data(
         );
     }
 
-    Ok(TelemetryData {
+    Ok(DZDTelemetryData {
         device_latency_samples,
     })
 }

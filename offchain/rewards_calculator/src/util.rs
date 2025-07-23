@@ -1,7 +1,9 @@
 use anyhow::{Context, Result, anyhow, bail};
 use chrono::{DateTime, TimeZone, Utc, offset::LocalResult};
 use humantime::{parse_duration, parse_rfc3339_weak};
+use network_shapley::types::PrivateLink;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tabled::{builder::Builder as TableBuilder, settings::Style};
 
 /// Parse a time range from before/after strings
 pub fn parse_time_range(before: &str, after: &str) -> Result<(u64, u64)> {
@@ -66,4 +68,32 @@ pub fn micros_to_datetime(micros: u64) -> Result<DateTime<Utc>> {
         LocalResult::Single(t) => Ok(t),
         other => bail!(format!("{other:?}")),
     }
+}
+
+pub fn print_private_links(private_links: &[PrivateLink]) -> String {
+    let mut printable = vec![vec![
+        "device1".to_string(),
+        "device2".to_string(),
+        "latency(ms)".to_string(),
+        "bandwidth(Gbps)".to_string(),
+        "uptime".to_string(),
+        "shared".to_string(),
+    ]];
+
+    for pl in private_links {
+        let row = vec![
+            pl.device1.to_string(),
+            pl.device2.to_string(),
+            pl.latency.to_string(),
+            pl.bandwidth.to_string(),
+            pl.uptime.to_string(),
+            format!("{:?}", pl.shared),
+        ];
+        printable.push(row);
+    }
+
+    TableBuilder::from(printable)
+        .build()
+        .with(Style::psql().remove_horizontals())
+        .to_string()
 }

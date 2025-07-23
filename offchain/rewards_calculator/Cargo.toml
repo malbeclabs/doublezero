@@ -23,6 +23,7 @@ sha2.workspace = true
 network-shapley.workspace = true
 solana-sdk.workspace = true
 svm-hash.workspace = true
+tabled.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

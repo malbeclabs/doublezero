@@ -27,8 +27,8 @@ const (
 	MaxDeviceLatencySamplesPerAccount = 35_000
 
 	// MaxInternetLatencySamplesPerAccount is the maximum number of samples that can be written to an internet latency samples account.
-	// This provides space for just over 12 samples per hour, or 1 sample every 5 minutes.
-	MaxInternetLatencySamplesPerAccount = 600
+	// This provides space for just over 1 sample per minute.
+	MaxInternetLatencySamplesPerAccount = 3000
 )
 
 // Telemetry Program IDs

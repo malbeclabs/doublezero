@@ -1,6 +1,7 @@
 use crate::data_store::{DataStore, TelemetrySample};
 use std::collections::HashMap;
 use tabled::{Table, Tabled, settings::Style};
+use tracing::debug;
 
 // Key: link_pk
 pub type TelemetryStatMap = HashMap<String, TelemetryStats>;
@@ -59,7 +60,7 @@ impl TelemetryProcessor {
                 .push(sample);
         }
 
-        tracing::info!(
+        debug!(
             "stats_by_circuit: {} circuits found",
             stats_by_circuit.len()
         );
@@ -118,7 +119,7 @@ impl TelemetryProcessor {
                     total_samples_in_range += 1;
                 }
 
-                tracing::debug!(
+                debug!(
                     "Sample filtering - start_idx: {}, end_idx: {}, actual_end: {}, samples_added: {}",
                     start_idx,
                     end_idx,

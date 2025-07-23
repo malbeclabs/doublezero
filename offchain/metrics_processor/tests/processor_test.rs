@@ -127,7 +127,7 @@ fn create_test_data_store_full() -> DataStore {
             from_device_pubkey: Some("dev1".to_string()),
             to_device_pubkey: Some("dev2".to_string()),
             link_type: "private".to_string(),
-            bandwidth: 1000000000, // 1 Gbps
+            bandwidth: 1_000_000_000, // 1 Gbps
             mtu: 1500,
             delay_ns: 10000000,
             jitter_ns: 2000000,
@@ -148,7 +148,7 @@ fn create_test_data_store_full() -> DataStore {
             from_device_pubkey: Some("dev2".to_string()),
             to_device_pubkey: Some("dev3".to_string()),
             link_type: "private".to_string(),
-            bandwidth: 500000000, // 500 Mbps
+            bandwidth: 10_000_000_000, // 10 Gbps
             mtu: 1500,
             delay_ns: 50000000,
             jitter_ns: 10000000,
@@ -253,7 +253,7 @@ fn test_process_private_links() {
         .find(|l| l.device1 == "NYC-R1" && l.device2 == "LON-R1");
     assert!(link1.is_some());
     let link1 = link1.unwrap();
-    assert_eq!(link1.bandwidth, 1000.0); // 1 Gbps
+    assert_eq!(link1.bandwidth, 1.0); // 1 Gbps
     assert!(link1.latency > 0.0);
 
     // Check second link
@@ -262,7 +262,7 @@ fn test_process_private_links() {
         .find(|l| l.device1 == "LON-R1" && l.device2 == "TYO-R1");
     assert!(link2.is_some());
     let link2 = link2.unwrap();
-    assert_eq!(link2.bandwidth, 500.0); // 500 Mbps
+    assert_eq!(link2.bandwidth, 10.0); // 10 Gbps
     assert!(link2.latency > 0.0);
 }
 

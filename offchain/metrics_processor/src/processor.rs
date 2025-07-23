@@ -7,7 +7,8 @@ use anyhow::Result;
 use network_shapley::types::{Demand, PrivateLink, PublicLink};
 use rust_decimal::{Decimal, prelude::ToPrimitive};
 use std::collections::{HashMap, HashSet};
-use tracing::info;
+use tabled::{builder::Builder as TableBuilder, settings::Style};
+use tracing::{debug, info};
 
 pub struct MetricsProcessor {
     data_store: DataStore,
@@ -45,8 +46,8 @@ impl MetricsProcessor {
         let device_to_location_map = self.get_device_to_location_map();
         let device_to_operator = self.get_device_to_operator_map();
 
-        info!("device_to_location_map: {device_to_location_map:?}");
-        info!("device_to_operator: {device_to_operator:?}");
+        debug!("device_to_location_map: {device_to_location_map:?}");
+        debug!("device_to_operator: {device_to_operator:?}");
 
         let telemetry_stats = TelemetryProcessor::calculate_all_stats(&self.data_store);
         info!(
@@ -54,9 +55,14 @@ impl MetricsProcessor {
             telemetry_stats.len()
         );
 
-        info!("\n{}", print_telemetry_stats(&telemetry_stats));
+        info!(
+            "Telemetry Stats:\n{}",
+            print_telemetry_stats(&telemetry_stats)
+        );
 
         let private_links = self.process_private_links(&telemetry_stats)?;
+        info!("Private Links:\n{}", print_private_links(&private_links));
+
         info!("Processed {} private links", private_links.len());
 
         let mut all_private_switches = HashSet::new();
@@ -146,14 +152,8 @@ impl MetricsProcessor {
                 _ => continue,
             };
 
-            let bandwidth_mbps = (link.bandwidth / 1_000_000) as f64;
-
-            let (latency_us, _jitter_us, _packet_loss) =
-                if let Some(stats) = telemetry_stats.get(&link.pubkey) {
-                    (stats.rtt_mean_us, stats.avg_jitter_us, stats.packet_loss)
-                } else {
-                    (10.0, 2.0, 0.0001)
-                };
+            // Convert bandwidth from bits/sec to Gbps for network-shapley
+            let bandwidth_gbps = (link.bandwidth / 1_000_000_000) as f64;
 
             // Create circuit key to match telemetry stats
             let circuit_key = format!(
@@ -161,28 +161,53 @@ impl MetricsProcessor {
                 from_device.pubkey, to_device.pubkey, link.pubkey
             );
 
-            let uptime = telemetry_stats
+            // Try both directions since telemetry is directional
+            let reverse_circuit_key = format!(
+                "{}:{}:{}",
+                to_device.pubkey, from_device.pubkey, link.pubkey
+            );
+
+            let stats = telemetry_stats
                 .get(&circuit_key)
+                .or_else(|| telemetry_stats.get(&reverse_circuit_key));
+
+            let latency_us = if let Some(stats) = stats {
+                stats.rtt_mean_us
+            } else {
+                // TODO: Default or no?
+                10.0
+            };
+
+            let uptime = stats
                 .map(|stats| {
-                    let sample_rate = if self.before_us > self.after_us {
-                        (stats.total_samples as f64)
-                            / ((self.before_us - self.after_us) as f64 / 1_000_000.0)
+                    // Calculate time range in seconds
+                    let time_range_seconds =
+                        (self.before_us.saturating_sub(self.after_us)) as f64 / 1_000_000.0;
+
+                    // Expected samples: one every 10 seconds
+                    let expected_samples = time_range_seconds / 10.0;
+
+                    // Uptime = actual samples / expected samples
+                    if expected_samples > 0.0 {
+                        (stats.total_samples as f64 / expected_samples).clamp(0.0, 1.0)
                     } else {
-                        0.0
-                    };
-                    (sample_rate / 10.0).clamp(0.0, 1.0)
+                        0.5
+                    }
                 })
-                .unwrap_or(1.0);
+                .unwrap_or(0.5); // Default to 50% if no stats found
 
-            // For now, just use latency as the cost (similar to network-shapley examples)
-            // TODO: Add more sophisticated cost calculation when ready
-            let cost = latency_us / 1000.0;
+            // Convert latency from microseconds to milliseconds
+            let latency_ms = latency_us / 1000.0;
 
+            // network-shapley-rs expects the following units for PrivateLink:
+            // - latency: milliseconds (ms) - we convert from microseconds
+            // - bandwidth: gigabits per second (Gbps) - we convert from bits/sec
+            // - uptime: fraction between 0.0 and 1.0 (1.0 = 100% uptime)
             private_links.push(PrivateLink::new(
-                from_device.code.clone(),
-                to_device.code.clone(),
-                cost,
-                bandwidth_mbps,
+                from_device.code.to_string(),
+                to_device.code.to_string(),
+                latency_ms,
+                bandwidth_gbps,
                 uptime,
                 None,
             ));
@@ -344,4 +369,32 @@ pub fn haversine_distance(lat1: f64, lng1: f64, lat2: f64, lng2: f64) -> f64 {
     let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
 
     EARTH_RADIUS_KM * c
+}
+
+fn print_private_links(private_links: &[PrivateLink]) -> String {
+    let mut printable = vec![vec![
+        "device1".to_string(),
+        "device2".to_string(),
+        "latency(ms)".to_string(),
+        "bandwidth(Gbps)".to_string(),
+        "uptime".to_string(),
+        "shared".to_string(),
+    ]];
+
+    for pl in private_links {
+        let row = vec![
+            pl.device1.to_string(),
+            pl.device2.to_string(),
+            pl.latency.to_string(),
+            pl.bandwidth.to_string(),
+            pl.uptime.to_string(),
+            format!("{:?}", pl.shared),
+        ];
+        printable.push(row);
+    }
+
+    TableBuilder::from(printable)
+        .build()
+        .with(Style::psql().remove_horizontals())
+        .to_string()
 }

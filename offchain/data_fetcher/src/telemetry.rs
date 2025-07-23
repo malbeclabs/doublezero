@@ -94,7 +94,7 @@ pub async fn fetch_telemetry_data(
                     if samples.header.start_timestamp_microseconds < before_us
                         && end_timestamp_us > after_us
                     {
-                        info!(
+                        debug!(
                             "Including samples: start={}, end={}, samples={}, interval={}μs",
                             samples.header.start_timestamp_microseconds,
                             end_timestamp_us,

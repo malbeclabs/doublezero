@@ -36,9 +36,6 @@ impl CreateDeviceCommand {
             .execute_transaction(
                 DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
                     code: self.code.clone(),
-                    contributor_pk: self.contributor_pk,
-                    location_pk: self.location_pk,
-                    exchange_pk: self.exchange_pk,
                     device_type: self.device_type,
                     public_ip: self.public_ip,
                     dz_prefixes: self.dz_prefixes.clone(),
@@ -137,9 +134,6 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
                     code: "test-device".to_string(),
-                    contributor_pk: contributor_pubkey,
-                    location_pk: location_pubkey,
-                    exchange_pk: exchange_pubkey,
                     device_type: DeviceType::Switch,
                     public_ip: [10, 0, 0, 1].into(),
                     dz_prefixes: "10.0.0.0/8".parse().unwrap(),

@@ -55,7 +55,6 @@ impl CreateSubscribeUserCommand {
             .execute_transaction(
                 DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
                     user_type: self.user_type,
-                    device_pk: self.device_pk,
                     cyoa_type: self.cyoa_type,
                     client_ip: self.client_ip,
                     publisher: self.publisher,

@@ -21,9 +21,6 @@ use solana_program::{
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct LinkCreateArgs {
     pub code: String,
-    pub contributor_pk: Pubkey,
-    pub side_a_pk: Pubkey,
-    pub side_z_pk: Pubkey,
     pub link_type: LinkLinkType,
     pub bandwidth: u64,
     pub mtu: u32,
@@ -37,8 +34,8 @@ impl fmt::Debug for LinkCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "code: {}, side_a_pk: {}, side_z_pk: {}, link_type: {:?}, bandwidth: {}, mtu: {}, delay_ns: {}, jitter_ns: {}, side_a_iface_name: {}, side_z_iface_name: {}",
-            self.code, self.side_a_pk, self.side_z_pk, self.link_type, self.bandwidth, self.mtu, self.delay_ns, self.jitter_ns, self.side_a_iface_name, self.side_z_iface_name
+            "code: {}, link_type: {:?}, bandwidth: {}, mtu: {}, delay_ns: {}, jitter_ns: {}, side_a_iface_name: {}, side_z_iface_name: {}",
+            self.code, self.link_type, self.bandwidth, self.mtu, self.delay_ns, self.jitter_ns, self.side_a_iface_name, self.side_z_iface_name
         )
     }
 }
@@ -139,9 +136,9 @@ pub fn process_create_link(
         index: globalstate.account_index,
         bump_seed,
         code: value.code.clone(),
-        contributor_pk: value.contributor_pk,
-        side_a_pk: value.side_a_pk,
-        side_z_pk: value.side_z_pk,
+        contributor_pk: *contributor_account.key,
+        side_a_pk: *side_a_account.key,
+        side_z_pk: *side_z_account.key,
         link_type: value.link_type,
         bandwidth: value.bandwidth,
         mtu: value.mtu,

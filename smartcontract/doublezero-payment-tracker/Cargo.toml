@@ -15,9 +15,11 @@ version.workspace =  true
 name = "doublezero_payment_tracker"
 
 [dependencies]
+async-trait.workspace = true
 eyre.workspace = true
 futures.workspace = true
 http.workspace = true
+mockall.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true

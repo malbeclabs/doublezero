@@ -42,9 +42,11 @@ pub async fn get_rewards(
     epoch: u64,
 ) -> eyre::Result<HashMap<String, Reward>> {
     let mut validator_rewards: Vec<Reward> = Vec::with_capacity(validator_ids.len());
+
+    let jito_fetcher = rewards::ReqwestFetcher;
     // TODO: move these into async calls once the block rewards are ready
     let inflation_rewards = rewards::get_inflation_rewards(client, validator_ids, epoch).await?;
-    let jito_rewards = rewards::get_jito_rewards(validator_ids, epoch).await?;
+    let jito_rewards = rewards::get_jito_rewards(&jito_fetcher, validator_ids, epoch).await?;
     for validator_id in validator_ids {
         let jito_reward = jito_rewards.get(validator_id).cloned().unwrap_or_default();
         let inflation_reward = inflation_rewards

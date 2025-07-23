@@ -89,11 +89,11 @@ func TestSDK_Telemetry_State_DeviceLatencySamples(t *testing.T) {
 		require.Equal(t, expected, b[len(b)-len(expected):])
 	})
 
-	t.Run("rejects deserialization with NextSampleIndex over MaxSamples", func(t *testing.T) {
+	t.Run("rejects deserialization with NextSampleIndex over MaxDeviceLatencySamplesPerAccount", func(t *testing.T) {
 		header := DeviceLatencySamplesHeader{
 			AccountType:                  AccountTypeDeviceLatencySamples,
 			SamplingIntervalMicroseconds: 100_000,
-			NextSampleIndex:              MaxSamples + 1,
+			NextSampleIndex:              MaxDeviceLatencySamplesPerAccount + 1,
 		}
 
 		var buf bytes.Buffer
@@ -107,5 +107,115 @@ func TestSDK_Telemetry_State_DeviceLatencySamples(t *testing.T) {
 		err := decoded.Deserialize(&buf)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "exceeds max allowed samples")
+	})
+}
+
+func TestSDK_Telemetry_State_InternetLatencySamples(t *testing.T) {
+	t.Run("round-trip serialize/deserialize with samples", func(t *testing.T) {
+		oracle := solana.NewWallet().PublicKey()
+		loc1 := solana.NewWallet().PublicKey()
+		loc2 := solana.NewWallet().PublicKey()
+		provider := FixedString32{}
+		copy(provider[:], []byte("test-provider"))
+
+		original := &InternetLatencySamples{
+			InternetLatencySamplesHeader: InternetLatencySamplesHeader{
+				AccountType:                  AccountTypeInternetLatencySamples,
+				BumpSeed:                     1,
+				Epoch:                        100,
+				DataProviderName:             provider,
+				OracleAgentPK:                oracle,
+				OriginLocationPK:             loc1,
+				TargetLocationPK:             loc2,
+				StartTimestampMicroseconds:   1_700_000_000,
+				SamplingIntervalMicroseconds: 500_000,
+				NextSampleIndex:              4,
+				Unused:                       [128]byte{42},
+			},
+			Samples: []uint32{10, 20, 30, 40},
+		}
+
+		var buf bytes.Buffer
+		require.NoError(t, original.Serialize(&buf))
+
+		var decoded InternetLatencySamples
+		require.NoError(t, decoded.Deserialize(&buf))
+
+		require.Equal(t, original.InternetLatencySamplesHeader, decoded.InternetLatencySamplesHeader)
+		require.Equal(t, original.Samples, decoded.Samples)
+	})
+
+	t.Run("round-trip with empty sample list", func(t *testing.T) {
+		header := InternetLatencySamplesHeader{
+			AccountType:                  AccountTypeInternetLatencySamples,
+			SamplingIntervalMicroseconds: 250_000,
+			NextSampleIndex:              0,
+		}
+		original := &InternetLatencySamples{
+			InternetLatencySamplesHeader: header,
+			Samples:                      []uint32{},
+		}
+
+		var buf bytes.Buffer
+		require.NoError(t, original.Serialize(&buf))
+
+		var decoded InternetLatencySamples
+		require.NoError(t, decoded.Deserialize(&buf))
+
+		require.Equal(t, original.InternetLatencySamplesHeader, decoded.InternetLatencySamplesHeader)
+		require.Empty(t, decoded.Samples)
+	})
+
+	t.Run("sample byte layout is little-endian", func(t *testing.T) {
+		sample := &InternetLatencySamples{
+			InternetLatencySamplesHeader: InternetLatencySamplesHeader{
+				AccountType:     AccountTypeInternetLatencySamples,
+				NextSampleIndex: 3,
+			},
+			Samples: []uint32{0xdeadbeef, 0x11223344, 0x99aabbcc},
+		}
+
+		var buf bytes.Buffer
+		require.NoError(t, sample.Serialize(&buf))
+		b := buf.Bytes()
+
+		expected := []byte{
+			0xef, 0xbe, 0xad, 0xde,
+			0x44, 0x33, 0x22, 0x11,
+			0xcc, 0xbb, 0xaa, 0x99,
+		}
+		require.GreaterOrEqual(t, len(b), len(expected))
+		require.Equal(t, expected, b[len(b)-len(expected):])
+	})
+
+	t.Run("rejects deserialization with NextSampleIndex over MaxInternetLatencySamplesPerAccount", func(t *testing.T) {
+		header := InternetLatencySamplesHeader{
+			AccountType:                  AccountTypeInternetLatencySamples,
+			SamplingIntervalMicroseconds: 123_456,
+			NextSampleIndex:              MaxInternetLatencySamplesPerAccount + 1,
+		}
+
+		var buf bytes.Buffer
+		require.NoError(t, binary.Write(&buf, binary.LittleEndian, header))
+		_, _ = buf.Write(make([]byte, 4))
+
+		var decoded InternetLatencySamples
+		err := decoded.Deserialize(&buf)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "exceeds max allowed samples")
+	})
+}
+
+func TestSDK_Telemetry_State_FixedString32(t *testing.T) {
+	t.Run("round-trip serialize/deserialize", func(t *testing.T) {
+		var original FixedString32
+		copy(original[:], []byte("hello world"))
+
+		var buf bytes.Buffer
+		require.NoError(t, original.Serialize(&buf))
+
+		var decoded FixedString32
+		require.NoError(t, decoded.Deserialize(&buf))
+		require.Equal(t, original, decoded)
 	})
 }

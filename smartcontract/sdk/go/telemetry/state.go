@@ -12,6 +12,7 @@ type AccountType uint8
 
 const (
 	AccountTypeDeviceLatencySamples AccountType = iota + 1
+	AccountTypeInternetLatencySamples
 )
 
 type DeviceLatencySamplesHeader struct {
@@ -78,12 +79,93 @@ func (d *DeviceLatencySamples) Deserialize(r io.Reader) error {
 		return err
 	}
 
-	if d.DeviceLatencySamplesHeader.NextSampleIndex > MaxSamples {
-		return fmt.Errorf("next sample index %d exceeds max allowed samples %d", d.DeviceLatencySamplesHeader.NextSampleIndex, MaxSamples)
+	if d.DeviceLatencySamplesHeader.NextSampleIndex > MaxDeviceLatencySamplesPerAccount {
+		return fmt.Errorf("next sample index %d exceeds max allowed samples %d", d.DeviceLatencySamplesHeader.NextSampleIndex, MaxDeviceLatencySamplesPerAccount)
 	}
 
 	d.Samples = make([]uint32, d.DeviceLatencySamplesHeader.NextSampleIndex)
 	for i := 0; i < int(d.DeviceLatencySamplesHeader.NextSampleIndex); i++ {
+		if err := binary.Read(r, binary.LittleEndian, &d.Samples[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type FixedString32 [32]uint8
+
+func (f *FixedString32) Serialize(w io.Writer) error {
+	return binary.Write(w, binary.LittleEndian, f)
+}
+
+func (f *FixedString32) Deserialize(r io.Reader) error {
+	return binary.Read(r, binary.LittleEndian, f)
+}
+
+type InternetLatencySamplesHeader struct {
+	// AccountType is used to distinguish this account type during deserialization.
+	AccountType AccountType // 1
+
+	// BumpSeed is required for recreating the PDA (seed authority).
+	BumpSeed uint8 // 1
+
+	// Epoch is the epoch number in which samples were collected.
+	Epoch uint64 // 8
+
+	// DataProviderName is the name of the data provider.
+	DataProviderName FixedString32 // 32
+
+	// OracleAgentPK authorized to write latency samples (must match signer)
+	OracleAgentPK solana.PublicKey // 32
+
+	// OriginLocationPK is the location of the origin for sample collection.
+	OriginLocationPK solana.PublicKey // 32
+
+	// TargetLocationPK is the location of the target for sample collection.
+	TargetLocationPK solana.PublicKey // 32
+
+	// StartTimestampMicroseconds is the timestamp of the first written sample (µs since UNIX epoch).
+	// Set on the first write, remains unchanged after.
+	StartTimestampMicroseconds uint64 // 8
+
+	// SamplingIntervalMicroseconds is the interval between samples (in microseconds).
+	SamplingIntervalMicroseconds uint64 // 8
+
+	// NextSampleIndex tracks how many samples have been appended.
+	NextSampleIndex uint32 // 4
+
+	// Unused is reserved for future use.
+	Unused [128]uint8 // 128
+}
+
+type InternetLatencySamples struct {
+	InternetLatencySamplesHeader
+	Samples []uint32 // 4 + n*4 (RTT values in microseconds)
+}
+
+func (d *InternetLatencySamples) Serialize(w io.Writer) error {
+	if err := binary.Write(w, binary.LittleEndian, &d.InternetLatencySamplesHeader); err != nil {
+		return err
+	}
+	for _, sample := range d.Samples {
+		if err := binary.Write(w, binary.LittleEndian, sample); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (d *InternetLatencySamples) Deserialize(r io.Reader) error {
+	if err := binary.Read(r, binary.LittleEndian, &d.InternetLatencySamplesHeader); err != nil {
+		return err
+	}
+
+	if d.InternetLatencySamplesHeader.NextSampleIndex > MaxInternetLatencySamplesPerAccount {
+		return fmt.Errorf("next sample index %d exceeds max allowed samples %d", d.InternetLatencySamplesHeader.NextSampleIndex, MaxInternetLatencySamplesPerAccount)
+	}
+
+	d.Samples = make([]uint32, d.InternetLatencySamplesHeader.NextSampleIndex)
+	for i := 0; i < int(d.InternetLatencySamplesHeader.NextSampleIndex); i++ {
 		if err := binary.Read(r, binary.LittleEndian, &d.Samples[i]); err != nil {
 			return err
 		}

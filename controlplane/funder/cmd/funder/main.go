@@ -14,9 +14,9 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
+	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/controlplane/funder/internal/funder"
 	"github.com/malbeclabs/doublezero/controlplane/funder/internal/metrics"
-	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -25,9 +25,6 @@ const (
 	defaultInterval      = 1 * time.Minute
 	defaultMinBalanceSOL = 3
 	defaultTopUpSOL      = 5
-
-	envTestnet = "testnet"
-	envDevnet  = "devnet"
 )
 
 var (
@@ -79,18 +76,14 @@ func main() {
 			os.Exit(1)
 		}
 	} else {
-		switch *env {
-		case envTestnet:
-			*ledgerRPCURL = dzsdk.DZ_LEDGER_RPC_URL
-			*serviceabilityProgramID = serviceability.SERVICEABILITY_PROGRAM_ID_TESTNET
-		case envDevnet:
-			*ledgerRPCURL = dzsdk.DZ_LEDGER_RPC_URL
-			*serviceabilityProgramID = serviceability.SERVICEABILITY_PROGRAM_ID_DEVNET
-		default:
-			log.Error("Invalid environment, must be testnet or devnet", "env", *env)
+		networkConfig, err := config.NetworkConfigForEnv(*env)
+		if err != nil {
+			log.Error("Failed to get network config", "error", err)
 			flag.Usage()
 			os.Exit(1)
 		}
+		*ledgerRPCURL = networkConfig.LedgerRPCURL
+		*serviceabilityProgramID = networkConfig.ServiceabilityProgramID.String()
 	}
 	if *keypairPath == "" {
 		log.Error("Missing required flag", "flag", "keypair")

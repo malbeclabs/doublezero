@@ -116,7 +116,7 @@ Stores metadata (collectively the "header") and RTT samples in microseconds (sam
 
 Constants:
 
-- `MAX_THIRD_PARTY_SAMPLES = 600`
+- `MAX_THIRD_PARTY_SAMPLES = 3000`
 - `THIRD_PARTY_LATENCY_SAMPLES_HEADER_SIZE = 281` bytes
 
 ---

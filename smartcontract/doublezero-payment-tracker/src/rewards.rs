@@ -29,59 +29,8 @@ struct JitoReward {
     // mev_commission: u64,
 }
 
-#[allow(dead_code)] // These fields will only be used by consumers of the API (like in the test)
-#[derive(Deserialize, Debug)]
-pub struct Reward {
-    validator_id: String,
-    total: u64,
-    jito: u64,
-    inflation: u64,
-}
-// this function will return a hashmap of total rewards keyed by validator pubkey
-pub async fn get_rewards(
-    validator_ids: &[String],
-    epoch: u64,
-) -> eyre::Result<HashMap<String, Reward>> {
-    let mut validator_rewards: Vec<Reward> = Vec::with_capacity(validator_ids.len());
-    let client = get_client();
-    // TDOO: move these into async calls once the block rewards are ready
-    let inflation_rewards = get_inflation_rewards(&client, validator_ids, epoch).await?;
-    let jito_rewards = get_jito_rewards(validator_ids, epoch).await?;
-    for validator_id in validator_ids {
-        let jito_reward = jito_rewards.get(validator_id).cloned().unwrap_or_default();
-        let inflation_reward = inflation_rewards
-            .get(validator_id)
-            .cloned()
-            .unwrap_or_default();
-        let mut total_reward: u64 = 0;
-        // TODO add block_rewards
-        total_reward += jito_reward + inflation_reward;
-        let rewards = Reward {
-            validator_id: validator_id.to_string(),
-            jito: jito_reward,
-            inflation: inflation_reward,
-            total: total_reward,
-        };
-        validator_rewards.push(rewards);
-    }
-    let rewards: HashMap<String, Reward> = validator_ids
-        .iter()
-        .cloned()
-        .zip(validator_rewards)
-        .collect();
-    Ok(rewards)
-}
-
-fn get_client() -> RpcClient {
-    RpcClient::new_with_commitment(
-        // move to env var
-        "https://api.mainnet-beta.solana.com".to_string(),
-        CommitmentConfig::confirmed(),
-    )
-}
-
 // may need to add in pagination
-async fn get_jito_rewards(
+pub async fn get_jito_rewards(
     validator_ids: &[String],
     epoch: u64,
 ) -> eyre::Result<HashMap<String, u64>> {
@@ -136,7 +85,7 @@ async fn get_jito_rewards(
     Ok(jito_rewards)
 }
 
-async fn get_inflation_rewards(
+pub async fn get_inflation_rewards(
     client: &RpcClient,
     validator_ids: &[String],
     epoch: u64,
@@ -199,21 +148,5 @@ mod tests {
 
         assert_eq!(reward.keys().next().unwrap(), pubkey);
         assert_eq!(*mev_revenue, 503423196855);
-    }
-
-    #[tokio::test]
-    // TODO:  use the mock solana calls once these three PRs are done
-    #[ignore]
-    async fn get_inflation_rewards_for_validators() {
-        let pubkey = "6WgdYhhGE53WrZ7ywJA15hBVkw7CRbQ8yDBBTwmBtAHN";
-        let validator_ids: &[String] = &[String::from(pubkey)];
-        let epoch = 812;
-
-        let rewards = get_rewards(validator_ids, epoch).await.unwrap();
-        let reward = rewards.get(pubkey).unwrap();
-
-        assert_eq!(reward.validator_id, pubkey);
-        assert_eq!(reward.total, reward.jito + reward.inflation);
-        assert_eq!(reward.inflation, 101954120913);
     }
 }

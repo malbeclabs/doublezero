@@ -13,6 +13,7 @@ smartcontract/cli/config/*
 
 .vscode/*
 .vscode
+.zed
 
 dist/
 

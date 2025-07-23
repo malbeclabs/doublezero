@@ -19,7 +19,9 @@ use crate::processors::{
         suspend::ExchangeSuspendArgs, update::ExchangeUpdateArgs,
     },
     globalconfig::set::SetGlobalConfigArgs,
-    globalstate::close::CloseAccountArgs,
+    globalstate::{
+        close::CloseAccountArgs, setinternetlatencycollector::SetInternetLatencyCollectorArgs,
+    },
     link::{
         activate::LinkActivateArgs, closeaccount::LinkCloseAccountArgs, create::LinkCreateArgs,
         delete::LinkDeleteArgs, reject::LinkRejectArgs, resume::LinkResumeArgs,
@@ -139,6 +141,8 @@ pub enum DoubleZeroInstruction {
     SuspendContributor(ContributorSuspendArgs), // variant 62
     ResumeContributor(ContributorResumeArgs),   // variant 63
     DeleteContributor(ContributorDeleteArgs),   // variant 64
+
+    SetInternetLatencyCollector(SetInternetLatencyCollectorArgs), // variant 65
 }
 
 impl DoubleZeroInstruction {
@@ -227,6 +231,8 @@ impl DoubleZeroInstruction {
             63 => Ok(Self::ResumeContributor(from_slice::<ContributorResumeArgs>(rest).unwrap())),
             64 => Ok(Self::DeleteContributor(from_slice::<ContributorDeleteArgs>(rest).unwrap())),
 
+            65 => Ok(Self::SetInternetLatencyCollector(from_slice::<SetInternetLatencyCollectorArgs>(rest).unwrap())),
+
             _ => Err(ProgramError::InvalidInstructionData),
         }
     }
@@ -313,6 +319,8 @@ impl DoubleZeroInstruction {
             Self::SuspendContributor(_) => "SuspendContributor".to_string(), // variant 62
             Self::ResumeContributor(_) => "ResumeContributor".to_string(), // variant 63
             Self::DeleteContributor(_) => "DeleteContributor".to_string(), // variant 64
+
+            Self::SetInternetLatencyCollector(_) => "SetInternetLatencyCollector".to_string(), // variant 65
         }
     }
 
@@ -392,6 +400,8 @@ impl DoubleZeroInstruction {
             Self::SuspendContributor(args) => format!("{args:?}"), // variant 62
             Self::ResumeContributor(args) => format!("{args:?}"), // variant 63
             Self::DeleteContributor(args) => format!("{args:?}"), // variant 64
+
+            Self::SetInternetLatencyCollector(args) => format!("{args:?}"), // variant 65
         }
     }
 }
@@ -828,5 +838,11 @@ mod tests {
             DoubleZeroInstruction::DeleteContributor(ContributorDeleteArgs {}),
             "DeleteContributor",
         );
+        test_instruction(
+            DoubleZeroInstruction::SetInternetLatencyCollector(SetInternetLatencyCollectorArgs {
+                pubkey: Pubkey::new_unique(),
+            }),
+            "SetInternetLatencyCollector",
+        )
     }
 }

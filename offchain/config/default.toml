@@ -21,8 +21,3 @@ max_rate = 1000
 [metrics]
 uptime_threshold = 0.95
 percentile_bins = [50, 75, 90, 95, 99]
-
-# Cache settings
-[cache]
-enabled = true
-format = "json"

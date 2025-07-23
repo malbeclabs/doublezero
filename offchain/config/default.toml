@@ -1,0 +1,28 @@
+# Default configuration for DoubleZero Rewarder
+# This file contains base settings that apply to all environments
+# Environment-specific settings in devnet.toml, testnet.toml, etc. will override these
+
+# General settings
+log_level = "info"
+dry_run = false
+
+# RPC settings
+[rpc]
+commitment = "finalized"
+timeout_secs = 30
+max_retries = 3
+
+# Burn rate configuration
+[burn]
+coefficient = 1
+max_rate = 1000
+
+# Metrics processor settings
+[metrics]
+uptime_threshold = 0.95
+percentile_bins = [50, 75, 90, 95, 99]
+
+# Cache settings
+[cache]
+enabled = true
+format = "json"

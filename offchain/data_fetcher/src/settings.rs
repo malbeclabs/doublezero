@@ -1,5 +1,8 @@
 use anyhow::Result;
-use figment::{Figment, providers::Env};
+use figment::{
+    Figment,
+    providers::{Env, Format, Toml},
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,9 +32,32 @@ pub struct ProgramSettings {
 
 impl Settings {
     pub fn from_env() -> Result<Self> {
-        let config: Settings = Figment::new()
-            .merge(Env::prefixed("DZ_").split("__"))
-            .extract()?;
+        // Get environment from DZ_ENV or default to "devnet"
+        let env = std::env::var("DZ_ENV").unwrap_or_else(|_| "devnet".to_string());
+        Self::load(env)
+    }
+
+    pub fn load(env: String) -> Result<Self> {
+        let mut figment = Figment::new()
+            // Load default configuration
+            .merge(Toml::file("config/default.toml"));
+
+        // Load environment-specific configuration if it exists
+        let env_config_path = format!("config/{env}.toml");
+        if std::path::Path::new(&env_config_path).exists() {
+            figment = figment.merge(Toml::file(&env_config_path));
+        }
+
+        // Load local overrides if present (git-ignored)
+        let local_config_path = "config/local.toml";
+        if std::path::Path::new(local_config_path).exists() {
+            figment = figment.merge(Toml::file(local_config_path));
+        }
+
+        // Environment variables can still override
+        figment = figment.merge(Env::prefixed("DZ_").split("__"));
+
+        let config: Settings = figment.extract()?;
         Ok(config)
     }
 }

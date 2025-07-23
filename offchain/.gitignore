@@ -4,6 +4,11 @@
 .env
 .envrc
 
+# Local configuration
+config/local.toml
+config/*.local.toml
+config/*.secret.toml
+
 # DB
 *.db
 *.wal

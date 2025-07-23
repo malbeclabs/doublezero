@@ -29,7 +29,10 @@ use crate::{
             update::process_update_exchange,
         },
         globalconfig::set::process_set_globalconfig,
-        globalstate::{close::process_close_account, initialize::initialize_global_state},
+        globalstate::{
+            close::process_close_account, initialize::initialize_global_state,
+            setinternetlatencycollector::process_set_internet_latency_collector_globalstate,
+        },
         link::{
             activate::process_activate_link, closeaccount::process_closeaccount_link,
             create::process_create_link, delete::process_delete_link, reject::process_reject_link,
@@ -278,6 +281,9 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::DeleteContributor(value) => {
             process_delete_contributor(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::SetInternetLatencyCollector(value) => {
+            process_set_internet_latency_collector_globalstate(program_id, accounts, &value)?
         }
     };
     Ok(())

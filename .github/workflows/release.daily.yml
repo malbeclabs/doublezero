@@ -50,14 +50,14 @@ jobs:
     needs: release
     steps:
       - uses: actions/checkout@v4
-      - name: checkout ansible playbooks
+      - name: Checkout infra repo with ansible playbooks
         uses: actions/checkout@v4
         with:
-          repository: "malbeclabs/ansible"
-          path: ansible
+          repository: "malbeclabs/infra"
+          path: infra
           token: ${{ secrets.GA_ANSIBLE_REPO_RO }}
       - name: Create ansible vault password file
-        working-directory: ansible
+        working-directory: infra/ansible
         run: |
           cat <<'EOT' > .vault_pass
           #!/usr/bin/bash
@@ -65,7 +65,7 @@ jobs:
           EOT
           chmod +x .vault_pass
       - name: Run ansible playbook
-        working-directory: ansible
+        working-directory: infra/ansible
         shell: bash -leo pipefail {0}
         run: ansible-playbook -D --private-key ~/.ssh/id_runner --vault-password-file .vault_pass -i inventory/devnet/hosts.yml ${{ inputs.playbook }}
         env:

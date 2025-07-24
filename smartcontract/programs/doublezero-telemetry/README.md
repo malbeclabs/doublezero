@@ -27,7 +27,7 @@ Stores metadata (collectively the "header") and RTT samples in microseconds (sam
 
 Constants:
 
-- `MAX_SAMPLES = 35_000`
+- `MAX_DEVICE_LATENCY_SAMPLES = 35_000`
 - `DEVICE_LATENCY_SAMPLES_HEADER_SIZE = 350` bytes
 
 ---
@@ -93,7 +93,7 @@ pub struct WriteDeviceLatencySamplesArgs {
 
 - First write sets `start_timestamp_microseconds` if unset.
 - Validates account ownership and agent authorization.
-- Appends samples without exceeding `MAX_SAMPLES` or `MAX_PERMITTED_DATA_INCREASE` (10,240 bytes).
+- Appends samples without exceeding `MAX_DEVICE_LATENCY_SAMPLES` or `MAX_PERMITTED_DATA_INCREASE` (10,240 bytes).
 - Performs rent transfer and account resize if needed.
 
 ## Account Structure: `InternetLatencySamples`
@@ -116,7 +116,7 @@ Stores metadata (collectively the "header") and RTT samples in microseconds (sam
 
 Constants:
 
-- `MAX_INTERNET_SAMPLES = 3000`
+- `MAX_INTERNET_LATENCY_SAMPLES = 3000`
 - `INTERNET_LATENCY_SAMPLES_HEADER_SIZE = 281` bytes
 
 ---
@@ -179,7 +179,7 @@ pub struct WriteInternetLatencySamplesArgs {
 
 - First write sets `start_timestamp_microseconds` if unset.
 - Validates account ownership and agent authorization.
-- Appends samples without exceeding `MAX_INTERNET_SAMPLES` or `MAX_PERMITTED_DATA_INCREASE` (10,240 bytes).
+- Appends samples without exceeding `MAX_INTERNET_LATENCY_SAMPLES` or `MAX_PERMITTED_DATA_INCREASE` (10,240 bytes).
 - Performs rent transfer and account resize if needed.
 
 ---
@@ -204,7 +204,7 @@ pub struct WriteInternetLatencySamplesArgs {
 
 ## Constants
 
-- `MAX_SAMPLES = 35_000` — upper bound on total RTT samples.
-- `MAX_INTERNET_SAMPLES = 600` - upper bound on total internet control RTT samples.
+- `MAX_DEVICE_LATENCY_SAMPLES = 35_000` — upper bound on total RTT samples.
+- `MAX_INTERNET_LATENCY_SAMPLES = 3000` - upper bound on total internet control RTT samples.
 - `DEVICE_LATENCY_SAMPLES_HEADER_SIZE = 350` — base size excluding sample vector.
 - `INTERNET_LATENCY_SAMPLES_HEADER_SIZE = 281` - base size excluding the sample vector.

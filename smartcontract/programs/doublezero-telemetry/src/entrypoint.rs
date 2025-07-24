@@ -2,7 +2,9 @@ use crate::{
     instructions::TelemetryInstruction,
     processors::telemetry::{
         initialize_device_latency_samples::process_initialize_device_latency_samples,
+        initialize_internet_latency_samples::process_initialize_internet_latency_samples,
         write_device_latency_samples::process_write_device_latency_samples,
+        write_internet_latency_samples::process_write_internet_latency_samples,
     },
 };
 
@@ -28,6 +30,12 @@ pub fn process_instruction(
         }
         TelemetryInstruction::WriteDeviceLatencySamples(args) => {
             process_write_device_latency_samples(program_id, accounts, &args)?
+        }
+        TelemetryInstruction::InitializeInternetLatencySamples(args) => {
+            process_initialize_internet_latency_samples(program_id, accounts, &args)?
+        }
+        TelemetryInstruction::WriteInternetLatencySamples(args) => {
+            process_write_internet_latency_samples(program_id, accounts, &args)?
         }
     };
 

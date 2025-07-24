@@ -1,6 +1,8 @@
 use crate::processors::telemetry::{
     initialize_device_latency_samples::InitializeDeviceLatencySamplesArgs,
+    initialize_internet_latency_samples::InitializeInternetLatencySamplesArgs,
     write_device_latency_samples::WriteDeviceLatencySamplesArgs,
+    write_internet_latency_samples::WriteInternetLatencySamplesArgs,
 };
 use borsh::{from_slice, BorshDeserialize, BorshSerialize};
 use solana_program::program_error::ProgramError;
@@ -12,10 +14,16 @@ pub enum TelemetryInstruction {
     InitializeDeviceLatencySamples(InitializeDeviceLatencySamplesArgs),
     /// Write device latency samples to chain
     WriteDeviceLatencySamples(WriteDeviceLatencySamplesArgs),
+    /// Initialize internet latency samples account,
+    InitializeInternetLatencySamples(InitializeInternetLatencySamplesArgs),
+    /// Write internet latency samples to chain
+    WriteInternetLatencySamples(WriteInternetLatencySamplesArgs),
 }
 
 pub const INITIALIZE_DEVICE_LATENCY_SAMPLES_INSTRUCTION_INDEX: u8 = 0;
 pub const WRITE_DEVICE_LATENCY_SAMPLES_INSTRUCTION_INDEX: u8 = 1;
+pub const INITIALIZE_INTERNET_LATENCY_SAMPLES_INSTRUCTION_INDEX: u8 = 2;
+pub const WRITE_INTERNET_LATENCY_SAMPLES_INSTRUCTION_INDEX: u8 = 3;
 
 impl TelemetryInstruction {
     pub fn pack(&self) -> Result<Vec<u8>, ProgramError> {
@@ -38,6 +46,14 @@ impl TelemetryInstruction {
             WRITE_DEVICE_LATENCY_SAMPLES_INSTRUCTION_INDEX => {
                 let args: WriteDeviceLatencySamplesArgs = from_slice(&data[1..])?;
                 TelemetryInstruction::WriteDeviceLatencySamples(args)
+            }
+            INITIALIZE_INTERNET_LATENCY_SAMPLES_INSTRUCTION_INDEX => {
+                let args: InitializeInternetLatencySamplesArgs = from_slice(&data[1..])?;
+                TelemetryInstruction::InitializeInternetLatencySamples(args)
+            }
+            WRITE_INTERNET_LATENCY_SAMPLES_INSTRUCTION_INDEX => {
+                let args: WriteInternetLatencySamplesArgs = from_slice(&data[1..])?;
+                TelemetryInstruction::WriteInternetLatencySamples(args)
             }
             _ => return Err(ProgramError::InvalidInstructionData),
         };

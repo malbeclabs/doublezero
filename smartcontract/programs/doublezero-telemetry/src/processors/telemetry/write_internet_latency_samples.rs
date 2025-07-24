@@ -3,7 +3,7 @@ use crate::{
     state::{
         accounttype::AccountType,
         internet_latency_samples::{
-            InternetLatencySamplesHeader, INTERNET_LATENCY_SAMPLES_HEADER_SIZE,
+            InternetLatencySamplesHeader, INTERNET_LATENCY_SAMPLES_MAX_HEADER_SIZE,
             MAX_INTERNET_LATENCY_SAMPLES,
         },
     },
@@ -92,7 +92,7 @@ pub fn process_write_internet_latency_samples(
 
     // Deserialize existing account data
     let mut header = InternetLatencySamplesHeader::try_from(
-        &latency_samples_acct.try_borrow_data()?[..INTERNET_LATENCY_SAMPLES_HEADER_SIZE],
+        &latency_samples_acct.try_borrow_data()?[..INTERNET_LATENCY_SAMPLES_MAX_HEADER_SIZE],
     )
     .map_err(|e| {
         msg!("Failed to deserialize InternetLatencySamples {}", e);
@@ -180,7 +180,7 @@ fn realloc_samples_account_if_needed(
     let agent = next_account_info(accounts_iter)?;
 
     let actual_len = samples_acct.data_len();
-    let new_len = INTERNET_LATENCY_SAMPLES_HEADER_SIZE + header.next_sample_index as usize * 4; // 4 bytes per u32 RTT (microseconds) samples
+    let new_len = INTERNET_LATENCY_SAMPLES_MAX_HEADER_SIZE + header.next_sample_index as usize * 4; // 4 bytes per u32 RTT (microseconds) samples
 
     if actual_len != new_len {
         // If the account grows, we must ensure it's funded for the new size

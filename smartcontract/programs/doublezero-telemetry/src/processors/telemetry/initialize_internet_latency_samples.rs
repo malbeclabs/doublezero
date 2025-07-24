@@ -6,7 +6,7 @@ use crate::{
     state::{
         accounttype::AccountType,
         internet_latency_samples::{
-            InternetLatencySamplesHeader, INTERNET_LATENCY_SAMPLES_HEADER_SIZE,
+            InternetLatencySamplesHeader, INTERNET_LATENCY_SAMPLES_MAX_HEADER_SIZE,
         },
     },
 };
@@ -143,7 +143,7 @@ pub fn process_initialize_internet_latency_samples(
 
     // Create the account with the minimum rent-exempt balance
     let rent = Rent::get()?;
-    let space = INTERNET_LATENCY_SAMPLES_HEADER_SIZE;
+    let space = INTERNET_LATENCY_SAMPLES_MAX_HEADER_SIZE;
     let lamports = rent.minimum_balance(space);
 
     msg!(

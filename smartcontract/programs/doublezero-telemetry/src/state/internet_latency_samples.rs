@@ -25,9 +25,9 @@ pub const MAX_INTERNET_LATENCY_SAMPLES: usize = 3_000;
 /// - 4 bytes: `next_sample_index`
 /// - 128 bytes: reserved for future use
 ///
-/// Total size: 289 bytes
-pub const INTERNET_LATENCY_SAMPLES_HEADER_SIZE: usize =
-    1 + 1 + 32 + 8 + 32 + 32 + 32 + 8 + 8 + 4 + 128;
+/// Total size: 290 bytes
+pub const INTERNET_LATENCY_SAMPLES_MAX_HEADER_SIZE: usize =
+    1 + 1 + (4 + 32) + 8 + 32 + 32 + 32 + 8 + 8 + 4 + 128;
 
 /// Onchain data structure representing a latency samples account header between two
 /// location over the public internet for a specific epoch and third party probe provider,
@@ -63,7 +63,7 @@ impl TryFrom<&[u8]> for InternetLatencySamplesHeader {
     type Error = borsh::io::Error;
 
     fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
-        if data.len() < INTERNET_LATENCY_SAMPLES_HEADER_SIZE {
+        if data.len() < INTERNET_LATENCY_SAMPLES_MAX_HEADER_SIZE {
             return Err(borsh::io::Error::new(
                 std::io::ErrorKind::UnexpectedEof,
                 "account data too short for header",
@@ -139,7 +139,7 @@ impl AccountTypeInfo for InternetLatencySamples {
     /// Computes the full serialized size of this account (for realloc).
     /// Used when dynamically resizing to accommodate more samples.
     fn size(&self) -> usize {
-        INTERNET_LATENCY_SAMPLES_HEADER_SIZE + self.samples.len() * 4
+        INTERNET_LATENCY_SAMPLES_MAX_HEADER_SIZE + self.samples.len() * 4
     }
 
     /// Returns the bump seed used during PDA derivation
@@ -159,7 +159,7 @@ mod tests {
 
     #[test]
     fn test_internet_latency_samples_serialized() {
-        let samples = vec![100u32, 200u32, 300u32, 400u32, 500u32];
+        let samples: Vec<u32> = vec![100, 200, 300, 400, 500];
         let val = InternetLatencySamples {
             header: InternetLatencySamplesHeader {
                 account_type: AccountType::InternetLatencySamples,
@@ -199,6 +199,6 @@ mod tests {
         );
         assert_eq!(header.next_sample_index, header2.next_sample_index);
         assert_eq!(val.samples, val2.samples);
-        assert_eq!(data.len(), val.size(), "Invalid size");
+        assert!(data.len() <= val.size(), "Invalid size");
     }
 }

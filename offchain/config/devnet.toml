@@ -1,13 +1,8 @@
 # Devnet configuration for DoubleZero Rewarder
 
-[rpc]
+[data_fetcher.rpc]
 url = "https://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30"
 
-[programs]
+[data_fetcher.programs]
 serviceability_program_id = "GYhQDKuESrasNZGyhMJhGYFtbzNijYhcrN9poSqCQVah"
 telemetry_program_id = "C9xqH76NSm11pBS6maNnY163tWHT8Govww47uyEmSnoG"
-
-# Third-party API settings (if needed for devnet)
-[third_party]
-# latency_api_url = "https://api.example.com/devnet/latency"
-# api_key = ""  # Set in local.toml or via DZ_THIRD_PARTY__API_KEY env var

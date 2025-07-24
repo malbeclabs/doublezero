@@ -7,6 +7,13 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
+    #[serde(default = "default_log_level")]
+    pub log_level: String,
+    pub metrics_processor: MetricsProcessorSettings,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetricsProcessorSettings {
     #[serde(default = "default_percentile_bins")]
     pub percentile_bins: Vec<f64>,
     #[serde(default = "default_uptime_threshold")]
@@ -53,4 +60,8 @@ fn default_percentile_bins() -> Vec<f64> {
 fn default_uptime_threshold() -> f64 {
     // TODO: Should this be 95% or lower?
     0.95
+}
+
+fn default_log_level() -> String {
+    "info".to_string()
 }

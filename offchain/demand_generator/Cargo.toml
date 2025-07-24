@@ -1,5 +1,5 @@
 [package]
-name = "metrics-processor"
+name = "demand-generator"
 version = "0.1.0"
 
 # Inherited
@@ -7,21 +7,16 @@ edition.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-chrono.workspace = true
+clap.workspace = true
 csv.workspace = true
-data-fetcher = { path = "../data_fetcher" }
-doublezero-serviceability.workspace = true
-doublezero-telemetry.workspace = true
 figment.workspace = true
+network-shapley.workspace = true
 rand.workspace = true
-rust_decimal.workspace = true
+reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-network-shapley.workspace = true
+solana-client.workspace = true
 solana-sdk.workspace = true
-tabled.workspace = true
 tokio.workspace = true
 tracing.workspace = true
-
-[dev-dependencies]
-tempfile = "3"
+tracing-subscriber.workspace = true

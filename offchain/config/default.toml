@@ -4,20 +4,14 @@
 
 # General settings
 log_level = "info"
-dry_run = false
 
 # RPC settings
-[rpc]
+[data_fetcher.rpc]
 commitment = "finalized"
 timeout_secs = 30
 max_retries = 3
 
-# Burn rate configuration
-[burn]
-coefficient = 1
-max_rate = 1000
-
 # Metrics processor settings
-[metrics]
+[metrics_processor.metrics]
 uptime_threshold = 0.95
 percentile_bins = [50, 75, 90, 95, 99]

@@ -1,4 +1,4 @@
-use crate::seeds::{SEED_DZ_LATENCY_SAMPLES, SEED_INET_LATENCY_SAMPLES, SEED_PREFIX};
+use crate::seeds::{SEED_DEVICE_LATENCY_SAMPLES, SEED_INTERNET_LATENCY_SAMPLES, SEED_PREFIX};
 use solana_program::pubkey::Pubkey;
 
 /// Derive PDA for DZ latency samples account.
@@ -12,7 +12,7 @@ pub fn derive_device_latency_samples_pda(
     Pubkey::find_program_address(
         &[
             SEED_PREFIX,
-            SEED_DZ_LATENCY_SAMPLES,
+            SEED_DEVICE_LATENCY_SAMPLES,
             origin_device_pk.as_ref(),
             target_device_pk.as_ref(),
             link_pk.as_ref(),
@@ -33,7 +33,7 @@ pub fn derive_internet_latency_samples_pda(
     Pubkey::find_program_address(
         &[
             SEED_PREFIX,
-            SEED_INET_LATENCY_SAMPLES,
+            SEED_INTERNET_LATENCY_SAMPLES,
             data_provider_name.as_bytes(),
             origin_location_pk.as_ref(),
             target_location_pk.as_ref(),

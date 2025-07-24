@@ -1,5 +1,5 @@
 use crate::{
-    seeds::SEED_INET_LATENCY_SAMPLES,
+    seeds::SEED_INTERNET_LATENCY_SAMPLES,
     state::accounttype::{AccountType, AccountTypeInfo},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -20,12 +20,14 @@ pub const MAX_INTERNET_LATENCY_SAMPLES: usize = 3_000;
 /// - 32 bytes: `data_provider_name`
 /// - 8 byte: `epoch`
 /// - 3 * 32 bytes: pubkeys for `agent`, `locations`
+/// - 8 bytes: `sampling_interval_microseconds`
 /// - 8 bytes: `start_timestamp_microseconds`
 /// - 4 bytes: `next_sample_index`
 /// - 128 bytes: reserved for future use
 ///
-/// Total size: 281 bytes
-pub const INTERNET_LATENCY_SAMPLES_HEADER_SIZE: usize = 1 + 1 + 32 + 8 + 32 + 32 + 32 + 8 + 4 + 128;
+/// Total size: 289 bytes
+pub const INTERNET_LATENCY_SAMPLES_HEADER_SIZE: usize =
+    1 + 1 + 32 + 8 + 32 + 32 + 32 + 8 + 8 + 4 + 128;
 
 /// Onchain data structure representing a latency samples account header between two
 /// location over the public internet for a specific epoch and third party probe provider,
@@ -46,6 +48,8 @@ pub struct InternetLatencySamplesHeader {
     pub origin_location_pk: Pubkey, // 32
     // Cached location of the probe target
     pub target_location_pk: Pubkey, // 32
+    // Sampling interval configured by the agent (in microseconds)
+    pub sampling_interval_microseconds: u64, // 8
     // Timestamp of the first written sample (µs since UNIX epoch)
     // Set on the first write, remains unchanged on subsequent writes
     pub start_timestamp_microseconds: u64, // 8
@@ -129,7 +133,7 @@ impl TryFrom<&[u8]> for InternetLatencySamples {
 impl AccountTypeInfo for InternetLatencySamples {
     /// Returns the fixed seed associated with this account type.
     fn seed(&self) -> &[u8] {
-        SEED_INET_LATENCY_SAMPLES
+        SEED_INTERNET_LATENCY_SAMPLES
     }
 
     /// Computes the full serialized size of this account (for realloc).
@@ -165,6 +169,7 @@ mod tests {
                 oracle_agent_pk: Pubkey::new_unique(),
                 origin_location_pk: Pubkey::new_unique(),
                 target_location_pk: Pubkey::new_unique(),
+                sampling_interval_microseconds: 60_000_000,
                 start_timestamp_microseconds: 1_700_000_000_000_000,
                 next_sample_index: samples.len() as u32,
                 _unused: [0; 128],
@@ -184,6 +189,10 @@ mod tests {
         assert_eq!(header.oracle_agent_pk, header2.oracle_agent_pk);
         assert_eq!(header.origin_location_pk, header2.origin_location_pk);
         assert_eq!(header.target_location_pk, header2.target_location_pk);
+        assert_eq!(
+            header.sampling_interval_microseconds,
+            header2.sampling_interval_microseconds
+        );
         assert_eq!(
             header.start_timestamp_microseconds,
             header2.start_timestamp_microseconds

@@ -1,7 +1,7 @@
 use crate::{
     error::TelemetryError,
     pda::derive_device_latency_samples_pda,
-    seeds::{SEED_DZ_LATENCY_SAMPLES, SEED_PREFIX},
+    seeds::{SEED_DEVICE_LATENCY_SAMPLES, SEED_PREFIX},
     serviceability_program_id,
     state::{
         accounttype::AccountType,
@@ -194,7 +194,7 @@ pub fn process_initialize_device_latency_samples(
         accounts,
         &[
             SEED_PREFIX,
-            SEED_DZ_LATENCY_SAMPLES,
+            SEED_DEVICE_LATENCY_SAMPLES,
             origin_device_account.key.as_ref(),
             target_device_account.key.as_ref(),
             link_account.key.as_ref(),

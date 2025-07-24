@@ -109,6 +109,7 @@ Stores metadata (collectively the "header") and RTT samples in microseconds (sam
 | `oracle_agent_pk` | `Pubkey` | Sampling oracle |
 | `origin_location_pk` | `Pubkey` | Location of origin |
 | `target_location_pk` | `Pubkey` | Location of target |
+| `sampling_interval_microseconds` | `u64` | Sampling interval |
 | `start_timestamp_microseconds` | `u64` | Set on first write |
 | `next_sample_index` | `u32` | Current sample count |
 | `_unused` | [u8; 128] | Reserved for future use |
@@ -117,7 +118,7 @@ Stores metadata (collectively the "header") and RTT samples in microseconds (sam
 Constants:
 
 - `MAX_INTERNET_LATENCY_SAMPLES = 3000`
-- `INTERNET_LATENCY_SAMPLES_HEADER_SIZE = 281` bytes
+- `INTERNET_LATENCY_SAMPLES_HEADER_SIZE = 289` bytes
 
 ---
 
@@ -133,6 +134,7 @@ pub struct InitializeInternetLatencySamplesArgs {
     pub origin_location_pk: Pubkey,
     pub target_location_pk: Pubkey,
     pub epoch: u64,
+    pub sampling_interval_microseconds: u64,
 }
 ```
 ### Accounts
@@ -207,4 +209,4 @@ pub struct WriteInternetLatencySamplesArgs {
 - `MAX_DEVICE_LATENCY_SAMPLES = 35_000` — upper bound on total RTT samples.
 - `MAX_INTERNET_LATENCY_SAMPLES = 3000` - upper bound on total internet control RTT samples.
 - `DEVICE_LATENCY_SAMPLES_HEADER_SIZE = 350` — base size excluding sample vector.
-- `INTERNET_LATENCY_SAMPLES_HEADER_SIZE = 281` - base size excluding the sample vector.
+- `INTERNET_LATENCY_SAMPLES_HEADER_SIZE = 289` - base size excluding the sample vector.

@@ -9,41 +9,25 @@ import (
 	"sort"
 	"time"
 
-	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/lmittmann/tint"
 	"github.com/olekukonko/tablewriter"
 
+	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data"
-	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 )
 
-const (
-	EnvTestnet = "testnet"
-	EnvDevnet  = "devnet"
-)
-
 func main() {
-	env := flag.String("env", EnvDevnet, "The network environment to query (devnet, testnet)")
+	env := flag.String("env", config.EnvDevnet, "The network environment to query (devnet, testnet)")
 	recency := flag.Duration("recency", 24*time.Hour, "Aggregate over the given duration")
 	verbose := flag.Bool("verbose", false, "Enable verbose logging")
 	flag.Parse()
 
 	log := newLogger(*verbose)
 
-	getProvider := func(env string) (data.Provider, error) {
-		switch env {
-		case EnvTestnet:
-			return testnetProvider(log)
-		case EnvDevnet:
-			return devnetProvider(log)
-		}
-		return nil, fmt.Errorf("invalid environment: %s", env)
-	}
-
-	provider, err := getProvider(*env)
+	provider, err := newProvider(log, *env)
 	if err != nil {
 		log.Error("Failed to get provider", "error", err)
 		os.Exit(1)
@@ -88,29 +72,18 @@ func newLogger(verbose bool) *slog.Logger {
 	}))
 }
 
-func testnetProvider(log *slog.Logger) (data.Provider, error) {
-	serviceabilityProgramID := solana.MustPublicKeyFromBase58(serviceability.SERVICEABILITY_PROGRAM_ID_TESTNET)
-	telemetryProgramID := solana.MustPublicKeyFromBase58(telemetry.TELEMETRY_PROGRAM_ID_TESTNET)
+func newProvider(log *slog.Logger, env string) (data.Provider, error) {
+	networkConfig, err := config.NetworkConfigForEnv(env)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get network config: %w", err)
+	}
 
-	rpcClient := solanarpc.New(dzsdk.DZ_LEDGER_RPC_URL)
-
-	return data.NewProvider(&data.ProviderConfig{
-		Logger:               log,
-		ServiceabilityClient: serviceability.New(rpcClient, serviceabilityProgramID),
-		TelemetryClient:      telemetry.New(log, rpcClient, nil, telemetryProgramID),
-	})
-}
-
-func devnetProvider(log *slog.Logger) (data.Provider, error) {
-	serviceabilityProgramID := solana.MustPublicKeyFromBase58(serviceability.SERVICEABILITY_PROGRAM_ID_DEVNET)
-	telemetryProgramID := solana.MustPublicKeyFromBase58(telemetry.TELEMETRY_PROGRAM_ID_DEVNET)
-
-	rpcClient := solanarpc.New(dzsdk.DZ_LEDGER_RPC_URL)
+	rpcClient := solanarpc.New(networkConfig.LedgerRPCURL)
 
 	return data.NewProvider(&data.ProviderConfig{
 		Logger:               log,
-		ServiceabilityClient: serviceability.New(rpcClient, serviceabilityProgramID),
-		TelemetryClient:      telemetry.New(log, rpcClient, nil, telemetryProgramID),
+		ServiceabilityClient: serviceability.New(rpcClient, networkConfig.ServiceabilityProgramID),
+		TelemetryClient:      telemetry.New(log, rpcClient, nil, networkConfig.TelemetryProgramID),
 	})
 }
 

@@ -6,9 +6,10 @@ use solana_program::{
     program::invoke_signed,
     program_error::ProgramError,
     pubkey::Pubkey,
-    system_instruction, system_program,
     sysvar::{rent::Rent, Sysvar},
 };
+
+use solana_system_interface::instruction;
 
 pub trait AccountSize {
     fn size(&self) -> usize;
@@ -54,7 +55,7 @@ pub fn write_account<'a, D: BorshSerialize + AccountSize + AccountSeed>(
                 let payment = required_lamports - account.lamports();
 
                 invoke_signed(
-                    &system_instruction::transfer(payer.key, account.key, payment),
+                    &instruction::transfer(payer.key, account.key, payment),
                     &[account.clone(), payer.clone(), system_program.clone()],
                     &[&[seed.as_slice()]],
                 )?;
@@ -81,7 +82,7 @@ pub fn account_close(
 
     // Close the account
     close_account.realloc(0, false)?;
-    close_account.assign(&system_program::ID);
+    close_account.assign(&solana_system_interface::program::ID);
 
     Ok(())
 }

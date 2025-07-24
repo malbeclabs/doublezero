@@ -1651,6 +1651,7 @@ name = "doublezero-program-common"
 version = "0.2.2"
 dependencies = [
  "solana-program",
+ "solana-system-interface",
 ]
 
 [[package]]
@@ -1665,6 +1666,7 @@ dependencies = [
  "solana-program",
  "solana-program-test",
  "solana-sdk",
+ "solana-system-interface",
  "thiserror 2.0.12",
 ]
 

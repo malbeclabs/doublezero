@@ -74,14 +74,14 @@ pub trait HttpFetcher {
 }
 
 pub async fn get_block_rewards(
-    client: &RpcClient, // Use Arc for shared ownership of the client
+    client: &RpcClient,
     validator_ids: &[String],
     epoch: u64,
 ) -> eyre::Result<HashMap<String, u64>> {
     let first_slot = get_first_slot_for_epoch(epoch);
 
     // Fetch the leader schedule
-    let leader_schedule = get_leader_schedule(&client, Some(first_slot))
+    let leader_schedule = get_leader_schedule(client, Some(first_slot))
         .await?
         .ok_or_else(|| eyre::eyre!("Validator not found in leader schedule"))?;
 
@@ -106,33 +106,31 @@ pub async fn get_block_rewards(
                 .map(move |slot| (validator_id.clone(), slot))
         },
     ))
-    .map(|(validator_id, slot)| {
-        async move {
-            match get_block(client, slot).await {
-                Ok(block) => {
-                    let lamports: u64 = block
-                        .rewards
-                        .as_ref()
-                        .map(|rewards| {
-                            rewards
-                                .iter()
-                                .filter_map(|reward| {
-                                    if reward.reward_type == Some(Fee) {
-                                        dbg!(reward.lamports);
-                                        Some(reward.lamports as u64)
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .sum()
-                        })
-                        .unwrap_or(0);
-                    (validator_id, lamports)
-                }
-                Err(e) => {
-                    eprintln!("Failed to fetch block for slot {slot}: {e}");
-                    (validator_id, 0)
-                }
+    .map(|(validator_id, slot)| async move {
+        match get_block(client, slot).await {
+            Ok(block) => {
+                let lamports: u64 = block
+                    .rewards
+                    .as_ref()
+                    .map(|rewards| {
+                        rewards
+                            .iter()
+                            .filter_map(|reward| {
+                                if reward.reward_type == Some(Fee) {
+                                    dbg!(reward.lamports);
+                                    Some(reward.lamports as u64)
+                                } else {
+                                    None
+                                }
+                            })
+                            .sum()
+                    })
+                    .unwrap_or(0);
+                (validator_id, lamports)
+            }
+            Err(e) => {
+                eprintln!("Failed to fetch block for slot {slot}: {e}");
+                (validator_id, 0)
             }
         }
     })
@@ -186,7 +184,7 @@ pub async fn get_jito_rewards<F: HttpFetcher>(
                 (validator_id, mev_revenue)
             }
         })
-        .buffer_unordered(10)
+        .buffer_unordered(5)
         .collect()
         .await;
 

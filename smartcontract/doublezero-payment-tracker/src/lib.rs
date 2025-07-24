@@ -1,14 +1,12 @@
 use serde::Deserialize;
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_sdk::{clock::DEFAULT_SLOTS_PER_EPOCH, commitment_config::CommitmentConfig};
+use solana_sdk::clock::DEFAULT_SLOTS_PER_EPOCH;
 use std::{collections::HashMap, env};
+
+use crate::rewards::ReqwestFetcher;
 pub mod rewards;
 
 const SLOT_TIME_DURATION_SECONDS: f64 = 0.4;
-
-fn solana_base_url() -> String {
-    env::var("SOLANA_RPC_URL").unwrap_or_else(|_| "https://api.mainnet-beta.solana.com".to_string())
-}
 
 #[derive(Deserialize, Debug)]
 pub struct Reward {
@@ -21,12 +19,13 @@ pub struct Reward {
 }
 
 pub async fn rewards_between_timestamps(
+    fetcher: &ReqwestFetcher,
+    client: &RpcClient,
     start_timestamp: u64,
     end_timestamp: u64,
     validator_ids: &[String],
 ) -> eyre::Result<HashMap<u64, HashMap<String, Reward>>> {
     let mut rewards: HashMap<u64, HashMap<String, Reward>> = HashMap::new();
-    let client = get_client();
     let current_slot = client.get_slot().await?;
     let block_time = client.get_block_time(current_slot).await?;
     let block_time: u64 = block_time as u64;
@@ -34,7 +33,7 @@ pub async fn rewards_between_timestamps(
     let start_epoch = epoch_from_timestamp(block_time, current_slot, start_timestamp)?;
     let end_epoch = epoch_from_timestamp(block_time, current_slot, end_timestamp)?;
     for epoch in start_epoch..=end_epoch {
-        let reward = get_rewards(&client, validator_ids, epoch).await?;
+        let reward = get_rewards(fetcher, client, validator_ids, epoch).await?;
         rewards.insert(epoch, reward);
     }
     Ok(rewards)
@@ -42,16 +41,22 @@ pub async fn rewards_between_timestamps(
 
 // this function will return a hashmap of total rewards keyed by validator pubkey
 pub async fn get_rewards(
+    fetcher: &ReqwestFetcher,
     client: &RpcClient,
     validator_ids: &[String],
     epoch: u64,
 ) -> eyre::Result<HashMap<String, Reward>> {
     let mut validator_rewards: Vec<Reward> = Vec::with_capacity(validator_ids.len());
-    let block_rewards = rewards::get_block_rewards(client, validator_ids, epoch).await?;
-    let jito_fetcher = rewards::ReqwestFetcher;
-    // TODO: move these into async calls once the block rewards are ready
-    let inflation_rewards = rewards::get_inflation_rewards(client, validator_ids, epoch).await?;
-    let jito_rewards = rewards::get_jito_rewards(&jito_fetcher, validator_ids, epoch).await?;
+
+    let (inflation_rewards, jito_rewards, block_rewards) = tokio::join!(
+        rewards::get_inflation_rewards(client, validator_ids, epoch),
+        rewards::get_jito_rewards(fetcher, validator_ids, epoch),
+        rewards::get_block_rewards(client, validator_ids, epoch)
+    );
+    let inflation_rewards = inflation_rewards?;
+    let jito_rewards = jito_rewards?;
+    let block_rewards = block_rewards?;
+
     for validator_id in validator_ids {
         let jito_reward = jito_rewards.get(validator_id).cloned().unwrap_or_default();
         let block_reward = block_rewards.get(validator_id).cloned().unwrap_or_default();
@@ -60,7 +65,6 @@ pub async fn get_rewards(
             .cloned()
             .unwrap_or_default();
         let mut total_reward: u64 = 0;
-        // TODO add block_rewards
         total_reward += jito_reward + inflation_reward;
         let rewards = Reward {
             validator_id: validator_id.to_string(),
@@ -96,25 +100,38 @@ fn epoch_from_timestamp(block_time: u64, current_slot: u64, timestamp: u64) -> e
     Ok(desired_slot / DEFAULT_SLOTS_PER_EPOCH)
 }
 
-fn get_client() -> RpcClient {
-    RpcClient::new_with_commitment(solana_base_url().to_string(), CommitmentConfig::confirmed())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use solana_sdk::commitment_config::CommitmentConfig;
+
+    fn solana_base_url() -> String {
+        env::var("SOLANA_RPC_URL")
+            .unwrap_or_else(|_| "https://api.mainnet-beta.solana.com".to_string())
+    }
+
+    fn get_client() -> RpcClient {
+        RpcClient::new_with_commitment(solana_base_url().to_string(), CommitmentConfig::confirmed())
+    }
 
     #[tokio::test]
     #[ignore] // TODO:  mock these
     async fn get_rewards_between_two_timestamps() {
         let pubkey = "6WgdYhhGE53WrZ7ywJA15hBVkw7CRbQ8yDBBTwmBtAHN";
         let validator_ids: &[String] = &[String::from(pubkey)];
-
+        let client = get_client();
+        let fetcher = ReqwestFetcher;
         let start_timestamp = 1752728160;
         let end_timestamp = 1752987360;
-        let rewards = rewards_between_timestamps(start_timestamp, end_timestamp, validator_ids)
-            .await
-            .unwrap();
+        let rewards = rewards_between_timestamps(
+            &fetcher,
+            &client,
+            start_timestamp,
+            end_timestamp,
+            validator_ids,
+        )
+        .await
+        .unwrap();
 
         let mut keys: Vec<u64> = rewards.keys().cloned().collect();
         keys.sort();
@@ -122,14 +139,16 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore]
     async fn total_rewards() {
         let client = get_client();
+        let fetcher = ReqwestFetcher;
         let pubkey = "6WgdYhhGE53WrZ7ywJA15hBVkw7CRbQ8yDBBTwmBtAHN";
         let validator_ids: &[String] = &[String::from(pubkey)];
         let epoch = 821;
 
-        let rewards = get_rewards(&client, validator_ids, epoch).await.unwrap();
+        let rewards = get_rewards(&fetcher, &client, validator_ids, epoch)
+            .await
+            .unwrap();
         let reward = rewards.get(pubkey).unwrap();
 
         assert_eq!(reward.validator_id, pubkey);

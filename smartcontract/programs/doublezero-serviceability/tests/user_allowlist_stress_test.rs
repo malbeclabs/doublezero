@@ -72,7 +72,7 @@ async fn user_allowlist_stress_test() {
         .unwrap();
 
     assert_eq!(state.account_type, AccountType::GlobalState);
-    assert_eq!(state.user_allowlist.len(), 950);
+    assert_eq!(state.user_allowlist.len(), 951); // 950 users + the global state itself
 
     println!("✅ Allowlist is correct");
     /*****************************************************************************************************************************************************/

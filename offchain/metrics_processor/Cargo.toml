@@ -1,5 +1,5 @@
 [package]
-name = "metrics_processor"
+name = "metrics-processor"
 version = "0.1.0"
 
 # Inherited
@@ -9,7 +9,7 @@ edition.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
 csv.workspace = true
-data_fetcher = { path = "../data_fetcher" }
+data-fetcher = { path = "../data_fetcher" }
 doublezero-serviceability.workspace = true
 doublezero-telemetry.workspace = true
 figment.workspace = true

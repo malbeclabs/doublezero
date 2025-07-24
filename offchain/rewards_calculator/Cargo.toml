@@ -1,5 +1,5 @@
 [package]
-name = "rewards_calculator"
+name = "rewards-calculator"
 version = "0.1.0"
 
 # Inherited
@@ -14,6 +14,7 @@ anyhow.workspace = true
 borsh.workspace = true
 chrono.workspace = true
 clap.workspace = true
+csv.workspace = true
 figment.workspace = true
 humantime.workspace = true
 rust_decimal.workspace = true
@@ -29,8 +30,9 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 
 # Internal crates
-data_fetcher = { path = "../data_fetcher" }
-metrics_processor = { path = "../metrics_processor" }
+data-fetcher = { path = "../data_fetcher" }
+metrics-processor = { path = "../metrics_processor" }
+demand-generator = { path = "../demand_generator" }
 
 [build-dependencies]
 toml.workspace = true

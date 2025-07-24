@@ -1,5 +1,5 @@
 [package]
-name = "demand_generator"
+name = "demand-generator"
 version = "0.1.0"
 
 # Inherited

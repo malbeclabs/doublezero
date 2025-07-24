@@ -1222,7 +1222,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a2330da5de22e8a3cb63252ce2abb30116bf5265e89c0e01bc17015ce30a476"
 
 [[package]]
-name = "data_fetcher"
+name = "data-fetcher"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -1248,7 +1248,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "930c7171c8df9fb1782bdf9b918ed9ed2d33d1d22300abb754f9085bc48bf8e8"
 
 [[package]]
-name = "demand_generator"
+name = "demand-generator"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -1394,7 +1394,7 @@ dependencies = [
 [[package]]
 name = "doublezero-program-common"
 version = "0.2.2"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#2e665d1f1193d8f83128f8dcb59be43e58227393"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#d681b2527687eedabdd4b88193c674d288a38c62"
 dependencies = [
  "solana-program",
 ]
@@ -1402,7 +1402,7 @@ dependencies = [
 [[package]]
 name = "doublezero-serviceability"
 version = "0.2.2"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#2e665d1f1193d8f83128f8dcb59be43e58227393"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#d681b2527687eedabdd4b88193c674d288a38c62"
 dependencies = [
  "borsh 1.5.7",
  "byteorder",
@@ -1416,7 +1416,7 @@ dependencies = [
 [[package]]
 name = "doublezero-telemetry"
 version = "0.2.0"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#2e665d1f1193d8f83128f8dcb59be43e58227393"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#d681b2527687eedabdd4b88193c674d288a38c62"
 dependencies = [
  "borsh 1.5.7",
  "doublezero-program-common",
@@ -2329,9 +2329,9 @@ dependencies = [
 
 [[package]]
 name = "hyper-util"
-version = "0.1.15"
+version = "0.1.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f66d5bd4c6f02bf0542fad85d626775bab9258cf795a4256dcaf3161114d1df"
+checksum = "8d9b05277c7e8da2c93a568989bb6207bef0112e8d17df7a6eda4a3cf143bc5e"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -2345,7 +2345,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2",
+ "socket2 0.6.0",
  "system-configuration",
  "tokio",
  "tower-service",
@@ -2541,9 +2541,9 @@ dependencies = [
 
 [[package]]
 name = "io-uring"
-version = "0.7.8"
+version = "0.7.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b86e202f00093dcba4275d4636b93ef9dd75d025ae560d2521b45ea28ab49013"
+checksum = "d93587f37623a1a17d94ef2bc9ada592f5465fe7732084ab7beefabe5c77c0c4"
 dependencies = [
  "bitflags",
  "cfg-if",
@@ -2846,13 +2846,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "metrics_processor"
+name = "metrics-processor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
  "csv",
- "data_fetcher",
+ "data-fetcher",
  "doublezero-serviceability",
  "doublezero-telemetry",
  "figment",
@@ -2990,7 +2990,7 @@ dependencies = [
 [[package]]
 name = "network-shapley"
 version = "0.1.0"
-source = "git+https://github.com/doublezerofoundation/network-shapley-rs#24eb4f569a6f6f2bf02f172f53d9d0da5f5af84d"
+source = "git+https://github.com/doublezerofoundation/network-shapley-rs#46567249e485cb6b948c487a48d8dcde6dc35e48"
 dependencies = [
  "clarabel",
  "csv",
@@ -3675,7 +3675,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls 0.23.29",
- "socket2",
+ "socket2 0.5.10",
  "thiserror 2.0.12",
  "tokio",
  "tracing",
@@ -3714,7 +3714,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2",
+ "socket2 0.5.10",
  "tracing",
  "windows-sys 0.59.0",
 ]
@@ -4011,17 +4011,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "rewards_calculator"
+name = "rewards-calculator"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "borsh 1.5.7",
  "chrono",
  "clap",
- "data_fetcher",
+ "csv",
+ "data-fetcher",
+ "demand-generator",
  "figment",
  "humantime",
- "metrics_processor",
+ "metrics-processor",
  "network-shapley",
  "rust_decimal",
  "serde",
@@ -4586,6 +4588,16 @@ checksum = "e22376abed350d73dd1cd119b57ffccad95b4e585a7cda43e286245ce23c0678"
 dependencies = [
  "libc",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "socket2"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "233504af464074f9d066d7b5416c5f9b894a5862a6506e306f7b816cdd6f1807"
+dependencies = [
+ "libc",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5386,7 +5398,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_derive",
- "socket2",
+ "socket2 0.5.10",
  "solana-serde",
  "tokio",
  "url",
@@ -6267,7 +6279,7 @@ dependencies = [
  "rand 0.8.5",
  "rustls 0.23.29",
  "smallvec",
- "socket2",
+ "socket2 0.5.10",
  "solana-keypair",
  "solana-measure",
  "solana-metrics",
@@ -7322,7 +7334,7 @@ dependencies = [
  "pin-project-lite",
  "signal-hook-registry",
  "slab",
- "socket2",
+ "socket2 0.5.10",
  "tokio-macros",
  "windows-sys 0.52.0",
 ]

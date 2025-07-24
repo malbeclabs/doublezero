@@ -1,5 +1,5 @@
 [package]
-name = "data_fetcher"
+name = "data-fetcher"
 version = "0.1.0"
 
 # Inherited

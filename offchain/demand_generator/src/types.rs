@@ -1,7 +1,9 @@
 use crate::constants::LAMPORTS_PER_SOL;
 use serde::{Deserialize, Serialize};
 use solana_sdk::pubkey::Pubkey;
-use std::net::IpAddr;
+use std::{collections::HashMap, net::IpAddr};
+
+pub type ValidatorIpMap = HashMap<Pubkey, IpAddr>;
 
 #[derive(Debug, Deserialize)]
 pub struct IpInfoResp {

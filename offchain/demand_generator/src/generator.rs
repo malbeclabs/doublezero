@@ -1,98 +1,80 @@
-use anyhow::{Context, Result};
-use clap::Parser;
-use csv::Writer;
-use demand_generator::{
+use crate::{
     city_aggregator::aggregate_by_city,
-    cli::Cli,
     constants::SOLANA_MAINNET_RPC_URL,
-    demand_matrix::{DemandConfig, generate_demand_matrix, write_demand_csv},
+    demand_matrix::{DemandConfig, generate_demand_matrix},
     settings::Settings,
-    types::{EnrichedValidator, IpInfoResp, ValidatorDetail},
+    types::{EnrichedValidator, IpInfoResp, ValidatorDetail, ValidatorIpMap},
 };
+use anyhow::{Context, Result};
+use network_shapley::types::Demand;
 use solana_client::{
     nonblocking::rpc_client::RpcClient,
     rpc_config::RpcGetVoteAccountsConfig,
     rpc_response::{RpcContactInfo, RpcVoteAccountInfo},
 };
 use solana_sdk::pubkey::Pubkey;
-use std::{
-    collections::{HashMap, HashSet},
-    net::IpAddr,
-    path::PathBuf,
-};
+use std::collections::{HashMap, HashSet};
 use tracing::info;
-use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
-pub type ValidatorIpMap = HashMap<Pubkey, IpAddr>;
-
-#[tokio::main]
-async fn main() -> Result<()> {
-    let cli = Cli::parse();
-    let settings = Settings::from_env()?;
-    init_logging(&settings.log_level)?;
-
-    let rpc_client = RpcClient::new(SOLANA_MAINNET_RPC_URL.to_string());
-    let vote_accounts = get_all_validator_identities(&rpc_client).await?;
-
-    // Build stake map
-    let mut stake_map: HashMap<Pubkey, u64> = HashMap::new();
-    for vote_account in &vote_accounts {
-        if let Ok(identity_pubkey) = vote_account.node_pubkey.parse::<Pubkey>() {
-            *stake_map.entry(identity_pubkey).or_insert(0) += vote_account.activated_stake;
-        }
-    }
-
-    // Count unique validators
-    let unique_validator_count = stake_map.len();
-    info!("unique validator identities: {}", unique_validator_count);
-
-    // Get all cluster nodes
-    let cluster_nodes = get_cluster_nodes(&rpc_client).await?;
-
-    // Convert the list of nodes into a map for lookups
-    // A single validator can have multiple vote accounts. We only want one entry per validator identity.
-    let ip_map = ip_map(cluster_nodes);
-
-    // Combine to construct Vec<ValidatorDetails>
-    let validators_with_gossip = filter_gossiping_validators(&ip_map, &vote_accounts, &stake_map)?;
-    info!("gossiping validators: {:?}", validators_with_gossip.len());
-
-    // Add ip info data
-    let enriched_validators = enrich_validators(&settings, &validators_with_gossip).await?;
-    info!("enriched validators: {:?}", enriched_validators.len());
-
-    // Write enriched validators CSV if path provided
-    if let Some(enriched_path) = &cli.enriched_validators {
-        write_enriched_validators_csv(enriched_path, &enriched_validators)?;
-    }
-
-    // Aggregate validators by city
-    let city_aggregates = aggregate_by_city(&enriched_validators)?;
-    info!("aggregated into {} cities", city_aggregates.len());
-
-    // Generate demand matrix
-    let config = DemandConfig::default();
-    let demands = generate_demand_matrix(&city_aggregates, &config)?;
-    info!("generated {} demand entries", demands.len());
-
-    // Write demand matrix if path provided
-    if let Some(demand_path) = &cli.demand {
-        // Write demand CSV
-        write_demand_csv(demand_path, &demands)?;
-        info!("wrote demand matrix to: {}", demand_path.display());
-    }
-
-    Ok(())
+#[derive(Debug)]
+pub struct DemandGenerator {
+    settings: Settings,
 }
 
-fn write_enriched_validators_csv(path: &PathBuf, enriched: &[EnrichedValidator]) -> Result<()> {
-    let mut csv_writer = Writer::from_path(path)?;
-    for val in enriched {
-        csv_writer.serialize(val)?;
+impl DemandGenerator {
+    pub fn new(settings: Settings) -> Self {
+        Self { settings }
     }
-    csv_writer.flush()?;
-    info!("wrote enriched validators csv to: {}", path.display());
-    Ok(())
+
+    pub async fn generate(&self) -> Result<Vec<Demand>> {
+        let (_, demands) = self.generate_with_validators().await?;
+        Ok(demands)
+    }
+
+    pub async fn generate_with_validators(&self) -> Result<(Vec<EnrichedValidator>, Vec<Demand>)> {
+        let rpc_client = RpcClient::new(SOLANA_MAINNET_RPC_URL.to_string());
+        let vote_accounts = get_all_validator_identities(&rpc_client).await?;
+
+        // Build stake map
+        let mut stake_map: HashMap<Pubkey, u64> = HashMap::new();
+        for vote_account in &vote_accounts {
+            if let Ok(identity_pubkey) = vote_account.node_pubkey.parse::<Pubkey>() {
+                *stake_map.entry(identity_pubkey).or_insert(0) += vote_account.activated_stake;
+            }
+        }
+
+        // Count unique validators
+        let unique_validator_count = stake_map.len();
+        info!("unique validator identities: {}", unique_validator_count);
+
+        // Get all cluster nodes
+        let cluster_nodes = get_cluster_nodes(&rpc_client).await?;
+
+        // Convert the list of nodes into a map for lookups
+        // A single validator can have multiple vote accounts. We only want one entry per validator identity.
+        let ip_map = ip_map(cluster_nodes);
+
+        // Combine to construct Vec<ValidatorDetails>
+        let validators_with_gossip =
+            filter_gossiping_validators(&ip_map, &vote_accounts, &stake_map)?;
+        info!("gossiping validators: {:?}", validators_with_gossip.len());
+
+        // Add ip info data
+        let enriched_validators =
+            enrich_validators(&self.settings, &validators_with_gossip).await?;
+        info!("enriched validators: {:?}", enriched_validators.len());
+
+        // Aggregate validators by city
+        let city_aggregates = aggregate_by_city(&enriched_validators)?;
+        info!("aggregated into {} cities", city_aggregates.len());
+
+        // Generate demand matrix
+        let config = DemandConfig::default();
+        let demands = generate_demand_matrix(&city_aggregates, &config)?;
+        info!("generated {} demand entries", demands.len());
+
+        Ok((enriched_validators, demands))
+    }
 }
 
 async fn enrich_validators(
@@ -195,22 +177,8 @@ async fn get_ip_info(
     let response = client.get(&url).send().await?.error_for_status()?;
     let ip_info: IpInfoResp = response
         .json()
-        .await // Use .await here
+        .await
         .context("Failed to parse JSON from ipinfo.io response.")?;
 
     Ok(ip_info)
-}
-
-fn init_logging(log_level: &str) -> Result<()> {
-    tracing_subscriber::registry()
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(log_level)))
-        .with(
-            tracing_subscriber::fmt::layer()
-                .with_target(false)
-                .with_thread_ids(false)
-                .with_thread_names(false),
-        )
-        .init();
-
-    Ok(())
 }

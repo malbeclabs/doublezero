@@ -1,0 +1,19 @@
+[package]
+name = "demand_generator"
+version = "0.1.0"
+
+# Inherited
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+csv.workspace = true
+figment.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+solana-client.workspace = true
+solana-sdk.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

@@ -9,11 +9,16 @@ use serde::{Deserialize, Serialize};
 pub struct Settings {
     #[serde(default = "default_log_level")]
     pub log_level: String,
+    pub data_fetcher: DataFetcherSettings,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DataFetcherSettings {
     pub rpc: RpcSettings,
     pub programs: ProgramSettings,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct RpcSettings {
     pub url: String,
     #[serde(default = "default_commitment")]
@@ -22,6 +27,15 @@ pub struct RpcSettings {
     pub timeout_secs: u64,
     #[serde(default = "default_max_retries")]
     pub max_retries: u32,
+}
+
+impl RpcSettings {
+    pub fn with_url(url: String) -> Self {
+        Self {
+            url,
+            ..Default::default()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

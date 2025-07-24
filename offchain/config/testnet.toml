@@ -1,12 +1,7 @@
 # Testnet configuration for DoubleZero Rewarder
-[rpc]
+[data_fetcher.rpc]
 url = "https://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30"
 
-[programs]
+[data_fetcher.programs]
 serviceability_program_id = "DZtnuQ839pSaDMFG5q1ad2V95G82S5EC4RrB3Ndw2Heb"
 telemetry_program_id = "3KogTMmVxc5eUHtjZnwm136H5P8tvPwVu4ufbGPvM7p1"
-
-# Third-party API settings (if needed for testnet)
-[third_party]
-# latency_api_url = "https://api.example.com/testnet/latency"
-# api_key = ""  # Set in local.toml or via DZ_THIRD_PARTY__API_KEY env var

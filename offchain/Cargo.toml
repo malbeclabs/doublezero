@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "demand_generator",
     "data_fetcher",
     "metrics_processor",
     "rewards_calculator",
@@ -32,6 +33,7 @@ rand = { version = "0", features = [ "thread_rng" ] }
 rust_decimal = { version = "1", features = ["serde", "macros"] }
 sha2 = "0"
 network-shapley = { git = "https://github.com/doublezerofoundation/network-shapley-rs", features = ["serde"] }
+reqwest = { version = "0", features = [ "json" ] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 solana-client = "2.2.7"

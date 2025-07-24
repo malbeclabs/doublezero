@@ -6,10 +6,10 @@ version = "0.1.0"
 edition.workspace = true
 
 [dependencies]
-data_fetcher = { path = "../data_fetcher" }
 anyhow.workspace = true
 chrono.workspace = true
 csv.workspace = true
+data_fetcher = { path = "../data_fetcher" }
 doublezero-serviceability.workspace = true
 doublezero-telemetry.workspace = true
 figment.workspace = true

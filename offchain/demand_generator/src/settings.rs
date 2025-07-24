@@ -4,11 +4,25 @@ use figment::{
     providers::{Env, Format, Toml},
 };
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default = "default_log_level")]
     pub log_level: String,
+    pub demand_generator: DemandGeneratorSettings,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DemandGeneratorSettings {
+    pub ip_info: IpInfoSettings,
+    pub csv_path: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IpInfoSettings {
+    pub base_url: String,
+    pub api_token: String,
 }
 
 impl Settings {
@@ -18,7 +32,7 @@ impl Settings {
         Self::load(env)
     }
 
-    fn load(env: String) -> Result<Self> {
+    pub fn load(env: String) -> Result<Self> {
         let mut figment = Figment::new()
             // Load default configuration
             .merge(Toml::file("config/default.toml"));

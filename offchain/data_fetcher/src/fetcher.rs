@@ -25,14 +25,14 @@ impl Fetcher {
         );
         info!(
             "Using serviceability program: {}",
-            settings.programs.serviceability_program_id
+            settings.data_fetcher.programs.serviceability_program_id
         );
         info!(
             "Using telemetry program: {}",
-            settings.programs.telemetry_program_id
+            settings.data_fetcher.programs.telemetry_program_id
         );
 
-        let rpc_client = rpc::create_client(&settings.rpc)?;
+        let rpc_client = rpc::create_client(&settings.data_fetcher.rpc)?;
 
         // Fetch data in parallel
         // For serviceability, we use the before timestamp to get the latest network state
@@ -40,12 +40,12 @@ impl Fetcher {
         let (serviceability_data, telemetry_data) = tokio::try_join!(
             serviceability::fetch(
                 &rpc_client,
-                &settings.programs.serviceability_program_id,
+                &settings.data_fetcher.programs.serviceability_program_id,
                 before_us // Get network state at the end of the time range
             ),
             telemetry::fetch(
                 &rpc_client,
-                &settings.programs.telemetry_program_id,
+                &settings.data_fetcher.programs.telemetry_program_id,
                 after_us,
                 before_us
             )

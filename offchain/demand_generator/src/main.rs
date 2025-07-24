@@ -1,0 +1,193 @@
+use anyhow::{Context, Result};
+use csv::Writer;
+use demand_generator::{
+    constants::SOLANA_MAINNET_RPC_URL,
+    settings::Settings,
+    types::{EnrichedValidator, IpInfoResp, ValidatorDetail},
+};
+use solana_client::{
+    nonblocking::rpc_client::RpcClient,
+    rpc_config::RpcGetVoteAccountsConfig,
+    rpc_response::{RpcContactInfo, RpcVoteAccountInfo},
+};
+use solana_sdk::pubkey::Pubkey;
+use std::{
+    collections::{HashMap, HashSet},
+    net::IpAddr,
+};
+use tracing::info;
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+
+pub type ValidatorIpMap = HashMap<Pubkey, IpAddr>;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let settings = Settings::from_env()?;
+    init_logging(&settings.log_level)?;
+
+    let rpc_client = RpcClient::new(SOLANA_MAINNET_RPC_URL.to_string());
+    let vote_accounts = get_all_validator_identities(&rpc_client).await?;
+
+    // Build stake map
+    let mut stake_map: HashMap<Pubkey, u64> = HashMap::new();
+    for vote_account in &vote_accounts {
+        if let Ok(identity_pubkey) = vote_account.node_pubkey.parse::<Pubkey>() {
+            *stake_map.entry(identity_pubkey).or_insert(0) += vote_account.activated_stake;
+        }
+    }
+
+    // Count unique validators
+    let unique_validator_count = stake_map.len();
+    info!("unique validator identities: {}", unique_validator_count);
+
+    // Get all cluster nodes
+    let cluster_nodes = get_cluster_nodes(&rpc_client).await?;
+
+    // Convert the list of nodes into a map for lookups
+    // A single validator can have multiple vote accounts. We only want one entry per validator identity.
+    let ip_map = ip_map(cluster_nodes);
+
+    // Combine to construct Vec<ValidatorDetails>
+    let validators_with_gossip = filter_gossiping_validators(&ip_map, &vote_accounts, &stake_map)?;
+    info!("gossiping validators: {:?}", validators_with_gossip.len());
+
+    // Add ip info data
+    let enriched_validators = enrich_validators(&settings, &validators_with_gossip).await?;
+    info!("enriched validators: {:?}", enriched_validators.len());
+
+    write_csv(&settings, &enriched_validators)?;
+
+    Ok(())
+}
+
+fn write_csv(settings: &Settings, enriched: &[EnrichedValidator]) -> Result<()> {
+    if let Some(csv_path) = &settings.demand_generator.csv_path {
+        let mut csv_writer = Writer::from_path(csv_path)?;
+        for val in enriched {
+            csv_writer.serialize(val)?;
+        }
+        csv_writer.flush()?;
+        info!("wrote csv to: {}", csv_path.display());
+    }
+    Ok(())
+}
+
+async fn enrich_validators(
+    settings: &Settings,
+    validators_with_gossip: &[ValidatorDetail],
+) -> Result<Vec<EnrichedValidator>> {
+    let http_client = reqwest::Client::new();
+    let mut enriched = vec![];
+    for val_detail in validators_with_gossip.iter() {
+        let ip_info_resp =
+            get_ip_info(settings, &http_client, &val_detail.ip_address.to_string()).await?;
+
+        let val = EnrichedValidator::new(val_detail, &ip_info_resp);
+        enriched.push(val)
+    }
+
+    Ok(enriched)
+}
+
+fn filter_gossiping_validators(
+    ip_map: &ValidatorIpMap,
+    vote_accounts: &[RpcVoteAccountInfo],
+    stake_map: &HashMap<Pubkey, u64>,
+) -> Result<Vec<ValidatorDetail>> {
+    let mut seen_validators = HashSet::new();
+    let mut all_validators = vec![];
+
+    for vote_account in vote_accounts {
+        // Parse the validator's identity pubkey string into a real Pubkey
+        if let Ok(identity_pubkey) = vote_account.node_pubkey.parse::<Pubkey>() {
+            // Skip if we've already processed this validator
+            if !seen_validators.insert(identity_pubkey) {
+                continue;
+            }
+
+            // Look up the IP for this validator in our HashMap
+            if let Some(&ip_address) = ip_map.get(&identity_pubkey) {
+                // Get the total stake for this validator
+                let stake_lamports = stake_map.get(&identity_pubkey).unwrap_or(&0);
+
+                // If we find an IP, create our final struct and add it to the list
+                all_validators.push(ValidatorDetail {
+                    identity_pubkey,
+                    ip_address,
+                    stake_lamports: *stake_lamports,
+                });
+            }
+        }
+    }
+    Ok(all_validators)
+}
+
+fn ip_map(cluster_nodes: Vec<RpcContactInfo>) -> ValidatorIpMap {
+    cluster_nodes
+        .into_iter()
+        .filter_map(|node| {
+            // The node.pubkey is a String, so we parse it into a Pubkey.
+            // The node.gossip is an Option<SocketAddr>, so we get the ip() from it.
+            // If either part fails, this node is ignored.
+            if let (Ok(pubkey), Some(gossip_addr)) = (node.pubkey.parse(), node.gossip) {
+                Some((pubkey, gossip_addr.ip()))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+async fn get_cluster_nodes(rpc_client: &RpcClient) -> Result<Vec<RpcContactInfo>> {
+    let cluster_nodes = rpc_client
+        .get_cluster_nodes()
+        .await
+        .context("Failed to get cluster nodes from the RPC endpoint.")?;
+    Ok(cluster_nodes)
+}
+
+async fn get_all_validator_identities(rpc_client: &RpcClient) -> Result<Vec<RpcVoteAccountInfo>> {
+    let config = RpcGetVoteAccountsConfig {
+        keep_unstaked_delinquents: Some(false),
+        ..Default::default()
+    };
+    let vote_accounts = rpc_client
+        .get_vote_accounts_with_config(config)
+        .await
+        .context("Failed to get vote accounts")?;
+    let mut all_validators = vote_accounts.current;
+    all_validators.extend(vote_accounts.delinquent);
+    Ok(all_validators)
+}
+
+async fn get_ip_info(
+    settings: &Settings,
+    client: &reqwest::Client,
+    ip: &str,
+) -> Result<IpInfoResp> {
+    let url = format!(
+        "{}/{}?token={}",
+        settings.demand_generator.ip_info.base_url, ip, settings.demand_generator.ip_info.api_token
+    );
+    let response = client.get(&url).send().await?.error_for_status()?;
+    let ip_info: IpInfoResp = response
+        .json()
+        .await // Use .await here
+        .context("Failed to parse JSON from ipinfo.io response.")?;
+
+    Ok(ip_info)
+}
+
+fn init_logging(log_level: &str) -> Result<()> {
+    tracing_subscriber::registry()
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(log_level)))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_target(false)
+                .with_thread_ids(false)
+                .with_thread_names(false),
+        )
+        .init();
+
+    Ok(())
+}

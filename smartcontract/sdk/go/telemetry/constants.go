@@ -22,8 +22,13 @@ const (
 	// https://docs.anza.xyz/proposals/versioned-transactions#problem
 	MaxSamplesPerBatch = 245 // 980 bytes
 
-	// MaxSamples is the maximum number of samples that can be written to a single account.
-	MaxSamples = 35_000
+	// MaxDeviceLatencySamplesPerAccount is the maximum number of samples that can be written to a single device latency samples account.
+	// This provides space for just over 12 samples per minute, or 1 sample every 5 seconds.
+	MaxDeviceLatencySamplesPerAccount = 35_000
+
+	// MaxInternetLatencySamplesPerAccount is the maximum number of samples that can be written to an internet latency samples account.
+	// This provides space for just over 1 sample per minute.
+	MaxInternetLatencySamplesPerAccount = 3000
 )
 
 // Telemetry Program IDs
@@ -48,12 +53,4 @@ const (
 	SEED_PREFIX = "telemetry"
 	// Seed for device latency samples PDAs
 	SEED_DEVICE_LATENCY_SAMPLES = "dzlatency"
-)
-
-// Constants for telemetry data
-const (
-	// Maximum number of samples that can be written in one transaction
-	MAX_SAMPLES = 1000
-	// Maximum size of a device latency samples account
-	DEVICE_LATENCY_SAMPLES_MAX_SIZE = 10240
 )

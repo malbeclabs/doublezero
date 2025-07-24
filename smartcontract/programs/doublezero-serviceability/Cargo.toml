@@ -19,6 +19,7 @@ doublezero-program-common.workspace = true
 ipnetwork.workspace = true
 serde.workspace = true
 solana-program.workspace = true
+solana-system-interface.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

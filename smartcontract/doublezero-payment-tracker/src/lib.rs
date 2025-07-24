@@ -1,9 +1,10 @@
 use serde::Deserialize;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::clock::DEFAULT_SLOTS_PER_EPOCH;
-use std::{collections::HashMap, env};
+use std::collections::HashMap;
 
-use crate::rewards::ReqwestFetcher;
+use crate::rewards::{ReqwestFetcher, SolanaApiProvider};
+
 pub mod rewards;
 
 const SLOT_TIME_DURATION_SECONDS: f64 = 0.4;
@@ -20,6 +21,7 @@ pub struct Reward {
 
 pub async fn rewards_between_timestamps(
     fetcher: &ReqwestFetcher,
+    solana_api_provider: &SolanaApiProvider,
     client: &RpcClient,
     start_timestamp: u64,
     end_timestamp: u64,
@@ -33,7 +35,8 @@ pub async fn rewards_between_timestamps(
     let start_epoch = epoch_from_timestamp(block_time, current_slot, start_timestamp)?;
     let end_epoch = epoch_from_timestamp(block_time, current_slot, end_timestamp)?;
     for epoch in start_epoch..=end_epoch {
-        let reward = get_rewards(fetcher, client, validator_ids, epoch).await?;
+        let reward =
+            get_rewards(solana_api_provider, fetcher, client, validator_ids, epoch).await?;
         rewards.insert(epoch, reward);
     }
     Ok(rewards)
@@ -41,6 +44,7 @@ pub async fn rewards_between_timestamps(
 
 // this function will return a hashmap of total rewards keyed by validator pubkey
 pub async fn get_rewards(
+    solana_provider: &SolanaApiProvider,
     fetcher: &ReqwestFetcher,
     client: &RpcClient,
     validator_ids: &[String],
@@ -51,7 +55,7 @@ pub async fn get_rewards(
     let (inflation_rewards, jito_rewards, block_rewards) = tokio::join!(
         rewards::get_inflation_rewards(client, validator_ids, epoch),
         rewards::get_jito_rewards(fetcher, validator_ids, epoch),
-        rewards::get_block_rewards(validator_ids, epoch)
+        rewards::get_block_rewards(solana_provider, validator_ids, epoch)
     );
     let inflation_rewards = inflation_rewards?;
     let jito_rewards = jito_rewards?;
@@ -103,6 +107,7 @@ fn epoch_from_timestamp(block_time: u64, current_slot: u64, timestamp: u64) -> e
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::env;
     use solana_sdk::commitment_config::CommitmentConfig;
 
     fn solana_base_url() -> String {
@@ -120,11 +125,13 @@ mod tests {
         let pubkey = "6WgdYhhGE53WrZ7ywJA15hBVkw7CRbQ8yDBBTwmBtAHN";
         let validator_ids: &[String] = &[String::from(pubkey)];
         let client = get_client();
+        let solana_api_provider = SolanaApiProvider;
         let fetcher = ReqwestFetcher;
         let start_timestamp = 1752728160;
         let end_timestamp = 1752987360;
         let rewards = rewards_between_timestamps(
             &fetcher,
+            &solana_api_provider,
             &client,
             start_timestamp,
             end_timestamp,
@@ -142,13 +149,20 @@ mod tests {
     async fn total_rewards() {
         let client = get_client();
         let fetcher = ReqwestFetcher;
+        let solana_api_provider = SolanaApiProvider;
         let pubkey = "6WgdYhhGE53WrZ7ywJA15hBVkw7CRbQ8yDBBTwmBtAHN";
         let validator_ids: &[String] = &[String::from(pubkey)];
         let epoch = 821;
 
-        let rewards = get_rewards(&fetcher, &client, validator_ids, epoch)
-            .await
-            .unwrap();
+        let rewards = get_rewards(
+            &solana_api_provider,
+            &fetcher,
+            &client,
+            validator_ids,
+            epoch,
+        )
+        .await
+        .unwrap();
         let reward = rewards.get(pubkey).unwrap();
 
         assert_eq!(reward.validator_id, pubkey);

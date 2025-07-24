@@ -16,12 +16,13 @@ use solana_client::{
     rpc_config::{RpcBlockConfig, RpcGetVoteAccountsConfig, RpcLeaderScheduleConfig},
 };
 use solana_sdk::{
-    clock::DEFAULT_SLOTS_PER_EPOCH, commitment_config::CommitmentConfig, native_token::Sol, pubkey::Pubkey, reward_type::RewardType::Fee
+    clock::DEFAULT_SLOTS_PER_EPOCH, commitment_config::CommitmentConfig, pubkey::Pubkey,
+    reward_type::RewardType::Fee,
 };
 use std::error::Error;
 
 use solana_transaction_status_client_types::{
-    EncodedConfirmedBlock, TransactionDetails, UiConfirmedBlock, UiTransactionEncoding
+    TransactionDetails, UiConfirmedBlock, UiTransactionEncoding,
 };
 
 use std::{collections::HashMap, str::FromStr};
@@ -49,21 +50,6 @@ struct JitoReward {
 }
 
 #[derive(Serialize, Debug)]
-struct GetLeaderScheduleRPCConfig {
-    commitment: String,
-    identity: String,
-}
-
-#[derive(Serialize, Debug)]
-struct GetBlockRPCConfig {
-    commitment: String,
-    encoding: String,
-    transaction_details: String,
-    max_supported_transaction_version: u64,
-    rewards: bool,
-}
-
-#[derive(Serialize, Debug)]
 struct JsonRpcRequest<P> {
     jsonrpc: String,
     id: u64,
@@ -75,8 +61,6 @@ type LeaderScheduleResult = HashMap<String, Vec<usize>>;
 
 #[derive(Deserialize, Debug)]
 struct JsonRpcResponse<R> {
-    pub jsonrpc: String,
-    pub id: u32,
     pub result: R,
 }
 
@@ -107,30 +91,31 @@ pub trait HttpFetcher {
 #[async_trait]
 pub trait ApiProvider {
     async fn get_leader_schedule(&self) -> eyre::Result<HashMap<String, Vec<usize>>>;
-    async fn get_block(&self, slot: u64) -> eyre::Result<EncodedConfirmedBlock>;
+    async fn get_block(&self, slot: u64) -> eyre::Result<UiConfirmedBlock>;
 }
 
 pub struct SolanaApiProvider;
 
-// #[async_trait]
-// impl ApiProvider for SolanaApiProvider {
-//     async fn get_leader_schedule(&self) -> eyre::Result<HashMap<String, Vec<usize>>> {
-//         // super::get_leader_schedule.await
-//     }
+#[async_trait]
+impl ApiProvider for SolanaApiProvider {
+    async fn get_leader_schedule(&self) -> eyre::Result<HashMap<String, Vec<usize>>> {
+        get_leader_schedule().await
+    }
 
-//     async fn get_block(&self, slot: u64) -> eyre::Result<EncodedConfirmedBlock> {
-//         // super::get_block(slot).await
-//     }
-// }
+    async fn get_block(&self, slot: u64) -> eyre::Result<UiConfirmedBlock> {
+        get_block(slot).await
+    }
+}
 
-pub async fn get_block_rewards(
+pub async fn get_block_rewards<T: ApiProvider>(
+    api_provider: &T,
     validator_ids: &[String],
     epoch: u64,
 ) -> eyre::Result<HashMap<String, u64>> {
     let first_slot = get_first_slot_for_epoch(epoch);
 
     // Fetch the leader schedule
-    let leader_schedule = get_leader_schedule().await?;
+    let leader_schedule = api_provider.get_leader_schedule().await?;
 
     // Build validator schedules
     let validator_schedules: HashMap<String, Vec<u64>> = validator_ids
@@ -154,7 +139,7 @@ pub async fn get_block_rewards(
         },
     ))
     .map(|(validator_id, slot)| async move {
-        match get_block(slot).await {
+        match api_provider.get_block(slot).await {
             Ok(block) => {
                 let lamports: u64 = block
                     .rewards
@@ -338,14 +323,13 @@ pub async fn get_leader_schedule() -> eyre::Result<HashMap<String, Vec<usize>>> 
 
 #[cfg(test)]
 mod tests {
-    use futures::TryFutureExt;
-
     use super::*;
+    use solana_transaction_status_client_types::Reward;
 
     #[tokio::test]
     async fn jito_rewards() {
         let mut jito_mock_fetcher = MockHttpFetcher::new();
-        let pubkey = "CvSb7wdQAFpHuSpTYTJnX5SYH4hCfQ9VuGnqrKaKwycB";
+        let pubkey = "6WgdYhhGE53WrZ7ywJA15hBVkw7CRbQ8yDBBTwmBtAHN";
         let validator_ids: &[String] = &[String::from(pubkey)];
         let epoch = 812;
         let expected_mev_revenue = 503423196855;
@@ -383,5 +367,55 @@ mod tests {
         let reward = rewards.get(pubkey).unwrap();
         assert_eq!(rewards.keys().next().unwrap(), pubkey);
         assert_eq!(*reward, 2500);
+    }
+
+    #[tokio::test]
+    async fn block_rewards() {
+        let mut mock_api_provider = MockApiProvider::new();
+        let validator_id = "some_validator_pubkey".to_string();
+        let validator_ids = &[validator_id.clone()];
+        let epoch = 100;
+        let first_slot = get_first_slot_for_epoch(epoch);
+        let slot_index = 10;
+        let slot = first_slot + slot_index as u64;
+
+        let mut leader_schedule = HashMap::new();
+        leader_schedule.insert(validator_id.clone(), vec![slot_index]);
+
+        mock_api_provider
+            .expect_get_leader_schedule()
+            .times(1)
+            .returning(move || Ok(leader_schedule.clone()));
+
+        let block_reward = 5000;
+        let mock_block = UiConfirmedBlock {
+            num_reward_partitions: Some(1),
+            signatures: Some(vec!["One".to_string()]),
+            rewards: Some(vec![Reward {
+                pubkey: validator_id.clone(),
+                lamports: block_reward,
+                post_balance: 10000,
+                reward_type: Some(Fee),
+                commission: None,
+            }]),
+            previous_blockhash: "".to_string(),
+            blockhash: "".to_string(),
+            parent_slot: 0,
+            transactions: None,
+            block_time: None,
+            block_height: None,
+        };
+
+        mock_api_provider
+            .expect_get_block()
+            .withf(move |s| *s == slot)
+            .times(1)
+            .returning(move |_| Ok(mock_block.clone()));
+
+        let rewards = get_block_rewards(&mock_api_provider, validator_ids, epoch)
+            .await
+            .unwrap();
+
+        assert_eq!(rewards.get(&validator_id), Some(&(block_reward as u64)));
     }
 }

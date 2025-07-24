@@ -50,7 +50,7 @@ pub struct InternetLatencySamplesHeader {
     // Set on the first write, remains unchanged on subsequent writes
     pub start_timestamp_microseconds: u64, // 8
     // Tracks how many samples have been appended
-    pub next_samples_index: u32, // 4
+    pub next_sample_index: u32, // 4
     // Reserved for future use
     pub _unused: [u8; 128], // 128
 }
@@ -92,10 +92,10 @@ impl fmt::Display for InternetLatencySamples {
 impl BorshSerialize for InternetLatencySamples {
     fn serialize<W: Write>(&self, writer: &mut W) -> io::Result<()> {
         self.header.serialize(writer)?;
-        &self
+        _ = &self
             .samples
             .iter()
-            .for_each(|sample| writer.write_all(&sample.to_le_bytes())?);
+            .try_for_each(|sample| writer.write_all(&sample.to_le_bytes()))?;
         Ok(())
     }
 }
@@ -166,7 +166,7 @@ mod tests {
                 origin_location_pk: Pubkey::new_unique(),
                 target_location_pk: Pubkey::new_unique(),
                 start_timestamp_microseconds: 1_700_000_000_000_000,
-                next_samples_index: samples.len() as u32,
+                next_sample_index: samples.len() as u32,
                 _unused: [0; 128],
             },
             samples,

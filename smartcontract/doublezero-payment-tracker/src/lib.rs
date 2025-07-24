@@ -1,10 +1,14 @@
 use serde::Deserialize;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{clock::DEFAULT_SLOTS_PER_EPOCH, commitment_config::CommitmentConfig};
-use std::collections::HashMap;
+use std::{collections::HashMap, env};
 pub mod rewards;
 
 const SLOT_TIME_DURATION_SECONDS: f64 = 0.4;
+
+fn solana_base_url() -> String {
+    env::var("SOLANA_RPC_URL").unwrap_or_else(|_| "https://api.mainnet-beta.solana.com".to_string())
+}
 
 #[derive(Deserialize, Debug)]
 pub struct Reward {
@@ -13,6 +17,7 @@ pub struct Reward {
     pub total: u64,
     pub jito: u64,
     pub inflation: u64,
+    pub block: u64,
 }
 
 pub async fn rewards_between_timestamps(
@@ -42,13 +47,14 @@ pub async fn get_rewards(
     epoch: u64,
 ) -> eyre::Result<HashMap<String, Reward>> {
     let mut validator_rewards: Vec<Reward> = Vec::with_capacity(validator_ids.len());
-
+    let block_rewards = rewards::get_block_rewards(client, validator_ids, epoch).await?;
     let jito_fetcher = rewards::ReqwestFetcher;
     // TODO: move these into async calls once the block rewards are ready
     let inflation_rewards = rewards::get_inflation_rewards(client, validator_ids, epoch).await?;
     let jito_rewards = rewards::get_jito_rewards(&jito_fetcher, validator_ids, epoch).await?;
     for validator_id in validator_ids {
         let jito_reward = jito_rewards.get(validator_id).cloned().unwrap_or_default();
+        let block_reward = block_rewards.get(validator_id).cloned().unwrap_or_default();
         let inflation_reward = inflation_rewards
             .get(validator_id)
             .cloned()
@@ -61,6 +67,7 @@ pub async fn get_rewards(
             jito: jito_reward,
             inflation: inflation_reward,
             total: total_reward,
+            block: block_reward,
             epoch,
         };
         validator_rewards.push(rewards);
@@ -90,11 +97,7 @@ fn epoch_from_timestamp(block_time: u64, current_slot: u64, timestamp: u64) -> e
 }
 
 fn get_client() -> RpcClient {
-    RpcClient::new_with_commitment(
-        // move to env var
-        "https://api.mainnet-beta.solana.com".to_string(),
-        CommitmentConfig::confirmed(),
-    )
+    RpcClient::new_with_commitment(solana_base_url().to_string(), CommitmentConfig::confirmed())
 }
 
 #[cfg(test)]
@@ -119,12 +122,12 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore] // TODO:  use the mock solana calls once these three PRs are done
-    async fn get_inflation_rewards_for_validators() {
+    #[ignore]
+    async fn total_rewards() {
         let client = get_client();
         let pubkey = "6WgdYhhGE53WrZ7ywJA15hBVkw7CRbQ8yDBBTwmBtAHN";
         let validator_ids: &[String] = &[String::from(pubkey)];
-        let epoch = 812;
+        let epoch = 821;
 
         let rewards = get_rewards(&client, validator_ids, epoch).await.unwrap();
         let reward = rewards.get(pubkey).unwrap();

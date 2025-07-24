@@ -18,6 +18,7 @@ use solana_client::{
 };
 use solana_sdk::{
     clock::DEFAULT_SLOTS_PER_EPOCH, commitment_config::CommitmentConfig, pubkey::Pubkey,
+    reward_type::RewardType::Fee,
 };
 use std::error::Error;
 
@@ -70,6 +71,76 @@ pub trait HttpFetcher {
         &self,
         url: &str,
     ) -> Result<T, Box<dyn Error + Send + Sync>>;
+}
+
+pub async fn get_block_rewards(
+    client: &RpcClient, // Use Arc for shared ownership of the client
+    validator_ids: &[String],
+    epoch: u64,
+) -> eyre::Result<HashMap<String, u64>> {
+    let first_slot = get_first_slot_for_epoch(epoch);
+
+    // Fetch the leader schedule
+    let leader_schedule = get_leader_schedule(&client, Some(first_slot))
+        .await?
+        .ok_or_else(|| eyre::eyre!("Validator not found in leader schedule"))?;
+
+    // Build validator schedules
+    let validator_schedules: HashMap<String, Vec<u64>> = validator_ids
+        .iter()
+        .filter_map(|validator_id| {
+            leader_schedule.get(validator_id).map(|schedule| {
+                let slots = schedule
+                    .iter()
+                    .map(|&idx| first_slot + idx as u64)
+                    .collect();
+                (validator_id.clone(), slots)
+            })
+        })
+        .collect();
+
+    let block_rewards = stream::iter(validator_schedules.into_iter().flat_map(
+        |(validator_id, slots)| {
+            slots
+                .into_iter()
+                .map(move |slot| (validator_id.clone(), slot))
+        },
+    ))
+    .map(|(validator_id, slot)| {
+        async move {
+            match get_block(client, slot).await {
+                Ok(block) => {
+                    let lamports: u64 = block
+                        .rewards
+                        .as_ref()
+                        .map(|rewards| {
+                            rewards
+                                .iter()
+                                .filter_map(|reward| {
+                                    if reward.reward_type == Some(Fee) {
+                                        dbg!(reward.lamports);
+                                        Some(reward.lamports as u64)
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .sum()
+                        })
+                        .unwrap_or(0);
+                    (validator_id, lamports)
+                }
+                Err(e) => {
+                    eprintln!("Failed to fetch block for slot {slot}: {e}");
+                    (validator_id, 0)
+                }
+            }
+        }
+    })
+    .buffer_unordered(10) // Limit concurrency
+    .collect::<HashMap<String, u64>>() // Aggregate results by validator_id
+    .await;
+
+    Ok(block_rewards)
 }
 
 // may need to add in pagination
@@ -219,11 +290,12 @@ mod tests {
                 })
             });
 
-        let mock_response = get_jito_rewards(&jito_mock_fetcher, validator_ids, epoch).await.unwrap();
+        let mock_response = get_jito_rewards(&jito_mock_fetcher, validator_ids, epoch)
+            .await
+            .unwrap();
 
         assert_eq!(mock_response.get(pubkey), Some(&expected_mev_revenue));
     }
-
 
     #[tokio::test]
     async fn inflation_rewards() {

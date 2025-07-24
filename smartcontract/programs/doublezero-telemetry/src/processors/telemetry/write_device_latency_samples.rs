@@ -3,7 +3,8 @@ use crate::{
     state::{
         accounttype::AccountType,
         device_latency_samples::{
-            DeviceLatencySamplesHeader, DEVICE_LATENCY_SAMPLES_HEADER_SIZE, MAX_SAMPLES,
+            DeviceLatencySamplesHeader, DEVICE_LATENCY_SAMPLES_HEADER_SIZE,
+            MAX_DEVICE_LATENCY_SAMPLES,
         },
     },
 };
@@ -113,7 +114,7 @@ pub fn process_write_device_latency_samples(
     }
 
     // Ensure we won't exceed sample capacity.
-    if header.next_sample_index as usize + args.samples.len() > MAX_SAMPLES {
+    if header.next_sample_index as usize + args.samples.len() > MAX_DEVICE_LATENCY_SAMPLES {
         msg!(
             "Cannot add {} samples, would exceed max capacity",
             args.samples.len()

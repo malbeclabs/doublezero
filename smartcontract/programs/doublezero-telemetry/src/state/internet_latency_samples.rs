@@ -11,7 +11,7 @@ use std::{
 
 /// Maximum number of RTT samples storable in a single account
 /// With 1-minute intervals, 3_000 samples ~= 48 hours of data.
-pub const MAX_INTERNET_SAMPLES: usize = 3_000;
+pub const MAX_INTERNET_LATENCY_SAMPLES: usize = 3_000;
 
 /// Static size of the `InternetLatencySamples` struct without the `samples` vec.
 /// Used to calculate initial account allocation. Bytes per field:

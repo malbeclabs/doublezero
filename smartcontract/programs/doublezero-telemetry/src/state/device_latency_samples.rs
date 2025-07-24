@@ -11,7 +11,7 @@ use std::{
 
 /// Maximum number of RTT samples storable in a single account.
 /// With 5-second intervals, 35,000 samples ~= 48 hours of data.
-pub const MAX_SAMPLES: usize = 35_000;
+pub const MAX_DEVICE_LATENCY_SAMPLES: usize = 35_000;
 
 /// Static size of the `DeviceLatencySamples` struct without the `samples` vector.
 /// Used to calculate initial account allocation. Bytes per field:

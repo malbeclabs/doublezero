@@ -7,7 +7,7 @@ use doublezero_telemetry::{
         accounttype::AccountType,
         device_latency_samples::{
             DeviceLatencySamples, DeviceLatencySamplesHeader, DEVICE_LATENCY_SAMPLES_HEADER_SIZE,
-            MAX_SAMPLES,
+            MAX_DEVICE_LATENCY_SAMPLES,
         },
     },
 };
@@ -243,8 +243,8 @@ async fn test_write_device_latency_samples_fail_account_full() {
     let chunk_size = 1000;
     let mut did_trigger_error = false;
 
-    while total_written <= MAX_SAMPLES {
-        let chunk = vec![1234u32; chunk_size.min(MAX_SAMPLES - total_written + 1)];
+    while total_written <= MAX_DEVICE_LATENCY_SAMPLES {
+        let chunk = vec![1234u32; chunk_size.min(MAX_DEVICE_LATENCY_SAMPLES - total_written + 1)];
         let result = ledger
             .telemetry
             .write_device_latency_samples(&agent, latency_samples_pda, chunk, timestamp)
@@ -700,12 +700,12 @@ async fn test_write_device_latency_samples_to_max_samples() {
 
     let chunk_size = MAX_PERMITTED_DATA_INCREASE / 4;
 
-    while total_written < MAX_SAMPLES {
+    while total_written < MAX_DEVICE_LATENCY_SAMPLES {
         if total_written % 500 == 0 {
             ledger.wait_for_new_blockhash().await.unwrap();
         }
 
-        let remaining = MAX_SAMPLES - total_written;
+        let remaining = MAX_DEVICE_LATENCY_SAMPLES - total_written;
         let chunk = vec![1234u32; chunk_size.min(remaining)];
 
         let result = ledger
@@ -732,12 +732,12 @@ async fn test_write_device_latency_samples_to_max_samples() {
     let state = DeviceLatencySamples::try_from(&account.data[..]).unwrap();
 
     assert_eq!(
-        state.header.next_sample_index as usize, MAX_SAMPLES,
+        state.header.next_sample_index as usize, MAX_DEVICE_LATENCY_SAMPLES,
         "Final header index mismatch"
     );
     assert_eq!(
         state.samples.len(),
-        MAX_SAMPLES,
+        MAX_DEVICE_LATENCY_SAMPLES,
         "Sample buffer length mismatch"
     );
     assert!(state.samples.iter().all(|&s| s == 1234));

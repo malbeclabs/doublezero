@@ -4,7 +4,7 @@ use crate::{
         accounttype::AccountType,
         internet_latency_samples::{
             InternetLatencySamplesHeader, INTERNET_LATENCY_SAMPLES_HEADER_SIZE,
-            MAX_INTERNET_SAMPLES,
+            MAX_INTERNET_LATENCY_SAMPLES,
         },
     },
 };
@@ -115,7 +115,7 @@ pub fn process_write_internet_latency_samples(
     }
 
     // Ensure we won't exceed sample capacity
-    if header.next_sample_index as usize + args.samples.len() > MAX_INTERNET_SAMPLES {
+    if header.next_sample_index as usize + args.samples.len() > MAX_INTERNET_LATENCY_SAMPLES {
         msg!(
             "Cannot add {} samples, would exceed max capacity",
             args.samples.len(),

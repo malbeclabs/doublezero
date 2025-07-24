@@ -26,6 +26,7 @@ version = "0.2.2"
 
 [workspace.dependencies]
 anyhow = "1"
+async-trait = "0"
 assert_cmd = "2"
 # NOTE: We need to maintain base64 version 0.22.1
 base64 = "0.22.1"

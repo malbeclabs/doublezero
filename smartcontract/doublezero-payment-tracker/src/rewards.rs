@@ -123,7 +123,6 @@ pub async fn get_block_rewards<T: ApiProvider>(
                             .iter()
                             .filter_map(|reward| {
                                 if reward.reward_type == Some(Fee) {
-                                    dbg!(reward.lamports);
                                     Some(reward.lamports as u64)
                                 } else {
                                     None
@@ -262,7 +261,7 @@ pub async fn get_block(slot_num: u64) -> eyre::Result<UiConfirmedBlock> {
     let rpc_request = JsonRpcRequest {
         jsonrpc: "2.0".to_string(),
         id: 1,
-        method: "getLeaderSchedule".to_string(),
+        method: "getBlock".to_string(),
         params: (Some(slot_num), config),
     };
 

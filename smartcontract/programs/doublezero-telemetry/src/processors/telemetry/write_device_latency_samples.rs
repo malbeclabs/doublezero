@@ -205,8 +205,9 @@ fn realloc_samples_account_if_needed(
         }
 
         // Resize the account to accommodate the expanded data.
+        #[allow(deprecated)] //TOOD: not sure why this is being triggered
         samples_account
-            .resize(new_len)
+            .realloc(new_len, false)
             .expect("Unable to realloc the account");
         msg!("Resized account from {} to {}", actual_len, new_len);
     }

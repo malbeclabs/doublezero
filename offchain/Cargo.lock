@@ -1252,8 +1252,10 @@ name = "demand_generator"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "clap",
  "csv",
  "figment",
+ "network-shapley",
  "reqwest",
  "serde",
  "serde_json",

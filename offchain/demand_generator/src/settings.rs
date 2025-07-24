@@ -4,7 +4,6 @@ use figment::{
     providers::{Env, Format, Toml},
 };
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
@@ -16,11 +15,11 @@ pub struct Settings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DemandGeneratorSettings {
     pub ip_info: IpInfoSettings,
-    pub csv_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IpInfoSettings {
+    #[serde(default = "default_ipinfo_base_url")]
     pub base_url: String,
     pub api_token: String,
 }
@@ -59,4 +58,8 @@ impl Settings {
 
 fn default_log_level() -> String {
     "info".to_string()
+}
+
+fn default_ipinfo_base_url() -> String {
+    "https://ipinfo.io".to_string()
 }

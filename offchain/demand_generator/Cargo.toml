@@ -7,8 +7,10 @@ edition.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+clap.workspace = true
 csv.workspace = true
 figment.workspace = true
+network-shapley.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true

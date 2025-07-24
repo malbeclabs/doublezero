@@ -1,7 +1,11 @@
 use anyhow::{Context, Result};
+use clap::Parser;
 use csv::Writer;
 use demand_generator::{
+    city_aggregator::aggregate_by_city,
+    cli::Cli,
     constants::SOLANA_MAINNET_RPC_URL,
+    demand_matrix::{DemandConfig, generate_demand_matrix, write_demand_csv},
     settings::Settings,
     types::{EnrichedValidator, IpInfoResp, ValidatorDetail},
 };
@@ -14,6 +18,7 @@ use solana_sdk::pubkey::Pubkey;
 use std::{
     collections::{HashMap, HashSet},
     net::IpAddr,
+    path::PathBuf,
 };
 use tracing::info;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
@@ -22,6 +27,7 @@ pub type ValidatorIpMap = HashMap<Pubkey, IpAddr>;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let cli = Cli::parse();
     let settings = Settings::from_env()?;
     init_logging(&settings.log_level)?;
 
@@ -55,20 +61,37 @@ async fn main() -> Result<()> {
     let enriched_validators = enrich_validators(&settings, &validators_with_gossip).await?;
     info!("enriched validators: {:?}", enriched_validators.len());
 
-    write_csv(&settings, &enriched_validators)?;
+    // Write enriched validators CSV if path provided
+    if let Some(enriched_path) = &cli.enriched_validators {
+        write_enriched_validators_csv(enriched_path, &enriched_validators)?;
+    }
+
+    // Aggregate validators by city
+    let city_aggregates = aggregate_by_city(&enriched_validators)?;
+    info!("aggregated into {} cities", city_aggregates.len());
+
+    // Generate demand matrix
+    let config = DemandConfig::default();
+    let demands = generate_demand_matrix(&city_aggregates, &config)?;
+    info!("generated {} demand entries", demands.len());
+
+    // Write demand matrix if path provided
+    if let Some(demand_path) = &cli.demand {
+        // Write demand CSV
+        write_demand_csv(demand_path, &demands)?;
+        info!("wrote demand matrix to: {}", demand_path.display());
+    }
 
     Ok(())
 }
 
-fn write_csv(settings: &Settings, enriched: &[EnrichedValidator]) -> Result<()> {
-    if let Some(csv_path) = &settings.demand_generator.csv_path {
-        let mut csv_writer = Writer::from_path(csv_path)?;
-        for val in enriched {
-            csv_writer.serialize(val)?;
-        }
-        csv_writer.flush()?;
-        info!("wrote csv to: {}", csv_path.display());
+fn write_enriched_validators_csv(path: &PathBuf, enriched: &[EnrichedValidator]) -> Result<()> {
+    let mut csv_writer = Writer::from_path(path)?;
+    for val in enriched {
+        csv_writer.serialize(val)?;
     }
+    csv_writer.flush()?;
+    info!("wrote enriched validators csv to: {}", path.display());
     Ok(())
 }
 

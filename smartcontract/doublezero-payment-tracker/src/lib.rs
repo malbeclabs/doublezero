@@ -51,7 +51,7 @@ pub async fn get_rewards(
     let (inflation_rewards, jito_rewards, block_rewards) = tokio::join!(
         rewards::get_inflation_rewards(client, validator_ids, epoch),
         rewards::get_jito_rewards(fetcher, validator_ids, epoch),
-        rewards::get_block_rewards(client, validator_ids, epoch)
+        rewards::get_block_rewards(validator_ids, epoch)
     );
     let inflation_rewards = inflation_rewards?;
     let jito_rewards = jito_rewards?;

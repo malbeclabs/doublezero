@@ -10,20 +10,18 @@ use async_trait::async_trait;
 use futures::{stream, StreamExt};
 use mockall::automock;
 use reqwest;
-use serde::de::DeserializeOwned;
-use serde::Deserialize;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use solana_client::{
     nonblocking::rpc_client::RpcClient,
     rpc_config::{RpcBlockConfig, RpcGetVoteAccountsConfig, RpcLeaderScheduleConfig},
 };
 use solana_sdk::{
-    clock::DEFAULT_SLOTS_PER_EPOCH, commitment_config::CommitmentConfig, pubkey::Pubkey,
-    reward_type::RewardType::Fee,
+    clock::DEFAULT_SLOTS_PER_EPOCH, commitment_config::CommitmentConfig, native_token::Sol, pubkey::Pubkey, reward_type::RewardType::Fee
 };
 use std::error::Error;
 
 use solana_transaction_status_client_types::{
-    TransactionDetails, UiConfirmedBlock, UiTransactionEncoding,
+    EncodedConfirmedBlock, TransactionDetails, UiConfirmedBlock, UiTransactionEncoding
 };
 
 use std::{collections::HashMap, str::FromStr};
@@ -50,6 +48,38 @@ struct JitoReward {
     // mev_commission: u64,
 }
 
+#[derive(Serialize, Debug)]
+struct GetLeaderScheduleRPCConfig {
+    commitment: String,
+    identity: String,
+}
+
+#[derive(Serialize, Debug)]
+struct GetBlockRPCConfig {
+    commitment: String,
+    encoding: String,
+    transaction_details: String,
+    max_supported_transaction_version: u64,
+    rewards: bool,
+}
+
+#[derive(Serialize, Debug)]
+struct JsonRpcRequest<P> {
+    jsonrpc: String,
+    id: u64,
+    method: String,
+    params: P,
+}
+
+type LeaderScheduleResult = HashMap<String, Vec<usize>>;
+
+#[derive(Deserialize, Debug)]
+struct JsonRpcResponse<R> {
+    pub jsonrpc: String,
+    pub id: u32,
+    pub result: R,
+}
+
 pub struct ReqwestFetcher;
 
 #[async_trait]
@@ -73,17 +103,34 @@ pub trait HttpFetcher {
     ) -> Result<T, Box<dyn Error + Send + Sync>>;
 }
 
+#[automock]
+#[async_trait]
+pub trait ApiProvider {
+    async fn get_leader_schedule(&self) -> eyre::Result<HashMap<String, Vec<usize>>>;
+    async fn get_block(&self, slot: u64) -> eyre::Result<EncodedConfirmedBlock>;
+}
+
+pub struct SolanaApiProvider;
+
+// #[async_trait]
+// impl ApiProvider for SolanaApiProvider {
+//     async fn get_leader_schedule(&self) -> eyre::Result<HashMap<String, Vec<usize>>> {
+//         // super::get_leader_schedule.await
+//     }
+
+//     async fn get_block(&self, slot: u64) -> eyre::Result<EncodedConfirmedBlock> {
+//         // super::get_block(slot).await
+//     }
+// }
+
 pub async fn get_block_rewards(
-    client: &RpcClient,
     validator_ids: &[String],
     epoch: u64,
 ) -> eyre::Result<HashMap<String, u64>> {
     let first_slot = get_first_slot_for_epoch(epoch);
 
     // Fetch the leader schedule
-    let leader_schedule = get_leader_schedule(client, Some(first_slot))
-        .await?
-        .ok_or_else(|| eyre::eyre!("Validator not found in leader schedule"))?;
+    let leader_schedule = get_leader_schedule().await?;
 
     // Build validator schedules
     let validator_schedules: HashMap<String, Vec<u64>> = validator_ids
@@ -107,7 +154,7 @@ pub async fn get_block_rewards(
         },
     ))
     .map(|(validator_id, slot)| async move {
-        match get_block(client, slot).await {
+        match get_block(slot).await {
             Ok(block) => {
                 let lamports: u64 = block
                     .rewards
@@ -238,7 +285,7 @@ pub async fn get_inflation_rewards(
 }
 
 /// wrapper for get_block_with_config rpc
-pub async fn get_block(client: &RpcClient, slot_num: u64) -> eyre::Result<UiConfirmedBlock> {
+pub async fn get_block(slot_num: u64) -> eyre::Result<UiConfirmedBlock> {
     let config = RpcBlockConfig {
         encoding: Some(UiTransactionEncoding::Base58),
         transaction_details: Some(TransactionDetails::None),
@@ -247,24 +294,52 @@ pub async fn get_block(client: &RpcClient, slot_num: u64) -> eyre::Result<UiConf
         max_supported_transaction_version: Some(0),
     };
 
-    Ok(client.get_block_with_config(slot_num, config).await?)
+    let rpc_request = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        id: 1,
+        method: "getLeaderSchedule".to_string(),
+        params: (Some(slot_num), config),
+    };
+
+    let client = reqwest::Client::new();
+    let response = client
+        .post("https://api.mainnet-beta.solana.com")
+        .json(&rpc_request)
+        .send()
+        .await?;
+    let resp_body: JsonRpcResponse<UiConfirmedBlock> = response.json().await?;
+
+    Ok(resp_body.result)
 }
 
-pub async fn get_leader_schedule(
-    client: &RpcClient,
-
-    slot: Option<u64>,
-) -> eyre::Result<Option<HashMap<String, Vec<usize>>>> {
+pub async fn get_leader_schedule() -> eyre::Result<HashMap<String, Vec<usize>>> {
     let config = RpcLeaderScheduleConfig {
         identity: None,
         commitment: Some(CommitmentConfig::finalized()),
     };
+    let rpc_request = JsonRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        id: 1,
+        method: "getLeaderSchedule".to_string(),
+        params: (None::<u64>, config),
+    };
 
-    Ok(client.get_leader_schedule_with_config(slot, config).await?)
+    let client = reqwest::Client::new();
+    let response = client
+        .post("https://api.mainnet-beta.solana.com")
+        .json(&rpc_request)
+        .send()
+        .await?;
+
+    let resp_body: JsonRpcResponse<LeaderScheduleResult> = response.json().await?;
+
+    Ok(resp_body.result)
 }
 
 #[cfg(test)]
 mod tests {
+    use futures::TryFutureExt;
+
     use super::*;
 
     #[tokio::test]

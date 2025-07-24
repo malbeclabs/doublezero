@@ -188,7 +188,7 @@ mod tests {
             header.start_timestamp_microseconds,
             header2.start_timestamp_microseconds
         );
-        assert_eq!(header.next_samples_index, header2.next_samples_index);
+        assert_eq!(header.next_sample_index, header2.next_sample_index);
         assert_eq!(val.samples, val2.samples);
         assert_eq!(data.len(), val.size(), "Invalid size");
     }

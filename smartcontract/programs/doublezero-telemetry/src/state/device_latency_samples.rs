@@ -1,5 +1,5 @@
 use crate::{
-    seeds::SEED_DZ_LATENCY_SAMPLES,
+    seeds::SEED_DEVICE_LATENCY_SAMPLES,
     state::accounttype::{AccountType, AccountTypeInfo},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -146,7 +146,7 @@ impl TryFrom<&[u8]> for DeviceLatencySamples {
 impl AccountTypeInfo for DeviceLatencySamples {
     /// Returns the fixed seed associated with this account type.
     fn seed(&self) -> &[u8] {
-        SEED_DZ_LATENCY_SAMPLES
+        SEED_DEVICE_LATENCY_SAMPLES
     }
 
     /// Computes the full serialized size of this account (for realloc).

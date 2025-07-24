@@ -1,7 +1,7 @@
 use crate::{
     error::TelemetryError,
     pda::derive_internet_latency_samples_pda,
-    seeds::{SEED_INET_LATENCY_SAMPLES, SEED_PREFIX},
+    seeds::{SEED_INTERNET_LATENCY_SAMPLES, SEED_PREFIX},
     serviceability_program_id,
     state::{
         accounttype::AccountType,
@@ -33,14 +33,15 @@ use solana_program::{
 pub struct InitializeInternetLatencySamplesArgs {
     pub data_provider_name: String,
     pub epoch: u64,
+    pub sampling_interval_microseconds: u64,
 }
 
 impl fmt::Debug for InitializeInternetLatencySamplesArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "data_provider_name: {}, epoch: {}",
-            self.data_provider_name, self.epoch,
+            "data_provider_name: {}, epoch: {}, interval: {}µs",
+            self.data_provider_name, self.epoch, self.sampling_interval_microseconds,
         )
     }
 }
@@ -56,6 +57,7 @@ impl fmt::Debug for InitializeInternetLatencySamplesArgs {
 /// and that the locations statuses are `active`.
 ///
 /// Errors:
+/// - `InvalidSamplingInterval`: zero interval
 /// - `UnauthorizedAgent`: Agent not authorized to write on behalf of the network
 /// - `LocationNotActive`: inactive or suspended Location
 /// - `InvalidPDA`, `AccountAlreadyExists`
@@ -69,6 +71,11 @@ pub fn process_initialize_internet_latency_samples(
     if args.data_provider_name.len() > 32 {
         msg!("Data provider name is greater than 32 bytes");
         return Err(TelemetryError::DataProviderNameTooLong.into());
+    }
+
+    if args.sampling_interval_microseconds == 0 {
+        msg!("Sampling interval must be non-zero");
+        return Err(TelemetryError::InvalidSamplingInterval.into());
     }
 
     let accounts_iter = &mut accounts.iter();
@@ -159,7 +166,7 @@ pub fn process_initialize_internet_latency_samples(
         accounts,
         &[
             SEED_PREFIX,
-            SEED_INET_LATENCY_SAMPLES,
+            SEED_INTERNET_LATENCY_SAMPLES,
             args.data_provider_name.as_bytes(),
             origin_location_account.key.as_ref(),
             target_location_account.key.as_ref(),
@@ -176,6 +183,7 @@ pub fn process_initialize_internet_latency_samples(
         epoch: args.epoch,
         origin_location_pk: *origin_location_account.key,
         target_location_pk: *target_location_account.key,
+        sampling_interval_microseconds: args.sampling_interval_microseconds,
         start_timestamp_microseconds: 0, // will be set on first write
         next_sample_index: 0,
         bump_seed: latency_samples_bump_seed,

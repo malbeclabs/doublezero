@@ -68,7 +68,7 @@ impl fmt::Display for TelemetryError {
             Self::SamplesBatchTooLarge => {
                 write!(f, "Samples batch too large")
             }
-            Self::LocationNotActive => write!(f, "Location does not have activate status"),
+            Self::LocationNotActive => write!(f, "Location does not have activated status"),
             Self::DataProviderNameTooLong => write!(f, "Data provider name exceeds 32 bytes"),
         }
     }

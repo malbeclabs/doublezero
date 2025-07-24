@@ -17,7 +17,7 @@ pub struct IpInfoResp {
     pub timezone: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ValidatorDetail {
     pub identity_pubkey: Pubkey,
     pub ip_address: IpAddr,

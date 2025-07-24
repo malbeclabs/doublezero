@@ -15,6 +15,3 @@ max_retries = 3
 [metrics_processor.metrics]
 uptime_threshold = 0.95
 percentile_bins = [50, 75, 90, 95, 99]
-
-[demand_generator.ip_info]
-api_token = "<ip_info_token>"

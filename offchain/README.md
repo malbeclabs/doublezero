@@ -51,48 +51,59 @@ just build
 
 ### Running
 
+#### Calculate Rewards
+
 Basic usage with relative time:
 
 ```bash
-./target/release/rewards_calculator --before "1 hours ago" --after "49 hours ago"
+./target/release/rewards_calculator calculate-rewards --before "1 hours ago" --after "49 hours ago"
 ```
 
 OR
 
 ```bash
-DZ_ENV=testnet ./target/release/rewards_calculator --before "1 hours ago" --after "49 hours ago"
+DZ_ENV=testnet ./target/release/rewards_calculator calculate-rewards --before "1 hours ago" --after "49 hours ago"
 ```
 
 With specific timestamps:
 
 ```bash
-./target/release/rewards_calculator --before "2024-01-15T10:00:00Z" --after "2024-01-15T08:00:00Z"
+./target/release/rewards_calculator calculate-rewards --before "2024-01-15T10:00:00Z" --after "2024-01-15T08:00:00Z"
 ```
 
-OR
+#### Export Demand Data
+
+Export demand matrix and validator information:
 
 ```bash
-DZ_ENV=testnet ./target/release/rewards_calculator --before "2024-01-15T10:00:00Z" --after "2024-01-15T08:00:00Z"
+# Set API token for IP enrichment (required)
+export DZ__DEMAND_GENERATOR__IP_INFO__API_TOKEN=your_ipinfo_token_here
+
+# Export demand matrix only
+./target/release/rewards_calculator export-demand --demand demand.csv
+
+# Export both demand matrix and enriched validators
+./target/release/rewards_calculator export-demand --demand demand.csv --enriched-validators validators.csv
 ```
 
 ## Usage
 
 ```bash
-$ ./target/release/rewards_calculator -h
+$ ./target/release/rewards-calculator -h
 Off-chain rewards calculation for DoubleZero network
 
-Usage: rewards_calculator [OPTIONS] --before <BEFORE> --after <AFTER>
+Usage: rewards-calculator [OPTIONS] <COMMAND>
+
+Commands:
+  calculate-rewards  Calculate rewards for the given time period
+  export-demand      Export demand matrix and enriched validators to CSV files
+  help               Print this message or the help of the given subcommand(s)
 
 Options:
   -l, --log-level <LOG_LEVEL>  Override log level (trace, debug, info, warn, error)
   -r, --rpc-url <RPC_URL>      Override RPC URL
   -h, --help                   Print help
   -V, --version                Print version
-
-Time Range:
-  -b, --before <BEFORE>  End timestamp for the rewards period (required) Accepts: ISO 8601 (2024-01-15T10:00:00Z), Unix timestamp (1705315200), or relative time (2 hours ago)
-  -a, --after <AFTER>    Start timestamp for the rewards period (required) Accepts: ISO 8601 (2024-01-15T08:00:00Z), Unix timestamp (1705308000), or relative time (4 hours ago)
-
 ```
 
 ## Configuration
@@ -104,93 +115,28 @@ The system uses a hierarchical configuration approach:
 3. **Environment variables**: Override any setting
 4. **CLI arguments**: Highest priority
 
-### Key Configuration Options
+### API Configuration (Demand Generator)
 
-```toml
-# General settings
-log_level = "info"
+The demand generator requires an ipinfo.io API token for enriching validator data with geographic information.
 
-# RPC settings
-[rpc]
-commitment = "finalized"
-timeout_secs = 30
-max_retries = 3
+#### Setting Up API Token
 
-# Burn rate configuration
-[burn]
-coefficient = 1
-max_rate = 1000
-
-# Metrics processor
-[metrics]
-uptime_threshold = 0.95
-percentile_bins = [50, 75, 90, 95, 99]
-```
-
-## Development
-
-### Commands
-
-All development tasks are managed through `just`:
+The API token **must** be provided via environment variable for security:
 
 ```bash
-$ just
-Available recipes:
-    build     # Build (release)
-    ci        # Run CI pipeline
-    clean     # Clean
-    clippy    # Run clippy
-    cov       # Coverage
-    default   # Default (list of commands)
-    fmt       # Run fmt
-    fmt-check # Check fmt
-    test      # Run tests
+export DZ__DEMAND_GENERATOR__IP_INFO__API_TOKEN=your_token_here
 ```
 
-### Project Structure
+#### Rate Limiting Configuration
 
-```
-doublezero-rewarder/
-├── data_fetcher/       # On-chain data retrieval
-├── metrics_processor/  # Statistical analysis
-├── rewards_calculator/ # Main orchestrator
-├── config/            # Configuration files
-├── ai-docs/           # Additional documentation
-└── Justfile          # Task definitions
-```
+The demand generator includes configurable rate limiting to respect API quotas:
 
-### Testing
+| Setting                   | Default | Description                                |
+| ------------------------- | ------- | ------------------------------------------ |
+| `concurrent_api_requests` | 5       | Maximum concurrent API requests            |
+| `max_api_retries`         | 3       | Maximum retry attempts for failed requests |
+| `retry_backoff_base_ms`   | 100     | Initial backoff duration in milliseconds   |
+| `retry_backoff_max_ms`    | 30000   | Maximum backoff duration (30 seconds)      |
+| `rate_limit_multiplier`   | 3       | Multiplier for rate limit errors (429)     |
 
-Run the test suite:
-
-```bash
-just test
-```
-
-Note: The project uses `cargo nextest` for improved test output and performance.
-
-## How It Works
-
-1. **Data Collection**: The system fetches serviceability (network topology) and telemetry (performance metrics) data from Solana for the specified time range.
-
-2. **Metrics Processing**: Raw telemetry data is processed to calculate:
-
-   - Round-trip time (RTT) statistics
-   - Network jitter measurements
-   - Packet loss rates
-   - Private and public link performance
-
-3. **Shapley Calculation**: Using game theory, the system calculates each participant's marginal contribution to the network's overall performance.
-
-4. **Output Generation**: The system produces:
-   - Reward proportions for each participant
-   - A Merkle root for on-chain commitment
-   - Individual Merkle proofs for verification
-
-### Debug Mode
-
-Enable detailed logging:
-
-```bash
-RUST_LOG=trace ./target/release/rewards_calculator --before "1 hours ago" --after "49 hours ago"
-```
+**Note**: The system implements exponential backoff with jitter to handle rate limits gracefully. If you encounter frequent 429 errors, reduce the `concurrent_api_requests` setting.

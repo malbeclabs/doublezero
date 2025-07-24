@@ -1,11 +1,10 @@
 use crate::{
     city_aggregator::aggregate_by_city,
-    constants::SOLANA_MAINNET_RPC_URL,
     demand_matrix::{DemandConfig, generate_demand_matrix},
     settings::Settings,
     types::{EnrichedValidator, IpInfoResp, ValidatorDetail, ValidatorIpMap},
 };
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use network_shapley::types::Demand;
 use solana_client::{
     nonblocking::rpc_client::RpcClient,
@@ -13,8 +12,16 @@ use solana_client::{
     rpc_response::{RpcContactInfo, RpcVoteAccountInfo},
 };
 use solana_sdk::pubkey::Pubkey;
-use std::collections::{HashMap, HashSet};
-use tracing::info;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
+use tokio::{
+    sync::Semaphore,
+    task::JoinSet,
+    time::{Duration, sleep},
+};
+use tracing::{debug, info, warn};
 
 #[derive(Debug)]
 pub struct DemandGenerator {
@@ -32,7 +39,7 @@ impl DemandGenerator {
     }
 
     pub async fn generate_with_validators(&self) -> Result<(Vec<EnrichedValidator>, Vec<Demand>)> {
-        let rpc_client = RpcClient::new(SOLANA_MAINNET_RPC_URL.to_string());
+        let rpc_client = RpcClient::new(self.settings.demand_generator.solana_rpc_url.clone());
         let vote_accounts = get_all_validator_identities(&rpc_client).await?;
 
         // Build stake map
@@ -45,7 +52,7 @@ impl DemandGenerator {
 
         // Count unique validators
         let unique_validator_count = stake_map.len();
-        info!("unique validator identities: {}", unique_validator_count);
+        info!("Unique validator identities: {}", unique_validator_count);
 
         // Get all cluster nodes
         let cluster_nodes = get_cluster_nodes(&rpc_client).await?;
@@ -57,23 +64,91 @@ impl DemandGenerator {
         // Combine to construct Vec<ValidatorDetails>
         let validators_with_gossip =
             filter_gossiping_validators(&ip_map, &vote_accounts, &stake_map)?;
-        info!("gossiping validators: {:?}", validators_with_gossip.len());
+        info!("Gossiping validators: {}", validators_with_gossip.len());
 
         // Add ip info data
         let enriched_validators =
             enrich_validators(&self.settings, &validators_with_gossip).await?;
-        info!("enriched validators: {:?}", enriched_validators.len());
+        info!("Enriched validators: {}", enriched_validators.len());
 
         // Aggregate validators by city
         let city_aggregates = aggregate_by_city(&enriched_validators)?;
-        info!("aggregated into {} cities", city_aggregates.len());
+        info!("Stake aggregated into cities: {}", city_aggregates.len());
 
         // Generate demand matrix
         let config = DemandConfig::default();
         let demands = generate_demand_matrix(&city_aggregates, &config)?;
-        info!("generated {} demand entries", demands.len());
+        info!("Generated demand entries: {}", demands.len());
 
         Ok((enriched_validators, demands))
+    }
+}
+
+/// Retry an operation with exponential backoff and jitter
+async fn with_retry<T, F, Fut>(operation: F, settings: &Settings, operation_name: &str) -> Result<T>
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = Result<T>>,
+{
+    let mut retry_count = 0;
+    let mut backoff = Duration::from_millis(settings.demand_generator.retry_backoff_base_ms);
+    let max_backoff = Duration::from_millis(settings.demand_generator.retry_backoff_max_ms);
+    let max_retries = settings.demand_generator.max_api_retries;
+
+    loop {
+        match operation().await {
+            Ok(result) => {
+                if retry_count > 0 {
+                    info!("{} succeeded after {} retries", operation_name, retry_count);
+                }
+                return Ok(result);
+            }
+            Err(e) => {
+                retry_count += 1;
+                if retry_count > max_retries {
+                    return Err(e).context(format!(
+                        "{operation_name} failed after {max_retries} retries"
+                    ));
+                }
+
+                // Check if it's a rate limit error (429)
+                let is_rate_limit = e.to_string().contains("429")
+                    || e.to_string().to_lowercase().contains("rate limit");
+
+                // Add jitter to prevent thundering herd
+                let jitter_factor = {
+                    use rand::Rng;
+                    let mut rng = rand::thread_rng();
+                    0.5 + rng.gen_range(0.0..0.5)
+                };
+                let jittered_backoff = backoff.mul_f64(jitter_factor);
+
+                let retry_reason = if is_rate_limit { "rate limit" } else { "error" };
+
+                warn!(
+                    "{} failed (attempt {}/{}) due to {}: {}. Retrying in {:?}",
+                    operation_name, retry_count, max_retries, retry_reason, e, jittered_backoff
+                );
+
+                if tracing::enabled!(tracing::Level::DEBUG) {
+                    debug!(
+                        "Retry details - Base backoff: {:?}, Jittered: {:?}, Rate limit: {}",
+                        backoff, jittered_backoff, is_rate_limit
+                    );
+                }
+
+                sleep(jittered_backoff).await;
+
+                // Increase backoff more aggressively for rate limits
+                if is_rate_limit {
+                    backoff = backoff
+                        .saturating_mul(settings.demand_generator.rate_limit_multiplier)
+                        .min(max_backoff);
+                } else {
+                    backoff = backoff.saturating_mul(2).min(max_backoff);
+                }
+            }
+        }
     }
 }
 
@@ -81,14 +156,87 @@ async fn enrich_validators(
     settings: &Settings,
     validators_with_gossip: &[ValidatorDetail],
 ) -> Result<Vec<EnrichedValidator>> {
-    let http_client = reqwest::Client::new();
-    let mut enriched = vec![];
-    for val_detail in validators_with_gossip.iter() {
-        let ip_info_resp =
-            get_ip_info(settings, &http_client, &val_detail.ip_address.to_string()).await?;
+    let http_client = Arc::new(reqwest::Client::new());
 
-        let val = EnrichedValidator::new(val_detail, &ip_info_resp);
-        enriched.push(val)
+    // Use configurable concurrent request limit
+    let concurrent_limit = settings.demand_generator.concurrent_api_requests as usize;
+    let semaphore = Arc::new(Semaphore::new(concurrent_limit));
+
+    // Create a JoinSet to manage concurrent tasks
+    let mut set = JoinSet::new();
+
+    info!(
+        "Enriching {} validators with max {} concurrent requests",
+        validators_with_gossip.len(),
+        concurrent_limit
+    );
+
+    // Spawn tasks for each validator
+    for (index, val_detail) in validators_with_gossip.iter().enumerate() {
+        let permit = semaphore.clone().acquire_owned().await?;
+        let http_client = http_client.clone();
+        let settings = settings.clone();
+        let val_detail = val_detail.clone();
+        let ip_str = val_detail.ip_address.to_string();
+
+        set.spawn(async move {
+            // Keep permit alive for the duration of the task
+            let _permit = permit;
+
+            // Wrap the API call with retry logic
+            let ip_info_resp = with_retry(
+                || async { get_ip_info(&settings, &http_client, &ip_str).await },
+                &settings,
+                &format!("IP info fetch for {ip_str}"),
+            )
+            .await?;
+
+            let enriched = EnrichedValidator::new(&val_detail, &ip_info_resp);
+            Ok::<(usize, EnrichedValidator), anyhow::Error>((index, enriched))
+        });
+    }
+
+    // Collect results maintaining original order
+    let mut results: Vec<Option<EnrichedValidator>> =
+        (0..validators_with_gossip.len()).map(|_| None).collect();
+    let mut success_count = 0;
+    let mut error_count = 0;
+    let start_time = std::time::Instant::now();
+
+    while let Some(join_result) = set.join_next().await {
+        match join_result {
+            Ok(task_result) => match task_result {
+                Ok((index, enriched)) => {
+                    results[index] = Some(enriched);
+                    success_count += 1;
+                }
+                Err(e) => {
+                    error_count += 1;
+                    warn!("Failed to enrich validator: {}", e);
+                }
+            },
+            Err(join_error) => {
+                error_count += 1;
+                warn!("Task join error: {}", join_error);
+            }
+        }
+    }
+
+    let elapsed = start_time.elapsed();
+    info!(
+        "API enrichment complete in {:?} - Success: {}/{}, Errors: {}, Rate: {:.2} req/sec",
+        elapsed,
+        success_count,
+        validators_with_gossip.len(),
+        error_count,
+        success_count as f64 / elapsed.as_secs_f64()
+    );
+
+    // Filter out None values and collect successful results
+    let enriched: Vec<EnrichedValidator> = results.into_iter().flatten().collect();
+
+    if enriched.is_empty() {
+        bail!("Failed to enrich any validators");
     }
 
     Ok(enriched)
@@ -165,16 +313,38 @@ async fn get_all_validator_identities(rpc_client: &RpcClient) -> Result<Vec<RpcV
     Ok(all_validators)
 }
 
+/// Validates an IP address string
+fn validate_ip_address(ip: &str) -> Result<()> {
+    use std::{net::IpAddr, str::FromStr};
+
+    IpAddr::from_str(ip).map_err(|_| anyhow::anyhow!("Invalid IP address: {}", ip))?;
+    Ok(())
+}
+
 async fn get_ip_info(
     settings: &Settings,
     client: &reqwest::Client,
     ip: &str,
 ) -> Result<IpInfoResp> {
-    let url = format!(
-        "{}/{}?token={}",
-        settings.demand_generator.ip_info.base_url, ip, settings.demand_generator.ip_info.api_token
-    );
-    let response = client.get(&url).send().await?.error_for_status()?;
+    // Validate IP address format
+    validate_ip_address(ip)?;
+
+    let url = format!("{}/{}", settings.demand_generator.ip_info.base_url, ip);
+
+    // Get API token - should always be Some after validation in settings
+    let api_token = settings
+        .demand_generator
+        .ip_info
+        .api_token
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("API token not configured"))?;
+
+    let response = client
+        .get(&url)
+        .bearer_auth(api_token)
+        .send()
+        .await?
+        .error_for_status()?;
     let ip_info: IpInfoResp = response
         .json()
         .await

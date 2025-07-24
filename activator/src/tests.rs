@@ -15,6 +15,9 @@ pub mod utils {
         let program_id = Pubkey::new_unique();
         client.expect_get_program_id().returning(move || program_id);
 
+        let payer = Pubkey::new_unique();
+        client.expect_get_payer().returning(move || payer);
+
         // Global State
         let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
         let globalstate = GlobalState {
@@ -31,9 +34,6 @@ pub mod utils {
             .expect_get()
             .with(predicate::eq(globalstate_pubkey))
             .returning(move |_| Ok(AccountData::GlobalState(globalstate.clone())));
-
-        let payer = Pubkey::new_unique();
-        client.expect_get_payer().returning(move || payer);
 
         client
     }

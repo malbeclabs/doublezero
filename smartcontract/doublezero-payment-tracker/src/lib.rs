@@ -29,7 +29,7 @@ pub async fn rewards_between_timestamps(
     let start_epoch = epoch_from_timestamp(block_time, current_slot, start_timestamp)?;
     let end_epoch = epoch_from_timestamp(block_time, current_slot, end_timestamp)?;
     for epoch in start_epoch..=end_epoch {
-        let reward = get_rewards(&client, validator_ids, epoch).await?;
+        let reward = get_rewards(validator_ids, epoch).await?;
         rewards.insert(epoch, reward);
     }
     Ok(rewards)
@@ -37,13 +37,12 @@ pub async fn rewards_between_timestamps(
 
 // this function will return a hashmap of total rewards keyed by validator pubkey
 pub async fn get_rewards(
-    client: &RpcClient,
     validator_ids: &[String],
     epoch: u64,
 ) -> eyre::Result<HashMap<String, Reward>> {
     let mut validator_rewards: Vec<Reward> = Vec::with_capacity(validator_ids.len());
     // TODO: move these into async calls once the block rewards are ready
-    let inflation_rewards = rewards::get_inflation_rewards(client, validator_ids, epoch).await?;
+    let inflation_rewards = rewards::get_inflation_rewards(validator_ids, epoch).await?;
     let jito_rewards = rewards::get_jito_rewards(validator_ids, epoch).await?;
     for validator_id in validator_ids {
         let jito_reward = jito_rewards.get(validator_id).cloned().unwrap_or_default();
@@ -119,12 +118,11 @@ mod tests {
     #[tokio::test]
     #[ignore] // TODO:  use the mock solana calls once these three PRs are done
     async fn get_inflation_rewards_for_validators() {
-        let client = get_client();
         let pubkey = "6WgdYhhGE53WrZ7ywJA15hBVkw7CRbQ8yDBBTwmBtAHN";
         let validator_ids: &[String] = &[String::from(pubkey)];
         let epoch = 812;
 
-        let rewards = get_rewards(&client, validator_ids, epoch).await.unwrap();
+        let rewards = get_rewards(validator_ids, epoch).await.unwrap();
         let reward = rewards.get(pubkey).unwrap();
 
         assert_eq!(reward.validator_id, pubkey);

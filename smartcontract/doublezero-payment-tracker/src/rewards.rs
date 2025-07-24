@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use solana_client::{
     nonblocking::rpc_client::RpcClient,
     rpc_config::{RpcBlockConfig, RpcGetVoteAccountsConfig, RpcLeaderScheduleConfig},
+    rpc_response::{RpcInflationReward, RpcVoteAccountStatus},
 };
 use solana_sdk::{
     clock::DEFAULT_SLOTS_PER_EPOCH, commitment_config::CommitmentConfig, pubkey::Pubkey,
@@ -69,6 +70,12 @@ pub trait ValidatorRewards {
         slot: u64,
         config: RpcBlockConfig,
     ) -> eyre::Result<UiConfirmedBlock, solana_client::client_error::ClientError>;
+    async fn get_vote_accounts(&self) -> eyre::Result<RpcVoteAccountStatus>;
+    async fn get_inflation_reward(
+        &self,
+        vote_keys: Vec<Pubkey>,
+        epoch: u64,
+    ) -> eyre::Result<Vec<Option<RpcInflationReward>>>;
 }
 
 pub struct FeePaymentCalculator(RpcClient);
@@ -87,13 +94,17 @@ impl ValidatorRewards for FeePaymentCalculator {
     ) -> eyre::Result<UiConfirmedBlock, solana_client::client_error::ClientError> {
         self.0.get_block_with_config(slot, config).await
     }
-}
 
-#[automock]
-#[async_trait]
-pub trait ApiProvider {
-    async fn get_leader_schedule(&self) -> eyre::Result<HashMap<String, Vec<usize>>>;
-    async fn get_block_with_config(&self, slot: u64) -> eyre::Result<UiConfirmedBlock>;
+    async fn get_vote_accounts(&self) -> eyre::Result<RpcVoteAccountStatus, solana_client::client_error::ClientError> {
+        self.0.get_vote_accounts().await
+    }
+    async fn get_inflation_reward(
+        &self,
+        vote_keys: Vec<Pubkey>,
+        epoch: u64,
+    ) -> eyre::Result<Vec<Option<RpcInflationReward>>> {
+        get_inflation_reward(vote_keys, epoch).await
+    }
 }
 
 pub async fn get_block_rewards<T: ValidatorRewards>(
@@ -217,20 +228,14 @@ pub async fn get_jito_rewards(
     Ok(jito_rewards)
 }
 
-pub async fn get_inflation_rewards(
-    client: &RpcClient,
+pub async fn get_inflation_rewards<T: ValidatorRewards>(
+    api_provider: &T,
     validator_ids: &[String],
     epoch: u64,
 ) -> eyre::Result<HashMap<String, u64>> {
-    let config = RpcGetVoteAccountsConfig {
-        vote_pubkey: None,
-        commitment: CommitmentConfig::finalized().into(),
-        keep_unstaked_delinquents: None,
-        delinquent_slot_distance: None,
-    };
-
-    let vote_accounts = client.get_vote_accounts_with_config(config).await?;
     let mut vote_keys: Vec<Pubkey> = Vec::with_capacity(validator_ids.len());
+
+    let vote_accounts = api_provider.get_vote_accounts().await?;
 
     // this can be cleaned up i'm sure
     for validator_id in validator_ids {
@@ -248,7 +253,8 @@ pub async fn get_inflation_rewards(
         };
     }
 
-    let inflation_rewards = client.get_inflation_reward(&vote_keys, Some(epoch)).await?;
+    let inflation_rewards = api_provider.get_inflation_reward(vote_keys, epoch).await?;
+
     let rewards: Vec<u64> = inflation_rewards
         .iter()
         .map(|ir| match ir {
@@ -263,57 +269,6 @@ pub async fn get_inflation_rewards(
     Ok(inflation_rewards)
 }
 
-/// wrapper for get_block_with_config rpc
-pub async fn get_block(slot_num: u64) -> eyre::Result<UiConfirmedBlock> {
-    let config = RpcBlockConfig {
-        encoding: Some(UiTransactionEncoding::Base58),
-        transaction_details: Some(TransactionDetails::None),
-        rewards: Some(true),
-        commitment: Some(CommitmentConfig::finalized()),
-        max_supported_transaction_version: Some(0),
-    };
-
-    let rpc_request = JsonRpcRequest {
-        jsonrpc: "2.0".to_string(),
-        id: 1,
-        method: "getBlock".to_string(),
-        params: (Some(slot_num), config),
-    };
-
-    let client = reqwest::Client::new();
-    let response = client
-        .post("https://api.mainnet-beta.solana.com")
-        .json(&rpc_request)
-        .send()
-        .await?;
-    let resp_body: JsonRpcResponse<UiConfirmedBlock> = response.json().await?;
-
-    Ok(resp_body.result)
-}
-
-pub async fn get_leader_schedule() -> eyre::Result<HashMap<String, Vec<usize>>> {
-    let config = RpcLeaderScheduleConfig {
-        identity: None,
-        commitment: Some(CommitmentConfig::finalized()),
-    };
-    let rpc_request = JsonRpcRequest {
-        jsonrpc: "2.0".to_string(),
-        id: 1,
-        method: "getLeaderSchedule".to_string(),
-        params: (None::<u64>, config),
-    };
-
-    let client = reqwest::Client::new();
-    let response = client
-        .post("https://api.mainnet-beta.solana.com")
-        .json(&rpc_request)
-        .send()
-        .await?;
-
-    let resp_body: JsonRpcResponse<LeaderScheduleResult> = response.json().await?;
-
-    Ok(resp_body.result)
-}
 
 #[cfg(test)]
 mod tests {
@@ -323,7 +278,7 @@ mod tests {
     #[tokio::test]
     // TODO: can we mock the JITO api
     #[ignore]
-    async fn jito_rewards() {
+    async fn test_get_jito_rewards() {
         let pubkey = "CvSb7wdQAFpHuSpTYTJnX5SYH4hCfQ9VuGnqrKaKwycB";
         let validator_ids: &[String] = &[String::from(pubkey)];
         let epoch = 812;

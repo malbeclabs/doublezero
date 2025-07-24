@@ -6,7 +6,7 @@ use crate::types::{BurnRate, EpochDuration};
 /// should be burned. If there is no economic burn rate specified for this epoch, the burn rate
 /// defaults to the community burn rate.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable)]
-#[repr(C)]
+#[repr(C, align(8))]
 pub struct CommunityBurnRateParameters {
     /// The absolute maximum value for the community burn rate limit. This value is configurable,
     /// but it can never be lower than the last community burn rate.

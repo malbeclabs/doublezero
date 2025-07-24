@@ -1,4 +1,4 @@
-use std::{fmt::Display, ops::Add};
+use std::fmt::Display;
 
 use bitmaps::Bitmap;
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -26,28 +26,22 @@ impl DoubleZeroEpoch {
         Self(epoch)
     }
 
+    pub fn value(&self) -> u64 {
+        self.0
+    }
+
     pub fn as_seed(&self) -> [u8; 8] {
         self.0.to_le_bytes()
     }
-}
 
-impl From<DoubleZeroEpoch> for u64 {
-    fn from(epoch: DoubleZeroEpoch) -> Self {
-        epoch.0
+    pub fn saturating_add_duration(&self, epoch_duration: EpochDuration) -> Self {
+        Self(self.0.saturating_add(epoch_duration.into()))
     }
 }
 
 impl Display for DoubleZeroEpoch {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
-    }
-}
-
-impl Add<u64> for DoubleZeroEpoch {
-    type Output = Self;
-
-    fn add(self, rhs: u64) -> Self::Output {
-        Self(self.0 + rhs)
     }
 }
 
@@ -63,13 +57,6 @@ pub type EpochDuration = u32;
 
 pub type Flags = u64;
 pub type FlagsBitmap = Bitmap<{ Flags::BITS as usize }>;
-
-#[derive(Debug, BorshDeserialize, BorshSerialize, Clone, Copy, PartialEq, Pod, Zeroable)]
-#[repr(C)]
-pub struct EpochPayment {
-    pub epoch: u64,
-    pub amount: u64,
-}
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Pod, Zeroable)]
 #[repr(C)]

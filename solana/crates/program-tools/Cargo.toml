@@ -17,9 +17,11 @@ bytemuck = { workspace = true, features = ["derive"] }
 sha2-const-stable.workspace = true
 solana-account-info.workspace = true
 solana-cpi.workspace = true
+solana-instruction.workspace = true
 solana-loader-v3-interface = { workspace = true, features = ["serde"] }
 solana-msg.workspace = true
 solana-program-error.workspace = true
 solana-pubkey.workspace = true
 solana-system-interface.workspace = true
 solana-sysvar = { workspace = true, features = ["bincode"] }
+spl-token.workspace = true

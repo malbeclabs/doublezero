@@ -1,6 +1,10 @@
 mod community_burn_rate;
+mod distribution;
+mod relay;
 
 pub use community_burn_rate::*;
+pub use distribution::*;
+pub use relay::*;
 
 //
 
@@ -13,11 +17,18 @@ use crate::types::{DoubleZeroEpoch, Flags, FlagsBitmap, ValidatorFee};
 use super::StorageGap;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable)]
-#[repr(C)]
+#[repr(C, align(8))]
 pub struct ProgramConfig {
     pub flags: Flags,
 
     pub next_dz_epoch: DoubleZeroEpoch,
+
+    /// This seed will be used to sign for token transfers.
+    pub bump_seed: u8,
+
+    /// Cache this seed to validate token PDA address.
+    pub reserve_2z_bump_seed: u8,
+    _bump_seed_padding: [u8; 6],
 
     pub admin_key: Pubkey,
 
@@ -32,30 +43,9 @@ pub struct ProgramConfig {
     /// If the setup ever becomes trust-less, the procedure to swap SOL to 2Z will have to change.
     pub sol_2z_swap_program_id: Pubkey,
 
-    /// Time to wait after the turn of the DZ epoch to perform any calculations.
-    ///
-    /// This field is not used for anything within the Revenue Distribution program because there is
-    /// no way to enforce that calculations are performed at a specific time. But this field is
-    /// stored here to act as a source-of-truth to inform the off-chain process (the accountant)
-    /// how long it should wait after the new DZ epoch starts.
-    ///
-    /// This field also acts as an indication of whether the program config is initialized. If a
-    /// grace period has not been configured, the program will not allow new Merkle roots (which
-    /// are necessary for validators to pay their dues and contributors to claim rewards).
-    pub calculation_grace_period_seconds: u32,
+    pub distribution_parameters: DistributionParameters,
 
-    pub community_burn_rate_parameters: CommunityBurnRateParameters,
-
-    /// Proportion of Solana validator revenue DoubleZero collects to pay contributors. These fees
-    /// are denominated in SOL, so this proportion represents a proportion of SOL rewards.
-    pub current_solana_validator_fee: ValidatorFee,
-    _current_solana_validator_fee_padding: [u8; 2],
-
-    pub prepaid_connection_2z_activation_fee: u64,
-    pub prepaid_connection_2z_cost_per_epoch: u64,
-
-    pub contributor_reward_claim_relay_fee: u32,
-    pub prepaid_user_disconnection_relay_fee: u32,
+    pub relay_parameters: RelayParameters,
 
     /// 16 * 32 bytes of a storage gap in case more fields need to be added.
     _storage_gap: StorageGap<16>,
@@ -67,8 +57,6 @@ impl PrecomputedDiscriminator for ProgramConfig {
 
 impl ProgramConfig {
     pub const SEED_PREFIX: &'static [u8] = b"program_config";
-
-    pub const NUM_FLAGS: usize = u128::BITS as usize;
 
     pub const FLAG_IS_PAUSED_BIT: usize = 0;
 
@@ -92,10 +80,19 @@ impl ProgramConfig {
     }
 
     pub fn checked_solana_validator_fee(&self) -> Option<ValidatorFee> {
-        if self.current_solana_validator_fee == Default::default() {
+        let fee = self.distribution_parameters.current_solana_validator_fee;
+
+        if fee == Default::default() {
             None
         } else {
-            Some(self.current_solana_validator_fee)
+            Some(fee)
         }
     }
 }
+
+//
+
+const _: () = assert!(
+    size_of::<ProgramConfig>() == 968,
+    "`ProgramConfig` size changed"
+);

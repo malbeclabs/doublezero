@@ -1,7 +1,7 @@
 pub mod account_info;
+pub mod instruction;
 pub mod recipe;
 pub mod zero_copy;
-
 //
 
 use std::fmt::Display;

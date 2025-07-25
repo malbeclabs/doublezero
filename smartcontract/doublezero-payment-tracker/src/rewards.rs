@@ -45,7 +45,6 @@ pub struct ReqwestFetcher;
 impl HttpFetcher for ReqwestFetcher {
     async fn get<T: DeserializeOwned + Send>(
         &self,
-
         url: &str,
     ) -> Result<T, Box<dyn Error + Send + Sync>> {
         let response = reqwest::get(url).await?.error_for_status()?;

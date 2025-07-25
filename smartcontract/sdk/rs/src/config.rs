@@ -169,7 +169,6 @@ pub fn get_doublezero_pubkey() -> eyre::Result<Keypair> {
         Err(_) => eyre::bail!("Unable to read configured keypair_path"),
         Ok(key_content) => {
             let key_bytes: Vec<u8> = serde_json::from_str(&key_content)?;
-            #[allow(deprecated)] //TOOD: not sure why this is being triggered
             let key = Keypair::from_bytes(&key_bytes)?;
             Ok(key)
         }

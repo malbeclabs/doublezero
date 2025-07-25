@@ -12,6 +12,7 @@ repository.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+backon.workspace = true
 borsh.workspace = true
 chrono.workspace = true
 doublezero-serviceability.workspace = true

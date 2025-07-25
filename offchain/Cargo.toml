@@ -21,6 +21,7 @@ homepage = "https://github.com/doublezerofoundation/doublezero-rewarder"
 [workspace.dependencies]
 anyhow = "1"
 arrow = { version = "55", features = ["prettyprint"] }
+backon = "0"
 base64 = "0"
 borsh = "1"
 chrono = { version = "0", features = ["serde"] }

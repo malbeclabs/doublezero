@@ -463,6 +463,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
+name = "backon"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "33e5b65cc81d81fbb8488f36458ab4771be35a722967bbc959df28b47397e3ff"
+dependencies = [
+ "fastrand",
+]
+
+[[package]]
 name = "backtrace"
 version = "0.3.75"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1226,6 +1235,7 @@ name = "data-fetcher"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "backon",
  "borsh 1.5.7",
  "chrono",
  "doublezero-serviceability",
@@ -1252,6 +1262,7 @@ name = "demand-generator"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "backon",
  "clap",
  "csv",
  "figment",

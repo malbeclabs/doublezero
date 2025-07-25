@@ -7,7 +7,7 @@
 //! The rewards from all sources for an epoch are summed and associated with a validator_id
 //!
 use async_trait::async_trait;
-use futures::{stream, StreamExt};
+use futures::{stream, TryStreamExt, StreamExt};
 use mockall::automock;
 use reqwest;
 use serde::{de::DeserializeOwned, Deserialize};
@@ -168,17 +168,16 @@ pub async fn get_block_rewards<T: ValidatorRewards>(
                             .sum()
                     })
                     .unwrap_or(0);
-                (validator_id, lamports)
+                Ok((validator_id, lamports))
             }
             Err(e) => {
-                eprintln!("Failed to fetch block for slot {slot}: {e}");
-                (validator_id, 0)
+                eyre::bail!("Failed to fetch block for slot {slot}: {e}")
             }
         }
     })
     .buffer_unordered(10) // Limit concurrency
-    .collect::<HashMap<String, u64>>() // Aggregate results by validator_id
-    .await;
+    .try_collect::<HashMap<String, u64>>() // Aggregate results by validator_id
+    .await?;
 
     Ok(block_rewards)
 }

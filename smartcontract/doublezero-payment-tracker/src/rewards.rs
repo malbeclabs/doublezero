@@ -7,7 +7,7 @@
 //! The rewards from all sources for an epoch are summed and associated with a validator_id
 //!
 use async_trait::async_trait;
-use futures::{stream, TryStreamExt, StreamExt};
+use futures::{stream, StreamExt, TryStreamExt};
 use mockall::automock;
 use reqwest;
 use serde::{de::DeserializeOwned, Deserialize};
@@ -27,7 +27,6 @@ use solana_transaction_status_client_types::{
     TransactionDetails, UiConfirmedBlock, UiTransactionEncoding,
 };
 
-#[allow(dead_code)]
 const fn get_first_slot_for_epoch(target_epoch: u64) -> u64 {
     DEFAULT_SLOTS_PER_EPOCH * target_epoch
 }
@@ -167,7 +166,7 @@ pub async fn get_block_rewards<T: ValidatorRewards>(
                             })
                             .sum()
                     })
-                    .unwrap_or(0);
+                    .unwrap_or_default();
                 Ok((validator_id, lamports))
             }
             Err(e) => {

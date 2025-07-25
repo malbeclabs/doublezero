@@ -8,10 +8,10 @@ use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
     signature::{Keypair, Signer},
-    system_program,
     transaction::Transaction,
 };
 use std::any::type_name;
+use solana_system_interface::program as system_program;
 
 #[allow(dead_code)]
 pub async fn get_globalstate(

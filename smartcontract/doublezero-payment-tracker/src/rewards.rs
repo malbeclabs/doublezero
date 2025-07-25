@@ -10,20 +10,15 @@ use async_trait::async_trait;
 use futures::{stream, StreamExt, TryStreamExt};
 use mockall::automock;
 use reqwest;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use solana_client::{
     nonblocking::rpc_client::RpcClient,
-    rpc_config::{RpcBlockConfig, RpcGetVoteAccountsConfig, RpcLeaderScheduleConfig},
+    rpc_config::{RpcBlockConfig, RpcGetVoteAccountsConfig},
     rpc_response::{RpcInflationReward, RpcVoteAccountStatus},
 };
-use solana_sdk::{
-    clock::DEFAULT_SLOTS_PER_EPOCH, commitment_config::CommitmentConfig, pubkey::Pubkey,
-    reward_type::RewardType::Fee,
-};
+use solana_sdk::{clock::DEFAULT_SLOTS_PER_EPOCH, pubkey::Pubkey, reward_type::RewardType::Fee};
 
-use solana_transaction_status_client_types::{
-    TransactionDetails, UiConfirmedBlock, UiTransactionEncoding,
-};
+use solana_transaction_status_client_types::UiConfirmedBlock;
 use std::{collections::HashMap, str::FromStr};
 
 const fn get_first_slot_for_epoch(target_epoch: u64) -> u64 {
@@ -46,21 +41,6 @@ struct JitoReward {
     // mev_commission: u64,
 }
 
-#[derive(Serialize, Debug)]
-struct JsonRpcRequest<P> {
-    jsonrpc: String,
-    id: u64,
-    method: String,
-    params: P,
-}
-
-type LeaderScheduleResult = HashMap<String, Vec<usize>>;
-
-#[derive(Deserialize, Debug)]
-struct JsonRpcResponse<R> {
-    pub result: R,
-}
-
 #[automock]
 #[async_trait]
 pub trait ValidatorRewards {
@@ -70,12 +50,15 @@ pub trait ValidatorRewards {
         slot: u64,
         config: RpcBlockConfig,
     ) -> eyre::Result<UiConfirmedBlock, solana_client::client_error::ClientError>;
-    async fn get_vote_accounts(&self) -> eyre::Result<RpcVoteAccountStatus>;
+    async fn get_vote_accounts_with_config(
+        &self,
+        config: RpcGetVoteAccountsConfig,
+    ) -> eyre::Result<RpcVoteAccountStatus, solana_client::client_error::ClientError>;
     async fn get_inflation_reward(
         &self,
         vote_keys: Vec<Pubkey>,
         epoch: u64,
-    ) -> eyre::Result<Vec<Option<RpcInflationReward>>>;
+    ) -> eyre::Result<Vec<Option<RpcInflationReward>>, solana_client::client_error::ClientError>;
 }
 
 pub struct FeePaymentCalculator(RpcClient);
@@ -95,30 +78,32 @@ impl ValidatorRewards for FeePaymentCalculator {
         self.0.get_block_with_config(slot, config).await
     }
 
-    async fn get_vote_accounts(&self) -> eyre::Result<RpcVoteAccountStatus, solana_client::client_error::ClientError> {
-        self.0.get_vote_accounts().await
+    async fn get_vote_accounts_with_config(
+        &self,
+        config: RpcGetVoteAccountsConfig,
+    ) -> eyre::Result<RpcVoteAccountStatus, solana_client::client_error::ClientError> {
+        self.0.get_vote_accounts_with_config(config).await
     }
     async fn get_inflation_reward(
         &self,
         vote_keys: Vec<Pubkey>,
         epoch: u64,
-    ) -> eyre::Result<Vec<Option<RpcInflationReward>>> {
-        get_inflation_reward(vote_keys, epoch).await
+    ) -> eyre::Result<Vec<Option<RpcInflationReward>>, solana_client::client_error::ClientError>
+    {
+        self.0.get_inflation_reward(&vote_keys, Some(epoch)).await
     }
 }
 
 pub async fn get_block_rewards<T: ValidatorRewards>(
-    api_provider: &T,
+    fee_payment_calculator: &T,
     validator_ids: &[String],
     epoch: u64,
-    config: RpcBlockConfig,
+    rpc_block_config: RpcBlockConfig,
 ) -> eyre::Result<HashMap<String, u64>> {
     let first_slot = get_first_slot_for_epoch(epoch);
 
-    // Fetch the leader schedule
-    let leader_schedule = api_provider.get_leader_schedule().await?;
+    let leader_schedule = fee_payment_calculator.get_leader_schedule().await?;
 
-    // Build validator schedules
     let validator_schedules: HashMap<String, Vec<u64>> = validator_ids
         .iter()
         .filter_map(|validator_id| {
@@ -140,7 +125,10 @@ pub async fn get_block_rewards<T: ValidatorRewards>(
         },
     ))
     .map(|(validator_id, slot)| async move {
-        match api_provider.get_block_with_config(slot, config).await {
+        match fee_payment_calculator
+            .get_block_with_config(slot, rpc_block_config)
+            .await
+        {
             Ok(block) => {
                 let lamports: u64 = block
                     .rewards
@@ -165,8 +153,8 @@ pub async fn get_block_rewards<T: ValidatorRewards>(
             }
         }
     })
-    .buffer_unordered(10) // Limit concurrency
-    .try_collect::<HashMap<String, u64>>() // Aggregate results by validator_id
+    .buffer_unordered(10)
+    .try_collect::<HashMap<String, u64>>()
     .await?;
 
     Ok(block_rewards)
@@ -228,14 +216,17 @@ pub async fn get_jito_rewards(
     Ok(jito_rewards)
 }
 
-pub async fn get_inflation_rewards<T: ValidatorRewards>(
-    api_provider: &T,
+pub async fn get_inflation_rewards<T: ValidatorRewards + ?Sized>(
+    fee_payment_calculator: &T,
     validator_ids: &[String],
     epoch: u64,
+    rpc_get_vote_accounts_config: RpcGetVoteAccountsConfig,
 ) -> eyre::Result<HashMap<String, u64>> {
     let mut vote_keys: Vec<Pubkey> = Vec::with_capacity(validator_ids.len());
 
-    let vote_accounts = api_provider.get_vote_accounts().await?;
+    let vote_accounts = fee_payment_calculator
+        .get_vote_accounts_with_config(rpc_get_vote_accounts_config)
+        .await?;
 
     // this can be cleaned up i'm sure
     for validator_id in validator_ids {
@@ -253,7 +244,9 @@ pub async fn get_inflation_rewards<T: ValidatorRewards>(
         };
     }
 
-    let inflation_rewards = api_provider.get_inflation_reward(vote_keys, epoch).await?;
+    let inflation_rewards = fee_payment_calculator
+        .get_inflation_reward(vote_keys, epoch)
+        .await?;
 
     let rewards: Vec<u64> = inflation_rewards
         .iter()
@@ -269,11 +262,14 @@ pub async fn get_inflation_rewards<T: ValidatorRewards>(
     Ok(inflation_rewards)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use solana_transaction_status_client_types::Reward;
+    use solana_client::rpc_response::{RpcInflationReward, RpcVoteAccountInfo};
+    use solana_sdk::commitment_config::CommitmentConfig;
+    use solana_transaction_status_client_types::{
+        Reward, TransactionDetails, UiTransactionEncoding,
+    };
 
     #[tokio::test]
     // TODO: can we mock the JITO api
@@ -291,8 +287,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn block_rewards() {
-        let mut mock_api_provider = MockValidatorRewards::new();
+    async fn test_get_block_rewards() {
+        let mut mock_fee_payment_calculator = MockValidatorRewards::new();
         let validator_id = "some_validator_pubkey".to_string();
         let validator_ids = &[validator_id.clone()];
         let epoch = 100;
@@ -303,7 +299,7 @@ mod tests {
         let mut leader_schedule = HashMap::new();
         leader_schedule.insert(validator_id.clone(), vec![slot_index]);
 
-        mock_api_provider
+        mock_fee_payment_calculator
             .expect_get_leader_schedule()
             .times(1)
             .returning(move || Ok(leader_schedule.clone()));
@@ -335,16 +331,78 @@ mod tests {
             max_supported_transaction_version: Some(0),
         };
 
-        mock_api_provider
+        mock_fee_payment_calculator
             .expect_get_block_with_config()
             .withf(move |s, _| *s == slot)
             .times(1)
             .returning(move |_, _| Ok(mock_block.clone()));
 
-        let rewards = get_block_rewards(&mock_api_provider, validator_ids, epoch, rpc_block_config)
-            .await
-            .unwrap();
+        let rewards = get_block_rewards(
+            &mock_fee_payment_calculator,
+            validator_ids,
+            epoch,
+            rpc_block_config,
+        )
+        .await
+        .unwrap();
 
         assert_eq!(rewards.get(&validator_id), Some(&(block_reward as u64)));
+    }
+
+    #[tokio::test]
+    async fn test_get_inflation_rewards() {
+        let mut mock_fee_payment_calculator = MockValidatorRewards::new();
+        let validator_id = "some_validator_pubkey".to_string();
+        let validator_ids = &[validator_id.clone()];
+        let epoch = 100;
+        let mock_rpc_vote_account_status = RpcVoteAccountStatus {
+            current: vec![RpcVoteAccountInfo {
+                vote_pubkey: "some vote pubkey".to_string(),
+                node_pubkey: "some pubkey".to_string(),
+                activated_stake: 4_200_000_000_000,
+                epoch_vote_account: true,
+                epoch_credits: vec![(812, 256, 128), (811, 128, 64)],
+                commission: 10,
+                last_vote: 123456789,
+                root_slot: 123456700,
+            }],
+            delinquent: vec![],
+        };
+        mock_fee_payment_calculator
+            .expect_get_vote_accounts_with_config()
+            .withf(move |_| true)
+            .times(1)
+            .returning(move |_| Ok(mock_rpc_vote_account_status.clone()));
+
+        let mock_rpc_inflation_reward = vec![Some(RpcInflationReward {
+            epoch: 812,
+            effective_slot: 123456789,
+            amount: 2500,
+            post_balance: 1_500_002_500,
+            commission: Some(1),
+        })];
+
+        let rpc_get_vote_account_configs = RpcGetVoteAccountsConfig {
+            vote_pubkey: Some("vote pubkey".to_string()),
+            commitment: Some(CommitmentConfig::finalized()),
+            keep_unstaked_delinquents: Some(false),
+            delinquent_slot_distance: Some(100_000),
+        };
+
+        mock_fee_payment_calculator
+            .expect_get_inflation_reward()
+            .times(1)
+            .returning(move |_, _| Ok(mock_rpc_inflation_reward.clone()));
+
+        let inflation_reward: u64 = 2500;
+        let rewards = get_inflation_rewards(
+            &mock_fee_payment_calculator,
+            validator_ids,
+            epoch,
+            rpc_get_vote_account_configs,
+        )
+        .await
+        .unwrap();
+        assert_eq!(rewards.get(&validator_id), Some(&(inflation_reward)));
     }
 }

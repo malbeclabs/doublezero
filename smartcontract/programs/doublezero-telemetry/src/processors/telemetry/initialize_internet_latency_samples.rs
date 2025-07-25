@@ -114,15 +114,19 @@ pub fn process_initialize_internet_latency_samples(
     }
 
     let origin_location = Location::try_from(origin_location_account)?;
-    if origin_location.status != LocationStatus::Activated {
+    if origin_location.status != LocationStatus::Activated
+        && origin_location.status != LocationStatus::Suspended
+    {
         msg!("Origin location is not activated");
-        return Err(TelemetryError::LocationNotActive.into());
+        return Err(TelemetryError::LocationNotActiveOrSuspended.into());
     }
 
     let target_location = Location::try_from(target_location_account)?;
-    if target_location.status != LocationStatus::Activated {
+    if target_location.status != LocationStatus::Activated
+        && target_location.status != LocationStatus::Suspended
+    {
         msg!("Target location is not activated");
-        return Err(TelemetryError::LocationNotActive.into());
+        return Err(TelemetryError::LocationNotActiveOrSuspended.into());
     }
 
     // Compute PDA for the latency samples account.

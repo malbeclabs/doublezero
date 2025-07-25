@@ -30,7 +30,7 @@ pub enum TelemetryError {
     /// Samples batch too large
     SamplesBatchTooLarge = 1013,
     /// Location is not activated or suspend
-    LocationNotActive = 1014,
+    LocationNotActiveOrSuspended = 1014,
     /// Date provider name is greater than 32 bytes
     DataProviderNameTooLong = 1015,
 }
@@ -68,7 +68,9 @@ impl fmt::Display for TelemetryError {
             Self::SamplesBatchTooLarge => {
                 write!(f, "Samples batch too large")
             }
-            Self::LocationNotActive => write!(f, "Location does not have activated status"),
+            Self::LocationNotActiveOrSuspended => {
+                write!(f, "Location does not have activated status")
+            }
             Self::DataProviderNameTooLong => write!(f, "Data provider name exceeds 32 bytes"),
         }
     }

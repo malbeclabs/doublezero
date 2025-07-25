@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use solana_client::{nonblocking::rpc_client::RpcClient, rpc_config::RpcGetVoteAccountsConfig};
+use solana_client::{nonblocking::rpc_client::RpcClient, rpc_config::{RpcBlockConfig, RpcGetVoteAccountsConfig}};
 use solana_sdk::{clock::DEFAULT_SLOTS_PER_EPOCH, commitment_config::CommitmentConfig};
 use std::collections::HashMap;
 
@@ -15,28 +15,31 @@ pub struct Reward {
     pub total: u64,
     pub jito: u64,
     pub inflation: u64,
+    pub block: u64,
 }
 
 pub async fn rewards_between_timestamps(
-    fee_payment_calculator: FeePaymentCalculator,
+    fee_payment_calculator: &FeePaymentCalculator,
     rpc_get_vote_accounts_config: RpcGetVoteAccountsConfig,
+    rpc_block_config: RpcBlockConfig,
     start_timestamp: u64,
     end_timestamp: u64,
     validator_ids: &[String],
 ) -> eyre::Result<HashMap<u64, HashMap<String, Reward>>> {
     let mut rewards: HashMap<u64, HashMap<String, Reward>> = HashMap::new();
-    let client = get_client();
+    // let client = get_client();
     let current_slot = client.get_slot().await?;
     let block_time = client.get_block_time(current_slot).await?;
     let block_time: u64 = block_time as u64;
     let start_epoch = epoch_from_timestamp(block_time, current_slot, start_timestamp)?;
     let end_epoch = epoch_from_timestamp(block_time, current_slot, end_timestamp)?;
     for epoch in start_epoch..=end_epoch {
-        let reward = get_rewards(
-            &fee_payment_calculator,
+        let reward = get_total_rewards(
+            fee_payment_calculator,
             validator_ids,
             epoch,
             rpc_get_vote_accounts_config.clone(),
+            rpc_block_config
         )
         .await?;
         rewards.insert(epoch, reward);
@@ -45,36 +48,45 @@ pub async fn rewards_between_timestamps(
 }
 
 // this function will return a hashmap of total rewards keyed by validator pubkey
-pub async fn get_rewards(
+pub async fn get_total_rewards(
     fee_payment_calculator: &FeePaymentCalculator,
     validator_ids: &[String],
     epoch: u64,
     rpc_get_vote_accounts_config: RpcGetVoteAccountsConfig,
+    rpc_block_config: RpcBlockConfig,
 ) -> eyre::Result<HashMap<String, Reward>> {
     let mut validator_rewards: Vec<Reward> = Vec::with_capacity(validator_ids.len());
-    // TODO: move these into async calls once the block rewards are ready
-    let inflation_rewards = rewards::get_inflation_rewards(
-        fee_payment_calculator,
-        validator_ids,
-        epoch,
-        rpc_get_vote_accounts_config,
-    )
-    .await?;
-    let jito_rewards = rewards::get_jito_rewards(validator_ids, epoch).await?;
+
+    let (inflation_rewards, jito_rewards, block_rewards) = tokio::join!(
+        rewards::get_inflation_rewards(
+            fee_payment_calculator,
+            validator_ids,
+            epoch,
+            rpc_get_vote_accounts_config,
+        ),
+        rewards::get_jito_rewards(validator_ids, epoch),
+        rewards::get_block_rewards(fee_payment_calculator, validator_ids, epoch, rpc_block_config)
+    );
+
+    let inflation_rewards = inflation_rewards?;
+    let jito_rewards = jito_rewards?;
+    let block_rewards = block_rewards?;
+
     for validator_id in validator_ids {
-        let jito_reward = jito_rewards.get(validator_id).cloned().unwrap_or_default();
         let inflation_reward = inflation_rewards
             .get(validator_id)
             .cloned()
             .unwrap_or_default();
         let mut total_reward: u64 = 0;
-        // TODO add block_rewards
+        let jito_reward = jito_rewards.get(validator_id).cloned().unwrap_or_default();
+        let block_reward = block_rewards.get(validator_id).cloned().unwrap_or_default();
         total_reward += jito_reward + inflation_reward;
         let rewards = Reward {
             validator_id: validator_id.to_string(),
             jito: jito_reward,
             inflation: inflation_reward,
             total: total_reward,
+            block: block_reward,
             epoch,
         };
         validator_rewards.push(rewards);
@@ -114,8 +126,8 @@ fn get_client() -> RpcClient {
 #[cfg(test)]
 // TODO: fix this in the next PR to tie it all together
 mod tests {
-    // use super::*;
-    // use rewards::MockValidatorRewards;
+    use super::*;
+    use rewards::MockValidatorRewards;
     #[tokio::test]
     #[ignore]
     async fn get_rewards_between_two_timestamps() {
@@ -135,11 +147,18 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore] // TODO: fix this in the next PR
-    async fn get_inflation_rewards_for_validators() {
-        // let pubkey = "6WgdYhhGE53WrZ7ywJA15hBVkw7CRbQ8yDBBTwmBtAHN";
-        // let validator_ids: &[String] = &[String::from(pubkey)];
-        // let epoch = 812;
+    #[ignore]
+    async fn test_get_total_rewards() {
+        let pubkey = "6WgdYhhGE53WrZ7ywJA15hBVkw7CRbQ8yDBBTwmBtAHN";
+        let validator_ids: &[String] = &[String::from(pubkey)];
+        let epoch = 812;
+        let rpc_client = RpcClient::new_mock("succeeds".to_string());
+        let fee_payment_calculator = FeePaymentCalculator::new(rpc_client);
+        let client = fee_payment_calculator.client();
+        dbg!(client);
+        // let client: &RpcClient = &fee_payment_calculator.0;
+
+
 
         // let rewards = get_rewards(validator_ids, epoch).await.unwrap();
         // let reward = rewards.get(pubkey).unwrap();

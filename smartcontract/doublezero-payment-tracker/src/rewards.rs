@@ -45,23 +45,51 @@ struct JitoReward {
 #[async_trait]
 pub trait ValidatorRewards {
     async fn get_leader_schedule(&self) -> eyre::Result<HashMap<String, Vec<usize>>>;
+
     async fn get_block_with_config(
         &self,
         slot: u64,
         config: RpcBlockConfig,
     ) -> eyre::Result<UiConfirmedBlock, solana_client::client_error::ClientError>;
+
     async fn get_vote_accounts_with_config(
         &self,
         config: RpcGetVoteAccountsConfig,
     ) -> eyre::Result<RpcVoteAccountStatus, solana_client::client_error::ClientError>;
+
     async fn get_inflation_reward(
         &self,
         vote_keys: Vec<Pubkey>,
         epoch: u64,
     ) -> eyre::Result<Vec<Option<RpcInflationReward>>, solana_client::client_error::ClientError>;
+
+    async fn get_block_rewards(
+        fee_payment_calculator: &FeePaymentCalculator,
+        validator_ids: &[String],
+        epoch: u64,
+        rpc_block_config: RpcBlockConfig,
+    ) -> eyre::Result<HashMap<String, u64>>;
+
+    async fn get_inflation_rewards(
+        fee_payment_calculator: &FeePaymentCalculator,
+        validator_ids: &[String],
+        epoch: u64,
+        rpc_get_vote_accounts_config: RpcGetVoteAccountsConfig,
+    ) -> eyre::Result<HashMap<String, u64>>;
 }
 
 pub struct FeePaymentCalculator(RpcClient);
+
+
+impl FeePaymentCalculator {
+    pub fn new(client: RpcClient) -> Self {
+    Self(client)
+    }
+
+    pub fn client(&self) -> &RpcClient {
+        &self.0
+    }
+}
 
 #[async_trait]
 impl ValidatorRewards for FeePaymentCalculator {
@@ -91,6 +119,36 @@ impl ValidatorRewards for FeePaymentCalculator {
     ) -> eyre::Result<Vec<Option<RpcInflationReward>>, solana_client::client_error::ClientError>
     {
         self.0.get_inflation_reward(&vote_keys, Some(epoch)).await
+    }
+
+    async fn get_block_rewards(
+        fee_payment_calculator: &FeePaymentCalculator,
+        validator_ids: &[String],
+        epoch: u64,
+        rpc_block_config: RpcBlockConfig,
+    ) -> eyre::Result<HashMap<String, u64>> {
+        get_block_rewards(
+            fee_payment_calculator,
+            validator_ids,
+            epoch,
+            rpc_block_config,
+        )
+        .await
+    }
+
+    async fn get_inflation_rewards(
+        fee_payment_calculator: &FeePaymentCalculator,
+        validator_ids: &[String],
+        epoch: u64,
+        rpc_get_vote_accounts_config: RpcGetVoteAccountsConfig,
+    ) -> eyre::Result<HashMap<String, u64>> {
+        get_inflation_rewards(
+            fee_payment_calculator,
+            validator_ids,
+            epoch,
+            rpc_get_vote_accounts_config,
+        )
+        .await
     }
 }
 

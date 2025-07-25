@@ -35,8 +35,8 @@ pub type DeviceMap = HashMap<Pubkey, DeviceState>;
 pub struct Activator {
     pub client: DZClient,
 
-    pub tunnel_tunnel_ids: IDAllocator,
-    pub tunnel_tunnel_ips: IPBlockAllocator,
+    pub link_ids: IDAllocator,
+    pub link_ips: IPBlockAllocator,
     pub multicastgroup_tunnel_ips: IPBlockAllocator,
 
     pub user_tunnel_ips: IPBlockAllocator,
@@ -90,8 +90,8 @@ impl Activator {
 
         Ok(Self {
             client,
-            tunnel_tunnel_ips: IPBlockAllocator::new(config.device_tunnel_block.into()),
-            tunnel_tunnel_ids: IDAllocator::new(0, vec![]),
+            link_ips: IPBlockAllocator::new(config.device_tunnel_block.into()),
+            link_ids: IDAllocator::new(0, vec![]),
             multicastgroup_tunnel_ips: IPBlockAllocator::new(config.multicastgroup_block.into()),
             user_tunnel_ips: IPBlockAllocator::new(config.user_tunnel_block.into()),
             devices: HashMap::new(),
@@ -118,9 +118,8 @@ impl Activator {
             .iter()
             .filter(|(_, t)| t.status == LinkStatus::Activated)
         {
-            self.tunnel_tunnel_ids.assign(tunnel.tunnel_id);
-            self.tunnel_tunnel_ips
-                .assign_block(tunnel.tunnel_net.into());
+            self.link_ids.assign(tunnel.tunnel_id);
+            self.link_ips.assign_block(tunnel.tunnel_net.into());
         }
 
         for (pubkey, device) in devices
@@ -188,8 +187,8 @@ impl Activator {
 
         // store these so we can move them into the below closure without making the borrow checker mad
         let devices = &mut self.devices;
-        let tunnel_tunnel_ips = &mut self.tunnel_tunnel_ips;
-        let tunnel_tunnel_ids = &mut self.tunnel_tunnel_ids;
+        let link_ips = &mut self.link_ips;
+        let link_ids = &mut self.link_ids;
         let multicastgroup_tunnel_ips = &mut self.multicastgroup_tunnel_ips;
         let user_tunnel_ips = &mut self.user_tunnel_ips;
         let metrics = &self.metrics;
@@ -211,8 +210,8 @@ impl Activator {
                         process_tunnel_event(
                             client,
                             pubkey,
-                            tunnel_tunnel_ips,
-                            tunnel_tunnel_ids,
+                            link_ips,
+                            link_ids,
                             tunnel,
                             state_transitions,
                         );
@@ -224,7 +223,7 @@ impl Activator {
                                 pubkey,
                                 devices,
                                 user_tunnel_ips,
-                                tunnel_tunnel_ids,
+                                link_ids,
                                 user,
                                 clusters,
                                 state_transitions,

@@ -1,7 +1,13 @@
 [package]
 name = "doublezero-activator"
-version = "0.3.0"
-edition = "2021"
+
+# Workspace inherited keys
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 bitvec.workspace = true

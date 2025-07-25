@@ -9,7 +9,7 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
-#[allow(deprecated)] //TOOD: not sure why this is being triggered
+#[allow(deprecated)] //TODO: not sure why this is being triggered
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::{ProgramResult, MAX_PERMITTED_DATA_INCREASE},
@@ -205,7 +205,7 @@ fn realloc_samples_account_if_needed(
         }
 
         // Resize the account to accommodate the expanded data.
-        #[allow(deprecated)] //TOOD: not sure why this is being triggered
+        #[allow(deprecated)] //TODO: not sure why this is being triggered
         samples_account
             .realloc(new_len, false)
             .expect("Unable to realloc the account");

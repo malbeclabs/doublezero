@@ -28,7 +28,7 @@ pub fn process_user_event(
     pubkey: &Pubkey,
     devices: &mut DeviceMap,
     user_tunnel_ips: &mut IPBlockAllocator,
-    tunnel_tunnel_ids: &mut IDAllocator,
+    link_ids: &mut IDAllocator,
     user: &User,
     clusters: Vec<RpcContactInfo>,
     state_transitions: &mut HashMap<&'static str, usize>,
@@ -316,7 +316,7 @@ pub fn process_user_event(
                 .unwrap();
 
                 if user.tunnel_id != 0 {
-                    tunnel_tunnel_ids.unassign(user.tunnel_id);
+                    link_ids.unassign(user.tunnel_id);
                 }
                 if user.tunnel_net != NetworkV4::default() {
                     user_tunnel_ips.unassign_block(user.tunnel_net.into());
@@ -446,7 +446,7 @@ mod tests {
     ) {
         let mut seq = Sequence::new();
         let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/16".parse().unwrap());
-        let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
+        let mut link_ids = IDAllocator::new(100, vec![100, 101, 102]);
         let mut client = create_test_client();
 
         let validator_pubkey = Pubkey::new_unique();
@@ -536,14 +536,14 @@ mod tests {
             &user_pubkey,
             &mut devices,
             &mut user_tunnel_ips,
-            &mut tunnel_tunnel_ids,
+            &mut link_ids,
             &user,
             clusters,
             &mut state_transitions,
         );
 
         assert!(!user_tunnel_ips.assigned_ips.is_empty());
-        assert!(!tunnel_tunnel_ids.assigned.is_empty());
+        assert!(!link_ids.assigned.is_empty());
 
         assert_eq!(state_transitions.len(), 1);
         assert_eq!(state_transitions["user-pending-to-activated"], 1);
@@ -577,7 +577,7 @@ mod tests {
     fn test_process_user_event_update_to_activated() {
         let mut seq = Sequence::new();
         let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/16".parse().unwrap());
-        let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
+        let mut link_ids = IDAllocator::new(100, vec![100, 101, 102]);
         let mut client = create_test_client();
 
         let validator_pubkey = Pubkey::new_unique();
@@ -667,14 +667,14 @@ mod tests {
             &user_pubkey,
             &mut devices,
             &mut user_tunnel_ips,
-            &mut tunnel_tunnel_ids,
+            &mut link_ids,
             &user,
             clusters,
             &mut state_transitions,
         );
 
         assert!(!user_tunnel_ips.assigned_ips.is_empty());
-        assert!(!tunnel_tunnel_ids.assigned.is_empty());
+        assert!(!link_ids.assigned.is_empty());
 
         assert_eq!(state_transitions.len(), 1);
         assert_eq!(state_transitions["user-updating-to-activated"], 1);
@@ -684,7 +684,7 @@ mod tests {
     fn test_process_user_event_pending_to_rejected_by_get_device() {
         let mut seq = Sequence::new();
         let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/32".parse().unwrap());
-        let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
+        let mut link_ids = IDAllocator::new(100, vec![100, 101, 102]);
         let mut client = create_test_client();
 
         let validator_pubkey = Pubkey::new_unique();
@@ -756,7 +756,7 @@ mod tests {
             &user_pubkey,
             &mut devices,
             &mut user_tunnel_ips,
-            &mut tunnel_tunnel_ids,
+            &mut link_ids,
             &user,
             clusters,
             &mut state_transitions,
@@ -770,7 +770,7 @@ mod tests {
     fn test_process_user_event_pending_to_rejected_by_no_tunnel_block() {
         let mut seq = Sequence::new();
         let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/32".parse().unwrap());
-        let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
+        let mut link_ids = IDAllocator::new(100, vec![100, 101, 102]);
         let mut client = create_test_client();
 
         let validator_pubkey = Pubkey::new_unique();
@@ -864,7 +864,7 @@ mod tests {
             &user_pubkey,
             &mut devices,
             &mut user_tunnel_ips,
-            &mut tunnel_tunnel_ids,
+            &mut link_ids,
             &user,
             clusters,
             &mut state_transitions,
@@ -878,7 +878,7 @@ mod tests {
     fn test_process_user_event_pending_to_rejected_by_no_user_block() {
         let mut seq = Sequence::new();
         let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/32".parse().unwrap());
-        let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
+        let mut link_ids = IDAllocator::new(100, vec![100, 101, 102]);
         let mut client = create_test_client();
 
         let validator_pubkey = Pubkey::new_unique();
@@ -969,7 +969,7 @@ mod tests {
             &user_pubkey,
             &mut devices,
             &mut user_tunnel_ips,
-            &mut tunnel_tunnel_ids,
+            &mut link_ids,
             &user,
             clusters,
             &mut state_transitions,
@@ -991,7 +991,7 @@ mod tests {
         let mut seq = Sequence::new();
         let mut devices = HashMap::new();
         let mut user_tunnel_ips = IPBlockAllocator::new("10.0.0.0/16".parse().unwrap());
-        let mut tunnel_tunnel_ids = IDAllocator::new(100, vec![100, 101, 102]);
+        let mut link_ids = IDAllocator::new(100, vec![100, 101, 102]);
         let mut client = create_test_client();
 
         let validator_pubkey = Pubkey::new_unique();
@@ -1062,20 +1062,20 @@ mod tests {
 
         func(&mut client, &user, &mut seq);
 
-        assert!(tunnel_tunnel_ids.assigned.contains(&102));
+        assert!(link_ids.assigned.contains(&102));
 
         process_user_event(
             &client,
             &user_pubkey,
             &mut devices,
             &mut user_tunnel_ips,
-            &mut tunnel_tunnel_ids,
+            &mut link_ids,
             &user,
             clusters,
             &mut state_transitions,
         );
 
-        assert!(!tunnel_tunnel_ids.assigned.contains(&102));
+        assert!(!link_ids.assigned.contains(&102));
 
         assert_eq!(state_transitions.len(), 1);
         assert_eq!(state_transitions[state_transition], 1);

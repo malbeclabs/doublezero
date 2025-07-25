@@ -1,3 +1,6 @@
+# Export required env
+export SERVICEABILITY_PROGRAM_ID := "devnet"
+
 # Default (list of commands)
 default:
     just -l

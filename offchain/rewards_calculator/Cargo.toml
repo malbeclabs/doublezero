@@ -1,9 +1,15 @@
 [package]
 name = "rewards-calculator"
-version = "0.1.0"
+readme = "README.md"
 
-# Inherited
+# Workspace inherited keys
+version.workspace = true
 edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+
 
 [lib]
 name = "rewards_calculator"

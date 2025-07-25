@@ -5,6 +5,7 @@ use crate::{
     types::{EnrichedValidator, IpInfoResp, ValidatorDetail, ValidatorIpMap},
 };
 use anyhow::{Context, Result, bail};
+use backon::Retryable;
 use network_shapley::types::Demand;
 use solana_client::{
     nonblocking::rpc_client::RpcClient,
@@ -15,13 +16,10 @@ use solana_sdk::pubkey::Pubkey;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
+    time::Duration,
 };
-use tokio::{
-    sync::Semaphore,
-    task::JoinSet,
-    time::{Duration, sleep},
-};
-use tracing::{debug, info, warn};
+use tokio::{sync::Semaphore, task::JoinSet};
+use tracing::{info, warn};
 
 #[derive(Debug)]
 pub struct DemandGenerator {
@@ -84,74 +82,6 @@ impl DemandGenerator {
     }
 }
 
-/// Retry an operation with exponential backoff and jitter
-async fn with_retry<T, F, Fut>(operation: F, settings: &Settings, operation_name: &str) -> Result<T>
-where
-    F: Fn() -> Fut,
-    Fut: std::future::Future<Output = Result<T>>,
-{
-    let mut retry_count = 0;
-    let mut backoff = Duration::from_millis(settings.demand_generator.retry_backoff_base_ms);
-    let max_backoff = Duration::from_millis(settings.demand_generator.retry_backoff_max_ms);
-    let max_retries = settings.demand_generator.max_api_retries;
-
-    loop {
-        match operation().await {
-            Ok(result) => {
-                if retry_count > 0 {
-                    info!("{} succeeded after {} retries", operation_name, retry_count);
-                }
-                return Ok(result);
-            }
-            Err(e) => {
-                retry_count += 1;
-                if retry_count > max_retries {
-                    return Err(e).context(format!(
-                        "{operation_name} failed after {max_retries} retries"
-                    ));
-                }
-
-                // Check if it's a rate limit error (429)
-                let is_rate_limit = e.to_string().contains("429")
-                    || e.to_string().to_lowercase().contains("rate limit");
-
-                // Add jitter to prevent thundering herd
-                let jitter_factor = {
-                    use rand::Rng;
-                    let mut rng = rand::thread_rng();
-                    0.5 + rng.gen_range(0.0..0.5)
-                };
-                let jittered_backoff = backoff.mul_f64(jitter_factor);
-
-                let retry_reason = if is_rate_limit { "rate limit" } else { "error" };
-
-                warn!(
-                    "{} failed (attempt {}/{}) due to {}: {}. Retrying in {:?}",
-                    operation_name, retry_count, max_retries, retry_reason, e, jittered_backoff
-                );
-
-                if tracing::enabled!(tracing::Level::DEBUG) {
-                    debug!(
-                        "Retry details - Base backoff: {:?}, Jittered: {:?}, Rate limit: {}",
-                        backoff, jittered_backoff, is_rate_limit
-                    );
-                }
-
-                sleep(jittered_backoff).await;
-
-                // Increase backoff more aggressively for rate limits
-                if is_rate_limit {
-                    backoff = backoff
-                        .saturating_mul(settings.demand_generator.rate_limit_multiplier)
-                        .min(max_backoff);
-                } else {
-                    backoff = backoff.saturating_mul(2).min(max_backoff);
-                }
-            }
-        }
-    }
-}
-
 async fn enrich_validators(
     settings: &Settings,
     validators_with_gossip: &[ValidatorDetail],
@@ -183,13 +113,12 @@ async fn enrich_validators(
             // Keep permit alive for the duration of the task
             let _permit = permit;
 
-            // Wrap the API call with retry logic
-            let ip_info_resp = with_retry(
-                || async { get_ip_info(&settings, &http_client, &ip_str).await },
-                &settings,
-                &format!("IP info fetch for {ip_str}"),
-            )
-            .await?;
+            let ip_info_resp = (|| async { get_ip_info(&settings, &http_client, &ip_str).await })
+                .retry(&settings.backoff())
+                .notify(|err: &anyhow::Error, dur: Duration| {
+                    info!("retrying error: {:?} with sleeping {:?}", err, dur)
+                })
+                .await?;
 
             let enriched = EnrichedValidator::new(&val_detail, &ip_info_resp);
             Ok::<(usize, EnrichedValidator), anyhow::Error>((index, enriched))

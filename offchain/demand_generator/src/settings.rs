@@ -1,9 +1,11 @@
 use anyhow::Result;
+use backon::ExponentialBuilder;
 use figment::{
     Figment,
     providers::{Env, Format, Toml},
 };
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
@@ -19,14 +21,7 @@ pub struct DemandGeneratorSettings {
     pub solana_rpc_url: String,
     #[serde(default = "default_concurrent_api_requests")]
     pub concurrent_api_requests: u32,
-    #[serde(default = "default_max_api_retries")]
-    pub max_api_retries: u32,
-    #[serde(default = "default_retry_backoff_base_ms")]
-    pub retry_backoff_base_ms: u64,
-    #[serde(default = "default_retry_backoff_max_ms")]
-    pub retry_backoff_max_ms: u64,
-    #[serde(default = "default_rate_limit_multiplier")]
-    pub rate_limit_multiplier: u32,
+    pub backoff: Option<BackoffSettings>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,11 +32,45 @@ pub struct IpInfoSettings {
     pub api_token: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BackoffSettings {
+    #[serde(default = "default_backoff_factor")]
+    pub factor: f32,
+    #[serde(default = "default_backoff_min_delay_ms")]
+    pub min_delay_ms: u64,
+    #[serde(default = "default_backoff_max_delay_ms")]
+    pub max_delay_ms: u64,
+    #[serde(default = "default_backoff_max_times")]
+    pub max_times: usize,
+}
+
+impl BackoffSettings {
+    pub fn min_delay_duration(&self) -> Duration {
+        Duration::from_millis(self.min_delay_ms)
+    }
+
+    pub fn max_delay_duration(&self) -> Duration {
+        Duration::from_millis(self.max_delay_ms)
+    }
+}
+
 impl Settings {
     pub fn from_env() -> Result<Self> {
         // Get environment from DZ_ENV or default to "devnet"
         let env = std::env::var("DZ_ENV").unwrap_or_else(|_| "devnet".to_string());
         Self::load(env)
+    }
+
+    pub fn backoff(&self) -> ExponentialBuilder {
+        match &self.demand_generator.backoff {
+            None => ExponentialBuilder::default().with_jitter(),
+            Some(bs) => ExponentialBuilder::default()
+                .with_jitter()
+                .with_factor(bs.factor)
+                .with_max_times(bs.max_times)
+                .with_min_delay(bs.min_delay_duration())
+                .with_max_delay(bs.max_delay_duration()),
+        }
     }
 
     pub fn load(env: String) -> Result<Self> {
@@ -116,18 +145,18 @@ fn default_concurrent_api_requests() -> u32 {
     8
 }
 
-fn default_max_api_retries() -> u32 {
-    3
+fn default_backoff_factor() -> f32 {
+    2.0
 }
 
-fn default_retry_backoff_base_ms() -> u64 {
-    100
+fn default_backoff_min_delay_ms() -> u64 {
+    1000 // 1s
 }
 
-fn default_retry_backoff_max_ms() -> u64 {
-    30000
+fn default_backoff_max_delay_ms() -> u64 {
+    60 * 1000 // 60s
 }
 
-fn default_rate_limit_multiplier() -> u32 {
+fn default_backoff_max_times() -> usize {
     3
 }

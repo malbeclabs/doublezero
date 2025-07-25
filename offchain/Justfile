@@ -1,10 +1,13 @@
+# Export required env
+export SERVICEABILITY_PROGRAM_ID := "devnet"
+
 # Default (list of commands)
 default:
     just -l
 
 # Run fmt
 fmt:
-    cargo +nightly fmt --all -- --config imports_granularity=Crate
+    cargo fmt
 
 # Check fmt
 fmt-check:
@@ -32,8 +35,6 @@ cov:
 
 # Run CI pipeline
 ci:
-    @just fmt
     @just fmt-check
     @just clippy
     @just test
-    @just build

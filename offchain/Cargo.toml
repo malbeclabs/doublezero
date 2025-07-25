@@ -5,13 +5,23 @@ members = [
     "metrics_processor",
     "rewards_calculator",
 ]
-
-package = { edition = "2024" }
 resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+authors = ["Malbec Labs <dev@malbeclabs.com>"]
+readme = "README.md"
+description = "DoubleZero Off-Chain Rewarder"
+license = "Apache-2.0"
+repository = "https://github.com/doublezerofoundation/doublezero-rewarder"
+homepage = "https://github.com/doublezerofoundation/doublezero-rewarder"
+
 
 [workspace.dependencies]
 anyhow = "1"
 arrow = { version = "55", features = ["prettyprint"] }
+backon = "0"
 base64 = "0"
 borsh = "1"
 chrono = { version = "0", features = ["serde"] }
@@ -26,7 +36,7 @@ humantime = "2"
 humantime-serde = "1"
 doublezero-serviceability = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint" ] }
 doublezero-telemetry = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint" ] }
-svm-hash = { git = "ssh://git@github.com/doublezerofoundation/svm-hash-rs", features = [ "bytemuck" ] }
+svm-hash = { version = "0.1.0-beta.1", features = [ "bytemuck" ] }
 md5 = "0"
 parquet = { version = "55", features = ["arrow", "async"] }
 rand = "0"

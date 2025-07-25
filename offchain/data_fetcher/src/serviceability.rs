@@ -1,30 +1,34 @@
 use crate::{
-    rpc,
+    settings::Settings,
     types::{
         DZDevice, DZExchange, DZLink, DZLocation, DZMulticastGroup, DZServiceabilityData, DZUser,
     },
 };
 use anyhow::{Context, Result};
+use backon::Retryable;
 use doublezero_serviceability::state::{
     accounttype::AccountType, device::Device, exchange::Exchange, link::Link, location::Location,
     multicastgroup::MulticastGroup, user::User,
 };
 use solana_account_decoder::UiAccountEncoding;
 use solana_client::{
-    rpc_client::RpcClient,
+    client_error::ClientError as SolanaClientError,
+    nonblocking::rpc_client::RpcClient,
     rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig},
 };
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
-use std::str::FromStr;
+use std::{str::FromStr, time::Duration};
 use tracing::{debug, info};
 
 /// Fetch all network serviceability data at a given timestamp
 /// For now, we fetch the latest state (no historical slot lookup)
 pub async fn fetch(
     rpc_client: &RpcClient,
-    program_id: &str,
+    settings: &Settings,
     timestamp_us: u64,
 ) -> Result<DZServiceabilityData> {
+    let program_id = &settings.data_fetcher.programs.serviceability_program_id;
+
     let program_pubkey = Pubkey::from_str(program_id)
         .with_context(|| format!("Invalid serviceability program ID: {program_id}"))?;
 
@@ -47,12 +51,15 @@ pub async fn fetch(
         ..RpcProgramAccountsConfig::default()
     };
 
-    // Fetch accounts with retry logic
-    let accounts = rpc::with_retry(
-        || async { rpc_client.get_program_accounts_with_config(&program_pubkey, config.clone()) },
-        3,
-        "get_program_accounts for serviceability",
-    )
+    let accounts = (|| async {
+        rpc_client
+            .get_program_accounts_with_config(&program_pubkey, config.clone())
+            .await
+    })
+    .retry(&settings.backoff())
+    .notify(|err: &SolanaClientError, dur: Duration| {
+        info!("retrying error: {:?} with sleeping {:?}", err, dur)
+    })
     .await?;
 
     info!(

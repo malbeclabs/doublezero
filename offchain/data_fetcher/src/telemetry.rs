@@ -1,17 +1,19 @@
 use crate::{
-    rpc,
+    settings::Settings,
     types::{DZDTelemetryData, DbDeviceLatencySamples},
 };
 use anyhow::{Context, Result};
+use backon::Retryable;
 use doublezero_telemetry::state::device_latency_samples::DeviceLatencySamples;
 use solana_account_decoder::UiAccountEncoding;
 use solana_client::{
-    rpc_client::RpcClient,
+    client_error::ClientError as SolanaClientError,
+    nonblocking::rpc_client::RpcClient,
     rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig},
     rpc_filter::{Memcmp, RpcFilterType},
 };
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
-use std::str::FromStr;
+use std::{str::FromStr, time::Duration};
 use tracing::{debug, info, warn};
 
 // AccountType::DeviceLatencySamples = 1 (from the enum)
@@ -20,10 +22,12 @@ const ACCOUNT_TYPE_DISCRIMINATOR: u8 = 1;
 /// Fetch all telemetry data within a given time range
 pub async fn fetch(
     rpc_client: &RpcClient,
-    program_id: &str,
+    settings: &Settings,
     after_us: u64,
     before_us: u64,
 ) -> Result<DZDTelemetryData> {
+    let program_id = &settings.data_fetcher.programs.telemetry_program_id;
+
     let program_pubkey = Pubkey::from_str(program_id)
         .with_context(|| format!("Invalid telemetry program ID: {program_id}"))?;
 
@@ -52,12 +56,15 @@ pub async fn fetch(
         ..RpcProgramAccountsConfig::default()
     };
 
-    // Fetch accounts with retry logic
-    let accounts = rpc::with_retry(
-        || async { rpc_client.get_program_accounts_with_config(&program_pubkey, config.clone()) },
-        3,
-        "get_program_accounts for telemetry",
-    )
+    let accounts = (|| async {
+        rpc_client
+            .get_program_accounts_with_config(&program_pubkey, config.clone())
+            .await
+    })
+    .retry(&settings.backoff())
+    .notify(|err: &SolanaClientError, dur: Duration| {
+        info!("retrying error: {:?} with sleeping {:?}", err, dur)
+    })
     .await?;
 
     info!(

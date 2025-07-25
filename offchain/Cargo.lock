@@ -463,6 +463,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
+name = "backon"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "33e5b65cc81d81fbb8488f36458ab4771be35a722967bbc959df28b47397e3ff"
+dependencies = [
+ "fastrand",
+]
+
+[[package]]
 name = "backtrace"
 version = "0.3.75"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1226,6 +1235,7 @@ name = "data-fetcher"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "backon",
  "borsh 1.5.7",
  "chrono",
  "doublezero-serviceability",
@@ -1252,11 +1262,12 @@ name = "demand-generator"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "backon",
  "clap",
  "csv",
  "figment",
  "network-shapley",
- "rand 0.8.5",
+ "rand 0.9.2",
  "reqwest",
  "serde",
  "serde_json",
@@ -1394,16 +1405,16 @@ dependencies = [
 
 [[package]]
 name = "doublezero-program-common"
-version = "0.2.2"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#d681b2527687eedabdd4b88193c674d288a38c62"
+version = "0.3.0"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#8ca7a0996e35de4b83b38abcff5b887f0f95584a"
 dependencies = [
  "solana-program",
 ]
 
 [[package]]
 name = "doublezero-serviceability"
-version = "0.2.2"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#d681b2527687eedabdd4b88193c674d288a38c62"
+version = "0.3.0"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#8ca7a0996e35de4b83b38abcff5b887f0f95584a"
 dependencies = [
  "borsh 1.5.7",
  "byteorder",
@@ -1417,7 +1428,7 @@ dependencies = [
 [[package]]
 name = "doublezero-telemetry"
 version = "0.2.0"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#d681b2527687eedabdd4b88193c674d288a38c62"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#8ca7a0996e35de4b83b38abcff5b887f0f95584a"
 dependencies = [
  "borsh 1.5.7",
  "doublezero-program-common",
@@ -6142,9 +6153,9 @@ dependencies = [
 
 [[package]]
 name = "solana-sha256-hasher"
-version = "2.2.1"
+version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0037386961c0d633421f53560ad7c80675c0447cba4d1bb66d60974dd486c7ea"
+checksum = "5aa3feb32c28765f6aa1ce8f3feac30936f16c5c3f7eb73d63a5b8f6f8ecdc44"
 dependencies = [
  "sha2 0.10.9",
  "solana-define-syscall",
@@ -7057,8 +7068,9 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "svm-hash"
-version = "0.1.0"
-source = "git+ssh://git@github.com/doublezerofoundation/svm-hash-rs#1e72d603f63fd77278b6cc275cbace9c71db6e13"
+version = "0.1.0-beta.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9e82db0cb158ee631ca7544da90256dc691ccabcb7f07a0241a8f1d6334a981a"
 dependencies = [
  "bytemuck",
  "solana-hash",

@@ -40,15 +40,10 @@ impl Fetcher {
         let (serviceability_data, telemetry_data) = tokio::try_join!(
             serviceability::fetch(
                 &rpc_client,
-                &settings.data_fetcher.programs.serviceability_program_id,
+                &settings,
                 before_us // Get network state at the end of the time range
             ),
-            telemetry::fetch(
-                &rpc_client,
-                &settings.data_fetcher.programs.telemetry_program_id,
-                after_us,
-                before_us
-            )
+            telemetry::fetch(&rpc_client, &settings, after_us, before_us)
         )?;
 
         Ok(FetchData {

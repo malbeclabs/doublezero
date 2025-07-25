@@ -10,8 +10,8 @@ use solana_sdk::{
     signature::{Keypair, Signer},
     transaction::Transaction,
 };
-use std::any::type_name;
 use solana_system_interface::program as system_program;
+use std::any::type_name;
 
 #[allow(dead_code)]
 pub async fn get_globalstate(

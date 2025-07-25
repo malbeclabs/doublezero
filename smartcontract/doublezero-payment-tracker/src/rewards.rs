@@ -11,18 +11,9 @@ use futures::{stream, StreamExt};
 use mockall::automock;
 use reqwest;
 use serde::{de::DeserializeOwned, Deserialize};
-use solana_client::{nonblocking::rpc_client::RpcClient, rpc_config::RpcGetVoteAccountsConfig};
-use solana_sdk::{
-    clock::DEFAULT_SLOTS_PER_EPOCH, commitment_config::CommitmentConfig, pubkey::Pubkey,
-};
 use std::{collections::HashMap, error::Error, str::FromStr};
 const JITO_BASE_URL: &str = "https://kobe.mainnet.jito.network/api/v1/";
 
-#[allow(dead_code)]
-const fn get_first_slot_for_epoch(target_epoch: u64) -> u64 {
-    DEFAULT_SLOTS_PER_EPOCH * target_epoch
-}
-use serde::{Deserialize, Serialize};
 use solana_client::{
     nonblocking::rpc_client::RpcClient,
     rpc_config::{RpcBlockConfig, RpcGetVoteAccountsConfig, RpcLeaderScheduleConfig},
@@ -72,15 +63,7 @@ impl HttpFetcher for ReqwestFetcher {
         Ok(body)
     }
 }
-#[derive(Serialize, Debug)]
-struct JsonRpcRequest<P> {
-    jsonrpc: String,
-    id: u64,
-    method: String,
-    params: P,
-}
 
-type LeaderScheduleResult = HashMap<String, Vec<usize>>;
 
 #[derive(Deserialize, Debug)]
 struct JsonRpcResponse<R> {
@@ -95,28 +78,50 @@ pub trait HttpFetcher {
         url: &str,
     ) -> Result<T, Box<dyn Error + Send + Sync>>;
 }
-pub trait ApiProvider {
+
+#[automock]
+#[async_trait]
+pub trait ValidatorRewards {
     async fn get_leader_schedule(&self) -> eyre::Result<HashMap<String, Vec<usize>>>;
-    async fn get_block(&self, slot: u64) -> eyre::Result<UiConfirmedBlock>;
+    async fn get_block_with_config(
+        &self,
+        slot: u64,
+        config: RpcBlockConfig,
+    ) -> eyre::Result<UiConfirmedBlock, solana_client::client_error::ClientError>;
 }
 
-pub struct SolanaApiProvider;
+pub struct FeePaymentCalculator(RpcClient);
 
 #[async_trait]
-impl ApiProvider for SolanaApiProvider {
+impl ValidatorRewards for FeePaymentCalculator {
     async fn get_leader_schedule(&self) -> eyre::Result<HashMap<String, Vec<usize>>> {
-        get_leader_schedule().await
+        let schedule = self.0.get_leader_schedule(None).await?;
+        schedule.ok_or(eyre::eyre!("No leader schedule found"))
     }
 
-    async fn get_block(&self, slot: u64) -> eyre::Result<UiConfirmedBlock> {
-        get_block(slot).await
+    async fn get_block_with_config(
+        &self,
+        slot: u64,
+        config: RpcBlockConfig,
+    ) -> eyre::Result<UiConfirmedBlock, solana_client::client_error::ClientError> {
+        self.0.get_block_with_config(slot, config).await
     }
 }
 
-pub async fn get_block_rewards<T: ApiProvider>(
+
+
+#[automock]
+#[async_trait]
+pub trait ValidatorRewards {
+    async fn get_leader_schedule(&self) -> eyre::Result<HashMap<String, Vec<usize>>>;
+    async fn get_block_with_config(&self, slot: u64) -> eyre::Result<UiConfirmedBlock>;
+}
+
+pub async fn get_block_rewards<T: ValidatorRewards>(
     api_provider: &T,
     validator_ids: &[String],
     epoch: u64,
+    config: RpcBlockConfig,
 ) -> eyre::Result<HashMap<String, u64>> {
     let first_slot = get_first_slot_for_epoch(epoch);
 
@@ -145,7 +150,7 @@ pub async fn get_block_rewards<T: ApiProvider>(
         },
     ))
     .map(|(validator_id, slot)| async move {
-        match api_provider.get_block(slot).await {
+        match api_provider.get_block_with_config(slot, config).await {
             Ok(block) => {
                 let lamports: u64 = block
                     .rewards
@@ -363,7 +368,7 @@ mod tests {
 
     #[tokio::test]
     async fn block_rewards() {
-        let mut mock_api_provider = MockApiProvider::new();
+        let mut mock_api_provider = MockValidatorRewards::new();
         let validator_id = "some_validator_pubkey".to_string();
         let validator_ids = &[validator_id.clone()];
         let epoch = 100;
@@ -398,13 +403,21 @@ mod tests {
             block_height: None,
         };
 
-        mock_api_provider
-            .expect_get_block()
-            .withf(move |s| *s == slot)
-            .times(1)
-            .returning(move |_| Ok(mock_block.clone()));
+        let rpc_block_config = solana_client::rpc_config::RpcBlockConfig {
+            encoding: UiTransactionEncoding::Base58.into(),
+            transaction_details: TransactionDetails::None.into(),
+            rewards: Some(true),
+            commitment: CommitmentConfig::finalized().into(),
+            max_supported_transaction_version: Some(0),
+        };
 
-        let rewards = get_block_rewards(&mock_api_provider, validator_ids, epoch)
+        mock_api_provider
+            .expect_get_block_with_config()
+            .withf(move |s, _| *s == slot)
+            .times(1)
+            .returning(move |_, _| Ok(mock_block.clone()));
+
+        let rewards = get_block_rewards(&mock_api_provider, validator_ids, epoch, rpc_block_config)
             .await
             .unwrap();
 

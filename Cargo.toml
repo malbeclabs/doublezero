@@ -22,7 +22,7 @@ description = "Malbec Labs DoubleZero"
 homepage = "https://github.com/malbeclabs/doublezero"
 license = "Apache-2.0"
 repository = "https://github.com/malbeclabs/doublezero"
-version = "0.2.2"
+version = "0.3.0"
 
 [workspace.dependencies]
 anyhow = "1"

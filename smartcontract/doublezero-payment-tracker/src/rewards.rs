@@ -60,7 +60,6 @@ impl HttpFetcher for ReqwestFetcher {
 pub trait HttpFetcher {
     async fn get<T: DeserializeOwned + Send + 'static>(
         &self,
-
         url: &str,
     ) -> Result<T, Box<dyn Error + Send + Sync>>;
 }

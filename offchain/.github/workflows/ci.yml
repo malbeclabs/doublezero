@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    tags: ["*"]
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup | Cancel previous runs
+        uses: styfle/cancel-workflow-action@0.12.1
+
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup | Apt packages
+        run: sudo apt-get update
+
+      - name: Setup | Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: clippy, rustfmt, llvm-tools-preview
+
+      - name: Setup | Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Setup | Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Setup | Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Setup | Just
+        uses: taiki-e/install-action@just
+
+      - name: Setup | ssh-agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: |
+            ${{ secrets.DOUBLEZERO_PRIV_KEY }}
+
+      - name: Test | CI Pipeline
+        run: just ci

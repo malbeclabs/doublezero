@@ -4,7 +4,7 @@ default:
 
 # Run fmt
 fmt:
-    cargo +nightly fmt --all -- --config imports_granularity=Crate
+    cargo fmt
 
 # Check fmt
 fmt-check:

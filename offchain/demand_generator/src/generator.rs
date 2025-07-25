@@ -118,8 +118,8 @@ where
                 // Add jitter to prevent thundering herd
                 let jitter_factor = {
                     use rand::Rng;
-                    let mut rng = rand::thread_rng();
-                    0.5 + rng.gen_range(0.0..0.5)
+                    let mut rng = rand::rng();
+                    0.5 + rng.random_range(0.0..0.5)
                 };
                 let jittered_backoff = backoff.mul_f64(jitter_factor);
 

@@ -35,8 +35,6 @@ cov:
 
 # Run CI pipeline
 ci:
-    @just fmt
     @just fmt-check
     @just clippy
     @just test
-    @just build

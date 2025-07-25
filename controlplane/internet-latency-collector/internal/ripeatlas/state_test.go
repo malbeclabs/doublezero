@@ -1,0 +1,294 @@
+package ripeatlas
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestNewMeasurementState(t *testing.T) {
+	ms := NewMeasurementState("test.json")
+
+	require.NotNil(t, ms)
+	require.Equal(t, "test.json", ms.filename)
+	require.NotNil(t, ms.tracker)
+	require.NotNil(t, ms.tracker.Timestamps)
+	require.Empty(t, ms.tracker.Timestamps)
+}
+
+func TestMeasurementState_LoadSave(t *testing.T) {
+	tempDir := t.TempDir()
+	filename := filepath.Join(tempDir, "test_timestamps.json")
+
+	ms := NewMeasurementState(filename)
+
+	// Test loading non-existent file
+	err := ms.Load()
+	require.NoError(t, err, "Load() on non-existent file should not error")
+	require.Empty(t, ms.tracker.Timestamps, "Timestamps should be empty initially")
+
+	// Test saving
+	ms.UpdateTimestamp(100, 1640995200)
+	ms.UpdateTimestamp(200, 1640995300)
+	ms.UpdateTimestamp(300, 1640995400)
+
+	err = ms.Save()
+	require.NoError(t, err, "Save() should not error")
+
+	// Test loading existing file
+	ms2 := NewMeasurementState(filename)
+	err = ms2.Load()
+	require.NoError(t, err, "Load() should not error")
+	require.Len(t, ms2.tracker.Timestamps, 3, "Expected 3 timestamps")
+
+	// Verify timestamps
+	ts, exists := ms2.GetLastTimestamp(100)
+	require.True(t, exists)
+	require.Equal(t, int64(1640995200), ts)
+
+	ts, exists = ms2.GetLastTimestamp(200)
+	require.True(t, exists)
+	require.Equal(t, int64(1640995300), ts)
+
+	ts, exists = ms2.GetLastTimestamp(300)
+	require.True(t, exists)
+	require.Equal(t, int64(1640995400), ts)
+}
+
+func TestMeasurementState_GetLastTimestamp(t *testing.T) {
+	ms := NewMeasurementState("test.json")
+
+	// Test non-existent measurement
+	ts, exists := ms.GetLastTimestamp(999)
+	require.False(t, exists)
+	require.Equal(t, int64(0), ts)
+
+	// Add timestamp and test
+	ms.UpdateTimestamp(100, 1640995200)
+	ts, exists = ms.GetLastTimestamp(100)
+	require.True(t, exists)
+	require.Equal(t, int64(1640995200), ts)
+}
+
+func TestMeasurementState_UpdateTimestamp(t *testing.T) {
+	ms := NewMeasurementState("test.json")
+
+	// Initial update
+	ms.UpdateTimestamp(100, 1640995200)
+	ts, exists := ms.GetLastTimestamp(100)
+	require.True(t, exists)
+	require.Equal(t, int64(1640995200), ts)
+
+	// Update existing timestamp
+	ms.UpdateTimestamp(100, 1640995300)
+	ts, exists = ms.GetLastTimestamp(100)
+	require.True(t, exists)
+	require.Equal(t, int64(1640995300), ts)
+}
+
+func TestMeasurementState_GetAllTimestamps(t *testing.T) {
+	ms := NewMeasurementState("test.json")
+
+	// Test empty state
+	timestamps := ms.GetAllTimestamps()
+	require.Empty(t, timestamps)
+
+	// Add some timestamps
+	ms.UpdateTimestamp(100, 1640995200)
+	ms.UpdateTimestamp(200, 1640995300)
+	ms.UpdateTimestamp(300, 1640995400)
+
+	timestamps = ms.GetAllTimestamps()
+	require.Len(t, timestamps, 3)
+	require.Equal(t, int64(1640995200), timestamps[100])
+	require.Equal(t, int64(1640995300), timestamps[200])
+	require.Equal(t, int64(1640995400), timestamps[300])
+
+	// Verify it's a copy (modifying returned map doesn't affect original)
+	timestamps[100] = 9999
+	ts, _ := ms.GetLastTimestamp(100)
+	require.Equal(t, int64(1640995200), ts, "Original should not be modified")
+}
+
+func TestMeasurementState_InvalidFile(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Test corrupted JSON
+	jsonFile := filepath.Join(tempDir, "corrupted.json")
+	err := os.WriteFile(jsonFile, []byte("{invalid json"), 0644)
+	require.NoError(t, err, "Failed to write corrupted JSON file")
+
+	ms := NewMeasurementState(jsonFile)
+	err = ms.Load()
+	require.Error(t, err, "Expected error for corrupted JSON")
+	require.Contains(t, err.Error(), "failed to decode timestamp file")
+}
+
+func TestMeasurementState_FilePermissionError(t *testing.T) {
+	// Skip this test if running as root (common in Docker containers)
+	if os.Geteuid() == 0 {
+		t.Skip("Skipping permission test when running as root")
+	}
+
+	tempDir := t.TempDir()
+
+	// Create a directory where we can't write
+	readOnlyDir := filepath.Join(tempDir, "readonly")
+	err := os.Mkdir(readOnlyDir, 0555) // Read and execute only
+	require.NoError(t, err)
+
+	filename := filepath.Join(readOnlyDir, "timestamps.json")
+	ms := NewMeasurementState(filename)
+	ms.UpdateTimestamp(100, 1640995200)
+
+	err = ms.Save()
+	require.Error(t, err, "Expected error when saving to read-only directory")
+	require.Contains(t, err.Error(), "failed to create timestamp file")
+}
+
+func TestMeasurementState_EmptyTimestampsInFile(t *testing.T) {
+	tempDir := t.TempDir()
+	filename := filepath.Join(tempDir, "empty_timestamps.json")
+
+	// Write JSON with null timestamps
+	err := os.WriteFile(filename, []byte(`{"timestamps": null}`), 0644)
+	require.NoError(t, err)
+
+	ms := NewMeasurementState(filename)
+	err = ms.Load()
+	require.NoError(t, err, "Should handle null timestamps gracefully")
+	require.NotNil(t, ms.tracker.Timestamps, "Timestamps map should be initialized")
+	require.Empty(t, ms.tracker.Timestamps, "Timestamps should be empty")
+}
+
+func TestMeasurementState_PersistenceAcrossInstances(t *testing.T) {
+	tempDir := t.TempDir()
+	filename := filepath.Join(tempDir, "persistence_test.json")
+
+	// First instance: add some timestamps
+	ms1 := NewMeasurementState(filename)
+	ms1.UpdateTimestamp(100, 1640995200)
+	ms1.UpdateTimestamp(200, 1640995300)
+	err := ms1.Save()
+	require.NoError(t, err)
+
+	// Second instance: load and add more
+	ms2 := NewMeasurementState(filename)
+	err = ms2.Load()
+	require.NoError(t, err)
+
+	// Verify existing timestamps
+	ts, exists := ms2.GetLastTimestamp(100)
+	require.True(t, exists)
+	require.Equal(t, int64(1640995200), ts)
+
+	// Add new timestamp
+	ms2.UpdateTimestamp(300, 1640995400)
+	err = ms2.Save()
+	require.NoError(t, err)
+
+	// Third instance: verify all timestamps
+	ms3 := NewMeasurementState(filename)
+	err = ms3.Load()
+	require.NoError(t, err)
+
+	timestamps := ms3.GetAllTimestamps()
+	require.Len(t, timestamps, 3)
+	require.Equal(t, int64(1640995200), timestamps[100])
+	require.Equal(t, int64(1640995300), timestamps[200])
+	require.Equal(t, int64(1640995400), timestamps[300])
+}
+
+func TestMeasurementState_ConcurrentAccess(t *testing.T) {
+	ms := NewMeasurementState("test.json")
+
+	// Note: This test demonstrates that the current implementation
+	// is NOT thread-safe. In a real concurrent environment, you would
+	// need to add mutex protection.
+
+	// Add initial timestamp
+	ms.UpdateTimestamp(100, 1000)
+
+	// Simulate concurrent updates (not truly concurrent in this test)
+	for i := 0; i < 10; i++ {
+		ms.UpdateTimestamp(100, int64(1000+i))
+	}
+
+	// Verify final value
+	ts, exists := ms.GetLastTimestamp(100)
+	require.True(t, exists)
+	require.Equal(t, int64(1009), ts)
+}
+
+func TestMeasurementState_LargeNumberOfMeasurements(t *testing.T) {
+	tempDir := t.TempDir()
+	filename := filepath.Join(tempDir, "large_test.json")
+
+	ms := NewMeasurementState(filename)
+
+	// Add many measurements
+	const numMeasurements = 1000
+	for i := 0; i < numMeasurements; i++ {
+		ms.UpdateTimestamp(i, int64(1640995200+i))
+	}
+
+	// Save and reload
+	err := ms.Save()
+	require.NoError(t, err)
+
+	ms2 := NewMeasurementState(filename)
+	err = ms2.Load()
+	require.NoError(t, err)
+
+	// Verify all timestamps
+	timestamps := ms2.GetAllTimestamps()
+	require.Len(t, timestamps, numMeasurements)
+
+	for i := 0; i < numMeasurements; i++ {
+		require.Equal(t, int64(1640995200+i), timestamps[i])
+	}
+}
+
+func TestTimestampTracker_Structure(t *testing.T) {
+	// Test that TimestampTracker can be marshaled/unmarshaled correctly
+	tracker := &TimestampTracker{
+		Timestamps: map[int]int64{
+			100: 1640995200,
+			200: 1640995300,
+		},
+	}
+
+	// Marshal
+	data, err := json.Marshal(tracker)
+	require.NoError(t, err)
+
+	// Unmarshal
+	var tracker2 TimestampTracker
+	err = json.Unmarshal(data, &tracker2)
+	require.NoError(t, err)
+
+	require.Equal(t, tracker.Timestamps, tracker2.Timestamps)
+}
+
+func TestMeasurementTimestamp_Structure(t *testing.T) {
+	// Test MeasurementTimestamp structure (currently unused but defined)
+	mt := &MeasurementTimestamp{
+		MeasurementID: 100,
+		LastTimestamp: 1640995200,
+	}
+
+	// Marshal
+	data, err := json.Marshal(mt)
+	require.NoError(t, err)
+
+	// Unmarshal
+	var mt2 MeasurementTimestamp
+	err = json.Unmarshal(data, &mt2)
+	require.NoError(t, err)
+
+	require.Equal(t, mt.MeasurementID, mt2.MeasurementID)
+	require.Equal(t, mt.LastTimestamp, mt2.LastTimestamp)
+}

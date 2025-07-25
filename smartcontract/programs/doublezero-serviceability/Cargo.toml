@@ -1,8 +1,8 @@
 [package]
 name = "doublezero-serviceability"
-version = "0.3.0"
 
 # Workspace inherited keys
+version.workspace = true
 authors.workspace = true
 edition.workspace = true
 homepage.workspace = true

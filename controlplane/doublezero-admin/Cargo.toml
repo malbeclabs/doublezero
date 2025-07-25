@@ -1,6 +1,6 @@
 [package]
 name = "doublezero-admin"
-version = "0.2.2"
+version = "0.3.0"
 description = "Command line interface to interact with the DZ program."
 
 # Workspace inherited keys

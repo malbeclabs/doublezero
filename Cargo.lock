@@ -1099,19 +1099,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "console"
-version = "0.16.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e09ced7ebbccb63b4c65413d821f2e00ce54c5ca4514ddc6b3c892fdbcbc69d"
-dependencies = [
- "encode_unicode",
- "libc",
- "once_cell",
- "unicode-width",
- "windows-sys 0.60.2",
-]
-
-[[package]]
 name = "console_error_panic_hook"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1533,14 +1520,14 @@ checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
 
 [[package]]
 name = "doublezero"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
  "chrono",
  "clap",
  "clap_complete",
- "console 0.16.0",
+ "console",
  "ctor",
  "doublezero-serviceability",
  "doublezero_cli",
@@ -1553,8 +1540,8 @@ dependencies = [
  "hyper 1.6.0",
  "hyper-util",
  "hyperlocal",
- "indicatif 0.18.0",
- "mockall 0.13.1",
+ "indicatif",
+ "mockall",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -1569,7 +1556,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-activator"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "bitvec",
  "chrono",
@@ -1577,7 +1564,7 @@ dependencies = [
  "doublezero-serviceability",
  "doublezero_cli",
  "doublezero_sdk",
- "env_logger 0.11.8",
+ "env_logger 0.9.3",
  "eyre",
  "futures",
  "indexmap",
@@ -1588,7 +1575,7 @@ dependencies = [
  "log",
  "metrics",
  "metrics-exporter-prometheus",
- "mockall 0.13.1",
+ "mockall",
  "solana-client",
  "solana-sdk",
  "tokio",
@@ -1596,13 +1583,13 @@ dependencies = [
 
 [[package]]
 name = "doublezero-admin"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "chrono",
  "clap",
  "clap_complete",
- "console 0.16.0",
+ "console",
  "doublezero_cli",
  "doublezero_sdk",
  "eyre",
@@ -1610,7 +1597,7 @@ dependencies = [
  "futures-util",
  "hyper 1.6.0",
  "hyperlocal",
- "indicatif 0.18.0",
+ "indicatif",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -1624,14 +1611,14 @@ dependencies = [
 
 [[package]]
 name = "doublezero-program-common"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "solana-program",
 ]
 
 [[package]]
 name = "doublezero-serviceability"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "borsh 1.5.7",
  "byteorder",
@@ -1663,21 +1650,21 @@ dependencies = [
 
 [[package]]
 name = "doublezero_cli"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "chrono",
  "clap",
- "console 0.16.0",
+ "console",
  "doublezero-serviceability",
  "doublezero_sdk",
  "eyre",
  "futures",
  "futures-util",
  "http 1.3.1",
- "indicatif 0.18.0",
+ "indicatif",
  "ipnetwork",
- "mockall 0.13.1",
+ "mockall",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -1691,7 +1678,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero_payment_tracker"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "eyre",
@@ -1707,7 +1694,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero_sdk"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "base64 0.22.1",
  "bincode 2.0.1",
@@ -1717,7 +1704,7 @@ dependencies = [
  "doublezero-serviceability",
  "eyre",
  "futures",
- "mockall 0.13.1",
+ "mockall",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -2834,23 +2821,10 @@ version = "0.17.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "183b3088984b400f4cfac3620d5e076c84da5364016b4f49473de574b2586235"
 dependencies = [
- "console 0.15.11",
+ "console",
  "number_prefix",
  "portable-atomic",
  "unicode-width",
- "web-time",
-]
-
-[[package]]
-name = "indicatif"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70a646d946d06bedbbc4cac4c218acf4bbf2d87757a784857025f4d447e4e1cd"
-dependencies = [
- "console 0.16.0",
- "portable-atomic",
- "unicode-width",
- "unit-prefix",
  "web-time",
 ]
 
@@ -3366,22 +3340,8 @@ dependencies = [
  "downcast",
  "fragile",
  "lazy_static",
- "mockall_derive 0.11.4",
+ "mockall_derive",
  "predicates 2.1.5",
- "predicates-tree",
-]
-
-[[package]]
-name = "mockall"
-version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39a6bfcc6c8c7eed5ee98b9c3e33adc726054389233e201c95dab2d41a3839d2"
-dependencies = [
- "cfg-if",
- "downcast",
- "fragile",
- "mockall_derive 0.13.1",
- "predicates 3.1.3",
  "predicates-tree",
 ]
 
@@ -3395,18 +3355,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
-]
-
-[[package]]
-name = "mockall_derive"
-version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25ca3004c2efe9011bd4e461bd8256445052b9615405b4f7ea43fc8ca5c20898"
-dependencies = [
- "cfg-if",
- "proc-macro2",
- "quote",
- "syn 2.0.102",
 ]
 
 [[package]]
@@ -5400,7 +5348,7 @@ dependencies = [
  "futures",
  "futures-util",
  "indexmap",
- "indicatif 0.17.11",
+ "indicatif",
  "log",
  "quinn",
  "rayon",
@@ -6723,7 +6671,7 @@ dependencies = [
  "base64 0.22.1",
  "bincode 1.3.3",
  "bs58",
- "indicatif 0.17.11",
+ "indicatif",
  "log",
  "reqwest",
  "reqwest-middleware",
@@ -6830,7 +6778,7 @@ dependencies = [
  "log",
  "lz4",
  "memmap2",
- "mockall 0.11.4",
+ "mockall",
  "modular-bitfield",
  "num-derive",
  "num-traits",
@@ -7574,7 +7522,7 @@ dependencies = [
  "bincode 1.3.3",
  "futures-util",
  "indexmap",
- "indicatif 0.17.11",
+ "indicatif",
  "log",
  "rayon",
  "solana-client-traits",
@@ -8978,12 +8926,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 
 [[package]]
-name = "unit-prefix"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "323402cff2dd658f39ca17c789b502021b3f18707c91cdf22e3838e1b4023817"
-
-[[package]]
 name = "universal-hash"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9421,15 +9363,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e38bc4d79ed67fd075bcc251a1c39b32a1776bbe92e5bef1f0bf1f8c531853b"
 dependencies = [
  "windows-targets 0.52.6",
-]
-
-[[package]]
-name = "windows-sys"
-version = "0.60.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2f500e4d28234f72040990ec9d39e3a6b950f9f22d3dba18416c35882612bcb"
-dependencies = [
- "windows-targets 0.53.2",
 ]
 
 [[package]]

@@ -21,7 +21,7 @@ use solana_sdk::{clock::DEFAULT_SLOTS_PER_EPOCH, pubkey::Pubkey, reward_type::Re
 use solana_transaction_status_client_types::UiConfirmedBlock;
 use std::{collections::HashMap, str::FromStr};
 
-const fn get_first_slot_for_epoch(target_epoch: u64) -> u64 {
+pub const fn get_first_slot_for_epoch(target_epoch: u64) -> u64 {
     DEFAULT_SLOTS_PER_EPOCH * target_epoch
 }
 

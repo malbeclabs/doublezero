@@ -3,7 +3,7 @@ use solana_client::rpc_config::{RpcBlockConfig, RpcGetVoteAccountsConfig};
 use solana_sdk::clock::DEFAULT_SLOTS_PER_EPOCH;
 use std::collections::HashMap;
 
-use crate::rewards::FeePaymentCalculator;
+use crate::rewards::{FeePaymentCalculator, ValidatorRewards};
 pub mod rewards;
 
 const SLOT_TIME_DURATION_SECONDS: f64 = 0.4;
@@ -27,7 +27,6 @@ pub async fn rewards_between_timestamps(
     validator_ids: &[String],
 ) -> eyre::Result<HashMap<u64, HashMap<String, Reward>>> {
     let mut rewards: HashMap<u64, HashMap<String, Reward>> = HashMap::new();
-    // let client = get_client();
     let current_slot = fee_payment_calculator.client().get_slot().await?;
     let block_time = fee_payment_calculator
         .client()
@@ -52,7 +51,7 @@ pub async fn rewards_between_timestamps(
 
 // this function will return a hashmap of total rewards keyed by validator pubkey
 pub async fn get_total_rewards(
-    fee_payment_calculator: &FeePaymentCalculator,
+    fee_payment_calculator: &impl ValidatorRewards,
     validator_ids: &[String],
     epoch: u64,
     rpc_get_vote_accounts_config: RpcGetVoteAccountsConfig,
@@ -81,18 +80,18 @@ pub async fn get_total_rewards(
     let block_rewards = block_rewards?;
 
     for validator_id in validator_ids {
-        // let inflation_reward = inflation_rewards
-        //     .get(validator_id)
-        //     .cloned()
-        //     .unwrap_or_default();
+        let inflation_reward = inflation_rewards
+            .get(validator_id)
+            .cloned()
+            .unwrap_or_default();
         let mut total_reward: u64 = 0;
         let jito_reward = jito_rewards.get(validator_id).cloned().unwrap_or_default();
         let block_reward = block_rewards.get(validator_id).cloned().unwrap_or_default();
-        total_reward += jito_reward; //  inflation_reward;
+        total_reward += inflation_reward + block_reward;
         let rewards = Reward {
             validator_id: validator_id.to_string(),
             jito: jito_reward,
-            inflation: 0, //inflation_reward,
+            inflation: inflation_reward,
             total: total_reward,
             block: block_reward,
             epoch,
@@ -128,17 +127,14 @@ fn epoch_from_timestamp(block_time: u64, current_slot: u64, timestamp: u64) -> e
 mod tests {
     use super::*;
     use rewards::MockValidatorRewards;
-    use solana_client::nonblocking::rpc_client::RpcClient;
-    use solana_sdk::commitment_config::CommitmentConfig;
-    use solana_transaction_status_client_types::{TransactionDetails, UiTransactionEncoding};
-
-    fn get_client() -> RpcClient {
-        RpcClient::new_with_commitment(
-            "https://malbecl-mainb64-0c41.mainnet.rpcpool.com/dfb1b1a0-576c-453e-a045-2b76f658e908"
-                .to_string(),
-            CommitmentConfig::confirmed(),
-        )
-    }
+    use solana_client::{
+        nonblocking::rpc_client::RpcClient,
+        rpc_response::{RpcInflationReward, RpcVoteAccountInfo, RpcVoteAccountStatus},
+    };
+    use solana_sdk::{commitment_config::CommitmentConfig, reward_type::RewardType::Fee};
+    use solana_transaction_status_client_types::{
+        TransactionDetails, UiConfirmedBlock, UiTransactionEncoding,
+    };
 
     #[tokio::test]
     #[ignore]
@@ -160,13 +156,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_total_rewards() {
-        let pubkey = "6WgdYhhGE53WrZ7ywJA15hBVkw7CRbQ8yDBBTwmBtAHN";
-        let validator_ids: &[String] = &[String::from(pubkey)];
+        let validator_id = "6WgdYhhGE53WrZ7ywJA15hBVkw7CRbQ8yDBBTwmBtAHN";
+        let validator_ids: &[String] = &[String::from(validator_id)];
         let epoch = 819;
-        // let rpc_client = RpcClient::new_mock("succeeds".to_string());
-        let rpc_client = get_client();
-        let fee_payment_calculator = FeePaymentCalculator::new(rpc_client);
-        let mock_fee_payment_calculator = MockValidatorRewards::new();
+        let mut mock_fee_payment_calculator = MockValidatorRewards::new();
+
         let rpc_block_config = solana_client::rpc_config::RpcBlockConfig {
             encoding: UiTransactionEncoding::Base58.into(),
             transaction_details: TransactionDetails::None.into(),
@@ -182,8 +176,93 @@ mod tests {
             delinquent_slot_distance: None,
         };
 
+        let mock_rpc_vote_account_status = RpcVoteAccountStatus {
+            current: vec![RpcVoteAccountInfo {
+                vote_pubkey: "some vote pubkey".to_string(),
+                node_pubkey: "some pubkey".to_string(),
+                activated_stake: 4_200_000_000_000,
+                epoch_vote_account: true,
+                epoch_credits: vec![(812, 256, 128), (811, 128, 64)],
+                commission: 10,
+                last_vote: 123456789,
+                root_slot: 123456700,
+            }],
+            delinquent: vec![],
+        };
+
+        mock_fee_payment_calculator
+            .expect_get_vote_accounts_with_config()
+            .withf(move |_| true)
+            .times(1)
+            .returning(move |_| Ok(mock_rpc_vote_account_status.clone()));
+
+        let rpc_get_vote_account_configs = RpcGetVoteAccountsConfig {
+            vote_pubkey: Some("vote pubkey".to_string()),
+            commitment: Some(CommitmentConfig::finalized()),
+            keep_unstaked_delinquents: Some(false),
+            delinquent_slot_distance: Some(100_000),
+        };
+
+        let mock_rpc_inflation_reward = vec![Some(RpcInflationReward {
+            epoch: 812,
+            effective_slot: 123456789,
+            amount: 2500,
+            post_balance: 1_500_002_500,
+            commission: Some(1),
+        })];
+
+        mock_fee_payment_calculator
+            .expect_get_inflation_reward()
+            .times(1)
+            .returning(move |_, _| Ok(mock_rpc_inflation_reward.clone()));
+
+        let first_slot = rewards::get_first_slot_for_epoch(epoch);
+        let slot_index: usize = 10;
+        let slot = first_slot + slot_index as u64;
+
+        let mut leader_schedule = HashMap::new();
+        leader_schedule.insert(validator_id.to_string(), vec![slot_index]);
+
+        mock_fee_payment_calculator
+            .expect_get_leader_schedule()
+            .times(1)
+            .returning(move || Ok(leader_schedule.clone()));
+
+        let block_reward = 5000;
+        let mock_block = UiConfirmedBlock {
+            num_reward_partitions: Some(1),
+            signatures: Some(vec!["One".to_string()]),
+            rewards: Some(vec![solana_transaction_status_client_types::Reward {
+                pubkey: validator_id.to_string(),
+                lamports: block_reward,
+                post_balance: 10000,
+                reward_type: Some(Fee),
+                commission: None,
+            }]),
+            previous_blockhash: "".to_string(),
+            blockhash: "".to_string(),
+            parent_slot: 0,
+            transactions: None,
+            block_time: None,
+            block_height: None,
+        };
+
+        let rpc_block_config = solana_client::rpc_config::RpcBlockConfig {
+            encoding: UiTransactionEncoding::Base58.into(),
+            transaction_details: TransactionDetails::None.into(),
+            rewards: Some(true),
+            commitment: CommitmentConfig::finalized().into(),
+            max_supported_transaction_version: Some(0),
+        };
+
+        mock_fee_payment_calculator
+            .expect_get_block_with_config()
+            .withf(move |s, _| *s == slot)
+            .times(1)
+            .returning(move |_, _| Ok(mock_block.clone()));
+
         let rewards = get_total_rewards(
-            &fee_payment_calculator,
+            &mock_fee_payment_calculator,
             validator_ids,
             epoch,
             rpc_get_vote_accounts_config,

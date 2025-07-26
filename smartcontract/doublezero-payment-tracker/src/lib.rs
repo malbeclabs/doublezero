@@ -4,6 +4,8 @@ use solana_sdk::{clock::DEFAULT_SLOTS_PER_EPOCH, commitment_config::CommitmentCo
 use std::collections::HashMap;
 pub mod rewards;
 
+use crate::rewards::ReqwestFetcher;
+
 const SLOT_TIME_DURATION_SECONDS: f64 = 0.4;
 
 #[derive(Deserialize, Debug)]
@@ -41,10 +43,11 @@ pub async fn get_rewards(
     validator_ids: &[String],
     epoch: u64,
 ) -> eyre::Result<HashMap<String, Reward>> {
+    let fetcher = ReqwestFetcher;
     let mut validator_rewards: Vec<Reward> = Vec::with_capacity(validator_ids.len());
     // TODO: move these into async calls once the block rewards are ready
     let inflation_rewards = rewards::get_inflation_rewards(client, validator_ids, epoch).await?;
-    let jito_rewards = rewards::get_jito_rewards(validator_ids, epoch).await?;
+    let jito_rewards = rewards::get_jito_rewards(&fetcher, validator_ids, epoch).await?;
     for validator_id in validator_ids {
         let jito_reward = jito_rewards.get(validator_id).cloned().unwrap_or_default();
         let inflation_reward = inflation_rewards

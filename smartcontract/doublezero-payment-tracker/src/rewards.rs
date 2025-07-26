@@ -10,10 +10,7 @@ use async_trait::async_trait;
 use futures::{stream, StreamExt, TryStreamExt};
 use mockall::automock;
 use reqwest;
-use serde::{de::DeserializeOwned, Deserialize};
-use std::{collections::HashMap, error::Error, str::FromStr};
-const JITO_BASE_URL: &str = "https://kobe.mainnet.jito.network/api/v1/";
-
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use solana_client::{
     nonblocking::rpc_client::RpcClient,
     rpc_config::{RpcBlockConfig, RpcGetVoteAccountsConfig, RpcLeaderScheduleConfig},
@@ -26,7 +23,9 @@ use solana_sdk::{
 use solana_transaction_status_client_types::{
     TransactionDetails, UiConfirmedBlock, UiTransactionEncoding,
 };
+use std::{collections::HashMap, error::Error, str::FromStr};
 
+const JITO_BASE_URL: &str = "https://kobe.mainnet.jito.network/api/v1/";
 const fn get_first_slot_for_epoch(target_epoch: u64) -> u64 {
     DEFAULT_SLOTS_PER_EPOCH * target_epoch
 }
@@ -47,35 +46,19 @@ struct JitoReward {
     // mev_commission: u64,
 }
 
-pub struct ReqwestFetcher;
-
-#[async_trait]
-impl HttpFetcher for ReqwestFetcher {
-    async fn get<T: DeserializeOwned + Send>(
-        &self,
-        url: &str,
-    ) -> Result<T, Box<dyn Error + Send + Sync>> {
-        let response = reqwest::get(url).await?.error_for_status()?;
-
-        let body = response.json::<T>().await?;
-
-        Ok(body)
-    }
+#[derive(Serialize, Debug)]
+struct JsonRpcRequest<P> {
+    jsonrpc: String,
+    id: u64,
+    method: String,
+    params: P,
 }
 
+type LeaderScheduleResult = HashMap<String, Vec<usize>>;
 
 #[derive(Deserialize, Debug)]
 struct JsonRpcResponse<R> {
     pub result: R,
-}
-
-#[automock]
-#[async_trait]
-pub trait HttpFetcher {
-    async fn get<T: DeserializeOwned + Send + 'static>(
-        &self,
-        url: &str,
-    ) -> Result<T, Box<dyn Error + Send + Sync>>;
 }
 
 #[automock]
@@ -87,9 +70,24 @@ pub trait ValidatorRewards {
         slot: u64,
         config: RpcBlockConfig,
     ) -> eyre::Result<UiConfirmedBlock, solana_client::client_error::ClientError>;
+
+    async fn get<T: DeserializeOwned + Send + 'static>(
+        &self,
+        url: &str,
+    ) -> Result<T, Box<dyn Error + Send + Sync>>;
 }
 
 pub struct FeePaymentCalculator(RpcClient);
+
+impl FeePaymentCalculator {
+    pub fn new(client: RpcClient) -> Self {
+        Self(client)
+    }
+
+    pub fn client(&self) -> &RpcClient {
+        &self.0
+    }
+}
 
 #[async_trait]
 impl ValidatorRewards for FeePaymentCalculator {
@@ -105,13 +103,21 @@ impl ValidatorRewards for FeePaymentCalculator {
     ) -> eyre::Result<UiConfirmedBlock, solana_client::client_error::ClientError> {
         self.0.get_block_with_config(slot, config).await
     }
+    async fn get<T: DeserializeOwned + Send>(
+        &self,
+        url: &str,
+    ) -> Result<T, Box<dyn Error + Send + Sync>> {
+        let response = reqwest::get(url).await?.error_for_status()?;
+
+        let body = response.json::<T>().await?;
+
+        Ok(body)
+    }
 }
-
-
 
 #[automock]
 #[async_trait]
-pub trait ValidatorRewards {
+pub trait ApiProvider {
     async fn get_leader_schedule(&self) -> eyre::Result<HashMap<String, Vec<usize>>>;
     async fn get_block_with_config(&self, slot: u64) -> eyre::Result<UiConfirmedBlock>;
 }
@@ -182,8 +188,8 @@ pub async fn get_block_rewards<T: ValidatorRewards>(
 }
 
 // may need to add in pagination
-pub async fn get_jito_rewards<F: HttpFetcher>(
-    fetcher: &F,
+pub async fn get_jito_rewards<T: ValidatorRewards>(
+    fee_payment_calculator: &T,
     validator_ids: &[String],
     epoch: u64,
 ) -> eyre::Result<HashMap<String, u64>> {
@@ -193,7 +199,7 @@ pub async fn get_jito_rewards<F: HttpFetcher>(
         "{JITO_BASE_URL}validator_rewards?epoch={epoch}&limit=1500"
     );
 
-    let rewards = match fetcher.get::<JitoRewards>(&url).await {
+    let rewards = match fee_payment_calculator.get::<JitoRewards>(&url).await {
         Ok(jito_rewards) => {
             if jito_rewards.total_count > 1500 {
                 println!(
@@ -335,10 +341,8 @@ mod tests {
     use solana_transaction_status_client_types::Reward;
 
     #[tokio::test]
-    // TODO: can we mock the JITO api
-    #[ignore]
-    async fn jito_rewards() {
-        let mut jito_mock_fetcher = MockHttpFetcher::new();
+    async fn test_get_jito_rewards() {
+        let mut jito_mock_fetcher = MockValidatorRewards::new();
         let pubkey = "CvSb7wdQAFpHuSpTYTJnX5SYH4hCfQ9VuGnqrKaKwycB";
         let validator_ids: &[String] = &[String::from(pubkey)];
         let epoch = 812;

@@ -584,7 +584,7 @@ impl TelemetryProgramHelper {
         banks_client.process_transaction(tx).await
     }
 
-    #[allow(dead_code)]
+    #[allow(clippy::too_many_arguments, dead_code)]
     pub async fn initialize_internet_latency_samples(
         &mut self,
         agent: &Keypair,
@@ -618,7 +618,7 @@ impl TelemetryProgramHelper {
         Ok(pda)
     }
 
-    #[allow(dead_code)]
+    #[allow(clippy::too_many_arguments, dead_code)]
     pub async fn initialize_internet_latency_samples_with_pda(
         &mut self,
         agent: &Keypair,

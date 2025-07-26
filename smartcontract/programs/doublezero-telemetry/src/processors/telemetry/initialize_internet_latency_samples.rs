@@ -145,6 +145,12 @@ pub fn process_initialize_internet_latency_samples(
         return Err(TelemetryError::InvalidPDA.into());
     }
 
+    // Ensure the account is not already initialized
+    if !latency_samples_acct.data_is_empty() {
+        msg!("Latency samples account already exists");
+        return Err(TelemetryError::AccountAlreadyExists.into());
+    }
+
     // Create the account with the minimum rent-exempt balance
     let rent = Rent::get()?;
     let space = InternetLatencySamplesHeader::instance_size(args.data_provider_name.len());

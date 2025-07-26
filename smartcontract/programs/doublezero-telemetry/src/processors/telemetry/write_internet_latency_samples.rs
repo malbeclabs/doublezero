@@ -139,7 +139,7 @@ pub fn process_write_internet_latency_samples(
     // Determine whether the account needs to be resized to hold the new data
     let new_len = InternetLatencySamplesHeader::instance_size(header.data_provider_name.len())
         + header.next_sample_index as usize * 4; // 4 bytes per u32 RTT (µs) samples
-    resize_account_if_needed(&latency_samples_acct, &agent, accounts, new_len)?;
+    resize_account_if_needed(latency_samples_acct, agent, accounts, new_len)?;
 
     // Serialize the updated struct back into the account
     {

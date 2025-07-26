@@ -22,6 +22,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/gomod"
+	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	"github.com/malbeclabs/doublezero/e2e/internal/solana"
 )
 
@@ -780,24 +781,6 @@ func shortContainerID(id string) string {
 	return id[:12]
 }
 
-func pollUntil(ctx context.Context, condition func() (bool, error), timeout time.Duration, interval time.Duration) error {
-	for {
-		ok, err := condition()
-		if err != nil {
-			return err
-		}
-		if ok {
-			return nil
-		}
-
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("polling cancelled or timed out: %w", ctx.Err())
-		case <-time.After(interval):
-		}
-	}
-}
-
 // generateKeypairIfNotExists generates and writes a new keypair to the keypair path if it does not exist.
 func generateKeypairIfNotExists(keypairPath string) (bool, error) {
 	if _, err := os.Stat(keypairPath); err != nil {
@@ -823,7 +806,7 @@ func (d *Devnet) waitForContainerPortExposed(ctx context.Context, containerID st
 	attempts := 0
 	var container dockercontainer.InspectResponse
 	var exposedPort int
-	err := pollUntil(ctx, func() (bool, error) {
+	err := poll.Until(ctx, func() (bool, error) {
 		attempts++
 		var err error
 		container, err = d.dockerClient.ContainerInspect(ctx, containerID)

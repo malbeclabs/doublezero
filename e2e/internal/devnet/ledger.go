@@ -19,6 +19,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
+	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	"github.com/testcontainers/testcontainers-go"
@@ -244,7 +245,7 @@ func waitForSolanaReady(ctx context.Context, log *slog.Logger, rpcHost string, r
 	var loggedWait bool
 	timeout := 20 * time.Second
 	var attempts int
-	err := pollUntil(ctx, func() (bool, error) {
+	err := poll.Until(ctx, func() (bool, error) {
 		attempts++
 		reqBody := strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"getHealth"}`)
 		req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://%s:%d/", rpcHost, rpcPort), reqBody)

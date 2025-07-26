@@ -3,7 +3,9 @@ package prometheus
 import (
 	"context"
 	"net/http"
+	"time"
 
+	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	prom "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
 )
@@ -28,6 +30,13 @@ func NewMetricsClient(url string) *MetricsClient {
 		url:      url,
 		families: make(map[string]*prom.MetricFamily),
 	}
+}
+
+func (m *MetricsClient) WaitForReady(ctx context.Context, timeout time.Duration) error {
+	return poll.Until(ctx, func() (bool, error) {
+		err := m.Fetch(ctx)
+		return err == nil, err
+	}, timeout, 500*time.Millisecond)
 }
 
 func (m *MetricsClient) Fetch(ctx context.Context) error {

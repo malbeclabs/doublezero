@@ -80,10 +80,9 @@ pub trait ValidatorRewards {
 
 pub struct FeePaymentCalculator(RpcClient);
 
-
 impl FeePaymentCalculator {
     pub fn new(client: RpcClient) -> Self {
-    Self(client)
+        Self(client)
     }
 
     pub fn client(&self) -> &RpcClient {

@@ -3,12 +3,7 @@ use crate::{
     pda::derive_internet_latency_samples_pda,
     seeds::{SEED_INTERNET_LATENCY_SAMPLES, SEED_PREFIX},
     serviceability_program_id,
-    state::{
-        accounttype::AccountType,
-        internet_latency_samples::{
-            InternetLatencySamplesHeader, INTERNET_LATENCY_SAMPLES_MAX_HEADER_SIZE,
-        },
-    },
+    state::{accounttype::AccountType, internet_latency_samples::InternetLatencySamplesHeader},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
@@ -129,6 +124,11 @@ pub fn process_initialize_internet_latency_samples(
         return Err(TelemetryError::LocationNotActiveOrSuspended.into());
     }
 
+    if origin_location == target_location {
+        msg!("Origin and target locations cannot be the same");
+        return Err(TelemetryError::SameTargetAsOrigin.into());
+    }
+
     // Compute PDA for the latency samples account.
     // Uniquely scope by provider, origin, target, and epoch
     let (latency_samples_pda, latency_samples_bump_seed) = derive_internet_latency_samples_pda(
@@ -147,7 +147,7 @@ pub fn process_initialize_internet_latency_samples(
 
     // Create the account with the minimum rent-exempt balance
     let rent = Rent::get()?;
-    let space = INTERNET_LATENCY_SAMPLES_MAX_HEADER_SIZE;
+    let space = InternetLatencySamplesHeader::instance_size(args.data_provider_name.len());
     let lamports = rent.minimum_balance(space);
 
     msg!(

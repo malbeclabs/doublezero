@@ -15,7 +15,7 @@ use solana_program::{
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct DeviceDeleteArgs {}
+pub struct DeviceDeleteArgs;
 
 impl fmt::Debug for DeviceDeleteArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

@@ -16,7 +16,7 @@ use solana_program::{
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct LocationSuspendArgs {}
+pub struct LocationSuspendArgs;
 
 impl fmt::Debug for LocationSuspendArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

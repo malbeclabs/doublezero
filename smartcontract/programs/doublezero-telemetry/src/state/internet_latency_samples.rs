@@ -12,6 +12,7 @@ use std::{
 /// Maximum number of RTT samples storable in a single account
 /// With 1-minute intervals, 3_000 samples ~= 48 hours of data.
 pub const MAX_INTERNET_LATENCY_SAMPLES: usize = 3_000;
+pub const MAX_DATA_PROVIDER_NAME_BYTES: usize = 32;
 
 /// Static size of the `InternetLatencySamples` struct without the `samples` vec.
 /// Used to calculate initial account allocation. Bytes per field:
@@ -27,12 +28,12 @@ pub const MAX_INTERNET_LATENCY_SAMPLES: usize = 3_000;
 ///
 /// Total size: 290 bytes
 pub const INTERNET_LATENCY_SAMPLES_MAX_HEADER_SIZE: usize =
-    1 + 1 + (4 + 32) + 8 + 32 + 32 + 32 + 8 + 8 + 4 + 128;
+    1 + 1 + (4 + MAX_DATA_PROVIDER_NAME_BYTES) + 8 + 32 + 32 + 32 + 8 + 8 + 4 + 128;
 
 /// Onchain data structure representing a latency samples account header between two
 /// location over the public internet for a specific epoch and third party probe provider,
 /// written by a single agent account managed by the serviceability global state.
-#[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
 pub struct InternetLatencySamplesHeader {
     // Discriminator to distinguish from other accounts during deserialization
     pub account_type: AccountType, // 1
@@ -59,18 +60,48 @@ pub struct InternetLatencySamplesHeader {
     pub _unused: [u8; 128], // 128
 }
 
+impl InternetLatencySamplesHeader {
+    pub fn data_provider_name_length(data: &[u8]) -> Result<usize, std::array::TryFromSliceError> {
+        // Based on the account layout and borsh's 4-byte string field prefix
+        data[2..6]
+            .try_into()
+            .map(|bytes| u32::from_le_bytes(bytes) as usize)
+    }
+
+    pub fn instance_size(data_provider_name_size: usize) -> usize {
+        1 + 1 + (4 + data_provider_name_size) + 8 + 32 + 32 + 32 + 8 + 8 + 4 + 128
+    }
+}
+
 impl TryFrom<&[u8]> for InternetLatencySamplesHeader {
     type Error = borsh::io::Error;
 
     fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
-        if data.len() < INTERNET_LATENCY_SAMPLES_MAX_HEADER_SIZE {
+        // ensures no zero-length data provider names
+        if data.len() <= INTERNET_LATENCY_SAMPLES_MAX_HEADER_SIZE - MAX_DATA_PROVIDER_NAME_BYTES {
             return Err(borsh::io::Error::new(
                 std::io::ErrorKind::UnexpectedEof,
                 "account data too short for header",
             ));
         }
 
-        Self::deserialize(&mut &data[..])
+        let name_length =
+            InternetLatencySamplesHeader::data_provider_name_length(data).map_err(|_| {
+                borsh::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "account data doesn't have valid provider name prefix",
+                )
+            })?;
+        let header_len = InternetLatencySamplesHeader::instance_size(name_length);
+
+        if header_len > INTERNET_LATENCY_SAMPLES_MAX_HEADER_SIZE {
+            return Err(borsh::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "account data too long for header",
+            ));
+        }
+
+        Self::deserialize(&mut &data[..header_len])
     }
 }
 
@@ -139,7 +170,18 @@ impl AccountTypeInfo for InternetLatencySamples {
     /// Computes the full serialized size of this account (for realloc).
     /// Used when dynamically resizing to accommodate more samples.
     fn size(&self) -> usize {
-        INTERNET_LATENCY_SAMPLES_MAX_HEADER_SIZE + self.samples.len() * 4
+        1 + 1
+            + 4
+            + self.header.data_provider_name.len()
+            + 8
+            + 32
+            + 32
+            + 32
+            + 8
+            + 8
+            + 4
+            + 128
+            + self.samples.len() * 4
     }
 
     /// Returns the bump seed used during PDA derivation
@@ -199,6 +241,6 @@ mod tests {
         );
         assert_eq!(header.next_sample_index, header2.next_sample_index);
         assert_eq!(val.samples, val2.samples);
-        assert!(data.len() <= val.size(), "Invalid size");
+        assert_eq!(data.len(), val.size(), "Invalid size");
     }
 }

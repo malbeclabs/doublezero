@@ -15,7 +15,7 @@ use solana_program::{
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct LocationDeleteArgs {}
+pub struct LocationDeleteArgs;
 
 impl fmt::Debug for LocationDeleteArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

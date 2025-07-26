@@ -463,15 +463,15 @@ mod tests {
             "UpdateLocation",
         );
         test_instruction(
-            DoubleZeroInstruction::SuspendLocation(LocationSuspendArgs {}),
+            DoubleZeroInstruction::SuspendLocation(LocationSuspendArgs),
             "SuspendLocation",
         );
         test_instruction(
-            DoubleZeroInstruction::ResumeLocation(LocationResumeArgs {}),
+            DoubleZeroInstruction::ResumeLocation(LocationResumeArgs),
             "ResumeLocation",
         );
         test_instruction(
-            DoubleZeroInstruction::DeleteLocation(LocationDeleteArgs {}),
+            DoubleZeroInstruction::DeleteLocation(LocationDeleteArgs),
             "DeleteLocation",
         );
         test_instruction(
@@ -544,15 +544,15 @@ mod tests {
             "UpdateDevice",
         );
         test_instruction(
-            DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs {}),
+            DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs),
             "SuspendDevice",
         );
         test_instruction(
-            DoubleZeroInstruction::ResumeDevice(DeviceResumeArgs {}),
+            DoubleZeroInstruction::ResumeDevice(DeviceResumeArgs),
             "ResumeDevice",
         );
         test_instruction(
-            DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs {}),
+            DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs),
             "DeleteDevice",
         );
         test_instruction(

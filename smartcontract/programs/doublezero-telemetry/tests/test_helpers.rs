@@ -16,13 +16,15 @@ use doublezero_serviceability::{
         },
         exchange::create::ExchangeCreateArgs,
         globalconfig::set::SetGlobalConfigArgs,
+        globalstate::setinternetlatencycollector::SetInternetLatencyCollectorArgs,
         link::{activate::LinkActivateArgs, create::LinkCreateArgs, suspend::LinkSuspendArgs},
-        location::create::LocationCreateArgs,
+        location::{create::LocationCreateArgs, suspend::LocationSuspendArgs},
     },
     state::{
         device::{Device, DeviceType, Interface, CURRENT_INTERFACE_VERSION},
         globalstate::GlobalState,
         link::{Link, LinkLinkType},
+        location::Location,
     },
     types::{NetworkV4, NetworkV4List},
 };
@@ -30,9 +32,10 @@ use doublezero_telemetry::{
     entrypoint::process_instruction as telemetry_process_instruction,
     error::TelemetryError,
     instructions::{TelemetryInstruction, INITIALIZE_DEVICE_LATENCY_SAMPLES_INSTRUCTION_INDEX},
-    pda::derive_device_latency_samples_pda,
+    pda::{derive_device_latency_samples_pda, derive_internet_latency_samples_pda},
     processors::telemetry::{
         initialize_device_latency_samples::InitializeDeviceLatencySamplesArgs,
+        initialize_internet_latency_samples::InitializeInternetLatencySamplesArgs,
         write_device_latency_samples::WriteDeviceLatencySamplesArgs,
     },
     serviceability_program_id,
@@ -277,6 +280,7 @@ impl LedgerHelper {
         banks_client.process_transaction(tx).await
     }
 
+    #[allow(dead_code)]
     pub async fn seed_with_two_linked_devices(
         &mut self,
     ) -> Result<(Keypair, Pubkey, Pubkey, Pubkey), BanksClientError> {
@@ -388,6 +392,44 @@ impl LedgerHelper {
             link_pk,
         ))
     }
+
+    #[allow(dead_code)]
+    pub async fn seed_with_two_locations(
+        &mut self,
+    ) -> Result<(Keypair, Pubkey, Pubkey), BanksClientError> {
+        // create locations
+        let location1_pk = self
+            .serviceability
+            .create_location(LocationCreateArgs {
+                code: "LOC1".to_string(),
+                name: "Test Location1".to_string(),
+                country: "US".to_string(),
+                loc_id: 1,
+                ..LocationCreateArgs::default()
+            })
+            .await?;
+
+        let location2_pk = self
+            .serviceability
+            .create_location(LocationCreateArgs {
+                code: "LOC2".to_string(),
+                name: "Test Location2".to_string(),
+                country: "UK".to_string(),
+                loc_id: 2,
+                ..LocationCreateArgs::default()
+            })
+            .await?;
+
+        // Create and fund the internet samples agent oracle
+        let oracle_agent = Keypair::new();
+        let oracle_agent_pk = oracle_agent.pubkey();
+        self.fund_account(&oracle_agent_pk, 10_000_000_000).await?;
+        self.serviceability
+            .set_internet_latency_collector(oracle_agent_pk)
+            .await?;
+
+        Ok((oracle_agent, location1_pk, location2_pk))
+    }
 }
 
 pub struct TelemetryProgramHelper {
@@ -406,6 +448,7 @@ impl TelemetryProgramHelper {
         })
     }
 
+    #[allow(dead_code)]
     pub async fn initialize_device_latency_samples(
         &mut self,
         agent: &Keypair,
@@ -541,6 +584,75 @@ impl TelemetryProgramHelper {
         banks_client.process_transaction(tx).await
     }
 
+    #[allow(dead_code)]
+    pub async fn initialize_internet_latency_samples(
+        &mut self,
+        agent: &Keypair,
+        data_provider_name: String,
+        origin_location_pk: Pubkey,
+        target_location_pk: Pubkey,
+        globalstate_pk: Pubkey,
+        epoch: u64,
+        sampling_interval_micros: u64,
+    ) -> Result<Pubkey, BanksClientError> {
+        let (pda, _) = derive_internet_latency_samples_pda(
+            &self.program_id,
+            &data_provider_name,
+            &origin_location_pk,
+            &target_location_pk,
+            epoch,
+        );
+
+        self.initialize_internet_latency_samples_with_pda(
+            agent,
+            pda,
+            data_provider_name,
+            origin_location_pk,
+            target_location_pk,
+            globalstate_pk,
+            epoch,
+            sampling_interval_micros,
+        )
+        .await?;
+
+        Ok(pda)
+    }
+
+    #[allow(dead_code)]
+    pub async fn initialize_internet_latency_samples_with_pda(
+        &mut self,
+        agent: &Keypair,
+        latency_samples_pda: Pubkey,
+        data_provider_name: String,
+        origin_location_pk: Pubkey,
+        target_location_pk: Pubkey,
+        globalstate_pk: Pubkey,
+        epoch: u64,
+        interval_micros: u64,
+    ) -> Result<Pubkey, BanksClientError> {
+        let args = InitializeInternetLatencySamplesArgs {
+            data_provider_name,
+            epoch,
+            sampling_interval_microseconds: interval_micros,
+        };
+
+        self.execute_transaction(
+            TelemetryInstruction::InitializeInternetLatencySamples(args),
+            &[agent],
+            vec![
+                AccountMeta::new(latency_samples_pda, false),
+                AccountMeta::new(agent.pubkey(), true),
+                AccountMeta::new(origin_location_pk, false),
+                AccountMeta::new(target_location_pk, false),
+                AccountMeta::new(globalstate_pk, false),
+                AccountMeta::new(solana_program::system_program::id(), false),
+            ],
+        )
+        .await?;
+
+        Ok(latency_samples_pda)
+    }
+
     pub async fn execute_transaction(
         &mut self,
         instruction: TelemetryInstruction,
@@ -640,7 +752,7 @@ impl ServiceabilityProgramHelper {
             let context = self.context.lock().unwrap();
             context.banks_client.clone()
         };
-        let banks_client = banks_client.clone();
+        // let banks_client = banks_client.clone();
         let account = banks_client
             .get_account(self.global_state_pubkey)
             .await
@@ -653,6 +765,20 @@ impl ServiceabilityProgramHelper {
             ))?;
         let global_state = GlobalState::from(&account.data[..]);
         Ok(global_state.account_index + 1)
+    }
+
+    pub async fn set_internet_latency_collector(
+        &mut self,
+        pubkey: Pubkey,
+    ) -> Result<(), BanksClientError> {
+        self.execute_transaction(
+            DoubleZeroInstruction::SetInternetLatencyCollector(SetInternetLatencyCollectorArgs {
+                pubkey,
+            }),
+            vec![AccountMeta::new(self.global_state_pubkey, false)],
+        )
+        .await?;
+        Ok(())
     }
 
     pub async fn create_location(
@@ -681,6 +807,7 @@ impl ServiceabilityProgramHelper {
         Ok(location_pubkey)
     }
 
+    #[allow(dead_code)]
     pub async fn create_exchange(
         &mut self,
         exchange: ExchangeCreateArgs,
@@ -706,6 +833,7 @@ impl ServiceabilityProgramHelper {
         Ok(exchange_pubkey)
     }
 
+    #[allow(dead_code)]
     pub async fn create_contributor(&mut self, code: String) -> Result<Pubkey, BanksClientError> {
         let index = self.get_next_global_state_index().await.unwrap();
         let (contributor_pk, _) = get_contributor_pda(&self.program_id, index);
@@ -722,6 +850,7 @@ impl ServiceabilityProgramHelper {
         Ok(contributor_pk)
     }
 
+    #[allow(dead_code)]
     pub async fn create_device(
         &mut self,
         device: DeviceCreateArgs,
@@ -759,6 +888,7 @@ impl ServiceabilityProgramHelper {
         Ok(device_pk)
     }
 
+    #[allow(dead_code)]
     pub async fn activate_device(&mut self, device_pk: Pubkey) -> Result<(), BanksClientError> {
         self.execute_transaction(
             DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs),
@@ -783,7 +913,7 @@ impl ServiceabilityProgramHelper {
     #[allow(dead_code)]
     pub async fn suspend_device(&mut self, pubkey: Pubkey) -> Result<(), BanksClientError> {
         self.execute_transaction(
-            DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs {}),
+            DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs),
             vec![
                 AccountMeta::new(pubkey, false),
                 AccountMeta::new(self.global_state_pubkey, false),
@@ -792,6 +922,29 @@ impl ServiceabilityProgramHelper {
         .await
     }
 
+    #[allow(dead_code)]
+    pub async fn get_location(&mut self, pubkey: Pubkey) -> Result<Location, BanksClientError> {
+        let banks_client = {
+            let context = self.context.lock().unwrap();
+            context.banks_client.clone()
+        };
+        let location = banks_client.get_account(pubkey).await.unwrap().unwrap();
+        Ok(Location::from(&location.data[..]))
+    }
+
+    #[allow(dead_code)]
+    pub async fn suspend_location(&mut self, pubkey: Pubkey) -> Result<(), BanksClientError> {
+        self.execute_transaction(
+            DoubleZeroInstruction::SuspendLocation(LocationSuspendArgs),
+            vec![
+                AccountMeta::new(pubkey, false),
+                AccountMeta::new(self.global_state_pubkey, false),
+            ],
+        )
+        .await
+    }
+
+    #[allow(dead_code)]
     pub async fn create_and_activate_device(
         &mut self,
         device: DeviceCreateArgs,
@@ -806,6 +959,7 @@ impl ServiceabilityProgramHelper {
         Ok(device_pk)
     }
 
+    #[allow(dead_code)]
     pub async fn create_link(
         &mut self,
         link: LinkCreateArgs,
@@ -840,6 +994,7 @@ impl ServiceabilityProgramHelper {
         Ok(link_pk)
     }
 
+    #[allow(dead_code)]
     pub async fn activate_link(
         &mut self,
         link_pk: Pubkey,
@@ -878,6 +1033,7 @@ impl ServiceabilityProgramHelper {
         .await
     }
 
+    #[allow(dead_code)]
     pub async fn create_and_activate_link(
         &mut self,
         link: LinkCreateArgs,

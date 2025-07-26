@@ -2,23 +2,18 @@ use crate::{
     error::TelemetryError,
     state::{
         accounttype::AccountType,
-        internet_latency_samples::{
-            InternetLatencySamplesHeader, INTERNET_LATENCY_SAMPLES_MAX_HEADER_SIZE,
-            MAX_INTERNET_LATENCY_SAMPLES,
-        },
+        internet_latency_samples::{InternetLatencySamplesHeader, MAX_INTERNET_LATENCY_SAMPLES},
     },
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
+use doublezero_program_common::resize_account::resize_account_if_needed;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::{ProgramResult, MAX_PERMITTED_DATA_INCREASE},
     msg,
-    program::invoke,
     program_error::ProgramError,
     pubkey::Pubkey,
-    system_instruction,
-    sysvar::{rent::Rent, Sysvar},
 };
 
 // Instruction arguments for initializing an internet latency samples account from a third party probe.
@@ -91,13 +86,12 @@ pub fn process_write_internet_latency_samples(
     msg!("Updating existing Internet latency samples account");
 
     // Deserialize existing account data
-    let mut header = InternetLatencySamplesHeader::try_from(
-        &latency_samples_acct.try_borrow_data()?[..INTERNET_LATENCY_SAMPLES_MAX_HEADER_SIZE],
-    )
-    .map_err(|e| {
-        msg!("Failed to deserialize InternetLatencySamples {}", e);
-        ProgramError::InvalidAccountData
-    })?;
+    let mut header =
+        InternetLatencySamplesHeader::try_from(&latency_samples_acct.try_borrow_data()?[..])
+            .map_err(|e| {
+                msg!("Failed to deserialize InternetLatencySamples {}", e);
+                ProgramError::InvalidAccountData
+            })?;
 
     // Validate account type to protect against mismatch struct types
     if header.account_type != AccountType::InternetLatencySamples {
@@ -143,7 +137,9 @@ pub fn process_write_internet_latency_samples(
     header.next_sample_index += args.samples.len() as u32;
 
     // Determine whether the account needs to be resized to hold the new data
-    realloc_samples_account_if_needed(accounts, &header)?;
+    let new_len = InternetLatencySamplesHeader::instance_size(header.data_provider_name.len())
+        + header.next_sample_index as usize * 4; // 4 bytes per u32 RTT (µs) samples
+    resize_account_if_needed(&latency_samples_acct, &agent, accounts, new_len)?;
 
     // Serialize the updated struct back into the account
     {
@@ -161,55 +157,6 @@ pub fn process_write_internet_latency_samples(
             "Updated account; now has {} samples",
             header.next_sample_index,
         );
-    }
-
-    Ok(())
-}
-
-// Determine whether the account needs to be resized to hold the new data.
-// If so, determine if the account needs to be funded to the new size, and
-// pay for the rent from the agent if needed
-fn realloc_samples_account_if_needed(
-    accounts: &[AccountInfo],
-    header: &InternetLatencySamplesHeader,
-) -> ProgramResult {
-    let accounts_iter = &mut accounts.iter();
-
-    // Expected order: [latency_samples_account, agent, system_program]
-    let samples_acct = next_account_info(accounts_iter)?;
-    let agent = next_account_info(accounts_iter)?;
-
-    let actual_len = samples_acct.data_len();
-    let new_len = INTERNET_LATENCY_SAMPLES_MAX_HEADER_SIZE + header.next_sample_index as usize * 4; // 4 bytes per u32 RTT (microseconds) samples
-
-    if actual_len != new_len {
-        // If the account grows, we must ensure it's funded for the new size
-        if new_len > actual_len {
-            let rent: Rent = Rent::get().expect("Unable to read rent");
-            let required_lamports: u64 = rent.minimum_balance(new_len);
-            let current_lamports: u64 = samples_acct.lamports();
-
-            if required_lamports > current_lamports {
-                msg!(
-                    "Rent required: {}, actual: {}",
-                    required_lamports,
-                    current_lamports,
-                );
-                let payment: u64 = required_lamports - current_lamports;
-
-                invoke(
-                    &system_instruction::transfer(agent.key, samples_acct.key, payment),
-                    accounts,
-                )
-                .expect("Unable to pay rent");
-            }
-        }
-
-        // Resize the account to accommodate the expanded data
-        samples_acct
-            .realloc(new_len, false)
-            .expect("Unable to realloc the account");
-        msg!("Resized account from {} to {}", actual_len, new_len);
     }
 
     Ok(())

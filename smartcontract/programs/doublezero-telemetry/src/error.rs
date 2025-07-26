@@ -33,6 +33,8 @@ pub enum TelemetryError {
     LocationNotActiveOrSuspended = 1014,
     /// Date provider name is greater than 32 bytes
     DataProviderNameTooLong = 1015,
+    /// Origin and target locations cannot be the
+    SameTargetAsOrigin = 1016,
 }
 
 impl From<TelemetryError> for ProgramError {
@@ -72,6 +74,7 @@ impl fmt::Display for TelemetryError {
                 write!(f, "Location does not have activated status")
             }
             Self::DataProviderNameTooLong => write!(f, "Data provider name exceeds 32 bytes"),
+            Self::SameTargetAsOrigin => write!(f, "Origin and target are the same location"),
         }
     }
 }

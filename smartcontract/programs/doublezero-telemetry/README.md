@@ -117,6 +117,7 @@ Stores metadata (collectively the "header") and RTT samples in microseconds (sam
 
 Constants:
 
+- `MAX_DATA_PROVIDER_NAME_BYTES = 32`
 - `MAX_INTERNET_LATENCY_SAMPLES = 3000`
 - `INTERNET_LATENCY_SAMPLES_MAX_HEADER_SIZE = 290` bytes
 
@@ -207,6 +208,7 @@ pub struct WriteInternetLatencySamplesArgs {
 ## Constants
 
 - `MAX_DEVICE_LATENCY_SAMPLES = 35_000` — upper bound on total RTT samples.
+- `MAX_DATA_PROVIDER_NAME_BYTES = 32` - longest supported data provider name
 - `MAX_INTERNET_LATENCY_SAMPLES = 3000` - upper bound on total internet control RTT samples.
 - `DEVICE_LATENCY_SAMPLES_HEADER_SIZE = 350` — base size excluding sample vector.
 - `INTERNET_LATENCY_SAMPLES_MAX_HEADER_SIZE = 290` - base size excluding the sample vector.

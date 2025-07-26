@@ -8,7 +8,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestState_LoadSave(t *testing.T) {
+func TestInternetLatency_Wheresitup_State_LoadSave(t *testing.T) {
+	t.Parallel()
+
 	tempDir := t.TempDir()
 	filename := filepath.Join(tempDir, "test_jobs.json")
 
@@ -32,7 +34,9 @@ func TestState_LoadSave(t *testing.T) {
 	require.Equal(t, []string{"job1", "job2", "job3"}, jt2.JobIDs, "JobIDs should match expected values")
 }
 
-func TestState_AddJobIDs(t *testing.T) {
+func TestInternetLatency_Wheresitup_State_AddJobIDs(t *testing.T) {
+	t.Parallel()
+
 	tempDir := t.TempDir()
 	filename := filepath.Join(tempDir, "test_jobs.json")
 
@@ -53,7 +57,9 @@ func TestState_AddJobIDs(t *testing.T) {
 	require.Len(t, jt2.JobIDs, 4, "Expected 4 job IDs")
 }
 
-func TestState_RemoveJobIDs(t *testing.T) {
+func TestInternetLatency_Wheresitup_State_RemoveJobIDs(t *testing.T) {
+	t.Parallel()
+
 	tempDir := t.TempDir()
 	filename := filepath.Join(tempDir, "test_jobs.json")
 
@@ -74,7 +80,9 @@ func TestState_RemoveJobIDs(t *testing.T) {
 	require.Equal(t, []string{"job1", "job3"}, jt2.JobIDs, "Expected [job1, job3]")
 }
 
-func TestState_InvalidFile(t *testing.T) {
+func TestInternetLatency_Wheresitup_State_InvalidFile(t *testing.T) {
+	t.Parallel()
+
 	tempDir := t.TempDir()
 
 	// Test non-JSON file
@@ -92,7 +100,9 @@ func TestState_InvalidFile(t *testing.T) {
 	require.Error(t, err, "Expected error for corrupted JSON")
 }
 
-func TestState_GetJobIDs(t *testing.T) {
+func TestInternetLatency_Wheresitup_State_GetJobIDs(t *testing.T) {
+	t.Parallel()
+
 	tempDir := t.TempDir()
 	filename := filepath.Join(tempDir, "test_jobs.json")
 

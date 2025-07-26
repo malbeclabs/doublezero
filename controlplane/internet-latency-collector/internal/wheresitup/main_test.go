@@ -1,4 +1,4 @@
-package collector
+package wheresitup
 
 import (
 	"flag"

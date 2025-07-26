@@ -2,6 +2,8 @@ package collector
 
 import (
 	"fmt"
+	"maps"
+	"sync"
 )
 
 type ErrorType string
@@ -22,7 +24,9 @@ type CollectorError struct {
 	Operation string
 	Message   string
 	Cause     error
-	Context   map[string]any
+
+	context   map[string]any
+	contextMu sync.RWMutex
 }
 
 func (e *CollectorError) Error() string {
@@ -42,15 +46,32 @@ func NewError(errType ErrorType, operation, message string, cause error) *Collec
 		Operation: operation,
 		Message:   message,
 		Cause:     cause,
-		Context:   make(map[string]any),
+		context:   make(map[string]any),
 	}
 }
 
+func (e *CollectorError) GetContextMap() map[string]any {
+	e.contextMu.RLock()
+	defer e.contextMu.RUnlock()
+
+	return maps.Clone(e.context)
+}
+
+func (e *CollectorError) GetContext(key string) any {
+	e.contextMu.RLock()
+	defer e.contextMu.RUnlock()
+
+	return e.context[key]
+}
+
 func (e *CollectorError) WithContext(key string, value any) *CollectorError {
-	if e.Context == nil {
-		e.Context = make(map[string]any)
+	e.contextMu.Lock()
+	defer e.contextMu.Unlock()
+
+	if e.context == nil {
+		e.context = make(map[string]any)
 	}
-	e.Context[key] = value
+	e.context[key] = value
 	return e
 }
 

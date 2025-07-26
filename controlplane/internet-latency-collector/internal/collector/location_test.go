@@ -22,7 +22,9 @@ func (m MockSource) GetCoordinates() (latitude, longitude float64) {
 	return m.Lat, m.Lng
 }
 
-func TestCalculateAndSortSourceDistances(t *testing.T) {
+func TestInternetLatency_Location_CalculateAndSortSourceDistances(t *testing.T) {
+	t.Parallel()
+
 	// Create mock sources
 	sources := []CoordinatesGetter{
 		MockSource{ID: "1", Lat: 40.7128, Lng: -74.0060, Name: "New York"},  // ~0 km from target
@@ -55,7 +57,9 @@ func TestCalculateAndSortSourceDistances(t *testing.T) {
 	require.Equal(t, "3", farthestSource.ID)
 }
 
-func TestCalculateAndSortSourceDistances_EmptyInput(t *testing.T) {
+func TestInternetLatency_Location_CalculateAndSortSourceDistances_EmptyInput(t *testing.T) {
+	t.Parallel()
+
 	sources := []CoordinatesGetter{}
 	targetLat := 40.7128
 	targetLng := -74.0060
@@ -65,7 +69,9 @@ func TestCalculateAndSortSourceDistances_EmptyInput(t *testing.T) {
 	require.Empty(t, result)
 }
 
-func TestGetNearestSourcesSorted(t *testing.T) {
+func TestInternetLatency_Location_GetNearestSourcesSorted(t *testing.T) {
+	t.Parallel()
+
 	sources := []CoordinatesGetter{
 		MockSource{ID: "1", Lat: 40.7128, Lng: -74.0060, Name: "New York"},
 		MockSource{ID: "2", Lat: 51.5074, Lng: -0.1278, Name: "London"},
@@ -92,7 +98,9 @@ func TestGetNearestSourcesSorted(t *testing.T) {
 	require.Equal(t, "4", secondSource.ID)
 }
 
-func TestGetNearestSourcesSorted_EmptyInput(t *testing.T) {
+func TestInternetLatency_Location_GetNearestSourcesSorted_EmptyInput(t *testing.T) {
+	t.Parallel()
+
 	sources := []CoordinatesGetter{}
 	targetLat := 40.7128
 	targetLng := -74.0060
@@ -103,7 +111,9 @@ func TestGetNearestSourcesSorted_EmptyInput(t *testing.T) {
 	require.Empty(t, result)
 }
 
-func TestGetNearestSourcesSorted_FewerSourcesThanRequested(t *testing.T) {
+func TestInternetLatency_Location_GetNearestSourcesSorted_FewerSourcesThanRequested(t *testing.T) {
+	t.Parallel()
+
 	sources := []CoordinatesGetter{
 		MockSource{ID: "1", Lat: 40.7128, Lng: -74.0060, Name: "New York"},
 		MockSource{ID: "2", Lat: 51.5074, Lng: -0.1278, Name: "London"},
@@ -119,7 +129,9 @@ func TestGetNearestSourcesSorted_FewerSourcesThanRequested(t *testing.T) {
 	require.Len(t, result, len(sources))
 }
 
-func TestFilterSourcesByDistance(t *testing.T) {
+func TestInternetLatency_Location_FilterSourcesByDistance(t *testing.T) {
+	t.Parallel()
+
 	sources := []CoordinatesGetter{
 		MockSource{ID: "1", Lat: 40.7128, Lng: -74.0060, Name: "New York"},  // ~0 km
 		MockSource{ID: "2", Lat: 40.7589, Lng: -73.9851, Name: "Manhattan"}, // ~5 km
@@ -141,7 +153,9 @@ func TestFilterSourcesByDistance(t *testing.T) {
 	}
 }
 
-func TestFilterSourcesByDistance_EmptyInput(t *testing.T) {
+func TestInternetLatency_Location_FilterSourcesByDistance_EmptyInput(t *testing.T) {
+	t.Parallel()
+
 	sources := []CoordinatesGetter{}
 	targetLat := 40.7128
 	targetLng := -74.0060
@@ -151,7 +165,9 @@ func TestFilterSourcesByDistance_EmptyInput(t *testing.T) {
 	require.Empty(t, result)
 }
 
-func TestFilterSourcesByDistance_NoSourcesWithinRange(t *testing.T) {
+func TestInternetLatency_Location_FilterSourcesByDistance_NoSourcesWithinRange(t *testing.T) {
+	t.Parallel()
+
 	// All sources are far from target
 	sources := []CoordinatesGetter{
 		MockSource{ID: "1", Lat: 51.5074, Lng: -0.1278, Name: "London"},
@@ -166,7 +182,9 @@ func TestFilterSourcesByDistance_NoSourcesWithinRange(t *testing.T) {
 	require.Empty(t, result)
 }
 
-func TestCalculateDistanceToLocation(t *testing.T) {
+func TestInternetLatency_Location_CalculateDistanceToLocation(t *testing.T) {
+	t.Parallel()
+
 	// Create a test location
 	location := LocationMatch{
 		LocationCode: "New York",
@@ -241,7 +259,9 @@ func TestCalculateDistanceToLocation(t *testing.T) {
 	}
 }
 
-func TestDistanceResult(t *testing.T) {
+func TestInternetLatency_Location_DistanceResult(t *testing.T) {
+	t.Parallel()
+
 	// Test DistanceResult struct
 	result := DistanceResult{
 		Distance: 123.45,
@@ -261,7 +281,9 @@ func TestDistanceResult(t *testing.T) {
 	require.False(t, invalidResult.Valid)
 }
 
-func TestSourceDistance(t *testing.T) {
+func TestInternetLatency_Location_SourceDistance(t *testing.T) {
+	t.Parallel()
+
 	// Test SourceDistance struct
 	mockSource := MockSource{ID: "test", Lat: 40.7128, Lng: -74.0060, Name: "Test"}
 	sourceDistance := SourceDistance{
@@ -289,7 +311,9 @@ func (a AlternativeSource) GetCoordinates() (latitude, longitude float64) {
 	return a.Latitude, a.Longitude
 }
 
-func TestGenericFunctions_WithDifferentTypes(t *testing.T) {
+func TestInternetLatency_Location_GenericFunctions_WithDifferentTypes(t *testing.T) {
+	t.Parallel()
+
 	// Test with different source types to verify generics work
 	sources := []CoordinatesGetter{
 		AlternativeSource{Name: "A", Latitude: 40.7128, Longitude: -74.0060},
@@ -307,7 +331,9 @@ func TestGenericFunctions_WithDifferentTypes(t *testing.T) {
 	require.Len(t, filtered, 1) // Only the first source should be within range
 }
 
-func TestEdgeCases(t *testing.T) {
+func TestInternetLatency_Location_EdgeCases(t *testing.T) {
+	t.Parallel()
+
 	t.Run("MaxCount zero", func(t *testing.T) {
 		sources := []CoordinatesGetter{
 			MockSource{ID: "1", Lat: 40.7128, Lng: -74.0060, Name: "New York"},
@@ -342,7 +368,9 @@ func TestEdgeCases(t *testing.T) {
 	})
 }
 
-func TestLocationFunctions_Integration(t *testing.T) {
+func TestInternetLatency_Location_Integration(t *testing.T) {
+	t.Parallel()
+
 	// Integration test that demonstrates typical usage pattern
 	sources := []CoordinatesGetter{
 		MockSource{ID: "ny", Lat: 40.7128, Lng: -74.0060, Name: "New York"},
@@ -384,7 +412,9 @@ func TestLocationFunctions_Integration(t *testing.T) {
 	}
 }
 
-func TestHaversineDistance(t *testing.T) {
+func TestInternetLatency_Location_HaversineDistance(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		lat1      float64
@@ -443,6 +473,8 @@ func TestHaversineDistance(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			distance := HaversineDistance(tt.lat1, tt.lon1, tt.lat2, tt.lon2)
 
 			require.InDelta(t, tt.expected, distance, tt.tolerance,
@@ -451,7 +483,9 @@ func TestHaversineDistance(t *testing.T) {
 	}
 }
 
-func TestJSONLocation_Struct(t *testing.T) {
+func TestInternetLatency_Location_JSONLocation_Struct(t *testing.T) {
+	t.Parallel()
+
 	location := JSONLocation{
 		Name:      "Test Location, US",
 		Code:      "tst",
@@ -474,7 +508,10 @@ func TestJSONLocation_Struct(t *testing.T) {
 	require.Equal(t, location.Longitude, unmarshaled.Longitude, "Longitude mismatch")
 }
 
-func TestLoadLocationsFromJSON(t *testing.T) {
+func TestInternetLatency_Location_LoadLocationsFromJSON(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	// Create a test JSON file
 	tempDir := t.TempDir()
@@ -489,8 +526,7 @@ func TestLoadLocationsFromJSON(t *testing.T) {
 	err := os.WriteFile(testFile, []byte(jsonContent), 0644)
 	require.NoError(t, err, "Failed to create test JSON file")
 
-	InitLogger(LogLevelWarn)
-	locations, err := LoadLocationsFromJSON(GetLogger(), testFile)
+	locations, err := LoadLocationsFromJSON(log, testFile)
 	require.NoError(t, err, "LoadLocationsFromJSON() failed")
 
 	expectedLocations := []JSONLocation{
@@ -512,9 +548,11 @@ func TestLoadLocationsFromJSON(t *testing.T) {
 	}
 }
 
-func TestLoadLocationsFromJSON_EmptyArray(t *testing.T) {
+func TestInternetLatency_Location_LoadLocationsFromJSON_EmptyArray(t *testing.T) {
+	t.Parallel()
 
-	// Create a test JSON file with empty array
+	log := logger.With("test", t.Name())
+
 	tempDir := t.TempDir()
 	testFile := filepath.Join(tempDir, "test_empty.json")
 
@@ -523,8 +561,7 @@ func TestLoadLocationsFromJSON_EmptyArray(t *testing.T) {
 	err := os.WriteFile(testFile, []byte(jsonContent), 0644)
 	require.NoError(t, err, "Failed to create test JSON file")
 
-	InitLogger(LogLevelWarn)
-	_, err = LoadLocationsFromJSON(GetLogger(), testFile)
+	_, err = LoadLocationsFromJSON(log, testFile)
 	require.Error(t, err, "Expected error for empty JSON array")
 
 	// Should be a CollectorError
@@ -532,7 +569,8 @@ func TestLoadLocationsFromJSON_EmptyArray(t *testing.T) {
 	require.True(t, isCollectorErrorLocation(err, &collectorErr), "Error should be CollectorError, got %T", err)
 }
 
-func TestLoadLocationsFromJSON_InvalidData(t *testing.T) {
+func TestInternetLatency_Location_LoadLocationsFromJSON_InvalidData(t *testing.T) {
+	t.Parallel()
 
 	tests := []struct {
 		name        string
@@ -574,16 +612,17 @@ func TestLoadLocationsFromJSON_InvalidData(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			log := logger.With("test", t.Name())
+
 			tempDir := t.TempDir()
 			testFile := filepath.Join(tempDir, "test.json")
 
 			err := os.WriteFile(testFile, []byte(tt.jsonContent), 0644)
-			if err != nil {
-				t.Fatalf("Failed to create test JSON file: %v", err)
-			}
+			require.NoError(t, err, "Failed to create test JSON file")
 
-			InitLogger(LogLevelWarn)
-			locations, err := LoadLocationsFromJSON(GetLogger(), testFile)
+			locations, err := LoadLocationsFromJSON(log, testFile)
 
 			if tt.expectError {
 				require.Error(t, err, "Expected error but got none")
@@ -597,10 +636,12 @@ func TestLoadLocationsFromJSON_InvalidData(t *testing.T) {
 	}
 }
 
-func TestLoadLocationsFromJSON_NonexistentFile(t *testing.T) {
+func TestInternetLatency_Location_LoadLocationsFromJSON_NonexistentFile(t *testing.T) {
+	t.Parallel()
 
-	InitLogger(LogLevelWarn)
-	_, err := LoadLocationsFromJSON(GetLogger(), "nonexistent_file.json")
+	log := logger.With("test", t.Name())
+
+	_, err := LoadLocationsFromJSON(log, "nonexistent_file.json")
 	require.Error(t, err, "Expected error for nonexistent file")
 
 	// Should be a CollectorError
@@ -608,7 +649,10 @@ func TestLoadLocationsFromJSON_NonexistentFile(t *testing.T) {
 	require.True(t, isCollectorErrorLocation(err, &collectorErr), "Error should be CollectorError, got %T", err)
 }
 
-func TestLoadLocationsFromJSON_SpecialCharacters(t *testing.T) {
+func TestInternetLatency_Location_LoadLocationsFromJSON_SpecialCharacters(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	// Test JSON with special characters and quotes
 	tempDir := t.TempDir()
@@ -624,8 +668,7 @@ func TestLoadLocationsFromJSON_SpecialCharacters(t *testing.T) {
 	err := os.WriteFile(testFile, []byte(jsonContent), 0644)
 	require.NoError(t, err, "Failed to create test JSON file")
 
-	InitLogger(LogLevelWarn)
-	locations, err := LoadLocationsFromJSON(GetLogger(), testFile)
+	locations, err := LoadLocationsFromJSON(log, testFile)
 	require.NoError(t, err, "LoadLocationsFromJSON() failed")
 
 	require.Len(t, locations, 4, "Expected 4 locations")
@@ -652,7 +695,10 @@ func TestLoadLocationsFromJSON_SpecialCharacters(t *testing.T) {
 }
 
 // Integration test demonstrating typical workflow
-func TestLocationWorkflow_Integration(t *testing.T) {
+func TestInternetLatency_Location_LocationWorkflow_Integration(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	// Create test JSON file
 	tempDir := t.TempDir()
@@ -669,8 +715,7 @@ func TestLocationWorkflow_Integration(t *testing.T) {
 	require.NoError(t, err, "Failed to create test JSON file")
 
 	// Step 1: Load locations from JSON
-	InitLogger(LogLevelWarn)
-	locations, err := LoadLocationsFromJSON(GetLogger(), testFile)
+	locations, err := LoadLocationsFromJSON(log, testFile)
 	require.NoError(t, err, "LoadLocationsFromJSON() failed")
 
 	require.Len(t, locations, 4, "Expected 4 locations")
@@ -688,13 +733,16 @@ func TestLocationWorkflow_Integration(t *testing.T) {
 	require.LessOrEqual(t, distance, 5650.0, "Distance NY to London too large")
 }
 
-func TestGetLocations(t *testing.T) {
+func TestInternetLatency_Location_GetLocations(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
 	// Since GetLocations calls the blockchain directly,
 	// we can only test that it doesn't panic and returns a slice
 	t.Run("Returns locations array without panic", func(t *testing.T) {
-		InitLogger(LogLevelWarn)
 		ctx := t.Context()
-		locations := GetLocations(ctx, GetLogger())
+		locations := GetLocations(ctx, log)
 
 		// Should return a slice (may be empty depending on blockchain state)
 		require.NotNil(t, locations, "GetLocations() should return non-nil slice")

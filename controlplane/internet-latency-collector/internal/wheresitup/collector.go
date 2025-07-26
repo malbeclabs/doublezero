@@ -356,7 +356,7 @@ func (c *Collector) extractChecksFromJobDetails(job JobDetails) string {
 }
 
 func (c *Collector) formatTimestampFromUnix(unixTime int64) string {
-	t := time.Unix(unixTime, 0)
+	t := time.Unix(unixTime, 0).UTC()
 	return t.Format(collector.TimeFormatMicroseconds)
 }
 
@@ -417,7 +417,7 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile, outputDir 
 
 	c.log.Info("Found tracked jobs to check", slog.Int("job_count", len(jobIDs)))
 
-	csvExporter, err := collector.NewCSVExporter("wheresitup_results", outputDir)
+	csvExporter, err := collector.NewCSVExporter(c.log, "wheresitup_results", outputDir)
 	if err != nil {
 		return err
 	}
@@ -495,7 +495,7 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile, outputDir 
 			targetLocation,
 			sourcePubKey,
 			targetPubKey,
-			time.Unix(results.Request.StartTime, 0).Format(collector.TimeFormatMicroseconds),
+			time.Unix(results.Request.StartTime, 0).UTC().Format(collector.TimeFormatMicroseconds),
 			minLatency,
 		}
 

@@ -159,7 +159,7 @@ func (c *Collector) parseLatencyFromResult(result any) (float64, string) {
 	// Extract timestamp
 	timestamp := ""
 	if ts, ok := resultMap["timestamp"].(float64); ok {
-		timestamp = time.Unix(int64(ts), 0).Format(collector.TimeFormatMicroseconds)
+		timestamp = time.Unix(int64(ts), 0).UTC().Format(collector.TimeFormatMicroseconds)
 	}
 
 	// Extract latency from ping results
@@ -340,7 +340,7 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir, outp
 		return err
 	}
 
-	csvExporter, err := collector.NewCSVExporter("ripe_atlas_measurements", outputDir)
+	csvExporter, err := collector.NewCSVExporter(c.log, "ripe_atlas_measurements", outputDir)
 	if err != nil {
 		return err
 	}
@@ -379,7 +379,8 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir, outp
 	recordCount := 0
 
 	for _, measurement := range activeMeasurements {
-		if err, count := c.exportSingleMeasurementResults(ctx, measurement, outputDir, measurementState, csvExporter); err != nil {
+		count, err := c.exportSingleMeasurementResults(ctx, measurement, outputDir, measurementState, csvExporter)
+		if err != nil {
 			c.log.Warn("Failed to export measurement results",
 				slog.Int("measurement_id", measurement.ID),
 				slog.String("description", measurement.Description),
@@ -403,7 +404,7 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir, outp
 	return nil
 }
 
-func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurement Measurement, outputDir string, measurementState *MeasurementState, csvExporter *collector.CSVExporter) (error, int) {
+func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurement Measurement, outputDir string, measurementState *MeasurementState, csvExporter *collector.CSVExporter) (int, error) {
 	lastTimestamp, exists := measurementState.GetLastTimestamp(measurement.ID)
 	recordCount := 0
 
@@ -429,12 +430,12 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 		c.log.Warn("Failed to get results for measurement",
 			slog.Int("measurement_id", measurement.ID),
 			slog.String("error", err.Error()))
-		return nil, 0
+		return 0, err
 	}
 
 	if len(results) == 0 {
 		c.log.Debug("No new results for measurement", slog.Int("measurement_id", measurement.ID))
-		return nil, 0
+		return 0, nil
 	}
 
 	c.log.Debug("Retrieved new results for measurement",
@@ -482,7 +483,7 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 			slog.Int("processed_results", processedResults))
 	}
 
-	return nil, recordCount
+	return recordCount, nil
 }
 
 func (c *Collector) RunRipeAtlasMeasurementCreation(ctx context.Context, dryRun bool, probesPerLocation int, outputDir string, stateDir string) error {
@@ -597,7 +598,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 		}
 
 		// Create CSV exporter
-		csvExporter, err := collector.NewCSVExporter("ripe_atlas_measurements", outputDir)
+		csvExporter, err := collector.NewCSVExporter(c.log, "ripe_atlas_measurements", outputDir)
 		if err != nil {
 			return err
 		}
@@ -610,7 +611,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 					slog.String("description", measurement.Description))
 			} else {
 				// Export results before removing
-				if err, _ := c.exportSingleMeasurementResults(ctx, measurement, outputDir, measurementState, csvExporter); err != nil {
+				if _, err := c.exportSingleMeasurementResults(ctx, measurement, outputDir, measurementState, csvExporter); err != nil {
 					c.log.Warn("Failed to export measurement results before removal",
 						slog.Int("measurement_id", measurement.ID),
 						slog.String("error", err.Error()))

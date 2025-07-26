@@ -152,26 +152,26 @@ type ClientConfig struct {
 	HTTPClient collector.HTTPClient
 }
 
-func NewClient(logger *slog.Logger) *Client {
+func NewClient(log *slog.Logger) *Client {
 	// Expected format of API token: "CLIENT_ID TOKEN", where both CLIENT_ID and TOKEN are hex strings.
 	apiToken := os.Getenv("WHERESITUP_API_TOKEN")
 
 	apiTokenRegex := `^[a-fA-F0-9]+ [a-fA-F0-9]+$`
 
 	if apiToken == "" || !regexp.MustCompile(apiTokenRegex).MatchString(apiToken) {
-		if logger != nil {
-			logger.Error("Invalid Wheresitup API token format. Expected regex: " + apiTokenRegex)
+		if log != nil {
+			log.Error("Invalid Wheresitup API token format. Expected regex: " + apiTokenRegex)
 		}
 		// Optionally, you can panic or return nil here
 	}
 
-	return NewClientWithConfig(ClientConfig{
+	return NewClientWithConfig(log, ClientConfig{
 		BaseURL:  "https://api.wheresitup.com/v4",
 		APIToken: apiToken,
 		HTTPClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-	}, logger)
+	})
 }
 
 func (c *Client) setCommonHeaders(req *http.Request) {
@@ -184,7 +184,7 @@ func (c *Client) setCommonHeaders(req *http.Request) {
 	req.Header.Set("User-Agent", "DoubleZero-Collector/1.0")
 }
 
-func NewClientWithConfig(config ClientConfig, logger *slog.Logger) *Client {
+func NewClientWithConfig(logger *slog.Logger, config ClientConfig) *Client {
 	// Set defaults if not provided
 	if config.BaseURL == "" {
 		config.BaseURL = "https://api.wheresitup.com/v4"

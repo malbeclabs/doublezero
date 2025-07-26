@@ -37,8 +37,9 @@ func TestNewWheresitupClient(t *testing.T) {
 	os.Setenv("WHERESITUP_API_TOKEN", "CLIENT_ID test-token-123")
 	defer os.Unsetenv("WHERESITUP_API_TOKEN")
 
-	collector.InitLogger(collector.LogLevelWarn)
-	client := NewClient(collector.GetLogger())
+	log := logger.With("test", t.Name())
+
+	client := NewClient(log)
 
 	require.NotNil(t, client, "NewWheresitupClient() returned nil")
 	require.Equal(t, "https://api.wheresitup.com/v4", client.BaseURL)
@@ -50,13 +51,16 @@ func TestNewWheresitupClient_NoAPIToken(t *testing.T) {
 	// Ensure no API token is set
 	os.Unsetenv("WHERESITUP_API_TOKEN")
 
-	collector.InitLogger(collector.LogLevelWarn)
-	client := NewClient(collector.GetLogger())
+	log := logger.With("test", t.Name())
+
+	client := NewClient(log)
 
 	require.Empty(t, client.APIToken, "APIToken should be empty when not set")
 }
 
 func TestNewWheresitupClientWithConfig(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name   string
 		config ClientConfig
@@ -96,8 +100,11 @@ func TestNewWheresitupClientWithConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			collector.InitLogger(collector.LogLevelWarn)
-			client := NewClientWithConfig(tt.config, collector.GetLogger())
+			t.Parallel()
+
+			log := logger.With("test", t.Name())
+
+			client := NewClientWithConfig(log, tt.config)
 			require.NotNil(t, client, "NewWheresitupClientWithConfig() returned nil")
 			tt.check(t, client)
 		})
@@ -105,6 +112,8 @@ func TestNewWheresitupClientWithConfig(t *testing.T) {
 }
 
 func TestSetCommonHeaders(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		apiToken string
@@ -143,6 +152,8 @@ func TestSetCommonHeaders(t *testing.T) {
 }
 
 func TestGetAllSources(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		mockFunc func(req *http.Request) (*http.Response, error)
@@ -234,12 +245,16 @@ func TestGetAllSources(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := &Client{
+			t.Parallel()
+
+			log := logger.With("test", t.Name())
+
+			client := NewClientWithConfig(log, ClientConfig{
 				BaseURL: "https://api.wheresitup.com/v4",
 				HTTPClient: &MockHTTPClient{
 					DoFunc: tt.mockFunc,
 				},
-			}
+			})
 
 			got, err := client.GetAllSources(t.Context())
 			if tt.wantErr {
@@ -261,8 +276,7 @@ func TestGetAllSources(t *testing.T) {
 }
 
 func TestGetNearestSources(t *testing.T) {
-	// Initialize logger for test
-	collector.InitLogger(collector.LogLevelWarn)
+	t.Parallel()
 
 	tests := []struct {
 		name     string
@@ -349,12 +363,16 @@ func TestGetNearestSources(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := &Client{
+			t.Parallel()
+
+			log := logger.With("test", t.Name())
+
+			client := NewClientWithConfig(log, ClientConfig{
 				BaseURL: "https://api.wheresitup.com/v4",
 				HTTPClient: &MockHTTPClient{
 					DoFunc: tt.mockFunc,
 				},
-			}
+			})
 
 			got, err := client.GetNearestSources(t.Context(), tt.lat, tt.lng, tt.count)
 			if tt.wantErr {
@@ -368,8 +386,7 @@ func TestGetNearestSources(t *testing.T) {
 }
 
 func TestGetNearestSourcesForLocations(t *testing.T) {
-	// Initialize logger for test
-	collector.InitLogger(collector.LogLevelWarn)
+	t.Parallel()
 
 	tests := []struct {
 		name      string
@@ -438,12 +455,16 @@ func TestGetNearestSourcesForLocations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := &Client{
+			t.Parallel()
+
+			log := logger.With("test", t.Name())
+
+			client := NewClientWithConfig(log, ClientConfig{
 				BaseURL: "https://api.wheresitup.com/v4",
 				HTTPClient: &MockHTTPClient{
 					DoFunc: tt.mockFunc,
 				},
-			}
+			})
 
 			got, err := client.GetNearestSourcesForLocations(t.Context(), tt.locations)
 			if tt.wantErr {
@@ -459,6 +480,8 @@ func TestGetNearestSourcesForLocations(t *testing.T) {
 }
 
 func TestCreateJob(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name         string
 		url          string
@@ -517,12 +540,16 @@ func TestCreateJob(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := &Client{
+			t.Parallel()
+
+			log := logger.With("test", t.Name())
+
+			client := NewClientWithConfig(log, ClientConfig{
 				BaseURL: "https://api.wheresitup.com/v4",
 				HTTPClient: &MockHTTPClient{
 					DoFunc: tt.mockFunc,
 				},
-			}
+			})
 
 			gotID, err := client.CreateJob(t.Context(), tt.url)
 			if tt.wantErr {
@@ -536,6 +563,8 @@ func TestCreateJob(t *testing.T) {
 }
 
 func TestGetJobResults(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		jobID    string
@@ -625,12 +654,16 @@ func TestGetJobResults(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := &Client{
+			t.Parallel()
+
+			log := logger.With("test", t.Name())
+
+			client := NewClientWithConfig(log, ClientConfig{
 				BaseURL: "https://api.wheresitup.com/v4",
 				HTTPClient: &MockHTTPClient{
 					DoFunc: tt.mockFunc,
 				},
-			}
+			})
 
 			got, err := client.GetJobResults(t.Context(), tt.jobID)
 			if tt.wantErr {
@@ -646,7 +679,11 @@ func TestGetJobResults(t *testing.T) {
 }
 
 func TestMakeRequest_ContextCancellation(t *testing.T) {
-	client := &Client{
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	client := NewClientWithConfig(log, ClientConfig{
 		BaseURL: "https://api.wheresitup.com/v4",
 		HTTPClient: &MockHTTPClient{
 			DoFunc: func(req *http.Request) (*http.Response, error) {
@@ -655,7 +692,7 @@ func TestMakeRequest_ContextCancellation(t *testing.T) {
 				return nil, errors.New("request cancelled")
 			},
 		},
-	}
+	})
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel() // Cancel immediately
@@ -665,6 +702,8 @@ func TestMakeRequest_ContextCancellation(t *testing.T) {
 }
 
 func TestAPIErrorResponses(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name       string
 		statusCode int
@@ -680,7 +719,11 @@ func TestAPIErrorResponses(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := &Client{
+			t.Parallel()
+
+			log := logger.With("test", t.Name())
+
+			client := NewClientWithConfig(log, ClientConfig{
 				BaseURL: "https://api.wheresitup.com/v4",
 				HTTPClient: &MockHTTPClient{
 					DoFunc: func(req *http.Request) (*http.Response, error) {
@@ -690,7 +733,7 @@ func TestAPIErrorResponses(t *testing.T) {
 						}, nil
 					},
 				},
-			}
+			})
 
 			_, err := client.GetAllSources(t.Context())
 			require.Error(t, err, "Expected error for non-200 status code")
@@ -700,10 +743,7 @@ func TestAPIErrorResponses(t *testing.T) {
 }
 
 func TestCreateJobWithRequest(t *testing.T) {
-	// Setup logger
-	originalLogger := collector.Logger
-	collector.InitLogger(collector.LogLevelWarn)
-	defer func() { collector.Logger = originalLogger }()
+	t.Parallel()
 
 	tests := []struct {
 		name         string
@@ -849,8 +889,12 @@ func TestCreateJobWithRequest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			log := logger.With("test", t.Name())
+
 			var capturedBody []byte
-			client := &Client{
+			client := NewClientWithConfig(log, ClientConfig{
 				BaseURL:  "https://api.wheresitup.com/v4",
 				APIToken: "test-token",
 				HTTPClient: &MockHTTPClient{
@@ -864,8 +908,7 @@ func TestCreateJobWithRequest(t *testing.T) {
 						return tt.mockFunc(req)
 					},
 				},
-				log: collector.GetLogger(),
-			}
+			})
 
 			got, err := client.CreateJobWithRequest(t.Context(), tt.request, tt.debug)
 			if tt.wantErr {
@@ -887,10 +930,7 @@ func TestCreateJobWithRequest(t *testing.T) {
 }
 
 func TestGetJob(t *testing.T) {
-	// Setup logger
-	originalLogger := collector.Logger
-	collector.InitLogger(collector.LogLevelWarn)
-	defer func() { collector.Logger = originalLogger }()
+	t.Parallel()
 
 	tests := []struct {
 		name     string
@@ -990,13 +1030,17 @@ func TestGetJob(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := &Client{
+			t.Parallel()
+
+			log := logger.With("test", t.Name())
+
+			client := NewClientWithConfig(log, ClientConfig{
 				BaseURL:  "https://api.wheresitup.com/v4",
 				APIToken: "test-token",
 				HTTPClient: &MockHTTPClient{
 					DoFunc: tt.mockFunc,
 				},
-			}
+			})
 
 			got, err := client.GetJob(t.Context(), tt.jobID)
 			if tt.wantErr {
@@ -1013,6 +1057,8 @@ func TestGetJob(t *testing.T) {
 }
 
 func TestGetAllJobs(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		mockFunc func(req *http.Request) (*http.Response, error)
@@ -1146,13 +1192,17 @@ func TestGetAllJobs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := &Client{
+			t.Parallel()
+
+			log := logger.With("test", t.Name())
+
+			client := NewClientWithConfig(log, ClientConfig{
 				BaseURL:  "https://api.wheresitup.com/v4",
 				APIToken: "test-token",
 				HTTPClient: &MockHTTPClient{
 					DoFunc: tt.mockFunc,
 				},
-			}
+			})
 
 			got, err := client.GetAllJobs(t.Context())
 			if tt.wantErr {
@@ -1184,6 +1234,8 @@ func TestGetAllJobs(t *testing.T) {
 }
 
 func TestGetCredit(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name         string
 		mockResponse string
@@ -1245,7 +1297,11 @@ func TestGetCredit(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := &Client{
+			t.Parallel()
+
+			log := logger.With("test", t.Name())
+
+			client := NewClientWithConfig(log, ClientConfig{
 				BaseURL:  "https://api.wheresitup.com/v4",
 				APIToken: "test-token",
 				HTTPClient: &MockHTTPClient{
@@ -1267,7 +1323,7 @@ func TestGetCredit(t *testing.T) {
 						}, nil
 					},
 				},
-			}
+			})
 
 			credit, err := client.GetCredit(t.Context())
 

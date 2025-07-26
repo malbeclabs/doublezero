@@ -9,12 +9,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewCSVExporter(t *testing.T) {
+func TestInternetLatency_CSVExporter_New(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	// Create a temporary directory for testing
 	tempDir := t.TempDir()
 
-	exporter, err := NewCSVExporter("test_prefix", tempDir)
+	exporter, err := NewCSVExporter(log, "test_prefix", tempDir)
 	require.NoError(t, err)
 	defer exporter.Close()
 
@@ -33,13 +36,16 @@ func TestNewCSVExporter(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestNewCSVExporter_CreateDirectory(t *testing.T) {
+func TestInternetLatency_CSVExporter_CreateDirectory(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	// Create a temporary directory and a subdirectory path
 	tempDir := t.TempDir()
 	newDir := filepath.Join(tempDir, "subdir", "deeper")
 
-	exporter, err := NewCSVExporter("test", newDir)
+	exporter, err := NewCSVExporter(log, "test", newDir)
 	require.NoError(t, err)
 	defer exporter.Close()
 
@@ -48,7 +54,10 @@ func TestNewCSVExporter_CreateDirectory(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestNewCSVExporter_InvalidDirectory(t *testing.T) {
+func TestInternetLatency_CSVExporter_InvalidDirectory(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	// Create a file where we expect a directory - this will cause os.MkdirAll to fail
 	tempDir := t.TempDir()
@@ -60,7 +69,7 @@ func TestNewCSVExporter_InvalidDirectory(t *testing.T) {
 
 	// Now try to use this file path as a directory - should fail
 	invalidPath := filepath.Join(invalidDir, "subdir")
-	_, err = NewCSVExporter("test", invalidPath)
+	_, err = NewCSVExporter(log, "test", invalidPath)
 	require.Error(t, err)
 
 	// Verify it's a CollectorError
@@ -70,10 +79,13 @@ func TestNewCSVExporter_InvalidDirectory(t *testing.T) {
 	require.Equal(t, "create_output_directory", collectorErr.Operation)
 }
 
-func TestCSVExporter_WriteHeader(t *testing.T) {
+func TestInternetLatency_CSVExporter_WriteHeader(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	tempDir := t.TempDir()
-	exporter, err := NewCSVExporter("test", tempDir)
+	exporter, err := NewCSVExporter(log, "test", tempDir)
 	require.NoError(t, err)
 	defer exporter.Close()
 
@@ -92,10 +104,13 @@ func TestCSVExporter_WriteHeader(t *testing.T) {
 	require.Equal(t, expectedHeader, string(content))
 }
 
-func TestCSVExporter_GetFilename(t *testing.T) {
+func TestInternetLatency_CSVExporter_GetFilename(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	tempDir := t.TempDir()
-	exporter, err := NewCSVExporter("test_prefix", tempDir)
+	exporter, err := NewCSVExporter(log, "test_prefix", tempDir)
 	require.NoError(t, err)
 	defer exporter.Close()
 
@@ -105,10 +120,13 @@ func TestCSVExporter_GetFilename(t *testing.T) {
 	require.True(t, strings.HasSuffix(filename, ".csv"))
 }
 
-func TestCSVExporter_WriteRecordWithWarning(t *testing.T) {
+func TestInternetLatency_CSVExporter_WriteRecordWithWarning(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	tempDir := t.TempDir()
-	exporter, err := NewCSVExporter("test", tempDir)
+	exporter, err := NewCSVExporter(log, "test", tempDir)
 	require.NoError(t, err)
 	defer exporter.Close()
 
@@ -136,7 +154,9 @@ func TestCSVExporter_WriteRecordWithWarning(t *testing.T) {
 	require.Equal(t, expectedContent, string(content))
 }
 
-func TestEscapeCSVField(t *testing.T) {
+func TestInternetLatency_CSVExporter_EscapeCSVField(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		input    string

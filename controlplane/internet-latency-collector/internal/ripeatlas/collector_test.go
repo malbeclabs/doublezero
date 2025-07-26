@@ -77,13 +77,9 @@ func (m *MockClient) StopMeasurement(ctx context.Context, measurementID int) err
 	return nil
 }
 
-func setupCollectorLogger() func() {
-	originalLogger := collector.Logger
-	collector.InitLogger(collector.LogLevelWarn)
-	return func() { collector.Logger = originalLogger }
-}
+func TestInternetLatency_RIPEAtlas_GetNearestProbesSorted(t *testing.T) {
+	t.Parallel()
 
-func TestGetNearestProbesSorted(t *testing.T) {
 	probes := []Probe{
 		{ID: 1, Latitude: 40.7128, Longitude: -74.0060, Address: "1.1.1.1"},
 		{ID: 2, Latitude: 40.7589, Longitude: -73.9851, Address: "2.2.2.2"},
@@ -101,12 +97,16 @@ func TestGetNearestProbesSorted(t *testing.T) {
 	require.Equal(t, 4, result[1].ID, "Expected second probe ID to be 4")
 }
 
-func TestGetNearestProbesSorted_EmptyInput(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_GetNearestProbesSorted_EmptyInput(t *testing.T) {
+	t.Parallel()
+
 	result := getNearestProbesSorted([]Probe{}, 40.7128, -74.0060, 5)
 	require.Empty(t, result, "Expected empty result for empty input")
 }
 
-func TestCalculateAndSortProbeDistances(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_CalculateAndSortProbeDistances(t *testing.T) {
+	t.Parallel()
+
 	probes := []Probe{
 		{ID: 1, Latitude: 40.7128, Longitude: -74.0060},
 		{ID: 2, Latitude: 40.7589, Longitude: -73.9851},
@@ -128,7 +128,9 @@ func TestCalculateAndSortProbeDistances(t *testing.T) {
 	}
 }
 
-func TestParseProbeIDsFromDescription(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_ParseProbeIDsFromDescription(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name        string
 		description string
@@ -189,6 +191,8 @@ func TestParseProbeIDsFromDescription(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			sourceProbe, targetProbe, locationA, locationZ := parseProbeIDsFromDescription(tt.description)
 			require.Equal(t, tt.sourceProbe, sourceProbe, "sourceProbe mismatch")
 			require.Equal(t, tt.targetProbe, targetProbe, "targetProbe mismatch")
@@ -198,7 +202,9 @@ func TestParseProbeIDsFromDescription(t *testing.T) {
 	}
 }
 
-func TestFilterValidProbes(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_FilterValidProbes(t *testing.T) {
+	t.Parallel()
+
 	probes := []Probe{
 		{ID: 1, Address: "8.8.8.8"},
 		{ID: 2, Address: "192.168.1.1"},
@@ -220,16 +226,23 @@ func TestFilterValidProbes(t *testing.T) {
 	}
 }
 
-func TestNewCollector(t *testing.T) {
-	collector.InitLogger(collector.LogLevelWarn)
-	c := NewCollector(collector.GetLogger())
+func TestInternetLatency_RIPEAtlas_NewCollector(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	c := NewCollector(log)
 
 	require.NotNil(t, c, "NewCollector should return a non-nil collector")
 	require.NotNil(t, c.client, "Client should be initialized")
 }
 
-func TestParseLatencyFromResult(t *testing.T) {
-	c := NewCollector(collector.GetLogger())
+func TestInternetLatency_RIPEAtlas_ParseLatencyFromResult(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	c := NewCollector(log)
 
 	// Valid ping result
 	result := map[string]any{
@@ -260,8 +273,10 @@ func TestParseLatencyFromResult(t *testing.T) {
 	require.Empty(t, timestamp, "Expected empty timestamp for invalid result")
 }
 
-func TestClearAllMeasurements(t *testing.T) {
-	defer setupCollectorLogger()()
+func TestInternetLatency_RIPEAtlas_ClearAllMeasurements(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	stoppedMeasurements := []int{}
 	mockClient := &MockClient{
@@ -299,7 +314,7 @@ func TestClearAllMeasurements(t *testing.T) {
 		},
 	}
 
-	c := &Collector{client: mockClient, log: collector.GetLogger()}
+	c := &Collector{client: mockClient, log: log}
 
 	err := c.ClearAllMeasurements(t.Context())
 
@@ -312,8 +327,10 @@ func TestClearAllMeasurements(t *testing.T) {
 	require.Equal(t, 1, stoppedMeasurements[0], "Expected measurement ID 1 to be stopped")
 }
 
-func TestClearAllMeasurements_StopError(t *testing.T) {
-	defer setupCollectorLogger()()
+func TestInternetLatency_RIPEAtlas_ClearAllMeasurements_StopError(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	mockClient := &MockClient{
 		GetAllMeasurementsFunc: func(ctx context.Context) ([]Measurement, error) {
@@ -333,7 +350,7 @@ func TestClearAllMeasurements_StopError(t *testing.T) {
 		},
 	}
 
-	c := &Collector{client: mockClient, log: collector.GetLogger()}
+	c := &Collector{client: mockClient, log: log}
 
 	err := c.ClearAllMeasurements(t.Context())
 	if err == nil {
@@ -345,8 +362,10 @@ func TestClearAllMeasurements_StopError(t *testing.T) {
 	require.Equal(t, "process_measurements", collectorErr.Operation, "Expected operation process_measurements")
 }
 
-func TestExportMeasurementResults(t *testing.T) {
-	defer setupCollectorLogger()()
+func TestInternetLatency_RIPEAtlas_ExportMeasurementResults(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	mockClient := &MockClient{
 		GetAllMeasurementsFunc: func(ctx context.Context) ([]Measurement, error) {
@@ -394,7 +413,7 @@ func TestExportMeasurementResults(t *testing.T) {
 		},
 	}
 
-	c := &Collector{client: mockClient, log: collector.GetLogger()}
+	c := &Collector{client: mockClient, log: log}
 
 	// Create temp directory
 	tempDir := t.TempDir()
@@ -428,7 +447,11 @@ func TestExportMeasurementResults(t *testing.T) {
 	require.Contains(t, string(timestampData2), "1609459320", "Timestamp file should be updated with newer timestamp")
 }
 
-func TestListMeasurements(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_ListMeasurements(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
 	mockClient := &MockClient{
 		GetAllMeasurementsFunc: func(ctx context.Context) ([]Measurement, error) {
 			return []Measurement{
@@ -456,7 +479,7 @@ func TestListMeasurements(t *testing.T) {
 		},
 	}
 
-	c := &Collector{client: mockClient, log: collector.GetLogger()}
+	c := &Collector{client: mockClient, log: log}
 
 	// Capture output (ListMeasurements is an interactive function that uses fmt.Print)
 	oldStdout := os.Stdout
@@ -484,8 +507,10 @@ func TestListMeasurements(t *testing.T) {
 	require.Contains(t, outputStr, `"Measurement with, comma"`, "Output should properly escape comma in description")
 }
 
-func TestListAtlasProbes(t *testing.T) {
-	defer setupCollectorLogger()()
+func TestInternetLatency_RIPEAtlas_ListAtlasProbes(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	mockClient := &MockClient{
 		GetProbesForLocationsFunc: func(ctx context.Context, locations []LocationProbeMatch) ([]LocationProbeMatch, error) {
@@ -516,7 +541,7 @@ func TestListAtlasProbes(t *testing.T) {
 		},
 	}
 
-	c := &Collector{client: mockClient, log: collector.GetLogger()}
+	c := &Collector{client: mockClient, log: log}
 
 	locations := []collector.LocationMatch{
 		{LocationCode: "NYC", Latitude: 40.7128, Longitude: -74.0060},
@@ -546,18 +571,24 @@ func TestListAtlasProbes(t *testing.T) {
 	require.Contains(t, outputStr, "IPv6:", "Output should show IPv6 addresses")
 }
 
-func TestListAtlasProbes_NoDevices(t *testing.T) {
-	defer setupCollectorLogger()()
+func TestInternetLatency_RIPEAtlas_ListAtlasProbes_NoDevices(t *testing.T) {
+	t.Parallel()
 
-	c := NewCollector(collector.GetLogger())
+	log := logger.With("test", t.Name())
+
+	c := NewCollector(log)
 
 	err := c.ListAtlasProbes(t.Context(), []collector.LocationMatch{})
 
 	require.Equal(t, collector.ErrNoDevicesFound, err, "Expected ErrNoDevicesFound")
 }
 
-func TestGenerateWantedMeasurements_Deterministic(t *testing.T) {
-	c := NewCollector(collector.GetLogger())
+func TestInternetLatency_RIPEAtlas_GenerateWantedMeasurements_Deterministic(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	c := NewCollector(log)
 
 	// Create test locations with probes in non-alphabetical order
 	locations := []LocationProbeMatch{
@@ -653,8 +684,10 @@ func TestGenerateWantedMeasurements_Deterministic(t *testing.T) {
 	}
 }
 
-func TestRunRipeAtlasMeasurementCreation(t *testing.T) {
-	defer setupCollectorLogger()()
+func TestInternetLatency_RIPEAtlas_RunRipeAtlasMeasurementCreation(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	// This test verifies the full RunRipeAtlasMeasurementCreation function flow
 	// It handles both cases: when GetLocations returns locations or when it doesn't
@@ -690,10 +723,10 @@ func TestRunRipeAtlasMeasurementCreation(t *testing.T) {
 		},
 	}
 
-	c := &Collector{client: mockClient, log: collector.GetLogger()}
+	c := &Collector{client: mockClient, log: log}
 
 	// Use a context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
 	defer cancel()
 
 	err := c.RunRipeAtlasMeasurementCreation(ctx, false, 1, t.TempDir(), t.TempDir())
@@ -724,8 +757,10 @@ func TestRunRipeAtlasMeasurementCreation(t *testing.T) {
 	t.Fatalf("Unexpected error: %v", err)
 }
 
-func TestConfigureMeasurements_CreateNew(t *testing.T) {
-	defer setupCollectorLogger()()
+func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_CreateNew(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	// Track created measurements
 	var createdMeasurements []MeasurementRequest
@@ -745,7 +780,7 @@ func TestConfigureMeasurements_CreateNew(t *testing.T) {
 		},
 	}
 
-	c := &Collector{client: mockClient, log: collector.GetLogger()}
+	c := &Collector{client: mockClient, log: log}
 
 	// Locations with probes that should trigger measurement creation
 	locationMatches := []LocationProbeMatch{
@@ -773,7 +808,7 @@ func TestConfigureMeasurements_CreateNew(t *testing.T) {
 		},
 	}
 
-	err := c.configureMeasurements(context.Background(), locationMatches, false, 1, t.TempDir(), t.TempDir())
+	err := c.configureMeasurements(t.Context(), locationMatches, false, 1, t.TempDir(), t.TempDir())
 	require.NoError(t, err, "configureMeasurements should succeed")
 
 	// Verify measurement was created (NYC->LON due to alphabetical ordering)
@@ -795,8 +830,10 @@ func TestConfigureMeasurements_CreateNew(t *testing.T) {
 	require.Equal(t, 200, measurement.Probes[0].Value) // LON probe ID (source)
 }
 
-func TestConfigureMeasurements_RemoveUnwanted(t *testing.T) {
-	defer setupCollectorLogger()()
+func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_RemoveUnwanted(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	tempDir := t.TempDir()
 	stateDir := filepath.Join(tempDir, "state")
@@ -848,7 +885,7 @@ func TestConfigureMeasurements_RemoveUnwanted(t *testing.T) {
 			// Return some results to export
 			return []any{
 				map[string]any{
-					"timestamp": float64(time.Now().Unix()),
+					"timestamp": float64(time.Now().UTC().Unix()),
 					"result": []any{
 						map[string]any{"rtt": float64(25.5)},
 					},
@@ -857,10 +894,10 @@ func TestConfigureMeasurements_RemoveUnwanted(t *testing.T) {
 		},
 	}
 
-	c := &Collector{client: mockClient, log: collector.GetLogger()}
+	c := &Collector{client: mockClient, log: log}
 
 	// Empty location matches means all existing measurements should be removed
-	err := c.configureMeasurements(context.Background(), []LocationProbeMatch{}, false, 1, outputDir, stateDir)
+	err := c.configureMeasurements(t.Context(), []LocationProbeMatch{}, false, 1, outputDir, stateDir)
 	require.NoError(t, err, "configureMeasurements should succeed")
 
 	// Verify measurements were exported and removed
@@ -878,8 +915,10 @@ func TestConfigureMeasurements_RemoveUnwanted(t *testing.T) {
 	require.Len(t, files, 1, "Expected 1 CSV file")
 }
 
-func TestRun_ErrorHandling(t *testing.T) {
-	defer setupCollectorLogger()()
+func TestInternetLatency_RIPEAtlas_Run_ErrorHandling(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	t.Run("Measurement creation error", func(t *testing.T) {
 		mockClient := &MockClient{
@@ -891,9 +930,9 @@ func TestRun_ErrorHandling(t *testing.T) {
 			},
 		}
 
-		c := &Collector{client: mockClient, log: collector.GetLogger()}
+		c := &Collector{client: mockClient, log: log}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 		defer cancel()
 
 		err := c.Run(ctx, false, 1, t.TempDir(), t.TempDir(), 30*time.Millisecond, 50*time.Millisecond)
@@ -912,9 +951,9 @@ func TestRun_ErrorHandling(t *testing.T) {
 			},
 		}
 
-		c := &Collector{client: mockClient, log: collector.GetLogger()}
+		c := &Collector{client: mockClient, log: log}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 		defer cancel()
 
 		err := c.Run(ctx, false, 1, t.TempDir(), t.TempDir(), 50*time.Millisecond, 30*time.Millisecond)
@@ -924,8 +963,10 @@ func TestRun_ErrorHandling(t *testing.T) {
 	})
 }
 
-func TestRun(t *testing.T) {
-	defer setupCollectorLogger()()
+func TestInternetLatency_RIPEAtlas_Run(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	// Test that both goroutines (measurement and export) run concurrently
 	// and verify that data export writes the expected content
@@ -984,7 +1025,7 @@ func TestRun(t *testing.T) {
 			mu.Unlock()
 
 			// Return results with latency data
-			timestamp := time.Now().Unix()
+			timestamp := time.Now().UTC().Unix()
 			return []any{
 				map[string]any{
 					"timestamp": float64(timestamp),
@@ -998,13 +1039,13 @@ func TestRun(t *testing.T) {
 		},
 	}
 
-	c := &Collector{client: mockClient, log: collector.GetLogger()}
+	c := &Collector{client: mockClient, log: log}
 
 	// Use different intervals to verify both run independently
 	measurementInterval := 50 * time.Millisecond
 	exportInterval := 30 * time.Millisecond
 
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
 	defer cancel()
 
 	err := c.Run(ctx, false, 1, stateDir, outputDir, measurementInterval, exportInterval)

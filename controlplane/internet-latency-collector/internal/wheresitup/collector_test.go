@@ -16,12 +16,6 @@ import (
 	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/collector"
 )
 
-func setupCollectorLogger() func() {
-	originalLogger := collector.Logger
-	collector.InitLogger(collector.LogLevelWarn)
-	return func() { collector.Logger = originalLogger }
-}
-
 // mockLocationsFetcher returns a mock location fetcher for testing
 func mockLocationsFetcher(locations []collector.LocationMatch) locationFetcher {
 	return func(ctx context.Context, log *slog.Logger) []collector.LocationMatch {
@@ -97,14 +91,10 @@ func (m *MockWheresitupClient) GetCredit(ctx context.Context) (int, error) {
 	return 10000, nil
 }
 
-func setupTestLogger() func() {
-	originalLogger := collector.Logger
-	collector.InitLogger(collector.LogLevelWarn)
-	return func() { collector.Logger = originalLogger }
-}
+func TestInternetLatency_Wheresitup_ListSources_Success(t *testing.T) {
+	t.Parallel()
 
-func TestListSources_Success(t *testing.T) {
-	defer setupTestLogger()()
+	log := logger.With("test", t.Name())
 
 	c := &Collector{
 		client: &MockWheresitupClient{
@@ -131,7 +121,7 @@ func TestListSources_Success(t *testing.T) {
 				}, nil
 			},
 		},
-		log: collector.GetLogger(),
+		log: log,
 	}
 
 	locations := []collector.LocationMatch{
@@ -146,20 +136,24 @@ func TestListSources_Success(t *testing.T) {
 	require.NoError(t, err, "ListSources() error = %v, want nil", err)
 }
 
-func TestListSources_NoDevices(t *testing.T) {
-	defer setupTestLogger()()
+func TestInternetLatency_Wheresitup_ListSources_NoDevices(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	c := &Collector{
 		client: &MockWheresitupClient{},
-		log:    collector.GetLogger(),
+		log:    log,
 	}
 
 	err := c.PrintSources(t.Context(), []collector.LocationMatch{})
 	require.ErrorIs(t, err, collector.ErrNoDevicesFound, "ListSources() error = %v, want %v", err, collector.ErrNoDevicesFound)
 }
 
-func TestListSources_APIError(t *testing.T) {
-	defer setupTestLogger()()
+func TestInternetLatency_Wheresitup_ListSources_APIError(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	c := &Collector{
 		client: &MockWheresitupClient{
@@ -167,7 +161,7 @@ func TestListSources_APIError(t *testing.T) {
 				return nil, errors.New("API error")
 			},
 		},
-		log: collector.GetLogger(),
+		log: log,
 	}
 
 	locations := []collector.LocationMatch{
@@ -178,11 +172,13 @@ func TestListSources_APIError(t *testing.T) {
 	require.Error(t, err, "ListSources() expected error, got nil")
 }
 
-func TestRunJobCreation_Success(t *testing.T) {
-	defer setupTestLogger()()
+func TestInternetLatency_Wheresitup_RunJobCreation_Success(t *testing.T) {
+	t.Parallel()
 
 	tempDir := t.TempDir()
 	jobIDsFile := filepath.Join(tempDir, "jobs.json")
+
+	log := logger.With("test", t.Name())
 
 	c := &Collector{
 		client: &MockWheresitupClient{
@@ -219,11 +215,11 @@ func TestRunJobCreation_Success(t *testing.T) {
 				return &JobResponse{
 					ID:      "job-123",
 					Status:  "pending",
-					Created: time.Now().Format(time.RFC3339),
+					Created: time.Now().UTC().Format(time.RFC3339),
 				}, nil
 			},
 		},
-		log: collector.GetLogger(),
+		log: log,
 	}
 
 	locations := []collector.LocationMatch{
@@ -243,11 +239,13 @@ func TestRunJobCreation_Success(t *testing.T) {
 	require.Equal(t, "job-123", jobIDs[0], "Expected job ID to be job-123, got %v", jobIDs[0])
 }
 
-func TestRunJobCreation_LowCredit(t *testing.T) {
-	defer setupTestLogger()()
+func TestInternetLatency_Wheresitup_RunJobCreation_LowCredit(t *testing.T) {
+	t.Parallel()
 
 	tempDir := t.TempDir()
 	jobIDsFile := filepath.Join(tempDir, "jobs.json")
+
+	log := logger.With("test", t.Name())
 
 	c := &Collector{
 		client: &MockWheresitupClient{
@@ -261,7 +259,7 @@ func TestRunJobCreation_LowCredit(t *testing.T) {
 				}, nil
 			},
 		},
-		log: collector.GetLogger(),
+		log: log,
 	}
 
 	locations := []collector.LocationMatch{
@@ -274,8 +272,10 @@ func TestRunJobCreation_LowCredit(t *testing.T) {
 	require.NoError(t, err, "RunJobCreation() error = %v, want nil", err)
 }
 
-func TestRunJobCreation_InsufficientSources(t *testing.T) {
-	defer setupTestLogger()()
+func TestInternetLatency_Wheresitup_RunJobCreation_InsufficientSources(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	c := &Collector{
 		client: &MockWheresitupClient{
@@ -289,7 +289,7 @@ func TestRunJobCreation_InsufficientSources(t *testing.T) {
 				}, nil
 			},
 		},
-		log: collector.GetLogger(),
+		log: log,
 	}
 
 	locations := []collector.LocationMatch{
@@ -300,8 +300,10 @@ func TestRunJobCreation_InsufficientSources(t *testing.T) {
 	require.Error(t, err, "RunJobCreation() expected error for insufficient sources")
 }
 
-func TestCreateJobsBetweenLocations_Success(t *testing.T) {
-	defer setupTestLogger()()
+func TestInternetLatency_Wheresitup_CreateJobsBetweenLocations_Success(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	callCount := 0
 	c := &Collector{
@@ -311,11 +313,11 @@ func TestCreateJobsBetweenLocations_Success(t *testing.T) {
 				return &JobResponse{
 					ID:      fmt.Sprintf("job-%d", callCount),
 					Status:  "pending",
-					Created: time.Now().Format(time.RFC3339),
+					Created: time.Now().UTC().Format(time.RFC3339),
 				}, nil
 			},
 		},
-		log: collector.GetLogger(),
+		log: log,
 	}
 
 	locations := []LocationSourceMatch{
@@ -340,8 +342,10 @@ func TestCreateJobsBetweenLocations_Success(t *testing.T) {
 	require.Len(t, jobs, 3, "Expected 3 jobs, got %d", len(jobs))
 }
 
-func TestCreateJobsBetweenLocations_DryRun(t *testing.T) {
-	defer setupTestLogger()()
+func TestInternetLatency_Wheresitup_CreateJobsBetweenLocations_DryRun(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	c := &Collector{
 		client: &MockWheresitupClient{
@@ -350,7 +354,7 @@ func TestCreateJobsBetweenLocations_DryRun(t *testing.T) {
 				return nil, nil
 			},
 		},
-		log: collector.GetLogger(),
+		log: log,
 	}
 
 	locations := []LocationSourceMatch{
@@ -370,8 +374,10 @@ func TestCreateJobsBetweenLocations_DryRun(t *testing.T) {
 	require.Empty(t, jobs, "Expected 0 jobs in dry run, got %d", len(jobs))
 }
 
-func TestExportJobResults_Success(t *testing.T) {
-	defer setupTestLogger()()
+func TestInternetLatency_Wheresitup_ExportJobResults_Success(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	tempDir := t.TempDir()
 	jobIDsFile := filepath.Join(tempDir, "jobs.json")
@@ -418,7 +424,7 @@ func TestExportJobResults_Success(t *testing.T) {
 						} `json:"expiry"`
 					}{
 						URL:       "http://los_angeles.wonderproxy.com",
-						StartTime: time.Now().Unix(),
+						StartTime: time.Now().UTC().Unix(),
 						Expiry: struct {
 							Sec  int64 `json:"sec"`
 							Usec int   `json:"usec"`
@@ -449,7 +455,7 @@ func TestExportJobResults_Success(t *testing.T) {
 				}, nil
 			},
 		},
-		log:              collector.GetLogger(),
+		log:              log,
 		locationsFetcher: mockLocationsFetcher(testLocations),
 	}
 
@@ -469,8 +475,10 @@ func TestExportJobResults_Success(t *testing.T) {
 	require.Empty(t, remainingJobs, "Expected job to be removed after export, got %v", remainingJobs)
 }
 
-func TestExportJobResults_NoJobs(t *testing.T) {
-	defer setupTestLogger()()
+func TestInternetLatency_Wheresitup_ExportJobResults_NoJobs(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	tempDir := t.TempDir()
 	jobIDsFile := filepath.Join(tempDir, "jobs.json")
@@ -478,15 +486,19 @@ func TestExportJobResults_NoJobs(t *testing.T) {
 
 	c := &Collector{
 		client: &MockWheresitupClient{},
-		log:    collector.GetLogger(),
+		log:    log,
 	}
 
 	err := c.ExportJobResults(t.Context(), jobIDsFile, outputDir)
 	require.NoError(t, err, "ExportJobResults() error = %v for empty job list", err)
 }
 
-func TestParseLocationCodesFromJobDetails(t *testing.T) {
-	c := NewCollector(collector.GetLogger())
+func TestInternetLatency_Wheresitup_ParseLocationCodesFromJobDetails(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	c := NewCollector(log)
 
 	tests := []struct {
 		name  string
@@ -542,8 +554,12 @@ func TestParseLocationCodesFromJobDetails(t *testing.T) {
 	}
 }
 
-func TestExtractChecksFromJobDetails(t *testing.T) {
-	c := NewCollector(collector.GetLogger())
+func TestInternetLatency_Wheresitup_ExtractChecksFromJobDetails(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	c := NewCollector(log)
 
 	tests := []struct {
 		name string
@@ -592,8 +608,12 @@ func TestExtractChecksFromJobDetails(t *testing.T) {
 	}
 }
 
-func TestFormatTimestampFromUnix(t *testing.T) {
-	c := NewCollector(collector.GetLogger())
+func TestInternetLatency_Wheresitup_FormatTimestampFromUnix(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	c := NewCollector(log)
 
 	// Test with a known timestamp
 	unixTime := int64(1640995200) // 2022-01-01 00:00:00 UTC
@@ -607,8 +627,10 @@ func TestFormatTimestampFromUnix(t *testing.T) {
 	require.NotEmpty(t, result, "formatTimestampFromUnix() returned empty string for zero timestamp")
 }
 
-func TestBuildLocationMapping(t *testing.T) {
-	defer setupTestLogger()()
+func TestInternetLatency_Wheresitup_BuildLocationMapping(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	c := &Collector{
 		client: &MockWheresitupClient{
@@ -626,7 +648,7 @@ func TestBuildLocationMapping(t *testing.T) {
 				}, nil
 			},
 		},
-		log: collector.GetLogger(),
+		log: log,
 	}
 
 	locations := []collector.LocationMatch{
@@ -645,8 +667,10 @@ func TestBuildLocationMapping(t *testing.T) {
 	require.True(t, exists, "Expected newark in mapping")
 }
 
-func TestListJobs_Success(t *testing.T) {
-	defer setupTestLogger()()
+func TestInternetLatency_Wheresitup_ListJobs_Success(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	c := &Collector{
 		client: &MockWheresitupClient{
@@ -655,11 +679,11 @@ func TestListJobs_Success(t *testing.T) {
 					{
 						ID:        "job-1",
 						URL:       "http://los_angeles.wonderproxy.com",
-						StartTime: time.Now().Unix(),
+						StartTime: time.Now().UTC().Unix(),
 						Expiry: struct {
 							Sec  int64 `json:"sec"`
 							Usec int   `json:"usec"`
-						}{Sec: time.Now().Add(time.Hour).Unix()},
+						}{Sec: time.Now().UTC().Add(time.Hour).Unix()},
 						Services: []struct {
 							City   string   `json:"city"`
 							Server string   `json:"server"`
@@ -671,7 +695,7 @@ func TestListJobs_Success(t *testing.T) {
 				}, nil
 			},
 		},
-		log: collector.GetLogger(),
+		log: log,
 	}
 
 	// This function prints to stdout, so we just verify it doesn't error
@@ -679,8 +703,10 @@ func TestListJobs_Success(t *testing.T) {
 	require.NoError(t, err, "ListJobs() error = %v", err)
 }
 
-func TestListJobs_Empty(t *testing.T) {
-	defer setupTestLogger()()
+func TestInternetLatency_Wheresitup_ListJobs_Empty(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	c := &Collector{
 		client: &MockWheresitupClient{
@@ -688,15 +714,17 @@ func TestListJobs_Empty(t *testing.T) {
 				return []JobDetails{}, nil
 			},
 		},
-		log: collector.GetLogger(),
+		log: log,
 	}
 
 	err := c.ListJobs(t.Context())
 	require.NoError(t, err, "ListJobs() error = %v for empty list", err)
 }
 
-func TestListJobs_Error(t *testing.T) {
-	defer setupTestLogger()()
+func TestInternetLatency_Wheresitup_ListJobs_Error(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	c := &Collector{
 		client: &MockWheresitupClient{
@@ -704,14 +732,16 @@ func TestListJobs_Error(t *testing.T) {
 				return nil, errors.New("API error")
 			},
 		},
-		log: collector.GetLogger(),
+		log: log,
 	}
 
 	err := c.ListJobs(t.Context())
 	require.Error(t, err, "ListJobs() expected error")
 }
 
-func TestParseLocationFromUrl(t *testing.T) {
+func TestInternetLatency_Wheresitup_ParseLocationFromUrl(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		url  string
 		want string
@@ -726,27 +756,33 @@ func TestParseLocationFromUrl(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.url, func(t *testing.T) {
+			t.Parallel()
+
 			got := parseLocationFromUrl(tt.url)
 			require.Equal(t, tt.want, got, "parseLocationFromUrl(%s) = %s, want %s", tt.url, got, tt.want)
 		})
 	}
 }
 
-func TestExportJobResults_ErrorScenarios(t *testing.T) {
-	defer setupTestLogger()()
+func TestInternetLatency_Wheresitup_ExportJobResults_ErrorScenarios(t *testing.T) {
+	t.Parallel()
 
 	tempDir := t.TempDir()
 	jobIDsFile := filepath.Join(tempDir, "jobs.json")
 	outputDir := filepath.Join(tempDir, "output")
 
 	t.Run("BuildLocationMapping Error", func(t *testing.T) {
+		t.Parallel()
+
+		log := logger.With("test", t.Name())
+
 		c := &Collector{
 			client: &MockWheresitupClient{
 				GetNearestSourcesForLocationsFunc: func(ctx context.Context, locations []collector.LocationMatch) ([]LocationSourceMatch, error) {
 					return nil, errors.New("mapping error")
 				},
 			},
-			log: collector.GetLogger(),
+			log: log,
 		}
 
 		err := c.ExportJobResults(t.Context(), jobIDsFile, outputDir)
@@ -754,6 +790,10 @@ func TestExportJobResults_ErrorScenarios(t *testing.T) {
 	})
 
 	t.Run("JobResults In Progress", func(t *testing.T) {
+		t.Parallel()
+
+		log := logger.With("test", t.Name())
+
 		c := &Collector{
 			client: &MockWheresitupClient{
 				GetNearestSourcesForLocationsFunc: func(ctx context.Context, locations []collector.LocationMatch) ([]LocationSourceMatch, error) {
@@ -772,7 +812,7 @@ func TestExportJobResults_ErrorScenarios(t *testing.T) {
 					}, nil
 				},
 			},
-			log: collector.GetLogger(),
+			log: log,
 		}
 
 		// Save a job ID
@@ -790,8 +830,10 @@ func TestExportJobResults_ErrorScenarios(t *testing.T) {
 	})
 }
 
-func TestRun_TickerExecution(t *testing.T) {
-	defer setupCollectorLogger()()
+func TestInternetLatency_Wheresitup_Run_TickerExecution(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	// Test that the Run function with ticker executes the expected sequence
 	var jobCreationCalled, exportCalled bool
@@ -822,7 +864,7 @@ func TestRun_TickerExecution(t *testing.T) {
 			}, nil
 		},
 		CreateJobWithRequestFunc: func(ctx context.Context, request any, debug bool) (*JobResponse, error) {
-			jobID := fmt.Sprintf("test-job-%d", time.Now().UnixNano())
+			jobID := fmt.Sprintf("test-job-%d", time.Now().UTC().UnixNano())
 			mu.Lock()
 			createdJobIDs = append(createdJobIDs, jobID)
 			mu.Unlock()
@@ -845,7 +887,7 @@ func TestRun_TickerExecution(t *testing.T) {
 					} `json:"expiry"`
 				}{
 					URL:       "http://london.wonderproxy.com",
-					StartTime: time.Now().Unix(),
+					StartTime: time.Now().UTC().Unix(),
 				},
 				Response: struct {
 					Complete   map[string]ServiceResult `json:"complete"`
@@ -872,7 +914,7 @@ func TestRun_TickerExecution(t *testing.T) {
 		},
 	}
 
-	c := &Collector{client: mockClient, log: collector.GetLogger()}
+	c := &Collector{client: mockClient, log: log}
 	// Set a very short wait timeout for testing
 	c.SetJobWaitTimeout(1 * time.Millisecond)
 
@@ -892,7 +934,7 @@ func TestRun_TickerExecution(t *testing.T) {
 	// Now that interval validation is removed, we can use a short interval
 	interval := 50 * time.Millisecond
 
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
 	defer cancel()
 
 	done := make(chan struct{})

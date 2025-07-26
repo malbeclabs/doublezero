@@ -75,3 +75,18 @@ func ExecReturnJSONList(ctx context.Context, cli *client.Client, containerID str
 
 	return list, nil
 }
+
+func ExecReturnObject[T any](ctx context.Context, cli *client.Client, containerID string, cmd []string, options ...ExecOption) (T, error) {
+	var v T
+	buf, err := Exec(ctx, cli, containerID, cmd, options...)
+	if err != nil {
+		return v, err
+	}
+
+	err = json.Unmarshal(buf, &v)
+	if err != nil {
+		return v, fmt.Errorf("failed to unmarshal JSON: %w", err)
+	}
+
+	return v, nil
+}

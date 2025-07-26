@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"strings"
 	"time"
@@ -292,4 +293,111 @@ func (c *Client) ExecReturnJSONList(ctx context.Context, command []string, optio
 	}
 
 	return list, nil
+}
+
+type ClientSessionStatus string
+
+type ClientSession struct {
+	SessionStatus     ClientSessionStatus `json:"session_status"`
+	LastSessionUpdate int64               `json:"last_session_update"`
+}
+
+const (
+	ClientSessionStatusUp           ClientSessionStatus = "up"
+	ClientSessionStatusDown         ClientSessionStatus = "down"
+	ClientSessionStatusDisconnected ClientSessionStatus = "disconnected"
+)
+
+type ClientUserType string
+
+type ClientStatusResponse struct {
+	TunnelName       string         `json:"tunnel_name"`
+	TunnelSrc        net.IP         `json:"tunnel_src"`
+	TunnelDst        net.IP         `json:"tunnel_dst"`
+	DoubleZeroIP     net.IP         `json:"doublezero_ip"`
+	DoubleZeroStatus ClientSession  `json:"doublezero_status"`
+	UserType         ClientUserType `json:"user_type"`
+}
+
+func (c *Client) GetTunnelStatus(ctx context.Context) ([]ClientStatusResponse, error) {
+	resp, err := docker.ExecReturnObject[[]ClientStatusResponse](ctx, c.dn.dockerClient, c.ContainerID, []string{"curl", "-s", "--unix-socket", "/var/run/doublezerod/doublezerod.sock", "http://doublezero/status"})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client tunnel status: %w", err)
+	}
+
+	return resp, nil
+}
+
+func (c *Client) WaitForTunnelUp(ctx context.Context, timeout time.Duration) error {
+	return c.WaitForTunnelStatus(ctx, ClientSessionStatusUp, timeout)
+}
+
+func (c *Client) WaitForTunnelDisconnected(ctx context.Context, timeout time.Duration) error {
+	return c.WaitForTunnelStatus(ctx, ClientSessionStatusDisconnected, timeout)
+}
+
+func (c *Client) WaitForTunnelStatus(ctx context.Context, wantStatus ClientSessionStatus, timeout time.Duration) error {
+	c.log.Info("==> Waiting for client tunnel status", "wantStatus", wantStatus, "timeout", timeout)
+
+	attempts := 0
+	start := time.Now()
+	err := poll.Until(ctx, func() (bool, error) {
+		resp, err := c.GetTunnelStatus(ctx)
+		if err != nil {
+			return false, fmt.Errorf("failed to get client status: %w", err)
+		}
+
+		for _, s := range resp {
+			if s.DoubleZeroStatus.SessionStatus == wantStatus {
+				c.log.Info("✅ Got expected client tunnel status", "wantStatus", wantStatus, "duration", time.Since(start))
+				return true, nil
+			}
+		}
+
+		if attempts == 1 || attempts%5 == 0 {
+			c.log.Debug("--> Waiting for client tunnel status", "wantStatus", wantStatus, "response", resp, "attempts", attempts)
+		}
+		attempts++
+
+		return false, nil
+	}, timeout, 1*time.Second)
+	if err != nil {
+		return fmt.Errorf("failed to wait for client tunnel status %s: %w", wantStatus, err)
+	}
+
+	return nil
+}
+
+func (c *Client) WaitForLatencyResults(ctx context.Context, wantDevicePK string, timeout time.Duration) error {
+	c.log.Info("==> Waiting for latency results (timeout " + timeout.String() + ")")
+
+	attempts := 0
+	start := time.Now()
+	err := poll.Until(ctx, func() (bool, error) {
+		results, err := c.ExecReturnJSONList(ctx, []string{"curl", "-s", "--unix-socket", "/var/run/doublezerod/doublezerod.sock", "http://doublezero/latency"})
+		if err != nil {
+			return false, fmt.Errorf("failed to get latency results: %w", err)
+		}
+
+		if len(results) > 0 {
+			for _, result := range results {
+				if result["device_pk"] == wantDevicePK && result["reachable"] == true {
+					c.log.Info("✅ Got expected latency results", "wantDevicePK", wantDevicePK, "duration", time.Since(start))
+					return true, nil
+				}
+			}
+		}
+
+		if attempts == 1 || attempts%5 == 0 {
+			c.log.Debug("--> Waiting for latency results", "wantDevicePK", wantDevicePK, "results", results, "attempts", attempts)
+		}
+		attempts++
+
+		return false, nil
+	}, timeout, 1*time.Second)
+	if err != nil {
+		return fmt.Errorf("failed to wait for latency results: %w", err)
+	}
+
+	return nil
 }

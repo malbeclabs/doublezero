@@ -26,7 +26,8 @@ func TestE2E_Multicast_Subscriber(t *testing.T) {
 
 		dn.ConnectMulticastSubscriber(t, client, "mg01")
 
-		dn.WaitForClientTunnelUp(t, client)
+		err := client.WaitForTunnelUp(t.Context(), 90*time.Second)
+		require.NoError(t, err)
 
 		checkMulticastSubscriberPostConnect(t, dn, device, client)
 

@@ -25,7 +25,8 @@ func TestE2E_Multicast_Publisher(t *testing.T) {
 
 		dn.ConnectMulticastPublisher(t, client, "mg01")
 
-		dn.WaitForClientTunnelUp(t, client)
+		err := client.WaitForTunnelUp(t.Context(), 90*time.Second)
+		require.NoError(t, err)
 
 		checkMulticastPublisherPostConnect(t, dn, device, client)
 

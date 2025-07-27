@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use solana_client::rpc_config::RpcGetVoteAccountsConfig;
 use solana_sdk::clock::DEFAULT_SLOTS_PER_EPOCH;
 use std::collections::HashMap;
 pub mod rewards;
@@ -18,6 +19,7 @@ pub struct Reward {
 
 pub async fn rewards_between_timestamps(
     fee_payment_calculator: &FeePaymentCalculator,
+    rpc_get_vote_accounts_config: RpcGetVoteAccountsConfig,
     start_timestamp: u64,
     end_timestamp: u64,
     validator_ids: &[String],
@@ -33,7 +35,13 @@ pub async fn rewards_between_timestamps(
     let start_epoch = epoch_from_timestamp(block_time, current_slot, start_timestamp)?;
     let end_epoch = epoch_from_timestamp(block_time, current_slot, end_timestamp)?;
     for epoch in start_epoch..=end_epoch {
-        let reward = get_rewards(fee_payment_calculator, validator_ids, epoch).await?;
+        let reward = get_rewards(
+            fee_payment_calculator,
+            validator_ids,
+            epoch,
+            rpc_get_vote_accounts_config.clone(),
+        )
+        .await?;
         rewards.insert(epoch, reward);
     }
     Ok(rewards)
@@ -44,12 +52,16 @@ pub async fn get_rewards(
     fee_payment_calculator: &FeePaymentCalculator,
     validator_ids: &[String],
     epoch: u64,
+    rpc_get_vote_accounts_config: RpcGetVoteAccountsConfig,
 ) -> eyre::Result<HashMap<String, Reward>> {
     let mut validator_rewards: Vec<Reward> = Vec::with_capacity(validator_ids.len());
     // TODO: move these into async calls once the block rewards are ready
-    let inflation_rewards =
-        rewards::get_inflation_rewards(fee_payment_calculator.client(), validator_ids, epoch)
-            .await?;
+    let inflation_rewards = rewards::get_inflation_rewards(
+        fee_payment_calculator,
+        validator_ids,
+        epoch,
+        rpc_get_vote_accounts_config,
+    ).await?;
     let jito_rewards =
         rewards::get_jito_rewards(fee_payment_calculator, validator_ids, epoch).await?;
     for validator_id in validator_ids {

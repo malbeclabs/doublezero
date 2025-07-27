@@ -61,7 +61,8 @@ pub async fn get_rewards(
         validator_ids,
         epoch,
         rpc_get_vote_accounts_config,
-    ).await?;
+    )
+    .await?;
     let jito_rewards =
         rewards::get_jito_rewards(fee_payment_calculator, validator_ids, epoch).await?;
     for validator_id in validator_ids {

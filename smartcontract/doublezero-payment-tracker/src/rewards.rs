@@ -16,10 +16,7 @@ use solana_client::{
     rpc_config::{RpcBlockConfig, RpcGetVoteAccountsConfig},
     rpc_response::{RpcInflationReward, RpcVoteAccountStatus},
 };
-use solana_sdk::{
-    clock::DEFAULT_SLOTS_PER_EPOCH, pubkey::Pubkey,
-    reward_type::RewardType::Fee,
-};
+use solana_sdk::{clock::DEFAULT_SLOTS_PER_EPOCH, pubkey::Pubkey, reward_type::RewardType::Fee};
 
 use solana_transaction_status_client_types::UiConfirmedBlock;
 use std::{collections::HashMap, error::Error, str::FromStr};

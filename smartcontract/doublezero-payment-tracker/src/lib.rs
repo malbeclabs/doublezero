@@ -136,148 +136,147 @@ mod tests {
     };
 
     #[tokio::test]
-      async fn test_get_rewards_between_timestamps() {
-          let validator_id = "6WgdYhhGE53WrZ7ywJA15hBVkw7CRbQ8yDBBTwmBtAHN";
-          let validator_ids: &[String] = &[String::from(validator_id)];
-          let epoch = 824;
-          let block_reward: u64 = 5000;
-          let inflation_reward = 2500;
-          let jito_reward = 10000;
+    async fn test_get_rewards_between_timestamps() {
+        let validator_id = "6WgdYhhGE53WrZ7ywJA15hBVkw7CRbQ8yDBBTwmBtAHN";
+        let validator_ids: &[String] = &[String::from(validator_id)];
+        let epoch = 824;
+        let block_reward: u64 = 5000;
+        let inflation_reward = 2500;
+        let jito_reward = 10000;
 
-          let start_timestamp = 1752727180;
-          let end_timestamp = 1752727280;
+        let start_timestamp = 1752727180;
+        let end_timestamp = 1752727280;
 
-          let mut mock_fee_payment_calculator = MockValidatorRewards::new();
+        let mut mock_fee_payment_calculator = MockValidatorRewards::new();
 
-          let rpc_get_vote_accounts_config = RpcGetVoteAccountsConfig {
-              vote_pubkey: None,
-              commitment: CommitmentConfig::finalized().into(),
-              keep_unstaked_delinquents: None,
-              delinquent_slot_distance: None,
-          };
+        let rpc_get_vote_accounts_config = RpcGetVoteAccountsConfig {
+            vote_pubkey: None,
+            commitment: CommitmentConfig::finalized().into(),
+            keep_unstaked_delinquents: None,
+            delinquent_slot_distance: None,
+        };
 
-          let rpc_block_config = solana_client::rpc_config::RpcBlockConfig {
-              encoding: UiTransactionEncoding::Base58.into(),
-              transaction_details: TransactionDetails::None.into(),
-              rewards: Some(true),
-              commitment: CommitmentConfig::finalized().into(),
-              max_supported_transaction_version: Some(0),
-          };
+        let rpc_block_config = solana_client::rpc_config::RpcBlockConfig {
+            encoding: UiTransactionEncoding::Base58.into(),
+            transaction_details: TransactionDetails::None.into(),
+            rewards: Some(true),
+            commitment: CommitmentConfig::finalized().into(),
+            max_supported_transaction_version: Some(0),
+        };
 
-          mock_fee_payment_calculator
-              .expect_get_slot()
-              .times(1)
-              .returning(move || Ok(356170122));
+        mock_fee_payment_calculator
+            .expect_get_slot()
+            .times(1)
+            .returning(move || Ok(356170122));
 
-          mock_fee_payment_calculator
-              .expect_get_block_time()
-              .times(1)
-              .returning(move |_| Ok(1752728180));
+        mock_fee_payment_calculator
+            .expect_get_block_time()
+            .times(1)
+            .returning(move |_| Ok(1752728180));
 
-          let mock_block = UiConfirmedBlock {
-              num_reward_partitions: Some(1),
-              signatures: Some(vec!["One".to_string()]),
-              rewards: Some(vec![solana_transaction_status_client_types::Reward {
-                  pubkey: validator_id.to_string(),
-                  lamports: block_reward as i64,
-                  post_balance: block_reward,
-                  reward_type: Some(Fee),
-                  commission: None,
-              }]),
-              previous_blockhash: "".to_string(),
-              blockhash: "".to_string(),
-              parent_slot: 0,
-              transactions: None,
-              block_time: None,
-              block_height: None,
-          };
+        let mock_block = UiConfirmedBlock {
+            num_reward_partitions: Some(1),
+            signatures: Some(vec!["One".to_string()]),
+            rewards: Some(vec![solana_transaction_status_client_types::Reward {
+                pubkey: validator_id.to_string(),
+                lamports: block_reward as i64,
+                post_balance: block_reward,
+                reward_type: Some(Fee),
+                commission: None,
+            }]),
+            previous_blockhash: "".to_string(),
+            blockhash: "".to_string(),
+            parent_slot: 0,
+            transactions: None,
+            block_time: None,
+            block_height: None,
+        };
 
-          let first_slot = rewards::get_first_slot_for_epoch(epoch);
-          let slot_index: usize = 10;
-          let slot = first_slot + slot_index as u64;
+        let first_slot = rewards::get_first_slot_for_epoch(epoch);
+        let slot_index: usize = 10;
+        let slot = first_slot + slot_index as u64;
 
-          mock_fee_payment_calculator
-              .expect_get_block_with_config()
-              .withf(move |s, _| *s == slot)
-              .times(1)
-              .returning(move |_, _| Ok(mock_block.clone()));
+        mock_fee_payment_calculator
+            .expect_get_block_with_config()
+            .withf(move |s, _| *s == slot)
+            .times(1)
+            .returning(move |_, _| Ok(mock_block.clone()));
 
-          let mock_rpc_vote_account_status = RpcVoteAccountStatus {
-              current: vec![RpcVoteAccountInfo {
-                  vote_pubkey: "6WgdYhhGE53WrZ7ywJA15hBVkw7CRbQ8yDBBTwmBtBBN".to_string(),
-                  node_pubkey: validator_id.to_string(),
-                  activated_stake: 4_200_000_000_000,
-                  epoch_vote_account: true,
-                  epoch_credits: vec![(812, 256, 128), (811, 128, 64)],
-                  commission: 10,
-                  last_vote: 123456789,
-                  root_slot: 123456700,
-              }],
-              delinquent: vec![],
-          };
+        let mock_rpc_vote_account_status = RpcVoteAccountStatus {
+            current: vec![RpcVoteAccountInfo {
+                vote_pubkey: "6WgdYhhGE53WrZ7ywJA15hBVkw7CRbQ8yDBBTwmBtBBN".to_string(),
+                node_pubkey: validator_id.to_string(),
+                activated_stake: 4_200_000_000_000,
+                epoch_vote_account: true,
+                epoch_credits: vec![(812, 256, 128), (811, 128, 64)],
+                commission: 10,
+                last_vote: 123456789,
+                root_slot: 123456700,
+            }],
+            delinquent: vec![],
+        };
 
-          mock_fee_payment_calculator
-              .expect_get_vote_accounts_with_config()
-              .withf(move |_| true)
-              .times(1)
-              .returning(move |_| Ok(mock_rpc_vote_account_status.clone()));
+        mock_fee_payment_calculator
+            .expect_get_vote_accounts_with_config()
+            .withf(move |_| true)
+            .times(1)
+            .returning(move |_| Ok(mock_rpc_vote_account_status.clone()));
 
-          let mock_rpc_inflation_reward = vec![Some(RpcInflationReward {
-              epoch,
-              effective_slot: 123456789,
-              amount: inflation_reward,
-              post_balance: 1_500_002_500,
-              commission: Some(1),
-          })];
+        let mock_rpc_inflation_reward = vec![Some(RpcInflationReward {
+            epoch,
+            effective_slot: 123456789,
+            amount: inflation_reward,
+            post_balance: 1_500_002_500,
+            commission: Some(1),
+        })];
 
-          mock_fee_payment_calculator
-              .expect_get_inflation_reward()
-              .times(1)
-              .returning(move |_, _| Ok(mock_rpc_inflation_reward.clone()));
+        mock_fee_payment_calculator
+            .expect_get_inflation_reward()
+            .times(1)
+            .returning(move |_, _| Ok(mock_rpc_inflation_reward.clone()));
 
-          mock_fee_payment_calculator
-              .expect_get::<JitoRewards>()
-              .withf(move |url| url.contains(&format!("epoch={epoch}")))
-              .times(1)
-              .returning(move |_| {
-                  Ok(JitoRewards {
-                      total_count: 1000,
-                      rewards: vec![JitoReward {
-                          vote_account: validator_id.to_string(),
-                          mev_revenue: jito_reward,
-                      }],
-                  })
-              });
+        mock_fee_payment_calculator
+            .expect_get::<JitoRewards>()
+            .withf(move |url| url.contains(&format!("epoch={epoch}")))
+            .times(1)
+            .returning(move |_| {
+                Ok(JitoRewards {
+                    total_count: 1000,
+                    rewards: vec![JitoReward {
+                        vote_account: validator_id.to_string(),
+                        mev_revenue: jito_reward,
+                    }],
+                })
+            });
 
-          let mut leader_schedule = HashMap::new();
-          leader_schedule.insert(validator_id.to_string(), vec![slot_index]);
+        let mut leader_schedule = HashMap::new();
+        leader_schedule.insert(validator_id.to_string(), vec![slot_index]);
 
-          mock_fee_payment_calculator
-              .expect_get_leader_schedule()
-              .times(1)
-              .returning(move || Ok(leader_schedule.clone()));
+        mock_fee_payment_calculator
+            .expect_get_leader_schedule()
+            .times(1)
+            .returning(move || Ok(leader_schedule.clone()));
 
-          let rewards = get_rewards_between_timestamps(
-              &mock_fee_payment_calculator,
-              rpc_get_vote_accounts_config,
-              rpc_block_config,
-              start_timestamp,
-              end_timestamp,
-              validator_ids,
-          )
-          .await
-          .unwrap();
+        let rewards = get_rewards_between_timestamps(
+            &mock_fee_payment_calculator,
+            rpc_get_vote_accounts_config,
+            rpc_block_config,
+            start_timestamp,
+            end_timestamp,
+            validator_ids,
+        )
+        .await
+        .unwrap();
 
-          let epoch_rewards = rewards.get(&epoch).unwrap();
-          let reward = epoch_rewards.get(validator_id).unwrap();
+        let epoch_rewards = rewards.get(&epoch).unwrap();
+        let reward = epoch_rewards.get(validator_id).unwrap();
 
-          assert_eq!(reward.epoch, epoch);
-          assert_eq!(reward.block, block_reward);
-          assert_eq!(reward.inflation, inflation_reward);
-          assert_eq!(reward.jito, jito_reward);
-          assert_eq!(reward.total, block_reward + inflation_reward + jito_reward);
-      }
-
+        assert_eq!(reward.epoch, epoch);
+        assert_eq!(reward.block, block_reward);
+        assert_eq!(reward.inflation, inflation_reward);
+        assert_eq!(reward.jito, jito_reward);
+        assert_eq!(reward.total, block_reward + inflation_reward + jito_reward);
+    }
 
     #[tokio::test]
     async fn test_get_total_rewards() {

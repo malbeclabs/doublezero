@@ -26,6 +26,7 @@ use solana_transaction_status_client_types::{
 use std::{collections::HashMap, error::Error, str::FromStr};
 
 const JITO_BASE_URL: &str = "https://kobe.mainnet.jito.network/api/v1/";
+
 const fn get_first_slot_for_epoch(target_epoch: u64) -> u64 {
     DEFAULT_SLOTS_PER_EPOCH * target_epoch
 }
@@ -369,7 +370,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn block_rewards() {
+    async fn test_get_block_rewards() {
         let mut mock_api_provider = MockValidatorRewards::new();
         let validator_id = "some_validator_pubkey".to_string();
         let validator_ids = &[validator_id.clone()];

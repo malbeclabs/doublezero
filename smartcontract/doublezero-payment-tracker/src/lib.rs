@@ -1,6 +1,5 @@
 use serde::Deserialize;
-use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_sdk::{clock::DEFAULT_SLOTS_PER_EPOCH, commitment_config::CommitmentConfig};
+use solana_sdk::clock::DEFAULT_SLOTS_PER_EPOCH;
 use std::collections::HashMap;
 pub mod rewards;
 

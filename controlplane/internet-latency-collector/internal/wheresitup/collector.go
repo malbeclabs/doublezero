@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/collector"
+	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/exporter"
 )
 
 const (
@@ -26,6 +27,7 @@ type Collector struct {
 	log              *slog.Logger
 	jobWaitTimeout   time.Duration // Duration to wait between job creation and export
 	locationsFetcher locationFetcher
+	exporter         exporter.Exporter
 }
 
 type clientInterface interface {
@@ -39,12 +41,13 @@ type clientInterface interface {
 	GetCredit(ctx context.Context) (int, error)
 }
 
-func NewCollector(logger *slog.Logger) *Collector {
+func NewCollector(logger *slog.Logger, exporter exporter.Exporter) *Collector {
 	return &Collector{
 		client:           NewClient(logger),
 		log:              logger,
 		jobWaitTimeout:   RequestTimeout, // Default to 30 seconds
 		locationsFetcher: collector.GetLocations,
+		exporter:         exporter,
 	}
 }
 
@@ -361,8 +364,7 @@ func (c *Collector) formatTimestampFromUnix(unixTime int64) string {
 }
 
 type LocationInfo struct {
-	LocationCode   string
-	LocationPubKey string
+	LocationCode string
 }
 
 // buildLocationMapping creates a mapping from Wheresitup source names to DoubleZero locations
@@ -382,8 +384,7 @@ func (c *Collector) buildLocationMapping(ctx context.Context, locations []collec
 		// Just map the source names to location codes
 		for _, source := range locationMatch.NearestSources {
 			mapping[source.Name] = LocationInfo{
-				LocationCode:   locationMatch.LocationCode,
-				LocationPubKey: "", // No longer available without device info
+				LocationCode: locationMatch.LocationCode,
 			}
 		}
 	}
@@ -417,20 +418,10 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile, outputDir 
 
 	c.log.Info("Found tracked jobs to check", slog.Int("job_count", len(jobIDs)))
 
-	csvExporter, err := collector.NewCSVExporter(c.log, "wheresitup_results", outputDir)
-	if err != nil {
-		return err
-	}
-	defer csvExporter.Close()
-
-	header := []string{"source_location", "target_location", "source_pubkey", "target_pubkey", "timestamp", "min_latency"}
-	if err := csvExporter.WriteHeader(header); err != nil {
-		return err
-	}
-
 	processedCount := 0
 	var completedJobIDs []string
 
+	records := make([]exporter.Record, 0, len(jobIDs))
 	for _, jobID := range jobIDs {
 		c.log.Debug("Processing job", slog.String("job_id", jobID))
 
@@ -473,7 +464,7 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile, outputDir 
 			continue
 		}
 
-		sourceLocation, targetLocation, sourcePubKey, targetPubKey := c.parseLocationInfoFromJobResults(results, locationMap)
+		sourceLocation, targetLocation := c.parseLocationInfoFromJobResults(results, locationMap)
 
 		var minLatency string
 		for _, serviceResult := range results.Response.Complete {
@@ -490,22 +481,35 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile, outputDir 
 			continue
 		}
 
-		record := []string{
-			sourceLocation,
-			targetLocation,
-			sourcePubKey,
-			targetPubKey,
-			time.Unix(results.Request.StartTime, 0).UTC().Format(collector.TimeFormatMicroseconds),
-			minLatency,
+		latency, err := parseMillisString(minLatency)
+		if err != nil {
+			c.log.Warn("Wheresitup - failed to parse min latency",
+				slog.String("job_id", jobID),
+				slog.String("error", err.Error()))
+			continue
 		}
 
-		csvExporter.WriteRecordWithWarning(record)
+		records = append(records, exporter.Record{
+			DataProvider:       exporter.DataProviderNameWheresitup,
+			SourceLocationCode: sourceLocation,
+			TargetLocationCode: targetLocation,
+			Timestamp:          time.Unix(results.Request.StartTime, 0).UTC(),
+			RTT:                latency,
+		})
 
 		completedJobIDs = append(completedJobIDs, jobID)
 		processedCount++
 
 		// Add delay to avoid rate limiting
 		time.Sleep(CallDelay)
+	}
+
+	// Write the batch of records with the exporter.
+	if len(records) > 0 {
+		if err := c.exporter.WriteRecords(ctx, records); err != nil {
+			c.log.Warn("Wheresitup failed to write records", "error", err.Error(), "records", len(records))
+			return fmt.Errorf("failed to write records: %w", err)
+		}
 	}
 
 	if len(completedJobIDs) > 0 {
@@ -519,9 +523,17 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile, outputDir 
 
 	c.log.Info("Operation completed: Wheresitup export_job_results",
 		slog.Int("processed_count", processedCount),
-		slog.String("output_file", csvExporter.GetFilename()),
 		slog.Int("removed_job_count", len(completedJobIDs)))
+
 	return nil
+}
+
+func parseMillisString(s string) (time.Duration, error) {
+	ms, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0, err
+	}
+	return time.Duration(ms*1000) * time.Microsecond, nil
 }
 
 func (c *Collector) parseLocationCodesFromJobDetails(job JobDetails) (string, string) {
@@ -542,8 +554,8 @@ func (c *Collector) parseLocationCodesFromJobDetails(job JobDetails) (string, st
 	return sourceLocation, targetLocation
 }
 
-func (c *Collector) parseLocationInfoFromJobResults(results *JobResultResponse, locationMap map[string]LocationInfo) (string, string, string, string) {
-	var sourceLocation, targetLocation, sourcePubKey, targetPubKey string
+func (c *Collector) parseLocationInfoFromJobResults(results *JobResultResponse, locationMap map[string]LocationInfo) (string, string) {
+	var sourceLocation, targetLocation string
 
 	wheresitupTargetName := parseLocationFromUrl(results.Request.URL)
 
@@ -556,21 +568,17 @@ func (c *Collector) parseLocationInfoFromJobResults(results *JobResultResponse, 
 	// Map Wheresitup names to DoubleZero location info
 	if sourceInfo, exists := locationMap[wheresitupSourceName]; exists {
 		sourceLocation = sourceInfo.LocationCode
-		sourcePubKey = sourceInfo.LocationPubKey
 	} else {
 		sourceLocation = "Unknown"
-		sourcePubKey = ""
 	}
 
 	if targetInfo, exists := locationMap[wheresitupTargetName]; exists {
 		targetLocation = targetInfo.LocationCode
-		targetPubKey = targetInfo.LocationPubKey
 	} else {
 		targetLocation = "Unknown"
-		targetPubKey = ""
 	}
 
-	return sourceLocation, targetLocation, sourcePubKey, targetPubKey
+	return sourceLocation, targetLocation
 }
 
 func parseLocationFromUrl(url string) string {

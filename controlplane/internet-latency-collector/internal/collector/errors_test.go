@@ -177,16 +177,6 @@ func TestInternetLatency_Errors_NewValidationError(t *testing.T) {
 	require.Equal(t, "invalid input", err.Message)
 }
 
-func TestInternetLatency_Errors_NewFileIOError(t *testing.T) {
-	t.Parallel()
-
-	err := NewFileIOError("file_read", "file not found", nil)
-
-	require.Equal(t, ErrorTypeFileIO, err.Type)
-	require.Equal(t, "file_read", err.Operation)
-	require.Equal(t, "file not found", err.Message)
-}
-
 func TestInternetLatency_Errors_ErrorConstants(t *testing.T) {
 	t.Parallel()
 
@@ -209,9 +199,6 @@ func TestInternetLatency_Errors_ErrorConstants(t *testing.T) {
 		{"ErrMeasurementCreation", ErrMeasurementCreation, ErrorTypeAPI, "measurement_creation"},
 		{"ErrJobCreation", ErrJobCreation, ErrorTypeAPI, "job_creation"},
 		{"ErrMeasurementStop", ErrMeasurementStop, ErrorTypeAPI, "measurement_stop"},
-		{"ErrJobIDStorage", ErrJobIDStorage, ErrorTypeFileIO, "job_id_storage"},
-		{"ErrJobIDRetrieval", ErrJobIDRetrieval, ErrorTypeFileIO, "job_id_retrieval"},
-		{"ErrResultsExport", ErrResultsExport, ErrorTypeFileIO, "results_export"},
 		{"ErrProbeConnection", ErrProbeConnection, ErrorTypeNetwork, "probe_connection"},
 		{"ErrJobResultRetrieval", ErrJobResultRetrieval, ErrorTypeNetwork, "job_result_retrieval"},
 	}

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/collector"
+	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/exporter"
 	"github.com/stretchr/testify/require"
 )
 
@@ -231,7 +232,7 @@ func TestInternetLatency_RIPEAtlas_NewCollector(t *testing.T) {
 
 	log := logger.With("test", t.Name())
 
-	c := NewCollector(log)
+	c := NewCollector(log, nil)
 
 	require.NotNil(t, c, "NewCollector should return a non-nil collector")
 	require.NotNil(t, c.client, "Client should be initialized")
@@ -242,11 +243,12 @@ func TestInternetLatency_RIPEAtlas_ParseLatencyFromResult(t *testing.T) {
 
 	log := logger.With("test", t.Name())
 
-	c := NewCollector(log)
+	c := NewCollector(log, nil)
 
 	// Valid ping result
+	timestamp := time.Unix(1609459200, 0).UTC()
 	result := map[string]any{
-		"timestamp": float64(1609459200),
+		"timestamp": float64(timestamp.Unix()),
 		"result": []any{
 			map[string]any{"rtt": float64(25.5)},
 			map[string]any{"rtt": float64(26.0)},
@@ -255,8 +257,8 @@ func TestInternetLatency_RIPEAtlas_ParseLatencyFromResult(t *testing.T) {
 	}
 
 	latency, timestamp := c.parseLatencyFromResult(result)
-	require.Equal(t, 25.5, latency, "Expected latency 25.5")
-	require.Equal(t, "2021-01-01T00:00:00.000000", timestamp, "Expected timestamp 2021-01-01T00:00:00.000000")
+	require.Equal(t, 25500*time.Microsecond, latency, "Expected latency 25.5")
+	require.Equal(t, timestamp, timestamp, "Expected timestamp 2021-01-01T00:00:00.000000")
 
 	// No RTT values
 	result = map[string]any{
@@ -265,11 +267,11 @@ func TestInternetLatency_RIPEAtlas_ParseLatencyFromResult(t *testing.T) {
 	}
 
 	latency, _ = c.parseLatencyFromResult(result)
-	require.Equal(t, 0.0, latency, "Expected latency 0 for no results")
+	require.Equal(t, 0*time.Microsecond, latency, "Expected latency 0 for no results")
 
 	// Invalid result structure
 	latency, timestamp = c.parseLatencyFromResult("invalid")
-	require.Equal(t, 0.0, latency, "Expected zero latency for invalid result")
+	require.Equal(t, 0*time.Microsecond, latency, "Expected zero latency for invalid result")
 	require.Empty(t, timestamp, "Expected empty timestamp for invalid result")
 }
 
@@ -413,22 +415,23 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults(t *testing.T) {
 		},
 	}
 
-	c := &Collector{client: mockClient, log: log}
+	outputDir := t.TempDir()
 
-	// Create temp directory
-	tempDir := t.TempDir()
+	e, err := exporter.NewCSVExporter(log, "ripe_atlas_measurements", outputDir)
+	require.NoError(t, err)
+	c := &Collector{client: mockClient, log: log, exporter: e}
 
 	// First run - should download all data
-	err := c.ExportMeasurementResults(t.Context(), tempDir, tempDir)
+	err = c.ExportMeasurementResults(t.Context(), outputDir, outputDir)
 	require.NoError(t, err, "First ExportMeasurementResults() failed")
 
 	// Check if CSV file was created
-	files, err := filepath.Glob(filepath.Join(tempDir, "ripe_atlas_measurements_*.csv"))
+	files, err := filepath.Glob(filepath.Join(outputDir, "ripe_atlas_measurements_*.csv"))
 	require.NoError(t, err, "Failed to glob CSV files")
 	require.Len(t, files, 1, "Expected 1 CSV file")
 
 	// Check if timestamps file was created
-	timestampFile := filepath.Join(tempDir, TimestampFileName)
+	timestampFile := filepath.Join(outputDir, TimestampFileName)
 	_, err = os.Stat(timestampFile)
 	require.NoError(t, err, "Timestamp file should be created")
 
@@ -438,7 +441,7 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults(t *testing.T) {
 	require.Contains(t, string(timestampData), "1609459260", "Timestamp file should contain the latest timestamp")
 
 	// Second run - should only download new data
-	err = c.ExportMeasurementResults(t.Context(), tempDir, tempDir)
+	err = c.ExportMeasurementResults(t.Context(), outputDir, outputDir)
 	require.NoError(t, err, "Second ExportMeasurementResults() failed")
 
 	// Verify that timestamp file was updated
@@ -508,8 +511,6 @@ func TestInternetLatency_RIPEAtlas_ListMeasurements(t *testing.T) {
 }
 
 func TestInternetLatency_RIPEAtlas_ListAtlasProbes(t *testing.T) {
-	t.Parallel()
-
 	log := logger.With("test", t.Name())
 
 	mockClient := &MockClient{
@@ -576,7 +577,7 @@ func TestInternetLatency_RIPEAtlas_ListAtlasProbes_NoDevices(t *testing.T) {
 
 	log := logger.With("test", t.Name())
 
-	c := NewCollector(log)
+	c := NewCollector(log, nil)
 
 	err := c.ListAtlasProbes(t.Context(), []collector.LocationMatch{})
 
@@ -588,7 +589,7 @@ func TestInternetLatency_RIPEAtlas_GenerateWantedMeasurements_Deterministic(t *t
 
 	log := logger.With("test", t.Name())
 
-	c := NewCollector(log)
+	c := NewCollector(log, nil)
 
 	// Create test locations with probes in non-alphabetical order
 	locations := []LocationProbeMatch{
@@ -894,10 +895,12 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_RemoveUnwanted(t *testi
 		},
 	}
 
-	c := &Collector{client: mockClient, log: log}
+	e, err := exporter.NewCSVExporter(log, "ripe_atlas_measurements", outputDir)
+	require.NoError(t, err)
+	c := &Collector{client: mockClient, log: log, exporter: e}
 
 	// Empty location matches means all existing measurements should be removed
-	err := c.configureMeasurements(t.Context(), []LocationProbeMatch{}, false, 1, outputDir, stateDir)
+	err = c.configureMeasurements(t.Context(), []LocationProbeMatch{}, false, 1, outputDir, stateDir)
 	require.NoError(t, err, "configureMeasurements should succeed")
 
 	// Verify measurements were exported and removed
@@ -930,12 +933,14 @@ func TestInternetLatency_RIPEAtlas_Run_ErrorHandling(t *testing.T) {
 			},
 		}
 
-		c := &Collector{client: mockClient, log: log}
+		e, err := exporter.NewCSVExporter(log, "ripe_atlas_measurements", t.TempDir())
+		require.NoError(t, err)
+		c := &Collector{client: mockClient, log: log, exporter: e}
 
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 		defer cancel()
 
-		err := c.Run(ctx, false, 1, t.TempDir(), t.TempDir(), 30*time.Millisecond, 50*time.Millisecond)
+		err = c.Run(ctx, false, 1, t.TempDir(), t.TempDir(), 30*time.Millisecond, 50*time.Millisecond)
 
 		// Should not return error - errors are logged but don't stop the collector
 		require.Nil(t, err, "Run should not return error for measurement creation failures")
@@ -951,12 +956,14 @@ func TestInternetLatency_RIPEAtlas_Run_ErrorHandling(t *testing.T) {
 			},
 		}
 
-		c := &Collector{client: mockClient, log: log}
+		e, err := exporter.NewCSVExporter(log, "ripe_atlas_measurements", t.TempDir())
+		require.NoError(t, err)
+		c := &Collector{client: mockClient, log: log, exporter: e}
 
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 		defer cancel()
 
-		err := c.Run(ctx, false, 1, t.TempDir(), t.TempDir(), 50*time.Millisecond, 30*time.Millisecond)
+		err = c.Run(ctx, false, 1, t.TempDir(), t.TempDir(), 50*time.Millisecond, 30*time.Millisecond)
 
 		// Should not return error - export errors are logged but don't stop the collector
 		require.Nil(t, err, "Run should not return error for export failures")
@@ -1039,7 +1046,9 @@ func TestInternetLatency_RIPEAtlas_Run(t *testing.T) {
 		},
 	}
 
-	c := &Collector{client: mockClient, log: log}
+	e, err := exporter.NewCSVExporter(log, "ripe_atlas_measurements", outputDir)
+	require.NoError(t, err)
+	c := &Collector{client: mockClient, log: log, exporter: e}
 
 	// Use different intervals to verify both run independently
 	measurementInterval := 50 * time.Millisecond
@@ -1048,7 +1057,7 @@ func TestInternetLatency_RIPEAtlas_Run(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
 	defer cancel()
 
-	err := c.Run(ctx, false, 1, stateDir, outputDir, measurementInterval, exportInterval)
+	err = c.Run(ctx, false, 1, stateDir, outputDir, measurementInterval, exportInterval)
 	require.Nil(t, err, "Run should complete without error")
 
 	// Verify both goroutines ran
@@ -1080,11 +1089,11 @@ func TestInternetLatency_RIPEAtlas_Run(t *testing.T) {
 	csvContent := string(csvData)
 
 	// Check header
-	require.Contains(t, csvContent, "location_a,location_z,timestamp,latency",
+	require.Contains(t, csvContent, "source_location_code,target_location_code,timestamp,latency",
 		"CSV header should be correct")
 
 	// Check data rows contain expected values
-	require.Contains(t, csvContent, "42.50", "CSV should contain latency value")
+	require.Contains(t, csvContent, "42.5ms", "CSV should contain latency value")
 	require.Contains(t, csvContent, "NYC", "CSV should contain NYC location")
 	require.Contains(t, csvContent, "LON", "CSV should contain LON location")
 

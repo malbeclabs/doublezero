@@ -644,9 +644,7 @@ func TestInternetLatency_Location_LoadLocationsFromJSON_NonexistentFile(t *testi
 	_, err := LoadLocationsFromJSON(log, "nonexistent_file.json")
 	require.Error(t, err, "Expected error for nonexistent file")
 
-	// Should be a CollectorError
-	var collectorErr *CollectorError
-	require.True(t, isCollectorErrorLocation(err, &collectorErr), "Error should be CollectorError, got %T", err)
+	require.ErrorContains(t, err, "no such file or directory")
 }
 
 func TestInternetLatency_Location_LoadLocationsFromJSON_SpecialCharacters(t *testing.T) {

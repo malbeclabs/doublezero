@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/collector"
+	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/exporter"
 )
 
 // mockLocationsFetcher returns a mock location fetcher for testing
@@ -389,7 +390,11 @@ func TestInternetLatency_Wheresitup_ExportJobResults_Success(t *testing.T) {
 		{LocationCode: "US-LAX", Latitude: 34.0522, Longitude: -118.2437},
 	}
 
+	e, err := exporter.NewCSVExporter(log, "wheresitup_measurements", outputDir)
+	require.NoError(t, err)
+
 	c := &Collector{
+		exporter: e,
 		client: &MockWheresitupClient{
 			GetNearestSourcesForLocationsFunc: func(ctx context.Context, locations []collector.LocationMatch) ([]LocationSourceMatch, error) {
 				return []LocationSourceMatch{
@@ -461,7 +466,7 @@ func TestInternetLatency_Wheresitup_ExportJobResults_Success(t *testing.T) {
 
 	// Save a job ID to process
 	state := NewState(jobIDsFile)
-	err := state.AddJobIDs([]string{"job-123"})
+	err = state.AddJobIDs([]string{"job-123"})
 	require.NoError(t, err, "state.AddJobIDs() error = %v", err)
 
 	err = c.ExportJobResults(t.Context(), jobIDsFile, outputDir)
@@ -498,7 +503,7 @@ func TestInternetLatency_Wheresitup_ParseLocationCodesFromJobDetails(t *testing.
 
 	log := logger.With("test", t.Name())
 
-	c := NewCollector(log)
+	c := NewCollector(log, nil)
 
 	tests := []struct {
 		name  string
@@ -559,7 +564,7 @@ func TestInternetLatency_Wheresitup_ExtractChecksFromJobDetails(t *testing.T) {
 
 	log := logger.With("test", t.Name())
 
-	c := NewCollector(log)
+	c := NewCollector(log, nil)
 
 	tests := []struct {
 		name string
@@ -613,7 +618,7 @@ func TestInternetLatency_Wheresitup_FormatTimestampFromUnix(t *testing.T) {
 
 	log := logger.With("test", t.Name())
 
-	c := NewCollector(log)
+	c := NewCollector(log, nil)
 
 	// Test with a known timestamp
 	unixTime := int64(1640995200) // 2022-01-01 00:00:00 UTC
@@ -914,7 +919,12 @@ func TestInternetLatency_Wheresitup_Run_TickerExecution(t *testing.T) {
 		},
 	}
 
-	c := &Collector{client: mockClient, log: log}
+	outputDir := t.TempDir()
+
+	e, err := exporter.NewCSVExporter(log, "wheresitup_results", outputDir)
+	require.NoError(t, err)
+
+	c := &Collector{client: mockClient, log: log, exporter: e}
 	// Set a very short wait timeout for testing
 	c.SetJobWaitTimeout(1 * time.Millisecond)
 
@@ -940,7 +950,7 @@ func TestInternetLatency_Wheresitup_Run_TickerExecution(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		_ = c.Run(ctx, interval, false, "jobs.json", stateDir, tempDir)
+		_ = c.Run(ctx, interval, false, "jobs.json", stateDir, outputDir)
 	}()
 
 	// Wait for completion
@@ -961,7 +971,7 @@ func TestInternetLatency_Wheresitup_Run_TickerExecution(t *testing.T) {
 	require.Contains(t, createdJobIDs, exportedJobID, "The exported job should be one of the created jobs")
 
 	// Verify CSV file was created
-	csvFiles, err := filepath.Glob(filepath.Join(tempDir, "wheresitup_results_*.csv"))
+	csvFiles, err := filepath.Glob(filepath.Join(outputDir, "wheresitup_results_*.csv"))
 	require.NoError(t, err, "Failed to glob CSV files")
 	require.Len(t, csvFiles, 1, "Expected exactly one CSV file to be created")
 
@@ -971,13 +981,13 @@ func TestInternetLatency_Wheresitup_Run_TickerExecution(t *testing.T) {
 	csvStr := string(csvContent)
 
 	// Check CSV header
-	require.Contains(t, csvStr, "source_location,target_location,source_pubkey,target_pubkey,timestamp,min_latency",
+	require.Contains(t, csvStr, "source_location_code,target_location_code,timestamp,latency",
 		"CSV should contain the expected header")
 
 	// Check that data row exists with the expected values
 	require.Contains(t, csvStr, "NYC", "CSV should contain NYC location")
 	require.Contains(t, csvStr, "LON", "CSV should contain LON location")
-	require.Contains(t, csvStr, "25.5", "CSV should contain the latency value")
+	require.Contains(t, csvStr, "25.5ms", "CSV should contain the latency value")
 
 	// Verify job was removed from state after successful export
 	stateFile := filepath.Join(stateDir, "jobs.json")

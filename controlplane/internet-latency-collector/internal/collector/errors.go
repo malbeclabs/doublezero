@@ -87,10 +87,6 @@ func NewValidationError(operation, message string, cause error) *CollectorError 
 	return NewError(ErrorTypeValidation, operation, message, cause)
 }
 
-func NewFileIOError(operation, message string, cause error) *CollectorError {
-	return NewError(ErrorTypeFileIO, operation, message, cause)
-}
-
 var (
 	ErrLocationNotFound    = NewValidationError("location_lookup", "location not found", nil)
 	ErrInvalidCoordinates  = NewValidationError("coordinate_validation", "invalid coordinates provided", nil)
@@ -106,10 +102,6 @@ var (
 	ErrMeasurementCreation = NewAPIError("measurement_creation", "failed to create measurement", nil)
 	ErrJobCreation         = NewAPIError("job_creation", "failed to create job", nil)
 	ErrMeasurementStop     = NewAPIError("measurement_stop", "failed to stop measurement", nil)
-
-	ErrJobIDStorage   = NewFileIOError("job_id_storage", "failed to store job IDs", nil)
-	ErrJobIDRetrieval = NewFileIOError("job_id_retrieval", "failed to retrieve job IDs", nil)
-	ErrResultsExport  = NewFileIOError("results_export", "failed to export results", nil)
 
 	ErrProbeConnection    = NewNetworkError("probe_connection", "failed to connect to probe", nil)
 	ErrJobResultRetrieval = NewNetworkError("job_result_retrieval", "failed to retrieve job results", nil)

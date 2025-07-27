@@ -1,11 +1,13 @@
-package collector
+package exporter_test
 
 import (
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/exporter"
 	"github.com/stretchr/testify/require"
 )
 
@@ -17,23 +19,28 @@ func TestInternetLatency_CSVExporter_New(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir := t.TempDir()
 
-	exporter, err := NewCSVExporter(log, "test_prefix", tempDir)
+	exporter, err := exporter.NewCSVExporter(log, "test_prefix", tempDir)
 	require.NoError(t, err)
 	defer exporter.Close()
 
 	// Verify the exporter is properly initialized
-	require.NotNil(t, exporter.file)
-	require.NotNil(t, exporter.writer)
-	require.NotEmpty(t, exporter.filename)
+	require.NotEmpty(t, exporter.GetFilename())
 
 	// Verify filename format
 	expectedPrefix := "test_prefix_"
-	require.Contains(t, filepath.Base(exporter.filename), expectedPrefix)
-	require.True(t, strings.HasSuffix(exporter.filename, ".csv"))
+	require.Contains(t, filepath.Base(exporter.GetFilename()), expectedPrefix)
+	require.True(t, strings.HasSuffix(exporter.GetFilename(), ".csv"))
 
 	// Verify file exists
-	_, err = os.Stat(exporter.filename)
+	_, err = os.Stat(exporter.GetFilename())
 	require.NoError(t, err)
+
+	// Read the file and verify header
+	content, err := os.ReadFile(exporter.GetFilename())
+	require.NoError(t, err)
+
+	expectedHeader := "source_location_code,target_location_code,timestamp,latency\n"
+	require.Equal(t, expectedHeader, string(content))
 }
 
 func TestInternetLatency_CSVExporter_CreateDirectory(t *testing.T) {
@@ -45,7 +52,7 @@ func TestInternetLatency_CSVExporter_CreateDirectory(t *testing.T) {
 	tempDir := t.TempDir()
 	newDir := filepath.Join(tempDir, "subdir", "deeper")
 
-	exporter, err := NewCSVExporter(log, "test", newDir)
+	exporter, err := exporter.NewCSVExporter(log, "test", newDir)
 	require.NoError(t, err)
 	defer exporter.Close()
 
@@ -69,39 +76,8 @@ func TestInternetLatency_CSVExporter_InvalidDirectory(t *testing.T) {
 
 	// Now try to use this file path as a directory - should fail
 	invalidPath := filepath.Join(invalidDir, "subdir")
-	_, err = NewCSVExporter(log, "test", invalidPath)
+	_, err = exporter.NewCSVExporter(log, "test", invalidPath)
 	require.Error(t, err)
-
-	// Verify it's a CollectorError
-	var collectorErr *CollectorError
-	require.True(t, isCollectorError(err, &collectorErr))
-	require.Equal(t, ErrorTypeFileIO, collectorErr.Type)
-	require.Equal(t, "create_output_directory", collectorErr.Operation)
-}
-
-func TestInternetLatency_CSVExporter_WriteHeader(t *testing.T) {
-	t.Parallel()
-
-	log := logger.With("test", t.Name())
-
-	tempDir := t.TempDir()
-	exporter, err := NewCSVExporter(log, "test", tempDir)
-	require.NoError(t, err)
-	defer exporter.Close()
-
-	header := []string{"column1", "column2", "column3"}
-	err = exporter.WriteHeader(header)
-	require.NoError(t, err)
-
-	// Flush and close to ensure data is written
-	exporter.Close()
-
-	// Read the file and verify header
-	content, err := os.ReadFile(exporter.filename)
-	require.NoError(t, err)
-
-	expectedHeader := "column1,column2,column3\n"
-	require.Equal(t, expectedHeader, string(content))
 }
 
 func TestInternetLatency_CSVExporter_GetFilename(t *testing.T) {
@@ -110,7 +86,7 @@ func TestInternetLatency_CSVExporter_GetFilename(t *testing.T) {
 	log := logger.With("test", t.Name())
 
 	tempDir := t.TempDir()
-	exporter, err := NewCSVExporter(log, "test_prefix", tempDir)
+	exporter, err := exporter.NewCSVExporter(log, "test_prefix", tempDir)
 	require.NoError(t, err)
 	defer exporter.Close()
 
@@ -120,37 +96,44 @@ func TestInternetLatency_CSVExporter_GetFilename(t *testing.T) {
 	require.True(t, strings.HasSuffix(filename, ".csv"))
 }
 
-func TestInternetLatency_CSVExporter_WriteRecordWithWarning(t *testing.T) {
+func TestInternetLatency_CSVExporter_WriteRecords(t *testing.T) {
 	t.Parallel()
 
 	log := logger.With("test", t.Name())
 
 	tempDir := t.TempDir()
-	exporter, err := NewCSVExporter(log, "test", tempDir)
+	e, err := exporter.NewCSVExporter(log, "test", tempDir)
 	require.NoError(t, err)
-	defer exporter.Close()
-
-	// Write header first
-	header := []string{"col1", "col2", "col3"}
-	err = exporter.WriteHeader(header)
-	require.NoError(t, err)
+	defer e.Close()
 
 	// Test writing a valid record
-	record := []string{"value1", "value2", "value3"}
-	exporter.WriteRecordWithWarning(record)
+	records := []exporter.Record{
+		{
+			SourceLocationCode: "source1",
+			TargetLocationCode: "target1",
+			Timestamp:          time.Unix(100, 0),
+			RTT:                time.Duration(100),
+		},
+		{
+			SourceLocationCode: "source2",
+			TargetLocationCode: "target2",
+			Timestamp:          time.Unix(200, 0),
+			RTT:                time.Duration(200),
+		},
+	}
 
-	// Test writing a record with commas (should be escaped)
-	recordWithComma := []string{"value,with,comma", "normal", "value3"}
-	exporter.WriteRecordWithWarning(recordWithComma)
-
-	// Close to flush
-	exporter.Close()
-
-	// Read and verify content
-	content, err := os.ReadFile(exporter.filename)
+	// Test writing a record
+	err = e.WriteRecords(t.Context(), records)
 	require.NoError(t, err)
 
-	expectedContent := "col1,col2,col3\nvalue1,value2,value3\n\"value,with,comma\",normal,value3\n"
+	// Close to flush
+	e.Close()
+
+	// Read and verify content
+	content, err := os.ReadFile(e.GetFilename())
+	require.NoError(t, err)
+
+	expectedContent := "source_location_code,target_location_code,timestamp,latency\nsource1,target1," + time.Unix(100, 0).Format(time.RFC3339) + ",100ns\nsource2,target2," + time.Unix(200, 0).Format(time.RFC3339) + ",200ns\n"
 	require.Equal(t, expectedContent, string(content))
 }
 
@@ -173,17 +156,8 @@ func TestInternetLatency_CSVExporter_EscapeCSVField(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := EscapeCSVField(tt.input)
+			result := exporter.EscapeCSVField(tt.input)
 			require.Equal(t, tt.expected, result)
 		})
 	}
-}
-
-// Helper function to check if an error is a CollectorError
-func isCollectorError(err error, collectorErr **CollectorError) bool {
-	if ce, ok := err.(*CollectorError); ok {
-		*collectorErr = ce
-		return true
-	}
-	return false
 }

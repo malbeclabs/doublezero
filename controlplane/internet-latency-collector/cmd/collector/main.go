@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	collector "github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/collector"
+	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/exporter"
 	ripeatlas "github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/ripeatlas"
 	wheresitup "github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/wheresitup"
 )
@@ -67,9 +68,11 @@ RIPE Atlas measurements hourly, and exports RIPE Atlas results every 2 minutes.`
 			slog.String("wheresitup_interval", wheresitupCollectionInterval.String()),
 			slog.Bool("dry_run", dryRun))
 
-		ripeatlasCollector := ripeatlas.NewCollector(log)
+		ripeatlasCollector, close := newRIPEAtlasCollector(log, outputDir)
+		defer close()
 
-		wheresitupCollector := wheresitup.NewCollector(log)
+		wheresitupCollector, close := newWheresitupCollector(log, outputDir)
+		defer close()
 
 		config := collector.Config{
 			Logger:     log,
@@ -123,7 +126,8 @@ var ripeatlasListProbesCmd = &cobra.Command{
 			return
 		}
 
-		ripeCollector := ripeatlas.NewCollector(log)
+		ripeCollector, close := newRIPEAtlasCollector(log, outputDir)
+		defer close()
 
 		if err := ripeCollector.ListAtlasProbes(ctx, locations); err != nil {
 			if ctx.Err() != nil {
@@ -144,7 +148,8 @@ var ripeatlasListMeasurementsCmd = &cobra.Command{
 		log := collector.NewLogger(collector.LogLevel(logLevel))
 		log.Info("Operation started: list_ripeatlas_measurements")
 
-		ripeCollector := ripeatlas.NewCollector(log)
+		ripeCollector, close := newRIPEAtlasCollector(log, outputDir)
+		defer close()
 
 		if err := ripeCollector.ListMeasurements(context.Background()); err != nil {
 			log.Error("Operation failed: list_ripeatlas_measurements", slog.String("error", err.Error()))
@@ -159,7 +164,8 @@ var ripeatlasCreateMeasurementsCmd = &cobra.Command{
 	Short: "Create RIPE Atlas measurements between location pairs",
 	Run: func(cmd *cobra.Command, args []string) {
 		log := collector.NewLogger(collector.LogLevel(logLevel))
-		ripeCollector := ripeatlas.NewCollector(log)
+		ripeCollector, close := newRIPEAtlasCollector(log, outputDir)
+		defer close()
 
 		if err := ripeCollector.RunRipeAtlasMeasurementCreation(context.Background(), dryRun, ripeatlasProbesPerLocation, outputDir, stateDir); err != nil {
 			log.Error("Operation failed: create_ripeatlas_measurements", slog.String("error", err.Error()))
@@ -176,7 +182,8 @@ var ripeatlasClearMeasurementsCmd = &cobra.Command{
 		log := collector.NewLogger(collector.LogLevel(logLevel))
 		log.Info("Operation started: clear_atlas_measurements")
 
-		ripeCollector := ripeatlas.NewCollector(log)
+		ripeCollector, close := newRIPEAtlasCollector(log, outputDir)
+		defer close()
 
 		if err := ripeCollector.ClearAllMeasurements(context.Background()); err != nil {
 			log.Error("Operation failed: clear_ripeatlas_measurements", slog.String("error", err.Error()))
@@ -195,7 +202,8 @@ var ripeatlasExportMeasurementsCmd = &cobra.Command{
 			slog.String("state_dir", stateDir),
 			slog.String("output_dir", outputDir))
 
-		ripeCollector := ripeatlas.NewCollector(log)
+		ripeCollector, close := newRIPEAtlasCollector(log, outputDir)
+		defer close()
 
 		if err := ripeCollector.ExportMeasurementResults(context.Background(), stateDir, outputDir); err != nil {
 			log.Error("Operation failed: export_ripeatlas_measurements", slog.String("error", err.Error()))
@@ -227,7 +235,8 @@ var wheresitupListSourcesCmd = &cobra.Command{
 			return
 		}
 
-		wheresitupCollector := wheresitup.NewCollector(log)
+		wheresitupCollector, close := newWheresitupCollector(log, outputDir)
+		defer close()
 
 		if err := wheresitupCollector.PrintSources(ctx, locations); err != nil {
 			if ctx.Err() != nil {
@@ -248,7 +257,8 @@ var wheresitupListJobsCmd = &cobra.Command{
 		log := collector.NewLogger(collector.LogLevel(logLevel))
 		log.Info("Operation started: list_wheresitup_jobs")
 
-		wheresitupCollector := wheresitup.NewCollector(log)
+		wheresitupCollector, close := newWheresitupCollector(log, outputDir)
+		defer close()
 
 		if err := wheresitupCollector.ListJobs(context.Background()); err != nil {
 			log.Error("Operation failed: list_wheresitup_jobs", slog.String("error", err.Error()))
@@ -319,5 +329,29 @@ func main() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
+	}
+}
+
+func newRIPEAtlasCollector(log *slog.Logger, outputDir string) (*ripeatlas.Collector, func()) {
+	exporter, err := exporter.NewCSVExporter(log, "ripe_atlas_measurements", outputDir)
+	if err != nil {
+		log.Error("Operation failed: create_csv_exporter", "error", err)
+		os.Exit(1)
+	}
+	ripeatlasCollector := ripeatlas.NewCollector(log, exporter)
+	return ripeatlasCollector, func() {
+		exporter.Close()
+	}
+}
+
+func newWheresitupCollector(log *slog.Logger, outputDir string) (*wheresitup.Collector, func()) {
+	exporter, err := exporter.NewCSVExporter(log, "wheresitup_results", outputDir)
+	if err != nil {
+		log.Error("Operation failed: create_csv_exporter", "error", err)
+		os.Exit(1)
+	}
+	wheresitupCollector := wheresitup.NewCollector(log, exporter)
+	return wheresitupCollector, func() {
+		exporter.Close()
 	}
 }

@@ -1,6 +1,7 @@
-package collector
+package exporter
 
 import (
+	"context"
 	"encoding/csv"
 	"fmt"
 	"log/slog"
@@ -8,6 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+)
+
+var (
+	csvRecordHeader = []string{"source_location_code", "target_location_code", "timestamp", "latency"}
 )
 
 type CSVExporter struct {
@@ -20,8 +25,7 @@ type CSVExporter struct {
 
 func NewCSVExporter(log *slog.Logger, prefix, outputDir string) (*CSVExporter, error) {
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		return nil, NewFileIOError("create_output_directory", "failed to create output directory", err).
-			WithContext("output_dir", outputDir)
+		return nil, fmt.Errorf("failed to create output directory: %w", err)
 	}
 
 	now := time.Now().UTC()
@@ -39,8 +43,7 @@ func NewCSVExporter(log *slog.Logger, prefix, outputDir string) (*CSVExporter, e
 	if fileExists {
 		file, err = os.OpenFile(fullPath, os.O_APPEND|os.O_WRONLY, 0644)
 		if err != nil {
-			return nil, NewFileIOError("open_csv_file", "failed to open CSV file for appending", err).
-				WithContext("file_path", fullPath)
+			return nil, fmt.Errorf("failed to open CSV file for appending: %w", err)
 		}
 		log.Debug("Opened existing CSV file for appending",
 			slog.String("file_path", fullPath),
@@ -48,8 +51,7 @@ func NewCSVExporter(log *slog.Logger, prefix, outputDir string) (*CSVExporter, e
 	} else {
 		file, err = os.Create(fullPath)
 		if err != nil {
-			return nil, NewFileIOError("create_csv_file", "failed to create CSV file", err).
-				WithContext("file_path", fullPath)
+			return nil, fmt.Errorf("failed to create CSV file: %w", err)
 		}
 		log.Info("Created new CSV file",
 			slog.String("file_path", fullPath),
@@ -58,13 +60,19 @@ func NewCSVExporter(log *slog.Logger, prefix, outputDir string) (*CSVExporter, e
 
 	writer := csv.NewWriter(file)
 
-	return &CSVExporter{
+	e := &CSVExporter{
 		log:         log,
 		file:        file,
 		writer:      writer,
 		filename:    fullPath,
 		isAppending: fileExists,
-	}, nil
+	}
+
+	if err := e.WriteHeader(csvRecordHeader); err != nil {
+		return nil, fmt.Errorf("failed to write CSV header: %w", err)
+	}
+
+	return e, nil
 }
 
 func (e *CSVExporter) WriteHeader(header []string) error {
@@ -75,20 +83,32 @@ func (e *CSVExporter) WriteHeader(header []string) error {
 	}
 
 	if err := e.writer.Write(header); err != nil {
-		return NewFileIOError("write_csv_header", "failed to write CSV header", err).
-			WithContext("file", e.filename).WithContext("header", header)
+		return fmt.Errorf("failed to write CSV header: %w", err)
 	}
+	e.writer.Flush()
 	e.log.Debug("Wrote CSV header", slog.Any("header", header), slog.String("file", e.filename))
 	return nil
 }
 
-func (e *CSVExporter) WriteRecordWithWarning(record []string) {
-	if err := e.writer.Write(record); err != nil {
-		e.log.Warn("Failed to write CSV record",
-			slog.String("file", e.filename),
-			slog.Any("record", record),
-			slog.String("error", err.Error()))
+func (e *CSVExporter) WriteRecords(ctx context.Context, records []Record) error {
+	for _, record := range records {
+		row := []string{
+			record.SourceLocationCode,
+			record.TargetLocationCode,
+			record.Timestamp.Format(time.RFC3339),
+			record.RTT.String(),
+		}
+
+		if err := e.writer.Write(row); err != nil {
+			return fmt.Errorf("failed to write CSV record: %w", err)
+		}
+
+		e.log.Debug("Wrote CSV record", "record", record)
 	}
+
+	e.writer.Flush()
+
+	return nil
 }
 
 func (e *CSVExporter) Close() error {

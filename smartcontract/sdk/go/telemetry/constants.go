@@ -8,6 +8,10 @@ const (
 	InitializeDeviceLatencySamplesInstructionIndex TelemetryInstructionType = 0
 	// Represents the write device latency samples instruction
 	WriteDeviceLatencySamplesInstructionIndex TelemetryInstructionType = 1
+	// Represents the initialize internet latency samples instruction
+	InitializeInternetLatencySamplesInstructionIndex TelemetryInstructionType = 2
+	// Represents the write internet latency samples instruction
+	WriteInternetLatencySamplesInstructionIndex TelemetryInstructionType = 3
 
 	// InstructionErrorAccountDoesNotExist is the error code that the telemetry program returns
 	// when the given PDA does not exist.
@@ -29,6 +33,9 @@ const (
 	// MaxInternetLatencySamplesPerAccount is the maximum number of samples that can be written to an internet latency samples account.
 	// This provides space for just over 1 sample per minute.
 	MaxInternetLatencySamplesPerAccount = 3000
+
+	// MaxInternetLatencyDataProviderNameLength is the maximum length of a data provider name.
+	MaxInternetLatencyDataProviderNameLength = 32
 )
 
 // Telemetry Program IDs
@@ -50,7 +57,9 @@ const (
 // PDA seeds for telemetry program
 const (
 	// Pefix for all telemetry PDAs
-	SEED_PREFIX = "telemetry"
+	TelemetrySeedPrefix = "telemetry"
 	// Seed for device latency samples PDAs
-	SEED_DEVICE_LATENCY_SAMPLES = "dzlatency"
+	DeviceLatencySamplesSeed = "dzlatency"
+	// Seed for internet latency samples PDAs
+	InternetLatencySamplesSeed = "inetlatency"
 )

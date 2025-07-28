@@ -1,7 +1,6 @@
 package telemetry
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -77,7 +76,7 @@ func (c *Client) GetDeviceLatencySamples(
 	}
 
 	var deviceLatencySamples DeviceLatencySamples
-	if err := deviceLatencySamples.Deserialize(bytes.NewReader(account.Value.Data.GetBinary())); err != nil {
+	if err := deviceLatencySamples.Deserialize(account.Value.Data.GetBinary()); err != nil {
 		return nil, fmt.Errorf("failed to deserialize DeviceLatencySamples: %w", err)
 	}
 
@@ -115,6 +114,105 @@ func (c *Client) WriteDeviceLatencySamples(
 	}
 
 	instruction, err := BuildWriteDeviceLatencySamplesInstruction(c.executor.programID, config)
+	if err != nil {
+		return solana.Signature{}, nil, fmt.Errorf("failed to build instruction: %w", err)
+	}
+
+	sig, res, err := c.executor.ExecuteTransaction(ctx, instruction, nil)
+	if err != nil {
+		var rpcErr *jsonrpc.RPCError
+		if errors.As(err, &rpcErr) {
+			if data, ok := rpcErr.Data.(map[string]any); ok {
+				switch v := data["err"].(type) {
+				case string:
+					if v == "AccountNotFound" {
+						return solana.Signature{}, nil, ErrAccountNotFound
+					}
+				case map[string]any:
+					if ie, ok := v["InstructionError"].([]any); ok && len(ie) == 2 {
+						if custom, ok := ie[1].(map[string]any); ok {
+							if code, ok := custom["Custom"].(json.Number); ok && code.String() == strconv.Itoa(InstructionErrorAccountDoesNotExist) {
+								return solana.Signature{}, nil, ErrAccountNotFound
+							}
+						}
+					}
+				}
+			}
+		}
+		return solana.Signature{}, nil, fmt.Errorf("failed to execute instruction: %w", err)
+	}
+
+	return sig, res, nil
+}
+
+func (c *Client) GetInternetLatencySamples(
+	ctx context.Context,
+	dataProviderName string,
+	originLocationPK solana.PublicKey,
+	targetLocationPK solana.PublicKey,
+	epoch uint64,
+) (*InternetLatencySamples, error) {
+	pda, _, err := DeriveInternetLatencySamplesPDA(
+		c.executor.programID,
+		dataProviderName,
+		originLocationPK,
+		targetLocationPK,
+		epoch,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to derive PDA: %w", err)
+	}
+
+	account, err := c.rpc.GetAccountInfo(ctx, pda)
+	if err != nil {
+		if errors.Is(err, solanarpc.ErrNotFound) {
+			return nil, ErrAccountNotFound
+		}
+		return nil, fmt.Errorf("failed to get account data: %w", err)
+	}
+	if account.Value == nil {
+		return nil, ErrAccountNotFound
+	}
+
+	var internetLatencySamples InternetLatencySamples
+	if err := internetLatencySamples.Deserialize(account.Value.Data.GetBinary()); err != nil {
+		return nil, fmt.Errorf("failed to deserialize InternetLatencySamples: %w", err)
+	}
+
+	return &internetLatencySamples, nil
+}
+
+func (c *Client) InitializeInternetLatencySamples(
+	ctx context.Context,
+	config InitializeInternetLatencySamplesInstructionConfig,
+) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+	instruction, err := BuildInitializeInternetLatencySamplesInstruction(c.executor.programID, config)
+	if err != nil {
+		return solana.Signature{}, nil, fmt.Errorf("failed to build instruction: %w", err)
+	}
+
+	sig, res, err := c.executor.ExecuteTransaction(ctx, instruction, &ExecuteTransactionOptions{
+		// Skip preflight/simulation on this transaction since it creates the account in the
+		// instruction itself. Otherwise the preflight will fail with AccountNotFound.
+		SkipPreflight: true,
+	})
+	if err != nil {
+		return solana.Signature{}, nil, fmt.Errorf("failed to execute instruction: %w", err)
+	}
+
+	return sig, res, nil
+}
+
+func (c *Client) WriteInternetLatencySamples(
+	ctx context.Context,
+	config WriteInternetLatencySamplesInstructionConfig,
+) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+
+	if len(config.Samples) > MaxSamplesPerBatch {
+		return solana.Signature{}, nil, ErrSamplesBatchTooLarge
+	}
+
+	instruction, err := BuildWriteInternetLatencySamplesInstruction(c.executor.programID, config)
 	if err != nil {
 		return solana.Signature{}, nil, fmt.Errorf("failed to build instruction: %w", err)
 	}

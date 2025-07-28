@@ -1,10 +1,10 @@
 package telemetry
 
 import (
-	"encoding/binary"
 	"fmt"
 	"io"
 
+	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
 )
 
@@ -63,19 +63,21 @@ type DeviceLatencySamples struct {
 }
 
 func (d *DeviceLatencySamples) Serialize(w io.Writer) error {
-	if err := binary.Write(w, binary.LittleEndian, &d.DeviceLatencySamplesHeader); err != nil {
+	enc := bin.NewBorshEncoder(w)
+	if err := enc.Encode(d.DeviceLatencySamplesHeader); err != nil {
 		return err
 	}
 	for _, sample := range d.Samples {
-		if err := binary.Write(w, binary.LittleEndian, sample); err != nil {
+		if err := enc.Encode(sample); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (d *DeviceLatencySamples) Deserialize(r io.Reader) error {
-	if err := binary.Read(r, binary.LittleEndian, &d.DeviceLatencySamplesHeader); err != nil {
+func (d *DeviceLatencySamples) Deserialize(data []byte) error {
+	dec := bin.NewBorshDecoder(data)
+	if err := dec.Decode(&d.DeviceLatencySamplesHeader); err != nil {
 		return err
 	}
 
@@ -85,21 +87,11 @@ func (d *DeviceLatencySamples) Deserialize(r io.Reader) error {
 
 	d.Samples = make([]uint32, d.DeviceLatencySamplesHeader.NextSampleIndex)
 	for i := 0; i < int(d.DeviceLatencySamplesHeader.NextSampleIndex); i++ {
-		if err := binary.Read(r, binary.LittleEndian, &d.Samples[i]); err != nil {
+		if err := dec.Decode(&d.Samples[i]); err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-type FixedString32 [32]uint8
-
-func (f *FixedString32) Serialize(w io.Writer) error {
-	return binary.Write(w, binary.LittleEndian, f)
-}
-
-func (f *FixedString32) Deserialize(r io.Reader) error {
-	return binary.Read(r, binary.LittleEndian, f)
 }
 
 type InternetLatencySamplesHeader struct {
@@ -109,11 +101,11 @@ type InternetLatencySamplesHeader struct {
 	// BumpSeed is required for recreating the PDA (seed authority).
 	BumpSeed uint8 // 1
 
+	// DataProviderName is the name of the data provider.
+	DataProviderName string // 4 + len
+
 	// Epoch is the epoch number in which samples were collected.
 	Epoch uint64 // 8
-
-	// DataProviderName is the name of the data provider.
-	DataProviderName FixedString32 // 32
 
 	// OracleAgentPK authorized to write latency samples (must match signer)
 	OracleAgentPK solana.PublicKey // 32
@@ -144,19 +136,21 @@ type InternetLatencySamples struct {
 }
 
 func (d *InternetLatencySamples) Serialize(w io.Writer) error {
-	if err := binary.Write(w, binary.LittleEndian, &d.InternetLatencySamplesHeader); err != nil {
+	enc := bin.NewBorshEncoder(w)
+	if err := enc.Encode(d.InternetLatencySamplesHeader); err != nil {
 		return err
 	}
 	for _, sample := range d.Samples {
-		if err := binary.Write(w, binary.LittleEndian, sample); err != nil {
+		if err := enc.Encode(sample); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (d *InternetLatencySamples) Deserialize(r io.Reader) error {
-	if err := binary.Read(r, binary.LittleEndian, &d.InternetLatencySamplesHeader); err != nil {
+func (d *InternetLatencySamples) Deserialize(data []byte) error {
+	dec := bin.NewBorshDecoder(data)
+	if err := dec.Decode(&d.InternetLatencySamplesHeader); err != nil {
 		return err
 	}
 
@@ -166,7 +160,7 @@ func (d *InternetLatencySamples) Deserialize(r io.Reader) error {
 
 	d.Samples = make([]uint32, d.InternetLatencySamplesHeader.NextSampleIndex)
 	for i := 0; i < int(d.InternetLatencySamplesHeader.NextSampleIndex); i++ {
-		if err := binary.Read(r, binary.LittleEndian, &d.Samples[i]); err != nil {
+		if err := dec.Decode(&d.Samples[i]); err != nil {
 			return err
 		}
 	}

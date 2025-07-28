@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"testing"
 
+	bin "github.com/gagliardetto/binary"
 	"github.com/gagliardetto/solana-go"
 	"github.com/stretchr/testify/require"
 )
@@ -40,7 +41,7 @@ func TestSDK_Telemetry_State_DeviceLatencySamples(t *testing.T) {
 		require.NoError(t, original.Serialize(&buf))
 
 		var decoded DeviceLatencySamples
-		require.NoError(t, decoded.Deserialize(&buf))
+		require.NoError(t, decoded.Deserialize(buf.Bytes()))
 
 		require.Equal(t, original.DeviceLatencySamplesHeader, decoded.DeviceLatencySamplesHeader)
 		require.Equal(t, original.Samples, decoded.Samples)
@@ -61,7 +62,7 @@ func TestSDK_Telemetry_State_DeviceLatencySamples(t *testing.T) {
 		require.NoError(t, original.Serialize(&buf))
 
 		var decoded DeviceLatencySamples
-		require.NoError(t, decoded.Deserialize(&buf))
+		require.NoError(t, decoded.Deserialize(buf.Bytes()))
 
 		require.Equal(t, original.DeviceLatencySamplesHeader, decoded.DeviceLatencySamplesHeader)
 		require.Empty(t, decoded.Samples)
@@ -104,7 +105,7 @@ func TestSDK_Telemetry_State_DeviceLatencySamples(t *testing.T) {
 		_, _ = buf.Write(make([]byte, 4)) // one sample's worth of padding
 
 		var decoded DeviceLatencySamples
-		err := decoded.Deserialize(&buf)
+		err := decoded.Deserialize(buf.Bytes())
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "exceeds max allowed samples")
 	})
@@ -115,15 +116,13 @@ func TestSDK_Telemetry_State_InternetLatencySamples(t *testing.T) {
 		oracle := solana.NewWallet().PublicKey()
 		loc1 := solana.NewWallet().PublicKey()
 		loc2 := solana.NewWallet().PublicKey()
-		provider := FixedString32{}
-		copy(provider[:], []byte("test-provider"))
 
 		original := &InternetLatencySamples{
 			InternetLatencySamplesHeader: InternetLatencySamplesHeader{
 				AccountType:                  AccountTypeInternetLatencySamples,
 				BumpSeed:                     1,
 				Epoch:                        100,
-				DataProviderName:             provider,
+				DataProviderName:             "test-data-provider-1",
 				OracleAgentPK:                oracle,
 				OriginLocationPK:             loc1,
 				TargetLocationPK:             loc2,
@@ -139,7 +138,7 @@ func TestSDK_Telemetry_State_InternetLatencySamples(t *testing.T) {
 		require.NoError(t, original.Serialize(&buf))
 
 		var decoded InternetLatencySamples
-		require.NoError(t, decoded.Deserialize(&buf))
+		require.NoError(t, decoded.Deserialize(buf.Bytes()))
 
 		require.Equal(t, original.InternetLatencySamplesHeader, decoded.InternetLatencySamplesHeader)
 		require.Equal(t, original.Samples, decoded.Samples)
@@ -160,7 +159,7 @@ func TestSDK_Telemetry_State_InternetLatencySamples(t *testing.T) {
 		require.NoError(t, original.Serialize(&buf))
 
 		var decoded InternetLatencySamples
-		require.NoError(t, decoded.Deserialize(&buf))
+		require.NoError(t, decoded.Deserialize(buf.Bytes()))
 
 		require.Equal(t, original.InternetLatencySamplesHeader, decoded.InternetLatencySamplesHeader)
 		require.Empty(t, decoded.Samples)
@@ -196,26 +195,13 @@ func TestSDK_Telemetry_State_InternetLatencySamples(t *testing.T) {
 		}
 
 		var buf bytes.Buffer
-		require.NoError(t, binary.Write(&buf, binary.LittleEndian, header))
+		enc := bin.NewBorshEncoder(&buf)
+		require.NoError(t, enc.Encode(header))
 		_, _ = buf.Write(make([]byte, 4))
 
 		var decoded InternetLatencySamples
-		err := decoded.Deserialize(&buf)
+		err := decoded.Deserialize(buf.Bytes())
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "exceeds max allowed samples")
-	})
-}
-
-func TestSDK_Telemetry_State_FixedString32(t *testing.T) {
-	t.Run("round-trip serialize/deserialize", func(t *testing.T) {
-		var original FixedString32
-		copy(original[:], []byte("hello world"))
-
-		var buf bytes.Buffer
-		require.NoError(t, original.Serialize(&buf))
-
-		var decoded FixedString32
-		require.NoError(t, decoded.Deserialize(&buf))
-		require.Equal(t, original, decoded)
 	})
 }

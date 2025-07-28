@@ -168,9 +168,9 @@ func defaultCircuit() []data.Circuit {
 	return []data.Circuit{
 		{
 			Code:         circuitKey(devA.Code, devB.Code, link.Code), // <== use actual keying logic
-			OriginDevice: devA,
-			TargetDevice: devB,
-			Link:         link,
+			OriginDevice: data.Device{PK: pkA, Code: devA.Code},
+			TargetDevice: data.Device{PK: pkB, Code: devB.Code},
+			Link:         data.Link{PK: linkPK, Code: link.Code},
 		},
 	}
 }
@@ -189,8 +189,13 @@ func newTestProvider(
 		ServiceabilityClient: &mockServiceabilityClient{
 			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 				return &serviceability.ProgramData{
-					Devices: []serviceability.Device{circuits[0].OriginDevice, circuits[0].TargetDevice},
-					Links:   []serviceability.Link{circuits[0].Link},
+					Devices: []serviceability.Device{
+						{Code: circuits[0].OriginDevice.Code, PubKey: circuits[0].OriginDevice.PK},
+						{Code: circuits[0].TargetDevice.Code, PubKey: circuits[0].TargetDevice.PK},
+					},
+					Links: []serviceability.Link{
+						{Code: circuits[0].Link.Code, SideAPubKey: circuits[0].OriginDevice.PK, SideZPubKey: circuits[0].TargetDevice.PK, PubKey: circuits[0].Link.PK},
+					},
 				}, nil
 			},
 		},

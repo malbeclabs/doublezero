@@ -22,6 +22,7 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
+	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	"github.com/malbeclabs/doublezero/e2e/internal/prometheus"
 	"github.com/testcontainers/testcontainers-go"
 )
@@ -446,7 +447,7 @@ func (d *Device) setState(ctx context.Context, containerID string) error {
 	timeout := 10 * time.Second
 	var attempts int
 	var container dockercontainer.InspectResponse
-	err = pollUntil(ctx, func() (bool, error) {
+	err = poll.Until(ctx, func() (bool, error) {
 		attempts++
 		var err error
 		container, err = d.dn.dockerClient.ContainerInspect(ctx, containerID)

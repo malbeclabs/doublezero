@@ -254,12 +254,12 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 
 	// Fetch metrics from both devices.
 	la2MetricsClient := dn.Devices["la2-dz01"].GetTelemetryMetricsClient()
+	require.NoError(t, la2MetricsClient.WaitForReady(t.Context(), 3*time.Second))
 	err = la2MetricsClient.Fetch(t.Context())
 	require.NoError(t, err)
-	require.NoError(t, err)
 	ny5MetricsClient := dn.Devices["ny5-dz01"].GetTelemetryMetricsClient()
+	require.NoError(t, ny5MetricsClient.WaitForReady(t.Context(), 3*time.Second))
 	err = ny5MetricsClient.Fetch(t.Context())
-	require.NoError(t, err)
 	require.NoError(t, err)
 
 	// Get the post-reachability "tunnel not found" metric for the la2 device, so we can check that it doesn't increase from here at the end.

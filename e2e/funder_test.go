@@ -63,6 +63,7 @@ func TestE2E_Funder(t *testing.T) {
 	// Check that the errors metric only contains "funder_account_balance_below_minimum" errors,
 	// which occur on startup while waiting for the manager/funder account to be funded.
 	metricsClient := dn.Funder.GetMetricsClient()
+	require.NoError(t, metricsClient.WaitForReady(ctx, 3*time.Second))
 	require.NoError(t, metricsClient.Fetch(ctx))
 	errors := metricsClient.GetCounterValues("doublezero_funder_errors_total")
 	require.NotNil(t, errors)

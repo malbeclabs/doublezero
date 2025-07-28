@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
+	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 )
 
 // IsSmartContractInitialized checks if the smart contract is initialized by checking for the presence
@@ -134,7 +135,7 @@ func (dn *Devnet) InitSmartContract(ctx context.Context) error {
 	}
 
 	// Wait for the global config to be populated.
-	err = pollUntil(ctx, func() (bool, error) {
+	err = poll.Until(ctx, func() (bool, error) {
 		data, err := client.GetProgramData(ctx)
 		if err != nil {
 			return false, fmt.Errorf("failed to load serviceability program client: %w", err)

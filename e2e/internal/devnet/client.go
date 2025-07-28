@@ -13,6 +13,7 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
+	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	"github.com/malbeclabs/doublezero/e2e/internal/solana"
 	"github.com/testcontainers/testcontainers-go"
 )
@@ -245,7 +246,7 @@ func (c *Client) setState(ctx context.Context, containerID string) error {
 	var attempts int
 	timeout := 10 * time.Second
 	var container dockercontainer.InspectResponse
-	err = pollUntil(ctx, func() (bool, error) {
+	err = poll.Until(ctx, func() (bool, error) {
 		attempts++
 		var err error
 		container, err = c.dn.dockerClient.ContainerInspect(ctx, containerID)

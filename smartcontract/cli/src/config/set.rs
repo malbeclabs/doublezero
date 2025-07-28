@@ -22,7 +22,7 @@ pub struct SetConfigCliCommand {
     ws: Option<String>,
     /// Keypair of the user
     #[arg(long)]
-    keypair: Option<String>,
+    keypair: Option<PathBuf>,
     /// Pubkey of the smart contract (devnet, testnet)
     #[arg(long)]
     program_id: Option<String>,
@@ -48,7 +48,7 @@ impl SetConfigCliCommand {
             config.websocket_url = Some(convert_ws_moniker(ws));
         }
         if let Some(keypair) = self.keypair {
-            config.keypair_path = PathBuf::from(keypair);
+            config.keypair_path = keypair;
         }
         if let Some(program_id) = self.program_id {
             config.program_id = Some(convert_program_moniker(program_id));

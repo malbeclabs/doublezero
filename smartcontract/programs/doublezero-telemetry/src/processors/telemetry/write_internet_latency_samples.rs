@@ -65,10 +65,10 @@ pub fn process_write_internet_latency_samples(
 
     // Expected order: [latency_samples_account, agent, system_program]
     let latency_samples_acct = next_account_info(accounts_iter)?;
-    let agent = next_account_info(accounts_iter)?;
+    let collector_agent = next_account_info(accounts_iter)?;
 
     // Only the authorized agent may sign the instruction
-    if !agent.is_signer {
+    if !collector_agent.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
 
@@ -98,12 +98,12 @@ pub fn process_write_internet_latency_samples(
         return Err(TelemetryError::InvalidAccountType.into());
     }
 
-    // Confirm the writing agent matches the account owner
-    if header.oracle_agent_pk != *agent.key {
+    // Confirm the writing collector agent matches the account owner
+    if header.oracle_agent_pk != *collector_agent.key {
         msg!(
-            "Agent mistmatch: account expects {}, got {}",
+            "Collector agent mistmatch: account expects {}, got {}",
             header.oracle_agent_pk,
-            agent.key
+            collector_agent.key
         );
         return Err(TelemetryError::UnauthorizedAgent.into());
     }
@@ -139,7 +139,7 @@ pub fn process_write_internet_latency_samples(
     // Determine whether the account needs to be resized to hold the new data
     let new_len = InternetLatencySamplesHeader::instance_size(header.data_provider_name.len())
         + header.next_sample_index as usize * 4; // 4 bytes per u32 RTT (µs) samples
-    resize_account_if_needed(latency_samples_acct, agent, accounts, new_len)?;
+    resize_account_if_needed(latency_samples_acct, collector_agent, accounts, new_len)?;
 
     // Serialize the updated struct back into the account
     {

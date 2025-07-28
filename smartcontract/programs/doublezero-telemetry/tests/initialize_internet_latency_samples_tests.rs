@@ -5,10 +5,17 @@ use doublezero_serviceability::state::{
     location::{Location, LocationStatus},
 };
 use doublezero_telemetry::{
-    error::TelemetryError, instructions::TelemetryInstruction,
+    error::TelemetryError,
+    instructions::TelemetryInstruction,
     pda::derive_internet_latency_samples_pda,
     processors::telemetry::initialize_internet_latency_samples::InitializeInternetLatencySamplesArgs,
-    state::internet_latency_samples::INTERNET_LATENCY_SAMPLES_MAX_HEADER_SIZE,
+    state::{
+        accounttype::AccountType as TelemetryAccountType,
+        internet_latency_samples::{
+            InternetLatencySamples, InternetLatencySamplesHeader,
+            INTERNET_LATENCY_SAMPLES_MAX_HEADER_SIZE,
+        },
+    },
 };
 use solana_program_test::*;
 use solana_sdk::{
@@ -37,6 +44,7 @@ async fn test_initialize_internet_latency_samples_success_active_locations() {
     ledger.wait_for_new_blockhash().await.unwrap();
 
     let provider_name = "RIPE Atlas".to_string();
+    let epoch: u64 = 1;
 
     // Execute the initialize latency samples txn
     let latency_samples_pda = ledger
@@ -47,11 +55,18 @@ async fn test_initialize_internet_latency_samples_success_active_locations() {
             origin_location_pk,
             target_location_pk,
             ledger.serviceability.global_state_pubkey,
-            1u64,
+            epoch,
             60_000_000,
         )
         .await
         .unwrap();
+    let (_pda, bump) = derive_internet_latency_samples_pda(
+        &ledger.telemetry.program_id,
+        &provider_name,
+        &origin_location_pk,
+        &target_location_pk,
+        epoch,
+    );
 
     // Verify account created
     let account = ledger
@@ -65,6 +80,24 @@ async fn test_initialize_internet_latency_samples_success_active_locations() {
         INTERNET_LATENCY_SAMPLES_MAX_HEADER_SIZE - 32 + provider_name.len()
     );
     assert_eq!(account.lamports, EXPECTED_LAMPORTS_FOR_ACCOUNT_CREATION);
+
+    let samples_data = InternetLatencySamples::try_from(&account.data[..]).unwrap();
+    assert_eq!(
+        samples_data.header,
+        InternetLatencySamplesHeader {
+            account_type: TelemetryAccountType::InternetLatencySamples,
+            data_provider_name: provider_name.clone(),
+            oracle_agent_pk: oracle.pubkey(),
+            origin_location_pk,
+            target_location_pk,
+            bump_seed: bump,
+            epoch,
+            sampling_interval_microseconds: 60_000_000,
+            next_sample_index: 0,
+            start_timestamp_microseconds: 0,
+            _unused: [0u8; 128],
+        }
+    );
 }
 
 #[tokio::test]

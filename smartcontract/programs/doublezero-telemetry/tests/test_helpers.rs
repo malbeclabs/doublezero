@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::{
     net::Ipv4Addr,
     sync::{Arc, Mutex},
@@ -128,7 +129,6 @@ impl DeviceCreateArgsExt for DeviceCreateArgs {
     }
 }
 
-#[allow(dead_code)]
 pub trait LinkCreateArgsExt {
     fn default() -> LinkCreateArgs;
 }
@@ -203,7 +203,6 @@ impl LedgerHelper {
         banks_client.get_account(pubkey).await
     }
 
-    #[allow(dead_code)]
     pub async fn refresh_blockhash(&mut self) -> Result<(), BanksClientError> {
         let banks_client = { self.context.lock().unwrap().banks_client.clone() };
         let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
@@ -249,7 +248,6 @@ impl LedgerHelper {
         banks_client.process_transaction(transaction).await
     }
 
-    #[allow(dead_code)]
     pub async fn create_account_raw(
         &mut self,
         funder: &Keypair,
@@ -281,7 +279,6 @@ impl LedgerHelper {
         banks_client.process_transaction(tx).await
     }
 
-    #[allow(dead_code)]
     pub async fn seed_with_two_linked_devices(
         &mut self,
     ) -> Result<(Keypair, Pubkey, Pubkey, Pubkey), BanksClientError> {
@@ -394,7 +391,6 @@ impl LedgerHelper {
         ))
     }
 
-    #[allow(dead_code)]
     pub async fn seed_with_two_locations(
         &mut self,
     ) -> Result<(Keypair, Pubkey, Pubkey), BanksClientError> {
@@ -449,7 +445,6 @@ impl TelemetryProgramHelper {
         })
     }
 
-    #[allow(dead_code)]
     pub async fn initialize_device_latency_samples(
         &mut self,
         agent: &Keypair,
@@ -481,7 +476,6 @@ impl TelemetryProgramHelper {
         Ok(pda)
     }
 
-    #[allow(dead_code)]
     pub async fn write_device_latency_samples(
         &mut self,
         agent: &Keypair,
@@ -504,7 +498,7 @@ impl TelemetryProgramHelper {
         .await
     }
 
-    #[allow(clippy::too_many_arguments, dead_code)]
+    #[allow(clippy::too_many_arguments)]
     pub async fn initialize_device_latency_samples_with_pda(
         &mut self,
         agent: &Keypair,
@@ -537,7 +531,6 @@ impl TelemetryProgramHelper {
         Ok(latency_samples_pda)
     }
 
-    #[allow(dead_code)]
     pub async fn write_device_latency_samples_with_pda(
         &self,
         agent: &Keypair,
@@ -585,7 +578,7 @@ impl TelemetryProgramHelper {
         banks_client.process_transaction(tx).await
     }
 
-    #[allow(clippy::too_many_arguments, dead_code)]
+    #[allow(clippy::too_many_arguments)]
     pub async fn initialize_internet_latency_samples(
         &mut self,
         agent: &Keypair,
@@ -619,7 +612,7 @@ impl TelemetryProgramHelper {
         Ok(pda)
     }
 
-    #[allow(clippy::too_many_arguments, dead_code)]
+    #[allow(clippy::too_many_arguments)]
     pub async fn initialize_internet_latency_samples_with_pda(
         &mut self,
         agent: &Keypair,
@@ -654,7 +647,6 @@ impl TelemetryProgramHelper {
         Ok(latency_samples_pda)
     }
 
-    #[allow(dead_code)]
     pub async fn write_internet_latency_samples(
         &mut self,
         agent: &Keypair,
@@ -677,7 +669,6 @@ impl TelemetryProgramHelper {
         .await
     }
 
-    #[allow(dead_code)]
     pub async fn write_internet_latency_samples_with_pda(
         &self,
         agent: &Keypair,
@@ -752,7 +743,6 @@ pub struct ServiceabilityProgramHelper {
     pub program_id: Pubkey,
 
     pub global_state_pubkey: Pubkey,
-    #[allow(dead_code)]
     pub global_config_pubkey: Pubkey,
 }
 
@@ -879,7 +869,6 @@ impl ServiceabilityProgramHelper {
         Ok(location_pubkey)
     }
 
-    #[allow(dead_code)]
     pub async fn create_exchange(
         &mut self,
         exchange: ExchangeCreateArgs,
@@ -905,7 +894,6 @@ impl ServiceabilityProgramHelper {
         Ok(exchange_pubkey)
     }
 
-    #[allow(dead_code)]
     pub async fn create_contributor(&mut self, code: String) -> Result<Pubkey, BanksClientError> {
         let index = self.get_next_global_state_index().await.unwrap();
         let (contributor_pk, _) = get_contributor_pda(&self.program_id, index);
@@ -922,7 +910,6 @@ impl ServiceabilityProgramHelper {
         Ok(contributor_pk)
     }
 
-    #[allow(dead_code)]
     pub async fn create_device(
         &mut self,
         device: DeviceCreateArgs,
@@ -960,7 +947,6 @@ impl ServiceabilityProgramHelper {
         Ok(device_pk)
     }
 
-    #[allow(dead_code)]
     pub async fn activate_device(&mut self, device_pk: Pubkey) -> Result<(), BanksClientError> {
         self.execute_transaction(
             DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs),
@@ -972,7 +958,6 @@ impl ServiceabilityProgramHelper {
         .await
     }
 
-    #[allow(dead_code)]
     pub async fn get_device(&mut self, pubkey: Pubkey) -> Result<Device, BanksClientError> {
         let banks_client = {
             let context = self.context.lock().unwrap();
@@ -982,7 +967,6 @@ impl ServiceabilityProgramHelper {
         Ok(Device::from(&device.data[..]))
     }
 
-    #[allow(dead_code)]
     pub async fn suspend_device(&mut self, pubkey: Pubkey) -> Result<(), BanksClientError> {
         self.execute_transaction(
             DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs),
@@ -994,7 +978,6 @@ impl ServiceabilityProgramHelper {
         .await
     }
 
-    #[allow(dead_code)]
     pub async fn get_location(&mut self, pubkey: Pubkey) -> Result<Location, BanksClientError> {
         let banks_client = {
             let context = self.context.lock().unwrap();
@@ -1004,7 +987,6 @@ impl ServiceabilityProgramHelper {
         Ok(Location::from(&location.data[..]))
     }
 
-    #[allow(dead_code)]
     pub async fn suspend_location(&mut self, pubkey: Pubkey) -> Result<(), BanksClientError> {
         self.execute_transaction(
             DoubleZeroInstruction::SuspendLocation(LocationSuspendArgs),
@@ -1016,7 +998,6 @@ impl ServiceabilityProgramHelper {
         .await
     }
 
-    #[allow(dead_code)]
     pub async fn create_and_activate_device(
         &mut self,
         device: DeviceCreateArgs,
@@ -1031,7 +1012,6 @@ impl ServiceabilityProgramHelper {
         Ok(device_pk)
     }
 
-    #[allow(dead_code)]
     pub async fn create_link(
         &mut self,
         link: LinkCreateArgs,
@@ -1066,7 +1046,6 @@ impl ServiceabilityProgramHelper {
         Ok(link_pk)
     }
 
-    #[allow(dead_code)]
     pub async fn activate_link(
         &mut self,
         link_pk: Pubkey,
@@ -1086,7 +1065,6 @@ impl ServiceabilityProgramHelper {
         .await
     }
 
-    #[allow(dead_code)]
     pub async fn get_link(&mut self, pubkey: Pubkey) -> Result<Link, BanksClientError> {
         let banks_client = {
             let context = self.context.lock().unwrap();
@@ -1096,7 +1074,6 @@ impl ServiceabilityProgramHelper {
         Ok(Link::from(&link.data[..]))
     }
 
-    #[allow(dead_code)]
     pub async fn suspend_link(&mut self, pubkey: Pubkey) -> Result<(), BanksClientError> {
         self.execute_transaction(
             DoubleZeroInstruction::SuspendLink(LinkSuspendArgs {}),
@@ -1105,7 +1082,6 @@ impl ServiceabilityProgramHelper {
         .await
     }
 
-    #[allow(dead_code)]
     pub async fn create_and_activate_link(
         &mut self,
         link: LinkCreateArgs,
@@ -1147,12 +1123,10 @@ impl ServiceabilityProgramHelper {
     }
 }
 
-#[allow(dead_code)]
 pub async fn get_account_data(banks_client: &mut BanksClient, pubkey: Pubkey) -> Option<Account> {
     banks_client.get_account(pubkey).await.unwrap()
 }
 
-#[allow(dead_code)]
 pub async fn fund_account(
     banks_client: &mut BanksClient,
     payer: &Keypair,
@@ -1256,7 +1230,6 @@ pub fn setup_test_programs() -> (ProgramTest, Pubkey, Pubkey) {
 }
 
 /// Helper function to assert that a result contains a specific telemetry error
-#[allow(dead_code)]
 pub fn assert_telemetry_error<T>(
     result: Result<T, BanksClientError>,
     expected_error: TelemetryError,
@@ -1283,7 +1256,6 @@ pub fn assert_telemetry_error<T>(
 }
 
 /// Helper function to assert that a result contains a specific banks client error
-#[allow(dead_code)]
 pub fn assert_banksclient_error<T>(
     result: Result<T, BanksClientError>,
     expected_error: InstructionError,

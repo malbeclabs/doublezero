@@ -121,6 +121,9 @@ async fn test_write_internet_latency_samples_success() {
         .unwrap()
         .expect("Latency samples does not exist");
 
+    let mut all_samples: Vec<u32> = vec![];
+    all_samples.extend_from_slice(&samples_to_write);
+    all_samples.extend_from_slice(&more_samples);
     let samples_data = InternetLatencySamples::try_from(&account.data[..]).unwrap();
     assert_eq!(
         samples_data.header.start_timestamp_microseconds,
@@ -130,6 +133,7 @@ async fn test_write_internet_latency_samples_success() {
         samples_data.header.next_sample_index,
         samples_to_write.len() as u32 + more_samples.len() as u32
     );
+    assert_eq!(samples_data.samples, all_samples);
 }
 
 #[tokio::test]

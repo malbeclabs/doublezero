@@ -77,14 +77,14 @@ pub fn process_initialize_internet_latency_samples(
 
     // Expected account order: [latency_samples_account, agent, origin_location, target_location, serviceability_global_state, system_program]
     let latency_samples_acct = next_account_info(accounts_iter)?;
-    let agent = next_account_info(accounts_iter)?;
+    let collector_agent = next_account_info(accounts_iter)?;
     let origin_location_account = next_account_info(accounts_iter)?;
     let target_location_account = next_account_info(accounts_iter)?;
     let serviceability_global_state = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
     // Require the caller is the authorized signing agent
-    if !agent.is_signer {
+    if !collector_agent.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
     let serviceability_program_id = &serviceability_program_id();
@@ -94,8 +94,8 @@ pub fn process_initialize_internet_latency_samples(
     }
 
     let globalstate = GlobalState::try_from(serviceability_global_state)?;
-    if agent.key != &globalstate.internet_latency_collector {
-        msg!("Agent is not authorized internet telemetry writer");
+    if collector_agent.key != &globalstate.internet_latency_collector {
+        msg!("Collector agent is not authorized internet telemetry writer");
         return Err(TelemetryError::UnauthorizedAgent.into());
     }
 
@@ -160,15 +160,18 @@ pub fn process_initialize_internet_latency_samples(
         "Creating latency_samples_pda account: {}",
         latency_samples_pda,
     );
-    msg!("Agent: {}", agent.key);
+    msg!("Collector agent: {}", collector_agent.key);
     msg!("Lamports required: {}", lamports);
     msg!("Space: {}", space);
-    msg!("Agent lamports before: {}", agent.lamports());
+    msg!(
+        "Collector agent lamports before: {}",
+        collector_agent.lamports()
+    );
     msg!("System program: {}", system_program.key);
 
     // Allocate the account with the correct seed
     try_create_account(
-        agent.key,
+        collector_agent.key,
         &latency_samples_pda,
         latency_samples_acct.lamports(),
         space,
@@ -188,7 +191,7 @@ pub fn process_initialize_internet_latency_samples(
     // Initialize account contents with metadata and an empty sample list
     let header = InternetLatencySamplesHeader {
         account_type: AccountType::InternetLatencySamples,
-        oracle_agent_pk: *agent.key,
+        oracle_agent_pk: *collector_agent.key,
         data_provider_name: args.data_provider_name.clone(),
         epoch: args.epoch,
         origin_location_pk: *origin_location_account.key,

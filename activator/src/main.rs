@@ -3,9 +3,12 @@ use doublezero_sdk::ProgramVersion;
 use futures::{future::LocalBoxFuture, FutureExt};
 use log::{error, info, LevelFilter};
 use metrics_exporter_prometheus::PrometheusBuilder;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
+use std::{
+    path::PathBuf,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 use tokio::signal;
 
@@ -37,7 +40,7 @@ struct AppArgs {
     program_id: Option<String>,
 
     #[arg(long)]
-    keypair: Option<String>,
+    keypair: Option<PathBuf>,
 
     #[arg(long)]
     influxdb_url: Option<String>,

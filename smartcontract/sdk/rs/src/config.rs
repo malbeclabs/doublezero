@@ -10,7 +10,7 @@ use std::{
     sync::OnceLock,
 };
 
-static CONFIG_FILE: OnceLock<Option<String>> = OnceLock::new();
+static CONFIG_FILE: OnceLock<Option<PathBuf>> = OnceLock::new();
 
 /// The default path to the CLI configuration file.
 ///
@@ -18,18 +18,14 @@ static CONFIG_FILE: OnceLock<Option<String>> = OnceLock::new();
 ///
 /// It will only be `None` if it is unable to identify the user's home
 /// directory, which should not happen under typical OS environments.
-fn get_cfg_filename() -> &'static Option<String> {
+fn get_cfg_filename() -> &'static Option<PathBuf> {
     CONFIG_FILE.get_or_init(|| match env::var_os("DOUBLEZERO_CONFIG_FILE") {
-        Some(path) => Some(path.to_string_lossy().to_string()),
-        None => match directories_next::UserDirs::new() {
-            Some(dirs) => {
-                let mut buf = PathBuf::new();
-                buf.push(dirs.home_dir().to_string_lossy().to_string());
-                buf.extend([".config", "doublezero", "cli", "config.yml"]);
-                Some(buf.to_string_lossy().to_string())
-            }
-            None => None,
-        },
+        Some(path) => Some(PathBuf::from(path)),
+        None => directories_next::UserDirs::new().map(|dirs| {
+            let mut buf = dirs.home_dir().to_path_buf();
+            buf.extend([".config", "doublezero", "cli", "config.yml"]);
+            buf
+        }),
     })
 }
 
@@ -37,7 +33,7 @@ fn get_cfg_filename() -> &'static Option<String> {
 pub struct ClientConfig {
     pub json_rpc_url: String,
     pub websocket_url: Option<String>,
-    pub keypair_path: String,
+    pub keypair_path: PathBuf,
     pub program_id: Option<String>,
     pub address_labels: HashMap<String, String>,
 }
@@ -50,7 +46,7 @@ impl Default for ClientConfig {
             keypair_path: {
                 let mut keypair_path = dirs_next::home_dir().unwrap_or_default();
                 keypair_path.extend([".config", "doublezero", "id.json"]);
-                keypair_path.to_string_lossy().to_string()
+                keypair_path
             },
             program_id: None,
             address_labels: HashMap::new(),
@@ -58,7 +54,7 @@ impl Default for ClientConfig {
     }
 }
 
-pub fn read_doublezero_config() -> eyre::Result<(String, ClientConfig)> {
+pub fn read_doublezero_config() -> eyre::Result<(PathBuf, ClientConfig)> {
     match get_cfg_filename() {
         None => eyre::bail!("Unable to get_cfg_filename"),
         Some(filename) => match fs::read_to_string(filename) {
@@ -152,7 +148,7 @@ pub fn create_new_pubkey_user(force: bool) -> eyre::Result<Keypair> {
     if !force && Path::new(&file_path).exists() {
         eyre::bail!(
             "The file {} already exists (use doublezero keygen -f)",
-            file_path
+            file_path.display()
         );
     }
 

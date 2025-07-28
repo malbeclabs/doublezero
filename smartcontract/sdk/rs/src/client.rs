@@ -27,6 +27,7 @@ use solana_transaction_status::{
 };
 use std::{
     collections::HashMap,
+    path::PathBuf,
     str::FromStr,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -52,7 +53,7 @@ impl DZClient {
         rpc_url: Option<String>,
         websocket_url: Option<String>,
         program_id: Option<String>,
-        kaypair: Option<String>,
+        kaypair: Option<PathBuf>,
     ) -> eyre::Result<DZClient> {
         let (_, config) = read_doublezero_config()?;
 
@@ -63,8 +64,10 @@ impl DZClient {
 
         let client = RpcClient::new_with_commitment(rpc_url.clone(), CommitmentConfig::confirmed());
 
-        let payer: Option<solana_sdk::signature::Keypair> =
-            read_keypair_from_file(kaypair.unwrap_or(config.keypair_path)).ok();
+        let payer = match read_keypair_from_file(kaypair.unwrap_or(config.keypair_path)) {
+            Ok(kp) => Some(kp),
+            _ => None,
+        };
 
         let program_id = match program_id {
             None => match config.program_id.as_ref() {

@@ -37,6 +37,7 @@ use doublezero_telemetry::{
         initialize_device_latency_samples::InitializeDeviceLatencySamplesArgs,
         initialize_internet_latency_samples::InitializeInternetLatencySamplesArgs,
         write_device_latency_samples::WriteDeviceLatencySamplesArgs,
+        write_internet_latency_samples::WriteInternetLatencySamplesArgs,
     },
     serviceability_program_id,
 };
@@ -651,6 +652,77 @@ impl TelemetryProgramHelper {
         .await?;
 
         Ok(latency_samples_pda)
+    }
+
+    #[allow(dead_code)]
+    pub async fn write_internet_latency_samples(
+        &mut self,
+        agent: &Keypair,
+        latency_samples_pda: Pubkey,
+        samples: Vec<u32>,
+        start_timestamp_microseconds: u64,
+    ) -> Result<(), BanksClientError> {
+        self.execute_transaction(
+            TelemetryInstruction::WriteInternetLatencySamples(WriteInternetLatencySamplesArgs {
+                start_timestamp_microseconds,
+                samples,
+            }),
+            &[agent],
+            vec![
+                AccountMeta::new(latency_samples_pda, false),
+                AccountMeta::new(agent.pubkey(), true),
+                AccountMeta::new(solana_program::system_program::id(), false),
+            ],
+        )
+        .await
+    }
+
+    #[allow(dead_code)]
+    pub async fn write_internet_latency_samples_with_pda(
+        &self,
+        agent: &Keypair,
+        latency_samples_pda: Pubkey,
+        samples: Vec<u32>,
+        timestamp: u64,
+    ) -> Result<(), BanksClientError> {
+        let args = WriteInternetLatencySamplesArgs {
+            start_timestamp_microseconds: timestamp,
+            samples,
+        };
+
+        let ix = TelemetryInstruction::WriteInternetLatencySamples(args)
+            .pack()
+            .expect("failed to pack");
+
+        let accounts = vec![
+            AccountMeta::new(latency_samples_pda, false),
+            AccountMeta::new(agent.pubkey(), true),
+            AccountMeta::new(solana_program::system_program::id(), false),
+        ];
+
+        let instruction = Instruction {
+            program_id: self.program_id,
+            accounts,
+            data: ix,
+        };
+
+        let (banks_client, payer, recent_blockhash) = {
+            let ctx = self.context.lock().unwrap();
+            (
+                ctx.banks_client.clone(),
+                ctx.payer.insecure_clone(),
+                ctx.recent_blockhash,
+            )
+        };
+
+        let tx = Transaction::new_signed_with_payer(
+            &[instruction],
+            Some(&payer.pubkey()),
+            &[&payer, agent],
+            recent_blockhash,
+        );
+
+        banks_client.process_transaction(tx).await
     }
 
     pub async fn execute_transaction(

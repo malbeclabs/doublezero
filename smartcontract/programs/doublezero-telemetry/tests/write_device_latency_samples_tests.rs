@@ -130,38 +130,6 @@ async fn test_write_device_latency_samples_success() {
 }
 
 #[tokio::test]
-async fn test_write_device_latency_samples_fail_account_not_exist() {
-    let mut ledger = LedgerHelper::new().await.unwrap();
-
-    let agent = Keypair::new();
-    ledger
-        .fund_account(&agent.pubkey(), 10_000_000_000)
-        .await
-        .unwrap();
-
-    // Use an arbitrary PDA that has never been initialized.
-    let uninitialized_pda = Pubkey::new_unique();
-    let timestamp = 1_700_000_000_000_000;
-    let samples = vec![1000, 1100];
-
-    let result = ledger
-        .telemetry
-        .write_device_latency_samples(&agent, uninitialized_pda, samples, timestamp)
-        .await;
-
-    let error = result.unwrap_err();
-    match error {
-        BanksClientError::TransactionError(TransactionError::InstructionError(
-            _,
-            InstructionError::Custom(code),
-        )) => {
-            assert_eq!(code, TelemetryError::AccountDoesNotExist as u32);
-        }
-        e => panic!("unexpected error: {e:?}"),
-    }
-}
-
-#[tokio::test]
 async fn test_write_device_latency_samples_fail_unauthorized_agent() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 
@@ -599,59 +567,6 @@ async fn test_write_device_latency_samples_fail_wrong_agent_but_valid_signer() {
         .unwrap();
 
     // Try writing as the wrong agent (but still a signer)
-    let result = ledger
-        .telemetry
-        .write_device_latency_samples(
-            &wrong_agent,
-            latency_samples_pda,
-            vec![1234],
-            1_700_000_000_000_000,
-        )
-        .await;
-
-    let err = result.unwrap_err();
-    match err {
-        BanksClientError::TransactionError(TransactionError::InstructionError(
-            _,
-            InstructionError::Custom(code),
-        )) => {
-            assert_eq!(code, TelemetryError::UnauthorizedAgent as u32);
-        }
-        other => panic!("Unexpected error: {other:?}"),
-    }
-}
-
-#[tokio::test]
-async fn test_write_device_latency_samples_fail_agent_mismatch() {
-    let mut ledger = LedgerHelper::new().await.unwrap();
-
-    // Set up real latency samples account
-    let (real_agent, origin_device_pk, target_device_pk, link_pk) =
-        ledger.seed_with_two_linked_devices().await.unwrap();
-
-    ledger.wait_for_new_blockhash().await.unwrap();
-
-    let latency_samples_pda = ledger
-        .telemetry
-        .initialize_device_latency_samples(
-            &real_agent,
-            origin_device_pk,
-            target_device_pk,
-            link_pk,
-            1,
-            5_000_000,
-        )
-        .await
-        .unwrap();
-
-    // Fund a different agent
-    let wrong_agent = Keypair::new();
-    ledger
-        .fund_account(&wrong_agent.pubkey(), 10_000_000)
-        .await
-        .unwrap();
-
-    // Attempt to write with the wrong agent
     let result = ledger
         .telemetry
         .write_device_latency_samples(

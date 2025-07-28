@@ -33,6 +33,9 @@ const (
 	// MaxInternetLatencySamplesPerAccount is the maximum number of samples that can be written to an internet latency samples account.
 	// This provides space for just over 1 sample per minute.
 	MaxInternetLatencySamplesPerAccount = 3000
+
+	// MaxInternetLatencyDataProviderNameLength is the maximum length of a data provider name.
+	MaxInternetLatencyDataProviderNameLength = 32
 )
 
 // Telemetry Program IDs

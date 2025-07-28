@@ -1,6 +1,7 @@
 package telemetry_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/gagliardetto/solana-go"
@@ -95,6 +96,13 @@ func TestSDK_Telemetry_InitializeInternetLatencySamples_MissingFields(t *testing
 				c.DataProviderName = ""
 			},
 			expectError: "data provider name is required",
+		},
+		{
+			name: "data_provider_name_too_long",
+			mutate: func(c *telemetry.InitializeInternetLatencySamplesInstructionConfig) {
+				c.DataProviderName = strings.Repeat("a", telemetry.MaxInternetLatencyDataProviderNameLength+1)
+			},
+			expectError: "data provider name is too long, max length is 32",
 		},
 		{
 			name:        "missing_epoch",

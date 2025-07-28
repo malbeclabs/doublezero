@@ -30,6 +30,9 @@ func (c *InitializeInternetLatencySamplesInstructionConfig) Validate() error {
 	if c.DataProviderName == "" {
 		return fmt.Errorf("data provider name is required")
 	}
+	if len(c.DataProviderName) > MaxInternetLatencyDataProviderNameLength {
+		return fmt.Errorf("data provider name is too long, max length is %d", MaxInternetLatencyDataProviderNameLength)
+	}
 	if c.Epoch == 0 {
 		return fmt.Errorf("epoch is required")
 	}

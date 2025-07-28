@@ -1,3 +1,11 @@
+//! TODO:
+//! - move tests into their own module
+//! - potentially split rewards module into more appropriate modules like jito, etc
+//! - potentially move ValidatorRewards trait into lib instead of rewards
+//! - handle 429 errors
+//! - figure out if underlying reqwest lib in solana client be modified to not retry
+//! - benchmark expected number of validators for mainnet beta launch and 6 months after
+//! - handle DZ epochs once they're defined
 use serde::Deserialize;
 use solana_client::rpc_config::{RpcBlockConfig, RpcGetVoteAccountsConfig};
 use solana_sdk::clock::DEFAULT_SLOTS_PER_EPOCH;

@@ -137,6 +137,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_rewards_between_timestamps() {
+        // Set up test variables and mock data.
         let validator_id = "6WgdYhhGE53WrZ7ywJA15hBVkw7CRbQ8yDBBTwmBtAHN";
         let validator_ids: &[String] = &[String::from(validator_id)];
         let epoch = 824;
@@ -149,6 +150,7 @@ mod tests {
 
         let mut mock_fee_payment_calculator = MockValidatorRewards::new();
 
+        // Define RPC configurations that will be passed to the function under test.
         let rpc_get_vote_accounts_config = RpcGetVoteAccountsConfig {
             vote_pubkey: None,
             commitment: CommitmentConfig::finalized().into(),
@@ -164,6 +166,8 @@ mod tests {
             max_supported_transaction_version: Some(0),
         };
 
+        // Set up mock expectations for the ValidatorRewards trait.
+        // These mocks simulate the behavior of external dependencies.
         mock_fee_payment_calculator
             .expect_get_slot()
             .times(1)
@@ -257,6 +261,7 @@ mod tests {
             .times(1)
             .returning(move || Ok(leader_schedule.clone()));
 
+        // Call the function under test with the prepared data and mocks.
         let rewards = get_rewards_between_timestamps(
             &mock_fee_payment_calculator,
             rpc_get_vote_accounts_config,
@@ -268,6 +273,7 @@ mod tests {
         .await
         .unwrap();
 
+        // Verify that the function produced the correct results.
         let epoch_rewards = rewards.get(&epoch).unwrap();
         let reward = epoch_rewards.get(validator_id).unwrap();
 
@@ -280,6 +286,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_total_rewards() {
+        // Set up test variables and mock data.
         let validator_id = "6WgdYhhGE53WrZ7ywJA15hBVkw7CRbQ8yDBBTwmBtAHN";
         let validator_ids: &[String] = &[String::from(validator_id)];
         let epoch = 819;
@@ -289,6 +296,7 @@ mod tests {
 
         let mut mock_fee_payment_calculator = MockValidatorRewards::new();
 
+        // Define RPC configurations that will be passed to the function under test.
         let rpc_get_vote_accounts_config = RpcGetVoteAccountsConfig {
             vote_pubkey: None,
             commitment: CommitmentConfig::finalized().into(),
@@ -296,6 +304,8 @@ mod tests {
             delinquent_slot_distance: None,
         };
 
+        // Set up mock expectations for the ValidatorRewards trait.
+        // These mocks simulate the behavior of external dependencies.
         let mock_rpc_vote_account_status = RpcVoteAccountStatus {
             current: vec![RpcVoteAccountInfo {
                 vote_pubkey: "6WgdYhhGE53WrZ7ywJA15hBVkw7CRbQ8yDBBTwmBtABB".to_string(),
@@ -387,6 +397,7 @@ mod tests {
             max_supported_transaction_version: Some(0),
         };
 
+        // Call the function under test with the prepared data and mocks.
         let rewards = get_total_rewards(
             &mock_fee_payment_calculator,
             validator_ids,
@@ -397,6 +408,7 @@ mod tests {
         .await
         .unwrap();
 
+        // Verify that the function produced the correct results.
         let reward = rewards.get(validator_id).unwrap();
 
         assert_eq!(reward.epoch, epoch);

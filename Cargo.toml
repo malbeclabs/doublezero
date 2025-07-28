@@ -7,7 +7,6 @@ members = [
     "smartcontract/sdk/rs",
     "smartcontract/programs/doublezero-serviceability",
     "smartcontract/programs/doublezero-telemetry",
-    "smartcontract/doublezero-payment-tracker",
     "smartcontract/program-common",
 ]
 default-members = []

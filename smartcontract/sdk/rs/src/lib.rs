@@ -13,7 +13,10 @@ pub use doublezero_serviceability::{
         accountdata::AccountData,
         accounttype::AccountType,
         contributor::{Contributor, ContributorStatus},
-        device::{Device, DeviceStatus, DeviceType, CURRENT_INTERFACE_VERSION},
+        device::{
+            Device, DeviceStatus, DeviceType, Interface, InterfaceType, LoopbackType,
+            CURRENT_INTERFACE_VERSION,
+        },
         exchange::{Exchange, ExchangeStatus},
         globalconfig::GlobalConfig,
         link::{Link, LinkLinkType, LinkStatus},

@@ -153,6 +153,7 @@ async fn test_device() {
         .unwrap();
     assert_eq!(contributor.account_type, AccountType::Contributor);
     assert_eq!(contributor.code, "cont".to_string());
+    assert_eq!(contributor.reference_count, 0);
     assert_eq!(contributor.status, ContributorStatus::Activated);
 
     println!("✅ Contributor initialized successfully",);
@@ -202,6 +203,28 @@ async fn test_device() {
     assert_eq!(device.account_type, AccountType::Device);
     assert_eq!(device.code, "la".to_string());
     assert_eq!(device.status, DeviceStatus::Pending);
+
+    // check reference counts
+    let contributor = get_account_data(&mut banks_client, contributor_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_contributor()
+        .unwrap();
+    assert_eq!(contributor.reference_count, 1);
+    //check reference counts
+    let location = get_account_data(&mut banks_client, location_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_location()
+        .unwrap();
+    assert_eq!(location.reference_count, 1);
+    //check reference counts
+    let exchange = get_account_data(&mut banks_client, exchange_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_exchange()
+        .unwrap();
+    assert_eq!(exchange.reference_count, 1);
 
     println!("✅ Device initialized successfully",);
     /*****************************************************************************************************************************************************/
@@ -352,6 +375,9 @@ async fn test_device() {
         vec![
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(device.owner, false),
+            AccountMeta::new(device.contributor_pk, false),
+            AccountMeta::new(device.location_pk, false),
+            AccountMeta::new(device.exchange_pk, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
@@ -360,6 +386,28 @@ async fn test_device() {
 
     let device_la = get_account_data(&mut banks_client, device_pubkey).await;
     assert_eq!(device_la, None);
+
+    // check reference counts
+    let contributor = get_account_data(&mut banks_client, contributor_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_contributor()
+        .unwrap();
+    assert_eq!(contributor.reference_count, 0);
+    //check reference counts
+    let location = get_account_data(&mut banks_client, location_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_location()
+        .unwrap();
+    assert_eq!(location.reference_count, 0);
+    //check reference counts
+    let exchange = get_account_data(&mut banks_client, exchange_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_exchange()
+        .unwrap();
+    assert_eq!(exchange.reference_count, 0);
 
     println!("✅ Device deleted successfully");
     println!("🟢🟢🟢  End test_device  🟢🟢🟢");

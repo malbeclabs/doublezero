@@ -72,7 +72,7 @@ pub fn process_reject_user(
     user.status = UserStatus::Rejected;
     msg!("Reason: {:?}", value.reason);
 
-    account_write(user_account, &user, payer_account, system_program);
+    account_write(user_account, &user, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Rejected: {:?}", user);

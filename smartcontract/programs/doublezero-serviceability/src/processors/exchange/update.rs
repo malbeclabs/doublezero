@@ -94,7 +94,7 @@ pub fn process_update_exchange(
         exchange.loc_id = *loc_id;
     }
 
-    account_write(exchange_account, &exchange, payer_account, system_program);
+    account_write(exchange_account, &exchange, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Updated: {:?}", exchange);

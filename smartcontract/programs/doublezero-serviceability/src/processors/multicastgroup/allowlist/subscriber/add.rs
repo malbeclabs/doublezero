@@ -58,7 +58,7 @@ pub fn process_add_multicastgroup_sub_allowlist(
         mgroup.sub_allowlist.push(value.pubkey);
     }
 
-    account_write(mgroup_account, &mgroup, payer_account, system_program);
+    account_write(mgroup_account, &mgroup, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Updated: {:?}", mgroup);

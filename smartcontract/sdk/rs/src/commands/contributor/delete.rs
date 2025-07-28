@@ -1,4 +1,7 @@
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
+use crate::{
+    commands::{contributor::get::GetContributorCommand, globalstate::get::GetGlobalStateCommand},
+    DoubleZeroClient,
+};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, processors::contributor::delete::ContributorDeleteArgs,
 };
@@ -14,6 +17,19 @@ impl DeleteContributorCommand {
         let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand {}
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
+
+        let (_, contributor) = GetContributorCommand {
+            pubkey_or_code: self.pubkey.to_string(),
+        }
+        .execute(client)
+        .map_err(|_err| eyre::eyre!("Contributor not found"))?;
+
+        if contributor.reference_count > 0 {
+            return Err(eyre::eyre!(
+                "Contributor cannot be deleted, it has {} references",
+                contributor.reference_count
+            ));
+        }
 
         client.execute_transaction(
             DoubleZeroInstruction::DeleteContributor(ContributorDeleteArgs {}),
@@ -35,9 +51,14 @@ mod tests {
         instructions::DoubleZeroInstruction,
         pda::{get_contributor_pda, get_globalstate_pda},
         processors::contributor::delete::ContributorDeleteArgs,
+        state::{
+            accountdata::AccountData,
+            accounttype::AccountType,
+            contributor::{Contributor, ContributorStatus},
+        },
     };
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, signature::Signature};
+    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_commands_contributor_delete_command() {
@@ -45,6 +66,20 @@ mod tests {
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
         let (pda_pubkey, _) = get_contributor_pda(&client.get_program_id(), 1);
+        let contributor = Contributor {
+            account_type: AccountType::Contributor,
+            index: 1,
+            bump_seed: 255,
+            code: "cont".to_string(),
+            status: ContributorStatus::Activated,
+            reference_count: 0,
+            owner: Pubkey::default(),
+        };
+
+        client
+            .expect_get()
+            .with(predicate::eq(pda_pubkey))
+            .returning(move |_| Ok(AccountData::Contributor(contributor.clone())));
 
         client
             .expect_execute_transaction()

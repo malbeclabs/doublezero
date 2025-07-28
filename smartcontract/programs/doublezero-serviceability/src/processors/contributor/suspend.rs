@@ -78,7 +78,7 @@ pub fn process_suspend_contributor(
         &contributor,
         payer_account,
         system_program,
-    );
+    )?;
 
     #[cfg(test)]
     msg!("Suspended: {:?}", contributor);

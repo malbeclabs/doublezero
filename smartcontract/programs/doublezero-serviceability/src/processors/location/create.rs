@@ -96,6 +96,7 @@ pub fn process_create_location(
         owner: *payer_account.key,
         index: globalstate.account_index,
         bump_seed,
+        reference_count: 0,
         code: value.code.clone(),
         name: value.name.clone(),
         country: value.country.clone(),

@@ -91,6 +91,11 @@ pub fn process_create_user(
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
+    let mut device = Device::try_from(device_account)?;
+    assert_eq!(device.account_type, AccountType::Device);
+
+    device.reference_count += 1;
+
     let user: User = User {
         account_type: AccountType::User,
         owner: *payer_account.key,
@@ -117,6 +122,7 @@ pub fn process_create_user(
         system_program,
         program_id,
     )?;
+    account_write(device_account, &device, payer_account, system_program)?;
     globalstate_write(globalstate_account, &globalstate)?;
 
     Ok(())

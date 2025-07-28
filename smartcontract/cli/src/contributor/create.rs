@@ -76,7 +76,7 @@ mod tests {
                         account_type: AccountType::Contributor,
                         owner: Pubkey::default(),
                         index: 1,
-
+                        reference_count: 0,
                         code: "test2".to_string(),
                         status: ContributorStatus::Activated,
                         bump_seed: 0,

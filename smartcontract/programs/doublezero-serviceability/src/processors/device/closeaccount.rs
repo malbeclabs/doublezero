@@ -2,7 +2,10 @@ use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get_next,
     helper::*,
-    state::{accounttype::AccountType, device::*},
+    state::{
+        accounttype::AccountType, contributor::Contributor, device::*, exchange::Exchange,
+        location::Location,
+    },
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
@@ -32,9 +35,12 @@ pub fn process_closeaccount_device(
 
     let device_account = next_account_info(accounts_iter)?;
     let owner_account = next_account_info(accounts_iter)?;
+    let contributor_account = next_account_info(accounts_iter)?;
+    let location_account = next_account_info(accounts_iter)?;
+    let exchange_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
-    let _system_program = next_account_info(accounts_iter)?;
+    let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
     msg!("process_closeaccount_device({:?})", _value);
@@ -48,6 +54,15 @@ pub fn process_closeaccount_device(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"
     );
+    assert_eq!(
+        location_account.owner, program_id,
+        "Invalid Location Owner Account"
+    );
+    assert_eq!(
+        exchange_account.owner, program_id,
+        "Invalid Exchange Owner Account"
+    );
+
     assert!(device_account.is_writable, "PDA Account is not writable");
 
     let globalstate = globalstate_get_next(globalstate_account)?;
@@ -66,8 +81,29 @@ pub fn process_closeaccount_device(
         msg!("{:?}", device);
         return Err(solana_program::program_error::ProgramError::Custom(1));
     }
+    if device.location_pk != *location_account.key {
+        return Err(DoubleZeroError::InvalidLocationPubkey.into());
+    }
+    if device.exchange_pk != *exchange_account.key {
+        return Err(DoubleZeroError::InvalidExchangePubkey.into());
+    }
+    let mut contributor = Contributor::try_from(contributor_account)?;
+    let mut location = Location::try_from(location_account)?;
+    let mut exchange = Exchange::try_from(exchange_account)?;
+
+    contributor.reference_count = contributor.reference_count.saturating_sub(1);
+    location.reference_count = location.reference_count.saturating_sub(1);
+    exchange.reference_count = exchange.reference_count.saturating_sub(1);
 
     account_close(device_account, owner_account)?;
+    account_write(
+        contributor_account,
+        &contributor,
+        payer_account,
+        system_program,
+    )?;
+    account_write(location_account, &location, payer_account, system_program)?;
+    account_write(exchange_account, &exchange, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("CloseAccount: Device closed");

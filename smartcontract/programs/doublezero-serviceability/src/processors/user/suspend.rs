@@ -55,7 +55,7 @@ pub fn process_suspend_user(
 
     user.status = UserStatus::Suspended;
 
-    account_write(user_account, &user, payer_account, system_program);
+    account_write(user_account, &user, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Suspended: {:?}", user);

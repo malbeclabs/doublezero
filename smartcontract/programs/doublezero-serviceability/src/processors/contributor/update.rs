@@ -72,7 +72,7 @@ pub fn process_update_contributor(
         &contributor,
         payer_account,
         system_program,
-    );
+    )?;
 
     #[cfg(test)]
     msg!("Updated: {:?}", contributor);

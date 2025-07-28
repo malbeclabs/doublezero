@@ -326,11 +326,7 @@ pub fn process_user_event(
                 }
 
                 if user.status == UserStatus::Deleting {
-                    let res = CloseAccountUserCommand {
-                        pubkey: *pubkey,
-                        owner: user.owner,
-                    }
-                    .execute(client);
+                    let res = CloseAccountUserCommand { pubkey: *pubkey }.execute(client);
 
                     match res {
                         Ok(signature) => {
@@ -424,8 +420,8 @@ mod tests {
         tests::utils::{create_test_client, get_device_bump_seed, get_user_bump_seed},
     };
     use doublezero_sdk::{
-        AccountType, Device, DeviceStatus, DeviceType, MockDoubleZeroClient, User, UserCYOA,
-        UserStatus, UserType,
+        AccountData, AccountType, Device, DeviceStatus, DeviceType, MockDoubleZeroClient, User,
+        UserCYOA, UserStatus, UserType,
     };
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
@@ -473,6 +469,7 @@ mod tests {
             account_type: AccountType::Device,
             owner: Pubkey::new_unique(),
             index: 0,
+            reference_count: 0,
             bump_seed: get_device_bump_seed(&client),
             contributor_pk: Pubkey::new_unique(),
             location_pk: Pubkey::new_unique(),
@@ -604,6 +601,7 @@ mod tests {
             account_type: AccountType::Device,
             owner: Pubkey::new_unique(),
             index: 0,
+            reference_count: 0,
             bump_seed: get_device_bump_seed(&client),
             contributor_pk: Pubkey::new_unique(),
             location_pk: Pubkey::new_unique(),
@@ -797,6 +795,7 @@ mod tests {
             account_type: AccountType::Device,
             owner: Pubkey::new_unique(),
             index: 0,
+            reference_count: 0,
             bump_seed: get_device_bump_seed(&client),
             contributor_pk: Pubkey::new_unique(),
             location_pk: Pubkey::new_unique(),
@@ -908,6 +907,7 @@ mod tests {
             account_type: AccountType::Device,
             owner: Pubkey::new_unique(),
             index: 0,
+            reference_count: 0,
             bump_seed: get_device_bump_seed(&client),
             contributor_pk: Pubkey::new_unique(),
             location_pk: Pubkey::new_unique(),
@@ -1036,10 +1036,17 @@ mod tests {
             validator_pubkey: Pubkey::default(),
         };
 
+        let user2 = user.clone();
+        client
+            .expect_get()
+            .with(predicate::eq(user_pubkey))
+            .returning(move |_| Ok(AccountData::User(user2.clone())));
+
         let device = Device {
             account_type: AccountType::Device,
             owner: Pubkey::new_unique(),
             index: 0,
+            reference_count: 0,
             bump_seed: get_device_bump_seed(&client),
             contributor_pk: Pubkey::new_unique(),
             location_pk: Pubkey::new_unique(),

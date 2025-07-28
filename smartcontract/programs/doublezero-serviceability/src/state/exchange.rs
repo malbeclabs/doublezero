@@ -46,14 +46,15 @@ pub struct Exchange {
     pub status: ExchangeStatus,    // 1
     pub code: String,              // 4 + len
     pub name: String,              // 4 + len
+    pub reference_count: u32,      // 4
 }
 
 impl fmt::Display for Exchange {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, index: {}, bump_seed: {}, code: {}, name: {}, lat: {}, lng: {}, loc_id: {}, status: {}",
-            self.account_type, self.owner, self.index, self.bump_seed, self.code, self.name, self.lat, self.lng, self.loc_id, self.status
+            "account_type: {}, owner: {}, index: {}, bump_seed: {}, code: {}, name: {}, lat: {}, lng: {}, loc_id: {}, status: {}, reference_count: {}",
+            self.account_type, self.owner, self.index, self.bump_seed, self.code, self.name, self.lat, self.lng, self.loc_id, self.status, self.reference_count
         )
     }
 }
@@ -63,7 +64,7 @@ impl AccountTypeInfo for Exchange {
         SEED_EXCHANGE
     }
     fn size(&self) -> usize {
-        1 + 32 + 16 + 1 + 8 + 8 + 4 + 1 + 4 + self.code.len() + 4 + self.name.len()
+        1 + 32 + 16 + 1 + 8 + 8 + 4 + 1 + 4 + self.code.len() + 4 + self.name.len() + 4
     }
     fn index(&self) -> u128 {
         self.index
@@ -91,6 +92,7 @@ impl From<&[u8]> for Exchange {
             status: parser.read_enum(),
             code: parser.read_string(),
             name: parser.read_string(),
+            reference_count: parser.read_u32(),
         }
     }
 }
@@ -115,6 +117,7 @@ mod tests {
             owner: Pubkey::new_unique(),
             index: 123,
             bump_seed: 1,
+            reference_count: 0,
             lat: 123.45,
             lng: 345.678,
             loc_id: 1212121,

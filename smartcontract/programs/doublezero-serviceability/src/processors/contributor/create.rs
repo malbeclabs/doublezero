@@ -77,6 +77,7 @@ pub fn process_create_contributor(
         account_type: AccountType::Contributor,
         owner: *payer_account.key,
         index: globalstate.account_index,
+        reference_count: 0,
         bump_seed,
         code: value.code.clone(),
         status: ContributorStatus::Activated,

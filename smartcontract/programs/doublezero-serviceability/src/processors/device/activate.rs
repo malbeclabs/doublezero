@@ -53,7 +53,7 @@ pub fn process_activate_device(program_id: &Pubkey, accounts: &[AccountInfo]) ->
 
     device.status = DeviceStatus::Activated;
 
-    account_write(device_account, &device, payer_account, system_program);
+    account_write(device_account, &device, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Activated: {:?}", device);

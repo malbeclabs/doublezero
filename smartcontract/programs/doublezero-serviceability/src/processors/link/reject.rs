@@ -71,7 +71,7 @@ pub fn process_reject_link(
     link.status = LinkStatus::Rejected;
     msg!("Reason: {:?}", value.reason);
 
-    account_write(link_account, &link, payer_account, system_program);
+    account_write(link_account, &link, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Rejectd: {:?}", link);

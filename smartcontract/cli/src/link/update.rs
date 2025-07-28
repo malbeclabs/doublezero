@@ -114,6 +114,7 @@ mod tests {
             account_type: AccountType::Contributor,
             owner: Pubkey::default(),
             bump_seed: 255,
+            reference_count: 0,
             index: 1,
             status: ContributorStatus::Activated,
             code: "co01".to_string(),

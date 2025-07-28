@@ -63,7 +63,7 @@ mod tests {
             index: 1,
             bump_seed: 255,
             code: "test".to_string(),
-
+            reference_count: 0,
             status: ContributorStatus::Activated,
             owner: Pubkey::default(),
         };

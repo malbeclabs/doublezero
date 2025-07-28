@@ -80,7 +80,7 @@ pub fn process_delete_multicastgroup(
         &multicastgroup,
         payer_account,
         system_program,
-    );
+    )?;
 
     #[cfg(test)]
     msg!("Deleted: {:?}", multicastgroup_account);

@@ -5,6 +5,7 @@ use crate::{
     pda::get_user_pda,
     state::{
         accounttype::AccountType,
+        device::Device,
         multicastgroup::{MulticastGroup, MulticastGroupStatus},
         user::*,
     },
@@ -97,6 +98,11 @@ pub fn process_create_subscribe_user(
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
+    let mut device = Device::try_from(device_account)?;
+    assert_eq!(device.account_type, AccountType::Device);
+
+    device.reference_count += 1;
+
     let user: User = User {
         account_type: AccountType::User,
         owner: *payer_account.key,
@@ -129,7 +135,7 @@ pub fn process_create_subscribe_user(
         mgroup.subscribers.push(*pda_account.key);
     }
 
-    account_write(mgroup_account, &mgroup, payer_account, system_program);
+    account_write(mgroup_account, &mgroup, payer_account, system_program)?;
     account_create(
         pda_account,
         &user,
@@ -137,6 +143,7 @@ pub fn process_create_subscribe_user(
         system_program,
         program_id,
     )?;
+    account_write(device_account, &device, payer_account, system_program)?;
     globalstate_write(globalstate_account, &globalstate)?;
 
     Ok(())

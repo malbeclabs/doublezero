@@ -76,7 +76,7 @@ pub fn process_resume_exchange(
 
     exchange.status = ExchangeStatus::Activated;
 
-    account_write(exchange_account, &exchange, payer_account, system_program);
+    account_write(exchange_account, &exchange, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Resumed: {:?}", exchange);

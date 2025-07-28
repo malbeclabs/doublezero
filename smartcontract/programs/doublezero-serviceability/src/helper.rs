@@ -67,7 +67,8 @@ pub fn account_write<'a, T>(
     instance: &T,
     payer_account: &AccountInfo<'a>,
     system_program: &AccountInfo<'a>,
-) where
+) -> ProgramResult
+where
     T: AccountTypeInfo + BorshSerialize,
 {
     let actual_len = account.data_len();
@@ -80,9 +81,7 @@ pub fn account_write<'a, T>(
         }
 
         let data = &mut account.data.borrow_mut();
-        instance
-            .serialize(&mut &mut data[..])
-            .expect("Unable to serialize");
+        instance.serialize(&mut &mut data[..])?;
     }
 
     if actual_len < new_len {
@@ -113,10 +112,11 @@ pub fn account_write<'a, T>(
                     &instance.index().to_le_bytes(),
                     &[instance.bump_seed()],
                 ]],
-            )
-            .expect("Unable to pay rent");
+            )?;
         }
     }
+
+    Ok(())
 }
 
 pub fn account_close(

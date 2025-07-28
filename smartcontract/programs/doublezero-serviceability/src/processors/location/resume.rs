@@ -69,7 +69,7 @@ pub fn process_resume_location(
 
     location.status = LocationStatus::Activated;
 
-    account_write(location_account, &location, payer_account, system_program);
+    account_write(location_account, &location, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Resumed: {:?}", location);

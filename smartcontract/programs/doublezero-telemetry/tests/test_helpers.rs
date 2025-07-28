@@ -748,9 +748,9 @@ impl ServiceabilityProgramHelper {
             }),
             vec![
                 AccountMeta::new(device_pk, false),
-                AccountMeta::new_readonly(contributor_pk, false),
-                AccountMeta::new_readonly(location_pk, false),
-                AccountMeta::new_readonly(exchange_pk, false),
+                AccountMeta::new(contributor_pk, false),
+                AccountMeta::new(location_pk, false),
+                AccountMeta::new(exchange_pk, false),
                 AccountMeta::new(self.global_state_pubkey, false),
             ],
         )
@@ -830,8 +830,8 @@ impl ServiceabilityProgramHelper {
             vec![
                 AccountMeta::new(link_pk, false),
                 AccountMeta::new(contributor_pk, false),
-                AccountMeta::new_readonly(side_a_pk, false),
-                AccountMeta::new_readonly(side_z_pk, false),
+                AccountMeta::new(side_a_pk, false),
+                AccountMeta::new(side_z_pk, false),
                 AccountMeta::new(self.global_state_pubkey, false),
             ],
         )

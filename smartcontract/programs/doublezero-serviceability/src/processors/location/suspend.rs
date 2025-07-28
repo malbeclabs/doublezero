@@ -70,7 +70,7 @@ pub fn process_suspend_location(
 
     location.status = LocationStatus::Suspended;
 
-    account_write(location_account, &location, payer_account, system_program);
+    account_write(location_account, &location, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Suspended: {:?}", location);

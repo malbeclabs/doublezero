@@ -73,6 +73,7 @@ pub struct Contributor {
     pub bump_seed: u8,             // 1
     pub status: ContributorStatus, // 1
     pub code: String,              // 4 + len
+    pub reference_count: u32,      // 4
 }
 
 impl fmt::Display for Contributor {
@@ -90,7 +91,7 @@ impl AccountTypeInfo for Contributor {
         SEED_CONTRIBUTOR
     }
     fn size(&self) -> usize {
-        1 + 32 + 16 + 1 + 1 + 4 + self.code.len()
+        1 + 32 + 16 + 1 + 1 + 4 + self.code.len() + 4
     }
     fn bump_seed(&self) -> u8 {
         self.bump_seed
@@ -114,6 +115,7 @@ impl From<&[u8]> for Contributor {
             bump_seed: parser.read_u8(),
             status: parser.read_enum(),
             code: parser.read_string(),
+            reference_count: parser.read_u32(),
         }
     }
 }
@@ -138,6 +140,7 @@ mod tests {
             owner: Pubkey::default(),
             index: 123,
             bump_seed: 1,
+            reference_count: 0,
             status: ContributorStatus::Activated,
             code: "test".to_string(),
         };

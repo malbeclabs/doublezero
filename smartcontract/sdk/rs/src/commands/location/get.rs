@@ -59,6 +59,7 @@ mod tests {
             account_type: AccountType::Location,
             index: 1,
             bump_seed: 2,
+            reference_count: 0,
             code: "location_code".to_string(),
             name: "location_name".to_string(),
             country: "location_country".to_string(),

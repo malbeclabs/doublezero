@@ -82,7 +82,7 @@ pub fn process_activate_user(
 
     user.validator_pubkey = value.validator_pubkey.unwrap_or_default();
 
-    account_write(user_account, &user, payer_account, system_program);
+    account_write(user_account, &user, payer_account, system_program)?;
 
     #[cfg(test)]
     msg!("Activated: {:?}", user);

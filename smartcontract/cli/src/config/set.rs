@@ -63,7 +63,7 @@ impl SetConfigCliCommand {
             config.json_rpc_url,
             config.websocket_url.unwrap_or(format!(
                 "{} (computed)",
-                convert_url_to_ws(&config.json_rpc_url)
+                convert_url_to_ws(&config.json_rpc_url)?
             )),
             config.keypair_path,
             config.program_id.unwrap_or(format!(

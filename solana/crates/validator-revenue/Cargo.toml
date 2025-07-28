@@ -1,0 +1,23 @@
+[package]
+name = "doublezero-solana-validator-revenue"
+
+description = "Crate that processes revenue for validators"
+
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+eyre.workspace = true
+futures.workspace = true
+mockall.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+solana-client.workspace = true
+solana-sdk.workspace = true
+solana-transaction-status-client-types.workspace = true
+tokio.workspace = true

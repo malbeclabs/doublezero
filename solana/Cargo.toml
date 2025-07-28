@@ -2,6 +2,7 @@
 exclude = []
 members = [
     "crates/program-tools",
+    "crates/validator-revenue",
     "programs/revenue-distribution",
 ]
 resolver = "2"
@@ -15,13 +16,20 @@ rust-version = "1.83"
 version = "0.1.0"
 
 [workspace.dependencies]
+async-trait = "0.1"
 base64 = "0.22"
 bincode = "1.3"
 bitmaps = "3.2"
 borsh = "1.5"
 bytemuck = "1.23"
+eyre = "0.6"
+futures = "0.3"
+mockall = "0.13"
+reqwest = { version = "0.12", features = ["json"] }
+serde = "1"
 solana-account-info = "2"
 solana-cpi = "2"
+solana-client = "2"
 solana-hash = "2"
 solana-instruction = "2"
 solana-loader-v3-interface = "5"
@@ -33,7 +41,9 @@ solana-pubkey = "2"
 solana-sha256-hasher = "2"
 solana-system-interface = "1"
 solana-sysvar = "2"
+solana-transaction-status-client-types = "2"
 spl-token = { version = "8", features = ["no-entrypoint"] }
+tokio = "1"
 
 ### Please keep these packages pinned for now.
 sha2-const-stable = "=0.1.0"

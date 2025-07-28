@@ -134,7 +134,14 @@ func (p *provider) GetCircuitLatenciesDownsampled(
 	circuitCode string,
 	from, to time.Time,
 	maxPoints uint64,
+	unit Unit,
 ) ([]CircuitLatencyStat, error) {
+	switch unit {
+	case UnitMillisecond, UnitMicrosecond:
+	default:
+		return nil, fmt.Errorf("invalid unit: %s (must be %s or %s)", unit, UnitMillisecond, UnitMicrosecond)
+	}
+
 	latencies, err := p.GetCircuitLatencies(ctx, circuitCode, from, to)
 	if err != nil {
 		return nil, err
@@ -182,6 +189,28 @@ func (p *provider) GetCircuitLatenciesDownsampled(
 		sort.Slice(result, func(i, j int) bool {
 			return result[i].Timestamp < result[j].Timestamp
 		})
+	}
+
+	switch unit {
+	case UnitMillisecond:
+		factor := 1000.0
+		for i, stat := range result {
+			stat.RTTMean /= factor
+			stat.RTTMedian /= factor
+			stat.RTTMin /= factor
+			stat.RTTMax /= factor
+			stat.RTTP95 /= factor
+			stat.RTTP99 /= factor
+			stat.RTTStdDev /= factor
+			stat.RTTVariance /= factor
+			stat.RTTMAD /= factor
+			stat.JitterAvg /= factor
+			stat.JitterEWMA /= factor
+			stat.JitterDeltaStdDev /= factor
+			stat.JitterPeakToPeak /= factor
+			stat.JitterMax /= factor
+			result[i] = stat
+		}
 	}
 
 	return result, nil

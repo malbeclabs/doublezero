@@ -50,6 +50,7 @@ func main() {
 			from,
 			to,
 			1,
+			data.UnitMillisecond,
 		)
 		if err != nil {
 			log.Warn("Failed to get circuit latencies", "error", err, "circuit", circuit.Code)
@@ -90,7 +91,7 @@ func newProvider(log *slog.Logger, env string) (data.Provider, error) {
 func printSummaries(stats []data.CircuitLatencyStat, env string, recency time.Duration) {
 	fmt.Println("Environment:", env)
 	fmt.Println("Recency:", recency)
-	fmt.Println("* RTT aggregates are in microseconds (µs)")
+	fmt.Println("* RTT aggregates are in milliseconds (ms)")
 
 	sort.Slice(stats, func(i, j int) bool {
 		return stats[i].Timestamp < stats[j].Timestamp
@@ -104,8 +105,8 @@ func printSummaries(stats []data.CircuitLatencyStat, env string, recency time.Du
 	table.SetRowLine(true)
 	table.SetHeader([]string{
 		"Circuit",
-		"RTT Mean\n(µs)",
-		"Jitter Avg\n(µs)", "Jitter\nEWMA", "Jitter\nMax",
+		"RTT Mean\n(ms)",
+		"Jitter Avg\n(ms)", "Jitter\nEWMA", "Jitter\nMax",
 		"RTT\nStdDev",
 		"RTT\nP95", "RTT\nP99", "RTT\nMin", "RTT\nMax",
 		"RTT\nMedian",
@@ -115,16 +116,16 @@ func printSummaries(stats []data.CircuitLatencyStat, env string, recency time.Du
 	for _, s := range stats {
 		table.Append([]string{
 			s.Circuit,
-			fmt.Sprintf("%.0f", s.RTTMean),
-			fmt.Sprintf("%.2f", s.JitterAvg),
-			fmt.Sprintf("%.1f", s.JitterEWMA),
-			fmt.Sprintf("%.1f", s.JitterMax),
-			fmt.Sprintf("%.1f", s.RTTStdDev),
-			fmt.Sprintf("%.0f", s.RTTP95),
-			fmt.Sprintf("%.0f", s.RTTP99),
-			fmt.Sprintf("%.0f", s.RTTMin),
-			fmt.Sprintf("%.0f", s.RTTMax),
-			fmt.Sprintf("%.0f", s.RTTMedian),
+			fmt.Sprintf("%.3f", s.RTTMean),
+			fmt.Sprintf("%.5f", s.JitterAvg),
+			fmt.Sprintf("%.3f", s.JitterEWMA),
+			fmt.Sprintf("%.3f", s.JitterMax),
+			fmt.Sprintf("%.3f", s.RTTStdDev),
+			fmt.Sprintf("%.3f", s.RTTP95),
+			fmt.Sprintf("%.3f", s.RTTP99),
+			fmt.Sprintf("%.3f", s.RTTMin),
+			fmt.Sprintf("%.3f", s.RTTMax),
+			fmt.Sprintf("%.3f", s.RTTMedian),
 			fmt.Sprintf("%d", s.SuccessCount),
 			fmt.Sprintf("%d", s.LossCount),
 			fmt.Sprintf("%.1f%%", s.LossRate*100),

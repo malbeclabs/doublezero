@@ -40,7 +40,7 @@ pub struct DecommissioningCliCommand {
 
 impl DecommissioningCliCommand {
     pub async fn execute(self, client: &dyn CliCommand) -> eyre::Result<()> {
-        let spinner = init_command();
+        let spinner = init_command(4);
         let controller = ServiceControllerImpl::new(None);
 
         // Check that have your id.json
@@ -56,6 +56,7 @@ impl DecommissioningCliCommand {
         // Get public IP
         let (client_ip, _) = look_for_ip(&self.client_ip, &spinner).await?;
 
+        spinner.inc(1);
         spinner.set_message("deleting user account...");
 
         let users = client.list_user(ListUserCommand)?;
@@ -77,6 +78,7 @@ impl DecommissioningCliCommand {
                 None => {}
             }
 
+            spinner.inc(1);
             println!("🔍  Deleting User Account for: {pubkey}");
             let res = client.delete_user(DeleteUserCommand { pubkey: *pubkey });
             match res {
@@ -95,7 +97,8 @@ impl DecommissioningCliCommand {
                 .await;
         }
 
-        spinner.finish_with_message("🔍  Deprovisioning Complete");
+        spinner.println("✅  Deprovisioning Complete");
+        spinner.finish_and_clear();
 
         Ok(())
     }

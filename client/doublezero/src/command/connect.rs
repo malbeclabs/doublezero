@@ -83,7 +83,7 @@ impl ProvisioningCliCommand {
         client: &dyn CliCommand,
         controller: &T,
     ) -> eyre::Result<()> {
-        let spinner = init_command();
+        let spinner = init_command(4);
 
         // Check requirements
         check_requirements(
@@ -95,16 +95,15 @@ impl ProvisioningCliCommand {
         check_doublezero(controller, Some(&spinner))?;
 
         spinner.println("🔗  Start Provisioning User...");
-        spinner.set_prefix("1/4 Public IP");
-
         // Get public IP
         let (client_ip, client_ip_str) = look_for_ip(&self.client_ip, &spinner).await?;
 
+        spinner.inc(1);
         spinner.println(format!("🔍  Provisioning User for IP: {client_ip_str}"));
 
         match self.parse_dz_mode() {
             (UserType::IBRL, _, _) => {
-                self.execute_ibrl(client, controller, UserType::IBRL, client_ip, spinner)
+                self.execute_ibrl(client, controller, UserType::IBRL, client_ip, &spinner)
                     .await
             }
             (UserType::IBRLWithAllocatedIP, _, _) => {
@@ -113,7 +112,7 @@ impl ProvisioningCliCommand {
                     controller,
                     UserType::IBRLWithAllocatedIP,
                     client_ip,
-                    spinner,
+                    &spinner,
                 )
                 .await
             }
@@ -124,12 +123,17 @@ impl ProvisioningCliCommand {
                     multicast_mode,
                     multicast_group,
                     client_ip,
-                    spinner,
+                    &spinner,
                 )
                 .await
             }
-            _ => Err(eyre::eyre!("DzMode not supported")),
-        }
+            _ => eyre::bail!("DzMode not supported"),
+        }?;
+
+        spinner.println("✅  User Provisioned");
+        spinner.finish_and_clear();
+
+        Ok(())
     }
 
     async fn execute_ibrl<T: ServiceController>(
@@ -138,11 +142,11 @@ impl ProvisioningCliCommand {
         controller: &T,
         user_type: UserType,
         client_ip: Ipv4Addr,
-        spinner: ProgressBar,
+        spinner: &ProgressBar,
     ) -> eyre::Result<()> {
         // Look for user
         let (user_pubkey, user) = self
-            .find_or_create_user(client, controller, &client_ip, &spinner, user_type)
+            .find_or_create_user(client, controller, &client_ip, spinner, user_type)
             .await?;
 
         // Check user status
@@ -150,21 +154,16 @@ impl ProvisioningCliCommand {
             UserStatus::Activated => {
                 // User is activated
                 self.user_activated(
-                    client, controller, &user, &client_ip, &spinner, user_type, None, None,
+                    client, controller, &user, &client_ip, spinner, user_type, None, None,
                 )
-                .await?
+                .await
             }
             UserStatus::Rejected => {
                 // User is rejected
-                self.user_rejected(client, &user_pubkey, &spinner).await?;
+                self.user_rejected(client, &user_pubkey, spinner).await
             }
             _ => eyre::bail!("User status not expected"),
         }
-
-        spinner.finish_with_message("Connected");
-
-        // Finish
-        Ok(())
     }
 
     async fn execute_multicast<T: ServiceController>(
@@ -174,16 +173,13 @@ impl ProvisioningCliCommand {
         multicast_mode: &MulticastMode,
         multicast_group: &String,
         client_ip: Ipv4Addr,
-        spinner: ProgressBar,
+        spinner: &ProgressBar,
     ) -> eyre::Result<()> {
         let mcast_groups = client.list_multicastgroup(ListMulticastGroupCommand)?;
         let (mcast_group_pk, _) = mcast_groups
             .iter()
             .find(|(_, g)| g.code == *multicast_group)
-            .ok_or_else(|| {
-                spinner.finish_and_clear();
-                eyre::eyre!("Multicast group not found")
-            })?;
+            .ok_or_else(|| eyre::eyre!("Multicast group not found"))?;
 
         // Look for user
         let (user_pubkey, user) = self
@@ -191,7 +187,7 @@ impl ProvisioningCliCommand {
                 client,
                 controller,
                 &client_ip,
-                &spinner,
+                spinner,
                 multicast_mode,
                 mcast_group_pk,
             )
@@ -228,7 +224,7 @@ impl ProvisioningCliCommand {
                     controller,
                     &user,
                     &client_ip,
-                    &spinner,
+                    spinner,
                     UserType::Multicast,
                     Some(mcast_pub_groups),
                     Some(mcast_sub_groups),
@@ -237,12 +233,10 @@ impl ProvisioningCliCommand {
             }
             UserStatus::Rejected => {
                 // User is rejected
-                self.user_rejected(client, &user_pubkey, &spinner).await?;
+                self.user_rejected(client, &user_pubkey, spinner).await?;
             }
             _ => eyre::bail!("User status not expected"),
         }
-
-        spinner.finish_with_message("Connected");
 
         // Finish
         Ok(())
@@ -270,7 +264,7 @@ impl ProvisioningCliCommand {
         controller: &T,
         spinner: &ProgressBar,
     ) -> eyre::Result<(Pubkey, Device)> {
-        spinner.set_message("Searching for device account...");
+        spinner.set_message("Searching for the nearest device...");
 
         let devices = client.list_device(ListDeviceCommand)?;
         let device_pk = match self.device.as_ref() {
@@ -293,7 +287,7 @@ impl ProvisioningCliCommand {
                 latencies.retain(|l| l.reachable);
                 latencies.sort_by(|a, b| a.avg_latency_ns.cmp(&b.avg_latency_ns));
 
-                spinner.set_message("Searching for device account...");
+                spinner.set_message("Reading device account...");
                 Pubkey::from_str(
                     &latencies
                         .first()
@@ -322,7 +316,7 @@ impl ProvisioningCliCommand {
         user_type: UserType,
     ) -> eyre::Result<(Pubkey, User)> {
         spinner.set_message("Searching for user account...");
-        spinner.set_prefix("2/4 User");
+        spinner.inc(1);
 
         let users = client.list_user(ListUserCommand)?;
 
@@ -333,7 +327,7 @@ impl ProvisioningCliCommand {
 
         if matched_users.len() > 1 {
             // invariant, this indicates a bug that should never happen
-            panic!("Multiple tunnels found for the same IP address. This should not happen.");
+            panic!("❌ Multiple tunnels found for the same IP address. This should not happen.");
         }
 
         let user_pubkey = match matched_users.first() {
@@ -341,8 +335,8 @@ impl ProvisioningCliCommand {
                 if user.user_type != UserType::IBRL
                     && user.user_type != UserType::IBRLWithAllocatedIP
                 {
-                    spinner.finish_with_message(format!(
-                        "User with IP {} already exists with type {:?}. Expected type {:?}. Only one tunnel currently supported.",
+                    spinner.println(format!(
+                        "❌  User with IP {} already exists with type {:?}. Expected type {:?}. Only one tunnel currently supported.",
                         client_ip,
                         user.user_type,
                         user_type
@@ -355,17 +349,14 @@ impl ProvisioningCliCommand {
                 **pubkey
             }
             None => {
-                spinner.println(format!("    Creating an account for the IP: {client_ip}"));
+                spinner.println("    User account created");
 
                 let (device_pk, device) = self
                     .find_or_create_device(client, controller, spinner)
                     .await?;
 
-                spinner.println(format!(
-                    "    The Device has been selected: {} ",
-                    device.code
-                ));
-                spinner.set_prefix("🔗 [3/4] User");
+                spinner.println(format!("    Connected to device: {} ", device.code));
+                spinner.inc(1);
 
                 let res = client.create_user(CreateUserCommand {
                     user_type,
@@ -380,7 +371,7 @@ impl ProvisioningCliCommand {
                         Ok(pubkey)
                     }
                     Err(e) => {
-                        spinner.finish_with_message("Error creating user");
+                        spinner.println("❌ Error creating user");
                         spinner.println(format!("\n{}: {:?}\n", "Error", e));
 
                         Err(eyre::eyre!("Error creating user"))
@@ -404,7 +395,7 @@ impl ProvisioningCliCommand {
         mcast_group_pk: &Pubkey,
     ) -> eyre::Result<(Pubkey, User)> {
         spinner.set_message("Searching for user account...");
-        spinner.set_prefix("2/4 User");
+        spinner.inc(1);
 
         let users = client.list_user(ListUserCommand)?;
 
@@ -421,8 +412,8 @@ impl ProvisioningCliCommand {
         let user_pubkey = match matched_users.first() {
             Some((_, user)) => {
                 if user.user_type != UserType::Multicast {
-                    spinner.finish_with_message(format!(
-                        "User with IP {} already exists with type {:?}. Expected type {:?}. Only one tunnel currently supported.",
+                    spinner.println(format!(
+                        "❌  User with IP {} already exists with type {:?}. Expected type {:?}. Only one tunnel currently supported.",
                         client_ip,
                         user.user_type,
                         UserType::Multicast
@@ -431,12 +422,12 @@ impl ProvisioningCliCommand {
                 }
 
                 let err_msg = format!(
-                    r#"Multicast user already exists for IP: {client_ip}
+                    r#"❌ Multicast user already exists for IP: {client_ip}
 Multicast supports only one subscription at this time.
 Disconnect and connect again!"#,
                 );
 
-                spinner.finish_with_message(err_msg.clone());
+                spinner.println(err_msg.clone());
                 eyre::bail!(err_msg);
             }
             None => {
@@ -450,7 +441,7 @@ Disconnect and connect again!"#,
                     "    The Device has been selected: {} ",
                     device.code
                 ));
-                spinner.set_prefix("🔗 [3/4] User");
+                spinner.inc(1);
 
                 let (publisher, subscriber) = match multicast_mode {
                     MulticastMode::Publisher => (true, false),
@@ -473,7 +464,7 @@ Disconnect and connect again!"#,
                         Ok(pubkey)
                     }
                     Err(e) => {
-                        spinner.finish_with_message("Error creating user");
+                        spinner.println("❌ Error creating user");
                         spinner.println(format!("\n{}: {:?}\n", "Error", e));
                         Err(eyre::eyre!("Error creating user"))
                     }
@@ -502,7 +493,7 @@ Disconnect and connect again!"#,
                 .map_err(|_| eyre::eyre!("User not found"))?;
 
             if user.status == UserStatus::Activated || user.status == UserStatus::Rejected {
-                spinner.println(format!("    User activated with dz_ip: {}", &user.dz_ip));
+                spinner.println("    The user has been successfully activated");
                 return Ok(user);
             }
         }
@@ -520,9 +511,7 @@ Disconnect and connect again!"#,
         mcast_pub_groups: Option<Vec<String>>,
         mcast_sub_groups: Option<Vec<String>>,
     ) -> eyre::Result<()> {
-        spinner.println(format!("    User activated with dz_ip: {}", &user.dz_ip));
-
-        spinner.set_prefix("3/4 Device");
+        spinner.inc(1);
         spinner.set_message("Reading devices...");
 
         let devices = client.list_device(ListDeviceCommand)?;
@@ -541,7 +530,7 @@ Disconnect and connect again!"#,
             .get(&user.device_pk)
             .ok_or(eyre::eyre!("Device not found"))?;
 
-        spinner.set_prefix("4/4 Provisioning");
+        spinner.inc(1);
 
         // Tunnel provisioning
         let tunnel_src = user.client_ip.to_string();
@@ -584,12 +573,13 @@ Disconnect and connect again!"#,
             .await
         {
             Ok(res) => {
-                spinner.println(format!("Provisioning: status: {}", res.status));
-                spinner.finish_with_message("User Provisioned");
+                spinner.println(format!(
+                    "    Service provisioned with status: {}",
+                    res.status
+                ));
             }
             Err(e) => {
-                spinner.finish_with_message("Error provisioning user");
-                spinner.println(format!("\n{}: {:?}\n", "Error", e));
+                spinner.println(format!("❌ Error provisioning service: {e:?}"));
             }
         };
 
@@ -967,6 +957,7 @@ mod tests {
             .await;
         assert!(result.is_ok());
 
+        println!("Test that adding an IBRL tunnel with an existing multicast fails");
         // Test that adding an IBRL tunnel with an existing multicast fails
         (_, _) = fixture.add_multicast_group("test-group", "239.0.0.1");
 
@@ -1096,6 +1087,7 @@ mod tests {
             .await;
         assert!(result.is_ok());
 
+        println!("Test that adding a second subscriber fails");
         // Test that adding a second subscriber fails
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::Multicast {
@@ -1116,6 +1108,7 @@ mod tests {
             .to_string()
             .contains("Multicast user already exists for IP: 1.2.3.4"));
 
+        println!("Test that adding an IBRL tunnel with an existing multicast fails");
         // Test that adding an IBRL tunnel with an existing multicast fails
         let command = ProvisioningCliCommand {
             dz_mode: DzMode::IBRL {

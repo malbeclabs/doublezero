@@ -58,13 +58,14 @@ pub fn get_public_ipv4() -> Result<String, Box<dyn std::error::Error>> {
     Err("Failed to extract the IP from the response".into())
 }
 
-pub fn init_command() -> ProgressBar {
-    let spinner = ProgressBar::new_spinner();
+pub fn init_command(len: u64) -> ProgressBar {
+    let spinner = ProgressBar::new(len);
 
     spinner.set_style(
         ProgressStyle::default_spinner()
-            .template("{spinner:.green}  {msg}")
+            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}")
             .expect("Failed to set template")
+            .progress_chars("#>-")
             .tick_strings(&["-", "\\", "|", "/"]),
     );
     spinner.enable_steady_tick(Duration::from_millis(100));

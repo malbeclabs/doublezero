@@ -12,15 +12,15 @@ pub async fn look_for_ip(
             ip
         }
         None => &{
-            spinner.set_message("Searching for Public IP...");
+            spinner.set_message("Discovering your public IP...");
 
             match get_public_ipv4() {
                 Ok(ip) => {
-                    spinner.println(format!("Public IP: {ip} (If you want to specify a particular address, use the argument --client-ip x.x.x.x)"));
+                    spinner.println(format!("Public IP detected: {ip} - If you want to use a different IP, you can specify it with `--client-ip x.x.x.x`"));
                     ip
                 }
                 Err(e) => {
-                    eyre::bail!("Error getting public ip. Please provide it using the `--client-ip` argument. ({})", e.to_string());
+                    eyre::bail!("Could not detect your public IP. Please provide the `--client-ip` argument. ({})", e.to_string());
                 }
             }
         },

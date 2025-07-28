@@ -41,10 +41,10 @@ pub mod utils {
     }
 
     pub fn create_temp_config() -> eyre::Result<TempDir> {
-        let tmpdir = TempDir::with_prefix("doublezero-tests-").unwrap();
+        let tmpdir = TempDir::with_prefix("doublezero-tests-")?;
         env::set_var("DOUBLEZERO_CONFIG_FILE", tmpdir.path().join("config.yaml"));
         let client_cfg = ClientConfig {
-            keypair_path: tmpdir.path().join("id.json").to_str().unwrap().to_string(),
+            keypair_path: tmpdir.path().join("id.json"),
             ..Default::default()
         };
         write_doublezero_config(&client_cfg)?;

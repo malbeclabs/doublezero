@@ -4,7 +4,7 @@ use doublezero_sdk::{
     convert_program_moniker, convert_url_moniker, convert_url_to_ws, convert_ws_moniker,
     read_doublezero_config, write_doublezero_config,
 };
-use std::io::Write;
+use std::{io::Write, path::PathBuf};
 
 #[derive(Args, Debug)]
 #[clap(group(
@@ -22,7 +22,7 @@ pub struct SetConfigCliCommand {
     ws: Option<String>,
     /// Keypair of the user
     #[arg(long)]
-    keypair: Option<String>,
+    keypair: Option<PathBuf>,
     /// Pubkey of the smart contract (devnet, testnet)
     #[arg(long)]
     program_id: Option<String>,
@@ -59,13 +59,13 @@ impl SetConfigCliCommand {
         writeln!(
             out,
             "Config File: {}\nRPC URL: {}\nWebSocket URL: {}\nKeypair Path: {}\nProgram ID: {}\n",
-            filename,
+            filename.display(),
             config.json_rpc_url,
             config.websocket_url.unwrap_or(format!(
                 "{} (computed)",
-                convert_url_to_ws(&config.json_rpc_url)
+                convert_url_to_ws(&config.json_rpc_url)?
             )),
-            config.keypair_path,
+            config.keypair_path.display(),
             config.program_id.unwrap_or(format!(
                 "{} (computed)",
                 doublezero_sdk::testnet::program_id::id()

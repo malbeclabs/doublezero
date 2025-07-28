@@ -25,6 +25,7 @@ use log::{debug, error, info, warn};
 use solana_sdk::pubkey::Pubkey;
 use std::{
     collections::HashMap,
+    path::PathBuf,
     sync::{atomic::AtomicBool, Arc},
     thread,
     time::Duration,
@@ -57,10 +58,10 @@ impl Activator {
         rpc_url: Option<String>,
         websocket_url: Option<String>,
         program_id: Option<String>,
-        kaypair: Option<String>,
+        keypair: Option<PathBuf>,
         metrics_service: Box<dyn MetricsService + Send + Sync>,
     ) -> eyre::Result<Self> {
-        let client = DZClient::new(rpc_url, websocket_url, program_id, kaypair)?;
+        let client = DZClient::new(rpc_url, websocket_url, program_id, keypair)?;
 
         info!(
             "Connected to url: {} ws: {} program_id: {} ",

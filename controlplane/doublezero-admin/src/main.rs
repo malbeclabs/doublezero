@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::{CommandFactory, Parser};
 use clap_complete::generate;
 use cli::{
@@ -34,7 +36,7 @@ struct App {
     program_id: Option<String>,
     /// Path to the keypair file
     #[arg(long, value_name = "KEYPAIR", global = true)]
-    keypair: Option<String>,
+    keypair: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -42,7 +44,7 @@ async fn main() -> eyre::Result<()> {
     let app = App::parse();
 
     if let Some(keypair) = &app.keypair {
-        println!("using keypair: {keypair}");
+        println!("using keypair: {}", keypair.display());
     }
 
     let dzclient = DZClient::new(app.url, app.ws, app.program_id, app.keypair)?;

@@ -20,11 +20,11 @@ static CONFIG_FILE: OnceLock<Option<String>> = OnceLock::new();
 /// directory, which should not happen under typical OS environments.
 fn get_cfg_filename() -> &'static Option<String> {
     CONFIG_FILE.get_or_init(|| match env::var_os("DOUBLEZERO_CONFIG_FILE") {
-        Some(path) => Some(path.to_str().unwrap().to_string()),
+        Some(path) => Some(path.to_string_lossy().to_string()),
         None => match directories_next::UserDirs::new() {
             Some(dirs) => {
                 let mut buf = PathBuf::new();
-                buf.push(dirs.home_dir().to_str().unwrap());
+                buf.push(dirs.home_dir().to_string_lossy().to_string());
                 buf.extend([".config", "doublezero", "cli", "config.yml"]);
                 Some(buf.to_string_lossy().to_string())
             }
@@ -50,7 +50,7 @@ impl Default for ClientConfig {
             keypair_path: {
                 let mut keypair_path = dirs_next::home_dir().unwrap_or_default();
                 keypair_path.extend([".config", "doublezero", "id.json"]);
-                keypair_path.to_str().unwrap().to_string()
+                keypair_path.to_string_lossy().to_string()
             },
             program_id: None,
             address_labels: HashMap::new(),
@@ -64,8 +64,7 @@ pub fn read_doublezero_config() -> eyre::Result<(String, ClientConfig)> {
         Some(filename) => match fs::read_to_string(filename) {
             Err(_) => Ok((filename.clone(), ClientConfig::default())),
             Ok(config_content) => {
-                let config: ClientConfig = serde_yaml::from_str(&config_content).unwrap();
-
+                let config: ClientConfig = serde_yaml::from_str(&config_content)?;
                 Ok((filename.clone(), config))
             }
         },
@@ -119,29 +118,31 @@ pub fn convert_program_moniker(pubkey: String) -> String {
     }
 }
 
-pub fn convert_url_to_ws(url: &str) -> String {
+pub fn convert_url_to_ws(url: &str) -> eyre::Result<String> {
     if url == crate::consts::DOUBLEZERO_URL {
-        return crate::consts::DOUBLEZERO_WS.to_string();
+        return Ok(crate::consts::DOUBLEZERO_WS.to_string());
     }
 
-    let mut url = Url::parse(url).map_err(|_| "Invalid URL").unwrap();
+    let mut url = Url::parse(url)?;
     if url.scheme() == "https" {
         url.set_scheme("wss").ok();
     } else {
         url.set_scheme("ws").ok();
     }
-    url.to_string()
+    Ok(url.to_string())
 }
 
 pub fn create_new_pubkey_user(force: bool) -> eyre::Result<Keypair> {
     let (_, client_cfg) = read_doublezero_config()?;
     let file_path = client_cfg.keypair_path.clone();
+
     let dir_path = Path::new(&file_path)
         .parent()
-        .unwrap()
+        .ok_or_else(|| eyre::eyre!("Invalid keypair path: no parent directory"))?
         .to_str()
-        .unwrap()
+        .ok_or_else(|| eyre::eyre!("Invalid keypair path: contains invalid UTF-8"))?
         .to_string();
+
     let key = Keypair::new();
 
     if !Path::new(&dir_path).exists() {
@@ -156,7 +157,7 @@ pub fn create_new_pubkey_user(force: bool) -> eyre::Result<Keypair> {
     }
 
     let data = key.to_bytes().to_vec();
-    let json = serde_json::to_string(&data).ok().unwrap();
+    let json = serde_json::to_string(&data)?;
     let mut file = fs::File::create(&file_path)?;
     file.write_all(json.as_bytes())?;
 

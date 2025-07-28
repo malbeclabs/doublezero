@@ -16,20 +16,3 @@ pub fn parse_pubkey(input: &str) -> Option<Pubkey> {
 
     Pubkey::from_str(input).ok()
 }
-
-/*
-pub fn create_transaction(program_id: Pubkey, instruction: DoubleZeroInstruction, accounts: Vec<AccountMeta>, payer: &Keypair) -> Transaction {
-
-    return Transaction::new_with_payer(
-    &[
-        Instruction::new_with_bytes(
-            program_id,
-            &to_vec(&instruction).unwrap(),
-            [accounts, vec![
-                AccountMeta::new(payer.pubkey(), true),
-                AccountMeta::new(system_program::id(), false),
-            ]].concat(),
-        )
-    ], Some(&payer.pubkey()));
-}
-     */

@@ -57,13 +57,9 @@ impl DZClient {
         let (_, config) = read_doublezero_config()?;
 
         let rpc_url = convert_url_moniker(rpc_url.unwrap_or(config.json_rpc_url));
-        let rpc_ws_url = convert_ws_moniker(
-            websocket_url.unwrap_or(
-                config
-                    .websocket_url
-                    .unwrap_or(convert_url_to_ws(&rpc_url.to_string())),
-            ),
-        );
+        let ws_url = convert_url_to_ws(&rpc_url.to_string())?;
+        let rpc_ws_url =
+            convert_ws_moniker(websocket_url.unwrap_or(config.websocket_url.unwrap_or(ws_url)));
 
         let client = RpcClient::new_with_commitment(rpc_url.clone(), CommitmentConfig::confirmed());
 

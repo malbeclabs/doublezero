@@ -27,7 +27,8 @@ func TestE2E_IBRL_WithAllocatedIP(t *testing.T) {
 
 		createMultipleIBRLUsersOnSameDeviceWithAllocatedIPs(t, dn, client)
 
-		dn.WaitForClientTunnelUp(t, client)
+		err := client.WaitForTunnelUp(t.Context(), 90*time.Second)
+		require.NoError(t, err)
 
 		checkIBRLWithAllocatedIPPostConnect(t, dn, device, client)
 	}) {

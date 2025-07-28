@@ -220,7 +220,8 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 	require.NoError(t, err)
 
 	// Wait for latency results.
-	dn.waitForLatencyResults(t, client, device.ID)
+	err = client.WaitForLatencyResults(t.Context(), device.ID, 75*time.Second)
+	require.NoError(t, err)
 
 	return device, client
 }
@@ -234,31 +235,6 @@ func (dn *TestDevnet) DisconnectUserTunnel(t *testing.T, client *devnet.Client) 
 	dn.log.Info("--> User tunnel disconnected")
 }
 
-func (dn *TestDevnet) WaitForClientTunnelUp(t *testing.T, client *devnet.Client) {
-	timeout := 90 * time.Second
-	dn.log.Info("==> Waiting for client tunnel to be up (timeout " + timeout.String() + ")")
-
-	require.Eventually(t, func() bool {
-		resp, err := client.ExecReturnJSONList(t.Context(), []string{"bash", "-c", `
-				curl -s --unix-socket /var/run/doublezerod/doublezerod.sock http://doublezero/status
-			`})
-		require.NoError(t, err)
-		dn.log.Debug("--> Status response", "response", resp)
-
-		for _, s := range resp {
-			if session, ok := s["doublezero_status"]; ok {
-				if sessionStatus, ok := session.(map[string]any)["session_status"]; ok {
-					if sessionStatus == "up" {
-						dn.log.Info("✅ Client tunnel is up")
-						return true
-					}
-				}
-			}
-		}
-		return false
-	}, 90*time.Second, 2*time.Second, "timeout waiting for client tunnel to be up")
-}
-
 func (dn *TestDevnet) GetDevicePubkeyOnchain(t *testing.T, deviceCode string) string {
 	output, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero device get --code " + deviceCode})
 	require.NoError(t, err)
@@ -270,28 +246,6 @@ func (dn *TestDevnet) GetDevicePubkeyOnchain(t *testing.T, deviceCode string) st
 	}
 
 	return ""
-}
-
-func (dn *TestDevnet) waitForLatencyResults(t *testing.T, client *devnet.Client, expectedAgentPubkey string) {
-	start := time.Now()
-	timeout := 75 * time.Second
-	dn.log.Info("==> Waiting for latency results (timeout " + timeout.String() + ")")
-	require.Eventually(t, func() bool {
-		results, err := client.ExecReturnJSONList(t.Context(), []string{"bash", "-c", "curl -s --unix-socket /var/run/doublezerod/doublezerod.sock http://doublezero/latency"})
-		dn.log.Debug("--> Latency results", "results", results)
-		require.NoError(t, err)
-
-		if len(results) > 0 {
-			for _, result := range results {
-				// Check to make sure ny5-dz01 is reachable
-				if result["device_pk"] == expectedAgentPubkey && result["reachable"] == true {
-					dn.log.Info("✅ Got expected latency results", "duration", time.Since(start))
-					return true
-				}
-			}
-		}
-		return false
-	}, timeout, 2*time.Second, "timeout waiting for latency results")
 }
 
 func (dn *TestDevnet) CreateMulticastGroupOnchain(t *testing.T, client *devnet.Client, multicastGroupCode string) {

@@ -104,7 +104,7 @@ func TestTelemetry_Data_Provider_GetCircuitLatencies(t *testing.T) {
 
 		to := from.Add(3 * time.Second)
 
-		stats, err := provider.GetCircuitLatenciesDownsampled(context.Background(), "A → B (L1)", from, to, 1)
+		stats, err := provider.GetCircuitLatenciesDownsampled(context.Background(), "A → B (L1)", from, to, 1, data.UnitMicrosecond)
 		require.NoError(t, err)
 		require.Len(t, stats, 1)
 		assert.Equal(t, "A → B (L1)", stats[0].Circuit)
@@ -131,7 +131,7 @@ func TestTelemetry_Data_Provider_GetCircuitLatencies(t *testing.T) {
 
 		from := now
 		to := now.Add(5 * time.Minute) // ensure at least 5 minutes span
-		stats, err := provider.GetCircuitLatenciesDownsampled(context.Background(), "A → B (L1)", from, to, 2)
+		stats, err := provider.GetCircuitLatenciesDownsampled(context.Background(), "A → B (L1)", from, to, 2, data.UnitMicrosecond)
 		require.NoError(t, err)
 		assert.GreaterOrEqual(t, len(stats), 2, "expected at least 2 downsampled buckets")
 	})
@@ -150,9 +150,49 @@ func TestTelemetry_Data_Provider_GetCircuitLatencies(t *testing.T) {
 		}, defaultCircuit())
 
 		now := time.Now()
-		stats, err := provider.GetCircuitLatenciesDownsampled(context.Background(), "A → B (L1)", now, now.Add(1*time.Minute), 1)
+		stats, err := provider.GetCircuitLatenciesDownsampled(context.Background(), "A → B (L1)", now, now.Add(1*time.Minute), 1, data.UnitMicrosecond)
 		require.NoError(t, err)
 		assert.Len(t, stats, 0)
+	})
+
+	t.Run("GetCircuitLatenciesDownsampled with invalid unit", func(t *testing.T) {
+		t.Parallel()
+
+		provider := newTestProvider(t, func(epoch uint64) (*telemetry.DeviceLatencySamples, error) {
+			return &telemetry.DeviceLatencySamples{}, nil
+		}, defaultCircuit())
+
+		now := time.Now()
+		stats, err := provider.GetCircuitLatenciesDownsampled(t.Context(), "A → B (L1)", now, now.Add(1*time.Second), 1, "invalid")
+		require.Error(t, err)
+		assert.Empty(t, stats)
+	})
+
+	t.Run("GetCircuitLatenciesDownsampled with unit=ms", func(t *testing.T) {
+		t.Parallel()
+
+		from := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
+		tsMicros := uint64(from.UnixMicro())
+
+		provider := newTestProvider(t, func(epoch uint64) (*telemetry.DeviceLatencySamples, error) {
+			return &telemetry.DeviceLatencySamples{
+				DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
+					StartTimestampMicroseconds:   tsMicros,
+					SamplingIntervalMicroseconds: 1_000_000, // 1s intervals
+				},
+				Samples: []uint32{10_000, 20_000, 30_000},
+			}, nil
+		}, defaultCircuit())
+
+		to := from.Add(3 * time.Second)
+
+		stats, err := provider.GetCircuitLatenciesDownsampled(t.Context(), "A → B (L1)", from, to, 1, data.UnitMillisecond)
+		require.NoError(t, err)
+		require.Len(t, stats, 1)
+		assert.Equal(t, "A → B (L1)", stats[0].Circuit)
+		assert.InDelta(t, 20.0, stats[0].RTTMean, 0.1)
+		assert.Equal(t, float64(10), stats[0].RTTMin)
+		assert.Equal(t, float64(30), stats[0].RTTMax)
 	})
 }
 
@@ -161,16 +201,16 @@ func defaultCircuit() []data.Circuit {
 	pkB := solana.NewWallet().PublicKey()
 	linkPK := solana.NewWallet().PublicKey()
 
-	devA := serviceability.Device{Code: "A", PubKey: toPubKeyBytes(pkA)}
-	devB := serviceability.Device{Code: "B", PubKey: toPubKeyBytes(pkB)}
-	link := serviceability.Link{Code: "L1", SideAPubKey: toPubKeyBytes(pkA), SideZPubKey: toPubKeyBytes(pkB), PubKey: toPubKeyBytes(linkPK)}
+	devA := serviceability.Device{Code: "A"}
+	devB := serviceability.Device{Code: "B"}
+	link := serviceability.Link{Code: "L1"}
 
 	return []data.Circuit{
 		{
 			Code:         circuitKey(devA.Code, devB.Code, link.Code), // <== use actual keying logic
-			OriginDevice: devA,
-			TargetDevice: devB,
-			Link:         link,
+			OriginDevice: data.Device{PK: pkA, Code: devA.Code},
+			TargetDevice: data.Device{PK: pkB, Code: devB.Code},
+			Link:         data.Link{PK: linkPK, Code: link.Code},
 		},
 	}
 }
@@ -189,8 +229,13 @@ func newTestProvider(
 		ServiceabilityClient: &mockServiceabilityClient{
 			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 				return &serviceability.ProgramData{
-					Devices: []serviceability.Device{circuits[0].OriginDevice, circuits[0].TargetDevice},
-					Links:   []serviceability.Link{circuits[0].Link},
+					Devices: []serviceability.Device{
+						{Code: circuits[0].OriginDevice.Code, PubKey: circuits[0].OriginDevice.PK},
+						{Code: circuits[0].TargetDevice.Code, PubKey: circuits[0].TargetDevice.PK},
+					},
+					Links: []serviceability.Link{
+						{Code: circuits[0].Link.Code, SideAPubKey: circuits[0].OriginDevice.PK, SideZPubKey: circuits[0].TargetDevice.PK, PubKey: circuits[0].Link.PK},
+					},
 				}, nil
 			},
 		},

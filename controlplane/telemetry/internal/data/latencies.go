@@ -64,7 +64,7 @@ func (p *provider) GetCircuitLatenciesForEpoch(ctx context.Context, circuitCode 
 		return nil, fmt.Errorf("circuit not found: %s", circuitCode)
 	}
 
-	account, err := p.cfg.TelemetryClient.GetDeviceLatencySamples(ctx, circuit.OriginDevice.PubKey, circuit.TargetDevice.PubKey, circuit.Link.PubKey, epoch)
+	account, err := p.cfg.TelemetryClient.GetDeviceLatencySamples(ctx, circuit.OriginDevice.PK, circuit.TargetDevice.PK, circuit.Link.PK, epoch)
 	if err != nil {
 		if errors.Is(err, telemetry.ErrAccountNotFound) {
 			// If the account is not found, cache an empty array for the epoch for a short time.
@@ -134,7 +134,14 @@ func (p *provider) GetCircuitLatenciesDownsampled(
 	circuitCode string,
 	from, to time.Time,
 	maxPoints uint64,
+	unit Unit,
 ) ([]CircuitLatencyStat, error) {
+	switch unit {
+	case UnitMillisecond, UnitMicrosecond:
+	default:
+		return nil, fmt.Errorf("invalid unit: %s (must be %s or %s)", unit, UnitMillisecond, UnitMicrosecond)
+	}
+
 	latencies, err := p.GetCircuitLatencies(ctx, circuitCode, from, to)
 	if err != nil {
 		return nil, err
@@ -182,6 +189,28 @@ func (p *provider) GetCircuitLatenciesDownsampled(
 		sort.Slice(result, func(i, j int) bool {
 			return result[i].Timestamp < result[j].Timestamp
 		})
+	}
+
+	switch unit {
+	case UnitMillisecond:
+		factor := 1000.0
+		for i, stat := range result {
+			stat.RTTMean /= factor
+			stat.RTTMedian /= factor
+			stat.RTTMin /= factor
+			stat.RTTMax /= factor
+			stat.RTTP95 /= factor
+			stat.RTTP99 /= factor
+			stat.RTTStdDev /= factor
+			stat.RTTVariance /= factor
+			stat.RTTMAD /= factor
+			stat.JitterAvg /= factor
+			stat.JitterEWMA /= factor
+			stat.JitterDeltaStdDev /= factor
+			stat.JitterPeakToPeak /= factor
+			stat.JitterMax /= factor
+			result[i] = stat
+		}
 	}
 
 	return result, nil

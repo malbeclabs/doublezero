@@ -56,7 +56,7 @@
                             }
                         ]
                     },
-                    "unit": "µs"
+                    "unit": "locale"
                 },
                 "overrides": [
                     {
@@ -442,7 +442,7 @@
                     "source": "url",
                     "summarizeBy": "",
                     "type": "json",
-                    "url": "http://host.docker.internal:8080/device-circuit-latencies?env=${env}&max_points=1&circuit=${circuit}&from=${__from:date}&to=${__to:date}",
+                    "url": "http://host.docker.internal:8080/device-circuit-latencies?env=${env}&max_points=1&unit=${unit}&circuit=${circuit}&from=${__from:date}&to=${__to:date}",
                     "url_options": {
                         "data": "",
                         "method": "GET"
@@ -916,8 +916,8 @@
             {
                 "allowCustomValue": false,
                 "current": {
-                    "text": "devnet",
-                    "value": "devnet"
+                    "text": "testnet",
+                    "value": "testnet"
                 },
                 "datasource": {
                     "type": "yesoreyeram-infinity-datasource",
@@ -989,6 +989,39 @@
                 },
                 "refresh": 1,
                 "type": "query"
+            },
+            {
+                "allowCustomValue": false,
+                "current": {
+                    "text": "Milliseconds",
+                    "value": "ms"
+                },
+                "definition": "Collection(Milliseconds,ms,Microseconds,us)",
+                "description": "Unit of RTT and Jitter metrics",
+                "label": "Unit",
+                "name": "unit",
+                "options": [],
+                "query": {
+                    "infinityQuery": {
+                        "columns": [],
+                        "filters": [],
+                        "format": "table",
+                        "refId": "variable",
+                        "root_selector": "",
+                        "source": "url",
+                        "type": "json",
+                        "url": "",
+                        "url_options": {
+                            "data": "",
+                            "method": "GET"
+                        }
+                    },
+                    "query": "Collection(Milliseconds,ms,Microseconds,us)",
+                    "queryType": "legacy"
+                },
+                "refresh": 1,
+                "regex": "",
+                "type": "query"
             }
         ]
     },
@@ -1000,5 +1033,5 @@
     "timezone": "America/Toronto",
     "title": "DoubleZero Telemetry / Device Circuit Latencies",
     "uid": "9dc316d2-68cb-4dda-a114-0d188bd62a2f",
-    "version": 29
+    "version": 30
 }

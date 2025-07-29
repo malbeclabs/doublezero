@@ -71,7 +71,7 @@ func TestTelemetry_Data_Server(t *testing.T) {
 		to := now.Add(10 * time.Second).Format(time.RFC3339)
 
 		addr, closeFn := startTestServer(t, &mockProvider{
-			GetCircuitLatenciesDownsampledFunc: func(_ context.Context, circuit string, _, _ time.Time, _ uint64) ([]data.CircuitLatencyStat, error) {
+			GetCircuitLatenciesDownsampledFunc: func(_ context.Context, circuit string, _, _ time.Time, _ uint64, _ data.Unit) ([]data.CircuitLatencyStat, error) {
 				return []data.CircuitLatencyStat{{Circuit: circuit, RTTMean: 42}}, nil
 			},
 		}, &mockProvider{})
@@ -121,7 +121,7 @@ func TestTelemetry_Data_Server(t *testing.T) {
 		to := now.Add(10 * time.Second).Format(time.RFC3339)
 
 		addr, closeFn := startTestServer(t, &mockProvider{
-			GetCircuitLatenciesDownsampledFunc: func(_ context.Context, circuit string, _, _ time.Time, _ uint64) ([]data.CircuitLatencyStat, error) {
+			GetCircuitLatenciesDownsampledFunc: func(_ context.Context, circuit string, _, _ time.Time, _ uint64, _ data.Unit) ([]data.CircuitLatencyStat, error) {
 				return nil, errors.New("expected")
 			},
 		}, &mockProvider{})

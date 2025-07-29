@@ -128,13 +128,24 @@ func (s *Server) handleDeviceCircuitLatencies(w http.ResponseWriter, r *http.Req
 	toStr := r.URL.Query().Get("to")
 	circuits := parseMultiParam(r, "circuit")
 	maxPointsStr := r.URL.Query().Get("max_points")
+	unit := r.URL.Query().Get("unit")
 
-	s.log.Debug("[/device-circuit-latencies]", "env", env, "from", fromStr, "to", toStr, "circuits", circuits, "max_points", maxPointsStr, "full", r.URL.String())
+	s.log.Debug("[/device-circuit-latencies]", "env", env, "from", fromStr, "to", toStr, "circuits", circuits, "max_points", maxPointsStr, "unit", unit, "full", r.URL.String())
 
 	provider, err := s.provider(env)
 	if err != nil {
 		s.log.Warn("invalid environment", "env", env)
 		http.Error(w, fmt.Sprintf("invalid environment %q", env), http.StatusBadRequest)
+		return
+	}
+
+	if unit == "" {
+		unit = string(UnitMicrosecond)
+	}
+	switch Unit(unit) {
+	case UnitMillisecond, UnitMicrosecond:
+	default:
+		http.Error(w, "invalid unit (must be ms or us)", http.StatusBadRequest)
 		return
 	}
 
@@ -166,7 +177,7 @@ func (s *Server) handleDeviceCircuitLatencies(w http.ResponseWriter, r *http.Req
 		wg.Add(1)
 		go func(circuitCode string) {
 			defer wg.Done()
-			series, err := provider.GetCircuitLatenciesDownsampled(r.Context(), circuitCode, fromTime, toTime, maxPoints)
+			series, err := provider.GetCircuitLatenciesDownsampled(r.Context(), circuitCode, fromTime, toTime, maxPoints, Unit(unit))
 			if err != nil {
 				s.log.Warn("failed to get circuit latencies", "error", err, "circuit", circuitCode)
 				return

@@ -22,10 +22,17 @@ const (
 	defaultGetCircuitLatenciesPoolSize = 16
 )
 
+type Unit string
+
+const (
+	UnitMillisecond Unit = "ms"
+	UnitMicrosecond Unit = "us"
+)
+
 type Provider interface {
 	GetCircuits(ctx context.Context) ([]Circuit, error)
 	GetCircuitLatencies(ctx context.Context, circuitCode string, from, to time.Time) ([]CircuitLatencySample, error)
-	GetCircuitLatenciesDownsampled(ctx context.Context, circuitCode string, from, to time.Time, maxPoints uint64) ([]CircuitLatencyStat, error)
+	GetCircuitLatenciesDownsampled(ctx context.Context, circuitCode string, from, to time.Time, maxPoints uint64, unit Unit) ([]CircuitLatencyStat, error)
 	GetCircuitLatenciesForEpoch(ctx context.Context, circuitCode string, epoch uint64) ([]CircuitLatencySample, error)
 }
 

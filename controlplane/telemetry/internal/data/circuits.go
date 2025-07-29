@@ -9,12 +9,30 @@ import (
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
-type Circuit struct {
-	Code string `json:"code"`
+type Device struct {
+	PK       solana.PublicKey `json:"pk"`
+	Code     string           `json:"code"`
+	Location Location         `json:"location"`
+}
 
-	OriginDevice serviceability.Device `json:"-"`
-	TargetDevice serviceability.Device `json:"-"`
-	Link         serviceability.Link   `json:"-"`
+type Link struct {
+	PK   solana.PublicKey `json:"pk"`
+	Code string           `json:"code"`
+}
+
+type Location struct {
+	PK        solana.PublicKey `json:"pk"`
+	Name      string           `json:"name"`
+	Country   string           `json:"country"`
+	Latitude  float64          `json:"latitude"`
+	Longitude float64          `json:"longitude"`
+}
+
+type Circuit struct {
+	Code         string `json:"code"`
+	OriginDevice Device `json:"origin_device"`
+	TargetDevice Device `json:"target_device"`
+	Link         Link   `json:"link"`
 }
 
 func (p *provider) GetCircuits(ctx context.Context) ([]Circuit, error) {
@@ -36,9 +54,16 @@ func (p *provider) GetCircuits(ctx context.Context) ([]Circuit, error) {
 		devicesByPK[pk.String()] = device
 	}
 
+	locationsByPK := map[string]serviceability.Location{}
+	for _, location := range data.Locations {
+		pk := solana.PublicKeyFromBytes(location.PubKey[:])
+		locationsByPK[pk.String()] = location
+	}
+
 	for _, link := range data.Links {
 		deviceAPK := solana.PublicKeyFromBytes(link.SideAPubKey[:])
 		deviceZPK := solana.PublicKeyFromBytes(link.SideZPubKey[:])
+		linkPK := solana.PublicKeyFromBytes(link.PubKey[:])
 
 		deviceA, ok := devicesByPK[deviceAPK.String()]
 		if !ok {
@@ -53,20 +78,70 @@ func (p *provider) GetCircuits(ctx context.Context) ([]Circuit, error) {
 
 		// Forward circuit
 		forwardKey := circuitKey(deviceA.Code, deviceZ.Code, link.Code)
+		originLocation := locationsByPK[solana.PublicKeyFromBytes(deviceA.LocationPubKey[:]).String()]
+		targetLocation := locationsByPK[solana.PublicKeyFromBytes(deviceZ.LocationPubKey[:]).String()]
 		circuits = append(circuits, Circuit{
-			Code:         forwardKey,
-			OriginDevice: deviceA,
-			TargetDevice: deviceZ,
-			Link:         link,
+			Code: forwardKey,
+			OriginDevice: Device{
+				PK:   deviceAPK,
+				Code: deviceA.Code,
+				Location: Location{
+					PK:        solana.PublicKeyFromBytes(originLocation.PubKey[:]),
+					Name:      originLocation.Name,
+					Country:   originLocation.Country,
+					Latitude:  originLocation.Lat,
+					Longitude: originLocation.Lng,
+				},
+			},
+			TargetDevice: Device{
+				PK:   deviceZPK,
+				Code: deviceZ.Code,
+				Location: Location{
+					PK:        solana.PublicKeyFromBytes(targetLocation.PubKey[:]),
+					Name:      targetLocation.Name,
+					Country:   targetLocation.Country,
+					Latitude:  targetLocation.Lat,
+					Longitude: targetLocation.Lng,
+				},
+			},
+			Link: Link{
+				PK:   linkPK,
+				Code: link.Code,
+			},
 		})
 
 		// Reverse circuit
 		reverseKey := circuitKey(deviceZ.Code, deviceA.Code, link.Code)
+		originLocation = locationsByPK[solana.PublicKeyFromBytes(deviceZ.LocationPubKey[:]).String()]
+		targetLocation = locationsByPK[solana.PublicKeyFromBytes(deviceA.LocationPubKey[:]).String()]
 		circuits = append(circuits, Circuit{
-			Code:         reverseKey,
-			OriginDevice: deviceZ,
-			TargetDevice: deviceA,
-			Link:         link,
+			Code: reverseKey,
+			OriginDevice: Device{
+				PK:   deviceZPK,
+				Code: deviceZ.Code,
+				Location: Location{
+					PK:        solana.PublicKeyFromBytes(targetLocation.PubKey[:]),
+					Name:      targetLocation.Name,
+					Country:   targetLocation.Country,
+					Latitude:  targetLocation.Lat,
+					Longitude: targetLocation.Lng,
+				},
+			},
+			TargetDevice: Device{
+				PK:   deviceAPK,
+				Code: deviceA.Code,
+				Location: Location{
+					PK:        solana.PublicKeyFromBytes(originLocation.PubKey[:]),
+					Name:      originLocation.Name,
+					Country:   originLocation.Country,
+					Latitude:  originLocation.Lat,
+					Longitude: originLocation.Lng,
+				},
+			},
+			Link: Link{
+				PK:   linkPK,
+				Code: link.Code,
+			},
 		})
 	}
 

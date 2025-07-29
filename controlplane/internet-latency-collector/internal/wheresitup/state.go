@@ -2,6 +2,7 @@ package wheresitup
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 
@@ -39,16 +40,13 @@ func (jt *State) Load() error {
 		return nil
 	}
 	if err != nil {
-		return collector.ErrJobIDRetrieval.WithContext("filename", jt.filename).
-			WithContext("cause", err.Error())
+		return fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
 
 	decoder := json.NewDecoder(file)
 	if err := decoder.Decode(jt); err != nil {
-		return collector.ErrJobIDRetrieval.WithContext("filename", jt.filename).
-			WithContext("operation", "decode").
-			WithContext("cause", err.Error())
+		return fmt.Errorf("failed to decode file: %w", err)
 	}
 
 	return nil
@@ -61,17 +59,14 @@ func (jt *State) Save() error {
 
 	file, err := os.Create(jt.filename)
 	if err != nil {
-		return collector.ErrJobIDStorage.WithContext("filename", jt.filename).
-			WithContext("cause", err.Error())
+		return fmt.Errorf("failed to create file: %w", err)
 	}
 	defer file.Close()
 
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(jt); err != nil {
-		return collector.ErrJobIDStorage.WithContext("filename", jt.filename).
-			WithContext("operation", "encode").
-			WithContext("cause", err.Error())
+		return fmt.Errorf("failed to encode file: %w", err)
 	}
 
 	return nil

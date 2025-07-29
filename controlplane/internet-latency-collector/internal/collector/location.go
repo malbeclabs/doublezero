@@ -3,6 +3,7 @@ package collector
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"math"
 	"os"
@@ -169,16 +170,14 @@ func HaversineDistance(lat1, lon1, lat2, lon2 float64) float64 {
 func LoadLocationsFromJSON(logger *slog.Logger, filename string) ([]JSONLocation, error) {
 	file, err := os.Open(filename)
 	if err != nil {
-		return nil, NewFileIOError("file_open", "failed to open JSON file", err).
-			WithContext("filename", filename)
+		return nil, fmt.Errorf("failed to open JSON file: %w", err)
 	}
 	defer file.Close()
 
 	var locations []JSONLocation
 	decoder := json.NewDecoder(file)
 	if err := decoder.Decode(&locations); err != nil {
-		return nil, NewValidationError("json_decode", "invalid JSON format", err).
-			WithContext("filename", filename)
+		return nil, fmt.Errorf("invalid JSON format: %w", err)
 	}
 
 	if len(locations) == 0 {

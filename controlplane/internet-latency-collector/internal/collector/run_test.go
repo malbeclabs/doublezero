@@ -62,13 +62,20 @@ func (m *MockRipeAtlasCollector) wasRunCalled() bool {
 	return m.runCalled
 }
 
-func TestRun(t *testing.T) {
+func TestInternetLatency_Collector_Run(t *testing.T) {
 	t.Run("Normal operation and shutdown", func(t *testing.T) {
+		t.Parallel()
+
+		log := logger.With("test", t.Name())
 
 		mockRipe := &MockRipeAtlasCollector{}
 		mockWheresitup := &MockWheresitupCollector{}
 
-		config := CollectorConfig{
+		config := Config{
+			Logger:     log,
+			Wheresitup: mockWheresitup,
+			RipeAtlas:  mockRipe,
+
 			WheresitupCollectionInterval: 1 * time.Minute,
 			RipeAtlasMeasurementInterval: 1 * time.Hour,
 			RipeAtlasExportInterval:      2 * time.Minute,
@@ -86,8 +93,12 @@ func TestRun(t *testing.T) {
 		// Run in a goroutine
 		errCh := make(chan error, 1)
 		go func() {
-			InitLogger(LogLevelWarn)
-			err := Run(ctx, GetLogger(), mockRipe, mockWheresitup, config)
+			c, err := New(config)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			err = c.Run(ctx)
 			errCh <- err
 		}()
 
@@ -108,6 +119,9 @@ func TestRun(t *testing.T) {
 	})
 
 	t.Run("Wheresitup collector error", func(t *testing.T) {
+		t.Parallel()
+
+		log := logger.With("test", t.Name())
 
 		mockRipe := &MockRipeAtlasCollector{}
 		mockWheresitup := &MockWheresitupCollector{
@@ -116,7 +130,11 @@ func TestRun(t *testing.T) {
 			},
 		}
 
-		config := CollectorConfig{
+		config := Config{
+			Logger:     log,
+			Wheresitup: mockWheresitup,
+			RipeAtlas:  mockRipe,
+
 			WheresitupCollectionInterval: 1 * time.Minute,
 			RipeAtlasMeasurementInterval: 1 * time.Hour,
 			RipeAtlasExportInterval:      2 * time.Minute,
@@ -133,8 +151,12 @@ func TestRun(t *testing.T) {
 		// Run in a goroutine
 		errCh := make(chan error, 1)
 		go func() {
-			InitLogger(LogLevelWarn)
-			err := Run(ctx, GetLogger(), mockRipe, mockWheresitup, config)
+			c, err := New(config)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			err = c.Run(ctx)
 			errCh <- err
 		}()
 

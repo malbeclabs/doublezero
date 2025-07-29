@@ -9,7 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewMeasurementState(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_State_New(t *testing.T) {
+	t.Parallel()
+
 	ms := NewMeasurementState("test.json")
 
 	require.NotNil(t, ms)
@@ -19,7 +21,9 @@ func TestNewMeasurementState(t *testing.T) {
 	require.Empty(t, ms.tracker.Timestamps)
 }
 
-func TestMeasurementState_LoadSave(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_State_LoadSave(t *testing.T) {
+	t.Parallel()
+
 	tempDir := t.TempDir()
 	filename := filepath.Join(tempDir, "test_timestamps.json")
 
@@ -58,7 +62,9 @@ func TestMeasurementState_LoadSave(t *testing.T) {
 	require.Equal(t, int64(1640995400), ts)
 }
 
-func TestMeasurementState_GetLastTimestamp(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_State_GetLastTimestamp(t *testing.T) {
+	t.Parallel()
+
 	ms := NewMeasurementState("test.json")
 
 	// Test non-existent measurement
@@ -73,7 +79,9 @@ func TestMeasurementState_GetLastTimestamp(t *testing.T) {
 	require.Equal(t, int64(1640995200), ts)
 }
 
-func TestMeasurementState_UpdateTimestamp(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_State_UpdateTimestamp(t *testing.T) {
+	t.Parallel()
+
 	ms := NewMeasurementState("test.json")
 
 	// Initial update
@@ -89,7 +97,9 @@ func TestMeasurementState_UpdateTimestamp(t *testing.T) {
 	require.Equal(t, int64(1640995300), ts)
 }
 
-func TestMeasurementState_GetAllTimestamps(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_State_GetAllTimestamps(t *testing.T) {
+	t.Parallel()
+
 	ms := NewMeasurementState("test.json")
 
 	// Test empty state
@@ -113,7 +123,9 @@ func TestMeasurementState_GetAllTimestamps(t *testing.T) {
 	require.Equal(t, int64(1640995200), ts, "Original should not be modified")
 }
 
-func TestMeasurementState_InvalidFile(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_State_InvalidFile(t *testing.T) {
+	t.Parallel()
+
 	tempDir := t.TempDir()
 
 	// Test corrupted JSON
@@ -127,7 +139,9 @@ func TestMeasurementState_InvalidFile(t *testing.T) {
 	require.Contains(t, err.Error(), "failed to decode timestamp file")
 }
 
-func TestMeasurementState_FilePermissionError(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_State_FilePermissionError(t *testing.T) {
+	t.Parallel()
+
 	// Skip this test if running as root (common in Docker containers)
 	if os.Geteuid() == 0 {
 		t.Skip("Skipping permission test when running as root")
@@ -149,7 +163,9 @@ func TestMeasurementState_FilePermissionError(t *testing.T) {
 	require.Contains(t, err.Error(), "failed to create timestamp file")
 }
 
-func TestMeasurementState_EmptyTimestampsInFile(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_State_EmptyTimestampsInFile(t *testing.T) {
+	t.Parallel()
+
 	tempDir := t.TempDir()
 	filename := filepath.Join(tempDir, "empty_timestamps.json")
 
@@ -164,7 +180,9 @@ func TestMeasurementState_EmptyTimestampsInFile(t *testing.T) {
 	require.Empty(t, ms.tracker.Timestamps, "Timestamps should be empty")
 }
 
-func TestMeasurementState_PersistenceAcrossInstances(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_State_PersistenceAcrossInstances(t *testing.T) {
+	t.Parallel()
+
 	tempDir := t.TempDir()
 	filename := filepath.Join(tempDir, "persistence_test.json")
 
@@ -202,7 +220,9 @@ func TestMeasurementState_PersistenceAcrossInstances(t *testing.T) {
 	require.Equal(t, int64(1640995400), timestamps[300])
 }
 
-func TestMeasurementState_ConcurrentAccess(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_State_ConcurrentAccess(t *testing.T) {
+	t.Parallel()
+
 	ms := NewMeasurementState("test.json")
 
 	// Note: This test demonstrates that the current implementation
@@ -223,7 +243,9 @@ func TestMeasurementState_ConcurrentAccess(t *testing.T) {
 	require.Equal(t, int64(1009), ts)
 }
 
-func TestMeasurementState_LargeNumberOfMeasurements(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_State_LargeNumberOfMeasurements(t *testing.T) {
+	t.Parallel()
+
 	tempDir := t.TempDir()
 	filename := filepath.Join(tempDir, "large_test.json")
 
@@ -252,7 +274,9 @@ func TestMeasurementState_LargeNumberOfMeasurements(t *testing.T) {
 	}
 }
 
-func TestTimestampTracker_Structure(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_State_TimestampTracker_Structure(t *testing.T) {
+	t.Parallel()
+
 	// Test that TimestampTracker can be marshaled/unmarshaled correctly
 	tracker := &TimestampTracker{
 		Timestamps: map[int]int64{
@@ -273,7 +297,9 @@ func TestTimestampTracker_Structure(t *testing.T) {
 	require.Equal(t, tracker.Timestamps, tracker2.Timestamps)
 }
 
-func TestMeasurementTimestamp_Structure(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_State_MeasurementTimestamp_Structure(t *testing.T) {
+	t.Parallel()
+
 	// Test MeasurementTimestamp structure (currently unused but defined)
 	mt := &MeasurementTimestamp{
 		MeasurementID: 100,

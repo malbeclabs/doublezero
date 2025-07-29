@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/collector"
+	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/exporter"
 )
 
 const (
@@ -53,8 +54,9 @@ type MeasurementInfo struct {
 }
 
 type Collector struct {
-	client clientInterface
-	log    *slog.Logger
+	client   clientInterface
+	log      *slog.Logger
+	exporter exporter.Exporter
 }
 
 type MeasurementSpec struct {
@@ -66,10 +68,11 @@ type MeasurementSpec struct {
 	TargetProbe        Probe
 }
 
-func NewCollector(logger *slog.Logger) *Collector {
+func NewCollector(logger *slog.Logger, exporter exporter.Exporter) *Collector {
 	return &Collector{
-		client: NewClient(logger),
-		log:    logger,
+		client:   NewClient(logger),
+		log:      logger,
+		exporter: exporter,
 	}
 }
 
@@ -149,17 +152,17 @@ func parseProbeIDsFromDescription(description string) (sourceProbe int, targetPr
 	return sourceProbe, targetProbe, locationA, locationZ
 }
 
-func (c *Collector) parseLatencyFromResult(result any) (float64, string) {
+func (c *Collector) parseLatencyFromResult(result any) (time.Duration, time.Time) {
 	// Parse the result JSON to extract latency data
 	resultMap, ok := result.(map[string]any)
 	if !ok {
-		return 0, ""
+		return 0 * time.Millisecond, time.Time{}
 	}
 
 	// Extract timestamp
-	timestamp := ""
+	timestamp := time.Time{}
 	if ts, ok := resultMap["timestamp"].(float64); ok {
-		timestamp = time.Unix(int64(ts), 0).Format(collector.TimeFormatMicroseconds)
+		timestamp = time.Unix(int64(ts), 0).UTC()
 	}
 
 	// Extract latency from ping results
@@ -167,7 +170,7 @@ func (c *Collector) parseLatencyFromResult(result any) (float64, string) {
 		for _, pingResult := range resultArray {
 			if pingMap, ok := pingResult.(map[string]any); ok {
 				if rtt, ok := pingMap["rtt"].(float64); ok && rtt > 0 {
-					return rtt, timestamp
+					return time.Duration(rtt*1000) * time.Microsecond, timestamp
 				}
 			}
 		}
@@ -249,7 +252,7 @@ func (c *Collector) ListMeasurements(ctx context.Context) error {
 	fmt.Println("ID,Description,Target,Status,Type")
 
 	for _, measurement := range measurements {
-		description := collector.EscapeCSVField(measurement.Description)
+		description := exporter.EscapeCSVField(measurement.Description)
 
 		fmt.Printf("%d,%s,%s,%s,%s\n",
 			measurement.ID,
@@ -340,12 +343,6 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir, outp
 		return err
 	}
 
-	csvExporter, err := collector.NewCSVExporter("ripe_atlas_measurements", outputDir)
-	if err != nil {
-		return err
-	}
-	defer csvExporter.Close()
-
 	measurements, err := c.client.GetAllMeasurements(ctx)
 	if err != nil {
 		return collector.NewAPIError("get_measurements", "failed to get measurements", err)
@@ -371,15 +368,11 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir, outp
 
 	c.log.Info("Found active DoubleZero measurements to export", slog.Int("count", len(activeMeasurements)))
 
-	header := []string{"location_a", "location_z", "timestamp", "latency"}
-	if err := csvExporter.WriteHeader(header); err != nil {
-		return err
-	}
-
 	recordCount := 0
 
 	for _, measurement := range activeMeasurements {
-		if err, count := c.exportSingleMeasurementResults(ctx, measurement, outputDir, measurementState, csvExporter); err != nil {
+		count, err := c.exportSingleMeasurementResults(ctx, measurement, measurementState)
+		if err != nil {
 			c.log.Warn("Failed to export measurement results",
 				slog.Int("measurement_id", measurement.ID),
 				slog.String("description", measurement.Description),
@@ -397,21 +390,21 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir, outp
 	c.log.Debug("Updated timestamp tracking file", slog.String("file", timestampFile))
 
 	c.log.Info("Successfully exported measurement results",
-		slog.String("file", csvExporter.GetFilename()),
 		slog.Int("records_written", recordCount))
 
 	return nil
 }
 
-func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurement Measurement, outputDir string, measurementState *MeasurementState, csvExporter *collector.CSVExporter) (error, int) {
-	lastTimestamp, exists := measurementState.GetLastTimestamp(measurement.ID)
+func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurement Measurement, measurementState *MeasurementState) (int, error) {
+	lastTimestampUnix, exists := measurementState.GetLastTimestamp(measurement.ID)
+	lastTimestamp := time.Unix(lastTimestampUnix, 0)
 	recordCount := 0
 
 	c.log.Debug("Processing measurement",
 		slog.Int("measurement_id", measurement.ID),
 		slog.String("description", measurement.Description),
 		slog.Bool("has_timestamp", exists),
-		slog.Int64("last_timestamp", lastTimestamp))
+		slog.Time("last_timestamp", lastTimestamp))
 
 	// Parse location codes from description (new format has codes instead of names)
 	_, _, locationA, locationZ := parseProbeIDsFromDescription(measurement.Description)
@@ -424,65 +417,66 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 	}
 
 	// Get measurement results with optional start timestamp
-	results, err := c.client.GetMeasurementResultsIncremental(ctx, measurement.ID, lastTimestamp)
+	results, err := c.client.GetMeasurementResultsIncremental(ctx, measurement.ID, lastTimestampUnix)
 	if err != nil {
 		c.log.Warn("Failed to get results for measurement",
 			slog.Int("measurement_id", measurement.ID),
 			slog.String("error", err.Error()))
-		return nil, 0
+		return 0, err
 	}
 
 	if len(results) == 0 {
 		c.log.Debug("No new results for measurement", slog.Int("measurement_id", measurement.ID))
-		return nil, 0
+		return 0, nil
 	}
 
 	c.log.Debug("Retrieved new results for measurement",
 		slog.Int("measurement_id", measurement.ID),
 		slog.Int("result_count", len(results)))
 
-	var maxTimestamp int64
+	var maxTimestamp time.Time
 	processedResults := 0
 
-	// Process results and write to CSV
+	// Process results.
+	records := make([]exporter.Record, 0, len(results))
 	for _, result := range results {
 		// Parse latency from result
-		latency, timestampStr := c.parseLatencyFromResult(result)
+		latency, timestamp := c.parseLatencyFromResult(result)
 		if latency > 0 {
-			// Parse the timestamp
-			resultMap, ok := result.(map[string]any)
-			if ok {
-				if ts, ok := resultMap["timestamp"].(float64); ok {
-					timestamp := int64(ts)
-					if timestamp > maxTimestamp {
-						maxTimestamp = timestamp
-					}
-				}
+			if timestamp.After(maxTimestamp) {
+				maxTimestamp = timestamp
 			}
 
-			record := []string{
-				locationA,
-				locationZ,
-				timestampStr,
-				fmt.Sprintf("%.2f", latency),
-			}
-
-			csvExporter.WriteRecordWithWarning(record)
+			records = append(records, exporter.Record{
+				DataProvider:       exporter.DataProviderNameRIPEAtlas,
+				SourceLocationCode: locationA,
+				TargetLocationCode: locationZ,
+				Timestamp:          timestamp,
+				RTT:                latency,
+			})
 			processedResults++
 			recordCount++
 		}
 	}
 
+	// Write the batch of records with the exporter.
+	if len(records) > 0 {
+		if err := c.exporter.WriteRecords(ctx, records); err != nil {
+			c.log.Warn("RIPE Atlas failed to write records", "error", err.Error(), "records", len(records))
+			return 0, fmt.Errorf("failed to write records: %w", err)
+		}
+	}
+
 	// Update the timestamp tracker with the newest timestamp seen
-	if maxTimestamp > lastTimestamp {
-		measurementState.UpdateTimestamp(measurement.ID, maxTimestamp)
+	if maxTimestamp.After(lastTimestamp) {
+		measurementState.UpdateTimestamp(measurement.ID, maxTimestamp.Unix())
 		c.log.Debug("Updated timestamp for measurement",
 			slog.Int("measurement_id", measurement.ID),
-			slog.Int64("new_timestamp", maxTimestamp),
+			slog.Time("new_timestamp", maxTimestamp),
 			slog.Int("processed_results", processedResults))
 	}
 
-	return nil, recordCount
+	return recordCount, nil
 }
 
 func (c *Collector) RunRipeAtlasMeasurementCreation(ctx context.Context, dryRun bool, probesPerLocation int, outputDir string, stateDir string) error {
@@ -596,13 +590,6 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 			return err
 		}
 
-		// Create CSV exporter
-		csvExporter, err := collector.NewCSVExporter("ripe_atlas_measurements", outputDir)
-		if err != nil {
-			return err
-		}
-		defer csvExporter.Close()
-
 		for _, measurement := range toRemove {
 			if dryRun {
 				c.log.Info("Would remove measurement (dry run)",
@@ -610,7 +597,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 					slog.String("description", measurement.Description))
 			} else {
 				// Export results before removing
-				if err, _ := c.exportSingleMeasurementResults(ctx, measurement, outputDir, measurementState, csvExporter); err != nil {
+				if _, err := c.exportSingleMeasurementResults(ctx, measurement, measurementState); err != nil {
 					c.log.Warn("Failed to export measurement results before removal",
 						slog.Int("measurement_id", measurement.ID),
 						slog.String("error", err.Error()))

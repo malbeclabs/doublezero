@@ -7,7 +7,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestErrorType_String(t *testing.T) {
+func TestInternetLatency_Errors_ErrorType_String(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		errType  ErrorType
@@ -30,7 +32,9 @@ func TestErrorType_String(t *testing.T) {
 	}
 }
 
-func TestCollectorError_Error(t *testing.T) {
+func TestInternetLatency_Errors_CollectorError_Error(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		err      *CollectorError
@@ -43,7 +47,7 @@ func TestCollectorError_Error(t *testing.T) {
 				Operation: "test_operation",
 				Message:   "test message",
 				Cause:     nil,
-				Context:   make(map[string]any),
+				context:   make(map[string]any),
 			},
 			expected: "api_error failed in test_operation: test message",
 		},
@@ -54,7 +58,7 @@ func TestCollectorError_Error(t *testing.T) {
 				Operation: "network_request",
 				Message:   "connection failed",
 				Cause:     errors.New("timeout"),
-				Context:   make(map[string]any),
+				context:   make(map[string]any),
 			},
 			expected: "network_error failed in network_request: connection failed (caused by: timeout)",
 		},
@@ -67,14 +71,16 @@ func TestCollectorError_Error(t *testing.T) {
 	}
 }
 
-func TestCollectorError_Unwrap(t *testing.T) {
+func TestInternetLatency_Errors_CollectorError_Unwrap(t *testing.T) {
+	t.Parallel()
+
 	originalErr := errors.New("original error")
 	collectorErr := &CollectorError{
 		Type:      ErrorTypeAPI,
 		Operation: "test",
 		Message:   "test",
 		Cause:     originalErr,
-		Context:   make(map[string]any),
+		context:   make(map[string]any),
 	}
 
 	require.Equal(t, originalErr, collectorErr.Unwrap())
@@ -85,13 +91,15 @@ func TestCollectorError_Unwrap(t *testing.T) {
 		Operation: "test",
 		Message:   "test",
 		Cause:     nil,
-		Context:   make(map[string]any),
+		context:   make(map[string]any),
 	}
 
 	require.Nil(t, collectorErrNoCause.Unwrap())
 }
 
-func TestNewError(t *testing.T) {
+func TestInternetLatency_Errors_NewError(t *testing.T) {
+	t.Parallel()
+
 	cause := errors.New("test cause")
 	err := NewError(ErrorTypeValidation, "test_op", "test message", cause)
 
@@ -99,41 +107,47 @@ func TestNewError(t *testing.T) {
 	require.Equal(t, "test_op", err.Operation)
 	require.Equal(t, "test message", err.Message)
 	require.Equal(t, cause, err.Cause)
-	require.NotNil(t, err.Context)
+	require.NotNil(t, err.GetContextMap())
 }
 
-func TestWithContext(t *testing.T) {
+func TestInternetLatency_Errors_WithContext(t *testing.T) {
+	t.Parallel()
+
 	err := NewError(ErrorTypeAPI, "test", "test", nil)
 
 	// Test adding context
 	_ = err.WithContext("key1", "value1")
-	require.Equal(t, "value1", err.Context["key1"])
+	require.Equal(t, "value1", err.GetContext("key1"))
 
 	// Test chaining context
 	_ = err.WithContext("key2", 123).WithContext("key3", true)
-	require.Equal(t, 123, err.Context["key2"])
-	require.Equal(t, true, err.Context["key3"])
+	require.Equal(t, 123, err.GetContext("key2"))
+	require.Equal(t, true, err.GetContext("key3"))
 
 	// Test overwriting context
 	_ = err.WithContext("key1", "new_value")
-	require.Equal(t, "new_value", err.Context["key1"])
+	require.Equal(t, "new_value", err.GetContext("key1"))
 }
 
-func TestWithContext_NilContext(t *testing.T) {
+func TestInternetLatency_Errors_WithContext_NilContext(t *testing.T) {
+	t.Parallel()
+
 	err := &CollectorError{
 		Type:      ErrorTypeAPI,
 		Operation: "test",
 		Message:   "test",
 		Cause:     nil,
-		Context:   nil, // Explicitly nil
+		context:   nil, // Explicitly nil
 	}
 
 	_ = err.WithContext("key", "value")
-	require.NotNil(t, err.Context)
-	require.Equal(t, "value", err.Context["key"])
+	require.NotNil(t, err.GetContext("key"))
+	require.Equal(t, "value", err.GetContext("key"))
 }
 
-func TestNewAPIError(t *testing.T) {
+func TestInternetLatency_Errors_NewAPIError(t *testing.T) {
+	t.Parallel()
+
 	cause := errors.New("api failure")
 	err := NewAPIError("api_call", "request failed", cause)
 
@@ -143,7 +157,9 @@ func TestNewAPIError(t *testing.T) {
 	require.Equal(t, cause, err.Cause)
 }
 
-func TestNewNetworkError(t *testing.T) {
+func TestInternetLatency_Errors_NewNetworkError(t *testing.T) {
+	t.Parallel()
+
 	err := NewNetworkError("network_op", "connection timeout", nil)
 
 	require.Equal(t, ErrorTypeNetwork, err.Type)
@@ -151,7 +167,9 @@ func TestNewNetworkError(t *testing.T) {
 	require.Equal(t, "connection timeout", err.Message)
 }
 
-func TestNewValidationError(t *testing.T) {
+func TestInternetLatency_Errors_NewValidationError(t *testing.T) {
+	t.Parallel()
+
 	err := NewValidationError("input_validation", "invalid input", nil)
 
 	require.Equal(t, ErrorTypeValidation, err.Type)
@@ -159,15 +177,9 @@ func TestNewValidationError(t *testing.T) {
 	require.Equal(t, "invalid input", err.Message)
 }
 
-func TestNewFileIOError(t *testing.T) {
-	err := NewFileIOError("file_read", "file not found", nil)
+func TestInternetLatency_Errors_ErrorConstants(t *testing.T) {
+	t.Parallel()
 
-	require.Equal(t, ErrorTypeFileIO, err.Type)
-	require.Equal(t, "file_read", err.Operation)
-	require.Equal(t, "file not found", err.Message)
-}
-
-func TestErrorConstants(t *testing.T) {
 	tests := []struct {
 		name      string
 		err       *CollectorError
@@ -187,9 +199,6 @@ func TestErrorConstants(t *testing.T) {
 		{"ErrMeasurementCreation", ErrMeasurementCreation, ErrorTypeAPI, "measurement_creation"},
 		{"ErrJobCreation", ErrJobCreation, ErrorTypeAPI, "job_creation"},
 		{"ErrMeasurementStop", ErrMeasurementStop, ErrorTypeAPI, "measurement_stop"},
-		{"ErrJobIDStorage", ErrJobIDStorage, ErrorTypeFileIO, "job_id_storage"},
-		{"ErrJobIDRetrieval", ErrJobIDRetrieval, ErrorTypeFileIO, "job_id_retrieval"},
-		{"ErrResultsExport", ErrResultsExport, ErrorTypeFileIO, "results_export"},
 		{"ErrProbeConnection", ErrProbeConnection, ErrorTypeNetwork, "probe_connection"},
 		{"ErrJobResultRetrieval", ErrJobResultRetrieval, ErrorTypeNetwork, "job_result_retrieval"},
 	}
@@ -199,29 +208,33 @@ func TestErrorConstants(t *testing.T) {
 			require.Equal(t, tt.errType, tt.err.Type)
 			require.Equal(t, tt.operation, tt.err.Operation)
 			require.Nil(t, tt.err.Cause)
-			require.NotNil(t, tt.err.Context)
+			require.NotNil(t, tt.err.GetContextMap())
 		})
 	}
 }
 
-func TestErrorConstantsWithContext(t *testing.T) {
+func TestInternetLatency_Errors_ErrorConstantsWithContext(t *testing.T) {
+	t.Parallel()
+
 	// Test that error constants can be used with context
 	// First check the original context length
-	originalLen := len(ErrLocationNotFound.Context)
+	originalLen := len(ErrLocationNotFound.GetContextMap())
 
 	err := ErrLocationNotFound.WithContext("filename", "test.csv").WithContext("line", 10)
 
-	require.Equal(t, "test.csv", err.Context["filename"])
-	require.Equal(t, 10, err.Context["line"])
+	require.Equal(t, "test.csv", err.GetContext("filename"))
+	require.Equal(t, 10, err.GetContext("line"))
 
 	// The WithContext method modifies the error in place, so the original will be modified
 	// This is actually expected behavior for the current implementation
-	if len(ErrLocationNotFound.Context) == originalLen {
+	if len(ErrLocationNotFound.GetContextMap()) == originalLen {
 		t.Logf("Note: WithContext modifies the original error constant (expected behavior)")
 	}
 }
 
 func TestCollectorError_IsType(t *testing.T) {
+	t.Parallel()
+
 	// Test checking error types using errors.Is and type assertion
 	apiErr := NewAPIError("test", "test", nil)
 

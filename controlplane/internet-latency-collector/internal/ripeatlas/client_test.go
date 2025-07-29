@@ -28,12 +28,13 @@ func (m *MockHTTPClient) Do(req *http.Request) (*http.Response, error) {
 	return nil, errors.New("mock not configured")
 }
 
-func TestNewClient(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_NewClient(t *testing.T) {
 	// Set API key for test
 	t.Setenv("RIPE_ATLAS_API_KEY", "test-api-key")
 
-	collector.InitLogger(collector.LogLevelWarn)
-	client := NewClient(collector.GetLogger())
+	log := logger.With("test", t.Name())
+
+	client := NewClient(log)
 
 	require.NotNil(t, client, "NewClient() returned nil")
 	require.Equal(t, "https://atlas.ripe.net/api/v2", client.BaseURL)
@@ -41,16 +42,20 @@ func TestNewClient(t *testing.T) {
 	require.NotNil(t, client.HTTPClient, "HTTPClient should not be nil")
 }
 
-func TestNewClient_NoAPIKey(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_NewClient_NoAPIKey(t *testing.T) {
 	// Ensure no API key is set
 	t.Setenv("RIPE_ATLAS_API_KEY", "")
 
-	client := NewClient(collector.GetLogger())
+	log := logger.With("test", t.Name())
+
+	client := NewClient(log)
 
 	require.Empty(t, client.APIKey, "APIKey should be empty")
 }
 
-func TestSetCommonHeaders(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_SetCommonHeaders(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name        string
 		apiKey      string
@@ -88,7 +93,14 @@ func TestSetCommonHeaders(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := &Client{APIKey: tt.apiKey}
+			t.Parallel()
+
+			log := logger.With("test", t.Name())
+
+			client := &Client{
+				log:    log,
+				APIKey: tt.apiKey,
+			}
 			req, _ := http.NewRequest("GET", "http://test.com", nil)
 
 			client.setCommonHeaders(req, tt.contentType)
@@ -112,7 +124,9 @@ func TestSetCommonHeaders(t *testing.T) {
 	}
 }
 
-func TestGetProbesInRadius(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_GetProbesInRadius(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name      string
 		lat       float64
@@ -209,9 +223,14 @@ func TestGetProbesInRadius(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			log := logger.With("test", t.Name())
+
 			client := &Client{
 				BaseURL:    "https://atlas.ripe.net/api/v2",
 				HTTPClient: &MockHTTPClient{DoFunc: tt.mockFunc},
+				log:        log,
 			}
 
 			probes, err := client.GetProbesInRadius(t.Context(), tt.lat, tt.lng, tt.radius)
@@ -227,9 +246,14 @@ func TestGetProbesInRadius(t *testing.T) {
 	}
 }
 
-func TestGetProbesInRadius_Pagination(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_GetProbesInRadius_Pagination(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
 	callCount := 0
 	client := &Client{
+		log:     log,
 		BaseURL: "https://atlas.ripe.net/api/v2",
 		HTTPClient: &MockHTTPClient{
 			DoFunc: func(req *http.Request) (*http.Response, error) {
@@ -276,7 +300,7 @@ func TestGetProbesInRadius_Pagination(t *testing.T) {
 	require.Equal(t, 1, callCount, "API should be called once")
 }
 
-func TestCreateMeasurement(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_CreateMeasurement(t *testing.T) {
 	tests := []struct {
 		name     string
 		request  MeasurementRequest
@@ -352,10 +376,15 @@ func TestCreateMeasurement(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			log := logger.With("test", t.Name())
+
 			client := &Client{
 				BaseURL:    "https://atlas.ripe.net/api/v2",
 				APIKey:     "test-key",
 				HTTPClient: &MockHTTPClient{DoFunc: tt.mockFunc},
+				log:        log,
 			}
 
 			response, err := client.CreateMeasurement(t.Context(), tt.request)
@@ -371,7 +400,7 @@ func TestCreateMeasurement(t *testing.T) {
 	}
 }
 
-func TestGetAllMeasurements(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_GetAllMeasurements(t *testing.T) {
 	tests := []struct {
 		name     string
 		mockFunc func(req *http.Request) (*http.Response, error)
@@ -453,10 +482,15 @@ func TestGetAllMeasurements(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			log := logger.With("test", t.Name())
+
 			client := &Client{
 				BaseURL:    "https://atlas.ripe.net/api/v2",
 				APIKey:     "test-key",
 				HTTPClient: &MockHTTPClient{DoFunc: tt.mockFunc},
+				log:        log,
 			}
 
 			measurements, err := client.GetAllMeasurements(t.Context())
@@ -471,8 +505,7 @@ func TestGetAllMeasurements(t *testing.T) {
 	}
 }
 
-func TestStopMeasurement(t *testing.T) {
-	collector.InitLogger(collector.LogLevelWarn)
+func TestInternetLatency_RIPEAtlas_StopMeasurement(t *testing.T) {
 
 	tests := []struct {
 		name          string
@@ -519,12 +552,15 @@ func TestStopMeasurement(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			collector.InitLogger(collector.LogLevelWarn)
+			t.Parallel()
+
+			log := logger.With("test", t.Name())
+
 			client := &Client{
 				BaseURL:    "https://atlas.ripe.net/api/v2",
 				APIKey:     "test-key",
 				HTTPClient: &MockHTTPClient{DoFunc: tt.mockFunc},
-				log:        collector.GetLogger(),
+				log:        log,
 			}
 
 			err := client.StopMeasurement(t.Context(), tt.measurementID)
@@ -538,8 +574,13 @@ func TestStopMeasurement(t *testing.T) {
 	}
 }
 
-func TestMakeRequest_ContextCancellation(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_MakeRequest_ContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
 	client := &Client{
+		log:     log,
 		BaseURL: "https://atlas.ripe.net/api/v2",
 		HTTPClient: &MockHTTPClient{
 			DoFunc: func(req *http.Request) (*http.Response, error) {
@@ -558,9 +599,8 @@ func TestMakeRequest_ContextCancellation(t *testing.T) {
 	require.Error(t, err, "Expected error due to context cancellation")
 }
 
-func TestFetchProbesWithErrorHandling(t *testing.T) {
-	// Setup logger for test
-	collector.InitLogger(collector.LogLevelWarn)
+func TestInternetLatency_RIPEAtlas_FetchProbesWithErrorHandling(t *testing.T) {
+	t.Parallel()
 
 	tests := []struct {
 		name       string
@@ -607,10 +647,13 @@ func TestFetchProbesWithErrorHandling(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			log := logger.With("test", t.Name())
 			client := &Client{
+				log:        log,
 				BaseURL:    "https://atlas.ripe.net/api/v2",
 				HTTPClient: &MockHTTPClient{DoFunc: tt.mockFunc},
-				log:        collector.GetLogger(),
 			}
 
 			probes, err := client.fetchProbesWithErrorHandling(t.Context(), tt.lat, tt.lng, tt.entityName)
@@ -626,12 +669,14 @@ func TestFetchProbesWithErrorHandling(t *testing.T) {
 	}
 }
 
-func TestGetProbesForLocations(t *testing.T) {
-	// Setup logger for test
-	collector.InitLogger(collector.LogLevelWarn)
+func TestInternetLatency_RIPEAtlas_GetProbesForLocations(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
 
 	callCount := 0
 	client := &Client{
+		log:     log,
 		BaseURL: "https://atlas.ripe.net/api/v2",
 		HTTPClient: &MockHTTPClient{
 			DoFunc: func(req *http.Request) (*http.Response, error) {
@@ -683,7 +728,7 @@ func TestGetProbesForLocations(t *testing.T) {
 }
 
 // Test error scenarios
-func TestAPIErrorResponses(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_APIErrorResponses(t *testing.T) {
 	tests := []struct {
 		name       string
 		statusCode int
@@ -730,7 +775,12 @@ func TestAPIErrorResponses(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			log := logger.With("test", t.Name())
+
 			client := &Client{
+				log:     log,
 				BaseURL: "https://atlas.ripe.net/api/v2",
 				HTTPClient: &MockHTTPClient{
 					DoFunc: func(req *http.Request) (*http.Response, error) {
@@ -750,7 +800,7 @@ func TestAPIErrorResponses(t *testing.T) {
 	}
 }
 
-func TestGetMeasurementResultsIncremental(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_GetMeasurementResultsIncremental(t *testing.T) {
 	tests := []struct {
 		name           string
 		measurementID  int
@@ -827,7 +877,12 @@ func TestGetMeasurementResultsIncremental(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			log := logger.With("test", t.Name())
+
 			client := &Client{
+				log:     log,
 				BaseURL: "https://atlas.ripe.net/api/v2",
 				APIKey:  "test-key",
 				HTTPClient: &MockHTTPClient{

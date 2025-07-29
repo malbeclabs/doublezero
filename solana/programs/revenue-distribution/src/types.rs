@@ -1,6 +1,5 @@
 use std::fmt::Display;
 
-use bitmaps::Bitmap;
 use borsh::{BorshDeserialize, BorshSerialize};
 use bytemuck::{Pod, Zeroable};
 
@@ -54,9 +53,6 @@ impl PartialEq<u64> for DoubleZeroEpoch {
 /// Any calculation requiring the passage of time via DoubleZero epochs as an input should use this
 /// type. `u32::MAX` is more than enough time for any of these calculations.
 pub type EpochDuration = u32;
-
-pub type Flags = u64;
-pub type FlagsBitmap = Bitmap<{ Flags::BITS as usize }>;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Pod, Zeroable)]
 #[repr(C)]

@@ -1,6 +1,7 @@
 pub mod account_info;
 pub mod instruction;
 pub mod recipe;
+pub mod types;
 pub mod zero_copy;
 //
 

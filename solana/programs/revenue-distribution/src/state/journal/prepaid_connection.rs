@@ -1,6 +1,5 @@
 use bytemuck::{Pod, Zeroable};
-
-use crate::state::StorageGap;
+use doublezero_program_tools::types::StorageGap;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable)]
 #[repr(C, align(8))]

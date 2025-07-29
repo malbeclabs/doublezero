@@ -4,23 +4,19 @@ use doublezero_program_tools::{
     instruction::try_build_instruction, zero_copy::checked_from_bytes_with_discriminator,
 };
 use doublezero_revenue_distribution::{
-    state::Distribution,
-    types::DoubleZeroEpoch,
-    {
-        instruction::{
-            account::{
-                ConfigureDistributionAccounts, ConfigureJournalAccounts, ConfigureProgramAccounts,
-                InitializeDistributionAccounts, InitializeJournalAccounts,
-                InitializePrepaidConnectionAccounts, InitializeProgramAccounts,
-                LoadPrepaidConnectionAccounts, SetAdminAccounts,
-                TerminatePrepaidConnectionAccounts,
-            },
-            DistributionConfiguration, JournalConfiguration, ProgramConfiguration,
-            RevenueDistributionInstructionData,
+    instruction::{
+        account::{
+            ConfigureDistributionAccounts, ConfigureJournalAccounts, ConfigureProgramAccounts,
+            InitializeDistributionAccounts, InitializeJournalAccounts,
+            InitializePrepaidConnectionAccounts, InitializeProgramAccounts,
+            LoadPrepaidConnectionAccounts, SetAdminAccounts, TerminatePrepaidConnectionAccounts,
         },
-        state::{self, Journal, JournalEntries, PrepaidConnection, ProgramConfig},
-        DOUBLEZERO_MINT_KEY, ID,
+        DistributionConfiguration, JournalConfiguration, ProgramConfiguration,
+        RevenueDistributionInstructionData,
     },
+    state::{self, Distribution, Journal, JournalEntries, PrepaidConnection, ProgramConfig},
+    types::DoubleZeroEpoch,
+    DOUBLEZERO_MINT_KEY, ID,
 };
 use solana_loader_v3_interface::{get_program_data_address, state::UpgradeableLoaderState};
 use solana_program_pack::Pack;

@@ -1,10 +1,11 @@
 use bytemuck::{Pod, Zeroable};
-use doublezero_program_tools::{Discriminator, PrecomputedDiscriminator};
+use doublezero_program_tools::{
+    types::{Flags, FlagsBitmap, StorageGap},
+    {Discriminator, PrecomputedDiscriminator},
+};
 use solana_pubkey::Pubkey;
 
-use crate::types::{DoubleZeroEpoch, Flags, FlagsBitmap};
-
-use super::StorageGap;
+use crate::types::DoubleZeroEpoch;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable)]
 #[repr(C, align(8))]

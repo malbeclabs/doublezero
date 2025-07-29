@@ -3,6 +3,7 @@ exclude = []
 members = [
     "crates/program-tools",
     "crates/validator-revenue",
+    "programs/passport",
     "programs/revenue-distribution",
 ]
 resolver = "2"

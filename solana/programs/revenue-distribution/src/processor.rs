@@ -31,9 +31,9 @@ use crate::{
     DOUBLEZERO_MINT_DECIMALS, DOUBLEZERO_MINT_KEY, ID,
 };
 
-solana_program_entrypoint::entrypoint!(process_instruction);
+solana_program_entrypoint::entrypoint!(try_process_instruction);
 
-fn process_instruction(
+fn try_process_instruction(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     data: &[u8],
@@ -48,41 +48,37 @@ fn process_instruction(
         BorshDeserialize::try_from_slice(data).map_err(|_| ProgramError::InvalidInstructionData)?;
 
     match ix_data {
-        RevenueDistributionInstructionData::InitializeProgram => {
-            process_initialize_program(accounts)
-        }
+        RevenueDistributionInstructionData::InitializeProgram => try_initialize_program(accounts),
         RevenueDistributionInstructionData::SetAdmin(admin_key) => {
-            process_set_admin(accounts, admin_key)
+            try_set_admin(accounts, admin_key)
         }
         RevenueDistributionInstructionData::ConfigureProgram(setting) => {
-            process_configure_program(accounts, setting)
+            try_configure_program(accounts, setting)
         }
-        RevenueDistributionInstructionData::InitializeJournal => {
-            process_initialize_journal(accounts)
-        }
+        RevenueDistributionInstructionData::InitializeJournal => try_initialize_journal(accounts),
         RevenueDistributionInstructionData::ConfigureJournal(setting) => {
-            process_configure_journal(accounts, setting)
+            try_configure_journal(accounts, setting)
         }
         RevenueDistributionInstructionData::InitializeDistribution => {
-            process_initialize_distribution(accounts)
+            try_initialize_distribution(accounts)
         }
         RevenueDistributionInstructionData::ConfigureDistribution(data) => {
-            process_configure_distribution(accounts, data)
+            try_configure_distribution(accounts, data)
         }
         RevenueDistributionInstructionData::InitializePrepaidConnection { user_key, decimals } => {
-            process_initialize_prepaid_connection(accounts, user_key, decimals)
+            try_initialize_prepaid_connection(accounts, user_key, decimals)
         }
         RevenueDistributionInstructionData::LoadPrepaidConnection {
             valid_through_dz_epoch,
             decimals,
-        } => process_load_prepaid_connection(accounts, valid_through_dz_epoch, decimals),
+        } => try_load_prepaid_connection(accounts, valid_through_dz_epoch, decimals),
         RevenueDistributionInstructionData::TerminatePrepaidConnection => {
-            process_terminate_prepaid_connection(accounts)
+            try_terminate_prepaid_connection(accounts)
         }
     }
 }
 
-fn process_initialize_program(accounts: &[AccountInfo]) -> ProgramResult {
+fn try_initialize_program(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("Initialize program");
 
     // We expect the following accounts for this instruction:
@@ -173,7 +169,7 @@ fn process_initialize_program(accounts: &[AccountInfo]) -> ProgramResult {
     Ok(())
 }
 
-fn process_set_admin(accounts: &[AccountInfo], admin_key: Pubkey) -> ProgramResult {
+fn try_set_admin(accounts: &[AccountInfo], admin_key: Pubkey) -> ProgramResult {
     msg!("Set admin");
 
     // We expect the following accounts for this instruction:
@@ -196,10 +192,7 @@ fn process_set_admin(accounts: &[AccountInfo], admin_key: Pubkey) -> ProgramResu
     Ok(())
 }
 
-fn process_configure_program(
-    accounts: &[AccountInfo],
-    setting: ProgramConfiguration,
-) -> ProgramResult {
+fn try_configure_program(accounts: &[AccountInfo], setting: ProgramConfiguration) -> ProgramResult {
     msg!("Configure program");
 
     // We expect the following accounts for this instruction:
@@ -360,7 +353,7 @@ fn process_configure_program(
     Ok(())
 }
 
-fn process_initialize_journal(accounts: &[AccountInfo]) -> ProgramResult {
+fn try_initialize_journal(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("Initialize journal");
 
     // We expect the following accounts for this instruction:
@@ -447,10 +440,7 @@ fn process_initialize_journal(accounts: &[AccountInfo]) -> ProgramResult {
     Ok(())
 }
 
-fn process_configure_journal(
-    accounts: &[AccountInfo],
-    setting: JournalConfiguration,
-) -> ProgramResult {
+fn try_configure_journal(accounts: &[AccountInfo], setting: JournalConfiguration) -> ProgramResult {
     msg!("Configure journal");
 
     // We expect the following accounts for this instruction:
@@ -520,7 +510,7 @@ fn process_configure_journal(
     Ok(())
 }
 
-fn process_initialize_distribution(accounts: &[AccountInfo]) -> ProgramResult {
+fn try_initialize_distribution(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("Initialize distribution");
 
     // We expect the following accounts for this instruction:
@@ -718,7 +708,7 @@ fn process_initialize_distribution(accounts: &[AccountInfo]) -> ProgramResult {
     Ok(())
 }
 
-fn process_configure_distribution(
+fn try_configure_distribution(
     accounts: &[AccountInfo],
     setting: DistributionConfiguration,
 ) -> ProgramResult {
@@ -765,7 +755,7 @@ fn process_configure_distribution(
     Ok(())
 }
 
-fn process_initialize_prepaid_connection(
+fn try_initialize_prepaid_connection(
     accounts: &[AccountInfo],
     user_key: Pubkey,
     decimals: u8,
@@ -898,7 +888,7 @@ fn process_initialize_prepaid_connection(
     Ok(())
 }
 
-fn process_load_prepaid_connection(
+fn try_load_prepaid_connection(
     accounts: &[AccountInfo],
     valid_through_dz_epoch: DoubleZeroEpoch,
     decimals: u8,
@@ -1067,7 +1057,7 @@ fn process_load_prepaid_connection(
     Ok(())
 }
 
-fn process_terminate_prepaid_connection(accounts: &[AccountInfo]) -> ProgramResult {
+fn try_terminate_prepaid_connection(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("Terminate prepaid connection");
 
     // We expect 4 accounts for this instruction at the following indices:

@@ -1,6 +1,5 @@
 use bytemuck::{Pod, Zeroable};
-
-use crate::state::StorageGap;
+use doublezero_program_tools::types::StorageGap;
 
 /// Specific amounts to pay actors that execute instructions on behalf of others.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable)]

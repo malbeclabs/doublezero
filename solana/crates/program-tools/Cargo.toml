@@ -12,6 +12,7 @@ version.workspace = true
 
 [dependencies]
 bincode.workspace = true
+bitmaps.workspace = true
 borsh = { workspace = true, features = ["derive"] }
 bytemuck = { workspace = true, features = ["derive"] }
 sha2-const-stable.workspace = true

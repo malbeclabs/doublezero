@@ -1,0 +1,49 @@
+use bytemuck::{Pod, Zeroable};
+use doublezero_program_tools::{
+    types::{Flags, FlagsBitmap, StorageGap},
+    Discriminator, PrecomputedDiscriminator,
+};
+use solana_pubkey::Pubkey;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable)]
+#[repr(C, align(8))]
+pub struct ProgramConfig {
+    pub flags: Flags,
+
+    pub admin_key: Pubkey,
+
+    /// Authority that grants or denies access to the DoubleZero Ledger network.
+    pub sentinel_key: Pubkey,
+
+    /// 8 * 32 bytes of a storage gap in case more fields need to be added.
+    _storage_gap: StorageGap<8>,
+}
+
+impl PrecomputedDiscriminator for ProgramConfig {
+    const DISCRIMINATOR: Discriminator<8> = Discriminator::new_sha2(b"dz::account::program_config");
+}
+
+impl ProgramConfig {
+    pub const SEED_PREFIX: &'static [u8] = b"program_config";
+
+    pub const FLAG_IS_PAUSED_BIT: usize = 0;
+
+    pub fn find_address() -> (Pubkey, u8) {
+        Pubkey::find_program_address(&[Self::SEED_PREFIX], &crate::ID)
+    }
+
+    #[inline]
+    pub fn flags_bitmap(&self) -> FlagsBitmap {
+        FlagsBitmap::from_value(self.flags)
+    }
+
+    pub fn is_paused(&self) -> bool {
+        self.flags_bitmap().get(Self::FLAG_IS_PAUSED_BIT)
+    }
+
+    pub fn set_is_paused(&mut self, should_pause: bool) {
+        let mut flags_bitmap = self.flags_bitmap();
+        flags_bitmap.set(Self::FLAG_IS_PAUSED_BIT, should_pause);
+        self.flags = flags_bitmap.into_value();
+    }
+}

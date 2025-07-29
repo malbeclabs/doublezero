@@ -1,11 +1,12 @@
 use bytemuck::{Pod, Zeroable};
-use doublezero_program_tools::{Discriminator, PrecomputedDiscriminator};
+use doublezero_program_tools::{
+    types::{Flags, FlagsBitmap, StorageGap},
+    {Discriminator, PrecomputedDiscriminator},
+};
 use solana_hash::Hash;
 use solana_pubkey::Pubkey;
 
-use crate::types::{BurnRate, DoubleZeroEpoch, Flags, FlagsBitmap, ValidatorFee};
-
-use super::StorageGap;
+use crate::types::{BurnRate, DoubleZeroEpoch, ValidatorFee};
 
 /// Account representing distribution information for a given DoubleZero epoch.
 ///

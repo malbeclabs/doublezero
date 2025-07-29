@@ -8,11 +8,11 @@ use std::collections::VecDeque;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use bytemuck::{Pod, Zeroable};
-use doublezero_program_tools::{Discriminator, PrecomputedDiscriminator};
+use doublezero_program_tools::{types::StorageGap, Discriminator, PrecomputedDiscriminator};
 use solana_account_info::MAX_PERMITTED_DATA_INCREASE;
 use solana_pubkey::Pubkey;
 
-use crate::{state::StorageGap, types::DoubleZeroEpoch};
+use crate::types::DoubleZeroEpoch;
 
 pub const fn absolute_max_journal_entries() -> usize {
     let remaining_size = MAX_PERMITTED_DATA_INCREASE - size_of::<Journal>() - 4;

@@ -1,7 +1,7 @@
 use bytemuck::{Pod, Zeroable};
+use doublezero_program_tools::types::StorageGap;
 
-use crate::state::{CommunityBurnRateParameters, StorageGap};
-use crate::types::ValidatorFee;
+use crate::{state::CommunityBurnRateParameters, types::ValidatorFee};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable)]
 #[repr(C, align(8))]

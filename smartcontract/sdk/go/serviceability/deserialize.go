@@ -1,5 +1,7 @@
 package serviceability
 
+import "log"
+
 func DeserializeConfig(reader *ByteReader, cfg *Config) {
 	cfg.AccountType = AccountType(reader.ReadU8())
 	cfg.Owner = reader.ReadPubkey()
@@ -41,6 +43,17 @@ func DeserializeExchange(reader *ByteReader, exchange *Exchange) {
 	exchange.PubKey = reader.ReadPubkey()
 }
 
+func DeserializeInterface(reader *ByteReader, iface *Interface) {
+	iface.Version = reader.ReadU8()
+	iface.Name = reader.ReadString()
+	iface.InterfaceType = InterfaceType(reader.ReadU8())
+	iface.LoopbackType = LoopbackType(reader.ReadU8())
+	iface.VlanId = reader.ReadU16()
+	iface.IpNet = reader.ReadNetworkV4()
+	iface.NodeSegmentIdx = reader.ReadU16()
+	iface.UserTunnelEndpoint = (reader.ReadU8() != 0)
+}
+
 func DeserializeDevice(reader *ByteReader, dev *Device) {
 	dev.AccountType = AccountType(reader.ReadU8())
 	dev.Owner = reader.ReadPubkey()
@@ -54,6 +67,23 @@ func DeserializeDevice(reader *ByteReader, dev *Device) {
 	dev.Code = reader.ReadString()
 	dev.DzPrefixes = reader.ReadNetworkV4Slice()
 	dev.MetricsPublisherPubKey = reader.ReadPubkey()
+	dev.ContributorPubKey = reader.ReadPubkey()
+	dev.BgpAsn = reader.ReadU32()
+	dev.DiaBgpAsn = reader.ReadU32()
+	dev.MgmtVrf = reader.ReadString()
+	dev.DnsServers = reader.ReadIPv4Slice()
+	dev.NtpServers = reader.ReadIPv4Slice()
+	dev.Interfaces = make([]Interface, 0)
+	var length = reader.ReadU32()
+	if (length * 18) > reader.Remaining() {
+		log.Println("DeserializeDevice: Not enough data for interfaces (# of interfaces = ", length, ")")
+		return
+	}
+	for i := uint32(0); i < length; i++ {
+		var iface Interface
+		DeserializeInterface(reader, &iface)
+		dev.Interfaces = append(dev.Interfaces, iface)
+	}
 	dev.PubKey = reader.ReadPubkey()
 }
 
@@ -73,6 +103,9 @@ func DeserializeLink(reader *ByteReader, link *Link) {
 	link.TunnelNet = reader.ReadNetworkV4()
 	link.Status = LinkStatus(reader.ReadU8())
 	link.Code = reader.ReadString()
+	link.ContributorPubKey = reader.ReadPubkey()
+	link.SideAIfaceName = reader.ReadString()
+	link.SideZIfaceName = reader.ReadString()
 	link.PubKey = reader.ReadPubkey()
 }
 

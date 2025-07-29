@@ -99,6 +99,18 @@ func (br *ByteReader) ReadIPv4() [4]byte {
 	return val
 }
 
+func (br *ByteReader) ReadIPv4Slice() [][4]byte {
+	length := br.ReadU32()
+	if length == 0 || (length*4) > br.Remaining() {
+		return nil
+	}
+	result := make([][4]byte, length)
+	for i := uint32(0); i < length; i++ {
+		result[i] = br.ReadIPv4()
+	}
+	return result
+}
+
 func (br *ByteReader) ReadNetworkV4() [5]byte {
 	if br.offset+5 > len(br.data) {
 		return [5]byte{}

@@ -184,6 +184,21 @@ func TestReadIPv4(t *testing.T) {
 	}
 }
 
+func TestReadIPv4Slice(t *testing.T) {
+	t.Parallel()
+
+	data := []byte{0x02, 0x00, 0x00, 0x00, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+	reader := NewByteReader(data)
+	val := reader.ReadIPv4Slice()
+	expected := [][4]byte{
+		[4]byte{1, 2, 3, 4}, // nolint
+		[4]byte{5, 6, 7, 8}, // nolint
+	}
+	if !reflect.DeepEqual(val, expected) {
+		t.Errorf("ReadNetworkV4Slice returned incorrect value: got %#v, expected %#v", val, expected)
+	}
+}
+
 func TestReadNetworkV4(t *testing.T) {
 	t.Parallel()
 

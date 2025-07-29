@@ -52,3 +52,4 @@ jobs:
           sh -c "$(curl -sSfL https://release.anza.xyz/$SOLANA_CLI/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
       - run: cargo test-sbf --test '*' -- --test-threads 1
+      - run: cargo test-sbf --test '*' --features development -- --test-threads 1

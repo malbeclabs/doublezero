@@ -35,6 +35,8 @@ solana-sdk.workspace = true
 
 [features]
 default = []
+### Build with this feature for Solana devnet and localnet.
+development = []
 no-entrypoint = []
 
 [lib]
@@ -42,3 +44,5 @@ crate-type = ["cdylib", "lib"]
 
 [lints.rust]
 unexpected_cfgs = { level = "allow", check-cfg = ['cfg(custom_heap)'] }
+
+### TODO: Add release profile.

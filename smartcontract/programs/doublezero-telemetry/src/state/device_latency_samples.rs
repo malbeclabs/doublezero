@@ -25,8 +25,21 @@ pub const MAX_DEVICE_LATENCY_SAMPLES: usize = 35_000;
 /// - 128 bytes: reserved for future use
 ///
 /// Total size: 350 bytes
-pub const DEVICE_LATENCY_SAMPLES_HEADER_SIZE: usize =
-    1 + 1 + 8 + 32 + 32 + 32 + 32 + 32 + 32 + 8 + 8 + 4 + 128;
+pub const DEVICE_LATENCY_SAMPLES_HEADER_SIZE: usize = {
+    1 // account_type
+    + 8 // epoch
+    + 1 // bump_seed
+    + 32 // origin_device_agent_pk
+    + 32 // origin_device_pk
+    + 32 // target_device_pk
+    + 32 // origin_device_location_pk
+    + 32 // target_device_location_pk
+    + 32 // link_pk
+    + 8 // sampling_interval_microseconds
+    + 8 // start_timestamp_microseconds
+    + 4 // next_sample_index
+    + 128 // _unused
+};
 
 /// Onchain data structure representing a latency samples account header between two devices
 /// over a link for a specific epoch, written by a single authorized agent.
@@ -35,11 +48,11 @@ pub struct DeviceLatencySamplesHeader {
     // Used to distinguish this account type during deserialization
     pub account_type: AccountType, // 1
 
-    // Required for recreating the PDA (seed authority)
-    pub bump_seed: u8, // 1
-
     // Epoch number in which samples were collected
     pub epoch: u64, // 8
+
+    // Required for recreating the PDA (seed authority)
+    pub bump_seed: u8, // 1
 
     // Agent authorized to write RTT samples (must match signer)
     pub origin_device_agent_pk: Pubkey, // 32

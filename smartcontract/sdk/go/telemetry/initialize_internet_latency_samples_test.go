@@ -37,7 +37,7 @@ func TestSDK_Telemetry_InitializeInternetLatencySamples_HappyPath(t *testing.T) 
 	require.Equal(t, programID, ix.ProgramID(), "program ID should match")
 
 	accounts := ix.Accounts()
-	require.Len(t, accounts, 6)
+	require.Len(t, accounts, 5)
 
 	require.Equal(t, agentPK, accounts[1].PublicKey)
 	require.True(t, accounts[1].IsSigner)

@@ -2,8 +2,8 @@ use crate::{doublezerocommand::CliCommand, formatters::stringify_vec};
 use clap::Args;
 use doublezero_sdk::{
     commands::{
-        device::list::ListDeviceCommand, exchange::list::ListExchangeCommand,
-        location::list::ListLocationCommand,
+        contributor::list::ListContributorCommand, device::list::ListDeviceCommand,
+        exchange::list::ListExchangeCommand, location::list::ListLocationCommand,
     },
     *,
 };
@@ -32,6 +32,8 @@ pub struct DeviceDisplay {
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
     #[tabled(skip)]
     pub location_pk: Pubkey,
+    #[tabled(rename = "contributor")]
+    pub contributor_code: String,
     #[tabled(rename = "location")]
     pub location_code: String,
     #[tabled(skip)]
@@ -62,8 +64,9 @@ pub struct DeviceDisplay {
 
 impl ListDeviceCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        let locations = client.list_location(ListLocationCommand)?;
-        let exchanges = client.list_exchange(ListExchangeCommand)?;
+        let contributors = client.list_contributor(ListContributorCommand {})?;
+        let locations = client.list_location(ListLocationCommand {})?;
+        let exchanges = client.list_exchange(ListExchangeCommand {})?;
 
         let devices = client.list_device(ListDeviceCommand)?;
 
@@ -73,6 +76,10 @@ impl ListDeviceCliCommand {
         let device_displays: Vec<DeviceDisplay> = devices
             .iter()
             .map(|(pubkey, device)| {
+                let contributor_code = match contributors.get(&device.contributor_pk) {
+                    Some(contributor) => contributor.code.clone(),
+                    None => device.contributor_pk.to_string(),
+                };
                 let (location_code, location_name) = match locations.get(&device.location_pk) {
                     Some(location) => (location.code.clone(), location.name.clone()),
                     None => (
@@ -93,6 +100,7 @@ impl ListDeviceCliCommand {
                     code: device.code.clone(),
                     bump_seed: device.bump_seed,
                     location_pk: device.location_pk,
+                    contributor_code,
                     location_code,
                     location_name,
                     exchange_pk: device.exchange_pk,
@@ -134,8 +142,8 @@ mod tests {
 
     use crate::{device::list::ListDeviceCliCommand, tests::utils::create_test_client};
     use doublezero_sdk::{
-        AccountType, Device, DeviceStatus, DeviceType, Exchange, ExchangeStatus, Location,
-        LocationStatus,
+        AccountType, Contributor, ContributorStatus, Device, DeviceStatus, DeviceType, Exchange,
+        ExchangeStatus, Location, LocationStatus,
     };
     use solana_sdk::pubkey::Pubkey;
 
@@ -159,6 +167,12 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR"),
         };
 
+        client.expect_list_location().returning(move |_| {
+            let mut locations = HashMap::new();
+            locations.insert(location1_pubkey, location1.clone());
+            Ok(locations)
+        });
+
         let exchange1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA");
         let exchange1 = Exchange {
             account_type: AccountType::Exchange,
@@ -174,7 +188,29 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA"),
         };
 
+        client.expect_list_exchange().returning(move |_| {
+            let mut exchanges = HashMap::new();
+            exchanges.insert(exchange1_pubkey, exchange1.clone());
+            Ok(exchanges)
+        });
+
         let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let contributor = Contributor {
+            account_type: AccountType::Contributor,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "contributor1_code".to_string(),
+            status: ContributorStatus::Activated,
+            owner: contributor_pk,
+        };
+
+        client.expect_list_contributor().returning(move |_| {
+            let mut contributors = HashMap::new();
+            contributors.insert(contributor_pk, contributor.clone());
+            Ok(contributors)
+        });
+
         let device1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
         let device1 = Device {
             account_type: AccountType::Device,
@@ -199,18 +235,6 @@ mod tests {
             interfaces: vec![],
         };
 
-        client.expect_list_location().returning(move |_| {
-            let mut locations = HashMap::new();
-            locations.insert(location1_pubkey, location1.clone());
-            Ok(locations)
-        });
-
-        client.expect_list_exchange().returning(move |_| {
-            let mut exchanges = HashMap::new();
-            exchanges.insert(exchange1_pubkey, exchange1.clone());
-            Ok(exchanges)
-        });
-
         client.expect_list_device().returning(move |_| {
             let mut devices = HashMap::new();
             devices.insert(device1_pubkey, device1.clone());
@@ -225,7 +249,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | code         | location       | exchange       | device_type | public_ip | dz_prefixes | status    | bgp_asn | dia_bgp_asn | mgmt_vrf | dns_servers     | ntp_servers             | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | device1_code | location1_code | exchange1_code | switch      | 1.2.3.4   | 1.2.3.4/32  | activated | 0       | 0           | default  | 8.8.8.8,8.8.4.4 | 192.168.1.1,192.168.1.2 | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
+        assert_eq!(output_str, " account                                   | code         | contributor       | location       | exchange       | device_type | public_ip | dz_prefixes | status    | bgp_asn | dia_bgp_asn | mgmt_vrf | dns_servers     | ntp_servers             | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | device1_code | contributor1_code | location1_code | exchange1_code | switch      | 1.2.3.4   | 1.2.3.4/32  | activated | 0       | 0           | default  | 8.8.8.8,8.8.4.4 | 192.168.1.1,192.168.1.2 | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
 
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
@@ -235,6 +259,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"code\":\"device1_code\",\"bump_seed\":2,\"location_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"exchange_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA\",\"exchange_code\":\"exchange1_code\",\"exchange_name\":\"exchange1_name\",\"device_type\":\"Switch\",\"public_ip\":\"1.2.3.4\",\"dz_prefixes\":\"1.2.3.4/32\",\"status\":\"Activated\",\"bgp_asn\":0,\"dia_bgp_asn\":0,\"mgmt_vrf\":\"default\",\"dns_servers\":[\"8.8.8.8\",\"8.8.4.4\"],\"ntp_servers\":[\"192.168.1.1\",\"192.168.1.2\"],\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"code\":\"device1_code\",\"bump_seed\":2,\"location_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"contributor_code\":\"contributor1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"exchange_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA\",\"exchange_code\":\"exchange1_code\",\"exchange_name\":\"exchange1_name\",\"device_type\":\"Switch\",\"public_ip\":\"1.2.3.4\",\"dz_prefixes\":\"1.2.3.4/32\",\"status\":\"Activated\",\"bgp_asn\":0,\"dia_bgp_asn\":0,\"mgmt_vrf\":\"default\",\"dns_servers\":[\"8.8.8.8\",\"8.8.4.4\"],\"ntp_servers\":[\"192.168.1.1\",\"192.168.1.2\"],\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
     }
 }

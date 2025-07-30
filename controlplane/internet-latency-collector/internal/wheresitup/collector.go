@@ -597,9 +597,9 @@ func (c *Collector) Run(ctx context.Context, interval time.Duration, dryRun bool
 			locations := c.getLocationsFunc(ctx)
 			if err := c.RunJobCreation(ctx, locations, dryRun, fullJobIDsPath); err != nil {
 				c.log.Error("Operation failed: Wheresitup run_job_creation", slog.String("error", err.Error()))
-				collector.WheresitupJobCreationRunsTotal.WithLabelValues("wheresitup", "error").Inc()
+				collector.WheresitupJobCreationFailuresTotal.WithLabelValues("wheresitup").Inc()
 			} else {
-				collector.WheresitupJobCreationRunsTotal.WithLabelValues("wheresitup", "success").Inc()
+				collector.WheresitupJobCreationRunsTotal.WithLabelValues("wheresitup").Inc()
 				// Wait for jobs to start and potentially complete
 				c.log.Info("Waiting before exporting Wheresitup job results",
 					slog.Int("wait_seconds", int(c.jobWaitTimeout.Seconds())))
@@ -609,9 +609,9 @@ func (c *Collector) Run(ctx context.Context, interval time.Duration, dryRun bool
 				c.log.Info("Exporting Wheresitup job results")
 				if err := c.ExportJobResults(ctx, fullJobIDsPath, outputDir); err != nil {
 					c.log.Error("Operation failed: Wheresitup export_job_results", slog.String("error", err.Error()))
-					collector.CollectionRunsTotal.WithLabelValues("wheresitup", "error").Inc()
+					collector.CollectionFailuresTotal.WithLabelValues("wheresitup").Inc()
 				} else {
-					collector.CollectionRunsTotal.WithLabelValues("wheresitup", "success").Inc()
+					collector.CollectionRunsTotal.WithLabelValues("wheresitup").Inc()
 				}
 			}
 		}

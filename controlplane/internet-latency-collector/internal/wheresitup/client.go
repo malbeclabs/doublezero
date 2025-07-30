@@ -215,13 +215,11 @@ func (c *Client) makeRequest(ctx context.Context, endpoint string) (*http.Respon
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		collector.APIErrors.WithLabelValues("wheresitup", "http_request").Inc()
 		return nil, fmt.Errorf("failed to make request: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		collector.APIErrors.WithLabelValues("wheresitup", "http_status").Inc()
 		return nil, fmt.Errorf("API request failed with status: %d", resp.StatusCode)
 	}
 
@@ -247,7 +245,6 @@ func (c *Client) GetAllSources(ctx context.Context) ([]Source, error) {
 func (c *Client) GetNearestSources(ctx context.Context, latitude, longitude float64, count int) ([]Source, error) {
 	allSources, err := c.GetAllSources(ctx)
 	if err != nil {
-		collector.APIErrors.WithLabelValues("wheresitup", "get_all_sources").Inc()
 		return nil, fmt.Errorf("failed to get all sources: %w", err)
 	}
 
@@ -328,7 +325,6 @@ func (c *Client) CreateJobWithRequest(ctx context.Context, request any, debug bo
 	url := c.BaseURL + "/jobs"
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(requestBody))
 	if err != nil {
-		collector.APIErrors.WithLabelValues("wheresitup", "create_job").Inc()
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
@@ -346,7 +342,6 @@ func (c *Client) CreateJobWithRequest(ctx context.Context, request any, debug bo
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		collector.APIErrors.WithLabelValues("wheresitup", "create_job_request").Inc()
 		return nil, fmt.Errorf("failed to make request: %w", err)
 	}
 	defer resp.Body.Close()
@@ -370,7 +365,6 @@ func (c *Client) CreateJobWithRequest(ctx context.Context, request any, debug bo
 			c.log.Debug("API error response",
 				slog.String("response_body", string(responseBody)))
 		}
-		collector.APIErrors.WithLabelValues("wheresitup", "create_job_status").Inc()
 		return nil, fmt.Errorf("job creation failed with status: %d, response: %s", resp.StatusCode, string(responseBody))
 	}
 
@@ -400,7 +394,6 @@ func (c *Client) GetJob(ctx context.Context, jobID string) (*JobResult, error) {
 	endpoint := fmt.Sprintf("/jobs/%s", jobID)
 	resp, err := c.makeRequest(ctx, endpoint)
 	if err != nil {
-		collector.APIErrors.WithLabelValues("wheresitup", "get_job").Inc()
 		return nil, fmt.Errorf("failed to get job: %w", err)
 	}
 	defer resp.Body.Close()
@@ -418,7 +411,6 @@ func (c *Client) GetAllJobs(ctx context.Context) ([]JobDetails, error) {
 	endpoint := "/jobs"
 	resp, err := c.makeRequest(ctx, endpoint)
 	if err != nil {
-		collector.APIErrors.WithLabelValues("wheresitup", "get_all_jobs").Inc()
 		return nil, fmt.Errorf("failed to get jobs: %w", err)
 	}
 	defer resp.Body.Close()
@@ -445,7 +437,6 @@ func (c *Client) GetJobResults(ctx context.Context, jobID string) (*JobResultRes
 	endpoint := fmt.Sprintf("/jobs/%s", jobID)
 	resp, err := c.makeRequest(ctx, endpoint)
 	if err != nil {
-		collector.APIErrors.WithLabelValues("wheresitup", "get_job_results").Inc()
 		return nil, fmt.Errorf("failed to get job results: %w", err)
 	}
 	defer resp.Body.Close()
@@ -463,7 +454,6 @@ func (c *Client) GetCredit(ctx context.Context) (int, error) {
 	endpoint := "/credits"
 	resp, err := c.makeRequest(ctx, endpoint)
 	if err != nil {
-		collector.APIErrors.WithLabelValues("wheresitup", "get_credit").Inc()
 		return 0, fmt.Errorf("failed to get credit: %w", err)
 	}
 	defer resp.Body.Close()

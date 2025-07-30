@@ -29,6 +29,7 @@ type Config struct {
 	StateDir                     string
 	OutputDir                    string
 	ProbesPerLocation            int
+	MetricsAddr                  string
 }
 
 func (cfg *Config) Validate() error {

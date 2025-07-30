@@ -134,7 +134,6 @@ func (c *Client) fetchProbesWithErrorHandling(ctx context.Context, lat, lng floa
 			slog.Float64("latitude", lat),
 			slog.Float64("longitude", lng),
 			slog.String("error", err.Error()))
-		collector.APIErrors.WithLabelValues("ripeatlas", "get_probes").Inc()
 		return []Probe{}, nil
 	}
 
@@ -153,13 +152,11 @@ func (c *Client) makeRequest(ctx context.Context, endpoint string) (*http.Respon
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		collector.APIErrors.WithLabelValues("ripeatlas", "http_request").Inc()
 		return nil, fmt.Errorf("failed to make request: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		collector.APIErrors.WithLabelValues("ripeatlas", "http_status").Inc()
 		return nil, fmt.Errorf("API request failed with status: %d", resp.StatusCode)
 	}
 
@@ -237,7 +234,6 @@ func (c *Client) CreateMeasurement(ctx context.Context, request MeasurementReque
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		collector.APIErrors.WithLabelValues("ripeatlas", "create_measurement").Inc()
 		return nil, fmt.Errorf("failed to execute HTTP request: %w", err)
 	}
 	defer resp.Body.Close()
@@ -248,7 +244,6 @@ func (c *Client) CreateMeasurement(ctx context.Context, request MeasurementReque
 	}
 
 	if resp.StatusCode != http.StatusCreated {
-		collector.APIErrors.WithLabelValues("ripeatlas", "create_measurement_status").Inc()
 		return nil, fmt.Errorf("measurement creation failed with status %d: %s", resp.StatusCode, string(responseBytes))
 	}
 
@@ -327,7 +322,6 @@ func (c *Client) StopMeasurement(ctx context.Context, measurementID int) error {
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		collector.APIErrors.WithLabelValues("ripeatlas", "delete_measurement").Inc()
 		return fmt.Errorf("failed to delete measurement: %w", err)
 	}
 	defer resp.Body.Close()
@@ -338,7 +332,6 @@ func (c *Client) StopMeasurement(ctx context.Context, measurementID int) error {
 	}
 
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
-		collector.APIErrors.WithLabelValues("ripeatlas", "delete_measurement_status").Inc()
 		return fmt.Errorf("failed to stop measurement %d: status %d, response: %s", measurementID, resp.StatusCode, string(responseBody))
 	}
 

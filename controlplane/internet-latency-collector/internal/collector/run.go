@@ -26,8 +26,12 @@ func (c *Collector) Run(ctx context.Context) error {
 	go func() {
 		mux := http.NewServeMux()
 		mux.Handle("/metrics", promhttp.Handler())
-		c.log.Info("Starting metrics server", slog.String("address", "127.0.0.1:2113"))
-		if err := http.ListenAndServe("127.0.0.1:2113", mux); err != nil {
+		metricsAddr := c.cfg.MetricsAddr
+		if metricsAddr == "" {
+			metricsAddr = "127.0.0.1:2113"
+		}
+		c.log.Info("Starting metrics server", slog.String("address", metricsAddr))
+		if err := http.ListenAndServe(metricsAddr, mux); err != nil {
 			c.log.Error("Metrics server error", slog.String("error", err.Error()))
 		}
 	}()

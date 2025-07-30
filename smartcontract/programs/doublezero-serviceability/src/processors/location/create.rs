@@ -6,6 +6,7 @@ use crate::{
     state::{accounttype::AccountType, location::*},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
+use doublezero_program_common::normalize_account_code;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -61,6 +62,10 @@ pub fn process_create_location(
     #[cfg(test)]
     msg!("process_create_location({:?})", value);
 
+    // Validate and normalize code
+    let code =
+        normalize_account_code(&value.code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
+
     // Check the owner of the accounts
     assert_eq!(
         globalstate_account.owner, program_id,
@@ -97,7 +102,7 @@ pub fn process_create_location(
         index: globalstate.account_index,
         bump_seed,
         reference_count: 0,
-        code: value.code.clone(),
+        code,
         name: value.name.clone(),
         country: value.country.clone(),
         lat: value.lat,

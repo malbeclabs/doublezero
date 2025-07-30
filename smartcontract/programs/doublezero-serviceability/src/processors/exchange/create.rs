@@ -8,6 +8,7 @@ use crate::{
     state::{accounttype::AccountType, exchange::*},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
+use doublezero_program_common::normalize_account_code;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -51,6 +52,10 @@ pub fn process_create_exchange(
     #[cfg(test)]
     msg!("process_create_location({:?})", value);
 
+    // Validate and normalize code
+    let code =
+        normalize_account_code(&value.code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
+
     // Check the owner of the accounts
     assert_eq!(
         globalstate_account.owner, program_id,
@@ -88,7 +93,7 @@ pub fn process_create_exchange(
         reference_count: 0,
         device1_pk: Pubkey::default(),
         device2_pk: Pubkey::default(),
-        code: value.code.clone(),
+        code,
         name: value.name.clone(),
         lat: value.lat,
         lng: value.lng,

@@ -7,6 +7,7 @@ use crate::{
     state::{accounttype::AccountType, exchange::*},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
+use doublezero_program_common::normalize_account_code;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -79,7 +80,8 @@ pub fn process_update_exchange(
     );
 
     if let Some(ref code) = value.code {
-        exchange.code = code.clone();
+        exchange.code =
+            normalize_account_code(code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
     }
     if let Some(ref name) = value.name {
         exchange.name = name.clone();

@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use anyhow::Result;
 use backon::ExponentialBuilder;
 use figment::{
@@ -7,16 +5,17 @@ use figment::{
     providers::{Env, Format, Toml},
 };
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default = "default_log_level")]
     pub log_level: String,
-    pub data_fetcher: DataFetcherSettings,
+    pub ingestor: IngestorSettings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DataFetcherSettings {
+pub struct IngestorSettings {
     pub rpc: RpcSettings,
     pub programs: ProgramSettings,
     pub backoff: Option<BackoffSettings>,
@@ -76,7 +75,7 @@ impl Settings {
     }
 
     pub fn backoff(&self) -> ExponentialBuilder {
-        match &self.data_fetcher.backoff {
+        match &self.ingestor.backoff {
             None => ExponentialBuilder::default().with_jitter(),
             Some(bs) => ExponentialBuilder::default()
                 .with_jitter()

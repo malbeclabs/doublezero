@@ -31,3 +31,9 @@ test-data/
 *.py
 *.xml
 *.diff
+*.csv
+*.geojson
+*.json
+*.jsonl
+*.duckdb
+*.sql

@@ -25,14 +25,14 @@ impl Fetcher {
         );
         info!(
             "Using serviceability program: {}",
-            settings.data_fetcher.programs.serviceability_program_id
+            settings.ingestor.programs.serviceability_program_id
         );
         info!(
             "Using telemetry program: {}",
-            settings.data_fetcher.programs.telemetry_program_id
+            settings.ingestor.programs.telemetry_program_id
         );
 
-        let rpc_client = rpc::create_client(&settings.data_fetcher.rpc)?;
+        let rpc_client = rpc::create_client(&settings.ingestor.rpc)?;
 
         // Fetch data in parallel
         // For serviceability, we use the before timestamp to get the latest network state

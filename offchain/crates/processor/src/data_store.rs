@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use data_fetcher::fetcher::FetchData;
+use ingestor::fetcher::FetchData;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, convert::TryInto};

@@ -27,7 +27,7 @@ pub async fn fetch(
     settings: &Settings,
     timestamp_us: u64,
 ) -> Result<DZServiceabilityData> {
-    let program_id = &settings.data_fetcher.programs.serviceability_program_id;
+    let program_id = &settings.ingestor.programs.serviceability_program_id;
 
     let program_pubkey = Pubkey::from_str(program_id)
         .with_context(|| format!("Invalid serviceability program ID: {program_id}"))?;

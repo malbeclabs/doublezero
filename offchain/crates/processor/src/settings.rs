@@ -9,11 +9,11 @@ use serde::{Deserialize, Serialize};
 pub struct Settings {
     #[serde(default = "default_log_level")]
     pub log_level: String,
-    pub metrics_processor: MetricsProcessorSettings,
+    pub processor: ProcessorSettings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MetricsProcessorSettings {
+pub struct ProcessorSettings {
     #[serde(default = "default_percentile_bins")]
     pub percentile_bins: Vec<f64>,
     #[serde(default = "default_uptime_threshold")]

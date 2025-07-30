@@ -1,5 +1,5 @@
 [package]
-name = "demand-generator"
+name = "calculator"
 readme = "README.md"
 
 # Workspace inherited keys
@@ -10,19 +10,37 @@ homepage.workspace = true
 license.workspace = true
 repository.workspace = true
 
+
+[lib]
+name = "calculator"
+path = "src/lib.rs"
+
 [dependencies]
 anyhow.workspace = true
-backon.workspace = true
+borsh.workspace = true
+chrono.workspace = true
 clap.workspace = true
 csv.workspace = true
 figment.workspace = true
-network-shapley.workspace = true
-rand.workspace = true
-reqwest.workspace = true
+humantime.workspace = true
+rust_decimal.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-solana-client.workspace = true
+sha2.workspace = true
+network-shapley.workspace = true
 solana-sdk.workspace = true
+svm-hash.workspace = true
+tabled.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+# Internal crates
+ingestor = { path = "../ingestor" }
+processor = { path = "../processor" }
+
+[build-dependencies]
+toml.workspace = true
+
+[dev-dependencies]
+solana-sdk.workspace = true

@@ -1,10 +1,10 @@
 use anyhow::Result;
-use clap::Parser;
-use rewards_calculator::{
+use calculator::{
     cli::{Cli, Commands},
     orchestrator::Orchestrator,
     settings::Settings,
 };
+use clap::Parser;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]

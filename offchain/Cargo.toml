@@ -1,9 +1,8 @@
 [workspace]
 members = [
-    "demand_generator",
-    "data_fetcher",
-    "metrics_processor",
-    "rewards_calculator",
+    "crates/ingestor",
+    "crates/processor",
+    "crates/calculator",
 ]
 resolver = "2"
 
@@ -21,7 +20,7 @@ homepage = "https://github.com/doublezerofoundation/doublezero-rewarder"
 [workspace.dependencies]
 anyhow = "1"
 arrow = { version = "55", features = ["prettyprint"] }
-backon = "0"
+backon = "1"
 base64 = "0"
 borsh = "1"
 chrono = { version = "0", features = ["serde"] }

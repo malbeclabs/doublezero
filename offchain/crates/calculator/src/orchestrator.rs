@@ -1,11 +1,10 @@
 use crate::{
-    demand_exporter::export_demand_data,
     shapley_handler::{build_demands, build_private_links},
     util::{micros_to_datetime, parse_timestamp, print_demands, print_private_links},
 };
 use anyhow::Result;
-use data_fetcher::fetcher::Fetcher;
-use metrics_processor::{
+use ingestor::fetcher::Fetcher;
+use processor::{
     data_store::DataStore,
     dzd_telemetry_processor::{DZDTelemetryProcessor, print_telemetry_stats},
 };
@@ -52,10 +51,7 @@ impl Orchestrator {
         Ok(())
     }
 
-    pub async fn export_demand(
-        demand_path: &Path,
-        enriched_validators_path: Option<&Path>,
-    ) -> Result<()> {
-        export_demand_data(demand_path, enriched_validators_path).await
+    pub async fn export_demand(_demand_path: &Path, _validators_path: Option<&Path>) -> Result<()> {
+        todo!()
     }
 }

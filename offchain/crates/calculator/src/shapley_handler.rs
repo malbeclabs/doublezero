@@ -1,11 +1,9 @@
 use anyhow::Result;
-use metrics_processor::{data_store::DataStore, dzd_telemetry_processor::DZDTelemetryStatMap};
 use network_shapley::types::{Demands, PrivateLink, PrivateLinks};
+use processor::{data_store::DataStore, dzd_telemetry_processor::DZDTelemetryStatMap};
 
 pub async fn build_demands() -> Result<Demands> {
-    let demand_settings = demand_generator::settings::Settings::from_env()?;
-    let generator = demand_generator::generator::DemandGenerator::new(demand_settings);
-    let demands = generator.generate().await?;
+    let demands = vec![];
     Ok(demands)
 }
 

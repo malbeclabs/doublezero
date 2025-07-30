@@ -51,11 +51,11 @@ pub struct DeviceLatencySamplesHeader {
     // Epoch number in which samples were collected
     pub epoch: u64, // 8
 
-    // Required for recreating the PDA (seed authority)
-    pub bump_seed: u8, // 1
-
     // Agent authorized to write RTT samples (must match signer)
     pub origin_device_agent_pk: Pubkey, // 32
+
+    // Required for recreating the PDA (seed authority)
+    pub bump_seed: u8, // 1
 
     // Device initiating sampling
     pub origin_device_pk: Pubkey, // 32

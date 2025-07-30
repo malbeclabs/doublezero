@@ -33,8 +33,8 @@ pub const INTERNET_LATENCY_SAMPLES_MAX_HEADER_SIZE: usize =
 const INTERNET_LATENCY_SAMPLES_HEADER_SIZE_MINUS_PROVIDER: usize = {
     1 // account_type
     + 8 // epoch
-    + 1 // bump_seed
     + 4 // data_provider_name.len()
+    + 1 // bump_seed
     + 32 // oracle_agent_pk
     + 32 // origin_location_pk
     + 32 // target_location_pk
@@ -53,10 +53,10 @@ pub struct InternetLatencySamplesHeader {
     pub account_type: AccountType, // 1
     // Epoch number in which samples were collected
     pub epoch: u64, // 8
-    // Required for deriving and recreating the PDA
-    pub bump_seed: u8, // 1
     // Name of the third-party provider of the sampling probes
     pub data_provider_name: String, // 32 bytes
+    // Required for deriving and recreating the PDA
+    pub bump_seed: u8, // 1
     // Agent authorized to write RTT samples (must match the signer)
     pub oracle_agent_pk: Pubkey, // 32
     // Cached location of the probe origin for query/UI optimization
@@ -76,7 +76,7 @@ pub struct InternetLatencySamplesHeader {
 
 impl InternetLatencySamplesHeader {
     pub fn data_provider_name_length(data: &[u8]) -> Result<usize, std::array::TryFromSliceError> {
-        const DATA_PROVIDER_LOC: usize = 1 + 8 + 1;
+        const DATA_PROVIDER_LOC: usize = 1 + 8;
 
         // Based on the account layout and borsh's 4-byte string field prefix
         data[DATA_PROVIDER_LOC..DATA_PROVIDER_LOC + 4]

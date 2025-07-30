@@ -22,11 +22,11 @@ type DeviceLatencySamplesHeader struct {
 	// Epoch number in which samples were collected
 	Epoch uint64 // 8
 
-	// Required for recreating the PDA (seed authority)
-	BumpSeed uint8 // 1
-
 	// Agent authorized to write RTT samples (must match signer)
 	OriginDeviceAgentPK solana.PublicKey // 32
+
+	// Required for recreating the PDA (seed authority)
+	BumpSeed uint8 // 1
 
 	// Device initiating sampling
 	OriginDevicePK solana.PublicKey // 32
@@ -101,11 +101,11 @@ type InternetLatencySamplesHeader struct {
 	// Epoch is the epoch number in which samples were collected.
 	Epoch uint64 // 8
 
-	// BumpSeed is required for recreating the PDA (seed authority).
-	BumpSeed uint8 // 1
-
 	// DataProviderName is the name of the data provider.
 	DataProviderName string // 4 + len
+
+	// BumpSeed is required for recreating the PDA (seed authority).
+	BumpSeed uint8 // 1
 
 	// OracleAgentPK authorized to write latency samples (must match signer)
 	OracleAgentPK solana.PublicKey // 32

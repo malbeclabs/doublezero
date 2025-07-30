@@ -170,12 +170,21 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_err());
 
-        // Expected success
+        // Expected error again
         let mut output = Vec::new();
         let res = UpdateContributorCliCommand {
             pubkey: pda_pubkey.to_string(),
             code: Some("test_new".to_string()),
             owner: Some(Pubkey::default().to_string()),
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_err());
+
+        // Expected success
+        let mut output = Vec::new();
+        let res = UpdateContributorCliCommand {
+            pubkey: pda_pubkey.to_string(),
+            code: Some("test_new".to_string()),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

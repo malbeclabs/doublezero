@@ -2,7 +2,6 @@
 /// to minimize the overhead when using the validation in instruction handlers
 pub fn normalize_account_code(val: &str) -> Result<String, &'static str> {
     val.chars()
-        .into_iter()
         .try_fold(String::with_capacity(val.len()), |mut code, char| {
             if char.is_alphanumeric()
                 || char.is_whitespace()

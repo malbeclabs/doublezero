@@ -68,7 +68,7 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateContributor(
                     ContributorCreateArgs {
-                        code: "test invalid".to_string(),
+                        code: "test_whitespace".to_string(),
                         owner: Pubkey::default(),
                     },
                 )),
@@ -77,7 +77,7 @@ mod tests {
                     AccountMeta::new(globalstate_pubkey, false),
                 ]),
             )
-            .returning(|_, _| Err(eyre::eyre!("invalid code: name must be alphanumeric only")));
+            .returning(|_, _| Ok(Signature::new_unique()));
 
         client
             .expect_execute_transaction()
@@ -96,12 +96,20 @@ mod tests {
             .returning(|_, _| Ok(Signature::new_unique()));
 
         let res = CreateContributorCommand {
-            code: "test invalid".to_string(),
+            code: "test/invalid".to_string(),
             owner: Pubkey::default(),
         }
         .execute(&client);
 
         assert!(res.is_err());
+
+        let res = CreateContributorCommand {
+            code: "test whitespace".to_string(),
+            owner: Pubkey::default(),
+        }
+        .execute(&client);
+
+        assert!(res.is_ok());
 
         let res = CreateContributorCommand {
             code: "test".to_string(),

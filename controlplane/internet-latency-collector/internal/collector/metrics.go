@@ -35,26 +35,26 @@ var (
 	}, []string{"data_provider"})
 
 	// RIPE Atlas specific metrics
-	RipeatlasMeasurementManagementRunsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	RipeatlasMeasurementManagementRunsTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "doublezero_internet_latency_collector_ripeatlas_measurement_management_runs_total",
 		Help: "Total number of successful ripeatlas measurement management runs",
-	}, []string{})
+	})
 
-	RipeatlasMeasurementManagementFailuresTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	RipeatlasMeasurementManagementFailuresTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "doublezero_internet_latency_collector_ripeatlas_measurement_management_failures_total",
 		Help: "Total number of failed ripeatlas measurement management runs",
-	}, []string{})
+	})
 
 	// Wheresitup specific metrics
-	WheresitupJobCreationRunsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	WheresitupJobCreationRunsTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "doublezero_internet_latency_collector_wheresitup_job_creation_runs_total",
 		Help: "Total number of successful wheresitup job creation runs",
-	}, []string{})
+	})
 
-	WheresitupJobCreationFailuresTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	WheresitupJobCreationFailuresTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "doublezero_internet_latency_collector_wheresitup_job_creation_failures_total",
 		Help: "Total number of failed wheresitup job creation runs",
-	}, []string{})
+	})
 
 	WheresitupCreditBalance = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "doublezero_internet_latency_collector_wheresitup_credit_balance",

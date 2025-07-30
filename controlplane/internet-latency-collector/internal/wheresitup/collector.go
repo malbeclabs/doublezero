@@ -597,9 +597,9 @@ func (c *Collector) Run(ctx context.Context, interval time.Duration, dryRun bool
 			locations := c.getLocationsFunc(ctx)
 			if err := c.RunJobCreation(ctx, locations, dryRun, fullJobIDsPath); err != nil {
 				c.log.Error("Operation failed: Wheresitup run_job_creation", slog.String("error", err.Error()))
-				collector.WheresitupJobCreationFailuresTotal.WithLabelValues("wheresitup").Inc()
+				collector.WheresitupJobCreationFailuresTotal.Inc()
 			} else {
-				collector.WheresitupJobCreationRunsTotal.WithLabelValues("wheresitup").Inc()
+				collector.WheresitupJobCreationRunsTotal.Inc()
 				// Wait for jobs to start and potentially complete
 				c.log.Info("Waiting before exporting Wheresitup job results",
 					slog.Int("wait_seconds", int(c.jobWaitTimeout.Seconds())))

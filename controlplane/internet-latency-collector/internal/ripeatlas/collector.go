@@ -756,9 +756,9 @@ func (c *Collector) Run(ctx context.Context, dryRun bool, probesPerLocation int,
 			case <-ticker.C:
 				if err := c.RunRipeAtlasMeasurementCreation(ctx, dryRun, probesPerLocation, outputDir, stateDir); err != nil {
 					c.log.Error("Operation failed: create_ripeatlas_measurements", slog.String("error", err.Error()))
-					collector.RipeatlasMeasurementManagementFailuresTotal.WithLabelValues("ripeatlas").Inc()
+					collector.RipeatlasMeasurementManagementFailuresTotal.Inc()
 				} else {
-					collector.RipeatlasMeasurementManagementRunsTotal.WithLabelValues("ripeatlas").Inc()
+					collector.RipeatlasMeasurementManagementRunsTotal.Inc()
 				}
 			}
 		}

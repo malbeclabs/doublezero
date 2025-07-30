@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
-	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/data"
+	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/prometheus"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
@@ -334,8 +334,13 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, isDeployed)
 
+	// Get the current ledger epoch.
+	rpcClient := dn.Ledger.GetRPCClient()
+	epochInfo, err := rpcClient.GetEpochInfo(t.Context(), solanarpc.CommitmentFinalized)
+	require.NoError(t, err)
+	epoch := epochInfo.Epoch
+
 	// Check that the telemetry samples are being submitted to the telemetry program.
-	epoch := data.DeriveEpoch(time.Now().UTC())
 	log.Info("==> Checking that telemetry samples are being submitted to the telemetry program", "epoch", epoch)
 	account, duration := waitForDeviceLatencySamples(t, dn, la2DevicePK, ny5DevicePK, la2ToNy5LinkPK, epoch, 1, 90*time.Second)
 	log.Info("==> Got telemetry samples", "duration", duration, "epoch", account.Epoch, "originDevicePK", account.OriginDevicePK, "targetDevicePK", account.TargetDevicePK, "linkPK", account.LinkPK, "samplingIntervalMicroseconds", account.SamplingIntervalMicroseconds, "nextSampleIndex", account.NextSampleIndex, "samples", account.Samples)

@@ -111,7 +111,7 @@ func (c *memoryTelemetryProgramClient) InitializeDeviceLatencySamples(ctx contex
 		OriginDevicePK: config.OriginDevicePK,
 		TargetDevicePK: config.TargetDevicePK,
 		LinkPK:         config.LinkPK,
-		Epoch:          config.Epoch,
+		Epoch:          *config.Epoch,
 	}
 
 	c.accounts[accountKey] = make([]telemetry.Sample, 0)
@@ -127,7 +127,7 @@ func (c *memoryTelemetryProgramClient) WriteDeviceLatencySamples(ctx context.Con
 		OriginDevicePK: config.OriginDevicePK,
 		TargetDevicePK: config.TargetDevicePK,
 		LinkPK:         config.LinkPK,
-		Epoch:          config.Epoch,
+		Epoch:          *config.Epoch,
 	}
 
 	if _, ok := c.accounts[accountKey]; !ok {

@@ -10,7 +10,6 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data"
-	datapkg "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/data"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	"github.com/stretchr/testify/assert"
@@ -39,7 +38,7 @@ func TestTelemetry_Data_Provider_GetCircuitLatencies(t *testing.T) {
 		}, defaultCircuit())
 
 		ctx := context.Background()
-		epoch := datapkg.DeriveEpoch(time.Now())
+		epoch := data.DeriveEpoch(time.Now())
 
 		first, err := provider.GetCircuitLatenciesForEpoch(ctx, "A → B (L1)", epoch)
 		require.NoError(t, err)
@@ -57,7 +56,7 @@ func TestTelemetry_Data_Provider_GetCircuitLatencies(t *testing.T) {
 			return nil, telemetry.ErrAccountNotFound
 		}, defaultCircuit())
 
-		epoch := datapkg.DeriveEpoch(time.Now())
+		epoch := data.DeriveEpoch(time.Now())
 		latencies, err := provider.GetCircuitLatenciesForEpoch(context.Background(), "A → B (L1)", epoch)
 		assert.ErrorIs(t, err, telemetry.ErrAccountNotFound)
 		assert.Empty(t, latencies)
@@ -66,8 +65,7 @@ func TestTelemetry_Data_Provider_GetCircuitLatencies(t *testing.T) {
 	t.Run("GetCircuitLatencies filters by time", func(t *testing.T) {
 		t.Parallel()
 
-		now := time.Now()
-		sampleTime := now.Add(-5 * time.Minute).UTC()
+		sampleTime := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
 		sampleMicros := uint64(sampleTime.UnixMicro())
 
 		provider := newTestProvider(t, func(epoch uint64) (*telemetry.DeviceLatencySamples, error) {
@@ -80,8 +78,8 @@ func TestTelemetry_Data_Provider_GetCircuitLatencies(t *testing.T) {
 			}, nil
 		}, defaultCircuit())
 
-		from := now.Add(-10 * time.Minute)
-		to := now
+		from := time.Date(2023, 1, 1, 11, 55, 0, 0, time.UTC)
+		to := time.Date(2023, 1, 1, 12, 5, 0, 0, time.UTC)
 		latencies, err := provider.GetCircuitLatencies(context.Background(), "A → B (L1)", from, to)
 		require.NoError(t, err)
 		require.Len(t, latencies, 1)
@@ -116,7 +114,7 @@ func TestTelemetry_Data_Provider_GetCircuitLatencies(t *testing.T) {
 	t.Run("Downsampled returns multiple buckets when maxPoints > 1", func(t *testing.T) {
 		t.Parallel()
 
-		now := time.Now().UTC()
+		now := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
 		tsMicros := uint64(now.UnixMicro())
 
 		provider := newTestProvider(t, func(epoch uint64) (*telemetry.DeviceLatencySamples, error) {
@@ -149,7 +147,7 @@ func TestTelemetry_Data_Provider_GetCircuitLatencies(t *testing.T) {
 			}, nil
 		}, defaultCircuit())
 
-		now := time.Now()
+		now := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
 		stats, err := provider.GetCircuitLatenciesDownsampled(context.Background(), "A → B (L1)", now, now.Add(1*time.Minute), 1, data.UnitMicrosecond)
 		require.NoError(t, err)
 		assert.Len(t, stats, 0)
@@ -162,7 +160,7 @@ func TestTelemetry_Data_Provider_GetCircuitLatencies(t *testing.T) {
 			return &telemetry.DeviceLatencySamples{}, nil
 		}, defaultCircuit())
 
-		now := time.Now()
+		now := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
 		stats, err := provider.GetCircuitLatenciesDownsampled(t.Context(), "A → B (L1)", now, now.Add(1*time.Second), 1, "invalid")
 		require.Error(t, err)
 		assert.Empty(t, stats)

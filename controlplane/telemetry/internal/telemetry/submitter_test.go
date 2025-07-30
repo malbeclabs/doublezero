@@ -33,7 +33,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 					OriginDevicePK: config.OriginDevicePK,
 					TargetDevicePK: config.TargetDevicePK,
 					LinkPK:         config.LinkPK,
-					Epoch:          config.Epoch,
+					Epoch:          *config.Epoch,
 				}
 				samples := make([]telemetry.Sample, len(config.Samples))
 				for i, sample := range config.Samples {
@@ -52,13 +52,17 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		key := newTestAccountKey()
 		buffer.Add(key, newTestSample())
 
-		submitter := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
 			Interval:      time.Hour, // unused
 			Buffer:        buffer,
 			ProgramClient: telemetryProgram,
 			MaxAttempts:   1,
 			BackoffFunc:   func(_ int) time.Duration { return 0 },
+			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+				return 100, nil
+			},
 		})
+		require.NoError(t, err)
 
 		submitter.Tick(context.Background())
 
@@ -91,13 +95,17 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			Loss:      false,
 		})
 
-		submitter := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
 			Interval:      time.Hour, // unused
 			Buffer:        buffer,
 			ProgramClient: telemetryProgram,
 			MaxAttempts:   5,
 			BackoffFunc:   func(_ int) time.Duration { return 0 },
+			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+				return 100, nil
+			},
 		})
+		require.NoError(t, err)
 
 		submitter.Tick(context.Background())
 
@@ -130,13 +138,17 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			Loss:      false,
 		})
 
-		submitter := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
 			Interval:      time.Hour, // unused
 			Buffer:        buffer,
 			ProgramClient: telemetryProgram,
 			MaxAttempts:   5,
 			BackoffFunc:   func(_ int) time.Duration { return 10 * time.Millisecond },
+			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+				return 100, nil
+			},
 		})
+		require.NoError(t, err)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // cancel immediately before retry starts
@@ -167,13 +179,17 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		buffer := telemetry.NewAccountsBuffer()
 		buffer.Add(key, sample)
 
-		submitter := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
 			Interval:      time.Hour, // unused
 			Buffer:        buffer,
 			ProgramClient: telemetryProgram,
 			MaxAttempts:   3,
 			BackoffFunc:   func(_ int) time.Duration { return 0 },
+			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+				return 100, nil
+			},
 		})
+		require.NoError(t, err)
 
 		submitter.Tick(context.Background())
 
@@ -208,13 +224,17 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		buffer := telemetry.NewAccountsBuffer()
 		buffer.Add(key, sample)
 
-		submitter := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
 			Interval:      time.Hour,
 			Buffer:        buffer,
 			ProgramClient: telemetryProgram,
 			MaxAttempts:   3,
 			BackoffFunc:   func(_ int) time.Duration { return 0 },
+			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+				return 100, nil
+			},
 		})
+		require.NoError(t, err)
 
 		submitter.Tick(context.Background())
 
@@ -249,13 +269,17 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		buffer := telemetry.NewAccountsBuffer()
 		buffer.Add(key, sample)
 
-		submitter := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
 			Interval:      time.Hour,
 			Buffer:        buffer,
 			ProgramClient: telemetryProgram,
 			MaxAttempts:   5,
 			BackoffFunc:   func(_ int) time.Duration { return 0 },
+			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+				return 100, nil
+			},
 		})
+		require.NoError(t, err)
 
 		submitter.Tick(context.Background())
 
@@ -290,7 +314,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		submitter := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
 			Interval:      time.Hour,
 			Buffer:        buffer,
 			ProgramClient: telemetryProgram,
@@ -299,7 +323,11 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 				cancel() // cancel immediately after first failure
 				return 10 * time.Millisecond
 			},
+			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+				return 100, nil
+			},
 		})
+		require.NoError(t, err)
 
 		submitter.Tick(ctx)
 
@@ -313,7 +341,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 
 		log := log.With("test", t.Name())
 
-		pastEpoch := telemetry.DeriveEpoch(time.Now().Add(-2 * 24 * time.Hour).UTC())
+		pastEpoch := uint64(90)
 		key := telemetry.AccountKey{
 			OriginDevicePK: solana.NewWallet().PublicKey(),
 			TargetDevicePK: solana.NewWallet().PublicKey(),
@@ -334,13 +362,17 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			},
 		}
 
-		submitter := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
 			Interval:      time.Hour,
 			Buffer:        buffer,
 			ProgramClient: telemetryProgram,
 			MaxAttempts:   1,
 			BackoffFunc:   func(_ int) time.Duration { return 0 },
+			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+				return 100, nil
+			},
 		})
+		require.NoError(t, err)
 
 		submitter.Tick(context.Background())
 
@@ -352,7 +384,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 
 		log := log.With("test", t.Name())
 
-		currentEpoch := telemetry.DeriveEpoch(time.Now().UTC())
+		currentEpoch := uint64(100)
 		key := telemetry.AccountKey{
 			OriginDevicePK: solana.NewWallet().PublicKey(),
 			TargetDevicePK: solana.NewWallet().PublicKey(),
@@ -368,13 +400,17 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 
 		telemetryProgram := &mockTelemetryProgramClient{}
 
-		submitter := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
 			Interval:      time.Hour,
 			Buffer:        buffer,
 			ProgramClient: telemetryProgram,
 			MaxAttempts:   1,
 			BackoffFunc:   func(_ int) time.Duration { return 0 },
+			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+				return currentEpoch, nil
+			},
 		})
+		require.NoError(t, err)
 
 		submitter.Tick(context.Background())
 
@@ -411,13 +447,17 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			})
 		}
 
-		submitter := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
 			Interval:      time.Hour,
 			Buffer:        buffer,
 			ProgramClient: telemetryProgram,
 			MaxAttempts:   1,
 			BackoffFunc:   func(_ int) time.Duration { return 0 },
+			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+				return 100, nil
+			},
 		})
+		require.NoError(t, err)
 
 		submitter.Tick(context.Background())
 
@@ -456,13 +496,17 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		buffer := telemetry.NewAccountsBuffer()
 		buffer.Add(key, sample)
 
-		submitter := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
 			Interval:      time.Hour,
 			Buffer:        buffer,
 			ProgramClient: telemetryProgram,
 			MaxAttempts:   1,
 			BackoffFunc:   func(_ int) time.Duration { return 0 },
+			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+				return 100, nil
+			},
 		})
+		require.NoError(t, err)
 
 		submitter.Tick(context.Background())
 

@@ -21,6 +21,7 @@ type SubmitterConfig struct {
 	ProgramClient      TelemetryProgramClient
 	BackoffFunc        func(attempt int) time.Duration // optional, defaults to exponential backoff
 	MaxAttempts        int                             // optional, defaults to 5
+	GetCurrentEpoch    func(ctx context.Context) (uint64, error)
 }
 
 // Submitter periodically flushes collected telemetry samples from the sample
@@ -32,13 +33,17 @@ type Submitter struct {
 	rng *rand.Rand
 }
 
-func NewSubmitter(log *slog.Logger, cfg *SubmitterConfig) *Submitter {
+func NewSubmitter(log *slog.Logger, cfg *SubmitterConfig) (*Submitter, error) {
+	if cfg.GetCurrentEpoch == nil {
+		return nil, fmt.Errorf("GetCurrentEpoch is required")
+	}
+
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	return &Submitter{
 		log: log,
 		cfg: cfg,
 		rng: rng,
-	}
+	}, nil
 }
 
 func (s *Submitter) Run(ctx context.Context) error {
@@ -95,7 +100,7 @@ func (s *Submitter) SubmitSamples(ctx context.Context, accountKey AccountKey, sa
 			OriginDevicePK:             accountKey.OriginDevicePK,
 			TargetDevicePK:             accountKey.TargetDevicePK,
 			LinkPK:                     accountKey.LinkPK,
-			Epoch:                      accountKey.Epoch,
+			Epoch:                      &accountKey.Epoch,
 			StartTimestampMicroseconds: uint64(minTimestamp.UnixMicro()),
 			Samples:                    rtts,
 		}
@@ -109,7 +114,7 @@ func (s *Submitter) SubmitSamples(ctx context.Context, accountKey AccountKey, sa
 					OriginDevicePK:               accountKey.OriginDevicePK,
 					TargetDevicePK:               accountKey.TargetDevicePK,
 					LinkPK:                       accountKey.LinkPK,
-					Epoch:                        accountKey.Epoch,
+					Epoch:                        &accountKey.Epoch,
 					SamplingIntervalMicroseconds: uint64(s.cfg.ProbeInterval.Microseconds()),
 				})
 				if err != nil {
@@ -151,7 +156,12 @@ func (s *Submitter) Tick(ctx context.Context) {
 			s.cfg.Buffer.Recycle(accountKey, tmp)
 
 			// If the account is for a past epoch, remove it.
-			if accountKey.Epoch < DeriveEpoch(time.Now().UTC()) {
+			epoch, err := s.cfg.GetCurrentEpoch(ctx)
+			if err != nil {
+				log.Error("failed to get current epoch", "error", err)
+				continue
+			}
+			if accountKey.Epoch < epoch {
 				s.cfg.Buffer.Remove(accountKey)
 				log.Debug("Removed account key")
 			}

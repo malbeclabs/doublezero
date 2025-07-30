@@ -301,13 +301,13 @@ func (l *Ledger) GetRPCClient() *rpc.Client {
 	return rpc.New(endpoint)
 }
 
-func (l *Ledger) GetTelemetryClient(agentPrivateKey *solana.PrivateKey) (*telemetry.Client, error) {
+func (l *Ledger) GetTelemetryClient(signer *solana.PrivateKey) (*telemetry.Client, error) {
 	endpoint := "http://" + net.JoinHostPort(l.dn.ExternalHost, strconv.Itoa(l.ExternalRPCPort))
 	rpcClient := rpc.New(endpoint)
 	programID, err := solana.PublicKeyFromBase58(l.dn.Manager.TelemetryProgramID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse program ID: %w", err)
 	}
-	client := telemetry.New(l.log, rpcClient, agentPrivateKey, programID)
+	client := telemetry.New(l.log, rpcClient, signer, programID)
 	return client, nil
 }

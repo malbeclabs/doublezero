@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestE2E_SDK_Telemetry(t *testing.T) {
+func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 	t.Parallel()
 
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()

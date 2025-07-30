@@ -54,7 +54,6 @@ func TestSDK_Telemetry_Client_GetInternetLatencySamples_HappyPath(t *testing.T) 
 
 	got, err := client.GetInternetLatencySamples(
 		context.Background(),
-		signer.PublicKey(),
 		expected.DataProviderName,
 		expected.OriginLocationPK,
 		expected.TargetLocationPK,
@@ -81,7 +80,6 @@ func TestSDK_Telemetry_Client_GetInternetLatencySamples_AccountNotFound(t *testi
 
 	_, err := client.GetInternetLatencySamples(
 		context.Background(),
-		signer.PublicKey(),
 		"test-data-provider-1",
 		solana.NewWallet().PublicKey(),
 		solana.NewWallet().PublicKey(),
@@ -107,7 +105,6 @@ func TestSDK_Telemetry_Client_GetInternetLatencySamples_UnexpectedError(t *testi
 
 	_, err := client.GetInternetLatencySamples(
 		context.Background(),
-		signer.PublicKey(),
 		"test-data-provider-1",
 		solana.NewWallet().PublicKey(),
 		solana.NewWallet().PublicKey(),

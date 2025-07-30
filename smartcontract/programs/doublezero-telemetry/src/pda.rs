@@ -25,6 +25,7 @@ pub fn derive_device_latency_samples_pda(
 /// Derive PDA for Internet latency samples account
 pub fn derive_internet_latency_samples_pda(
     program_id: &Pubkey,
+    oracle_agent_pk: &Pubkey,
     data_provider_name: &str,
     origin_location_pk: &Pubkey,
     target_location_pk: &Pubkey,
@@ -34,6 +35,7 @@ pub fn derive_internet_latency_samples_pda(
         &[
             SEED_PREFIX,
             SEED_INTERNET_LATENCY_SAMPLES,
+            oracle_agent_pk.as_ref(),
             data_provider_name.as_bytes(),
             origin_location_pk.as_ref(),
             target_location_pk.as_ref(),

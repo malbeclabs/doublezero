@@ -45,7 +45,6 @@ async fn test_write_internet_latency_samples_success() {
             provider_name.clone(),
             origin_location_pk,
             target_location_pk,
-            ledger.serviceability.global_state_pubkey,
             1u64,
             60_000_000,
         )
@@ -184,7 +183,6 @@ async fn test_write_internet_latency_samples_fail_unauthorized_agent() {
             provider_name.clone(),
             origin_location_pk,
             target_location_pk,
-            ledger.serviceability.global_state_pubkey,
             1u64,
             60_000_000,
         )
@@ -235,7 +233,6 @@ async fn test_write_internet_latency_samples_fail_account_full() {
             provider_name.clone(),
             origin_location_pk,
             target_location_pk,
-            ledger.serviceability.global_state_pubkey,
             1u64,
             60_000_000,
         )
@@ -294,7 +291,6 @@ async fn test_write_internet_latency_samples_fail_agent_not_signer() {
             provider_name.clone(),
             origin_location_pk,
             target_location_pk,
-            ledger.serviceability.global_state_pubkey,
             1u64,
             60_000_000,
         )
@@ -365,7 +361,6 @@ async fn test_write_internet_latency_samples_fail_on_empty_samples() {
             provider_name.clone(),
             origin_location_pk,
             target_location_pk,
-            ledger.serviceability.global_state_pubkey,
             1u64,
             60_000_000,
         )
@@ -393,7 +388,7 @@ async fn test_write_internet_latency_samples_fail_on_empty_samples() {
 }
 
 #[tokio::test]
-async fn test_write_internet_latency_samples_noop_on_empty_samples_with_pda() {
+async fn test_write_internet_latency_samples_fail_with_invalid_pda() {
     let oracle_agent = Keypair::new();
     let dummy_pda = Pubkey::new_unique();
 
@@ -469,7 +464,6 @@ async fn test_write_internet_latency_samples_next_sample_index_correct() {
             provider_name.clone(),
             origin_location_pk,
             target_location_pk,
-            ledger.serviceability.global_state_pubkey,
             1u64,
             60_000_000,
         )
@@ -523,7 +517,6 @@ async fn test_write_internet_latency_samples_fail_wrong_agent_but_valid_signer()
             provider_name.clone(),
             origin_location_pk,
             target_location_pk,
-            ledger.serviceability.global_state_pubkey,
             1u64,
             60_000_000,
         )
@@ -574,7 +567,6 @@ async fn test_write_internet_latency_samples_to_max_samples() {
             provider_name.clone(),
             origin_location_pk,
             target_location_pk,
-            ledger.serviceability.global_state_pubkey,
             1u64,
             60_000_000,
         )
@@ -650,7 +642,6 @@ async fn test_write_internet_latency_samples_fail_samples_batch_too_large() {
             provider_name.clone(),
             origin_location_pk,
             target_location_pk,
-            ledger.serviceability.global_state_pubkey,
             1u64,
             60_000_000,
         )

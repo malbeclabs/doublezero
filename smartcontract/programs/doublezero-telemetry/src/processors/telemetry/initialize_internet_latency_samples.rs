@@ -7,10 +7,7 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_program_common::create_account::try_create_account;
-use doublezero_serviceability::state::{
-    globalstate::GlobalState,
-    location::{Location, LocationStatus},
-};
+use doublezero_serviceability::state::location::{Location, LocationStatus};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -42,7 +39,6 @@ pub struct InitializeInternetLatencySamplesArgs {
 ///
 /// Errors:
 /// - `InvalidSamplingInterval`: zero interval
-/// - `UnauthorizedAgent`: Agent not authorized to write on behalf of the network
 /// - `LocationNotActive`: inactive or suspended Location
 /// - `InvalidPDA`, `AccountAlreadyExists`
 pub fn process_initialize_internet_latency_samples(
@@ -64,30 +60,19 @@ pub fn process_initialize_internet_latency_samples(
 
     let accounts_iter = &mut accounts.iter();
 
-    // Expected account order: [latency_samples_account, agent, origin_location, target_location, serviceability_global_state, system_program]
+    // Expected account order: [latency_samples_account, collector agent, origin_location, target_location, system_program]
     let latency_samples_acct = next_account_info(accounts_iter)?;
     let collector_agent = next_account_info(accounts_iter)?;
     let origin_location_account = next_account_info(accounts_iter)?;
     let target_location_account = next_account_info(accounts_iter)?;
-    let serviceability_global_state = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
     // Require the caller is the authorized signing agent
     if !collector_agent.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
+
     let serviceability_program_id = &serviceability_program_id();
-    if serviceability_global_state.owner != serviceability_program_id {
-        msg!("Global state is not owned by the serviceability program");
-        return Err(ProgramError::IncorrectProgramId);
-    }
-
-    let globalstate = GlobalState::try_from(serviceability_global_state)?;
-    if collector_agent.key != &globalstate.internet_latency_collector {
-        msg!("Collector agent is not authorized internet telemetry writer");
-        return Err(TelemetryError::UnauthorizedAgent.into());
-    }
-
     if origin_location_account.owner != serviceability_program_id {
         msg!("Origin location is not owned by the serviceability program");
         return Err(ProgramError::IncorrectProgramId);
@@ -122,6 +107,7 @@ pub fn process_initialize_internet_latency_samples(
     // Uniquely scope by provider, origin, target, and epoch
     let (latency_samples_pda, latency_samples_bump_seed) = derive_internet_latency_samples_pda(
         program_id,
+        collector_agent.key,
         &args.data_provider_name,
         origin_location_account.key,
         target_location_account.key,
@@ -169,6 +155,7 @@ pub fn process_initialize_internet_latency_samples(
         &[
             SEED_PREFIX,
             SEED_INTERNET_LATENCY_SAMPLES,
+            collector_agent.key.as_ref(),
             args.data_provider_name.as_bytes(),
             origin_location_account.key.as_ref(),
             target_location_account.key.as_ref(),

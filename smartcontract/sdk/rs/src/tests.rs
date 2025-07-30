@@ -32,7 +32,6 @@ pub mod utils {
             foundation_allowlist: vec![],
             device_allowlist: vec![],
             user_allowlist: vec![],
-            internet_latency_collector: payer,
         };
         client
             .expect_get()

@@ -5,21 +5,20 @@ use solana_program::{account_info::AccountInfo, program_error::ProgramError, pub
 
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 pub struct GlobalState {
-    pub account_type: AccountType,          // 1
-    pub bump_seed: u8,                      // 1
-    pub account_index: u128,                // 16
-    pub foundation_allowlist: Vec<Pubkey>,  // 4 + 32 * len
-    pub device_allowlist: Vec<Pubkey>,      // 4 + 32 * len
-    pub user_allowlist: Vec<Pubkey>,        // 4 + 32 * len
-    pub internet_latency_collector: Pubkey, // 32
+    pub account_type: AccountType,         // 1
+    pub bump_seed: u8,                     // 1
+    pub account_index: u128,               // 16
+    pub foundation_allowlist: Vec<Pubkey>, // 4 + 32 * len
+    pub device_allowlist: Vec<Pubkey>,     // 4 + 32 * len
+    pub user_allowlist: Vec<Pubkey>,       // 4 + 32 * len
 }
 
 impl fmt::Display for GlobalState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, account_index: {}, foundation_allowlist: {:?}, device_allowlist: {:?}, user_allowlist: {:?}, internet_latency_collector: {:?}",
-            self.account_type, self.account_index, self.foundation_allowlist, self.device_allowlist, self.user_allowlist, self.internet_latency_collector,
+            "account_type: {}, account_index: {}, foundation_allowlist: {:?}, device_allowlist: {:?}, user_allowlist: {:?}",
+            self.account_type, self.account_index, self.foundation_allowlist, self.device_allowlist, self.user_allowlist
         )
     }
 }
@@ -34,7 +33,6 @@ impl GlobalState {
             + (self.device_allowlist.len() * 32)
             + 4
             + (self.user_allowlist.len() * 32)
-            + 32
     }
 }
 
@@ -49,7 +47,6 @@ impl From<&[u8]> for GlobalState {
             foundation_allowlist: parser.read_pubkey_vec(),
             device_allowlist: parser.read_pubkey_vec(),
             user_allowlist: parser.read_pubkey_vec(),
-            internet_latency_collector: parser.read_pubkey(),
         }
     }
 }
@@ -76,7 +73,6 @@ mod tests {
             foundation_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             device_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             user_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
-            internet_latency_collector: Pubkey::new_unique(),
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -88,9 +84,5 @@ mod tests {
         assert_eq!(val.device_allowlist, val2.device_allowlist);
         assert_eq!(val.user_allowlist, val2.user_allowlist);
         assert_eq!(data.len(), val.size(), "Invalid Size");
-        assert_eq!(
-            val.internet_latency_collector,
-            val2.internet_latency_collector
-        );
     }
 }

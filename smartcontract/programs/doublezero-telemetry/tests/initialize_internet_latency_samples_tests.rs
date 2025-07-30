@@ -1,7 +1,6 @@
 use borsh::BorshSerialize;
 use doublezero_serviceability::state::{
     accounttype::AccountType,
-    globalstate::GlobalState,
     location::{Location, LocationStatus},
 };
 use doublezero_telemetry::{
@@ -54,7 +53,6 @@ async fn test_initialize_internet_latency_samples_success_active_locations() {
             provider_name.clone(),
             origin_location_pk,
             target_location_pk,
-            ledger.serviceability.global_state_pubkey,
             epoch,
             60_000_000,
         )
@@ -62,6 +60,7 @@ async fn test_initialize_internet_latency_samples_success_active_locations() {
         .unwrap();
     let (_pda, bump) = derive_internet_latency_samples_pda(
         &ledger.telemetry.program_id,
+        &oracle.pubkey(),
         &provider_name,
         &origin_location_pk,
         &target_location_pk,
@@ -117,6 +116,7 @@ async fn test_initialize_device_latency_samples_already_with_lamports() {
     // Derive the samples PDA to pre-load lamports
     let (latency_samples_pda, _) = derive_internet_latency_samples_pda(
         &ledger.telemetry.program_id,
+        &oracle_agent.pubkey(),
         &provider_name,
         &origin_location_pk,
         &target_location_pk,
@@ -140,7 +140,6 @@ async fn test_initialize_device_latency_samples_already_with_lamports() {
             provider_name.clone(),
             origin_location_pk,
             target_location_pk,
-            ledger.serviceability.global_state_pubkey,
             1u64,
             60_000_000,
         )
@@ -197,7 +196,6 @@ async fn test_initialize_internet_latency_samples_success_suspended_origin_locat
             provider_name.clone(),
             origin_location_pk,
             target_location_pk,
-            ledger.serviceability.global_state_pubkey,
             1u64,
             60_000_000,
         )
@@ -254,7 +252,6 @@ async fn test_initialize_internet_latency_samples_success_suspended_target_locat
             provider_name.clone(),
             origin_location_pk,
             target_location_pk,
-            ledger.serviceability.global_state_pubkey,
             1u64,
             60_000_000,
         )
@@ -276,44 +273,6 @@ async fn test_initialize_internet_latency_samples_success_suspended_target_locat
 }
 
 #[tokio::test]
-async fn test_initialize_internet_latency_samples_fail_unauthorized_agent() {
-    let mut ledger = LedgerHelper::new().await.unwrap();
-
-    // Seed ledger with two locations, and a funded agent.
-    let (_oracle_agent, origin_location_pk, target_location_pk) =
-        ledger.seed_with_two_locations().await.unwrap();
-
-    // Wait for a new blockhash before moving on.
-    ledger.wait_for_new_blockhash().await.unwrap();
-
-    // Create and fund an unauthorized agent keypair.
-    let unauthorized_agent = Keypair::new();
-    let unauthorized_agent_pk = unauthorized_agent.pubkey();
-    ledger
-        .fund_account(&unauthorized_agent_pk, 10_000_000_000)
-        .await
-        .unwrap();
-
-    let provider_name = "RIPE Atlas".to_string();
-
-    // Execute initialize latency samples transaction with unauthorized agent
-    let result = ledger
-        .telemetry
-        .initialize_internet_latency_samples(
-            &unauthorized_agent,
-            provider_name,
-            origin_location_pk,
-            target_location_pk,
-            ledger.serviceability.global_state_pubkey,
-            1u64,
-            60_000_000,
-        )
-        .await;
-
-    assert_telemetry_error(result, TelemetryError::UnauthorizedAgent);
-}
-
-#[tokio::test]
 async fn test_initialize_internet_latency_samples_fail_agent_not_signer() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 
@@ -328,6 +287,7 @@ async fn test_initialize_internet_latency_samples_fail_agent_not_signer() {
 
     // Derive the samples PDA
     let (latency_samples_pda, _) = derive_internet_latency_samples_pda(
+        &oracle_agent.pubkey(),
         &ledger.telemetry.program_id,
         &provider_name,
         &origin_location_pk,
@@ -350,7 +310,6 @@ async fn test_initialize_internet_latency_samples_fail_agent_not_signer() {
         AccountMeta::new(oracle_agent.pubkey(), false), // Not signer
         AccountMeta::new(origin_location_pk, false),
         AccountMeta::new(target_location_pk, false),
-        AccountMeta::new(ledger.serviceability.global_state_pubkey, false),
         AccountMeta::new(solana_program::system_program::id(), false),
     ];
 
@@ -434,7 +393,6 @@ async fn test_initialize_internet_latency_samples_fail_origin_location_wrong_own
             provider_name,
             fake_origin_location_pk,
             target_location_pk,
-            ledger.serviceability.global_state_pubkey,
             42,
             60_000_000,
         )
@@ -499,66 +457,6 @@ async fn test_initialize_internet_latency_samples_fail_target_location_wrong_own
             provider_name,
             origin_location_pk,
             fake_target_location_pk,
-            ledger.serviceability.global_state_pubkey,
-            42,
-            60_000_000,
-        )
-        .await;
-
-    assert_banksclient_error(result, InstructionError::IncorrectProgramId);
-}
-
-#[tokio::test]
-async fn test_initialize_internet_latency_samples_fail_globalstate_wrong_owner() {
-    let agent = Keypair::new();
-    let fake_global_state_pk = Pubkey::new_unique();
-    let fake_global_state = GlobalState {
-        account_type: AccountType::GlobalState,
-        bump_seed: 0,
-        account_index: 0,
-        foundation_allowlist: vec![agent.pubkey()],
-        user_allowlist: vec![agent.pubkey()],
-        device_allowlist: vec![agent.pubkey()],
-        internet_latency_collector: agent.pubkey(),
-    };
-
-    let mut global_state_data = Vec::new();
-    fake_global_state.serialize(&mut global_state_data).unwrap();
-
-    let fake_account = Account {
-        lamports: 1_000_000,
-        data: global_state_data,
-        owner: Pubkey::new_unique(), // WRONG owner
-        executable: false,
-        rent_epoch: 0,
-    };
-
-    let mut ledger =
-        LedgerHelper::new_with_preloaded_accounts(vec![(fake_global_state_pk, fake_account)])
-            .await
-            .unwrap();
-
-    ledger
-        .fund_account(&agent.pubkey(), 10_000_000_000)
-        .await
-        .unwrap();
-
-    // Seed ledger with two locations, and a funded agent.
-    let (oracle_agent, origin_location_pk, target_location_pk) =
-        ledger.seed_with_two_locations().await.unwrap();
-
-    ledger.wait_for_new_blockhash().await.unwrap();
-
-    let provider_name = "RIPE Atlas".to_string();
-
-    let result = ledger
-        .telemetry
-        .initialize_internet_latency_samples(
-            &oracle_agent,
-            provider_name,
-            origin_location_pk,
-            target_location_pk,
-            fake_global_state_pk,
             42,
             60_000_000,
         )
@@ -583,6 +481,7 @@ async fn test_initialize_internet_latency_samples_fail_provider_name_too_long() 
     pda_name.truncate(32);
     let (pda, _) = derive_internet_latency_samples_pda(
         &ledger.telemetry.program_id,
+        &oracle.pubkey(),
         &pda_name,
         &origin_location_pk,
         &target_location_pk,
@@ -606,7 +505,6 @@ async fn test_initialize_internet_latency_samples_fail_provider_name_too_long() 
                 AccountMeta::new(oracle.pubkey(), true),
                 AccountMeta::new(origin_location_pk, false),
                 AccountMeta::new(target_location_pk, false),
-                AccountMeta::new(ledger.serviceability.global_state_pubkey, false),
                 AccountMeta::new(solana_program::system_program::id(), false),
             ],
         )
@@ -640,7 +538,6 @@ async fn test_initialize_internet_latency_samples_fail_account_already_exists() 
             data_provider_name.clone(),
             origin_location_pk,
             target_location_pk,
-            ledger.serviceability.global_state_pubkey,
             100,
             60_000_000,
         )
@@ -660,7 +557,6 @@ async fn test_initialize_internet_latency_samples_fail_account_already_exists() 
             data_provider_name,
             origin_location_pk,
             target_location_pk,
-            ledger.serviceability.global_state_pubkey,
             100,
             60_000_000,
         )
@@ -683,6 +579,7 @@ async fn test_initialize_internet_latency_samples_fail_invalid_pda() {
     // Derive valid PDA but don't use it
     let (_valid_pda, _bump) = derive_internet_latency_samples_pda(
         &ledger.telemetry.program_id,
+        &oracle_agent.pubkey(),
         &data_provider_name,
         &origin_location_pk,
         &target_location_pk,
@@ -700,7 +597,6 @@ async fn test_initialize_internet_latency_samples_fail_invalid_pda() {
             data_provider_name,
             origin_location_pk,
             target_location_pk,
-            ledger.serviceability.global_state_pubkey,
             100,
             60_000_000,
         )
@@ -727,7 +623,6 @@ async fn test_initialize_internet_latency_samples_fail_zero_sampling_interval() 
             data_provider_name,
             origin_location_pk,
             target_location_pk,
-            ledger.serviceability.global_state_pubkey,
             100,
             0,
         )
@@ -754,7 +649,6 @@ async fn test_initialize_internet_latency_samples_fail_same_origin_and_target_lo
             data_provider_name,
             origin_location_pk,
             origin_location_pk,
-            ledger.serviceability.global_state_pubkey,
             100,
             60_000_000,
         )

@@ -17,7 +17,6 @@ use doublezero_serviceability::{
         },
         exchange::create::ExchangeCreateArgs,
         globalconfig::set::SetGlobalConfigArgs,
-        globalstate::setinternetlatencycollector::SetInternetLatencyCollectorArgs,
         link::{activate::LinkActivateArgs, create::LinkCreateArgs, suspend::LinkSuspendArgs},
         location::{create::LocationCreateArgs, suspend::LocationSuspendArgs},
     },
@@ -421,9 +420,6 @@ impl LedgerHelper {
         let oracle_agent = Keypair::new();
         let oracle_agent_pk = oracle_agent.pubkey();
         self.fund_account(&oracle_agent_pk, 10_000_000_000).await?;
-        self.serviceability
-            .set_internet_latency_collector(oracle_agent_pk)
-            .await?;
 
         Ok((oracle_agent, location1_pk, location2_pk))
     }
@@ -585,12 +581,12 @@ impl TelemetryProgramHelper {
         data_provider_name: String,
         origin_location_pk: Pubkey,
         target_location_pk: Pubkey,
-        globalstate_pk: Pubkey,
         epoch: u64,
         sampling_interval_micros: u64,
     ) -> Result<Pubkey, BanksClientError> {
         let (pda, _) = derive_internet_latency_samples_pda(
             &self.program_id,
+            &agent.pubkey(),
             &data_provider_name,
             &origin_location_pk,
             &target_location_pk,
@@ -603,7 +599,6 @@ impl TelemetryProgramHelper {
             data_provider_name,
             origin_location_pk,
             target_location_pk,
-            globalstate_pk,
             epoch,
             sampling_interval_micros,
         )
@@ -620,7 +615,6 @@ impl TelemetryProgramHelper {
         data_provider_name: String,
         origin_location_pk: Pubkey,
         target_location_pk: Pubkey,
-        globalstate_pk: Pubkey,
         epoch: u64,
         interval_micros: u64,
     ) -> Result<Pubkey, BanksClientError> {
@@ -638,7 +632,6 @@ impl TelemetryProgramHelper {
                 AccountMeta::new(agent.pubkey(), true),
                 AccountMeta::new(origin_location_pk, false),
                 AccountMeta::new(target_location_pk, false),
-                AccountMeta::new(globalstate_pk, false),
                 AccountMeta::new(solana_program::system_program::id(), false),
             ],
         )
@@ -814,7 +807,6 @@ impl ServiceabilityProgramHelper {
             let context = self.context.lock().unwrap();
             context.banks_client.clone()
         };
-        // let banks_client = banks_client.clone();
         let account = banks_client
             .get_account(self.global_state_pubkey)
             .await
@@ -827,20 +819,6 @@ impl ServiceabilityProgramHelper {
             ))?;
         let global_state = GlobalState::from(&account.data[..]);
         Ok(global_state.account_index + 1)
-    }
-
-    pub async fn set_internet_latency_collector(
-        &mut self,
-        pubkey: Pubkey,
-    ) -> Result<(), BanksClientError> {
-        self.execute_transaction(
-            DoubleZeroInstruction::SetInternetLatencyCollector(SetInternetLatencyCollectorArgs {
-                pubkey,
-            }),
-            vec![AccountMeta::new(self.global_state_pubkey, false)],
-        )
-        .await?;
-        Ok(())
     }
 
     pub async fn create_location(

@@ -146,13 +146,12 @@ pub struct InitializeInternetLatencySamplesArgs {
 | 1 | `agent` | Yes | No | Must be the Internet Latency Collector |
 | 2 | `origin_location` | No | Must be activated |
 | 3 | `target_location` | No | Must be activated |
-| 4 | `serviceability_global_state` | No | No | Validates authority of the agent |
-| 5 | `system_program` | No | No | System program for allocation |
+| 4 | `system_program` | No | No | System program for allocation |
 
 ### PDA Derivation
 
 ```rust
-["third_party_latency_samples", data_provider_name, origin_location, target_location, epoch]
+["third_party_latency_samples", collector_agent, data_provider_name, origin_location, target_location, epoch]
 ```
 
 ---

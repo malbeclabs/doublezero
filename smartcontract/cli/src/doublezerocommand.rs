@@ -31,10 +31,7 @@ use doublezero_sdk::{
             list::ListExchangeCommand, update::UpdateExchangeCommand,
         },
         globalconfig::set::SetGlobalConfigCommand,
-        globalstate::{
-            init::InitGlobalStateCommand,
-            setinternetlatencycollector::SetInternetLatencyCollectorCommand,
-        },
+        globalstate::init::InitGlobalStateCommand,
         link::{
             activate::ActivateLinkCommand, closeaccount::CloseAccountLinkCommand,
             create::CreateLinkCommand, delete::DeleteLinkCommand, get::GetLinkCommand,
@@ -97,10 +94,6 @@ pub trait CliCommand {
     fn get_logs(&self, pubkey: &Pubkey) -> eyre::Result<Vec<String>>;
 
     fn init_global_state(&self, cmd: InitGlobalStateCommand) -> eyre::Result<Signature>;
-    fn set_internet_latency_collector(
-        &self,
-        cmd: SetInternetLatencyCollectorCommand,
-    ) -> eyre::Result<Signature>;
     fn get_globalconfig(&self, cmd: GetGlobalConfigCommand)
         -> eyre::Result<(Pubkey, GlobalConfig)>;
     fn set_globalconfig(&self, cmd: SetGlobalConfigCommand) -> eyre::Result<Signature>;
@@ -272,13 +265,6 @@ impl CliCommand for CliCommandImpl<'_> {
     }
 
     fn init_global_state(&self, cmd: InitGlobalStateCommand) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
-
-    fn set_internet_latency_collector(
-        &self,
-        cmd: SetInternetLatencyCollectorCommand,
-    ) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
 

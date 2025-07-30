@@ -175,7 +175,6 @@ pub fn process_initialize_internet_latency_samples(
         sampling_interval_microseconds: args.sampling_interval_microseconds,
         start_timestamp_microseconds: 0, // will be set on first write
         next_sample_index: 0,
-        bump_seed: latency_samples_bump_seed,
         _unused: [0; 128],
     };
 

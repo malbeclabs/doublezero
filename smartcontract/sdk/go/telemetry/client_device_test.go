@@ -25,7 +25,6 @@ func TestSDK_Telemetry_Client_GetDeviceLatencySamples_HappyPath(t *testing.T) {
 	expected := &telemetry.DeviceLatencySamples{
 		DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
 			AccountType:                  telemetry.AccountTypeDeviceLatencySamples,
-			BumpSeed:                     1,
 			Epoch:                        42,
 			OriginDeviceAgentPK:          solana.NewWallet().PublicKey(),
 			OriginDevicePK:               solana.NewWallet().PublicKey(),

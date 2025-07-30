@@ -7,8 +7,10 @@ use std::fmt;
 #[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
 #[borsh(use_discriminant = true)]
 pub enum AccountType {
-    DeviceLatencySamples = 1,
-    InternetLatencySamples = 2,
+    DeviceLatencySamplesV0 = 1,
+    InternetLatencySamplesV0 = 2,
+    DeviceLatencySamples = 3,
+    InternetLatencySamples = 4,
 }
 
 impl TryFrom<u8> for AccountType {
@@ -16,8 +18,10 @@ impl TryFrom<u8> for AccountType {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            1 => Ok(Self::DeviceLatencySamples),
-            2 => Ok(Self::InternetLatencySamples),
+            1 => Ok(Self::DeviceLatencySamplesV0),
+            2 => Ok(Self::InternetLatencySamplesV0),
+            3 => Ok(Self::DeviceLatencySamples),
+            4 => Ok(Self::InternetLatencySamples),
             _ => Err(ProgramError::InvalidAccountData),
         }
     }
@@ -26,6 +30,8 @@ impl TryFrom<u8> for AccountType {
 impl fmt::Display for AccountType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::DeviceLatencySamplesV0 => write!(f, "DeviceLatencySamplesV0"),
+            Self::InternetLatencySamplesV0 => write!(f, "InternetLatencySamplesV0"),
             Self::DeviceLatencySamples => write!(f, "DeviceLatencySamples"),
             Self::InternetLatencySamples => write!(f, "InternetLatencySamples"),
         }
@@ -35,6 +41,5 @@ impl fmt::Display for AccountType {
 pub trait AccountTypeInfo {
     fn seed(&self) -> &[u8];
     fn size(&self) -> usize;
-    fn bump_seed(&self) -> u8;
     fn owner(&self) -> Pubkey;
 }

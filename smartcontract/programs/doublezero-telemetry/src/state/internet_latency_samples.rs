@@ -28,7 +28,20 @@ pub const MAX_DATA_PROVIDER_NAME_BYTES: usize = 32;
 ///
 /// Total size: 290 bytes
 pub const INTERNET_LATENCY_SAMPLES_MAX_HEADER_SIZE: usize =
-    1 + 1 + (4 + MAX_DATA_PROVIDER_NAME_BYTES) + 8 + 32 + 32 + 32 + 8 + 8 + 4 + 128;
+    INTERNET_LATENCY_SAMPLES_HEADER_SIZE_MINUS_PROVIDER + MAX_DATA_PROVIDER_NAME_BYTES;
+
+const INTERNET_LATENCY_SAMPLES_HEADER_SIZE_MINUS_PROVIDER: usize = {
+    1 // account_type
+    + 8 // epoch
+    + 4 // data_provider_name.len()
+    + 32 // oracle_agent_pk
+    + 32 // origin_location_pk
+    + 32 // target_location_pk
+    + 8 // sampling_interval_microseconds
+    + 8 // start_timestamp_microseconds
+    + 4 // next_sample_index
+    + 128 // _unused
+};
 
 /// Onchain data structure representing a latency samples account header between two
 /// location over the public internet for a specific epoch and third party probe provider,
@@ -37,12 +50,10 @@ pub const INTERNET_LATENCY_SAMPLES_MAX_HEADER_SIZE: usize =
 pub struct InternetLatencySamplesHeader {
     // Discriminator to distinguish from other accounts during deserialization
     pub account_type: AccountType, // 1
-    // Required for deriving and recreating the PDA
-    pub bump_seed: u8, // 1
-    // Name of the third-party provider of the sampling probes
-    pub data_provider_name: String, // 32 bytes
     // Epoch number in which samples were collected
     pub epoch: u64, // 8
+    // Name of the third-party provider of the sampling probes
+    pub data_provider_name: String, // 32 bytes
     // Agent authorized to write RTT samples (must match the signer)
     pub oracle_agent_pk: Pubkey, // 32
     // Cached location of the probe origin for query/UI optimization
@@ -62,14 +73,16 @@ pub struct InternetLatencySamplesHeader {
 
 impl InternetLatencySamplesHeader {
     pub fn data_provider_name_length(data: &[u8]) -> Result<usize, std::array::TryFromSliceError> {
+        const DATA_PROVIDER_LOC: usize = 1 + 8;
+
         // Based on the account layout and borsh's 4-byte string field prefix
-        data[2..6]
+        data[DATA_PROVIDER_LOC..DATA_PROVIDER_LOC + 4]
             .try_into()
             .map(|bytes| u32::from_le_bytes(bytes) as usize)
     }
 
     pub fn instance_size(data_provider_name_size: usize) -> usize {
-        1 + 1 + (4 + data_provider_name_size) + 8 + 32 + 32 + 32 + 8 + 8 + 4 + 128
+        INTERNET_LATENCY_SAMPLES_HEADER_SIZE_MINUS_PROVIDER + data_provider_name_size
     }
 }
 
@@ -170,23 +183,9 @@ impl AccountTypeInfo for InternetLatencySamples {
     /// Computes the full serialized size of this account (for realloc).
     /// Used when dynamically resizing to accommodate more samples.
     fn size(&self) -> usize {
-        1 + 1
-            + 4
+        INTERNET_LATENCY_SAMPLES_HEADER_SIZE_MINUS_PROVIDER
             + self.header.data_provider_name.len()
-            + 8
-            + 32
-            + 32
-            + 32
-            + 8
-            + 8
-            + 4
-            + 128
             + self.samples.len() * 4
-    }
-
-    /// Returns the bump seed used during PDA derivation
-    fn bump_seed(&self) -> u8 {
-        self.header.bump_seed
     }
 
     /// Returns the public key of the agent who owns/writes to the account
@@ -205,7 +204,6 @@ mod tests {
         let val = InternetLatencySamples {
             header: InternetLatencySamplesHeader {
                 account_type: AccountType::InternetLatencySamples,
-                bump_seed: 255,
                 data_provider_name: "RIPE Atlas".to_string(),
                 epoch: 19_800,
                 oracle_agent_pk: Pubkey::new_unique(),
@@ -225,7 +223,6 @@ mod tests {
         let header2 = val2.header.clone();
 
         assert_eq!(header.account_type, header2.account_type);
-        assert_eq!(header.bump_seed, header2.bump_seed);
         assert_eq!(header.epoch, header2.epoch);
         assert_eq!(header.data_provider_name, header2.data_provider_name);
         assert_eq!(header.oracle_agent_pk, header2.oracle_agent_pk);

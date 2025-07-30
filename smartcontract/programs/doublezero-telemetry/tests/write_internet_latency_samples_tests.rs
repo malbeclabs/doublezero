@@ -405,7 +405,6 @@ async fn test_write_internet_latency_samples_fail_with_invalid_pda() {
             sampling_interval_microseconds: 60_000_000,
             start_timestamp_microseconds: 0,
             next_sample_index: 0,
-            bump_seed: 42,
             _unused: [0; 128],
         },
         samples: vec![],

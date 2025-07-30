@@ -29,7 +29,7 @@ mod test_helpers;
 
 use test_helpers::*;
 
-const EXPECTED_LAMPORTS_FOR_ACCOUNT_CREATION: u64 = 2756160;
+const EXPECTED_LAMPORTS_FOR_ACCOUNT_CREATION: u64 = 2749200;
 
 #[tokio::test]
 async fn test_initialize_internet_latency_samples_success_active_locations() {
@@ -58,14 +58,6 @@ async fn test_initialize_internet_latency_samples_success_active_locations() {
         )
         .await
         .unwrap();
-    let (_pda, bump) = derive_internet_latency_samples_pda(
-        &ledger.telemetry.program_id,
-        &oracle.pubkey(),
-        &provider_name,
-        &origin_location_pk,
-        &target_location_pk,
-        epoch,
-    );
 
     // Verify account created
     let account = ledger
@@ -89,7 +81,6 @@ async fn test_initialize_internet_latency_samples_success_active_locations() {
             oracle_agent_pk: oracle.pubkey(),
             origin_location_pk,
             target_location_pk,
-            bump_seed: bump,
             epoch,
             sampling_interval_microseconds: 60_000_000,
             next_sample_index: 0,

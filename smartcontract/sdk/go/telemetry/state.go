@@ -11,16 +11,15 @@ import (
 type AccountType uint8
 
 const (
-	AccountTypeDeviceLatencySamples AccountType = iota + 1
+	AccountTypeDeviceLatencySamplesV0 AccountType = iota + 1
+	AccountTypeInternetLatencySamplesV0
+	AccountTypeDeviceLatencySamples
 	AccountTypeInternetLatencySamples
 )
 
 type DeviceLatencySamplesHeader struct {
 	// Used to distinguish this account type during deserialization
 	AccountType AccountType // 1
-
-	// Required for recreating the PDA (seed authority)
-	BumpSeed uint8 // 1
 
 	// Epoch number in which samples were collected
 	Epoch uint64 // 8
@@ -98,14 +97,11 @@ type InternetLatencySamplesHeader struct {
 	// AccountType is used to distinguish this account type during deserialization.
 	AccountType AccountType // 1
 
-	// BumpSeed is required for recreating the PDA (seed authority).
-	BumpSeed uint8 // 1
+	// Epoch is the epoch number in which samples were collected.
+	Epoch uint64 // 8
 
 	// DataProviderName is the name of the data provider.
 	DataProviderName string // 4 + len
-
-	// Epoch is the epoch number in which samples were collected.
-	Epoch uint64 // 8
 
 	// OracleAgentPK authorized to write latency samples (must match signer)
 	OracleAgentPK solana.PublicKey // 32

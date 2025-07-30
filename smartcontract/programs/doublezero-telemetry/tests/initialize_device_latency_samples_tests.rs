@@ -32,7 +32,7 @@ mod test_helpers;
 
 use test_helpers::*;
 
-const EXPECTED_LAMPORTS_USED_FOR_ACCOUNT_CREATION: u64 = 3326880;
+const EXPECTED_LAMPORTS_USED_FOR_ACCOUNT_CREATION: u64 = 3319920;
 
 #[tokio::test]
 async fn test_initialize_device_latency_samples_success_active_devices_and_link() {

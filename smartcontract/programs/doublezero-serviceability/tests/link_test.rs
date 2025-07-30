@@ -17,7 +17,7 @@ use doublezero_serviceability::{
 use globalconfig::set::SetGlobalConfigArgs;
 use link::closeaccount::LinkCloseAccountArgs;
 use solana_program_test::*;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signer::Signer};
 
 mod test_helpers;
 use test_helpers::*;
@@ -143,6 +143,7 @@ async fn test_link() {
         program_id,
         DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
             code: "cont".to_string(),
+            owner: payer.pubkey(),
         }),
         vec![
             AccountMeta::new(contributor_pubkey, false),

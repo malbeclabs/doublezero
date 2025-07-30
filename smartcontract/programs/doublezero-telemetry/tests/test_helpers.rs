@@ -281,6 +281,8 @@ impl LedgerHelper {
     pub async fn seed_with_two_linked_devices(
         &mut self,
     ) -> Result<(Keypair, Pubkey, Pubkey, Pubkey), BanksClientError> {
+        let payer = self.context.lock().unwrap().payer.insecure_clone().pubkey();
+
         // Create alocation.
         let location_pk = self
             .serviceability
@@ -312,7 +314,7 @@ impl LedgerHelper {
 
         let contributor_pk = self
             .serviceability
-            .create_contributor("CONTRIB".to_string())
+            .create_contributor("CONTRIB".to_string(), payer)
             .await
             .unwrap();
         // Create and activate origin device.
@@ -872,12 +874,16 @@ impl ServiceabilityProgramHelper {
         Ok(exchange_pubkey)
     }
 
-    pub async fn create_contributor(&mut self, code: String) -> Result<Pubkey, BanksClientError> {
+    pub async fn create_contributor(
+        &mut self,
+        code: String,
+        owner: Pubkey,
+    ) -> Result<Pubkey, BanksClientError> {
         let index = self.get_next_global_state_index().await.unwrap();
         let (contributor_pk, _) = get_contributor_pda(&self.program_id, index);
 
         self.execute_transaction(
-            DoubleZeroInstruction::CreateContributor(ContributorCreateArgs { code }),
+            DoubleZeroInstruction::CreateContributor(ContributorCreateArgs { code, owner }),
             vec![
                 AccountMeta::new(contributor_pk, false),
                 AccountMeta::new(self.global_state_pubkey, false),

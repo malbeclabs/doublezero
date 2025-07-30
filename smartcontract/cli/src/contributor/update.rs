@@ -18,6 +18,9 @@ pub struct UpdateContributorCliCommand {
     /// Updated code for the contributor
     #[arg(long, value_parser = validate_code)]
     pub code: Option<String>,
+    /// Updated owner for the contributor
+    #[arg(long, value_parser = validate_pubkey_or_code)]
+    pub owner: Option<String>,
 }
 
 impl UpdateContributorCliCommand {
@@ -41,6 +44,12 @@ impl UpdateContributorCliCommand {
             }
         }
 
+        let owner = if let Some(owner_str) = &self.owner {
+            Some(Pubkey::from_str(owner_str).map_err(|_| eyre::eyre!("Invalid owner public key"))?)
+        } else {
+            None
+        };
+
         let (pubkey, _) = client.get_contributor(GetContributorCommand {
             pubkey_or_code: self.pubkey,
         })?;
@@ -48,6 +57,7 @@ impl UpdateContributorCliCommand {
         let signature = client.update_contributor(UpdateContributorCommand {
             pubkey,
             code: self.code,
+            owner,
         })?;
 
         writeln!(out, "Signature: {signature}",)?;
@@ -145,6 +155,7 @@ mod tests {
             .with(predicate::eq(UpdateContributorCommand {
                 pubkey: pda_pubkey,
                 code: Some("test_new".to_string()),
+                owner: Some(Pubkey::default()),
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -154,6 +165,7 @@ mod tests {
         let res = UpdateContributorCliCommand {
             pubkey: pda_pubkey.to_string(),
             code: Some("test2".to_string()),
+            owner: Some(Pubkey::default().to_string()),
         }
         .execute(&client, &mut output);
         assert!(res.is_err());
@@ -163,6 +175,7 @@ mod tests {
         let res = UpdateContributorCliCommand {
             pubkey: pda_pubkey.to_string(),
             code: Some("test_new".to_string()),
+            owner: Some(Pubkey::default().to_string()),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

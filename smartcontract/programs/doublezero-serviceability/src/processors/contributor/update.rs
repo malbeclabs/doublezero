@@ -13,11 +13,12 @@ use std::fmt;
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct ContributorUpdateArgs {
     pub code: Option<String>,
+    pub owner: Option<Pubkey>,
 }
 
 impl fmt::Debug for ContributorUpdateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "code: {:?}", self.code)
+        write!(f, "code: {:?}, owner: {:?}", self.code, self.owner)
     }
 }
 
@@ -65,6 +66,9 @@ pub fn process_update_contributor(
 
     if let Some(ref code) = value.code {
         contributor.code = code.clone();
+    }
+    if let Some(ref owner) = value.owner {
+        contributor.owner = *owner;
     }
 
     account_write(

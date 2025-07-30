@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"sync"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func (c *Collector) Run(ctx context.Context) error {
@@ -18,6 +21,16 @@ func (c *Collector) Run(ctx context.Context) error {
 	// Create a cancellable context for early termination
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	// Start Prometheus metrics endpoint
+	go func() {
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.Handler())
+		c.log.Info("Starting metrics server", slog.String("address", "127.0.0.1:2113"))
+		if err := http.ListenAndServe("127.0.0.1:2113", mux); err != nil {
+			c.log.Error("Metrics server error", slog.String("error", err.Error()))
+		}
+	}()
 
 	var wg sync.WaitGroup
 	errChan := make(chan error, 2)

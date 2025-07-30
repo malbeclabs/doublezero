@@ -352,6 +352,9 @@ func init() {
 }
 
 func main() {
+	// Set build info metric
+	collector.BuildInfo.WithLabelValues(version, commit, date).Set(1)
+
 	// Add version command last so it appears after auto-generated commands
 	rootCmd.AddCommand(versionCmd)
 

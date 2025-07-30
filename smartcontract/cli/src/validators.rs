@@ -1,17 +1,11 @@
+use doublezero_program_common::normalize_account_code;
 use doublezero_sdk::bandwidth_parse;
 use regex::Regex;
 use solana_sdk::pubkey::Pubkey;
 use std::sync::LazyLock;
 
 pub fn validate_code(val: &str) -> Result<String, String> {
-    if val
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == ':')
-    {
-        Ok(val.to_string())
-    } else {
-        Err(String::from("name must be alphanumeric"))
-    }
+    normalize_account_code(val).map_err(String::from)
 }
 
 pub fn validate_pubkey(val: &str) -> Result<String, String> {
@@ -25,20 +19,9 @@ pub fn validate_pubkey(val: &str) -> Result<String, String> {
 }
 
 pub fn validate_pubkey_or_code(val: &str) -> Result<String, String> {
-    match val.parse::<Pubkey>() {
-        Ok(_) => Ok(val.to_string()),
-        Err(_) => {
-            if val
-                .chars()
-                .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
-                && !val.is_empty()
-            {
-                Ok(val.to_string())
-            } else {
-                Err(String::from("invalid pubkey or code format"))
-            }
-        }
-    }
+    val.parse::<Pubkey>()
+        .map(|pubkey| pubkey.to_string())
+        .or_else(|_| validate_code(val).map_err(|_| "invalid pubkey or code format".to_string()))
 }
 
 pub fn validate_parse_bandwidth(val: &str) -> Result<u64, String> {
@@ -133,6 +116,15 @@ mod tests {
     fn test_validate_code() {
         assert!(validate_code("abc_123-:XYZ").is_ok());
         assert!(validate_code("abc@123").is_err());
+    }
+
+    #[test]
+    fn test_validate_and_normalize_code() {
+        let expected_valid = "abc_123-:XYZ".to_string();
+        let result = validate_code("abc 123-:XYZ");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), expected_valid);
+        assert!(validate_code("abc/123-:XYZ").is_err());
     }
 
     #[test]

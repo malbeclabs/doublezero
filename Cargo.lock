@@ -1681,6 +1681,7 @@ dependencies = [
  "chrono",
  "clap",
  "console",
+ "doublezero-program-common",
  "doublezero-serviceability",
  "doublezero_sdk",
  "eyre",

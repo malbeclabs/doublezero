@@ -58,14 +58,6 @@ async fn test_initialize_internet_latency_samples_success_active_locations() {
         )
         .await
         .unwrap();
-    let (_pda, _) = derive_internet_latency_samples_pda(
-        &ledger.telemetry.program_id,
-        &oracle.pubkey(),
-        &provider_name,
-        &origin_location_pk,
-        &target_location_pk,
-        epoch,
-    );
 
     // Verify account created
     let account = ledger

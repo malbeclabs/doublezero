@@ -197,7 +197,7 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		log.Info("==> Wrote internet latency samples", "sig", sig, "tx", res, "duration", time.Since(start))
 	})
 
-	// Get device latency samples from PDA and verify that it's updated.
+	// Get internet latency samples from PDA and verify that it's updated.
 	t.Run("get internet latency samples after writing first", func(t *testing.T) {
 		ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(30*time.Second))
 		defer cancel()

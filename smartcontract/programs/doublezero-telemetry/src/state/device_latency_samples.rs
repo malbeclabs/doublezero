@@ -54,9 +54,6 @@ pub struct DeviceLatencySamplesHeader {
     // Agent authorized to write RTT samples (must match signer)
     pub origin_device_agent_pk: Pubkey, // 32
 
-    // Required for recreating the PDA (seed authority)
-    pub bump_seed: u8, // 1
-
     // Device initiating sampling
     pub origin_device_pk: Pubkey, // 32
 
@@ -71,6 +68,9 @@ pub struct DeviceLatencySamplesHeader {
 
     // Link over which the RTT samples were taken
     pub link_pk: Pubkey, // 32
+
+    // Required for recreating the PDA (seed authority)
+    pub bump_seed: u8, // 1
 
     // Sampling interval configured by the agent (in microseconds)
     pub sampling_interval_microseconds: u64, // 8

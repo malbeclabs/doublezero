@@ -11,7 +11,9 @@ import (
 type AccountType uint8
 
 const (
-	AccountTypeDeviceLatencySamples AccountType = iota + 1
+	AccountTypeDeviceLatencySamplesV0 AccountType = iota + 1
+	AccountTypeInternetLatencySamplesV0
+	AccountTypeDeviceLatencySamples
 	AccountTypeInternetLatencySamples
 )
 
@@ -24,9 +26,6 @@ type DeviceLatencySamplesHeader struct {
 
 	// Agent authorized to write RTT samples (must match signer)
 	OriginDeviceAgentPK solana.PublicKey // 32
-
-	// Required for recreating the PDA (seed authority)
-	BumpSeed uint8 // 1
 
 	// Device initiating sampling
 	OriginDevicePK solana.PublicKey // 32
@@ -42,6 +41,9 @@ type DeviceLatencySamplesHeader struct {
 
 	// Link over which the RTT samples were taken
 	LinkPK solana.PublicKey // 32
+
+	// Required for recreating the PDA (seed authority)
+	BumpSeed uint8 // 1
 
 	// Sampling interval configured by the agent (in microseconds)
 	SamplingIntervalMicroseconds uint64 // 8
@@ -104,9 +106,6 @@ type InternetLatencySamplesHeader struct {
 	// DataProviderName is the name of the data provider.
 	DataProviderName string // 4 + len
 
-	// BumpSeed is required for recreating the PDA (seed authority).
-	BumpSeed uint8 // 1
-
 	// OracleAgentPK authorized to write latency samples (must match signer)
 	OracleAgentPK solana.PublicKey // 32
 
@@ -115,6 +114,9 @@ type InternetLatencySamplesHeader struct {
 
 	// TargetLocationPK is the location of the target for sample collection.
 	TargetLocationPK solana.PublicKey // 32
+
+	// BumpSeed is required for recreating the PDA (seed authority).
+	BumpSeed uint8 // 1
 
 	// SamplingIntervalMicroseconds is the interval between samples (in microseconds).
 	SamplingIntervalMicroseconds uint64 // 8

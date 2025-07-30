@@ -55,14 +55,14 @@ pub struct InternetLatencySamplesHeader {
     pub epoch: u64, // 8
     // Name of the third-party provider of the sampling probes
     pub data_provider_name: String, // 32 bytes
-    // Required for deriving and recreating the PDA
-    pub bump_seed: u8, // 1
     // Agent authorized to write RTT samples (must match the signer)
     pub oracle_agent_pk: Pubkey, // 32
     // Cached location of the probe origin for query/UI optimization
     pub origin_location_pk: Pubkey, // 32
     // Cached location of the probe target
     pub target_location_pk: Pubkey, // 32
+    // Required for deriving and recreating the PDA
+    pub bump_seed: u8, // 1
     // Sampling interval configured by the agent (in microseconds)
     pub sampling_interval_microseconds: u64, // 8
     // Timestamp of the first written sample (µs since UNIX epoch)

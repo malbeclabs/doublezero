@@ -165,7 +165,7 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		require.Empty(t, account.Samples)
 	})
 
-	// Write device latency samples.
+	// Write internet latency samples.
 	firstStartTimestampMicroseconds := uint64(time.Now().UnixMicro())
 	firstSamples := []uint32{
 		100000,

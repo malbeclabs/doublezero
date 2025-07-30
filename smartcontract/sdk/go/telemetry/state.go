@@ -42,9 +42,6 @@ type DeviceLatencySamplesHeader struct {
 	// Link over which the RTT samples were taken
 	LinkPK solana.PublicKey // 32
 
-	// Required for recreating the PDA (seed authority)
-	BumpSeed uint8 // 1
-
 	// Sampling interval configured by the agent (in microseconds)
 	SamplingIntervalMicroseconds uint64 // 8
 
@@ -114,9 +111,6 @@ type InternetLatencySamplesHeader struct {
 
 	// TargetLocationPK is the location of the target for sample collection.
 	TargetLocationPK solana.PublicKey // 32
-
-	// BumpSeed is required for recreating the PDA (seed authority).
-	BumpSeed uint8 // 1
 
 	// SamplingIntervalMicroseconds is the interval between samples (in microseconds).
 	SamplingIntervalMicroseconds uint64 // 8

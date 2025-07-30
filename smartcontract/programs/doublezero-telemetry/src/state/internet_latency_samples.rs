@@ -34,7 +34,6 @@ const INTERNET_LATENCY_SAMPLES_HEADER_SIZE_MINUS_PROVIDER: usize = {
     1 // account_type
     + 8 // epoch
     + 4 // data_provider_name.len()
-    + 1 // bump_seed
     + 32 // oracle_agent_pk
     + 32 // origin_location_pk
     + 32 // target_location_pk
@@ -61,8 +60,6 @@ pub struct InternetLatencySamplesHeader {
     pub origin_location_pk: Pubkey, // 32
     // Cached location of the probe target
     pub target_location_pk: Pubkey, // 32
-    // Required for deriving and recreating the PDA
-    pub bump_seed: u8, // 1
     // Sampling interval configured by the agent (in microseconds)
     pub sampling_interval_microseconds: u64, // 8
     // Timestamp of the first written sample (µs since UNIX epoch)

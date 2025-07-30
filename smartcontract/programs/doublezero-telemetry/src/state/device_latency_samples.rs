@@ -28,7 +28,6 @@ pub const MAX_DEVICE_LATENCY_SAMPLES: usize = 35_000;
 pub const DEVICE_LATENCY_SAMPLES_HEADER_SIZE: usize = {
     1 // account_type
     + 8 // epoch
-    + 1 // bump_seed
     + 32 // origin_device_agent_pk
     + 32 // origin_device_pk
     + 32 // target_device_pk
@@ -68,9 +67,6 @@ pub struct DeviceLatencySamplesHeader {
 
     // Link over which the RTT samples were taken
     pub link_pk: Pubkey, // 32
-
-    // Required for recreating the PDA (seed authority)
-    pub bump_seed: u8, // 1
 
     // Sampling interval configured by the agent (in microseconds)
     pub sampling_interval_microseconds: u64, // 8

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -9,24 +10,30 @@ import (
 	"syscall"
 	"time"
 
+	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/spf13/cobra"
 
+	"github.com/malbeclabs/doublezero/config"
 	collector "github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/collector"
 	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/exporter"
 	ripeatlas "github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/ripeatlas"
 	wheresitup "github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/wheresitup"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
 const (
 	defaultStateDir                     = "/var/lib/doublezero-internet-latency-collector/state"
 	defaultOutputDir                    = "/var/lib/doublezero-internet-latency-collector/output"
 	defaultAtlasProbesPerLocation       = 2
+	defaultRipeAtlasMeasurementInterval = 1 * time.Hour
+	defaultRipeAtlasExportInterval      = 2 * time.Minute
 	defaultWheresitupCollectionInterval = 2 * time.Minute
 	defaultWheresitupStateFile          = "wheresitup_jobs_to_process.json"
 	defaultLogLevel                     = "info"
 )
 
 var (
+	env                          string
 	stateDir                     string
 	outputDir                    string
 	logLevel                     string
@@ -39,6 +46,11 @@ var (
 	version = "dev"
 	commit  = "none"
 	date    = "unknown"
+
+	ErrEnvRequired = errors.New("env is required")
+
+	networkConfig        *config.NetworkConfig
+	serviceabilityClient *serviceability.Client
 )
 
 var rootCmd = &cobra.Command{
@@ -46,6 +58,19 @@ var rootCmd = &cobra.Command{
 	Short: "DoubleZero internet latency collector",
 	Long: `DoubleZero collector gathers internet latency data from RIPE Atlas
 and Wheresitup services for the DoubleZero network.`,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		log := collector.NewLogger(collector.LogLevel(logLevel))
+
+		var err error
+		networkConfig, err = validateNetworkConfig(env)
+		if err != nil {
+			log.Error("failed to validate network config", "error", err)
+			os.Exit(1)
+		}
+
+		rpcClient := solanarpc.New(networkConfig.LedgerRPCURL)
+		serviceabilityClient = serviceability.New(rpcClient, networkConfig.ServiceabilityProgramID)
+	},
 }
 
 var versionCmd = &cobra.Command{
@@ -66,7 +91,10 @@ RIPE Atlas measurements hourly, and exports RIPE Atlas results every 2 minutes.`
 
 		log.Info("Operation started: run_continuous_collector",
 			slog.String("wheresitup_interval", wheresitupCollectionInterval.String()),
-			slog.Bool("dry_run", dryRun))
+			slog.Bool("dry_run", dryRun),
+			slog.String("env", env),
+			slog.String("serviceability_program_id", networkConfig.ServiceabilityProgramID.String()),
+		)
 
 		ripeatlasCollector, close := newRIPEAtlasCollector(log, outputDir)
 		defer close()
@@ -80,8 +108,8 @@ RIPE Atlas measurements hourly, and exports RIPE Atlas results every 2 minutes.`
 			RipeAtlas:  ripeatlasCollector,
 
 			WheresitupCollectionInterval: wheresitupCollectionInterval,
-			RipeAtlasMeasurementInterval: 1 * time.Hour,   // Create measurements hourly
-			RipeAtlasExportInterval:      2 * time.Minute, // Export results every 2 minutes
+			RipeAtlasMeasurementInterval: defaultRipeAtlasMeasurementInterval,
+			RipeAtlasExportInterval:      defaultRipeAtlasExportInterval,
 			DryRun:                       dryRun,
 			ProcessedJobsFile:            wheresitupStateFile,
 			StateDir:                     stateDir,
@@ -121,7 +149,7 @@ var ripeatlasListProbesCmd = &cobra.Command{
 		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 		defer cancel()
 
-		locations := loadLocations(ctx, log)
+		locations := loadLocations(ctx, log, serviceabilityClient)
 		if locations == nil {
 			return
 		}
@@ -230,7 +258,7 @@ var wheresitupListSourcesCmd = &cobra.Command{
 		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 		defer cancel()
 
-		locations := loadLocations(ctx, log)
+		locations := loadLocations(ctx, log, serviceabilityClient)
 		if locations == nil {
 			return
 		}
@@ -268,7 +296,7 @@ var wheresitupListJobsCmd = &cobra.Command{
 	},
 }
 
-func loadLocations(ctx context.Context, logger *slog.Logger) []collector.LocationMatch {
+func loadLocations(ctx context.Context, logger *slog.Logger, serviceabilityClient *serviceability.Client) []collector.LocationMatch {
 	if locationFile != "" {
 		logger.Info("Loading locations from JSON file", slog.String("file", locationFile))
 		jsonLocations, err := collector.LoadLocationsFromJSON(logger, locationFile)
@@ -289,11 +317,12 @@ func loadLocations(ctx context.Context, logger *slog.Logger) []collector.Locatio
 		return locations
 	} else {
 		logger.Info("Loading locations from blockchain")
-		return collector.GetLocations(ctx, logger)
+		return collector.GetLocations(ctx, logger, serviceabilityClient)
 	}
 }
 
 func init() {
+	rootCmd.PersistentFlags().StringVar(&env, "env", "", "Environment to run in (dev, testnet, mainnet)")
 	rootCmd.PersistentFlags().StringVar(&stateDir, "state-dir", defaultStateDir, "Directory to store state files (timestamps, processed job IDs)")
 	rootCmd.PersistentFlags().StringVar(&outputDir, "output-dir", defaultOutputDir, "Directory to store output files (measurement results)")
 	rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", defaultLogLevel, "Log level (debug, info, warn, error)")
@@ -338,7 +367,9 @@ func newRIPEAtlasCollector(log *slog.Logger, outputDir string) (*ripeatlas.Colle
 		log.Error("Operation failed: create_csv_exporter", "error", err)
 		os.Exit(1)
 	}
-	ripeatlasCollector := ripeatlas.NewCollector(log, exporter)
+	ripeatlasCollector := ripeatlas.NewCollector(log, exporter, func(ctx context.Context) []collector.LocationMatch {
+		return collector.GetLocations(ctx, log, serviceabilityClient)
+	})
 	return ripeatlasCollector, func() {
 		exporter.Close()
 	}
@@ -350,8 +381,22 @@ func newWheresitupCollector(log *slog.Logger, outputDir string) (*wheresitup.Col
 		log.Error("Operation failed: create_csv_exporter", "error", err)
 		os.Exit(1)
 	}
-	wheresitupCollector := wheresitup.NewCollector(log, exporter)
+	wheresitupCollector := wheresitup.NewCollector(log, exporter, func(ctx context.Context) []collector.LocationMatch {
+		return collector.GetLocations(ctx, log, serviceabilityClient)
+	})
 	return wheresitupCollector, func() {
 		exporter.Close()
 	}
+}
+
+func validateNetworkConfig(env string) (*config.NetworkConfig, error) {
+	if env == "" {
+		return nil, ErrEnvRequired
+	}
+
+	networkConfig, err := config.NetworkConfigForEnv(env)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get network config: %w", err)
+	}
+	return networkConfig, nil
 }

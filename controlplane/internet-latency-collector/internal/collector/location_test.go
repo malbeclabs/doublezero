@@ -740,7 +740,7 @@ func TestInternetLatency_Location_GetLocations(t *testing.T) {
 	// we can only test that it doesn't panic and returns a slice
 	t.Run("Returns locations array without panic", func(t *testing.T) {
 		ctx := t.Context()
-		locations := GetLocations(ctx, log)
+		locations := GetLocations(ctx, log, &mockServiceabilityClient{})
 
 		// Should return a slice (may be empty depending on blockchain state)
 		require.NotNil(t, locations, "GetLocations() should return non-nil slice")

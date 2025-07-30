@@ -54,9 +54,10 @@ type MeasurementInfo struct {
 }
 
 type Collector struct {
-	client   clientInterface
-	log      *slog.Logger
-	exporter exporter.Exporter
+	client           clientInterface
+	log              *slog.Logger
+	exporter         exporter.Exporter
+	getLocationsFunc func(ctx context.Context) []collector.LocationMatch
 }
 
 type MeasurementSpec struct {
@@ -68,11 +69,12 @@ type MeasurementSpec struct {
 	TargetProbe        Probe
 }
 
-func NewCollector(logger *slog.Logger, exporter exporter.Exporter) *Collector {
+func NewCollector(logger *slog.Logger, exporter exporter.Exporter, getLocationsFunc func(ctx context.Context) []collector.LocationMatch) *Collector {
 	return &Collector{
-		client:   NewClient(logger),
-		log:      logger,
-		exporter: exporter,
+		client:           NewClient(logger),
+		log:              logger,
+		exporter:         exporter,
+		getLocationsFunc: getLocationsFunc,
 	}
 }
 
@@ -482,7 +484,7 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 func (c *Collector) RunRipeAtlasMeasurementCreation(ctx context.Context, dryRun bool, probesPerLocation int, outputDir string, stateDir string) error {
 	c.log.Info("Running RIPE Atlas measurement creation")
 
-	locations := collector.GetLocations(ctx, c.log)
+	locations := c.getLocationsFunc(ctx)
 	if len(locations) == 0 {
 		c.log.Warn("No locations found for RIPE Atlas measurements")
 		return collector.ErrNoDevicesFound

@@ -9,7 +9,6 @@ import (
 	"os"
 	"sort"
 
-	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
@@ -104,22 +103,12 @@ func CalculateDistanceToLocation(sourceLat, sourceLng float64, targetLocation Lo
 	return DistanceResult{Distance: distance, Valid: true}
 }
 
-func GetLocations(ctx context.Context, logger *slog.Logger) []LocationMatch {
+type ServiceabilityClient interface {
+	GetProgramData(ctx context.Context) (*serviceability.ProgramData, error)
+}
 
-	rpcEndpoint := dzsdk.DZ_LEDGER_RPC_URL
-	programId := serviceability.SERVICEABILITY_PROGRAM_ID_TESTNET
-
-	options := []dzsdk.Option{
-		dzsdk.WithServiceabilityProgramID(programId),
-	}
-
-	client, err := dzsdk.New(logger, rpcEndpoint, options...)
-	if err != nil {
-		logger.Error("Error creating SDK client", slog.String("error", err.Error()))
-		return []LocationMatch{}
-	}
-
-	data, err := client.Serviceability.GetProgramData(ctx)
+func GetLocations(ctx context.Context, logger *slog.Logger, serviceabilityClient ServiceabilityClient) []LocationMatch {
+	data, err := serviceabilityClient.GetProgramData(ctx)
 	if err != nil {
 		logger.Error("Error loading program data", slog.String("error", err.Error()))
 		return []LocationMatch{}

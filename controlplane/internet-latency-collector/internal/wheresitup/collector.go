@@ -20,13 +20,11 @@ const (
 	ExpireAfter            = "10 minutes" // Relative time like "1 hour" - https://wheresitup.com/docs/?shell#creating-jobs
 )
 
-type locationFetcher func(ctx context.Context, log *slog.Logger) []collector.LocationMatch
-
 type Collector struct {
 	client           clientInterface
 	log              *slog.Logger
 	jobWaitTimeout   time.Duration // Duration to wait between job creation and export
-	locationsFetcher locationFetcher
+	getLocationsFunc func(ctx context.Context) []collector.LocationMatch
 	exporter         exporter.Exporter
 }
 
@@ -41,12 +39,12 @@ type clientInterface interface {
 	GetCredit(ctx context.Context) (int, error)
 }
 
-func NewCollector(logger *slog.Logger, exporter exporter.Exporter) *Collector {
+func NewCollector(logger *slog.Logger, exporter exporter.Exporter, getLocationsFunc func(ctx context.Context) []collector.LocationMatch) *Collector {
 	return &Collector{
 		client:           NewClient(logger),
 		log:              logger,
 		jobWaitTimeout:   RequestTimeout, // Default to 30 seconds
-		locationsFetcher: collector.GetLocations,
+		getLocationsFunc: getLocationsFunc,
 		exporter:         exporter,
 	}
 }
@@ -55,12 +53,6 @@ func NewCollector(logger *slog.Logger, exporter exporter.Exporter) *Collector {
 // Used for testing to avoid waiting 30 seconds.
 func (c *Collector) SetJobWaitTimeout(timeout time.Duration) {
 	c.jobWaitTimeout = timeout
-}
-
-// SetLocationsFetcher sets a custom location fetcher function.
-// Used for testing to avoid blockchain calls.
-func (c *Collector) SetLocationsFetcher(fetcher locationFetcher) {
-	c.locationsFetcher = fetcher
 }
 
 func (c *Collector) PrintSources(ctx context.Context, locations []collector.LocationMatch) error {
@@ -393,12 +385,7 @@ func (c *Collector) buildLocationMapping(ctx context.Context, locations []collec
 }
 
 func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile, outputDir string) error {
-	// Use default fetcher if not set (for backward compatibility with tests)
-	fetcher := c.locationsFetcher
-	if fetcher == nil {
-		fetcher = collector.GetLocations
-	}
-	locations := fetcher(ctx, c.log)
+	locations := c.getLocationsFunc(ctx)
 	locationMap, err := c.buildLocationMapping(ctx, locations)
 	if err != nil {
 		return collector.NewValidationError("build_location_mapping", "failed to build location mapping", err).
@@ -607,12 +594,7 @@ func (c *Collector) Run(ctx context.Context, interval time.Duration, dryRun bool
 			return nil
 		case <-ticker.C:
 			c.log.Info("Running Wheresitup job creation cycle")
-			// Use default fetcher if not set (for backward compatibility with tests)
-			fetcher := c.locationsFetcher
-			if fetcher == nil {
-				fetcher = collector.GetLocations
-			}
-			locations := fetcher(ctx, c.log)
+			locations := c.getLocationsFunc(ctx)
 			if err := c.RunJobCreation(ctx, locations, dryRun, fullJobIDsPath); err != nil {
 				c.log.Error("Operation failed: Wheresitup run_job_creation", slog.String("error", err.Error()))
 			} else {

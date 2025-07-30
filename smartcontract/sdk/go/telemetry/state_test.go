@@ -21,7 +21,6 @@ func TestSDK_Telemetry_State_DeviceLatencySamples(t *testing.T) {
 		original := &DeviceLatencySamples{
 			DeviceLatencySamplesHeader: DeviceLatencySamplesHeader{
 				AccountType:                  AccountTypeDeviceLatencySamples,
-				BumpSeed:                     255,
 				Epoch:                        42,
 				OriginDeviceAgentPK:          origin,
 				OriginDevicePK:               origin,
@@ -120,7 +119,6 @@ func TestSDK_Telemetry_State_InternetLatencySamples(t *testing.T) {
 		original := &InternetLatencySamples{
 			InternetLatencySamplesHeader: InternetLatencySamplesHeader{
 				AccountType:                  AccountTypeInternetLatencySamples,
-				BumpSeed:                     1,
 				Epoch:                        100,
 				DataProviderName:             "test-data-provider-1",
 				OracleAgentPK:                oracle,

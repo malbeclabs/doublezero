@@ -238,7 +238,7 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		require.NotNil(t, res.Meta.Err, "transaction should fail")
 	})
 
-	// Write more device latency samples.
+	// Write more internet latency samples.
 	secondStartTimestampMicroseconds := uint64(time.Now().UnixMicro())
 	secondSamples := []uint32{
 		600000,

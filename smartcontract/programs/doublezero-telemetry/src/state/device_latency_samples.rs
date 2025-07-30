@@ -164,11 +164,6 @@ impl AccountTypeInfo for DeviceLatencySamples {
         DEVICE_LATENCY_SAMPLES_HEADER_SIZE + self.samples.len() * 4
     }
 
-    /// Returns the bump seed used during PDA derivation.
-    fn bump_seed(&self) -> u8 {
-        self.header.bump_seed
-    }
-
     /// Returns the public key of the agent who owns/writes to this account.
     fn owner(&self) -> Pubkey {
         self.header.origin_device_agent_pk
@@ -185,7 +180,6 @@ mod tests {
         let val = DeviceLatencySamples {
             header: DeviceLatencySamplesHeader {
                 account_type: AccountType::DeviceLatencySamples,
-                bump_seed: 255,
                 epoch: 19800,
                 origin_device_agent_pk: Pubkey::new_unique(),
                 origin_device_pk: Pubkey::new_unique(),
@@ -207,7 +201,6 @@ mod tests {
         let header2 = val2.header.clone();
 
         assert_eq!(header.account_type, header2.account_type);
-        assert_eq!(header.bump_seed, header2.bump_seed);
         assert_eq!(header.epoch, header2.epoch);
         assert_eq!(header.origin_device_pk, header2.origin_device_pk);
         assert_eq!(header.target_device_pk, header2.target_device_pk);

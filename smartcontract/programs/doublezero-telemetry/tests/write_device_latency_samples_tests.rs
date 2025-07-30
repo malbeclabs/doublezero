@@ -420,7 +420,6 @@ async fn test_write_device_latency_samples_fail_invalid_account_owner() {
             sampling_interval_microseconds: 1_000_000,
             start_timestamp_microseconds: 0,
             next_sample_index: 0,
-            bump_seed: 42,
             _unused: [0; 128],
         },
         samples: vec![],

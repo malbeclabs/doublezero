@@ -154,6 +154,15 @@ mod tests {
             .expect_update_contributor()
             .with(predicate::eq(UpdateContributorCommand {
                 pubkey: pda_pubkey,
+                code: Some("test new".to_string()),
+            }))
+            .times(1)
+            .returning(move |_| Err(eyre::eyre!("invalid program code")));
+
+        client
+            .expect_update_contributor()
+            .with(predicate::eq(UpdateContributorCommand {
+                pubkey: pda_pubkey,
                 code: Some("test_new".to_string()),
                 owner: Some(Pubkey::default()),
             }))

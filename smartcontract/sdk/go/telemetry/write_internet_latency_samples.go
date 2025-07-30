@@ -62,6 +62,7 @@ func BuildWriteInternetLatencySamplesInstruction(
 	// Derive the PDA.
 	pda, _, err := DeriveInternetLatencySamplesPDA(
 		programID,
+		config.OracleAgentPK,
 		config.DataProviderName,
 		config.OriginLocationPK,
 		config.TargetLocationPK,

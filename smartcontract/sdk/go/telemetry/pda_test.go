@@ -79,13 +79,14 @@ func TestSDK_Telemetry_DeriveInternetLatencySamplesPDA(t *testing.T) {
 
 	// Use a known program ID for testing
 	programID := solana.NewWallet().PublicKey()
+	collectorOraclePK := solana.NewWallet().PublicKey()
 	dataProviderName := "test"
 	originLocationPK := solana.NewWallet().PublicKey()
 	targetLocationPK := solana.NewWallet().PublicKey()
 	epoch := uint64(100)
 
 	// Derive PDA
-	pda1, bump1, err := telemetry.DeriveInternetLatencySamplesPDA(programID, dataProviderName, originLocationPK, targetLocationPK, epoch)
+	pda1, bump1, err := telemetry.DeriveInternetLatencySamplesPDA(programID, collectorOraclePK, dataProviderName, originLocationPK, targetLocationPK, epoch)
 	require.NoError(t, err)
 
 	// Verify PDA is not zero
@@ -94,8 +95,8 @@ func TestSDK_Telemetry_DeriveInternetLatencySamplesPDA(t *testing.T) {
 	// Verify bump is valid (0-255)
 	require.LessOrEqual(t, int(bump1), 255, "Invalid bump seed")
 
-	// Test that swapping device pubkeys produces different PDAs
-	pda2, _, err := telemetry.DeriveInternetLatencySamplesPDA(programID, dataProviderName, targetLocationPK, originLocationPK, epoch)
+	// Test that swapping location pubkeys produces different PDAs
+	pda2, _, err := telemetry.DeriveInternetLatencySamplesPDA(programID, collectorOraclePK, dataProviderName, targetLocationPK, originLocationPK, epoch)
 	require.NoError(t, err)
 	require.NotEqual(t, pda1, pda2, "PDA should be different if device key order changes")
 }
@@ -104,15 +105,16 @@ func TestSDK_Telemetry_DeriveInternetLatencySamplesPDADifferentEpochs(t *testing
 	t.Parallel()
 
 	programID := solana.NewWallet().PublicKey()
+	collectorOraclePK := solana.NewWallet().PublicKey()
 	dataProviderName := "test"
 	originLocationPK := solana.NewWallet().PublicKey()
 	targetLocationPK := solana.NewWallet().PublicKey()
 
 	// Derive PDAs for different epochs
-	pda1, _, err := telemetry.DeriveInternetLatencySamplesPDA(programID, dataProviderName, originLocationPK, targetLocationPK, 100)
+	pda1, _, err := telemetry.DeriveInternetLatencySamplesPDA(programID, collectorOraclePK, dataProviderName, originLocationPK, targetLocationPK, 100)
 	require.NoError(t, err)
 
-	pda2, _, err := telemetry.DeriveInternetLatencySamplesPDA(programID, dataProviderName, originLocationPK, targetLocationPK, 101)
+	pda2, _, err := telemetry.DeriveInternetLatencySamplesPDA(programID, collectorOraclePK, dataProviderName, originLocationPK, targetLocationPK, 101)
 	require.NoError(t, err)
 
 	// PDAs should be different for different epochs
@@ -123,6 +125,7 @@ func TestSDK_Telemetry_DeriveInternetLatencySamplesPDADifferentDataProviders(t *
 	t.Parallel()
 
 	programID := solana.NewWallet().PublicKey()
+	collectorOraclePK := solana.NewWallet().PublicKey()
 	dataProviderName := "test"
 	dataProviderName2 := "test2"
 	originLocationPK := solana.NewWallet().PublicKey()
@@ -130,10 +133,10 @@ func TestSDK_Telemetry_DeriveInternetLatencySamplesPDADifferentDataProviders(t *
 	epoch := uint64(100)
 
 	// Derive PDAs for different data providers
-	pda1, _, err := telemetry.DeriveInternetLatencySamplesPDA(programID, dataProviderName, originLocationPK, targetLocationPK, epoch)
+	pda1, _, err := telemetry.DeriveInternetLatencySamplesPDA(programID, collectorOraclePK, dataProviderName, originLocationPK, targetLocationPK, epoch)
 	require.NoError(t, err)
 
-	pda2, _, err := telemetry.DeriveInternetLatencySamplesPDA(programID, dataProviderName2, originLocationPK, targetLocationPK, epoch)
+	pda2, _, err := telemetry.DeriveInternetLatencySamplesPDA(programID, collectorOraclePK, dataProviderName2, originLocationPK, targetLocationPK, epoch)
 	require.NoError(t, err)
 
 	// PDAs should be different for different data providers

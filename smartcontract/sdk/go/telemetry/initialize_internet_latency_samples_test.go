@@ -43,9 +43,9 @@ func TestSDK_Telemetry_InitializeInternetLatencySamples_HappyPath(t *testing.T) 
 	require.True(t, accounts[1].IsSigner)
 	require.True(t, accounts[1].IsWritable)
 
-	require.Equal(t, solana.SystemProgramID, accounts[5].PublicKey)
-	require.False(t, accounts[5].IsSigner)
-	require.False(t, accounts[5].IsWritable)
+	require.Equal(t, solana.SystemProgramID, accounts[4].PublicKey)
+	require.False(t, accounts[4].IsSigner)
+	require.False(t, accounts[4].IsWritable)
 
 	data, err := ix.Data()
 	require.NoError(t, err)

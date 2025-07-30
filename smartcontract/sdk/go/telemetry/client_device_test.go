@@ -151,12 +151,13 @@ func TestSDK_Telemetry_Client_InitializeDeviceLatencySamples_HappyPath(t *testin
 
 	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
 
+	epoch := uint64(42)
 	config := telemetry.InitializeDeviceLatencySamplesInstructionConfig{
 		AgentPK:                      signer.PublicKey(),
 		OriginDevicePK:               solana.NewWallet().PublicKey(),
 		TargetDevicePK:               solana.NewWallet().PublicKey(),
 		LinkPK:                       solana.NewWallet().PublicKey(),
-		Epoch:                        42,
+		Epoch:                        &epoch,
 		SamplingIntervalMicroseconds: 500_000,
 	}
 
@@ -178,12 +179,13 @@ func TestSDK_Telemetry_Client_InitializeDeviceLatencySamples_BuildFails(t *testi
 	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
 
 	// Invalid: missing AgentPK (validation will fail)
+	epoch := uint64(42)
 	config := telemetry.InitializeDeviceLatencySamplesInstructionConfig{
 		// AgentPK: omitted
 		OriginDevicePK:               solana.NewWallet().PublicKey(),
 		TargetDevicePK:               solana.NewWallet().PublicKey(),
 		LinkPK:                       solana.NewWallet().PublicKey(),
-		Epoch:                        42,
+		Epoch:                        &epoch,
 		SamplingIntervalMicroseconds: 500_000,
 	}
 
@@ -222,12 +224,13 @@ func TestSDK_Telemetry_Client_InitializeDeviceLatencySamples_ExecutionFails(t *t
 
 	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
 
+	epoch := uint64(42)
 	config := telemetry.InitializeDeviceLatencySamplesInstructionConfig{
 		AgentPK:                      signer.PublicKey(), // signer must match
 		OriginDevicePK:               solana.NewWallet().PublicKey(),
 		TargetDevicePK:               solana.NewWallet().PublicKey(),
 		LinkPK:                       solana.NewWallet().PublicKey(),
-		Epoch:                        42,
+		Epoch:                        &epoch,
 		SamplingIntervalMicroseconds: 500_000,
 	}
 
@@ -272,12 +275,13 @@ func TestSDK_Telemetry_Client_WriteDeviceLatencySamples_HappyPath(t *testing.T) 
 
 	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
 
+	epoch := uint64(42)
 	config := telemetry.WriteDeviceLatencySamplesInstructionConfig{
 		AgentPK:                    signer.PublicKey(), // must match signer
 		OriginDevicePK:             solana.NewWallet().PublicKey(),
 		TargetDevicePK:             solana.NewWallet().PublicKey(),
 		LinkPK:                     solana.NewWallet().PublicKey(),
-		Epoch:                      42,
+		Epoch:                      &epoch,
 		StartTimestampMicroseconds: 1_600_000_000,
 		Samples:                    []uint32{1, 2, 3},
 	}
@@ -322,12 +326,13 @@ func TestSDK_Telemetry_Client_WriteDeviceLatencySamples_SamplesBatchTooLarge(t *
 
 	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
 
+	epoch := uint64(42)
 	config := telemetry.WriteDeviceLatencySamplesInstructionConfig{
 		AgentPK:                    signer.PublicKey(), // must match signer
 		OriginDevicePK:             solana.NewWallet().PublicKey(),
 		TargetDevicePK:             solana.NewWallet().PublicKey(),
 		LinkPK:                     solana.NewWallet().PublicKey(),
-		Epoch:                      42,
+		Epoch:                      &epoch,
 		StartTimestampMicroseconds: 1_600_000_000,
 		Samples:                    make([]uint32, telemetry.MaxSamplesPerBatch+1),
 	}
@@ -373,12 +378,13 @@ func TestSDK_Telemetry_Client_WriteDeviceLatencySamples_PreflightAccountNotFound
 
 	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
 
+	epoch := uint64(42)
 	config := telemetry.WriteDeviceLatencySamplesInstructionConfig{
 		AgentPK:                    signer.PublicKey(),
 		OriginDevicePK:             solana.NewWallet().PublicKey(),
 		TargetDevicePK:             solana.NewWallet().PublicKey(),
 		LinkPK:                     solana.NewWallet().PublicKey(),
-		Epoch:                      42,
+		Epoch:                      &epoch,
 		StartTimestampMicroseconds: 1_600_000_000,
 		Samples:                    []uint32{1, 2, 3},
 	}
@@ -432,12 +438,13 @@ func TestSDK_Telemetry_Client_WriteDeviceLatencySamples_CustomInstructionErrorAc
 
 	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
 
+	epoch := uint64(42)
 	config := telemetry.WriteDeviceLatencySamplesInstructionConfig{
 		AgentPK:                    signer.PublicKey(),
 		OriginDevicePK:             solana.NewWallet().PublicKey(),
 		TargetDevicePK:             solana.NewWallet().PublicKey(),
 		LinkPK:                     solana.NewWallet().PublicKey(),
-		Epoch:                      42,
+		Epoch:                      &epoch,
 		StartTimestampMicroseconds: 1_600_000_000,
 		Samples:                    []uint32{1, 2, 3},
 	}
@@ -460,12 +467,13 @@ func TestSDK_Telemetry_Client_WriteDeviceLatencySamples_BuildFails(t *testing.T)
 	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
 
 	// Intentionally missing AgentPK
+	epoch := uint64(42)
 	config := telemetry.WriteDeviceLatencySamplesInstructionConfig{
 		// AgentPK: missing
 		OriginDevicePK:             solana.NewWallet().PublicKey(),
 		TargetDevicePK:             solana.NewWallet().PublicKey(),
 		LinkPK:                     solana.NewWallet().PublicKey(),
-		Epoch:                      42,
+		Epoch:                      &epoch,
 		StartTimestampMicroseconds: 1_600_000_000,
 		Samples:                    []uint32{10, 20},
 	}
@@ -505,12 +513,13 @@ func TestSDK_Telemetry_Client_WriteDeviceLatencySamples_ExecutionFails(t *testin
 
 	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
 
+	epoch := uint64(42)
 	config := telemetry.WriteDeviceLatencySamplesInstructionConfig{
 		AgentPK:                    signer.PublicKey(), // must match signer
 		OriginDevicePK:             solana.NewWallet().PublicKey(),
 		TargetDevicePK:             solana.NewWallet().PublicKey(),
 		LinkPK:                     solana.NewWallet().PublicKey(),
-		Epoch:                      42,
+		Epoch:                      &epoch,
 		StartTimestampMicroseconds: 1_600_000_000,
 		Samples:                    []uint32{10, 20},
 	}

@@ -12,7 +12,7 @@ type InitializeDeviceLatencySamplesInstructionConfig struct {
 	OriginDevicePK               solana.PublicKey
 	TargetDevicePK               solana.PublicKey
 	LinkPK                       solana.PublicKey
-	Epoch                        uint64
+	Epoch                        *uint64
 	SamplingIntervalMicroseconds uint64
 }
 
@@ -29,7 +29,7 @@ func (c *InitializeDeviceLatencySamplesInstructionConfig) Validate() error {
 	if c.LinkPK.IsZero() {
 		return fmt.Errorf("link public key is required")
 	}
-	if c.Epoch == 0 {
+	if c.Epoch == nil {
 		return fmt.Errorf("epoch is required")
 	}
 	if c.SamplingIntervalMicroseconds == 0 {
@@ -45,6 +45,7 @@ func BuildInitializeDeviceLatencySamplesInstruction(
 	if err := config.Validate(); err != nil {
 		return nil, fmt.Errorf("failed to validate config: %w", err)
 	}
+	epoch := *config.Epoch
 
 	// Serialize the instruction data
 	data, err := borsh.Serialize(struct {
@@ -53,7 +54,7 @@ func BuildInitializeDeviceLatencySamplesInstruction(
 		SamplingIntervalMicroseconds uint64
 	}{
 		Discriminator:                uint8(InitializeDeviceLatencySamplesInstructionIndex),
-		Epoch:                        config.Epoch,
+		Epoch:                        epoch,
 		SamplingIntervalMicroseconds: config.SamplingIntervalMicroseconds,
 	})
 	if err != nil {
@@ -66,7 +67,7 @@ func BuildInitializeDeviceLatencySamplesInstruction(
 		config.OriginDevicePK,
 		config.TargetDevicePK,
 		config.LinkPK,
-		config.Epoch,
+		epoch,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to derive PDA: %w", err)

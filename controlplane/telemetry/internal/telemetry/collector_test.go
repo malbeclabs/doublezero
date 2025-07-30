@@ -75,31 +75,31 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 		link2_1 := stringToPubkey("link2-1")
 		link2_3 := stringToPubkey("link2-3")
 
-		ts := time.Now()
+		epoch := uint64(100)
 		originDevice1Link1_2Key := telemetry.AccountKey{
 			OriginDevicePK: device1PK,
 			TargetDevicePK: device2PK,
 			LinkPK:         link1_2,
-			Epoch:          telemetry.DeriveEpoch(ts),
+			Epoch:          epoch,
 		}
 		originDevice1Link1_3Key := telemetry.AccountKey{
 			OriginDevicePK: device1PK,
 			TargetDevicePK: device3PK,
 			LinkPK:         link1_3,
-			Epoch:          telemetry.DeriveEpoch(ts),
+			Epoch:          epoch,
 		}
 
 		originDevice2Link2_1Key := telemetry.AccountKey{
 			OriginDevicePK: device2PK,
 			TargetDevicePK: device1PK,
 			LinkPK:         link2_1,
-			Epoch:          telemetry.DeriveEpoch(ts),
+			Epoch:          epoch,
 		}
 		originDevice2Link2_3Key := telemetry.AccountKey{
 			OriginDevicePK: device2PK,
 			TargetDevicePK: device3PK,
 			LinkPK:         link2_3,
-			Epoch:          telemetry.DeriveEpoch(ts),
+			Epoch:          epoch,
 		}
 
 		telemetryProgram1 := newMemoryTelemetryProgramClient()
@@ -273,6 +273,9 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 			TWAMPReflector:         reflector,
 			PeerDiscovery:          peerDiscovery,
 			TelemetryProgramClient: telemetryProgram,
+			GetCurrentEpochFunc: func(ctx context.Context) (uint64, error) {
+				return 100, nil
+			},
 		})
 		require.NoError(t, err)
 
@@ -283,7 +286,7 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 			require.NoError(t, collector.Run(ctx))
 		}()
 
-		epoch := telemetry.DeriveEpoch(time.Now())
+		epoch := uint64(100)
 
 		accountKey := telemetry.AccountKey{
 			OriginDevicePK: devicePK,
@@ -393,11 +396,13 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 			require.NoError(t, collector.Run(ctx))
 		}()
 
+		epoch := uint64(100)
+
 		key := telemetry.AccountKey{
 			OriginDevicePK: devicePK,
 			TargetDevicePK: peerPK,
 			LinkPK:         linkPK,
-			Epoch:          telemetry.DeriveEpoch(time.Now()),
+			Epoch:          epoch,
 		}
 
 		// Wait for multiple samples
@@ -434,6 +439,9 @@ func newTestCollector(t *testing.T, log *slog.Logger, localDevicePK solana.Publi
 		TWAMPReflector:         reflector,
 		PeerDiscovery:          peerDiscovery,
 		TelemetryProgramClient: telemetryProgramClient,
+		GetCurrentEpochFunc: func(ctx context.Context) (uint64, error) {
+			return 100, nil
+		},
 	})
 	require.NoError(t, err)
 

@@ -11,12 +11,13 @@ import (
 )
 
 type PingerConfig struct {
-	LocalDevicePK solana.PublicKey
-	Interval      time.Duration
-	ProbeTimeout  time.Duration
-	Peers         PeerDiscovery
-	Buffer        *AccountsBuffer
-	GetSender     func(ctx context.Context, peer *Peer) twamplight.Sender
+	LocalDevicePK   solana.PublicKey
+	Interval        time.Duration
+	ProbeTimeout    time.Duration
+	Peers           PeerDiscovery
+	Buffer          *AccountsBuffer
+	GetSender       func(ctx context.Context, peer *Peer) twamplight.Sender
+	GetCurrentEpoch func(ctx context.Context) (uint64, error)
 }
 
 // Pinger is responsible for periodically probing remote peers using TWAMP.
@@ -49,6 +50,12 @@ func (p *Pinger) Run(ctx context.Context) error {
 }
 
 func (p *Pinger) Tick(ctx context.Context) {
+	epoch, err := p.cfg.GetCurrentEpoch(ctx)
+	if err != nil {
+		p.log.Error("failed to get current epoch", "error", err)
+		return
+	}
+
 	peers := p.cfg.Peers.GetPeers()
 	var wg sync.WaitGroup
 	for _, peer := range peers {
@@ -61,14 +68,14 @@ func (p *Pinger) Tick(ctx context.Context) {
 				return
 			}
 
-			ts := time.Now().UTC()
-
 			accountKey := AccountKey{
 				OriginDevicePK: p.cfg.LocalDevicePK,
 				TargetDevicePK: peer.DevicePK,
 				LinkPK:         peer.LinkPK,
-				Epoch:          DeriveEpoch(ts),
+				Epoch:          epoch,
 			}
+
+			ts := time.Now().UTC()
 
 			if peer.Tunnel == nil {
 				p.log.Debug("Tunnel not found, recording loss", "device", peer.DevicePK.String(), "link", peer.LinkPK.String())

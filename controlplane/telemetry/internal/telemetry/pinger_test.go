@@ -28,7 +28,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 	t.Run("records successful RTT sample", func(t *testing.T) {
 		t.Parallel()
 
-		now := time.Now().UTC()
+		epoch := uint64(100)
 		devicePK := newPK(1)
 		peerPK := newPK(2)
 		linkPK := newPK(3)
@@ -55,6 +55,9 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 			Peers:         mockPeers,
 			Buffer:        buffer,
 			GetSender:     getSender,
+			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+				return epoch, nil
+			},
 		})
 
 		pinger.Tick(context.Background())
@@ -64,7 +67,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 			OriginDevicePK: devicePK,
 			TargetDevicePK: peerPK,
 			LinkPK:         linkPK,
-			Epoch:          telemetry.DeriveEpoch(now),
+			Epoch:          epoch,
 		}
 
 		s, ok := samples[key]
@@ -96,6 +99,9 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 			Peers:         mockPeers,
 			Buffer:        buffer,
 			GetSender:     func(_ context.Context, _ *telemetry.Peer) twamplight.Sender { return nil },
+			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+				return 100, nil
+			},
 		})
 
 		pinger.Tick(context.Background())
@@ -139,6 +145,9 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 			Peers:         mockPeers,
 			Buffer:        buffer,
 			GetSender:     func(_ context.Context, _ *telemetry.Peer) twamplight.Sender { return nil },
+			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+				return 100, nil
+			},
 		})
 
 		pinger.Tick(context.Background())
@@ -183,6 +192,9 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 			Peers:         mockPeers,
 			Buffer:        buffer,
 			GetSender:     func(_ context.Context, _ *telemetry.Peer) twamplight.Sender { return mockSender },
+			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+				return 100, nil
+			},
 		})
 
 		pinger.Tick(context.Background())

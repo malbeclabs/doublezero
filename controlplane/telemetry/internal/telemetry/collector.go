@@ -46,21 +46,27 @@ func New(log *slog.Logger, cfg Config) (*Collector, error) {
 		buffer:    buffer,
 	}
 
-	c.submitter = NewSubmitter(log, &SubmitterConfig{
+	var err error
+	c.submitter, err = NewSubmitter(log, &SubmitterConfig{
 		Interval:           cfg.SubmissionInterval,
 		Buffer:             buffer,
 		MetricsPublisherPK: cfg.MetricsPublisherPK,
 		ProbeInterval:      cfg.ProbeInterval,
 		ProgramClient:      cfg.TelemetryProgramClient,
+		GetCurrentEpoch:    cfg.GetCurrentEpochFunc,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create submitter: %w", err)
+	}
 
 	c.pinger = NewPinger(log, &PingerConfig{
-		LocalDevicePK: cfg.LocalDevicePK,
-		Interval:      cfg.ProbeInterval,
-		ProbeTimeout:  cfg.TWAMPSenderTimeout,
-		Peers:         cfg.PeerDiscovery,
-		Buffer:        buffer,
-		GetSender:     c.getOrCreateSender,
+		LocalDevicePK:   cfg.LocalDevicePK,
+		Interval:        cfg.ProbeInterval,
+		ProbeTimeout:    cfg.TWAMPSenderTimeout,
+		Peers:           cfg.PeerDiscovery,
+		Buffer:          buffer,
+		GetSender:       c.getOrCreateSender,
+		GetCurrentEpoch: cfg.GetCurrentEpochFunc,
 	})
 
 	return c, nil

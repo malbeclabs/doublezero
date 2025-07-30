@@ -142,7 +142,7 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 			OriginDevicePK:             la2DevicePK,
 			TargetDevicePK:             ny5DevicePK,
 			LinkPK:                     la2ToNy5LinkPK,
-			Epoch:                      epoch,
+			Epoch:                      &epoch,
 			StartTimestampMicroseconds: uint64(time.Now().UnixMicro()),
 			Samples:                    []uint32{1, 2, 3},
 		})
@@ -162,7 +162,7 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 			OriginDevicePK:               la2DevicePK,
 			TargetDevicePK:               ny5DevicePK,
 			LinkPK:                       la2ToNy5LinkPK,
-			Epoch:                        epoch,
+			Epoch:                        &epoch,
 			SamplingIntervalMicroseconds: samplingIntervalMicroseconds,
 		})
 		require.NoError(t, err)
@@ -212,7 +212,7 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 			OriginDevicePK:             la2DevicePK,
 			TargetDevicePK:             ny5DevicePK,
 			LinkPK:                     la2ToNy5LinkPK,
-			Epoch:                      epoch,
+			Epoch:                      &epoch,
 			StartTimestampMicroseconds: firstStartTimestampMicroseconds,
 			Samples:                    firstSamples,
 		})
@@ -255,7 +255,7 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 			OriginDevicePK:               la2DevicePK,
 			TargetDevicePK:               ny5DevicePK,
 			LinkPK:                       la2ToNy5LinkPK,
-			Epoch:                        epoch,
+			Epoch:                        &epoch,
 			SamplingIntervalMicroseconds: 1000000,
 		})
 		require.NoError(t, err)
@@ -286,7 +286,7 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 			OriginDevicePK:             la2DevicePK,
 			TargetDevicePK:             ny5DevicePK,
 			LinkPK:                     la2ToNy5LinkPK,
-			Epoch:                      epoch,
+			Epoch:                      &epoch,
 			StartTimestampMicroseconds: secondStartTimestampMicroseconds,
 			Samples:                    secondSamples,
 		})
@@ -330,7 +330,7 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 			OriginDevicePK:             la2DevicePK,
 			TargetDevicePK:             ny5DevicePK,
 			LinkPK:                     la2ToNy5LinkPK,
-			Epoch:                      epoch,
+			Epoch:                      &epoch,
 			StartTimestampMicroseconds: secondStartTimestampMicroseconds,
 			Samples:                    make([]uint32, telemetry.MaxSamplesPerBatch),
 		})
@@ -351,7 +351,7 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 			OriginDevicePK:             la2DevicePK,
 			TargetDevicePK:             ny5DevicePK,
 			LinkPK:                     la2ToNy5LinkPK,
-			Epoch:                      epoch,
+			Epoch:                      &epoch,
 			StartTimestampMicroseconds: secondStartTimestampMicroseconds,
 			Samples:                    make([]uint32, telemetry.MaxSamplesPerBatch+1),
 		})

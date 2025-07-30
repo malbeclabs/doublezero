@@ -25,7 +25,7 @@ func TestSDK_Telemetry_InitializeDeviceLatencySamples_HappyPath(t *testing.T) {
 		OriginDevicePK:               originDevicePK,
 		TargetDevicePK:               targetDevicePK,
 		LinkPK:                       linkPK,
-		Epoch:                        epoch,
+		Epoch:                        &epoch,
 		SamplingIntervalMicroseconds: interval,
 	}
 
@@ -54,12 +54,13 @@ func TestSDK_Telemetry_InitializeDeviceLatencySamples_HappyPath(t *testing.T) {
 func TestSDK_Telemetry_InitializeDeviceLatencySamples_MissingFields(t *testing.T) {
 	t.Parallel()
 
+	epoch := uint64(42)
 	base := telemetry.InitializeDeviceLatencySamplesInstructionConfig{
 		AgentPK:                      solana.NewWallet().PublicKey(),
 		OriginDevicePK:               solana.NewWallet().PublicKey(),
 		TargetDevicePK:               solana.NewWallet().PublicKey(),
 		LinkPK:                       solana.NewWallet().PublicKey(),
-		Epoch:                        42,
+		Epoch:                        &epoch,
 		SamplingIntervalMicroseconds: 100_000,
 	}
 
@@ -94,7 +95,7 @@ func TestSDK_Telemetry_InitializeDeviceLatencySamples_MissingFields(t *testing.T
 		},
 		{
 			name:        "missing_epoch",
-			mutate:      func(c *telemetry.InitializeDeviceLatencySamplesInstructionConfig) { c.Epoch = 0 },
+			mutate:      func(c *telemetry.InitializeDeviceLatencySamplesInstructionConfig) { c.Epoch = nil },
 			expectError: "epoch is required",
 		},
 		{
@@ -120,12 +121,13 @@ func TestSDK_Telemetry_InitializeDeviceLatencySamples_MissingFields(t *testing.T
 func TestSDK_Telemetry_InitializeDeviceLatencySamples_BorshEncoding(t *testing.T) {
 	t.Parallel()
 
+	epoch := uint64(99)
 	config := telemetry.InitializeDeviceLatencySamplesInstructionConfig{
 		AgentPK:                      solana.NewWallet().PublicKey(),
 		OriginDevicePK:               solana.NewWallet().PublicKey(),
 		TargetDevicePK:               solana.NewWallet().PublicKey(),
 		LinkPK:                       solana.NewWallet().PublicKey(),
-		Epoch:                        99,
+		Epoch:                        &epoch,
 		SamplingIntervalMicroseconds: 250_000,
 	}
 
@@ -146,6 +148,6 @@ func TestSDK_Telemetry_InitializeDeviceLatencySamples_BorshEncoding(t *testing.T
 	require.NoError(t, err)
 
 	require.Equal(t, uint8(telemetry.InitializeDeviceLatencySamplesInstructionIndex), decoded.Discriminator)
-	require.Equal(t, config.Epoch, decoded.Epoch)
+	require.Equal(t, *config.Epoch, decoded.Epoch)
 	require.Equal(t, config.SamplingIntervalMicroseconds, decoded.SamplingIntervalMicroseconds)
 }

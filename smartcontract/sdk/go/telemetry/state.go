@@ -116,12 +116,12 @@ type InternetLatencySamplesHeader struct {
 	// TargetLocationPK is the location of the target for sample collection.
 	TargetLocationPK solana.PublicKey // 32
 
+	// SamplingIntervalMicroseconds is the interval between samples (in microseconds).
+	SamplingIntervalMicroseconds uint64 // 8
+
 	// StartTimestampMicroseconds is the timestamp of the first written sample (µs since UNIX epoch).
 	// Set on the first write, remains unchanged after.
 	StartTimestampMicroseconds uint64 // 8
-
-	// SamplingIntervalMicroseconds is the interval between samples (in microseconds).
-	SamplingIntervalMicroseconds uint64 // 8
 
 	// NextSampleIndex tracks how many samples have been appended.
 	NextSampleIndex uint32 // 4

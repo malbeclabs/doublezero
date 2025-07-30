@@ -20,11 +20,12 @@ use solana_program::msg;
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct ContributorCreateArgs {
     pub code: String,
+    pub owner: Pubkey,
 }
 
 impl fmt::Debug for ContributorCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "code: {}", self.code)
+        write!(f, "code: {}, owner: {}", self.code, self.owner)
     }
 }
 
@@ -75,7 +76,7 @@ pub fn process_create_contributor(
 
     let contributor = Contributor {
         account_type: AccountType::Contributor,
-        owner: *payer_account.key,
+        owner: value.owner,
         index: globalstate.account_index,
         reference_count: 0,
         bump_seed,

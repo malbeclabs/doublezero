@@ -120,7 +120,7 @@ func (dn *Devnet) InitSmartContract(ctx context.Context) error {
 		doublezero exchange list
 
 		echo "==> Populating contributor information onchain"
-		doublezero contributor create --code co01
+		doublezero contributor create --code co01 --owner me
 
 		echo "--> Smart contract initialized"
 

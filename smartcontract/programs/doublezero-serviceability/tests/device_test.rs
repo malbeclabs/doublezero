@@ -12,7 +12,9 @@ use doublezero_serviceability::{
 };
 use globalconfig::set::SetGlobalConfigArgs;
 use solana_program_test::*;
-use solana_sdk::{hash::Hash, instruction::AccountMeta, pubkey::Pubkey, signature::Keypair};
+use solana_sdk::{
+    hash::Hash, instruction::AccountMeta, pubkey::Pubkey, signature::Keypair, signer::Signer,
+};
 
 mod test_helpers;
 use test_helpers::*;
@@ -137,6 +139,7 @@ async fn test_device() {
         program_id,
         DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
             code: "cont".to_string(),
+            owner: payer.pubkey(),
         }),
         vec![
             AccountMeta::new(contributor_pubkey, false),
@@ -620,6 +623,7 @@ async fn setup_program_with_location_and_exchange(
         program_id,
         DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
             code: "cont".to_string(),
+            owner: payer.pubkey(),
         }),
         vec![
             AccountMeta::new(contributor_pubkey, false),

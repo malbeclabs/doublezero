@@ -596,6 +596,13 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_owner() {
 #[tokio::test]
 async fn test_initialize_device_latency_samples_fail_origin_device_not_activated() {
     let mut ledger = LedgerHelper::new().await.unwrap();
+    let payer = ledger
+        .context
+        .lock()
+        .unwrap()
+        .payer
+        .insecure_clone()
+        .pubkey();
 
     let location_pk = ledger
         .serviceability
@@ -622,7 +629,7 @@ async fn test_initialize_device_latency_samples_fail_origin_device_not_activated
 
     let contributor_pk = ledger
         .serviceability
-        .create_contributor("CONTRIB".to_string())
+        .create_contributor("CONTRIB".to_string(), payer)
         .await
         .unwrap();
 
@@ -721,6 +728,13 @@ async fn test_initialize_device_latency_samples_fail_origin_device_not_activated
 #[tokio::test]
 async fn test_initialize_device_latency_samples_fail_target_device_not_activated() {
     let mut ledger = LedgerHelper::new().await.unwrap();
+    let payer = ledger
+        .context
+        .lock()
+        .unwrap()
+        .payer
+        .insecure_clone()
+        .pubkey();
 
     let location_pk = ledger
         .serviceability
@@ -753,7 +767,7 @@ async fn test_initialize_device_latency_samples_fail_target_device_not_activated
 
     let contributor_pk = ledger
         .serviceability
-        .create_contributor("CONTRIB".to_string())
+        .create_contributor("CONTRIB".to_string(), payer)
         .await
         .unwrap();
 
@@ -846,6 +860,13 @@ async fn test_initialize_device_latency_samples_fail_target_device_not_activated
 #[tokio::test]
 async fn test_initialize_device_latency_samples_fail_link_not_activated() {
     let mut ledger = LedgerHelper::new().await.unwrap();
+    let payer = ledger
+        .context
+        .lock()
+        .unwrap()
+        .payer
+        .insecure_clone()
+        .pubkey();
 
     let location_pk = ledger
         .serviceability
@@ -878,7 +899,7 @@ async fn test_initialize_device_latency_samples_fail_link_not_activated() {
 
     let contributor_pk = ledger
         .serviceability
-        .create_contributor("CONTRIB".to_string())
+        .create_contributor("CONTRIB".to_string(), payer)
         .await
         .unwrap();
 
@@ -967,6 +988,13 @@ async fn test_initialize_device_latency_samples_fail_link_not_activated() {
 #[tokio::test]
 async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
     let mut ledger = LedgerHelper::new().await.unwrap();
+    let payer = ledger
+        .context
+        .lock()
+        .unwrap()
+        .payer
+        .insecure_clone()
+        .pubkey();
 
     let location_pk = ledger
         .serviceability
@@ -999,7 +1027,7 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
 
     let contributor_pk = ledger
         .serviceability
-        .create_contributor("CONTRIB".to_string())
+        .create_contributor("CONTRIB".to_string(), payer)
         .await
         .unwrap();
     // Origin device and target device: activated
@@ -1135,6 +1163,13 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
 #[tokio::test]
 async fn test_initialize_device_latency_samples_succeeds_with_reversed_link_sides() {
     let mut ledger = LedgerHelper::new().await.unwrap();
+    let payer = ledger
+        .context
+        .lock()
+        .unwrap()
+        .payer
+        .insecure_clone()
+        .pubkey();
 
     let location_pk = ledger
         .serviceability
@@ -1167,7 +1202,7 @@ async fn test_initialize_device_latency_samples_succeeds_with_reversed_link_side
 
     let contributor_pk = ledger
         .serviceability
-        .create_contributor("CONTRIB".to_string())
+        .create_contributor("CONTRIB".to_string(), payer)
         .await
         .unwrap();
 
@@ -1386,6 +1421,13 @@ async fn test_initialize_device_latency_samples_fail_same_origin_device_and_targ
 #[tokio::test]
 async fn test_initialize_device_latency_samples_fail_agent_not_owner_of_origin_device() {
     let mut ledger = LedgerHelper::new().await.unwrap();
+    let payer = ledger
+        .context
+        .lock()
+        .unwrap()
+        .payer
+        .insecure_clone()
+        .pubkey();
 
     // Create agent that owns origin device
     let owner_agent = Keypair::new();
@@ -1426,7 +1468,7 @@ async fn test_initialize_device_latency_samples_fail_agent_not_owner_of_origin_d
 
     let contributor_pk = ledger
         .serviceability
-        .create_contributor("CONTRIB".to_string())
+        .create_contributor("CONTRIB".to_string(), payer)
         .await
         .unwrap();
 

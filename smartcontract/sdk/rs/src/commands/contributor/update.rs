@@ -8,6 +8,7 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature}
 pub struct UpdateContributorCommand {
     pub pubkey: Pubkey,
     pub code: Option<String>,
+    pub owner: Option<Pubkey>,
 }
 
 impl UpdateContributorCommand {
@@ -19,6 +20,7 @@ impl UpdateContributorCommand {
         client.execute_transaction(
             DoubleZeroInstruction::UpdateContributor(ContributorUpdateArgs {
                 code: self.code.to_owned(),
+                owner: self.owner.to_owned(),
             }),
             vec![
                 AccountMeta::new(self.pubkey, false),
@@ -40,7 +42,7 @@ mod tests {
         processors::contributor::update::ContributorUpdateArgs,
     };
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, signature::Signature};
+    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_commands_contributor_update_command() {
@@ -55,6 +57,7 @@ mod tests {
                 predicate::eq(DoubleZeroInstruction::UpdateContributor(
                     ContributorUpdateArgs {
                         code: Some("test".to_string()),
+                        owner: Some(Pubkey::default()),
                     },
                 )),
                 predicate::eq(vec![
@@ -67,6 +70,7 @@ mod tests {
         let res = UpdateContributorCommand {
             pubkey: pda_pubkey,
             code: Some("test".to_string()),
+            owner: Some(Pubkey::default()),
         }
         .execute(&client);
 

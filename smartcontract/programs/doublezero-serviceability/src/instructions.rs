@@ -807,12 +807,14 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
                 code: "test".to_string(),
+                owner: Pubkey::new_unique(),
             }),
             "CreateContributor",
         );
         test_instruction(
             DoubleZeroInstruction::UpdateContributor(ContributorUpdateArgs {
                 code: Some("test".to_string()),
+                owner: Some(Pubkey::new_unique()),
             }),
             "UpdateContributor",
         );

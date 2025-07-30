@@ -8,6 +8,7 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature}
 #[derive(Debug, PartialEq, Clone)]
 pub struct CreateContributorCommand {
     pub code: String,
+    pub owner: Pubkey,
 }
 
 impl CreateContributorCommand {
@@ -22,6 +23,7 @@ impl CreateContributorCommand {
             .execute_transaction(
                 DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
                     code: self.code.clone(),
+                    owner: self.owner,
                 }),
                 vec![
                     AccountMeta::new(pda_pubkey, false),
@@ -44,7 +46,7 @@ mod tests {
         processors::contributor::create::ContributorCreateArgs,
     };
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, signature::Signature};
+    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_commands_contributor_create_command() {
@@ -59,6 +61,7 @@ mod tests {
                 predicate::eq(DoubleZeroInstruction::CreateContributor(
                     ContributorCreateArgs {
                         code: "test".to_string(),
+                        owner: Pubkey::default(),
                     },
                 )),
                 predicate::eq(vec![
@@ -70,6 +73,7 @@ mod tests {
 
         let res = CreateContributorCommand {
             code: "test".to_string(),
+            owner: Pubkey::default(),
         }
         .execute(&client);
 

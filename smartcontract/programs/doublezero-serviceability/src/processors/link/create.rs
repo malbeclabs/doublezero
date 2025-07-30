@@ -81,7 +81,6 @@ pub fn process_create_link(
         return Err(ProgramError::UninitializedAccount);
     }
     let globalstate = globalstate_get_next(globalstate_account)?;
-
     if !globalstate.device_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -94,10 +93,21 @@ pub fn process_create_link(
 
     let mut contributor = Contributor::try_from(contributor_account)?;
     assert_eq!(contributor.account_type, AccountType::Contributor);
+    if contributor.owner != *payer_account.key {
+        return Err(DoubleZeroError::InvalidOwnerPubkey.into());
+    }
+
     let mut side_a_dev = Device::try_from(side_a_account)?;
     assert_eq!(side_a_dev.account_type, AccountType::Device);
+    if side_a_dev.contributor_pk != *contributor_account.key {
+        return Err(DoubleZeroError::InvalidContributor.into());
+    }
+
     let mut side_z_dev = Device::try_from(side_z_account)?;
     assert_eq!(side_z_dev.account_type, AccountType::Device);
+    if side_z_dev.contributor_pk != *contributor_account.key {
+        return Err(DoubleZeroError::InvalidContributor.into());
+    }
 
     if !side_a_dev
         .interfaces

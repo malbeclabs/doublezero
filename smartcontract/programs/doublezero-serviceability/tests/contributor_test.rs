@@ -60,6 +60,7 @@ async fn test_contributor() {
         program_id,
         DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
             code: "la".to_string(),
+            owner: Pubkey::new_unique(),
         }),
         vec![
             AccountMeta::new(contributor_pubkey, false),
@@ -135,6 +136,7 @@ async fn test_contributor() {
         program_id,
         DoubleZeroInstruction::UpdateContributor(ContributorUpdateArgs {
             code: Some("la2".to_string()),
+            owner: Some(Pubkey::new_unique()),
         }),
         vec![
             AccountMeta::new(contributor_pubkey, false),

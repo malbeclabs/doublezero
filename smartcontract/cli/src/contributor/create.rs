@@ -1,19 +1,23 @@
 use crate::{
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-    validators::validate_code,
+    validators::{validate_code, validate_pubkey_or_code},
 };
 use clap::Args;
 use doublezero_sdk::commands::contributor::{
     create::CreateContributorCommand, list::ListContributorCommand,
 };
-use std::io::Write;
+use solana_sdk::pubkey::Pubkey;
+use std::{io::Write, str::FromStr};
 
 #[derive(Args, Debug)]
 pub struct CreateContributorCliCommand {
     /// Unique contributor code
     #[arg(long, value_parser = validate_code)]
     pub code: String,
+    /// Owner of the contributor
+    #[arg(long, value_parser = validate_pubkey_or_code)]
+    pub owner: String,
 }
 
 impl CreateContributorCliCommand {
@@ -28,9 +32,18 @@ impl CreateContributorCliCommand {
                 self.code
             ));
         }
+        // Create contributor
+        let owner = {
+            if self.owner.eq_ignore_ascii_case("me") {
+                client.get_payer()
+            } else {
+                Pubkey::from_str(&self.owner)?
+            }
+        };
 
         let (signature, _pubkey) = client.create_contributor(CreateContributorCommand {
             code: self.code.clone(),
+            owner,
         })?;
 
         writeln!(out, "Signature: {signature}",)?;
@@ -93,6 +106,7 @@ mod tests {
             .expect_create_contributor()
             .with(predicate::eq(CreateContributorCommand {
                 code: "test".to_string(),
+                owner: Pubkey::default(),
             }))
             .times(1)
             .returning(move |_| Ok((signature, pda_pubkey)));
@@ -101,6 +115,7 @@ mod tests {
         let mut output = Vec::new();
         let res = CreateContributorCliCommand {
             code: "test2".to_string(),
+            owner: Pubkey::default().to_string(),
         }
         .execute(&client, &mut output);
         assert!(res.is_err());
@@ -108,6 +123,7 @@ mod tests {
         let mut output = Vec::new();
         let res = CreateContributorCliCommand {
             code: "test".to_string(),
+            owner: Pubkey::default().to_string(),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

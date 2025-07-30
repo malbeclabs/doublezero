@@ -265,6 +265,7 @@ async fn test_doublezero_program() {
         program_id,
         DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
             code: "cont".to_string(),
+            owner: payer.pubkey(),
         }),
         vec![
             AccountMeta::new(contributor_pubkey, false),

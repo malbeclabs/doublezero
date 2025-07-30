@@ -109,22 +109,15 @@ pub fn process_create_device(
         "Invalid Device PubKey"
     );
     let mut contributor = Contributor::try_from(contributor_account)?;
-    if contributor.account_type != AccountType::Contributor {
-        return Err(DoubleZeroError::InvalidContributorPubkey.into());
-    }
+    assert_eq!(contributor.account_type, AccountType::Contributor);
     if contributor.owner != *payer_account.key {
         return Err(DoubleZeroError::InvalidOwnerPubkey.into());
     }
 
     let mut location = Location::try_from(location_account)?;
-    if location.account_type != AccountType::Location {
-        return Err(DoubleZeroError::InvalidLocationPubkey.into());
-    }
-
+    assert_eq!(location.account_type, AccountType::Location);
     let mut exchange = Exchange::try_from(exchange_account)?;
-    if exchange.account_type != AccountType::Exchange {
-        return Err(DoubleZeroError::InvalidExchangePubkey.into());
-    }
+    assert_eq!(exchange.account_type, AccountType::Exchange);
 
     contributor.reference_count += 1;
     location.reference_count += 1;

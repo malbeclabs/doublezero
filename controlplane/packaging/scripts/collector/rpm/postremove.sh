@@ -7,8 +7,8 @@ systemctl daemon-reload
 # Only run on complete uninstall, not upgrade
 if [ $1 -eq 0 ]; then
     # Remove the system user
-    if id -u doublezero-collector >/dev/null 2>&1; then
-        userdel doublezero-collector
+    if id -u doublezero-internet-latency-collector >/dev/null 2>&1; then
+        userdel dz-internet-latency
     fi
 
     # Remove state and output directories

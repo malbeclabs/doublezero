@@ -5,11 +5,11 @@ After=network.target
 [Service]
 Type=simple
 EnvironmentFile=/etc/doublezero-internet-latency-collector/config.env
-ExecStart=/usr/local/bin/doublezero-internet-latency-collector run
+ExecStart=/usr/local/bin/doublezero-internet-latency-collector run --env testnet --keypair /etc/doublezero-internet-latency-collector/keypair.json
 Restart=always
 RestartSec=10
-User=doublezero-collector
-Group=doublezero-collector
+User=dz-internet-latency
+Group=dz-internet-latency
 
 # Security hardening
 NoNewPrivileges=true

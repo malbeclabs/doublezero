@@ -9,7 +9,6 @@ use crate::{
     },
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use core::fmt;
 use doublezero_program_common::create_account::try_create_account;
 use doublezero_serviceability::state::{
     device::{Device, DeviceStatus},
@@ -27,20 +26,10 @@ use solana_program::{
 
 // Instruction arguments for initializing a latency samples account.
 // Represents a single direction (origin -> target) over a link during an epoch.
-#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq)]
 pub struct InitializeDeviceLatencySamplesArgs {
     pub epoch: u64,
     pub sampling_interval_microseconds: u64,
-}
-
-impl fmt::Debug for InitializeDeviceLatencySamplesArgs {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "epoch: {}, interval: {}µs",
-            self.epoch, self.sampling_interval_microseconds
-        )
-    }
 }
 
 /// Initializes a new PDA account for collecting RTT latency samples.

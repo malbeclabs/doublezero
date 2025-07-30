@@ -6,7 +6,6 @@ use crate::{
     state::{accounttype::AccountType, internet_latency_samples::InternetLatencySamplesHeader},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use core::fmt;
 use doublezero_program_common::create_account::try_create_account;
 use doublezero_serviceability::state::{
     globalstate::GlobalState,
@@ -24,21 +23,11 @@ use solana_program::{
 
 // Instruction arguments for initializing an internet latency samples account from a third party probe.
 // Represents a single direction (origin -> target) over a public internet link during an epoch.
-#[derive(BorshDeserialize, BorshSerialize, Clone, PartialEq)]
+#[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq)]
 pub struct InitializeInternetLatencySamplesArgs {
     pub data_provider_name: String,
     pub epoch: u64,
     pub sampling_interval_microseconds: u64,
-}
-
-impl fmt::Debug for InitializeInternetLatencySamplesArgs {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "data_provider_name: {}, epoch: {}, interval: {}µs",
-            self.data_provider_name, self.epoch, self.sampling_interval_microseconds,
-        )
-    }
 }
 
 /// Initializes a new PDA account for collecting RTT latency samples from the public interet.

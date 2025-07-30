@@ -35,6 +35,8 @@ pub enum TelemetryError {
     DataProviderNameTooLong = 1015,
     /// Origin and target locations cannot be the
     SameTargetAsOrigin = 1016,
+    /// Write transaction contains no samples
+    EmptyLatencySamples = 1017,
 }
 
 impl From<TelemetryError> for ProgramError {
@@ -75,6 +77,7 @@ impl fmt::Display for TelemetryError {
             }
             Self::DataProviderNameTooLong => write!(f, "Data provider name exceeds 32 bytes"),
             Self::SameTargetAsOrigin => write!(f, "Origin and target are the same location"),
+            Self::EmptyLatencySamples => write!(f, "Write transaction contains no samples"),
         }
     }
 }

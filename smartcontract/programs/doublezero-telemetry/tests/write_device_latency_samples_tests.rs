@@ -365,7 +365,7 @@ async fn test_write_device_latency_samples_fail_agent_not_signer() {
 }
 
 #[tokio::test]
-async fn test_write_device_latency_samples_noop_on_empty_samples() {
+async fn test_write_device_latency_samples_fail_on_empty_samples() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 
     let (agent, origin_device_pk, target_device_pk, link_pk) =
@@ -386,23 +386,20 @@ async fn test_write_device_latency_samples_noop_on_empty_samples() {
         .unwrap();
 
     // Try to write an empty sample vector
-    ledger
+    let result = ledger
         .telemetry
         .write_device_latency_samples(&agent, latency_samples_pda, vec![], 1_700_000_000_000_000)
-        .await
-        .unwrap();
+        .await;
 
-    // Confirm that nothing was updated
-    let account = ledger
-        .get_account(latency_samples_pda)
-        .await
-        .unwrap()
-        .unwrap();
-    let data = DeviceLatencySamples::try_from(&account.data[..]).unwrap();
-
-    assert_eq!(data.samples.len(), 0);
-    assert_eq!(data.header.next_sample_index, 0);
-    assert_eq!(data.header.start_timestamp_microseconds, 0);
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            _,
+            InstructionError::Custom(code),
+        ))) => {
+            assert_eq!(code, TelemetryError::EmptyLatencySamples as u32);
+        }
+        e => panic!("unexpected error: {e:?}"),
+    }
 }
 
 #[tokio::test]

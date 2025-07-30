@@ -47,6 +47,7 @@ impl fmt::Debug for WriteInternetLatencySamplesArgs {
 /// Error:
 /// - `UnauthorizedAgent`: signer does not match `oracle_agent_pk`
 /// - `SamplesAccountFull`: exceeds sample or byte limit
+/// - `EmptyLatencySamples`: a write instruction was received with no samples to record
 /// - `AccountDoesNotExist`, `InvalidAccountType`, `InvalidAccountOwner`
 pub fn process_write_internet_latency_samples(
     program_id: &Pubkey,
@@ -57,8 +58,8 @@ pub fn process_write_internet_latency_samples(
 
     // Nothing to do if the sample vec is empty
     if args.samples.is_empty() {
-        msg!("No samples provided; skipping write");
-        return Ok(());
+        msg!("No samples provided");
+        return Err(TelemetryError::EmptyLatencySamples.into());
     }
 
     let accounts_iter = &mut accounts.iter();

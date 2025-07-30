@@ -349,7 +349,7 @@ async fn test_write_internet_latency_samples_fail_agent_not_signer() {
 }
 
 #[tokio::test]
-async fn test_write_internet_latency_samples_noop_on_empty_samples() {
+async fn test_write_internet_latency_samples_fail_on_empty_samples() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 
     let (oracle_agent, origin_location_pk, target_location_pk) =
@@ -373,7 +373,7 @@ async fn test_write_internet_latency_samples_noop_on_empty_samples() {
         .unwrap();
 
     // Try to write an empty samples vec
-    ledger
+    let result = ledger
         .telemetry
         .write_internet_latency_samples(
             &oracle_agent,
@@ -381,20 +381,15 @@ async fn test_write_internet_latency_samples_noop_on_empty_samples() {
             vec![],
             1_700_000_000_000_000,
         )
-        .await
-        .unwrap();
+        .await;
 
-    // Confirm nothing was updated from the defaults
-    let account = ledger
-        .get_account(latency_samples_pda)
-        .await
-        .unwrap()
-        .expect("Latency samples does not exist");
-    let data = InternetLatencySamples::try_from(&account.data[..]).unwrap();
-
-    assert_eq!(data.header.start_timestamp_microseconds, 0);
-    assert_eq!(data.header.next_sample_index, 0);
-    assert_eq!(data.samples.len(), 0);
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            _,
+            InstructionError::Custom(code),
+        ))) => assert_eq!(code, TelemetryError::EmptyLatencySamples as u32),
+        e => panic!("Unexpected error: {e:?}"),
+    }
 }
 
 #[tokio::test]

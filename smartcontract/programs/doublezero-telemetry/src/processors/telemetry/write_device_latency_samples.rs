@@ -49,6 +49,7 @@ impl fmt::Debug for WriteDeviceLatencySamplesArgs {
 /// Errors:
 /// - `UnauthorizedAgent`: signer does not match `origin_device_agent_pk`
 /// - `SamplesAccountFull`: exceeds sample or byte limit
+/// - `EmptyLatencySamples`: a write instruction was received with no samples to record
 /// - `AccountDoesNotExist`, `InvalidAccountType`, `InvalidAccountOwner`
 pub fn process_write_device_latency_samples(
     program_id: &Pubkey,
@@ -56,6 +57,12 @@ pub fn process_write_device_latency_samples(
     args: &WriteDeviceLatencySamplesArgs,
 ) -> ProgramResult {
     msg!("Processing WriteDeviceLatencySamples: {:?}", args);
+
+    // Nothing to do if the sample vector is empty — treat as a no-op.
+    if args.samples.is_empty() {
+        msg!("No samples provided; skipping write");
+        return Err(TelemetryError::EmptyLatencySamples.into());
+    }
 
     let accounts_iter = &mut accounts.iter();
 
@@ -77,12 +84,6 @@ pub fn process_write_device_latency_samples(
     // Enforce program ownership — ensures we're writing to an account we control.
     if latency_samples_account.owner != program_id {
         return Err(TelemetryError::InvalidAccountOwner.into());
-    }
-
-    // Nothing to do if the sample vector is empty — treat as a no-op.
-    if args.samples.is_empty() {
-        msg!("No samples provided; skipping write");
-        return Ok(());
     }
 
     msg!("Updating existing DZ latency samples account");

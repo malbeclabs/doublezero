@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"flag"
 	"log/slog"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/lmittmann/tint"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
 var (
@@ -33,4 +35,15 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(m.Run())
+}
+
+type mockServiceabilityClient struct {
+	GetProgramDataFunc func(ctx context.Context) (*serviceability.ProgramData, error)
+}
+
+func (m *mockServiceabilityClient) GetProgramData(ctx context.Context) (*serviceability.ProgramData, error) {
+	if m.GetProgramDataFunc == nil {
+		return &serviceability.ProgramData{}, nil
+	}
+	return m.GetProgramDataFunc(ctx)
 }

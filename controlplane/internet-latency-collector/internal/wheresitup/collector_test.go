@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -18,8 +17,8 @@ import (
 )
 
 // mockLocationsFetcher returns a mock location fetcher for testing
-func mockLocationsFetcher(locations []collector.LocationMatch) locationFetcher {
-	return func(ctx context.Context, log *slog.Logger) []collector.LocationMatch {
+func mockLocationsFetcher(locations []collector.LocationMatch) func(ctx context.Context) []collector.LocationMatch {
+	return func(ctx context.Context) []collector.LocationMatch {
 		return locations
 	}
 }
@@ -461,7 +460,7 @@ func TestInternetLatency_Wheresitup_ExportJobResults_Success(t *testing.T) {
 			},
 		},
 		log:              log,
-		locationsFetcher: mockLocationsFetcher(testLocations),
+		getLocationsFunc: mockLocationsFetcher(testLocations),
 	}
 
 	// Save a job ID to process
@@ -490,8 +489,9 @@ func TestInternetLatency_Wheresitup_ExportJobResults_NoJobs(t *testing.T) {
 	outputDir := filepath.Join(tempDir, "output")
 
 	c := &Collector{
-		client: &MockWheresitupClient{},
-		log:    log,
+		client:           &MockWheresitupClient{},
+		log:              log,
+		getLocationsFunc: mockLocationsFetcher([]collector.LocationMatch{}),
 	}
 
 	err := c.ExportJobResults(t.Context(), jobIDsFile, outputDir)
@@ -503,7 +503,7 @@ func TestInternetLatency_Wheresitup_ParseLocationCodesFromJobDetails(t *testing.
 
 	log := logger.With("test", t.Name())
 
-	c := NewCollector(log, nil)
+	c := NewCollector(log, nil, mockLocationsFetcher([]collector.LocationMatch{}))
 
 	tests := []struct {
 		name  string
@@ -564,7 +564,7 @@ func TestInternetLatency_Wheresitup_ExtractChecksFromJobDetails(t *testing.T) {
 
 	log := logger.With("test", t.Name())
 
-	c := NewCollector(log, nil)
+	c := NewCollector(log, nil, mockLocationsFetcher([]collector.LocationMatch{}))
 
 	tests := []struct {
 		name string
@@ -618,7 +618,7 @@ func TestInternetLatency_Wheresitup_FormatTimestampFromUnix(t *testing.T) {
 
 	log := logger.With("test", t.Name())
 
-	c := NewCollector(log, nil)
+	c := NewCollector(log, nil, mockLocationsFetcher([]collector.LocationMatch{}))
 
 	// Test with a known timestamp
 	unixTime := int64(1640995200) // 2022-01-01 00:00:00 UTC
@@ -653,7 +653,8 @@ func TestInternetLatency_Wheresitup_BuildLocationMapping(t *testing.T) {
 				}, nil
 			},
 		},
-		log: log,
+		log:              log,
+		getLocationsFunc: mockLocationsFetcher([]collector.LocationMatch{}),
 	}
 
 	locations := []collector.LocationMatch{
@@ -719,7 +720,8 @@ func TestInternetLatency_Wheresitup_ListJobs_Empty(t *testing.T) {
 				return []JobDetails{}, nil
 			},
 		},
-		log: log,
+		log:              log,
+		getLocationsFunc: mockLocationsFetcher([]collector.LocationMatch{}),
 	}
 
 	err := c.ListJobs(t.Context())
@@ -737,7 +739,8 @@ func TestInternetLatency_Wheresitup_ListJobs_Error(t *testing.T) {
 				return nil, errors.New("API error")
 			},
 		},
-		log: log,
+		log:              log,
+		getLocationsFunc: mockLocationsFetcher([]collector.LocationMatch{}),
 	}
 
 	err := c.ListJobs(t.Context())
@@ -787,7 +790,8 @@ func TestInternetLatency_Wheresitup_ExportJobResults_ErrorScenarios(t *testing.T
 					return nil, errors.New("mapping error")
 				},
 			},
-			log: log,
+			log:              log,
+			getLocationsFunc: mockLocationsFetcher([]collector.LocationMatch{}),
 		}
 
 		err := c.ExportJobResults(t.Context(), jobIDsFile, outputDir)
@@ -817,7 +821,8 @@ func TestInternetLatency_Wheresitup_ExportJobResults_ErrorScenarios(t *testing.T
 					}, nil
 				},
 			},
-			log: log,
+			log:              log,
+			getLocationsFunc: mockLocationsFetcher([]collector.LocationMatch{}),
 		}
 
 		// Save a job ID
@@ -924,18 +929,17 @@ func TestInternetLatency_Wheresitup_Run_TickerExecution(t *testing.T) {
 	e, err := exporter.NewCSVExporter(log, "wheresitup_results", outputDir)
 	require.NoError(t, err)
 
-	c := &Collector{client: mockClient, log: log, exporter: e}
+	c := &Collector{client: mockClient, log: log, exporter: e, getLocationsFunc: mockLocationsFetcher([]collector.LocationMatch{})}
 	// Set a very short wait timeout for testing
 	c.SetJobWaitTimeout(1 * time.Millisecond)
 
 	// Mock the location fetcher to avoid blockchain calls
-	mockLocationsFetcher := func(ctx context.Context, log *slog.Logger) []collector.LocationMatch {
+	c.getLocationsFunc = func(ctx context.Context) []collector.LocationMatch {
 		return []collector.LocationMatch{
 			{LocationCode: "NYC", Latitude: 40.7128, Longitude: -74.0060},
 			{LocationCode: "LON", Latitude: 51.5074, Longitude: -0.1278},
 		}
 	}
-	c.SetLocationsFetcher(mockLocationsFetcher)
 
 	tempDir := t.TempDir()
 	stateDir := filepath.Join(tempDir, "state")

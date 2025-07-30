@@ -232,7 +232,9 @@ func TestInternetLatency_RIPEAtlas_NewCollector(t *testing.T) {
 
 	log := logger.With("test", t.Name())
 
-	c := NewCollector(log, nil)
+	c := NewCollector(log, nil, func(ctx context.Context) []collector.LocationMatch {
+		return []collector.LocationMatch{}
+	})
 
 	require.NotNil(t, c, "NewCollector should return a non-nil collector")
 	require.NotNil(t, c.client, "Client should be initialized")
@@ -243,7 +245,9 @@ func TestInternetLatency_RIPEAtlas_ParseLatencyFromResult(t *testing.T) {
 
 	log := logger.With("test", t.Name())
 
-	c := NewCollector(log, nil)
+	c := NewCollector(log, nil, func(ctx context.Context) []collector.LocationMatch {
+		return []collector.LocationMatch{}
+	})
 
 	// Valid ping result
 	timestamp := time.Unix(1609459200, 0).UTC()
@@ -577,7 +581,9 @@ func TestInternetLatency_RIPEAtlas_ListAtlasProbes_NoDevices(t *testing.T) {
 
 	log := logger.With("test", t.Name())
 
-	c := NewCollector(log, nil)
+	c := NewCollector(log, nil, func(ctx context.Context) []collector.LocationMatch {
+		return []collector.LocationMatch{}
+	})
 
 	err := c.ListAtlasProbes(t.Context(), []collector.LocationMatch{})
 
@@ -589,7 +595,9 @@ func TestInternetLatency_RIPEAtlas_GenerateWantedMeasurements_Deterministic(t *t
 
 	log := logger.With("test", t.Name())
 
-	c := NewCollector(log, nil)
+	c := NewCollector(log, nil, func(ctx context.Context) []collector.LocationMatch {
+		return []collector.LocationMatch{}
+	})
 
 	// Create test locations with probes in non-alphabetical order
 	locations := []LocationProbeMatch{
@@ -724,7 +732,9 @@ func TestInternetLatency_RIPEAtlas_RunRipeAtlasMeasurementCreation(t *testing.T)
 		},
 	}
 
-	c := &Collector{client: mockClient, log: log}
+	c := &Collector{client: mockClient, log: log, getLocationsFunc: func(ctx context.Context) []collector.LocationMatch {
+		return []collector.LocationMatch{}
+	}}
 
 	// Use a context with timeout
 	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
@@ -781,7 +791,9 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_CreateNew(t *testing.T)
 		},
 	}
 
-	c := &Collector{client: mockClient, log: log}
+	c := &Collector{client: mockClient, log: log, getLocationsFunc: func(ctx context.Context) []collector.LocationMatch {
+		return []collector.LocationMatch{}
+	}}
 
 	// Locations with probes that should trigger measurement creation
 	locationMatches := []LocationProbeMatch{
@@ -897,7 +909,9 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_RemoveUnwanted(t *testi
 
 	e, err := exporter.NewCSVExporter(log, "ripe_atlas_measurements", outputDir)
 	require.NoError(t, err)
-	c := &Collector{client: mockClient, log: log, exporter: e}
+	c := &Collector{client: mockClient, log: log, exporter: e, getLocationsFunc: func(ctx context.Context) []collector.LocationMatch {
+		return []collector.LocationMatch{}
+	}}
 
 	// Empty location matches means all existing measurements should be removed
 	err = c.configureMeasurements(t.Context(), []LocationProbeMatch{}, false, 1, outputDir, stateDir)
@@ -935,7 +949,9 @@ func TestInternetLatency_RIPEAtlas_Run_ErrorHandling(t *testing.T) {
 
 		e, err := exporter.NewCSVExporter(log, "ripe_atlas_measurements", t.TempDir())
 		require.NoError(t, err)
-		c := &Collector{client: mockClient, log: log, exporter: e}
+		c := &Collector{client: mockClient, log: log, exporter: e, getLocationsFunc: func(ctx context.Context) []collector.LocationMatch {
+			return []collector.LocationMatch{}
+		}}
 
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 		defer cancel()
@@ -958,7 +974,9 @@ func TestInternetLatency_RIPEAtlas_Run_ErrorHandling(t *testing.T) {
 
 		e, err := exporter.NewCSVExporter(log, "ripe_atlas_measurements", t.TempDir())
 		require.NoError(t, err)
-		c := &Collector{client: mockClient, log: log, exporter: e}
+		c := &Collector{client: mockClient, log: log, exporter: e, getLocationsFunc: func(ctx context.Context) []collector.LocationMatch {
+			return []collector.LocationMatch{}
+		}}
 
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 		defer cancel()
@@ -1048,7 +1066,9 @@ func TestInternetLatency_RIPEAtlas_Run(t *testing.T) {
 
 	e, err := exporter.NewCSVExporter(log, "ripe_atlas_measurements", outputDir)
 	require.NoError(t, err)
-	c := &Collector{client: mockClient, log: log, exporter: e}
+	c := &Collector{client: mockClient, log: log, exporter: e, getLocationsFunc: func(ctx context.Context) []collector.LocationMatch {
+		return []collector.LocationMatch{}
+	}}
 
 	// Use different intervals to verify both run independently
 	measurementInterval := 50 * time.Millisecond

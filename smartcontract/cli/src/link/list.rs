@@ -1,7 +1,10 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::{
-    commands::{device::list::ListDeviceCommand, link::list::ListLinkCommand},
+    commands::{
+        contributor::list::ListContributorCommand, device::list::ListDeviceCommand,
+        link::list::ListLinkCommand,
+    },
     *,
 };
 use serde::Serialize;
@@ -24,6 +27,8 @@ pub struct LinkDisplay {
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
     pub account: Pubkey,
     pub code: String,
+    #[tabled(rename = "contributor")]
+    pub contributor_code: String,
     #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
     #[tabled(rename = "side_a")]
     pub side_a_pk: Pubkey,
@@ -52,42 +57,48 @@ pub struct LinkDisplay {
 
 impl ListLinkCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+        let contributors = client.list_contributor(ListContributorCommand {})?;
         let devices = client.list_device(ListDeviceCommand)?;
-        let tunnels = client.list_link(ListLinkCommand)?;
+        let links = client.list_link(ListLinkCommand)?;
 
-        let mut tunnels: Vec<(Pubkey, Link)> = tunnels.into_iter().collect();
-        tunnels.sort_by(|(_, a), (_, b)| a.owner.cmp(&b.owner).then(a.tunnel_id.cmp(&b.tunnel_id)));
+        let mut links: Vec<(Pubkey, Link)> = links.into_iter().collect();
+        links.sort_by(|(_, a), (_, b)| a.owner.cmp(&b.owner).then(a.tunnel_id.cmp(&b.tunnel_id)));
 
-        let tunnel_displays: Vec<LinkDisplay> = tunnels
+        let tunnel_displays: Vec<LinkDisplay> = links
             .into_iter()
-            .map(|(pubkey, tunnel)| {
-                let side_a_name = match devices.get(&tunnel.side_a_pk) {
-                    Some(device) => device.code.clone(),
-                    None => tunnel.side_a_pk.to_string(),
+            .map(|(pubkey, link)| {
+                let contributor_code = match contributors.get(&link.contributor_pk) {
+                    Some(contributor) => contributor.code.clone(),
+                    None => link.contributor_pk.to_string(),
                 };
-                let side_z_name = match devices.get(&tunnel.side_z_pk) {
+                let side_a_name = match devices.get(&link.side_a_pk) {
                     Some(device) => device.code.clone(),
-                    None => tunnel.side_z_pk.to_string(),
+                    None => link.side_a_pk.to_string(),
+                };
+                let side_z_name = match devices.get(&link.side_z_pk) {
+                    Some(device) => device.code.clone(),
+                    None => link.side_z_pk.to_string(),
                 };
 
                 LinkDisplay {
                     account: pubkey,
-                    code: tunnel.code,
-                    side_a_pk: tunnel.side_a_pk,
+                    code: link.code,
+                    contributor_code,
+                    side_a_pk: link.side_a_pk,
                     side_a_name,
-                    side_a_iface_name: tunnel.side_a_iface_name,
-                    side_z_pk: tunnel.side_z_pk,
+                    side_a_iface_name: link.side_a_iface_name,
+                    side_z_pk: link.side_z_pk,
                     side_z_name,
-                    side_z_iface_name: tunnel.side_z_iface_name,
-                    link_type: tunnel.link_type,
-                    bandwidth: tunnel.bandwidth,
-                    mtu: tunnel.mtu,
-                    delay_ns: tunnel.delay_ns,
-                    jitter_ns: tunnel.jitter_ns,
-                    tunnel_id: tunnel.tunnel_id,
-                    tunnel_net: tunnel.tunnel_net,
-                    status: tunnel.status,
-                    owner: tunnel.owner,
+                    side_z_iface_name: link.side_z_iface_name,
+                    link_type: link.link_type,
+                    bandwidth: link.bandwidth,
+                    mtu: link.mtu,
+                    delay_ns: link.delay_ns,
+                    jitter_ns: link.jitter_ns,
+                    tunnel_id: link.tunnel_id,
+                    tunnel_net: link.tunnel_net,
+                    status: link.status,
+                    owner: link.owner,
                 }
             })
             .collect();
@@ -112,7 +123,10 @@ impl ListLinkCliCommand {
 mod tests {
     use crate::{link::list::ListLinkCliCommand, tests::utils::create_test_client};
 
-    use doublezero_sdk::{Device, DeviceStatus, DeviceType, Link, LinkLinkType, LinkStatus};
+    use doublezero_sdk::{
+        Contributor, ContributorStatus, Device, DeviceStatus, DeviceType, Link, LinkLinkType,
+        LinkStatus,
+    };
     use doublezero_serviceability::state::accounttype::AccountType;
     use solana_sdk::pubkey::Pubkey;
     use std::collections::HashMap;
@@ -122,6 +136,22 @@ mod tests {
         let mut client = create_test_client();
 
         let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let contributor = Contributor {
+            account_type: AccountType::Contributor,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "contributor1_code".to_string(),
+            status: ContributorStatus::Activated,
+            owner: contributor_pk,
+        };
+
+        client.expect_list_contributor().returning(move |_| {
+            let mut contributors = HashMap::new();
+            contributors.insert(contributor_pk, contributor.clone());
+            Ok(contributors)
+        });
+
         let location1_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo1");
         let location2_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo2");
         let exchange1_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo3");
@@ -218,7 +248,7 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | code        | side_a                                    | side_a_iface_name | side_z                                    | side_z_iface_name | link_type | bandwidth | mtu  | delay_ms | jitter_ms | tunnel_id | tunnel_net | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | tunnel_code | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | eth0              | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | eth1              | L3        | 1234      | 1566 | 0.00ms   | 0.00ms    | 1234      | 1.2.3.4/32 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
+        assert_eq!(output_str, " account                                   | code        | contributor       | side_a                                    | side_a_iface_name | side_z                                    | side_z_iface_name | link_type | bandwidth | mtu  | delay_ms | jitter_ms | tunnel_id | tunnel_net | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | tunnel_code | contributor1_code | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | eth0              | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | eth1              | L3        | 1234      | 1566 | 0.00ms   | 0.00ms    | 1234      | 1.2.3.4/32 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
 
         let mut output = Vec::new();
         let res = ListLinkCliCommand {
@@ -229,6 +259,6 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"code\":\"tunnel_code\",\"side_a_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_a_name\":\"device2_code\",\"side_a_iface_name\":\"eth0\",\"side_z_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_z_name\":\"device2_code\",\"side_z_iface_name\":\"eth1\",\"link_type\":\"L3\",\"bandwidth\":1234,\"mtu\":1566,\"delay_ns\":1234,\"jitter_ns\":1121,\"tunnel_id\":1234,\"tunnel_net\":\"1.2.3.4/32\",\"status\":\"Activated\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"code\":\"tunnel_code\",\"contributor_code\":\"contributor1_code\",\"side_a_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_a_name\":\"device2_code\",\"side_a_iface_name\":\"eth0\",\"side_z_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_z_name\":\"device2_code\",\"side_z_iface_name\":\"eth1\",\"link_type\":\"L3\",\"bandwidth\":1234,\"mtu\":1566,\"delay_ns\":1234,\"jitter_ns\":1121,\"tunnel_id\":1234,\"tunnel_net\":\"1.2.3.4/32\",\"status\":\"Activated\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\"}]\n");
     }
 }

@@ -12,27 +12,43 @@ pub struct GetLinkCliCommand {
 
 impl GetLinkCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        let (pubkey, tunnel) = client.get_link(GetLinkCommand {
+        let (pubkey, link) = client.get_link(GetLinkCommand {
             pubkey_or_code: self.code,
         })?;
 
-        writeln!(out,
-            "account: {}\r\ncode: {}\r\nside_a: {}\r\nside_a_iface_name: {}\r\nside_z: {}\r\nside_z_iface_name: {}\r\ntunnel_type: {}\r\nbandwidth: {}\r\nmtu: {}\r\ndelay: {}ms\r\njitter: {}ms\r\ntunnel_net: {}\r\nstatus: {}\r\nowner: {}",
+        writeln!(
+            out,
+            "account: {}\r\n\
+code: {}\r\n\
+contributor: {}\r\n\
+side_a: {}\r\n\
+side_a_iface_name: {}\r\n\
+side_z: {}\r\n\
+side_z_iface_name: {}\r\n\
+tunnel_type: {}\r\n\
+bandwidth: {}\r\n\
+mtu: {}\r\n\
+delay: {}ms\r\n\
+jitter: {}ms\r\n\
+tunnel_net: {}\r\n\
+status: {}\r\n\
+owner: {}",
             pubkey,
-            tunnel.code,
-            tunnel.side_a_pk,
-            tunnel.side_a_iface_name,
-            tunnel.side_z_pk,
-            tunnel.side_z_iface_name,
-            tunnel.link_type,
-            tunnel.bandwidth,
-            tunnel.mtu,
-            tunnel.delay_ns as f32 / 1000000.0,
-            tunnel.jitter_ns as f32 / 1000000.0,
-            tunnel.tunnel_net,
-            tunnel.status,
-            tunnel.owner
-            )?;
+            link.code,
+            link.contributor_pk,
+            link.side_a_pk,
+            link.side_a_iface_name,
+            link.side_z_pk,
+            link.side_z_iface_name,
+            link.link_type,
+            link.bandwidth,
+            link.mtu,
+            link.delay_ns as f32 / 1000000.0,
+            link.jitter_ns as f32 / 1000000.0,
+            link.tunnel_net,
+            link.status,
+            link.owner
+        )?;
 
         Ok(())
     }
@@ -114,7 +130,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: 313hjD3qvP9CCxdbTGKpuACJrBwh8DhXjdVoL6gc6rf9\r\ncode: test\r\nside_a: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb\r\nside_a_iface_name: eth0\r\nside_z: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf\r\nside_z_iface_name: eth1\r\ntunnel_type: L3\r\nbandwidth: 1000000000\r\nmtu: 1500\r\ndelay: 10000ms\r\njitter: 5000ms\r\ntunnel_net: 10.0.0.1/16\r\nstatus: activated\r\nowner: 313hjD3qvP9CCxdbTGKpuACJrBwh8DhXjdVoL6gc6rf9\n");
+        assert_eq!(output_str, "account: 313hjD3qvP9CCxdbTGKpuACJrBwh8DhXjdVoL6gc6rf9\r\ncode: test\r\ncontributor: HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx\r\nside_a: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb\r\nside_a_iface_name: eth0\r\nside_z: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf\r\nside_z_iface_name: eth1\r\ntunnel_type: L3\r\nbandwidth: 1000000000\r\nmtu: 1500\r\ndelay: 10000ms\r\njitter: 5000ms\r\ntunnel_net: 10.0.0.1/16\r\nstatus: activated\r\nowner: 313hjD3qvP9CCxdbTGKpuACJrBwh8DhXjdVoL6gc6rf9\n");
 
         // Expected success
         let mut output = Vec::new();
@@ -124,6 +140,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok(), "I should find a item by code");
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: 313hjD3qvP9CCxdbTGKpuACJrBwh8DhXjdVoL6gc6rf9\r\ncode: test\r\nside_a: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb\r\nside_a_iface_name: eth0\r\nside_z: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf\r\nside_z_iface_name: eth1\r\ntunnel_type: L3\r\nbandwidth: 1000000000\r\nmtu: 1500\r\ndelay: 10000ms\r\njitter: 5000ms\r\ntunnel_net: 10.0.0.1/16\r\nstatus: activated\r\nowner: 313hjD3qvP9CCxdbTGKpuACJrBwh8DhXjdVoL6gc6rf9\n");
+        assert_eq!(output_str, "account: 313hjD3qvP9CCxdbTGKpuACJrBwh8DhXjdVoL6gc6rf9\r\ncode: test\r\ncontributor: HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx\r\nside_a: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb\r\nside_a_iface_name: eth0\r\nside_z: HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf\r\nside_z_iface_name: eth1\r\ntunnel_type: L3\r\nbandwidth: 1000000000\r\nmtu: 1500\r\ndelay: 10000ms\r\njitter: 5000ms\r\ntunnel_net: 10.0.0.1/16\r\nstatus: activated\r\nowner: 313hjD3qvP9CCxdbTGKpuACJrBwh8DhXjdVoL6gc6rf9\n");
     }
 }

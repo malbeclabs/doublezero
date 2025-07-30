@@ -16,7 +16,7 @@ impl SuspendDeviceCommand {
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
         client.execute_transaction(
-            DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs {}),
+            DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs),
             vec![
                 AccountMeta::new(self.pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),

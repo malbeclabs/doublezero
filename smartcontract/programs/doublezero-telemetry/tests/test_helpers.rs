@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::{
     net::Ipv4Addr,
     sync::{Arc, Mutex},
@@ -17,12 +18,13 @@ use doublezero_serviceability::{
         exchange::create::ExchangeCreateArgs,
         globalconfig::set::SetGlobalConfigArgs,
         link::{activate::LinkActivateArgs, create::LinkCreateArgs, suspend::LinkSuspendArgs},
-        location::create::LocationCreateArgs,
+        location::{create::LocationCreateArgs, suspend::LocationSuspendArgs},
     },
     state::{
         device::{Device, DeviceType, Interface, CURRENT_INTERFACE_VERSION},
         globalstate::GlobalState,
         link::{Link, LinkLinkType},
+        location::Location,
     },
     types::{NetworkV4, NetworkV4List},
 };
@@ -30,10 +32,12 @@ use doublezero_telemetry::{
     entrypoint::process_instruction as telemetry_process_instruction,
     error::TelemetryError,
     instructions::{TelemetryInstruction, INITIALIZE_DEVICE_LATENCY_SAMPLES_INSTRUCTION_INDEX},
-    pda::derive_device_latency_samples_pda,
+    pda::{derive_device_latency_samples_pda, derive_internet_latency_samples_pda},
     processors::telemetry::{
         initialize_device_latency_samples::InitializeDeviceLatencySamplesArgs,
+        initialize_internet_latency_samples::InitializeInternetLatencySamplesArgs,
         write_device_latency_samples::WriteDeviceLatencySamplesArgs,
+        write_internet_latency_samples::WriteInternetLatencySamplesArgs,
     },
     serviceability_program_id,
 };
@@ -124,7 +128,6 @@ impl DeviceCreateArgsExt for DeviceCreateArgs {
     }
 }
 
-#[allow(dead_code)]
 pub trait LinkCreateArgsExt {
     fn default() -> LinkCreateArgs;
 }
@@ -199,7 +202,6 @@ impl LedgerHelper {
         banks_client.get_account(pubkey).await
     }
 
-    #[allow(dead_code)]
     pub async fn refresh_blockhash(&mut self) -> Result<(), BanksClientError> {
         let banks_client = { self.context.lock().unwrap().banks_client.clone() };
         let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
@@ -245,7 +247,6 @@ impl LedgerHelper {
         banks_client.process_transaction(transaction).await
     }
 
-    #[allow(dead_code)]
     pub async fn create_account_raw(
         &mut self,
         funder: &Keypair,
@@ -388,6 +389,40 @@ impl LedgerHelper {
             link_pk,
         ))
     }
+
+    pub async fn seed_with_two_locations(
+        &mut self,
+    ) -> Result<(Keypair, Pubkey, Pubkey), BanksClientError> {
+        // create locations
+        let location1_pk = self
+            .serviceability
+            .create_location(LocationCreateArgs {
+                code: "LOC1".to_string(),
+                name: "Test Location1".to_string(),
+                country: "US".to_string(),
+                loc_id: 1,
+                ..LocationCreateArgs::default()
+            })
+            .await?;
+
+        let location2_pk = self
+            .serviceability
+            .create_location(LocationCreateArgs {
+                code: "LOC2".to_string(),
+                name: "Test Location2".to_string(),
+                country: "UK".to_string(),
+                loc_id: 2,
+                ..LocationCreateArgs::default()
+            })
+            .await?;
+
+        // Create and fund the internet samples agent oracle
+        let oracle_agent = Keypair::new();
+        let oracle_agent_pk = oracle_agent.pubkey();
+        self.fund_account(&oracle_agent_pk, 10_000_000_000).await?;
+
+        Ok((oracle_agent, location1_pk, location2_pk))
+    }
 }
 
 pub struct TelemetryProgramHelper {
@@ -437,7 +472,6 @@ impl TelemetryProgramHelper {
         Ok(pda)
     }
 
-    #[allow(dead_code)]
     pub async fn write_device_latency_samples(
         &mut self,
         agent: &Keypair,
@@ -460,7 +494,7 @@ impl TelemetryProgramHelper {
         .await
     }
 
-    #[allow(clippy::too_many_arguments, dead_code)]
+    #[allow(clippy::too_many_arguments)]
     pub async fn initialize_device_latency_samples_with_pda(
         &mut self,
         agent: &Keypair,
@@ -493,7 +527,6 @@ impl TelemetryProgramHelper {
         Ok(latency_samples_pda)
     }
 
-    #[allow(dead_code)]
     pub async fn write_device_latency_samples_with_pda(
         &self,
         agent: &Keypair,
@@ -517,6 +550,141 @@ impl TelemetryProgramHelper {
         ];
 
         let instruction = solana_sdk::instruction::Instruction {
+            program_id: self.program_id,
+            accounts,
+            data: ix,
+        };
+
+        let (banks_client, payer, recent_blockhash) = {
+            let ctx = self.context.lock().unwrap();
+            (
+                ctx.banks_client.clone(),
+                ctx.payer.insecure_clone(),
+                ctx.recent_blockhash,
+            )
+        };
+
+        let tx = Transaction::new_signed_with_payer(
+            &[instruction],
+            Some(&payer.pubkey()),
+            &[&payer, agent],
+            recent_blockhash,
+        );
+
+        banks_client.process_transaction(tx).await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn initialize_internet_latency_samples(
+        &mut self,
+        agent: &Keypair,
+        data_provider_name: String,
+        origin_location_pk: Pubkey,
+        target_location_pk: Pubkey,
+        epoch: u64,
+        sampling_interval_micros: u64,
+    ) -> Result<Pubkey, BanksClientError> {
+        let (pda, _) = derive_internet_latency_samples_pda(
+            &self.program_id,
+            &agent.pubkey(),
+            &data_provider_name,
+            &origin_location_pk,
+            &target_location_pk,
+            epoch,
+        );
+
+        self.initialize_internet_latency_samples_with_pda(
+            agent,
+            pda,
+            data_provider_name,
+            origin_location_pk,
+            target_location_pk,
+            epoch,
+            sampling_interval_micros,
+        )
+        .await?;
+
+        Ok(pda)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn initialize_internet_latency_samples_with_pda(
+        &mut self,
+        agent: &Keypair,
+        latency_samples_pda: Pubkey,
+        data_provider_name: String,
+        origin_location_pk: Pubkey,
+        target_location_pk: Pubkey,
+        epoch: u64,
+        interval_micros: u64,
+    ) -> Result<Pubkey, BanksClientError> {
+        let args = InitializeInternetLatencySamplesArgs {
+            data_provider_name,
+            epoch,
+            sampling_interval_microseconds: interval_micros,
+        };
+
+        self.execute_transaction(
+            TelemetryInstruction::InitializeInternetLatencySamples(args),
+            &[agent],
+            vec![
+                AccountMeta::new(latency_samples_pda, false),
+                AccountMeta::new(agent.pubkey(), true),
+                AccountMeta::new(origin_location_pk, false),
+                AccountMeta::new(target_location_pk, false),
+                AccountMeta::new(solana_program::system_program::id(), false),
+            ],
+        )
+        .await?;
+
+        Ok(latency_samples_pda)
+    }
+
+    pub async fn write_internet_latency_samples(
+        &mut self,
+        agent: &Keypair,
+        latency_samples_pda: Pubkey,
+        samples: Vec<u32>,
+        start_timestamp_microseconds: u64,
+    ) -> Result<(), BanksClientError> {
+        self.execute_transaction(
+            TelemetryInstruction::WriteInternetLatencySamples(WriteInternetLatencySamplesArgs {
+                start_timestamp_microseconds,
+                samples,
+            }),
+            &[agent],
+            vec![
+                AccountMeta::new(latency_samples_pda, false),
+                AccountMeta::new(agent.pubkey(), true),
+                AccountMeta::new(solana_program::system_program::id(), false),
+            ],
+        )
+        .await
+    }
+
+    pub async fn write_internet_latency_samples_with_pda(
+        &self,
+        agent: &Keypair,
+        latency_samples_pda: Pubkey,
+        samples: Vec<u32>,
+        timestamp: u64,
+    ) -> Result<(), BanksClientError> {
+        let args = WriteInternetLatencySamplesArgs {
+            start_timestamp_microseconds: timestamp,
+            samples,
+        };
+
+        let ix = TelemetryInstruction::WriteInternetLatencySamples(args)
+            .pack()
+            .expect("failed to pack");
+
+        let accounts = vec![
+            AccountMeta::new(latency_samples_pda, false),
+            AccountMeta::new(agent.pubkey(), true),
+            AccountMeta::new(solana_program::system_program::id(), false),
+        ];
+
+        let instruction = Instruction {
             program_id: self.program_id,
             accounts,
             data: ix,
@@ -568,7 +736,6 @@ pub struct ServiceabilityProgramHelper {
     pub program_id: Pubkey,
 
     pub global_state_pubkey: Pubkey,
-    #[allow(dead_code)]
     pub global_config_pubkey: Pubkey,
 }
 
@@ -640,7 +807,6 @@ impl ServiceabilityProgramHelper {
             let context = self.context.lock().unwrap();
             context.banks_client.clone()
         };
-        let banks_client = banks_client.clone();
         let account = banks_client
             .get_account(self.global_state_pubkey)
             .await
@@ -770,7 +936,6 @@ impl ServiceabilityProgramHelper {
         .await
     }
 
-    #[allow(dead_code)]
     pub async fn get_device(&mut self, pubkey: Pubkey) -> Result<Device, BanksClientError> {
         let banks_client = {
             let context = self.context.lock().unwrap();
@@ -780,10 +945,29 @@ impl ServiceabilityProgramHelper {
         Ok(Device::from(&device.data[..]))
     }
 
-    #[allow(dead_code)]
     pub async fn suspend_device(&mut self, pubkey: Pubkey) -> Result<(), BanksClientError> {
         self.execute_transaction(
-            DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs {}),
+            DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs),
+            vec![
+                AccountMeta::new(pubkey, false),
+                AccountMeta::new(self.global_state_pubkey, false),
+            ],
+        )
+        .await
+    }
+
+    pub async fn get_location(&mut self, pubkey: Pubkey) -> Result<Location, BanksClientError> {
+        let banks_client = {
+            let context = self.context.lock().unwrap();
+            context.banks_client.clone()
+        };
+        let location = banks_client.get_account(pubkey).await.unwrap().unwrap();
+        Ok(Location::from(&location.data[..]))
+    }
+
+    pub async fn suspend_location(&mut self, pubkey: Pubkey) -> Result<(), BanksClientError> {
+        self.execute_transaction(
+            DoubleZeroInstruction::SuspendLocation(LocationSuspendArgs),
             vec![
                 AccountMeta::new(pubkey, false),
                 AccountMeta::new(self.global_state_pubkey, false),
@@ -859,7 +1043,6 @@ impl ServiceabilityProgramHelper {
         .await
     }
 
-    #[allow(dead_code)]
     pub async fn get_link(&mut self, pubkey: Pubkey) -> Result<Link, BanksClientError> {
         let banks_client = {
             let context = self.context.lock().unwrap();
@@ -869,7 +1052,6 @@ impl ServiceabilityProgramHelper {
         Ok(Link::from(&link.data[..]))
     }
 
-    #[allow(dead_code)]
     pub async fn suspend_link(&mut self, pubkey: Pubkey) -> Result<(), BanksClientError> {
         self.execute_transaction(
             DoubleZeroInstruction::SuspendLink(LinkSuspendArgs {}),
@@ -919,12 +1101,10 @@ impl ServiceabilityProgramHelper {
     }
 }
 
-#[allow(dead_code)]
 pub async fn get_account_data(banks_client: &mut BanksClient, pubkey: Pubkey) -> Option<Account> {
     banks_client.get_account(pubkey).await.unwrap()
 }
 
-#[allow(dead_code)]
 pub async fn fund_account(
     banks_client: &mut BanksClient,
     payer: &Keypair,
@@ -1028,7 +1208,6 @@ pub fn setup_test_programs() -> (ProgramTest, Pubkey, Pubkey) {
 }
 
 /// Helper function to assert that a result contains a specific telemetry error
-#[allow(dead_code)]
 pub fn assert_telemetry_error<T>(
     result: Result<T, BanksClientError>,
     expected_error: TelemetryError,
@@ -1055,7 +1234,6 @@ pub fn assert_telemetry_error<T>(
 }
 
 /// Helper function to assert that a result contains a specific banks client error
-#[allow(dead_code)]
 pub fn assert_banksclient_error<T>(
     result: Result<T, BanksClientError>,
     expected_error: InstructionError,

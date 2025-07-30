@@ -35,6 +35,7 @@ func DeriveDeviceLatencySamplesPDA(
 // Derives the PDA for internet latency samples account
 func DeriveInternetLatencySamplesPDA(
 	programID solana.PublicKey,
+	collectorOraclePK solana.PublicKey,
 	dataProviderName string,
 	originLocationPK solana.PublicKey,
 	targetLocationPK solana.PublicKey,
@@ -48,6 +49,7 @@ func DeriveInternetLatencySamplesPDA(
 	seeds := [][]byte{
 		[]byte(TelemetrySeedPrefix),
 		[]byte(InternetLatencySamplesSeed),
+		collectorOraclePK[:],
 		[]byte(dataProviderName),
 		originLocationPK[:],
 		targetLocationPK[:],

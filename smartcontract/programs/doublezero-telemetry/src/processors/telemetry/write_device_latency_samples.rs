@@ -3,21 +3,20 @@ use crate::{
     state::{
         accounttype::AccountType,
         device_latency_samples::{
-            DeviceLatencySamplesHeader, DEVICE_LATENCY_SAMPLES_HEADER_SIZE, MAX_SAMPLES,
+            DeviceLatencySamplesHeader, DEVICE_LATENCY_SAMPLES_HEADER_SIZE,
+            MAX_DEVICE_LATENCY_SAMPLES,
         },
     },
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
+use doublezero_program_common::resize_account::resize_account_if_needed;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::{ProgramResult, MAX_PERMITTED_DATA_INCREASE},
     msg,
-    program::invoke,
     program_error::ProgramError,
     pubkey::Pubkey,
-    system_instruction,
-    sysvar::{rent::Rent, Sysvar},
 };
 
 /// Instruction arguments for writing RTT samples to a latency samples account.
@@ -50,6 +49,7 @@ impl fmt::Debug for WriteDeviceLatencySamplesArgs {
 /// Errors:
 /// - `UnauthorizedAgent`: signer does not match `origin_device_agent_pk`
 /// - `SamplesAccountFull`: exceeds sample or byte limit
+/// - `EmptyLatencySamples`: a write instruction was received with no samples to record
 /// - `AccountDoesNotExist`, `InvalidAccountType`, `InvalidAccountOwner`
 pub fn process_write_device_latency_samples(
     program_id: &Pubkey,
@@ -57,6 +57,12 @@ pub fn process_write_device_latency_samples(
     args: &WriteDeviceLatencySamplesArgs,
 ) -> ProgramResult {
     msg!("Processing WriteDeviceLatencySamples: {:?}", args);
+
+    // Nothing to do if the sample vector is empty — treat as a no-op.
+    if args.samples.is_empty() {
+        msg!("No samples provided; skipping write");
+        return Err(TelemetryError::EmptyLatencySamples.into());
+    }
 
     let accounts_iter = &mut accounts.iter();
 
@@ -78,12 +84,6 @@ pub fn process_write_device_latency_samples(
     // Enforce program ownership — ensures we're writing to an account we control.
     if latency_samples_account.owner != program_id {
         return Err(TelemetryError::InvalidAccountOwner.into());
-    }
-
-    // Nothing to do if the sample vector is empty — treat as a no-op.
-    if args.samples.is_empty() {
-        msg!("No samples provided; skipping write");
-        return Ok(());
     }
 
     msg!("Updating existing DZ latency samples account");
@@ -113,7 +113,7 @@ pub fn process_write_device_latency_samples(
     }
 
     // Ensure we won't exceed sample capacity.
-    if header.next_sample_index as usize + args.samples.len() > MAX_SAMPLES {
+    if header.next_sample_index as usize + args.samples.len() > MAX_DEVICE_LATENCY_SAMPLES {
         msg!(
             "Cannot add {} samples, would exceed max capacity",
             args.samples.len()
@@ -141,7 +141,8 @@ pub fn process_write_device_latency_samples(
     header.next_sample_index += args.samples.len() as u32;
 
     // Determine whether the account needs to be resized to hold the new data.
-    realloc_samples_account_if_needed(accounts, &header)?;
+    let new_len = DEVICE_LATENCY_SAMPLES_HEADER_SIZE + header.next_sample_index as usize * 4;
+    resize_account_if_needed(latency_samples_account, agent, accounts, new_len)?;
 
     // Serialize the updated struct back into the account.
     {
@@ -159,55 +160,6 @@ pub fn process_write_device_latency_samples(
             "Updated account, now has {} samples",
             header.next_sample_index
         );
-    }
-
-    Ok(())
-}
-
-// Determine whether the account needs to be resized to hold the new data.
-// If so, determine if the account needs to be funded for the new size, and
-// pay for the rent if needed.
-fn realloc_samples_account_if_needed(
-    accounts: &[AccountInfo],
-    header: &DeviceLatencySamplesHeader,
-) -> ProgramResult {
-    let accounts_iter = &mut accounts.iter();
-
-    // Expected order: [latency_samples_account, agent, system_program]
-    let samples_account = next_account_info(accounts_iter)?;
-    let agent = next_account_info(accounts_iter)?;
-
-    let actual_len = samples_account.data_len();
-    let new_len = DEVICE_LATENCY_SAMPLES_HEADER_SIZE + header.next_sample_index as usize * 4; // 4 bytes per RTT (microseconds) sample
-
-    if actual_len != new_len {
-        // If the account grows, we must ensure it's funded for the new size.
-        if new_len > actual_len {
-            let rent: Rent = Rent::get().expect("Unable to read rent");
-            let required_lamports: u64 = rent.minimum_balance(new_len);
-            let current_lamports: u64 = samples_account.lamports();
-
-            if required_lamports > current_lamports {
-                msg!(
-                    "Rent required: {}, actual: {}",
-                    required_lamports,
-                    current_lamports,
-                );
-                let payment: u64 = required_lamports - current_lamports;
-
-                invoke(
-                    &system_instruction::transfer(agent.key, samples_account.key, payment),
-                    accounts,
-                )
-                .expect("Unable to pay rent");
-            }
-        }
-
-        // Resize the account to accommodate the expanded data.
-        samples_account
-            .realloc(new_len, false)
-            .expect("Unable to realloc the account");
-        msg!("Resized account from {} to {}", actual_len, new_len);
     }
 
     Ok(())

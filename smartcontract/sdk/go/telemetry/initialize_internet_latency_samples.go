@@ -11,7 +11,6 @@ type InitializeInternetLatencySamplesInstructionConfig struct {
 	OracleAgentPK                solana.PublicKey
 	OriginLocationPK             solana.PublicKey
 	TargetLocationPK             solana.PublicKey
-	GlobalStatePK                solana.PublicKey
 	DataProviderName             string
 	Epoch                        uint64
 	SamplingIntervalMicroseconds uint64
@@ -69,6 +68,7 @@ func BuildInitializeInternetLatencySamplesInstruction(
 	// Derive the PDA.
 	pda, _, err := DeriveInternetLatencySamplesPDA(
 		programID,
+		config.OracleAgentPK,
 		config.DataProviderName,
 		config.OriginLocationPK,
 		config.TargetLocationPK,
@@ -84,7 +84,6 @@ func BuildInitializeInternetLatencySamplesInstruction(
 		{PublicKey: config.OracleAgentPK, IsSigner: true, IsWritable: true},
 		{PublicKey: config.OriginLocationPK, IsSigner: false, IsWritable: false},
 		{PublicKey: config.TargetLocationPK, IsSigner: false, IsWritable: false},
-		{PublicKey: config.GlobalStatePK, IsSigner: false, IsWritable: false},
 		{PublicKey: solana.SystemProgramID, IsSigner: false, IsWritable: false},
 	}
 

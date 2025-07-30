@@ -29,6 +29,14 @@ pub enum TelemetryError {
     InvalidSamplingInterval = 1012,
     /// Samples batch too large
     SamplesBatchTooLarge = 1013,
+    /// Location is not activated or suspend
+    LocationNotActiveOrSuspended = 1014,
+    /// Date provider name is greater than 32 bytes
+    DataProviderNameTooLong = 1015,
+    /// Origin and target locations cannot be the
+    SameTargetAsOrigin = 1016,
+    /// Write transaction contains no samples
+    EmptyLatencySamples = 1017,
 }
 
 impl From<TelemetryError> for ProgramError {
@@ -40,30 +48,36 @@ impl From<TelemetryError> for ProgramError {
 impl fmt::Display for TelemetryError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            TelemetryError::UnauthorizedAgent => write!(
+            Self::UnauthorizedAgent => write!(
                 f,
                 "Agent is not authorized to write telemetry for this device"
             ),
-            TelemetryError::DeviceNotActiveOrSuspended => {
+            Self::DeviceNotActiveOrSuspended => {
                 write!(f, "Device is not in activated or suspended status")
             }
-            TelemetryError::LinkNotActiveOrSuspended => {
+            Self::LinkNotActiveOrSuspended => {
                 write!(f, "Link is not in activated or suspended status")
             }
-            TelemetryError::InvalidLink => write!(f, "Link does not connect the specified devices"),
-            TelemetryError::EpochMismatch => {
+            Self::InvalidLink => write!(f, "Link does not connect the specified devices"),
+            Self::EpochMismatch => {
                 write!(f, "Epoch mismatch between account and instruction")
             }
-            TelemetryError::SamplesAccountFull => write!(f, "Samples account is full"),
-            TelemetryError::InvalidAccountType => write!(f, "Invalid account type"),
-            TelemetryError::InvalidAccountOwner => write!(f, "Account owner mismatch"),
-            TelemetryError::InvalidPDA => write!(f, "Invalid PDA"),
-            TelemetryError::AccountAlreadyExists => write!(f, "Account already exists"),
-            TelemetryError::AccountDoesNotExist => write!(f, "Account does not exist"),
-            TelemetryError::InvalidSamplingInterval => write!(f, "Invalid sampling interval"),
-            TelemetryError::SamplesBatchTooLarge => {
+            Self::SamplesAccountFull => write!(f, "Samples account is full"),
+            Self::InvalidAccountType => write!(f, "Invalid account type"),
+            Self::InvalidAccountOwner => write!(f, "Account owner mismatch"),
+            Self::InvalidPDA => write!(f, "Invalid PDA"),
+            Self::AccountAlreadyExists => write!(f, "Account already exists"),
+            Self::AccountDoesNotExist => write!(f, "Account does not exist"),
+            Self::InvalidSamplingInterval => write!(f, "Invalid sampling interval"),
+            Self::SamplesBatchTooLarge => {
                 write!(f, "Samples batch too large")
             }
+            Self::LocationNotActiveOrSuspended => {
+                write!(f, "Location does not have activated status")
+            }
+            Self::DataProviderNameTooLong => write!(f, "Data provider name exceeds 32 bytes"),
+            Self::SameTargetAsOrigin => write!(f, "Origin and target are the same location"),
+            Self::EmptyLatencySamples => write!(f, "Write transaction contains no samples"),
         }
     }
 }

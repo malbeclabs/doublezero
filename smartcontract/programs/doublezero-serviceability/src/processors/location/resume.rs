@@ -15,7 +15,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct LocationResumeArgs {}
+pub struct LocationResumeArgs;
 
 impl fmt::Debug for LocationResumeArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

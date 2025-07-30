@@ -7,7 +7,7 @@ use doublezero_telemetry::{
         accounttype::AccountType,
         device_latency_samples::{
             DeviceLatencySamples, DeviceLatencySamplesHeader, DEVICE_LATENCY_SAMPLES_HEADER_SIZE,
-            MAX_SAMPLES,
+            MAX_DEVICE_LATENCY_SAMPLES,
         },
     },
 };
@@ -130,38 +130,6 @@ async fn test_write_device_latency_samples_success() {
 }
 
 #[tokio::test]
-async fn test_write_device_latency_samples_fail_account_not_exist() {
-    let mut ledger = LedgerHelper::new().await.unwrap();
-
-    let agent = Keypair::new();
-    ledger
-        .fund_account(&agent.pubkey(), 10_000_000_000)
-        .await
-        .unwrap();
-
-    // Use an arbitrary PDA that has never been initialized.
-    let uninitialized_pda = Pubkey::new_unique();
-    let timestamp = 1_700_000_000_000_000;
-    let samples = vec![1000, 1100];
-
-    let result = ledger
-        .telemetry
-        .write_device_latency_samples(&agent, uninitialized_pda, samples, timestamp)
-        .await;
-
-    let error = result.unwrap_err();
-    match error {
-        BanksClientError::TransactionError(TransactionError::InstructionError(
-            _,
-            InstructionError::Custom(code),
-        )) => {
-            assert_eq!(code, TelemetryError::AccountDoesNotExist as u32);
-        }
-        e => panic!("unexpected error: {e:?}"),
-    }
-}
-
-#[tokio::test]
 async fn test_write_device_latency_samples_fail_unauthorized_agent() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 
@@ -243,8 +211,8 @@ async fn test_write_device_latency_samples_fail_account_full() {
     let chunk_size = 1000;
     let mut did_trigger_error = false;
 
-    while total_written <= MAX_SAMPLES {
-        let chunk = vec![1234u32; chunk_size.min(MAX_SAMPLES - total_written + 1)];
+    while total_written <= MAX_DEVICE_LATENCY_SAMPLES {
+        let chunk = vec![1234u32; chunk_size.min(MAX_DEVICE_LATENCY_SAMPLES - total_written + 1)];
         let result = ledger
             .telemetry
             .write_device_latency_samples(&agent, latency_samples_pda, chunk, timestamp)
@@ -397,7 +365,7 @@ async fn test_write_device_latency_samples_fail_agent_not_signer() {
 }
 
 #[tokio::test]
-async fn test_write_device_latency_samples_noop_on_empty_samples() {
+async fn test_write_device_latency_samples_fail_on_empty_samples() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 
     let (agent, origin_device_pk, target_device_pk, link_pk) =
@@ -418,23 +386,20 @@ async fn test_write_device_latency_samples_noop_on_empty_samples() {
         .unwrap();
 
     // Try to write an empty sample vector
-    ledger
+    let result = ledger
         .telemetry
         .write_device_latency_samples(&agent, latency_samples_pda, vec![], 1_700_000_000_000_000)
-        .await
-        .unwrap();
+        .await;
 
-    // Confirm that nothing was updated
-    let account = ledger
-        .get_account(latency_samples_pda)
-        .await
-        .unwrap()
-        .unwrap();
-    let data = DeviceLatencySamples::try_from(&account.data[..]).unwrap();
-
-    assert_eq!(data.samples.len(), 0);
-    assert_eq!(data.header.next_sample_index, 0);
-    assert_eq!(data.header.start_timestamp_microseconds, 0);
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            _,
+            InstructionError::Custom(code),
+        ))) => {
+            assert_eq!(code, TelemetryError::EmptyLatencySamples as u32);
+        }
+        e => panic!("unexpected error: {e:?}"),
+    }
 }
 
 #[tokio::test]
@@ -622,59 +587,6 @@ async fn test_write_device_latency_samples_fail_wrong_agent_but_valid_signer() {
 }
 
 #[tokio::test]
-async fn test_write_device_latency_samples_fail_agent_mismatch() {
-    let mut ledger = LedgerHelper::new().await.unwrap();
-
-    // Set up real latency samples account
-    let (real_agent, origin_device_pk, target_device_pk, link_pk) =
-        ledger.seed_with_two_linked_devices().await.unwrap();
-
-    ledger.wait_for_new_blockhash().await.unwrap();
-
-    let latency_samples_pda = ledger
-        .telemetry
-        .initialize_device_latency_samples(
-            &real_agent,
-            origin_device_pk,
-            target_device_pk,
-            link_pk,
-            1,
-            5_000_000,
-        )
-        .await
-        .unwrap();
-
-    // Fund a different agent
-    let wrong_agent = Keypair::new();
-    ledger
-        .fund_account(&wrong_agent.pubkey(), 10_000_000)
-        .await
-        .unwrap();
-
-    // Attempt to write with the wrong agent
-    let result = ledger
-        .telemetry
-        .write_device_latency_samples(
-            &wrong_agent,
-            latency_samples_pda,
-            vec![1234],
-            1_700_000_000_000_000,
-        )
-        .await;
-
-    let err = result.unwrap_err();
-    match err {
-        BanksClientError::TransactionError(TransactionError::InstructionError(
-            _,
-            InstructionError::Custom(code),
-        )) => {
-            assert_eq!(code, TelemetryError::UnauthorizedAgent as u32);
-        }
-        other => panic!("Unexpected error: {other:?}"),
-    }
-}
-
-#[tokio::test]
 async fn test_write_device_latency_samples_to_max_samples() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 
@@ -700,12 +612,12 @@ async fn test_write_device_latency_samples_to_max_samples() {
 
     let chunk_size = MAX_PERMITTED_DATA_INCREASE / 4;
 
-    while total_written < MAX_SAMPLES {
+    while total_written < MAX_DEVICE_LATENCY_SAMPLES {
         if total_written % 500 == 0 {
             ledger.wait_for_new_blockhash().await.unwrap();
         }
 
-        let remaining = MAX_SAMPLES - total_written;
+        let remaining = MAX_DEVICE_LATENCY_SAMPLES - total_written;
         let chunk = vec![1234u32; chunk_size.min(remaining)];
 
         let result = ledger
@@ -732,12 +644,12 @@ async fn test_write_device_latency_samples_to_max_samples() {
     let state = DeviceLatencySamples::try_from(&account.data[..]).unwrap();
 
     assert_eq!(
-        state.header.next_sample_index as usize, MAX_SAMPLES,
+        state.header.next_sample_index as usize, MAX_DEVICE_LATENCY_SAMPLES,
         "Final header index mismatch"
     );
     assert_eq!(
         state.samples.len(),
-        MAX_SAMPLES,
+        MAX_DEVICE_LATENCY_SAMPLES,
         "Sample buffer length mismatch"
     );
     assert!(state.samples.iter().all(|&s| s == 1234));

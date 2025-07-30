@@ -147,6 +147,7 @@ func (c *Client) WriteDeviceLatencySamples(
 
 func (c *Client) GetInternetLatencySamples(
 	ctx context.Context,
+	collectorOraclePK solana.PublicKey,
 	dataProviderName string,
 	originLocationPK solana.PublicKey,
 	targetLocationPK solana.PublicKey,
@@ -154,6 +155,7 @@ func (c *Client) GetInternetLatencySamples(
 ) (*InternetLatencySamples, error) {
 	pda, _, err := DeriveInternetLatencySamplesPDA(
 		c.executor.programID,
+		collectorOraclePK,
 		dataProviderName,
 		originLocationPK,
 		targetLocationPK,

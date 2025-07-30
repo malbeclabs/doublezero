@@ -30,8 +30,8 @@ impl TryFrom<u8> for AccountType {
 impl fmt::Display for AccountType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::DeviceLatencySamplesV0 => write!(f, "DeviceLatencySamplesV1"),
-            Self::InternetLatencySamplesV0 => write!(f, "InternetLatencySamplesV1"),
+            Self::DeviceLatencySamplesV0 => write!(f, "DeviceLatencySamplesV0"),
+            Self::InternetLatencySamplesV0 => write!(f, "InternetLatencySamplesV0"),
             Self::DeviceLatencySamples => write!(f, "DeviceLatencySamples"),
             Self::InternetLatencySamples => write!(f, "InternetLatencySamples"),
         }

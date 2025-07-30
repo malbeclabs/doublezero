@@ -39,8 +39,15 @@ var devicePayload = `
 483c031c496dd52ffd841907413a9259d8668196f939b255c27
 4ee9fde636334e9df9b428bf14a9c4dbd07ca455b10aa67fbd9
 0d17007ee2ad45706bd9a5a000b4579a7001080000007479322
-d647a303101000000b4579a701d903a23e92446591b0bb98794
-f3e278ae
+d647a303101000000b4579a701d00020406080a0c0e10121416
+181a1c1e20222426282a2c2e30323436383a3c0000010203040
+5060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e
+1fe8fd0000e9fd00000700000064656661756c7402000000080
+80808080804040200000081060f1c81060f1d02000000010b00
+0000737769746368312f312f3102002a000a0102031d7b00000
+1030000006c6f3001010f000a0203041d2a0001b245f92183e1
+b409bb7006560f858cf3bfa557c75cd967182a00392200b5de7
+8
 `
 
 var tunnelPayload = `
@@ -50,8 +57,10 @@ var tunnelPayload = `
 f8198607689246e25c9403fba46e89122ff5d0fcc1febb51d4b
 4ce64f17ad56c47b3d1d7f3f0100e40b5402000000282300008
 0c3c9010000000080969800000000000500ac10000a1f011100
-00007479322d647a30313a6c61322d647a3031ad2570a0cf277
-61cab55a3f26d85fb20
+00007479322d647a30313a6c61322d647a30310001020304050
+60708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+0b000000737769746368312f312f31030000006c6f30ad2570a
+0cf27761cab55a3f26d85fb20
 `
 
 var userPayload = `
@@ -193,18 +202,47 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 			Want: &ProgramData{
 				Devices: []Device{
 					{
-						AccountType:    DeviceType,
-						Index:          Uint128{High: 22, Low: 0},
-						Bump_seed:      255,
-						Owner:          getOwner(exchangePayload),
-						LocationPubKey: getPubKeyOffset(devicePayload, 50, 82),
-						ExchangePubKey: getPubKeyOffset(devicePayload, 82, 114),
-						DeviceType:     0,
-						PublicIp:       [4]byte{0xb4, 0x57, 0x9a, 0x70},
-						Status:         1,
-						Code:           "ty2-dz01",
-						DzPrefixes:     [][5]byte{{0xb4, 0x57, 0x9a, 0x70, 0x1d}},
-						PubKey:         pubkeys[2],
+						AccountType:            DeviceType,
+						Index:                  Uint128{High: 22, Low: 0},
+						Bump_seed:              255,
+						Owner:                  getOwner(exchangePayload),
+						LocationPubKey:         getPubKeyOffset(devicePayload, 50, 82),
+						ExchangePubKey:         getPubKeyOffset(devicePayload, 82, 114),
+						DeviceType:             0,
+						PublicIp:               [4]byte{0xb4, 0x57, 0x9a, 0x70},
+						Status:                 1,
+						Code:                   "ty2-dz01",
+						DzPrefixes:             [][5]byte{{0xb4, 0x57, 0x9a, 0x70, 0x1d}},
+						MetricsPublisherPubKey: getPubKeyOffset(devicePayload, 141, 173),
+						ContributorPubKey:      getPubKeyOffset(devicePayload, 173, 205),
+						BgpAsn:                 65000,
+						DiaBgpAsn:              65001,
+						MgmtVrf:                "default",
+						DnsServers:             [][4]byte{{8, 8, 8, 8}, {8, 8, 4, 4}},
+						NtpServers:             [][4]byte{{129, 6, 15, 28}, {129, 6, 15, 29}},
+						Interfaces: []Interface{
+							{
+								Version:            CurrentInterfaceVersion,
+								Name:               "switch1/1/1",
+								InterfaceType:      InterfaceTypePhysical,
+								LoopbackType:       LoopbackTypeNone,
+								VlanId:             42,
+								IpNet:              [5]byte{0x0a, 0x01, 0x02, 0x03, 0x1d},
+								NodeSegmentIdx:     123,
+								UserTunnelEndpoint: false,
+							},
+							{
+								Version:            CurrentInterfaceVersion,
+								Name:               "lo0",
+								InterfaceType:      InterfaceTypeLoopback,
+								LoopbackType:       LoopbackTypeVpnv4,
+								VlanId:             15,
+								IpNet:              [5]byte{0x0a, 0x02, 0x03, 0x04, 0x1d},
+								NodeSegmentIdx:     42,
+								UserTunnelEndpoint: true,
+							},
+						},
+						PubKey: pubkeys[2],
 					},
 				},
 				Locations:       []Location{},
@@ -279,22 +317,25 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 			Want: &ProgramData{
 				Links: []Link{
 					{
-						AccountType: LinkType,
-						Index:       Uint128{High: 30, Low: 0},
-						Bump_seed:   251,
-						Owner:       getOwner(tunnelPayload),
-						SideAPubKey: getPubKeyOffset(tunnelPayload, 50, 82),
-						SideZPubKey: getPubKeyOffset(tunnelPayload, 82, 114),
-						LinkType:    LinkLinkTypeMPLSoverGRE,
-						Bandwidth:   10000000000,
-						Mtu:         9000,
-						DelayNs:     30000000,
-						JitterNs:    10000000,
-						TunnelId:    5,
-						TunnelNet:   [5]byte{0xac, 0x10, 0x00, 0x0a, 0x1f},
-						Status:      LinkStatusActivated,
-						Code:        "ty2-dz01:la2-dz01",
-						PubKey:      pubkeys[5],
+						AccountType:       LinkType,
+						Index:             Uint128{High: 30, Low: 0},
+						Bump_seed:         251,
+						Owner:             getOwner(tunnelPayload),
+						SideAPubKey:       getPubKeyOffset(tunnelPayload, 50, 82),
+						SideZPubKey:       getPubKeyOffset(tunnelPayload, 82, 114),
+						LinkType:          LinkLinkTypeMPLSoverGRE,
+						Bandwidth:         10000000000,
+						Mtu:               9000,
+						DelayNs:           30000000,
+						JitterNs:          10000000,
+						TunnelId:          5,
+						TunnelNet:         [5]byte{0xac, 0x10, 0x00, 0x0a, 0x1f},
+						Status:            LinkStatusActivated,
+						Code:              "ty2-dz01:la2-dz01",
+						ContributorPubKey: [32]byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f},
+						SideAIfaceName:    "switch1/1/1",
+						SideZIfaceName:    "lo0",
+						PubKey:            pubkeys[5],
 					},
 				},
 				Locations:       []Location{},

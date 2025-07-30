@@ -86,6 +86,37 @@ const (
 	DeviceStatusDeleted
 )
 
+type InterfaceType uint8
+
+const (
+	InterfaceTypeInvalid InterfaceType = iota
+	InterfaceTypeLoopback
+	InterfaceTypePhysical
+)
+
+type LoopbackType uint8
+
+const (
+	LoopbackTypeNone LoopbackType = iota
+	LoopbackTypeVpnv4
+	LoopbackTypeIpv4
+	LoopbackTypePimRpAddr
+	LoopbackTypeReserved
+)
+
+type Interface struct {
+	Version            uint8
+	Name               string
+	InterfaceType      InterfaceType
+	LoopbackType       LoopbackType
+	VlanId             uint16
+	IpNet              [5]uint8
+	NodeSegmentIdx     uint16
+	UserTunnelEndpoint bool
+}
+
+const CurrentInterfaceVersion = 1
+
 type Device struct {
 	AccountType            AccountType
 	Owner                  [32]uint8
@@ -99,6 +130,13 @@ type Device struct {
 	Code                   string
 	DzPrefixes             [][5]uint8
 	MetricsPublisherPubKey [32]uint8
+	ContributorPubKey      [32]byte
+	BgpAsn                 uint32
+	DiaBgpAsn              uint32
+	MgmtVrf                string
+	DnsServers             [][4]uint8
+	NtpServers             [][4]uint8
+	Interfaces             []Interface
 	PubKey                 [32]byte
 }
 
@@ -118,22 +156,25 @@ const (
 )
 
 type Link struct {
-	AccountType AccountType
-	Owner       [32]uint8
-	Index       Uint128
-	Bump_seed   uint8
-	SideAPubKey [32]uint8
-	SideZPubKey [32]uint8
-	LinkType    LinkLinkType
-	Bandwidth   uint64
-	Mtu         uint32
-	DelayNs     uint64
-	JitterNs    uint64
-	TunnelId    uint16
-	TunnelNet   [5]uint8
-	Status      LinkStatus
-	Code        string
-	PubKey      [32]byte
+	AccountType       AccountType
+	Owner             [32]uint8
+	Index             Uint128
+	Bump_seed         uint8
+	SideAPubKey       [32]uint8
+	SideZPubKey       [32]uint8
+	LinkType          LinkLinkType
+	Bandwidth         uint64
+	Mtu               uint32
+	DelayNs           uint64
+	JitterNs          uint64
+	TunnelId          uint16
+	TunnelNet         [5]uint8
+	Status            LinkStatus
+	Code              string
+	ContributorPubKey [32]uint8
+	SideAIfaceName    string
+	SideZIfaceName    string
+	PubKey            [32]byte
 }
 
 type UserUserType uint8

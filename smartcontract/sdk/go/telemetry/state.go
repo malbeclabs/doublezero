@@ -19,11 +19,11 @@ type DeviceLatencySamplesHeader struct {
 	// Used to distinguish this account type during deserialization
 	AccountType AccountType // 1
 
-	// Required for recreating the PDA (seed authority)
-	BumpSeed uint8 // 1
-
 	// Epoch number in which samples were collected
 	Epoch uint64 // 8
+
+	// Required for recreating the PDA (seed authority)
+	BumpSeed uint8 // 1
 
 	// Agent authorized to write RTT samples (must match signer)
 	OriginDeviceAgentPK solana.PublicKey // 32
@@ -98,14 +98,14 @@ type InternetLatencySamplesHeader struct {
 	// AccountType is used to distinguish this account type during deserialization.
 	AccountType AccountType // 1
 
+	// Epoch is the epoch number in which samples were collected.
+	Epoch uint64 // 8
+
 	// BumpSeed is required for recreating the PDA (seed authority).
 	BumpSeed uint8 // 1
 
 	// DataProviderName is the name of the data provider.
 	DataProviderName string // 4 + len
-
-	// Epoch is the epoch number in which samples were collected.
-	Epoch uint64 // 8
 
 	// OracleAgentPK authorized to write latency samples (must match signer)
 	OracleAgentPK solana.PublicKey // 32

@@ -17,7 +17,6 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow.workspace = true
-borsh.workspace = true
 chrono.workspace = true
 clap.workspace = true
 csv.workspace = true

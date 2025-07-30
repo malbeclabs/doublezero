@@ -336,7 +336,6 @@ mod tests {
             header: DeviceLatencySamplesHeader {
                 account_type:
                     doublezero_telemetry::state::accounttype::AccountType::DeviceLatencySamples,
-                bump_seed: 255,
                 epoch: 100,
                 origin_device_agent_pk: test_pubkey(2),
                 origin_device_pk: test_pubkey(3),

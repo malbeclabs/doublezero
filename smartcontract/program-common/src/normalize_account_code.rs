@@ -11,7 +11,7 @@ pub fn normalize_account_code(val: &str) -> Result<String, &'static str> {
             {
                 code.push(if char.is_whitespace() { '_' } else { char })
             } else {
-                return Err("name must be alphanumeric");
+                return Err("name must be alphanumeric only");
             }
             Ok(code)
         })
@@ -33,7 +33,7 @@ mod test {
         let input = "myDevice/2".to_string();
         assert_eq!(
             normalize_account_code(&input),
-            Err("name must be alphanumeric")
+            Err("name must be alphanumeric only")
         );
     }
 

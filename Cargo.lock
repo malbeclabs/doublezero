@@ -1713,6 +1713,7 @@ dependencies = [
  "directories-next",
  "dirs-next",
  "doublezero-config",
+ "doublezero-program-common",
  "doublezero-serviceability",
  "eyre",
  "futures",

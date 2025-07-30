@@ -1,4 +1,5 @@
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
+use doublezero_program_common::normalize_account_code;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, processors::contributor::update::ContributorUpdateArgs,
 };
@@ -13,13 +14,14 @@ pub struct UpdateContributorCommand {
 
 impl UpdateContributorCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
+        let code = self.validate_code()?;
         let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand {}
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
         client.execute_transaction(
             DoubleZeroInstruction::UpdateContributor(ContributorUpdateArgs {
-                code: self.code.to_owned(),
+                code,
                 owner: self.owner.to_owned(),
             }),
             vec![
@@ -27,6 +29,14 @@ impl UpdateContributorCommand {
                 AccountMeta::new(globalstate_pubkey, false),
             ],
         )
+    }
+
+    fn validate_code(&self) -> eyre::Result<Option<String>> {
+        self.code
+            .as_ref()
+            .map(|code| normalize_account_code(code))
+            .transpose()
+            .map_err(|err| eyre::eyre!("invalid code: {err}"))
     }
 }
 

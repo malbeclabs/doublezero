@@ -1,4 +1,5 @@
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
+use doublezero_program_common::normalize_account_code;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, pda::get_contributor_pda,
     processors::contributor::create::ContributorCreateArgs,
@@ -13,6 +14,7 @@ pub struct CreateContributorCommand {
 
 impl CreateContributorCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
+        let code = self.validate_code()?;
         let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
@@ -22,7 +24,8 @@ impl CreateContributorCommand {
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
-                    code: self.code.clone(),
+                    code,
+                    owner: self.owner,
                 }),
                 vec![
                     AccountMeta::new(pda_pubkey, false),
@@ -31,6 +34,10 @@ impl CreateContributorCommand {
                 ],
             )
             .map(|sig| (sig, pda_pubkey))
+    }
+
+    fn validate_code(&self) -> eyre::Result<String> {
+        normalize_account_code(&self.code).map_err(|err| eyre::eyre!("invalid code: {err}"))
     }
 }
 
@@ -61,6 +68,22 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateContributor(
                     ContributorCreateArgs {
+                        code: "test invalid".to_string(),
+                        owner: Pubkey::default(),
+                    },
+                )),
+                predicate::eq(vec![
+                    AccountMeta::new(pda_pubkey, false),
+                    AccountMeta::new(globalstate_pubkey, false),
+                ]),
+            )
+            .returning(|_, _| Err(eyre::eyre!("invalid code: name must be alphanumeric only")));
+
+        client
+            .expect_execute_transaction()
+            .with(
+                predicate::eq(DoubleZeroInstruction::CreateContributor(
+                    ContributorCreateArgs {
                         code: "test".to_string(),
                     },
                 )),
@@ -71,6 +94,14 @@ mod tests {
                 ]),
             )
             .returning(|_, _| Ok(Signature::new_unique()));
+
+        let res = CreateContributorCommand {
+            code: "test invalid".to_string(),
+            owner: Pubkey::default(),
+        }
+        .execute(&client);
+
+        assert!(res.is_err());
 
         let res = CreateContributorCommand {
             code: "test".to_string(),

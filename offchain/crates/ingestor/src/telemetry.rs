@@ -114,7 +114,7 @@ pub async fn fetch(
                             sample_count,
                             samples.header.sampling_interval_microseconds
                         );
-                        let dz_samples = DZDeviceLatencySamples::from_solana(*pubkey, &samples);
+                        let dz_samples = DZDeviceLatencySamples::from_raw(*pubkey, &samples);
                         batch_samples.push(dz_samples);
                     } else {
                         debug!(
@@ -248,7 +248,7 @@ pub async fn fetch_by_epoch(
                         samples.header.sampling_interval_microseconds
                     );
 
-                    let dz_samples = DZDeviceLatencySamples::from_solana(*pubkey, &samples);
+                    let dz_samples = DZDeviceLatencySamples::from_raw(*pubkey, &samples);
                     device_latency_samples.push(dz_samples);
                 }
                 Err(e) => {

@@ -97,7 +97,7 @@ pub struct DZDeviceLatencySamples {
 }
 
 impl DZDeviceLatencySamples {
-    pub fn from_solana(pubkey: Pubkey, samples: &DeviceLatencySamples) -> Self {
+    pub fn from_raw(pubkey: Pubkey, samples: &DeviceLatencySamples) -> Self {
         Self {
             pubkey,
             epoch: samples.header.epoch,

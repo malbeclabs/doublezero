@@ -107,7 +107,7 @@ mod tests {
 
         // remove with code containing whitespace
         let res = RemoveMulticastGroupSubAllowlistCommand {
-            pubkey_or_code: "testcode".to_string(),
+            pubkey_or_code: "test code".to_string(),
             pubkey,
         }
         .execute(&client);

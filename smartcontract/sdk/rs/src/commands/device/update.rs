@@ -89,7 +89,7 @@ mod tests {
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-                    code: Some("test-device".to_string()),
+                    code: Some("test_device".to_string()),
                     device_type: Some(DeviceType::Switch),
                     public_ip: None,
                     dz_prefixes: Some("10.0.0.0/8".parse().unwrap()),
@@ -111,7 +111,7 @@ mod tests {
 
         let update_command = UpdateDeviceCommand {
             pubkey: pda_pubkey,
-            code: Some("test-device".to_string()),
+            code: Some("test_device".to_string()),
             contributor_pk: None,
             device_type: Some(DeviceType::Switch),
             public_ip: None,

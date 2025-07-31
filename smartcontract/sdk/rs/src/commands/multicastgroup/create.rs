@@ -71,7 +71,7 @@ mod tests {
                     MulticastGroupCreateArgs {
                         index: 1,
                         bump_seed,
-                        code: "test-group".to_string(),
+                        code: "test_group".to_string(),
                         max_bandwidth: 1000,
                         owner: globalstate_pubkey,
                     },
@@ -84,7 +84,7 @@ mod tests {
             .returning(|_, _| Ok(Signature::new_unique()));
 
         let create_command = CreateMulticastGroupCommand {
-            code: "test-group".to_string(),
+            code: "test_group".to_string(),
             max_bandwidth: 1000,
             owner: globalstate_pubkey,
         };

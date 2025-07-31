@@ -56,7 +56,7 @@ mod tests {
     use solana_sdk::{instruction::AccountMeta, signature::Signature};
 
     #[test]
-    fn test_commands_location_update_command() {
+    fn test_commands_multicastgroup_update_command() {
         let mut client = create_test_client();
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
@@ -67,7 +67,7 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateMulticastGroup(
                     MulticastGroupUpdateArgs {
-                        code: Some("test-group".to_string()),
+                        code: Some("test_group".to_string()),
                         multicast_ip: Some("127.0.0.1".parse().unwrap()),
                         max_bandwidth: Some(1000),
                     },
@@ -81,7 +81,7 @@ mod tests {
 
         let update_command = UpdateMulticastGroupCommand {
             pubkey: pda_pubkey,
-            code: Some("test-group".to_string()),
+            code: Some("test_group".to_string()),
             multicast_ip: Some("127.0.0.1".parse().unwrap()),
             max_bandwidth: Some(1000),
         };

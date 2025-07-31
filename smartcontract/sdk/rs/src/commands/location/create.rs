@@ -68,7 +68,7 @@ mod tests {
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
-                    code: "test-location".to_string(),
+                    code: "test_location".to_string(),
                     name: "Test Location".to_string(),
                     country: "Test Country".to_string(),
                     lat: 0.0,
@@ -83,7 +83,7 @@ mod tests {
             .returning(|_, _| Ok(Signature::new_unique()));
 
         let create_command = CreateLocationCommand {
-            code: "test-location".to_string(),
+            code: "test_location".to_string(),
             name: "Test Location".to_string(),
             country: "Test Country".to_string(),
             lat: 0.0,

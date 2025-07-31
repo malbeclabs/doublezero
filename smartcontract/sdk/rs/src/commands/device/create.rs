@@ -133,7 +133,7 @@ mod tests {
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
-                    code: "test-device".to_string(),
+                    code: "test_device".to_string(),
                     device_type: DeviceType::Switch,
                     public_ip: [10, 0, 0, 1].into(),
                     dz_prefixes: "10.0.0.0/8".parse().unwrap(),
@@ -152,7 +152,7 @@ mod tests {
             .returning(|_, _| Ok(Signature::new_unique()));
 
         let command = CreateDeviceCommand {
-            code: "test-device".to_string(),
+            code: "test_device".to_string(),
             contributor_pk: contributor_pubkey,
             location_pk: location_pubkey,
             exchange_pk: exchange_pubkey,

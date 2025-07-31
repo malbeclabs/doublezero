@@ -70,7 +70,7 @@ mod tests {
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
-                    code: "test".to_string(),
+                    code: "test_exchange".to_string(),
                     name: "Test Exchange".to_string(),
                     lat: 0.0,
                     lng: 0.0,
@@ -84,7 +84,7 @@ mod tests {
             .returning(|_, _| Ok(Signature::new_unique()));
 
         let create_command = CreateExchangeCommand {
-            code: "test-exchange".to_string(),
+            code: "test_exchange".to_string(),
             name: "Test Exchange".to_string(),
             lat: 0.0,
             lng: 0.0,

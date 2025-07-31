@@ -70,7 +70,7 @@ mod tests {
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateLocation(LocationUpdateArgs {
-                    code: Some("test-location".to_string()),
+                    code: Some("test_location".to_string()),
                     name: Some("Test Location".to_string()),
                     country: Some("Test Country".to_string()),
                     lat: Some(0.0),
@@ -86,7 +86,7 @@ mod tests {
 
         let update_command = UpdateLocationCommand {
             pubkey: pda_pubkey,
-            code: Some("test-location".to_string()),
+            code: Some("test_location".to_string()),
             name: Some("Test Location".to_string()),
             country: Some("Test Country".to_string()),
             lat: Some(0.0),

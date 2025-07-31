@@ -68,7 +68,7 @@ mod tests {
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateExchange(ExchangeUpdateArgs {
-                    code: Some("test-exchange".to_string()),
+                    code: Some("test_exchange".to_string()),
                     name: Some("Test Exchange".to_string()),
                     lat: Some(0.0),
                     lng: Some(0.0),
@@ -83,7 +83,7 @@ mod tests {
 
         let update_command = UpdateExchangeCommand {
             pubkey: pda_pubkey,
-            code: Some("test-exchange".to_string()),
+            code: Some("test_exchange".to_string()),
             name: Some("Test Exchange".to_string()),
             lat: Some(0.0),
             lng: Some(0.0),

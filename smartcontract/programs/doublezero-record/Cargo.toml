@@ -27,4 +27,4 @@ solana-system-interface.workspace = true
 crate-type = ["cdylib", "lib"]
 
 [package.metadata.solana]
-program-id = "recr1L3PCGKLbckBqMNcJhuuyU1zgo8nBhfLVsJNwr5"
+program-id = "dzrecxigtaZQ3gPmt2X5mDkYigaruFR1rHCqztFTvx7"

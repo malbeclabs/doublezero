@@ -6,6 +6,7 @@ require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.37.2
 	github.com/alitto/pond/v2 v2.5.0
 	github.com/aristanetworks/goeapi v1.0.1-0.20250411124937-7090068b8735
+	github.com/cenkalti/backoff/v5 v5.0.2
 	github.com/docker/docker v28.3.3+incompatible
 	github.com/docker/go-connections v0.5.0
 	github.com/gagliardetto/binary v0.8.0

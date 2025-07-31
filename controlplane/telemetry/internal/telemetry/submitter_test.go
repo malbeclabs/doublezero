@@ -513,4 +513,77 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		require.Len(t, receivedRTTs, 1, "should have submitted one sample")
 		assert.Equal(t, uint32(1), receivedRTTs[0], "RTT of 0 should be coerced to 1")
 	})
+
+	t.Run("getCurrentEpoch_retries_then_succeeds", func(t *testing.T) {
+		t.Parallel()
+
+		log := log.With("test", t.Name())
+
+		key := newTestAccountKey()
+		buffer := telemetry.NewAccountsBuffer()
+		buffer.Add(key, newTestSample())
+		_ = buffer.CopyAndReset(key) // trigger empty buffer path
+
+		var attempts int
+		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+			Interval:    time.Hour,
+			Buffer:      buffer,
+			MaxAttempts: 1,
+			BackoffFunc: func(_ int) time.Duration { return 0 },
+			ProgramClient: &mockTelemetryProgramClient{
+				WriteDeviceLatencySamplesFunc: func(ctx context.Context, _ sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+					return solana.Signature{}, nil, nil
+				},
+			},
+			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+				attempts++
+				if attempts < 3 {
+					return 0, errors.New("transient failure")
+				}
+				return 100, nil
+			},
+		})
+		require.NoError(t, err)
+
+		submitter.Tick(context.Background())
+
+		assert.Equal(t, 3, attempts, "should retry GetCurrentEpoch 3 times before succeeding")
+	})
+
+	t.Run("getCurrentEpoch_fails_and_skips_tick", func(t *testing.T) {
+		t.Parallel()
+
+		log := log.With("test", t.Name())
+
+		key := newTestAccountKey()
+		buffer := telemetry.NewAccountsBuffer()
+		buffer.Add(key, newTestSample())
+		_ = buffer.CopyAndReset(key) // trigger empty buffer path
+
+		var epochAttempts int
+		var submissionCalled bool
+
+		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+			Interval:    time.Hour,
+			Buffer:      buffer,
+			MaxAttempts: 1,
+			BackoffFunc: func(_ int) time.Duration { return 0 },
+			ProgramClient: &mockTelemetryProgramClient{
+				WriteDeviceLatencySamplesFunc: func(ctx context.Context, _ sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+					submissionCalled = true
+					return solana.Signature{}, nil, nil
+				},
+			},
+			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+				epochAttempts++
+				return 0, errors.New("persistent failure")
+			},
+		})
+		require.NoError(t, err)
+
+		submitter.Tick(context.Background())
+
+		assert.Equal(t, 5, epochAttempts, "should retry GetCurrentEpoch 5 times before giving up")
+		assert.False(t, submissionCalled, "should skip submission if GetCurrentEpoch fails")
+	})
 }

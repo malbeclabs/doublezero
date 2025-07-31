@@ -2,10 +2,12 @@ package telemetry
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
+	"github.com/cenkalti/backoff/v5"
 	"github.com/gagliardetto/solana-go"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 )
@@ -50,7 +52,7 @@ func (p *Pinger) Run(ctx context.Context) error {
 }
 
 func (p *Pinger) Tick(ctx context.Context) {
-	epoch, err := p.cfg.GetCurrentEpoch(ctx)
+	epoch, err := p.getCurrentEpoch(ctx)
 	if err != nil {
 		p.log.Error("failed to get current epoch", "error", err)
 		return
@@ -131,4 +133,26 @@ func (p *Pinger) Tick(ctx context.Context) {
 		}(peer)
 	}
 	wg.Wait()
+}
+
+// getCurrentEpoch gets the current epoch, with a few retries to mitigate any transient network
+// issues. The pinger does not rely on this to succeed, and will just try again on the next tick
+// if it fails all retries.
+func (p *Pinger) getCurrentEpoch(ctx context.Context) (uint64, error) {
+	attempt := 0
+	epoch, err := backoff.Retry(ctx, func() (uint64, error) {
+		if attempt > 1 {
+			p.log.Warn("Failed to get current epoch, retrying", "attempt", attempt)
+		}
+		attempt++
+		epoch, err := p.cfg.GetCurrentEpoch(ctx)
+		if err != nil {
+			return 0, err
+		}
+		return epoch, nil
+	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxTries(3))
+	if err != nil {
+		return 0, fmt.Errorf("failed to get current epoch: %w", err)
+	}
+	return epoch, nil
 }

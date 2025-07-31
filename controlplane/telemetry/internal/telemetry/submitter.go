@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/cenkalti/backoff/v5"
 	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/metrics"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
@@ -156,7 +157,7 @@ func (s *Submitter) Tick(ctx context.Context) {
 			s.cfg.Buffer.Recycle(accountKey, tmp)
 
 			// If the account is for a past epoch, remove it.
-			epoch, err := s.cfg.GetCurrentEpoch(ctx)
+			epoch, err := s.getCurrentEpoch(ctx)
 			if err != nil {
 				log.Error("failed to get current epoch", "error", err)
 				continue
@@ -223,4 +224,26 @@ func (s *Submitter) defaultBackoff(attempt int) time.Duration {
 		return max
 	}
 	return backoff
+}
+
+// getCurrentEpoch gets the current epoch, with a few retries to mitigate any transient network
+// issues. The submitter does not rely on this to succeed, and will just try again on the next tick
+// if it fails all retries.
+func (s *Submitter) getCurrentEpoch(ctx context.Context) (uint64, error) {
+	attempt := 0
+	epoch, err := backoff.Retry(ctx, func() (uint64, error) {
+		if attempt > 1 {
+			s.log.Warn("Failed to get current epoch, retrying", "attempt", attempt)
+		}
+		attempt++
+		epoch, err := s.cfg.GetCurrentEpoch(ctx)
+		if err != nil {
+			return 0, err
+		}
+		return epoch, nil
+	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxTries(5))
+	if err != nil {
+		return 0, fmt.Errorf("failed to get current epoch: %w", err)
+	}
+	return epoch, nil
 }

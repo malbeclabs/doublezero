@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
 	"sort"
+	"syscall"
 	"time"
 
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
@@ -23,9 +25,13 @@ func main() {
 	env := flag.String("env", config.EnvDevnet, "The network environment to query (devnet, testnet)")
 	recency := flag.Duration("recency", 24*time.Hour, "Aggregate over the given duration")
 	verbose := flag.Bool("verbose", false, "Enable verbose logging")
+	rawCSVPath := flag.String("raw-csv", "", "Path to save raw data to CSV")
 	flag.Parse()
 
 	log := newLogger(*verbose)
+
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
 
 	provider, err := newProvider(log, *env)
 	if err != nil {
@@ -33,7 +39,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	circuits, err := provider.GetCircuits(context.Background())
+	circuits, err := provider.GetCircuits(ctx)
 	if err != nil {
 		log.Error("Failed to get circuits", "error", err)
 		os.Exit(1)
@@ -42,10 +48,46 @@ func main() {
 	from := time.Now().Add(-*recency)
 	to := time.Now()
 
+	if *rawCSVPath != "" {
+		file, err := os.Create(*rawCSVPath)
+		if err != nil {
+			log.Error("Failed to create CSV file", "error", err, "path", *rawCSVPath)
+			os.Exit(1)
+		}
+		defer file.Close()
+
+		_, err = fmt.Fprintln(file, "circuit,timestamp,rtt_us")
+		if err != nil {
+			log.Error("Failed to write CSV header", "error", err, "path", *rawCSVPath)
+			os.Exit(1)
+		}
+
+		for _, circuit := range circuits {
+			samples, err := provider.GetCircuitLatencies(ctx, circuit.Code, from, to)
+			if err != nil {
+				log.Error("Failed to get raw data", "error", err, "circuit", circuit.Code)
+				os.Exit(1)
+			}
+
+			for _, sample := range samples {
+				_, err := fmt.Fprintf(file, "%s,%s,%d\n",
+					circuit.Code,
+					sample.Timestamp, // Already formatted as time.RFC3339Nano
+					sample.RTT,
+				)
+				if err != nil {
+					log.Error("Failed to write CSV row", "error", err, "path", *rawCSVPath)
+					os.Exit(1)
+				}
+			}
+		}
+		return
+	}
+
 	var allStats []data.CircuitLatencyStat
 	for _, circuit := range circuits {
 		stats, err := provider.GetCircuitLatenciesDownsampled(
-			context.Background(),
+			ctx,
 			circuit.Code,
 			from,
 			to,

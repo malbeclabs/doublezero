@@ -20,8 +20,19 @@ async fn main() -> Result<()> {
 
     // Handle subcommands
     match &cli.command {
-        Commands::CalculateRewards { before, after } => {
-            Orchestrator::calculate_rewards(before, after).await
+        Commands::CalculateRewards {
+            before,
+            after,
+            epoch,
+            previous_epoch,
+        } => {
+            Orchestrator::calculate_rewards(
+                before.as_deref(),
+                after.as_deref(),
+                *epoch,
+                *previous_epoch,
+            )
+            .await
         }
         Commands::ExportDemand {
             demand,

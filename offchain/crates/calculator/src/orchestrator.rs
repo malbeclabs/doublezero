@@ -11,27 +11,33 @@ use processor::{
 use std::path::Path;
 use tracing::info;
 
+enum FilterMode {
+    Epoch(u64),
+    PreviousEpoch,
+    TimeRange,
+}
+
 #[derive(Debug)]
 pub struct Orchestrator;
 
 impl Orchestrator {
-    pub async fn calculate_rewards(before: &str, after: &str) -> Result<()> {
-        let after_us = parse_timestamp(after)?;
-        let before_us = parse_timestamp(before)?;
+    pub async fn calculate_rewards(
+        before: Option<&str>,
+        after: Option<&str>,
+        epoch: Option<u64>,
+        previous_epoch: bool,
+    ) -> Result<()> {
+        // Determine which filtering mode to use
+        let (after_us, before_us, filter_mode) =
+            filtering_mode(before, after, epoch, previous_epoch)?;
 
-        // Log time range
-        let before_dt = micros_to_datetime(before_us)?;
-        let after_dt = micros_to_datetime(after_us)?;
-        let duration_secs = (before_us - after_us) / 1_000_000;
-        info!(
-            "Time range: {} to {} ({} seconds)",
-            after_dt.format("%Y-%m-%dT%H:%M:%SZ"),
-            before_dt.format("%Y-%m-%dT%H:%M:%SZ"),
-            duration_secs
-        );
+        // Fetch data based on filter mode
+        let fetch_data = match filter_mode {
+            FilterMode::Epoch(epoch_num) => Fetcher::fetch_by_epoch(epoch_num).await?,
+            FilterMode::PreviousEpoch => Fetcher::fetch_previous_epoch().await?,
+            FilterMode::TimeRange => Fetcher::fetch(after_us, before_us).await?,
+        };
 
-        // Fetch data
-        let fetch_data = Fetcher::fetch(after_us, before_us).await?;
         let data_store = DataStore::try_from(fetch_data)?;
         let stat_map = DZDTelemetryProcessor::process(&data_store);
         info!("\n{}", print_telemetry_stats(&stat_map));
@@ -53,5 +59,41 @@ impl Orchestrator {
 
     pub async fn export_demand(_demand_path: &Path, _validators_path: Option<&Path>) -> Result<()> {
         todo!()
+    }
+}
+
+fn filtering_mode(
+    before: Option<&str>,
+    after: Option<&str>,
+    epoch: Option<u64>,
+    previous_epoch: bool,
+) -> Result<(u64, u64, FilterMode)> {
+    if let Some(epoch_num) = epoch {
+        // Epoch-based filtering
+        info!("Using epoch-based filtering for epoch {}", epoch_num);
+        Ok((0, 0, FilterMode::Epoch(epoch_num)))
+    } else if previous_epoch {
+        // Previous epoch filtering
+        info!("Using previous epoch filtering");
+        Ok((0, 0, FilterMode::PreviousEpoch))
+    } else if let (Some(before_str), Some(after_str)) = (before, after) {
+        // Time-based filtering (legacy)
+        let after_us = parse_timestamp(after_str)?;
+        let before_us = parse_timestamp(before_str)?;
+
+        // Log time range
+        let before_dt = micros_to_datetime(before_us)?;
+        let after_dt = micros_to_datetime(after_us)?;
+        let duration_secs = (before_us - after_us) / 1_000_000;
+        info!(
+            "Time range: {} to {} ({} seconds)",
+            after_dt.format("%Y-%m-%dT%H:%M:%SZ"),
+            before_dt.format("%Y-%m-%dT%H:%M:%SZ"),
+            duration_secs
+        );
+
+        Ok((after_us, before_us, FilterMode::TimeRange))
+    } else {
+        anyhow::bail!("Must specify either --epoch, --previous-epoch, or both --before and --after")
     }
 }

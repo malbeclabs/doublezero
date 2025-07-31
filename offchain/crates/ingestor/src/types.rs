@@ -1,9 +1,14 @@
 use doublezero_serviceability::state::{
-    device::Device, exchange::Exchange, link::Link, location::Location,
-    multicastgroup::MulticastGroup, user::User,
+    contributor::{Contributor, ContributorStatus},
+    device::Device,
+    exchange::Exchange,
+    link::Link,
+    location::Location,
+    multicastgroup::MulticastGroup,
+    user::User,
 };
 use doublezero_telemetry::state::device_latency_samples::DeviceLatencySamples;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use solana_sdk::pubkey::Pubkey;
 
 /// DB representation of a Location
@@ -263,6 +268,68 @@ pub struct DZServiceabilityData {
     pub links: Vec<DZLink>,
     pub users: Vec<DZUser>,
     pub multicast_groups: Vec<DZMulticastGroup>,
+    pub contributors: Vec<DZContributor>,
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct DZContributor {
+    pubkey: Pubkey,
+    owner: Pubkey,
+    status: DZContributorStatus,
+    code: String,
+    reference_count: u32,
+}
+
+// Wrapper type
+#[derive(Debug, Clone)]
+pub struct DZContributorStatus(ContributorStatus);
+
+impl Default for DZContributorStatus {
+    fn default() -> Self {
+        Self(ContributorStatus::None)
+    }
+}
+
+impl<'de> Deserialize<'de> for DZContributorStatus {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s: String = <String as serde::Deserialize<'de>>::deserialize(deserializer)?;
+        let cs = match s.as_ref() {
+            "none" => ContributorStatus::None,
+            "activated" => ContributorStatus::Activated,
+            "suspended" => ContributorStatus::Suspended,
+            "deleting" => ContributorStatus::Deleting,
+            other => {
+                return Err(serde::de::Error::custom(format!(
+                    "unknown contributor status: {other}",
+                )));
+            }
+        };
+        Ok(Self(cs))
+    }
+}
+
+impl Serialize for DZContributorStatus {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serde::Serialize::serialize(&self.0.to_string(), serializer)
+    }
+}
+
+impl DZContributor {
+    pub fn from_solana(pubkey: Pubkey, contributor: &Contributor) -> Self {
+        Self {
+            pubkey,
+            owner: contributor.owner,
+            status: DZContributorStatus(contributor.status),
+            code: contributor.code.to_string(),
+            reference_count: contributor.reference_count,
+        }
+    }
 }
 
 /// DB representation of DeviceLatencySamples

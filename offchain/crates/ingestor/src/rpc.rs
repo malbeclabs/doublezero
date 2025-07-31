@@ -2,7 +2,7 @@ use crate::settings::RpcSettings;
 use anyhow::Result;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::commitment_config::CommitmentConfig;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 /// Create an RPC client with the given settings
 pub fn create_client(settings: &RpcSettings) -> Result<RpcClient> {
@@ -20,6 +20,19 @@ pub fn create_client(settings: &RpcSettings) -> Result<RpcClient> {
         timeout,
         commitment,
     ))
+}
+
+/// Wrapper for RPC client with retry functionality
+pub struct RpcClientWithRetry {
+    pub client: Arc<RpcClient>,
+}
+
+/// Create an RPC client with retry wrapper
+pub fn create_client_with_retry(settings: &RpcSettings) -> Result<Arc<RpcClientWithRetry>> {
+    let client = create_client(settings)?;
+    Ok(Arc::new(RpcClientWithRetry {
+        client: Arc::new(client),
+    }))
 }
 
 #[cfg(test)]

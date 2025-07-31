@@ -18,6 +18,7 @@ homepage = "https://github.com/doublezerofoundation/doublezero-rewarder"
 
 
 [workspace.dependencies]
+async-trait = "0"
 anyhow = "1"
 backon = "1"
 base64 = "0"
@@ -41,6 +42,7 @@ serde_json = "1"
 solana-client = "2.2.7"
 solana-account-decoder = "2.2.7"
 solana-sdk = "2.2.2"
+solana-epoch-info = "2.2.1"
 tabled = { version = "0", features = [ "std", "derive" ]}
 thiserror = "2"
 tokio = { version = "1", features = ["full"] }

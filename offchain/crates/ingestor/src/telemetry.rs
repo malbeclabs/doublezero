@@ -1,10 +1,15 @@
 use crate::{
+    debug::{debug_account_structure, hex_dump_account_prefix},
+    filters::build_epoch_filter,
+    rpc::RpcClientWithRetry,
     settings::Settings,
     types::{DZDTelemetryData, DbDeviceLatencySamples},
 };
 use anyhow::{Context, Result};
 use backon::Retryable;
-use doublezero_telemetry::state::device_latency_samples::DeviceLatencySamples;
+use doublezero_telemetry::state::{
+    accounttype::AccountType, device_latency_samples::DeviceLatencySamples,
+};
 use solana_account_decoder::UiAccountEncoding;
 use solana_client::{
     client_error::ClientError as SolanaClientError,
@@ -16,8 +21,9 @@ use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 use std::{str::FromStr, time::Duration};
 use tracing::{debug, info, warn};
 
-// AccountType::DeviceLatencySamples = 1 (from the enum)
-const ACCOUNT_TYPE_DISCRIMINATOR: u8 = 1;
+// Use the correct discriminator value from the AccountType enum
+// AccountType::DeviceLatencySamples = 3 (not the V0 version which is 1)
+const ACCOUNT_TYPE_DISCRIMINATOR: u8 = AccountType::DeviceLatencySamples as u8;
 
 /// Fetch all telemetry data within a given time range
 pub async fn fetch(
@@ -122,6 +128,7 @@ pub async fn fetch(
                 }
                 Err(e) => {
                     warn!("Failed to deserialize telemetry account {}: {}", pubkey, e);
+                    debug_account_structure(&pubkey.to_string(), &account.data, None);
                     error_count += 1;
                 }
             }
@@ -153,4 +160,170 @@ pub async fn fetch(
     Ok(DZDTelemetryData {
         device_latency_samples,
     })
+}
+
+/// Fetch telemetry data for a specific epoch using RPC filtering
+pub async fn fetch_by_epoch(
+    rpc_client: &RpcClientWithRetry,
+    settings: &Settings,
+    epoch: u64,
+) -> Result<DZDTelemetryData> {
+    let program_id = &settings.ingestor.programs.telemetry_program_id;
+    let program_pubkey = Pubkey::from_str(program_id)
+        .with_context(|| format!("Invalid telemetry program ID: {program_id}"))?;
+
+    info!(
+        "Fetching telemetry data for epoch {} from program {}",
+        epoch, program_id
+    );
+
+    // Use 9-byte filter: account type (1 byte) + epoch (8 bytes)
+    let filters = build_epoch_filter(ACCOUNT_TYPE_DISCRIMINATOR, epoch);
+
+    let config = RpcProgramAccountsConfig {
+        filters: Some(filters),
+        account_config: RpcAccountInfoConfig {
+            encoding: Some(UiAccountEncoding::Base64Zstd),
+            commitment: Some(CommitmentConfig::finalized()),
+            ..RpcAccountInfoConfig::default()
+        },
+        ..RpcProgramAccountsConfig::default()
+    };
+
+    let accounts = (|| async {
+        rpc_client
+            .client
+            .get_program_accounts_with_config(&program_pubkey, config.clone())
+            .await
+    })
+    .retry(&settings.backoff())
+    .notify(|err: &SolanaClientError, dur: Duration| {
+        info!("retrying error: {:?} with sleeping {:?}", err, dur)
+    })
+    .await?;
+
+    info!(
+        "Found {} telemetry accounts for epoch {}",
+        accounts.len(),
+        epoch
+    );
+
+    // Debug: log first few accounts if any found
+    if !accounts.is_empty() && accounts.len() <= 5 {
+        debug!("First few account pubkeys:");
+        for (pubkey, account) in accounts.iter().take(3) {
+            debug!("  - {} (size: {} bytes)", pubkey, account.data.len());
+            hex_dump_account_prefix(&account.data, 16);
+        }
+    }
+
+    // Process accounts - no need for time filtering since we already filtered by epoch
+    let mut device_latency_samples = Vec::new();
+    let batch_size = 100;
+    let mut error_count = 0;
+
+    for (i, chunk) in accounts.chunks(batch_size).enumerate() {
+        info!(
+            "Processing telemetry batch {}/{}",
+            i + 1,
+            accounts.len().div_ceil(batch_size)
+        );
+
+        for (pubkey, account) in chunk {
+            match DeviceLatencySamples::try_from(&account.data[..]) {
+                Ok(samples) => {
+                    // Verify epoch matches (should always be true due to RPC filter)
+                    if samples.header.epoch != epoch {
+                        warn!(
+                            "Unexpected epoch mismatch: expected {}, got {}",
+                            epoch, samples.header.epoch
+                        );
+                        continue;
+                    }
+
+                    debug!(
+                        "Processing samples for epoch {}: samples={}, interval={}μs",
+                        epoch,
+                        samples.header.next_sample_index,
+                        samples.header.sampling_interval_microseconds
+                    );
+
+                    let db_samples = DbDeviceLatencySamples::from_solana(*pubkey, &samples);
+                    device_latency_samples.push(db_samples);
+                }
+                Err(e) => {
+                    warn!("Failed to deserialize telemetry account {}: {}", pubkey, e);
+                    debug_account_structure(&pubkey.to_string(), &account.data, None);
+                    error_count += 1;
+                }
+            }
+        }
+    }
+
+    info!(
+        "Processed {} telemetry accounts for epoch {} ({} errors)",
+        device_latency_samples.len(),
+        epoch,
+        error_count
+    );
+
+    if !device_latency_samples.is_empty() {
+        let total_samples: usize = device_latency_samples.iter().map(|d| d.samples.len()).sum();
+        let avg_samples_per_account = total_samples / device_latency_samples.len();
+
+        info!("Telemetry statistics for epoch {}:", epoch);
+        info!("  - Total latency samples: {}", total_samples);
+        info!(
+            "  - Average samples per account: {}",
+            avg_samples_per_account
+        );
+    }
+
+    Ok(DZDTelemetryData {
+        device_latency_samples,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_account_type_discriminator() {
+        // Verify the discriminator value is 3 as expected
+        assert_eq!(
+            ACCOUNT_TYPE_DISCRIMINATOR, 3,
+            "Telemetry discriminator should be 3 for DeviceLatencySamples"
+        );
+
+        // Also verify the AccountType enum value
+        assert_eq!(AccountType::DeviceLatencySamples as u8, 3);
+    }
+
+    #[test]
+    fn test_epoch_filter_bytes() {
+        let epoch: u64 = 66;
+        let _expected_bytes = [
+            3, // discriminator for DeviceLatencySamples
+            66, 0, 0, 0, 0, 0, 0, 0, // epoch 66 in little-endian
+        ];
+
+        let filters = build_epoch_filter(ACCOUNT_TYPE_DISCRIMINATOR, epoch);
+
+        // The filter should contain one Memcmp filter
+        assert_eq!(filters.len(), 1);
+
+        // TODO: Would need to check the actual bytes in the Memcmp filter
+        // but that requires accessing the internal structure
+    }
+
+    #[test]
+    fn test_v0_discriminator_not_used() {
+        // Verify we're NOT using the V0 version
+        assert_ne!(
+            AccountType::DeviceLatencySamplesV0 as u8,
+            ACCOUNT_TYPE_DISCRIMINATOR
+        );
+        assert_eq!(AccountType::DeviceLatencySamplesV0 as u8, 1);
+    }
 }

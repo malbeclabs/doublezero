@@ -2465,6 +2465,7 @@ name = "ingestor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "backon",
  "chrono",
  "doublezero-serviceability",
@@ -2475,7 +2476,9 @@ dependencies = [
  "serde_json",
  "solana-account-decoder",
  "solana-client",
+ "solana-epoch-info",
  "solana-sdk",
+ "thiserror 2.0.12",
  "tokio",
  "tracing",
 ]

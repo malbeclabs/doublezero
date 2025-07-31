@@ -23,18 +23,27 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    /// Calculate rewards for the given time period
+    /// Calculate rewards for the given time period or epoch
     CalculateRewards {
-        /// End timestamp for the rewards period (required)
+        /// End timestamp for the rewards period
         /// Accepts: ISO 8601 (2024-01-15T10:00:00Z), Unix timestamp (1705315200), or relative time (2 hours ago)
-        #[arg(short, long, help_heading = "Time Range")]
-        before: String,
+        #[arg(short, long, help_heading = "Time Range", requires = "after")]
+        before: Option<String>,
 
-        /// Start timestamp for the rewards period (required)
+        /// Start timestamp for the rewards period
         /// Accepts: ISO 8601 (2024-01-15T08:00:00Z), Unix timestamp (1705308000), or relative time (4 hours ago)
-        #[arg(short, long, help_heading = "Time Range")]
-        after: String,
+        #[arg(short, long, help_heading = "Time Range", requires = "before")]
+        after: Option<String>,
+
+        /// Calculate rewards for a specific epoch
+        #[arg(short, long, help_heading = "Epoch Filter", conflicts_with_all = ["before", "after", "previous_epoch"])]
+        epoch: Option<u64>,
+
+        /// Calculate rewards for the previous epoch
+        #[arg(short, long, help_heading = "Epoch Filter", conflicts_with_all = ["before", "after", "epoch"])]
+        previous_epoch: bool,
     },
+
     /// Export demand matrix and enriched validators to CSV files
     ExportDemand {
         /// Output path for demand CSV file
@@ -67,9 +76,9 @@ mod tests {
         let cli = Cli::try_parse_from(args).unwrap();
         assert_eq!(cli.log_level, Some("debug".to_string()));
         match cli.command {
-            Commands::CalculateRewards { before, after } => {
-                assert_eq!(before, "2024-01-15T10:00:00Z");
-                assert_eq!(after, "2024-01-15T08:00:00Z");
+            Commands::CalculateRewards { before, after, .. } => {
+                assert_eq!(before, Some("2024-01-15T10:00:00Z".to_string()));
+                assert_eq!(after, Some("2024-01-15T08:00:00Z".to_string()));
             }
             _ => panic!("Expected CalculateRewards command"),
         }
@@ -88,9 +97,9 @@ mod tests {
 
         let cli = Cli::try_parse_from(args).unwrap();
         match cli.command {
-            Commands::CalculateRewards { before, after } => {
-                assert_eq!(before, "1705315200");
-                assert_eq!(after, "1705308000");
+            Commands::CalculateRewards { before, after, .. } => {
+                assert_eq!(before, Some("1705315200".to_string()));
+                assert_eq!(after, Some("1705308000".to_string()));
             }
             _ => panic!("Expected CalculateRewards command"),
         }
@@ -109,9 +118,9 @@ mod tests {
 
         let cli = Cli::try_parse_from(args).unwrap();
         match cli.command {
-            Commands::CalculateRewards { before, after } => {
-                assert_eq!(before, "2 hours ago");
-                assert_eq!(after, "4 hours ago");
+            Commands::CalculateRewards { before, after, .. } => {
+                assert_eq!(before, Some("2 hours ago".to_string()));
+                assert_eq!(after, Some("4 hours ago".to_string()));
             }
             _ => panic!("Expected CalculateRewards command"),
         }

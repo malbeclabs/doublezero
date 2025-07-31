@@ -1,14 +1,17 @@
 use crate::{
+    filters::{build_account_type_filter, build_epoch_filter},
+    rpc::RpcClientWithRetry,
     settings::Settings,
     types::{
-        DZDevice, DZExchange, DZLink, DZLocation, DZMulticastGroup, DZServiceabilityData, DZUser,
+        DZContributor, DZDevice, DZExchange, DZLink, DZLocation, DZMulticastGroup,
+        DZServiceabilityData, DZUser,
     },
 };
 use anyhow::{Context, Result};
 use backon::Retryable;
 use doublezero_serviceability::state::{
-    accounttype::AccountType, device::Device, exchange::Exchange, link::Link, location::Location,
-    multicastgroup::MulticastGroup, user::User,
+    accounttype::AccountType, contributor::Contributor, device::Device, exchange::Exchange,
+    link::Link, location::Location, multicastgroup::MulticastGroup, user::User,
 };
 use solana_account_decoder::UiAccountEncoding;
 use solana_client::{
@@ -18,7 +21,19 @@ use solana_client::{
 };
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
 use std::{str::FromStr, time::Duration};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
+
+/// Account types that we actually process in the rewards calculator
+/// We ignore GlobalState, Config, ProgramConfig, and Contributor
+const PROCESSED_ACCOUNT_TYPES: &[AccountType] = &[
+    AccountType::Location,
+    AccountType::Exchange,
+    AccountType::Device,
+    AccountType::Link,
+    AccountType::User,
+    AccountType::MulticastGroup,
+    AccountType::Contributor,
+];
 
 /// Fetch all network serviceability data at a given timestamp
 /// For now, we fetch the latest state (no historical slot lookup)
@@ -41,7 +56,7 @@ pub async fn fetch(
     // since we need the complete network state
     // TODO: In the future, convert timestamp to slot for historical queries
     let config = RpcProgramAccountsConfig {
-        filters: None, // No filters - we need all account types
+        filters: None,
         account_config: RpcAccountInfoConfig {
             encoding: Some(UiAccountEncoding::Base64Zstd),
             commitment: Some(CommitmentConfig::finalized()),
@@ -69,7 +84,7 @@ pub async fn fetch(
 
     // Process accounts by type
     let mut serviceability_data = DZServiceabilityData::default();
-    let mut processed_count = 0;
+    let mut total_processed = 0;
 
     // TODO: rayon?
     for (pubkey, account) in &accounts {
@@ -86,42 +101,49 @@ pub async fn fetch(
                 serviceability_data
                     .locations
                     .push(DZLocation::from_solana(*pubkey, &location));
-                processed_count += 1;
+                total_processed += 1;
             }
             AccountType::Exchange => {
                 let exchange = Exchange::from(&account.data[..]);
                 serviceability_data
                     .exchanges
                     .push(DZExchange::from_solana(*pubkey, &exchange));
-                processed_count += 1;
+                total_processed += 1;
             }
             AccountType::Device => {
                 let device = Device::from(&account.data[..]);
                 serviceability_data
                     .devices
                     .push(DZDevice::from_solana(*pubkey, &device));
-                processed_count += 1;
+                total_processed += 1;
             }
             AccountType::Link => {
                 let link = Link::from(&account.data[..]);
                 serviceability_data
                     .links
                     .push(DZLink::from_solana(*pubkey, &link));
-                processed_count += 1;
+                total_processed += 1;
             }
             AccountType::User => {
                 let user = User::from(&account.data[..]);
                 serviceability_data
                     .users
                     .push(DZUser::from_solana(*pubkey, &user));
-                processed_count += 1;
+                total_processed += 1;
             }
             AccountType::MulticastGroup => {
                 let group = MulticastGroup::from(&account.data[..]);
                 serviceability_data
                     .multicast_groups
                     .push(DZMulticastGroup::from_solana(*pubkey, &group));
-                processed_count += 1;
+                total_processed += 1;
+            }
+            AccountType::Contributor => {
+                let contributor = Contributor::from(&account.data[..]);
+                serviceability_data
+                    .contributors
+                    .push(DZContributor::from_solana(*pubkey, &contributor));
+                total_processed += 1;
             }
             _ => {
                 debug!(
@@ -135,8 +157,186 @@ pub async fn fetch(
     }
 
     info!(
-        "Processed {} serviceability accounts: {} locations, {} exchanges, {} devices, {} links, {} users, {} multicast groups",
-        processed_count,
+        "Processed {} serviceability accounts: {} contributors, {} locations, {} exchanges, {} devices, {} links, {} users, {} multicast groups",
+        total_processed,
+        serviceability_data.contributors.len(),
+        serviceability_data.locations.len(),
+        serviceability_data.exchanges.len(),
+        serviceability_data.devices.len(),
+        serviceability_data.links.len(),
+        serviceability_data.users.len(),
+        serviceability_data.multicast_groups.len(),
+    );
+
+    Ok(serviceability_data)
+}
+
+/// Fetch serviceability data by account type using RPC filters
+pub async fn fetch_by_type(
+    rpc_client: &RpcClientWithRetry,
+    settings: &Settings,
+    account_type: AccountType,
+    epoch: Option<u64>,
+) -> Result<Vec<(Pubkey, Vec<u8>)>> {
+    let program_id = &settings.ingestor.programs.serviceability_program_id;
+    let program_pubkey = Pubkey::from_str(program_id)
+        .with_context(|| format!("Invalid serviceability program ID: {program_id}"))?;
+
+    info!(
+        "Fetching {} accounts from program {} {}",
+        account_type,
+        program_id,
+        if let Some(epoch) = epoch {
+            format!("for epoch {epoch}")
+        } else {
+            "without epoch filter".to_string()
+        }
+    );
+
+    let filters = if let Some(epoch) = epoch {
+        // Use 9-byte filter: account type (1 byte) + epoch (8 bytes)
+        build_epoch_filter(account_type as u8, epoch)
+    } else {
+        // Fall back to account type only filter
+        build_account_type_filter(account_type as u8)
+    };
+
+    let config = RpcProgramAccountsConfig {
+        filters: Some(filters),
+        account_config: RpcAccountInfoConfig {
+            encoding: Some(UiAccountEncoding::Base64Zstd),
+            commitment: Some(CommitmentConfig::finalized()),
+            ..RpcAccountInfoConfig::default()
+        },
+        ..RpcProgramAccountsConfig::default()
+    };
+
+    let accounts = (|| async {
+        rpc_client
+            .client
+            .get_program_accounts_with_config(&program_pubkey, config.clone())
+            .await
+    })
+    .retry(&settings.backoff())
+    .notify(|err: &SolanaClientError, dur: Duration| {
+        info!("retrying error: {:?} with sleeping {:?}", err, dur)
+    })
+    .await?;
+
+    info!("Found {} {} accounts", accounts.len(), account_type);
+
+    // Convert from Vec<(Pubkey, Account)> to Vec<(Pubkey, Vec<u8>)>
+    let accounts_with_data: Vec<(Pubkey, Vec<u8>)> = accounts
+        .into_iter()
+        .map(|(pubkey, account)| (pubkey, account.data))
+        .collect();
+
+    Ok(accounts_with_data)
+}
+
+/// Fetch all serviceability data using per-type RPC filters for efficiency
+pub async fn fetch_filtered(
+    rpc_client: &RpcClientWithRetry,
+    settings: &Settings,
+    timestamp_us: u64,
+    epoch: Option<u64>,
+) -> Result<DZServiceabilityData> {
+    info!(
+        "Fetching serviceability network data at timestamp {} with filtered approach{}",
+        timestamp_us,
+        if let Some(epoch) = epoch {
+            format!(" for epoch {epoch}")
+        } else {
+            "".to_string()
+        }
+    );
+
+    let mut serviceability_data = DZServiceabilityData::default();
+    let mut total_processed = 0;
+    let mut total_errors = 0;
+
+    // Fetch each account type separately with RPC filtering
+    for account_type in PROCESSED_ACCOUNT_TYPES {
+        match fetch_by_type(rpc_client, settings, *account_type, epoch).await {
+            Ok(accounts) => {
+                info!("Processing {} {} accounts", accounts.len(), account_type);
+
+                for (pubkey, account_data) in accounts {
+                    if account_data.is_empty() {
+                        continue;
+                    }
+
+                    match account_type {
+                        AccountType::Location => {
+                            let location = Location::from(&account_data[..]);
+                            serviceability_data
+                                .locations
+                                .push(DZLocation::from_solana(pubkey, &location));
+                            total_processed += 1;
+                        }
+                        AccountType::Exchange => {
+                            let exchange = Exchange::from(&account_data[..]);
+                            serviceability_data
+                                .exchanges
+                                .push(DZExchange::from_solana(pubkey, &exchange));
+                            total_processed += 1;
+                        }
+                        AccountType::Device => {
+                            let device = Device::from(&account_data[..]);
+                            serviceability_data
+                                .devices
+                                .push(DZDevice::from_solana(pubkey, &device));
+                            total_processed += 1;
+                        }
+                        AccountType::Link => {
+                            let link = Link::from(&account_data[..]);
+                            serviceability_data
+                                .links
+                                .push(DZLink::from_solana(pubkey, &link));
+                            total_processed += 1;
+                        }
+                        AccountType::User => {
+                            let user = User::from(&account_data[..]);
+                            serviceability_data
+                                .users
+                                .push(DZUser::from_solana(pubkey, &user));
+                            total_processed += 1;
+                        }
+                        AccountType::MulticastGroup => {
+                            let group = MulticastGroup::from(&account_data[..]);
+                            serviceability_data
+                                .multicast_groups
+                                .push(DZMulticastGroup::from_solana(pubkey, &group));
+                            total_processed += 1;
+                        }
+                        AccountType::Contributor => {
+                            let contributor = Contributor::from(&account_data[..]);
+                            serviceability_data
+                                .contributors
+                                .push(DZContributor::from_solana(pubkey, &contributor));
+                            total_processed += 1;
+                        }
+                        _ => {
+                            warn!(
+                                "Unexpected account type {:?} in processed list",
+                                account_type
+                            );
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                warn!("Failed to fetch {} accounts: {}", account_type, e);
+                total_errors += 1;
+            }
+        }
+    }
+
+    info!(
+        "Processed {}, Errors: {}; serviceability accounts: {} contributors, {} locations, {} exchanges, {} devices, {} links, {} users, {} multicast groups",
+        total_processed,
+        total_errors,
+        serviceability_data.contributors.len(),
         serviceability_data.locations.len(),
         serviceability_data.exchanges.len(),
         serviceability_data.devices.len(),

@@ -12,6 +12,7 @@ repository.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+async-trait.workspace = true
 backon.workspace = true
 chrono.workspace = true
 doublezero-serviceability.workspace = true
@@ -23,5 +24,7 @@ serde_json.workspace = true
 solana-account-decoder.workspace = true
 solana-client.workspace = true
 solana-sdk.workspace = true
+solana-epoch-info.workspace = true
+thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true

@@ -756,6 +756,9 @@ func (c *Collector) Run(ctx context.Context, dryRun bool, probesPerLocation int,
 			case <-ticker.C:
 				if err := c.RunRipeAtlasMeasurementCreation(ctx, dryRun, probesPerLocation, outputDir, stateDir); err != nil {
 					c.log.Error("Operation failed: create_ripeatlas_measurements", slog.String("error", err.Error()))
+					collector.RipeatlasMeasurementManagementFailuresTotal.Inc()
+				} else {
+					collector.RipeatlasMeasurementManagementRunsTotal.Inc()
 				}
 			}
 		}
@@ -778,6 +781,9 @@ func (c *Collector) Run(ctx context.Context, dryRun bool, probesPerLocation int,
 			case <-ticker.C:
 				if err := c.ExportMeasurementResults(ctx, stateDir, outputDir); err != nil {
 					c.log.Warn("Failed to export RIPE Atlas measurements", slog.String("error", err.Error()))
+					collector.CollectionFailuresTotal.WithLabelValues("ripeatlas").Inc()
+				} else {
+					collector.CollectionRunsTotal.WithLabelValues("ripeatlas").Inc()
 				}
 			}
 		}

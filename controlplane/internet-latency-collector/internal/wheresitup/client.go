@@ -310,24 +310,6 @@ func (c *Client) GetNearestSourcesForLocations(ctx context.Context, locations []
 	return locationMatches, nil
 }
 
-func (c *Client) CreateJob(ctx context.Context, url string) (string, error) {
-	// Create a job request using GET endpoint with URL parameter
-	endpoint := fmt.Sprintf("/jobs?url=%s", url)
-	resp, err := c.makeRequest(ctx, endpoint)
-	if err != nil {
-		return "", fmt.Errorf("failed to create job: %w", err)
-	}
-	defer resp.Body.Close()
-
-	var jobResponse JobResponse
-	decoder := json.NewDecoder(resp.Body)
-	if err := decoder.Decode(&jobResponse); err != nil {
-		return "", fmt.Errorf("failed to decode job response: %w", err)
-	}
-
-	return jobResponse.ID, nil
-}
-
 func (c *Client) CreateJobWithRequest(ctx context.Context, request any, debug bool) (*JobResponse, error) {
 	requestBody, err := json.Marshal(request)
 	if err != nil {

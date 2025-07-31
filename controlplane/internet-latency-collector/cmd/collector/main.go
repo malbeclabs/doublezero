@@ -42,6 +42,7 @@ var (
 	wheresitupStateFile          string
 	ripeatlasProbesPerLocation   int
 	wheresitupCollectionInterval time.Duration
+	metricsAddr                  string
 
 	version = "dev"
 	commit  = "none"
@@ -115,6 +116,7 @@ RIPE Atlas measurements hourly, and exports RIPE Atlas results every 2 minutes.`
 			StateDir:                     stateDir,
 			OutputDir:                    outputDir,
 			ProbesPerLocation:            ripeatlasProbesPerLocation,
+			MetricsAddr:                  metricsAddr,
 		}
 
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -332,6 +334,7 @@ func init() {
 	runCmd.Flags().DurationVar(&wheresitupCollectionInterval, "wheresitup-collection-interval", defaultWheresitupCollectionInterval, "Interval for continuous Wheresitup job creation (e.g., 2m, 1h30m)")
 	runCmd.Flags().StringVar(&wheresitupStateFile, "wheresitup-job-state-file", defaultWheresitupStateFile, "File to track processed Wheresitup job IDs (JSON format)")
 	runCmd.Flags().IntVar(&ripeatlasProbesPerLocation, "ripeatlas-probes-per-location", defaultAtlasProbesPerLocation, "Number of RIPE Atlas probes to associate with each DoubleZero location")
+	runCmd.Flags().StringVar(&metricsAddr, "metrics-addr", "127.0.0.1:2113", "Address to bind the metrics server to")
 
 	ripeatlasCreateMeasurementsCmd.Flags().IntVar(&ripeatlasProbesPerLocation, "probes-per-location", defaultAtlasProbesPerLocation, "Number of RIPE Atlas probes to associate with each DoubleZero location")
 
@@ -352,6 +355,9 @@ func init() {
 }
 
 func main() {
+	// Set build info metric
+	collector.BuildInfo.WithLabelValues(version, commit, date).Set(1)
+
 	// Add version command last so it appears after auto-generated commands
 	rootCmd.AddCommand(versionCmd)
 

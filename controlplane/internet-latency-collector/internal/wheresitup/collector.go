@@ -32,7 +32,6 @@ type clientInterface interface {
 	GetAllSources(ctx context.Context) ([]Source, error)
 	GetNearestSources(ctx context.Context, latitude, longitude float64, count int) ([]Source, error)
 	GetNearestSourcesForLocations(ctx context.Context, locations []collector.LocationMatch) ([]LocationSourceMatch, error)
-	CreateJob(ctx context.Context, url string) (string, error)
 	CreateJobWithRequest(ctx context.Context, request any, debug bool) (*JobResponse, error)
 	GetJobResults(ctx context.Context, jobID string) (*JobResultResponse, error)
 	GetAllJobs(ctx context.Context) ([]JobDetails, error)
@@ -115,6 +114,7 @@ func (c *Collector) RunJobCreation(ctx context.Context, locations []collector.Lo
 	} else {
 		c.log.Info("Wheresitup credit balance",
 			slog.Int("credits", credit))
+		collector.WheresitupCreditBalance.Set(float64(credit))
 		if credit < CreditWarningThreshold {
 			c.log.Warn("Low Wheresitup credit balance",
 				slog.Int("credits", credit),
@@ -597,7 +597,9 @@ func (c *Collector) Run(ctx context.Context, interval time.Duration, dryRun bool
 			locations := c.getLocationsFunc(ctx)
 			if err := c.RunJobCreation(ctx, locations, dryRun, fullJobIDsPath); err != nil {
 				c.log.Error("Operation failed: Wheresitup run_job_creation", slog.String("error", err.Error()))
+				collector.WheresitupJobCreationFailuresTotal.Inc()
 			} else {
+				collector.WheresitupJobCreationRunsTotal.Inc()
 				// Wait for jobs to start and potentially complete
 				c.log.Info("Waiting before exporting Wheresitup job results",
 					slog.Int("wait_seconds", int(c.jobWaitTimeout.Seconds())))
@@ -607,6 +609,9 @@ func (c *Collector) Run(ctx context.Context, interval time.Duration, dryRun bool
 				c.log.Info("Exporting Wheresitup job results")
 				if err := c.ExportJobResults(ctx, fullJobIDsPath, outputDir); err != nil {
 					c.log.Error("Operation failed: Wheresitup export_job_results", slog.String("error", err.Error()))
+					collector.CollectionFailuresTotal.WithLabelValues("wheresitup").Inc()
+				} else {
+					collector.CollectionRunsTotal.WithLabelValues("wheresitup").Inc()
 				}
 			}
 		}

@@ -1,4 +1,5 @@
 use crate::{utils::parse_pubkey, DoubleZeroClient};
+use doublezero_program_common::normalize_account_code;
 use doublezero_serviceability::state::{
     accountdata::AccountData, accounttype::AccountType, contributor::Contributor,
 };
@@ -16,25 +17,27 @@ impl GetContributorCommand {
                 AccountData::Contributor(contributor) => Ok((pk, contributor)),
                 _ => Err(eyre::eyre!("Invalid Account Type")),
             },
-            None => client
-                .gets(AccountType::Contributor)?
-                .into_iter()
-                .find(|(_, v)| match v {
-                    AccountData::Contributor(contributor) => {
-                        contributor.code == self.pubkey_or_code
-                    }
-                    _ => false,
-                })
-                .map(|(pk, v)| match v {
-                    AccountData::Contributor(contributor) => Ok((pk, contributor)),
-                    _ => Err(eyre::eyre!("Invalid Account Type")),
-                })
-                .unwrap_or_else(|| {
-                    Err(eyre::eyre!(
-                        "Contributor with code {} not found",
-                        self.pubkey_or_code
-                    ))
-                }),
+            None => {
+                let code = normalize_account_code(&self.pubkey_or_code)
+                    .map_err(|err| eyre::eyre!("invalid code: {err}"))?;
+                client
+                    .gets(AccountType::Contributor)?
+                    .into_iter()
+                    .find(|(_, v)| match v {
+                        AccountData::Contributor(contributor) => contributor.code == code,
+                        _ => false,
+                    })
+                    .map(|(pk, v)| match v {
+                        AccountData::Contributor(contributor) => Ok((pk, contributor)),
+                        _ => Err(eyre::eyre!("Invalid Account Type")),
+                    })
+                    .unwrap_or_else(|| {
+                        Err(eyre::eyre!(
+                            "Contributor with code {} not found",
+                            self.pubkey_or_code
+                        ))
+                    })
+            }
         }
     }
 }
@@ -104,9 +107,26 @@ mod tests {
         assert!(res.is_ok());
         assert_eq!(res.unwrap().1.code, "contributor_code".to_string());
 
+        // Search by code with whitespace
+        let res = GetContributorCommand {
+            pubkey_or_code: "contributor code".to_string(),
+        }
+        .execute(&client);
+
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap().1.code, "contributor_code".to_string());
+
         // Invalid search
         let res = GetContributorCommand {
             pubkey_or_code: "ssssssssssss".to_string(),
+        }
+        .execute(&client);
+
+        assert!(res.is_err());
+
+        // Search by invalid code
+        let res = GetContributorCommand {
+            pubkey_or_code: "s(%".to_string(),
         }
         .execute(&client);
 

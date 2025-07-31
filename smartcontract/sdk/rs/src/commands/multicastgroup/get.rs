@@ -1,4 +1,5 @@
 use crate::{utils::parse_pubkey, DoubleZeroClient};
+use doublezero_program_common::normalize_account_code;
 use doublezero_serviceability::state::{
     accountdata::AccountData, accounttype::AccountType, multicastgroup::MulticastGroup,
 };
@@ -16,25 +17,27 @@ impl GetMulticastGroupCommand {
                 AccountData::MulticastGroup(multicastgroup) => Ok((pk, multicastgroup)),
                 _ => Err(eyre::eyre!("Invalid Account Type")),
             },
-            None => client
-                .gets(AccountType::MulticastGroup)?
-                .into_iter()
-                .find(|(_, v)| match v {
-                    AccountData::MulticastGroup(multicastgroup) => {
-                        multicastgroup.code == self.pubkey_or_code
-                    }
-                    _ => false,
-                })
-                .map(|(pk, v)| match v {
-                    AccountData::MulticastGroup(multicastgroup) => Ok((pk, multicastgroup)),
-                    _ => Err(eyre::eyre!("Invalid Account Type")),
-                })
-                .unwrap_or_else(|| {
-                    Err(eyre::eyre!(
-                        "MulticastGroup with code {} not found",
-                        self.pubkey_or_code
-                    ))
-                }),
+            None => {
+                let code = normalize_account_code(&self.pubkey_or_code)
+                    .map_err(|err| eyre::eyre!("invalid code: {err}"))?;
+                client
+                    .gets(AccountType::MulticastGroup)?
+                    .into_iter()
+                    .find(|(_, v)| match v {
+                        AccountData::MulticastGroup(multicastgroup) => multicastgroup.code == code,
+                        _ => false,
+                    })
+                    .map(|(pk, v)| match v {
+                        AccountData::MulticastGroup(multicastgroup) => Ok((pk, multicastgroup)),
+                        _ => Err(eyre::eyre!("Invalid Account Type")),
+                    })
+                    .unwrap_or_else(|| {
+                        Err(eyre::eyre!(
+                            "MulticastGroup with code {} not found",
+                            self.pubkey_or_code
+                        ))
+                    })
+            }
         }
     }
 }

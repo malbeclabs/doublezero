@@ -1,3 +1,4 @@
+use doublezero_program_common::normalize_account_code;
 use doublezero_serviceability::state::{accountdata::AccountData, accounttype::AccountType};
 use solana_sdk::pubkey::Pubkey;
 
@@ -15,23 +16,27 @@ impl ListMulticastGroupPubAllowlistCommand {
                 AccountData::MulticastGroup(mgroup) => Ok(mgroup.pub_allowlist),
                 _ => Err(eyre::eyre!("Invalid Account Type")),
             },
-            None => client
-                .gets(AccountType::MulticastGroup)?
-                .into_iter()
-                .find(|(_, v)| match v {
-                    AccountData::MulticastGroup(mgroup) => mgroup.code == self.pubkey_or_code,
-                    _ => false,
-                })
-                .map(|(_pk, v)| match v {
-                    AccountData::MulticastGroup(mgroup) => Ok(mgroup.pub_allowlist),
-                    _ => Err(eyre::eyre!("Invalid Account Type")),
-                })
-                .unwrap_or_else(|| {
-                    Err(eyre::eyre!(
-                        "MulticastGroup with code {} not found",
-                        self.pubkey_or_code
-                    ))
-                }),
+            None => {
+                let code = normalize_account_code(&self.pubkey_or_code)
+                    .map_err(|err| eyre::eyre!("invalid code: {err}"))?;
+                client
+                    .gets(AccountType::MulticastGroup)?
+                    .into_iter()
+                    .find(|(_, v)| match v {
+                        AccountData::MulticastGroup(mgroup) => mgroup.code == code,
+                        _ => false,
+                    })
+                    .map(|(_pk, v)| match v {
+                        AccountData::MulticastGroup(mgroup) => Ok(mgroup.pub_allowlist),
+                        _ => Err(eyre::eyre!("Invalid Account Type")),
+                    })
+                    .unwrap_or_else(|| {
+                        Err(eyre::eyre!(
+                            "MulticastGroup with code {} not found",
+                            self.pubkey_or_code
+                        ))
+                    })
+            }
         }
     }
 }
@@ -99,16 +104,30 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
+        // list by code
         let res = ListMulticastGroupPubAllowlistCommand {
             pubkey_or_code: "test_code".to_string(),
         }
         .execute(&client);
-
         assert!(res.is_ok());
         let allowlist = res.unwrap();
         assert!(
             allowlist.is_empty(),
             "Expected empty allowlist, got: {allowlist:?}",
         );
+
+        // list with whitespace in code
+        let res = ListMulticastGroupPubAllowlistCommand {
+            pubkey_or_code: "test code".to_string(),
+        }
+        .execute(&client);
+        assert!(res.is_ok());
+
+        // list with invalid code
+        let res = ListMulticastGroupPubAllowlistCommand {
+            pubkey_or_code: "test&code".to_string(),
+        }
+        .execute(&client);
+        assert!(res.is_err());
     }
 }

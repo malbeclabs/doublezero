@@ -14,7 +14,9 @@ pub struct CreateContributorCommand {
 
 impl CreateContributorCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
-        let code = self.validate_code()?;
+        let code =
+            normalize_account_code(&self.code).map_err(|err| eyre::eyre!("invalid code: {err}"))?;
+
         let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
@@ -34,10 +36,6 @@ impl CreateContributorCommand {
                 ],
             )
             .map(|sig| (sig, pda_pubkey))
-    }
-
-    fn validate_code(&self) -> eyre::Result<String> {
-        normalize_account_code(&self.code).map_err(|err| eyre::eyre!("invalid code: {err}"))
     }
 }
 

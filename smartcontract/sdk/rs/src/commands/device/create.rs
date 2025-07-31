@@ -1,3 +1,4 @@
+use doublezero_program_common::normalize_account_code;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, pda::get_device_pda,
     processors::device::create::DeviceCreateArgs, state::device::DeviceType, types::NetworkV4List,
@@ -22,6 +23,9 @@ pub struct CreateDeviceCommand {
 
 impl CreateDeviceCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
+        let code =
+            normalize_account_code(&self.code).map_err(|err| eyre::eyre!("invalid code: {err}"))?;
+
         let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
@@ -31,7 +35,7 @@ impl CreateDeviceCommand {
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
-                    code: self.code.clone(),
+                    code,
                     device_type: self.device_type,
                     public_ip: self.public_ip,
                     dz_prefixes: self.dz_prefixes.clone(),
@@ -147,7 +151,7 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        let res = CreateDeviceCommand {
+        let command = CreateDeviceCommand {
             code: "test-device".to_string(),
             contributor_pk: contributor_pubkey,
             location_pk: location_pubkey,
@@ -157,8 +161,25 @@ mod tests {
             dz_prefixes: "10.0.0.0/8".parse().unwrap(),
             metrics_publisher: pubmetrics_publisher,
             mgmt_vrf: "mgmt".to_string(),
-        }
-        .execute(&client);
+        };
+
+        let invalid_command = CreateDeviceCommand {
+            code: "test/device".to_string(),
+            ..command.clone()
+        };
+
+        let whitespace_command = CreateDeviceCommand {
+            code: "test device".to_string(),
+            ..command.clone()
+        };
+
+        let res = invalid_command.execute(&client);
+        assert!(res.is_err());
+
+        let res = whitespace_command.execute(&client);
+        assert!(res.is_ok());
+
+        let res = command.execute(&client);
         assert!(res.is_ok());
     }
 }

@@ -12,7 +12,10 @@ test: test-programs
 
 .PHONY: test-programs
 test-programs: test-sbf
-	cargo test --lib -p doublezero-serviceability -p doublezero-telemetry
+	cargo test --lib \
+		-p doublezero-record \
+		-p doublezero-telemetry \
+		-p doublezero-serviceability
 
 .PHONY: test-sbf
 test-sbf:
@@ -27,7 +30,11 @@ lint: lint-programs
 .PHONY: lint-programs
 lint-programs:
 	SERVICEABILITY_PROGRAM_ID=$(SERVICEABILITY_PROGRAM_ID) \
-	cargo clippy --all-targets -p doublezero-telemetry -p doublezero-serviceability -- -Dclippy::all -Dwarnings
+	cargo clippy --all-targets \
+		-p doublezero-record \
+		-p doublezero-telemetry \
+		-p doublezero-serviceability \
+		$(CLIPPY_FLAGS)
 
 .PHONY: build
 build: build-sbf
@@ -36,5 +43,6 @@ build: build-sbf
 
 .PHONY: build-sbf
 build-sbf:
+	cd programs/doublezero-record && cargo build-sbf
 	cd programs/doublezero-serviceability && SERVICEABILITY_PROGRAM_ID=$(SERVICEABILITY_PROGRAM_ID) cargo build-sbf
 	cd programs/doublezero-telemetry && SERVICEABILITY_PROGRAM_ID=$(SERVICEABILITY_PROGRAM_ID) cargo build-sbf

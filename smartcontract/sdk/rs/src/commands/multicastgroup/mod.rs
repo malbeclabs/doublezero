@@ -1,7 +1,7 @@
 pub mod activate;
 pub mod allowlist;
+pub mod closeaccount;
 pub mod create;
-pub mod deactivate;
 pub mod delete;
 pub mod get;
 pub mod list;

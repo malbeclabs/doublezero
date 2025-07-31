@@ -55,8 +55,8 @@ use doublezero_sdk::{
                     remove::RemoveMulticastGroupSubAllowlistCommand,
                 },
             },
+            closeaccount::CloseAccountMulticastGroupCommand,
             create::CreateMulticastGroupCommand,
-            deactivate::DeactivateMulticastGroupCommand,
             delete::DeleteMulticastGroupCommand,
             get::GetMulticastGroupCommand,
             list::ListMulticastGroupCommand,
@@ -197,7 +197,7 @@ pub trait CliCommand {
     fn reject_multicastgroup(&self, cmd: RejectMulticastGroupCommand) -> eyre::Result<Signature>;
     fn deactivate_multicastgroup(
         &self,
-        cmd: DeactivateMulticastGroupCommand,
+        cmd: CloseAccountMulticastGroupCommand,
     ) -> eyre::Result<Signature>;
     fn subscribe_multicastgroup(
         &self,
@@ -488,7 +488,7 @@ impl CliCommand for CliCommandImpl<'_> {
     }
     fn deactivate_multicastgroup(
         &self,
-        cmd: DeactivateMulticastGroupCommand,
+        cmd: CloseAccountMulticastGroupCommand,
     ) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }

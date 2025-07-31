@@ -1,24 +1,24 @@
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    processors::multicastgroup::deactivate::MulticastGroupDeactivateArgs,
+    processors::multicastgroup::closeaccount::MulticastGroupCloseAccountArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct DeactivateMulticastGroupCommand {
+pub struct CloseAccountMulticastGroupCommand {
     pub pubkey: Pubkey,
     pub owner: Pubkey,
 }
 
-impl DeactivateMulticastGroupCommand {
+impl CloseAccountMulticastGroupCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
         let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
         client.execute_transaction(
-            DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {}),
+            DoubleZeroInstruction::CloseAccountMulticastGroup(MulticastGroupCloseAccountArgs {}),
             vec![
                 AccountMeta::new(self.pubkey, false),
                 AccountMeta::new(self.owner, false),
@@ -31,13 +31,13 @@ impl DeactivateMulticastGroupCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::multicastgroup::deactivate::DeactivateMulticastGroupCommand,
+        commands::multicastgroup::closeaccount::CloseAccountMulticastGroupCommand,
         tests::utils::create_test_client, DoubleZeroClient,
     };
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
         pda::{get_globalstate_pda, get_location_pda},
-        processors::multicastgroup::deactivate::MulticastGroupDeactivateArgs,
+        processors::multicastgroup::closeaccount::MulticastGroupCloseAccountArgs,
     };
     use mockall::predicate;
     use solana_sdk::{instruction::AccountMeta, signature::Signature};
@@ -53,8 +53,8 @@ mod tests {
         client
             .expect_execute_transaction()
             .with(
-                predicate::eq(DoubleZeroInstruction::DeactivateMulticastGroup(
-                    MulticastGroupDeactivateArgs {},
+                predicate::eq(DoubleZeroInstruction::CloseAccountMulticastGroup(
+                    MulticastGroupCloseAccountArgs {},
                 )),
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),
@@ -64,7 +64,7 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        let res = DeactivateMulticastGroupCommand {
+        let res = CloseAccountMulticastGroupCommand {
             pubkey: pda_pubkey,
             owner: payer,
         }

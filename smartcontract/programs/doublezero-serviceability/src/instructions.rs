@@ -41,8 +41,8 @@ use crate::processors::{
                 remove::RemoveMulticastGroupSubAllowlistArgs,
             },
         },
+        closeaccount::MulticastGroupCloseAccountArgs,
         create::MulticastGroupCreateArgs,
-        deactivate::MulticastGroupDeactivateArgs,
         delete::MulticastGroupDeleteArgs,
         reactivate::MulticastGroupReactivateArgs,
         reject::MulticastGroupRejectArgs,
@@ -124,7 +124,7 @@ pub enum DoubleZeroInstruction {
     SuspendMulticastGroup(MulticastGroupSuspendArgs), // variant 50
     ReactivateMulticastGroup(MulticastGroupReactivateArgs), // variant 51
     DeleteMulticastGroup(MulticastGroupDeleteArgs), // variant 52
-    DeactivateMulticastGroup(MulticastGroupDeactivateArgs), // variant 53
+    CloseAccountMulticastGroup(MulticastGroupCloseAccountArgs), // variant 53
 
     AddMulticastGroupPubAllowlist(AddMulticastGroupPubAllowlistArgs), // variant 54
     RemoveMulticastGroupPubAllowlist(RemoveMulticastGroupPubAllowlistArgs), // variant 55
@@ -212,7 +212,7 @@ impl DoubleZeroInstruction {
             50 => Ok(Self::SuspendMulticastGroup(from_slice::<MulticastGroupSuspendArgs>(rest).unwrap())),
             51 => Ok(Self::ReactivateMulticastGroup(from_slice::<MulticastGroupReactivateArgs>(rest).unwrap())),
             52 => Ok(Self::DeleteMulticastGroup(from_slice::<MulticastGroupDeleteArgs>(rest).unwrap())),
-            53 => Ok(Self::DeactivateMulticastGroup(from_slice::<MulticastGroupDeactivateArgs>(rest).unwrap())),
+            53 => Ok(Self::CloseAccountMulticastGroup(from_slice::<MulticastGroupCloseAccountArgs>(rest).unwrap())),
 
             54 => Ok(Self::AddMulticastGroupPubAllowlist(from_slice::<AddMulticastGroupPubAllowlistArgs>(rest).unwrap())),
             55 => Ok(Self::RemoveMulticastGroupPubAllowlist(from_slice::<RemoveMulticastGroupPubAllowlistArgs>(rest).unwrap())),
@@ -294,7 +294,7 @@ impl DoubleZeroInstruction {
             Self::ReactivateMulticastGroup(_) => "ReactivateMulticastGroup".to_string(), // variant 50
             Self::DeleteMulticastGroup(_) => "DeleteMulticastGroup".to_string(), // variant 51
             Self::UpdateMulticastGroup(_) => "UpdateMulticastGroup".to_string(), // variant 52
-            Self::DeactivateMulticastGroup(_) => "DeactivateMulticastGroup".to_string(), // variant 53
+            Self::CloseAccountMulticastGroup(_) => "CloseAccountMulticastGroup".to_string(), // variant 53
 
             Self::AddMulticastGroupPubAllowlist(_) => "AddMulticastGroupPubAllowlist".to_string(), // variant 54
             Self::RemoveMulticastGroupPubAllowlist(_) => {
@@ -379,7 +379,7 @@ impl DoubleZeroInstruction {
             Self::ReactivateMulticastGroup(args) => format!("{args:?}"), // variant 50
             Self::DeleteMulticastGroup(args) => format!("{args:?}"), // variant 51
             Self::UpdateMulticastGroup(args) => format!("{args:?}"), // variant 52
-            Self::DeactivateMulticastGroup(args) => format!("{args:?}"), // variant 53
+            Self::CloseAccountMulticastGroup(args) => format!("{args:?}"), // variant 53
             Self::SubscribeMulticastGroup(args) => format!("{args:?}"), // variant 54
             Self::AddMulticastGroupPubAllowlist(args) => format!("{args:?}"), // variant 55
             Self::RemoveMulticastGroupPubAllowlist(args) => format!("{args:?}"), // variant 56
@@ -743,8 +743,8 @@ mod tests {
         );
 
         test_instruction(
-            DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {}),
-            "DeactivateMulticastGroup",
+            DoubleZeroInstruction::CloseAccountMulticastGroup(MulticastGroupCloseAccountArgs {}),
+            "CloseAccountMulticastGroup",
         );
 
         test_instruction(

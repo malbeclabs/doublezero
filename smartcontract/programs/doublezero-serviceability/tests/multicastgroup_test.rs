@@ -3,8 +3,8 @@ use doublezero_serviceability::{
     instructions::*,
     pda::*,
     processors::multicastgroup::{
-        activate::MulticastGroupActivateArgs, create::*, deactivate::MulticastGroupDeactivateArgs,
-        delete::*, reactivate::*, suspend::*, update::*,
+        activate::MulticastGroupActivateArgs, closeaccount::MulticastGroupCloseAccountArgs,
+        create::*, delete::*, reactivate::*, suspend::*, update::*,
     },
     state::{accounttype::AccountType, multicastgroup::*},
 };
@@ -229,7 +229,7 @@ async fn test_multicastgroup() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {}),
+        DoubleZeroInstruction::CloseAccountMulticastGroup(MulticastGroupCloseAccountArgs {}),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(multicastgroup.owner, false),

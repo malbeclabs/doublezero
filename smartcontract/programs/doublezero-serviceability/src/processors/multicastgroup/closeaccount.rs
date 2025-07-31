@@ -16,18 +16,18 @@ use solana_program::{
 use std::fmt;
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct MulticastGroupDeactivateArgs {}
+pub struct MulticastGroupCloseAccountArgs {}
 
-impl fmt::Debug for MulticastGroupDeactivateArgs {
+impl fmt::Debug for MulticastGroupCloseAccountArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "")
     }
 }
 
-pub fn process_deactivate_multicastgroup(
+pub fn process_closeaccount_multicastgroup(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    _value: &MulticastGroupDeactivateArgs,
+    _value: &MulticastGroupCloseAccountArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -38,7 +38,7 @@ pub fn process_deactivate_multicastgroup(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_deactivate_multicastgroup({:?})", _value);
+    msg!("process_closeaccount_multicastgroup({:?})", _value);
 
     // Check the owner of the accounts
     assert_eq!(
@@ -84,7 +84,7 @@ pub fn process_deactivate_multicastgroup(
     account_close(multicastgroup_account, owner_account)?;
 
     #[cfg(test)]
-    msg!("Deactivated: MulticastGroup closed");
+    msg!("Closed account: MulticastGroup closed");
 
     Ok(())
 }

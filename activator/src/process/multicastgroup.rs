@@ -1,7 +1,7 @@
 use crate::ipblockallocator::IPBlockAllocator;
 use doublezero_sdk::{
     commands::multicastgroup::{
-        activate::ActivateMulticastGroupCommand, deactivate::DeactivateMulticastGroupCommand,
+        activate::ActivateMulticastGroupCommand, closeaccount::CloseAccountMulticastGroupCommand,
     },
     DoubleZeroClient, MulticastGroup, MulticastGroupStatus,
 };
@@ -82,7 +82,7 @@ pub fn process_multicastgroup_event(
             )
             .unwrap();
 
-            let res = DeactivateMulticastGroupCommand {
+            let res = CloseAccountMulticastGroupCommand {
                 pubkey: *pubkey,
                 owner: multicastgroup.owner,
             }
@@ -90,10 +90,7 @@ pub fn process_multicastgroup_event(
 
             match res {
                 Ok(signature) => {
-                    write!(&mut log_msg, " Deactivated {signature}",).unwrap();
-
-                    multicastgroup_tunnel_ips
-                        .unassign_block(Ipv4Network::new(multicastgroup.multicast_ip, 32)?);
+                    write!(&mut log_msg, " CloseAccount {signature}",).unwrap();
 
                     multicastgroups.remove(pubkey);
                     *state_transitions

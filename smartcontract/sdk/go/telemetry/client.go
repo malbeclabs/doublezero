@@ -75,12 +75,29 @@ func (c *Client) GetDeviceLatencySamples(
 		return nil, ErrAccountNotFound
 	}
 
-	var deviceLatencySamples DeviceLatencySamples
-	if err := deviceLatencySamples.Deserialize(account.Value.Data.GetBinary()); err != nil {
-		return nil, fmt.Errorf("failed to deserialize DeviceLatencySamples: %w", err)
+	data := account.Value.Data.GetBinary()
+
+	var headerOnlyAccountType DeviceLatencySamplesHeaderOnlyAccountType
+	if err := headerOnlyAccountType.Deserialize(data); err != nil {
+		return nil, fmt.Errorf("failed to deserialize DeviceLatencySamplesHeaderOnlyAccountType: %w", err)
 	}
 
-	return &deviceLatencySamples, nil
+	switch headerOnlyAccountType.AccountType {
+	case AccountTypeDeviceLatencySamplesV0:
+		var instance DeviceLatencySamplesV0
+		if err := instance.Deserialize(data); err != nil {
+			return nil, fmt.Errorf("failed to deserialize DeviceLatencySamples: %w", err)
+		}
+		return instance.ToV1(), nil
+	case AccountTypeDeviceLatencySamples:
+		var instance DeviceLatencySamples
+		if err := instance.Deserialize(data); err != nil {
+			return nil, fmt.Errorf("failed to deserialize DeviceLatencySamples: %w", err)
+		}
+		return &instance, nil
+	default:
+		return nil, fmt.Errorf("unknown account type: %d", headerOnlyAccountType.AccountType)
+	}
 }
 
 func (c *Client) InitializeDeviceLatencySamples(

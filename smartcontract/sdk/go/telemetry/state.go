@@ -17,6 +17,27 @@ const (
 	AccountTypeInternetLatencySamples
 )
 
+type DeviceLatencySamplesHeaderOnlyAccountType struct {
+	AccountType AccountType // 1
+}
+
+func (d *DeviceLatencySamplesHeaderOnlyAccountType) Serialize(w io.Writer) error {
+	enc := bin.NewBorshEncoder(w)
+	if err := enc.Encode(d.AccountType); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (d *DeviceLatencySamplesHeaderOnlyAccountType) Deserialize(data []byte) error {
+	dec := bin.NewBorshDecoder(data)
+	if err := dec.Decode(&d.AccountType); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 type DeviceLatencySamplesHeader struct {
 	// Used to distinguish this account type during deserialization
 	AccountType AccountType // 1

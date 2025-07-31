@@ -1,6 +1,7 @@
-use crate::settings::RpcSettings;
+use crate::{error::FetchError, settings::RpcSettings};
 use anyhow::Result;
 use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_epoch_info::EpochInfo;
 use solana_sdk::commitment_config::CommitmentConfig;
 use std::{sync::Arc, time::Duration};
 
@@ -33,6 +34,39 @@ pub fn create_client_with_retry(settings: &RpcSettings) -> Result<Arc<RpcClientW
     Ok(Arc::new(RpcClientWithRetry {
         client: Arc::new(client),
     }))
+}
+
+/// Get the current epoch information from the RPC
+pub async fn get_current_epoch(rpc_client: &Arc<RpcClientWithRetry>) -> Result<u64, FetchError> {
+    let epoch_info = rpc_client
+        .client
+        .get_epoch_info()
+        .await
+        .map_err(|e| FetchError::Rpc(format!("Failed to get epoch info: {e}")))?;
+
+    Ok(epoch_info.epoch)
+}
+
+/// Get the previous epoch number
+pub async fn get_previous_epoch(rpc_client: &Arc<RpcClientWithRetry>) -> Result<u64, FetchError> {
+    let current_epoch = get_current_epoch(rpc_client).await?;
+
+    if current_epoch == 0 {
+        return Err(FetchError::InvalidEpoch(
+            "Cannot get previous epoch for epoch 0".to_string(),
+        ));
+    }
+
+    Ok(current_epoch - 1)
+}
+
+/// Get full epoch information from the RPC
+pub async fn get_epoch_info(rpc_client: &Arc<RpcClientWithRetry>) -> Result<EpochInfo, FetchError> {
+    rpc_client
+        .client
+        .get_epoch_info()
+        .await
+        .map_err(|e| FetchError::Rpc(format!("Failed to get epoch info: {e}")))
 }
 
 #[cfg(test)]

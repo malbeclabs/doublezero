@@ -1,5 +1,4 @@
 use crate::{
-    debug::{debug_account_structure, hex_dump_account_prefix},
     filters::build_epoch_filter,
     rpc::RpcClientWithRetry,
     settings::Settings,
@@ -128,7 +127,6 @@ pub async fn fetch(
                 }
                 Err(e) => {
                     warn!("Failed to deserialize telemetry account {}: {}", pubkey, e);
-                    debug_account_structure(&pubkey.to_string(), &account.data, None);
                     error_count += 1;
                 }
             }
@@ -208,16 +206,6 @@ pub async fn fetch_by_epoch(
         epoch
     );
 
-    // Debug: log first few accounts if any found
-    if !accounts.is_empty() && accounts.len() <= 5 {
-        debug!("First few account pubkeys:");
-        for (pubkey, account) in accounts.iter().take(3) {
-            debug!("  - {} (size: {} bytes)", pubkey, account.data.len());
-            hex_dump_account_prefix(&account.data, 16);
-        }
-    }
-
-    // Process accounts - no need for time filtering since we already filtered by epoch
     let mut device_latency_samples = Vec::new();
     let batch_size = 100;
     let mut error_count = 0;
@@ -253,7 +241,6 @@ pub async fn fetch_by_epoch(
                 }
                 Err(e) => {
                     warn!("Failed to deserialize telemetry account {}: {}", pubkey, e);
-                    debug_account_structure(&pubkey.to_string(), &account.data, None);
                     error_count += 1;
                 }
             }

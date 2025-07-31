@@ -3,11 +3,6 @@ use solana_client::rpc_filter::{Memcmp, RpcFilterType};
 /// Build a filter for just account type (1-byte filter)
 pub fn build_account_type_filter(account_type: u8) -> Vec<RpcFilterType> {
     let bytes = vec![account_type];
-
-    // TODO: remove when done
-    // Debug log the filter bytes
-    crate::debug::debug_filter_bytes("account_type", &bytes);
-
     vec![RpcFilterType::Memcmp(Memcmp::new_base58_encoded(0, &bytes))]
 }
 
@@ -15,11 +10,6 @@ pub fn build_account_type_filter(account_type: u8) -> Vec<RpcFilterType> {
 pub fn build_epoch_filter(account_type: u8, epoch: u64) -> Vec<RpcFilterType> {
     let mut bytes = vec![account_type];
     bytes.extend_from_slice(&epoch.to_le_bytes());
-
-    // TODO: remove when done
-    // Debug log the filter bytes
-    crate::debug::debug_filter_bytes(&format!("account_type + epoch {epoch}"), &bytes);
-
     vec![RpcFilterType::Memcmp(Memcmp::new_base58_encoded(0, &bytes))]
 }
 

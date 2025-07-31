@@ -1,6 +1,4 @@
-use crate::{
-    epoch::get_previous_epoch, rpc, serviceability, settings::Settings, telemetry, types::FetchData,
-};
+use crate::{rpc, serviceability, settings::Settings, telemetry, types::FetchData};
 use anyhow::Result;
 use chrono::Utc;
 use serde::Serialize;
@@ -88,8 +86,7 @@ impl Fetcher {
     pub async fn fetch_previous_epoch() -> Result<FetchData> {
         let settings = Settings::from_env()?;
         let rpc_client = rpc::create_client_with_retry(&settings.ingestor.rpc)?;
-
-        let previous_epoch = get_previous_epoch(&rpc_client).await?;
+        let previous_epoch = rpc::get_previous_epoch(&rpc_client).await?;
         info!("Fetching data for previous epoch: {}", previous_epoch);
 
         Self::fetch_by_epoch(previous_epoch).await

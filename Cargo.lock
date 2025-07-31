@@ -1617,6 +1617,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "doublezero-record"
+version = "0.3.0"
+dependencies = [
+ "bytemuck",
+ "solana-program",
+ "solana-program-test",
+ "solana-sdk",
+ "solana-system-interface",
+ "thiserror 2.0.12",
+]
+
+[[package]]
 name = "doublezero-serviceability"
 version = "0.3.0"
 dependencies = [

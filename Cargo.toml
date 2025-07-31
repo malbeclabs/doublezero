@@ -5,6 +5,7 @@ members = [
     "controlplane/doublezero-admin",
     "smartcontract/cli",
     "smartcontract/sdk/rs",
+    "smartcontract/programs/doublezero-record",
     "smartcontract/programs/doublezero-serviceability",
     "smartcontract/programs/doublezero-telemetry",
     "smartcontract/program-common",
@@ -32,6 +33,7 @@ base64 = "0.22.1"
 bincode = { version = "2", features = ["serde"] }
 bitvec = "1"
 borsh = "1"
+bytemuck = { version = "1", features = ["derive"] }
 byteorder = "1"
 chrono = "0"
 clap = { version = "4", features = ["derive"] }

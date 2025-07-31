@@ -1,0 +1,22 @@
+//! Error types
+
+use solana_program::program_error::ProgramError;
+use thiserror::Error;
+
+/// Errors that may be returned by the program.
+#[derive(Clone, Debug, Eq, Error, PartialEq)]
+#[repr(u32)]
+pub enum RecordError {
+    /// Incorrect authority provided on update or delete
+    #[error("Incorrect authority provided on update or delete")]
+    IncorrectAuthority,
+
+    /// Calculation overflow
+    #[error("Calculation overflow")]
+    Overflow,
+}
+impl From<RecordError> for ProgramError {
+    fn from(e: RecordError) -> Self {
+        ProgramError::Custom(e as u32)
+    }
+}

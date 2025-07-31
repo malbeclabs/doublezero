@@ -12,6 +12,7 @@ test-ledger/
 smartcontract/cli/config/*
 
 .idea
+.private
 .vscode/*
 .vscode
 .zed

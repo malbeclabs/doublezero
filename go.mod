@@ -6,6 +6,7 @@ require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.37.2
 	github.com/alitto/pond/v2 v2.5.0
 	github.com/aristanetworks/goeapi v1.0.1-0.20250411124937-7090068b8735
+	github.com/dgraph-io/ristretto v0.2.0
 	github.com/docker/docker v28.3.3+incompatible
 	github.com/docker/go-connections v0.5.0
 	github.com/gagliardetto/binary v0.8.0
@@ -63,6 +64,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
+	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/ebitengine/purego v0.8.2 // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect

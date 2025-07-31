@@ -49,6 +49,7 @@ type ProviderConfig struct {
 	Logger               *slog.Logger
 	ServiceabilityClient ServiceabilityClient
 	TelemetryClient      TelemetryClient
+	EpochFinder          EpochFinder
 
 	CircuitsCacheTTL               time.Duration
 	HistoricEpochLatenciesCacheTTL time.Duration
@@ -65,6 +66,9 @@ func (c *ProviderConfig) Validate() error {
 	}
 	if c.TelemetryClient == nil {
 		return errors.New("telemetry client is required")
+	}
+	if c.EpochFinder == nil {
+		return errors.New("epoch finder is required")
 	}
 	if c.CircuitsCacheTTL == 0 {
 		c.CircuitsCacheTTL = defaultCircuitsCacheTTL

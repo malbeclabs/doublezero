@@ -77,3 +77,11 @@ func (m *mockProvider) GetCircuitLatencies(ctx context.Context, circuit string, 
 func (m *mockProvider) GetCircuitLatenciesForEpoch(ctx context.Context, circuit string, epoch uint64) ([]data.CircuitLatencySample, error) {
 	return m.GetCircuitLatenciesForEpochFunc(ctx, circuit, epoch)
 }
+
+type mockEpochFinder struct {
+	FindEpochAtTimeFunc func(ctx context.Context, target time.Time) (uint64, error)
+}
+
+func (m *mockEpochFinder) FindEpochAtTime(ctx context.Context, target time.Time) (uint64, error) {
+	return m.FindEpochAtTimeFunc(ctx, target)
+}

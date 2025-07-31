@@ -79,9 +79,15 @@ func newProvider(log *slog.Logger, env string) (data.Provider, error) {
 
 	rpcClient := solanarpc.New(networkConfig.LedgerRPCURL)
 
+	epochFinder, err := data.NewEpochFinder(rpcClient)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create epoch finder: %w", err)
+	}
+
 	return data.NewProvider(&data.ProviderConfig{
 		Logger:               log,
 		ServiceabilityClient: serviceability.New(rpcClient, networkConfig.ServiceabilityProgramID),
 		TelemetryClient:      telemetry.New(log, rpcClient, nil, networkConfig.TelemetryProgramID),
+		EpochFinder:          epochFinder,
 	})
 }

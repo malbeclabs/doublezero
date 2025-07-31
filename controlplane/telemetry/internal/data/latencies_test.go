@@ -38,7 +38,7 @@ func TestTelemetry_Data_Provider_GetCircuitLatencies(t *testing.T) {
 		}, defaultCircuit())
 
 		ctx := context.Background()
-		epoch := data.DeriveEpoch(time.Now())
+		epoch := uint64(100)
 
 		first, err := provider.GetCircuitLatenciesForEpoch(ctx, "A → B (L1)", epoch)
 		require.NoError(t, err)
@@ -56,7 +56,7 @@ func TestTelemetry_Data_Provider_GetCircuitLatencies(t *testing.T) {
 			return nil, telemetry.ErrAccountNotFound
 		}, defaultCircuit())
 
-		epoch := data.DeriveEpoch(time.Now())
+		epoch := uint64(100)
 		latencies, err := provider.GetCircuitLatenciesForEpoch(context.Background(), "A → B (L1)", epoch)
 		assert.ErrorIs(t, err, telemetry.ErrAccountNotFound)
 		assert.Empty(t, latencies)
@@ -240,6 +240,11 @@ func newTestProvider(
 		TelemetryClient: &mockTelemetryClient{
 			GetDeviceLatencySamplesFunc: func(ctx context.Context, _, _, _ solana.PublicKey, epoch uint64) (*telemetry.DeviceLatencySamples, error) {
 				return getFunc(epoch)
+			},
+		},
+		EpochFinder: &mockEpochFinder{
+			FindEpochAtTimeFunc: func(ctx context.Context, target time.Time) (uint64, error) {
+				return 0, nil
 			},
 		},
 		CircuitsCacheTTL:               time.Minute,

@@ -76,7 +76,10 @@ func (p *provider) GetCircuitLatenciesForEpoch(ctx context.Context, circuitCode 
 	samples := enrichSamplesWithTimestamps(account.Samples, account.StartTimestampMicroseconds, account.SamplingIntervalMicroseconds)
 
 	// If the epoch is sufficiently in the past, cache for much longer.
-	currentEpoch := DeriveEpoch(time.Now())
+	currentEpoch, err := p.cfg.EpochFinder.FindEpochAtTime(ctx, time.Now())
+	if err != nil {
+		return nil, fmt.Errorf("failed to find current epoch: %w", err)
+	}
 	ttl := p.cfg.CurrentEpochLatenciesCacheTTL
 	if epoch < currentEpoch-1 {
 		ttl = p.cfg.HistoricEpochLatenciesCacheTTL
@@ -87,8 +90,14 @@ func (p *provider) GetCircuitLatenciesForEpoch(ctx context.Context, circuitCode 
 }
 
 func (p *provider) GetCircuitLatencies(ctx context.Context, circuitCode string, from, to time.Time) ([]CircuitLatencySample, error) {
-	startEpoch := DeriveEpoch(from)
-	endEpoch := DeriveEpoch(to)
+	startEpoch, err := p.cfg.EpochFinder.FindEpochAtTime(ctx, from)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find start epoch: %w", err)
+	}
+	endEpoch, err := p.cfg.EpochFinder.FindEpochAtTime(ctx, to)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find end epoch: %w", err)
+	}
 
 	var latencies []CircuitLatencySample
 

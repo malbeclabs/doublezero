@@ -1,6 +1,7 @@
 [workspace]
 exclude = []
 members = [
+    "crates/2z-cli",
     "crates/program-tools",
     "crates/validator-revenue",
     "programs/passport",
@@ -17,20 +18,23 @@ rust-version = "1.83"
 version = "0.1.0"
 
 [workspace.dependencies]
+anyhow = "1"
 async-trait = "0.1"
 base64 = "0.22"
 bincode = "1.3"
 bitmaps = "3.2"
 borsh = "1.5"
 bytemuck = "1.23"
+clap = { version = "4", features = ["derive"] }
 eyre = "0.6"
 futures = "0.3"
 mockall = "0.13"
 reqwest = { version = "0.12", features = ["json"] }
 serde = "1"
 solana-account-info = "2"
-solana-cpi = "2"
 solana-client = "2"
+solana-commitment-config = "2"
+solana-cpi = "2"
 solana-hash = "2"
 solana-instruction = "2"
 solana-loader-v3-interface = "5"

@@ -1,5 +1,6 @@
 .idea
 .private
+.vscode
 target
 .zed
 .DS_Store

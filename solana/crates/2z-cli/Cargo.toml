@@ -1,0 +1,19 @@
+[package]
+name = "doublezero-2z-solana-cli"
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+solana-client.workspace = true
+solana-commitment-config.workspace = true
+solana-sdk.workspace = true
+
+[[bin]]
+name = "2z-solana"
+path = "src/main.rs"

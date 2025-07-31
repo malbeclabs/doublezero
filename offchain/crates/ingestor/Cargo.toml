@@ -1,0 +1,29 @@
+[package]
+name = "ingestor"
+readme = "README.md"
+
+# Workspace inherited keys
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+backon.workspace = true
+chrono.workspace = true
+doublezero-serviceability.workspace = true
+doublezero-telemetry.workspace = true
+figment.workspace = true
+futures-util.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+solana-account-decoder.workspace = true
+solana-client.workspace = true
+solana-sdk.workspace = true
+solana-epoch-info.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true

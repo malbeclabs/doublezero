@@ -6,14 +6,12 @@
 log_level = "info"
 
 # RPC settings
-[data_fetcher.rpc]
+[ingestor.rpc]
 commitment = "finalized"
 timeout_secs = 30
 max_retries = 3
 
 # Metrics processor settings
-[metrics_processor.metrics]
+[ingestor.metrics]
 uptime_threshold = 0.95
 percentile_bins = [50, 75, 90, 95, 99]
-
-[demand_generator.backoff]

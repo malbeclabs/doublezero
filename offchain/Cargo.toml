@@ -1,9 +1,8 @@
 [workspace]
 members = [
-    "demand_generator",
-    "data_fetcher",
-    "metrics_processor",
-    "rewards_calculator",
+    "crates/ingestor",
+    "crates/processor",
+    "crates/calculator",
 ]
 resolver = "2"
 
@@ -20,25 +19,18 @@ homepage = "https://github.com/doublezerofoundation/doublezero-rewarder"
 
 [workspace.dependencies]
 anyhow = "1"
-arrow = { version = "55", features = ["prettyprint"] }
-backon = "0"
+backon = "1"
 base64 = "0"
-borsh = "1"
 chrono = { version = "0", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }
 csv = "1"
-duckdb = { version = "1", features = ["bundled"] }
-flate2 = "1"
 figment = { version = "0", features = ["env", "toml"] }
 futures-util = "0"
-hex = "0"
 humantime = "2"
 humantime-serde = "1"
 doublezero-serviceability = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint" ] }
 doublezero-telemetry = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint" ] }
 svm-hash = { version = "0.1.0-beta.1", features = [ "bytemuck" ] }
-md5 = "0"
-parquet = { version = "55", features = ["arrow", "async"] }
 rand = "0"
 rust_decimal = { version = "1", features = ["serde", "macros"] }
 sha2 = "0"
@@ -49,6 +41,7 @@ serde_json = "1"
 solana-client = "2.2.7"
 solana-account-decoder = "2.2.7"
 solana-sdk = "2.2.2"
+solana-epoch-info = "2.2.1"
 tabled = { version = "0", features = [ "std", "derive" ]}
 thiserror = "2"
 tokio = { version = "1", features = ["full"] }

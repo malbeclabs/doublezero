@@ -1,0 +1,47 @@
+[package]
+name = "calculator"
+readme = "README.md"
+
+# Workspace inherited keys
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+
+
+[lib]
+name = "calculator"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+clap.workspace = true
+csv.workspace = true
+doublezero-serviceability.workspace = true
+doublezero-telemetry.workspace = true
+figment.workspace = true
+humantime.workspace = true
+rust_decimal.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+network-shapley.workspace = true
+solana-sdk.workspace = true
+svm-hash.workspace = true
+tabled.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+# Internal crates
+ingestor = { path = "../ingestor" }
+processor = { path = "../processor" }
+
+[build-dependencies]
+toml.workspace = true
+
+[dev-dependencies]
+solana-sdk.workspace = true

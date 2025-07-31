@@ -283,7 +283,7 @@ impl ProvisioningCliCommand {
                 let mut latencies = controller
                     .latency()
                     .await
-                    .map_err(|_| eyre::eyre!("Could not get latency"))?;
+                    .map_err(|err| eyre::eyre!("Could not get latency: {err:?}"))?;
                 latencies.retain(|l| l.reachable);
                 latencies.sort_by(|a, b| a.avg_latency_ns.cmp(&b.avg_latency_ns));
 
@@ -756,6 +756,7 @@ mod tests {
             self.latencies.borrow_mut().push(LatencyRecord {
                 device_pk: pk.to_string(),
                 device_ip: device_ip.clone(),
+                code: format!("device{device_number}"),
                 min_latency_ns: latency_ns,
                 max_latency_ns: latency_ns,
                 avg_latency_ns: latency_ns,

@@ -1,6 +1,5 @@
 use crate::{
     filters::{build_account_type_filter, build_epoch_filter},
-    rpc::RpcClientWithRetry,
     settings::Settings,
     types::DZServiceabilityData,
 };
@@ -157,7 +156,7 @@ pub async fn fetch(
 
 /// Fetch serviceability data by account type using RPC filters
 pub async fn fetch_by_type(
-    rpc_client: &RpcClientWithRetry,
+    rpc_client: &RpcClient,
     settings: &Settings,
     account_type: AccountType,
     epoch: Option<u64>,
@@ -197,7 +196,6 @@ pub async fn fetch_by_type(
 
     let accounts = (|| async {
         rpc_client
-            .client
             .get_program_accounts_with_config(&program_pubkey, config.clone())
             .await
     })
@@ -220,7 +218,7 @@ pub async fn fetch_by_type(
 
 /// Fetch all serviceability data using per-type RPC filters for efficiency
 pub async fn fetch_filtered(
-    rpc_client: &RpcClientWithRetry,
+    rpc_client: &RpcClient,
     settings: &Settings,
     timestamp_us: u64,
     epoch: Option<u64>,

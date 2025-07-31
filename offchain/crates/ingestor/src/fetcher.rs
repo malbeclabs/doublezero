@@ -1,43 +1,61 @@
-use crate::{rpc, serviceability, settings::Settings, telemetry, types::FetchData};
+use crate::{serviceability, settings::Settings, telemetry, types::FetchData};
 use anyhow::Result;
 use chrono::Utc;
-use serde::Serialize;
+use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_sdk::commitment_config::CommitmentConfig;
+use std::sync::Arc;
 use tracing::info;
 
 /// Combined network and telemetry data
-#[derive(Debug, Default, Clone, Serialize)]
-pub struct Fetcher;
+#[derive(Clone)]
+pub struct Fetcher {
+    pub rpc_client: Arc<RpcClient>,
+    pub solana_client: Arc<RpcClient>,
+    pub settings: Settings,
+}
 
 impl Fetcher {
-    /// Fetch all data (network and telemetry) for a given time range
-    pub async fn fetch(after_us: u64, before_us: u64) -> Result<FetchData> {
-        let settings = Settings::from_env()?;
+    pub fn new(settings: &Settings) -> Result<Self> {
+        let rpc_client = RpcClient::new_with_commitment(
+            settings.ingestor.rpc.url.to_string(),
+            CommitmentConfig::finalized(),
+        );
+        let solana_client = RpcClient::new_with_commitment(
+            settings.ingestor.rpc.solana_url.to_string(),
+            CommitmentConfig::finalized(),
+        );
+        Ok(Self {
+            rpc_client: Arc::new(rpc_client),
+            solana_client: Arc::new(solana_client),
+            settings: settings.clone(),
+        })
+    }
 
+    /// Fetch all data (network and telemetry) for a given time range
+    pub async fn by_time_range(&self, after_us: u64, before_us: u64) -> Result<FetchData> {
         info!(
             "Fetching all data for time range: {} to {} microseconds",
             after_us, before_us
         );
         info!(
             "Using serviceability program: {}",
-            settings.ingestor.programs.serviceability_program_id
+            self.settings.ingestor.programs.serviceability_program_id
         );
         info!(
             "Using telemetry program: {}",
-            settings.ingestor.programs.telemetry_program_id
+            self.settings.ingestor.programs.telemetry_program_id
         );
-
-        let rpc_client = rpc::create_client(&settings.ingestor.rpc)?;
 
         // Fetch data in parallel
         // For serviceability, we use the before timestamp to get the latest network state
         // For telemetry, we filter by timestamp range
         let (serviceability_data, telemetry_data) = tokio::try_join!(
             serviceability::fetch(
-                &rpc_client,
-                &settings,
+                &self.rpc_client,
+                &self.settings,
                 before_us // Get network state at the end of the time range
             ),
-            telemetry::fetch(&rpc_client, &settings, after_us, before_us)
+            telemetry::fetch(&self.rpc_client, &self.settings, after_us, before_us)
         )?;
 
         Ok(FetchData {
@@ -50,27 +68,23 @@ impl Fetcher {
     }
 
     /// Fetch all data for a specific epoch
-    pub async fn fetch_by_epoch(epoch: u64) -> Result<FetchData> {
-        let settings = Settings::from_env()?;
-
+    pub async fn by_epoch(&self, epoch: u64) -> Result<FetchData> {
         info!("Fetching all data for epoch: {}", epoch);
         info!(
             "Using serviceability program: {}",
-            settings.ingestor.programs.serviceability_program_id
+            self.settings.ingestor.programs.serviceability_program_id
         );
         info!(
             "Using telemetry program: {}",
-            settings.ingestor.programs.telemetry_program_id
+            self.settings.ingestor.programs.telemetry_program_id
         );
-
-        let rpc_client = rpc::create_client_with_retry(&settings.ingestor.rpc)?;
 
         // Fetch data in parallel
         // For serviceability, we use the filtered approach
         // For telemetry, we use epoch-based filtering
         let (serviceability_data, telemetry_data) = tokio::try_join!(
-            serviceability::fetch_filtered(&rpc_client, &settings, 0, Some(epoch)), // TODO: Why is this 0?
-            telemetry::fetch_by_epoch(&rpc_client, &settings, epoch)
+            serviceability::fetch_filtered(&self.rpc_client, &self.settings, 0, Some(epoch)), // TODO: Why is this 0?
+            telemetry::fetch_by_epoch(&self.rpc_client, &self.settings, epoch)
         )?;
 
         Ok(FetchData {
@@ -83,12 +97,10 @@ impl Fetcher {
     }
 
     /// Fetch all data for the previous epoch
-    pub async fn fetch_previous_epoch() -> Result<FetchData> {
-        let settings = Settings::from_env()?;
-        let rpc_client = rpc::create_client_with_retry(&settings.ingestor.rpc)?;
-        let previous_epoch = rpc::get_previous_epoch(&rpc_client).await?;
-        info!("Fetching data for previous epoch: {}", previous_epoch);
-
-        Self::fetch_by_epoch(previous_epoch).await
+    pub async fn by_prev_epoch(&self) -> Result<FetchData> {
+        let epoch_info = self.rpc_client.get_epoch_info().await?;
+        let prev_epoch = epoch_info.epoch - 1;
+        info!("Fetching data for previous epoch: {}", prev_epoch);
+        self.by_epoch(prev_epoch).await
     }
 }

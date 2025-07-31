@@ -46,19 +46,7 @@ impl BackoffSettings {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct RpcSettings {
     pub url: String,
-    #[serde(default = "default_commitment")]
-    pub commitment: String,
-    #[serde(default = "default_timeout_secs")]
-    pub timeout_secs: u64,
-}
-
-impl RpcSettings {
-    pub fn with_url(url: String) -> Self {
-        Self {
-            url,
-            ..Default::default()
-        }
-    }
+    pub solana_url: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -113,14 +101,6 @@ impl Settings {
 
 fn default_log_level() -> String {
     "info".to_string()
-}
-
-fn default_commitment() -> String {
-    "finalized".to_string()
-}
-
-fn default_timeout_secs() -> u64 {
-    30
 }
 
 fn default_backoff_factor() -> f32 {

@@ -1,6 +1,5 @@
 use crate::{
     filters::build_epoch_filter,
-    rpc::RpcClientWithRetry,
     settings::Settings,
     types::{DZDTelemetryData, DZDeviceLatencySamples},
 };
@@ -162,7 +161,7 @@ pub async fn fetch(
 
 /// Fetch telemetry data for a specific epoch using RPC filtering
 pub async fn fetch_by_epoch(
-    rpc_client: &RpcClientWithRetry,
+    rpc_client: &RpcClient,
     settings: &Settings,
     epoch: u64,
 ) -> Result<DZDTelemetryData> {
@@ -190,7 +189,6 @@ pub async fn fetch_by_epoch(
 
     let accounts = (|| async {
         rpc_client
-            .client
             .get_program_accounts_with_config(&program_pubkey, config.clone())
             .await
     })

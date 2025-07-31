@@ -7,9 +7,7 @@ log_level = "info"
 
 # RPC settings
 [ingestor.rpc]
-commitment = "finalized"
-timeout_secs = 30
-max_retries = 3
+solana_url = "https://api.mainnet-beta.solana.com"
 
 # Metrics processor settings
 [ingestor.metrics]

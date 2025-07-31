@@ -1,22 +1,18 @@
-#![cfg(feature = "test-sbf")]
-
-use {
-    solana_instruction::{error::InstructionError, AccountMeta, Instruction},
-    solana_program_test::*,
-    solana_pubkey::Pubkey,
-    solana_rent::Rent,
-    solana_sdk::{
-        signature::{Keypair, Signer},
-        transaction::{Transaction, TransactionError},
-    },
-    solana_system_interface::instruction as system_instruction,
-    spl_record::{
-        error::RecordError, id, instruction, processor::process_instruction, state::RecordData,
-    },
+use doublezero_record::{
+    error::RecordError, instruction, processor::process_instruction, state::RecordData, ID,
 };
+use solana_program_test::{processor, tokio, ProgramTest, ProgramTestContext};
+use solana_sdk::{
+    instruction::{AccountMeta, Instruction, InstructionError},
+    pubkey::Pubkey,
+    rent::Rent,
+    signature::{Keypair, Signer},
+    transaction::{Transaction, TransactionError},
+};
+use solana_system_interface::instruction as system_instruction;
 
 fn program_test() -> ProgramTest {
-    ProgramTest::new("spl_record", id(), processor!(process_instruction))
+    ProgramTest::new("doublezero_record", ID, processor!(process_instruction))
 }
 
 async fn initialize_storage_account(
@@ -35,7 +31,7 @@ async fn initialize_storage_account(
                 &account.pubkey(),
                 1.max(Rent::default().minimum_balance(account_length)),
                 account_length as u64,
-                &id(),
+                &ID,
             ),
             instruction::initialize(&account.pubkey(), &authority.pubkey()),
             instruction::write(&account.pubkey(), &authority.pubkey(), 0, data),
@@ -80,7 +76,7 @@ async fn initialize_with_seed_success() {
 
     let authority = Keypair::new();
     let seed = "storage";
-    let account = Pubkey::create_with_seed(&authority.pubkey(), seed, &id()).unwrap();
+    let account = Pubkey::create_with_seed(&authority.pubkey(), seed, &ID).unwrap();
     let data = &[111u8; 8];
     let account_length = std::mem::size_of::<RecordData>()
         .checked_add(data.len())
@@ -94,7 +90,7 @@ async fn initialize_with_seed_success() {
                 seed,
                 1.max(Rent::default().minimum_balance(account_length)),
                 account_length as u64,
-                &id(),
+                &ID,
             ),
             instruction::initialize(&account, &authority.pubkey()),
             instruction::write(&account, &authority.pubkey(), 0, data),
@@ -240,7 +236,7 @@ async fn write_fail_unsigned() {
 
     let transaction = Transaction::new_signed_with_payer(
         &[Instruction {
-            program_id: id(),
+            program_id: ID,
             accounts: vec![
                 AccountMeta::new(account.pubkey(), false),
                 AccountMeta::new_readonly(authority.pubkey(), false),
@@ -315,7 +311,7 @@ async fn close_account_fail_wrong_authority() {
     let wrong_authority = Keypair::new();
     let transaction = Transaction::new_signed_with_payer(
         &[Instruction {
-            program_id: id(),
+            program_id: ID,
             accounts: vec![
                 AccountMeta::new(account.pubkey(), false),
                 AccountMeta::new_readonly(wrong_authority.pubkey(), true),
@@ -352,7 +348,7 @@ async fn close_account_fail_unsigned() {
 
     let transaction = Transaction::new_signed_with_payer(
         &[Instruction {
-            program_id: id(),
+            program_id: ID,
             accounts: vec![
                 AccountMeta::new(account.pubkey(), false),
                 AccountMeta::new_readonly(authority.pubkey(), false),
@@ -461,7 +457,7 @@ async fn set_authority_fail_wrong_authority() {
     let wrong_authority = Keypair::new();
     let transaction = Transaction::new_signed_with_payer(
         &[Instruction {
-            program_id: id(),
+            program_id: ID,
             accounts: vec![
                 AccountMeta::new(account.pubkey(), false),
                 AccountMeta::new_readonly(wrong_authority.pubkey(), true),
@@ -498,7 +494,7 @@ async fn set_authority_fail_unsigned() {
 
     let transaction = Transaction::new_signed_with_payer(
         &[Instruction {
-            program_id: id(),
+            program_id: ID,
             accounts: vec![
                 AccountMeta::new(account.pubkey(), false),
                 AccountMeta::new_readonly(authority.pubkey(), false),
@@ -613,7 +609,7 @@ async fn reallocate_fail_wrong_authority() {
     let transaction = Transaction::new_signed_with_payer(
         &[
             Instruction {
-                program_id: id(),
+                program_id: ID,
                 accounts: vec![
                     AccountMeta::new(account.pubkey(), false),
                     AccountMeta::new(wrong_authority.pubkey(), true),
@@ -665,7 +661,7 @@ async fn reallocate_fail_unsigned() {
     let transaction = Transaction::new_signed_with_payer(
         &[
             Instruction {
-                program_id: id(),
+                program_id: ID,
                 accounts: vec![
                     AccountMeta::new(account.pubkey(), false),
                     AccountMeta::new(authority.pubkey(), false),

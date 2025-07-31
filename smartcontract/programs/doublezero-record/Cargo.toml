@@ -1,0 +1,30 @@
+[package]
+name = "doublezero-record"
+
+# Workspace inherited keys
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+no-entrypoint = []
+
+[dependencies]
+bytemuck.workspace = true
+solana-program.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+solana-program-test.workspace = true
+solana-sdk.workspace = true
+solana-system-interface.workspace = true
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[package.metadata.solana]
+program-id = "recr1L3PCGKLbckBqMNcJhuuyU1zgo8nBhfLVsJNwr5"

@@ -1,12 +1,11 @@
 //! Error types
 
-use {
-    num_derive::FromPrimitive, solana_decode_error::DecodeError,
-    solana_program_error::ProgramError, thiserror::Error,
-};
+use solana_program::program_error::ProgramError;
+use thiserror::Error;
 
 /// Errors that may be returned by the program.
-#[derive(Clone, Debug, Eq, Error, FromPrimitive, PartialEq)]
+#[derive(Clone, Debug, Eq, Error, PartialEq)]
+#[repr(u32)]
 pub enum RecordError {
     /// Incorrect authority provided on update or delete
     #[error("Incorrect authority provided on update or delete")]
@@ -19,10 +18,5 @@ pub enum RecordError {
 impl From<RecordError> for ProgramError {
     fn from(e: RecordError) -> Self {
         ProgramError::Custom(e as u32)
-    }
-}
-impl<T> DecodeError<T> for RecordError {
-    fn type_of() -> &'static str {
-        "Record Error"
     }
 }

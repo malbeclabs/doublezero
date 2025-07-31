@@ -1,9 +1,6 @@
 //! Program state
-use {
-    bytemuck::{Pod, Zeroable},
-    solana_program_pack::IsInitialized,
-    solana_pubkey::Pubkey,
-};
+use bytemuck::{Pod, Zeroable};
+use solana_program::{program_pack::IsInitialized, pubkey::Pubkey};
 
 /// Header type for recorded account data
 #[repr(C)]
@@ -33,7 +30,9 @@ impl IsInitialized for RecordData {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use {super::*, solana_program_error::ProgramError};
+    use solana_program::program_error::ProgramError;
+
+    use super::*;
 
     /// Version for tests
     pub const TEST_VERSION: u8 = 1;

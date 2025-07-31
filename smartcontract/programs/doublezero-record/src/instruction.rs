@@ -1,12 +1,12 @@
 //! Program instructions
 
-use {
-    crate::id,
-    solana_instruction::{AccountMeta, Instruction},
-    solana_program_error::ProgramError,
-    solana_pubkey::Pubkey,
-    std::mem::size_of,
+use solana_program::{
+    instruction::{AccountMeta, Instruction},
+    program_error::ProgramError,
+    pubkey::Pubkey,
 };
+
+use crate::ID;
 
 /// Instructions supported by the program
 #[derive(Clone, Debug, PartialEq)]
@@ -136,7 +136,7 @@ impl<'a> RecordInstruction<'a> {
 /// Create a `RecordInstruction::Initialize` instruction
 pub fn initialize(record_account: &Pubkey, authority: &Pubkey) -> Instruction {
     Instruction {
-        program_id: id(),
+        program_id: ID,
         accounts: vec![
             AccountMeta::new(*record_account, false),
             AccountMeta::new_readonly(*authority, false),
@@ -148,7 +148,7 @@ pub fn initialize(record_account: &Pubkey, authority: &Pubkey) -> Instruction {
 /// Create a `RecordInstruction::Write` instruction
 pub fn write(record_account: &Pubkey, signer: &Pubkey, offset: u64, data: &[u8]) -> Instruction {
     Instruction {
-        program_id: id(),
+        program_id: ID,
         accounts: vec![
             AccountMeta::new(*record_account, false),
             AccountMeta::new_readonly(*signer, true),
@@ -164,7 +164,7 @@ pub fn set_authority(
     new_authority: &Pubkey,
 ) -> Instruction {
     Instruction {
-        program_id: id(),
+        program_id: ID,
         accounts: vec![
             AccountMeta::new(*record_account, false),
             AccountMeta::new_readonly(*signer, true),
@@ -177,7 +177,7 @@ pub fn set_authority(
 /// Create a `RecordInstruction::CloseAccount` instruction
 pub fn close_account(record_account: &Pubkey, signer: &Pubkey, receiver: &Pubkey) -> Instruction {
     Instruction {
-        program_id: id(),
+        program_id: ID,
         accounts: vec![
             AccountMeta::new(*record_account, false),
             AccountMeta::new_readonly(*signer, true),
@@ -190,7 +190,7 @@ pub fn close_account(record_account: &Pubkey, signer: &Pubkey, receiver: &Pubkey
 /// Create a `RecordInstruction::Reallocate` instruction
 pub fn reallocate(record_account: &Pubkey, signer: &Pubkey, data_length: u64) -> Instruction {
     Instruction {
-        program_id: id(),
+        program_id: ID,
         accounts: vec![
             AccountMeta::new(*record_account, false),
             AccountMeta::new_readonly(*signer, true),
@@ -201,7 +201,9 @@ pub fn reallocate(record_account: &Pubkey, signer: &Pubkey, data_length: u64) ->
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::state::tests::TEST_BYTES, solana_program_error::ProgramError};
+    use crate::state::tests::TEST_BYTES;
+
+    use super::*;
 
     #[test]
     fn serialize_initialize() {

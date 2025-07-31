@@ -1,13 +1,15 @@
 //! Program state processor
 
-use {
-    crate::{error::RecordError, instruction::RecordInstruction, state::RecordData},
-    solana_account_info::{next_account_info, AccountInfo},
-    solana_msg::msg,
-    solana_program_error::{ProgramError, ProgramResult},
-    solana_program_pack::IsInitialized,
-    solana_pubkey::Pubkey,
+use solana_program::{
+    account_info::{next_account_info, AccountInfo},
+    entrypoint::ProgramResult,
+    msg,
+    program_error::ProgramError,
+    program_pack::IsInitialized,
+    pubkey::Pubkey,
 };
+
+use crate::{error::RecordError, instruction::RecordInstruction, state::RecordData};
 
 fn check_authority(authority_info: &AccountInfo, expected_authority: &Pubkey) -> ProgramResult {
     if expected_authority != authority_info.key {
@@ -174,7 +176,7 @@ pub fn process_instruction(
                     .checked_sub(data_info.data_len())
                     .unwrap(),
             );
-            data_info.resize(needed_account_length)?;
+            data_info.realloc(needed_account_length, false)?;
             Ok(())
         }
     }

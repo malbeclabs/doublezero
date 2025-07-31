@@ -26,7 +26,6 @@ bitmaps = "3.2"
 borsh = "1.5"
 bytemuck = "1.23"
 clap = { version = "4", features = ["derive"] }
-eyre = "0.6"
 futures = "0.3"
 mockall = "0.13"
 reqwest = { version = "0.12", features = ["json"] }
@@ -52,7 +51,7 @@ tokio = "1"
 
 ### Please keep these packages pinned for now.
 sha2-const-stable = "=0.1.0"
-solana-program-test = "=2.3.4"
+solana-program-test = "=2.3.6"
 solana-sdk = "=2.3"
 
 [workspace.dependencies.doublezero-program-tools]

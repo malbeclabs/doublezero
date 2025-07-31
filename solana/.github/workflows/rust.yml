@@ -6,7 +6,7 @@ on:
     branches: [ main ]
 
 env:
-  SOLANA_CLI: v2.2.20
+  SOLANA_CLI: v2.3.6
 
 jobs:
   fmt:

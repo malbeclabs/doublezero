@@ -6,11 +6,14 @@
 //! - figure out if underlying reqwest lib in solana client be modified to not retry
 //! - benchmark expected number of validators for mainnet beta launch and 6 months after
 //! - handle DZ epochs once they're defined
+
+pub mod rewards;
+
+use anyhow::{anyhow, Result};
 use serde::Deserialize;
 use solana_client::rpc_config::{RpcBlockConfig, RpcGetVoteAccountsConfig};
 use solana_sdk::clock::DEFAULT_SLOTS_PER_EPOCH;
 use std::collections::HashMap;
-pub mod rewards;
 
 use crate::rewards::ValidatorRewards;
 
@@ -33,7 +36,7 @@ pub async fn get_rewards_between_timestamps(
     start_timestamp: u64,
     end_timestamp: u64,
     validator_ids: &[String],
-) -> eyre::Result<HashMap<u64, HashMap<String, Reward>>> {
+) -> Result<HashMap<u64, HashMap<String, Reward>>> {
     let mut rewards: HashMap<u64, HashMap<String, Reward>> = HashMap::new();
     let current_slot = fee_payment_calculator.get_slot().await?;
     let block_time = fee_payment_calculator.get_block_time(current_slot).await?;
@@ -62,7 +65,7 @@ pub async fn get_total_rewards(
     epoch: u64,
     rpc_get_vote_accounts_config: RpcGetVoteAccountsConfig,
     rpc_block_config: RpcBlockConfig,
-) -> eyre::Result<HashMap<String, Reward>> {
+) -> Result<HashMap<String, Reward>> {
     let mut validator_rewards: Vec<Reward> = Vec::with_capacity(validator_ids.len());
 
     let (inflation_rewards, jito_rewards, block_rewards) = tokio::join!(
@@ -117,9 +120,9 @@ pub async fn get_total_rewards(
 // get the desired slot by subtracting the num_slots from the current_slot
 // then get the epoch by dividing the desired_slot by the DEFAULT_SLOTS_PER_EPOCH
 // NOTE: This can change if solana changes
-fn epoch_from_timestamp(block_time: u64, current_slot: u64, timestamp: u64) -> eyre::Result<u64> {
+fn epoch_from_timestamp(block_time: u64, current_slot: u64, timestamp: u64) -> Result<u64> {
     if timestamp > block_time {
-        return Err(eyre::eyre!(
+        return Err(anyhow!(
             "timestamp cannot be greater than block_time: {timestamp}, {block_time}"
         ));
     }

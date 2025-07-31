@@ -5,11 +5,13 @@
 //! - JITO rewards per epoch
 //!
 //! The rewards from all sources for an epoch are summed and associated with a validator_id
-//!
+
+use std::{collections::HashMap, error::Error, str::FromStr};
+
+use anyhow::{anyhow, bail, Result};
 use async_trait::async_trait;
 use futures::{stream, StreamExt, TryStreamExt};
 use mockall::automock;
-use reqwest;
 use serde::{de::DeserializeOwned, Deserialize};
 use solana_client::{
     nonblocking::rpc_client::RpcClient,
@@ -17,9 +19,7 @@ use solana_client::{
     rpc_response::{RpcInflationReward, RpcVoteAccountStatus},
 };
 use solana_sdk::{clock::DEFAULT_SLOTS_PER_EPOCH, pubkey::Pubkey, reward_type::RewardType::Fee};
-
 use solana_transaction_status_client_types::UiConfirmedBlock;
-use std::{collections::HashMap, error::Error, str::FromStr};
 
 const JITO_BASE_URL: &str = "https://kobe.mainnet.jito.network/api/v1/";
 
@@ -46,12 +46,12 @@ pub struct JitoReward {
 #[automock]
 #[async_trait]
 pub trait ValidatorRewards {
-    async fn get_leader_schedule(&self) -> eyre::Result<HashMap<String, Vec<usize>>>;
+    async fn get_leader_schedule(&self) -> Result<HashMap<String, Vec<usize>>>;
     async fn get_block_with_config(
         &self,
         slot: u64,
         config: RpcBlockConfig,
-    ) -> eyre::Result<UiConfirmedBlock, solana_client::client_error::ClientError>;
+    ) -> Result<UiConfirmedBlock, solana_client::client_error::ClientError>;
 
     async fn get<T: DeserializeOwned + Send + 'static>(
         &self,
@@ -60,12 +60,12 @@ pub trait ValidatorRewards {
     async fn get_vote_accounts_with_config(
         &self,
         config: RpcGetVoteAccountsConfig,
-    ) -> eyre::Result<RpcVoteAccountStatus, solana_client::client_error::ClientError>;
+    ) -> Result<RpcVoteAccountStatus, solana_client::client_error::ClientError>;
     async fn get_inflation_reward(
         &self,
         vote_keys: Vec<Pubkey>,
         epoch: u64,
-    ) -> eyre::Result<Vec<Option<RpcInflationReward>>, solana_client::client_error::ClientError>;
+    ) -> Result<Vec<Option<RpcInflationReward>>, solana_client::client_error::ClientError>;
     async fn get_slot(&self) -> Result<u64, solana_client::client_error::ClientError>;
     async fn get_block_time(
         &self,
@@ -87,16 +87,16 @@ impl FeePaymentCalculator {
 
 #[async_trait]
 impl ValidatorRewards for FeePaymentCalculator {
-    async fn get_leader_schedule(&self) -> eyre::Result<HashMap<String, Vec<usize>>> {
+    async fn get_leader_schedule(&self) -> Result<HashMap<String, Vec<usize>>> {
         let schedule = self.0.get_leader_schedule(None).await?;
-        schedule.ok_or(eyre::eyre!("No leader schedule found"))
+        schedule.ok_or(anyhow!("No leader schedule found"))
     }
 
     async fn get_block_with_config(
         &self,
         slot: u64,
         config: RpcBlockConfig,
-    ) -> eyre::Result<UiConfirmedBlock, solana_client::client_error::ClientError> {
+    ) -> Result<UiConfirmedBlock, solana_client::client_error::ClientError> {
         self.0.get_block_with_config(slot, config).await
     }
     async fn get<T: DeserializeOwned + Send>(
@@ -113,15 +113,14 @@ impl ValidatorRewards for FeePaymentCalculator {
     async fn get_vote_accounts_with_config(
         &self,
         config: RpcGetVoteAccountsConfig,
-    ) -> eyre::Result<RpcVoteAccountStatus, solana_client::client_error::ClientError> {
+    ) -> Result<RpcVoteAccountStatus, solana_client::client_error::ClientError> {
         self.0.get_vote_accounts_with_config(config).await
     }
     async fn get_inflation_reward(
         &self,
         vote_keys: Vec<Pubkey>,
         epoch: u64,
-    ) -> eyre::Result<Vec<Option<RpcInflationReward>>, solana_client::client_error::ClientError>
-    {
+    ) -> Result<Vec<Option<RpcInflationReward>>, solana_client::client_error::ClientError> {
         self.0.get_inflation_reward(&vote_keys, Some(epoch)).await
     }
     async fn get_slot(&self) -> Result<u64, solana_client::client_error::ClientError> {
@@ -141,7 +140,7 @@ pub async fn get_block_rewards<T: ValidatorRewards>(
     validator_ids: &[String],
     epoch: u64,
     config: RpcBlockConfig,
-) -> eyre::Result<HashMap<String, u64>> {
+) -> Result<HashMap<String, u64>> {
     let first_slot = get_first_slot_for_epoch(epoch);
 
     // Fetch the leader schedule
@@ -190,7 +189,7 @@ pub async fn get_block_rewards<T: ValidatorRewards>(
                 Ok((validator_id, lamports))
             }
             Err(e) => {
-                eyre::bail!("Failed to fetch block for slot {slot}: {e}")
+                bail!("Failed to fetch block for slot {slot}: {e}")
             }
         }
     })
@@ -206,7 +205,7 @@ pub async fn get_jito_rewards<T: ValidatorRewards>(
     fee_payment_calculator: &T,
     validator_ids: &[String],
     epoch: u64,
-) -> eyre::Result<HashMap<String, u64>> {
+) -> Result<HashMap<String, u64>> {
     let url = format!(
         // TODO: make limit an env var
         // based on very unscientific checking of a number of epochs, 1200 is the highest count
@@ -225,7 +224,7 @@ pub async fn get_jito_rewards<T: ValidatorRewards>(
         }
 
         Err(e) => {
-            return Err(eyre::eyre!(
+            return Err(anyhow!(
                 "Failed to fetch Jito rewards for epoch {epoch}: {e:#?}"
             ));
         }
@@ -255,7 +254,7 @@ pub async fn get_inflation_rewards<T: ValidatorRewards + ?Sized>(
     validator_ids: &[String],
     epoch: u64,
     rpc_get_vote_accounts_config: RpcGetVoteAccountsConfig,
-) -> eyre::Result<HashMap<String, u64>> {
+) -> Result<HashMap<String, u64>> {
     let mut vote_keys: Vec<Pubkey> = Vec::with_capacity(validator_ids.len());
 
     let vote_accounts = fee_payment_calculator
@@ -269,9 +268,8 @@ pub async fn get_inflation_rewards<T: ValidatorRewards + ?Sized>(
             .iter()
             .find(|vote_account| vote_account.node_pubkey == *validator_id)
             .map(|vote_account| {
-                Pubkey::from_str(&vote_account.vote_pubkey).map_err(|e| {
-                    eyre::eyre!("Invalid vote_pubkey '{}': {e}", vote_account.vote_pubkey)
-                })
+                Pubkey::from_str(&vote_account.vote_pubkey)
+                    .map_err(|e| anyhow!("Invalid vote_pubkey '{}': {e}", vote_account.vote_pubkey))
             })
             .transpose()?
         {

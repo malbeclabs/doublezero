@@ -3,7 +3,7 @@ use crate::{
     filters::build_epoch_filter,
     rpc::RpcClientWithRetry,
     settings::Settings,
-    types::{DZDTelemetryData, DbDeviceLatencySamples},
+    types::{DZDTelemetryData, DZDeviceLatencySamples},
 };
 use anyhow::{Context, Result};
 use backon::Retryable;
@@ -114,8 +114,8 @@ pub async fn fetch(
                             sample_count,
                             samples.header.sampling_interval_microseconds
                         );
-                        let db_samples = DbDeviceLatencySamples::from_solana(*pubkey, &samples);
-                        batch_samples.push(db_samples);
+                        let dz_samples = DZDeviceLatencySamples::from_solana(*pubkey, &samples);
+                        batch_samples.push(dz_samples);
                     } else {
                         debug!(
                             "Excluding samples: start={}, end={}, query_range=[{}, {}]",
@@ -248,8 +248,8 @@ pub async fn fetch_by_epoch(
                         samples.header.sampling_interval_microseconds
                     );
 
-                    let db_samples = DbDeviceLatencySamples::from_solana(*pubkey, &samples);
-                    device_latency_samples.push(db_samples);
+                    let dz_samples = DZDeviceLatencySamples::from_solana(*pubkey, &samples);
+                    device_latency_samples.push(dz_samples);
                 }
                 Err(e) => {
                     warn!("Failed to deserialize telemetry account {}: {}", pubkey, e);

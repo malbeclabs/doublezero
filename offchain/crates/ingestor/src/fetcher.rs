@@ -1,18 +1,13 @@
 use crate::{
-    epoch::get_previous_epoch,
-    rpc, serviceability,
-    settings::Settings,
-    telemetry,
-    types::{DZDTelemetryData, DZServiceabilityData},
+    epoch::get_previous_epoch, rpc, serviceability, settings::Settings, telemetry, types::FetchData,
 };
 use anyhow::Result;
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter};
+use chrono::Utc;
+use serde::Serialize;
 use tracing::info;
 
 /// Combined network and telemetry data
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize)]
 pub struct Fetcher;
 
 impl Fetcher {
@@ -98,32 +93,5 @@ impl Fetcher {
         info!("Fetching data for previous epoch: {}", previous_epoch);
 
         Self::fetch_by_epoch(previous_epoch).await
-    }
-}
-
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct FetchData {
-    pub dz_serviceability: DZServiceabilityData,
-    pub dz_telemetry: DZDTelemetryData,
-    pub after_us: u64,
-    pub before_us: u64,
-    pub fetched_at: DateTime<Utc>,
-}
-
-impl Display for FetchData {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "FetchData ({} to {}): locations={}, exchanges={}, devices={}, links={}, users={}, multicast_groups={}, telemetry_samples={}",
-            self.after_us,
-            self.before_us,
-            self.dz_serviceability.locations.len(),
-            self.dz_serviceability.exchanges.len(),
-            self.dz_serviceability.devices.len(),
-            self.dz_serviceability.links.len(),
-            self.dz_serviceability.users.len(),
-            self.dz_serviceability.multicast_groups.len(),
-            self.dz_telemetry.device_latency_samples.len(),
-        )
     }
 }

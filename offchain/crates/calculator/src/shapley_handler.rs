@@ -1,6 +1,10 @@
 use anyhow::Result;
+use doublezero_serviceability::state::{
+    device::DeviceStatus as DZDeviceStatus, link::LinkStatus as DZLinkStatus,
+};
+use ingestor::types::FetchData;
 use network_shapley::types::{Demands, PrivateLink, PrivateLinks};
-use processor::{data_store::DataStore, dzd_telemetry_processor::DZDTelemetryStatMap};
+use processor::dzd_telemetry_processor::DZDTelemetryStatMap;
 
 pub async fn build_demands() -> Result<Demands> {
     let demands = vec![];
@@ -10,18 +14,23 @@ pub async fn build_demands() -> Result<Demands> {
 pub fn build_private_links(
     after_us: u64,
     before_us: u64,
-    data_store: &DataStore,
+    fetch_data: &FetchData,
     telemetry_stats: &DZDTelemetryStatMap,
 ) -> PrivateLinks {
     let mut private_links = Vec::new();
 
-    for link in data_store.links.values() {
-        if link.status != "activated" {
+    for (link_pk, link) in fetch_data.dz_serviceability.links.iter() {
+        if link.status != DZLinkStatus::Activated {
             continue;
         }
 
-        let (from_device, to_device) = match data_store.get_link_devices(link) {
-            (Some(f), Some(t)) if f.status == "activated" && t.status == "activated" => (f, t),
+        let (from_device, to_device) = match fetch_data.get_link_devices(link) {
+            (Some(f), Some(t))
+                if f.status == DZDeviceStatus::Activated
+                    && t.status == DZDeviceStatus::Activated =>
+            {
+                (f, t)
+            }
             _ => continue,
         };
 
@@ -29,16 +38,10 @@ pub fn build_private_links(
         let bandwidth_gbps = (link.bandwidth / 1_000_000_000) as f64;
 
         // Create circuit key to match telemetry stats
-        let circuit_key = format!(
-            "{}:{}:{}",
-            from_device.pubkey, to_device.pubkey, link.pubkey
-        );
+        let circuit_key = format!("{}:{}:{}", link.side_a_pk, link.side_z_pk, link_pk);
 
         // Try both directions since telemetry is directional
-        let reverse_circuit_key = format!(
-            "{}:{}:{}",
-            to_device.pubkey, from_device.pubkey, link.pubkey
-        );
+        let reverse_circuit_key = format!("{}:{}:{}", link.side_z_pk, link.side_a_pk, link_pk);
 
         let stats = telemetry_stats
             .get(&circuit_key)

@@ -2,10 +2,7 @@ use crate::{
     filters::{build_account_type_filter, build_epoch_filter},
     rpc::RpcClientWithRetry,
     settings::Settings,
-    types::{
-        DZContributor, DZDevice, DZExchange, DZLink, DZLocation, DZMulticastGroup,
-        DZServiceabilityData, DZUser,
-    },
+    types::DZServiceabilityData,
 };
 use anyhow::{Context, Result};
 use backon::Retryable;
@@ -86,7 +83,6 @@ pub async fn fetch(
     let mut serviceability_data = DZServiceabilityData::default();
     let mut total_processed = 0;
 
-    // TODO: rayon?
     for (pubkey, account) in &accounts {
         if account.data.is_empty() {
             continue;
@@ -98,51 +94,39 @@ pub async fn fetch(
         match account_type {
             AccountType::Location => {
                 let location = Location::from(&account.data[..]);
-                serviceability_data
-                    .locations
-                    .push(DZLocation::from_solana(*pubkey, &location));
+                serviceability_data.locations.insert(*pubkey, location);
                 total_processed += 1;
             }
             AccountType::Exchange => {
                 let exchange = Exchange::from(&account.data[..]);
-                serviceability_data
-                    .exchanges
-                    .push(DZExchange::from_solana(*pubkey, &exchange));
+                serviceability_data.exchanges.insert(*pubkey, exchange);
                 total_processed += 1;
             }
             AccountType::Device => {
                 let device = Device::from(&account.data[..]);
-                serviceability_data
-                    .devices
-                    .push(DZDevice::from_solana(*pubkey, &device));
+                serviceability_data.devices.insert(*pubkey, device);
                 total_processed += 1;
             }
             AccountType::Link => {
                 let link = Link::from(&account.data[..]);
-                serviceability_data
-                    .links
-                    .push(DZLink::from_solana(*pubkey, &link));
+                serviceability_data.links.insert(*pubkey, link);
                 total_processed += 1;
             }
             AccountType::User => {
                 let user = User::from(&account.data[..]);
-                serviceability_data
-                    .users
-                    .push(DZUser::from_solana(*pubkey, &user));
+                serviceability_data.users.insert(*pubkey, user);
                 total_processed += 1;
             }
             AccountType::MulticastGroup => {
                 let group = MulticastGroup::from(&account.data[..]);
-                serviceability_data
-                    .multicast_groups
-                    .push(DZMulticastGroup::from_solana(*pubkey, &group));
+                serviceability_data.multicast_groups.insert(*pubkey, group);
                 total_processed += 1;
             }
             AccountType::Contributor => {
                 let contributor = Contributor::from(&account.data[..]);
                 serviceability_data
                     .contributors
-                    .push(DZContributor::from_solana(*pubkey, &contributor));
+                    .insert(*pubkey, contributor);
                 total_processed += 1;
             }
             _ => {
@@ -269,51 +253,37 @@ pub async fn fetch_filtered(
                     match account_type {
                         AccountType::Location => {
                             let location = Location::from(&account_data[..]);
-                            serviceability_data
-                                .locations
-                                .push(DZLocation::from_solana(pubkey, &location));
+                            serviceability_data.locations.insert(pubkey, location);
                             total_processed += 1;
                         }
                         AccountType::Exchange => {
                             let exchange = Exchange::from(&account_data[..]);
-                            serviceability_data
-                                .exchanges
-                                .push(DZExchange::from_solana(pubkey, &exchange));
+                            serviceability_data.exchanges.insert(pubkey, exchange);
                             total_processed += 1;
                         }
                         AccountType::Device => {
                             let device = Device::from(&account_data[..]);
-                            serviceability_data
-                                .devices
-                                .push(DZDevice::from_solana(pubkey, &device));
+                            serviceability_data.devices.insert(pubkey, device);
                             total_processed += 1;
                         }
                         AccountType::Link => {
                             let link = Link::from(&account_data[..]);
-                            serviceability_data
-                                .links
-                                .push(DZLink::from_solana(pubkey, &link));
+                            serviceability_data.links.insert(pubkey, link);
                             total_processed += 1;
                         }
                         AccountType::User => {
                             let user = User::from(&account_data[..]);
-                            serviceability_data
-                                .users
-                                .push(DZUser::from_solana(pubkey, &user));
+                            serviceability_data.users.insert(pubkey, user);
                             total_processed += 1;
                         }
                         AccountType::MulticastGroup => {
                             let group = MulticastGroup::from(&account_data[..]);
-                            serviceability_data
-                                .multicast_groups
-                                .push(DZMulticastGroup::from_solana(pubkey, &group));
+                            serviceability_data.multicast_groups.insert(pubkey, group);
                             total_processed += 1;
                         }
                         AccountType::Contributor => {
                             let contributor = Contributor::from(&account_data[..]);
-                            serviceability_data
-                                .contributors
-                                .push(DZContributor::from_solana(pubkey, &contributor));
+                            serviceability_data.contributors.insert(pubkey, contributor);
                             total_processed += 1;
                         }
                         _ => {

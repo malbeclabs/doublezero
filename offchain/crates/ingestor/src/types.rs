@@ -1,340 +1,87 @@
+use chrono::{DateTime, Utc};
 use doublezero_serviceability::state::{
-    contributor::{Contributor, ContributorStatus},
-    device::Device,
-    exchange::Exchange,
-    link::Link,
-    location::Location,
-    multicastgroup::MulticastGroup,
-    user::User,
+    contributor::Contributor as DZContributor, device::Device as DZDevice,
+    exchange::Exchange as DZExchange, link::Link as DZLink, location::Location as DZLocation,
+    multicastgroup::MulticastGroup as DZMulticastGroup, user::User as DZUser,
 };
 use doublezero_telemetry::state::device_latency_samples::DeviceLatencySamples;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
+use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 
-/// DB representation of a Location
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DZLocation {
-    pub pubkey: Pubkey,
-    pub owner: Pubkey,
-    pub index: u128,
-    pub bump_seed: u8,
-    pub lat: f64,
-    pub lng: f64,
-    pub loc_id: u32,
-    pub status: String,
-    pub code: String,
-    pub name: String,
-    pub country: String,
+#[derive(Debug, Default, Clone, Serialize)]
+pub struct FetchData {
+    pub dz_serviceability: DZServiceabilityData,
+    pub dz_telemetry: DZDTelemetryData,
+    pub after_us: u64,
+    pub before_us: u64,
+    pub fetched_at: DateTime<Utc>,
 }
 
-impl DZLocation {
-    pub fn from_solana(pubkey: Pubkey, location: &Location) -> Self {
-        Self {
-            pubkey,
-            owner: location.owner,
-            index: location.index,
-            bump_seed: location.bump_seed,
-            lat: location.lat,
-            lng: location.lng,
-            loc_id: location.loc_id,
-            status: location.status.to_string(),
-            code: location.code.clone(),
-            name: location.name.clone(),
-            country: location.country.clone(),
-        }
+impl Display for FetchData {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "FetchData ({} to {}): locations={}, exchanges={}, devices={}, links={}, users={}, multicast_groups={}, telemetry_samples={}",
+            self.after_us,
+            self.before_us,
+            self.dz_serviceability.locations.len(),
+            self.dz_serviceability.exchanges.len(),
+            self.dz_serviceability.devices.len(),
+            self.dz_serviceability.links.len(),
+            self.dz_serviceability.users.len(),
+            self.dz_serviceability.multicast_groups.len(),
+            self.dz_telemetry.device_latency_samples.len(),
+        )
     }
 }
 
-/// DB representation of an Exchange
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DZExchange {
-    pub pubkey: Pubkey,
-    pub owner: Pubkey,
-    pub index: u128,
-    pub bump_seed: u8,
-    pub lat: f64,
-    pub lng: f64,
-    pub loc_id: u32,
-    pub status: String,
-    pub code: String,
-    pub name: String,
-}
-
-impl DZExchange {
-    pub fn from_solana(pubkey: Pubkey, exchange: &Exchange) -> Self {
-        Self {
-            pubkey,
-            owner: exchange.owner,
-            index: exchange.index,
-            bump_seed: exchange.bump_seed,
-            lat: exchange.lat,
-            lng: exchange.lng,
-            loc_id: exchange.loc_id,
-            status: exchange.status.to_string(),
-            code: exchange.code.clone(),
-            name: exchange.name.clone(),
-        }
+impl FetchData {
+    pub fn get_device_location(&self, device_pubkey: &Pubkey) -> Option<&DZLocation> {
+        self.dz_serviceability
+            .devices
+            .get(device_pubkey)
+            .map(|device| device.location_pk)
+            .and_then(|loc_pk| self.dz_serviceability.locations.get(&loc_pk))
     }
-}
 
-/// DB representation of a Device
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DZDevice {
-    pub pubkey: Pubkey,
-    pub owner: Pubkey,
-    pub index: u128,
-    pub bump_seed: u8,
-    pub location_pubkey: Option<Pubkey>,
-    pub exchange_pubkey: Option<Pubkey>,
-    pub device_type: String,
-    pub public_ip: String,
-    pub status: String,
-    pub code: String,
-    pub dz_prefixes: Vec<String>,
-    pub metrics_publisher_pk: Pubkey,
-}
-
-impl DZDevice {
-    pub fn from_solana(pubkey: Pubkey, device: &Device) -> Self {
-        Self {
-            pubkey,
-            owner: device.owner,
-            index: device.index,
-            bump_seed: device.bump_seed,
-            location_pubkey: if device.location_pk != Pubkey::default() {
-                Some(device.location_pk)
-            } else {
-                None
-            },
-            exchange_pubkey: if device.exchange_pk != Pubkey::default() {
-                Some(device.exchange_pk)
-            } else {
-                None
-            },
-            device_type: device.device_type.to_string(),
-            public_ip: device.public_ip.to_string(),
-            status: device.status.to_string(),
-            code: device.code.clone(),
-            dz_prefixes: device
-                .dz_prefixes
-                .iter()
-                .map(|net| format!("{}/{}", net.ip(), net.prefix()))
-                .collect(),
-            metrics_publisher_pk: device.metrics_publisher_pk,
-        }
+    pub fn get_device_by_code(&self, code: &str) -> Option<&DZDevice> {
+        self.dz_serviceability
+            .devices
+            .values()
+            .find(|d| d.code == code)
     }
-}
 
-/// DB representation of a Link
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DZLink {
-    pub pubkey: Pubkey,
-    pub owner: Pubkey,
-    pub index: u128,
-    pub bump_seed: u8,
-    pub from_device_pubkey: Option<Pubkey>,
-    pub to_device_pubkey: Option<Pubkey>,
-    pub link_type: String,
-    pub bandwidth: u64,
-    pub mtu: u32,
-    pub delay_ns: u64,
-    pub jitter_ns: u64,
-    pub tunnel_id: u16,
-    pub tunnel_net: String,
-    pub status: String,
-    pub code: String,
-}
-
-impl DZLink {
-    pub fn from_solana(pubkey: Pubkey, link: &Link) -> Self {
-        Self {
-            pubkey,
-            owner: link.owner,
-            index: link.index,
-            bump_seed: link.bump_seed,
-            from_device_pubkey: if link.side_a_pk != Pubkey::default() {
-                Some(link.side_a_pk)
-            } else {
-                None
-            },
-            to_device_pubkey: if link.side_z_pk != Pubkey::default() {
-                Some(link.side_z_pk)
-            } else {
-                None
-            },
-            link_type: link.link_type.to_string(),
-            bandwidth: link.bandwidth,
-            mtu: link.mtu,
-            delay_ns: link.delay_ns,
-            jitter_ns: link.jitter_ns,
-            tunnel_id: link.tunnel_id,
-            tunnel_net: format!("{}/{}", link.tunnel_net.ip(), link.tunnel_net.prefix()),
-            status: link.status.to_string(),
-            code: link.code.clone(),
-        }
+    pub fn get_location_by_code(&self, code: &str) -> Option<&DZLocation> {
+        self.dz_serviceability
+            .locations
+            .values()
+            .find(|l| l.code == code)
     }
-}
 
-/// DB representation of a User
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DZUser {
-    pub pubkey: Pubkey,
-    pub owner: Pubkey,
-    pub index: u128,
-    pub bump_seed: u8,
-    pub user_type: String,
-    pub tenant_pk: Pubkey,
-    pub device_pk: Option<Pubkey>,
-    pub cyoa_type: String,
-    pub client_ip: String,
-    pub dz_ip: String,
-    pub tunnel_id: u16,
-    pub tunnel_net: String,
-    pub status: String,
-    pub publishers: Vec<String>,
-    pub subscribers: Vec<String>,
-}
-
-impl DZUser {
-    pub fn from_solana(pubkey: Pubkey, user: &User) -> Self {
-        Self {
-            pubkey,
-            owner: user.owner,
-            index: user.index,
-            bump_seed: user.bump_seed,
-            user_type: user.user_type.to_string(),
-            tenant_pk: user.tenant_pk,
-            device_pk: if user.device_pk != Pubkey::default() {
-                Some(user.device_pk)
-            } else {
-                None
-            },
-            cyoa_type: user.cyoa_type.to_string(),
-            client_ip: user.client_ip.to_string(),
-            dz_ip: user.dz_ip.to_string(),
-            tunnel_id: user.tunnel_id,
-            tunnel_net: format!("{}/{}", user.tunnel_net.ip(), user.tunnel_net.prefix()),
-            status: user.status.to_string(),
-            publishers: user.publishers.iter().map(|p| p.to_string()).collect(),
-            subscribers: user.subscribers.iter().map(|s| s.to_string()).collect(),
-        }
-    }
-}
-
-/// DB representation of a Multicast Group
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DZMulticastGroup {
-    pub pubkey: Pubkey,
-    pub owner: Pubkey,
-    pub index: u128,
-    pub bump_seed: u8,
-    pub tenant_pk: Pubkey,
-    pub multicast_ip: String,
-    pub max_bandwidth: u64,
-    pub status: String,
-    pub code: String,
-    pub pub_allowlist: Vec<String>,
-    pub sub_allowlist: Vec<String>,
-    pub publishers: Vec<String>,
-    pub subscribers: Vec<String>,
-}
-
-impl DZMulticastGroup {
-    pub fn from_solana(pubkey: Pubkey, group: &MulticastGroup) -> Self {
-        Self {
-            pubkey,
-            owner: group.owner,
-            index: group.index,
-            bump_seed: group.bump_seed,
-            tenant_pk: group.tenant_pk,
-            multicast_ip: group.multicast_ip.to_string(),
-            max_bandwidth: group.max_bandwidth,
-            status: group.status.to_string(),
-            code: group.code.clone(),
-            pub_allowlist: group.pub_allowlist.iter().map(|p| p.to_string()).collect(),
-            sub_allowlist: group.sub_allowlist.iter().map(|s| s.to_string()).collect(),
-            publishers: group.publishers.iter().map(|p| p.to_string()).collect(),
-            subscribers: group.subscribers.iter().map(|s| s.to_string()).collect(),
-        }
+    pub fn get_link_devices(&self, link: &DZLink) -> (Option<&DZDevice>, Option<&DZDevice>) {
+        let from_device = self.dz_serviceability.devices.get(&link.side_a_pk);
+        let to_device = self.dz_serviceability.devices.get(&link.side_z_pk);
+        (from_device, to_device)
     }
 }
 
 /// Struct for all network data
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize)]
 pub struct DZServiceabilityData {
-    pub locations: Vec<DZLocation>,
-    pub exchanges: Vec<DZExchange>,
-    pub devices: Vec<DZDevice>,
-    pub links: Vec<DZLink>,
-    pub users: Vec<DZUser>,
-    pub multicast_groups: Vec<DZMulticastGroup>,
-    pub contributors: Vec<DZContributor>,
-}
-
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct DZContributor {
-    pubkey: Pubkey,
-    owner: Pubkey,
-    status: DZContributorStatus,
-    code: String,
-    reference_count: u32,
-}
-
-// Wrapper type
-#[derive(Debug, Clone)]
-pub struct DZContributorStatus(ContributorStatus);
-
-impl Default for DZContributorStatus {
-    fn default() -> Self {
-        Self(ContributorStatus::None)
-    }
-}
-
-impl<'de> Deserialize<'de> for DZContributorStatus {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s: String = <String as serde::Deserialize<'de>>::deserialize(deserializer)?;
-        let cs = match s.as_ref() {
-            "none" => ContributorStatus::None,
-            "activated" => ContributorStatus::Activated,
-            "suspended" => ContributorStatus::Suspended,
-            "deleting" => ContributorStatus::Deleting,
-            other => {
-                return Err(serde::de::Error::custom(format!(
-                    "unknown contributor status: {other}",
-                )));
-            }
-        };
-        Ok(Self(cs))
-    }
-}
-
-impl Serialize for DZContributorStatus {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serde::Serialize::serialize(&self.0.to_string(), serializer)
-    }
-}
-
-impl DZContributor {
-    pub fn from_solana(pubkey: Pubkey, contributor: &Contributor) -> Self {
-        Self {
-            pubkey,
-            owner: contributor.owner,
-            status: DZContributorStatus(contributor.status),
-            code: contributor.code.to_string(),
-            reference_count: contributor.reference_count,
-        }
-    }
+    pub locations: HashMap<Pubkey, DZLocation>,
+    pub exchanges: HashMap<Pubkey, DZExchange>,
+    pub devices: HashMap<Pubkey, DZDevice>,
+    pub links: HashMap<Pubkey, DZLink>,
+    pub users: HashMap<Pubkey, DZUser>,
+    pub multicast_groups: HashMap<Pubkey, DZMulticastGroup>,
+    pub contributors: HashMap<Pubkey, DZContributor>,
 }
 
 /// DB representation of DeviceLatencySamples
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DbDeviceLatencySamples {
+#[derive(Debug, Clone, Serialize)]
+pub struct DZDeviceLatencySamples {
     pub pubkey: Pubkey,
     pub epoch: u64,
     pub origin_device_pk: Pubkey,
@@ -349,7 +96,7 @@ pub struct DbDeviceLatencySamples {
     pub sample_count: u32,
 }
 
-impl DbDeviceLatencySamples {
+impl DZDeviceLatencySamples {
     pub fn from_solana(pubkey: Pubkey, samples: &DeviceLatencySamples) -> Self {
         Self {
             pubkey,
@@ -369,68 +116,7 @@ impl DbDeviceLatencySamples {
 }
 
 /// Telemetry data container
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize)]
 pub struct DZDTelemetryData {
-    pub device_latency_samples: Vec<DbDeviceLatencySamples>,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use doublezero_telemetry::state::device_latency_samples::DeviceLatencySamplesHeader;
-    use solana_sdk::pubkey::Pubkey;
-    use std::net::Ipv4Addr;
-
-    // Helper function to create test pubkeys
-    fn test_pubkey(seed: u8) -> Pubkey {
-        Pubkey::new_from_array([seed; 32])
-    }
-
-    #[test]
-    fn test_ipv4_to_string() {
-        assert_eq!(Ipv4Addr::new(192, 168, 1, 1).to_string(), "192.168.1.1");
-        assert_eq!(Ipv4Addr::new(10, 0, 0, 1).to_string(), "10.0.0.1");
-        assert_eq!(
-            Ipv4Addr::new(255, 255, 255, 255).to_string(),
-            "255.255.255.255"
-        );
-    }
-
-    #[test]
-    fn test_db_device_latency_samples_from_solana() {
-        let pubkey = test_pubkey(1);
-        let samples = DeviceLatencySamples {
-            header: DeviceLatencySamplesHeader {
-                account_type:
-                    doublezero_telemetry::state::accounttype::AccountType::DeviceLatencySamples,
-                epoch: 100,
-                origin_device_agent_pk: test_pubkey(2),
-                origin_device_pk: test_pubkey(3),
-                target_device_pk: test_pubkey(4),
-                origin_device_location_pk: test_pubkey(5),
-                target_device_location_pk: test_pubkey(6),
-                link_pk: test_pubkey(7),
-                sampling_interval_microseconds: 5_000_000,
-                start_timestamp_microseconds: 1_700_000_000_000_000,
-                next_sample_index: 3,
-                _unused: [0; 128],
-            },
-            samples: vec![100, 200, 300],
-        };
-
-        let db_samples = DbDeviceLatencySamples::from_solana(pubkey, &samples);
-
-        assert_eq!(db_samples.pubkey, pubkey);
-        assert_eq!(db_samples.epoch, 100);
-        assert_eq!(db_samples.origin_device_pk, test_pubkey(3));
-        assert_eq!(db_samples.target_device_pk, test_pubkey(4));
-        assert_eq!(db_samples.link_pk, test_pubkey(7));
-        assert_eq!(db_samples.origin_device_location_pk, test_pubkey(5));
-        assert_eq!(db_samples.target_device_location_pk, test_pubkey(6));
-        assert_eq!(db_samples.origin_device_agent_pk, test_pubkey(2));
-        assert_eq!(db_samples.sampling_interval_us, 5_000_000);
-        assert_eq!(db_samples.start_timestamp_us, 1_700_000_000_000_000);
-        assert_eq!(db_samples.samples, vec![100, 200, 300]);
-        assert_eq!(db_samples.sample_count, 3);
-    }
+    pub device_latency_samples: Vec<DZDeviceLatencySamples>,
 }

@@ -4,10 +4,7 @@ use crate::{
 };
 use anyhow::Result;
 use ingestor::fetcher::Fetcher;
-use processor::{
-    data_store::DataStore,
-    dzd_telemetry_processor::{DZDTelemetryProcessor, print_telemetry_stats},
-};
+use processor::dzd_telemetry_processor::{DZDTelemetryProcessor, print_telemetry_stats};
 use std::path::Path;
 use tracing::info;
 
@@ -38,12 +35,11 @@ impl Orchestrator {
             FilterMode::TimeRange => Fetcher::fetch(after_us, before_us).await?,
         };
 
-        let data_store = DataStore::try_from(fetch_data)?;
-        let stat_map = DZDTelemetryProcessor::process(&data_store);
+        let stat_map = DZDTelemetryProcessor::process(&fetch_data)?;
         info!("\n{}", print_telemetry_stats(&stat_map));
 
         // Build pvt links
-        let pvt_links = build_private_links(after_us, before_us, &data_store, &stat_map);
+        let pvt_links = build_private_links(after_us, before_us, &fetch_data, &stat_map);
         info!("\n{}", print_private_links(&pvt_links));
 
         // Build demand

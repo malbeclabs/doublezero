@@ -747,6 +747,8 @@ dependencies = [
  "chrono",
  "clap",
  "csv",
+ "doublezero-serviceability",
+ "doublezero-telemetry",
  "figment",
  "humantime",
  "ingestor",

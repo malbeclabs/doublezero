@@ -66,13 +66,15 @@ type LatencyResult struct {
 func (l *LatencyResult) MarshalJSON() ([]byte, error) {
 	type Alias LatencyResult
 	return json.Marshal(&struct {
-		DevicePk string `json:"device_pk"`
-		DeviceIP string `json:"device_ip"`
+		DevicePk   string `json:"device_pk"`
+		DeviceIP   string `json:"device_ip"`
+		DeviceCode string `json:"device_code"`
 		*Alias
 	}{
-		DeviceIP: net.IP(l.Device.PublicIp[:]).String(),
-		DevicePk: base58.Encode(l.Device.PubKey[:]),
-		Alias:    (*Alias)(l),
+		DeviceIP:   net.IP(l.Device.PublicIp[:]).String(),
+		DevicePk:   base58.Encode(l.Device.PubKey[:]),
+		DeviceCode: l.Device.Code,
+		Alias:      (*Alias)(l),
 	})
 }
 

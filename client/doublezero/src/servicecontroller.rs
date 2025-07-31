@@ -35,6 +35,7 @@ pub struct ProvisioningResponse {
 pub struct LatencyRecord {
     #[tabled(rename = "pubkey")]
     pub device_pk: String,
+    pub code: String,
     #[tabled(rename = "ip")]
     pub device_ip: String,
     #[tabled(display = "display_as_ms", rename = "min")]
@@ -54,8 +55,9 @@ impl fmt::Display for LatencyRecord {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "device: {}, ip: {}, latency min: {}, max: {}, avg: {}, reachable: {}",
+            "device: {}, code: {}, ip: {}, latency min: {}, max: {}, avg: {}, reachable: {}",
             self.device_pk,
+            self.code,
             self.device_ip,
             self.min_latency_ns,
             self.max_latency_ns,

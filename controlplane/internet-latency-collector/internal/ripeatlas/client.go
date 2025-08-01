@@ -177,13 +177,13 @@ func (c *Client) GetProbesInRadius(ctx context.Context, latitude, longitude floa
 			return nil, err
 		}
 
+		defer resp.Body.Close()
+
 		var response ProbesResponse
 		decoder := json.NewDecoder(resp.Body)
 		if err := decoder.Decode(&response); err != nil {
-			resp.Body.Close()
 			return nil, fmt.Errorf("failed to decode response: %w", err)
 		}
-		resp.Body.Close()
 
 		// Process geometry coordinates for this batch
 		for i := range response.Results {
@@ -292,14 +292,13 @@ func (c *Client) GetAllMeasurements(ctx context.Context, env string) ([]Measurem
 		if err != nil {
 			return nil, fmt.Errorf("failed to get measurements: %w", err)
 		}
+		defer resp.Body.Close()
 
 		var response MeasurementListResponse
 		decoder := json.NewDecoder(resp.Body)
 		if err := decoder.Decode(&response); err != nil {
-			resp.Body.Close()
 			return nil, fmt.Errorf("failed to decode measurements response: %w", err)
 		}
-		resp.Body.Close()
 
 		allMeasurements = append(allMeasurements, response.Results...)
 

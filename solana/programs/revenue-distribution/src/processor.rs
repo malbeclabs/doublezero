@@ -17,7 +17,10 @@ use solana_pubkey::Pubkey;
 use solana_sysvar::{rent::Rent, Sysvar};
 use spl_token::instruction as token_instruction;
 
-use crate::state::JournalEntries;
+use crate::{
+    instruction::ContributorRewardsConfiguration,
+    state::{ContributorRewards, JournalEntries, RecipientShares},
+};
 use crate::{
     instruction::{
         DistributionConfiguration, JournalConfiguration, ProgramConfiguration,
@@ -74,6 +77,13 @@ fn try_process_instruction(
         } => try_load_prepaid_connection(accounts, valid_through_dz_epoch, decimals),
         RevenueDistributionInstructionData::TerminatePrepaidConnection => {
             try_terminate_prepaid_connection(accounts)
+        }
+        RevenueDistributionInstructionData::InitializeContributorRewards {
+            rewards_manager_key,
+            service_key,
+        } => try_initialize_contributor_rewards(accounts, rewards_manager_key, service_key),
+        RevenueDistributionInstructionData::ConfigureContributorRewards(setting) => {
+            try_configure_contributor_rewards(accounts, setting)
         }
     }
 }
@@ -217,6 +227,10 @@ fn try_configure_program(accounts: &[AccountInfo], setting: ProgramConfiguration
         ProgramConfiguration::Accountant(accountant_key) => {
             msg!("Set accountant_key: {}", accountant_key);
             program_config.accountant_key = accountant_key;
+        }
+        ProgramConfiguration::ContributorManager(contributor_manager_key) => {
+            msg!("Set contributor_manager_key: {}", contributor_manager_key);
+            program_config.contributor_manager_key = contributor_manager_key;
         }
         ProgramConfiguration::Sol2zSwapProgram(sol_2z_swap_program_id) => {
             msg!("Set sol_2z_swap_program_id: {}", sol_2z_swap_program_id);
@@ -530,16 +544,8 @@ fn try_initialize_distribution(accounts: &[AccountInfo]) -> ProgramResult {
         VerifiedProgramAuthorityMut::try_next_accounts(&mut accounts_iter, Authority::Accountant)?;
     let mut program_config = authorized_use.program_config;
 
-    // Cannot initialize a new distribution when paused.
-    // Before we initialize a new distribution, we need to make sure of the following:
-    // 1. The program is not paused.
-    // 2. Solana validator fee is not zero.
-    // 3. The last community burn rate is not zero.
-
-    if program_config.is_paused() {
-        msg!("Program paused");
-        return Err(ProgramError::InvalidAccountData);
-    }
+    // Make sure the program is not paused.
+    try_is_unpaused(&program_config)?;
 
     if program_config.checked_solana_validator_fee().is_none() {
         msg!("Solana validator fee has not been configured yet");
@@ -720,7 +726,11 @@ fn try_configure_distribution(
     // - 2: Distribution account.
     let mut accounts_iter = accounts.iter().enumerate();
 
-    VerifiedProgramAuthority::try_next_accounts(&mut accounts_iter, Authority::Accountant)?;
+    let authorized_use =
+        VerifiedProgramAuthority::try_next_accounts(&mut accounts_iter, Authority::Accountant)?;
+
+    // Make sure the program is not paused.
+    try_is_unpaused(&authorized_use.program_config)?;
 
     // Account 2 must be the program config account.
     let mut distribution =
@@ -783,6 +793,9 @@ fn try_initialize_prepaid_connection(
     // Account 0 must be the program config. We need the reserve 2Z bump.
     let program_config =
         ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    // Make sure the program is not paused.
+    try_is_unpaused(&program_config)?;
 
     // Account 1 must be the journal. We need the activation cost to determine how much to transfer
     // to the reserve.
@@ -910,6 +923,9 @@ fn try_load_prepaid_connection(
     // account because many calculations require this value.
     let program_config =
         ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    // Make sure the program is not paused.
+    try_is_unpaused(&program_config)?;
 
     // Account 1 must be the journal. The journal specifies the min and max entry constraints. When
     // the constraint checks pass, we update the existing journal entries to reflect the payment.
@@ -1151,6 +1167,134 @@ fn try_terminate_prepaid_connection(accounts: &[AccountInfo]) -> ProgramResult {
     Ok(())
 }
 
+fn try_initialize_contributor_rewards(
+    accounts: &[AccountInfo],
+    rewards_manager_key: Pubkey,
+    service_key: Pubkey,
+) -> ProgramResult {
+    msg!("Initialize contributor rewards");
+
+    // We expect the following accounts for this instruction:
+    // - 0: Program config account.
+    // - 1: ContributorManager account.
+    // - 2: Payer (funder for new accounts).
+    // - 3: New contributor rewards account.
+    // - 4: System program.
+    let mut accounts_iter = accounts.iter().enumerate();
+
+    let authorized_use = VerifiedProgramAuthority::try_next_accounts(
+        &mut accounts_iter,
+        Authority::ContributorManager,
+    )?;
+
+    // Make sure the program is not paused.
+    try_is_unpaused(&authorized_use.program_config)?;
+
+    // Account 2 must be a signer and writable (i.e., payer) because it will be sending lamports
+    // to the new contributor rewards account when the system program allocates data to it. But
+    // because the create-program instruction requires that this account is a signer and is
+    // writable, we do not need to explicitly check these fields in its account info.
+    let (_, payer_info) = try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+
+    // Account 3 must be the new contributor rewards account. This account should not exist yet.
+    let (account_index, new_contributor_rewards_info) =
+        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+
+    let (expected_contributor_rewards_key, contributor_rewards_bump) =
+        ContributorRewards::find_address(&service_key);
+
+    // Enforce this account location.
+    if new_contributor_rewards_info.key != &expected_contributor_rewards_key {
+        msg!(
+            "Invalid seeds for contributor rewards (account {})",
+            account_index
+        );
+        return Err(ProgramError::InvalidSeeds);
+    }
+
+    try_create_account(
+        Invoker::Signer(payer_info.key),
+        Invoker::Pda {
+            key: &expected_contributor_rewards_key,
+            signer_seeds: &[
+                ContributorRewards::SEED_PREFIX,
+                service_key.as_ref(),
+                &[contributor_rewards_bump],
+            ],
+        },
+        new_contributor_rewards_info.lamports(),
+        zero_copy::data_end::<ContributorRewards>(),
+        &ID,
+        accounts,
+        None, // rent_sysvar
+    )?;
+
+    // Finalize initialize the contributor rewards with the service and rewards manager keys.
+    let (mut contributor_rewards, _) =
+        zero_copy::try_initialize::<ContributorRewards>(new_contributor_rewards_info, None)?;
+
+    contributor_rewards.service_key = service_key;
+    contributor_rewards.rewards_manager_key = rewards_manager_key;
+
+    Ok(())
+}
+
+fn try_configure_contributor_rewards(
+    accounts: &[AccountInfo],
+    setting: ContributorRewardsConfiguration,
+) -> Result<(), ProgramError> {
+    msg!("Configure contributor rewards");
+
+    // We expect the following accounts for this instruction:
+    // - 0: Program config.
+    // - 1: Contributor rewards.
+    // - 2: Rewards manager.
+    let mut accounts_iter = accounts.iter().enumerate();
+
+    // Account 0 must be the program config.
+    let program_config =
+        ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    // Make sure the program is not paused.
+    try_is_unpaused(&program_config)?;
+
+    // Account 1 must be the contributor rewards.
+    let mut contributor_rewards =
+        ZeroCopyMutAccount::<ContributorRewards>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    // Account 2 must be the rewards manager.
+    let (account_index, rewards_manager_info) = try_next_enumerated_account(
+        &mut accounts_iter,
+        NextAccountOptions {
+            must_be_signer: true,
+            ..Default::default()
+        },
+    )?;
+
+    // The rewards manager must be the one recognized in the contributor rewards account.
+    if rewards_manager_info.key != &contributor_rewards.rewards_manager_key {
+        msg!("Invalid rewards manager (account {})", account_index);
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    match setting {
+        ContributorRewardsConfiguration::Recipients(recipients) => {
+            let recipients = RecipientShares::new(&recipients).ok_or_else(|| {
+                msg!("Invalid recipients");
+                ProgramError::InvalidAccountData
+            })?;
+
+            msg!("Recipients");
+            recipients.iter().for_each(|recipient| {
+                msg!("{}: {}", recipient.recipient_key, recipient.share);
+            });
+            contributor_rewards.recipient_shares = recipients;
+        }
+    }
+
+    Ok(())
+}
+
 //
 // Account info handling.
 //
@@ -1158,6 +1302,7 @@ fn try_terminate_prepaid_connection(accounts: &[AccountInfo]) -> ProgramResult {
 enum Authority {
     Admin,
     Accountant,
+    ContributorManager,
 }
 
 impl Authority {
@@ -1187,23 +1332,20 @@ impl Authority {
                     return Err(ProgramError::InvalidAccountData);
                 }
             }
+            Authority::ContributorManager => {
+                if authority_info.key != &program_config.contributor_manager_key {
+                    msg!("Unauthorized contributor manager (account {})", index);
+                    return Err(ProgramError::InvalidAccountData);
+                }
+            }
         }
 
         Ok((index, authority_info))
     }
 }
 
-impl std::fmt::Display for Authority {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Authority::Admin => write!(f, "Admin"),
-            Authority::Accountant => write!(f, "Accountant"),
-        }
-    }
-}
-
 struct VerifiedProgramAuthority<'a, 'b> {
-    _program_config: ZeroCopyAccount<'a, 'b, ProgramConfig>,
+    program_config: ZeroCopyAccount<'a, 'b, ProgramConfig>,
     _authority: (usize, &'a AccountInfo<'b>),
 }
 
@@ -1220,7 +1362,7 @@ impl<'a, 'b> TryNextAccounts<'a, 'b, Authority> for VerifiedProgramAuthority<'a,
             authority.try_next_as_authorized_account(accounts_iter, &program_config.data)?;
 
         Ok(Self {
-            _program_config: program_config,
+            program_config,
             _authority: (index, authority_info),
         })
     }
@@ -1328,4 +1470,13 @@ fn try_serialize_journal_entries(
         msg!("Failed to serialize journal entries");
         ProgramError::BorshIoError(e.to_string())
     })
+}
+
+fn try_is_unpaused(program_config: &ProgramConfig) -> ProgramResult {
+    if program_config.is_paused() {
+        msg!("Program is paused");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    Ok(())
 }

@@ -2,7 +2,10 @@ use solana_instruction::AccountMeta;
 use solana_pubkey::Pubkey;
 
 use crate::{
-    state::{find_2z_token_pda_address, Distribution, Journal, PrepaidConnection, ProgramConfig},
+    state::{
+        find_2z_token_pda_address, ContributorRewards, Distribution, Journal, PrepaidConnection,
+        ProgramConfig,
+    },
     types::DoubleZeroEpoch,
     DOUBLEZERO_MINT_KEY,
 };
@@ -417,6 +420,77 @@ impl From<TerminatePrepaidConnectionAccounts> for Vec<AccountMeta> {
             AccountMeta::new(prepaid_connection_key, false),
             AccountMeta::new(termination_relayer_key, false),
             AccountMeta::new(termination_beneficiary_key, false),
+        ]
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InitializeContributorRewardsAccounts {
+    pub program_config_key: Pubkey,
+    pub contributor_manager_key: Pubkey,
+    pub payer_key: Pubkey,
+    pub new_contributor_rewards_key: Pubkey,
+}
+
+impl InitializeContributorRewardsAccounts {
+    pub fn new(contributor_manager_key: &Pubkey, payer_key: &Pubkey, service_key: &Pubkey) -> Self {
+        Self {
+            program_config_key: ProgramConfig::find_address().0,
+            contributor_manager_key: *contributor_manager_key,
+            payer_key: *payer_key,
+            new_contributor_rewards_key: ContributorRewards::find_address(service_key).0,
+        }
+    }
+}
+
+impl From<InitializeContributorRewardsAccounts> for Vec<AccountMeta> {
+    fn from(accounts: InitializeContributorRewardsAccounts) -> Self {
+        let InitializeContributorRewardsAccounts {
+            program_config_key,
+            contributor_manager_key,
+            payer_key,
+            new_contributor_rewards_key,
+        } = accounts;
+
+        vec![
+            AccountMeta::new_readonly(program_config_key, false),
+            AccountMeta::new_readonly(contributor_manager_key, true),
+            AccountMeta::new(payer_key, true),
+            AccountMeta::new(new_contributor_rewards_key, false),
+            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+        ]
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConfigureContributorRewardsAccounts {
+    pub program_config_key: Pubkey,
+    pub contributor_rewards_key: Pubkey,
+    pub rewards_manager_key: Pubkey,
+}
+
+impl ConfigureContributorRewardsAccounts {
+    pub fn new(rewards_manager_key: &Pubkey, service_key: &Pubkey) -> Self {
+        Self {
+            program_config_key: ProgramConfig::find_address().0,
+            contributor_rewards_key: ContributorRewards::find_address(service_key).0,
+            rewards_manager_key: *rewards_manager_key,
+        }
+    }
+}
+
+impl From<ConfigureContributorRewardsAccounts> for Vec<AccountMeta> {
+    fn from(accounts: ConfigureContributorRewardsAccounts) -> Self {
+        let ConfigureContributorRewardsAccounts {
+            program_config_key,
+            contributor_rewards_key,
+            rewards_manager_key,
+        } = accounts;
+
+        vec![
+            AccountMeta::new_readonly(program_config_key, false),
+            AccountMeta::new(contributor_rewards_key, false),
+            AccountMeta::new_readonly(rewards_manager_key, true),
         ]
     }
 }

@@ -50,7 +50,16 @@ async fn test_load_prepaid_connection() {
         .set_admin(&admin_signer.pubkey())
         .await
         .unwrap()
+        .configure_program(
+            &admin_signer,
+            [ProgramConfiguration::Flag(
+                ProgramFlagConfiguration::IsPaused(false),
+            )],
+        )
+        .await
+        .unwrap()
         .configure_journal(
+            &admin_signer,
             [
                 JournalConfiguration::ActivationCost(prepaid_activation_cost),
                 JournalConfiguration::CostPerDoubleZeroEpoch(prepaid_cost_per_dz_epoch),
@@ -59,7 +68,6 @@ async fn test_load_prepaid_connection() {
                     maximum_entries: prepaid_maximum_entries,
                 },
             ],
-            &admin_signer,
         )
         .await
         .unwrap();
@@ -67,16 +75,15 @@ async fn test_load_prepaid_connection() {
     for user_key in &[user_1_key, user_2_key, user_3_key] {
         test_setup
             .initialize_prepaid_connection(
+                user_key,
                 &transfer_authority_signer,
                 &src_token_account_key,
-                user_key,
                 8,
             )
             .await
             .unwrap();
     }
 
-    // Test input
     let starting_src_balance = test_setup
         .fetch_token_account(&src_token_account_key)
         .await
@@ -89,9 +96,9 @@ async fn test_load_prepaid_connection() {
 
     test_setup
         .load_prepaid_connection(
+            &user_1_key,
             &transfer_authority_signer,
             &src_token_account_key,
-            &user_1_key,
             valid_through_dz_epoch,
             8,
         )
@@ -166,9 +173,9 @@ async fn test_load_prepaid_connection() {
 
     test_setup
         .load_prepaid_connection(
+            &user_1_key,
             &transfer_authority_signer,
             &src_token_account_key,
-            &user_1_key,
             valid_through_dz_epoch,
             8,
         )
@@ -247,9 +254,9 @@ async fn test_load_prepaid_connection() {
 
     test_setup
         .load_prepaid_connection(
+            &user_2_key,
             &transfer_authority_signer,
             &src_token_account_key,
-            &user_2_key,
             valid_through_dz_epoch,
             8,
         )
@@ -328,16 +335,17 @@ async fn test_load_prepaid_connection() {
     let last_journal_balance = total_journal_balance;
 
     let accountant_signer = Keypair::new();
-    let solana_validator_fee = 500; // 5%
+    let solana_validator_fee = 500; // 5%.
 
     // Community burn rate.
-    let initial_cbr = 100_000_000; // 10%
-    let cbr_limit = 500_000_000; // 50%
+    let initial_cbr = 100_000_000; // 10%.
+    let cbr_limit = 500_000_000; // 50%.
     let dz_epochs_to_increasing_cbr = 10;
     let dz_epochs_to_cbr_limit = 20;
 
     test_setup
         .configure_program(
+            &admin_signer,
             [
                 ProgramConfiguration::Accountant(accountant_signer.pubkey()),
                 ProgramConfiguration::SolanaValidatorFee(solana_validator_fee),
@@ -349,7 +357,6 @@ async fn test_load_prepaid_connection() {
                 },
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
             ],
-            &admin_signer,
         )
         .await
         .unwrap()
@@ -422,9 +429,9 @@ async fn test_load_prepaid_connection() {
 
     test_setup
         .load_prepaid_connection(
+            &user_3_key,
             &transfer_authority_signer,
             &src_token_account_key,
-            &user_3_key,
             valid_through_dz_epoch,
             8,
         )

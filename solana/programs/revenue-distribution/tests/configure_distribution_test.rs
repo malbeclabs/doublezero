@@ -22,11 +22,11 @@ async fn test_configure_distribution() {
     let admin_signer = Keypair::new();
 
     let accountant_signer = Keypair::new();
-    let solana_validator_fee = 500; // 5%
+    let solana_validator_fee = 500; // 5%.
 
     // Community burn rate.
-    let initial_cbr = 100_000_000; // 10%
-    let cbr_limit = 500_000_000; // 50%
+    let initial_cbr = 100_000_000; // 10%.
+    let cbr_limit = 500_000_000; // 50%.
     let dz_epochs_to_increasing_cbr = 10;
     let dz_epochs_to_cbr_limit = 20;
 
@@ -34,7 +34,7 @@ async fn test_configure_distribution() {
 
     let dz_epoch = DoubleZeroEpoch::new(1);
 
-    let total_solana_validator_payments_owed = 100_000_000_000; // 100 SOL
+    let total_solana_validator_payments_owed = 100_000_000_000; // 100 SOL.
     let solana_validator_payments_merkle_root = Hash::new_unique();
 
     let total_contributors = 69;
@@ -51,6 +51,7 @@ async fn test_configure_distribution() {
         .await
         .unwrap()
         .configure_program(
+            &admin_signer,
             [
                 ProgramConfiguration::Accountant(accountant_signer.pubkey()),
                 ProgramConfiguration::SolanaValidatorFee(solana_validator_fee),
@@ -62,7 +63,6 @@ async fn test_configure_distribution() {
                 },
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
             ],
-            &admin_signer,
         )
         .await
         .unwrap()
@@ -74,6 +74,7 @@ async fn test_configure_distribution() {
         .unwrap()
         .configure_distribution(
             dz_epoch,
+            &accountant_signer,
             [
                 DistributionConfiguration::SolanaValidatorPayments {
                     total_lamports_owed: total_solana_validator_payments_owed,
@@ -84,7 +85,6 @@ async fn test_configure_distribution() {
                     merkle_root: contributor_rewards_merkle_root,
                 },
             ],
-            &accountant_signer,
         )
         .await
         .unwrap();

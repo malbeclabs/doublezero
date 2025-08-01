@@ -27,11 +27,11 @@ async fn test_terminate_prepaid_connection() {
     let admin_signer = Keypair::new();
 
     let accountant_signer = Keypair::new();
-    let solana_validator_fee = 500; // 5%
+    let solana_validator_fee = 500; // 5%.
 
     // Community burn rate.
-    let initial_cbr = 100_000_000; // 10%
-    let cbr_limit = 500_000_000; // 50%
+    let initial_cbr = 100_000_000; // 10%.
+    let cbr_limit = 500_000_000; // 50%.
     let dz_epochs_to_increasing_cbr = 10;
     let dz_epochs_to_cbr_limit = 20;
 
@@ -60,6 +60,7 @@ async fn test_terminate_prepaid_connection() {
         .await
         .unwrap()
         .configure_journal(
+            &admin_signer,
             [
                 JournalConfiguration::ActivationCost(prepaid_connection_activation_cost),
                 JournalConfiguration::CostPerDoubleZeroEpoch(prepaid_cost_per_dz_epoch),
@@ -68,11 +69,11 @@ async fn test_terminate_prepaid_connection() {
                     maximum_entries: prepaid_maximum_entries,
                 },
             ],
-            &admin_signer,
         )
         .await
         .unwrap()
         .configure_program(
+            &admin_signer,
             [
                 ProgramConfiguration::Accountant(accountant_signer.pubkey()),
                 ProgramConfiguration::SolanaValidatorFee(solana_validator_fee),
@@ -87,22 +88,21 @@ async fn test_terminate_prepaid_connection() {
                 ),
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
             ],
-            &admin_signer,
         )
         .await
         .unwrap()
         .initialize_prepaid_connection(
+            &user_key,
             &transfer_authority_signer,
             &src_token_account_key,
-            &user_key,
             8,
         )
         .await
         .unwrap()
         .load_prepaid_connection(
+            &user_key,
             &transfer_authority_signer,
             &src_token_account_key,
-            &user_key,
             valid_through_dz_epoch,
             8,
         )

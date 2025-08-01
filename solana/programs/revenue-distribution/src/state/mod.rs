@@ -1,8 +1,10 @@
+mod contributor_rewards;
 mod distribution;
 mod journal;
 mod prepaid_connection;
 mod program_config;
 
+pub use contributor_rewards::*;
 pub use distribution::*;
 pub use journal::*;
 pub use prepaid_connection::*;

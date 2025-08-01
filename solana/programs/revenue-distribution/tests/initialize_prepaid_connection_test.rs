@@ -3,7 +3,9 @@ mod common;
 //
 
 use doublezero_revenue_distribution::{
-    instruction::JournalConfiguration, state::PrepaidConnection, DOUBLEZERO_MINT_KEY,
+    instruction::{JournalConfiguration, ProgramConfiguration, ProgramFlagConfiguration},
+    state::PrepaidConnection,
+    DOUBLEZERO_MINT_KEY,
 };
 use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
@@ -45,11 +47,19 @@ async fn test_initialize_prepaid_connection() {
         .set_admin(&admin_signer.pubkey())
         .await
         .unwrap()
+        .configure_program(
+            &admin_signer,
+            [ProgramConfiguration::Flag(
+                ProgramFlagConfiguration::IsPaused(false),
+            )],
+        )
+        .await
+        .unwrap()
         .configure_journal(
+            &admin_signer,
             [JournalConfiguration::ActivationCost(
                 prepaid_connection_activation_cost,
             )],
-            &admin_signer,
         )
         .await
         .unwrap();
@@ -67,9 +77,9 @@ async fn test_initialize_prepaid_connection() {
 
     test_setup
         .initialize_prepaid_connection(
+            &user_key,
             &transfer_authority_signer,
             &src_token_account_key,
-            &user_key,
             8,
         )
         .await

@@ -42,11 +42,11 @@ async fn test_configure_journal() {
 
     test_setup
         .configure_journal(
+            &admin_signer,
             [
                 JournalConfiguration::ActivationCost(prepaid_connection_activation_cost),
                 JournalConfiguration::CostPerDoubleZeroEpoch(prepaid_connection_cost_per_dz_epoch),
             ],
-            &admin_signer,
         )
         .await
         .unwrap();

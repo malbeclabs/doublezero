@@ -22,11 +22,11 @@ async fn test_initialize_distribution() {
     let admin_signer = Keypair::new();
 
     let accountant_signer = Keypair::new();
-    let solana_validator_fee = 500; // 5%
+    let solana_validator_fee = 500; // 5%.
 
     // Community burn rate.
-    let initial_cbr = 100_000_000; // 10%
-    let cbr_limit = 500_000_000; // 50%
+    let initial_cbr = 100_000_000; // 10%.
+    let cbr_limit = 500_000_000; // 50%.
     let dz_epochs_to_increasing_cbr = 1;
     let dz_epochs_to_cbr_limit = 20;
 
@@ -41,6 +41,7 @@ async fn test_initialize_distribution() {
         .await
         .unwrap()
         .configure_program(
+            &admin_signer,
             [
                 ProgramConfiguration::Accountant(accountant_signer.pubkey()),
                 ProgramConfiguration::SolanaValidatorFee(solana_validator_fee),
@@ -52,10 +53,11 @@ async fn test_initialize_distribution() {
                 },
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
             ],
-            &admin_signer,
         )
         .await
-        .unwrap()
+        .unwrap();
+
+    test_setup
         .initialize_distribution(&accountant_signer)
         .await
         .unwrap();

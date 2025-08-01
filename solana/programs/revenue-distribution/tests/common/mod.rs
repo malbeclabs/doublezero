@@ -6,15 +6,20 @@ use doublezero_program_tools::{
 use doublezero_revenue_distribution::{
     instruction::{
         account::{
-            ConfigureDistributionAccounts, ConfigureJournalAccounts, ConfigureProgramAccounts,
-            InitializeDistributionAccounts, InitializeJournalAccounts,
-            InitializePrepaidConnectionAccounts, InitializeProgramAccounts,
-            LoadPrepaidConnectionAccounts, SetAdminAccounts, TerminatePrepaidConnectionAccounts,
+            ConfigureContributorRewardsAccounts, ConfigureDistributionAccounts,
+            ConfigureJournalAccounts, ConfigureProgramAccounts,
+            InitializeContributorRewardsAccounts, InitializeDistributionAccounts,
+            InitializeJournalAccounts, InitializePrepaidConnectionAccounts,
+            InitializeProgramAccounts, LoadPrepaidConnectionAccounts, SetAdminAccounts,
+            TerminatePrepaidConnectionAccounts,
         },
-        DistributionConfiguration, JournalConfiguration, ProgramConfiguration,
-        RevenueDistributionInstructionData,
+        ContributorRewardsConfiguration, DistributionConfiguration, JournalConfiguration,
+        ProgramConfiguration, RevenueDistributionInstructionData,
     },
-    state::{self, Distribution, Journal, JournalEntries, PrepaidConnection, ProgramConfig},
+    state::{
+        self, ContributorRewards, Distribution, Journal, JournalEntries, PrepaidConnection,
+        ProgramConfig,
+    },
     types::DoubleZeroEpoch,
     DOUBLEZERO_MINT_KEY, ID,
 };
@@ -272,8 +277,8 @@ impl ProgramTestWithOwner {
 
     pub async fn configure_program<const N: usize>(
         &mut self,
-        settings: [ProgramConfiguration; N],
         admin_signer: &Keypair,
+        settings: [ProgramConfiguration; N],
     ) -> Result<&mut Self, BanksClientError> {
         let payer_signer = &self.payer_signer;
 
@@ -332,8 +337,8 @@ impl ProgramTestWithOwner {
 
     pub async fn configure_journal<const N: usize>(
         &mut self,
-        settings: [JournalConfiguration; N],
         admin_signer: &Keypair,
+        settings: [JournalConfiguration; N],
     ) -> Result<&mut Self, BanksClientError> {
         let payer_signer = &self.payer_signer;
 
@@ -397,8 +402,8 @@ impl ProgramTestWithOwner {
     pub async fn configure_distribution<const N: usize>(
         &mut self,
         dz_epoch: DoubleZeroEpoch,
-        setting: [DistributionConfiguration; N],
         accountant_signer: &Keypair,
+        setting: [DistributionConfiguration; N],
     ) -> Result<&mut Self, BanksClientError> {
         let payer_signer = &self.payer_signer;
 
@@ -429,9 +434,9 @@ impl ProgramTestWithOwner {
 
     pub async fn initialize_prepaid_connection(
         &mut self,
+        user_key: &Pubkey,
         token_transfer_authority_signer: &Keypair,
         source_2z_token_account_key: &Pubkey,
-        user_key: &Pubkey,
         decimals: u8,
     ) -> Result<&mut Self, BanksClientError> {
         let payer_signer = &self.payer_signer;
@@ -466,9 +471,9 @@ impl ProgramTestWithOwner {
 
     pub async fn load_prepaid_connection(
         &mut self,
+        user_key: &Pubkey,
         token_transfer_authority_signer: &Keypair,
         source_2z_token_account_key: &Pubkey,
-        user_key: &Pubkey,
         valid_through_dz_epoch: DoubleZeroEpoch,
         decimals: u8,
     ) -> Result<&mut Self, BanksClientError> {
@@ -525,6 +530,77 @@ impl ProgramTestWithOwner {
             self.recent_blockhash,
             &[terminate_prepaid_connection_ix],
             &[payer_signer],
+        )
+        .await?;
+
+        self.recent_blockhash = new_blockhash;
+
+        Ok(self)
+    }
+
+    pub async fn initialize_contributor_rewards(
+        &mut self,
+        service_key: &Pubkey,
+        contributor_manager_signer: &Keypair,
+        rewards_manager_key: &Pubkey,
+    ) -> Result<&mut Self, BanksClientError> {
+        let payer_signer = &self.payer_signer;
+
+        let initialize_contributor_rewards_ix = try_build_instruction(
+            &ID,
+            InitializeContributorRewardsAccounts::new(
+                &contributor_manager_signer.pubkey(),
+                &payer_signer.pubkey(),
+                service_key,
+            ),
+            &RevenueDistributionInstructionData::InitializeContributorRewards {
+                rewards_manager_key: *rewards_manager_key,
+                service_key: *service_key,
+            },
+        )
+        .unwrap();
+
+        let new_blockhash = process_instructions_for_test(
+            &self.banks_client,
+            self.recent_blockhash,
+            &[initialize_contributor_rewards_ix],
+            &[payer_signer, contributor_manager_signer],
+        )
+        .await?;
+
+        self.recent_blockhash = new_blockhash;
+
+        Ok(self)
+    }
+
+    pub async fn configure_contributor_rewards<const N: usize>(
+        &mut self,
+        service_key: &Pubkey,
+        rewards_manager_signer: &Keypair,
+        setting: [ContributorRewardsConfiguration; N],
+    ) -> Result<&mut Self, BanksClientError> {
+        let payer_signer = &self.payer_signer;
+
+        let configure_contributor_rewards_ix = setting
+            .into_iter()
+            .map(|setting| {
+                try_build_instruction(
+                    &ID,
+                    ConfigureContributorRewardsAccounts::new(
+                        &rewards_manager_signer.pubkey(),
+                        service_key,
+                    ),
+                    &RevenueDistributionInstructionData::ConfigureContributorRewards(setting),
+                )
+                .unwrap()
+            })
+            .collect::<Vec<_>>();
+
+        let new_blockhash = process_instructions_for_test(
+            &self.banks_client,
+            self.recent_blockhash,
+            &configure_contributor_rewards_ix,
+            &[payer_signer, rewards_manager_signer],
         )
         .await?;
 
@@ -662,6 +738,28 @@ impl ProgramTestWithOwner {
                 .unwrap()
                 .0,
         )
+    }
+
+    pub async fn fetch_contributor_rewards(
+        &self,
+        service_key: &Pubkey,
+    ) -> (Pubkey, ContributorRewards) {
+        let contributor_rewards_key = ContributorRewards::find_address(service_key).0;
+
+        let contributor_rewards_account_data = self
+            .banks_client
+            .get_account(contributor_rewards_key)
+            .await
+            .unwrap()
+            .unwrap()
+            .data;
+
+        let contributor_rewards =
+            *checked_from_bytes_with_discriminator(&contributor_rewards_account_data)
+                .unwrap()
+                .0;
+
+        (contributor_rewards_key, contributor_rewards)
     }
 }
 

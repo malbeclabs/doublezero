@@ -127,7 +127,7 @@ impl CommunityBurnRateParameters {
                 .checked_add(self.cached_slope_numerator.into())?
                 .saturating_div(self.cached_slope_denominator.into());
 
-            // Ensure we don't pass the limit. We shouldn't have to do this, but we are being extra
+            // Ensure we do not pass the limit. We should not have to do this, but we are being extra
             // safe. Subsequent calls to compute should bail early above because dz_epochs_to_limit
             // should already be at zero.
             self.cached_next_burn_rate = BurnRate::try_from(new_burn_rate)
@@ -190,8 +190,8 @@ mod tests {
 
     #[test]
     fn test_new() {
-        let initial_rate = BurnRate::new(100_000_000).unwrap(); // 10%
-        let limit = BurnRate::new(500_000_000).unwrap(); // 50%
+        let initial_rate = BurnRate::new(100_000_000).unwrap(); // 10%.
+        let limit = BurnRate::new(500_000_000).unwrap(); // 50%.
 
         let dz_epochs_to_increasing = 100;
         let dz_epochs_to_limit = 300;
@@ -265,8 +265,8 @@ mod tests {
 
     #[test]
     fn test_checked_compute() {
-        let initial_rate = BurnRate::new(100_000_000).unwrap(); // 10%
-        let limit = BurnRate::new(500_000_000).unwrap(); // 50%
+        let initial_rate = BurnRate::new(100_000_000).unwrap(); // 10%.
+        let limit = BurnRate::new(500_000_000).unwrap(); // 50%.
 
         let dz_epochs_to_increasing = 2;
         let dz_epochs_to_limit = 5;
@@ -387,8 +387,8 @@ mod tests {
 
     #[test]
     fn test_checked_compute_immediately_increasing() {
-        let initial_rate = BurnRate::new(100_000_000).unwrap(); // 10%
-        let limit = BurnRate::new(500_000_000).unwrap(); // 50%
+        let initial_rate = BurnRate::new(100_000_000).unwrap(); // 10%.
+        let limit = BurnRate::new(500_000_000).unwrap(); // 50%.
 
         let dz_epochs_to_increasing = 1;
         let dz_epochs_to_limit = 4;
@@ -493,8 +493,8 @@ mod tests {
 
     #[test]
     fn test_checked_compute_immediately_limit() {
-        let initial_rate = BurnRate::new(100_000_000).unwrap(); // 10%
-        let limit = BurnRate::new(500_000_000).unwrap(); // 50%
+        let initial_rate = BurnRate::new(100_000_000).unwrap(); // 10%.
+        let limit = BurnRate::new(500_000_000).unwrap(); // 50%.
 
         let dz_epochs_to_increasing = 1;
         let dz_epochs_to_limit = 1;
@@ -543,8 +543,8 @@ mod tests {
 
     #[test]
     fn checked_update_while_static() {
-        let initial_rate = BurnRate::new(100_000_000).unwrap(); // 10%
-        let limit = BurnRate::new(500_000_000).unwrap(); // 50%
+        let initial_rate = BurnRate::new(100_000_000).unwrap(); // 10%.
+        let limit = BurnRate::new(500_000_000).unwrap(); // 50%.
 
         let dz_epochs_to_increasing = 2;
         let dz_epochs_to_limit = 5;
@@ -558,7 +558,7 @@ mod tests {
         .unwrap();
         assert_eq!(params.mode(), CommunityBurnRateMode::Static);
 
-        let new_limit = BurnRate::new(250_000_000).unwrap(); // 25%
+        let new_limit = BurnRate::new(250_000_000).unwrap(); // 25%.
         let new_dz_epochs_to_increasing = 3;
         let new_dz_epochs_to_limit = 7;
 
@@ -592,7 +592,7 @@ mod tests {
 
         params.checked_compute().unwrap();
 
-        let new_limit = BurnRate::new(350_000_000).unwrap(); // 35%
+        let new_limit = BurnRate::new(350_000_000).unwrap(); // 35%.
         let new_dz_epochs_to_increasing = 4;
         let new_dz_epochs_to_limit = 9;
 
@@ -668,8 +668,8 @@ mod tests {
 
     #[test]
     fn checked_update_while_increasing() {
-        let initial_rate = BurnRate::new(100_000_000).unwrap(); // 10%
-        let limit = BurnRate::new(500_000_000).unwrap(); // 50%
+        let initial_rate = BurnRate::new(100_000_000).unwrap(); // 10%.
+        let limit = BurnRate::new(500_000_000).unwrap(); // 50%.
 
         let dz_epochs_to_increasing = 1;
         let dz_epochs_to_limit = 4;
@@ -708,7 +708,7 @@ mod tests {
         };
         assert_eq!(params, expected);
 
-        let new_limit = BurnRate::new(600_000_000).unwrap(); // 60%
+        let new_limit = BurnRate::new(600_000_000).unwrap(); // 60%.
         let new_dz_epochs_to_increasing = 2;
         let new_dz_epochs_to_limit = 9;
 

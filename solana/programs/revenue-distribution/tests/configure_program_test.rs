@@ -37,15 +37,16 @@ async fn test_configure_program() {
 
     // Other settings.
     let accountant_key = Pubkey::new_unique();
+    let contributor_manager_key = Pubkey::new_unique();
     let sol_2z_swap_program_id = Pubkey::new_unique();
 
     // Distribution settings.
-    let solana_validator_fee = 500; // 5%
+    let solana_validator_fee = 500; // 5%.
     let calculation_grace_period_seconds = 6 * 60 * 60;
 
     // -- Community burn rate.
-    let initial_cbr = 100_000_000; // 10%
-    let cbr_limit = 500_000_000; // 50%
+    let initial_cbr = 100_000_000; // 10%.
+    let cbr_limit = 500_000_000; // 50%.
     let dz_epochs_to_increasing_cbr = 10;
     let dz_epochs_to_cbr_limit = 20;
 
@@ -54,9 +55,11 @@ async fn test_configure_program() {
 
     test_setup
         .configure_program(
+            &admin_signer,
             [
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(should_pause)),
                 ProgramConfiguration::Accountant(accountant_key),
+                ProgramConfiguration::ContributorManager(contributor_manager_key),
                 ProgramConfiguration::CalculationGracePeriodSeconds(
                     calculation_grace_period_seconds,
                 ),
@@ -72,7 +75,6 @@ async fn test_configure_program() {
                     prepaid_connection_termination_relay_lamports,
                 ),
             ],
-            &admin_signer,
         )
         .await
         .unwrap();
@@ -84,6 +86,7 @@ async fn test_configure_program() {
     expected_program_config.reserve_2z_bump_seed =
         state::find_2z_token_pda_address(&program_config_key).1;
     expected_program_config.admin_key = admin_signer.pubkey();
+    expected_program_config.contributor_manager_key = contributor_manager_key;
     expected_program_config.set_is_paused(should_pause);
     expected_program_config.accountant_key = accountant_key;
     expected_program_config.sol_2z_swap_program_id = sol_2z_swap_program_id;

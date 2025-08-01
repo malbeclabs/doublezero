@@ -26,7 +26,7 @@ func TestSDK_Telemetry_WriteDeviceLatencySamples_HappyPath(t *testing.T) {
 		OriginDevicePK:             originPK,
 		TargetDevicePK:             targetPK,
 		LinkPK:                     linkPK,
-		Epoch:                      epoch,
+		Epoch:                      &epoch,
 		StartTimestampMicroseconds: timestamp,
 		Samples:                    samples,
 	}
@@ -57,12 +57,13 @@ func TestSDK_Telemetry_WriteDeviceLatencySamples_MissingFields(t *testing.T) {
 	t.Parallel()
 
 	programID := solana.NewWallet().PublicKey()
+	epoch := uint64(123)
 	base := telemetry.WriteDeviceLatencySamplesInstructionConfig{
 		AgentPK:                    solana.NewWallet().PublicKey(),
 		OriginDevicePK:             solana.NewWallet().PublicKey(),
 		TargetDevicePK:             solana.NewWallet().PublicKey(),
 		LinkPK:                     solana.NewWallet().PublicKey(),
-		Epoch:                      123,
+		Epoch:                      &epoch,
 		StartTimestampMicroseconds: 1_600_000_000,
 		Samples:                    []uint32{10, 20},
 	}
@@ -94,7 +95,7 @@ func TestSDK_Telemetry_WriteDeviceLatencySamples_MissingFields(t *testing.T) {
 		},
 		{
 			name:        "missing_epoch",
-			mutate:      func(c *telemetry.WriteDeviceLatencySamplesInstructionConfig) { c.Epoch = 0 },
+			mutate:      func(c *telemetry.WriteDeviceLatencySamplesInstructionConfig) { c.Epoch = nil },
 			expectError: "epoch is required",
 		},
 	}
@@ -118,12 +119,13 @@ func TestSDK_Telemetry_WriteDeviceLatencySamples_BorshEncoding(t *testing.T) {
 	timestamp := uint64(1_650_000_000)
 	samples := []uint32{100, 200, 300}
 
+	epoch := uint64(555)
 	config := telemetry.WriteDeviceLatencySamplesInstructionConfig{
 		AgentPK:                    solana.NewWallet().PublicKey(),
 		OriginDevicePK:             solana.NewWallet().PublicKey(),
 		TargetDevicePK:             solana.NewWallet().PublicKey(),
 		LinkPK:                     solana.NewWallet().PublicKey(),
-		Epoch:                      555,
+		Epoch:                      &epoch,
 		StartTimestampMicroseconds: timestamp,
 		Samples:                    samples,
 	}

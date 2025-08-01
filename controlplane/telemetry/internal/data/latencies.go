@@ -7,7 +7,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/data"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 )
 
@@ -77,7 +76,7 @@ func (p *provider) GetCircuitLatenciesForEpoch(ctx context.Context, circuitCode 
 	samples := enrichSamplesWithTimestamps(account.Samples, account.StartTimestampMicroseconds, account.SamplingIntervalMicroseconds)
 
 	// If the epoch is sufficiently in the past, cache for much longer.
-	currentEpoch := data.DeriveEpoch(time.Now())
+	currentEpoch := DeriveEpoch(time.Now())
 	ttl := p.cfg.CurrentEpochLatenciesCacheTTL
 	if epoch < currentEpoch-1 {
 		ttl = p.cfg.HistoricEpochLatenciesCacheTTL
@@ -88,8 +87,8 @@ func (p *provider) GetCircuitLatenciesForEpoch(ctx context.Context, circuitCode 
 }
 
 func (p *provider) GetCircuitLatencies(ctx context.Context, circuitCode string, from, to time.Time) ([]CircuitLatencySample, error) {
-	startEpoch := data.DeriveEpoch(from)
-	endEpoch := data.DeriveEpoch(to)
+	startEpoch := DeriveEpoch(from)
+	endEpoch := DeriveEpoch(to)
 
 	var latencies []CircuitLatencySample
 

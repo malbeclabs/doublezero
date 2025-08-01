@@ -261,6 +261,13 @@ func main() {
 		TWAMPReflector:         reflector,
 		PeerDiscovery:          peerDiscovery,
 		TelemetryProgramClient: sdktelemetry.New(log, rpcClient, &keypair, telemetryProgramID),
+		GetCurrentEpochFunc: func(ctx context.Context) (uint64, error) {
+			epochInfo, err := rpcClient.GetEpochInfo(ctx, solanarpc.CommitmentFinalized)
+			if err != nil {
+				return 0, err
+			}
+			return epochInfo.Epoch, nil
+		},
 	})
 	if err != nil {
 		log.Error("failed to create telemetry collector", "error", err)

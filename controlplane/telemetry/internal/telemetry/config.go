@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -14,6 +15,9 @@ type Config struct {
 
 	// PeerDiscovery is the configured peer discovery implementation.
 	PeerDiscovery PeerDiscovery
+
+	// GetCurrentEpochFunc is the function to get the current epoch.
+	GetCurrentEpochFunc func(ctx context.Context) (uint64, error)
 
 	// TelemetryProgramClient is the client to the telemetry program.
 	TelemetryProgramClient TelemetryProgramClient
@@ -40,6 +44,9 @@ func (c *Config) Validate() error {
 	}
 	if c.PeerDiscovery == nil {
 		return errors.New("peer discovery is required")
+	}
+	if c.GetCurrentEpochFunc == nil {
+		return errors.New("get current epoch is required")
 	}
 	if c.LocalDevicePK.IsZero() {
 		return errors.New("local device pubkey is required")

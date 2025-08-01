@@ -28,7 +28,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 	t.Run("records successful RTT sample", func(t *testing.T) {
 		t.Parallel()
 
-		now := time.Now().UTC()
+		epoch := uint64(100)
 		devicePK := newPK(1)
 		peerPK := newPK(2)
 		linkPK := newPK(3)
@@ -55,6 +55,9 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 			Peers:         mockPeers,
 			Buffer:        buffer,
 			GetSender:     getSender,
+			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+				return epoch, nil
+			},
 		})
 
 		pinger.Tick(context.Background())
@@ -64,7 +67,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 			OriginDevicePK: devicePK,
 			TargetDevicePK: peerPK,
 			LinkPK:         linkPK,
-			Epoch:          telemetry.DeriveEpoch(now),
+			Epoch:          epoch,
 		}
 
 		s, ok := samples[key]
@@ -96,6 +99,9 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 			Peers:         mockPeers,
 			Buffer:        buffer,
 			GetSender:     func(_ context.Context, _ *telemetry.Peer) twamplight.Sender { return nil },
+			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+				return 100, nil
+			},
 		})
 
 		pinger.Tick(context.Background())
@@ -139,6 +145,9 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 			Peers:         mockPeers,
 			Buffer:        buffer,
 			GetSender:     func(_ context.Context, _ *telemetry.Peer) twamplight.Sender { return nil },
+			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+				return 100, nil
+			},
 		})
 
 		pinger.Tick(context.Background())
@@ -183,6 +192,9 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 			Peers:         mockPeers,
 			Buffer:        buffer,
 			GetSender:     func(_ context.Context, _ *telemetry.Peer) twamplight.Sender { return mockSender },
+			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+				return 100, nil
+			},
 		})
 
 		pinger.Tick(context.Background())
@@ -199,6 +211,105 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 		}
 		assert.True(t, found, "expected loss sample for peer3")
 	})
+
+	t.Run("retries getCurrentEpoch before succeeding", func(t *testing.T) {
+		t.Parallel()
+
+		devicePK := newPK(10)
+		peerPK := newPK(11)
+		linkPK := newPK(12)
+
+		attempts := 0
+		getCurrentEpoch := func(ctx context.Context) (uint64, error) {
+			attempts++
+			if attempts < 3 {
+				return 0, errors.New("transient failure")
+			}
+			return 123, nil
+		}
+
+		mockPeers := newMockPeerDiscovery()
+		mockPeers.UpdatePeers(t, []*telemetry.Peer{
+			{
+				DevicePK: peerPK,
+				LinkPK:   linkPK,
+				Tunnel: &netutil.LocalTunnel{
+					Interface: "tunX",
+					SourceIP:  ipv4([4]byte{127, 0, 0, 3}),
+					TargetIP:  ipv4([4]byte{127, 0, 0, 4}),
+				},
+			},
+		})
+
+		mockSender := &mockSender{rtt: 7 * time.Millisecond}
+		buffer := telemetry.NewAccountsBuffer()
+		pinger := telemetry.NewPinger(slog.Default(), &telemetry.PingerConfig{
+			LocalDevicePK:   devicePK,
+			Peers:           mockPeers,
+			Buffer:          buffer,
+			GetSender:       func(context.Context, *telemetry.Peer) twamplight.Sender { return mockSender },
+			GetCurrentEpoch: getCurrentEpoch,
+		})
+
+		pinger.Tick(context.Background())
+
+		assert.Equal(t, 3, attempts, "expected exactly 3 attempts at GetCurrentEpoch")
+
+		samples := buffer.FlushWithoutReset()
+		key := telemetry.AccountKey{
+			OriginDevicePK: devicePK,
+			TargetDevicePK: peerPK,
+			LinkPK:         linkPK,
+			Epoch:          123,
+		}
+		val, ok := samples[key]
+		require.True(t, ok, "expected RTT sample for retried epoch")
+		require.Len(t, val, 1)
+		assert.False(t, val[0].Loss)
+		assert.Equal(t, 7*time.Millisecond, val[0].RTT)
+	})
+
+	t.Run("tick returns early if getCurrentEpoch exceeds max retries", func(t *testing.T) {
+		t.Parallel()
+
+		devicePK := newPK(13)
+
+		var attempts int
+		getCurrentEpoch := func(ctx context.Context) (uint64, error) {
+			attempts++
+			return 0, errors.New("persistent failure")
+		}
+
+		mockPeers := newMockPeerDiscovery()
+		mockPeers.UpdatePeers(t, []*telemetry.Peer{
+			{
+				DevicePK: newPK(14),
+				LinkPK:   newPK(15),
+				Tunnel: &netutil.LocalTunnel{
+					Interface: "tunFail",
+					SourceIP:  ipv4([4]byte{127, 0, 0, 5}),
+					TargetIP:  ipv4([4]byte{127, 0, 0, 6}),
+				},
+			},
+		})
+
+		buffer := telemetry.NewAccountsBuffer()
+		pinger := telemetry.NewPinger(slog.Default(), &telemetry.PingerConfig{
+			LocalDevicePK:   devicePK,
+			Peers:           mockPeers,
+			Buffer:          buffer,
+			GetSender:       func(context.Context, *telemetry.Peer) twamplight.Sender { return nil },
+			GetCurrentEpoch: getCurrentEpoch,
+		})
+
+		pinger.Tick(context.Background())
+
+		assert.Equal(t, 3, attempts, "should have retried GetCurrentEpoch exactly 3 times")
+
+		samples := buffer.FlushWithoutReset()
+		assert.Empty(t, samples, "should not record any samples if epoch retrieval fails")
+	})
+
 }
 
 type mockSender struct {

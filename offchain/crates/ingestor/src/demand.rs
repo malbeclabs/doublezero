@@ -9,11 +9,11 @@ use tracing::info;
 
 /// Statistics for validators in a city
 #[derive(Debug, Clone)]
-struct CityStats {
+pub struct CityStats {
     /// Number of validators in this city
-    validator_count: usize,
+    pub validator_count: usize,
     /// Sum of all validator stake proxies (leader schedule lengths) in this city
-    total_stake_proxy: usize,
+    pub total_stake_proxy: usize,
 }
 
 /// Builds demand tables for network traffic simulation based on validator distribution
@@ -37,6 +37,21 @@ pub async fn build(fetcher: &Fetcher, fetch_data: &FetchData) -> Result<Demands>
         .await?
         .ok_or_else(|| anyhow!("No leader schedule found for epoch {}", prev_epoch))?;
 
+    // Convert leader schedule to map
+    let leader_schedule_map: HashMap<String, usize> = leader_schedule
+        .into_iter()
+        .map(|(pk, schedule)| (pk, schedule.len()))
+        .collect();
+
+    build_with_schedule(fetch_data, leader_schedule_map)
+}
+
+/// Builds demands using pre-fetched leader schedule data
+/// NOTE: This allows testing without RPC calls
+pub fn build_with_schedule(
+    fetch_data: &FetchData,
+    leader_schedule: HashMap<String, usize>,
+) -> Result<Demands> {
     // Build validator to user mapping
     let validator_to_user: HashMap<String, &DZUser> = fetch_data
         .dz_serviceability
@@ -56,11 +71,24 @@ pub async fn build(fetcher: &Fetcher, fetch_data: &FetchData) -> Result<Demands>
     }
 
     // Process leaders and build city statistics
+    let city_stats = build_city_stats(fetch_data, &validator_to_user, leader_schedule)?;
+
+    // Generate demands
+    let demands: Demands = generate(&city_stats);
+    Ok(demands)
+}
+
+/// Build city statistics from fetch data and leader schedule
+pub fn build_city_stats(
+    fetch_data: &FetchData,
+    validator_to_user: &HashMap<String, &DZUser>,
+    leader_schedule: HashMap<String, usize>,
+) -> Result<HashMap<String, CityStats>> {
     let mut city_stats: HashMap<String, CityStats> = HashMap::new();
     let mut skipped_validators = Vec::new();
 
     // Process each leader
-    for (validator_pubkey, stake_proxy_schedule) in leader_schedule {
+    for (validator_pubkey, stake_proxy) in leader_schedule {
         // Skip if not in our filtered validator set
         let user = match validator_to_user.get(&validator_pubkey) {
             Some(user) => user,
@@ -75,7 +103,6 @@ pub async fn build(fetcher: &Fetcher, fetch_data: &FetchData) -> Result<Demands>
         match (device, location) {
             (Some(_), Some(loc)) => {
                 // Update city stats
-                let stake_proxy = stake_proxy_schedule.len();
                 let stats = city_stats.entry(loc.code.to_string()).or_insert(CityStats {
                     validator_count: 0,
                     total_stake_proxy: 0,
@@ -97,13 +124,11 @@ pub async fn build(fetcher: &Fetcher, fetch_data: &FetchData) -> Result<Demands>
         );
     }
 
-    // Generate demands
-    let demands: Demands = generate(&city_stats);
-    Ok(demands)
+    Ok(city_stats)
 }
 
-/// Generates demand entries for this city
-fn generate(city_stats: &HashMap<String, CityStats>) -> Demands {
+/// Generates demand entries for cities
+pub fn generate(city_stats: &HashMap<String, CityStats>) -> Demands {
     const TRAFFIC: f64 = 0.05;
     const DEMAND_TYPE: u32 = 1;
     const MULTICAST: bool = false;

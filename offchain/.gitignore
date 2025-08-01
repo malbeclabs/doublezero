@@ -33,7 +33,6 @@ test-data/
 *.diff
 *.csv
 *.geojson
-*.json
 *.jsonl
 *.duckdb
 *.sql

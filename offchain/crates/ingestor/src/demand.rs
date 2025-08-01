@@ -58,11 +58,9 @@ pub fn build_with_schedule(
         .users
         .par_iter()
         .filter_map(|(_user_pk, user)| {
-            if user.validator_pubkey != SystemProgramID {
-                Some((user.validator_pubkey.to_string(), user))
-            } else {
-                None
-            }
+            // Ensure that validator is not the system program
+            (user.validator_pubkey != SystemProgramID)
+                .then_some((user.validator_pubkey.to_string(), user))
         })
         .collect();
 
@@ -89,29 +87,25 @@ pub fn build_city_stats(
 
     // Process each leader
     for (validator_pubkey, stake_proxy) in leader_schedule {
-        // Skip if not in our filtered validator set
-        let user = match validator_to_user.get(&validator_pubkey) {
-            Some(user) => user,
-            None => continue,
-        };
+        if let Some(user) = validator_to_user.get(&validator_pubkey) {
+            // Try to get device and location
+            let device = fetch_data.dz_serviceability.devices.get(&user.device_pk);
+            let location =
+                device.and_then(|d| fetch_data.dz_serviceability.locations.get(&d.location_pk));
 
-        // Try to get device and location
-        let device = fetch_data.dz_serviceability.devices.get(&user.device_pk);
-        let location =
-            device.and_then(|d| fetch_data.dz_serviceability.locations.get(&d.location_pk));
-
-        match (device, location) {
-            (Some(_), Some(loc)) => {
-                // Update city stats
-                let stats = city_stats.entry(loc.code.to_string()).or_insert(CityStats {
-                    validator_count: 0,
-                    total_stake_proxy: 0,
-                });
-                stats.validator_count += 1;
-                stats.total_stake_proxy += stake_proxy;
-            }
-            _ => {
-                skipped_validators.push(validator_pubkey.to_string());
+            match (device, location) {
+                (Some(_), Some(loc)) => {
+                    // Update city stats
+                    let stats = city_stats.entry(loc.code.to_string()).or_insert(CityStats {
+                        validator_count: 0,
+                        total_stake_proxy: 0,
+                    });
+                    stats.validator_count += 1;
+                    stats.total_stake_proxy += stake_proxy;
+                }
+                _ => {
+                    skipped_validators.push(validator_pubkey.to_string());
+                }
             }
         }
     }
@@ -147,15 +141,13 @@ pub fn generate(city_stats: &HashMap<String, CityStats>) -> Demands {
             let city_demands: Vec<(String, f64)> = cities_with_validators
                 .iter()
                 .filter_map(|(end_city, end_stats)| {
-                    // Skip self-loops
-                    if start_city == end_city {
-                        None
-                    } else {
+                    // Avoid self loops
+                    (start_city != end_city).then_some({
                         // Calculate priority: stake per validator in destination
                         let stake_per_validator =
                             end_stats.total_stake_proxy as f64 / end_stats.validator_count as f64;
-                        Some((end_city.to_string(), stake_per_validator))
-                    }
+                        (end_city.to_string(), stake_per_validator)
+                    })
                 })
                 .collect();
 
@@ -165,7 +157,7 @@ pub fn generate(city_stats: &HashMap<String, CityStats>) -> Demands {
             // Create demands with normalized priorities
             city_demands
                 .into_iter()
-                .filter_map(move |(end_city, unnormalized_priority)| {
+                .filter_map(|(end_city, unnormalized_priority)| {
                     let normalized_priority = if total_priority > 0.0 {
                         unnormalized_priority / total_priority
                     } else {

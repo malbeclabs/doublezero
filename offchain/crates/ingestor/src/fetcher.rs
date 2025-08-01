@@ -99,7 +99,7 @@ impl Fetcher {
     /// Fetch all data for the previous epoch
     pub async fn by_prev_epoch(&self) -> Result<FetchData> {
         let epoch_info = self.rpc_client.get_epoch_info().await?;
-        let prev_epoch = epoch_info.epoch - 1;
+        let prev_epoch = epoch_info.epoch.saturating_sub(1);
         info!("Fetching data for previous epoch: {}", prev_epoch);
         self.by_epoch(prev_epoch).await
     }

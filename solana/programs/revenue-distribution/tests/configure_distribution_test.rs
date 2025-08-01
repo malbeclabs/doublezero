@@ -5,7 +5,7 @@ mod common;
 use doublezero_revenue_distribution::{
     instruction::{DistributionConfiguration, ProgramConfiguration, ProgramFlagConfiguration},
     state::{self, Distribution},
-    types::{BurnRate, DoubleZeroEpoch},
+    types::{BurnRate, DoubleZeroEpoch, ValidatorFee},
 };
 use solana_hash::Hash;
 use solana_program_test::tokio;
@@ -22,7 +22,7 @@ async fn test_configure_distribution() {
     let admin_signer = Keypair::new();
 
     let accountant_signer = Keypair::new();
-    let solana_validator_fee = 500; // 5%.
+    let solana_validator_base_block_rewards_fee = 500; // 5%
 
     // Community burn rate.
     let initial_cbr = 100_000_000; // 10%.
@@ -54,7 +54,13 @@ async fn test_configure_distribution() {
             &admin_signer,
             [
                 ProgramConfiguration::Accountant(accountant_signer.pubkey()),
-                ProgramConfiguration::SolanaValidatorFee(solana_validator_fee),
+                ProgramConfiguration::SolanaValidatorFeeParameters {
+                    base_block_rewards: solana_validator_base_block_rewards_fee,
+                    priority_block_rewards: 0,
+                    inflation_rewards: 0,
+                    jito_tips: 0,
+                    _unused: [0; 32],
+                },
                 ProgramConfiguration::CommunityBurnRateParameters {
                     limit: cbr_limit,
                     dz_epochs_to_increasing: dz_epochs_to_increasing_cbr,
@@ -97,6 +103,9 @@ async fn test_configure_distribution() {
         state::find_2z_token_pda_address(&distribution_key).1;
     expected_distribution.dz_epoch = dz_epoch;
     expected_distribution.community_burn_rate = BurnRate::new(initial_cbr).unwrap();
+    expected_distribution
+        .solana_validator_fee_parameters
+        .base_block_rewards = ValidatorFee::new(solana_validator_base_block_rewards_fee).unwrap();
     expected_distribution.total_solana_validator_payments_owed =
         total_solana_validator_payments_owed;
     expected_distribution.solana_validator_payments_merkle_root =

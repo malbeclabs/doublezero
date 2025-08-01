@@ -15,7 +15,7 @@ use doublezero_program_tools::{
 };
 use solana_pubkey::Pubkey;
 
-use crate::types::{DoubleZeroEpoch, ValidatorFee};
+use crate::types::DoubleZeroEpoch;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable)]
 #[repr(C, align(8))]
@@ -29,7 +29,7 @@ pub struct ProgramConfig {
 
     /// Cache this seed to validate token PDA address.
     pub reserve_2z_bump_seed: u8,
-    _bump_seed_padding: [u8; 6],
+    _padding: [u8; 6],
 
     pub admin_key: Pubkey,
 
@@ -83,13 +83,13 @@ impl ProgramConfig {
         self.flags = flags_bitmap.into_value();
     }
 
-    pub fn checked_solana_validator_fee(&self) -> Option<ValidatorFee> {
-        let fee = self.distribution_parameters.current_solana_validator_fee;
+    pub fn checked_solana_validator_fee_parameters(&self) -> Option<SolanaValidatorFeeParameters> {
+        let params = self.distribution_parameters.solana_validator_fee_parameters;
 
-        if fee == Default::default() {
+        if params == Default::default() {
             None
         } else {
-            Some(fee)
+            Some(params)
         }
     }
 }
@@ -97,6 +97,6 @@ impl ProgramConfig {
 //
 
 const _: () = assert!(
-    size_of::<ProgramConfig>() == 1_000,
+    size_of::<ProgramConfig>() == 1_032,
     "`ProgramConfig` size changed"
 );

@@ -22,7 +22,7 @@ async fn test_initialize_distribution() {
     let admin_signer = Keypair::new();
 
     let accountant_signer = Keypair::new();
-    let solana_validator_fee = 500; // 5%.
+    let solana_validator_base_block_rewards_fee = 500; // 5%
 
     // Community burn rate.
     let initial_cbr = 100_000_000; // 10%.
@@ -44,7 +44,13 @@ async fn test_initialize_distribution() {
             &admin_signer,
             [
                 ProgramConfiguration::Accountant(accountant_signer.pubkey()),
-                ProgramConfiguration::SolanaValidatorFee(solana_validator_fee),
+                ProgramConfiguration::SolanaValidatorFeeParameters {
+                    base_block_rewards: solana_validator_base_block_rewards_fee,
+                    priority_block_rewards: 0,
+                    inflation_rewards: 0,
+                    jito_tips: 0,
+                    _unused: [0; 32],
+                },
                 ProgramConfiguration::CommunityBurnRateParameters {
                     limit: cbr_limit,
                     dz_epochs_to_increasing: dz_epochs_to_increasing_cbr,
@@ -88,6 +94,9 @@ async fn test_initialize_distribution() {
         state::find_2z_token_pda_address(&distribution_key).1;
     expected_distribution.dz_epoch = dz_epoch;
     expected_distribution.community_burn_rate = expected_cbr;
+    expected_distribution
+        .solana_validator_fee_parameters
+        .base_block_rewards = ValidatorFee::new(solana_validator_base_block_rewards_fee).unwrap();
     assert_eq!(distribution, expected_distribution);
     assert_eq!(distribution_custody.amount, 0);
 
@@ -102,8 +111,9 @@ async fn test_initialize_distribution() {
     expected_program_config.accountant_key = accountant_signer.pubkey();
 
     let expected_distribution_params = &mut expected_program_config.distribution_parameters;
-    expected_distribution_params.current_solana_validator_fee =
-        ValidatorFee::new(solana_validator_fee).unwrap();
+    expected_distribution_params
+        .solana_validator_fee_parameters
+        .base_block_rewards = ValidatorFee::new(solana_validator_base_block_rewards_fee).unwrap();
     expected_distribution_params.community_burn_rate_parameters = cbr_params;
     assert_eq!(program_config, expected_program_config);
 
@@ -132,6 +142,9 @@ async fn test_initialize_distribution() {
         state::find_2z_token_pda_address(&distribution_key).1;
     expected_distribution.dz_epoch = dz_epoch;
     expected_distribution.community_burn_rate = expected_cbr;
+    expected_distribution
+        .solana_validator_fee_parameters
+        .base_block_rewards = ValidatorFee::new(solana_validator_base_block_rewards_fee).unwrap();
     assert_eq!(distribution, expected_distribution);
     assert_eq!(distribution_custody.amount, 0);
 
@@ -146,8 +159,9 @@ async fn test_initialize_distribution() {
     expected_program_config.accountant_key = accountant_signer.pubkey();
 
     let expected_distribution_params = &mut expected_program_config.distribution_parameters;
-    expected_distribution_params.current_solana_validator_fee =
-        ValidatorFee::new(solana_validator_fee).unwrap();
+    expected_distribution_params
+        .solana_validator_fee_parameters
+        .base_block_rewards = ValidatorFee::new(solana_validator_base_block_rewards_fee).unwrap();
     expected_distribution_params.community_burn_rate_parameters = cbr_params;
     assert_eq!(program_config, expected_program_config);
 }

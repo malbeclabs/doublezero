@@ -17,7 +17,13 @@ pub enum ProgramConfiguration {
     Accountant(Pubkey),
     ContributorManager(Pubkey),
     Sol2zSwapProgram(Pubkey),
-    SolanaValidatorFee(u16),
+    SolanaValidatorFeeParameters {
+        base_block_rewards: u16,
+        priority_block_rewards: u16,
+        inflation_rewards: u16,
+        jito_tips: u16,
+        _unused: [u8; 32],
+    },
     CalculationGracePeriodSeconds(u32),
     CommunityBurnRateParameters {
         limit: u32,

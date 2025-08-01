@@ -41,8 +41,13 @@ async fn test_configure_program() {
     let sol_2z_swap_program_id = Pubkey::new_unique();
 
     // Distribution settings.
-    let solana_validator_fee = 500; // 5%.
     let calculation_grace_period_seconds = 6 * 60 * 60;
+
+    // -- Solana validator fee parameters.
+    let base_block_rewards = 500; // 5%
+    let priority_block_rewards = 69; // 0.69%
+    let inflation_rewards = 420; // 4.2%
+    let jito_tips = 20; // 0.2%
 
     // -- Community burn rate.
     let initial_cbr = 100_000_000; // 10%.
@@ -64,7 +69,13 @@ async fn test_configure_program() {
                     calculation_grace_period_seconds,
                 ),
                 ProgramConfiguration::Sol2zSwapProgram(sol_2z_swap_program_id),
-                ProgramConfiguration::SolanaValidatorFee(solana_validator_fee),
+                ProgramConfiguration::SolanaValidatorFeeParameters {
+                    base_block_rewards,
+                    priority_block_rewards,
+                    inflation_rewards,
+                    jito_tips,
+                    _unused: [0; 32],
+                },
                 ProgramConfiguration::CommunityBurnRateParameters {
                     limit: cbr_limit,
                     dz_epochs_to_increasing: dz_epochs_to_increasing_cbr,
@@ -94,8 +105,17 @@ async fn test_configure_program() {
     let expected_distribution_params = &mut expected_program_config.distribution_parameters;
     expected_distribution_params.calculation_grace_period_seconds =
         calculation_grace_period_seconds;
-    expected_distribution_params.current_solana_validator_fee =
-        ValidatorFee::new(solana_validator_fee).unwrap();
+
+    let expected_solana_validator_fee_params =
+        &mut expected_distribution_params.solana_validator_fee_parameters;
+    expected_solana_validator_fee_params.base_block_rewards =
+        ValidatorFee::new(base_block_rewards).unwrap();
+    expected_solana_validator_fee_params.priority_block_rewards =
+        ValidatorFee::new(priority_block_rewards).unwrap();
+    expected_solana_validator_fee_params.inflation_rewards =
+        ValidatorFee::new(inflation_rewards).unwrap();
+    expected_solana_validator_fee_params.jito_tips = ValidatorFee::new(jito_tips).unwrap();
+
     expected_distribution_params.community_burn_rate_parameters = CommunityBurnRateParameters::new(
         BurnRate::new(initial_cbr).unwrap(),
         BurnRate::new(cbr_limit).unwrap(),

@@ -17,14 +17,24 @@ pub struct DistributionParameters {
     /// grace period has not been configured, the program will not allow new Merkle roots (which
     /// are necessary for validators to pay their dues and contributors to claim rewards).
     pub calculation_grace_period_seconds: u32,
-    _calculation_grace_period_padding: [u8; 4],
+    _padding: [u8; 4],
 
     pub community_burn_rate_parameters: CommunityBurnRateParameters,
 
     /// Proportion of Solana validator revenue DoubleZero collects to pay contributors. These fees
     /// are denominated in SOL, so this proportion represents a proportion of SOL rewards.
-    pub current_solana_validator_fee: ValidatorFee,
-    _current_solana_validator_fee_padding: [u8; 6],
+    pub solana_validator_fee_parameters: SolanaValidatorFeeParameters,
 
     _storage_gap: StorageGap<8>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable)]
+#[repr(C, align(8))]
+pub struct SolanaValidatorFeeParameters {
+    pub base_block_rewards: ValidatorFee,
+    pub priority_block_rewards: ValidatorFee,
+    pub inflation_rewards: ValidatorFee,
+    pub jito_tips: ValidatorFee,
+
+    _storage_gap: StorageGap<1>,
 }

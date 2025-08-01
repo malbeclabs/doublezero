@@ -335,7 +335,7 @@ async fn test_load_prepaid_connection() {
     let last_journal_balance = total_journal_balance;
 
     let accountant_signer = Keypair::new();
-    let solana_validator_fee = 500; // 5%.
+    let solana_validator_base_block_rewards_fee = 500; // 5%
 
     // Community burn rate.
     let initial_cbr = 100_000_000; // 10%.
@@ -348,7 +348,13 @@ async fn test_load_prepaid_connection() {
             &admin_signer,
             [
                 ProgramConfiguration::Accountant(accountant_signer.pubkey()),
-                ProgramConfiguration::SolanaValidatorFee(solana_validator_fee),
+                ProgramConfiguration::SolanaValidatorFeeParameters {
+                    base_block_rewards: solana_validator_base_block_rewards_fee,
+                    priority_block_rewards: 0,
+                    inflation_rewards: 0,
+                    jito_tips: 0,
+                    _unused: [0; 32],
+                },
                 ProgramConfiguration::CommunityBurnRateParameters {
                     limit: cbr_limit,
                     dz_epochs_to_increasing: dz_epochs_to_increasing_cbr,

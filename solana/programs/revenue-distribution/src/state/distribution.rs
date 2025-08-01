@@ -6,7 +6,10 @@ use doublezero_program_tools::{
 use solana_hash::Hash;
 use solana_pubkey::Pubkey;
 
-use crate::types::{BurnRate, DoubleZeroEpoch, ValidatorFee};
+use crate::{
+    state::SolanaValidatorFeeParameters,
+    types::{BurnRate, DoubleZeroEpoch},
+};
 
 /// Account representing distribution information for a given DoubleZero epoch.
 ///
@@ -29,10 +32,11 @@ pub struct Distribution {
 
     /// Cache this seed to validate token PDA address.
     pub token_2z_pda_bump_seed: u8,
+    _padding: [u8; 2],
 
     /// Because the validator fee can change between epochs, we will save what it was at the time
     /// this account was created.
-    pub solana_validator_fee: ValidatorFee,
+    pub solana_validator_fee_parameters: SolanaValidatorFeeParameters,
 
     pub solana_validator_payments_merkle_root: Hash,
 
@@ -79,6 +83,6 @@ impl Distribution {
 //
 
 const _: () = assert!(
-    size_of::<Distribution>() == 256,
+    size_of::<Distribution>() == 296,
     "`Distribution` size changed"
 );

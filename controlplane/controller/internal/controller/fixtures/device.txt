@@ -1,0 +1,85 @@
+!
+ip multicast-routing
+!
+router pim sparse-mode
+   ipv4
+      rp address 10.0.0.0 239.0.0.0/24 override
+!
+vrf instance vrf1
+ip routing vrf vrf1
+!
+hardware access-list update default-result permit
+!
+no ip access-list MAIN-CONTROL-PLANE-ACL
+ip access-list MAIN-CONTROL-PLANE-ACL
+   counters per-entry
+   10 permit icmp any any
+   20 permit ip any any tracked
+   30 permit udp any any eq bfd ttl eq 255
+   40 permit udp any any eq bfd-echo ttl eq 254
+   50 permit udp any any eq multihop-bfd micro-bfd sbfd
+   60 permit udp any eq sbfd any eq sbfd-initiator
+   70 permit ospf any any
+   80 permit tcp any any eq ssh telnet www snmp bgp https msdp ldp netconf-ssh gnmi
+   90 permit udp any any eq bootps bootpc snmp rip ntp ldp ptp-event ptp-general
+   100 permit tcp any any eq mlag ttl eq 255
+   110 permit udp any any eq mlag ttl eq 255
+   120 permit vrrp any any
+   130 permit ahp any any
+   140 permit pim any any
+   150 permit igmp any any
+   160 permit tcp any any range 5900 5910
+   170 permit tcp any any range 50000 50100
+   180 permit udp any any range 51000 51100
+   190 permit tcp any any eq 3333
+   200 permit tcp any any eq nat ttl eq 255
+   210 permit tcp any eq bgp any
+   220 permit rsvp any any
+   230 permit tcp any any eq 9340
+   240 permit tcp any any eq 9559
+   250 permit udp any any eq 8503
+   260 permit udp any any eq lsp-ping
+   270 permit udp any eq lsp-ping any
+
+   280 remark Permit TWAMP (UDP 862)
+   290 permit udp any any eq 862
+!
+system control-plane
+   ip access-group MAIN-CONTROL-PLANE-ACL in
+!
+router bgp 65342
+   router-id 14.14.14.14
+   no neighbor 15.15.15.15
+   neighbor 15.15.15.15 remote-as 65342
+   neighbor 15.15.15.15 next-hop-self
+   neighbor 15.15.15.15 update-source Loopback255
+   neighbor 15.15.15.15 description remote-device
+   neighbor 15.15.15.15 send-community
+   address-family ipv4
+   !
+   vrf vrf1
+      rd 65342:1
+      route-target import vpn-ipv4 65342:1
+      route-target export vpn-ipv4 65342:1
+      router-id 7.7.7.7
+!
+ip community-list COMM-ALL_USERS permit 21682:1200
+ip community-list COMM-ALL_MCAST_USERS permit 21682:1300
+!
+no ip access-list SEC-USER-PUB-MCAST-IN
+ip access-list SEC-USER-PUB-MCAST-IN
+   counters per-entry
+   permit icmp any any
+   permit tcp any any eq bgp
+   permit ip any 224.0.0.13/32
+   permit ip any 239.0.0.0/24
+   deny ip any any
+!
+no ip access-list SEC-USER-SUB-MCAST-IN
+ip access-list SEC-USER-SUB-MCAST-IN
+   counters per-entry
+   permit icmp any any
+   permit tcp any any eq bgp
+   permit ip any 224.0.0.13/32
+   deny ip any any
+!

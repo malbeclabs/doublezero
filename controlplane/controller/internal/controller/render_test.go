@@ -1,11 +1,13 @@
 package controller
 
 import (
+	"fmt"
 	"net"
 	"os"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
 func TestRenderConfig(t *testing.T) {
@@ -22,7 +24,8 @@ func TestRenderConfig(t *testing.T) {
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				Device: &Device{
-					PublicIP: net.IP{7, 7, 7, 7},
+					PublicIP:        net.IP{7, 7, 7, 7},
+					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
 					Tunnels: []*Tunnel{
 						{
 							Id:            500,
@@ -53,7 +56,7 @@ func TestRenderConfig(t *testing.T) {
 						},
 					},
 				},
-				UnknownBgpPeers: []net.IP{},
+				UnknownBgpPeers: nil,
 			},
 			Want: "fixtures/unicast.tunnel.txt",
 		},
@@ -64,7 +67,8 @@ func TestRenderConfig(t *testing.T) {
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				Device: &Device{
-					PublicIP: net.IP{7, 7, 7, 7},
+					PublicIP:        net.IP{7, 7, 7, 7},
+					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
 					Tunnels: []*Tunnel{
 						{
 							Id:            500,
@@ -108,7 +112,8 @@ func TestRenderConfig(t *testing.T) {
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				Device: &Device{
-					PublicIP: net.IP{7, 7, 7, 7},
+					PublicIP:        net.IP{7, 7, 7, 7},
+					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
 					Tunnels: []*Tunnel{
 						{
 							Id:            500,
@@ -183,7 +188,8 @@ func TestRenderConfig(t *testing.T) {
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				Device: &Device{
-					PublicIP: net.IP{7, 7, 7, 7},
+					PublicIP:        net.IP{7, 7, 7, 7},
+					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
 					Tunnels: []*Tunnel{
 						{
 							Id:            500,
@@ -270,7 +276,8 @@ func TestRenderConfig(t *testing.T) {
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				Device: &Device{
-					PublicIP: net.IP{7, 7, 7, 7},
+					PublicIP:        net.IP{7, 7, 7, 7},
+					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
 					Tunnels: []*Tunnel{
 						{
 							Id:            500,
@@ -349,6 +356,45 @@ func TestRenderConfig(t *testing.T) {
 			},
 			Want: "fixtures/nohardware.tunnel.txt",
 		},
+		{
+			Name:        "render_base_config_successfully",
+			Description: "render base device config without tunnels",
+			Data: templateData{
+				MulticastGroupBlock:      "239.0.0.0/24",
+				TelemetryTWAMPListenPort: 862,
+				Device: &Device{
+					PublicIP:        net.IP{7, 7, 7, 7},
+					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
+					MgmtVrf:         "default",
+					DnsServers: []net.IP{
+						{8, 8, 8, 8},
+						{8, 8, 4, 4},
+					},
+					NtpServers: []net.IP{
+						{216, 240, 36, 24},  // 0.pool.ntp.org
+						{205, 233, 73, 201}, // 0.pool.ntp.org
+					},
+					Interfaces: []serviceability.Interface{
+						{
+							Version:        serviceability.CurrentInterfaceVersion,
+							Name:           "Loopback255",
+							InterfaceType:  serviceability.InterfaceTypeLoopback,
+							LoopbackType:   serviceability.LoopbackTypeVpnv4,
+							IpNet:          [5]uint8{14, 14, 14, 14, 32},
+							NodeSegmentIdx: 15,
+						},
+					},
+				},
+				Vpnv4BgpPeers: []Vpnv4BgpPeer{
+					{
+						PeerIP:    net.IP{15, 15, 15, 15},
+						PeerName:  "remote-device",
+						SourceInt: "Loopback255",
+					},
+				},
+			},
+			Want: "fixtures/device.txt",
+		},
 	}
 
 	for _, test := range tests {
@@ -362,7 +408,10 @@ func TestRenderConfig(t *testing.T) {
 				t.Fatalf("error reading test fixture %s: %v", test.Want, err)
 			}
 			if diff := cmp.Diff(string(want), got); diff != "" {
-				t.Errorf("renderTunnels mismatch (-want +got): %s\n", diff)
+				t.Errorf("renderTunnels mismatch (-want +got):\n%s", diff)
+				// Print the actual strings for debugging
+				fmt.Printf("\n=== EXPECTED ===\n%s\n=== END EXPECTED ===\n", string(want))
+				fmt.Printf("\n=== ACTUAL ===\n%s\n=== END ACTUAL ===\n", got)
 			}
 		})
 	}

@@ -98,6 +98,7 @@ interface Tunnel502
    no shutdown
 !
 router bgp 65342
+   router-id 14.14.14.14
    no neighbor 169.254.0.1
    neighbor 169.254.0.1 remote-as 65000
    neighbor 169.254.0.1 passive

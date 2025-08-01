@@ -176,6 +176,7 @@ default interface Tunnel562
 default interface Tunnel563
 !
 router bgp 65342
+   router-id 14.14.14.14
    address-family ipv4
    no neighbor 169.254.0.13
    !

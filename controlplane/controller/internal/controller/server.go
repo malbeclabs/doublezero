@@ -31,6 +31,7 @@ type stateCache struct {
 	Config          serviceability.Config
 	Devices         map[string]*Device
 	MulticastGroups map[string]serviceability.MulticastGroup
+	Vpnv4BgpPeers   []Vpnv4BgpPeer
 }
 
 type Controller struct {
@@ -154,7 +155,42 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			continue
 		}
 		devicePubKey := base58.Encode(device.PubKey[:])
-		cache.Devices[devicePubKey] = NewDevice(ip, devicePubKey)
+		d := NewDevice(ip, devicePubKey)
+
+		d.MgmtVrf = device.MgmtVrf
+		d.Interfaces = device.Interfaces
+
+		// Build Vpnv4BgpPeers from device interfaces
+		for _, iface := range device.Interfaces {
+			if iface.InterfaceType == serviceability.InterfaceTypeLoopback &&
+				iface.LoopbackType == serviceability.LoopbackTypeVpnv4 {
+				// Extract IP from IpNet
+				ip := net.IP(iface.IpNet[:4])
+				d.Vpn4vLoopbackIP = ip
+				peer := Vpnv4BgpPeer{
+					PeerIP:    ip,
+					PeerName:  device.Code,
+					SourceInt: iface.Name,
+				}
+				cache.Vpnv4BgpPeers = append(cache.Vpnv4BgpPeers, peer)
+			}
+		}
+
+		if len(device.DnsServers) > 0 {
+			d.DnsServers = make([]net.IP, len(device.DnsServers))
+			for i, dns := range device.DnsServers {
+				d.DnsServers[i] = net.IP(dns[:])
+			}
+		}
+
+		if len(device.NtpServers) > 0 {
+			d.NtpServers = make([]net.IP, len(device.NtpServers))
+			for i, ntp := range device.NtpServers {
+				d.NtpServers[i] = net.IP(ntp[:])
+			}
+		}
+
+		cache.Devices[devicePubKey] = d
 	}
 
 	// Build cache of multicast groups.
@@ -368,6 +404,7 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 	data := templateData{
 		MulticastGroupBlock:      multicastGroupBlock,
 		Device:                   device,
+		Vpnv4BgpPeers:            c.cache.Vpnv4BgpPeers,
 		UnknownBgpPeers:          unknownPeers,
 		NoHardware:               c.noHardware,
 		TelemetryTWAMPListenPort: telemetryconfig.TWAMPListenPort,

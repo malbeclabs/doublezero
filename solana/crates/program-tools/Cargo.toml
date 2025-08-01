@@ -12,9 +12,9 @@ version.workspace = true
 
 [dependencies]
 bincode.workspace = true
-bitmaps.workspace = true
 borsh = { workspace = true, features = ["derive"] }
 bytemuck = { workspace = true, features = ["derive"] }
+ruint.workspace = true
 sha2-const-stable.workspace = true
 solana-account-info.workspace = true
 solana-cpi.workspace = true

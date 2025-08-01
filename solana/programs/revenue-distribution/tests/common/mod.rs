@@ -412,7 +412,11 @@ impl ProgramTestWithOwner {
             .map(|setting| {
                 try_build_instruction(
                     &ID,
-                    ConfigureDistributionAccounts::new(&accountant_signer.pubkey(), dz_epoch),
+                    ConfigureDistributionAccounts::new(
+                        &accountant_signer.pubkey(),
+                        dz_epoch,
+                        Some(&payer_signer.pubkey()),
+                    ),
                     &RevenueDistributionInstructionData::ConfigureDistribution(setting),
                 )
                 .unwrap()
@@ -692,18 +696,17 @@ impl ProgramTestWithOwner {
     pub async fn fetch_distribution(
         &self,
         dz_epoch: DoubleZeroEpoch,
-    ) -> (Pubkey, Distribution, TokenAccount) {
+    ) -> (Pubkey, Distribution, u64, TokenAccount) {
         let distribution_key = Distribution::find_address(dz_epoch).0;
 
-        let distribution_account_data = self
+        let distribution_account_info = self
             .banks_client
             .get_account(distribution_key)
             .await
             .unwrap()
-            .unwrap()
-            .data;
+            .unwrap();
 
-        let distribution = *checked_from_bytes_with_discriminator(&distribution_account_data)
+        let distribution = *checked_from_bytes_with_discriminator(&distribution_account_info.data)
             .unwrap()
             .0;
 
@@ -718,7 +721,12 @@ impl ProgramTestWithOwner {
 
         let token_pda = TokenAccount::unpack(&distribution_2z_token_pda_data).unwrap();
 
-        (distribution_key, distribution, token_pda)
+        (
+            distribution_key,
+            distribution,
+            distribution_account_info.lamports,
+            token_pda,
+        )
     }
 
     pub async fn fetch_prepaid_connection(&self, user_key: &Pubkey) -> (Pubkey, PrepaidConnection) {

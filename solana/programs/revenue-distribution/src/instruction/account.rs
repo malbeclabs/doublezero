@@ -1,5 +1,6 @@
 use solana_instruction::AccountMeta;
 use solana_pubkey::Pubkey;
+use solana_system_interface::program as system_program;
 
 use crate::{
     state::{
@@ -43,7 +44,7 @@ impl From<InitializeProgramAccounts> for Vec<AccountMeta> {
             AccountMeta::new(reserve_2z_key, false),
             AccountMeta::new_readonly(DOUBLEZERO_MINT_KEY, false),
             AccountMeta::new_readonly(spl_token::ID, false),
-            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            AccountMeta::new_readonly(system_program::ID, false),
         ]
     }
 }
@@ -143,7 +144,7 @@ impl From<InitializeJournalAccounts> for Vec<AccountMeta> {
             AccountMeta::new(journal_2z_token_pda_key, false),
             AccountMeta::new_readonly(DOUBLEZERO_MINT_KEY, false),
             AccountMeta::new_readonly(spl_token::ID, false),
-            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            AccountMeta::new_readonly(system_program::ID, false),
         ]
     }
 }
@@ -231,24 +232,30 @@ impl From<InitializeDistributionAccounts> for Vec<AccountMeta> {
             AccountMeta::new_readonly(spl_token::ID, false),
             AccountMeta::new(journal_key, false),
             AccountMeta::new(journal_2z_token_pda_key, false),
-            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            AccountMeta::new_readonly(system_program::ID, false),
         ]
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfigureDistributionAccounts {
+    pub distribution_key: Pubkey,
     pub program_config_key: Pubkey,
     pub accountant_key: Pubkey,
-    pub distribution_key: Pubkey,
+    pub payer_key: Option<Pubkey>,
 }
 
 impl ConfigureDistributionAccounts {
-    pub fn new(accountant_key: &Pubkey, dz_epoch: DoubleZeroEpoch) -> Self {
+    pub fn new(
+        accountant_key: &Pubkey,
+        dz_epoch: DoubleZeroEpoch,
+        payer_key: Option<&Pubkey>,
+    ) -> Self {
         Self {
+            distribution_key: Distribution::find_address(dz_epoch).0,
             program_config_key: ProgramConfig::find_address().0,
             accountant_key: *accountant_key,
-            distribution_key: Distribution::find_address(dz_epoch).0,
+            payer_key: payer_key.copied(),
         }
     }
 }
@@ -256,16 +263,24 @@ impl ConfigureDistributionAccounts {
 impl From<ConfigureDistributionAccounts> for Vec<AccountMeta> {
     fn from(accounts: ConfigureDistributionAccounts) -> Self {
         let ConfigureDistributionAccounts {
+            distribution_key,
             program_config_key,
             accountant_key,
-            distribution_key,
+            payer_key,
         } = accounts;
 
-        vec![
+        let mut accounts = vec![
+            AccountMeta::new(distribution_key, false),
             AccountMeta::new_readonly(program_config_key, false),
             AccountMeta::new_readonly(accountant_key, true),
-            AccountMeta::new(distribution_key, false),
-        ]
+        ];
+
+        if let Some(payer_key) = payer_key {
+            accounts.push(AccountMeta::new(payer_key, true));
+            accounts.push(AccountMeta::new_readonly(system_program::ID, false));
+        }
+
+        accounts
     }
 }
 
@@ -323,7 +338,7 @@ impl From<InitializePrepaidConnectionAccounts> for Vec<AccountMeta> {
             AccountMeta::new_readonly(spl_token::ID, false),
             AccountMeta::new(payer_key, true),
             AccountMeta::new(new_prepaid_connection_key, false),
-            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            AccountMeta::new_readonly(system_program::ID, false),
         ]
     }
 }
@@ -457,7 +472,7 @@ impl From<InitializeContributorRewardsAccounts> for Vec<AccountMeta> {
             AccountMeta::new_readonly(contributor_manager_key, true),
             AccountMeta::new(payer_key, true),
             AccountMeta::new(new_contributor_rewards_key, false),
-            AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            AccountMeta::new_readonly(system_program::ID, false),
         ]
     }
 }

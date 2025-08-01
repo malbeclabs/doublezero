@@ -1,6 +1,6 @@
 use bytemuck::{Pod, Zeroable};
 use doublezero_program_tools::{
-    types::{Flags, FlagsBitmap, StorageGap},
+    types::{Flags, StorageGap},
     Discriminator, PrecomputedDiscriminator,
 };
 use solana_pubkey::Pubkey;
@@ -32,18 +32,11 @@ impl ProgramConfig {
         Pubkey::find_program_address(&[Self::SEED_PREFIX], &crate::ID)
     }
 
-    #[inline]
-    pub fn flags_bitmap(&self) -> FlagsBitmap {
-        FlagsBitmap::from_value(self.flags)
-    }
-
     pub fn is_paused(&self) -> bool {
-        self.flags_bitmap().get(Self::FLAG_IS_PAUSED_BIT)
+        self.flags.bit(Self::FLAG_IS_PAUSED_BIT)
     }
 
     pub fn set_is_paused(&mut self, should_pause: bool) {
-        let mut flags_bitmap = self.flags_bitmap();
-        flags_bitmap.set(Self::FLAG_IS_PAUSED_BIT, should_pause);
-        self.flags = flags_bitmap.into_value();
+        self.flags.set_bit(Self::FLAG_IS_PAUSED_BIT, should_pause);
     }
 }

@@ -21,8 +21,8 @@ async fn test_initialize_distribution() {
 
     let admin_signer = Keypair::new();
 
-    let accountant_signer = Keypair::new();
-    let solana_validator_base_block_rewards_fee = 500; // 5%
+    let payments_accountant_signer = Keypair::new();
+    let solana_validator_base_block_rewards_fee = 500; // 5%.
 
     // Community burn rate.
     let initial_cbr = 100_000_000; // 10%.
@@ -43,7 +43,7 @@ async fn test_initialize_distribution() {
         .configure_program(
             &admin_signer,
             [
-                ProgramConfiguration::Accountant(accountant_signer.pubkey()),
+                ProgramConfiguration::PaymentsAccountant(payments_accountant_signer.pubkey()),
                 ProgramConfiguration::SolanaValidatorFeeParameters {
                     base_block_rewards: solana_validator_base_block_rewards_fee,
                     priority_block_rewards: 0,
@@ -61,10 +61,8 @@ async fn test_initialize_distribution() {
             ],
         )
         .await
-        .unwrap();
-
-    test_setup
-        .initialize_distribution(&accountant_signer)
+        .unwrap()
+        .initialize_distribution(&payments_accountant_signer)
         .await
         .unwrap();
 
@@ -85,7 +83,7 @@ async fn test_initialize_distribution() {
     );
 
     let dz_epoch = DoubleZeroEpoch::new(0);
-    let (distribution_key, distribution, distribution_custody) =
+    let (distribution_key, distribution, _, distribution_custody) =
         test_setup.fetch_distribution(dz_epoch).await;
 
     let mut expected_distribution = Distribution::default();
@@ -108,7 +106,7 @@ async fn test_initialize_distribution() {
         state::find_2z_token_pda_address(&program_config_key).1;
     expected_program_config.admin_key = admin_signer.pubkey();
     expected_program_config.next_dz_epoch = DoubleZeroEpoch::new(1);
-    expected_program_config.accountant_key = accountant_signer.pubkey();
+    expected_program_config.payments_accountant_key = payments_accountant_signer.pubkey();
 
     let expected_distribution_params = &mut expected_program_config.distribution_parameters;
     expected_distribution_params
@@ -120,7 +118,7 @@ async fn test_initialize_distribution() {
     // Create another distribution.
 
     test_setup
-        .initialize_distribution(&accountant_signer)
+        .initialize_distribution(&payments_accountant_signer)
         .await
         .unwrap();
 
@@ -133,7 +131,7 @@ async fn test_initialize_distribution() {
     );
 
     let dz_epoch = DoubleZeroEpoch::new(1);
-    let (distribution_key, distribution, distribution_custody) =
+    let (distribution_key, distribution, _, distribution_custody) =
         test_setup.fetch_distribution(dz_epoch).await;
 
     let mut expected_distribution = Distribution::default();
@@ -156,7 +154,7 @@ async fn test_initialize_distribution() {
         state::find_2z_token_pda_address(&program_config_key).1;
     expected_program_config.admin_key = admin_signer.pubkey();
     expected_program_config.next_dz_epoch = DoubleZeroEpoch::new(2);
-    expected_program_config.accountant_key = accountant_signer.pubkey();
+    expected_program_config.payments_accountant_key = payments_accountant_signer.pubkey();
 
     let expected_distribution_params = &mut expected_program_config.distribution_parameters;
     expected_distribution_params

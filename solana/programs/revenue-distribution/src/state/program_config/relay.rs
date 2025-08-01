@@ -10,3 +10,9 @@ pub struct RelayParameters {
 
     _storage_gap: StorageGap<1>,
 }
+
+impl RelayParameters {
+    /// The base transaction cost per signature is 5,000 lamports, so we set the minimum to one
+    /// more than that.
+    pub const MIN_LAMPORTS: u32 = 5_001;
+}

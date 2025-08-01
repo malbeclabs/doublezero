@@ -1,8 +1,7 @@
-use bitmaps::Bitmap;
 use bytemuck::{Pod, Zeroable};
+use ruint::aliases::U64;
 
-pub type Flags = u64;
-pub type FlagsBitmap = Bitmap<{ Flags::BITS as usize }>;
+pub type Flags = U64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]

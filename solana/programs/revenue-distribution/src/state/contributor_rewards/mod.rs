@@ -6,7 +6,7 @@ pub use recipient_shares::*;
 
 use bytemuck::{Pod, Zeroable};
 use doublezero_program_tools::{
-    types::{Flags, FlagsBitmap, StorageGap},
+    types::{Flags, StorageGap},
     {Discriminator, PrecomputedDiscriminator},
 };
 use solana_pubkey::Pubkey;
@@ -35,11 +35,6 @@ impl ContributorRewards {
 
     pub fn find_address(service_key: &Pubkey) -> (Pubkey, u8) {
         Pubkey::find_program_address(&[Self::SEED_PREFIX, service_key.as_ref()], &crate::ID)
-    }
-
-    #[inline]
-    pub fn flags_bitmap(&self) -> FlagsBitmap {
-        FlagsBitmap::from_value(self.flags)
     }
 }
 

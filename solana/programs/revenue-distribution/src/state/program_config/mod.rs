@@ -10,7 +10,7 @@ pub use relay::*;
 
 use bytemuck::{Pod, Zeroable};
 use doublezero_program_tools::{
-    types::{Flags, FlagsBitmap, StorageGap},
+    types::{Flags, StorageGap},
     Discriminator, PrecomputedDiscriminator,
 };
 use solana_pubkey::Pubkey;
@@ -33,9 +33,11 @@ pub struct ProgramConfig {
 
     pub admin_key: Pubkey,
 
-    /// This authority is the only authority that can post data relevant to fee calculations and
-    /// contributor rewards.
-    pub accountant_key: Pubkey,
+    /// This authority determines the payments due for distributions.
+    pub payments_accountant_key: Pubkey,
+
+    /// This authority determines the rewards for contributors.
+    pub rewards_accountant_key: Pubkey,
 
     /// This authority is the only authority that can grant access to the DoubleZero Ledger network.
     pub contributor_manager_key: Pubkey,
@@ -68,19 +70,12 @@ impl ProgramConfig {
         Pubkey::find_program_address(&[Self::SEED_PREFIX], &crate::ID)
     }
 
-    #[inline]
-    pub fn flags_bitmap(&self) -> FlagsBitmap {
-        FlagsBitmap::from_value(self.flags)
-    }
-
     pub fn is_paused(&self) -> bool {
-        self.flags_bitmap().get(Self::FLAG_IS_PAUSED_BIT)
+        self.flags.bit(Self::FLAG_IS_PAUSED_BIT)
     }
 
     pub fn set_is_paused(&mut self, should_pause: bool) {
-        let mut flags_bitmap = self.flags_bitmap();
-        flags_bitmap.set(Self::FLAG_IS_PAUSED_BIT, should_pause);
-        self.flags = flags_bitmap.into_value();
+        self.flags.set_bit(Self::FLAG_IS_PAUSED_BIT, should_pause);
     }
 
     pub fn checked_solana_validator_fee_parameters(&self) -> Option<SolanaValidatorFeeParameters> {
@@ -92,11 +87,21 @@ impl ProgramConfig {
             Some(params)
         }
     }
+
+    pub fn checked_relay_contributor_reward_claim_lamports(&self) -> Option<u32> {
+        let lamports = self.relay_parameters.contributor_reward_claim_lamports;
+
+        if lamports == 0 {
+            None
+        } else {
+            Some(lamports)
+        }
+    }
 }
 
 //
 
 const _: () = assert!(
-    size_of::<ProgramConfig>() == 1_032,
+    size_of::<ProgramConfig>() == 1_064,
     "`ProgramConfig` size changed"
 );

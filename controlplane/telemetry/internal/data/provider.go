@@ -10,6 +10,7 @@ import (
 	"github.com/alitto/pond/v2"
 	"github.com/gagliardetto/solana-go"
 	"github.com/jellydator/ttlcache/v3"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/epoch"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 )
@@ -49,6 +50,7 @@ type ProviderConfig struct {
 	Logger               *slog.Logger
 	ServiceabilityClient ServiceabilityClient
 	TelemetryClient      TelemetryClient
+	EpochFinder          epoch.Finder
 
 	CircuitsCacheTTL               time.Duration
 	HistoricEpochLatenciesCacheTTL time.Duration
@@ -65,6 +67,9 @@ func (c *ProviderConfig) Validate() error {
 	}
 	if c.TelemetryClient == nil {
 		return errors.New("telemetry client is required")
+	}
+	if c.EpochFinder == nil {
+		return errors.New("epoch finder is required")
 	}
 	if c.CircuitsCacheTTL == 0 {
 		c.CircuitsCacheTTL = defaultCircuitsCacheTTL

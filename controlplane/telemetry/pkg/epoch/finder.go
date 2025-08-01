@@ -140,7 +140,7 @@ func (e *epochFinder) getSlotWithRetry(ctx context.Context) (uint64, error) {
 		return slot, nil
 	}, backoff.WithBackOff(backoff.NewExponentialBackOff()))
 	if err != nil {
-		return 0, fmt.Errorf("failed to get current epoch: %w", err)
+		return 0, fmt.Errorf("failed to get current slot: %w", err)
 	}
 	return slot, nil
 }

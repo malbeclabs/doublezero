@@ -15,6 +15,7 @@ import (
 	"github.com/lmittmann/tint"
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/epoch"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 )
@@ -79,9 +80,15 @@ func newProvider(log *slog.Logger, env string) (data.Provider, error) {
 
 	rpcClient := solanarpc.New(networkConfig.LedgerRPCURL)
 
+	epochFinder, err := epoch.NewFinder(log, rpcClient)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create epoch finder: %w", err)
+	}
+
 	return data.NewProvider(&data.ProviderConfig{
 		Logger:               log,
 		ServiceabilityClient: serviceability.New(rpcClient, networkConfig.ServiceabilityProgramID),
 		TelemetryClient:      telemetry.New(log, rpcClient, nil, networkConfig.TelemetryProgramID),
+		EpochFinder:          epochFinder,
 	})
 }

@@ -35,6 +35,9 @@ jobs:
     secrets: inherit
   qa:
     uses: ./.github/workflows/qa.yml
+    needs:
+      - release
+      - smartcontract
   notify:
     name: Post failure to slack
     runs-on: ubuntu-24.04-16c-64gb

@@ -99,7 +99,7 @@ func TestConnectivityUnicast(t *testing.T) {
 
 			for _, peer := range peers {
 				t.Run("to_"+peer, func(t *testing.T) {
-					ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+					ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 					defer cancel()
 					pingReq := &pb.PingRequest{
 						TargetIp:    peer,

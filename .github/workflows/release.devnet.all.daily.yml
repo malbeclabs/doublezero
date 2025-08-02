@@ -33,12 +33,15 @@ jobs:
   smartcontract:
     uses: ./.github/workflows/release.devnet.smartcontract.daily.yml
     secrets: inherit
+  qa:
+    uses: ./.github/workflows/qa.yml
   notify:
     name: Post failure to slack
     runs-on: ubuntu-24.04-16c-64gb
     needs:
       - release
       - smartcontract
+      - qa
     if: failure()
     steps:
       - uses: malbeclabs/action-slack-notify@v2

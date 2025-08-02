@@ -1,0 +1,10 @@
+[Unit]
+Description=DoubleZero QA Agent
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/doublezero-qaagent -server-addr 0.0.0.0:7009
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
+
+[Install]
+WantedBy=multi-user.target

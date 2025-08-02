@@ -1,0 +1,95 @@
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+
+package qa;
+
+option go_package = "github.com/malbeclabs/doublezero/e2e/proto/qa";
+
+service QAAgentService {
+  rpc ConnectUnicast(ConnectUnicastRequest) returns (Result);
+  rpc ConnectMulticast(ConnectMulticastRequest) returns (Result);
+  rpc GetStatus(google.protobuf.Empty) returns (StatusResponse);
+  rpc Disconnect(google.protobuf.Empty) returns (Result);
+  rpc Ping(PingRequest) returns (PingResult);
+  rpc MulticastJoin(MulticastJoinRequest) returns (MulticastJoinResult);
+  rpc MulticastLeave(google.protobuf.Empty) returns (google.protobuf.Empty);
+  rpc MulticastReport(MulticastReportRequest) returns (MulticastReportResult);
+}
+
+message ConnectUnicastRequest {
+  enum UnicastMode {
+    UNSPECIFIED = 0;
+    IBRL = 1;
+    ALLOCATE_ADDR = 2;
+  }
+
+  UnicastMode mode = 1;
+  string client_ip = 2;
+}
+
+message ConnectMulticastRequest {
+  enum MulticastMode {
+    UNSPECIFIED = 0;
+    PUBLISHER = 1;
+    SUBSCRIBER = 2;
+  }
+
+  MulticastMode mode = 1;
+  string group = 2;
+}
+
+message Result {
+  bool success = 1;
+  int32 return_code = 2;
+  repeated string output = 3;
+}
+
+message Status {
+  string tunnel_name = 1;
+  string double_zero_ip = 2;
+  string session_status = 3;
+  string user_type = 4;
+
+}
+
+message StatusResponse {
+  repeated Status status = 1;
+}
+
+message PingRequest {
+  string target_ip = 1;
+  string source_ip = 2;
+  string source_iface = 3;
+}
+
+message PingResult {
+  uint32 packets_sent = 1;
+  uint32 packets_received = 2;
+}
+
+message MulticastGroup {
+  string group = 1;
+  uint32 port = 2;
+  string iface = 3;
+}
+
+message MulticastJoinRequest {
+  repeated MulticastGroup groups = 1;
+}
+
+message MulticastJoinResult {}
+
+message MulticastLeaveResult {}
+
+message MulticastReportRequest {
+  repeated MulticastGroup groups = 1;
+}
+
+message MulticastReport {
+  uint64 packet_count = 1;
+}
+
+message MulticastReportResult {
+  map<string, MulticastReport> reports = 1;
+}

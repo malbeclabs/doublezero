@@ -59,3 +59,8 @@ buildx-solana: .setup-multiplatform
 .PHONY: buildx-solana-push
 buildx-solana-push: .setup-multiplatform
 	docker buildx build --platform linux/amd64,linux/arm64 -f docker/solana/Dockerfile -t $(TAG_PREFIX)/solana:latest --push .
+
+.PHONY: proto
+proto:
+	docker pull namely/protoc-all
+	docker run -v $(PWD)/proto/qa:/defs namely/protoc-all --go-source-relative -f agent.proto -l go

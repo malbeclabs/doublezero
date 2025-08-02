@@ -19,9 +19,10 @@ const maxUdpPayload = 1500
 // MulticastListener is a simple multicast monitoring utility that allows
 // joining multicast groups and recording per-group statistics.
 type MulticastListener struct {
-	mu           sync.RWMutex
+	mu           sync.Mutex
 	packetCounts map[string]uint64
 	wg           sync.WaitGroup
+	cancels      []context.CancelFunc
 }
 
 func NewMulticastListener() *MulticastListener {
@@ -31,8 +32,8 @@ func NewMulticastListener() *MulticastListener {
 }
 
 func (m *MulticastListener) GetStatistics(group net.IP) uint64 {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return m.packetCounts[group.String()]
 }
 
@@ -87,6 +88,11 @@ func (m *MulticastListener) JoinGroup(ctx context.Context, group net.IP, port st
 		return fmt.Errorf("failed to set control message: %v", err)
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
+	m.mu.Lock()
+	m.cancels = append(m.cancels, cancel)
+	m.mu.Unlock()
+
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
@@ -106,7 +112,6 @@ func (m *MulticastListener) JoinGroup(ctx context.Context, group net.IP, port st
 					return
 				}
 				log.Printf("Failed to read from connection for group %s on %s: %v", group.String(), ifName, err)
-				return
 			}
 			m.mu.Lock()
 			m.packetCounts[cm.Dst.String()]++
@@ -119,5 +124,12 @@ func (m *MulticastListener) JoinGroup(ctx context.Context, group net.IP, port st
 }
 
 func (m *MulticastListener) Stop() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, cancel := range m.cancels {
+		cancel()
+	}
+	m.cancels = nil
+	m.packetCounts = make(map[string]uint64)
 	m.wg.Wait()
 }

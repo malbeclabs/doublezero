@@ -1,0 +1,53 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema-pro.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 2
+
+project_name: doublezero-qaagent
+
+monorepo:
+  tag_prefix: qaagent/
+  dir: e2e/
+
+builds:
+  - id: doublezero-qaagent
+    main: cmd/qaagent/main.go
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      -X main.version={{.Version}} -X main.commit={{.ShortCommit}} -X main.date={{.Date}}
+    goos:
+      - linux
+    goarch:
+      - amd64
+
+nfpms:
+  - id: doublezero-qaagent
+    package_name: doublezero-qaagent
+    ids: [doublezero-qaagent]
+    vendor: doublezero
+    homepage: doublezero.xyz
+    maintainer: dev <dev@malbeclabs.com>
+    description: |-
+      DoubleZero QA Agent
+    license: Apache 2.0
+    formats:
+      - deb
+    bindir: /usr/bin
+    release: "1"
+    section: default
+    contents:
+      - src: e2e/cmd/qaagent/doublezero-qaagent.service
+        dst: /etc/systemd/system/doublezero-qaagent.service
+    overrides:
+      deb:
+          scripts:
+            postinstall: e2e/packaging/scripts/qaagent/deb/postinstall.sh
+            preremove: e2e/packaging/scripts/qaagent/deb/preremove.sh
+            postremove: e2e/packaging/scripts/qaagent/deb/postremove.sh
+
+announce:
+  slack:
+    enabled: true
+    message_template: "DoubleZero QA Agent {{.Tag}} has been released! Check it out at {{ .ReleaseURL }}"
+    channel: "#bots"

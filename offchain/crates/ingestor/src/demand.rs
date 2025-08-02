@@ -1,15 +1,17 @@
 use crate::{fetcher::Fetcher, types::FetchData};
 use anyhow::{Result, anyhow, bail};
+use backon::Retryable;
 use doublezero_serviceability::state::user::User as DZUser;
 use network_shapley::types::{Demand, Demands};
 use rayon::prelude::*;
+use solana_client::client_error::ClientError as SolanaClientError;
 use solana_sdk::system_program::ID as SystemProgramID;
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 use tracing::info;
 
 /// Statistics for validators in a city
 #[derive(Debug, Clone)]
-pub struct CityStats {
+pub struct CityStat {
     /// Number of validators in this city
     pub validator_count: usize,
     /// Sum of all validator stake proxies (leader schedule lengths) in this city
@@ -25,8 +27,20 @@ pub struct CityStats {
 /// 4. Generates demand entries for all city-to-city traffic pairs
 pub async fn build(fetcher: &Fetcher, fetch_data: &FetchData) -> Result<Demands> {
     // Get epoch info and schedule upfront
-    let epoch_info = fetcher.solana_client.get_epoch_info().await?;
-    let epoch_schedule = fetcher.solana_client.get_epoch_schedule().await?;
+    let epoch_info = (|| async { fetcher.solana_client.get_epoch_info().await })
+        .retry(&fetcher.settings.backoff())
+        .notify(|err: &SolanaClientError, dur: Duration| {
+            info!("retrying error: {:?} with sleeping {:?}", err, dur)
+        })
+        .await?;
+
+    let epoch_schedule = (|| async { fetcher.solana_client.get_epoch_schedule().await })
+        .retry(&fetcher.settings.backoff())
+        .notify(|err: &SolanaClientError, dur: Duration| {
+            info!("retrying error: {:?} with sleeping {:?}", err, dur)
+        })
+        .await?;
+
     let prev_epoch = epoch_info.epoch.saturating_sub(1);
     let first_slot_of_epoch = epoch_schedule.get_first_slot_in_epoch(prev_epoch);
 
@@ -70,9 +84,16 @@ pub fn build_with_schedule(
 
     // Process leaders and build city statistics
     let city_stats = build_city_stats(fetch_data, &validator_to_user, leader_schedule)?;
+    if city_stats.is_empty() {
+        bail!("Could not build any city_stats!")
+    }
 
     // Generate demands
     let demands: Demands = generate(&city_stats);
+    if demands.is_empty() {
+        bail!("Could not build any demands!")
+    }
+
     Ok(demands)
 }
 
@@ -81,48 +102,34 @@ pub fn build_city_stats(
     fetch_data: &FetchData,
     validator_to_user: &HashMap<String, &DZUser>,
     leader_schedule: HashMap<String, usize>,
-) -> Result<HashMap<String, CityStats>> {
-    let mut city_stats: HashMap<String, CityStats> = HashMap::new();
-    let mut skipped_validators = Vec::new();
+) -> Result<HashMap<String, CityStat>> {
+    let mut city_stats: HashMap<String, CityStat> = HashMap::new();
 
     // Process each leader
     for (validator_pubkey, stake_proxy) in leader_schedule {
-        if let Some(user) = validator_to_user.get(&validator_pubkey) {
-            // Try to get device and location
-            let device = fetch_data.dz_serviceability.devices.get(&user.device_pk);
-            let location =
-                device.and_then(|d| fetch_data.dz_serviceability.locations.get(&d.location_pk));
-
-            match (device, location) {
-                (Some(_), Some(loc)) => {
-                    // Update city stats
-                    let stats = city_stats.entry(loc.code.to_string()).or_insert(CityStats {
-                        validator_count: 0,
-                        total_stake_proxy: 0,
-                    });
-                    stats.validator_count += 1;
-                    stats.total_stake_proxy += stake_proxy;
-                }
-                _ => {
-                    skipped_validators.push(validator_pubkey.to_string());
-                }
-            }
+        if let Some(user) = validator_to_user.get(&validator_pubkey)
+            && let Some(device) = fetch_data.dz_serviceability.devices.get(&user.device_pk)
+            && let Some(location) = fetch_data
+                .dz_serviceability
+                .locations
+                .get(&device.location_pk)
+        {
+            let stats = city_stats
+                .entry(location.code.to_string())
+                .or_insert(CityStat {
+                    validator_count: 0,
+                    total_stake_proxy: 0,
+                });
+            stats.validator_count += 1;
+            stats.total_stake_proxy += stake_proxy;
         }
-    }
-
-    if !skipped_validators.is_empty() {
-        info!(
-            "Skipped {} validators due to missing device/location data: {:?}",
-            skipped_validators.len(),
-            skipped_validators
-        );
     }
 
     Ok(city_stats)
 }
 
 /// Generates demand entries for cities
-pub fn generate(city_stats: &HashMap<String, CityStats>) -> Demands {
+pub fn generate(city_stats: &HashMap<String, CityStat>) -> Demands {
     // TODO: move this to some constants.rs and/or make configurable
     const TRAFFIC: f64 = 0.05;
     const DEMAND_TYPE: u32 = 1;
@@ -130,7 +137,7 @@ pub fn generate(city_stats: &HashMap<String, CityStats>) -> Demands {
     const SLOTS_IN_EPOCH: f64 = 432000.0;
 
     // Filter cities with validators once
-    let cities_with_validators: Vec<(&String, &CityStats)> = city_stats
+    let cities_with_validators: Vec<(&String, &CityStat)> = city_stats
         .iter()
         .filter(|(_, stats)| stats.validator_count > 0)
         .collect();

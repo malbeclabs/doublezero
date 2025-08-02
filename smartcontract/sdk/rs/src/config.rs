@@ -128,9 +128,14 @@ pub fn convert_url_to_ws(url: &str) -> eyre::Result<String> {
     Ok(url.to_string())
 }
 
-pub fn create_new_pubkey_user(force: bool) -> eyre::Result<Keypair> {
-    let (_, client_cfg) = read_doublezero_config()?;
-    let file_path = client_cfg.keypair_path.clone();
+pub fn create_new_pubkey_user(force: bool, outfile: Option<PathBuf>) -> eyre::Result<Keypair> {
+    let file_path = match outfile {
+        Some(path) => path,
+        None => {
+            let (_, client_cfg) = read_doublezero_config()?;
+            client_cfg.keypair_path
+        }
+    };
 
     let dir_path = Path::new(&file_path)
         .parent()
@@ -169,5 +174,124 @@ pub fn get_doublezero_pubkey() -> eyre::Result<Keypair> {
             let key = Keypair::from_bytes(&key_bytes)?;
             Ok(key)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+    use solana_sdk::signature::Signer;
+    use std::{env, fs};
+    use tempfile::TempDir;
+
+    #[test]
+    #[serial]
+    fn test_create_new_pubkey_user_creates_keypair_and_writes_file() {
+        let tmp = TempDir::new().unwrap();
+        let keypair_path = tmp.path().join("id.json");
+        let config_path = tmp.path().join("config.yml");
+
+        // Needs to be in a serial test.
+        env::set_var("DOUBLEZERO_CONFIG_FILE", &config_path);
+
+        let cfg = ClientConfig {
+            json_rpc_url: "http://localhost:8899".into(),
+            websocket_url: None,
+            keypair_path: keypair_path.clone(),
+            program_id: None,
+            address_labels: Default::default(),
+        };
+
+        write_doublezero_config(&cfg).unwrap();
+
+        let key = create_new_pubkey_user(false, None).unwrap();
+        assert!(keypair_path.exists());
+
+        let contents = fs::read_to_string(&keypair_path).unwrap();
+        let bytes: Vec<u8> = serde_json::from_str(&contents).unwrap();
+        let deserialized = Keypair::from_bytes(&bytes).unwrap();
+        assert_eq!(deserialized.pubkey(), key.pubkey());
+    }
+
+    #[test]
+    #[serial]
+    fn test_create_new_pubkey_user_fails_if_exists_without_force() {
+        let tmp = TempDir::new().unwrap();
+        let keypair_path = tmp.path().join("id.json");
+        let config_path = tmp.path().join("config.yml");
+
+        // Needs to be in a serial test.
+        env::set_var("DOUBLEZERO_CONFIG_FILE", &config_path);
+
+        let cfg = ClientConfig {
+            json_rpc_url: "http://localhost:8899".into(),
+            websocket_url: None,
+            keypair_path: keypair_path.clone(),
+            program_id: None,
+            address_labels: Default::default(),
+        };
+
+        write_doublezero_config(&cfg).unwrap();
+        let _ = create_new_pubkey_user(false, None).unwrap();
+
+        let err = create_new_pubkey_user(false, None).unwrap_err();
+        assert!(err.to_string().contains("already exists"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_create_new_pubkey_user_overwrites_with_force() {
+        let tmp = TempDir::new().unwrap();
+        let keypair_path = tmp.path().join("id.json");
+        let config_path = tmp.path().join("config.yml");
+
+        // Needs to be in a serial test.
+        env::set_var("DOUBLEZERO_CONFIG_FILE", &config_path);
+
+        let cfg = ClientConfig {
+            json_rpc_url: "http://localhost:8899".into(),
+            websocket_url: None,
+            keypair_path: keypair_path.clone(),
+            program_id: None,
+            address_labels: Default::default(),
+        };
+
+        write_doublezero_config(&cfg).unwrap();
+        let first = create_new_pubkey_user(false, None).unwrap();
+        let second = create_new_pubkey_user(true, None).unwrap();
+        assert_ne!(first.pubkey(), second.pubkey());
+    }
+
+    #[test]
+    fn test_create_new_pubkey_user_with_explicit_outfile() {
+        let tmp = TempDir::new().unwrap();
+        let outfile_path = tmp.path().join("my-keypair.json");
+
+        let result = create_new_pubkey_user(false, Some(outfile_path.clone()));
+        assert!(result.is_ok());
+
+        let key = result.unwrap();
+        assert!(outfile_path.exists());
+
+        let contents = fs::read_to_string(&outfile_path).unwrap();
+        let bytes: Vec<u8> = serde_json::from_str(&contents).unwrap();
+        let restored = Keypair::from_bytes(&bytes).unwrap();
+        assert_eq!(key.pubkey(), restored.pubkey());
+    }
+
+    #[test]
+    fn test_create_new_pubkey_user_outfile_exists_fails_without_force() {
+        let tmp = TempDir::new().unwrap();
+        let outfile_path = tmp.path().join("my-keypair.json");
+
+        let first = create_new_pubkey_user(false, Some(outfile_path.clone())).unwrap();
+        assert!(outfile_path.exists());
+
+        let err = create_new_pubkey_user(false, Some(outfile_path.clone())).unwrap_err();
+        assert!(err.to_string().contains("already exists"));
+
+        let second = create_new_pubkey_user(true, Some(outfile_path.clone())).unwrap();
+        assert_ne!(first.pubkey(), second.pubkey());
     }
 }

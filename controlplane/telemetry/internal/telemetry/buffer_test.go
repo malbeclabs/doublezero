@@ -104,4 +104,23 @@ func TestAgentTelemetry_Buffer_AccountsBuffer(t *testing.T) {
 		k := newTestAccountKey()
 		require.False(t, buf.Has(k))
 	})
+
+	t.Run("Recycle does nothing if account key does not exist", func(t *testing.T) {
+		buf := telemetry.NewAccountsBuffer()
+		k := newTestAccountKey()
+		buf.Recycle(k, []telemetry.Sample{})
+		require.False(t, buf.Has(k))
+	})
+
+	t.Run("CopyAndReset returns nil if key not found", func(t *testing.T) {
+		buf := telemetry.NewAccountsBuffer()
+		out := buf.CopyAndReset(newTestAccountKey())
+		require.Nil(t, out)
+	})
+
+	t.Run("Read returns nil if key not found", func(t *testing.T) {
+		buf := telemetry.NewAccountsBuffer()
+		out := buf.Read(newTestAccountKey())
+		require.Nil(t, out)
+	})
 }

@@ -586,4 +586,94 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		assert.Equal(t, 5, epochAttempts, "should retry GetCurrentEpoch 5 times before giving up")
 		assert.False(t, submissionCalled, "should skip submission if GetCurrentEpoch fails")
 	})
+
+	t.Run("drops_samples_if_account_full", func(t *testing.T) {
+		t.Parallel()
+
+		log := log.With("test", t.Name())
+
+		key := newTestAccountKey()
+		sample := telemetry.Sample{
+			Timestamp: time.Now(),
+			RTT:       30 * time.Microsecond,
+			Loss:      false,
+		}
+
+		// This client always returns ErrSamplesAccountFull
+		telemetryProgram := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(ctx context.Context, config sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				return solana.Signature{}, nil, sdktelemetry.ErrSamplesAccountFull
+			},
+		}
+
+		buffer := telemetry.NewAccountsBuffer()
+		buffer.Add(key, sample)
+
+		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+			Interval:      time.Hour,
+			Buffer:        buffer,
+			ProgramClient: telemetryProgram,
+			MaxAttempts:   3,
+			BackoffFunc:   func(_ int) time.Duration { return 0 },
+			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+				return 100, nil
+			},
+		})
+		require.NoError(t, err)
+
+		submitter.Tick(context.Background())
+
+		samplesAfter := buffer.CopyAndReset(key)
+		assert.Len(t, samplesAfter, 0, "samples should be dropped on account full")
+	})
+
+	t.Run("initializes_then_drops_samples_if_account_full", func(t *testing.T) {
+		t.Parallel()
+
+		log := log.With("test", t.Name())
+
+		key := newTestAccountKey()
+		sample := telemetry.Sample{
+			Timestamp: time.Now(),
+			RTT:       40 * time.Microsecond,
+			Loss:      false,
+		}
+
+		var initCalled, writeCalled int32
+		telemetryProgram := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(ctx context.Context, config sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				if atomic.AddInt32(&writeCalled, 1) == 1 {
+					return solana.Signature{}, nil, sdktelemetry.ErrAccountNotFound
+				}
+				return solana.Signature{}, nil, sdktelemetry.ErrSamplesAccountFull
+			},
+			InitializeDeviceLatencySamplesFunc: func(ctx context.Context, config sdktelemetry.InitializeDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				atomic.StoreInt32(&initCalled, 1)
+				return solana.Signature{}, nil, nil
+			},
+		}
+
+		buffer := telemetry.NewAccountsBuffer()
+		buffer.Add(key, sample)
+
+		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+			Interval:      time.Hour,
+			Buffer:        buffer,
+			ProgramClient: telemetryProgram,
+			MaxAttempts:   2,
+			BackoffFunc:   func(_ int) time.Duration { return 0 },
+			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+				return 100, nil
+			},
+		})
+		require.NoError(t, err)
+
+		submitter.Tick(context.Background())
+
+		samplesAfter := buffer.CopyAndReset(key)
+		assert.Len(t, samplesAfter, 0, "samples should be dropped after account init + full")
+		assert.Equal(t, int32(1), atomic.LoadInt32(&initCalled), "should initialize account before dropping")
+		assert.Equal(t, int32(2), atomic.LoadInt32(&writeCalled), "should try write twice (before and after init)")
+	})
+
 }

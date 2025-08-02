@@ -4,14 +4,15 @@
 package twamplight
 
 import (
+	"context"
 	"net"
 	"time"
 )
 
-func NewLinuxSender(iface string, localAddr, remoteAddr *net.UDPAddr) (Sender, error) {
+func NewLinuxSender(ctx context.Context, iface string, localAddr, remoteAddr *net.UDPAddr) (Sender, error) {
 	return nil, ErrPlatformNotSupported
 }
 
-func NewLinuxReflector(port uint16, timeout time.Duration) (Reflector, error) {
+func NewLinuxReflector(addr string, timeout time.Duration) (Reflector, error) {
 	return nil, ErrPlatformNotSupported
 }

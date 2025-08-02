@@ -519,3 +519,60 @@ func TestSDK_Telemetry_Client_WriteInternetLatencySamples_ExecutionFails(t *test
 	require.Equal(t, solana.Signature{}, sig)
 	require.Nil(t, tx)
 }
+
+func TestSDK_Telemetry_Client_WriteInternetLatencySamples_CustomInstructionErrorSamplesAccountFull(t *testing.T) {
+	t.Parallel()
+	signer := solana.NewWallet().PrivateKey
+	programID := solana.NewWallet().PublicKey()
+
+	fullErr := &jsonrpc.RPCError{
+		Code:    -32000,
+		Message: "Simulation failed",
+		Data: map[string]any{
+			"err": map[string]any{
+				"InstructionError": []any{
+					0,
+					map[string]any{
+						"Custom": json.Number(strconv.Itoa(telemetry.InstructionErrorAccountSamplesAccountFull)),
+					},
+				},
+			},
+		},
+	}
+
+	mockRPC := &mockRPCClient{
+		GetLatestBlockhashFunc: func(_ context.Context, _ solanarpc.CommitmentType) (*solanarpc.GetLatestBlockhashResult, error) {
+			return &solanarpc.GetLatestBlockhashResult{
+				Value: &solanarpc.LatestBlockhashResult{
+					Blockhash: solana.MustHashFromBase58("5NzX7jrPWeTkGsDnVnszdEa7T3Yyr3nSgyc78z3CwjWQ"),
+				},
+			}, nil
+		},
+		SendTransactionWithOptsFunc: func(_ context.Context, _ *solana.Transaction, _ solanarpc.TransactionOpts) (solana.Signature, error) {
+			return solana.Signature{}, fullErr
+		},
+		GetSignatureStatusesFunc: func(context.Context, bool, ...solana.Signature) (*solanarpc.GetSignatureStatusesResult, error) {
+			return nil, nil
+		},
+		GetTransactionFunc: func(context.Context, solana.Signature, *solanarpc.GetTransactionOpts) (*solanarpc.GetTransactionResult, error) {
+			return nil, nil
+		},
+	}
+
+	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
+
+	config := telemetry.WriteInternetLatencySamplesInstructionConfig{
+		OracleAgentPK:              signer.PublicKey(),
+		OriginLocationPK:           solana.NewWallet().PublicKey(),
+		TargetLocationPK:           solana.NewWallet().PublicKey(),
+		DataProviderName:           "test-data-provider-1",
+		Epoch:                      42,
+		StartTimestampMicroseconds: 1_600_000_000,
+		Samples:                    []uint32{10},
+	}
+
+	sig, tx, err := client.WriteInternetLatencySamples(context.Background(), config)
+	require.ErrorIs(t, err, telemetry.ErrSamplesAccountFull)
+	require.Equal(t, solana.Signature{}, sig)
+	require.Nil(t, tx)
+}

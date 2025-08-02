@@ -13,6 +13,10 @@ const (
 	// Represents the write internet latency samples instruction
 	WriteInternetLatencySamplesInstructionIndex TelemetryInstructionType = 3
 
+	// InstructionErrorAccountSamplesAccountFull is the error code that the telemetry program returns
+	// when the given PDA has reached maximum capacity for samples.
+	InstructionErrorAccountSamplesAccountFull = 1006
+
 	// InstructionErrorAccountDoesNotExist is the error code that the telemetry program returns
 	// when the given PDA does not exist.
 	InstructionErrorAccountDoesNotExist = 1011

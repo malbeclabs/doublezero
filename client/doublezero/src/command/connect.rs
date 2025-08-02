@@ -756,6 +756,7 @@ mod tests {
             self.latencies.borrow_mut().push(LatencyRecord {
                 device_pk: pk.to_string(),
                 device_ip: device_ip.clone(),
+                device_code: format!("device{device_number}"),
                 min_latency_ns: latency_ns,
                 max_latency_ns: latency_ns,
                 avg_latency_ns: latency_ns,

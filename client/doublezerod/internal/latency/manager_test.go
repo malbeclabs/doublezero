@@ -36,6 +36,7 @@ func TestLatencyManager(t *testing.T) {
 					AccountType: serviceability.DeviceType,
 					PublicIp:    [4]uint8{127, 0, 0, 1},
 					PubKey:      [32]byte{1},
+					Code:        "dev01",
 				},
 			},
 			ResultsCache: []latency.LatencyResult{
@@ -48,6 +49,7 @@ func TestLatencyManager(t *testing.T) {
 						AccountType: serviceability.DeviceType,
 						PublicIp:    [4]uint8{127, 0, 0, 1},
 						PubKey:      [32]byte{1},
+						Code:        "dev01",
 					},
 					Reachable: true,
 				},
@@ -64,6 +66,7 @@ func TestLatencyManager(t *testing.T) {
 					AccountType: serviceability.DeviceType,
 					PublicIp:    [4]uint8{127, 0, 0, 1},
 					PubKey:      [32]byte{1},
+					Code:        "dev01",
 				},
 			},
 		}, nil
@@ -177,6 +180,7 @@ func TestLatencyManager(t *testing.T) {
 		want := []map[string]any{
 			{
 				"device_pk":       base58.Encode(tests[0].DeviceCache[0].PubKey[:]),
+				"device_code":     tests[0].DeviceCache[0].Code,
 				"device_ip":       "127.0.0.1",
 				"min_latency_ns":  float64(1),
 				"max_latency_ns":  float64(10),
@@ -222,6 +226,7 @@ func TestLatencyUdpPing(t *testing.T) {
 					AccountType: serviceability.DeviceType,
 					PublicIp:    [4]uint8{127, 0, 0, 1},
 					PubKey:      [32]byte{1},
+					Code:        "dev01",
 				},
 			},
 			Lock: sync.Mutex{},
@@ -252,6 +257,7 @@ func TestLatencyUdpPing(t *testing.T) {
 				AccountType: serviceability.DeviceType,
 				PublicIp:    [4]uint8{127, 0, 0, 1},
 				PubKey:      [32]byte{1},
+				Code:        "dev01",
 			},
 			Reachable: true,
 			Loss:      0,

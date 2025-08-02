@@ -5,7 +5,6 @@ package e2e
 import (
 	"context"
 	"flag"
-	"log"
 	"net"
 	"strings"
 	"testing"
@@ -18,6 +17,7 @@ import (
 	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
 	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -29,7 +29,7 @@ func TestConnectivityUnicast(t *testing.T) {
 	flag.Parse()
 
 	hosts := strings.Split(*hosts, ",")
-	cleanup := disconnectUsers(t, hosts)
+	cleanup := disconnectUsersFunc(t, hosts)
 	defer cleanup()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -40,19 +40,17 @@ func TestConnectivityUnicast(t *testing.T) {
 			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
 			client, err := getQAClient(net.JoinHostPort(host, *port))
-			if err != nil {
-				t.Fatalf("Failed to create QA client: %v", err)
-			}
+			require.NoError(t, err, "Failed to create QA client")
+
 			// TODO: pick random host to use IBRL w/ allocated address mode
 			req := &pb.ConnectUnicastRequest{
 				Mode: pb.ConnectUnicastRequest_IBRL,
 			}
 			result, err := client.ConnectUnicast(ctx, req)
-			if err != nil {
-				log.Fatalf("ConnectUnicast failed: %v", err)
-			}
+			require.NoError(t, err, "ConnectUnicast failed")
+
 			if result.GetSuccess() == false || result.GetReturnCode() != 0 {
-				log.Fatalf("ConnectUnicast failed: %v", result.GetOutput())
+				require.Fail(t, "ConnectUnicast failed", result.GetOutput())
 			}
 		})
 	}
@@ -62,13 +60,10 @@ func TestConnectivityUnicast(t *testing.T) {
 			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			defer cancel()
 			client, err := getQAClient(net.JoinHostPort(host, *port))
-			if err != nil {
-				t.Fatalf("Failed to create QA client: %v", err)
-			}
+			require.NoError(t, err, "Failed to create QA client")
+
 			resp, err := client.GetStatus(ctx, &emptypb.Empty{})
-			if err != nil {
-				t.Fatalf("GetStatus failed: %v", err)
-			}
+			require.NoError(t, err, "GetStatus failed")
 
 			localAddr := ""
 			for _, status := range resp.Status {
@@ -77,19 +72,15 @@ func TestConnectivityUnicast(t *testing.T) {
 				}
 			}
 			if localAddr == "" {
-				t.Fatalf("No local address found in status response")
+				require.Fail(t, "No local address found in status response")
 			}
 			opts := []dzsdk.Option{}
 			opts = append(opts, dzsdk.WithServiceabilityProgramID(serviceability.SERVICEABILITY_PROGRAM_ID_DEVNET))
 
 			ledger, err := dzsdk.New(nil, dzsdk.DZ_LEDGER_RPC_URL, opts...)
-			if err != nil {
-				t.Fatalf("Failed to create ledger client: %v", err)
-			}
+			require.NoError(t, err, "Failed to create ledger client")
 			data, err := ledger.Serviceability.GetProgramData(ctx)
-			if err != nil {
-				t.Fatalf("Failed to get program data: %v", err)
-			}
+			require.NoError(t, err, "Failed to get program data")
 
 			peers := []string{}
 			for _, user := range data.Users {
@@ -103,7 +94,7 @@ func TestConnectivityUnicast(t *testing.T) {
 			}
 
 			if len(peers) == 0 {
-				t.Fatalf("No peers found for connectivity check")
+				require.Fail(t, "No peers found for connectivity check")
 			}
 
 			for _, peer := range peers {
@@ -116,16 +107,14 @@ func TestConnectivityUnicast(t *testing.T) {
 						SourceIface: "doublezero0",
 					}
 					pingResp, err := client.Ping(ctx, pingReq)
-					if err != nil {
-						t.Fatalf("Ping failed for %s: %v", peer, err)
-					}
+					require.NoError(t, err, "Ping failed for %s", peer)
 
 					if pingResp.PacketsSent == 0 || pingResp.PacketsReceived == 0 {
-						t.Fatalf("Ping to %s failed: Sent=%d, Received=%d", peer, pingResp.PacketsSent, pingResp.PacketsReceived)
+						require.Fail(t, "Ping to %s failed: Sent=%d, Received=%d", peer, pingResp.PacketsSent, pingResp.PacketsReceived)
 					}
 
 					if pingResp.PacketsReceived < pingResp.PacketsSent {
-						t.Fatalf("Ping to %s had loss: Sent=%d, Received=%d", peer, pingResp.PacketsSent, pingResp.PacketsReceived)
+						require.Fail(t, "Ping to %s had loss: Sent=%d, Received=%d", peer, pingResp.PacketsSent, pingResp.PacketsReceived)
 					}
 				})
 			}
@@ -141,7 +130,7 @@ func getQAClient(addr string) (pb.QAAgentServiceClient, error) {
 	return pb.NewQAAgentServiceClient(conn), nil
 }
 
-func disconnectUsers(t *testing.T, hosts []string) func() {
+func disconnectUsersFunc(t *testing.T, hosts []string) func() {
 	return func() {
 		for _, host := range hosts {
 			t.Run("disconnect_from_"+host, func(t *testing.T) {
@@ -149,14 +138,10 @@ func disconnectUsers(t *testing.T, hosts []string) func() {
 				defer cancel()
 
 				client, err := getQAClient(net.JoinHostPort(host, *port))
-				if err != nil {
-					t.Errorf("Failed to create QA client: %v", err)
-					return
-				}
+				require.NoError(t, err, "Failed to create QA client")
+
 				_, err = client.Disconnect(ctx, &emptypb.Empty{})
-				if err != nil {
-					t.Errorf("Disconnect failed: %v", err)
-				}
+				require.NoError(t, err, "Disconnect failed")
 			})
 		}
 	}

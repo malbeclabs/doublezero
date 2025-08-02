@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os/exec"
@@ -31,13 +31,15 @@ type QAAgent struct {
 	pb.UnimplementedQAAgentServiceServer
 	listener      net.Listener
 	mcastListener Joiner
+	log           *slog.Logger
 }
 
 // NewQAAgent creates a new QAAgent instance. It accepts an address (i.e. localhost:443) to listen
 // on and a Joiner interface for managing multicast group joins.
-func NewQAAgent(addr string, j Joiner) (*QAAgent, error) {
+func NewQAAgent(logger *slog.Logger, addr string, j Joiner) (*QAAgent, error) {
 	q := &QAAgent{
 		mcastListener: j,
+		log:           logger,
 	}
 	for _, opt := range []Option{} {
 		opt(q)
@@ -67,7 +69,7 @@ func (q *QAAgent) Start(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		log.Println("Stopping QA Agent...")
+		q.log.Info("Stopping QA Agent...")
 		agent.GracefulStop()
 		q.mcastListener.Stop()
 		return nil
@@ -82,7 +84,7 @@ func (q *QAAgent) Start(ctx context.Context) error {
 // Ping implements the Ping RPC, executes a set of ICMP pings, and reports the results to the caller.
 // This requires CAP_NET_RAW capability to run successfully due to the use of raw sockets.
 func (q *QAAgent) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingResult, error) {
-	log.Printf("Received Ping request for target IP: %s", req.GetTargetIp())
+	q.log.Info("Received Ping request for target IP", "target_ip", req.GetTargetIp())
 	pinger, err := probing.NewPinger(req.GetTargetIp())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pinger: %v", err)
@@ -107,7 +109,7 @@ func (q *QAAgent) MulticastJoin(ctx context.Context, req *pb.MulticastJoinReques
 		if ip == nil {
 			return nil, fmt.Errorf("invalid group IP: %s", group.GetGroup())
 		}
-		log.Printf("Joining multicast group %s on port %d via interface %s", ip.String(), group.GetPort(), group.GetIface())
+		q.log.Info("Joining multicast group", "group", ip.String(), "port", group.GetPort(), "interface", group.GetIface())
 		err := q.mcastListener.JoinGroup(context.Background(), ip, fmt.Sprintf("%d", group.GetPort()), group.GetIface())
 		if err != nil {
 			return nil, err
@@ -118,7 +120,7 @@ func (q *QAAgent) MulticastJoin(ctx context.Context, req *pb.MulticastJoinReques
 
 // MulticastLeave implements the MulticastLeave RPC and stops listening to all multicast groups.
 func (q *QAAgent) MulticastLeave(ctx context.Context, in *emptypb.Empty) (*emptypb.Empty, error) {
-	log.Printf("Leaving all multicast groups.")
+	q.log.Info("Leaving all multicast groups.")
 	q.mcastListener.Stop()
 	return &emptypb.Empty{}, nil
 }
@@ -127,7 +129,7 @@ func (q *QAAgent) MulticastLeave(ctx context.Context, in *emptypb.Empty) (*empty
 // using IBRL mode. This call will block until the tunnel is up according to the DoubleZero status
 // output or return an error if the tunnel is not up within 20 seconds.
 func (q *QAAgent) ConnectUnicast(ctx context.Context, req *pb.ConnectUnicastRequest) (*pb.Result, error) {
-	log.Printf("Received ConnectUnicast request for client IP: %s", req.GetClientIp())
+	q.log.Info("Received ConnectUnicast request for client IP", "client_ip", req.GetClientIp())
 	clientIP := req.GetClientIp()
 	cmds := []string{"connect", "ibrl"}
 	if clientIP != "" {
@@ -142,7 +144,7 @@ func (q *QAAgent) ConnectUnicast(ctx context.Context, req *pb.ConnectUnicastRequ
 
 	if err != nil {
 		res.Success = false
-		log.Printf("Failed to connect unicast for client %s: %s", clientIP, string(output))
+		q.log.Error("Failed to connect unicast for client", "client_ip", clientIP, "output", string(output))
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			res.ReturnCode = int32(exitErr.ExitCode())
 		} else {
@@ -153,7 +155,7 @@ func (q *QAAgent) ConnectUnicast(ctx context.Context, req *pb.ConnectUnicastRequ
 	} else {
 		res.Success = true
 		res.ReturnCode = 0
-		log.Printf("Successfully connected IBRL mode tunnel")
+		q.log.Info("Successfully connected IBRL mode tunnel")
 	}
 
 	condition := func() (bool, error) {
@@ -176,7 +178,7 @@ func (q *QAAgent) ConnectUnicast(ctx context.Context, req *pb.ConnectUnicastRequ
 
 // Disconnect implements the Disconnect RPC, which removes the current tunnel from DoubleZero.
 func (q *QAAgent) Disconnect(ctx context.Context, req *emptypb.Empty) (*pb.Result, error) {
-	log.Printf("Received Disconnect request")
+	q.log.Info("Received Disconnect request")
 	cmd := exec.Command("doublezero", "disconnect")
 	output, err := cmd.CombinedOutput()
 
@@ -186,7 +188,7 @@ func (q *QAAgent) Disconnect(ctx context.Context, req *emptypb.Empty) (*pb.Resul
 
 	if err != nil {
 		res.Success = false
-		log.Printf("Failed to disconnect: %s", string(output))
+		q.log.Error("Failed to disconnect", "output", string(output))
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			res.ReturnCode = int32(exitErr.ExitCode())
 		} else {
@@ -196,7 +198,7 @@ func (q *QAAgent) Disconnect(ctx context.Context, req *emptypb.Empty) (*pb.Resul
 	} else {
 		res.Success = true
 		res.ReturnCode = 0
-		log.Printf("Successfully disconnected")
+		q.log.Info("Successfully disconnected")
 	}
 
 	return res, nil
@@ -214,7 +216,7 @@ type StatusResponse struct {
 // GetStatus implements the GetStatus RPC, which retrieves the current status of the configured DoubleZero
 // tunnel. This is equivalent to the `doublezero status` command.
 func (q *QAAgent) GetStatus(ctx context.Context, req *emptypb.Empty) (*pb.StatusResponse, error) {
-	log.Printf("Received GetStatus request")
+	q.log.Info("Received GetStatus request")
 	status, err := fetchStatus(ctx)
 	if err != nil {
 		return nil, err
@@ -257,25 +259,21 @@ func fetchStatus(ctx context.Context) ([]StatusResponse, error) {
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("error during status request: %v", err)
 		return nil, fmt.Errorf("error during status request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("status request returned non-200 status: %d", resp.StatusCode)
 		return nil, fmt.Errorf("status request returned non-200 status: %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("failed to read status response body: %v", err)
 		return nil, fmt.Errorf("failed to read status response body: %w", err)
 	}
 
 	var status []StatusResponse
 	if err := json.Unmarshal(body, &status); err != nil {
-		log.Printf("failed to unmarshal status response: %v", err)
 		return nil, fmt.Errorf("failed to unmarshal status response: %w", err)
 	}
 	return status, nil

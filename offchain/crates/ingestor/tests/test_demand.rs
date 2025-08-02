@@ -56,14 +56,14 @@ fn load_test_data(data_path: &Path) -> Result<TestData> {
 }
 
 /// Convert test data to production types
-fn convert_to_fetch_data(test_data: TestData) -> Result<FetchData> {
+fn convert_to_fetch_data(test_data: &TestData) -> Result<FetchData> {
     let mut users = HashMap::new();
     let mut devices = HashMap::new();
     let mut locations = HashMap::new();
 
     // Convert locations
-    for (pk_str, test_loc) in test_data.locations {
-        let pk = Pubkey::from_str(&pk_str)?;
+    for (pk_str, test_loc) in test_data.locations.iter() {
+        let pk = Pubkey::from_str(pk_str)?;
 
         // minimal Location struct
         // Using mock data for fields not in test data
@@ -76,8 +76,8 @@ fn convert_to_fetch_data(test_data: TestData) -> Result<FetchData> {
             lng: 0.0,
             loc_id: 0,
             status: doublezero_serviceability::state::location::LocationStatus::Activated,
-            code: test_loc.code,
-            name: test_loc.name,
+            code: test_loc.code.to_string(),
+            name: test_loc.name.to_string(),
             country: String::new(),
             reference_count: 0,
         };
@@ -86,8 +86,8 @@ fn convert_to_fetch_data(test_data: TestData) -> Result<FetchData> {
     }
 
     // Convert devices
-    for (pk_str, test_dev) in test_data.devices {
-        let pk = Pubkey::from_str(&pk_str)?;
+    for (pk_str, test_dev) in test_data.devices.iter() {
+        let pk = Pubkey::from_str(pk_str)?;
         let location_pk = Pubkey::from_str(&test_dev.location_pk)?;
 
         // minimal Device struct
@@ -118,8 +118,8 @@ fn convert_to_fetch_data(test_data: TestData) -> Result<FetchData> {
     }
 
     // Convert users
-    for (pk_str, test_user) in test_data.users {
-        let pk = Pubkey::from_str(&pk_str)?;
+    for (pk_str, test_user) in test_data.users.iter() {
+        let pk = Pubkey::from_str(pk_str)?;
         let validator_pubkey = Pubkey::from_str(&test_user.validator_pubkey)?;
         let device_pk = Pubkey::from_str(&test_user.device_pk)?;
 
@@ -182,7 +182,7 @@ mod tests {
         println!("  Leaders in schedule: {}", test_data.leader_schedule.len());
 
         // Convert to production types
-        let fetch_data = convert_to_fetch_data(test_data.clone())?;
+        let fetch_data = convert_to_fetch_data(&test_data)?;
 
         // Build demands using the refactored function
         let demands = demand::build_with_schedule(&fetch_data, test_data.leader_schedule)?;
@@ -198,21 +198,84 @@ mod tests {
             assert_ne!(demand.start, demand.end, "Should not have self-loops");
         }
 
-        // Verify priorities sum to 1.0 for each start city
-        let mut city_priorities: HashMap<String, f64> = HashMap::new();
-        for demand in &demands {
-            *city_priorities.entry(demand.start.clone()).or_insert(0.0) += demand.priority;
-        }
+        // Verify against ALL expected R reference values
+        let expected = vec![
+            // From ams
+            ("ams", "sin", 1, 4.074074e-04),
+            ("ams", "fra", 9, 1.734568e-03),
+            ("ams", "nyc", 2, 1.805556e-04),
+            ("ams", "lon", 6, 5.092593e-04),
+            ("ams", "lax", 1, 9.259259e-06),
+            // From sin
+            ("sin", "ams", 7, 3.915344e-04),
+            ("sin", "fra", 9, 1.734568e-03),
+            ("sin", "nyc", 2, 1.805556e-04),
+            ("sin", "lon", 6, 5.092593e-04),
+            ("sin", "lax", 1, 9.259259e-06),
+            // From fra
+            ("fra", "ams", 7, 3.915344e-04),
+            ("fra", "sin", 1, 4.074074e-04),
+            ("fra", "nyc", 2, 1.805556e-04),
+            ("fra", "lon", 6, 5.092593e-04),
+            ("fra", "lax", 1, 9.259259e-06),
+            // From nyc
+            ("nyc", "ams", 7, 3.915344e-04),
+            ("nyc", "sin", 1, 4.074074e-04),
+            ("nyc", "fra", 9, 1.734568e-03),
+            ("nyc", "lon", 6, 5.092593e-04),
+            ("nyc", "lax", 1, 9.259259e-06),
+            // From lon
+            ("lon", "ams", 7, 3.915344e-04),
+            ("lon", "sin", 1, 4.074074e-04),
+            ("lon", "fra", 9, 1.734568e-03),
+            ("lon", "nyc", 2, 1.805556e-04),
+            ("lon", "lax", 1, 9.259259e-06),
+            // From lax
+            ("lax", "ams", 7, 3.915344e-04),
+            ("lax", "sin", 1, 4.074074e-04),
+            ("lax", "fra", 9, 1.734568e-03),
+            ("lax", "nyc", 2, 1.805556e-04),
+            ("lax", "lon", 6, 5.092593e-04),
+        ];
 
-        for (city, total_priority) in city_priorities {
-            // Allow small floating point error
+        // Should have exactly 30 demands (6 cities * 5 destinations each)
+        assert_eq!(demands.len(), 30, "Should have exactly 30 demands");
+        assert_eq!(
+            expected.len(),
+            30,
+            "Test data should have 30 expected values"
+        );
+
+        // Verify each expected demand exists with correct priority
+        for (exp_start, exp_end, exp_receivers, exp_priority) in expected {
+            let found = demands
+                .iter()
+                .find(|d| d.start == exp_start && d.end == exp_end)
+                .unwrap_or_else(|| {
+                    panic!("Expected demand from {exp_start} to {exp_end} not found")
+                });
+
+            // Check receivers match
+            assert_eq!(
+                found.receivers, exp_receivers,
+                "Receivevers mismatch for {}->{}: expected: {}, got: {}",
+                exp_start, exp_end, exp_receivers, found.receivers
+            );
+
+            // Check priority match
+            let diff = (found.priority - exp_priority).abs();
             assert!(
-                (total_priority - 1.0).abs() < 0.0001,
-                "City {city} priorities should sum to 1.0, got {total_priority}",
+                diff < 1e-9,
+                "Priority mismatch for {}->{}: expected {:.9e}, got {:.9e}, diff {:.9e}",
+                exp_start,
+                exp_end,
+                exp_priority,
+                found.priority,
+                diff
             );
         }
 
-        // Print some sample demands
+        // Print demands (for debugging)
         for (i, demand) in demands.iter().enumerate() {
             println!(
                 "  {}: {} -> {} (receivers: {}, priority: {:.4})",

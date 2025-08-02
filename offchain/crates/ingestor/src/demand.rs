@@ -123,9 +123,11 @@ pub fn build_city_stats(
 
 /// Generates demand entries for cities
 pub fn generate(city_stats: &HashMap<String, CityStats>) -> Demands {
+    // TODO: move this to some constants.rs and/or make configurable
     const TRAFFIC: f64 = 0.05;
     const DEMAND_TYPE: u32 = 1;
     const MULTICAST: bool = false;
+    const SLOTS_IN_EPOCH: f64 = 432000.0;
 
     // Filter cities with validators once
     let cities_with_validators: Vec<(&String, &CityStats)> = city_stats
@@ -137,39 +139,26 @@ pub fn generate(city_stats: &HashMap<String, CityStats>) -> Demands {
     cities_with_validators
         .par_iter()
         .flat_map(|(start_city, _start_stats)| {
-            // Calculate demands from this city to all others
-            let city_demands: Vec<(String, f64)> = cities_with_validators
+            // Create demands from this city to all others
+            cities_with_validators
                 .iter()
                 .filter_map(|(end_city, end_stats)| {
                     // Avoid self loops
-                    (start_city != end_city).then_some({
-                        // Calculate priority: stake per validator in destination
-                        let stake_per_validator =
-                            end_stats.total_stake_proxy as f64 / end_stats.validator_count as f64;
-                        (end_city.to_string(), stake_per_validator)
-                    })
-                })
-                .collect();
+                    if start_city == end_city {
+                        return None;
+                    }
 
-            // Normalize priorities
-            let total_priority: f64 = city_demands.iter().map(|(_, p)| p).sum();
+                    // Calculate priority using formula: (1/slots_in_epoch) * (total_stake_proxy/validator_count)
+                    let slots_per_validator =
+                        end_stats.total_stake_proxy as f64 / end_stats.validator_count as f64;
+                    let priority = (1.0 / SLOTS_IN_EPOCH) * slots_per_validator;
 
-            // Create demands with normalized priorities
-            city_demands
-                .into_iter()
-                .filter_map(|(end_city, unnormalized_priority)| {
-                    let normalized_priority = if total_priority > 0.0 {
-                        unnormalized_priority / total_priority
-                    } else {
-                        0.0
-                    };
-
-                    city_stats.get(&end_city).map(|end_stats| Demand {
+                    Some(Demand {
                         start: start_city.to_string(),
-                        end: end_city,
+                        end: end_city.to_string(),
                         receivers: end_stats.validator_count as u32,
                         traffic: TRAFFIC,
-                        priority: normalized_priority,
+                        priority,
                         kind: DEMAND_TYPE,
                         multicast: MULTICAST,
                     })

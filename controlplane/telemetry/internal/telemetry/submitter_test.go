@@ -49,7 +49,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := buffer.NewPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		key := newTestPartitionKey()
 		buffer.Add(key, newTestSample())
 
@@ -89,7 +89,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := buffer.NewPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		buffer.Add(newTestPartitionKey(), telemetry.Sample{
 			Timestamp: time.Now(),
 			RTT:       5 * time.Microsecond,
@@ -132,7 +132,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := buffer.NewPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		buffer.Add(newTestPartitionKey(), telemetry.Sample{
 			Timestamp: time.Now(),
 			RTT:       10 * time.Microsecond,
@@ -177,7 +177,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := buffer.NewPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		buffer.Add(key, sample)
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
@@ -222,7 +222,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := buffer.NewPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		buffer.Add(key, sample)
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
@@ -267,7 +267,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := buffer.NewPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		buffer.Add(key, sample)
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
@@ -309,7 +309,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := buffer.NewPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		buffer.Add(key, sample)
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -350,7 +350,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			Epoch:          pastEpoch,
 		}
 
-		buffer := buffer.NewPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		buffer.Add(key, telemetry.Sample{}) // Add a sample just to register the key
 		_ = buffer.CopyAndReset(key)        // Now make it empty
 
@@ -393,7 +393,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			Epoch:          currentEpoch,
 		}
 
-		buffer := buffer.NewPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		buffer.Add(key, telemetry.Sample{})
 		_ = buffer.CopyAndReset(key)
 
@@ -438,7 +438,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		}
 
 		key := newTestPartitionKey()
-		buffer := buffer.NewPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
 			Interval:      time.Hour,
@@ -513,7 +513,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := buffer.NewPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		buffer.Add(key, sample)
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
@@ -540,7 +540,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		log := log.With("test", t.Name())
 
 		key := newTestPartitionKey()
-		buffer := buffer.NewPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		buffer.Add(key, newTestSample())
 		_ = buffer.CopyAndReset(key) // trigger empty buffer path
 
@@ -576,7 +576,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		log := log.With("test", t.Name())
 
 		key := newTestPartitionKey()
-		buffer := buffer.NewPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		buffer.Add(key, newTestSample())
 		_ = buffer.CopyAndReset(key) // trigger empty buffer path
 
@@ -626,7 +626,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := buffer.NewPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		buffer.Add(key, sample)
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
@@ -673,7 +673,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := buffer.NewPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		buffer.Add(key, sample)
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{

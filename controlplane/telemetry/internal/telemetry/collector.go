@@ -32,7 +32,7 @@ type Collector struct {
 	senders   map[string]*senderEntry
 	sendersMu sync.Mutex
 
-	buffer *buffer.PartitionedBuffer[PartitionKey, Sample]
+	buffer buffer.PartitionedBuffer[PartitionKey, Sample]
 }
 
 func New(log *slog.Logger, cfg Config) (*Collector, error) {
@@ -40,7 +40,7 @@ func New(log *slog.Logger, cfg Config) (*Collector, error) {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
-	buffer := buffer.NewPartitionedBuffer[PartitionKey, Sample](partitionBufferCapacity)
+	buffer := buffer.NewMemoryPartitionedBuffer[PartitionKey, Sample](partitionBufferCapacity)
 
 	c := &Collector{
 		log:       log,

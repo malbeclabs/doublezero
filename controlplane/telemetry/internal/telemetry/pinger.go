@@ -18,7 +18,7 @@ type PingerConfig struct {
 	Interval        time.Duration
 	ProbeTimeout    time.Duration
 	Peers           PeerDiscovery
-	Buffer          *buffer.PartitionedBuffer[PartitionKey, Sample]
+	Buffer          buffer.PartitionedBuffer[PartitionKey, Sample]
 	GetSender       func(ctx context.Context, peer *Peer) twamplight.Sender
 	GetCurrentEpoch func(ctx context.Context) (uint64, error)
 }

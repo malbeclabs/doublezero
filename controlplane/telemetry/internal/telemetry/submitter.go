@@ -17,7 +17,7 @@ import (
 
 type SubmitterConfig struct {
 	Interval           time.Duration
-	Buffer             *buffer.PartitionedBuffer[PartitionKey, Sample]
+	Buffer             buffer.PartitionedBuffer[PartitionKey, Sample]
 	MetricsPublisherPK solana.PublicKey
 	ProbeInterval      time.Duration
 	ProgramClient      TelemetryProgramClient

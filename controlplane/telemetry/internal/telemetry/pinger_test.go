@@ -50,7 +50,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 		mockSender := &mockSender{rtt: 42 * time.Millisecond}
 		getSender := func(_ context.Context, _ *telemetry.Peer) twamplight.Sender { return mockSender }
 
-		buffer := buffer.NewPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		pinger := telemetry.NewPinger(slog.Default(), &telemetry.PingerConfig{
 			LocalDevicePK: devicePK,
 			Peers:         mockPeers,
@@ -94,7 +94,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 			},
 		})
 
-		buffer := buffer.NewPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		pinger := telemetry.NewPinger(slog.Default(), &telemetry.PingerConfig{
 			LocalDevicePK: devicePK,
 			Peers:         mockPeers,
@@ -140,7 +140,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 			},
 		})
 
-		buffer := buffer.NewPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		pinger := telemetry.NewPinger(slog.Default(), &telemetry.PingerConfig{
 			LocalDevicePK: devicePK,
 			Peers:         mockPeers,
@@ -187,7 +187,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 		})
 
 		mockSender := &mockSender{err: errors.New("mock failure")}
-		buffer := buffer.NewPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		pinger := telemetry.NewPinger(slog.Default(), &telemetry.PingerConfig{
 			LocalDevicePK: devicePK,
 			Peers:         mockPeers,
@@ -243,7 +243,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 		})
 
 		mockSender := &mockSender{rtt: 7 * time.Millisecond}
-		buffer := buffer.NewPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		pinger := telemetry.NewPinger(slog.Default(), &telemetry.PingerConfig{
 			LocalDevicePK:   devicePK,
 			Peers:           mockPeers,
@@ -294,7 +294,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 			},
 		})
 
-		buffer := buffer.NewPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		pinger := telemetry.NewPinger(slog.Default(), &telemetry.PingerConfig{
 			LocalDevicePK:   devicePK,
 			Peers:           mockPeers,

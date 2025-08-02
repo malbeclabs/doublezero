@@ -9,6 +9,7 @@ import (
 
 	"github.com/cenkalti/backoff/v5"
 	"github.com/gagliardetto/solana-go"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/buffer"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 )
 
@@ -17,7 +18,7 @@ type PingerConfig struct {
 	Interval        time.Duration
 	ProbeTimeout    time.Duration
 	Peers           PeerDiscovery
-	Buffer          *AccountsBuffer
+	Buffer          *buffer.PartitionedBuffer[PartitionKey, Sample]
 	GetSender       func(ctx context.Context, peer *Peer) twamplight.Sender
 	GetCurrentEpoch func(ctx context.Context) (uint64, error)
 }
@@ -70,7 +71,7 @@ func (p *Pinger) Tick(ctx context.Context) {
 				return
 			}
 
-			accountKey := AccountKey{
+			partitionKey := PartitionKey{
 				OriginDevicePK: p.cfg.LocalDevicePK,
 				TargetDevicePK: peer.DevicePK,
 				LinkPK:         peer.LinkPK,
@@ -81,7 +82,7 @@ func (p *Pinger) Tick(ctx context.Context) {
 
 			if peer.Tunnel == nil {
 				p.log.Debug("Tunnel not found, recording loss", "device", peer.DevicePK.String(), "link", peer.LinkPK.String())
-				p.cfg.Buffer.Add(accountKey, Sample{
+				p.cfg.Buffer.Add(partitionKey, Sample{
 					Timestamp: ts,
 					RTT:       0,
 					Loss:      true,
@@ -94,7 +95,7 @@ func (p *Pinger) Tick(ctx context.Context) {
 			sender := p.cfg.GetSender(ctx, peer)
 			if sender == nil {
 				log.Debug("Failed to create sender, recording loss")
-				p.cfg.Buffer.Add(accountKey, Sample{
+				p.cfg.Buffer.Add(partitionKey, Sample{
 					Timestamp: ts,
 					RTT:       0,
 					Loss:      true,
@@ -117,7 +118,7 @@ func (p *Pinger) Tick(ctx context.Context) {
 			}
 			if err != nil {
 				log.Debug("Probe failed, recording loss", "error", err)
-				p.cfg.Buffer.Add(accountKey, Sample{
+				p.cfg.Buffer.Add(partitionKey, Sample{
 					Timestamp: ts,
 					RTT:       0,
 					Loss:      true,
@@ -125,7 +126,7 @@ func (p *Pinger) Tick(ctx context.Context) {
 				return
 			}
 
-			p.cfg.Buffer.Add(accountKey, Sample{
+			p.cfg.Buffer.Add(partitionKey, Sample{
 				Timestamp: ts,
 				RTT:       rtt,
 				Loss:      false,

@@ -11,6 +11,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netutil"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/buffer"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -49,7 +50,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 		mockSender := &mockSender{rtt: 42 * time.Millisecond}
 		getSender := func(_ context.Context, _ *telemetry.Peer) twamplight.Sender { return mockSender }
 
-		buffer := telemetry.NewAccountsBuffer()
+		buffer := buffer.NewPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		pinger := telemetry.NewPinger(slog.Default(), &telemetry.PingerConfig{
 			LocalDevicePK: devicePK,
 			Peers:         mockPeers,
@@ -63,7 +64,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 		pinger.Tick(context.Background())
 
 		samples := buffer.FlushWithoutReset()
-		key := telemetry.AccountKey{
+		key := telemetry.PartitionKey{
 			OriginDevicePK: devicePK,
 			TargetDevicePK: peerPK,
 			LinkPK:         linkPK,
@@ -93,7 +94,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 			},
 		})
 
-		buffer := telemetry.NewAccountsBuffer()
+		buffer := buffer.NewPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		pinger := telemetry.NewPinger(slog.Default(), &telemetry.PingerConfig{
 			LocalDevicePK: devicePK,
 			Peers:         mockPeers,
@@ -139,7 +140,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 			},
 		})
 
-		buffer := telemetry.NewAccountsBuffer()
+		buffer := buffer.NewPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		pinger := telemetry.NewPinger(slog.Default(), &telemetry.PingerConfig{
 			LocalDevicePK: devicePK,
 			Peers:         mockPeers,
@@ -186,7 +187,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 		})
 
 		mockSender := &mockSender{err: errors.New("mock failure")}
-		buffer := telemetry.NewAccountsBuffer()
+		buffer := buffer.NewPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		pinger := telemetry.NewPinger(slog.Default(), &telemetry.PingerConfig{
 			LocalDevicePK: devicePK,
 			Peers:         mockPeers,
@@ -242,7 +243,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 		})
 
 		mockSender := &mockSender{rtt: 7 * time.Millisecond}
-		buffer := telemetry.NewAccountsBuffer()
+		buffer := buffer.NewPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		pinger := telemetry.NewPinger(slog.Default(), &telemetry.PingerConfig{
 			LocalDevicePK:   devicePK,
 			Peers:           mockPeers,
@@ -256,7 +257,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 		assert.Equal(t, 3, attempts, "expected exactly 3 attempts at GetCurrentEpoch")
 
 		samples := buffer.FlushWithoutReset()
-		key := telemetry.AccountKey{
+		key := telemetry.PartitionKey{
 			OriginDevicePK: devicePK,
 			TargetDevicePK: peerPK,
 			LinkPK:         linkPK,
@@ -293,7 +294,7 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 			},
 		})
 
-		buffer := telemetry.NewAccountsBuffer()
+		buffer := buffer.NewPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		pinger := telemetry.NewPinger(slog.Default(), &telemetry.PingerConfig{
 			LocalDevicePK:   devicePK,
 			Peers:           mockPeers,

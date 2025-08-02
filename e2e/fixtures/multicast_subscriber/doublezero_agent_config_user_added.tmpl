@@ -187,6 +187,7 @@ default interface Tunnel562
 default interface Tunnel563
 !
 router bgp 65342
+   router-id 0.0.0.0
    no neighbor 169.254.0.1
    neighbor 169.254.0.1 remote-as 65000
    neighbor 169.254.0.1 passive

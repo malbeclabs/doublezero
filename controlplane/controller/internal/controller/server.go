@@ -167,6 +167,7 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 				// Extract IP from IpNet
 				ip := net.IP(iface.IpNet[:4])
 				d.Vpn4vLoopbackIP = ip
+				// TODO: raise an error if the IP is 0.0.0.0 (not set)
 				peer := Vpnv4BgpPeer{
 					PeerIP:    ip,
 					PeerName:  device.Code,
@@ -175,6 +176,7 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 				cache.Vpnv4BgpPeers = append(cache.Vpnv4BgpPeers, peer)
 			}
 		}
+		// TODO: raise an error if the IP is not set (no LoopbackTypeVpnv4 interface found)
 
 		if len(device.DnsServers) > 0 {
 			d.DnsServers = make([]net.IP, len(device.DnsServers))

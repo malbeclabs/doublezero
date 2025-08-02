@@ -4,7 +4,7 @@ use crate::{
     types::{DZDTelemetryData, DZDeviceLatencySamples},
 };
 use anyhow::{Context, Result};
-use backon::Retryable;
+use backon::{ExponentialBuilder, Retryable};
 use doublezero_telemetry::state::{
     accounttype::AccountType, device_latency_samples::DeviceLatencySamples,
 };
@@ -65,7 +65,7 @@ pub async fn fetch(
             .get_program_accounts_with_config(&program_pubkey, config.clone())
             .await
     })
-    .retry(&settings.backoff())
+    .retry(&ExponentialBuilder::default().with_jitter())
     .notify(|err: &SolanaClientError, dur: Duration| {
         info!("retrying error: {:?} with sleeping {:?}", err, dur)
     })
@@ -192,7 +192,7 @@ pub async fn fetch_by_epoch(
             .get_program_accounts_with_config(&program_pubkey, config.clone())
             .await
     })
-    .retry(&settings.backoff())
+    .retry(&ExponentialBuilder::default().with_jitter())
     .notify(|err: &SolanaClientError, dur: Duration| {
         info!("retrying error: {:?} with sleeping {:?}", err, dur)
     })

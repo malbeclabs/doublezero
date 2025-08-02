@@ -4,7 +4,7 @@ use crate::{
     types::DZServiceabilityData,
 };
 use anyhow::{Context, Result};
-use backon::Retryable;
+use backon::{ExponentialBuilder, Retryable};
 use doublezero_serviceability::state::{
     accounttype::AccountType, contributor::Contributor, device::Device, exchange::Exchange,
     link::Link, location::Location, multicastgroup::MulticastGroup, user::User,
@@ -67,7 +67,7 @@ pub async fn fetch(
             .get_program_accounts_with_config(&program_pubkey, config.clone())
             .await
     })
-    .retry(&settings.backoff())
+    .retry(&ExponentialBuilder::default().with_jitter())
     .notify(|err: &SolanaClientError, dur: Duration| {
         info!("retrying error: {:?} with sleeping {:?}", err, dur)
     })
@@ -199,7 +199,7 @@ pub async fn fetch_by_type(
             .get_program_accounts_with_config(&program_pubkey, config.clone())
             .await
     })
-    .retry(&settings.backoff())
+    .retry(&ExponentialBuilder::default().with_jitter())
     .notify(|err: &SolanaClientError, dur: Duration| {
         info!("retrying error: {:?} with sleeping {:?}", err, dur)
     })

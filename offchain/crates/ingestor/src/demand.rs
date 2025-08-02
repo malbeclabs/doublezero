@@ -1,6 +1,6 @@
 use crate::{fetcher::Fetcher, types::FetchData};
 use anyhow::{Result, anyhow, bail};
-use backon::Retryable;
+use backon::{ExponentialBuilder, Retryable};
 use doublezero_serviceability::state::user::User as DZUser;
 use network_shapley::types::{Demand, Demands};
 use rayon::prelude::*;
@@ -28,14 +28,14 @@ pub struct CityStat {
 pub async fn build(fetcher: &Fetcher, fetch_data: &FetchData) -> Result<Demands> {
     // Get epoch info and schedule upfront
     let epoch_info = (|| async { fetcher.solana_client.get_epoch_info().await })
-        .retry(&fetcher.settings.backoff())
+        .retry(&ExponentialBuilder::default().with_jitter())
         .notify(|err: &SolanaClientError, dur: Duration| {
             info!("retrying error: {:?} with sleeping {:?}", err, dur)
         })
         .await?;
 
     let epoch_schedule = (|| async { fetcher.solana_client.get_epoch_schedule().await })
-        .retry(&fetcher.settings.backoff())
+        .retry(&ExponentialBuilder::default().with_jitter())
         .notify(|err: &SolanaClientError, dur: Duration| {
             info!("retrying error: {:?} with sleeping {:?}", err, dur)
         })

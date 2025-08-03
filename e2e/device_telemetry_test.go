@@ -102,7 +102,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		err = dn.CreateDeviceVPNv4LoopbackInterface(t.Context(), "la2-dz01", "Loopback255")
+		err = dn.CreateDeviceVPNv4LoopbackInterface(t.Context(), "la2-dz01")
 		require.NoError(t, err, "failed to create VPNv4 loopback interface for device %s: %w", "la2-dz01", err)
 
 		// Wait for the telemetry publisher account to be funded.
@@ -142,7 +142,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		err = dn.CreateDeviceVPNv4LoopbackInterface(t.Context(), "ny5-dz01", "Loopback255")
+		err = dn.CreateDeviceVPNv4LoopbackInterface(t.Context(), "ny5-dz01")
 		require.NoError(t, err, "failed to create VPNv4 loopback interface for device %s: %w", "la2-dz01", err)
 
 		// Wait for the telemetry publisher account to be funded.

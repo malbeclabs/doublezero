@@ -333,6 +333,32 @@ func TestGetConfig(t *testing.T) {
 			Pubkey: "abc123",
 			Want:   "fixtures/nohardware.tunnel.txt",
 		},
+		{
+			Name:        "render_base_config_successfully",
+			Description: "render base configuration with BGP peers",
+			StateCache: stateCache{
+				Config: serviceability.Config{
+					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+				},
+				Vpnv4BgpPeers: []Vpnv4BgpPeer{
+					{
+						PeerIP:    net.IP{15, 15, 15, 15},
+						PeerName:  "remote-device",
+						SourceInt: "Loopback255",
+					},
+				},
+				Devices: map[string]*Device{
+					"abc123": {
+						PublicIP:        net.IP{7, 7, 7, 7},
+						Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
+						Tunnels:         []*Tunnel{},
+						TunnelSlots:     0,
+					},
+				},
+			},
+			Pubkey: "abc123",
+			Want:   "fixtures/device.txt",
+		},
 	}
 
 	for _, test := range tests {

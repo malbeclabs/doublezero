@@ -1,8 +1,13 @@
-package collector
+package metrics
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+)
+
+const (
+	ErrorTypeSubmissionRetriesExhausted = "submission_retries_exhausted"
+	ErrorTypeGetCurrentEpoch            = "get_current_epoch"
 )
 
 var (
@@ -13,13 +18,13 @@ var (
 	}, []string{"version", "commit", "date"})
 
 	// Blockchain location fetch metrics
-	blockchainLocationFetchTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	BlockchainLocationFetchTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "doublezero_internet_latency_collector_blockchain_location_fetch_total",
 		Help: "Total number of blockchain location fetch attempts",
 	}, []string{"status"})
 
-	blockchainLocationsCount = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "doublezero_internet_latency_collector_blockchain_locations_count",
+	BlockchainLocations = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "doublezero_internet_latency_collector_blockchain_locations",
 		Help: "Number of locations fetched from blockchain",
 	})
 
@@ -60,4 +65,24 @@ var (
 		Name: "doublezero_internet_latency_collector_wheresitup_credit_balance",
 		Help: "Current Wheresitup credit balance",
 	})
+
+	ExporterErrorsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "doublezero_internet_latency_collector_exporter_errors_total",
+		Help: "Total number of errors from the exporter",
+	}, []string{"error_type"})
+
+	ExporterLocationNotFoundTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "doublezero_internet_latency_collector_exporter_location_not_found_total",
+		Help: "Total number of location not found warnings from the exporter",
+	}, []string{"location"})
+
+	ExporterPartitionedBufferSize = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "doublezero_internet_latency_collector_exporter_partitioned_buffer_size",
+		Help: "Number of partitioned buffers from the exporter",
+	}, []string{"data_provider", "source_location_pk", "target_location_pk"})
+
+	ExporterSubmitterAccountFull = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "doublezero_internet_latency_collector_exporter_submitter_account_full",
+		Help: "Number of times the exporter has encountered a submitter account full error",
+	}, []string{"data_provider", "source_location_pk", "target_location_pk", "epoch"})
 )

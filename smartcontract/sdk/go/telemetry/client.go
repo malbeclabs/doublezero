@@ -16,6 +16,7 @@ import (
 var (
 	ErrAccountNotFound      = errors.New("account not found")
 	ErrSamplesBatchTooLarge = fmt.Errorf("samples batch too large, must not exceed %d samples", MaxSamplesPerBatch)
+	ErrSamplesAccountFull   = errors.New("samples account is full")
 )
 
 type Client struct {
@@ -148,8 +149,13 @@ func (c *Client) WriteDeviceLatencySamples(
 				case map[string]any:
 					if ie, ok := v["InstructionError"].([]any); ok && len(ie) == 2 {
 						if custom, ok := ie[1].(map[string]any); ok {
-							if code, ok := custom["Custom"].(json.Number); ok && code.String() == strconv.Itoa(InstructionErrorAccountDoesNotExist) {
-								return solana.Signature{}, nil, ErrAccountNotFound
+							if code, ok := custom["Custom"].(json.Number); ok {
+								switch code.String() {
+								case strconv.Itoa(InstructionErrorAccountDoesNotExist):
+									return solana.Signature{}, nil, ErrAccountNotFound
+								case strconv.Itoa(InstructionErrorAccountSamplesAccountFull):
+									return solana.Signature{}, nil, ErrSamplesAccountFull
+								}
 							}
 						}
 					}
@@ -204,7 +210,7 @@ func (c *Client) InitializeInternetLatencySamples(
 	ctx context.Context,
 	config InitializeInternetLatencySamplesInstructionConfig,
 ) (solana.Signature, *solanarpc.GetTransactionResult, error) {
-	instruction, err := BuildInitializeInternetLatencySamplesInstruction(c.executor.programID, config)
+	instruction, err := BuildInitializeInternetLatencySamplesInstruction(c.executor.programID, c.executor.signer.PublicKey(), config)
 	if err != nil {
 		return solana.Signature{}, nil, fmt.Errorf("failed to build instruction: %w", err)
 	}
@@ -230,7 +236,7 @@ func (c *Client) WriteInternetLatencySamples(
 		return solana.Signature{}, nil, ErrSamplesBatchTooLarge
 	}
 
-	instruction, err := BuildWriteInternetLatencySamplesInstruction(c.executor.programID, config)
+	instruction, err := BuildWriteInternetLatencySamplesInstruction(c.executor.programID, c.executor.signer.PublicKey(), config)
 	if err != nil {
 		return solana.Signature{}, nil, fmt.Errorf("failed to build instruction: %w", err)
 	}
@@ -248,8 +254,13 @@ func (c *Client) WriteInternetLatencySamples(
 				case map[string]any:
 					if ie, ok := v["InstructionError"].([]any); ok && len(ie) == 2 {
 						if custom, ok := ie[1].(map[string]any); ok {
-							if code, ok := custom["Custom"].(json.Number); ok && code.String() == strconv.Itoa(InstructionErrorAccountDoesNotExist) {
-								return solana.Signature{}, nil, ErrAccountNotFound
+							if code, ok := custom["Custom"].(json.Number); ok {
+								switch code.String() {
+								case strconv.Itoa(InstructionErrorAccountDoesNotExist):
+									return solana.Signature{}, nil, ErrAccountNotFound
+								case strconv.Itoa(InstructionErrorAccountSamplesAccountFull):
+									return solana.Signature{}, nil, ErrSamplesAccountFull
+								}
 							}
 						}
 					}

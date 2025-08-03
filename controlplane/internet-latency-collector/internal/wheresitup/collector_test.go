@@ -468,7 +468,7 @@ func TestInternetLatency_Wheresitup_ExportJobResults_Success(t *testing.T) {
 	err = state.AddJobIDs([]string{"job-123"})
 	require.NoError(t, err, "state.AddJobIDs() error = %v", err)
 
-	err = c.ExportJobResults(t.Context(), jobIDsFile, outputDir)
+	err = c.ExportJobResults(t.Context(), jobIDsFile)
 	require.NoError(t, err, "ExportJobResults() error = %v", err)
 
 	// Verify job was removed after successful export
@@ -486,7 +486,6 @@ func TestInternetLatency_Wheresitup_ExportJobResults_NoJobs(t *testing.T) {
 
 	tempDir := t.TempDir()
 	jobIDsFile := filepath.Join(tempDir, "jobs.json")
-	outputDir := filepath.Join(tempDir, "output")
 
 	c := &Collector{
 		client:           &MockWheresitupClient{},
@@ -494,7 +493,7 @@ func TestInternetLatency_Wheresitup_ExportJobResults_NoJobs(t *testing.T) {
 		getLocationsFunc: mockLocationsFetcher([]collector.LocationMatch{}),
 	}
 
-	err := c.ExportJobResults(t.Context(), jobIDsFile, outputDir)
+	err := c.ExportJobResults(t.Context(), jobIDsFile)
 	require.NoError(t, err, "ExportJobResults() error = %v for empty job list", err)
 }
 
@@ -777,7 +776,6 @@ func TestInternetLatency_Wheresitup_ExportJobResults_ErrorScenarios(t *testing.T
 
 	tempDir := t.TempDir()
 	jobIDsFile := filepath.Join(tempDir, "jobs.json")
-	outputDir := filepath.Join(tempDir, "output")
 
 	t.Run("BuildLocationMapping Error", func(t *testing.T) {
 		t.Parallel()
@@ -794,7 +792,7 @@ func TestInternetLatency_Wheresitup_ExportJobResults_ErrorScenarios(t *testing.T
 			getLocationsFunc: mockLocationsFetcher([]collector.LocationMatch{}),
 		}
 
-		err := c.ExportJobResults(t.Context(), jobIDsFile, outputDir)
+		err := c.ExportJobResults(t.Context(), jobIDsFile)
 		require.Error(t, err, "Expected error from buildLocationMapping failure")
 	})
 
@@ -829,7 +827,7 @@ func TestInternetLatency_Wheresitup_ExportJobResults_ErrorScenarios(t *testing.T
 		state := NewState(jobIDsFile)
 		_ = state.AddJobIDs([]string{"job-in-progress"})
 
-		err := c.ExportJobResults(t.Context(), jobIDsFile, outputDir)
+		err := c.ExportJobResults(t.Context(), jobIDsFile)
 		require.NoError(t, err, "ExportJobResults() error = %v", err)
 
 		// Job should still be in the file
@@ -954,7 +952,7 @@ func TestInternetLatency_Wheresitup_Run_TickerExecution(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		_ = c.Run(ctx, interval, false, "jobs.json", stateDir, outputDir)
+		_ = c.Run(ctx, interval, false, "jobs.json", stateDir)
 	}()
 
 	// Wait for completion

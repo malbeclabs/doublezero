@@ -124,9 +124,18 @@ func (s *Submitter) SubmitSamples(ctx context.Context, accountKey AccountKey, sa
 				}
 				_, _, err = s.cfg.ProgramClient.WriteDeviceLatencySamples(ctx, writeConfig)
 				if err != nil {
+					if errors.Is(err, telemetry.ErrSamplesAccountFull) {
+						log.Debug("Partition account is full, dropping samples from buffer and moving on", "droppedSamples", len(samples))
+						s.cfg.Buffer.Remove(accountKey)
+						return nil
+					}
 					metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterFailedToWriteSamples).Inc()
 					return fmt.Errorf("failed to write device latency samples after init: %w", err)
 				}
+			} else if errors.Is(err, telemetry.ErrSamplesAccountFull) {
+				log.Debug("Partition account is full, dropping samples from buffer and moving on", "droppedSamples", len(samples))
+				s.cfg.Buffer.Remove(accountKey)
+				return nil
 			} else {
 				metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterFailedToWriteSamples).Inc()
 				return fmt.Errorf("failed to write device latency samples: %w", err)

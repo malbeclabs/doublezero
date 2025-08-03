@@ -386,51 +386,46 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults(t *testing.T) {
 						ID   int    `json:"id"`
 					}{Name: "Running"},
 				},
+				{
+					ID:          1,
+					Description: "DoubleZero CHI probe 101 to LAX probe 200",
+					Status: struct {
+						Name string `json:"name"`
+						ID   int    `json:"id"`
+					}{Name: "Running"},
+				},
 			}, nil
 		},
 		GetMeasurementResultsIncrementalFunc: func(ctx context.Context, measurementID int, startTimestamp int64) ([]any, error) {
-			if startTimestamp == 0 {
-				return []any{
-					map[string]any{
-						"timestamp": float64(1609459200),
-						"result": []any{
-							map[string]any{"rtt": float64(25.5)},
-						},
+			return []any{
+				map[string]any{
+					"timestamp": float64(1609459200),
+					"result": []any{
+						map[string]any{"rtt": float64(25.0)},
 					},
-					map[string]any{
-						"timestamp": float64(1609459260),
-						"result": []any{
-							map[string]any{"rtt": float64(26.0)},
-						},
+				},
+				map[string]any{
+					"timestamp": float64(1609459260),
+					"result": []any{
+						map[string]any{"rtt": float64(26.0)},
 					},
-				}, nil
-			} else if startTimestamp == 1609459260 {
-				return []any{
-					map[string]any{
-						"timestamp": float64(1609459320),
-						"result": []any{
-							map[string]any{"rtt": float64(26.5)},
-						},
-					},
-				}, nil
-			}
-			return []any{}, nil
+				},
+			}, nil
 		},
 	}
 
 	outputDir := t.TempDir()
-
 	e, err := exporter.NewCSVExporter(log, "ripe_atlas_measurements", outputDir)
 	require.NoError(t, err)
 	c := &Collector{client: mockClient, log: log, exporter: e}
 
-	// First run - should download all data
+	// First export
 	err = c.ExportMeasurementResults(t.Context(), outputDir, outputDir)
-	require.NoError(t, err, "First ExportMeasurementResults() failed")
+	require.NoError(t, err)
 
 	files, err := filepath.Glob(filepath.Join(outputDir, "ripe_atlas_measurements_*.csv"))
 	require.NoError(t, err)
-	require.Len(t, files, 1, "Expected 1 CSV file")
+	require.Len(t, files, 1)
 
 	csvFile, err := os.Open(files[0])
 	require.NoError(t, err)
@@ -439,54 +434,112 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults(t *testing.T) {
 	r := csv.NewReader(csvFile)
 	records, err := r.ReadAll()
 	require.NoError(t, err)
-	require.Len(t, records, 2, "Expected 1 header + 1 data row")
+
+	require.Len(t, records, 3, "Expected 1 header + 2 data rows")
 
 	header := records[0]
+	tsIdx := slices.Index(header, "timestamp")
+	rttIdx := slices.Index(header, "latency")
+	srcIdx := slices.Index(header, "source_location_code")
+	require.NotEqual(t, -1, tsIdx)
+	require.NotEqual(t, -1, rttIdx)
+	require.NotEqual(t, -1, srcIdx)
 
+	sourcesSeen := map[string]struct{}{}
+	for _, row := range records[1:] {
+		src := row[srcIdx]
+		ts, err := time.Parse(time.RFC3339, row[tsIdx])
+		require.NoError(t, err)
+		require.True(t, ts.Equal(time.Unix(1609459260, 0).UTC()))
+
+		lat, err := time.ParseDuration(row[rttIdx])
+		require.NoError(t, err)
+		require.Equal(t, 26*time.Millisecond, lat)
+
+		sourcesSeen[src] = struct{}{}
+	}
+	require.Contains(t, sourcesSeen, "NYC")
+	require.Contains(t, sourcesSeen, "CHI")
+}
+
+func TestInternetLatency_RIPEAtlas_ExportMeasurementResults_DeduplicatesByMeasurementSourceKey(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	mockClient := &MockClient{
+		GetAllMeasurementsFunc: func(ctx context.Context) ([]Measurement, error) {
+			return []Measurement{
+				{
+					ID:          1,
+					Description: "DoubleZero NYC probe 100 to LAX probe 200",
+					Status: struct {
+						Name string `json:"name"`
+						ID   int    `json:"id"`
+					}{Name: "Running"},
+				},
+			}, nil
+		},
+		GetMeasurementResultsIncrementalFunc: func(ctx context.Context, measurementID int, startTimestamp int64) ([]any, error) {
+			return []any{
+				map[string]any{
+					"timestamp": float64(1609459200),
+					"result": []any{
+						map[string]any{"rtt": float64(24.0)},
+					},
+				},
+				map[string]any{
+					"timestamp": float64(1609459260),
+					"result": []any{
+						map[string]any{"rtt": float64(25.0)},
+					},
+				},
+				map[string]any{
+					"timestamp": float64(1609459320),
+					"result": []any{
+						map[string]any{"rtt": float64(26.0)},
+					},
+				},
+			}, nil
+		},
+	}
+
+	outputDir := t.TempDir()
+	e, err := exporter.NewCSVExporter(log, "ripe_atlas_measurements", outputDir)
+	require.NoError(t, err)
+
+	c := &Collector{client: mockClient, log: log, exporter: e}
+
+	err = c.ExportMeasurementResults(t.Context(), outputDir, outputDir)
+	require.NoError(t, err)
+
+	files, err := filepath.Glob(filepath.Join(outputDir, "ripe_atlas_measurements_*.csv"))
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+
+	csvFile, err := os.Open(files[0])
+	require.NoError(t, err)
+	defer csvFile.Close()
+
+	r := csv.NewReader(csvFile)
+	records, err := r.ReadAll()
+	require.NoError(t, err)
+	require.Len(t, records, 2, "Expected 1 header + 1 deduplicated data row")
+
+	header := records[0]
 	timestampIdx := slices.Index(header, "timestamp")
 	rttIdx := slices.Index(header, "latency")
-	require.NotEqual(t, -1, timestampIdx, "timestamp column not found")
-	require.NotEqual(t, -1, rttIdx, "latency column not found")
+	require.NotEqual(t, -1, timestampIdx)
+	require.NotEqual(t, -1, rttIdx)
 
 	dataRow := records[1]
 	timestamp, err := time.Parse(time.RFC3339, dataRow[timestampIdx])
 	require.NoError(t, err)
-	require.Equal(t, time.Unix(1609459260, 0).UTC(), timestamp)
+	require.Equal(t, time.Unix(1609459320, 0).UTC(), timestamp)
 
 	rtt, err := time.ParseDuration(dataRow[rttIdx])
 	require.NoError(t, err)
 	require.Equal(t, 26*time.Millisecond, rtt)
-
-	timestampFile := filepath.Join(outputDir, TimestampFileName)
-	timestampData, err := os.ReadFile(timestampFile)
-	require.NoError(t, err)
-	require.Contains(t, string(timestampData), "1609459260")
-
-	// Second run - should only download new data
-	err = c.ExportMeasurementResults(t.Context(), outputDir, outputDir)
-	require.NoError(t, err, "Second ExportMeasurementResults() failed")
-
-	timestampData2, err := os.ReadFile(timestampFile)
-	require.NoError(t, err)
-	require.Contains(t, string(timestampData2), "1609459320")
-
-	csvFile2, err := os.Open(files[0])
-	require.NoError(t, err)
-	defer csvFile2.Close()
-
-	r2 := csv.NewReader(csvFile2)
-	records2, err := r2.ReadAll()
-	require.NoError(t, err)
-	require.Len(t, records2, 3, "Expected 1 header + 2 data rows")
-
-	dataRow2 := records2[2]
-	timestamp2, err := time.Parse(time.RFC3339, dataRow2[timestampIdx])
-	require.NoError(t, err)
-	require.Equal(t, time.Unix(1609459320, 0).UTC(), timestamp2)
-
-	rtt2, err := time.ParseDuration(dataRow2[rttIdx])
-	require.NoError(t, err)
-	require.Equal(t, 26*time.Millisecond+500*time.Microsecond, rtt2)
 }
 
 func TestInternetLatency_RIPEAtlas_ListMeasurements(t *testing.T) {

@@ -438,8 +438,13 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 	var maxTimestamp time.Time
 	processedResults := 0
 
+	type measurementSourceKey struct {
+		MeasurementID int
+		Source        string
+	}
+
 	// Process results.
-	recordsByMeasurementID := map[int]exporter.Record{}
+	recordsByMeasurementID := map[measurementSourceKey]exporter.Record{}
 	for _, result := range results {
 		// Parse latency from result
 		latency, timestamp := c.parseLatencyFromResult(result)
@@ -449,7 +454,10 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 			}
 
 			// Keep only 1 record per measurement ID.
-			recordsByMeasurementID[measurement.ID] = exporter.Record{
+			recordsByMeasurementID[measurementSourceKey{
+				MeasurementID: measurement.ID,
+				Source:        locationA,
+			}] = exporter.Record{
 				DataProvider:       exporter.DataProviderNameRIPEAtlas,
 				SourceLocationCode: locationA,
 				TargetLocationCode: locationZ,

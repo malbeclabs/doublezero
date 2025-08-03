@@ -750,7 +750,6 @@ dependencies = [
  "doublezero-serviceability",
  "doublezero-telemetry",
  "figment",
- "humantime",
  "ingestor",
  "network-shapley",
  "processor",

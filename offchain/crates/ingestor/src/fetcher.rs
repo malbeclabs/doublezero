@@ -31,45 +31,18 @@ impl Fetcher {
         })
     }
 
-    /// Fetch all data (network and telemetry) for a given time range
-    pub async fn by_time_range(&self, after_us: u64, before_us: u64) -> Result<FetchData> {
-        info!(
-            "Fetching all data for time range: {} to {} microseconds",
-            after_us, before_us
-        );
-        info!(
-            "Using serviceability program: {}",
-            self.settings.ingestor.programs.serviceability_program_id
-        );
-        info!(
-            "Using telemetry program: {}",
-            self.settings.ingestor.programs.telemetry_program_id
-        );
-
-        // Fetch data in parallel
-        // For serviceability, we use the before timestamp to get the latest network state
-        // For telemetry, we filter by timestamp range
-        let (serviceability_data, telemetry_data) = tokio::try_join!(
-            serviceability::fetch(
-                &self.rpc_client,
-                &self.settings,
-                before_us // Get network state at the end of the time range
-            ),
-            telemetry::fetch(&self.rpc_client, &self.settings, after_us, before_us)
-        )?;
-
-        Ok(FetchData {
-            dz_serviceability: serviceability_data,
-            dz_telemetry: telemetry_data,
-            after_us,
-            before_us,
-            fetched_at: Utc::now(),
-        })
+    /// Fetch all data for the previous epoch
+    pub async fn fetch(&self) -> Result<FetchData> {
+        // Get DZ epoch info from DZ RPC
+        let dz_epoch_info = self.rpc_client.get_epoch_info().await?;
+        info!("Current dz_epoch: {}", dz_epoch_info.epoch);
+        let dz_prev_epoch = dz_epoch_info.epoch.saturating_sub(1);
+        info!("Fetching data for previous DZ epoch: {}", dz_prev_epoch);
+        self.with_epoch(dz_prev_epoch).await
     }
 
     /// Fetch all data for a specific epoch
-    pub async fn by_epoch(&self, epoch: u64) -> Result<FetchData> {
-        info!("Fetching all data for epoch: {}", epoch);
+    pub async fn with_epoch(&self, epoch: u64) -> Result<FetchData> {
         info!(
             "Using serviceability program: {}",
             self.settings.ingestor.programs.serviceability_program_id
@@ -79,28 +52,26 @@ impl Fetcher {
             self.settings.ingestor.programs.telemetry_program_id
         );
 
-        // Fetch data in parallel
-        // For serviceability, we use the filtered approach
-        // For telemetry, we use epoch-based filtering
+        // Fetch serviceability data
+        // Fetch telemetry data
         let (serviceability_data, telemetry_data) = tokio::try_join!(
-            serviceability::fetch_filtered(&self.rpc_client, &self.settings, 0, Some(epoch)), // TODO: Why is this 0?
-            telemetry::fetch_by_epoch(&self.rpc_client, &self.settings, epoch)
+            serviceability::fetch(&self.rpc_client, &self.settings),
+            telemetry::fetch(&self.rpc_client, &self.settings, epoch)
         )?;
+
+        let (start_us, end_us) = telemetry_data.start_end_us()?;
+
+        info!(
+            "Epoch {} time range: {} to {} microseconds",
+            epoch, start_us, end_us
+        );
 
         Ok(FetchData {
             dz_serviceability: serviceability_data,
             dz_telemetry: telemetry_data,
-            after_us: 0, // Not applicable for epoch-based fetching
-            before_us: 0,
+            start_us,
+            end_us,
             fetched_at: Utc::now(),
         })
-    }
-
-    /// Fetch all data for the previous epoch
-    pub async fn by_prev_epoch(&self) -> Result<FetchData> {
-        let epoch_info = self.rpc_client.get_epoch_info().await?;
-        let prev_epoch = epoch_info.epoch.saturating_sub(1);
-        info!("Fetching data for previous epoch: {}", prev_epoch);
-        self.by_epoch(prev_epoch).await
     }
 }

@@ -357,7 +357,7 @@ func TestGetConfig(t *testing.T) {
 				},
 			},
 			Pubkey: "abc123",
-			Want:   "fixtures/device.txt",
+			Want:   "fixtures/base.config.txt",
 		},
 	}
 
@@ -662,7 +662,7 @@ func TestStateCache(t *testing.T) {
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
 				MulticastGroups: map[string]serviceability.MulticastGroup{},
-				Vpnv4BgpPeers:   nil, // No BGP peers since device is excluded
+				Vpnv4BgpPeers:   nil,                  // No BGP peers since device is excluded
 				Devices:         map[string]*Device{}, // Device should not be in cache
 			},
 		},

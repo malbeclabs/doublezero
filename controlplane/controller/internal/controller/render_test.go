@@ -393,7 +393,7 @@ func TestRenderConfig(t *testing.T) {
 					},
 				},
 			},
-			Want: "fixtures/device.txt",
+			Want: "fixtures/base.config.txt",
 		},
 	}
 

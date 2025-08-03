@@ -400,7 +400,6 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir, outp
 func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurement Measurement, measurementState *MeasurementState) (int, error) {
 	lastTimestampUnix, exists := measurementState.GetLastTimestamp(measurement.ID)
 	lastTimestamp := time.Unix(lastTimestampUnix, 0)
-	recordCount := 0
 
 	c.log.Debug("Processing measurement",
 		slog.Int("measurement_id", measurement.ID),
@@ -440,7 +439,7 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 	processedResults := 0
 
 	// Process results.
-	records := make([]exporter.Record, 0, len(results))
+	recordsByMeasurementID := map[int]exporter.Record{}
 	for _, result := range results {
 		// Parse latency from result
 		latency, timestamp := c.parseLatencyFromResult(result)
@@ -449,16 +448,22 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 				maxTimestamp = timestamp
 			}
 
-			records = append(records, exporter.Record{
+			// Keep only 1 record per measurement ID.
+			recordsByMeasurementID[measurement.ID] = exporter.Record{
 				DataProvider:       exporter.DataProviderNameRIPEAtlas,
 				SourceLocationCode: locationA,
 				TargetLocationCode: locationZ,
 				Timestamp:          timestamp,
 				RTT:                latency,
-			})
+			}
+
 			processedResults++
-			recordCount++
 		}
+	}
+
+	records := make([]exporter.Record, 0, len(recordsByMeasurementID))
+	for _, record := range recordsByMeasurementID {
+		records = append(records, record)
 	}
 
 	// Write the batch of records with the exporter.
@@ -478,7 +483,7 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 			slog.Int("processed_results", processedResults))
 	}
 
-	return recordCount, nil
+	return len(records), nil
 }
 
 func (c *Collector) RunRipeAtlasMeasurementCreation(ctx context.Context, dryRun bool, probesPerLocation int, outputDir string, stateDir string) error {

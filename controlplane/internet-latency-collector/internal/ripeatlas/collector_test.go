@@ -2,11 +2,13 @@ package ripeatlas
 
 import (
 	"context"
+	"encoding/csv"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -387,9 +389,7 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults(t *testing.T) {
 			}, nil
 		},
 		GetMeasurementResultsIncrementalFunc: func(ctx context.Context, measurementID int, startTimestamp int64) ([]any, error) {
-			// Return different results based on startTimestamp
 			if startTimestamp == 0 {
-				// First run - return all results
 				return []any{
 					map[string]any{
 						"timestamp": float64(1609459200),
@@ -405,7 +405,6 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults(t *testing.T) {
 					},
 				}, nil
 			} else if startTimestamp == 1609459260 {
-				// Second run - return only new results
 				return []any{
 					map[string]any{
 						"timestamp": float64(1609459320),
@@ -429,29 +428,65 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults(t *testing.T) {
 	err = c.ExportMeasurementResults(t.Context(), outputDir, outputDir)
 	require.NoError(t, err, "First ExportMeasurementResults() failed")
 
-	// Check if CSV file was created
 	files, err := filepath.Glob(filepath.Join(outputDir, "ripe_atlas_measurements_*.csv"))
-	require.NoError(t, err, "Failed to glob CSV files")
+	require.NoError(t, err)
 	require.Len(t, files, 1, "Expected 1 CSV file")
 
-	// Check if timestamps file was created
-	timestampFile := filepath.Join(outputDir, TimestampFileName)
-	_, err = os.Stat(timestampFile)
-	require.NoError(t, err, "Timestamp file should be created")
+	csvFile, err := os.Open(files[0])
+	require.NoError(t, err)
+	defer csvFile.Close()
 
-	// Read and verify timestamp content
+	r := csv.NewReader(csvFile)
+	records, err := r.ReadAll()
+	require.NoError(t, err)
+	require.Len(t, records, 2, "Expected 1 header + 1 data row")
+
+	header := records[0]
+
+	timestampIdx := slices.Index(header, "timestamp")
+	rttIdx := slices.Index(header, "latency")
+	require.NotEqual(t, -1, timestampIdx, "timestamp column not found")
+	require.NotEqual(t, -1, rttIdx, "latency column not found")
+
+	dataRow := records[1]
+	timestamp, err := time.Parse(time.RFC3339, dataRow[timestampIdx])
+	require.NoError(t, err)
+	require.Equal(t, time.Unix(1609459260, 0).UTC(), timestamp)
+
+	rtt, err := time.ParseDuration(dataRow[rttIdx])
+	require.NoError(t, err)
+	require.Equal(t, 26*time.Millisecond, rtt)
+
+	timestampFile := filepath.Join(outputDir, TimestampFileName)
 	timestampData, err := os.ReadFile(timestampFile)
-	require.NoError(t, err, "Failed to read timestamp file")
-	require.Contains(t, string(timestampData), "1609459260", "Timestamp file should contain the latest timestamp")
+	require.NoError(t, err)
+	require.Contains(t, string(timestampData), "1609459260")
 
 	// Second run - should only download new data
 	err = c.ExportMeasurementResults(t.Context(), outputDir, outputDir)
 	require.NoError(t, err, "Second ExportMeasurementResults() failed")
 
-	// Verify that timestamp file was updated
 	timestampData2, err := os.ReadFile(timestampFile)
-	require.NoError(t, err, "Failed to read timestamp file")
-	require.Contains(t, string(timestampData2), "1609459320", "Timestamp file should be updated with newer timestamp")
+	require.NoError(t, err)
+	require.Contains(t, string(timestampData2), "1609459320")
+
+	csvFile2, err := os.Open(files[0])
+	require.NoError(t, err)
+	defer csvFile2.Close()
+
+	r2 := csv.NewReader(csvFile2)
+	records2, err := r2.ReadAll()
+	require.NoError(t, err)
+	require.Len(t, records2, 3, "Expected 1 header + 2 data rows")
+
+	dataRow2 := records2[2]
+	timestamp2, err := time.Parse(time.RFC3339, dataRow2[timestampIdx])
+	require.NoError(t, err)
+	require.Equal(t, time.Unix(1609459320, 0).UTC(), timestamp2)
+
+	rtt2, err := time.ParseDuration(dataRow2[rttIdx])
+	require.NoError(t, err)
+	require.Equal(t, 26*time.Millisecond+500*time.Microsecond, rtt2)
 }
 
 func TestInternetLatency_RIPEAtlas_ListMeasurements(t *testing.T) {

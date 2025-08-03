@@ -176,7 +176,11 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 				cache.Vpnv4BgpPeers = append(cache.Vpnv4BgpPeers, peer)
 			}
 		}
-		// TODO: raise an error if the IP is not set (no LoopbackTypeVpnv4 interface found)
+
+		if d.Vpn4vLoopbackIP == nil {
+			slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "VPNv4 loopback interface found for device")
+			continue
+		}
 
 		if len(device.DnsServers) > 0 {
 			d.DnsServers = make([]net.IP, len(device.DnsServers))

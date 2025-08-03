@@ -455,9 +455,17 @@ func TestStateCache(t *testing.T) {
 					ExchangePubKey: [32]uint8{},
 					DeviceType:     0,
 					PublicIp:       [4]uint8{2, 2, 2, 2},
-					Status:         serviceability.DeviceStatusActivated,
-					Code:           "abc01",
-					PubKey:         [32]byte{1},
+					Interfaces: []serviceability.Interface{
+						{
+							InterfaceType: serviceability.InterfaceTypeLoopback,
+							LoopbackType:  serviceability.LoopbackTypeVpnv4,
+							IpNet:         [5]uint8{14, 14, 14, 14, 32},
+							Name:          "Loopback255",
+						},
+					},
+					Status: serviceability.DeviceStatusActivated,
+					Code:   "abc01",
+					PubKey: [32]byte{1},
 				},
 			},
 			StateCache: stateCache{
@@ -474,10 +482,18 @@ func TestStateCache(t *testing.T) {
 						},
 					},
 				},
+				Vpnv4BgpPeers: []Vpnv4BgpPeer{
+					{
+						PeerIP:    net.IP{14, 14, 14, 14},
+						PeerName:  "abc01",
+						SourceInt: "Loopback255",
+					},
+				},
 				Devices: map[string]*Device{
 					"4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM": {
-						PubKey:   "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
-						PublicIP: net.IP{2, 2, 2, 2},
+						PubKey:          "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
+						PublicIP:        net.IP{2, 2, 2, 2},
+						Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
 						Tunnels: []*Tunnel{
 							{
 								Id:            500,
@@ -570,15 +586,65 @@ func TestStateCache(t *testing.T) {
 							{Id: 563},
 						},
 						TunnelSlots: 64,
+						Interfaces: []serviceability.Interface{
+							{
+								InterfaceType: serviceability.InterfaceTypeLoopback,
+								LoopbackType:  serviceability.LoopbackTypeVpnv4,
+								IpNet:         [5]uint8{14, 14, 14, 14, 32},
+								Name:          "Loopback255",
+							},
+						},
 					},
 				},
+			},
+		},
+		{
+			Name: "exclude_device_without_vpnv4_loopback",
+			Config: serviceability.Config{
+				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+			},
+			Users: []serviceability.User{
+				{
+					AccountType:  serviceability.AccountType(0),
+					Owner:        [32]uint8{},
+					UserType:     serviceability.UserUserType(serviceability.UserTypeIBRL),
+					DevicePubKey: [32]uint8{1},
+					CyoaType:     serviceability.CyoaTypeGREOverDIA,
+					ClientIp:     [4]uint8{1, 1, 1, 1},
+					DzIp:         [4]uint8{100, 100, 100, 100},
+					TunnelId:     uint16(500),
+					TunnelNet:    [5]uint8{10, 1, 1, 0, 31},
+					Status:       serviceability.UserStatusActivated,
+				},
+			},
+			Devices: []serviceability.Device{
+				{
+					AccountType:    serviceability.AccountType(0),
+					Owner:          [32]uint8{},
+					LocationPubKey: [32]uint8{},
+					ExchangePubKey: [32]uint8{},
+					DeviceType:     0,
+					PublicIp:       [4]uint8{3, 3, 3, 3},
+					Interfaces:     []serviceability.Interface{}, // No VPNv4 loopback interface
+					Status:         serviceability.DeviceStatusActivated,
+					Code:           "abc02",
+					PubKey:         [32]byte{1},
+				},
+			},
+			StateCache: stateCache{
+				Config: serviceability.Config{
+					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+				},
+				MulticastGroups: map[string]serviceability.MulticastGroup{},
+				Vpnv4BgpPeers:   nil, // No BGP peers since device is excluded
+				Devices:         map[string]*Device{}, // Device should not be in cache
 			},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
-			lis, err := net.Listen("tcp", net.JoinHostPort("localhost", "7004"))
+			lis, err := net.Listen("tcp", "localhost:0")
 			if err != nil {
 				log.Fatalf("failed to listen: %v", err)
 			}

@@ -5,6 +5,7 @@ package e2e
 import (
 	"context"
 	"flag"
+	"math/rand"
 	"net"
 	"strings"
 	"testing"
@@ -14,9 +15,11 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
 	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	"github.com/mr-tron/base58"
 	"github.com/stretchr/testify/require"
 )
 
@@ -120,6 +123,222 @@ func TestConnectivityUnicast(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestConnectivityMulticast(t *testing.T) {
+	flag.Parse()
+
+	hosts := strings.Split(*hosts, ",")
+	cleanup := disconnectUsersFunc(t, hosts)
+	defer cleanup()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Pick a random host to be the publisher.
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	publisherIndex := r.Intn(len(hosts))
+	publisher := hosts[publisherIndex]
+	code := "qa-test-group"
+
+	// Remove the publisher from the slice; the rest are subscribers.
+	subscribers := make([]string, 0, len(hosts)-1)
+	subscribers = append(subscribers, hosts[:publisherIndex]...)
+	subscribers = append(subscribers, hosts[publisherIndex+1:]...)
+	require.Greater(t, len(subscribers), 0, "Not enough hosts to test multicast, need at least one subscriber")
+
+	t.Logf("Using publisher: %s, subscribers: %v, hosts: %v", publisher, subscribers, hosts)
+	t.Run("create_multicast_group", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		client, err := getQAClient(net.JoinHostPort(publisher, *port))
+		require.NoError(t, err, "Failed to create QA client")
+
+		req := &pb.CreateMulticastGroupRequest{
+			Code:         code,
+			MaxBandwidth: "1Gbps",
+		}
+		result, err := client.CreateMulticastGroup(ctx, req)
+		require.NoError(t, err, "CreateMulticastGroup failed")
+		if result.GetSuccess() == false || result.GetReturnCode() != 0 {
+			require.Fail(t, "CreateMulticastGroup failed", result.GetOutput())
+		}
+	})
+
+	// get pubkey of created multicast group for deletion later
+	opts := []dzsdk.Option{}
+	opts = append(opts, dzsdk.WithServiceabilityProgramID(serviceability.SERVICEABILITY_PROGRAM_ID_DEVNET))
+
+	ledger, err := dzsdk.New(nil, dzsdk.DZ_LEDGER_RPC_URL, opts...)
+	require.NoError(t, err, "Failed to create ledger client")
+
+	pubKey := ""
+	ownerPubKey := ""
+	var groupAddr net.IP
+	var status serviceability.MulticastGroupStatus
+	condition := func() (bool, error) {
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+
+		data, err := ledger.Serviceability.GetProgramData(ctx)
+		if err != nil {
+			return false, err
+		}
+		for _, group := range data.MulticastGroups {
+			if group.Code == code {
+				pubKey = base58.Encode(group.PubKey[:])
+				ownerPubKey = base58.Encode(group.Owner[:])
+				groupAddr = net.IP(group.MulticastIp[:])
+				status = group.Status
+			}
+		}
+		if pubKey == "" || groupAddr == nil || ownerPubKey == "" || status != serviceability.MulticastGroupStatusActivated {
+			return false, nil
+		}
+		return true, nil
+	}
+
+	err = poll.Until(ctx, condition, 30*time.Second, 1*time.Second)
+	require.NoError(t, err, "Failed to get pubkey for multicast group")
+	t.Logf("Multicast group created with pubkey: %s address: %s owner: %s status: %d", pubKey, groupAddr, ownerPubKey, status)
+
+	t.Run("update_multicast_allow_list", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		client, err := getQAClient(net.JoinHostPort(publisher, *port))
+		require.NoError(t, err, "Failed to create QA client")
+
+		req := &pb.MulticastAllowListAddRequest{
+			Mode:   pb.MulticastAllowListAddRequest_PUBLISHER,
+			Code:   code,
+			Pubkey: ownerPubKey,
+		}
+		result, err := client.MulticastAllowListAdd(ctx, req)
+		require.NoError(t, err, "MulticastAllowListAdd failed")
+		if result.GetSuccess() == false || result.GetReturnCode() != 0 {
+			require.Fail(t, "MulticastAllowListAdd failed", result.GetOutput())
+		}
+		t.Logf("Multicast group %s added to allow list for publisher %s", code, ownerPubKey)
+
+		req = &pb.MulticastAllowListAddRequest{
+			Mode:   pb.MulticastAllowListAddRequest_SUBSCRIBER,
+			Code:   code,
+			Pubkey: ownerPubKey,
+		}
+		result, err = client.MulticastAllowListAdd(ctx, req)
+		require.NoError(t, err, "MulticastAllowListAdd failed")
+		if result.GetSuccess() == false || result.GetReturnCode() != 0 {
+			require.Fail(t, "MulticastAllowListAdd failed", result.GetOutput())
+		}
+		t.Logf("Multicast group %s added to allow list for subscriber %s", code, ownerPubKey)
+	})
+
+	t.Run("connect_multicast_subscribers", func(t *testing.T) {
+		for _, host := range subscribers {
+			t.Run("subscribe_"+host, func(t *testing.T) {
+				ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+				defer cancel()
+				client, err := getQAClient(net.JoinHostPort(host, *port))
+				require.NoError(t, err, "Failed to create QA client")
+				req := &pb.ConnectMulticastRequest{
+					Mode: pb.ConnectMulticastRequest_SUBSCRIBER,
+					Code: code,
+				}
+				result, err := client.ConnectMulticast(ctx, req)
+				require.NoError(t, err, "ConnectMulticast failed")
+				if result.GetSuccess() == false || result.GetReturnCode() != 0 {
+					require.Fail(t, "ConnectMulticast failed", result.GetOutput())
+				}
+
+				_, err = client.MulticastJoin(ctx, &pb.MulticastJoinRequest{
+					Groups: []*pb.MulticastGroup{
+						{
+							Group: groupAddr.String(),
+							Port:  7000,
+							Iface: "doublezero1",
+						},
+					},
+				})
+				require.NoError(t, err, "MulticastJoin failed")
+			})
+		}
+	})
+
+	t.Run("connect_multicast_publisher_"+publisher, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		client, err := getQAClient(net.JoinHostPort(publisher, *port))
+		require.NoError(t, err, "Failed to create QA client")
+		req := &pb.ConnectMulticastRequest{
+			Mode: pb.ConnectMulticastRequest_PUBLISHER,
+			Code: code,
+		}
+		result, err := client.ConnectMulticast(ctx, req)
+		require.NoError(t, err, "ConnectMulticast failed")
+		if result.GetSuccess() == false || result.GetReturnCode() != 0 {
+			require.Fail(t, "ConnectMulticast failed", result.GetOutput())
+		}
+		sendReq := &pb.MulticastSendRequest{
+			Group:    groupAddr.String(),
+			Port:     7000,
+			Duration: 30,
+		}
+		ctx, cancel = context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		_, err = client.MulticastSend(ctx, sendReq)
+		require.NoError(t, err, "MulticastSend failed")
+	})
+
+	t.Run("check_multicast_subscribers", func(t *testing.T) {
+		for _, host := range subscribers {
+			t.Run("check_subscriber_"+host, func(t *testing.T) {
+				ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+				defer cancel()
+				client, err := getQAClient(net.JoinHostPort(host, *port))
+				require.NoError(t, err, "Failed to create QA client")
+				resp, err := client.MulticastReport(ctx, &pb.MulticastReportRequest{
+					Groups: []*pb.MulticastGroup{
+						{
+							Group: groupAddr.String(),
+							Port:  7000,
+						},
+					},
+				})
+				require.NoError(t, err, "MulticastReport failed")
+				t.Logf("Multicast report for group %s on subscriber %s: %+v", groupAddr.String(), host, resp)
+				require.Greater(t, resp.Reports[groupAddr.String()].PacketCount, uint64(0), "No packets received for group %s on subscriber %s", groupAddr.String(), host)
+			})
+		}
+	})
+
+	t.Run("delete_multicast_group", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		client, err := getQAClient(net.JoinHostPort(publisher, *port))
+		require.NoError(t, err, "Failed to create QA client")
+
+		req := &pb.DeleteMulticastGroupRequest{
+			Pubkey: pubKey,
+		}
+		result, err := client.DeleteMulticastGroup(ctx, req)
+		require.NoError(t, err, "DeleteMulticastGroup failed")
+		if result.GetSuccess() == false || result.GetReturnCode() != 0 {
+			require.Fail(t, "DeleteMulticastGroup failed", result.GetOutput())
+		}
+	})
+
+	t.Run("stop_multicast_subscribers", func(t *testing.T) {
+		for _, host := range subscribers {
+			t.Run("stop_subscriber_"+host, func(t *testing.T) {
+				ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+				defer cancel()
+				client, err := getQAClient(net.JoinHostPort(host, *port))
+				require.NoError(t, err, "Failed to create QA client")
+				_, err = client.MulticastLeave(ctx, &emptypb.Empty{})
+				require.NoError(t, err, "MulticastLeave failed")
+			})
+		}
+	})
 }
 
 func getQAClient(addr string) (pb.QAAgentServiceClient, error) {

@@ -15,6 +15,7 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
 	probing "github.com/prometheus-community/pro-bing"
+	"golang.org/x/net/ipv4"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -89,10 +90,18 @@ func (q *QAAgent) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingResult
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pinger: %v", err)
 	}
-	pinger.SetPrivileged(true)
+	if req.GetPingType() == pb.PingRequest_ICMP {
+		pinger.SetPrivileged(true)
+	}
+	if req.GetPingType() == pb.PingRequest_UDP {
+		pinger.SetPrivileged(false)
+	}
 	pinger.Count = 5
 	pinger.Source = req.GetSourceIp()
 	pinger.InterfaceName = req.GetSourceIface()
+	if req.GetTimeout() > 0 {
+		pinger.Timeout = time.Duration(req.GetTimeout()) * time.Second
+	}
 	if err := pinger.Run(); err != nil {
 		return nil, fmt.Errorf("ping failed: %v", err)
 	}
@@ -236,6 +245,202 @@ func (q *QAAgent) GetStatus(ctx context.Context, req *emptypb.Empty) (*pb.Status
 		resp.Status = append(resp.Status, r)
 	}
 	return resp, nil
+}
+
+// CreateMulticastGroup implements the CreateMulticastGroup RPC, which creates a multicast group
+// with the specified code and maximum bandwidth.
+func (q *QAAgent) CreateMulticastGroup(ctx context.Context, req *pb.CreateMulticastGroupRequest) (*pb.Result, error) {
+	if req.GetCode() == "" {
+		return nil, fmt.Errorf("code is required")
+	}
+	if req.GetMaxBandwidth() == "" {
+		return nil, fmt.Errorf("bandwidth is required")
+	}
+	q.log.Info("Received CreateMulticastGroup request", "code", req.GetCode(), "bandwidth", req.GetMaxBandwidth())
+	cmd := exec.Command("doublezero", "multicast", "group", "create", "--code", req.GetCode(), "--max-bandwidth", req.GetMaxBandwidth(), "--owner", "me")
+	result, err := runCmd(cmd)
+	if err != nil {
+		q.log.Error("Failed to create multicast group", "error", err, "output", result.Output)
+		return nil, err
+	}
+	return result, nil
+}
+
+// DeleteMulticastGroup implements the DeleteMulticastGroup RPC, which deletes a multicast group
+// by its public key.
+func (q *QAAgent) DeleteMulticastGroup(ctx context.Context, req *pb.DeleteMulticastGroupRequest) (*pb.Result, error) {
+	if req.GetPubkey() == "" {
+		return nil, fmt.Errorf("pubkey is required")
+	}
+	q.log.Info("Received DeleteMulticastGroup request", "pubkey", req.GetPubkey())
+	cmd := exec.Command("doublezero", "multicast", "group", "delete", "--pubkey", req.GetPubkey())
+	result, err := runCmd(cmd)
+	if err != nil {
+		q.log.Error("Failed to delete multicast group", "error", err, "output", result.Output)
+		return nil, err
+	}
+	return result, nil
+}
+
+// ConnectMulticast implements the ConnectMulticast RPC, which connects to a multicast group
+// as either a publisher or subscriber.
+func (q *QAAgent) ConnectMulticast(ctx context.Context, req *pb.ConnectMulticastRequest) (*pb.Result, error) {
+	if req.GetCode() == "" {
+		return nil, fmt.Errorf("code is required")
+	}
+	if req.GetMode() == pb.ConnectMulticastRequest_UNSPECIFIED {
+		return nil, fmt.Errorf("mode is required")
+	}
+	mode := ""
+	if req.GetMode() == pb.ConnectMulticastRequest_PUBLISHER {
+		mode = "publisher"
+	}
+	if req.GetMode() == pb.ConnectMulticastRequest_SUBSCRIBER {
+		mode = "subscriber"
+	}
+	q.log.Info("Received ConnectMulticast request", "code", req.GetCode(), "mode", mode)
+	cmd := exec.Command("doublezero", "connect", "multicast", mode, req.Code)
+	result, err := runCmd(cmd)
+	if err != nil {
+		q.log.Error("Failed to connect multicast", "error", err, "output", result.Output)
+		return nil, err
+	}
+	return result, nil
+}
+
+// MulticastAllowListAdd implements the MulticastAllowListAdd RPC, which adds a publisher or subscriber
+// to the multicast allowlist for a specific group.
+func (q *QAAgent) MulticastAllowListAdd(ctx context.Context, req *pb.MulticastAllowListAddRequest) (*pb.Result, error) {
+	if req.GetPubkey() == "" {
+		return nil, fmt.Errorf("pubkey is required")
+	}
+	if req.GetCode() == "" {
+		return nil, fmt.Errorf("group is required")
+	}
+	if req.GetMode() == pb.MulticastAllowListAddRequest_UNSPECIFIED {
+		return nil, fmt.Errorf("mode is required")
+	}
+	mode := ""
+	if req.GetMode() == pb.MulticastAllowListAddRequest_PUBLISHER {
+		mode = "publisher"
+	}
+	if req.GetMode() == pb.MulticastAllowListAddRequest_SUBSCRIBER {
+		mode = "subscriber"
+	}
+	q.log.Info("Received MulticastAllowListAdd request", "pubkey", req.GetPubkey(), "code", req.GetCode(), "mode", mode)
+	cmd := exec.Command("doublezero", "multicast", "group", "allowlist", mode, "add", "--pubkey", req.GetPubkey(), "--code", req.GetCode())
+	result, err := runCmd(cmd)
+	if err != nil {
+		q.log.Error("Failed to add multicast allowlist entry", "error", err, "output", result.Output)
+		return nil, err
+	}
+	return result, nil
+}
+
+// MulticastSend implements the MulticastSend RPC, which sends multicast packets to a specified group
+// for a given duration.
+func (q *QAAgent) MulticastSend(ctx context.Context, req *pb.MulticastSendRequest) (*emptypb.Empty, error) {
+	if req.GetGroup() == "" {
+		return &emptypb.Empty{}, fmt.Errorf("group is required")
+	}
+	if req.GetPort() == 0 {
+		return &emptypb.Empty{}, fmt.Errorf("port is required")
+	}
+	if req.GetDuration() == 0 {
+		return &emptypb.Empty{}, fmt.Errorf("duration is required")
+	}
+
+	q.log.Info("Received MulticastSend request", "group", req.GetGroup(), "port", req.GetPort(), "duration", req.GetDuration())
+
+	addr := fmt.Sprintf("%s:%d", req.GetGroup(), req.GetPort())
+	udpAddr, err := net.ResolveUDPAddr("udp", addr)
+	if err != nil {
+		return &emptypb.Empty{}, fmt.Errorf("failed to resolve multicast address: %w", err)
+	}
+	conn, err := net.DialUDP("udp", nil, udpAddr)
+	if err != nil {
+		return &emptypb.Empty{}, fmt.Errorf("failed to dial multicast address: %w", err)
+	}
+	defer conn.Close()
+
+	p := ipv4.NewPacketConn(conn)
+	if err := p.SetMulticastTTL(64); err != nil {
+		return &emptypb.Empty{}, fmt.Errorf("failed to set multicast TTL: %w", err)
+	}
+
+	var packetsSent uint64
+	payload := []byte("hello multicast from QAAgent")
+
+	sendCtx, cancel := context.WithTimeout(ctx, time.Duration(req.GetDuration())*time.Second)
+	defer cancel()
+
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+loop:
+	for {
+		select {
+		case <-sendCtx.Done():
+			break loop
+		case <-ticker.C:
+			_, err := p.WriteTo(payload, nil, nil)
+			if err != nil {
+				q.log.Error("Failed to write to multicast group", "error", err)
+				break loop
+			}
+			packetsSent++
+		}
+	}
+
+	q.log.Info("Finished sending multicast packets", "group", req.GetGroup(), "packets_sent", packetsSent)
+
+	return &emptypb.Empty{}, nil
+}
+
+// MulticastReport implements the MulticastReport RPC, which retrieves statistics for multicast groups
+// that the agent is currently listening to. It returns the number of packets received for each group.
+func (q *QAAgent) MulticastReport(ctx context.Context, req *pb.MulticastReportRequest) (*pb.MulticastReportResult, error) {
+	if len(req.GetGroups()) == 0 {
+		return nil, fmt.Errorf("at least one group is required")
+	}
+
+	q.log.Info("Received MulticastReport request", "groups", req.GetGroups())
+	reports := make(map[string]*pb.MulticastReport)
+
+	for _, group := range req.GetGroups() {
+		ip := net.ParseIP(group.Group)
+		if ip == nil {
+			return nil, fmt.Errorf("invalid group IP: %s", group)
+		}
+		packets := q.mcastListener.GetStatistics(ip)
+		reports[ip.String()] = &pb.MulticastReport{
+			PacketCount: packets,
+		}
+	}
+	q.log.Info("Multicast report generated", "reports", reports)
+	return &pb.MulticastReportResult{Reports: reports}, nil
+}
+
+// runCmd executes a command and returns the result in a structured format.
+func runCmd(cmd *exec.Cmd) (*pb.Result, error) {
+	output, err := cmd.CombinedOutput()
+	res := &pb.Result{
+		Output: strings.Split(string(output), "\n"),
+	}
+
+	if err != nil {
+		res.Success = false
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			res.ReturnCode = int32(exitErr.ExitCode())
+		} else {
+			res.ReturnCode = -1
+			res.Output = append(res.Output, err.Error())
+		}
+		return res, fmt.Errorf("command failed: %v", err)
+	}
+	res.Success = true
+	res.ReturnCode = 0
+	return res, nil
 }
 
 // fetchStatus retrieves the current status of the configured DoubleZero tunnel via the doublezerod

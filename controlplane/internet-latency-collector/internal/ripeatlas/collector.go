@@ -27,7 +27,7 @@ type clientInterface interface {
 	GetProbesInRadius(ctx context.Context, latitude, longitude float64, radiusKm int) ([]Probe, error)
 	GetProbesForLocations(ctx context.Context, locations []LocationProbeMatch) ([]LocationProbeMatch, error)
 	CreateMeasurement(ctx context.Context, request MeasurementRequest) (*MeasurementResponse, error)
-	GetAllMeasurements(ctx context.Context) ([]Measurement, error)
+	GetAllMeasurements(ctx context.Context, env string) ([]Measurement, error)
 	GetMeasurementResultsIncremental(ctx context.Context, measurementID int, startTimestamp int64) ([]any, error)
 	StopMeasurement(ctx context.Context, measurementID int) error
 }
@@ -59,6 +59,7 @@ type Collector struct {
 	log              *slog.Logger
 	exporter         exporter.Exporter
 	getLocationsFunc func(ctx context.Context) []collector.LocationMatch
+	env              string
 }
 
 type MeasurementSpec struct {
@@ -70,12 +71,13 @@ type MeasurementSpec struct {
 	TargetProbe        Probe
 }
 
-func NewCollector(logger *slog.Logger, exporter exporter.Exporter, getLocationsFunc func(ctx context.Context) []collector.LocationMatch) *Collector {
+func NewCollector(logger *slog.Logger, exporter exporter.Exporter, env string, getLocationsFunc func(ctx context.Context) []collector.LocationMatch) *Collector {
 	return &Collector{
 		client:           NewClient(logger),
 		log:              logger,
 		exporter:         exporter,
 		getLocationsFunc: getLocationsFunc,
+		env:              env,
 	}
 }
 
@@ -123,7 +125,7 @@ func parseProbeIDsFromDescription(description string) (sourceProbe int, targetPr
 		return 0, 0, "", ""
 	}
 
-	// Extract source probe from left part: "DoubleZero LocationA probe 123"
+	// Extract source probe from left part: "DoubleZero [env] LocationA probe 123" or "DoubleZero LocationA probe 123"
 	leftPart := parts[0]
 	if idx := strings.LastIndex(leftPart, " probe "); idx != -1 {
 		// Extract probe ID
@@ -134,8 +136,14 @@ func parseProbeIDsFromDescription(description string) (sourceProbe int, targetPr
 
 		// Extract location A
 		beforeProbe := leftPart[:idx]
-		locationA = strings.TrimPrefix(beforeProbe, "DoubleZero ")
-		locationA = strings.TrimSpace(locationA)
+		beforeProbe = strings.TrimPrefix(beforeProbe, "DoubleZero ")
+		// Remove [env] if present
+		if strings.HasPrefix(beforeProbe, "[") {
+			if endIdx := strings.Index(beforeProbe, "] "); endIdx != -1 {
+				beforeProbe = beforeProbe[endIdx+2:]
+			}
+		}
+		locationA = strings.TrimSpace(beforeProbe)
 	}
 
 	// Extract target probe from right part: "LocationZ probe 456"
@@ -185,7 +193,7 @@ func (c *Collector) parseLatencyFromResult(result any) (time.Duration, time.Time
 func (c *Collector) ClearAllMeasurements(ctx context.Context) error {
 	c.log.Info("Retrieving all measurements")
 
-	measurements, err := c.client.GetAllMeasurements(ctx)
+	measurements, err := c.client.GetAllMeasurements(ctx, c.env)
 	if err != nil {
 		return collector.NewAPIError("get_measurements", "failed to get measurements", err)
 	}
@@ -247,7 +255,7 @@ func (c *Collector) ClearAllMeasurements(ctx context.Context) error {
 }
 
 func (c *Collector) ListMeasurements(ctx context.Context) error {
-	measurements, err := c.client.GetAllMeasurements(ctx)
+	measurements, err := c.client.GetAllMeasurements(ctx, c.env)
 	if err != nil {
 		return collector.NewAPIError("get_measurements", "failed to get measurements", err)
 	}
@@ -343,7 +351,7 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir strin
 		return err
 	}
 
-	measurements, err := c.client.GetAllMeasurements(ctx)
+	measurements, err := c.client.GetAllMeasurements(ctx, c.env)
 	if err != nil {
 		return collector.NewAPIError("get_measurements", "failed to get measurements", err)
 	}
@@ -541,7 +549,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 	wantedMeasurements := c.generateWantedMeasurements(locationMatches, probesPerLocation)
 
 	// Step 2: Get all existing measurements
-	existingMeasurements, err := c.client.GetAllMeasurements(ctx)
+	existingMeasurements, err := c.client.GetAllMeasurements(ctx, c.env)
 	if err != nil {
 		c.log.Warn("Failed to get existing measurements", slog.String("error", err.Error()))
 		existingMeasurements = []Measurement{}
@@ -639,9 +647,23 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 				slog.String("target_location", spec.TargetLocation),
 				slog.Int("target_probe", spec.TargetProbe.ID))
 		} else {
-			description := fmt.Sprintf("DoubleZero %s probe %d to %s probe %d",
-				spec.SourceLocationCode, spec.SourceProbe.ID,
-				spec.TargetLocationCode, spec.TargetProbe.ID)
+			var description string
+			if c.env != "" {
+				description = fmt.Sprintf("DoubleZero [%s] %s probe %d to %s probe %d",
+					c.env, spec.SourceLocationCode, spec.SourceProbe.ID,
+					spec.TargetLocationCode, spec.TargetProbe.ID)
+			} else {
+				description = fmt.Sprintf("DoubleZero %s probe %d to %s probe %d",
+					spec.SourceLocationCode, spec.SourceProbe.ID,
+					spec.TargetLocationCode, spec.TargetProbe.ID)
+			}
+
+			// Build tags including environment if set
+			var tags []string
+			if c.env != "" {
+				tags = append(tags, c.env)
+			}
+			tags = append(tags, "doublezero")
 
 			measurementRequest := MeasurementRequest{
 				Definitions: []MeasurementDefinition{
@@ -654,6 +676,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 						PacketInterval: 1000, // Delay between packets; only matters when Packets > 1
 						Target:         spec.TargetProbe.Address,
 						Description:    description,
+						Tags:           tags,
 					},
 				},
 				Probes: []MeasurementProbe{

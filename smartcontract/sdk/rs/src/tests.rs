@@ -48,7 +48,7 @@ pub mod utils {
             ..Default::default()
         };
         write_doublezero_config(&client_cfg)?;
-        create_new_pubkey_user(false)?;
+        create_new_pubkey_user(false, None)?;
         Ok(tmpdir)
     }
 }

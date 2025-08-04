@@ -1,6 +1,8 @@
 use clap::{Args, Subcommand};
 
-use doublezero_cli::exchange::{create::*, delete::*, get::*, list::*, update::*};
+use doublezero_cli::exchange::{
+    create::*, delete::*, get::*, list::*, setdevice::SetDeviceExchangeCliCommand, update::*,
+};
 
 #[derive(Args, Debug)]
 pub struct ExchangeCliCommand {
@@ -16,6 +18,9 @@ pub enum ExchangeCommands {
     /// Update an existing exchange
     #[clap()]
     Update(UpdateExchangeCliCommand),
+    /// Set devices for an exchange
+    #[clap()]
+    SetDevice(SetDeviceExchangeCliCommand),
     /// List all exchanges
     #[clap()]
     List(ListExchangeCliCommand),

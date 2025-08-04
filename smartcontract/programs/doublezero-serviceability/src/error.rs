@@ -33,6 +33,14 @@ pub enum DoubleZeroError {
     ReferenceCountNotZero, // variant 13
     #[error("Invalid Contributor")]
     InvalidContributor, // variant 14
+    #[error("Invalid External Link: Side Z interface name should be empty")]
+    InvalidInterfaceZForExternal, // variant 15
+    #[error("Invalid index")]
+    InvalidIndex, // variant 16
+    #[error("Device already set")]
+    DeviceAlreadySet, // variant 17
+    #[error("Device not set")]
+    DeviceNotSet, // variant 18
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -53,6 +61,10 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InvalidInterfaceName => ProgramError::Custom(12),
             DoubleZeroError::ReferenceCountNotZero => ProgramError::Custom(13),
             DoubleZeroError::InvalidContributor => ProgramError::Custom(14),
+            DoubleZeroError::InvalidInterfaceZForExternal => ProgramError::Custom(15),
+            DoubleZeroError::InvalidIndex => ProgramError::Custom(16),
+            DoubleZeroError::DeviceAlreadySet => ProgramError::Custom(17),
+            DoubleZeroError::DeviceNotSet => ProgramError::Custom(18),
         }
     }
 }
@@ -75,6 +87,10 @@ impl From<ProgramError> for DoubleZeroError {
                 12 => DoubleZeroError::InvalidInterfaceName,
                 13 => DoubleZeroError::ReferenceCountNotZero,
                 14 => DoubleZeroError::InvalidContributor,
+                15 => DoubleZeroError::InvalidInterfaceZForExternal,
+                16 => DoubleZeroError::InvalidIndex,
+                17 => DoubleZeroError::DeviceAlreadySet,
+                18 => DoubleZeroError::DeviceNotSet,
 
                 _ => DoubleZeroError::Custom(e),
             },

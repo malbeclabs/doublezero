@@ -89,7 +89,7 @@ echo "Update exchanges"
 
 ### Initialice controbutor
 echo "Creating contributor"
-./target/doublezero contributor create --code co01
+./target/doublezero contributor create --code co01 --owner me
 
 ### Initialice devices
 echo "Creating devices"
@@ -122,13 +122,34 @@ echo "Creating device interfaces"
 ./target/doublezero device interface create ams-dz001 "Switch1/1/2" physical
 
 ### Initialice links
-echo "Creating links"
-./target/doublezero link create --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Switch1/1/1 --side-z ny5-dz01 --side-z-interface Switch1/1/2 --link-type L3 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
-./target/doublezero link create --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Switch1/1/1 --side-z ld4-dz01 --side-z-interface Switch1/1/2 --link-type L3 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
-./target/doublezero link create --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Switch1/1/1 --side-z frk-dz01 --side-z-interface Switch1/1/2 --link-type L3 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10
-./target/doublezero link create --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Switch1/1/1 --side-z sg1-dz01 --side-z-interface Switch1/1/2 --link-type L3 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9
-./target/doublezero link create --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-a-interface Switch1/1/1 --side-z ty2-dz01 --side-z-interface Switch1/1/2 --link-type L3 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7
-./target/doublezero link create --code "ty2-dz01:la2-dz01" --contributor co01 --side-a ty2-dz01 --side-a-interface Switch1/1/1 --side-z la2-dz01 --side-z-interface Switch1/1/2 --link-type L3 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 10
+echo "Creating internal links"
+./target/doublezero link create internal --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Switch1/1/1 --side-z ny5-dz01 --side-z-interface Switch1/1/2 --link-type L3 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
+./target/doublezero link create internal --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Switch1/1/1 --side-z ld4-dz01 --side-z-interface Switch1/1/2 --link-type L3 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
+./target/doublezero link create internal --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Switch1/1/1 --side-z frk-dz01 --side-z-interface Switch1/1/2 --link-type L3 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10
+./target/doublezero link create internal --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Switch1/1/1 --side-z sg1-dz01 --side-z-interface Switch1/1/2 --link-type L3 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9
+./target/doublezero link create internal --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-a-interface Switch1/1/1 --side-z ty2-dz01 --side-z-interface Switch1/1/2 --link-type L3 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7
+./target/doublezero link create internal --code "ty2-dz01:la2-dz01" --contributor co01 --side-a ty2-dz01 --side-a-interface Switch1/1/1 --side-z la2-dz01 --side-z-interface Switch1/1/2 --link-type L3 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 10
+
+
+### Initialice controbutor
+echo "Creating contributor two"
+./target/doublezero contributor create --code co02 --owner me
+
+### Initialice devices
+echo "Creating devices"
+./target/doublezero device create --code la2-dz02 --contributor co02 --location lax --exchange xlax --public-ip "207.45.216.135" --dz-prefixes "130.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --bgp-asn 42 --dia-bgp-asn 4242 --mgmt-vrf mgmt --dns-servers 8.8.8.8,8.8.4.4 --ntp-servers 1.2.3.4
+
+### Initialize device interfaces
+echo "Creating device interfaces"
+./target/doublezero device interface create la2-dz02 "Switch1/1/1" physical
+
+### Initialice links
+echo "Creating external links"
+./target/doublezero link create external --code "la2-dz02-la2-dz01" --contributor co02 --side-a la2-dz02 --side-a-interface Switch1/1/1 --side-z la2-dz01 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
+
+### Initialice links
+echo "Accepting external link"
+./target/doublezero link accept --code "la2-dz02-la2-dz01" --side-z-interface Switch1/1/1
 
 # create a user
 echo "Creating users"

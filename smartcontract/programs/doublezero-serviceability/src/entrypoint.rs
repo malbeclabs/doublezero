@@ -25,16 +25,16 @@ use crate::{
         },
         exchange::{
             create::process_create_exchange, delete::process_delete_exchange,
-            resume::process_resume_exchange, suspend::process_suspend_exchange,
-            update::process_update_exchange,
+            resume::process_resume_exchange, setdevice::process_setdevice_exchange,
+            suspend::process_suspend_exchange, update::process_update_exchange,
         },
         globalconfig::set::process_set_globalconfig,
         globalstate::{close::process_close_account, initialize::initialize_global_state},
         link::{
-            activate::process_activate_link, closeaccount::process_closeaccount_link,
-            create::process_create_link, delete::process_delete_link, reject::process_reject_link,
-            resume::process_resume_link, suspend::process_suspend_link,
-            update::process_update_link,
+            accept::process_accept_link, activate::process_activate_link,
+            closeaccount::process_closeaccount_link, create::process_create_link,
+            delete::process_delete_link, reject::process_reject_link, resume::process_resume_link,
+            suspend::process_suspend_link, update::process_update_link,
         },
         location::{
             create::process_create_location, delete::process_delete_location,
@@ -278,6 +278,12 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::DeleteContributor(value) => {
             process_delete_contributor(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::SetDeviceExchange(value) => {
+            process_setdevice_exchange(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::AcceptLink(value) => {
+            process_accept_link(program_id, accounts, &value)?
         }
     };
     Ok(())

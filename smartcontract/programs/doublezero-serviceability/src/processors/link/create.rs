@@ -26,14 +26,14 @@ pub struct LinkCreateArgs {
     pub delay_ns: u64,
     pub jitter_ns: u64,
     pub side_a_iface_name: String,
-    pub side_z_iface_name: String,
+    pub side_z_iface_name: Option<String>,
 }
 
 impl fmt::Debug for LinkCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "code: {}, link_type: {:?}, bandwidth: {}, mtu: {}, delay_ns: {}, jitter_ns: {}, side_a_iface_name: {}, side_z_iface_name: {}",
+            "code: {}, link_type: {:?}, bandwidth: {}, mtu: {}, delay_ns: {}, jitter_ns: {}, side_a_iface_name: {}, side_z_iface_name: {:?}",
             self.code, self.link_type, self.bandwidth, self.mtu, self.delay_ns, self.jitter_ns, self.side_a_iface_name, self.side_z_iface_name
         )
     }
@@ -105,7 +105,9 @@ pub fn process_create_link(
 
     let mut side_z_dev = Device::try_from(side_z_account)?;
     assert_eq!(side_z_dev.account_type, AccountType::Device);
-    if side_z_dev.contributor_pk != *contributor_account.key {
+    if value.link_type != LinkLinkType::External
+        && side_z_dev.contributor_pk != *contributor_account.key
+    {
         return Err(DoubleZeroError::InvalidContributor.into());
     }
 
@@ -119,16 +121,28 @@ pub fn process_create_link(
 
         return Err(DoubleZeroError::InvalidInterfaceName.into());
     }
-    if !side_z_dev
-        .interfaces
-        .iter()
-        .any(|iface| iface.name == value.side_z_iface_name)
+
+    let side_z_iface_name = value.side_z_iface_name.clone().unwrap_or_default();
+    if value.side_z_iface_name.is_some()
+        && !side_z_dev
+            .interfaces
+            .iter()
+            .any(|iface| iface.name == side_z_iface_name)
     {
         #[cfg(test)]
         msg!("{:?}", side_z_dev);
 
         return Err(DoubleZeroError::InvalidInterfaceName.into());
     }
+    if value.link_type == LinkLinkType::External && value.side_z_iface_name.is_some() {
+        return Err(DoubleZeroError::InvalidInterfaceZForExternal.into());
+    }
+
+    let status = if value.link_type == LinkLinkType::External {
+        LinkStatus::Requested
+    } else {
+        LinkStatus::Pending
+    };
 
     contributor.reference_count += 1;
     side_a_dev.reference_count += 1;
@@ -150,9 +164,9 @@ pub fn process_create_link(
         jitter_ns: value.jitter_ns,
         tunnel_id: 0,
         tunnel_net: NetworkV4::default(),
-        status: LinkStatus::Pending,
+        status,
         side_a_iface_name: value.side_a_iface_name.clone(),
-        side_z_iface_name: value.side_z_iface_name.clone(),
+        side_z_iface_name,
     };
 
     account_create(

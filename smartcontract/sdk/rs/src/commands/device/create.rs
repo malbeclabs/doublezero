@@ -116,6 +116,8 @@ mod tests {
             reference_count: 0,
             name: "Test Location".to_string(),
             code: "TEST".to_string(),
+            device1_pk: Pubkey::default(),
+            device2_pk: Pubkey::default(),
             lat: 50.4501,
             lng: 30.5234,
             loc_id: 1,

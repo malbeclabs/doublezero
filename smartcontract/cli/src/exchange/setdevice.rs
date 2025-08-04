@@ -4,17 +4,26 @@ use crate::{
     validators::validate_pubkey_or_code,
 };
 use clap::Args;
-use doublezero_sdk::commands::exchange::{delete::DeleteExchangeCommand, get::GetExchangeCommand};
+use doublezero_sdk::commands::{
+    device::get::GetDeviceCommand,
+    exchange::{get::GetExchangeCommand, setdevice::SetDeviceExchangeCommand},
+};
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct DeleteExchangeCliCommand {
-    /// Exchange Pubkey or code to delete
+pub struct SetDeviceExchangeCliCommand {
+    /// Exchange Pubkey to update
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub pubkey: String,
+    /// Device 1 Pubkey or code to set
+    #[arg(long, value_parser = validate_pubkey_or_code)]
+    pub device1: Option<String>,
+    /// Device 2 Pubkey or code to set
+    #[arg(long, value_parser = validate_pubkey_or_code)]
+    pub device2: Option<String>,
 }
 
-impl DeleteExchangeCliCommand {
+impl SetDeviceExchangeCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
@@ -22,7 +31,26 @@ impl DeleteExchangeCliCommand {
         let (pubkey, _) = client.get_exchange(GetExchangeCommand {
             pubkey_or_code: self.pubkey,
         })?;
-        let signature = client.delete_exchange(DeleteExchangeCommand { pubkey })?;
+
+        let device1_pubkey = self.device1.and_then(|d| {
+            client
+                .get_device(GetDeviceCommand { pubkey_or_code: d })
+                .map(|(pubkey, _device)| pubkey)
+                .ok()
+        });
+
+        let device2_pubkey = self.device2.and_then(|d| {
+            client
+                .get_device(GetDeviceCommand { pubkey_or_code: d })
+                .map(|(pubkey, _device)| pubkey)
+                .ok()
+        });
+
+        let signature = client.setdevice_exchange(SetDeviceExchangeCommand {
+            pubkey,
+            device1_pubkey,
+            device2_pubkey,
+        })?;
         writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
@@ -33,19 +61,19 @@ impl DeleteExchangeCliCommand {
 mod tests {
     use crate::{
         doublezerocommand::CliCommand,
-        exchange::delete::DeleteExchangeCliCommand,
+        exchange::update::UpdateExchangeCliCommand,
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
         tests::utils::create_test_client,
     };
     use doublezero_sdk::{
-        commands::exchange::{delete::DeleteExchangeCommand, get::GetExchangeCommand},
+        commands::exchange::{get::GetExchangeCommand, update::UpdateExchangeCommand},
         get_exchange_pda, AccountType, Exchange, ExchangeStatus,
     };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
-    fn test_cli_exchange_delete() {
+    fn test_cli_exchange_setdevice() {
         let mut client = create_test_client();
 
         let (pda_pubkey, _bump_seed) = get_exchange_pda(&client.get_program_id(), 1);
@@ -69,7 +97,7 @@ mod tests {
             lng: 56.78,
             loc_id: 1,
             status: ExchangeStatus::Activated,
-            owner: pda_pubkey,
+            owner: Pubkey::new_unique(),
         };
 
         client
@@ -84,14 +112,27 @@ mod tests {
             .returning(move |_| Ok((pda_pubkey, exchange.clone())));
 
         client
-            .expect_delete_exchange()
-            .with(predicate::eq(DeleteExchangeCommand { pubkey: pda_pubkey }))
+            .expect_update_exchange()
+            .with(predicate::eq(UpdateExchangeCommand {
+                pubkey: pda_pubkey,
+                code: Some("test".to_string()),
+                name: Some("Test Exchange".to_string()),
+                lat: Some(12.34),
+                lng: Some(56.78),
+                loc_id: Some(1),
+            }))
             .times(1)
             .returning(move |_| Ok(signature));
 
+        // Expected success
         let mut output = Vec::new();
-        let res = DeleteExchangeCliCommand {
+        let res = UpdateExchangeCliCommand {
             pubkey: pda_pubkey.to_string(),
+            code: Some("test".to_string()),
+            name: Some("Test Exchange".to_string()),
+            lat: Some(12.34),
+            lng: Some(56.78),
+            loc_id: Some(1),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

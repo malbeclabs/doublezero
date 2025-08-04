@@ -16,6 +16,7 @@ pub enum LinkLinkType {
     L1 = 1,
     L2 = 2,
     L3 = 3,
+    External = 127,
 }
 
 impl From<u8> for LinkLinkType {
@@ -24,6 +25,7 @@ impl From<u8> for LinkLinkType {
             1 => LinkLinkType::L1,
             2 => LinkLinkType::L2,
             3 => LinkLinkType::L3,
+            127 => LinkLinkType::External,
             _ => LinkLinkType::L2, // Default case
         }
     }
@@ -37,6 +39,7 @@ impl FromStr for LinkLinkType {
             "L1" => Ok(LinkLinkType::L1),
             "L2" => Ok(LinkLinkType::L2),
             "L3" => Ok(LinkLinkType::L3),
+            "External" => Ok(LinkLinkType::External),
             _ => Err(format!("Invalid LinkLinkType: {s}")),
         }
     }
@@ -48,6 +51,7 @@ impl fmt::Display for LinkLinkType {
             LinkLinkType::L1 => write!(f, "L1"),
             LinkLinkType::L2 => write!(f, "L2"),
             LinkLinkType::L3 => write!(f, "L3"),
+            LinkLinkType::External => write!(f, "External"),
         }
     }
 }
@@ -61,6 +65,7 @@ pub enum LinkStatus {
     Suspended = 2,
     Deleting = 3,
     Rejected = 4,
+    Requested = 5,
 }
 
 impl From<u8> for LinkStatus {
@@ -71,6 +76,7 @@ impl From<u8> for LinkStatus {
             2 => LinkStatus::Suspended,
             3 => LinkStatus::Deleting,
             4 => LinkStatus::Rejected,
+            5 => LinkStatus::Requested,
             _ => LinkStatus::Pending,
         }
     }
@@ -84,6 +90,7 @@ impl fmt::Display for LinkStatus {
             LinkStatus::Suspended => write!(f, "suspended"),
             LinkStatus::Deleting => write!(f, "deleting"),
             LinkStatus::Rejected => write!(f, "rejected"),
+            LinkStatus::Requested => write!(f, "requested"),
         }
     }
 }

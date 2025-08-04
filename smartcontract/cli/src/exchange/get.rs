@@ -1,6 +1,9 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_code};
 use clap::Args;
-use doublezero_sdk::commands::exchange::get::GetExchangeCommand;
+use doublezero_sdk::commands::{
+    device::list::ListDeviceCommand, exchange::get::GetExchangeCommand,
+};
+use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -16,17 +19,36 @@ impl GetExchangeCliCommand {
             pubkey_or_code: self.code,
         })?;
 
+        let devices = client.list_device(ListDeviceCommand)?;
+
+        let device1 = if exchange.device1_pk == Pubkey::default() {
+            "(none)".to_string()
+        } else {
+            devices
+                .get(&exchange.device1_pk)
+                .map_or_else(|| exchange.device1_pk.to_string(), |d| d.code.clone())
+        };
+        let device2 = if exchange.device2_pk == Pubkey::default() {
+            "(none)".to_string()
+        } else {
+            devices
+                .get(&exchange.device2_pk)
+                .map_or_else(|| exchange.device2_pk.to_string(), |d| d.code.clone())
+        };
+
         writeln!(out,
-                "account: {},\r\ncode: {}\r\nname: {}\r\nlat: {}\r\nlng: {}\r\nloc_id: {}\r\nstatus: {}\r\nowner: {}",
-                pubkey,
-                exchange.code,
-                exchange.name,
-                exchange.lat,
-                exchange.lng,
-                exchange.loc_id,
-                exchange.status,
-                exchange.owner
-            )?;
+            "account: {},\r\ncode: {}\r\nname: {}\r\ndevice1: {}\r\ndevice2: {}\r\nlat: {}\r\nlng: {}\r\nloc_id: {}\r\nstatus: {}\r\nowner: {}",
+            pubkey,
+            exchange.code,
+            exchange.name,
+            device1,
+            device2,
+            exchange.lat,
+            exchange.lng,
+            exchange.loc_id,
+            exchange.status,
+            exchange.owner
+        )?;
 
         Ok(())
     }
@@ -36,7 +58,8 @@ impl GetExchangeCliCommand {
 mod tests {
     use crate::{exchange::get::GetExchangeCliCommand, tests::utils::create_test_client};
     use doublezero_sdk::{
-        commands::exchange::get::GetExchangeCommand, AccountType, Exchange, ExchangeStatus,
+        commands::{device::list::ListDeviceCommand, exchange::get::GetExchangeCommand},
+        AccountType, Device, DeviceStatus, DeviceType, Exchange, ExchangeStatus,
     };
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
@@ -46,8 +69,46 @@ mod tests {
     fn test_cli_exchange_get() {
         let mut client = create_test_client();
 
+        let contributor_pubkey =
+            Pubkey::from_str("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx").unwrap();
+        let location_pubkey =
+            Pubkey::from_str("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo").unwrap();
         let exchange1_pubkey =
             Pubkey::from_str("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB").unwrap();
+
+        let device1_pubkey = Pubkey::from_str("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo").unwrap();
+        let device1 = Device {
+            account_type: AccountType::Device,
+            owner: Pubkey::new_unique(),
+            index: 0,
+            bump_seed: 0,
+            reference_count: 0,
+            contributor_pk: contributor_pubkey,
+            location_pk: location_pubkey,
+            exchange_pk: exchange1_pubkey,
+            device_type: DeviceType::Switch,
+            public_ip: [192, 168, 1, 1].into(),
+            status: DeviceStatus::Pending,
+            code: "TestDevice".to_string(),
+            metrics_publisher_pk: Pubkey::default(),
+            bgp_asn: 1,
+            dia_bgp_asn: 2,
+            mgmt_vrf: "default".to_string(),
+            dns_servers: vec!["8.8.8.8".parse().unwrap()],
+            ntp_servers: vec!["8.8.8.8".parse().unwrap()],
+            interfaces: Vec::new(),
+            dz_prefixes: "10.0.0.1/24".parse().unwrap(),
+        };
+
+        client
+            .expect_list_device()
+            .with(predicate::eq(ListDeviceCommand {}))
+            .returning(move |_| {
+                let mut devices = HashMap::new();
+                devices.insert(device1_pubkey, device1.clone());
+                Ok(devices)
+            });
+
         let exchange1 = Exchange {
             account_type: AccountType::Exchange,
             index: 1,
@@ -55,6 +116,8 @@ mod tests {
             reference_count: 0,
             code: "test".to_string(),
             name: "Test Exchange".to_string(),
+            device1_pk: device1_pubkey,
+            device2_pk: Pubkey::default(),
             lat: 12.34,
             lng: 56.78,
             loc_id: 1,
@@ -102,7 +165,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nname: Test Exchange\r\nlat: 12.34\r\nlng: 56.78\r\nloc_id: 1\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
+        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nname: Test Exchange\r\ndevice1: TestDevice\r\ndevice2: (none)\r\nlat: 12.34\r\nlng: 56.78\r\nloc_id: 1\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
 
         // Expected success
         let mut output = Vec::new();
@@ -112,6 +175,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nname: Test Exchange\r\nlat: 12.34\r\nlng: 56.78\r\nloc_id: 1\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
+        assert_eq!(output_str, "account: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB,\r\ncode: test\r\nname: Test Exchange\r\ndevice1: TestDevice\r\ndevice2: (none)\r\nlat: 12.34\r\nlng: 56.78\r\nloc_id: 1\r\nstatus: activated\r\nowner: BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB\n");
     }
 }

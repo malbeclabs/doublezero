@@ -230,6 +230,8 @@ mod tests {
                 lat: 42.0,
                 lng: -71.0,
                 loc_id: 1,
+                device1_pk: Pubkey::default(),
+                device2_pk: Pubkey::default(),
                 status: ExchangeStatus::Activated,
                 code: "TE1".to_string(),
                 name: "Test Exchange".to_string(),

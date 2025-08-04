@@ -238,15 +238,19 @@ mod tests {
         let mut link_ids = IDAllocator::new(500, vec![500, 501, 503]);
         let mut client = create_test_client();
 
+        let owner_pubkey = Pubkey::new_unique();
+        let device1_pubkey = Pubkey::new_unique();
+        let device2_pubkey = Pubkey::new_unique();
+
         let tunnel_pubkey = Pubkey::new_unique();
         let tunnel = Link {
             account_type: AccountType::Link,
-            owner: Pubkey::new_unique(),
+            owner: owner_pubkey,
             index: 0,
             bump_seed: get_tunnel_bump_seed(&client),
             contributor_pk: Pubkey::new_unique(),
-            side_a_pk: Pubkey::new_unique(),
-            side_z_pk: Pubkey::new_unique(),
+            side_a_pk: device1_pubkey,
+            side_z_pk: device2_pubkey,
             link_type: LinkLinkType::L3,
             bandwidth: 10_000_000_000,
             mtu: 1500,
@@ -262,7 +266,7 @@ mod tests {
 
         let device1 = Device {
             account_type: AccountType::Device,
-            owner: tunnel.owner,
+            owner: owner_pubkey,
             index: 0,
             bump_seed: get_device_bump_seed(&client),
             location_pk: Pubkey::new_unique(),
@@ -304,15 +308,62 @@ mod tests {
             reference_count: 0,
         };
 
-        let mut device2 = device1.clone();
-        device2.public_ip = "1.2.3.5".parse().unwrap();
-        device2.code = "Device2".to_string();
-        device2.interfaces[0].name = tunnel.side_z_iface_name.clone();
+        let device2 = Device {
+            account_type: AccountType::Device,
+            owner: owner_pubkey,
+            index: 0,
+            bump_seed: get_device_bump_seed(&client),
+            location_pk: Pubkey::new_unique(),
+            exchange_pk: Pubkey::new_unique(),
+            device_type: DeviceType::Switch,
+            public_ip: "1.2.3.5".parse().unwrap(),
+            status: DeviceStatus::Activated,
+            code: "Device2".to_string(),
+            dz_prefixes: NetworkV4List::default(),
+            metrics_publisher_pk: Pubkey::new_unique(),
+            contributor_pk: tunnel.contributor_pk,
+            bgp_asn: 65001,
+            dia_bgp_asn: 65002,
+            mgmt_vrf: "mgmt".to_string(),
+            dns_servers: vec![],
+            ntp_servers: vec![],
+            interfaces: vec![
+                Interface {
+                    version: CURRENT_INTERFACE_VERSION,
+                    name: tunnel.side_z_iface_name.clone(),
+                    interface_type: InterfaceType::Physical,
+                    loopback_type: LoopbackType::None,
+                    vlan_id: 0,
+                    ip_net: NetworkV4::default(),
+                    node_segment_idx: 0,
+                    user_tunnel_endpoint: false,
+                },
+                Interface {
+                    version: CURRENT_INTERFACE_VERSION,
+                    name: "lo0".to_string(),
+                    interface_type: InterfaceType::Loopback,
+                    loopback_type: LoopbackType::Vpnv4,
+                    vlan_id: 0,
+                    ip_net: NetworkV4::default(),
+                    node_segment_idx: 0,
+                    user_tunnel_endpoint: false,
+                },
+            ],
+            reference_count: 0,
+        };
 
         let mut expected_interfaces1 = device1.interfaces.clone();
         let mut expected_interfaces2 = device2.interfaces.clone();
         expected_interfaces1[0].ip_net = "10.0.0.0/31".parse().unwrap();
         expected_interfaces2[0].ip_net = "10.0.0.1/31".parse().unwrap();
+
+        let tunnel_cloned = tunnel.clone();
+        client
+            .expect_get()
+            .times(1)
+            .in_sequence(&mut seq)
+            .with(predicate::eq(tunnel_pubkey))
+            .returning(move |_| Ok(AccountData::Link(tunnel_cloned.clone())));
 
         client
             .expect_execute_transaction()

@@ -62,6 +62,8 @@ mod tests {
             reference_count: 0,
             code: "exchange_code".to_string(),
             name: "exchange_name".to_string(),
+            device1_pk: Pubkey::default(),
+            device2_pk: Pubkey::default(),
             lat: 1.0,
             lng: 2.0,
             loc_id: 3,

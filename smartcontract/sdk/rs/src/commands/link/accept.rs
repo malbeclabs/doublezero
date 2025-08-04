@@ -3,36 +3,41 @@ use crate::{
     DoubleZeroClient,
 };
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, processors::link::resume::LinkResumeArgs,
+    instructions::DoubleZeroInstruction, processors::link::accept::LinkAcceptArgs,
     state::link::LinkStatus,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct ResumeLinkCommand {
-    pub pubkey: Pubkey,
+pub struct AcceptLinkCommand {
+    pub link_pubkey: Pubkey,
+    pub side_z_iface_name: String,
 }
 
-impl ResumeLinkCommand {
+impl AcceptLinkCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
         let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
         let (_, link) = GetLinkCommand {
-            pubkey_or_code: self.pubkey.to_string(),
+            pubkey_or_code: self.link_pubkey.to_string(),
         }
         .execute(client)
         .map_err(|_err| eyre::eyre!("Link not found"))?;
 
-        if link.status != LinkStatus::Suspended {
-            return Err(eyre::eyre!("Link is not in Suspended status"));
+        if link.status != LinkStatus::Requested {
+            return Err(eyre::eyre!("Link is not in Requested status"));
         }
 
         client.execute_transaction(
-            DoubleZeroInstruction::ResumeLink(LinkResumeArgs {}),
+            DoubleZeroInstruction::AcceptLink(LinkAcceptArgs {
+                side_z_iface_name: self.side_z_iface_name.clone(),
+            }),
             vec![
-                AccountMeta::new(self.pubkey, false),
+                AccountMeta::new(self.link_pubkey, false),
+                AccountMeta::new(link.contributor_pk, false),
+                AccountMeta::new(link.side_z_pk, false),
                 AccountMeta::new(globalstate_pubkey, false),
             ],
         )

@@ -1,6 +1,6 @@
 use crate::{
     doublezerocommand::CliCommand,
-    link::create::utils::parse_pubkey,
+    link::internal_create::utils::parse_pubkey,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::{
         validate_code, validate_parse_bandwidth, validate_parse_delay_ms, validate_parse_jitter_ms,
@@ -19,7 +19,7 @@ use eyre::eyre;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct CreateLinkCliCommand {
+pub struct CreateInternalLinkCliCommand {
     /// Link code, must be unique.
     #[arg(long, value_parser = validate_code)]
     pub code: String,
@@ -55,7 +55,7 @@ pub struct CreateLinkCliCommand {
     pub jitter_ms: f64,
 }
 
-impl CreateLinkCliCommand {
+impl CreateInternalLinkCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
@@ -124,7 +124,7 @@ impl CreateLinkCliCommand {
             delay_ns: (self.delay_ms * 1000000.0) as u64,
             jitter_ns: (self.jitter_ms * 1000000.0) as u64,
             side_a_iface_name: self.side_a_interface.clone(),
-            side_z_iface_name: self.side_z_interface.clone(),
+            side_z_iface_name: Some(self.side_z_interface.clone()),
         })?;
 
         writeln!(out, "Signature: {signature}",)?;
@@ -137,7 +137,7 @@ impl CreateLinkCliCommand {
 mod tests {
     use crate::{
         doublezerocommand::CliCommand,
-        link::create::CreateLinkCliCommand,
+        link::internal_create::CreateInternalLinkCliCommand,
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
         tests::utils::create_test_client,
     };
@@ -261,14 +261,14 @@ mod tests {
                 delay_ns: 10000000000,
                 jitter_ns: 5000000000,
                 side_a_iface_name: "eth0".to_string(),
-                side_z_iface_name: "eth1".to_string(),
+                side_z_iface_name: Some("eth1".to_string()),
             }))
             .times(1)
             .returning(move |_| Ok((signature, pda_pubkey)));
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
-        let res = CreateLinkCliCommand {
+        let res = CreateInternalLinkCliCommand {
             code: "test".to_string(),
             contributor: contributor_pk.to_string(),
             side_a: device1_pk.to_string(),

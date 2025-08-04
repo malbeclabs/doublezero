@@ -1,6 +1,9 @@
 use clap::{Args, Subcommand};
 
-use doublezero_cli::link::{create::*, delete::*, get::*, list::*, update::*};
+use doublezero_cli::link::{
+    delete::*, external_create::CreateExternalLinkCliCommand, get::*, internal_create::*, list::*,
+    update::*,
+};
 
 #[derive(Args, Debug)]
 pub struct LinkCliCommand {
@@ -9,10 +12,26 @@ pub struct LinkCliCommand {
 }
 
 #[derive(Debug, Subcommand)]
+pub enum CreateLinkCommands {
+    /// Create an internal new link
+    #[clap()]
+    Internal(CreateInternalLinkCliCommand),
+    /// Create an internal new link
+    #[clap()]
+    External(CreateExternalLinkCliCommand),
+}
+
+#[derive(Args, Debug)]
+pub struct CreateLinkCommand {
+    #[command(subcommand)]
+    pub command: CreateLinkCommands,
+}
+
+#[derive(Debug, Subcommand)]
 pub enum LinkCommands {
     /// Create a new link
     #[clap()]
-    Create(CreateLinkCliCommand),
+    Create(CreateLinkCommand),
     /// Update an existing link
     #[clap()]
     Update(UpdateLinkCliCommand),

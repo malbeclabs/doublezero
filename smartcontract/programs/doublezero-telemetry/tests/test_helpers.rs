@@ -142,7 +142,7 @@ impl LinkCreateArgsExt for LinkCreateArgs {
             delay_ns: 0,
             jitter_ns: 0,
             side_a_iface_name: String::default(),
-            side_z_iface_name: String::default(),
+            side_z_iface_name: Some(String::default()),
         }
     }
 }
@@ -374,7 +374,7 @@ impl LedgerHelper {
                     delay_ns: 10,
                     jitter_ns: 1,
                     side_a_iface_name: "eth0".to_string(),
-                    side_z_iface_name: "eth1".to_string(),
+                    side_z_iface_name: Some("eth1".to_string()),
                 },
                 contributor_pk,
                 origin_device_pk,

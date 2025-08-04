@@ -89,6 +89,7 @@ async fn main() -> eyre::Result<()> {
         },
         Command::Exchange(command) => match command.command {
             ExchangeCommands::Create(args) => args.execute(&client, &mut handle),
+            ExchangeCommands::SetDevice(args) => args.execute(&client, &mut handle),
             ExchangeCommands::Update(args) => args.execute(&client, &mut handle),
             ExchangeCommands::List(args) => args.execute(&client, &mut handle),
             ExchangeCommands::Get(args) => args.execute(&client, &mut handle),
@@ -129,7 +130,11 @@ async fn main() -> eyre::Result<()> {
             },
         },
         Command::Link(command) => match command.command {
-            LinkCommands::Create(args) => args.execute(&client, &mut handle),
+            LinkCommands::Create(args) => match args.command {
+                cli::link::CreateLinkCommands::Internal(args) => args.execute(&client, &mut handle),
+                cli::link::CreateLinkCommands::External(args) => args.execute(&client, &mut handle),
+            },
+            LinkCommands::Accept(args) => args.execute(&client, &mut handle),
             LinkCommands::Update(args) => args.execute(&client, &mut handle),
             LinkCommands::List(args) => args.execute(&client, &mut handle),
             LinkCommands::Get(args) => args.execute(&client, &mut handle),

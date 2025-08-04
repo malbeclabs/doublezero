@@ -329,7 +329,7 @@ async fn test_link() {
             delay_ns: 150000,
             jitter_ns: 5000,
             side_a_iface_name: "eth0".to_string(),
-            side_z_iface_name: "eth1".to_string(),
+            side_z_iface_name: Some("eth1".to_string()),
         }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),

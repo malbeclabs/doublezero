@@ -24,6 +24,9 @@ const _ = grpc.SupportPackageIsVersion7
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type QAAgentServiceClient interface {
 	ConnectUnicast(ctx context.Context, in *ConnectUnicastRequest, opts ...grpc.CallOption) (*Result, error)
+	CreateMulticastGroup(ctx context.Context, in *CreateMulticastGroupRequest, opts ...grpc.CallOption) (*Result, error)
+	DeleteMulticastGroup(ctx context.Context, in *DeleteMulticastGroupRequest, opts ...grpc.CallOption) (*Result, error)
+	MulticastAllowListAdd(ctx context.Context, in *MulticastAllowListAddRequest, opts ...grpc.CallOption) (*Result, error)
 	ConnectMulticast(ctx context.Context, in *ConnectMulticastRequest, opts ...grpc.CallOption) (*Result, error)
 	GetStatus(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*StatusResponse, error)
 	Disconnect(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*Result, error)
@@ -31,6 +34,7 @@ type QAAgentServiceClient interface {
 	MulticastJoin(ctx context.Context, in *MulticastJoinRequest, opts ...grpc.CallOption) (*MulticastJoinResult, error)
 	MulticastLeave(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	MulticastReport(ctx context.Context, in *MulticastReportRequest, opts ...grpc.CallOption) (*MulticastReportResult, error)
+	MulticastSend(ctx context.Context, in *MulticastSendRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type qAAgentServiceClient struct {
@@ -44,6 +48,33 @@ func NewQAAgentServiceClient(cc grpc.ClientConnInterface) QAAgentServiceClient {
 func (c *qAAgentServiceClient) ConnectUnicast(ctx context.Context, in *ConnectUnicastRequest, opts ...grpc.CallOption) (*Result, error) {
 	out := new(Result)
 	err := c.cc.Invoke(ctx, "/qa.QAAgentService/ConnectUnicast", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *qAAgentServiceClient) CreateMulticastGroup(ctx context.Context, in *CreateMulticastGroupRequest, opts ...grpc.CallOption) (*Result, error) {
+	out := new(Result)
+	err := c.cc.Invoke(ctx, "/qa.QAAgentService/CreateMulticastGroup", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *qAAgentServiceClient) DeleteMulticastGroup(ctx context.Context, in *DeleteMulticastGroupRequest, opts ...grpc.CallOption) (*Result, error) {
+	out := new(Result)
+	err := c.cc.Invoke(ctx, "/qa.QAAgentService/DeleteMulticastGroup", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *qAAgentServiceClient) MulticastAllowListAdd(ctx context.Context, in *MulticastAllowListAddRequest, opts ...grpc.CallOption) (*Result, error) {
+	out := new(Result)
+	err := c.cc.Invoke(ctx, "/qa.QAAgentService/MulticastAllowListAdd", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -113,11 +144,23 @@ func (c *qAAgentServiceClient) MulticastReport(ctx context.Context, in *Multicas
 	return out, nil
 }
 
+func (c *qAAgentServiceClient) MulticastSend(ctx context.Context, in *MulticastSendRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, "/qa.QAAgentService/MulticastSend", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // QAAgentServiceServer is the server API for QAAgentService service.
 // All implementations should embed UnimplementedQAAgentServiceServer
 // for forward compatibility
 type QAAgentServiceServer interface {
 	ConnectUnicast(context.Context, *ConnectUnicastRequest) (*Result, error)
+	CreateMulticastGroup(context.Context, *CreateMulticastGroupRequest) (*Result, error)
+	DeleteMulticastGroup(context.Context, *DeleteMulticastGroupRequest) (*Result, error)
+	MulticastAllowListAdd(context.Context, *MulticastAllowListAddRequest) (*Result, error)
 	ConnectMulticast(context.Context, *ConnectMulticastRequest) (*Result, error)
 	GetStatus(context.Context, *emptypb.Empty) (*StatusResponse, error)
 	Disconnect(context.Context, *emptypb.Empty) (*Result, error)
@@ -125,6 +168,7 @@ type QAAgentServiceServer interface {
 	MulticastJoin(context.Context, *MulticastJoinRequest) (*MulticastJoinResult, error)
 	MulticastLeave(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
 	MulticastReport(context.Context, *MulticastReportRequest) (*MulticastReportResult, error)
+	MulticastSend(context.Context, *MulticastSendRequest) (*emptypb.Empty, error)
 }
 
 // UnimplementedQAAgentServiceServer should be embedded to have forward compatible implementations.
@@ -133,6 +177,15 @@ type UnimplementedQAAgentServiceServer struct {
 
 func (UnimplementedQAAgentServiceServer) ConnectUnicast(context.Context, *ConnectUnicastRequest) (*Result, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ConnectUnicast not implemented")
+}
+func (UnimplementedQAAgentServiceServer) CreateMulticastGroup(context.Context, *CreateMulticastGroupRequest) (*Result, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateMulticastGroup not implemented")
+}
+func (UnimplementedQAAgentServiceServer) DeleteMulticastGroup(context.Context, *DeleteMulticastGroupRequest) (*Result, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteMulticastGroup not implemented")
+}
+func (UnimplementedQAAgentServiceServer) MulticastAllowListAdd(context.Context, *MulticastAllowListAddRequest) (*Result, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method MulticastAllowListAdd not implemented")
 }
 func (UnimplementedQAAgentServiceServer) ConnectMulticast(context.Context, *ConnectMulticastRequest) (*Result, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ConnectMulticast not implemented")
@@ -154,6 +207,9 @@ func (UnimplementedQAAgentServiceServer) MulticastLeave(context.Context, *emptyp
 }
 func (UnimplementedQAAgentServiceServer) MulticastReport(context.Context, *MulticastReportRequest) (*MulticastReportResult, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method MulticastReport not implemented")
+}
+func (UnimplementedQAAgentServiceServer) MulticastSend(context.Context, *MulticastSendRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method MulticastSend not implemented")
 }
 
 // UnsafeQAAgentServiceServer may be embedded to opt out of forward compatibility for this service.
@@ -181,6 +237,60 @@ func _QAAgentService_ConnectUnicast_Handler(srv interface{}, ctx context.Context
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(QAAgentServiceServer).ConnectUnicast(ctx, req.(*ConnectUnicastRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _QAAgentService_CreateMulticastGroup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateMulticastGroupRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QAAgentServiceServer).CreateMulticastGroup(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/qa.QAAgentService/CreateMulticastGroup",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QAAgentServiceServer).CreateMulticastGroup(ctx, req.(*CreateMulticastGroupRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _QAAgentService_DeleteMulticastGroup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteMulticastGroupRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QAAgentServiceServer).DeleteMulticastGroup(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/qa.QAAgentService/DeleteMulticastGroup",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QAAgentServiceServer).DeleteMulticastGroup(ctx, req.(*DeleteMulticastGroupRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _QAAgentService_MulticastAllowListAdd_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MulticastAllowListAddRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QAAgentServiceServer).MulticastAllowListAdd(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/qa.QAAgentService/MulticastAllowListAdd",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QAAgentServiceServer).MulticastAllowListAdd(ctx, req.(*MulticastAllowListAddRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -311,6 +421,24 @@ func _QAAgentService_MulticastReport_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _QAAgentService_MulticastSend_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MulticastSendRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QAAgentServiceServer).MulticastSend(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/qa.QAAgentService/MulticastSend",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QAAgentServiceServer).MulticastSend(ctx, req.(*MulticastSendRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // QAAgentService_ServiceDesc is the grpc.ServiceDesc for QAAgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -321,6 +449,18 @@ var QAAgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ConnectUnicast",
 			Handler:    _QAAgentService_ConnectUnicast_Handler,
+		},
+		{
+			MethodName: "CreateMulticastGroup",
+			Handler:    _QAAgentService_CreateMulticastGroup_Handler,
+		},
+		{
+			MethodName: "DeleteMulticastGroup",
+			Handler:    _QAAgentService_DeleteMulticastGroup_Handler,
+		},
+		{
+			MethodName: "MulticastAllowListAdd",
+			Handler:    _QAAgentService_MulticastAllowListAdd_Handler,
 		},
 		{
 			MethodName: "ConnectMulticast",
@@ -349,6 +489,10 @@ var QAAgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "MulticastReport",
 			Handler:    _QAAgentService_MulticastReport_Handler,
+		},
+		{
+			MethodName: "MulticastSend",
+			Handler:    _QAAgentService_MulticastSend_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

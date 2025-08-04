@@ -86,6 +86,8 @@ pub fn process_create_exchange(
         index: globalstate.account_index,
         bump_seed,
         reference_count: 0,
+        device1_pk: Pubkey::default(),
+        device2_pk: Pubkey::default(),
         code: value.code.clone(),
         name: value.name.clone(),
         lat: value.lat,

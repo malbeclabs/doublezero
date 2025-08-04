@@ -1,3 +1,4 @@
+pub mod accept;
 pub mod activate;
 pub mod closeaccount;
 pub mod create;

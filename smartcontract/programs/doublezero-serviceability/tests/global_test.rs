@@ -443,13 +443,13 @@ async fn test_doublezero_program() {
     let (tunnel_la_ny_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
     let tunnel_la_ny: LinkCreateArgs = LinkCreateArgs {
         code: tunnel_la_ny_code.clone(),
-        link_type: LinkLinkType::L3,
+        link_type: LinkLinkType::WAN,
         bandwidth: 100,
         mtu: 1900,
         delay_ns: 12_000_000,
         jitter_ns: 1_000_000,
         side_a_iface_name: "eth0".to_string(),
-        side_z_iface_name: "eth1".to_string(),
+        side_z_iface_name: Some("eth1".to_string()),
     };
 
     println!("Testing Link LA-NY initialization...");

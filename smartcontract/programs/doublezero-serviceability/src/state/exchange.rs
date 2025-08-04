@@ -47,14 +47,16 @@ pub struct Exchange {
     pub code: String,              // 4 + len
     pub name: String,              // 4 + len
     pub reference_count: u32,      // 4
+    pub device1_pk: Pubkey,        // 32
+    pub device2_pk: Pubkey,        // 32
 }
 
 impl fmt::Display for Exchange {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, index: {}, bump_seed: {}, code: {}, name: {}, lat: {}, lng: {}, loc_id: {}, status: {}, reference_count: {}",
-            self.account_type, self.owner, self.index, self.bump_seed, self.code, self.name, self.lat, self.lng, self.loc_id, self.status, self.reference_count
+            "account_type: {}, owner: {}, index: {}, bump_seed: {}, code: {}, name: {}, lat: {}, lng: {}, loc_id: {}, status: {}, reference_count: {}, switcha_pk: {}, switchb_pk: {}",
+            self.account_type, self.owner, self.index, self.bump_seed, self.code, self.name, self.lat, self.lng, self.loc_id, self.status, self.reference_count, self.device1_pk, self.device2_pk
         )
     }
 }
@@ -64,7 +66,7 @@ impl AccountTypeInfo for Exchange {
         SEED_EXCHANGE
     }
     fn size(&self) -> usize {
-        1 + 32 + 16 + 1 + 8 + 8 + 4 + 1 + 4 + self.code.len() + 4 + self.name.len() + 4
+        1 + 32 + 16 + 1 + 8 + 8 + 4 + 1 + 4 + self.code.len() + 4 + self.name.len() + 4 + 32 + 32
     }
     fn index(&self) -> u128 {
         self.index
@@ -93,6 +95,8 @@ impl From<&[u8]> for Exchange {
             code: parser.read_string(),
             name: parser.read_string(),
             reference_count: parser.read_u32(),
+            device1_pk: parser.read_pubkey(),
+            device2_pk: parser.read_pubkey(),
         }
     }
 }
@@ -120,6 +124,8 @@ mod tests {
             reference_count: 0,
             lat: 123.45,
             lng: 345.678,
+            device1_pk: Pubkey::default(),
+            device2_pk: Pubkey::default(),
             loc_id: 1212121,
             code: "test-321".to_string(),
             name: "test-test-test".to_string(),
@@ -135,6 +141,8 @@ mod tests {
         assert_eq!(val.name, val2.name);
         assert_eq!(val.lat, val2.lat);
         assert_eq!(val.lng, val2.lng);
+        assert_eq!(val.device1_pk, val2.device1_pk);
+        assert_eq!(val.device2_pk, val2.device2_pk);
         assert_eq!(data.len(), val.size(), "Invalid Size");
     }
 }

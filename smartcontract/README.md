@@ -233,7 +233,7 @@ $ doublezero device list
 The following CLI command demonstrates how a contributor can establish a **Link** between two previously configured Devices. The link parameters ensure that traffic engineering, telemetry, and reward calculations reflect the intended characteristics of the physical connection.
 
 ```bash
-$ doublezero link create --code "la2-dz01:ny5-dz01" --side-a la2-dz01 --side-z ny5-dz01 --link-type L3 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
+$ doublezero link create wan --code "la2-dz01:ny5-dz01" --side-a la2-dz01 --side-z ny5-dz01 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
 Signature: 3gkYnutkpiZBkYqdPbDgm1Fc9diNSt2G5sUtKANUrKH2TmhVzkBBUL9Ao1KTwKEjxvAgD9ZKwiXnjMeyaNCqAYGz
 ```
 

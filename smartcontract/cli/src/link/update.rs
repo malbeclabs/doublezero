@@ -138,7 +138,7 @@ mod tests {
             contributor_pk,
             side_a_pk: device1_pk,
             side_z_pk: device2_pk,
-            link_type: LinkLinkType::L3,
+            link_type: LinkLinkType::WAN,
             bandwidth: 1000000000,
             mtu: 1500,
             delay_ns: 10000000000,

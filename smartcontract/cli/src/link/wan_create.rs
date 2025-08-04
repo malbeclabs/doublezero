@@ -1,6 +1,6 @@
 use crate::{
     doublezerocommand::CliCommand,
-    link::create::utils::parse_pubkey,
+    link::wan_create::utils::parse_pubkey,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::{
         validate_code, validate_parse_bandwidth, validate_parse_delay_ms, validate_parse_jitter_ms,
@@ -19,7 +19,7 @@ use eyre::eyre;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct CreateLinkCliCommand {
+pub struct CreateWANLinkCliCommand {
     /// Link code, must be unique.
     #[arg(long, value_parser = validate_code)]
     pub code: String,
@@ -38,9 +38,6 @@ pub struct CreateLinkCliCommand {
     /// Device interface name for side Z.
     #[arg(long)]
     pub side_z_interface: String,
-    /// Link type: L1, L2, or L3.
-    #[arg(long)]
-    pub link_type: Option<String>,
     /// Bandwidth (required). Accepts values in Kbps, Mbps, or Gbps.
     #[arg(long, value_parser = validate_parse_bandwidth)]
     pub bandwidth: u64,
@@ -55,7 +52,7 @@ pub struct CreateLinkCliCommand {
     pub jitter_ms: f64,
 }
 
-impl CreateLinkCliCommand {
+impl CreateWANLinkCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
@@ -106,25 +103,18 @@ impl CreateLinkCliCommand {
             ));
         }
 
-        let link_type = match self.link_type.as_ref() {
-            Some(t) => t
-                .parse()
-                .map_err(|e| eyre!("Invalid link type '{}': {}", t, e))?,
-            None => LinkLinkType::L3,
-        };
-
         let (signature, _pubkey) = client.create_link(CreateLinkCommand {
             code: self.code.clone(),
             contributor_pk,
             side_a_pk,
             side_z_pk,
-            link_type,
+            link_type: LinkLinkType::WAN,
             bandwidth: self.bandwidth,
             mtu: self.mtu,
             delay_ns: (self.delay_ms * 1000000.0) as u64,
             jitter_ns: (self.jitter_ms * 1000000.0) as u64,
             side_a_iface_name: self.side_a_interface.clone(),
-            side_z_iface_name: self.side_z_interface.clone(),
+            side_z_iface_name: Some(self.side_z_interface.clone()),
         })?;
 
         writeln!(out, "Signature: {signature}",)?;
@@ -137,7 +127,7 @@ impl CreateLinkCliCommand {
 mod tests {
     use crate::{
         doublezerocommand::CliCommand,
-        link::create::CreateLinkCliCommand,
+        link::wan_create::CreateWANLinkCliCommand,
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
         tests::utils::create_test_client,
     };
@@ -151,7 +141,7 @@ mod tests {
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
-    fn test_cli_link_create() {
+    fn test_cli_wan_link_create() {
         let mut client = create_test_client();
 
         let (pda_pubkey, _bump_seed) = get_device_pda(&client.get_program_id(), 1);
@@ -247,25 +237,24 @@ mod tests {
                 contributor_pk,
                 side_a_pk: device1_pk,
                 side_z_pk: device2_pk,
-                link_type: LinkLinkType::L3,
+                link_type: LinkLinkType::WAN,
                 bandwidth: 1000000000,
                 mtu: 1500,
                 delay_ns: 10000000000,
                 jitter_ns: 5000000000,
                 side_a_iface_name: "eth0".to_string(),
-                side_z_iface_name: "eth1".to_string(),
+                side_z_iface_name: Some("eth1".to_string()),
             }))
             .times(1)
             .returning(move |_| Ok((signature, pda_pubkey)));
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
-        let res = CreateLinkCliCommand {
+        let res = CreateWANLinkCliCommand {
             code: "test".to_string(),
             contributor: contributor_pk.to_string(),
             side_a: device1_pk.to_string(),
             side_z: device2_pk.to_string(),
-            link_type: Some("L3".to_string()),
             bandwidth: 1000000000,
             mtu: 1500,
             delay_ms: 10000.0,
@@ -274,7 +263,7 @@ mod tests {
             side_z_interface: "eth1".to_string(),
         }
         .execute(&client, &mut output);
-        assert!(res.is_ok());
+        assert!(res.is_ok(), "Error: {}", res.unwrap_err());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
             output_str,"Signature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n"

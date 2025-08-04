@@ -28,14 +28,16 @@ use doublezero_sdk::{
         },
         exchange::{
             create::CreateExchangeCommand, delete::DeleteExchangeCommand, get::GetExchangeCommand,
-            list::ListExchangeCommand, update::UpdateExchangeCommand,
+            list::ListExchangeCommand, setdevice::SetDeviceExchangeCommand,
+            update::UpdateExchangeCommand,
         },
         globalconfig::set::SetGlobalConfigCommand,
         globalstate::init::InitGlobalStateCommand,
         link::{
-            activate::ActivateLinkCommand, closeaccount::CloseAccountLinkCommand,
-            create::CreateLinkCommand, delete::DeleteLinkCommand, get::GetLinkCommand,
-            list::ListLinkCommand, reject::RejectLinkCommand, update::UpdateLinkCommand,
+            accept::AcceptLinkCommand, activate::ActivateLinkCommand,
+            closeaccount::CloseAccountLinkCommand, create::CreateLinkCommand,
+            delete::DeleteLinkCommand, get::GetLinkCommand, list::ListLinkCommand,
+            reject::RejectLinkCommand, update::UpdateLinkCommand,
         },
         location::{
             create::CreateLocationCommand, delete::DeleteLocationCommand, get::GetLocationCommand,
@@ -109,6 +111,7 @@ pub trait CliCommand {
     fn list_exchange(&self, cmd: ListExchangeCommand) -> eyre::Result<HashMap<Pubkey, Exchange>>;
     fn update_exchange(&self, cmd: UpdateExchangeCommand) -> eyre::Result<Signature>;
     fn delete_exchange(&self, cmd: DeleteExchangeCommand) -> eyre::Result<Signature>;
+    fn setdevice_exchange(&self, cmd: SetDeviceExchangeCommand) -> eyre::Result<Signature>;
 
     fn create_contributor(
         &self,
@@ -137,6 +140,7 @@ pub trait CliCommand {
     fn closeaccount_device(&self, cmd: CloseAccountDeviceCommand) -> eyre::Result<Signature>;
 
     fn create_link(&self, cmd: CreateLinkCommand) -> eyre::Result<(Signature, Pubkey)>;
+    fn accept_link(&self, cmd: AcceptLinkCommand) -> eyre::Result<Signature>;
     fn get_link(&self, cmd: GetLinkCommand) -> eyre::Result<(Pubkey, Link)>;
     fn list_link(&self, cmd: ListLinkCommand) -> eyre::Result<HashMap<Pubkey, Link>>;
     fn update_link(&self, cmd: UpdateLinkCommand) -> eyre::Result<Signature>;
@@ -308,6 +312,9 @@ impl CliCommand for CliCommandImpl<'_> {
     fn delete_exchange(&self, cmd: DeleteExchangeCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
+    fn setdevice_exchange(&self, cmd: SetDeviceExchangeCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
     fn create_contributor(
         &self,
         cmd: CreateContributorCommand,
@@ -367,6 +374,9 @@ impl CliCommand for CliCommandImpl<'_> {
         cmd.execute(self.client)
     }
     fn create_link(&self, cmd: CreateLinkCommand) -> eyre::Result<(Signature, Pubkey)> {
+        cmd.execute(self.client)
+    }
+    fn accept_link(&self, cmd: AcceptLinkCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
     fn get_link(&self, cmd: GetLinkCommand) -> eyre::Result<(Pubkey, Link)> {

@@ -1,10 +1,13 @@
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, processors::link::activate::LinkActivateArgs,
-    types::NetworkV4,
+    state::link::LinkStatus, types::NetworkV4,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
+use crate::{
+    commands::{globalstate::get::GetGlobalStateCommand, link::get::GetLinkCommand},
+    DoubleZeroClient,
+};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ActivateLinkCommand {
@@ -18,6 +21,16 @@ impl ActivateLinkCommand {
         let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
+
+        let (_, link) = GetLinkCommand {
+            pubkey_or_code: self.link_pubkey.to_string(),
+        }
+        .execute(client)
+        .map_err(|_err| eyre::eyre!("Link not found"))?;
+
+        if link.status != LinkStatus::Pending {
+            return Err(eyre::eyre!("Link is not in Pending status"));
+        }
 
         client.execute_transaction(
             DoubleZeroInstruction::ActivateLink(LinkActivateArgs {

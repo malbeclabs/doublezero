@@ -42,7 +42,7 @@ mod tests {
         get_exchange_pda, AccountType, Exchange, ExchangeStatus,
     };
     use mockall::predicate;
-    use solana_sdk::signature::Signature;
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_cli_exchange_delete() {
@@ -63,6 +63,8 @@ mod tests {
             reference_count: 0,
             code: "test".to_string(),
             name: "Test Exchange".to_string(),
+            device1_pk: Pubkey::default(),
+            device2_pk: Pubkey::default(),
             lat: 12.34,
             lng: 56.78,
             loc_id: 1,

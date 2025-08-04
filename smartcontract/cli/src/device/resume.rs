@@ -87,6 +87,8 @@ mod tests {
             reference_count: 0,
             code: "test".to_string(),
             name: "Test Exchange".to_string(),
+            device1_pk: Pubkey::default(),
+            device2_pk: Pubkey::default(),
             lat: 0.0,
             lng: 0.0,
             loc_id: 0,

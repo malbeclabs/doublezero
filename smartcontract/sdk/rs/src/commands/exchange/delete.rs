@@ -72,6 +72,8 @@ mod tests {
             bump_seed: 255,
             code: "loc".to_string(),
             name: "Test Location".to_string(),
+            device1_pk: Pubkey::default(),
+            device2_pk: Pubkey::default(),
             reference_count: 0,
             owner: Pubkey::default(),
             lat: 0.0,

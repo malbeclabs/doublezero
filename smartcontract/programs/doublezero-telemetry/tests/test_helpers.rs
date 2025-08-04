@@ -132,13 +132,13 @@ impl LinkCreateArgsExt for LinkCreateArgs {
     fn default() -> LinkCreateArgs {
         LinkCreateArgs {
             code: "".to_string(),
-            link_type: LinkLinkType::L3,
+            link_type: LinkLinkType::WAN,
             bandwidth: 0,
             mtu: 0,
             delay_ns: 0,
             jitter_ns: 0,
             side_a_iface_name: String::default(),
-            side_z_iface_name: String::default(),
+            side_z_iface_name: Some(String::default()),
         }
     }
 }
@@ -364,13 +364,13 @@ impl LedgerHelper {
             .create_and_activate_link(
                 LinkCreateArgs {
                     code: "LINK1".to_string(),
-                    link_type: LinkLinkType::L3,
+                    link_type: LinkLinkType::WAN,
                     bandwidth: 1000,
                     mtu: 1500,
                     delay_ns: 10,
                     jitter_ns: 1,
                     side_a_iface_name: "eth0".to_string(),
-                    side_z_iface_name: "eth1".to_string(),
+                    side_z_iface_name: Some("eth1".to_string()),
                 },
                 contributor_pk,
                 origin_device_pk,

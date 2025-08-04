@@ -1,7 +1,7 @@
 use base64::{engine::general_purpose, prelude::*, Engine};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use doublezero_serviceability::{
-    instructions::*, processors::globalstate::close::CloseAccountArgs,
+    error::DoubleZeroError, instructions::*, processors::globalstate::close::CloseAccountArgs,
     state::accounttype::AccountType,
 };
 use eyre::{bail, eyre, OptionExt};
@@ -14,10 +14,10 @@ use solana_client::{
 };
 use solana_sdk::{
     commitment_config::CommitmentConfig,
-    instruction::{AccountMeta, Instruction},
+    instruction::{AccountMeta, Instruction, InstructionError},
     pubkey::Pubkey,
     signature::{Keypair, Signature, Signer},
-    transaction::Transaction,
+    transaction::{Transaction, TransactionError},
 };
 
 use solana_system_interface::program;
@@ -326,19 +326,14 @@ impl DoubleZeroClient for DZClient {
 
         transaction.sign(&[&payer], blockhash);
 
-        let result = self
-            .client
-            .simulate_transaction(&transaction)
-            .map_err(|e| eyre!(e))?;
+        let result = self.client.simulate_transaction(&transaction)?;
 
-        if result.value.err.is_some() {
-            println!("Program Logs:");
-            if let Some(logs) = result.value.logs {
-                for log in logs {
-                    println!("{log}");
-                }
-            }
-            eyre::bail!("Error in transaction");
+        if let Some(TransactionError::InstructionError(_index, InstructionError::Custom(number))) =
+            result.value.err
+        {
+            return Err(eyre!(DoubleZeroError::from(number)));
+        } else if let Some(err) = result.value.err {
+            return Err(eyre!(err));
         }
 
         self.client

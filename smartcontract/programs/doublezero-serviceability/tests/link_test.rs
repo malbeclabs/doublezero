@@ -315,13 +315,13 @@ async fn test_link() {
         program_id,
         DoubleZeroInstruction::CreateLink(LinkCreateArgs {
             code: "la".to_string(),
-            link_type: LinkLinkType::L3,
+            link_type: LinkLinkType::WAN,
             bandwidth: 100000000,
             mtu: 9000,
             delay_ns: 150000,
             jitter_ns: 5000,
             side_a_iface_name: "eth0".to_string(),
-            side_z_iface_name: "eth1".to_string(),
+            side_z_iface_name: Some("eth1".to_string()),
         }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),
@@ -447,7 +447,7 @@ async fn test_link() {
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
             code: Some("la2".to_string()),
             contributor_pk: Some(contributor_pubkey),
-            tunnel_type: Some(LinkLinkType::L3),
+            tunnel_type: Some(LinkLinkType::WAN),
             bandwidth: Some(2000000000),
             mtu: Some(8900),
             delay_ns: Some(15000),

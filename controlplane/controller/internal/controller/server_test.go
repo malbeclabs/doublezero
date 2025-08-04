@@ -489,6 +489,14 @@ func TestStateCache(t *testing.T) {
 							Name:          "Loopback255",
 						},
 					},
+					DnsServers: [][4]uint8{
+						{8, 8, 8, 8},
+						{8, 8, 4, 4},
+					},
+					NtpServers: [][4]uint8{
+						{162, 159, 200, 1},
+						{198, 137, 202, 56},
+					},
 					Status: serviceability.DeviceStatusActivated,
 					Code:   "abc01",
 					PubKey: [32]byte{1},
@@ -612,6 +620,8 @@ func TestStateCache(t *testing.T) {
 							{Id: 563},
 						},
 						TunnelSlots: 64,
+						DnsServers:  []net.IP{{8, 8, 8, 8}, {8, 8, 4, 4}},
+						NtpServers:  []net.IP{{162, 159, 200, 1}, {198, 137, 202, 56}},
 						Interfaces: []serviceability.Interface{
 							{
 								InterfaceType: serviceability.InterfaceTypeLoopback,
@@ -836,6 +846,8 @@ func TestEndToEnd(t *testing.T) {
 			Name: "remove_unknown_peers_successfully",
 			Config: serviceability.Config{
 				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+				TunnelTunnelBlock:   [5]uint8{172, 17, 0, 0, 16},
+				UserTunnelBlock:     [5]uint8{169, 254, 0, 0, 16},
 			},
 			MulticastGroups: []serviceability.MulticastGroup{
 				{
@@ -898,9 +910,11 @@ func TestEndToEnd(t *testing.T) {
 			AgentRequest: &pb.ConfigRequest{
 				Pubkey: "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
 				BgpPeers: []string{
-					"10.0.0.1",
-					"172.16.0.1",
-					"169.254.0.7",
+					"10.0.0.1",    // Not in any DZ block - should not be flagged for removal
+					"172.16.0.1",  // Not in any DZ block - should not be flagged for removal
+					"172.17.0.1",  // In TunnelTunnelBlock - should be flagged for removal
+					"169.254.0.7", // In UserTunnelBlock - should be flagged for removal
+					"169.254.0.3", // In UserTunnelBlock, but associated with a user - should not be flagged for removal
 				},
 			},
 			Want: "fixtures/e2e.peer.removal.txt",
@@ -909,6 +923,8 @@ func TestEndToEnd(t *testing.T) {
 			Name: "remove_last_user_from_device",
 			Config: serviceability.Config{
 				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+				TunnelTunnelBlock:   [5]uint8{172, 17, 0, 0, 16},
+				UserTunnelBlock:     [5]uint8{169, 254, 0, 0, 16},
 			},
 			Users: []serviceability.User{},
 			Devices: []serviceability.Device{

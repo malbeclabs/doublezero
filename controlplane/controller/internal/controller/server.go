@@ -392,13 +392,15 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 	for _, peer := range req.GetBgpPeers() {
 		ip := net.ParseIP(peer)
 		if ip == nil {
-			slog.Error("malformed peer ip", "peer", peer)
 			continue
 		}
-		if !ip.IsLinkLocalUnicast() || peerFound(ip) {
+		if peerFound(ip) {
 			continue
 		}
-		unknownPeers = append(unknownPeers, ip)
+		// Only remove peers with addresses that DZ has assigned. This will avoid removal of contributor-configured peers like DIA.
+		if isIPInBlock(ip, c.cache.Config.UserTunnelBlock) || isIPInBlock(ip, c.cache.Config.TunnelTunnelBlock) {
+			unknownPeers = append(unknownPeers, ip)
+		}
 	}
 
 	if len(unknownPeers) != 0 {
@@ -430,4 +432,12 @@ func formatCIDR(b *[5]byte) string {
 	ip := net.IPv4(b[0], b[1], b[2], b[3])
 	mask := net.CIDRMask(int(b[4]), 32)
 	return (&net.IPNet{IP: ip, Mask: mask}).String()
+}
+
+// isIPInBlock checks if an IP address is within a 5-byte network block
+func isIPInBlock(ip net.IP, block [5]uint8) bool {
+	network := net.IPv4(block[0], block[1], block[2], block[3])
+	mask := net.CIDRMask(int(block[4]), 32)
+	ipNet := &net.IPNet{IP: network, Mask: mask}
+	return ipNet.Contains(ip)
 }

@@ -315,22 +315,22 @@ pub fn process_user_event(
                 )
                 .unwrap();
 
-                if user.tunnel_id != 0 {
-                    link_ids.unassign(user.tunnel_id);
-                }
-                if user.tunnel_net != NetworkV4::default() {
-                    user_tunnel_ips.unassign_block(user.tunnel_net.into());
-                }
-                if user.dz_ip != Ipv4Addr::UNSPECIFIED {
-                    device_state.release(user.dz_ip, user.tunnel_id).unwrap();
-                }
-
                 if user.status == UserStatus::Deleting {
                     let res = CloseAccountUserCommand { pubkey: *pubkey }.execute(client);
 
                     match res {
                         Ok(signature) => {
                             write!(&mut log_msg, " Deactivated {signature}").unwrap();
+
+                            if user.tunnel_id != 0 {
+                                link_ids.unassign(user.tunnel_id);
+                            }
+                            if user.tunnel_net != NetworkV4::default() {
+                                user_tunnel_ips.unassign_block(user.tunnel_net.into());
+                            }
+                            if user.dz_ip != Ipv4Addr::UNSPECIFIED {
+                                device_state.release(user.dz_ip, user.tunnel_id).unwrap();
+                            }
 
                             *state_transitions
                                 .entry("user-deleting-to-deactivated")
@@ -344,6 +344,16 @@ pub fn process_user_event(
                     match res {
                         Ok(signature) => {
                             write!(&mut log_msg, " Banned {signature}").unwrap();
+
+                            if user.tunnel_id != 0 {
+                                link_ids.unassign(user.tunnel_id);
+                            }
+                            if user.tunnel_net != NetworkV4::default() {
+                                user_tunnel_ips.unassign_block(user.tunnel_net.into());
+                            }
+                            if user.dz_ip != Ipv4Addr::UNSPECIFIED {
+                                device_state.release(user.dz_ip, user.tunnel_id).unwrap();
+                            }
 
                             *state_transitions
                                 .entry("user-pending-ban-to-banned")

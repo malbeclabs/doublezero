@@ -260,7 +260,6 @@ func (d *Device) Start(ctx context.Context) error {
 	commandArgs := []string{
 		"-controller", controllerAddr,
 		"-pubkey", onchainID,
-		"-verbose",
 	}
 
 	// Configure telemetry/metrics publisher keypair if set.

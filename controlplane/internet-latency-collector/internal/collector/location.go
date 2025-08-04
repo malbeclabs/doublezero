@@ -9,6 +9,7 @@ import (
 	"os"
 	"sort"
 
+	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/metrics"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
@@ -103,21 +104,17 @@ func CalculateDistanceToLocation(sourceLat, sourceLng float64, targetLocation Lo
 	return DistanceResult{Distance: distance, Valid: true}
 }
 
-type ServiceabilityClient interface {
-	GetProgramData(ctx context.Context) (*serviceability.ProgramData, error)
-}
-
 func GetLocations(ctx context.Context, logger *slog.Logger, serviceabilityClient ServiceabilityClient) []LocationMatch {
 	data, err := serviceabilityClient.GetProgramData(ctx)
 	if err != nil {
 		logger.Error("Error loading program data", slog.String("error", err.Error()))
-		blockchainLocationFetchTotal.WithLabelValues("error").Inc()
+		metrics.BlockchainLocationFetchTotal.WithLabelValues("error").Inc()
 		return []LocationMatch{}
 	}
 
 	if len(data.Locations) == 0 {
 		logger.Warn("No locations found on-chain")
-		blockchainLocationFetchTotal.WithLabelValues("empty").Inc()
+		metrics.BlockchainLocationFetchTotal.WithLabelValues("empty").Inc()
 		return []LocationMatch{}
 	}
 
@@ -136,7 +133,7 @@ func GetLocations(ctx context.Context, logger *slog.Logger, serviceabilityClient
 		slog.Int("total_locations", len(data.Locations)),
 		slog.Int("activated_locations", len(locationMatches)))
 
-	blockchainLocationsCount.Set(float64(len(locationMatches)))
+	metrics.BlockchainLocations.Set(float64(len(locationMatches)))
 
 	return locationMatches
 }

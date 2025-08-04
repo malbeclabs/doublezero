@@ -22,7 +22,6 @@ func TestSDK_Telemetry_WriteInternetLatencySamples_HappyPath(t *testing.T) {
 	samples := []uint32{1, 2, 3, 4}
 
 	config := telemetry.WriteInternetLatencySamplesInstructionConfig{
-		OracleAgentPK:              oracleAgentPK,
 		OriginLocationPK:           originLocationPK,
 		TargetLocationPK:           targetLocationPK,
 		DataProviderName:           dataProviderName,
@@ -31,7 +30,7 @@ func TestSDK_Telemetry_WriteInternetLatencySamples_HappyPath(t *testing.T) {
 		Samples:                    samples,
 	}
 
-	ix, err := telemetry.BuildWriteInternetLatencySamplesInstruction(programID, config)
+	ix, err := telemetry.BuildWriteInternetLatencySamplesInstruction(programID, oracleAgentPK, config)
 	require.NoError(t, err)
 	require.NotNil(t, ix)
 
@@ -58,7 +57,6 @@ func TestSDK_Telemetry_WriteInternetLatencySamples_MissingFields(t *testing.T) {
 
 	programID := solana.NewWallet().PublicKey()
 	base := telemetry.WriteInternetLatencySamplesInstructionConfig{
-		OracleAgentPK:              solana.NewWallet().PublicKey(),
 		OriginLocationPK:           solana.NewWallet().PublicKey(),
 		TargetLocationPK:           solana.NewWallet().PublicKey(),
 		DataProviderName:           "test",
@@ -72,11 +70,6 @@ func TestSDK_Telemetry_WriteInternetLatencySamples_MissingFields(t *testing.T) {
 		mutate      func(*telemetry.WriteInternetLatencySamplesInstructionConfig)
 		expectError string
 	}{
-		{
-			name:        "missing_agent_pk",
-			mutate:      func(c *telemetry.WriteInternetLatencySamplesInstructionConfig) { c.OracleAgentPK = solana.PublicKey{} },
-			expectError: "oracle agent public key is required",
-		},
 		{
 			name: "missing_origin_location_pk",
 			mutate: func(c *telemetry.WriteInternetLatencySamplesInstructionConfig) {
@@ -110,7 +103,8 @@ func TestSDK_Telemetry_WriteInternetLatencySamples_MissingFields(t *testing.T) {
 			config := base
 			tt.mutate(&config)
 
-			ix, err := telemetry.BuildWriteInternetLatencySamplesInstruction(programID, config)
+			signerPK := solana.NewWallet().PublicKey()
+			ix, err := telemetry.BuildWriteInternetLatencySamplesInstruction(programID, signerPK, config)
 			require.ErrorContains(t, err, tt.expectError)
 			require.Nil(t, ix)
 		})
@@ -125,7 +119,6 @@ func TestSDK_Telemetry_WriteInternetLatencySamples_BorshEncoding(t *testing.T) {
 	samples := []uint32{100, 200, 300}
 
 	config := telemetry.WriteInternetLatencySamplesInstructionConfig{
-		OracleAgentPK:              solana.NewWallet().PublicKey(),
 		OriginLocationPK:           solana.NewWallet().PublicKey(),
 		TargetLocationPK:           solana.NewWallet().PublicKey(),
 		DataProviderName:           "test",
@@ -134,7 +127,8 @@ func TestSDK_Telemetry_WriteInternetLatencySamples_BorshEncoding(t *testing.T) {
 		Samples:                    samples,
 	}
 
-	ix, err := telemetry.BuildWriteInternetLatencySamplesInstruction(programID, config)
+	signerPK := solana.NewWallet().PublicKey()
+	ix, err := telemetry.BuildWriteInternetLatencySamplesInstruction(programID, signerPK, config)
 	require.NoError(t, err)
 
 	var decoded struct {

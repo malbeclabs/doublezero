@@ -149,7 +149,6 @@ func TestSDK_Telemetry_Client_InitializeInternetLatencySamples_HappyPath(t *test
 	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
 
 	config := telemetry.InitializeInternetLatencySamplesInstructionConfig{
-		OracleAgentPK:                signer.PublicKey(),
 		OriginLocationPK:             solana.NewWallet().PublicKey(),
 		TargetLocationPK:             solana.NewWallet().PublicKey(),
 		DataProviderName:             "test-data-provider-1",
@@ -174,10 +173,8 @@ func TestSDK_Telemetry_Client_InitializeInternetLatencySamples_BuildFails(t *tes
 
 	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
 
-	// Invalid: missing AgentPK (validation will fail)
 	config := telemetry.InitializeInternetLatencySamplesInstructionConfig{
-		// AgentPK: omitted
-		OriginLocationPK:             solana.NewWallet().PublicKey(),
+		OriginLocationPK:             solana.PublicKey{},
 		TargetLocationPK:             solana.NewWallet().PublicKey(),
 		DataProviderName:             "test-data-provider-1",
 		Epoch:                        42,
@@ -187,7 +184,7 @@ func TestSDK_Telemetry_Client_InitializeInternetLatencySamples_BuildFails(t *tes
 	sig, tx, err := client.InitializeInternetLatencySamples(context.Background(), config)
 
 	require.ErrorContains(t, err, "failed to build instruction")
-	require.Contains(t, err.Error(), "agent public key is required")
+	require.Contains(t, err.Error(), "origin location public key is required")
 	require.Equal(t, solana.Signature{}, sig)
 	require.Nil(t, tx)
 }
@@ -220,7 +217,6 @@ func TestSDK_Telemetry_Client_InitializeInternetLatencySamples_ExecutionFails(t 
 	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
 
 	config := telemetry.InitializeInternetLatencySamplesInstructionConfig{
-		OracleAgentPK:                signer.PublicKey(), // signer must match
 		OriginLocationPK:             solana.NewWallet().PublicKey(),
 		TargetLocationPK:             solana.NewWallet().PublicKey(),
 		DataProviderName:             "test-data-provider-1",
@@ -270,7 +266,6 @@ func TestSDK_Telemetry_Client_WriteInternetLatencySamples_HappyPath(t *testing.T
 	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
 
 	config := telemetry.WriteInternetLatencySamplesInstructionConfig{
-		OracleAgentPK:              signer.PublicKey(), // must match signer
 		OriginLocationPK:           solana.NewWallet().PublicKey(),
 		TargetLocationPK:           solana.NewWallet().PublicKey(),
 		DataProviderName:           "test-data-provider-1",
@@ -320,7 +315,6 @@ func TestSDK_Telemetry_Client_WriteInternetLatencySamples_SamplesBatchTooLarge(t
 	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
 
 	config := telemetry.WriteInternetLatencySamplesInstructionConfig{
-		OracleAgentPK:              signer.PublicKey(), // must match signer
 		OriginLocationPK:           solana.NewWallet().PublicKey(),
 		TargetLocationPK:           solana.NewWallet().PublicKey(),
 		DataProviderName:           "test-data-provider-1",
@@ -371,7 +365,6 @@ func TestSDK_Telemetry_Client_WriteInternetLatencySamples_PreflightAccountNotFou
 	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
 
 	config := telemetry.WriteInternetLatencySamplesInstructionConfig{
-		OracleAgentPK:              signer.PublicKey(),
 		OriginLocationPK:           solana.NewWallet().PublicKey(),
 		TargetLocationPK:           solana.NewWallet().PublicKey(),
 		DataProviderName:           "test-data-provider-1",
@@ -430,7 +423,6 @@ func TestSDK_Telemetry_Client_WriteInternetLatencySamples_CustomInstructionError
 	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
 
 	config := telemetry.WriteInternetLatencySamplesInstructionConfig{
-		OracleAgentPK:              signer.PublicKey(),
 		OriginLocationPK:           solana.NewWallet().PublicKey(),
 		TargetLocationPK:           solana.NewWallet().PublicKey(),
 		DataProviderName:           "test-data-provider-1",
@@ -458,9 +450,8 @@ func TestSDK_Telemetry_Client_WriteInternetLatencySamples_BuildFails(t *testing.
 
 	// Intentionally missing OracleAgentPK
 	config := telemetry.WriteInternetLatencySamplesInstructionConfig{
-		// OracleAgentPK: missing
-		OriginLocationPK:           solana.NewWallet().PublicKey(),
-		TargetLocationPK:           solana.NewWallet().PublicKey(),
+		OriginLocationPK:           solana.PublicKey{},
+		TargetLocationPK:           solana.PublicKey{},
 		DataProviderName:           "test-data-provider-1",
 		Epoch:                      42,
 		StartTimestampMicroseconds: 1_600_000_000,
@@ -470,7 +461,7 @@ func TestSDK_Telemetry_Client_WriteInternetLatencySamples_BuildFails(t *testing.
 	sig, tx, err := client.WriteInternetLatencySamples(context.Background(), config)
 
 	require.ErrorContains(t, err, "failed to build instruction")
-	require.Contains(t, err.Error(), "oracle agent public key is required")
+	require.Contains(t, err.Error(), "origin location public key is required")
 	require.Equal(t, solana.Signature{}, sig)
 	require.Nil(t, tx)
 }
@@ -503,7 +494,6 @@ func TestSDK_Telemetry_Client_WriteInternetLatencySamples_ExecutionFails(t *test
 	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
 
 	config := telemetry.WriteInternetLatencySamplesInstructionConfig{
-		OracleAgentPK:              signer.PublicKey(), // must match signer
 		OriginLocationPK:           solana.NewWallet().PublicKey(),
 		TargetLocationPK:           solana.NewWallet().PublicKey(),
 		DataProviderName:           "test-data-provider-1",
@@ -516,6 +506,62 @@ func TestSDK_Telemetry_Client_WriteInternetLatencySamples_ExecutionFails(t *test
 
 	require.ErrorContains(t, err, "failed to execute instruction")
 	require.Contains(t, err.Error(), "simulated send failure")
+	require.Equal(t, solana.Signature{}, sig)
+	require.Nil(t, tx)
+}
+
+func TestSDK_Telemetry_Client_WriteInternetLatencySamples_CustomInstructionErrorSamplesAccountFull(t *testing.T) {
+	t.Parallel()
+	signer := solana.NewWallet().PrivateKey
+	programID := solana.NewWallet().PublicKey()
+
+	fullErr := &jsonrpc.RPCError{
+		Code:    -32000,
+		Message: "Simulation failed",
+		Data: map[string]any{
+			"err": map[string]any{
+				"InstructionError": []any{
+					0,
+					map[string]any{
+						"Custom": json.Number(strconv.Itoa(telemetry.InstructionErrorAccountSamplesAccountFull)),
+					},
+				},
+			},
+		},
+	}
+
+	mockRPC := &mockRPCClient{
+		GetLatestBlockhashFunc: func(_ context.Context, _ solanarpc.CommitmentType) (*solanarpc.GetLatestBlockhashResult, error) {
+			return &solanarpc.GetLatestBlockhashResult{
+				Value: &solanarpc.LatestBlockhashResult{
+					Blockhash: solana.MustHashFromBase58("5NzX7jrPWeTkGsDnVnszdEa7T3Yyr3nSgyc78z3CwjWQ"),
+				},
+			}, nil
+		},
+		SendTransactionWithOptsFunc: func(_ context.Context, _ *solana.Transaction, _ solanarpc.TransactionOpts) (solana.Signature, error) {
+			return solana.Signature{}, fullErr
+		},
+		GetSignatureStatusesFunc: func(context.Context, bool, ...solana.Signature) (*solanarpc.GetSignatureStatusesResult, error) {
+			return nil, nil
+		},
+		GetTransactionFunc: func(context.Context, solana.Signature, *solanarpc.GetTransactionOpts) (*solanarpc.GetTransactionResult, error) {
+			return nil, nil
+		},
+	}
+
+	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
+
+	config := telemetry.WriteInternetLatencySamplesInstructionConfig{
+		OriginLocationPK:           solana.NewWallet().PublicKey(),
+		TargetLocationPK:           solana.NewWallet().PublicKey(),
+		DataProviderName:           "test-data-provider-1",
+		Epoch:                      42,
+		StartTimestampMicroseconds: 1_600_000_000,
+		Samples:                    []uint32{10},
+	}
+
+	sig, tx, err := client.WriteInternetLatencySamples(context.Background(), config)
+	require.ErrorIs(t, err, telemetry.ErrSamplesAccountFull)
 	require.Equal(t, solana.Signature{}, sig)
 	require.Nil(t, tx)
 }

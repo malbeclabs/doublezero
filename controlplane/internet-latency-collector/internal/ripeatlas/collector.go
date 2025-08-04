@@ -14,6 +14,7 @@ import (
 
 	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/collector"
 	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/exporter"
+	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/metrics"
 )
 
 const (
@@ -330,12 +331,9 @@ func (c *Collector) ListAtlasProbes(ctx context.Context, locations []collector.L
 	return nil
 }
 
-func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir, outputDir string) error {
+func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir string) error {
 	if err := os.MkdirAll(stateDir, 0755); err != nil {
 		return fmt.Errorf("failed to create state directory: %w", err)
-	}
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
 	timestampFile := filepath.Join(stateDir, TimestampFileName)
@@ -494,7 +492,7 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 	return len(records), nil
 }
 
-func (c *Collector) RunRipeAtlasMeasurementCreation(ctx context.Context, dryRun bool, probesPerLocation int, outputDir string, stateDir string) error {
+func (c *Collector) RunRipeAtlasMeasurementCreation(ctx context.Context, dryRun bool, probesPerLocation int, stateDir string, samplingInterval time.Duration) error {
 	c.log.Info("Running RIPE Atlas measurement creation")
 
 	locations := c.getLocationsFunc(ctx)
@@ -529,7 +527,7 @@ func (c *Collector) RunRipeAtlasMeasurementCreation(ctx context.Context, dryRun 
 	c.log.Info("Found probes for locations", slog.Int("locations_with_probes", len(locationMatches)))
 
 	// Configure measurements between locations
-	if err := c.configureMeasurements(ctx, locationMatches, dryRun, probesPerLocation, outputDir, stateDir); err != nil {
+	if err := c.configureMeasurements(ctx, locationMatches, dryRun, probesPerLocation, stateDir, samplingInterval); err != nil {
 		return collector.NewAPIError("configure_measurements", "failed to configure measurements", err).
 			WithContext("location_count", len(locationMatches))
 	}
@@ -538,7 +536,7 @@ func (c *Collector) RunRipeAtlasMeasurementCreation(ctx context.Context, dryRun 
 	return nil
 }
 
-func (c *Collector) configureMeasurements(ctx context.Context, locationMatches []LocationProbeMatch, dryRun bool, probesPerLocation int, outputDir string, stateDir string) error {
+func (c *Collector) configureMeasurements(ctx context.Context, locationMatches []LocationProbeMatch, dryRun bool, probesPerLocation int, stateDir string, samplingInterval time.Duration) error {
 	// Step 1: Generate the list of measurements we want
 	wantedMeasurements := c.generateWantedMeasurements(locationMatches, probesPerLocation)
 
@@ -650,7 +648,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 					{
 						Type:           "ping",
 						AF:             4,
-						Interval:       120,
+						Interval:       int(samplingInterval.Seconds()),
 						Packets:        1,
 						Size:           1280,
 						PacketInterval: 1000, // Delay between packets; only matters when Packets > 1
@@ -742,8 +740,11 @@ func (c *Collector) generateWantedMeasurements(locationMatches []LocationProbeMa
 	return wantedMeasurements
 }
 
-func (c *Collector) Run(ctx context.Context, dryRun bool, probesPerLocation int, stateDir, outputDir string, measurementInterval, exportInterval time.Duration) error {
+func (c *Collector) Run(ctx context.Context, dryRun bool, probesPerLocation int, stateDir string, samplingInterval, measurementInterval, exportInterval time.Duration) error {
 	// Validate intervals
+	if samplingInterval <= 0 {
+		return fmt.Errorf("RIPE Atlas sampling interval must be positive, got %v", samplingInterval)
+	}
 	if measurementInterval <= 0 {
 		return fmt.Errorf("RIPE Atlas measurement interval must be positive, got %v", measurementInterval)
 	}
@@ -767,11 +768,11 @@ func (c *Collector) Run(ctx context.Context, dryRun bool, probesPerLocation int,
 				c.log.Info("Stopping RIPE Atlas measurement creation")
 				return
 			case <-ticker.C:
-				if err := c.RunRipeAtlasMeasurementCreation(ctx, dryRun, probesPerLocation, outputDir, stateDir); err != nil {
+				if err := c.RunRipeAtlasMeasurementCreation(ctx, dryRun, probesPerLocation, stateDir, samplingInterval); err != nil {
 					c.log.Error("Operation failed: create_ripeatlas_measurements", slog.String("error", err.Error()))
-					collector.RipeatlasMeasurementManagementFailuresTotal.Inc()
+					metrics.RipeatlasMeasurementManagementFailuresTotal.Inc()
 				} else {
-					collector.RipeatlasMeasurementManagementRunsTotal.Inc()
+					metrics.RipeatlasMeasurementManagementRunsTotal.Inc()
 				}
 			}
 		}
@@ -792,11 +793,11 @@ func (c *Collector) Run(ctx context.Context, dryRun bool, probesPerLocation int,
 				c.log.Info("Stopping RIPE Atlas export")
 				return
 			case <-ticker.C:
-				if err := c.ExportMeasurementResults(ctx, stateDir, outputDir); err != nil {
+				if err := c.ExportMeasurementResults(ctx, stateDir); err != nil {
 					c.log.Warn("Failed to export RIPE Atlas measurements", slog.String("error", err.Error()))
-					collector.CollectionFailuresTotal.WithLabelValues("ripeatlas").Inc()
+					metrics.CollectionFailuresTotal.WithLabelValues("ripeatlas").Inc()
 				} else {
-					collector.CollectionRunsTotal.WithLabelValues("ripeatlas").Inc()
+					metrics.CollectionRunsTotal.WithLabelValues("ripeatlas").Inc()
 				}
 			}
 		}

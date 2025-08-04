@@ -58,31 +58,24 @@ nfpms:
         type: dir
         file_info:
           mode: 0755
-      - src: controlplane/internet-latency-collector/cmd/collector/config.env
-        dst: /etc/doublezero-internet-latency-collector/config.env
-        type: config
-        file_info:
-          mode: 0640
-          owner: root
-          group: doublezero-collector
       - dst: /var/lib/doublezero-internet-latency-collector
         type: dir
         file_info:
           mode: 0755
-          owner: doublezero-collector
-          group: doublezero-collector
+          owner: dz-internet-latency
+          group: dz-internet-latency
       - dst: /var/lib/doublezero-internet-latency-collector/state
         type: dir
         file_info:
           mode: 0755
-          owner: doublezero-collector
-          group: doublezero-collector
+          owner: dz-internet-latency
+          group: dz-internet-latency
       - dst: /var/lib/doublezero-internet-latency-collector/output
         type: dir
         file_info:
           mode: 0755
-          owner: doublezero-collector
-          group: doublezero-collector
+          owner: dz-internet-latency
+          group: dz-internet-latency
     overrides:
       deb:
           scripts:

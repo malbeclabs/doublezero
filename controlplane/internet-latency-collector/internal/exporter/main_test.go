@@ -1,13 +1,18 @@
 package exporter_test
 
 import (
+	"context"
 	"flag"
 	"log/slog"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/gagliardetto/solana-go"
+	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/lmittmann/tint"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 )
 
 var (
@@ -33,4 +38,38 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(m.Run())
+}
+
+type mockServiceabilityProgramClient struct {
+	GetProgramDataFunc func(ctx context.Context) (*serviceability.ProgramData, error)
+}
+
+func (c *mockServiceabilityProgramClient) GetProgramData(ctx context.Context) (*serviceability.ProgramData, error) {
+	return c.GetProgramDataFunc(ctx)
+}
+
+type mockTelemetryProgramClient struct {
+	InitializeInternetLatencySamplesFunc func(ctx context.Context, config telemetry.InitializeInternetLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error)
+	WriteInternetLatencySamplesFunc      func(ctx context.Context, config telemetry.WriteInternetLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error)
+	GetInternetLatencySamplesFunc        func(ctx context.Context, dataProviderName string, originLocationPK solana.PublicKey, targetLocationPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error)
+}
+
+func (c *mockTelemetryProgramClient) InitializeInternetLatencySamples(ctx context.Context, config telemetry.InitializeInternetLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+	return c.InitializeInternetLatencySamplesFunc(ctx, config)
+}
+
+func (c *mockTelemetryProgramClient) WriteInternetLatencySamples(ctx context.Context, config telemetry.WriteInternetLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+	return c.WriteInternetLatencySamplesFunc(ctx, config)
+}
+
+func (c *mockTelemetryProgramClient) GetInternetLatencySamples(ctx context.Context, dataProviderName string, originLocationPK solana.PublicKey, targetLocationPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error) {
+	return c.GetInternetLatencySamplesFunc(ctx, dataProviderName, originLocationPK, targetLocationPK, epoch)
+}
+
+type mockEpochFinder struct {
+	ApproximateAtTimeFunc func(ctx context.Context, target time.Time) (uint64, error)
+}
+
+func (f *mockEpochFinder) ApproximateAtTime(ctx context.Context, target time.Time) (uint64, error) {
+	return f.ApproximateAtTimeFunc(ctx, target)
 }

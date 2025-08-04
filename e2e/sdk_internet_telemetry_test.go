@@ -110,7 +110,6 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		start := time.Now()
 		log.Info("==> Attempting to write internet latency samples before initialized (should fail)")
 		_, res, err := telemetryClient.WriteInternetLatencySamples(ctx, telemetry.WriteInternetLatencySamplesInstructionConfig{
-			OracleAgentPK:              oracleAgentPK.PublicKey(),
 			OriginLocationPK:           laxLocationPK,
 			TargetLocationPK:           amsLocationPK,
 			DataProviderName:           dataProvider1Name,
@@ -130,7 +129,6 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		start := time.Now()
 		log.Info("==> Initializing internet latency samples")
 		sig, res, err := telemetryClient.InitializeInternetLatencySamples(ctx, telemetry.InitializeInternetLatencySamplesInstructionConfig{
-			OracleAgentPK:                oracleAgentPK.PublicKey(),
 			OriginLocationPK:             laxLocationPK,
 			TargetLocationPK:             amsLocationPK,
 			DataProviderName:             dataProvider1Name,
@@ -181,7 +179,6 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		start := time.Now()
 		log.Info("==> Writing internet latency samples")
 		sig, res, err := telemetryClient.WriteInternetLatencySamples(ctx, telemetry.WriteInternetLatencySamplesInstructionConfig{
-			OracleAgentPK:              oracleAgentPK.PublicKey(),
 			OriginLocationPK:           laxLocationPK,
 			TargetLocationPK:           amsLocationPK,
 			DataProviderName:           dataProvider1Name,
@@ -223,7 +220,6 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		defer cancel()
 		log.Info("==> Attempting to initialize internet latency samples again (should fail)")
 		_, res, err := telemetryClient.InitializeInternetLatencySamples(ctx, telemetry.InitializeInternetLatencySamplesInstructionConfig{
-			OracleAgentPK:                oracleAgentPK.PublicKey(),
 			OriginLocationPK:             laxLocationPK,
 			TargetLocationPK:             amsLocationPK,
 			DataProviderName:             dataProvider1Name,
@@ -254,7 +250,6 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		start := time.Now()
 		log.Info("==> Writing more internet latency samples")
 		sig, res, err := telemetryClient.WriteInternetLatencySamples(ctx, telemetry.WriteInternetLatencySamplesInstructionConfig{
-			OracleAgentPK:              oracleAgentPK.PublicKey(),
 			OriginLocationPK:           laxLocationPK,
 			TargetLocationPK:           amsLocationPK,
 			DataProviderName:           dataProvider1Name,
@@ -297,7 +292,6 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		start := time.Now()
 		log.Info("==> Writing largest possible batch of samples per transaction")
 		sig, res, err := telemetryClient.WriteInternetLatencySamples(ctx, telemetry.WriteInternetLatencySamplesInstructionConfig{
-			OracleAgentPK:              oracleAgentPK.PublicKey(),
 			OriginLocationPK:           laxLocationPK,
 			TargetLocationPK:           amsLocationPK,
 			DataProviderName:           dataProvider1Name,
@@ -318,7 +312,6 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		defer cancel()
 		log.Info("==> Writing largest possible batch of samples per transaction +1 (should fail)")
 		_, _, err := telemetryClient.WriteInternetLatencySamples(ctx, telemetry.WriteInternetLatencySamplesInstructionConfig{
-			OracleAgentPK:              oracleAgentPK.PublicKey(),
 			OriginLocationPK:           laxLocationPK,
 			TargetLocationPK:           amsLocationPK,
 			DataProviderName:           dataProvider1Name,

@@ -8,11 +8,11 @@ import (
 )
 
 type WheresitupCollectorInterface interface {
-	Run(ctx context.Context, interval time.Duration, dryRun bool, jobIDsFile, stateDir, outputDir string) error
+	Run(ctx context.Context, interval time.Duration, dryRun bool, jobIDsFile, stateDir string) error
 }
 
 type RipeAtlasCollectorInterface interface {
-	Run(ctx context.Context, dryRun bool, probesPerLocation int, stateDir, outputDir string, measurementInterval, exportInterval time.Duration) error
+	Run(ctx context.Context, dryRun bool, probesPerLocation int, stateDir string, samplingInterval, measurementInterval, exportInterval time.Duration) error
 }
 
 type Config struct {
@@ -21,13 +21,13 @@ type Config struct {
 	RipeAtlas  RipeAtlasCollectorInterface
 	Wheresitup WheresitupCollectorInterface
 
-	WheresitupCollectionInterval time.Duration
+	WheresitupSamplingInterval   time.Duration
+	RipeAtlasSamplingInterval    time.Duration
 	RipeAtlasMeasurementInterval time.Duration
 	RipeAtlasExportInterval      time.Duration
 	DryRun                       bool
 	ProcessedJobsFile            string
 	StateDir                     string
-	OutputDir                    string
 	ProbesPerLocation            int
 	MetricsAddr                  string
 }
@@ -42,8 +42,11 @@ func (cfg *Config) Validate() error {
 	if cfg.RipeAtlas == nil {
 		return errors.New("ripe atlas collector is required")
 	}
-	if cfg.WheresitupCollectionInterval <= 0 {
-		return errors.New("wheresitup collection interval must be greater than 0")
+	if cfg.WheresitupSamplingInterval <= 0 {
+		return errors.New("wheresitup sampling interval must be greater than 0")
+	}
+	if cfg.RipeAtlasSamplingInterval <= 0 {
+		return errors.New("ripe atlas sampling interval must be greater than 0")
 	}
 	if cfg.RipeAtlasMeasurementInterval <= 0 {
 		return errors.New("ripe atlas measurement interval must be greater than 0")
@@ -59,9 +62,6 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.StateDir == "" {
 		return errors.New("state directory is required")
-	}
-	if cfg.OutputDir == "" {
-		return errors.New("output directory is required")
 	}
 	return nil
 }

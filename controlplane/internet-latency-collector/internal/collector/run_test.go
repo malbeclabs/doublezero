@@ -12,18 +12,18 @@ import (
 
 // MockWheresitupCollector for testing
 type MockWheresitupCollector struct {
-	RunFunc   func(ctx context.Context, interval time.Duration, dryRun bool, jobIDsFile, stateDir, outputDir string) error
+	RunFunc   func(ctx context.Context, interval time.Duration, dryRun bool, jobIDsFile, stateDir string) error
 	runCalled bool
 	mu        sync.Mutex
 }
 
-func (m *MockWheresitupCollector) Run(ctx context.Context, interval time.Duration, dryRun bool, jobIDsFile, stateDir, outputDir string) error {
+func (m *MockWheresitupCollector) Run(ctx context.Context, interval time.Duration, dryRun bool, jobIDsFile, stateDir string) error {
 	m.mu.Lock()
 	m.runCalled = true
 	m.mu.Unlock()
 
 	if m.RunFunc != nil {
-		return m.RunFunc(ctx, interval, dryRun, jobIDsFile, stateDir, outputDir)
+		return m.RunFunc(ctx, interval, dryRun, jobIDsFile, stateDir)
 	}
 	// Simulate running for a short time
 	time.Sleep(10 * time.Millisecond)
@@ -38,18 +38,18 @@ func (m *MockWheresitupCollector) wasRunCalled() bool {
 
 // MockRipeAtlasCollector for testing
 type MockRipeAtlasCollector struct {
-	RunFunc   func(ctx context.Context, dryRun bool, probesPerLocation int, stateDir, outputDir string, measurementInterval, exportInterval time.Duration) error
+	RunFunc   func(ctx context.Context, dryRun bool, probesPerLocation int, stateDir string, samplingInterval, measurementInterval, exportInterval time.Duration) error
 	runCalled bool
 	mu        sync.Mutex
 }
 
-func (m *MockRipeAtlasCollector) Run(ctx context.Context, dryRun bool, probesPerLocation int, stateDir, outputDir string, measurementInterval, exportInterval time.Duration) error {
+func (m *MockRipeAtlasCollector) Run(ctx context.Context, dryRun bool, probesPerLocation int, stateDir string, samplingInterval, measurementInterval, exportInterval time.Duration) error {
 	m.mu.Lock()
 	m.runCalled = true
 	m.mu.Unlock()
 
 	if m.RunFunc != nil {
-		return m.RunFunc(ctx, dryRun, probesPerLocation, stateDir, outputDir, measurementInterval, exportInterval)
+		return m.RunFunc(ctx, dryRun, probesPerLocation, stateDir, samplingInterval, measurementInterval, exportInterval)
 	}
 	// Simulate running for a short time
 	time.Sleep(10 * time.Millisecond)
@@ -76,14 +76,15 @@ func TestInternetLatency_Collector_Run(t *testing.T) {
 			Wheresitup: mockWheresitup,
 			RipeAtlas:  mockRipe,
 
-			WheresitupCollectionInterval: 1 * time.Minute,
+			WheresitupSamplingInterval:   1 * time.Minute,
+			RipeAtlasSamplingInterval:    1 * time.Minute,
 			RipeAtlasMeasurementInterval: 1 * time.Hour,
 			RipeAtlasExportInterval:      2 * time.Minute,
 			DryRun:                       true,
 			ProcessedJobsFile:            "test.csv",
 			StateDir:                     t.TempDir(),
-			OutputDir:                    t.TempDir(),
 			ProbesPerLocation:            2,
+			MetricsAddr:                  "127.0.0.1:0",
 		}
 
 		// Create a context that we can cancel
@@ -114,7 +115,13 @@ func TestInternetLatency_Collector_Run(t *testing.T) {
 		case err := <-errCh:
 			require.NoError(t, err, "Run() should not return error")
 		case <-time.After(100 * time.Millisecond):
-			// This is expected - the function runs indefinitely
+			cancel()
+			select {
+			case err := <-errCh:
+				require.NoError(t, err, "Run() should not return error")
+			case <-time.After(100 * time.Millisecond):
+				// Expected to shutdown without error
+			}
 		}
 	})
 
@@ -125,7 +132,7 @@ func TestInternetLatency_Collector_Run(t *testing.T) {
 
 		mockRipe := &MockRipeAtlasCollector{}
 		mockWheresitup := &MockWheresitupCollector{
-			RunFunc: func(ctx context.Context, interval time.Duration, dryRun bool, jobIDsFile, stateDir, outputDir string) error {
+			RunFunc: func(ctx context.Context, interval time.Duration, dryRun bool, jobIDsFile, stateDir string) error {
 				return errors.New("wheresitup error")
 			},
 		}
@@ -135,14 +142,15 @@ func TestInternetLatency_Collector_Run(t *testing.T) {
 			Wheresitup: mockWheresitup,
 			RipeAtlas:  mockRipe,
 
-			WheresitupCollectionInterval: 1 * time.Minute,
+			WheresitupSamplingInterval:   1 * time.Minute,
+			RipeAtlasSamplingInterval:    1 * time.Minute,
 			RipeAtlasMeasurementInterval: 1 * time.Hour,
 			RipeAtlasExportInterval:      2 * time.Minute,
 			DryRun:                       true,
 			ProcessedJobsFile:            "test.csv",
 			StateDir:                     t.TempDir(),
-			OutputDir:                    t.TempDir(),
 			ProbesPerLocation:            2,
+			MetricsAddr:                  "127.0.0.1:0",
 		}
 
 		// Create a context

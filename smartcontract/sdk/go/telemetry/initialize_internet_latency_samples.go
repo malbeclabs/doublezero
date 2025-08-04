@@ -8,7 +8,6 @@ import (
 )
 
 type InitializeInternetLatencySamplesInstructionConfig struct {
-	OracleAgentPK                solana.PublicKey
 	OriginLocationPK             solana.PublicKey
 	TargetLocationPK             solana.PublicKey
 	DataProviderName             string
@@ -17,9 +16,6 @@ type InitializeInternetLatencySamplesInstructionConfig struct {
 }
 
 func (c *InitializeInternetLatencySamplesInstructionConfig) Validate() error {
-	if c.OracleAgentPK.IsZero() {
-		return fmt.Errorf("oracle agent public key is required")
-	}
 	if c.OriginLocationPK.IsZero() {
 		return fmt.Errorf("origin location public key is required")
 	}
@@ -43,6 +39,7 @@ func (c *InitializeInternetLatencySamplesInstructionConfig) Validate() error {
 
 func BuildInitializeInternetLatencySamplesInstruction(
 	programID solana.PublicKey,
+	signerPK solana.PublicKey,
 	config InitializeInternetLatencySamplesInstructionConfig,
 ) (solana.Instruction, error) {
 	if err := config.Validate(); err != nil {
@@ -68,7 +65,7 @@ func BuildInitializeInternetLatencySamplesInstruction(
 	// Derive the PDA.
 	pda, _, err := DeriveInternetLatencySamplesPDA(
 		programID,
-		config.OracleAgentPK,
+		signerPK,
 		config.DataProviderName,
 		config.OriginLocationPK,
 		config.TargetLocationPK,
@@ -81,7 +78,7 @@ func BuildInitializeInternetLatencySamplesInstruction(
 	// Build accounts
 	accounts := []*solana.AccountMeta{
 		{PublicKey: pda, IsSigner: false, IsWritable: true},
-		{PublicKey: config.OracleAgentPK, IsSigner: true, IsWritable: true},
+		{PublicKey: signerPK, IsSigner: true, IsWritable: true},
 		{PublicKey: config.OriginLocationPK, IsSigner: false, IsWritable: false},
 		{PublicKey: config.TargetLocationPK, IsSigner: false, IsWritable: false},
 		{PublicKey: solana.SystemProgramID, IsSigner: false, IsWritable: false},

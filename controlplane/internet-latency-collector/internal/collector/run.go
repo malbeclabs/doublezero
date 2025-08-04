@@ -12,11 +12,12 @@ import (
 
 func (c *Collector) Run(ctx context.Context) error {
 	c.log.Info("Starting continuous collector",
-		slog.String("wheresitup_interval", c.cfg.WheresitupCollectionInterval.String()),
+		slog.String("wheresitup_sampling_interval", c.cfg.WheresitupSamplingInterval.String()),
+		slog.String("ripe_atlas_sampling_interval", c.cfg.RipeAtlasSamplingInterval.String()),
 		slog.String("ripe_atlas_measurement_interval", c.cfg.RipeAtlasMeasurementInterval.String()),
 		slog.String("ripe_atlas_export_interval", c.cfg.RipeAtlasExportInterval.String()),
 		slog.String("state_dir", c.cfg.StateDir),
-		slog.String("output_dir", c.cfg.OutputDir))
+		slog.String("metrics_addr", c.cfg.MetricsAddr))
 
 	// Create a cancellable context for early termination
 	ctx, cancel := context.WithCancel(ctx)
@@ -43,7 +44,7 @@ func (c *Collector) Run(ctx context.Context) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := c.cfg.Wheresitup.Run(ctx, c.cfg.WheresitupCollectionInterval, c.cfg.DryRun, c.cfg.ProcessedJobsFile, c.cfg.StateDir, c.cfg.OutputDir); err != nil {
+		if err := c.cfg.Wheresitup.Run(ctx, c.cfg.WheresitupSamplingInterval, c.cfg.DryRun, c.cfg.ProcessedJobsFile, c.cfg.StateDir); err != nil {
 			errChan <- fmt.Errorf("wheresitup collector error: %w", err)
 			cancel() // Cancel other goroutines on error
 		}
@@ -53,7 +54,7 @@ func (c *Collector) Run(ctx context.Context) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := c.cfg.RipeAtlas.Run(ctx, c.cfg.DryRun, c.cfg.ProbesPerLocation, c.cfg.StateDir, c.cfg.OutputDir, c.cfg.RipeAtlasMeasurementInterval, c.cfg.RipeAtlasExportInterval); err != nil {
+		if err := c.cfg.RipeAtlas.Run(ctx, c.cfg.DryRun, c.cfg.ProbesPerLocation, c.cfg.StateDir, c.cfg.RipeAtlasSamplingInterval, c.cfg.RipeAtlasMeasurementInterval, c.cfg.RipeAtlasExportInterval); err != nil {
 			errChan <- fmt.Errorf("ripe atlas collector error: %w", err)
 			cancel() // Cancel other goroutines on error
 		}
@@ -74,7 +75,7 @@ func (c *Collector) Run(ctx context.Context) error {
 	// Check if context was cancelled
 	if ctx.Err() != nil {
 		c.log.Info("Received shutdown signal, collectors stopped")
-		return ctx.Err()
+		return nil
 	}
 
 	return nil

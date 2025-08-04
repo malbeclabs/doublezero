@@ -419,8 +419,7 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults(t *testing.T) {
 	require.NoError(t, err)
 	c := &Collector{client: mockClient, log: log, exporter: e}
 
-	// First export
-	err = c.ExportMeasurementResults(t.Context(), outputDir, outputDir)
+	err = c.ExportMeasurementResults(t.Context(), outputDir)
 	require.NoError(t, err)
 
 	files, err := filepath.Glob(filepath.Join(outputDir, "ripe_atlas_measurements_*.csv"))
@@ -510,7 +509,7 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults_DeduplicatesByMeasur
 
 	c := &Collector{client: mockClient, log: log, exporter: e}
 
-	err = c.ExportMeasurementResults(t.Context(), outputDir, outputDir)
+	err = c.ExportMeasurementResults(t.Context(), outputDir)
 	require.NoError(t, err)
 
 	files, err := filepath.Glob(filepath.Join(outputDir, "ripe_atlas_measurements_*.csv"))
@@ -828,7 +827,7 @@ func TestInternetLatency_RIPEAtlas_RunRipeAtlasMeasurementCreation(t *testing.T)
 	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
 	defer cancel()
 
-	err := c.RunRipeAtlasMeasurementCreation(ctx, false, 1, t.TempDir(), t.TempDir())
+	err := c.RunRipeAtlasMeasurementCreation(ctx, false, 1, t.TempDir(), 1*time.Minute)
 
 	// Check different scenarios
 	if err == collector.ErrNoDevicesFound {
@@ -909,7 +908,7 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_CreateNew(t *testing.T)
 		},
 	}
 
-	err := c.configureMeasurements(t.Context(), locationMatches, false, 1, t.TempDir(), t.TempDir())
+	err := c.configureMeasurements(t.Context(), locationMatches, false, 1, t.TempDir(), 1*time.Minute)
 	require.NoError(t, err, "configureMeasurements should succeed")
 
 	// Verify measurement was created (NYC->LON due to alphabetical ordering)
@@ -1002,7 +1001,7 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_RemoveUnwanted(t *testi
 	}}
 
 	// Empty location matches means all existing measurements should be removed
-	err = c.configureMeasurements(t.Context(), []LocationProbeMatch{}, false, 1, outputDir, stateDir)
+	err = c.configureMeasurements(t.Context(), []LocationProbeMatch{}, false, 1, stateDir, 1*time.Minute)
 	require.NoError(t, err, "configureMeasurements should succeed")
 
 	// Verify measurements were exported and removed
@@ -1044,7 +1043,7 @@ func TestInternetLatency_RIPEAtlas_Run_ErrorHandling(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 		defer cancel()
 
-		err = c.Run(ctx, false, 1, t.TempDir(), t.TempDir(), 30*time.Millisecond, 50*time.Millisecond)
+		err = c.Run(ctx, false, 1, t.TempDir(), 30*time.Millisecond, 50*time.Millisecond, 1*time.Minute)
 
 		// Should not return error - errors are logged but don't stop the collector
 		require.Nil(t, err, "Run should not return error for measurement creation failures")
@@ -1069,7 +1068,7 @@ func TestInternetLatency_RIPEAtlas_Run_ErrorHandling(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 		defer cancel()
 
-		err = c.Run(ctx, false, 1, t.TempDir(), t.TempDir(), 50*time.Millisecond, 30*time.Millisecond)
+		err = c.Run(ctx, false, 1, t.TempDir(), 50*time.Millisecond, 30*time.Millisecond, 1*time.Minute)
 
 		// Should not return error - export errors are logged but don't stop the collector
 		require.Nil(t, err, "Run should not return error for export failures")
@@ -1161,11 +1160,12 @@ func TestInternetLatency_RIPEAtlas_Run(t *testing.T) {
 	// Use different intervals to verify both run independently
 	measurementInterval := 50 * time.Millisecond
 	exportInterval := 30 * time.Millisecond
+	samplingInterval := 1 * time.Minute
 
 	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
 	defer cancel()
 
-	err = c.Run(ctx, false, 1, stateDir, outputDir, measurementInterval, exportInterval)
+	err = c.Run(ctx, false, 1, stateDir, samplingInterval, measurementInterval, exportInterval)
 	require.Nil(t, err, "Run should complete without error")
 
 	// Verify both goroutines ran

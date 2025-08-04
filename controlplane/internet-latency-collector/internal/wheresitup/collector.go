@@ -12,6 +12,7 @@ import (
 
 	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/collector"
 	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/exporter"
+	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/metrics"
 )
 
 const (
@@ -114,7 +115,7 @@ func (c *Collector) RunJobCreation(ctx context.Context, locations []collector.Lo
 	} else {
 		c.log.Info("Wheresitup credit balance",
 			slog.Int("credits", credit))
-		collector.WheresitupCreditBalance.Set(float64(credit))
+		metrics.WheresitupCreditBalance.Set(float64(credit))
 		if credit < CreditWarningThreshold {
 			c.log.Warn("Low Wheresitup credit balance",
 				slog.Int("credits", credit),
@@ -384,7 +385,7 @@ func (c *Collector) buildLocationMapping(ctx context.Context, locations []collec
 	return mapping, nil
 }
 
-func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile, outputDir string) error {
+func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) error {
 	locations := c.getLocationsFunc(ctx)
 	locationMap, err := c.buildLocationMapping(ctx, locations)
 	if err != nil {
@@ -581,7 +582,7 @@ func parseLocationFromUrl(url string) string {
 	return "Unknown"
 }
 
-func (c *Collector) Run(ctx context.Context, interval time.Duration, dryRun bool, jobIDsFile, stateDir, outputDir string) error {
+func (c *Collector) Run(ctx context.Context, interval time.Duration, dryRun bool, jobIDsFile, stateDir string) error {
 	fullJobIDsPath := filepath.Join(stateDir, jobIDsFile)
 
 	ticker := time.NewTicker(interval)
@@ -597,9 +598,9 @@ func (c *Collector) Run(ctx context.Context, interval time.Duration, dryRun bool
 			locations := c.getLocationsFunc(ctx)
 			if err := c.RunJobCreation(ctx, locations, dryRun, fullJobIDsPath); err != nil {
 				c.log.Error("Operation failed: Wheresitup run_job_creation", slog.String("error", err.Error()))
-				collector.WheresitupJobCreationFailuresTotal.Inc()
+				metrics.WheresitupJobCreationFailuresTotal.Inc()
 			} else {
-				collector.WheresitupJobCreationRunsTotal.Inc()
+				metrics.WheresitupJobCreationRunsTotal.Inc()
 				// Wait for jobs to start and potentially complete
 				c.log.Info("Waiting before exporting Wheresitup job results",
 					slog.Int("wait_seconds", int(c.jobWaitTimeout.Seconds())))
@@ -607,11 +608,11 @@ func (c *Collector) Run(ctx context.Context, interval time.Duration, dryRun bool
 
 				// Export job results
 				c.log.Info("Exporting Wheresitup job results")
-				if err := c.ExportJobResults(ctx, fullJobIDsPath, outputDir); err != nil {
+				if err := c.ExportJobResults(ctx, fullJobIDsPath); err != nil {
 					c.log.Error("Operation failed: Wheresitup export_job_results", slog.String("error", err.Error()))
-					collector.CollectionFailuresTotal.WithLabelValues("wheresitup").Inc()
+					metrics.CollectionFailuresTotal.WithLabelValues("wheresitup").Inc()
 				} else {
-					collector.CollectionRunsTotal.WithLabelValues("wheresitup").Inc()
+					metrics.CollectionRunsTotal.WithLabelValues("wheresitup").Inc()
 				}
 			}
 		}

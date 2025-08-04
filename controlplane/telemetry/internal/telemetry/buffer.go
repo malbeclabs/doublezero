@@ -59,7 +59,9 @@ func (b *AccountsBuffer) Recycle(accountKey AccountKey, samples []Sample) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	b.accounts[accountKey].Recycle(samples)
+	if ab, ok := b.accounts[accountKey]; ok {
+		ab.Recycle(samples)
+	}
 }
 
 func (b *AccountsBuffer) Remove(key AccountKey) {
@@ -79,14 +81,22 @@ func (b *AccountsBuffer) CopyAndReset(key AccountKey) []Sample {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	return b.accounts[key].CopyAndReset()
+	if _, ok := b.accounts[key]; ok {
+		return b.accounts[key].CopyAndReset()
+	}
+
+	return nil
 }
 
 func (b *AccountsBuffer) Read(key AccountKey) []Sample {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
-	return b.accounts[key].Read()
+	if _, ok := b.accounts[key]; ok {
+		return b.accounts[key].Read()
+	}
+
+	return nil
 }
 
 // AccountBuffer provides a thread-safe buffer for storing telemetry samples
@@ -141,7 +151,9 @@ func (b *AccountBuffer) FlushWithoutReset() []Sample {
 }
 
 func (b *AccountBuffer) Recycle(buf []Sample) {
-	b.pool.Put(buf)
+	// Reset the slice length before returning it to the pool to ensure that future users see an
+	// empty slice, even though the underlying capacity is preserved for reuse.
+	b.pool.Put(buf[:0])
 }
 
 func (b *AccountBuffer) Read() []Sample {

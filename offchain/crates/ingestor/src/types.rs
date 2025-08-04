@@ -7,8 +7,10 @@ use doublezero_serviceability::state::{
 use doublezero_telemetry::state::device_latency_samples::DeviceLatencySamples;
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
-use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
+use std::{
+    collections::HashMap,
+    fmt::{Display, Formatter},
+};
 
 #[derive(Debug, Default, Clone, Serialize)]
 pub struct FetchData {

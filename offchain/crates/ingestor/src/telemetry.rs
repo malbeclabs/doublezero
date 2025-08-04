@@ -1,11 +1,10 @@
 use crate::{
     filters::build_epoch_filter,
-    rpc::RpcClientWithRetry,
     settings::Settings,
     types::{DZDTelemetryData, DZDeviceLatencySamples},
 };
 use anyhow::{Context, Result};
-use backon::Retryable;
+use backon::{ExponentialBuilder, Retryable};
 use doublezero_telemetry::state::{
     accounttype::AccountType, device_latency_samples::DeviceLatencySamples,
 };
@@ -66,7 +65,7 @@ pub async fn fetch(
             .get_program_accounts_with_config(&program_pubkey, config.clone())
             .await
     })
-    .retry(&settings.backoff())
+    .retry(&ExponentialBuilder::default().with_jitter())
     .notify(|err: &SolanaClientError, dur: Duration| {
         info!("retrying error: {:?} with sleeping {:?}", err, dur)
     })
@@ -162,7 +161,7 @@ pub async fn fetch(
 
 /// Fetch telemetry data for a specific epoch using RPC filtering
 pub async fn fetch_by_epoch(
-    rpc_client: &RpcClientWithRetry,
+    rpc_client: &RpcClient,
     settings: &Settings,
     epoch: u64,
 ) -> Result<DZDTelemetryData> {
@@ -190,11 +189,10 @@ pub async fn fetch_by_epoch(
 
     let accounts = (|| async {
         rpc_client
-            .client
             .get_program_accounts_with_config(&program_pubkey, config.clone())
             .await
     })
-    .retry(&settings.backoff())
+    .retry(&ExponentialBuilder::default().with_jitter())
     .notify(|err: &SolanaClientError, dur: Duration| {
         info!("retrying error: {:?} with sleeping {:?}", err, dur)
     })

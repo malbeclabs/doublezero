@@ -2473,6 +2473,8 @@ dependencies = [
  "doublezero-telemetry",
  "figment",
  "futures-util",
+ "network-shapley",
+ "rayon",
  "serde",
  "serde_json",
  "solana-account-decoder",

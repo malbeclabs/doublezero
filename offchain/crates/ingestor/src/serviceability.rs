@@ -1,11 +1,10 @@
 use crate::{
     filters::{build_account_type_filter, build_epoch_filter},
-    rpc::RpcClientWithRetry,
     settings::Settings,
     types::DZServiceabilityData,
 };
 use anyhow::{Context, Result};
-use backon::Retryable;
+use backon::{ExponentialBuilder, Retryable};
 use doublezero_serviceability::state::{
     accounttype::AccountType, contributor::Contributor, device::Device, exchange::Exchange,
     link::Link, location::Location, multicastgroup::MulticastGroup, user::User,
@@ -68,7 +67,7 @@ pub async fn fetch(
             .get_program_accounts_with_config(&program_pubkey, config.clone())
             .await
     })
-    .retry(&settings.backoff())
+    .retry(&ExponentialBuilder::default().with_jitter())
     .notify(|err: &SolanaClientError, dur: Duration| {
         info!("retrying error: {:?} with sleeping {:?}", err, dur)
     })
@@ -157,7 +156,7 @@ pub async fn fetch(
 
 /// Fetch serviceability data by account type using RPC filters
 pub async fn fetch_by_type(
-    rpc_client: &RpcClientWithRetry,
+    rpc_client: &RpcClient,
     settings: &Settings,
     account_type: AccountType,
     epoch: Option<u64>,
@@ -197,11 +196,10 @@ pub async fn fetch_by_type(
 
     let accounts = (|| async {
         rpc_client
-            .client
             .get_program_accounts_with_config(&program_pubkey, config.clone())
             .await
     })
-    .retry(&settings.backoff())
+    .retry(&ExponentialBuilder::default().with_jitter())
     .notify(|err: &SolanaClientError, dur: Duration| {
         info!("retrying error: {:?} with sleeping {:?}", err, dur)
     })
@@ -220,7 +218,7 @@ pub async fn fetch_by_type(
 
 /// Fetch all serviceability data using per-type RPC filters for efficiency
 pub async fn fetch_filtered(
-    rpc_client: &RpcClientWithRetry,
+    rpc_client: &RpcClient,
     settings: &Settings,
     timestamp_us: u64,
     epoch: Option<u64>,

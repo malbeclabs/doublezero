@@ -2,13 +2,12 @@ use anyhow::Result;
 use doublezero_serviceability::state::{
     device::DeviceStatus as DZDeviceStatus, link::LinkStatus as DZLinkStatus,
 };
-use ingestor::types::FetchData;
+use ingestor::{demand, fetcher::Fetcher, types::FetchData};
 use network_shapley::types::{Demands, PrivateLink, PrivateLinks};
 use processor::dzd_telemetry_processor::DZDTelemetryStatMap;
 
-pub async fn build_demands() -> Result<Demands> {
-    let demands = vec![];
-    Ok(demands)
+pub async fn build_demands(fetcher: &Fetcher, fetch_data: &FetchData) -> Result<Demands> {
+    demand::build(fetcher, fetch_data).await
 }
 
 pub fn build_private_links(

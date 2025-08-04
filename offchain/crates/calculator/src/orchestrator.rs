@@ -28,27 +28,35 @@ impl Orchestrator {
         let (after_us, before_us, filter_mode) =
             filtering_mode(before, after, epoch, previous_epoch)?;
 
+        // Create fetcher
+        let ingestor_settings = ingestor::settings::Settings::from_env()?;
+        let fetcher = Fetcher::new(&ingestor_settings)?;
+
         // Fetch data based on filter mode
         let fetch_data = match filter_mode {
-            FilterMode::Epoch(epoch_num) => Fetcher::fetch_by_epoch(epoch_num).await?,
-            FilterMode::PreviousEpoch => Fetcher::fetch_previous_epoch().await?,
-            FilterMode::TimeRange => Fetcher::fetch(after_us, before_us).await?,
+            FilterMode::Epoch(epoch_num) => fetcher.by_epoch(epoch_num).await?,
+            FilterMode::PreviousEpoch => fetcher.by_prev_epoch().await?,
+            FilterMode::TimeRange => fetcher.by_time_range(after_us, before_us).await?,
         };
 
+        // At this point FetchData should contain everything necessary
+        // to transform and build shapley inputs
+
+        // Process and aggregate telemetry
         let stat_map = DZDTelemetryProcessor::process(&fetch_data)?;
         info!("\n{}", print_telemetry_stats(&stat_map));
+
+        // TODO: Record this stat_map using doublezero-recorder (or whatever that is called)
 
         // Build pvt links
         let pvt_links = build_private_links(after_us, before_us, &fetch_data, &stat_map);
         info!("\n{}", print_private_links(&pvt_links));
 
         // Build demand
-        let demands = build_demands().await?;
-        info!("Generated {} demands", demands.len());
-        info!("Showing Top 10 demands");
-        info!("\n{}", print_demands(&demands, 10));
+        let demands = build_demands(&fetcher, &fetch_data).await?;
+        info!("demands: \n{}", print_demands(&demands, 1_000_000));
 
-        // TODO: Use demand
+        // TODO: Build public links
 
         Ok(())
     }

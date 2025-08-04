@@ -4,9 +4,8 @@ use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
     program::invoke_signed,
-    program_error::ProgramError,
     pubkey::Pubkey,
-    system_instruction, system_program,
+    system_instruction,
     sysvar::{rent::Rent, Sysvar},
 };
 use std::{fmt, fmt::Debug};
@@ -123,16 +122,13 @@ pub fn account_close(
     close_account: &AccountInfo,
     receiving_account: &AccountInfo,
 ) -> ProgramResult {
-    // Transfere the rent lamports to the receiving account
-    **receiving_account.lamports.borrow_mut() = receiving_account
-        .lamports()
-        .checked_add(close_account.lamports())
-        .ok_or(ProgramError::InsufficientFunds)?;
-    **close_account.lamports.borrow_mut() = 0;
+    let mut close_account_lamports = close_account.try_borrow_mut_lamports()?;
+    let mut receiving_account_lamports = receiving_account.try_borrow_mut_lamports()?;
 
-    // Close the account
-    close_account.realloc(0, false)?;
-    close_account.assign(&system_program::ID);
+    // Transfer the rent lamports to the receiving account
+    **receiving_account_lamports =
+        receiving_account_lamports.saturating_add(**close_account_lamports);
+    **close_account_lamports = 0;
 
     Ok(())
 }

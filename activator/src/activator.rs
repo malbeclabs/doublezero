@@ -112,12 +112,12 @@ impl Activator {
     pub async fn init(&mut self) -> eyre::Result<()> {
         // Fetch the list of tunnels, devices, and users from the client
         let devices = ListDeviceCommand.execute(&self.client)?;
-        let tunnels = ListLinkCommand.execute(&self.client)?;
+        let links = ListLinkCommand.execute(&self.client)?;
         let users = ListUserCommand.execute(&self.client)?;
         self.locations = ListLocationCommand.execute(&self.client)?;
         self.exchanges = ListExchangeCommand.execute(&self.client)?;
 
-        for (_, tunnel) in tunnels
+        for (_, tunnel) in links
             .iter()
             .filter(|(_, t)| t.status == LinkStatus::Activated)
         {
@@ -140,6 +140,10 @@ impl Activator {
             self.add_device(pubkey, device);
         }
 
+        users.iter().for_each(|(_, user)| {
+            self.user_tunnel_ips.assign_block(user.tunnel_net.into());
+        });
+
         users
             .iter()
             .filter(|(_, u)| u.status == UserStatus::Activated)
@@ -155,15 +159,14 @@ impl Activator {
                                 e
                             )
                         })?;
-                    self.user_tunnel_ips.assign_block(user.tunnel_net.into());
                 }
                 Ok::<(), eyre::Error>(())
             })?;
 
         info!(
-            "devices: {} tunnels: {} users: {}",
+            "devices: {} links: {} users: {}",
             devices.len(),
-            tunnels.len(),
+            links.len(),
             users.len(),
         );
 

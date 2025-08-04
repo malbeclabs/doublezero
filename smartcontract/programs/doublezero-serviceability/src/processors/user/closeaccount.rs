@@ -78,8 +78,8 @@ pub fn process_closeaccount_user(
 
     device.reference_count = device.reference_count.saturating_sub(1);
 
-    account_close(user_account, owner_account)?;
     account_write(device_account, &device, payer_account, system_program)?;
+    account_close(user_account, owner_account)?;
 
     #[cfg(test)]
     msg!("CloseAccount: User closed");

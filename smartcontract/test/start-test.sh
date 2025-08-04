@@ -89,7 +89,7 @@ echo "Update exchanges"
 
 ### Initialice controbutor
 echo "Creating contributor"
-./target/doublezero contributor create --code co01
+./target/doublezero contributor create --code co01 --owner me
 
 ### Initialice devices
 echo "Creating devices"

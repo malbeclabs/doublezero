@@ -212,8 +212,12 @@ router bgp 65342
    neighbor 169.254.0.3 maximum-accepted-routes 1
    address-family ipv4
       neighbor 169.254.0.3 activate
-   no neighbor 172.17.0.1
-   no neighbor 169.254.0.7
+      no neighbor 172.17.0.1
+      no neighbor 169.254.0.7
+   !
+   address-family vpn-ipv4
+      no neighbor 172.17.0.1
+      no neighbor 169.254.0.7
    !
    vrf vrf1
       rd 65342:1

@@ -113,9 +113,24 @@ router bgp 65342
       neighbor {{ .OverlayDstIP }} activate
    {{- end }}
    {{- end }}
-   {{- range .UnknownBgpPeers }}
-   no neighbor {{ . }}
+   {{- range .Vpnv4BgpPeers }}
+   {{- if ne .PeerIP.String $.Device.Vpn4vLoopbackIP.String }}
+      no neighbor {{ .PeerIP }} activate
    {{- end }}
+   {{- end }}
+   {{- range .UnknownBgpPeers }}
+      no neighbor {{ . }}
+   {{- end }}
+   !
+   address-family vpn-ipv4
+      {{- range .Vpnv4BgpPeers }}
+      {{- if ne .PeerIP.String $.Device.Vpn4vLoopbackIP.String }}
+      neighbor {{ .PeerIP }} activate
+      {{- end }}
+      {{- end }}
+      {{- range .UnknownBgpPeers }}
+      no neighbor {{ . }}
+      {{- end }}
    !
    vrf vrf1
       rd 65342:1
@@ -136,9 +151,9 @@ router bgp 65342
       {{- end }}
       {{- end }}
       {{- end }}
-{{- range .UnknownBgpPeers }}
+      {{- range .UnknownBgpPeers }}
       no neighbor {{ . }}
-{{- end }}
+      {{- end }}
 !
 ip community-list COMM-ALL_USERS permit 21682:1200
 ip community-list COMM-ALL_MCAST_USERS permit 21682:1300

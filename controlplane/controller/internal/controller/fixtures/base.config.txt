@@ -56,6 +56,10 @@ router bgp 65342
    neighbor 15.15.15.15 description remote-device
    neighbor 15.15.15.15 send-community
    address-family ipv4
+      no neighbor 15.15.15.15 activate
+   !
+   address-family vpn-ipv4
+      neighbor 15.15.15.15 activate
    !
    vrf vrf1
       rd 65342:1

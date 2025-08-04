@@ -4,9 +4,12 @@ use crate::{
 };
 use anyhow::Result;
 use ingestor::fetcher::Fetcher;
-use processor::dzd_telemetry_processor::{DZDTelemetryProcessor, print_telemetry_stats};
+use processor::{
+    internet::{InternetTelemetryProcessor, print_internet_stats},
+    telemetry::{DZDTelemetryProcessor, print_telemetry_stats},
+};
 use std::path::Path;
-use tracing::info;
+use tracing::{debug, info};
 
 #[derive(Debug)]
 pub struct Orchestrator;
@@ -23,6 +26,11 @@ impl Orchestrator {
             Some(epoch_num) => fetcher.with_epoch(epoch_num).await?,
         };
 
+        debug!(
+            "internet:\n{:?}",
+            serde_json::to_string(&fetch_data.dz_internet).unwrap()
+        );
+
         // At this point FetchData should contain everything necessary
         // to transform and build shapley inputs
 
@@ -31,6 +39,13 @@ impl Orchestrator {
         info!(
             "Device Telemetry Aggregates: \n{}",
             print_telemetry_stats(&stat_map)
+        );
+
+        // Build internet stats
+        let internet_stat_map = InternetTelemetryProcessor::process(&fetch_data)?;
+        info!(
+            "Internet Telemetry Aggregates: \n{}",
+            print_internet_stats(&internet_stat_map)
         );
 
         // TODO: Record this stat_map using doublezero-recorder (or whatever that is called)
@@ -45,8 +60,6 @@ impl Orchestrator {
             "Generated Demands: \n{}",
             print_demands(&demands, 1_000_000)
         );
-
-        // TODO: Build public links
 
         Ok(())
     }

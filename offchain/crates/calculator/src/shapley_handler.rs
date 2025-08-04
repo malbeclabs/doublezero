@@ -4,7 +4,7 @@ use doublezero_serviceability::state::{
 };
 use ingestor::{demand, fetcher::Fetcher, types::FetchData};
 use network_shapley::types::{Demands, PrivateLink, PrivateLinks};
-use processor::dzd_telemetry_processor::DZDTelemetryStatMap;
+use processor::telemetry::DZDTelemetryStatMap;
 
 pub async fn build_demands(fetcher: &Fetcher, fetch_data: &FetchData) -> Result<Demands> {
     demand::build(fetcher, fetch_data).await

@@ -28,6 +28,7 @@ figment = { version = "0", features = ["env", "toml"] }
 futures-util = "0"
 doublezero-serviceability = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint" ] }
 doublezero-telemetry = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint" ] }
+doublezero_sdk = { git = "ssh://git@github.com/malbeclabs/doublezero" }
 svm-hash = { version = "0.1.0-beta.1", features = [ "bytemuck" ] }
 rand = "0"
 rayon = "1"

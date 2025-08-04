@@ -16,6 +16,7 @@ backon.workspace = true
 chrono.workspace = true
 doublezero-serviceability.workspace = true
 doublezero-telemetry.workspace = true
+doublezero_sdk.workspace = true
 figment.workspace = true
 futures-util.workspace = true
 network-shapley.workspace = true

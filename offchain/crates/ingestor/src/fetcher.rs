@@ -1,4 +1,4 @@
-use crate::{serviceability, settings::Settings, telemetry, types::FetchData};
+use crate::{internet, serviceability, settings::Settings, telemetry, types::FetchData};
 use anyhow::Result;
 use chrono::Utc;
 use solana_client::nonblocking::rpc_client::RpcClient;
@@ -54,9 +54,10 @@ impl Fetcher {
 
         // Fetch serviceability data
         // Fetch telemetry data
-        let (serviceability_data, telemetry_data) = tokio::try_join!(
+        let (serviceability_data, telemetry_data, internet_data) = tokio::try_join!(
             serviceability::fetch(&self.rpc_client, &self.settings),
-            telemetry::fetch(&self.rpc_client, &self.settings, epoch)
+            telemetry::fetch(&self.rpc_client, &self.settings, epoch),
+            internet::fetch(&self.rpc_client, &self.settings, epoch)
         )?;
 
         let (start_us, end_us) = telemetry_data.start_end_us()?;
@@ -69,6 +70,7 @@ impl Fetcher {
         Ok(FetchData {
             dz_serviceability: serviceability_data,
             dz_telemetry: telemetry_data,
+            dz_internet: internet_data,
             start_us,
             end_us,
             fetched_at: Utc::now(),

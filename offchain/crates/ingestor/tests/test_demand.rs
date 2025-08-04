@@ -159,6 +159,7 @@ fn convert_to_fetch_data(test_data: &TestData) -> Result<FetchData> {
     Ok(FetchData {
         dz_serviceability: serviceability_data,
         dz_telemetry: Default::default(),
+        dz_internet: Default::default(),
         start_us: 0,
         end_us: 0,
         fetched_at: chrono::Utc::now(),

@@ -47,7 +47,12 @@ func TestTelemetry_Data_Provider_GetCircuits(t *testing.T) {
 			Logger:               logger,
 			ServiceabilityClient: client,
 			TelemetryClient:      &mockTelemetryClient{},
-			CircuitsCacheTTL:     1 * time.Minute,
+			EpochFinder: &mockEpochFinder{
+				ApproximateAtTimeFunc: func(ctx context.Context, target time.Time) (uint64, error) {
+					return 1, nil
+				},
+			},
+			CircuitsCacheTTL: 1 * time.Minute,
 		})
 		require.NoError(t, err)
 
@@ -89,7 +94,12 @@ func TestTelemetry_Data_Provider_GetCircuits(t *testing.T) {
 			Logger:               logger,
 			ServiceabilityClient: client,
 			TelemetryClient:      &mockTelemetryClient{},
-			CircuitsCacheTTL:     1 * time.Minute,
+			EpochFinder: &mockEpochFinder{
+				ApproximateAtTimeFunc: func(ctx context.Context, target time.Time) (uint64, error) {
+					return 1, nil
+				},
+			},
+			CircuitsCacheTTL: 1 * time.Minute,
 		})
 		require.NoError(t, err)
 		circuits, err := provider.GetCircuits(t.Context())
@@ -109,7 +119,12 @@ func TestTelemetry_Data_Provider_GetCircuits(t *testing.T) {
 			Logger:               logger,
 			ServiceabilityClient: client,
 			TelemetryClient:      &mockTelemetryClient{},
-			CircuitsCacheTTL:     1 * time.Minute,
+			EpochFinder: &mockEpochFinder{
+				ApproximateAtTimeFunc: func(ctx context.Context, target time.Time) (uint64, error) {
+					return 1, nil
+				},
+			},
+			CircuitsCacheTTL: 1 * time.Minute,
 		})
 		require.NoError(t, err)
 		_, err = provider.GetCircuits(t.Context())
@@ -154,7 +169,12 @@ func TestTelemetry_Data_Provider_GetCircuits(t *testing.T) {
 			Logger:               logger,
 			ServiceabilityClient: client,
 			TelemetryClient:      &mockTelemetryClient{},
-			CircuitsCacheTTL:     1 * time.Minute,
+			EpochFinder: &mockEpochFinder{
+				ApproximateAtTimeFunc: func(ctx context.Context, target time.Time) (uint64, error) {
+					return 1, nil
+				},
+			},
+			CircuitsCacheTTL: 1 * time.Minute,
 		})
 		require.NoError(t, err)
 
@@ -181,7 +201,12 @@ func TestTelemetry_Data_Provider_GetCircuits(t *testing.T) {
 					}, nil
 				},
 			},
-			TelemetryClient:  &mockTelemetryClient{},
+			TelemetryClient: &mockTelemetryClient{},
+			EpochFinder: &mockEpochFinder{
+				ApproximateAtTimeFunc: func(ctx context.Context, target time.Time) (uint64, error) {
+					return 1, nil
+				},
+			},
 			CircuitsCacheTTL: 0, // Disable cache so every call invokes Load()
 		})
 		require.NoError(t, err)

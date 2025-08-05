@@ -13,6 +13,9 @@ jobs:
   validate_pipeline:
     runs-on: ubuntu-24.04-16c-64gb
     strategy:
+      fail-fast: false
+      max-retries: 3
+      delay-seconds: 10
       matrix:
         include:
           - release: activator

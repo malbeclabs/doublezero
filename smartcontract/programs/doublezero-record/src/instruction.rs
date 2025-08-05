@@ -113,7 +113,7 @@ impl<'a> RecordInstruction<'a> {
 
     /// Packs a [`RecordInstruction`] into a byte buffer.
     pub fn pack(&self) -> Vec<u8> {
-        let mut buf = Vec::with_capacity(size_of::<Self>());
+        let mut buf = Vec::with_capacity(std::mem::size_of::<Self>());
         match self {
             Self::Initialize => buf.push(0),
             Self::Write { offset, data } => {

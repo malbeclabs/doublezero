@@ -18,8 +18,8 @@ use doublezero_sdk::{
         link::list::ListLinkCommand, location::list::ListLocationCommand,
         user::list::ListUserCommand,
     },
-    AccountData, DZClient, Device, DeviceStatus, Exchange, GetGlobalConfigCommand, LinkStatus,
-    Location, MulticastGroup, ProgramVersion, UserStatus,
+    AccountData, DZClient, Device, DeviceStatus, Exchange, GetGlobalConfigCommand, InterfaceType,
+    LinkStatus, Location, MulticastGroup, ProgramVersion, UserStatus,
 };
 use log::{debug, error, info, warn};
 use solana_sdk::pubkey::Pubkey;
@@ -37,6 +37,7 @@ pub struct Activator {
     pub client: DZClient,
 
     pub link_ids: IDAllocator,
+    pub segment_routing_ids: IDAllocator,
     pub link_ips: IPBlockAllocator,
     pub multicastgroup_tunnel_ips: IPBlockAllocator,
 
@@ -93,6 +94,7 @@ impl Activator {
             client,
             link_ips: IPBlockAllocator::new(config.device_tunnel_block.into()),
             link_ids: IDAllocator::new(0, vec![]),
+            segment_routing_ids: IDAllocator::new(1, vec![]),
             multicastgroup_tunnel_ips: IPBlockAllocator::new(config.multicastgroup_block.into()),
             user_tunnel_ips: IPBlockAllocator::new(config.user_tunnel_block.into()),
             devices: HashMap::new(),
@@ -127,6 +129,14 @@ impl Activator {
             .iter()
             .filter(|(_, d)| d.status == DeviceStatus::Activated)
         {
+            device.interfaces.iter().for_each(|interface| {
+                if interface.node_segment_idx > 0 {
+                    self.segment_routing_ids.assign(interface.node_segment_idx);
+                }
+                if interface.interface_type == InterfaceType::Loopback {
+                    self.link_ips.assign_block(interface.ip_net.into());
+                }
+            });
             self.add_device(pubkey, device);
         }
 
@@ -198,6 +208,7 @@ impl Activator {
         let multicastgroups = &mut self.multicastgroups;
         let solana_info = &self.solana_info;
         let state_transitions = &mut self.state_transitions;
+        let segment_routing_ids = &mut self.segment_routing_ids;
 
         self.client.gets_and_subscribe(
             move |client, pubkey, data| {
@@ -205,7 +216,15 @@ impl Activator {
 
                 match data {
                     AccountData::Device(device) => {
-                        process_device_event(client, pubkey, devices, device, state_transitions);
+                        process_device_event(
+                            client,
+                            pubkey,
+                            devices,
+                            device,
+                            state_transitions,
+                            segment_routing_ids,
+                            link_ips,
+                        );
                     }
                     AccountData::Link(tunnel) => {
                         process_tunnel_event(

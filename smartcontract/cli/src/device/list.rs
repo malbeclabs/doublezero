@@ -5,7 +5,7 @@ use doublezero_sdk::{
         contributor::list::ListContributorCommand, device::list::ListDeviceCommand,
         exchange::list::ListExchangeCommand, location::list::ListLocationCommand,
     },
-    *,
+    serializer, Device, DeviceStatus, DeviceType, NetworkV4List,
 };
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
@@ -24,12 +24,12 @@ pub struct ListDeviceCliCommand {
 
 #[derive(Tabled, Serialize)]
 pub struct DeviceDisplay {
-    #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub account: Pubkey,
     pub code: String,
     #[tabled(skip)]
     pub bump_seed: u8,
-    #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     #[tabled(skip)]
     pub location_pk: Pubkey,
     #[tabled(rename = "contributor")]
@@ -38,7 +38,7 @@ pub struct DeviceDisplay {
     pub location_code: String,
     #[tabled(skip)]
     pub location_name: String,
-    #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     #[tabled(skip)]
     pub exchange_pk: Pubkey,
     #[tabled(rename = "exchange")]
@@ -48,7 +48,7 @@ pub struct DeviceDisplay {
     pub device_type: DeviceType,
     pub public_ip: Ipv4Addr,
     #[tabled(display = "doublezero_serviceability::types::NetworkV4List::to_string")]
-    #[serde(serialize_with = "crate::serializer::serialize_networkv4list_as_string")]
+    #[serde(serialize_with = "serializer::serialize_networkv4list_as_string")]
     pub dz_prefixes: NetworkV4List,
     pub status: DeviceStatus,
     pub bgp_asn: u32,
@@ -58,7 +58,7 @@ pub struct DeviceDisplay {
     pub dns_servers: Vec<Ipv4Addr>,
     #[tabled(display = "stringify_vec")]
     pub ntp_servers: Vec<Ipv4Addr>,
-    #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
 }
 

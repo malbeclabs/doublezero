@@ -1,6 +1,8 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_sdk::{commands::location::list::ListLocationCommand, *};
+use doublezero_sdk::{
+    commands::location::list::ListLocationCommand, serializer, Location, LocationStatus,
+};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
@@ -18,7 +20,7 @@ pub struct ListLocationCliCommand {
 
 #[derive(Tabled, Serialize)]
 pub struct LocationDisplay {
-    #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub account: Pubkey,
     pub code: String,
     pub name: String,
@@ -26,7 +28,7 @@ pub struct LocationDisplay {
     pub lat: f64,
     pub lng: f64,
     pub status: LocationStatus,
-    #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
 }
 

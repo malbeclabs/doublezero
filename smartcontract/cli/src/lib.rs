@@ -19,7 +19,6 @@ pub mod location;
 pub mod logcommand;
 pub mod multicastgroup;
 pub mod requirements;
-pub mod serializer;
 pub mod subscribe;
 pub mod tests;
 pub mod user;

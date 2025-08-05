@@ -1,4 +1,4 @@
-use doublezero_sdk::bandwidth_to_string;
+use crate::bandwidth_to_string;
 use doublezero_serviceability::types::NetworkV4List;
 use solana_program::pubkey::Pubkey;
 

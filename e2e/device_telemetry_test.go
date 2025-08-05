@@ -258,7 +258,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	err = la2MetricsClient.Fetch(t.Context())
 	require.NoError(t, err)
 	ny5MetricsClient := dn.Devices["ny5-dz01"].GetTelemetryMetricsClient()
-	require.NoError(t, ny5MetricsClient.WaitForReady(t.Context(), 10*time.Second))
+	require.NoError(t, ny5MetricsClient.WaitForReady(t.Context(), 60*time.Second))
 	err = ny5MetricsClient.Fetch(t.Context())
 	require.NoError(t, err)
 

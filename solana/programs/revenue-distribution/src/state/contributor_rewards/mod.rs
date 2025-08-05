@@ -14,11 +14,11 @@ use solana_pubkey::Pubkey;
 #[derive(Debug, Clone, Copy, Default, PartialEq, Pod, Zeroable)]
 #[repr(C, align(8))]
 pub struct ContributorRewards {
+    pub rewards_manager_key: Pubkey,
+
     pub service_key: Pubkey,
 
     pub flags: Flags,
-
-    pub rewards_manager_key: Pubkey,
 
     pub recipient_shares: RecipientShares,
 

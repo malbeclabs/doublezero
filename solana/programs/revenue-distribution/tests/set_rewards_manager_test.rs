@@ -3,27 +3,25 @@ mod common;
 //
 
 use doublezero_revenue_distribution::{
-    instruction::{
-        ContributorRewardsConfiguration, ProgramConfiguration, ProgramFlagConfiguration,
-    },
-    state::{ContributorRewards, RecipientShares},
+    instruction::{ProgramConfiguration, ProgramFlagConfiguration},
+    state::ContributorRewards,
 };
 use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
 use solana_sdk::signature::{Keypair, Signer};
 
 //
-// Configure contributor rewards.
+// Set rewards manager.
 //
 
 #[tokio::test]
-async fn test_initialize_contributor_rewards() {
+async fn test_set_rewards_manager() {
     let mut test_setup = common::start_test().await;
 
     let admin_signer = Keypair::new();
+
     let contributor_manager_signer = Keypair::new();
 
-    let rewards_manager_signer = Keypair::new();
     let service_key = Pubkey::new_unique();
 
     test_setup
@@ -36,6 +34,9 @@ async fn test_initialize_contributor_rewards() {
         .set_admin(&admin_signer.pubkey())
         .await
         .unwrap()
+        .initialize_contributor_rewards(&service_key)
+        .await
+        .unwrap()
         .configure_program(
             &admin_signer,
             [
@@ -44,34 +45,17 @@ async fn test_initialize_contributor_rewards() {
             ],
         )
         .await
-        .unwrap()
-        .initialize_contributor_rewards(&service_key)
-        .await
-        .unwrap()
+        .unwrap();
+
+    // Test input.
+
+    let rewards_manager_key = Pubkey::new_unique();
+
+    test_setup
         .set_rewards_manager(
             &service_key,
             &contributor_manager_signer,
-            &rewards_manager_signer.pubkey(),
-        )
-        .await
-        .unwrap();
-
-    // Test inputs.
-
-    let recipients = [
-        (Pubkey::new_unique(), 1_000),
-        (Pubkey::new_unique(), 2_000),
-        (Pubkey::new_unique(), 3_000),
-        (Pubkey::new_unique(), 4_000),
-    ];
-
-    test_setup
-        .configure_contributor_rewards(
-            &service_key,
-            &rewards_manager_signer,
-            [ContributorRewardsConfiguration::Recipients(
-                recipients.to_vec(),
-            )],
+            &rewards_manager_key,
         )
         .await
         .unwrap();
@@ -80,7 +64,6 @@ async fn test_initialize_contributor_rewards() {
 
     let mut expected_contributor_rewards = ContributorRewards::default();
     expected_contributor_rewards.service_key = service_key;
-    expected_contributor_rewards.rewards_manager_key = rewards_manager_signer.pubkey();
-    expected_contributor_rewards.recipient_shares = RecipientShares::new(&recipients).unwrap();
+    expected_contributor_rewards.rewards_manager_key = rewards_manager_key;
     assert_eq!(contributor_rewards, expected_contributor_rewards);
 }

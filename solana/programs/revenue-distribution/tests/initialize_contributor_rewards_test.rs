@@ -20,8 +20,6 @@ async fn test_initialize_contributor_rewards() {
 
     let admin_signer = Keypair::new();
 
-    let contributor_manager_signer = Keypair::new();
-
     test_setup
         .initialize_program()
         .await
@@ -34,25 +32,19 @@ async fn test_initialize_contributor_rewards() {
         .unwrap()
         .configure_program(
             &admin_signer,
-            [
-                ProgramConfiguration::ContributorManager(contributor_manager_signer.pubkey()),
-                ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
-            ],
+            [ProgramConfiguration::Flag(
+                ProgramFlagConfiguration::IsPaused(false),
+            )],
         )
         .await
         .unwrap();
 
-    // Test inputs.
+    // Test input.
 
-    let rewards_manager_key = Pubkey::new_unique();
     let service_key = Pubkey::new_unique();
 
     test_setup
-        .initialize_contributor_rewards(
-            &service_key,
-            &contributor_manager_signer,
-            &rewards_manager_key,
-        )
+        .initialize_contributor_rewards(&service_key)
         .await
         .unwrap();
 
@@ -60,6 +52,5 @@ async fn test_initialize_contributor_rewards() {
 
     let mut expected_contributor_rewards = ContributorRewards::default();
     expected_contributor_rewards.service_key = service_key;
-    expected_contributor_rewards.rewards_manager_key = rewards_manager_key;
     assert_eq!(contributor_rewards, expected_contributor_rewards);
 }

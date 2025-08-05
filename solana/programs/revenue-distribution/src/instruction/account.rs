@@ -441,17 +441,13 @@ impl From<TerminatePrepaidConnectionAccounts> for Vec<AccountMeta> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InitializeContributorRewardsAccounts {
-    pub program_config_key: Pubkey,
-    pub contributor_manager_key: Pubkey,
     pub payer_key: Pubkey,
     pub new_contributor_rewards_key: Pubkey,
 }
 
 impl InitializeContributorRewardsAccounts {
-    pub fn new(contributor_manager_key: &Pubkey, payer_key: &Pubkey, service_key: &Pubkey) -> Self {
+    pub fn new(payer_key: &Pubkey, service_key: &Pubkey) -> Self {
         Self {
-            program_config_key: ProgramConfig::find_address().0,
-            contributor_manager_key: *contributor_manager_key,
             payer_key: *payer_key,
             new_contributor_rewards_key: ContributorRewards::find_address(service_key).0,
         }
@@ -461,18 +457,47 @@ impl InitializeContributorRewardsAccounts {
 impl From<InitializeContributorRewardsAccounts> for Vec<AccountMeta> {
     fn from(accounts: InitializeContributorRewardsAccounts) -> Self {
         let InitializeContributorRewardsAccounts {
-            program_config_key,
-            contributor_manager_key,
             payer_key,
             new_contributor_rewards_key,
         } = accounts;
 
         vec![
-            AccountMeta::new_readonly(program_config_key, false),
-            AccountMeta::new_readonly(contributor_manager_key, true),
             AccountMeta::new(payer_key, true),
             AccountMeta::new(new_contributor_rewards_key, false),
             AccountMeta::new_readonly(system_program::ID, false),
+        ]
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetRewardsManagerAccounts {
+    pub program_config_key: Pubkey,
+    pub contributor_manager_key: Pubkey,
+    pub contributor_rewards_key: Pubkey,
+}
+
+impl SetRewardsManagerAccounts {
+    pub fn new(contributor_manager_key: &Pubkey, service_key: &Pubkey) -> Self {
+        Self {
+            program_config_key: ProgramConfig::find_address().0,
+            contributor_manager_key: *contributor_manager_key,
+            contributor_rewards_key: ContributorRewards::find_address(service_key).0,
+        }
+    }
+}
+
+impl From<SetRewardsManagerAccounts> for Vec<AccountMeta> {
+    fn from(accounts: SetRewardsManagerAccounts) -> Self {
+        let SetRewardsManagerAccounts {
+            program_config_key,
+            contributor_manager_key,
+            contributor_rewards_key,
+        } = accounts;
+
+        vec![
+            AccountMeta::new_readonly(program_config_key, false),
+            AccountMeta::new_readonly(contributor_manager_key, true),
+            AccountMeta::new(contributor_rewards_key, false),
         ]
     }
 }

@@ -1,6 +1,9 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_sdk::{commands::multicastgroup::list::ListMulticastGroupCommand, *};
+use doublezero_sdk::{
+    commands::multicastgroup::list::ListMulticastGroupCommand, serializer, MulticastGroup,
+    MulticastGroupStatus,
+};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, net::Ipv4Addr};
@@ -18,21 +21,21 @@ pub struct ListMulticastGroupCliCommand {
 
 #[derive(Tabled, Serialize)]
 pub struct MulticastGroupDisplay {
-    #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub account: Pubkey,
     pub code: String,
     pub multicast_ip: Ipv4Addr,
-    #[serde(serialize_with = "crate::serializer::serialize_bandwidth_as_string")]
+    #[serde(serialize_with = "serializer::serialize_bandwidth_as_string")]
     #[tabled(display = "doublezero_serviceability::types::bandwidth_to_string")]
     pub max_bandwidth: u64,
-    #[serde(serialize_with = "crate::serializer::serialize_pubkeylist_as_string")]
+    #[serde(serialize_with = "serializer::serialize_pubkeylist_as_string")]
     #[tabled(display = "crate::util::display_count")]
     pub publishers: Vec<Pubkey>,
-    #[serde(serialize_with = "crate::serializer::serialize_pubkeylist_as_string")]
+    #[serde(serialize_with = "serializer::serialize_pubkeylist_as_string")]
     #[tabled(display = "crate::util::display_count")]
     pub subscribers: Vec<Pubkey>,
     pub status: MulticastGroupStatus,
-    #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
 }
 

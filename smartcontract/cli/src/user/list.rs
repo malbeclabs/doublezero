@@ -5,7 +5,7 @@ use doublezero_sdk::{
         device::list::ListDeviceCommand, location::list::ListLocationCommand,
         multicastgroup::list::ListMulticastGroupCommand, user::list::ListUserCommand,
     },
-    MulticastGroup, *,
+    serializer, MulticastGroup, NetworkV4, User, UserCYOA, UserStatus, UserType,
 };
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
@@ -24,19 +24,19 @@ pub struct ListUserCliCommand {
 
 #[derive(Tabled, Serialize)]
 pub struct UserDisplay {
-    #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub account: Pubkey,
     pub user_type: UserType,
-    #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     #[tabled(skip)]
     pub device_pk: Pubkey,
     #[tabled(rename = "groups")]
     pub multicast: String,
     #[tabled(skip)]
-    #[serde(serialize_with = "crate::serializer::serialize_pubkeylist_as_string")]
+    #[serde(serialize_with = "serializer::serialize_pubkeylist_as_string")]
     pub publishers: Vec<Pubkey>,
     #[tabled(skip)]
-    #[serde(serialize_with = "crate::serializer::serialize_pubkeylist_as_string")]
+    #[serde(serialize_with = "serializer::serialize_pubkeylist_as_string")]
     pub subscribers: Vec<Pubkey>,
     #[tabled(rename = "device")]
     pub device_name: String,
@@ -50,7 +50,7 @@ pub struct UserDisplay {
     pub tunnel_id: u16,
     pub tunnel_net: NetworkV4,
     pub status: UserStatus,
-    #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
 }
 

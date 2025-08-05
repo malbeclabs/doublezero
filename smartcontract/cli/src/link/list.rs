@@ -5,7 +5,7 @@ use doublezero_sdk::{
         contributor::list::ListContributorCommand, device::list::ListDeviceCommand,
         link::list::ListLinkCommand,
     },
-    *,
+    serializer, Link, LinkLinkType, LinkStatus, NetworkV4,
 };
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
@@ -24,18 +24,18 @@ pub struct ListLinkCliCommand {
 
 #[derive(Tabled, Serialize)]
 pub struct LinkDisplay {
-    #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub account: Pubkey,
     pub code: String,
     #[tabled(rename = "contributor")]
     pub contributor_code: String,
-    #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     #[tabled(rename = "side_a")]
     pub side_a_pk: Pubkey,
     #[tabled(skip)]
     pub side_a_name: String,
     pub side_a_iface_name: String,
-    #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     #[tabled(rename = "side_z")]
     pub side_z_pk: Pubkey,
     #[tabled(skip)]
@@ -51,7 +51,7 @@ pub struct LinkDisplay {
     pub tunnel_id: u16,
     pub tunnel_net: NetworkV4,
     pub status: LinkStatus,
-    #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
 }
 

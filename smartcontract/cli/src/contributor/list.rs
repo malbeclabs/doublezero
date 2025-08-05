@@ -1,6 +1,8 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_sdk::{commands::contributor::list::ListContributorCommand, *};
+use doublezero_sdk::{
+    commands::contributor::list::ListContributorCommand, serializer, Contributor, ContributorStatus,
+};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
@@ -18,11 +20,11 @@ pub struct ListContributorCliCommand {
 
 #[derive(Tabled, Serialize)]
 pub struct ContributorDisplay {
-    #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub account: Pubkey,
     pub code: String,
     pub status: ContributorStatus,
-    #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
 }
 

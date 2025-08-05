@@ -1,6 +1,8 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_sdk::{commands::exchange::list::ListExchangeCommand, *};
+use doublezero_sdk::{
+    commands::exchange::list::ListExchangeCommand, serializer, Exchange, ExchangeStatus,
+};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
@@ -18,7 +20,7 @@ pub struct ListExchangeCliCommand {
 
 #[derive(Tabled, Serialize)]
 pub struct ExchangeDisplay {
-    #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub account: Pubkey,
     pub code: String,
     pub name: String,
@@ -26,7 +28,7 @@ pub struct ExchangeDisplay {
     pub lng: f64,
     pub loc_id: u32,
     pub status: ExchangeStatus,
-    #[serde(serialize_with = "crate::serializer::serialize_pubkey_as_string")]
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
 }
 

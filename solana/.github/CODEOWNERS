@@ -1,0 +1,15 @@
+# Default owners
+* @karl-dz
+
+# Github workflows
+.github @karl-dz
+
+# Rust packages
+crates @karl-dz
+
+# Documentation (architecture, guides, etc)
+docs @karl-dz
+
+# Solana Programs
+programs @karl-dz
+

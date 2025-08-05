@@ -5,6 +5,7 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/config"
+	inetlatencyconfig "github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/pkg/config"
 	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
@@ -20,17 +21,19 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 		{
 			env: config.EnvTestnet,
 			want: &config.NetworkConfig{
-				LedgerRPCURL:            dzsdk.DZ_LEDGER_RPC_URL,
-				ServiceabilityProgramID: solana.MustPublicKeyFromBase58(serviceability.SERVICEABILITY_PROGRAM_ID_TESTNET),
-				TelemetryProgramID:      solana.MustPublicKeyFromBase58(telemetry.TELEMETRY_PROGRAM_ID_TESTNET),
+				LedgerRPCURL:               dzsdk.DZ_LEDGER_RPC_URL,
+				ServiceabilityProgramID:    solana.MustPublicKeyFromBase58(serviceability.SERVICEABILITY_PROGRAM_ID_TESTNET),
+				TelemetryProgramID:         solana.MustPublicKeyFromBase58(telemetry.TELEMETRY_PROGRAM_ID_TESTNET),
+				InternetLatencyCollectorPK: solana.MustPublicKeyFromBase58(inetlatencyconfig.TestnetCollectorPK),
 			},
 		},
 		{
 			env: config.EnvDevnet,
 			want: &config.NetworkConfig{
-				LedgerRPCURL:            dzsdk.DZ_LEDGER_RPC_URL,
-				ServiceabilityProgramID: solana.MustPublicKeyFromBase58(serviceability.SERVICEABILITY_PROGRAM_ID_DEVNET),
-				TelemetryProgramID:      solana.MustPublicKeyFromBase58(telemetry.TELEMETRY_PROGRAM_ID_DEVNET),
+				LedgerRPCURL:               dzsdk.DZ_LEDGER_RPC_URL,
+				ServiceabilityProgramID:    solana.MustPublicKeyFromBase58(serviceability.SERVICEABILITY_PROGRAM_ID_DEVNET),
+				TelemetryProgramID:         solana.MustPublicKeyFromBase58(telemetry.TELEMETRY_PROGRAM_ID_DEVNET),
+				InternetLatencyCollectorPK: solana.MustPublicKeyFromBase58(inetlatencyconfig.DevnetCollectorPK),
 			},
 		},
 		{

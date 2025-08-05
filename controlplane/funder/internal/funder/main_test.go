@@ -12,7 +12,6 @@ import (
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/lmittmann/tint"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
 var (
@@ -37,19 +36,6 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(m.Run())
-}
-
-type mockServiceability struct {
-	GetProgramDataFunc func(ctx context.Context) (*serviceability.ProgramData, error)
-	ProgramIDFunc      func() solana.PublicKey
-}
-
-func (m *mockServiceability) GetProgramData(ctx context.Context) (*serviceability.ProgramData, error) {
-	return m.GetProgramDataFunc(ctx)
-}
-
-func (m *mockServiceability) ProgramID() solana.PublicKey {
-	return m.ProgramIDFunc()
 }
 
 type mockSolana struct {

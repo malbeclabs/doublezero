@@ -36,7 +36,6 @@ func (f *Funder) Run(ctx context.Context) error {
 		"signer", f.cfg.Signer.PublicKey(),
 		"minBalanceLamports", minBalanceLamports,
 		"topUpLamports", topUpLamports,
-		"serviceabilityProgramID", f.cfg.Serviceability.ProgramID(),
 	)
 
 	ticker := time.NewTicker(f.cfg.Interval)
@@ -48,10 +47,10 @@ func (f *Funder) Run(ctx context.Context) error {
 			f.log.Info("Funder stopped by context", "error", ctx.Err())
 			return nil
 		case <-ticker.C:
-			data, err := f.cfg.Serviceability.GetProgramData(ctx)
+			recipients, err := f.cfg.GetRecipientsFunc(ctx)
 			if err != nil {
-				f.log.Error("Failed to load serviceability state", "error", err)
-				metrics.Errors.WithLabelValues(metrics.ErrorTypeLoadServiceabilityState).Inc()
+				f.log.Error("Failed to get recipients", "error", err)
+				metrics.Errors.WithLabelValues(metrics.ErrorTypeGetRecipients).Inc()
 				continue
 			}
 
@@ -67,54 +66,52 @@ func (f *Funder) Run(ctx context.Context) error {
 			balanceSOL := float64(balanceLamports) / float64(solana.LAMPORTS_PER_SOL)
 			metrics.FunderAccountBalanceSOL.WithLabelValues(f.cfg.Signer.PublicKey().String()).Set(balanceSOL)
 
-			// Check that we have enough SOL to top up metrics publishers.
+			// Check that we have enough SOL to top up recipients.
 			if balanceLamports < topUpLamports {
 				f.log.Error("Funder balance is below minimum", "balanceLamports", balanceLamports, "minBalanceLamports", minBalanceLamports)
 				metrics.Errors.WithLabelValues(metrics.ErrorTypeFunderAccountBalanceBelowMinimum).Inc()
 				continue
 			}
 
-			// Check balance of metrics publishers.
-			f.log.Debug("Checking devices", "count", len(data.Devices))
-			for _, device := range data.Devices {
-				devicePK := solana.PublicKeyFromBytes(device.PubKey[:])
-				metricsPublisherPK := solana.PublicKeyFromBytes(device.MetricsPublisherPubKey[:])
-				if metricsPublisherPK.IsZero() {
-					f.log.Debug("Metrics publisher pubkey is zero, ignoring device", "device", devicePK, "metricsPublisher", metricsPublisherPK)
+			// Check balance of recipients.
+			f.log.Debug("Checking recipients", "count", len(recipients))
+			for _, recipient := range recipients {
+				if recipient.PubKey.IsZero() {
+					f.log.Debug("Recipient pubkey is zero, ignoring recipient", "name", recipient.Name, "pubkey", recipient.PubKey)
 					continue
 				}
 
-				// Get device metrics publisher balance.
-				balance, err := f.cfg.Solana.GetBalance(ctx, metricsPublisherPK, solanarpc.CommitmentFinalized)
+				// Get recipient balance.
+				balance, err := f.cfg.Solana.GetBalance(ctx, recipient.PubKey, solanarpc.CommitmentFinalized)
 				if err != nil {
 					f.log.Error("Failed to get balance", "error", err)
-					metrics.Errors.WithLabelValues(metrics.ErrorTypeGetMetricsPublisherAccountBalance).Inc()
+					metrics.Errors.WithLabelValues(metrics.ErrorTypeGetRecipientAccountBalance).Inc()
 					continue
 				}
 				balanceLamports := balance.Value
-				f.log.Debug("Metrics publisher balance", "device", devicePK, "metricsPublisher", metricsPublisherPK, "balanceLamports", balanceLamports, "minBalanceLamports", minBalanceLamports)
+				f.log.Debug("Recipient balance", "name", recipient.Name, "pubkey", recipient.PubKey, "balanceLamports", balanceLamports, "minBalanceLamports", minBalanceLamports)
 
 				// If balance is below minimum, top it up.
 				if balanceLamports < minBalanceLamports {
-					f.log.Info("Topping up metrics publisher", "device", devicePK, "metricsPublisher", metricsPublisherPK, "balanceLamports", balanceLamports, "topUpLamports", topUpLamports)
+					f.log.Info("Topping up recipient", "name", recipient.Name, "pubkey", recipient.PubKey, "balanceLamports", balanceLamports, "topUpLamports", topUpLamports)
 
-					_, err := transferFunds(ctx, f.cfg.Solana, f.cfg.Signer, metricsPublisherPK, topUpLamports, nil)
+					_, err := transferFunds(ctx, f.cfg.Solana, f.cfg.Signer, recipient.PubKey, topUpLamports, nil)
 					if err != nil {
 						f.log.Error("Failed to transfer SOL", "error", err)
-						metrics.Errors.WithLabelValues(metrics.ErrorTypeTransferFundsToMetricsPublisher).Inc()
+						metrics.Errors.WithLabelValues(metrics.ErrorTypeTransferFundsToRecipient).Inc()
 						continue
 					}
 
 					// Wait for the transfer to complete.
-					f.log.Debug("Waiting for balance", "account", metricsPublisherPK, "expected", minBalanceLamports, "current", balanceLamports)
-					err = waitForBalance(ctx, f.cfg.Solana, metricsPublisherPK, minBalanceLamports, f.cfg.WaitForBalanceTimeout, f.cfg.WaitForBalancePollInterval)
+					f.log.Debug("Waiting for balance", "account", recipient.PubKey, "expected", minBalanceLamports, "current", balanceLamports)
+					err = waitForBalance(ctx, f.cfg.Solana, recipient.PubKey, minBalanceLamports, f.cfg.WaitForBalanceTimeout, f.cfg.WaitForBalancePollInterval)
 					if err != nil {
 						f.log.Error("Failed to wait for balance", "error", err)
-						metrics.Errors.WithLabelValues(metrics.ErrorTypeWaitForMetricsPublisherBalance).Inc()
+						metrics.Errors.WithLabelValues(metrics.ErrorTypeWaitForRecipientAccountBalance).Inc()
 						continue
 					}
 
-					f.log.Info("Transferred SOL to metrics publisher", "device", devicePK, "metricsPublisher", metricsPublisherPK, "topUpLamports", topUpLamports)
+					f.log.Info("Transferred SOL to recipient", "name", recipient.Name, "pubkey", recipient.PubKey, "topUpLamports", topUpLamports)
 				}
 			}
 		}

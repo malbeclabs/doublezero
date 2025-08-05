@@ -42,12 +42,10 @@ var devicePayload = `
 d647a303101000000b4579a701d00020406080a0c0e10121416
 181a1c1e20222426282a2c2e30323436383a3c0000010203040
 5060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e
-1fe8fd0000e9fd00000700000064656661756c7402000000080
-80808080804040200000081060f1c81060f1d02000000010b00
-0000737769746368312f312f3102002a000a0102031d7b00000
-1030000006c6f3001010f000a0203041d2a0001b245f92183e1
-b409bb7006560f858cf3bfa557c75cd967182a00392200b5de7
-8
+1f0700000064656661756c7402000000010b000000737769746
+368312f312f3102002a000a0102031d7b000001030000006c6f
+3001010f000a0203041d2a0001b245f92183e1b409bb7006560
+f858cf3bfa557c75cd967182a00392200b5de78
 `
 
 var tunnelPayload = `
@@ -215,11 +213,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 						DzPrefixes:             [][5]byte{{0xb4, 0x57, 0x9a, 0x70, 0x1d}},
 						MetricsPublisherPubKey: getPubKeyOffset(devicePayload, 141, 173),
 						ContributorPubKey:      getPubKeyOffset(devicePayload, 173, 205),
-						BgpAsn:                 65000,
-						DiaBgpAsn:              65001,
 						MgmtVrf:                "default",
-						DnsServers:             [][4]byte{{8, 8, 8, 8}, {8, 8, 4, 4}},
-						NtpServers:             [][4]byte{{129, 6, 15, 28}, {129, 6, 15, 29}},
 						Interfaces: []Interface{
 							{
 								Version:            CurrentInterfaceVersion,

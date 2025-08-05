@@ -102,11 +102,7 @@ mod tests {
             owner: device_pubkey,
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::new_unique(),
-            bgp_asn: 42,
-            dia_bgp_asn: 4242,
             mgmt_vrf: "default".to_string(),
-            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
-            ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
             interfaces: vec![],
         };
 

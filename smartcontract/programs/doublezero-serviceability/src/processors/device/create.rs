@@ -27,11 +27,7 @@ pub struct DeviceCreateArgs {
     pub public_ip: std::net::Ipv4Addr,
     pub dz_prefixes: NetworkV4List,
     pub metrics_publisher_pk: Pubkey,
-    pub bgp_asn: u32,
-    pub dia_bgp_asn: u32,
     pub mgmt_vrf: String,
-    pub dns_servers: Vec<std::net::Ipv4Addr>,
-    pub ntp_servers: Vec<std::net::Ipv4Addr>,
     pub interfaces: Vec<Interface>,
 }
 
@@ -40,18 +36,13 @@ impl fmt::Debug for DeviceCreateArgs {
         write!(
             f,
             "code: {}, device_type: {:?}, public_ip: {}, dz_prefixes: {}, \
-metrics_publisher_pk: {}, bgp_asn: {}, dia_bgp_asn: {}, mgmt_vrf: {}, \
-dns_servers: {:?}, ntp_servers: {:?}, interfaces: {:?}",
+metrics_publisher_pk: {}, mgmt_vrf: {}, interfaces: {:?}",
             self.code,
             self.device_type,
             self.public_ip,
             self.dz_prefixes,
             self.metrics_publisher_pk,
-            self.bgp_asn,
-            self.dia_bgp_asn,
             self.mgmt_vrf,
-            self.dns_servers,
-            self.ntp_servers,
             self.interfaces,
         )
     }
@@ -138,11 +129,7 @@ pub fn process_create_device(
         dz_prefixes: value.dz_prefixes.clone(),
         metrics_publisher_pk: value.metrics_publisher_pk,
         status: DeviceStatus::Pending,
-        bgp_asn: value.bgp_asn,
-        dia_bgp_asn: value.dia_bgp_asn,
         mgmt_vrf: value.mgmt_vrf.clone(),
-        dns_servers: value.dns_servers.clone(),
-        ntp_servers: value.ntp_servers.clone(),
         interfaces: value.interfaces.clone(),
     };
 

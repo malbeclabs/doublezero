@@ -99,11 +99,7 @@ impl UpdateDeviceInterfaceCliCommand {
             dz_prefixes: None,
             metrics_publisher: None,
             contributor_pk: None,
-            bgp_asn: None,
-            dia_bgp_asn: None,
             mgmt_vrf: None,
-            dns_servers: None,
-            ntp_servers: None,
             interfaces: Some(device.interfaces),
         })?;
         writeln!(out, "Signature: {signature}")?;
@@ -149,11 +145,7 @@ mod tests {
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::default(),
             owner: Pubkey::default(),
-            bgp_asn: 0,
-            dia_bgp_asn: 0,
             mgmt_vrf: "default".to_string(),
-            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
-            ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
             interfaces: vec![
                 Interface {
                     version: CURRENT_INTERFACE_VERSION,
@@ -199,11 +191,7 @@ mod tests {
                 dz_prefixes: None,
                 metrics_publisher: None,
                 contributor_pk: None,
-                bgp_asn: None,
-                dia_bgp_asn: None,
                 mgmt_vrf: None,
-                dns_servers: None,
-                ntp_servers: None,
                 interfaces: Some(vec![
                     Interface {
                         version: CURRENT_INTERFACE_VERSION,

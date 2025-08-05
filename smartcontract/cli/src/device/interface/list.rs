@@ -105,11 +105,7 @@ mod tests {
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::default(),
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
-            bgp_asn: 0,
-            dia_bgp_asn: 0,
             mgmt_vrf: "default".to_string(),
-            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
-            ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
             interfaces: vec![
                 Interface {
                     version: CURRENT_INTERFACE_VERSION,

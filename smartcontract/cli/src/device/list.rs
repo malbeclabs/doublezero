@@ -1,4 +1,4 @@
-use crate::{doublezerocommand::CliCommand, formatters::stringify_vec};
+use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::{
     commands::{
@@ -51,13 +51,7 @@ pub struct DeviceDisplay {
     #[serde(serialize_with = "serializer::serialize_networkv4list_as_string")]
     pub dz_prefixes: NetworkV4List,
     pub status: DeviceStatus,
-    pub bgp_asn: u32,
-    pub dia_bgp_asn: u32,
     pub mgmt_vrf: String,
-    #[tabled(display = "stringify_vec")]
-    pub dns_servers: Vec<Ipv4Addr>,
-    #[tabled(display = "stringify_vec")]
-    pub ntp_servers: Vec<Ipv4Addr>,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
 }
@@ -110,11 +104,7 @@ impl ListDeviceCliCommand {
                     public_ip: device.public_ip,
                     status: device.status,
                     dz_prefixes: device.dz_prefixes.clone(),
-                    bgp_asn: device.bgp_asn,
-                    dia_bgp_asn: device.dia_bgp_asn,
                     mgmt_vrf: device.mgmt_vrf.clone(),
-                    dns_servers: device.dns_servers.clone(),
-                    ntp_servers: device.ntp_servers.clone(),
                     owner: device.owner,
                 }
             })
@@ -227,11 +217,7 @@ mod tests {
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::default(),
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
-            bgp_asn: 0,
-            dia_bgp_asn: 0,
             mgmt_vrf: "default".to_string(),
-            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
-            ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
             interfaces: vec![],
         };
 
@@ -249,7 +235,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | code         | contributor       | location       | exchange       | device_type | public_ip | dz_prefixes | status    | bgp_asn | dia_bgp_asn | mgmt_vrf | dns_servers     | ntp_servers             | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | device1_code | contributor1_code | location1_code | exchange1_code | switch      | 1.2.3.4   | 1.2.3.4/32  | activated | 0       | 0           | default  | 8.8.8.8,8.8.4.4 | 192.168.1.1,192.168.1.2 | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
+        assert_eq!(output_str, " account                                   | code         | contributor       | location       | exchange       | device_type | public_ip | dz_prefixes | status    | mgmt_vrf | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | device1_code | contributor1_code | location1_code | exchange1_code | switch      | 1.2.3.4   | 1.2.3.4/32  | activated | default  | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
 
         let mut output = Vec::new();
         let res = ListDeviceCliCommand {
@@ -259,6 +245,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"code\":\"device1_code\",\"bump_seed\":2,\"location_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"contributor_code\":\"contributor1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"exchange_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA\",\"exchange_code\":\"exchange1_code\",\"exchange_name\":\"exchange1_name\",\"device_type\":\"Switch\",\"public_ip\":\"1.2.3.4\",\"dz_prefixes\":\"1.2.3.4/32\",\"status\":\"Activated\",\"bgp_asn\":0,\"dia_bgp_asn\":0,\"mgmt_vrf\":\"default\",\"dns_servers\":[\"8.8.8.8\",\"8.8.4.4\"],\"ntp_servers\":[\"192.168.1.1\",\"192.168.1.2\"],\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"code\":\"device1_code\",\"bump_seed\":2,\"location_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"contributor_code\":\"contributor1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"exchange_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA\",\"exchange_code\":\"exchange1_code\",\"exchange_name\":\"exchange1_name\",\"device_type\":\"Switch\",\"public_ip\":\"1.2.3.4\",\"dz_prefixes\":\"1.2.3.4/32\",\"status\":\"Activated\",\"mgmt_vrf\":\"default\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
     }
 }

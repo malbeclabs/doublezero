@@ -74,10 +74,7 @@ classDiagram
         NetworkV4List dz_prefixes
         Pubkey metrics_publisher_pk
         Pubkey contributor_pk
-        u32 bgp_asn
         String mgmt_vrf
-        Ipv4Addr[] dns_servers
-        Ipv4Addr[] ntp_servers
         Interface[] interfaces
     }
     class Link {
@@ -276,10 +273,7 @@ stateDiagram-v2
 | dz_prefixes            | NetworkV4List    | List of network prefixes                    |
 | metrics_publisher_pk   | Pubkey           | Metrics publisher public key                |
 | contributor_pk         | Pubkey           | Contributor public key                      |
-| bgp_asn                | u32              | BGP ASN for the device                      |
 | mgmt_vrf               | String           | Management VRF name or "" for not set       |
-| dns_servers            | Vec of Ipv4Addr  | List of DNS servers                         |
-| ntp_servers            | Vec of Ipv4Addr  | List of NTP servers                         |
 | interfaces             | Vec of Interface | List of device interfaces                   |
 
 ```mermaid

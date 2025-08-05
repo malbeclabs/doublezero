@@ -118,11 +118,7 @@ impl DeviceCreateArgsExt for DeviceCreateArgs {
             public_ip: Ipv4Addr::UNSPECIFIED,
             dz_prefixes: NetworkV4List::default(),
             metrics_publisher_pk: Pubkey::default(),
-            bgp_asn: 0,
-            dia_bgp_asn: 0,
             mgmt_vrf: String::default(),
-            dns_servers: vec![],
-            ntp_servers: vec![],
             interfaces: vec![],
         }
     }
@@ -911,11 +907,7 @@ impl ServiceabilityProgramHelper {
                 public_ip: device.public_ip,
                 dz_prefixes: device.dz_prefixes,
                 metrics_publisher_pk: device.metrics_publisher_pk,
-                bgp_asn: device.bgp_asn,
-                dia_bgp_asn: device.dia_bgp_asn,
                 mgmt_vrf: device.mgmt_vrf,
-                dns_servers: device.dns_servers.clone(),
-                ntp_servers: device.ntp_servers.clone(),
                 interfaces: device.interfaces.clone(),
             }),
             vec![

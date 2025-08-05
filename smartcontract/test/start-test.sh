@@ -8,7 +8,7 @@ killall solana > /dev/null 2>&1
 set -e
 set -x
 
-mkdir -p ./logs
+mkdir -p ./logs ./target
 
 # Build the program
 echo "Build the program"
@@ -89,18 +89,18 @@ echo "Update exchanges"
 
 ### Initialice controbutor
 echo "Creating contributor"
-./target/doublezero contributor create --code co01
+./target/doublezero contributor create --code co01 --owner me
 
 ### Initialice devices
 echo "Creating devices"
-./target/doublezero device create --code la2-dz01 --contributor co01 --location lax --exchange xlax --public-ip "207.45.216.134" --dz-prefixes "100.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --bgp-asn 42 --dia-bgp-asn 4242 --mgmt-vrf mgmt --dns-servers 8.8.8.8,8.8.4.4 --ntp-servers 1.2.3.4
-./target/doublezero device create --code ny5-dz01 --contributor co01 --location ewr --exchange xewr --public-ip "64.86.249.80" --dz-prefixes "101.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --bgp-asn 42 --dia-bgp-asn 4242 --mgmt-vrf mgmt --dns-servers 8.8.8.8,8.8.4.4 --ntp-servers 1.2.3.4
-./target/doublezero device create --code ld4-dz01 --contributor co01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "102.0.0.0/29,103.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --bgp-asn 42 --dia-bgp-asn 4242 --mgmt-vrf mgmt --dns-servers 8.8.8.8,8.8.4.4 --ntp-servers 1.2.3.4
-./target/doublezero device create --code frk-dz01 --contributor co01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "104.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --bgp-asn 42 --dia-bgp-asn 4242 --mgmt-vrf mgmt --dns-servers 8.8.8.8,8.8.4.4 --ntp-servers 1.2.3.4
-./target/doublezero device create --code sg1-dz01 --contributor co01 --location sin --exchange xsin --public-ip "180.87.102.104" --dz-prefixes "105.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --bgp-asn 42 --dia-bgp-asn 4242 --mgmt-vrf mgmt --dns-servers 8.8.8.8,8.8.4.4 --ntp-servers 1.2.3.4
-./target/doublezero device create --code ty2-dz01 --contributor co01 --location tyo --exchange xtyo --public-ip "180.87.154.112" --dz-prefixes "106.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --bgp-asn 42 --dia-bgp-asn 4242 --mgmt-vrf mgmt --dns-servers 8.8.8.8,8.8.4.4 --ntp-servers 1.2.3.4
-./target/doublezero device create --code pit-dzd01 --contributor co01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "107.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --bgp-asn 42 --dia-bgp-asn 4242 --mgmt-vrf mgmt --dns-servers 8.8.8.8,8.8.4.4 --ntp-servers 1.2.3.4
-./target/doublezero device create --code ams-dz001 --contributor co01 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "108.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --bgp-asn 42 --dia-bgp-asn 4242 --mgmt-vrf mgmt --dns-servers 8.8.8.8,8.8.4.4 --ntp-servers 1.2.3.4
+./target/doublezero device create --code la2-dz01 --contributor co01 --location lax --exchange xlax --public-ip "207.45.216.134" --dz-prefixes "100.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --mgmt-vrf mgmt
+./target/doublezero device create --code ny5-dz01 --contributor co01 --location ewr --exchange xewr --public-ip "64.86.249.80" --dz-prefixes "101.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --mgmt-vrf mgmt
+./target/doublezero device create --code ld4-dz01 --contributor co01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "102.0.0.0/29,103.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --mgmt-vrf mgmt
+./target/doublezero device create --code frk-dz01 --contributor co01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "104.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --mgmt-vrf mgmt
+./target/doublezero device create --code sg1-dz01 --contributor co01 --location sin --exchange xsin --public-ip "180.87.102.104" --dz-prefixes "105.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --mgmt-vrf mgmt
+./target/doublezero device create --code ty2-dz01 --contributor co01 --location tyo --exchange xtyo --public-ip "180.87.154.112" --dz-prefixes "106.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --mgmt-vrf mgmt
+./target/doublezero device create --code pit-dzd01 --contributor co01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "107.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --mgmt-vrf mgmt
+./target/doublezero device create --code ams-dz001 --contributor co01 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "108.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --mgmt-vrf mgmt
 
 ### Initialize device interfaces
 echo "Creating device interfaces"

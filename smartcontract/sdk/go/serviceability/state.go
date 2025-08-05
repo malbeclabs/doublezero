@@ -131,11 +131,7 @@ type Device struct {
 	DzPrefixes             [][5]uint8
 	MetricsPublisherPubKey [32]uint8
 	ContributorPubKey      [32]byte
-	BgpAsn                 uint32
-	DiaBgpAsn              uint32
 	MgmtVrf                string
-	DnsServers             [][4]uint8
-	NtpServers             [][4]uint8
 	Interfaces             []Interface
 	PubKey                 [32]byte
 }

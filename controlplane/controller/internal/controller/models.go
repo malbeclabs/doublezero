@@ -13,15 +13,15 @@ var (
 )
 
 type Device struct {
-	PubKey          string
-	PublicIP        net.IP
-	Vpn4vLoopbackIP net.IP
-	Tunnels         []*Tunnel
-	TunnelSlots     int
-	MgmtVrf         string
-	DnsServers      []net.IP
-	NtpServers      []net.IP
-	Interfaces      []serviceability.Interface
+	PubKey                string
+	PublicIP              net.IP
+	Vpn4vLoopbackIP       net.IP
+	Ip4vLoopbackIP        net.IP
+	Tunnels               []*Tunnel
+	TunnelSlots           int
+	Interfaces            []serviceability.Interface
+	Vpn4vLoopbackIntfName string
+	Ip4vLoopbackIntfName  string
 }
 
 func NewDevice(ip net.IP, publicKey string) *Device {
@@ -66,15 +66,15 @@ type Tunnel struct {
 	MulticastPublishers   []net.IP
 }
 
-type Vpnv4BgpPeer struct {
-	PeerIP    net.IP
-	PeerName  string
-	SourceInt string
+type BgpPeer struct {
+	PeerIP   net.IP
+	PeerName string
 }
 
 type templateData struct {
 	Device                   *Device
-	Vpnv4BgpPeers            []Vpnv4BgpPeer
+	Vpnv4BgpPeers            []BgpPeer
+	Ipv4BgpPeers             []BgpPeer
 	UnknownBgpPeers          []net.IP
 	MulticastGroupBlock      string
 	NoHardware               bool

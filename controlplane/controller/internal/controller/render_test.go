@@ -365,15 +365,7 @@ func TestRenderConfig(t *testing.T) {
 				Device: &Device{
 					PublicIP:        net.IP{7, 7, 7, 7},
 					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
-					MgmtVrf:         "default",
-					DnsServers: []net.IP{
-						{8, 8, 8, 8},
-						{8, 8, 4, 4},
-					},
-					NtpServers: []net.IP{
-						{216, 240, 36, 24},  // 0.pool.ntp.org
-						{205, 233, 73, 201}, // 0.pool.ntp.org
-					},
+					Ip4vLoopbackIP:  net.IP{13, 13, 13, 13},
 					Interfaces: []serviceability.Interface{
 						{
 							Version:        serviceability.CurrentInterfaceVersion,
@@ -384,12 +376,19 @@ func TestRenderConfig(t *testing.T) {
 							NodeSegmentIdx: 15,
 						},
 					},
+					Vpn4vLoopbackIntfName: "Loopback255",
+					Ip4vLoopbackIntfName:  "Loopback256",
 				},
-				Vpnv4BgpPeers: []Vpnv4BgpPeer{
+				Vpnv4BgpPeers: []BgpPeer{
 					{
-						PeerIP:    net.IP{15, 15, 15, 15},
-						PeerName:  "remote-device",
-						SourceInt: "Loopback255",
+						PeerIP:   net.IP{15, 15, 15, 15},
+						PeerName: "remote-dzd-vpnv4",
+					},
+				},
+				Ipv4BgpPeers: []BgpPeer{
+					{
+						PeerIP:   net.IP{12, 12, 12, 12},
+						PeerName: "remote-dzd-ipv4",
 					},
 				},
 			},

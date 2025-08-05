@@ -85,12 +85,22 @@ interface Tunnel{{ .Id }}
 {{- end }}
 router bgp 65342
    router-id {{ .Device.Vpn4vLoopbackIP }}
+   {{- range .Ipv4BgpPeers }}
+   {{- if ne .PeerIP.String $.Device.Ip4vLoopbackIP.String }}
+   no neighbor {{ .PeerIP }}
+   neighbor {{ .PeerIP }} remote-as 65342
+   neighbor {{ .PeerIP }} next-hop-self
+   neighbor {{ .PeerIP }} update-source {{ $.Device.Ip4vLoopbackIntfName }}
+   neighbor {{ .PeerIP }} description {{ .PeerName }}
+   neighbor {{ .PeerIP }} send-community
+   {{- end }}
+   {{- end }}
    {{- range .Vpnv4BgpPeers }}
    {{- if ne .PeerIP.String $.Device.Vpn4vLoopbackIP.String }}
    no neighbor {{ .PeerIP }}
    neighbor {{ .PeerIP }} remote-as 65342
    neighbor {{ .PeerIP }} next-hop-self
-   neighbor {{ .PeerIP }} update-source {{ .SourceInt }}
+   neighbor {{ .PeerIP }} update-source {{ $.Device.Vpn4vLoopbackIntfName }}
    neighbor {{ .PeerIP }} description {{ .PeerName }}
    neighbor {{ .PeerIP }} send-community
    {{- end }}
@@ -111,6 +121,11 @@ router bgp 65342
    {{- range .Device.Tunnels }}
    {{- if and .IsMulticast .Allocated }}
       neighbor {{ .OverlayDstIP }} activate
+   {{- end }}
+   {{- end }}
+   {{- range .Ipv4BgpPeers }}
+   {{- if ne .PeerIP.String $.Device.Ip4vLoopbackIP.String }}
+      neighbor {{ .PeerIP }} activate
    {{- end }}
    {{- end }}
    {{- range .Vpnv4BgpPeers }}
@@ -216,3 +231,15 @@ ip access-list SEC-USER-SUB-MCAST-IN
    permit ip any 224.0.0.13/32
    deny ip any any
 !
+{{- if .Ipv4BgpPeers }}
+no router msdp
+router msdp
+   {{- range .Ipv4BgpPeers }}
+   {{- if ne .PeerIP.String $.Device.Ip4vLoopbackIP.String }}
+   peer {{ .PeerIP }}
+      mesh-group DZ-1
+      local-interface {{ $.Device.Ip4vLoopbackIntfName }}
+      description {{ .PeerName }}
+   {{- end }}
+   {{- end }}
+{{- end }}

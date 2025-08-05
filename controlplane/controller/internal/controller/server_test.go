@@ -340,19 +340,27 @@ func TestGetConfig(t *testing.T) {
 				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				},
-				Vpnv4BgpPeers: []Vpnv4BgpPeer{
+				Vpnv4BgpPeers: []BgpPeer{
 					{
-						PeerIP:    net.IP{15, 15, 15, 15},
-						PeerName:  "remote-device",
-						SourceInt: "Loopback255",
+						PeerIP:   net.IP{15, 15, 15, 15},
+						PeerName: "remote-dzd-vpnv4",
+					},
+				},
+				Ipv4BgpPeers: []BgpPeer{
+					{
+						PeerIP:   net.IP{12, 12, 12, 12},
+						PeerName: "remote-dzd-ipv4",
 					},
 				},
 				Devices: map[string]*Device{
 					"abc123": {
-						PublicIP:        net.IP{7, 7, 7, 7},
-						Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
-						Tunnels:         []*Tunnel{},
-						TunnelSlots:     0,
+						PublicIP:              net.IP{7, 7, 7, 7},
+						Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
+						Ip4vLoopbackIP:        net.IP{13, 13, 13, 13},
+						Vpn4vLoopbackIntfName: "Loopback255",
+						Ip4vLoopbackIntfName:  "Loopback256",
+						Tunnels:               []*Tunnel{},
+						TunnelSlots:           0,
 					},
 				},
 			},
@@ -488,14 +496,12 @@ func TestStateCache(t *testing.T) {
 							IpNet:         [5]uint8{14, 14, 14, 14, 32},
 							Name:          "Loopback255",
 						},
-					},
-					DnsServers: [][4]uint8{
-						{8, 8, 8, 8},
-						{8, 8, 4, 4},
-					},
-					NtpServers: [][4]uint8{
-						{162, 159, 200, 1},
-						{198, 137, 202, 56},
+						{
+							InterfaceType: serviceability.InterfaceTypeLoopback,
+							LoopbackType:  serviceability.LoopbackTypeIpv4,
+							IpNet:         [5]uint8{12, 12, 12, 12, 32},
+							Name:          "Loopback256",
+						},
 					},
 					Status: serviceability.DeviceStatusActivated,
 					Code:   "abc01",
@@ -516,11 +522,16 @@ func TestStateCache(t *testing.T) {
 						},
 					},
 				},
-				Vpnv4BgpPeers: []Vpnv4BgpPeer{
+				Vpnv4BgpPeers: []BgpPeer{
 					{
-						PeerIP:    net.IP{14, 14, 14, 14},
-						PeerName:  "abc01",
-						SourceInt: "Loopback255",
+						PeerIP:   net.IP{14, 14, 14, 14},
+						PeerName: "abc01",
+					},
+				},
+				Ipv4BgpPeers: []BgpPeer{
+					{
+						PeerIP:   net.IP{12, 12, 12, 12},
+						PeerName: "abc01",
 					},
 				},
 				Devices: map[string]*Device{
@@ -528,6 +539,7 @@ func TestStateCache(t *testing.T) {
 						PubKey:          "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
 						PublicIP:        net.IP{2, 2, 2, 2},
 						Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
+						Ip4vLoopbackIP:  net.IP{12, 12, 12, 12},
 						Tunnels: []*Tunnel{
 							{
 								Id:            500,
@@ -620,8 +632,6 @@ func TestStateCache(t *testing.T) {
 							{Id: 563},
 						},
 						TunnelSlots: 64,
-						DnsServers:  []net.IP{{8, 8, 8, 8}, {8, 8, 4, 4}},
-						NtpServers:  []net.IP{{162, 159, 200, 1}, {198, 137, 202, 56}},
 						Interfaces: []serviceability.Interface{
 							{
 								InterfaceType: serviceability.InterfaceTypeLoopback,
@@ -629,7 +639,15 @@ func TestStateCache(t *testing.T) {
 								IpNet:         [5]uint8{14, 14, 14, 14, 32},
 								Name:          "Loopback255",
 							},
+							{
+								InterfaceType: serviceability.InterfaceTypeLoopback,
+								LoopbackType:  serviceability.LoopbackTypeIpv4,
+								IpNet:         [5]uint8{12, 12, 12, 12, 32},
+								Name:          "Loopback256",
+							},
 						},
+						Vpn4vLoopbackIntfName: "Loopback255",
+						Ip4vLoopbackIntfName:  "Loopback256",
 					},
 				},
 			},

@@ -49,13 +49,20 @@ system control-plane
 !
 router bgp 65342
    router-id 14.14.14.14
+   no neighbor 12.12.12.12
+   neighbor 12.12.12.12 remote-as 65342
+   neighbor 12.12.12.12 next-hop-self
+   neighbor 12.12.12.12 update-source Loopback256
+   neighbor 12.12.12.12 description remote-dzd-ipv4
+   neighbor 12.12.12.12 send-community
    no neighbor 15.15.15.15
    neighbor 15.15.15.15 remote-as 65342
    neighbor 15.15.15.15 next-hop-self
    neighbor 15.15.15.15 update-source Loopback255
-   neighbor 15.15.15.15 description remote-device
+   neighbor 15.15.15.15 description remote-dzd-vpnv4
    neighbor 15.15.15.15 send-community
    address-family ipv4
+      neighbor 12.12.12.12 activate
       no neighbor 15.15.15.15 activate
    !
    address-family vpn-ipv4
@@ -87,3 +94,9 @@ ip access-list SEC-USER-SUB-MCAST-IN
    permit ip any 224.0.0.13/32
    deny ip any any
 !
+no router msdp
+router msdp
+   peer 12.12.12.12
+      mesh-group DZ-1
+      local-interface Loopback256
+      description remote-dzd-ipv4

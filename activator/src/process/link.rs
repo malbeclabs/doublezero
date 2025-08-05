@@ -80,7 +80,7 @@ pub fn process_tunnel_event(
                             ) {
                                 write!(&mut log_msg, " Error assigning side Z IP: {e}").unwrap();
                             } else {
-                                write!(&mut log_msg, " Assigned side Z IP: {side_a_ip}").unwrap();
+                                write!(&mut log_msg, " Assigned side Z IP: {side_z_ip}").unwrap();
                             }
                         }
                         Err(e) => write!(&mut log_msg, " Error {e}").unwrap(),

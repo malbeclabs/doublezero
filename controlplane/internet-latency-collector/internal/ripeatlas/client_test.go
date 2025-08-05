@@ -295,9 +295,9 @@ func TestInternetLatency_RIPEAtlas_GetProbesInRadius_Pagination(t *testing.T) {
 
 	require.NoError(t, err, "GetProbesInRadius() failed")
 
-	// The implementation doesn't follow pagination, so it only returns first page
-	require.Len(t, probes, 2, "Expected 2 probes")
-	require.Equal(t, 1, callCount, "API should be called once")
+	// The implementation now follows pagination and returns all probes
+	require.Len(t, probes, 3, "Expected 3 probes from both pages")
+	require.Equal(t, 2, callCount, "API should be called twice for pagination")
 }
 
 func TestInternetLatency_RIPEAtlas_CreateMeasurement(t *testing.T) {
@@ -314,9 +314,10 @@ func TestInternetLatency_RIPEAtlas_CreateMeasurement(t *testing.T) {
 				Definitions: []MeasurementDefinition{
 					{
 						Target:      "8.8.8.8",
-						Description: "Test measurement",
+						Description: "DoubleZero [testnet] NYC probe 123 to LAX probe 456",
 						Type:        "ping",
 						AF:          4,
+						Tags:        []string{"testnet", "doublezero"},
 					},
 				},
 				Probes: []MeasurementProbe{
@@ -336,6 +337,11 @@ func TestInternetLatency_RIPEAtlas_CreateMeasurement(t *testing.T) {
 				var requestBody MeasurementRequest
 				err := json.NewDecoder(req.Body).Decode(&requestBody)
 				require.NoError(t, err, "Failed to decode request body")
+
+				// Verify environment in description and tags
+				require.Contains(t, requestBody.Definitions[0].Description, "[testnet]", "Description should contain environment")
+				require.Contains(t, requestBody.Definitions[0].Tags, "testnet", "Tags should contain environment")
+				require.Contains(t, requestBody.Definitions[0].Tags, "doublezero", "Tags should contain 'doublezero'")
 
 				response := MeasurementResponse{
 					Measurements: []int{12345},
@@ -410,12 +416,15 @@ func TestInternetLatency_RIPEAtlas_GetAllMeasurements(t *testing.T) {
 		{
 			name: "Successful retrieval",
 			mockFunc: func(req *http.Request) (*http.Response, error) {
+				// Verify that the request includes the env tag
+				require.Contains(t, req.URL.String(), "tags=testnet", "URL should contain tags=testnet")
+
 				response := MeasurementListResponse{
 					Count: 1,
 					Results: []Measurement{
 						{
 							ID:          12345,
-							Description: "DoubleZero: probe 1 -> probe 2 (LocationA -> LocationB)",
+							Description: "DoubleZero [testnet] NYC probe 1 to LAX probe 2",
 							Status: struct {
 								Name string `json:"name"`
 								ID   int    `json:"id"`
@@ -425,6 +434,7 @@ func TestInternetLatency_RIPEAtlas_GetAllMeasurements(t *testing.T) {
 							},
 							Type:   "ping",
 							Target: "8.8.8.8",
+							Tags:   []string{"testnet", "doublezero"},
 						},
 					},
 				}
@@ -437,7 +447,7 @@ func TestInternetLatency_RIPEAtlas_GetAllMeasurements(t *testing.T) {
 			want: []Measurement{
 				{
 					ID:          12345,
-					Description: "DoubleZero: probe 1 -> probe 2 (LocationA -> LocationB)",
+					Description: "DoubleZero [testnet] NYC probe 1 to LAX probe 2",
 					Status: struct {
 						Name string `json:"name"`
 						ID   int    `json:"id"`
@@ -447,6 +457,7 @@ func TestInternetLatency_RIPEAtlas_GetAllMeasurements(t *testing.T) {
 					},
 					Type:   "ping",
 					Target: "8.8.8.8",
+					Tags:   []string{"testnet", "doublezero"},
 				},
 			},
 			wantErr: false,
@@ -493,13 +504,20 @@ func TestInternetLatency_RIPEAtlas_GetAllMeasurements(t *testing.T) {
 				log:        log,
 			}
 
-			measurements, err := client.GetAllMeasurements(t.Context())
+			measurements, err := client.GetAllMeasurements(t.Context(), "testnet")
 
 			if tt.wantErr {
 				require.Error(t, err, "GetAllMeasurements() should return error")
 			} else {
 				require.NoError(t, err, "GetAllMeasurements() should not return error")
 				require.Len(t, measurements, len(tt.want), "Unexpected number of measurements")
+
+				// For successful retrieval, verify env is in description and tags
+				if tt.name == "Successful retrieval" && len(measurements) > 0 {
+					require.Contains(t, measurements[0].Description, "[testnet]", "Description should contain environment")
+					require.Contains(t, measurements[0].Tags, "testnet", "Tags should contain environment name")
+					require.Contains(t, measurements[0].Tags, "doublezero", "Tags should contain 'doublezero'")
+				}
 			}
 		})
 	}

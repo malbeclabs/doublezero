@@ -25,7 +25,7 @@ type MockClient struct {
 	GetProbesInRadiusFunc                func(ctx context.Context, latitude, longitude float64, radiusKm int) ([]Probe, error)
 	GetProbesForLocationsFunc            func(ctx context.Context, locations []LocationProbeMatch) ([]LocationProbeMatch, error)
 	CreateMeasurementFunc                func(ctx context.Context, request MeasurementRequest) (*MeasurementResponse, error)
-	GetAllMeasurementsFunc               func(ctx context.Context) ([]Measurement, error)
+	GetAllMeasurementsFunc               func(ctx context.Context, env string) ([]Measurement, error)
 	GetMeasurementResultsFunc            func(ctx context.Context, measurementID int) ([]any, error)
 	GetMeasurementResultsIncrementalFunc func(ctx context.Context, measurementID int, startTimestamp int64) ([]any, error)
 	StopMeasurementFunc                  func(ctx context.Context, measurementID int) error
@@ -52,9 +52,9 @@ func (m *MockClient) CreateMeasurement(ctx context.Context, request MeasurementR
 	return &MeasurementResponse{Measurements: []int{12345}}, nil
 }
 
-func (m *MockClient) GetAllMeasurements(ctx context.Context) ([]Measurement, error) {
+func (m *MockClient) GetAllMeasurements(ctx context.Context, env string) ([]Measurement, error) {
 	if m.GetAllMeasurementsFunc != nil {
-		return m.GetAllMeasurementsFunc(ctx)
+		return m.GetAllMeasurementsFunc(ctx, env)
 	}
 	return []Measurement{}, nil
 }
@@ -234,7 +234,7 @@ func TestInternetLatency_RIPEAtlas_NewCollector(t *testing.T) {
 
 	log := logger.With("test", t.Name())
 
-	c := NewCollector(log, nil, func(ctx context.Context) []collector.LocationMatch {
+	c := NewCollector(log, nil, "dev", func(ctx context.Context) []collector.LocationMatch {
 		return []collector.LocationMatch{}
 	})
 
@@ -247,7 +247,7 @@ func TestInternetLatency_RIPEAtlas_ParseLatencyFromResult(t *testing.T) {
 
 	log := logger.With("test", t.Name())
 
-	c := NewCollector(log, nil, func(ctx context.Context) []collector.LocationMatch {
+	c := NewCollector(log, nil, "dev", func(ctx context.Context) []collector.LocationMatch {
 		return []collector.LocationMatch{}
 	})
 
@@ -288,7 +288,7 @@ func TestInternetLatency_RIPEAtlas_ClearAllMeasurements(t *testing.T) {
 
 	stoppedMeasurements := []int{}
 	mockClient := &MockClient{
-		GetAllMeasurementsFunc: func(ctx context.Context) ([]Measurement, error) {
+		GetAllMeasurementsFunc: func(ctx context.Context, env string) ([]Measurement, error) {
 			return []Measurement{
 				{
 					ID:          1,
@@ -341,7 +341,7 @@ func TestInternetLatency_RIPEAtlas_ClearAllMeasurements_StopError(t *testing.T) 
 	log := logger.With("test", t.Name())
 
 	mockClient := &MockClient{
-		GetAllMeasurementsFunc: func(ctx context.Context) ([]Measurement, error) {
+		GetAllMeasurementsFunc: func(ctx context.Context, env string) ([]Measurement, error) {
 			return []Measurement{
 				{
 					ID:          1,
@@ -376,7 +376,7 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults(t *testing.T) {
 	log := logger.With("test", t.Name())
 
 	mockClient := &MockClient{
-		GetAllMeasurementsFunc: func(ctx context.Context) ([]Measurement, error) {
+		GetAllMeasurementsFunc: func(ctx context.Context, env string) ([]Measurement, error) {
 			return []Measurement{
 				{
 					ID:          1,
@@ -467,7 +467,7 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults_DeduplicatesByMeasur
 	log := logger.With("test", t.Name())
 
 	mockClient := &MockClient{
-		GetAllMeasurementsFunc: func(ctx context.Context) ([]Measurement, error) {
+		GetAllMeasurementsFunc: func(ctx context.Context, env string) ([]Measurement, error) {
 			return []Measurement{
 				{
 					ID:          1,
@@ -547,7 +547,7 @@ func TestInternetLatency_RIPEAtlas_ListMeasurements(t *testing.T) {
 	log := logger.With("test", t.Name())
 
 	mockClient := &MockClient{
-		GetAllMeasurementsFunc: func(ctx context.Context) ([]Measurement, error) {
+		GetAllMeasurementsFunc: func(ctx context.Context, env string) ([]Measurement, error) {
 			return []Measurement{
 				{
 					ID:          1,
@@ -668,7 +668,7 @@ func TestInternetLatency_RIPEAtlas_ListAtlasProbes_NoDevices(t *testing.T) {
 
 	log := logger.With("test", t.Name())
 
-	c := NewCollector(log, nil, func(ctx context.Context) []collector.LocationMatch {
+	c := NewCollector(log, nil, "dev", func(ctx context.Context) []collector.LocationMatch {
 		return []collector.LocationMatch{}
 	})
 
@@ -682,7 +682,7 @@ func TestInternetLatency_RIPEAtlas_GenerateWantedMeasurements_Deterministic(t *t
 
 	log := logger.With("test", t.Name())
 
-	c := NewCollector(log, nil, func(ctx context.Context) []collector.LocationMatch {
+	c := NewCollector(log, nil, "dev", func(ctx context.Context) []collector.LocationMatch {
 		return []collector.LocationMatch{}
 	})
 
@@ -809,7 +809,7 @@ func TestInternetLatency_RIPEAtlas_RunRipeAtlasMeasurementCreation(t *testing.T)
 			}
 			return result, nil
 		},
-		GetAllMeasurementsFunc: func(ctx context.Context) ([]Measurement, error) {
+		GetAllMeasurementsFunc: func(ctx context.Context, env string) ([]Measurement, error) {
 			return []Measurement{}, nil
 		},
 		CreateMeasurementFunc: func(ctx context.Context, request MeasurementRequest) (*MeasurementResponse, error) {
@@ -865,7 +865,7 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_CreateNew(t *testing.T)
 	var mu sync.Mutex
 
 	mockClient := &MockClient{
-		GetAllMeasurementsFunc: func(ctx context.Context) ([]Measurement, error) {
+		GetAllMeasurementsFunc: func(ctx context.Context, env string) ([]Measurement, error) {
 			// No existing measurements
 			return []Measurement{}, nil
 		},
@@ -969,7 +969,7 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_RemoveUnwanted(t *testi
 	}
 
 	mockClient := &MockClient{
-		GetAllMeasurementsFunc: func(ctx context.Context) ([]Measurement, error) {
+		GetAllMeasurementsFunc: func(ctx context.Context, env string) ([]Measurement, error) {
 			return existingMeasurements, nil
 		},
 		StopMeasurementFunc: func(ctx context.Context, measurementID int) error {
@@ -1029,7 +1029,7 @@ func TestInternetLatency_RIPEAtlas_Run_ErrorHandling(t *testing.T) {
 			GetProbesForLocationsFunc: func(ctx context.Context, locations []LocationProbeMatch) ([]LocationProbeMatch, error) {
 				return nil, errors.New("API error")
 			},
-			GetAllMeasurementsFunc: func(ctx context.Context) ([]Measurement, error) {
+			GetAllMeasurementsFunc: func(ctx context.Context, env string) ([]Measurement, error) {
 				return []Measurement{}, nil
 			},
 		}
@@ -1051,7 +1051,7 @@ func TestInternetLatency_RIPEAtlas_Run_ErrorHandling(t *testing.T) {
 
 	t.Run("Export error", func(t *testing.T) {
 		mockClient := &MockClient{
-			GetAllMeasurementsFunc: func(ctx context.Context) ([]Measurement, error) {
+			GetAllMeasurementsFunc: func(ctx context.Context, env string) ([]Measurement, error) {
 				return nil, errors.New("Export API error")
 			},
 			GetProbesForLocationsFunc: func(ctx context.Context, locations []LocationProbeMatch) ([]LocationProbeMatch, error) {
@@ -1103,7 +1103,7 @@ func TestInternetLatency_RIPEAtlas_Run(t *testing.T) {
 			// Return empty to avoid creating measurements
 			return []LocationProbeMatch{}, nil
 		},
-		GetAllMeasurementsFunc: func(ctx context.Context) ([]Measurement, error) {
+		GetAllMeasurementsFunc: func(ctx context.Context, env string) ([]Measurement, error) {
 			mu.Lock()
 			exportCalls++
 			mu.Unlock()

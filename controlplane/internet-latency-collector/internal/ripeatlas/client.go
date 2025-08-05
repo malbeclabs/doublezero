@@ -56,14 +56,15 @@ type ProbesResponse struct {
 }
 
 type MeasurementDefinition struct {
-	Type           string `json:"type"`
-	AF             int    `json:"af"`
-	Interval       int    `json:"interval"`
-	Packets        int    `json:"packets"`
-	Size           int    `json:"size"`
-	PacketInterval int    `json:"packet_interval"`
-	Target         string `json:"target"`
-	Description    string `json:"description"`
+	Type           string   `json:"type"`
+	AF             int      `json:"af"`
+	Interval       int      `json:"interval"`
+	Packets        int      `json:"packets"`
+	Size           int      `json:"size"`
+	PacketInterval int      `json:"packet_interval"`
+	Target         string   `json:"target"`
+	Description    string   `json:"description"`
+	Tags           []string `json:"tags,omitempty"`
 }
 
 type MeasurementProbe struct {
@@ -95,8 +96,9 @@ type Measurement struct {
 		Name string `json:"name"`
 		ID   int    `json:"id"`
 	} `json:"status"`
-	Type   string `json:"type"`
-	Target string `json:"target"`
+	Type   string   `json:"type"`
+	Target string   `json:"target"`
+	Tags   []string `json:"tags,omitempty"`
 }
 
 type ClientConfig struct {
@@ -166,26 +168,46 @@ func (c *Client) makeRequest(ctx context.Context, endpoint string) (*http.Respon
 func (c *Client) GetProbesInRadius(ctx context.Context, latitude, longitude float64, radiusKm int) ([]Probe, error) {
 	radiusParam := fmt.Sprintf("%.6f,%.6f:%d", latitude, longitude, radiusKm)
 	endpoint := "/probes/?radius=" + radiusParam + "&status_name=Connected&is_anchor=true"
-	resp, err := c.makeRequest(ctx, endpoint)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
 
-	var response ProbesResponse
-	decoder := json.NewDecoder(resp.Body)
-	if err := decoder.Decode(&response); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	}
+	allProbes := []Probe{}
 
-	for i := range response.Results {
-		if len(response.Results[i].Geometry.Coordinates) >= 2 {
-			response.Results[i].Longitude = response.Results[i].Geometry.Coordinates[0]
-			response.Results[i].Latitude = response.Results[i].Geometry.Coordinates[1]
+	for {
+		resp, err := c.makeRequest(ctx, endpoint)
+		if err != nil {
+			return nil, err
+		}
+
+		defer resp.Body.Close()
+
+		var response ProbesResponse
+		decoder := json.NewDecoder(resp.Body)
+		if err := decoder.Decode(&response); err != nil {
+			return nil, fmt.Errorf("failed to decode response: %w", err)
+		}
+
+		// Process geometry coordinates for this batch
+		for i := range response.Results {
+			if len(response.Results[i].Geometry.Coordinates) >= 2 {
+				response.Results[i].Longitude = response.Results[i].Geometry.Coordinates[0]
+				response.Results[i].Latitude = response.Results[i].Geometry.Coordinates[1]
+			}
+		}
+
+		allProbes = append(allProbes, response.Results...)
+
+		// Check if there's a next page
+		if response.Next == "" {
+			break
+		}
+
+		// Update endpoint for next page
+		endpoint = response.Next
+		if len(endpoint) > len(c.BaseURL) {
+			endpoint = endpoint[len(c.BaseURL):]
 		}
 	}
 
-	return response.Results, nil
+	return allProbes, nil
 }
 
 func (c *Client) GetProbesForLocations(ctx context.Context, locations []LocationProbeMatch) ([]LocationProbeMatch, error) {
@@ -255,9 +277,15 @@ func (c *Client) CreateMeasurement(ctx context.Context, request MeasurementReque
 	return &measurementResponse, nil
 }
 
-func (c *Client) GetAllMeasurements(ctx context.Context) ([]Measurement, error) {
-	var allMeasurements []Measurement
-	endpoint := "/measurements/my/?status=Ongoing"
+func (c *Client) GetAllMeasurements(ctx context.Context, env string) ([]Measurement, error) {
+	if env == "" {
+		return nil, fmt.Errorf("env parameter is required")
+	}
+
+	allMeasurements := []Measurement{}
+	// Include both Ongoing and Scheduled statuses to catch newly created measurements
+	// Status values: 1=Scheduled, 2=Ongoing
+	endpoint := fmt.Sprintf("/measurements/my/?status=Ongoing,Scheduled&tags=%s", env)
 
 	for {
 		resp, err := c.makeRequest(ctx, endpoint)

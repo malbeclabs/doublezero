@@ -197,16 +197,17 @@ func TestLatencyManager(t *testing.T) {
 }
 
 func TestLatencyUdpPing(t *testing.T) {
+	devices := []serviceability.Device{
+		{
+			AccountType: serviceability.DeviceType,
+			PublicIp:    [4]uint8{127, 0, 0, 1},
+			PubKey:      [32]byte{1},
+			Code:        "dev01",
+		},
+	}
+
 	mockSmartContractFunc := func(context.Context, string, string) (*latency.ContractData, error) {
-		return &latency.ContractData{
-			Devices: []serviceability.Device{
-				{
-					AccountType: serviceability.DeviceType,
-					PublicIp:    [4]uint8{127, 0, 0, 1},
-					PubKey:      [32]byte{1},
-				},
-			},
-		}, nil
+		return &latency.ContractData{Devices: devices}, nil
 	}
 
 	resultChan := make(chan struct{})
@@ -221,15 +222,8 @@ func TestLatencyUdpPing(t *testing.T) {
 		SmartContractFunc: mockSmartContractFunc,
 		ProberFunc:        mockProber,
 		DeviceCache: &latency.DeviceCache{
-			Devices: []serviceability.Device{
-				{
-					AccountType: serviceability.DeviceType,
-					PublicIp:    [4]uint8{127, 0, 0, 1},
-					PubKey:      [32]byte{1},
-					Code:        "dev01",
-				},
-			},
-			Lock: sync.Mutex{},
+			Devices: devices,
+			Lock:    sync.Mutex{},
 		},
 		ResultsCache: &latency.LatencyResults{Results: []latency.LatencyResult{}, Lock: sync.RWMutex{}},
 	}

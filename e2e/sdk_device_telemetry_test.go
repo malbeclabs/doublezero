@@ -73,6 +73,10 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 		doublezero device interface create ld4-dz01 "Loopback255" loopback --loopback-type vpnv4
 		doublezero device interface create frk-dz01 "Loopback255" loopback --loopback-type vpnv4
 
+		doublezero device interface create la2-dz01 "Loopback256" loopback --loopback-type ipv4
+		doublezero device interface create ny5-dz01 "Loopback256" loopback --loopback-type ipv4
+		doublezero device interface create ld4-dz01 "Loopback256" loopback --loopback-type ipv4
+		doublezero device interface create frk-dz01 "Loopback256" loopback --loopback-type ipv4
 
 		doublezero device interface create la2-dz01 "Loopback255" loopback --loopback-type vpnv4
 		doublezero device interface create ny5-dz01 "Loopback255" loopback --loopback-type vpnv4

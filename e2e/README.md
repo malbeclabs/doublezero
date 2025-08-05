@@ -48,6 +48,8 @@ make test nobuild
 make test run=TestE2E_IBRL nobuild
 ```
 
+If you want the docker containers to keep running after the tests finish, set the `TESTCONTAINERS_RYUK_DISABLED` env var to `true`. You will need to manually clean up the containers when you're done with them.
+
 ## Topology
 
 Each test spins up a local devnet with all components running in containers, and internal CYOA networks for devices and clients.

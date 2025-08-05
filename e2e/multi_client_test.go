@@ -56,7 +56,7 @@ func TestE2E_MultiClient(t *testing.T) {
 	devicePK := device.ID
 	log.Info("--> Device added", "deviceCode", deviceCode, "devicePK", devicePK)
 
-	err = dn.CreateDeviceVPNv4LoopbackInterface(t.Context(), deviceCode)
+	err = dn.CreateDeviceLoopbackInterface(t.Context(), deviceCode, "Loopback255", "vpnv4")
 	require.NoError(t, err, "failed to create VPNv4 loopback interface for device %s: %w", deviceCode, err)
 
 	// Wait for device to exist onchain.

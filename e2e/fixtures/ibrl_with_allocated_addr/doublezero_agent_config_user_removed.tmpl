@@ -174,10 +174,66 @@ default interface Tunnel562
 default interface Tunnel563
 !
 router bgp 65342
-   router-id 0.0.0.0
+   router-id 172.16.0.1
+   no neighbor 172.16.0.6
+   neighbor 172.16.0.6 remote-as 65342
+   neighbor 172.16.0.6 next-hop-self
+   neighbor 172.16.0.6 update-source Loopback255
+   neighbor 172.16.0.6 description ty2-dz01
+   neighbor 172.16.0.6 send-community
+   no neighbor 172.16.0.3
+   neighbor 172.16.0.3 remote-as 65342
+   neighbor 172.16.0.3 next-hop-self
+   neighbor 172.16.0.3 update-source Loopback255
+   neighbor 172.16.0.3 description ld4-dz01
+   neighbor 172.16.0.3 send-community
+   no neighbor 172.16.0.2
+   neighbor 172.16.0.2 remote-as 65342
+   neighbor 172.16.0.2 next-hop-self
+   neighbor 172.16.0.2 update-source Loopback255
+   neighbor 172.16.0.2 description la2-dz01
+   neighbor 172.16.0.2 send-community
+   no neighbor 172.16.0.5
+   neighbor 172.16.0.5 remote-as 65342
+   neighbor 172.16.0.5 next-hop-self
+   neighbor 172.16.0.5 update-source Loopback255
+   neighbor 172.16.0.5 description sg1-dz01
+   neighbor 172.16.0.5 send-community
+   no neighbor 172.16.0.8
+   neighbor 172.16.0.8 remote-as 65342
+   neighbor 172.16.0.8 next-hop-self
+   neighbor 172.16.0.8 update-source Loopback255
+   neighbor 172.16.0.8 description ams-dz001
+   neighbor 172.16.0.8 send-community
+   no neighbor 172.16.0.4
+   neighbor 172.16.0.4 remote-as 65342
+   neighbor 172.16.0.4 next-hop-self
+   neighbor 172.16.0.4 update-source Loopback255
+   neighbor 172.16.0.4 description frk-dz01
+   neighbor 172.16.0.4 send-community
+   no neighbor 172.16.0.7
+   neighbor 172.16.0.7 remote-as 65342
+   neighbor 172.16.0.7 next-hop-self
+   neighbor 172.16.0.7 update-source Loopback255
+   neighbor 172.16.0.7 description pit-dzd01
+   neighbor 172.16.0.7 send-community
    address-family ipv4
+      no neighbor 172.16.0.6 activate
+      no neighbor 172.16.0.3 activate
+      no neighbor 172.16.0.2 activate
+      no neighbor 172.16.0.5 activate
+      no neighbor 172.16.0.8 activate
+      no neighbor 172.16.0.4 activate
+      no neighbor 172.16.0.7 activate
    !
    address-family vpn-ipv4
+      neighbor 172.16.0.6 activate
+      neighbor 172.16.0.3 activate
+      neighbor 172.16.0.2 activate
+      neighbor 172.16.0.5 activate
+      neighbor 172.16.0.8 activate
+      neighbor 172.16.0.4 activate
+      neighbor 172.16.0.7 activate
    !
    vrf vrf1
       rd 65342:1

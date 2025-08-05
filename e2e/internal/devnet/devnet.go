@@ -801,14 +801,14 @@ func generateKeypairIfNotExists(keypairPath string) (bool, error) {
 	return false, nil
 }
 
-func (d *Devnet) CreateDeviceVPNv4LoopbackInterface(ctx context.Context, deviceCode string) error {
+func (d *Devnet) CreateDeviceLoopbackInterface(ctx context.Context, deviceCode string, interfaceName string, loopbackType string) error {
 	d.log.Info("==> Creating VPNv4 loopback interface for device", "code", deviceCode)
 	d.onchainWriteMutex.Lock()
 	defer d.onchainWriteMutex.Unlock()
 
-	_, err := d.Manager.Exec(ctx, []string{"doublezero", "device", "interface", "create", deviceCode, "Loopback255", "loopback", "--loopback-type", "vpnv4"})
+	_, err := d.Manager.Exec(ctx, []string{"doublezero", "device", "interface", "create", deviceCode, interfaceName, "loopback", "--loopback-type", loopbackType})
 	if err != nil {
-		return fmt.Errorf("failed to create VPNv4 loopback interface for device %s: %w", deviceCode, err)
+		return fmt.Errorf("failed to create loopback interface %s of type %s for device %s: %w", interfaceName, loopbackType, deviceCode, err)
 	}
 
 	return nil

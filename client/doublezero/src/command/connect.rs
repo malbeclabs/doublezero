@@ -484,18 +484,40 @@ Disconnect and connect again!"#,
         spinner: &ProgressBar,
     ) -> eyre::Result<User> {
         spinner.set_message("Waiting for user activation...");
-        loop {
-            std::thread::sleep(std::time::Duration::from_secs(5));
-            let (_, user) = client
-                .get_user(GetUserCommand {
-                    pubkey: *user_pubkey,
-                })
-                .map_err(|_| eyre::eyre!("User not found"))?;
+        let start_time = std::time::Instant::now();
+        let timeout = std::time::Duration::from_secs(20);
+        let poll_interval = std::time::Duration::from_secs(1);
+        let mut last_error: Option<eyre::Error> = None;
 
-            if user.status == UserStatus::Activated || user.status == UserStatus::Rejected {
-                spinner.println("    The user has been successfully activated");
-                return Ok(user);
+        loop {
+            if start_time.elapsed() >= timeout {
+                return Err(match last_error {
+                    Some(e) => eyre::eyre!(
+                        "Timeout waiting for user activation after 20 seconds. Last error: {}",
+                        e
+                    ),
+                    None => eyre::eyre!("Timeout waiting for user activation after 20 seconds"),
+                });
             }
+
+            match client.get_user(GetUserCommand {
+                pubkey: *user_pubkey,
+            }) {
+                Ok((_, user)) => {
+                    if user.status == UserStatus::Activated || user.status == UserStatus::Rejected {
+                        spinner.println("    The user has been successfully activated");
+                        return Ok(user);
+                    }
+                }
+                Err(e) => {
+                    // User not found or some other error, continue polling
+                    // It may take some time for the user to be visible onchain after the creation
+                    // transaction is confirmed, so we need to poll here until is is.
+                    last_error = Some(e);
+                }
+            }
+
+            std::thread::sleep(poll_interval);
         }
     }
 

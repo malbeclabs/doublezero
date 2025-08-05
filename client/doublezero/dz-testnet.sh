@@ -44,12 +44,12 @@ cargo build
 
 
 ### Links
-./target/debug/doublezero Link create --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-z ny5-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
-./target/debug/doublezero Link create --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-z ld4-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
-./target/debug/doublezero Link create --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-z frk-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10
-./target/debug/doublezero Link create --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-z sg1-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9
-./target/debug/doublezero Link create --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-z ty2-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7
-./target/debug/doublezero Link create --code "ty2-dz01:la2-dz01" --contributor co01 --side-a ty2-dz01 --side-z la2-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 10
+./target/debug/doublezero link create internal --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-z ny5-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
+./target/debug/doublezero link create internal --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-z ld4-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
+./target/debug/doublezero link create internal --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-z frk-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10
+./target/debug/doublezero link create internal --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-z sg1-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9
+./target/debug/doublezero link create internal --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-z ty2-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7
+./target/debug/doublezero link create internal --code "ty2-dz01:la2-dz01" --contributor co01 --side-a ty2-dz01 --side-z la2-dz01 --Link-type 1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 10
 
 
 # pit

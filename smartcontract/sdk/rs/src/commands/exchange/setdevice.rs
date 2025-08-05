@@ -4,7 +4,7 @@ use crate::{
 };
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    processors::exchange::setdevice::{ExchangeSetDeviceArgs, SetDeviceOpption},
+    processors::exchange::setdevice::{ExchangeSetDeviceArgs, SetDeviceOption},
     state::exchange::ExchangeStatus,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
@@ -41,9 +41,9 @@ impl SetDeviceExchangeCommand {
                 DoubleZeroInstruction::SetDeviceExchange(ExchangeSetDeviceArgs {
                     index: 1,
                     set: if self.device1_pubkey.is_some() {
-                        SetDeviceOpption::Set
+                        SetDeviceOption::Set
                     } else {
-                        SetDeviceOpption::Remove
+                        SetDeviceOption::Remove
                     },
                 }),
                 vec![
@@ -61,9 +61,9 @@ impl SetDeviceExchangeCommand {
                 DoubleZeroInstruction::SetDeviceExchange(ExchangeSetDeviceArgs {
                     index: 2,
                     set: if self.device2_pubkey.is_some() {
-                        SetDeviceOpption::Set
+                        SetDeviceOption::Set
                     } else {
-                        SetDeviceOpption::Remove
+                        SetDeviceOption::Remove
                     },
                 }),
                 vec![
@@ -87,7 +87,7 @@ mod tests {
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
         pda::{get_exchange_pda, get_globalstate_pda},
-        processors::exchange::setdevice::{ExchangeSetDeviceArgs, SetDeviceOpption},
+        processors::exchange::setdevice::{ExchangeSetDeviceArgs, SetDeviceOption},
         state::{
             accountdata::AccountData,
             accounttype::AccountType,
@@ -137,7 +137,7 @@ mod tests {
                 predicate::eq(DoubleZeroInstruction::SetDeviceExchange(
                     ExchangeSetDeviceArgs {
                         index: 1,
-                        set: SetDeviceOpption::Set,
+                        set: SetDeviceOption::Set,
                     },
                 )),
                 predicate::eq(vec![
@@ -198,7 +198,7 @@ mod tests {
                 predicate::eq(DoubleZeroInstruction::SetDeviceExchange(
                     ExchangeSetDeviceArgs {
                         index: 1,
-                        set: SetDeviceOpption::Remove,
+                        set: SetDeviceOption::Remove,
                     },
                 )),
                 predicate::eq(vec![
@@ -261,7 +261,7 @@ mod tests {
                 predicate::eq(DoubleZeroInstruction::SetDeviceExchange(
                     ExchangeSetDeviceArgs {
                         index: 1,
-                        set: SetDeviceOpption::Remove,
+                        set: SetDeviceOption::Remove,
                     },
                 )),
                 predicate::eq(vec![
@@ -280,7 +280,7 @@ mod tests {
                 predicate::eq(DoubleZeroInstruction::SetDeviceExchange(
                     ExchangeSetDeviceArgs {
                         index: 2,
-                        set: SetDeviceOpption::Remove,
+                        set: SetDeviceOption::Remove,
                     },
                 )),
                 predicate::eq(vec![
@@ -341,7 +341,7 @@ mod tests {
                 predicate::eq(DoubleZeroInstruction::SetDeviceExchange(
                     ExchangeSetDeviceArgs {
                         index: 1,
-                        set: SetDeviceOpption::Set,
+                        set: SetDeviceOption::Set,
                     },
                 )),
                 predicate::eq(vec![
@@ -360,7 +360,7 @@ mod tests {
                 predicate::eq(DoubleZeroInstruction::SetDeviceExchange(
                     ExchangeSetDeviceArgs {
                         index: 2,
-                        set: SetDeviceOpption::Set,
+                        set: SetDeviceOption::Set,
                     },
                 )),
                 predicate::eq(vec![

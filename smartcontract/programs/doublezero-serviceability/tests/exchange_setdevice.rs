@@ -5,7 +5,7 @@ use doublezero_serviceability::{
     pda::*,
     processors::{
         contributor::create::ContributorCreateArgs, device::create::*,
-        exchange::setdevice::SetDeviceOpption, *,
+        exchange::setdevice::SetDeviceOption, *,
     },
     state::{accounttype::AccountType, contributor::ContributorStatus, device::*},
 };
@@ -261,7 +261,7 @@ async fn exchange_setdevice() {
         program_id,
         DoubleZeroInstruction::SetDeviceExchange(exchange::setdevice::ExchangeSetDeviceArgs {
             index: 1,
-            set: SetDeviceOpption::Set,
+            set: SetDeviceOption::Set,
         }),
         vec![
             AccountMeta::new(exchange_pubkey, false),

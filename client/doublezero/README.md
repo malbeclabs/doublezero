@@ -184,7 +184,7 @@ doublezero device create --code ny5-dz01 --location ny --exchange xny --public-i
 ### Create tunner from Los Angeles to New York
 
 ```console
-doublezero Link create --code "la2-dz02:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-z ny5-dz01 --Link-type 1 --bandwidth 100 --mtu 9000 --delay 0 --jitter 0
+doublezero Link create internal --code "la2-dz02:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-z ny5-dz01 --Link-type 1 --bandwidth 100 --mtu 9000 --delay 0 --jitter 0
 ```
 
 [FK5AN9sgfS56Du2UtPAZu54u1q15GiPdfkBH4v2H6FgR](https://explorer.solana.com/address/FK5AN9sgfS56Du2UtPAZu54u1q15GiPdfkBH4v2H6FgR?cluster=devnet)

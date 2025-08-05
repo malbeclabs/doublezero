@@ -44,7 +44,7 @@ sleep 15
 echo "Start instruction logger"
 solana logs >./logs/instruction.log 2>&1 &
 
-# initialice doublezero smart contract
+# Initialize doublezero smart contract
 ./target/doublezero init
 
 ### Configure global setting
@@ -59,7 +59,7 @@ echo "Add allowlist"
 ./target/doublezero device allowlist add --pubkey 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
 ./target/doublezero user allowlist add --pubkey 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
 
-### Initialice locations
+### Initialize locations
 echo "Creating locations"
 ./target/doublezero location create --code lax --name "XXXXXXX" --country US --lat 34.049641274076464 --lng -118.25939642499903
 ./target/doublezero location create --code ewr --name "New York" --country US --lat 40.780297071772125 --lng -74.07203003496925
@@ -73,7 +73,7 @@ echo "Creating locations"
 echo "Update locations"
 ./target/doublezero location update --pubkey XEY7fFCJ8r1FM9xwyvMqZ3GEgEbKNBTw65N2ynGJXRD --name "Los Angeles"
 
-### Initialice exchanges
+### Initialize exchanges
 echo "Creating exchanges"
 ./target/doublezero exchange create --code xlax --name "XXXXXXXX" --lat 34.049641274076464 --lng -118.25939642499903
 ./target/doublezero exchange create --code xewr --name "New York" --lat 40.780297071772125 --lng -74.07203003496925
@@ -87,11 +87,11 @@ echo "Creating exchanges"
 echo "Update exchanges"
 ./target/doublezero exchange update --pubkey EpE1QxRzUXFLSAPKcsGrHrdareBZ7hNsyJtTPw1iL7q8 --name "Los Angeles"
 
-### Initialice controbutor
+### Initialize contributor
 echo "Creating contributor"
 ./target/doublezero contributor create --code co01 --owner me
 
-### Initialice devices
+### Initialize devices
 echo "Creating devices"
 ./target/doublezero device create --code la2-dz01 --contributor co01 --location lax --exchange xlax --public-ip "207.45.216.134" --dz-prefixes "100.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --bgp-asn 42 --dia-bgp-asn 4242 --mgmt-vrf mgmt --dns-servers 8.8.8.8,8.8.4.4 --ntp-servers 1.2.3.4
 ./target/doublezero device create --code ny5-dz01 --contributor co01 --location ewr --exchange xewr --public-ip "64.86.249.80" --dz-prefixes "101.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --bgp-asn 42 --dia-bgp-asn 4242 --mgmt-vrf mgmt --dns-servers 8.8.8.8,8.8.4.4 --ntp-servers 1.2.3.4
@@ -121,7 +121,7 @@ echo "Creating device interfaces"
 ./target/doublezero device interface create ams-dz001 "Switch1/1/1" physical
 ./target/doublezero device interface create ams-dz001 "Switch1/1/2" physical
 
-### Initialice links
+### Initialize links
 echo "Creating internal links"
 ./target/doublezero link create internal --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Switch1/1/1 --side-z ny5-dz01 --side-z-interface Switch1/1/2 --link-type L3 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
 ./target/doublezero link create internal --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Switch1/1/1 --side-z ld4-dz01 --side-z-interface Switch1/1/2 --link-type L3 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
@@ -131,11 +131,11 @@ echo "Creating internal links"
 ./target/doublezero link create internal --code "ty2-dz01:la2-dz01" --contributor co01 --side-a ty2-dz01 --side-a-interface Switch1/1/1 --side-z la2-dz01 --side-z-interface Switch1/1/2 --link-type L3 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 10
 
 
-### Initialice controbutor
+### Initialize contributor
 echo "Creating contributor two"
 ./target/doublezero contributor create --code co02 --owner me
 
-### Initialice devices
+### Initialize devices
 echo "Creating devices"
 ./target/doublezero device create --code la2-dz02 --contributor co02 --location lax --exchange xlax --public-ip "207.45.216.135" --dz-prefixes "130.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --bgp-asn 42 --dia-bgp-asn 4242 --mgmt-vrf mgmt --dns-servers 8.8.8.8,8.8.4.4 --ntp-servers 1.2.3.4
 
@@ -143,11 +143,11 @@ echo "Creating devices"
 echo "Creating device interfaces"
 ./target/doublezero device interface create la2-dz02 "Switch1/1/1" physical
 
-### Initialice links
+### Initialize links
 echo "Creating external links"
 ./target/doublezero link create external --code "la2-dz02-la2-dz01" --contributor co02 --side-a la2-dz02 --side-a-interface Switch1/1/1 --side-z la2-dz01 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
 
-### Initialice links
+### Initialize links
 echo "Accepting external link"
 ./target/doublezero link accept --code "la2-dz02-la2-dz01" --side-z-interface Switch1/1/1
 

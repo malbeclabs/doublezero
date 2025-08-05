@@ -320,8 +320,8 @@ impl DoubleZeroInstruction {
             Self::ResumeContributor(_) => "ResumeContributor".to_string(), // variant 63
             Self::DeleteContributor(_) => "DeleteContributor".to_string(), // variant 64
 
-            Self::SetDeviceExchange(_) => "SetDeviceOnEchange".to_string(), // variant 65
-            Self::AcceptLink(_) => "AcceptLink".to_string(),                // variant 66
+            Self::SetDeviceExchange(_) => "SetDeviceExchange".to_string(), // variant 65
+            Self::AcceptLink(_) => "AcceptLink".to_string(),               // variant 66
         }
     }
 

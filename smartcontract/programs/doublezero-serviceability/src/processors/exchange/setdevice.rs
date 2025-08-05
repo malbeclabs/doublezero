@@ -19,7 +19,7 @@ use solana_program::{
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
 #[borsh(use_discriminant = true)]
-pub enum SetDeviceOpption {
+pub enum SetDeviceOption {
     Set = 1,
     Remove = 2,
 }
@@ -29,7 +29,7 @@ pub struct ExchangeSetDeviceArgs {
     /// Index of the device in the exchange, 1 for switch1, 2 for switch2
     pub index: u8,
     /// If true, set the device as switch1 or switch2, otherwise remove it
-    pub set: SetDeviceOpption,
+    pub set: SetDeviceOption,
 }
 
 impl fmt::Debug for ExchangeSetDeviceArgs {
@@ -90,7 +90,7 @@ pub fn process_setdevice_exchange(
         "Invalid Account Type"
     );
 
-    if value.set == SetDeviceOpption::Set {
+    if value.set == SetDeviceOption::Set {
         if value.index == 1 {
             if exchange.device1_pk != Pubkey::default() {
                 return Err(DoubleZeroError::DeviceAlreadySet.into());
@@ -98,7 +98,7 @@ pub fn process_setdevice_exchange(
 
             exchange.device1_pk = *device_account.key;
         } else if value.index == 2 {
-            if exchange.device1_pk != Pubkey::default() {
+            if exchange.device2_pk != Pubkey::default() {
                 return Err(DoubleZeroError::DeviceAlreadySet.into());
             };
 
@@ -107,7 +107,7 @@ pub fn process_setdevice_exchange(
             return Err(DoubleZeroError::InvalidIndex.into());
         }
         device.reference_count += 1;
-    } else if value.set == SetDeviceOpption::Remove {
+    } else if value.set == SetDeviceOption::Remove {
         if value.index == 1 {
             if exchange.device1_pk == Pubkey::default() {
                 return Err(DoubleZeroError::DeviceNotSet.into());
@@ -115,7 +115,7 @@ pub fn process_setdevice_exchange(
 
             exchange.device1_pk = Pubkey::default();
         } else if value.index == 2 {
-            if exchange.device1_pk == Pubkey::default() {
+            if exchange.device2_pk == Pubkey::default() {
                 return Err(DoubleZeroError::DeviceNotSet.into());
             }
 
@@ -129,7 +129,7 @@ pub fn process_setdevice_exchange(
     account_write(exchange_account, &exchange, payer_account, system_program)?;
 
     #[cfg(test)]
-    msg!("SetDeviced: {:?}", exchange);
+    msg!("SetDevice: {:?}", exchange);
 
     Ok(())
 }

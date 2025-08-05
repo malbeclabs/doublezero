@@ -93,7 +93,7 @@ pub fn process_accept_link(
     account_write(link_account, &link, payer_account, system_program)?;
 
     #[cfg(test)]
-    msg!("Acceptd: {:?}", link);
+    msg!("Accepted: {:?}", link);
 
     Ok(())
 }

@@ -29,6 +29,7 @@ pub const fn get_first_slot_for_epoch(target_epoch: u64) -> u64 {
     DEFAULT_SLOTS_PER_EPOCH * target_epoch
 }
 
+pub const LAMPORT_MULTIPLE: u64 = 5000;
 #[derive(Deserialize, Debug)]
 pub struct JitoRewards {
     // TODO: check total_count to see if it exceeds entries in a single response
@@ -140,7 +141,7 @@ pub async fn get_block_rewards<T: ValidatorRewards>(
     validator_ids: &[String],
     epoch: u64,
     config: RpcBlockConfig,
-) -> Result<HashMap<String, u64>> {
+) -> Result<HashMap<String, (u64, u64)>> {
     let first_slot = get_first_slot_for_epoch(epoch);
 
     // Fetch the leader schedule
@@ -170,6 +171,11 @@ pub async fn get_block_rewards<T: ValidatorRewards>(
     .map(|(validator_id, slot)| async move {
         match api_provider.get_block_with_config(slot, config).await {
             Ok(block) => {
+                let mut signature_lamports: u64 = 0;
+                if let Some(sigs) = &block.signatures {
+                    signature_lamports = sigs.len() as u64;
+                    signature_lamports *= LAMPORT_MULTIPLE;
+                };
                 let lamports: u64 = block
                     .rewards
                     .as_ref()
@@ -186,15 +192,15 @@ pub async fn get_block_rewards<T: ValidatorRewards>(
                             .sum()
                     })
                     .unwrap_or_default();
-                Ok((validator_id, lamports))
+                Ok((validator_id, (lamports, signature_lamports)))
             }
             Err(e) => {
                 bail!("Failed to fetch block for slot {slot}: {e}")
             }
         }
     })
-    .buffer_unordered(10) // Limit concurrency
-    .try_collect::<HashMap<String, u64>>() // Aggregate results by validator_id
+    .buffer_unordered(10)
+    .try_collect::<HashMap<String, (u64, u64)>>()
     .await?;
 
     Ok(block_rewards)
@@ -354,13 +360,17 @@ mod tests {
             .times(1)
             .returning(move || Ok(leader_schedule.clone()));
 
-        let block_reward = 5000;
+        let block_reward = (5000, 5000 * 3);
         let mock_block = UiConfirmedBlock {
             num_reward_partitions: Some(1),
-            signatures: Some(vec!["One".to_string()]),
+            signatures: Some(vec![
+                "One".to_string(),
+                "two".to_string(),
+                "three".to_string(),
+            ]),
             rewards: Some(vec![Reward {
                 pubkey: validator_id.clone(),
-                lamports: block_reward,
+                lamports: block_reward.0,
                 post_balance: 10000,
                 reward_type: Some(Fee),
                 commission: None,
@@ -375,7 +385,7 @@ mod tests {
 
         let rpc_block_config = solana_client::rpc_config::RpcBlockConfig {
             encoding: UiTransactionEncoding::Base58.into(),
-            transaction_details: TransactionDetails::None.into(),
+            transaction_details: TransactionDetails::Signatures.into(),
             rewards: Some(true),
             commitment: CommitmentConfig::finalized().into(),
             max_supported_transaction_version: Some(0),
@@ -391,7 +401,10 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(rewards.get(&validator_id), Some(&(block_reward as u64)));
+        let base_rewards = rewards.get(&validator_id).unwrap();
+
+        assert_eq!(base_rewards.0, block_reward.0 as u64);
+        assert_eq!(base_rewards.1, block_reward.1);
     }
 
     #[tokio::test]

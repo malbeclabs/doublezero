@@ -24,9 +24,10 @@ pub struct Reward {
     pub epoch: u64,
     pub validator_id: String,
     pub total: u64,
+    pub block_priority: u64,
     pub jito: u64,
     pub inflation: u64,
-    pub block: u64,
+    pub block_base: u64,
 }
 
 pub async fn get_rewards_between_timestamps(
@@ -97,13 +98,15 @@ pub async fn get_total_rewards(
             .unwrap_or_default();
         let block_reward = block_rewards.get(validator_id).cloned().unwrap_or_default();
 
-        total_reward += inflation_reward + block_reward + jito_reward;
+        let priority_base = block_reward.0 - block_reward.1;
+        total_reward += inflation_reward + block_reward.0 + jito_reward;
         let rewards = Reward {
             validator_id: validator_id.to_string(),
             jito: jito_reward,
             inflation: inflation_reward,
             total: total_reward,
-            block: block_reward,
+            block_priority: priority_base,
+            block_base: block_reward.1,
             epoch,
         };
         validator_rewards.push(rewards);
@@ -134,7 +137,7 @@ fn epoch_from_timestamp(block_time: u64, current_slot: u64, timestamp: u64) -> R
 
 #[cfg(test)]
 mod tests {
-    use crate::rewards::{JitoReward, JitoRewards};
+    use crate::rewards::{JitoReward, JitoRewards, LAMPORT_MULTIPLE};
 
     use super::*;
     use rewards::MockValidatorRewards;
@@ -152,7 +155,7 @@ mod tests {
         let validator_id = "6WgdYhhGE53WrZ7ywJA15hBVkw7CRbQ8yDBBTwmBtAHN";
         let validator_ids: &[String] = &[String::from(validator_id)];
         let epoch = 824;
-        let block_reward: u64 = 5000;
+        let block_reward: u64 = 60000;
         let inflation_reward = 2500;
         let jito_reward = 10000;
 
@@ -189,9 +192,24 @@ mod tests {
             .times(1)
             .returning(move |_| Ok(1752728180));
 
+        let signatures = vec![
+            "One".to_string(),
+            "Two".to_string(),
+            "Three".to_string(),
+            "Four".to_string(),
+            "Five".to_string(),
+            "Six".to_string(),
+            "Seven".to_string(),
+            "Eight".to_string(),
+            "Nine".to_string(),
+            "Ten".to_string(),
+            "Eleven".to_string(),
+            "Twelve".to_string(),
+        ];
+        let base_fees = signatures.len() as u64 * LAMPORT_MULTIPLE;
         let mock_block = UiConfirmedBlock {
             num_reward_partitions: Some(1),
-            signatures: Some(vec!["One".to_string()]),
+            signatures: Some(signatures),
             rewards: Some(vec![solana_transaction_status_client_types::Reward {
                 pubkey: validator_id.to_string(),
                 lamports: block_reward as i64,
@@ -284,15 +302,18 @@ mod tests {
         .await
         .unwrap();
 
-        // Verify that the function produced the correct results.
         let epoch_rewards = rewards.get(&epoch).unwrap();
         let reward = epoch_rewards.get(validator_id).unwrap();
-
+        let priority_base = block_reward - base_fees;
         assert_eq!(reward.epoch, epoch);
-        assert_eq!(reward.block, block_reward);
+        assert_eq!(reward.block_base, block_reward);
         assert_eq!(reward.inflation, inflation_reward);
         assert_eq!(reward.jito, jito_reward);
-        assert_eq!(reward.total, block_reward + inflation_reward + jito_reward);
+        assert_eq!(
+            reward.total,
+            priority_base + block_reward + inflation_reward + jito_reward
+        );
+        assert_eq!(reward.block_priority, priority_base);
     }
 
     #[tokio::test]
@@ -302,6 +323,7 @@ mod tests {
         let validator_ids: &[String] = &[String::from(validator_id)];
         let epoch = 819;
         let block_reward: u64 = 5000;
+        let signatures: u64 = LAMPORT_MULTIPLE;
         let inflation_reward = 2500;
         let jito_reward = 10000;
 
@@ -423,10 +445,13 @@ mod tests {
         let reward = rewards.get(validator_id).unwrap();
 
         assert_eq!(reward.epoch, epoch);
-        assert_eq!(reward.block, block_reward);
+        assert_eq!(reward.block_base, block_reward);
         assert_eq!(reward.inflation, inflation_reward);
         assert_eq!(reward.jito, jito_reward);
-        assert_eq!(reward.total, reward.block + reward.inflation + reward.jito);
-        assert_eq!(reward.total, block_reward + inflation_reward + jito_reward);
+        assert_eq!(
+            reward.total,
+            reward.block_base + reward.inflation + reward.jito
+        );
+        assert_eq!(reward.block_priority, block_reward - signatures);
     }
 }

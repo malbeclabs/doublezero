@@ -12,9 +12,9 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
+	"github.com/gagliardetto/solana-go"
 	"github.com/google/go-cmp/cmp"
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
-	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
@@ -383,12 +383,17 @@ func TestGetConfig(t *testing.T) {
 	}
 }
 
-type mockAccountFetcher struct {
+type mockServiceabilityProgramClient struct {
 	GetProgramDataFunc func(ctx context.Context) (*serviceability.ProgramData, error)
+	ProgramIDFunc      func() solana.PublicKey
 }
 
-func (m *mockAccountFetcher) GetProgramData(ctx context.Context) (*serviceability.ProgramData, error) {
+func (m *mockServiceabilityProgramClient) GetProgramData(ctx context.Context) (*serviceability.ProgramData, error) {
 	return m.GetProgramDataFunc(ctx)
+}
+
+func (m *mockServiceabilityProgramClient) ProgramID() solana.PublicKey {
+	return m.ProgramIDFunc()
 }
 
 func TestStateCache(t *testing.T) {
@@ -579,7 +584,7 @@ func TestStateCache(t *testing.T) {
 				log.Fatalf("failed to listen: %v", err)
 			}
 
-			m := &mockAccountFetcher{
+			m := &mockServiceabilityProgramClient{
 				GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 					return &serviceability.ProgramData{
 						Config:          test.Config,
@@ -588,8 +593,11 @@ func TestStateCache(t *testing.T) {
 						MulticastGroups: test.MulticastGroups,
 					}, nil
 				},
+				ProgramIDFunc: func() solana.PublicKey {
+					return solana.MustPublicKeyFromBase58("11111111111111111111111111111111")
+				},
 			}
-			controller, err := NewController(WithAccountFetcher(m), WithListener(lis))
+			controller, err := NewController(WithServiceabilityProgramClient(m), WithListener(lis))
 			if err != nil {
 				t.Fatalf("error creating controller: %v", err)
 			}
@@ -603,27 +611,25 @@ func TestStateCache(t *testing.T) {
 	}
 }
 
-func TestAccountFetcherArgs(t *testing.T) {
+func TestServiceabilityProgramClientArg(t *testing.T) {
 	tests := []struct {
-		name            string
-		programId       string
-		rpcEndpoint     string
-		wantProgramId   string
-		wantRpcEndpoint string
+		name                 string
+		serviceabilityClient ServiceabilityProgramClient
+		wantErr              error
 	}{
 		{
-			name:            "verify_default_program_id_and_rpc_url_are_set",
-			programId:       "",
-			rpcEndpoint:     "",
-			wantProgramId:   serviceability.SERVICEABILITY_PROGRAM_ID_TESTNET,
-			wantRpcEndpoint: dzsdk.DZ_LEDGER_RPC_URL,
+			name:                 "verify_default_program_id_and_rpc_url_are_set",
+			serviceabilityClient: nil,
+			wantErr:              ErrServiceabilityRequired,
 		},
 		{
-			name:            "verify_custom_program_id_and_rpc_url_are_set",
-			programId:       "mycustomprogramidthatneeds32charssohere1234",
-			rpcEndpoint:     "https://custom-rpc-url.com",
-			wantProgramId:   "mycustomprogramidthatneeds32charssohere1234",
-			wantRpcEndpoint: "https://custom-rpc-url.com",
+			name: "verify_custom_program_id_and_rpc_url_are_set",
+			serviceabilityClient: &mockServiceabilityProgramClient{
+				ProgramIDFunc: func() solana.PublicKey {
+					return solana.MustPublicKeyFromBase58("mycustomprogramidthatneeds32charssohere1234")
+				},
+			},
+			wantErr: nil,
 		},
 	}
 
@@ -633,22 +639,10 @@ func TestAccountFetcherArgs(t *testing.T) {
 				WithListener(bufconn.Listen(1024 * 1024)),
 			}
 
-			if test.rpcEndpoint != "" {
-				opts = append(opts, WithRpcEndpoint(test.rpcEndpoint))
-			}
-			if test.programId != "" {
-				opts = append(opts, WithProgramId(test.programId))
-			}
-			controller, err := NewController(opts...)
-			if err != nil {
-				t.Fatalf("error creating controller: %v", err)
-			}
-
-			if controller.programId != test.wantProgramId {
-				t.Errorf("expected program ID %s, got %s", test.wantProgramId, controller.programId)
-			}
-			if controller.rpcEndpoint != test.wantRpcEndpoint {
-				t.Errorf("expected RPC URL %s, got %s", test.wantRpcEndpoint, controller.rpcEndpoint)
+			opts = append(opts, WithServiceabilityProgramClient(test.serviceabilityClient))
+			_, err := NewController(opts...)
+			if err != test.wantErr {
+				t.Fatalf("expected error %v, got %v", test.wantErr, err)
 			}
 		})
 	}
@@ -826,7 +820,7 @@ func TestEndToEnd(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
 			listener := bufconn.Listen(1024 * 1024)
-			m := &mockAccountFetcher{
+			m := &mockServiceabilityProgramClient{
 				GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 					return &serviceability.ProgramData{
 						Config:          test.Config,
@@ -835,10 +829,13 @@ func TestEndToEnd(t *testing.T) {
 						MulticastGroups: test.MulticastGroups,
 					}, nil
 				},
+				ProgramIDFunc: func() solana.PublicKey {
+					return solana.MustPublicKeyFromBase58("11111111111111111111111111111111")
+				},
 			}
 
 			controller, err := NewController(
-				WithAccountFetcher(m),
+				WithServiceabilityProgramClient(m),
 				WithListener(listener),
 				WithSignalChan(make(chan struct{})),
 			)

@@ -33,14 +33,17 @@ pub struct ProgramConfig {
 
     pub admin_key: Pubkey,
 
-    /// This authority determines the payments due for distributions.
+    /// Authority to determine the payments due for distributions.
     pub payments_accountant_key: Pubkey,
 
-    /// This authority determines the rewards for contributors.
+    /// Authority to determine the rewards for contributors.
     pub rewards_accountant_key: Pubkey,
 
-    /// This authority is the only authority that can grant access to the DoubleZero Ledger network.
+    /// Authority to establish new contributor rewards accounts.
     pub contributor_manager_key: Pubkey,
+
+    /// Authority to allow access to the DoubleZero Ledger network.
+    pub dz_ledger_sentinel_key: Pubkey,
 
     /// The program allowed to CPI to this program to withdraw SOL to swap for 2Z. The Revenue
     /// Distribution program trusts that the SOL/2Z Swap program will be depositing 2Z when it
@@ -88,13 +91,25 @@ impl ProgramConfig {
         }
     }
 
-    pub fn checked_relay_contributor_reward_claim_lamports(&self) -> Option<u32> {
+    pub fn checked_relay_contributor_reward_claim_lamports(&self) -> Option<u64> {
         let lamports = self.relay_parameters.contributor_reward_claim_lamports;
 
         if lamports == 0 {
             None
         } else {
-            Some(lamports)
+            Some(lamports.into())
+        }
+    }
+
+    pub fn checked_relay_prepaid_connection_termination_lamports(&self) -> Option<u64> {
+        let lamports = self
+            .relay_parameters
+            .prepaid_connection_termination_lamports;
+
+        if lamports == 0 {
+            None
+        } else {
+            Some(lamports.into())
         }
     }
 }
@@ -102,6 +117,6 @@ impl ProgramConfig {
 //
 
 const _: () = assert!(
-    size_of::<ProgramConfig>() == 1_064,
+    size_of::<ProgramConfig>() == 1_096,
     "`ProgramConfig` size changed"
 );

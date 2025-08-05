@@ -8,6 +8,7 @@ use doublezero_revenue_distribution::{
         account::{
             ConfigureContributorRewardsAccounts, ConfigureDistributionAccounts,
             ConfigureJournalAccounts, ConfigureProgramAccounts,
+            DenyPrepaidConnectionAccessAccounts, GrantPrepaidConnectionAccessAccounts,
             InitializeContributorRewardsAccounts, InitializeDistributionAccounts,
             InitializeJournalAccounts, InitializePrepaidConnectionAccounts,
             InitializeProgramAccounts, LoadPrepaidConnectionAccounts, SetAdminAccounts,
@@ -33,7 +34,7 @@ use solana_sdk::{
     instruction::Instruction,
     message::{v0::Message, VersionedMessage},
     signature::{Keypair, Signer},
-    transaction::VersionedTransaction,
+    transaction::{TransactionError, VersionedTransaction},
 };
 use spl_token::{
     instruction as token_instruction,
@@ -165,7 +166,36 @@ pub fn program_data_key() -> Pubkey {
     get_program_data_address(&ID)
 }
 
+pub struct IndexedProgramLog<'a> {
+    pub index: usize,
+    pub message: &'a str,
+}
+
 impl ProgramTestWithOwner {
+    // TODO: Is there a better way to do this?
+    pub async fn unwrap_simulation_error(
+        &self,
+        instructions: &[Instruction],
+        signers: &[&Keypair],
+    ) -> (TransactionError, Vec<String>) {
+        let payer_signer = &self.payer_signer;
+
+        let mut tx_signers = vec![payer_signer];
+        tx_signers.extend_from_slice(signers);
+
+        let transaction = new_transaction(instructions, &tx_signers, self.recent_blockhash);
+
+        let simulated_tx = self
+            .banks_client
+            .simulate_transaction(transaction)
+            .await
+            .unwrap();
+
+        let tx_err = simulated_tx.result.unwrap().unwrap_err();
+
+        (tx_err, simulated_tx.simulation_details.unwrap().logs)
+    }
+
     pub async fn transfer_lamports(
         &mut self,
         dst_key: &Pubkey,
@@ -465,6 +495,69 @@ impl ProgramTestWithOwner {
             self.recent_blockhash,
             &[initialize_prepaid_connection_ix],
             &[payer_signer, token_transfer_authority_signer],
+        )
+        .await?;
+
+        self.recent_blockhash = new_blockhash;
+
+        Ok(self)
+    }
+
+    pub async fn grant_prepaid_connection_access(
+        &mut self,
+        dz_ledger_sentinel_signer: &Keypair,
+        user_key: &Pubkey,
+    ) -> Result<&mut Self, BanksClientError> {
+        let payer_signer = &self.payer_signer;
+
+        let grant_prepaid_connection_access_ix = try_build_instruction(
+            &ID,
+            GrantPrepaidConnectionAccessAccounts::new(
+                &dz_ledger_sentinel_signer.pubkey(),
+                user_key,
+            ),
+            &RevenueDistributionInstructionData::GrantPrepaidConnectionAccess,
+        )
+        .unwrap();
+
+        let new_blockhash = process_instructions_for_test(
+            &self.banks_client,
+            self.recent_blockhash,
+            &[grant_prepaid_connection_access_ix],
+            &[payer_signer, dz_ledger_sentinel_signer],
+        )
+        .await?;
+
+        self.recent_blockhash = new_blockhash;
+
+        Ok(self)
+    }
+
+    pub async fn deny_prepaid_connection_access(
+        &mut self,
+        dz_ledger_sentinel_signer: &Keypair,
+        activation_funder_key: &Pubkey,
+        user_key: &Pubkey,
+    ) -> Result<&mut Self, BanksClientError> {
+        let payer_signer = &self.payer_signer;
+
+        let deny_prepaid_connection_access_ix = try_build_instruction(
+            &ID,
+            DenyPrepaidConnectionAccessAccounts::new(
+                &dz_ledger_sentinel_signer.pubkey(),
+                activation_funder_key,
+                &payer_signer.pubkey(),
+                user_key,
+            ),
+            &RevenueDistributionInstructionData::DenyPrepaidConnectionAccess,
+        )
+        .unwrap();
+
+        let new_blockhash = process_instructions_for_test(
+            &self.banks_client,
+            self.recent_blockhash,
+            &[deny_prepaid_connection_access_ix],
+            &[payer_signer, dz_ledger_sentinel_signer],
         )
         .await?;
 
@@ -796,13 +889,20 @@ pub async fn process_instructions_for_test(
     instructions: &[Instruction],
     signers: &[&Keypair],
 ) -> Result<Hash, BanksClientError> {
-    let message =
-        Message::try_compile(&signers[0].pubkey(), instructions, &[], recent_blockhash).unwrap();
-
-    let transaction =
-        VersionedTransaction::try_new(VersionedMessage::V0(message), signers).unwrap();
+    let transaction = new_transaction(instructions, signers, recent_blockhash);
 
     banks_client.process_transaction(transaction).await?;
 
     banks_client.get_latest_blockhash().await
+}
+
+fn new_transaction(
+    instructions: &[Instruction],
+    signers: &[&Keypair],
+    recent_blockhash: Hash,
+) -> VersionedTransaction {
+    let message =
+        Message::try_compile(&signers[0].pubkey(), instructions, &[], recent_blockhash).unwrap();
+
+    VersionedTransaction::try_new(VersionedMessage::V0(message), signers).unwrap()
 }

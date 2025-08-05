@@ -18,6 +18,9 @@ pub struct PrepaidConnection {
 
     pub termination_beneficiary_key: Pubkey,
 
+    pub activation_cost: u64,
+    pub activation_funder_key: Pubkey,
+
     _storage_gap: StorageGap<8>,
 }
 
@@ -29,11 +32,20 @@ impl PrecomputedDiscriminator for PrepaidConnection {
 impl PrepaidConnection {
     pub const SEED_PREFIX: &'static [u8] = b"prepaid_connection";
 
-    pub const FLAG_RESERVED_BIT: usize = 0;
+    pub const FLAG_HAS_ACCESS_GRANTED_BIT: usize = 0;
     pub const FLAG_HAS_PAID_BIT: usize = 1;
 
     pub fn find_address(prepaid_user_key: &Pubkey) -> (Pubkey, u8) {
         Pubkey::find_program_address(&[Self::SEED_PREFIX, prepaid_user_key.as_ref()], &crate::ID)
+    }
+
+    pub fn has_access_granted(&self) -> bool {
+        self.flags.bit(Self::FLAG_HAS_ACCESS_GRANTED_BIT)
+    }
+
+    pub fn set_has_access_granted(&mut self, should_grant_access: bool) {
+        self.flags
+            .set_bit(Self::FLAG_HAS_ACCESS_GRANTED_BIT, should_grant_access);
     }
 
     pub fn has_paid(&self) -> bool {
@@ -56,6 +68,6 @@ impl PrepaidConnection {
 //
 
 const _: () = assert!(
-    size_of::<PrepaidConnection>() == 336,
+    size_of::<PrepaidConnection>() == 376,
     "`PrepaidConnection` size changed"
 );

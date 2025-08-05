@@ -17,6 +17,7 @@ pub enum ProgramConfiguration {
     PaymentsAccountant(Pubkey),
     RewardsAccountant(Pubkey),
     ContributorManager(Pubkey),
+    DoubleZeroLedgerSentinel(Pubkey),
     Sol2zSwapProgram(Pubkey),
     SolanaValidatorFeeParameters {
         base_block_rewards: u16,
@@ -83,6 +84,8 @@ pub enum RevenueDistributionInstructionData {
         user_key: Pubkey,
         decimals: u8,
     },
+    GrantPrepaidConnectionAccess,
+    DenyPrepaidConnectionAccess,
     LoadPrepaidConnection {
         valid_through_dz_epoch: DoubleZeroEpoch,
         decimals: u8,
@@ -110,6 +113,10 @@ impl RevenueDistributionInstructionData {
         Discriminator::new_sha2(b"dz::ix::configure_distribution");
     pub const INITIALIZE_PREPAID_CONNECTION: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::initialize_prepaid_connection");
+    pub const GRANT_PREPAID_CONNECTION_ACCESS: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::grant_prepaid_connection_access");
+    pub const DENY_PREPAID_CONNECTION_ACCESS: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::deny_prepaid_connection_access");
     pub const LOAD_PREPAID_CONNECTION: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::load_prepaid_connection");
     pub const TERMINATE_PREPAID_CONNECTION: Discriminator<DISCRIMINATOR_LEN> =
@@ -143,6 +150,8 @@ impl BorshDeserialize for RevenueDistributionInstructionData {
 
                 Ok(Self::InitializePrepaidConnection { user_key, decimals })
             }
+            Self::GRANT_PREPAID_CONNECTION_ACCESS => Ok(Self::GrantPrepaidConnectionAccess),
+            Self::DENY_PREPAID_CONNECTION_ACCESS => Ok(Self::DenyPrepaidConnectionAccess),
             Self::LOAD_PREPAID_CONNECTION => {
                 let valid_through_dz_epoch = BorshDeserialize::deserialize_reader(reader)?;
                 let decimals = BorshDeserialize::deserialize_reader(reader)?;
@@ -197,6 +206,12 @@ impl BorshSerialize for RevenueDistributionInstructionData {
                 Self::INITIALIZE_PREPAID_CONNECTION.serialize(writer)?;
                 user_key.serialize(writer)?;
                 decimals.serialize(writer)
+            }
+            Self::GrantPrepaidConnectionAccess => {
+                Self::GRANT_PREPAID_CONNECTION_ACCESS.serialize(writer)
+            }
+            Self::DenyPrepaidConnectionAccess => {
+                Self::DENY_PREPAID_CONNECTION_ACCESS.serialize(writer)
             }
             Self::LoadPrepaidConnection {
                 valid_through_dz_epoch,

@@ -2,15 +2,24 @@ mod common;
 
 //
 
+use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_revenue_distribution::{
-    instruction::{JournalConfiguration, ProgramConfiguration, ProgramFlagConfiguration},
+    instruction::{
+        account::{DenyPrepaidConnectionAccessAccounts, LoadPrepaidConnectionAccounts},
+        JournalConfiguration, ProgramConfiguration, ProgramFlagConfiguration,
+        RevenueDistributionInstructionData,
+    },
     state::{JournalEntries, JournalEntry, PrepaidConnection},
     types::DoubleZeroEpoch,
-    DOUBLEZERO_MINT_KEY,
+    DOUBLEZERO_MINT_KEY, ID,
 };
 use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
-use solana_sdk::signature::{Keypair, Signer};
+use solana_sdk::{
+    instruction::InstructionError,
+    signature::{Keypair, Signer},
+    transaction::TransactionError,
+};
 
 #[tokio::test]
 async fn test_load_prepaid_connection() {
@@ -25,6 +34,7 @@ async fn test_load_prepaid_connection() {
     let mut test_setup = common::start_test_with_accounts(bootstrapped_accounts).await;
 
     let admin_signer = Keypair::new();
+    let dz_ledger_sentinel_signer = Keypair::new();
 
     // Prepaid connection settings.
     let prepaid_activation_cost = 20_000;
@@ -52,9 +62,10 @@ async fn test_load_prepaid_connection() {
         .unwrap()
         .configure_program(
             &admin_signer,
-            [ProgramConfiguration::Flag(
-                ProgramFlagConfiguration::IsPaused(false),
-            )],
+            [
+                ProgramConfiguration::DoubleZeroLedgerSentinel(dz_ledger_sentinel_signer.pubkey()),
+                ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
+            ],
         )
         .await
         .unwrap()
@@ -84,15 +95,53 @@ async fn test_load_prepaid_connection() {
             .unwrap();
     }
 
+    // Test input.
+
+    let valid_through_dz_epoch = DoubleZeroEpoch::new(5);
+
+    // Cannot load a prepaid connection that does not have access.
+    let load_prepaid_connection_access_ix = try_build_instruction(
+        &ID,
+        LoadPrepaidConnectionAccounts::new(
+            &src_token_account_key,
+            &transfer_authority_signer.pubkey(),
+            &user_1_key,
+        ),
+        &RevenueDistributionInstructionData::LoadPrepaidConnection {
+            valid_through_dz_epoch,
+            decimals: 8,
+        },
+    )
+    .unwrap();
+
+    let (tx_err, program_logs) = test_setup
+        .unwrap_simulation_error(
+            &[load_prepaid_connection_access_ix],
+            &[&transfer_authority_signer],
+        )
+        .await;
+    assert_eq!(
+        tx_err,
+        TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
+    );
+    assert_eq!(
+        program_logs.get(2).unwrap(),
+        "Program log: Prepaid connection does not have access to DoubleZero Ledger"
+    );
+
+    // Grant access to all prepaid connections.
+    for user_key in &[user_1_key, user_2_key, user_3_key] {
+        test_setup
+            .grant_prepaid_connection_access(&dz_ledger_sentinel_signer, user_key)
+            .await
+            .unwrap();
+    }
+
     let starting_src_balance = test_setup
         .fetch_token_account(&src_token_account_key)
         .await
         .unwrap()
         .amount;
-
-    // Test inputs.
-
-    let valid_through_dz_epoch = DoubleZeroEpoch::new(5);
 
     test_setup
         .load_prepaid_connection(
@@ -118,13 +167,18 @@ async fn test_load_prepaid_connection() {
         expected_total_payment
     );
 
+    let expected_activation_cost = u64::from(prepaid_activation_cost) * u64::pow(10, 8);
+
     let (_, prepaid_connection) = test_setup.fetch_prepaid_connection(&user_1_key).await;
 
     let mut expected_prepaid_connection_1 = PrepaidConnection::default();
     expected_prepaid_connection_1.user_key = user_1_key;
+    expected_prepaid_connection_1.set_has_access_granted(true);
     expected_prepaid_connection_1.set_has_paid(true);
     expected_prepaid_connection_1.valid_through_dz_epoch = valid_through_dz_epoch;
     expected_prepaid_connection_1.termination_beneficiary_key = test_setup.payer_signer.pubkey();
+    expected_prepaid_connection_1.activation_cost = expected_activation_cost;
+    expected_prepaid_connection_1.activation_funder_key = src_token_account_key;
     assert_eq!(prepaid_connection, expected_prepaid_connection_1);
 
     let (_, journal, journal_entries, journal_2z_pda) = test_setup.fetch_journal().await;
@@ -280,9 +334,12 @@ async fn test_load_prepaid_connection() {
 
     let mut expected_prepaid_connection_2 = PrepaidConnection::default();
     expected_prepaid_connection_2.user_key = user_2_key;
+    expected_prepaid_connection_2.set_has_access_granted(true);
     expected_prepaid_connection_2.set_has_paid(true);
     expected_prepaid_connection_2.valid_through_dz_epoch = valid_through_dz_epoch;
     expected_prepaid_connection_2.termination_beneficiary_key = test_setup.payer_signer.pubkey();
+    expected_prepaid_connection_2.activation_cost = expected_activation_cost;
+    expected_prepaid_connection_2.activation_funder_key = src_token_account_key;
     assert_eq!(prepaid_connection, expected_prepaid_connection_2);
 
     let (_, journal, journal_entries, journal_2z_pda) = test_setup.fetch_journal().await;
@@ -462,12 +519,15 @@ async fn test_load_prepaid_connection() {
 
     let (_, prepaid_connection) = test_setup.fetch_prepaid_connection(&user_3_key).await;
 
-    let mut expected_prepaid_connection_2 = PrepaidConnection::default();
-    expected_prepaid_connection_2.user_key = user_3_key;
-    expected_prepaid_connection_2.set_has_paid(true);
-    expected_prepaid_connection_2.valid_through_dz_epoch = valid_through_dz_epoch;
-    expected_prepaid_connection_2.termination_beneficiary_key = test_setup.payer_signer.pubkey();
-    assert_eq!(prepaid_connection, expected_prepaid_connection_2);
+    let mut expected_prepaid_connection_3 = PrepaidConnection::default();
+    expected_prepaid_connection_3.user_key = user_3_key;
+    expected_prepaid_connection_3.set_has_access_granted(true);
+    expected_prepaid_connection_3.set_has_paid(true);
+    expected_prepaid_connection_3.valid_through_dz_epoch = valid_through_dz_epoch;
+    expected_prepaid_connection_3.termination_beneficiary_key = test_setup.payer_signer.pubkey();
+    expected_prepaid_connection_3.activation_cost = expected_activation_cost;
+    expected_prepaid_connection_3.activation_funder_key = src_token_account_key;
+    assert_eq!(prepaid_connection, expected_prepaid_connection_3);
 
     let expected_journal_entry_amount = 3 * prepaid_cost_per_dz_epoch;
     assert_eq!(
@@ -536,4 +596,35 @@ async fn test_load_prepaid_connection() {
         .into(),
     );
     assert_eq!(journal_entries, expected_journal_entries);
+
+    // Cannot deny access to any of the prepaid connections that already have
+    // been loaded.
+    for user_key in &[user_1_key, user_2_key, user_3_key] {
+        let deny_prepaid_connection_access_ix = try_build_instruction(
+            &ID,
+            DenyPrepaidConnectionAccessAccounts::new(
+                &dz_ledger_sentinel_signer.pubkey(),
+                &Pubkey::new_unique(),
+                &Pubkey::new_unique(),
+                user_key,
+            ),
+            &RevenueDistributionInstructionData::DenyPrepaidConnectionAccess,
+        )
+        .unwrap();
+
+        let (tx_err, program_logs) = test_setup
+            .unwrap_simulation_error(
+                &[deny_prepaid_connection_access_ix],
+                &[&dz_ledger_sentinel_signer],
+            )
+            .await;
+        assert_eq!(
+            tx_err,
+            TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
+        );
+        assert_eq!(
+            program_logs.get(2).unwrap(),
+            "Program log: Prepaid connection already has access"
+        );
+    }
 }

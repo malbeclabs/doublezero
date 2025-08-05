@@ -13,7 +13,10 @@ use solana_client::{
     rpc_filter::{Memcmp, RpcFilterType},
 };
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
-use std::{str::FromStr, time::Duration};
+use std::{
+    str::FromStr,
+    time::{Duration, Instant},
+};
 use tracing::{debug, info, warn};
 
 /// Account types that we actually process in the rewards calculator
@@ -141,6 +144,7 @@ async fn fetch_by_type(
         ..RpcProgramAccountsConfig::default()
     };
 
+    let start = Instant::now();
     let accounts = (|| async {
         rpc_client
             .get_program_accounts_with_config(&program_pubkey, config.clone())
@@ -151,9 +155,12 @@ async fn fetch_by_type(
         info!("retrying error: {:?} with sleeping {:?}", err, dur)
     })
     .await?;
+    debug!(
+        "Fetching serviceability account took: {:?}",
+        start.elapsed()
+    );
 
     debug!("Found {} {} accounts", accounts.len(), account_type);
-
     // Convert from Vec<(Pubkey, Account)> to Vec<(Pubkey, Vec<u8>)>
     let accounts_with_data: Vec<(Pubkey, Vec<u8>)> = accounts
         .into_iter()

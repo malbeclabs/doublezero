@@ -21,7 +21,7 @@ pub struct Cli {
 pub enum Commands {
     /// Calculate epoch rewards
     CalculateRewards {
-        /// If specified, rewards are calculated for `epoch-1`, otherwise `current_epoch - 1`
+        /// If specified, rewards are calculated for that epoch, otherwise `current_epoch - 1`
         #[arg(short, long)]
         epoch: Option<u64>,
     },

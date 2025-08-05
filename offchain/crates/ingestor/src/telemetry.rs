@@ -15,7 +15,10 @@ use solana_client::{
     rpc_filter::{Memcmp, RpcFilterType},
 };
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
-use std::{str::FromStr, time::Duration};
+use std::{
+    str::FromStr,
+    time::{Duration, Instant},
+};
 use tracing::{debug, info, warn};
 
 // Use the correct discriminator value from the AccountType enum
@@ -52,6 +55,7 @@ pub async fn fetch(
         ..RpcProgramAccountsConfig::default()
     };
 
+    let start = Instant::now();
     let accounts = (|| async {
         rpc_client
             .get_program_accounts_with_config(&program_pubkey, config.clone())
@@ -62,6 +66,7 @@ pub async fn fetch(
         info!("retrying error: {:?} with sleeping {:?}", err, dur)
     })
     .await?;
+    debug!("Fetching telemetry account took: {:?}", start.elapsed());
 
     info!(
         "Found {} telemetry accounts for epoch {}",

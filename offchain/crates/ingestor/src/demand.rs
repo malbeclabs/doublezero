@@ -29,29 +29,19 @@ pub struct CityStat {
 /// 3. Aggregates validators by city with their stake weights
 /// 4. Generates demand entries for all city-to-city traffic pairs
 pub async fn build(fetcher: &Fetcher, fetch_data: &FetchData) -> Result<Demands> {
-    // Get DZ epoch from telemetry data
-    let dz_epoch = fetch_data
+    // Get first telemetry sample to extract epoch and timestamp
+    let first_sample = fetch_data
         .dz_telemetry
         .device_latency_samples
         .first()
-        .map(|s| s.epoch)
         .ok_or_else(|| anyhow!("No telemetry data found to determine DZ epoch"))?;
 
+    let dz_epoch = first_sample.epoch;
     info!("Building demands for DZ epoch {}", dz_epoch);
 
-    // Get a representative timestamp from telemetry data
-    // Use the start timestamp of the first sample, or fall back to current time
-    let timestamp_us = fetch_data
-        .dz_telemetry
-        .device_latency_samples
-        .first()
-        .map(|s| s.start_timestamp_us)
-        .unwrap_or_else(|| {
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_micros() as u64
-        });
+    // Get the timestamp from first_sample
+    let timestamp_us = first_sample.start_timestamp_us;
+    assert_ne!(0, timestamp_us, "First sample timestamp is 0!");
 
     // Find the corresponding Solana epoch for this timestamp
     let solana_epoch = find_solana_epoch_at_timestamp(&fetcher.solana_client, timestamp_us).await?;

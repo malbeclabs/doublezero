@@ -76,26 +76,26 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 		link2_3 := stringToPubkey("link2-3")
 
 		epoch := uint64(100)
-		originDevice1Link1_2Key := telemetry.AccountKey{
+		originDevice1Link1_2Key := telemetry.PartitionKey{
 			OriginDevicePK: device1PK,
 			TargetDevicePK: device2PK,
 			LinkPK:         link1_2,
 			Epoch:          epoch,
 		}
-		originDevice1Link1_3Key := telemetry.AccountKey{
+		originDevice1Link1_3Key := telemetry.PartitionKey{
 			OriginDevicePK: device1PK,
 			TargetDevicePK: device3PK,
 			LinkPK:         link1_3,
 			Epoch:          epoch,
 		}
 
-		originDevice2Link2_1Key := telemetry.AccountKey{
+		originDevice2Link2_1Key := telemetry.PartitionKey{
 			OriginDevicePK: device2PK,
 			TargetDevicePK: device1PK,
 			LinkPK:         link2_1,
 			Epoch:          epoch,
 		}
-		originDevice2Link2_3Key := telemetry.AccountKey{
+		originDevice2Link2_3Key := telemetry.PartitionKey{
 			OriginDevicePK: device2PK,
 			TargetDevicePK: device3PK,
 			LinkPK:         link2_3,
@@ -288,7 +288,7 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 
 		epoch := uint64(100)
 
-		accountKey := telemetry.AccountKey{
+		accountKey := telemetry.PartitionKey{
 			OriginDevicePK: devicePK,
 			TargetDevicePK: peerPK,
 			LinkPK:         linkPK,
@@ -398,7 +398,7 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 
 		epoch := uint64(100)
 
-		key := telemetry.AccountKey{
+		key := telemetry.PartitionKey{
 			OriginDevicePK: devicePK,
 			TargetDevicePK: peerPK,
 			LinkPK:         linkPK,

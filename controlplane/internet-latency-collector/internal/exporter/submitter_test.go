@@ -11,6 +11,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/exporter"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/buffer"
 	sdktelemetry "github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -47,7 +48,7 @@ func TestInternetLatency_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := exporter.NewPartitionedBuffer(128)
+		buffer := buffer.NewMemoryPartitionedBuffer[exporter.PartitionKey, exporter.Sample](128)
 		key := newTestPartitionKey()
 		buffer.Add(key, newTestSample())
 
@@ -90,7 +91,7 @@ func TestInternetLatency_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := exporter.NewPartitionedBuffer(128)
+		buffer := buffer.NewMemoryPartitionedBuffer[exporter.PartitionKey, exporter.Sample](128)
 		key := newTestPartitionKey()
 		buffer.Add(key, newTestSample())
 
@@ -131,7 +132,7 @@ func TestInternetLatency_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := exporter.NewPartitionedBuffer(128)
+		buffer := buffer.NewMemoryPartitionedBuffer[exporter.PartitionKey, exporter.Sample](128)
 		key := newTestPartitionKey()
 		buffer.Add(key, newTestSample())
 
@@ -172,7 +173,7 @@ func TestInternetLatency_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := exporter.NewPartitionedBuffer(128)
+		buffer := buffer.NewMemoryPartitionedBuffer[exporter.PartitionKey, exporter.Sample](128)
 		buffer.Add(key, sample)
 
 		submitter, err := exporter.NewSubmitter(log, &exporter.SubmitterConfig{
@@ -214,7 +215,7 @@ func TestInternetLatency_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := exporter.NewPartitionedBuffer(128)
+		buffer := buffer.NewMemoryPartitionedBuffer[exporter.PartitionKey, exporter.Sample](128)
 		buffer.Add(key, sample)
 
 		submitter, err := exporter.NewSubmitter(log, &exporter.SubmitterConfig{
@@ -256,7 +257,7 @@ func TestInternetLatency_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := exporter.NewPartitionedBuffer(128)
+		buffer := buffer.NewMemoryPartitionedBuffer[exporter.PartitionKey, exporter.Sample](128)
 		buffer.Add(key, sample)
 
 		submitter, err := exporter.NewSubmitter(log, &exporter.SubmitterConfig{
@@ -295,7 +296,7 @@ func TestInternetLatency_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := exporter.NewPartitionedBuffer(128)
+		buffer := buffer.NewMemoryPartitionedBuffer[exporter.PartitionKey, exporter.Sample](128)
 		buffer.Add(key, sample)
 
 		ctx, cancel := context.WithCancel(t.Context())
@@ -337,7 +338,7 @@ func TestInternetLatency_Submitter(t *testing.T) {
 			Epoch:            pastEpoch,
 		}
 
-		buffer := exporter.NewPartitionedBuffer(128)
+		buffer := buffer.NewMemoryPartitionedBuffer[exporter.PartitionKey, exporter.Sample](128)
 		buffer.Add(key, exporter.Sample{}) // Add a sample just to register the key
 		_ = buffer.CopyAndReset(key)       // Now make it empty
 
@@ -381,7 +382,7 @@ func TestInternetLatency_Submitter(t *testing.T) {
 			Epoch:            currentEpoch,
 		}
 
-		buffer := exporter.NewPartitionedBuffer(128)
+		buffer := buffer.NewMemoryPartitionedBuffer[exporter.PartitionKey, exporter.Sample](128)
 		buffer.Add(key, exporter.Sample{})
 		_ = buffer.CopyAndReset(key)
 
@@ -434,7 +435,7 @@ func TestInternetLatency_Submitter(t *testing.T) {
 		}
 
 		key := newTestPartitionKey()
-		buffer := exporter.NewPartitionedBuffer(sdktelemetry.MaxSamplesPerBatch)
+		buffer := buffer.NewMemoryPartitionedBuffer[exporter.PartitionKey, exporter.Sample](sdktelemetry.MaxSamplesPerBatch)
 
 		// Set up the submitter.
 		submitter, err := exporter.NewSubmitter(log, &exporter.SubmitterConfig{
@@ -500,7 +501,7 @@ func TestInternetLatency_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := exporter.NewPartitionedBuffer(128)
+		buffer := buffer.NewMemoryPartitionedBuffer[exporter.PartitionKey, exporter.Sample](128)
 		buffer.Add(key, sample)
 
 		submitter, err := exporter.NewSubmitter(log, &exporter.SubmitterConfig{
@@ -545,7 +546,7 @@ func TestInternetLatency_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := exporter.NewPartitionedBuffer(128)
+		buffer := buffer.NewMemoryPartitionedBuffer[exporter.PartitionKey, exporter.Sample](128)
 		buffer.Add(key, sample)
 
 		submitter, err := exporter.NewSubmitter(log, &exporter.SubmitterConfig{
@@ -582,5 +583,21 @@ func waitTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {
 		return true
 	case <-time.After(timeout):
 		return false
+	}
+}
+
+func newTestSample() exporter.Sample {
+	return exporter.Sample{
+		Timestamp: time.Unix(123, 456),
+		RTT:       42 * time.Millisecond,
+	}
+}
+
+func newTestPartitionKey() exporter.PartitionKey {
+	return exporter.PartitionKey{
+		DataProvider:     "test",
+		SourceLocationPK: solana.PublicKey{1},
+		TargetLocationPK: solana.PublicKey{2},
+		Epoch:            42,
 	}
 }

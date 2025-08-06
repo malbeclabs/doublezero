@@ -9,7 +9,12 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/metrics"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/buffer"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
+)
+
+const (
+	partitionBufferCapacity = 1024
 )
 
 // Collector orchestrates telemetry collection by coordinating the TWAMP reflector,
@@ -27,7 +32,7 @@ type Collector struct {
 	senders   map[string]*senderEntry
 	sendersMu sync.Mutex
 
-	buffer *AccountsBuffer
+	buffer buffer.PartitionedBuffer[PartitionKey, Sample]
 }
 
 func New(log *slog.Logger, cfg Config) (*Collector, error) {
@@ -35,7 +40,7 @@ func New(log *slog.Logger, cfg Config) (*Collector, error) {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
-	buffer := NewAccountsBuffer()
+	buffer := buffer.NewMemoryPartitionedBuffer[PartitionKey, Sample](partitionBufferCapacity)
 
 	c := &Collector{
 		log:       log,
@@ -166,11 +171,11 @@ func (c *Collector) Close(ctx context.Context) error {
 	c.log.Info("Closing telemetry collector")
 
 	// Submit any buffered samples.
-	for accountKey, samples := range c.buffer.FlushWithoutReset() {
+	for partitionKey, samples := range c.buffer.FlushWithoutReset() {
 		if len(samples) > 0 {
-			c.log.Debug("Submitting remaining samples", "account", accountKey, "count", len(samples))
+			c.log.Debug("Submitting remaining samples", "partition", partitionKey, "count", len(samples))
 			for attempt := 1; attempt <= 2; attempt++ {
-				err := c.submitter.SubmitSamples(ctx, accountKey, samples)
+				err := c.submitter.SubmitSamples(ctx, partitionKey, samples)
 				if err == nil {
 					break
 				}

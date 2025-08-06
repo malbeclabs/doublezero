@@ -1,43 +1,23 @@
-package exporter
+package buffer
 
 import (
-	"fmt"
 	"sync"
-	"time"
-
-	"github.com/gagliardetto/solana-go"
 )
 
-type PartitionKey struct {
-	DataProvider     DataProviderName
-	SourceLocationPK solana.PublicKey
-	TargetLocationPK solana.PublicKey
-	Epoch            uint64
-}
-
-type Sample struct {
-	Timestamp time.Time
-	RTT       time.Duration
-}
-
-func (k PartitionKey) String() string {
-	return fmt.Sprintf("%s-%s-%s-%d", k.DataProvider, k.SourceLocationPK.String(), k.TargetLocationPK.String(), k.Epoch)
-}
-
-type PartitionedBuffer struct {
+type MemoryPartitionedBuffer[K PartitionKey, R Record] struct {
 	mu                      sync.RWMutex
-	partitions              map[PartitionKey]*PartitionBuffer
+	partitions              map[K]*MemoryBuffer[R]
 	partitionBufferCapacity int
 }
 
-func NewPartitionedBuffer(partitionBufferCapacity int) *PartitionedBuffer {
-	return &PartitionedBuffer{
-		partitions:              make(map[PartitionKey]*PartitionBuffer),
+func NewMemoryPartitionedBuffer[K PartitionKey, R Record](partitionBufferCapacity int) *MemoryPartitionedBuffer[K, R] {
+	return &MemoryPartitionedBuffer[K, R]{
+		partitions:              make(map[K]*MemoryBuffer[R]),
 		partitionBufferCapacity: partitionBufferCapacity,
 	}
 }
 
-func (b *PartitionedBuffer) Add(key PartitionKey, record Sample) uint64 {
+func (b *MemoryPartitionedBuffer[K, R]) Add(key K, record R) uint64 {
 	b.mu.RLock()
 	pb, ok := b.partitions[key]
 	b.mu.RUnlock()
@@ -45,7 +25,7 @@ func (b *PartitionedBuffer) Add(key PartitionKey, record Sample) uint64 {
 	if !ok {
 		b.mu.Lock()
 		if pb, ok = b.partitions[key]; !ok {
-			pb = NewPartitionBuffer(b.partitionBufferCapacity)
+			pb = NewMemoryBuffer[R](b.partitionBufferCapacity)
 			b.partitions[key] = pb
 		}
 		b.mu.Unlock()
@@ -56,18 +36,18 @@ func (b *PartitionedBuffer) Add(key PartitionKey, record Sample) uint64 {
 	return uint64(pb.Len())
 }
 
-func (b *PartitionedBuffer) FlushWithoutReset() map[PartitionKey][]Sample {
+func (b *MemoryPartitionedBuffer[K, R]) FlushWithoutReset() map[K][]R {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
-	copied := make(map[PartitionKey][]Sample)
+	copied := make(map[K][]R)
 	for key, buffer := range b.partitions {
 		copied[key] = buffer.FlushWithoutReset()
 	}
 	return copied
 }
 
-func (b *PartitionedBuffer) Recycle(partitionKey PartitionKey, records []Sample) {
+func (b *MemoryPartitionedBuffer[K, R]) Recycle(partitionKey K, records []R) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -76,20 +56,20 @@ func (b *PartitionedBuffer) Recycle(partitionKey PartitionKey, records []Sample)
 	}
 }
 
-func (b *PartitionedBuffer) Remove(key PartitionKey) {
+func (b *MemoryPartitionedBuffer[K, R]) Remove(key K) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	delete(b.partitions, key)
 }
 
-func (b *PartitionedBuffer) Has(key PartitionKey) bool {
+func (b *MemoryPartitionedBuffer[K, R]) Has(key K) bool {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	_, ok := b.partitions[key]
 	return ok
 }
 
-func (b *PartitionedBuffer) CopyAndReset(key PartitionKey) []Sample {
+func (b *MemoryPartitionedBuffer[K, R]) CopyAndReset(key K) []R {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -100,7 +80,7 @@ func (b *PartitionedBuffer) CopyAndReset(key PartitionKey) []Sample {
 	return nil
 }
 
-func (b *PartitionedBuffer) Read(key PartitionKey) []Sample {
+func (b *MemoryPartitionedBuffer[K, R]) Read(key K) []R {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
@@ -114,20 +94,20 @@ func (b *PartitionedBuffer) Read(key PartitionKey) []Sample {
 // PartitionBuffer provides a thread-safe buffer for storing internet latency samples.
 // It supports concurrent appends and atomic flushing, as well as a maximum capacity
 // with backpressure to avoid having too many records in the buffer at once.
-type PartitionBuffer struct {
+type MemoryBuffer[R Record] struct {
 	mu          sync.Mutex
 	pool        sync.Pool
-	records     []Sample
+	records     []R
 	maxCapacity int
 	cond        *sync.Cond
 }
 
-func NewPartitionBuffer(capacity int) *PartitionBuffer {
-	pb := &PartitionBuffer{
-		records: make([]Sample, 0, capacity),
+func NewMemoryBuffer[R Record](capacity int) *MemoryBuffer[R] {
+	pb := &MemoryBuffer[R]{
+		records: make([]R, 0, capacity),
 		pool: sync.Pool{
 			New: func() any {
-				return make([]Sample, 0, capacity)
+				return make([]R, 0, capacity)
 			},
 		},
 		maxCapacity: capacity,
@@ -136,7 +116,7 @@ func NewPartitionBuffer(capacity int) *PartitionBuffer {
 	return pb
 }
 
-func (b *PartitionBuffer) Add(record Sample) {
+func (b *MemoryBuffer[R]) Add(record R) {
 	b.mu.Lock()
 	for len(b.records) >= b.maxCapacity {
 		b.cond.Wait()
@@ -145,7 +125,7 @@ func (b *PartitionBuffer) Add(record Sample) {
 	b.mu.Unlock()
 }
 
-func (b *PartitionBuffer) TryAdd(record Sample) bool {
+func (b *MemoryBuffer[R]) TryAdd(record R) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if len(b.records) >= b.maxCapacity {
@@ -155,8 +135,8 @@ func (b *PartitionBuffer) TryAdd(record Sample) bool {
 	return true
 }
 
-func (b *PartitionBuffer) CopyAndReset() []Sample {
-	tmp := b.pool.Get().([]Sample)
+func (b *MemoryBuffer[R]) CopyAndReset() []R {
+	tmp := b.pool.Get().([]R)
 	tmp = tmp[:0] // reuse capacity
 
 	b.mu.Lock()
@@ -168,31 +148,31 @@ func (b *PartitionBuffer) CopyAndReset() []Sample {
 	return tmp
 }
 
-func (b *PartitionBuffer) Len() int {
+func (b *MemoryBuffer[R]) Len() int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return len(b.records)
 }
 
-func (b *PartitionBuffer) FlushWithoutReset() []Sample {
+func (b *MemoryBuffer[R]) FlushWithoutReset() []R {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	tmp := make([]Sample, len(b.records))
+	tmp := make([]R, len(b.records))
 	copy(tmp, b.records)
 	return tmp
 }
 
-func (b *PartitionBuffer) Recycle(buf []Sample) {
+func (b *MemoryBuffer[R]) Recycle(buf []R) {
 	// Reset the slice length before returning it to the pool to ensure that future users see an
 	// empty slice, even though the underlying capacity is preserved for reuse.
 	b.pool.Put(buf[:0])
 }
 
-func (b *PartitionBuffer) Read() []Sample {
+func (b *MemoryBuffer[R]) Read() []R {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	copied := make([]Sample, len(b.records))
+	copied := make([]R, len(b.records))
 	copy(copied, b.records)
 	return copied
 }

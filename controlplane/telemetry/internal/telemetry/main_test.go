@@ -56,8 +56,8 @@ func newTestSample() telemetry.Sample {
 	}
 }
 
-func newTestAccountKey() telemetry.AccountKey {
-	return telemetry.AccountKey{
+func newTestPartitionKey() telemetry.PartitionKey {
+	return telemetry.PartitionKey{
 		OriginDevicePK: solana.PublicKey{1},
 		TargetDevicePK: solana.PublicKey{2},
 		LinkPK:         solana.PublicKey{3},
@@ -92,14 +92,14 @@ func (c *mockTelemetryProgramClient) GetDeviceLatencySamples(ctx context.Context
 }
 
 type memoryTelemetryProgramClient struct {
-	accounts map[telemetry.AccountKey][]telemetry.Sample
+	accounts map[telemetry.PartitionKey][]telemetry.Sample
 
 	mu sync.RWMutex
 }
 
 func newMemoryTelemetryProgramClient() *memoryTelemetryProgramClient {
 	return &memoryTelemetryProgramClient{
-		accounts: make(map[telemetry.AccountKey][]telemetry.Sample),
+		accounts: make(map[telemetry.PartitionKey][]telemetry.Sample),
 	}
 }
 
@@ -107,14 +107,14 @@ func (c *memoryTelemetryProgramClient) InitializeDeviceLatencySamples(ctx contex
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	accountKey := telemetry.AccountKey{
+	partitionKey := telemetry.PartitionKey{
 		OriginDevicePK: config.OriginDevicePK,
 		TargetDevicePK: config.TargetDevicePK,
 		LinkPK:         config.LinkPK,
 		Epoch:          *config.Epoch,
 	}
 
-	c.accounts[accountKey] = make([]telemetry.Sample, 0)
+	c.accounts[partitionKey] = make([]telemetry.Sample, 0)
 
 	return solana.Signature{}, nil, nil
 }
@@ -123,14 +123,14 @@ func (c *memoryTelemetryProgramClient) WriteDeviceLatencySamples(ctx context.Con
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	accountKey := telemetry.AccountKey{
+	partitionKey := telemetry.PartitionKey{
 		OriginDevicePK: config.OriginDevicePK,
 		TargetDevicePK: config.TargetDevicePK,
 		LinkPK:         config.LinkPK,
 		Epoch:          *config.Epoch,
 	}
 
-	if _, ok := c.accounts[accountKey]; !ok {
+	if _, ok := c.accounts[partitionKey]; !ok {
 		return solana.Signature{}, nil, sdktelemetry.ErrAccountNotFound
 	}
 
@@ -142,19 +142,19 @@ func (c *memoryTelemetryProgramClient) WriteDeviceLatencySamples(ctx context.Con
 			Loss:      sample == 0,
 		}
 	}
-	c.accounts[accountKey] = append(c.accounts[accountKey], samples...)
+	c.accounts[partitionKey] = append(c.accounts[partitionKey], samples...)
 
 	return solana.Signature{}, nil, nil
 }
 
-func (c *memoryTelemetryProgramClient) GetAccounts(t *testing.T) map[telemetry.AccountKey][]telemetry.Sample {
+func (c *memoryTelemetryProgramClient) GetAccounts(t *testing.T) map[telemetry.PartitionKey][]telemetry.Sample {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	return maps.Clone(c.accounts)
 }
 
-func (c *memoryTelemetryProgramClient) GetSamples(t *testing.T, key telemetry.AccountKey) []telemetry.Sample {
+func (c *memoryTelemetryProgramClient) GetSamples(t *testing.T, key telemetry.PartitionKey) []telemetry.Sample {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 

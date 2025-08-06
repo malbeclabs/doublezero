@@ -11,6 +11,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/buffer"
 	sdktelemetry "github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,11 +26,11 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		log := log.With("test", t.Name())
 
 		var received []telemetry.Sample
-		var receivedKey telemetry.AccountKey
+		var receivedKey telemetry.PartitionKey
 
 		telemetryProgram := &mockTelemetryProgramClient{
 			WriteDeviceLatencySamplesFunc: func(ctx context.Context, config sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
-				receivedKey = telemetry.AccountKey{
+				receivedKey = telemetry.PartitionKey{
 					OriginDevicePK: config.OriginDevicePK,
 					TargetDevicePK: config.TargetDevicePK,
 					LinkPK:         config.LinkPK,
@@ -48,8 +49,8 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := telemetry.NewAccountsBuffer()
-		key := newTestAccountKey()
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		key := newTestPartitionKey()
 		buffer.Add(key, newTestSample())
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
@@ -88,8 +89,8 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := telemetry.NewAccountsBuffer()
-		buffer.Add(newTestAccountKey(), telemetry.Sample{
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buffer.Add(newTestPartitionKey(), telemetry.Sample{
 			Timestamp: time.Now(),
 			RTT:       5 * time.Microsecond,
 			Loss:      false,
@@ -131,8 +132,8 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := telemetry.NewAccountsBuffer()
-		buffer.Add(newTestAccountKey(), telemetry.Sample{
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buffer.Add(newTestPartitionKey(), telemetry.Sample{
 			Timestamp: time.Now(),
 			RTT:       10 * time.Microsecond,
 			Loss:      false,
@@ -161,7 +162,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 	t.Run("preserves_samples_after_exhausted_retries", func(t *testing.T) {
 		t.Parallel()
 
-		key := newTestAccountKey()
+		key := newTestPartitionKey()
 		sample := telemetry.Sample{
 			Timestamp: time.Now(),
 			RTT:       7 * time.Microsecond,
@@ -176,7 +177,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := telemetry.NewAccountsBuffer()
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		buffer.Add(key, sample)
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
@@ -206,7 +207,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 
 		log := log.With("test", t.Name())
 
-		key := newTestAccountKey()
+		key := newTestPartitionKey()
 		sample := telemetry.Sample{
 			Timestamp: time.Now(),
 			RTT:       10 * time.Microsecond,
@@ -221,7 +222,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := telemetry.NewAccountsBuffer()
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		buffer.Add(key, sample)
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
@@ -248,7 +249,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 
 		log := log.With("test", t.Name())
 
-		key := newTestAccountKey()
+		key := newTestPartitionKey()
 		sample := telemetry.Sample{
 			Timestamp: time.Now(),
 			RTT:       15 * time.Microsecond,
@@ -266,7 +267,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := telemetry.NewAccountsBuffer()
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		buffer.Add(key, sample)
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
@@ -293,7 +294,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 
 		log := log.With("test", t.Name())
 
-		key := newTestAccountKey()
+		key := newTestPartitionKey()
 		sample := telemetry.Sample{
 			Timestamp: time.Now(),
 			RTT:       20 * time.Microsecond,
@@ -308,7 +309,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := telemetry.NewAccountsBuffer()
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		buffer.Add(key, sample)
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -342,14 +343,14 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		log := log.With("test", t.Name())
 
 		pastEpoch := uint64(90)
-		key := telemetry.AccountKey{
+		key := telemetry.PartitionKey{
 			OriginDevicePK: solana.NewWallet().PublicKey(),
 			TargetDevicePK: solana.NewWallet().PublicKey(),
 			LinkPK:         solana.NewWallet().PublicKey(),
 			Epoch:          pastEpoch,
 		}
 
-		buffer := telemetry.NewAccountsBuffer()
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		buffer.Add(key, telemetry.Sample{}) // Add a sample just to register the key
 		_ = buffer.CopyAndReset(key)        // Now make it empty
 
@@ -385,14 +386,14 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		log := log.With("test", t.Name())
 
 		currentEpoch := uint64(100)
-		key := telemetry.AccountKey{
+		key := telemetry.PartitionKey{
 			OriginDevicePK: solana.NewWallet().PublicKey(),
 			TargetDevicePK: solana.NewWallet().PublicKey(),
 			LinkPK:         solana.NewWallet().PublicKey(),
 			Epoch:          currentEpoch,
 		}
 
-		buffer := telemetry.NewAccountsBuffer()
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		buffer.Add(key, telemetry.Sample{})
 		_ = buffer.CopyAndReset(key)
 
@@ -436,16 +437,8 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			},
 		}
 
-		key := newTestAccountKey()
-		buffer := telemetry.NewAccountsBuffer()
-
-		for i := range totalSamples {
-			buffer.Add(key, telemetry.Sample{
-				Timestamp: time.Now(),
-				RTT:       time.Duration(i+1) * time.Microsecond,
-				Loss:      false,
-			})
-		}
+		key := newTestPartitionKey()
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
 			Interval:      time.Hour,
@@ -459,16 +452,43 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		submitter.Tick(context.Background())
+		// Add samples concurrently to avoid blocking.
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range totalSamples {
+				buffer.Add(key, telemetry.Sample{
+					Timestamp: time.Now(),
+					RTT:       time.Duration(i+1) * time.Microsecond,
+				})
+			}
+		}()
+
+		// Keep ticking until producer finishes.
+		for !waitTimeout(&wg, 10*time.Millisecond) {
+			submitter.Tick(t.Context())
+		}
+
+		// Final drain to catch remaining.
+		submitter.Tick(t.Context())
+
+		// Wait for producer to finish.
+		wg.Wait()
 
 		mu.Lock()
 		defer mu.Unlock()
 
-		require.Equal(t, 23, calls, "expected 23 submission calls for 5500 samples with max 245 per call")
-		for i := range 22 {
-			assert.Equal(t, sdktelemetry.MaxSamplesPerBatch, samplesPerCall[i])
+		require.Equal(t, 27, calls, "expected 27 submission calls for 5500 samples")
+		for i := range 27 {
+			if i == 26 {
+				assert.Equal(t, 135, samplesPerCall[i])
+			} else if i%5 == 4 {
+				assert.Equal(t, 44, samplesPerCall[i])
+			} else {
+				assert.Equal(t, sdktelemetry.MaxSamplesPerBatch, samplesPerCall[i])
+			}
 		}
-		assert.Equal(t, 110, samplesPerCall[22], "last call should contain 110 samples")
 	})
 
 	t.Run("negative_rtts_are_submitted_as_one", func(t *testing.T) {
@@ -476,7 +496,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 
 		log := log.With("test", t.Name())
 
-		key := newTestAccountKey()
+		key := newTestPartitionKey()
 		now := time.Now()
 
 		sample := telemetry.Sample{
@@ -493,7 +513,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := telemetry.NewAccountsBuffer()
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		buffer.Add(key, sample)
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
@@ -519,8 +539,8 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 
 		log := log.With("test", t.Name())
 
-		key := newTestAccountKey()
-		buffer := telemetry.NewAccountsBuffer()
+		key := newTestPartitionKey()
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		buffer.Add(key, newTestSample())
 		_ = buffer.CopyAndReset(key) // trigger empty buffer path
 
@@ -555,8 +575,8 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 
 		log := log.With("test", t.Name())
 
-		key := newTestAccountKey()
-		buffer := telemetry.NewAccountsBuffer()
+		key := newTestPartitionKey()
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		buffer.Add(key, newTestSample())
 		_ = buffer.CopyAndReset(key) // trigger empty buffer path
 
@@ -592,7 +612,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 
 		log := log.With("test", t.Name())
 
-		key := newTestAccountKey()
+		key := newTestPartitionKey()
 		sample := telemetry.Sample{
 			Timestamp: time.Now(),
 			RTT:       30 * time.Microsecond,
@@ -606,7 +626,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := telemetry.NewAccountsBuffer()
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		buffer.Add(key, sample)
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
@@ -632,7 +652,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 
 		log := log.With("test", t.Name())
 
-		key := newTestAccountKey()
+		key := newTestPartitionKey()
 		sample := telemetry.Sample{
 			Timestamp: time.Now(),
 			RTT:       40 * time.Microsecond,
@@ -653,7 +673,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			},
 		}
 
-		buffer := telemetry.NewAccountsBuffer()
+		buffer := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
 		buffer.Add(key, sample)
 
 		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
@@ -676,4 +696,18 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		assert.Equal(t, int32(2), atomic.LoadInt32(&writeCalled), "should try write twice (before and after init)")
 	})
 
+}
+
+func waitTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {
+	c := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(c)
+	}()
+	select {
+	case <-c:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
 }

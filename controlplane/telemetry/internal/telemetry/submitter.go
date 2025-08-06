@@ -11,12 +11,13 @@ import (
 	"github.com/cenkalti/backoff/v5"
 	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/metrics"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/buffer"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 )
 
 type SubmitterConfig struct {
 	Interval           time.Duration
-	Buffer             *AccountsBuffer
+	Buffer             buffer.PartitionedBuffer[PartitionKey, Sample]
 	MetricsPublisherPK solana.PublicKey
 	ProbeInterval      time.Duration
 	ProgramClient      TelemetryProgramClient
@@ -64,8 +65,8 @@ func (s *Submitter) Run(ctx context.Context) error {
 	}
 }
 
-func (s *Submitter) SubmitSamples(ctx context.Context, accountKey AccountKey, samples []Sample) error {
-	log := s.log.With("account", accountKey)
+func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey, samples []Sample) error {
+	log := s.log.With("partition", partitionKey)
 
 	if len(samples) == 0 {
 		log.Debug("No samples to submit, skipping")
@@ -98,10 +99,10 @@ func (s *Submitter) SubmitSamples(ctx context.Context, accountKey AccountKey, sa
 
 		writeConfig := telemetry.WriteDeviceLatencySamplesInstructionConfig{
 			AgentPK:                    s.cfg.MetricsPublisherPK,
-			OriginDevicePK:             accountKey.OriginDevicePK,
-			TargetDevicePK:             accountKey.TargetDevicePK,
-			LinkPK:                     accountKey.LinkPK,
-			Epoch:                      &accountKey.Epoch,
+			OriginDevicePK:             partitionKey.OriginDevicePK,
+			TargetDevicePK:             partitionKey.TargetDevicePK,
+			LinkPK:                     partitionKey.LinkPK,
+			Epoch:                      &partitionKey.Epoch,
 			StartTimestampMicroseconds: uint64(minTimestamp.UnixMicro()),
 			Samples:                    rtts,
 		}
@@ -112,10 +113,10 @@ func (s *Submitter) SubmitSamples(ctx context.Context, accountKey AccountKey, sa
 				log.Debug("Account not found, initializing")
 				_, _, err = s.cfg.ProgramClient.InitializeDeviceLatencySamples(ctx, telemetry.InitializeDeviceLatencySamplesInstructionConfig{
 					AgentPK:                      s.cfg.MetricsPublisherPK,
-					OriginDevicePK:               accountKey.OriginDevicePK,
-					TargetDevicePK:               accountKey.TargetDevicePK,
-					LinkPK:                       accountKey.LinkPK,
-					Epoch:                        &accountKey.Epoch,
+					OriginDevicePK:               partitionKey.OriginDevicePK,
+					TargetDevicePK:               partitionKey.TargetDevicePK,
+					LinkPK:                       partitionKey.LinkPK,
+					Epoch:                        &partitionKey.Epoch,
 					SamplingIntervalMicroseconds: uint64(s.cfg.ProbeInterval.Microseconds()),
 				})
 				if err != nil {
@@ -126,7 +127,7 @@ func (s *Submitter) SubmitSamples(ctx context.Context, accountKey AccountKey, sa
 				if err != nil {
 					if errors.Is(err, telemetry.ErrSamplesAccountFull) {
 						log.Debug("Partition account is full, dropping samples from buffer and moving on", "droppedSamples", len(samples))
-						s.cfg.Buffer.Remove(accountKey)
+						s.cfg.Buffer.Remove(partitionKey)
 						return nil
 					}
 					metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterFailedToWriteSamples).Inc()
@@ -134,7 +135,7 @@ func (s *Submitter) SubmitSamples(ctx context.Context, accountKey AccountKey, sa
 				}
 			} else if errors.Is(err, telemetry.ErrSamplesAccountFull) {
 				log.Debug("Partition account is full, dropping samples from buffer and moving on", "droppedSamples", len(samples))
-				s.cfg.Buffer.Remove(accountKey)
+				s.cfg.Buffer.Remove(partitionKey)
 				return nil
 			} else {
 				metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterFailedToWriteSamples).Inc()
@@ -154,16 +155,16 @@ func (s *Submitter) Tick(ctx context.Context) {
 		maxAttempts = 5
 	}
 
-	for accountKey := range s.cfg.Buffer.FlushWithoutReset() {
-		tmp := s.cfg.Buffer.CopyAndReset(accountKey)
+	for partitionKey := range s.cfg.Buffer.FlushWithoutReset() {
+		tmp := s.cfg.Buffer.CopyAndReset(partitionKey)
 
-		log := s.log.With("account", accountKey)
+		log := s.log.With("partition", partitionKey)
 
 		log.Debug("Submitting samples", "count", len(tmp))
 
 		if len(tmp) == 0 {
 			log.Debug("No samples to submit, skipping")
-			s.cfg.Buffer.Recycle(accountKey, tmp)
+			s.cfg.Buffer.Recycle(partitionKey, tmp)
 
 			// If the account is for a past epoch, remove it.
 			epoch, err := s.getCurrentEpoch(ctx)
@@ -171,8 +172,8 @@ func (s *Submitter) Tick(ctx context.Context) {
 				log.Error("failed to get current epoch", "error", err)
 				continue
 			}
-			if accountKey.Epoch < epoch {
-				s.cfg.Buffer.Remove(accountKey)
+			if partitionKey.Epoch < epoch {
+				s.cfg.Buffer.Remove(partitionKey)
 				log.Debug("Removed account key")
 			}
 			continue
@@ -180,7 +181,7 @@ func (s *Submitter) Tick(ctx context.Context) {
 
 		success := false
 		for attempt := 1; attempt <= maxAttempts; attempt++ {
-			err := s.SubmitSamples(ctx, accountKey, tmp)
+			err := s.SubmitSamples(ctx, partitionKey, tmp)
 			if err == nil {
 				log.Debug("Submitted samples", "count", len(tmp), "attempt", attempt)
 				success = true
@@ -214,12 +215,12 @@ func (s *Submitter) Tick(ctx context.Context) {
 
 		if !success {
 			for _, sample := range tmp {
-				s.cfg.Buffer.Add(accountKey, sample)
+				s.cfg.Buffer.Add(partitionKey, sample)
 			}
 		}
 
 		// Always recycle the slice for reuse
-		s.cfg.Buffer.Recycle(accountKey, tmp)
+		s.cfg.Buffer.Recycle(partitionKey, tmp)
 	}
 }
 

@@ -7,7 +7,7 @@ cargo build
 ./target/debug/doublezero-admin init
 
 ### Config
-./target/debug/doublezero-admin global-config set --local-asn 65100 --remote-asn 65001 --device-tunnel-block 172.16.0.0/16 --user-tunnel-block 169.254.0.0/16
+./target/debug/doublezero-admin global-config set --local-asn 65100 --remote-asn 65001 --link-wan-block 172.16.0.0/16 --link-dzx-block 172.32.0.0/16 --user-tunnel-block 169.254.0.0/16
 
 ### Locations
 ./target/debug/doublezero-admin location create --code la --name "Los Angeles" --country US --lat 34.049641274076464 --lng -118.25939642499903

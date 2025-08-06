@@ -46,7 +46,7 @@ solana logs >./logs/instruction.log 2>&1 &
 ./target/doublezero init
 
 ### Configure global setting
-./target/doublezero global-config set --local-asn 65100 --remote-asn 65001 --device-tunnel-block 172.16.0.0/16 --user-tunnel-block 169.254.0.0/16 --multicastgroup-block 223.0.0.0/4
+./target/doublezero global-config set --local-asn 65100 --remote-asn 65001 --link-wan-block 172.16.0.0/16 --link-dzx-block 172.32.0.0/16 --user-tunnel-block 169.254.0.0/16 --multicastgroup-block 223.0.0.0/4
 
 # Build the activator
 echo "Start the activator"

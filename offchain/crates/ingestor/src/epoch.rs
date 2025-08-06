@@ -20,26 +20,10 @@ pub const SLOT_DURATION_US: u64 = 400_000;
 
 /// Calculate the epoch for a given slot using the epoch schedule
 ///
-/// This handles both normal epochs and the warmup period where epochs
-/// double in size until reaching the normal epoch length.
+/// This handles normal epochs & ignores warmup period (that's relevant only in genesis)
 pub fn calculate_epoch_from_slot(slot: u64, schedule: &EpochSchedule) -> u64 {
-    if !schedule.warmup || slot >= schedule.first_normal_slot {
-        // Normal epoch calculation
-        (slot - schedule.first_normal_slot) / schedule.slots_per_epoch + schedule.first_normal_epoch
-    } else {
-        // Handle warmup period where epochs double in size
-        let mut epoch = 0u64;
-        let mut slots_in_epoch =
-            schedule.slots_per_epoch / (1 << (schedule.first_normal_epoch - 1));
-        let mut current_slot = 0u64;
-
-        while current_slot + slots_in_epoch <= slot {
-            current_slot += slots_in_epoch;
-            epoch += 1;
-            slots_in_epoch *= 2;
-        }
-        epoch
-    }
+    // Normal epoch calculation
+    ((slot - schedule.first_normal_slot) / schedule.slots_per_epoch) + schedule.first_normal_epoch
 }
 
 /// Estimate the slot at a given timestamp based on current slot and time
@@ -148,32 +132,6 @@ mod tests {
         assert_eq!(calculate_epoch_from_slot(432000, &schedule), 1);
         assert_eq!(calculate_epoch_from_slot(864000, &schedule), 2);
         assert_eq!(calculate_epoch_from_slot(431999, &schedule), 0);
-    }
-
-    #[test]
-    fn test_calculate_epoch_from_slot_with_warmup() {
-        let schedule = EpochSchedule {
-            slots_per_epoch: 432000,
-            leader_schedule_slot_offset: 432000,
-            warmup: true,
-            first_normal_epoch: 4,
-            // Sum of warmup epochs: 54000 + 108000 + 216000 + 432000
-            first_normal_slot: 810000,
-        };
-
-        // Warmup period tests
-        assert_eq!(calculate_epoch_from_slot(0, &schedule), 0);
-        assert_eq!(calculate_epoch_from_slot(53999, &schedule), 0);
-        assert_eq!(calculate_epoch_from_slot(54000, &schedule), 1);
-        assert_eq!(calculate_epoch_from_slot(161999, &schedule), 1);
-        assert_eq!(calculate_epoch_from_slot(162000, &schedule), 2);
-        assert_eq!(calculate_epoch_from_slot(377999, &schedule), 2);
-        assert_eq!(calculate_epoch_from_slot(378000, &schedule), 3);
-        assert_eq!(calculate_epoch_from_slot(809999, &schedule), 3);
-
-        // Normal epochs after warmup
-        assert_eq!(calculate_epoch_from_slot(810000, &schedule), 4);
-        assert_eq!(calculate_epoch_from_slot(1242000, &schedule), 5);
     }
 
     #[test]

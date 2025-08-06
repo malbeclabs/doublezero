@@ -1,16 +1,11 @@
-use crate::{fetcher::Fetcher, types::FetchData};
+use crate::{epoch::EpochFinder, fetcher::Fetcher, types::FetchData};
 use anyhow::{Result, anyhow, bail};
-use backon::{ExponentialBuilder, Retryable};
-use chrono::Utc;
 use doublezero_serviceability::state::user::User as DZUser;
 use network_shapley::types::{Demand, Demands};
 use rayon::prelude::*;
-use solana_client::{
-    client_error::ClientError as SolanaClientError, nonblocking::rpc_client::RpcClient,
-};
 use solana_sdk::system_program::ID as SystemProgramID;
-use std::{collections::HashMap, time::Duration};
-use tracing::{debug, info};
+use std::collections::HashMap;
+use tracing::info;
 
 /// Statistics for validators in a city
 #[derive(Debug, Clone)]
@@ -43,21 +38,19 @@ pub async fn build(fetcher: &Fetcher, fetch_data: &FetchData) -> Result<Demands>
     let timestamp_us = first_sample.start_timestamp_us;
     assert_ne!(0, timestamp_us, "First sample timestamp is 0!");
 
+    // Create an EpochFinder to handle epoch calculations
+    let mut epoch_finder = EpochFinder::new(&fetcher.solana_client);
+
     // Find the corresponding Solana epoch for this timestamp
-    let solana_epoch = find_solana_epoch_at_timestamp(&fetcher.solana_client, timestamp_us).await?;
+    let solana_epoch = epoch_finder.find_epoch_at_timestamp(timestamp_us).await?;
 
     info!(
         "DZ epoch {} corresponds to Solana epoch {} (based on timestamp {})",
         dz_epoch, solana_epoch, timestamp_us
     );
 
-    // Get epoch schedule
-    let epoch_schedule = (|| async { fetcher.solana_client.get_epoch_schedule().await })
-        .retry(&ExponentialBuilder::default().with_jitter())
-        .notify(|err: &SolanaClientError, dur: Duration| {
-            info!("retrying error: {:?} with sleeping {:?}", err, dur)
-        })
-        .await?;
+    // Get epoch schedule (reusing the cached one from EpochFinder)
+    let epoch_schedule = epoch_finder.get_schedule().await?;
 
     // Get the first slot of the Solana epoch
     let first_slot_of_epoch = epoch_schedule.get_first_slot_in_epoch(solana_epoch);
@@ -191,71 +184,4 @@ pub fn generate(city_stats: &HashMap<String, CityStat>) -> Demands {
                 .collect::<Vec<_>>()
         })
         .collect()
-}
-
-/// Find the Solana epoch that was active at a given timestamp
-async fn find_solana_epoch_at_timestamp(client: &RpcClient, timestamp_us: u64) -> Result<u64> {
-    // Approximate slot duration in microseconds (400ms)
-    // TODO: put in consts.rs
-    const SLOT_DURATION_US: u64 = 400_000;
-
-    // Get current slot and convert timestamp to slot estimate
-    let current_slot = (|| async { client.get_slot().await })
-        .retry(&ExponentialBuilder::default().with_jitter())
-        .notify(|err: &SolanaClientError, dur: Duration| {
-            info!("retrying get_slot error: {:?} with sleeping {:?}", err, dur)
-        })
-        .await?;
-
-    let current_time_us = Utc::now().timestamp_micros() as u64;
-
-    if timestamp_us > current_time_us {
-        bail!("Timestamp {} is in the future", timestamp_us);
-    }
-
-    // Calculate approximate slot at the given timestamp
-    let time_diff_us = current_time_us - timestamp_us;
-    let slots_ago = time_diff_us / SLOT_DURATION_US;
-
-    if slots_ago > current_slot {
-        bail!("Timestamp {} is too far in the past", timestamp_us);
-    }
-
-    let target_slot = current_slot - slots_ago;
-
-    // Get epoch schedule to calculate epoch from slot
-    let epoch_schedule = (|| async { client.get_epoch_schedule().await })
-        .retry(&ExponentialBuilder::default().with_jitter())
-        .notify(|err: &SolanaClientError, dur: Duration| {
-            info!(
-                "retrying get_epoch_schedule error: {:?} with sleeping {:?}",
-                err, dur
-            )
-        })
-        .await?;
-
-    // Calculate epoch from slot using the schedule
-    let epoch = if !epoch_schedule.warmup || target_slot >= epoch_schedule.first_normal_slot {
-        (target_slot - epoch_schedule.first_normal_slot) / epoch_schedule.slots_per_epoch
-            + epoch_schedule.first_normal_epoch
-    } else {
-        // Handle warmup period
-        let mut epoch = 0u64;
-        let mut slots_in_epoch =
-            epoch_schedule.slots_per_epoch / (1 << (epoch_schedule.first_normal_epoch - 1));
-        let mut current_slot = 0u64;
-
-        while current_slot + slots_in_epoch <= target_slot {
-            current_slot += slots_in_epoch;
-            epoch += 1;
-            slots_in_epoch *= 2;
-        }
-        epoch
-    };
-
-    debug!(
-        "Mapped timestamp {} to Solana epoch {}",
-        timestamp_us, epoch
-    );
-    Ok(epoch)
 }

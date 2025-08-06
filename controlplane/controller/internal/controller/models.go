@@ -16,7 +16,7 @@ type Device struct {
 	PubKey                string
 	PublicIP              net.IP
 	Vpn4vLoopbackIP       net.IP
-	Ip4vLoopbackIP        net.IP
+	Ipv4LoopbackIP        net.IP
 	Tunnels               []*Tunnel
 	TunnelSlots           int
 	Interfaces            []serviceability.Interface

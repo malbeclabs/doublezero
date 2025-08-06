@@ -365,7 +365,7 @@ func TestRenderConfig(t *testing.T) {
 				Device: &Device{
 					PublicIP:        net.IP{7, 7, 7, 7},
 					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
-					Ip4vLoopbackIP:  net.IP{13, 13, 13, 13},
+					Ipv4LoopbackIP:  net.IP{13, 13, 13, 13},
 					Interfaces: []serviceability.Interface{
 						{
 							Version:        serviceability.CurrentInterfaceVersion,

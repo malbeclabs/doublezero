@@ -86,7 +86,7 @@ interface Tunnel{{ .Id }}
 router bgp 65342
    router-id {{ .Device.Vpn4vLoopbackIP }}
    {{- range .Ipv4BgpPeers }}
-   {{- if ne .PeerIP.String $.Device.Ip4vLoopbackIP.String }}
+   {{- if ne .PeerIP.String $.Device.Ipv4LoopbackIP.String }}
    no neighbor {{ .PeerIP }}
    neighbor {{ .PeerIP }} remote-as 65342
    neighbor {{ .PeerIP }} next-hop-self
@@ -124,7 +124,7 @@ router bgp 65342
    {{- end }}
    {{- end }}
    {{- range .Ipv4BgpPeers }}
-   {{- if ne .PeerIP.String $.Device.Ip4vLoopbackIP.String }}
+   {{- if ne .PeerIP.String $.Device.Ipv4LoopbackIP.String }}
       neighbor {{ .PeerIP }} activate
    {{- end }}
    {{- end }}
@@ -235,7 +235,7 @@ ip access-list SEC-USER-SUB-MCAST-IN
 no router msdp
 router msdp
    {{- range .Ipv4BgpPeers }}
-   {{- if ne .PeerIP.String $.Device.Ip4vLoopbackIP.String }}
+   {{- if ne .PeerIP.String $.Device.Ipv4LoopbackIP.String }}
    peer {{ .PeerIP }}
       mesh-group DZ-1
       local-interface {{ $.Device.Ip4vLoopbackIntfName }}

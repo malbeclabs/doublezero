@@ -356,7 +356,7 @@ func TestGetConfig(t *testing.T) {
 					"abc123": {
 						PublicIP:              net.IP{7, 7, 7, 7},
 						Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
-						Ip4vLoopbackIP:        net.IP{13, 13, 13, 13},
+						Ipv4LoopbackIP:        net.IP{13, 13, 13, 13},
 						Vpn4vLoopbackIntfName: "Loopback255",
 						Ip4vLoopbackIntfName:  "Loopback256",
 						Tunnels:               []*Tunnel{},
@@ -539,7 +539,7 @@ func TestStateCache(t *testing.T) {
 						PubKey:          "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
 						PublicIP:        net.IP{2, 2, 2, 2},
 						Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
-						Ip4vLoopbackIP:  net.IP{12, 12, 12, 12},
+						Ipv4LoopbackIP:  net.IP{12, 12, 12, 12},
 						Tunnels: []*Tunnel{
 							{
 								Id:            500,
@@ -848,6 +848,12 @@ func TestEndToEnd(t *testing.T) {
 							IpNet:         [5]uint8{14, 14, 14, 14, 32},
 							Name:          "Loopback255",
 						},
+						{
+							InterfaceType: serviceability.InterfaceTypeLoopback,
+							LoopbackType:  serviceability.LoopbackTypeIpv4,
+							IpNet:         [5]uint8{12, 12, 12, 12, 32},
+							Name:          "Loopback256",
+						},
 					},
 					Status: serviceability.DeviceStatusActivated,
 					Code:   "abc01",
@@ -919,6 +925,12 @@ func TestEndToEnd(t *testing.T) {
 							IpNet:         [5]uint8{14, 14, 14, 14, 32},
 							Name:          "Loopback255",
 						},
+						{
+							InterfaceType: serviceability.InterfaceTypeLoopback,
+							LoopbackType:  serviceability.LoopbackTypeIpv4,
+							IpNet:         [5]uint8{12, 12, 12, 12, 32},
+							Name:          "Loopback256",
+						},
 					},
 					Status: serviceability.DeviceStatusActivated,
 					Code:   "abc01",
@@ -959,6 +971,12 @@ func TestEndToEnd(t *testing.T) {
 							LoopbackType:  serviceability.LoopbackTypeVpnv4,
 							IpNet:         [5]uint8{14, 14, 14, 14, 32},
 							Name:          "Loopback255",
+						},
+						{
+							InterfaceType: serviceability.InterfaceTypeLoopback,
+							LoopbackType:  serviceability.LoopbackTypeIpv4,
+							IpNet:         [5]uint8{12, 12, 12, 12, 32},
+							Name:          "Loopback256",
 						},
 					},
 					Status: serviceability.DeviceStatusActivated,

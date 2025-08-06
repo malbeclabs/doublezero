@@ -3698,6 +3698,7 @@ dependencies = [
  "csv",
  "doublezero-serviceability",
  "doublezero-telemetry",
+ "doublezero_sdk",
  "figment",
  "ingestor",
  "network-shapley",

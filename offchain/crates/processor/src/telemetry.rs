@@ -1,6 +1,8 @@
 use crate::{process::process_device_samples, util::display_us_as_ms};
 use anyhow::Result;
+use doublezero_sdk::serializer;
 use ingestor::types::FetchData;
+use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::collections::HashMap;
 use tabled::{Table, Tabled, settings::Style};
@@ -9,14 +11,17 @@ use tracing::debug;
 // Key: link_pk
 pub type DZDTelemetryStatMap = HashMap<String, DZDTelemetryStats>;
 
-#[derive(Debug, Clone, Tabled)]
+#[derive(Debug, Clone, Tabled, Serialize)]
 pub struct DZDTelemetryStats {
     pub circuit: String,
     #[tabled(skip)]
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub link_pubkey: Pubkey,
     #[tabled(skip)]
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub origin_device: Pubkey,
     #[tabled(skip)]
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub target_device: Pubkey,
     #[tabled(display = "display_us_as_ms", rename = "rtt_mean(ms)")]
     pub rtt_mean_us: f64,

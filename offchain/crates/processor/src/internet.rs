@@ -1,6 +1,8 @@
 use crate::{process::process_internet_samples, util::display_us_as_ms};
 use anyhow::Result;
+use doublezero_sdk::serializer;
 use ingestor::types::{DZInternetLatencySamples, FetchData};
+use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::collections::HashMap;
 use tabled::{Table, Tabled, settings::Style};
@@ -9,16 +11,23 @@ use tracing::{debug, warn};
 // Key format: "{origin_code} → {target_code} ({data_provider})"
 pub type InternetTelemetryStatMap = HashMap<String, InternetTelemetryStats>;
 
-#[derive(Debug, Clone, Tabled)]
+#[derive(Debug, Clone, Tabled, Serialize)]
 pub struct InternetTelemetryStats {
     pub circuit: String,
     #[tabled(skip)]
+    pub origin_code: String,
+    #[tabled(skip)]
+    pub target_code: String,
+    #[tabled(skip)]
     pub data_provider_name: String,
     #[tabled(skip)]
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub oracle_agent_pk: Pubkey,
     #[tabled(skip)]
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub origin_location_pk: Pubkey,
     #[tabled(skip)]
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub target_location_pk: Pubkey,
     #[tabled(display = "display_us_as_ms", rename = "rtt_mean(ms)")]
     pub rtt_mean_us: f64,
@@ -127,7 +136,9 @@ impl InternetTelemetryProcessor {
 
                 let internet_stats = InternetTelemetryStats {
                     circuit: format!("{origin_code} → {target_code} ({data_provider_name})"),
-                    data_provider_name: data_provider_name.clone(),
+                    origin_code: origin_code.to_string(),
+                    target_code: target_code.to_string(),
+                    data_provider_name: data_provider_name.to_string(),
                     oracle_agent_pk,
                     origin_location_pk: origin_pk,
                     target_location_pk: target_pk,

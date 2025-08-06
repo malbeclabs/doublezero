@@ -1,5 +1,27 @@
-use network_shapley::types::{Demand, PrivateLink};
+use network_shapley::types::{Demand, PrivateLink, PublicLink};
 use tabled::{builder::Builder as TableBuilder, settings::Style};
+
+pub fn print_public_links(public_links: &[PublicLink]) -> String {
+    let mut printable = vec![vec![
+        "city1".to_string(),
+        "city2".to_string(),
+        "latency(ms)".to_string(),
+    ]];
+
+    for link in public_links {
+        let row = vec![
+            link.city1.to_string(),
+            link.city2.to_string(),
+            link.latency.to_string(),
+        ];
+        printable.push(row);
+    }
+
+    TableBuilder::from(printable)
+        .build()
+        .with(Style::psql().remove_horizontals())
+        .to_string()
+}
 
 pub fn print_private_links(private_links: &[PrivateLink]) -> String {
     let mut printable = vec![vec![

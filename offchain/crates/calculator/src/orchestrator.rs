@@ -1,6 +1,6 @@
 use crate::{
-    shapley_handler::{build_demands, build_private_links},
-    util::{print_demands, print_private_links},
+    shapley_handler::{build_demands, build_private_links, build_public_links},
+    util::{print_demands, print_private_links, print_public_links},
 };
 use anyhow::Result;
 use ingestor::fetcher::Fetcher;
@@ -9,7 +9,7 @@ use processor::{
     telemetry::{DZDTelemetryProcessor, print_telemetry_stats},
 };
 use std::path::Path;
-use tracing::{debug, info};
+use tracing::info;
 
 #[derive(Debug)]
 pub struct Orchestrator;
@@ -25,11 +25,6 @@ impl Orchestrator {
             None => fetcher.fetch().await?,
             Some(epoch_num) => fetcher.with_epoch(epoch_num).await?,
         };
-
-        debug!(
-            "internet:\n{:?}",
-            serde_json::to_string(&fetch_data.dz_internet).unwrap()
-        );
 
         // At this point FetchData should contain everything necessary
         // to transform and build shapley inputs
@@ -48,7 +43,7 @@ impl Orchestrator {
             print_internet_stats(&internet_stat_map)
         );
 
-        // TODO: Record this stat_map using doublezero-recorder (or whatever that is called)
+        // TODO: Record statistics using doublezero-record program
 
         // Build pvt links
         let pvt_links = build_private_links(&fetch_data, &stat_map);
@@ -60,6 +55,10 @@ impl Orchestrator {
             "Generated Demands: \n{}",
             print_demands(&demands, 1_000_000)
         );
+
+        // Build public links
+        let pub_links = build_public_links(&fetch_data, &internet_stat_map)?;
+        info!("Public Links:\n{}", print_public_links(&pub_links));
 
         Ok(())
     }

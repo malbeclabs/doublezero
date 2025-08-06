@@ -17,6 +17,7 @@ csv.workspace = true
 ingestor = { path = "../ingestor" }
 doublezero-serviceability.workspace = true
 doublezero-telemetry.workspace = true
+doublezero_sdk.workspace = true
 figment.workspace = true
 rand.workspace = true
 rust_decimal.workspace = true

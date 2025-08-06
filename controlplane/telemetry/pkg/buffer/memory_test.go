@@ -12,7 +12,7 @@ func TestInternetLatency_Buffer_PartitionBuffer(t *testing.T) {
 
 	t.Run("Add and Read returns expected sample", func(t *testing.T) {
 		t.Parallel()
-		buf := buffer.NewMemoryPartitionBuffer[testRecord](10)
+		buf := buffer.NewMemoryBuffer[testRecord](10)
 		s := testRecord{value: "test"}
 		buf.Add(s)
 
@@ -23,7 +23,7 @@ func TestInternetLatency_Buffer_PartitionBuffer(t *testing.T) {
 
 	t.Run("Read returns copy not shared with buffer", func(t *testing.T) {
 		t.Parallel()
-		buf := buffer.NewMemoryPartitionBuffer[testRecord](10)
+		buf := buffer.NewMemoryBuffer[testRecord](10)
 		buf.Add(testRecord{value: "test"})
 
 		copy1 := buf.Read()
@@ -34,7 +34,7 @@ func TestInternetLatency_Buffer_PartitionBuffer(t *testing.T) {
 	})
 
 	t.Run("CopyAndReset clears buffer and returns full copy", func(t *testing.T) {
-		buf := buffer.NewMemoryPartitionBuffer[testRecord](10)
+		buf := buffer.NewMemoryBuffer[testRecord](10)
 		buf.Add(testRecord{value: "test"})
 		out := buf.CopyAndReset()
 
@@ -43,7 +43,7 @@ func TestInternetLatency_Buffer_PartitionBuffer(t *testing.T) {
 	})
 
 	t.Run("FlushWithoutReset returns non-mutating copy", func(t *testing.T) {
-		buf := buffer.NewMemoryPartitionBuffer[testRecord](10)
+		buf := buffer.NewMemoryBuffer[testRecord](10)
 		buf.Add(testRecord{value: "test"})
 		out := buf.FlushWithoutReset()
 

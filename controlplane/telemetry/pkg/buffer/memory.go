@@ -6,13 +6,13 @@ import (
 
 type MemoryPartitionedBuffer[K PartitionKey, R Record] struct {
 	mu                      sync.RWMutex
-	partitions              map[K]*MemoryPartitionBuffer[R]
+	partitions              map[K]*MemoryBuffer[R]
 	partitionBufferCapacity int
 }
 
 func NewMemoryPartitionedBuffer[K PartitionKey, R Record](partitionBufferCapacity int) *MemoryPartitionedBuffer[K, R] {
 	return &MemoryPartitionedBuffer[K, R]{
-		partitions:              make(map[K]*MemoryPartitionBuffer[R]),
+		partitions:              make(map[K]*MemoryBuffer[R]),
 		partitionBufferCapacity: partitionBufferCapacity,
 	}
 }
@@ -25,7 +25,7 @@ func (b *MemoryPartitionedBuffer[K, R]) Add(key K, record R) uint64 {
 	if !ok {
 		b.mu.Lock()
 		if pb, ok = b.partitions[key]; !ok {
-			pb = NewMemoryPartitionBuffer[R](b.partitionBufferCapacity)
+			pb = NewMemoryBuffer[R](b.partitionBufferCapacity)
 			b.partitions[key] = pb
 		}
 		b.mu.Unlock()
@@ -94,7 +94,7 @@ func (b *MemoryPartitionedBuffer[K, R]) Read(key K) []R {
 // PartitionBuffer provides a thread-safe buffer for storing internet latency samples.
 // It supports concurrent appends and atomic flushing, as well as a maximum capacity
 // with backpressure to avoid having too many records in the buffer at once.
-type MemoryPartitionBuffer[R Record] struct {
+type MemoryBuffer[R Record] struct {
 	mu          sync.Mutex
 	pool        sync.Pool
 	records     []R
@@ -102,8 +102,8 @@ type MemoryPartitionBuffer[R Record] struct {
 	cond        *sync.Cond
 }
 
-func NewMemoryPartitionBuffer[R Record](capacity int) *MemoryPartitionBuffer[R] {
-	pb := &MemoryPartitionBuffer[R]{
+func NewMemoryBuffer[R Record](capacity int) *MemoryBuffer[R] {
+	pb := &MemoryBuffer[R]{
 		records: make([]R, 0, capacity),
 		pool: sync.Pool{
 			New: func() any {
@@ -116,7 +116,7 @@ func NewMemoryPartitionBuffer[R Record](capacity int) *MemoryPartitionBuffer[R] 
 	return pb
 }
 
-func (b *MemoryPartitionBuffer[R]) Add(record R) {
+func (b *MemoryBuffer[R]) Add(record R) {
 	b.mu.Lock()
 	for len(b.records) >= b.maxCapacity {
 		b.cond.Wait()
@@ -125,7 +125,7 @@ func (b *MemoryPartitionBuffer[R]) Add(record R) {
 	b.mu.Unlock()
 }
 
-func (b *MemoryPartitionBuffer[R]) TryAdd(record R) bool {
+func (b *MemoryBuffer[R]) TryAdd(record R) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if len(b.records) >= b.maxCapacity {
@@ -135,7 +135,7 @@ func (b *MemoryPartitionBuffer[R]) TryAdd(record R) bool {
 	return true
 }
 
-func (b *MemoryPartitionBuffer[R]) CopyAndReset() []R {
+func (b *MemoryBuffer[R]) CopyAndReset() []R {
 	tmp := b.pool.Get().([]R)
 	tmp = tmp[:0] // reuse capacity
 
@@ -148,13 +148,13 @@ func (b *MemoryPartitionBuffer[R]) CopyAndReset() []R {
 	return tmp
 }
 
-func (b *MemoryPartitionBuffer[R]) Len() int {
+func (b *MemoryBuffer[R]) Len() int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return len(b.records)
 }
 
-func (b *MemoryPartitionBuffer[R]) FlushWithoutReset() []R {
+func (b *MemoryBuffer[R]) FlushWithoutReset() []R {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	tmp := make([]R, len(b.records))
@@ -162,13 +162,13 @@ func (b *MemoryPartitionBuffer[R]) FlushWithoutReset() []R {
 	return tmp
 }
 
-func (b *MemoryPartitionBuffer[R]) Recycle(buf []R) {
+func (b *MemoryBuffer[R]) Recycle(buf []R) {
 	// Reset the slice length before returning it to the pool to ensure that future users see an
 	// empty slice, even though the underlying capacity is preserved for reuse.
 	b.pool.Put(buf[:0])
 }
 
-func (b *MemoryPartitionBuffer[R]) Read() []R {
+func (b *MemoryBuffer[R]) Read() []R {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 

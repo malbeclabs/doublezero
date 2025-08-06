@@ -57,7 +57,7 @@ impl Orchestrator {
         );
 
         // Build public links
-        let pub_links = build_public_links(&fetch_data, &internet_stat_map)?;
+        let pub_links = build_public_links(&internet_stat_map)?;
         info!("Public Links:\n{}", print_public_links(&pub_links));
 
         Ok(())

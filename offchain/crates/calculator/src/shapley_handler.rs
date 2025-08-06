@@ -16,10 +16,7 @@ pub async fn build_demands(fetcher: &Fetcher, fetch_data: &FetchData) -> Result<
     demand::build(fetcher, fetch_data).await
 }
 
-pub fn build_public_links(
-    _fetch_data: &FetchData,
-    internet_stats: &InternetTelemetryStatMap,
-) -> Result<PublicLinks> {
+pub fn build_public_links(internet_stats: &InternetTelemetryStatMap) -> Result<PublicLinks> {
     // Group latencies by normalized city pairs
     let mut city_pair_latencies = CityPairLatencies::new();
 

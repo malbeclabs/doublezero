@@ -1,6 +1,5 @@
 use anyhow::Result;
 use calculator::shapley_handler::build_public_links;
-use ingestor::types::FetchData;
 use processor::internet::{InternetTelemetryStatMap, InternetTelemetryStats};
 use serde::{Deserialize, Serialize};
 use solana_sdk::pubkey::Pubkey;
@@ -117,9 +116,8 @@ mod tests {
         // Convert to InternetTelemetryStatMap
         let internet_stats = convert_to_internet_stat_map(test_data);
 
-        // Generate public links using the build_public_links function
-        let fetch_data = FetchData::default();
-        let public_links = build_public_links(&fetch_data, &internet_stats)?;
+        // Generate public links
+        let public_links = build_public_links(&internet_stats)?;
 
         // Verify we have the expected number of city pairs
         assert_eq!(

@@ -694,14 +694,14 @@ func (d *Devnet) Destroy(ctx context.Context, all bool) error {
 	return nil
 }
 
-func (d *Devnet) GetOrCreateDeviceOnchain(ctx context.Context, deviceCode string, location string, exchange string, metricsPublisherPK string, publicIP string, prefixes []string, bgpAsn uint32, diaBgpAsn uint32, mgmtVrf string, dnsServers []string, ntpServers []string) (string, error) {
+func (d *Devnet) GetOrCreateDeviceOnchain(ctx context.Context, deviceCode string, location string, exchange string, metricsPublisherPK string, publicIP string, prefixes []string, mgmtVrf string) (string, error) {
 	d.onchainWriteMutex.Lock()
 	defer d.onchainWriteMutex.Unlock()
 
 	deviceAddress, err := d.GetDevicePubkeyOnchain(ctx, deviceCode)
 	if err != nil {
 		if errors.Is(err, ErrDeviceNotFoundOnchain) {
-			args := []string{"doublezero", "device", "create", "--contributor", "co01", "--code", deviceCode, "--location", location, "--exchange", exchange, "--public-ip", publicIP, "--dz-prefixes", strings.Join(prefixes, ","), "--bgp-asn", fmt.Sprintf("%d", bgpAsn), "--dia-bgp-asn", fmt.Sprintf("%d", diaBgpAsn), "--mgmt-vrf", mgmtVrf, "--dns-servers", strings.Join(dnsServers, ","), "--ntp-servers", strings.Join(ntpServers, ",")}
+			args := []string{"doublezero", "device", "create", "--contributor", "co01", "--code", deviceCode, "--location", location, "--exchange", exchange, "--public-ip", publicIP, "--dz-prefixes", strings.Join(prefixes, ","), "--mgmt-vrf", mgmtVrf}
 			if metricsPublisherPK != "" {
 				args = append(args, "--metrics-publisher", metricsPublisherPK)
 			}
@@ -724,11 +724,11 @@ func (d *Devnet) GetOrCreateDeviceOnchain(ctx context.Context, deviceCode string
 	return deviceAddress, nil
 }
 
-func (d *Devnet) CreateDeviceOnchain(ctx context.Context, deviceCode string, location string, exchange string, publicIP string, prefixes []string, bgpAsn uint32, diaBgpAsn uint32, mgmtVrf string, dnsServers []string, ntpServers []string) error {
+func (d *Devnet) CreateDeviceOnchain(ctx context.Context, deviceCode string, location string, exchange string, publicIP string, prefixes []string, mgmtVrf string) error {
 	d.onchainWriteMutex.Lock()
 	defer d.onchainWriteMutex.Unlock()
 
-	_, err := d.Manager.Exec(ctx, []string{"doublezero", "device", "create", "--code", deviceCode, "--contributor", "co01", "--location", location, "--exchange", exchange, "--public-ip", publicIP, "--dz-prefixes", strings.Join(prefixes, ","), "--bgp-asn", fmt.Sprintf("%d", bgpAsn), "--dia-bgp-asn", fmt.Sprintf("%d", diaBgpAsn), "--mgmt-vrf", mgmtVrf, "--dns-servers", strings.Join(dnsServers, ","), "--ntp-servers", strings.Join(ntpServers, ",")}, docker.NoPrintOnError())
+	_, err := d.Manager.Exec(ctx, []string{"doublezero", "device", "create", "--code", deviceCode, "--contributor", "co01", "--location", location, "--exchange", exchange, "--public-ip", publicIP, "--dz-prefixes", strings.Join(prefixes, ","), "--mgmt-vrf", mgmtVrf}, docker.NoPrintOnError())
 	if err != nil {
 		return fmt.Errorf("failed to create device onchain: %w", err)
 	}

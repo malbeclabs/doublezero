@@ -68,11 +68,7 @@ func DeserializeDevice(reader *ByteReader, dev *Device) {
 	dev.DzPrefixes = reader.ReadNetworkV4Slice()
 	dev.MetricsPublisherPubKey = reader.ReadPubkey()
 	dev.ContributorPubKey = reader.ReadPubkey()
-	dev.BgpAsn = reader.ReadU32()
-	dev.DiaBgpAsn = reader.ReadU32()
 	dev.MgmtVrf = reader.ReadString()
-	dev.DnsServers = reader.ReadIPv4Slice()
-	dev.NtpServers = reader.ReadIPv4Slice()
 	dev.Interfaces = make([]Interface, 0)
 	var length = reader.ReadU32()
 	if (length * 18) > reader.Remaining() {

@@ -405,11 +405,7 @@ async fn test_initialize_device_latency_samples_fail_origin_device_wrong_owner()
         metrics_publisher_pk: agent.pubkey(),
         location_pk: Pubkey::new_unique(),
         dz_prefixes: NetworkV4List::default(),
-        bgp_asn: 0,
-        dia_bgp_asn: 0,
         mgmt_vrf: "default".to_string(),
-        dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
-        ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
         interfaces: vec![],
     };
 
@@ -478,11 +474,7 @@ async fn test_initialize_device_latency_samples_fail_target_device_wrong_owner()
         device_type: DeviceType::Switch,
         public_ip: Ipv4Addr::UNSPECIFIED,
         code: "invalid".to_string(),
-        bgp_asn: 0,
-        dia_bgp_asn: 0,
         mgmt_vrf: "default".to_string(),
-        dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
-        ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
         interfaces: vec![],
     };
 

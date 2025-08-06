@@ -40,21 +40,9 @@ pub struct CreateDeviceCliCommand {
     /// Metrics publisher public key (optional, defaults to zeroed pubkey)
     #[arg(long, value_parser = validate_pubkey)]
     pub metrics_publisher: Option<String>,
-    /// BGP ASN for the device
-    #[arg(long)]
-    pub bgp_asn: u32,
-    /// DIA BGP ASN for the device
-    #[arg(long)]
-    pub dia_bgp_asn: u32,
     /// Management VRF name (optional)
     #[arg(long, default_value = "")]
     pub mgmt_vrf: String,
-    /// List of DNS servers in comma-separated IPv4 format (e.g. 8.8.8.8,8.8.4.4)
-    #[arg(long, num_args = 1.., value_delimiter = ',', required = true)]
-    pub dns_servers: Vec<std::net::Ipv4Addr>,
-    /// List of NTP servers in comma-separated IPv4 format (e.g. 1.2.3.4,5.6.7.8)
-    #[arg(long, num_args = 1.., value_delimiter = ',', required = true)]
-    pub ntp_servers: Vec<std::net::Ipv4Addr>,
 }
 
 impl CreateDeviceCliCommand {
@@ -134,11 +122,7 @@ impl CreateDeviceCliCommand {
             public_ip: self.public_ip,
             dz_prefixes: self.dz_prefixes,
             metrics_publisher,
-            bgp_asn: self.bgp_asn,
-            dia_bgp_asn: self.dia_bgp_asn,
             mgmt_vrf: self.mgmt_vrf.clone(),
-            dns_servers: self.dns_servers.clone(),
-            ntp_servers: self.ntp_servers.clone(),
         })?;
         writeln!(out, "Signature: {signature}")?;
 
@@ -259,11 +243,7 @@ mod tests {
                 public_ip: [100, 0, 0, 1].into(),
                 dz_prefixes: "10.1.0.0/16".parse().unwrap(),
                 metrics_publisher: Pubkey::default(),
-                bgp_asn: 42,
-                dia_bgp_asn: 4242,
                 mgmt_vrf: String::default(),
-                dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
-                ntp_servers: vec![[1, 2, 3, 4].into(), [5, 6, 7, 8].into()],
             }))
             .returning(move |_| Ok((signature, pda_pubkey)));
 
@@ -276,11 +256,7 @@ mod tests {
             public_ip: [100, 0, 0, 1].into(),
             dz_prefixes: "10.1.0.0/16".parse().unwrap(),
             metrics_publisher: Some(Pubkey::default().to_string()),
-            bgp_asn: 42,
-            dia_bgp_asn: 4242,
             mgmt_vrf: String::default(),
-            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
-            ntp_servers: vec![[1, 2, 3, 4].into(), [5, 6, 7, 8].into()],
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

@@ -143,7 +143,7 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 	require.NoError(t, err)
 
 	// Create a dummy device first to maintain same ordering of devices as before.
-	err = dn.CreateDeviceOnchain(ctx, "la2-dz01", "lax", "xlax", "207.45.216.134", []string{"207.45.216.136/30", "200.12.12.12/29"}, 42, 4242, "mgmt", []string{"8.8.8.8", "8.8.4.4"}, []string{"1.2.3.4"})
+	err = dn.CreateDeviceOnchain(ctx, "la2-dz01", "lax", "xlax", "207.45.216.134", []string{"207.45.216.136/30", "200.12.12.12/29"}, "mgmt")
 	require.NoError(t, err)
 
 	// Add a device to the devnet and onchain.
@@ -163,12 +163,12 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 		set -euo pipefail
 
 		echo "==> Populate device information onchain"
-		doublezero device create --code ld4-dz01 --contributor co01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "195.219.120.72/29" --bgp-asn 42 --dia-bgp-asn 4242 --mgmt-vrf mgmt --dns-servers 8.8.8.8,8.8.4.4 --ntp-servers 1.2.3.4
-		doublezero device create --code frk-dz01 --contributor co01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "195.219.220.88/29" --bgp-asn 42 --dia-bgp-asn 4242 --mgmt-vrf mgmt --dns-servers 8.8.8.8,8.8.4.4 --ntp-servers 1.2.3.4
-		doublezero device create --code sg1-dz01 --contributor co01 --location sin --exchange xsin --public-ip "180.87.102.104" --dz-prefixes "180.87.102.104/29" --bgp-asn 42 --dia-bgp-asn 4242 --mgmt-vrf mgmt --dns-servers 8.8.8.8,8.8.4.4 --ntp-servers 1.2.3.4
-		doublezero device create --code ty2-dz01 --contributor co01 --location tyo --exchange xtyo --public-ip "180.87.154.112" --dz-prefixes "180.87.154.112/29" --bgp-asn 42 --dia-bgp-asn 4242 --mgmt-vrf mgmt --dns-servers 8.8.8.8,8.8.4.4 --ntp-servers 1.2.3.4
-		doublezero device create --code pit-dzd01 --contributor co01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "204.16.243.243/32" --bgp-asn 42 --dia-bgp-asn 4242 --mgmt-vrf mgmt --dns-servers 8.8.8.8,8.8.4.4 --ntp-servers 1.2.3.4
-		doublezero device create --code ams-dz001 --contributor co01 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "195.219.138.56/29" --bgp-asn 42 --dia-bgp-asn 4242 --mgmt-vrf mgmt --dns-servers 8.8.8.8,8.8.4.4 --ntp-servers 1.2.3.4
+		doublezero device create --code ld4-dz01 --contributor co01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "195.219.120.72/29" --mgmt-vrf mgmt
+		doublezero device create --code frk-dz01 --contributor co01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "195.219.220.88/29" --mgmt-vrf mgmt
+		doublezero device create --code sg1-dz01 --contributor co01 --location sin --exchange xsin --public-ip "180.87.102.104" --dz-prefixes "180.87.102.104/29" --mgmt-vrf mgmt
+		doublezero device create --code ty2-dz01 --contributor co01 --location tyo --exchange xtyo --public-ip "180.87.154.112" --dz-prefixes "180.87.154.112/29" --mgmt-vrf mgmt
+		doublezero device create --code pit-dzd01 --contributor co01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "204.16.243.243/32" --mgmt-vrf mgmt
+		doublezero device create --code ams-dz001 --contributor co01 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "195.219.138.56/29" --mgmt-vrf mgmt
 		echo "--> Device information onchain:"
 		doublezero device list
 

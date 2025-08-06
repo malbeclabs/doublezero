@@ -86,11 +86,7 @@ mod tests {
                 "1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR",
             ),
             owner: device1_pubkey,
-            bgp_asn: 42,
-            dia_bgp_asn: 4242,
             mgmt_vrf: "default".to_string(),
-            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
-            ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
             interfaces: vec![Interface {
                 version: CURRENT_INTERFACE_VERSION,
                 name: "eth0".to_string(),

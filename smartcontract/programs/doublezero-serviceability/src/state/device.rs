@@ -223,11 +223,7 @@ pub struct Device {
     pub dz_prefixes: NetworkV4List,   // 4 + 5 * len
     pub metrics_publisher_pk: Pubkey, // 32
     pub contributor_pk: Pubkey,       // 32
-    pub bgp_asn: u32,                 // 4
-    pub dia_bgp_asn: u32,             // 4
     pub mgmt_vrf: String,             // 4 + len
-    pub dns_servers: Vec<Ipv4Addr>,   // 4 + 4 * len
-    pub ntp_servers: Vec<Ipv4Addr>,   // 4 + 4 * len
     pub interfaces: Vec<Interface>,   // 4 + (14 + len(name)) * len
     pub reference_count: u32,         // 4
 }
@@ -236,8 +232,8 @@ impl fmt::Display for Device {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, index: {}, contributor_pk: {}, location_pk: {}, exchange_pk: {}, device_type: {}, public_ip: {}, dz_prefixes: {}, status: {}, code: {}, metrics_publisher_pk: {}, bgp_asn: {}, dia_bgp_asn: {}, mgmt_vrf: {}, dns_servers: {:?}, ntp_servers: {:?}, interfaces: {:?}",
-            self.account_type, self.owner, self.index, self.contributor_pk, self.location_pk, self.exchange_pk, self.device_type, &self.public_ip, &self.dz_prefixes, self.status, self.code, self.metrics_publisher_pk, self.bgp_asn, self.dia_bgp_asn, self.mgmt_vrf, self.dns_servers, self.ntp_servers, self.interfaces
+            "account_type: {}, owner: {}, index: {}, contributor_pk: {}, location_pk: {}, exchange_pk: {}, device_type: {}, public_ip: {}, dz_prefixes: {}, status: {}, code: {}, metrics_publisher_pk: {}, mgmt_vrf: {}, interfaces: {:?}",
+            self.account_type, self.owner, self.index, self.contributor_pk, self.location_pk, self.exchange_pk, self.device_type, &self.public_ip, &self.dz_prefixes, self.status, self.code, self.metrics_publisher_pk, self.mgmt_vrf, self.interfaces
         )
     }
 }
@@ -262,13 +258,7 @@ impl AccountTypeInfo for Device {
             + 32
             + 32
             + 4
-            + 4
-            + 4
             + self.mgmt_vrf.len()
-            + 4
-            + 4 * self.dns_servers.len()
-            + 4
-            + 4 * self.ntp_servers.len()
             + 4
             + self
                 .interfaces
@@ -306,11 +296,7 @@ impl From<&[u8]> for Device {
             dz_prefixes: parser.read_networkv4_list(),
             metrics_publisher_pk: parser.read_pubkey(),
             contributor_pk: parser.read_pubkey(),
-            bgp_asn: parser.read_u32(),
-            dia_bgp_asn: parser.read_u32(),
             mgmt_vrf: parser.read_string(),
-            dns_servers: parser.read_ipv4_list(),
-            ntp_servers: parser.read_ipv4_list(),
             interfaces: parser.read_vec(),
             reference_count: parser.read_u32(),
         }
@@ -347,11 +333,7 @@ mod tests {
             public_ip: [1, 2, 3, 4].into(),
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::new_unique(),
-            bgp_asn: 12345,
-            dia_bgp_asn: 6789,
             mgmt_vrf: "default".to_string(),
-            dns_servers: vec![[8, 8, 8, 8].into(), [8, 8, 4, 4].into()],
-            ntp_servers: vec![[192, 168, 1, 1].into(), [192, 168, 1, 2].into()],
             interfaces: vec![
                 Interface {
                     version: CURRENT_INTERFACE_VERSION,
@@ -393,11 +375,7 @@ mod tests {
         assert_eq!(val.dz_prefixes, val2.dz_prefixes);
         assert_eq!(val.status, val2.status);
         assert_eq!(val.metrics_publisher_pk, val2.metrics_publisher_pk);
-        assert_eq!(val.bgp_asn, val2.bgp_asn);
-        assert_eq!(val.dia_bgp_asn, val2.dia_bgp_asn);
         assert_eq!(val.mgmt_vrf, val2.mgmt_vrf);
-        assert_eq!(val.dns_servers, val2.dns_servers);
-        assert_eq!(val.ntp_servers, val2.ntp_servers);
         assert_eq!(val.interfaces, val2.interfaces);
         assert_eq!(data.len(), val.size(), "Invalid Size");
     }
@@ -423,11 +401,7 @@ mod tests {
             public_ip: [1, 2, 3, 4].into(),
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::new_unique(),
-            bgp_asn: 0,
-            dia_bgp_asn: 0,
             mgmt_vrf: "".to_string(),
-            dns_servers: vec![],
-            ntp_servers: vec![],
             interfaces: vec![],
         };
 

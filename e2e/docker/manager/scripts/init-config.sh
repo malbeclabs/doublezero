@@ -35,5 +35,20 @@ echo "==> Configuring solana CLI"
 solana config set --url $DZ_LEDGER_URL
 echo
 
+# Wait for the solana validator to be healthy.
+while ! curl -sf -X POST -H 'Content-Type: application/json' \
+  --data '{"jsonrpc":"2.0","id":1,"method":"getHealth"}' \
+  ${DZ_LEDGER_URL} | grep -q '"result":"ok"'; do
+    echo "Waiting for solana validator to be ready..."
+    sleep 1
+done
+
+# Configure bash completions for doublezero and solana CLIs.
+mkdir -p /etc/bash_completion.d
+doublezero completion bash > /etc/bash_completion.d/doublezero
+solana completion > /etc/bash_completion.d/solana
+echo "source /etc/bash_completion.d/doublezero" >> /root/.bashrc
+echo "source /etc/bash_completion.d/solana" >> /root/.bashrc
+
 # Done.
 echo "==> Config initialized"

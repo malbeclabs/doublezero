@@ -95,7 +95,6 @@ pub fn process_closeaccount_device(
     location.reference_count = location.reference_count.saturating_sub(1);
     exchange.reference_count = exchange.reference_count.saturating_sub(1);
 
-    account_close(device_account, owner_account)?;
     account_write(
         contributor_account,
         &contributor,
@@ -104,6 +103,7 @@ pub fn process_closeaccount_device(
     )?;
     account_write(location_account, &location, payer_account, system_program)?;
     account_write(exchange_account, &exchange, payer_account, system_program)?;
+    account_close(device_account, owner_account)?;
 
     #[cfg(test)]
     msg!("CloseAccount: Device closed");

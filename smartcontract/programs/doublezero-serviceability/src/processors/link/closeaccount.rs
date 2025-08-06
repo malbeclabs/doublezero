@@ -97,7 +97,6 @@ pub fn process_closeaccount_link(
     side_a_dev.reference_count = side_a_dev.reference_count.saturating_sub(1);
     side_z_dev.reference_count = side_z_dev.reference_count.saturating_sub(1);
 
-    account_close(link_account, owner_account)?;
     account_write(
         contributor_account,
         &contributor,
@@ -106,6 +105,7 @@ pub fn process_closeaccount_link(
     )?;
     account_write(side_a_account, &side_a_dev, payer_account, system_program)?;
     account_write(side_z_account, &side_z_dev, payer_account, system_program)?;
+    account_close(link_account, owner_account)?;
 
     #[cfg(test)]
     msg!("CloseAccount: Link closed");

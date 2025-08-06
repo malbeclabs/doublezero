@@ -118,9 +118,6 @@ pub fn process_tunnel_event(
             )
             .unwrap();
 
-            link_ids.unassign(link.tunnel_id);
-            link_ips.unassign_block(link.tunnel_net.into());
-
             let res = CloseAccountLinkCommand {
                 pubkey: *pubkey,
                 owner: link.owner,
@@ -130,6 +127,9 @@ pub fn process_tunnel_event(
             match res {
                 Ok(signature) => {
                     write!(&mut log_msg, " Deactivated {signature}").unwrap();
+
+                    link_ids.unassign(link.tunnel_id);
+                    link_ips.unassign_block(link.tunnel_net.into());
 
                     *state_transitions
                         .entry("tunnel-deleting-to-deactivated")

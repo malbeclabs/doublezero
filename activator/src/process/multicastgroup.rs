@@ -82,9 +82,6 @@ pub fn process_multicastgroup_event(
             )
             .unwrap();
 
-            multicastgroup_tunnel_ips
-                .unassign_block(Ipv4Network::new(multicastgroup.multicast_ip, 32)?);
-
             let res = DeactivateMulticastGroupCommand {
                 pubkey: *pubkey,
                 owner: multicastgroup.owner,
@@ -94,6 +91,9 @@ pub fn process_multicastgroup_event(
             match res {
                 Ok(signature) => {
                     write!(&mut log_msg, " Deactivated {signature}",).unwrap();
+
+                    multicastgroup_tunnel_ips
+                        .unassign_block(Ipv4Network::new(multicastgroup.multicast_ip, 32)?);
 
                     multicastgroups.remove(pubkey);
                     *state_transitions

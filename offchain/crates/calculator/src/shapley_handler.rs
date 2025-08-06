@@ -3,7 +3,9 @@ use doublezero_serviceability::state::{
     device::DeviceStatus as DZDeviceStatus, link::LinkStatus as DZLinkStatus,
 };
 use ingestor::{demand, fetcher::Fetcher, types::FetchData};
-use network_shapley::types::{Demands, PrivateLink, PrivateLinks, PublicLink, PublicLinks};
+use network_shapley::types::{
+    Demands, Device, Devices, PrivateLink, PrivateLinks, PublicLink, PublicLinks,
+};
 use processor::{internet::InternetTelemetryStatMap, telemetry::DZDTelemetryStatMap};
 use std::collections::HashMap;
 
@@ -11,6 +13,29 @@ use std::collections::HashMap;
 type CityPair = (String, String);
 // key: city_pair, val: vec of latencies
 type CityPairLatencies = HashMap<CityPair, Vec<f64>>;
+
+pub fn build_devices(fetch_data: &FetchData) -> Result<Devices> {
+    let mut devices = Vec::new();
+
+    // Default edge bandwidth in Gbps - will be configurable via smart contract in future
+    const DEFAULT_EDGE_BANDWIDTH_GBPS: u32 = 10;
+
+    for device in fetch_data.dz_serviceability.devices.values() {
+        if let Some(contributor) = fetch_data
+            .dz_serviceability
+            .contributors
+            .get(&device.contributor_pk)
+        {
+            devices.push(Device {
+                device: device.code.clone(),
+                edge: DEFAULT_EDGE_BANDWIDTH_GBPS,
+                operator: contributor.code.to_string(), // For now just use code
+            });
+        }
+    }
+
+    Ok(devices)
+}
 
 pub async fn build_demands(fetcher: &Fetcher, fetch_data: &FetchData) -> Result<Demands> {
     demand::build(fetcher, fetch_data).await

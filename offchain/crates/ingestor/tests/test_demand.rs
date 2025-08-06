@@ -105,11 +105,7 @@ fn convert_to_fetch_data(test_data: &TestData) -> Result<FetchData> {
             dz_prefixes: Default::default(),
             metrics_publisher_pk: Pubkey::default(),
             contributor_pk: Pubkey::default(),
-            bgp_asn: 0,
-            dia_bgp_asn: 0,
             mgmt_vrf: String::new(),
-            dns_servers: vec![],
-            ntp_servers: vec![],
             interfaces: vec![],
             reference_count: 0,
         };

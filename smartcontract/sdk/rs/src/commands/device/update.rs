@@ -94,11 +94,7 @@ mod tests {
                     public_ip: None,
                     dz_prefixes: Some("10.0.0.0/8".parse().unwrap()),
                     metrics_publisher_pk: None,
-                    bgp_asn: None,
-                    dia_bgp_asn: None,
                     mgmt_vrf: Some("mgmt".to_string()),
-                    dns_servers: None,
-                    ntp_servers: None,
                     interfaces: None,
                     contributor_pk: None,
                 })),
@@ -117,12 +113,8 @@ mod tests {
             public_ip: None,
             dz_prefixes: Some("10.0.0.0/8".parse().unwrap()),
             metrics_publisher: None,
-            bgp_asn: None,
-            dia_bgp_asn: None,
             mgmt_vrf: Some("mgmt".to_string()),
             interfaces: None,
-            dns_servers: None,
-            ntp_servers: None,
         };
 
         let update_whitespace = UpdateDeviceCommand {

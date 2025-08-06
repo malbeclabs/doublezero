@@ -1,10 +1,9 @@
+use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, pda::get_link_pda,
     processors::link::create::LinkCreateArgs, state::link::LinkLinkType,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
-
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CreateLinkCommand {
@@ -18,7 +17,7 @@ pub struct CreateLinkCommand {
     pub delay_ns: u64,
     pub jitter_ns: u64,
     pub side_a_iface_name: String,
-    pub side_z_iface_name: String,
+    pub side_z_iface_name: Option<String>,
 }
 
 impl CreateLinkCommand {

@@ -13,18 +13,16 @@ use std::{fmt, str::FromStr};
 #[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
 #[borsh(use_discriminant = true)]
 pub enum LinkLinkType {
-    L1 = 1,
-    L2 = 2,
-    L3 = 3,
+    WAN = 1,
+    DZX = 127,
 }
 
 impl From<u8> for LinkLinkType {
     fn from(value: u8) -> Self {
         match value {
-            1 => LinkLinkType::L1,
-            2 => LinkLinkType::L2,
-            3 => LinkLinkType::L3,
-            _ => LinkLinkType::L2, // Default case
+            1 => LinkLinkType::WAN,
+            127 => LinkLinkType::DZX,
+            _ => LinkLinkType::WAN, // Default case
         }
     }
 }
@@ -34,9 +32,8 @@ impl FromStr for LinkLinkType {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "L1" => Ok(LinkLinkType::L1),
-            "L2" => Ok(LinkLinkType::L2),
-            "L3" => Ok(LinkLinkType::L3),
+            "WAN" => Ok(LinkLinkType::WAN),
+            "DZX" => Ok(LinkLinkType::DZX),
             _ => Err(format!("Invalid LinkLinkType: {s}")),
         }
     }
@@ -45,9 +42,8 @@ impl FromStr for LinkLinkType {
 impl fmt::Display for LinkLinkType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            LinkLinkType::L1 => write!(f, "L1"),
-            LinkLinkType::L2 => write!(f, "L2"),
-            LinkLinkType::L3 => write!(f, "L3"),
+            LinkLinkType::WAN => write!(f, "WAN"),
+            LinkLinkType::DZX => write!(f, "DZX"),
         }
     }
 }
@@ -61,6 +57,7 @@ pub enum LinkStatus {
     Suspended = 2,
     Deleting = 3,
     Rejected = 4,
+    Requested = 5,
 }
 
 impl From<u8> for LinkStatus {
@@ -71,6 +68,7 @@ impl From<u8> for LinkStatus {
             2 => LinkStatus::Suspended,
             3 => LinkStatus::Deleting,
             4 => LinkStatus::Rejected,
+            5 => LinkStatus::Requested,
             _ => LinkStatus::Pending,
         }
     }
@@ -84,6 +82,7 @@ impl fmt::Display for LinkStatus {
             LinkStatus::Suspended => write!(f, "suspended"),
             LinkStatus::Deleting => write!(f, "deleting"),
             LinkStatus::Rejected => write!(f, "rejected"),
+            LinkStatus::Requested => write!(f, "requested"),
         }
     }
 }
@@ -207,7 +206,7 @@ mod tests {
             contributor_pk: Pubkey::new_unique(),
             side_a_pk: Pubkey::new_unique(),
             side_z_pk: Pubkey::new_unique(),
-            link_type: LinkLinkType::L3,
+            link_type: LinkLinkType::WAN,
             bandwidth: 1234,
             mtu: 1566,
             delay_ns: 1234,

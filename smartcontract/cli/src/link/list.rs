@@ -1,6 +1,7 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::{
+    bandwidth_to_string,
     commands::{
         contributor::list::ListContributorCommand, device::list::ListDeviceCommand,
         link::list::ListLinkCommand,
@@ -14,6 +15,12 @@ use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
 pub struct ListLinkCliCommand {
+    /// List only WAN links.
+    #[arg(long, default_value_t = false)]
+    pub wan: bool,
+    /// List only DXZ links.
+    #[arg(long, default_value_t = false)]
+    pub dzx: bool,
     /// Output as pretty JSON.
     #[arg(long, default_value_t = false)]
     pub json: bool,
@@ -31,18 +38,18 @@ pub struct LinkDisplay {
     pub contributor_code: String,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     #[tabled(rename = "side_a")]
-    pub side_a_pk: Pubkey,
     #[tabled(skip)]
+    pub side_a_pk: Pubkey,
     pub side_a_name: String,
     pub side_a_iface_name: String,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     #[tabled(rename = "side_z")]
-    pub side_z_pk: Pubkey,
     #[tabled(skip)]
+    pub side_z_pk: Pubkey,
     pub side_z_name: String,
     pub side_z_iface_name: String,
     pub link_type: LinkLinkType,
-    pub bandwidth: u64,
+    pub bandwidth: String,
     pub mtu: u32,
     #[tabled(display = "crate::util::display_as_ms", rename = "delay_ms")]
     pub delay_ns: u64,
@@ -62,6 +69,12 @@ impl ListLinkCliCommand {
         let links = client.list_link(ListLinkCommand)?;
 
         let mut links: Vec<(Pubkey, Link)> = links.into_iter().collect();
+        if self.wan {
+            links.retain(|(_, link)| link.link_type == LinkLinkType::WAN);
+        }
+        if self.dzx {
+            links.retain(|(_, link)| link.link_type == LinkLinkType::DZX);
+        }
         links.sort_by(|(_, a), (_, b)| a.owner.cmp(&b.owner).then(a.tunnel_id.cmp(&b.tunnel_id)));
 
         let tunnel_displays: Vec<LinkDisplay> = links
@@ -91,7 +104,7 @@ impl ListLinkCliCommand {
                     side_z_name,
                     side_z_iface_name: link.side_z_iface_name,
                     link_type: link.link_type,
-                    bandwidth: link.bandwidth,
+                    bandwidth: bandwidth_to_string(&link.bandwidth),
                     mtu: link.mtu,
                     delay_ns: link.delay_ns,
                     jitter_ns: link.jitter_ns,
@@ -212,7 +225,7 @@ mod tests {
             contributor_pk,
             side_a_pk: device1_pubkey,
             side_z_pk: device2_pubkey,
-            link_type: LinkLinkType::L3,
+            link_type: LinkLinkType::WAN,
             bandwidth: 1234,
             mtu: 1566,
             delay_ns: 1234,
@@ -233,6 +246,8 @@ mod tests {
 
         let mut output = Vec::new();
         let res = ListLinkCliCommand {
+            wan: false,
+            dzx: false,
             json: false,
             json_compact: false,
         }
@@ -240,10 +255,12 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | code        | contributor       | side_a                                    | side_a_iface_name | side_z                                    | side_z_iface_name | link_type | bandwidth | mtu  | delay_ms | jitter_ms | tunnel_id | tunnel_net | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | tunnel_code | contributor1_code | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | eth0              | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | eth1              | L3        | 1234      | 1566 | 0.00ms   | 0.00ms    | 1234      | 1.2.3.4/32 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
+        assert_eq!(output_str, " account                                   | code        | contributor       | side_a_name  | side_a_iface_name | side_z_name  | side_z_iface_name | link_type | bandwidth | mtu  | delay_ms | jitter_ms | tunnel_id | tunnel_net | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | tunnel_code | contributor1_code | device2_code | eth0              | device2_code | eth1              | WAN       | 1.23Kbps  | 1566 | 0.00ms   | 0.00ms    | 1234      | 1.2.3.4/32 | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
 
         let mut output = Vec::new();
         let res = ListLinkCliCommand {
+            wan: false,
+            dzx: false,
             json: false,
             json_compact: true,
         }
@@ -251,6 +268,6 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"code\":\"tunnel_code\",\"contributor_code\":\"contributor1_code\",\"side_a_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_a_name\":\"device2_code\",\"side_a_iface_name\":\"eth0\",\"side_z_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_z_name\":\"device2_code\",\"side_z_iface_name\":\"eth1\",\"link_type\":\"L3\",\"bandwidth\":1234,\"mtu\":1566,\"delay_ns\":1234,\"jitter_ns\":1121,\"tunnel_id\":1234,\"tunnel_net\":\"1.2.3.4/32\",\"status\":\"Activated\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"code\":\"tunnel_code\",\"contributor_code\":\"contributor1_code\",\"side_a_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_a_name\":\"device2_code\",\"side_a_iface_name\":\"eth0\",\"side_z_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_z_name\":\"device2_code\",\"side_z_iface_name\":\"eth1\",\"link_type\":\"WAN\",\"bandwidth\":\"1.23Kbps\",\"mtu\":1566,\"delay_ns\":1234,\"jitter_ns\":1121,\"tunnel_id\":1234,\"tunnel_net\":\"1.2.3.4/32\",\"status\":\"Activated\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\"}]\n");
     }
 }

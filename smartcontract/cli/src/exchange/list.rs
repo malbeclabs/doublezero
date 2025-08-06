@@ -1,7 +1,8 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::{
-    commands::exchange::list::ListExchangeCommand, serializer, Exchange, ExchangeStatus,
+    commands::{device::list::ListDeviceCommand, exchange::list::ListExchangeCommand},
+    serializer, Exchange, ExchangeStatus,
 };
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
@@ -24,6 +25,8 @@ pub struct ExchangeDisplay {
     pub account: Pubkey,
     pub code: String,
     pub name: String,
+    pub device1: String,
+    pub device2: String,
     pub lat: f64,
     pub lng: f64,
     pub loc_id: u32,
@@ -36,6 +39,8 @@ impl ListExchangeCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let exchanges = client.list_exchange(ListExchangeCommand)?;
 
+        let devices = client.list_device(ListDeviceCommand)?;
+
         let mut exchanges: Vec<(Pubkey, Exchange)> = exchanges.into_iter().collect();
         exchanges.sort_by(|(_, a), (_, b)| a.owner.cmp(&b.owner));
 
@@ -45,6 +50,24 @@ impl ListExchangeCliCommand {
                 account: pubkey,
                 code: tunnel.code,
                 name: tunnel.name,
+                device1: {
+                    if tunnel.device1_pk == Pubkey::default() {
+                        "(none)".to_string()
+                    } else {
+                        devices
+                            .get(&tunnel.device1_pk)
+                            .map_or_else(|| tunnel.device1_pk.to_string(), |d| d.code.clone())
+                    }
+                },
+                device2: {
+                    if tunnel.device2_pk == Pubkey::default() {
+                        "(none)".to_string()
+                    } else {
+                        devices
+                            .get(&tunnel.device2_pk)
+                            .map_or_else(|| tunnel.device2_pk.to_string(), |d| d.code.clone())
+                    }
+                },
                 lat: tunnel.lat,
                 lng: tunnel.lng,
                 loc_id: tunnel.loc_id,
@@ -142,6 +165,8 @@ mod tests {
             index: 1,
             bump_seed: 2,
             reference_count: 0,
+            device1_pk: Pubkey::default(),
+            device2_pk: Pubkey::default(),
             lat: 15.00,
             lng: 15.00,
             loc_id: 6,
@@ -164,7 +189,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | code      | name      | lat | lng | loc_id | status    | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | some code | some name | 15  | 15  | 6      | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
+        assert_eq!(output_str, " account                                   | code      | name      | device1 | device2 | lat | lng | loc_id | status    | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | some code | some name | (none)  | (none)  | 15  | 15  | 6      | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
 
         let mut output = Vec::new();
         let res = ListExchangeCliCommand {
@@ -175,6 +200,6 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"code\":\"some code\",\"name\":\"some name\",\"lat\":15.0,\"lng\":15.0,\"loc_id\":6,\"status\":\"Activated\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"code\":\"some code\",\"name\":\"some name\",\"device1\":\"(none)\",\"device2\":\"(none)\",\"lat\":15.0,\"lng\":15.0,\"loc_id\":6,\"status\":\"Activated\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
     }
 }

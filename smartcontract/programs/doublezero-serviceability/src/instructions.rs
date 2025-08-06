@@ -16,14 +16,14 @@ use crate::processors::{
     },
     exchange::{
         create::ExchangeCreateArgs, delete::ExchangeDeleteArgs, resume::ExchangeResumeArgs,
-        suspend::ExchangeSuspendArgs, update::ExchangeUpdateArgs,
+        setdevice::ExchangeSetDeviceArgs, suspend::ExchangeSuspendArgs, update::ExchangeUpdateArgs,
     },
     globalconfig::set::SetGlobalConfigArgs,
     globalstate::close::CloseAccountArgs,
     link::{
-        activate::LinkActivateArgs, closeaccount::LinkCloseAccountArgs, create::LinkCreateArgs,
-        delete::LinkDeleteArgs, reject::LinkRejectArgs, resume::LinkResumeArgs,
-        suspend::LinkSuspendArgs, update::LinkUpdateArgs,
+        accept::LinkAcceptArgs, activate::LinkActivateArgs, closeaccount::LinkCloseAccountArgs,
+        create::LinkCreateArgs, delete::LinkDeleteArgs, reject::LinkRejectArgs,
+        resume::LinkResumeArgs, suspend::LinkSuspendArgs, update::LinkUpdateArgs,
     },
     location::{
         create::LocationCreateArgs, delete::LocationDeleteArgs, resume::LocationResumeArgs,
@@ -139,6 +139,9 @@ pub enum DoubleZeroInstruction {
     SuspendContributor(ContributorSuspendArgs), // variant 62
     ResumeContributor(ContributorResumeArgs),   // variant 63
     DeleteContributor(ContributorDeleteArgs),   // variant 64
+
+    SetDeviceExchange(ExchangeSetDeviceArgs), // variant 65
+    AcceptLink(LinkAcceptArgs),               // variant 66
 }
 
 impl DoubleZeroInstruction {
@@ -227,6 +230,9 @@ impl DoubleZeroInstruction {
             63 => Ok(Self::ResumeContributor(from_slice::<ContributorResumeArgs>(rest).unwrap())),
             64 => Ok(Self::DeleteContributor(from_slice::<ContributorDeleteArgs>(rest).unwrap())),
 
+            65 => Ok(Self::SetDeviceExchange(from_slice::<ExchangeSetDeviceArgs>(rest).unwrap())),
+            66 => Ok(Self::AcceptLink(from_slice::<LinkAcceptArgs>(rest).unwrap())),
+
             _ => Err(ProgramError::InvalidInstructionData),
         }
     }
@@ -313,6 +319,9 @@ impl DoubleZeroInstruction {
             Self::SuspendContributor(_) => "SuspendContributor".to_string(), // variant 62
             Self::ResumeContributor(_) => "ResumeContributor".to_string(), // variant 63
             Self::DeleteContributor(_) => "DeleteContributor".to_string(), // variant 64
+
+            Self::SetDeviceExchange(_) => "SetDeviceExchange".to_string(), // variant 65
+            Self::AcceptLink(_) => "AcceptLink".to_string(),               // variant 66
         }
     }
 
@@ -392,6 +401,9 @@ impl DoubleZeroInstruction {
             Self::SuspendContributor(args) => format!("{args:?}"), // variant 62
             Self::ResumeContributor(args) => format!("{args:?}"), // variant 63
             Self::DeleteContributor(args) => format!("{args:?}"), // variant 64
+
+            Self::SetDeviceExchange(args) => format!("{args:?}"), // variant 65
+            Self::AcceptLink(args) => format!("{args:?}"),        // variant 66
         }
     }
 }
@@ -540,13 +552,13 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::CreateLink(LinkCreateArgs {
                 code: "test".to_string(),
-                link_type: LinkLinkType::L3,
+                link_type: LinkLinkType::WAN,
                 bandwidth: 100,
                 mtu: 1500,
                 delay_ns: 1000,
                 jitter_ns: 100,
                 side_a_iface_name: "eth0".to_string(),
-                side_z_iface_name: "eth1".to_string(),
+                side_z_iface_name: Some("eth1".to_string()),
             }),
             "CreateLink",
         );
@@ -561,7 +573,7 @@ mod tests {
             DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
                 code: Some("test".to_string()),
                 contributor_pk: Some(Pubkey::new_unique()),
-                tunnel_type: Some(LinkLinkType::L3),
+                tunnel_type: Some(LinkLinkType::WAN),
                 bandwidth: Some(100),
                 mtu: Some(1500),
                 delay_ns: Some(1000),
@@ -821,6 +833,12 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::DeleteContributor(ContributorDeleteArgs {}),
             "DeleteContributor",
+        );
+        test_instruction(
+            DoubleZeroInstruction::AcceptLink(LinkAcceptArgs {
+                side_z_iface_name: "AcceptLink".to_string(),
+            }),
+            "AcceptLink",
         );
     }
 }

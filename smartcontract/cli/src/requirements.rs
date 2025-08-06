@@ -53,7 +53,7 @@ pub fn check_id(spinner: Option<&ProgressBar>) -> eyre::Result<()> {
             }
 
             Err(eyre::eyre!(
-                "Please create a new id.json (doublezero keygen) and transfer balance."
+                "Please create a new id.json (doublezero keygen)"
             ))
         }
     }
@@ -70,7 +70,7 @@ pub fn check_balance(client: &dyn CliCommand, spinner: Option<&ProgressBar>) -> 
                     eprintln!("Insufficient balance");
                 }
                 eyre::bail!(
-                    "Please transfer some balance to your DoubleZero account [{}].",
+                    "This DoubleZero account has no available credits. Please recharge your account. [{}].",
                     client.get_payer().to_string()
                 );
             }

@@ -51,42 +51,6 @@ nfpms:
     bindir: /usr/local/bin
     release: "1"
     section: default
-    contents:
-      - src: controlplane/internet-latency-collector/cmd/collector/doublezero-internet-latency-collector.service
-        dst: /etc/systemd/system/doublezero-internet-latency-collector.service
-      - dst: /etc/doublezero-internet-latency-collector
-        type: dir
-        file_info:
-          mode: 0755
-      - dst: /var/lib/doublezero-internet-latency-collector
-        type: dir
-        file_info:
-          mode: 0755
-          owner: dz-internet-latency
-          group: dz-internet-latency
-      - dst: /var/lib/doublezero-internet-latency-collector/state
-        type: dir
-        file_info:
-          mode: 0755
-          owner: dz-internet-latency
-          group: dz-internet-latency
-      - dst: /var/lib/doublezero-internet-latency-collector/output
-        type: dir
-        file_info:
-          mode: 0755
-          owner: dz-internet-latency
-          group: dz-internet-latency
-    overrides:
-      deb:
-          scripts:
-            postinstall: controlplane/packaging/scripts/collector/deb/postinstall.sh
-            preremove: controlplane/packaging/scripts/collector/deb/preremove.sh
-            postremove: controlplane/packaging/scripts/collector/deb/postremove.sh
-      rpm:
-          scripts:
-            postinstall: controlplane/packaging/scripts/collector/rpm/postinstall.sh
-            preremove: controlplane/packaging/scripts/collector/rpm/preremove.sh
-            postremove: controlplane/packaging/scripts/collector/rpm/postremove.sh
 
 changelog:
   sort: asc

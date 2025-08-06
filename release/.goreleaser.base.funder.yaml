@@ -51,20 +51,6 @@ nfpms:
     bindir: /usr/local/bin
     release: "1"
     section: default
-    contents:
-      - src: controlplane/funder/cmd/funder/doublezero-funder.service
-        dst: /etc/systemd/system/doublezero-funder.service
-    overrides:
-      deb:
-          scripts:
-            postinstall: controlplane/packaging/scripts/funder/deb/postinstall.sh
-            preremove: controlplane/packaging/scripts/funder/deb/preremove.sh
-            postremove: controlplane/packaging/scripts/funder/deb/postremove.sh
-      rpm:
-          scripts:
-            postinstall: controlplane/packaging/scripts/funder/rpm/postinstall.sh
-            preremove: controlplane/packaging/scripts/funder/rpm/preremove.sh
-            postremove: controlplane/packaging/scripts/funder/rpm/postremove.sh
 
 changelog:
   sort: asc

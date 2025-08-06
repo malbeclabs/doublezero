@@ -200,9 +200,9 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	// Manually create tunnel interfaces on the devices.
 	// NOTE: This is a workaround until tunnels on devices are configured automatically when links
 	// are created.
-	la2ToNY5LinkTunnelLA2IP := "172.16.0.0" // 172.16.0.0/31 expected to be allocated to this link by the activator
-	la2ToNY5LinkTunnelNY5IP := "172.16.0.1" // 172.16.0.0/31 expected to be allocated to this link by the activator
-	ny5ToLD4LinkTunnelNY5IP := "172.16.0.2" // 172.16.0.2/31 expected to be allocated to this link by the activator
+	la2ToNY5LinkTunnelLA2IP := "172.16.0.18" // 172.16.0.0/31 expected to be allocated to this link by the activator
+	la2ToNY5LinkTunnelNY5IP := "172.16.0.19" // 172.16.0.0/31 expected to be allocated to this link by the activator
+	ny5ToLD4LinkTunnelNY5IP := "172.16.0.20" // 172.16.0.2/31 expected to be allocated to this link by the activator
 	func() {
 		la2Device := dn.Devices["la2-dz01"]
 		ny5Device := dn.Devices["ny5-dz01"]

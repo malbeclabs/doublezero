@@ -870,7 +870,7 @@ func TestEndToEnd(t *testing.T) {
 			Name: "remove_unknown_peers_successfully",
 			Config: serviceability.Config{
 				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
-				TunnelTunnelBlock:   [5]uint8{172, 17, 0, 0, 16},
+				TunnelTunnelBlock:   [5]uint8{172, 16, 0, 0, 16},
 				UserTunnelBlock:     [5]uint8{169, 254, 0, 0, 16},
 			},
 			MulticastGroups: []serviceability.MulticastGroup{
@@ -941,8 +941,8 @@ func TestEndToEnd(t *testing.T) {
 				Pubkey: "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
 				BgpPeers: []string{
 					"10.0.0.1",    // Not in any DZ block - should not be flagged for removal
-					"172.16.0.1",  // Not in any DZ block - should not be flagged for removal
-					"172.17.0.1",  // In TunnelTunnelBlock - should be flagged for removal
+					"172.17.0.1",  // Not in any DZ block - should not be flagged for removal
+					"172.16.0.1",  // In TunnelTunnelBlock - should be flagged for removal
 					"169.254.0.7", // In UserTunnelBlock - should be flagged for removal
 					"169.254.0.3", // In UserTunnelBlock, but associated with a user - should not be flagged for removal
 				},
@@ -953,7 +953,7 @@ func TestEndToEnd(t *testing.T) {
 			Name: "remove_last_user_from_device",
 			Config: serviceability.Config{
 				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
-				TunnelTunnelBlock:   [5]uint8{172, 17, 0, 0, 16},
+				TunnelTunnelBlock:   [5]uint8{172, 16, 0, 0, 16},
 				UserTunnelBlock:     [5]uint8{169, 254, 0, 0, 16},
 			},
 			Users: []serviceability.User{},

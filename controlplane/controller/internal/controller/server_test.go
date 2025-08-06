@@ -343,13 +343,13 @@ func TestGetConfig(t *testing.T) {
 				Vpnv4BgpPeers: []BgpPeer{
 					{
 						PeerIP:   net.IP{15, 15, 15, 15},
-						PeerName: "remote-dzd-vpnv4",
+						PeerName: "remote-dzd",
 					},
 				},
 				Ipv4BgpPeers: []BgpPeer{
 					{
 						PeerIP:   net.IP{12, 12, 12, 12},
-						PeerName: "remote-dzd-ipv4",
+						PeerName: "remote-dzd",
 					},
 				},
 				Devices: map[string]*Device{

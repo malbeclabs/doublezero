@@ -91,7 +91,7 @@ router bgp 65342
    neighbor {{ .PeerIP }} remote-as 65342
    neighbor {{ .PeerIP }} next-hop-self
    neighbor {{ .PeerIP }} update-source {{ $.Device.Ip4vLoopbackIntfName }}
-   neighbor {{ .PeerIP }} description {{ .PeerName }}
+   neighbor {{ .PeerIP }} description {{ .PeerName }}-ipv4
    neighbor {{ .PeerIP }} send-community
    {{- end }}
    {{- end }}
@@ -101,7 +101,7 @@ router bgp 65342
    neighbor {{ .PeerIP }} remote-as 65342
    neighbor {{ .PeerIP }} next-hop-self
    neighbor {{ .PeerIP }} update-source {{ $.Device.Vpn4vLoopbackIntfName }}
-   neighbor {{ .PeerIP }} description {{ .PeerName }}
+   neighbor {{ .PeerIP }} description {{ .PeerName }}-vpnv4
    neighbor {{ .PeerIP }} send-community
    {{- end }}
    {{- end }}

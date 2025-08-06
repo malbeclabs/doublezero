@@ -99,4 +99,4 @@ router msdp
    peer 12.12.12.12
       mesh-group DZ-1
       local-interface Loopback256
-      description remote-dzd-ipv4
+      description remote-dzd

@@ -14,15 +14,18 @@ pub struct SetGlobalConfigCliCommand {
     /// Remote ASN (Autonomous System Number)
     #[arg(long)]
     pub remote_asn: Option<u32>,
-    /// Link tunnel block in CIDR format
+    /// Link WAN block in CIDR format
     #[arg(long)]
-    device_tunnel_block: Option<NetworkV4>,
-    /// Device tunnel block in CIDR format
+    pub link_wan_block: Option<NetworkV4>,
+    /// Link DZX block in CIDR format
     #[arg(long)]
-    user_tunnel_block: Option<NetworkV4>,
+    pub link_dzx_block: Option<NetworkV4>,
+    /// User tunnel block in CIDR format
+    #[arg(long)]
+    pub user_tunnel_block: Option<NetworkV4>,
     /// Multicast group block in CIDR format
     #[arg(long)]
-    multicastgroup_block: Option<NetworkV4>,
+    pub multicastgroup_block: Option<NetworkV4>,
 }
 
 impl SetGlobalConfigCliCommand {
@@ -33,7 +36,8 @@ impl SetGlobalConfigCliCommand {
         let signature = client.set_globalconfig(SetGlobalConfigCommand {
             local_asn: self.local_asn,
             remote_asn: self.remote_asn,
-            device_tunnel_block: self.device_tunnel_block,
+            link_wan_block: self.link_wan_block,
+            link_dzx_block: self.link_dzx_block,
             user_tunnel_block: self.user_tunnel_block,
             multicastgroup_block: self.multicastgroup_block,
         })?;
@@ -74,7 +78,8 @@ mod tests {
             .with(predicate::eq(SetGlobalConfigCommand {
                 local_asn: Some(1234),
                 remote_asn: Some(5678),
-                device_tunnel_block: "10.20.0.0/16".parse().ok(),
+                link_wan_block: "10.20.0.0/16".parse().ok(),
+                link_dzx_block: "10.30.0.0/16".parse().ok(),
                 user_tunnel_block: "10.10.0.0/16".parse().ok(),
                 multicastgroup_block: "224.2.0.0/4".parse().ok(),
             }))
@@ -86,7 +91,8 @@ mod tests {
         let res = SetGlobalConfigCliCommand {
             local_asn: Some(1234),
             remote_asn: Some(5678),
-            device_tunnel_block: "10.20.0.0/16".parse().ok(),
+            link_wan_block: "10.20.0.0/16".parse().ok(),
+            link_dzx_block: "10.30.0.0/16".parse().ok(),
             user_tunnel_block: "10.10.0.0/16".parse().ok(),
             multicastgroup_block: "224.2.0.0/4".parse().ok(),
         }
@@ -103,7 +109,8 @@ mod tests {
             .with(predicate::eq(SetGlobalConfigCommand {
                 local_asn: Some(9876),
                 remote_asn: Some(5432),
-                device_tunnel_block: None,
+                link_wan_block: None,
+                link_dzx_block: None,
                 user_tunnel_block: None,
                 multicastgroup_block: None,
             }))
@@ -112,7 +119,8 @@ mod tests {
         let res = SetGlobalConfigCliCommand {
             local_asn: Some(9876),
             remote_asn: Some(5432),
-            device_tunnel_block: None,
+            link_wan_block: None,
+            link_dzx_block: None,
             user_tunnel_block: None,
             multicastgroup_block: None,
         }
@@ -137,7 +145,8 @@ mod tests {
             .with(predicate::eq(SetGlobalConfigCommand {
                 local_asn: None,
                 remote_asn: None,
-                device_tunnel_block: None,
+                link_wan_block: None,
+                link_dzx_block: None,
                 user_tunnel_block: None,
                 multicastgroup_block: None,
             }))
@@ -151,7 +160,8 @@ mod tests {
         let res = SetGlobalConfigCliCommand {
             local_asn: None,
             remote_asn: None,
-            device_tunnel_block: None,
+            link_wan_block: None,
+            link_dzx_block: None,
             user_tunnel_block: None,
             multicastgroup_block: None,
         }

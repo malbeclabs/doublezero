@@ -10,9 +10,10 @@ pub struct GlobalConfig {
     pub bump_seed: u8,                   // 1
     pub local_asn: u32,                  // 4
     pub remote_asn: u32,                 // 4
-    pub device_tunnel_block: NetworkV4,  // 5
+    pub link_wan_block: NetworkV4,       // 5
     pub user_tunnel_block: NetworkV4,    // 5
     pub multicastgroup_block: NetworkV4, // 5
+    pub link_dzx_block: NetworkV4,       // 5
 }
 
 impl fmt::Display for GlobalConfig {
@@ -21,7 +22,7 @@ impl fmt::Display for GlobalConfig {
             f,
             "account_type: {}, owner: {}, local_asn: {}, remote_asn: {}, device_tunnel_block: {}, user_tunnel_block: {}, multicastgroup_block: {}",
             self.account_type, self.owner, self.local_asn, self.remote_asn,
-            &self.device_tunnel_block,
+            &self.link_wan_block,
             &self.user_tunnel_block,
             &self.multicastgroup_block,
         )
@@ -38,9 +39,10 @@ impl From<&[u8]> for GlobalConfig {
             bump_seed: parser.read_u8(),
             local_asn: parser.read_u32(),
             remote_asn: parser.read_u32(),
-            device_tunnel_block: parser.read_networkv4(),
+            link_wan_block: parser.read_networkv4(),
             user_tunnel_block: parser.read_networkv4(),
             multicastgroup_block: parser.read_networkv4(),
+            link_dzx_block: parser.read_networkv4(),
         }
     }
 }
@@ -56,7 +58,7 @@ impl TryFrom<&AccountInfo<'_>> for GlobalConfig {
 
 impl GlobalConfig {
     pub fn size(&self) -> usize {
-        1 + 32 + 1 + 4 + 4 + 5 + 5 + 5
+        1 + 32 + 1 + 4 + 4 + 5 + 5 + 5 + 5
     }
 }
 
@@ -72,9 +74,10 @@ mod tests {
             bump_seed: 1,
             local_asn: 123,
             remote_asn: 456,
-            device_tunnel_block: "10.0.0.1/24".parse().unwrap(),
+            link_wan_block: "10.0.0.1/24".parse().unwrap(),
             user_tunnel_block: "10.0.0.2/24".parse().unwrap(),
             multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
+            link_dzx_block: "10.0.2.1/24".parse().unwrap(),
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -84,9 +87,10 @@ mod tests {
         assert_eq!(val.owner, val2.owner);
         assert_eq!(val.local_asn, val2.local_asn);
         assert_eq!(val.remote_asn, val2.remote_asn);
-        assert_eq!(val.device_tunnel_block, val2.device_tunnel_block);
+        assert_eq!(val.link_wan_block, val2.link_wan_block);
         assert_eq!(val.user_tunnel_block, val2.user_tunnel_block);
         assert_eq!(val.multicastgroup_block, val2.multicastgroup_block);
+        assert_eq!(val.link_dzx_block, val2.link_dzx_block);
         assert_eq!(data.len(), val.size(), "Invalid Size");
     }
 }

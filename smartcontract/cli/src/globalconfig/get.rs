@@ -13,8 +13,10 @@ pub struct ConfigDisplay {
     pub local_asn: u32,
     #[tabled(rename = "remote asn")]
     pub remote_asn: u32,
-    #[tabled(rename = "device tunnel block")]
-    pub device_tunnel_block: String,
+    #[tabled(rename = "link WAN block")]
+    pub link_wan_block: String,
+    #[tabled(rename = "link DZX block")]
+    pub link_dzx_block: String,
     #[tabled(rename = "user tunnel block")]
     pub user_tunnel_block: String,
     #[tabled(rename = "multicast group block")]
@@ -28,7 +30,8 @@ impl GetGlobalConfigCliCommand {
         let config_display = ConfigDisplay {
             local_asn: config.local_asn,
             remote_asn: config.remote_asn,
-            device_tunnel_block: config.device_tunnel_block.to_string(),
+            link_wan_block: config.link_wan_block.to_string(),
+            link_dzx_block: config.link_dzx_block.to_string(),
             user_tunnel_block: config.user_tunnel_block.to_string(),
             multicast_group_block: config.multicastgroup_block.to_string(),
         };
@@ -64,7 +67,8 @@ mod tests {
             bump_seed,
             local_asn: 1234,
             remote_asn: 5678,
-            device_tunnel_block: "10.1.0.0/24".parse().unwrap(),
+            link_wan_block: "10.1.0.0/24".parse().unwrap(),
+            link_dzx_block: "10.2.0.0/24".parse().unwrap(),
             user_tunnel_block: "10.5.0.0/24".parse().unwrap(),
             multicastgroup_block: "224.2.0.0/4".parse().unwrap(),
         };
@@ -80,7 +84,7 @@ mod tests {
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
-            output_str, " local asn | remote asn | device tunnel block | user tunnel block | multicast group block \n 1234      | 5678       | 10.1.0.0/24         | 10.5.0.0/24       | 224.2.0.0/4           \n"
+            output_str, " local asn | remote asn | link WAN block | link DZX block | user tunnel block | multicast group block \n 1234      | 5678       | 10.1.0.0/24    | 10.2.0.0/24    | 10.5.0.0/24       | 224.2.0.0/4           \n"
         );
     }
 }

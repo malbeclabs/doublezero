@@ -57,9 +57,10 @@ async fn exchange_setdevice() {
         DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
             local_asn: 65000,
             remote_asn: 65001,
-            device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
+            link_wan_block: "10.0.0.0/24".parse().unwrap(),
             user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
             multicastgroup_block: "224.0.0.0/4".parse().unwrap(),
+            link_dzx_block: "10.0.2.1/24".parse().unwrap(),
         }),
         vec![
             AccountMeta::new(config_pubkey, false),

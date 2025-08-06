@@ -19,7 +19,7 @@ use doublezero_sdk::{
         user::list::ListUserCommand,
     },
     AccountData, DZClient, Device, DeviceStatus, Exchange, GetGlobalConfigCommand, InterfaceType,
-    LinkStatus, Location, MulticastGroup, ProgramVersion, UserStatus,
+    LinkLinkType, LinkStatus, Location, MulticastGroup, ProgramVersion, UserStatus,
 };
 use log::{debug, error, info, warn};
 use solana_sdk::pubkey::Pubkey;
@@ -38,9 +38,9 @@ pub struct Activator {
 
     pub link_ids: IDAllocator,
     pub segment_routing_ids: IDAllocator,
-    pub link_ips: IPBlockAllocator,
+    pub link_wan_ips: IPBlockAllocator,
+    pub link_dzx_ips: IPBlockAllocator,
     pub multicastgroup_tunnel_ips: IPBlockAllocator,
-
     pub user_tunnel_ips: IPBlockAllocator,
     pub devices: DeviceMap,
 
@@ -92,7 +92,8 @@ impl Activator {
 
         Ok(Self {
             client,
-            link_ips: IPBlockAllocator::new(config.device_tunnel_block.into()),
+            link_wan_ips: IPBlockAllocator::new(config.link_wan_block.into()),
+            link_dzx_ips: IPBlockAllocator::new(config.link_dzx_block.into()),
             link_ids: IDAllocator::new(0, vec![]),
             segment_routing_ids: IDAllocator::new(1, vec![]),
             multicastgroup_tunnel_ips: IPBlockAllocator::new(config.multicastgroup_block.into()),
@@ -122,7 +123,11 @@ impl Activator {
             .filter(|(_, t)| t.status == LinkStatus::Activated)
         {
             self.link_ids.assign(tunnel.tunnel_id);
-            self.link_ips.assign_block(tunnel.tunnel_net.into());
+            if tunnel.link_type == LinkLinkType::WAN {
+                self.link_wan_ips.assign_block(tunnel.tunnel_net.into());
+            } else if tunnel.link_type == LinkLinkType::DZX {
+                self.link_dzx_ips.assign_block(tunnel.tunnel_net.into());
+            }
         }
 
         for (pubkey, device) in devices
@@ -134,7 +139,7 @@ impl Activator {
                     self.segment_routing_ids.assign(interface.node_segment_idx);
                 }
                 if interface.interface_type == InterfaceType::Loopback {
-                    self.link_ips.assign_block(interface.ip_net.into());
+                    self.link_wan_ips.assign_block(interface.ip_net.into());
                 }
             });
             self.add_device(pubkey, device);
@@ -198,7 +203,8 @@ impl Activator {
 
         // store these so we can move them into the below closure without making the borrow checker mad
         let devices = &mut self.devices;
-        let link_ips = &mut self.link_ips;
+        let link_wan_ips = &mut self.link_wan_ips;
+        let link_dzx_ips = &mut self.link_dzx_ips;
         let link_ids = &mut self.link_ids;
         let multicastgroup_tunnel_ips = &mut self.multicastgroup_tunnel_ips;
         let user_tunnel_ips = &mut self.user_tunnel_ips;
@@ -223,14 +229,16 @@ impl Activator {
                             device,
                             state_transitions,
                             segment_routing_ids,
-                            link_ips,
+                            link_wan_ips,
+                            link_dzx_ips,
                         );
                     }
                     AccountData::Link(tunnel) => {
                         process_tunnel_event(
                             client,
                             pubkey,
-                            link_ips,
+                            link_wan_ips,
+                            link_dzx_ips,
                             link_ids,
                             tunnel,
                             state_transitions,

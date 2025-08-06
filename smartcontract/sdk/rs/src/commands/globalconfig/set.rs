@@ -11,7 +11,8 @@ use crate::{DoubleZeroClient, GetGlobalConfigCommand, GetGlobalStateCommand};
 pub struct SetGlobalConfigCommand {
     pub local_asn: Option<u32>,
     pub remote_asn: Option<u32>,
-    pub device_tunnel_block: Option<NetworkV4>,
+    pub link_wan_block: Option<NetworkV4>,
+    pub link_dzx_block: Option<NetworkV4>,
     pub user_tunnel_block: Option<NetworkV4>,
     pub multicastgroup_block: Option<NetworkV4>,
 }
@@ -44,7 +45,8 @@ impl SetGlobalConfigCommand {
                 SetGlobalConfigCommand {
                     local_asn: None,
                     remote_asn: None,
-                    device_tunnel_block: None,
+                    link_wan_block: None,
+                    link_dzx_block: None,
                     user_tunnel_block: None,
                     multicastgroup_block: None,
                 },
@@ -56,7 +58,8 @@ impl SetGlobalConfigCommand {
                 SetGlobalConfigCommand {
                     local_asn: Some(local_asn),
                     remote_asn: Some(remote_asn),
-                    device_tunnel_block: Some(device_tunnel_block),
+                    link_wan_block: Some(device_tunnel_block),
+                    link_dzx_block: Some(link_dzx_block),
                     user_tunnel_block: Some(user_tunnel_block),
                     multicastgroup_block: Some(multicastgroup_block),
                 },
@@ -64,7 +67,8 @@ impl SetGlobalConfigCommand {
             ) => Ok(SetGlobalConfigArgs {
                 local_asn: *local_asn,
                 remote_asn: *remote_asn,
-                device_tunnel_block: *device_tunnel_block,
+                link_wan_block: *device_tunnel_block,
+                link_dzx_block: *link_dzx_block,
                 user_tunnel_block: *user_tunnel_block,
                 multicastgroup_block: *multicastgroup_block,
             }),
@@ -72,7 +76,8 @@ impl SetGlobalConfigCommand {
             (set_config_command, Some((_, existing_config))) => Ok(SetGlobalConfigArgs {
                 local_asn: set_config_command.local_asn.unwrap_or(existing_config.local_asn),
                 remote_asn: set_config_command.remote_asn.unwrap_or(existing_config.remote_asn),
-                device_tunnel_block: set_config_command.device_tunnel_block.unwrap_or(existing_config.device_tunnel_block),
+                link_wan_block: set_config_command.link_wan_block.unwrap_or(existing_config.link_wan_block),
+                link_dzx_block: set_config_command.link_dzx_block.unwrap_or(existing_config.link_dzx_block),
                 user_tunnel_block: set_config_command.user_tunnel_block.unwrap_or(existing_config.user_tunnel_block),
                 multicastgroup_block: set_config_command.multicastgroup_block.unwrap_or(existing_config.multicastgroup_block),
             }),

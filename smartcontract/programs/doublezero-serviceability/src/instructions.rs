@@ -436,9 +436,10 @@ mod tests {
             DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
                 local_asn: 100,
                 remote_asn: 200,
-                device_tunnel_block: "1.2.3.4/1".parse().unwrap(),
+                link_wan_block: "1.2.3.4/1".parse().unwrap(),
                 user_tunnel_block: "1.2.3.4/1".parse().unwrap(),
                 multicastgroup_block: "1.2.3.4/1".parse().unwrap(),
+                link_dzx_block: "10.0.2.1/24".parse().unwrap(),
             }),
             "SetGlobalConfig",
         );

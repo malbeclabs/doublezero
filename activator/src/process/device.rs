@@ -15,6 +15,7 @@ use std::{
 
 use crate::{activator::DeviceMap, states::devicestate::DeviceState};
 
+#[allow(clippy::too_many_arguments)]
 pub fn process_device_event(
     client: &dyn DoubleZeroClient,
     pubkey: &Pubkey,
@@ -22,7 +23,8 @@ pub fn process_device_event(
     device: &Device,
     state_transitions: &mut HashMap<&'static str, usize>,
     segment_routing_ids: &mut IDAllocator,
-    link_ips: &mut IPBlockAllocator,
+    link_wan_ips: &mut IPBlockAllocator,
+    _link_dzx_ips: &mut IPBlockAllocator,
 ) {
     match device.status {
         DeviceStatus::Pending => {
@@ -110,7 +112,7 @@ pub fn process_device_event(
             }
             if interface.ip_net == NetworkV4::default() {
                 // Assign a loopback IP if not already set
-                interface.ip_net = link_ips
+                interface.ip_net = link_wan_ips
                     .next_available_block(1, 1)
                     .unwrap_or_else(|| {
                         error!(
@@ -252,7 +254,8 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        let mut ip_block_allocator = IPBlockAllocator::new("1.1.1.0/24".parse().unwrap());
+        let mut link_wan_ips = IPBlockAllocator::new("1.1.1.0/24".parse().unwrap());
+        let mut link_dzx_ips = IPBlockAllocator::new("1.1.2.0/24".parse().unwrap());
 
         process_device_event(
             &client,
@@ -261,7 +264,8 @@ mod tests {
             &device,
             &mut state_transitions,
             &mut segment_ids,
-            &mut ip_block_allocator,
+            &mut link_wan_ips,
+            &mut link_dzx_ips,
         );
 
         assert!(devices.contains_key(&device_pubkey));
@@ -298,7 +302,8 @@ mod tests {
             &device,
             &mut state_transitions,
             &mut segment_ids,
-            &mut ip_block_allocator,
+            &mut link_wan_ips,
+            &mut link_dzx_ips,
         );
         assert!(!devices.contains_key(&device_pubkey));
         assert_eq!(state_transitions.len(), 2);
@@ -354,7 +359,8 @@ mod tests {
         };
 
         let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
-        let mut ip_block_allocator = IPBlockAllocator::new("1.1.1.0/24".parse().unwrap());
+        let mut link_wan_ips = IPBlockAllocator::new("1.1.1.0/24".parse().unwrap());
+        let mut link_dzx_ips = IPBlockAllocator::new("1.1.2.0/24".parse().unwrap());
 
         let mut expected_interfaces = device.interfaces.clone();
         expected_interfaces[1].ip_net = "1.1.1.1/32".parse().unwrap();
@@ -385,7 +391,8 @@ mod tests {
             &device,
             &mut state_transitions,
             &mut segment_ids,
-            &mut ip_block_allocator,
+            &mut link_wan_ips,
+            &mut link_dzx_ips,
         );
 
         assert!(devices.contains_key(&pubkey));
@@ -400,7 +407,8 @@ mod tests {
             &device,
             &mut state_transitions,
             &mut segment_ids,
-            &mut ip_block_allocator,
+            &mut link_wan_ips,
+            &mut link_dzx_ips,
         );
 
         assert!(devices.contains_key(&pubkey));

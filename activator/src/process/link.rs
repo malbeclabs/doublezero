@@ -17,7 +17,8 @@ use std::{collections::HashMap, fmt::Write};
 pub fn process_tunnel_event(
     client: &dyn DoubleZeroClient,
     pubkey: &Pubkey,
-    link_ips: &mut IPBlockAllocator,
+    link_wan_ips: &mut IPBlockAllocator,
+    link_dzx_ips: &mut IPBlockAllocator,
     link_ids: &mut IDAllocator,
     link: &Link,
     state_transitions: &mut HashMap<&'static str, usize>,
@@ -32,7 +33,13 @@ pub fn process_tunnel_event(
             )
             .unwrap();
 
-            match link_ips.next_available_block(0, 2) {
+            let ips = if link.link_type == doublezero_sdk::LinkLinkType::WAN {
+                link_wan_ips
+            } else {
+                link_dzx_ips
+            };
+
+            match ips.next_available_block(0, 2) {
                 Some(tunnel_net) => {
                     let tunnel_id = link_ids.next_available();
 
@@ -129,7 +136,12 @@ pub fn process_tunnel_event(
                     write!(&mut log_msg, " Deactivated {signature}").unwrap();
 
                     link_ids.unassign(link.tunnel_id);
-                    link_ips.unassign_block(link.tunnel_net.into());
+                    let ips = if link.link_type == doublezero_sdk::LinkLinkType::WAN {
+                        link_wan_ips
+                    } else {
+                        link_dzx_ips
+                    };
+                    ips.unassign_block(link.tunnel_net.into());
 
                     *state_transitions
                         .entry("tunnel-deleting-to-deactivated")
@@ -230,7 +242,8 @@ mod tests {
     #[test]
     fn test_process_tunnel_event_pending_to_deleted() {
         let mut seq = Sequence::new();
-        let mut link_ips = IPBlockAllocator::new("10.0.0.0/16".parse().unwrap());
+        let mut link_wan_ips = IPBlockAllocator::new("10.0.0.0/16".parse().unwrap());
+        let mut link_dzx_ips = IPBlockAllocator::new("11.0.0.0/16".parse().unwrap());
         let mut link_ids = IDAllocator::new(500, vec![500, 501, 503]);
         let mut client = create_test_client();
 
@@ -425,14 +438,15 @@ mod tests {
         process_tunnel_event(
             &client,
             &tunnel_pubkey,
-            &mut link_ips,
+            &mut link_wan_ips,
+            &mut link_dzx_ips,
             &mut link_ids,
             &tunnel,
             &mut state_transitions,
         );
 
         assert!(link_ids.assigned.contains(&502_u16));
-        assert!(link_ips.contains("10.0.0.42".parse().unwrap()));
+        assert!(link_wan_ips.contains("10.0.0.42".parse().unwrap()));
 
         let mut tunnel = tunnel.clone();
         tunnel.status = LinkStatus::Deleting;
@@ -516,19 +530,20 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        let assigned_ips = link_ips.assigned_ips.clone();
+        let assigned_ips = link_wan_ips.assigned_ips.clone();
 
         process_tunnel_event(
             &client,
             &tunnel_pubkey,
-            &mut link_ips,
+            &mut link_wan_ips,
+            &mut link_dzx_ips,
             &mut link_ids,
             &tunnel,
             &mut state_transitions,
         );
 
         assert!(!link_ids.assigned.contains(&502_u16));
-        assert_ne!(link_ips.assigned_ips, assigned_ips);
+        assert_ne!(link_wan_ips.assigned_ips, assigned_ips);
 
         assert_eq!(state_transitions.len(), 2);
         assert_eq!(state_transitions["tunnel-pending-to-activated"], 1);
@@ -538,7 +553,8 @@ mod tests {
     #[test]
     fn test_process_tunnel_event_rejected() {
         let mut seq = Sequence::new();
-        let mut link_ips = IPBlockAllocator::new("10.0.0.0/32".parse().unwrap());
+        let mut link_wan_ips = IPBlockAllocator::new("10.0.0.0/32".parse().unwrap());
+        let mut link_dzx_ips = IPBlockAllocator::new("10.1.0.0/32".parse().unwrap());
         let mut link_ids = IDAllocator::new(500, vec![500, 501, 503]);
         let mut client = create_test_client();
 
@@ -564,7 +580,7 @@ mod tests {
             side_z_iface_name: "eth1".to_string(),
         };
 
-        let _ = link_ips.next_available_block(0, 2);
+        let _ = link_wan_ips.next_available_block(0, 2);
 
         client
             .expect_execute_transaction()
@@ -583,7 +599,8 @@ mod tests {
         process_tunnel_event(
             &client,
             &tunnel_pubkey,
-            &mut link_ips,
+            &mut link_wan_ips,
+            &mut link_dzx_ips,
             &mut link_ids,
             &tunnel,
             &mut state_transitions,

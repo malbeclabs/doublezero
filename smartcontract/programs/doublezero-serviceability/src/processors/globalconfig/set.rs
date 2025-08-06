@@ -23,7 +23,8 @@ use solana_program::{
 pub struct SetGlobalConfigArgs {
     pub local_asn: u32,
     pub remote_asn: u32,
-    pub device_tunnel_block: NetworkV4,
+    pub link_wan_block: NetworkV4,
+    pub link_dzx_block: NetworkV4,
     pub user_tunnel_block: NetworkV4,
     pub multicastgroup_block: NetworkV4,
 }
@@ -32,10 +33,11 @@ impl fmt::Debug for SetGlobalConfigArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "local_asn: {}, remote_asn: {}, tunnel_block: {}, user _block: {}, multicastgroup_block: {}",
+            "local_asn: {}, remote_asn: {}, link_wan_block: {}, link_dzx_block: {}, user_tunnel_block: {}, multicastgroup_block: {}",
             self.local_asn,
             self.remote_asn,
-            &self.device_tunnel_block,
+            &self.link_wan_block,
+            &self.link_dzx_block,
             &self.user_tunnel_block,
             &self.multicastgroup_block,
         )
@@ -78,9 +80,10 @@ pub fn process_set_globalconfig(
         bump_seed,
         local_asn: value.local_asn,
         remote_asn: value.remote_asn,
-        device_tunnel_block: value.device_tunnel_block,
+        link_wan_block: value.link_wan_block,
         user_tunnel_block: value.user_tunnel_block,
         multicastgroup_block: value.multicastgroup_block,
+        link_dzx_block: value.link_dzx_block,
     };
 
     let account_space = data.size();

@@ -19,12 +19,15 @@ const (
 	LabelFunderAccount = "funder_account"
 
 	// Error types.
-	ErrorTypeLoadServiceabilityState           = "load_serviceability_state"
-	ErrorTypeGetFunderAccountBalance           = "get_funder_account_balance"
-	ErrorTypeFunderAccountBalanceBelowMinimum  = "funder_account_balance_below_minimum"
-	ErrorTypeGetMetricsPublisherAccountBalance = "get_metrics_publisher_account_balance"
-	ErrorTypeTransferFundsToMetricsPublisher   = "transfer_funds_to_metrics_publisher"
-	ErrorTypeWaitForMetricsPublisherBalance    = "wait_for_metrics_publisher_balance"
+	ErrorTypeGetRecipients                           = "get_recipients"
+	ErrorTypeGetFunderAccountBalance                 = "get_funder_account_balance"
+	ErrorTypeFunderAccountBalanceBelowMinimum        = "funder_account_balance_below_minimum"
+	ErrorTypeGetRecipientAccountBalance              = "get_recipient_account_balance"
+	ErrorTypeTransferFundsToRecipient                = "transfer_funds_to_recipient"
+	ErrorTypeWaitForRecipientAccountBalance          = "wait_for_recipient_account_balance"
+	ErrorTypeGetInternetLatencyCollectorBalance      = "get_internet_latency_collector_account_balance"
+	ErrorTypeTransferFundsToInternetLatencyCollector = "transfer_funds_to_internet_latency_collector"
+	ErrorTypeWaitForInternetLatencyCollectorBalance  = "wait_for_internet_latency_collector_balance"
 )
 
 var (

@@ -8,18 +8,17 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
 var (
-	ErrLoggerRequired         = errors.New("logger is required")
-	ErrServiceabilityRequired = errors.New("serviceability is required")
-	ErrSolanaRequired         = errors.New("solana is required")
-	ErrSignerRequired         = errors.New("signer is required")
-	ErrSignerInvalid          = errors.New("signer is invalid")
-	ErrMinBalanceRequired     = errors.New("min balance is required")
-	ErrTopUpSOLRequired       = errors.New("top up is required")
-	ErrIntervalRequired       = errors.New("interval is required")
+	ErrLoggerRequired            = errors.New("logger is required")
+	ErrGetRecipientsFuncRequired = errors.New("get recipients func is required")
+	ErrSolanaRequired            = errors.New("solana is required")
+	ErrSignerRequired            = errors.New("signer is required")
+	ErrSignerInvalid             = errors.New("signer is invalid")
+	ErrMinBalanceRequired        = errors.New("min balance is required")
+	ErrTopUpSOLRequired          = errors.New("top up is required")
+	ErrIntervalRequired          = errors.New("interval is required")
 )
 
 const (
@@ -28,9 +27,9 @@ const (
 )
 
 type Config struct {
-	Logger         *slog.Logger
-	Serviceability ServiceabilityClient
-	Solana         SolanaClient
+	Logger            *slog.Logger
+	GetRecipientsFunc func(ctx context.Context) ([]Recipient, error)
+	Solana            SolanaClient
 
 	Signer                     solana.PrivateKey
 	MinBalanceSOL              float64
@@ -52,8 +51,8 @@ func (c *Config) Validate() error {
 	if c.Logger == nil {
 		return ErrLoggerRequired
 	}
-	if c.Serviceability == nil {
-		return ErrServiceabilityRequired
+	if c.GetRecipientsFunc == nil {
+		return ErrGetRecipientsFuncRequired
 	}
 	if c.Solana == nil {
 		return ErrSolanaRequired
@@ -80,11 +79,6 @@ func (c *Config) Validate() error {
 		c.WaitForBalancePollInterval = defaultWaitForBalancePollInterval
 	}
 	return nil
-}
-
-type ServiceabilityClient interface {
-	GetProgramData(ctx context.Context) (*serviceability.ProgramData, error)
-	ProgramID() solana.PublicKey
 }
 
 type SolanaClient interface {

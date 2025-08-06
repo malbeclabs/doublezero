@@ -14,7 +14,6 @@ import (
 	"github.com/gagliardetto/solana-go/programs/system"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/controlplane/funder/internal/funder"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,13 +21,15 @@ func TestTelemetry_Funder_New(t *testing.T) {
 	t.Parallel()
 
 	validCfg := funder.Config{
-		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Serviceability: &mockServiceability{},
-		Solana:         &mockSolana{},
-		Signer:         solana.NewWallet().PrivateKey,
-		MinBalanceSOL:  1,
-		TopUpSOL:       1,
-		Interval:       1,
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		GetRecipientsFunc: func(ctx context.Context) ([]funder.Recipient, error) {
+			return []funder.Recipient{}, nil
+		},
+		Solana:        &mockSolana{},
+		Signer:        solana.NewWallet().PrivateKey,
+		MinBalanceSOL: 1,
+		TopUpSOL:      1,
+		Interval:      1,
 	}
 
 	t.Run("valid config", func(t *testing.T) {
@@ -56,11 +57,11 @@ func TestTelemetry_Funder_New(t *testing.T) {
 			wantErr: funder.ErrLoggerRequired,
 		},
 		{
-			name: "missing serviceability",
+			name: "missing get recipients func",
 			cfg: mutate(validCfg, func(cfg *funder.Config) {
-				cfg.Serviceability = nil
+				cfg.GetRecipientsFunc = nil
 			}),
-			wantErr: funder.ErrServiceabilityRequired,
+			wantErr: funder.ErrGetRecipientsFuncRequired,
 		},
 		{
 			name: "missing solana",
@@ -138,15 +139,6 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 
 		tracker := newTracker("funder-balance", "device-balance", "transfer")
 
-		svc := &mockServiceability{
-			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
-				return &serviceability.ProgramData{
-					Devices: []serviceability.Device{{MetricsPublisherPubKey: devicePK}},
-				}, nil
-			},
-			ProgramIDFunc: func() solana.PublicKey { return solana.PublicKey{} },
-		}
-
 		var (
 			transferAmount uint64
 			mu             sync.Mutex
@@ -190,13 +182,17 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		}
 
 		f, err := funder.New(funder.Config{
-			Logger:         logger,
-			Serviceability: svc,
-			Solana:         sol,
-			Signer:         signer,
-			MinBalanceSOL:  1,
-			TopUpSOL:       5,
-			Interval:       1 * time.Millisecond,
+			Logger: logger,
+			GetRecipientsFunc: func(ctx context.Context) ([]funder.Recipient, error) {
+				return []funder.Recipient{
+					{Name: "device", PubKey: devicePK},
+				}, nil
+			},
+			Solana:        sol,
+			Signer:        signer,
+			MinBalanceSOL: 1,
+			TopUpSOL:      5,
+			Interval:      1 * time.Millisecond,
 		})
 		require.NoError(t, err)
 
@@ -220,17 +216,6 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		svc := &mockServiceability{
-			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
-				return &serviceability.ProgramData{
-					Devices: []serviceability.Device{
-						{MetricsPublisherPubKey: devicePK},
-					},
-				}, nil
-			},
-			ProgramIDFunc: func() solana.PublicKey { return solana.PublicKey{} },
-		}
-
 		sol := &mockSolana{
 			GetBalanceFunc: func(ctx context.Context, pubkey solana.PublicKey, commitment solanarpc.CommitmentType) (*solanarpc.GetBalanceResult, error) {
 				if pubkey == signer.PublicKey() {
@@ -253,13 +238,17 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		}
 
 		f, err := funder.New(funder.Config{
-			Logger:         logger,
-			Serviceability: svc,
-			Solana:         sol,
-			Signer:         signer,
-			MinBalanceSOL:  1,
-			TopUpSOL:       5,
-			Interval:       1 * time.Millisecond,
+			Logger: logger,
+			GetRecipientsFunc: func(ctx context.Context) ([]funder.Recipient, error) {
+				return []funder.Recipient{
+					{Name: "device", PubKey: devicePK},
+				}, nil
+			},
+			Solana:        sol,
+			Signer:        signer,
+			MinBalanceSOL: 1,
+			TopUpSOL:      5,
+			Interval:      1 * time.Millisecond,
 		})
 		require.NoError(t, err)
 
@@ -279,17 +268,6 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-
-		svc := &mockServiceability{
-			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
-				return &serviceability.ProgramData{
-					Devices: []serviceability.Device{
-						{MetricsPublisherPubKey: devicePK},
-					},
-				}, nil
-			},
-			ProgramIDFunc: func() solana.PublicKey { return solana.PublicKey{} },
-		}
 
 		var funderBalance atomic.Int32
 
@@ -311,13 +289,17 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		}
 
 		f, err := funder.New(funder.Config{
-			Logger:         logger,
-			Serviceability: svc,
-			Solana:         sol,
-			Signer:         signer,
-			MinBalanceSOL:  1,
-			TopUpSOL:       2,
-			Interval:       1 * time.Millisecond,
+			Logger: logger,
+			GetRecipientsFunc: func(ctx context.Context) ([]funder.Recipient, error) {
+				return []funder.Recipient{
+					{Name: "device", PubKey: devicePK},
+				}, nil
+			},
+			Solana:        sol,
+			Signer:        signer,
+			MinBalanceSOL: 1,
+			TopUpSOL:      2,
+			Interval:      1 * time.Millisecond,
 		})
 		require.NoError(t, err)
 
@@ -331,7 +313,7 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		require.GreaterOrEqual(t, funderBalance.Load(), int32(1))
 	})
 
-	t.Run("skips loop when Serviceability.Load returns error", func(t *testing.T) {
+	t.Run("skips loop when GetRecipientsFunc returns error", func(t *testing.T) {
 		t.Parallel()
 
 		signer := solana.NewWallet().PrivateKey
@@ -339,19 +321,11 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		loadCalled := make(chan struct{}, 1)
+		getRecipientsCalled := make(chan struct{}, 1)
 		var called struct {
 			getDevices bool
 			getBalance bool
 			transfer   bool
-		}
-
-		svc := &mockServiceability{
-			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
-				loadCalled <- struct{}{}
-				return nil, context.DeadlineExceeded
-			},
-			ProgramIDFunc: func() solana.PublicKey { return solana.PublicKey{} },
 		}
 
 		sol := &mockSolana{
@@ -366,13 +340,16 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		}
 
 		f, err := funder.New(funder.Config{
-			Logger:         logger,
-			Serviceability: svc,
-			Solana:         sol,
-			Signer:         signer,
-			MinBalanceSOL:  1,
-			TopUpSOL:       1,
-			Interval:       1 * time.Millisecond,
+			Logger: logger,
+			GetRecipientsFunc: func(ctx context.Context) ([]funder.Recipient, error) {
+				getRecipientsCalled <- struct{}{}
+				return nil, context.DeadlineExceeded
+			},
+			Solana:        sol,
+			Signer:        signer,
+			MinBalanceSOL: 1,
+			TopUpSOL:      1,
+			Interval:      1 * time.Millisecond,
 		})
 		require.NoError(t, err)
 
@@ -381,11 +358,11 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		}()
 
 		select {
-		case <-loadCalled:
+		case <-getRecipientsCalled:
 			cancel()
 		case <-time.After(100 * time.Millisecond):
 			cancel()
-			t.Fatal("timed out waiting for Load to be called")
+			t.Fatal("timed out waiting for GetRecipientsFunc to be called")
 		}
 
 		require.False(t, called.getDevices, "should not call GetDevices")
@@ -402,23 +379,11 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		loadCalled := make(chan struct{}, 1)
+		getRecipientsCalled := make(chan struct{}, 1)
 		var called struct {
 			getBalanceDevice bool
 			getDevices       bool
 			transfer         bool
-		}
-
-		svc := &mockServiceability{
-			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
-				loadCalled <- struct{}{}
-				return &serviceability.ProgramData{
-					Devices: []serviceability.Device{
-						{MetricsPublisherPubKey: devicePK},
-					},
-				}, nil
-			},
-			ProgramIDFunc: func() solana.PublicKey { return solana.PublicKey{} },
 		}
 
 		sol := &mockSolana{
@@ -438,13 +403,18 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		}
 
 		f, err := funder.New(funder.Config{
-			Logger:         logger,
-			Serviceability: svc,
-			Solana:         sol,
-			Signer:         signer,
-			MinBalanceSOL:  1,
-			TopUpSOL:       1,
-			Interval:       1 * time.Millisecond,
+			Logger: logger,
+			GetRecipientsFunc: func(ctx context.Context) ([]funder.Recipient, error) {
+				getRecipientsCalled <- struct{}{}
+				return []funder.Recipient{
+					{Name: "device", PubKey: devicePK},
+				}, nil
+			},
+			Solana:        sol,
+			Signer:        signer,
+			MinBalanceSOL: 1,
+			TopUpSOL:      1,
+			Interval:      1 * time.Millisecond,
 		})
 		require.NoError(t, err)
 
@@ -453,11 +423,11 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		}()
 
 		select {
-		case <-loadCalled:
+		case <-getRecipientsCalled:
 			cancel()
 		case <-time.After(100 * time.Millisecond):
 			cancel()
-			t.Fatal("timed out waiting for Load to be called")
+			t.Fatal("timed out waiting for GetRecipientsFunc to be called")
 		}
 
 		require.False(t, called.getDevices, "should not call GetDevices when funder balance fails")
@@ -465,7 +435,7 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		require.False(t, called.transfer, "should not attempt transfer")
 	})
 
-	t.Run("skips device when device GetBalance returns error", func(t *testing.T) {
+	t.Run("skips recipient when GetBalance returns error", func(t *testing.T) {
 		t.Parallel()
 
 		signer := solana.NewWallet().PrivateKey
@@ -474,21 +444,9 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		loadCalled := make(chan struct{}, 1)
+		getRecipientsCalled := make(chan struct{}, 1)
 		var called struct {
 			transfer bool
-		}
-
-		svc := &mockServiceability{
-			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
-				loadCalled <- struct{}{}
-				return &serviceability.ProgramData{
-					Devices: []serviceability.Device{
-						{MetricsPublisherPubKey: devicePK},
-					},
-				}, nil
-			},
-			ProgramIDFunc: func() solana.PublicKey { return solana.PublicKey{} },
 		}
 
 		sol := &mockSolana{
@@ -511,13 +469,18 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		}
 
 		f, err := funder.New(funder.Config{
-			Logger:         logger,
-			Serviceability: svc,
-			Solana:         sol,
-			Signer:         signer,
-			MinBalanceSOL:  1,
-			TopUpSOL:       1,
-			Interval:       1 * time.Millisecond,
+			Logger: logger,
+			GetRecipientsFunc: func(ctx context.Context) ([]funder.Recipient, error) {
+				getRecipientsCalled <- struct{}{}
+				return []funder.Recipient{
+					{Name: "device", PubKey: devicePK},
+				}, nil
+			},
+			Solana:        sol,
+			Signer:        signer,
+			MinBalanceSOL: 1,
+			TopUpSOL:      1,
+			Interval:      1 * time.Millisecond,
 		})
 		require.NoError(t, err)
 
@@ -526,11 +489,11 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		}()
 
 		select {
-		case <-loadCalled:
+		case <-getRecipientsCalled:
 			cancel()
 		case <-time.After(100 * time.Millisecond):
 			cancel()
-			t.Fatal("timed out waiting for Load to be called")
+			t.Fatal("timed out waiting for GetRecipientsFunc to be called")
 		}
 
 		require.False(t, called.transfer, "should not transfer if device balance check fails")
@@ -545,19 +508,7 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		tracker := newTracker("load", "transfer")
-
-		svc := &mockServiceability{
-			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
-				tracker.mark("load")
-				return &serviceability.ProgramData{
-					Devices: []serviceability.Device{
-						{MetricsPublisherPubKey: devicePK},
-					},
-				}, nil
-			},
-			ProgramIDFunc: func() solana.PublicKey { return solana.NewWallet().PublicKey() },
-		}
+		tracker := newTracker("getRecipients", "transfer")
 
 		sol := &mockSolana{
 			GetBalanceFunc: func(ctx context.Context, pubkey solana.PublicKey, _ solanarpc.CommitmentType) (*solanarpc.GetBalanceResult, error) {
@@ -591,13 +542,18 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		}
 
 		f, err := funder.New(funder.Config{
-			Logger:         logger,
-			Serviceability: svc,
-			Solana:         sol,
-			Signer:         signer,
-			MinBalanceSOL:  1,
-			TopUpSOL:       5,
-			Interval:       1 * time.Millisecond,
+			Logger: logger,
+			GetRecipientsFunc: func(ctx context.Context) ([]funder.Recipient, error) {
+				tracker.mark("getRecipients")
+				return []funder.Recipient{
+					{Name: "device", PubKey: devicePK},
+				}, nil
+			},
+			Solana:        sol,
+			Signer:        signer,
+			MinBalanceSOL: 1,
+			TopUpSOL:      5,
+			Interval:      1 * time.Millisecond,
 		})
 		require.NoError(t, err)
 
@@ -608,7 +564,7 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		tracker.wait(t, 200*time.Millisecond)
 	})
 
-	t.Run("handles multiple devices with mixed balances", func(t *testing.T) {
+	t.Run("handles multiple recipients with mixed balances", func(t *testing.T) {
 		t.Parallel()
 
 		signer := solana.NewWallet().PrivateKey
@@ -620,26 +576,12 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		defer cancel()
 
 		tracker := newTracker(
-			"load",
+			"getRecipients",
 			"device-ok",
 			"device-low",
 			"device-error",
 			"transfer",
 		)
-
-		svc := &mockServiceability{
-			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
-				tracker.mark("load")
-				return &serviceability.ProgramData{
-					Devices: []serviceability.Device{
-						{MetricsPublisherPubKey: deviceOK},
-						{MetricsPublisherPubKey: deviceLow},
-						{MetricsPublisherPubKey: deviceError},
-					},
-				}, nil
-			},
-			ProgramIDFunc: func() solana.PublicKey { return solana.PublicKey{} },
-		}
 
 		var (
 			transferTo            solana.PublicKey
@@ -692,13 +634,20 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		}
 
 		f, err := funder.New(funder.Config{
-			Logger:         logger,
-			Serviceability: svc,
-			Solana:         sol,
-			Signer:         signer,
-			MinBalanceSOL:  1,
-			TopUpSOL:       5,
-			Interval:       1 * time.Millisecond,
+			Logger: logger,
+			GetRecipientsFunc: func(ctx context.Context) ([]funder.Recipient, error) {
+				tracker.mark("getRecipients")
+				return []funder.Recipient{
+					{Name: "device", PubKey: deviceOK},
+					{Name: "device", PubKey: deviceLow},
+					{Name: "device", PubKey: deviceError},
+				}, nil
+			},
+			Solana:        sol,
+			Signer:        signer,
+			MinBalanceSOL: 1,
+			TopUpSOL:      5,
+			Interval:      1 * time.Millisecond,
 		})
 		require.NoError(t, err)
 
@@ -712,7 +661,7 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		require.Equal(t, deviceLow, got, "should only transfer to underfunded device")
 	})
 
-	t.Run("skips devices with zero MetricsPublisherPubKey", func(t *testing.T) {
+	t.Run("skips recipient with zero pubkey", func(t *testing.T) {
 		t.Parallel()
 
 		signer := solana.NewWallet().PrivateKey
@@ -722,20 +671,7 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		tracker := newTracker("load", "valid-device-checked")
-
-		svc := &mockServiceability{
-			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
-				tracker.mark("load")
-				return &serviceability.ProgramData{
-					Devices: []serviceability.Device{
-						{MetricsPublisherPubKey: validPK},
-						{MetricsPublisherPubKey: zeroPK},
-					},
-				}, nil
-			},
-			ProgramIDFunc: func() solana.PublicKey { return solana.PublicKey{} },
-		}
+		tracker := newTracker("getRecipients", "valid-device-checked")
 
 		sol := &mockSolana{
 			GetBalanceFunc: func(ctx context.Context, pubkey solana.PublicKey, _ solanarpc.CommitmentType) (*solanarpc.GetBalanceResult, error) {
@@ -746,7 +682,7 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 					tracker.mark("valid-device-checked")
 					return &solanarpc.GetBalanceResult{Value: uint64(0.1 * float64(solana.LAMPORTS_PER_SOL))}, nil
 				case zeroPK:
-					t.Fatalf("should not check balance for zero MetricsPublisherPubKey")
+					t.Fatalf("should not check balance for zero pubkey")
 				default:
 					t.Fatalf("unexpected pubkey %s", pubkey)
 				}
@@ -768,13 +704,19 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		}
 
 		f, err := funder.New(funder.Config{
-			Logger:         logger,
-			Serviceability: svc,
-			Solana:         sol,
-			Signer:         signer,
-			MinBalanceSOL:  1,
-			TopUpSOL:       5,
-			Interval:       1 * time.Millisecond,
+			Logger: logger,
+			GetRecipientsFunc: func(ctx context.Context) ([]funder.Recipient, error) {
+				tracker.mark("getRecipients")
+				return []funder.Recipient{
+					{Name: "device", PubKey: validPK},
+					{Name: "device", PubKey: zeroPK},
+				}, nil
+			},
+			Solana:        sol,
+			Signer:        signer,
+			MinBalanceSOL: 1,
+			TopUpSOL:      5,
+			Interval:      1 * time.Millisecond,
 		})
 		require.NoError(t, err)
 
@@ -792,17 +734,6 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		defer cancel()
 
 		const waitForBalanceTimeout = 100 * time.Millisecond
-
-		svc := &mockServiceability{
-			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
-				return &serviceability.ProgramData{
-					Devices: []serviceability.Device{
-						{MetricsPublisherPubKey: devicePK},
-					},
-				}, nil
-			},
-			ProgramIDFunc: func() solana.PublicKey { return solana.PublicKey{} },
-		}
 
 		var (
 			transferCalled    atomic.Bool
@@ -842,8 +773,12 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		}
 
 		f, err := funder.New(funder.Config{
-			Logger:                     logger,
-			Serviceability:             svc,
+			Logger: logger,
+			GetRecipientsFunc: func(ctx context.Context) ([]funder.Recipient, error) {
+				return []funder.Recipient{
+					{Name: "device", PubKey: devicePK},
+				}, nil
+			},
 			Solana:                     sol,
 			Signer:                     signer,
 			MinBalanceSOL:              1,
@@ -879,13 +814,6 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		svc := &mockServiceability{
-			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
-				return &serviceability.ProgramData{}, nil
-			},
-			ProgramIDFunc: func() solana.PublicKey { return solana.PublicKey{} },
-		}
-
 		sol := &mockSolana{
 			GetBalanceFunc: func(context.Context, solana.PublicKey, solanarpc.CommitmentType) (*solanarpc.GetBalanceResult, error) {
 				return &solanarpc.GetBalanceResult{Value: 10 * solana.LAMPORTS_PER_SOL}, nil
@@ -893,13 +821,15 @@ func TestTelemetry_Funder_Run(t *testing.T) {
 		}
 
 		f, err := funder.New(funder.Config{
-			Logger:         logger,
-			Serviceability: svc,
-			Solana:         sol,
-			Signer:         signer,
-			MinBalanceSOL:  1,
-			TopUpSOL:       1,
-			Interval:       10 * time.Millisecond,
+			Logger: logger,
+			GetRecipientsFunc: func(ctx context.Context) ([]funder.Recipient, error) {
+				return nil, nil
+			},
+			Solana:        sol,
+			Signer:        signer,
+			MinBalanceSOL: 1,
+			TopUpSOL:      1,
+			Interval:      10 * time.Millisecond,
 		})
 		require.NoError(t, err)
 

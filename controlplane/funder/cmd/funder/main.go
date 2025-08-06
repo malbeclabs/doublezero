@@ -64,6 +64,7 @@ func main() {
 	}))
 
 	// Validate required flags.
+	var internetLatencyCollectorPK solana.PublicKey
 	if *env == "" {
 		if *ledgerRPCURL == "" {
 			log.Error("Missing required flag", "flag", "ledger-rpc-url")
@@ -84,6 +85,7 @@ func main() {
 		}
 		*ledgerRPCURL = networkConfig.LedgerRPCURL
 		*serviceabilityProgramID = networkConfig.ServiceabilityProgramID.String()
+		internetLatencyCollectorPK = networkConfig.InternetLatencyCollectorPK
 	}
 	if *keypairPath == "" {
 		log.Error("Missing required flag", "flag", "keypair")
@@ -127,6 +129,7 @@ func main() {
 		"serviceabilityProgramID", *serviceabilityProgramID,
 		"keypairPath", *keypairPath,
 		"interval", *interval,
+		"internetLatencyCollectorPK", internetLatencyCollectorPK,
 	)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -141,16 +144,33 @@ func main() {
 		log.Error("failed to parse program ID", "error", err)
 		os.Exit(1)
 	}
+	serviceabilityClient := serviceability.New(rpcClient, serviceabilityProgramID)
 
 	// Initialize funder.
 	collector, err := funder.New(funder.Config{
-		Logger:         log,
-		Serviceability: serviceability.New(rpcClient, serviceabilityProgramID),
-		Solana:         rpcClient,
-		Signer:         keypair,
-		MinBalanceSOL:  *minBalanceSOL,
-		TopUpSOL:       *topUpSOL,
-		Interval:       *interval,
+		Logger: log,
+		GetRecipientsFunc: func(ctx context.Context) ([]funder.Recipient, error) {
+			data, err := serviceabilityClient.GetProgramData(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load serviceability state: %w", err)
+			}
+
+			recipients := make([]funder.Recipient, 0, len(data.Devices))
+			for _, device := range data.Devices {
+				devicePK := solana.PublicKeyFromBytes(device.PubKey[:])
+				name := fmt.Sprintf("device-%s", devicePK.String())
+				recipients = append(recipients, funder.NewRecipient(name, solana.PublicKeyFromBytes(device.MetricsPublisherPubKey[:])))
+			}
+
+			recipients = append(recipients, funder.NewRecipient("internet-latency-collector", internetLatencyCollectorPK))
+
+			return recipients, nil
+		},
+		Solana:        rpcClient,
+		Signer:        keypair,
+		MinBalanceSOL: *minBalanceSOL,
+		TopUpSOL:      *topUpSOL,
+		Interval:      *interval,
 	})
 	if err != nil {
 		log.Error("failed to create funder", "error", err)

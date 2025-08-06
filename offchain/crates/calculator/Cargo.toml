@@ -23,7 +23,6 @@ csv.workspace = true
 doublezero-serviceability.workspace = true
 doublezero-telemetry.workspace = true
 figment.workspace = true
-humantime.workspace = true
 rust_decimal.workspace = true
 serde.workspace = true
 serde_json.workspace = true

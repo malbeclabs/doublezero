@@ -11,8 +11,6 @@ pub async fn build_demands(fetcher: &Fetcher, fetch_data: &FetchData) -> Result<
 }
 
 pub fn build_private_links(
-    after_us: u64,
-    before_us: u64,
     fetch_data: &FetchData,
     telemetry_stats: &DZDTelemetryStatMap,
 ) -> PrivateLinks {
@@ -56,7 +54,8 @@ pub fn build_private_links(
         let uptime = stats
             .map(|stats| {
                 // Calculate time range in seconds
-                let time_range_seconds = (before_us.saturating_sub(after_us)) as f64 / 1_000_000.0;
+                let time_range_seconds =
+                    (fetch_data.end_us.saturating_sub(fetch_data.start_us)) as f64 / 1_000_000.0;
 
                 // Expected samples: one every 10 seconds
                 let expected_samples = time_range_seconds / 10.0;

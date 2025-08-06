@@ -1,3 +1,4 @@
+use anyhow::{Result, bail};
 use chrono::{DateTime, Utc};
 use doublezero_serviceability::state::{
     contributor::Contributor as DZContributor, device::Device as DZDevice,
@@ -16,8 +17,8 @@ use std::{
 pub struct FetchData {
     pub dz_serviceability: DZServiceabilityData,
     pub dz_telemetry: DZDTelemetryData,
-    pub after_us: u64,
-    pub before_us: u64,
+    pub start_us: u64,
+    pub end_us: u64,
     pub fetched_at: DateTime<Utc>,
 }
 
@@ -26,8 +27,8 @@ impl Display for FetchData {
         write!(
             f,
             "FetchData ({} to {}): locations={}, exchanges={}, devices={}, links={}, users={}, multicast_groups={}, telemetry_samples={}",
-            self.after_us,
-            self.before_us,
+            self.start_us,
+            self.end_us,
             self.dz_serviceability.locations.len(),
             self.dz_serviceability.exchanges.len(),
             self.dz_serviceability.devices.len(),
@@ -121,4 +122,26 @@ impl DZDeviceLatencySamples {
 #[derive(Debug, Default, Clone, Serialize)]
 pub struct DZDTelemetryData {
     pub device_latency_samples: Vec<DZDeviceLatencySamples>,
+}
+
+impl DZDTelemetryData {
+    pub fn start_end_us(&self) -> Result<(u64, u64)> {
+        let mut min_timestamp = u64::MAX;
+        let mut max_timestamp = 0u64;
+        for sample in &self.device_latency_samples {
+            min_timestamp = min_timestamp.min(sample.start_timestamp_us);
+            let end_timestamp = sample.start_timestamp_us
+                + (sample.sample_count as u64 * sample.sampling_interval_us);
+            max_timestamp = max_timestamp.max(end_timestamp);
+        }
+
+        if min_timestamp == u64::MAX {
+            bail!("Incorrect start_us (min_timestamp) for telemetry data!")
+        }
+        if max_timestamp == 0u64 {
+            bail!("Incorrect end_us (max_timestamp) for telemetry data!")
+        }
+
+        Ok((min_timestamp, max_timestamp))
+    }
 }

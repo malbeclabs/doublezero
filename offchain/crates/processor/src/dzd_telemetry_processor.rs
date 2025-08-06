@@ -19,16 +19,29 @@ pub struct DZDTelemetryStats {
     pub origin_device: Pubkey,
     #[tabled(skip)]
     pub target_device: Pubkey,
+    #[tabled(display = "display_us_as_ms", rename = "rtt_mean(ms)")]
     pub rtt_mean_us: f64,
+    #[tabled(display = "display_us_as_ms", rename = "rtt_median(ms)")]
     pub rtt_median_us: f64,
+    #[tabled(display = "display_us_as_ms", rename = "rtt_min(ms)")]
     pub rtt_min_us: f64,
+    #[tabled(display = "display_us_as_ms", rename = "rtt_max(ms)")]
     pub rtt_max_us: f64,
+    #[tabled(display = "display_us_as_ms", rename = "rtt_p95(ms)")]
     pub rtt_p95_us: f64,
+    #[tabled(display = "display_us_as_ms", rename = "rtt_p99(ms)")]
     pub rtt_p99_us: f64,
+    #[tabled(display = "display_us_as_ms", rename = "avg_jitter(ms)")]
     pub avg_jitter_us: f64,
+    #[tabled(display = "display_us_as_ms", rename = "max_jitter(ms)")]
     pub max_jitter_us: f64,
     pub packet_loss: f64,
+    #[tabled(rename = "samples")]
     pub total_samples: usize,
+}
+
+fn display_us_as_ms(us: &f64) -> String {
+    format!("{}", us / 1000.0)
 }
 
 pub struct DZDTelemetryProcessor;
@@ -79,8 +92,8 @@ impl DZDTelemetryProcessor {
                     &samples,
                     &links,
                     &device_pk_to_code,
-                    fetch_data.after_us,
-                    fetch_data.before_us,
+                    fetch_data.start_us,
+                    fetch_data.end_us,
                 ) {
                     Some((circuit_key, stats))
                 } else {
@@ -97,24 +110,24 @@ fn calculate_link_stats(
     samples: &[&DZDeviceLatencySamples],
     links: &HashMap<Pubkey, DZLink>,
     device_pk_to_code: &HashMap<Pubkey, String>,
-    after_us: u64,
-    before_us: u64,
+    start_us: u64,
+    end_us: u64,
 ) -> Result<DZDTelemetryStats> {
     let mut all_values = Vec::new();
     let mut total_samples_in_range = 0usize;
 
     for sample in samples {
         // Calculate sample indices that fall within the time range
-        let start_idx = if after_us > sample.start_timestamp_us {
-            ((after_us - sample.start_timestamp_us) / sample.sampling_interval_us) as usize
+        let start_idx = if start_us > sample.start_timestamp_us {
+            ((start_us - sample.start_timestamp_us) / sample.sampling_interval_us) as usize
         } else {
             0
         };
 
         let end_timestamp_us =
             sample.start_timestamp_us + (sample.sample_count as u64 * sample.sampling_interval_us);
-        let end_idx = if before_us < end_timestamp_us {
-            ((before_us - sample.start_timestamp_us) / sample.sampling_interval_us) as usize
+        let end_idx = if end_us < end_timestamp_us {
+            ((end_us - sample.start_timestamp_us) / sample.sampling_interval_us) as usize
         } else {
             sample.sample_count as usize
         };
@@ -200,8 +213,8 @@ fn calculate_link_stats(
     let p95 = all_values.get(p95_index).copied().unwrap_or(mean);
     let p99 = all_values.get(p99_index).copied().unwrap_or(mean);
 
-    let (avg_jitter, max_jitter) = calculate_jitter(samples, after_us, before_us);
-    let packet_loss = calculate_packet_loss(samples, after_us, before_us);
+    let (avg_jitter, max_jitter) = calculate_jitter(samples, start_us, end_us);
+    let packet_loss = calculate_packet_loss(samples, start_us, end_us);
 
     Ok(DZDTelemetryStats {
         circuit: format!("{origin_code} → {target_code} ({link_code})"),
@@ -221,25 +234,21 @@ fn calculate_link_stats(
     })
 }
 
-fn calculate_jitter(
-    samples: &[&DZDeviceLatencySamples],
-    after_us: u64,
-    before_us: u64,
-) -> (f64, f64) {
+fn calculate_jitter(samples: &[&DZDeviceLatencySamples], start_us: u64, end_us: u64) -> (f64, f64) {
     let mut all_jitters = Vec::new();
 
     for sample in samples {
         // Calculate sample indices that fall within the time range
-        let start_idx = if after_us > sample.start_timestamp_us {
-            ((after_us - sample.start_timestamp_us) / sample.sampling_interval_us) as usize
+        let start_idx = if start_us > sample.start_timestamp_us {
+            ((start_us - sample.start_timestamp_us) / sample.sampling_interval_us) as usize
         } else {
             0
         };
 
         let end_timestamp_us =
             sample.start_timestamp_us + (sample.sample_count as u64 * sample.sampling_interval_us);
-        let end_idx = if before_us < end_timestamp_us {
-            ((before_us - sample.start_timestamp_us) / sample.sampling_interval_us) as usize
+        let end_idx = if end_us < end_timestamp_us {
+            ((end_us - sample.start_timestamp_us) / sample.sampling_interval_us) as usize
         } else {
             sample.sample_count as usize
         };
@@ -266,16 +275,12 @@ fn calculate_jitter(
     (avg, max)
 }
 
-fn calculate_packet_loss(
-    samples: &[&DZDeviceLatencySamples],
-    after_us: u64,
-    before_us: u64,
-) -> f64 {
+fn calculate_packet_loss(samples: &[&DZDeviceLatencySamples], start_us: u64, end_us: u64) -> f64 {
     if samples.is_empty() {
         return 0.0;
     }
 
-    let time_range_us = before_us.saturating_sub(after_us);
+    let time_range_us = end_us.saturating_sub(start_us);
     if time_range_us == 0 {
         return 0.0;
     }
@@ -291,10 +296,10 @@ fn calculate_packet_loss(
                 sample_start + (sample.sample_count as u64 * sample.sampling_interval_us);
 
             // Check if sample overlaps with query range
-            if sample_end > after_us && sample_start < before_us {
+            if sample_end > start_us && sample_start < end_us {
                 // Calculate the overlapping period
-                let overlap_start = sample_start.max(after_us);
-                let overlap_end = sample_end.min(before_us);
+                let overlap_start = sample_start.max(start_us);
+                let overlap_end = sample_end.min(end_us);
                 let overlap_duration = overlap_end.saturating_sub(overlap_start);
 
                 // Expected samples in the overlap period
@@ -302,14 +307,14 @@ fn calculate_packet_loss(
                 total_expected += expected_in_overlap as usize;
 
                 // Actual samples in the overlap period
-                let start_idx = if after_us > sample.start_timestamp_us {
-                    ((after_us - sample.start_timestamp_us) / sample.sampling_interval_us) as usize
+                let start_idx = if start_us > sample.start_timestamp_us {
+                    ((start_us - sample.start_timestamp_us) / sample.sampling_interval_us) as usize
                 } else {
                     0
                 };
 
-                let end_idx = if before_us < sample_end {
-                    ((before_us - sample.start_timestamp_us) / sample.sampling_interval_us) as usize
+                let end_idx = if end_us < sample_end {
+                    ((end_us - sample.start_timestamp_us) / sample.sampling_interval_us) as usize
                 } else {
                     sample.sample_count as usize
                 };

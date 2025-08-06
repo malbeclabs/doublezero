@@ -1,12 +1,10 @@
-use crate::{fetcher::Fetcher, types::FetchData};
+use crate::{epoch::EpochFinder, fetcher::Fetcher, types::FetchData};
 use anyhow::{Result, anyhow, bail};
-use backon::{ExponentialBuilder, Retryable};
 use doublezero_serviceability::state::user::User as DZUser;
 use network_shapley::types::{Demand, Demands};
 use rayon::prelude::*;
-use solana_client::client_error::ClientError as SolanaClientError;
 use solana_sdk::system_program::ID as SystemProgramID;
-use std::{collections::HashMap, time::Duration};
+use std::collections::HashMap;
 use tracing::info;
 
 /// Statistics for validators in a city
@@ -26,30 +24,43 @@ pub struct CityStat {
 /// 3. Aggregates validators by city with their stake weights
 /// 4. Generates demand entries for all city-to-city traffic pairs
 pub async fn build(fetcher: &Fetcher, fetch_data: &FetchData) -> Result<Demands> {
-    // Get epoch info and schedule upfront
-    let epoch_info = (|| async { fetcher.solana_client.get_epoch_info().await })
-        .retry(&ExponentialBuilder::default().with_jitter())
-        .notify(|err: &SolanaClientError, dur: Duration| {
-            info!("retrying error: {:?} with sleeping {:?}", err, dur)
-        })
-        .await?;
+    // Get first telemetry sample to extract epoch and timestamp
+    let first_sample = fetch_data
+        .dz_telemetry
+        .device_latency_samples
+        .first()
+        .ok_or_else(|| anyhow!("No telemetry data found to determine DZ epoch"))?;
 
-    let epoch_schedule = (|| async { fetcher.solana_client.get_epoch_schedule().await })
-        .retry(&ExponentialBuilder::default().with_jitter())
-        .notify(|err: &SolanaClientError, dur: Duration| {
-            info!("retrying error: {:?} with sleeping {:?}", err, dur)
-        })
-        .await?;
+    let dz_epoch = first_sample.epoch;
+    info!("Building demands for DZ epoch {}", dz_epoch);
 
-    let prev_epoch = epoch_info.epoch.saturating_sub(1);
-    let first_slot_of_epoch = epoch_schedule.get_first_slot_in_epoch(prev_epoch);
+    // Get the timestamp from first_sample
+    let timestamp_us = first_sample.start_timestamp_us;
+    assert_ne!(0, timestamp_us, "First sample timestamp is 0!");
 
-    // Get leader schedule for previous epoch
+    // Create an EpochFinder to handle epoch calculations
+    let mut epoch_finder = EpochFinder::new(&fetcher.solana_client);
+
+    // Find the corresponding Solana epoch for this timestamp
+    let solana_epoch = epoch_finder.find_epoch_at_timestamp(timestamp_us).await?;
+
+    info!(
+        "DZ epoch {} corresponds to Solana epoch {} (based on timestamp {})",
+        dz_epoch, solana_epoch, timestamp_us
+    );
+
+    // Get epoch schedule (reusing the cached one from EpochFinder)
+    let epoch_schedule = epoch_finder.get_schedule().await?;
+
+    // Get the first slot of the Solana epoch
+    let first_slot_of_epoch = epoch_schedule.get_first_slot_in_epoch(solana_epoch);
+
+    // Get leader schedule for the corresponding Solana epoch
     let leader_schedule = fetcher
         .solana_client
         .get_leader_schedule(Some(first_slot_of_epoch))
         .await?
-        .ok_or_else(|| anyhow!("No leader schedule found for epoch {}", prev_epoch))?;
+        .ok_or_else(|| anyhow!("No leader schedule found for Solana epoch {}", solana_epoch))?;
 
     // Convert leader schedule to map
     let leader_schedule_map: HashMap<String, usize> = leader_schedule

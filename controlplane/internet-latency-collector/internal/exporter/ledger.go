@@ -10,6 +10,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/metrics"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/buffer"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/epoch"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
@@ -81,7 +82,7 @@ func (c *BufferedLedgerExporterConfig) Validate() error {
 type BufferedLedgerExporter struct {
 	log       *slog.Logger
 	cfg       BufferedLedgerExporterConfig
-	buffer    *PartitionedBuffer
+	buffer    *buffer.MemoryPartitionedBuffer[PartitionKey, Sample]
 	submitter *Submitter
 }
 
@@ -89,7 +90,7 @@ func NewBufferedLedgerExporter(cfg BufferedLedgerExporterConfig) (*BufferedLedge
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("failed to validate buffered ledger exporter config: %w", err)
 	}
-	buffer := NewPartitionedBuffer(partitionBufferCapacity)
+	buffer := buffer.NewMemoryPartitionedBuffer[PartitionKey, Sample](partitionBufferCapacity)
 	submitter, err := NewSubmitter(cfg.Logger, &SubmitterConfig{
 		Buffer:                        buffer,
 		Interval:                      cfg.SubmissionInterval,
@@ -112,7 +113,7 @@ func NewBufferedLedgerExporter(cfg BufferedLedgerExporterConfig) (*BufferedLedge
 	}, nil
 }
 
-func (e *BufferedLedgerExporter) Buffer() *PartitionedBuffer {
+func (e *BufferedLedgerExporter) Buffer() *buffer.MemoryPartitionedBuffer[PartitionKey, Sample] {
 	return e.buffer
 }
 

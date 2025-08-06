@@ -11,13 +11,14 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/metrics"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/buffer"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/epoch"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 )
 
 type SubmitterConfig struct {
 	Interval                      time.Duration
-	Buffer                        *PartitionedBuffer
+	Buffer                        *buffer.MemoryPartitionedBuffer[PartitionKey, Sample]
 	OracleAgentPK                 solana.PublicKey
 	DataProviderSamplingIntervals map[DataProviderName]time.Duration
 	Telemetry                     TelemetryProgramClient

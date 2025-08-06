@@ -186,6 +186,48 @@ default interface Tunnel563
 !
 router bgp 65342
    router-id 172.16.0.1
+   no neighbor 172.16.0.14
+   neighbor 172.16.0.14 remote-as 65342
+   neighbor 172.16.0.14 next-hop-self
+   neighbor 172.16.0.14 update-source Loopback256
+   neighbor 172.16.0.14 description ty2-dz01
+   neighbor 172.16.0.14 send-community
+   no neighbor 172.16.0.11
+   neighbor 172.16.0.11 remote-as 65342
+   neighbor 172.16.0.11 next-hop-self
+   neighbor 172.16.0.11 update-source Loopback256
+   neighbor 172.16.0.11 description ld4-dz01
+   neighbor 172.16.0.11 send-community
+   no neighbor 172.16.0.10
+   neighbor 172.16.0.10 remote-as 65342
+   neighbor 172.16.0.10 next-hop-self
+   neighbor 172.16.0.10 update-source Loopback256
+   neighbor 172.16.0.10 description la2-dz01
+   neighbor 172.16.0.10 send-community
+   no neighbor 172.16.0.13
+   neighbor 172.16.0.13 remote-as 65342
+   neighbor 172.16.0.13 next-hop-self
+   neighbor 172.16.0.13 update-source Loopback256
+   neighbor 172.16.0.13 description sg1-dz01
+   neighbor 172.16.0.13 send-community
+   no neighbor 172.16.0.16
+   neighbor 172.16.0.16 remote-as 65342
+   neighbor 172.16.0.16 next-hop-self
+   neighbor 172.16.0.16 update-source Loopback256
+   neighbor 172.16.0.16 description ams-dz001
+   neighbor 172.16.0.16 send-community
+   no neighbor 172.16.0.12
+   neighbor 172.16.0.12 remote-as 65342
+   neighbor 172.16.0.12 next-hop-self
+   neighbor 172.16.0.12 update-source Loopback256
+   neighbor 172.16.0.12 description frk-dz01
+   neighbor 172.16.0.12 send-community
+   no neighbor 172.16.0.15
+   neighbor 172.16.0.15 remote-as 65342
+   neighbor 172.16.0.15 next-hop-self
+   neighbor 172.16.0.15 update-source Loopback256
+   neighbor 172.16.0.15 description pit-dzd01
+   neighbor 172.16.0.15 send-community
    no neighbor 172.16.0.6
    neighbor 172.16.0.6 remote-as 65342
    neighbor 172.16.0.6 next-hop-self
@@ -229,6 +271,13 @@ router bgp 65342
    neighbor 172.16.0.7 description pit-dzd01
    neighbor 172.16.0.7 send-community
    address-family ipv4
+      neighbor 172.16.0.14 activate
+      neighbor 172.16.0.11 activate
+      neighbor 172.16.0.10 activate
+      neighbor 172.16.0.13 activate
+      neighbor 172.16.0.16 activate
+      neighbor 172.16.0.12 activate
+      neighbor 172.16.0.15 activate
       no neighbor 172.16.0.6 activate
       no neighbor 172.16.0.3 activate
       no neighbor 172.16.0.2 activate
@@ -735,3 +784,33 @@ ip access-list SEC-USER-SUB-MCAST-IN
    permit ip any 224.0.0.13/32
    deny ip any any
 !
+no router msdp
+router msdp
+   peer 172.16.0.14
+      mesh-group DZ-1
+      local-interface Loopback256
+      description ty2-dz01
+   peer 172.16.0.11
+      mesh-group DZ-1
+      local-interface Loopback256
+      description ld4-dz01
+   peer 172.16.0.10
+      mesh-group DZ-1
+      local-interface Loopback256
+      description la2-dz01
+   peer 172.16.0.13
+      mesh-group DZ-1
+      local-interface Loopback256
+      description sg1-dz01
+   peer 172.16.0.16
+      mesh-group DZ-1
+      local-interface Loopback256
+      description ams-dz001
+   peer 172.16.0.12
+      mesh-group DZ-1
+      local-interface Loopback256
+      description frk-dz01
+   peer 172.16.0.15
+      mesh-group DZ-1
+      local-interface Loopback256
+      description pit-dzd01

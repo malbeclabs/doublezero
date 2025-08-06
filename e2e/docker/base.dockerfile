@@ -23,6 +23,10 @@ RUN ARCH=$(uname -m) && \
     rm -rf /tmp/agave.tar.bz2
 ENV PATH="/opt/solana/bin:${PATH}"
 
+# Force COPY in later stages to always copy the binaries, even if they appear to be the same.
+ARG CACHE_BUSTER=1
+RUN echo "$CACHE_BUSTER" > /opt/solana/bin/.cache-buster && \
+    find /opt/solana/bin -type f -exec touch {} +
 
 # ----------------------------------------------------------------------------
 # Builder stage for the doublezero components.
@@ -92,6 +96,10 @@ RUN --mount=type=cache,target=/cargo \
     cp /target/release/doublezero-activator ${BIN_DIR}/ && \
     cp /target/release/doublezero-admin ${BIN_DIR}/
 
+# Force COPY in later stages to always copy the binaries, even if they appear to be the same.
+ARG CACHE_BUSTER=1
+RUN echo "$CACHE_BUSTER" > ${BIN_DIR}/.cache-buster && \
+    find ${BIN_DIR} -type f -exec touch {} +
 
 # -----------------------------------------------------------------------------
 # Solana program builder (rust)
@@ -145,6 +153,10 @@ RUN --mount=type=cache,target=/cargo-sbf \
     cargo build-sbf && \
     cp /target-sbf/deploy/doublezero_telemetry.so ${BIN_DIR}/doublezero_telemetry.so
 
+# Force COPY in later stages to always copy the programs, even if they appear to be the same.
+ARG CACHE_BUSTER=1
+RUN echo "$CACHE_BUSTER" > ${BIN_DIR}/.cache-buster && \
+    find ${BIN_DIR} -type f -exec touch {} +
 
 # -----------------------------------------------------------------------------
 # Go builder
@@ -178,6 +190,11 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go build -o ${BIN_DIR}/doublezero-funder controlplane/funder/cmd/funder/main.go
+
+# Force COPY in later stages to always copy the binaries, even if they appear to be the same.
+ARG CACHE_BUSTER=1
+RUN echo "$CACHE_BUSTER" > ${BIN_DIR}/.cache-buster && \
+    find ${BIN_DIR} -type f -exec touch {} +
 
 
 # ----------------------------------------------------------------------------

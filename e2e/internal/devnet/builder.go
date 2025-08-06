@@ -25,7 +25,8 @@ func BuildContainerImages(ctx context.Context, log *slog.Logger, workspaceDir st
 	dockerfilesDir := filepath.Join(workspaceDir, dockerfilesDirRelativeToWorkspace)
 
 	// Build base image first
-	err := docker.Build(ctx, log, os.Getenv("DZ_BASE_IMAGE"), filepath.Join(dockerfilesDir, "base.dockerfile"), workspaceDir, verbose)
+	cacheBusterBuildArg := fmt.Sprintf("CACHE_BUSTER=%d", time.Now().Unix())
+	err := docker.Build(ctx, log, os.Getenv("DZ_BASE_IMAGE"), filepath.Join(dockerfilesDir, "base.dockerfile"), workspaceDir, verbose, "--build-arg", cacheBusterBuildArg)
 	if err != nil {
 		return fmt.Errorf("failed to build base image: %w", err)
 	}
@@ -42,43 +43,43 @@ func BuildContainerImages(ctx context.Context, log *slog.Logger, workspaceDir st
 			name:       "activator",
 			image:      os.Getenv("DZ_ACTIVATOR_IMAGE"),
 			dockerfile: filepath.Join(dockerfilesDir, "activator", "Dockerfile"),
-			args:       []string{"--build-arg", baseImageArg, "--build-arg", "DOCKERFILE_DIR=" + filepath.Join(dockerfilesDirRelativeToWorkspace, "activator")},
+			args:       []string{"--build-arg", baseImageArg, "--build-arg", "DOCKERFILE_DIR=" + filepath.Join(dockerfilesDirRelativeToWorkspace, "activator"), "--build-arg", cacheBusterBuildArg},
 		},
 		{
 			name:       "client",
 			image:      os.Getenv("DZ_CLIENT_IMAGE"),
 			dockerfile: filepath.Join(dockerfilesDir, "client", "Dockerfile"),
-			args:       []string{"--build-arg", baseImageArg, "--build-arg", "DOCKERFILE_DIR=" + filepath.Join(dockerfilesDirRelativeToWorkspace, "client")},
+			args:       []string{"--build-arg", baseImageArg, "--build-arg", "DOCKERFILE_DIR=" + filepath.Join(dockerfilesDirRelativeToWorkspace, "client"), "--build-arg", cacheBusterBuildArg},
 		},
 		{
 			name:       "controller",
 			image:      os.Getenv("DZ_CONTROLLER_IMAGE"),
 			dockerfile: filepath.Join(dockerfilesDir, "controller", "Dockerfile"),
-			args:       []string{"--build-arg", baseImageArg, "--build-arg", "DOCKERFILE_DIR=" + filepath.Join(dockerfilesDirRelativeToWorkspace, "controller")},
+			args:       []string{"--build-arg", baseImageArg, "--build-arg", "DOCKERFILE_DIR=" + filepath.Join(dockerfilesDirRelativeToWorkspace, "controller"), "--build-arg", cacheBusterBuildArg},
 		},
 		{
 			name:       "device",
 			image:      os.Getenv("DZ_DEVICE_IMAGE"),
 			dockerfile: filepath.Join(dockerfilesDir, "device", "Dockerfile"),
-			args:       []string{"--build-arg", baseImageArg, "--build-arg", "DOCKERFILE_DIR=" + filepath.Join(dockerfilesDirRelativeToWorkspace, "device")},
+			args:       []string{"--build-arg", baseImageArg, "--build-arg", "DOCKERFILE_DIR=" + filepath.Join(dockerfilesDirRelativeToWorkspace, "device"), "--build-arg", cacheBusterBuildArg},
 		},
 		{
 			name:       "ledger",
 			image:      os.Getenv("DZ_LEDGER_IMAGE"),
 			dockerfile: filepath.Join(dockerfilesDir, "ledger", "Dockerfile"),
-			args:       []string{"--build-arg", baseImageArg, "--build-arg", "DOCKERFILE_DIR=" + filepath.Join(dockerfilesDirRelativeToWorkspace, "ledger")},
+			args:       []string{"--build-arg", baseImageArg, "--build-arg", "DOCKERFILE_DIR=" + filepath.Join(dockerfilesDirRelativeToWorkspace, "ledger"), "--build-arg", cacheBusterBuildArg},
 		},
 		{
 			name:       "manager",
 			image:      os.Getenv("DZ_MANAGER_IMAGE"),
 			dockerfile: filepath.Join(dockerfilesDir, "manager", "Dockerfile"),
-			args:       []string{"--build-arg", baseImageArg, "--build-arg", "DOCKERFILE_DIR=" + filepath.Join(dockerfilesDirRelativeToWorkspace, "manager")},
+			args:       []string{"--build-arg", baseImageArg, "--build-arg", "DOCKERFILE_DIR=" + filepath.Join(dockerfilesDirRelativeToWorkspace, "manager"), "--build-arg", cacheBusterBuildArg},
 		},
 		{
 			name:       "funder",
 			image:      os.Getenv("DZ_FUNDER_IMAGE"),
 			dockerfile: filepath.Join(dockerfilesDir, "funder", "Dockerfile"),
-			args:       []string{"--build-arg", baseImageArg, "--build-arg", "DOCKERFILE_DIR=" + filepath.Join(dockerfilesDirRelativeToWorkspace, "funder")},
+			args:       []string{"--build-arg", baseImageArg, "--build-arg", "DOCKERFILE_DIR=" + filepath.Join(dockerfilesDirRelativeToWorkspace, "funder"), "--build-arg", cacheBusterBuildArg},
 		},
 	}
 

@@ -82,6 +82,7 @@ func (dn *Devnet) InitSmartContract(ctx context.Context) error {
 		solana account ` + dn.Manager.ServiceabilityProgramID + `
 
 		echo "==> Initializing smart contract"
+		doublezero --version
 		doublezero init
 		echo
 

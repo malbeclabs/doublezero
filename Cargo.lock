@@ -1561,6 +1561,7 @@ dependencies = [
  "bitvec",
  "chrono",
  "clap",
+ "doublezero-config",
  "doublezero-serviceability",
  "doublezero_cli",
  "doublezero_sdk",
@@ -1607,6 +1608,15 @@ dependencies = [
  "solana-sdk",
  "tabled",
  "tokio",
+]
+
+[[package]]
+name = "doublezero-config"
+version = "0.4.0"
+dependencies = [
+ "doublezero_sdk",
+ "eyre",
+ "solana-sdk",
 ]
 
 [[package]]

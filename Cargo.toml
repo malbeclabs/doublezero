@@ -2,6 +2,7 @@
 members = [
     "client/doublezero",
     "activator",
+    "config",
     "controlplane/doublezero-admin",
     "smartcontract/cli",
     "smartcontract/sdk/rs",
@@ -86,6 +87,7 @@ tokio = { version = "1", default-features = false, features = [
 # Dependencies from this workspace
 doublezero = { path = "client/doublezero" }
 doublezero_admin = { path = "controlplane/doublezero-admin" }
+doublezero-config = { path = "config" }
 doublezero_cli = { path = "smartcontract/cli" }
 doublezero_sdk = { path = "smartcontract/sdk/rs" }
 doublezero-serviceability = { path = "smartcontract/programs/doublezero-serviceability" }

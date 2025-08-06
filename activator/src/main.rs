@@ -1,4 +1,5 @@
 use clap::Parser;
+use doublezero_config::Environment;
 use doublezero_sdk::ProgramVersion;
 use futures::{future::LocalBoxFuture, FutureExt};
 use log::{error, info, LevelFilter};
@@ -30,6 +31,9 @@ mod utils;
 #[command(version = option_env!("BUILD_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")))]
 #[command(about = "DoubleZero")]
 struct AppArgs {
+    #[arg(long)]
+    env: Option<String>,
+
     #[arg(long)]
     rpc: Option<String>,
 
@@ -77,11 +81,33 @@ async fn main() -> eyre::Result<()> {
             args.influxdb_bucket.as_deref(),
         )?;
 
+    let (rpc_url, ws_url, program_id) = if let Some(env) = args.env {
+        let config = env.parse::<Environment>()?.config()?;
+        (
+            config.ledger_rpc_url,
+            config.ledger_ws_url,
+            config.serviceability_program_id.to_string(),
+        )
+    } else {
+        (
+            args.rpc
+                .ok_or_else(|| eyre::eyre!("RPC URL is required when env is not provided"))?,
+            args.ws
+                .ok_or_else(|| eyre::eyre!("WebSocket URL is required when env is not provided"))?,
+            args.program_id
+                .ok_or_else(|| eyre::eyre!("Program ID is required when env is not provided"))?,
+        )
+    };
+
+    let keypair = args
+        .keypair
+        .ok_or_else(|| eyre::eyre!("Keypair is required"))?;
+
     let mut activator = activator::Activator::new(
-        args.rpc,
-        args.ws,
-        args.program_id,
-        args.keypair,
+        Some(rpc_url),
+        Some(ws_url),
+        Some(program_id),
+        Some(keypair),
         metrics_service,
     )
     .await?;

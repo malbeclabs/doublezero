@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"fmt"
 	"net"
 	"net/netip"
 	"os"
@@ -24,8 +23,9 @@ func TestRenderConfig(t *testing.T) {
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				Device: &Device{
-					PublicIP:   net.IP{7, 7, 7, 7},
-					Interfaces: []Interface{},
+					PublicIP:        net.IP{7, 7, 7, 7},
+					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
+					Interfaces:      []Interface{},
 					Tunnels: []*Tunnel{
 						{
 							Id:            500,
@@ -67,8 +67,9 @@ func TestRenderConfig(t *testing.T) {
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				Device: &Device{
-					Interfaces: []Interface{},
-					PublicIP:   net.IP{7, 7, 7, 7},
+					Interfaces:      []Interface{},
+					PublicIP:        net.IP{7, 7, 7, 7},
+					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
 					Tunnels: []*Tunnel{
 						{
 							Id:            500,
@@ -112,8 +113,9 @@ func TestRenderConfig(t *testing.T) {
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				Device: &Device{
-					Interfaces: []Interface{},
-					PublicIP:   net.IP{7, 7, 7, 7},
+					Interfaces:      []Interface{},
+					PublicIP:        net.IP{7, 7, 7, 7},
+					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
 					Tunnels: []*Tunnel{
 						{
 							Id:            500,
@@ -188,8 +190,9 @@ func TestRenderConfig(t *testing.T) {
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				Device: &Device{
-					Interfaces: []Interface{},
-					PublicIP:   net.IP{7, 7, 7, 7},
+					Interfaces:      []Interface{},
+					PublicIP:        net.IP{7, 7, 7, 7},
+					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
 					Tunnels: []*Tunnel{
 						{
 							Id:            500,
@@ -276,8 +279,9 @@ func TestRenderConfig(t *testing.T) {
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				Device: &Device{
-					Interfaces: []Interface{},
-					PublicIP:   net.IP{7, 7, 7, 7},
+					Interfaces:      []Interface{},
+					PublicIP:        net.IP{7, 7, 7, 7},
+					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
 					Tunnels: []*Tunnel{
 						{
 							Id:            500,
@@ -363,7 +367,9 @@ func TestRenderConfig(t *testing.T) {
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				Device: &Device{
-					PublicIP: net.IP{7, 7, 7, 7},
+					PublicIP:        net.IP{7, 7, 7, 7},
+					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
+					Ipv4LoopbackIP:  net.IP{13, 13, 13, 13},
 					Interfaces: []Interface{
 						{
 							Name:           "Loopback255",
@@ -401,6 +407,43 @@ func TestRenderConfig(t *testing.T) {
 			},
 			Want: "fixtures/interfaces.txt",
 		},
+		{
+			Name:        "render_base_config_successfully",
+			Description: "render base device config without tunnels",
+			Data: templateData{
+				MulticastGroupBlock:      "239.0.0.0/24",
+				TelemetryTWAMPListenPort: 862,
+				Device: &Device{
+					PublicIP:        net.IP{7, 7, 7, 7},
+					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
+					Ipv4LoopbackIP:  net.IP{13, 13, 13, 13},
+					Interfaces: []Interface{
+						{
+							Name:           "Loopback255",
+							InterfaceType:  InterfaceTypeLoopback,
+							LoopbackType:   LoopbackTypeVpnv4,
+							Ip:             netip.MustParsePrefix("14.14.14.14/32"),
+							NodeSegmentIdx: 15,
+						},
+					},
+					Vpn4vLoopbackIntfName: "Loopback255",
+					Ipv4LoopbackIntfName:  "Loopback256",
+				},
+				Vpnv4BgpPeers: []BgpPeer{
+					{
+						PeerIP:   net.IP{15, 15, 15, 15},
+						PeerName: "remote-dzd",
+					},
+				},
+				Ipv4BgpPeers: []BgpPeer{
+					{
+						PeerIP:   net.IP{12, 12, 12, 12},
+						PeerName: "remote-dzd",
+					},
+				},
+			},
+			Want: "fixtures/base.config.txt",
+		},
 	}
 
 	for _, test := range tests {
@@ -415,9 +458,6 @@ func TestRenderConfig(t *testing.T) {
 			}
 			if diff := cmp.Diff(string(want), got); diff != "" {
 				t.Errorf("renderTunnels mismatch (-want +got):\n%s", diff)
-				// Print the actual strings for debugging
-				fmt.Printf("\n=== EXPECTED ===\n%s\n=== END EXPECTED ===\n", string(want))
-				fmt.Printf("\n=== ACTUAL ===\n%s\n=== END ACTUAL ===\n", got)
 			}
 		})
 	}

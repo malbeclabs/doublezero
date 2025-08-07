@@ -48,12 +48,12 @@ system control-plane
    ip access-group MAIN-CONTROL-PLANE-ACL in
 !
 interface Loopback255
-   ip address 172.31.1.255/32
+   ip address 14.14.14.14/32
    node-segment ipv4 index 101
    isis enable 1
 !
 interface Loopback256
-   ip address 172.29.1.255/32
+   ip address 12.12.12.12/32
    isis enable 1
 !
 interface Switch1/1/1

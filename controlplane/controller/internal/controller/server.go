@@ -183,6 +183,44 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		sort.Slice(d.Interfaces, func(i, j int) bool {
 			return d.Interfaces[i].Name < d.Interfaces[j].Name
 		})
+
+		// Build list of peers from device interfaces
+		for _, iface := range d.Interfaces {
+			if iface.InterfaceType == InterfaceTypeLoopback &&
+				iface.LoopbackType == LoopbackTypeVpnv4 {
+				// Extract IP from IpNet
+				d.Vpn4vLoopbackIP = iface.Ip.Addr().AsSlice() // Used to set router-id
+				d.Vpn4vLoopbackIntfName = iface.Name
+				// TODO: raise an error if the IP is 0.0.0.0 (not set)
+				peer := BgpPeer{
+					PeerIP:   d.Vpn4vLoopbackIP,
+					PeerName: device.Code,
+				}
+				cache.Vpnv4BgpPeers = append(cache.Vpnv4BgpPeers, peer)
+			} else if iface.InterfaceType == InterfaceTypeLoopback &&
+				iface.LoopbackType == LoopbackTypeIpv4 {
+				// Extract IP from IpNet
+				d.Ipv4LoopbackIP = iface.Ip.Addr().AsSlice() // Used to set router-id
+				d.Ipv4LoopbackIntfName = iface.Name
+				// TODO: raise an error if the IP is 0.0.0.0 (not set)
+				peer := BgpPeer{
+					PeerIP:   d.Ipv4LoopbackIP,
+					PeerName: device.Code,
+				}
+				cache.Ipv4BgpPeers = append(cache.Ipv4BgpPeers, peer)
+			}
+		}
+
+		if d.Vpn4vLoopbackIP == nil {
+			slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "no VPNv4 loopback interface found for device")
+			continue
+		}
+
+		if d.Ipv4LoopbackIP == nil {
+			slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "no IPv4 loopback interface found for device")
+			continue
+		}
+
 		cache.Devices[devicePubKey] = d
 	}
 

@@ -81,7 +81,10 @@ interface Switch1/1/2.100
    isis network point-to-point
 !
 router bgp 65342
+   router-id 14.14.14.14
    address-family ipv4
+   !
+   address-family vpn-ipv4
    !
    vrf vrf1
       rd 65342:1

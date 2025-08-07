@@ -54,7 +54,7 @@ struct AppArgs {
     #[arg(long)]
     influxdb_bucket: Option<String>,
 
-    #[arg(long, default_value = "warn")]
+    #[arg(long, default_value = "info")]
     log_level: String,
 }
 

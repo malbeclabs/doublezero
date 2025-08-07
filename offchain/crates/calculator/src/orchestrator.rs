@@ -1,10 +1,13 @@
 use crate::{
-    shapley_handler::{build_demands, build_private_links},
-    util::{print_demands, print_private_links},
+    shapley_handler::{build_demands, build_private_links, build_public_links},
+    util::{print_demands, print_private_links, print_public_links},
 };
 use anyhow::Result;
 use ingestor::fetcher::Fetcher;
-use processor::dzd_telemetry_processor::{DZDTelemetryProcessor, print_telemetry_stats};
+use processor::{
+    internet::{InternetTelemetryProcessor, print_internet_stats},
+    telemetry::{DZDTelemetryProcessor, print_telemetry_stats},
+};
 use std::path::Path;
 use tracing::info;
 
@@ -33,7 +36,14 @@ impl Orchestrator {
             print_telemetry_stats(&stat_map)
         );
 
-        // TODO: Record this stat_map using doublezero-recorder (or whatever that is called)
+        // Build internet stats
+        let internet_stat_map = InternetTelemetryProcessor::process(&fetch_data)?;
+        info!(
+            "Internet Telemetry Aggregates: \n{}",
+            print_internet_stats(&internet_stat_map)
+        );
+
+        // TODO: Record statistics using doublezero-record program
 
         // Build pvt links
         let pvt_links = build_private_links(&fetch_data, &stat_map);
@@ -46,7 +56,9 @@ impl Orchestrator {
             print_demands(&demands, 1_000_000)
         );
 
-        // TODO: Build public links
+        // Build public links
+        let pub_links = build_public_links(&internet_stat_map)?;
+        info!("Public Links:\n{}", print_public_links(&pub_links));
 
         Ok(())
     }

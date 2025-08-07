@@ -5,13 +5,13 @@ use crate::{
     types::*,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use serde::Serialize;
 use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
 use std::{fmt, net::Ipv4Addr};
 
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
 #[borsh(use_discriminant = true)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DeviceType {
     Switch = 0,
 }
@@ -34,8 +34,9 @@ impl fmt::Display for DeviceType {
 }
 
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
 #[borsh(use_discriminant = true)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DeviceStatus {
     Pending = 0,
     Activated = 1,
@@ -70,8 +71,9 @@ impl fmt::Display for DeviceStatus {
 }
 
 #[repr(u8)]
-#[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone, Copy, Serialize)]
+#[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone, Copy)]
 #[borsh(use_discriminant = true)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum InterfaceType {
     Invalid = 0,
     Loopback = 1,
@@ -99,8 +101,9 @@ impl fmt::Display for InterfaceType {
 }
 
 #[repr(u8)]
-#[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone, Copy, Serialize)]
+#[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone, Copy)]
 #[borsh(use_discriminant = true)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LoopbackType {
     None = 0,
     Vpnv4 = 1,
@@ -134,8 +137,9 @@ impl From<u8> for LoopbackType {
 }
 
 #[repr(u8)]
-#[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone, Copy, Serialize)]
+#[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone, Copy)]
 #[borsh(use_discriminant = true)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum InterfaceVersion {
     Unsupported = 0,
     V1 = 1,
@@ -152,7 +156,8 @@ impl From<u8> for InterfaceVersion {
 
 pub const CURRENT_INTERFACE_VERSION: InterfaceVersion = InterfaceVersion::V1;
 
-#[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone, Serialize)]
+#[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Interface {
     pub version: InterfaceVersion,     // 1
     pub name: String,                  // 4 + len
@@ -208,7 +213,8 @@ impl Default for Interface {
     }
 }
 
-#[derive(BorshSerialize, Debug, PartialEq, Clone, Serialize)]
+#[derive(BorshSerialize, Debug, PartialEq, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Device {
     pub account_type: AccountType,    // 1
     pub owner: Pubkey,                // 32

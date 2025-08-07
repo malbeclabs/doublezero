@@ -43,6 +43,7 @@ pub const DEVICE_LATENCY_SAMPLES_HEADER_SIZE: usize = {
 /// Onchain data structure representing a latency samples account header between two devices
 /// over a link for a specific epoch, written by a single authorized agent.
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DeviceLatencySamplesHeader {
     // Used to distinguish this account type during deserialization
     pub account_type: AccountType, // 1

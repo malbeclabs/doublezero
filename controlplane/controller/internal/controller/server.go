@@ -147,6 +147,10 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		MulticastGroups: make(map[string]serviceability.MulticastGroup),
 	}
 
+	// TODO: valid interface checks:
+	// - subinterface parent can't be defined onchain
+	// - node segments can only be defined on vpnv4 loopback interfaces
+
 	// build cache of devices
 	for _, device := range devices {
 		ip := net.IP(device.PublicIp[:])
@@ -155,50 +159,30 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			slog.Error("invalid public ip for device", "device pubkey", device.PubKey)
 			continue
 		}
+
 		devicePubKey := base58.Encode(device.PubKey[:])
 		d := NewDevice(ip, devicePubKey)
-
-		d.Interfaces = device.Interfaces
-
-		// Build list of peers from device interfaces
 		for _, iface := range device.Interfaces {
-			if iface.InterfaceType == serviceability.InterfaceTypeLoopback &&
-				iface.LoopbackType == serviceability.LoopbackTypeVpnv4 {
-				// Extract IP from IpNet
-				ip := net.IP(iface.IpNet[:4])
-				d.Vpn4vLoopbackIP = ip // Used to set router-id
-				d.Vpn4vLoopbackIntfName = iface.Name
-				// TODO: raise an error if the IP is 0.0.0.0 (not set)
-				peer := BgpPeer{
-					PeerIP:   ip,
-					PeerName: device.Code,
-				}
-				cache.Vpnv4BgpPeers = append(cache.Vpnv4BgpPeers, peer)
-			} else if iface.InterfaceType == serviceability.InterfaceTypeLoopback &&
-				iface.LoopbackType == serviceability.LoopbackTypeIpv4 {
-				// Extract IP from IpNet
-				ip := net.IP(iface.IpNet[:4])
-				d.Ipv4LoopbackIP = ip // Used to set router-id
-				d.Ipv4LoopbackIntfName = iface.Name
-				// TODO: raise an error if the IP is 0.0.0.0 (not set)
-				peer := BgpPeer{
-					PeerIP:   ip,
-					PeerName: device.Code,
-				}
-				cache.Ipv4BgpPeers = append(cache.Ipv4BgpPeers, peer)
+			intf, err := toInterface(iface)
+			if err != nil {
+				// TODO: metric
+				slog.Error("failed to convert serviceability interface to controller interface", "device pubkey", devicePubKey, "iface", iface, "error", err)
+				continue
 			}
+			// Create a parent interface since they're not defined on-chain.
+			if intf.IsSubInterface {
+				parent, err := intf.GetParent()
+				if err != nil {
+					slog.Error("failed to get parent interface for subinterface", "device pubkey", devicePubKey, "iface", intf.Name, "error", err)
+					continue
+				}
+				d.Interfaces = append(d.Interfaces, parent)
+			}
+			d.Interfaces = append(d.Interfaces, intf)
 		}
-
-		if d.Vpn4vLoopbackIP == nil {
-			slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "no VPNv4 loopback interface found for device")
-			continue
-		}
-
-		if d.Ipv4LoopbackIP == nil {
-			slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "no IPv4 loopback interface found for device")
-			continue
-		}
-
+		sort.Slice(d.Interfaces, func(i, j int) bool {
+			return d.Interfaces[i].Name < d.Interfaces[j].Name
+		})
 		cache.Devices[devicePubKey] = d
 	}
 

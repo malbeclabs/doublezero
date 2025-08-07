@@ -15,6 +15,7 @@ crate-type = ["cdylib", "lib"]
 [dependencies]
 borsh.workspace = true
 serde = { workspace = true, optional = true }
+serde_bytes = { workspace = true, optional = true }
 solana-program.workspace = true
 doublezero-program-common.workspace = true
 doublezero-serviceability = { path = "../doublezero-serviceability", features = [
@@ -32,4 +33,4 @@ solana-program-test.workspace = true
 [features]
 default = []
 no-entrypoint = []
-serde = ["dep:serde"]
+serde = ["dep:serde", "dep:serde_bytes"]

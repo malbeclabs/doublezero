@@ -48,7 +48,7 @@ pub fn decimals_of_2z(value_str: Option<&str>) -> Option<u64> {
             let decimal_units = if decimal_units.is_empty() {
                 0
             } else {
-                format!("{:0<9}", decimal_units)[..9].parse().ok()?
+                format!("{decimal_units:0<9}")[..9].parse().ok()?
             };
             Some(
                 DECIMAL_UNITS_PER_2Z

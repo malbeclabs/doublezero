@@ -35,7 +35,7 @@ pub struct Discriminator<const N: usize>([u8; N]);
 impl<const N: usize> Display for Discriminator<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for byte in &self.0 {
-            write!(f, "{:02x}", byte)?;
+            write!(f, "{byte:02x}")?;
         }
         Ok(())
     }

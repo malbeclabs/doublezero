@@ -80,6 +80,7 @@ pub struct DeviceLatencySamplesHeader {
     pub next_sample_index: u32, // 4
 
     // Reserved for future use.
+    #[cfg_attr(feature = "serde", serde(with = "serde_bytes"))]
     pub _unused: [u8; 128], // 128
 }
 

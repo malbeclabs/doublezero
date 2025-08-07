@@ -47,6 +47,7 @@ const INTERNET_LATENCY_SAMPLES_HEADER_SIZE_MINUS_PROVIDER: usize = {
 /// location over the public internet for a specific epoch and third party probe provider,
 /// written by a single agent account managed by the serviceability global state.
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct InternetLatencySamplesHeader {
     // Discriminator to distinguish from other accounts during deserialization
     pub account_type: AccountType, // 1
@@ -68,6 +69,7 @@ pub struct InternetLatencySamplesHeader {
     // Tracks how many samples have been appended
     pub next_sample_index: u32, // 4
     // Reserved for future use
+    #[cfg_attr(feature = "serde", serde(with = "serde_bytes"))]
     pub _unused: [u8; 128], // 128
 }
 
@@ -122,6 +124,7 @@ impl TryFrom<&[u8]> for InternetLatencySamplesHeader {
 ///
 /// This is not the onchain data structure, but a convenience wrapper for the header and samples.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct InternetLatencySamples {
     pub header: InternetLatencySamplesHeader,
     pub samples: Vec<u32>,

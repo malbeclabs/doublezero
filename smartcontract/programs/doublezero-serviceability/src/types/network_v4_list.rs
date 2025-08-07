@@ -1,13 +1,13 @@
 use crate::types::NetworkV4;
 use borsh::{BorshDeserialize, BorshSerialize};
 use byteorder::{LittleEndian, ReadBytesExt};
-use serde::Serialize;
 use std::{
     fmt::{Display, Formatter},
     str::FromStr,
 };
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NetworkV4List(Vec<NetworkV4>);
 
 impl NetworkV4List {

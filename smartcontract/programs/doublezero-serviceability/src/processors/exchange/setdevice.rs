@@ -1,5 +1,3 @@
-use core::fmt;
-
 use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get,
@@ -7,7 +5,8 @@ use crate::{
     state::{accounttype::AccountType, device::Device, exchange::*},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use serde::Serialize;
+use core::fmt;
+
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -17,8 +16,9 @@ use solana_program::{
 };
 
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
 #[borsh(use_discriminant = true)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SetDeviceOption {
     Set = 1,
     Remove = 2,

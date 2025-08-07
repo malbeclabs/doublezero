@@ -5,13 +5,13 @@ use crate::{
     types::*,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use serde::Serialize;
 use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
 use std::{fmt, str::FromStr};
 
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
 #[borsh(use_discriminant = true)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LinkLinkType {
     WAN = 1,
     DZX = 127,
@@ -49,8 +49,9 @@ impl fmt::Display for LinkLinkType {
 }
 
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
 #[borsh(use_discriminant = true)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LinkStatus {
     Pending = 0,
     Activated = 1,
@@ -87,7 +88,8 @@ impl fmt::Display for LinkStatus {
     }
 }
 
-#[derive(BorshSerialize, Debug, PartialEq, Clone, Serialize)]
+#[derive(BorshSerialize, Debug, PartialEq, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Link {
     pub account_type: AccountType, // 1
     pub owner: Pubkey,             // 32

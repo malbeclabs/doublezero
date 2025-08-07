@@ -1,12 +1,13 @@
 use super::accounttype::{AccountType, AccountTypeInfo};
 use crate::{bytereader::ByteReader, seeds::SEED_EXCHANGE};
 use borsh::{BorshDeserialize, BorshSerialize};
-use serde::Serialize;
 use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
 use std::fmt;
+
 #[repr(u8)]
-#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Serialize)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
 #[borsh(use_discriminant = true)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ExchangeStatus {
     Pending = 0,
     Activated = 1,
@@ -34,7 +35,8 @@ impl fmt::Display for ExchangeStatus {
     }
 }
 
-#[derive(BorshSerialize, Debug, PartialEq, Clone, Serialize)]
+#[derive(BorshSerialize, Debug, PartialEq, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Exchange {
     pub account_type: AccountType, // 1
     pub owner: Pubkey,             // 32

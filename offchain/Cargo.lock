@@ -737,9 +737,9 @@ checksum = "175812e0be2bccb6abe50bb8d566126198344f707e304f45c648fd8f2cc0365e"
 
 [[package]]
 name = "bytemuck"
-version = "1.23.1"
+version = "1.23.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c76a5792e44e4abe34d3abf15636779261d45a7450612059293d1d2cfc63422"
+checksum = "3995eaeebcdf32f91f980d360f78732ddc061097ab4e39991ae7a6ace9194677"
 dependencies = [
  "bytemuck_derive",
 ]
@@ -1440,7 +1440,7 @@ dependencies = [
 [[package]]
 name = "doublezero-program-common"
 version = "0.4.0"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#81042a0dba271a356203b49188aebea33e3895bf"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#2eb0f934641bf0b775b2aa9a45d8bd7e7a83d39b"
 dependencies = [
  "solana-program",
 ]
@@ -1448,13 +1448,14 @@ dependencies = [
 [[package]]
 name = "doublezero-serviceability"
 version = "0.4.0"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#81042a0dba271a356203b49188aebea33e3895bf"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#2eb0f934641bf0b775b2aa9a45d8bd7e7a83d39b"
 dependencies = [
  "borsh 1.5.7",
  "byteorder",
  "doublezero-program-common",
  "ipnetwork",
  "serde",
+ "serde_bytes",
  "solana-program",
  "thiserror 2.0.12",
 ]
@@ -1462,19 +1463,20 @@ dependencies = [
 [[package]]
 name = "doublezero-telemetry"
 version = "0.2.0"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#81042a0dba271a356203b49188aebea33e3895bf"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#2eb0f934641bf0b775b2aa9a45d8bd7e7a83d39b"
 dependencies = [
  "borsh 1.5.7",
  "doublezero-program-common",
  "doublezero-serviceability",
  "serde",
+ "serde_bytes",
  "solana-program",
 ]
 
 [[package]]
 name = "doublezero_sdk"
 version = "0.4.0"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#81042a0dba271a356203b49188aebea33e3895bf"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#2eb0f934641bf0b775b2aa9a45d8bd7e7a83d39b"
 dependencies = [
  "base64 0.22.1",
  "bincode 2.0.1",

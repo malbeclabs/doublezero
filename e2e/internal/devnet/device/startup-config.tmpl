@@ -54,7 +54,7 @@ management api gnmi
    vrf management
 {{- end }}
 !
-ip access-list MAIN-CONTROL-PLANE-ACL
+ip access-list MAIN-CONTROL-PLANE-ACL-MGMT
    counters per-entry
    10 permit icmp any any
    20 permit ip any any tracked
@@ -83,16 +83,14 @@ ip access-list MAIN-CONTROL-PLANE-ACL
    250 permit udp any any eq 8503
    260 permit udp any any eq lsp-ping
    270 permit udp any eq lsp-ping any
-   280 remark Permit TWAMP (UDP 862)
-   290 permit udp any any eq 862
+
    {{- if .TelemetryMetricsEnable }}
    990 remark Permit doublezero-telemetry prometheus metrics (TCP {{ .TelemetryMetricsPort }})
    999 permit tcp any any eq {{ .TelemetryMetricsPort }}
    {{- end }}
 !
 system control-plane
-   ip access-group MAIN-CONTROL-PLANE-ACL vrf management in
-   ip access-group MAIN-CONTROL-PLANE-ACL in
+   ip access-group MAIN-CONTROL-PLANE-ACL-MGMT vrf management in
 !
 no service interface inactive port-id allocation disabled
 !

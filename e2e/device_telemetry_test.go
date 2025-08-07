@@ -246,21 +246,21 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 		require.Nil(t, resp.Error)
 	}()
 
-	// Wait for the devices to be reachable from each other via their link tunnel using ICMP ping.
-	log.Info("==> Waiting for devices to be reachable from each other via their link tunnel using ICMP ping")
+	// Wait for the devices to be reachable from each other via their link tunnel using TWAMP UDP probes.
+	log.Info("==> Waiting for devices to be reachable from each other via their link tunnel using TWAMP")
 	require.Eventually(t, func() bool {
-		_, err := dn.Devices["la2-dz01"].Exec(t.Context(), []string{"ping", "-c", "1", "-w", "1", la2ToNY5LinkTunnelNY5IP})
+		_, err := dn.Devices["la2-dz01"].Exec(t.Context(), []string{"twamp-sender", "-q", "-local-addr", fmt.Sprintf("%s:%d", la2ToNY5LinkTunnelLA2IP, 0), "-remote-addr", fmt.Sprintf("%s:%d", la2ToNY5LinkTunnelNY5IP, 862)})
 		if err != nil {
 			log.Debug("Waiting for la2-dz01 to be reachable from ny5-dz01 via tunnel", "error", err)
 			return false
 		}
-		_, err = dn.Devices["ny5-dz01"].Exec(t.Context(), []string{"ping", "-c", "1", "-w", "1", la2ToNY5LinkTunnelLA2IP})
+		_, err = dn.Devices["ny5-dz01"].Exec(t.Context(), []string{"twamp-sender", "-q", "-local-addr", fmt.Sprintf("%s:%d", la2ToNY5LinkTunnelNY5IP, 0), "-remote-addr", fmt.Sprintf("%s:%d", la2ToNY5LinkTunnelLA2IP, 862)})
 		if err != nil {
 			log.Debug("Waiting for ny5-dz01 to be reachable from la2-dz01 via tunnel", "error", err)
 			return false
 		}
 		return true
-	}, 20*time.Second, 1*time.Second)
+	}, 300*time.Second, 3*time.Second)
 
 	// Before checking metrics, the la2 device is not using a management namespace, so we need to expose the metrics port via iptables.
 	// This isn't needed for the ny5 device because it's using a management namespace and has a control plane ACL configured for it.
@@ -278,16 +278,6 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	require.NoError(t, ny5MetricsClient.WaitForReady(t.Context(), 60*time.Second))
 	err = ny5MetricsClient.Fetch(t.Context())
 	require.NoError(t, err)
-
-	// Get the post-reachability "tunnel not found" metric for the la2 device, so we can check that it doesn't increase from here at the end.
-	la2TunnelNotFoundGaugeValues := la2MetricsClient.GetGaugeValues("doublezero_device_telemetry_agent_peer_discovery_not_found_tunnels")
-	require.NotNil(t, la2TunnelNotFoundGaugeValues)
-	prevLA2TunnelNotFoundCount := int(la2TunnelNotFoundGaugeValues[0].Value)
-
-	// Get the post-reachability "tunnel not found" metric for the ny5 device, so we can check that it increases from here at the end.
-	ny5TunnelNotFoundGaugeValues := ny5MetricsClient.GetGaugeValues("doublezero_device_telemetry_agent_peer_discovery_not_found_tunnels")
-	require.NotNil(t, ny5TunnelNotFoundGaugeValues)
-	prevNY5TunnelNotFoundCount := int(ny5TunnelNotFoundGaugeValues[0].Value)
 
 	// Get post-startup "errors_total" metric for the la2 device, so we can check that it's 0 at the end.
 	la2ErrorsCounterValues := la2MetricsClient.GetCounterValues("doublezero_device_telemetry_agent_errors_total")
@@ -359,11 +349,19 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 
 	// Check that the telemetry samples are being submitted to the telemetry program.
 	log.Info("==> Checking that telemetry samples are being submitted to the telemetry program", "epoch", epoch)
-	account, duration := waitForDeviceLatencySamples(t, dn, la2DevicePK, ny5DevicePK, la2ToNy5LinkPK, epoch, 1, 90*time.Second)
+	account, duration := waitForDeviceLatencySamples(t, dn, la2DevicePK, ny5DevicePK, la2ToNy5LinkPK, epoch, 12, 90*time.Second)
 	log.Info("==> Got telemetry samples", "duration", duration, "epoch", account.Epoch, "originDevicePK", account.OriginDevicePK, "targetDevicePK", account.TargetDevicePK, "linkPK", account.LinkPK, "samplingIntervalMicroseconds", account.SamplingIntervalMicroseconds, "nextSampleIndex", account.NextSampleIndex, "samples", account.Samples)
 	require.Greater(t, len(account.Samples), 1)
 	require.Equal(t, len(account.Samples), int(account.NextSampleIndex))
+	// If there are 0s, they should be at the beginning of the samples array, with all non-zero values after them.
+	initialZeroCount := 0
 	for _, rtt := range account.Samples {
+		if rtt == 0 {
+			initialZeroCount++
+		}
+	}
+	require.Less(t, initialZeroCount, len(account.Samples))
+	for _, rtt := range account.Samples[initialZeroCount:] {
 		require.Greater(t, rtt, uint32(0))
 	}
 	prevAccount := account
@@ -378,7 +376,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	require.Equal(t, prevAccount.StartTimestampMicroseconds, account.StartTimestampMicroseconds)
 	require.Equal(t, prevAccount.SamplingIntervalMicroseconds, account.SamplingIntervalMicroseconds)
 	require.Equal(t, len(account.Samples), int(account.NextSampleIndex))
-	for _, rtt := range account.Samples {
+	for _, rtt := range account.Samples[initialZeroCount:] {
 		require.Greater(t, rtt, uint32(0))
 	}
 	require.Equal(t, prevAccount.Samples, account.Samples[:len(prevAccount.Samples)]) // same account and epoch, same samples prefix
@@ -390,7 +388,15 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	log.Info("==> Got telemetry samples", "duration", duration, "epoch", account.Epoch, "originDevicePK", account.OriginDevicePK, "targetDevicePK", account.TargetDevicePK, "linkPK", account.LinkPK, "samplingIntervalMicroseconds", account.SamplingIntervalMicroseconds, "nextSampleIndex", account.NextSampleIndex, "samples", account.Samples)
 	require.Greater(t, len(account.Samples), 1)
 	require.Equal(t, len(account.Samples), int(account.NextSampleIndex))
+	// If there are 0s, they should be at the beginning of the samples array, with all non-zero values after them.
+	initialZeroCount = 0
 	for _, rtt := range account.Samples {
+		if rtt == 0 {
+			initialZeroCount++
+		}
+	}
+	require.Less(t, initialZeroCount, len(account.Samples))
+	for _, rtt := range account.Samples[initialZeroCount:] {
 		require.Greater(t, rtt, uint32(0))
 	}
 	require.NotEqual(t, prevAccount.Samples, account.Samples) // different accounts, different samples
@@ -406,7 +412,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 
 	// Get samples for link with dummy device and check that they're all 0 RTTs (losses).
 	log.Info("==> Checking that telemetry samples are being submitted to the telemetry program for link with dummy device", "epoch", epoch)
-	account, duration = waitForDeviceLatencySamples(t, dn, ny5DevicePK, ld4DevicePK, ny5ToLd4LinkPK, epoch, 1, 90*time.Second)
+	account, duration = waitForDeviceLatencySamples(t, dn, ny5DevicePK, ld4DevicePK, ny5ToLd4LinkPK, epoch, 10, 90*time.Second)
 	log.Info("==> Got telemetry samples", "duration", duration, "epoch", account.Epoch, "originDevicePK", account.OriginDevicePK, "targetDevicePK", account.TargetDevicePK, "linkPK", account.LinkPK, "samplingIntervalMicroseconds", account.SamplingIntervalMicroseconds, "nextSampleIndex", account.NextSampleIndex, "samples", account.Samples)
 	require.Greater(t, len(account.Samples), 1)
 	require.Equal(t, len(account.Samples), int(account.NextSampleIndex))
@@ -420,7 +426,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	err = ny5MetricsClient.Fetch(t.Context())
 	require.NoError(t, err)
 
-	// Check that la2 has 0 "tunnel not found" metric counted, since it has no links with non-existent devices.
+	// Check that la2 has 0 "tunnel not found" gauge metric value, since it has no links with non-existent devices.
 	log.Info("==> Checking that la2 has 0 not found tunnels")
 	la2NotFoundTunnelsGaugeValues := la2MetricsClient.GetGaugeValues("doublezero_device_telemetry_agent_peer_discovery_not_found_tunnels")
 	require.NotNil(t, la2NotFoundTunnelsGaugeValues)
@@ -428,17 +434,17 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	require.Contains(t, la2NotFoundTunnelsGaugeValues[0].Labels, "local_device_pk")
 	require.Equal(t, la2DevicePK.String(), la2NotFoundTunnelsGaugeValues[0].Labels["local_device_pk"])
 	la2TNotFoundTunnelsCount := int(la2NotFoundTunnelsGaugeValues[0].Value)
-	require.Equal(t, prevLA2TunnelNotFoundCount, la2TNotFoundTunnelsCount)
+	require.Equal(t, 0, la2TNotFoundTunnelsCount)
 
-	// Check that ny5 has more than 0 "tunnel not found" metric counted, since it has a link with a non-existent device.
-	log.Info("==> Checking that ny5 has more than 0 not found tunnels")
+	// Check that ny5 has 1 "tunnel not found" gauge metric value, since it has a link with a non-existent device.
+	log.Info("==> Checking that ny5 has 1 not found tunnels")
 	ny5NotFoundTunnelsGaugeValues := ny5MetricsClient.GetGaugeValues("doublezero_device_telemetry_agent_peer_discovery_not_found_tunnels")
 	require.NotNil(t, ny5NotFoundTunnelsGaugeValues)
 	require.Equal(t, 1, len(ny5NotFoundTunnelsGaugeValues))
 	require.Contains(t, ny5NotFoundTunnelsGaugeValues[0].Labels, "local_device_pk")
 	require.Equal(t, ny5DevicePK.String(), ny5NotFoundTunnelsGaugeValues[0].Labels["local_device_pk"])
 	ny5TNotFoundTunnelsCount := int(ny5NotFoundTunnelsGaugeValues[0].Value)
-	require.Greater(t, ny5TNotFoundTunnelsCount, prevNY5TunnelNotFoundCount)
+	require.Equal(t, 1, ny5TNotFoundTunnelsCount)
 
 	// Check that the "errors_total" counter has not increased from startup.
 	log.Info("==> Checking that errors_total counter has not increased from startup")

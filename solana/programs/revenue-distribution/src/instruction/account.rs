@@ -238,49 +238,102 @@ impl From<InitializeDistributionAccounts> for Vec<AccountMeta> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ConfigureDistributionAccounts {
-    pub distribution_key: Pubkey,
+pub struct ConfigureDistributionPaymentsAccounts {
     pub program_config_key: Pubkey,
-    pub accountant_key: Pubkey,
-    pub payer_key: Option<Pubkey>,
+    pub payments_accountant_key: Pubkey,
+    pub distribution_key: Pubkey,
 }
 
-impl ConfigureDistributionAccounts {
-    pub fn new(
-        accountant_key: &Pubkey,
-        dz_epoch: DoubleZeroEpoch,
-        payer_key: Option<&Pubkey>,
-    ) -> Self {
+impl ConfigureDistributionPaymentsAccounts {
+    pub fn new(payments_accountant_key: &Pubkey, dz_epoch: DoubleZeroEpoch) -> Self {
         Self {
-            distribution_key: Distribution::find_address(dz_epoch).0,
             program_config_key: ProgramConfig::find_address().0,
-            accountant_key: *accountant_key,
-            payer_key: payer_key.copied(),
+            payments_accountant_key: *payments_accountant_key,
+            distribution_key: Distribution::find_address(dz_epoch).0,
         }
     }
 }
 
-impl From<ConfigureDistributionAccounts> for Vec<AccountMeta> {
-    fn from(accounts: ConfigureDistributionAccounts) -> Self {
-        let ConfigureDistributionAccounts {
+impl From<ConfigureDistributionPaymentsAccounts> for Vec<AccountMeta> {
+    fn from(accounts: ConfigureDistributionPaymentsAccounts) -> Self {
+        let ConfigureDistributionPaymentsAccounts {
+            program_config_key,
+            payments_accountant_key,
             distribution_key,
+        } = accounts;
+
+        vec![
+            AccountMeta::new_readonly(program_config_key, false),
+            AccountMeta::new_readonly(payments_accountant_key, true),
+            AccountMeta::new(distribution_key, false),
+        ]
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConfigureDistributionRewardsAccounts {
+    pub program_config_key: Pubkey,
+    pub accountant_key: Pubkey,
+    pub distribution_key: Pubkey,
+}
+
+impl ConfigureDistributionRewardsAccounts {
+    pub fn new(accountant_key: &Pubkey, dz_epoch: DoubleZeroEpoch) -> Self {
+        Self {
+            program_config_key: ProgramConfig::find_address().0,
+            accountant_key: *accountant_key,
+            distribution_key: Distribution::find_address(dz_epoch).0,
+        }
+    }
+}
+
+impl From<ConfigureDistributionRewardsAccounts> for Vec<AccountMeta> {
+    fn from(accounts: ConfigureDistributionRewardsAccounts) -> Self {
+        let ConfigureDistributionRewardsAccounts {
             program_config_key,
             accountant_key,
+            distribution_key,
+        } = accounts;
+
+        vec![
+            AccountMeta::new_readonly(program_config_key, false),
+            AccountMeta::new_readonly(accountant_key, true),
+            AccountMeta::new(distribution_key, false),
+        ]
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FinalizeDistributionRewardsAccounts {
+    pub program_config_key: Pubkey,
+    pub distribution_key: Pubkey,
+    pub payer_key: Pubkey,
+}
+
+impl FinalizeDistributionRewardsAccounts {
+    pub fn new(payer_key: &Pubkey, dz_epoch: DoubleZeroEpoch) -> Self {
+        Self {
+            program_config_key: ProgramConfig::find_address().0,
+            distribution_key: Distribution::find_address(dz_epoch).0,
+            payer_key: *payer_key,
+        }
+    }
+}
+
+impl From<FinalizeDistributionRewardsAccounts> for Vec<AccountMeta> {
+    fn from(accounts: FinalizeDistributionRewardsAccounts) -> Self {
+        let FinalizeDistributionRewardsAccounts {
+            program_config_key,
+            distribution_key,
             payer_key,
         } = accounts;
 
-        let mut accounts = vec![
-            AccountMeta::new(distribution_key, false),
+        vec![
             AccountMeta::new_readonly(program_config_key, false),
-            AccountMeta::new_readonly(accountant_key, true),
-        ];
-
-        if let Some(payer_key) = payer_key {
-            accounts.push(AccountMeta::new(payer_key, true));
-            accounts.push(AccountMeta::new_readonly(system_program::ID, false));
-        }
-
-        accounts
+            AccountMeta::new(distribution_key, false),
+            AccountMeta::new(payer_key, true),
+            AccountMeta::new_readonly(system_program::ID, false),
+        ]
     }
 }
 

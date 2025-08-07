@@ -3,7 +3,9 @@ mod common;
 //
 
 use doublezero_revenue_distribution::{
-    instruction::{DistributionConfiguration, ProgramConfiguration, ProgramFlagConfiguration},
+    instruction::{
+        DistributionPaymentsConfiguration, ProgramConfiguration, ProgramFlagConfiguration,
+    },
     state::{self, Distribution},
     types::{BurnRate, DoubleZeroEpoch, ValidatorFee},
 };
@@ -12,11 +14,11 @@ use solana_program_test::tokio;
 use solana_sdk::signature::{Keypair, Signer};
 
 //
-// Configure distribution.
+// Configure distribution payments.
 //
 
 #[tokio::test]
-async fn test_configure_distribution() {
+async fn test_configure_distribution_payments() {
     let mut test_setup = common::start_test().await;
 
     let admin_signer = Keypair::new();
@@ -73,7 +75,7 @@ async fn test_configure_distribution() {
         .initialize_distribution(&payments_accountant_signer)
         .await
         .unwrap()
-        .initialize_distribution(&rewards_accountant_signer)
+        .initialize_distribution(&payments_accountant_signer)
         .await
         .unwrap();
 
@@ -81,62 +83,35 @@ async fn test_configure_distribution() {
 
     let dz_epoch = DoubleZeroEpoch::new(1);
 
-    let total_solana_validator_payments_owed = 100_000_000_000; // 100 SOL.
+    let total_solana_validator_payments_owed = 100 * u64::pow(10, 9);
     let solana_validator_payments_merkle_root = Hash::new_unique();
-
-    let total_contributors = 69;
-    let contributor_rewards_merkle_root = Hash::new_unique();
-
-    let (_, _, distribution_lamports_balance_before, _) =
-        test_setup.fetch_distribution(dz_epoch).await;
+    let uncollectible_sol_amount = 10 * u64::pow(10, 9);
 
     test_setup
-        .configure_distribution(
+        .configure_distribution_payments(
             dz_epoch,
             &payments_accountant_signer,
             [
-                DistributionConfiguration::UpdateSolanaValidatorPayments {
+                DistributionPaymentsConfiguration::UpdateSolanaValidatorPayments {
                     total_lamports_owed: total_solana_validator_payments_owed + 1,
                     merkle_root: solana_validator_payments_merkle_root,
                 },
-                DistributionConfiguration::UpdateSolanaValidatorPayments {
+                DistributionPaymentsConfiguration::UpdateSolanaValidatorPayments {
                     total_lamports_owed: total_solana_validator_payments_owed,
                     merkle_root: solana_validator_payments_merkle_root,
                 },
-                DistributionConfiguration::FinalizeSolanaValidatorPayments,
-            ],
-        )
-        .await
-        .unwrap()
-        .configure_distribution(
-            dz_epoch,
-            &rewards_accountant_signer,
-            [
-                DistributionConfiguration::UpdateContributorRewards {
-                    total_contributors: total_contributors + 1,
-                    merkle_root: contributor_rewards_merkle_root,
-                },
-                DistributionConfiguration::UpdateContributorRewards {
-                    total_contributors,
-                    merkle_root: contributor_rewards_merkle_root,
-                },
-                DistributionConfiguration::FinalizeContributorRewards,
+                DistributionPaymentsConfiguration::UpdateUncollectibleSol(69),
+                DistributionPaymentsConfiguration::FinalizePayments,
+                DistributionPaymentsConfiguration::UpdateUncollectibleSol(uncollectible_sol_amount),
             ],
         )
         .await
         .unwrap();
 
-    let (distribution_key, distribution, distribution_lamports_balance_after, _) =
-        test_setup.fetch_distribution(dz_epoch).await;
-
-    assert_eq!(
-        distribution_lamports_balance_after,
-        distribution_lamports_balance_before + 690_000
-    );
+    let (distribution_key, distribution, _, _) = test_setup.fetch_distribution(dz_epoch).await;
 
     let mut expected_distribution = Distribution::default();
-    expected_distribution.set_is_solana_validator_payments_finalized(true);
-    expected_distribution.set_is_contributor_rewards_finalized(true);
+    expected_distribution.set_are_payments_finalized(true);
     expected_distribution.bump_seed = Distribution::find_address(dz_epoch).1;
     expected_distribution.token_2z_pda_bump_seed =
         state::find_2z_token_pda_address(&distribution_key).1;
@@ -149,7 +124,6 @@ async fn test_configure_distribution() {
         total_solana_validator_payments_owed;
     expected_distribution.solana_validator_payments_merkle_root =
         solana_validator_payments_merkle_root;
-    expected_distribution.total_contributors = total_contributors;
-    expected_distribution.contributor_rewards_merkle_root = contributor_rewards_merkle_root;
+    expected_distribution.uncollectible_sol_amount = uncollectible_sol_amount;
     assert_eq!(distribution, expected_distribution);
 }

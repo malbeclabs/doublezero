@@ -15,7 +15,7 @@ use doublezero_program_tools::{
 };
 use solana_pubkey::Pubkey;
 
-use crate::types::DoubleZeroEpoch;
+use crate::types::{DoubleZeroEpoch, EpochDuration};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable)]
 #[repr(C, align(8))]
@@ -110,6 +110,18 @@ impl ProgramConfig {
             None
         } else {
             Some(lamports.into())
+        }
+    }
+
+    pub fn checked_minimum_epoch_duration_to_finalize_rewards(&self) -> Option<EpochDuration> {
+        let duration = self
+            .distribution_parameters
+            .minimum_epoch_duration_to_finalize_rewards;
+
+        if duration == 0 {
+            None
+        } else {
+            Some(duration.into())
         }
     }
 }

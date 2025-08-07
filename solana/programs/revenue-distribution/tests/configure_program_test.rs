@@ -44,6 +44,7 @@ async fn test_configure_program() {
 
     // Distribution settings.
     let calculation_grace_period_seconds = 6 * 60 * 60;
+    let minimum_epoch_duration_to_finalize_rewards = 10;
 
     // -- Solana validator fee parameters.
     let base_block_rewards = 500; // 5%
@@ -93,6 +94,9 @@ async fn test_configure_program() {
                 ProgramConfiguration::ContributorRewardClaimLamports(
                     contributor_reward_claim_relay_lamports,
                 ),
+                ProgramConfiguration::MinimumEpochDurationToFinalizeRewards(
+                    minimum_epoch_duration_to_finalize_rewards,
+                ),
             ],
         )
         .await
@@ -115,6 +119,8 @@ async fn test_configure_program() {
     let expected_distribution_params = &mut expected_program_config.distribution_parameters;
     expected_distribution_params.calculation_grace_period_seconds =
         calculation_grace_period_seconds;
+    expected_distribution_params.minimum_epoch_duration_to_finalize_rewards =
+        minimum_epoch_duration_to_finalize_rewards;
 
     let expected_solana_validator_fee_params =
         &mut expected_distribution_params.solana_validator_fee_parameters;

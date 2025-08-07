@@ -173,7 +173,6 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 		doublezero device list
 
 		echo "==> Populate device interface information onchain"
-		# TODO: When the controller supports dzd metadata, this will have to be updated to reflect actual interfaces
 		doublezero device interface create ny5-dz01 "Switch1/1/1" physical
 		doublezero device interface create la2-dz01 "Switch1/1/1" physical
 		doublezero device interface create ld4-dz01 "Switch1/1/1" physical

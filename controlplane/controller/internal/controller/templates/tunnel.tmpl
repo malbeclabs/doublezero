@@ -90,7 +90,7 @@ router bgp 65342
    no neighbor {{ .PeerIP }}
    neighbor {{ .PeerIP }} remote-as 65342
    neighbor {{ .PeerIP }} next-hop-self
-   neighbor {{ .PeerIP }} update-source {{ $.Device.Ip4vLoopbackIntfName }}
+   neighbor {{ .PeerIP }} update-source {{ $.Device.Ipv4LoopbackIntfName }}
    neighbor {{ .PeerIP }} description {{ .PeerName }}-ipv4
    neighbor {{ .PeerIP }} send-community
    {{- end }}
@@ -238,7 +238,7 @@ router msdp
    {{- if ne .PeerIP.String $.Device.Ipv4LoopbackIP.String }}
    peer {{ .PeerIP }}
       mesh-group DZ-1
-      local-interface {{ $.Device.Ip4vLoopbackIntfName }}
+      local-interface {{ $.Device.Ipv4LoopbackIntfName }}
       description {{ .PeerName }}
    {{- end }}
    {{- end }}

@@ -802,7 +802,7 @@ func generateKeypairIfNotExists(keypairPath string) (bool, error) {
 }
 
 func (d *Devnet) CreateDeviceLoopbackInterface(ctx context.Context, deviceCode string, interfaceName string, loopbackType string) error {
-	d.log.Info("==> Creating VPNv4 loopback interface for device", "code", deviceCode)
+	d.log.Info("==> Creating loopback interface for device", "code", deviceCode)
 	d.onchainWriteMutex.Lock()
 	defer d.onchainWriteMutex.Unlock()
 

@@ -377,7 +377,7 @@ func TestRenderConfig(t *testing.T) {
 						},
 					},
 					Vpn4vLoopbackIntfName: "Loopback255",
-					Ip4vLoopbackIntfName:  "Loopback256",
+					Ipv4LoopbackIntfName:  "Loopback256",
 				},
 				Vpnv4BgpPeers: []BgpPeer{
 					{

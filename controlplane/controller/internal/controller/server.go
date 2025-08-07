@@ -179,7 +179,7 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 				// Extract IP from IpNet
 				ip := net.IP(iface.IpNet[:4])
 				d.Ipv4LoopbackIP = ip // Used to set router-id
-				d.Ip4vLoopbackIntfName = iface.Name
+				d.Ipv4LoopbackIntfName = iface.Name
 				// TODO: raise an error if the IP is 0.0.0.0 (not set)
 				peer := BgpPeer{
 					PeerIP:   ip,
@@ -441,8 +441,6 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		NoHardware:               c.noHardware,
 		TelemetryTWAMPListenPort: telemetryconfig.TWAMPListenPort,
 	}
-
-	// Write a check
 
 	config, err := renderConfig(data)
 	if err != nil {

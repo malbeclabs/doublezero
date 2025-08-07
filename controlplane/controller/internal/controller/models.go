@@ -21,7 +21,7 @@ type Device struct {
 	TunnelSlots           int
 	Interfaces            []serviceability.Interface
 	Vpn4vLoopbackIntfName string
-	Ip4vLoopbackIntfName  string
+	Ipv4LoopbackIntfName  string
 }
 
 func NewDevice(ip net.IP, publicKey string) *Device {

@@ -62,7 +62,6 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 		doublezero device create --code ld4-dz01 --contributor co01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "195.219.120.72/29" --mgmt-vrf mgmt
 		doublezero device create --code frk-dz01 --contributor co01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "195.219.220.88/29" --mgmt-vrf mgmt
 
-		# TODO: When the controller supports dzd metadata, this will have to be updated to reflect actual interfaces
 		doublezero device interface create la2-dz01 "Switch1/1/1" physical
 		doublezero device interface create ny5-dz01 "Switch1/1/1" physical
 		doublezero device interface create ld4-dz01 "Switch1/1/1" physical

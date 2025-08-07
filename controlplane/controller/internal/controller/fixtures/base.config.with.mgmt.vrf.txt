@@ -46,11 +46,6 @@ ip access-list MAIN-CONTROL-PLANE-ACL
 system control-plane
    ip access-group MAIN-CONTROL-PLANE-ACL in
 !
-interface Loopback255
-   ip address 14.14.14.14/32
-   node-segment ipv4 index 15
-   isis enable 1
-!
 router bgp 65342
    router-id 14.14.14.14
    no neighbor 12.12.12.12

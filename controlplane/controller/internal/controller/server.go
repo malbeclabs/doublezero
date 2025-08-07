@@ -163,6 +163,9 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			return d.Interfaces[i].Name < d.Interfaces[j].Name
 		})
 
+		d.Interfaces = device.Interfaces
+		d.MgmtVrf = device.MgmtVrf
+
 		// Build list of peers from device interfaces
 		for _, iface := range d.Interfaces {
 			if iface.InterfaceType == InterfaceTypeLoopback &&

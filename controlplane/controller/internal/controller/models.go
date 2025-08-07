@@ -179,6 +179,8 @@ type Device struct {
 	Vpn4vLoopbackIntfName string
 	Ipv4LoopbackIntfName  string
 	Interfaces            []Interface
+	MgmtVrf               string
+	IsisNet               string
 }
 
 func NewDevice(ip net.IP, publicKey string) *Device {

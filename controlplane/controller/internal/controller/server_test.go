@@ -70,6 +70,7 @@ func TestGetConfig(t *testing.T) {
 						},
 						PublicIP:        net.IP{7, 7, 7, 7},
 						Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
+						IsisNet:         "49.0000.0e0e.0e0e.0000.00",
 					},
 				},
 			},
@@ -150,6 +151,7 @@ func TestGetConfig(t *testing.T) {
 						},
 						PublicIP:        net.IP{7, 7, 7, 7},
 						Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
+						IsisNet:         "49.0000.0e0e.0e0e.0000.00",
 					},
 				},
 			},
@@ -240,6 +242,7 @@ func TestGetConfig(t *testing.T) {
 						},
 						PublicIP:        net.IP{7, 7, 7, 7},
 						Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
+						IsisNet:         "49.0000.0e0e.0e0e.0000.00",
 					},
 				},
 			},
@@ -331,6 +334,7 @@ func TestGetConfig(t *testing.T) {
 						},
 						PublicIP:        net.IP{7, 7, 7, 7},
 						Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
+						IsisNet:         "49.0000.0e0e.0e0e.0000.00",
 					},
 				},
 			},
@@ -380,7 +384,41 @@ func TestGetConfig(t *testing.T) {
 			Pubkey: "abc123",
 			Want:   "fixtures/base.config.txt",
 		},
-	}
+		{
+			Name:        "render_base_config_with_mgmt_vrf_successfully",
+			Description: "render base configuration with BGP peers",
+			StateCache: stateCache{
+				Config: serviceability.Config{
+					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+				},
+				Vpnv4BgpPeers: []BgpPeer{
+					{
+						PeerIP:   net.IP{15, 15, 15, 15},
+						PeerName: "remote-dzd",
+					},
+				},
+				Ipv4BgpPeers: []BgpPeer{
+					{
+						PeerIP:   net.IP{12, 12, 12, 12},
+						PeerName: "remote-dzd",
+					},
+				},
+				Devices: map[string]*Device{
+					"abc123": {
+						PublicIP:              net.IP{7, 7, 7, 7},
+						Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
+						Ipv4LoopbackIP:        net.IP{13, 13, 13, 13},
+						Vpn4vLoopbackIntfName: "Loopback255",
+						Ipv4LoopbackIntfName:  "Loopback256",
+						Tunnels:               []*Tunnel{},
+						TunnelSlots:           0,
+						MgmtVrf:               "test-mgmt-vrf",
+					},
+				},
+			},
+			Pubkey: "abc123",
+			Want:   "fixtures/base.config.with.mgmt.vrf.txt",
+		}}
 
 	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
@@ -557,6 +595,7 @@ func TestStateCache(t *testing.T) {
 						PubKey:          "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
 						PublicIP:        net.IP{2, 2, 2, 2},
 						Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
+						IsisNet:         "49.0000.0e0e.0e0e.0000.00",
 						Ipv4LoopbackIP:  net.IP{12, 12, 12, 12},
 						Tunnels: []*Tunnel{
 							{

@@ -51,7 +51,7 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 	t.Run("check_post_connect", func(t *testing.T) {
 		dn.log.Info("==> Checking IBRL post-connect requirements")
 
-		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
+		if !t.Run("wait_for_agent_config_from_controller_post_connect", func(t *testing.T) {
 			config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_user_added.tmpl", map[string]string{
 				"ClientIP": client.CYOANetworkIP,
 				"DeviceIP": device.CYOANetworkIP,
@@ -228,7 +228,7 @@ func checkIBRLPostDisconnect(t *testing.T, dn *TestDevnet, device *devnet.Device
 	t.Run("check_post_disconnect", func(t *testing.T) {
 		dn.log.Info("==> Checking IBRL post-disconnect requirements")
 
-		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
+		if !t.Run("wait_for_agent_config_from_controller_post_disconnect", func(t *testing.T) {
 			config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_user_removed.tmpl", map[string]string{
 				"DeviceIP": device.CYOANetworkIP,
 			})

@@ -201,6 +201,7 @@ default interface Tunnel562
 default interface Tunnel563
 !
 router bgp 65342
+   router-id 14.14.14.14
    no neighbor 169.254.0.3
    neighbor 169.254.0.3 remote-as 65000
    neighbor 169.254.0.3 passive
@@ -211,7 +212,12 @@ router bgp 65342
    neighbor 169.254.0.3 maximum-accepted-routes 1
    address-family ipv4
       neighbor 169.254.0.3 activate
-   no neighbor 169.254.0.7
+      no neighbor 172.16.0.1
+      no neighbor 169.254.0.7
+   !
+   address-family vpn-ipv4
+      no neighbor 172.16.0.1
+      no neighbor 169.254.0.7
    !
    vrf vrf1
       rd 65342:1
@@ -226,6 +232,7 @@ router bgp 65342
       neighbor 169.254.0.1 route-map RM-USER-500-OUT out
       neighbor 169.254.0.1 maximum-routes 1
       neighbor 169.254.0.1 maximum-accepted-routes 1
+      no neighbor 172.16.0.1
       no neighbor 169.254.0.7
 !
 ip community-list COMM-ALL_USERS permit 21682:1200

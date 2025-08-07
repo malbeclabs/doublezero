@@ -31,6 +31,8 @@ type stateCache struct {
 	Config          serviceability.Config
 	Devices         map[string]*Device
 	MulticastGroups map[string]serviceability.MulticastGroup
+	Vpnv4BgpPeers   []BgpPeer
+	Ipv4BgpPeers    []BgpPeer
 }
 
 type Controller struct {
@@ -154,7 +156,50 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			continue
 		}
 		devicePubKey := base58.Encode(device.PubKey[:])
-		cache.Devices[devicePubKey] = NewDevice(ip, devicePubKey)
+		d := NewDevice(ip, devicePubKey)
+
+		d.Interfaces = device.Interfaces
+
+		// Build list of peers from device interfaces
+		for _, iface := range device.Interfaces {
+			if iface.InterfaceType == serviceability.InterfaceTypeLoopback &&
+				iface.LoopbackType == serviceability.LoopbackTypeVpnv4 {
+				// Extract IP from IpNet
+				ip := net.IP(iface.IpNet[:4])
+				d.Vpn4vLoopbackIP = ip // Used to set router-id
+				d.Vpn4vLoopbackIntfName = iface.Name
+				// TODO: raise an error if the IP is 0.0.0.0 (not set)
+				peer := BgpPeer{
+					PeerIP:   ip,
+					PeerName: device.Code,
+				}
+				cache.Vpnv4BgpPeers = append(cache.Vpnv4BgpPeers, peer)
+			} else if iface.InterfaceType == serviceability.InterfaceTypeLoopback &&
+				iface.LoopbackType == serviceability.LoopbackTypeIpv4 {
+				// Extract IP from IpNet
+				ip := net.IP(iface.IpNet[:4])
+				d.Ipv4LoopbackIP = ip // Used to set router-id
+				d.Ipv4LoopbackIntfName = iface.Name
+				// TODO: raise an error if the IP is 0.0.0.0 (not set)
+				peer := BgpPeer{
+					PeerIP:   ip,
+					PeerName: device.Code,
+				}
+				cache.Ipv4BgpPeers = append(cache.Ipv4BgpPeers, peer)
+			}
+		}
+
+		if d.Vpn4vLoopbackIP == nil {
+			slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "no VPNv4 loopback interface found for device")
+			continue
+		}
+
+		if d.Ipv4LoopbackIP == nil {
+			slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "no IPv4 loopback interface found for device")
+			continue
+		}
+
+		cache.Devices[devicePubKey] = d
 	}
 
 	// Build cache of multicast groups.
@@ -343,6 +388,16 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 				return true
 			}
 		}
+		for _, bgpPeer := range c.cache.Vpnv4BgpPeers { // TODO: write a test that proves we don't remove ipv4/vpnv4 BGP peers
+			if bgpPeer.PeerIP.Equal(peer) {
+				return true
+			}
+		}
+		for _, bgpPeer := range c.cache.Ipv4BgpPeers {
+			if bgpPeer.PeerIP.Equal(peer) {
+				return true
+			}
+		}
 		return false
 	}
 
@@ -350,13 +405,15 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 	for _, peer := range req.GetBgpPeers() {
 		ip := net.ParseIP(peer)
 		if ip == nil {
-			slog.Error("malformed peer ip", "peer", peer)
 			continue
 		}
-		if !ip.IsLinkLocalUnicast() || peerFound(ip) {
+		if peerFound(ip) {
 			continue
 		}
-		unknownPeers = append(unknownPeers, ip)
+		// Only remove peers with addresses that DZ has assigned. This will avoid removal of contributor-configured peers like DIA.
+		if isIPInBlock(ip, c.cache.Config.UserTunnelBlock) || isIPInBlock(ip, c.cache.Config.TunnelTunnelBlock) {
+			unknownPeers = append(unknownPeers, ip)
+		}
 	}
 
 	if len(unknownPeers) != 0 {
@@ -365,9 +422,21 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 
 	multicastGroupBlock := formatCIDR(&c.cache.Config.MulticastGroupBlock)
 
+	// This check avoids the situation where the template produces the following useless output, which happens in any test case with a single DZD.
+	// ```
+	// no router msdp
+	// router msdp
+	// ```
+	ipv4Peers := c.cache.Ipv4BgpPeers
+	if len(ipv4Peers) == 1 && ipv4Peers[0].PeerIP.Equal(device.Ipv4LoopbackIP) {
+		ipv4Peers = nil
+	}
+
 	data := templateData{
 		MulticastGroupBlock:      multicastGroupBlock,
 		Device:                   device,
+		Vpnv4BgpPeers:            c.cache.Vpnv4BgpPeers,
+		Ipv4BgpPeers:             ipv4Peers,
 		UnknownBgpPeers:          unknownPeers,
 		NoHardware:               c.noHardware,
 		TelemetryTWAMPListenPort: telemetryconfig.TWAMPListenPort,
@@ -387,4 +456,12 @@ func formatCIDR(b *[5]byte) string {
 	ip := net.IPv4(b[0], b[1], b[2], b[3])
 	mask := net.CIDRMask(int(b[4]), 32)
 	return (&net.IPNet{IP: ip, Mask: mask}).String()
+}
+
+// isIPInBlock checks if an IP address is within a 5-byte network block
+func isIPInBlock(ip net.IP, block [5]uint8) bool {
+	network := net.IPv4(block[0], block[1], block[2], block[3])
+	mask := net.CIDRMask(int(block[4]), 32)
+	ipNet := &net.IPNet{IP: network, Mask: mask}
+	return ipNet.Contains(ip)
 }

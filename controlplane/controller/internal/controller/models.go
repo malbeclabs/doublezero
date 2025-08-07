@@ -2,6 +2,8 @@ package controller
 
 import (
 	"net"
+
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
 var (
@@ -11,10 +13,15 @@ var (
 )
 
 type Device struct {
-	PubKey      string
-	PublicIP    net.IP
-	Tunnels     []*Tunnel
-	TunnelSlots int
+	PubKey                string
+	PublicIP              net.IP
+	Vpn4vLoopbackIP       net.IP
+	Ipv4LoopbackIP        net.IP
+	Tunnels               []*Tunnel
+	TunnelSlots           int
+	Interfaces            []serviceability.Interface
+	Vpn4vLoopbackIntfName string
+	Ipv4LoopbackIntfName  string
 }
 
 func NewDevice(ip net.IP, publicKey string) *Device {
@@ -59,8 +66,15 @@ type Tunnel struct {
 	MulticastPublishers   []net.IP
 }
 
+type BgpPeer struct {
+	PeerIP   net.IP
+	PeerName string
+}
+
 type templateData struct {
 	Device                   *Device
+	Vpnv4BgpPeers            []BgpPeer
+	Ipv4BgpPeers             []BgpPeer
 	UnknownBgpPeers          []net.IP
 	MulticastGroupBlock      string
 	NoHardware               bool

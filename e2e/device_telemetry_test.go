@@ -156,7 +156,6 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 			doublezero device create --code pit-dzd01 --contributor co01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "204.16.243.243/32" --mgmt-vrf mgmt
 			doublezero device create --code ams-dz001 --contributor co01 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "195.219.138.56/29" --mgmt-vrf mgmt
 
-			# TODO: When the controller supports dzd metadata, this will have to be updated to reflect actual interfaces
 			doublezero device interface create la2-dz01 "Switch1/1/1" physical
 			doublezero device interface create ny5-dz01 "Switch1/1/1" physical
 			doublezero device interface create ld4-dz01 "Switch1/1/1" physical
@@ -165,6 +164,24 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 			doublezero device interface create ty2-dz01 "Switch1/1/1" physical
 			doublezero device interface create pit-dzd01 "Switch1/1/1" physical
 			doublezero device interface create ams-dz001 "Switch1/1/1" physical
+
+			doublezero device interface create la2-dz01 "Loopback255" loopback --loopback-type vpnv4
+			doublezero device interface create ny5-dz01 "Loopback255" loopback --loopback-type vpnv4
+			doublezero device interface create ld4-dz01 "Loopback255" loopback --loopback-type vpnv4
+			doublezero device interface create frk-dz01 "Loopback255" loopback --loopback-type vpnv4
+			doublezero device interface create sg1-dz01 "Loopback255" loopback --loopback-type vpnv4
+			doublezero device interface create ty2-dz01 "Loopback255" loopback --loopback-type vpnv4
+			doublezero device interface create pit-dzd01 "Loopback255" loopback --loopback-type vpnv4
+			doublezero device interface create ams-dz001 "Loopback255" loopback --loopback-type vpnv4
+
+			doublezero device interface create la2-dz01 "Loopback256" loopback --loopback-type ipv4
+			doublezero device interface create ny5-dz01 "Loopback256" loopback --loopback-type ipv4
+			doublezero device interface create ld4-dz01 "Loopback256" loopback --loopback-type ipv4
+			doublezero device interface create frk-dz01 "Loopback256" loopback --loopback-type ipv4
+			doublezero device interface create sg1-dz01 "Loopback256" loopback --loopback-type ipv4
+			doublezero device interface create ty2-dz01 "Loopback256" loopback --loopback-type ipv4
+			doublezero device interface create pit-dzd01 "Loopback256" loopback --loopback-type ipv4
+			doublezero device interface create ams-dz001 "Loopback256" loopback --loopback-type ipv4
 	`})
 	require.NoError(t, err)
 
@@ -183,9 +200,9 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	// Manually create tunnel interfaces on the devices.
 	// NOTE: This is a workaround until tunnels on devices are configured automatically when links
 	// are created.
-	la2ToNY5LinkTunnelLA2IP := "172.16.0.0" // 172.16.0.0/31 expected to be allocated to this link by the activator
-	la2ToNY5LinkTunnelNY5IP := "172.16.0.1" // 172.16.0.0/31 expected to be allocated to this link by the activator
-	ny5ToLD4LinkTunnelNY5IP := "172.16.0.2" // 172.16.0.2/31 expected to be allocated to this link by the activator
+	la2ToNY5LinkTunnelLA2IP := "172.16.0.18" // 172.16.0.0/31 expected to be allocated to this link by the activator
+	la2ToNY5LinkTunnelNY5IP := "172.16.0.19" // 172.16.0.0/31 expected to be allocated to this link by the activator
+	ny5ToLD4LinkTunnelNY5IP := "172.16.0.20" // 172.16.0.2/31 expected to be allocated to this link by the activator
 	func() {
 		la2Device := dn.Devices["la2-dz01"]
 		ny5Device := dn.Devices["ny5-dz01"]

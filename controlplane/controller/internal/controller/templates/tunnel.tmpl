@@ -84,6 +84,27 @@ interface Tunnel{{ .Id }}
 !
 {{- end }}
 router bgp 65342
+   router-id {{ .Device.Vpn4vLoopbackIP }}
+   {{- range .Ipv4BgpPeers }}
+   {{- if ne .PeerIP.String $.Device.Ipv4LoopbackIP.String }}
+   no neighbor {{ .PeerIP }}
+   neighbor {{ .PeerIP }} remote-as 65342
+   neighbor {{ .PeerIP }} next-hop-self
+   neighbor {{ .PeerIP }} update-source {{ $.Device.Ipv4LoopbackIntfName }}
+   neighbor {{ .PeerIP }} description {{ .PeerName }}-ipv4
+   neighbor {{ .PeerIP }} send-community
+   {{- end }}
+   {{- end }}
+   {{- range .Vpnv4BgpPeers }}
+   {{- if ne .PeerIP.String $.Device.Vpn4vLoopbackIP.String }}
+   no neighbor {{ .PeerIP }}
+   neighbor {{ .PeerIP }} remote-as 65342
+   neighbor {{ .PeerIP }} next-hop-self
+   neighbor {{ .PeerIP }} update-source {{ $.Device.Vpn4vLoopbackIntfName }}
+   neighbor {{ .PeerIP }} description {{ .PeerName }}-vpnv4
+   neighbor {{ .PeerIP }} send-community
+   {{- end }}
+   {{- end }}
    {{- range .Device.Tunnels }}
    {{- if and .IsMulticast .Allocated }}
    no neighbor {{ .OverlayDstIP }}
@@ -102,9 +123,29 @@ router bgp 65342
       neighbor {{ .OverlayDstIP }} activate
    {{- end }}
    {{- end }}
-   {{- range .UnknownBgpPeers }}
-   no neighbor {{ . }}
+   {{- range .Ipv4BgpPeers }}
+   {{- if ne .PeerIP.String $.Device.Ipv4LoopbackIP.String }}
+      neighbor {{ .PeerIP }} activate
    {{- end }}
+   {{- end }}
+   {{- range .Vpnv4BgpPeers }}
+   {{- if ne .PeerIP.String $.Device.Vpn4vLoopbackIP.String }}
+      no neighbor {{ .PeerIP }} activate
+   {{- end }}
+   {{- end }}
+   {{- range .UnknownBgpPeers }}
+      no neighbor {{ . }}
+   {{- end }}
+   !
+   address-family vpn-ipv4
+      {{- range .Vpnv4BgpPeers }}
+      {{- if ne .PeerIP.String $.Device.Vpn4vLoopbackIP.String }}
+      neighbor {{ .PeerIP }} activate
+      {{- end }}
+      {{- end }}
+      {{- range .UnknownBgpPeers }}
+      no neighbor {{ . }}
+      {{- end }}
    !
    vrf vrf1
       rd 65342:1
@@ -125,9 +166,9 @@ router bgp 65342
       {{- end }}
       {{- end }}
       {{- end }}
-{{- range .UnknownBgpPeers }}
+      {{- range .UnknownBgpPeers }}
       no neighbor {{ . }}
-{{- end }}
+      {{- end }}
 !
 ip community-list COMM-ALL_USERS permit 21682:1200
 ip community-list COMM-ALL_MCAST_USERS permit 21682:1300
@@ -190,3 +231,15 @@ ip access-list SEC-USER-SUB-MCAST-IN
    permit ip any 224.0.0.13/32
    deny ip any any
 !
+{{- if .Ipv4BgpPeers }}
+no router msdp
+router msdp
+   {{- range .Ipv4BgpPeers }}
+   {{- if ne .PeerIP.String $.Device.Ipv4LoopbackIP.String }}
+   peer {{ .PeerIP }}
+      mesh-group DZ-1
+      local-interface {{ $.Device.Ipv4LoopbackIntfName }}
+      description {{ .PeerName }}
+   {{- end }}
+   {{- end }}
+{{- end }}

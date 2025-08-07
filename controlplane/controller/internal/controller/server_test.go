@@ -65,7 +65,8 @@ func TestGetConfig(t *testing.T) {
 								Allocated:     true,
 							},
 						},
-						PublicIP: net.IP{7, 7, 7, 7},
+						PublicIP:        net.IP{7, 7, 7, 7},
+						Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
 					},
 				},
 			},
@@ -143,7 +144,8 @@ func TestGetConfig(t *testing.T) {
 								},
 							},
 						},
-						PublicIP: net.IP{7, 7, 7, 7},
+						PublicIP:        net.IP{7, 7, 7, 7},
+						Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
 					},
 				},
 			},
@@ -232,7 +234,8 @@ func TestGetConfig(t *testing.T) {
 								},
 							},
 						},
-						PublicIP: net.IP{7, 7, 7, 7},
+						PublicIP:        net.IP{7, 7, 7, 7},
+						Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
 					},
 				},
 			},
@@ -322,12 +325,47 @@ func TestGetConfig(t *testing.T) {
 								},
 							},
 						},
-						PublicIP: net.IP{7, 7, 7, 7},
+						PublicIP:        net.IP{7, 7, 7, 7},
+						Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
 					},
 				},
 			},
 			Pubkey: "abc123",
 			Want:   "fixtures/nohardware.tunnel.txt",
+		},
+		{
+			Name:        "render_base_config_successfully",
+			Description: "render base configuration with BGP peers",
+			StateCache: stateCache{
+				Config: serviceability.Config{
+					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+				},
+				Vpnv4BgpPeers: []BgpPeer{
+					{
+						PeerIP:   net.IP{15, 15, 15, 15},
+						PeerName: "remote-dzd",
+					},
+				},
+				Ipv4BgpPeers: []BgpPeer{
+					{
+						PeerIP:   net.IP{12, 12, 12, 12},
+						PeerName: "remote-dzd",
+					},
+				},
+				Devices: map[string]*Device{
+					"abc123": {
+						PublicIP:              net.IP{7, 7, 7, 7},
+						Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
+						Ipv4LoopbackIP:        net.IP{13, 13, 13, 13},
+						Vpn4vLoopbackIntfName: "Loopback255",
+						Ipv4LoopbackIntfName:  "Loopback256",
+						Tunnels:               []*Tunnel{},
+						TunnelSlots:           0,
+					},
+				},
+			},
+			Pubkey: "abc123",
+			Want:   "fixtures/base.config.txt",
 		},
 	}
 
@@ -451,9 +489,23 @@ func TestStateCache(t *testing.T) {
 					ExchangePubKey: [32]uint8{},
 					DeviceType:     0,
 					PublicIp:       [4]uint8{2, 2, 2, 2},
-					Status:         serviceability.DeviceStatusActivated,
-					Code:           "abc01",
-					PubKey:         [32]byte{1},
+					Interfaces: []serviceability.Interface{
+						{
+							InterfaceType: serviceability.InterfaceTypeLoopback,
+							LoopbackType:  serviceability.LoopbackTypeVpnv4,
+							IpNet:         [5]uint8{14, 14, 14, 14, 32},
+							Name:          "Loopback255",
+						},
+						{
+							InterfaceType: serviceability.InterfaceTypeLoopback,
+							LoopbackType:  serviceability.LoopbackTypeIpv4,
+							IpNet:         [5]uint8{12, 12, 12, 12, 32},
+							Name:          "Loopback256",
+						},
+					},
+					Status: serviceability.DeviceStatusActivated,
+					Code:   "abc01",
+					PubKey: [32]byte{1},
 				},
 			},
 			StateCache: stateCache{
@@ -470,10 +522,24 @@ func TestStateCache(t *testing.T) {
 						},
 					},
 				},
+				Vpnv4BgpPeers: []BgpPeer{
+					{
+						PeerIP:   net.IP{14, 14, 14, 14},
+						PeerName: "abc01",
+					},
+				},
+				Ipv4BgpPeers: []BgpPeer{
+					{
+						PeerIP:   net.IP{12, 12, 12, 12},
+						PeerName: "abc01",
+					},
+				},
 				Devices: map[string]*Device{
 					"4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM": {
-						PubKey:   "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
-						PublicIP: net.IP{2, 2, 2, 2},
+						PubKey:          "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
+						PublicIP:        net.IP{2, 2, 2, 2},
+						Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
+						Ipv4LoopbackIP:  net.IP{12, 12, 12, 12},
 						Tunnels: []*Tunnel{
 							{
 								Id:            500,
@@ -566,15 +632,73 @@ func TestStateCache(t *testing.T) {
 							{Id: 563},
 						},
 						TunnelSlots: 64,
+						Interfaces: []serviceability.Interface{
+							{
+								InterfaceType: serviceability.InterfaceTypeLoopback,
+								LoopbackType:  serviceability.LoopbackTypeVpnv4,
+								IpNet:         [5]uint8{14, 14, 14, 14, 32},
+								Name:          "Loopback255",
+							},
+							{
+								InterfaceType: serviceability.InterfaceTypeLoopback,
+								LoopbackType:  serviceability.LoopbackTypeIpv4,
+								IpNet:         [5]uint8{12, 12, 12, 12, 32},
+								Name:          "Loopback256",
+							},
+						},
+						Vpn4vLoopbackIntfName: "Loopback255",
+						Ipv4LoopbackIntfName:  "Loopback256",
 					},
 				},
+			},
+		},
+		{
+			Name: "exclude_device_without_vpnv4_loopback",
+			Config: serviceability.Config{
+				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+			},
+			Users: []serviceability.User{
+				{
+					AccountType:  serviceability.AccountType(0),
+					Owner:        [32]uint8{},
+					UserType:     serviceability.UserUserType(serviceability.UserTypeIBRL),
+					DevicePubKey: [32]uint8{1},
+					CyoaType:     serviceability.CyoaTypeGREOverDIA,
+					ClientIp:     [4]uint8{1, 1, 1, 1},
+					DzIp:         [4]uint8{100, 100, 100, 100},
+					TunnelId:     uint16(500),
+					TunnelNet:    [5]uint8{10, 1, 1, 0, 31},
+					Status:       serviceability.UserStatusActivated,
+				},
+			},
+			Devices: []serviceability.Device{
+				{
+					AccountType:    serviceability.AccountType(0),
+					Owner:          [32]uint8{},
+					LocationPubKey: [32]uint8{},
+					ExchangePubKey: [32]uint8{},
+					DeviceType:     0,
+					PublicIp:       [4]uint8{3, 3, 3, 3},
+					Interfaces:     []serviceability.Interface{}, // No VPNv4 loopback interface
+					Status:         serviceability.DeviceStatusActivated,
+					Code:           "abc02",
+					PubKey:         [32]byte{1},
+				},
+			},
+			StateCache: stateCache{
+				Config: serviceability.Config{
+					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+				},
+				MulticastGroups: map[string]serviceability.MulticastGroup{},
+				Vpnv4BgpPeers:   nil,                  // No BGP peers since device is excluded
+				Devices:         map[string]*Device{}, // Device should not be in cache
 			},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
-			lis, err := net.Listen("tcp", net.JoinHostPort("localhost", "7004"))
+			lis, err := net.Listen("tcp", "localhost:0")
 			if err != nil {
 				log.Fatalf("failed to listen: %v", err)
 			}
@@ -717,9 +841,23 @@ func TestEndToEnd(t *testing.T) {
 					ExchangePubKey: [32]uint8{},
 					DeviceType:     0,
 					PublicIp:       [4]uint8{2, 2, 2, 2},
-					Status:         serviceability.DeviceStatusActivated,
-					Code:           "abc01",
-					PubKey:         [32]byte{1},
+					Interfaces: []serviceability.Interface{
+						{
+							InterfaceType: serviceability.InterfaceTypeLoopback,
+							LoopbackType:  serviceability.LoopbackTypeVpnv4,
+							IpNet:         [5]uint8{14, 14, 14, 14, 32},
+							Name:          "Loopback255",
+						},
+						{
+							InterfaceType: serviceability.InterfaceTypeLoopback,
+							LoopbackType:  serviceability.LoopbackTypeIpv4,
+							IpNet:         [5]uint8{12, 12, 12, 12, 32},
+							Name:          "Loopback256",
+						},
+					},
+					Status: serviceability.DeviceStatusActivated,
+					Code:   "abc01",
+					PubKey: [32]byte{1},
 				},
 			},
 			AgentRequest: &pb.ConfigRequest{
@@ -732,6 +870,8 @@ func TestEndToEnd(t *testing.T) {
 			Name: "remove_unknown_peers_successfully",
 			Config: serviceability.Config{
 				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+				TunnelTunnelBlock:   [5]uint8{172, 16, 0, 0, 16},
+				UserTunnelBlock:     [5]uint8{169, 254, 0, 0, 16},
 			},
 			MulticastGroups: []serviceability.MulticastGroup{
 				{
@@ -778,17 +918,33 @@ func TestEndToEnd(t *testing.T) {
 					ExchangePubKey: [32]uint8{},
 					DeviceType:     0,
 					PublicIp:       [4]uint8{2, 2, 2, 2},
-					Status:         serviceability.DeviceStatusActivated,
-					Code:           "abc01",
-					PubKey:         [32]byte{1},
+					Interfaces: []serviceability.Interface{
+						{
+							InterfaceType: serviceability.InterfaceTypeLoopback,
+							LoopbackType:  serviceability.LoopbackTypeVpnv4,
+							IpNet:         [5]uint8{14, 14, 14, 14, 32},
+							Name:          "Loopback255",
+						},
+						{
+							InterfaceType: serviceability.InterfaceTypeLoopback,
+							LoopbackType:  serviceability.LoopbackTypeIpv4,
+							IpNet:         [5]uint8{12, 12, 12, 12, 32},
+							Name:          "Loopback256",
+						},
+					},
+					Status: serviceability.DeviceStatusActivated,
+					Code:   "abc01",
+					PubKey: [32]byte{1},
 				},
 			},
 			AgentRequest: &pb.ConfigRequest{
 				Pubkey: "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
 				BgpPeers: []string{
-					"10.0.0.1",
-					"172.16.0.1",
-					"169.254.0.7",
+					"10.0.0.1",    // Not in any DZ block - should not be flagged for removal
+					"172.17.0.1",  // Not in any DZ block - should not be flagged for removal
+					"172.16.0.1",  // In TunnelTunnelBlock - should be flagged for removal
+					"169.254.0.7", // In UserTunnelBlock - should be flagged for removal
+					"169.254.0.3", // In UserTunnelBlock, but associated with a user - should not be flagged for removal
 				},
 			},
 			Want: "fixtures/e2e.peer.removal.txt",
@@ -797,6 +953,8 @@ func TestEndToEnd(t *testing.T) {
 			Name: "remove_last_user_from_device",
 			Config: serviceability.Config{
 				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+				TunnelTunnelBlock:   [5]uint8{172, 16, 0, 0, 16},
+				UserTunnelBlock:     [5]uint8{169, 254, 0, 0, 16},
 			},
 			Users: []serviceability.User{},
 			Devices: []serviceability.Device{
@@ -807,9 +965,23 @@ func TestEndToEnd(t *testing.T) {
 					ExchangePubKey: [32]uint8{},
 					DeviceType:     0,
 					PublicIp:       [4]uint8{2, 2, 2, 2},
-					Status:         serviceability.DeviceStatusActivated,
-					Code:           "abc01",
-					PubKey:         [32]byte{1},
+					Interfaces: []serviceability.Interface{
+						{
+							InterfaceType: serviceability.InterfaceTypeLoopback,
+							LoopbackType:  serviceability.LoopbackTypeVpnv4,
+							IpNet:         [5]uint8{14, 14, 14, 14, 32},
+							Name:          "Loopback255",
+						},
+						{
+							InterfaceType: serviceability.InterfaceTypeLoopback,
+							LoopbackType:  serviceability.LoopbackTypeIpv4,
+							IpNet:         [5]uint8{12, 12, 12, 12, 32},
+							Name:          "Loopback256",
+						},
+					},
+					Status: serviceability.DeviceStatusActivated,
+					Code:   "abc01",
+					PubKey: [32]byte{1},
 				},
 			},
 			AgentRequest: &pb.ConfigRequest{

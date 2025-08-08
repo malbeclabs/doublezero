@@ -54,6 +54,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: "malbeclabs/infra"
+          ref: snor/component-env-deploy
           path: infra
           token: ${{ secrets.GA_ANSIBLE_REPO_RO }}
       - name: Create ansible vault password file

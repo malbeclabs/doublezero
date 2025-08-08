@@ -2,10 +2,13 @@
 
 use doublezero_passport::{
     instruction::{
-        account::{ConfigureProgramAccounts, InitializeProgramAccounts, SetAdminAccounts},
-        PassportInstructionData, ProgramConfiguration,
+        account::{
+            ConfigureProgramAccounts, DenyAccessAccounts, GrantAccessAccounts,
+            InitializeProgramAccounts, RequestAccessAccounts, SetAdminAccounts,
+        },
+        AccessMode, PassportInstructionData, ProgramConfiguration,
     },
-    state::ProgramConfig,
+    state::{AccessRequest, ProgramConfig},
     ID,
 };
 use doublezero_program_tools::{
@@ -186,6 +189,97 @@ impl ProgramTestWithOwner {
         Ok(self)
     }
 
+    pub async fn request_access(
+        &mut self,
+        service_key: &Pubkey,
+        validator_id: &Pubkey,
+        signature: [u8; 64],
+    ) -> Result<&mut Self, BanksClientError> {
+        let payer_signer = &self.payer_signer;
+
+        let request_access_ix = try_build_instruction(
+            &ID,
+            RequestAccessAccounts::new(&payer_signer.pubkey(), service_key),
+            &PassportInstructionData::RequestAccess(AccessMode::SolanaValidator {
+                validator_id: *validator_id,
+                service_key: *service_key,
+                ed25519_signature: signature,
+            }),
+        )
+        .unwrap();
+
+        let new_blockhash = process_instructions_for_test(
+            &self.banks_client,
+            self.recent_blockhash,
+            &[request_access_ix],
+            &[payer_signer],
+        )
+        .await?;
+
+        self.recent_blockhash = new_blockhash;
+
+        Ok(self)
+    }
+
+    pub async fn grant_access(
+        &mut self,
+        dz_ledger_sentinel: &Keypair,
+        access_request_key: &Pubkey,
+        rent_beneficiary_key: &Pubkey,
+    ) -> Result<&mut Self, BanksClientError> {
+        let payer_signer = &self.payer_signer;
+
+        let grant_access_ix = try_build_instruction(
+            &ID,
+            GrantAccessAccounts::new(
+                &dz_ledger_sentinel.pubkey(),
+                access_request_key,
+                rent_beneficiary_key,
+            ),
+            &PassportInstructionData::GrantAccess,
+        )
+        .unwrap();
+
+        let new_blockhash = process_instructions_for_test(
+            &self.banks_client,
+            self.recent_blockhash,
+            &[grant_access_ix],
+            &[payer_signer, dz_ledger_sentinel],
+        )
+        .await?;
+
+        self.recent_blockhash = new_blockhash;
+
+        Ok(self)
+    }
+
+    pub async fn deny_access(
+        &mut self,
+        dz_ledger_sentinel: &Keypair,
+        access_request_key: &Pubkey,
+    ) -> Result<&mut Self, BanksClientError> {
+        let payer_signer = &self.payer_signer;
+
+        let deny_access_ix = try_build_instruction(
+            &ID,
+            DenyAccessAccounts::new(&dz_ledger_sentinel.pubkey(), access_request_key),
+            &PassportInstructionData::DenyAccess,
+        )
+        .unwrap();
+
+        let new_blockhash = process_instructions_for_test(
+            &self.banks_client,
+            self.recent_blockhash,
+            &[deny_access_ix],
+            &[payer_signer, dz_ledger_sentinel],
+        )
+        .await?;
+
+        self.recent_blockhash = new_blockhash;
+
+        Ok(self)
+    }
+
     //
     // Account fetchers.
     //
@@ -204,6 +298,25 @@ impl ProgramTestWithOwner {
         (
             program_config_key,
             *checked_from_bytes_with_discriminator(&program_config_account_data)
+                .unwrap()
+                .0,
+        )
+    }
+
+    pub async fn fetch_access_request(&self, service_key: &Pubkey) -> (Pubkey, AccessRequest) {
+        let access_request_key = AccessRequest::find_address(service_key).0;
+
+        let access_request_account_data = self
+            .banks_client
+            .get_account(access_request_key)
+            .await
+            .unwrap()
+            .unwrap()
+            .data;
+
+        (
+            access_request_key,
+            *checked_from_bytes_with_discriminator(&access_request_account_data)
                 .unwrap()
                 .0,
         )

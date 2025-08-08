@@ -7,6 +7,7 @@ use spl_token::solana_program::program_pack::Pack;
 
 use super::Invoker;
 
+#[allow(clippy::too_many_arguments)]
 pub fn try_create_token_account(
     payer: Invoker,
     new_token_account: Invoker,
@@ -24,6 +25,7 @@ pub fn try_create_token_account(
         &spl_token::ID,
         accounts,
         rent_sysvar,
+        None, // No additional lamports for token accounts
     )?;
 
     let initialize_token_account_ix = spl_token::instruction::initialize_account3(

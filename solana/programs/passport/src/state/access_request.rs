@@ -6,7 +6,6 @@ use solana_pubkey::Pubkey;
 #[repr(C, align(8))]
 pub struct AccessRequest {
     pub service_key: Pubkey,
-
     pub rent_beneficiary_key: Pubkey,
 }
 
@@ -20,4 +19,16 @@ impl AccessRequest {
     pub fn find_address(service_key: &Pubkey) -> (Pubkey, u8) {
         Pubkey::find_program_address(&[Self::SEED_PREFIX, service_key.as_ref()], &crate::ID)
     }
+
+    pub fn access_request_message(service_key: &Pubkey) -> [u8; 48] {
+        let mut buf = [0u8; 48];
+        buf[..16].copy_from_slice(b"solana_validator");
+        buf[16..].copy_from_slice(service_key.as_ref());
+        buf
+    }
 }
+
+const _: () = assert!(
+    size_of::<AccessRequest>() == 64,
+    "`AccessRequest` size changed"
+);

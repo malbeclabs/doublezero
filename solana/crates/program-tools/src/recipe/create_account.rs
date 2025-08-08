@@ -7,6 +7,7 @@ use solana_sysvar::{rent::Rent, Sysvar};
 
 use super::Invoker;
 
+#[allow(clippy::too_many_arguments)]
 pub fn try_create_account(
     payer: Invoker,
     new_account: Invoker,
@@ -15,11 +16,14 @@ pub fn try_create_account(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     rent_sysvar: Option<&Rent>,
+    additional_lamports: Option<u64>,
 ) -> ProgramResult {
-    let lamports = match rent_sysvar {
+    let rent = match rent_sysvar {
         Some(rent_sysvar) => rent_sysvar.minimum_balance(data_len),
         None => Rent::get().unwrap().minimum_balance(data_len),
     };
+
+    let lamports = additional_lamports.unwrap_or_default().saturating_add(rent);
 
     if current_lamports == 0 {
         // PC Load Letter?

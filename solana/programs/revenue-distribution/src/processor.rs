@@ -148,6 +148,7 @@ fn try_initialize_program(accounts: &[AccountInfo]) -> ProgramResult {
         &ID,
         accounts,
         Some(&rent_sysvar),
+        None, // additional_lamports
     )?;
 
     // Account 2 must be the new reserve 2Z token account. This account should not exist yet.
@@ -503,6 +504,7 @@ fn try_initialize_journal(accounts: &[AccountInfo]) -> ProgramResult {
         &ID,
         accounts,
         Some(&rent_sysvar),
+        None, // additional_lamports
     )?;
 
     // Account 2 must be the new 2Z token account. This account should not exist yet.
@@ -710,6 +712,7 @@ fn try_initialize_distribution(accounts: &[AccountInfo]) -> ProgramResult {
         &ID,
         accounts,
         Some(&rent_sysvar),
+        None, // additional_lamports
     )?;
 
     // Account 2 must be the new 2Z token account. This account should not exist yet.
@@ -1129,6 +1132,7 @@ fn try_initialize_prepaid_connection(
         &ID,
         accounts,
         None, // rent_sysvar
+        None, // additional_lamports
     )?;
 
     // Finalize initialize the prepaid connection with the user and beneficiary keys.
@@ -1627,6 +1631,7 @@ fn try_initialize_contributor_rewards(
         &ID,
         accounts,
         None, // rent_sysvar
+        None, // additional_lamports
     )?;
 
     // Finally, initialize the contributor rewards with the service key.

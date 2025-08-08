@@ -401,7 +401,11 @@ async fn test_link() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SuspendLink(LinkSuspendArgs {}),
-        vec![AccountMeta::new(tunnel_pubkey, false)],
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
         &payer,
     )
     .await;
@@ -422,7 +426,11 @@ async fn test_link() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::ResumeLink(LinkResumeArgs {}),
-        vec![AccountMeta::new(tunnel_pubkey, false)],
+        vec![
+            AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
         &payer,
     )
     .await;
@@ -453,6 +461,7 @@ async fn test_link() {
         }),
         vec![
             AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
@@ -482,6 +491,7 @@ async fn test_link() {
         DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {}),
         vec![
             AccountMeta::new(tunnel_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,

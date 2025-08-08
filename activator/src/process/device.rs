@@ -238,6 +238,13 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
+        let device_cloned = device.clone();
+        client
+            .expect_get()
+            .times(1)
+            .with(predicate::eq(device_pubkey))
+            .returning(move |_| Ok(AccountData::Device(device_cloned.clone())));
+
         client
             .expect_execute_transaction()
             .times(1)
@@ -372,6 +379,13 @@ mod tests {
         ];
         expected_interfaces[1].ip_net = "1.1.1.1/32".parse().unwrap();
         expected_interfaces[1].node_segment_idx = 1;
+
+        let device_cloned = device.clone();
+        client
+            .expect_get()
+            .times(1)
+            .with(predicate::eq(pubkey))
+            .returning(move |_| Ok(AccountData::Device(device_cloned.clone())));
 
         client
             .expect_execute_transaction()

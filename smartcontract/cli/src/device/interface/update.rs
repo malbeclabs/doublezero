@@ -1,6 +1,7 @@
 use crate::{
     device::interface::types::{InterfaceType, LoopbackType},
     doublezerocommand::CliCommand,
+    poll_for_activation::poll_for_device_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::validate_pubkey_or_code,
 };
@@ -31,6 +32,9 @@ pub struct UpdateDeviceInterfaceCliCommand {
     /// Can terminate a user tunnel?
     #[arg(long)]
     pub user_tunnel_endpoint: Option<bool>,
+    /// Wait for the device to be activated
+    #[arg(short, long, default_value_t = false)]
+    pub wait: bool,
 }
 
 impl UpdateDeviceInterfaceCliCommand {
@@ -112,6 +116,11 @@ impl UpdateDeviceInterfaceCliCommand {
             interfaces: Some(device.interfaces),
         })?;
         writeln!(out, "Signature: {signature}")?;
+
+        if self.wait {
+            let device = poll_for_device_activated(client, &device_pk)?;
+            writeln!(out, "Status: {0}", device.status)?;
+        }
 
         Ok(())
     }
@@ -238,6 +247,7 @@ mod tests {
             loopback_type: Some(super::LoopbackType::Ipv4),
             vlan_id: Some(20),
             user_tunnel_endpoint: None,
+            wait: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok(), "{}", res.err().unwrap());

@@ -4,7 +4,7 @@ use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get,
     helper::*,
-    state::{accounttype::AccountType, device::*},
+    state::{accounttype::AccountType, contributor::Contributor, device::*},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
@@ -32,6 +32,7 @@ pub fn process_suspend_device(
     let accounts_iter = &mut accounts.iter();
 
     let device_account = next_account_info(accounts_iter)?;
+    let contributor_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -45,6 +46,10 @@ pub fn process_suspend_device(
         "Invalid PDA Account Owner"
     );
     assert_eq!(
+        contributor_account.owner, program_id,
+        "Invalid Contributor Account Owner"
+    );
+    assert_eq!(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"
     );
@@ -55,19 +60,23 @@ pub fn process_suspend_device(
     );
     assert!(device_account.is_writable, "PDA Account is not writable");
 
+    let globalstate = globalstate_get(globalstate_account)?;
+    assert_eq!(globalstate.account_type, AccountType::GlobalState);
+
+    let contributor = Contributor::try_from(contributor_account)?;
+    assert_eq!(contributor.account_type, AccountType::Contributor);
+    if contributor.owner != *payer_account.key
+        && !globalstate.foundation_allowlist.contains(payer_account.key)
+    {
+        return Err(DoubleZeroError::NotAllowed.into());
+    }
+
     let mut device: Device = Device::try_from(device_account)?;
     assert_eq!(
         device.account_type,
         AccountType::Device,
         "Invalid Device Account Type"
     );
-
-    let globalstate = globalstate_get(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key)
-        && device.owner != *payer_account.key
-    {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
 
     device.status = DeviceStatus::Suspended;
 

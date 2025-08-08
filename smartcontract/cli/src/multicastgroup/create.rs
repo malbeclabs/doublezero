@@ -1,5 +1,6 @@
 use crate::{
     doublezerocommand::CliCommand,
+    poll_for_activation::poll_for_multicastgroup_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::{validate_code, validate_parse_bandwidth, validate_pubkey},
 };
@@ -19,6 +20,9 @@ pub struct CreateMulticastGroupCliCommand {
     /// Owner Pubkey or 'me' for current payer
     #[arg(long, value_parser = validate_pubkey)]
     pub owner: String,
+    /// Wait for the multicast group to be activated
+    #[arg(short, long, default_value_t = false)]
+    pub wait: bool,
 }
 
 impl CreateMulticastGroupCliCommand {
@@ -34,13 +38,17 @@ impl CreateMulticastGroupCliCommand {
             }
         };
 
-        let (signature, _pubkey) = client.create_multicastgroup(CreateMulticastGroupCommand {
+        let (signature, pubkey) = client.create_multicastgroup(CreateMulticastGroupCommand {
             code: self.code.clone(),
             max_bandwidth: self.max_bandwidth,
             owner: owner_pk,
         })?;
-
         writeln!(out, "Signature: {signature}",)?;
+
+        if self.wait {
+            let user = poll_for_multicastgroup_activated(client, &pubkey)?;
+            writeln!(out, "Status: {0}", user.status)?;
+        }
 
         Ok(())
     }
@@ -92,6 +100,7 @@ mod tests {
             code: "test".to_string(),
             max_bandwidth: 10000000000,
             owner: pda_pubkey.to_string(),
+            wait: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

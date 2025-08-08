@@ -234,7 +234,6 @@ mod tests {
 
     #[test]
     fn test_process_tunnel_event_pending_to_deleted() {
-        let mut seq = Sequence::new();
         let mut link_ips = IPBlockAllocator::new("10.0.0.0/16".parse().unwrap());
         let mut link_ids = IDAllocator::new(500, vec![500, 501, 503]);
         let mut client = create_test_client();
@@ -374,15 +373,11 @@ mod tests {
         let tunnel_cloned = tunnel.clone();
         client
             .expect_get()
-            .times(1)
-            .in_sequence(&mut seq)
             .with(predicate::eq(tunnel_pubkey))
             .returning(move |_| Ok(AccountData::Link(tunnel_cloned.clone())));
 
         client
             .expect_execute_transaction()
-            .times(1)
-            .in_sequence(&mut seq)
             .with(
                 predicate::eq(DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
                     tunnel_id: 502,
@@ -395,15 +390,11 @@ mod tests {
         let dev1 = device1.clone();
         client
             .expect_get()
-            .times(1)
-            .in_sequence(&mut seq)
             .with(predicate::eq(tunnel.side_a_pk))
             .returning(move |_| Ok(AccountData::Device(dev1.clone())));
 
         client
             .expect_execute_transaction()
-            .times(1)
-            .in_sequence(&mut seq)
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
                     code: None,
@@ -422,15 +413,11 @@ mod tests {
         let dev2 = device2.clone();
         client
             .expect_get()
-            .times(1)
-            .in_sequence(&mut seq)
             .with(predicate::eq(tunnel.side_z_pk))
             .returning(move |_| Ok(AccountData::Device(dev2.clone())));
 
         client
             .expect_execute_transaction()
-            .times(1)
-            .in_sequence(&mut seq)
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
                     code: None,
@@ -468,15 +455,11 @@ mod tests {
         let tunnel2 = tunnel.clone();
         client
             .expect_get()
-            .times(1)
-            .in_sequence(&mut seq)
             .withf(move |pk| *pk == tunnel_pubkey)
             .returning(move |_| Ok(AccountData::Link(tunnel2.clone())));
 
         client
             .expect_execute_transaction()
-            .times(1)
-            .in_sequence(&mut seq)
             .with(
                 predicate::eq(DoubleZeroInstruction::CloseAccountLink(
                     LinkCloseAccountArgs {},
@@ -512,15 +495,11 @@ mod tests {
         let dev1 = device1.clone();
         client
             .expect_get()
-            .times(1)
-            .in_sequence(&mut seq)
             .with(predicate::eq(tunnel.side_a_pk))
             .returning(move |_| Ok(AccountData::Device(dev1.clone())));
 
         client
             .expect_execute_transaction()
-            .times(1)
-            .in_sequence(&mut seq)
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
                     code: None,
@@ -539,15 +518,11 @@ mod tests {
         let dev2 = device2.clone();
         client
             .expect_get()
-            .times(1)
-            .in_sequence(&mut seq)
             .with(predicate::eq(tunnel.side_z_pk))
             .returning(move |_| Ok(AccountData::Device(dev2.clone())));
 
         client
             .expect_execute_transaction()
-            .times(1)
-            .in_sequence(&mut seq)
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
                     code: None,

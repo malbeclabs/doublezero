@@ -941,11 +941,16 @@ impl ServiceabilityProgramHelper {
         Ok(Device::from(&device.data[..]))
     }
 
-    pub async fn suspend_device(&mut self, pubkey: Pubkey) -> Result<(), BanksClientError> {
+    pub async fn suspend_device(
+        &mut self,
+        contributor_pk: Pubkey,
+        pubkey: Pubkey,
+    ) -> Result<(), BanksClientError> {
         self.execute_transaction(
             DoubleZeroInstruction::SuspendDevice(DeviceSuspendArgs),
             vec![
                 AccountMeta::new(pubkey, false),
+                AccountMeta::new(contributor_pk, false),
                 AccountMeta::new(self.global_state_pubkey, false),
             ],
         )
@@ -1048,10 +1053,18 @@ impl ServiceabilityProgramHelper {
         Ok(Link::from(&link.data[..]))
     }
 
-    pub async fn suspend_link(&mut self, pubkey: Pubkey) -> Result<(), BanksClientError> {
+    pub async fn suspend_link(
+        &mut self,
+        contributor_pk: Pubkey,
+        pubkey: Pubkey,
+    ) -> Result<(), BanksClientError> {
         self.execute_transaction(
             DoubleZeroInstruction::SuspendLink(LinkSuspendArgs {}),
-            vec![AccountMeta::new(pubkey, false)],
+            vec![
+                AccountMeta::new(pubkey, false),
+                AccountMeta::new(contributor_pk, false),
+                AccountMeta::new(self.global_state_pubkey, false),
+            ],
         )
         .await
     }

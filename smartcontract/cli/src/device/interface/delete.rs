@@ -1,5 +1,6 @@
 use crate::{
     doublezerocommand::CliCommand,
+    poll_for_activation::poll_for_device_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::validate_pubkey_or_code,
 };
@@ -15,6 +16,9 @@ pub struct DeleteDeviceInterfaceCliCommand {
     /// Interface name
     #[arg(required = true)]
     pub name: String,
+    /// Wait for the device to be activated
+    #[arg(short, long, default_value_t = false)]
+    pub wait: bool,
 }
 
 impl DeleteDeviceInterfaceCliCommand {
@@ -44,6 +48,11 @@ impl DeleteDeviceInterfaceCliCommand {
             interfaces: Some(device.interfaces),
         })?;
         writeln!(out, "Signature: {signature}",)?;
+
+        if self.wait {
+            let device = poll_for_device_activated(client, &pubkey)?;
+            writeln!(out, "Status: {0}", device.status)?;
+        }
 
         Ok(())
     }
@@ -154,6 +163,7 @@ mod tests {
         let res = DeleteDeviceInterfaceCliCommand {
             device: device_pk.to_string(),
             name: "eth0".to_string(),
+            wait: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

@@ -1,4 +1,7 @@
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
+use crate::{
+    commands::{device::get::GetDeviceCommand, globalstate::get::GetGlobalStateCommand},
+    DoubleZeroClient,
+};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, processors::device::delete::DeviceDeleteArgs,
 };
@@ -15,10 +18,17 @@ impl DeleteDeviceCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
+        let (_, device) = GetDeviceCommand {
+            pubkey_or_code: self.pubkey.to_string(),
+        }
+        .execute(client)
+        .map_err(|_err| eyre::eyre!("Device not found"))?;
+
         client.execute_transaction(
             DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs {}),
             vec![
                 AccountMeta::new(self.pubkey, false),
+                AccountMeta::new(device.contributor_pk, false),
                 AccountMeta::new(globalstate_pubkey, false),
             ],
         )

@@ -17,6 +17,16 @@ queue-monitor length update-interval 100000
 {{ end }}!
 logging buffered 128000
 no logging console
+logging facility local7
+!
+{{- if .Device.MgmtVrf }}
+ip name-server vrf {{ .Device.MgmtVrf }} 1.1.1.1
+ip name-server vrf {{ .Device.MgmtVrf }} 9.9.9.9
+{{- else }}
+ip name-server vrf default 1.1.1.1
+ip name-server vrf default 9.9.9.9
+{{- end }}
+clock timezone UTC
 !
 ip multicast-routing
 !
@@ -25,7 +35,19 @@ router pim sparse-mode
       rp address 10.0.0.0 {{ .MulticastGroupBlock }} override
 !
 vrf instance vrf1
+ip routing
 ip routing vrf vrf1
+!
+!
+{{- if .Device.MgmtVrf }}
+ntp server vrf {{ .Device.MgmtVrf }} 0.pool.ntp.org
+ntp server vrf {{ .Device.MgmtVrf }} 1.pool.ntp.org
+ntp server vrf {{ .Device.MgmtVrf }} 2.pool.ntp.org
+{{- else }}
+ntp server 0.pool.ntp.org
+ntp server 1.pool.ntp.org
+ntp server 2.pool.ntp.org
+{{- end }}
 !
 {{- if not .NoHardware }}
 hardware access-list update default-result permit

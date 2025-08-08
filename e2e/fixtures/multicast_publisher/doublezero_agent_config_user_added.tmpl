@@ -1,6 +1,11 @@
 !
 logging buffered 128000
 no logging console
+logging facility local7
+!
+ip name-server vrf mgmt 1.1.1.1
+ip name-server vrf mgmt 9.9.9.9
+clock timezone UTC
 !
 ip multicast-routing
 !
@@ -9,7 +14,13 @@ router pim sparse-mode
       rp address 10.0.0.0 233.84.178.0/24 override
 !
 vrf instance vrf1
+ip routing
 ip routing vrf vrf1
+!
+!
+ntp server vrf mgmt 0.pool.ntp.org
+ntp server vrf mgmt 1.pool.ntp.org
+ntp server vrf mgmt 2.pool.ntp.org
 !
 no ip access-list MAIN-CONTROL-PLANE-ACL
 ip access-list MAIN-CONTROL-PLANE-ACL

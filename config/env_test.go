@@ -5,10 +5,6 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/config"
-	inetlatencyconfig "github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/pkg/config"
-	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,19 +17,19 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 		{
 			env: config.EnvTestnet,
 			want: &config.NetworkConfig{
-				LedgerRPCURL:               dzsdk.DZ_LEDGER_RPC_URL,
-				ServiceabilityProgramID:    solana.MustPublicKeyFromBase58(serviceability.SERVICEABILITY_PROGRAM_ID_TESTNET),
-				TelemetryProgramID:         solana.MustPublicKeyFromBase58(telemetry.TELEMETRY_PROGRAM_ID_TESTNET),
-				InternetLatencyCollectorPK: solana.MustPublicKeyFromBase58(inetlatencyconfig.TestnetCollectorPK),
+				LedgerRPCURL:               config.TestnetLedgerRPCURL,
+				ServiceabilityProgramID:    solana.MustPublicKeyFromBase58(config.TestnetServiceabilityProgramID),
+				TelemetryProgramID:         solana.MustPublicKeyFromBase58(config.TestnetTelemetryProgramID),
+				InternetLatencyCollectorPK: solana.MustPublicKeyFromBase58(config.TestnetInternetLatencyCollectorPK),
 			},
 		},
 		{
 			env: config.EnvDevnet,
 			want: &config.NetworkConfig{
-				LedgerRPCURL:               dzsdk.DZ_LEDGER_RPC_URL,
-				ServiceabilityProgramID:    solana.MustPublicKeyFromBase58(serviceability.SERVICEABILITY_PROGRAM_ID_DEVNET),
-				TelemetryProgramID:         solana.MustPublicKeyFromBase58(telemetry.TELEMETRY_PROGRAM_ID_DEVNET),
-				InternetLatencyCollectorPK: solana.MustPublicKeyFromBase58(inetlatencyconfig.DevnetCollectorPK),
+				LedgerRPCURL:               config.DevnetLedgerRPCURL,
+				ServiceabilityProgramID:    solana.MustPublicKeyFromBase58(config.DevnetServiceabilityProgramID),
+				TelemetryProgramID:         solana.MustPublicKeyFromBase58(config.DevnetTelemetryProgramID),
+				InternetLatencyCollectorPK: solana.MustPublicKeyFromBase58(config.DevnetInternetLatencyCollectorPK),
 			},
 		},
 		{

@@ -42,14 +42,6 @@ const (
 	MaxInternetLatencyDataProviderNameLength = 32
 )
 
-// Telemetry Program IDs
-const (
-	// TELEMETRY_PROGRAM_ID_TESTNET is the telemetry program ID for testnet
-	TELEMETRY_PROGRAM_ID_TESTNET = "3KogTMmVxc5eUHtjZnwm136H5P8tvPwVu4ufbGPvM7p1"
-	// TELEMETRY_PROGRAM_ID_DEVNET is the telemetry program ID for devnet
-	TELEMETRY_PROGRAM_ID_DEVNET = "C9xqH76NSm11pBS6maNnY163tWHT8Govww47uyEmSnoG"
-)
-
 // Instruction discriminators for telemetry program
 const (
 	// Instruction index for initializing device latency samples

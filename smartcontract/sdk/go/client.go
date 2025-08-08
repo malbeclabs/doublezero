@@ -6,12 +6,9 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
+	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
-)
-
-const (
-	DZ_LEDGER_RPC_URL = "https://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30"
 )
 
 type Client struct {
@@ -41,11 +38,11 @@ func New(log *slog.Logger, endpoint string, opts ...Option) (*Client, error) {
 	}
 
 	if cfg.ServiceabilityProgramID.IsZero() {
-		cfg.ServiceabilityProgramID = solana.MustPublicKeyFromBase58(serviceability.SERVICEABILITY_PROGRAM_ID_TESTNET)
+		cfg.ServiceabilityProgramID = solana.MustPublicKeyFromBase58(config.TestnetServiceabilityProgramID)
 	}
 
 	if cfg.TelemetryProgramID.IsZero() {
-		cfg.TelemetryProgramID = solana.MustPublicKeyFromBase58(telemetry.TELEMETRY_PROGRAM_ID_TESTNET)
+		cfg.TelemetryProgramID = solana.MustPublicKeyFromBase58(config.TestnetTelemetryProgramID)
 	}
 
 	rpcClient := solanarpc.New(cfg.Endpoint)

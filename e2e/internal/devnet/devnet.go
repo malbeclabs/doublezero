@@ -56,13 +56,15 @@ type DevnetSpec struct {
 
 	CYOANetwork CYOANetworkSpec
 
-	Ledger     LedgerSpec
-	Manager    ManagerSpec
-	Funder     FunderSpec
-	Controller ControllerSpec
-	Activator  ActivatorSpec
-	Devices    map[string]DeviceSpec
-	Clients    map[string]ClientSpec
+	// Override the default device tunnel network onchain.
+	DeviceTunnelNet string
+	Ledger          LedgerSpec
+	Manager         ManagerSpec
+	Funder          FunderSpec
+	Controller      ControllerSpec
+	Activator       ActivatorSpec
+	Devices         map[string]DeviceSpec
+	Clients         map[string]ClientSpec
 }
 
 type Devnet struct {
@@ -146,6 +148,9 @@ func (s *DevnetSpec) Validate() error {
 		}
 	}
 
+	if s.DeviceTunnelNet == "" {
+		s.DeviceTunnelNet = "172.16.0.0/16"
+	}
 	return nil
 }
 

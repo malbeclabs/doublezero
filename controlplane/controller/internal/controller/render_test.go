@@ -1,13 +1,12 @@
 package controller
 
 import (
-	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
 func TestRenderConfig(t *testing.T) {
@@ -26,6 +25,7 @@ func TestRenderConfig(t *testing.T) {
 				Device: &Device{
 					PublicIP:        net.IP{7, 7, 7, 7},
 					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
+					Interfaces:      []Interface{},
 					Tunnels: []*Tunnel{
 						{
 							Id:            500,
@@ -67,6 +67,7 @@ func TestRenderConfig(t *testing.T) {
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				Device: &Device{
+					Interfaces:      []Interface{},
 					PublicIP:        net.IP{7, 7, 7, 7},
 					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
 					Tunnels: []*Tunnel{
@@ -112,6 +113,7 @@ func TestRenderConfig(t *testing.T) {
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				Device: &Device{
+					Interfaces:      []Interface{},
 					PublicIP:        net.IP{7, 7, 7, 7},
 					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
 					Tunnels: []*Tunnel{
@@ -188,6 +190,7 @@ func TestRenderConfig(t *testing.T) {
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				Device: &Device{
+					Interfaces:      []Interface{},
 					PublicIP:        net.IP{7, 7, 7, 7},
 					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
 					Tunnels: []*Tunnel{
@@ -276,6 +279,7 @@ func TestRenderConfig(t *testing.T) {
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
 				Device: &Device{
+					Interfaces:      []Interface{},
 					PublicIP:        net.IP{7, 7, 7, 7},
 					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
 					Tunnels: []*Tunnel{
@@ -357,6 +361,53 @@ func TestRenderConfig(t *testing.T) {
 			Want: "fixtures/nohardware.tunnel.txt",
 		},
 		{
+			Name:        "render_interfaces_successfully",
+			Description: "render config for a set of interfaces",
+			Data: templateData{
+				MulticastGroupBlock:      "239.0.0.0/24",
+				TelemetryTWAMPListenPort: 862,
+				Device: &Device{
+					PublicIP:        net.IP{7, 7, 7, 7},
+					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
+					Ipv4LoopbackIP:  net.IP{13, 13, 13, 13},
+					Interfaces: []Interface{
+						{
+							Name:           "Loopback255",
+							Ip:             netip.MustParsePrefix("172.31.1.255/32"),
+							NodeSegmentIdx: 101,
+							InterfaceType:  InterfaceTypeLoopback,
+							LoopbackType:   LoopbackTypeVpnv4,
+						},
+						{
+							Name:          "Loopback256",
+							Ip:            netip.MustParsePrefix("172.29.1.255/32"),
+							InterfaceType: InterfaceTypeLoopback,
+							LoopbackType:  LoopbackTypeIpv4,
+						},
+						{
+							Name:          "Switch1/1/1",
+							Ip:            netip.MustParsePrefix("172.16.0.0/31"),
+							InterfaceType: InterfaceTypePhysical,
+						},
+						{
+							Name:                 "Switch1/1/2",
+							IsSubInterfaceParent: true,
+							InterfaceType:        InterfaceTypePhysical,
+						},
+						{
+							Name:           "Switch1/1/2.100",
+							Ip:             netip.MustParsePrefix("172.16.0.2/31"),
+							VlanId:         100,
+							IsSubInterface: true,
+							InterfaceType:  InterfaceTypePhysical,
+						},
+					},
+				},
+				UnknownBgpPeers: []net.IP{},
+			},
+			Want: "fixtures/interfaces.txt",
+		},
+		{
 			Name:        "render_base_config_successfully",
 			Description: "render base device config without tunnels",
 			Data: templateData{
@@ -366,13 +417,12 @@ func TestRenderConfig(t *testing.T) {
 					PublicIP:        net.IP{7, 7, 7, 7},
 					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
 					Ipv4LoopbackIP:  net.IP{13, 13, 13, 13},
-					Interfaces: []serviceability.Interface{
+					Interfaces: []Interface{
 						{
-							Version:        serviceability.CurrentInterfaceVersion,
 							Name:           "Loopback255",
-							InterfaceType:  serviceability.InterfaceTypeLoopback,
-							LoopbackType:   serviceability.LoopbackTypeVpnv4,
-							IpNet:          [5]uint8{14, 14, 14, 14, 32},
+							InterfaceType:  InterfaceTypeLoopback,
+							LoopbackType:   LoopbackTypeVpnv4,
+							Ip:             netip.MustParsePrefix("14.14.14.14/32"),
 							NodeSegmentIdx: 15,
 						},
 					},
@@ -408,9 +458,6 @@ func TestRenderConfig(t *testing.T) {
 			}
 			if diff := cmp.Diff(string(want), got); diff != "" {
 				t.Errorf("renderTunnels mismatch (-want +got):\n%s", diff)
-				// Print the actual strings for debugging
-				fmt.Printf("\n=== EXPECTED ===\n%s\n=== END EXPECTED ===\n", string(want))
-				fmt.Printf("\n=== ACTUAL ===\n%s\n=== END ACTUAL ===\n", got)
 			}
 		})
 	}

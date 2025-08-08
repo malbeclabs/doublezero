@@ -48,30 +48,43 @@ system control-plane
    ip access-group MAIN-CONTROL-PLANE-ACL in
 !
 interface Loopback255
-   ip address 14.14.14.14/32
-   node-segment ipv4 index 15
+   ip address 172.31.1.255/32
+   node-segment ipv4 index 101
    isis enable 1
+!
+interface Loopback256
+   ip address 172.29.1.255/32
+   isis enable 1
+!
+interface Switch1/1/1
+   mtu 2048
+   no switchport
+   ip address 172.16.0.0/31
+   pim ipv4 sparse-mode
+   isis enable 1
+   isis circuit-type level-2
+   isis hello padding
+   isis network point-to-point
+!
+interface Switch1/1/2
+   mtu 2048
+   no switchport
+!
+interface Switch1/1/2.100
+   mtu 2048
+   encapsulation dot1q 100
+   ip address 172.16.0.2/31
+   pim ipv4 sparse-mode
+   isis enable 1
+   isis circuit-type level-2
+   isis hello padding
+   isis network point-to-point
 !
 router bgp 65342
    router-id 14.14.14.14
-   no neighbor 12.12.12.12
-   neighbor 12.12.12.12 remote-as 65342
-   neighbor 12.12.12.12 next-hop-self
-   neighbor 12.12.12.12 update-source Loopback256
-   neighbor 12.12.12.12 description remote-dzd-ipv4
-   neighbor 12.12.12.12 send-community
-   no neighbor 15.15.15.15
-   neighbor 15.15.15.15 remote-as 65342
-   neighbor 15.15.15.15 next-hop-self
-   neighbor 15.15.15.15 update-source Loopback255
-   neighbor 15.15.15.15 description remote-dzd-vpnv4
-   neighbor 15.15.15.15 send-community
    address-family ipv4
-      neighbor 12.12.12.12 activate
-      no neighbor 15.15.15.15 activate
    !
    address-family vpn-ipv4
-      neighbor 15.15.15.15 activate
    !
    vrf vrf1
       rd 65342:1
@@ -99,9 +112,3 @@ ip access-list SEC-USER-SUB-MCAST-IN
    permit ip any 224.0.0.13/32
    deny ip any any
 !
-no router msdp
-router msdp
-   peer 12.12.12.12
-      mesh-group DZ-1
-      local-interface Loopback256
-      description remote-dzd

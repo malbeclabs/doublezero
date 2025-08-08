@@ -47,6 +47,15 @@ ip access-list MAIN-CONTROL-PLANE-ACL
 system control-plane
    ip access-group MAIN-CONTROL-PLANE-ACL in
 !
+interface Loopback255
+   ip address 14.14.14.14/32
+   node-segment ipv4 index 101
+   isis enable 1
+!
+interface Loopback256
+   ip address 12.12.12.12/32
+   isis enable 1
+!
 default interface Tunnel500
 interface Tunnel500
    description USER-UCAST-500

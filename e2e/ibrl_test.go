@@ -24,7 +24,6 @@ func TestE2E_IBRL(t *testing.T) {
 
 	if !t.Run("connect", func(t *testing.T) {
 		dn.ConnectIBRLUserTunnel(t, client)
-
 		err := client.WaitForTunnelUp(t.Context(), 90*time.Second)
 		require.NoError(t, err)
 

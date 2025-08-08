@@ -49,6 +49,36 @@ ip access-list MAIN-CONTROL-PLANE-ACL
 system control-plane
    ip access-group MAIN-CONTROL-PLANE-ACL in
 !
+{{- range .Device.Interfaces }}
+interface {{ .Name }}
+   {{- if .IsPhysical }}
+   mtu 2048
+   {{- end }}
+   {{- if and .IsPhysical (not .IsSubInterface) }}
+   no switchport
+   {{- end }}
+   {{- if .VlanId}}
+   encapsulation dot1q {{ .VlanId }}
+   {{- end }}
+   {{- if .Ip.IsValid }}
+   ip address {{ .Ip.Addr }}/{{ .Ip.Bits }}
+   {{- end }}
+   {{- if and .IsPhysical .Ip.IsValid (not .IsSubInterfaceParent) }}
+   pim ipv4 sparse-mode
+   {{- end }}
+   {{- if and .IsVpnv4Loopback .NodeSegmentIdx}}
+   node-segment ipv4 index {{ .NodeSegmentIdx }}
+   {{- end }}
+   {{- if and .Ip.IsValid (or .IsLoopback .IsPhysical (not .IsSubInterfaceParent)) }}
+   isis enable 1
+   {{- end }}
+   {{- if and .IsPhysical .Ip.IsValid (not .IsSubInterfaceParent) }}
+   isis circuit-type level-2
+   isis hello padding
+   isis network point-to-point
+   {{- end }}
+!
+{{- end }}
 {{- range .Device.Tunnels }}
 default interface Tunnel{{ .Id }}
 {{- if eq true .Allocated }}

@@ -45,6 +45,35 @@ ip access-list MAIN-CONTROL-PLANE-ACL
 system control-plane
    ip access-group MAIN-CONTROL-PLANE-ACL in
 !
+interface Ethernet2
+   mtu 2048
+   no switchport
+   ip address 172.16.0.19/31
+   pim ipv4 sparse-mode
+   isis enable 1
+   isis circuit-type level-2
+   isis hello padding
+   isis network point-to-point
+!
+interface Ethernet3
+   mtu 2048
+   no switchport
+   ip address 172.16.0.20/31
+   pim ipv4 sparse-mode
+   isis enable 1
+   isis circuit-type level-2
+   isis hello padding
+   isis network point-to-point
+!
+interface Loopback255
+   ip address 172.16.0.1/32
+   node-segment ipv4 index 1
+   isis enable 1
+!
+interface Loopback256
+   ip address 172.16.0.9/32
+   isis enable 1
+!
 default interface Tunnel500
 interface Tunnel500
    description USER-MCAST-500

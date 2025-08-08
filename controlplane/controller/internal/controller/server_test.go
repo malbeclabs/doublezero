@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net"
+	"net/netip"
 	"os"
 	"testing"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
 	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -36,6 +38,7 @@ func TestGetConfig(t *testing.T) {
 				},
 				Devices: map[string]*Device{
 					"abc123": {
+						Interfaces: []Interface{},
 						Tunnels: []*Tunnel{
 							{
 								Id:            500,
@@ -82,6 +85,7 @@ func TestGetConfig(t *testing.T) {
 				},
 				Devices: map[string]*Device{
 					"abc123": {
+						Interfaces: []Interface{},
 						Tunnels: []*Tunnel{
 							{
 								Id:            500,
@@ -361,6 +365,15 @@ func TestGetConfig(t *testing.T) {
 						Ipv4LoopbackIntfName:  "Loopback256",
 						Tunnels:               []*Tunnel{},
 						TunnelSlots:           0,
+						Interfaces: []Interface{
+							{
+								Name:           "Loopback255",
+								InterfaceType:  InterfaceTypeLoopback,
+								LoopbackType:   LoopbackTypeVpnv4,
+								Ip:             netip.MustParsePrefix("14.14.14.14/32"),
+								NodeSegmentIdx: 15,
+							},
+						},
 					},
 				},
 			},
@@ -632,17 +645,17 @@ func TestStateCache(t *testing.T) {
 							{Id: 563},
 						},
 						TunnelSlots: 64,
-						Interfaces: []serviceability.Interface{
+						Interfaces: []Interface{
 							{
-								InterfaceType: serviceability.InterfaceTypeLoopback,
-								LoopbackType:  serviceability.LoopbackTypeVpnv4,
-								IpNet:         [5]uint8{14, 14, 14, 14, 32},
+								InterfaceType: InterfaceTypeLoopback,
+								LoopbackType:  LoopbackTypeVpnv4,
+								Ip:            netip.MustParsePrefix("14.14.14.14/32"),
 								Name:          "Loopback255",
 							},
 							{
-								InterfaceType: serviceability.InterfaceTypeLoopback,
-								LoopbackType:  serviceability.LoopbackTypeIpv4,
-								IpNet:         [5]uint8{12, 12, 12, 12, 32},
+								InterfaceType: InterfaceTypeLoopback,
+								LoopbackType:  LoopbackTypeIpv4,
+								Ip:            netip.MustParsePrefix("12.12.12.12/32"),
 								Name:          "Loopback256",
 							},
 						},
@@ -720,7 +733,7 @@ func TestStateCache(t *testing.T) {
 			if err := controller.updateStateCache(context.Background()); err != nil {
 				t.Fatalf("error populating state cache: %v", err)
 			}
-			if diff := cmp.Diff(test.StateCache, controller.cache); diff != "" {
+			if diff := cmp.Diff(test.StateCache, controller.cache, cmpopts.EquateComparable(netip.Prefix{})); diff != "" {
 				t.Errorf("StateCache mismatch (-want +got): %s\n", diff)
 			}
 		})
@@ -841,23 +854,37 @@ func TestEndToEnd(t *testing.T) {
 					ExchangePubKey: [32]uint8{},
 					DeviceType:     0,
 					PublicIp:       [4]uint8{2, 2, 2, 2},
+					Status:         serviceability.DeviceStatusActivated,
+					Code:           "abc01",
+					PubKey:         [32]byte{1},
 					Interfaces: []serviceability.Interface{
 						{
-							InterfaceType: serviceability.InterfaceTypeLoopback,
-							LoopbackType:  serviceability.LoopbackTypeVpnv4,
-							IpNet:         [5]uint8{14, 14, 14, 14, 32},
-							Name:          "Loopback255",
+							Name:               "Loopback255",
+							InterfaceType:      serviceability.InterfaceTypeLoopback,
+							LoopbackType:       serviceability.LoopbackTypeVpnv4,
+							IpNet:              [5]uint8{14, 14, 14, 14, 32},
+							NodeSegmentIdx:     101,
+							UserTunnelEndpoint: false,
 						},
 						{
-							InterfaceType: serviceability.InterfaceTypeLoopback,
-							LoopbackType:  serviceability.LoopbackTypeIpv4,
-							IpNet:         [5]uint8{12, 12, 12, 12, 32},
-							Name:          "Loopback256",
+							Name:               "Loopback256",
+							InterfaceType:      serviceability.InterfaceTypeLoopback,
+							LoopbackType:       serviceability.LoopbackTypeIpv4,
+							IpNet:              [5]uint8{12, 12, 12, 12, 32},
+							UserTunnelEndpoint: false,
+						},
+						{
+							Name:          "Switch1/1/1",
+							InterfaceType: serviceability.InterfaceTypePhysical,
+							IpNet:         [5]uint8{172, 16, 0, 0, 31},
+						},
+						{
+							Name:          "Switch1/1/2.100",
+							InterfaceType: serviceability.InterfaceTypePhysical,
+							VlanId:        100,
+							IpNet:         [5]uint8{172, 16, 0, 2, 31},
 						},
 					},
-					Status: serviceability.DeviceStatusActivated,
-					Code:   "abc01",
-					PubKey: [32]byte{1},
 				},
 			},
 			AgentRequest: &pb.ConfigRequest{
@@ -920,10 +947,11 @@ func TestEndToEnd(t *testing.T) {
 					PublicIp:       [4]uint8{2, 2, 2, 2},
 					Interfaces: []serviceability.Interface{
 						{
-							InterfaceType: serviceability.InterfaceTypeLoopback,
-							LoopbackType:  serviceability.LoopbackTypeVpnv4,
-							IpNet:         [5]uint8{14, 14, 14, 14, 32},
-							Name:          "Loopback255",
+							InterfaceType:  serviceability.InterfaceTypeLoopback,
+							LoopbackType:   serviceability.LoopbackTypeVpnv4,
+							IpNet:          [5]uint8{14, 14, 14, 14, 32},
+							Name:           "Loopback255",
+							NodeSegmentIdx: 101,
 						},
 						{
 							InterfaceType: serviceability.InterfaceTypeLoopback,
@@ -967,10 +995,11 @@ func TestEndToEnd(t *testing.T) {
 					PublicIp:       [4]uint8{2, 2, 2, 2},
 					Interfaces: []serviceability.Interface{
 						{
-							InterfaceType: serviceability.InterfaceTypeLoopback,
-							LoopbackType:  serviceability.LoopbackTypeVpnv4,
-							IpNet:         [5]uint8{14, 14, 14, 14, 32},
-							Name:          "Loopback255",
+							InterfaceType:  serviceability.InterfaceTypeLoopback,
+							LoopbackType:   serviceability.LoopbackTypeVpnv4,
+							IpNet:          [5]uint8{14, 14, 14, 14, 32},
+							Name:           "Loopback255",
+							NodeSegmentIdx: 101,
 						},
 						{
 							InterfaceType: serviceability.InterfaceTypeLoopback,

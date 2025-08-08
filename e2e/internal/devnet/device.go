@@ -58,6 +58,9 @@ type DeviceSpec struct {
 
 	// Agent telemetry config.
 	Telemetry DeviceTelemetrySpec
+
+	// Additional docker networks to attach the device to.
+	AdditionalNetworks []string
 }
 
 type DeviceTelemetrySpec struct {
@@ -414,6 +417,13 @@ func (d *Device) Start(ctx context.Context) error {
 	})
 	if err != nil {
 		return fmt.Errorf("failed to attach device %s to CYOA network: %w", spec.Code, err)
+	}
+
+	for _, additionalNetwork := range spec.AdditionalNetworks {
+		err = d.dn.dockerClient.NetworkConnect(ctx, additionalNetwork, containerID, nil)
+		if err != nil {
+			return fmt.Errorf("failed to attach device %s to additional network %s: %w", spec.Code, additionalNetwork, err)
+		}
 	}
 
 	// Wait for the device container to have status healthy.

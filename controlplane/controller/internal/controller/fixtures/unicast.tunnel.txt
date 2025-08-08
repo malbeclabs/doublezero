@@ -4,14 +4,6 @@ hardware counter feature gre tunnel interface in
 !
 hardware access-list update default-result permit
 !
-queue-monitor length
-queue-monitor length notifying
-queue-monitor length tx-latency
-!
-queue-monitor length log 10
-!
-queue-monitor length update-interval 100000
-!
 logging buffered 128000
 no logging console
 logging facility local7

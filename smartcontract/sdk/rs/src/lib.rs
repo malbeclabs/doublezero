@@ -14,8 +14,8 @@ pub use doublezero_serviceability::{
         accounttype::AccountType,
         contributor::{Contributor, ContributorStatus},
         device::{
-            Device, DeviceStatus, DeviceType, Interface, InterfaceType, LoopbackType,
-            CURRENT_INTERFACE_VERSION,
+            CurrentInterfaceVersion, Device, DeviceStatus, DeviceType, Interface, InterfaceStatus,
+            InterfaceType, LoopbackType,
         },
         exchange::{Exchange, ExchangeStatus},
         globalconfig::GlobalConfig,

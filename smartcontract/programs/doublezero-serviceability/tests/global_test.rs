@@ -300,11 +300,10 @@ async fn test_doublezero_program() {
         dz_prefixes: NetworkV4List::default(),
         metrics_publisher_pk: Pubkey::default(), // Assuming no metrics publisher for this test
         mgmt_vrf: "mgmt".to_string(),
-        interfaces: vec![Interface {
-            version: CURRENT_INTERFACE_VERSION,
+        interfaces: vec![Interface::V1(CurrentInterfaceVersion {
             name: "eth0".to_string(),
-            ..Interface::default()
-        }],
+            ..CurrentInterfaceVersion::default()
+        })],
     };
 
     println!("Testing Device LA initialization...");
@@ -350,11 +349,10 @@ async fn test_doublezero_program() {
         dz_prefixes: vec!["10.1.0.1/24".parse().unwrap()].into(),
         metrics_publisher_pk: Pubkey::default(), // Assuming no metrics publisher for this test
         mgmt_vrf: "mgmt".to_string(),
-        interfaces: vec![Interface {
-            version: CURRENT_INTERFACE_VERSION,
+        interfaces: vec![Interface::V1(CurrentInterfaceVersion {
             name: "eth1".to_string(),
-            ..Interface::default()
-        }],
+            ..CurrentInterfaceVersion::default()
+        })],
     };
 
     execute_transaction(

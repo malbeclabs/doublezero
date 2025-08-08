@@ -22,7 +22,6 @@ pub enum LoopbackType {
     Vpnv4,
     Ipv4,
     PimRpAddr,
-    Reserved,
 }
 
 impl From<LoopbackType> for device::LoopbackType {
@@ -32,7 +31,6 @@ impl From<LoopbackType> for device::LoopbackType {
             LoopbackType::Vpnv4 => device::LoopbackType::Vpnv4,
             LoopbackType::Ipv4 => device::LoopbackType::Ipv4,
             LoopbackType::PimRpAddr => device::LoopbackType::PimRpAddr,
-            LoopbackType::Reserved => device::LoopbackType::Reserved,
         }
     }
 }

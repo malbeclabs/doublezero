@@ -6,7 +6,7 @@ use doublezero_serviceability::{
     },
     state::{
         accounttype::AccountType,
-        device::{Device, DeviceStatus, DeviceType, Interface, CURRENT_INTERFACE_VERSION},
+        device::{CurrentInterfaceVersion, Device, DeviceStatus, DeviceType, Interface},
         link::{Link, LinkLinkType, LinkStatus},
     },
     types::{NetworkV4, NetworkV4List},
@@ -640,11 +640,10 @@ async fn test_initialize_device_latency_samples_fail_origin_device_not_activated
                 device_type: DeviceType::Switch,
                 public_ip: [1, 2, 3, 4].into(),
                 metrics_publisher_pk: agent.pubkey(),
-                interfaces: vec![Interface {
-                    version: CURRENT_INTERFACE_VERSION,
+                interfaces: vec![Interface::V1(CurrentInterfaceVersion {
                     name: "eth0".to_string(),
-                    ..Interface::default()
-                }],
+                    ..CurrentInterfaceVersion::default()
+                })],
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
@@ -663,11 +662,10 @@ async fn test_initialize_device_latency_samples_fail_origin_device_not_activated
                 device_type: DeviceType::Switch,
                 public_ip: [5, 6, 7, 8].into(),
                 metrics_publisher_pk: agent.pubkey(),
-                interfaces: vec![Interface {
-                    version: CURRENT_INTERFACE_VERSION,
+                interfaces: vec![Interface::V1(CurrentInterfaceVersion {
                     name: "eth1".to_string(),
-                    ..Interface::default()
-                }],
+                    ..CurrentInterfaceVersion::default()
+                })],
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
@@ -772,11 +770,10 @@ async fn test_initialize_device_latency_samples_fail_target_device_not_activated
                 device_type: DeviceType::Switch,
                 public_ip: [1, 2, 3, 4].into(),
                 metrics_publisher_pk: agent.pubkey(),
-                interfaces: vec![Interface {
-                    version: CURRENT_INTERFACE_VERSION,
+                interfaces: vec![Interface::V1(CurrentInterfaceVersion {
                     name: "eth0".to_string(),
-                    ..Interface::default()
-                }],
+                    ..CurrentInterfaceVersion::default()
+                })],
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
@@ -795,11 +792,10 @@ async fn test_initialize_device_latency_samples_fail_target_device_not_activated
                 device_type: DeviceType::Switch,
                 public_ip: [5, 6, 7, 8].into(),
                 metrics_publisher_pk: agent.pubkey(),
-                interfaces: vec![Interface {
-                    version: CURRENT_INTERFACE_VERSION,
+                interfaces: vec![Interface::V1(CurrentInterfaceVersion {
                     name: "eth1".to_string(),
-                    ..Interface::default()
-                }],
+                    ..CurrentInterfaceVersion::default()
+                })],
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
@@ -903,11 +899,10 @@ async fn test_initialize_device_latency_samples_fail_link_not_activated() {
                 device_type: DeviceType::Switch,
                 public_ip: [1, 2, 3, 4].into(),
                 metrics_publisher_pk: agent.pubkey(),
-                interfaces: vec![Interface {
-                    version: CURRENT_INTERFACE_VERSION,
+                interfaces: vec![Interface::V1(CurrentInterfaceVersion {
                     name: "eth0".to_string(),
-                    ..Interface::default()
-                }],
+                    ..CurrentInterfaceVersion::default()
+                })],
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
@@ -925,11 +920,10 @@ async fn test_initialize_device_latency_samples_fail_link_not_activated() {
                 device_type: DeviceType::Switch,
                 public_ip: [5, 6, 7, 8].into(),
                 metrics_publisher_pk: agent.pubkey(),
-                interfaces: vec![Interface {
-                    version: CURRENT_INTERFACE_VERSION,
+                interfaces: vec![Interface::V1(CurrentInterfaceVersion {
                     name: "eth1".to_string(),
-                    ..Interface::default()
-                }],
+                    ..CurrentInterfaceVersion::default()
+                })],
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
@@ -1031,11 +1025,10 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
                 device_type: DeviceType::Switch,
                 public_ip: [1, 1, 1, 1].into(),
                 metrics_publisher_pk: agent.pubkey(),
-                interfaces: vec![Interface {
-                    version: CURRENT_INTERFACE_VERSION,
+                interfaces: vec![Interface::V1(CurrentInterfaceVersion {
                     name: "eth0".to_string(),
-                    ..Interface::default()
-                }],
+                    ..CurrentInterfaceVersion::default()
+                })],
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
@@ -1053,11 +1046,10 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
                 device_type: DeviceType::Switch,
                 public_ip: [2, 2, 2, 2].into(),
                 metrics_publisher_pk: agent.pubkey(),
-                interfaces: vec![Interface {
-                    version: CURRENT_INTERFACE_VERSION,
-                    name: "eth0".to_string(),
-                    ..Interface::default()
-                }],
+                interfaces: vec![Interface::V1(CurrentInterfaceVersion {
+                    name: "eth1".to_string(),
+                    ..CurrentInterfaceVersion::default()
+                })],
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
@@ -1076,11 +1068,10 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
                 device_type: DeviceType::Switch,
                 public_ip: [3, 3, 3, 3].into(),
                 metrics_publisher_pk: agent.pubkey(),
-                interfaces: vec![Interface {
-                    version: CURRENT_INTERFACE_VERSION,
+                interfaces: vec![Interface::V1(CurrentInterfaceVersion {
                     name: "eth0".to_string(),
-                    ..Interface::default()
-                }],
+                    ..CurrentInterfaceVersion::default()
+                })],
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
@@ -1098,11 +1089,10 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
                 device_type: DeviceType::Switch,
                 public_ip: [4, 4, 4, 4].into(),
                 metrics_publisher_pk: agent.pubkey(),
-                interfaces: vec![Interface {
-                    version: CURRENT_INTERFACE_VERSION,
+                interfaces: vec![Interface::V1(CurrentInterfaceVersion {
                     name: "eth1".to_string(),
-                    ..Interface::default()
-                }],
+                    ..CurrentInterfaceVersion::default()
+                })],
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
@@ -1206,11 +1196,10 @@ async fn test_initialize_device_latency_samples_succeeds_with_reversed_link_side
                 device_type: DeviceType::Switch,
                 public_ip: [10, 0, 0, 1].into(),
                 metrics_publisher_pk: agent.pubkey(),
-                interfaces: vec![Interface {
-                    version: CURRENT_INTERFACE_VERSION,
+                interfaces: vec![Interface::V1(CurrentInterfaceVersion {
                     name: "eth0".to_string(),
-                    ..Interface::default()
-                }],
+                    ..CurrentInterfaceVersion::default()
+                })],
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
@@ -1228,11 +1217,10 @@ async fn test_initialize_device_latency_samples_succeeds_with_reversed_link_side
                 device_type: DeviceType::Switch,
                 public_ip: [10, 0, 0, 2].into(),
                 metrics_publisher_pk: agent.pubkey(),
-                interfaces: vec![Interface {
-                    version: CURRENT_INTERFACE_VERSION,
+                interfaces: vec![Interface::V1(CurrentInterfaceVersion {
                     name: "eth1".to_string(),
-                    ..Interface::default()
-                }],
+                    ..CurrentInterfaceVersion::default()
+                })],
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
@@ -1473,11 +1461,10 @@ async fn test_initialize_device_latency_samples_fail_agent_not_owner_of_origin_d
                 device_type: DeviceType::Switch,
                 public_ip: [1, 1, 1, 1].into(),
                 metrics_publisher_pk: owner_agent.pubkey(),
-                interfaces: vec![Interface {
-                    version: CURRENT_INTERFACE_VERSION,
+                interfaces: vec![Interface::V1(CurrentInterfaceVersion {
                     name: "eth0".to_string(),
-                    ..Interface::default()
-                }],
+                    ..CurrentInterfaceVersion::default()
+                })],
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
@@ -1496,11 +1483,10 @@ async fn test_initialize_device_latency_samples_fail_agent_not_owner_of_origin_d
                 device_type: DeviceType::Switch,
                 public_ip: [2, 2, 2, 2].into(),
                 metrics_publisher_pk: unauthorized_agent.pubkey(),
-                interfaces: vec![Interface {
-                    version: CURRENT_INTERFACE_VERSION,
+                interfaces: vec![Interface::V1(CurrentInterfaceVersion {
                     name: "eth1".to_string(),
-                    ..Interface::default()
-                }],
+                    ..CurrentInterfaceVersion::default()
+                })],
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,

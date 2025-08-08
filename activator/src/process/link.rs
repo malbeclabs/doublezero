@@ -7,7 +7,7 @@ use doublezero_sdk::{
             reject::RejectLinkCommand,
         },
     },
-    DoubleZeroClient, Link, LinkStatus,
+    DoubleZeroClient, Interface, Link, LinkStatus,
 };
 use ipnetwork::Ipv4Network;
 use log::info;
@@ -176,8 +176,13 @@ fn assign_ip_to_dev_interface(
     .execute(client)?;
 
     let mut interfaces = device.interfaces.clone();
-    if let Some(iface) = interfaces.iter_mut().find(|i| i.name == iface_name) {
-        iface.ip_net = ip_net.into();
+    if let Some(iface) = interfaces
+        .iter_mut()
+        .find(|i| i.into_current_version().name == iface_name)
+    {
+        let mut interface = iface.into_current_version();
+        interface.ip_net = ip_net.into();
+        *iface = Interface::V1(interface);
     } else {
         return Err(eyre::eyre!(
             "Interface {} not found on device {}",
@@ -209,9 +214,9 @@ mod tests {
         tests::utils::{create_test_client, get_device_bump_seed, get_tunnel_bump_seed},
     };
     use doublezero_sdk::{
-        AccountData, AccountType, Device, DeviceStatus, DeviceType, Interface, InterfaceType, Link,
-        LinkLinkType, LinkStatus, LoopbackType, NetworkV4, NetworkV4List,
-        CURRENT_INTERFACE_VERSION,
+        AccountData, AccountType, CurrentInterfaceVersion, Device, DeviceStatus, DeviceType,
+        Interface, InterfaceStatus, InterfaceType, Link, LinkLinkType, LinkStatus, LoopbackType,
+        NetworkV4, NetworkV4List,
     };
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
@@ -276,8 +281,8 @@ mod tests {
             contributor_pk: tunnel.contributor_pk,
             mgmt_vrf: "mgmt".to_string(),
             interfaces: vec![
-                Interface {
-                    version: CURRENT_INTERFACE_VERSION,
+                Interface::V1(CurrentInterfaceVersion {
+                    status: InterfaceStatus::Activated,
                     name: tunnel.side_a_iface_name.clone(),
                     interface_type: InterfaceType::Physical,
                     loopback_type: LoopbackType::None,
@@ -285,9 +290,9 @@ mod tests {
                     ip_net: NetworkV4::default(),
                     node_segment_idx: 0,
                     user_tunnel_endpoint: false,
-                },
-                Interface {
-                    version: CURRENT_INTERFACE_VERSION,
+                }),
+                Interface::V1(CurrentInterfaceVersion {
+                    status: InterfaceStatus::Activated,
                     name: "lo0".to_string(),
                     interface_type: InterfaceType::Loopback,
                     loopback_type: LoopbackType::Vpnv4,
@@ -295,7 +300,7 @@ mod tests {
                     ip_net: NetworkV4::default(),
                     node_segment_idx: 0,
                     user_tunnel_endpoint: false,
-                },
+                }),
             ],
             reference_count: 0,
         };
@@ -316,8 +321,8 @@ mod tests {
             contributor_pk: tunnel.contributor_pk,
             mgmt_vrf: "mgmt".to_string(),
             interfaces: vec![
-                Interface {
-                    version: CURRENT_INTERFACE_VERSION,
+                Interface::V1(CurrentInterfaceVersion {
+                    status: InterfaceStatus::Pending,
                     name: tunnel.side_z_iface_name.clone(),
                     interface_type: InterfaceType::Physical,
                     loopback_type: LoopbackType::None,
@@ -325,9 +330,9 @@ mod tests {
                     ip_net: NetworkV4::default(),
                     node_segment_idx: 0,
                     user_tunnel_endpoint: false,
-                },
-                Interface {
-                    version: CURRENT_INTERFACE_VERSION,
+                }),
+                Interface::V1(CurrentInterfaceVersion {
+                    status: InterfaceStatus::Pending,
                     name: "lo0".to_string(),
                     interface_type: InterfaceType::Loopback,
                     loopback_type: LoopbackType::Vpnv4,
@@ -335,15 +340,36 @@ mod tests {
                     ip_net: NetworkV4::default(),
                     node_segment_idx: 0,
                     user_tunnel_endpoint: false,
-                },
+                }),
             ],
             reference_count: 0,
         };
 
-        let mut expected_interfaces1 = device1.interfaces.clone();
-        let mut expected_interfaces2 = device2.interfaces.clone();
-        expected_interfaces1[0].ip_net = "10.0.0.0/31".parse().unwrap();
-        expected_interfaces2[0].ip_net = "10.0.0.1/31".parse().unwrap();
+        let expected_interfaces1 = device1
+            .interfaces
+            .iter()
+            .enumerate()
+            .map(|(i, iface)| {
+                let mut iface = iface.into_current_version();
+                if i == 0 {
+                    iface.ip_net = "10.0.0.0/31".parse().unwrap();
+                }
+                Interface::V1(iface)
+            })
+            .collect::<Vec<Interface>>();
+
+        let expected_interfaces2 = device2
+            .interfaces
+            .iter()
+            .enumerate()
+            .map(|(i, iface)| {
+                let mut iface = iface.into_current_version();
+                if i == 0 {
+                    iface.ip_net = "10.0.0.1/31".parse().unwrap();
+                }
+                Interface::V1(iface)
+            })
+            .collect::<Vec<Interface>>();
 
         let tunnel_cloned = tunnel.clone();
         client
@@ -459,8 +485,29 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        expected_interfaces1[0].ip_net = "0.0.0.0/0".parse().unwrap();
-        expected_interfaces2[0].ip_net = "0.0.0.0/0".parse().unwrap();
+        let expected_interfaces1 = expected_interfaces1
+            .iter()
+            .enumerate()
+            .map(|(i, iface)| {
+                let mut iface = iface.into_current_version();
+                if i == 0 {
+                    iface.ip_net = "0.0.0.0/0".parse().unwrap();
+                }
+                Interface::V1(iface)
+            })
+            .collect::<Vec<Interface>>();
+
+        let expected_interfaces2 = expected_interfaces2
+            .iter()
+            .enumerate()
+            .map(|(i, iface)| {
+                let mut iface = iface.into_current_version();
+                if i == 0 {
+                    iface.ip_net = "0.0.0.0/0".parse().unwrap();
+                }
+                Interface::V1(iface)
+            })
+            .collect::<Vec<Interface>>();
 
         let dev1 = device1.clone();
         client

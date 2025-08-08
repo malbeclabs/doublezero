@@ -44,14 +44,17 @@ impl ListDeviceInterfaceCliCommand {
         let iface_displays: Vec<DeviceInterfaceDisplay> = device
             .interfaces
             .iter()
-            .map(|iface| DeviceInterfaceDisplay {
-                name: iface.name.clone(),
-                interface_type: iface.interface_type,
-                loopback_type: iface.loopback_type,
-                vlan_id: iface.vlan_id,
-                ip_net: iface.ip_net,
-                node_segment_idx: iface.node_segment_idx,
-                user_tunnel_endpoint: iface.user_tunnel_endpoint,
+            .map(|iface| {
+                let iface = iface.into_current_version();
+                DeviceInterfaceDisplay {
+                    name: iface.name.clone(),
+                    interface_type: iface.interface_type,
+                    loopback_type: iface.loopback_type,
+                    vlan_id: iface.vlan_id,
+                    ip_net: iface.ip_net,
+                    node_segment_idx: iface.node_segment_idx,
+                    user_tunnel_endpoint: iface.user_tunnel_endpoint,
+                }
             })
             .collect();
 
@@ -78,10 +81,12 @@ mod tests {
     };
 
     use doublezero_sdk::{
-        commands::device::get::GetDeviceCommand, AccountType, Device, DeviceStatus, DeviceType,
-        CURRENT_INTERFACE_VERSION,
+        commands::device::get::GetDeviceCommand, AccountType, CurrentInterfaceVersion, Device,
+        DeviceStatus, DeviceType,
     };
-    use doublezero_serviceability::state::device::{Interface, InterfaceType, LoopbackType};
+    use doublezero_serviceability::state::device::{
+        Interface, InterfaceStatus, InterfaceType, LoopbackType,
+    };
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
 
@@ -107,8 +112,8 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![
-                Interface {
-                    version: CURRENT_INTERFACE_VERSION,
+                Interface::V1(CurrentInterfaceVersion {
+                    status: InterfaceStatus::Activated,
                     name: "eth0".to_string(),
                     interface_type: InterfaceType::Physical,
                     loopback_type: LoopbackType::None,
@@ -116,9 +121,9 @@ mod tests {
                     ip_net: "10.0.0.1/24".parse().unwrap(),
                     node_segment_idx: 12,
                     user_tunnel_endpoint: true,
-                },
-                Interface {
-                    version: CURRENT_INTERFACE_VERSION,
+                }),
+                Interface::V1(CurrentInterfaceVersion {
+                    status: InterfaceStatus::Activated,
                     name: "lo0".to_string(),
                     interface_type: InterfaceType::Loopback,
                     loopback_type: LoopbackType::Vpnv4,
@@ -126,7 +131,7 @@ mod tests {
                     ip_net: "10.0.1.1/24".parse().unwrap(),
                     node_segment_idx: 13,
                     user_tunnel_endpoint: false,
-                },
+                }),
             ],
         };
 

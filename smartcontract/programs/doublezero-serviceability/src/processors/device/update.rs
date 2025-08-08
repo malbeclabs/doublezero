@@ -115,12 +115,6 @@ pub fn process_update_device(
         device.mgmt_vrf = mgmt_vrf.clone();
     }
     if let Some(interfaces) = &value.interfaces {
-        if interfaces
-            .iter()
-            .any(|i| i.version != CURRENT_INTERFACE_VERSION)
-        {
-            return Err(DoubleZeroError::InvalidInterfaceVersion.into());
-        }
         device.interfaces = interfaces.clone();
     }
 

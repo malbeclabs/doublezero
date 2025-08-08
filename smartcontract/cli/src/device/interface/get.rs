@@ -22,7 +22,8 @@ impl GetDeviceInterfaceCliCommand {
         let interface = device
             .interfaces
             .iter()
-            .find(|i| i.name == self.name)
+            .find(|i| i.into_current_version().name == self.name)
+            .map(|i| i.into_current_version())
             .ok_or_else(|| eyre::eyre!("Interface '{}' not found", self.name))?;
 
         writeln!(
@@ -55,10 +56,12 @@ mod tests {
         device::interface::get::GetDeviceInterfaceCliCommand, tests::utils::create_test_client,
     };
     use doublezero_sdk::{
-        commands::device::get::GetDeviceCommand, AccountType, Device, DeviceStatus, DeviceType,
-        CURRENT_INTERFACE_VERSION,
+        commands::device::get::GetDeviceCommand, AccountType, CurrentInterfaceVersion, Device,
+        DeviceStatus, DeviceType,
     };
-    use doublezero_serviceability::state::device::{Interface, InterfaceType, LoopbackType};
+    use doublezero_serviceability::state::device::{
+        Interface, InterfaceStatus, InterfaceType, LoopbackType,
+    };
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
     use std::str::FromStr;
@@ -87,8 +90,8 @@ mod tests {
             ),
             owner: device1_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![Interface {
-                version: CURRENT_INTERFACE_VERSION,
+            interfaces: vec![Interface::V1(CurrentInterfaceVersion {
+                status: InterfaceStatus::Activated,
                 name: "eth0".to_string(),
                 interface_type: InterfaceType::Physical,
                 loopback_type: LoopbackType::None,
@@ -96,7 +99,7 @@ mod tests {
                 ip_net: "10.0.0.1/24".parse().unwrap(),
                 node_segment_idx: 42,
                 user_tunnel_endpoint: true,
-            }],
+            })],
         };
 
         client

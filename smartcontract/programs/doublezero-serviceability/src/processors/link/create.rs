@@ -113,7 +113,7 @@ pub fn process_create_link(
     if !side_a_dev
         .interfaces
         .iter()
-        .any(|iface| iface.name == value.side_a_iface_name)
+        .any(|iface| iface.into_current_version().name == value.side_a_iface_name)
     {
         #[cfg(test)]
         msg!("{:?}", side_a_dev);
@@ -123,10 +123,9 @@ pub fn process_create_link(
 
     let side_z_iface_name = value.side_z_iface_name.clone().unwrap_or_default();
     if value.side_z_iface_name.is_some()
-        && !side_z_dev
-            .interfaces
-            .iter()
-            .any(|iface| iface.name == side_z_iface_name)
+        && !side_z_dev.interfaces.iter().any(|iface| {
+            iface.into_current_version().name == value.side_z_iface_name.clone().unwrap()
+        })
     {
         #[cfg(test)]
         msg!("{:?}", side_z_dev);

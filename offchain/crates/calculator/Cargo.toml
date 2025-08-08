@@ -10,7 +10,6 @@ homepage.workspace = true
 license.workspace = true
 repository.workspace = true
 
-
 [lib]
 name = "calculator"
 path = "src/lib.rs"
@@ -39,9 +38,3 @@ tracing-subscriber.workspace = true
 # Internal crates
 ingestor = { path = "../ingestor" }
 processor = { path = "../processor" }
-
-[build-dependencies]
-toml.workspace = true
-
-[dev-dependencies]
-solana-sdk.workspace = true

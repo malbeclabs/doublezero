@@ -24,17 +24,10 @@ pub enum Commands {
         /// If specified, rewards are calculated for that epoch, otherwise `current_epoch - 1`
         #[arg(short, long)]
         epoch: Option<u64>,
-    },
 
-    /// Export demand matrix and enriched validators to CSV files
-    ExportDemand {
-        /// Output path for demand CSV file
-        #[arg(long)]
-        demand: PathBuf,
-
-        /// Output path for enriched validators CSV file (optional)
-        #[arg(long)]
-        enriched_validators: Option<PathBuf>,
+        /// If specified, output intermediate CSV files for cross-checking
+        #[arg(short, long)]
+        output_dir: Option<PathBuf>,
     },
 }
 

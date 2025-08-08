@@ -18,13 +18,13 @@ async fn main() -> Result<()> {
     }
     init_logging(&settings.log_level)?;
 
+    let orchestrator = Orchestrator::new(&settings);
+
     // Handle subcommands
-    match &cli.command {
-        Commands::CalculateRewards { epoch } => Orchestrator::calculate_rewards(*epoch).await,
-        Commands::ExportDemand {
-            demand,
-            enriched_validators,
-        } => Orchestrator::export_demand(demand, enriched_validators.as_deref()).await,
+    match cli.command {
+        Commands::CalculateRewards { epoch, output_dir } => {
+            orchestrator.calculate_rewards(epoch, output_dir).await
+        }
     }
 }
 

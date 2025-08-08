@@ -13,3 +13,5 @@ solana_url = "https://api.mainnet-beta.solana.com"
 [ingestor.metrics]
 uptime_threshold = 0.95
 percentile_bins = [50, 75, 90, 95, 99]
+
+[calculator]

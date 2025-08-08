@@ -9,6 +9,17 @@ use serde::{Deserialize, Serialize};
 pub struct Settings {
     #[serde(default = "default_log_level")]
     pub log_level: String,
+    pub shapley: ShapleySettings,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShapleySettings {
+    #[serde(default = "default_operator_uptime")]
+    pub operator_uptime: f64,
+    #[serde(default = "default_contiguity_bonus")]
+    pub contiguity_bonus: f64,
+    #[serde(default = "default_demand_multiplier")]
+    pub demand_multiplier: f64,
 }
 
 impl Settings {
@@ -45,4 +56,16 @@ impl Settings {
 
 fn default_log_level() -> String {
     "info".to_string()
+}
+
+fn default_operator_uptime() -> f64 {
+    0.98
+}
+
+fn default_contiguity_bonus() -> f64 {
+    5.0
+}
+
+fn default_demand_multiplier() -> f64 {
+    1.2
 }

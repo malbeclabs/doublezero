@@ -16,7 +16,6 @@ license = "Apache-2.0"
 repository = "https://github.com/doublezerofoundation/doublezero-rewarder"
 homepage = "https://github.com/doublezerofoundation/doublezero-rewarder"
 
-
 [workspace.dependencies]
 anyhow = "1"
 backon = "1"
@@ -50,3 +49,7 @@ tokio-util = { version = "0" }
 toml = "0"
 tracing = "0"
 tracing-subscriber = { version = "0", features = ["env-filter"] }
+
+[profile.release]
+lto = true
+codegen-units = 1

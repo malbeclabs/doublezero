@@ -7,7 +7,6 @@ use spl_token::solana_program::program_pack::Pack;
 
 use super::Invoker;
 
-#[allow(clippy::too_many_arguments)]
 pub fn try_create_token_account(
     payer: Invoker,
     new_token_account: Invoker,

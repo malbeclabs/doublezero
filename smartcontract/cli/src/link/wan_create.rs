@@ -1,6 +1,7 @@
 use crate::{
     doublezerocommand::CliCommand,
     link::wan_create::utils::parse_pubkey,
+    pool_for_activation::poll_for_device_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::{
         validate_code, validate_parse_bandwidth, validate_parse_delay_ms, validate_parse_jitter_ms,
@@ -50,6 +51,9 @@ pub struct CreateWANLinkCliCommand {
     /// Jitter in milliseconds.
     #[arg(long, value_parser = validate_parse_jitter_ms)]
     pub jitter_ms: f64,
+    /// Wait for the device to be activated
+    #[arg(short, long, default_value_t = false)]
+    pub wait: bool,
 }
 
 impl CreateWANLinkCliCommand {
@@ -118,6 +122,11 @@ impl CreateWANLinkCliCommand {
         })?;
 
         writeln!(out, "Signature: {signature}",)?;
+
+        if self.wait {
+            let device = poll_for_device_activated(client, &side_a_pk)?;
+            writeln!(out, "Status: {0}", device.status)?;
+        }
 
         Ok(())
     }
@@ -261,6 +270,7 @@ mod tests {
             jitter_ms: 5000.0,
             side_a_interface: "eth0".to_string(),
             side_z_interface: "eth1".to_string(),
+            wait: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok(), "Error: {}", res.unwrap_err());

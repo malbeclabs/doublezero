@@ -1,13 +1,14 @@
 use crate::{
     doublezerocommand::CliCommand,
     helpers::parse_pubkey,
+    pool_for_activation::poll_for_user_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::validate_pubkey_or_code,
 };
 use clap::Args;
 use doublezero_sdk::{
     commands::{device::get::GetDeviceCommand, user::create::CreateUserCommand},
-    *,
+    UserCYOA, UserType,
 };
 use std::{io::Write, net::Ipv4Addr};
 
@@ -22,6 +23,9 @@ pub struct CreateUserCliCommand {
     /// Allocate a new address for the user
     #[arg(short, long, default_value_t = false)]
     pub allocate_addr: bool,
+    /// Wait for the user to be activated
+    #[arg(short, long, default_value_t = false)]
+    pub wait: bool,
 }
 
 impl CreateUserCliCommand {
@@ -41,7 +45,7 @@ impl CreateUserCliCommand {
             }
         };
 
-        let (signature, _pubkey) = client.create_user(CreateUserCommand {
+        let (signature, pubkey) = client.create_user(CreateUserCommand {
             user_type: if self.allocate_addr {
                 UserType::IBRLWithAllocatedIP
             } else {
@@ -52,6 +56,11 @@ impl CreateUserCliCommand {
             client_ip: self.client_ip,
         })?;
         writeln!(out, "Signature: {signature}",)?;
+
+        if self.wait {
+            let user = poll_for_user_activated(client, &pubkey)?;
+            writeln!(out, "Status: {0}", user.status)?;
+        }
 
         Ok(())
     }
@@ -134,6 +143,7 @@ mod tests {
             device: "device1".to_string(),
             client_ip: [100, 0, 0, 1].into(),
             allocate_addr: false,
+            wait: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

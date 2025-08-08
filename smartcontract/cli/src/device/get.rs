@@ -28,6 +28,7 @@ public_ip: {}\r\n\
 dz_prefixes: {}\r\n\
 metrics_publisher: {}\r\n\
 mgmt_vrf: {}\r\n\
+interfaces: {:?}\r\n\
 status: {}\r\n\
 owner: {}",
             pubkey,
@@ -40,6 +41,7 @@ owner: {}",
             &device.dz_prefixes,
             device.metrics_publisher_pk,
             device.mgmt_vrf,
+            device.interfaces,
             device.status,
             device.owner
         )?;

@@ -1,6 +1,7 @@
 use crate::{
     doublezerocommand::CliCommand,
     helpers::parse_pubkey,
+    pool_for_activation::poll_for_device_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::{
         validate_code, validate_parse_bandwidth, validate_parse_delay_ms, validate_parse_jitter_ms,
@@ -47,6 +48,9 @@ pub struct CreateDZXLinkCliCommand {
     /// Jitter in milliseconds.
     #[arg(long, value_parser = validate_parse_jitter_ms)]
     pub jitter_ms: f64,
+    /// Wait for the device to be activated
+    #[arg(short, long, default_value_t = false)]
+    pub wait: bool,
 }
 
 impl CreateDZXLinkCliCommand {
@@ -104,6 +108,11 @@ impl CreateDZXLinkCliCommand {
         })?;
 
         writeln!(out, "Signature: {signature}",)?;
+
+        if self.wait {
+            let device = poll_for_device_activated(client, &side_a_pk)?;
+            writeln!(out, "Status: {0}", device.status)?;
+        }
 
         Ok(())
     }
@@ -246,6 +255,7 @@ mod tests {
             delay_ms: 10000.0,
             jitter_ms: 5000.0,
             side_a_interface: "eth0".to_string(),
+            wait: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

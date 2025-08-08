@@ -1,5 +1,6 @@
 use crate::{
     doublezerocommand::CliCommand,
+    pool_for_activation::poll_for_multicastgroup_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::{validate_code, validate_pubkey_or_code},
 };
@@ -23,6 +24,9 @@ pub struct UpdateMulticastGroupCliCommand {
     /// Updated maximum bandwidth (e.g. 1Gbps, 100Mbps)
     #[arg(long)]
     pub max_bandwidth: Option<u64>,
+    /// Wait for the multicast group to be activated
+    #[arg(short, long, default_value_t = false)]
+    pub wait: bool,
 }
 
 impl UpdateMulticastGroupCliCommand {
@@ -41,6 +45,11 @@ impl UpdateMulticastGroupCliCommand {
             max_bandwidth: self.max_bandwidth,
         })?;
         writeln!(out, "Signature: {signature}",)?;
+
+        if self.wait {
+            let user = poll_for_multicastgroup_activated(client, &pubkey)?;
+            writeln!(out, "Status: {0}", user.status)?;
+        }
 
         Ok(())
     }
@@ -118,6 +127,7 @@ mod tests {
             code: Some("new_code".to_string()),
             multicast_ip: Some([10, 0, 0, 1].into()),
             max_bandwidth: Some(1000000000),
+            wait: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

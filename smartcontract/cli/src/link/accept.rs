@@ -1,5 +1,6 @@
 use crate::{
     doublezerocommand::CliCommand,
+    pool_for_activation::poll_for_link_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::validate_pubkey_or_code,
 };
@@ -19,6 +20,9 @@ pub struct AcceptLinkCliCommand {
     /// Device interface name for side Z.
     #[arg(long)]
     pub side_z_interface: String,
+    /// Wait for the device to be activated
+    #[arg(short, long, default_value_t = false)]
+    pub wait: bool,
 }
 
 impl AcceptLinkCliCommand {
@@ -54,6 +58,11 @@ impl AcceptLinkCliCommand {
             side_z_iface_name: self.side_z_interface.clone(),
         })?;
         writeln!(out, "Signature: {signature}",)?;
+
+        if self.wait {
+            let device = poll_for_link_activated(client, &pubkey)?;
+            writeln!(out, "Status: {0}", device.status)?;
+        }
 
         Ok(())
     }
@@ -221,6 +230,7 @@ mod tests {
         let res = AcceptLinkCliCommand {
             code: pda_pubkey.to_string(),
             side_z_interface: "eth1".to_string(),
+            wait: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

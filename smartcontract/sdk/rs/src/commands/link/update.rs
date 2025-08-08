@@ -1,4 +1,4 @@
-use crate::DoubleZeroClient;
+use crate::{commands::link::get::GetLinkCommand, DoubleZeroClient, GetGlobalStateCommand};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, processors::link::update::LinkUpdateArgs,
     state::link::LinkLinkType,
@@ -19,6 +19,16 @@ pub struct UpdateLinkCommand {
 
 impl UpdateLinkCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
+        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
+            .execute(client)
+            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
+
+        let (_, link) = GetLinkCommand {
+            pubkey_or_code: self.pubkey.to_string(),
+        }
+        .execute(client)
+        .map_err(|_err| eyre::eyre!("Link not found"))?;
+
         client.execute_transaction(
             DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
                 code: self.code.clone(),
@@ -29,7 +39,11 @@ impl UpdateLinkCommand {
                 delay_ns: self.delay_ns,
                 jitter_ns: self.jitter_ns,
             }),
-            vec![AccountMeta::new(self.pubkey, false)],
+            vec![
+                AccountMeta::new(self.pubkey, false),
+                AccountMeta::new(link.contributor_pk, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
         )
     }
 }

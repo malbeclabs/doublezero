@@ -81,8 +81,14 @@ pub fn process_create_link(
         return Err(ProgramError::UninitializedAccount);
     }
     let globalstate = globalstate_get_next(globalstate_account)?;
-    if !globalstate.device_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
+    assert_eq!(globalstate.account_type, AccountType::GlobalState);
+
+    let mut contributor = Contributor::try_from(contributor_account)?;
+    assert_eq!(contributor.account_type, AccountType::Contributor);
+    if contributor.owner != *payer_account.key
+        && !globalstate.foundation_allowlist.contains(payer_account.key)
+    {
+        return Err(DoubleZeroError::InvalidOwnerPubkey.into());
     }
 
     let (expected_pda_account, bump_seed) = get_link_pda(program_id, globalstate.account_index);
@@ -90,12 +96,6 @@ pub fn process_create_link(
         pda_account.key, &expected_pda_account,
         "Invalid Link PubKey"
     );
-
-    let mut contributor = Contributor::try_from(contributor_account)?;
-    assert_eq!(contributor.account_type, AccountType::Contributor);
-    if contributor.owner != *payer_account.key {
-        return Err(DoubleZeroError::InvalidOwnerPubkey.into());
-    }
 
     let mut side_a_dev = Device::try_from(side_a_account)?;
     assert_eq!(side_a_dev.account_type, AccountType::Device);

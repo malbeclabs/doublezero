@@ -91,42 +91,42 @@ echo "Creating contributor"
 
 ### Initialize devices
 echo "Creating devices"
-./target/doublezero device create --code la2-dz01 --contributor co01 --location lax --exchange xlax --public-ip "207.45.216.134" --dz-prefixes "100.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --mgmt-vrf mgmt
-./target/doublezero device create --code ny5-dz01 --contributor co01 --location ewr --exchange xewr --public-ip "64.86.249.80" --dz-prefixes "101.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --mgmt-vrf mgmt
-./target/doublezero device create --code ld4-dz01 --contributor co01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "102.0.0.0/29,103.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --mgmt-vrf mgmt
-./target/doublezero device create --code frk-dz01 --contributor co01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "104.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --mgmt-vrf mgmt
-./target/doublezero device create --code sg1-dz01 --contributor co01 --location sin --exchange xsin --public-ip "180.87.102.104" --dz-prefixes "105.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --mgmt-vrf mgmt
-./target/doublezero device create --code ty2-dz01 --contributor co01 --location tyo --exchange xtyo --public-ip "180.87.154.112" --dz-prefixes "106.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --mgmt-vrf mgmt
-./target/doublezero device create --code pit-dzd01 --contributor co01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "107.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --mgmt-vrf mgmt
-./target/doublezero device create --code ams-dz001 --contributor co01 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "108.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --mgmt-vrf mgmt
+./target/doublezero device create --code la2-dz01 --contributor co01 --location lax --exchange xlax --public-ip "207.45.216.134" --dz-prefixes "100.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --mgmt-vrf mgmt -w
+./target/doublezero device create --code ny5-dz01 --contributor co01 --location ewr --exchange xewr --public-ip "64.86.249.80" --dz-prefixes "101.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --mgmt-vrf mgmt -w
+./target/doublezero device create --code ld4-dz01 --contributor co01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "102.0.0.0/29,103.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --mgmt-vrf mgmt -w
+./target/doublezero device create --code frk-dz01 --contributor co01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "104.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --mgmt-vrf mgmt -w
+./target/doublezero device create --code sg1-dz01 --contributor co01 --location sin --exchange xsin --public-ip "180.87.102.104" --dz-prefixes "105.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --mgmt-vrf mgmt -w
+./target/doublezero device create --code ty2-dz01 --contributor co01 --location tyo --exchange xtyo --public-ip "180.87.154.112" --dz-prefixes "106.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --mgmt-vrf mgmt -w
+./target/doublezero device create --code pit-dzd01 --contributor co01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "107.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --mgmt-vrf mgmt -w
+./target/doublezero device create --code ams-dz001 --contributor co01 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "108.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --mgmt-vrf mgmt -w
 
 ### Initialize device interfaces
 echo "Creating device interfaces"
-./target/doublezero device interface create la2-dz01 "Switch1/1/1" physical
-./target/doublezero device interface create la2-dz01 "Switch1/1/2" physical
-./target/doublezero device interface create ny5-dz01 "Switch1/1/1" physical
-./target/doublezero device interface create ny5-dz01 "Switch1/1/2" physical
-./target/doublezero device interface create ld4-dz01 "Switch1/1/1" physical
-./target/doublezero device interface create ld4-dz01 "Switch1/1/2" physical
-./target/doublezero device interface create frk-dz01 "Switch1/1/1" physical
-./target/doublezero device interface create frk-dz01 "Switch1/1/2" physical
-./target/doublezero device interface create sg1-dz01 "Switch1/1/1" physical
-./target/doublezero device interface create sg1-dz01 "Switch1/1/2" physical
-./target/doublezero device interface create ty2-dz01 "Switch1/1/1" physical
-./target/doublezero device interface create ty2-dz01 "Switch1/1/2" physical
-./target/doublezero device interface create pit-dzd01 "Switch1/1/1" physical
-./target/doublezero device interface create pit-dzd01 "Switch1/1/2" physical
-./target/doublezero device interface create ams-dz001 "Switch1/1/1" physical
-./target/doublezero device interface create ams-dz001 "Switch1/1/2" physical
+./target/doublezero device interface create la2-dz01 "Switch1/1/1" physical -w
+./target/doublezero device interface create la2-dz01 "Switch1/1/2" physical -w
+./target/doublezero device interface create ny5-dz01 "Switch1/1/1" physical -w
+./target/doublezero device interface create ny5-dz01 "Switch1/1/2" physical -w
+./target/doublezero device interface create ld4-dz01 "Switch1/1/1" physical -w
+./target/doublezero device interface create ld4-dz01 "Switch1/1/2" physical -w
+./target/doublezero device interface create frk-dz01 "Switch1/1/1" physical -w
+./target/doublezero device interface create frk-dz01 "Switch1/1/2" physical -w
+./target/doublezero device interface create sg1-dz01 "Switch1/1/1" physical -w
+./target/doublezero device interface create sg1-dz01 "Switch1/1/2" physical -w
+./target/doublezero device interface create ty2-dz01 "Switch1/1/1" physical -w
+./target/doublezero device interface create ty2-dz01 "Switch1/1/2" physical -w
+./target/doublezero device interface create pit-dzd01 "Switch1/1/1" physical -w
+./target/doublezero device interface create pit-dzd01 "Switch1/1/2" physical -w
+./target/doublezero device interface create ams-dz001 "Switch1/1/1" physical -w
+./target/doublezero device interface create ams-dz001 "Switch1/1/2" physical -w
 
 ### Initialize links
 echo "Creating internal links"
-./target/doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Switch1/1/1 --side-z ny5-dz01 --side-z-interface Switch1/1/2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
-./target/doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Switch1/1/1 --side-z ld4-dz01 --side-z-interface Switch1/1/2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
-./target/doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Switch1/1/1 --side-z frk-dz01 --side-z-interface Switch1/1/2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10
-./target/doublezero link create wan --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Switch1/1/1 --side-z sg1-dz01 --side-z-interface Switch1/1/2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9
-./target/doublezero link create wan --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-a-interface Switch1/1/1 --side-z ty2-dz01 --side-z-interface Switch1/1/2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7
-./target/doublezero link create wan --code "ty2-dz01:la2-dz01" --contributor co01 --side-a ty2-dz01 --side-a-interface Switch1/1/1 --side-z la2-dz01 --side-z-interface Switch1/1/2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 10
+./target/doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Switch1/1/1 --side-z ny5-dz01 --side-z-interface Switch1/1/2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3 -w
+./target/doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Switch1/1/1 --side-z ld4-dz01 --side-z-interface Switch1/1/2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3 -w
+./target/doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Switch1/1/1 --side-z frk-dz01 --side-z-interface Switch1/1/2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10 -w
+./target/doublezero link create wan --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Switch1/1/1 --side-z sg1-dz01 --side-z-interface Switch1/1/2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9 -w
+./target/doublezero link create wan --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-a-interface Switch1/1/1 --side-z ty2-dz01 --side-z-interface Switch1/1/2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7 -w
+./target/doublezero link create wan --code "ty2-dz01:la2-dz01" --contributor co01 --side-a ty2-dz01 --side-a-interface Switch1/1/1 --side-z la2-dz01 --side-z-interface Switch1/1/2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 10 -w
 
 
 ### Initialize contributor
@@ -135,32 +135,32 @@ echo "Creating contributor two"
 
 ### Initialize devices
 echo "Creating devices"
-./target/doublezero device create --code la2-dz02 --contributor co02 --location lax --exchange xlax --public-ip "207.45.216.135" --dz-prefixes "130.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --bgp-asn 42 --dia-bgp-asn 4242 --mgmt-vrf mgmt --dns-servers 8.8.8.8,8.8.4.4 --ntp-servers 1.2.3.4
+./target/doublezero device create --code la2-dz02 --contributor co02 --location lax --exchange xlax --public-ip "207.45.216.135" --dz-prefixes "130.0.0.0/16" --metrics-publisher 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB --mgmt-vrf mgmt -w
 
 ### Initialize device interfaces
 echo "Creating device interfaces"
-./target/doublezero device interface create la2-dz02 "Switch1/1/1" physical
+./target/doublezero device interface create la2-dz02 "Switch1/1/1" physical -w
 
 ### Initialize links
 echo "Creating external links"
-./target/doublezero link create dzx --code "la2-dz02-la2-dz01" --contributor co02 --side-a la2-dz02 --side-a-interface Switch1/1/1 --side-z la2-dz01 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
+./target/doublezero link create dzx --code "la2-dz02-la2-dz01" --contributor co02 --side-a la2-dz02 --side-a-interface Switch1/1/1 --side-z la2-dz01 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3 -w
 
 ### Initialize links
 echo "Accepting external link"
-./target/doublezero link accept --code "la2-dz02-la2-dz01" --side-z-interface Switch1/1/1
+./target/doublezero link accept --code "la2-dz02-la2-dz01" --side-z-interface Switch1/1/1 -w
 
 # create a user
 echo "Creating users"
-./target/doublezero user create --device ld4-dz01 --client-ip 177.54.159.95
-./target/doublezero user create --device ld4-dz01 --client-ip 147.28.171.51
-./target/doublezero user create --device ld4-dz01 --client-ip 100.100.100.100
-./target/doublezero user create --device ld4-dz01 --client-ip 200.200.200.200
+./target/doublezero user create --device ld4-dz01 --client-ip 177.54.159.95 -w
+./target/doublezero user create --device ld4-dz01 --client-ip 147.28.171.51 -w
+./target/doublezero user create --device ld4-dz01 --client-ip 100.100.100.100 -w
+./target/doublezero user create --device ld4-dz01 --client-ip 200.200.200.200 -w
 
 echo "Creating multicast groups"
-./target/doublezero multicast group create --code mg01 --max-bandwidth 1Gbps --owner me
-./target/doublezero multicast group create --code mg02 --max-bandwidth 1Gbps --owner me
-./target/doublezero multicast group create --code mg03 --max-bandwidth 1Gbps --owner me
-sleep 10
+./target/doublezero multicast group create --code mg01 --max-bandwidth 1Gbps --owner me -w
+./target/doublezero multicast group create --code mg02 --max-bandwidth 1Gbps --owner me -w
+./target/doublezero multicast group create --code mg03 --max-bandwidth 1Gbps --owner me -w
+
 
 echo "Add me to multicast group allowlist"
 ./target/doublezero multicast group allowlist subscriber add --code mg01 --pubkey me
@@ -171,13 +171,13 @@ echo "Add me to multicast group allowlist"
 ./target/doublezero multicast group allowlist publisher add --code mg03 --pubkey me
 
 echo "Creating multicast user & subscribe"
-./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 100.0.0.5 --subscriber mg01
-./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 100.0.0.6 --subscriber mg01
-sleep 10
+./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 100.0.0.5 --subscriber mg01 -w
+./target/doublezero user create-subscribe --device ty2-dz01 --client-ip 100.0.0.6 --subscriber mg01 -w
 
-./target/doublezero user subscribe --user 9gYCNwLTNHveZiNGA62Z1PMRiYFYbmUz3VTx9FgVuSEH --group mg01 --publisher
-./target/doublezero user subscribe --user 9gYCNwLTNHveZiNGA62Z1PMRiYFYbmUz3VTx9FgVuSEH --group mg02 --publisher
-./target/doublezero user subscribe --user 83Yz9TX1uN5VUnd2rBRueBBJHy61RxFEoj4nSKL3DZuh --group mg01 --subscriber
+
+./target/doublezero user subscribe --user EthThV5iWtvrcM9G9qXQCmg2sNERLdfxt6AVKuhAewZF --group mg01 --publisher -w
+./target/doublezero user subscribe --user EthThV5iWtvrcM9G9qXQCmg2sNERLdfxt6AVKuhAewZF --group mg02 --publisher -w
+./target/doublezero user subscribe --user vwHPjLfH7aU4G2vDBAqV3on5WQgXLEKq67kNw7Q5Mos --group mg01 --subscriber -w
 
 echo "########################################################################"
 

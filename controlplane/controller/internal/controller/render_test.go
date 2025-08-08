@@ -26,6 +26,7 @@ func TestRenderConfig(t *testing.T) {
 					PublicIP:        net.IP{7, 7, 7, 7},
 					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
 					Interfaces:      []Interface{},
+					IsisNet:         "49.0000.0e0e.0e0e.0000.00",
 					Tunnels: []*Tunnel{
 						{
 							Id:            500,
@@ -70,6 +71,7 @@ func TestRenderConfig(t *testing.T) {
 					Interfaces:      []Interface{},
 					PublicIP:        net.IP{7, 7, 7, 7},
 					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
+					IsisNet:         "49.0000.0e0e.0e0e.0000.00",
 					Tunnels: []*Tunnel{
 						{
 							Id:            500,
@@ -116,6 +118,7 @@ func TestRenderConfig(t *testing.T) {
 					Interfaces:      []Interface{},
 					PublicIP:        net.IP{7, 7, 7, 7},
 					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
+					IsisNet:         "49.0000.0e0e.0e0e.0000.00",
 					Tunnels: []*Tunnel{
 						{
 							Id:            500,
@@ -193,6 +196,7 @@ func TestRenderConfig(t *testing.T) {
 					Interfaces:      []Interface{},
 					PublicIP:        net.IP{7, 7, 7, 7},
 					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
+					IsisNet:         "49.0000.0e0e.0e0e.0000.00",
 					Tunnels: []*Tunnel{
 						{
 							Id:            500,
@@ -282,6 +286,7 @@ func TestRenderConfig(t *testing.T) {
 					Interfaces:      []Interface{},
 					PublicIP:        net.IP{7, 7, 7, 7},
 					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
+					IsisNet:         "49.0000.0e0e.0e0e.0000.00",
 					Tunnels: []*Tunnel{
 						{
 							Id:            500,
@@ -369,6 +374,7 @@ func TestRenderConfig(t *testing.T) {
 				Device: &Device{
 					PublicIP:        net.IP{7, 7, 7, 7},
 					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
+					IsisNet:         "49.0000.0e0e.0e0e.0000.00",
 					Ipv4LoopbackIP:  net.IP{13, 13, 13, 13},
 					Interfaces: []Interface{
 						{
@@ -421,6 +427,7 @@ func TestRenderConfig(t *testing.T) {
 				Device: &Device{
 					PublicIP:        net.IP{7, 7, 7, 7},
 					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
+					IsisNet:         "49.0000.0e0e.0e0e.0000.00",
 					Ipv4LoopbackIP:  net.IP{13, 13, 13, 13},
 					Interfaces: []Interface{
 						{

@@ -1,4 +1,20 @@
 !
+hardware counter feature gre tunnel interface out
+hardware counter feature gre tunnel interface in
+!
+hardware access-list update default-result permit
+!
+queue-monitor length
+queue-monitor length notifying
+queue-monitor length tx-latency
+!
+queue-monitor length log 10
+!
+queue-monitor length update-interval 100000
+!
+logging buffered 128000
+no logging console
+!
 ip multicast-routing
 !
 router pim sparse-mode
@@ -51,6 +67,8 @@ interface Loopback255
    node-segment ipv4 index 15
    isis enable 1
 !
+mpls ip
+!
 router bgp 65342
    router-id 14.14.14.14
    no neighbor 12.12.12.12
@@ -77,6 +95,16 @@ router bgp 65342
       route-target import vpn-ipv4 65342:1
       route-target export vpn-ipv4 65342:1
       router-id 7.7.7.7
+!
+router isis 1
+   net 49.0000.0e0e.0e0e.0000.00
+   router-id ipv4 14.14.14.14
+   log-adjacency-changes
+   !
+   address-family ipv4 unicast
+   !
+   segment-routing mpls
+      no shutdown
 !
 ip community-list COMM-ALL_USERS permit 21682:1200
 ip community-list COMM-ALL_MCAST_USERS permit 21682:1300

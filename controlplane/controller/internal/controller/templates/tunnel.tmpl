@@ -1,8 +1,22 @@
+{{- if not $.NoHardware -}}
 !
 hardware counter feature gre tunnel interface out
 hardware counter feature gre tunnel interface in
 !
 hardware access-list update default-result permit
+!
+queue-monitor length
+queue-monitor length notifying
+queue-monitor length tx-latency
+!
+queue-monitor length log 10
+!
+queue-monitor length update-interval 100000
+{{- end -}}
+{{ if not $.NoHardware }}
+{{ end }}!
+logging buffered 128000
+no logging console
 !
 ip multicast-routing
 !

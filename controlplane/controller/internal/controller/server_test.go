@@ -364,6 +364,7 @@ func TestGetConfig(t *testing.T) {
 					"abc123": {
 						PublicIP:              net.IP{7, 7, 7, 7},
 						Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
+						IsisNet:               "49.0000.0e0e.0e0e.0000.00",
 						Ipv4LoopbackIP:        net.IP{13, 13, 13, 13},
 						Vpn4vLoopbackIntfName: "Loopback255",
 						Ipv4LoopbackIntfName:  "Loopback256",
@@ -407,6 +408,7 @@ func TestGetConfig(t *testing.T) {
 					"abc123": {
 						PublicIP:              net.IP{7, 7, 7, 7},
 						Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
+						IsisNet:               "49.0000.0e0e.0e0e.0000.00",
 						Ipv4LoopbackIP:        net.IP{13, 13, 13, 13},
 						Vpn4vLoopbackIntfName: "Loopback255",
 						Ipv4LoopbackIntfName:  "Loopback256",

@@ -246,6 +246,7 @@ impl From<&mut ByteReader<'_>> for Interface {
 }
 
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Device {
     pub account_type: AccountType,    // 1
     pub owner: Pubkey,                // 32

@@ -53,15 +53,6 @@ nfpms:
     bindir: /usr/local/bin
     release: 1
     section: default
-    contents:
-      - src: activator/doublezero-activator.service
-        dst: /etc/systemd/system/doublezero-activator.service
-    overrides:
-      deb:
-          scripts:
-            postinstall: activator/packaging/scripts/deb/postinstall.sh
-            preremove: activator/packaging/scripts/deb/preremove.sh
-            postremove: activator/packaging/scripts/deb/postremove.sh
 
 changelog:
   sort: asc

@@ -29,6 +29,7 @@ solana-sdk.workspace = true
 tokio.workspace = true
 solana-client.workspace = true
 # Dependencies from this workspace
+doublezero-config.workspace = true
 doublezero_sdk.workspace = true
 doublezero_cli.workspace = true
 doublezero-serviceability.workspace = true

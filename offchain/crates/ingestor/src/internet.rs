@@ -28,7 +28,7 @@ pub async fn fetch(
     settings: &Settings,
     epoch: u64,
 ) -> Result<DZInternetData> {
-    let program_id = &settings.ingestor.programs.telemetry_program_id;
+    let program_id = &settings.programs.telemetry_program_id;
     let program_pubkey = Pubkey::from_str(program_id)
         .with_context(|| format!("Invalid internet program ID: {program_id}"))?;
 

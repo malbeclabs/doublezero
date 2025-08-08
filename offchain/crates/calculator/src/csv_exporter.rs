@@ -56,7 +56,7 @@ fn write_devices_csv(output_dir: &Path, devices: &[Device]) -> Result<()> {
 fn write_private_links_csv(output_dir: &Path, links: &[PrivateLink]) -> Result<()> {
     let path = output_dir.join("private_links.csv");
     let mut writer = Writer::from_path(path)?;
-    writer.write_record(&[
+    writer.write_record([
         "Device1",
         "Device2",
         "Latency",
@@ -66,7 +66,7 @@ fn write_private_links_csv(output_dir: &Path, links: &[PrivateLink]) -> Result<(
     ])?;
 
     for link in links {
-        writer.write_record(&[
+        writer.write_record([
             &link.device1,
             &link.device2,
             &link.latency.to_string(),
@@ -82,9 +82,9 @@ fn write_private_links_csv(output_dir: &Path, links: &[PrivateLink]) -> Result<(
 fn write_public_links_csv(output_dir: &Path, links: &[PublicLink]) -> Result<()> {
     let path = output_dir.join("public_links.csv");
     let mut writer = Writer::from_path(path)?;
-    writer.write_record(&["City1", "City2", "Latency"])?;
+    writer.write_record(["City1", "City2", "Latency"])?;
     for link in links {
-        writer.write_record(&[&link.city1, &link.city2, &link.latency.to_string()])?;
+        writer.write_record([&link.city1, &link.city2, &link.latency.to_string()])?;
     }
     writer.flush()?;
     Ok(())
@@ -93,7 +93,7 @@ fn write_public_links_csv(output_dir: &Path, links: &[PublicLink]) -> Result<()>
 fn write_demands_csv(output_dir: &Path, demands: &[Demand]) -> Result<()> {
     let path = output_dir.join("demands.csv");
     let mut writer = Writer::from_path(path)?;
-    writer.write_record(&[
+    writer.write_record([
         "Start",
         "End",
         "Receivers",
@@ -103,7 +103,7 @@ fn write_demands_csv(output_dir: &Path, demands: &[Demand]) -> Result<()> {
         "Multicast",
     ])?;
     for demand in demands {
-        writer.write_record(&[
+        writer.write_record([
             &demand.start,
             &demand.end,
             &demand.receivers.to_string(),

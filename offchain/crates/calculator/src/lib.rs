@@ -1,4 +1,3 @@
-pub mod cli;
 pub mod csv_exporter;
 pub mod orchestrator;
 pub mod settings;

@@ -19,12 +19,14 @@ use tracing::info;
 #[derive(Debug)]
 pub struct Orchestrator {
     settings: Settings,
+    cfg_path: Option<PathBuf>,
 }
 
 impl Orchestrator {
-    pub fn new(settings: &Settings) -> Self {
+    pub fn new(settings: &Settings, cfg_path: &Option<PathBuf>) -> Self {
         Self {
             settings: settings.clone(),
+            cfg_path: cfg_path.clone(),
         }
     }
 
@@ -33,8 +35,7 @@ impl Orchestrator {
         epoch: Option<u64>,
         output_dir: Option<PathBuf>,
     ) -> Result<()> {
-        // Create fetcher
-        let ingestor_settings = ingestor::settings::Settings::from_env()?;
+        let ingestor_settings = ingestor::settings::Settings::new(self.cfg_path.clone())?;
         let fetcher = Fetcher::new(&ingestor_settings)?;
 
         // Fetch data based on filter mode

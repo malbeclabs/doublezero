@@ -17,11 +17,11 @@ pub struct Fetcher {
 impl Fetcher {
     pub fn new(settings: &Settings) -> Result<Self> {
         let rpc_client = RpcClient::new_with_commitment(
-            settings.ingestor.rpc.url.to_string(),
+            settings.rpc.url.to_string(),
             CommitmentConfig::finalized(),
         );
         let solana_client = RpcClient::new_with_commitment(
-            settings.ingestor.rpc.solana_url.to_string(),
+            settings.rpc.solana_url.to_string(),
             CommitmentConfig::finalized(),
         );
         Ok(Self {
@@ -45,11 +45,11 @@ impl Fetcher {
     pub async fn with_epoch(&self, epoch: u64) -> Result<FetchData> {
         info!(
             "Using serviceability program: {}",
-            self.settings.ingestor.programs.serviceability_program_id
+            self.settings.programs.serviceability_program_id
         );
         info!(
             "Using telemetry program: {}",
-            self.settings.ingestor.programs.telemetry_program_id
+            self.settings.programs.telemetry_program_id
         );
 
         // Fetch serviceability data

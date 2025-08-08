@@ -1,5 +1,6 @@
 use crate::{
     csv_exporter,
+    recorder::{load_default_keypair, try_create_record, write_record_chunks},
     settings::Settings,
     shapley_handler::{build_demands, build_devices, build_private_links, build_public_links},
     util::{print_demands, print_devices, print_private_links, print_public_links},
@@ -39,7 +40,7 @@ impl Orchestrator {
         let fetcher = Fetcher::new(&ingestor_settings)?;
 
         // Fetch data based on filter mode
-        let fetch_data = match epoch {
+        let (fetch_epoch, fetch_data) = match epoch {
             None => fetcher.fetch().await?,
             Some(epoch_num) => fetcher.with_epoch(epoch_num).await?,
         };
@@ -54,6 +55,30 @@ impl Orchestrator {
             print_telemetry_stats(&stat_map)
         );
 
+        {
+            let payer_signer = load_default_keypair()?;
+            let ser_dzd_telem = borsh::to_vec(&stat_map)?;
+            let prefix: &[u8] = b"doublezero_device_telemetry_aggregate_test1";
+            let prefix_str = std::str::from_utf8(prefix)?;
+            info!("prefix: {prefix_str}, dz_epoch: {fetch_epoch}",);
+
+            let record_key = try_create_record(
+                &fetcher.rpc_client,
+                &payer_signer,
+                &[prefix, &fetch_epoch.to_le_bytes()],
+                ser_dzd_telem.len(),
+            )
+            .await?;
+
+            write_record_chunks(
+                &fetcher.rpc_client,
+                &payer_signer,
+                &record_key,
+                ser_dzd_telem.as_ref(),
+            )
+            .await?;
+        }
+
         // Build internet stats
         let internet_stat_map = InternetTelemetryProcessor::process(&fetch_data)?;
         info!(
@@ -61,7 +86,29 @@ impl Orchestrator {
             print_internet_stats(&internet_stat_map)
         );
 
-        // TODO: Record statistics using doublezero-record program
+        {
+            let payer_signer = load_default_keypair()?;
+            let ser_inet_telem = borsh::to_vec(&internet_stat_map)?;
+            let prefix: &[u8] = b"doublezero_internet_telemetry_aggregate_test1";
+            let prefix_str = std::str::from_utf8(prefix)?;
+            info!("prefix: {prefix_str}, dz_epoch: {fetch_epoch}",);
+
+            let record_key = try_create_record(
+                &fetcher.rpc_client,
+                &payer_signer,
+                &[prefix, &fetch_epoch.to_le_bytes()],
+                ser_inet_telem.len(),
+            )
+            .await?;
+
+            write_record_chunks(
+                &fetcher.rpc_client,
+                &payer_signer,
+                &record_key,
+                ser_inet_telem.as_ref(),
+            )
+            .await?;
+        }
 
         // Build devices
         let devices = build_devices(&fetch_data)?;

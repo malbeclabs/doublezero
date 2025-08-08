@@ -20,6 +20,7 @@ homepage = "https://github.com/doublezerofoundation/doublezero-rewarder"
 anyhow = "1"
 backon = "1"
 base64 = "0"
+borsh = "1"
 chrono = { version = "0", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }
 config = "0"
@@ -27,6 +28,7 @@ csv = "1"
 doublezero-serviceability = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint", "serde"] }
 doublezero-telemetry = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint", "serde" ] }
 doublezero_sdk = { git = "ssh://git@github.com/malbeclabs/doublezero" }
+doublezero-record = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint" ] }
 futures-util = "0"
 itertools = "0"
 network-shapley = { git = "https://github.com/doublezerofoundation/network-shapley-rs", features = ["serde"] }
@@ -41,6 +43,7 @@ solana-client = "2.2.7"
 solana-account-decoder = "2.2.7"
 solana-sdk = "2.2.2"
 solana-epoch-info = "3"
+solana-system-interface = "1"
 svm-hash = { version = "0.1.0-beta.1", features = [ "bytemuck" ] }
 tabled = { version = "0", features = [ "std", "derive" ]}
 thiserror = "2"

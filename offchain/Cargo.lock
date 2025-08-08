@@ -778,10 +778,13 @@ name = "calculator"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "backon",
+ "borsh 1.5.7",
  "chrono",
  "clap",
  "config",
  "csv",
+ "doublezero-record",
  "doublezero-serviceability",
  "doublezero-telemetry",
  "ingestor",
@@ -792,7 +795,9 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "solana-client",
  "solana-sdk",
+ "solana-system-interface",
  "svm-hash",
  "tabled",
  "tokio",
@@ -1499,15 +1504,25 @@ dependencies = [
 [[package]]
 name = "doublezero-program-common"
 version = "0.4.0"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#d7fc0b57fbe06f4083a3199830102fa4274a1d60"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#21799e7c2adf729c6b9fda624f31c295f117705e"
 dependencies = [
  "solana-program",
 ]
 
 [[package]]
+name = "doublezero-record"
+version = "0.4.0"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#21799e7c2adf729c6b9fda624f31c295f117705e"
+dependencies = [
+ "bytemuck",
+ "solana-program",
+ "thiserror 2.0.12",
+]
+
+[[package]]
 name = "doublezero-serviceability"
 version = "0.4.0"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#d7fc0b57fbe06f4083a3199830102fa4274a1d60"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#21799e7c2adf729c6b9fda624f31c295f117705e"
 dependencies = [
  "borsh 1.5.7",
  "byteorder",
@@ -1522,7 +1537,7 @@ dependencies = [
 [[package]]
 name = "doublezero-telemetry"
 version = "0.2.0"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#d7fc0b57fbe06f4083a3199830102fa4274a1d60"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#21799e7c2adf729c6b9fda624f31c295f117705e"
 dependencies = [
  "borsh 1.5.7",
  "doublezero-program-common",
@@ -1535,7 +1550,7 @@ dependencies = [
 [[package]]
 name = "doublezero_sdk"
 version = "0.4.0"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#d7fc0b57fbe06f4083a3199830102fa4274a1d60"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#21799e7c2adf729c6b9fda624f31c295f117705e"
 dependencies = [
  "base64 0.22.1",
  "bincode 2.0.1",
@@ -3751,9 +3766,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.95"
+version = "1.0.96"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02b3e5e68a3a1a02aad3ec490a98007cbc13c37cbe84a3cd7b8e406d76e7f778"
+checksum = "beef09f85ae72cea1ef96ba6870c51e6382ebfa4f0e85b643459331f3daa5be0"
 dependencies = [
  "unicode-ident",
 ]
@@ -3763,6 +3778,7 @@ name = "processor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "borsh 1.5.7",
  "chrono",
  "config",
  "csv",

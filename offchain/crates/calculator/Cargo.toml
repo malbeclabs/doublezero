@@ -16,19 +16,24 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow.workspace = true
+backon.workspace = true
+borsh.workspace = true
 chrono.workspace = true
 clap.workspace = true
 config.workspace = true
 csv.workspace = true
 doublezero-serviceability.workspace = true
 doublezero-telemetry.workspace = true
+doublezero-record.workspace = true
 network-shapley.workspace = true
 itertools.workspace = true
 rust_decimal.workspace = true
 sha2.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+solana-client.workspace = true
 solana-sdk.workspace = true
+solana-system-interface.workspace = true
 svm-hash.workspace = true
 tabled.workspace = true
 tokio.workspace = true

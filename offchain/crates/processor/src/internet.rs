@@ -1,5 +1,6 @@
 use crate::{process::process_internet_samples, util::display_us_as_ms};
 use anyhow::Result;
+use borsh::BorshSerialize;
 use doublezero_sdk::serializer;
 use ingestor::types::{DZInternetLatencySamples, FetchData};
 use serde::Serialize;
@@ -11,7 +12,7 @@ use tracing::{debug, warn};
 // Key format: "{origin_code} → {target_code} ({data_provider})"
 pub type InternetTelemetryStatMap = HashMap<String, InternetTelemetryStats>;
 
-#[derive(Debug, Clone, Tabled, Serialize)]
+#[derive(Debug, Clone, Tabled, Serialize, BorshSerialize)]
 pub struct InternetTelemetryStats {
     pub circuit: String,
     #[tabled(skip)]

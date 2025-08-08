@@ -1,6 +1,7 @@
 use crate::{
     doublezerocommand::CliCommand,
     helpers::parse_pubkey,
+    poll_for_activation::{poll_for_multicastgroup_activated, poll_for_user_activated},
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::{validate_pubkey, validate_pubkey_or_code},
 };
@@ -24,6 +25,9 @@ pub struct SubscribeUserCliCommand {
     /// Subscribe as a subscriber
     #[arg(long)]
     pub subscriber: bool,
+    /// Wait for the subscription to complete.
+    #[arg(short, long, default_value_t = false)]
+    pub wait: bool,
 }
 
 impl SubscribeUserCliCommand {
@@ -54,6 +58,16 @@ impl SubscribeUserCliCommand {
             subscriber: self.subscriber,
         })?;
         writeln!(out, "Signature: {signature}",)?;
+
+        if self.wait {
+            let user = poll_for_user_activated(client, &user_pk)?;
+            let mgroup = poll_for_multicastgroup_activated(client, &group_pk)?;
+            writeln!(
+                out,
+                "Status: User: {0} Multicast Group: {1}",
+                user.status, mgroup.status
+            )?;
+        }
 
         Ok(())
     }
@@ -133,6 +147,7 @@ mod tests {
             group: mgroup_pubkey.to_string(),
             publisher: false,
             subscriber: true,
+            wait: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

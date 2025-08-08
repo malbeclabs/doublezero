@@ -1,6 +1,6 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get_next,
+    globalstate::globalstate_get,
     helper::*,
     state::{accounttype::AccountType, contributor::Contributor, device::Device, link::*},
 };
@@ -69,7 +69,7 @@ pub fn process_closeaccount_link(
     // Check if the account is writable
     assert!(link_account.is_writable, "PDA Account is not writable");
 
-    let globalstate = globalstate_get_next(globalstate_account)?;
+    let globalstate = globalstate_get(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }

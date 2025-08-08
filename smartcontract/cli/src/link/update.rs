@@ -1,5 +1,6 @@
 use crate::{
     doublezerocommand::CliCommand,
+    poll_for_activation::poll_for_link_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::{
         validate_code, validate_parse_bandwidth, validate_parse_delay_ms, validate_parse_jitter_ms,
@@ -40,6 +41,9 @@ pub struct UpdateLinkCliCommand {
     /// Jitter in milliseconds
     #[arg(long, value_parser = validate_parse_jitter_ms)]
     pub jitter_ms: Option<f64>,
+    /// Wait for the device to be activated
+    #[arg(short, long, default_value_t = false)]
+    pub wait: bool,
 }
 
 impl UpdateLinkCliCommand {
@@ -82,6 +86,11 @@ impl UpdateLinkCliCommand {
                 .map(|jitter_ms| (jitter_ms * 1000000.0) as u64),
         })?;
         writeln!(out, "Signature: {signature}",)?;
+
+        if self.wait {
+            let link = poll_for_link_activated(client, &pubkey)?;
+            writeln!(out, "Status: {0}", link.status)?;
+        }
 
         Ok(())
     }
@@ -192,6 +201,7 @@ mod tests {
             mtu: Some(1500),
             delay_ms: Some(10.0),
             jitter_ms: Some(5.0),
+            wait: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

@@ -2,7 +2,7 @@ use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get,
     helper::*,
-    state::{accounttype::AccountType, device::*},
+    state::{accounttype::AccountType, contributor::Contributor, device::*},
     types::*,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -29,19 +29,31 @@ pub struct DeviceUpdateArgs {
 
 impl fmt::Debug for DeviceUpdateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "code: {:?}, device_type: {:?}, contributor_pk: {:?}, \
-public_ip: {:?}, dz_prefixes: {:?}, metrics_publisher_pk: {:?}, \
-mgmt_vrf: {:?}",
-            self.code,
-            self.device_type,
-            self.contributor_pk,
-            self.public_ip.map(|public_ip| public_ip.to_string()),
-            self.dz_prefixes.as_ref().map(|net| net.to_string()),
-            self.metrics_publisher_pk,
-            self.mgmt_vrf.as_ref(),
-        )
+        if self.code.is_some() {
+            write!(f, "code: {:?}, ", self.code)?;
+        }
+        if self.device_type.is_some() {
+            write!(f, "device_type: {:?}, ", self.device_type)?;
+        }
+        if self.contributor_pk.is_some() {
+            write!(f, "contributor_pk: {:?}, ", self.contributor_pk)?;
+        }
+        if self.public_ip.is_some() {
+            write!(f, "public_ip: {:?}, ", self.public_ip)?;
+        }
+        if self.dz_prefixes.is_some() {
+            write!(f, "dz_prefixes: {:?}, ", self.dz_prefixes)?;
+        }
+        if self.metrics_publisher_pk.is_some() {
+            write!(f, "metrics_publisher_pk: {:?}, ", self.metrics_publisher_pk)?;
+        }
+        if self.mgmt_vrf.is_some() {
+            write!(f, "mgmt_vrf: {:?}, ", self.mgmt_vrf)?;
+        }
+        if self.interfaces.is_some() {
+            write!(f, "interfaces: {:?}, ", self.interfaces)?;
+        }
+        Ok(())
     }
 }
 
@@ -53,6 +65,7 @@ pub fn process_update_device(
     let accounts_iter = &mut accounts.iter();
 
     let device_account = next_account_info(accounts_iter)?;
+    let contributor_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -66,6 +79,10 @@ pub fn process_update_device(
         "Invalid PDA Account Owner"
     );
     assert_eq!(
+        contributor_account.owner, program_id,
+        "Invalid Contributor Account Owner"
+    );
+    assert_eq!(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"
     );
@@ -77,21 +94,23 @@ pub fn process_update_device(
     // Check if the account is writable
     assert!(device_account.is_writable, "PDA Account is not writable");
 
+    let globalstate = globalstate_get(globalstate_account)?;
+    assert_eq!(globalstate.account_type, AccountType::GlobalState);
+
+    let contributor = Contributor::try_from(contributor_account)?;
+    assert_eq!(contributor.account_type, AccountType::Contributor);
+    if contributor.owner != *payer_account.key
+        && !globalstate.foundation_allowlist.contains(payer_account.key)
+    {
+        return Err(DoubleZeroError::NotAllowed.into());
+    }
+
     let mut device: Device = Device::try_from(device_account)?;
     assert_eq!(
         device.account_type,
         AccountType::Device,
         "Invalid Device Account Type"
     );
-
-    let globalstate = globalstate_get(globalstate_account)?;
-
-    // Check if the payer is in the foundation allowlist or the owner of the device
-    if !globalstate.foundation_allowlist.contains(payer_account.key)
-        && device.owner != *payer_account.key
-    {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
 
     if let Some(code) = &value.code {
         device.code = code.clone();

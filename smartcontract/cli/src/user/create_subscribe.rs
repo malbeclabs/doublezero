@@ -1,6 +1,7 @@
 use crate::{
     doublezerocommand::CliCommand,
     helpers::parse_pubkey,
+    poll_for_activation::poll_for_user_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::validate_pubkey_or_code,
 };
@@ -31,6 +32,9 @@ pub struct CreateSubscribeUserCliCommand {
     /// Multicast group subscriber Pubkey or code
     #[arg(long)]
     pub subscriber: Option<String>,
+    /// Wait for the user to be activated
+    #[arg(short, long, default_value_t = false)]
+    pub wait: bool,
 }
 
 impl CreateSubscribeUserCliCommand {
@@ -80,7 +84,7 @@ impl CreateSubscribeUserCliCommand {
             },
         };
 
-        let (signature, _pubkey) = client.create_subscribe_user(CreateSubscribeUserCommand {
+        let (signature, pubkey) = client.create_subscribe_user(CreateSubscribeUserCommand {
             user_type: UserType::Multicast,
             device_pk,
             cyoa_type: UserCYOA::GREOverDIA,
@@ -92,6 +96,11 @@ impl CreateSubscribeUserCliCommand {
                 .ok_or(eyre::eyre!("Subscriber is required if publisher is not"))?,
         })?;
         writeln!(out, "Signature: {signature}",)?;
+
+        if self.wait {
+            let user = poll_for_user_activated(client, &pubkey)?;
+            writeln!(out, "Status: {0}", user.status)?;
+        }
 
         Ok(())
     }
@@ -204,6 +213,7 @@ mod tests {
             allocate_addr: false,
             publisher: None,
             subscriber: Some(mgroup_pubkey.to_string()),
+            wait: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

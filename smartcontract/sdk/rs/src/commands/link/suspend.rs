@@ -33,6 +33,7 @@ impl SuspendLinkCommand {
             DoubleZeroInstruction::SuspendLink(LinkSuspendArgs {}),
             vec![
                 AccountMeta::new(self.pubkey, false),
+                AccountMeta::new(link.contributor_pk, false),
                 AccountMeta::new(globalstate_pubkey, false),
             ],
         )

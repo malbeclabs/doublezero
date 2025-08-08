@@ -2,7 +2,7 @@ use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get,
     helper::*,
-    state::{accounttype::AccountType, link::*},
+    state::{accounttype::AccountType, contributor::Contributor, link::*},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
@@ -31,6 +31,7 @@ pub fn process_delete_link(
     let accounts_iter = &mut accounts.iter();
 
     let link_account = next_account_info(accounts_iter)?;
+    let contributor_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -50,15 +51,19 @@ pub fn process_delete_link(
         "Invalid System Program Account Owner"
     );
 
+    let globalstate = globalstate_get(globalstate_account)?;
+    assert_eq!(globalstate.account_type, AccountType::GlobalState);
+
+    let contributor = Contributor::try_from(contributor_account)?;
+    assert_eq!(contributor.account_type, AccountType::Contributor);
+    if contributor.owner != *payer_account.key
+        && !globalstate.foundation_allowlist.contains(payer_account.key)
+    {
+        return Err(DoubleZeroError::InvalidOwnerPubkey.into());
+    }
+
     let mut link: Link = Link::try_from(link_account)?;
     assert_eq!(link.account_type, AccountType::Link, "Invalid Account Type");
-
-    let globalstate = globalstate_get(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key)
-        && link.owner != *payer_account.key
-    {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
 
     link.status = LinkStatus::Deleting;
 

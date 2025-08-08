@@ -1,8 +1,6 @@
 use core::fmt;
 
-use crate::{
-    error::DoubleZeroError, globalstate::globalstate_get_next, helper::*, state::device::*,
-};
+use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::device::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
 use solana_program::msg;
@@ -40,7 +38,7 @@ pub fn process_activate_device(program_id: &Pubkey, accounts: &[AccountInfo]) ->
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let globalstate = globalstate_get_next(globalstate_account)?;
+    let globalstate = globalstate_get(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }

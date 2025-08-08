@@ -328,6 +328,15 @@ impl DoubleZeroClient for DZClient {
 
         let result = self.client.simulate_transaction(&transaction)?;
 
+        if result.value.err.is_some() {
+            println!("Program Logs:");
+            if let Some(logs) = result.value.logs {
+                for log in logs {
+                    println!("{log}");
+                }
+            }
+        }
+
         if let Some(TransactionError::InstructionError(_index, InstructionError::Custom(number))) =
             result.value.err
         {

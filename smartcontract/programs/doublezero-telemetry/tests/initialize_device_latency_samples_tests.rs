@@ -140,10 +140,16 @@ async fn test_initialize_device_latency_samples_success_suspended_origin_device(
     let (origin_device_agent, origin_device_pk, target_device_pk, link_pk) =
         ledger.seed_with_two_linked_devices().await.unwrap();
 
+    let contributor_pk = ledger
+        .serviceability
+        .create_contributor("co01".to_string(), Pubkey::new_unique())
+        .await
+        .unwrap();
+
     // Suspend the origin device.
     ledger
         .serviceability
-        .suspend_device(origin_device_pk)
+        .suspend_device(contributor_pk, origin_device_pk)
         .await
         .unwrap();
 
@@ -194,10 +200,16 @@ async fn test_initialize_device_latency_samples_success_suspended_target_device(
     let (origin_device_agent, origin_device_pk, target_device_pk, link_pk) =
         ledger.seed_with_two_linked_devices().await.unwrap();
 
+    let contributor_pk = ledger
+        .serviceability
+        .create_contributor("co01".to_string(), Pubkey::new_unique())
+        .await
+        .unwrap();
+
     // Suspend the target device.
     ledger
         .serviceability
-        .suspend_device(target_device_pk)
+        .suspend_device(contributor_pk, target_device_pk)
         .await
         .unwrap();
 
@@ -248,8 +260,18 @@ async fn test_initialize_device_latency_samples_success_suspended_link() {
     let (origin_device_agent, origin_device_pk, target_device_pk, link_pk) =
         ledger.seed_with_two_linked_devices().await.unwrap();
 
+    let contributor_pk = ledger
+        .serviceability
+        .create_contributor("co01".to_string(), Pubkey::new_unique())
+        .await
+        .unwrap();
+
     // Suspend the link.
-    ledger.serviceability.suspend_link(link_pk).await.unwrap();
+    ledger
+        .serviceability
+        .suspend_link(contributor_pk, link_pk)
+        .await
+        .unwrap();
 
     // Wait for a new blockhash before moving on.
     ledger.wait_for_new_blockhash().await.unwrap();

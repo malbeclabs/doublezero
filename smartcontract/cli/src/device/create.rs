@@ -1,6 +1,7 @@
 use crate::{
     doublezerocommand::CliCommand,
     helpers::parse_pubkey,
+    poll_for_activation::poll_for_device_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::{validate_code, validate_pubkey, validate_pubkey_or_code},
 };
@@ -43,6 +44,9 @@ pub struct CreateDeviceCliCommand {
     /// Management VRF name (optional)
     #[arg(long, default_value = "")]
     pub mgmt_vrf: String,
+    /// Wait for the device to be activated
+    #[arg(short, long, default_value_t = false)]
+    pub wait: bool,
 }
 
 impl CreateDeviceCliCommand {
@@ -113,7 +117,7 @@ impl CreateDeviceCliCommand {
             client.get_payer()
         };
 
-        let (signature, _pubkey) = client.create_device(CreateDeviceCommand {
+        let (signature, pubkey) = client.create_device(CreateDeviceCommand {
             code: self.code.clone(),
             contributor_pk,
             location_pk,
@@ -125,6 +129,11 @@ impl CreateDeviceCliCommand {
             mgmt_vrf: self.mgmt_vrf.clone(),
         })?;
         writeln!(out, "Signature: {signature}")?;
+
+        if self.wait {
+            let device = poll_for_device_activated(client, &pubkey)?;
+            writeln!(out, "Status: {0}", device.status)?;
+        }
 
         Ok(())
     }
@@ -259,6 +268,7 @@ mod tests {
             dz_prefixes: "10.1.0.0/16".parse().unwrap(),
             metrics_publisher: Some(Pubkey::default().to_string()),
             mgmt_vrf: String::default(),
+            wait: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

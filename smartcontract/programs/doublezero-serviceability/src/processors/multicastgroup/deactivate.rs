@@ -1,6 +1,6 @@
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get_next,
+    globalstate::globalstate_get,
     helper::*,
     state::{accounttype::AccountType, multicastgroup::*},
 };
@@ -60,7 +60,7 @@ pub fn process_deactivate_multicastgroup(
         "PDA Account is not writable"
     );
 
-    let globalstate = globalstate_get_next(globalstate_account)?;
+    let globalstate = globalstate_get(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }

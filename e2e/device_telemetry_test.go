@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aristanetworks/goeapi/module"
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
@@ -210,34 +211,27 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	la2ToNY5LinkTunnelLA2IP := "192.168.99.18" // expected to be allocated to this link by the activator
 	la2ToNY5LinkTunnelNY5IP := "192.168.99.19" // expected to be allocated to this link by the activator
 
-	// Adding these links to speed up the test, otherwise, we have to wait for the controller
-	func() {
+	log.Info("==> Waiting for interfaces to be created on the devices")
+	require.Eventually(t, func() bool {
 		la2Device := dn.Devices["la2-dz01"]
 		ny5Device := dn.Devices["ny5-dz01"]
-		log.Info("==> Manually creating tunnel interfaces on the devices")
+
 		la2Client, err := la2Device.GetEAPIHTTPClient()
 		require.NoError(t, err)
-		resp, err := la2Client.RunCommands([]string{
-			"configure terminal",
-			"interface Ethernet2",
-			"no switchport",
-			"ip address " + la2ToNY5LinkTunnelLA2IP + "/31",
-			"no shutdown",
-		}, "json")
+		resp, err := module.IPInterface(la2Client).Get("Ethernet2")
 		require.NoError(t, err)
-		require.Nil(t, resp.Error)
+		la2Addr := resp.Address()
+
 		ny5Client, err := ny5Device.GetEAPIHTTPClient()
+		resp, err = module.IPInterface(ny5Client).Get("Ethernet2")
 		require.NoError(t, err)
-		resp, err = ny5Client.RunCommands([]string{
-			"configure terminal",
-			"interface Ethernet2",
-			"no switchport",
-			"ip address " + la2ToNY5LinkTunnelNY5IP + "/31",
-			"no shutdown",
-		}, "json")
-		require.NoError(t, err)
-		require.Nil(t, resp.Error)
-	}()
+		ny5Addr := resp.Address()
+
+		if la2Addr == la2ToNY5LinkTunnelLA2IP+"/31" && ny5Addr == la2ToNY5LinkTunnelNY5IP+"/31" {
+			return true
+		}
+		return false
+	}, 120*time.Second, 3*time.Second, "Timed out waiting for the devices to be reachable via their link tunnel")
 
 	// Wait for the devices to be reachable from each other via their link tunnel using TWAMP UDP probes.
 	log.Info("==> Waiting for devices to be reachable from each other via their link tunnel using TWAMP")

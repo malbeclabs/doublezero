@@ -23,7 +23,7 @@ builds:
       - amd64
 
 archives:
-  - id: collector_archive
+  - id: internet_latency_collector_archive
     formats: ['tar.gz']
     ids: [doublezero-internet-latency-collector]
     # this name template makes the OS and Arch compatible with the results of `uname`.
@@ -74,7 +74,7 @@ announce:
 
 git:
   ignore_tags:
-    - collector/daily
+    - internet-latency-collector/daily
 
 nightly:
   publish_release: true

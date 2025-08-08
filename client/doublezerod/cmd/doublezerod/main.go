@@ -14,8 +14,7 @@ import (
 
 	solana "github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/runtime"
-	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	"github.com/malbeclabs/doublezero/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -25,8 +24,8 @@ var (
 	sockFile             = flag.String("sock-file", "/var/run/doublezerod/doublezerod.sock", "path to doublezerod domain socket")
 	enableLatencyProbing = flag.Bool("latency-probing", true, "enable latency probing to doublezero nodes")
 	versionFlag          = flag.Bool("version", false, "build version")
-	programId            = flag.String("program-id", serviceability.SERVICEABILITY_PROGRAM_ID_TESTNET, "override smartcontract program id to monitor")
-	rpcEndpoint          = flag.String("solana-rpc-endpoint", dzsdk.DZ_LEDGER_RPC_URL, "override solana rpc endpoint url")
+	programId            = flag.String("program-id", config.TestnetServiceabilityProgramID, "override smartcontract program id to monitor")
+	rpcEndpoint          = flag.String("solana-rpc-endpoint", config.TestnetLedgerRPCURL, "override solana rpc endpoint url")
 	probeInterval        = flag.Int("probe-interval", 30, "latency probe interval in seconds")
 	cacheUpdateInterval  = flag.Int("cache-update-interval", 30, "latency cache update interval in seconds")
 	enableVerboseLogging = flag.Bool("v", false, "enables verbose logging")

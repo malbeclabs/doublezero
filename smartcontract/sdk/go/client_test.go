@@ -6,9 +6,8 @@ import (
 	"testing"
 
 	"github.com/gagliardetto/solana-go"
+	"github.com/malbeclabs/doublezero/config"
 	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
-	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	"github.com/stretchr/testify/require"
 )
 
@@ -24,7 +23,7 @@ func TestSDK_Client(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, client.Serviceability)
 		require.NotNil(t, client.Telemetry)
-		want := solana.MustPublicKeyFromBase58(serviceability.SERVICEABILITY_PROGRAM_ID_TESTNET)
+		want := solana.MustPublicKeyFromBase58(config.TestnetServiceabilityProgramID)
 		require.Equal(t, want, client.Serviceability.ProgramID())
 	})
 
@@ -59,7 +58,7 @@ func TestSDK_Client(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, client.Serviceability)
 		require.NotNil(t, client.Telemetry)
-		want := solana.MustPublicKeyFromBase58(telemetry.TELEMETRY_PROGRAM_ID_TESTNET)
+		want := solana.MustPublicKeyFromBase58(config.TestnetTelemetryProgramID)
 		require.Equal(t, want, client.Telemetry.ProgramID())
 	})
 

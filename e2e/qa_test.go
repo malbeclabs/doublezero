@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
 	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
@@ -78,9 +79,9 @@ func TestConnectivityUnicast(t *testing.T) {
 				require.Fail(t, "No local address found in status response")
 			}
 			opts := []dzsdk.Option{}
-			opts = append(opts, dzsdk.WithServiceabilityProgramID(serviceability.SERVICEABILITY_PROGRAM_ID_DEVNET))
+			opts = append(opts, dzsdk.WithServiceabilityProgramID(config.DevnetServiceabilityProgramID))
 
-			ledger, err := dzsdk.New(nil, dzsdk.DZ_LEDGER_RPC_URL, opts...)
+			ledger, err := dzsdk.New(nil, config.DevnetLedgerRPCURL, opts...)
 			require.NoError(t, err, "Failed to create ledger client")
 			data, err := ledger.Serviceability.GetProgramData(ctx)
 			require.NoError(t, err, "Failed to get program data")
@@ -167,9 +168,9 @@ func TestConnectivityMulticast(t *testing.T) {
 
 	// get pubkey of created multicast group for deletion later
 	opts := []dzsdk.Option{}
-	opts = append(opts, dzsdk.WithServiceabilityProgramID(serviceability.SERVICEABILITY_PROGRAM_ID_DEVNET))
+	opts = append(opts, dzsdk.WithServiceabilityProgramID(config.DevnetServiceabilityProgramID))
 
-	ledger, err := dzsdk.New(nil, dzsdk.DZ_LEDGER_RPC_URL, opts...)
+	ledger, err := dzsdk.New(nil, config.DevnetLedgerRPCURL, opts...)
 	require.NoError(t, err, "Failed to create ledger client")
 
 	pubKey := ""

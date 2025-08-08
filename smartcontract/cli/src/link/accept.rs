@@ -41,7 +41,7 @@ impl AcceptLinkCliCommand {
         if !device_z
             .interfaces
             .iter()
-            .any(|i| i.name == self.side_z_interface)
+            .any(|i| i.into_current_version().name == self.side_z_interface)
         {
             return Err(eyre!(
                 "Interface '{}' not found on side Z device",
@@ -74,10 +74,10 @@ mod tests {
             link::{accept::AcceptLinkCommand, get::GetLinkCommand},
         },
         get_link_pda, AccountType, Contributor, ContributorStatus, Device, DeviceStatus,
-        DeviceType, Link, LinkLinkType, LinkStatus,
+        DeviceType, InterfaceStatus, Link, LinkLinkType, LinkStatus,
     };
     use doublezero_serviceability::state::device::{
-        Interface, InterfaceType, InterfaceVersion, LoopbackType,
+        CurrentInterfaceVersion, Interface, InterfaceType, LoopbackType,
     };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
@@ -115,10 +115,10 @@ mod tests {
             exchange_pk: Pubkey::default(),
             code: "dev01".to_string(),
 
-            interfaces: vec![Interface {
+            interfaces: vec![Interface::V1(CurrentInterfaceVersion {
                 name: "eth0".to_string(),
                 ..Default::default()
-            }],
+            })],
             device_type: DeviceType::Switch,
             public_ip: "127.0.0.1".parse().unwrap(),
             status: DeviceStatus::Activated,
@@ -143,8 +143,8 @@ mod tests {
             index: 2,
             reference_count: 0,
             code: "dev02".to_string(),
-            interfaces: vec![Interface {
-                version: InterfaceVersion::V1,
+            interfaces: vec![Interface::V1(CurrentInterfaceVersion {
+                status: InterfaceStatus::Pending,
                 name: "eth1".to_string(),
                 interface_type: InterfaceType::Physical,
                 loopback_type: LoopbackType::None,
@@ -152,7 +152,7 @@ mod tests {
                 ip_net: "10.0.0.1/32".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: false,
-            }],
+            })],
             location_pk: Pubkey::default(),
             exchange_pk: Pubkey::default(),
             device_type: doublezero_sdk::DeviceType::Switch,

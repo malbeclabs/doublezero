@@ -130,6 +130,7 @@ impl Activator {
             .filter(|(_, d)| d.status == DeviceStatus::Activated)
         {
             device.interfaces.iter().for_each(|interface| {
+                let interface = interface.into_current_version();
                 if interface.node_segment_idx > 0 {
                     self.segment_routing_ids.assign(interface.node_segment_idx);
                 }

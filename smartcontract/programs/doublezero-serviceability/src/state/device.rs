@@ -71,6 +71,30 @@ impl fmt::Display for DeviceStatus {
 }
 
 #[repr(u8)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq)]
+#[borsh(use_discriminant = true)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum InterfaceStatus {
+    Invalid = 0,
+    Unmanaged = 1,
+    Pending = 2,
+    Activated = 3,
+    Deleting = 4,
+}
+
+impl From<u8> for InterfaceStatus {
+    fn from(value: u8) -> Self {
+        match value {
+            1 => InterfaceStatus::Unmanaged,
+            2 => InterfaceStatus::Pending,
+            3 => InterfaceStatus::Activated,
+            4 => InterfaceStatus::Deleting,
+            _ => InterfaceStatus::Invalid, // Default case
+        }
+    }
+}
+
+#[repr(u8)]
 #[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone, Copy)]
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -109,7 +133,6 @@ pub enum LoopbackType {
     Vpnv4 = 1,
     Ipv4 = 2,
     PimRpAddr = 3,
-    Reserved = 4,
 }
 
 impl fmt::Display for LoopbackType {
@@ -119,7 +142,6 @@ impl fmt::Display for LoopbackType {
             LoopbackType::Vpnv4 => write!(f, "vpnv4"),
             LoopbackType::Ipv4 => write!(f, "ipv4"),
             LoopbackType::PimRpAddr => write!(f, "pim_rp_addr"),
-            LoopbackType::Reserved => write!(f, "reserved"),
         }
     }
 }
@@ -130,36 +152,15 @@ impl From<u8> for LoopbackType {
             1 => LoopbackType::Vpnv4,
             2 => LoopbackType::Ipv4,
             3 => LoopbackType::PimRpAddr,
-            4 => LoopbackType::Reserved,
             _ => LoopbackType::None, // Default case
         }
     }
 }
 
-#[repr(u8)]
-#[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone, Copy)]
-#[borsh(use_discriminant = true)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum InterfaceVersion {
-    Unsupported = 0,
-    V1 = 1,
-}
-
-impl From<u8> for InterfaceVersion {
-    fn from(value: u8) -> Self {
-        match value {
-            1 => InterfaceVersion::V1,
-            _ => InterfaceVersion::Unsupported, // Default case
-        }
-    }
-}
-
-pub const CURRENT_INTERFACE_VERSION: InterfaceVersion = InterfaceVersion::V1;
-
 #[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Interface {
-    pub version: InterfaceVersion,     // 1
+pub struct InterfaceV1 {
+    pub status: InterfaceStatus,       // 1
     pub name: String,                  // 4 + len
     pub interface_type: InterfaceType, // 1
     pub loopback_type: LoopbackType,   // 1
@@ -169,7 +170,7 @@ pub struct Interface {
     pub user_tunnel_endpoint: bool,    // 1
 }
 
-impl Interface {
+impl InterfaceV1 {
     pub fn size(&self) -> usize {
         Self::size_given_name_len(self.name.len())
     }
@@ -179,14 +180,10 @@ impl Interface {
     }
 }
 
-impl From<&mut ByteReader<'_>> for Interface {
+impl From<&mut ByteReader<'_>> for InterfaceV1 {
     fn from(parser: &mut ByteReader<'_>) -> Self {
-        let version = parser.read_enum::<InterfaceVersion>();
-        if version != CURRENT_INTERFACE_VERSION {
-            panic!("Unsupported interface version: {},", version as u8);
-        }
         Self {
-            version,
+            status: parser.read_enum(),
             name: parser.read_string(),
             interface_type: parser.read_enum(),
             loopback_type: parser.read_enum(),
@@ -198,10 +195,10 @@ impl From<&mut ByteReader<'_>> for Interface {
     }
 }
 
-impl Default for Interface {
+impl Default for InterfaceV1 {
     fn default() -> Self {
         Self {
-            version: CURRENT_INTERFACE_VERSION,
+            status: InterfaceStatus::Pending,
             name: String::default(),
             interface_type: InterfaceType::Invalid,
             loopback_type: LoopbackType::None,
@@ -213,8 +210,42 @@ impl Default for Interface {
     }
 }
 
-#[derive(BorshSerialize, Debug, PartialEq, Clone)]
+#[repr(u8)]
+#[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[borsh(use_discriminant = true)]
+pub enum Interface {
+    V1(InterfaceV1),
+}
+
+pub type CurrentInterfaceVersion = InterfaceV1;
+
+impl Interface {
+    pub fn into_current_version(&self) -> CurrentInterfaceVersion {
+        match self {
+            Interface::V1(v1) => v1.clone(),
+        }
+    }
+
+    pub fn size(&self) -> usize {
+        let base_size = match self {
+            Interface::V1(v1) => v1.size(),
+            // Add other variants here as needed
+        };
+        base_size + 1 // +1 for the enum discriminant
+    }
+}
+
+impl From<&mut ByteReader<'_>> for Interface {
+    fn from(parser: &mut ByteReader<'_>) -> Self {
+        match parser.read_u8() {
+            0 => Interface::V1(InterfaceV1::from(parser)),
+            _ => Interface::V1(InterfaceV1::default()), // Default case
+        }
+    }
+}
+
+#[derive(BorshSerialize, Debug, PartialEq, Clone)]
 pub struct Device {
     pub account_type: AccountType,    // 1
     pub owner: Pubkey,                // 32
@@ -341,8 +372,8 @@ mod tests {
             metrics_publisher_pk: Pubkey::new_unique(),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![
-                Interface {
-                    version: CURRENT_INTERFACE_VERSION,
+                Interface::V1(CurrentInterfaceVersion {
+                    status: InterfaceStatus::Activated,
                     name: "eth0".to_string(),
                     interface_type: InterfaceType::Physical,
                     loopback_type: LoopbackType::None,
@@ -350,9 +381,9 @@ mod tests {
                     ip_net: "10.0.0.1/24".parse().unwrap(),
                     node_segment_idx: 42,
                     user_tunnel_endpoint: true,
-                },
-                Interface {
-                    version: CURRENT_INTERFACE_VERSION,
+                }),
+                Interface::V1(CurrentInterfaceVersion {
+                    status: InterfaceStatus::Deleting,
                     name: "eth1".to_string(),
                     interface_type: InterfaceType::Physical,
                     loopback_type: LoopbackType::None,
@@ -360,7 +391,7 @@ mod tests {
                     ip_net: "10.0.1.1/24".parse().unwrap(),
                     node_segment_idx: 24,
                     user_tunnel_endpoint: false,
-                },
+                }),
             ],
         };
 

@@ -80,7 +80,7 @@ pub fn process_accept_link(
     if !side_z_dev
         .interfaces
         .iter()
-        .any(|iface| iface.name == value.side_z_iface_name)
+        .any(|iface| iface.into_current_version().name == value.side_z_iface_name)
     {
         #[cfg(test)]
         msg!("{:?}", side_z_dev);

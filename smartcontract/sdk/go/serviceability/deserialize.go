@@ -45,6 +45,13 @@ func DeserializeExchange(reader *ByteReader, exchange *Exchange) {
 
 func DeserializeInterface(reader *ByteReader, iface *Interface) {
 	iface.Version = reader.ReadU8()
+
+	if iface.Version != (CurrentInterfaceVersion - 1) { // subtract 1 because the discriminant starts from 0
+		log.Println("DeserializeInterface: Unsupported interface version", iface.Version)
+		return
+	}
+
+	iface.Status = InterfaceStatus(reader.ReadU8())
 	iface.Name = reader.ReadString()
 	iface.InterfaceType = InterfaceType(reader.ReadU8())
 	iface.LoopbackType = LoopbackType(reader.ReadU8())

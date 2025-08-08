@@ -86,6 +86,16 @@ const (
 	DeviceStatusDeleted
 )
 
+type InterfaceStatus uint8
+
+const (
+	InterfaceStatusInvalid InterfaceStatus = iota
+	InterfaceStatusUnmanaged
+	InterfaceStatusPending
+	InterfaceStatusActivated
+	InterfaceStatusDeleting
+)
+
 type InterfaceType uint8
 
 const (
@@ -106,6 +116,7 @@ const (
 
 type Interface struct {
 	Version            uint8
+	Status             InterfaceStatus
 	Name               string
 	InterfaceType      InterfaceType
 	LoopbackType       LoopbackType

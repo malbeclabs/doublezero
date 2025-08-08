@@ -10,7 +10,7 @@ use doublezero_serviceability::{
     state::{
         accounttype::AccountType,
         contributor::ContributorStatus,
-        device::{DeviceStatus, DeviceType, Interface, CURRENT_INTERFACE_VERSION},
+        device::{CurrentInterfaceVersion, DeviceStatus, DeviceType, Interface},
         link::*,
     },
 };
@@ -182,11 +182,10 @@ async fn test_link() {
             dz_prefixes: "10.1.0.0/24".parse().unwrap(),
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
-            interfaces: vec![Interface {
-                version: CURRENT_INTERFACE_VERSION,
+            interfaces: vec![Interface::V1(CurrentInterfaceVersion {
                 name: "eth0".to_string(),
-                ..Interface::default()
-            }],
+                ..CurrentInterfaceVersion::default()
+            })],
         }),
         vec![
             AccountMeta::new(device_a_pubkey, false),
@@ -249,11 +248,10 @@ async fn test_link() {
             dz_prefixes: "11.1.0.0/23".parse().unwrap(),
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
-            interfaces: vec![Interface {
-                version: CURRENT_INTERFACE_VERSION,
+            interfaces: vec![Interface::V1(CurrentInterfaceVersion {
                 name: "eth1".to_string(),
-                ..Interface::default()
-            }],
+                ..CurrentInterfaceVersion::default()
+            })],
         }),
         vec![
             AccountMeta::new(device_z_pubkey, false),

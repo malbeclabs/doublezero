@@ -28,7 +28,9 @@ impl DeleteDeviceInterfaceCliCommand {
             })
             .map_err(|_| eyre::eyre!("Device not found"))?;
 
-        device.interfaces.retain(|i| i.name != self.name);
+        device
+            .interfaces
+            .retain(|i| i.into_current_version().name != self.name);
 
         let signature = client.update_device(UpdateDeviceCommand {
             pubkey,
@@ -56,10 +58,10 @@ mod tests {
     };
     use doublezero_sdk::{
         commands::device::{get::GetDeviceCommand, update::UpdateDeviceCommand},
-        AccountType, Device, DeviceStatus, CURRENT_INTERFACE_VERSION,
+        AccountType, CurrentInterfaceVersion, Device, DeviceStatus,
     };
     use doublezero_serviceability::{
-        state::device::{Interface, InterfaceType, LoopbackType},
+        state::device::{Interface, InterfaceStatus, InterfaceType, LoopbackType},
         types::NetworkV4List,
     };
     use mockall::predicate;
@@ -89,8 +91,8 @@ mod tests {
             owner: Pubkey::default(),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![
-                Interface {
-                    version: CURRENT_INTERFACE_VERSION,
+                Interface::V1(CurrentInterfaceVersion {
+                    status: InterfaceStatus::Activated,
                     name: "eth0".to_string(),
                     interface_type: InterfaceType::Physical,
                     loopback_type: LoopbackType::None,
@@ -98,9 +100,9 @@ mod tests {
                     ip_net: "10.0.0.1/24".parse().unwrap(),
                     node_segment_idx: 12,
                     user_tunnel_endpoint: true,
-                },
-                Interface {
-                    version: CURRENT_INTERFACE_VERSION,
+                }),
+                Interface::V1(CurrentInterfaceVersion {
+                    status: InterfaceStatus::Activated,
                     name: "lo0".to_string(),
                     interface_type: InterfaceType::Loopback,
                     loopback_type: LoopbackType::Vpnv4,
@@ -108,7 +110,7 @@ mod tests {
                     ip_net: "10.0.1.1/24".parse().unwrap(),
                     node_segment_idx: 13,
                     user_tunnel_endpoint: false,
-                },
+                }),
             ],
         };
 
@@ -134,8 +136,8 @@ mod tests {
                 metrics_publisher: None,
                 contributor_pk: None,
                 mgmt_vrf: None,
-                interfaces: Some(vec![Interface {
-                    version: CURRENT_INTERFACE_VERSION,
+                interfaces: Some(vec![Interface::V1(CurrentInterfaceVersion {
+                    status: InterfaceStatus::Activated,
                     name: "lo0".to_string(),
                     interface_type: InterfaceType::Loopback,
                     loopback_type: LoopbackType::Vpnv4,
@@ -143,7 +145,7 @@ mod tests {
                     ip_net: "10.0.1.1/24".parse().unwrap(),
                     node_segment_idx: 13,
                     user_tunnel_endpoint: false,
-                }]),
+                })]),
             }))
             .times(1)
             .returning(move |_| Ok(signature));

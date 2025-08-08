@@ -81,7 +81,7 @@ impl CreateDZXLinkCliCommand {
         if !side_a_dev
             .interfaces
             .iter()
-            .any(|i| i.name == self.side_a_interface)
+            .any(|i| i.into_current_version().name == self.side_a_interface)
         {
             return Err(eyre!(
                 "Interface '{}' not found on side A device",
@@ -119,8 +119,8 @@ mod tests {
     };
     use doublezero_sdk::{
         commands::{device::get::GetDeviceCommand, link::create::CreateLinkCommand},
-        get_device_pda, AccountType, Device, DeviceStatus, DeviceType, LinkLinkType,
-        CURRENT_INTERFACE_VERSION,
+        get_device_pda, AccountType, CurrentInterfaceVersion, Device, DeviceStatus, DeviceType,
+        InterfaceStatus, LinkLinkType,
     };
     use doublezero_serviceability::state::device::{Interface, InterfaceType, LoopbackType};
     use mockall::predicate;
@@ -158,8 +158,8 @@ mod tests {
             status: DeviceStatus::Activated,
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![Interface {
-                version: CURRENT_INTERFACE_VERSION,
+            interfaces: vec![Interface::V1(CurrentInterfaceVersion {
+                status: InterfaceStatus::Pending,
                 name: "eth0".to_string(),
                 interface_type: InterfaceType::Physical,
                 loopback_type: LoopbackType::None,
@@ -167,7 +167,7 @@ mod tests {
                 ip_net: "10.2.0.1/24".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
-            }],
+            })],
         };
         let location2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let exchange2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkce");
@@ -188,8 +188,8 @@ mod tests {
             status: DeviceStatus::Activated,
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![Interface {
-                version: CURRENT_INTERFACE_VERSION,
+            interfaces: vec![Interface::V1(CurrentInterfaceVersion {
+                status: InterfaceStatus::Pending,
                 name: "eth1".to_string(),
                 interface_type: InterfaceType::Physical,
                 loopback_type: LoopbackType::None,
@@ -197,7 +197,7 @@ mod tests {
                 ip_net: "10.2.0.2/24".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
-            }],
+            })],
         };
 
         client

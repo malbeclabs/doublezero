@@ -5,7 +5,10 @@ use crate::{
     validators::validate_pubkey_or_code,
 };
 use clap::Args;
-use doublezero_sdk::commands::device::{get::GetDeviceCommand, update::UpdateDeviceCommand};
+use doublezero_sdk::{
+    commands::device::{get::GetDeviceCommand, update::UpdateDeviceCommand},
+    CurrentInterfaceVersion,
+};
 use doublezero_serviceability::{state::device, types::NetworkV4};
 use std::io::Write;
 
@@ -45,7 +48,7 @@ impl CreateDeviceInterfaceCliCommand {
         device
             .interfaces
             .iter()
-            .find(|i| i.name == self.name)
+            .find(|i| i.into_current_version().name == self.name)
             .map_or(Ok(()), |_| {
                 Err(eyre::eyre!(
                     "Interface with name '{}' already exists",
@@ -70,8 +73,8 @@ impl CreateDeviceInterfaceCliCommand {
         }
 
         let mut interfaces = device.interfaces;
-        interfaces.push(device::Interface {
-            version: device::CURRENT_INTERFACE_VERSION,
+        interfaces.push(device::Interface::V1(CurrentInterfaceVersion {
+            status: device::InterfaceStatus::Pending,
             name: self.name.clone(),
             interface_type: self.interface_type.into(),
             loopback_type: self.loopback_type.into(),
@@ -79,8 +82,12 @@ impl CreateDeviceInterfaceCliCommand {
             ip_net: NetworkV4::default(),
             node_segment_idx: 0,
             user_tunnel_endpoint: self.user_tunnel_endpoint,
+        }));
+        interfaces.sort_by(|a, b| {
+            a.into_current_version()
+                .name
+                .cmp(&b.into_current_version().name)
         });
-        interfaces.sort_by(|a, b| a.name.cmp(&b.name));
 
         let signature = client.update_device(UpdateDeviceCommand {
             pubkey: device_pk,
@@ -101,18 +108,11 @@ impl CreateDeviceInterfaceCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        device::interface::create::CreateDeviceInterfaceCliCommand,
-        requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-        tests::utils::create_test_client,
-    };
-    use doublezero_sdk::{
-        commands::device::{get::GetDeviceCommand, update::UpdateDeviceCommand},
-        AccountType, Device, DeviceStatus, DeviceType,
-    };
-    use doublezero_serviceability::{
-        state::device::{Interface, InterfaceType, LoopbackType},
-        types::NetworkV4,
+    use super::*;
+    use crate::tests::utils::create_test_client;
+    use doublezero_sdk::{AccountType, Device, DeviceStatus, DeviceType};
+    use doublezero_serviceability::state::device::{
+        Interface, InterfaceStatus, InterfaceType, LoopbackType,
     };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
@@ -142,8 +142,8 @@ mod tests {
             ),
             owner: device1_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![Interface {
-                version: super::device::CURRENT_INTERFACE_VERSION,
+            interfaces: vec![Interface::V1(CurrentInterfaceVersion {
+                status: InterfaceStatus::Pending,
                 name: "eth0".to_string(),
                 interface_type: InterfaceType::Physical,
                 loopback_type: LoopbackType::None,
@@ -151,7 +151,7 @@ mod tests {
                 ip_net: "10.0.0.1/24".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
-            }],
+            })],
         };
 
         client
@@ -177,8 +177,8 @@ mod tests {
                 contributor_pk: None,
                 mgmt_vrf: None,
                 interfaces: Some(vec![
-                    Interface {
-                        version: super::device::CURRENT_INTERFACE_VERSION,
+                    Interface::V1(CurrentInterfaceVersion {
+                        status: InterfaceStatus::Pending,
                         name: "eth0".to_string(),
                         interface_type: InterfaceType::Physical,
                         loopback_type: LoopbackType::None,
@@ -186,9 +186,9 @@ mod tests {
                         ip_net: "10.0.0.1/24".parse().unwrap(),
                         node_segment_idx: 0,
                         user_tunnel_endpoint: true,
-                    },
-                    Interface {
-                        version: super::device::CURRENT_INTERFACE_VERSION,
+                    }),
+                    Interface::V1(CurrentInterfaceVersion {
+                        status: InterfaceStatus::Pending,
                         name: "lo0".to_string(),
                         interface_type: InterfaceType::Loopback,
                         loopback_type: LoopbackType::Ipv4,
@@ -196,7 +196,7 @@ mod tests {
                         ip_net: NetworkV4::default(),
                         node_segment_idx: 0,
                         user_tunnel_endpoint: false,
-                    },
+                    }),
                 ]),
             }))
             .times(1)

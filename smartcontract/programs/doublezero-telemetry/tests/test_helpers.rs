@@ -21,7 +21,7 @@ use doublezero_serviceability::{
         location::{create::LocationCreateArgs, suspend::LocationSuspendArgs},
     },
     state::{
-        device::{Device, DeviceType, Interface, CURRENT_INTERFACE_VERSION},
+        device::{CurrentInterfaceVersion, Device, DeviceType, Interface},
         globalstate::GlobalState,
         link::{Link, LinkLinkType},
         location::Location,
@@ -323,11 +323,10 @@ impl LedgerHelper {
                     public_ip: [1, 2, 3, 4].into(),
                     dz_prefixes: NetworkV4List::default(),
                     metrics_publisher_pk: origin_device_agent_pk,
-                    interfaces: vec![Interface {
-                        version: CURRENT_INTERFACE_VERSION,
+                    interfaces: vec![Interface::V1(CurrentInterfaceVersion {
                         name: "eth0".to_string(),
-                        ..Interface::default()
-                    }],
+                        ..CurrentInterfaceVersion::default()
+                    })],
                     ..DeviceCreateArgs::default()
                 },
                 contributor_pk,
@@ -345,11 +344,10 @@ impl LedgerHelper {
                     device_type: DeviceType::Switch,
                     public_ip: [5, 6, 7, 8].into(),
                     metrics_publisher_pk: Pubkey::new_unique(),
-                    interfaces: vec![Interface {
-                        version: CURRENT_INTERFACE_VERSION,
+                    interfaces: vec![Interface::V1(CurrentInterfaceVersion {
                         name: "eth1".to_string(),
-                        ..Interface::default()
-                    }],
+                        ..CurrentInterfaceVersion::default()
+                    })],
                     ..DeviceCreateArgs::default()
                 },
                 contributor_pk,

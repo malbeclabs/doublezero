@@ -97,6 +97,10 @@ interface Switch1/1/2.100
    isis hello padding
    isis network point-to-point
 !
+interface Loopback1000
+   description RP Address
+   ip address 10.0.0.0/32
+!
 mpls ip
 !
 default interface Tunnel500

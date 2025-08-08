@@ -69,6 +69,10 @@ interface Loopback255
    node-segment ipv4 index 15
    isis enable 1
 !
+interface Loopback1000
+   description RP Address
+   ip address 10.0.0.0/32
+!
 mpls ip
 !
 router bgp 65342

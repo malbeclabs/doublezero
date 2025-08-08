@@ -110,6 +110,10 @@ interface {{ .Name }}
    {{- end }}
 !
 {{- end }}
+interface Loopback1000
+   description RP Address
+   ip address 10.0.0.0/32
+!
 mpls ip
 !
 {{- range .Device.Tunnels }}

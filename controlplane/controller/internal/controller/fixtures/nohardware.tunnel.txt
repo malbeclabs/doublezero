@@ -57,6 +57,10 @@ ip access-list MAIN-CONTROL-PLANE-ACL
 system control-plane
    ip access-group MAIN-CONTROL-PLANE-ACL in
 !
+interface Loopback1000
+   description RP Address
+   ip address 10.0.0.0/32
+!
 mpls ip
 !
 default interface Tunnel500

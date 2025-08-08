@@ -73,6 +73,10 @@ interface Loopback256
    ip address 12.12.12.12/32
    isis enable 1
 !
+interface Loopback1000
+   description RP Address
+   ip address 10.0.0.0/32
+!
 mpls ip
 !
 default interface Tunnel500

@@ -673,3 +673,24 @@ impl From<ConfigureContributorRewardsAccounts> for Vec<AccountMeta> {
         ]
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerifyDistributionMerkleRootAccounts {
+    pub distribution_key: Pubkey,
+}
+
+impl VerifyDistributionMerkleRootAccounts {
+    pub fn new(dz_epoch: DoubleZeroEpoch) -> Self {
+        Self {
+            distribution_key: Distribution::find_address(dz_epoch).0,
+        }
+    }
+}
+
+impl From<VerifyDistributionMerkleRootAccounts> for Vec<AccountMeta> {
+    fn from(accounts: VerifyDistributionMerkleRootAccounts) -> Self {
+        let VerifyDistributionMerkleRootAccounts { distribution_key } = accounts;
+
+        vec![AccountMeta::new_readonly(distribution_key, false)]
+    }
+}

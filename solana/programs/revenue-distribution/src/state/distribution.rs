@@ -3,8 +3,8 @@ use doublezero_program_tools::{
     types::{Flags, StorageGap},
     {Discriminator, PrecomputedDiscriminator},
 };
-use solana_hash::Hash;
 use solana_pubkey::Pubkey;
+use svm_hash::sha2::Hash;
 
 use crate::{
     state::SolanaValidatorFeeParameters,

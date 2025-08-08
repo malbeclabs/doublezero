@@ -3,20 +3,23 @@ mod common;
 //
 
 use doublezero_revenue_distribution::{
-    instruction::{ProgramConfiguration, ProgramFlagConfiguration},
-    state::{self, Distribution},
-    types::{BurnRate, DoubleZeroEpoch, ValidatorFee},
+    instruction::{
+        DistributionMerkleRootKind, DistributionPaymentsConfiguration, ProgramConfiguration,
+        ProgramFlagConfiguration,
+    },
+    types::{DoubleZeroEpoch, SolanaValidatorPayment},
 };
 use solana_program_test::tokio;
+use solana_pubkey::Pubkey;
 use solana_sdk::signature::{Keypair, Signer};
-use svm_hash::sha2::Hash;
+use svm_hash::merkle::{merkle_root_from_byte_ref_leaves, MerkleProof};
 
 //
-// Configure distribution rewards.
+// Verify distribution merkle root.
 //
 
 #[tokio::test]
-async fn test_configure_distribution_rewards() {
+async fn test_verify_distribution_merkle_root() {
     let mut test_setup = common::start_test().await;
 
     let admin_signer = Keypair::new();
@@ -33,6 +36,28 @@ async fn test_configure_distribution_rewards() {
 
     // Relay settings.
     let contributor_reward_claim_relay_lamports = 10_000;
+
+    // Distribution.
+
+    let dz_epoch = DoubleZeroEpoch::new(1);
+
+    let payments_data = (0..69)
+        .map(|i| SolanaValidatorPayment {
+            node_id: Pubkey::new_unique(),
+            amount: 100_000_000_000 * (i + 1),
+        })
+        .collect::<Vec<_>>();
+
+    let leaves = payments_data
+        .iter()
+        .map(|payment| borsh::to_vec(&payment).unwrap())
+        .collect::<Vec<_>>();
+
+    let merkle_root =
+        merkle_root_from_byte_ref_leaves(&leaves, Some(SolanaValidatorPayment::LEAF_PREFIX))
+            .unwrap();
+
+    let total_lamports_owed = payments_data.iter().map(|payment| payment.amount).sum();
 
     test_setup
         .initialize_program()
@@ -75,37 +100,43 @@ async fn test_configure_distribution_rewards() {
         .unwrap()
         .initialize_distribution(&payments_accountant_signer)
         .await
-        .unwrap();
-
-    // Test inputs.
-
-    let dz_epoch = DoubleZeroEpoch::new(1);
-
-    let total_contributors = 69;
-    let rewards_merkle_root = Hash::new_unique();
-
-    test_setup
-        .configure_distribution_rewards(
+        .unwrap()
+        .configure_distribution_payments(
             dz_epoch,
-            &rewards_accountant_signer,
-            total_contributors,
-            rewards_merkle_root,
+            &payments_accountant_signer,
+            [
+                DistributionPaymentsConfiguration::UpdateSolanaValidatorPayments {
+                    total_lamports_owed,
+                    merkle_root,
+                },
+            ],
         )
         .await
         .unwrap();
 
-    let (distribution_key, distribution, _, _) = test_setup.fetch_distribution(dz_epoch).await;
+    let kinds_and_proofs = payments_data
+        .iter()
+        .copied()
+        .enumerate()
+        .map(|(i, payment_owed)| {
+            let proof = MerkleProof::from_byte_ref_leaves(
+                &leaves,
+                i,
+                Some(SolanaValidatorPayment::LEAF_PREFIX),
+            )
+            .unwrap();
 
-    let mut expected_distribution = Distribution::default();
-    expected_distribution.bump_seed = Distribution::find_address(dz_epoch).1;
-    expected_distribution.token_2z_pda_bump_seed =
-        state::find_2z_token_pda_address(&distribution_key).1;
-    expected_distribution.dz_epoch = dz_epoch;
-    expected_distribution.community_burn_rate = BurnRate::new(initial_cbr).unwrap();
-    expected_distribution
-        .solana_validator_fee_parameters
-        .base_block_rewards = ValidatorFee::new(solana_validator_base_block_rewards_fee).unwrap();
-    expected_distribution.total_contributors = total_contributors;
-    expected_distribution.rewards_merkle_root = rewards_merkle_root;
-    assert_eq!(distribution, expected_distribution);
+            (
+                DistributionMerkleRootKind::SolanaValidatorPayment(payment_owed),
+                proof,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    for chunk in kinds_and_proofs.chunks(64) {
+        test_setup
+            .verify_distribution_merkle_root(dz_epoch, chunk.to_vec())
+            .await
+            .unwrap();
+    }
 }

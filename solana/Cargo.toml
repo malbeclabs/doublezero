@@ -47,6 +47,7 @@ solana-system-interface = "1"
 solana-sysvar = "2"
 solana-transaction-status-client-types = "2"
 spl-token = { version = "8", features = ["no-entrypoint"] }
+svm-hash = "0.1.0-beta.3"
 tokio = "1"
 
 ### Please keep these packages pinned for now.

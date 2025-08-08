@@ -1474,7 +1474,6 @@ dependencies = [
  "doublezero-program-tools",
  "solana-account-info",
  "solana-cpi",
- "solana-hash",
  "solana-instruction",
  "solana-loader-v3-interface",
  "solana-msg",
@@ -1487,6 +1486,7 @@ dependencies = [
  "solana-system-interface",
  "solana-sysvar",
  "spl-token",
+ "svm-hash",
 ]
 
 [[package]]
@@ -7616,6 +7616,18 @@ name = "subtle"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
+
+[[package]]
+name = "svm-hash"
+version = "0.1.0-beta.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57618ddee24520985de605b829605fc17e9b75132c3d1ca2dbbc2a414d3b48dd"
+dependencies = [
+ "borsh 1.5.7",
+ "bytemuck",
+ "solana-hash",
+ "solana-sha256-hasher",
+]
 
 [[package]]
 name = "symlink"

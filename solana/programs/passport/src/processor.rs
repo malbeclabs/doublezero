@@ -4,14 +4,16 @@ use doublezero_program_tools::{
         try_next_enumerated_account, EnumeratedAccountInfoIter, NextAccountOptions,
         TryNextAccounts, UpgradeAuthority,
     },
-    recipe::{create_account::try_create_account, Invoker},
+    recipe::{
+        create_account::{try_create_account, CreateAccountOptions},
+        Invoker,
+    },
     zero_copy::{self, ZeroCopyAccount, ZeroCopyMutAccount},
 };
 use solana_account_info::AccountInfo;
 use solana_msg::msg;
 use solana_program_error::{ProgramError, ProgramResult};
 use solana_pubkey::Pubkey;
-use solana_sysvar::{rent::Rent, Sysvar};
 
 use crate::{
     instruction::{
@@ -81,8 +83,6 @@ fn try_initialize_program(accounts: &[AccountInfo]) -> ProgramResult {
         return Err(ProgramError::InvalidSeeds);
     }
 
-    let rent_sysvar = Rent::get().unwrap();
-
     try_create_account(
         Invoker::Signer(payer_info.key),
         Invoker::Pda {
@@ -93,8 +93,7 @@ fn try_initialize_program(accounts: &[AccountInfo]) -> ProgramResult {
         zero_copy::data_end::<ProgramConfig>(),
         &ID,
         accounts,
-        Some(&rent_sysvar),
-        None,
+        Default::default(),
     )?;
 
     // Establish the discriminator. Set other fields using the configure program instruction.
@@ -218,6 +217,10 @@ fn try_request_access(accounts: &[AccountInfo], access_mode: AccessMode) -> Prog
         return Err(ProgramError::InvalidSeeds);
     }
 
+    let additional_lamports = program_config
+        .access_request_deposit_parameters
+        .request_deposit_lamports;
+
     try_create_account(
         Invoker::Signer(payer_info.key),
         Invoker::Pda {
@@ -232,12 +235,10 @@ fn try_request_access(accounts: &[AccountInfo], access_mode: AccessMode) -> Prog
         zero_copy::data_end::<AccessRequest>(),
         &ID,
         accounts,
-        None, // rent_sysvar
-        Some(
-            program_config
-                .access_request_deposit_parameters
-                .request_deposit_lamports,
-        ), // additional lamports to seed the account
+        CreateAccountOptions {
+            rent_sysvar: None,
+            additional_lamports: Some(additional_lamports),
+        },
     )?;
 
     // Finalize init the access request with the user service and beneficiary keys

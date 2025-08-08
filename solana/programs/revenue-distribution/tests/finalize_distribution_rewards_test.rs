@@ -13,13 +13,13 @@ use doublezero_revenue_distribution::{
     types::{BurnRate, DoubleZeroEpoch, ValidatorFee},
     ID,
 };
-use solana_hash::Hash;
 use solana_program_test::tokio;
 use solana_sdk::{
     instruction::InstructionError,
     signature::{Keypair, Signer},
     transaction::TransactionError,
 };
+use svm_hash::sha2::Hash;
 
 //
 // Finalize distribution rewards.
@@ -104,7 +104,8 @@ async fn test_finalize_distribution_rewards() {
 
     // Cannot finalize until payments have not been finalized.
 
-    let (tx_err, program_logs) = cannot_finalize_distribution_rewards(&test_setup, dz_epoch).await;
+    let (tx_err, program_logs) =
+        cannot_finalize_distribution_rewards(&mut test_setup, dz_epoch).await;
     assert_eq!(
         tx_err,
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
@@ -125,7 +126,8 @@ async fn test_finalize_distribution_rewards() {
 
     // Cannot finalize until the minimum number of epochs has been configured.
 
-    let (tx_err, program_logs) = cannot_finalize_distribution_rewards(&test_setup, dz_epoch).await;
+    let (tx_err, program_logs) =
+        cannot_finalize_distribution_rewards(&mut test_setup, dz_epoch).await;
     assert_eq!(
         tx_err,
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
@@ -154,7 +156,8 @@ async fn test_finalize_distribution_rewards() {
 
     // Cannot finalize until the minimum number of epochs have passed.
 
-    let (tx_err, program_logs) = cannot_finalize_distribution_rewards(&test_setup, dz_epoch).await;
+    let (tx_err, program_logs) =
+        cannot_finalize_distribution_rewards(&mut test_setup, dz_epoch).await;
     assert_eq!(
         tx_err,
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
@@ -240,7 +243,8 @@ async fn test_finalize_distribution_rewards() {
 
     // Cannot finalize again.
 
-    let (tx_err, program_logs) = cannot_finalize_distribution_rewards(&test_setup, dz_epoch).await;
+    let (tx_err, program_logs) =
+        cannot_finalize_distribution_rewards(&mut test_setup, dz_epoch).await;
     assert_eq!(
         tx_err,
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
@@ -252,7 +256,7 @@ async fn test_finalize_distribution_rewards() {
 }
 
 async fn cannot_finalize_distribution_rewards(
-    test_setup: &common::ProgramTestWithOwner,
+    test_setup: &mut common::ProgramTestWithOwner,
     dz_epoch: DoubleZeroEpoch,
 ) -> (TransactionError, Vec<String>) {
     let payer_key = test_setup.payer_signer.pubkey();

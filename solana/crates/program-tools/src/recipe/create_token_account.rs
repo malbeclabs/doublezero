@@ -24,8 +24,10 @@ pub fn try_create_token_account(
         spl_token::state::Account::LEN,
         &spl_token::ID,
         accounts,
-        rent_sysvar,
-        None, // No additional lamports for token accounts
+        super::create_account::CreateAccountOptions {
+            rent_sysvar,
+            additional_lamports: None, // No additional lamports for token accounts
+        },
     )?;
 
     let initialize_token_account_ix = spl_token::instruction::initialize_account3(

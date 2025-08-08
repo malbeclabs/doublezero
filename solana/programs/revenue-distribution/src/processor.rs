@@ -5,24 +5,27 @@ use doublezero_program_tools::{
         TryNextAccounts, UpgradeAuthority,
     },
     recipe::{
-        create_account::try_create_account, create_token_account::try_create_token_account, Invoker,
+        create_account::{try_create_account, CreateAccountOptions},
+        create_token_account::try_create_token_account,
+        Invoker,
     },
     zero_copy::{self, ZeroCopyAccount, ZeroCopyMutAccount},
 };
 use solana_account_info::{AccountInfo, MAX_PERMITTED_DATA_INCREASE};
 use solana_cpi::invoke_signed_unchecked;
-use solana_hash::Hash;
 use solana_msg::msg;
 use solana_program_error::{ProgramError, ProgramResult};
 use solana_pubkey::Pubkey;
 use solana_system_interface::instruction as system_instruction;
 use solana_sysvar::{rent::Rent, Sysvar};
 use spl_token::instruction as token_instruction;
+use svm_hash::{merkle::MerkleProof, sha2::Hash};
 
 use crate::{
     instruction::{
-        ContributorRewardsConfiguration, DistributionPaymentsConfiguration, JournalConfiguration,
-        ProgramConfiguration, ProgramFlagConfiguration, RevenueDistributionInstructionData,
+        ContributorRewardsConfiguration, DistributionMerkleRootKind,
+        DistributionPaymentsConfiguration, JournalConfiguration, ProgramConfiguration,
+        ProgramFlagConfiguration, RevenueDistributionInstructionData,
     },
     state::{
         self, CommunityBurnRateParameters, ContributorRewards, Distribution, Journal,
@@ -99,6 +102,9 @@ fn try_process_instruction(
         RevenueDistributionInstructionData::ConfigureContributorRewards(setting) => {
             try_configure_contributor_rewards(accounts, setting)
         }
+        RevenueDistributionInstructionData::VerifyDistributionMerkleRoot { kind, proof } => {
+            try_verify_distribution_merkle_root(accounts, kind, proof)
+        }
     }
 }
 
@@ -147,8 +153,10 @@ fn try_initialize_program(accounts: &[AccountInfo]) -> ProgramResult {
         zero_copy::data_end::<ProgramConfig>(),
         &ID,
         accounts,
-        Some(&rent_sysvar),
-        None, // additional_lamports
+        CreateAccountOptions {
+            rent_sysvar: Some(&rent_sysvar),
+            additional_lamports: None,
+        },
     )?;
 
     // Account 2 must be the new reserve 2Z token account. This account should not exist yet.
@@ -503,8 +511,10 @@ fn try_initialize_journal(accounts: &[AccountInfo]) -> ProgramResult {
         MAX_PERMITTED_DATA_INCREASE,
         &ID,
         accounts,
-        Some(&rent_sysvar),
-        None, // additional_lamports
+        CreateAccountOptions {
+            rent_sysvar: Some(&rent_sysvar),
+            additional_lamports: None,
+        },
     )?;
 
     // Account 2 must be the new 2Z token account. This account should not exist yet.
@@ -711,8 +721,10 @@ fn try_initialize_distribution(accounts: &[AccountInfo]) -> ProgramResult {
         zero_copy::data_end::<Distribution>(),
         &ID,
         accounts,
-        Some(&rent_sysvar),
-        None, // additional_lamports
+        CreateAccountOptions {
+            rent_sysvar: Some(&rent_sysvar),
+            additional_lamports: None,
+        },
     )?;
 
     // Account 2 must be the new 2Z token account. This account should not exist yet.
@@ -1131,8 +1143,7 @@ fn try_initialize_prepaid_connection(
         zero_copy::data_end::<PrepaidConnection>(),
         &ID,
         accounts,
-        None, // rent_sysvar
-        None, // additional_lamports
+        Default::default(),
     )?;
 
     // Finalize initialize the prepaid connection with the user and beneficiary keys.
@@ -1630,8 +1641,7 @@ fn try_initialize_contributor_rewards(
         zero_copy::data_end::<ContributorRewards>(),
         &ID,
         accounts,
-        None, // rent_sysvar
-        None, // additional_lamports
+        Default::default(),
     )?;
 
     // Finally, initialize the contributor rewards with the service key.
@@ -1728,6 +1738,38 @@ fn try_configure_contributor_rewards(
         }
     }
 
+    Ok(())
+}
+
+fn try_verify_distribution_merkle_root(
+    accounts: &[AccountInfo],
+    kind: DistributionMerkleRootKind,
+    proof: MerkleProof,
+) -> ProgramResult {
+    msg!("Verify distribution payment");
+
+    // We expect only the distribution account for this instruction.
+    let mut accounts_iter = accounts.iter().enumerate();
+    let distribution =
+        ZeroCopyAccount::<Distribution>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    match kind {
+        DistributionMerkleRootKind::SolanaValidatorPayment(payment_owed) => {
+            let merkle_root = payment_owed.merkle_root(proof);
+
+            if merkle_root != distribution.solana_validator_payments_merkle_root.into() {
+                msg!("Invalid merkle root: {}", merkle_root);
+                return Err(ProgramError::InvalidInstructionData);
+            }
+
+            msg!("Solana validator");
+            msg!("  node_id: {}", payment_owed.node_id);
+            msg!("  amount: {}", payment_owed.amount);
+        }
+        DistributionMerkleRootKind::RewardShare() => {
+            todo!()
+        }
+    }
     Ok(())
 }
 

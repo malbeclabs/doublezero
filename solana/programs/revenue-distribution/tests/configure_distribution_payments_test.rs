@@ -9,9 +9,9 @@ use doublezero_revenue_distribution::{
     state::{self, Distribution},
     types::{BurnRate, DoubleZeroEpoch, ValidatorFee},
 };
-use solana_hash::Hash;
 use solana_program_test::tokio;
 use solana_sdk::signature::{Keypair, Signer};
+use svm_hash::sha2::Hash;
 
 //
 // Configure distribution payments.

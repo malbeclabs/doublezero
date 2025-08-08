@@ -17,7 +17,6 @@ vrf instance vrf1
 ip routing
 ip routing vrf vrf1
 !
-!
 ntp server 0.pool.ntp.org
 ntp server 1.pool.ntp.org
 ntp server 2.pool.ntp.org

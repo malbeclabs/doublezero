@@ -38,7 +38,6 @@ vrf instance vrf1
 ip routing
 ip routing vrf vrf1
 !
-!
 {{- if .Device.MgmtVrf }}
 ntp server vrf {{ .Device.MgmtVrf }} 0.pool.ntp.org
 ntp server vrf {{ .Device.MgmtVrf }} 1.pool.ntp.org

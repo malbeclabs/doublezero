@@ -30,7 +30,6 @@ vrf instance vrf1
 ip routing
 ip routing vrf vrf1
 !
-!
 ntp server vrf test-mgmt-vrf 0.pool.ntp.org
 ntp server vrf test-mgmt-vrf 1.pool.ntp.org
 ntp server vrf test-mgmt-vrf 2.pool.ntp.org

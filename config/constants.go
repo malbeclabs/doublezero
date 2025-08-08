@@ -5,7 +5,7 @@ const (
 	MainnetLedgerRPCURL               = "TODO"
 	MainnetServiceabilityProgramID    = "TODO"
 	MainnetTelemetryProgramID         = "TODO"
-	MainnetInternetLatencyCollectorPK = "TODO"
+	MainnetInternetLatencyCollectorPK = "8xHn4r7oQuqNZ5cLYwL5YZcDy1JjDQcpVkyoA8Dw5uXH"
 
 	// Testnet constants.
 	TestnetLedgerRPCURL               = "https://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30"

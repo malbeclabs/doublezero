@@ -28,7 +28,7 @@ impl Environment {
                 ledger_ws_url: "TODO".to_string(),
                 serviceability_program_id: "TODO".parse()?,
                 telemetry_program_id: "TODO".parse()?,
-                internet_latency_collector_pk: "TODO".parse()?,
+                internet_latency_collector_pk: "8xHn4r7oQuqNZ5cLYwL5YZcDy1JjDQcpVkyoA8Dw5uXH".parse()?,
             },
             Environment::Testnet => NetworkConfig {
                 ledger_rpc_url: "https://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30".to_string(),
@@ -88,7 +88,10 @@ mod tests {
         assert_eq!(config.ledger_ws_url, "TODO");
         assert_eq!(config.serviceability_program_id.to_string(), "TODO");
         assert_eq!(config.telemetry_program_id.to_string(), "TODO");
-        assert_eq!(config.internet_latency_collector_pk.to_string(), "TODO");
+        assert_eq!(
+            config.internet_latency_collector_pk.to_string(),
+            "8xHn4r7oQuqNZ5cLYwL5YZcDy1JjDQcpVkyoA8Dw5uXH"
+        );
     }
 
     #[test]

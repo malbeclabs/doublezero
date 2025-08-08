@@ -1,6 +1,6 @@
 use crate::{process::process_device_samples, util::display_us_as_ms};
 use anyhow::Result;
-use borsh::BorshSerialize;
+use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_sdk::serializer;
 use ingestor::types::FetchData;
 use serde::Serialize;
@@ -12,7 +12,7 @@ use tracing::debug;
 // Key: link_pk
 pub type DZDTelemetryStatMap = HashMap<String, DZDTelemetryStats>;
 
-#[derive(Debug, Clone, Tabled, Serialize, BorshSerialize)]
+#[derive(Debug, Clone, Tabled, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct DZDTelemetryStats {
     pub circuit: String,
     #[tabled(skip)]

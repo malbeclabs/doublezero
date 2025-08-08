@@ -32,7 +32,12 @@ pub enum Commands {
         #[arg(short, long)]
         output_dir: Option<PathBuf>,
     },
-    // TODO: Add more commands
+    /// Calculate epoch rewards
+    ReadTelemAgg {
+        /// Require DZ Epoch
+        #[arg(short, long)]
+        epoch: u64,
+    },
 }
 
 impl Cli {
@@ -44,6 +49,7 @@ impl Cli {
 
         // Handle subcommands
         match self.command {
+            Commands::ReadTelemAgg { epoch } => orchestrator.read_telemetry_aggregates(epoch).await,
             Commands::CalculateRewards { epoch, output_dir } => {
                 orchestrator.calculate_rewards(epoch, output_dir).await
             }

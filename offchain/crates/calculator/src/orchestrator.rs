@@ -1,19 +1,24 @@
 use crate::{
     csv_exporter,
-    recorder::{load_default_keypair, try_create_record, write_record_chunks},
+    recorder::{load_default_keypair, make_record_key, try_create_record, write_record_chunks},
     settings::Settings,
     shapley_handler::{build_demands, build_devices, build_private_links, build_public_links},
     util::{print_demands, print_devices, print_private_links, print_public_links},
 };
-use anyhow::Result;
+use anyhow::{Result, bail};
+use backon::{ExponentialBuilder, Retryable};
+use doublezero_record::state::RecordData;
 use ingestor::fetcher::Fetcher;
 use itertools::Itertools;
 use network_shapley::{shapley::ShapleyInput, types::Demand};
 use processor::{
-    internet::{InternetTelemetryProcessor, print_internet_stats},
-    telemetry::{DZDTelemetryProcessor, print_telemetry_stats},
+    internet::{InternetTelemetryProcessor, InternetTelemetryStatMap, print_internet_stats},
+    telemetry::{DZDTelemetryProcessor, DZDTelemetryStatMap, print_telemetry_stats},
 };
+use solana_client::client_error::ClientError as SolanaClientError;
+use solana_sdk::commitment_config::CommitmentConfig;
 use std::path::PathBuf;
+use std::time::Duration;
 use tabled::{builder::Builder as TableBuilder, settings::Style};
 use tracing::info;
 
@@ -171,6 +176,73 @@ impl Orchestrator {
                 .with(Style::psql().remove_horizontals())
                 .to_string();
             info!("Shapley Output:\n{}", table)
+        }
+
+        Ok(())
+    }
+
+    pub async fn read_telemetry_aggregates(&self, epoch: u64) -> Result<()> {
+        // Create fetcher
+        let ingestor_settings = ingestor::settings::Settings::new(self.cfg_path.clone())?;
+        let fetcher = Fetcher::new(&ingestor_settings)?;
+        let payer_signer = load_default_keypair()?;
+
+        {
+            let prefix: &[u8] = b"doublezero_device_telemetry_aggregate_test1";
+            let seeds = &[prefix, &epoch.to_le_bytes()];
+            let record_key = make_record_key(&payer_signer, seeds);
+
+            info!("Re-created record_key: {record_key}");
+
+            let maybe_account = (|| async {
+                fetcher
+                    .rpc_client
+                    .get_account_with_commitment(&record_key, CommitmentConfig::confirmed())
+                    .await
+            })
+            .retry(&ExponentialBuilder::default().with_jitter())
+            .notify(|err: &SolanaClientError, dur: Duration| {
+                info!("retrying error: {:?} with sleeping {:?}", err, dur)
+            })
+            .await?;
+
+            match maybe_account.value {
+                None => bail!("account {record_key} has no data!"),
+                Some(acc) => {
+                    let stats: DZDTelemetryStatMap =
+                        borsh::from_slice(&acc.data[size_of::<RecordData>()..])?;
+                    info!("\n{}", print_telemetry_stats(&stats));
+                }
+            }
+        }
+
+        {
+            let prefix: &[u8] = b"doublezero_internet_telemetry_aggregate_test1";
+            let seeds = &[prefix, &epoch.to_le_bytes()];
+            let record_key = make_record_key(&payer_signer, seeds);
+
+            info!("Re-created record_key: {record_key}");
+
+            let maybe_account = (|| async {
+                fetcher
+                    .rpc_client
+                    .get_account_with_commitment(&record_key, CommitmentConfig::confirmed())
+                    .await
+            })
+            .retry(&ExponentialBuilder::default().with_jitter())
+            .notify(|err: &SolanaClientError, dur: Duration| {
+                info!("retrying error: {:?} with sleeping {:?}", err, dur)
+            })
+            .await?;
+
+            match maybe_account.value {
+                None => bail!("account {record_key} has no data!"),
+                Some(acc) => {
+                    let stats: InternetTelemetryStatMap =
+                        borsh::from_slice(&acc.data[size_of::<RecordData>()..])?;
+                    info!("\n{}", print_internet_stats(&stats));
+                }
+            }
         }
 
         Ok(())

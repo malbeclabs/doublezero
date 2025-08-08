@@ -877,9 +877,10 @@ impl ServiceabilityProgramHelper {
         let (contributor_pk, _) = get_contributor_pda(&self.program_id, index);
 
         self.execute_transaction(
-            DoubleZeroInstruction::CreateContributor(ContributorCreateArgs { code, owner }),
+            DoubleZeroInstruction::CreateContributor(ContributorCreateArgs { code }),
             vec![
                 AccountMeta::new(contributor_pk, false),
+                AccountMeta::new(owner, false),
                 AccountMeta::new(self.global_state_pubkey, false),
             ],
         )

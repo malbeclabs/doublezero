@@ -9,23 +9,26 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    program::invoke_signed_unchecked,
     program_error::ProgramError,
     pubkey::Pubkey,
+    system_instruction,
 };
 use std::fmt;
 
 #[cfg(test)]
 use solana_program::msg;
 
+const CONTRIBUTOR_AIRDROP_LAMPORTS: u64 = 1_000_000_000;
+
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct ContributorCreateArgs {
     pub code: String,
-    pub owner: Pubkey,
 }
 
 impl fmt::Debug for ContributorCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "code: {}, owner: {}", self.code, self.owner)
+        write!(f, "code: {}", self.code)
     }
 }
 
@@ -37,6 +40,7 @@ pub fn process_create_contributor(
     let accounts_iter = &mut accounts.iter();
 
     let pda_account = next_account_info(accounts_iter)?;
+    let owner_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -76,13 +80,28 @@ pub fn process_create_contributor(
 
     let contributor = Contributor {
         account_type: AccountType::Contributor,
-        owner: value.owner,
+        owner: *owner_account.key,
         index: globalstate.account_index,
         reference_count: 0,
         bump_seed,
         code: value.code.clone(),
         status: ContributorStatus::Activated,
     };
+
+    // transfer some lamports to the owner account to cover the rent exemption
+    invoke_signed_unchecked(
+        &system_instruction::transfer(
+            payer_account.key,
+            owner_account.key,
+            CONTRIBUTOR_AIRDROP_LAMPORTS,
+        ),
+        &[
+            payer_account.clone(),
+            owner_account.clone(),
+            system_program.clone(),
+        ],
+        &[],
+    )?;
 
     account_create(
         pda_account,

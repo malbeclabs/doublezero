@@ -17,8 +17,12 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/gagliardetto/solana-go"
+	"github.com/gagliardetto/solana-go/rpc"
+	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/controlplane/controller/internal/controller"
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
 var (
@@ -109,7 +113,8 @@ func NewControllerCommand() *ControllerCommand {
 	}
 	c.fs.StringVar(&c.listenAddr, "listen-addr", "localhost", "listening address for controller grpc server")
 	c.fs.StringVar(&c.listenPort, "listen-port", "443", "listening port for controller grpc server")
-	c.fs.StringVar(&c.programId, "program-id", "", "smartcontract program id to monitor")
+	c.fs.StringVar(&c.env, "env", "", "environment to run controller in")
+	c.fs.StringVar(&c.programID, "program-id", "", "smartcontract program id to monitor")
 	c.fs.StringVar(&c.rpcEndpoint, "solana-rpc-endpoint", "", "override solana rpc endpoint (default: devnet)")
 	c.fs.BoolVar(&c.noHardware, "no-hardware", false, "exclude config commands that will fail when not running on the real hardware")
 	c.fs.BoolVar(&c.showVersion, "version", false, "show version information and exit")
@@ -121,7 +126,8 @@ type ControllerCommand struct {
 	description string
 	listenAddr  string
 	listenPort  string
-	programId   string
+	env         string
+	programID   string
 	rpcEndpoint string
 	noHardware  bool
 	showVersion bool
@@ -157,12 +163,24 @@ func (c *ControllerCommand) Run() error {
 	defer stop()
 
 	options := []controller.Option{}
-	if c.programId != "" {
-		options = append(options, controller.WithProgramId(c.programId))
-	}
-
-	if c.rpcEndpoint != "" {
-		options = append(options, controller.WithRpcEndpoint(c.rpcEndpoint))
+	var serviceabilityClient controller.ServiceabilityProgramClient
+	if c.env == "" {
+		if c.programID == "" {
+			slog.Error("program-id is required")
+			os.Exit(1)
+		}
+		if c.rpcEndpoint == "" {
+			slog.Error("rpc-endpoint is required")
+			os.Exit(1)
+		}
+		serviceabilityClient = serviceability.New(rpc.New(c.rpcEndpoint), solana.MustPublicKeyFromBase58(c.programID))
+	} else {
+		networkConfig, err := config.NetworkConfigForEnv(c.env)
+		if err != nil {
+			slog.Error("failed to get network config", "error", err)
+			os.Exit(1)
+		}
+		serviceabilityClient = serviceability.New(rpc.New(networkConfig.LedgerRPCURL), networkConfig.ServiceabilityProgramID)
 	}
 
 	if c.noHardware {
@@ -175,6 +193,7 @@ func (c *ControllerCommand) Run() error {
 		os.Exit(1)
 	}
 	options = append(options, controller.WithListener(lis))
+	options = append(options, controller.WithServiceabilityProgramClient(serviceabilityClient))
 	control, err := controller.NewController(options...)
 	if err != nil {
 		slog.Error("error creating controller", "error", err)

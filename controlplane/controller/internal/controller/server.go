@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -11,10 +12,8 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
-	"github.com/gagliardetto/solana-go/rpc"
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
 	telemetryconfig "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/config"
-	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/mr-tron/base58"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -23,8 +22,13 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-type accountFetcher interface {
+var (
+	ErrServiceabilityRequired = errors.New("serviceability program client is required")
+)
+
+type ServiceabilityProgramClient interface {
 	GetProgramData(context.Context) (*serviceability.ProgramData, error)
+	ProgramID() solana.PublicKey
 }
 
 type stateCache struct {
@@ -38,14 +42,12 @@ type stateCache struct {
 type Controller struct {
 	pb.UnimplementedControllerServer
 
-	cache stateCache
-	mu    sync.RWMutex
-	accountFetcher
-	listener    net.Listener
-	programId   string
-	rpcEndpoint string
-	noHardware  bool
-	updateDone  chan struct{}
+	cache          stateCache
+	mu             sync.RWMutex
+	serviceability ServiceabilityProgramClient
+	listener       net.Listener
+	noHardware     bool
+	updateDone     chan struct{}
 }
 
 type Option func(*Controller)
@@ -64,38 +66,15 @@ func NewController(options ...Option) (*Controller, error) {
 		}
 		controller.listener = lis
 	}
-	if controller.accountFetcher == nil {
-		if controller.programId == "" {
-			controller.programId = serviceability.SERVICEABILITY_PROGRAM_ID_TESTNET
-		}
-		programID, err := solana.PublicKeyFromBase58(controller.programId)
-		if err != nil {
-			return nil, fmt.Errorf("invalid program id %s: %v", controller.programId, err)
-		}
-		if controller.rpcEndpoint == "" {
-			controller.rpcEndpoint = dzsdk.DZ_LEDGER_RPC_URL
-		}
-		client := serviceability.New(rpc.New(controller.rpcEndpoint), programID)
-		controller.accountFetcher = client
+	if controller.serviceability == nil {
+		return nil, ErrServiceabilityRequired
 	}
 	return controller, nil
 }
 
-func WithAccountFetcher(f accountFetcher) Option {
+func WithServiceabilityProgramClient(s ServiceabilityProgramClient) Option {
 	return func(c *Controller) {
-		c.accountFetcher = f
-	}
-}
-
-func WithProgramId(programId string) Option {
-	return func(c *Controller) {
-		c.programId = programId
-	}
-}
-
-func WithRpcEndpoint(rpcEndpoint string) Option {
-	return func(c *Controller) {
-		c.rpcEndpoint = rpcEndpoint
+		c.serviceability = s
 	}
 }
 
@@ -127,7 +106,7 @@ func WithNoHardware() Option {
 // are converted into a list of tunnels, stored under their respective device, and placed in a map,
 // keyed by the device's public key.
 func (c *Controller) updateStateCache(ctx context.Context) error {
-	data, err := c.accountFetcher.GetProgramData(ctx)
+	data, err := c.serviceability.GetProgramData(ctx)
 	if err != nil {
 		cacheUpdateFetchErrors.Inc()
 		return fmt.Errorf("error while loading program data: %v", err)
@@ -348,7 +327,7 @@ func (c *Controller) Run(ctx context.Context) error {
 
 	// start on-chain fetcher
 	go func() {
-		slog.Info("starting fetch of on-chain data", "program-id", c.programId, "rpc-endpoint", c.rpcEndpoint)
+		slog.Info("starting fetch of on-chain data", "program-id", c.serviceability.ProgramID())
 		if err := c.updateStateCache(ctx); err != nil {
 			cacheUpdateErrors.Inc()
 			slog.Error("error fetching accounts", "error", err)

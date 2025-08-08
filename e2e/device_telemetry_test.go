@@ -47,6 +47,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 		CYOANetwork: devnet.CYOANetworkSpec{
 			CIDRPrefix: subnetCIDRPrefix,
 		},
+		DeviceTunnelNet: "192.168.99.0/24",
 		Manager: devnet.ManagerSpec{
 			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
 		},
@@ -61,6 +62,10 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 
 	log.Info("==> Starting devnet")
 	err = dn.Start(t.Context(), nil)
+	require.NoError(t, err)
+
+	link := devnet.NewMiscNetwork(dn, log, "la2-dz01:ny5-dz01")
+	_, err = link.CreateIfNotExists(t.Context())
 	require.NoError(t, err)
 
 	// Add and start the 2 devices in parallel.
@@ -99,6 +104,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 				MetricsEnable:        true,
 				MetricsAddr:          "0.0.0.0:2114",
 			},
+			AdditionalNetworks: []string{link.Name},
 		})
 		require.NoError(t, err)
 
@@ -136,6 +142,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 				MetricsEnable:        true,
 				MetricsAddr:          "0.0.0.0:2114",
 			},
+			AdditionalNetworks: []string{link.Name},
 		})
 		require.NoError(t, err)
 
@@ -148,7 +155,6 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	log.Info("==> Adding dummy devices onchain")
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 			set -euo pipefail
-
 			doublezero device create --code ld4-dz01 --contributor co01 --location lhr --exchange xlhr --public-ip "195.219.120.72" --dz-prefixes "195.219.120.72/29" --mgmt-vrf mgmt
 			doublezero device create --code frk-dz01 --contributor co01 --location fra --exchange xfra --public-ip "195.219.220.88" --dz-prefixes "195.219.220.88/29" --mgmt-vrf mgmt
 			doublezero device create --code sg1-dz01 --contributor co01 --location sin --exchange xsin --public-ip "180.87.102.104" --dz-prefixes "180.87.102.104/29" --mgmt-vrf mgmt
@@ -156,14 +162,18 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 			doublezero device create --code pit-dzd01 --contributor co01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "204.16.243.243/32" --mgmt-vrf mgmt
 			doublezero device create --code ams-dz001 --contributor co01 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "195.219.138.56/29" --mgmt-vrf mgmt
 
-			doublezero device interface create la2-dz01 "Switch1/1/1" physical
-			doublezero device interface create ny5-dz01 "Switch1/1/1" physical
-			doublezero device interface create ld4-dz01 "Switch1/1/1" physical
-			doublezero device interface create frk-dz01 "Switch1/1/1" physical
-			doublezero device interface create sg1-dz01 "Switch1/1/1" physical
-			doublezero device interface create ty2-dz01 "Switch1/1/1" physical
-			doublezero device interface create pit-dzd01 "Switch1/1/1" physical
-			doublezero device interface create ams-dz001 "Switch1/1/1" physical
+			doublezero device interface create la2-dz01 "Ethernet2" physical
+			doublezero device interface create ny5-dz01 "Ethernet2" physical
+			doublezero device interface create ny5-dz01 "Ethernet3" physical
+			doublezero device interface create ld4-dz01 "Ethernet2" physical
+			doublezero device interface create ld4-dz01 "Ethernet3" physical
+			doublezero device interface create ld4-dz01 "Ethernet4" physical
+			doublezero device interface create frk-dz01 "Ethernet2" physical
+			doublezero device interface create sg1-dz01 "Ethernet2" physical
+			doublezero device interface create sg1-dz01 "Ethernet3" physical
+			doublezero device interface create ty2-dz01 "Ethernet2" physical
+			doublezero device interface create pit-dzd01 "Ethernet2" physical
+			doublezero device interface create ams-dz001 "Ethernet2" physical
 
 			doublezero device interface create la2-dz01 "Loopback255" loopback --loopback-type vpnv4
 			doublezero device interface create ny5-dz01 "Loopback255" loopback --loopback-type vpnv4
@@ -189,20 +199,18 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 			set -euo pipefail
 
-			doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Switch1/1/1 --side-z ny5-dz01 --side-z-interface Switch1/1/1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
-			doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Switch1/1/1 --side-z ld4-dz01 --side-z-interface Switch1/1/1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
-			doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Switch1/1/1 --side-z frk-dz01 --side-z-interface Switch1/1/1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10
-			doublezero link create wan --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Switch1/1/1 --side-z sg1-dz01 --side-z-interface Switch1/1/1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9
-			doublezero link create wan --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-a-interface Switch1/1/1 --side-z ty2-dz01 --side-z-interface Switch1/1/1 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7
+			doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
+			doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet3 --side-z ld4-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 3
+			doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet3 --side-z frk-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 25 --jitter-ms 10
+			doublezero link create wan --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet4 --side-z sg1-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9
+			doublezero link create wan --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-a-interface Ethernet3 --side-z ty2-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7
 		`})
 	require.NoError(t, err)
 
-	// Manually create tunnel interfaces on the devices.
-	// NOTE: This is a workaround until tunnels on devices are configured automatically when links
-	// are created.
-	la2ToNY5LinkTunnelLA2IP := "172.16.0.18" // 172.16.0.0/31 expected to be allocated to this link by the activator
-	la2ToNY5LinkTunnelNY5IP := "172.16.0.19" // 172.16.0.0/31 expected to be allocated to this link by the activator
-	ny5ToLD4LinkTunnelNY5IP := "172.16.0.20" // 172.16.0.2/31 expected to be allocated to this link by the activator
+	la2ToNY5LinkTunnelLA2IP := "192.168.99.18" // expected to be allocated to this link by the activator
+	la2ToNY5LinkTunnelNY5IP := "192.168.99.19" // expected to be allocated to this link by the activator
+
+	// Adding these links to speed up the test, otherwise, we have to wait for the controller
 	func() {
 		la2Device := dn.Devices["la2-dz01"]
 		ny5Device := dn.Devices["ny5-dz01"]
@@ -211,11 +219,9 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 		require.NoError(t, err)
 		resp, err := la2Client.RunCommands([]string{
 			"configure terminal",
-			"interface Tunnel1",
+			"interface Ethernet2",
+			"no switchport",
 			"ip address " + la2ToNY5LinkTunnelLA2IP + "/31",
-			"tunnel mode gre",
-			"tunnel source " + la2Device.CYOANetworkIP,
-			"tunnel destination " + ny5Device.CYOANetworkIP,
 			"no shutdown",
 		}, "json")
 		require.NoError(t, err)
@@ -224,22 +230,9 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 		require.NoError(t, err)
 		resp, err = ny5Client.RunCommands([]string{
 			"configure terminal",
-			"interface Tunnel1",
+			"interface Ethernet2",
+			"no switchport",
 			"ip address " + la2ToNY5LinkTunnelNY5IP + "/31",
-			"tunnel mode gre",
-			"tunnel source " + ny5Device.CYOANetworkIP,
-			"tunnel destination " + la2Device.CYOANetworkIP,
-			"no shutdown",
-		}, "json")
-		require.NoError(t, err)
-		require.Nil(t, resp.Error)
-		resp, err = ny5Client.RunCommands([]string{
-			"configure terminal",
-			"interface Tunnel2",
-			"ip address " + ny5ToLD4LinkTunnelNY5IP + "/31",
-			"tunnel mode gre",
-			"tunnel source " + ny5Device.CYOANetworkIP,
-			"tunnel destination 10.157.67.17", // non-existent device
 			"no shutdown",
 		}, "json")
 		require.NoError(t, err)

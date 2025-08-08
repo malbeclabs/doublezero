@@ -13,6 +13,7 @@ version.workspace = true
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
+borsh.workspace = true
 futures.workspace = true
 mockall.workspace = true
 reqwest.workspace = true
@@ -20,4 +21,5 @@ serde.workspace = true
 solana-client.workspace = true
 solana-sdk.workspace = true
 solana-transaction-status-client-types.workspace = true
+svm-hash.workspace = true
 tokio.workspace = true

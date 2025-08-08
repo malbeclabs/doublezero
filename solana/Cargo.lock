@@ -1495,6 +1495,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "borsh 1.5.7",
  "futures",
  "mockall 0.13.1",
  "reqwest",
@@ -1502,6 +1503,7 @@ dependencies = [
  "solana-client",
  "solana-sdk",
  "solana-transaction-status-client-types",
+ "svm-hash",
  "tokio",
 ]
 

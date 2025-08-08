@@ -2,6 +2,7 @@ use solana_sdk::pubkey::Pubkey;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Environment {
+    Mainnet,
     Testnet,
     Devnet,
 }
@@ -11,6 +12,7 @@ impl std::str::FromStr for Environment {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
+            "mainnet" => Ok(Environment::Mainnet),
             "testnet" => Ok(Environment::Testnet),
             "devnet" => Ok(Environment::Devnet),
             _ => Err(eyre::eyre!("Invalid environment: {}", s)),
@@ -21,6 +23,13 @@ impl std::str::FromStr for Environment {
 impl Environment {
     pub fn config(&self) -> eyre::Result<NetworkConfig> {
         let config = match self {
+            Environment::Mainnet => NetworkConfig {
+                ledger_rpc_url: "TODO".to_string(),
+                ledger_ws_url: "TODO".to_string(),
+                serviceability_program_id: "TODO".parse()?,
+                telemetry_program_id: "TODO".parse()?,
+                internet_latency_collector_pk: "TODO".parse()?,
+            },
             Environment::Testnet => NetworkConfig {
                 ledger_rpc_url: "https://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30".to_string(),
                 ledger_ws_url: "wss://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30/whirligig".to_string(),
@@ -70,6 +79,16 @@ mod tests {
     fn test_environment_from_str_invalid() {
         let err = "mainnet".parse::<Environment>();
         assert!(err.is_err());
+    }
+
+    #[test]
+    fn test_network_config_mainnet() {
+        let config = Environment::Mainnet.config().unwrap();
+        assert_eq!(config.ledger_rpc_url, "TODO");
+        assert_eq!(config.ledger_ws_url, "TODO");
+        assert_eq!(config.serviceability_program_id.to_string(), "TODO");
+        assert_eq!(config.telemetry_program_id.to_string(), "TODO");
+        assert_eq!(config.internet_latency_collector_pk.to_string(), "TODO");
     }
 
     #[test]

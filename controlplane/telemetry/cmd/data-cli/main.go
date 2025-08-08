@@ -23,7 +23,7 @@ import (
 )
 
 func main() {
-	env := flag.String("env", config.EnvDevnet, "The network environment to query (devnet, testnet)")
+	env := flag.String("env", config.EnvDevnet, "The network environment to query (devnet, testnet, mainnet)")
 	recency := flag.Duration("recency", 24*time.Hour, "Aggregate over the given duration")
 	verbose := flag.Bool("verbose", false, "Enable verbose logging")
 	rawCSVPath := flag.String("raw-csv", "", "Path to save raw data to CSV")

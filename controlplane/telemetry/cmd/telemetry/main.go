@@ -42,7 +42,7 @@ const (
 )
 
 var (
-	env                     = flag.String("env", "", "The network environment to use (devnet, testnet).")
+	env                     = flag.String("env", "", "The network environment to use (devnet, testnet, mainnet).")
 	ledgerRPCURL            = flag.String("ledger-rpc-url", defaultLedgerRPCURL, "The url of the ledger rpc. If env is provided, this flag is ignored.")
 	serviceabilityProgramID = flag.String("serviceability-program-id", defaultProgramId, "The id of the serviceability program. If env is provided, this flag is ignored.")
 	telemetryProgramID      = flag.String("telemetry-program-id", defaultProgramId, "The id of the telemetry program. If env is provided, this flag is ignored.")

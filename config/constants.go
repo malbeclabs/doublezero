@@ -1,6 +1,12 @@
 package config
 
 const (
+	// Mainnet constants.
+	MainnetLedgerRPCURL               = "TODO"
+	MainnetServiceabilityProgramID    = "TODO"
+	MainnetTelemetryProgramID         = "TODO"
+	MainnetInternetLatencyCollectorPK = "TODO"
+
 	// Testnet constants.
 	TestnetLedgerRPCURL               = "https://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30"
 	TestnetServiceabilityProgramID    = "DZtnuQ839pSaDMFG5q1ad2V95G82S5EC4RrB3Ndw2Heb"

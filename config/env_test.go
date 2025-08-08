@@ -15,6 +15,15 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 		wantErr error
 	}{
 		{
+			env: config.EnvMainnet,
+			want: &config.NetworkConfig{
+				LedgerRPCURL:               config.MainnetLedgerRPCURL,
+				ServiceabilityProgramID:    solana.MustPublicKeyFromBase58(config.MainnetServiceabilityProgramID),
+				TelemetryProgramID:         solana.MustPublicKeyFromBase58(config.MainnetTelemetryProgramID),
+				InternetLatencyCollectorPK: solana.MustPublicKeyFromBase58(config.MainnetInternetLatencyCollectorPK),
+			},
+		},
+		{
 			env: config.EnvTestnet,
 			want: &config.NetworkConfig{
 				LedgerRPCURL:               config.TestnetLedgerRPCURL,

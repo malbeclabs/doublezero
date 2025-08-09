@@ -8,7 +8,7 @@ RUN apt update -qq && \
 
 # Install agave/solana tools
 # https://github.com/anza-xyz/agave/issues/1734
-ARG SOLANA_VERSION=2.2.17
+ARG SOLANA_VERSION=2.3.6
 RUN ARCH=$(uname -m) && \
     case "$ARCH" in \
     x86_64) ARCH_TAG=x86_64 ;; \

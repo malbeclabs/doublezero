@@ -23,10 +23,10 @@ impl CreateContributorCommand {
             .execute_transaction(
                 DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
                     code: self.code.clone(),
-                    owner: self.owner,
                 }),
                 vec![
                     AccountMeta::new(pda_pubkey, false),
+                    AccountMeta::new(self.owner, false),
                     AccountMeta::new(globalstate_pubkey, false),
                 ],
             )
@@ -54,6 +54,7 @@ mod tests {
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
         let (pda_pubkey, _) = get_contributor_pda(&client.get_program_id(), 1);
+        let owner = Pubkey::new_unique();
 
         client
             .expect_execute_transaction()
@@ -61,11 +62,11 @@ mod tests {
                 predicate::eq(DoubleZeroInstruction::CreateContributor(
                     ContributorCreateArgs {
                         code: "test".to_string(),
-                        owner: Pubkey::default(),
                     },
                 )),
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),
+                    AccountMeta::new(owner, false),
                     AccountMeta::new(globalstate_pubkey, false),
                 ]),
             )
@@ -73,7 +74,7 @@ mod tests {
 
         let res = CreateContributorCommand {
             code: "test".to_string(),
-            owner: Pubkey::default(),
+            owner,
         }
         .execute(&client);
 

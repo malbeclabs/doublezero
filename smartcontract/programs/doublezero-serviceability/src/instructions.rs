@@ -811,7 +811,6 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
                 code: "test".to_string(),
-                owner: Pubkey::new_unique(),
             }),
             "CreateContributor",
         );

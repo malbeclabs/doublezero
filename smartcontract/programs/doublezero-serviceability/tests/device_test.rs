@@ -139,10 +139,10 @@ async fn test_device() {
         program_id,
         DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
             code: "cont".to_string(),
-            owner: payer.pubkey(),
         }),
         vec![
             AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
@@ -612,10 +612,10 @@ async fn setup_program_with_location_and_exchange(
         program_id,
         DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
             code: "cont".to_string(),
-            owner: payer.pubkey(),
         }),
         vec![
             AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,

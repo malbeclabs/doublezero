@@ -54,16 +54,18 @@ async fn test_contributor() {
     let (contributor_pubkey, _) =
         get_contributor_pda(&program_id, globalstate_account.account_index + 1);
 
+    let owner = Pubkey::new_unique();
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
             code: "la".to_string(),
-            owner: Pubkey::new_unique(),
         }),
         vec![
             AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(owner, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,

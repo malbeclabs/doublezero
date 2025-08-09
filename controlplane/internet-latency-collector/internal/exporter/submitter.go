@@ -228,9 +228,7 @@ func (s *Submitter) Tick(ctx context.Context) {
 		}
 
 		if !success {
-			for _, sample := range tmp {
-				s.cfg.Buffer.Add(partitionKey, sample)
-			}
+			s.cfg.Buffer.PriorityPrepend(partitionKey, tmp)
 		}
 
 		// Always recycle the slice for reuse

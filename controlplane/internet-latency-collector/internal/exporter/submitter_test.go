@@ -570,6 +570,119 @@ func TestInternetLatency_Submitter(t *testing.T) {
 		assert.Equal(t, int32(2), callCount, "should retry once after init, then drop")
 		assert.False(t, buffer.Has(key), "partition key should be removed after account full error")
 	})
+
+	t.Run("failed_retries_reinsert_at_front_preserving_order", func(t *testing.T) {
+		t.Parallel()
+
+		log := logger.With("test", t.Name())
+		key := newTestPartitionKey()
+
+		first := exporter.Sample{Timestamp: time.Now(), RTT: 1 * time.Millisecond}
+		second := exporter.Sample{Timestamp: time.Now().Add(1 * time.Second), RTT: 2 * time.Millisecond}
+
+		// Always fail to force retry path (PriorityPrepend)
+		telemetryProgram := &mockTelemetryProgramClient{
+			WriteInternetLatencySamplesFunc: func(ctx context.Context, _ sdktelemetry.WriteInternetLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				return solana.Signature{}, nil, errors.New("fail")
+			},
+		}
+
+		buf := buffer.NewMemoryPartitionedBuffer[exporter.PartitionKey, exporter.Sample](128)
+		buf.Add(key, first)
+
+		submitter, err := exporter.NewSubmitter(log, &exporter.SubmitterConfig{
+			OracleAgentPK: solana.NewWallet().PublicKey(),
+			Interval:      time.Hour,
+			Buffer:        buf,
+			Telemetry:     telemetryProgram,
+			MaxAttempts:   1,
+			BackoffFunc:   func(_ int) time.Duration { return 0 },
+			EpochFinder:   &mockEpochFinder{ApproximateAtTimeFunc: func(context.Context, time.Time) (uint64, error) { return 0, nil }},
+		})
+		require.NoError(t, err)
+
+		// Tick once; write fails; failed batch is PriorityPrepended to the FRONT
+		submitter.Tick(t.Context())
+
+		// Producer adds a newer sample after the failed tick
+		buf.Add(key, second)
+
+		// Order should be: first (failed + reinserted at front), then second
+		got := buf.CopyAndReset(key)
+		require.Equal(t, []exporter.Sample{first, second}, got)
+	})
+
+	t.Run("priority_prepend_backpressures_producers_until_submitter_drains", func(t *testing.T) {
+		t.Parallel()
+
+		log := logger.With("test", t.Name())
+		key := newTestPartitionKey()
+
+		writeCalled := make(chan struct{})
+		proceed := make(chan struct{})
+
+		// Block inside Write so we can inject a producer Add while submit is in-flight
+		telemetryProgram := &mockTelemetryProgramClient{
+			WriteInternetLatencySamplesFunc: func(ctx context.Context, _ sdktelemetry.WriteInternetLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				close(writeCalled) // signal we're inside Write
+				<-proceed          // wait until test says proceed
+				return solana.Signature{}, nil, errors.New("fail")
+			},
+		}
+
+		// Capacity=1 so we can force len > capacity after PriorityPrepend
+		buf := buffer.NewMemoryPartitionedBuffer[exporter.PartitionKey, exporter.Sample](1)
+		buf.Add(key, newTestSample()) // one record present
+
+		submitter, err := exporter.NewSubmitter(log, &exporter.SubmitterConfig{
+			OracleAgentPK: solana.NewWallet().PublicKey(),
+			Interval:      time.Hour,
+			Buffer:        buf,
+			Telemetry:     telemetryProgram,
+			MaxAttempts:   1,
+			BackoffFunc:   func(_ int) time.Duration { return 0 },
+			EpochFinder:   &mockEpochFinder{ApproximateAtTimeFunc: func(context.Context, time.Time) (uint64, error) { return key.Epoch, nil }},
+		})
+		require.NoError(t, err)
+
+		// Run Tick concurrently; it will CopyAndReset(), then call Write...
+		go func() { submitter.Tick(t.Context()) }()
+
+		// Wait until we're inside Write
+		<-writeCalled
+
+		// While submit is in-flight, producers add a new record.
+		// After Write returns an error, PriorityPrepend will reinsert the failed batch at front.
+		buf.Add(key, newTestSample())
+
+		// Let Write return error -> triggers PriorityPrepend; now len=2 > capacity=1
+		close(proceed)
+
+		// Now a producer Add should block until we drain
+		done := make(chan struct{})
+		go func() {
+			buf.Add(key, newTestSample()) // should block
+			close(done)
+		}()
+
+		select {
+		case <-done:
+			t.Fatal("producer Add should block while len > capacity after PriorityPrepend")
+		case <-time.After(30 * time.Millisecond):
+			// still blocked, as expected
+		}
+
+		// Drain; this should unblock the producer Add
+		_ = buf.CopyAndReset(key)
+
+		select {
+		case <-done:
+			// unblocked as expected
+		case <-time.After(250 * time.Millisecond):
+			t.Fatal("producer Add should unblock after drain")
+		}
+	})
+
 }
 
 func waitTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {

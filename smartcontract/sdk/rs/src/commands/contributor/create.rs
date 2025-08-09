@@ -40,22 +40,17 @@ impl CreateContributorCommand {
 mod tests {
     use crate::{
         commands::contributor::create::CreateContributorCommand, tests::utils::create_test_client,
-        DoubleZeroClient,
     };
     use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{get_contributor_pda, get_globalstate_pda},
-        processors::contributor::create::ContributorCreateArgs,
+        instructions::DoubleZeroInstruction, processors::contributor::create::ContributorCreateArgs,
     };
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_commands_contributor_create_command() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, _) = get_contributor_pda(&client.get_program_id(), 1);
         let owner = Pubkey::new_unique();
 
         client

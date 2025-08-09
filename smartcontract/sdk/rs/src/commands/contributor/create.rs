@@ -25,10 +25,7 @@ impl CreateContributorCommand {
             get_contributor_pda(&client.get_program_id(), globalstate.account_index + 1);
         client
             .execute_transaction(
-                DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
-                    code,
-                    owner: self.owner,
-                }),
+                DoubleZeroInstruction::CreateContributor(ContributorCreateArgs { code }),
                 vec![
                     AccountMeta::new(pda_pubkey, false),
                     AccountMeta::new(self.owner, false),
@@ -67,7 +64,6 @@ mod tests {
                 predicate::eq(DoubleZeroInstruction::CreateContributor(
                     ContributorCreateArgs {
                         code: "test_whitespace".to_string(),
-                        owner: Pubkey::default(),
                     },
                 )),
                 predicate::eq(vec![

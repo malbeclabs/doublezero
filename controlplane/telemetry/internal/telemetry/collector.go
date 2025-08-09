@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	partitionBufferCapacity = 1024
+	partitionBufferCapacity = 4096
 )
 
 // Collector orchestrates telemetry collection by coordinating the TWAMP reflector,

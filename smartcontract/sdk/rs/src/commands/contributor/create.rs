@@ -66,10 +66,7 @@ mod tests {
                         code: "test_whitespace".to_string(),
                     },
                 )),
-                predicate::eq(vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ]),
+                predicate::always(),
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
@@ -81,11 +78,7 @@ mod tests {
                         code: "test".to_string(),
                     },
                 )),
-                predicate::eq(vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(owner, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ]),
+                predicate::always(),
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 

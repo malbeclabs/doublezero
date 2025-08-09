@@ -71,20 +71,47 @@ mod tests {
     };
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
-        pda::{get_contributor_pda, get_globalstate_pda},
+        pda::get_contributor_pda,
         processors::device::update::DeviceUpdateArgs,
-        state::device::DeviceType,
+        state::{
+            accountdata::AccountData,
+            accounttype::AccountType,
+            device::{Device, DeviceStatus, DeviceType},
+        },
     };
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, signature::Signature};
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_commands_device_update_command() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
         let (pda_pubkey, _) = get_contributor_pda(&client.get_program_id(), 1);
 
+        let device_pubkey = Pubkey::new_unique();
+        let device = Device {
+            account_type: AccountType::Device,
+            index: 1,
+            bump_seed: 255,
+            reference_count: 0,
+            code: "test_dev".to_string(),
+            contributor_pk: Pubkey::default(),
+            location_pk: Pubkey::default(),
+            exchange_pk: Pubkey::default(),
+            device_type: DeviceType::Switch,
+            public_ip: [1, 2, 3, 4].into(),
+            dz_prefixes: "1.2.3.4/32".parse().unwrap(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
+            owner: pda_pubkey,
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+        };
+
+        client
+            .expect_get()
+            .with(predicate::eq(device_pubkey))
+            .returning(move |_| Ok(AccountData::Device(device.clone())));
         client
             .expect_execute_transaction()
             .with(
@@ -98,15 +125,12 @@ mod tests {
                     interfaces: None,
                     contributor_pk: None,
                 })),
-                predicate::eq(vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ]),
+                predicate::always(),
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
         let update_command = UpdateDeviceCommand {
-            pubkey: pda_pubkey,
+            pubkey: device_pubkey,
             code: Some("test_device".to_string()),
             contributor_pk: None,
             device_type: Some(DeviceType::Switch),

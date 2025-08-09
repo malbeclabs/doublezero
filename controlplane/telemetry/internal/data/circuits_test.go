@@ -247,11 +247,13 @@ func TestTelemetry_Data_Provider_GetCircuits(t *testing.T) {
 		}
 		link1 := serviceability.Link{
 			Code:        "A-B",
+			PubKey:      solana.NewWallet().PublicKey(),
 			SideAPubKey: devA.PubKey,
 			SideZPubKey: devB.PubKey,
 		}
 		link2 := serviceability.Link{
 			Code:        "A-B",
+			PubKey:      solana.NewWallet().PublicKey(),
 			SideAPubKey: devA.PubKey,
 			SideZPubKey: devB.PubKey,
 		}

@@ -149,6 +149,15 @@ func TestConnectivityMulticast(t *testing.T) {
 	require.Greater(t, len(subscribers), 0, "Not enough hosts to test multicast, need at least one subscriber")
 
 	t.Logf("Using publisher: %s, subscribers: %v, hosts: %v", publisher, subscribers, hosts)
+
+	opts := []dzsdk.Option{}
+	opts = append(opts, dzsdk.WithServiceabilityProgramID(config.DevnetServiceabilityProgramID))
+
+	ledger, err := dzsdk.New(nil, config.DevnetLedgerRPCURL, opts...)
+	require.NoError(t, err, "Failed to create ledger client")
+
+	cleanupExistingMulticastGroup(ctx, t, ledger, publisher, code)
+
 	t.Run("create_multicast_group", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
@@ -167,12 +176,6 @@ func TestConnectivityMulticast(t *testing.T) {
 	})
 
 	// get pubkey of created multicast group for deletion later
-	opts := []dzsdk.Option{}
-	opts = append(opts, dzsdk.WithServiceabilityProgramID(config.DevnetServiceabilityProgramID))
-
-	ledger, err := dzsdk.New(nil, config.DevnetLedgerRPCURL, opts...)
-	require.NoError(t, err, "Failed to create ledger client")
-
 	pubKey := ""
 	ownerPubKey := ""
 	var groupAddr net.IP
@@ -363,6 +366,50 @@ func disconnectUsersFunc(t *testing.T, hosts []string) func() {
 				_, err = client.Disconnect(ctx, &emptypb.Empty{})
 				require.NoError(t, err, "Disconnect failed")
 			})
+		}
+	}
+}
+
+func cleanupExistingMulticastGroup(ctx context.Context, t *testing.T, ledger *dzsdk.Client, publisher string, code string) {
+	// Check if multicast group already exists
+	existingGroupPubKey := ""
+
+	checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	data, err := ledger.Serviceability.GetProgramData(checkCtx)
+	if err != nil {
+		t.Logf("Warning: Failed to check for existing multicast group: %v", err)
+		return
+	}
+
+	for _, group := range data.MulticastGroups {
+		if group.Code == code {
+			existingGroupPubKey = base58.Encode(group.PubKey[:])
+			t.Logf("Found existing multicast group '%s' with pubkey %s, will delete it", code, existingGroupPubKey)
+			break
+		}
+	}
+
+	if existingGroupPubKey != "" {
+		client, err := getQAClient(net.JoinHostPort(publisher, *port))
+		if err != nil {
+			t.Logf("Warning: Failed to create QA client for cleanup: %v", err)
+			return
+		}
+
+		req := &pb.DeleteMulticastGroupRequest{
+			Pubkey: existingGroupPubKey,
+		}
+		result, err := client.DeleteMulticastGroup(checkCtx, req)
+		if err != nil {
+			t.Logf("Warning: Failed to delete existing multicast group: %v", err)
+			return
+		}
+		if result.GetSuccess() == false || result.GetReturnCode() != 0 {
+			t.Logf("Warning: Failed to delete existing multicast group: %s", result.GetOutput())
+		} else {
+			t.Logf("Successfully deleted existing multicast group '%s'", code)
 		}
 	}
 }

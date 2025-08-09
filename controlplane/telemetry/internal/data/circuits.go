@@ -77,7 +77,7 @@ func (p *provider) GetCircuits(ctx context.Context) ([]Circuit, error) {
 		}
 
 		// Forward circuit
-		forwardKey := circuitKey(deviceA.Code, deviceZ.Code, link.Code)
+		forwardKey := circuitKey(deviceA.Code, deviceZ.Code, linkPK)
 		originLocation := locationsByPK[solana.PublicKeyFromBytes(deviceA.LocationPubKey[:]).String()]
 		targetLocation := locationsByPK[solana.PublicKeyFromBytes(deviceZ.LocationPubKey[:]).String()]
 		circuits = append(circuits, Circuit{
@@ -111,7 +111,7 @@ func (p *provider) GetCircuits(ctx context.Context) ([]Circuit, error) {
 		})
 
 		// Reverse circuit
-		reverseKey := circuitKey(deviceZ.Code, deviceA.Code, link.Code)
+		reverseKey := circuitKey(deviceZ.Code, deviceA.Code, linkPK)
 		originLocation = locationsByPK[solana.PublicKeyFromBytes(deviceZ.LocationPubKey[:]).String()]
 		targetLocation = locationsByPK[solana.PublicKeyFromBytes(deviceA.LocationPubKey[:]).String()]
 		circuits = append(circuits, Circuit{
@@ -154,6 +154,8 @@ func (p *provider) GetCircuits(ctx context.Context) ([]Circuit, error) {
 	return circuits, nil
 }
 
-func circuitKey(origin, target, link string) string {
-	return fmt.Sprintf("%s → %s (%s)", origin, target, link)
+func circuitKey(origin, target string, linkPK solana.PublicKey) string {
+	linkPKStr := linkPK.String()
+	shortLinkPK := linkPKStr[len(linkPKStr)-7:]
+	return fmt.Sprintf("%s → %s (%s)", origin, target, shortLinkPK)
 }

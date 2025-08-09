@@ -30,6 +30,7 @@ func TestTelemetry_Data_Provider_GetCircuits(t *testing.T) {
 			PubKey: toPubKeyBytes(solana.NewWallet().PublicKey()),
 		}
 		link := serviceability.Link{
+			PubKey:      solana.NewWallet().PublicKey(),
 			Code:        "L1",
 			SideAPubKey: devA.PubKey,
 			SideZPubKey: devB.PubKey,
@@ -60,9 +61,12 @@ func TestTelemetry_Data_Provider_GetCircuits(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, circuits, 2)
 
+		circuitABCode := circuitKey(devA.Code, devB.Code, link.PubKey)
+		circuitBACode := circuitKey(devB.Code, devA.Code, link.PubKey)
+
 		expected := map[string]struct{}{
-			"A → B (L1)": {},
-			"B → A (L1)": {},
+			circuitABCode: {},
+			circuitBACode: {},
 		}
 		for _, c := range circuits {
 			_, ok := expected[c.Code]

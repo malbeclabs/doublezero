@@ -233,6 +233,53 @@ func TestTelemetry_Data_Provider_GetCircuits(t *testing.T) {
 		close(start)
 		wg.Wait()
 	})
+
+	t.Run("circuit code unique with duplicate link code", func(t *testing.T) {
+		t.Parallel()
+
+		devA := serviceability.Device{
+			Code:   "A",
+			PubKey: toPubKeyBytes(solana.NewWallet().PublicKey()),
+		}
+		devB := serviceability.Device{
+			Code:   "B",
+			PubKey: toPubKeyBytes(solana.NewWallet().PublicKey()),
+		}
+		link1 := serviceability.Link{
+			Code:        "A-B",
+			SideAPubKey: devA.PubKey,
+			SideZPubKey: devB.PubKey,
+		}
+		link2 := serviceability.Link{
+			Code:        "A-B",
+			SideAPubKey: devA.PubKey,
+			SideZPubKey: devB.PubKey,
+		}
+
+		client := &mockServiceabilityClient{
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				return &serviceability.ProgramData{
+					Devices: []serviceability.Device{devA, devB},
+					Links:   []serviceability.Link{link1, link2},
+				}, nil
+			},
+		}
+		provider, err := data.NewProvider(&data.ProviderConfig{
+			Logger:               logger,
+			ServiceabilityClient: client,
+			TelemetryClient:      &mockTelemetryClient{},
+			EpochFinder: &mockEpochFinder{
+				ApproximateAtTimeFunc: func(ctx context.Context, target time.Time) (uint64, error) {
+					return 1, nil
+				},
+			},
+			CircuitsCacheTTL: 1 * time.Minute,
+		})
+		require.NoError(t, err)
+		circuits, err := provider.GetCircuits(t.Context())
+		require.NoError(t, err)
+		require.Len(t, circuits, 4)
+	})
 }
 
 func toPubKeyBytes(pk solana.PublicKey) [32]byte {

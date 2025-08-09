@@ -2,6 +2,7 @@ package buffer_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/buffer"
 	"github.com/stretchr/testify/require"
@@ -50,6 +51,50 @@ func TestInternetLatency_Buffer_PartitionBuffer(t *testing.T) {
 		require.Len(t, out, 1)
 		require.Equal(t, 1, buf.Len())
 	})
+
+	t.Run("PriorityPrepend preserves order and exceeds capacity", func(t *testing.T) {
+		buf := buffer.NewMemoryBuffer[testRecord](2)
+		buf.Add(testRecord{"a"})
+		buf.Add(testRecord{"b"})
+		// capacity reached with 2/3, then exceed to 5
+		buf.PriorityPrepend([]testRecord{{"x"}, {"y"}, {"z"}})
+		got := buf.Read()
+		require.Equal(t, []testRecord{{"x"}, {"y"}, {"z"}, {"a"}, {"b"}}, got)
+		// len is now 5 > maxCapacity(3)
+		require.Equal(t, 5, len(got))
+	})
+
+	t.Run("PriorityPrepend causes Add to block until CopyAndReset drains", func(t *testing.T) {
+		buf := buffer.NewMemoryBuffer[testRecord](2)
+		buf.Add(testRecord{"a"})
+		buf.Add(testRecord{"b"})                 // full
+		buf.PriorityPrepend([]testRecord{{"p"}}) // len=3 > cap=2
+
+		done := make(chan struct{})
+		go func() {
+			buf.Add(testRecord{"c"}) // should block
+			close(done)
+		}()
+
+		select {
+		case <-done:
+			t.Fatal("Add should have blocked while len>=maxCapacity")
+		case <-time.After(20 * time.Millisecond):
+			// still blocked as expected
+		}
+
+		tmp := buf.CopyAndReset() // drains and Broadcasts
+		require.GreaterOrEqual(t, len(tmp), 3)
+
+		// Now Add should proceed
+		select {
+		case <-done:
+			// unblocked as expected
+		case <-time.After(200 * time.Millisecond):
+			t.Fatal("Add should have unblocked after drain")
+		}
+	})
+
 }
 
 func TestInternetLatency_Buffer_AccountsBuffer(t *testing.T) {
@@ -114,6 +159,14 @@ func TestInternetLatency_Buffer_AccountsBuffer(t *testing.T) {
 		buf := buffer.NewMemoryPartitionedBuffer[testPartitionKey, testRecord](128)
 		out := buf.Read(testPartitionKey{key: "test"})
 		require.Nil(t, out)
+	})
+
+	t.Run("PriorityPrepend creates buffer and preserves order", func(t *testing.T) {
+		p := buffer.NewMemoryPartitionedBuffer[testPartitionKey, testRecord](128)
+		k := testPartitionKey{"k"}
+		p.PriorityPrepend(k, []testRecord{{"x"}}) // creates
+		p.Add(k, testRecord{"y"})
+		require.Equal(t, []testRecord{{"x"}, {"y"}}, p.Read(k))
 	})
 }
 

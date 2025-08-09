@@ -194,13 +194,14 @@ func (b *MemoryBuffer[R]) Read() []R {
 
 func (b *MemoryBuffer[R]) PriorityPrepend(records []R) {
 	b.mu.Lock()
-	// Build new slice sized exactly to fit all records; ignores maxCapacity
+	// Build new slice sized exactly to fit all records; ignores maxCapacity intentionally to
+	// prevent blocking during retry or priority scenarios.
 	newLen := len(records) + len(b.records)
 	newBuf := make([]R, 0, newLen)
 	newBuf = append(newBuf, records...)
 	newBuf = append(newBuf, b.records...)
 	b.records = newBuf
-	// Wake producers in case some logic changed, though they'll still block while len>=maxCapacity.
+	// Broadcast to wake up any blocked producers for consistency with the Add method's wait condition.
 	b.cond.Broadcast()
 	b.mu.Unlock()
 }

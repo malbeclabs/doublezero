@@ -745,7 +745,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			},
 		}
 
-		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024) // small on purpose
+		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](2) // intentionally small to test overflow/blocking behavior
 		buf.Add(key, first)
 
 		s, _ := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{

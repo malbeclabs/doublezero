@@ -819,6 +819,19 @@ func (d *Devnet) CreateDeviceLoopbackInterface(ctx context.Context, deviceCode s
 	return nil
 }
 
+func (d *Devnet) DeleteDeviceLoopbackInterface(ctx context.Context, deviceCode string, interfaceName string) error {
+	d.log.Info("==> Deleting loopback interface for device", "code", deviceCode)
+	d.onchainWriteMutex.Lock()
+	defer d.onchainWriteMutex.Unlock()
+
+	_, err := d.Manager.Exec(ctx, []string{"doublezero", "device", "interface", "delete", deviceCode, interfaceName})
+	if err != nil {
+		return fmt.Errorf("failed to delete loopback interface %s for device %s: %w", interfaceName, deviceCode, err)
+	}
+
+	return nil
+}
+
 func (d *Devnet) waitForContainerPortExposed(ctx context.Context, containerID string, port int, timeout time.Duration) (int, error) {
 	loggedWait := false
 	attempts := 0

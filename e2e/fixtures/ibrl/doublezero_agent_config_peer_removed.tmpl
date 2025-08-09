@@ -1,0 +1,800 @@
+!
+ip multicast-routing
+!
+router pim sparse-mode
+   ipv4
+      rp address 10.0.0.0 233.84.178.0/24 override
+!
+vrf instance vrf1
+ip routing vrf vrf1
+!
+no ip access-list MAIN-CONTROL-PLANE-ACL
+ip access-list MAIN-CONTROL-PLANE-ACL
+   counters per-entry
+   10 permit icmp any any
+   20 permit ip any any tracked
+   30 permit udp any any eq bfd ttl eq 255
+   40 permit udp any any eq bfd-echo ttl eq 254
+   50 permit udp any any eq multihop-bfd micro-bfd sbfd
+   60 permit udp any eq sbfd any eq sbfd-initiator
+   70 permit ospf any any
+   80 permit tcp any any eq ssh telnet www snmp bgp https msdp ldp netconf-ssh gnmi
+   90 permit udp any any eq bootps bootpc snmp rip ntp ldp ptp-event ptp-general
+   100 permit tcp any any eq mlag ttl eq 255
+   110 permit udp any any eq mlag ttl eq 255
+   120 permit vrrp any any
+   130 permit ahp any any
+   140 permit pim any any
+   150 permit igmp any any
+   160 permit tcp any any range 5900 5910
+   170 permit tcp any any range 50000 50100
+   180 permit udp any any range 51000 51100
+   190 permit tcp any any eq 3333
+   200 permit tcp any any eq nat ttl eq 255
+   210 permit tcp any eq bgp any
+   220 permit rsvp any any
+   230 permit tcp any any eq 9340
+   240 permit tcp any any eq 9559
+   250 permit udp any any eq 8503
+   260 permit udp any any eq lsp-ping
+   270 permit udp any eq lsp-ping any
+
+   280 remark Permit TWAMP (UDP 862)
+   290 permit udp any any eq 862
+!
+system control-plane
+   ip access-group MAIN-CONTROL-PLANE-ACL in
+!
+interface Ethernet2
+   mtu 2048
+   no switchport
+   ip address 172.16.0.19/31
+   pim ipv4 sparse-mode
+   isis enable 1
+   isis circuit-type level-2
+   isis hello padding
+   isis network point-to-point
+!
+interface Ethernet3
+   mtu 2048
+   no switchport
+   ip address 172.16.0.20/31
+   pim ipv4 sparse-mode
+   isis enable 1
+   isis circuit-type level-2
+   isis hello padding
+   isis network point-to-point
+!
+interface Loopback255
+   ip address 172.16.0.1/32
+   node-segment ipv4 index 1
+   isis enable 1
+!
+interface Loopback256
+   ip address 172.16.0.9/32
+   isis enable 1
+!
+default interface Tunnel500
+!
+default interface Tunnel501
+!
+default interface Tunnel502
+!
+default interface Tunnel503
+!
+default interface Tunnel504
+!
+default interface Tunnel505
+!
+default interface Tunnel506
+!
+default interface Tunnel507
+!
+default interface Tunnel508
+!
+default interface Tunnel509
+!
+default interface Tunnel510
+!
+default interface Tunnel511
+!
+default interface Tunnel512
+!
+default interface Tunnel513
+!
+default interface Tunnel514
+!
+default interface Tunnel515
+!
+default interface Tunnel516
+!
+default interface Tunnel517
+!
+default interface Tunnel518
+!
+default interface Tunnel519
+!
+default interface Tunnel520
+!
+default interface Tunnel521
+!
+default interface Tunnel522
+!
+default interface Tunnel523
+!
+default interface Tunnel524
+!
+default interface Tunnel525
+!
+default interface Tunnel526
+!
+default interface Tunnel527
+!
+default interface Tunnel528
+!
+default interface Tunnel529
+!
+default interface Tunnel530
+!
+default interface Tunnel531
+!
+default interface Tunnel532
+!
+default interface Tunnel533
+!
+default interface Tunnel534
+!
+default interface Tunnel535
+!
+default interface Tunnel536
+!
+default interface Tunnel537
+!
+default interface Tunnel538
+!
+default interface Tunnel539
+!
+default interface Tunnel540
+!
+default interface Tunnel541
+!
+default interface Tunnel542
+!
+default interface Tunnel543
+!
+default interface Tunnel544
+!
+default interface Tunnel545
+!
+default interface Tunnel546
+!
+default interface Tunnel547
+!
+default interface Tunnel548
+!
+default interface Tunnel549
+!
+default interface Tunnel550
+!
+default interface Tunnel551
+!
+default interface Tunnel552
+!
+default interface Tunnel553
+!
+default interface Tunnel554
+!
+default interface Tunnel555
+!
+default interface Tunnel556
+!
+default interface Tunnel557
+!
+default interface Tunnel558
+!
+default interface Tunnel559
+!
+default interface Tunnel560
+!
+default interface Tunnel561
+!
+default interface Tunnel562
+!
+default interface Tunnel563
+!
+router bgp 65342
+   router-id 172.16.0.1
+   no neighbor 172.16.0.14
+   neighbor 172.16.0.14 remote-as 65342
+   neighbor 172.16.0.14 next-hop-self
+   neighbor 172.16.0.14 update-source Loopback256
+   neighbor 172.16.0.14 description ty2-dz01-ipv4
+   neighbor 172.16.0.14 send-community
+   no neighbor 172.16.0.11
+   neighbor 172.16.0.11 remote-as 65342
+   neighbor 172.16.0.11 next-hop-self
+   neighbor 172.16.0.11 update-source Loopback256
+   neighbor 172.16.0.11 description ld4-dz01-ipv4
+   neighbor 172.16.0.11 send-community
+   no neighbor 172.16.0.10
+   neighbor 172.16.0.10 remote-as 65342
+   neighbor 172.16.0.10 next-hop-self
+   neighbor 172.16.0.10 update-source Loopback256
+   neighbor 172.16.0.10 description la2-dz01-ipv4
+   neighbor 172.16.0.10 send-community
+   no neighbor 172.16.0.13
+   neighbor 172.16.0.13 remote-as 65342
+   neighbor 172.16.0.13 next-hop-self
+   neighbor 172.16.0.13 update-source Loopback256
+   neighbor 172.16.0.13 description sg1-dz01-ipv4
+   neighbor 172.16.0.13 send-community
+   no neighbor 172.16.0.16
+   neighbor 172.16.0.16 remote-as 65342
+   neighbor 172.16.0.16 next-hop-self
+   neighbor 172.16.0.16 update-source Loopback256
+   neighbor 172.16.0.16 description ams-dz001-ipv4
+   neighbor 172.16.0.16 send-community
+   no neighbor 172.16.0.12
+   neighbor 172.16.0.12 remote-as 65342
+   neighbor 172.16.0.12 next-hop-self
+   neighbor 172.16.0.12 update-source Loopback256
+   neighbor 172.16.0.12 description frk-dz01-ipv4
+   neighbor 172.16.0.12 send-community
+   no neighbor 172.16.0.6
+   neighbor 172.16.0.6 remote-as 65342
+   neighbor 172.16.0.6 next-hop-self
+   neighbor 172.16.0.6 update-source Loopback255
+   neighbor 172.16.0.6 description ty2-dz01-vpnv4
+   neighbor 172.16.0.6 send-community
+   no neighbor 172.16.0.3
+   neighbor 172.16.0.3 remote-as 65342
+   neighbor 172.16.0.3 next-hop-self
+   neighbor 172.16.0.3 update-source Loopback255
+   neighbor 172.16.0.3 description ld4-dz01-vpnv4
+   neighbor 172.16.0.3 send-community
+   no neighbor 172.16.0.2
+   neighbor 172.16.0.2 remote-as 65342
+   neighbor 172.16.0.2 next-hop-self
+   neighbor 172.16.0.2 update-source Loopback255
+   neighbor 172.16.0.2 description la2-dz01-vpnv4
+   neighbor 172.16.0.2 send-community
+   no neighbor 172.16.0.5
+   neighbor 172.16.0.5 remote-as 65342
+   neighbor 172.16.0.5 next-hop-self
+   neighbor 172.16.0.5 update-source Loopback255
+   neighbor 172.16.0.5 description sg1-dz01-vpnv4
+   neighbor 172.16.0.5 send-community
+   no neighbor 172.16.0.8
+   neighbor 172.16.0.8 remote-as 65342
+   neighbor 172.16.0.8 next-hop-self
+   neighbor 172.16.0.8 update-source Loopback255
+   neighbor 172.16.0.8 description ams-dz001-vpnv4
+   neighbor 172.16.0.8 send-community
+   no neighbor 172.16.0.4
+   neighbor 172.16.0.4 remote-as 65342
+   neighbor 172.16.0.4 next-hop-self
+   neighbor 172.16.0.4 update-source Loopback255
+   neighbor 172.16.0.4 description frk-dz01-vpnv4
+   neighbor 172.16.0.4 send-community
+   address-family ipv4
+      neighbor 172.16.0.14 activate
+      neighbor 172.16.0.11 activate
+      neighbor 172.16.0.10 activate
+      neighbor 172.16.0.13 activate
+      neighbor 172.16.0.16 activate
+      neighbor 172.16.0.12 activate
+      no neighbor 172.16.0.6 activate
+      no neighbor 172.16.0.3 activate
+      no neighbor 172.16.0.2 activate
+      no neighbor 172.16.0.5 activate
+      no neighbor 172.16.0.8 activate
+      no neighbor 172.16.0.4 activate
+   !
+   address-family vpn-ipv4
+      neighbor 172.16.0.6 activate
+      neighbor 172.16.0.3 activate
+      neighbor 172.16.0.2 activate
+      neighbor 172.16.0.5 activate
+      neighbor 172.16.0.8 activate
+      neighbor 172.16.0.4 activate
+   !
+   vrf vrf1
+      rd 65342:1
+      route-target import vpn-ipv4 65342:1
+      route-target export vpn-ipv4 65342:1
+      router-id {{.DeviceIP}}
+!
+ip community-list COMM-ALL_USERS permit 21682:1200
+ip community-list COMM-ALL_MCAST_USERS permit 21682:1300
+!
+no route-map RM-USER-500-OUT
+!
+no route-map RM-USER-501-OUT
+!
+no route-map RM-USER-502-OUT
+!
+no route-map RM-USER-503-OUT
+!
+no route-map RM-USER-504-OUT
+!
+no route-map RM-USER-505-OUT
+!
+no route-map RM-USER-506-OUT
+!
+no route-map RM-USER-507-OUT
+!
+no route-map RM-USER-508-OUT
+!
+no route-map RM-USER-509-OUT
+!
+no route-map RM-USER-510-OUT
+!
+no route-map RM-USER-511-OUT
+!
+no route-map RM-USER-512-OUT
+!
+no route-map RM-USER-513-OUT
+!
+no route-map RM-USER-514-OUT
+!
+no route-map RM-USER-515-OUT
+!
+no route-map RM-USER-516-OUT
+!
+no route-map RM-USER-517-OUT
+!
+no route-map RM-USER-518-OUT
+!
+no route-map RM-USER-519-OUT
+!
+no route-map RM-USER-520-OUT
+!
+no route-map RM-USER-521-OUT
+!
+no route-map RM-USER-522-OUT
+!
+no route-map RM-USER-523-OUT
+!
+no route-map RM-USER-524-OUT
+!
+no route-map RM-USER-525-OUT
+!
+no route-map RM-USER-526-OUT
+!
+no route-map RM-USER-527-OUT
+!
+no route-map RM-USER-528-OUT
+!
+no route-map RM-USER-529-OUT
+!
+no route-map RM-USER-530-OUT
+!
+no route-map RM-USER-531-OUT
+!
+no route-map RM-USER-532-OUT
+!
+no route-map RM-USER-533-OUT
+!
+no route-map RM-USER-534-OUT
+!
+no route-map RM-USER-535-OUT
+!
+no route-map RM-USER-536-OUT
+!
+no route-map RM-USER-537-OUT
+!
+no route-map RM-USER-538-OUT
+!
+no route-map RM-USER-539-OUT
+!
+no route-map RM-USER-540-OUT
+!
+no route-map RM-USER-541-OUT
+!
+no route-map RM-USER-542-OUT
+!
+no route-map RM-USER-543-OUT
+!
+no route-map RM-USER-544-OUT
+!
+no route-map RM-USER-545-OUT
+!
+no route-map RM-USER-546-OUT
+!
+no route-map RM-USER-547-OUT
+!
+no route-map RM-USER-548-OUT
+!
+no route-map RM-USER-549-OUT
+!
+no route-map RM-USER-550-OUT
+!
+no route-map RM-USER-551-OUT
+!
+no route-map RM-USER-552-OUT
+!
+no route-map RM-USER-553-OUT
+!
+no route-map RM-USER-554-OUT
+!
+no route-map RM-USER-555-OUT
+!
+no route-map RM-USER-556-OUT
+!
+no route-map RM-USER-557-OUT
+!
+no route-map RM-USER-558-OUT
+!
+no route-map RM-USER-559-OUT
+!
+no route-map RM-USER-560-OUT
+!
+no route-map RM-USER-561-OUT
+!
+no route-map RM-USER-562-OUT
+!
+no route-map RM-USER-563-OUT
+!
+no route-map RM-USER-500-IN
+!
+no route-map RM-USER-501-IN
+!
+no route-map RM-USER-502-IN
+!
+no route-map RM-USER-503-IN
+!
+no route-map RM-USER-504-IN
+!
+no route-map RM-USER-505-IN
+!
+no route-map RM-USER-506-IN
+!
+no route-map RM-USER-507-IN
+!
+no route-map RM-USER-508-IN
+!
+no route-map RM-USER-509-IN
+!
+no route-map RM-USER-510-IN
+!
+no route-map RM-USER-511-IN
+!
+no route-map RM-USER-512-IN
+!
+no route-map RM-USER-513-IN
+!
+no route-map RM-USER-514-IN
+!
+no route-map RM-USER-515-IN
+!
+no route-map RM-USER-516-IN
+!
+no route-map RM-USER-517-IN
+!
+no route-map RM-USER-518-IN
+!
+no route-map RM-USER-519-IN
+!
+no route-map RM-USER-520-IN
+!
+no route-map RM-USER-521-IN
+!
+no route-map RM-USER-522-IN
+!
+no route-map RM-USER-523-IN
+!
+no route-map RM-USER-524-IN
+!
+no route-map RM-USER-525-IN
+!
+no route-map RM-USER-526-IN
+!
+no route-map RM-USER-527-IN
+!
+no route-map RM-USER-528-IN
+!
+no route-map RM-USER-529-IN
+!
+no route-map RM-USER-530-IN
+!
+no route-map RM-USER-531-IN
+!
+no route-map RM-USER-532-IN
+!
+no route-map RM-USER-533-IN
+!
+no route-map RM-USER-534-IN
+!
+no route-map RM-USER-535-IN
+!
+no route-map RM-USER-536-IN
+!
+no route-map RM-USER-537-IN
+!
+no route-map RM-USER-538-IN
+!
+no route-map RM-USER-539-IN
+!
+no route-map RM-USER-540-IN
+!
+no route-map RM-USER-541-IN
+!
+no route-map RM-USER-542-IN
+!
+no route-map RM-USER-543-IN
+!
+no route-map RM-USER-544-IN
+!
+no route-map RM-USER-545-IN
+!
+no route-map RM-USER-546-IN
+!
+no route-map RM-USER-547-IN
+!
+no route-map RM-USER-548-IN
+!
+no route-map RM-USER-549-IN
+!
+no route-map RM-USER-550-IN
+!
+no route-map RM-USER-551-IN
+!
+no route-map RM-USER-552-IN
+!
+no route-map RM-USER-553-IN
+!
+no route-map RM-USER-554-IN
+!
+no route-map RM-USER-555-IN
+!
+no route-map RM-USER-556-IN
+!
+no route-map RM-USER-557-IN
+!
+no route-map RM-USER-558-IN
+!
+no route-map RM-USER-559-IN
+!
+no route-map RM-USER-560-IN
+!
+no route-map RM-USER-561-IN
+!
+no route-map RM-USER-562-IN
+!
+no route-map RM-USER-563-IN
+!
+no ip prefix-list PL-USER-500
+!
+no ip prefix-list PL-USER-501
+!
+no ip prefix-list PL-USER-502
+!
+no ip prefix-list PL-USER-503
+!
+no ip prefix-list PL-USER-504
+!
+no ip prefix-list PL-USER-505
+!
+no ip prefix-list PL-USER-506
+!
+no ip prefix-list PL-USER-507
+!
+no ip prefix-list PL-USER-508
+!
+no ip prefix-list PL-USER-509
+!
+no ip prefix-list PL-USER-510
+!
+no ip prefix-list PL-USER-511
+!
+no ip prefix-list PL-USER-512
+!
+no ip prefix-list PL-USER-513
+!
+no ip prefix-list PL-USER-514
+!
+no ip prefix-list PL-USER-515
+!
+no ip prefix-list PL-USER-516
+!
+no ip prefix-list PL-USER-517
+!
+no ip prefix-list PL-USER-518
+!
+no ip prefix-list PL-USER-519
+!
+no ip prefix-list PL-USER-520
+!
+no ip prefix-list PL-USER-521
+!
+no ip prefix-list PL-USER-522
+!
+no ip prefix-list PL-USER-523
+!
+no ip prefix-list PL-USER-524
+!
+no ip prefix-list PL-USER-525
+!
+no ip prefix-list PL-USER-526
+!
+no ip prefix-list PL-USER-527
+!
+no ip prefix-list PL-USER-528
+!
+no ip prefix-list PL-USER-529
+!
+no ip prefix-list PL-USER-530
+!
+no ip prefix-list PL-USER-531
+!
+no ip prefix-list PL-USER-532
+!
+no ip prefix-list PL-USER-533
+!
+no ip prefix-list PL-USER-534
+!
+no ip prefix-list PL-USER-535
+!
+no ip prefix-list PL-USER-536
+!
+no ip prefix-list PL-USER-537
+!
+no ip prefix-list PL-USER-538
+!
+no ip prefix-list PL-USER-539
+!
+no ip prefix-list PL-USER-540
+!
+no ip prefix-list PL-USER-541
+!
+no ip prefix-list PL-USER-542
+!
+no ip prefix-list PL-USER-543
+!
+no ip prefix-list PL-USER-544
+!
+no ip prefix-list PL-USER-545
+!
+no ip prefix-list PL-USER-546
+!
+no ip prefix-list PL-USER-547
+!
+no ip prefix-list PL-USER-548
+!
+no ip prefix-list PL-USER-549
+!
+no ip prefix-list PL-USER-550
+!
+no ip prefix-list PL-USER-551
+!
+no ip prefix-list PL-USER-552
+!
+no ip prefix-list PL-USER-553
+!
+no ip prefix-list PL-USER-554
+!
+no ip prefix-list PL-USER-555
+!
+no ip prefix-list PL-USER-556
+!
+no ip prefix-list PL-USER-557
+!
+no ip prefix-list PL-USER-558
+!
+no ip prefix-list PL-USER-559
+!
+no ip prefix-list PL-USER-560
+!
+no ip prefix-list PL-USER-561
+!
+no ip prefix-list PL-USER-562
+!
+no ip prefix-list PL-USER-563
+!
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-500-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-501-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-502-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-503-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-504-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-505-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-506-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-507-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-508-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-509-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-510-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-511-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-512-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-513-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-514-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-515-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-516-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-517-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-518-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-519-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-520-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-521-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-522-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-523-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-524-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-525-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-526-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-527-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-528-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-529-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-530-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-531-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-532-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-533-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-534-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-535-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-536-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-537-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-538-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-539-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-540-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-541-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-542-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-543-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-544-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-545-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-546-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-547-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-548-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-549-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-550-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-551-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-552-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-553-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-554-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-555-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-556-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-557-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-558-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-559-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-560-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-561-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-562-OUT
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-563-OUT
+no ip access-list SEC-USER-PUB-MCAST-IN
+ip access-list SEC-USER-PUB-MCAST-IN
+   counters per-entry
+   permit icmp any any
+   permit tcp any any eq bgp
+   permit ip any 224.0.0.13/32
+   permit ip any 233.84.178.0/24
+   deny ip any any
+!
+no ip access-list SEC-USER-SUB-MCAST-IN
+ip access-list SEC-USER-SUB-MCAST-IN
+   counters per-entry
+   permit icmp any any
+   permit tcp any any eq bgp
+   permit ip any 224.0.0.13/32
+   deny ip any any
+!
+no router msdp
+router msdp
+   peer 172.16.0.14
+      mesh-group DZ-1
+      local-interface Loopback256
+      description ty2-dz01
+   peer 172.16.0.11
+      mesh-group DZ-1
+      local-interface Loopback256
+      description ld4-dz01
+   peer 172.16.0.10
+      mesh-group DZ-1
+      local-interface Loopback256
+      description la2-dz01
+   peer 172.16.0.13
+      mesh-group DZ-1
+      local-interface Loopback256
+      description sg1-dz01
+   peer 172.16.0.16
+      mesh-group DZ-1
+      local-interface Loopback256
+      description ams-dz001
+   peer 172.16.0.12
+      mesh-group DZ-1
+      local-interface Loopback256
+      description frk-dz01

@@ -40,6 +40,33 @@ func TestE2E_IBRL(t *testing.T) {
 	}) {
 		t.Fail()
 	}
+
+	if !t.Run("remove_ibgp_msdp_peer", func(t *testing.T) {
+		dn.DeleteDeviceLoopbackInterface(t.Context(), "pit-dzd01", "Loopback255")
+		time.Sleep(30 * time.Second) // Wait for the device to process the change
+		checkIbgpMsdpPeerRemoved(t, dn, device, client)
+	}) {
+		t.Fail()
+	}
+}
+
+func checkIbgpMsdpPeerRemoved(t *testing.T, dn *TestDevnet, device *devnet.Device, client *devnet.Client) {
+	dn.log.Info("==> Checking that iBGP/MSDP peers have been removed after peer's Loopback255 interface was removed")
+
+	if !t.Run("wait_for_agent_config_after_peer_removal", func(t *testing.T) {
+		// We need a new fixture that shows the config after pit-dzd01's Loopback255 is removed
+		// This fixture should have pit-dzd01's BGP and MSDP peer configurations removed
+		config, err := fixtures.Render("fixtures/ibrl/doublezero_agent_config_peer_removed.tmpl", map[string]string{
+			"DeviceIP": device.CYOANetworkIP,
+		})
+		require.NoError(t, err, "error reading agent configuration fixture for peer removal")
+		err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
+		require.NoError(t, err, "error waiting for agent config to match after peer removal")
+	}) {
+		t.Fail()
+	}
+
+	dn.log.Info("--> IBRL iBGP/MSDP peer removal requirements checked")
 }
 
 // checkIBRLPostConnect checks requirements after connecting a user tunnel.

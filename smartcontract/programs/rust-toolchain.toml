@@ -1,0 +1,6 @@
+[toolchain]
+# Pin to the Rust version required by the solana-program crate in this workspace.
+#
+# Check with:
+# cargo metadata --format-version 1 | jq -r '.packages[] | select(.name=="solana-program") | .rust_version' | head -n1
+channel = "1.79.0"

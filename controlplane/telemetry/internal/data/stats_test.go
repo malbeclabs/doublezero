@@ -26,7 +26,8 @@ func TestTelemetry_Data_ComputeStats(t *testing.T) {
 		requireFloatEqual(t, stat.RTTVariance, 200)
 		require.Greater(t, stat.JitterMax, 0.0)
 		require.Greater(t, stat.JitterEWMA, 0.0)
-		require.Equal(t, stat.JitterPeakToPeak, 40.0)
+		// Peak-to-peak is over |ΔRTT|; with uniform +10 deltas it's 0.
+		require.Equal(t, stat.JitterPeakToPeak, 0.0)
 		require.Equal(t, stat.SuccessCount, uint64(5))
 		require.Equal(t, stat.LossCount, uint64(0))
 	})

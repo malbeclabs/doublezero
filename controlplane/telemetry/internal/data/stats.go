@@ -7,118 +7,152 @@ import (
 )
 
 func computeStats(ts time.Time, rtts []float64) CircuitLatencyStat {
-	var successRTTs []float64
+	// Keep original order for jitter/IPDV; count losses (rtt<=0) separately.
+	var ordered []float64
 	var success, lossCount uint64
-
 	for _, rtt := range rtts {
 		if rtt > 0 {
-			successRTTs = append(successRTTs, rtt)
+			ordered = append(ordered, rtt)
 			success++
 		} else {
 			lossCount++
 		}
 	}
-
 	total := success + lossCount
-	if total == 0 || len(successRTTs) == 0 {
+	if total == 0 || len(ordered) == 0 {
 		var lossRate float64
 		if total > 0 {
 			lossRate = float64(lossCount) / float64(total)
 		}
 		return CircuitLatencyStat{
-			Timestamp:         ts.Format(time.RFC3339),
-			RTTMean:           0,
-			RTTMedian:         0,
-			RTTMin:            0,
-			RTTMax:            0,
-			RTTP95:            0,
-			RTTP99:            0,
-			RTTStdDev:         0,
-			RTTVariance:       0,
-			RTTMAD:            0,
-			JitterAvg:         0,
-			JitterEWMA:        0,
-			JitterDeltaStdDev: 0,
-			JitterPeakToPeak:  0,
-			JitterMax:         0,
-			SuccessCount:      0,
-			SuccessRate:       0,
-			LossCount:         lossCount,
-			LossRate:          lossRate,
+			Timestamp: ts.Format(time.RFC3339),
+			LossCount: lossCount,
+			LossRate:  lossRate,
 		}
 	}
 
-	sort.Float64s(successRTTs)
-	n := float64(len(successRTTs))
+	// Sorted copy for summary stats (min/max/percentiles/mean/stddev).
+	sorted := append([]float64(nil), ordered...)
+	sort.Float64s(sorted)
+	n := float64(len(sorted))
 
-	var sum, sumSq, mad float64
-	var ipdvs []float64
-	var smoothedIPDV float64
-	var maxIPDV float64
+	min, max := sorted[0], sorted[len(sorted)-1]
 
-	min := successRTTs[0]
-	max := successRTTs[len(successRTTs)-1]
-
+	// Median
+	mid := len(sorted) / 2
 	var median float64
-	mid := len(successRTTs) / 2
-	if len(successRTTs)%2 == 0 {
-		median = (successRTTs[mid-1] + successRTTs[mid]) / 2
+	if len(sorted)%2 == 0 {
+		median = (sorted[mid-1] + sorted[mid]) / 2
 	} else {
-		median = successRTTs[mid]
+		median = sorted[mid]
 	}
 
-	for i, v := range successRTTs {
+	// Mean, variance (numerically safe), stddev
+	var sum, sumSq float64
+	for _, v := range sorted {
 		sum += v
 		sumSq += v * v
-		if i > 0 {
-			delta := math.Abs(v - successRTTs[i-1])
-			ipdvs = append(ipdvs, delta)
-			smoothedIPDV += (delta - smoothedIPDV) / 16
-			if delta > maxIPDV {
-				maxIPDV = delta
-			}
-		}
 	}
 	mean := sum / n
-	variance := (sumSq / n) - (mean * mean)
+	variance := (sumSq / n) - mean*mean
+	if variance < 0 && variance > -1e-12 {
+		variance = 0
+	} // clamp tiny negatives
 	stddev := math.Sqrt(variance)
-	for _, v := range successRTTs {
-		mad += math.Abs(v - mean)
-	}
-	mad /= n
-	p95 := successRTTs[int(math.Ceil(0.95*n))-1]
-	p99 := successRTTs[int(math.Ceil(0.99*n))-1]
 
-	var ipdvMean, ipdvStddev float64
-	if len(ipdvs) > 0 {
-		var ipdvSum, ipdvSumSq float64
-		for _, d := range ipdvs {
-			ipdvSum += d
-			ipdvSumSq += d * d
+	// Median Absolute Deviation (MAD) from the median (robust)
+	res := make([]float64, len(sorted))
+	for i, v := range sorted {
+		res[i] = math.Abs(v - median)
+	}
+	sort.Float64s(res)
+	var mad float64
+	rm := len(res) / 2
+	if len(res)%2 == 0 {
+		mad = (res[rm-1] + res[rm]) / 2
+	} else {
+		mad = res[rm]
+	}
+
+	// Percentiles: nearest-rank with ceil(p*n)-1
+	p95 := sorted[int(math.Ceil(0.95*n))-1]
+	p99 := sorted[int(math.Ceil(0.99*n))-1]
+
+	// IPDV/jitter from ORIGINAL time order.
+	var deltas, absDeltas []float64
+	var ewma float64
+	var maxAbs, minAbs float64
+	if len(ordered) > 1 {
+		// Seed EWMA with first |ΔRTT| to avoid cold-start bias
+		firstAbs := math.Abs(ordered[1] - ordered[0])
+		ewma = firstAbs
+		maxAbs, minAbs = firstAbs, firstAbs
+		deltas = append(deltas, ordered[1]-ordered[0])
+		absDeltas = append(absDeltas, firstAbs)
+
+		for i := 2; i < len(ordered); i++ {
+			d := ordered[i] - ordered[i-1]
+			ad := math.Abs(d)
+			deltas = append(deltas, d)
+			absDeltas = append(absDeltas, ad)
+
+			// RFC3550-style smoothing with α=1/16
+			ewma += (ad - ewma) / 16
+
+			if ad > maxAbs {
+				maxAbs = ad
+			}
+			if ad < minAbs {
+				minAbs = ad
+			}
 		}
-		ipdvMean = ipdvSum / float64(len(ipdvs))
-		ipdvStddev = math.Sqrt((ipdvSumSq / float64(len(ipdvs))) - (ipdvMean * ipdvMean))
+	} else {
+		minAbs, maxAbs = 0, 0
+	}
+
+	// JitterAvg = mean(|ΔRTT|)
+	// JitterDeltaStdDev = standard deviation of signed ΔRTT (not RMS)
+	var ipdvMeanAbs, ipdvStddev float64
+	if len(deltas) > 0 {
+		var sAbs, mu, s2 float64
+		for _, d := range deltas {
+			mu += d
+		}
+		mu /= float64(len(deltas))
+		for i, d := range deltas {
+			sAbs += absDeltas[i]
+			diff := d - mu
+			s2 += diff * diff
+		}
+		ipdvMeanAbs = sAbs / float64(len(absDeltas))
+		ipdvStddev = math.Sqrt(s2 / float64(len(deltas)))
 	}
 
 	return CircuitLatencyStat{
-		Timestamp:         ts.Format(time.RFC3339),
-		RTTMean:           mean,
-		RTTMedian:         median,
-		RTTMin:            min,
-		RTTMax:            max,
-		RTTP95:            p95,
-		RTTP99:            p99,
-		RTTStdDev:         stddev,
-		RTTVariance:       variance,
-		RTTMAD:            mad,
-		JitterAvg:         ipdvMean,
-		JitterEWMA:        smoothedIPDV,
+		Timestamp: ts.Format(time.RFC3339),
+
+		// RTT stats (from sorted data)
+		RTTMean:     mean,
+		RTTMedian:   median,
+		RTTMin:      min,
+		RTTMax:      max,
+		RTTP95:      p95,
+		RTTP99:      p99,
+		RTTStdDev:   stddev,
+		RTTVariance: variance,
+		RTTMAD:      mad, // median(|RTT - median(RTT)|)
+
+		// Jitter/IPDV stats (from original order)
+		JitterAvg:         ipdvMeanAbs,
+		JitterEWMA:        ewma,
 		JitterDeltaStdDev: ipdvStddev,
-		JitterPeakToPeak:  max - min,
-		JitterMax:         maxIPDV,
-		SuccessCount:      success,
-		SuccessRate:       float64(success) / float64(total),
-		LossCount:         lossCount,
-		LossRate:          float64(lossCount) / float64(total),
+		JitterPeakToPeak:  maxAbs - minAbs, // over |ΔRTT|
+		JitterMax:         maxAbs,
+
+		// Success/loss
+		SuccessCount: success,
+		SuccessRate:  float64(success) / float64(total),
+		LossCount:    lossCount,
+		LossRate:     float64(lossCount) / float64(total),
 	}
 }

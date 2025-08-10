@@ -40,9 +40,25 @@ func (c *InternetCmd) Command() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to get env flag: %w", err)
 			}
-			recency, err := cmd.Flags().GetDuration("recency")
+			recentTime, err := cmd.Flags().GetDuration("recent-time")
 			if err != nil {
-				return fmt.Errorf("failed to get recency flag: %w", err)
+				return fmt.Errorf("failed to get recent-time flag: %w", err)
+			}
+			recentEpochs, err := cmd.Flags().GetInt32("recent-epochs")
+			if err != nil {
+				return fmt.Errorf("failed to get recent-epochs flag: %w", err)
+			}
+			epoch, err := cmd.Flags().GetInt32("epoch")
+			if err != nil {
+				return fmt.Errorf("failed to get epoch flag: %w", err)
+			}
+			fromEpoch, err := cmd.Flags().GetInt32("from-epoch")
+			if err != nil {
+				return fmt.Errorf("failed to get from-epoch flag: %w", err)
+			}
+			toEpoch, err := cmd.Flags().GetInt32("to-epoch")
+			if err != nil {
+				return fmt.Errorf("failed to get to-epoch flag: %w", err)
 			}
 			rawCSVPath, err := cmd.Flags().GetString("raw-csv")
 			if err != nil {
@@ -55,7 +71,6 @@ func (c *InternetCmd) Command() *cobra.Command {
 			unit := internetdata.UnitMillisecond
 
 			if dataProvider == "" {
-				// TODO(snormore): Do something better here.
 				dataProvider = internetdata.DataProviderNameWheresitup
 			}
 
@@ -64,7 +79,7 @@ func (c *InternetCmd) Command() *cobra.Command {
 			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 			defer cancel()
 
-			provider, err := newInternetProvider(log, env)
+			provider, rpcClient, err := newInternetProvider(log, env)
 			if err != nil {
 				log.Error("Failed to get provider", "error", err)
 				os.Exit(1)
@@ -76,8 +91,63 @@ func (c *InternetCmd) Command() *cobra.Command {
 				os.Exit(1)
 			}
 
-			from := time.Now().Add(-recency)
-			to := time.Now()
+			usingTimeWindow := recentTime > 0
+			usingEpochWindow := recentEpochs > 1
+			usingExactEpoch := epoch != 0
+			usingEpochRange := fromEpoch != 0 || toEpoch != 0
+			selectors := 0
+			if usingTimeWindow {
+				selectors++
+			}
+			if usingEpochWindow {
+				selectors++
+			}
+			if usingExactEpoch {
+				selectors++
+			}
+			if usingEpochRange {
+				selectors++
+			}
+			if selectors > 1 {
+				return fmt.Errorf("specify only one of: recent-time, recent-epochs, epoch, or from/to epoch range")
+			}
+			if usingEpochRange && fromEpoch != 0 && toEpoch != 0 && fromEpoch > toEpoch {
+				return fmt.Errorf("from-epoch must be less than to-epoch")
+			}
+
+			var timeRange *internetdata.TimeRange
+			var epochRange *internetdata.EpochRange
+			switch {
+			case usingTimeWindow:
+				now := time.Now().UTC()
+				timeRange = &internetdata.TimeRange{From: now.Add(-recentTime), To: now}
+			case usingExactEpoch:
+				e := uint64(epoch)
+				epochRange = &internetdata.EpochRange{From: e, To: e}
+			case usingEpochWindow:
+				epochInfo, err := rpcClient.GetEpochInfo(ctx, solanarpc.CommitmentFinalized)
+				if err != nil {
+					log.Error("failed to get current epoch", "error", err)
+					os.Exit(1)
+				}
+				cur := epochInfo.Epoch
+				n := uint64(recentEpochs - 1)
+				from := uint64(0)
+				if cur >= n {
+					from = cur - n
+				}
+				epochRange = &internetdata.EpochRange{From: from, To: cur}
+			case usingEpochRange:
+				epochRange = &internetdata.EpochRange{From: uint64(fromEpoch), To: uint64(toEpoch)}
+			default:
+				epochInfo, err := rpcClient.GetEpochInfo(ctx, solanarpc.CommitmentFinalized)
+				if err != nil {
+					log.Error("failed to get current epoch", "error", err)
+					os.Exit(1)
+				}
+				cur := epochInfo.Epoch
+				epochRange = &internetdata.EpochRange{From: cur, To: cur}
+			}
 
 			if rawCSVPath != "" {
 				file, err := os.Create(rawCSVPath)
@@ -96,7 +166,8 @@ func (c *InternetCmd) Command() *cobra.Command {
 				for _, circuit := range circuits {
 					samples, err := provider.GetCircuitLatencies(ctx, internetdata.GetCircuitLatenciesConfig{
 						Circuit:      circuit.Code,
-						Time:         &internetdata.TimeRange{From: from, To: to},
+						Time:         timeRange,
+						Epochs:       epochRange,
 						Unit:         unit,
 						DataProvider: dataProvider,
 					})
@@ -126,7 +197,8 @@ func (c *InternetCmd) Command() *cobra.Command {
 					ctx,
 					internetdata.GetCircuitLatenciesConfig{
 						Circuit:      circuit.Code,
-						Time:         &internetdata.TimeRange{From: from, To: to},
+						Time:         timeRange,
+						Epochs:       epochRange,
 						Unit:         unit,
 						MaxPoints:    1,
 						DataProvider: dataProvider,
@@ -139,44 +211,63 @@ func (c *InternetCmd) Command() *cobra.Command {
 				allStats = append(allStats, stats...)
 			}
 
-			printInternetSummaries(allStats, env, recency)
+			printInternetSummaries(allStats, env, dataProvider, recentTime, epochRange)
 
 			return nil
 		},
 	}
 
 	cmd.Flags().StringP("data-provider", "p", "", "The data provider to query (ripeatlas, whereisup)")
-	cmd.Flags().Duration("recency", 24*time.Hour, "Aggregate over the given duration")
+	cmd.Flags().Duration("recent-time", 0, "Aggregate over the given duration up to now (e.g. 24h)")
+	cmd.Flags().Int32("recent-epochs", 1, "Aggregate over the given number of recent epochs")
+	cmd.Flags().Int32("epoch", 0, "Aggregate over the given epoch")
+	cmd.Flags().Int32("from-epoch", 0, "Aggregate from the given epoch")
+	cmd.Flags().Int32("to-epoch", 0, "Aggregate to the given epoch")
 	cmd.Flags().String("raw-csv", "", "Path to save raw data to CSV")
 
 	return cmd
 }
 
-func newInternetProvider(log *slog.Logger, env string) (internetdata.Provider, error) {
+func newInternetProvider(log *slog.Logger, env string) (internetdata.Provider, *solanarpc.Client, error) {
 	networkConfig, err := config.NetworkConfigForEnv(env)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get network config: %w", err)
+		return nil, nil, fmt.Errorf("failed to get network config: %w", err)
 	}
 
 	rpcClient := solanarpc.New(networkConfig.LedgerPublicRPCURL)
 
 	epochFinder, err := epoch.NewFinder(log, rpcClient)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create epoch finder: %w", err)
+		return nil, nil, fmt.Errorf("failed to create epoch finder: %w", err)
 	}
 
-	return internetdata.NewProvider(&internetdata.ProviderConfig{
+	provider, err := internetdata.NewProvider(&internetdata.ProviderConfig{
 		Logger:               log,
 		ServiceabilityClient: serviceability.New(rpcClient, networkConfig.ServiceabilityProgramID),
 		TelemetryClient:      telemetry.New(log, rpcClient, nil, networkConfig.TelemetryProgramID),
 		EpochFinder:          epochFinder,
 		AgentPK:              networkConfig.InternetLatencyCollectorPK,
 	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create provider: %w", err)
+	}
+
+	return provider, rpcClient, nil
 }
 
-func printInternetSummaries(stats []stats.CircuitLatencyStat, env string, recency time.Duration) {
+func printInternetSummaries(stats []stats.CircuitLatencyStat, env string, dataProvider string, recentTime time.Duration, epochRange *internetdata.EpochRange) {
 	fmt.Println("Environment:", env)
-	fmt.Println("Recency:", recency)
+	fmt.Println("Data provider:", dataProvider)
+	if recentTime > 0 {
+		fmt.Println("Recent time:", recentTime)
+	}
+	if epochRange != nil {
+		if epochRange.From == epochRange.To {
+			fmt.Println("Epoch:", epochRange.From)
+		} else {
+			fmt.Println("Epochs:", epochRange.From, "-", epochRange.To)
+		}
+	}
 	fmt.Println("* RTT aggregates are in milliseconds (ms)")
 
 	sort.Slice(stats, func(i, j int) bool {

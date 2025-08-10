@@ -44,9 +44,21 @@ func (c *DeviceCmd) Command() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to get recent-time flag: %w", err)
 			}
-			recentEpochs, err := cmd.Flags().GetInt16("recent-epochs")
+			recentEpochs, err := cmd.Flags().GetInt32("recent-epochs")
 			if err != nil {
 				return fmt.Errorf("failed to get recent-epochs flag: %w", err)
+			}
+			epoch, err := cmd.Flags().GetInt32("epoch")
+			if err != nil {
+				return fmt.Errorf("failed to get epoch flag: %w", err)
+			}
+			fromEpoch, err := cmd.Flags().GetInt32("from-epoch")
+			if err != nil {
+				return fmt.Errorf("failed to get from-epoch flag: %w", err)
+			}
+			toEpoch, err := cmd.Flags().GetInt32("to-epoch")
+			if err != nil {
+				return fmt.Errorf("failed to get to-epoch flag: %w", err)
 			}
 			rawCSVPath, err := cmd.Flags().GetString("raw-csv")
 			if err != nil {
@@ -59,7 +71,7 @@ func (c *DeviceCmd) Command() *cobra.Command {
 			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 			defer cancel()
 
-			provider, _, err := newDeviceProvider(log, env)
+			provider, rpcClient, err := newDeviceProvider(log, env)
 			if err != nil {
 				log.Error("Failed to get provider", "error", err)
 				os.Exit(1)
@@ -71,22 +83,63 @@ func (c *DeviceCmd) Command() *cobra.Command {
 				os.Exit(1)
 			}
 
-			if recentTime > 0 && recentEpochs != 1 {
-				return fmt.Errorf("recent-time and recent-epochs cannot be used together")
+			usingTimeWindow := recentTime > 0
+			usingEpochWindow := recentEpochs > 1
+			usingExactEpoch := epoch != 0
+			usingEpochRange := fromEpoch != 0 || toEpoch != 0
+			selectors := 0
+			if usingTimeWindow {
+				selectors++
+			}
+			if usingEpochWindow {
+				selectors++
+			}
+			if usingExactEpoch {
+				selectors++
+			}
+			if usingEpochRange {
+				selectors++
+			}
+			if selectors > 1 {
+				return fmt.Errorf("specify only one of: recent-time, recent-epochs, epoch, or from/to epoch range")
+			}
+			if usingEpochRange && fromEpoch != 0 && toEpoch != 0 && fromEpoch > toEpoch {
+				return fmt.Errorf("from-epoch must be less than to-epoch")
 			}
 
-			if recentTime > 0 {
-
+			var timeRange *devicedata.TimeRange
+			var epochRange *devicedata.EpochRange
+			switch {
+			case usingTimeWindow:
+				now := time.Now().UTC()
+				timeRange = &devicedata.TimeRange{From: now.Add(-recentTime), To: now}
+			case usingExactEpoch:
+				e := uint64(epoch)
+				epochRange = &devicedata.EpochRange{From: e, To: e}
+			case usingEpochWindow:
+				epochInfo, err := rpcClient.GetEpochInfo(ctx, solanarpc.CommitmentFinalized)
+				if err != nil {
+					log.Error("failed to get current epoch", "error", err)
+					os.Exit(1)
+				}
+				cur := epochInfo.Epoch
+				n := uint64(recentEpochs - 1)
+				from := uint64(0)
+				if cur >= n {
+					from = cur - n
+				}
+				epochRange = &devicedata.EpochRange{From: from, To: cur}
+			case usingEpochRange:
+				epochRange = &devicedata.EpochRange{From: uint64(fromEpoch), To: uint64(toEpoch)}
+			default:
+				epochInfo, err := rpcClient.GetEpochInfo(ctx, solanarpc.CommitmentFinalized)
+				if err != nil {
+					log.Error("failed to get current epoch", "error", err)
+					os.Exit(1)
+				}
+				cur := epochInfo.Epoch
+				epochRange = &devicedata.EpochRange{From: cur, To: cur}
 			}
-
-			// currentEpoch, err := rpcClient.GetEpochInfo(ctx, solanarpc.CommitmentFinalized)
-			// if err != nil {
-			// 	log.Error("Failed to get current epoch", "error", err)
-			// 	os.Exit(1)
-			// }
-
-			from := time.Now().Add(-recentTime)
-			to := time.Now()
 
 			if rawCSVPath != "" {
 				file, err := os.Create(rawCSVPath)
@@ -105,11 +158,9 @@ func (c *DeviceCmd) Command() *cobra.Command {
 				for _, circuit := range circuits {
 					samples, err := provider.GetCircuitLatencies(ctx, devicedata.GetCircuitLatenciesConfig{
 						Circuit: circuit.Code,
-						Time: &devicedata.TimeRange{
-							From: from,
-							To:   to,
-						},
-						Unit: unit,
+						Time:    timeRange,
+						Epochs:  epochRange,
+						Unit:    unit,
 					})
 					if err != nil {
 						log.Error("Failed to get raw data", "error", err, "circuit", circuit.Code)
@@ -136,11 +187,9 @@ func (c *DeviceCmd) Command() *cobra.Command {
 				stats, err := provider.GetCircuitLatencies(
 					ctx,
 					devicedata.GetCircuitLatenciesConfig{
-						Circuit: circuit.Code,
-						Time: &devicedata.TimeRange{
-							From: from,
-							To:   to,
-						},
+						Circuit:   circuit.Code,
+						Time:      timeRange,
+						Epochs:    epochRange,
 						MaxPoints: 1,
 						Unit:      unit,
 					},
@@ -152,14 +201,17 @@ func (c *DeviceCmd) Command() *cobra.Command {
 				allStats = append(allStats, stats...)
 			}
 
-			printDeviceSummaries(allStats, env, recentTime)
+			printDeviceSummaries(allStats, env, recentTime, epochRange)
 
 			return nil
 		},
 	}
 
-	cmd.Flags().Duration("recent-time", 24*time.Hour, "Aggregate over the given duration of time up to now (e.g. 24h)")
-	cmd.Flags().Int16("recent-epochs", 1, "Aggregate over the given number of recent epochs")
+	cmd.Flags().Duration("recent-time", 0, "Aggregate over the given duration up to now (e.g. 24h)")
+	cmd.Flags().Int32("recent-epochs", 1, "Aggregate over the given number of recent epochs")
+	cmd.Flags().Int32("epoch", 0, "Aggregate over the given epoch")
+	cmd.Flags().Int32("from-epoch", 0, "Aggregate from the given epoch")
+	cmd.Flags().Int32("to-epoch", 0, "Aggregate to the given epoch")
 	cmd.Flags().String("raw-csv", "", "Path to save raw data to CSV")
 
 	return cmd
@@ -191,9 +243,18 @@ func newDeviceProvider(log *slog.Logger, env string) (devicedata.Provider, *sola
 	return provider, rpcClient, nil
 }
 
-func printDeviceSummaries(stats []stats.CircuitLatencyStat, env string, recency time.Duration) {
+func printDeviceSummaries(stats []stats.CircuitLatencyStat, env string, recentTime time.Duration, epochRange *devicedata.EpochRange) {
 	fmt.Println("Environment:", env)
-	fmt.Println("Recency:", recency)
+	if recentTime > 0 {
+		fmt.Println("Recent time:", recentTime)
+	}
+	if epochRange != nil {
+		if epochRange.From == epochRange.To {
+			fmt.Println("Epoch:", epochRange.From)
+		} else {
+			fmt.Println("Epochs:", epochRange.From, "-", epochRange.To)
+		}
+	}
 	fmt.Println("* RTT aggregates are in milliseconds (ms)")
 
 	sort.Slice(stats, func(i, j int) bool {

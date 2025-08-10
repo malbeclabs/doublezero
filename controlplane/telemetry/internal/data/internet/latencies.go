@@ -134,7 +134,15 @@ func (p *provider) getCircuitLatenciesForEpochRange(ctx context.Context, circuit
 		epoch := epoch
 
 		group.SubmitErr(func() (*CircuitLatenciesWithHeader, error) {
-			return p.GetCircuitLatenciesForEpoch(ctx, circuitCode, epoch, dataProvider)
+			if result, err := p.GetCircuitLatenciesForEpoch(ctx, circuitCode, epoch, dataProvider); err != nil {
+				if errors.Is(err, telemetry.ErrAccountNotFound) {
+					p.log.Info("Internet latency samples not found, skipping", "epoch", epoch, "circuit", circuitCode, "dataProvider", dataProvider)
+					return nil, nil
+				}
+				return nil, err
+			} else {
+				return result, nil
+			}
 		})
 	}
 
@@ -143,7 +151,15 @@ func (p *provider) getCircuitLatenciesForEpochRange(ctx context.Context, circuit
 		return nil, fmt.Errorf("failed to get circuit latencies for epoch range: %w", err)
 	}
 
-	return results, nil
+	partitions := make([]*CircuitLatenciesWithHeader, 0, len(results))
+	for _, result := range results {
+		if result == nil {
+			continue
+		}
+		partitions = append(partitions, result)
+	}
+
+	return partitions, nil
 }
 
 func (p *provider) getCircuitLatenciesForTimeRange(ctx context.Context, circuitCode string, from, to time.Time, dataProvider string) ([]datastats.CircuitLatencySample, error) {

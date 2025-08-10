@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -41,6 +42,14 @@ type TimeRange struct {
 	To   time.Time
 }
 
+func (t *TimeRange) String() string {
+	return fmt.Sprintf("%s to %s", t.From.Format(time.RFC3339), t.To.Format(time.RFC3339))
+}
+
+func (e *EpochRange) String() string {
+	return fmt.Sprintf("%d to %d", e.From, e.To)
+}
+
 type GetCircuitLatenciesConfig struct {
 	Epochs    *EpochRange
 	Time      *TimeRange
@@ -55,6 +64,7 @@ type Provider interface {
 }
 
 type provider struct {
+	log *slog.Logger
 	cfg *ProviderConfig
 
 	cache   *ttlcache.Cache[string, any]
@@ -115,6 +125,7 @@ func NewProvider(cfg *ProviderConfig) (*provider, error) {
 	getCircuitLatenciesPool := pond.NewResultPool[*CircuitLatenciesWithHeader](cfg.GetCircuitLatenciesPoolSize)
 
 	return &provider{
+		log:   cfg.Logger,
 		cfg:   cfg,
 		cache: cache,
 

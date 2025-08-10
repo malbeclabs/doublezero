@@ -39,16 +39,17 @@ const (
 )
 
 var (
-	env                        string
-	keypairPath                string
-	stateDir                   string
-	logLevel                   string
-	locationFile               string
-	dryRun                     bool
-	wheresitupStateFile        string
-	ripeatlasProbesPerLocation int
-	ledgerSubmissionInterval   time.Duration
-	metricsAddr                string
+	env                          string
+	keypairPath                  string
+	stateDir                     string
+	logLevel                     string
+	locationFile                 string
+	dryRun                       bool
+	wheresitupStateFile          string
+	ripeatlasProbesPerLocation   int
+	ripeatlasMeasurementInterval time.Duration
+	ledgerSubmissionInterval     time.Duration
+	metricsAddr                  string
 
 	version = "dev"
 	commit  = "none"
@@ -144,7 +145,7 @@ RIPE Atlas measurements hourly, and exports RIPE Atlas results every 2 minutes.`
 		}
 
 		// Create data provider collectors.
-		ripeatlasCollector := ripeatlas.NewCollector(log, exporter, stateDir, func(ctx context.Context) []collector.LocationMatch {
+		ripeatlasCollector := ripeatlas.NewCollector(log, exporter, env, func(ctx context.Context) []collector.LocationMatch {
 			return collector.GetLocations(ctx, log, serviceabilityClient)
 		})
 		wheresitupCollector := wheresitup.NewCollector(log, exporter, func(ctx context.Context) []collector.LocationMatch {
@@ -158,7 +159,7 @@ RIPE Atlas measurements hourly, and exports RIPE Atlas results every 2 minutes.`
 
 			WheresitupSamplingInterval:   defaultWheresitupSamplingInterval,
 			RipeAtlasSamplingInterval:    defaultRipeAtlasSamplingInterval,
-			RipeAtlasMeasurementInterval: defaultRipeAtlasMeasurementInterval,
+			RipeAtlasMeasurementInterval: ripeatlasMeasurementInterval,
 			RipeAtlasExportInterval:      defaultRipeAtlasExportInterval,
 			DryRun:                       dryRun,
 			ProcessedJobsFile:            wheresitupStateFile,
@@ -395,6 +396,7 @@ func init() {
 
 	runCmd.Flags().StringVar(&wheresitupStateFile, "wheresitup-job-state-file", defaultWheresitupStateFile, "File to track processed Wheresitup job IDs (JSON format)")
 	runCmd.Flags().IntVar(&ripeatlasProbesPerLocation, "ripeatlas-probes-per-location", defaultAtlasProbesPerLocation, "Number of RIPE Atlas probes to associate with each DoubleZero location")
+	runCmd.Flags().DurationVar(&ripeatlasMeasurementInterval, "ripeatlas-measurement-interval", defaultRipeAtlasMeasurementInterval, "Interval at which to run RIPE Atlas measurements")
 	runCmd.Flags().DurationVar(&ledgerSubmissionInterval, "ledger-submission-interval", defaultLedgerSubmissionInterval, "Interval at which to submit metrics to the ledger")
 	runCmd.Flags().StringVar(&metricsAddr, "metrics-addr", "127.0.0.1:2113", "Address to bind the metrics server to")
 

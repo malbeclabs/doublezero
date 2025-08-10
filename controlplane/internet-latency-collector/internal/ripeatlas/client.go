@@ -290,7 +290,7 @@ func (c *Client) GetAllMeasurements(ctx context.Context, env string) ([]Measurem
 	for {
 		resp, err := c.makeRequest(ctx, endpoint)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get measurements: %w", err)
+			return nil, fmt.Errorf("failed to get measurements (endpoint: %s): %w", endpoint, err)
 		}
 		defer resp.Body.Close()
 

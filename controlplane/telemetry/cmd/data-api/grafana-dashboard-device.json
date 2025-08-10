@@ -561,7 +561,7 @@
                             "type": "linear"
                         },
                         "showPoints": "auto",
-                        "spanNulls": false,
+                        "spanNulls": true,
                         "stacking": {
                             "group": "A",
                             "mode": "none"
@@ -703,7 +703,7 @@
                             "type": "linear"
                         },
                         "showPoints": "auto",
-                        "spanNulls": false,
+                        "spanNulls": true,
                         "stacking": {
                             "group": "A",
                             "mode": "none"
@@ -845,7 +845,7 @@
                             "type": "linear"
                         },
                         "showPoints": "auto",
-                        "spanNulls": false,
+                        "spanNulls": true,
                         "stacking": {
                             "group": "A",
                             "mode": "none"
@@ -1222,5 +1222,5 @@
     "timezone": "America/Toronto",
     "title": "DoubleZero Telemetry / Device Circuit Latencies",
     "uid": "9dc316d2-68cb-4dda-a114-0d188bd62a2f",
-    "version": 10
+    "version": 12
 }

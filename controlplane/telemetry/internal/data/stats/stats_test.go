@@ -1,9 +1,10 @@
-package data
+package stats_test
 
 import (
 	"testing"
 	"time"
 
+	data "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/stats"
 	"github.com/stretchr/testify/require"
 )
 
@@ -16,7 +17,7 @@ func TestTelemetry_Data_ComputeStats(t *testing.T) {
 		t.Parallel()
 
 		rtts := []float64{100, 110, 120, 130, 140}
-		stat := computeStats(now, rtts)
+		stat := data.ComputeStats(now, rtts)
 
 		requireFloatEqual(t, stat.RTTMean, 120)
 		requireFloatEqual(t, stat.RTTMedian, 120)
@@ -36,7 +37,7 @@ func TestTelemetry_Data_ComputeStats(t *testing.T) {
 		t.Parallel()
 
 		rtts := []float64{0, 0, 150, 160, 170}
-		stat := computeStats(now, rtts)
+		stat := data.ComputeStats(now, rtts)
 
 		require.Equal(t, stat.SuccessCount, uint64(3))
 		require.Equal(t, stat.LossCount, uint64(2))
@@ -50,7 +51,7 @@ func TestTelemetry_Data_ComputeStats(t *testing.T) {
 		t.Parallel()
 
 		rtts := []float64{200}
-		stat := computeStats(now, rtts)
+		stat := data.ComputeStats(now, rtts)
 
 		require.Equal(t, stat.SuccessCount, uint64(1))
 		requireFloatEqual(t, stat.RTTMean, 200)
@@ -66,7 +67,7 @@ func TestTelemetry_Data_ComputeStats(t *testing.T) {
 		t.Parallel()
 
 		rtts := []float64{0, 0, 0}
-		stat := computeStats(now, rtts)
+		stat := data.ComputeStats(now, rtts)
 
 		require.Equal(t, stat.SuccessCount, uint64(0))
 		require.Equal(t, stat.LossCount, uint64(3))

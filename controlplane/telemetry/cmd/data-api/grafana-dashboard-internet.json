@@ -18,13 +18,13 @@
     "editable": true,
     "fiscalYearStartMonth": 0,
     "graphTooltip": 0,
-    "id": 3,
+    "id": 4,
     "links": [],
     "panels": [
         {
             "datasource": {
                 "type": "yesoreyeram-infinity-datasource",
-                "uid": "ceseusebqihoga"
+                "uid": "eeuk7gmgqmi9sd"
             },
             "fieldConfig": {
                 "defaults": {
@@ -103,167 +103,7 @@
                     {
                         "matcher": {
                             "id": "byName",
-                            "options": "Loss (#)"
-                        },
-                        "properties": [
-                            {
-                                "id": "color",
-                                "value": {
-                                    "mode": "thresholds"
-                                }
-                            },
-                            {
-                                "id": "thresholds",
-                                "value": {
-                                    "mode": "absolute",
-                                    "steps": [
-                                        {
-                                            "color": "text"
-                                        },
-                                        {
-                                            "color": "#EAB839",
-                                            "value": 1
-                                        },
-                                        {
-                                            "color": "orange",
-                                            "value": 10
-                                        }
-                                    ]
-                                }
-                            },
-                            {
-                                "id": "unit",
-                                "value": "locale"
-                            },
-                            {
-                                "id": "custom.width",
-                                "value": 74
-                            },
-                            {
-                                "id": "custom.align",
-                                "value": "auto"
-                            }
-                        ]
-                    },
-                    {
-                        "matcher": {
-                            "id": "byName",
-                            "options": "Loss (%)"
-                        },
-                        "properties": [
-                            {
-                                "id": "unit",
-                                "value": "percentunit"
-                            },
-                            {
-                                "id": "thresholds",
-                                "value": {
-                                    "mode": "absolute",
-                                    "steps": [
-                                        {
-                                            "color": "text"
-                                        },
-                                        {
-                                            "color": "#EAB839",
-                                            "value": 1
-                                        },
-                                        {
-                                            "color": "orange",
-                                            "value": 10
-                                        },
-                                        {
-                                            "color": "red",
-                                            "value": 20
-                                        }
-                                    ]
-                                }
-                            },
-                            {
-                                "id": "custom.width",
-                                "value": 91
-                            },
-                            {
-                                "id": "custom.align",
-                                "value": "right"
-                            }
-                        ]
-                    },
-                    {
-                        "matcher": {
-                            "id": "byName",
                             "options": "RTT max"
-                        },
-                        "properties": [
-                            {
-                                "id": "custom.width",
-                                "value": 95
-                            }
-                        ]
-                    },
-                    {
-                        "matcher": {
-                            "id": "byName",
-                            "options": "RTT mean"
-                        },
-                        "properties": [
-                            {
-                                "id": "custom.width",
-                                "value": 100
-                            }
-                        ]
-                    },
-                    {
-                        "matcher": {
-                            "id": "byName",
-                            "options": "RTT p95"
-                        },
-                        "properties": [
-                            {
-                                "id": "custom.width",
-                                "value": 84
-                            }
-                        ]
-                    },
-                    {
-                        "matcher": {
-                            "id": "byName",
-                            "options": "RTT p99"
-                        },
-                        "properties": [
-                            {
-                                "id": "custom.width",
-                                "value": 82
-                            }
-                        ]
-                    },
-                    {
-                        "matcher": {
-                            "id": "byName",
-                            "options": "RTT min"
-                        },
-                        "properties": [
-                            {
-                                "id": "custom.width",
-                                "value": 81
-                            }
-                        ]
-                    },
-                    {
-                        "matcher": {
-                            "id": "byName",
-                            "options": "RTT median"
-                        },
-                        "properties": [
-                            {
-                                "id": "custom.width",
-                                "value": 99
-                            }
-                        ]
-                    },
-                    {
-                        "matcher": {
-                            "id": "byName",
-                            "options": "Jitter Avg"
                         },
                         "properties": [
                             {
@@ -275,12 +115,84 @@
                     {
                         "matcher": {
                             "id": "byName",
+                            "options": "RTT mean"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.width",
+                                "value": 111
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "RTT p95"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.width",
+                                "value": 102
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "RTT p99"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.width",
+                                "value": 100
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "RTT min"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.width",
+                                "value": 105
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "RTT median"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.width",
+                                "value": 108
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Jitter Avg"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.width",
+                                "value": 95
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
                             "options": "Jitter Max"
                         },
                         "properties": [
                             {
                                 "id": "custom.width",
-                                "value": 94
+                                "value": 103
                             }
                         ]
                     },
@@ -292,7 +204,7 @@
                         "properties": [
                             {
                                 "id": "custom.width",
-                                "value": 96
+                                "value": 118
                             },
                             {
                                 "id": "custom.align",
@@ -308,14 +220,50 @@
                         "properties": [
                             {
                                 "id": "custom.width",
-                                "value": 101
+                                "value": 107
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Count (#)"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.width",
+                                "value": 97
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "Circuit (location A, location Z)"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.width",
+                                "value": 310
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "RTT p90"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.width",
+                                "value": 94
                             }
                         ]
                     }
                 ]
             },
             "gridPos": {
-                "h": 11,
+                "h": 16,
                 "w": 24,
                 "x": 0,
                 "y": 0
@@ -335,7 +283,7 @@
                 "sortBy": [
                     {
                         "desc": false,
-                        "displayName": "Circuit (origin, target, link)"
+                        "displayName": "Circuit (location A, location Z)"
                     }
                 ]
             },
@@ -385,18 +333,8 @@
                         },
                         {
                             "selector": "success_count",
-                            "text": "Success (#)",
-                            "type": "string"
-                        },
-                        {
-                            "selector": "loss_count",
-                            "text": "Loss (#)",
-                            "type": "string"
-                        },
-                        {
-                            "selector": "loss_rate",
-                            "text": "Loss (%)",
-                            "type": "string"
+                            "text": "Count (#)",
+                            "type": "number"
                         },
                         {
                             "selector": "jitter_max",
@@ -411,13 +349,18 @@
                         {
                             "selector": "rtt_stddev",
                             "text": "RTT StdDev",
-                            "type": "string"
+                            "type": "number"
+                        },
+                        {
+                            "selector": "rtt_p90",
+                            "text": "RTT p90",
+                            "type": "number"
                         }
                     ],
                     "computed_columns": [],
                     "datasource": {
                         "type": "yesoreyeram-infinity-datasource",
-                        "uid": "ceseusebqihoga"
+                        "uid": "eeuk7gmgqmi9sd"
                     },
                     "filters": [],
                     "format": "dataframe",
@@ -442,7 +385,7 @@
                     "source": "url",
                     "summarizeBy": "",
                     "type": "json",
-                    "url": "http://host.docker.internal:8080/device-circuit-latencies?env=${env}&max_points=1&unit=${unit}&circuit=${circuit}&from=${__from:date}&to=${__to:date}",
+                    "url": "http://host.docker.internal:8080/location-internet/circuit-latencies?env=${env}&unit=${unit}&max_points=1&circuit=${circuit}&data_provider=${data_provider}&from=${__from:date}&to=${__to:date}",
                     "url_options": {
                         "data": "",
                         "method": "GET"
@@ -454,26 +397,29 @@
                 {
                     "id": "organize",
                     "options": {
-                        "excludeByName": {},
+                        "excludeByName": {
+                            "Loss (#)": false,
+                            "Loss (%)": false
+                        },
                         "includeByName": {},
                         "indexByName": {
                             "Circuit": 0,
+                            "Count (#)": 12,
                             "Jitter Avg": 2,
                             "Jitter EWMA": 3,
                             "Jitter Max": 4,
-                            "Loss (#)": 12,
-                            "Loss (%)": 11,
                             "RTT StdDev": 5,
                             "RTT max": 7,
                             "RTT mean": 1,
-                            "RTT median": 10,
+                            "RTT median": 11,
                             "RTT min": 6,
-                            "RTT p95": 8,
-                            "RTT p99": 9,
-                            "Success (#)": 13
+                            "RTT p90": 8,
+                            "RTT p95": 9,
+                            "RTT p99": 10
                         },
                         "renameByName": {
-                            "Circuit": "Circuit (origin, target, link)"
+                            "Circuit": "Circuit (location A, location Z)",
+                            "Loss (%)": ""
                         }
                     }
                 }
@@ -483,12 +429,12 @@
         {
             "datasource": {
                 "type": "yesoreyeram-infinity-datasource",
-                "uid": "ceseusebqihoga"
+                "uid": "eeuk7gmgqmi9sd"
             },
             "fieldConfig": {
                 "defaults": {
                     "color": {
-                        "mode": "palette-classic"
+                        "mode": "palette-classic-by-name"
                     },
                     "custom": {
                         "axisBorderShow": false,
@@ -517,7 +463,7 @@
                             "type": "linear"
                         },
                         "showPoints": "auto",
-                        "spanNulls": false,
+                        "spanNulls": true,
                         "stacking": {
                             "group": "A",
                             "mode": "none"
@@ -548,7 +494,7 @@
                 "h": 9,
                 "w": 24,
                 "x": 0,
-                "y": 11
+                "y": 16
             },
             "id": 3,
             "options": {
@@ -587,7 +533,7 @@
                     "computed_columns": [],
                     "datasource": {
                         "type": "yesoreyeram-infinity-datasource",
-                        "uid": "ceseusebqihoga"
+                        "uid": "eeuk7gmgqmi9sd"
                     },
                     "filters": [],
                     "format": "timeseries",
@@ -612,7 +558,7 @@
                     "source": "url",
                     "summarizeBy": "",
                     "type": "json",
-                    "url": "http://host.docker.internal:8080/device-circuit-latencies?env=${env}&circuit=${circuit}&from=${__from:date}&to=${__to:date}",
+                    "url": "http://host.docker.internal:8080/location-internet/circuit-latencies?env=${env}&circuit=${circuit}&data_provider=${data_provider}&from=${__from:date}&to=${__to:date}",
                     "url_options": {
                         "data": "",
                         "method": "GET"
@@ -625,12 +571,12 @@
         {
             "datasource": {
                 "type": "yesoreyeram-infinity-datasource",
-                "uid": "ceseusebqihoga"
+                "uid": "eeuk7gmgqmi9sd"
             },
             "fieldConfig": {
                 "defaults": {
                     "color": {
-                        "mode": "palette-classic"
+                        "mode": "palette-classic-by-name"
                     },
                     "custom": {
                         "axisBorderShow": false,
@@ -659,7 +605,7 @@
                             "type": "linear"
                         },
                         "showPoints": "auto",
-                        "spanNulls": false,
+                        "spanNulls": true,
                         "stacking": {
                             "group": "A",
                             "mode": "none"
@@ -689,7 +635,7 @@
                 "h": 9,
                 "w": 24,
                 "x": 0,
-                "y": 20
+                "y": 25
             },
             "id": 2,
             "options": {
@@ -728,7 +674,7 @@
                     "computed_columns": [],
                     "datasource": {
                         "type": "yesoreyeram-infinity-datasource",
-                        "uid": "ceseusebqihoga"
+                        "uid": "eeuk7gmgqmi9sd"
                     },
                     "filterExpression": "",
                     "filters": [],
@@ -754,7 +700,7 @@
                     "source": "url",
                     "summarizeBy": "",
                     "type": "json",
-                    "url": "http://host.docker.internal:8080/device-circuit-latencies?env=${env}&circuit=${circuit}&from=${__from:date}&to=${__to:date}",
+                    "url": "http://host.docker.internal:8080/location-internet/circuit-latencies?env=${env}&circuit=${circuit}&data_provider=${data_provider}&from=${__from:date}&to=${__to:date}",
                     "url_options": {
                         "data": "",
                         "method": "GET"
@@ -767,12 +713,12 @@
         {
             "datasource": {
                 "type": "yesoreyeram-infinity-datasource",
-                "uid": "ceseusebqihoga"
+                "uid": "eeuk7gmgqmi9sd"
             },
             "fieldConfig": {
                 "defaults": {
                     "color": {
-                        "mode": "palette-classic"
+                        "mode": "palette-classic-by-name"
                     },
                     "custom": {
                         "axisBorderShow": false,
@@ -801,7 +747,7 @@
                             "type": "linear"
                         },
                         "showPoints": "auto",
-                        "spanNulls": false,
+                        "spanNulls": true,
                         "stacking": {
                             "group": "A",
                             "mode": "none"
@@ -832,7 +778,7 @@
                 "h": 9,
                 "w": 24,
                 "x": 0,
-                "y": 29
+                "y": 34
             },
             "id": 4,
             "options": {
@@ -858,8 +804,8 @@
                             "type": "timestamp"
                         },
                         {
-                            "selector": "jitter_ewma",
-                            "text": "Jitter EWMA",
+                            "selector": "jitter_avg",
+                            "text": "Jitter Avg",
                             "type": "number"
                         },
                         {
@@ -871,7 +817,7 @@
                     "computed_columns": [],
                     "datasource": {
                         "type": "yesoreyeram-infinity-datasource",
-                        "uid": "ceseusebqihoga"
+                        "uid": "eeuk7gmgqmi9sd"
                     },
                     "filters": [],
                     "format": "timeseries",
@@ -896,14 +842,14 @@
                     "source": "url",
                     "summarizeBy": "",
                     "type": "json",
-                    "url": "http://host.docker.internal:8080/device-circuit-latencies?env=${env}&circuit=${circuit}&from=${__from:date}&to=${__to:date}",
+                    "url": "http://host.docker.internal:8080/location-internet/circuit-latencies?env=${env}&circuit=${circuit}&data_provider=${data_provider}&from=${__from:date}&to=${__to:date}",
                     "url_options": {
                         "data": "",
                         "method": "GET"
                     }
                 }
             ],
-            "title": "Jitter EWMA over time",
+            "title": "Jitter Avg over time",
             "type": "timeseries"
         }
     ],
@@ -921,7 +867,7 @@
                 },
                 "datasource": {
                     "type": "yesoreyeram-infinity-datasource",
-                    "uid": "ceseusebqihoga"
+                    "uid": "eeuk7gmgqmi9sd"
                 },
                 "definition": "",
                 "description": "The network environment (devnet, testnet)",
@@ -960,11 +906,11 @@
                 },
                 "datasource": {
                     "type": "yesoreyeram-infinity-datasource",
-                    "uid": "ceseusebqihoga"
+                    "uid": "eeuk7gmgqmi9sd"
                 },
                 "definition": "",
                 "includeAll": true,
-                "label": "Device Circuits",
+                "label": "Internet Circuits",
                 "multi": true,
                 "name": "circuit",
                 "options": [],
@@ -978,7 +924,7 @@
                         "root_selector": "",
                         "source": "url",
                         "type": "json",
-                        "url": "http://host.docker.internal:8080/device-circuits?env=${env}",
+                        "url": "http://host.docker.internal:8080/location-internet/circuits?env=${env}",
                         "url_options": {
                             "data": "",
                             "method": "GET"
@@ -993,11 +939,48 @@
             {
                 "allowCustomValue": false,
                 "current": {
+                    "text": "wheresitup",
+                    "value": "wheresitup"
+                },
+                "definition": "",
+                "description": "",
+                "label": "Data Provider",
+                "name": "data_provider",
+                "options": [],
+                "query": {
+                    "infinityQuery": {
+                        "columns": [],
+                        "filters": [],
+                        "format": "table",
+                        "parser": "backend",
+                        "refId": "variable",
+                        "root_selector": "",
+                        "source": "url",
+                        "type": "json",
+                        "url": "http://host.docker.internal:8080/location-internet/data-providers?env=${env}",
+                        "url_options": {
+                            "data": "",
+                            "method": "GET"
+                        }
+                    },
+                    "query": "",
+                    "queryType": "infinity"
+                },
+                "refresh": 1,
+                "regex": "",
+                "type": "query"
+            },
+            {
+                "allowCustomValue": false,
+                "current": {
                     "text": "Milliseconds",
                     "value": "ms"
                 },
+                "datasource": {
+                    "type": "yesoreyeram-infinity-datasource",
+                    "uid": "eeuk7gmgqmi9sd"
+                },
                 "definition": "Collection(Milliseconds,ms,Microseconds,us)",
-                "description": "Unit of RTT and Jitter metrics",
                 "label": "Unit",
                 "name": "unit",
                 "options": [],
@@ -1026,12 +1009,12 @@
         ]
     },
     "time": {
-        "from": "now-24h",
+        "from": "now-12h",
         "to": "now"
     },
     "timepicker": {},
     "timezone": "America/Toronto",
-    "title": "DoubleZero Telemetry / Device Circuit Latencies",
-    "uid": "9dc316d2-68cb-4dda-a114-0d188bd62a2f",
-    "version": 30
+    "title": "DoubleZero Telemetry / Internet Circuit Latencies",
+    "uid": "9dc316d2-68cb-4dda-a114-0d188bd62a3b",
+    "version": 13
 }

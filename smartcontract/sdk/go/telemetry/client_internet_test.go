@@ -57,6 +57,7 @@ func TestSDK_Telemetry_Client_GetInternetLatencySamples_HappyPath(t *testing.T) 
 		expected.DataProviderName,
 		expected.OriginLocationPK,
 		expected.TargetLocationPK,
+		signer.PublicKey(),
 		expected.Epoch,
 	)
 
@@ -83,6 +84,7 @@ func TestSDK_Telemetry_Client_GetInternetLatencySamples_AccountNotFound(t *testi
 		"test-data-provider-1",
 		solana.NewWallet().PublicKey(),
 		solana.NewWallet().PublicKey(),
+		signer.PublicKey(),
 		42,
 	)
 
@@ -108,6 +110,7 @@ func TestSDK_Telemetry_Client_GetInternetLatencySamples_UnexpectedError(t *testi
 		"test-data-provider-1",
 		solana.NewWallet().PublicKey(),
 		solana.NewWallet().PublicKey(),
+		signer.PublicKey(),
 		42,
 	)
 

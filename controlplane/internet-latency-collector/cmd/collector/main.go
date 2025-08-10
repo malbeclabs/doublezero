@@ -144,7 +144,7 @@ RIPE Atlas measurements hourly, and exports RIPE Atlas results every 2 minutes.`
 		}
 
 		// Create data provider collectors.
-		ripeatlasCollector := ripeatlas.NewCollector(log, exporter, stateDir, func(ctx context.Context) []collector.LocationMatch {
+		ripeatlasCollector := ripeatlas.NewCollector(log, exporter, env, func(ctx context.Context) []collector.LocationMatch {
 			return collector.GetLocations(ctx, log, serviceabilityClient)
 		})
 		wheresitupCollector := wheresitup.NewCollector(log, exporter, func(ctx context.Context) []collector.LocationMatch {

@@ -68,7 +68,20 @@ func (c *InternetCmd) Command() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to get data-provider flag: %w", err)
 			}
-			unit := internetdata.UnitMillisecond
+			unitStr, err := cmd.Flags().GetString("unit")
+			if err != nil {
+				return fmt.Errorf("failed to get unit flag: %w", err)
+			}
+
+			var unit internetdata.Unit
+			switch unitStr {
+			case "ms":
+				unit = internetdata.UnitMillisecond
+			case "us":
+				unit = internetdata.UnitMicrosecond
+			default:
+				return fmt.Errorf("invalid unit: %s", unitStr)
+			}
 
 			if dataProvider == "" {
 				dataProvider = internetdata.DataProviderNameWheresitup
@@ -157,7 +170,7 @@ func (c *InternetCmd) Command() *cobra.Command {
 				}
 				defer file.Close()
 
-				_, err = fmt.Fprintln(file, "circuit,timestamp,rtt_us")
+				_, err = fmt.Fprintln(file, "circuit,timestamp,rtt_"+string(unit))
 				if err != nil {
 					log.Error("Failed to write CSV header", "error", err, "path", rawCSVPath)
 					os.Exit(1)
@@ -177,10 +190,10 @@ func (c *InternetCmd) Command() *cobra.Command {
 					}
 
 					for _, sample := range samples {
-						_, err := fmt.Fprintf(file, "%s,%s,%d\n",
+						_, err := fmt.Fprintf(file, "%s,%s,%f\n",
 							circuit.Code,
 							sample.Timestamp, // Already formatted as time.RFC3339Nano
-							uint32(sample.RTTMean),
+							sample.RTTMean,
 						)
 						if err != nil {
 							log.Error("Failed to write CSV row", "error", err, "path", rawCSVPath)
@@ -211,7 +224,7 @@ func (c *InternetCmd) Command() *cobra.Command {
 				allStats = append(allStats, stats...)
 			}
 
-			printInternetSummaries(allStats, env, dataProvider, recentTime, epochRange)
+			printInternetSummaries(allStats, env, dataProvider, recentTime, epochRange, unit)
 
 			return nil
 		},
@@ -224,6 +237,7 @@ func (c *InternetCmd) Command() *cobra.Command {
 	cmd.Flags().Int32("from-epoch", 0, "Aggregate from the given epoch")
 	cmd.Flags().Int32("to-epoch", 0, "Aggregate to the given epoch")
 	cmd.Flags().String("raw-csv", "", "Path to save raw data to CSV")
+	cmd.Flags().String("unit", "ms", "Unit to display latencies in (ms, us)")
 
 	return cmd
 }
@@ -255,7 +269,7 @@ func newInternetProvider(log *slog.Logger, env string) (internetdata.Provider, *
 	return provider, rpcClient, nil
 }
 
-func printInternetSummaries(stats []stats.CircuitLatencyStat, env string, dataProvider string, recentTime time.Duration, epochRange *internetdata.EpochRange) {
+func printInternetSummaries(stats []stats.CircuitLatencyStat, env string, dataProvider string, recentTime time.Duration, epochRange *internetdata.EpochRange, unit internetdata.Unit) {
 	fmt.Println("Environment:", env)
 	fmt.Println("Data provider:", dataProvider)
 	if recentTime > 0 {
@@ -268,7 +282,7 @@ func printInternetSummaries(stats []stats.CircuitLatencyStat, env string, dataPr
 			fmt.Println("Epochs:", epochRange.From, "-", epochRange.To)
 		}
 	}
-	fmt.Println("* RTT aggregates are in milliseconds (ms)")
+	fmt.Println("* RTT aggregates are in", unit)
 
 	sort.Slice(stats, func(i, j int) bool {
 		return stats[i].Timestamp < stats[j].Timestamp
@@ -282,8 +296,8 @@ func printInternetSummaries(stats []stats.CircuitLatencyStat, env string, dataPr
 	table.SetRowLine(true)
 	table.SetHeader([]string{
 		"Circuit",
-		"RTT Mean\n(ms)",
-		"Jitter Avg\n(ms)", "Jitter\nEWMA", "Jitter\nMax",
+		"RTT Mean\n(" + string(unit) + ")",
+		"Jitter Avg\n(" + string(unit) + ")", "Jitter\nEWMA", "Jitter\nMax",
 		"RTT\nStdDev",
 		"RTT\nP90", "RTT\nP95", "RTT\nP99", "RTT\nMin", "RTT\nMax",
 		"RTT\nMedian",

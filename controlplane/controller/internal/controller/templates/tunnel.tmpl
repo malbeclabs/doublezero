@@ -58,7 +58,7 @@ interface {{ .Name }}
    no switchport
    {{- end }}
    {{- if .VlanId}}
-   encapsulation dot1q {{ .VlanId }}
+   encapsulation dot1q vlan {{ .VlanId }}
    {{- end }}
    {{- if .Ip.IsValid }}
    ip address {{ .Ip.Addr }}/{{ .Ip.Bits }}

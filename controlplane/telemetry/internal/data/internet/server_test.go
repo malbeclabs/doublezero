@@ -6,8 +6,9 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -24,7 +25,7 @@ func TestTelemetry_Data_Internet_Server(t *testing.T) {
 		t.Parallel()
 
 		var called bool
-		addr, closeFn := startTestServer(t, &mockProvider{
+		baseURL, closeFn := startServer(t, &mockProvider{
 			GetCircuitsFunc: func(context.Context) ([]data.Circuit, error) {
 				called = true
 				return []data.Circuit{{Code: "foo"}}, nil
@@ -32,28 +33,22 @@ func TestTelemetry_Data_Internet_Server(t *testing.T) {
 		}, &mockProvider{})
 		defer closeFn()
 
-		res, err := http.Get(addr + "/location-internet/circuits?env=testnet")
-		require.NoError(t, err)
-		defer res.Body.Close()
-
+		res, body := get(t, baseURL, "/location-internet/circuits", url.Values{"env": {"testnet"}})
 		assert.Equal(t, http.StatusOK, res.StatusCode)
 		assert.True(t, called)
 
 		var circuits []data.Circuit
-		require.NoError(t, json.NewDecoder(res.Body).Decode(&circuits))
+		require.NoError(t, json.Unmarshal(body, &circuits))
 		assert.Len(t, circuits, 1)
 	})
 
 	t.Run("GET /location-internet/circuits with invalid env", func(t *testing.T) {
 		t.Parallel()
 
-		addr, closeFn := startTestServer(t, &mockProvider{}, &mockProvider{})
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{})
 		defer closeFn()
 
-		res, err := http.Get(addr + "/location-internet/circuits?env=mainnet")
-		require.NoError(t, err)
-		defer res.Body.Close()
-
+		res, _ := get(t, baseURL, "/location-internet/circuits", url.Values{"env": {"mainnet"}})
 		assert.Equal(t, http.StatusBadRequest, res.StatusCode)
 	})
 
@@ -61,38 +56,41 @@ func TestTelemetry_Data_Internet_Server(t *testing.T) {
 		t.Parallel()
 
 		now := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
-		from := now.Format(time.RFC3339)
-		to := now.Add(10 * time.Second).Format(time.RFC3339)
+		from, to := now.Format(time.RFC3339), now.Add(10*time.Second).Format(time.RFC3339)
 
-		addr, closeFn := startTestServer(t, &mockProvider{
+		baseURL, closeFn := startServer(t, &mockProvider{
 			GetCircuitLatenciesFunc: func(_ context.Context, cfg data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
 				return []stats.CircuitLatencyStat{{Circuit: cfg.Circuit, RTTMean: 42}}, nil
 			},
 		}, &mockProvider{})
 		defer closeFn()
 
-		res, err := http.Get(addr + "/location-internet/circuit-latencies?env=testnet&from=" + from + "&to=" + to + "&circuit={foo}")
-		require.NoError(t, err)
-		defer res.Body.Close()
-
+		res, body := get(t, baseURL, "/location-internet/circuit-latencies", url.Values{
+			"env":     {"testnet"},
+			"from":    {from},
+			"to":      {to},
+			"circuit": {"{foo}"},
+		})
 		assert.Equal(t, http.StatusOK, res.StatusCode)
 
-		var stats []stats.CircuitLatencyStat
-		require.NoError(t, json.NewDecoder(res.Body).Decode(&stats))
-		assert.Len(t, stats, 1)
-		assert.Equal(t, "foo", stats[0].Circuit)
+		var out []stats.CircuitLatencyStat
+		require.NoError(t, json.Unmarshal(body, &out))
+		require.Len(t, out, 1)
+		assert.Equal(t, "foo", out[0].Circuit)
 	})
 
 	t.Run("GET /location-internet/circuit-latencies with invalid time range", func(t *testing.T) {
 		t.Parallel()
 
-		addr, closeFn := startTestServer(t, &mockProvider{}, &mockProvider{})
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{})
 		defer closeFn()
 
-		res, err := http.Get(addr + "/location-internet/circuit-latencies?env=testnet&from=notatime&to=alsonotatime&circuit={foo}")
-		require.NoError(t, err)
-		defer res.Body.Close()
-
+		res, _ := get(t, baseURL, "/location-internet/circuit-latencies", url.Values{
+			"env":     {"testnet"},
+			"from":    {"notatime"},
+			"to":      {"alsonotatime"},
+			"circuit": {"{foo}"},
+		})
 		assert.Equal(t, http.StatusBadRequest, res.StatusCode)
 	})
 
@@ -100,16 +98,18 @@ func TestTelemetry_Data_Internet_Server(t *testing.T) {
 		t.Parallel()
 
 		now := time.Now().UTC()
-		from := now.Format(time.RFC3339)
-		to := now.Add(10 * time.Second).Format(time.RFC3339)
+		from, to := now.Format(time.RFC3339), now.Add(10*time.Second).Format(time.RFC3339)
 
-		addr, closeFn := startTestServer(t, &mockProvider{}, &mockProvider{})
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{})
 		defer closeFn()
 
-		res, err := http.Get(addr + "/location-internet/circuit-latencies?env=testnet&from=" + from + "&to=" + to + "&circuit={foo}&max_points=xyz")
-		require.NoError(t, err)
-		defer res.Body.Close()
-
+		res, _ := get(t, baseURL, "/location-internet/circuit-latencies", url.Values{
+			"env":        {"testnet"},
+			"from":       {from},
+			"to":         {to},
+			"circuit":    {"{foo}"},
+			"max_points": {"xyz"},
+		})
 		assert.Equal(t, http.StatusBadRequest, res.StatusCode)
 	})
 
@@ -117,70 +117,47 @@ func TestTelemetry_Data_Internet_Server(t *testing.T) {
 		t.Parallel()
 
 		now := time.Now().UTC()
-		from := now.Format(time.RFC3339)
-		to := now.Add(10 * time.Second).Format(time.RFC3339)
+		from, to := now.Format(time.RFC3339), now.Add(10*time.Second).Format(time.RFC3339)
 
-		addr, closeFn := startTestServer(t, &mockProvider{
-			GetCircuitLatenciesFunc: func(_ context.Context, cfg data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
+		baseURL, closeFn := startServer(t, &mockProvider{
+			GetCircuitLatenciesFunc: func(_ context.Context, _ data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
 				return nil, errors.New("expected")
 			},
 		}, &mockProvider{})
 		defer closeFn()
 
-		res, err := http.Get(addr + "/location-internet/circuit-latencies?env=testnet&from=" + from + "&to=" + to + "&circuit={a,b}")
-		require.NoError(t, err)
-		defer res.Body.Close()
-
+		res, body := get(t, baseURL, "/location-internet/circuit-latencies", url.Values{
+			"env":     {"testnet"},
+			"from":    {from},
+			"to":      {to},
+			"circuit": {"{a,b}"},
+		})
 		assert.Equal(t, http.StatusOK, res.StatusCode)
-		body, _ := io.ReadAll(res.Body)
 		assert.JSONEq(t, "[]", string(body))
 	})
 }
 
-func startTestServer(t *testing.T, testnet, devnet data.Provider) (addr string, closeFn func()) {
+func startServer(t *testing.T, testnet, devnet data.Provider) (baseURL string, closeFn func()) {
 	t.Helper()
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	srv, err := data.NewServer(logger, testnet, devnet)
 	require.NoError(t, err)
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-
-	go func() {
-		_ = startServer(t.Context(), logger, ln, srv.Mux)
-	}()
-
-	return "http://" + ln.Addr().String(), func() {
-		_ = ln.Close()
-	}
+	ts := httptest.NewServer(srv.Mux)
+	return ts.URL, ts.Close
 }
 
-func startServer(ctx context.Context, log *slog.Logger, listener net.Listener, mux *http.ServeMux) error {
-	srv := &http.Server{
-		Handler: mux,
+func get(t *testing.T, baseURL, path string, q url.Values) (*http.Response, []byte) {
+	t.Helper()
+	u := baseURL + path
+	if len(q) > 0 {
+		u += "?" + q.Encode()
 	}
-
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- srv.Serve(listener)
-	}()
-
-	select {
-	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := srv.Shutdown(shutdownCtx); err != nil {
-			log.Warn("server shutdown error", "error", err)
-		} else {
-			log.Info("server shutdown via context")
-		}
-		return nil
-	case err := <-errCh:
-		if errors.Is(err, http.ErrServerClosed) {
-			log.Info("server closed")
-			return nil
-		}
-		return err
-	}
+	res, err := http.Get(u)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = res.Body.Close() })
+	b, err := io.ReadAll(res.Body)
+	require.NoError(t, err)
+	return res, b
 }

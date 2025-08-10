@@ -53,7 +53,7 @@ func TestTelemetry_Data_Device_Latencies(t *testing.T) {
 		assert.Equal(t, int32(1), atomic.LoadInt32(&calls), "second call should hit cache, not the telemetry client")
 	})
 
-	t.Run("epoch account not found propagates error (and caches empty internally)", func(t *testing.T) {
+	t.Run("epoch account not found is skipped and returns empty (and short-caches internally)", func(t *testing.T) {
 		t.Parallel()
 		c := defaultCircuit()
 		var calls int32
@@ -63,18 +63,22 @@ func TestTelemetry_Data_Device_Latencies(t *testing.T) {
 		}, c)
 
 		cfg := data.GetCircuitLatenciesConfig{
-			Circuit: c.Code, Unit: data.UnitMicrosecond,
-			Epochs: &data.EpochRange{From: 1, To: 1}, MaxPoints: 1,
+			Circuit:   c.Code,
+			Unit:      data.UnitMicrosecond,
+			Epochs:    &data.EpochRange{From: 1, To: 1},
+			MaxPoints: 1,
 		}
+
 		stats, err := p.GetCircuitLatencies(context.Background(), cfg)
-		assert.ErrorIs(t, err, telemetry.ErrAccountNotFound)
-		assert.Nil(t, stats)
+		require.NoError(t, err)
+		require.Empty(t, stats)
 
-		// Call again; still expect ErrAccountNotFound and no extra client calls because of short cache.
-		_, _ = p.GetCircuitLatencies(context.Background(), cfg)
-		assert.Equal(t, int32(1), atomic.LoadInt32(&calls))
+		stats2, err := p.GetCircuitLatencies(context.Background(), cfg)
+		require.NoError(t, err)
+		require.Empty(t, stats2)
+
+		assert.Equal(t, int32(1), atomic.LoadInt32(&calls), "second call should hit empty-cache for that epoch+provider")
 	})
-
 	t.Run("time range aggregates single point", func(t *testing.T) {
 		t.Parallel()
 		c := defaultCircuit()

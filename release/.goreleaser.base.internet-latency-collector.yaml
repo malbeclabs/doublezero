@@ -51,6 +51,16 @@ nfpms:
     bindir: /usr/local/bin
     release: "1"
     section: default
+    contents:
+      - src: release/packaging/systemd/doublezero-internet-latency-collector.service
+        dst: /lib/systemd/system/doublezero-internet-latency-collector.service
+        type: config
+    overrides:
+      rpm:
+        contents:
+          - src: release/packaging/systemd/doublezero-internet-latency-collector.service
+            dst: /usr/lib/systemd/system/doublezero-internet-latency-collector.service
+            type: config
 
 changelog:
   sort: asc

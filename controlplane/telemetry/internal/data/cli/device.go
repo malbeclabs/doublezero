@@ -40,21 +40,26 @@ func (c *DeviceCmd) Command() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to get env flag: %w", err)
 			}
-			recency, err := cmd.Flags().GetDuration("recency")
+			recentTime, err := cmd.Flags().GetDuration("recent-time")
 			if err != nil {
-				return fmt.Errorf("failed to get recency flag: %w", err)
+				return fmt.Errorf("failed to get recent-time flag: %w", err)
+			}
+			recentEpochs, err := cmd.Flags().GetInt16("recent-epochs")
+			if err != nil {
+				return fmt.Errorf("failed to get recent-epochs flag: %w", err)
 			}
 			rawCSVPath, err := cmd.Flags().GetString("raw-csv")
 			if err != nil {
 				return fmt.Errorf("failed to get raw-csv flag: %w", err)
 			}
+			unit := devicedata.UnitMillisecond
 
 			log := newLogger(verbose)
 
 			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 			defer cancel()
 
-			provider, err := newDeviceProvider(log, env)
+			provider, _, err := newDeviceProvider(log, env)
 			if err != nil {
 				log.Error("Failed to get provider", "error", err)
 				os.Exit(1)
@@ -66,7 +71,21 @@ func (c *DeviceCmd) Command() *cobra.Command {
 				os.Exit(1)
 			}
 
-			from := time.Now().Add(-recency)
+			if recentTime > 0 && recentEpochs != 1 {
+				return fmt.Errorf("recent-time and recent-epochs cannot be used together")
+			}
+
+			if recentTime > 0 {
+
+			}
+
+			// currentEpoch, err := rpcClient.GetEpochInfo(ctx, solanarpc.CommitmentFinalized)
+			// if err != nil {
+			// 	log.Error("Failed to get current epoch", "error", err)
+			// 	os.Exit(1)
+			// }
+
+			from := time.Now().Add(-recentTime)
 			to := time.Now()
 
 			if rawCSVPath != "" {
@@ -84,7 +103,14 @@ func (c *DeviceCmd) Command() *cobra.Command {
 				}
 
 				for _, circuit := range circuits {
-					samples, err := provider.GetCircuitLatenciesForTimeRange(ctx, circuit.Code, from, to)
+					samples, err := provider.GetCircuitLatencies(ctx, devicedata.GetCircuitLatenciesConfig{
+						Circuit: circuit.Code,
+						Time: &devicedata.TimeRange{
+							From: from,
+							To:   to,
+						},
+						Unit: unit,
+					})
 					if err != nil {
 						log.Error("Failed to get raw data", "error", err, "circuit", circuit.Code)
 						os.Exit(1)
@@ -94,7 +120,7 @@ func (c *DeviceCmd) Command() *cobra.Command {
 						_, err := fmt.Fprintf(file, "%s,%s,%d\n",
 							circuit.Code,
 							sample.Timestamp, // Already formatted as time.RFC3339Nano
-							sample.RTT,
+							uint32(sample.RTTMean),
 						)
 						if err != nil {
 							log.Error("Failed to write CSV row", "error", err, "path", rawCSVPath)
@@ -107,13 +133,17 @@ func (c *DeviceCmd) Command() *cobra.Command {
 
 			var allStats []stats.CircuitLatencyStat
 			for _, circuit := range circuits {
-				stats, err := provider.GetCircuitLatenciesDownsampled(
+				stats, err := provider.GetCircuitLatencies(
 					ctx,
-					circuit.Code,
-					from,
-					to,
-					1,
-					devicedata.UnitMillisecond,
+					devicedata.GetCircuitLatenciesConfig{
+						Circuit: circuit.Code,
+						Time: &devicedata.TimeRange{
+							From: from,
+							To:   to,
+						},
+						MaxPoints: 1,
+						Unit:      unit,
+					},
 				)
 				if err != nil {
 					log.Warn("Failed to get circuit latencies", "error", err, "circuit", circuit.Code)
@@ -122,37 +152,43 @@ func (c *DeviceCmd) Command() *cobra.Command {
 				allStats = append(allStats, stats...)
 			}
 
-			printDeviceSummaries(allStats, env, recency)
+			printDeviceSummaries(allStats, env, recentTime)
 
 			return nil
 		},
 	}
 
-	cmd.Flags().Duration("recency", 24*time.Hour, "Aggregate over the given duration")
+	cmd.Flags().Duration("recent-time", 24*time.Hour, "Aggregate over the given duration of time up to now (e.g. 24h)")
+	cmd.Flags().Int16("recent-epochs", 1, "Aggregate over the given number of recent epochs")
 	cmd.Flags().String("raw-csv", "", "Path to save raw data to CSV")
 
 	return cmd
 }
 
-func newDeviceProvider(log *slog.Logger, env string) (devicedata.Provider, error) {
+func newDeviceProvider(log *slog.Logger, env string) (devicedata.Provider, *solanarpc.Client, error) {
 	networkConfig, err := config.NetworkConfigForEnv(env)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get network config: %w", err)
+		return nil, nil, fmt.Errorf("failed to get network config: %w", err)
 	}
 
 	rpcClient := solanarpc.New(networkConfig.LedgerPublicRPCURL)
 
 	epochFinder, err := epoch.NewFinder(log, rpcClient)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create epoch finder: %w", err)
+		return nil, nil, fmt.Errorf("failed to create epoch finder: %w", err)
 	}
 
-	return devicedata.NewProvider(&devicedata.ProviderConfig{
+	provider, err := devicedata.NewProvider(&devicedata.ProviderConfig{
 		Logger:               log,
 		ServiceabilityClient: serviceability.New(rpcClient, networkConfig.ServiceabilityProgramID),
 		TelemetryClient:      telemetry.New(log, rpcClient, nil, networkConfig.TelemetryProgramID),
 		EpochFinder:          epochFinder,
 	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create provider: %w", err)
+	}
+
+	return provider, rpcClient, nil
 }
 
 func printDeviceSummaries(stats []stats.CircuitLatencyStat, env string, recency time.Duration) {

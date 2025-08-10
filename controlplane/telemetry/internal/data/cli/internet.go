@@ -52,6 +52,12 @@ func (c *InternetCmd) Command() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to get data-provider flag: %w", err)
 			}
+			unit := internetdata.UnitMillisecond
+
+			if dataProvider == "" {
+				// TODO(snormore): Do something better here.
+				dataProvider = internetdata.DataProviderNameWheresitup
+			}
 
 			log := newLogger(verbose)
 
@@ -88,7 +94,12 @@ func (c *InternetCmd) Command() *cobra.Command {
 				}
 
 				for _, circuit := range circuits {
-					samples, err := provider.GetCircuitLatenciesForTimeRange(ctx, circuit.Code, from, to, dataProvider)
+					samples, err := provider.GetCircuitLatencies(ctx, internetdata.GetCircuitLatenciesConfig{
+						Circuit:      circuit.Code,
+						Time:         &internetdata.TimeRange{From: from, To: to},
+						Unit:         unit,
+						DataProvider: dataProvider,
+					})
 					if err != nil {
 						log.Error("Failed to get raw data", "error", err, "circuit", circuit.Code)
 						os.Exit(1)
@@ -98,7 +109,7 @@ func (c *InternetCmd) Command() *cobra.Command {
 						_, err := fmt.Fprintf(file, "%s,%s,%d\n",
 							circuit.Code,
 							sample.Timestamp, // Already formatted as time.RFC3339Nano
-							sample.RTT,
+							uint32(sample.RTTMean),
 						)
 						if err != nil {
 							log.Error("Failed to write CSV row", "error", err, "path", rawCSVPath)
@@ -111,14 +122,15 @@ func (c *InternetCmd) Command() *cobra.Command {
 
 			var allStats []stats.CircuitLatencyStat
 			for _, circuit := range circuits {
-				stats, err := provider.GetCircuitLatenciesDownsampled(
+				stats, err := provider.GetCircuitLatencies(
 					ctx,
-					circuit.Code,
-					from,
-					to,
-					1,
-					internetdata.UnitMillisecond,
-					dataProvider,
+					internetdata.GetCircuitLatenciesConfig{
+						Circuit:      circuit.Code,
+						Time:         &internetdata.TimeRange{From: from, To: to},
+						Unit:         unit,
+						MaxPoints:    1,
+						DataProvider: dataProvider,
+					},
 				)
 				if err != nil {
 					log.Warn("Failed to get circuit latencies", "error", err, "circuit", circuit.Code)

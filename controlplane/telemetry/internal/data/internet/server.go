@@ -157,7 +157,13 @@ func (s *Server) handleInternetCircuitLatencies(w http.ResponseWriter, r *http.R
 		wg.Add(1)
 		go func(circuitCode string) {
 			defer wg.Done()
-			series, err := provider.GetCircuitLatenciesDownsampled(r.Context(), circuitCode, fromTime, toTime, maxPoints, Unit(unit), dataProvider)
+			series, err := provider.GetCircuitLatencies(r.Context(), GetCircuitLatenciesConfig{
+				Circuit:      circuitCode,
+				Time:         &TimeRange{From: fromTime, To: toTime},
+				MaxPoints:    maxPoints,
+				Unit:         Unit(unit),
+				DataProvider: dataProvider,
+			})
 			if err != nil {
 				s.log.Warn("failed to get circuit latencies", "error", err, "circuit", circuitCode)
 				return

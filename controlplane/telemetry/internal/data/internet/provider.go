@@ -31,11 +31,28 @@ const (
 	UnitMicrosecond Unit = "us"
 )
 
+type EpochRange struct {
+	From uint64
+	To   uint64
+}
+
+type TimeRange struct {
+	From time.Time
+	To   time.Time
+}
+
+type GetCircuitLatenciesConfig struct {
+	Epochs       *EpochRange
+	Time         *TimeRange
+	MaxPoints    uint64
+	Unit         Unit
+	Circuit      string
+	DataProvider string
+}
+
 type Provider interface {
 	GetCircuits(ctx context.Context) ([]Circuit, error)
-	GetCircuitLatenciesForTimeRange(ctx context.Context, circuitCode string, from, to time.Time, dataProvider string) ([]stats.CircuitLatencySample, error)
-	GetCircuitLatenciesDownsampled(ctx context.Context, circuitCode string, from, to time.Time, maxPoints uint64, unit Unit, dataProvider string) ([]stats.CircuitLatencyStat, error)
-	GetCircuitLatenciesForEpoch(ctx context.Context, circuitCode string, epoch uint64, dataProvider string) ([]stats.CircuitLatencySample, error)
+	GetCircuitLatencies(ctx context.Context, cfg GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error)
 }
 
 type provider struct {
@@ -44,7 +61,7 @@ type provider struct {
 	cache   *ttlcache.Cache[string, any]
 	cacheMu sync.RWMutex
 
-	getCircuitLatenciesPool pond.ResultPool[[]stats.CircuitLatencySample]
+	getCircuitLatenciesPool pond.ResultPool[*CircuitLatenciesWithHeader]
 }
 
 type ProviderConfig struct {
@@ -100,7 +117,7 @@ func NewProvider(cfg *ProviderConfig) (*provider, error) {
 		ttlcache.WithTTL[string, any](cfg.CircuitsCacheTTL),
 	)
 
-	getCircuitLatenciesPool := pond.NewResultPool[[]stats.CircuitLatencySample](cfg.GetCircuitLatenciesPoolSize)
+	getCircuitLatenciesPool := pond.NewResultPool[*CircuitLatenciesWithHeader](cfg.GetCircuitLatenciesPoolSize)
 
 	return &provider{
 		cfg:   cfg,

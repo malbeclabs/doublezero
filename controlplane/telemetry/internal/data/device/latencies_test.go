@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,205 +17,232 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTelemetry_Data_Device_Provider_GetCircuitLatencies(t *testing.T) {
+func TestTelemetry_Data_Device_Latencies(t *testing.T) {
 	t.Parallel()
 
-	t.Run("epoch cache hit", func(t *testing.T) {
+	t.Run("epoch cache hit via public API", func(t *testing.T) {
 		t.Parallel()
-
-		circuit := defaultCircuit()
-		var called int
-		provider := newTestProvider(t, func(epoch uint64) (*telemetry.DeviceLatencySamples, error) {
-			called++
-			if called > 1 {
-				require.Fail(t, "should not call GetDeviceLatencySamples more than once")
-			}
+		c := defaultCircuit()
+		var calls int32
+		p := newTestProvider(t, func(uint64) (*telemetry.DeviceLatencySamples, error) {
+			atomic.AddInt32(&calls, 1)
 			return &telemetry.DeviceLatencySamples{
 				DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
 					StartTimestampMicroseconds:   1_600_000_000_000_000,
-					SamplingIntervalMicroseconds: 1_000_000, // 1ms
+					SamplingIntervalMicroseconds: 1_000_000,
 				},
 				Samples: []uint32{10, 20},
 			}, nil
-		}, circuit)
+		}, c)
 
-		ctx := context.Background()
-		epoch := uint64(1)
+		cfg := data.GetCircuitLatenciesConfig{
+			Circuit:   c.Code,
+			Unit:      data.UnitMicrosecond,
+			Epochs:    &data.EpochRange{From: 1, To: 1},
+			MaxPoints: 2,
+		}
 
-		first, err := provider.GetCircuitLatenciesForEpoch(ctx, circuit.Code, epoch)
+		stats1, err := p.GetCircuitLatencies(context.Background(), cfg)
 		require.NoError(t, err)
-		require.Len(t, first, 2)
+		require.NotEmpty(t, stats1)
 
-		second, err := provider.GetCircuitLatenciesForEpoch(ctx, circuit.Code, epoch)
+		stats2, err := p.GetCircuitLatencies(context.Background(), cfg)
 		require.NoError(t, err)
-		assert.Equal(t, first, second)
+		require.NotEmpty(t, stats2)
+
+		assert.Equal(t, int32(1), atomic.LoadInt32(&calls), "second call should hit cache, not the telemetry client")
 	})
 
-	t.Run("epoch account not found caches empty", func(t *testing.T) {
+	t.Run("epoch account not found propagates error (and caches empty internally)", func(t *testing.T) {
 		t.Parallel()
-
-		circuit := defaultCircuit()
-		provider := newTestProvider(t, func(epoch uint64) (*telemetry.DeviceLatencySamples, error) {
+		c := defaultCircuit()
+		var calls int32
+		p := newTestProvider(t, func(uint64) (*telemetry.DeviceLatencySamples, error) {
+			atomic.AddInt32(&calls, 1)
 			return nil, telemetry.ErrAccountNotFound
-		}, circuit)
+		}, c)
 
-		epoch := uint64(1)
-		latencies, err := provider.GetCircuitLatenciesForEpoch(context.Background(), circuit.Code, epoch)
+		cfg := data.GetCircuitLatenciesConfig{
+			Circuit: c.Code, Unit: data.UnitMicrosecond,
+			Epochs: &data.EpochRange{From: 1, To: 1}, MaxPoints: 1,
+		}
+		stats, err := p.GetCircuitLatencies(context.Background(), cfg)
 		assert.ErrorIs(t, err, telemetry.ErrAccountNotFound)
-		assert.Empty(t, latencies)
+		assert.Nil(t, stats)
+
+		// Call again; still expect ErrAccountNotFound and no extra client calls because of short cache.
+		_, _ = p.GetCircuitLatencies(context.Background(), cfg)
+		assert.Equal(t, int32(1), atomic.LoadInt32(&calls))
 	})
 
-	t.Run("GetCircuitLatencies filters by time", func(t *testing.T) {
+	t.Run("time range aggregates single point", func(t *testing.T) {
 		t.Parallel()
-
-		circuit := defaultCircuit()
+		c := defaultCircuit()
 		sampleTime := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
-		sampleMicros := uint64(sampleTime.UnixMicro())
-
-		provider := newTestProvider(t, func(epoch uint64) (*telemetry.DeviceLatencySamples, error) {
+		p := newTestProvider(t, func(uint64) (*telemetry.DeviceLatencySamples, error) {
 			return &telemetry.DeviceLatencySamples{
 				DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
-					StartTimestampMicroseconds:   sampleMicros,
-					SamplingIntervalMicroseconds: 1_000_000, // 1ms
+					StartTimestampMicroseconds:   uint64(sampleTime.UnixMicro()),
+					SamplingIntervalMicroseconds: 1_000_000,
 				},
 				Samples: []uint32{42},
 			}, nil
-		}, circuit)
+		}, c)
 
-		from := time.Date(2023, 1, 1, 11, 55, 0, 0, time.UTC)
-		to := time.Date(2023, 1, 1, 12, 5, 0, 0, time.UTC)
-		latencies, err := provider.GetCircuitLatenciesForTimeRange(context.Background(), circuit.Code, from, to)
-		require.NoError(t, err)
-		require.Len(t, latencies, 1)
-		assert.Equal(t, uint32(42), latencies[0].RTT)
-	})
-
-	t.Run("GetCircuitLatenciesDownsampled with maxPoints=1 returns aggregate", func(t *testing.T) {
-		t.Parallel()
-
-		circuit := defaultCircuit()
-		from := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
-		tsMicros := uint64(from.UnixMicro())
-
-		provider := newTestProvider(t, func(epoch uint64) (*telemetry.DeviceLatencySamples, error) {
-			return &telemetry.DeviceLatencySamples{
-				DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
-					StartTimestampMicroseconds:   tsMicros,
-					SamplingIntervalMicroseconds: 1_000_000, // 1s intervals
-				},
-				Samples: []uint32{10, 20, 30},
-			}, nil
-		}, circuit)
-
-		to := from.Add(3 * time.Second)
-
-		stats, err := provider.GetCircuitLatenciesDownsampled(context.Background(), circuit.Code, from, to, 1, data.UnitMicrosecond)
+		stats, err := p.GetCircuitLatencies(context.Background(), data.GetCircuitLatenciesConfig{
+			Circuit:   c.Code,
+			Unit:      data.UnitMicrosecond,
+			Time:      &data.TimeRange{From: sampleTime.Add(-5 * time.Minute), To: sampleTime.Add(5 * time.Minute)},
+			MaxPoints: 1,
+		})
 		require.NoError(t, err)
 		require.Len(t, stats, 1)
-		assert.Equal(t, circuit.Code, stats[0].Circuit)
-		assert.InDelta(t, 20.0, stats[0].RTTMean, 0.1)
-		assert.Equal(t, float64(10), stats[0].RTTMin)
-		assert.Equal(t, float64(30), stats[0].RTTMax)
+		assert.Equal(t, c.Code, stats[0].Circuit)
+		assert.Equal(t, float64(42), stats[0].RTTMean)
+		assert.Equal(t, float64(42), stats[0].RTTMin)
+		assert.Equal(t, float64(42), stats[0].RTTMax)
 	})
 
-	t.Run("Downsampled returns multiple buckets when maxPoints > 1", func(t *testing.T) {
+	t.Run("time range multiple buckets (MaxPoints>1)", func(t *testing.T) {
 		t.Parallel()
-
-		circuit := defaultCircuit()
-		now := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
-		tsMicros := uint64(now.UnixMicro())
-
-		provider := newTestProvider(t, func(epoch uint64) (*telemetry.DeviceLatencySamples, error) {
+		c := defaultCircuit()
+		start := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
+		p := newTestProvider(t, func(uint64) (*telemetry.DeviceLatencySamples, error) {
 			return &telemetry.DeviceLatencySamples{
 				DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
-					StartTimestampMicroseconds:   tsMicros,
-					SamplingIntervalMicroseconds: 60 * 1_000_000, // 1-minute spacing
+					StartTimestampMicroseconds:   uint64(start.UnixMicro()),
+					SamplingIntervalMicroseconds: 60 * 1_000_000, // 1 minute
 				},
 				Samples: []uint32{10, 20, 30, 40, 50},
 			}, nil
-		}, circuit)
+		}, c)
 
-		from := now
-		to := now.Add(5 * time.Minute) // ensure at least 5 minutes span
-		stats, err := provider.GetCircuitLatenciesDownsampled(context.Background(), circuit.Code, from, to, 2, data.UnitMicrosecond)
+		stats, err := p.GetCircuitLatencies(context.Background(), data.GetCircuitLatenciesConfig{
+			Circuit:   c.Code,
+			Unit:      data.UnitMicrosecond,
+			Time:      &data.TimeRange{From: start, To: start.Add(5 * time.Minute)},
+			MaxPoints: 2,
+		})
 		require.NoError(t, err)
-		assert.GreaterOrEqual(t, len(stats), 2, "expected at least 2 downsampled buckets")
+		assert.GreaterOrEqual(t, len(stats), 2)
 	})
 
-	t.Run("Downsampled returns empty when no data in range", func(t *testing.T) {
+	t.Run("epoch range aggregates across partitions", func(t *testing.T) {
 		t.Parallel()
-
-		circuit := defaultCircuit()
-		provider := newTestProvider(t, func(epoch uint64) (*telemetry.DeviceLatencySamples, error) {
+		c := defaultCircuit()
+		p := newTestProvider(t, func(epoch uint64) (*telemetry.DeviceLatencySamples, error) {
+			base := time.Date(2023, 1, 1, 0, 0, int(epoch), 0, time.UTC)
 			return &telemetry.DeviceLatencySamples{
 				DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
-					StartTimestampMicroseconds:   0,
+					StartTimestampMicroseconds:   uint64(base.UnixMicro()),
 					SamplingIntervalMicroseconds: 1_000_000,
 				},
-				Samples: []uint32{},
+				Samples: []uint32{10, 20, 30},
 			}, nil
-		}, circuit)
+		}, c)
 
-		now := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
-		stats, err := provider.GetCircuitLatenciesDownsampled(context.Background(), circuit.Code, now, now.Add(1*time.Minute), 1, data.UnitMicrosecond)
-		require.NoError(t, err)
-		assert.Len(t, stats, 0)
-	})
-
-	t.Run("GetCircuitLatenciesDownsampled with invalid unit", func(t *testing.T) {
-		t.Parallel()
-
-		circuit := defaultCircuit()
-		provider := newTestProvider(t, func(epoch uint64) (*telemetry.DeviceLatencySamples, error) {
-			return &telemetry.DeviceLatencySamples{}, nil
-		}, circuit)
-
-		now := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
-		stats, err := provider.GetCircuitLatenciesDownsampled(t.Context(), circuit.Code, now, now.Add(1*time.Second), 1, "invalid")
-		require.Error(t, err)
-		assert.Empty(t, stats)
-	})
-
-	t.Run("GetCircuitLatenciesDownsampled with unit=ms", func(t *testing.T) {
-		t.Parallel()
-
-		circuit := defaultCircuit()
-		from := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
-		tsMicros := uint64(from.UnixMicro())
-
-		provider := newTestProvider(t, func(epoch uint64) (*telemetry.DeviceLatencySamples, error) {
-			return &telemetry.DeviceLatencySamples{
-				DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
-					StartTimestampMicroseconds:   tsMicros,
-					SamplingIntervalMicroseconds: 1_000_000, // 1s intervals
-				},
-				Samples: []uint32{10_000, 20_000, 30_000},
-			}, nil
-		}, circuit)
-
-		to := from.Add(3 * time.Second)
-
-		stats, err := provider.GetCircuitLatenciesDownsampled(t.Context(), circuit.Code, from, to, 1, data.UnitMillisecond)
+		stats, err := p.GetCircuitLatencies(context.Background(), data.GetCircuitLatenciesConfig{
+			Circuit:   c.Code,
+			Unit:      data.UnitMicrosecond,
+			Epochs:    &data.EpochRange{From: 1, To: 2},
+			MaxPoints: 1,
+		})
 		require.NoError(t, err)
 		require.Len(t, stats, 1)
-		assert.Equal(t, circuit.Code, stats[0].Circuit)
-		assert.InDelta(t, 20.0, stats[0].RTTMean, 0.1)
 		assert.Equal(t, float64(10), stats[0].RTTMin)
+		assert.InDelta(t, 20.0, stats[0].RTTMean, 0.001)
 		assert.Equal(t, float64(30), stats[0].RTTMax)
 	})
+
+	t.Run("invalid unit", func(t *testing.T) {
+		t.Parallel()
+		c := defaultCircuit()
+		p := newTestProvider(t, func(uint64) (*telemetry.DeviceLatencySamples, error) { return &telemetry.DeviceLatencySamples{}, nil }, c)
+
+		_, err := p.GetCircuitLatencies(context.Background(), data.GetCircuitLatenciesConfig{
+			Circuit:   c.Code,
+			Unit:      "invalid",
+			Time:      &data.TimeRange{From: time.Unix(0, 0), To: time.Unix(10, 0)},
+			MaxPoints: 1,
+		})
+		require.Error(t, err)
+	})
+
+	t.Run("millisecond conversion", func(t *testing.T) {
+		t.Parallel()
+		c := defaultCircuit()
+		start := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
+		p := newTestProvider(t, func(uint64) (*telemetry.DeviceLatencySamples, error) {
+			return &telemetry.DeviceLatencySamples{
+				DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
+					StartTimestampMicroseconds:   uint64(start.UnixMicro()),
+					SamplingIntervalMicroseconds: 1_000_000,
+				},
+				Samples: []uint32{10_000, 20_000, 30_000}, // µs
+			}, nil
+		}, c)
+
+		stats, err := p.GetCircuitLatencies(context.Background(), data.GetCircuitLatenciesConfig{
+			Circuit:   c.Code,
+			Unit:      data.UnitMillisecond,
+			Time:      &data.TimeRange{From: start, To: start.Add(3 * time.Second)},
+			MaxPoints: 1,
+		})
+		require.NoError(t, err)
+		require.Len(t, stats, 1)
+		assert.Equal(t, float64(10), stats[0].RTTMin)
+		assert.InDelta(t, 20.0, stats[0].RTTMean, 0.001)
+		assert.Equal(t, float64(30), stats[0].RTTMax)
+	})
+
+	t.Run("bad/no ranges", func(t *testing.T) {
+		t.Parallel()
+		c := defaultCircuit()
+		p := newTestProvider(t, func(uint64) (*telemetry.DeviceLatencySamples, error) { return &telemetry.DeviceLatencySamples{}, nil }, c)
+
+		// no range
+		_, err := p.GetCircuitLatencies(context.Background(), data.GetCircuitLatenciesConfig{
+			Circuit: c.Code, Unit: data.UnitMicrosecond, MaxPoints: 1,
+		})
+		require.Error(t, err)
+
+		// epochs: from > to
+		_, err = p.GetCircuitLatencies(context.Background(), data.GetCircuitLatenciesConfig{
+			Circuit: c.Code, Unit: data.UnitMicrosecond,
+			Epochs: &data.EpochRange{From: 5, To: 4}, MaxPoints: 1,
+		})
+		require.Error(t, err)
+
+		// time: from after to
+		from, to := time.Unix(20, 0), time.Unix(10, 0)
+		_, err = p.GetCircuitLatencies(context.Background(), data.GetCircuitLatenciesConfig{
+			Circuit: c.Code, Unit: data.UnitMicrosecond,
+			Time: &data.TimeRange{From: from, To: to}, MaxPoints: 1,
+		})
+		require.Error(t, err)
+
+		// both epochs and time set
+		_, err = p.GetCircuitLatencies(context.Background(), data.GetCircuitLatenciesConfig{
+			Circuit: c.Code, Unit: data.UnitMicrosecond,
+			Epochs:    &data.EpochRange{From: 1, To: 2},
+			Time:      &data.TimeRange{From: time.Unix(0, 0), To: time.Unix(10, 0)},
+			MaxPoints: 1,
+		})
+		require.Error(t, err)
+	})
 }
+
+/* ---------------- helpers ---------------- */
 
 func defaultCircuit() data.Circuit {
 	pkA := solana.NewWallet().PublicKey()
 	pkB := solana.NewWallet().PublicKey()
 	linkPK := solana.NewWallet().PublicKey()
-
 	devA := serviceability.Device{Code: "A"}
 	devB := serviceability.Device{Code: "B"}
 	link := serviceability.Link{Code: "L1"}
-
 	return data.Circuit{
-		Code:         circuitKey(devA.Code, devB.Code, linkPK), // <== use actual keying logic
+		Code:         circuitKey(devA.Code, devB.Code, linkPK),
 		OriginDevice: data.Device{PK: pkA, Code: devA.Code},
 		TargetDevice: data.Device{PK: pkB, Code: devB.Code},
 		Link:         data.Link{PK: linkPK, Code: link.Code},
@@ -227,12 +255,8 @@ func circuitKey(origin, target string, link solana.PublicKey) string {
 	return fmt.Sprintf("%s → %s (%s)", origin, target, shortLinkPK)
 }
 
-func newTestProvider(
-	t *testing.T,
-	getFunc func(epoch uint64) (*telemetry.DeviceLatencySamples, error),
-	circuit data.Circuit,
-) data.Provider {
-	provider, err := data.NewProvider(&data.ProviderConfig{
+func newTestProvider(t *testing.T, getFunc func(epoch uint64) (*telemetry.DeviceLatencySamples, error), circuit data.Circuit) data.Provider {
+	p, err := data.NewProvider(&data.ProviderConfig{
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		ServiceabilityClient: &mockServiceabilityClient{
 			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
@@ -253,14 +277,12 @@ func newTestProvider(
 			},
 		},
 		EpochFinder: &mockEpochFinder{
-			ApproximateAtTimeFunc: func(ctx context.Context, target time.Time) (uint64, error) {
-				return 1, nil
-			},
+			ApproximateAtTimeFunc: func(ctx context.Context, _ time.Time) (uint64, error) { return 1, nil },
 		},
 		CircuitsCacheTTL:               time.Minute,
 		CurrentEpochLatenciesCacheTTL:  10 * time.Second,
 		HistoricEpochLatenciesCacheTTL: time.Hour,
 	})
 	require.NoError(t, err)
-	return provider
+	return p
 }

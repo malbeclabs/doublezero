@@ -57,26 +57,16 @@ func (m *mockTelemetryClient) GetInternetLatencySamples(ctx context.Context, dat
 }
 
 type mockProvider struct {
-	GetCircuitsFunc                     func(context.Context) ([]data.Circuit, error)
-	GetCircuitLatenciesDownsampledFunc  func(context.Context, string, time.Time, time.Time, uint64, data.Unit, string) ([]stats.CircuitLatencyStat, error)
-	GetCircuitLatenciesForTimeRangeFunc func(context.Context, string, time.Time, time.Time, string) ([]stats.CircuitLatencySample, error)
-	GetCircuitLatenciesForEpochFunc     func(context.Context, string, uint64, string) ([]stats.CircuitLatencySample, error)
+	GetCircuitsFunc         func(context.Context) ([]data.Circuit, error)
+	GetCircuitLatenciesFunc func(context.Context, data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error)
 }
 
 func (m *mockProvider) GetCircuits(ctx context.Context) ([]data.Circuit, error) {
 	return m.GetCircuitsFunc(ctx)
 }
 
-func (m *mockProvider) GetCircuitLatenciesDownsampled(ctx context.Context, circuit string, from, to time.Time, max uint64, unit data.Unit, dataProvider string) ([]stats.CircuitLatencyStat, error) {
-	return m.GetCircuitLatenciesDownsampledFunc(ctx, circuit, from, to, max, unit, dataProvider)
-}
-
-func (m *mockProvider) GetCircuitLatenciesForTimeRange(ctx context.Context, circuit string, from, to time.Time, dataProvider string) ([]stats.CircuitLatencySample, error) {
-	return m.GetCircuitLatenciesForTimeRangeFunc(ctx, circuit, from, to, dataProvider)
-}
-
-func (m *mockProvider) GetCircuitLatenciesForEpoch(ctx context.Context, circuit string, epoch uint64, dataProvider string) ([]stats.CircuitLatencySample, error) {
-	return m.GetCircuitLatenciesForEpochFunc(ctx, circuit, epoch, dataProvider)
+func (m *mockProvider) GetCircuitLatencies(ctx context.Context, cfg data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
+	return m.GetCircuitLatenciesFunc(ctx, cfg)
 }
 
 type mockEpochFinder struct {

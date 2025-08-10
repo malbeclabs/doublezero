@@ -15,7 +15,68 @@ const (
 	DataProviderNameWheresitup = "wheresitup"
 )
 
-func (p *provider) GetCircuitLatenciesForEpoch(ctx context.Context, circuitCode string, epoch uint64, dataProvider string) ([]datastats.CircuitLatencySample, error) {
+type CircuitLatenciesWithHeader struct {
+	Header  *telemetry.InternetLatencySamplesHeader
+	Samples []datastats.CircuitLatencySample
+}
+
+func (p *provider) GetCircuitLatencies(ctx context.Context, cfg GetCircuitLatenciesConfig) ([]datastats.CircuitLatencyStat, error) {
+	p.cfg.Logger.Debug("Getting circuit latencies", "circuit", cfg.Circuit, "unit", cfg.Unit, "epochs", cfg.Epochs, "time", cfg.Time, "maxPoints", cfg.MaxPoints, "dataProvider", cfg.DataProvider)
+
+	switch cfg.Unit {
+	case UnitMillisecond, UnitMicrosecond:
+	default:
+		return nil, fmt.Errorf("invalid unit: %s (must be %s or %s)", cfg.Unit, UnitMillisecond, UnitMicrosecond)
+	}
+
+	if cfg.DataProvider == "" {
+		return nil, fmt.Errorf("data provider is required")
+	}
+
+	if cfg.Epochs != nil && cfg.Time != nil {
+		return nil, fmt.Errorf("from_epoch and to_epoch or from_time and to_time cannot be set at the same time")
+	}
+
+	var samples []datastats.CircuitLatencySample
+	if cfg.Epochs != nil {
+		if cfg.Epochs.From > cfg.Epochs.To {
+			return nil, fmt.Errorf("from_epoch must be less than to_epoch")
+		}
+		partitions, err := p.getCircuitLatenciesForEpochRange(ctx, cfg.Circuit, cfg.Epochs.From, cfg.Epochs.To, cfg.DataProvider)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get circuit latencies for epoch range: %w", err)
+		}
+		for _, partition := range partitions {
+			samples = append(samples, partition.Samples...)
+		}
+	} else if cfg.Time != nil {
+		if cfg.Time.From.After(cfg.Time.To) {
+			return nil, fmt.Errorf("from_time must be before to_time")
+		}
+		var err error
+		samples, err = p.getCircuitLatenciesForTimeRange(ctx, cfg.Circuit, cfg.Time.From, cfg.Time.To, cfg.DataProvider)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get circuit latencies for time range: %w", err)
+		}
+	} else {
+		return nil, fmt.Errorf("no time or epoch range provided")
+	}
+
+	stats, err := datastats.Aggregate(ctx, cfg.Circuit, samples, cfg.MaxPoints)
+	if err != nil {
+		return nil, fmt.Errorf("failed to aggregate circuit latencies: %w", err)
+	}
+
+	if cfg.Unit == UnitMillisecond {
+		for i := range stats {
+			stats[i].ConvertUnit(1000.0)
+		}
+	}
+
+	return stats, nil
+}
+
+func (p *provider) GetCircuitLatenciesForEpoch(ctx context.Context, circuitCode string, epoch uint64, dataProvider string) (*CircuitLatenciesWithHeader, error) {
 	cached := p.GetCachedCircuitLatencies(ctx, circuitCode, epoch, dataProvider)
 	if cached != nil {
 		return cached, nil
@@ -34,15 +95,11 @@ func (p *provider) GetCircuitLatenciesForEpoch(ctx context.Context, circuitCode 
 		return nil, fmt.Errorf("circuit not found: %s", circuitCode)
 	}
 
-	// TODO(snormore): If empty, we should combine/aggregate the data from all data providers here based on some given aggregator function (avg, min, max, etc.).
-	if dataProvider == "" {
-		dataProvider = DataProviderNameWheresitup
-	}
 	account, err := p.cfg.TelemetryClient.GetInternetLatencySamples(ctx, dataProvider, circuit.OriginLocation.PK, circuit.TargetLocation.PK, p.cfg.AgentPK, epoch)
 	if err != nil {
 		if errors.Is(err, telemetry.ErrAccountNotFound) {
 			// If the account is not found, cache an empty array for the epoch for a short time.
-			p.SetCachedCircuitLatencies(ctx, circuitCode, epoch, dataProvider, []datastats.CircuitLatencySample{}, p.cfg.CurrentEpochLatenciesCacheTTL)
+			p.SetCachedCircuitLatencies(ctx, circuitCode, epoch, dataProvider, &CircuitLatenciesWithHeader{}, p.cfg.CurrentEpochLatenciesCacheTTL)
 			return nil, err
 		}
 		return nil, fmt.Errorf("failed to get internet latency samples for epoch %d: %w", epoch, err)
@@ -59,12 +116,37 @@ func (p *provider) GetCircuitLatenciesForEpoch(ctx context.Context, circuitCode 
 	if epoch < currentEpoch-1 {
 		ttl = p.cfg.HistoricEpochLatenciesCacheTTL
 	}
-	p.SetCachedCircuitLatencies(ctx, circuitCode, epoch, dataProvider, samples, ttl)
+	p.SetCachedCircuitLatencies(ctx, circuitCode, epoch, dataProvider, &CircuitLatenciesWithHeader{
+		Header:  &account.InternetLatencySamplesHeader,
+		Samples: samples,
+	}, ttl)
 
-	return samples, nil
+	return &CircuitLatenciesWithHeader{
+		Header:  &account.InternetLatencySamplesHeader,
+		Samples: samples,
+	}, nil
 }
 
-func (p *provider) GetCircuitLatenciesForTimeRange(ctx context.Context, circuitCode string, from, to time.Time, dataProvider string) ([]datastats.CircuitLatencySample, error) {
+func (p *provider) getCircuitLatenciesForEpochRange(ctx context.Context, circuitCode string, from, to uint64, dataProvider string) ([]*CircuitLatenciesWithHeader, error) {
+	group := p.getCircuitLatenciesPool.NewGroupContext(ctx)
+
+	for epoch := from; epoch <= to; epoch++ {
+		epoch := epoch
+
+		group.SubmitErr(func() (*CircuitLatenciesWithHeader, error) {
+			return p.GetCircuitLatenciesForEpoch(ctx, circuitCode, epoch, dataProvider)
+		})
+	}
+
+	results, err := group.Wait()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get circuit latencies for epoch range: %w", err)
+	}
+
+	return results, nil
+}
+
+func (p *provider) getCircuitLatenciesForTimeRange(ctx context.Context, circuitCode string, from, to time.Time, dataProvider string) ([]datastats.CircuitLatencySample, error) {
 	startEpoch, err := p.cfg.EpochFinder.ApproximateAtTime(ctx, from)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get start epoch: %w", err)
@@ -81,11 +163,11 @@ func (p *provider) GetCircuitLatenciesForTimeRange(ctx context.Context, circuitC
 	for epoch := startEpoch; epoch <= endEpoch; epoch++ {
 		epoch := epoch
 
-		group.SubmitErr(func() ([]datastats.CircuitLatencySample, error) {
+		group.SubmitErr(func() (*CircuitLatenciesWithHeader, error) {
 			result, err := p.GetCircuitLatenciesForEpoch(ctx, circuitCode, epoch, dataProvider)
 			if errors.Is(err, telemetry.ErrAccountNotFound) {
-				p.cfg.Logger.Info("Internet latency samples not found, skipping", "epoch", epoch, "circuit", circuitCode)
-				return []datastats.CircuitLatencySample{}, nil
+				p.cfg.Logger.Info("Internet latency samples not found, skipping", "epoch", epoch, "circuit", circuitCode, "dataProvider", dataProvider)
+				return nil, nil
 			}
 			return result, err
 		})
@@ -97,70 +179,18 @@ func (p *provider) GetCircuitLatenciesForTimeRange(ctx context.Context, circuitC
 		return nil, fmt.Errorf("failed to get circuit latencies: %w", err)
 	}
 
-	for _, samples := range results {
-		for _, sample := range samples {
-			ts, err := time.Parse(time.RFC3339Nano, sample.Timestamp)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse timestamp: %w", err)
-			}
-			if !ts.Before(from) && !ts.After(to) {
+	for _, result := range results {
+		if result == nil {
+			continue
+		}
+		for _, sample := range result.Samples {
+			if !sample.Timestamp.Before(from) && !sample.Timestamp.After(to) {
 				latencies = append(latencies, sample)
 			}
 		}
 	}
 
 	return latencies, nil
-}
-
-func (p *provider) GetCircuitLatenciesDownsampled(
-	ctx context.Context,
-	circuitCode string,
-	from, to time.Time,
-	maxPoints uint64,
-	unit Unit,
-	dataProvider string,
-) ([]datastats.CircuitLatencyStat, error) {
-	switch unit {
-	case UnitMillisecond, UnitMicrosecond:
-	default:
-		return nil, fmt.Errorf("invalid unit: %s (must be %s or %s)", unit, UnitMillisecond, UnitMicrosecond)
-	}
-
-	latencies, err := p.GetCircuitLatenciesForTimeRange(ctx, circuitCode, from, to, dataProvider)
-	if err != nil {
-		return nil, err
-	}
-	if maxPoints == 0 {
-		maxPoints = 1
-	}
-
-	if maxPoints == 1 {
-		var all []float64
-		for _, s := range latencies {
-			all = append(all, float64(s.RTT))
-		}
-		if len(all) == 0 {
-			return nil, nil
-		}
-		stats := datastats.ComputeStats(from, all)
-		stats.Circuit = circuitCode
-		if unit == UnitMillisecond {
-			stats.ConvertUnit(1000.0)
-		}
-		return []datastats.CircuitLatencyStat{stats}, nil
-	}
-
-	out, err := datastats.DownsampleCircuitLatencies(ctx, circuitCode, from, to, maxPoints, latencies)
-	if err != nil {
-		return nil, err
-	}
-
-	if unit == UnitMillisecond {
-		for i := range out {
-			out[i].ConvertUnit(1000.0)
-		}
-	}
-	return out, nil
 }
 
 func enrichSamplesWithTimestamps(samples []uint32, startTimestampMicroseconds, samplingIntervalMicroseconds uint64) []datastats.CircuitLatencySample {
@@ -171,7 +201,7 @@ func enrichSamplesWithTimestamps(samples []uint32, startTimestampMicroseconds, s
 		nanos := int64(timestampMicros%1_000_000) * 1000
 		timestamp := time.Unix(secs, nanos)
 		circuitLatencies = append(circuitLatencies, datastats.CircuitLatencySample{
-			Timestamp: timestamp.Format(time.RFC3339Nano),
+			Timestamp: timestamp,
 			RTT:       sample,
 		})
 	}

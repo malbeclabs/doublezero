@@ -696,6 +696,118 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		assert.Equal(t, int32(2), atomic.LoadInt32(&writeCalled), "should try write twice (before and after init)")
 	})
 
+	t.Run("failed_retries_reinsert_at_front_preserving_order", func(t *testing.T) {
+		t.Parallel()
+
+		key := newTestPartitionKey()
+		first := telemetry.Sample{Timestamp: time.Now(), RTT: 1 * time.Millisecond}
+		second := telemetry.Sample{Timestamp: time.Now().Add(1 * time.Second), RTT: 2 * time.Millisecond}
+
+		// Program always fails
+		telemetryProgram := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(ctx context.Context, _ sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				return solana.Signature{}, nil, errors.New("permanent failure")
+			},
+		}
+
+		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buf.Add(key, first)
+
+		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+			Interval:        time.Hour,
+			Buffer:          buf,
+			ProgramClient:   telemetryProgram,
+			MaxAttempts:     1,
+			BackoffFunc:     func(_ int) time.Duration { return 0 },
+			GetCurrentEpoch: func(context.Context) (uint64, error) { return 100, nil },
+		})
+		require.NoError(t, err)
+
+		// First tick: fails to submit first sample, so it's reinserted
+		submitter.Tick(context.Background())
+
+		// Add another sample that would be "newer"
+		buf.Add(key, second)
+
+		// Next tick: CopyAndReset should yield first then second
+		got := buf.CopyAndReset(key)
+		require.Equal(t, []telemetry.Sample{first, second}, got)
+	})
+
+	t.Run("failed_retries_priority_prepend_front_no_drop", func(t *testing.T) {
+		key := newTestPartitionKey()
+		first := telemetry.Sample{Timestamp: time.Now(), RTT: time.Millisecond}
+		second := telemetry.Sample{Timestamp: time.Now().Add(time.Second), RTT: 2 * time.Millisecond}
+
+		prog := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(context.Context, sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				return solana.Signature{}, nil, errors.New("perm fail")
+			},
+		}
+
+		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](2) // intentionally small to test overflow/blocking behavior
+		buf.Add(key, first)
+
+		s, _ := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+			Interval: time.Hour, Buffer: buf, ProgramClient: prog, MaxAttempts: 1,
+			BackoffFunc:     func(int) time.Duration { return 0 },
+			GetCurrentEpoch: func(context.Context) (uint64, error) { return 100, nil },
+		})
+
+		s.Tick(context.Background()) // fails; PriorityPrepend([first]) -> len may exceed cap
+		buf.Add(key, second)         // likely blocked until next drain; but since we didn't drain yet, Add may block
+
+		got := buf.CopyAndReset(key) // drain to check order
+		// second might not have made it in if Add blocked; assert prefix at least
+		require.GreaterOrEqual(t, len(got), 1)
+		require.Equal(t, first.RTT, got[0].RTT)
+		if len(got) > 1 {
+			require.Equal(t, second.RTT, got[1].RTT)
+		}
+	})
+
+	t.Run("priority_prepend_backpressures_producers_until_submitter_drains", func(t *testing.T) {
+		key := newTestPartitionKey()
+		prog := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(context.Context, sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				return solana.Signature{}, nil, errors.New("fail")
+			},
+		}
+		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1)
+		buf.Add(key, newTestSample())
+
+		s, _ := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+			Interval: time.Hour, Buffer: buf, ProgramClient: prog, MaxAttempts: 1,
+			BackoffFunc:     func(int) time.Duration { return 0 },
+			GetCurrentEpoch: func(context.Context) (uint64, error) { return 100, nil },
+		})
+
+		// This tick will PriorityPrepend and exceed capacity
+		s.Tick(context.Background())
+
+		// Now try to Add from producer; should block until we drain
+		done := make(chan struct{})
+		go func() {
+			buf.Add(key, newTestSample())
+			close(done)
+		}()
+
+		select {
+		case <-done:
+			t.Fatal("producer Add should block while over capacity")
+		case <-time.After(20 * time.Millisecond):
+		}
+
+		// Drain
+		_ = buf.CopyAndReset(key)
+
+		// Now Add unblocks
+		select {
+		case <-done:
+		case <-time.After(200 * time.Millisecond):
+			t.Fatal("producer Add should unblock after drain")
+		}
+	})
 }
 
 func waitTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {

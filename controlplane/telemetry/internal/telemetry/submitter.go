@@ -15,6 +15,10 @@ import (
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 )
 
+const (
+	defaultMaxAttempts = 5
+)
+
 type SubmitterConfig struct {
 	Interval           time.Duration
 	Buffer             buffer.PartitionedBuffer[PartitionKey, Sample]
@@ -38,6 +42,9 @@ type Submitter struct {
 func NewSubmitter(log *slog.Logger, cfg *SubmitterConfig) (*Submitter, error) {
 	if cfg.GetCurrentEpoch == nil {
 		return nil, fmt.Errorf("GetCurrentEpoch is required")
+	}
+	if cfg.MaxAttempts == 0 {
+		cfg.MaxAttempts = defaultMaxAttempts
 	}
 
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -150,11 +157,6 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 }
 
 func (s *Submitter) Tick(ctx context.Context) {
-	maxAttempts := s.cfg.MaxAttempts
-	if maxAttempts <= 0 {
-		maxAttempts = 5
-	}
-
 	for partitionKey := range s.cfg.Buffer.FlushWithoutReset() {
 		tmp := s.cfg.Buffer.CopyAndReset(partitionKey)
 
@@ -180,7 +182,7 @@ func (s *Submitter) Tick(ctx context.Context) {
 		}
 
 		success := false
-		for attempt := 1; attempt <= maxAttempts; attempt++ {
+		for attempt := 1; attempt <= s.cfg.MaxAttempts; attempt++ {
 			err := s.SubmitSamples(ctx, partitionKey, tmp)
 			if err == nil {
 				log.Debug("Submitted samples", "count", len(tmp), "attempt", attempt)
@@ -198,10 +200,10 @@ func (s *Submitter) Tick(ctx context.Context) {
 			switch attempt {
 			case 1:
 				log.Debug("Submission failed, retrying...", "attempt", attempt, "error", err)
-			case maxAttempts:
+			case s.cfg.MaxAttempts:
 				metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterRetriesExhausted).Inc()
 				log.Error("Submission failed after all retries", "attempt", attempt, "samplesCount", len(tmp), "error", err)
-			case (maxAttempts + 1) / 2:
+			case (s.cfg.MaxAttempts + 1) / 2:
 				log.Debug("Submission failed, still retrying...", "attempt", attempt, "error", err)
 			default:
 				log.Debug("Submission failed, retrying...", "attempt", attempt, "delay", backoff, "error", err)
@@ -214,9 +216,7 @@ func (s *Submitter) Tick(ctx context.Context) {
 		}
 
 		if !success {
-			for _, sample := range tmp {
-				s.cfg.Buffer.Add(partitionKey, sample)
-			}
+			s.cfg.Buffer.PriorityPrepend(partitionKey, tmp)
 		}
 
 		// Always recycle the slice for reuse

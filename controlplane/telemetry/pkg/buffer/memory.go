@@ -91,6 +91,21 @@ func (b *MemoryPartitionedBuffer[K, R]) Read(key K) []R {
 	return nil
 }
 
+func (b *MemoryPartitionedBuffer[K, R]) PriorityPrepend(key K, records []R) {
+	b.mu.RLock()
+	pb, ok := b.partitions[key]
+	b.mu.RUnlock()
+	if !ok {
+		b.mu.Lock()
+		if pb, ok = b.partitions[key]; !ok {
+			pb = NewMemoryBuffer[R](b.partitionBufferCapacity)
+			b.partitions[key] = pb
+		}
+		b.mu.Unlock()
+	}
+	pb.PriorityPrepend(records)
+}
+
 // PartitionBuffer provides a thread-safe buffer for storing internet latency samples.
 // It supports concurrent appends and atomic flushing, as well as a maximum capacity
 // with backpressure to avoid having too many records in the buffer at once.
@@ -175,4 +190,18 @@ func (b *MemoryBuffer[R]) Read() []R {
 	copied := make([]R, len(b.records))
 	copy(copied, b.records)
 	return copied
+}
+
+func (b *MemoryBuffer[R]) PriorityPrepend(records []R) {
+	b.mu.Lock()
+	// Build new slice sized exactly to fit all records; ignores maxCapacity intentionally to
+	// prevent blocking during retry or priority scenarios.
+	newLen := len(records) + len(b.records)
+	newBuf := make([]R, 0, newLen)
+	newBuf = append(newBuf, records...)
+	newBuf = append(newBuf, b.records...)
+	b.records = newBuf
+	// Broadcast to wake up any blocked producers for consistency with the Add method's wait condition.
+	b.cond.Broadcast()
+	b.mu.Unlock()
 }

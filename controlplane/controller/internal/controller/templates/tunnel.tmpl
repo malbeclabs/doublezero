@@ -54,7 +54,7 @@ interface {{ .Name }}
    {{- if .IsPhysical }}
    mtu 2048
    {{- end }}
-   {{- if and .IsPhysical (not .IsSubInterface) }}
+   {{- if and .IsPhysical (not .IsSubInterface) (not .IsVlanInterface) }}
    no switchport
    {{- end }}
    {{- if .VlanId}}

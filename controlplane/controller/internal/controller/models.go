@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/netip"
 	"regexp"
+	"strings"
 
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
@@ -151,6 +152,10 @@ func (i Interface) GetParent() (Interface, error) {
 		InterfaceType:        i.InterfaceType,
 		LoopbackType:         i.LoopbackType,
 	}, nil
+}
+
+func (i Interface) IsVlanInterface() bool {
+	return strings.HasPrefix(i.Name, "Vlan")
 }
 
 // isSubInterface determines whether an interface is considered a subinterface by the name.

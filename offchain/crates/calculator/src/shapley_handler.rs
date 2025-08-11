@@ -37,8 +37,12 @@ pub fn build_devices(fetch_data: &FetchData) -> Result<Devices> {
     Ok(devices)
 }
 
-pub async fn build_demands(fetcher: &Fetcher, fetch_data: &FetchData) -> Result<Demands> {
-    demand::build(fetcher, fetch_data).await
+pub async fn build_demands(
+    fetcher: &Fetcher,
+    fetch_data: &FetchData,
+) -> Result<(Demands, demand::CityStats)> {
+    let result = demand::build(fetcher, fetch_data).await?;
+    Ok((result.demands, result.city_stats))
 }
 
 pub fn build_public_links(internet_stats: &InternetTelemetryStatMap) -> Result<PublicLinks> {

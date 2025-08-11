@@ -3,6 +3,7 @@ use crate::{
     keypair_loader::load_keypair,
     recorder::{make_record_key, try_create_record, write_record_chunks},
     settings::Settings,
+    shapley_aggregator::aggregate_shapley_outputs,
     shapley_handler::{build_demands, build_devices, build_private_links, build_public_links},
     util::{print_demands, print_devices, print_private_links, print_public_links},
 };
@@ -18,9 +19,7 @@ use processor::{
 };
 use solana_client::client_error::ClientError as SolanaClientError;
 use solana_sdk::commitment_config::CommitmentConfig;
-use std::mem::size_of;
-use std::path::PathBuf;
-use std::time::Duration;
+use std::{collections::HashMap, mem::size_of, path::PathBuf, time::Duration};
 use tabled::{builder::Builder as TableBuilder, settings::Style};
 use tracing::info;
 
@@ -145,8 +144,8 @@ impl Orchestrator {
         let public_links = build_public_links(&internet_stat_map)?;
         info!("Public Links:\n{}", print_public_links(&public_links));
 
-        // Build demand
-        let demands = build_demands(&fetcher, &fetch_data).await?;
+        // Build demand and get city stats
+        let (demands, city_stats) = build_demands(&fetcher, &fetch_data).await?;
 
         // Optionally write CSVs
         if let Some(ref output_dir) = output_dir {
@@ -162,6 +161,9 @@ impl Orchestrator {
             .into_iter()
             .map(|(start, group)| (start, group.collect()))
             .collect();
+
+        // Collect per-city Shapley outputs
+        let mut per_city_shapley_outputs = HashMap::new();
 
         for (city, demands) in demand_groups {
             info!(
@@ -188,12 +190,47 @@ impl Orchestrator {
             // Shapley output
             let output = input.compute()?;
 
-            // Print table
-            let table = TableBuilder::from(output)
+            // Print per-city table
+            let table = TableBuilder::from(output.clone())
                 .build()
                 .with(Style::psql().remove_horizontals())
                 .to_string();
-            info!("Shapley Output:\n{}", table)
+            info!("Shapley Output for {city}:\n{}", table);
+
+            // Store raw values for aggregation
+            let city_values: Vec<(String, f64)> = output
+                .into_iter()
+                .map(|(operator, shapley_value)| (operator, shapley_value.value))
+                .collect();
+            per_city_shapley_outputs.insert(city.clone(), city_values);
+        }
+
+        // Aggregate consolidated Shapley output
+        if !per_city_shapley_outputs.is_empty() {
+            let consolidated = aggregate_shapley_outputs(&per_city_shapley_outputs, &city_stats)?;
+
+            // Print consolidated table
+            let mut table_builder = TableBuilder::default();
+            table_builder.push_record(["Operator", "Value", "Proportion (%)"]);
+
+            for (operator, val) in consolidated.iter() {
+                table_builder.push_record([
+                    operator,
+                    &val.value.to_string(),
+                    &val.proportion.to_string(),
+                ]);
+            }
+
+            let table = table_builder
+                .build()
+                .with(Style::psql().remove_horizontals())
+                .to_string();
+            info!("Consolidated Shapley Output:\n{}", table);
+
+            // Write consolidated CSV if output directory is specified
+            if let Some(ref output_dir) = output_dir {
+                csv_exporter::write_consolidated_shapley_csv(output_dir, &consolidated)?;
+            }
         }
 
         Ok(())

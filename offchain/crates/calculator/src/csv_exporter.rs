@@ -1,6 +1,9 @@
 use anyhow::Result;
 use csv::Writer;
-use network_shapley::types::{Demand, Device, PrivateLink, PublicLink};
+use network_shapley::{
+    shapley::ShapleyOutput,
+    types::{Demand, Device, PrivateLink, PublicLink},
+};
 use std::{fs::create_dir_all, path::Path};
 use tracing::info;
 
@@ -117,5 +120,31 @@ fn write_public_links_csv(output_dir: &Path, links: &[PublicLink]) -> Result<()>
         writer.write_record([&link.city1, &link.city2, &link.latency.to_string()])?;
     }
     writer.flush()?;
+    Ok(())
+}
+
+/// Writes consolidated Shapley output to CSV
+pub fn write_consolidated_shapley_csv(
+    output_dir: &Path,
+    consolidated: &ShapleyOutput,
+) -> Result<()> {
+    let path = output_dir.join("shapley.csv");
+
+    info!("Writing consolidated Shapley output to {}", path.display());
+    let mut writer = Writer::from_path(&path)?;
+
+    // Write header
+    writer.write_record(["operator", "value", "proportion"])?;
+
+    for (operator, val) in consolidated.iter() {
+        writer.write_record([
+            operator.to_string(),
+            val.value.to_string(),
+            val.proportion.to_string(),
+        ])?;
+    }
+
+    writer.flush()?;
+    info!("Wrote consolidated Shapley output to {}", path.display());
     Ok(())
 }

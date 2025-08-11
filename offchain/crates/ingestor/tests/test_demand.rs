@@ -182,16 +182,19 @@ mod tests {
         let fetch_data = convert_to_fetch_data(&test_data)?;
 
         // Build demands using the refactored function
-        let demands = demand::build_with_schedule(&fetch_data, test_data.leader_schedule)?;
+        let result = demand::build_with_schedule(&fetch_data, test_data.leader_schedule)?;
 
         // Verify results
-        println!("\nGenerated {} demands", demands.len());
+        println!("\nGenerated {} demands", result.demands.len());
 
         // Basic assertions
-        assert!(!demands.is_empty(), "Should generate at least one demand");
+        assert!(
+            !result.demands.is_empty(),
+            "Should generate at least one demand"
+        );
 
         // Verify no self-loops
-        for demand in &demands {
+        for demand in &result.demands {
             assert_ne!(demand.start, demand.end, "Should not have self-loops");
         }
 
@@ -236,7 +239,7 @@ mod tests {
         ];
 
         // Should have exactly 30 demands (6 cities * 5 destinations each)
-        assert_eq!(demands.len(), 30, "Should have exactly 30 demands");
+        assert_eq!(result.demands.len(), 30, "Should have exactly 30 demands");
         assert_eq!(
             expected.len(),
             30,
@@ -245,7 +248,8 @@ mod tests {
 
         // Verify each expected demand exists with correct priority
         for (exp_start, exp_end, exp_receivers, exp_priority) in expected {
-            let found = demands
+            let found = result
+                .demands
                 .iter()
                 .find(|d| d.start == exp_start && d.end == exp_end)
                 .unwrap_or_else(|| {
@@ -273,7 +277,7 @@ mod tests {
         }
 
         // Print demands (for debugging)
-        for (i, demand) in demands.iter().enumerate() {
+        for (i, demand) in result.demands.iter().enumerate() {
             println!(
                 "  {}: {} -> {} (receivers: {}, priority: {:.4})",
                 i + 1,

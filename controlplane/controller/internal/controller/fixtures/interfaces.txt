@@ -80,6 +80,15 @@ interface Switch1/1/2.100
    isis hello padding
    isis network point-to-point
 !
+interface Vlan4001
+   mtu 2048
+   ip address 172.16.0.4/31
+   pim ipv4 sparse-mode
+   isis enable 1
+   isis circuit-type level-2
+   isis hello padding
+   isis network point-to-point
+!
 router bgp 65342
    router-id 14.14.14.14
    address-family ipv4

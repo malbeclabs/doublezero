@@ -401,6 +401,11 @@ func TestRenderConfig(t *testing.T) {
 							IsSubInterface: true,
 							InterfaceType:  InterfaceTypePhysical,
 						},
+						{
+							Name:          "Vlan4001",
+							Ip:            netip.MustParsePrefix("172.16.0.4/31"),
+							InterfaceType: InterfaceTypePhysical,
+						},
 					},
 				},
 				UnknownBgpPeers: []net.IP{},

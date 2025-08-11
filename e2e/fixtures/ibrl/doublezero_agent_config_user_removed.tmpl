@@ -55,16 +55,6 @@ interface Ethernet2
    isis hello padding
    isis network point-to-point
 !
-interface Ethernet3
-   mtu 2048
-   no switchport
-   ip address 172.16.0.20/31
-   pim ipv4 sparse-mode
-   isis enable 1
-   isis circuit-type level-2
-   isis hello padding
-   isis network point-to-point
-!
 interface Loopback255
    ip address 172.16.0.1/32
    node-segment ipv4 index 1
@@ -73,6 +63,15 @@ interface Loopback255
 interface Loopback256
    ip address 172.16.0.9/32
    isis enable 1
+!
+interface Vlan4001
+   mtu 2048
+   ip address 172.16.0.20/31
+   pim ipv4 sparse-mode
+   isis enable 1
+   isis circuit-type level-2
+   isis hello padding
+   isis network point-to-point
 !
 default interface Tunnel500
 !

@@ -81,7 +81,7 @@ func TestConnectivityUnicast(t *testing.T) {
 			opts := []dzsdk.Option{}
 			opts = append(opts, dzsdk.WithServiceabilityProgramID(config.DevnetServiceabilityProgramID))
 
-			ledger, err := dzsdk.New(nil, config.DevnetLedgerRPCURL, opts...)
+			ledger, err := dzsdk.New(nil, config.DevnetLedgerPublicRPCURL, opts...)
 			require.NoError(t, err, "Failed to create ledger client")
 			data, err := ledger.Serviceability.GetProgramData(ctx)
 			require.NoError(t, err, "Failed to get program data")
@@ -170,7 +170,7 @@ func TestConnectivityMulticast(t *testing.T) {
 	opts := []dzsdk.Option{}
 	opts = append(opts, dzsdk.WithServiceabilityProgramID(config.DevnetServiceabilityProgramID))
 
-	ledger, err := dzsdk.New(nil, config.DevnetLedgerRPCURL, opts...)
+	ledger, err := dzsdk.New(nil, config.DevnetLedgerPublicRPCURL, opts...)
 	require.NoError(t, err, "Failed to create ledger client")
 
 	pubKey := ""

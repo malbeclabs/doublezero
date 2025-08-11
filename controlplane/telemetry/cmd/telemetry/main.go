@@ -112,7 +112,7 @@ func main() {
 			flag.Usage()
 			os.Exit(1)
 		}
-		*ledgerRPCURL = networkConfig.LedgerRPCURL
+		*ledgerRPCURL = networkConfig.LedgerPublicRPCURL
 		*serviceabilityProgramID = networkConfig.ServiceabilityProgramID.String()
 		*telemetryProgramID = networkConfig.TelemetryProgramID.String()
 	}

@@ -77,7 +77,7 @@ and Wheresitup services for the DoubleZero network.`,
 			os.Exit(1)
 		}
 
-		solanaRPCClient = solanarpc.New(networkConfig.LedgerRPCURL)
+		solanaRPCClient = solanarpc.New(networkConfig.LedgerPublicRPCURL)
 		serviceabilityClient = serviceability.New(solanaRPCClient, networkConfig.ServiceabilityProgramID)
 	},
 }

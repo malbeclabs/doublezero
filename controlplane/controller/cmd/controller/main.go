@@ -180,7 +180,7 @@ func (c *ControllerCommand) Run() error {
 			slog.Error("failed to get network config", "error", err)
 			os.Exit(1)
 		}
-		serviceabilityClient = serviceability.New(rpc.New(networkConfig.LedgerRPCURL), networkConfig.ServiceabilityProgramID)
+		serviceabilityClient = serviceability.New(rpc.New(networkConfig.LedgerPublicRPCURL), networkConfig.ServiceabilityProgramID)
 	}
 
 	if c.noHardware {

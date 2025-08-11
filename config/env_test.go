@@ -17,7 +17,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 		{
 			env: config.EnvMainnet,
 			want: &config.NetworkConfig{
-				LedgerRPCURL:               config.MainnetLedgerRPCURL,
+				LedgerPublicRPCURL:         config.MainnetLedgerPublicRPCURL,
 				ServiceabilityProgramID:    solana.MustPublicKeyFromBase58(config.MainnetServiceabilityProgramID),
 				TelemetryProgramID:         solana.MustPublicKeyFromBase58(config.MainnetTelemetryProgramID),
 				InternetLatencyCollectorPK: solana.MustPublicKeyFromBase58(config.MainnetInternetLatencyCollectorPK),
@@ -26,7 +26,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 		{
 			env: config.EnvTestnet,
 			want: &config.NetworkConfig{
-				LedgerRPCURL:               config.TestnetLedgerRPCURL,
+				LedgerPublicRPCURL:         config.TestnetLedgerPublicRPCURL,
 				ServiceabilityProgramID:    solana.MustPublicKeyFromBase58(config.TestnetServiceabilityProgramID),
 				TelemetryProgramID:         solana.MustPublicKeyFromBase58(config.TestnetTelemetryProgramID),
 				InternetLatencyCollectorPK: solana.MustPublicKeyFromBase58(config.TestnetInternetLatencyCollectorPK),
@@ -35,7 +35,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 		{
 			env: config.EnvDevnet,
 			want: &config.NetworkConfig{
-				LedgerRPCURL:               config.DevnetLedgerRPCURL,
+				LedgerPublicRPCURL:         config.DevnetLedgerPublicRPCURL,
 				ServiceabilityProgramID:    solana.MustPublicKeyFromBase58(config.DevnetServiceabilityProgramID),
 				TelemetryProgramID:         solana.MustPublicKeyFromBase58(config.DevnetTelemetryProgramID),
 				InternetLatencyCollectorPK: solana.MustPublicKeyFromBase58(config.DevnetInternetLatencyCollectorPK),

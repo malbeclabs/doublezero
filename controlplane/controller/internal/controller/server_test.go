@@ -999,6 +999,46 @@ func TestEndToEnd(t *testing.T) {
 					Code:   "abc01",
 					PubKey: [32]byte{1},
 				},
+				{
+					AccountType:    serviceability.AccountType(0),
+					Owner:          [32]uint8{},
+					LocationPubKey: [32]uint8{},
+					ExchangePubKey: [32]uint8{},
+					DeviceType:     0,
+					PublicIp:       [4]uint8{22, 22, 22, 22},
+					Interfaces: []serviceability.Interface{
+						// Because this device does not also have an Ipv4 loopback interface, this peer should not be added to abc01's peers
+						{
+							InterfaceType: serviceability.InterfaceTypeLoopback,
+							LoopbackType:  serviceability.LoopbackTypeVpnv4,
+							IpNet:         [5]uint8{114, 114, 114, 114, 32},
+							Name:          "Loopback255",
+						},
+					},
+					Status: serviceability.DeviceStatusActivated,
+					Code:   "abc02",
+					PubKey: [32]byte{1},
+				},
+				{
+					AccountType:    serviceability.AccountType(0),
+					Owner:          [32]uint8{},
+					LocationPubKey: [32]uint8{},
+					ExchangePubKey: [32]uint8{},
+					DeviceType:     0,
+					PublicIp:       [4]uint8{23, 23, 23, 23},
+					Interfaces: []serviceability.Interface{
+						// Because this device does not also have an Vpnv4 loopback interface, this peer should not be added to abc01's peers
+						{
+							InterfaceType: serviceability.InterfaceTypeLoopback,
+							LoopbackType:  serviceability.LoopbackTypeIpv4,
+							IpNet:         [5]uint8{124, 124, 124, 124, 32},
+							Name:          "Loopback256",
+						},
+					},
+					Status: serviceability.DeviceStatusActivated,
+					Code:   "abc03",
+					PubKey: [32]byte{1},
+				},
 			},
 			AgentRequest: &pb.ConfigRequest{
 				Pubkey: "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",

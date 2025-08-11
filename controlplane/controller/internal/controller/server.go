@@ -171,11 +171,13 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		})
 
 		// Build list of peers from device interfaces
+		candidateVpnv4BgpPeer := BgpPeer{}
+		candidateIpv4BgpPeer := BgpPeer{}
+
 		for _, iface := range d.Interfaces {
 			if iface.InterfaceType == InterfaceTypeLoopback &&
 				iface.LoopbackType == LoopbackTypeVpnv4 {
-				// Extract IP from IpNet
-				d.Vpn4vLoopbackIP = iface.Ip.Addr().AsSlice() // Used to set router-id
+				d.Vpn4vLoopbackIP = iface.Ip.Addr().AsSlice()
 				d.Vpn4vLoopbackIntfName = iface.Name
 				// Generate ISIS NET from the Vpn4vLoopbackIP. Format: <AreaID>.<AreaNumber>.<SystemID>.<NSelector>
 				// SystemID is derived from the IP address in hex format. Example SystemId: 172.3.2.1 -> AC03.0201
@@ -186,23 +188,18 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 				} else {
 					slog.Error("Can't assign ISIS NET because VPNv4 loopback IP is invalid or empty", "device pubkey", devicePubKey, "interface", iface.Name, "ip length", len(vpnIP))
 				}
-				// TODO: raise an error if the IP is 0.0.0.0 (not set)
-				peer := BgpPeer{
+				candidateVpnv4BgpPeer = BgpPeer{
 					PeerIP:   d.Vpn4vLoopbackIP,
 					PeerName: device.Code,
 				}
-				cache.Vpnv4BgpPeers = append(cache.Vpnv4BgpPeers, peer)
 			} else if iface.InterfaceType == InterfaceTypeLoopback &&
 				iface.LoopbackType == LoopbackTypeIpv4 {
-				// Extract IP from IpNet
-				d.Ipv4LoopbackIP = iface.Ip.Addr().AsSlice() // Used to set router-id
+				d.Ipv4LoopbackIP = iface.Ip.Addr().AsSlice()
 				d.Ipv4LoopbackIntfName = iface.Name
-				// TODO: raise an error if the IP is 0.0.0.0 (not set)
-				peer := BgpPeer{
+				candidateIpv4BgpPeer = BgpPeer{
 					PeerIP:   d.Ipv4LoopbackIP,
 					PeerName: device.Code,
 				}
-				cache.Ipv4BgpPeers = append(cache.Ipv4BgpPeers, peer)
 			}
 		}
 
@@ -216,6 +213,21 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			continue
 		}
 
+		if d.Vpn4vLoopbackIP.Equal(net.IPv4(0, 0, 0, 0)) {
+			slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "VPNv4 loopback interface is unassigned (0.0.0.0)")
+			continue
+		}
+
+		if d.Vpn4vLoopbackIP.Equal(net.IPv4(0, 0, 0, 0)) {
+			slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "VPNv4 loopback interface is unassigned (0.0.0.0)")
+			continue
+		}
+
+		if d.Ipv4LoopbackIP.Equal(net.IPv4(0, 0, 0, 0)) {
+			slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "IPv4 loopback interface is unassigned (0.0.0.0)")
+			continue
+		}
+
 		if d.IsisNet == "" {
 			slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "ISIS NET could not be generated")
 			continue
@@ -223,6 +235,8 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 
 		d.MgmtVrf = device.MgmtVrf
 
+		cache.Vpnv4BgpPeers = append(cache.Vpnv4BgpPeers, candidateVpnv4BgpPeer)
+		cache.Ipv4BgpPeers = append(cache.Ipv4BgpPeers, candidateIpv4BgpPeer)
 		cache.Devices[devicePubKey] = d
 	}
 

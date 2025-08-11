@@ -77,7 +77,7 @@ mod tests {
 
     #[test]
     fn test_environment_from_str_invalid() {
-        let err = "mainnet".parse::<Environment>();
+        let err = "invalid".parse::<Environment>();
         assert!(err.is_err());
     }
 

@@ -1,19 +1,12 @@
 use anyhow::Result;
-use figment::{
-    Figment,
-    providers::{Env, Format, Toml},
-};
+use config::{Config, Environment, File};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default = "default_log_level")]
     pub log_level: String,
-    pub ingestor: IngestorSettings,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct IngestorSettings {
     pub rpc: RpcSettings,
     pub programs: ProgramSettings,
 }
@@ -31,34 +24,22 @@ pub struct ProgramSettings {
 }
 
 impl Settings {
-    pub fn from_env() -> Result<Self> {
-        // Get environment from DZ_ENV or default to "devnet"
-        let env = std::env::var("DZ_ENV").unwrap_or_else(|_| "devnet".to_string());
-        Self::load(env)
-    }
+    pub fn new<P: AsRef<Path>>(path: Option<P>) -> Result<Self, config::ConfigError> {
+        let mut builder = Config::builder();
 
-    pub fn load(env: String) -> Result<Self> {
-        let mut figment = Figment::new()
-            // Load default configuration
-            .merge(Toml::file("config/default.toml"));
-
-        // Load environment-specific configuration if it exists
-        let env_config_path = format!("config/{env}.toml");
-        if std::path::Path::new(&env_config_path).exists() {
-            figment = figment.merge(Toml::file(&env_config_path));
+        if let Some(file) = path {
+            builder = builder
+                .add_source(File::with_name(&file.as_ref().to_string_lossy()).required(false));
         }
-
-        // Load local overrides if present (git-ignored)
-        let local_config_path = "config/local.toml";
-        if std::path::Path::new(local_config_path).exists() {
-            figment = figment.merge(Toml::file(local_config_path));
-        }
-
-        // Environment variables can still override
-        figment = figment.merge(Env::prefixed("DZ_").split("__"));
-
-        let config: Settings = figment.extract()?;
-        Ok(config)
+        builder
+            .add_source(
+                Environment::with_prefix("INGESTOR")
+                    .prefix_separator("__")
+                    .separator("__")
+                    .try_parsing(true),
+            )
+            .build()
+            .and_then(|config| config.try_deserialize())
     }
 }
 

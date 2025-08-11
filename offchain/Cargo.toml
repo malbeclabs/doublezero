@@ -16,18 +16,17 @@ license = "Apache-2.0"
 repository = "https://github.com/doublezerofoundation/doublezero-rewarder"
 homepage = "https://github.com/doublezerofoundation/doublezero-rewarder"
 
-
 [workspace.dependencies]
 anyhow = "1"
 backon = "1"
 base64 = "0"
 chrono = { version = "0", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }
+config = "0"
 csv = "1"
 doublezero-serviceability = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint", "serde"] }
 doublezero-telemetry = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint", "serde" ] }
 doublezero_sdk = { git = "ssh://git@github.com/malbeclabs/doublezero" }
-figment = { version = "0", features = ["env", "toml"] }
 futures-util = "0"
 itertools = "0"
 network-shapley = { git = "https://github.com/doublezerofoundation/network-shapley-rs", features = ["serde"] }
@@ -50,3 +49,7 @@ tokio-util = { version = "0" }
 toml = "0"
 tracing = "0"
 tracing-subscriber = { version = "0", features = ["env-filter"] }
+
+[profile.release]
+lto = true
+codegen-units = 1

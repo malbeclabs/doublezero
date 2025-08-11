@@ -1,8 +1,0 @@
-# Devnet configuration for DoubleZero Rewarder
-
-[ingestor.rpc]
-url = "https://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30"
-
-[ingestor.programs]
-serviceability_program_id = "GYhQDKuESrasNZGyhMJhGYFtbzNijYhcrN9poSqCQVah"
-telemetry_program_id = "C9xqH76NSm11pBS6maNnY163tWHT8Govww47uyEmSnoG"

@@ -1,4 +1,6 @@
 use crate::{
+    csv_exporter,
+    settings::Settings,
     shapley_handler::{build_demands, build_devices, build_private_links, build_public_links},
     util::{print_demands, print_devices, print_private_links, print_public_links},
 };
@@ -10,17 +12,30 @@ use processor::{
     internet::{InternetTelemetryProcessor, print_internet_stats},
     telemetry::{DZDTelemetryProcessor, print_telemetry_stats},
 };
-use std::path::Path;
+use std::path::PathBuf;
 use tabled::{builder::Builder as TableBuilder, settings::Style};
 use tracing::info;
 
 #[derive(Debug)]
-pub struct Orchestrator;
+pub struct Orchestrator {
+    settings: Settings,
+    cfg_path: Option<PathBuf>,
+}
 
 impl Orchestrator {
-    pub async fn calculate_rewards(epoch: Option<u64>) -> Result<()> {
-        // Create fetcher
-        let ingestor_settings = ingestor::settings::Settings::from_env()?;
+    pub fn new(settings: &Settings, cfg_path: &Option<PathBuf>) -> Self {
+        Self {
+            settings: settings.clone(),
+            cfg_path: cfg_path.clone(),
+        }
+    }
+
+    pub async fn calculate_rewards(
+        &self,
+        epoch: Option<u64>,
+        output_dir: Option<PathBuf>,
+    ) -> Result<()> {
+        let ingestor_settings = ingestor::settings::Settings::new(self.cfg_path.clone())?;
         let fetcher = Fetcher::new(&ingestor_settings)?;
 
         // Fetch data based on filter mode
@@ -63,6 +78,13 @@ impl Orchestrator {
         // Build demand
         let demands = build_demands(&fetcher, &fetch_data).await?;
 
+        // Optionally write CSVs
+        if let Some(ref output_dir) = output_dir {
+            info!("Writing CSV files to {}", output_dir.display());
+            csv_exporter::export_to_csv(output_dir, &devices, &private_links, &public_links)?;
+            info!("Exported CSV files successfully!");
+        }
+
         // Group demands by start city
         let demand_groups: Vec<(String, Vec<Demand>)> = demands
             .into_iter()
@@ -77,16 +99,20 @@ impl Orchestrator {
                 print_demands(&demands, 1_000_000)
             );
 
+            // Optionally write demands per city
+            if let Some(ref output_dir) = output_dir {
+                csv_exporter::write_demands_csv(output_dir, &city, &demands)?;
+            }
+
             // Build shapley inputs
-            // TODO: make yolo constants configurable
             let input = ShapleyInput {
                 private_links: private_links.clone(),
                 devices: devices.clone(),
                 demands,
                 public_links: public_links.clone(),
-                operator_uptime: 0.98,
-                contiguity_bonus: 5.0,
-                demand_multiplier: 1.0,
+                operator_uptime: self.settings.shapley.operator_uptime,
+                contiguity_bonus: self.settings.shapley.contiguity_bonus,
+                demand_multiplier: self.settings.shapley.demand_multiplier,
             };
 
             // Shapley output
@@ -101,9 +127,5 @@ impl Orchestrator {
         }
 
         Ok(())
-    }
-
-    pub async fn export_demand(_demand_path: &Path, _validators_path: Option<&Path>) -> Result<()> {
-        todo!()
     }
 }

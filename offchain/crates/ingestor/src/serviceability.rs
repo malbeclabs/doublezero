@@ -125,7 +125,7 @@ async fn fetch_by_type(
     settings: &Settings,
     account_type: AccountType,
 ) -> Result<Vec<(Pubkey, Vec<u8>)>> {
-    let program_id = &settings.ingestor.programs.serviceability_program_id;
+    let program_id = &settings.programs.serviceability_program_id;
     let program_pubkey = Pubkey::from_str(program_id)
         .with_context(|| format!("Invalid serviceability program ID: {program_id}"))?;
 

@@ -13,12 +13,12 @@ repository.workspace = true
 [dependencies]
 anyhow.workspace = true
 chrono.workspace = true
+config.workspace = true
 csv.workspace = true
 ingestor = { path = "../ingestor" }
 doublezero-serviceability.workspace = true
 doublezero-telemetry.workspace = true
 doublezero_sdk.workspace = true
-figment.workspace = true
 rand.workspace = true
 rust_decimal.workspace = true
 serde.workspace = true
@@ -28,6 +28,3 @@ solana-sdk.workspace = true
 tabled.workspace = true
 tokio.workspace = true
 tracing.workspace = true
-
-[dev-dependencies]
-tempfile = "3"

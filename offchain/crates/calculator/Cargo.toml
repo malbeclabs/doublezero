@@ -10,7 +10,6 @@ homepage.workspace = true
 license.workspace = true
 repository.workspace = true
 
-
 [lib]
 name = "calculator"
 path = "src/lib.rs"
@@ -19,10 +18,10 @@ path = "src/lib.rs"
 anyhow.workspace = true
 chrono.workspace = true
 clap.workspace = true
+config.workspace = true
 csv.workspace = true
 doublezero-serviceability.workspace = true
 doublezero-telemetry.workspace = true
-figment.workspace = true
 network-shapley.workspace = true
 itertools.workspace = true
 rust_decimal.workspace = true
@@ -39,9 +38,3 @@ tracing-subscriber.workspace = true
 # Internal crates
 ingestor = { path = "../ingestor" }
 processor = { path = "../processor" }
-
-[build-dependencies]
-toml.workspace = true
-
-[dev-dependencies]
-solana-sdk.workspace = true

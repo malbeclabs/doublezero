@@ -31,7 +31,7 @@ pub async fn fetch(
     settings: &Settings,
     epoch: u64,
 ) -> Result<DZDTelemetryData> {
-    let program_id = &settings.ingestor.programs.telemetry_program_id;
+    let program_id = &settings.programs.telemetry_program_id;
     let program_pubkey = Pubkey::from_str(program_id)
         .with_context(|| format!("Invalid telemetry program ID: {program_id}"))?;
 

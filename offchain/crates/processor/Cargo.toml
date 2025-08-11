@@ -12,6 +12,7 @@ repository.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+borsh.workspace = true
 chrono.workspace = true
 config.workspace = true
 csv.workspace = true

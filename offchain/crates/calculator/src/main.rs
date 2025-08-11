@@ -31,8 +31,25 @@ pub enum Commands {
         /// If specified, output intermediate CSV files for cross-checking
         #[arg(short, long)]
         output_dir: Option<PathBuf>,
+
+        /// Path to the keypair file to use for signing transactions
+        #[arg(short = 'k', long)]
+        keypair: Option<PathBuf>,
+
+        /// Run in dry-run mode (skip writing to ledger, show what would be written)
+        #[arg(long)]
+        dry_run: bool,
     },
-    // TODO: Add more commands
+    /// Read telemetry aggregates from the ledger
+    ReadTelemAgg {
+        /// Require DZ Epoch
+        #[arg(short, long)]
+        epoch: u64,
+
+        /// Path to the keypair file to use for signing transactions
+        #[arg(short = 'k', long)]
+        keypair: Option<PathBuf>,
+    },
 }
 
 impl Cli {
@@ -44,8 +61,18 @@ impl Cli {
 
         // Handle subcommands
         match self.command {
-            Commands::CalculateRewards { epoch, output_dir } => {
-                orchestrator.calculate_rewards(epoch, output_dir).await
+            Commands::ReadTelemAgg { epoch, keypair } => {
+                orchestrator.read_telemetry_aggregates(epoch, keypair).await
+            }
+            Commands::CalculateRewards {
+                epoch,
+                output_dir,
+                keypair,
+                dry_run,
+            } => {
+                orchestrator
+                    .calculate_rewards(epoch, output_dir, keypair, dry_run)
+                    .await
             }
         }
     }

@@ -32,7 +32,7 @@ impl Fetcher {
     }
 
     /// Fetch all data for the previous epoch
-    pub async fn fetch(&self) -> Result<FetchData> {
+    pub async fn fetch(&self) -> Result<(u64, FetchData)> {
         // Get DZ epoch info from DZ RPC
         let dz_epoch_info = self.rpc_client.get_epoch_info().await?;
         info!("Current dz_epoch: {}", dz_epoch_info.epoch);
@@ -42,7 +42,7 @@ impl Fetcher {
     }
 
     /// Fetch all data for a specific epoch
-    pub async fn with_epoch(&self, epoch: u64) -> Result<FetchData> {
+    pub async fn with_epoch(&self, epoch: u64) -> Result<(u64, FetchData)> {
         info!(
             "Using serviceability program: {}",
             self.settings.programs.serviceability_program_id
@@ -67,13 +67,15 @@ impl Fetcher {
             epoch, start_us, end_us
         );
 
-        Ok(FetchData {
+        let data = FetchData {
             dz_serviceability: serviceability_data,
             dz_telemetry: telemetry_data,
             dz_internet: internet_data,
             start_us,
             end_us,
             fetched_at: Utc::now(),
-        })
+        };
+
+        Ok((epoch, data))
     }
 }

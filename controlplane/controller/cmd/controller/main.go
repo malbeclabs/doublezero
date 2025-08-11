@@ -113,7 +113,7 @@ func NewControllerCommand() *ControllerCommand {
 	}
 	c.fs.StringVar(&c.listenAddr, "listen-addr", "localhost", "listening address for controller grpc server")
 	c.fs.StringVar(&c.listenPort, "listen-port", "443", "listening port for controller grpc server")
-	c.fs.StringVar(&c.env, "env", "", "environment to run controller in")
+	c.fs.StringVar(&c.env, "env", "", "environment to run controller in (devnet, testnet, mainnet)")
 	c.fs.StringVar(&c.programID, "program-id", "", "smartcontract program id to monitor")
 	c.fs.StringVar(&c.rpcEndpoint, "solana-rpc-endpoint", "", "override solana rpc endpoint (default: devnet)")
 	c.fs.BoolVar(&c.noHardware, "no-hardware", false, "exclude config commands that will fail when not running on the real hardware")
@@ -180,7 +180,7 @@ func (c *ControllerCommand) Run() error {
 			slog.Error("failed to get network config", "error", err)
 			os.Exit(1)
 		}
-		serviceabilityClient = serviceability.New(rpc.New(networkConfig.LedgerRPCURL), networkConfig.ServiceabilityProgramID)
+		serviceabilityClient = serviceability.New(rpc.New(networkConfig.LedgerPublicRPCURL), networkConfig.ServiceabilityProgramID)
 	}
 
 	if c.noHardware {

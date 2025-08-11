@@ -77,7 +77,7 @@ and Wheresitup services for the DoubleZero network.`,
 			os.Exit(1)
 		}
 
-		solanaRPCClient = solanarpc.New(networkConfig.LedgerRPCURL)
+		solanaRPCClient = solanarpc.New(networkConfig.LedgerPublicRPCURL)
 		serviceabilityClient = serviceability.New(solanaRPCClient, networkConfig.ServiceabilityProgramID)
 	},
 }
@@ -387,7 +387,7 @@ func loadLocations(ctx context.Context, logger *slog.Logger, serviceabilityClien
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVar(&env, "env", "", "Environment to run in (dev, testnet, mainnet)")
+	rootCmd.PersistentFlags().StringVar(&env, "env", "", "Environment to run in (devnet, testnet, mainnet)")
 	rootCmd.PersistentFlags().StringVar(&keypairPath, "keypair", "", "Path to keypair for publishing metrics")
 	rootCmd.PersistentFlags().StringVar(&stateDir, "state-dir", defaultStateDir, "Directory to store state files (timestamps, processed job IDs)")
 	rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", defaultLogLevel, "Log level (debug, info, warn, error)")

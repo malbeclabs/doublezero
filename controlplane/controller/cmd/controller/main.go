@@ -117,20 +117,22 @@ func NewControllerCommand() *ControllerCommand {
 	c.fs.StringVar(&c.programID, "program-id", "", "smartcontract program id to monitor")
 	c.fs.StringVar(&c.rpcEndpoint, "solana-rpc-endpoint", "", "override solana rpc endpoint (default: devnet)")
 	c.fs.BoolVar(&c.noHardware, "no-hardware", false, "exclude config commands that will fail when not running on the real hardware")
+	c.fs.BoolVar(&c.enableInterfacesAndPeers, "enable-interfaces-and-peers", false, "enable processing of device interfaces and BGP peers")
 	c.fs.BoolVar(&c.showVersion, "version", false, "show version information and exit")
 	return c
 }
 
 type ControllerCommand struct {
-	fs          *flag.FlagSet
-	description string
-	listenAddr  string
-	listenPort  string
-	env         string
-	programID   string
-	rpcEndpoint string
-	noHardware  bool
-	showVersion bool
+	fs                       *flag.FlagSet
+	description              string
+	listenAddr               string
+	listenPort               string
+	env                      string
+	programID                string
+	rpcEndpoint              string
+	noHardware               bool
+	enableInterfacesAndPeers bool
+	showVersion              bool
 }
 
 func (c *ControllerCommand) Fs() *flag.FlagSet {
@@ -185,6 +187,10 @@ func (c *ControllerCommand) Run() error {
 
 	if c.noHardware {
 		options = append(options, controller.WithNoHardware())
+	}
+
+	if c.enableInterfacesAndPeers {
+		options = append(options, controller.WithEnableInterfacesAndPeers())
 	}
 
 	lis, err := net.Listen("tcp", net.JoinHostPort(c.listenAddr, c.listenPort))

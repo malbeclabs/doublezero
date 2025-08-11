@@ -49,12 +49,13 @@ type stateCache struct {
 type Controller struct {
 	pb.UnimplementedControllerServer
 
-	cache          stateCache
-	mu             sync.RWMutex
-	serviceability ServiceabilityProgramClient
-	listener       net.Listener
-	noHardware     bool
-	updateDone     chan struct{}
+	cache                    stateCache
+	mu                       sync.RWMutex
+	serviceability           ServiceabilityProgramClient
+	listener                 net.Listener
+	noHardware               bool
+	enableInterfacesAndPeers bool
+	updateDone               chan struct{}
 }
 
 type Option func(*Controller)
@@ -109,6 +110,70 @@ func WithNoHardware() Option {
 	}
 }
 
+// WithEnableInterfacesAndPeers provides a way to enable processing of device interfaces and BGP peers.
+func WithEnableInterfacesAndPeers() Option {
+	return func(c *Controller) {
+		c.enableInterfacesAndPeers = true
+	}
+}
+
+// processDeviceInterfacesAndPeers processes a device's interfaces and extracts BGP peer information.
+// It returns the candidate VPNv4 and IPv4 BGP peers found from the device's loopback interfaces.
+func (c *Controller) processDeviceInterfacesAndPeers(device serviceability.Device, d *Device, devicePubKey string) (candidateVpnv4BgpPeer, candidateIpv4BgpPeer BgpPeer) {
+	for _, iface := range device.Interfaces {
+		intf, err := toInterface(iface)
+		if err != nil {
+			// TODO: metric
+			slog.Error("failed to convert serviceability interface to controller interface", "device pubkey", devicePubKey, "iface", iface, "error", err)
+			continue
+		}
+		// Create a parent interface since they're not defined on-chain.
+		if intf.IsSubInterface {
+			parent, err := intf.GetParent()
+			if err != nil {
+				slog.Error("failed to get parent interface for subinterface", "device pubkey", devicePubKey, "iface", intf.Name, "error", err)
+				continue
+			}
+			d.Interfaces = append(d.Interfaces, parent)
+		}
+		d.Interfaces = append(d.Interfaces, intf)
+	}
+	sort.Slice(d.Interfaces, func(i, j int) bool {
+		return d.Interfaces[i].Name < d.Interfaces[j].Name
+	})
+
+	// Build list of peers from device interfaces
+	for _, iface := range d.Interfaces {
+		if iface.InterfaceType == InterfaceTypeLoopback &&
+			iface.LoopbackType == LoopbackTypeVpnv4 {
+			d.Vpn4vLoopbackIP = iface.Ip.Addr().AsSlice()
+			d.Vpn4vLoopbackIntfName = iface.Name
+			// Generate ISIS NET from the Vpn4vLoopbackIP. Format: <AreaID>.<AreaNumber>.<SystemID>.<NSelector>
+			// SystemID is derived from the IP address in hex format. Example SystemId: 172.3.2.1 -> AC03.0201
+			vpnIP := d.Vpn4vLoopbackIP
+			if len(vpnIP) >= 4 {
+				systemID := fmt.Sprintf("%02x%02x.%02x%02x", vpnIP[0], vpnIP[1], vpnIP[2], vpnIP[3])
+				d.IsisNet = fmt.Sprintf("%s.%s.%s.%s.%s", ISISAreaID, ISISAreaNumber, systemID, ISISSystemIDPadding, ISISNSelector)
+			} else {
+				slog.Error("Can't assign ISIS NET because VPNv4 loopback IP is invalid or empty", "device pubkey", devicePubKey, "interface", iface.Name, "ip length", len(vpnIP))
+			}
+			candidateVpnv4BgpPeer = BgpPeer{
+				PeerIP:   d.Vpn4vLoopbackIP,
+				PeerName: device.Code,
+			}
+		} else if iface.InterfaceType == InterfaceTypeLoopback &&
+			iface.LoopbackType == LoopbackTypeIpv4 {
+			d.Ipv4LoopbackIP = iface.Ip.Addr().AsSlice()
+			d.Ipv4LoopbackIntfName = iface.Name
+			candidateIpv4BgpPeer = BgpPeer{
+				PeerIP:   d.Ipv4LoopbackIP,
+				PeerName: device.Code,
+			}
+		}
+	}
+	return candidateVpnv4BgpPeer, candidateIpv4BgpPeer
+}
+
 // updateStateCache fetches the latest on-chain data for devices/users and config. User accounts
 // are converted into a list of tunnels, stored under their respective device, and placed in a map,
 // keyed by the device's public key.
@@ -148,95 +213,40 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 
 		devicePubKey := base58.Encode(device.PubKey[:])
 		d := NewDevice(ip, devicePubKey)
-		for _, iface := range device.Interfaces {
-			intf, err := toInterface(iface)
-			if err != nil {
-				// TODO: metric
-				slog.Error("failed to convert serviceability interface to controller interface", "device pubkey", devicePubKey, "iface", iface, "error", err)
+
+		if c.enableInterfacesAndPeers {
+			candidateVpnv4BgpPeer, candidateIpv4BgpPeer := c.processDeviceInterfacesAndPeers(device, d, devicePubKey)
+
+			if d.Vpn4vLoopbackIP == nil || len(d.Vpn4vLoopbackIP) == 0 {
+				slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "no or invalid VPNv4 loopback interface found for device")
 				continue
 			}
-			// Create a parent interface since they're not defined on-chain.
-			if intf.IsSubInterface {
-				parent, err := intf.GetParent()
-				if err != nil {
-					slog.Error("failed to get parent interface for subinterface", "device pubkey", devicePubKey, "iface", intf.Name, "error", err)
-					continue
-				}
-				d.Interfaces = append(d.Interfaces, parent)
+
+			if d.Ipv4LoopbackIP == nil || len(d.Ipv4LoopbackIP) == 0 {
+				slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "no or invalid IPv4 loopback interface found for device")
+				continue
 			}
-			d.Interfaces = append(d.Interfaces, intf)
-		}
-		sort.Slice(d.Interfaces, func(i, j int) bool {
-			return d.Interfaces[i].Name < d.Interfaces[j].Name
-		})
 
-		// Build list of peers from device interfaces
-		candidateVpnv4BgpPeer := BgpPeer{}
-		candidateIpv4BgpPeer := BgpPeer{}
-
-		for _, iface := range d.Interfaces {
-			if iface.InterfaceType == InterfaceTypeLoopback &&
-				iface.LoopbackType == LoopbackTypeVpnv4 {
-				d.Vpn4vLoopbackIP = iface.Ip.Addr().AsSlice()
-				d.Vpn4vLoopbackIntfName = iface.Name
-				// Generate ISIS NET from the Vpn4vLoopbackIP. Format: <AreaID>.<AreaNumber>.<SystemID>.<NSelector>
-				// SystemID is derived from the IP address in hex format. Example SystemId: 172.3.2.1 -> AC03.0201
-				vpnIP := d.Vpn4vLoopbackIP
-				if len(vpnIP) >= 4 {
-					systemID := fmt.Sprintf("%02x%02x.%02x%02x", vpnIP[0], vpnIP[1], vpnIP[2], vpnIP[3])
-					d.IsisNet = fmt.Sprintf("%s.%s.%s.%s.%s", ISISAreaID, ISISAreaNumber, systemID, ISISSystemIDPadding, ISISNSelector)
-				} else {
-					slog.Error("Can't assign ISIS NET because VPNv4 loopback IP is invalid or empty", "device pubkey", devicePubKey, "interface", iface.Name, "ip length", len(vpnIP))
-				}
-				candidateVpnv4BgpPeer = BgpPeer{
-					PeerIP:   d.Vpn4vLoopbackIP,
-					PeerName: device.Code,
-				}
-			} else if iface.InterfaceType == InterfaceTypeLoopback &&
-				iface.LoopbackType == LoopbackTypeIpv4 {
-				d.Ipv4LoopbackIP = iface.Ip.Addr().AsSlice()
-				d.Ipv4LoopbackIntfName = iface.Name
-				candidateIpv4BgpPeer = BgpPeer{
-					PeerIP:   d.Ipv4LoopbackIP,
-					PeerName: device.Code,
-				}
+			if d.Vpn4vLoopbackIP.Equal(net.IPv4(0, 0, 0, 0)) {
+				slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "VPNv4 loopback interface is unassigned (0.0.0.0)")
+				continue
 			}
-		}
 
-		if d.Vpn4vLoopbackIP == nil || len(d.Vpn4vLoopbackIP) == 0 {
-			slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "no or invalid VPNv4 loopback interface found for device")
-			continue
-		}
+			if d.Ipv4LoopbackIP.Equal(net.IPv4(0, 0, 0, 0)) {
+				slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "IPv4 loopback interface is unassigned (0.0.0.0)")
+				continue
+			}
 
-		if d.Ipv4LoopbackIP == nil || len(d.Ipv4LoopbackIP) == 0 {
-			slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "no or invalid IPv4 loopback interface found for device")
-			continue
-		}
+			if d.IsisNet == "" {
+				slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "ISIS NET could not be generated")
+				continue
+			}
 
-		if d.Vpn4vLoopbackIP.Equal(net.IPv4(0, 0, 0, 0)) {
-			slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "VPNv4 loopback interface is unassigned (0.0.0.0)")
-			continue
+			cache.Vpnv4BgpPeers = append(cache.Vpnv4BgpPeers, candidateVpnv4BgpPeer)
+			cache.Ipv4BgpPeers = append(cache.Ipv4BgpPeers, candidateIpv4BgpPeer)
 		}
-
-		if d.Vpn4vLoopbackIP.Equal(net.IPv4(0, 0, 0, 0)) {
-			slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "VPNv4 loopback interface is unassigned (0.0.0.0)")
-			continue
-		}
-
-		if d.Ipv4LoopbackIP.Equal(net.IPv4(0, 0, 0, 0)) {
-			slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "IPv4 loopback interface is unassigned (0.0.0.0)")
-			continue
-		}
-
-		if d.IsisNet == "" {
-			slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "ISIS NET could not be generated")
-			continue
-		}
-
 		d.MgmtVrf = device.MgmtVrf
 
-		cache.Vpnv4BgpPeers = append(cache.Vpnv4BgpPeers, candidateVpnv4BgpPeer)
-		cache.Ipv4BgpPeers = append(cache.Ipv4BgpPeers, candidateIpv4BgpPeer)
 		cache.Devices[devicePubKey] = d
 	}
 
@@ -477,6 +487,7 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		Ipv4BgpPeers:             ipv4Peers,
 		UnknownBgpPeers:          unknownPeers,
 		NoHardware:               c.noHardware,
+		InterfacesAndPeers:       c.enableInterfacesAndPeers,
 		TelemetryTWAMPListenPort: telemetryconfig.TWAMPListenPort,
 	}
 

@@ -1,4 +1,7 @@
-use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
+use crate::{
+    doublezerocommand::CliCommand,
+    validators::{validate_iface, validate_pubkey_or_code},
+};
 use clap::Args;
 use doublezero_sdk::commands::device::get::GetDeviceCommand;
 use std::io::Write;
@@ -9,7 +12,7 @@ pub struct GetDeviceInterfaceCliCommand {
     #[arg(value_parser = validate_pubkey_or_code, required = true)]
     pub device: String,
     /// Interface name
-    #[arg(required = true)]
+    #[arg(value_parser = validate_iface, required = true)]
     pub name: String,
 }
 

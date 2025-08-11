@@ -3,7 +3,7 @@ use crate::{
     doublezerocommand::CliCommand,
     poll_for_activation::poll_for_device_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-    validators::validate_pubkey_or_code,
+    validators::{validate_iface, validate_pubkey_or_code},
 };
 use clap::Args;
 use doublezero_sdk::{
@@ -19,7 +19,7 @@ pub struct CreateDeviceInterfaceCliCommand {
     #[arg(value_parser = validate_pubkey_or_code, required = true)]
     pub device: String,
     /// Interface name
-    #[arg(required = true)]
+    #[arg(value_parser = validate_iface, required = true)]
     pub name: String,
     /// Interface type
     #[arg()]

@@ -204,14 +204,19 @@ func (s *Server) handleInternetCircuitLatencies(w http.ResponseWriter, r *http.R
 }
 
 func parseMultiParam(r *http.Request, name string) []string {
-	valueStr := strings.Trim(r.URL.Query().Get(name), "{}")
-	values := strings.Split(valueStr, ",")
-	params := []string{}
-	for _, value := range values {
-		if strings.TrimSpace(value) == "" {
+	raw := strings.Trim(r.URL.Query().Get(name), "{}")
+	seen := make(map[string]struct{})
+	out := []string{}
+	for _, v := range strings.Split(raw, ",") {
+		v = strings.TrimSpace(v)
+		if v == "" {
 			continue
 		}
-		params = append(params, value)
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
 	}
-	return params
+	return out
 }

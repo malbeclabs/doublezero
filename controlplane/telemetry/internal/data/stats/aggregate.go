@@ -127,7 +127,7 @@ func Aggregate(circuitCode string, samples []CircuitLatencySample, maxPoints uin
 	}
 
 	if interval > 0 {
-		stats, err := AggregateIntoTimeBuckets(circuitCode, samples, interval, true)
+		stats, err := AggregateIntoTimeBuckets(circuitCode, samples, interval)
 		if err != nil {
 			return nil, fmt.Errorf("failed to downsample circuit latencies: %w", err)
 		}
@@ -141,7 +141,7 @@ func Aggregate(circuitCode string, samples []CircuitLatencySample, maxPoints uin
 			q = 1
 		}
 		bucket := time.Duration(math.Ceil(q))
-		stats, err := AggregateIntoTimeBuckets(circuitCode, samples, bucket, true)
+		stats, err := AggregateIntoTimeBuckets(circuitCode, samples, bucket)
 		if err != nil {
 			return nil, fmt.Errorf("failed to downsample circuit latencies: %w", err)
 		}
@@ -151,7 +151,7 @@ func Aggregate(circuitCode string, samples []CircuitLatencySample, maxPoints uin
 	return nil, fmt.Errorf("invalid max points: %d", maxPoints)
 }
 
-func AggregateIntoTimeBuckets(circuitCode string, timeseries []CircuitLatencySample, bucket time.Duration, fillGaps bool) ([]CircuitLatencyStat, error) {
+func AggregateIntoTimeBuckets(circuitCode string, timeseries []CircuitLatencySample, bucket time.Duration) ([]CircuitLatencyStat, error) {
 	if len(timeseries) == 0 {
 		return []CircuitLatencyStat{}, nil
 	}
@@ -208,11 +208,6 @@ func AggregateIntoTimeBuckets(circuitCode string, timeseries []CircuitLatencySam
 	var prevLastGood *float64
 	for i := 0; i < nBuckets; i++ {
 		if len(buckets[i]) == 0 {
-			if fillGaps {
-				s := AggregateIntoOne(starts[i], nil)
-				s.Circuit = circuitCode
-				out = append(out, s)
-			}
 			continue
 		}
 		s := AggregateIntoOne(starts[i], buckets[i])

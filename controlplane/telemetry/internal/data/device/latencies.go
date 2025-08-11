@@ -163,8 +163,6 @@ func (p *provider) getCircuitLatenciesForTimeRange(ctx context.Context, circuitC
 		return nil, fmt.Errorf("failed to get end epoch: %w", err)
 	}
 
-	var latencies []datastats.CircuitLatencySample
-
 	group := p.getCircuitLatenciesPool.NewGroupContext(ctx)
 
 	for epoch := startEpoch; epoch <= endEpoch; epoch++ {
@@ -185,6 +183,8 @@ func (p *provider) getCircuitLatenciesForTimeRange(ctx context.Context, circuitC
 	if err != nil {
 		return nil, fmt.Errorf("failed to get circuit latencies: %w", err)
 	}
+
+	var latencies []datastats.CircuitLatencySample
 
 	for _, result := range results {
 		if result == nil {

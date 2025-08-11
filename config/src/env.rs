@@ -26,8 +26,8 @@ impl Environment {
             Environment::Mainnet => NetworkConfig {
                 ledger_rpc_url: "https://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab".to_string(),
                 ledger_ws_url: "wss://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab/whirligig".to_string(),
-                serviceability_program_id: "TODO".parse()?,
-                telemetry_program_id: "TODO".parse()?,
+                serviceability_program_id: "ser2VaTMAcYTaauMrTSfSrxBaUDq7BLNs2xfUugTAGv".parse()?,
+                telemetry_program_id: "tE1exJ5VMyoC9ByZeSmgtNzJCFF74G9JAv338sJiqkC".parse()?,
                 internet_latency_collector_pk: "8xHn4r7oQuqNZ5cLYwL5YZcDy1JjDQcpVkyoA8Dw5uXH".parse()?,
             },
             Environment::Testnet => NetworkConfig {
@@ -89,8 +89,14 @@ mod tests {
             "https://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab"
         );
         assert_eq!(config.ledger_ws_url, "wss://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab/whirligig");
-        assert_eq!(config.serviceability_program_id.to_string(), "TODO");
-        assert_eq!(config.telemetry_program_id.to_string(), "TODO");
+        assert_eq!(
+            config.serviceability_program_id.to_string(),
+            "ser2VaTMAcYTaauMrTSfSrxBaUDq7BLNs2xfUugTAGv"
+        );
+        assert_eq!(
+            config.telemetry_program_id.to_string(),
+            "tE1exJ5VMyoC9ByZeSmgtNzJCFF74G9JAv338sJiqkC"
+        );
         assert_eq!(
             config.internet_latency_collector_pk.to_string(),
             "8xHn4r7oQuqNZ5cLYwL5YZcDy1JjDQcpVkyoA8Dw5uXH"

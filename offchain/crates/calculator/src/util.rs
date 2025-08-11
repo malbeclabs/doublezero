@@ -1,5 +1,27 @@
-use network_shapley::types::{Demand, PrivateLink, PublicLink};
+use network_shapley::types::{Demand, Device, PrivateLink, PublicLink};
 use tabled::{builder::Builder as TableBuilder, settings::Style};
+
+pub fn print_devices(devices: &[Device]) -> String {
+    let mut printable = vec![vec![
+        "device".to_string(),
+        "bandwidth(Gbps)".to_string(),
+        "operator".to_string(),
+    ]];
+
+    for dev in devices {
+        let row = vec![
+            dev.device.to_string(),
+            dev.edge.to_string(), // aka bandwidth (Gbps)
+            dev.operator.to_string(),
+        ];
+        printable.push(row);
+    }
+
+    TableBuilder::from(printable)
+        .build()
+        .with(Style::psql().remove_horizontals())
+        .to_string()
+}
 
 pub fn print_public_links(public_links: &[PublicLink]) -> String {
     let mut printable = vec![vec![

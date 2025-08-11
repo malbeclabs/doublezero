@@ -24,24 +24,25 @@ base64 = "0"
 chrono = { version = "0", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }
 csv = "1"
+doublezero-serviceability = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint", "serde"] }
+doublezero-telemetry = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint", "serde" ] }
+doublezero_sdk = { git = "ssh://git@github.com/malbeclabs/doublezero" }
 figment = { version = "0", features = ["env", "toml"] }
 futures-util = "0"
-doublezero-serviceability = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint" ] }
-doublezero-telemetry = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint" ] }
-doublezero_sdk = { git = "ssh://git@github.com/malbeclabs/doublezero" }
-svm-hash = { version = "0.1.0-beta.1", features = [ "bytemuck" ] }
+itertools = "0"
+network-shapley = { git = "https://github.com/doublezerofoundation/network-shapley-rs", features = ["serde"] }
 rand = "0"
 rayon = "1"
 rust_decimal = { version = "1", features = ["serde", "macros"] }
-sha2 = "0"
-network-shapley = { git = "https://github.com/doublezerofoundation/network-shapley-rs", features = ["serde"] }
 reqwest = { version = "0", features = [ "json" ] }
+sha2 = "0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 solana-client = "2.2.7"
 solana-account-decoder = "2.2.7"
 solana-sdk = "2.2.2"
-solana-epoch-info = "2.2.1"
+solana-epoch-info = "3"
+svm-hash = { version = "0.1.0-beta.1", features = [ "bytemuck" ] }
 tabled = { version = "0", features = [ "std", "derive" ]}
 thiserror = "2"
 tokio = { version = "1", features = ["full"] }

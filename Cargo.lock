@@ -1529,6 +1529,7 @@ dependencies = [
  "clap_complete",
  "console",
  "ctor",
+ "doublezero-config",
  "doublezero-serviceability",
  "doublezero_cli",
  "doublezero_sdk",

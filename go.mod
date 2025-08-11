@@ -9,7 +9,7 @@ require (
 	github.com/cenkalti/backoff/v5 v5.0.2
 	github.com/dgraph-io/ristretto v0.2.0
 	github.com/docker/docker v28.3.3+incompatible
-	github.com/docker/go-connections v0.5.0
+	github.com/docker/go-connections v0.6.0
 	github.com/gagliardetto/binary v0.8.0
 	github.com/gagliardetto/solana-go v1.12.0
 	github.com/google/go-cmp v0.7.0

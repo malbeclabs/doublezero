@@ -78,15 +78,10 @@ impl Orchestrator {
         // Build demand
         let demands = build_demands(&fetcher, &fetch_data).await?;
 
+        // Optionally write CSVs
         if let Some(ref output_dir) = output_dir {
             info!("Writing CSV files to {}", output_dir.display());
-            csv_exporter::export_to_csv(
-                output_dir,
-                &devices,
-                &private_links,
-                &public_links,
-                &demands,
-            )?;
+            csv_exporter::export_to_csv(output_dir, &devices, &private_links, &public_links)?;
             info!("Exported CSV files successfully!");
         }
 
@@ -103,6 +98,11 @@ impl Orchestrator {
                 "City: {city}, Demand:\n{}",
                 print_demands(&demands, 1_000_000)
             );
+
+            // Optionally write demands per city
+            if let Some(ref output_dir) = output_dir {
+                csv_exporter::write_demands_csv(output_dir, &city, &demands)?;
+            }
 
             // Build shapley inputs
             let input = ShapleyInput {

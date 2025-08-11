@@ -10,11 +10,13 @@ pub mod processors;
 pub mod seeds;
 pub mod state;
 
-use doublezero_config::Environment;
 use solana_program::pubkey::Pubkey;
 use std::str::FromStr;
 
 const LOCAL_SERVICEABILITY_PROGRAM_ID: &str = "7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX";
+const DEVNET_SERVICEABILITY_PROGRAM_ID: &str = "GYhQDKuESrasNZGyhMJhGYFtbzNijYhcrN9poSqCQVah";
+const TESTNET_SERVICEABILITY_PROGRAM_ID: &str = "DZtnuQ839pSaDMFG5q1ad2V95G82S5EC4RrB3Ndw2Heb";
+const MAINNET_SERVICEABILITY_PROGRAM_ID: &str = "ser2VaTMAcYTaauMrTSfSrxBaUDq7BLNs2xfUugTAGv";
 
 #[cfg(not(test))]
 mod build_constants {
@@ -27,21 +29,9 @@ mod build_constants {
 pub fn serviceability_program_id() -> Pubkey {
     let raw = match build_constants::RAW_SERVICEABILITY_PROGRAM_ID {
         "local" => LOCAL_SERVICEABILITY_PROGRAM_ID,
-        "devnet" => &Environment::Devnet
-            .config()
-            .unwrap()
-            .serviceability_program_id
-            .to_string(),
-        "testnet" => &Environment::Testnet
-            .config()
-            .unwrap()
-            .serviceability_program_id
-            .to_string(),
-        "mainnet" => &Environment::Mainnet
-            .config()
-            .unwrap()
-            .serviceability_program_id
-            .to_string(),
+        "devnet" => DEVNET_SERVICEABILITY_PROGRAM_ID,
+        "testnet" => TESTNET_SERVICEABILITY_PROGRAM_ID,
+        "mainnet" => MAINNET_SERVICEABILITY_PROGRAM_ID,
         other => other,
     };
 

@@ -53,6 +53,16 @@ nfpms:
     bindir: /usr/local/bin
     release: 1
     section: default
+    contents:
+      - src: release/packaging/systemd/doublezero-activator.service
+        dst: /lib/systemd/system/doublezero-activator.service
+        type: config
+    overrides:
+      rpm:
+        contents:
+          - src: release/packaging/systemd/doublezero-activator.service
+            dst: /usr/lib/systemd/system/doublezero-activator.service
+            type: config
 
 changelog:
   sort: asc

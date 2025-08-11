@@ -51,6 +51,16 @@ nfpms:
     bindir: /usr/local/bin
     release: "1"
     section: default
+    contents:
+      - src: release/packaging/systemd/doublezero-controller.service
+        dst: /lib/systemd/system/doublezero-controller.service
+        type: config
+    overrides:
+      rpm:
+        contents:
+          - src: release/packaging/systemd/doublezero-controller.service
+            dst: /usr/lib/systemd/system/doublezero-controller.service
+            type: config
 
 changelog:
   sort: asc

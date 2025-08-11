@@ -1,0 +1,18 @@
+# NOTE: This is a placeholder unit.
+# It will NOT start the internet latency collector with correct runtime flags.
+# Expected: Ansible will manage an override file at:
+#   /etc/systemd/system/doublezero-internet-latency-collector.service.d/override.conf
+# which will set the real ExecStart and options.
+
+[Unit]
+Description=DoubleZero Internet Latency Collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/doublezero-internet-latency-collector
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

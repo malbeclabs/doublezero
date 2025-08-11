@@ -4,6 +4,7 @@ use clap::{CommandFactory, Parser};
 use clap_complete::generate;
 mod cli;
 mod command;
+use doublezero_config::Environment;
 mod requirements;
 mod servicecontroller;
 use crate::cli::{
@@ -27,7 +28,9 @@ use doublezero_sdk::{DZClient, ProgramVersion};
 struct App {
     #[command(subcommand)]
     command: Command,
-
+    /// DZ env (testnet, devnet, or mainnet)
+    #[arg(long, value_name = "ENV", global = true)]
+    env: Option<String>,
     /// DZ ledger RPC URL
     #[arg(long, value_name = "RPC_URL", global = true)]
     url: Option<String>,
@@ -50,7 +53,18 @@ async fn main() -> eyre::Result<()> {
         println!("using keypair: {}", keypair.display());
     }
 
-    let dzclient = DZClient::new(app.url, app.ws, app.program_id, app.keypair)?;
+    let (url, ws, program_id) = if let Some(env) = app.env {
+        let config = env.parse::<Environment>()?.config()?;
+        (
+            Some(config.ledger_public_rpc_url),
+            Some(config.ledger_public_ws_url),
+            Some(config.serviceability_program_id.to_string()),
+        )
+    } else {
+        (app.url, app.ws, app.program_id)
+    };
+
+    let dzclient = DZClient::new(url, ws, program_id, app.keypair)?;
     let client = CliCommandImpl::new(&dzclient);
 
     let stdout = std::io::stdout();

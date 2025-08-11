@@ -1,5 +1,6 @@
 use anyhow::Result;
 use csv::Writer;
+use ingestor::demand::CityStats;
 use network_shapley::{
     shapley::ShapleyOutput,
     types::{Demand, Device, PrivateLink, PublicLink},
@@ -13,6 +14,7 @@ pub fn export_to_csv(
     devices: &[Device],
     private_links: &[PrivateLink],
     public_links: &[PublicLink],
+    city_stats: &CityStats,
 ) -> Result<()> {
     // Create dir if it doesn't exist
     create_dir_all(output_dir)?;
@@ -21,6 +23,7 @@ pub fn export_to_csv(
     write_devices_csv(output_dir, devices)?;
     write_private_links_csv(output_dir, private_links)?;
     write_public_links_csv(output_dir, public_links)?;
+    write_city_stats_csv(output_dir, city_stats)?;
 
     Ok(())
 }
@@ -28,8 +31,6 @@ pub fn export_to_csv(
 // Export demands with prefix (city)
 pub fn write_demands_csv(output_dir: &Path, prefix: &str, demands: &[Demand]) -> Result<()> {
     let path = output_dir.join(format!("demand-{prefix}.csv"));
-
-    info!("Writing {}", path.display());
     let mut writer = Writer::from_path(&path)?;
     writer.write_record([
         "Start",
@@ -82,13 +83,14 @@ where
 
 fn write_devices_csv(output_dir: &Path, devices: &[Device]) -> Result<()> {
     let path = output_dir.join("devices.csv");
-    devices.to_vec().write_csv(path)?;
+    devices.to_vec().write_csv(&path)?;
+    info!("Wrote {}", path.display());
     Ok(())
 }
 
 fn write_private_links_csv(output_dir: &Path, links: &[PrivateLink]) -> Result<()> {
     let path = output_dir.join("private_links.csv");
-    let mut writer = Writer::from_path(path)?;
+    let mut writer = Writer::from_path(&path)?;
     writer.write_record([
         "Device1",
         "Device2",
@@ -97,7 +99,6 @@ fn write_private_links_csv(output_dir: &Path, links: &[PrivateLink]) -> Result<(
         "Uptime",
         "Shared",
     ])?;
-
     for link in links {
         writer.write_record([
             &link.device1,
@@ -109,17 +110,37 @@ fn write_private_links_csv(output_dir: &Path, links: &[PrivateLink]) -> Result<(
         ])?;
     }
     writer.flush()?;
+    info!("Wrote {}", path.display());
     Ok(())
 }
 
+/// Write public links
 fn write_public_links_csv(output_dir: &Path, links: &[PublicLink]) -> Result<()> {
     let path = output_dir.join("public_links.csv");
-    let mut writer = Writer::from_path(path)?;
+    let mut writer = Writer::from_path(&path)?;
     writer.write_record(["City1", "City2", "Latency"])?;
     for link in links {
         writer.write_record([&link.city1, &link.city2, &link.latency.to_string()])?;
     }
     writer.flush()?;
+    info!("Wrote {}", path.display());
+    Ok(())
+}
+
+// Write city stats
+fn write_city_stats_csv(output_dir: &Path, city_stats: &CityStats) -> Result<()> {
+    let path = output_dir.join("city_stats.csv");
+    let mut writer = Writer::from_path(&path)?;
+    writer.write_record(["location", "validator_count", "total_stake_proxy"])?;
+    for (loc_code, city_stat) in city_stats {
+        writer.write_record([
+            loc_code,
+            &city_stat.validator_count.to_string(),
+            &city_stat.total_stake_proxy.to_string(),
+        ])?;
+    }
+    writer.flush()?;
+    info!("Wrote {}", path.display());
     Ok(())
 }
 
@@ -129,13 +150,8 @@ pub fn write_consolidated_shapley_csv(
     consolidated: &ShapleyOutput,
 ) -> Result<()> {
     let path = output_dir.join("shapley.csv");
-
-    info!("Writing consolidated Shapley output to {}", path.display());
     let mut writer = Writer::from_path(&path)?;
-
-    // Write header
     writer.write_record(["operator", "value", "proportion"])?;
-
     for (operator, val) in consolidated.iter() {
         writer.write_record([
             operator.to_string(),
@@ -143,8 +159,7 @@ pub fn write_consolidated_shapley_csv(
             val.proportion.to_string(),
         ])?;
     }
-
     writer.flush()?;
-    info!("Wrote consolidated Shapley output to {}", path.display());
+    info!("Wrote {}", path.display());
     Ok(())
 }

@@ -36,3 +36,4 @@ test-data/
 *.jsonl
 *.duckdb
 *.sql
+*.gz

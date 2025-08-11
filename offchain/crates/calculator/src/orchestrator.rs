@@ -150,7 +150,13 @@ impl Orchestrator {
         // Optionally write CSVs
         if let Some(ref output_dir) = output_dir {
             info!("Writing CSV files to {}", output_dir.display());
-            csv_exporter::export_to_csv(output_dir, &devices, &private_links, &public_links)?;
+            csv_exporter::export_to_csv(
+                output_dir,
+                &devices,
+                &private_links,
+                &public_links,
+                &city_stats,
+            )?;
             info!("Exported CSV files successfully!");
         }
 

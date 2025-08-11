@@ -122,8 +122,8 @@ pub fn build_private_links(
         let latency_us = if let Some(stats) = stats {
             stats.rtt_mean_us
         } else {
-            // TODO: Default or no?
-            10.0
+            // Default to 1000ms
+            1_000_000.0
         };
 
         let uptime = stats
@@ -139,10 +139,10 @@ pub fn build_private_links(
                 if expected_samples > 0.0 {
                     (stats.total_samples as f64 / expected_samples).clamp(0.0, 1.0)
                 } else {
-                    0.5
+                    0.0
                 }
             })
-            .unwrap_or(0.5); // Default to 50% if no stats found
+            .unwrap_or(0.0); // Default to 0% if no stats found
 
         // Convert latency from microseconds to milliseconds
         let latency_ms = latency_us / 1000.0;

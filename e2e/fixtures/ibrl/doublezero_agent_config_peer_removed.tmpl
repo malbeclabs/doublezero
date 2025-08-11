@@ -1,4 +1,12 @@
 !
+logging buffered 128000
+no logging console
+logging facility local7
+!
+ip name-server vrf mgmt 1.1.1.1
+ip name-server vrf mgmt 9.9.9.9
+clock timezone UTC
+!
 ip multicast-routing
 !
 router pim sparse-mode
@@ -6,7 +14,12 @@ router pim sparse-mode
       rp address 10.0.0.0 233.84.178.0/24 override
 !
 vrf instance vrf1
+ip routing
 ip routing vrf vrf1
+!
+ntp server vrf mgmt 0.pool.ntp.org
+ntp server vrf mgmt 1.pool.ntp.org
+ntp server vrf mgmt 2.pool.ntp.org
 !
 no ip access-list MAIN-CONTROL-PLANE-ACL
 ip access-list MAIN-CONTROL-PLANE-ACL
@@ -38,7 +51,6 @@ ip access-list MAIN-CONTROL-PLANE-ACL
    250 permit udp any any eq 8503
    260 permit udp any any eq lsp-ping
    270 permit udp any eq lsp-ping any
-
    280 remark Permit TWAMP (UDP 862)
    290 permit udp any any eq 862
 !
@@ -55,16 +67,6 @@ interface Ethernet2
    isis hello padding
    isis network point-to-point
 !
-interface Ethernet3
-   mtu 2048
-   no switchport
-   ip address 172.16.0.20/31
-   pim ipv4 sparse-mode
-   isis enable 1
-   isis circuit-type level-2
-   isis hello padding
-   isis network point-to-point
-!
 interface Loopback255
    ip address 172.16.0.1/32
    node-segment ipv4 index 1
@@ -73,6 +75,21 @@ interface Loopback255
 interface Loopback256
    ip address 172.16.0.9/32
    isis enable 1
+!
+interface Vlan4001
+   mtu 2048
+   ip address 172.16.0.20/31
+   pim ipv4 sparse-mode
+   isis enable 1
+   isis circuit-type level-2
+   isis hello padding
+   isis network point-to-point
+!
+interface Loopback1000
+   description RP Address
+   ip address 10.0.0.0/32
+!
+mpls ip
 !
 default interface Tunnel500
 !
@@ -303,6 +320,16 @@ router bgp 65342
       route-target import vpn-ipv4 65342:1
       route-target export vpn-ipv4 65342:1
       router-id {{.DeviceIP}}
+!
+router isis 1
+   net 49.0000.ac10.0001.0000.00
+   router-id ipv4 172.16.0.1
+   log-adjacency-changes
+   !
+   address-family ipv4 unicast
+   !
+   segment-routing mpls
+      no shutdown
 !
 ip community-list COMM-ALL_USERS permit 21682:1200
 ip community-list COMM-ALL_MCAST_USERS permit 21682:1300

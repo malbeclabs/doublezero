@@ -7,6 +7,7 @@ import (
 )
 
 const (
+	EnvMainnet = "mainnet"
 	EnvTestnet = "testnet"
 	EnvDevnet  = "devnet"
 )
@@ -16,7 +17,7 @@ var (
 )
 
 type NetworkConfig struct {
-	LedgerRPCURL               string
+	LedgerPublicRPCURL         string
 	ServiceabilityProgramID    solana.PublicKey
 	TelemetryProgramID         solana.PublicKey
 	InternetLatencyCollectorPK solana.PublicKey
@@ -24,6 +25,25 @@ type NetworkConfig struct {
 
 func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 	switch env {
+	case EnvMainnet:
+		serviceabilityProgramID, err := solana.PublicKeyFromBase58(MainnetServiceabilityProgramID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse serviceability program ID: %w", err)
+		}
+		telemetryProgramID, err := solana.PublicKeyFromBase58(MainnetTelemetryProgramID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse telemetry program ID: %w", err)
+		}
+		internetLatencyCollectorPK, err := solana.PublicKeyFromBase58(MainnetInternetLatencyCollectorPK)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse internet latency collector oracle agent PK: %w", err)
+		}
+		return &NetworkConfig{
+			LedgerPublicRPCURL:         MainnetLedgerPublicRPCURL,
+			ServiceabilityProgramID:    serviceabilityProgramID,
+			TelemetryProgramID:         telemetryProgramID,
+			InternetLatencyCollectorPK: internetLatencyCollectorPK,
+		}, nil
 	case EnvTestnet:
 		serviceabilityProgramID, err := solana.PublicKeyFromBase58(TestnetServiceabilityProgramID)
 		if err != nil {
@@ -38,7 +58,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			return nil, fmt.Errorf("failed to parse internet latency collector oracle agent PK: %w", err)
 		}
 		return &NetworkConfig{
-			LedgerRPCURL:               TestnetLedgerRPCURL,
+			LedgerPublicRPCURL:         TestnetLedgerPublicRPCURL,
 			ServiceabilityProgramID:    serviceabilityProgramID,
 			TelemetryProgramID:         telemetryProgramID,
 			InternetLatencyCollectorPK: internetLatencyCollectorPK,
@@ -57,7 +77,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			return nil, fmt.Errorf("failed to parse internet latency collector oracle agent PK: %w", err)
 		}
 		return &NetworkConfig{
-			LedgerRPCURL:               DevnetLedgerRPCURL,
+			LedgerPublicRPCURL:         DevnetLedgerPublicRPCURL,
 			ServiceabilityProgramID:    serviceabilityProgramID,
 			TelemetryProgramID:         telemetryProgramID,
 			InternetLatencyCollectorPK: internetLatencyCollectorPK,

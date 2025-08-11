@@ -28,7 +28,7 @@ const (
 )
 
 var (
-	env                     = flag.String("env", "", "the environment to run the funder in")
+	env                     = flag.String("env", "", "the environment to run the funder in (devnet, testnet, mainnet)")
 	ledgerRPCURL            = flag.String("ledger-rpc-url", "", "the url of the ledger rpc")
 	serviceabilityProgramID = flag.String("serviceability-program-id", "", "the id of the serviceability program")
 	keypairPath             = flag.String("keypair", "", "the path to the metrics publisher keypair")
@@ -83,7 +83,7 @@ func main() {
 			flag.Usage()
 			os.Exit(1)
 		}
-		*ledgerRPCURL = networkConfig.LedgerRPCURL
+		*ledgerRPCURL = networkConfig.LedgerPublicRPCURL
 		*serviceabilityProgramID = networkConfig.ServiceabilityProgramID.String()
 		internetLatencyCollectorPK = networkConfig.InternetLatencyCollectorPK
 	}

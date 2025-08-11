@@ -25,7 +25,7 @@ var (
 	enableLatencyProbing = flag.Bool("latency-probing", true, "enable latency probing to doublezero nodes")
 	versionFlag          = flag.Bool("version", false, "build version")
 	programId            = flag.String("program-id", config.TestnetServiceabilityProgramID, "override smartcontract program id to monitor")
-	rpcEndpoint          = flag.String("solana-rpc-endpoint", config.TestnetLedgerRPCURL, "override solana rpc endpoint url")
+	rpcEndpoint          = flag.String("solana-rpc-endpoint", config.TestnetLedgerPublicRPCURL, "override solana rpc endpoint url")
 	probeInterval        = flag.Int("probe-interval", 30, "latency probe interval in seconds")
 	cacheUpdateInterval  = flag.Int("cache-update-interval", 30, "latency cache update interval in seconds")
 	enableVerboseLogging = flag.Bool("v", false, "enables verbose logging")

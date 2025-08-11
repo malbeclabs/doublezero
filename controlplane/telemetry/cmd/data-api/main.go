@@ -78,7 +78,7 @@ func newProvider(log *slog.Logger, env string) (data.Provider, error) {
 		return nil, fmt.Errorf("failed to get network config: %w", err)
 	}
 
-	rpcClient := solanarpc.New(networkConfig.LedgerRPCURL)
+	rpcClient := solanarpc.New(networkConfig.LedgerPublicRPCURL)
 
 	epochFinder, err := epoch.NewFinder(log, rpcClient)
 	if err != nil {

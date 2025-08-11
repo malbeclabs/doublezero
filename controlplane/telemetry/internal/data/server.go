@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/malbeclabs/doublezero/config"
 )
 
 var (
@@ -20,9 +22,6 @@ var (
 )
 
 const (
-	EnvTestnet = "testnet"
-	EnvDevnet  = "devnet"
-
 	DefaultMaxPoints = 1000
 )
 
@@ -75,9 +74,9 @@ func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 
 func (s *Server) provider(env string) (Provider, error) {
 	switch env {
-	case EnvTestnet:
+	case config.EnvTestnet:
 		return s.testnet, nil
-	case EnvDevnet:
+	case config.EnvDevnet:
 		return s.devnet, nil
 	default:
 		return nil, ErrInvalidEnvironment
@@ -86,7 +85,7 @@ func (s *Server) provider(env string) (Provider, error) {
 
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/envs", func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewEncoder(w).Encode([]string{EnvTestnet, EnvDevnet}); err != nil {
+		if err := json.NewEncoder(w).Encode([]string{config.EnvTestnet, config.EnvDevnet}); err != nil {
 			s.log.Error("failed to encode envs", "error", err)
 			http.Error(w, fmt.Sprintf("failed to encode envs: %v", err), http.StatusInternalServerError)
 			return

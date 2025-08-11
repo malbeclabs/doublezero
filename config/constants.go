@@ -2,7 +2,7 @@ package config
 
 const (
 	// Mainnet constants.
-	MainnetLedgerPublicRPCURL         = "https://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab"
+	MainnetLedgerPublicRPCURL         = "https://doublezero-mainnet-beta-local.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab"
 	MainnetServiceabilityProgramID    = "ser2VaTMAcYTaauMrTSfSrxBaUDq7BLNs2xfUugTAGv"
 	MainnetTelemetryProgramID         = "tE1exJ5VMyoC9ByZeSmgtNzJCFF74G9JAv338sJiqkC"
 	MainnetInternetLatencyCollectorPK = "8xHn4r7oQuqNZ5cLYwL5YZcDy1JjDQcpVkyoA8Dw5uXH"

@@ -85,6 +85,12 @@ interface Vlan4001
    isis hello padding
    isis network point-to-point
 !
+interface Loopback1000
+   description RP Address
+   ip address 10.0.0.0/32
+!
+mpls ip
+!
 default interface Tunnel500
 interface Tunnel500
    description USER-MCAST-500
@@ -225,12 +231,6 @@ default interface Tunnel561
 default interface Tunnel562
 !
 default interface Tunnel563
-!
-interface Loopback1000
-   description RP Address
-   ip address 10.0.0.0/32
-!
-mpls ip
 !
 router bgp 65342
    router-id 172.16.0.1

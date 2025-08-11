@@ -24,7 +24,7 @@ ci: build lint test
 # -----------------------------------------------------------------------------
 .PHONY: go-build
 go-build:
-	CGO_ENABLED=0 go build -v ./...
+	CGO_ENABLED=0 go build -v -tags "qa e2e" ./...
 
 .PHONY: go-lint
 go-lint:

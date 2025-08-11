@@ -24,8 +24,8 @@ impl Environment {
     pub fn config(&self) -> eyre::Result<NetworkConfig> {
         let config = match self {
             Environment::Mainnet => NetworkConfig {
-                ledger_rpc_url: "TODO".to_string(),
-                ledger_ws_url: "TODO".to_string(),
+                ledger_rpc_url: "https://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab".to_string(),
+                ledger_ws_url: "wss://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab/whirligig".to_string(),
                 serviceability_program_id: "TODO".parse()?,
                 telemetry_program_id: "TODO".parse()?,
                 internet_latency_collector_pk: "8xHn4r7oQuqNZ5cLYwL5YZcDy1JjDQcpVkyoA8Dw5uXH".parse()?,
@@ -84,8 +84,11 @@ mod tests {
     #[test]
     fn test_network_config_mainnet() {
         let config = Environment::Mainnet.config().unwrap();
-        assert_eq!(config.ledger_rpc_url, "TODO");
-        assert_eq!(config.ledger_ws_url, "TODO");
+        assert_eq!(
+            config.ledger_rpc_url,
+            "https://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab"
+        );
+        assert_eq!(config.ledger_ws_url, "wss://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab/whirligig");
         assert_eq!(config.serviceability_program_id.to_string(), "TODO");
         assert_eq!(config.telemetry_program_id.to_string(), "TODO");
         assert_eq!(

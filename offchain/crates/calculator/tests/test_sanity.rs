@@ -112,13 +112,17 @@ mod tests {
 
     #[test]
     fn test_prefix_from_env() -> Result<()> {
-        // Set prefix env vars
+        // Set prefix env vars and shapley settings
         unsafe {
             std::env::set_var("CALCULATOR__DEVICE_TELEMETRY_PREFIX", "test_device_prefix");
             std::env::set_var(
                 "CALCULATOR__INTERNET_TELEMETRY_PREFIX",
                 "test_internet_prefix",
             );
+            // Set required shapley settings
+            std::env::set_var("CALCULATOR__SHAPLEY__OPERATOR_UPTIME", "0.98");
+            std::env::set_var("CALCULATOR__SHAPLEY__CONTIGUITY_BONUS", "5.0");
+            std::env::set_var("CALCULATOR__SHAPLEY__DEMAND_MULTIPLIER", "1.2");
         }
 
         // Create settings (this would normally load from env)
@@ -135,6 +139,9 @@ mod tests {
         unsafe {
             std::env::remove_var("CALCULATOR__DEVICE_TELEMETRY_PREFIX");
             std::env::remove_var("CALCULATOR__INTERNET_TELEMETRY_PREFIX");
+            std::env::remove_var("CALCULATOR__SHAPLEY__OPERATOR_UPTIME");
+            std::env::remove_var("CALCULATOR__SHAPLEY__CONTIGUITY_BONUS");
+            std::env::remove_var("CALCULATOR__SHAPLEY__DEMAND_MULTIPLIER");
         }
 
         Ok(())
@@ -142,10 +149,14 @@ mod tests {
 
     #[test]
     fn test_prefix_required_in_non_dry_run() {
-        // Ensure no prefix env vars are set
+        // Ensure no prefix env vars are set but set required shapley settings
         unsafe {
             std::env::remove_var("CALCULATOR__DEVICE_TELEMETRY_PREFIX");
             std::env::remove_var("CALCULATOR__INTERNET_TELEMETRY_PREFIX");
+            // Set required shapley settings
+            std::env::set_var("CALCULATOR__SHAPLEY__OPERATOR_UPTIME", "0.98");
+            std::env::set_var("CALCULATOR__SHAPLEY__CONTIGUITY_BONUS", "5.0");
+            std::env::set_var("CALCULATOR__SHAPLEY__DEMAND_MULTIPLIER", "1.2");
         }
 
         // Create settings without prefixes
@@ -157,14 +168,25 @@ mod tests {
 
         let internet_result = settings.get_internet_telemetry_prefix(false);
         assert!(internet_result.is_err());
+
+        // Clean up shapley env vars
+        unsafe {
+            std::env::remove_var("CALCULATOR__SHAPLEY__OPERATOR_UPTIME");
+            std::env::remove_var("CALCULATOR__SHAPLEY__CONTIGUITY_BONUS");
+            std::env::remove_var("CALCULATOR__SHAPLEY__DEMAND_MULTIPLIER");
+        }
     }
 
     #[test]
     fn test_prefix_optional_in_dry_run() {
-        // Ensure no prefix env vars are set
+        // Ensure no prefix env vars are set but set required shapley settings
         unsafe {
             std::env::remove_var("CALCULATOR__DEVICE_TELEMETRY_PREFIX");
             std::env::remove_var("CALCULATOR__INTERNET_TELEMETRY_PREFIX");
+            // Set required shapley settings
+            std::env::set_var("CALCULATOR__SHAPLEY__OPERATOR_UPTIME", "0.98");
+            std::env::set_var("CALCULATOR__SHAPLEY__CONTIGUITY_BONUS", "5.0");
+            std::env::set_var("CALCULATOR__SHAPLEY__DEMAND_MULTIPLIER", "1.2");
         }
 
         // Create settings without prefixes
@@ -184,6 +206,13 @@ mod tests {
             internet_result.unwrap(),
             b"doublezero_internet_telemetry_aggregate_test1"
         );
+
+        // Clean up shapley env vars
+        unsafe {
+            std::env::remove_var("CALCULATOR__SHAPLEY__OPERATOR_UPTIME");
+            std::env::remove_var("CALCULATOR__SHAPLEY__CONTIGUITY_BONUS");
+            std::env::remove_var("CALCULATOR__SHAPLEY__DEMAND_MULTIPLIER");
+        }
     }
 
     #[test]

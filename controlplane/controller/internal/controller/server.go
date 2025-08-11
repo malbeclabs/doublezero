@@ -22,6 +22,13 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+const (
+	ISISAreaID          = "49"
+	ISISAreaNumber      = "0000"
+	ISISSystemIDPadding = "0000"
+	ISISNSelector       = "00"
+)
+
 var (
 	ErrServiceabilityRequired = errors.New("serviceability program client is required")
 )
@@ -170,6 +177,15 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 				// Extract IP from IpNet
 				d.Vpn4vLoopbackIP = iface.Ip.Addr().AsSlice() // Used to set router-id
 				d.Vpn4vLoopbackIntfName = iface.Name
+				// Generate ISIS NET from the Vpn4vLoopbackIP. Format: <AreaID>.<AreaNumber>.<SystemID>.<NSelector>
+				// SystemID is derived from the IP address in hex format. Example SystemId: 172.3.2.1 -> AC03.0201
+				vpnIP := d.Vpn4vLoopbackIP
+				if len(vpnIP) >= 4 {
+					systemID := fmt.Sprintf("%02x%02x.%02x%02x", vpnIP[0], vpnIP[1], vpnIP[2], vpnIP[3])
+					d.IsisNet = fmt.Sprintf("%s.%s.%s.%s.%s", ISISAreaID, ISISAreaNumber, systemID, ISISSystemIDPadding, ISISNSelector)
+				} else {
+					slog.Error("Can't assign ISIS NET because VPNv4 loopback IP is invalid or empty", "device pubkey", devicePubKey, "interface", iface.Name, "ip length", len(vpnIP))
+				}
 				// TODO: raise an error if the IP is 0.0.0.0 (not set)
 				peer := BgpPeer{
 					PeerIP:   d.Vpn4vLoopbackIP,
@@ -190,15 +206,22 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			}
 		}
 
-		if d.Vpn4vLoopbackIP == nil {
-			slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "no VPNv4 loopback interface found for device")
+		if d.Vpn4vLoopbackIP == nil || len(d.Vpn4vLoopbackIP) == 0 {
+			slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "no or invalid VPNv4 loopback interface found for device")
 			continue
 		}
 
-		if d.Ipv4LoopbackIP == nil {
-			slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "no IPv4 loopback interface found for device")
+		if d.Ipv4LoopbackIP == nil || len(d.Ipv4LoopbackIP) == 0 {
+			slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "no or invalid IPv4 loopback interface found for device")
 			continue
 		}
+
+		if d.IsisNet == "" {
+			slog.Error("not adding device to cache", "device pubkey", devicePubKey, "reason", "ISIS NET could not be generated")
+			continue
+		}
+
+		d.MgmtVrf = device.MgmtVrf
 
 		cache.Devices[devicePubKey] = d
 	}

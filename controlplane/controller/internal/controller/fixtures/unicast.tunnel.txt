@@ -1,4 +1,17 @@
 !
+hardware counter feature gre tunnel interface out
+hardware counter feature gre tunnel interface in
+!
+hardware access-list update default-result permit
+!
+logging buffered 128000
+no logging console
+logging facility local7
+!
+ip name-server vrf default 1.1.1.1
+ip name-server vrf default 9.9.9.9
+clock timezone UTC
+!
 ip multicast-routing
 !
 router pim sparse-mode
@@ -6,7 +19,12 @@ router pim sparse-mode
       rp address 10.0.0.0 239.0.0.0/24 override
 !
 vrf instance vrf1
+ip routing
 ip routing vrf vrf1
+!
+ntp server 0.pool.ntp.org
+ntp server 1.pool.ntp.org
+ntp server 2.pool.ntp.org
 !
 hardware access-list update default-result permit
 !
@@ -40,12 +58,17 @@ ip access-list MAIN-CONTROL-PLANE-ACL
    250 permit udp any any eq 8503
    260 permit udp any any eq lsp-ping
    270 permit udp any eq lsp-ping any
-
    280 remark Permit TWAMP (UDP 862)
    290 permit udp any any eq 862
 !
 system control-plane
    ip access-group MAIN-CONTROL-PLANE-ACL in
+!
+interface Loopback1000
+   description RP Address
+   ip address 10.0.0.0/32
+!
+mpls ip
 !
 default interface Tunnel500
 interface Tunnel500
@@ -121,6 +144,16 @@ router bgp 65342
       neighbor 169.254.0.5 route-map RM-USER-502-OUT out
       neighbor 169.254.0.5 maximum-routes 1
       neighbor 169.254.0.5 maximum-accepted-routes 1
+!
+router isis 1
+   net 49.0000.0e0e.0e0e.0000.00
+   router-id ipv4 14.14.14.14
+   log-adjacency-changes
+   !
+   address-family ipv4 unicast
+   !
+   segment-routing mpls
+      no shutdown
 !
 ip community-list COMM-ALL_USERS permit 21682:1200
 ip community-list COMM-ALL_MCAST_USERS permit 21682:1300

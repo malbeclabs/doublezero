@@ -20,4 +20,4 @@ while ! curl -sf -X POST -H 'Content-Type: application/json' \
 done
 
 # Start the controller.
-doublezero-controller start -listen-addr 0.0.0.0 -listen-port 7000 -program-id ${DZ_SERVICEABILITY_PROGRAM_ID} -solana-rpc-endpoint ${DZ_LEDGER_URL} -no-hardware -enable-interfaces-and-peers
+doublezero-controller start -listen-addr 0.0.0.0 -listen-port 7000 -program-id ${DZ_SERVICEABILITY_PROGRAM_ID} -solana-rpc-endpoint ${DZ_LEDGER_URL} -no-hardware $CONTROLLER_FLAGS

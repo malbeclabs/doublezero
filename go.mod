@@ -37,7 +37,7 @@ require (
 	github.com/twmb/franz-go/plugin/kprom v1.2.1
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
-	golang.org/x/mod v0.26.0
+	golang.org/x/mod v0.27.0
 	golang.org/x/net v0.42.0
 	golang.org/x/sys v0.34.0
 	google.golang.org/grpc v1.73.0

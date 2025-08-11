@@ -213,7 +213,7 @@ impl Orchestrator {
             let prefix = self.settings.get_device_telemetry_prefix(false)?;
             let epoch_bytes = epoch.to_le_bytes();
             let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-            let record_key = make_record_key(&payer_signer, seeds);
+            let record_key = make_record_key(&payer_signer, seeds)?;
 
             info!("Re-created record_key: {record_key}");
 
@@ -243,7 +243,7 @@ impl Orchestrator {
             let prefix = self.settings.get_internet_telemetry_prefix(false)?;
             let epoch_bytes = epoch.to_le_bytes();
             let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-            let record_key = make_record_key(&payer_signer, seeds);
+            let record_key = make_record_key(&payer_signer, seeds)?;
 
             info!("Re-created record_key: {record_key}");
 

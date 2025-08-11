@@ -21,14 +21,14 @@ use solana_system_interface::instruction as system_instruction;
 use std::time::Duration;
 use tracing::info;
 
-pub fn make_record_key(payer_signer: &Keypair, seeds: &[&[u8]]) -> Pubkey {
+pub fn make_record_key(payer_signer: &Keypair, seeds: &[&[u8]]) -> Result<Pubkey> {
     let payer_key = payer_signer.pubkey();
     // This is a hack to create a utf8 string seed. Because the system program's
     // create-with-seed instruction (as well as allocate-with-seed and
     // assign-with-seed) only support these strings as a seed, we stringify our
     // own seed, which is a hash of the seeds we care about.
     let seed_str = create_record_seed_string(seeds);
-    Pubkey::create_with_seed(&payer_key, &seed_str, &RECORD_PROGRAM_ID).unwrap()
+    Pubkey::create_with_seed(&payer_key, &seed_str, &RECORD_PROGRAM_ID).map_err(|e| e.into())
 }
 
 pub async fn try_create_record(
@@ -44,7 +44,7 @@ pub async fn try_create_record(
 
     let seed_str = create_record_seed_string(seeds);
 
-    let record_key = make_record_key(payer_signer, seeds);
+    let record_key = make_record_key(payer_signer, seeds)?;
 
     let maybe_account = (|| async {
         rpc_client

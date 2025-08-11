@@ -2,7 +2,7 @@ use crate::{
     doublezerocommand::CliCommand,
     poll_for_activation::poll_for_device_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-    validators::validate_pubkey_or_code,
+    validators::{validate_iface, validate_pubkey_or_code},
 };
 use clap::Args;
 use doublezero_sdk::commands::device::{get::GetDeviceCommand, update::UpdateDeviceCommand};
@@ -14,7 +14,7 @@ pub struct DeleteDeviceInterfaceCliCommand {
     #[arg(value_parser = validate_pubkey_or_code, required = true)]
     pub device: String,
     /// Interface name
-    #[arg(required = true)]
+    #[arg(value_parser = validate_iface, required = true)]
     pub name: String,
     /// Wait for the device to be activated
     #[arg(short, long, default_value_t = false)]

@@ -135,6 +135,84 @@ func TestTelemetry_Data_Device_Server(t *testing.T) {
 		assert.Equal(t, http.StatusOK, res.StatusCode)
 		assert.JSONEq(t, "[]", string(body))
 	})
+
+	t.Run("GET /device-link/circuit-latencies with interval (happy path)", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
+		from, to := now.Format(time.RFC3339), now.Add(10*time.Second).Format(time.RFC3339)
+
+		var gotCfg data.GetCircuitLatenciesConfig
+		baseURL, closeFn := startServer(t, &mockProvider{
+			GetCircuitLatenciesFunc: func(_ context.Context, cfg data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
+				gotCfg = cfg
+				return []stats.CircuitLatencyStat{{Circuit: cfg.Circuit, RTTMean: 7}}, nil
+			},
+		}, &mockProvider{})
+		defer closeFn()
+
+		res, body := get(t, baseURL, "/device-link/circuit-latencies", url.Values{
+			"env":      {"testnet"},
+			"from":     {from},
+			"to":       {to},
+			"circuit":  {"{foo}"},
+			"interval": {"2s"},
+		})
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+
+		var out []stats.CircuitLatencyStat
+		require.NoError(t, json.Unmarshal(body, &out))
+		require.Len(t, out, 1)
+		assert.Equal(t, "foo", out[0].Circuit)
+
+		assert.Equal(t, "foo", gotCfg.Circuit)
+		require.NotNil(t, gotCfg.Time)
+		assert.True(t, gotCfg.Time.From.Equal(now))
+		assert.True(t, gotCfg.Time.To.Equal(now.Add(10*time.Second)))
+		assert.Equal(t, 2*time.Second, gotCfg.Interval)
+		assert.Equal(t, uint64(0), gotCfg.MaxPoints)       // ignored when interval provided
+		assert.Equal(t, data.UnitMicrosecond, gotCfg.Unit) // default when unit not provided
+	})
+
+	t.Run("GET /device-link/circuit-latencies with invalid interval", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Now().UTC()
+		from, to := now.Format(time.RFC3339), now.Add(10*time.Second).Format(time.RFC3339)
+
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{})
+		defer closeFn()
+
+		res, _ := get(t, baseURL, "/device-link/circuit-latencies", url.Values{
+			"env":      {"testnet"},
+			"from":     {from},
+			"to":       {to},
+			"circuit":  {"{foo}"},
+			"interval": {"not-a-duration"},
+		})
+		assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+	})
+
+	t.Run("GET /device-link/circuit-latencies with both interval and max_points set", func(t *testing.T) {
+		t.Parallel()
+
+		now := time.Now().UTC()
+		from, to := now.Format(time.RFC3339), now.Add(10*time.Second).Format(time.RFC3339)
+
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{})
+		defer closeFn()
+
+		res, _ := get(t, baseURL, "/device-link/circuit-latencies", url.Values{
+			"env":        {"testnet"},
+			"from":       {from},
+			"to":         {to},
+			"circuit":    {"{foo}"},
+			"interval":   {"5s"},
+			"max_points": {"10"},
+		})
+		assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+	})
+
 }
 
 func startServer(t *testing.T, testnet, devnet data.Provider) (baseURL string, closeFn func()) {

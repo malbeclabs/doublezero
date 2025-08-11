@@ -53,6 +53,7 @@ func (e *EpochRange) String() string {
 type GetCircuitLatenciesConfig struct {
 	Epochs    *EpochRange
 	Time      *TimeRange
+	Interval  time.Duration
 	MaxPoints uint64
 	Unit      Unit
 	Circuit   string

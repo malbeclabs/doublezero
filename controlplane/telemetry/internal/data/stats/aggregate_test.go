@@ -1,7 +1,6 @@
 package stats
 
 import (
-	"context"
 	"math"
 	"testing"
 	"time"
@@ -44,11 +43,10 @@ func TestTelemetry_Data_ConvertUnit(t *testing.T) {
 func TestTelemetry_Data_Aggregate(t *testing.T) {
 	t.Parallel()
 	now := time.Unix(1_700_000_000, 123_456_789)
-	ctx := context.Background()
 
 	t.Run("empty", func(t *testing.T) {
 		t.Parallel()
-		out, err := Aggregate(ctx, "C1", nil, 0)
+		out, err := Aggregate("C1", nil, 0, 0)
 		require.NoError(t, err)
 		assert.Empty(t, out)
 	})
@@ -61,7 +59,7 @@ func TestTelemetry_Data_Aggregate(t *testing.T) {
 			{Timestamp: ts(now, 2, time.Second), RTT: 1500},
 			{Timestamp: ts(now, 3, time.Second), RTT: 1700},
 		}
-		out, err := Aggregate(ctx, "C1", samples, 0)
+		out, err := Aggregate("C1", samples, 0, 0)
 		require.NoError(t, err)
 		require.Len(t, out, 4)
 
@@ -93,7 +91,7 @@ func TestTelemetry_Data_Aggregate(t *testing.T) {
 			{Timestamp: ts(now, 0, time.Millisecond), RTT: 1000},
 			{Timestamp: ts(now, 1, time.Millisecond), RTT: 2000},
 		}
-		out, err := Aggregate(ctx, "C", samples, uint64(len(samples)))
+		out, err := Aggregate("C", samples, uint64(len(samples)), 0)
 		require.NoError(t, err)
 		require.Len(t, out, 2)
 		near(t, out[1].JitterAvg, 1000, 0)
@@ -108,7 +106,7 @@ func TestTelemetry_Data_Aggregate(t *testing.T) {
 			{Timestamp: ts(now, 2, time.Second), RTT: 3000},
 			{Timestamp: ts(now, 3, time.Second), RTT: 0},
 		}
-		out, err := Aggregate(ctx, "C2", samples, 1)
+		out, err := Aggregate("C2", samples, 1, 0)
 		require.NoError(t, err)
 		require.Len(t, out, 1)
 		s := out[0]
@@ -135,7 +133,7 @@ func TestTelemetry_Data_Aggregate(t *testing.T) {
 			{Timestamp: ts(now, 3, step), RTT: 3000},
 			{Timestamp: ts(now, 8, step), RTT: 4000},
 		}
-		out, err := Aggregate(ctx, "C3", samples, 3)
+		out, err := Aggregate("C3", samples, 3, 0)
 		require.NoError(t, err)
 		require.NotEmpty(t, out)
 		for i := 1; i < len(out); i++ {
@@ -152,19 +150,50 @@ func TestTelemetry_Data_Aggregate(t *testing.T) {
 		for i := range samples {
 			samples[i] = CircuitLatencySample{Timestamp: base.Add(time.Duration(i) * time.Nanosecond), RTT: 100}
 		}
-		_, err := Aggregate(ctx, "C", samples, 1000)
+		_, err := Aggregate("C", samples, 1000, 0)
 		require.NoError(t, err)
+	})
+
+	t.Run("interval_sparse_singletons_carryover_jitter", func(t *testing.T) {
+		t.Parallel()
+		samples := []CircuitLatencySample{
+			{Timestamp: now, RTT: 2000},
+			{Timestamp: now.Add(91 * time.Second), RTT: 500}, // 91s → span>90 → 4 buckets
+		}
+		out, err := Aggregate("Cj", samples, 0, 30*time.Second)
+		require.NoError(t, err)
+		require.Len(t, out, 4)
+
+		t.Run("bucket0_single_no_prev", func(t *testing.T) {
+			near(t, out[0].RTTMean, 2000, 0)
+			near(t, out[0].JitterAvg, 0, 0)
+		})
+		t.Run("bucket1_gap_fill", func(t *testing.T) {
+			assert.Equal(t, uint64(0), out[1].SuccessCount)
+			assert.Equal(t, uint64(0), out[1].LossCount)
+		})
+		t.Run("bucket2_gap_fill", func(t *testing.T) {
+			assert.Equal(t, uint64(0), out[2].SuccessCount)
+			assert.Equal(t, uint64(0), out[2].LossCount)
+		})
+		t.Run("bucket3_single_with_carryover", func(t *testing.T) {
+			near(t, out[3].RTTMean, 500, 0)
+			near(t, out[3].JitterAvg, 1500, 0)
+			near(t, out[3].JitterEWMA, 1500, 0)
+			near(t, out[3].JitterDeltaStdDev, 0, 0)
+			near(t, out[3].JitterPeakToPeak, 0, 0)
+			near(t, out[3].JitterMax, 1500, 0)
+		})
 	})
 }
 
 func TestTelemetry_Data_AggregateIntoTimeBuckets(t *testing.T) {
 	t.Parallel()
 	now := time.Unix(1_700_000_100, 0)
-	ctx := context.Background()
 
 	t.Run("empty", func(t *testing.T) {
 		t.Parallel()
-		out, err := AggregateIntoTimeBuckets(ctx, "C", nil, time.Millisecond, true)
+		out, err := AggregateIntoTimeBuckets("C", nil, time.Millisecond, true)
 		require.NoError(t, err)
 		assert.Empty(t, out)
 	})
@@ -176,12 +205,12 @@ func TestTelemetry_Data_AggregateIntoTimeBuckets(t *testing.T) {
 			{Timestamp: now, RTT: 100},
 			{Timestamp: now.Add(time.Millisecond), RTT: 200},
 		}
-		out, err := AggregateIntoTimeBuckets(ctx, "C", series, -time.Millisecond, true)
+		out, err := AggregateIntoTimeBuckets("C", series, -time.Millisecond, true)
 		require.Error(t, err)
 		assert.Nil(t, out)
 
 		// span<=0 short-circuits to empty slice + nil error
-		out, err = AggregateIntoTimeBuckets(ctx, "C", []CircuitLatencySample{{Timestamp: now, RTT: 100}}, time.Millisecond, true)
+		out, err = AggregateIntoTimeBuckets("C", []CircuitLatencySample{{Timestamp: now, RTT: 100}}, time.Millisecond, true)
 		require.NoError(t, err)
 		assert.Empty(t, out)
 	})
@@ -195,14 +224,14 @@ func TestTelemetry_Data_AggregateIntoTimeBuckets(t *testing.T) {
 			{Timestamp: now.Add(40 * time.Millisecond), RTT: 2000}, // bucket 2
 			{Timestamp: now.Add(60 * time.Millisecond), RTT: 3000}, // clamped to bucket 2 (right edge)
 		}
-		outFill, err := AggregateIntoTimeBuckets(ctx, "C", series, 20*time.Millisecond, true)
+		outFill, err := AggregateIntoTimeBuckets("C", series, 20*time.Millisecond, true)
 		require.NoError(t, err)
 		require.Len(t, outFill, 3) // [0..20), [20..40) (gap filled), [40..60)
 		assert.Greater(t, outFill[0].SuccessCount, uint64(0))
 		assert.Equal(t, uint64(0), outFill[1].SuccessCount) // gap filled with zeros
 		assert.Equal(t, uint64(0), outFill[1].LossCount)
 
-		outNoFill, err := AggregateIntoTimeBuckets(ctx, "C", series, 20*time.Millisecond, false)
+		outNoFill, err := AggregateIntoTimeBuckets("C", series, 20*time.Millisecond, false)
 		require.NoError(t, err)
 		require.Len(t, outNoFill, 2) // gap removed
 	})
@@ -214,9 +243,38 @@ func TestTelemetry_Data_AggregateIntoTimeBuckets(t *testing.T) {
 			{Timestamp: now.Add(20 * time.Millisecond), RTT: 2000}, // exactly on edge -> clamped to last bucket
 			{Timestamp: now.Add(39 * time.Millisecond), RTT: 3000},
 		}
-		out, err := AggregateIntoTimeBuckets(ctx, "C", series, 20*time.Millisecond, true)
+		out, err := AggregateIntoTimeBuckets("C", series, 20*time.Millisecond, true)
 		require.NoError(t, err)
 		require.Len(t, out, 2)
+	})
+
+	t.Run("sparse_singletons_carryover_jitter", func(t *testing.T) {
+		t.Parallel()
+		series := []CircuitLatencySample{
+			{Timestamp: now, RTT: 1000},
+			{Timestamp: now.Add(61 * time.Second), RTT: 2500}, // 61s → span>60 → 3 buckets
+		}
+		out, err := AggregateIntoTimeBuckets("C", series, 30*time.Second, true)
+		require.NoError(t, err)
+		require.Len(t, out, 3)
+
+		t.Run("bucket0_single_no_prev", func(t *testing.T) {
+			near(t, out[0].RTTMean, 1000, 0)
+			near(t, out[0].JitterAvg, 0, 0)
+			near(t, out[0].JitterEWMA, 0, 0)
+		})
+		t.Run("bucket1_gap_fill", func(t *testing.T) {
+			assert.Equal(t, uint64(0), out[1].SuccessCount)
+			assert.Equal(t, uint64(0), out[1].LossCount)
+		})
+		t.Run("bucket2_single_with_carryover", func(t *testing.T) {
+			near(t, out[2].RTTMean, 2500, 0)
+			near(t, out[2].JitterAvg, 1500, 0)
+			near(t, out[2].JitterEWMA, 1500, 0)
+			near(t, out[2].JitterDeltaStdDev, 0, 0)
+			near(t, out[2].JitterPeakToPeak, 0, 0)
+			near(t, out[2].JitterMax, 1500, 0)
+		})
 	})
 }
 
@@ -262,5 +320,55 @@ func TestTelemetry_Data_AggregateIntoOne(t *testing.T) {
 		assert.False(t, math.IsNaN(s.RTTStdDev))
 		near(t, s.RTTVariance, 0, 1e-9)
 		near(t, s.RTTStdDev, 0, 1e-9)
+	})
+
+	t.Run("interval_bucketed_gap_fill", func(t *testing.T) {
+		t.Parallel()
+		now := time.Unix(1_700_000_000, 0)
+		step := 5 * time.Millisecond
+		interval := 10 * time.Millisecond
+		samples := []CircuitLatencySample{
+			{Timestamp: ts(now, 0, step), RTT: 1000}, // 0ms -> bucket [0..10)
+			// gap in [10..20)
+			{Timestamp: ts(now, 5, step), RTT: 2000}, // 25ms -> bucket [20..30)
+		}
+		out, err := Aggregate("C_int", samples, 0, interval)
+		require.NoError(t, err)
+		require.Len(t, out, 3)
+
+		assert.Equal(t, "C_int", out[0].Circuit)
+		assert.Equal(t, samples[0].Timestamp.Format(time.RFC3339Nano), out[0].Timestamp)
+		assert.Greater(t, out[0].SuccessCount, uint64(0))
+
+		// Middle bucket (gap) starts at 10ms from the first timestamp
+		expectMid := samples[0].Timestamp.Add(10 * time.Millisecond).Format(time.RFC3339Nano)
+		assert.Equal(t, expectMid, out[1].Timestamp)
+		assert.Equal(t, uint64(0), out[1].SuccessCount)
+		assert.Equal(t, uint64(0), out[1].LossCount)
+
+		// Last bucket starts at 20ms and contains the 25ms sample
+		expectLast := samples[0].Timestamp.Add(20 * time.Millisecond).Format(time.RFC3339Nano)
+		assert.Equal(t, expectLast, out[2].Timestamp)
+		assert.Greater(t, out[2].SuccessCount, uint64(0))
+	})
+
+	t.Run("interval_ignored_when_maxPoints_1", func(t *testing.T) {
+		t.Parallel()
+		now := time.Unix(1_700_000_050, 0)
+		samples := []CircuitLatencySample{
+			{Timestamp: ts(now, 0, time.Second), RTT: 1000},
+			{Timestamp: ts(now, 1, time.Second), RTT: 2000},
+			{Timestamp: ts(now, 2, time.Second), RTT: 3000},
+			{Timestamp: ts(now, 3, time.Second), RTT: 4000},
+			{Timestamp: ts(now, 4, time.Second), RTT: 5000},
+		}
+		out, err := Aggregate("C_int2", samples, 1, 2*time.Second)
+		require.NoError(t, err)
+
+		// With maxPoints==1, we should *not* bucket by interval; single aggregated point expected.
+		require.Len(t, out, 1)
+		assert.Equal(t, samples[0].Timestamp.Format(time.RFC3339Nano), out[0].Timestamp)
+		near(t, out[0].RTTMean, (1000+2000+3000+4000+5000)/5.0, 1e-9)
+		near(t, out[0].SuccessRate, 1, 0)
 	})
 }

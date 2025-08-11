@@ -45,6 +45,7 @@ type GetCircuitLatenciesConfig struct {
 	Epochs       *EpochRange
 	Time         *TimeRange
 	MaxPoints    uint64
+	Interval     time.Duration
 	Unit         Unit
 	Circuit      string
 	DataProvider string

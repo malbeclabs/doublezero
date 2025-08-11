@@ -234,9 +234,97 @@ func TestTelemetry_Data_Device_Latencies(t *testing.T) {
 		})
 		require.Error(t, err)
 	})
-}
 
-/* ---------------- helpers ---------------- */
+	t.Run("time range with interval buckets", func(t *testing.T) {
+		t.Parallel()
+		c := defaultCircuit()
+		start := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
+		p := newTestProvider(t, func(uint64) (*telemetry.DeviceLatencySamples, error) {
+			return &telemetry.DeviceLatencySamples{
+				DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
+					StartTimestampMicroseconds:   uint64(start.UnixMicro()),
+					SamplingIntervalMicroseconds: 60 * 1_000_000,
+				},
+				Samples: []uint32{10_000, 20_000, 30_000, 40_000, 50_000},
+			}, nil
+		}, c)
+
+		statsOut, err := p.GetCircuitLatencies(context.Background(), data.GetCircuitLatenciesConfig{
+			Circuit:  c.Code,
+			Unit:     data.UnitMicrosecond,
+			Time:     &data.TimeRange{From: start, To: start.Add(5 * time.Minute)},
+			Interval: 2 * time.Minute,
+		})
+		require.NoError(t, err)
+		require.Len(t, statsOut, 2) // [0..2m): 10k,20k; [2..4m): 30k,40k,50k (last clamped)
+
+		assert.InDelta(t, 15_000.0, statsOut[0].RTTMean, 1e-9)
+		assert.InDelta(t, (30_000.0+40_000.0+50_000.0)/3.0, statsOut[1].RTTMean, 1e-9)
+	})
+
+	t.Run("time range with interval + millisecond unit conversion", func(t *testing.T) {
+		t.Parallel()
+		c := defaultCircuit()
+		start := time.Date(2023, 1, 1, 13, 0, 0, 0, time.UTC)
+		p := newTestProvider(t, func(uint64) (*telemetry.DeviceLatencySamples, error) {
+			return &telemetry.DeviceLatencySamples{
+				DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
+					StartTimestampMicroseconds:   uint64(start.UnixMicro()),
+					SamplingIntervalMicroseconds: 60 * 1_000_000,
+				},
+				Samples: []uint32{10_000, 20_000, 30_000, 40_000, 50_000},
+			}, nil
+		}, c)
+
+		statsOut, err := p.GetCircuitLatencies(context.Background(), data.GetCircuitLatenciesConfig{
+			Circuit:  c.Code,
+			Unit:     data.UnitMillisecond, // conversion after aggregation
+			Time:     &data.TimeRange{From: start, To: start.Add(5 * time.Minute)},
+			Interval: 2 * time.Minute,
+		})
+		require.NoError(t, err)
+		require.Len(t, statsOut, 2)
+
+		// Converted to ms
+		near := func(got, want float64) { assert.InDelta(t, want, got, 1e-9) }
+		near(statsOut[0].RTTMean, 15.0)
+		near(statsOut[0].RTTMin, 10.0)
+		near(statsOut[0].RTTMax, 20.0)
+
+		near(statsOut[1].RTTMean, (30.0+40.0+50.0)/3.0)
+		near(statsOut[1].RTTMin, 30.0)
+		near(statsOut[1].RTTMax, 50.0)
+	})
+
+	t.Run("interval provided but MaxPoints=1 still aggregates single point (Aggregate precedence)", func(t *testing.T) {
+		t.Parallel()
+		c := defaultCircuit()
+		start := time.Date(2023, 1, 1, 14, 0, 0, 0, time.UTC)
+		p := newTestProvider(t, func(uint64) (*telemetry.DeviceLatencySamples, error) {
+			return &telemetry.DeviceLatencySamples{
+				DeviceLatencySamplesHeader: telemetry.DeviceLatencySamplesHeader{
+					StartTimestampMicroseconds:   uint64(start.UnixMicro()),
+					SamplingIntervalMicroseconds: 60 * 1_000_000,
+				},
+				Samples: []uint32{1_000, 2_000, 3_000}, // µs
+			}, nil
+		}, c)
+
+		statsOut, err := p.GetCircuitLatencies(context.Background(), data.GetCircuitLatenciesConfig{
+			Circuit:   c.Code,
+			Unit:      data.UnitMicrosecond,
+			Time:      &data.TimeRange{From: start, To: start.Add(3 * time.Minute)},
+			MaxPoints: 1,               // per Aggregate, this wins over interval
+			Interval:  2 * time.Minute, // set but should be ignored by Aggregate when MaxPoints==1
+		})
+		require.NoError(t, err)
+		require.Len(t, statsOut, 1)
+		assert.InDelta(t, (1000+2000+3000)/3.0, statsOut[0].RTTMean, 1e-9)
+		assert.Equal(t, float64(1000), statsOut[0].RTTMin)
+		assert.Equal(t, float64(3000), statsOut[0].RTTMax)
+	})
+
+}
 
 func defaultCircuit() data.Circuit {
 	pkA := solana.NewWallet().PublicKey()

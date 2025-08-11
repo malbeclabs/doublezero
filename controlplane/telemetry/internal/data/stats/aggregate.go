@@ -1,7 +1,6 @@
 package stats
 
 import (
-	"context"
 	"fmt"
 	"math"
 	"sort"
@@ -61,7 +60,7 @@ func (s *CircuitLatencyStat) ConvertUnit(factor float64) {
 	s.JitterMax /= factor
 }
 
-func Aggregate(ctx context.Context, circuitCode string, samples []CircuitLatencySample, maxPoints uint64) ([]CircuitLatencyStat, error) {
+func Aggregate(circuitCode string, samples []CircuitLatencySample, maxPoints uint64, interval time.Duration) ([]CircuitLatencyStat, error) {
 	if len(samples) == 0 {
 		return []CircuitLatencyStat{}, nil
 	}
@@ -73,7 +72,7 @@ func Aggregate(ctx context.Context, circuitCode string, samples []CircuitLatency
 	const tf = time.RFC3339Nano
 
 	// Per-sample path (also handles == len(samples))
-	if maxPoints == 0 || maxPoints >= uint64(len(samples)) {
+	if interval == 0 && (maxPoints == 0 || maxPoints >= uint64(len(samples))) {
 		stats := make([]CircuitLatencyStat, len(samples))
 		var lastGoodRTT *float64
 		for i, sample := range samples {
@@ -127,6 +126,14 @@ func Aggregate(ctx context.Context, circuitCode string, samples []CircuitLatency
 		return []CircuitLatencyStat{stats}, nil
 	}
 
+	if interval > 0 {
+		stats, err := AggregateIntoTimeBuckets(circuitCode, samples, interval, true)
+		if err != nil {
+			return nil, fmt.Errorf("failed to downsample circuit latencies: %w", err)
+		}
+		return stats, nil
+	}
+
 	if maxPoints > 1 && maxPoints < uint64(len(samples)) {
 		span := lastTime.Sub(firstTime)
 		q := float64(span) / float64(maxPoints)
@@ -134,7 +141,7 @@ func Aggregate(ctx context.Context, circuitCode string, samples []CircuitLatency
 			q = 1
 		}
 		bucket := time.Duration(math.Ceil(q))
-		stats, err := AggregateIntoTimeBuckets(ctx, circuitCode, samples, bucket, true)
+		stats, err := AggregateIntoTimeBuckets(circuitCode, samples, bucket, true)
 		if err != nil {
 			return nil, fmt.Errorf("failed to downsample circuit latencies: %w", err)
 		}
@@ -144,7 +151,7 @@ func Aggregate(ctx context.Context, circuitCode string, samples []CircuitLatency
 	return nil, fmt.Errorf("invalid max points: %d", maxPoints)
 }
 
-func AggregateIntoTimeBuckets(ctx context.Context, circuitCode string, timeseries []CircuitLatencySample, bucket time.Duration, fillGaps bool) ([]CircuitLatencyStat, error) {
+func AggregateIntoTimeBuckets(circuitCode string, timeseries []CircuitLatencySample, bucket time.Duration, fillGaps bool) ([]CircuitLatencyStat, error) {
 	if len(timeseries) == 0 {
 		return []CircuitLatencyStat{}, nil
 	}
@@ -181,7 +188,24 @@ func AggregateIntoTimeBuckets(ctx context.Context, circuitCode string, timeserie
 		buckets[idx] = append(buckets[idx], float64(pt.RTT))
 	}
 
+	// Track first/last successful RTT in each bucket to enable cross-bucket jitter when a bucket
+	// has exactly one success.
+	type ends struct{ first, last *float64 }
+	endsByBucket := make([]ends, nBuckets)
+	for i := 0; i < nBuckets; i++ {
+		for _, v := range buckets[i] {
+			if v > 0 {
+				vv := v
+				if endsByBucket[i].first == nil {
+					endsByBucket[i].first = &vv
+				}
+				endsByBucket[i].last = &vv
+			}
+		}
+	}
+
 	out := make([]CircuitLatencyStat, 0, nBuckets)
+	var prevLastGood *float64
 	for i := 0; i < nBuckets; i++ {
 		if len(buckets[i]) == 0 {
 			if fillGaps {
@@ -193,7 +217,22 @@ func AggregateIntoTimeBuckets(ctx context.Context, circuitCode string, timeserie
 		}
 		s := AggregateIntoOne(starts[i], buckets[i])
 		s.Circuit = circuitCode
+
+		// If this bucket has exactly one success and we have a previous good RTT, synthesize jitter
+		// against the last good RTT from the previous non-empty bucket.
+		if s.SuccessCount == 1 && prevLastGood != nil && endsByBucket[i].first != nil {
+			d := math.Abs(*endsByBucket[i].first - *prevLastGood)
+			s.JitterAvg = d
+			s.JitterEWMA = d
+			s.JitterDeltaStdDev = 0
+			s.JitterPeakToPeak = 0
+			s.JitterMax = d
+		}
+
 		out = append(out, s)
+		if endsByBucket[i].last != nil {
+			prevLastGood = endsByBucket[i].last
+		}
 	}
 	return out, nil
 }

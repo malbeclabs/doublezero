@@ -16,7 +16,7 @@ type CircuitLatenciesWithHeader struct {
 }
 
 func (p *provider) GetCircuitLatencies(ctx context.Context, cfg GetCircuitLatenciesConfig) ([]datastats.CircuitLatencyStat, error) {
-	p.cfg.Logger.Debug("Getting circuit latencies", "circuit", cfg.Circuit, "unit", cfg.Unit, "epochs", cfg.Epochs, "time", cfg.Time, "maxPoints", cfg.MaxPoints)
+	p.cfg.Logger.Debug("Getting circuit latencies", "circuit", cfg.Circuit, "unit", cfg.Unit, "epochs", cfg.Epochs, "time", cfg.Time, "maxPoints", cfg.MaxPoints, "interval", cfg.Interval)
 
 	switch cfg.Unit {
 	case UnitMillisecond, UnitMicrosecond:
@@ -53,7 +53,7 @@ func (p *provider) GetCircuitLatencies(ctx context.Context, cfg GetCircuitLatenc
 		return nil, fmt.Errorf("no time or epoch range provided")
 	}
 
-	stats, err := datastats.Aggregate(ctx, cfg.Circuit, samples, cfg.MaxPoints)
+	stats, err := datastats.Aggregate(cfg.Circuit, samples, cfg.MaxPoints, cfg.Interval)
 	if err != nil {
 		return nil, fmt.Errorf("failed to aggregate circuit latencies: %w", err)
 	}

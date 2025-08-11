@@ -107,10 +107,11 @@ func (s *Server) handleInternetCircuitLatencies(w http.ResponseWriter, r *http.R
 	toStr := r.URL.Query().Get("to")
 	circuits := parseMultiParam(r, "circuit")
 	maxPointsStr := r.URL.Query().Get("max_points")
+	intervalStr := r.URL.Query().Get("interval")
 	unit := r.URL.Query().Get("unit")
 	dataProvider := r.URL.Query().Get("data_provider")
 
-	s.log.Debug("[/location-internet/circuit-latencies]", "env", env, "from", fromStr, "to", toStr, "circuits", circuits, "max_points", maxPointsStr, "unit", unit, "full", r.URL.String())
+	s.log.Debug("[/location-internet/circuit-latencies]", "env", env, "from", fromStr, "to", toStr, "circuits", circuits, "max_points", maxPointsStr, "interval", intervalStr, "unit", unit, "full", r.URL.String())
 
 	provider, err := s.provider(env)
 	if err != nil {
@@ -137,15 +138,30 @@ func (s *Server) handleInternetCircuitLatencies(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	if intervalStr != "" && maxPointsStr != "" {
+		http.Error(w, "interval and max_points cannot be set at the same time", http.StatusBadRequest)
+		return
+	}
+
+	var interval time.Duration
 	var maxPoints uint64
-	if maxPointsStr == "" {
-		maxPoints = DefaultMaxPoints
-	} else {
-		maxPoints, err = strconv.ParseUint(maxPointsStr, 10, 32)
-		if err != nil || maxPoints == 0 {
-			s.log.Warn("invalid max_points", "max_points", maxPointsStr)
-			http.Error(w, "invalid max_points", http.StatusBadRequest)
+	if intervalStr != "" {
+		interval, err = time.ParseDuration(intervalStr)
+		if err != nil {
+			s.log.Warn("invalid interval", "interval", intervalStr)
+			http.Error(w, "invalid interval", http.StatusBadRequest)
 			return
+		}
+	} else {
+		if maxPointsStr == "" {
+			maxPoints = DefaultMaxPoints
+		} else {
+			maxPoints, err = strconv.ParseUint(maxPointsStr, 10, 32)
+			if err != nil || maxPoints == 0 {
+				s.log.Warn("invalid max_points", "max_points", maxPointsStr)
+				http.Error(w, "invalid max_points", http.StatusBadRequest)
+				return
+			}
 		}
 	}
 
@@ -160,6 +176,7 @@ func (s *Server) handleInternetCircuitLatencies(w http.ResponseWriter, r *http.R
 			series, err := provider.GetCircuitLatencies(r.Context(), GetCircuitLatenciesConfig{
 				Circuit:      circuitCode,
 				Time:         &TimeRange{From: fromTime, To: toTime},
+				Interval:     interval,
 				MaxPoints:    maxPoints,
 				Unit:         Unit(unit),
 				DataProvider: dataProvider,

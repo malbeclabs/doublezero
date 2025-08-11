@@ -285,6 +285,111 @@ func TestInternetProvider_GetCircuitLatencies(t *testing.T) {
 		})
 		require.Error(t, err)
 	})
+
+	t.Run("time range with interval buckets", func(t *testing.T) {
+		t.Parallel()
+		const prov = data.DataProviderNameRIPEAtlas
+		c := defaultInternetCircuit()
+		start := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+		p := newInternetTestProviderWithEpochFinder(t,
+			func(_ string, _ uint64) (*telemetry.InternetLatencySamples, error) {
+				return &telemetry.InternetLatencySamples{
+					InternetLatencySamplesHeader: telemetry.InternetLatencySamplesHeader{
+						StartTimestampMicroseconds:   uint64(start.UnixMicro()),
+						SamplingIntervalMicroseconds: 60 * 1_000_000, // 1 min
+					},
+					Samples: []uint32{10_000, 20_000, 30_000, 40_000, 50_000}, // µs
+				}, nil
+			},
+			c,
+			// Keep both from/to in the same epoch for simplicity.
+			func(_ context.Context, _ time.Time) (uint64, error) { return 10, nil },
+		)
+
+		out, err := p.GetCircuitLatencies(context.Background(), data.GetCircuitLatenciesConfig{
+			Circuit: c.Code, Unit: data.UnitMicrosecond, DataProvider: prov,
+			Time:     &data.TimeRange{From: start, To: start.Add(5 * time.Minute)},
+			Interval: 2 * time.Minute,
+		})
+		require.NoError(t, err)
+		require.Len(t, out, 2) // [0..2m): 10k,20k; [2..4m): 30k,40k,50k (last clamped)
+
+		assert.InDelta(t, 15_000.0, out[0].RTTMean, 1e-9)
+		assert.InDelta(t, (30_000.0+40_000.0+50_000.0)/3.0, out[1].RTTMean, 1e-9)
+	})
+
+	t.Run("time range with interval + millisecond unit conversion", func(t *testing.T) {
+		t.Parallel()
+		const prov = data.DataProviderNameRIPEAtlas
+		c := defaultInternetCircuit()
+		start := time.Date(2024, 1, 1, 13, 0, 0, 0, time.UTC)
+
+		p := newInternetTestProviderWithEpochFinder(t,
+			func(_ string, _ uint64) (*telemetry.InternetLatencySamples, error) {
+				return &telemetry.InternetLatencySamples{
+					InternetLatencySamplesHeader: telemetry.InternetLatencySamplesHeader{
+						StartTimestampMicroseconds:   uint64(start.UnixMicro()),
+						SamplingIntervalMicroseconds: 60 * 1_000_000,
+					},
+					Samples: []uint32{10_000, 20_000, 30_000, 40_000, 50_000}, // µs
+				}, nil
+			},
+			c,
+			func(_ context.Context, _ time.Time) (uint64, error) { return 10, nil },
+		)
+
+		out, err := p.GetCircuitLatencies(context.Background(), data.GetCircuitLatenciesConfig{
+			Circuit: c.Code, Unit: data.UnitMillisecond, DataProvider: prov, // convert after aggregation
+			Time:     &data.TimeRange{From: start, To: start.Add(5 * time.Minute)},
+			Interval: 2 * time.Minute,
+		})
+		require.NoError(t, err)
+		require.Len(t, out, 2)
+
+		// Converted to ms
+		assert.InDelta(t, 15.0, out[0].RTTMean, 1e-9)
+		assert.InDelta(t, 10.0, out[0].RTTMin, 1e-9)
+		assert.InDelta(t, 20.0, out[0].RTTMax, 1e-9)
+
+		assert.InDelta(t, (30.0+40.0+50.0)/3.0, out[1].RTTMean, 1e-9)
+		assert.InDelta(t, 30.0, out[1].RTTMin, 1e-9)
+		assert.InDelta(t, 50.0, out[1].RTTMax, 1e-9)
+	})
+
+	t.Run("interval provided but MaxPoints=1 still aggregates single point", func(t *testing.T) {
+		t.Parallel()
+		const prov = data.DataProviderNameRIPEAtlas
+		c := defaultInternetCircuit()
+		start := time.Date(2024, 1, 1, 14, 0, 0, 0, time.UTC)
+
+		p := newInternetTestProviderWithEpochFinder(t,
+			func(_ string, _ uint64) (*telemetry.InternetLatencySamples, error) {
+				return &telemetry.InternetLatencySamples{
+					InternetLatencySamplesHeader: telemetry.InternetLatencySamplesHeader{
+						StartTimestampMicroseconds:   uint64(start.UnixMicro()),
+						SamplingIntervalMicroseconds: 60 * 1_000_000,
+					},
+					Samples: []uint32{1_000, 2_000, 3_000}, // µs
+				}, nil
+			},
+			c,
+			func(_ context.Context, _ time.Time) (uint64, error) { return 10, nil },
+		)
+
+		out, err := p.GetCircuitLatencies(context.Background(), data.GetCircuitLatenciesConfig{
+			Circuit: c.Code, Unit: data.UnitMicrosecond, DataProvider: prov,
+			Time:      &data.TimeRange{From: start, To: start.Add(3 * time.Minute)},
+			MaxPoints: 1,               // per Aggregate, this wins
+			Interval:  2 * time.Minute, // ignored when MaxPoints==1
+		})
+		require.NoError(t, err)
+		require.Len(t, out, 1)
+		assert.InDelta(t, (1000.0+2000.0+3000.0)/3.0, out[0].RTTMean, 1e-9)
+		assert.Equal(t, float64(1000), out[0].RTTMin)
+		assert.Equal(t, float64(3000), out[0].RTTMax)
+	})
+
 }
 
 func defaultInternetCircuit() data.Circuit {

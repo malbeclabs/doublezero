@@ -1,6 +1,7 @@
 use crate::{
     csv_exporter,
-    recorder::{load_default_keypair, make_record_key, try_create_record, write_record_chunks},
+    keypair_loader::load_keypair,
+    recorder::{make_record_key, try_create_record, write_record_chunks},
     settings::Settings,
     shapley_handler::{build_demands, build_devices, build_private_links, build_public_links},
     util::{print_demands, print_devices, print_private_links, print_public_links},
@@ -17,6 +18,7 @@ use processor::{
 };
 use solana_client::client_error::ClientError as SolanaClientError;
 use solana_sdk::commitment_config::CommitmentConfig;
+use std::mem::size_of;
 use std::path::PathBuf;
 use std::time::Duration;
 use tabled::{builder::Builder as TableBuilder, settings::Style};
@@ -40,6 +42,8 @@ impl Orchestrator {
         &self,
         epoch: Option<u64>,
         output_dir: Option<PathBuf>,
+        keypair_path: Option<PathBuf>,
+        dry_run: bool,
     ) -> Result<()> {
         let ingestor_settings = ingestor::settings::Settings::new(self.cfg_path.clone())?;
         let fetcher = Fetcher::new(&ingestor_settings)?;
@@ -60,17 +64,18 @@ impl Orchestrator {
             print_telemetry_stats(&stat_map)
         );
 
-        {
-            let payer_signer = load_default_keypair()?;
+        // Record device telemetry aggregates to ledger
+        if !dry_run {
+            let payer_signer = load_keypair(&keypair_path)?;
             let ser_dzd_telem = borsh::to_vec(&stat_map)?;
-            let prefix: &[u8] = b"doublezero_device_telemetry_aggregate_test1";
-            let prefix_str = std::str::from_utf8(prefix)?;
-            info!("prefix: {prefix_str}, dz_epoch: {fetch_epoch}",);
+            let prefix = self.settings.get_device_telemetry_prefix(dry_run)?;
+            let prefix_str = std::str::from_utf8(&prefix)?;
+            info!("Writing device telemetry: prefix={prefix_str}, epoch={fetch_epoch}");
 
             let record_key = try_create_record(
                 &fetcher.rpc_client,
                 &payer_signer,
-                &[prefix, &fetch_epoch.to_le_bytes()],
+                &[&prefix, &fetch_epoch.to_le_bytes()],
                 ser_dzd_telem.len(),
             )
             .await?;
@@ -82,6 +87,12 @@ impl Orchestrator {
                 ser_dzd_telem.as_ref(),
             )
             .await?;
+        } else {
+            info!(
+                "DRY-RUN: Would write {} bytes of device telemetry aggregates for epoch {}",
+                borsh::to_vec(&stat_map)?.len(),
+                fetch_epoch
+            );
         }
 
         // Build internet stats
@@ -91,17 +102,18 @@ impl Orchestrator {
             print_internet_stats(&internet_stat_map)
         );
 
-        {
-            let payer_signer = load_default_keypair()?;
+        // Record internet telemetry aggregates to ledger
+        if !dry_run {
+            let payer_signer = load_keypair(&keypair_path)?;
             let ser_inet_telem = borsh::to_vec(&internet_stat_map)?;
-            let prefix: &[u8] = b"doublezero_internet_telemetry_aggregate_test1";
-            let prefix_str = std::str::from_utf8(prefix)?;
-            info!("prefix: {prefix_str}, dz_epoch: {fetch_epoch}",);
+            let prefix = self.settings.get_internet_telemetry_prefix(dry_run)?;
+            let prefix_str = std::str::from_utf8(&prefix)?;
+            info!("Writing internet telemetry: prefix={prefix_str}, epoch={fetch_epoch}");
 
             let record_key = try_create_record(
                 &fetcher.rpc_client,
                 &payer_signer,
-                &[prefix, &fetch_epoch.to_le_bytes()],
+                &[&prefix, &fetch_epoch.to_le_bytes()],
                 ser_inet_telem.len(),
             )
             .await?;
@@ -113,6 +125,12 @@ impl Orchestrator {
                 ser_inet_telem.as_ref(),
             )
             .await?;
+        } else {
+            info!(
+                "DRY-RUN: Would write {} bytes of internet telemetry aggregates for epoch {}",
+                borsh::to_vec(&internet_stat_map)?.len(),
+                fetch_epoch
+            );
         }
 
         // Build devices
@@ -181,15 +199,20 @@ impl Orchestrator {
         Ok(())
     }
 
-    pub async fn read_telemetry_aggregates(&self, epoch: u64) -> Result<()> {
+    pub async fn read_telemetry_aggregates(
+        &self,
+        epoch: u64,
+        keypair_path: Option<PathBuf>,
+    ) -> Result<()> {
         // Create fetcher
         let ingestor_settings = ingestor::settings::Settings::new(self.cfg_path.clone())?;
         let fetcher = Fetcher::new(&ingestor_settings)?;
-        let payer_signer = load_default_keypair()?;
+        let payer_signer = load_keypair(&keypair_path)?;
 
         {
-            let prefix: &[u8] = b"doublezero_device_telemetry_aggregate_test1";
-            let seeds = &[prefix, &epoch.to_le_bytes()];
+            let prefix = self.settings.get_device_telemetry_prefix(false)?;
+            let epoch_bytes = epoch.to_le_bytes();
+            let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
             let record_key = make_record_key(&payer_signer, seeds);
 
             info!("Re-created record_key: {record_key}");
@@ -217,8 +240,9 @@ impl Orchestrator {
         }
 
         {
-            let prefix: &[u8] = b"doublezero_internet_telemetry_aggregate_test1";
-            let seeds = &[prefix, &epoch.to_le_bytes()];
+            let prefix = self.settings.get_internet_telemetry_prefix(false)?;
+            let epoch_bytes = epoch.to_le_bytes();
+            let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
             let record_key = make_record_key(&payer_signer, seeds);
 
             info!("Re-created record_key: {record_key}");

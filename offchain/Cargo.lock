@@ -800,6 +800,8 @@ dependencies = [
  "solana-system-interface",
  "svm-hash",
  "tabled",
+ "tempfile",
+ "thiserror 2.0.12",
  "tokio",
  "tracing",
  "tracing-subscriber",

@@ -8,6 +8,8 @@ pub struct Settings {
     #[serde(default = "default_log_level")]
     pub log_level: String,
     pub shapley: ShapleySettings,
+    pub device_telemetry_prefix: Option<String>,
+    pub internet_telemetry_prefix: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,6 +36,42 @@ impl Settings {
             )
             .build()
             .and_then(|config| config.try_deserialize())
+    }
+
+    pub fn get_device_telemetry_prefix(
+        &self,
+        dry_run: bool,
+    ) -> Result<Vec<u8>, config::ConfigError> {
+        if dry_run {
+            return Ok(b"doublezero_device_telemetry_aggregate_test1".to_vec());
+        }
+
+        self.device_telemetry_prefix
+            .as_ref()
+            .map(|s| s.as_bytes().to_vec())
+            .ok_or_else(|| {
+                config::ConfigError::Message(
+                    "CALCULATOR__DEVICE_TELEMETRY_PREFIX is required (set via environment variable)".to_string()
+                )
+            })
+    }
+
+    pub fn get_internet_telemetry_prefix(
+        &self,
+        dry_run: bool,
+    ) -> Result<Vec<u8>, config::ConfigError> {
+        if dry_run {
+            return Ok(b"doublezero_internet_telemetry_aggregate_test1".to_vec());
+        }
+
+        self.internet_telemetry_prefix
+            .as_ref()
+            .map(|s| s.as_bytes().to_vec())
+            .ok_or_else(|| {
+                config::ConfigError::Message(
+                    "CALCULATOR__INTERNET_TELEMETRY_PREFIX is required (set via environment variable)".to_string()
+                )
+            })
     }
 }
 

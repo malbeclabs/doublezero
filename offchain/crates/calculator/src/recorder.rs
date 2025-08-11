@@ -134,6 +134,9 @@ pub async fn write_record_chunks(
     data: &[u8],
 ) -> Result<()> {
     // One byte more and the transaction is too large.
+    // CHUNK_SIZE is set to 1,013 bytes to stay well within Solana's transaction size limits.
+    // This ensures each chunk + transaction overhead remains under the maximum transaction size,
+    // avoiding rejection due to tx size boundaries.
     const CHUNK_SIZE: usize = 1_013;
 
     let payer_key = payer_signer.pubkey();
@@ -200,21 +203,6 @@ pub async fn new_transaction(
     let message = Message::try_compile(&signers[0].pubkey(), instructions, &[], recent_blockhash)?;
 
     VersionedTransaction::try_new(VersionedMessage::V0(message), signers).map_err(Into::into)
-}
-
-/// Taken from a Solana cookbook to load a keypair from a user's Solana config
-/// location.
-pub fn load_default_keypair() -> Result<Keypair> {
-    let home_path = std::env::var_os("HOME").unwrap();
-    let default_keypair_path = ".config/solana/id.json";
-    let default_keypair_path = std::path::PathBuf::from(home_path).join(default_keypair_path);
-
-    let keypair_file = std::fs::read_to_string(default_keypair_path)?;
-    let keypair_bytes = serde_json::from_str::<Vec<u8>>(&keypair_file)?;
-    let default_keypair = Keypair::try_from(keypair_bytes.as_slice())?;
-    info!("Loaded keypair: {}", default_keypair.pubkey());
-
-    Ok(default_keypair)
 }
 
 pub fn create_record_seed_string(seeds: &[&[u8]]) -> String {

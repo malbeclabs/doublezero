@@ -1,5 +1,5 @@
 use anyhow::Result;
-use config::{Config, Environment, File};
+use config::{Config, ConfigError, Environment, File};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -10,6 +10,7 @@ pub struct Settings {
     pub shapley: ShapleySettings,
     pub device_telemetry_prefix: Option<String>,
     pub internet_telemetry_prefix: Option<String>,
+    pub contributor_rewards_prefix: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,7 +21,7 @@ pub struct ShapleySettings {
 }
 
 impl Settings {
-    pub fn new<P: AsRef<Path>>(path: Option<P>) -> Result<Self, config::ConfigError> {
+    pub fn new<P: AsRef<Path>>(path: Option<P>) -> Result<Self, ConfigError> {
         let mut builder = Config::builder();
 
         if let Some(file) = path {
@@ -38,10 +39,7 @@ impl Settings {
             .and_then(|config| config.try_deserialize())
     }
 
-    pub fn get_device_telemetry_prefix(
-        &self,
-        dry_run: bool,
-    ) -> Result<Vec<u8>, config::ConfigError> {
+    pub fn get_device_telemetry_prefix(&self, dry_run: bool) -> Result<Vec<u8>, ConfigError> {
         if dry_run {
             return Ok(b"doublezero_device_telemetry_aggregate_test1".to_vec());
         }
@@ -50,16 +48,13 @@ impl Settings {
             .as_ref()
             .map(|s| s.as_bytes().to_vec())
             .ok_or_else(|| {
-                config::ConfigError::Message(
+                ConfigError::Message(
                     "CALCULATOR__DEVICE_TELEMETRY_PREFIX is required (set via environment variable)".to_string()
                 )
             })
     }
 
-    pub fn get_internet_telemetry_prefix(
-        &self,
-        dry_run: bool,
-    ) -> Result<Vec<u8>, config::ConfigError> {
+    pub fn get_internet_telemetry_prefix(&self, dry_run: bool) -> Result<Vec<u8>, ConfigError> {
         if dry_run {
             return Ok(b"doublezero_internet_telemetry_aggregate_test1".to_vec());
         }
@@ -68,8 +63,23 @@ impl Settings {
             .as_ref()
             .map(|s| s.as_bytes().to_vec())
             .ok_or_else(|| {
-                config::ConfigError::Message(
+                ConfigError::Message(
                     "CALCULATOR__INTERNET_TELEMETRY_PREFIX is required (set via environment variable)".to_string()
+                )
+            })
+    }
+
+    pub fn get_contributor_rewards_prefix(&self, dry_run: bool) -> Result<Vec<u8>, ConfigError> {
+        if dry_run {
+            return Ok(b"dz_contributor_rewards_test".to_vec());
+        }
+
+        self.contributor_rewards_prefix
+            .as_ref()
+            .map(|s| s.as_bytes().to_vec())
+            .ok_or_else(|| {
+                ConfigError::Message(
+                    "CALCULATOR__CONTRIBUTOR_REWARDS_PREFIX is required (set via environment variable)".to_string()
                 )
             })
     }

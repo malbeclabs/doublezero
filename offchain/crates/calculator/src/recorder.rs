@@ -23,12 +23,18 @@ use tracing::info;
 
 pub fn make_record_key(payer_signer: &Keypair, seeds: &[&[u8]]) -> Result<Pubkey> {
     let payer_key = payer_signer.pubkey();
+    compute_record_address(&payer_key, seeds)
+}
+
+/// Compute a record address without needing a keypair, using only the public key.
+/// This is useful for reading records when you know the payer's public key.
+pub fn compute_record_address(base_pubkey: &Pubkey, seeds: &[&[u8]]) -> Result<Pubkey> {
     // This is a hack to create a utf8 string seed. Because the system program's
     // create-with-seed instruction (as well as allocate-with-seed and
     // assign-with-seed) only support these strings as a seed, we stringify our
     // own seed, which is a hash of the seeds we care about.
     let seed_str = create_record_seed_string(seeds);
-    Pubkey::create_with_seed(&payer_key, &seed_str, &RECORD_PROGRAM_ID).map_err(|e| e.into())
+    Pubkey::create_with_seed(base_pubkey, &seed_str, &RECORD_PROGRAM_ID).map_err(|e| e.into())
 }
 
 pub async fn try_create_record(

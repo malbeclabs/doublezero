@@ -44,7 +44,7 @@ solana-account-decoder = "2.2.7"
 solana-sdk = "2.2.2"
 solana-epoch-info = "3"
 solana-system-interface = "1"
-svm-hash = { version = "0.1.0-beta.1", features = [ "bytemuck" ] }
+svm-hash = { version = "0.1.0-beta.1", features = [ "bytemuck", "borsh" ] }
 tabled = { version = "0", features = [ "std", "derive" ]}
 thiserror = "2"
 tokio = { version = "1", features = ["full"] }

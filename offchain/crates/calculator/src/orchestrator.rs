@@ -1,8 +1,11 @@
 use crate::{
     csv_exporter,
     keypair_loader::load_keypair,
-    proof::compute_rewards_merkle_root,
-    recorder::{make_record_key, try_create_record, write_record_chunks},
+    proof::{
+        ContributorRewardDetail, ContributorRewardProof, ContributorRewardsMerkleRoot,
+        ContributorRewardsMerkleTree,
+    },
+    recorder::{compute_record_address, try_create_record, write_record_chunks},
     settings::Settings,
     shapley_aggregator::aggregate_shapley_outputs,
     shapley_handler::{build_demands, build_devices, build_private_links, build_public_links},
@@ -19,8 +22,9 @@ use processor::{
     telemetry::{DZDTelemetryProcessor, DZDTelemetryStatMap, print_telemetry_stats},
 };
 use solana_client::client_error::ClientError as SolanaClientError;
-use solana_sdk::commitment_config::CommitmentConfig;
+use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey, signature::Keypair};
 use std::{collections::HashMap, mem::size_of, path::PathBuf, time::Duration};
+use svm_hash::sha2::Hash;
 use tabled::{builder::Builder as TableBuilder, settings::Style};
 use tracing::info;
 
@@ -224,7 +228,7 @@ impl Orchestrator {
                 table_builder.push_record([
                     operator,
                     &val.value.to_string(),
-                    &val.proportion.to_string(),
+                    &format!("{:.2}", val.proportion * 100.0), // Convert to percentage for display
                 ]);
             }
 
@@ -239,29 +243,49 @@ impl Orchestrator {
                 csv_exporter::write_consolidated_shapley_csv(output_dir, &shapley_output)?;
             }
 
-            // Construct merkle root
-            let merkle_root = compute_rewards_merkle_root(fetch_epoch, &shapley_output)?;
+            // Construct merkle tree and store in ledger
+            let merkle_tree = ContributorRewardsMerkleTree::new(fetch_epoch, &shapley_output)?;
+            let merkle_root = merkle_tree.compute_root()?;
             info!("merkle_root: {:#?}", merkle_root);
+
+            if !dry_run {
+                let payer_signer = load_keypair(&keypair_path)?;
+                // Store merkle root to ledger
+                self.write_contributor_rewards_merkle_root(
+                    fetch_epoch,
+                    merkle_root,
+                    merkle_tree.len() as u32,
+                    &payer_signer,
+                    &fetcher,
+                )
+                .await?;
+
+                // Store individual proofs for each contributor
+                self.write_contributor_reward_proofs(
+                    fetch_epoch,
+                    &merkle_tree,
+                    &payer_signer,
+                    &fetcher,
+                )
+                .await?;
+            } else {
+                info!("Dry run mode: Skipping merkle root and proofs storage");
+            }
         }
 
         Ok(())
     }
 
-    pub async fn read_telemetry_aggregates(
-        &self,
-        epoch: u64,
-        keypair_path: Option<PathBuf>,
-    ) -> Result<()> {
+    pub async fn read_telemetry_aggregates(&self, epoch: u64, payer_pubkey: &Pubkey) -> Result<()> {
         // Create fetcher
         let ingestor_settings = ingestor::settings::Settings::new(self.cfg_path.clone())?;
         let fetcher = Fetcher::new(&ingestor_settings)?;
-        let payer_signer = load_keypair(&keypair_path)?;
 
         {
             let prefix = self.settings.get_device_telemetry_prefix(false)?;
             let epoch_bytes = epoch.to_le_bytes();
             let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-            let record_key = make_record_key(&payer_signer, seeds)?;
+            let record_key = compute_record_address(payer_pubkey, seeds)?;
 
             info!("Re-created record_key: {record_key}");
 
@@ -291,7 +315,7 @@ impl Orchestrator {
             let prefix = self.settings.get_internet_telemetry_prefix(false)?;
             let epoch_bytes = epoch.to_le_bytes();
             let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-            let record_key = make_record_key(&payer_signer, seeds)?;
+            let record_key = compute_record_address(payer_pubkey, seeds)?;
 
             info!("Re-created record_key: {record_key}");
 
@@ -316,6 +340,223 @@ impl Orchestrator {
                 }
             }
         }
+
+        Ok(())
+    }
+
+    async fn write_contributor_rewards_merkle_root(
+        &self,
+        epoch: u64,
+        merkle_root: Hash,
+        total_contributors: u32,
+        payer_signer: &Keypair,
+        fetcher: &Fetcher,
+    ) -> Result<()> {
+        let prefix = self.settings.get_contributor_rewards_prefix(false)?;
+        let epoch_bytes = epoch.to_le_bytes();
+        let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
+
+        // Create the merkle root data
+        let merkle_root_data = ContributorRewardsMerkleRoot {
+            epoch,
+            root: merkle_root,
+            total_contributors,
+        };
+
+        let data = borsh::to_vec(&merkle_root_data)?;
+        info!(
+            "Writing contributor rewards merkle root for epoch {}, {} bytes",
+            epoch,
+            data.len()
+        );
+
+        // Create record account
+        let record_key =
+            try_create_record(&fetcher.rpc_client, payer_signer, seeds, data.len()).await?;
+
+        // Write data
+        write_record_chunks(&fetcher.rpc_client, payer_signer, &record_key, &data).await?;
+
+        info!(
+            "Successfully wrote merkle root for epoch {} to {}",
+            epoch, record_key
+        );
+        Ok(())
+    }
+
+    async fn write_contributor_reward_proofs(
+        &self,
+        epoch: u64,
+        merkle_tree: &ContributorRewardsMerkleTree,
+        payer_signer: &Keypair,
+        fetcher: &Fetcher,
+    ) -> Result<()> {
+        let prefix = self.settings.get_contributor_rewards_prefix(false)?;
+        let epoch_bytes = epoch.to_le_bytes();
+
+        for (index, reward) in merkle_tree.rewards().iter().enumerate() {
+            let contributor_bytes = reward.operator.as_bytes();
+            let seeds: &[&[u8]] = &[&prefix, &epoch_bytes, contributor_bytes];
+
+            // Generate proof for this contributor
+            let proof = merkle_tree.generate_proof(index)?;
+
+            // Serialize the MerkleProof for storage
+            let proof_bytes = borsh::to_vec(&proof)?;
+
+            // Create proof data with serialized proof
+            let proof_data = ContributorRewardProof {
+                epoch,
+                contributor: reward.operator.clone(),
+                reward: reward.clone(),
+                proof_bytes,
+                index: index as u32,
+            };
+
+            let data = borsh::to_vec(&proof_data)?;
+            info!(
+                "Writing proof for contributor {} (index {}), {} bytes",
+                reward.operator,
+                index,
+                data.len()
+            );
+
+            // Create record account for this proof
+            let record_key =
+                try_create_record(&fetcher.rpc_client, payer_signer, seeds, data.len()).await?;
+
+            // Write proof data
+            write_record_chunks(&fetcher.rpc_client, payer_signer, &record_key, &data).await?;
+
+            info!(
+                "Successfully wrote proof for contributor {} to {}",
+                reward.operator, record_key
+            );
+        }
+
+        info!(
+            "Successfully wrote all {} contributor proofs for epoch {}",
+            merkle_tree.len(),
+            epoch
+        );
+        Ok(())
+    }
+
+    pub async fn check_contributor_reward(
+        &self,
+        contributor: &str,
+        epoch: u64,
+        payer_pubkey: &Pubkey,
+    ) -> Result<()> {
+        // Create fetcher
+        let ingestor_settings = ingestor::settings::Settings::new(self.cfg_path.clone())?;
+        let fetcher = Fetcher::new(&ingestor_settings)?;
+
+        let prefix = self.settings.get_contributor_rewards_prefix(false)?;
+        let epoch_bytes = epoch.to_le_bytes();
+
+        // First, fetch the merkle root
+        let root_seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
+        let root_key = compute_record_address(payer_pubkey, root_seeds)?;
+
+        info!("Fetching merkle root from: {}", root_key);
+
+        let maybe_root_account = (|| async {
+            fetcher
+                .rpc_client
+                .get_account_with_commitment(&root_key, CommitmentConfig::confirmed())
+                .await
+        })
+        .retry(&ExponentialBuilder::default().with_jitter())
+        .notify(|err: &SolanaClientError, dur: Duration| {
+            info!("retrying error: {:?} with sleeping {:?}", err, dur)
+        })
+        .await?;
+
+        let merkle_root_data = match maybe_root_account.value {
+            None => bail!(
+                "Merkle root account {} not found for epoch {}",
+                root_key,
+                epoch
+            ),
+            Some(acc) => {
+                let data: ContributorRewardsMerkleRoot =
+                    borsh::from_slice(&acc.data[size_of::<RecordData>()..])?;
+                data
+            }
+        };
+
+        // Now fetch the contributor's proof
+        let contributor_bytes = contributor.as_bytes();
+        let proof_seeds: &[&[u8]] = &[&prefix, &epoch_bytes, contributor_bytes];
+        let proof_key = compute_record_address(payer_pubkey, proof_seeds)?;
+
+        info!("Fetching proof from: {}", proof_key);
+
+        let maybe_proof_account = (|| async {
+            fetcher
+                .rpc_client
+                .get_account_with_commitment(&proof_key, CommitmentConfig::confirmed())
+                .await
+        })
+        .retry(&ExponentialBuilder::default().with_jitter())
+        .notify(|err: &SolanaClientError, dur: Duration| {
+            info!("retrying error: {:?} with sleeping {:?}", err, dur)
+        })
+        .await?;
+
+        let proof_data = match maybe_proof_account.value {
+            None => bail!(
+                "Proof account {} not found for contributor {} at epoch {}",
+                proof_key,
+                contributor,
+                epoch
+            ),
+            Some(acc) => {
+                let data: ContributorRewardProof =
+                    borsh::from_slice(&acc.data[size_of::<RecordData>()..])?;
+                data
+            }
+        };
+
+        // Verify the proof
+        info!("Verifying proof for contributor: {}", contributor);
+
+        // Deserialize the MerkleProof
+        let proof: svm_hash::merkle::MerkleProof = borsh::from_slice(&proof_data.proof_bytes)?;
+
+        // Serialize the reward for verification
+        let leaf = borsh::to_vec(&proof_data.reward)?;
+
+        // Compute the root from the proof and leaf
+        let computed_root = proof.root_from_leaf(&leaf, Some(ContributorRewardDetail::LEAF_PREFIX));
+
+        // Verify by comparing roots
+        let verification_result = computed_root == merkle_root_data.root;
+
+        // Display results
+        println!("\n========================================");
+        println!("Contributor Reward Verification");
+        println!("========================================");
+        println!("Epoch:        {epoch}");
+        println!("Contributor:  {contributor}");
+        println!("Value:        {}", proof_data.reward.value);
+        println!("Proportion:   {:.2}%", proof_data.reward.proportion * 100.0); // Convert to percentage for display
+        println!("Index:        {}", proof_data.index);
+        println!(
+            "Total Contributors: {}",
+            merkle_root_data.total_contributors
+        );
+        println!();
+
+        if verification_result {
+            println!(" Verification: VALID - Proof verified successfully!");
+        } else {
+            println!(" Verification: INVALID - Proof verification failed!");
+            bail!("Merkle proof verification failed");
+        }
+
+        println!("========================================\n");
 
         Ok(())
     }

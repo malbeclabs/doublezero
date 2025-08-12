@@ -1,7 +1,8 @@
 use anyhow::Result;
 use calculator::{orchestrator::Orchestrator, settings::Settings};
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
+use solana_sdk::pubkey::Pubkey;
+use std::{path::PathBuf, str::FromStr};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Parser, Debug)]
@@ -46,9 +47,23 @@ pub enum Commands {
         #[arg(short, long)]
         epoch: u64,
 
-        /// Path to the keypair file to use for signing transactions
-        #[arg(short = 'k', long)]
-        keypair: Option<PathBuf>,
+        /// Payer's public key (e.g., DZF's public key) used for address derivation
+        #[arg(short = 'p', long)]
+        payer_pubkey: String,
+    },
+    /// Check and verify contributor reward
+    CheckReward {
+        /// Contributor address
+        #[arg(short, long)]
+        contributor: String,
+
+        /// DZ Epoch
+        #[arg(short, long)]
+        epoch: u64,
+
+        /// Payer's public key (e.g., DZF's public key) used for address derivation
+        #[arg(short = 'p', long)]
+        payer_pubkey: String,
     },
 }
 
@@ -61,8 +76,22 @@ impl Cli {
 
         // Handle subcommands
         match self.command {
-            Commands::ReadTelemAgg { epoch, keypair } => {
-                orchestrator.read_telemetry_aggregates(epoch, keypair).await
+            Commands::ReadTelemAgg {
+                epoch,
+                payer_pubkey,
+            } => {
+                let pubkey = Pubkey::from_str(&payer_pubkey)?;
+                orchestrator.read_telemetry_aggregates(epoch, &pubkey).await
+            }
+            Commands::CheckReward {
+                contributor,
+                epoch,
+                payer_pubkey,
+            } => {
+                let pubkey = Pubkey::from_str(&payer_pubkey)?;
+                orchestrator
+                    .check_contributor_reward(&contributor, epoch, &pubkey)
+                    .await
             }
             Commands::CalculateRewards {
                 epoch,

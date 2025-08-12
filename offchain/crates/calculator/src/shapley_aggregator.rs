@@ -71,12 +71,12 @@ pub fn aggregate_shapley_outputs(
     // Calculate total value for proportion calculation
     let total_value: f64 = operator_values.values().sum();
 
-    // Create consolidated outputs with proportions
+    // Create consolidated outputs with proportions (stored as decimal 0.0 to 1.0)
     let consolidated = operator_values
         .into_iter()
         .map(|(operator, value)| {
             let proportion = if total_value != 0.0 {
-                (value / total_value) * 100.0
+                value / total_value // Store as decimal (0.0 to 1.0)
             } else {
                 0.0
             };
@@ -85,7 +85,7 @@ pub fn aggregate_shapley_outputs(
                 operator,
                 ShapleyValue {
                     value: round_to_decimals(value, 4),
-                    proportion: round_to_decimals(proportion, 4),
+                    proportion: round_to_decimals(proportion, 6), // Keep more precision for proportions
                 },
             )
         })
@@ -153,15 +153,15 @@ mod tests {
 
         let op_a = result.get("OperatorA").unwrap();
         assert_eq!(op_a.value, 92.0);
-        assert_eq!(op_a.proportion, 61.3333); // 92/150 * 100
+        assert_eq!(op_a.proportion, 0.613333); // 92/150
 
         let op_b = result.get("OperatorB").unwrap();
         assert_eq!(op_b.value, 30.0);
-        assert_eq!(op_b.proportion, 20.0); // 30/150 * 100
+        assert_eq!(op_b.proportion, 0.2); // 30/150
 
         let op_c = result.get("OperatorC").unwrap();
         assert_eq!(op_c.value, 28.0);
-        assert_eq!(op_c.proportion, 18.6667); // 28/150 * 100
+        assert_eq!(op_c.proportion, 0.186667); // 28/150
     }
 
     #[test]
@@ -187,11 +187,11 @@ mod tests {
 
         let op_x = result.get("OpX").unwrap();
         assert_eq!(op_x.value, 75.0);
-        assert_eq!(op_x.proportion, 75.0);
+        assert_eq!(op_x.proportion, 0.75); // 75/100
 
         let op_y = result.get("OpY").unwrap();
         assert_eq!(op_y.value, 25.0);
-        assert_eq!(op_y.proportion, 25.0);
+        assert_eq!(op_y.proportion, 0.25); // 25/100
     }
 
     #[test]
@@ -222,11 +222,11 @@ mod tests {
         // Each operator gets 50% weight
         let op_a = result.get("OpA").unwrap();
         assert_eq!(op_a.value, 50.0);
-        assert_eq!(op_a.proportion, 50.0);
+        assert_eq!(op_a.proportion, 0.5); // 50/100
 
         let op_b = result.get("OpB").unwrap();
         assert_eq!(op_b.value, 50.0);
-        assert_eq!(op_b.proportion, 50.0);
+        assert_eq!(op_b.proportion, 0.5); // 50/100
     }
 
     #[test]
@@ -257,7 +257,7 @@ mod tests {
         assert_eq!(result.len(), 1);
         let op_active = result.get("OpActive").unwrap();
         assert_eq!(op_active.value, 50.0);
-        assert_eq!(op_active.proportion, 100.0);
+        assert_eq!(op_active.proportion, 1.0);
     }
 
     #[test]
@@ -315,11 +315,11 @@ mod tests {
 
         let op_pos = result.get("OpPositive").unwrap();
         assert_eq!(op_pos.value, 100.0);
-        assert_eq!(op_pos.proportion, 200.0); // 100/50 * 100
+        assert_eq!(op_pos.proportion, 2.0); // 100/50
 
         let op_neg = result.get("OpNegative").unwrap();
         assert_eq!(op_neg.value, -50.0);
-        assert_eq!(op_neg.proportion, -100.0); // -50/50 * 100
+        assert_eq!(op_neg.proportion, -1.0); // -50/50
     }
 
     #[test]
@@ -375,8 +375,8 @@ mod tests {
 
         let result = aggregate_shapley_outputs(&per_city_outputs, &city_stats).unwrap();
 
-        // Sum of proportions should be ~100% (with tolerance for rounding)
+        // Sum of proportions should be ~1.0 (with tolerance for rounding)
         let total_proportion: f64 = result.values().map(|v| v.proportion).sum();
-        assert!((total_proportion - 100.0).abs() < 0.01);
+        assert!((total_proportion - 1.0).abs() < 0.01);
     }
 }

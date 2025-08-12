@@ -15,6 +15,26 @@ pub struct ContributorRewardDetail {
     pub proportion: f64,
 }
 
+impl ContributorRewardDetail {
+    pub const LEAF_PREFIX: &'static [u8] = LEAF_PREFIX;
+}
+
+#[derive(Debug, Clone, BorshDeserialize, BorshSerialize)]
+pub struct ContributorRewardsMerkleRoot {
+    pub epoch: u64,
+    pub root: Hash,
+    pub total_contributors: u32,
+}
+
+#[derive(Debug, Clone, BorshDeserialize, BorshSerialize)]
+pub struct ContributorRewardProof {
+    pub epoch: u64,
+    pub contributor: String,
+    pub reward: ContributorRewardDetail,
+    pub proof_bytes: Vec<u8>, // Store serialized MerkleProof
+    pub index: u32,
+}
+
 #[derive(Debug)]
 pub struct ContributorRewardsMerkleTree {
     epoch: u64,
@@ -91,6 +111,11 @@ impl ContributorRewardsMerkleTree {
     /// Total number of contributors
     pub fn len(&self) -> usize {
         self.rewards.len()
+    }
+
+    /// Check if there are no contributors
+    pub fn is_empty(&self) -> bool {
+        self.rewards.is_empty()
     }
 }
 

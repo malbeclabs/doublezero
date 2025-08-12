@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.5.0] (https://github.com/malbeclabs/doublezero/compare/client/v0.4.0...client/v0.5.0) – 2025-08-11
+
+- **CLI & UX Improvements**
+    - `doublezero connect` now waits for the user account to be visible onchain.
+    - `doublezero device interface` commands. Interface names get normalized.
+    - General improved consistency
+    - Easy switching between devnet and testnet using the `--env` flag
+- **Device Latency Telemetry**
+    - Data CLI and API use epoch from ledger
+    - Backpressure support to avoid continual buffer growth in error conditions
+    - Link pubkey used for circuit uniqueness
+- **Internet Latency Telemetry**
+    - Adds the environement (devnet/testnet/mainnet) to the ripeatlas measurement description.
+    - Now funded by the funder
+- **Serviceability Model Improvements**
+    - Device extended to add DZD metadata (including Interfaces)
+    - DZX Link types added (clearly distinguished from WAN links)
+- **Network Controller Improvements**
+    - doublezero-controller now manages more of the DZD configuration, including:
+        - DNS servers
+        - NTP servers
+        - DZ WAN interfaces
+        - Necessary loopback interfaces
+        - BGP neighbor configuration
+        - MSDP configuration
+    - doublezero-activator now assigns IP addresses for use by the controller to give to DZD wan interfaces as well as loopbacks.
+
 ## [v0.4.0](https://github.com/malbeclabs/doublezero/compare/client/v0.3.0...client/v0.4.0) – 2025-08-04
 
 This release adds contributor ownership, reference counting, and improved CLI outputs for devices and links. It introduces internet latency telemetry, with support for collection, Prometheus metrics, and writing samples to the ledger. Device telemetry now uses ledger epochs for network-wide consistency.

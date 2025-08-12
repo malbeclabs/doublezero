@@ -89,6 +89,8 @@ func (f *Funder) Run(ctx context.Context) error {
 					continue
 				}
 				balanceLamports := balance.Value
+				balanceSOL := float64(balanceLamports) / float64(solana.LAMPORTS_PER_SOL)
+				metrics.RecipientAccountBalanceSOL.WithLabelValues(recipient.Name).Set(balanceSOL)
 				f.log.Debug("Recipient balance", "name", recipient.Name, "pubkey", recipient.PubKey, "balanceLamports", balanceLamports, "minBalanceLamports", minBalanceLamports)
 
 				// If balance is below minimum, top it up.

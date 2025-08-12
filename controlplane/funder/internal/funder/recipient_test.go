@@ -23,10 +23,11 @@ func TestFunder_LoadRecipientsFromJSONFile(t *testing.T) {
 		recipient1 := solana.NewWallet().PublicKey()
 		recipient2 := solana.NewWallet().PublicKey()
 
-		json.NewEncoder(file).Encode(map[string]solana.PublicKey{
+		err = json.NewEncoder(file).Encode(map[string]solana.PublicKey{
 			"recipient1": recipient1,
 			"recipient2": recipient2,
 		})
+		require.NoError(t, err)
 
 		recipients, err := LoadRecipientsFromJSONFile(path)
 		require.NoError(t, err)
@@ -43,9 +44,10 @@ func TestFunder_LoadRecipientsFromJSONFile(t *testing.T) {
 		require.NoError(t, err)
 		defer file.Close()
 
-		json.NewEncoder(file).Encode(map[string]string{
+		err = json.NewEncoder(file).Encode(map[string]string{
 			"recipient1": "invalid",
 		})
+		require.NoError(t, err)
 
 		_, err = LoadRecipientsFromJSONFile(path)
 		require.Error(t, err)
@@ -59,9 +61,10 @@ func TestFunder_LoadRecipientsFromJSONFile(t *testing.T) {
 		require.NoError(t, err)
 		defer file.Close()
 
-		json.NewEncoder(file).Encode(map[string]string{
+		err = json.NewEncoder(file).Encode(map[string]string{
 			"recipient1": "invalid1",
 		})
+		require.NoError(t, err)
 
 		_, err = LoadRecipientsFromJSONFile(path)
 		require.Error(t, err)

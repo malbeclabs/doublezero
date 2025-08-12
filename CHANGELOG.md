@@ -21,7 +21,7 @@ All notable changes to this project will be documented in this file.
     - DZX Link types added (clearly distinguished from WAN links)
 - **Network Controller Improvements**
     - doublezero-controller now manages more of the DZD configuration, including:
-        - dns servers
+        - DNS servers
         - ntp servers
         - DZ wan interfaces
         - Necessary loopback interfaces

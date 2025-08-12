@@ -5,6 +5,7 @@ package e2e
 import (
 	"context"
 	"flag"
+	"fmt"
 	"math/rand"
 	"net"
 	"strings"
@@ -291,21 +292,39 @@ func TestConnectivityMulticast(t *testing.T) {
 	t.Run("check_multicast_subscribers", func(t *testing.T) {
 		for _, host := range subscribers {
 			t.Run("check_subscriber_"+host, func(t *testing.T) {
+				t.Parallel()
 				ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 				defer cancel()
 				client, err := getQAClient(net.JoinHostPort(host, *port))
 				require.NoError(t, err, "Failed to create QA client")
-				resp, err := client.MulticastReport(ctx, &pb.MulticastReportRequest{
-					Groups: []*pb.MulticastGroup{
-						{
-							Group: groupAddr.String(),
-							Port:  7000,
+
+				condition := func() (bool, error) {
+					resp, err := client.MulticastReport(ctx, &pb.MulticastReportRequest{
+						Groups: []*pb.MulticastGroup{
+							{
+								Group: groupAddr.String(),
+								Port:  7000,
+							},
 						},
-					},
-				})
-				require.NoError(t, err, "MulticastReport failed")
-				t.Logf("Multicast report for group %s on subscriber %s: %+v", groupAddr.String(), host, resp)
-				require.Greater(t, resp.Reports[groupAddr.String()].PacketCount, uint64(0), "No packets received for group %s on subscriber %s", groupAddr.String(), host)
+					})
+					if err != nil {
+						return false, err
+					}
+					if len(resp.Reports) == 0 {
+						return false, nil
+					}
+					if _, ok := resp.Reports[groupAddr.String()]; !ok {
+						return false, fmt.Errorf("group %s not found in reports on subscriber %s", groupAddr.String(), host)
+					}
+					if resp.Reports[groupAddr.String()].PacketCount == 0 {
+						return false, nil
+					}
+					t.Logf("Subscriber %s received %d packets for group %s", host, resp.Reports[groupAddr.String()].PacketCount, groupAddr.String())
+					return true, nil
+				}
+				err = poll.Until(ctx, condition, 30*time.Second, 1*time.Second)
+				require.NoError(t, err, "error: %v", fmt.Errorf("No packets received for group %s on subscriber %s", groupAddr.String(), host))
+
 			})
 		}
 	})

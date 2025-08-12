@@ -31,7 +31,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/testcontainers/testcontainers-go v0.38.0
 	github.com/testcontainers/testcontainers-go/modules/clickhouse v0.38.0
-	github.com/testcontainers/testcontainers-go/modules/redpanda v0.37.0
+	github.com/testcontainers/testcontainers-go/modules/redpanda v0.38.0
 	github.com/twmb/franz-go v1.19.5
 	github.com/twmb/franz-go/pkg/kadm v1.16.0
 	github.com/twmb/franz-go/plugin/kprom v1.2.1

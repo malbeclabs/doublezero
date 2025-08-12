@@ -12,7 +12,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	solana "github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/runtime"
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/prometheus/client_golang/prometheus"
@@ -24,8 +23,9 @@ var (
 	sockFile             = flag.String("sock-file", "/var/run/doublezerod/doublezerod.sock", "path to doublezerod domain socket")
 	enableLatencyProbing = flag.Bool("latency-probing", true, "enable latency probing to doublezero nodes")
 	versionFlag          = flag.Bool("version", false, "build version")
-	programId            = flag.String("program-id", config.TestnetServiceabilityProgramID, "override smartcontract program id to monitor")
-	rpcEndpoint          = flag.String("solana-rpc-endpoint", config.TestnetLedgerPublicRPCURL, "override solana rpc endpoint url")
+	env                  = flag.String("env", config.EnvTestnet, "environment to use")
+	programId            = flag.String("program-id", "", "override smartcontract program id to monitor")
+	rpcEndpoint          = flag.String("solana-rpc-endpoint", "", "override solana rpc endpoint url")
 	probeInterval        = flag.Int("probe-interval", 30, "latency probe interval in seconds")
 	cacheUpdateInterval  = flag.Int("cache-update-interval", 30, "latency cache update interval in seconds")
 	enableVerboseLogging = flag.Bool("v", false, "enables verbose logging")
@@ -57,12 +57,32 @@ func main() {
 		os.Exit(0)
 	}
 
-	if *programId != "" {
-		_, err := solana.PublicKeyFromBase58(*programId)
+	if *env == "" && *programId == "" && *rpcEndpoint == "" {
+		slog.Error("Either env or program-id and rpc-endpoint must be provided")
+		os.Exit(1)
+	}
+
+	if *env != "" {
+		networkConfig, err := config.NetworkConfigForEnv(*env)
 		if err != nil {
-			slog.Error("malformed smartcontract program-id", "error", err)
+			slog.Error("failed to get network config", "error", err)
 			os.Exit(1)
 		}
+		if *programId == "" {
+			*programId = networkConfig.ServiceabilityProgramID.String()
+		}
+		if *rpcEndpoint == "" {
+			*rpcEndpoint = networkConfig.LedgerPublicRPCURL
+		}
+	}
+
+	if *programId == "" {
+		slog.Error("program-id is required")
+		os.Exit(1)
+	}
+	if *rpcEndpoint == "" {
+		slog.Error("rpc-endpoint is required")
+		os.Exit(1)
 	}
 
 	if *metricsEnable {

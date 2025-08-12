@@ -25,7 +25,8 @@ const (
 )
 
 type ControllerSpec struct {
-	ContainerImage string
+	ContainerImage             string
+	NoEnableInterfacesAndPeers bool
 }
 
 func (s *ControllerSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
@@ -109,6 +110,11 @@ func (c *Controller) StartIfNotRunning(ctx context.Context) (bool, error) {
 func (c *Controller) Start(ctx context.Context) error {
 	c.log.Info("==> Starting controller", "image", c.dn.Spec.Controller.ContainerImage)
 
+	controllerFlags := ""
+	if !c.dn.Spec.Controller.NoEnableInterfacesAndPeers {
+		controllerFlags = "-enable-interfaces-and-peers"
+	}
+
 	req := testcontainers.ContainerRequest{
 		Image: c.dn.Spec.Controller.ContainerImage,
 		Name:  c.dockerContainerName(),
@@ -120,6 +126,7 @@ func (c *Controller) Start(ctx context.Context) error {
 		Env: map[string]string{
 			"DZ_LEDGER_URL":                c.dn.Ledger.InternalRPCURL,
 			"DZ_SERVICEABILITY_PROGRAM_ID": c.dn.Manager.ServiceabilityProgramID,
+			"CONTROLLER_FLAGS":             controllerFlags,
 		},
 		Networks: []string{c.dn.DefaultNetwork.Name},
 		NetworkAliases: map[string][]string{

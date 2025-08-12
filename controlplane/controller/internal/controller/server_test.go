@@ -22,16 +22,18 @@ import (
 
 func TestGetConfig(t *testing.T) {
 	tests := []struct {
-		Name        string
-		Description string
-		StateCache  stateCache
-		NoHardware  bool
-		Pubkey      string
-		Want        string
+		Name               string
+		Description        string
+		StateCache         stateCache
+		NoHardware         bool
+		InterfacesAndPeers bool
+		Pubkey             string
+		Want               string
 	}{
 		{
-			Name:        "render_unicast_config_successfully",
-			Description: "render configuration for a set of unicast devices successfully",
+			Name:               "render_unicast_config_successfully",
+			Description:        "render configuration for a set of unicast devices successfully",
+			InterfacesAndPeers: true,
 			StateCache: stateCache{
 				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
@@ -78,8 +80,9 @@ func TestGetConfig(t *testing.T) {
 			Want:   "fixtures/unicast.tunnel.txt",
 		},
 		{
-			Name:        "render_multicast_config_successfully",
-			Description: "render configuration for a set of multicast devices successfully",
+			Name:               "render_multicast_config_successfully",
+			Description:        "render configuration for a set of multicast devices successfully",
+			InterfacesAndPeers: true,
 			StateCache: stateCache{
 				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
@@ -159,8 +162,9 @@ func TestGetConfig(t *testing.T) {
 			Want:   "fixtures/multicast.tunnel.txt",
 		},
 		{
-			Name:        "get_config_mixed_tunnels_successfully",
-			Description: "get config for a mix of unicast and multicast tunnels",
+			Name:               "get_config_mixed_tunnels_successfully",
+			Description:        "get config for a mix of unicast and multicast tunnels",
+			InterfacesAndPeers: true,
 			StateCache: stateCache{
 				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
@@ -250,9 +254,10 @@ func TestGetConfig(t *testing.T) {
 			Want:   "fixtures/mixed.tunnel.txt",
 		},
 		{
-			Name:        "get_config_nohardware_tunnels_successfully",
-			Description: "get config for a mix of unicast and multicast tunnels with no hardware option",
-			NoHardware:  true,
+			Name:               "get_config_nohardware_tunnels_successfully",
+			Description:        "get config for a mix of unicast and multicast tunnels with no hardware option",
+			NoHardware:         true,
+			InterfacesAndPeers: true,
 			StateCache: stateCache{
 				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
@@ -342,8 +347,9 @@ func TestGetConfig(t *testing.T) {
 			Want:   "fixtures/nohardware.tunnel.txt",
 		},
 		{
-			Name:        "render_base_config_successfully",
-			Description: "render base configuration with BGP peers",
+			Name:               "render_base_config_successfully",
+			Description:        "render base configuration with BGP peers",
+			InterfacesAndPeers: true,
 			StateCache: stateCache{
 				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
@@ -386,8 +392,9 @@ func TestGetConfig(t *testing.T) {
 			Want:   "fixtures/base.config.txt",
 		},
 		{
-			Name:        "render_base_config_with_mgmt_vrf_successfully",
-			Description: "render base configuration with BGP peers",
+			Name:               "render_base_config_with_mgmt_vrf_successfully",
+			Description:        "render base configuration with BGP peers",
+			InterfacesAndPeers: true,
 			StateCache: stateCache{
 				Config: serviceability.Config{
 					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
@@ -420,14 +427,42 @@ func TestGetConfig(t *testing.T) {
 			},
 			Pubkey: "abc123",
 			Want:   "fixtures/base.config.with.mgmt.vrf.txt",
-		}}
+		},
+		{
+			Name:               "render_base_config_without_interfaces_and_peers_successfully",
+			Description:        "render base configuration without interfaces and peers",
+			InterfacesAndPeers: false,
+			StateCache: stateCache{
+				Config: serviceability.Config{
+					MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+				},
+				Devices: map[string]*Device{
+					"abc123": {
+						PublicIP:    net.IP{7, 7, 7, 7},
+						Tunnels:     []*Tunnel{},
+						TunnelSlots: 0,
+					},
+				},
+			},
+			Pubkey: "abc123",
+			Want:   "fixtures/base.config.without.interfaces.peers.txt",
+		},
+	}
 
 	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
 			listener := bufconn.Listen(1024 * 1024)
 			server := grpc.NewServer()
-			controller := &Controller{
-				noHardware: test.NoHardware,
+			controller := &Controller{}
+			if test.InterfacesAndPeers == true {
+				controller = &Controller{
+					noHardware:               test.NoHardware,
+					enableInterfacesAndPeers: true,
+				}
+			} else {
+				controller = &Controller{
+					noHardware: test.NoHardware,
+				}
 			}
 			pb.RegisterControllerServer(server, controller)
 
@@ -775,7 +810,11 @@ func TestStateCache(t *testing.T) {
 					return solana.MustPublicKeyFromBase58("11111111111111111111111111111111")
 				},
 			}
-			controller, err := NewController(WithServiceabilityProgramClient(m), WithListener(lis))
+			controller, err := NewController(
+				WithServiceabilityProgramClient(m),
+				WithListener(lis),
+				WithEnableInterfacesAndPeers(),
+			)
 			if err != nil {
 				t.Fatalf("error creating controller: %v", err)
 			}
@@ -830,14 +869,15 @@ func TestServiceabilityProgramClientArg(t *testing.T) {
 // can be rendered and sent back to the client via gRPC.
 func TestEndToEnd(t *testing.T) {
 	tests := []struct {
-		Name            string
-		Config          serviceability.Config
-		Users           []serviceability.User
-		Devices         []serviceability.Device
-		MulticastGroups []serviceability.MulticastGroup
-		AgentRequest    *pb.ConfigRequest
-		DevicePubKey    string
-		Want            string
+		Name               string
+		Config             serviceability.Config
+		Users              []serviceability.User
+		Devices            []serviceability.Device
+		MulticastGroups    []serviceability.MulticastGroup
+		InterfacesAndPeers bool
+		AgentRequest       *pb.ConfigRequest
+		DevicePubKey       string
+		Want               string
 	}{
 		{
 			Name: "fetch_accounts_and_render_config_successfully",
@@ -854,6 +894,7 @@ func TestEndToEnd(t *testing.T) {
 					},
 				},
 			},
+			InterfacesAndPeers: true,
 			Users: []serviceability.User{
 				{
 					AccountType:  serviceability.AccountType(0),
@@ -945,6 +986,7 @@ func TestEndToEnd(t *testing.T) {
 					},
 				},
 			},
+			InterfacesAndPeers: true,
 			Users: []serviceability.User{
 				{
 					AccountType:  serviceability.AccountType(0),
@@ -1053,13 +1095,96 @@ func TestEndToEnd(t *testing.T) {
 			Want: "fixtures/e2e.peer.removal.txt",
 		},
 		{
+			Name: "base_config_without_interfaces_and_peers",
+			Config: serviceability.Config{
+				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
+				TunnelTunnelBlock:   [5]uint8{172, 16, 0, 0, 16},
+				UserTunnelBlock:     [5]uint8{169, 254, 0, 0, 16},
+			},
+			InterfacesAndPeers: false,
+			Devices: []serviceability.Device{
+				{
+					AccountType:    serviceability.AccountType(0),
+					Owner:          [32]uint8{},
+					LocationPubKey: [32]uint8{},
+					ExchangePubKey: [32]uint8{},
+					DeviceType:     0,
+					PublicIp:       [4]uint8{2, 2, 2, 2},
+					Interfaces: []serviceability.Interface{
+						{
+							InterfaceType:  serviceability.InterfaceTypeLoopback,
+							LoopbackType:   serviceability.LoopbackTypeVpnv4,
+							IpNet:          [5]uint8{14, 14, 14, 14, 32},
+							Name:           "Loopback255",
+							NodeSegmentIdx: 101,
+						},
+						{
+							InterfaceType: serviceability.InterfaceTypeLoopback,
+							LoopbackType:  serviceability.LoopbackTypeIpv4,
+							IpNet:         [5]uint8{12, 12, 12, 12, 32},
+							Name:          "Loopback256",
+						},
+					},
+					Status: serviceability.DeviceStatusActivated,
+					Code:   "abc01",
+					PubKey: [32]byte{1},
+				},
+				{
+					AccountType:    serviceability.AccountType(0),
+					Owner:          [32]uint8{},
+					LocationPubKey: [32]uint8{},
+					ExchangePubKey: [32]uint8{},
+					DeviceType:     0,
+					PublicIp:       [4]uint8{22, 22, 22, 22},
+					Interfaces: []serviceability.Interface{
+						// Because this device does not also have an Ipv4 loopback interface, this peer should not be added to abc01's peers
+						{
+							InterfaceType: serviceability.InterfaceTypeLoopback,
+							LoopbackType:  serviceability.LoopbackTypeVpnv4,
+							IpNet:         [5]uint8{114, 114, 114, 114, 32},
+							Name:          "Loopback255",
+						},
+					},
+					Status: serviceability.DeviceStatusActivated,
+					Code:   "abc02",
+					PubKey: [32]byte{2},
+				},
+				{
+					AccountType:    serviceability.AccountType(0),
+					Owner:          [32]uint8{},
+					LocationPubKey: [32]uint8{},
+					ExchangePubKey: [32]uint8{},
+					DeviceType:     0,
+					PublicIp:       [4]uint8{23, 23, 23, 23},
+					Interfaces: []serviceability.Interface{
+						// Because this device does not also have an Vpnv4 loopback interface, this peer should not be added to abc01's peers
+						{
+							InterfaceType: serviceability.InterfaceTypeLoopback,
+							LoopbackType:  serviceability.LoopbackTypeIpv4,
+							IpNet:         [5]uint8{124, 124, 124, 124, 32},
+							Name:          "Loopback256",
+						},
+					},
+					Status: serviceability.DeviceStatusActivated,
+					Code:   "abc03",
+					PubKey: [32]byte{3},
+				},
+			},
+			AgentRequest: &pb.ConfigRequest{
+				Pubkey:   "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
+				BgpPeers: []string{},
+			},
+			Want: "fixtures/e2e.without.interfaces.peers.txt",
+		},
+		{
 			Name: "remove_last_user_from_device",
 			Config: serviceability.Config{
 				MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24},
 				TunnelTunnelBlock:   [5]uint8{172, 16, 0, 0, 16},
 				UserTunnelBlock:     [5]uint8{169, 254, 0, 0, 16},
 			},
-			Users: []serviceability.User{},
+			InterfacesAndPeers: true,
+			Users:              []serviceability.User{},
 			Devices: []serviceability.Device{
 				{
 					AccountType:    serviceability.AccountType(0),
@@ -1115,12 +1240,22 @@ func TestEndToEnd(t *testing.T) {
 					return solana.MustPublicKeyFromBase58("11111111111111111111111111111111")
 				},
 			}
-
-			controller, err := NewController(
-				WithServiceabilityProgramClient(m),
-				WithListener(listener),
-				WithSignalChan(make(chan struct{})),
-			)
+			var controller *Controller
+			var err error
+			if test.InterfacesAndPeers {
+				controller, err = NewController(
+					WithServiceabilityProgramClient(m),
+					WithListener(listener),
+					WithSignalChan(make(chan struct{})),
+					WithEnableInterfacesAndPeers(),
+				)
+			} else {
+				controller, err = NewController(
+					WithServiceabilityProgramClient(m),
+					WithListener(listener),
+					WithSignalChan(make(chan struct{})),
+				)
+			}
 			if err != nil {
 				t.Fatalf("error creating controller: %v", err)
 			}

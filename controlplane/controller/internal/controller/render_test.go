@@ -22,6 +22,7 @@ func TestRenderConfig(t *testing.T) {
 			Data: templateData{
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
+				InterfacesAndPeers:       true,
 				Device: &Device{
 					PublicIP:        net.IP{7, 7, 7, 7},
 					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
@@ -67,6 +68,7 @@ func TestRenderConfig(t *testing.T) {
 			Data: templateData{
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
+				InterfacesAndPeers:       true,
 				Device: &Device{
 					Interfaces:      []Interface{},
 					PublicIP:        net.IP{7, 7, 7, 7},
@@ -114,6 +116,7 @@ func TestRenderConfig(t *testing.T) {
 			Data: templateData{
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
+				InterfacesAndPeers:       true,
 				Device: &Device{
 					Interfaces:      []Interface{},
 					PublicIP:        net.IP{7, 7, 7, 7},
@@ -192,6 +195,7 @@ func TestRenderConfig(t *testing.T) {
 			Data: templateData{
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
+				InterfacesAndPeers:       true,
 				Device: &Device{
 					Interfaces:      []Interface{},
 					PublicIP:        net.IP{7, 7, 7, 7},
@@ -282,6 +286,7 @@ func TestRenderConfig(t *testing.T) {
 				NoHardware:               true,
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
+				InterfacesAndPeers:       true,
 				Device: &Device{
 					Interfaces:      []Interface{},
 					PublicIP:        net.IP{7, 7, 7, 7},
@@ -371,6 +376,7 @@ func TestRenderConfig(t *testing.T) {
 			Data: templateData{
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
+				InterfacesAndPeers:       true,
 				Device: &Device{
 					PublicIP:        net.IP{7, 7, 7, 7},
 					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
@@ -424,6 +430,7 @@ func TestRenderConfig(t *testing.T) {
 			Data: templateData{
 				MulticastGroupBlock:      "239.0.0.0/24",
 				TelemetryTWAMPListenPort: 862,
+				InterfacesAndPeers:       true,
 				Device: &Device{
 					PublicIP:        net.IP{7, 7, 7, 7},
 					Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},

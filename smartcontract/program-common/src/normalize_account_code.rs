@@ -3,12 +3,7 @@
 pub fn normalize_account_code(val: &str) -> Result<String, &'static str> {
     val.chars()
         .try_fold(String::with_capacity(val.len()), |mut code, char| {
-            if char.is_alphanumeric()
-                || char.is_whitespace()
-                || char == '_'
-                || char == '-'
-                || char == ':'
-            {
+            if char.is_alphanumeric() || char.is_whitespace() || char == '_' || char == '-' {
                 code.push(if char.is_whitespace() { '_' } else { char })
             } else {
                 return Err("name must be alphanumeric only");

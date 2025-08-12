@@ -114,17 +114,17 @@ mod tests {
 
     #[test]
     fn test_validate_code() {
-        assert!(validate_code("abc_123-:XYZ").is_ok());
+        assert!(validate_code("abc_123-XYZ").is_ok());
         assert!(validate_code("abc@123").is_err());
     }
 
     #[test]
     fn test_validate_and_normalize_code() {
-        let expected_valid = "abc_123-:XYZ".to_string();
-        let result = validate_code("abc 123-:XYZ");
+        let expected_valid = "abc_123-XYZ".to_string();
+        let result = validate_code("abc 123-XYZ");
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), expected_valid);
-        assert!(validate_code("abc/123-:XYZ").is_err());
+        assert!(validate_code("abc_123-:XYZ").is_err());
     }
 
     #[test]

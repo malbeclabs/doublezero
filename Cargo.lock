@@ -1520,7 +1520,7 @@ checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
 
 [[package]]
 name = "doublezero"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -1557,7 +1557,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-activator"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "bitvec",
  "chrono",
@@ -1566,7 +1566,7 @@ dependencies = [
  "doublezero-serviceability",
  "doublezero_cli",
  "doublezero_sdk",
- "env_logger 0.11.8",
+ "env_logger 0.9.3",
  "eyre",
  "futures",
  "indexmap",
@@ -1585,7 +1585,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-admin"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1613,7 +1613,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-config"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "doublezero_sdk",
  "eyre",
@@ -1622,14 +1622,14 @@ dependencies = [
 
 [[package]]
 name = "doublezero-program-common"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "solana-program",
 ]
 
 [[package]]
 name = "doublezero-record"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "bytemuck",
  "solana-program",
@@ -1641,7 +1641,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-serviceability"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "borsh 1.5.7",
  "byteorder",
@@ -1675,7 +1675,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero_cli"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1704,7 +1704,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero_sdk"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "base64 0.22.1",
  "bincode 2.0.1",

@@ -1,8 +1,7 @@
 use base64::{engine::general_purpose, prelude::*, Engine};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use doublezero_serviceability::{
-    error::DoubleZeroError, instructions::*, processors::globalstate::close::CloseAccountArgs,
-    state::accounttype::AccountType,
+    error::DoubleZeroError, instructions::*, state::accounttype::AccountType,
 };
 use eyre::{bail, eyre, OptionExt};
 use solana_account_decoder::{UiAccountData, UiAccountEncoding};
@@ -109,44 +108,6 @@ impl DZClient {
         self.client
             .get_balance(&payer.pubkey())
             .map_err(|e| eyre!(e))
-    }
-
-    pub fn reset(&self) -> eyre::Result<()> {
-        let options = RpcProgramAccountsConfig {
-            filters: None,
-            account_config: RpcAccountInfoConfig {
-                encoding: Some(UiAccountEncoding::Base64),
-                data_slice: None,
-                commitment: Some(CommitmentConfig::confirmed()),
-                min_context_slot: None,
-            },
-            with_context: None,
-            sort_results: None,
-        };
-
-        let accounts = self
-            .client
-            .get_program_accounts_with_config(&self.program_id, options)?;
-
-        for (pubkey, account) in accounts {
-            let account_type = AccountType::from(account.data[0]);
-
-            print!("Deleting {account_type}: {pubkey}");
-
-            if account_type == AccountType::GlobalState || account_type == AccountType::Config {
-                print!(" - Skipping");
-                continue;
-            }
-
-            let signature = self.execute_transaction(
-                DoubleZeroInstruction::CloseAccount(CloseAccountArgs { pubkey }),
-                vec![AccountMeta::new(pubkey, false)],
-            )?;
-
-            println!(" - Done {signature}");
-        }
-
-        Ok(())
     }
 
     /******************************************************************************************************************************************/

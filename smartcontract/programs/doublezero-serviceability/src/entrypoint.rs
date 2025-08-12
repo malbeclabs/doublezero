@@ -29,7 +29,7 @@ use crate::{
             suspend::process_suspend_exchange, update::process_update_exchange,
         },
         globalconfig::set::process_set_globalconfig,
-        globalstate::{close::process_close_account, initialize::initialize_global_state},
+        globalstate::initialize::initialize_global_state,
         link::{
             accept::process_accept_link, activate::process_activate_link,
             closeaccount::process_closeaccount_link, create::process_create_link,
@@ -92,9 +92,7 @@ pub fn process_instruction(
     match instruction {
         DoubleZeroInstruction::None() => {}
         DoubleZeroInstruction::InitGlobalState() => initialize_global_state(program_id, accounts)?,
-        DoubleZeroInstruction::CloseAccount(value) => {
-            process_close_account(program_id, accounts, &value)?
-        }
+        DoubleZeroInstruction::Reserved() => {}
         DoubleZeroInstruction::SetGlobalConfig(value) => {
             process_set_globalconfig(program_id, accounts, &value)?
         }

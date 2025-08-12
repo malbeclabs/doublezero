@@ -25,15 +25,18 @@ import (
 )
 
 var (
-	hosts = flag.String("hosts", "chi-dn-bm2,chi-dn-bm3", "comma separated list of hosts to run tests against")
+	hosts = flag.String("hosts", "", "comma separated list of hosts to run tests against")
 	port  = flag.String("port", "7009", "port to connect to on each host")
 )
 
 func TestConnectivityUnicast(t *testing.T) {
 	flag.Parse()
 
+	if *hosts == "" {
+		t.Skip("No hosts provided, skipping unicast connectivity test")
+	}
 	hosts := strings.Split(*hosts, ",")
-	cleanup := disconnectUsersFunc(t, hosts)
+	cleanup := unicastCleanupFunc(t, hosts)
 	defer cleanup()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -129,9 +132,10 @@ func TestConnectivityUnicast(t *testing.T) {
 func TestConnectivityMulticast(t *testing.T) {
 	flag.Parse()
 
+	if *hosts == "" {
+		t.Skip("No hosts provided, skipping multicast connectivity test")
+	}
 	hosts := strings.Split(*hosts, ",")
-	cleanup := disconnectUsersFunc(t, hosts)
-	defer cleanup()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -141,6 +145,9 @@ func TestConnectivityMulticast(t *testing.T) {
 	publisherIndex := r.Intn(len(hosts))
 	publisher := hosts[publisherIndex]
 	code := "qa-test-group"
+
+	cleanup := multicastCleanupFunc(t, hosts, publisher, code)
+	defer cleanup()
 
 	// Remove the publisher from the slice; the rest are subscribers.
 	subscribers := make([]string, 0, len(hosts)-1)
@@ -167,39 +174,30 @@ func TestConnectivityMulticast(t *testing.T) {
 	})
 
 	// get pubkey of created multicast group for deletion later
-	opts := []dzsdk.Option{}
-	opts = append(opts, dzsdk.WithServiceabilityProgramID(config.DevnetServiceabilityProgramID))
-
-	ledger, err := dzsdk.New(nil, config.DevnetLedgerPublicRPCURL, opts...)
-	require.NoError(t, err, "Failed to create ledger client")
-
 	pubKey := ""
 	ownerPubKey := ""
 	var groupAddr net.IP
 	var status serviceability.MulticastGroupStatus
 	condition := func() (bool, error) {
-		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		defer cancel()
-
-		data, err := ledger.Serviceability.GetProgramData(ctx)
+		group, ok, err := findMulticastGroupByCode(ctx, code)
 		if err != nil {
 			return false, err
 		}
-		for _, group := range data.MulticastGroups {
-			if group.Code == code {
-				pubKey = base58.Encode(group.PubKey[:])
-				ownerPubKey = base58.Encode(group.Owner[:])
-				groupAddr = net.IP(group.MulticastIp[:])
-				status = group.Status
-			}
+		if !ok {
+			return false, nil
 		}
+		pubKey = base58.Encode(group.PubKey[:])
+		ownerPubKey = base58.Encode(group.Owner[:])
+		groupAddr = net.IP(group.MulticastIp[:])
+		status = group.Status
+
 		if pubKey == "" || groupAddr == nil || ownerPubKey == "" || status != serviceability.MulticastGroupStatusActivated {
 			return false, nil
 		}
 		return true, nil
 	}
 
-	err = poll.Until(ctx, condition, 30*time.Second, 1*time.Second)
+	err := poll.Until(ctx, condition, 30*time.Second, 1*time.Second)
 	require.NoError(t, err, "Failed to get pubkey for multicast group")
 	t.Logf("Multicast group created with pubkey: %s address: %s owner: %s status: %d", pubKey, groupAddr, ownerPubKey, status)
 
@@ -312,22 +310,6 @@ func TestConnectivityMulticast(t *testing.T) {
 		}
 	})
 
-	t.Run("delete_multicast_group", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		defer cancel()
-		client, err := getQAClient(net.JoinHostPort(publisher, *port))
-		require.NoError(t, err, "Failed to create QA client")
-
-		req := &pb.DeleteMulticastGroupRequest{
-			Pubkey: pubKey,
-		}
-		result, err := client.DeleteMulticastGroup(ctx, req)
-		require.NoError(t, err, "DeleteMulticastGroup failed")
-		if result.GetSuccess() == false || result.GetReturnCode() != 0 {
-			require.Fail(t, "DeleteMulticastGroup failed", result.GetOutput())
-		}
-	})
-
 	t.Run("stop_multicast_subscribers", func(t *testing.T) {
 		for _, host := range subscribers {
 			t.Run("stop_subscriber_"+host, func(t *testing.T) {
@@ -350,19 +332,77 @@ func getQAClient(addr string) (pb.QAAgentServiceClient, error) {
 	return pb.NewQAAgentServiceClient(conn), nil
 }
 
-func disconnectUsersFunc(t *testing.T, hosts []string) func() {
+func unicastCleanupFunc(t *testing.T, hosts []string) func() {
 	return func() {
-		for _, host := range hosts {
-			t.Run("disconnect_from_"+host, func(t *testing.T) {
-				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-				defer cancel()
+		disconnectUsers(t, hosts) // Disconnect all users after tests
+	}
+}
 
-				client, err := getQAClient(net.JoinHostPort(host, *port))
-				require.NoError(t, err, "Failed to create QA client")
+func multicastCleanupFunc(t *testing.T, hosts []string, publisher, code string) func() {
+	return func() {
+		disconnectUsers(t, hosts)
+		removeMulticastGroup(t, code, publisher)
+	}
+}
 
-				_, err = client.Disconnect(ctx, &emptypb.Empty{})
-				require.NoError(t, err, "Disconnect failed")
-			})
+func disconnectUsers(t *testing.T, hosts []string) {
+	for _, host := range hosts {
+		t.Run("disconnect_from_"+host, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			client, err := getQAClient(net.JoinHostPort(host, *port))
+			require.NoError(t, err, "Failed to create QA client")
+
+			_, err = client.Disconnect(ctx, &emptypb.Empty{})
+			require.NoError(t, err, "Disconnect failed")
+		})
+	}
+}
+
+func removeMulticastGroup(t *testing.T, code, publisher string) {
+	t.Run("delete_multicast_group", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		group, ok, err := findMulticastGroupByCode(ctx, code)
+		require.NoError(t, err, "Failed to find multicast group by code")
+		if !ok {
+			require.Fail(t, "Multicast group not found")
+		}
+		client, err := getQAClient(net.JoinHostPort(publisher, *port))
+		require.NoError(t, err, "Failed to create QA client")
+
+		pubKey := base58.Encode(group.PubKey[:])
+		req := &pb.DeleteMulticastGroupRequest{
+			Pubkey: pubKey,
+		}
+		result, err := client.DeleteMulticastGroup(ctx, req)
+		require.NoError(t, err, "DeleteMulticastGroup failed")
+		if result.GetSuccess() == false || result.GetReturnCode() != 0 {
+			require.Fail(t, "DeleteMulticastGroup failed", result.GetOutput())
+		}
+	})
+}
+
+func findMulticastGroupByCode(ctx context.Context, code string) (group serviceability.MulticastGroup, ok bool, err error) {
+	opts := []dzsdk.Option{}
+	opts = append(opts, dzsdk.WithServiceabilityProgramID(config.DevnetServiceabilityProgramID))
+
+	ledger, err := dzsdk.New(nil, config.DevnetLedgerPublicRPCURL, opts...)
+	if err != nil {
+		return serviceability.MulticastGroup{}, false, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	data, err := ledger.Serviceability.GetProgramData(ctx)
+	if err != nil {
+		return serviceability.MulticastGroup{}, false, err
+	}
+	for _, group := range data.MulticastGroups {
+		if group.Code == code {
+			return group, true, nil
 		}
 	}
+	return serviceability.MulticastGroup{}, false, nil
 }

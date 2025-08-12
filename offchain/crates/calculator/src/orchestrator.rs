@@ -228,7 +228,7 @@ impl Orchestrator {
                 table_builder.push_record([
                     operator,
                     &val.value.to_string(),
-                    &format!("{:.2}", val.proportion * 100.0), // Convert to percentage for display
+                    &format!("{:.2}", val.proportion * 100.0),
                 ]);
             }
 
@@ -541,7 +541,7 @@ impl Orchestrator {
         println!("Epoch:        {epoch}");
         println!("Contributor:  {contributor}");
         println!("Value:        {}", proof_data.reward.value);
-        println!("Proportion:   {:.2}%", proof_data.reward.proportion * 100.0); // Convert to percentage for display
+        println!("Proportion:   {:.2}%", proof_data.reward.proportion * 100.0);
         println!("Index:        {}", proof_data.index);
         println!(
             "Total Contributors: {}",

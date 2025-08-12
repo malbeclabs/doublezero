@@ -19,8 +19,8 @@ jobs:
       - name: Set solana devnet configuration
         run: |
           solana config set \
-            --url https://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30 \
-            --ws wss://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30/whirligig
+            --url https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16 \
+            --ws wss://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16/whirligig
           solana balance -k id.json
       - name: Build serviceability program
         run: |

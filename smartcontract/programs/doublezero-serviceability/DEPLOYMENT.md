@@ -7,7 +7,7 @@ This document describes the formal process for deploying a smart contract (progr
 - Ensure your Solana CLI is configured with the correct keypair and network settings for DZ Lager.
 
 ```bash
-solana config set --url https://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30 --ws wss://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30/whirligig
+solana config set --url https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16 --ws wss://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16/whirligig
 ```
 
 - You must have the keypair file for the version of the smart contract you are deploying (e.g., GYhQDKuESrasNZGyhMJhGYFtbzNijYhcrN9poSqCQVah).
@@ -46,8 +46,8 @@ cargo build-sbf
 
 With the program compiled, deploy it to the DZ Lager sidechain using the Solana CLI:
 
-- RPC = https://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30
-- WS = wss://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30/whirligig
+- RPC = https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16
+- WS = wss://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16/whirligig
 - Keypair = ~/GYhQDKuESrasNZGyhMJhGYFtbzNijYhcrN9poSqCQVah.json
 - Binary file = ./target/deploy/doublezero_serviceability.so
 

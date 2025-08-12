@@ -1615,7 +1615,6 @@ dependencies = [
 name = "doublezero-config"
 version = "0.4.0"
 dependencies = [
- "doublezero_sdk",
  "eyre",
  "serial_test",
  "solana-sdk",
@@ -1712,6 +1711,7 @@ dependencies = [
  "chrono",
  "directories-next",
  "dirs-next",
+ "doublezero-config",
  "doublezero-serviceability",
  "eyre",
  "futures",

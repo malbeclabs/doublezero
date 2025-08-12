@@ -8,7 +8,7 @@ All notable changes to this project will be documented in this file.
     - `doublezero connect` now waits for the user account to be visible onchain.
     - `doublezero device interface` commands. Interface names get normalized.
     - General improved consistency
-    - Easy switching between devnet and testnet using the --env flag
+    - Easy switching between devnet and testnet using the `--env` flag
 - **Device Latency Telemetry**
     - Data CLI and API use epoch from ledger
     - Backpressure support to avoid continual buffer growth in error conditions

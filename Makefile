@@ -62,6 +62,11 @@ go-ci: go-build go-lint go-test go-fuzz
 rust-build: rust-build-sbf
 	SERVICEABILITY_PROGRAM_ID=$(SERVICEABILITY_PROGRAM_ID) cargo build -v --workspace
 
+# This version of the build target will fail if the Cargo.lock file is not up to date.
+.PHONY: rust-build-locked
+rust-build-locked: rust-build-sbf
+	SERVICEABILITY_PROGRAM_ID=$(SERVICEABILITY_PROGRAM_ID) cargo build -v --workspace --locked
+
 .PHONY: rust-build-sbf
 rust-build-sbf:
 	cd smartcontract && SERVICEABILITY_PROGRAM_ID=$(SERVICEABILITY_PROGRAM_ID) $(MAKE) build-sbf

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -47,5 +48,5 @@ func TestServer_envs(t *testing.T) {
 
 	var envs []string
 	require.NoError(t, json.NewDecoder(res.Body).Decode(&envs))
-	assert.ElementsMatch(t, []string{"testnet", "devnet"}, envs)
+	assert.ElementsMatch(t, []string{config.EnvMainnet, config.EnvTestnet, config.EnvDevnet}, envs)
 }

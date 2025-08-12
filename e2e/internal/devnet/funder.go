@@ -2,6 +2,7 @@ package devnet
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -21,12 +22,13 @@ const (
 )
 
 type FunderSpec struct {
-	ContainerImage string
-	KeypairPath    string
-	Interval       time.Duration
-	MinBalanceSOL  float64
-	TopUpSOL       float64
-	Verbose        bool
+	ContainerImage  string
+	KeypairPath     string
+	Interval        time.Duration
+	MinBalanceSOL   float64
+	TopUpSOL        float64
+	Verbose         bool
+	ExtraRecipients map[string]string
 }
 
 func (s *FunderSpec) Validate() error {
@@ -143,6 +145,45 @@ func (c *Funder) Start(ctx context.Context) error {
 		commandArgs = append(commandArgs, "-verbose")
 	}
 
+	containerFiles := []testcontainers.ContainerFile{
+		{
+			HostFilePath:      c.dn.Spec.Funder.KeypairPath,
+			ContainerFilePath: containerDoublezeroKeypairPath,
+		},
+		{
+			HostFilePath:      c.dn.Spec.Funder.KeypairPath,
+			ContainerFilePath: containerSolanaKeypairPath,
+		},
+	}
+
+	if len(c.dn.Spec.Funder.ExtraRecipients) > 0 {
+		// Write recipients to file.
+		recipientsPath := filepath.Join(c.dn.Spec.DeployDir, "funder-recipients.json")
+		recipientsFile, err := os.Create(recipientsPath)
+		if err != nil {
+			return fmt.Errorf("failed to create recipients file: %w", err)
+		}
+		defer recipientsFile.Close()
+		recipientsJSON, err := json.Marshal(c.dn.Spec.Funder.ExtraRecipients)
+		if err != nil {
+			return fmt.Errorf("failed to marshal recipients: %w", err)
+		}
+		_, err = recipientsFile.Write(recipientsJSON)
+		if err != nil {
+			return fmt.Errorf("failed to write recipients: %w", err)
+		}
+
+		// Add recipients file to container.
+		containerRecipientsPath := "/etc/doublezero-funder/recipients.json"
+		containerFiles = append(containerFiles, testcontainers.ContainerFile{
+			HostFilePath:      recipientsPath,
+			ContainerFilePath: containerRecipientsPath,
+		})
+
+		// Add recipients path to command args.
+		commandArgs = append(commandArgs, "-recipients", containerRecipientsPath)
+	}
+
 	req := testcontainers.ContainerRequest{
 		Image: c.dn.Spec.Funder.ContainerImage,
 		Name:  c.dockerContainerName(),
@@ -162,17 +203,8 @@ func (c *Funder) Start(ctx context.Context) error {
 			Memory:   defaultContainerMemory,
 		},
 		Labels: c.dn.labels,
-		Files: []testcontainers.ContainerFile{
-			{
-				HostFilePath:      c.dn.Spec.Funder.KeypairPath,
-				ContainerFilePath: containerDoublezeroKeypairPath,
-			},
-			{
-				HostFilePath:      c.dn.Spec.Funder.KeypairPath,
-				ContainerFilePath: containerSolanaKeypairPath,
-			},
-		},
-		Cmd: commandArgs,
+		Files:  containerFiles,
+		Cmd:    commandArgs,
 	}
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,

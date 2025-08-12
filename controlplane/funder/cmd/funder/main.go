@@ -39,6 +39,7 @@ var (
 	showVersion             = flag.Bool("version", false, "Print the version of the doublezero-agent and exit")
 	metricsEnable           = flag.Bool("metrics-enable", false, "Enable prometheus metrics")
 	metricsAddr             = flag.String("metrics-addr", ":8080", "Address to listen on for prometheus metrics")
+	recipientsPath          = flag.String("recipients", "", "the path to the recipients JSON file")
 
 	// Set by LDFLAGS
 	version = "dev"
@@ -123,6 +124,24 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Check that the recipients path exists.
+	var recipients []funder.Recipient
+	if *recipientsPath != "" {
+		if _, err := os.Stat(*recipientsPath); os.IsNotExist(err) {
+			log.Error("Recipients file does not exist", "path", *recipientsPath)
+			os.Exit(1)
+		}
+		recipientsMap, err := funder.LoadRecipientsFromJSONFile(*recipientsPath)
+		if err != nil {
+			log.Error("Failed to load recipients", "error", err)
+			os.Exit(1)
+		}
+		for name, pubKey := range recipientsMap {
+			recipients = append(recipients, funder.NewRecipient(name, pubKey))
+		}
+		log.Info("Loaded recipients", "count", len(recipients))
+	}
+
 	log.Info("Starting funder",
 		"version", version,
 		"ledgerRPCURL", *ledgerRPCURL,
@@ -155,7 +174,6 @@ func main() {
 				return nil, fmt.Errorf("failed to load serviceability state: %w", err)
 			}
 
-			recipients := make([]funder.Recipient, 0, len(data.Devices))
 			for _, device := range data.Devices {
 				devicePK := solana.PublicKeyFromBytes(device.PubKey[:])
 				name := fmt.Sprintf("device-%s", devicePK.String())

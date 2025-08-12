@@ -29,6 +29,8 @@ func TestE2E_Funder(t *testing.T) {
 
 	serviceabilityProgramKeypairPath := filepath.Join(currentDir, "data", "serviceability-program-keypair.json")
 
+	extraRecipientPK := solana.NewWallet().PublicKey().String()
+
 	minBalanceSOL := 3.0
 	topUpSOL := 5.0
 	dn, err := devnet.New(devnet.DevnetSpec{
@@ -46,6 +48,9 @@ func TestE2E_Funder(t *testing.T) {
 			MinBalanceSOL: minBalanceSOL,
 			TopUpSOL:      topUpSOL,
 			Interval:      3 * time.Second,
+			ExtraRecipients: map[string]string{
+				"extra-recipient": extraRecipientPK,
+			},
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
@@ -78,6 +83,9 @@ func TestE2E_Funder(t *testing.T) {
 	// The funder account is the manager account, which we fund with 100 SOL during devnet setup.
 	require.Greater(t, funderBalance[0].Value, 50.0)
 	prevFunderBalance := funderBalance[0].Value
+
+	// Check that the extra recipient is funded.
+	requireEventuallyFunded(t, log, rpcClient, solana.MustPublicKeyFromBase58(extraRecipientPK), minBalanceSOL, "extra recipient")
 
 	// Add a device onchain with metrics publisher pubkey.
 	log.Debug("==> Creating LA device onchain")

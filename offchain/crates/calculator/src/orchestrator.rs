@@ -1,6 +1,7 @@
 use crate::{
     csv_exporter,
     keypair_loader::load_keypair,
+    proof::compute_rewards_merkle_root,
     recorder::{make_record_key, try_create_record, write_record_chunks},
     settings::Settings,
     shapley_aggregator::aggregate_shapley_outputs,
@@ -213,13 +214,13 @@ impl Orchestrator {
 
         // Aggregate consolidated Shapley output
         if !per_city_shapley_outputs.is_empty() {
-            let consolidated = aggregate_shapley_outputs(&per_city_shapley_outputs, &city_stats)?;
+            let shapley_output = aggregate_shapley_outputs(&per_city_shapley_outputs, &city_stats)?;
 
-            // Print consolidated table
+            // Print shapley_output table
             let mut table_builder = TableBuilder::default();
             table_builder.push_record(["Operator", "Value", "Proportion (%)"]);
 
-            for (operator, val) in consolidated.iter() {
+            for (operator, val) in shapley_output.iter() {
                 table_builder.push_record([
                     operator,
                     &val.value.to_string(),
@@ -231,12 +232,16 @@ impl Orchestrator {
                 .build()
                 .with(Style::psql().remove_horizontals())
                 .to_string();
-            info!("Consolidated Shapley Output:\n{}", table);
+            info!("Shapley Output:\n{}", table);
 
-            // Write consolidated CSV if output directory is specified
+            // Write shapley output CSV if output directory is specified
             if let Some(ref output_dir) = output_dir {
-                csv_exporter::write_consolidated_shapley_csv(output_dir, &consolidated)?;
+                csv_exporter::write_consolidated_shapley_csv(output_dir, &shapley_output)?;
             }
+
+            // Construct merkle root
+            let merkle_root = compute_rewards_merkle_root(fetch_epoch, &shapley_output)?;
+            info!("merkle_root: {:#?}", merkle_root);
         }
 
         Ok(())

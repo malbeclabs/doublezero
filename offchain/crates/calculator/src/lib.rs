@@ -1,6 +1,7 @@
 pub mod csv_exporter;
 pub mod keypair_loader;
 pub mod orchestrator;
+pub mod proof;
 pub mod recorder;
 pub mod settings;
 pub mod shapley_aggregator;

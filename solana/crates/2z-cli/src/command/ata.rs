@@ -1,7 +1,7 @@
 use clap::{Args, Subcommand};
 use solana_sdk::pubkey::Pubkey;
 
-use crate::{payer::SolanaPayerOptions, rpc::SolanaRpcOptions};
+use crate::{payer::SolanaPayerOptions, rpc::SolanaConnectionOptions};
 
 pub const DECIMAL_UNITS_PER_2Z: u64 = u64::pow(10, 8);
 
@@ -26,7 +26,7 @@ pub enum AtaSubCommand {
         recipient: Pubkey,
 
         #[command(flatten)]
-        solana_rpc_options: SolanaRpcOptions,
+        solana_connection_options: SolanaConnectionOptions,
     },
 }
 

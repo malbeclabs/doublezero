@@ -10,7 +10,7 @@ version.workspace = true
 [dependencies]
 borsh = { workspace = true, features = ["derive"] }
 bytemuck = { workspace = true, features = ["derive", "min_const_generics"] }
-doublezero-program-tools.workspace = true
+doublezero-program-tools = { workspace = true, features = ["entrypoint"] }
 solana-account-info.workspace = true
 solana-instruction.workspace = true
 solana-msg.workspace = true
@@ -31,7 +31,7 @@ solana-sdk.workspace = true
 default = []
 ### Build with this feature for Solana devnet and localnet.
 development = []
-no-entrypoint = []
+entrypoint = []
 
 [lib]
 crate-type = ["cdylib", "lib"]

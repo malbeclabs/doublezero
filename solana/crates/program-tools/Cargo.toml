@@ -26,3 +26,7 @@ solana-pubkey.workspace = true
 solana-system-interface.workspace = true
 solana-sysvar = { workspace = true, features = ["bincode"] }
 spl-token.workspace = true
+
+[features]
+default = []
+entrypoint = []

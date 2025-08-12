@@ -3,7 +3,7 @@ use clap::{Args, Subcommand};
 use solana_sdk::pubkey::Pubkey;
 
 use crate::payer::SolanaPayerOptions;
-use crate::rpc::{DoubleZeroLedgerRpcOptions, SolanaRpcOptions};
+use crate::rpc::{DoubleZeroLedgerRpcOptions, SolanaConnectionOptions};
 use crate::serviceability::ServiceKey;
 
 #[derive(Debug, Args)]
@@ -25,7 +25,7 @@ pub enum ValidatorSubCommand {
         out_filename: Option<String>,
 
         #[command(flatten)]
-        solana_rpc_options: SolanaRpcOptions,
+        solana_connection_options: SolanaConnectionOptions,
     },
 
     /// Fetch computed Solana validator revenue from the DoubleZero Ledger network.

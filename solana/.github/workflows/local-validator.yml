@@ -1,0 +1,33 @@
+name: local-validator
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  SOLANA_CLI: v2.3.6
+
+jobs:
+  test-2z-cli-clean:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Solana toolchain
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/$SOLANA_CLI/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+      - name: Generate ~/.config/solana/id.json
+        run: solana-keygen new --silent --no-bip39-passphrase
+      - name: Start Solana test validator in background
+        run: bash sh/run_local_validator_clean.sh > /dev/null 2>&1 &
+      - name: Build 2z CLI
+        run: cargo build --release --bin 2z
+      - name: Check starting SOL balance
+        run: solana balance -u l
+      - name: Run 2z CLI tests
+        run: bash sh/test_2z_cli_clean.sh
+      - name: Check ending SOL balance
+        run: solana balance -u l

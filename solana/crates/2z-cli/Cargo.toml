@@ -1,5 +1,5 @@
 [package]
-name = "doublezero-2z-solana-cli"
+name = "doublezero-2z-cli"
 edition.workspace = true
 homepage.workspace = true
 license.workspace = true
@@ -10,10 +10,16 @@ version.workspace = true
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
+doublezero-program-tools.workspace = true
+doublezero-revenue-distribution.workspace = true
+serde_json.workspace = true
 solana-client.workspace = true
 solana-commitment-config.workspace = true
 solana-sdk.workspace = true
+solana-transaction-status-client-types.workspace = true
+tokio.workspace = true
+url.workspace = true
 
 [[bin]]
-name = "2z-solana"
+name = "2z"
 path = "src/main.rs"

@@ -1,13 +1,20 @@
+#[cfg(feature = "entrypoint")]
 pub mod account_info;
 pub mod instruction;
+#[cfg(feature = "entrypoint")]
 pub mod recipe;
 pub mod types;
 pub mod zero_copy;
+
 //
 
 use std::fmt::Display;
 
 use borsh::{BorshDeserialize, BorshSerialize};
+use solana_pubkey::Pubkey;
+
+pub const BPF_LOADER_UPGRADEABLE_ID: Pubkey =
+    solana_pubkey::pubkey!("BPFLoaderUpgradeab1e11111111111111111111111");
 
 /// If there is a discriminator used for any data, it should be 8 bytes long. For account data
 /// represented as a C-struct, 8 bytes is a convenient size for the discriminator.
@@ -59,6 +66,10 @@ impl<const N: usize> Discriminator<N> {
 
         Self(trimmed)
     }
+}
+
+pub fn get_program_data_address(program_id: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[program_id.as_ref()], &BPF_LOADER_UPGRADEABLE_ID)
 }
 
 #[cfg(test)]

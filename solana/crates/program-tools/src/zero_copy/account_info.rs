@@ -1,7 +1,7 @@
 use std::{
     cell::{Ref, RefMut},
     iter::Enumerate,
-    ops::{Deref, DerefMut, Range},
+    ops::{Deref, DerefMut},
     slice::Iter,
 };
 
@@ -18,6 +18,8 @@ use crate::{
     },
     PrecomputedDiscriminator, DISCRIMINATOR_LEN,
 };
+
+use super::data_range;
 
 #[derive(Debug)]
 pub struct ZeroCopyAccount<'a, 'b, T: Pod + PrecomputedDiscriminator> {
@@ -137,28 +139,6 @@ impl<'a, 'b, T: Pod + PrecomputedDiscriminator> TryNextAccounts<'a, 'b, Option<&
             data: mucked_data,
             remaining_data,
         })
-    }
-}
-
-pub const fn data_end<T: Pod + PrecomputedDiscriminator>() -> usize {
-    DISCRIMINATOR_LEN + size_of::<T>()
-}
-
-pub const fn data_range<T: Pod + PrecomputedDiscriminator>() -> Range<usize> {
-    DISCRIMINATOR_LEN..data_end::<T>()
-}
-
-pub fn checked_from_bytes_with_discriminator<T>(data: &[u8]) -> Option<(&T, &[u8])>
-where
-    T: Pod + PrecomputedDiscriminator,
-{
-    let range = data_range::<T>();
-    let (account_data, remaining_data) = data.split_at_checked(range.end)?;
-
-    if T::has_discriminator(account_data) {
-        Some((bytemuck::from_bytes(&account_data[range]), remaining_data))
-    } else {
-        None
     }
 }
 

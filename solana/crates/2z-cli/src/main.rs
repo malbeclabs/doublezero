@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use doublezero_2z_solana_cli::command::DoubleZero2zSolanaCommand;
+use doublezero_2z_cli::command::DoubleZero2zSolanaCommand;
 
 #[derive(Debug, Parser)]
 #[command(term_width = 0)]
@@ -11,6 +11,7 @@ struct DoubleZero2zApp {
     command: DoubleZero2zSolanaCommand,
 }
 
-fn main() -> Result<()> {
-    DoubleZero2zApp::parse().command.into_execute()
+#[tokio::main]
+async fn main() -> Result<()> {
+    DoubleZero2zApp::parse().command.try_into_execute().await
 }

@@ -76,7 +76,7 @@ pub async fn start_test_with_accounts(accounts: Vec<TestAccount>) -> ProgramTest
         .unwrap(),
         ..Default::default()
     };
-    program_test.add_account(program_data_key(), program_data_acct);
+    program_test.add_account(get_program_data_address(&ID), program_data_acct);
 
     let mint_data = Mint {
         mint_authority: owner_signer.pubkey().into(),
@@ -164,10 +164,6 @@ pub fn generate_token_accounts_for_test(mint_key: &Pubkey, owners: &[Pubkey]) ->
             }
         })
         .collect()
-}
-
-pub fn program_data_key() -> Pubkey {
-    get_program_data_address(&ID)
 }
 
 pub struct IndexedProgramLog<'a> {
@@ -267,7 +263,7 @@ impl ProgramTestWithOwner {
 
         let initialize_program_ix = try_build_instruction(
             &ID,
-            InitializeProgramAccounts::new(&payer_signer.pubkey()),
+            InitializeProgramAccounts::new(&payer_signer.pubkey(), &DOUBLEZERO_MINT_KEY),
             &RevenueDistributionInstructionData::InitializeProgram,
         )
         .unwrap();
@@ -296,7 +292,7 @@ impl ProgramTestWithOwner {
 
         let set_admin_ix = try_build_instruction(
             &ID,
-            SetAdminAccounts::new(&program_data_key(), &owner_signer.pubkey()),
+            SetAdminAccounts::new(&ID, &owner_signer.pubkey()),
             &RevenueDistributionInstructionData::SetAdmin(*admin_key),
         )
         .unwrap();
@@ -348,7 +344,7 @@ impl ProgramTestWithOwner {
 
         let initialize_journal_ix = try_build_instruction(
             &ID,
-            InitializeJournalAccounts::new(&payer_signer.pubkey()),
+            InitializeJournalAccounts::new(&payer_signer.pubkey(), &DOUBLEZERO_MINT_KEY),
             &RevenueDistributionInstructionData::InitializeJournal,
         )
         .unwrap();
@@ -412,6 +408,7 @@ impl ProgramTestWithOwner {
                 &accountant_signer.pubkey(),
                 &payer_signer.pubkey(),
                 program_config.next_dz_epoch,
+                &DOUBLEZERO_MINT_KEY,
             ),
             &RevenueDistributionInstructionData::InitializeDistribution,
         )
@@ -529,6 +526,7 @@ impl ProgramTestWithOwner {
             &ID,
             InitializePrepaidConnectionAccounts::new(
                 source_2z_token_account_key,
+                &DOUBLEZERO_MINT_KEY,
                 &token_transfer_authority_signer.pubkey(),
                 &payer_signer.pubkey(),
                 user_key,
@@ -624,6 +622,7 @@ impl ProgramTestWithOwner {
             &ID,
             LoadPrepaidConnectionAccounts::new(
                 source_2z_token_account_key,
+                &DOUBLEZERO_MINT_KEY,
                 &token_transfer_authority_signer.pubkey(),
                 user_key,
             ),

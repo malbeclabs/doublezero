@@ -104,6 +104,7 @@ async fn test_load_prepaid_connection() {
         &ID,
         LoadPrepaidConnectionAccounts::new(
             &src_token_account_key,
+            &DOUBLEZERO_MINT_KEY,
             &transfer_authority_signer.pubkey(),
             &user_1_key,
         ),

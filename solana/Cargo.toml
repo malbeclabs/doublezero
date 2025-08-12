@@ -30,6 +30,7 @@ mockall = "0.13"
 reqwest = { version = "0.12", features = ["json"] }
 ruint = { version = "1", features = ["bytemuck"] }
 serde = "1"
+serde_json = "1"
 solana-account-info = "2"
 solana-client = "2"
 solana-commitment-config = "2"
@@ -49,6 +50,7 @@ solana-transaction-status-client-types = "2"
 spl-token = { version = "8", features = ["no-entrypoint"] }
 svm-hash = "0.1.0-beta.3"
 tokio = "1"
+url = "2"
 
 ### Please keep these packages pinned for now.
 sha2-const-stable = "=0.1.0"
@@ -57,3 +59,6 @@ solana-sdk = "=2.3"
 
 [workspace.dependencies.doublezero-program-tools]
 path = "crates/program-tools"
+
+[workspace.dependencies.doublezero-revenue-distribution]
+path = "programs/revenue-distribution"

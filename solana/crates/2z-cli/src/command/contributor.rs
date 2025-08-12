@@ -4,7 +4,7 @@ use solana_sdk::pubkey::Pubkey;
 
 use crate::{
     payer::SolanaPayerOptions,
-    rpc::{DoubleZeroLedgerRpcOptions, SolanaRpcOptions},
+    rpc::{DoubleZeroLedgerRpcOptions, SolanaConnectionOptions},
     serviceability::ServiceKey,
 };
 #[derive(Debug, Args)]
@@ -73,7 +73,7 @@ pub enum ContributorSubCommand {
         service_key: ServiceKey,
 
         #[command(flatten)]
-        solana_rpc_options: SolanaRpcOptions,
+        solana_connection_options: SolanaConnectionOptions,
     },
 
     FetchByManager {
@@ -81,7 +81,7 @@ pub enum ContributorSubCommand {
         rewards_manager_key: Pubkey,
 
         #[command(flatten)]
-        solana_rpc_options: SolanaRpcOptions,
+        solana_connection_options: SolanaConnectionOptions,
     },
 
     /// Initialize the contributor rewards account. Only the contributor manager can execute this

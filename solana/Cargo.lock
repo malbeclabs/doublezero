@@ -1411,14 +1411,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "doublezero-2z-solana-cli"
+name = "doublezero-2z-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "doublezero-program-tools",
+ "doublezero-revenue-distribution",
+ "serde_json",
  "solana-client",
  "solana-commitment-config",
  "solana-sdk",
+ "solana-transaction-status-client-types",
+ "tokio",
+ "url",
 ]
 
 [[package]]

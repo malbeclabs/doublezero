@@ -1757,7 +1757,7 @@ fn try_verify_distribution_merkle_root(
         DistributionMerkleRootKind::SolanaValidatorPayment(payment_owed) => {
             let merkle_root = payment_owed.merkle_root(proof);
 
-            if merkle_root != distribution.solana_validator_payments_merkle_root.into() {
+            if merkle_root != distribution.solana_validator_payments_merkle_root {
                 msg!("Invalid merkle root: {}", merkle_root);
                 return Err(ProgramError::InvalidInstructionData);
             }

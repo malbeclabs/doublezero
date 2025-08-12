@@ -1,8 +1,10 @@
 use solana_account_info::AccountInfo;
-use solana_loader_v3_interface::{get_program_data_address, state::UpgradeableLoaderState};
+use solana_loader_v3_interface::state::UpgradeableLoaderState;
 use solana_msg::msg;
 use solana_program_error::ProgramError;
 use solana_pubkey::Pubkey;
+
+use crate::get_program_data_address;
 
 use super::{
     try_next_enumerated_account, EnumeratedAccountInfoIter, NextAccountOptions, TryNextAccounts,
@@ -21,7 +23,7 @@ impl<'a, 'b> TryNextAccounts<'a, 'b, &'a Pubkey> for UpgradeAuthority<'a, 'b> {
         // Index == 0.
         let (index, program_data_info) =
             try_next_enumerated_account(accounts_iter, Default::default())?;
-        if program_data_info.key != &get_program_data_address(program_id) {
+        if program_data_info.key != &get_program_data_address(program_id).0 {
             msg!("Invalid program data address (account {})", index);
             return Err(ProgramError::InvalidAccountData);
         }

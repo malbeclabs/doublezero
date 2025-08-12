@@ -13,7 +13,7 @@ import (
 
 var (
 	// maximum number of tunnels to provision on a given device
-	maxTunnelSlots     = 64
+	maxTunnelSlots     = 128
 	startUserTunnelNum = 500
 )
 

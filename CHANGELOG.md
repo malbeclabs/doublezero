@@ -23,7 +23,7 @@ All notable changes to this project will be documented in this file.
     - doublezero-controller now manages more of the DZD configuration, including:
         - DNS servers
         - NTP servers
-        - DZ wan interfaces
+        - DZ WAN interfaces
         - Necessary loopback interfaces
         - BGP neighbor configuration
         - MSDP configuration

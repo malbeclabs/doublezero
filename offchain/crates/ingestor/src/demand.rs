@@ -7,6 +7,9 @@ use solana_sdk::system_program::ID as SystemProgramID;
 use std::collections::HashMap;
 use tracing::info;
 
+// key: location code, val: city stat
+pub type CityStats = HashMap<String, CityStat>;
+
 /// Statistics for validators in a city
 #[derive(Debug, Clone)]
 pub struct CityStat {
@@ -16,6 +19,12 @@ pub struct CityStat {
     pub total_stake_proxy: usize,
 }
 
+/// Result of demand building containing both demands and city statistics
+pub struct DemandBuildOutput {
+    pub demands: Demands,
+    pub city_stats: CityStats,
+}
+
 /// Builds demand tables for network traffic simulation based on validator distribution
 ///
 /// This function:
@@ -23,7 +32,7 @@ pub struct CityStat {
 /// 2. Maps validators to their geographic locations
 /// 3. Aggregates validators by city with their stake weights
 /// 4. Generates demand entries for all city-to-city traffic pairs
-pub async fn build(fetcher: &Fetcher, fetch_data: &FetchData) -> Result<Demands> {
+pub async fn build(fetcher: &Fetcher, fetch_data: &FetchData) -> Result<DemandBuildOutput> {
     // Get first telemetry sample to extract epoch and timestamp
     let first_sample = fetch_data
         .dz_telemetry
@@ -76,7 +85,7 @@ pub async fn build(fetcher: &Fetcher, fetch_data: &FetchData) -> Result<Demands>
 pub fn build_with_schedule(
     fetch_data: &FetchData,
     leader_schedule: HashMap<String, usize>,
-) -> Result<Demands> {
+) -> Result<DemandBuildOutput> {
     // Build validator to user mapping
     let validator_to_user: HashMap<String, &DZUser> = fetch_data
         .dz_serviceability
@@ -105,7 +114,10 @@ pub fn build_with_schedule(
         bail!("Could not build any demands!")
     }
 
-    Ok(demands)
+    Ok(DemandBuildOutput {
+        demands,
+        city_stats,
+    })
 }
 
 /// Build city statistics from fetch data and leader schedule
@@ -113,8 +125,8 @@ pub fn build_city_stats(
     fetch_data: &FetchData,
     validator_to_user: &HashMap<String, &DZUser>,
     leader_schedule: HashMap<String, usize>,
-) -> Result<HashMap<String, CityStat>> {
-    let mut city_stats: HashMap<String, CityStat> = HashMap::new();
+) -> Result<CityStats> {
+    let mut city_stats = CityStats::new();
 
     // Process each leader
     for (validator_pubkey, stake_proxy) in leader_schedule {
@@ -140,7 +152,7 @@ pub fn build_city_stats(
 }
 
 /// Generates demand entries for cities
-pub fn generate(city_stats: &HashMap<String, CityStat>) -> Demands {
+pub fn generate(city_stats: &CityStats) -> Demands {
     // TODO: move this to some constants.rs and/or make configurable
     const TRAFFIC: f64 = 0.05;
     const DEMAND_TYPE: u32 = 1;

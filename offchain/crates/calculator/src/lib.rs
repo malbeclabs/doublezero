@@ -3,5 +3,6 @@ pub mod keypair_loader;
 pub mod orchestrator;
 pub mod recorder;
 pub mod settings;
+pub mod shapley_aggregator;
 pub mod shapley_handler;
 pub mod util;

@@ -1,45 +1,20 @@
 use anyhow::Result;
-use ingestor::demand::CityStats;
 use network_shapley::shapley::{ShapleyOutput, ShapleyValue};
 use std::collections::HashMap;
 use tracing::info;
 
-/// Aggregates per-city Shapley outputs using stake-share weights
+/// Aggregates per-city Shapley outputs using pre-calculated stake-share weights
 ///
 /// # Arguments
 /// * `per_city_outputs` - Map of city to list of (operator, raw_value) tuples
-/// * `city_stats` - Map of city to CityStat containing stake information
+/// * `city_weights` - Pre-calculated normalized weights for each city
 ///
 /// # Returns
 /// Vec of consolidated outputs sorted by value descending
 pub fn aggregate_shapley_outputs(
     per_city_outputs: &HashMap<String, Vec<(String, f64)>>,
-    city_stats: &CityStats,
+    city_weights: &HashMap<String, f64>,
 ) -> Result<ShapleyOutput> {
-    // Calculate total stake across all cities
-    let total_stake: f64 = city_stats
-        .values()
-        .map(|stat| stat.total_stake_proxy as f64)
-        .sum();
-
-    if total_stake == 0.0 {
-        info!("Warning: Total stake is 0, using equal weights");
-    }
-
-    // Calculate normalized weights for each city
-    let city_weights: HashMap<String, f64> = city_stats
-        .iter()
-        .map(|(city, stat)| {
-            let weight = if total_stake > 0.0 {
-                stat.total_stake_proxy as f64 / total_stake
-            } else {
-                // If no stake, use equal weights
-                1.0 / city_stats.len() as f64
-            };
-            (city.clone(), weight)
-        })
-        .collect();
-
     // Log the weights being used
     let weights_sum: f64 = city_weights.values().sum();
     info!(
@@ -103,6 +78,7 @@ fn round_to_decimals(value: f64, decimals: u32) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::util::calculate_city_weights;
     use ingestor::demand::CityStat;
 
     #[test]
@@ -142,7 +118,8 @@ mod tests {
         );
 
         // Aggregate
-        let result = aggregate_shapley_outputs(&per_city_outputs, &city_stats).unwrap();
+        let city_weights = calculate_city_weights(&city_stats);
+        let result = aggregate_shapley_outputs(&per_city_outputs, &city_weights).unwrap();
 
         // Verify results
         // OperatorA: 100*0.6 + 80*0.4 = 60 + 32 = 92
@@ -181,7 +158,8 @@ mod tests {
             vec![("OpX".to_string(), 75.0), ("OpY".to_string(), 25.0)],
         );
 
-        let result = aggregate_shapley_outputs(&per_city_outputs, &city_stats).unwrap();
+        let city_weights = calculate_city_weights(&city_stats);
+        let result = aggregate_shapley_outputs(&per_city_outputs, &city_weights).unwrap();
 
         assert_eq!(result.len(), 2);
 
@@ -216,7 +194,8 @@ mod tests {
         per_city_outputs.insert("BER".to_string(), vec![("OpA".to_string(), 100.0)]);
         per_city_outputs.insert("PAR".to_string(), vec![("OpB".to_string(), 100.0)]);
 
-        let result = aggregate_shapley_outputs(&per_city_outputs, &city_stats).unwrap();
+        let city_weights = calculate_city_weights(&city_stats);
+        let result = aggregate_shapley_outputs(&per_city_outputs, &city_weights).unwrap();
 
         assert_eq!(result.len(), 2);
         // Each operator gets 50% weight
@@ -251,7 +230,8 @@ mod tests {
         per_city_outputs.insert("MAD".to_string(), vec![("OpIgnored".to_string(), 999.0)]);
         per_city_outputs.insert("ROM".to_string(), vec![("OpActive".to_string(), 50.0)]);
 
-        let result = aggregate_shapley_outputs(&per_city_outputs, &city_stats).unwrap();
+        let city_weights = calculate_city_weights(&city_stats);
+        let result = aggregate_shapley_outputs(&per_city_outputs, &city_weights).unwrap();
 
         // MAD should be ignored due to zero stake
         assert_eq!(result.len(), 1);
@@ -277,7 +257,8 @@ mod tests {
             vec![("Op1".to_string(), 0.0), ("Op2".to_string(), 0.0)],
         );
 
-        let result = aggregate_shapley_outputs(&per_city_outputs, &city_stats).unwrap();
+        let city_weights = calculate_city_weights(&city_stats);
+        let result = aggregate_shapley_outputs(&per_city_outputs, &city_weights).unwrap();
 
         assert_eq!(result.len(), 2);
         let op1 = result.get("Op1").unwrap();
@@ -309,7 +290,8 @@ mod tests {
             ],
         );
 
-        let result = aggregate_shapley_outputs(&per_city_outputs, &city_stats).unwrap();
+        let city_weights = calculate_city_weights(&city_stats);
+        let result = aggregate_shapley_outputs(&per_city_outputs, &city_weights).unwrap();
 
         assert_eq!(result.len(), 2);
 
@@ -373,7 +355,8 @@ mod tests {
             ],
         );
 
-        let result = aggregate_shapley_outputs(&per_city_outputs, &city_stats).unwrap();
+        let city_weights = calculate_city_weights(&city_stats);
+        let result = aggregate_shapley_outputs(&per_city_outputs, &city_weights).unwrap();
 
         // Sum of proportions should be ~1.0 (with tolerance for rounding)
         let total_proportion: f64 = result.values().map(|v| v.proportion).sum();

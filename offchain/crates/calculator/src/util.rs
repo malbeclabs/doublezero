@@ -1,5 +1,36 @@
+use ingestor::demand::CityStats;
 use network_shapley::types::{Demand, Device, PrivateLink, PublicLink};
+use std::collections::HashMap;
 use tabled::{builder::Builder as TableBuilder, settings::Style};
+
+/// Calculate normalized weights for each city based on stake
+///
+/// # Arguments
+/// * `city_stats` - Map of city to CityStat containing stake information
+///
+/// # Returns
+/// HashMap mapping city names to their normalized weights (0.0 to 1.0, sum = 1.0)
+pub fn calculate_city_weights(city_stats: &CityStats) -> HashMap<String, f64> {
+    // Calculate total stake across all cities
+    let total_stake: f64 = city_stats
+        .values()
+        .map(|stat| stat.total_stake_proxy as f64)
+        .sum();
+
+    // Calculate normalized weights for each city
+    city_stats
+        .iter()
+        .map(|(city, stat)| {
+            let weight = if total_stake > 0.0 {
+                stat.total_stake_proxy as f64 / total_stake
+            } else {
+                // If no stake, use equal weights
+                1.0 / city_stats.len() as f64
+            };
+            (city.clone(), weight)
+        })
+        .collect()
+}
 
 pub fn print_devices(devices: &[Device]) -> String {
     let mut printable = vec![vec![

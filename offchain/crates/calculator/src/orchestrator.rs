@@ -10,7 +10,10 @@ use crate::{
     settings::Settings,
     shapley_aggregator::aggregate_shapley_outputs,
     shapley_handler::{build_demands, build_devices, build_private_links, build_public_links},
-    util::{print_demands, print_devices, print_private_links, print_public_links},
+    util::{
+        calculate_city_weights, print_demands, print_devices, print_private_links,
+        print_public_links,
+    },
 };
 use anyhow::{Result, bail};
 use backon::{ExponentialBuilder, Retryable};
@@ -159,6 +162,9 @@ impl Orchestrator {
         // Build demand and get city stats
         let (demands, city_stats) = build_demands(&fetcher, &fetch_data).await?;
 
+        // Calculate city weights once for consistency
+        let city_weights = calculate_city_weights(&city_stats);
+
         // Store input configuration to ledger (BEFORE any calculations)
         if !dry_run {
             let payer_signer = load_keypair(&keypair_path)?;
@@ -169,6 +175,7 @@ impl Orchestrator {
                 public_links: public_links.clone(),
                 demands: demands.clone(),
                 city_stats: city_stats.clone(),
+                city_weights: city_weights.clone(),
             };
 
             // Create input configuration with all inputs
@@ -270,7 +277,8 @@ impl Orchestrator {
 
         // Aggregate consolidated Shapley output
         if !per_city_shapley_outputs.is_empty() {
-            let shapley_output = aggregate_shapley_outputs(&per_city_shapley_outputs, &city_stats)?;
+            let shapley_output =
+                aggregate_shapley_outputs(&per_city_shapley_outputs, &city_weights)?;
 
             // Print shapley_output table
             let mut table_builder = TableBuilder::default();

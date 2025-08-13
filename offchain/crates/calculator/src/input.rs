@@ -29,6 +29,7 @@ pub struct ShapleyInputs {
     pub public_links: PublicLinks,
     pub demands: Demands,
     pub city_stats: CityStats,
+    pub city_weights: HashMap<String, f64>, // Pre-calculated weights for consistency
 }
 
 /// Complete input configuration for reward calculations
@@ -70,22 +71,16 @@ impl RewardInput {
     ) -> Self {
         let city_stats = &shapley_inputs.city_stats;
 
-        // Calculate total stake for weight computation
-        let total_stake: f64 = city_stats
-            .values()
-            .map(|stat| stat.total_stake_proxy as f64)
-            .sum();
-
-        // Convert city stats to summaries with calculated weights
+        // Use pre-calculated weights from ShapleyInputs for consistency
         let city_summaries: HashMap<String, CitySummary> = city_stats
             .iter()
             .map(|(city, stat)| {
-                let weight = if total_stake > 0.0 {
-                    stat.total_stake_proxy as f64 / total_stake
-                } else {
-                    // If no stake, use equal weights
-                    1.0 / city_stats.len() as f64
-                };
+                // Get weight from pre-calculated weights
+                let weight = shapley_inputs
+                    .city_weights
+                    .get(city)
+                    .copied()
+                    .unwrap_or(0.0);
                 (
                     city.clone(),
                     CitySummary {
@@ -191,12 +186,14 @@ mod tests {
         let demands = vec![];
         let city_stats: ingestor::demand::CityStats = HashMap::new();
 
+        let city_weights = crate::util::calculate_city_weights(&city_stats);
         let shapley_inputs = ShapleyInputs {
             devices,
             private_links,
             public_links,
             demands,
             city_stats,
+            city_weights,
         };
 
         RewardInput::new(

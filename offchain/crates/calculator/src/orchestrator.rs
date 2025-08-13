@@ -2,11 +2,12 @@ use crate::{
     csv_exporter,
     input::{RewardInput, ShapleyInputs},
     keypair_loader::load_keypair,
+    ledger_operations::{WriteSummary, write_and_track},
     proof::{
         ContributorRewardDetail, ContributorRewardProof, ContributorRewardsMerkleRoot,
         ContributorRewardsMerkleTree,
     },
-    recorder::{compute_record_address, write_to_ledger},
+    recorder::compute_record_address,
     settings::Settings,
     shapley_aggregator::aggregate_shapley_outputs,
     shapley_handler::{build_demands, build_devices, build_private_links, build_public_links},
@@ -27,14 +28,10 @@ use processor::{
 };
 use solana_client::client_error::ClientError as SolanaClientError;
 use solana_sdk::{
-    commitment_config::CommitmentConfig,
-    message::Message,
-    pubkey::Pubkey,
-    signature::{Keypair, Signer},
+    commitment_config::CommitmentConfig, message::Message, pubkey::Pubkey, signature::Signer,
     transaction::Transaction,
 };
 use std::{collections::HashMap, mem::size_of, path::PathBuf, time::Duration};
-use svm_hash::sha2::Hash;
 use tabled::{builder::Builder as TableBuilder, settings::Style};
 use tracing::info;
 
@@ -78,32 +75,7 @@ impl Orchestrator {
             print_telemetry_stats(&stat_map)
         );
 
-        // Record device telemetry aggregates to ledger
-        if !dry_run {
-            let payer_signer = load_keypair(&keypair_path)?;
-            let prefix = self.settings.get_device_telemetry_prefix(dry_run)?;
-            let seeds: &[&[u8]] = &[&prefix, &fetch_epoch.to_le_bytes()];
-
-            write_to_ledger(
-                &fetcher.rpc_client,
-                &payer_signer,
-                seeds,
-                &stat_map,
-                "device telemetry aggregates",
-            )
-            .await?;
-
-            info!(
-                "Successfully wrote device telemetry aggregates for epoch {}",
-                fetch_epoch
-            );
-        } else {
-            info!(
-                "DRY-RUN: Would write {} bytes of device telemetry aggregates for epoch {}",
-                borsh::to_vec(&stat_map)?.len(),
-                fetch_epoch
-            );
-        }
+        // Device telemetry will be written in batch later
 
         // Build internet stats
         let internet_stat_map = InternetTelemetryProcessor::process(&fetch_data)?;
@@ -112,32 +84,7 @@ impl Orchestrator {
             print_internet_stats(&internet_stat_map)
         );
 
-        // Record internet telemetry aggregates to ledger
-        if !dry_run {
-            let payer_signer = load_keypair(&keypair_path)?;
-            let prefix = self.settings.get_internet_telemetry_prefix(dry_run)?;
-            let seeds: &[&[u8]] = &[&prefix, &fetch_epoch.to_le_bytes()];
-
-            write_to_ledger(
-                &fetcher.rpc_client,
-                &payer_signer,
-                seeds,
-                &internet_stat_map,
-                "internet telemetry aggregates",
-            )
-            .await?;
-
-            info!(
-                "Successfully wrote internet telemetry aggregates for epoch {}",
-                fetch_epoch
-            );
-        } else {
-            info!(
-                "DRY-RUN: Would write {} bytes of internet telemetry aggregates for epoch {}",
-                borsh::to_vec(&internet_stat_map)?.len(),
-                fetch_epoch
-            );
-        }
+        // Internet telemetry will be written in batch later
 
         // Build devices
         let devices = build_devices(&fetch_data)?;
@@ -157,51 +104,23 @@ impl Orchestrator {
         // Calculate city weights once for consistency
         let city_weights = calculate_city_weights(&city_stats);
 
-        // Store input configuration to ledger (BEFORE any calculations)
-        if !dry_run {
-            let payer_signer = load_keypair(&keypair_path)?;
+        // Prepare ShapleyInputs and RewardInput for batch writing
+        let shapley_inputs = ShapleyInputs {
+            devices: devices.clone(),
+            private_links: private_links.clone(),
+            public_links: public_links.clone(),
+            demands: demands.clone(),
+            city_stats: city_stats.clone(),
+            city_weights: city_weights.clone(),
+        };
 
-            let shapley_inputs = ShapleyInputs {
-                devices: devices.clone(),
-                private_links: private_links.clone(),
-                public_links: public_links.clone(),
-                demands: demands.clone(),
-                city_stats: city_stats.clone(),
-                city_weights: city_weights.clone(),
-            };
-
-            // Create input configuration with all inputs
-            let input_config = RewardInput::new(
-                fetch_epoch,
-                self.settings.shapley.clone(),
-                &shapley_inputs,
-                &borsh::to_vec(&stat_map)?,
-                &borsh::to_vec(&internet_stat_map)?,
-            );
-
-            // Store to ledger
-            let prefix = self.settings.get_reward_input_prefix(dry_run)?;
-            let seeds: &[&[u8]] = &[&prefix, &fetch_epoch.to_le_bytes()];
-
-            write_to_ledger(
-                &fetcher.rpc_client,
-                &payer_signer,
-                seeds,
-                &input_config,
-                "calculation input configuration",
-            )
-            .await?;
-
-            info!(
-                "Stored input configuration for epoch {} to ledger",
-                fetch_epoch
-            );
-        } else {
-            info!(
-                "DRY-RUN: Would store input configuration for epoch {}",
-                fetch_epoch
-            );
-        }
+        let input_config = RewardInput::new(
+            fetch_epoch,
+            self.settings.shapley.clone(),
+            &shapley_inputs,
+            &borsh::to_vec(&stat_map)?,
+            &borsh::to_vec(&internet_stat_map)?,
+        );
 
         // Optionally write CSVs
         if let Some(ref output_dir) = output_dir {
@@ -295,33 +214,135 @@ impl Orchestrator {
                 csv_exporter::write_consolidated_shapley_csv(output_dir, &shapley_output)?;
             }
 
-            // Construct merkle tree and store in ledger
+            // Construct merkle tree
             let merkle_tree = ContributorRewardsMerkleTree::new(fetch_epoch, &shapley_output)?;
             let merkle_root = merkle_tree.compute_root()?;
             info!("merkle_root: {:#?}", merkle_root);
 
+            // Perform batch writes to ledger
             if !dry_run {
                 let payer_signer = load_keypair(&keypair_path)?;
-                // Store merkle root to ledger
-                self.write_contributor_rewards_merkle_root(
-                    fetch_epoch,
-                    merkle_root,
-                    merkle_tree.len() as u32,
-                    &payer_signer,
-                    &fetcher,
-                )
-                .await?;
+                let mut summary = WriteSummary::default();
 
-                // Store individual proofs for each contributor
-                self.write_contributor_reward_proofs(
-                    fetch_epoch,
-                    &merkle_tree,
+                // Write device telemetry
+                let device_prefix = self.settings.get_device_telemetry_prefix(dry_run)?;
+                write_and_track(
+                    &fetcher.rpc_client,
                     &payer_signer,
-                    &fetcher,
+                    &[&device_prefix, &fetch_epoch.to_le_bytes()],
+                    &stat_map,
+                    "device telemetry aggregates",
+                    &mut summary,
                 )
-                .await?;
+                .await;
+
+                // Write internet telemetry
+                let internet_prefix = self.settings.get_internet_telemetry_prefix(dry_run)?;
+                write_and_track(
+                    &fetcher.rpc_client,
+                    &payer_signer,
+                    &[&internet_prefix, &fetch_epoch.to_le_bytes()],
+                    &internet_stat_map,
+                    "internet telemetry aggregates",
+                    &mut summary,
+                )
+                .await;
+
+                // Write reward input
+                let reward_prefix = self.settings.get_reward_input_prefix(dry_run)?;
+                write_and_track(
+                    &fetcher.rpc_client,
+                    &payer_signer,
+                    &[&reward_prefix, &fetch_epoch.to_le_bytes()],
+                    &input_config,
+                    "reward calculation input",
+                    &mut summary,
+                )
+                .await;
+
+                // Write merkle root
+                let contributor_prefix = self.settings.get_contributor_rewards_prefix(false)?;
+                let merkle_root_data = ContributorRewardsMerkleRoot {
+                    epoch: fetch_epoch,
+                    root: merkle_root,
+                    total_contributors: merkle_tree.len() as u32,
+                };
+                write_and_track(
+                    &fetcher.rpc_client,
+                    &payer_signer,
+                    &[&contributor_prefix, &fetch_epoch.to_le_bytes()],
+                    &merkle_root_data,
+                    "contributor rewards merkle root",
+                    &mut summary,
+                )
+                .await;
+
+                // Write contributor proofs
+                for (index, reward) in merkle_tree.rewards().iter().enumerate() {
+                    let proof = merkle_tree.generate_proof(index)?;
+                    let proof_bytes = borsh::to_vec(&proof)?;
+
+                    let proof_data = ContributorRewardProof {
+                        epoch: fetch_epoch,
+                        contributor: reward.operator.clone(),
+                        reward: reward.clone(),
+                        proof_bytes,
+                        index: index as u32,
+                    };
+
+                    write_and_track(
+                        &fetcher.rpc_client,
+                        &payer_signer,
+                        &[
+                            &contributor_prefix,
+                            &fetch_epoch.to_le_bytes(),
+                            reward.operator.as_bytes(),
+                        ],
+                        &proof_data,
+                        &format!("proof for contributor {}", reward.operator),
+                        &mut summary,
+                    )
+                    .await;
+                }
+
+                // Log final summary
+                info!("{}", summary);
+
+                // Return error if not all successful
+                if !summary.all_successful() {
+                    anyhow::bail!(
+                        "Some writes failed: {}/{} successful",
+                        summary.successful_count(),
+                        summary.total_count()
+                    );
+                }
             } else {
-                info!("Dry run mode: Skipping merkle root and proofs storage");
+                info!(
+                    "DRY-RUN: Would perform batch writes for epoch {}",
+                    fetch_epoch
+                );
+                info!(
+                    "  - Device telemetry: {} bytes",
+                    borsh::to_vec(&stat_map)?.len()
+                );
+                info!(
+                    "  - Internet telemetry: {} bytes",
+                    borsh::to_vec(&internet_stat_map)?.len()
+                );
+                info!(
+                    "  - Reward input: {} bytes",
+                    borsh::to_vec(&input_config)?.len()
+                );
+                info!(
+                    "  - Merkle root: {} bytes",
+                    borsh::to_vec(&ContributorRewardsMerkleRoot {
+                        epoch: fetch_epoch,
+                        root: merkle_root,
+                        total_contributors: merkle_tree.len() as u32,
+                    })?
+                    .len()
+                );
+                info!("  - {} contributor proofs", merkle_tree.len());
             }
         }
 
@@ -393,90 +414,6 @@ impl Orchestrator {
             }
         }
 
-        Ok(())
-    }
-
-    async fn write_contributor_rewards_merkle_root(
-        &self,
-        epoch: u64,
-        merkle_root: Hash,
-        total_contributors: u32,
-        payer_signer: &Keypair,
-        fetcher: &Fetcher,
-    ) -> Result<()> {
-        let prefix = self.settings.get_contributor_rewards_prefix(false)?;
-        let seeds: &[&[u8]] = &[&prefix, &epoch.to_le_bytes()];
-
-        // Create the merkle root data
-        let merkle_root_data = ContributorRewardsMerkleRoot {
-            epoch,
-            root: merkle_root,
-            total_contributors,
-        };
-
-        write_to_ledger(
-            &fetcher.rpc_client,
-            payer_signer,
-            seeds,
-            &merkle_root_data,
-            "contributor rewards merkle root",
-        )
-        .await?;
-
-        info!(
-            "Successfully wrote merkle root for epoch {} with {} contributors",
-            epoch, total_contributors
-        );
-        Ok(())
-    }
-
-    async fn write_contributor_reward_proofs(
-        &self,
-        epoch: u64,
-        merkle_tree: &ContributorRewardsMerkleTree,
-        payer_signer: &Keypair,
-        fetcher: &Fetcher,
-    ) -> Result<()> {
-        let prefix = self.settings.get_contributor_rewards_prefix(false)?;
-
-        for (index, reward) in merkle_tree.rewards().iter().enumerate() {
-            let seeds: &[&[u8]] = &[&prefix, &epoch.to_le_bytes(), reward.operator.as_bytes()];
-
-            // Generate proof for this contributor
-            let proof = merkle_tree.generate_proof(index)?;
-
-            // Serialize the MerkleProof for storage
-            let proof_bytes = borsh::to_vec(&proof)?;
-
-            // Create proof data with serialized proof
-            let proof_data = ContributorRewardProof {
-                epoch,
-                contributor: reward.operator.clone(),
-                reward: reward.clone(),
-                proof_bytes,
-                index: index as u32,
-            };
-
-            write_to_ledger(
-                &fetcher.rpc_client,
-                payer_signer,
-                seeds,
-                &proof_data,
-                &format!("proof for contributor {}", reward.operator),
-            )
-            .await?;
-
-            info!(
-                "Successfully wrote proof for contributor {} (index {})",
-                reward.operator, index
-            );
-        }
-
-        info!(
-            "Successfully wrote all {} contributor proofs for epoch {}",
-            merkle_tree.len(),
-            epoch
-        );
         Ok(())
     }
 

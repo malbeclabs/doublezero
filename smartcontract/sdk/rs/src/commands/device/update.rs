@@ -23,6 +23,7 @@ pub struct UpdateDeviceCommand {
     pub contributor_pk: Option<Pubkey>,
     pub mgmt_vrf: Option<String>,
     pub interfaces: Option<Vec<Interface>>,
+    pub max_users: Option<u16>,
 }
 
 impl UpdateDeviceCommand {
@@ -53,6 +54,7 @@ impl UpdateDeviceCommand {
                 metrics_publisher_pk: self.metrics_publisher,
                 mgmt_vrf: self.mgmt_vrf.clone(),
                 interfaces: self.interfaces.clone(),
+                max_users: self.max_users,
             }),
             vec![
                 AccountMeta::new(self.pubkey, false),
@@ -106,6 +108,8 @@ mod tests {
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
+            max_users: 250,
+            users_count: 0,
         };
 
         client
@@ -124,6 +128,8 @@ mod tests {
                     mgmt_vrf: Some("mgmt".to_string()),
                     interfaces: None,
                     contributor_pk: None,
+                    max_users: None,
+                    max_users: None,
                 })),
                 predicate::always(),
             )
@@ -139,6 +145,8 @@ mod tests {
             metrics_publisher: None,
             mgmt_vrf: Some("mgmt".to_string()),
             interfaces: None,
+            max_users: None,
+            max_users: None,
         };
 
         let update_invalid = UpdateDeviceCommand {

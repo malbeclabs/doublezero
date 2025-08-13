@@ -1717,6 +1717,7 @@ dependencies = [
  "doublezero-serviceability",
  "eyre",
  "futures",
+ "log",
  "mockall",
  "serde",
  "serde_json",

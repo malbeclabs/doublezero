@@ -115,6 +115,8 @@ mod tests {
             dz_prefixes: "10.0.0.0/24,10.0.1.0/24".parse().unwrap(),
             mgmt_vrf: "mgmt".to_string(),
             interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
         };
 
         let mut device = DeviceState::new(&device);
@@ -187,6 +189,8 @@ mod tests {
             dz_prefixes: "10.0.0.0/24".parse().unwrap(),
             mgmt_vrf: "mgmt".to_string(),
             interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
         };
         devices.insert(device_pk, DeviceState::new(&device));
 

@@ -114,6 +114,7 @@ impl UpdateDeviceInterfaceCliCommand {
             contributor_pk: None,
             mgmt_vrf: None,
             interfaces: Some(device.interfaces),
+            max_users: None,
         })?;
         writeln!(out, "Signature: {signature}")?;
 
@@ -188,6 +189,8 @@ mod tests {
                     user_tunnel_endpoint: false,
                 }),
             ],
+            max_users: 255,
+            users_count: 0,
         };
 
         client
@@ -234,6 +237,7 @@ mod tests {
                         user_tunnel_endpoint: false,
                     }),
                 ]),
+                max_users: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));

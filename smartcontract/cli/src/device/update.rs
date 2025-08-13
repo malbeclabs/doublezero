@@ -108,6 +108,7 @@ impl UpdateDeviceCliCommand {
             contributor_pk: contributor,
             mgmt_vrf: self.mgmt_vrf,
             interfaces: None,
+            max_users: None,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -171,6 +172,8 @@ mod tests {
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
         };
         let device2 = Device {
             account_type: AccountType::Device,
@@ -189,6 +192,8 @@ mod tests {
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
         };
         let device3 = Device {
             account_type: AccountType::Device,
@@ -207,6 +212,8 @@ mod tests {
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
         };
         let device_list = HashMap::from([
             (pda_pubkey, device1.clone()),
@@ -245,6 +252,7 @@ mod tests {
                 )),
                 mgmt_vrf: Some("default".to_string()),
                 interfaces: None,
+                max_users: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -296,6 +304,8 @@ mod tests {
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
         };
         let device2 = Device {
             account_type: AccountType::Device,
@@ -314,6 +324,8 @@ mod tests {
             owner: other_pubkey,
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
         };
         let device_list = HashMap::from([(pda_pubkey, device1.clone()), (other_pubkey, device2)]);
 
@@ -373,6 +385,8 @@ mod tests {
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
         };
         let device2 = Device {
             account_type: AccountType::Device,
@@ -391,6 +405,8 @@ mod tests {
             owner: other_pubkey,
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
         };
         let device_list = HashMap::from([(pda_pubkey, device1.clone()), (other_pubkey, device2)]);
 

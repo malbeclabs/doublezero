@@ -143,6 +143,7 @@ pub fn process_device_event(
             contributor_pk: None,
             mgmt_vrf: None,
             interfaces: Some(interfaces),
+            max_users: None,
         }
         .execute(client)
         .map_err(|err| {
@@ -217,6 +218,8 @@ mod tests {
                     user_tunnel_endpoint: false,
                 }),
             ],
+            max_users: 255,
+            users_count: 0,
         };
 
         let mut expected_interfaces = [
@@ -264,6 +267,7 @@ mod tests {
                             .map(|iface| Interface::V1(iface.clone()))
                             .collect::<Vec<_>>(),
                     ),
+                    max_users: None,
                 })),
                 predicate::always(),
             )
@@ -368,6 +372,8 @@ mod tests {
                     user_tunnel_endpoint: false,
                 }),
             ],
+            max_users: 255,
+            users_count: 0,
         };
 
         let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
@@ -405,6 +411,7 @@ mod tests {
                             .map(|iface| Interface::V1(iface.clone()))
                             .collect::<Vec<_>>(),
                     ),
+                    max_users: None,
                 })),
                 predicate::always(),
             )

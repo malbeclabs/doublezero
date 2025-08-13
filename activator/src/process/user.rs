@@ -492,6 +492,8 @@ mod tests {
             dz_prefixes: "10.0.0.1/24".parse().unwrap(),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
         };
 
         let user_pubkey = Pubkey::new_unique();
@@ -620,6 +622,8 @@ mod tests {
             dz_prefixes: "10.0.0.1/24".parse().unwrap(),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
         };
 
         let user_pubkey = Pubkey::new_unique();
@@ -810,6 +814,8 @@ mod tests {
             dz_prefixes: "10.0.0.0/32".parse().unwrap(),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
         };
 
         let user_pubkey = Pubkey::new_unique();
@@ -918,6 +924,8 @@ mod tests {
             dz_prefixes: "10.0.0.1/24".parse().unwrap(),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
         };
 
         let user_pubkey = Pubkey::new_unique();
@@ -1053,6 +1061,8 @@ mod tests {
             dz_prefixes: "11.0.0.0/16".parse().unwrap(),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
         };
 
         devices.insert(device_pubkey, DeviceState::new(&device));

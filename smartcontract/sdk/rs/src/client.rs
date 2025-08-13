@@ -4,6 +4,7 @@ use doublezero_serviceability::{
     error::DoubleZeroError, instructions::*, state::accounttype::AccountType,
 };
 use eyre::{bail, eyre, OptionExt};
+use log::debug;
 use solana_account_decoder::{UiAccountData, UiAccountEncoding};
 use solana_client::{
     pubsub_client::PubsubClient,
@@ -284,16 +285,16 @@ impl DoubleZeroClient for DZClient {
         );
 
         let blockhash = self.client.get_latest_blockhash().map_err(|e| eyre!(e))?;
-
         transaction.sign(&[&payer], blockhash);
 
-        let result = self.client.simulate_transaction(&transaction)?;
+        debug!("Simulating transaction: {:?}", transaction);
 
+        let result = self.client.simulate_transaction(&transaction)?;
         if result.value.err.is_some() {
-            println!("Program Logs:");
+            eprintln!("Program Logs:");
             if let Some(logs) = result.value.logs {
                 for log in logs {
-                    println!("{log}");
+                    eprintln!("{log}");
                 }
             }
         }

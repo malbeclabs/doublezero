@@ -261,6 +261,8 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
         };
         let device2_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8");
         let device2 = Device {
@@ -280,6 +282,8 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
         };
         let mgroup1_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8");
         let mgroup1 = MulticastGroup {

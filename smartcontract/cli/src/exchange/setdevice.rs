@@ -105,6 +105,8 @@ mod tests {
             mgmt_vrf: "".to_string(),
             public_ip: "100.0.0.1".parse().unwrap(),
             reference_count: 0,
+            max_users: 255,
+            users_count: 0,
         };
 
         let exchange = Exchange {

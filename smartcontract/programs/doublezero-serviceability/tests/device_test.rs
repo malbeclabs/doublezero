@@ -317,6 +317,7 @@ async fn test_device() {
             metrics_publisher_pk: Some(Pubkey::default()),
             mgmt_vrf: Some("mgmt".to_string()),
             interfaces: None,
+            max_users: None,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -478,6 +479,7 @@ async fn test_device_update_metrics_publisher_by_foundation_allowlist_account() 
             metrics_publisher_pk: Some(metrics_publisher_pk),
             mgmt_vrf: None,
             interfaces: None,
+            max_users: None,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

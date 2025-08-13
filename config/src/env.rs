@@ -92,6 +92,9 @@ mod tests {
 
     #[test]
     fn test_network_config_mainnet() {
+        std::env::remove_var("DZ_LEDGER_RPC_URL");
+        std::env::remove_var("DZ_LEDGER_WS_RPC_URL");
+
         let config = Environment::Mainnet.config().unwrap();
         assert_eq!(
             config.ledger_public_rpc_url,
@@ -114,6 +117,9 @@ mod tests {
 
     #[test]
     fn test_network_config_testnet() {
+        std::env::remove_var("DZ_LEDGER_RPC_URL");
+        std::env::remove_var("DZ_LEDGER_WS_RPC_URL");
+
         let config = Environment::Testnet.config().unwrap();
         assert_eq!(
             config.ledger_public_rpc_url,
@@ -139,6 +145,9 @@ mod tests {
 
     #[test]
     fn test_network_config_devnet() {
+        std::env::remove_var("DZ_LEDGER_RPC_URL");
+        std::env::remove_var("DZ_LEDGER_WS_RPC_URL");
+
         let config = Environment::Devnet.config().unwrap();
         assert_eq!(
             config.ledger_public_rpc_url,

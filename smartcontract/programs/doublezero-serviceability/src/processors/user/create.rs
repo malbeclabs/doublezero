@@ -80,7 +80,9 @@ pub fn process_create_user(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let device = Device::try_from(device_account)?;
+    let mut device = Device::try_from(device_account)?;
+    assert_eq!(device.account_type, AccountType::Device);
+
     if device.status == DeviceStatus::Suspended {
         if !globalstate.foundation_allowlist.contains(payer_account.key) {
             msg!("{:?}", device);
@@ -91,10 +93,13 @@ pub fn process_create_user(
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    let mut device = Device::try_from(device_account)?;
-    assert_eq!(device.account_type, AccountType::Device);
+    if device.users_count >= device.max_users {
+        msg!("{:?}", device);
+        return Err(DoubleZeroError::MaxUsersExceeded.into());
+    }
 
     device.reference_count += 1;
+    device.users_count += 1;
 
     let user: User = User {
         account_type: AccountType::User,

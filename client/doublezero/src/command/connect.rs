@@ -19,12 +19,12 @@ use doublezero_sdk::{
             get::GetUserCommand, list::ListUserCommand,
         },
     },
-    Device, NetworkV4, User, UserCYOA, UserStatus, UserType,
+    Device, DeviceStatus, NetworkV4, User, UserCYOA, UserStatus, UserType,
 };
 use eyre;
 use indicatif::ProgressBar;
 use solana_sdk::pubkey::Pubkey;
-use std::{net::Ipv4Addr, str::FromStr};
+use std::{collections::HashMap, net::Ipv4Addr, str::FromStr};
 
 #[derive(Clone, Debug, ValueEnum)]
 pub enum MulticastMode {
@@ -262,11 +262,11 @@ impl ProvisioningCliCommand {
         &self,
         client: &dyn CliCommand,
         controller: &T,
+        devices: &HashMap<Pubkey, Device>,
         spinner: &ProgressBar,
     ) -> eyre::Result<(Pubkey, Device)> {
         spinner.set_message("Searching for the nearest device...");
 
-        let devices = client.list_device(ListDeviceCommand)?;
         let device_pk = match self.device.as_ref() {
             Some(device) => match device.parse::<Pubkey>() {
                 Ok(pubkey) => pubkey,
@@ -280,11 +280,15 @@ impl ProvisioningCliCommand {
             },
             None => {
                 spinner.set_message("Reading latency stats...");
+
+                let device_keys = devices.keys().map(|k| k.to_string()).collect::<Vec<_>>();
+
                 let mut latencies = controller
                     .latency()
                     .await
                     .map_err(|_| eyre::eyre!("Could not get latency"))?;
                 latencies.retain(|l| l.reachable);
+                latencies.retain(|l| device_keys.contains(&l.device_pk.to_string()));
                 latencies.sort_by(|a, b| a.avg_latency_ns.cmp(&b.avg_latency_ns));
 
                 spinner.set_message("Reading device account...");
@@ -319,6 +323,12 @@ impl ProvisioningCliCommand {
         spinner.inc(1);
 
         let users = client.list_user(ListUserCommand)?;
+        let mut devices = client.list_device(ListDeviceCommand)?;
+
+        // Filter devices activated
+        devices.retain(|_, d| {
+            d.status == DeviceStatus::Activated && (d.max_users == 0 || d.users_count < d.max_users)
+        });
 
         let matched_users = users
             .iter()
@@ -352,7 +362,7 @@ impl ProvisioningCliCommand {
                 spinner.println("    User account created");
 
                 let (device_pk, device) = self
-                    .find_or_create_device(client, controller, spinner)
+                    .find_or_create_device(client, controller, &devices, spinner)
                     .await?;
 
                 spinner.println(format!("    Connected to device: {} ", device.code));
@@ -398,6 +408,7 @@ impl ProvisioningCliCommand {
         spinner.inc(1);
 
         let users = client.list_user(ListUserCommand)?;
+        let devices = client.list_device(ListDeviceCommand)?;
 
         let matched_users = users
             .iter()
@@ -434,7 +445,7 @@ Disconnect and connect again!"#,
                 spinner.println(format!("    Creating an account for the IP: {client_ip}"));
 
                 let (device_pk, device) = self
-                    .find_or_create_device(client, controller, spinner)
+                    .find_or_create_device(client, controller, &devices, spinner)
                     .await?;
 
                 spinner.println(format!(
@@ -801,6 +812,8 @@ mod tests {
                 dz_prefixes: "10.0.0.0/24".parse().unwrap(),
                 mgmt_vrf: "default".to_string(),
                 interfaces: vec![],
+                max_users: 255,
+                users_count: 0,
             };
             devices.insert(pk, device.clone());
             (pk, device)

@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"os"
 	"testing"
 
 	"github.com/gagliardetto/solana-go"
@@ -58,4 +59,12 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 			require.Equal(t, test.want, got)
 		})
 	}
+}
+
+func TestConfig_NetworkConfigForEnv_RPCURLOverrideFromEnvVars(t *testing.T) {
+	os.Setenv("DZ_LEDGER_RPC_URL", "https://other-rpc-url.com")
+	os.Setenv("DZ_LEDGER_WS_RPC_URL", "wss://other-ws-rpc-url.com/whirligig")
+	got, err := config.NetworkConfigForEnv(config.EnvMainnet)
+	require.NoError(t, err)
+	require.Equal(t, "https://other-rpc-url.com", got.LedgerPublicRPCURL)
 }

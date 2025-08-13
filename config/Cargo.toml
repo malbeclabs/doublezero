@@ -11,7 +11,7 @@ repository.workspace = true
 
 [dependencies]
 eyre.workspace = true
-doublezero_sdk.workspace = true
 solana-sdk.workspace = true
 
 [dev-dependencies]
+serial_test.workspace = true

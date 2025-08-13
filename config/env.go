@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/gagliardetto/solana-go"
 )
@@ -24,6 +25,7 @@ type NetworkConfig struct {
 }
 
 func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
+	var config *NetworkConfig
 	switch env {
 	case EnvMainnet:
 		serviceabilityProgramID, err := solana.PublicKeyFromBase58(MainnetServiceabilityProgramID)
@@ -38,12 +40,12 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse internet latency collector oracle agent PK: %w", err)
 		}
-		return &NetworkConfig{
+		config = &NetworkConfig{
 			LedgerPublicRPCURL:         MainnetLedgerPublicRPCURL,
 			ServiceabilityProgramID:    serviceabilityProgramID,
 			TelemetryProgramID:         telemetryProgramID,
 			InternetLatencyCollectorPK: internetLatencyCollectorPK,
-		}, nil
+		}
 	case EnvTestnet:
 		serviceabilityProgramID, err := solana.PublicKeyFromBase58(TestnetServiceabilityProgramID)
 		if err != nil {
@@ -57,12 +59,12 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse internet latency collector oracle agent PK: %w", err)
 		}
-		return &NetworkConfig{
+		config = &NetworkConfig{
 			LedgerPublicRPCURL:         TestnetLedgerPublicRPCURL,
 			ServiceabilityProgramID:    serviceabilityProgramID,
 			TelemetryProgramID:         telemetryProgramID,
 			InternetLatencyCollectorPK: internetLatencyCollectorPK,
-		}, nil
+		}
 	case EnvDevnet:
 		serviceabilityProgramID, err := solana.PublicKeyFromBase58(DevnetServiceabilityProgramID)
 		if err != nil {
@@ -76,13 +78,20 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse internet latency collector oracle agent PK: %w", err)
 		}
-		return &NetworkConfig{
+		config = &NetworkConfig{
 			LedgerPublicRPCURL:         DevnetLedgerPublicRPCURL,
 			ServiceabilityProgramID:    serviceabilityProgramID,
 			TelemetryProgramID:         telemetryProgramID,
 			InternetLatencyCollectorPK: internetLatencyCollectorPK,
-		}, nil
+		}
 	default:
 		return nil, ErrInvalidEnvironment
 	}
+
+	ledgerRPCURL := os.Getenv("DZ_LEDGER_RPC_URL")
+	if ledgerRPCURL != "" {
+		config.LedgerPublicRPCURL = ledgerRPCURL
+	}
+
+	return config, nil
 }

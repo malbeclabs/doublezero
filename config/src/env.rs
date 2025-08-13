@@ -22,29 +22,36 @@ impl std::str::FromStr for Environment {
 
 impl Environment {
     pub fn config(&self) -> eyre::Result<NetworkConfig> {
-        let config = match self {
+        let mut config = match self {
             Environment::Mainnet => NetworkConfig {
                 ledger_public_rpc_url: "https://doublezero-mainnet-beta-local.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab".to_string(),
-                ledger_public_ws_url: "wss://doublezero-mainnet-beta-local.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab/whirligig".to_string(),
+                ledger_public_ws_rpc_url: "wss://doublezero-mainnet-beta-local.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab/whirligig".to_string(),
                 serviceability_program_id: "ser2VaTMAcYTaauMrTSfSrxBaUDq7BLNs2xfUugTAGv".parse()?,
                 telemetry_program_id: "tE1exJ5VMyoC9ByZeSmgtNzJCFF74G9JAv338sJiqkC".parse()?,
                 internet_latency_collector_pk: "8xHn4r7oQuqNZ5cLYwL5YZcDy1JjDQcpVkyoA8Dw5uXH".parse()?,
             },
             Environment::Testnet => NetworkConfig {
-                ledger_public_rpc_url: "https://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30".to_string(),
-                ledger_public_ws_url: "wss://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30/whirligig".to_string(),
+                ledger_public_rpc_url: "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16".to_string(),
+                ledger_public_ws_rpc_url: "wss://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16/whirligig".to_string(),
                 serviceability_program_id: "DZtnuQ839pSaDMFG5q1ad2V95G82S5EC4RrB3Ndw2Heb".parse()?,
                 telemetry_program_id: "3KogTMmVxc5eUHtjZnwm136H5P8tvPwVu4ufbGPvM7p1".parse()?,
                 internet_latency_collector_pk: "HWGQSTmXWMB85NY2vFLhM1nGpXA8f4VCARRyeGNbqDF1".parse()?,
             },
             Environment::Devnet => NetworkConfig {
-                ledger_public_rpc_url: "https://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30".to_string(),
-                ledger_public_ws_url: "wss://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30/whirligig".to_string(),
+                ledger_public_rpc_url: "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16".to_string(),
+                ledger_public_ws_rpc_url: "wss://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16/whirligig".to_string(),
                 serviceability_program_id: "GYhQDKuESrasNZGyhMJhGYFtbzNijYhcrN9poSqCQVah".parse()?,
                 telemetry_program_id: "C9xqH76NSm11pBS6maNnY163tWHT8Govww47uyEmSnoG".parse()?,
                 internet_latency_collector_pk: "3fXen9LP5JUAkaaDJtyLo1ohPiJ2LdzVqAnmhtGgAmwJ".parse()?,
             },
         };
+
+        if std::env::var("DZ_LEDGER_RPC_URL").is_ok() {
+            config.ledger_public_rpc_url = std::env::var("DZ_LEDGER_RPC_URL").unwrap();
+        }
+        if std::env::var("DZ_LEDGER_WS_RPC_URL").is_ok() {
+            config.ledger_public_ws_rpc_url = std::env::var("DZ_LEDGER_WS_RPC_URL").unwrap();
+        }
 
         Ok(config)
     }
@@ -53,7 +60,7 @@ impl Environment {
 #[derive(Debug, Clone)]
 pub struct NetworkConfig {
     pub ledger_public_rpc_url: String,
-    pub ledger_public_ws_url: String,
+    pub ledger_public_ws_rpc_url: String,
     pub serviceability_program_id: Pubkey,
     pub telemetry_program_id: Pubkey,
     pub internet_latency_collector_pk: Pubkey,
@@ -61,6 +68,8 @@ pub struct NetworkConfig {
 
 #[cfg(test)]
 mod tests {
+    use serial_test::serial;
+
     use super::*;
 
     #[test]
@@ -88,7 +97,7 @@ mod tests {
             config.ledger_public_rpc_url,
             "https://doublezero-mainnet-beta-local.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab"
         );
-        assert_eq!(config.ledger_public_ws_url, "wss://doublezero-mainnet-beta-local.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab/whirligig");
+        assert_eq!(config.ledger_public_ws_rpc_url, "wss://doublezero-mainnet-beta-local.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab/whirligig");
         assert_eq!(
             config.serviceability_program_id.to_string(),
             "ser2VaTMAcYTaauMrTSfSrxBaUDq7BLNs2xfUugTAGv"
@@ -108,11 +117,11 @@ mod tests {
         let config = Environment::Testnet.config().unwrap();
         assert_eq!(
             config.ledger_public_rpc_url,
-            "https://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30"
+            "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16"
         );
         assert_eq!(
-            config.ledger_public_ws_url,
-            "wss://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30/whirligig"
+            config.ledger_public_ws_rpc_url,
+            "wss://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16/whirligig"
         );
         assert_eq!(
             config.serviceability_program_id.to_string(),
@@ -133,11 +142,11 @@ mod tests {
         let config = Environment::Devnet.config().unwrap();
         assert_eq!(
             config.ledger_public_rpc_url,
-            "https://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30"
+            "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16"
         );
         assert_eq!(
-            config.ledger_public_ws_url,
-            "wss://doublezerolocalnet.rpcpool.com/f50e62d0-06e7-410e-867e-6873e358ed30/whirligig"
+            config.ledger_public_ws_rpc_url,
+            "wss://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16/whirligig"
         );
         assert_eq!(
             config.serviceability_program_id.to_string(),
@@ -150,6 +159,22 @@ mod tests {
         assert_eq!(
             config.internet_latency_collector_pk.to_string(),
             "3fXen9LP5JUAkaaDJtyLo1ohPiJ2LdzVqAnmhtGgAmwJ"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_network_config_rpc_url_env_override() {
+        std::env::set_var("DZ_LEDGER_RPC_URL", "https://other-rpc-url.com");
+        std::env::set_var(
+            "DZ_LEDGER_WS_RPC_URL",
+            "wss://other-ws-rpc-url.com/whirligig",
+        );
+        let config = Environment::Mainnet.config().unwrap();
+        assert_eq!(config.ledger_public_rpc_url, "https://other-rpc-url.com");
+        assert_eq!(
+            config.ledger_public_ws_rpc_url,
+            "wss://other-ws-rpc-url.com/whirligig"
         );
     }
 }

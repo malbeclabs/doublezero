@@ -1,5 +1,5 @@
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
-use doublezero_program_common::normalize_account_code;
+use doublezero_program_common::validate_account_code;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, pda::get_link_pda,
     processors::link::create::LinkCreateArgs, state::link::LinkLinkType,
@@ -24,7 +24,7 @@ pub struct CreateLinkCommand {
 impl CreateLinkCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
         let code =
-            normalize_account_code(&self.code).map_err(|err| eyre::eyre!("invalid code: {err}"))?;
+            validate_account_code(&self.code).map_err(|err| eyre::eyre!("invalid code: {err}"))?;
 
         let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
             .execute(client)

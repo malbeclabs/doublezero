@@ -105,17 +105,9 @@ mod tests {
         .execute(&client);
         assert!(res.is_ok());
 
-        // add using code containing whitespace
-        let res = AddMulticastGroupSubAllowlistCommand {
-            pubkey_or_code: "test code".to_string(),
-            pubkey,
-        }
-        .execute(&client);
-        assert!(res.is_ok());
-
         // error attempting to add code with invalid char(s)
         let res = AddMulticastGroupSubAllowlistCommand {
-            pubkey_or_code: "test^code".to_string(),
+            pubkey_or_code: "test code".to_string(),
             pubkey,
         }
         .execute(&client);

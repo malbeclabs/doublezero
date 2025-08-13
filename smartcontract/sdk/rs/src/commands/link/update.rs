@@ -1,5 +1,5 @@
 use crate::{commands::link::get::GetLinkCommand, DoubleZeroClient, GetGlobalStateCommand};
-use doublezero_program_common::normalize_account_code;
+use doublezero_program_common::validate_account_code;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, processors::link::update::LinkUpdateArgs,
     state::link::LinkLinkType,
@@ -33,7 +33,7 @@ impl UpdateLinkCommand {
         let code = self
             .code
             .as_ref()
-            .map(|code| normalize_account_code(code))
+            .map(|code| validate_account_code(code))
             .transpose()
             .map_err(|err| eyre::eyre!("invalid code: {err}"))?;
 

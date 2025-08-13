@@ -1,11 +1,11 @@
-use doublezero_program_common::normalize_account_code;
+use doublezero_program_common::validate_account_code;
 use doublezero_sdk::bandwidth_parse;
 use regex::Regex;
 use solana_sdk::pubkey::Pubkey;
 use std::sync::LazyLock;
 
 pub fn validate_code(val: &str) -> Result<String, String> {
-    normalize_account_code(val).map_err(String::from)
+    validate_account_code(val).map_err(String::from)
 }
 
 pub fn validate_pubkey(val: &str) -> Result<String, String> {
@@ -114,17 +114,9 @@ mod tests {
 
     #[test]
     fn test_validate_code() {
-        assert!(validate_code("abc_123-XYZ").is_ok());
+        assert!(validate_code("abc_123-:XYZ").is_ok());
         assert!(validate_code("abc@123").is_err());
-    }
-
-    #[test]
-    fn test_validate_and_normalize_code() {
-        let expected_valid = "abc_123-XYZ".to_string();
-        let result = validate_code("abc 123-XYZ");
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), expected_valid);
-        assert!(validate_code("abc_123-:XYZ").is_err());
+        assert!(validate_code("abc 123-:XYZ").is_err());
     }
 
     #[test]

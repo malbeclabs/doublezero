@@ -1,4 +1,4 @@
-use doublezero_program_common::normalize_account_code;
+use doublezero_program_common::validate_account_code;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, pda::get_exchange_pda,
     processors::exchange::create::ExchangeCreateArgs,
@@ -19,7 +19,7 @@ pub struct CreateExchangeCommand {
 impl CreateExchangeCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
         let code =
-            normalize_account_code(&self.code).map_err(|err| eyre::eyre!("invalid code: {err}"))?;
+            validate_account_code(&self.code).map_err(|err| eyre::eyre!("invalid code: {err}"))?;
 
         let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
             .execute(client)
@@ -91,18 +91,10 @@ mod tests {
             loc_id: None,
         };
 
-        let create_whitespace_command = CreateExchangeCommand {
-            code: "test exchange".to_string(),
-            ..create_command.clone()
-        };
-
         let create_invalid_command = CreateExchangeCommand {
             code: "test/command".to_string(),
             ..create_command.clone()
         };
-
-        let res = create_whitespace_command.execute(&client);
-        assert!(res.is_ok());
 
         let res = create_command.execute(&client);
         assert!(res.is_ok());

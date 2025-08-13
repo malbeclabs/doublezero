@@ -1,4 +1,4 @@
-use crate::{doublezerocommand::CliCommand, validators::validate_code};
+use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::commands::multicastgroup::allowlist::subscriber::list::ListMulticastGroupSubAllowlistCommand;
 use std::io::Write;
@@ -6,7 +6,7 @@ use std::io::Write;
 #[derive(Args, Debug)]
 pub struct ListMulticastGroupSubAllowlistCliCommand {
     /// Multicast group code or pubkey to list subscriber allowlist for
-    #[arg(long, value_parser = validate_code)]
+    #[arg(long)]
     pub code: String,
     /// Output as pretty JSON
     #[arg(long, default_value_t = false)]

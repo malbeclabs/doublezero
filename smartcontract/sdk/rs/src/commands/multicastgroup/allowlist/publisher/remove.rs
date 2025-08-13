@@ -105,14 +105,6 @@ mod tests {
         .execute(&client);
         assert!(res.is_ok());
 
-        // remove publisher with code containing whitespace
-        let res = RemoveMulticastGroupPubAllowlistCommand {
-            pubkey_or_code: "test code".to_string(),
-            pubkey,
-        }
-        .execute(&client);
-        assert!(res.is_ok());
-
         // error attempting to remove publisher with code containing invalid char
         let res = RemoveMulticastGroupPubAllowlistCommand {
             pubkey_or_code: "test^code".to_string(),

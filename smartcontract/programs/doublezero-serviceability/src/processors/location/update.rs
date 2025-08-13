@@ -5,7 +5,7 @@ use crate::{
     state::{accounttype::AccountType, location::*},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use doublezero_program_common::normalize_account_code;
+use doublezero_program_common::validate_account_code;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -80,7 +80,7 @@ pub fn process_update_location(
 
     if let Some(ref code) = value.code {
         location.code =
-            normalize_account_code(code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
+            validate_account_code(code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
     }
     if let Some(ref name) = value.name {
         location.name = name.clone();

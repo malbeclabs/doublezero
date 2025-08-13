@@ -6,7 +6,7 @@ use crate::{
     state::{accounttype::AccountType, contributor::*},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use doublezero_program_common::normalize_account_code;
+use doublezero_program_common::validate_account_code;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -51,7 +51,7 @@ pub fn process_create_contributor(
 
     // Validate and normalize code
     let code =
-        normalize_account_code(&value.code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
+        validate_account_code(&value.code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
 
     // Check the owner of the accounts
     assert_eq!(

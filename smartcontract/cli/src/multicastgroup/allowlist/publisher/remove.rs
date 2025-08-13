@@ -1,7 +1,6 @@
 use crate::{
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-    validators::{validate_code, validate_pubkey},
 };
 use clap::Args;
 use doublezero_sdk::commands::multicastgroup::allowlist::publisher::remove::RemoveMulticastGroupPubAllowlistCommand;
@@ -11,10 +10,10 @@ use std::{io::Write, str::FromStr};
 #[derive(Args, Debug)]
 pub struct RemoveMulticastGroupPubAllowlistCliCommand {
     /// Multicast group code or pubkey to remove publisher allowlist for
-    #[arg(long, value_parser = validate_code)]
+    #[arg(long)]
     pub code: String,
     /// Publisher Pubkey or 'me' for current payer
-    #[arg(long, value_parser = validate_pubkey)]
+    #[arg(long)]
     pub pubkey: String,
 }
 

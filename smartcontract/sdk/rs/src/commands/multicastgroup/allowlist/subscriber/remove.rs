@@ -105,14 +105,6 @@ mod tests {
         .execute(&client);
         assert!(res.is_ok());
 
-        // remove with code containing whitespace
-        let res = RemoveMulticastGroupSubAllowlistCommand {
-            pubkey_or_code: "test code".to_string(),
-            pubkey,
-        }
-        .execute(&client);
-        assert!(res.is_ok());
-
         // error removing with invalid code character
         let res = RemoveMulticastGroupSubAllowlistCommand {
             pubkey_or_code: "test%code".to_string(),

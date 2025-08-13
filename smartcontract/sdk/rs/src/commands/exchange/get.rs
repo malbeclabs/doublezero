@@ -1,5 +1,4 @@
 use crate::{utils::parse_pubkey, DoubleZeroClient};
-use doublezero_program_common::normalize_account_code;
 use doublezero_serviceability::state::{
     accountdata::AccountData, accounttype::AccountType, exchange::Exchange,
 };
@@ -17,27 +16,23 @@ impl GetExchangeCommand {
                 AccountData::Exchange(exchange) => Ok((pk, exchange)),
                 _ => Err(eyre::eyre!("Invalid Account Type")),
             },
-            None => {
-                let code = normalize_account_code(&self.pubkey_or_code)
-                    .map_err(|err| eyre::eyre!("invalid code: {err}"))?;
-                client
-                    .gets(AccountType::Exchange)?
-                    .into_iter()
-                    .find(|(_, v)| match v {
-                        AccountData::Exchange(exchange) => exchange.code == code,
-                        _ => false,
-                    })
-                    .map(|(pk, v)| match v {
-                        AccountData::Exchange(exchange) => Ok((pk, exchange)),
-                        _ => Err(eyre::eyre!("Invalid Account Type")),
-                    })
-                    .unwrap_or_else(|| {
-                        Err(eyre::eyre!(
-                            "Exchange with code {} not found",
-                            self.pubkey_or_code
-                        ))
-                    })
-            }
+            None => client
+                .gets(AccountType::Exchange)?
+                .into_iter()
+                .find(|(_, v)| match v {
+                    AccountData::Exchange(exchange) => exchange.code == self.pubkey_or_code,
+                    _ => false,
+                })
+                .map(|(pk, v)| match v {
+                    AccountData::Exchange(exchange) => Ok((pk, exchange)),
+                    _ => Err(eyre::eyre!("Invalid Account Type")),
+                })
+                .unwrap_or_else(|| {
+                    Err(eyre::eyre!(
+                        "Exchange with code {} not found",
+                        self.pubkey_or_code
+                    ))
+                }),
         }
     }
 }
@@ -110,15 +105,6 @@ mod tests {
         assert!(res.is_ok());
         assert_eq!(res.unwrap().1.code, "exchange_code".to_string());
 
-        // Search by code with whitespace
-        let res = GetExchangeCommand {
-            pubkey_or_code: "exchange code".to_string(),
-        }
-        .execute(&client);
-
-        assert!(res.is_ok());
-        assert_eq!(res.unwrap().1.code, "exchange_code".to_string());
-
         // Invalid search
         let res = GetExchangeCommand {
             pubkey_or_code: "ssssssssssss".to_string(),
@@ -128,7 +114,7 @@ mod tests {
 
         // Search by invalid code
         let res = GetExchangeCommand {
-            pubkey_or_code: "s(%".to_string(),
+            pubkey_or_code: "s_(%".to_string(),
         }
         .execute(&client);
         assert!(res.is_err());

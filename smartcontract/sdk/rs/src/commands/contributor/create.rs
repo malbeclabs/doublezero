@@ -1,5 +1,5 @@
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
-use doublezero_program_common::normalize_account_code;
+use doublezero_program_common::validate_account_code;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, pda::get_contributor_pda,
     processors::contributor::create::ContributorCreateArgs,
@@ -15,7 +15,7 @@ pub struct CreateContributorCommand {
 impl CreateContributorCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
         let code =
-            normalize_account_code(&self.code).map_err(|err| eyre::eyre!("invalid code: {err}"))?;
+            validate_account_code(&self.code).map_err(|err| eyre::eyre!("invalid code: {err}"))?;
 
         let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
             .execute(client)
@@ -58,18 +58,6 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateContributor(
                     ContributorCreateArgs {
-                        code: "test_whitespace".to_string(),
-                    },
-                )),
-                predicate::always(),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
-
-        client
-            .expect_execute_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::CreateContributor(
-                    ContributorCreateArgs {
                         code: "test".to_string(),
                     },
                 )),
@@ -91,7 +79,7 @@ mod tests {
         }
         .execute(&client);
 
-        assert!(res.is_ok());
+        assert!(res.is_err());
 
         let res = CreateContributorCommand {
             code: "test".to_string(),

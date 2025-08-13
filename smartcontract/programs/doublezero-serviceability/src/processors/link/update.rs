@@ -6,7 +6,7 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
-use doublezero_program_common::normalize_account_code;
+use doublezero_program_common::validate_account_code;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -84,8 +84,7 @@ pub fn process_update_link(
     }
 
     if let Some(ref code) = value.code {
-        link.code =
-            normalize_account_code(code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
+        link.code = validate_account_code(code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
     }
     if let Some(contributor_pk) = value.contributor_pk {
         link.contributor_pk = contributor_pk;

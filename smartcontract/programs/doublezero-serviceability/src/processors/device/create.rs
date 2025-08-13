@@ -11,7 +11,7 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
-use doublezero_program_common::normalize_account_code;
+use doublezero_program_common::validate_account_code;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -69,7 +69,7 @@ pub fn process_create_device(
 
     // Validate and normalize code
     let code =
-        normalize_account_code(&value.code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
+        validate_account_code(&value.code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
 
     assert_eq!(
         contributor_account.owner, program_id,

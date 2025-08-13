@@ -1,4 +1,4 @@
-use doublezero_program_common::normalize_account_code;
+use doublezero_program_common::validate_account_code;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, pda::get_device_pda,
     processors::device::create::DeviceCreateArgs, state::device::DeviceType, types::NetworkV4List,
@@ -24,7 +24,7 @@ pub struct CreateDeviceCommand {
 impl CreateDeviceCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
         let code =
-            normalize_account_code(&self.code).map_err(|err| eyre::eyre!("invalid code: {err}"))?;
+            validate_account_code(&self.code).map_err(|err| eyre::eyre!("invalid code: {err}"))?;
 
         let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
             .execute(client)
@@ -168,16 +168,8 @@ mod tests {
             ..command.clone()
         };
 
-        let whitespace_command = CreateDeviceCommand {
-            code: "test device".to_string(),
-            ..command.clone()
-        };
-
         let res = invalid_command.execute(&client);
         assert!(res.is_err());
-
-        let res = whitespace_command.execute(&client);
-        assert!(res.is_ok());
 
         let res = command.execute(&client);
         assert!(res.is_ok());

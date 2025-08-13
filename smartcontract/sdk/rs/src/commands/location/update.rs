@@ -1,5 +1,5 @@
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
-use doublezero_program_common::normalize_account_code;
+use doublezero_program_common::validate_account_code;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, processors::location::update::LocationUpdateArgs,
 };
@@ -21,7 +21,7 @@ impl UpdateLocationCommand {
         let code = self
             .code
             .as_ref()
-            .map(|code| normalize_account_code(code))
+            .map(|code| validate_account_code(code))
             .transpose()
             .map_err(|err| eyre::eyre!("invalid code: {err}"))?;
         let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
@@ -94,20 +94,12 @@ mod tests {
             loc_id: Some(0),
         };
 
-        let update_whitespace_command = UpdateLocationCommand {
-            code: Some("test location".to_string()),
-            ..update_command.clone()
-        };
-
         let update_invalid_command = UpdateLocationCommand {
             code: Some("test/location".to_string()),
             ..update_command.clone()
         };
 
         let res = update_command.execute(&client);
-        assert!(res.is_ok());
-
-        let res = update_whitespace_command.execute(&client);
         assert!(res.is_ok());
 
         let res = update_invalid_command.execute(&client);

@@ -1,5 +1,5 @@
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
-use doublezero_program_common::normalize_account_code;
+use doublezero_program_common::validate_account_code;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, pda::get_location_pda,
     processors::location::create::LocationCreateArgs,
@@ -19,7 +19,7 @@ pub struct CreateLocationCommand {
 impl CreateLocationCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
         let code =
-            normalize_account_code(&self.code).map_err(|err| eyre::eyre!("invalid code: {err}"))?;
+            validate_account_code(&self.code).map_err(|err| eyre::eyre!("invalid code: {err}"))?;
 
         let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
             .execute(client)
@@ -91,20 +91,12 @@ mod tests {
             loc_id: None,
         };
 
-        let create_whitespace_command = CreateLocationCommand {
-            code: "test location".to_string(),
-            ..create_command.clone()
-        };
-
         let create_invalid_command = CreateLocationCommand {
             code: "test/location".to_string(),
             ..create_command.clone()
         };
 
         let res = create_command.execute(&client);
-        assert!(res.is_ok());
-
-        let res = create_whitespace_command.execute(&client);
         assert!(res.is_ok());
 
         let res = create_invalid_command.execute(&client);

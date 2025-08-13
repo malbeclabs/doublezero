@@ -5,7 +5,7 @@ use crate::{
     state::{accounttype::AccountType, multicastgroup::*},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use doublezero_program_common::normalize_account_code;
+use doublezero_program_common::validate_account_code;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -80,7 +80,7 @@ pub fn process_update_multicastgroup(
 
     if let Some(ref code) = value.code {
         multicastgroup.code =
-            normalize_account_code(code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
+            validate_account_code(code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
     }
     if let Some(ref multicast_ip) = value.multicast_ip {
         multicastgroup.multicast_ip = *multicast_ip;

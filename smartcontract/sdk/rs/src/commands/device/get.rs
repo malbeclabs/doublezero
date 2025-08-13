@@ -1,5 +1,4 @@
 use crate::{utils::parse_pubkey, DoubleZeroClient};
-use doublezero_program_common::normalize_account_code;
 use doublezero_serviceability::state::{
     accountdata::AccountData, accounttype::AccountType, device::Device,
 };
@@ -17,27 +16,23 @@ impl GetDeviceCommand {
                 AccountData::Device(device) => Ok((pk, device)),
                 _ => Err(eyre::eyre!("Invalid Account Type")),
             },
-            None => {
-                let code = normalize_account_code(&self.pubkey_or_code)
-                    .map_err(|err| eyre::eyre!("invalid code: {err}"))?;
-                client
-                    .gets(AccountType::Device)?
-                    .into_iter()
-                    .find(|(_, v)| match v {
-                        AccountData::Device(device) => device.code == code,
-                        _ => false,
-                    })
-                    .map(|(pk, v)| match v {
-                        AccountData::Device(device) => Ok((pk, device)),
-                        _ => Err(eyre::eyre!("Invalid Account Type")),
-                    })
-                    .unwrap_or_else(|| {
-                        Err(eyre::eyre!(
-                            "Device with code {} not found",
-                            self.pubkey_or_code
-                        ))
-                    })
-            }
+            None => client
+                .gets(AccountType::Device)?
+                .into_iter()
+                .find(|(_, v)| match v {
+                    AccountData::Device(device) => device.code == self.pubkey_or_code,
+                    _ => false,
+                })
+                .map(|(pk, v)| match v {
+                    AccountData::Device(device) => Ok((pk, device)),
+                    _ => Err(eyre::eyre!("Invalid Account Type")),
+                })
+                .unwrap_or_else(|| {
+                    Err(eyre::eyre!(
+                        "Device with code {} not found",
+                        self.pubkey_or_code
+                    ))
+                }),
         }
     }
 }

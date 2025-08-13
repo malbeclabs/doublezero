@@ -10,6 +10,7 @@ import (
 	"github.com/alitto/pond/v2"
 	"github.com/gagliardetto/solana-go"
 	"github.com/jellydator/ttlcache/v3"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/stats"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/epoch"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
@@ -30,20 +31,39 @@ const (
 	UnitMicrosecond Unit = "us"
 )
 
+type EpochRange struct {
+	From uint64
+	To   uint64
+}
+
+type TimeRange struct {
+	From time.Time
+	To   time.Time
+}
+
+type GetCircuitLatenciesConfig struct {
+	Epochs       *EpochRange
+	Time         *TimeRange
+	MaxPoints    uint64
+	Interval     time.Duration
+	Unit         Unit
+	Circuit      string
+	DataProvider string
+}
+
 type Provider interface {
 	GetCircuits(ctx context.Context) ([]Circuit, error)
-	GetCircuitLatencies(ctx context.Context, circuitCode string, from, to time.Time) ([]CircuitLatencySample, error)
-	GetCircuitLatenciesDownsampled(ctx context.Context, circuitCode string, from, to time.Time, maxPoints uint64, unit Unit) ([]CircuitLatencyStat, error)
-	GetCircuitLatenciesForEpoch(ctx context.Context, circuitCode string, epoch uint64) ([]CircuitLatencySample, error)
+	GetCircuitLatencies(ctx context.Context, cfg GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error)
 }
 
 type provider struct {
+	log *slog.Logger
 	cfg *ProviderConfig
 
 	cache   *ttlcache.Cache[string, any]
 	cacheMu sync.RWMutex
 
-	getCircuitLatenciesPool pond.ResultPool[[]CircuitLatencySample]
+	getCircuitLatenciesPool pond.ResultPool[*CircuitLatenciesWithHeader]
 }
 
 type ProviderConfig struct {
@@ -51,6 +71,7 @@ type ProviderConfig struct {
 	ServiceabilityClient ServiceabilityClient
 	TelemetryClient      TelemetryClient
 	EpochFinder          epoch.Finder
+	AgentPK              solana.PublicKey
 
 	CircuitsCacheTTL               time.Duration
 	HistoricEpochLatenciesCacheTTL time.Duration
@@ -70,6 +91,9 @@ func (c *ProviderConfig) Validate() error {
 	}
 	if c.EpochFinder == nil {
 		return errors.New("epoch finder is required")
+	}
+	if c.AgentPK.IsZero() {
+		return errors.New("agent PK is required")
 	}
 	if c.CircuitsCacheTTL == 0 {
 		c.CircuitsCacheTTL = defaultCircuitsCacheTTL
@@ -95,9 +119,10 @@ func NewProvider(cfg *ProviderConfig) (*provider, error) {
 		ttlcache.WithTTL[string, any](cfg.CircuitsCacheTTL),
 	)
 
-	getCircuitLatenciesPool := pond.NewResultPool[[]CircuitLatencySample](cfg.GetCircuitLatenciesPoolSize)
+	getCircuitLatenciesPool := pond.NewResultPool[*CircuitLatenciesWithHeader](cfg.GetCircuitLatenciesPoolSize)
 
 	return &provider{
+		log:   cfg.Logger,
 		cfg:   cfg,
 		cache: cache,
 
@@ -110,5 +135,5 @@ type ServiceabilityClient interface {
 }
 
 type TelemetryClient interface {
-	GetDeviceLatencySamples(ctx context.Context, originDevicePubKey, targetDevicePubKey, linkPubKey solana.PublicKey, epoch uint64) (*telemetry.DeviceLatencySamples, error)
+	GetInternetLatencySamples(ctx context.Context, dataProvider string, originLocationPK, targetLocationPK solana.PublicKey, agentPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error)
 }

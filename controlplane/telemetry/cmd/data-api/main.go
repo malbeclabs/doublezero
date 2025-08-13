@@ -15,6 +15,8 @@ import (
 	"github.com/lmittmann/tint"
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data"
+	devicedata "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/device"
+	inetdata "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/internet"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/epoch"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
@@ -27,19 +29,53 @@ func main() {
 
 	log := newLogger(*verbose)
 
-	testnetProvider, err := newProvider(log, config.EnvTestnet)
+	mainnetDeviceProvider, err := newDeviceProvider(log, config.EnvMainnet)
+	if err != nil {
+		log.Error("failed to create mainnet provider", "error", err)
+		os.Exit(1)
+	}
+
+	testnetDeviceProvider, err := newDeviceProvider(log, config.EnvTestnet)
 	if err != nil {
 		log.Error("failed to create testnet provider", "error", err)
 		os.Exit(1)
 	}
 
-	devnetProvider, err := newProvider(log, config.EnvDevnet)
+	devnetDeviceProvider, err := newDeviceProvider(log, config.EnvDevnet)
 	if err != nil {
 		log.Error("failed to create devnet provider", "error", err)
 		os.Exit(1)
 	}
 
-	server, err := data.NewServer(log, testnetProvider, devnetProvider)
+	mainnetInternetProvider, err := newInternetProvider(log, config.EnvMainnet)
+	if err != nil {
+		log.Error("failed to create mainnet internet provider", "error", err)
+		os.Exit(1)
+	}
+
+	testnetInternetProvider, err := newInternetProvider(log, config.EnvTestnet)
+	if err != nil {
+		log.Error("failed to create testnet internet provider", "error", err)
+		os.Exit(1)
+	}
+
+	devnetInternetProvider, err := newInternetProvider(log, config.EnvDevnet)
+	if err != nil {
+		log.Error("failed to create devnet internet provider", "error", err)
+		os.Exit(1)
+	}
+
+	cfg := data.ServerConfig{
+		Logger:                      log,
+		MainnetDeviceDataProvider:   mainnetDeviceProvider,
+		MainnetInternetDataProvider: mainnetInternetProvider,
+		TestnetDeviceDataProvider:   testnetDeviceProvider,
+		DevnetDeviceDataProvider:    devnetDeviceProvider,
+		TestnetInternetDataProvider: testnetInternetProvider,
+		DevnetInternetDataProvider:  devnetInternetProvider,
+	}
+
+	server, err := data.NewServer(&cfg)
 	if err != nil {
 		log.Error("failed to create server", "error", err)
 		os.Exit(1)
@@ -72,7 +108,7 @@ func newLogger(verbose bool) *slog.Logger {
 	}))
 }
 
-func newProvider(log *slog.Logger, env string) (data.Provider, error) {
+func newDeviceProvider(log *slog.Logger, env string) (devicedata.Provider, error) {
 	networkConfig, err := config.NetworkConfigForEnv(env)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get network config: %w", err)
@@ -85,10 +121,32 @@ func newProvider(log *slog.Logger, env string) (data.Provider, error) {
 		return nil, fmt.Errorf("failed to create epoch finder: %w", err)
 	}
 
-	return data.NewProvider(&data.ProviderConfig{
+	return devicedata.NewProvider(&devicedata.ProviderConfig{
 		Logger:               log,
 		ServiceabilityClient: serviceability.New(rpcClient, networkConfig.ServiceabilityProgramID),
 		TelemetryClient:      telemetry.New(log, rpcClient, nil, networkConfig.TelemetryProgramID),
 		EpochFinder:          epochFinder,
+	})
+}
+
+func newInternetProvider(log *slog.Logger, env string) (inetdata.Provider, error) {
+	networkConfig, err := config.NetworkConfigForEnv(env)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get network config: %w", err)
+	}
+
+	rpcClient := solanarpc.New(networkConfig.LedgerPublicRPCURL)
+
+	epochFinder, err := epoch.NewFinder(log, rpcClient)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create epoch finder: %w", err)
+	}
+
+	return inetdata.NewProvider(&inetdata.ProviderConfig{
+		Logger:               log,
+		ServiceabilityClient: serviceability.New(rpcClient, networkConfig.ServiceabilityProgramID),
+		TelemetryClient:      telemetry.New(log, rpcClient, nil, networkConfig.TelemetryProgramID),
+		EpochFinder:          epochFinder,
+		AgentPK:              networkConfig.InternetLatencyCollectorPK,
 	})
 }

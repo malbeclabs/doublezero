@@ -95,7 +95,7 @@ func (e *epochFinder) ApproximateAtTime(ctx context.Context, target time.Time) (
 
 	epoch := e.getEpochForSlot(approxSlot, sched)
 
-	e.cache.SetWithTTL(cacheKey, epoch, 30, time.Minute)
+	e.cache.SetWithTTL(cacheKey, epoch, 0, 30*time.Minute)
 	e.cache.Wait()
 
 	return epoch, nil

@@ -173,11 +173,12 @@ func (c *Client) GetInternetLatencySamples(
 	dataProviderName string,
 	originLocationPK solana.PublicKey,
 	targetLocationPK solana.PublicKey,
+	agentPK solana.PublicKey,
 	epoch uint64,
 ) (*InternetLatencySamples, error) {
 	pda, _, err := DeriveInternetLatencySamplesPDA(
 		c.executor.programID,
-		c.executor.signer.PublicKey(),
+		agentPK,
 		dataProviderName,
 		originLocationPK,
 		targetLocationPK,

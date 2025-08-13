@@ -56,7 +56,7 @@ impl UpdateDeviceInterfaceCliCommand {
         let idx = device
             .interfaces
             .iter()
-            .position(|i| i.into_current_version().name == self.name)
+            .position(|i| i.into_current_version().name.to_lowercase() == self.name.to_lowercase())
             .ok_or_else(|| {
                 eyre::eyre!(
                     "Interface with name '{}' does not exist on device '{}'",
@@ -242,7 +242,7 @@ mod tests {
         let mut output = Vec::new();
         let res = UpdateDeviceInterfaceCliCommand {
             pubkey_or_code: device1_pubkey.to_string(),
-            name: "lo0".to_string(),
+            name: "Lo0".to_string(),
             interface_type: None,
             loopback_type: Some(super::LoopbackType::Ipv4),
             vlan_id: Some(20),

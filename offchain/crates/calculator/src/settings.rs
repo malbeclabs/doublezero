@@ -12,6 +12,8 @@ pub struct Settings {
     pub internet_telemetry_prefix: Option<String>,
     pub contributor_rewards_prefix: Option<String>,
     pub reward_input_prefix: Option<String>,
+    #[serde(default = "default_rps_limit")]
+    pub rps_limit: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, borsh::BorshSerialize, borsh::BorshDeserialize)]
@@ -104,4 +106,8 @@ impl Settings {
 
 fn default_log_level() -> String {
     "info".to_string()
+}
+
+fn default_rps_limit() -> u32 {
+    10
 }

@@ -13,8 +13,9 @@ use anyhow::Result;
 use ingestor::fetcher::Fetcher;
 use itertools::Itertools;
 use network_shapley::{shapley::ShapleyInput, types::Demand};
+use rayon::prelude::*;
 use solana_sdk::pubkey::Pubkey;
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf, time::Instant};
 use tabled::{builder::Builder as TableBuilder, settings::Style};
 use tracing::info;
 
@@ -80,48 +81,59 @@ impl Orchestrator {
             .map(|(start, group)| (start, group.collect()))
             .collect();
 
-        // Collect per-city Shapley outputs
-        let mut per_city_shapley_outputs = HashMap::new();
+        // Collect per-city Shapley outputs in parallel
+        let start_time = Instant::now();
+        let per_city_shapley_outputs: HashMap<String, Vec<(String, f64)>> = demand_groups
+            .par_iter()
+            .map(|(city, demands)| {
+                info!(
+                    "City: {city}, Demand: {}",
+                    print_demands(demands, 1_000_000)
+                );
 
-        for (city, demands) in demand_groups {
-            info!(
-                "City: {city}, Demand:\n{}",
-                print_demands(&demands, 1_000_000)
-            );
+                // Optionally write demands per city
+                if let Some(ref output_dir) = output_dir {
+                    csv_exporter::write_demands_csv(output_dir, city, demands)
+                        .expect("Failed to write demands CSV");
+                }
 
-            // Optionally write demands per city
-            if let Some(ref output_dir) = output_dir {
-                csv_exporter::write_demands_csv(output_dir, &city, &demands)?;
-            }
+                // Build shapley inputs
+                let input = ShapleyInput {
+                    private_links: shapley_inputs.private_links.clone(),
+                    devices: shapley_inputs.devices.clone(),
+                    demands: demands.clone(),
+                    public_links: shapley_inputs.public_links.clone(),
+                    operator_uptime: self.settings.shapley.operator_uptime,
+                    contiguity_bonus: self.settings.shapley.contiguity_bonus,
+                    demand_multiplier: self.settings.shapley.demand_multiplier,
+                };
 
-            // Build shapley inputs
-            let input = ShapleyInput {
-                private_links: shapley_inputs.private_links.clone(),
-                devices: shapley_inputs.devices.clone(),
-                demands,
-                public_links: shapley_inputs.public_links.clone(),
-                operator_uptime: self.settings.shapley.operator_uptime,
-                contiguity_bonus: self.settings.shapley.contiguity_bonus,
-                demand_multiplier: self.settings.shapley.demand_multiplier,
-            };
+                // Shapley output
+                let output = input.compute().expect("Failed to compute Shapley values");
 
-            // Shapley output
-            let output = input.compute()?;
+                // Print per-city table
+                let table = TableBuilder::from(output.clone())
+                    .build()
+                    .with(Style::psql().remove_horizontals())
+                    .to_string();
+                info!("Shapley Output for {city}:\n{}", table);
 
-            // Print per-city table
-            let table = TableBuilder::from(output.clone())
-                .build()
-                .with(Style::psql().remove_horizontals())
-                .to_string();
-            info!("Shapley Output for {city}:\n{}", table);
+                // Store raw values for aggregation
+                let city_values: Vec<(String, f64)> = output
+                    .into_iter()
+                    .map(|(operator, shapley_value)| (operator, shapley_value.value))
+                    .collect();
 
-            // Store raw values for aggregation
-            let city_values: Vec<(String, f64)> = output
-                .into_iter()
-                .map(|(operator, shapley_value)| (operator, shapley_value.value))
-                .collect();
-            per_city_shapley_outputs.insert(city.clone(), city_values);
-        }
+                (city.clone(), city_values)
+            })
+            .collect();
+
+        let elapsed = start_time.elapsed();
+        info!(
+            "Shapley computation completed in {:.2?} for {} cities",
+            elapsed,
+            per_city_shapley_outputs.len()
+        );
 
         // Aggregate consolidated Shapley output
         if !per_city_shapley_outputs.is_empty() {
@@ -170,6 +182,7 @@ impl Orchestrator {
                     &device_telemetry,
                     "device telemetry aggregates",
                     &mut summary,
+                    self.settings.rps_limit,
                 )
                 .await;
 
@@ -182,6 +195,7 @@ impl Orchestrator {
                     &internet_telemetry,
                     "internet telemetry aggregates",
                     &mut summary,
+                    self.settings.rps_limit,
                 )
                 .await;
 
@@ -194,6 +208,7 @@ impl Orchestrator {
                     &input_config,
                     "reward calculation input",
                     &mut summary,
+                    self.settings.rps_limit,
                 )
                 .await;
 
@@ -211,6 +226,7 @@ impl Orchestrator {
                     &merkle_root_data,
                     "contributor rewards merkle root",
                     &mut summary,
+                    self.settings.rps_limit,
                 )
                 .await;
 
@@ -238,6 +254,7 @@ impl Orchestrator {
                         &proof_data,
                         &format!("proof for contributor {}", reward.operator),
                         &mut summary,
+                        self.settings.rps_limit,
                     )
                     .await;
                 }

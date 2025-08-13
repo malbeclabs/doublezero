@@ -3,6 +3,7 @@ use backon::{ExponentialBuilder, Retryable};
 use doublezero_record::{
     ID as RECORD_PROGRAM_ID, instruction as record_instruction, state::RecordData,
 };
+use governor::{Quota, RateLimiter};
 use solana_client::{
     client_error::ClientError as SolanaClientError, nonblocking::rpc_client::RpcClient,
     rpc_config::RpcSendTransactionConfig,
@@ -18,7 +19,7 @@ use solana_sdk::{
     transaction::VersionedTransaction,
 };
 use solana_system_interface::instruction as system_instruction;
-use std::time::Duration;
+use std::{num::NonZeroU32, time::Duration};
 use tracing::info;
 
 pub fn make_record_key(payer_signer: &Keypair, seeds: &[&[u8]]) -> Result<Pubkey> {
@@ -138,6 +139,7 @@ pub async fn write_record_chunks(
     payer_signer: &Keypair,
     record_key: &Pubkey,
     data: &[u8],
+    rps_limit: u32,
 ) -> Result<()> {
     // One byte more and the transaction is too large.
     // CHUNK_SIZE is set to 1,013 bytes to stay well within Solana's transaction size limits.
@@ -149,12 +151,14 @@ pub async fn write_record_chunks(
 
     let num_chunks = data.len() / CHUNK_SIZE + 1;
 
-    // NOTE: This loop would benefit from a rate limiter. RPCs may reject the
-    // send transaction request if the rate limit is exceeded. And this error
-    // can cause chaos.
-    //
-    // See the leaky-bucket crate for a token bucket implementation.
+    // Create rate limiter from settings
+    let rate_limiter = RateLimiter::direct(Quota::per_second(
+        NonZeroU32::new(rps_limit).expect("RPS limit must be > 0"),
+    ));
     for (i, chunk) in data.chunks(CHUNK_SIZE).enumerate() {
+        // Apply rate limiting before sending each chunk
+        rate_limiter.until_ready().await;
+
         let chunk_len = chunk.len();
         let offset = i * CHUNK_SIZE;
 
@@ -230,6 +234,7 @@ pub async fn write_to_ledger<T: borsh::BorshSerialize>(
     seeds: &[&[u8]],
     data: &T,
     data_type: &str, // for logging purposes
+    rps_limit: u32,
 ) -> Result<Pubkey> {
     let serialized = borsh::to_vec(data)?;
     info!(
@@ -242,7 +247,14 @@ pub async fn write_to_ledger<T: borsh::BorshSerialize>(
     let record_key = try_create_record(rpc_client, payer_signer, seeds, serialized.len()).await?;
 
     // Write the data in chunks
-    write_record_chunks(rpc_client, payer_signer, &record_key, &serialized).await?;
+    write_record_chunks(
+        rpc_client,
+        payer_signer,
+        &record_key,
+        &serialized,
+        rps_limit,
+    )
+    .await?;
 
     info!("Successfully wrote {} to {}", data_type, record_key);
     Ok(record_key)

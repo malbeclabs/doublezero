@@ -33,6 +33,7 @@ futures-util = "0"
 itertools = "0"
 network-shapley = { git = "https://github.com/doublezerofoundation/network-shapley-rs", features = ["serde", "borsh"] }
 rand = "0"
+governor = "0"
 rayon = "1"
 rust_decimal = { version = "1", features = ["serde", "macros"] }
 reqwest = { version = "0", features = [ "json" ] }

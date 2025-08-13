@@ -114,8 +114,18 @@ pub async fn write_and_track<T: BorshSerialize>(
     data: &T,
     description: &str,
     summary: &mut WriteSummary,
+    rps_limit: u32,
 ) {
-    match write_to_ledger(rpc_client, payer_signer, seeds, data, description).await {
+    match write_to_ledger(
+        rpc_client,
+        payer_signer,
+        seeds,
+        data,
+        description,
+        rps_limit,
+    )
+    .await
+    {
         Ok(_) => {
             info!("✅ Successfully wrote {}", description);
             summary.add_success(description.to_string());

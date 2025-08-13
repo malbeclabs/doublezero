@@ -942,3 +942,33 @@ func TestInternetLatency_RIPEAtlas_GetMeasurementResultsIncremental(t *testing.T
 		})
 	}
 }
+
+func TestInternetLatency_RIPEAtlas_GetCreditBalance(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	client := &Client{
+		log:     log,
+		BaseURL: "https://atlas.ripe.net/api/v2",
+		HTTPClient: &MockHTTPClient{
+			DoFunc: func(req *http.Request) (*http.Response, error) {
+				response := struct {
+					CurrentBalance float64 `json:"current_balance"`
+				}{
+					CurrentBalance: 1000.0,
+				}
+				body, _ := json.Marshal(response)
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewReader(body)),
+				}, nil
+			},
+		},
+	}
+
+	balance, err := client.GetCreditBalance(t.Context())
+
+	require.NoError(t, err, "GetCreditBalance() should not return error")
+	require.Equal(t, 1000.0, balance, "Expected credit balance to be 1000")
+}

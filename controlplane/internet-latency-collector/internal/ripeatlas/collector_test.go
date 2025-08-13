@@ -29,6 +29,7 @@ type MockClient struct {
 	GetMeasurementResultsFunc            func(ctx context.Context, measurementID int) ([]any, error)
 	GetMeasurementResultsIncrementalFunc func(ctx context.Context, measurementID int, startTimestamp int64) ([]any, error)
 	StopMeasurementFunc                  func(ctx context.Context, measurementID int) error
+	GetCreditBalanceFunc                 func(ctx context.Context) (float64, error)
 }
 
 func (m *MockClient) GetProbesInRadius(ctx context.Context, latitude, longitude float64, radiusKm int) ([]Probe, error) {
@@ -78,6 +79,13 @@ func (m *MockClient) StopMeasurement(ctx context.Context, measurementID int) err
 		return m.StopMeasurementFunc(ctx, measurementID)
 	}
 	return nil
+}
+
+func (m *MockClient) GetCreditBalance(ctx context.Context) (float64, error) {
+	if m.GetCreditBalanceFunc != nil {
+		return m.GetCreditBalanceFunc(ctx)
+	}
+	return 0, nil
 }
 
 func TestInternetLatency_RIPEAtlas_GetNearestProbesSorted(t *testing.T) {

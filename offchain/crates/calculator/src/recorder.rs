@@ -222,3 +222,28 @@ pub fn create_record_seed_string(seeds: &[&[u8]]) -> String {
 
     seed
 }
+
+/// Generic function to write any BorshSerialize data to the ledger
+pub async fn write_to_ledger<T: borsh::BorshSerialize>(
+    rpc_client: &RpcClient,
+    payer_signer: &Keypair,
+    seeds: &[&[u8]],
+    data: &T,
+    data_type: &str, // for logging purposes
+) -> Result<Pubkey> {
+    let serialized = borsh::to_vec(data)?;
+    info!(
+        "Writing {} to ledger ({} bytes)",
+        data_type,
+        serialized.len()
+    );
+
+    // Create the record account
+    let record_key = try_create_record(rpc_client, payer_signer, seeds, serialized.len()).await?;
+
+    // Write the data in chunks
+    write_record_chunks(rpc_client, payer_signer, &record_key, &serialized).await?;
+
+    info!("Successfully wrote {} to {}", data_type, record_key);
+    Ok(record_key)
+}

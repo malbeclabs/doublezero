@@ -794,7 +794,6 @@ dependencies = [
  "rust_decimal",
  "serde",
  "serde_json",
- "sha2 0.10.9",
  "solana-client",
  "solana-sdk",
  "solana-system-interface",
@@ -3180,8 +3179,9 @@ dependencies = [
 [[package]]
 name = "network-shapley"
 version = "0.1.0"
-source = "git+https://github.com/doublezerofoundation/network-shapley-rs#46567249e485cb6b948c487a48d8dcde6dc35e48"
+source = "git+https://github.com/doublezerofoundation/network-shapley-rs?branch=rg%2Fborsh#5477449f626cd36269ab1401ca442ab8878febe8"
 dependencies = [
+ "borsh 1.5.7",
  "clarabel",
  "csv",
  "faer",

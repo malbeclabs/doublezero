@@ -1,11 +1,12 @@
 use crate::{
     csv_exporter,
+    input::{RewardInput, ShapleyInputs},
     keypair_loader::load_keypair,
     proof::{
         ContributorRewardDetail, ContributorRewardProof, ContributorRewardsMerkleRoot,
         ContributorRewardsMerkleTree,
     },
-    recorder::{compute_record_address, try_create_record, write_record_chunks},
+    recorder::{compute_record_address, try_create_record, write_record_chunks, write_to_ledger},
     settings::Settings,
     shapley_aggregator::aggregate_shapley_outputs,
     shapley_handler::{build_demands, build_devices, build_private_links, build_public_links},
@@ -13,7 +14,7 @@ use crate::{
 };
 use anyhow::{Result, bail};
 use backon::{ExponentialBuilder, Retryable};
-use doublezero_record::state::RecordData;
+use doublezero_record::{instruction as record_instruction, state::RecordData};
 use ingestor::fetcher::Fetcher;
 use itertools::Itertools;
 use network_shapley::{shapley::ShapleyInput, types::Demand};
@@ -22,7 +23,13 @@ use processor::{
     telemetry::{DZDTelemetryProcessor, DZDTelemetryStatMap, print_telemetry_stats},
 };
 use solana_client::client_error::ClientError as SolanaClientError;
-use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey, signature::Keypair};
+use solana_sdk::{
+    commitment_config::CommitmentConfig,
+    message::Message,
+    pubkey::Pubkey,
+    signature::{Keypair, Signer},
+    transaction::Transaction,
+};
 use std::{collections::HashMap, mem::size_of, path::PathBuf, time::Duration};
 use svm_hash::sha2::Hash;
 use tabled::{builder::Builder as TableBuilder, settings::Style};
@@ -151,6 +158,51 @@ impl Orchestrator {
 
         // Build demand and get city stats
         let (demands, city_stats) = build_demands(&fetcher, &fetch_data).await?;
+
+        // Store input configuration to ledger (BEFORE any calculations)
+        if !dry_run {
+            let payer_signer = load_keypair(&keypair_path)?;
+
+            let shapley_inputs = ShapleyInputs {
+                devices: devices.clone(),
+                private_links: private_links.clone(),
+                public_links: public_links.clone(),
+                demands: demands.clone(),
+                city_stats: city_stats.clone(),
+            };
+
+            // Create input configuration with all inputs
+            let input_config = RewardInput::new(
+                fetch_epoch,
+                self.settings.shapley.clone(),
+                &shapley_inputs,
+                &borsh::to_vec(&stat_map)?,
+                &borsh::to_vec(&internet_stat_map)?,
+            );
+
+            // Store to ledger
+            let prefix = self.settings.get_reward_input_prefix(dry_run)?;
+            let seeds: &[&[u8]] = &[&prefix, &fetch_epoch.to_le_bytes()];
+
+            write_to_ledger(
+                &fetcher.rpc_client,
+                &payer_signer,
+                seeds,
+                &input_config,
+                "calculation input configuration",
+            )
+            .await?;
+
+            info!(
+                "Stored input configuration for epoch {} to ledger",
+                fetch_epoch
+            );
+        } else {
+            info!(
+                "DRY-RUN: Would store input configuration for epoch {}",
+                fetch_epoch
+            );
+        }
 
         // Optionally write CSVs
         if let Some(ref output_dir) = output_dir {
@@ -557,6 +609,160 @@ impl Orchestrator {
         }
 
         println!("========================================\n");
+
+        Ok(())
+    }
+
+    pub async fn close_record(
+        &self,
+        record_type: &str,
+        epoch: u64,
+        keypair_path: Option<PathBuf>,
+        contributor: Option<String>,
+    ) -> Result<()> {
+        // Load keypair
+        let payer_signer = load_keypair(&keypair_path)?;
+
+        // Create fetcher for RPC client
+        let ingestor_settings = ingestor::settings::Settings::new(self.cfg_path.clone())?;
+        let fetcher = Fetcher::new(&ingestor_settings)?;
+
+        // Determine the prefix and compute the record address based on record type
+        let epoch_bytes = epoch.to_le_bytes();
+        let record_key = match record_type {
+            "device-telemetry" => {
+                let prefix = self.settings.get_device_telemetry_prefix(false)?;
+                let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
+                compute_record_address(&payer_signer.pubkey(), seeds)?
+            }
+            "internet-telemetry" => {
+                let prefix = self.settings.get_internet_telemetry_prefix(false)?;
+                let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
+                compute_record_address(&payer_signer.pubkey(), seeds)?
+            }
+            "reward-input" => {
+                let prefix = self.settings.get_reward_input_prefix(false)?;
+                let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
+                compute_record_address(&payer_signer.pubkey(), seeds)?
+            }
+            "contributor-rewards" => {
+                let prefix = self.settings.get_contributor_rewards_prefix(false)?;
+                if let Some(contributor_str) = contributor {
+                    let contributor_bytes = contributor_str.as_bytes();
+                    let seeds: &[&[u8]] = &[&prefix, &epoch_bytes, contributor_bytes];
+                    compute_record_address(&payer_signer.pubkey(), seeds)?
+                } else {
+                    // For merkle root
+                    let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
+                    compute_record_address(&payer_signer.pubkey(), seeds)?
+                }
+            }
+            _ => bail!(
+                "Invalid record type. Must be one of: device-telemetry, internet-telemetry, reward-input, contributor-rewards"
+            ),
+        };
+
+        info!("Closing record account: {}", record_key);
+        info!("Record type: {}, Epoch: {}", record_type, epoch);
+
+        // Check if the account exists
+        let maybe_account = (|| async {
+            fetcher
+                .rpc_client
+                .get_account_with_commitment(&record_key, CommitmentConfig::confirmed())
+                .await
+        })
+        .retry(&ExponentialBuilder::default().with_jitter())
+        .notify(|err: &SolanaClientError, dur: Duration| {
+            info!("retrying error: {:?} with sleeping {:?}", err, dur)
+        })
+        .await?;
+
+        if maybe_account.value.is_none() {
+            bail!("Record account {} does not exist", record_key);
+        }
+
+        // Create close instruction
+        let close_ix = record_instruction::close_account(
+            &record_key,
+            &payer_signer.pubkey(),
+            &payer_signer.pubkey(), // Return lamports to payer
+        );
+
+        // Create and send transaction
+        let recent_blockhash = fetcher.rpc_client.get_latest_blockhash().await?;
+        let message = Message::new(&[close_ix], Some(&payer_signer.pubkey()));
+        let transaction = Transaction::new(&[&payer_signer], message, recent_blockhash);
+
+        let signature = (|| async {
+            fetcher
+                .rpc_client
+                .send_and_confirm_transaction_with_spinner_and_commitment(
+                    &transaction,
+                    CommitmentConfig::confirmed(),
+                )
+                .await
+        })
+        .retry(&ExponentialBuilder::default().with_jitter())
+        .notify(|err: &SolanaClientError, dur: Duration| {
+            info!("retrying error: {:?} with sleeping {:?}", err, dur)
+        })
+        .await?;
+
+        info!("Account closed successfully!");
+        info!("Transaction signature: {}", signature);
+
+        Ok(())
+    }
+
+    pub async fn read_reward_input(&self, epoch: u64, payer_pubkey: &Pubkey) -> Result<()> {
+        // Create fetcher
+        let ingestor_settings = ingestor::settings::Settings::new(self.cfg_path.clone())?;
+        let fetcher = Fetcher::new(&ingestor_settings)?;
+
+        let prefix = self.settings.get_reward_input_prefix(false)?;
+        let epoch_bytes = epoch.to_le_bytes();
+        let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
+        let record_key = compute_record_address(payer_pubkey, seeds)?;
+
+        info!("Fetching calculation input from: {}", record_key);
+
+        let maybe_account = (|| async {
+            fetcher
+                .rpc_client
+                .get_account_with_commitment(&record_key, CommitmentConfig::confirmed())
+                .await
+        })
+        .retry(&ExponentialBuilder::default().with_jitter())
+        .notify(|err: &SolanaClientError, dur: Duration| {
+            info!("retrying error: {:?} with sleeping {:?}", err, dur)
+        })
+        .await?;
+
+        let input_config = match maybe_account.value {
+            None => bail!(
+                "Calculation input account {} not found for epoch {}",
+                record_key,
+                epoch
+            ),
+            Some(acc) => {
+                let data: RewardInput = borsh::from_slice(&acc.data[size_of::<RecordData>()..])?;
+                data
+            }
+        };
+
+        // Display the configuration
+        println!("\n========================================");
+        println!("Reward Calculation Input Configuration");
+        println!("========================================");
+        println!("{input_config:#?}");
+        println!("========================================\n");
+
+        // Optionally validate checksums if telemetry data is available
+        info!(
+            "Successfully retrieved calculation input for epoch {}",
+            epoch
+        );
 
         Ok(())
     }

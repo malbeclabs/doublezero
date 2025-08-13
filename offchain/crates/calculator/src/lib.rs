@@ -1,4 +1,5 @@
 pub mod csv_exporter;
+pub mod input;
 pub mod keypair_loader;
 pub mod orchestrator;
 pub mod proof;

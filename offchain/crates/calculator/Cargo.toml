@@ -28,7 +28,6 @@ doublezero-record.workspace = true
 network-shapley.workspace = true
 itertools.workspace = true
 rust_decimal.workspace = true
-sha2.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 solana-client.workspace = true

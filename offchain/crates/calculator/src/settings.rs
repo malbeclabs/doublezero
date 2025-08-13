@@ -11,9 +11,10 @@ pub struct Settings {
     pub device_telemetry_prefix: Option<String>,
     pub internet_telemetry_prefix: Option<String>,
     pub contributor_rewards_prefix: Option<String>,
+    pub reward_input_prefix: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, borsh::BorshSerialize, borsh::BorshDeserialize)]
 pub struct ShapleySettings {
     pub operator_uptime: f64,
     pub contiguity_bonus: f64,
@@ -80,6 +81,22 @@ impl Settings {
             .ok_or_else(|| {
                 ConfigError::Message(
                     "CALCULATOR__CONTRIBUTOR_REWARDS_PREFIX is required (set via environment variable)".to_string()
+                )
+            })
+    }
+
+    pub fn get_reward_input_prefix(&self, dry_run: bool) -> Result<Vec<u8>, ConfigError> {
+        if dry_run {
+            return Ok(b"dz_reward_input_test".to_vec());
+        }
+
+        self.reward_input_prefix
+            .as_ref()
+            .map(|s| s.as_bytes().to_vec())
+            .ok_or_else(|| {
+                ConfigError::Message(
+                    "CALCULATOR__REWARD_INPUT_PREFIX is required (set via environment variable)"
+                        .to_string(),
                 )
             })
     }

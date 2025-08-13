@@ -6,6 +6,7 @@ use crate::{
     state::{accounttype::AccountType, contributor::*},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
+use doublezero_program_common::validate_account_code;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -48,6 +49,10 @@ pub fn process_create_contributor(
     #[cfg(test)]
     msg!("process_create_contributor({:?})", value);
 
+    // Validate and normalize code
+    let code =
+        validate_account_code(&value.code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
+
     // Check the owner of the accounts
     assert_eq!(
         globalstate_account.owner, program_id,
@@ -84,7 +89,7 @@ pub fn process_create_contributor(
         index: globalstate.account_index,
         reference_count: 0,
         bump_seed,
-        code: value.code.clone(),
+        code,
         status: ContributorStatus::Activated,
     };
 

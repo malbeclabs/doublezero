@@ -1,3 +1,4 @@
+use doublezero_program_common::validate_account_code;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, pda::get_multicastgroup_pda,
     processors::multicastgroup::create::MulticastGroupCreateArgs,
@@ -15,6 +16,9 @@ pub struct CreateMulticastGroupCommand {
 
 impl CreateMulticastGroupCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
+        let code =
+            validate_account_code(&self.code).map_err(|err| eyre::eyre!("invalid code: {err}"))?;
+
         let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
@@ -26,7 +30,7 @@ impl CreateMulticastGroupCommand {
                 DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
                     index: globalstate.account_index + 1,
                     bump_seed,
-                    code: self.code.to_string(),
+                    code,
                     max_bandwidth: self.max_bandwidth,
                     owner: self.owner,
                 }),
@@ -67,7 +71,7 @@ mod tests {
                     MulticastGroupCreateArgs {
                         index: 1,
                         bump_seed,
-                        code: "test".to_string(),
+                        code: "test_group".to_string(),
                         max_bandwidth: 1000,
                         owner: globalstate_pubkey,
                     },
@@ -79,13 +83,21 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        let res = CreateMulticastGroupCommand {
-            code: "test".to_string(),
+        let create_command = CreateMulticastGroupCommand {
+            code: "test_group".to_string(),
             max_bandwidth: 1000,
             owner: globalstate_pubkey,
-        }
-        .execute(&client);
+        };
 
+        let create_invalid_command = CreateMulticastGroupCommand {
+            code: "test/group".to_string(),
+            ..create_command.clone()
+        };
+
+        let res = create_command.execute(&client);
         assert!(res.is_ok());
+
+        let res = create_invalid_command.execute(&client);
+        assert!(res.is_err());
     }
 }

@@ -19,6 +19,7 @@ chrono.workspace = true
 directories-next.workspace = true
 dirs-next.workspace = true
 doublezero-config.workspace = true
+doublezero-program-common.workspace = true
 doublezero-serviceability.workspace = true
 eyre.workspace = true
 futures.workspace = true

@@ -111,5 +111,13 @@ mod tests {
         .execute(&client);
 
         assert!(res.is_err());
+
+        // Search by invalid code
+        let res = GetContributorCommand {
+            pubkey_or_code: "s(%".to_string(),
+        }
+        .execute(&client);
+
+        assert!(res.is_err());
     }
 }

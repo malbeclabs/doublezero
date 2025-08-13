@@ -111,5 +111,12 @@ mod tests {
         .execute(&client);
 
         assert!(res.is_err());
+
+        // Search by invalid code
+        let res = GetLocationCommand {
+            pubkey_or_code: "s 123h".to_string(),
+        }
+        .execute(&client);
+        assert!(res.is_err());
     }
 }

@@ -1,4 +1,5 @@
 use crate::{DoubleZeroClient, GetGlobalStateCommand};
+use doublezero_program_common::validate_account_code;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     processors::multicastgroup::update::MulticastGroupUpdateArgs,
@@ -16,13 +17,19 @@ pub struct UpdateMulticastGroupCommand {
 
 impl UpdateMulticastGroupCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
+        let code = self
+            .code
+            .as_ref()
+            .map(|code| validate_account_code(code))
+            .transpose()
+            .map_err(|err| eyre::eyre!("invalid code: {err}"))?;
         let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
         client.execute_transaction(
             DoubleZeroInstruction::UpdateMulticastGroup(MulticastGroupUpdateArgs {
-                code: self.code.clone(),
+                code,
                 multicast_ip: self.multicast_ip,
                 max_bandwidth: self.max_bandwidth,
             }),
@@ -49,7 +56,7 @@ mod tests {
     use solana_sdk::{instruction::AccountMeta, signature::Signature};
 
     #[test]
-    fn test_commands_location_update_command() {
+    fn test_commands_multicastgroup_update_command() {
         let mut client = create_test_client();
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
@@ -60,7 +67,7 @@ mod tests {
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateMulticastGroup(
                     MulticastGroupUpdateArgs {
-                        code: Some("test".to_string()),
+                        code: Some("test_group".to_string()),
                         multicast_ip: Some("127.0.0.1".parse().unwrap()),
                         max_bandwidth: Some(1000),
                     },
@@ -72,14 +79,22 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        let res = UpdateMulticastGroupCommand {
+        let update_command = UpdateMulticastGroupCommand {
             pubkey: pda_pubkey,
-            code: Some("test".to_string()),
+            code: Some("test_group".to_string()),
             multicast_ip: Some("127.0.0.1".parse().unwrap()),
             max_bandwidth: Some(1000),
-        }
-        .execute(&client);
+        };
 
+        let update_invalid_command = UpdateMulticastGroupCommand {
+            code: Some("test/group".to_string()),
+            ..update_command.clone()
+        };
+
+        let res = update_command.execute(&client);
         assert!(res.is_ok());
+
+        let res = update_invalid_command.execute(&client);
+        assert!(res.is_err());
     }
 }

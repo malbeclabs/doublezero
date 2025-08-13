@@ -176,5 +176,9 @@ mod tests {
             config.ledger_public_ws_rpc_url,
             "wss://other-ws-rpc-url.com/whirligig"
         );
+
+        // reset the values in the environment when complete
+        std::env::remove_var("DZ_LEDGER_RPC_URL");
+        std::env::remove_var("DZ_LEDGER_WS_RPC_URL");
     }
 }

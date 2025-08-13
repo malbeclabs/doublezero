@@ -8,6 +8,7 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
+use doublezero_program_common::validate_account_code;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -56,6 +57,10 @@ pub fn process_create_link(
 
     #[cfg(test)]
     msg!("process_create_link({:?})", value);
+
+    // Validate and normalize code
+    let code =
+        validate_account_code(&value.code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
 
     assert_eq!(
         contributor_account.owner, program_id,
@@ -151,7 +156,7 @@ pub fn process_create_link(
         owner: *payer_account.key,
         index: globalstate.account_index,
         bump_seed,
-        code: value.code.clone(),
+        code,
         contributor_pk: *contributor_account.key,
         side_a_pk: *side_a_account.key,
         side_z_pk: *side_z_account.key,

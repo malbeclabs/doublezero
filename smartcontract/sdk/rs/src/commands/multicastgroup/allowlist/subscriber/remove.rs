@@ -97,12 +97,20 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
+        // remove with valid code
         let res = RemoveMulticastGroupSubAllowlistCommand {
             pubkey_or_code: "test_code".to_string(),
             pubkey,
         }
         .execute(&client);
-
         assert!(res.is_ok());
+
+        // error removing with invalid code character
+        let res = RemoveMulticastGroupSubAllowlistCommand {
+            pubkey_or_code: "test%code".to_string(),
+            pubkey,
+        }
+        .execute(&client);
+        assert!(res.is_err());
     }
 }

@@ -97,12 +97,20 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
+        // remove publisher with valid code
         let res = RemoveMulticastGroupPubAllowlistCommand {
             pubkey_or_code: "test_code".to_string(),
             pubkey,
         }
         .execute(&client);
-
         assert!(res.is_ok());
+
+        // error attempting to remove publisher with code containing invalid char
+        let res = RemoveMulticastGroupPubAllowlistCommand {
+            pubkey_or_code: "test^code".to_string(),
+            pubkey,
+        }
+        .execute(&client);
+        assert!(res.is_err());
     }
 }

@@ -98,6 +98,7 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
+        // list with valid code
         let res = ListMulticastGroupSubAllowlistCommand {
             pubkey_or_code: "test_code".to_string(),
         }
@@ -109,5 +110,12 @@ mod tests {
             allowlist.is_empty(),
             "Expected empty allowlist, got: {allowlist:?}"
         );
+
+        // list with code containing invalid character
+        let res = ListMulticastGroupSubAllowlistCommand {
+            pubkey_or_code: "test%code".to_string(),
+        }
+        .execute(&client);
+        assert!(res.is_err());
     }
 }

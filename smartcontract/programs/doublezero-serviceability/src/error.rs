@@ -41,6 +41,8 @@ pub enum DoubleZeroError {
     DeviceAlreadySet, // variant 17
     #[error("Device not set")]
     DeviceNotSet, // variant 18
+    #[error("Invalid account code")]
+    InvalidAccountCode, // variant 19
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -65,6 +67,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InvalidIndex => ProgramError::Custom(16),
             DoubleZeroError::DeviceAlreadySet => ProgramError::Custom(17),
             DoubleZeroError::DeviceNotSet => ProgramError::Custom(18),
+            DoubleZeroError::InvalidAccountCode => ProgramError::Custom(19),
         }
     }
 }
@@ -90,6 +93,7 @@ impl From<u32> for DoubleZeroError {
             16 => DoubleZeroError::InvalidIndex,
             17 => DoubleZeroError::DeviceAlreadySet,
             18 => DoubleZeroError::DeviceNotSet,
+            19 => DoubleZeroError::InvalidAccountCode,
 
             _ => DoubleZeroError::Custom(e),
         }
@@ -118,6 +122,7 @@ impl From<ProgramError> for DoubleZeroError {
                 16 => DoubleZeroError::InvalidIndex,
                 17 => DoubleZeroError::DeviceAlreadySet,
                 18 => DoubleZeroError::DeviceNotSet,
+                19 => DoubleZeroError::InvalidAccountCode,
 
                 _ => DoubleZeroError::Custom(e),
             },

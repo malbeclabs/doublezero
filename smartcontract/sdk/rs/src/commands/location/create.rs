@@ -1,4 +1,5 @@
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
+use doublezero_program_common::validate_account_code;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, pda::get_location_pda,
     processors::location::create::LocationCreateArgs,
@@ -17,6 +18,9 @@ pub struct CreateLocationCommand {
 
 impl CreateLocationCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
+        let code =
+            validate_account_code(&self.code).map_err(|err| eyre::eyre!("invalid code: {err}"))?;
+
         let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
@@ -26,7 +30,7 @@ impl CreateLocationCommand {
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
-                    code: self.code.clone(),
+                    code,
                     name: self.name.clone(),
                     country: self.country.clone(),
                     lat: self.lat,
@@ -64,7 +68,7 @@ mod tests {
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
-                    code: "test".to_string(),
+                    code: "test_location".to_string(),
                     name: "Test Location".to_string(),
                     country: "Test Country".to_string(),
                     lat: 0.0,
@@ -78,16 +82,24 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        let res = CreateLocationCommand {
-            code: "test".to_string(),
+        let create_command = CreateLocationCommand {
+            code: "test_location".to_string(),
             name: "Test Location".to_string(),
             country: "Test Country".to_string(),
             lat: 0.0,
             lng: 0.0,
             loc_id: None,
-        }
-        .execute(&client);
+        };
 
+        let create_invalid_command = CreateLocationCommand {
+            code: "test/location".to_string(),
+            ..create_command.clone()
+        };
+
+        let res = create_command.execute(&client);
         assert!(res.is_ok());
+
+        let res = create_invalid_command.execute(&client);
+        assert!(res.is_err());
     }
 }

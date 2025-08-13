@@ -1,4 +1,5 @@
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
+use doublezero_program_common::validate_account_code;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, processors::location::update::LocationUpdateArgs,
 };
@@ -17,13 +18,19 @@ pub struct UpdateLocationCommand {
 
 impl UpdateLocationCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
+        let code = self
+            .code
+            .as_ref()
+            .map(|code| validate_account_code(code))
+            .transpose()
+            .map_err(|err| eyre::eyre!("invalid code: {err}"))?;
         let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
         client.execute_transaction(
             DoubleZeroInstruction::UpdateLocation(LocationUpdateArgs {
-                code: self.code.to_owned(),
+                code,
                 name: self.name.to_owned(),
                 country: self.country.to_owned(),
                 lat: self.lat,
@@ -63,7 +70,7 @@ mod tests {
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateLocation(LocationUpdateArgs {
-                    code: Some("test".to_string()),
+                    code: Some("test_location".to_string()),
                     name: Some("Test Location".to_string()),
                     country: Some("Test Country".to_string()),
                     lat: Some(0.0),
@@ -77,17 +84,25 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        let res = UpdateLocationCommand {
+        let update_command = UpdateLocationCommand {
             pubkey: pda_pubkey,
-            code: Some("test".to_string()),
+            code: Some("test_location".to_string()),
             name: Some("Test Location".to_string()),
             country: Some("Test Country".to_string()),
             lat: Some(0.0),
             lng: Some(0.0),
             loc_id: Some(0),
-        }
-        .execute(&client);
+        };
 
+        let update_invalid_command = UpdateLocationCommand {
+            code: Some("test/location".to_string()),
+            ..update_command.clone()
+        };
+
+        let res = update_command.execute(&client);
         assert!(res.is_ok());
+
+        let res = update_invalid_command.execute(&client);
+        assert!(res.is_err());
     }
 }

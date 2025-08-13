@@ -110,7 +110,13 @@ mod tests {
             pubkey_or_code: "ssssssssssss".to_string(),
         }
         .execute(&client);
+        assert!(res.is_err());
 
+        // Search by invalid code
+        let res = GetExchangeCommand {
+            pubkey_or_code: "s_(%".to_string(),
+        }
+        .execute(&client);
         assert!(res.is_err());
     }
 }

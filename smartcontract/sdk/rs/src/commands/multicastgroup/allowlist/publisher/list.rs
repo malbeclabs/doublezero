@@ -99,16 +99,23 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
+        // list by code
         let res = ListMulticastGroupPubAllowlistCommand {
             pubkey_or_code: "test_code".to_string(),
         }
         .execute(&client);
-
         assert!(res.is_ok());
         let allowlist = res.unwrap();
         assert!(
             allowlist.is_empty(),
             "Expected empty allowlist, got: {allowlist:?}",
         );
+
+        // list with invalid code
+        let res = ListMulticastGroupPubAllowlistCommand {
+            pubkey_or_code: "test&code".to_string(),
+        }
+        .execute(&client);
+        assert!(res.is_err());
     }
 }

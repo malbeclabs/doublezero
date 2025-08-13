@@ -1,3 +1,4 @@
+use doublezero_program_common::validate_account_code;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, pda::get_exchange_pda,
     processors::exchange::create::ExchangeCreateArgs,
@@ -17,6 +18,9 @@ pub struct CreateExchangeCommand {
 
 impl CreateExchangeCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
+        let code =
+            validate_account_code(&self.code).map_err(|err| eyre::eyre!("invalid code: {err}"))?;
+
         let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
@@ -26,7 +30,7 @@ impl CreateExchangeCommand {
         client
             .execute_transaction(
                 DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
-                    code: self.code.clone(),
+                    code,
                     name: self.name.clone(),
                     lat: self.lat,
                     lng: self.lng,
@@ -66,7 +70,7 @@ mod tests {
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
-                    code: "test".to_string(),
+                    code: "test_exchange".to_string(),
                     name: "Test Exchange".to_string(),
                     lat: 0.0,
                     lng: 0.0,
@@ -79,15 +83,23 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        let res = CreateExchangeCommand {
-            code: "test".to_string(),
+        let create_command = CreateExchangeCommand {
+            code: "test_exchange".to_string(),
             name: "Test Exchange".to_string(),
             lat: 0.0,
             lng: 0.0,
             loc_id: None,
-        }
-        .execute(&client);
+        };
 
+        let create_invalid_command = CreateExchangeCommand {
+            code: "test/command".to_string(),
+            ..create_command.clone()
+        };
+
+        let res = create_command.execute(&client);
         assert!(res.is_ok());
+
+        let res = create_invalid_command.execute(&client);
+        assert!(res.is_err());
     }
 }

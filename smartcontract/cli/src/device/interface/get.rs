@@ -25,7 +25,7 @@ impl GetDeviceInterfaceCliCommand {
         let interface = device
             .interfaces
             .iter()
-            .find(|i| i.into_current_version().name == self.name)
+            .find(|i| i.into_current_version().name.to_lowercase() == self.name.to_lowercase())
             .map(|i| i.into_current_version())
             .ok_or_else(|| eyre::eyre!("Interface '{}' not found", self.name))?;
 
@@ -120,7 +120,7 @@ mod tests {
         let mut output = Vec::new();
         let res = GetDeviceInterfaceCliCommand {
             device: Pubkey::new_unique().to_string(),
-            name: "eth0".to_string(),
+            name: "Eth0".to_string(),
         }
         .execute(&client, &mut output);
         assert!(res.is_err(), "I shouldn't find anything.");

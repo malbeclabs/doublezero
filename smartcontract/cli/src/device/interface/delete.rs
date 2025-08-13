@@ -32,9 +32,15 @@ impl DeleteDeviceInterfaceCliCommand {
             })
             .map_err(|_| eyre::eyre!("Device not found"))?;
 
+        let len_before = device.interfaces.len();
         device
             .interfaces
-            .retain(|i| i.into_current_version().name != self.name);
+            .retain(|i| i.into_current_version().name.to_lowercase() != self.name.to_lowercase());
+        let len_after = device.interfaces.len();
+
+        if len_before == len_after {
+            return Err(eyre::eyre!("Interface '{}' not found", self.name));
+        }
 
         let signature = client.update_device(UpdateDeviceCommand {
             pubkey,
@@ -162,7 +168,7 @@ mod tests {
         let mut output = Vec::new();
         let res = DeleteDeviceInterfaceCliCommand {
             device: device_pk.to_string(),
-            name: "eth0".to_string(),
+            name: "Eth0".to_string(),
             wait: false,
         }
         .execute(&client, &mut output);

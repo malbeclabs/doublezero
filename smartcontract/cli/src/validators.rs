@@ -70,7 +70,7 @@ pub fn validate_parse_jitter_ms(val: &str) -> Result<f64, String> {
 
 static INTERFACE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?i)^(Ethernet\d+(/\d+)?|Switch\d+/\d+/\d+|Loopback\d+|Port-Channel\d+|Vlan\d+)(\.\d+)?$",
+        r"(?i)^(Ethernet\d+(/\d+)?|Switch\d+/\d+/\d+|Loopback\d+|Port-channel\d+|Vlan\d+)(\.\d+)?$",
     )
     .unwrap()
 });
@@ -96,13 +96,13 @@ pub fn validate_iface(val: &str) -> Result<String, String> {
             "et" => Ok(format!("Ethernet{}", &val[2..])),
             "sw" => Ok(format!("Switch{}", &val[2..])),
             "lo" => Ok(format!("Loopback{}", &val[2..])),
-            "po" => Ok(format!("Port-Channel{}", &val[2..])),
+            "po" => Ok(format!("Port-channel{}", &val[2..])),
             "vl" => Ok(format!("Vlan{}", &val[2..])),
             _ => Err(String::from("Invalid interface shorthand")),
         }
     } else {
         Err(String::from(
-            "Interface name not valid. Must match: EthernetX[/X], SwitchX/X/X, LoopbackX, Port-ChannelX, or VlanX",
+            "Interface name not valid. Must match: EthernetX[/X], SwitchX/X/X, LoopbackX, Port-channelX, or VlanX",
         ))
     }
 }
@@ -183,8 +183,10 @@ mod tests {
         assert!(validate_iface("sw3/12/20").unwrap() == "Switch3/12/20");
         assert!(validate_iface("Loopback0").is_ok());
         assert!(validate_iface("Port-Channel1").is_ok());
+        assert!(validate_iface("Port-Channel1").unwrap() == "Port-channel1");
         assert!(validate_iface("Port-Channel1.5000").is_ok());
         assert!(validate_iface("Port-Channel1.").is_err());
+        assert!(validate_iface("po1000.2035").unwrap() == "Port-channel1000.2035");
         assert!(validate_iface("Vlan123").is_ok());
         assert!(validate_iface("Vlan123.456").is_ok());
         assert!(validate_iface("vl1001").unwrap() == "Vlan1001");

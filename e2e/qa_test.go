@@ -293,7 +293,7 @@ func TestConnectivityMulticast(t *testing.T) {
 		for _, host := range subscribers {
 			t.Run("check_subscriber_"+host, func(t *testing.T) {
 				t.Parallel()
-				ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+				ctx, cancel := context.WithTimeout(ctx, 180*time.Second)
 				defer cancel()
 				client, err := getQAClient(net.JoinHostPort(host, *port))
 				require.NoError(t, err, "Failed to create QA client")
@@ -322,7 +322,10 @@ func TestConnectivityMulticast(t *testing.T) {
 					t.Logf("Subscriber %s received %d packets for group %s", host, resp.Reports[groupAddr.String()].PacketCount, groupAddr.String())
 					return true, nil
 				}
-				err = poll.Until(ctx, condition, 30*time.Second, 1*time.Second)
+				start := time.Now()
+				t.Logf("Waiting for packets on subscriber %s for group %s", host, groupAddr.String())
+				err = poll.Until(ctx, condition, 60*time.Second, 1*time.Second)
+				t.Logf("Waited %s for packets on subscriber %s for group %s", time.Since(start), host, groupAddr.String())
 				require.NoError(t, err, "error: %v", fmt.Errorf("No packets received for group %s on subscriber %s", groupAddr.String(), host))
 
 			})

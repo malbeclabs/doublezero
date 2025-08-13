@@ -6,7 +6,7 @@ use crate::{
         ContributorRewardDetail, ContributorRewardProof, ContributorRewardsMerkleRoot,
         ContributorRewardsMerkleTree,
     },
-    recorder::{compute_record_address, try_create_record, write_record_chunks, write_to_ledger},
+    recorder::{compute_record_address, write_to_ledger},
     settings::Settings,
     shapley_aggregator::aggregate_shapley_outputs,
     shapley_handler::{build_demands, build_devices, build_private_links, build_public_links},
@@ -81,26 +81,22 @@ impl Orchestrator {
         // Record device telemetry aggregates to ledger
         if !dry_run {
             let payer_signer = load_keypair(&keypair_path)?;
-            let ser_dzd_telem = borsh::to_vec(&stat_map)?;
             let prefix = self.settings.get_device_telemetry_prefix(dry_run)?;
-            let prefix_str = std::str::from_utf8(&prefix)?;
-            info!("Writing device telemetry: prefix={prefix_str}, epoch={fetch_epoch}");
+            let seeds: &[&[u8]] = &[&prefix, &fetch_epoch.to_le_bytes()];
 
-            let record_key = try_create_record(
+            write_to_ledger(
                 &fetcher.rpc_client,
                 &payer_signer,
-                &[&prefix, &fetch_epoch.to_le_bytes()],
-                ser_dzd_telem.len(),
+                seeds,
+                &stat_map,
+                "device telemetry aggregates",
             )
             .await?;
 
-            write_record_chunks(
-                &fetcher.rpc_client,
-                &payer_signer,
-                &record_key,
-                ser_dzd_telem.as_ref(),
-            )
-            .await?;
+            info!(
+                "Successfully wrote device telemetry aggregates for epoch {}",
+                fetch_epoch
+            );
         } else {
             info!(
                 "DRY-RUN: Would write {} bytes of device telemetry aggregates for epoch {}",
@@ -119,26 +115,22 @@ impl Orchestrator {
         // Record internet telemetry aggregates to ledger
         if !dry_run {
             let payer_signer = load_keypair(&keypair_path)?;
-            let ser_inet_telem = borsh::to_vec(&internet_stat_map)?;
             let prefix = self.settings.get_internet_telemetry_prefix(dry_run)?;
-            let prefix_str = std::str::from_utf8(&prefix)?;
-            info!("Writing internet telemetry: prefix={prefix_str}, epoch={fetch_epoch}");
+            let seeds: &[&[u8]] = &[&prefix, &fetch_epoch.to_le_bytes()];
 
-            let record_key = try_create_record(
+            write_to_ledger(
                 &fetcher.rpc_client,
                 &payer_signer,
-                &[&prefix, &fetch_epoch.to_le_bytes()],
-                ser_inet_telem.len(),
+                seeds,
+                &internet_stat_map,
+                "internet telemetry aggregates",
             )
             .await?;
 
-            write_record_chunks(
-                &fetcher.rpc_client,
-                &payer_signer,
-                &record_key,
-                ser_inet_telem.as_ref(),
-            )
-            .await?;
+            info!(
+                "Successfully wrote internet telemetry aggregates for epoch {}",
+                fetch_epoch
+            );
         } else {
             info!(
                 "DRY-RUN: Would write {} bytes of internet telemetry aggregates for epoch {}",
@@ -413,8 +405,7 @@ impl Orchestrator {
         fetcher: &Fetcher,
     ) -> Result<()> {
         let prefix = self.settings.get_contributor_rewards_prefix(false)?;
-        let epoch_bytes = epoch.to_le_bytes();
-        let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
+        let seeds: &[&[u8]] = &[&prefix, &epoch.to_le_bytes()];
 
         // Create the merkle root data
         let merkle_root_data = ContributorRewardsMerkleRoot {
@@ -423,23 +414,18 @@ impl Orchestrator {
             total_contributors,
         };
 
-        let data = borsh::to_vec(&merkle_root_data)?;
-        info!(
-            "Writing contributor rewards merkle root for epoch {}, {} bytes",
-            epoch,
-            data.len()
-        );
-
-        // Create record account
-        let record_key =
-            try_create_record(&fetcher.rpc_client, payer_signer, seeds, data.len()).await?;
-
-        // Write data
-        write_record_chunks(&fetcher.rpc_client, payer_signer, &record_key, &data).await?;
+        write_to_ledger(
+            &fetcher.rpc_client,
+            payer_signer,
+            seeds,
+            &merkle_root_data,
+            "contributor rewards merkle root",
+        )
+        .await?;
 
         info!(
-            "Successfully wrote merkle root for epoch {} to {}",
-            epoch, record_key
+            "Successfully wrote merkle root for epoch {} with {} contributors",
+            epoch, total_contributors
         );
         Ok(())
     }
@@ -452,11 +438,9 @@ impl Orchestrator {
         fetcher: &Fetcher,
     ) -> Result<()> {
         let prefix = self.settings.get_contributor_rewards_prefix(false)?;
-        let epoch_bytes = epoch.to_le_bytes();
 
         for (index, reward) in merkle_tree.rewards().iter().enumerate() {
-            let contributor_bytes = reward.operator.as_bytes();
-            let seeds: &[&[u8]] = &[&prefix, &epoch_bytes, contributor_bytes];
+            let seeds: &[&[u8]] = &[&prefix, &epoch.to_le_bytes(), reward.operator.as_bytes()];
 
             // Generate proof for this contributor
             let proof = merkle_tree.generate_proof(index)?;
@@ -473,24 +457,18 @@ impl Orchestrator {
                 index: index as u32,
             };
 
-            let data = borsh::to_vec(&proof_data)?;
-            info!(
-                "Writing proof for contributor {} (index {}), {} bytes",
-                reward.operator,
-                index,
-                data.len()
-            );
-
-            // Create record account for this proof
-            let record_key =
-                try_create_record(&fetcher.rpc_client, payer_signer, seeds, data.len()).await?;
-
-            // Write proof data
-            write_record_chunks(&fetcher.rpc_client, payer_signer, &record_key, &data).await?;
+            write_to_ledger(
+                &fetcher.rpc_client,
+                payer_signer,
+                seeds,
+                &proof_data,
+                &format!("proof for contributor {}", reward.operator),
+            )
+            .await?;
 
             info!(
-                "Successfully wrote proof for contributor {} to {}",
-                reward.operator, record_key
+                "Successfully wrote proof for contributor {} (index {})",
+                reward.operator, index
             );
         }
 

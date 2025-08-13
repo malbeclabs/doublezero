@@ -5,7 +5,6 @@ use crate::{
     keypair_loader::load_keypair,
     ledger_operations::{self, WriteSummary, write_and_track},
     proof::{ContributorRewardProof, ContributorRewardsMerkleRoot, ContributorRewardsMerkleTree},
-    settings::Settings,
     shapley_aggregator::aggregate_shapley_outputs,
     util::print_demands,
 };
@@ -14,6 +13,7 @@ use ingestor::fetcher::Fetcher;
 use itertools::Itertools;
 use network_shapley::{shapley::ShapleyInput, types::Demand};
 use rayon::prelude::*;
+use settings::Settings;
 use solana_sdk::pubkey::Pubkey;
 use std::{collections::HashMap, path::PathBuf, time::Instant};
 use tabled::{builder::Builder as TableBuilder, settings::Style};
@@ -22,14 +22,12 @@ use tracing::info;
 #[derive(Debug)]
 pub struct Orchestrator {
     settings: Settings,
-    cfg_path: Option<PathBuf>,
 }
 
 impl Orchestrator {
-    pub fn new(settings: &Settings, cfg_path: &Option<PathBuf>) -> Self {
+    pub fn new(settings: &Settings) -> Self {
         Self {
             settings: settings.clone(),
-            cfg_path: cfg_path.clone(),
         }
     }
 
@@ -40,8 +38,7 @@ impl Orchestrator {
         keypair_path: Option<PathBuf>,
         dry_run: bool,
     ) -> Result<()> {
-        let ingestor_settings = ingestor::settings::Settings::new(self.cfg_path.clone())?;
-        let fetcher = Fetcher::new(&ingestor_settings)?;
+        let fetcher = Fetcher::from_settings(&self.settings)?;
 
         // Prepare all data
         let prep_data = PreparedData::new(&fetcher, epoch).await?;
@@ -174,46 +171,46 @@ impl Orchestrator {
                 let mut summary = WriteSummary::default();
 
                 // Write device telemetry
-                let device_prefix = self.settings.get_device_telemetry_prefix(dry_run)?;
+                let device_prefix = self.settings.prefixes.device_telemetry.as_bytes();
                 write_and_track(
                     &fetcher.rpc_client,
                     &payer_signer,
-                    &[&device_prefix, &fetch_epoch.to_le_bytes()],
+                    &[device_prefix, &fetch_epoch.to_le_bytes()],
                     &device_telemetry,
                     "device telemetry aggregates",
                     &mut summary,
-                    self.settings.rps_limit,
+                    self.settings.rpc.rps_limit,
                 )
                 .await;
 
                 // Write internet telemetry
-                let internet_prefix = self.settings.get_internet_telemetry_prefix(dry_run)?;
+                let internet_prefix = self.settings.prefixes.internet_telemetry.as_bytes();
                 write_and_track(
                     &fetcher.rpc_client,
                     &payer_signer,
-                    &[&internet_prefix, &fetch_epoch.to_le_bytes()],
+                    &[internet_prefix, &fetch_epoch.to_le_bytes()],
                     &internet_telemetry,
                     "internet telemetry aggregates",
                     &mut summary,
-                    self.settings.rps_limit,
+                    self.settings.rpc.rps_limit,
                 )
                 .await;
 
                 // Write reward input
-                let reward_prefix = self.settings.get_reward_input_prefix(dry_run)?;
+                let reward_prefix = self.settings.prefixes.reward_input.as_bytes();
                 write_and_track(
                     &fetcher.rpc_client,
                     &payer_signer,
-                    &[&reward_prefix, &fetch_epoch.to_le_bytes()],
+                    &[reward_prefix, &fetch_epoch.to_le_bytes()],
                     &input_config,
                     "reward calculation input",
                     &mut summary,
-                    self.settings.rps_limit,
+                    self.settings.rpc.rps_limit,
                 )
                 .await;
 
                 // Write merkle root
-                let contributor_prefix = self.settings.get_contributor_rewards_prefix(false)?;
+                let contributor_prefix = self.settings.prefixes.contributor_rewards.as_bytes();
                 let merkle_root_data = ContributorRewardsMerkleRoot {
                     epoch: fetch_epoch,
                     root: merkle_root,
@@ -222,11 +219,11 @@ impl Orchestrator {
                 write_and_track(
                     &fetcher.rpc_client,
                     &payer_signer,
-                    &[&contributor_prefix, &fetch_epoch.to_le_bytes()],
+                    &[contributor_prefix, &fetch_epoch.to_le_bytes()],
                     &merkle_root_data,
                     "contributor rewards merkle root",
                     &mut summary,
-                    self.settings.rps_limit,
+                    self.settings.rpc.rps_limit,
                 )
                 .await;
 
@@ -247,14 +244,14 @@ impl Orchestrator {
                         &fetcher.rpc_client,
                         &payer_signer,
                         &[
-                            &contributor_prefix,
+                            contributor_prefix,
                             &fetch_epoch.to_le_bytes(),
                             reward.operator.as_bytes(),
                         ],
                         &proof_data,
                         &format!("proof for contributor {}", reward.operator),
                         &mut summary,
-                        self.settings.rps_limit,
+                        self.settings.rpc.rps_limit,
                     )
                     .await;
                 }
@@ -304,13 +301,7 @@ impl Orchestrator {
     }
 
     pub async fn read_telemetry_aggregates(&self, epoch: u64, payer_pubkey: &Pubkey) -> Result<()> {
-        ledger_operations::read_telemetry_aggregates(
-            &self.settings,
-            &self.cfg_path,
-            epoch,
-            payer_pubkey,
-        )
-        .await
+        ledger_operations::read_telemetry_aggregates(&self.settings, epoch, payer_pubkey).await
     }
 
     pub async fn check_contributor_reward(
@@ -321,7 +312,6 @@ impl Orchestrator {
     ) -> Result<()> {
         ledger_operations::check_contributor_reward(
             &self.settings,
-            &self.cfg_path,
             contributor,
             epoch,
             payer_pubkey,
@@ -338,7 +328,6 @@ impl Orchestrator {
     ) -> Result<()> {
         ledger_operations::close_record(
             &self.settings,
-            &self.cfg_path,
             record_type,
             epoch,
             keypair_path,
@@ -348,7 +337,6 @@ impl Orchestrator {
     }
 
     pub async fn read_reward_input(&self, epoch: u64, payer_pubkey: &Pubkey) -> Result<()> {
-        ledger_operations::read_reward_input(&self.settings, &self.cfg_path, epoch, payer_pubkey)
-            .await
+        ledger_operations::read_reward_input(&self.settings, epoch, payer_pubkey).await
     }
 }

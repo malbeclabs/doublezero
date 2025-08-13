@@ -802,6 +802,7 @@ dependencies = [
  "rust_decimal",
  "serde",
  "serde_json",
+ "settings",
  "solana-client",
  "solana-sdk",
  "solana-system-interface",
@@ -2747,6 +2748,7 @@ dependencies = [
  "rayon",
  "serde",
  "serde_json",
+ "settings",
  "solana-account-decoder",
  "solana-client",
  "solana-epoch-info 3.0.0",
@@ -4767,6 +4769,19 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "settings"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "borsh 1.5.7",
+ "config",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
 ]
 
 [[package]]

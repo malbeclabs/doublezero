@@ -44,5 +44,6 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 
 # Internal crates
+settings = { path = "../settings" }
 ingestor = { path = "../ingestor" }
 processor = { path = "../processor" }

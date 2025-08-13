@@ -1,6 +1,7 @@
 use anyhow::Result;
-use calculator::{orchestrator::Orchestrator, settings::Settings};
+use calculator::orchestrator::Orchestrator;
 use clap::{Parser, Subcommand};
+use settings::Settings;
 use solana_sdk::pubkey::Pubkey;
 use std::{path::PathBuf, str::FromStr};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
@@ -97,10 +98,14 @@ pub enum Commands {
 
 impl Cli {
     pub async fn run(self) -> Result<()> {
-        let settings = Settings::new(self.config.clone())?;
+        let settings = if let Some(config_path) = &self.config {
+            Settings::from_path(config_path)?
+        } else {
+            Settings::from_env()?
+        };
         init_logging(&settings.log_level)?;
 
-        let orchestrator = Orchestrator::new(&settings, &self.config);
+        let orchestrator = Orchestrator::new(&settings);
 
         // Handle subcommands
         match self.command {

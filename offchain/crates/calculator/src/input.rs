@@ -1,16 +1,16 @@
-use crate::settings::ShapleySettings;
 use anyhow::{Result, bail};
 use borsh::{BorshDeserialize, BorshSerialize};
 use chrono::Utc;
 use ingestor::demand::CityStats;
 use network_shapley::types::{Demands, Devices, PrivateLinks, PublicLinks};
 use serde::{Deserialize, Serialize};
+use settings::ShapleySettings;
 use std::collections::HashMap;
 use svm_hash::sha2::{Hash, double_hash};
 
 // Domain separation prefixes for telemetry checksums
-const PREFIX_DEVICE_TELEMETRY: &str = "dz_input_device_telemetry_";
-const PREFIX_INTERNET_TELEMETRY: &str = "dz_input_internet_telemetry_";
+const PREFIX_DEVICE_TELEMETRY: &str = "dz_input_device_telemetry";
+const PREFIX_INTERNET_TELEMETRY: &str = "dz_input_internet_telemetry";
 const CHECKSUM_SUFFIX: &[u8] = b"checksum";
 
 /// Summary statistics for a city
@@ -171,7 +171,7 @@ impl RewardInput {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::settings::ShapleySettings;
+    use settings::ShapleySettings;
 
     fn create_test_input() -> RewardInput {
         let shapley_settings = ShapleySettings {

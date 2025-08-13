@@ -1,10 +1,11 @@
-use crate::{settings::Settings, types::DZServiceabilityData};
+use crate::types::DZServiceabilityData;
 use anyhow::{Context, Result};
 use backon::{ExponentialBuilder, Retryable};
 use doublezero_serviceability::state::{
     accounttype::AccountType, contributor::Contributor, device::Device, exchange::Exchange,
     link::Link, location::Location, multicastgroup::MulticastGroup, user::User,
 };
+use settings::Settings;
 use solana_account_decoder::UiAccountEncoding;
 use solana_client::{
     client_error::ClientError as SolanaClientError,

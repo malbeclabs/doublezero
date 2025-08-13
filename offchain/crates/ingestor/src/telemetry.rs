@@ -1,12 +1,10 @@
-use crate::{
-    settings::Settings,
-    types::{DZDTelemetryData, DZDeviceLatencySamples},
-};
+use crate::types::{DZDTelemetryData, DZDeviceLatencySamples};
 use anyhow::{Context, Result};
 use backon::{ExponentialBuilder, Retryable};
 use doublezero_telemetry::state::{
     accounttype::AccountType, device_latency_samples::DeviceLatencySamples,
 };
+use settings::Settings;
 use solana_account_decoder::UiAccountEncoding;
 use solana_client::{
     client_error::ClientError as SolanaClientError,

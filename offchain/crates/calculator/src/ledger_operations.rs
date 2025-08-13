@@ -3,7 +3,6 @@ use crate::{
     keypair_loader::load_keypair,
     proof::{ContributorRewardDetail, ContributorRewardProof, ContributorRewardsMerkleRoot},
     recorder::{compute_record_address, write_to_ledger},
-    settings::Settings,
 };
 use anyhow::{Result, bail};
 use backon::{ExponentialBuilder, Retryable};
@@ -14,6 +13,7 @@ use processor::{
     internet::{InternetTelemetryStatMap, print_internet_stats},
     telemetry::{DZDTelemetryStatMap, print_telemetry_stats},
 };
+use settings::Settings;
 use solana_client::{
     client_error::ClientError as SolanaClientError, nonblocking::rpc_client::RpcClient,
 };
@@ -27,6 +27,23 @@ use solana_sdk::{
 use std::{fmt, mem::size_of, path::PathBuf, time::Duration};
 use svm_hash::merkle::MerkleProof;
 use tracing::{info, warn};
+
+// Helper functions to get prefixes from config
+fn get_device_telemetry_prefix(settings: &Settings) -> Result<Vec<u8>> {
+    Ok(settings.prefixes.device_telemetry.as_bytes().to_vec())
+}
+
+fn get_internet_telemetry_prefix(settings: &Settings) -> Result<Vec<u8>> {
+    Ok(settings.prefixes.internet_telemetry.as_bytes().to_vec())
+}
+
+fn get_contributor_rewards_prefix(settings: &Settings) -> Result<Vec<u8>> {
+    Ok(settings.prefixes.contributor_rewards.as_bytes().to_vec())
+}
+
+fn get_reward_input_prefix(settings: &Settings) -> Result<Vec<u8>> {
+    Ok(settings.prefixes.reward_input.as_bytes().to_vec())
+}
 
 /// Result of a write operation
 #[derive(Debug)]
@@ -142,17 +159,15 @@ pub async fn write_and_track<T: BorshSerialize>(
 /// Read telemetry aggregates from the ledger
 pub async fn read_telemetry_aggregates(
     settings: &Settings,
-    cfg_path: &Option<PathBuf>,
     epoch: u64,
     payer_pubkey: &Pubkey,
 ) -> Result<()> {
     // Create fetcher
-    let ingestor_settings = ingestor::settings::Settings::new(cfg_path.clone())?;
-    let fetcher = Fetcher::new(&ingestor_settings)?;
+    let fetcher = Fetcher::from_settings(settings)?;
 
     // Read device telemetry
     {
-        let prefix = settings.get_device_telemetry_prefix(false)?;
+        let prefix = get_device_telemetry_prefix(settings)?;
         let epoch_bytes = epoch.to_le_bytes();
         let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
         let record_key = compute_record_address(payer_pubkey, seeds)?;
@@ -183,7 +198,7 @@ pub async fn read_telemetry_aggregates(
 
     // Read internet telemetry
     {
-        let prefix = settings.get_internet_telemetry_prefix(false)?;
+        let prefix = get_internet_telemetry_prefix(settings)?;
         let epoch_bytes = epoch.to_le_bytes();
         let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
         let record_key = compute_record_address(payer_pubkey, seeds)?;
@@ -218,15 +233,13 @@ pub async fn read_telemetry_aggregates(
 /// Read reward input from the ledger
 pub async fn read_reward_input(
     settings: &Settings,
-    cfg_path: &Option<PathBuf>,
     epoch: u64,
     payer_pubkey: &Pubkey,
 ) -> Result<()> {
     // Create fetcher
-    let ingestor_settings = ingestor::settings::Settings::new(cfg_path.clone())?;
-    let fetcher = Fetcher::new(&ingestor_settings)?;
+    let fetcher = Fetcher::from_settings(settings)?;
 
-    let prefix = settings.get_reward_input_prefix(false)?;
+    let prefix = get_reward_input_prefix(settings)?;
     let epoch_bytes = epoch.to_le_bytes();
     let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
     let record_key = compute_record_address(payer_pubkey, seeds)?;
@@ -276,16 +289,14 @@ pub async fn read_reward_input(
 /// Check contributor reward and verify merkle proof
 pub async fn check_contributor_reward(
     settings: &Settings,
-    cfg_path: &Option<PathBuf>,
     contributor: &str,
     epoch: u64,
     payer_pubkey: &Pubkey,
 ) -> Result<()> {
     // Create fetcher
-    let ingestor_settings = ingestor::settings::Settings::new(cfg_path.clone())?;
-    let fetcher = Fetcher::new(&ingestor_settings)?;
+    let fetcher = Fetcher::from_settings(settings)?;
 
-    let prefix = settings.get_contributor_rewards_prefix(false)?;
+    let prefix = get_contributor_rewards_prefix(settings)?;
     let epoch_bytes = epoch.to_le_bytes();
 
     // First, fetch the merkle root
@@ -398,7 +409,6 @@ pub async fn check_contributor_reward(
 /// NOTE: This is mostly just for testing/debugging
 pub async fn close_record(
     settings: &Settings,
-    cfg_path: &Option<PathBuf>,
     record_type: &str,
     epoch: u64,
     keypair_path: Option<PathBuf>,
@@ -408,29 +418,28 @@ pub async fn close_record(
     let payer_signer = load_keypair(&keypair_path)?;
 
     // Create fetcher for RPC client
-    let ingestor_settings = ingestor::settings::Settings::new(cfg_path.clone())?;
-    let fetcher = Fetcher::new(&ingestor_settings)?;
+    let fetcher = Fetcher::from_settings(settings)?;
 
     // Determine the prefix and compute the record address based on record type
     let epoch_bytes = epoch.to_le_bytes();
     let record_key = match record_type {
         "device-telemetry" => {
-            let prefix = settings.get_device_telemetry_prefix(false)?;
+            let prefix = get_device_telemetry_prefix(settings)?;
             let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
             compute_record_address(&payer_signer.pubkey(), seeds)?
         }
         "internet-telemetry" => {
-            let prefix = settings.get_internet_telemetry_prefix(false)?;
+            let prefix = get_internet_telemetry_prefix(settings)?;
             let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
             compute_record_address(&payer_signer.pubkey(), seeds)?
         }
         "reward-input" => {
-            let prefix = settings.get_reward_input_prefix(false)?;
+            let prefix = get_reward_input_prefix(settings)?;
             let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
             compute_record_address(&payer_signer.pubkey(), seeds)?
         }
         "contributor-rewards" => {
-            let prefix = settings.get_contributor_rewards_prefix(false)?;
+            let prefix = get_contributor_rewards_prefix(settings)?;
             if let Some(contributor_str) = contributor {
                 let contributor_bytes = contributor_str.as_bytes();
                 let seeds: &[&[u8]] = &[&prefix, &epoch_bytes, contributor_bytes];

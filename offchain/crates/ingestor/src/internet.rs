@@ -1,12 +1,10 @@
-use crate::{
-    settings::Settings,
-    types::{DZInternetData, DZInternetLatencySamples},
-};
+use crate::types::{DZInternetData, DZInternetLatencySamples};
 use anyhow::{Context, Result};
 use backon::{ExponentialBuilder, Retryable};
 use doublezero_telemetry::state::{
     accounttype::AccountType, internet_latency_samples::InternetLatencySamples,
 };
+use settings::Settings;
 use solana_account_decoder::UiAccountEncoding;
 use solana_client::{
     client_error::ClientError as SolanaClientError,

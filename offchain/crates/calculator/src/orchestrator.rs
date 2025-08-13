@@ -1,6 +1,7 @@
 use crate::{
     csv_exporter,
-    input::{RewardInput, ShapleyInputs},
+    data_preparation::prepare_data,
+    input::RewardInput,
     keypair_loader::load_keypair,
     ledger_operations::{WriteSummary, write_and_track},
     proof::{
@@ -10,11 +11,7 @@ use crate::{
     recorder::compute_record_address,
     settings::Settings,
     shapley_aggregator::aggregate_shapley_outputs,
-    shapley_handler::{build_demands, build_devices, build_private_links, build_public_links},
-    util::{
-        calculate_city_weights, print_demands, print_devices, print_private_links,
-        print_public_links,
-    },
+    util::print_demands,
 };
 use anyhow::{Result, bail};
 use backon::{ExponentialBuilder, Retryable};
@@ -23,8 +20,8 @@ use ingestor::fetcher::Fetcher;
 use itertools::Itertools;
 use network_shapley::{shapley::ShapleyInput, types::Demand};
 use processor::{
-    internet::{InternetTelemetryProcessor, InternetTelemetryStatMap, print_internet_stats},
-    telemetry::{DZDTelemetryProcessor, DZDTelemetryStatMap, print_telemetry_stats},
+    internet::{InternetTelemetryStatMap, print_internet_stats},
+    telemetry::{DZDTelemetryStatMap, print_telemetry_stats},
 };
 use solana_client::client_error::ClientError as SolanaClientError;
 use solana_sdk::{
@@ -59,67 +56,16 @@ impl Orchestrator {
         let ingestor_settings = ingestor::settings::Settings::new(self.cfg_path.clone())?;
         let fetcher = Fetcher::new(&ingestor_settings)?;
 
-        // Fetch data based on filter mode
-        let (fetch_epoch, fetch_data) = match epoch {
-            None => fetcher.fetch().await?,
-            Some(epoch_num) => fetcher.with_epoch(epoch_num).await?,
-        };
-
-        // At this point FetchData should contain everything necessary
-        // to transform and build shapley inputs
-
-        // Process and aggregate telemetry
-        let stat_map = DZDTelemetryProcessor::process(&fetch_data)?;
-        info!(
-            "Device Telemetry Aggregates: \n{}",
-            print_telemetry_stats(&stat_map)
-        );
-
-        // Device telemetry will be written in batch later
-
-        // Build internet stats
-        let internet_stat_map = InternetTelemetryProcessor::process(&fetch_data)?;
-        info!(
-            "Internet Telemetry Aggregates: \n{}",
-            print_internet_stats(&internet_stat_map)
-        );
-
-        // Internet telemetry will be written in batch later
-
-        // Build devices
-        let devices = build_devices(&fetch_data)?;
-        info!("Devices:\n{}", print_devices(&devices));
-
-        // Build pvt links
-        let private_links = build_private_links(&fetch_data, &stat_map);
-        info!("Private Links:\n{}", print_private_links(&private_links));
-
-        // Build public links
-        let public_links = build_public_links(&internet_stat_map)?;
-        info!("Public Links:\n{}", print_public_links(&public_links));
-
-        // Build demand and get city stats
-        let (demands, city_stats) = build_demands(&fetcher, &fetch_data).await?;
-
-        // Calculate city weights once for consistency
-        let city_weights = calculate_city_weights(&city_stats);
-
-        // Prepare ShapleyInputs and RewardInput for batch writing
-        let shapley_inputs = ShapleyInputs {
-            devices: devices.clone(),
-            private_links: private_links.clone(),
-            public_links: public_links.clone(),
-            demands: demands.clone(),
-            city_stats: city_stats.clone(),
-            city_weights: city_weights.clone(),
-        };
+        // Prepare all data using the data_preparation module
+        let (fetch_epoch, device_telemetry, internet_telemetry, shapley_inputs) =
+            prepare_data(&fetcher, epoch).await?;
 
         let input_config = RewardInput::new(
             fetch_epoch,
             self.settings.shapley.clone(),
             &shapley_inputs,
-            &borsh::to_vec(&stat_map)?,
-            &borsh::to_vec(&internet_stat_map)?,
+            &borsh::to_vec(&device_telemetry)?,
+            &borsh::to_vec(&internet_telemetry)?,
         );
 
         // Optionally write CSVs
@@ -127,16 +73,18 @@ impl Orchestrator {
             info!("Writing CSV files to {}", output_dir.display());
             csv_exporter::export_to_csv(
                 output_dir,
-                &devices,
-                &private_links,
-                &public_links,
-                &city_stats,
+                &shapley_inputs.devices,
+                &shapley_inputs.private_links,
+                &shapley_inputs.public_links,
+                &shapley_inputs.city_stats,
             )?;
             info!("Exported CSV files successfully!");
         }
 
         // Group demands by start city
-        let demand_groups: Vec<(String, Vec<Demand>)> = demands
+        let demand_groups: Vec<(String, Vec<Demand>)> = shapley_inputs
+            .demands
+            .clone()
             .into_iter()
             .chunk_by(|d| d.start.clone())
             .into_iter()
@@ -159,10 +107,10 @@ impl Orchestrator {
 
             // Build shapley inputs
             let input = ShapleyInput {
-                private_links: private_links.clone(),
-                devices: devices.clone(),
+                private_links: shapley_inputs.private_links.clone(),
+                devices: shapley_inputs.devices.clone(),
                 demands,
-                public_links: public_links.clone(),
+                public_links: shapley_inputs.public_links.clone(),
                 operator_uptime: self.settings.shapley.operator_uptime,
                 contiguity_bonus: self.settings.shapley.contiguity_bonus,
                 demand_multiplier: self.settings.shapley.demand_multiplier,
@@ -189,7 +137,7 @@ impl Orchestrator {
         // Aggregate consolidated Shapley output
         if !per_city_shapley_outputs.is_empty() {
             let shapley_output =
-                aggregate_shapley_outputs(&per_city_shapley_outputs, &city_weights)?;
+                aggregate_shapley_outputs(&per_city_shapley_outputs, &shapley_inputs.city_weights)?;
 
             // Print shapley_output table
             let mut table_builder = TableBuilder::default();
@@ -230,7 +178,7 @@ impl Orchestrator {
                     &fetcher.rpc_client,
                     &payer_signer,
                     &[&device_prefix, &fetch_epoch.to_le_bytes()],
-                    &stat_map,
+                    &device_telemetry,
                     "device telemetry aggregates",
                     &mut summary,
                 )
@@ -242,7 +190,7 @@ impl Orchestrator {
                     &fetcher.rpc_client,
                     &payer_signer,
                     &[&internet_prefix, &fetch_epoch.to_le_bytes()],
-                    &internet_stat_map,
+                    &internet_telemetry,
                     "internet telemetry aggregates",
                     &mut summary,
                 )
@@ -323,11 +271,11 @@ impl Orchestrator {
                 );
                 info!(
                     "  - Device telemetry: {} bytes",
-                    borsh::to_vec(&stat_map)?.len()
+                    borsh::to_vec(&device_telemetry)?.len()
                 );
                 info!(
                     "  - Internet telemetry: {} bytes",
-                    borsh::to_vec(&internet_stat_map)?.len()
+                    borsh::to_vec(&internet_telemetry)?.len()
                 );
                 info!(
                     "  - Reward input: {} bytes",

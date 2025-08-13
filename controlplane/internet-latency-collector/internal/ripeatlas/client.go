@@ -368,3 +368,22 @@ func (c *Client) StopMeasurement(ctx context.Context, measurementID int) error {
 		slog.Int("status_code", resp.StatusCode))
 	return nil
 }
+
+func (c *Client) GetCreditBalance(ctx context.Context) (float64, error) {
+	endpoint := "/credits/"
+	resp, err := c.makeRequest(ctx, endpoint)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get credit balance: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var response struct {
+		CurrentBalance float64 `json:"current_balance"`
+	}
+	decoder := json.NewDecoder(resp.Body)
+	if err := decoder.Decode(&response); err != nil {
+		return 0, fmt.Errorf("failed to decode credit balance response: %w", err)
+	}
+
+	return response.CurrentBalance, nil
+}

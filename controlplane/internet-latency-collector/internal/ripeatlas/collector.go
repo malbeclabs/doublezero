@@ -30,6 +30,7 @@ type clientInterface interface {
 	GetAllMeasurements(ctx context.Context, env string) ([]Measurement, error)
 	GetMeasurementResultsIncremental(ctx context.Context, measurementID int, startTimestamp int64) ([]any, error)
 	StopMeasurement(ctx context.Context, measurementID int) error
+	GetCreditBalance(ctx context.Context) (float64, error)
 }
 
 type LocationProbeMatch struct {
@@ -821,6 +822,12 @@ func (c *Collector) Run(ctx context.Context, dryRun bool, probesPerLocation int,
 					metrics.CollectionFailuresTotal.WithLabelValues("ripeatlas").Inc()
 				} else {
 					metrics.CollectionRunsTotal.WithLabelValues("ripeatlas").Inc()
+				}
+
+				if balance, err := c.client.GetCreditBalance(ctx); err != nil {
+					c.log.Warn("Failed to get RIPE Atlas credit balance", slog.String("error", err.Error()))
+				} else {
+					metrics.RipeatlasCreditBalance.Set(balance)
 				}
 			}
 		}

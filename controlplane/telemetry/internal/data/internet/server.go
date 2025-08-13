@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/stats"
 )
 
@@ -19,9 +20,6 @@ var (
 )
 
 const (
-	EnvTestnet = "testnet"
-	EnvDevnet  = "devnet"
-
 	DefaultMaxPoints = 1000
 )
 
@@ -30,12 +28,14 @@ type Server struct {
 	Mux     *http.ServeMux
 	devnet  Provider
 	testnet Provider
+	mainnet Provider
 }
 
-func NewServer(log *slog.Logger, testnetProvider, devnetProvider Provider) (*Server, error) {
+func NewServer(log *slog.Logger, mainnetProvider, testnetProvider, devnetProvider Provider) (*Server, error) {
 	s := &Server{
 		log:     log,
 		Mux:     http.NewServeMux(),
+		mainnet: mainnetProvider,
 		testnet: testnetProvider,
 		devnet:  devnetProvider,
 	}
@@ -45,9 +45,11 @@ func NewServer(log *slog.Logger, testnetProvider, devnetProvider Provider) (*Ser
 
 func (s *Server) provider(env string) (Provider, error) {
 	switch env {
-	case EnvTestnet:
+	case config.EnvMainnet:
+		return s.mainnet, nil
+	case config.EnvTestnet:
 		return s.testnet, nil
-	case EnvDevnet:
+	case config.EnvDevnet:
 		return s.devnet, nil
 	default:
 		return nil, ErrInvalidEnvironment

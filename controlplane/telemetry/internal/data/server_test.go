@@ -33,6 +33,8 @@ func startTestServer(t *testing.T, cfg data.ServerConfig) (addr string, closeFn 
 func TestServer_envs(t *testing.T) {
 	addr, closeFn := startTestServer(t, data.ServerConfig{
 		Logger:                      logger,
+		MainnetInternetDataProvider: &mockInternetProvider{},
+		MainnetDeviceDataProvider:   &mockDeviceProvider{},
 		TestnetInternetDataProvider: &mockInternetProvider{},
 		TestnetDeviceDataProvider:   &mockDeviceProvider{},
 		DevnetInternetDataProvider:  &mockInternetProvider{},

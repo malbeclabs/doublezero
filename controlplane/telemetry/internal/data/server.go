@@ -15,10 +15,6 @@ import (
 	datainet "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data/internet"
 )
 
-var (
-	ErrInvalidEnvironment = fmt.Errorf("invalid environment")
-)
-
 const (
 	DefaultMaxPoints = 1000
 )
@@ -30,6 +26,8 @@ type ServerConfig struct {
 	TestnetDeviceDataProvider   datadevice.Provider
 	DevnetInternetDataProvider  datainet.Provider
 	DevnetDeviceDataProvider    datadevice.Provider
+	MainnetInternetDataProvider datainet.Provider
+	MainnetDeviceDataProvider   datadevice.Provider
 }
 
 func (c *ServerConfig) Validate() error {
@@ -48,6 +46,12 @@ func (c *ServerConfig) Validate() error {
 	if c.DevnetDeviceDataProvider == nil {
 		return errors.New("devnet device data provider is required")
 	}
+	if c.MainnetInternetDataProvider == nil {
+		return errors.New("mainnet internet data provider is required")
+	}
+	if c.MainnetDeviceDataProvider == nil {
+		return errors.New("mainnet device data provider is required")
+	}
 	return nil
 }
 
@@ -59,11 +63,15 @@ type Server struct {
 }
 
 func NewServer(cfg *ServerConfig) (*Server, error) {
-	deviceServer, err := datadevice.NewServer(cfg.Logger, cfg.TestnetDeviceDataProvider, cfg.DevnetDeviceDataProvider)
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+
+	deviceServer, err := datadevice.NewServer(cfg.Logger, cfg.MainnetDeviceDataProvider, cfg.TestnetDeviceDataProvider, cfg.DevnetDeviceDataProvider)
 	if err != nil {
 		return nil, err
 	}
-	inetServer, err := datainet.NewServer(cfg.Logger, cfg.TestnetInternetDataProvider, cfg.DevnetInternetDataProvider)
+	inetServer, err := datainet.NewServer(cfg.Logger, cfg.MainnetInternetDataProvider, cfg.TestnetInternetDataProvider, cfg.DevnetInternetDataProvider)
 	if err != nil {
 		return nil, err
 	}

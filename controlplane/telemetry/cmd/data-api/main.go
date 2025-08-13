@@ -29,6 +29,12 @@ func main() {
 
 	log := newLogger(*verbose)
 
+	mainnetDeviceProvider, err := newDeviceProvider(log, config.EnvMainnet)
+	if err != nil {
+		log.Error("failed to create mainnet provider", "error", err)
+		os.Exit(1)
+	}
+
 	testnetDeviceProvider, err := newDeviceProvider(log, config.EnvTestnet)
 	if err != nil {
 		log.Error("failed to create testnet provider", "error", err)
@@ -38,6 +44,12 @@ func main() {
 	devnetDeviceProvider, err := newDeviceProvider(log, config.EnvDevnet)
 	if err != nil {
 		log.Error("failed to create devnet provider", "error", err)
+		os.Exit(1)
+	}
+
+	mainnetInternetProvider, err := newInternetProvider(log, config.EnvMainnet)
+	if err != nil {
+		log.Error("failed to create mainnet internet provider", "error", err)
 		os.Exit(1)
 	}
 
@@ -55,6 +67,8 @@ func main() {
 
 	cfg := data.ServerConfig{
 		Logger:                      log,
+		MainnetDeviceDataProvider:   mainnetDeviceProvider,
+		MainnetInternetDataProvider: mainnetInternetProvider,
 		TestnetDeviceDataProvider:   testnetDeviceProvider,
 		DevnetDeviceDataProvider:    devnetDeviceProvider,
 		TestnetInternetDataProvider: testnetInternetProvider,

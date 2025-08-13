@@ -25,7 +25,7 @@ func TestTelemetry_Data_Device_Server(t *testing.T) {
 		t.Parallel()
 
 		var called bool
-		baseURL, closeFn := startServer(t, &mockProvider{
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
 			GetCircuitsFunc: func(context.Context) ([]data.Circuit, error) {
 				called = true
 				return []data.Circuit{{Code: "foo"}}, nil
@@ -45,10 +45,10 @@ func TestTelemetry_Data_Device_Server(t *testing.T) {
 	t.Run("GET /device-link/circuits with invalid env", func(t *testing.T) {
 		t.Parallel()
 
-		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{})
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{}, &mockProvider{})
 		defer closeFn()
 
-		res, _ := get(t, baseURL, "/device-link/circuits", url.Values{"env": {"mainnet"}})
+		res, _ := get(t, baseURL, "/device-link/circuits", url.Values{"env": {"invalid"}})
 		assert.Equal(t, http.StatusBadRequest, res.StatusCode)
 	})
 
@@ -58,7 +58,7 @@ func TestTelemetry_Data_Device_Server(t *testing.T) {
 		now := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
 		from, to := now.Format(time.RFC3339), now.Add(10*time.Second).Format(time.RFC3339)
 
-		baseURL, closeFn := startServer(t, &mockProvider{
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
 			GetCircuitLatenciesFunc: func(_ context.Context, cfg data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
 				return []stats.CircuitLatencyStat{{Circuit: cfg.Circuit, RTTMean: 42}}, nil
 			},
@@ -82,7 +82,7 @@ func TestTelemetry_Data_Device_Server(t *testing.T) {
 	t.Run("GET /device-link/circuit-latencies with invalid time range", func(t *testing.T) {
 		t.Parallel()
 
-		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{})
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{}, &mockProvider{})
 		defer closeFn()
 
 		res, _ := get(t, baseURL, "/device-link/circuit-latencies", url.Values{
@@ -100,7 +100,7 @@ func TestTelemetry_Data_Device_Server(t *testing.T) {
 		now := time.Now().UTC()
 		from, to := now.Format(time.RFC3339), now.Add(10*time.Second).Format(time.RFC3339)
 
-		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{})
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{}, &mockProvider{})
 		defer closeFn()
 
 		res, _ := get(t, baseURL, "/device-link/circuit-latencies", url.Values{
@@ -119,7 +119,7 @@ func TestTelemetry_Data_Device_Server(t *testing.T) {
 		now := time.Now().UTC()
 		from, to := now.Format(time.RFC3339), now.Add(10*time.Second).Format(time.RFC3339)
 
-		baseURL, closeFn := startServer(t, &mockProvider{
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
 			GetCircuitLatenciesFunc: func(_ context.Context, _ data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
 				return nil, errors.New("expected")
 			},
@@ -143,7 +143,7 @@ func TestTelemetry_Data_Device_Server(t *testing.T) {
 		from, to := now.Format(time.RFC3339), now.Add(10*time.Second).Format(time.RFC3339)
 
 		var gotCfg data.GetCircuitLatenciesConfig
-		baseURL, closeFn := startServer(t, &mockProvider{
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{
 			GetCircuitLatenciesFunc: func(_ context.Context, cfg data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error) {
 				gotCfg = cfg
 				return []stats.CircuitLatencyStat{{Circuit: cfg.Circuit, RTTMean: 7}}, nil
@@ -180,7 +180,7 @@ func TestTelemetry_Data_Device_Server(t *testing.T) {
 		now := time.Now().UTC()
 		from, to := now.Format(time.RFC3339), now.Add(10*time.Second).Format(time.RFC3339)
 
-		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{})
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{}, &mockProvider{})
 		defer closeFn()
 
 		res, _ := get(t, baseURL, "/device-link/circuit-latencies", url.Values{
@@ -199,7 +199,7 @@ func TestTelemetry_Data_Device_Server(t *testing.T) {
 		now := time.Now().UTC()
 		from, to := now.Format(time.RFC3339), now.Add(10*time.Second).Format(time.RFC3339)
 
-		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{})
+		baseURL, closeFn := startServer(t, &mockProvider{}, &mockProvider{}, &mockProvider{})
 		defer closeFn()
 
 		res, _ := get(t, baseURL, "/device-link/circuit-latencies", url.Values{
@@ -215,11 +215,11 @@ func TestTelemetry_Data_Device_Server(t *testing.T) {
 
 }
 
-func startServer(t *testing.T, testnet, devnet data.Provider) (baseURL string, closeFn func()) {
+func startServer(t *testing.T, mainnet, testnet, devnet data.Provider) (baseURL string, closeFn func()) {
 	t.Helper()
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	srv, err := data.NewServer(logger, testnet, devnet)
+	srv, err := data.NewServer(logger, mainnet, testnet, devnet)
 	require.NoError(t, err)
 
 	ts := httptest.NewServer(srv.Mux)

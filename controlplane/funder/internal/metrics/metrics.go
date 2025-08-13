@@ -7,9 +7,10 @@ import (
 
 const (
 	// Metrics names.
-	MetricNameBuildInfo               = "doublezero_funder_build_info"
-	MetricNameErrors                  = "doublezero_funder_errors_total"
-	MetricNameFunderAccountBalanceSOL = "doublezero_funder_account_balance_sol"
+	MetricNameBuildInfo                  = "doublezero_funder_build_info"
+	MetricNameErrors                     = "doublezero_funder_errors_total"
+	MetricNameFunderAccountBalanceSOL    = "doublezero_funder_account_balance_sol"
+	MetricNameRecipientAccountBalanceSOL = "doublezero_funder_recipient_account_balance_sol"
 
 	// Labels.
 	LabelVersion       = "version"
@@ -17,6 +18,7 @@ const (
 	LabelDate          = "date"
 	LabelErrorType     = "error_type"
 	LabelFunderAccount = "funder_account"
+	LabelRecipientName = "recipient_name"
 
 	// Error types.
 	ErrorTypeGetRecipients                           = "get_recipients"
@@ -53,5 +55,13 @@ var (
 			Help: "The balance of the funder account in SOL",
 		},
 		[]string{LabelFunderAccount},
+	)
+
+	RecipientAccountBalanceSOL = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: MetricNameRecipientAccountBalanceSOL,
+			Help: "The balance of the recipient account in SOL",
+		},
+		[]string{LabelRecipientName},
 	)
 )

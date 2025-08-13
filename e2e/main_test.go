@@ -23,7 +23,9 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
+	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/stretchr/testify/require"
 )
 
@@ -316,6 +318,25 @@ func (dn *TestDevnet) WaitForAgentConfigMatchViaController(t *testing.T, deviceA
 		time.Sleep(2 * time.Second)
 	}
 	return fmt.Errorf("output mismatch: +(want), -(got): %s", diff)
+}
+
+func (dn *TestDevnet) WaitForUserActivation(t *testing.T) error {
+	client, err := dn.Ledger.GetServiceabilityClient()
+	require.NoError(t, err, "error getting serviceability client")
+
+	condition := func() (bool, error) {
+		data, err := client.GetProgramData(t.Context())
+		if err != nil {
+			return false, err
+		}
+		for _, user := range data.Users {
+			if user.Status != serviceability.UserStatusActivated {
+				return false, nil
+			}
+		}
+		return true, nil
+	}
+	return poll.Until(t.Context(), condition, 90*time.Second, 5*time.Second)
 }
 
 func (dn *TestDevnet) ConnectIBRLUserTunnel(t *testing.T, client *devnet.Client) {

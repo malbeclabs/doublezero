@@ -86,6 +86,13 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 			t.Fail()
 		}
 
+		if !t.Run("wait_for_user_activation", func(t *testing.T) {
+			err := dn.WaitForUserActivation(t)
+			require.NoError(t, err, "error waiting for user activation")
+		}) {
+			t.Fail()
+		}
+
 		tests := []struct {
 			name        string
 			fixturePath string

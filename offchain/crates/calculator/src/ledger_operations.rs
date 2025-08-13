@@ -2,7 +2,7 @@ use crate::{
     input::RewardInput,
     keypair_loader::load_keypair,
     proof::{ContributorRewardDetail, ContributorRewardProof, ContributorRewardsMerkleRoot},
-    recorder::compute_record_address,
+    recorder::{compute_record_address, write_to_ledger},
     settings::Settings,
 };
 use anyhow::{Result, bail};
@@ -14,8 +14,9 @@ use processor::{
     internet::{InternetTelemetryStatMap, print_internet_stats},
     telemetry::{DZDTelemetryStatMap, print_telemetry_stats},
 };
-use solana_client::client_error::ClientError as SolanaClientError;
-use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_client::{
+    client_error::ClientError as SolanaClientError, nonblocking::rpc_client::RpcClient,
+};
 use solana_sdk::{
     commitment_config::CommitmentConfig,
     message::Message,
@@ -24,6 +25,7 @@ use solana_sdk::{
     transaction::Transaction,
 };
 use std::{fmt, mem::size_of, path::PathBuf, time::Duration};
+use svm_hash::merkle::MerkleProof;
 use tracing::{info, warn};
 
 /// Result of a write operation
@@ -113,8 +115,7 @@ pub async fn write_and_track<T: BorshSerialize>(
     description: &str,
     summary: &mut WriteSummary,
 ) {
-    match crate::recorder::write_to_ledger(rpc_client, payer_signer, seeds, data, description).await
-    {
+    match write_to_ledger(rpc_client, payer_signer, seeds, data, description).await {
         Ok(_) => {
             info!("✅ Successfully wrote {}", description);
             summary.add_success(description.to_string());
@@ -165,11 +166,7 @@ pub async fn read_telemetry_aggregates(
             Some(acc) => {
                 let stats: DZDTelemetryStatMap =
                     borsh::from_slice(&acc.data[size_of::<RecordData>()..])?;
-                info!(
-                    "
-{}",
-                    print_telemetry_stats(&stats)
-                );
+                info!(" {}", print_telemetry_stats(&stats));
             }
         }
     }
@@ -200,11 +197,7 @@ pub async fn read_telemetry_aggregates(
             Some(acc) => {
                 let stats: InternetTelemetryStatMap =
                     borsh::from_slice(&acc.data[size_of::<RecordData>()..])?;
-                info!(
-                    "
-{}",
-                    print_internet_stats(&stats)
-                );
+                info!(" {}", print_internet_stats(&stats));
             }
         }
     }
@@ -258,7 +251,7 @@ pub async fn read_reward_input(
     println!("=========================================");
     println!("Reward Calculation Input Configuration");
     println!("=========================================");
-    println!("{input_config:#?}");
+    println!("{}", input_config.summary());
     println!("========================================= ");
 
     // Optionally validate checksums if telemetry data is available
@@ -353,7 +346,7 @@ pub async fn check_contributor_reward(
     info!("Verifying proof for contributor: {}", contributor);
 
     // Deserialize the MerkleProof
-    let proof: svm_hash::merkle::MerkleProof = borsh::from_slice(&proof_data.proof_bytes)?;
+    let proof: MerkleProof = borsh::from_slice(&proof_data.proof_bytes)?;
 
     // Serialize the reward for verification
     let leaf = borsh::to_vec(&proof_data.reward)?;
@@ -392,6 +385,7 @@ pub async fn check_contributor_reward(
 }
 
 /// Close a record account and reclaim lamports
+/// NOTE: This is mostly just for testing/debugging
 pub async fn close_record(
     settings: &Settings,
     cfg_path: &Option<PathBuf>,
@@ -470,7 +464,13 @@ pub async fn close_record(
     );
 
     // Create and send transaction
-    let recent_blockhash = fetcher.rpc_client.get_latest_blockhash().await?;
+    let recent_blockhash = (|| async { fetcher.rpc_client.get_latest_blockhash().await })
+        .retry(&ExponentialBuilder::default().with_jitter())
+        .notify(|err: &SolanaClientError, dur: Duration| {
+            info!("retrying error: {:?} with sleeping {:?}", err, dur)
+        })
+        .await?;
+
     let message = Message::new(&[close_ix], Some(&payer_signer.pubkey()));
     let transaction = Transaction::new(&[&payer_signer], message, recent_blockhash);
 

@@ -1,5 +1,5 @@
 pub mod csv_exporter;
-pub mod data_preparation;
+pub mod data_prep;
 pub mod input;
 pub mod keypair_loader;
 pub mod ledger_operations;

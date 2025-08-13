@@ -12,60 +12,61 @@ use processor::{
 };
 use tracing::info;
 
-/// Fetches and prepares all data needed for reward calculations
-/// Returns: (epoch, device_telemetry, internet_telemetry, shapley_inputs)
-pub async fn prepare_data(
-    fetcher: &Fetcher,
-    epoch: Option<u64>,
-) -> Result<(
-    u64,
-    DZDTelemetryStatMap,
-    InternetTelemetryStatMap,
-    ShapleyInputs,
-)> {
-    // Fetch data based on filter mode
-    let (fetch_epoch, fetch_data) = match epoch {
-        None => fetcher.fetch().await?,
-        Some(epoch_num) => fetcher.with_epoch(epoch_num).await?,
-    };
+pub struct PreparedData {
+    pub epoch: u64,
+    pub device_telemetry: DZDTelemetryStatMap,
+    pub internet_telemetry: InternetTelemetryStatMap,
+    pub shapley_inputs: ShapleyInputs,
+}
 
-    // Process device telemetry
-    let device_telemetry = process_device_telemetry(&fetch_data)?;
+impl PreparedData {
+    /// Fetches and prepares all data needed for reward calculations
+    /// Returns: (epoch, device_telemetry, internet_telemetry, shapley_inputs)
+    pub async fn new(fetcher: &Fetcher, epoch: Option<u64>) -> Result<PreparedData> {
+        // Fetch data based on filter mode
+        let (fetch_epoch, fetch_data) = match epoch {
+            None => fetcher.fetch().await?,
+            Some(epoch_num) => fetcher.with_epoch(epoch_num).await?,
+        };
 
-    // Process internet telemetry
-    let internet_telemetry = process_internet_telemetry(&fetch_data)?;
+        // Process device telemetry
+        let device_telemetry = process_device_telemetry(&fetch_data)?;
 
-    // Build devices
-    let devices = build_and_log_devices(&fetch_data)?;
+        // Process internet telemetry
+        let internet_telemetry = process_internet_telemetry(&fetch_data)?;
 
-    // Build private links
-    let private_links = build_and_log_private_links(&fetch_data, &device_telemetry);
+        // Build devices
+        let devices = build_and_log_devices(&fetch_data)?;
 
-    // Build public links
-    let public_links = build_and_log_public_links(&internet_telemetry)?;
+        // Build private links
+        let private_links = build_and_log_private_links(&fetch_data, &device_telemetry);
 
-    // Build demands and city stats
-    let (demands, city_stats) = build_and_log_demands(fetcher, &fetch_data).await?;
+        // Build public links
+        let public_links = build_and_log_public_links(&internet_telemetry)?;
 
-    // Calculate city weights once for consistency
-    let city_weights = calculate_city_weights(&city_stats);
+        // Build demands and city stats
+        let (demands, city_stats) = build_and_log_demands(fetcher, &fetch_data).await?;
 
-    // Create ShapleyInputs as single source of truth
-    let shapley_inputs = ShapleyInputs {
-        devices,
-        private_links,
-        public_links,
-        demands,
-        city_stats,
-        city_weights,
-    };
+        // Calculate city weights once for consistency
+        let city_weights = calculate_city_weights(&city_stats);
 
-    Ok((
-        fetch_epoch,
-        device_telemetry,
-        internet_telemetry,
-        shapley_inputs,
-    ))
+        // Create ShapleyInputs as single source of truth
+        let shapley_inputs = ShapleyInputs {
+            devices,
+            private_links,
+            public_links,
+            demands,
+            city_stats,
+            city_weights,
+        };
+
+        Ok(PreparedData {
+            epoch: fetch_epoch,
+            device_telemetry,
+            internet_telemetry,
+            shapley_inputs,
+        })
+    }
 }
 
 /// Process and aggregate device telemetry

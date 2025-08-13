@@ -1,6 +1,6 @@
 use crate::{
     csv_exporter,
-    data_preparation::prepare_data,
+    data_prep::PreparedData,
     input::RewardInput,
     keypair_loader::load_keypair,
     ledger_operations::{self, WriteSummary, write_and_track},
@@ -42,9 +42,12 @@ impl Orchestrator {
         let ingestor_settings = ingestor::settings::Settings::new(self.cfg_path.clone())?;
         let fetcher = Fetcher::new(&ingestor_settings)?;
 
-        // Prepare all data using the data_preparation module
-        let (fetch_epoch, device_telemetry, internet_telemetry, shapley_inputs) =
-            prepare_data(&fetcher, epoch).await?;
+        // Prepare all data
+        let prep_data = PreparedData::new(&fetcher, epoch).await?;
+        let fetch_epoch = prep_data.epoch;
+        let device_telemetry = prep_data.device_telemetry;
+        let internet_telemetry = prep_data.internet_telemetry;
+        let shapley_inputs = prep_data.shapley_inputs;
 
         let input_config = RewardInput::new(
             fetch_epoch,

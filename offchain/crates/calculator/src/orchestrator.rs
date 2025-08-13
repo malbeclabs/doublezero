@@ -3,32 +3,18 @@ use crate::{
     data_preparation::prepare_data,
     input::RewardInput,
     keypair_loader::load_keypair,
-    ledger_operations::{WriteSummary, write_and_track},
-    proof::{
-        ContributorRewardDetail, ContributorRewardProof, ContributorRewardsMerkleRoot,
-        ContributorRewardsMerkleTree,
-    },
-    recorder::compute_record_address,
+    ledger_operations::{self, WriteSummary, write_and_track},
+    proof::{ContributorRewardProof, ContributorRewardsMerkleRoot, ContributorRewardsMerkleTree},
     settings::Settings,
     shapley_aggregator::aggregate_shapley_outputs,
     util::print_demands,
 };
-use anyhow::{Result, bail};
-use backon::{ExponentialBuilder, Retryable};
-use doublezero_record::{instruction as record_instruction, state::RecordData};
+use anyhow::Result;
 use ingestor::fetcher::Fetcher;
 use itertools::Itertools;
 use network_shapley::{shapley::ShapleyInput, types::Demand};
-use processor::{
-    internet::{InternetTelemetryStatMap, print_internet_stats},
-    telemetry::{DZDTelemetryStatMap, print_telemetry_stats},
-};
-use solana_client::client_error::ClientError as SolanaClientError;
-use solana_sdk::{
-    commitment_config::CommitmentConfig, message::Message, pubkey::Pubkey, signature::Signer,
-    transaction::Transaction,
-};
-use std::{collections::HashMap, mem::size_of, path::PathBuf, time::Duration};
+use solana_sdk::pubkey::Pubkey;
+use std::{collections::HashMap, path::PathBuf};
 use tabled::{builder::Builder as TableBuilder, settings::Style};
 use tracing::info;
 
@@ -298,71 +284,13 @@ impl Orchestrator {
     }
 
     pub async fn read_telemetry_aggregates(&self, epoch: u64, payer_pubkey: &Pubkey) -> Result<()> {
-        // Create fetcher
-        let ingestor_settings = ingestor::settings::Settings::new(self.cfg_path.clone())?;
-        let fetcher = Fetcher::new(&ingestor_settings)?;
-
-        {
-            let prefix = self.settings.get_device_telemetry_prefix(false)?;
-            let epoch_bytes = epoch.to_le_bytes();
-            let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-            let record_key = compute_record_address(payer_pubkey, seeds)?;
-
-            info!("Re-created record_key: {record_key}");
-
-            let maybe_account = (|| async {
-                fetcher
-                    .rpc_client
-                    .get_account_with_commitment(&record_key, CommitmentConfig::confirmed())
-                    .await
-            })
-            .retry(&ExponentialBuilder::default().with_jitter())
-            .notify(|err: &SolanaClientError, dur: Duration| {
-                info!("retrying error: {:?} with sleeping {:?}", err, dur)
-            })
-            .await?;
-
-            match maybe_account.value {
-                None => bail!("account {record_key} has no data!"),
-                Some(acc) => {
-                    let stats: DZDTelemetryStatMap =
-                        borsh::from_slice(&acc.data[size_of::<RecordData>()..])?;
-                    info!("\n{}", print_telemetry_stats(&stats));
-                }
-            }
-        }
-
-        {
-            let prefix = self.settings.get_internet_telemetry_prefix(false)?;
-            let epoch_bytes = epoch.to_le_bytes();
-            let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-            let record_key = compute_record_address(payer_pubkey, seeds)?;
-
-            info!("Re-created record_key: {record_key}");
-
-            let maybe_account = (|| async {
-                fetcher
-                    .rpc_client
-                    .get_account_with_commitment(&record_key, CommitmentConfig::confirmed())
-                    .await
-            })
-            .retry(&ExponentialBuilder::default().with_jitter())
-            .notify(|err: &SolanaClientError, dur: Duration| {
-                info!("retrying error: {:?} with sleeping {:?}", err, dur)
-            })
-            .await?;
-
-            match maybe_account.value {
-                None => bail!("account {record_key} has no data!"),
-                Some(acc) => {
-                    let stats: InternetTelemetryStatMap =
-                        borsh::from_slice(&acc.data[size_of::<RecordData>()..])?;
-                    info!("\n{}", print_internet_stats(&stats));
-                }
-            }
-        }
-
-        Ok(())
+        ledger_operations::read_telemetry_aggregates(
+            &self.settings,
+            &self.cfg_path,
+            epoch,
+            payer_pubkey,
+        )
+        .await
     }
 
     pub async fn check_contributor_reward(
@@ -371,117 +299,14 @@ impl Orchestrator {
         epoch: u64,
         payer_pubkey: &Pubkey,
     ) -> Result<()> {
-        // Create fetcher
-        let ingestor_settings = ingestor::settings::Settings::new(self.cfg_path.clone())?;
-        let fetcher = Fetcher::new(&ingestor_settings)?;
-
-        let prefix = self.settings.get_contributor_rewards_prefix(false)?;
-        let epoch_bytes = epoch.to_le_bytes();
-
-        // First, fetch the merkle root
-        let root_seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-        let root_key = compute_record_address(payer_pubkey, root_seeds)?;
-
-        info!("Fetching merkle root from: {}", root_key);
-
-        let maybe_root_account = (|| async {
-            fetcher
-                .rpc_client
-                .get_account_with_commitment(&root_key, CommitmentConfig::confirmed())
-                .await
-        })
-        .retry(&ExponentialBuilder::default().with_jitter())
-        .notify(|err: &SolanaClientError, dur: Duration| {
-            info!("retrying error: {:?} with sleeping {:?}", err, dur)
-        })
-        .await?;
-
-        let merkle_root_data = match maybe_root_account.value {
-            None => bail!(
-                "Merkle root account {} not found for epoch {}",
-                root_key,
-                epoch
-            ),
-            Some(acc) => {
-                let data: ContributorRewardsMerkleRoot =
-                    borsh::from_slice(&acc.data[size_of::<RecordData>()..])?;
-                data
-            }
-        };
-
-        // Now fetch the contributor's proof
-        let contributor_bytes = contributor.as_bytes();
-        let proof_seeds: &[&[u8]] = &[&prefix, &epoch_bytes, contributor_bytes];
-        let proof_key = compute_record_address(payer_pubkey, proof_seeds)?;
-
-        info!("Fetching proof from: {}", proof_key);
-
-        let maybe_proof_account = (|| async {
-            fetcher
-                .rpc_client
-                .get_account_with_commitment(&proof_key, CommitmentConfig::confirmed())
-                .await
-        })
-        .retry(&ExponentialBuilder::default().with_jitter())
-        .notify(|err: &SolanaClientError, dur: Duration| {
-            info!("retrying error: {:?} with sleeping {:?}", err, dur)
-        })
-        .await?;
-
-        let proof_data = match maybe_proof_account.value {
-            None => bail!(
-                "Proof account {} not found for contributor {} at epoch {}",
-                proof_key,
-                contributor,
-                epoch
-            ),
-            Some(acc) => {
-                let data: ContributorRewardProof =
-                    borsh::from_slice(&acc.data[size_of::<RecordData>()..])?;
-                data
-            }
-        };
-
-        // Verify the proof
-        info!("Verifying proof for contributor: {}", contributor);
-
-        // Deserialize the MerkleProof
-        let proof: svm_hash::merkle::MerkleProof = borsh::from_slice(&proof_data.proof_bytes)?;
-
-        // Serialize the reward for verification
-        let leaf = borsh::to_vec(&proof_data.reward)?;
-
-        // Compute the root from the proof and leaf
-        let computed_root = proof.root_from_leaf(&leaf, Some(ContributorRewardDetail::LEAF_PREFIX));
-
-        // Verify by comparing roots
-        let verification_result = computed_root == merkle_root_data.root;
-
-        // Display results
-        println!("\n========================================");
-        println!("Contributor Reward Verification");
-        println!("========================================");
-        println!("Epoch:        {epoch}");
-        println!("Contributor:  {contributor}");
-        println!("Value:        {}", proof_data.reward.value);
-        println!("Proportion:   {:.2}%", proof_data.reward.proportion * 100.0);
-        println!("Index:        {}", proof_data.index);
-        println!(
-            "Total Contributors: {}",
-            merkle_root_data.total_contributors
-        );
-        println!();
-
-        if verification_result {
-            println!(" Verification: VALID - Proof verified successfully!");
-        } else {
-            println!(" Verification: INVALID - Proof verification failed!");
-            bail!("Merkle proof verification failed");
-        }
-
-        println!("========================================\n");
-
-        Ok(())
+        ledger_operations::check_contributor_reward(
+            &self.settings,
+            &self.cfg_path,
+            contributor,
+            epoch,
+            payer_pubkey,
+        )
+        .await
     }
 
     pub async fn close_record(
@@ -491,150 +316,19 @@ impl Orchestrator {
         keypair_path: Option<PathBuf>,
         contributor: Option<String>,
     ) -> Result<()> {
-        // Load keypair
-        let payer_signer = load_keypair(&keypair_path)?;
-
-        // Create fetcher for RPC client
-        let ingestor_settings = ingestor::settings::Settings::new(self.cfg_path.clone())?;
-        let fetcher = Fetcher::new(&ingestor_settings)?;
-
-        // Determine the prefix and compute the record address based on record type
-        let epoch_bytes = epoch.to_le_bytes();
-        let record_key = match record_type {
-            "device-telemetry" => {
-                let prefix = self.settings.get_device_telemetry_prefix(false)?;
-                let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-                compute_record_address(&payer_signer.pubkey(), seeds)?
-            }
-            "internet-telemetry" => {
-                let prefix = self.settings.get_internet_telemetry_prefix(false)?;
-                let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-                compute_record_address(&payer_signer.pubkey(), seeds)?
-            }
-            "reward-input" => {
-                let prefix = self.settings.get_reward_input_prefix(false)?;
-                let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-                compute_record_address(&payer_signer.pubkey(), seeds)?
-            }
-            "contributor-rewards" => {
-                let prefix = self.settings.get_contributor_rewards_prefix(false)?;
-                if let Some(contributor_str) = contributor {
-                    let contributor_bytes = contributor_str.as_bytes();
-                    let seeds: &[&[u8]] = &[&prefix, &epoch_bytes, contributor_bytes];
-                    compute_record_address(&payer_signer.pubkey(), seeds)?
-                } else {
-                    // For merkle root
-                    let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-                    compute_record_address(&payer_signer.pubkey(), seeds)?
-                }
-            }
-            _ => bail!(
-                "Invalid record type. Must be one of: device-telemetry, internet-telemetry, reward-input, contributor-rewards"
-            ),
-        };
-
-        info!("Closing record account: {}", record_key);
-        info!("Record type: {}, Epoch: {}", record_type, epoch);
-
-        // Check if the account exists
-        let maybe_account = (|| async {
-            fetcher
-                .rpc_client
-                .get_account_with_commitment(&record_key, CommitmentConfig::confirmed())
-                .await
-        })
-        .retry(&ExponentialBuilder::default().with_jitter())
-        .notify(|err: &SolanaClientError, dur: Duration| {
-            info!("retrying error: {:?} with sleeping {:?}", err, dur)
-        })
-        .await?;
-
-        if maybe_account.value.is_none() {
-            bail!("Record account {} does not exist", record_key);
-        }
-
-        // Create close instruction
-        let close_ix = record_instruction::close_account(
-            &record_key,
-            &payer_signer.pubkey(),
-            &payer_signer.pubkey(), // Return lamports to payer
-        );
-
-        // Create and send transaction
-        let recent_blockhash = fetcher.rpc_client.get_latest_blockhash().await?;
-        let message = Message::new(&[close_ix], Some(&payer_signer.pubkey()));
-        let transaction = Transaction::new(&[&payer_signer], message, recent_blockhash);
-
-        let signature = (|| async {
-            fetcher
-                .rpc_client
-                .send_and_confirm_transaction_with_spinner_and_commitment(
-                    &transaction,
-                    CommitmentConfig::confirmed(),
-                )
-                .await
-        })
-        .retry(&ExponentialBuilder::default().with_jitter())
-        .notify(|err: &SolanaClientError, dur: Duration| {
-            info!("retrying error: {:?} with sleeping {:?}", err, dur)
-        })
-        .await?;
-
-        info!("Account closed successfully!");
-        info!("Transaction signature: {}", signature);
-
-        Ok(())
+        ledger_operations::close_record(
+            &self.settings,
+            &self.cfg_path,
+            record_type,
+            epoch,
+            keypair_path,
+            contributor,
+        )
+        .await
     }
 
     pub async fn read_reward_input(&self, epoch: u64, payer_pubkey: &Pubkey) -> Result<()> {
-        // Create fetcher
-        let ingestor_settings = ingestor::settings::Settings::new(self.cfg_path.clone())?;
-        let fetcher = Fetcher::new(&ingestor_settings)?;
-
-        let prefix = self.settings.get_reward_input_prefix(false)?;
-        let epoch_bytes = epoch.to_le_bytes();
-        let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-        let record_key = compute_record_address(payer_pubkey, seeds)?;
-
-        info!("Fetching calculation input from: {}", record_key);
-
-        let maybe_account = (|| async {
-            fetcher
-                .rpc_client
-                .get_account_with_commitment(&record_key, CommitmentConfig::confirmed())
-                .await
-        })
-        .retry(&ExponentialBuilder::default().with_jitter())
-        .notify(|err: &SolanaClientError, dur: Duration| {
-            info!("retrying error: {:?} with sleeping {:?}", err, dur)
-        })
-        .await?;
-
-        let input_config = match maybe_account.value {
-            None => bail!(
-                "Calculation input account {} not found for epoch {}",
-                record_key,
-                epoch
-            ),
-            Some(acc) => {
-                let data: RewardInput = borsh::from_slice(&acc.data[size_of::<RecordData>()..])?;
-                data
-            }
-        };
-
-        // Display the configuration
-        println!("\n========================================");
-        println!("Reward Calculation Input Configuration");
-        println!("========================================");
-        println!("{input_config:#?}");
-        println!("========================================\n");
-
-        // Optionally validate checksums if telemetry data is available
-        info!(
-            "Successfully retrieved calculation input for epoch {}",
-            epoch
-        );
-
-        Ok(())
+        ledger_operations::read_reward_input(&self.settings, &self.cfg_path, epoch, payer_pubkey)
+            .await
     }
 }

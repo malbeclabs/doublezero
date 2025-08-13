@@ -54,6 +54,9 @@ fn try_process_instruction(
 
     match ix_data {
         RevenueDistributionInstructionData::InitializeProgram => try_initialize_program(accounts),
+        RevenueDistributionInstructionData::MigrateProgramAccounts => {
+            try_migrate_program_accounts(accounts)
+        }
         RevenueDistributionInstructionData::SetAdmin(admin_key) => {
             try_set_admin(accounts, admin_key)
         }
@@ -478,13 +481,15 @@ fn try_initialize_journal(accounts: &[AccountInfo]) -> ProgramResult {
     // - 5: System program.
     let mut accounts_iter = accounts.iter().enumerate();
 
-    // Account 0 must be a signer and writable (i.e., payer) because it will be sending lamports
-    // to the new journal account when the system program allocates data to it. But because the
-    // create-program instruction requires that this account is a signer and is writable, we do
-    // not need to explicitly check these fields in its account info.
+    // Account 0 must be a signer and writable (i.e., payer) because it will be
+    // sending lamports to the new journal account when the system program
+    // allocates data to it. But because the create-program instruction requires
+    // that this account is a signer and is writable, we do not need to
+    // explicitly check these fields in its account info.
     let (_, payer_info) = try_next_enumerated_account(&mut accounts_iter, Default::default())?;
 
-    // Account 1 must be the new journal account. This account should not exist yet.
+    // Account 1 must be the new journal account. This account should not exist
+    // yet.
     let (account_index, new_journal_info) =
         try_next_enumerated_account(&mut accounts_iter, Default::default())?;
 
@@ -496,11 +501,13 @@ fn try_initialize_journal(accounts: &[AccountInfo]) -> ProgramResult {
         return Err(ProgramError::InvalidSeeds);
     }
 
-    // We declare this because Rent will be used multiple times in this instruction.
+    // We declare this because Rent will be used multiple times in this
+    // instruction.
     let rent_sysvar = Rent::get().unwrap();
 
-    // NOTE: We are creating the journal account with the max allowable size for CPI (10kb). By
-    // doing this, we avoid having to realloc when the journal entries size changes.
+    // NOTE: We are creating the journal account with the max allowable size for
+    // CPI (10kb). By doing this, we avoid having to realloc when the journal
+    // entries size changes.
     try_create_account(
         Invoker::Signer(payer_info.key),
         Invoker::Pda {
@@ -517,7 +524,8 @@ fn try_initialize_journal(accounts: &[AccountInfo]) -> ProgramResult {
         },
     )?;
 
-    // Account 2 must be the new 2Z token account. This account should not exist yet.
+    // Account 2 must be the new 2Z token account. This account should not exist
+    // yet.
     let (_, new_journal_2z_token_pda_info, journal_2z_token_pda_bump) = try_next_2z_token_pda_info(
         &mut accounts_iter,
         &expected_journal_key,
@@ -548,7 +556,7 @@ fn try_initialize_journal(accounts: &[AccountInfo]) -> ProgramResult {
         Some(&rent_sysvar),
     )?;
 
-    // After initializing the journal account, set the token account key.
+    // Set the bump seeds.
     let (mut journal, _) = zero_copy::try_initialize::<Journal>(new_journal_info, None)?;
     journal.bump_seed = journal_bump;
     journal.token_2z_pda_bump_seed = journal_2z_token_pda_bump;
@@ -1981,6 +1989,46 @@ fn try_require_unfinalized_distribution_rewards(distribution: &Distribution) -> 
         msg!("Distribution rewards have already been finalized");
         return Err(ProgramError::InvalidAccountData);
     }
+
+    Ok(())
+}
+
+//
+// Here be dragons.
+//
+
+/// This instruction processor is a special instruction that will not always be
+/// used after a program upgrade. This docstring should be updated whenever the
+/// upgrade authority must perform a special migration.
+///
+/// # Why are we migrating?
+///
+/// The program deployed on Solana devnet was migrated to fix the program
+/// config (https://github.com/doublezerofoundation/doublezero-solana/pull/23).
+/// This instruction processor is used to reset the program config to the
+/// original state. It is safe to perform this migration multiple times because
+/// the program config will not be migrated again.
+fn try_migrate_program_accounts(accounts: &[AccountInfo]) -> ProgramResult {
+    msg!("Migrate program accounts");
+
+    // We expect the following accounts for this instruction:
+    // - 0: This program's program data account (BPF Loader Upgradeable
+    //      program).
+    // - 1: The program's owner (i.e., upgrade authority).
+    // - 2: Program config.
+    let mut accounts_iter = accounts.iter().enumerate();
+
+    // Account 0 must be the program data belonging to this program.
+    // Account 1 must be the owner of the program data (i.e., the upgrade
+    // authority).
+    UpgradeAuthority::try_next_accounts(&mut accounts_iter, &ID)?;
+
+    // Account 2 must be the program config.
+    let mut program_config =
+        ZeroCopyMutAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    msg!("No longer migrated");
+    program_config.set_is_migrated(false);
 
     Ok(())
 }

@@ -79,6 +79,7 @@ pub enum DistributionMerkleRootKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RevenueDistributionInstructionData {
     InitializeProgram,
+    MigrateProgramAccounts,
     SetAdmin(Pubkey),
     ConfigureProgram(ProgramConfiguration),
     InitializeJournal,
@@ -113,6 +114,8 @@ pub enum RevenueDistributionInstructionData {
 impl RevenueDistributionInstructionData {
     pub const INITIALIZE_PROGRAM: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::initialize_program");
+    pub const MIGRATE_PROGRAM_ACCOUNTS: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::migrate_program_accounts");
     pub const SET_ADMIN: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::set_admin");
     pub const CONFIGURE_PROGRAM: Discriminator<DISCRIMINATOR_LEN> =
@@ -153,6 +156,7 @@ impl BorshDeserialize for RevenueDistributionInstructionData {
     fn deserialize_reader<R: io::Read>(reader: &mut R) -> std::io::Result<Self> {
         match Discriminator::deserialize_reader(reader)? {
             Self::INITIALIZE_PROGRAM => Ok(Self::InitializeProgram),
+            Self::MIGRATE_PROGRAM_ACCOUNTS => Ok(Self::MigrateProgramAccounts),
             Self::SET_ADMIN => BorshDeserialize::deserialize_reader(reader).map(Self::SetAdmin),
             Self::CONFIGURE_PROGRAM => {
                 BorshDeserialize::deserialize_reader(reader).map(Self::ConfigureProgram)
@@ -222,6 +226,7 @@ impl BorshSerialize for RevenueDistributionInstructionData {
     fn serialize<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         match self {
             Self::InitializeProgram => Self::INITIALIZE_PROGRAM.serialize(writer),
+            Self::MigrateProgramAccounts => Self::MIGRATE_PROGRAM_ACCOUNTS.serialize(writer),
             Self::SetAdmin(admin_key) => {
                 Self::SET_ADMIN.serialize(writer)?;
                 admin_key.serialize(writer)

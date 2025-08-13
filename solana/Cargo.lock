@@ -1485,6 +1485,7 @@ dependencies = [
  "solana-msg",
  "solana-program-entrypoint",
  "solana-program-error",
+ "solana-program-memory",
  "solana-program-pack",
  "solana-program-test",
  "solana-pubkey",

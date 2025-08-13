@@ -68,6 +68,7 @@ impl ProgramConfig {
     pub const SEED_PREFIX: &'static [u8] = b"program_config";
 
     pub const FLAG_IS_PAUSED_BIT: usize = 0;
+    pub const FLAG_IS_MIGRATED_BIT: usize = 1;
 
     pub fn find_address() -> (Pubkey, u8) {
         Pubkey::find_program_address(&[Self::SEED_PREFIX], &crate::ID)
@@ -79,6 +80,15 @@ impl ProgramConfig {
 
     pub fn set_is_paused(&mut self, should_pause: bool) {
         self.flags.set_bit(Self::FLAG_IS_PAUSED_BIT, should_pause);
+    }
+
+    pub fn is_migrated(&self) -> bool {
+        self.flags.bit(Self::FLAG_IS_MIGRATED_BIT)
+    }
+
+    pub fn set_is_migrated(&mut self, should_migrate: bool) {
+        self.flags
+            .set_bit(Self::FLAG_IS_MIGRATED_BIT, should_migrate);
     }
 
     pub fn checked_solana_validator_fee_parameters(&self) -> Option<SolanaValidatorFeeParameters> {

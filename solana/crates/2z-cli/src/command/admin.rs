@@ -3,7 +3,10 @@ use clap::{Args, Subcommand};
 use doublezero_program_tools::{get_program_data_address, instruction::try_build_instruction};
 use doublezero_revenue_distribution::{
     instruction::{
-        account::{InitializeJournalAccounts, InitializeProgramAccounts, SetAdminAccounts},
+        account::{
+            InitializeJournalAccounts, InitializeProgramAccounts, MigrateProgramAccounts,
+            SetAdminAccounts,
+        },
         RevenueDistributionInstructionData,
     },
     state::{find_2z_token_pda_address, Journal, ProgramConfig},
@@ -76,6 +79,12 @@ pub enum AdminSubCommand {
 
     /// Initialize program config and journal. Also set admin to yourself.
     Initialize {
+        #[command(flatten)]
+        solana_payer_options: SolanaPayerOptions,
+    },
+
+    /// Migrate program accounts.
+    MigrateProgramAccounts {
         #[command(flatten)]
         solana_payer_options: SolanaPayerOptions,
     },
@@ -194,6 +203,39 @@ impl AdminSubCommand {
                     .send_and_confirm_transaction_with_spinner(&transaction)
                     .await?;
                 println!("Initialized: {tx_sig}");
+
+                wallet.print_verbose_output(&[tx_sig]).await?;
+            }
+            AdminSubCommand::MigrateProgramAccounts {
+                solana_payer_options,
+            } => {
+                let wallet = Wallet::try_from(solana_payer_options)?;
+
+                let wallet_key = wallet.pubkey();
+
+                let migrate_program_accounts_ix = try_build_instruction(
+                    &REVENUE_DISTRIBUTION_PROGRAM_ID,
+                    MigrateProgramAccounts::new(&REVENUE_DISTRIBUTION_PROGRAM_ID, &wallet_key),
+                    &RevenueDistributionInstructionData::MigrateProgramAccounts,
+                )?;
+
+                let compute_unit_limit = 100_000;
+
+                let mut instructions = vec![
+                    migrate_program_accounts_ix,
+                    ComputeBudgetInstruction::set_compute_unit_limit(compute_unit_limit),
+                ];
+
+                if let Some(ref compute_unit_price_ix) = wallet.compute_unit_price_ix {
+                    instructions.push(compute_unit_price_ix.clone());
+                }
+
+                let transaction = wallet.new_transaction(&instructions).await?;
+
+                let tx_sig = wallet
+                    .send_and_confirm_transaction_with_spinner(&transaction)
+                    .await?;
+                println!("Migrate program accounts: {tx_sig}");
 
                 wallet.print_verbose_output(&[tx_sig]).await?;
             }

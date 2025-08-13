@@ -18,6 +18,7 @@ solana-instruction.workspace = true
 solana-msg.workspace = true
 solana-program-entrypoint.workspace = true
 solana-program-error.workspace = true
+solana-program-memory.workspace = true
 solana-program-pack.workspace = true
 solana-pubkey = { workspace = true, features = ["borsh", "bytemuck"] }
 solana-system-interface.workspace = true

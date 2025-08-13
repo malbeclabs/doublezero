@@ -53,6 +53,39 @@ impl From<InitializeProgramAccounts> for Vec<AccountMeta> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MigrateProgramAccounts {
+    pub program_data_key: Pubkey,
+    pub owner_key: Pubkey,
+    pub program_config_key: Pubkey,
+}
+
+impl MigrateProgramAccounts {
+    pub fn new(program_id: &Pubkey, owner_key: &Pubkey) -> Self {
+        Self {
+            program_data_key: get_program_data_address(program_id).0,
+            owner_key: *owner_key,
+            program_config_key: ProgramConfig::find_address().0,
+        }
+    }
+}
+
+impl From<MigrateProgramAccounts> for Vec<AccountMeta> {
+    fn from(accounts: MigrateProgramAccounts) -> Self {
+        let MigrateProgramAccounts {
+            program_data_key,
+            owner_key,
+            program_config_key,
+        } = accounts;
+
+        vec![
+            AccountMeta::new_readonly(program_data_key, false),
+            AccountMeta::new_readonly(owner_key, true),
+            AccountMeta::new(program_config_key, false),
+        ]
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetAdminAccounts {
     pub program_data_key: Pubkey,
     pub owner_key: Pubkey,

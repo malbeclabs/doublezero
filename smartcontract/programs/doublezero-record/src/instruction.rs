@@ -2,7 +2,6 @@
 
 use solana_program::{
     instruction::{AccountMeta, Instruction},
-    program_error::ProgramError,
     pubkey::Pubkey,
 };
 
@@ -32,23 +31,10 @@ pub enum RecordInstruction<'a> {
         data: &'a [u8],
     },
 
-    /// Update the authority of the provided record account
-    ///
-    /// Accounts expected by this instruction:
-    ///
-    /// 0. `[writable]` Record account, must be previously initialized
-    /// 1. `[signer]` Current record authority
-    /// 2. `[]` New record authority
+    /// TODO: Remove this instruction.
     SetAuthority,
 
-    /// Close the provided record account, draining lamports to recipient
-    /// account
-    ///
-    /// Accounts expected by this instruction:
-    ///
-    /// 0. `[writable]` Record account, must be previously initialized
-    /// 1. `[signer]` Record authority
-    /// 2. `[]` Receiver of account lamports
+    /// TODO: Remove this instruction.
     CloseAccount,
 
     /// Reallocate additional space in a record account
@@ -60,72 +46,67 @@ pub enum RecordInstruction<'a> {
     ///
     /// 0. `[writable]` The record account to reallocate
     /// 1. `[signer]` The account's owner
-    Reallocate {
-        /// The length of the data to hold in the record account excluding meta
-        /// data
-        data_length: u64,
-    },
+    Reallocate(u64),
 }
 
 impl<'a> RecordInstruction<'a> {
-    /// Unpacks a byte buffer into a [`RecordInstruction`].
-    pub fn unpack(input: &'a [u8]) -> Result<Self, ProgramError> {
-        const U32_BYTES: usize = 4;
-        const U64_BYTES: usize = 8;
+    const INITIALIZE: u8 = 0;
+    const WRITE: u8 = 1;
+    const SET_AUTHORITY: u8 = 2;
+    const CLOSE_ACCOUNT: u8 = 3;
+    const REALLOCATE: u8 = 4;
 
-        let (&tag, rest) = input
-            .split_first()
-            .ok_or(ProgramError::InvalidInstructionData)?;
-        Ok(match tag {
-            0 => Self::Initialize,
-            1 => {
+    /// Unpacks a byte buffer into a [`RecordInstruction`].
+    pub fn unpack(input: &'a [u8]) -> Option<Self> {
+        const U32_BYTES: usize = size_of::<u32>();
+        const U64_BYTES: usize = size_of::<u64>();
+
+        let (&tag, rest) = input.split_first()?;
+
+        match tag {
+            Self::INITIALIZE => Some(Self::Initialize),
+            Self::WRITE => {
                 let offset = rest
                     .get(..U64_BYTES)
                     .and_then(|slice| slice.try_into().ok())
-                    .map(u64::from_le_bytes)
-                    .ok_or(ProgramError::InvalidInstructionData)?;
+                    .map(u64::from_le_bytes)?;
                 let (length, data) = rest[U64_BYTES..].split_at(U32_BYTES);
-                let length = u32::from_le_bytes(
-                    length
-                        .try_into()
-                        .map_err(|_| ProgramError::InvalidInstructionData)?,
-                ) as usize;
+                let length = length.try_into().map(u32::from_le_bytes).ok()? as usize;
 
-                Self::Write {
+                Some(Self::Write {
                     offset,
                     data: &data[..length],
-                }
+                })
             }
-            2 => Self::SetAuthority,
-            3 => Self::CloseAccount,
-            4 => {
+            Self::SET_AUTHORITY => Some(Self::SetAuthority),
+            Self::CLOSE_ACCOUNT => Some(Self::CloseAccount),
+            Self::REALLOCATE => {
                 let data_length = rest
                     .get(..U64_BYTES)
                     .and_then(|slice| slice.try_into().ok())
-                    .map(u64::from_le_bytes)
-                    .ok_or(ProgramError::InvalidInstructionData)?;
+                    .map(u64::from_le_bytes)?;
 
-                Self::Reallocate { data_length }
+                Some(Self::Reallocate(data_length))
             }
-            _ => return Err(ProgramError::InvalidInstructionData),
-        })
+            _ => None,
+        }
     }
 
     /// Packs a [`RecordInstruction`] into a byte buffer.
     pub fn pack(&self) -> Vec<u8> {
-        let mut buf = Vec::with_capacity(std::mem::size_of::<Self>());
+        let mut buf = Vec::with_capacity(size_of::<Self>());
         match self {
-            Self::Initialize => buf.push(0),
+            Self::Initialize => buf.push(Self::INITIALIZE),
             Self::Write { offset, data } => {
-                buf.push(1);
+                buf.push(Self::WRITE);
                 buf.extend_from_slice(&offset.to_le_bytes());
                 buf.extend_from_slice(&(data.len() as u32).to_le_bytes());
                 buf.extend_from_slice(data);
             }
-            Self::SetAuthority => buf.push(2),
-            Self::CloseAccount => buf.push(3),
-            Self::Reallocate { data_length } => {
-                buf.push(4);
+            Self::SetAuthority => buf.push(Self::SET_AUTHORITY),
+            Self::CloseAccount => buf.push(Self::CLOSE_ACCOUNT),
+            Self::Reallocate(data_length) => {
+                buf.push(Self::REALLOCATE);
                 buf.extend_from_slice(&data_length.to_le_bytes());
             }
         };
@@ -195,7 +176,7 @@ pub fn reallocate(record_account: &Pubkey, signer: &Pubkey, data_length: u64) ->
             AccountMeta::new(*record_account, false),
             AccountMeta::new_readonly(*signer, true),
         ],
-        data: RecordInstruction::Reallocate { data_length }.pack(),
+        data: RecordInstruction::Reallocate(data_length).pack(),
     }
 }
 
@@ -245,7 +226,7 @@ mod tests {
     #[test]
     fn serialize_reallocate() {
         let data_length = 16u64;
-        let instruction = RecordInstruction::Reallocate { data_length };
+        let instruction = RecordInstruction::Reallocate(data_length);
         let mut expected = vec![4];
         expected.extend_from_slice(&data_length.to_le_bytes());
         assert_eq!(instruction.pack(), expected);
@@ -256,7 +237,6 @@ mod tests {
     fn deserialize_invalid_instruction() {
         let mut expected = vec![12];
         expected.extend_from_slice(&TEST_BYTES);
-        let err: ProgramError = RecordInstruction::unpack(&expected).unwrap_err();
-        assert_eq!(err, ProgramError::InvalidInstructionData);
+        assert!(RecordInstruction::unpack(&expected).is_none());
     }
 }

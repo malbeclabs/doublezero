@@ -29,8 +29,8 @@ pub enum TelemetryError {
     InvalidSamplingInterval = 1012,
     /// Samples batch too large
     SamplesBatchTooLarge = 1013,
-    /// Location is not activated or suspend
-    LocationNotActiveOrSuspended = 1014,
+    /// Exchange is not activated or suspend
+    ExchangeNotActiveOrSuspended = 1014,
     /// Date provider name is greater than 32 bytes
     DataProviderNameTooLong = 1015,
     /// Origin and target locations cannot be the
@@ -72,8 +72,8 @@ impl fmt::Display for TelemetryError {
             Self::SamplesBatchTooLarge => {
                 write!(f, "Samples batch too large")
             }
-            Self::LocationNotActiveOrSuspended => {
-                write!(f, "Location does not have activated status")
+            Self::ExchangeNotActiveOrSuspended => {
+                write!(f, "Exchange does not have activated status")
             }
             Self::DataProviderNameTooLong => write!(f, "Data provider name exceeds 32 bytes"),
             Self::SameTargetAsOrigin => write!(f, "Origin and target are the same location"),

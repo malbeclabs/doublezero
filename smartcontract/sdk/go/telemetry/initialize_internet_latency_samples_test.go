@@ -22,8 +22,8 @@ func TestSDK_Telemetry_InitializeInternetLatencySamples_HappyPath(t *testing.T) 
 	interval := uint64(100_000)
 
 	config := telemetry.InitializeInternetLatencySamplesInstructionConfig{
-		OriginLocationPK:             originLocationPK,
-		TargetLocationPK:             targetLocationPK,
+		OriginExchangePK:             originLocationPK,
+		TargetExchangePK:             targetLocationPK,
 		DataProviderName:             dataProviderName,
 		Epoch:                        epoch,
 		SamplingIntervalMicroseconds: interval,
@@ -55,8 +55,8 @@ func TestSDK_Telemetry_InitializeInternetLatencySamples_MissingFields(t *testing
 	t.Parallel()
 
 	base := telemetry.InitializeInternetLatencySamplesInstructionConfig{
-		OriginLocationPK:             solana.NewWallet().PublicKey(),
-		TargetLocationPK:             solana.NewWallet().PublicKey(),
+		OriginExchangePK:             solana.NewWallet().PublicKey(),
+		TargetExchangePK:             solana.NewWallet().PublicKey(),
 		DataProviderName:             "test",
 		Epoch:                        42,
 		SamplingIntervalMicroseconds: 100_000,
@@ -70,14 +70,14 @@ func TestSDK_Telemetry_InitializeInternetLatencySamples_MissingFields(t *testing
 		{
 			name: "missing_origin_location_pk",
 			mutate: func(c *telemetry.InitializeInternetLatencySamplesInstructionConfig) {
-				c.OriginLocationPK = solana.PublicKey{}
+				c.OriginExchangePK = solana.PublicKey{}
 			},
 			expectError: "origin location public key is required",
 		},
 		{
 			name: "missing_target_location_pk",
 			mutate: func(c *telemetry.InitializeInternetLatencySamplesInstructionConfig) {
-				c.TargetLocationPK = solana.PublicKey{}
+				c.TargetExchangePK = solana.PublicKey{}
 			},
 			expectError: "target location public key is required",
 		},
@@ -127,8 +127,8 @@ func TestSDK_Telemetry_InitializeInternetLatencySamples_BorshEncoding(t *testing
 	t.Parallel()
 
 	config := telemetry.InitializeInternetLatencySamplesInstructionConfig{
-		OriginLocationPK:             solana.NewWallet().PublicKey(),
-		TargetLocationPK:             solana.NewWallet().PublicKey(),
+		OriginExchangePK:             solana.NewWallet().PublicKey(),
+		TargetExchangePK:             solana.NewWallet().PublicKey(),
 		DataProviderName:             "test",
 		Epoch:                        99,
 		SamplingIntervalMicroseconds: 250_000,

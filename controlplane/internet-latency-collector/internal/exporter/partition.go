@@ -9,8 +9,8 @@ import (
 
 type PartitionKey struct {
 	DataProvider     DataProviderName
-	SourceLocationPK solana.PublicKey
-	TargetLocationPK solana.PublicKey
+	SourceExchangePK solana.PublicKey
+	TargetExchangePK solana.PublicKey
 	Epoch            uint64
 }
 
@@ -20,5 +20,5 @@ type Sample struct {
 }
 
 func (k PartitionKey) String() string {
-	return fmt.Sprintf("%s-%s-%s-%d", k.DataProvider, k.SourceLocationPK.String(), k.TargetLocationPK.String(), k.Epoch)
+	return fmt.Sprintf("%s-%s-%s-%d", k.DataProvider, k.SourceExchangePK.String(), k.TargetExchangePK.String(), k.Epoch)
 }

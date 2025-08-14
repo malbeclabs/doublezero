@@ -983,7 +983,7 @@ func TestInternetLatency_Wheresitup_Run_TickerExecution(t *testing.T) {
 	csvStr := string(csvContent)
 
 	// Check CSV header
-	require.Contains(t, csvStr, "source_location_code,target_location_code,timestamp,latency",
+	require.Contains(t, csvStr, "source_exchange_code,target_exchange_code,timestamp,latency",
 		"CSV should contain the expected header")
 
 	// Check that data row exists with the expected values

@@ -8,8 +8,8 @@ import (
 )
 
 type WriteInternetLatencySamplesInstructionConfig struct {
-	OriginLocationPK           solana.PublicKey
-	TargetLocationPK           solana.PublicKey
+	OriginExchangePK           solana.PublicKey
+	TargetExchangePK           solana.PublicKey
 	DataProviderName           string
 	Epoch                      uint64
 	StartTimestampMicroseconds uint64
@@ -17,10 +17,10 @@ type WriteInternetLatencySamplesInstructionConfig struct {
 }
 
 func (c *WriteInternetLatencySamplesInstructionConfig) Validate() error {
-	if c.OriginLocationPK.IsZero() {
+	if c.OriginExchangePK.IsZero() {
 		return fmt.Errorf("origin location public key is required")
 	}
-	if c.TargetLocationPK.IsZero() {
+	if c.TargetExchangePK.IsZero() {
 		return fmt.Errorf("target location public key is required")
 	}
 	if c.DataProviderName == "" {
@@ -61,8 +61,8 @@ func BuildWriteInternetLatencySamplesInstruction(
 		programID,
 		signerPK,
 		config.DataProviderName,
-		config.OriginLocationPK,
-		config.TargetLocationPK,
+		config.OriginExchangePK,
+		config.TargetExchangePK,
 		config.Epoch,
 	)
 	if err != nil {

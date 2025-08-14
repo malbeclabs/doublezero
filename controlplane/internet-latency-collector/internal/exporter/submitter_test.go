@@ -32,8 +32,8 @@ func TestInternetLatency_Submitter(t *testing.T) {
 			WriteInternetLatencySamplesFunc: func(ctx context.Context, config sdktelemetry.WriteInternetLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
 				receivedKey = exporter.PartitionKey{
 					DataProvider:     "test",
-					SourceLocationPK: config.OriginLocationPK,
-					TargetLocationPK: config.TargetLocationPK,
+					SourceExchangePK: config.OriginExchangePK,
+					TargetExchangePK: config.TargetExchangePK,
 					Epoch:            config.Epoch,
 				}
 				samples := make([]exporter.Sample, len(config.Samples))
@@ -333,8 +333,8 @@ func TestInternetLatency_Submitter(t *testing.T) {
 		pastEpoch := uint64(1)
 		key := exporter.PartitionKey{
 			DataProvider:     "dp",
-			SourceLocationPK: solana.NewWallet().PublicKey(),
-			TargetLocationPK: solana.NewWallet().PublicKey(),
+			SourceExchangePK: solana.NewWallet().PublicKey(),
+			TargetExchangePK: solana.NewWallet().PublicKey(),
 			Epoch:            pastEpoch,
 		}
 
@@ -377,8 +377,8 @@ func TestInternetLatency_Submitter(t *testing.T) {
 		currentEpoch := uint64(1)
 		key := exporter.PartitionKey{
 			DataProvider:     "dp",
-			SourceLocationPK: solana.NewWallet().PublicKey(),
-			TargetLocationPK: solana.NewWallet().PublicKey(),
+			SourceExchangePK: solana.NewWallet().PublicKey(),
+			TargetExchangePK: solana.NewWallet().PublicKey(),
 			Epoch:            currentEpoch,
 		}
 
@@ -709,8 +709,8 @@ func newTestSample() exporter.Sample {
 func newTestPartitionKey() exporter.PartitionKey {
 	return exporter.PartitionKey{
 		DataProvider:     "test",
-		SourceLocationPK: solana.PublicKey{1},
-		TargetLocationPK: solana.PublicKey{2},
+		SourceExchangePK: solana.PublicKey{1},
+		TargetExchangePK: solana.PublicKey{2},
 		Epoch:            42,
 	}
 }

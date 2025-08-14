@@ -20,7 +20,7 @@ pub const MAX_DATA_PROVIDER_NAME_BYTES: usize = 32;
 /// - 1 byte: `bump_seed`
 /// - 32 bytes: `data_provider_name`
 /// - 8 byte: `epoch`
-/// - 3 * 32 bytes: pubkeys for `agent`, `locations`
+/// - 3 * 32 bytes: pubkeys for `agent`, `exchanges`
 /// - 8 bytes: `sampling_interval_microseconds`
 /// - 8 bytes: `start_timestamp_microseconds`
 /// - 4 bytes: `next_sample_index`
@@ -35,8 +35,8 @@ const INTERNET_LATENCY_SAMPLES_HEADER_SIZE_MINUS_PROVIDER: usize = {
     + 8 // epoch
     + 4 // data_provider_name.len()
     + 32 // oracle_agent_pk
-    + 32 // origin_location_pk
-    + 32 // target_location_pk
+    + 32 // origin_exchange_pk
+    + 32 // target_exchange_pk
     + 8 // sampling_interval_microseconds
     + 8 // start_timestamp_microseconds
     + 4 // next_sample_index
@@ -44,7 +44,7 @@ const INTERNET_LATENCY_SAMPLES_HEADER_SIZE_MINUS_PROVIDER: usize = {
 };
 
 /// Onchain data structure representing a latency samples account header between two
-/// location over the public internet for a specific epoch and third party probe provider,
+/// dz exchanges over the public internet for a specific epoch and third party probe provider,
 /// written by a single agent account managed by the serviceability global state.
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -57,10 +57,10 @@ pub struct InternetLatencySamplesHeader {
     pub data_provider_name: String, // 32 bytes
     // Agent authorized to write RTT samples (must match the signer)
     pub oracle_agent_pk: Pubkey, // 32
-    // Cached location of the probe origin for query/UI optimization
-    pub origin_location_pk: Pubkey, // 32
-    // Cached location of the probe target
-    pub target_location_pk: Pubkey, // 32
+    // Cached exchange of the probe origin for query/UI optimization
+    pub origin_exchange_pk: Pubkey, // 32
+    // Cached exchange of the probe target
+    pub target_exchange_pk: Pubkey, // 32
     // Sampling interval configured by the agent (in microseconds)
     pub sampling_interval_microseconds: u64, // 8
     // Timestamp of the first written sample (µs since UNIX epoch)
@@ -134,8 +134,8 @@ impl fmt::Display for InternetLatencySamples {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, data_provider_name: {}, epoch: {}, oracle_agent: {}, origin_location: {}, target_location: {}, samples: {}",
-            self.header.account_type, self.header.data_provider_name, self.header.epoch, self.header.oracle_agent_pk, self.header.origin_location_pk, self.header.target_location_pk, self.samples.len(),
+            "account_type: {}, data_provider_name: {}, epoch: {}, oracle_agent: {}, origin_exchange: {}, target_exchange: {}, samples: {}",
+            self.header.account_type, self.header.data_provider_name, self.header.epoch, self.header.oracle_agent_pk, self.header.origin_exchange_pk, self.header.target_exchange_pk, self.samples.len(),
         )
     }
 }
@@ -210,8 +210,8 @@ mod tests {
                 data_provider_name: "RIPE Atlas".to_string(),
                 epoch: 19_800,
                 oracle_agent_pk: Pubkey::new_unique(),
-                origin_location_pk: Pubkey::new_unique(),
-                target_location_pk: Pubkey::new_unique(),
+                origin_exchange_pk: Pubkey::new_unique(),
+                target_exchange_pk: Pubkey::new_unique(),
                 sampling_interval_microseconds: 60_000_000,
                 start_timestamp_microseconds: 1_700_000_000_000_000,
                 next_sample_index: samples.len() as u32,
@@ -229,8 +229,8 @@ mod tests {
         assert_eq!(header.epoch, header2.epoch);
         assert_eq!(header.data_provider_name, header2.data_provider_name);
         assert_eq!(header.oracle_agent_pk, header2.oracle_agent_pk);
-        assert_eq!(header.origin_location_pk, header2.origin_location_pk);
-        assert_eq!(header.target_location_pk, header2.target_location_pk);
+        assert_eq!(header.origin_exchange_pk, header2.origin_exchange_pk);
+        assert_eq!(header.target_exchange_pk, header2.target_exchange_pk);
         assert_eq!(
             header.sampling_interval_microseconds,
             header2.sampling_interval_microseconds

@@ -447,7 +447,7 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults(t *testing.T) {
 	header := records[0]
 	tsIdx := slices.Index(header, "timestamp")
 	rttIdx := slices.Index(header, "latency")
-	srcIdx := slices.Index(header, "source_location_code")
+	srcIdx := slices.Index(header, "source_exchange_code")
 	require.NotEqual(t, -1, tsIdx)
 	require.NotEqual(t, -1, rttIdx)
 	require.NotEqual(t, -1, srcIdx)
@@ -1205,7 +1205,7 @@ func TestInternetLatency_RIPEAtlas_Run(t *testing.T) {
 	csvContent := string(csvData)
 
 	// Check header
-	require.Contains(t, csvContent, "source_location_code,target_location_code,timestamp,latency",
+	require.Contains(t, csvContent, "source_exchange_code,target_exchange_code,timestamp,latency",
 		"CSV header should be correct")
 
 	// Check data rows contain expected values

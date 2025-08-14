@@ -137,24 +137,24 @@ func (e *BufferedLedgerExporter) WriteRecords(ctx context.Context, records []Rec
 		}
 	}
 
-	// Lookup location pubkeys from given codes using serviceability program client.
-	locations, err := e.getLocations(ctx)
+	// Lookup exchange pubkeys from given codes using serviceability program client.
+	exchanges, err := e.getExchanges(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get locations: %w", err)
+		return fmt.Errorf("failed to get exchanges: %w", err)
 	}
 
 	// Add records to partitioned buffer.
 	for _, record := range records {
-		source, ok := locations[record.SourceLocationCode]
+		source, ok := exchanges[record.SourceExchangeCode]
 		if !ok {
-			e.log.Warn("Source location not found, skipping record", "code", record.SourceLocationCode)
-			metrics.ExporterLocationNotFoundTotal.WithLabelValues(record.SourceLocationCode).Inc()
+			e.log.Warn("Source exchange not found, skipping record", "code", record.SourceExchangeCode)
+			metrics.ExporterExchangeNotFoundTotal.WithLabelValues(record.SourceExchangeCode).Inc()
 			continue
 		}
-		target, ok := locations[record.TargetLocationCode]
+		target, ok := exchanges[record.TargetExchangeCode]
 		if !ok {
-			e.log.Warn("Target location not found, skipping record", "code", record.TargetLocationCode)
-			metrics.ExporterLocationNotFoundTotal.WithLabelValues(record.TargetLocationCode).Inc()
+			e.log.Warn("Target exchange not found, skipping record", "code", record.TargetExchangeCode)
+			metrics.ExporterExchangeNotFoundTotal.WithLabelValues(record.TargetExchangeCode).Inc()
 			continue
 		}
 
@@ -165,8 +165,8 @@ func (e *BufferedLedgerExporter) WriteRecords(ctx context.Context, records []Rec
 
 		partitionKey := PartitionKey{
 			DataProvider:     record.DataProvider,
-			SourceLocationPK: source.PubKey,
-			TargetLocationPK: target.PubKey,
+			SourceExchangePK: source.PubKey,
+			TargetExchangePK: target.PubKey,
 			Epoch:            epoch,
 		}
 		sample := Sample{
@@ -180,13 +180,13 @@ func (e *BufferedLedgerExporter) WriteRecords(ctx context.Context, records []Rec
 		// This allows the caller to track progress without risk of losing more than this many
 		// samples on ungraceful shutdown.
 		size := e.buffer.Add(partitionKey, sample)
-		metrics.ExporterPartitionedBufferSize.WithLabelValues(string(partitionKey.DataProvider), partitionKey.SourceLocationPK.String(), partitionKey.TargetLocationPK.String()).Set(float64(size))
+		metrics.ExporterPartitionedBufferSize.WithLabelValues(string(partitionKey.DataProvider), partitionKey.SourceExchangePK.String(), partitionKey.TargetExchangePK.String()).Set(float64(size))
 	}
 
 	return nil
 }
 
-func (e *BufferedLedgerExporter) getLocations(ctx context.Context) (map[string]serviceability.Location, error) {
+func (e *BufferedLedgerExporter) getExchanges(ctx context.Context) (map[string]serviceability.Exchange, error) {
 	serviceabilityData, err := e.cfg.Serviceability.GetProgramData(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get program data: %w", err)
@@ -194,9 +194,9 @@ func (e *BufferedLedgerExporter) getLocations(ctx context.Context) (map[string]s
 	if serviceabilityData == nil {
 		return nil, errors.New("serviceability program data is nil")
 	}
-	locations := make(map[string]serviceability.Location)
-	for _, location := range serviceabilityData.Locations {
-		locations[location.Code] = location
+	exchanges := make(map[string]serviceability.Exchange)
+	for _, exchange := range serviceabilityData.Exchanges {
+		exchanges[exchange.Code] = exchange
 	}
-	return locations, nil
+	return exchanges, nil
 }

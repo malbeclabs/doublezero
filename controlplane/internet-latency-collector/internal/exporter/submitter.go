@@ -110,8 +110,8 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 
 		writeConfig := telemetry.WriteInternetLatencySamplesInstructionConfig{
 			DataProviderName:           string(partitionKey.DataProvider),
-			OriginLocationPK:           partitionKey.SourceLocationPK,
-			TargetLocationPK:           partitionKey.TargetLocationPK,
+			OriginExchangePK:           partitionKey.SourceExchangePK,
+			TargetExchangePK:           partitionKey.TargetExchangePK,
 			Epoch:                      partitionKey.Epoch,
 			StartTimestampMicroseconds: uint64(minTimestamp.UnixMicro()),
 			Samples:                    rtts,
@@ -127,8 +127,8 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 				}
 				_, _, err = s.cfg.Telemetry.InitializeInternetLatencySamples(ctx, telemetry.InitializeInternetLatencySamplesInstructionConfig{
 					DataProviderName:             string(partitionKey.DataProvider),
-					OriginLocationPK:             partitionKey.SourceLocationPK,
-					TargetLocationPK:             partitionKey.TargetLocationPK,
+					OriginExchangePK:             partitionKey.SourceExchangePK,
+					TargetExchangePK:             partitionKey.TargetExchangePK,
 					Epoch:                        partitionKey.Epoch,
 					SamplingIntervalMicroseconds: uint64(samplingInterval.Microseconds()),
 				})
@@ -139,7 +139,7 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 				if err != nil {
 					if errors.Is(err, telemetry.ErrSamplesAccountFull) {
 						log.Debug("Partition account is full, dropping samples from buffer and moving on", "droppedSamples", len(samples))
-						metrics.ExporterSubmitterAccountFull.WithLabelValues(string(partitionKey.DataProvider), partitionKey.SourceLocationPK.String(), partitionKey.TargetLocationPK.String(), strconv.FormatUint(partitionKey.Epoch, 10)).Inc()
+						metrics.ExporterSubmitterAccountFull.WithLabelValues(string(partitionKey.DataProvider), partitionKey.SourceExchangePK.String(), partitionKey.TargetExchangePK.String(), strconv.FormatUint(partitionKey.Epoch, 10)).Inc()
 						s.cfg.Buffer.Remove(partitionKey)
 						return nil
 					}
@@ -147,7 +147,7 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 				}
 			} else if errors.Is(err, telemetry.ErrSamplesAccountFull) {
 				log.Debug("Partition account is full, dropping samples from buffer and moving on", "droppedSamples", len(samples))
-				metrics.ExporterSubmitterAccountFull.WithLabelValues(string(partitionKey.DataProvider), partitionKey.SourceLocationPK.String(), partitionKey.TargetLocationPK.String(), strconv.FormatUint(partitionKey.Epoch, 10)).Inc()
+				metrics.ExporterSubmitterAccountFull.WithLabelValues(string(partitionKey.DataProvider), partitionKey.SourceExchangePK.String(), partitionKey.TargetExchangePK.String(), strconv.FormatUint(partitionKey.Epoch, 10)).Inc()
 				s.cfg.Buffer.Remove(partitionKey)
 				return nil
 			} else {
@@ -155,7 +155,7 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 			}
 		}
 
-		metrics.ExporterPartitionedBufferSize.WithLabelValues(string(partitionKey.DataProvider), partitionKey.SourceLocationPK.String(), partitionKey.TargetLocationPK.String()).Set(float64(len(samples)))
+		metrics.ExporterPartitionedBufferSize.WithLabelValues(string(partitionKey.DataProvider), partitionKey.SourceExchangePK.String(), partitionKey.TargetExchangePK.String()).Set(float64(len(samples)))
 		log.Debug("Submitted partition samples batch", "count", len(samples), "samples", rtts)
 	}
 

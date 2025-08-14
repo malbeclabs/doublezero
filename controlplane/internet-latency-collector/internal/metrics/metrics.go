@@ -17,8 +17,8 @@ var (
 		Help: "Build information of the internet latency collector",
 	}, []string{"version", "commit", "date"})
 
-	// Blockchain location fetch metrics
-	DoublezeroExchangeLocationFetchTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	// Blockchain exchange fetch metrics
+	DoublezeroExchangeFetchTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "doublezero_internet_latency_collector_exchange_fetch_total",
 		Help: "Total number of attempts to fetch doublezero exchanges from blockchain",
 	}, []string{"status"})
@@ -76,18 +76,18 @@ var (
 		Help: "Total number of errors from the exporter",
 	}, []string{"error_type"})
 
-	ExporterLocationNotFoundTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "doublezero_internet_latency_collector_exporter_location_not_found_total",
-		Help: "Total number of location not found warnings from the exporter",
-	}, []string{"location"})
+	ExporterExchangeNotFoundTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "doublezero_internet_latency_collector_exporter_exchange_not_found_total",
+		Help: "Total number of exchange not found warnings from the exporter",
+	}, []string{"exchange"})
 
 	ExporterPartitionedBufferSize = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "doublezero_internet_latency_collector_exporter_partitioned_buffer_size",
 		Help: "Number of partitioned buffers from the exporter",
-	}, []string{"data_provider", "source_location_pk", "target_location_pk"})
+	}, []string{"data_provider", "source_exchange_pk", "target_exchange_pk"})
 
 	ExporterSubmitterAccountFull = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "doublezero_internet_latency_collector_exporter_submitter_account_full",
 		Help: "Number of times the exporter has encountered a submitter account full error",
-	}, []string{"data_provider", "source_location_pk", "target_location_pk", "epoch"})
+	}, []string{"data_provider", "source_exchange_pk", "target_exchange_pk", "epoch"})
 )

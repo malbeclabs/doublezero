@@ -51,7 +51,7 @@ func (c *mockServiceabilityProgramClient) GetProgramData(ctx context.Context) (*
 type mockTelemetryProgramClient struct {
 	InitializeInternetLatencySamplesFunc func(ctx context.Context, config telemetry.InitializeInternetLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error)
 	WriteInternetLatencySamplesFunc      func(ctx context.Context, config telemetry.WriteInternetLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error)
-	GetInternetLatencySamplesFunc        func(ctx context.Context, dataProviderName string, originLocationPK solana.PublicKey, targetLocationPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error)
+	GetInternetLatencySamplesFunc        func(ctx context.Context, dataProviderName string, originExchangePK solana.PublicKey, targetExchangePK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error)
 }
 
 func (c *mockTelemetryProgramClient) InitializeInternetLatencySamples(ctx context.Context, config telemetry.InitializeInternetLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
@@ -62,8 +62,8 @@ func (c *mockTelemetryProgramClient) WriteInternetLatencySamples(ctx context.Con
 	return c.WriteInternetLatencySamplesFunc(ctx, config)
 }
 
-func (c *mockTelemetryProgramClient) GetInternetLatencySamples(ctx context.Context, dataProviderName string, originLocationPK solana.PublicKey, targetLocationPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error) {
-	return c.GetInternetLatencySamplesFunc(ctx, dataProviderName, originLocationPK, targetLocationPK, epoch)
+func (c *mockTelemetryProgramClient) GetInternetLatencySamples(ctx context.Context, dataProviderName string, originExchangePK solana.PublicKey, targetExchangePK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error) {
+	return c.GetInternetLatencySamplesFunc(ctx, dataProviderName, originExchangePK, targetExchangePK, epoch)
 }
 
 type mockEpochFinder struct {

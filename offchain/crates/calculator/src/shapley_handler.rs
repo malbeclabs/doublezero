@@ -29,7 +29,8 @@ pub fn build_devices(fetch_data: &FetchData) -> Result<Devices> {
             devices.push(Device {
                 device: device.code.clone(),
                 edge: DEFAULT_EDGE_BANDWIDTH_GBPS,
-                operator: contributor.code.to_string(), // For now just use code
+                // Use owner pubkey as operator ID
+                operator: contributor.owner.to_string(),
             });
         }
     }

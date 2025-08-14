@@ -3,14 +3,13 @@ use crate::{
     data_prep::PreparedData,
     input::RewardInput,
     keypair_loader::load_keypair,
-    ledger_operations::{self, WriteSummary, write_and_track},
-    proof::{ContributorRewardProof, ContributorRewardsMerkleRoot, ContributorRewardsMerkleTree},
+    ledger_operations::{self, WriteSummary, write_and_track, write_shapley_output},
+    proof::{ContributorRewardsMerkleTree, ShapleyOutputStorage},
     shapley_aggregator::aggregate_shapley_outputs,
     util::print_demands,
 };
 use anyhow::Result;
 use ingestor::fetcher::Fetcher;
-use itertools::Itertools;
 use network_shapley::{shapley::ShapleyInput, types::Demand};
 use rayon::prelude::*;
 use settings::Settings;
@@ -69,14 +68,14 @@ impl Orchestrator {
         }
 
         // Group demands by start city
-        let demand_groups: Vec<(String, Vec<Demand>)> = shapley_inputs
-            .demands
-            .clone()
-            .into_iter()
-            .chunk_by(|d| d.start.clone())
-            .into_iter()
-            .map(|(start, group)| (start, group.collect()))
-            .collect();
+        let mut demands_by_city: HashMap<String, Vec<Demand>> = HashMap::new();
+        for demand in shapley_inputs.demands.clone() {
+            demands_by_city
+                .entry(demand.start.clone())
+                .or_default()
+                .push(demand);
+        }
+        let demand_groups: Vec<(String, Vec<Demand>)> = demands_by_city.into_iter().collect();
 
         // Collect per-city Shapley outputs in parallel
         let start_time = Instant::now();
@@ -84,7 +83,7 @@ impl Orchestrator {
             .par_iter()
             .map(|(city, demands)| {
                 info!(
-                    "City: {city}, Demand: {}",
+                    "City: {city}, Demand: \n{}",
                     print_demands(demands, 1_000_000)
                 );
 
@@ -209,52 +208,30 @@ impl Orchestrator {
                 )
                 .await;
 
-                // Write merkle root
-                let contributor_prefix = self.settings.prefixes.contributor_rewards.as_bytes();
-                let merkle_root_data = ContributorRewardsMerkleRoot {
+                // Write shapley output storage instead of individual proofs
+                let shapley_storage = ShapleyOutputStorage {
                     epoch: fetch_epoch,
-                    root: merkle_root,
-                    total_contributors: merkle_tree.len() as u32,
+                    rewards: merkle_tree.rewards().to_vec(),
+                    total_proportions: merkle_tree.rewards().iter().map(|r| r.proportion).sum(),
                 };
-                write_and_track(
+
+                write_shapley_output(
                     &fetcher.rpc_client,
                     &payer_signer,
-                    &[contributor_prefix, &fetch_epoch.to_le_bytes()],
-                    &merkle_root_data,
-                    "contributor rewards merkle root",
-                    &mut summary,
-                    self.settings.rpc.rps_limit,
+                    fetch_epoch,
+                    &shapley_storage,
+                    &self.settings,
                 )
-                .await;
+                .await?;
 
-                // Write contributor proofs
-                for (index, reward) in merkle_tree.rewards().iter().enumerate() {
-                    let proof = merkle_tree.generate_proof(index)?;
-                    let proof_bytes = borsh::to_vec(&proof)?;
+                summary.add_success("shapley output storage".to_string());
 
-                    let proof_data = ContributorRewardProof {
-                        epoch: fetch_epoch,
-                        contributor: reward.operator.clone(),
-                        reward: reward.clone(),
-                        proof_bytes,
-                        index: index as u32,
-                    };
-
-                    write_and_track(
-                        &fetcher.rpc_client,
-                        &payer_signer,
-                        &[
-                            contributor_prefix,
-                            &fetch_epoch.to_le_bytes(),
-                            reward.operator.as_bytes(),
-                        ],
-                        &proof_data,
-                        &format!("proof for contributor {}", reward.operator),
-                        &mut summary,
-                        self.settings.rpc.rps_limit,
-                    )
-                    .await;
-                }
+                // Note: Merkle root will be posted to Solana chain separately
+                // For now, just log it
+                info!(
+                    "Merkle root for epoch {}: {:?} (will be posted to Solana)",
+                    fetch_epoch, merkle_root
+                );
 
                 // Log final summary
                 info!("{}", summary);
@@ -284,16 +261,17 @@ impl Orchestrator {
                     "  - Reward input: {} bytes",
                     borsh::to_vec(&input_config)?.len()
                 );
+                let shapley_storage = ShapleyOutputStorage {
+                    epoch: fetch_epoch,
+                    rewards: merkle_tree.rewards().to_vec(),
+                    total_proportions: merkle_tree.rewards().iter().map(|r| r.proportion).sum(),
+                };
                 info!(
-                    "  - Merkle root: {} bytes",
-                    borsh::to_vec(&ContributorRewardsMerkleRoot {
-                        epoch: fetch_epoch,
-                        root: merkle_root,
-                        total_contributors: merkle_tree.len() as u32,
-                    })?
-                    .len()
+                    "  - Shapley output storage: {} bytes ({} contributors)",
+                    borsh::to_vec(&shapley_storage)?.len(),
+                    merkle_tree.len()
                 );
-                info!("  - {} contributor proofs", merkle_tree.len());
+                info!("  - Merkle root (for Solana): {:?}", merkle_root);
             }
         }
 

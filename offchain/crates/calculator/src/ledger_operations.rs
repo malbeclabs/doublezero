@@ -1,10 +1,10 @@
 use crate::{
     input::RewardInput,
     keypair_loader::load_keypair,
-    proof::{ContributorRewardDetail, ContributorRewardProof, ContributorRewardsMerkleRoot},
+    proof::{ContributorRewardDetail, ShapleyOutputStorage, generate_proof_from_shapley},
     recorder::{compute_record_address, write_to_ledger},
 };
-use anyhow::{Result, bail};
+use anyhow::{Result, anyhow, bail};
 use backon::{ExponentialBuilder, Retryable};
 use borsh::BorshSerialize;
 use doublezero_record::{instruction as record_instruction, state::RecordData};
@@ -24,8 +24,7 @@ use solana_sdk::{
     signature::{Keypair, Signer},
     transaction::Transaction,
 };
-use std::{fmt, mem::size_of, path::PathBuf, time::Duration};
-use svm_hash::merkle::MerkleProof;
+use std::{fmt, mem::size_of, path::PathBuf, str::FromStr, time::Duration};
 use tracing::{info, warn};
 
 // Helper functions to get prefixes from config
@@ -191,7 +190,10 @@ pub async fn read_telemetry_aggregates(
             Some(acc) => {
                 let stats: DZDTelemetryStatMap =
                     borsh::from_slice(&acc.data[size_of::<RecordData>()..])?;
-                info!(" {}", print_telemetry_stats(&stats));
+                info!(
+                    "Device Telemetry Aggregates:\n{}",
+                    print_telemetry_stats(&stats)
+                );
             }
         }
     }
@@ -222,7 +224,10 @@ pub async fn read_telemetry_aggregates(
             Some(acc) => {
                 let stats: InternetTelemetryStatMap =
                     borsh::from_slice(&acc.data[size_of::<RecordData>()..])?;
-                info!(" {}", print_internet_stats(&stats));
+                info!(
+                    "Internet Telemetry Aggregates:\n{}",
+                    print_internet_stats(&stats)
+                );
             }
         }
     }
@@ -286,97 +291,32 @@ pub async fn read_reward_input(
     Ok(())
 }
 
-/// Check contributor reward and verify merkle proof
+/// Check contributor reward and verify merkle proof dynamically
 pub async fn check_contributor_reward(
     settings: &Settings,
     contributor: &str,
     epoch: u64,
     payer_pubkey: &Pubkey,
 ) -> Result<()> {
-    // Create fetcher
-    let fetcher = Fetcher::from_settings(settings)?;
+    // Parse contributor as a Pubkey
+    let contributor_pubkey = Pubkey::from_str(contributor)
+        .map_err(|e| anyhow!("Invalid contributor pubkey '{}': {}", contributor, e))?;
 
-    let prefix = get_contributor_rewards_prefix(settings)?;
-    let epoch_bytes = epoch.to_le_bytes();
+    // Fetch the shapley output storage
+    let shapley_storage = read_shapley_output(settings, epoch, payer_pubkey).await?;
 
-    // First, fetch the merkle root
-    let root_seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-    let root_key = compute_record_address(payer_pubkey, root_seeds)?;
+    // Generate proof dynamically
+    info!(
+        "Generating proof dynamically for contributor: {}",
+        contributor
+    );
+    let (proof, reward, computed_root) =
+        generate_proof_from_shapley(&shapley_storage, &contributor_pubkey)?;
 
-    info!("Fetching merkle root from: {}", root_key);
-
-    let maybe_root_account = (|| async {
-        fetcher
-            .rpc_client
-            .get_account_with_commitment(&root_key, CommitmentConfig::confirmed())
-            .await
-    })
-    .retry(&ExponentialBuilder::default().with_jitter())
-    .notify(|err: &SolanaClientError, dur: Duration| {
-        info!("retrying error: {:?} with sleeping {:?}", err, dur)
-    })
-    .await?;
-
-    let merkle_root_data = match maybe_root_account.value {
-        None => bail!(
-            "Merkle root account {} not found for epoch {}",
-            root_key,
-            epoch
-        ),
-        Some(acc) => {
-            let data: ContributorRewardsMerkleRoot =
-                borsh::from_slice(&acc.data[size_of::<RecordData>()..])?;
-            data
-        }
-    };
-
-    // Now fetch the contributor's proof
-    let contributor_bytes = contributor.as_bytes();
-    let proof_seeds: &[&[u8]] = &[&prefix, &epoch_bytes, contributor_bytes];
-    let proof_key = compute_record_address(payer_pubkey, proof_seeds)?;
-
-    info!("Fetching proof from: {}", proof_key);
-
-    let maybe_proof_account = (|| async {
-        fetcher
-            .rpc_client
-            .get_account_with_commitment(&proof_key, CommitmentConfig::confirmed())
-            .await
-    })
-    .retry(&ExponentialBuilder::default().with_jitter())
-    .notify(|err: &SolanaClientError, dur: Duration| {
-        info!("retrying error: {:?} with sleeping {:?}", err, dur)
-    })
-    .await?;
-
-    let proof_data = match maybe_proof_account.value {
-        None => bail!(
-            "Proof account {} not found for contributor {} at epoch {}",
-            proof_key,
-            contributor,
-            epoch
-        ),
-        Some(acc) => {
-            let data: ContributorRewardProof =
-                borsh::from_slice(&acc.data[size_of::<RecordData>()..])?;
-            data
-        }
-    };
-
-    // Verify the proof
-    info!("Verifying proof for contributor: {}", contributor);
-
-    // Deserialize the MerkleProof
-    let proof: MerkleProof = borsh::from_slice(&proof_data.proof_bytes)?;
-
-    // Serialize the reward for verification
-    let leaf = borsh::to_vec(&proof_data.reward)?;
-
-    // Compute the root from the proof and leaf
-    let computed_root = proof.root_from_leaf(&leaf, Some(ContributorRewardDetail::LEAF_PREFIX));
-
-    // Verify by comparing roots
-    let verification_result = computed_root == merkle_root_data.root;
+    // Verify the proof by recomputing
+    let leaf = borsh::to_vec(&reward)?;
+    let verification_root = proof.root_from_leaf(&leaf, Some(ContributorRewardDetail::LEAF_PREFIX));
+    let verification_result = verification_root == computed_root;
 
     // Display results
     println!("=========================================");
@@ -384,12 +324,20 @@ pub async fn check_contributor_reward(
     println!("=========================================");
     println!("Epoch:        {epoch}");
     println!("Contributor:  {contributor}");
-    println!("Value:        {}", proof_data.reward.value);
-    println!("Proportion:   {:.2}%", proof_data.reward.proportion * 100.0);
-    println!("Index:        {}", proof_data.index);
+    println!();
+    println!("Reward Details:");
+    println!("  Pubkey:     {}", reward.contributor_key);
     println!(
-        "Total Contributors: {}",
-        merkle_root_data.total_contributors
+        "  Proportion: {:.9} ({:.6}%)",
+        reward.proportion as f64 / 1_000_000_000.0,
+        (reward.proportion as f64 / 1_000_000_000.0) * 100.0
+    );
+    println!();
+    println!("Merkle Root:  {computed_root:?}");
+    println!("Total Contributors: {}", shapley_storage.rewards.len());
+    println!(
+        "Total Proportions: {} (should be 1,000,000,000)",
+        shapley_storage.total_proportions
     );
     println!();
 
@@ -397,12 +345,85 @@ pub async fn check_contributor_reward(
         println!("✅ Verification: VALID - Proof verified successfully!");
     } else {
         println!("❌ Verification: INVALID - Proof verification failed!");
-        bail!("Merkle proof verification failed");
+        anyhow::bail!("Merkle proof verification failed");
     }
 
     println!("=========================================");
 
     Ok(())
+}
+
+/// Write shapley output storage to the ledger
+pub async fn write_shapley_output(
+    rpc_client: &RpcClient,
+    payer_signer: &Keypair,
+    epoch: u64,
+    shapley_storage: &ShapleyOutputStorage,
+    settings: &Settings,
+) -> Result<()> {
+    let prefix = get_contributor_rewards_prefix(settings)?;
+    let epoch_bytes = epoch.to_le_bytes();
+    let seeds: &[&[u8]] = &[&prefix, &epoch_bytes, b"shapley_output"];
+
+    let mut summary = WriteSummary::default();
+    write_and_track(
+        rpc_client,
+        payer_signer,
+        seeds,
+        shapley_storage,
+        "shapley output storage",
+        &mut summary,
+        settings.rpc.rps_limit,
+    )
+    .await;
+
+    if !summary.all_successful() {
+        bail!("Failed to write shapley output storage");
+    }
+
+    Ok(())
+}
+
+/// Read shapley output storage from the ledger
+pub async fn read_shapley_output(
+    settings: &Settings,
+    epoch: u64,
+    payer_pubkey: &Pubkey,
+) -> Result<ShapleyOutputStorage> {
+    let fetcher = Fetcher::from_settings(settings)?;
+    let prefix = get_contributor_rewards_prefix(settings)?;
+    let epoch_bytes = epoch.to_le_bytes();
+    let seeds: &[&[u8]] = &[&prefix, &epoch_bytes, b"shapley_output"];
+    let storage_key = compute_record_address(payer_pubkey, seeds)?;
+
+    info!("Fetching shapley output from: {}", storage_key);
+
+    let maybe_account = (|| async {
+        fetcher
+            .rpc_client
+            .get_account_with_commitment(&storage_key, CommitmentConfig::confirmed())
+            .await
+    })
+    .retry(&ExponentialBuilder::default().with_jitter())
+    .notify(|err: &SolanaClientError, dur: Duration| {
+        info!("retrying error: {:?} with sleeping {:?}", err, dur)
+    })
+    .await?;
+
+    let shapley_storage = match maybe_account.value {
+        None => bail!(
+            "Shapley output storage account {} not found for epoch {}",
+            storage_key,
+            epoch
+        ),
+        Some(acc) => {
+            let data: ShapleyOutputStorage =
+                borsh::from_slice(&acc.data[size_of::<RecordData>()..])?;
+            data
+        }
+    };
+
+    Ok(shapley_storage)
 }
 
 /// Close a record account and reclaim lamports

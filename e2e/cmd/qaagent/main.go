@@ -5,7 +5,9 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"path"
@@ -13,14 +15,27 @@ import (
 
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/malbeclabs/doublezero/e2e/internal/rpc"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var (
-	serverAddr = flag.String("server-addr", "localhost:443", "the server address to connect to")
+	serverAddr  = flag.String("server-addr", "localhost:443", "the server address to connect to")
+	showVersion = flag.Bool("version", false, "show version information and exit")
+	metricsAddr = flag.String("metrics-addr", "127.0.0.1:2112", "the address to expose metrics")
+
+	// set by LDFLAGS
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
 )
 
 func main() {
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Printf("version: %s, commit: %s, date: %s\n", version, commit, date)
+		os.Exit(0)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -36,6 +51,15 @@ func main() {
 			return a
 		},
 	}))
+
+	rpc.BuildInfo.WithLabelValues(version, commit, date).Set(1)
+
+	go func() {
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.Handler())
+		http.ListenAndServe(*metricsAddr, mux) //nolint
+	}()
+
 	joiner := netutil.NewMulticastListener()
 	e, err := rpc.NewQAAgent(log, *serverAddr, joiner)
 	if err != nil {

@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/malbeclabs/doublezero/config"
 	agent "github.com/malbeclabs/doublezero/controlplane/agent/internal/agent"
 	arista "github.com/malbeclabs/doublezero/controlplane/agent/pkg/arista"
 	aristapb "github.com/malbeclabs/doublezero/controlplane/proto/arista/gen/pb-go/arista/EosSdkRpc"
@@ -21,7 +22,8 @@ import (
 
 var (
 	localDevicePubkey          = flag.String("pubkey", "frtyt4WKYudUpqTsvJzwN6Bd4btYxrkaYNhBNAaUVGWn", "This device's public key on the doublezero network")
-	controllerAddress          = flag.String("controller", "18.116.166.35:7000", "The DoubleZero controller IP address and port to connect to")
+	env                        = flag.String("env", config.EnvTestnet, "The network environment to use (devnet, testnet, mainnet).")
+	controllerAddress          = flag.String("controller", "", "The DoubleZero controller IP address and port to connect to")
 	device                     = flag.String("device", "127.0.0.1:9543", "IP Address and port of the Arist EOS API. Should always be the local switch at 127.0.0.1:9543.")
 	sleepIntervalInSeconds     = flag.Float64("sleep-interval-in-seconds", 5, "How long to sleep in between polls")
 	controllerTimeoutInSeconds = flag.Float64("controller-timeout-in-seconds", 2, "How long to wait for a response from the controller before giving up")
@@ -82,6 +84,19 @@ func main() {
 	if *showVersion {
 		fmt.Printf("version: %s, commit: %s, date: %s\n", version, commit, date)
 		os.Exit(0)
+	}
+
+	// If the controller address is not provided, use the network config for the given environment.
+	if *controllerAddress == "" {
+		if *env == "" {
+			log.Fatalf("env flag is required when controller address is not provided")
+		}
+
+		networkConfig, err := config.NetworkConfigForEnv(*env)
+		if err != nil {
+			log.Fatalf("Failed to get network config for env %s: %v", *env, err)
+		}
+		*controllerAddress = networkConfig.ControllerAddress
 	}
 
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile | log.Lmicroseconds)

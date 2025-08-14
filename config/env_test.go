@@ -23,6 +23,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 				ServiceabilityProgramID:    solana.MustPublicKeyFromBase58(config.MainnetServiceabilityProgramID),
 				TelemetryProgramID:         solana.MustPublicKeyFromBase58(config.MainnetTelemetryProgramID),
 				InternetLatencyCollectorPK: solana.MustPublicKeyFromBase58(config.MainnetInternetLatencyCollectorPK),
+				ControllerAddress:          config.MainnetControllerAddress,
 			},
 		},
 		{
@@ -41,6 +42,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 				ServiceabilityProgramID:    solana.MustPublicKeyFromBase58(config.TestnetServiceabilityProgramID),
 				TelemetryProgramID:         solana.MustPublicKeyFromBase58(config.TestnetTelemetryProgramID),
 				InternetLatencyCollectorPK: solana.MustPublicKeyFromBase58(config.TestnetInternetLatencyCollectorPK),
+				ControllerAddress:          config.TestnetControllerAddress,
 			},
 		},
 		{
@@ -50,6 +52,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 				ServiceabilityProgramID:    solana.MustPublicKeyFromBase58(config.DevnetServiceabilityProgramID),
 				TelemetryProgramID:         solana.MustPublicKeyFromBase58(config.DevnetTelemetryProgramID),
 				InternetLatencyCollectorPK: solana.MustPublicKeyFromBase58(config.DevnetInternetLatencyCollectorPK),
+				ControllerAddress:          config.DevnetControllerAddress,
 			},
 		},
 		{

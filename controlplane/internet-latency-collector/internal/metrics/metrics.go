@@ -23,7 +23,7 @@ var (
 		Help: "Total number of attempts to fetch doublezero exchanges from blockchain",
 	}, []string{"status"})
 
-	DoublezeroExhanges = promauto.NewGauge(prometheus.GaugeOpts{
+	DoublezeroExchanges = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "doublezero_internet_latency_collector_exchanges",
 		Help: "Number of doublezero exchanges fetched from blockchain",
 	})

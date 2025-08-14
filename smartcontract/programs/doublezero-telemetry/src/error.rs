@@ -33,7 +33,7 @@ pub enum TelemetryError {
     ExchangeNotActiveOrSuspended = 1014,
     /// Date provider name is greater than 32 bytes
     DataProviderNameTooLong = 1015,
-    /// Origin and target locations cannot be the
+    /// Origin and target exchanges cannot be the
     SameTargetAsOrigin = 1016,
     /// Write transaction contains no samples
     EmptyLatencySamples = 1017,
@@ -76,7 +76,7 @@ impl fmt::Display for TelemetryError {
                 write!(f, "Exchange does not have activated status")
             }
             Self::DataProviderNameTooLong => write!(f, "Data provider name exceeds 32 bytes"),
-            Self::SameTargetAsOrigin => write!(f, "Origin and target are the same location"),
+            Self::SameTargetAsOrigin => write!(f, "Origin and target are the same exchange"),
             Self::EmptyLatencySamples => write!(f, "Write transaction contains no samples"),
         }
     }

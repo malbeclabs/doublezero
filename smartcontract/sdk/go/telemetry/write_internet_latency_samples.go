@@ -18,10 +18,10 @@ type WriteInternetLatencySamplesInstructionConfig struct {
 
 func (c *WriteInternetLatencySamplesInstructionConfig) Validate() error {
 	if c.OriginExchangePK.IsZero() {
-		return fmt.Errorf("origin location public key is required")
+		return fmt.Errorf("origin exchange public key is required")
 	}
 	if c.TargetExchangePK.IsZero() {
-		return fmt.Errorf("target location public key is required")
+		return fmt.Errorf("target exchange public key is required")
 	}
 	if c.DataProviderName == "" {
 		return fmt.Errorf("data provider name is required")

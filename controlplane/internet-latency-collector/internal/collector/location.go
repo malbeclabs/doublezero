@@ -133,7 +133,7 @@ func GetLocations(ctx context.Context, logger *slog.Logger, serviceabilityClient
 		slog.Int("total_exchanges", len(data.Exchanges)),
 		slog.Int("activated_exchanges", len(locationMatches)))
 
-	metrics.DoublezeroExhanges.Set(float64(len(locationMatches)))
+	metrics.DoublezeroExchanges.Set(float64(len(locationMatches)))
 
 	return locationMatches
 }

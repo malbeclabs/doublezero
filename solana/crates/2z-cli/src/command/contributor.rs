@@ -95,6 +95,53 @@ pub enum ContributorSubCommand {
     },
 }
 
+impl ContributorSubCommand {
+    pub async fn try_into_execute(self) -> Result<()> {
+        match self {
+            ContributorSubCommand::Claim {
+                service_key: _,
+                epoch_share: _,
+                rewards_from_file: _,
+                solana_payer_options: _,
+            } => {
+                todo!()
+            }
+            ContributorSubCommand::ComputeRewards {
+                epoch: _,
+                out_filename: _,
+                dz_ledger_rpc_options: _,
+            } => {
+                todo!()
+            }
+            ContributorSubCommand::Configure {
+                service_key: _,
+                recipient_shares: _,
+                solana_payer_options: _,
+            } => {
+                todo!()
+            }
+            ContributorSubCommand::Fetch {
+                service_key: _,
+                solana_connection_options: _,
+            } => {
+                todo!()
+            }
+            ContributorSubCommand::FetchByManager {
+                rewards_manager_key: _,
+                solana_connection_options: _,
+            } => {
+                todo!()
+            }
+            ContributorSubCommand::Initialize {
+                service_key: _,
+                solana_payer_options: _,
+            } => {
+                todo!()
+            }
+        }
+    }
+}
+
 //
 
 fn parse_recipient_equals_share(s: &str) -> Result<(String, f64)> {

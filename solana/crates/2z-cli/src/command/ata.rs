@@ -1,9 +1,11 @@
+use anyhow::Result;
 use clap::{Args, Subcommand};
+use doublezero_revenue_distribution::DOUBLEZERO_MINT_DECIMALS;
 use solana_sdk::pubkey::Pubkey;
 
 use crate::{payer::SolanaPayerOptions, rpc::SolanaConnectionOptions};
 
-pub const DECIMAL_UNITS_PER_2Z: u64 = u64::pow(10, 8);
+pub const DECIMAL_UNITS_PER_2Z: u64 = u64::pow(10, DOUBLEZERO_MINT_DECIMALS as u32);
 
 #[derive(Debug, Args)]
 pub struct AtaCliCommand {
@@ -30,9 +32,28 @@ pub enum AtaSubCommand {
     },
 }
 
+impl AtaSubCommand {
+    pub async fn try_into_execute(self) -> Result<()> {
+        match self {
+            AtaSubCommand::Create {
+                recipient: _,
+                solana_payer_options: _,
+            } => {
+                todo!()
+            }
+            AtaSubCommand::Fetch {
+                recipient: _,
+                solana_connection_options: _,
+            } => {
+                todo!()
+            }
+        }
+    }
+}
+
 /// Accepts plain or decimal strings ("50", "0.03", ".5", "1.").
 /// Any decimal places beyond 9 are truncated.
-pub fn decimals_of_2z(value_str: Option<&str>) -> Option<u64> {
+fn _decimals_of_2z(value_str: Option<&str>) -> Option<u64> {
     value_str.and_then(|value| {
         if value == "." {
             None

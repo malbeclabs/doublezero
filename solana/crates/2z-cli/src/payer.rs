@@ -1,4 +1,4 @@
-use std::{ops::Deref, path::PathBuf};
+use std::path::PathBuf;
 
 use anyhow::{anyhow, bail, Result};
 use clap::Args;
@@ -36,7 +36,7 @@ pub struct SolanaSignerOptions {
 
     /// Set the compute unit price for transaction in increments of 0.000001 lamports per compute
     /// unit.
-    #[arg(long, value_name = "COMPUTE_UNIT_PRICE")]
+    #[arg(long, value_name = "MICROLAMPORTS")]
     pub with_compute_unit_price: Option<u64>,
 
     /// Print verbose output.
@@ -46,6 +46,10 @@ pub struct SolanaSignerOptions {
     /// Filepath or URL to keypair to pay transaction fee.
     #[arg(long = "fee-payer", value_name = "KEYPAIR")]
     pub fee_payer_path: Option<String>,
+
+    /// Simulate transaction only.
+    #[arg(long, value_name = "DRY_RUN")]
+    pub dry_run: bool,
 }
 
 pub struct Wallet {
@@ -54,6 +58,7 @@ pub struct Wallet {
     pub compute_unit_price_ix: Option<Instruction>,
     pub verbose: bool,
     pub fee_payer: Option<Keypair>,
+    pub dry_run: bool,
 }
 
 impl Wallet {
@@ -127,6 +132,34 @@ impl Wallet {
         Ok(())
     }
 
+    pub async fn send_or_simulate_transaction(
+        &self,
+        transaction: &VersionedTransaction,
+    ) -> Result<Option<Signature>> {
+        if self.dry_run {
+            let simulation_response = self.connection.simulate_transaction(transaction).await?;
+
+            println!("Simulated program logs:");
+            simulation_response
+                .value
+                .logs
+                .unwrap()
+                .iter()
+                .for_each(|log| {
+                    println!("  {log}");
+                });
+
+            Ok(None)
+        } else {
+            let tx_sig = self
+                .connection
+                .send_and_confirm_transaction_with_spinner(transaction)
+                .await?;
+
+            Ok(Some(tx_sig))
+        }
+    }
+
     pub fn compute_units_for_bump_seed(bump: u8) -> u32 {
         1_500 * u32::from(255 - bump)
     }
@@ -144,6 +177,7 @@ impl TryFrom<SolanaPayerOptions> for Wallet {
                     with_compute_unit_price,
                     verbose,
                     fee_payer_path,
+                    dry_run,
                 },
         } = opts;
 
@@ -168,15 +202,8 @@ impl TryFrom<SolanaPayerOptions> for Wallet {
                 .map(ComputeBudgetInstruction::set_compute_unit_price),
             verbose,
             fee_payer,
+            dry_run,
         })
-    }
-}
-
-impl Deref for Wallet {
-    type Target = Connection;
-
-    fn deref(&self) -> &Self::Target {
-        &self.connection
     }
 }
 

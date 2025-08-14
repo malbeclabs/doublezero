@@ -4,13 +4,21 @@ set -eu
 
 ROOT_DIR=$(cd "$(dirname "$0")/.."; pwd)
 
-### First build the Revenue Distribution program.
+### Build programs.
+
+cd $ROOT_DIR/programs/passport && \
+    cargo build-sbf -- --features development,entrypoint
 cd $ROOT_DIR/programs/revenue-distribution && \
     cargo build-sbf -- --features development,entrypoint
 
 cd $ROOT_DIR
 
-### Upgrade Revenue Distribution program.
+### Deploy upgrades.
+
+solana program deploy \
+    -u l \
+    --program-id dzpt2dM8g9qsLxpdddnVvKfjkCLVXd82jrrQVJigCPV \
+    target/deploy/doublezero_passport.so
 solana program deploy \
     -u l \
     --program-id dzrevZC94tBLwuHw1dyynZxaXTWyp7yocsinyEVPtt4 \
@@ -18,8 +26,8 @@ solana program deploy \
 
 CLI_BIN=target/release/2z
 
-echo "Waiting 15 seconds for program upgrade to finalize"
+echo "Waiting 15 seconds for program upgrades to finalize"
 sleep 15
 
-### Execute `admin migrate-program-accounts`.
-$CLI_BIN admin migrate-program-accounts -u l -v
+echo "2z admin revenue-distribution migrate-program-accounts -u l -v"
+$CLI_BIN admin revenue-distribution migrate-program-accounts -u l -v

@@ -1,3 +1,4 @@
+use doublezero_program_tools::get_program_data_address;
 use solana_instruction::AccountMeta;
 use solana_pubkey::Pubkey;
 
@@ -43,9 +44,9 @@ pub struct SetAdminAccounts {
 }
 
 impl SetAdminAccounts {
-    pub fn new(program_data_key: &Pubkey, owner_key: &Pubkey) -> Self {
+    pub fn new(program_id: &Pubkey, owner_key: &Pubkey) -> Self {
         Self {
-            program_data_key: *program_data_key,
+            program_data_key: get_program_data_address(program_id).0,
             owner_key: *owner_key,
             program_config_key: ProgramConfig::find_address().0,
         }

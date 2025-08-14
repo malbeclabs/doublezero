@@ -13,8 +13,14 @@ PASSPORT_PROGRAM_ID=dzpt2dM8g9qsLxpdddnVvKfjkCLVXd82jrrQVJigCPV
 mkdir -p $LOCALNET_CACHE_DIR
 
 ### Dump program accounts from Solana devnet into localnet/cache.
-solana program dump -u d $REVENUE_DISTRIBUTION_PROGRAM_ID $LOCALNET_CACHE_DIR/$REVENUE_DISTRIBUTION_PROGRAM_ID.so
-solana program dump -u d $PASSPORT_PROGRAM_ID $LOCALNET_CACHE_DIR/$PASSPORT_PROGRAM_ID.so
+solana program dump \
+    -u d \
+    $REVENUE_DISTRIBUTION_PROGRAM_ID \
+    $LOCALNET_CACHE_DIR/$REVENUE_DISTRIBUTION_PROGRAM_ID.so
+solana program dump \
+    -u d \
+    $PASSPORT_PROGRAM_ID \
+    $LOCALNET_CACHE_DIR/$PASSPORT_PROGRAM_ID.so
 
 DEFAULT_USER_KEYPAIR=$HOME/.config/solana/id.json
 

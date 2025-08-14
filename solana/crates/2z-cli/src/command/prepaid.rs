@@ -1,3 +1,4 @@
+use anyhow::Result;
 use clap::{Args, Subcommand};
 
 use crate::{payer::SolanaPayerOptions, serviceability::ServiceKey};
@@ -31,4 +32,24 @@ pub enum PrepaidSubCommand {
         #[command(flatten)]
         solana_payer_options: SolanaPayerOptions,
     },
+}
+
+impl PrepaidSubCommand {
+    pub async fn try_into_execute(self) -> Result<()> {
+        match self {
+            PrepaidSubCommand::Initialize {
+                service_key: _,
+                solana_payer_options: _,
+            } => {
+                todo!()
+            }
+            PrepaidSubCommand::Load {
+                service_key: _,
+                valid_through_epoch: _,
+                solana_payer_options: _,
+            } => {
+                todo!()
+            }
+        }
+    }
 }

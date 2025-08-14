@@ -139,7 +139,7 @@ impl ProgramTestWithOwner {
 
         let set_admin_ix = try_build_instruction(
             &ID,
-            SetAdminAccounts::new(&program_data_key(), &owner_signer.pubkey()),
+            SetAdminAccounts::new(&ID, &owner_signer.pubkey()),
             &PassportInstructionData::SetAdmin(*admin_key),
         )
         .unwrap();

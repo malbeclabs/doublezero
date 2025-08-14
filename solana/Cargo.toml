@@ -58,6 +58,9 @@ sha2-const-stable = "=0.1.0"
 solana-program-test = "=2.3.6"
 solana-sdk = "=2.3"
 
+[workspace.dependencies.doublezero-passport]
+path = "programs/passport"
+
 [workspace.dependencies.doublezero-program-tools]
 path = "crates/program-tools"
 

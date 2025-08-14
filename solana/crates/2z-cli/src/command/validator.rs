@@ -74,6 +74,43 @@ pub enum ValidatorSubCommand {
     },
 }
 
+impl ValidatorSubCommand {
+    pub async fn try_into_execute(self) -> Result<()> {
+        match self {
+            ValidatorSubCommand::ComputeRevenue {
+                epoch: _,
+                out_filename: _,
+                solana_connection_options: _,
+            } => {
+                todo!()
+            }
+            ValidatorSubCommand::FetchComputedRevenue {
+                epoch: _,
+                out_filename: _,
+                dz_ledger_rpc_options: _,
+            } => {
+                todo!()
+            }
+            ValidatorSubCommand::PayFee {
+                validator_id: _,
+                epoch_revenue: _,
+                rewards_from_file: _,
+                solana_payer_options: _,
+            } => {
+                todo!()
+            }
+            ValidatorSubCommand::RequestAccess {
+                validator_id: _,
+                service_key: _,
+                ed25519_signature: _,
+                solana_payer_options: _,
+            } => {
+                todo!()
+            }
+        }
+    }
+}
+
 #[derive(Debug, Args)]
 pub struct DoubleZeroEpoch {
     /// DoubleZero epoch to compute revenue for.

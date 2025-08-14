@@ -129,7 +129,6 @@ mod tests {
                     interfaces: None,
                     contributor_pk: None,
                     max_users: None,
-                    max_users: None,
                 })),
                 predicate::always(),
             )
@@ -145,7 +144,6 @@ mod tests {
             metrics_publisher: None,
             mgmt_vrf: Some("mgmt".to_string()),
             interfaces: None,
-            max_users: None,
             max_users: None,
         };
 

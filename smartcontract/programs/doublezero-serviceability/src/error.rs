@@ -43,6 +43,8 @@ pub enum DoubleZeroError {
     DeviceNotSet, // variant 18
     #[error("Invalid account code")]
     InvalidAccountCode, // variant 19
+    #[error("Max users exceeded")]
+    MaxUsersExceeded, // variant 20
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -68,6 +70,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::DeviceAlreadySet => ProgramError::Custom(17),
             DoubleZeroError::DeviceNotSet => ProgramError::Custom(18),
             DoubleZeroError::InvalidAccountCode => ProgramError::Custom(19),
+            DoubleZeroError::MaxUsersExceeded => ProgramError::Custom(20),
         }
     }
 }
@@ -94,6 +97,7 @@ impl From<u32> for DoubleZeroError {
             17 => DoubleZeroError::DeviceAlreadySet,
             18 => DoubleZeroError::DeviceNotSet,
             19 => DoubleZeroError::InvalidAccountCode,
+            20 => DoubleZeroError::MaxUsersExceeded,
 
             _ => DoubleZeroError::Custom(e),
         }
@@ -123,6 +127,7 @@ impl From<ProgramError> for DoubleZeroError {
                 17 => DoubleZeroError::DeviceAlreadySet,
                 18 => DoubleZeroError::DeviceNotSet,
                 19 => DoubleZeroError::InvalidAccountCode,
+                20 => DoubleZeroError::MaxUsersExceeded,
 
                 _ => DoubleZeroError::Custom(e),
             },

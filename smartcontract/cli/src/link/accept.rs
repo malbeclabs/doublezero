@@ -135,6 +135,8 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             contributor_pk,
             mgmt_vrf: "default".to_string(),
+            max_users: 255,
+            users_count: 0,
         };
 
         client
@@ -171,6 +173,8 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             contributor_pk,
             mgmt_vrf: "default".to_string(),
+            max_users: 255,
+            users_count: 0,
         };
 
         client

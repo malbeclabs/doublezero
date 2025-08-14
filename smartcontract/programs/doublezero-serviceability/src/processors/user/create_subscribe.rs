@@ -5,7 +5,7 @@ use crate::{
     pda::get_user_pda,
     state::{
         accounttype::AccountType,
-        device::Device,
+        device::{Device, DeviceStatus},
         multicastgroup::{MulticastGroup, MulticastGroupStatus},
         user::*,
     },
@@ -14,11 +14,10 @@ use crate::{
 use core::fmt;
 
 use borsh::{BorshDeserialize, BorshSerialize};
-#[cfg(test)]
-use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
     program_error::ProgramError,
     pubkey::Pubkey,
 };
@@ -101,7 +100,23 @@ pub fn process_create_subscribe_user(
     let mut device = Device::try_from(device_account)?;
     assert_eq!(device.account_type, AccountType::Device);
 
+    if device.status == DeviceStatus::Suspended {
+        if !globalstate.foundation_allowlist.contains(payer_account.key) {
+            msg!("{:?}", device);
+            return Err(DoubleZeroError::InvalidStatus.into());
+        }
+    } else if device.status != DeviceStatus::Activated {
+        msg!("{:?}", device);
+        return Err(DoubleZeroError::InvalidStatus.into());
+    }
+
+    if device.users_count >= device.max_users {
+        msg!("{:?}", device);
+        return Err(DoubleZeroError::MaxUsersExceeded.into());
+    }
+
     device.reference_count += 1;
+    device.users_count += 1;
 
     let user: User = User {
         account_type: AccountType::User,

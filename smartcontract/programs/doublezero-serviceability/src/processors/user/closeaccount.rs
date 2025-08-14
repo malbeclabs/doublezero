@@ -77,6 +77,7 @@ pub fn process_closeaccount_user(
     let mut device = Device::try_from(device_account)?;
 
     device.reference_count = device.reference_count.saturating_sub(1);
+    device.users_count = device.users_count.saturating_sub(1);
 
     account_write(device_account, &device, payer_account, system_program)?;
     account_close(user_account, owner_account)?;

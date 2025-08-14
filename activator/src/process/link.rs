@@ -201,6 +201,7 @@ fn assign_ip_to_dev_interface(
         contributor_pk: None,
         mgmt_vrf: None,
         interfaces: Some(interfaces),
+        max_users: None,
     }
     .execute(client)
 }
@@ -302,6 +303,8 @@ mod tests {
                 }),
             ],
             reference_count: 0,
+            max_users: 255,
+            users_count: 0,
         };
 
         let device2 = Device {
@@ -342,6 +345,8 @@ mod tests {
                 }),
             ],
             reference_count: 0,
+            max_users: 255,
+            users_count: 0,
         };
 
         let expected_interfaces1 = device1
@@ -405,6 +410,7 @@ mod tests {
                     contributor_pk: None,
                     mgmt_vrf: None,
                     interfaces: Some(expected_interfaces1.clone()),
+                    max_users: None,
                 })),
                 predicate::always(),
             )
@@ -428,6 +434,7 @@ mod tests {
                     contributor_pk: None,
                     mgmt_vrf: None,
                     interfaces: Some(expected_interfaces2.clone()),
+                    max_users: None,
                 })),
                 predicate::always(),
             )
@@ -510,6 +517,7 @@ mod tests {
                     contributor_pk: None,
                     mgmt_vrf: None,
                     interfaces: Some(expected_interfaces1.clone()),
+                    max_users: None,
                 })),
                 predicate::always(),
             )
@@ -533,6 +541,7 @@ mod tests {
                     contributor_pk: None,
                     mgmt_vrf: None,
                     interfaces: Some(expected_interfaces2.clone()),
+                    max_users: None,
                 })),
                 predicate::always(),
             )

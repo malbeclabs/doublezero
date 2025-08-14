@@ -133,6 +133,8 @@ mod tests {
                     user_tunnel_endpoint: false,
                 }),
             ],
+            max_users: 255,
+            users_count: 0,
         };
 
         client

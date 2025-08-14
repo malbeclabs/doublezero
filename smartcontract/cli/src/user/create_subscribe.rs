@@ -173,6 +173,8 @@ mod tests {
             status: DeviceStatus::Activated,
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
         };
 
         client

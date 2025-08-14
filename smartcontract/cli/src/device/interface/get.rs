@@ -103,6 +103,8 @@ mod tests {
                 node_segment_idx: 42,
                 user_tunnel_endpoint: true,
             })],
+            max_users: 255,
+            users_count: 0,
         };
 
         client

@@ -73,6 +73,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[serial]
     fn test_environment_from_str_valid() {
         assert_eq!(
             "testnet".parse::<Environment>().unwrap(),
@@ -85,12 +86,14 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_environment_from_str_invalid() {
         let err = "invalid".parse::<Environment>();
         assert!(err.is_err());
     }
 
     #[test]
+    #[serial]
     fn test_network_config_mainnet() {
         let config = Environment::Mainnet.config().unwrap();
         assert_eq!(
@@ -113,6 +116,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_network_config_testnet() {
         let config = Environment::Testnet.config().unwrap();
         assert_eq!(
@@ -138,6 +142,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_network_config_devnet() {
         let config = Environment::Devnet.config().unwrap();
         assert_eq!(

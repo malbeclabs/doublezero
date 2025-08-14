@@ -26,6 +26,7 @@ pub struct DeviceUpdateArgs {
     pub metrics_publisher_pk: Option<Pubkey>,
     pub mgmt_vrf: Option<String>,
     pub interfaces: Option<Vec<Interface>>,
+    pub max_users: Option<u16>,
 }
 
 impl fmt::Debug for DeviceUpdateArgs {
@@ -53,6 +54,9 @@ impl fmt::Debug for DeviceUpdateArgs {
         }
         if self.interfaces.is_some() {
             write!(f, "interfaces: {:?}, ", self.interfaces)?;
+        }
+        if self.max_users.is_some() {
+            write!(f, "max_users: {:?}, ", self.max_users)?;
         }
         Ok(())
     }
@@ -137,6 +141,9 @@ pub fn process_update_device(
     }
     if let Some(interfaces) = &value.interfaces {
         device.interfaces = interfaces.clone();
+    }
+    if let Some(max_users) = value.max_users {
+        device.max_users = max_users;
     }
 
     account_write(device_account, &device, payer_account, system_program)?;

@@ -190,6 +190,8 @@ mod tests {
             metrics_publisher_pk: Pubkey::new_unique(),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
         };
 
         let cloned_device = device.clone();

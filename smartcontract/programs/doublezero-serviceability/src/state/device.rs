@@ -264,14 +264,20 @@ pub struct Device {
     pub mgmt_vrf: String,             // 4 + len
     pub interfaces: Vec<Interface>,   // 4 + (14 + len(name)) * len
     pub reference_count: u32,         // 4
+    pub users_count: u16,             // 2
+    pub max_users: u16,               // 2
 }
 
 impl fmt::Display for Device {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, index: {}, contributor_pk: {}, location_pk: {}, exchange_pk: {}, device_type: {}, public_ip: {}, dz_prefixes: {}, status: {}, code: {}, metrics_publisher_pk: {}, mgmt_vrf: {}, interfaces: {:?}",
-            self.account_type, self.owner, self.index, self.contributor_pk, self.location_pk, self.exchange_pk, self.device_type, &self.public_ip, &self.dz_prefixes, self.status, self.code, self.metrics_publisher_pk, self.mgmt_vrf, self.interfaces
+            "account_type: {}, owner: {}, index: {}, contributor_pk: {}, location_pk: {}, exchange_pk: {}, device_type: {}, \
+            public_ip: {}, dz_prefixes: {}, status: {}, code: {}, metrics_publisher_pk: {}, mgmt_vrf: {}, interfaces: {:?}, \
+            reference_count: {}, users_count: {}, max_users: {}",
+            self.account_type, self.owner, self.index, self.contributor_pk, self.location_pk, self.exchange_pk, self.device_type,
+            &self.public_ip, &self.dz_prefixes, self.status, self.code, self.metrics_publisher_pk, self.mgmt_vrf, self.interfaces,
+            self.reference_count, self.users_count, self.max_users
         )
     }
 }
@@ -304,6 +310,8 @@ impl AccountTypeInfo for Device {
                 .map(|iface| iface.size())
                 .sum::<usize>()
             + 4
+            + 2
+            + 2
     }
     fn bump_seed(&self) -> u8 {
         self.bump_seed
@@ -337,6 +345,8 @@ impl From<&[u8]> for Device {
             mgmt_vrf: parser.read_string(),
             interfaces: parser.read_vec(),
             reference_count: parser.read_u32(),
+            users_count: parser.read_u16(),
+            max_users: parser.read_u16(),
         }
     }
 }
@@ -394,6 +404,8 @@ mod tests {
                     user_tunnel_endpoint: false,
                 }),
             ],
+            users_count: 111,
+            max_users: 222,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -415,6 +427,8 @@ mod tests {
         assert_eq!(val.metrics_publisher_pk, val2.metrics_publisher_pk);
         assert_eq!(val.mgmt_vrf, val2.mgmt_vrf);
         assert_eq!(val.interfaces, val2.interfaces);
+        assert_eq!(val.users_count, val2.users_count);
+        assert_eq!(val.max_users, val2.max_users);
         assert_eq!(data.len(), val.size(), "Invalid Size");
     }
 
@@ -441,6 +455,8 @@ mod tests {
             metrics_publisher_pk: Pubkey::new_unique(),
             mgmt_vrf: "".to_string(),
             interfaces: vec![],
+            users_count: 0,
+            max_users: 0,
         };
 
         let oldsize = size_of_pre_dzd_metadata_device(val.code.len(), val.dz_prefixes.len());

@@ -532,6 +532,7 @@ mod tests {
                 metrics_publisher_pk: Some(Pubkey::new_unique()),
                 mgmt_vrf: Some("mgmt".to_string()),
                 interfaces: None,
+                max_users: None,
             }),
             "UpdateDevice",
         );

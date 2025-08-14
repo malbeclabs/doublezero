@@ -193,6 +193,8 @@ mod tests {
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
             })],
+            max_users: 255,
+            users_count: 0,
         };
         let location2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let exchange2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkce");
@@ -223,6 +225,8 @@ mod tests {
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
             })],
+            max_users: 255,
+            users_count: 0,
         };
 
         client

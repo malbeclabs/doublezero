@@ -108,13 +108,13 @@ func GetLocations(ctx context.Context, logger *slog.Logger, serviceabilityClient
 	data, err := serviceabilityClient.GetProgramData(ctx)
 	if err != nil {
 		logger.Error("Error loading program data", slog.String("error", err.Error()))
-		metrics.BlockchainLocationFetchTotal.WithLabelValues("error").Inc()
+		metrics.DoublezeroExchangeLocationFetchTotal.WithLabelValues("error").Inc()
 		return []LocationMatch{}
 	}
 
 	if len(data.Exchanges) == 0 {
 		logger.Warn("No exchanges found on-chain")
-		metrics.BlockchainLocationFetchTotal.WithLabelValues("empty").Inc()
+		metrics.DoublezeroExchangeLocationFetchTotal.WithLabelValues("empty").Inc()
 		return []LocationMatch{}
 	}
 
@@ -133,7 +133,7 @@ func GetLocations(ctx context.Context, logger *slog.Logger, serviceabilityClient
 		slog.Int("total_exchanges", len(data.Exchanges)),
 		slog.Int("activated_exchanges", len(locationMatches)))
 
-	metrics.BlockchainLocations.Set(float64(len(locationMatches)))
+	metrics.DoublezeroExhanges.Set(float64(len(locationMatches)))
 
 	return locationMatches
 }

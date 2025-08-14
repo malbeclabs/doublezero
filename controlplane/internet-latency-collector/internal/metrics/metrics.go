@@ -17,14 +17,14 @@ var (
 		Help: "Build information of the internet latency collector",
 	}, []string{"version", "commit", "date"})
 
-	// Blockchain location fetch metrics (now using exchanges)
-	BlockchainLocationFetchTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "doublezero_internet_latency_collector_blockchain_location_fetch_total",
-		Help: "Total number of doublezero exchange fetch attempts",
+	// Blockchain location fetch metrics
+	DoublezeroExchangeLocationFetchTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "doublezero_internet_latency_collector_exchange_fetch_total",
+		Help: "Total number of attempts to fetch doublezero exchanges from blockchain",
 	}, []string{"status"})
 
-	BlockchainLocations = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "doublezero_internet_latency_collector_blockchain_locations",
+	DoublezeroExhanges = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "doublezero_internet_latency_collector_exchanges",
 		Help: "Number of doublezero exchanges fetched from blockchain",
 	})
 

@@ -5,373 +5,216 @@
 //! - JITO rewards per epoch
 //!
 //! The rewards from all sources for an epoch are summed and associated with a validator_id
+use crate::block;
+use crate::inflation;
+use crate::jito;
 
-use std::{collections::HashMap, error::Error, str::FromStr};
+use anyhow::{anyhow, Result};
+use serde::Deserialize;
+use solana_client::rpc_config::{RpcBlockConfig, RpcGetVoteAccountsConfig};
+use solana_sdk::clock::DEFAULT_SLOTS_PER_EPOCH;
+use std::collections::HashMap;
 
-use anyhow::{anyhow, bail, Result};
-use async_trait::async_trait;
-use futures::{stream, StreamExt, TryStreamExt};
-use mockall::automock;
-use serde::{de::DeserializeOwned, Deserialize};
-use solana_client::{
-    nonblocking::rpc_client::RpcClient,
-    rpc_config::{RpcBlockConfig, RpcGetVoteAccountsConfig},
-    rpc_response::{RpcInflationReward, RpcVoteAccountStatus},
-};
-use solana_sdk::{clock::DEFAULT_SLOTS_PER_EPOCH, pubkey::Pubkey, reward_type::RewardType::Fee};
-use solana_transaction_status_client_types::UiConfirmedBlock;
+use crate::fee_payment_calculator::ValidatorRewards;
 
-const JITO_BASE_URL: &str = "https://kobe.mainnet.jito.network/api/v1/";
-
-pub const JITO_REWARDS_LIMIT: u16 = 1_500;
-
-pub const fn get_first_slot_for_epoch(target_epoch: u64) -> u64 {
-    DEFAULT_SLOTS_PER_EPOCH * target_epoch
-}
-
-pub const LAMPORT_MULTIPLE: u64 = 5000;
-#[derive(Deserialize, Debug)]
-pub struct JitoRewards {
-    // TODO: check total_count to see if it exceeds entries in a single response
-    // limit - default: 100, max: 10000
-    pub total_count: u16,
-    pub rewards: Vec<JitoReward>,
-}
+const SLOT_TIME_DURATION_SECONDS: f64 = 0.4;
 
 #[derive(Deserialize, Debug)]
-pub struct JitoReward {
-    pub vote_account: String,
-    pub mev_revenue: u64,
+pub struct Reward {
+    pub epoch: u64,
+    pub validator_id: String,
+    pub total: u64,
+    pub block_priority: u64,
+    pub jito: u64,
+    pub inflation: u64,
+    pub block_base: u64,
 }
 
-#[automock]
-#[async_trait]
-pub trait ValidatorRewards {
-    async fn get_leader_schedule(&self) -> Result<HashMap<String, Vec<usize>>>;
-    async fn get_block_with_config(
-        &self,
-        slot: u64,
-        config: RpcBlockConfig,
-    ) -> Result<UiConfirmedBlock, solana_client::client_error::ClientError>;
-
-    async fn get<T: DeserializeOwned + Send + 'static>(
-        &self,
-        url: &str,
-    ) -> Result<T, Box<dyn Error + Send + Sync>>;
-    async fn get_vote_accounts_with_config(
-        &self,
-        config: RpcGetVoteAccountsConfig,
-    ) -> Result<RpcVoteAccountStatus, solana_client::client_error::ClientError>;
-    async fn get_inflation_reward(
-        &self,
-        vote_keys: Vec<Pubkey>,
-        epoch: u64,
-    ) -> Result<Vec<Option<RpcInflationReward>>, solana_client::client_error::ClientError>;
-    async fn get_slot(&self) -> Result<u64, solana_client::client_error::ClientError>;
-    async fn get_block_time(
-        &self,
-        slot: u64,
-    ) -> Result<i64, solana_client::client_error::ClientError>;
-}
-
-pub struct FeePaymentCalculator(RpcClient);
-
-impl FeePaymentCalculator {
-    pub fn new(client: RpcClient) -> Self {
-        Self(client)
-    }
-
-    pub fn client(&self) -> &RpcClient {
-        &self.0
-    }
-}
-
-#[async_trait]
-impl ValidatorRewards for FeePaymentCalculator {
-    async fn get_leader_schedule(&self) -> Result<HashMap<String, Vec<usize>>> {
-        let schedule = self.0.get_leader_schedule(None).await?;
-        schedule.ok_or(anyhow!("No leader schedule found"))
-    }
-
-    async fn get_block_with_config(
-        &self,
-        slot: u64,
-        config: RpcBlockConfig,
-    ) -> Result<UiConfirmedBlock, solana_client::client_error::ClientError> {
-        self.0.get_block_with_config(slot, config).await
-    }
-    async fn get<T: DeserializeOwned + Send>(
-        &self,
-        url: &str,
-    ) -> Result<T, Box<dyn Error + Send + Sync>> {
-        let response = reqwest::get(url).await?.error_for_status()?;
-
-        let body = response.json::<T>().await?;
-
-        Ok(body)
-    }
-
-    async fn get_vote_accounts_with_config(
-        &self,
-        config: RpcGetVoteAccountsConfig,
-    ) -> Result<RpcVoteAccountStatus, solana_client::client_error::ClientError> {
-        self.0.get_vote_accounts_with_config(config).await
-    }
-    async fn get_inflation_reward(
-        &self,
-        vote_keys: Vec<Pubkey>,
-        epoch: u64,
-    ) -> Result<Vec<Option<RpcInflationReward>>, solana_client::client_error::ClientError> {
-        self.0.get_inflation_reward(&vote_keys, Some(epoch)).await
-    }
-    async fn get_slot(&self) -> Result<u64, solana_client::client_error::ClientError> {
-        self.0.get_slot().await
-    }
-
-    async fn get_block_time(
-        &self,
-        slot: u64,
-    ) -> Result<i64, solana_client::client_error::ClientError> {
-        self.0.get_block_time(slot).await
-    }
-}
-
-pub async fn get_block_rewards<T: ValidatorRewards>(
-    api_provider: &T,
+pub async fn get_rewards_between_timestamps(
+    fee_payment_calculator: &impl ValidatorRewards,
+    rpc_get_vote_accounts_config: RpcGetVoteAccountsConfig,
+    rpc_block_config: RpcBlockConfig,
+    start_timestamp: u64,
+    end_timestamp: u64,
     validator_ids: &[String],
-    epoch: u64,
-    config: RpcBlockConfig,
-) -> Result<HashMap<String, (u64, u64)>> {
-    let first_slot = get_first_slot_for_epoch(epoch);
+) -> Result<HashMap<u64, HashMap<String, Reward>>> {
+    let mut rewards: HashMap<u64, HashMap<String, Reward>> = HashMap::new();
+    let current_slot = fee_payment_calculator.get_slot().await?;
+    let block_time = fee_payment_calculator.get_block_time(current_slot).await?;
+    let block_time: u64 = block_time as u64;
 
-    // Fetch the leader schedule
-    let leader_schedule = api_provider.get_leader_schedule().await?;
-
-    // Build validator schedules
-    let validator_schedules: HashMap<String, Vec<u64>> = validator_ids
-        .iter()
-        .filter_map(|validator_id| {
-            leader_schedule.get(validator_id).map(|schedule| {
-                let slots = schedule
-                    .iter()
-                    .map(|&idx| first_slot + idx as u64)
-                    .collect();
-                (validator_id.clone(), slots)
-            })
-        })
-        .collect();
-
-    let block_rewards = stream::iter(validator_schedules.into_iter().flat_map(
-        |(validator_id, slots)| {
-            slots
-                .into_iter()
-                .map(move |slot| (validator_id.clone(), slot))
-        },
-    ))
-    .map(|(validator_id, slot)| async move {
-        match api_provider.get_block_with_config(slot, config).await {
-            Ok(block) => {
-                let mut signature_lamports: u64 = 0;
-                if let Some(sigs) = &block.signatures {
-                    signature_lamports = sigs.len() as u64;
-                    signature_lamports *= LAMPORT_MULTIPLE;
-                };
-                let lamports: u64 = block
-                    .rewards
-                    .as_ref()
-                    .map(|rewards| {
-                        rewards
-                            .iter()
-                            .filter_map(|reward| {
-                                if reward.reward_type == Some(Fee) {
-                                    Some(reward.lamports as u64)
-                                } else {
-                                    None
-                                }
-                            })
-                            .sum()
-                    })
-                    .unwrap_or_default();
-                Ok((validator_id, (lamports, signature_lamports)))
-            }
-            Err(e) => {
-                bail!("Failed to fetch block for slot {slot}: {e}")
-            }
-        }
-    })
-    .buffer_unordered(10)
-    .try_collect::<HashMap<String, (u64, u64)>>()
-    .await?;
-
-    Ok(block_rewards)
+    let start_epoch = epoch_from_timestamp(block_time, current_slot, start_timestamp)?;
+    let end_epoch = epoch_from_timestamp(block_time, current_slot, end_timestamp)?;
+    for epoch in start_epoch..=end_epoch {
+        let reward = get_total_rewards(
+            fee_payment_calculator,
+            validator_ids,
+            epoch,
+            rpc_get_vote_accounts_config.clone(),
+            rpc_block_config,
+        )
+        .await?;
+        rewards.insert(epoch, reward);
+    }
+    Ok(rewards)
 }
 
-// may need to add in pagination
-pub async fn get_jito_rewards<T: ValidatorRewards>(
-    fee_payment_calculator: &T,
-    validator_ids: &[String],
-    epoch: u64,
-) -> Result<HashMap<String, u64>> {
-    let url = format!(
-        // TODO: make limit an env var
-        // based on very unscientific checking of a number of epochs, 1200 is the highest count
-        "{JITO_BASE_URL}validator_rewards?epoch={epoch}&limit={JITO_REWARDS_LIMIT}"
-    );
-
-    let rewards = match fee_payment_calculator.get::<JitoRewards>(&url).await {
-        Ok(jito_rewards) => {
-            if jito_rewards.total_count > JITO_REWARDS_LIMIT {
-                println!(
-                    "Unexpectedly received total count higher than 1500; actual count is {}",
-                    jito_rewards.total_count
-                );
-            }
-            jito_rewards
-        }
-
-        Err(e) => {
-            return Err(anyhow!(
-                "Failed to fetch Jito rewards for epoch {epoch}: {e:#?}"
-            ));
-        }
-    };
-
-    let jito_rewards: HashMap<String, u64> = stream::iter(validator_ids)
-        .map(|validator_id| {
-            let validator_id = validator_id.to_string();
-            let rewards = &rewards.rewards;
-            async move {
-                let mev_revenue = rewards
-                    .iter()
-                    .find(|reward| *validator_id == reward.vote_account)
-                    .map(|reward| reward.mev_revenue)
-                    .unwrap_or(0);
-                (validator_id, mev_revenue)
-            }
-        })
-        .buffer_unordered(5)
-        .collect()
-        .await;
-
-    Ok(jito_rewards)
-}
-pub async fn get_inflation_rewards<T: ValidatorRewards + ?Sized>(
-    fee_payment_calculator: &T,
+// this function will return a hashmap of total rewards keyed by validator pubkey
+pub async fn get_total_rewards(
+    fee_payment_calculator: &impl ValidatorRewards,
     validator_ids: &[String],
     epoch: u64,
     rpc_get_vote_accounts_config: RpcGetVoteAccountsConfig,
-) -> Result<HashMap<String, u64>> {
-    let mut vote_keys: Vec<Pubkey> = Vec::with_capacity(validator_ids.len());
+    rpc_block_config: RpcBlockConfig,
+) -> Result<HashMap<String, Reward>> {
+    let mut validator_rewards: Vec<Reward> = Vec::with_capacity(validator_ids.len());
 
-    let vote_accounts = fee_payment_calculator
-        .get_vote_accounts_with_config(rpc_get_vote_accounts_config)
-        .await?;
+    let (inflation_rewards, jito_rewards, block_rewards) = tokio::join!(
+        inflation::get_inflation_rewards(
+            fee_payment_calculator,
+            validator_ids,
+            epoch,
+            rpc_get_vote_accounts_config,
+        ),
+        jito::get_jito_rewards(fee_payment_calculator, validator_ids, epoch),
+        block::get_block_rewards(
+            fee_payment_calculator,
+            validator_ids,
+            epoch,
+            rpc_block_config
+        )
+    );
 
-    // this can be cleaned up i'm sure
+    let inflation_rewards = inflation_rewards?;
+    let jito_rewards = jito_rewards?;
+    let block_rewards = block_rewards?;
+
     for validator_id in validator_ids {
-        match vote_accounts
-            .current
-            .iter()
-            .find(|vote_account| vote_account.node_pubkey == *validator_id)
-            .map(|vote_account| {
-                Pubkey::from_str(&vote_account.vote_pubkey)
-                    .map_err(|e| anyhow!("Invalid vote_pubkey '{}': {e}", vote_account.vote_pubkey))
-            })
-            .transpose()?
-        {
-            Some(vote_account) => vote_keys.push(vote_account),
-            None => {
-                eprintln!("Validator ID {validator_id} not found");
-                continue;
-            }
+        let mut total_reward: u64 = 0;
+        let jito_reward = jito_rewards.get(validator_id).cloned().unwrap_or_default();
+        let inflation_reward = inflation_rewards
+            .get(validator_id)
+            .cloned()
+            .unwrap_or_default();
+        let block_reward = block_rewards.get(validator_id).cloned().unwrap_or_default();
+
+        let priority_base = block_reward.0 - block_reward.1;
+        total_reward += inflation_reward + block_reward.0 + jito_reward;
+        let rewards = Reward {
+            validator_id: validator_id.to_string(),
+            jito: jito_reward,
+            inflation: inflation_reward,
+            total: total_reward,
+            block_priority: priority_base,
+            block_base: block_reward.1,
+            epoch,
         };
+        validator_rewards.push(rewards);
     }
-
-    let inflation_rewards = fee_payment_calculator
-        .get_inflation_reward(vote_keys, epoch)
-        .await?;
-
-    let rewards: Vec<u64> = inflation_rewards
+    let rewards: HashMap<String, Reward> = validator_ids
         .iter()
-        .map(|ir| match ir {
-            Some(rewards) => rewards.amount,
-            None => 0,
-        })
+        .cloned()
+        .zip(validator_rewards)
         .collect();
+    Ok(rewards)
+}
 
-    // probably a better way to do this
-    let inflation_rewards: HashMap<String, u64> =
-        validator_ids.iter().cloned().zip(rewards).collect();
-    Ok(inflation_rewards)
+// get the number of slots by subtracting the timestamp from the block time and dividing it by the time per slot
+// get the desired slot by subtracting the num_slots from the current_slot
+// then get the epoch by dividing the desired_slot by the DEFAULT_SLOTS_PER_EPOCH
+// NOTE: This can change if solana changes
+fn epoch_from_timestamp(block_time: u64, current_slot: u64, timestamp: u64) -> Result<u64> {
+    if timestamp > block_time {
+        return Err(anyhow!(
+            "timestamp cannot be greater than block_time: {timestamp}, {block_time}"
+        ));
+    }
+    let num_slots: u64 = ((block_time - timestamp) as f64 / SLOT_TIME_DURATION_SECONDS) as u64;
+    let desired_slot = current_slot - num_slots;
+    // epoch
+    Ok(desired_slot / DEFAULT_SLOTS_PER_EPOCH)
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::block::LAMPORT_MULTIPLE;
+    use crate::jito::{JitoReward, JitoRewards};
+
     use super::*;
-    use solana_client::rpc_response::{RpcInflationReward, RpcVoteAccountInfo};
-    use solana_sdk::commitment_config::CommitmentConfig;
+    use crate::fee_payment_calculator::MockValidatorRewards;
+    use solana_client::rpc_response::{
+        RpcInflationReward, RpcVoteAccountInfo, RpcVoteAccountStatus,
+    };
+    use solana_sdk::{commitment_config::CommitmentConfig, reward_type::RewardType::Fee};
     use solana_transaction_status_client_types::{
-        Reward, TransactionDetails, UiTransactionEncoding,
+        TransactionDetails, UiConfirmedBlock, UiTransactionEncoding,
     };
 
     #[tokio::test]
-    async fn test_get_jito_rewards() {
-        let mut jito_mock_fetcher = MockValidatorRewards::new();
-        let pubkey = "CvSb7wdQAFpHuSpTYTJnX5SYH4hCfQ9VuGnqrKaKwycB";
-        let validator_ids: &[String] = &[String::from(pubkey)];
-        let epoch = 812;
-        let expected_mev_revenue = 503423196855;
-        jito_mock_fetcher
-            .expect_get::<JitoRewards>()
-            .withf(move |url| url.contains(&format!("epoch={epoch}")))
+    async fn test_get_rewards_between_timestamps() {
+        // Set up test variables and mock data.
+        let validator_id = "6WgdYhhGE53WrZ7ywJA15hBVkw7CRbQ8yDBBTwmBtAHN";
+        let validator_ids: &[String] = &[String::from(validator_id)];
+        let epoch = 824;
+        let block_reward: u64 = 60000;
+        let inflation_reward = 2500;
+        let jito_reward = 10000;
+
+        let start_timestamp = 1752727180;
+        let end_timestamp = 1752727280;
+
+        let mut mock_fee_payment_calculator = MockValidatorRewards::new();
+
+        // Define RPC configurations that will be passed to the function under test.
+        let rpc_get_vote_accounts_config = RpcGetVoteAccountsConfig {
+            vote_pubkey: None,
+            commitment: CommitmentConfig::finalized().into(),
+            keep_unstaked_delinquents: None,
+            delinquent_slot_distance: None,
+        };
+
+        let rpc_block_config = solana_client::rpc_config::RpcBlockConfig {
+            encoding: UiTransactionEncoding::Base58.into(),
+            transaction_details: TransactionDetails::None.into(),
+            rewards: Some(true),
+            commitment: CommitmentConfig::finalized().into(),
+            max_supported_transaction_version: Some(0),
+        };
+
+        // Set up mock expectations for the ValidatorRewards trait.
+        // These mocks simulate the behavior of external dependencies.
+        mock_fee_payment_calculator
+            .expect_get_slot()
             .times(1)
-            .returning(move |_| {
-                Ok(JitoRewards {
-                    total_count: 1000,
-                    rewards: vec![JitoReward {
-                        vote_account: pubkey.to_string(),
-                        mev_revenue: expected_mev_revenue,
-                    }],
-                })
-            });
+            .returning(move || Ok(356170122));
 
-        let mock_response = get_jito_rewards(&jito_mock_fetcher, validator_ids, epoch)
-            .await
-            .unwrap();
-
-        assert_eq!(mock_response.get(pubkey), Some(&expected_mev_revenue));
-    }
-
-    #[tokio::test]
-    async fn test_get_block_rewards() {
-        let mut mock_api_provider = MockValidatorRewards::new();
-        let validator_id = "some_validator_pubkey".to_string();
-        let validator_ids = &[validator_id.clone()];
-        let epoch = 100;
-        let first_slot = get_first_slot_for_epoch(epoch);
-        let slot_index = 10;
-        let slot = first_slot + slot_index as u64;
-
-        let mut leader_schedule = HashMap::new();
-        leader_schedule.insert(validator_id.clone(), vec![slot_index]);
-
-        mock_api_provider
-            .expect_get_leader_schedule()
+        mock_fee_payment_calculator
+            .expect_get_block_time()
             .times(1)
-            .returning(move || Ok(leader_schedule.clone()));
+            .returning(move |_| Ok(1752728180));
 
-        let block_reward = (5000, 5000 * 3);
+        let signatures = vec![
+            "One".to_string(),
+            "Two".to_string(),
+            "Three".to_string(),
+            "Four".to_string(),
+            "Five".to_string(),
+            "Six".to_string(),
+            "Seven".to_string(),
+            "Eight".to_string(),
+            "Nine".to_string(),
+            "Ten".to_string(),
+            "Eleven".to_string(),
+            "Twelve".to_string(),
+        ];
+        let base_fees = signatures.len() as u64 * LAMPORT_MULTIPLE;
         let mock_block = UiConfirmedBlock {
             num_reward_partitions: Some(1),
-            signatures: Some(vec![
-                "One".to_string(),
-                "two".to_string(),
-                "three".to_string(),
-            ]),
-            rewards: Some(vec![Reward {
-                pubkey: validator_id.clone(),
-                lamports: block_reward.0,
-                post_balance: 10000,
+            signatures: Some(signatures),
+            rewards: Some(vec![solana_transaction_status_client_types::Reward {
+                pubkey: validator_id.to_string(),
+                lamports: block_reward as i64,
+                post_balance: block_reward,
                 reward_type: Some(Fee),
                 commission: None,
             }]),
@@ -383,40 +226,20 @@ mod tests {
             block_height: None,
         };
 
-        let rpc_block_config = solana_client::rpc_config::RpcBlockConfig {
-            encoding: UiTransactionEncoding::Base58.into(),
-            transaction_details: TransactionDetails::Signatures.into(),
-            rewards: Some(true),
-            commitment: CommitmentConfig::finalized().into(),
-            max_supported_transaction_version: Some(0),
-        };
+        let first_slot = block::get_first_slot_for_epoch(epoch);
+        let slot_index: usize = 10;
+        let slot = first_slot + slot_index as u64;
 
-        mock_api_provider
+        mock_fee_payment_calculator
             .expect_get_block_with_config()
             .withf(move |s, _| *s == slot)
             .times(1)
             .returning(move |_, _| Ok(mock_block.clone()));
 
-        let rewards = get_block_rewards(&mock_api_provider, validator_ids, epoch, rpc_block_config)
-            .await
-            .unwrap();
-
-        let base_rewards = rewards.get(&validator_id).unwrap();
-
-        assert_eq!(base_rewards.0, block_reward.0 as u64);
-        assert_eq!(base_rewards.1, block_reward.1);
-    }
-
-    #[tokio::test]
-    async fn test_get_inflation_rewards() {
-        let mut mock_fee_payment_calculator = MockValidatorRewards::new();
-        let validator_id = "some_validator_pubkey".to_string();
-        let validator_ids = &[validator_id.clone()];
-        let epoch = 100;
         let mock_rpc_vote_account_status = RpcVoteAccountStatus {
             current: vec![RpcVoteAccountInfo {
-                vote_pubkey: "some vote pubkey".to_string(),
-                node_pubkey: "some pubkey".to_string(),
+                vote_pubkey: "6WgdYhhGE53WrZ7ywJA15hBVkw7CRbQ8yDBBTwmBtBBN".to_string(),
+                node_pubkey: validator_id.to_string(),
                 activated_stake: 4_200_000_000_000,
                 epoch_vote_account: true,
                 epoch_credits: vec![(812, 256, 128), (811, 128, 64)],
@@ -426,6 +249,7 @@ mod tests {
             }],
             delinquent: vec![],
         };
+
         mock_fee_payment_calculator
             .expect_get_vote_accounts_with_config()
             .withf(move |_| true)
@@ -433,34 +257,199 @@ mod tests {
             .returning(move |_| Ok(mock_rpc_vote_account_status.clone()));
 
         let mock_rpc_inflation_reward = vec![Some(RpcInflationReward {
-            epoch: 812,
+            epoch,
             effective_slot: 123456789,
-            amount: 2500,
+            amount: inflation_reward,
             post_balance: 1_500_002_500,
             commission: Some(1),
         })];
-
-        let rpc_get_vote_account_configs = RpcGetVoteAccountsConfig {
-            vote_pubkey: Some("vote pubkey".to_string()),
-            commitment: Some(CommitmentConfig::finalized()),
-            keep_unstaked_delinquents: Some(false),
-            delinquent_slot_distance: Some(100_000),
-        };
 
         mock_fee_payment_calculator
             .expect_get_inflation_reward()
             .times(1)
             .returning(move |_, _| Ok(mock_rpc_inflation_reward.clone()));
 
-        let inflation_reward: u64 = 2500;
-        let rewards = get_inflation_rewards(
+        mock_fee_payment_calculator
+            .expect_get::<JitoRewards>()
+            .withf(move |url| url.contains(&format!("epoch={epoch}")))
+            .times(1)
+            .returning(move |_| {
+                Ok(JitoRewards {
+                    total_count: 1000,
+                    rewards: vec![JitoReward {
+                        vote_account: validator_id.to_string(),
+                        mev_revenue: jito_reward,
+                    }],
+                })
+            });
+
+        let mut leader_schedule = HashMap::new();
+        leader_schedule.insert(validator_id.to_string(), vec![slot_index]);
+
+        mock_fee_payment_calculator
+            .expect_get_leader_schedule()
+            .times(1)
+            .returning(move || Ok(leader_schedule.clone()));
+
+        // Call the function under test with the prepared data and mocks.
+        let rewards = get_rewards_between_timestamps(
             &mock_fee_payment_calculator,
+            rpc_get_vote_accounts_config,
+            rpc_block_config,
+            start_timestamp,
+            end_timestamp,
             validator_ids,
-            epoch,
-            rpc_get_vote_account_configs,
         )
         .await
         .unwrap();
-        assert_eq!(rewards.get(&validator_id), Some(&(inflation_reward)));
+
+        let epoch_rewards = rewards.get(&epoch).unwrap();
+        let reward = epoch_rewards.get(validator_id).unwrap();
+        let priority_base = block_reward - base_fees;
+        assert_eq!(reward.epoch, epoch);
+        assert_eq!(reward.block_base, base_fees);
+        assert_eq!(reward.inflation, inflation_reward);
+        assert_eq!(reward.jito, jito_reward);
+        assert_eq!(reward.total, block_reward + inflation_reward + jito_reward);
+        assert_eq!(reward.block_priority, priority_base);
+    }
+
+    #[tokio::test]
+    async fn test_get_total_rewards() {
+        // Set up test variables and mock data.
+        let validator_id = "6WgdYhhGE53WrZ7ywJA15hBVkw7CRbQ8yDBBTwmBtAHN";
+        let validator_ids: &[String] = &[String::from(validator_id)];
+        let epoch = 819;
+        let block_reward: u64 = 5000;
+        let signatures: u64 = LAMPORT_MULTIPLE;
+        let inflation_reward = 2500;
+        let jito_reward = 10000;
+
+        let mut mock_fee_payment_calculator = MockValidatorRewards::new();
+
+        // Define RPC configurations that will be passed to the function under test.
+        let rpc_get_vote_accounts_config = RpcGetVoteAccountsConfig {
+            vote_pubkey: None,
+            commitment: CommitmentConfig::finalized().into(),
+            keep_unstaked_delinquents: None,
+            delinquent_slot_distance: None,
+        };
+
+        // Set up mock expectations for the ValidatorRewards trait.
+        // These mocks simulate the behavior of external dependencies.
+        let mock_rpc_vote_account_status = RpcVoteAccountStatus {
+            current: vec![RpcVoteAccountInfo {
+                vote_pubkey: "6WgdYhhGE53WrZ7ywJA15hBVkw7CRbQ8yDBBTwmBtABB".to_string(),
+                node_pubkey: validator_id.to_string(),
+                activated_stake: 4_200_000_000_000,
+                epoch_vote_account: true,
+                epoch_credits: vec![(812, 256, 128), (811, 128, 64)],
+                commission: 10,
+                last_vote: 123456789,
+                root_slot: 123456700,
+            }],
+            delinquent: vec![],
+        };
+
+        mock_fee_payment_calculator
+            .expect_get_vote_accounts_with_config()
+            .withf(move |_| true)
+            .times(1)
+            .returning(move |_| Ok(mock_rpc_vote_account_status.clone()));
+
+        let mock_rpc_inflation_reward = vec![Some(RpcInflationReward {
+            epoch,
+            effective_slot: 123456789,
+            amount: inflation_reward,
+            post_balance: 1_500_002_500,
+            commission: Some(1),
+        })];
+
+        mock_fee_payment_calculator
+            .expect_get_inflation_reward()
+            .times(1)
+            .returning(move |_, _| Ok(mock_rpc_inflation_reward.clone()));
+
+        let first_slot = block::get_first_slot_for_epoch(epoch);
+        let slot_index: usize = 10;
+        let slot = first_slot + slot_index as u64;
+
+        let mut leader_schedule = HashMap::new();
+        leader_schedule.insert(validator_id.to_string(), vec![slot_index]);
+
+        mock_fee_payment_calculator
+            .expect_get_leader_schedule()
+            .times(1)
+            .returning(move || Ok(leader_schedule.clone()));
+
+        let mock_block = UiConfirmedBlock {
+            num_reward_partitions: Some(1),
+            signatures: Some(vec!["One".to_string()]),
+            rewards: Some(vec![solana_transaction_status_client_types::Reward {
+                pubkey: validator_id.to_string(),
+                lamports: block_reward as i64,
+                post_balance: block_reward,
+                reward_type: Some(Fee),
+                commission: None,
+            }]),
+            previous_blockhash: "".to_string(),
+            blockhash: "".to_string(),
+            parent_slot: 0,
+            transactions: None,
+            block_time: None,
+            block_height: None,
+        };
+
+        mock_fee_payment_calculator
+            .expect_get_block_with_config()
+            .withf(move |s, _| *s == slot)
+            .times(1)
+            .returning(move |_, _| Ok(mock_block.clone()));
+
+        mock_fee_payment_calculator
+            .expect_get::<JitoRewards>()
+            .withf(move |url| url.contains(&format!("epoch={epoch}")))
+            .times(1)
+            .returning(move |_| {
+                Ok(JitoRewards {
+                    total_count: 1000,
+                    rewards: vec![JitoReward {
+                        vote_account: validator_id.to_string(),
+                        mev_revenue: jito_reward,
+                    }],
+                })
+            });
+
+        let rpc_block_config = solana_client::rpc_config::RpcBlockConfig {
+            encoding: UiTransactionEncoding::Base58.into(),
+            transaction_details: TransactionDetails::None.into(),
+            rewards: Some(true),
+            commitment: CommitmentConfig::finalized().into(),
+            max_supported_transaction_version: Some(0),
+        };
+
+        // Call the function under test with the prepared data and mocks.
+        let rewards = get_total_rewards(
+            &mock_fee_payment_calculator,
+            validator_ids,
+            epoch,
+            rpc_get_vote_accounts_config.clone(),
+            rpc_block_config,
+        )
+        .await
+        .unwrap();
+
+        // Verify that the function produced the correct results.
+        let reward = rewards.get(validator_id).unwrap();
+
+        assert_eq!(reward.epoch, epoch);
+        assert_eq!(reward.block_base, block_reward);
+        assert_eq!(reward.inflation, inflation_reward);
+        assert_eq!(reward.jito, jito_reward);
+        assert_eq!(
+            reward.total,
+            reward.block_base + reward.inflation + reward.jito
+        );
+        assert_eq!(reward.block_priority, block_reward - signatures);
     }
 }

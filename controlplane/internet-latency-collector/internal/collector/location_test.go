@@ -740,16 +740,16 @@ func TestInternetLatency_Location_GetLocations(t *testing.T) {
 
 	// Since GetLocations calls the blockchain directly,
 	// we can only test that it doesn't panic and returns a slice
-	t.Run("Returns locations array without panic", func(t *testing.T) {
+	t.Run("Returns exchanges array without panic", func(t *testing.T) {
 		ctx := t.Context()
 		serviceabilityClient := &mockServiceabilityClient{
 			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 				return &serviceability.ProgramData{
-					Locations: []serviceability.Location{{
+					Exchanges: []serviceability.Exchange{{
 						Code:   "nyc",
 						Lat:    40.7128,
 						Lng:    -74.0060,
-						Status: serviceability.LocationStatusActivated,
+						Status: serviceability.ExchangeStatusActivated,
 					}},
 				}, nil
 			},
@@ -758,6 +758,8 @@ func TestInternetLatency_Location_GetLocations(t *testing.T) {
 
 		// Should return a slice (may be empty depending on blockchain state)
 		require.NotNil(t, locations, "GetLocations() should return non-nil slice")
+		require.Len(t, locations, 1, "GetLocations() should return one exchange")
+		require.Equal(t, "nyc", locations[0].LocationCode)
 	})
 }
 

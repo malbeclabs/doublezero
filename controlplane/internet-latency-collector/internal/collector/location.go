@@ -112,26 +112,26 @@ func GetLocations(ctx context.Context, logger *slog.Logger, serviceabilityClient
 		return []LocationMatch{}
 	}
 
-	if len(data.Locations) == 0 {
-		logger.Warn("No locations found on-chain")
+	if len(data.Exchanges) == 0 {
+		logger.Warn("No exchanges found on-chain")
 		metrics.BlockchainLocationFetchTotal.WithLabelValues("empty").Inc()
 		return []LocationMatch{}
 	}
 
 	var locationMatches []LocationMatch
-	for _, loc := range data.Locations {
-		if loc.Status == serviceability.LocationStatusActivated {
+	for _, exc := range data.Exchanges {
+		if exc.Status == serviceability.ExchangeStatusActivated {
 			locationMatches = append(locationMatches, LocationMatch{
-				LocationCode: loc.Code,
-				Latitude:     loc.Lat,
-				Longitude:    loc.Lng,
+				LocationCode: exc.Code,
+				Latitude:     exc.Lat,
+				Longitude:    exc.Lng,
 			})
 		}
 	}
 
-	logger.Info("Loaded locations from blockchain",
-		slog.Int("total_locations", len(data.Locations)),
-		slog.Int("activated_locations", len(locationMatches)))
+	logger.Info("Loaded exchanges from blockchain",
+		slog.Int("total_exchanges", len(data.Exchanges)),
+		slog.Int("activated_exchanges", len(locationMatches)))
 
 	metrics.BlockchainLocations.Set(float64(len(locationMatches)))
 

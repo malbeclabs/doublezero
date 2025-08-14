@@ -25,7 +25,7 @@ jobs:
             playbook: playbooks/device_telemetry_agent.yml
           - component: internet-latency-collector
             playbook: playbooks/internet_latency_collectors.yml
-          - component: qa.agent
+          - component: qa-agent
             playbook: playbooks/qa_agents.yml
     with:
       component: ${{ matrix.component }}

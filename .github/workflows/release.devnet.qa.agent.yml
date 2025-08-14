@@ -7,7 +7,7 @@ jobs:
   release:
     uses: ./.github/workflows/release.daily.yml
     with:
-      component: qa.agent
+      component: qa-agent
       playbook: playbooks/validators.yml
     secrets: inherit
     permissions:

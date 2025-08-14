@@ -73,6 +73,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[serial]
     fn test_environment_from_str_valid() {
         assert_eq!(
             "testnet".parse::<Environment>().unwrap(),
@@ -85,16 +86,15 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_environment_from_str_invalid() {
         let err = "invalid".parse::<Environment>();
         assert!(err.is_err());
     }
 
     #[test]
+    #[serial]
     fn test_network_config_mainnet() {
-        std::env::remove_var("DZ_LEDGER_RPC_URL");
-        std::env::remove_var("DZ_LEDGER_WS_RPC_URL");
-
         let config = Environment::Mainnet.config().unwrap();
         assert_eq!(
             config.ledger_public_rpc_url,
@@ -116,10 +116,8 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_network_config_testnet() {
-        std::env::remove_var("DZ_LEDGER_RPC_URL");
-        std::env::remove_var("DZ_LEDGER_WS_RPC_URL");
-
         let config = Environment::Testnet.config().unwrap();
         assert_eq!(
             config.ledger_public_rpc_url,
@@ -144,10 +142,8 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_network_config_devnet() {
-        std::env::remove_var("DZ_LEDGER_RPC_URL");
-        std::env::remove_var("DZ_LEDGER_WS_RPC_URL");
-
         let config = Environment::Devnet.config().unwrap();
         assert_eq!(
             config.ledger_public_rpc_url,

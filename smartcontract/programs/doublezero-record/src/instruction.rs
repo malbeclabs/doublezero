@@ -31,10 +31,18 @@ pub enum RecordInstruction<'a> {
         data: &'a [u8],
     },
 
-    /// TODO: Remove this instruction.
+    /// TODO: Remove this instruction. We do not want the ability for an author
+    /// to change its authority over a record it created. Because we plan on
+    /// using deterministic seeds, which includes the payer's public key,
+    /// reading records with headers that reveal a different write authority
+    /// may be confusing.
     SetAuthority,
 
-    /// TODO: Remove this instruction.
+    /// TODO: Remove this instruction. We want to prevent the ability for
+    /// authors from closing their records. Even though they can overwrite
+    /// their records, we want to make it difficult to completely purge them
+    /// entirely from existence. An improvement would be to add an instruction
+    /// to finalize records to prevent any subsequent writes.
     CloseAccount,
 
     /// Reallocate additional space in a record account

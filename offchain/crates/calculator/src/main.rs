@@ -76,24 +76,6 @@ pub enum Commands {
         #[arg(short = 'p', long)]
         payer_pubkey: String,
     },
-    /// Close a record account (useful for cleaning up test data or resizing)
-    CloseRecord {
-        /// Type of record to close (device-telemetry, internet-telemetry, reward-input, contributor-rewards)
-        #[arg(short = 't', long)]
-        record_type: String,
-
-        /// DZ Epoch
-        #[arg(short, long)]
-        epoch: u64,
-
-        /// Path to the keypair file to use for signing transactions
-        #[arg(short = 'k', long)]
-        keypair: Option<PathBuf>,
-
-        /// Optional contributor address (only for contributor-rewards type)
-        #[arg(short = 'c', long)]
-        contributor: Option<String>,
-    },
 }
 
 impl Cli {
@@ -132,16 +114,6 @@ impl Cli {
             } => {
                 let pubkey = Pubkey::from_str(&payer_pubkey)?;
                 orchestrator.read_reward_input(epoch, &pubkey).await
-            }
-            Commands::CloseRecord {
-                record_type,
-                epoch,
-                keypair,
-                contributor,
-            } => {
-                orchestrator
-                    .close_record(&record_type, epoch, keypair, contributor)
-                    .await
             }
             Commands::CalculateRewards {
                 epoch,

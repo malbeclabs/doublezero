@@ -297,23 +297,6 @@ impl Orchestrator {
         .await
     }
 
-    pub async fn close_record(
-        &self,
-        record_type: &str,
-        epoch: u64,
-        keypair_path: Option<PathBuf>,
-        contributor: Option<String>,
-    ) -> Result<()> {
-        ledger_operations::close_record(
-            &self.settings,
-            record_type,
-            epoch,
-            keypair_path,
-            contributor,
-        )
-        .await
-    }
-
     pub async fn read_reward_input(&self, epoch: u64, payer_pubkey: &Pubkey) -> Result<()> {
         ledger_operations::read_reward_input(&self.settings, epoch, payer_pubkey).await
     }

@@ -36,7 +36,7 @@ async fn test_initialize_internet_latency_samples_success_active_locations() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 
     // Seed ledger with two locations and a funded sample collector oracle
-    let (oracle, origin_location_pk, target_location_pk) =
+    let (oracle, origin_exchange_pk, target_exchange_pk) =
         ledger.seed_with_two_locations().await.unwrap();
 
     // Wait for a new blockhash before proceeding
@@ -51,8 +51,8 @@ async fn test_initialize_internet_latency_samples_success_active_locations() {
         .initialize_internet_latency_samples(
             &oracle,
             provider_name.clone(),
-            origin_location_pk,
-            target_location_pk,
+            origin_exchange_pk,
+            target_exchange_pk,
             epoch,
             60_000_000,
         )
@@ -79,8 +79,8 @@ async fn test_initialize_internet_latency_samples_success_active_locations() {
             account_type: TelemetryAccountType::InternetLatencySamples,
             data_provider_name: provider_name.clone(),
             oracle_agent_pk: oracle.pubkey(),
-            origin_location_pk,
-            target_location_pk,
+            origin_exchange_pk,
+            target_exchange_pk,
             epoch,
             sampling_interval_microseconds: 60_000_000,
             next_sample_index: 0,
@@ -95,7 +95,7 @@ async fn test_initialize_device_latency_samples_already_with_lamports() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 
     // Seed ledger with two locations and a funded oracle agent
-    let (oracle_agent, origin_location_pk, target_location_pk) =
+    let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
         ledger.seed_with_two_locations().await.unwrap();
 
     // Wait for a new blockhash before proceeding
@@ -109,8 +109,8 @@ async fn test_initialize_device_latency_samples_already_with_lamports() {
         &ledger.telemetry.program_id,
         &oracle_agent.pubkey(),
         &provider_name,
-        &origin_location_pk,
-        &target_location_pk,
+        &origin_exchange_pk,
+        &target_exchange_pk,
         epoch,
     );
 
@@ -129,8 +129,8 @@ async fn test_initialize_device_latency_samples_already_with_lamports() {
         .initialize_internet_latency_samples(
             &oracle_agent,
             provider_name.clone(),
-            origin_location_pk,
-            target_location_pk,
+            origin_exchange_pk,
+            target_exchange_pk,
             1u64,
             60_000_000,
         )
@@ -156,13 +156,13 @@ async fn test_initialize_internet_latency_samples_success_suspended_origin_locat
     let mut ledger = LedgerHelper::new().await.unwrap();
 
     // Seed ledger with two locations, and a funded agent.
-    let (oracle_agent, origin_location_pk, target_location_pk) =
+    let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
         ledger.seed_with_two_locations().await.unwrap();
 
     // Suspend the origin device.
     ledger
         .serviceability
-        .suspend_location(origin_location_pk)
+        .suspend_location(origin_exchange_pk)
         .await
         .unwrap();
 
@@ -172,7 +172,7 @@ async fn test_initialize_internet_latency_samples_success_suspended_origin_locat
     // Check that the origin location is suspended.
     let location = ledger
         .serviceability
-        .get_location(origin_location_pk)
+        .get_location(origin_exchange_pk)
         .await
         .unwrap();
     assert_eq!(location.status, LocationStatus::Suspended);
@@ -185,8 +185,8 @@ async fn test_initialize_internet_latency_samples_success_suspended_origin_locat
         .initialize_internet_latency_samples(
             &oracle_agent,
             provider_name.clone(),
-            origin_location_pk,
-            target_location_pk,
+            origin_exchange_pk,
+            target_exchange_pk,
             1u64,
             60_000_000,
         )
@@ -212,13 +212,13 @@ async fn test_initialize_internet_latency_samples_success_suspended_target_locat
     let mut ledger = LedgerHelper::new().await.unwrap();
 
     // Seed ledger with two locations, and a funded agent.
-    let (oracle_agent, origin_location_pk, target_location_pk) =
+    let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
         ledger.seed_with_two_locations().await.unwrap();
 
     // Suspend the origin device.
     ledger
         .serviceability
-        .suspend_location(target_location_pk)
+        .suspend_location(target_exchange_pk)
         .await
         .unwrap();
 
@@ -228,7 +228,7 @@ async fn test_initialize_internet_latency_samples_success_suspended_target_locat
     // Check that the origin location is suspended.
     let location = ledger
         .serviceability
-        .get_location(target_location_pk)
+        .get_location(target_exchange_pk)
         .await
         .unwrap();
     assert_eq!(location.status, LocationStatus::Suspended);
@@ -241,8 +241,8 @@ async fn test_initialize_internet_latency_samples_success_suspended_target_locat
         .initialize_internet_latency_samples(
             &oracle_agent,
             provider_name.clone(),
-            origin_location_pk,
-            target_location_pk,
+            origin_exchange_pk,
+            target_exchange_pk,
             1u64,
             60_000_000,
         )
@@ -268,7 +268,7 @@ async fn test_initialize_internet_latency_samples_fail_agent_not_signer() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 
     // Seed ledger with two locations, and a funded agent.
-    let (oracle_agent, origin_location_pk, target_location_pk) =
+    let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
         ledger.seed_with_two_locations().await.unwrap();
 
     // Wait for a new blockhash before moving on.
@@ -281,8 +281,8 @@ async fn test_initialize_internet_latency_samples_fail_agent_not_signer() {
         &oracle_agent.pubkey(),
         &ledger.telemetry.program_id,
         &provider_name,
-        &origin_location_pk,
-        &target_location_pk,
+        &origin_exchange_pk,
+        &target_exchange_pk,
         1,
     );
 
@@ -299,8 +299,8 @@ async fn test_initialize_internet_latency_samples_fail_agent_not_signer() {
     let accounts = vec![
         AccountMeta::new(latency_samples_pda, false),
         AccountMeta::new(oracle_agent.pubkey(), false), // Not signer
-        AccountMeta::new(origin_location_pk, false),
-        AccountMeta::new(target_location_pk, false),
+        AccountMeta::new(origin_exchange_pk, false),
+        AccountMeta::new(target_exchange_pk, false),
         AccountMeta::new(solana_program::system_program::id(), false),
     ];
 
@@ -331,7 +331,7 @@ async fn test_initialize_internet_latency_samples_fail_agent_not_signer() {
 #[tokio::test]
 async fn test_initialize_internet_latency_samples_fail_origin_location_wrong_owner() {
     let agent = Keypair::new();
-    let fake_origin_location_pk = Pubkey::new_unique();
+    let fake_origin_exchange_pk = Pubkey::new_unique();
 
     let fake_origin_location = Location {
         index: 0,
@@ -360,7 +360,7 @@ async fn test_initialize_internet_latency_samples_fail_origin_location_wrong_own
     };
 
     let mut ledger =
-        LedgerHelper::new_with_preloaded_accounts(vec![(fake_origin_location_pk, fake_account)])
+        LedgerHelper::new_with_preloaded_accounts(vec![(fake_origin_exchange_pk, fake_account)])
             .await
             .unwrap();
 
@@ -370,7 +370,7 @@ async fn test_initialize_internet_latency_samples_fail_origin_location_wrong_own
         .unwrap();
 
     // Seed ledger with two locations, and a funded agent.
-    let (oracle_agent, _origin_location_pk, target_location_pk) =
+    let (oracle_agent, _origin_exchange_pk, target_exchange_pk) =
         ledger.seed_with_two_locations().await.unwrap();
 
     ledger.wait_for_new_blockhash().await.unwrap();
@@ -382,8 +382,8 @@ async fn test_initialize_internet_latency_samples_fail_origin_location_wrong_own
         .initialize_internet_latency_samples(
             &oracle_agent,
             provider_name,
-            fake_origin_location_pk,
-            target_location_pk,
+            fake_origin_exchange_pk,
+            target_exchange_pk,
             42,
             60_000_000,
         )
@@ -395,7 +395,7 @@ async fn test_initialize_internet_latency_samples_fail_origin_location_wrong_own
 #[tokio::test]
 async fn test_initialize_internet_latency_samples_fail_target_location_wrong_owner() {
     let agent = Keypair::new();
-    let fake_target_location_pk = Pubkey::new_unique();
+    let fake_target_exchange_pk = Pubkey::new_unique();
 
     let fake_target_location = Location {
         index: 0,
@@ -424,7 +424,7 @@ async fn test_initialize_internet_latency_samples_fail_target_location_wrong_own
     };
 
     let mut ledger =
-        LedgerHelper::new_with_preloaded_accounts(vec![(fake_target_location_pk, fake_account)])
+        LedgerHelper::new_with_preloaded_accounts(vec![(fake_target_exchange_pk, fake_account)])
             .await
             .unwrap();
 
@@ -434,7 +434,7 @@ async fn test_initialize_internet_latency_samples_fail_target_location_wrong_own
         .unwrap();
 
     // Seed ledger with two locations, and a funded agent.
-    let (oracle_agent, origin_location_pk, _target_location_pk) =
+    let (oracle_agent, origin_exchange_pk, _target_exchange_pk) =
         ledger.seed_with_two_locations().await.unwrap();
 
     ledger.wait_for_new_blockhash().await.unwrap();
@@ -446,8 +446,8 @@ async fn test_initialize_internet_latency_samples_fail_target_location_wrong_own
         .initialize_internet_latency_samples(
             &oracle_agent,
             provider_name,
-            origin_location_pk,
-            fake_target_location_pk,
+            origin_exchange_pk,
+            fake_target_exchange_pk,
             42,
             60_000_000,
         )
@@ -461,7 +461,7 @@ async fn test_initialize_internet_latency_samples_fail_provider_name_too_long() 
     let mut ledger = LedgerHelper::new().await.unwrap();
 
     // Seed ledger with two locations and a funded sample collector oracle
-    let (oracle, origin_location_pk, target_location_pk) =
+    let (oracle, origin_exchange_pk, target_exchange_pk) =
         ledger.seed_with_two_locations().await.unwrap();
 
     // Wait for a new blockhash before proceeding
@@ -474,8 +474,8 @@ async fn test_initialize_internet_latency_samples_fail_provider_name_too_long() 
         &ledger.telemetry.program_id,
         &oracle.pubkey(),
         &pda_name,
-        &origin_location_pk,
-        &target_location_pk,
+        &origin_exchange_pk,
+        &target_exchange_pk,
         1,
     );
 
@@ -494,8 +494,8 @@ async fn test_initialize_internet_latency_samples_fail_provider_name_too_long() 
             vec![
                 AccountMeta::new(pda, false),
                 AccountMeta::new(oracle.pubkey(), true),
-                AccountMeta::new(origin_location_pk, false),
-                AccountMeta::new(target_location_pk, false),
+                AccountMeta::new(origin_exchange_pk, false),
+                AccountMeta::new(target_exchange_pk, false),
                 AccountMeta::new(solana_program::system_program::id(), false),
             ],
         )
@@ -515,7 +515,7 @@ async fn test_initialize_internet_latency_samples_fail_provider_name_too_long() 
 async fn test_initialize_internet_latency_samples_fail_account_already_exists() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 
-    let (oracle_agent, origin_location_pk, target_location_pk) =
+    let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
         ledger.seed_with_two_locations().await.unwrap();
 
     ledger.wait_for_new_blockhash().await.unwrap();
@@ -527,8 +527,8 @@ async fn test_initialize_internet_latency_samples_fail_account_already_exists() 
         .initialize_internet_latency_samples(
             &oracle_agent,
             data_provider_name.clone(),
-            origin_location_pk,
-            target_location_pk,
+            origin_exchange_pk,
+            target_exchange_pk,
             100,
             60_000_000,
         )
@@ -546,8 +546,8 @@ async fn test_initialize_internet_latency_samples_fail_account_already_exists() 
             &oracle_agent,
             latency_samples_pda,
             data_provider_name,
-            origin_location_pk,
-            target_location_pk,
+            origin_exchange_pk,
+            target_exchange_pk,
             100,
             60_000_000,
         )
@@ -560,7 +560,7 @@ async fn test_initialize_internet_latency_samples_fail_account_already_exists() 
 async fn test_initialize_internet_latency_samples_fail_invalid_pda() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 
-    let (oracle_agent, origin_location_pk, target_location_pk) =
+    let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
         ledger.seed_with_two_locations().await.unwrap();
 
     ledger.wait_for_new_blockhash().await.unwrap();
@@ -572,8 +572,8 @@ async fn test_initialize_internet_latency_samples_fail_invalid_pda() {
         &ledger.telemetry.program_id,
         &oracle_agent.pubkey(),
         &data_provider_name,
-        &origin_location_pk,
-        &target_location_pk,
+        &origin_exchange_pk,
+        &target_exchange_pk,
         100,
     );
 
@@ -586,8 +586,8 @@ async fn test_initialize_internet_latency_samples_fail_invalid_pda() {
             &oracle_agent,
             fake_pda,
             data_provider_name,
-            origin_location_pk,
-            target_location_pk,
+            origin_exchange_pk,
+            target_exchange_pk,
             100,
             60_000_000,
         )
@@ -600,7 +600,7 @@ async fn test_initialize_internet_latency_samples_fail_invalid_pda() {
 async fn test_initialize_internet_latency_samples_fail_zero_sampling_interval() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 
-    let (oracle_agent, origin_location_pk, target_location_pk) =
+    let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
         ledger.seed_with_two_locations().await.unwrap();
 
     ledger.wait_for_new_blockhash().await.unwrap();
@@ -612,8 +612,8 @@ async fn test_initialize_internet_latency_samples_fail_zero_sampling_interval() 
         .initialize_internet_latency_samples(
             &oracle_agent,
             data_provider_name,
-            origin_location_pk,
-            target_location_pk,
+            origin_exchange_pk,
+            target_exchange_pk,
             100,
             0,
         )
@@ -626,7 +626,7 @@ async fn test_initialize_internet_latency_samples_fail_zero_sampling_interval() 
 async fn test_initialize_internet_latency_samples_fail_same_origin_and_target_location() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 
-    let (oracle_agent, origin_location_pk, _target_location_pk) =
+    let (oracle_agent, origin_exchange_pk, _target_exchange_pk) =
         ledger.seed_with_two_locations().await.unwrap();
 
     ledger.wait_for_new_blockhash().await.unwrap();
@@ -638,8 +638,8 @@ async fn test_initialize_internet_latency_samples_fail_same_origin_and_target_lo
         .initialize_internet_latency_samples(
             &oracle_agent,
             data_provider_name,
-            origin_location_pk,
-            origin_location_pk,
+            origin_exchange_pk,
+            origin_exchange_pk,
             100,
             60_000_000,
         )

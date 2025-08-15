@@ -29,7 +29,7 @@ async fn test_write_internet_latency_samples_success() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 
     // Seed ledger with two locations and a funded sample collector oracle
-    let (oracle_agent, origin_location_pk, target_location_pk) =
+    let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
         ledger.seed_with_two_locations().await.unwrap();
 
     // Wait for a new blockhash before proceeding
@@ -43,8 +43,8 @@ async fn test_write_internet_latency_samples_success() {
         .initialize_internet_latency_samples(
             &oracle_agent,
             provider_name.clone(),
-            origin_location_pk,
-            target_location_pk,
+            origin_exchange_pk,
+            target_exchange_pk,
             1u64,
             60_000_000,
         )
@@ -169,7 +169,7 @@ async fn test_write_internet_latency_samples_fail_unauthorized_agent() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 
     // Set up a valid latency samples account with a specific oracle agent
-    let (oracle_agent, origin_location_pk, target_location_pk) =
+    let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
         ledger.seed_with_two_locations().await.unwrap();
 
     ledger.wait_for_new_blockhash().await.unwrap();
@@ -181,8 +181,8 @@ async fn test_write_internet_latency_samples_fail_unauthorized_agent() {
         .initialize_internet_latency_samples(
             &oracle_agent,
             provider_name.clone(),
-            origin_location_pk,
-            target_location_pk,
+            origin_exchange_pk,
+            target_exchange_pk,
             1u64,
             60_000_000,
         )
@@ -219,7 +219,7 @@ async fn test_write_internet_latency_samples_fail_account_full() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 
     // Set up latency samples account with a funded oracle agent
-    let (oracle_agent, origin_location_pk, target_location_pk) =
+    let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
         ledger.seed_with_two_locations().await.unwrap();
 
     ledger.wait_for_new_blockhash().await.unwrap();
@@ -231,8 +231,8 @@ async fn test_write_internet_latency_samples_fail_account_full() {
         .initialize_internet_latency_samples(
             &oracle_agent,
             provider_name.clone(),
-            origin_location_pk,
-            target_location_pk,
+            origin_exchange_pk,
+            target_exchange_pk,
             1u64,
             60_000_000,
         )
@@ -278,7 +278,7 @@ async fn test_write_internet_latency_samples_fail_account_full() {
 async fn test_write_internet_latency_samples_fail_agent_not_signer() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 
-    let (oracle_agent, origin_location_pk, target_location_pk) =
+    let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
         ledger.seed_with_two_locations().await.unwrap();
     ledger.wait_for_new_blockhash().await.unwrap();
 
@@ -289,8 +289,8 @@ async fn test_write_internet_latency_samples_fail_agent_not_signer() {
         .initialize_internet_latency_samples(
             &oracle_agent,
             provider_name.clone(),
-            origin_location_pk,
-            target_location_pk,
+            origin_exchange_pk,
+            target_exchange_pk,
             1u64,
             60_000_000,
         )
@@ -348,7 +348,7 @@ async fn test_write_internet_latency_samples_fail_agent_not_signer() {
 async fn test_write_internet_latency_samples_fail_on_empty_samples() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 
-    let (oracle_agent, origin_location_pk, target_location_pk) =
+    let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
         ledger.seed_with_two_locations().await.unwrap();
     ledger.wait_for_new_blockhash().await.unwrap();
 
@@ -359,8 +359,8 @@ async fn test_write_internet_latency_samples_fail_on_empty_samples() {
         .initialize_internet_latency_samples(
             &oracle_agent,
             provider_name.clone(),
-            origin_location_pk,
-            target_location_pk,
+            origin_exchange_pk,
+            target_exchange_pk,
             1u64,
             60_000_000,
         )
@@ -400,8 +400,8 @@ async fn test_write_internet_latency_samples_fail_with_invalid_pda() {
             epoch: 1,
             oracle_agent_pk: oracle_agent.pubkey(),
             data_provider_name: provider_name.clone(),
-            origin_location_pk: Pubkey::new_unique(),
-            target_location_pk: Pubkey::new_unique(),
+            origin_exchange_pk: Pubkey::new_unique(),
+            target_exchange_pk: Pubkey::new_unique(),
             sampling_interval_microseconds: 60_000_000,
             start_timestamp_microseconds: 0,
             next_sample_index: 0,
@@ -450,7 +450,7 @@ async fn test_write_internet_latency_samples_fail_with_invalid_pda() {
 async fn test_write_internet_latency_samples_next_sample_index_correct() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 
-    let (oracle_agent, origin_location_pk, target_location_pk) =
+    let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
         ledger.seed_with_two_locations().await.unwrap();
     ledger.wait_for_new_blockhash().await.unwrap();
 
@@ -461,8 +461,8 @@ async fn test_write_internet_latency_samples_next_sample_index_correct() {
         .initialize_internet_latency_samples(
             &oracle_agent,
             provider_name.clone(),
-            origin_location_pk,
-            target_location_pk,
+            origin_exchange_pk,
+            target_exchange_pk,
             1u64,
             60_000_000,
         )
@@ -503,7 +503,7 @@ async fn test_write_internet_latency_samples_fail_wrong_agent_but_valid_signer()
     let mut ledger = LedgerHelper::new().await.unwrap();
 
     // Seed the latency samples with a valid oracle agent
-    let (oracle_agent, origin_location_pk, target_location_pk) =
+    let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
         ledger.seed_with_two_locations().await.unwrap();
 
     let provider_name = "RIPE Atlas".to_string();
@@ -514,8 +514,8 @@ async fn test_write_internet_latency_samples_fail_wrong_agent_but_valid_signer()
         .initialize_internet_latency_samples(
             &oracle_agent,
             provider_name.clone(),
-            origin_location_pk,
-            target_location_pk,
+            origin_exchange_pk,
+            target_exchange_pk,
             1u64,
             60_000_000,
         )
@@ -553,7 +553,7 @@ async fn test_write_internet_latency_samples_fail_wrong_agent_but_valid_signer()
 async fn test_write_internet_latency_samples_to_max_samples() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 
-    let (oracle_agent, origin_location_pk, target_location_pk) =
+    let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
         ledger.seed_with_two_locations().await.unwrap();
     ledger.wait_for_new_blockhash().await.unwrap();
 
@@ -564,8 +564,8 @@ async fn test_write_internet_latency_samples_to_max_samples() {
         .initialize_internet_latency_samples(
             &oracle_agent,
             provider_name.clone(),
-            origin_location_pk,
-            target_location_pk,
+            origin_exchange_pk,
+            target_exchange_pk,
             1u64,
             60_000_000,
         )
@@ -625,7 +625,7 @@ async fn test_write_internet_latency_samples_fail_samples_batch_too_large() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 
     // Seed the ledger with two locations and a valid oracle agent
-    let (oracle_agent, origin_location_pk, target_location_pk) =
+    let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
         ledger.seed_with_two_locations().await.unwrap();
 
     // Wait for a new blockhash before moving on
@@ -639,8 +639,8 @@ async fn test_write_internet_latency_samples_fail_samples_batch_too_large() {
         .initialize_internet_latency_samples(
             &oracle_agent,
             provider_name.clone(),
-            origin_location_pk,
-            target_location_pk,
+            origin_exchange_pk,
+            target_exchange_pk,
             1u64,
             60_000_000,
         )

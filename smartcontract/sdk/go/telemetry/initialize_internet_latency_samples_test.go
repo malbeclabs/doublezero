@@ -68,18 +68,18 @@ func TestSDK_Telemetry_InitializeInternetLatencySamples_MissingFields(t *testing
 		expectError string
 	}{
 		{
-			name: "missing_origin_location_pk",
+			name: "missing_origin_exchange_pk",
 			mutate: func(c *telemetry.InitializeInternetLatencySamplesInstructionConfig) {
 				c.OriginExchangePK = solana.PublicKey{}
 			},
-			expectError: "origin location public key is required",
+			expectError: "origin exchange public key is required",
 		},
 		{
-			name: "missing_target_location_pk",
+			name: "missing_target_exchange_pk",
 			mutate: func(c *telemetry.InitializeInternetLatencySamplesInstructionConfig) {
 				c.TargetExchangePK = solana.PublicKey{}
 			},
-			expectError: "target location public key is required",
+			expectError: "target exchange public key is required",
 		},
 		{
 			name: "missing_data_provider_name",

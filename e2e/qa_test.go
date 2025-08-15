@@ -6,9 +6,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
 	"math/rand"
 	"net"
+	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,6 +19,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
@@ -26,28 +30,88 @@ import (
 )
 
 var (
-	hosts = flag.String("hosts", "", "comma separated list of hosts to run tests against")
-	port  = flag.String("port", "7009", "port to connect to on each host")
+	hosts          = flag.String("hosts", "", "comma separated list of hosts to run tests against")
+	port           = flag.String("port", "7009", "port to connect to on each host")
+	env            = flag.String("env", "", "environment to run in (devnet, testnet, mainnet)")
+	forcePublisher = flag.String("force-publisher", "", "host to force as publisher for multicast tests (optional)")
+
+	serviceabilityClient *serviceability.Client
+
+	clients      map[string]pb.QAAgentServiceClient
+	clientsMutex sync.RWMutex
+
+	hostList []string
 )
 
-func TestConnectivityUnicast(t *testing.T) {
+func TestMain(m *testing.M) {
 	flag.Parse()
-
-	if *hosts == "" {
-		t.Skip("No hosts provided, skipping unicast connectivity test")
+	switch *env {
+	case "devnet", "testnet", "mainnet":
+	case "":
+		log.Fatal("The -env flag is required. Must be one of: devnet, testnet, mainnet")
+	default:
+		log.Fatalf("Invalid value for -env flag: %q. Must be one of: devnet, testnet, mainnet", *env)
 	}
-	hosts := strings.Split(*hosts, ",")
-	cleanup := unicastCleanupFunc(t, hosts)
+
+	networkConfig, err := config.NetworkConfigForEnv(*env)
+	if err != nil {
+		log.Fatalf("failed to get network config for env %s: %v", *env, err)
+	}
+	serviceabilityClient = serviceability.New(rpc.New(networkConfig.LedgerPublicRPCURL), networkConfig.ServiceabilityProgramID)
+
+	clients = make(map[string]pb.QAAgentServiceClient)
+	clientConns := make(map[string]*grpc.ClientConn)
+
+	if *hosts != "" {
+		hostList = strings.Split(*hosts, ",")
+		if len(hostList) < 2 {
+			log.Fatal("At least two hosts are required to run the tests")
+		}
+		for _, host := range hostList {
+			addr := net.JoinHostPort(host, *port)
+			conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			if err != nil {
+				log.Fatalf("Failed to create gRPC client connection for host %s: %v", host, err)
+			}
+			clientConns[host] = conn
+			clients[host] = pb.NewQAAgentServiceClient(conn)
+		}
+	}
+
+	exitCode := m.Run()
+
+	for host, conn := range clientConns {
+		if err := conn.Close(); err != nil {
+			log.Printf("Failed to close gRPC connection for host %s: %v", host, err)
+		}
+	}
+
+	os.Exit(exitCode)
+}
+
+func getQAClient(host string) (pb.QAAgentServiceClient, error) {
+	clientsMutex.RLock()
+	defer clientsMutex.RUnlock()
+
+	client, ok := clients[host]
+	if !ok {
+		return nil, fmt.Errorf("no client found for host: %s. Ensure it is included in the --hosts flag", host)
+	}
+	return client, nil
+}
+
+func TestConnectivityUnicast(t *testing.T) {
+	cleanup := unicastCleanupFunc(t, hostList)
 	defer cleanup()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	for _, host := range hosts {
+	for _, host := range hostList {
 		t.Run("connect_ibrl_mode_from_"+host, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
-			client, err := getQAClient(net.JoinHostPort(host, *port))
+			client, err := getQAClient(host)
 			require.NoError(t, err, "Failed to create QA client")
 
 			// TODO: pick random host to use IBRL w/ allocated address mode
@@ -63,11 +127,11 @@ func TestConnectivityUnicast(t *testing.T) {
 		})
 	}
 
-	for _, host := range hosts {
+	for _, host := range hostList {
 		t.Run("connectivity_check_from_"+host, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			defer cancel()
-			client, err := getQAClient(net.JoinHostPort(host, *port))
+			client, err := getQAClient(host)
 			require.NoError(t, err, "Failed to create QA client")
 
 			resp, err := client.GetStatus(ctx, &emptypb.Empty{})
@@ -131,36 +195,47 @@ func TestConnectivityUnicast(t *testing.T) {
 }
 
 func TestConnectivityMulticast(t *testing.T) {
-	flag.Parse()
+	code := "qa-test-group"
 
-	if *hosts == "" {
-		t.Skip("No hosts provided, skipping multicast connectivity test")
+	var publisher string
+	if *forcePublisher != "" {
+		publisher = *forcePublisher
+	} else {
+		// Pick a random host to be the publisher.
+		r := rand.New(rand.NewSource(time.Now().UnixNano()))
+		publisherIndex := r.Intn(len(hostList))
+		publisher = hostList[publisherIndex]
 	}
-	hosts := strings.Split(*hosts, ",")
+
+	var publisherIndex = -1
+	for i, h := range hostList {
+		if h == publisher {
+			publisherIndex = i
+			break
+		}
+	}
+	// Make the selected publisher is actually in the list of hosts.
+	if publisherIndex == -1 {
+		t.Fatalf("Forced publisher %s is not in the host list: %v", publisher, hostList)
+	}
+
+	// Remove the publisher from the slice; the rest are subscribers.
+	subscribers := make([]string, 0, len(hostList)-1)
+	subscribers = append(subscribers, hostList[:publisherIndex]...)
+	subscribers = append(subscribers, hostList[publisherIndex+1:]...)
+	require.Greater(t, len(subscribers), 0, "Not enough hosts to test multicast, need at least one subscriber")
+
+	cleanup := multicastCleanupFunc(t, hostList, publisher, code)
+	defer cleanup()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Pick a random host to be the publisher.
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	publisherIndex := r.Intn(len(hosts))
-	publisher := hosts[publisherIndex]
-	code := "qa-test-group"
-
-	cleanup := multicastCleanupFunc(t, hosts, publisher, code)
-	defer cleanup()
-
-	// Remove the publisher from the slice; the rest are subscribers.
-	subscribers := make([]string, 0, len(hosts)-1)
-	subscribers = append(subscribers, hosts[:publisherIndex]...)
-	subscribers = append(subscribers, hosts[publisherIndex+1:]...)
-	require.Greater(t, len(subscribers), 0, "Not enough hosts to test multicast, need at least one subscriber")
-
-	t.Logf("Using publisher: %s, subscribers: %v, hosts: %v", publisher, subscribers, hosts)
+	t.Logf("Using publisher: %s, subscribers: %v, hosts: %v", publisher, subscribers, hostList)
 	t.Run("create_multicast_group", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
-		client, err := getQAClient(net.JoinHostPort(publisher, *port))
+		client, err := getQAClient(publisher)
 		require.NoError(t, err, "Failed to create QA client")
 
 		req := &pb.CreateMulticastGroupRequest{
@@ -205,7 +280,7 @@ func TestConnectivityMulticast(t *testing.T) {
 	t.Run("update_multicast_allow_list", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
-		client, err := getQAClient(net.JoinHostPort(publisher, *port))
+		client, err := getQAClient(publisher)
 		require.NoError(t, err, "Failed to create QA client")
 
 		req := &pb.MulticastAllowListAddRequest{
@@ -238,7 +313,7 @@ func TestConnectivityMulticast(t *testing.T) {
 			t.Run("subscribe_"+host, func(t *testing.T) {
 				ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 				defer cancel()
-				client, err := getQAClient(net.JoinHostPort(host, *port))
+				client, err := getQAClient(host)
 				require.NoError(t, err, "Failed to create QA client")
 				req := &pb.ConnectMulticastRequest{
 					Mode: pb.ConnectMulticastRequest_SUBSCRIBER,
@@ -267,7 +342,7 @@ func TestConnectivityMulticast(t *testing.T) {
 	t.Run("connect_multicast_publisher_"+publisher, func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
-		client, err := getQAClient(net.JoinHostPort(publisher, *port))
+		client, err := getQAClient(publisher)
 		require.NoError(t, err, "Failed to create QA client")
 		req := &pb.ConnectMulticastRequest{
 			Mode: pb.ConnectMulticastRequest_PUBLISHER,
@@ -295,7 +370,7 @@ func TestConnectivityMulticast(t *testing.T) {
 				t.Parallel()
 				ctx, cancel := context.WithTimeout(ctx, 180*time.Second)
 				defer cancel()
-				client, err := getQAClient(net.JoinHostPort(host, *port))
+				client, err := getQAClient(host)
 				require.NoError(t, err, "Failed to create QA client")
 
 				condition := func() (bool, error) {
@@ -337,21 +412,13 @@ func TestConnectivityMulticast(t *testing.T) {
 			t.Run("stop_subscriber_"+host, func(t *testing.T) {
 				ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 				defer cancel()
-				client, err := getQAClient(net.JoinHostPort(host, *port))
+				client, err := getQAClient(host)
 				require.NoError(t, err, "Failed to create QA client")
 				_, err = client.MulticastLeave(ctx, &emptypb.Empty{})
 				require.NoError(t, err, "MulticastLeave failed")
 			})
 		}
 	})
-}
-
-func getQAClient(addr string) (pb.QAAgentServiceClient, error) {
-	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		return nil, err
-	}
-	return pb.NewQAAgentServiceClient(conn), nil
 }
 
 func unicastCleanupFunc(t *testing.T, hosts []string) func() {
@@ -373,7 +440,7 @@ func disconnectUsers(t *testing.T, hosts []string) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			client, err := getQAClient(net.JoinHostPort(host, *port))
+			client, err := getQAClient(host)
 			require.NoError(t, err, "Failed to create QA client")
 
 			_, err = client.Disconnect(ctx, &emptypb.Empty{})
@@ -391,7 +458,7 @@ func removeMulticastGroup(t *testing.T, code, publisher string) {
 		if !ok {
 			require.Fail(t, "Multicast group not found")
 		}
-		client, err := getQAClient(net.JoinHostPort(publisher, *port))
+		client, err := getQAClient(publisher)
 		require.NoError(t, err, "Failed to create QA client")
 
 		pubKey := base58.Encode(group.PubKey[:])

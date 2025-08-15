@@ -14,7 +14,7 @@ edition = "2021"
 homepage = "https://doublezero.xyz"
 license = "Apache-2.0"
 repository = ""
-rust-version = "1.83"
+rust-version = "1.84"
 version = "0.1.0"
 
 [workspace.dependencies]
@@ -55,7 +55,7 @@ url = "2"
 
 ### Please keep these packages pinned for now.
 sha2-const-stable = "=0.1.0"
-solana-program-test = "=2.3.6"
+solana-program-test = "=2.3.7"
 solana-sdk = "=2.3"
 
 [workspace.dependencies.doublezero-passport]

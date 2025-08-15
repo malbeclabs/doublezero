@@ -6,7 +6,7 @@ on:
     branches: [ main ]
 
 env:
-  SOLANA_CLI: v2.3.6
+  SOLANA_CLI: v2.3.7
 
 jobs:
   test-2z-cli-clean:

@@ -91,8 +91,12 @@ rust-test:
 rust-test-sbf:
 	cd smartcontract && SERVICEABILITY_PROGRAM_ID=$(SERVICEABILITY_PROGRAM_ID) $(MAKE) test-sbf
 
+.PHONY: rust-validator-test
+rust-validator-test:
+	bash smartcontract/test/run_record_test.sh
+
 .PHONY: rust-ci
-rust-ci: rust-build rust-lint rust-test
+rust-ci: rust-build rust-lint rust-test rust-validator-test
 
 
 # -----------------------------------------------------------------------------

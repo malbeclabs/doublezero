@@ -1,4 +1,4 @@
-name: qa.devnet
+name: qa.testnet
 
 on:
   workflow_call:

@@ -170,7 +170,6 @@ impl RewardInput {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::settings::ShapleySettings;
 
     fn create_test_input() -> RewardInput {
         let shapley_settings = ShapleySettings {

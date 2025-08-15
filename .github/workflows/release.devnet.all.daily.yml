@@ -38,7 +38,7 @@ jobs:
     uses: ./.github/workflows/release.devnet.smartcontract.daily.yml
     secrets: inherit
   qa:
-    uses: ./.github/workflows/qa.yml
+    uses: ./.github/workflows/qa.devnet.yml
     needs:
       - release
       - smartcontract

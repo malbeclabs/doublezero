@@ -75,13 +75,18 @@ impl RecordWriteChunk {
         rpc_client: &RpcClient,
         recent_blockhash: Hash,
         payer_signer: &Keypair,
+        should_confirm_last: bool,
         config: RpcSendTransactionConfig,
     ) -> Result<Signature, ClientError> {
         let transaction = new_transaction(recent_blockhash, &[self.instruction], &[payer_signer])?;
 
-        rpc_client
-            .send_transaction_with_config(&transaction, config)
-            .await
+        if self.is_last_chunk && should_confirm_last {
+            rpc_client.send_and_confirm_transaction(&transaction).await
+        } else {
+            rpc_client
+                .send_transaction_with_config(&transaction, config)
+                .await
+        }
     }
 }
 

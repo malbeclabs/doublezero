@@ -64,36 +64,25 @@ async fn test_record_client() {
 
     let payer_key = payer_signer.pubkey();
 
-    let mut tx_sig = None;
     let mut count = 0;
 
     for record_chunk in record::instruction::write_record_chunks(&payer_key, seeds, record_data) {
-        tx_sig.replace(
-            record_chunk
-                .into_send_transaction_with_config(
-                    &rpc_client,
-                    recent_blockhash,
-                    &payer_signer,
-                    RpcSendTransactionConfig {
-                        preflight_commitment: Some(commitment_config.commitment),
-                        ..Default::default()
-                    },
-                )
-                .await
-                .unwrap(),
-        );
+        record_chunk
+            .into_send_transaction_with_config(
+                &rpc_client,
+                recent_blockhash,
+                &payer_signer,
+                true, // should_confirm_last
+                RpcSendTransactionConfig {
+                    preflight_commitment: Some(commitment_config.commitment),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
         count += 1;
     }
     assert_eq!(count, 1);
-
-    while !rpc_client
-        .confirm_transaction_with_commitment(&tx_sig.unwrap(), commitment_config)
-        .await
-        .unwrap()
-        .value
-    {
-        tokio::time::sleep(Duration::from_millis(400)).await;
-    }
 
     let record_key = record::pubkey::create_record_key(&payer_key, seeds);
     let record_account_info = rpc_client
@@ -136,36 +125,25 @@ async fn test_record_client() {
     let chunks_iter =
         record::instruction::write_record_chunks(&payer_key, seeds, &large_record_data);
 
-    let mut tx_sig = None;
     let mut count = 0;
 
     for record_chunk in chunks_iter {
-        tx_sig.replace(
-            record_chunk
-                .into_send_transaction_with_config(
-                    &rpc_client,
-                    recent_blockhash,
-                    &payer_signer,
-                    RpcSendTransactionConfig {
-                        preflight_commitment: Some(commitment_config.commitment),
-                        ..Default::default()
-                    },
-                )
-                .await
-                .unwrap(),
-        );
+        record_chunk
+            .into_send_transaction_with_config(
+                &rpc_client,
+                recent_blockhash,
+                &payer_signer,
+                true, // should_confirm_last
+                RpcSendTransactionConfig {
+                    preflight_commitment: Some(commitment_config.commitment),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
         count += 1;
     }
     assert_eq!(count, 3);
-
-    while !rpc_client
-        .confirm_transaction_with_commitment(&tx_sig.unwrap(), commitment_config)
-        .await
-        .unwrap()
-        .value
-    {
-        tokio::time::sleep(Duration::from_millis(400)).await;
-    }
 
     let record_key = record::pubkey::create_record_key(&payer_key, seeds);
     let record_account_info = rpc_client

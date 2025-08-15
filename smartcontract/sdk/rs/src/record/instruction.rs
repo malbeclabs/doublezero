@@ -60,9 +60,9 @@ impl InitializeRecordInstructions {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecordWriteChunk {
     pub instruction: Instruction,
-    pub chunk_index: usize,
     pub offset: usize,
     pub chunk_size: usize,
+    pub is_last_chunk: bool,
 }
 
 /// Create a series of instructions to write a record. The record is written in
@@ -74,17 +74,22 @@ pub fn write_record_chunks<'a>(
 ) -> impl Iterator<Item = RecordWriteChunk> + 'a {
     let record_key = create_record_key(payer_key, seeds);
 
-    data.chunks(CHUNK_SIZE).enumerate().map(move |(i, chunk)| {
-        let offset = i * CHUNK_SIZE;
-        let instruction =
-            doublezero_record::instruction::write(&record_key, payer_key, offset as u64, chunk);
+    let mut peekable_iter = data.chunks(CHUNK_SIZE).enumerate().peekable();
 
-        RecordWriteChunk {
-            instruction,
-            chunk_index: i,
-            offset,
-            chunk_size: chunk.len(),
-        }
+    std::iter::from_fn(move || {
+        peekable_iter.next().map(|(i, chunk)| {
+            let offset = i * CHUNK_SIZE;
+            let instruction =
+                doublezero_record::instruction::write(&record_key, payer_key, offset as u64, chunk);
+            let is_last_chunk = peekable_iter.peek().is_none();
+
+            RecordWriteChunk {
+                instruction,
+                offset,
+                chunk_size: chunk.len(),
+                is_last_chunk,
+            }
+        })
     })
 }
 

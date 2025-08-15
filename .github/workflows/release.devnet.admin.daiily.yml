@@ -1,0 +1,15 @@
+name: release.devnet.admin.daily
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    uses: ./.github/workflows/release.daily.yml
+    with:
+      component: admin
+      playbook: playbooks/admins.yml
+    secrets: inherit
+    permissions:
+      contents: write
+      packages: write

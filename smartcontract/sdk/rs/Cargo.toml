@@ -42,6 +42,3 @@ tempfile.workspace = true
 tokio.workspace = true
 solana-system-interface.workspace = true
 log.workspace = true
-
-[features]
-local-validator-test = []

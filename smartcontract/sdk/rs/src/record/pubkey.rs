@@ -38,12 +38,12 @@ mod tests {
 
     #[test]
     fn test_create_record_key() {
-        let payer_key = Pubkey::new_unique();
+        let payer_key = solana_sdk::pubkey!("84s5hmJUjfRhsQ443M1iWnCfNNmLbQLHmWTRyHtxbQzw");
         let seeds: [&[u8]; 1] = [b"test_create_record_key"];
         let record_key = create_record_key(&payer_key, &seeds);
         assert_eq!(
             record_key,
-            solana_sdk::pubkey!("5ijcs731e8ZwP5UoUai1QM7C1X93DVg4bKsTVzAeNXqn")
+            solana_sdk::pubkey!("9eP3pWoN5uFfUsHBb63wgWnMPjbvGSzQgQe6EDRCdpKJ")
         );
     }
 }

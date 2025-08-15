@@ -43,6 +43,7 @@ jobs:
         with:
           ssh-private-key: |
             ${{ secrets.DOUBLEZERO_PRIV_KEY }}
+            ${{ secrets.DOUBLEZEROFOUNDATION_SSH_PRIVATE }}
 
       - name: Test | CI Pipeline
         run: just ci

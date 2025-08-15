@@ -25,7 +25,7 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 
 	// Use the hardcoded serviceability program keypair for this test, since the telemetry program
 	// is built with it as an expectation, and the initialize instruction will fail if the owner
-	// of the locations is not the matching serviceability program ID.
+	// of the exchanges is not the matching serviceability program ID.
 	currentDir, err := os.Getwd()
 	require.NoError(t, err)
 	serviceabilityProgramKeypairPath := filepath.Join(currentDir, "data", "serviceability-program-keypair.json")
@@ -51,33 +51,33 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 	// Create an oracle agent keypair.
 	oracleAgentPK := solana.NewWallet().PrivateKey
 
-	// Wait for locations to be created onchain.
-	log.Info("==> Waiting for locations to be created onchain")
+	// Wait for exchanges to be created onchain.
+	log.Info("==> Waiting for exchanges to be created onchain")
 	serviceabilityClient, err := dn.Ledger.GetServiceabilityClient()
 	require.NoError(t, err)
 	require.Eventually(t, func() bool {
 		data, err := serviceabilityClient.GetProgramData(ctx)
 		require.NoError(t, err)
-		return len(data.Locations) == 8
+		return len(data.Exchanges) == 8
 	}, 20*time.Second, 1*time.Second)
 
-	// Get locations from onchain.
+	// Get exchanges from onchain.
 	serviceabilityData, err := serviceabilityClient.GetProgramData(ctx)
 	require.NoError(t, err)
-	locations := map[string]*serviceability.Location{}
-	for _, location := range serviceabilityData.Locations {
-		locations[location.Code] = &location
+	exchanges := map[string]*serviceability.Exchange{}
+	for _, exchange := range serviceabilityData.Exchanges {
+		exchanges[exchange.Code] = &exchange
 	}
 
-	// Get LAX location PK.
-	laxLocation, ok := locations["lax"]
-	require.True(t, ok, "lax location not found")
-	laxLocationPK := solana.PublicKeyFromBytes(laxLocation.PubKey[:])
+	// Get LAX exchange PK.
+	laxExchange, ok := exchanges["xlax"]
+	require.True(t, ok, "xlax exchange not found")
+	laxExchangePK := solana.PublicKeyFromBytes(laxExchange.PubKey[:])
 
-	// Get AMS location PK.
-	amsLocation, ok := locations["ams"]
-	require.True(t, ok, "ams location not found")
-	amsLocationPK := solana.PublicKeyFromBytes(amsLocation.PubKey[:])
+	// Get AMS exchange PK.
+	amsExchange, ok := exchanges["xams"]
+	require.True(t, ok, "xams exchange not found")
+	amsExchangePK := solana.PublicKeyFromBytes(amsExchange.PubKey[:])
 
 	// Get ledger RPC client.
 	rpcClient := dn.Ledger.GetRPCClient()
@@ -97,7 +97,7 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		defer cancel()
 		start := time.Now()
 		log.Info("==> Attempting to get internet latency samples before initialized (should fail)")
-		internetLatencySamples, err := telemetryClient.GetInternetLatencySamples(ctx, dataProvider1Name, laxLocationPK, laxLocationPK, oracleAgentPK.PublicKey(), epoch)
+		internetLatencySamples, err := telemetryClient.GetInternetLatencySamples(ctx, dataProvider1Name, laxExchangePK, laxExchangePK, oracleAgentPK.PublicKey(), epoch)
 		require.ErrorIs(t, err, telemetry.ErrAccountNotFound)
 		require.Nil(t, internetLatencySamples)
 		log.Info("==> Got expected account not found error when getting internet latency samples PDA", "error", err, "duration", time.Since(start))
@@ -110,8 +110,8 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		start := time.Now()
 		log.Info("==> Attempting to write internet latency samples before initialized (should fail)")
 		_, res, err := telemetryClient.WriteInternetLatencySamples(ctx, telemetry.WriteInternetLatencySamplesInstructionConfig{
-			OriginLocationPK:           laxLocationPK,
-			TargetLocationPK:           amsLocationPK,
+			OriginExchangePK:           laxExchangePK,
+			TargetExchangePK:           amsExchangePK,
 			DataProviderName:           dataProvider1Name,
 			Epoch:                      epoch,
 			StartTimestampMicroseconds: uint64(time.Now().UnixMicro()),
@@ -129,8 +129,8 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		start := time.Now()
 		log.Info("==> Initializing internet latency samples")
 		sig, res, err := telemetryClient.InitializeInternetLatencySamples(ctx, telemetry.InitializeInternetLatencySamplesInstructionConfig{
-			OriginLocationPK:             laxLocationPK,
-			TargetLocationPK:             amsLocationPK,
+			OriginExchangePK:             laxExchangePK,
+			TargetExchangePK:             amsExchangePK,
 			DataProviderName:             dataProvider1Name,
 			Epoch:                        epoch,
 			SamplingIntervalMicroseconds: samplingIntervalMicroseconds,
@@ -149,15 +149,15 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		defer cancel()
 		start := time.Now()
 		log.Info("==> Getting internet latency samples from PDA")
-		account, err := telemetryClient.GetInternetLatencySamples(ctx, dataProvider1Name, laxLocationPK, amsLocationPK, oracleAgentPK.PublicKey(), epoch)
+		account, err := telemetryClient.GetInternetLatencySamples(ctx, dataProvider1Name, laxExchangePK, amsExchangePK, oracleAgentPK.PublicKey(), epoch)
 		require.NoError(t, err)
 		log.Info("==> Got internet latency samples from PDA", "internetLatencySamples", account, "duration", time.Since(start))
 		require.Equal(t, telemetry.AccountTypeInternetLatencySamples, account.AccountType)
 		require.Equal(t, dataProvider1Name, account.DataProviderName)
 		require.Equal(t, epoch, account.Epoch)
 		require.Equal(t, oracleAgentPK.PublicKey(), account.OracleAgentPK)
-		require.Equal(t, laxLocationPK, account.OriginLocationPK)
-		require.Equal(t, amsLocationPK, account.TargetLocationPK)
+		require.Equal(t, laxExchangePK, account.OriginExchangePK)
+		require.Equal(t, amsExchangePK, account.TargetExchangePK)
 		require.Equal(t, samplingIntervalMicroseconds, account.SamplingIntervalMicroseconds)
 		require.Equal(t, uint32(0), account.NextSampleIndex)
 		require.Empty(t, account.Samples)
@@ -179,8 +179,8 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		start := time.Now()
 		log.Info("==> Writing internet latency samples")
 		sig, res, err := telemetryClient.WriteInternetLatencySamples(ctx, telemetry.WriteInternetLatencySamplesInstructionConfig{
-			OriginLocationPK:           laxLocationPK,
-			TargetLocationPK:           amsLocationPK,
+			OriginExchangePK:           laxExchangePK,
+			TargetExchangePK:           amsExchangePK,
 			DataProviderName:           dataProvider1Name,
 			Epoch:                      epoch,
 			StartTimestampMicroseconds: firstStartTimestampMicroseconds,
@@ -200,14 +200,14 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		defer cancel()
 		start := time.Now()
 		log.Info("==> Getting internet latency samples from PDA")
-		account, err := telemetryClient.GetInternetLatencySamples(ctx, dataProvider1Name, laxLocationPK, amsLocationPK, oracleAgentPK.PublicKey(), epoch)
+		account, err := telemetryClient.GetInternetLatencySamples(ctx, dataProvider1Name, laxExchangePK, amsExchangePK, oracleAgentPK.PublicKey(), epoch)
 		require.NoError(t, err)
 		log.Info("==> Got internet latency samples from PDA", "internetLatencySamples", account, "duration", time.Since(start))
 		require.Equal(t, telemetry.AccountTypeInternetLatencySamples, account.AccountType)
 		require.Equal(t, epoch, account.Epoch)
 		require.Equal(t, oracleAgentPK.PublicKey(), account.OracleAgentPK)
-		require.Equal(t, laxLocationPK, account.OriginLocationPK)
-		require.Equal(t, amsLocationPK, account.TargetLocationPK)
+		require.Equal(t, laxExchangePK, account.OriginExchangePK)
+		require.Equal(t, amsExchangePK, account.TargetExchangePK)
 		require.Equal(t, samplingIntervalMicroseconds, account.SamplingIntervalMicroseconds)
 		require.Equal(t, firstStartTimestampMicroseconds, account.StartTimestampMicroseconds)
 		require.Equal(t, uint32(len(firstSamples)), account.NextSampleIndex)
@@ -220,8 +220,8 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		defer cancel()
 		log.Info("==> Attempting to initialize internet latency samples again (should fail)")
 		_, res, err := telemetryClient.InitializeInternetLatencySamples(ctx, telemetry.InitializeInternetLatencySamplesInstructionConfig{
-			OriginLocationPK:             laxLocationPK,
-			TargetLocationPK:             amsLocationPK,
+			OriginExchangePK:             laxExchangePK,
+			TargetExchangePK:             amsExchangePK,
 			DataProviderName:             dataProvider1Name,
 			Epoch:                        epoch,
 			SamplingIntervalMicroseconds: samplingIntervalMicroseconds,
@@ -250,8 +250,8 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		start := time.Now()
 		log.Info("==> Writing more internet latency samples")
 		sig, res, err := telemetryClient.WriteInternetLatencySamples(ctx, telemetry.WriteInternetLatencySamplesInstructionConfig{
-			OriginLocationPK:           laxLocationPK,
-			TargetLocationPK:           amsLocationPK,
+			OriginExchangePK:           laxExchangePK,
+			TargetExchangePK:           amsExchangePK,
 			DataProviderName:           dataProvider1Name,
 			Epoch:                      epoch,
 			StartTimestampMicroseconds: secondStartTimestampMicroseconds,
@@ -271,14 +271,14 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		defer cancel()
 		start := time.Now()
 		log.Info("==> Getting internet latency samples from PDA")
-		internetLatencySamples, err := telemetryClient.GetInternetLatencySamples(ctx, dataProvider1Name, laxLocationPK, amsLocationPK, oracleAgentPK.PublicKey(), epoch)
+		internetLatencySamples, err := telemetryClient.GetInternetLatencySamples(ctx, dataProvider1Name, laxExchangePK, amsExchangePK, oracleAgentPK.PublicKey(), epoch)
 		require.NoError(t, err)
 		log.Info("==> Got internet latency samples from PDA", "internetLatencySamples", internetLatencySamples, "duration", time.Since(start))
 		require.Equal(t, telemetry.AccountTypeInternetLatencySamples, internetLatencySamples.AccountType)
 		require.Equal(t, epoch, internetLatencySamples.Epoch)
 		require.Equal(t, oracleAgentPK.PublicKey(), internetLatencySamples.OracleAgentPK)
-		require.Equal(t, laxLocationPK, internetLatencySamples.OriginLocationPK)
-		require.Equal(t, amsLocationPK, internetLatencySamples.TargetLocationPK)
+		require.Equal(t, laxExchangePK, internetLatencySamples.OriginExchangePK)
+		require.Equal(t, amsExchangePK, internetLatencySamples.TargetExchangePK)
 		require.Equal(t, samplingIntervalMicroseconds, internetLatencySamples.SamplingIntervalMicroseconds)  // Remains unchanged.
 		require.Equal(t, firstStartTimestampMicroseconds, internetLatencySamples.StartTimestampMicroseconds) // Remains unchanged.
 		combinedSamples := append(firstSamples, secondSamples...)
@@ -292,8 +292,8 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		start := time.Now()
 		log.Info("==> Writing largest possible batch of samples per transaction")
 		sig, res, err := telemetryClient.WriteInternetLatencySamples(ctx, telemetry.WriteInternetLatencySamplesInstructionConfig{
-			OriginLocationPK:           laxLocationPK,
-			TargetLocationPK:           amsLocationPK,
+			OriginExchangePK:           laxExchangePK,
+			TargetExchangePK:           amsExchangePK,
 			DataProviderName:           dataProvider1Name,
 			Epoch:                      epoch,
 			StartTimestampMicroseconds: secondStartTimestampMicroseconds,
@@ -312,8 +312,8 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 		defer cancel()
 		log.Info("==> Writing largest possible batch of samples per transaction +1 (should fail)")
 		_, _, err := telemetryClient.WriteInternetLatencySamples(ctx, telemetry.WriteInternetLatencySamplesInstructionConfig{
-			OriginLocationPK:           laxLocationPK,
-			TargetLocationPK:           amsLocationPK,
+			OriginExchangePK:           laxExchangePK,
+			TargetExchangePK:           amsExchangePK,
 			DataProviderName:           dataProvider1Name,
 			Epoch:                      epoch,
 			StartTimestampMicroseconds: secondStartTimestampMicroseconds,

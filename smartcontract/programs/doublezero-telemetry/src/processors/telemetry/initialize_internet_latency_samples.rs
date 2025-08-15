@@ -7,7 +7,7 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_program_common::create_account::try_create_account;
-use doublezero_serviceability::state::location::{Location, LocationStatus};
+use doublezero_serviceability::state::exchange::{Exchange, ExchangeStatus};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -29,17 +29,17 @@ pub struct InitializeInternetLatencySamplesArgs {
 
 /// Initializes a new PDA account for collecting RTT latency samples from the public interet.
 ///
-/// The account is uniquely derived using the data provider's name, the origin and target location, and epoch.
+/// The account is uniquely derived using the data provider's name, the origin and target exchange, and epoch.
 /// It is created with an initial fixed size header of metadata and is associated with a single oracle agent
 /// authorized to write samples collected from third party probe providers.
 ///
-/// This function verifies ownership of the locations by the `serviceability_program`, that
+/// This function verifies ownership of the exchanges by the `serviceability_program`, that
 /// the agent is registered as the authorized internet sampling agent in the `serviceability_program`'s global state,
-/// and that the locations statuses are `active`.
+/// and that the exchanges statuses are `active`.
 ///
 /// Errors:
 /// - `InvalidSamplingInterval`: zero interval
-/// - `LocationNotActive`: inactive or suspended Location
+/// - `ExchangeNotActive`: inactive or suspended Exchange
 /// - `InvalidPDA`, `AccountAlreadyExists`
 pub fn process_initialize_internet_latency_samples(
     program_id: &Pubkey,
@@ -60,11 +60,11 @@ pub fn process_initialize_internet_latency_samples(
 
     let accounts_iter = &mut accounts.iter();
 
-    // Expected account order: [latency_samples_account, collector agent, origin_location, target_location, system_program]
+    // Expected account order: [latency_samples_account, collector agent, origin_exchange, target_exchange, system_program]
     let latency_samples_acct = next_account_info(accounts_iter)?;
     let collector_agent = next_account_info(accounts_iter)?;
-    let origin_location_account = next_account_info(accounts_iter)?;
-    let target_location_account = next_account_info(accounts_iter)?;
+    let origin_exchange_account = next_account_info(accounts_iter)?;
+    let target_exchange_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
     // Require the caller is the authorized signing agent
@@ -73,33 +73,33 @@ pub fn process_initialize_internet_latency_samples(
     }
 
     let serviceability_program_id = &serviceability_program_id();
-    if origin_location_account.owner != serviceability_program_id {
-        msg!("Origin location is not owned by the serviceability program");
+    if origin_exchange_account.owner != serviceability_program_id {
+        msg!("Origin exchange is not owned by the serviceability program");
         return Err(ProgramError::IncorrectProgramId);
     }
-    if target_location_account.owner != serviceability_program_id {
-        msg!("Target location is not owned by the serviceability program");
+    if target_exchange_account.owner != serviceability_program_id {
+        msg!("Target exchange is not owned by the serviceability program");
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let origin_location = Location::try_from(origin_location_account)?;
-    if origin_location.status != LocationStatus::Activated
-        && origin_location.status != LocationStatus::Suspended
+    let origin_exchange = Exchange::try_from(origin_exchange_account)?;
+    if origin_exchange.status != ExchangeStatus::Activated
+        && origin_exchange.status != ExchangeStatus::Suspended
     {
-        msg!("Origin location is not activated");
-        return Err(TelemetryError::LocationNotActiveOrSuspended.into());
+        msg!("Origin exchange is not activated");
+        return Err(TelemetryError::ExchangeNotActiveOrSuspended.into());
     }
 
-    let target_location = Location::try_from(target_location_account)?;
-    if target_location.status != LocationStatus::Activated
-        && target_location.status != LocationStatus::Suspended
+    let target_exchange = Exchange::try_from(target_exchange_account)?;
+    if target_exchange.status != ExchangeStatus::Activated
+        && target_exchange.status != ExchangeStatus::Suspended
     {
-        msg!("Target location is not activated");
-        return Err(TelemetryError::LocationNotActiveOrSuspended.into());
+        msg!("Target exchange is not activated");
+        return Err(TelemetryError::ExchangeNotActiveOrSuspended.into());
     }
 
-    if origin_location == target_location {
-        msg!("Origin and target locations cannot be the same");
+    if origin_exchange == target_exchange {
+        msg!("Origin and target exchanges cannot be the same");
         return Err(TelemetryError::SameTargetAsOrigin.into());
     }
 
@@ -109,8 +109,8 @@ pub fn process_initialize_internet_latency_samples(
         program_id,
         collector_agent.key,
         &args.data_provider_name,
-        origin_location_account.key,
-        target_location_account.key,
+        origin_exchange_account.key,
+        target_exchange_account.key,
         args.epoch,
     );
 
@@ -157,8 +157,8 @@ pub fn process_initialize_internet_latency_samples(
             SEED_INTERNET_LATENCY_SAMPLES,
             collector_agent.key.as_ref(),
             args.data_provider_name.as_bytes(),
-            origin_location_account.key.as_ref(),
-            target_location_account.key.as_ref(),
+            origin_exchange_account.key.as_ref(),
+            target_exchange_account.key.as_ref(),
             &args.epoch.to_le_bytes(),
             &[latency_samples_bump_seed],
         ],
@@ -170,8 +170,8 @@ pub fn process_initialize_internet_latency_samples(
         oracle_agent_pk: *collector_agent.key,
         data_provider_name: args.data_provider_name.clone(),
         epoch: args.epoch,
-        origin_location_pk: *origin_location_account.key,
-        target_location_pk: *target_location_account.key,
+        origin_exchange_pk: *origin_exchange_account.key,
+        target_exchange_pk: *target_exchange_account.key,
         sampling_interval_microseconds: args.sampling_interval_microseconds,
         start_timestamp_microseconds: 0, // will be set on first write
         next_sample_index: 0,

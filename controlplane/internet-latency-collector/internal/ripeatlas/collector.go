@@ -466,8 +466,8 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 				Source:        locationA,
 			}] = exporter.Record{
 				DataProvider:       exporter.DataProviderNameRIPEAtlas,
-				SourceLocationCode: locationA,
-				TargetLocationCode: locationZ,
+				SourceExchangeCode: locationA,
+				TargetExchangeCode: locationZ,
 				Timestamp:          timestamp,
 				RTT:                latency,
 			}

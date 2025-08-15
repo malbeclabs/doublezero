@@ -18,8 +18,8 @@ func TestBufferedLedgerExporter_WriteRecords(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now()
 
-	locA := serviceability.Location{Code: "LOC_A", PubKey: solana.NewWallet().PublicKey()}
-	locB := serviceability.Location{Code: "LOC_B", PubKey: solana.NewWallet().PublicKey()}
+	locA := serviceability.Exchange{Code: "LOC_A", PubKey: solana.NewWallet().PublicKey()}
+	locB := serviceability.Exchange{Code: "LOC_B", PubKey: solana.NewWallet().PublicKey()}
 
 	testCases := []struct {
 		name               string
@@ -32,7 +32,7 @@ func TestBufferedLedgerExporter_WriteRecords(t *testing.T) {
 			name:    "no records",
 			records: nil,
 			mockGetProgramData: func(ctx context.Context) (*serviceability.ProgramData, error) {
-				return &serviceability.ProgramData{Locations: []serviceability.Location{locA, locB}}, nil
+				return &serviceability.ProgramData{Exchanges: []serviceability.Exchange{locA, locB}}, nil
 			},
 			expectErrContains: "",
 			expectEmptyBuffer: true,
@@ -43,39 +43,39 @@ func TestBufferedLedgerExporter_WriteRecords(t *testing.T) {
 				Timestamp:          now,
 				RTT:                10,
 				DataProvider:       "",
-				SourceLocationCode: "LOC_A",
-				TargetLocationCode: "LOC_B",
+				SourceExchangeCode: "LOC_A",
+				TargetExchangeCode: "LOC_B",
 			}},
 			mockGetProgramData: func(ctx context.Context) (*serviceability.ProgramData, error) {
-				return &serviceability.ProgramData{Locations: []serviceability.Location{locA, locB}}, nil
+				return &serviceability.ProgramData{Exchanges: []serviceability.Exchange{locA, locB}}, nil
 			},
 			expectErrContains: "no data provider",
 		},
 		{
-			name: "record with missing SourceLocationCode",
+			name: "record with missing SourceExchangeCode",
 			records: []exporter.Record{{
 				Timestamp:          now,
 				RTT:                10,
 				DataProvider:       "DP",
-				SourceLocationCode: "",
-				TargetLocationCode: "LOC_B",
+				SourceExchangeCode: "",
+				TargetExchangeCode: "LOC_B",
 			}},
 			mockGetProgramData: func(ctx context.Context) (*serviceability.ProgramData, error) {
-				return &serviceability.ProgramData{Locations: []serviceability.Location{locA, locB}}, nil
+				return &serviceability.ProgramData{Exchanges: []serviceability.Exchange{locA, locB}}, nil
 			},
-			expectErrContains: "no source location code",
+			expectErrContains: "no source exchange code",
 		},
 		{
-			name: "record with unknown location code",
+			name: "record with unknown exchange code",
 			records: []exporter.Record{{
 				Timestamp:          now,
 				RTT:                10,
 				DataProvider:       "DP",
-				SourceLocationCode: "UNKNOWN",
-				TargetLocationCode: "LOC_B",
+				SourceExchangeCode: "UNKNOWN",
+				TargetExchangeCode: "LOC_B",
 			}},
 			mockGetProgramData: func(ctx context.Context) (*serviceability.ProgramData, error) {
-				return &serviceability.ProgramData{Locations: []serviceability.Location{locA, locB}}, nil
+				return &serviceability.ProgramData{Exchanges: []serviceability.Exchange{locA, locB}}, nil
 			},
 			expectErrContains: "",
 			expectEmptyBuffer: true,
@@ -86,11 +86,11 @@ func TestBufferedLedgerExporter_WriteRecords(t *testing.T) {
 				Timestamp:          now,
 				RTT:                42,
 				DataProvider:       "DP",
-				SourceLocationCode: "LOC_A",
-				TargetLocationCode: "LOC_B",
+				SourceExchangeCode: "LOC_A",
+				TargetExchangeCode: "LOC_B",
 			}},
 			mockGetProgramData: func(ctx context.Context) (*serviceability.ProgramData, error) {
-				return &serviceability.ProgramData{Locations: []serviceability.Location{locA, locB}}, nil
+				return &serviceability.ProgramData{Exchanges: []serviceability.Exchange{locA, locB}}, nil
 			},
 			expectErrContains: "",
 			expectEmptyBuffer: false,
@@ -101,13 +101,13 @@ func TestBufferedLedgerExporter_WriteRecords(t *testing.T) {
 				Timestamp:          now,
 				RTT:                42,
 				DataProvider:       "DP",
-				SourceLocationCode: "LOC_A",
-				TargetLocationCode: "LOC_B",
+				SourceExchangeCode: "LOC_A",
+				TargetExchangeCode: "LOC_B",
 			}},
 			mockGetProgramData: func(ctx context.Context) (*serviceability.ProgramData, error) {
 				return nil, errors.New("boom")
 			},
-			expectErrContains: "failed to get locations",
+			expectErrContains: "failed to get exchanges",
 		},
 	}
 

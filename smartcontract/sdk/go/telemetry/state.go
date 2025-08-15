@@ -127,11 +127,11 @@ type InternetLatencySamplesHeader struct {
 	// OracleAgentPK authorized to write latency samples (must match signer)
 	OracleAgentPK solana.PublicKey // 32
 
-	// OriginLocationPK is the location of the origin for sample collection.
-	OriginLocationPK solana.PublicKey // 32
+	// OriginExchangePK is the dz exchange of the origin for sample collection.
+	OriginExchangePK solana.PublicKey // 32
 
-	// TargetLocationPK is the location of the target for sample collection.
-	TargetLocationPK solana.PublicKey // 32
+	// TargetExchangePK is the dz exchange of the target for sample collection.
+	TargetExchangePK solana.PublicKey // 32
 
 	// SamplingIntervalMicroseconds is the interval between samples (in microseconds).
 	SamplingIntervalMicroseconds uint64 // 8

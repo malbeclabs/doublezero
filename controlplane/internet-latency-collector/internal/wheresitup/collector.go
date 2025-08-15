@@ -479,8 +479,8 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 
 		records = append(records, exporter.Record{
 			DataProvider:       exporter.DataProviderNameWheresitup,
-			SourceLocationCode: sourceLocation,
-			TargetLocationCode: targetLocation,
+			SourceExchangeCode: sourceLocation,
+			TargetExchangeCode: targetLocation,
 			Timestamp:          time.Unix(results.Request.StartTime, 0).UTC(),
 			RTT:                latency,
 		})

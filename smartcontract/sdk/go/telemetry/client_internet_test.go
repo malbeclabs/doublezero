@@ -27,8 +27,8 @@ func TestSDK_Telemetry_Client_GetInternetLatencySamples_HappyPath(t *testing.T) 
 			AccountType:                  telemetry.AccountTypeInternetLatencySamples,
 			Epoch:                        42,
 			DataProviderName:             "test-data-provider-1",
-			OriginLocationPK:             solana.NewWallet().PublicKey(),
-			TargetLocationPK:             solana.NewWallet().PublicKey(),
+			OriginExchangePK:             solana.NewWallet().PublicKey(),
+			TargetExchangePK:             solana.NewWallet().PublicKey(),
 			SamplingIntervalMicroseconds: 100_000,
 			StartTimestampMicroseconds:   1_600_000_000,
 			NextSampleIndex:              3,
@@ -55,8 +55,8 @@ func TestSDK_Telemetry_Client_GetInternetLatencySamples_HappyPath(t *testing.T) 
 	got, err := client.GetInternetLatencySamples(
 		context.Background(),
 		expected.DataProviderName,
-		expected.OriginLocationPK,
-		expected.TargetLocationPK,
+		expected.OriginExchangePK,
+		expected.TargetExchangePK,
 		signer.PublicKey(),
 		expected.Epoch,
 	)
@@ -152,8 +152,8 @@ func TestSDK_Telemetry_Client_InitializeInternetLatencySamples_HappyPath(t *test
 	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
 
 	config := telemetry.InitializeInternetLatencySamplesInstructionConfig{
-		OriginLocationPK:             solana.NewWallet().PublicKey(),
-		TargetLocationPK:             solana.NewWallet().PublicKey(),
+		OriginExchangePK:             solana.NewWallet().PublicKey(),
+		TargetExchangePK:             solana.NewWallet().PublicKey(),
 		DataProviderName:             "test-data-provider-1",
 		Epoch:                        42,
 		SamplingIntervalMicroseconds: 500_000,
@@ -177,8 +177,8 @@ func TestSDK_Telemetry_Client_InitializeInternetLatencySamples_BuildFails(t *tes
 	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
 
 	config := telemetry.InitializeInternetLatencySamplesInstructionConfig{
-		OriginLocationPK:             solana.PublicKey{},
-		TargetLocationPK:             solana.NewWallet().PublicKey(),
+		OriginExchangePK:             solana.PublicKey{},
+		TargetExchangePK:             solana.NewWallet().PublicKey(),
 		DataProviderName:             "test-data-provider-1",
 		Epoch:                        42,
 		SamplingIntervalMicroseconds: 500_000,
@@ -187,7 +187,7 @@ func TestSDK_Telemetry_Client_InitializeInternetLatencySamples_BuildFails(t *tes
 	sig, tx, err := client.InitializeInternetLatencySamples(context.Background(), config)
 
 	require.ErrorContains(t, err, "failed to build instruction")
-	require.Contains(t, err.Error(), "origin location public key is required")
+	require.Contains(t, err.Error(), "origin exchange public key is required")
 	require.Equal(t, solana.Signature{}, sig)
 	require.Nil(t, tx)
 }
@@ -220,8 +220,8 @@ func TestSDK_Telemetry_Client_InitializeInternetLatencySamples_ExecutionFails(t 
 	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
 
 	config := telemetry.InitializeInternetLatencySamplesInstructionConfig{
-		OriginLocationPK:             solana.NewWallet().PublicKey(),
-		TargetLocationPK:             solana.NewWallet().PublicKey(),
+		OriginExchangePK:             solana.NewWallet().PublicKey(),
+		TargetExchangePK:             solana.NewWallet().PublicKey(),
 		DataProviderName:             "test-data-provider-1",
 		Epoch:                        42,
 		SamplingIntervalMicroseconds: 500_000,
@@ -269,8 +269,8 @@ func TestSDK_Telemetry_Client_WriteInternetLatencySamples_HappyPath(t *testing.T
 	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
 
 	config := telemetry.WriteInternetLatencySamplesInstructionConfig{
-		OriginLocationPK:           solana.NewWallet().PublicKey(),
-		TargetLocationPK:           solana.NewWallet().PublicKey(),
+		OriginExchangePK:           solana.NewWallet().PublicKey(),
+		TargetExchangePK:           solana.NewWallet().PublicKey(),
 		DataProviderName:           "test-data-provider-1",
 		Epoch:                      42,
 		StartTimestampMicroseconds: 1_600_000_000,
@@ -318,8 +318,8 @@ func TestSDK_Telemetry_Client_WriteInternetLatencySamples_SamplesBatchTooLarge(t
 	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
 
 	config := telemetry.WriteInternetLatencySamplesInstructionConfig{
-		OriginLocationPK:           solana.NewWallet().PublicKey(),
-		TargetLocationPK:           solana.NewWallet().PublicKey(),
+		OriginExchangePK:           solana.NewWallet().PublicKey(),
+		TargetExchangePK:           solana.NewWallet().PublicKey(),
 		DataProviderName:           "test-data-provider-1",
 		Epoch:                      42,
 		StartTimestampMicroseconds: 1_600_000_000,
@@ -368,8 +368,8 @@ func TestSDK_Telemetry_Client_WriteInternetLatencySamples_PreflightAccountNotFou
 	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
 
 	config := telemetry.WriteInternetLatencySamplesInstructionConfig{
-		OriginLocationPK:           solana.NewWallet().PublicKey(),
-		TargetLocationPK:           solana.NewWallet().PublicKey(),
+		OriginExchangePK:           solana.NewWallet().PublicKey(),
+		TargetExchangePK:           solana.NewWallet().PublicKey(),
 		DataProviderName:           "test-data-provider-1",
 		Epoch:                      42,
 		StartTimestampMicroseconds: 1_600_000_000,
@@ -426,8 +426,8 @@ func TestSDK_Telemetry_Client_WriteInternetLatencySamples_CustomInstructionError
 	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
 
 	config := telemetry.WriteInternetLatencySamplesInstructionConfig{
-		OriginLocationPK:           solana.NewWallet().PublicKey(),
-		TargetLocationPK:           solana.NewWallet().PublicKey(),
+		OriginExchangePK:           solana.NewWallet().PublicKey(),
+		TargetExchangePK:           solana.NewWallet().PublicKey(),
 		DataProviderName:           "test-data-provider-1",
 		Epoch:                      42,
 		StartTimestampMicroseconds: 1_600_000_000,
@@ -453,8 +453,8 @@ func TestSDK_Telemetry_Client_WriteInternetLatencySamples_BuildFails(t *testing.
 
 	// Intentionally missing OracleAgentPK
 	config := telemetry.WriteInternetLatencySamplesInstructionConfig{
-		OriginLocationPK:           solana.PublicKey{},
-		TargetLocationPK:           solana.PublicKey{},
+		OriginExchangePK:           solana.PublicKey{},
+		TargetExchangePK:           solana.PublicKey{},
 		DataProviderName:           "test-data-provider-1",
 		Epoch:                      42,
 		StartTimestampMicroseconds: 1_600_000_000,
@@ -464,7 +464,7 @@ func TestSDK_Telemetry_Client_WriteInternetLatencySamples_BuildFails(t *testing.
 	sig, tx, err := client.WriteInternetLatencySamples(context.Background(), config)
 
 	require.ErrorContains(t, err, "failed to build instruction")
-	require.Contains(t, err.Error(), "origin location public key is required")
+	require.Contains(t, err.Error(), "origin exchange public key is required")
 	require.Equal(t, solana.Signature{}, sig)
 	require.Nil(t, tx)
 }
@@ -497,8 +497,8 @@ func TestSDK_Telemetry_Client_WriteInternetLatencySamples_ExecutionFails(t *test
 	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
 
 	config := telemetry.WriteInternetLatencySamplesInstructionConfig{
-		OriginLocationPK:           solana.NewWallet().PublicKey(),
-		TargetLocationPK:           solana.NewWallet().PublicKey(),
+		OriginExchangePK:           solana.NewWallet().PublicKey(),
+		TargetExchangePK:           solana.NewWallet().PublicKey(),
 		DataProviderName:           "test-data-provider-1",
 		Epoch:                      42,
 		StartTimestampMicroseconds: 1_600_000_000,
@@ -555,8 +555,8 @@ func TestSDK_Telemetry_Client_WriteInternetLatencySamples_CustomInstructionError
 	client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
 
 	config := telemetry.WriteInternetLatencySamplesInstructionConfig{
-		OriginLocationPK:           solana.NewWallet().PublicKey(),
-		TargetLocationPK:           solana.NewWallet().PublicKey(),
+		OriginExchangePK:           solana.NewWallet().PublicKey(),
+		TargetExchangePK:           solana.NewWallet().PublicKey(),
 		DataProviderName:           "test-data-provider-1",
 		Epoch:                      42,
 		StartTimestampMicroseconds: 1_600_000_000,

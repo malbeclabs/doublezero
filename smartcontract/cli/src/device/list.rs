@@ -5,7 +5,7 @@ use doublezero_sdk::{
         contributor::list::ListContributorCommand, device::list::ListDeviceCommand,
         exchange::list::ListExchangeCommand, location::list::ListLocationCommand,
     },
-    serializer, Device, DeviceStatus, DeviceType, NetworkV4List,
+    serializer, DeviceStatus, DeviceType, NetworkV4List,
 };
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
@@ -62,13 +62,9 @@ impl ListDeviceCliCommand {
         let contributors = client.list_contributor(ListContributorCommand {})?;
         let locations = client.list_location(ListLocationCommand {})?;
         let exchanges = client.list_exchange(ListExchangeCommand {})?;
-
         let devices = client.list_device(ListDeviceCommand)?;
 
-        let mut devices: Vec<(Pubkey, Device)> = devices.into_iter().collect();
-        devices.sort_by(|(_, a), (_, b)| a.owner.cmp(&b.owner));
-
-        let device_displays: Vec<DeviceDisplay> = devices
+        let mut device_displays: Vec<DeviceDisplay> = devices
             .iter()
             .map(|(pubkey, device)| {
                 let contributor_code = match contributors.get(&device.contributor_pk) {
@@ -111,6 +107,12 @@ impl ListDeviceCliCommand {
                 }
             })
             .collect();
+
+        device_displays.sort_by(|a, b| {
+            a.exchange_name
+                .cmp(&b.exchange_name)
+                .then_with(|| a.code.cmp(&b.code))
+        });
 
         let res = if self.json {
             serde_json::to_string_pretty(&device_displays)?

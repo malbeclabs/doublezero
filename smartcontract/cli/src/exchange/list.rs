@@ -2,7 +2,7 @@ use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_sdk::{
     commands::{device::list::ListDeviceCommand, exchange::list::ListExchangeCommand},
-    serializer, Exchange, ExchangeStatus,
+    serializer, ExchangeStatus,
 };
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
@@ -41,10 +41,7 @@ impl ListExchangeCliCommand {
 
         let devices = client.list_device(ListDeviceCommand)?;
 
-        let mut exchanges: Vec<(Pubkey, Exchange)> = exchanges.into_iter().collect();
-        exchanges.sort_by(|(_, a), (_, b)| a.owner.cmp(&b.owner));
-
-        let exchange_displays: Vec<ExchangeDisplay> = exchanges
+        let mut exchange_displays: Vec<ExchangeDisplay> = exchanges
             .into_iter()
             .map(|(pubkey, tunnel)| ExchangeDisplay {
                 account: pubkey,
@@ -75,6 +72,8 @@ impl ListExchangeCliCommand {
                 owner: tunnel.owner,
             })
             .collect();
+
+        exchange_displays.sort_by(|a, b| a.code.cmp(&b.code));
 
         let res = if self.json {
             serde_json::to_string_pretty(&exchange_displays)?

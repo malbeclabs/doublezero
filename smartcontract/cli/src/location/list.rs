@@ -1,8 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_sdk::{
-    commands::location::list::ListLocationCommand, serializer, Location, LocationStatus,
-};
+use doublezero_sdk::{commands::location::list::ListLocationCommand, serializer, LocationStatus};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
@@ -36,11 +34,7 @@ impl ListLocationCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let locations = client.list_location(ListLocationCommand)?;
 
-        let mut locations: Vec<(Pubkey, Location)> = locations.into_iter().collect();
-
-        locations.sort_by(|(_, a), (_, b)| a.owner.cmp(&b.owner));
-
-        let location_displays: Vec<LocationDisplay> = locations
+        let mut location_displays: Vec<LocationDisplay> = locations
             .into_iter()
             .map(|(pubkey, tunnel)| LocationDisplay {
                 account: pubkey,
@@ -53,6 +47,8 @@ impl ListLocationCliCommand {
                 owner: tunnel.owner,
             })
             .collect();
+
+        location_displays.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.code.cmp(&b.code)));
 
         let res = if self.json {
             serde_json::to_string_pretty(&location_displays)?

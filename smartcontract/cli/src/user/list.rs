@@ -61,13 +61,7 @@ impl ListUserCliCommand {
         let mgroups = client.list_multicastgroup(ListMulticastGroupCommand)?;
         let users = client.list_user(ListUserCommand)?;
 
-        let mut users: Vec<(Pubkey, User)> = users.into_iter().collect();
-        users.sort_by(|(_, a), (_, b)| {
-            a.device_pk
-                .cmp(&b.device_pk)
-                .then(a.tunnel_id.cmp(&b.tunnel_id))
-        });
-        let users_displays: Vec<UserDisplay> = users
+        let mut users_displays: Vec<UserDisplay> = users
             .into_iter()
             .map(|(pubkey, user)| {
                 let device = devices.get(&user.device_pk);
@@ -115,6 +109,12 @@ impl ListUserCliCommand {
                 }
             })
             .collect();
+
+        users_displays.sort_by(|a, b| {
+            a.device_name
+                .cmp(&b.device_name)
+                .then(a.tunnel_id.cmp(&b.tunnel_id))
+        });
 
         let res = if self.json {
             serde_json::to_string_pretty(&users_displays)?

@@ -65,7 +65,7 @@ impl ListDeviceCliCommand {
         let devices = client.list_device(ListDeviceCommand)?;
 
         let mut device_displays: Vec<DeviceDisplay> = devices
-            .iter()
+            .into_iter()
             .map(|(pubkey, device)| {
                 let contributor_code = match contributors.get(&device.contributor_pk) {
                     Some(contributor) => contributor.code.clone(),
@@ -87,7 +87,7 @@ impl ListDeviceCliCommand {
                 };
 
                 DeviceDisplay {
-                    account: *pubkey,
+                    account: pubkey,
                     code: device.code.clone(),
                     bump_seed: device.bump_seed,
                     location_pk: device.location_pk,

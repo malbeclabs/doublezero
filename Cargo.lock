@@ -1709,11 +1709,13 @@ version = "0.5.0"
 dependencies = [
  "base64 0.22.1",
  "bincode 2.0.1",
+ "bytemuck",
  "chrono",
  "directories-next",
  "dirs-next",
  "doublezero-config",
  "doublezero-program-common",
+ "doublezero-record",
  "doublezero-serviceability",
  "eyre",
  "futures",

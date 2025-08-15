@@ -287,7 +287,7 @@ impl DoubleZeroClient for DZClient {
         let blockhash = self.client.get_latest_blockhash().map_err(|e| eyre!(e))?;
         transaction.sign(&[&payer], blockhash);
 
-        debug!("Simulating transaction: {:?}", transaction);
+        debug!("Simulating transaction: {transaction:?}");
 
         let result = self.client.simulate_transaction(&transaction)?;
         if result.value.err.is_some() {

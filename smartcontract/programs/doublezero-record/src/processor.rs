@@ -29,7 +29,8 @@ pub fn process_instruction(
     accounts: &[AccountInfo],
     input: &[u8],
 ) -> ProgramResult {
-    let instruction = RecordInstruction::unpack(input)?;
+    let instruction =
+        RecordInstruction::unpack(input).ok_or(ProgramError::InvalidInstructionData)?;
     let account_info_iter = &mut accounts.iter();
 
     match instruction {
@@ -136,7 +137,7 @@ pub fn process_instruction(
             Ok(())
         }
 
-        RecordInstruction::Reallocate { data_length } => {
+        RecordInstruction::Reallocate(data_length) => {
             msg!("RecordInstruction::Reallocate");
             let data_info = next_account_info(account_info_iter)?;
             let authority_info = next_account_info(account_info_iter)?;

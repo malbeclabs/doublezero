@@ -14,12 +14,14 @@ name = "doublezero_sdk"
 
 [dependencies]
 base64.workspace = true
+bytemuck.workspace = true
 bincode.workspace = true
 chrono.workspace = true
 directories-next.workspace = true
 dirs-next.workspace = true
 doublezero-config.workspace = true
 doublezero-program-common.workspace = true
+doublezero-record.workspace = true
 doublezero-serviceability.workspace = true
 eyre.workspace = true
 futures.workspace = true
@@ -40,3 +42,6 @@ tempfile.workspace = true
 tokio.workspace = true
 solana-system-interface.workspace = true
 log.workspace = true
+
+[features]
+local-validator-test = []

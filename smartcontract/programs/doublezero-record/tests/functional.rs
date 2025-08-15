@@ -614,10 +614,7 @@ async fn reallocate_fail_wrong_authority() {
                     AccountMeta::new(account.pubkey(), false),
                     AccountMeta::new(wrong_authority.pubkey(), true),
                 ],
-                data: instruction::RecordInstruction::Reallocate {
-                    data_length: new_data_length,
-                }
-                .pack(),
+                data: instruction::RecordInstruction::Reallocate(new_data_length).pack(),
             },
             system_instruction::transfer(
                 &context.payer.pubkey(),
@@ -666,10 +663,7 @@ async fn reallocate_fail_unsigned() {
                     AccountMeta::new(account.pubkey(), false),
                     AccountMeta::new(authority.pubkey(), false),
                 ],
-                data: instruction::RecordInstruction::Reallocate {
-                    data_length: new_data_length,
-                }
-                .pack(),
+                data: instruction::RecordInstruction::Reallocate(new_data_length).pack(),
             },
             system_instruction::transfer(
                 &context.payer.pubkey(),

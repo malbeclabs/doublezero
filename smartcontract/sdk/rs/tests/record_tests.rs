@@ -1,4 +1,5 @@
-#![cfg(feature = "local-validator-test")]
+#![allow(unexpected_cfgs)]
+#![cfg(local_validator_test)]
 
 use std::time::Duration;
 

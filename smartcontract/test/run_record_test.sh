@@ -34,4 +34,4 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 cd $SMARTCONTRACT_DIR/sdk/rs
-cargo test --test '*' --features local-validator-test
+RUSTFLAGS='--cfg local_validator_test' cargo test --test '*'

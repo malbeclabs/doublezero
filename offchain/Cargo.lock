@@ -434,9 +434,9 @@ dependencies = [
 
 [[package]]
 name = "async-trait"
-version = "0.1.88"
+version = "0.1.89"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e539d3fca749fcee5236ab05e93a52867dd549cc157c8cb7f99595f3cedffdb5"
+checksum = "9035ad2d096bed7955a320ee7e2230574d28fd3c3a0f186cbea1ff3c7eed5dbb"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -780,42 +780,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "calculator"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "backon",
- "borsh 1.5.7",
- "chrono",
- "clap",
- "config",
- "csv",
- "doublezero-record",
- "doublezero-serviceability",
- "doublezero-telemetry",
- "governor 0.10.1",
- "ingestor",
- "itertools 0.14.0",
- "network-shapley",
- "processor",
- "rayon",
- "rust_decimal",
- "serde",
- "serde_json",
- "settings",
- "solana-client",
- "solana-sdk",
- "solana-system-interface",
- "svm-hash",
- "tabled",
- "tempfile",
- "thiserror 2.0.14",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "caps"
 version = "0.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1053,6 +1017,41 @@ name = "constant_time_eq"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c74b8349d32d297c9134b8c88677813a227df8f779daa29bfc29c183fe3dca6"
+
+[[package]]
+name = "contributor-rewards"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "backon",
+ "borsh 1.5.7",
+ "chrono",
+ "clap",
+ "config",
+ "csv",
+ "doublezero-record",
+ "doublezero-serviceability",
+ "doublezero-telemetry",
+ "doublezero_sdk",
+ "governor 0.10.1",
+ "itertools 0.14.0",
+ "network-shapley",
+ "rayon",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "solana-account-decoder",
+ "solana-client",
+ "solana-sdk",
+ "solana-system-interface",
+ "svm-hash",
+ "tabled",
+ "tempfile",
+ "thiserror 2.0.14",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
 
 [[package]]
 name = "convert_case"
@@ -1527,9 +1526,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "doublezero-config"
+version = "0.5.0"
+source = "git+ssh://git@github.com/malbeclabs/doublezero?rev=115c447f526c6f14bb98903d076030c191c4f7f9#115c447f526c6f14bb98903d076030c191c4f7f9"
+dependencies = [
+ "eyre",
+ "solana-sdk",
+]
+
+[[package]]
 name = "doublezero-program-common"
 version = "0.5.0"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#0e6bbf29c48810d2561527a826bdeea2bc56a329"
+source = "git+ssh://git@github.com/malbeclabs/doublezero?rev=115c447f526c6f14bb98903d076030c191c4f7f9#115c447f526c6f14bb98903d076030c191c4f7f9"
 dependencies = [
  "solana-program",
 ]
@@ -1537,7 +1545,7 @@ dependencies = [
 [[package]]
 name = "doublezero-record"
 version = "0.5.0"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#0e6bbf29c48810d2561527a826bdeea2bc56a329"
+source = "git+ssh://git@github.com/malbeclabs/doublezero?rev=115c447f526c6f14bb98903d076030c191c4f7f9#115c447f526c6f14bb98903d076030c191c4f7f9"
 dependencies = [
  "bytemuck",
  "solana-program",
@@ -1547,7 +1555,7 @@ dependencies = [
 [[package]]
 name = "doublezero-serviceability"
 version = "0.5.0"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#0e6bbf29c48810d2561527a826bdeea2bc56a329"
+source = "git+ssh://git@github.com/malbeclabs/doublezero?rev=115c447f526c6f14bb98903d076030c191c4f7f9#115c447f526c6f14bb98903d076030c191c4f7f9"
 dependencies = [
  "borsh 1.5.7",
  "byteorder",
@@ -1561,8 +1569,8 @@ dependencies = [
 
 [[package]]
 name = "doublezero-telemetry"
-version = "0.2.0"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#0e6bbf29c48810d2561527a826bdeea2bc56a329"
+version = "0.5.0"
+source = "git+ssh://git@github.com/malbeclabs/doublezero?rev=115c447f526c6f14bb98903d076030c191c4f7f9#115c447f526c6f14bb98903d076030c191c4f7f9"
 dependencies = [
  "borsh 1.5.7",
  "doublezero-program-common",
@@ -1575,16 +1583,21 @@ dependencies = [
 [[package]]
 name = "doublezero_sdk"
 version = "0.5.0"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#0e6bbf29c48810d2561527a826bdeea2bc56a329"
+source = "git+ssh://git@github.com/malbeclabs/doublezero?rev=115c447f526c6f14bb98903d076030c191c4f7f9#115c447f526c6f14bb98903d076030c191c4f7f9"
 dependencies = [
  "base64 0.22.1",
  "bincode 2.0.1",
+ "bytemuck",
  "chrono",
  "directories-next",
  "dirs-next",
+ "doublezero-config",
+ "doublezero-program-common",
+ "doublezero-record",
  "doublezero-serviceability",
  "eyre",
  "futures",
+ "log",
  "mockall",
  "serde",
  "serde_json",
@@ -2733,32 +2746,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ingestor"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "backon",
- "chrono",
- "config",
- "doublezero-serviceability",
- "doublezero-telemetry",
- "doublezero_sdk",
- "futures-util",
- "network-shapley",
- "rayon",
- "serde",
- "serde_json",
- "settings",
- "solana-account-decoder",
- "solana-client",
- "solana-epoch-info 3.0.0",
- "solana-sdk",
- "thiserror 2.0.14",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "inout"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3836,30 +3823,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "processor"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "borsh 1.5.7",
- "chrono",
- "config",
- "csv",
- "doublezero-serviceability",
- "doublezero-telemetry",
- "doublezero_sdk",
- "ingestor",
- "network-shapley",
- "rand 0.9.2",
- "rust_decimal",
- "serde",
- "serde_json",
- "solana-sdk",
- "tabled",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "ptr_meta"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4772,19 +4735,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "settings"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "borsh 1.5.7",
- "config",
- "serde",
- "serde_json",
- "tempfile",
- "tracing",
-]
-
-[[package]]
 name = "sha1"
 version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5114,7 +5064,7 @@ dependencies = [
  "solana-client-traits",
  "solana-commitment-config",
  "solana-connection-cache",
- "solana-epoch-info 2.2.1",
+ "solana-epoch-info",
  "solana-hash",
  "solana-instruction",
  "solana-keypair",
@@ -5148,7 +5098,7 @@ checksum = "83f0071874e629f29e0eb3dab8a863e98502ac7aba55b7e0df1803fc5cac72a7"
 dependencies = [
  "solana-account",
  "solana-commitment-config",
- "solana-epoch-info 2.2.1",
+ "solana-epoch-info",
  "solana-hash",
  "solana-instruction",
  "solana-keypair",
@@ -5322,12 +5272,6 @@ dependencies = [
  "serde",
  "serde_derive",
 ]
-
-[[package]]
-name = "solana-epoch-info"
-version = "3.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8a6b69bd71386f61344f2bcf0f527f5fd6dd3b22add5880e2e1bf1dd1fa8059"
 
 [[package]]
 name = "solana-epoch-rewards"
@@ -6114,9 +6058,9 @@ dependencies = [
 
 [[package]]
 name = "solana-rent-collector"
-version = "2.2.1"
+version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c1e19f5d5108b0d824244425e43bc78bbb9476e2199e979b0230c9f632d3bf4"
+checksum = "127e6dfa51e8c8ae3aa646d8b2672bc4ac901972a338a9e1cd249e030564fb9d"
 dependencies = [
  "serde",
  "serde_derive",
@@ -6184,7 +6128,7 @@ dependencies = [
  "solana-account-decoder-client-types",
  "solana-clock",
  "solana-commitment-config",
- "solana-epoch-info 2.2.1",
+ "solana-epoch-info",
  "solana-epoch-schedule",
  "solana-feature-gate-interface",
  "solana-hash",
@@ -6293,7 +6237,7 @@ dependencies = [
  "solana-decode-error",
  "solana-derivation-path",
  "solana-ed25519-program",
- "solana-epoch-info 2.2.1",
+ "solana-epoch-info",
  "solana-epoch-rewards-hasher",
  "solana-feature-set",
  "solana-fee-structure",
@@ -6723,7 +6667,7 @@ dependencies = [
  "solana-clock",
  "solana-commitment-config",
  "solana-connection-cache",
- "solana-epoch-info 2.2.1",
+ "solana-epoch-info",
  "solana-hash",
  "solana-instruction",
  "solana-keypair",

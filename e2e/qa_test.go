@@ -108,7 +108,7 @@ func TestConnectivityUnicast(t *testing.T) {
 	defer cancel()
 
 	for _, host := range hostList {
-		t.Run("connect_ibrl_mode_from_"+host, func(t *testing.T) {
+		if !t.Run("connect_ibrl_mode_from_"+host, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
 			client, err := getQAClient(host)
@@ -124,7 +124,9 @@ func TestConnectivityUnicast(t *testing.T) {
 			if result.GetSuccess() == false || result.GetReturnCode() != 0 {
 				require.Fail(t, "ConnectUnicast failed", result.GetOutput())
 			}
-		})
+		}) {
+			t.Fatalf("Failed to connect IBRL mode from host %s", host)
+		}
 	}
 
 	for _, host := range hostList {
@@ -195,14 +197,15 @@ func TestConnectivityUnicast(t *testing.T) {
 }
 
 func TestConnectivityMulticast(t *testing.T) {
-	code := "qa-test-group"
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	suffix := r.Intn(1000000)
+	code := fmt.Sprintf("qa-test-group-%06d", suffix)
 
 	var publisher string
 	if *forcePublisher != "" {
 		publisher = *forcePublisher
 	} else {
 		// Pick a random host to be the publisher.
-		r := rand.New(rand.NewSource(time.Now().UnixNano()))
 		publisherIndex := r.Intn(len(hostList))
 		publisher = hostList[publisherIndex]
 	}
@@ -232,7 +235,7 @@ func TestConnectivityMulticast(t *testing.T) {
 	defer cancel()
 
 	t.Logf("Using publisher: %s, subscribers: %v, hosts: %v", publisher, subscribers, hostList)
-	t.Run("create_multicast_group", func(t *testing.T) {
+	if !t.Run("create_multicast_group", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 		client, err := getQAClient(publisher)
@@ -247,7 +250,9 @@ func TestConnectivityMulticast(t *testing.T) {
 		if result.GetSuccess() == false || result.GetReturnCode() != 0 {
 			require.Fail(t, "CreateMulticastGroup failed", result.GetOutput())
 		}
-	})
+	}) {
+		t.Fatalf("Failed to create multicast group with publisher %s", publisher)
+	}
 
 	// get pubkey of created multicast group for deletion later
 	pubKey := ""
@@ -277,7 +282,7 @@ func TestConnectivityMulticast(t *testing.T) {
 	require.NoError(t, err, "Failed to get pubkey for multicast group")
 	t.Logf("Multicast group created with pubkey: %s address: %s owner: %s status: %d", pubKey, groupAddr, ownerPubKey, status)
 
-	t.Run("update_multicast_allow_list", func(t *testing.T) {
+	if !t.Run("update_multicast_allow_list", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 		client, err := getQAClient(publisher)
@@ -306,9 +311,11 @@ func TestConnectivityMulticast(t *testing.T) {
 			require.Fail(t, "MulticastAllowListAdd failed", result.GetOutput())
 		}
 		t.Logf("Multicast group %s added to allow list for subscriber %s", code, ownerPubKey)
-	})
+	}) {
+		t.Fatal("Failed to update multicast allow list")
+	}
 
-	t.Run("connect_multicast_subscribers", func(t *testing.T) {
+	if !t.Run("connect_multicast_subscribers", func(t *testing.T) {
 		for _, host := range subscribers {
 			t.Run("subscribe_"+host, func(t *testing.T) {
 				ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -337,9 +344,11 @@ func TestConnectivityMulticast(t *testing.T) {
 				require.NoError(t, err, "MulticastJoin failed")
 			})
 		}
-	})
+	}) {
+		t.Fatalf("Failed to connect multicast subscribers to group %s", code)
+	}
 
-	t.Run("connect_multicast_publisher_"+publisher, func(t *testing.T) {
+	if !t.Run("connect_multicast_publisher_"+publisher, func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 		client, err := getQAClient(publisher)
@@ -362,7 +371,9 @@ func TestConnectivityMulticast(t *testing.T) {
 		defer cancel()
 		_, err = client.MulticastSend(ctx, sendReq)
 		require.NoError(t, err, "MulticastSend failed")
-	})
+	}) {
+		t.Fatalf("Failed to connect multicast publisher %s to group %s", publisher, code)
+	}
 
 	t.Run("check_multicast_subscribers", func(t *testing.T) {
 		for _, host := range subscribers {
@@ -462,6 +473,7 @@ func removeMulticastGroup(t *testing.T, code, publisher string) {
 		require.NoError(t, err, "Failed to create QA client")
 
 		pubKey := base58.Encode(group.PubKey[:])
+		t.Logf("Deleting multicast group %s with pubkey %s", code, pubKey)
 		req := &pb.DeleteMulticastGroupRequest{
 			Pubkey: pubKey,
 		}

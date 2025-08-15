@@ -145,27 +145,13 @@ func (q *QAAgent) ConnectUnicast(ctx context.Context, req *pb.ConnectUnicastRequ
 		cmds = append(cmds, "--client-ip", clientIP)
 	}
 	cmd := exec.Command("doublezero", cmds...)
-	output, err := cmd.CombinedOutput()
-
-	res := &pb.Result{
-		Output: strings.Split(string(output), "\n"),
-	}
-
+	res, err := runCmd(cmd)
 	if err != nil {
-		res.Success = false
-		q.log.Error("Failed to connect unicast for client", "client_ip", clientIP, "output", string(output))
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			res.ReturnCode = int32(exitErr.ExitCode())
-		} else {
-			res.ReturnCode = -1
-			res.Output = append(res.Output, err.Error())
-		}
+		q.log.Error("Failed to connect unicast for client", "client_ip", clientIP, "output", res.GetOutput())
 		return res, fmt.Errorf("failed to connect unicast for client %s: %v", clientIP, err)
-	} else {
-		res.Success = true
-		res.ReturnCode = 0
-		q.log.Info("Successfully connected IBRL mode tunnel")
 	}
+
+	q.log.Info("Successfully connected IBRL mode tunnel")
 
 	condition := func() (bool, error) {
 		ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
@@ -427,16 +413,14 @@ func runCmd(cmd *exec.Cmd) (*pb.Result, error) {
 	res := &pb.Result{
 		Output: strings.Split(string(output), "\n"),
 	}
-
 	if err != nil {
 		res.Success = false
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			res.ReturnCode = int32(exitErr.ExitCode())
 		} else {
 			res.ReturnCode = -1
-			res.Output = append(res.Output, err.Error())
 		}
-		return res, fmt.Errorf("command failed: %v", err)
+		return res, fmt.Errorf("command failed: %v, output: %s", err, strings.Join(res.Output, "\n"))
 	}
 	res.Success = true
 	res.ReturnCode = 0

@@ -150,8 +150,6 @@ func TestConnectivityUnicast(t *testing.T) {
 	// Run connectivity checks only between hosts participating in the test
 	for _, host := range hostList {
 		t.Run("connectivity_check_from_"+host, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-			defer cancel()
 			client, err := getQAClient(host)
 			require.NoError(t, err, "Failed to create QA client")
 
@@ -170,12 +168,13 @@ func TestConnectivityUnicast(t *testing.T) {
 
 			for _, peer := range peers {
 				t.Run("to_"+peer, func(t *testing.T) {
-					ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+					ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 					defer cancel()
 					pingReq := &pb.PingRequest{
 						TargetIp:    peer,
 						SourceIp:    localAddr,
 						SourceIface: "doublezero0",
+						PingType:    pb.PingRequest_ICMP,
 					}
 					pingResp, err := client.Ping(ctx, pingReq)
 					require.NoError(t, err, "Ping failed for %s", peer)

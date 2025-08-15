@@ -1,4 +1,4 @@
-name: qa
+name: qa.devnet
 
 on:
   workflow_call:
@@ -13,4 +13,4 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - run: go test -v e2e/qa_test.go --args -hosts=chi-dn-bm2,chi-dn-bm3 -env devnet
+      - run: go test -v e2e/qa_test.go -run TestConnectivityUnicast --args -hosts=nyc-tn-qa01,sfo-tn-qa01,fra-tn-qa01,sgp-tn-qa01 -env testnet

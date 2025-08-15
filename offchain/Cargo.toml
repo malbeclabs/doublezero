@@ -1,9 +1,6 @@
 [workspace]
 members = [
-    "crates/settings",
-    "crates/ingestor",
-    "crates/processor",
-    "crates/calculator",
+    "crates/contributor-rewards",
 ]
 resolver = "2"
 
@@ -12,10 +9,10 @@ version = "0.1.0"
 edition = "2024"
 authors = ["Malbec Labs <dev@malbeclabs.com>"]
 readme = "README.md"
-description = "DoubleZero Off-Chain Rewarder"
+description = "DoubleZero Off-Chain Components"
 license = "Apache-2.0"
-repository = "https://github.com/doublezerofoundation/doublezero-rewarder"
-homepage = "https://github.com/doublezerofoundation/doublezero-rewarder"
+repository = "https://github.com/doublezerofoundation/doublezero-offchain"
+homepage = "https://github.com/doublezerofoundation/doublezero-offchain"
 
 [workspace.dependencies]
 anyhow = "1"
@@ -26,10 +23,6 @@ chrono = { version = "0", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }
 config = "0"
 csv = "1"
-doublezero-serviceability = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint", "serde"] }
-doublezero-telemetry = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint", "serde" ] }
-doublezero_sdk = { git = "ssh://git@github.com/malbeclabs/doublezero" }
-doublezero-record = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint" ] }
 futures-util = "0"
 itertools = "0"
 network-shapley = { git = "https://github.com/doublezerofoundation/network-shapley-rs", features = ["serde", "borsh"] }
@@ -54,6 +47,15 @@ tokio-util = { version = "0" }
 toml = "0"
 tracing = "0"
 tracing-subscriber = { version = "0", features = ["env-filter"] }
+
+
+# FIXME: Temporarily pinning doublezero rev to an older sha
+# Will be bumped in a follow up PR which would address the change of exchange pk in InternetLatencySamples
+doublezero-serviceability = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint", "serde"] , rev = "115c447f526c6f14bb98903d076030c191c4f7f9"}
+doublezero-telemetry = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint", "serde" ] , rev = "115c447f526c6f14bb98903d076030c191c4f7f9"}
+doublezero_sdk = { git = "ssh://git@github.com/malbeclabs/doublezero" , rev = "115c447f526c6f14bb98903d076030c191c4f7f9"}
+doublezero-record = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint" ] , rev = "115c447f526c6f14bb98903d076030c191c4f7f9"}
+
 
 [profile.release]
 lto = true

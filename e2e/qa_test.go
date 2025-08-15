@@ -129,6 +129,25 @@ func TestConnectivityUnicast(t *testing.T) {
 		}
 	}
 
+	// Build host-to-IP map after all hosts are connected
+	hostToIP := make(map[string]string)
+	for _, host := range hostList {
+		client, err := getQAClient(host)
+		require.NoError(t, err, "Failed to create QA client for host %s", host)
+
+		resp, err := client.GetStatus(ctx, &emptypb.Empty{})
+		require.NoError(t, err, "GetStatus failed for host %s", host)
+
+		for _, status := range resp.Status {
+			if (status.UserType == "IBRL" || status.UserType == "IBRLWithAllocatedIP") && status.DoubleZeroIp != "" {
+				hostToIP[host] = status.DoubleZeroIp
+				break
+			}
+		}
+		require.NotEmpty(t, hostToIP[host], "No local address found for host %s", host)
+	}
+
+	// Run connectivity checks only between hosts participating in the test
 	for _, host := range hostList {
 		t.Run("connectivity_check_from_"+host, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -136,40 +155,18 @@ func TestConnectivityUnicast(t *testing.T) {
 			client, err := getQAClient(host)
 			require.NoError(t, err, "Failed to create QA client")
 
-			resp, err := client.GetStatus(ctx, &emptypb.Empty{})
-			require.NoError(t, err, "GetStatus failed")
+			localAddr := hostToIP[host]
 
-			localAddr := ""
-			for _, status := range resp.Status {
-				if (status.UserType == "IBRL" || status.UserType == "IBRLWithAllocatedIP") && status.DoubleZeroIp != "" {
-					localAddr = status.DoubleZeroIp
-				}
-			}
-			if localAddr == "" {
-				require.Fail(t, "No local address found in status response")
-			}
-			opts := []dzsdk.Option{}
-			opts = append(opts, dzsdk.WithServiceabilityProgramID(config.DevnetServiceabilityProgramID))
-
-			ledger, err := dzsdk.New(nil, config.DevnetLedgerPublicRPCURL, opts...)
-			require.NoError(t, err, "Failed to create ledger client")
-			data, err := ledger.Serviceability.GetProgramData(ctx)
-			require.NoError(t, err, "Failed to get program data")
-
+			// Only ping IPs of hosts in hostList (excluding self)
 			peers := []string{}
-			for _, user := range data.Users {
-				if user.UserType == serviceability.UserTypeIBRL || user.UserType == serviceability.UserTypeIBRLWithAllocatedIP {
-					// skip ourselves
-					if net.IP(user.DzIp[:]).String() == localAddr {
-						continue
-					}
-					peers = append(peers, net.IP(user.DzIp[:]).String())
+			for peerHost, peerIP := range hostToIP {
+				if peerHost == host {
+					continue
 				}
+				peers = append(peers, peerIP)
 			}
 
-			if len(peers) == 0 {
-				require.Fail(t, "No peers found for connectivity check")
-			}
+			require.NotEmpty(t, peers, "No peers found for connectivity check")
 
 			for _, peer := range peers {
 				t.Run("to_"+peer, func(t *testing.T) {

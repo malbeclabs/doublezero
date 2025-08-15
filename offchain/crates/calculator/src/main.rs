@@ -1,7 +1,9 @@
 use anyhow::Result;
-use calculator::{orchestrator::Orchestrator, settings::Settings};
+use calculator::orchestrator::Orchestrator;
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
+use settings::Settings;
+use solana_sdk::pubkey::Pubkey;
+use std::{path::PathBuf, str::FromStr};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Parser, Debug)]
@@ -46,23 +48,72 @@ pub enum Commands {
         #[arg(short, long)]
         epoch: u64,
 
-        /// Path to the keypair file to use for signing transactions
-        #[arg(short = 'k', long)]
-        keypair: Option<PathBuf>,
+        /// Payer's public key (e.g., DZF's public key) used for address derivation
+        #[arg(short = 'p', long)]
+        payer_pubkey: String,
+    },
+    /// Check and verify contributor reward
+    CheckReward {
+        /// Contributor address
+        #[arg(short, long)]
+        contributor: String,
+
+        /// DZ Epoch
+        #[arg(short, long)]
+        epoch: u64,
+
+        /// Payer's public key (e.g., DZF's public key) used for address derivation
+        #[arg(short = 'p', long)]
+        payer_pubkey: String,
+    },
+    /// Read reward input configuration from the ledger
+    ReadRewardInput {
+        /// DZ Epoch
+        #[arg(short, long)]
+        epoch: u64,
+
+        /// Payer's public key (e.g., DZF's public key) used for address derivation
+        #[arg(short = 'p', long)]
+        payer_pubkey: String,
     },
 }
 
 impl Cli {
     pub async fn run(self) -> Result<()> {
-        let settings = Settings::new(self.config.clone())?;
+        let settings = if let Some(config_path) = &self.config {
+            Settings::from_path(config_path)?
+        } else {
+            Settings::from_env()?
+        };
         init_logging(&settings.log_level)?;
 
-        let orchestrator = Orchestrator::new(&settings, &self.config);
+        let orchestrator = Orchestrator::new(&settings);
 
         // Handle subcommands
         match self.command {
-            Commands::ReadTelemAgg { epoch, keypair } => {
-                orchestrator.read_telemetry_aggregates(epoch, keypair).await
+            Commands::ReadTelemAgg {
+                epoch,
+                payer_pubkey,
+            } => {
+                let pubkey = Pubkey::from_str(&payer_pubkey)?;
+                orchestrator.read_telemetry_aggregates(epoch, &pubkey).await
+            }
+            Commands::CheckReward {
+                contributor,
+                epoch,
+                payer_pubkey,
+            } => {
+                let pubkey = Pubkey::from_str(&payer_pubkey)?;
+                orchestrator
+                    .check_contributor_reward(&contributor, epoch, &pubkey)
+                    .await
+            }
+            Commands::ReadRewardInput {
+                epoch,
+                payer_pubkey,
+            } => {
+                let pubkey = Pubkey::from_str(&payer_pubkey)?;
+                orchestrator.read_reward_input(epoch, &pubkey).await
             }
             Commands::CalculateRewards {
                 epoch,

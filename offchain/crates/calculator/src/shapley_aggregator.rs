@@ -1,45 +1,20 @@
 use anyhow::Result;
-use ingestor::demand::CityStats;
 use network_shapley::shapley::{ShapleyOutput, ShapleyValue};
 use std::collections::HashMap;
 use tracing::info;
 
-/// Aggregates per-city Shapley outputs using stake-share weights
+/// Aggregates per-city Shapley outputs using pre-calculated stake-share weights
 ///
 /// # Arguments
 /// * `per_city_outputs` - Map of city to list of (operator, raw_value) tuples
-/// * `city_stats` - Map of city to CityStat containing stake information
+/// * `city_weights` - Pre-calculated normalized weights for each city
 ///
 /// # Returns
 /// Vec of consolidated outputs sorted by value descending
 pub fn aggregate_shapley_outputs(
     per_city_outputs: &HashMap<String, Vec<(String, f64)>>,
-    city_stats: &CityStats,
+    city_weights: &HashMap<String, f64>,
 ) -> Result<ShapleyOutput> {
-    // Calculate total stake across all cities
-    let total_stake: f64 = city_stats
-        .values()
-        .map(|stat| stat.total_stake_proxy as f64)
-        .sum();
-
-    if total_stake == 0.0 {
-        info!("Warning: Total stake is 0, using equal weights");
-    }
-
-    // Calculate normalized weights for each city
-    let city_weights: HashMap<String, f64> = city_stats
-        .iter()
-        .map(|(city, stat)| {
-            let weight = if total_stake > 0.0 {
-                stat.total_stake_proxy as f64 / total_stake
-            } else {
-                // If no stake, use equal weights
-                1.0 / city_stats.len() as f64
-            };
-            (city.clone(), weight)
-        })
-        .collect();
-
     // Log the weights being used
     let weights_sum: f64 = city_weights.values().sum();
     info!(
@@ -71,12 +46,12 @@ pub fn aggregate_shapley_outputs(
     // Calculate total value for proportion calculation
     let total_value: f64 = operator_values.values().sum();
 
-    // Create consolidated outputs with proportions
+    // Create consolidated outputs with proportions (stored as decimal 0.0 to 1.0)
     let consolidated = operator_values
         .into_iter()
         .map(|(operator, value)| {
             let proportion = if total_value != 0.0 {
-                (value / total_value) * 100.0
+                value / total_value // Store as decimal (0.0 to 1.0)
             } else {
                 0.0
             };
@@ -85,7 +60,7 @@ pub fn aggregate_shapley_outputs(
                 operator,
                 ShapleyValue {
                     value: round_to_decimals(value, 4),
-                    proportion: round_to_decimals(proportion, 4),
+                    proportion: round_to_decimals(proportion, 6), // Keep more precision for proportions
                 },
             )
         })
@@ -103,6 +78,7 @@ fn round_to_decimals(value: f64, decimals: u32) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::util::calculate_city_weights;
     use ingestor::demand::CityStat;
 
     #[test]
@@ -142,7 +118,8 @@ mod tests {
         );
 
         // Aggregate
-        let result = aggregate_shapley_outputs(&per_city_outputs, &city_stats).unwrap();
+        let city_weights = calculate_city_weights(&city_stats);
+        let result = aggregate_shapley_outputs(&per_city_outputs, &city_weights).unwrap();
 
         // Verify results
         // OperatorA: 100*0.6 + 80*0.4 = 60 + 32 = 92
@@ -153,15 +130,15 @@ mod tests {
 
         let op_a = result.get("OperatorA").unwrap();
         assert_eq!(op_a.value, 92.0);
-        assert_eq!(op_a.proportion, 61.3333); // 92/150 * 100
+        assert_eq!(op_a.proportion, 0.613333); // 92/150
 
         let op_b = result.get("OperatorB").unwrap();
         assert_eq!(op_b.value, 30.0);
-        assert_eq!(op_b.proportion, 20.0); // 30/150 * 100
+        assert_eq!(op_b.proportion, 0.2); // 30/150
 
         let op_c = result.get("OperatorC").unwrap();
         assert_eq!(op_c.value, 28.0);
-        assert_eq!(op_c.proportion, 18.6667); // 28/150 * 100
+        assert_eq!(op_c.proportion, 0.186667); // 28/150
     }
 
     #[test]
@@ -181,17 +158,18 @@ mod tests {
             vec![("OpX".to_string(), 75.0), ("OpY".to_string(), 25.0)],
         );
 
-        let result = aggregate_shapley_outputs(&per_city_outputs, &city_stats).unwrap();
+        let city_weights = calculate_city_weights(&city_stats);
+        let result = aggregate_shapley_outputs(&per_city_outputs, &city_weights).unwrap();
 
         assert_eq!(result.len(), 2);
 
         let op_x = result.get("OpX").unwrap();
         assert_eq!(op_x.value, 75.0);
-        assert_eq!(op_x.proportion, 75.0);
+        assert_eq!(op_x.proportion, 0.75); // 75/100
 
         let op_y = result.get("OpY").unwrap();
         assert_eq!(op_y.value, 25.0);
-        assert_eq!(op_y.proportion, 25.0);
+        assert_eq!(op_y.proportion, 0.25); // 25/100
     }
 
     #[test]
@@ -216,17 +194,18 @@ mod tests {
         per_city_outputs.insert("BER".to_string(), vec![("OpA".to_string(), 100.0)]);
         per_city_outputs.insert("PAR".to_string(), vec![("OpB".to_string(), 100.0)]);
 
-        let result = aggregate_shapley_outputs(&per_city_outputs, &city_stats).unwrap();
+        let city_weights = calculate_city_weights(&city_stats);
+        let result = aggregate_shapley_outputs(&per_city_outputs, &city_weights).unwrap();
 
         assert_eq!(result.len(), 2);
         // Each operator gets 50% weight
         let op_a = result.get("OpA").unwrap();
         assert_eq!(op_a.value, 50.0);
-        assert_eq!(op_a.proportion, 50.0);
+        assert_eq!(op_a.proportion, 0.5); // 50/100
 
         let op_b = result.get("OpB").unwrap();
         assert_eq!(op_b.value, 50.0);
-        assert_eq!(op_b.proportion, 50.0);
+        assert_eq!(op_b.proportion, 0.5); // 50/100
     }
 
     #[test]
@@ -251,13 +230,14 @@ mod tests {
         per_city_outputs.insert("MAD".to_string(), vec![("OpIgnored".to_string(), 999.0)]);
         per_city_outputs.insert("ROM".to_string(), vec![("OpActive".to_string(), 50.0)]);
 
-        let result = aggregate_shapley_outputs(&per_city_outputs, &city_stats).unwrap();
+        let city_weights = calculate_city_weights(&city_stats);
+        let result = aggregate_shapley_outputs(&per_city_outputs, &city_weights).unwrap();
 
         // MAD should be ignored due to zero stake
         assert_eq!(result.len(), 1);
         let op_active = result.get("OpActive").unwrap();
         assert_eq!(op_active.value, 50.0);
-        assert_eq!(op_active.proportion, 100.0);
+        assert_eq!(op_active.proportion, 1.0);
     }
 
     #[test]
@@ -277,7 +257,8 @@ mod tests {
             vec![("Op1".to_string(), 0.0), ("Op2".to_string(), 0.0)],
         );
 
-        let result = aggregate_shapley_outputs(&per_city_outputs, &city_stats).unwrap();
+        let city_weights = calculate_city_weights(&city_stats);
+        let result = aggregate_shapley_outputs(&per_city_outputs, &city_weights).unwrap();
 
         assert_eq!(result.len(), 2);
         let op1 = result.get("Op1").unwrap();
@@ -309,17 +290,18 @@ mod tests {
             ],
         );
 
-        let result = aggregate_shapley_outputs(&per_city_outputs, &city_stats).unwrap();
+        let city_weights = calculate_city_weights(&city_stats);
+        let result = aggregate_shapley_outputs(&per_city_outputs, &city_weights).unwrap();
 
         assert_eq!(result.len(), 2);
 
         let op_pos = result.get("OpPositive").unwrap();
         assert_eq!(op_pos.value, 100.0);
-        assert_eq!(op_pos.proportion, 200.0); // 100/50 * 100
+        assert_eq!(op_pos.proportion, 2.0); // 100/50
 
         let op_neg = result.get("OpNegative").unwrap();
         assert_eq!(op_neg.value, -50.0);
-        assert_eq!(op_neg.proportion, -100.0); // -50/50 * 100
+        assert_eq!(op_neg.proportion, -1.0); // -50/50
     }
 
     #[test]
@@ -373,10 +355,11 @@ mod tests {
             ],
         );
 
-        let result = aggregate_shapley_outputs(&per_city_outputs, &city_stats).unwrap();
+        let city_weights = calculate_city_weights(&city_stats);
+        let result = aggregate_shapley_outputs(&per_city_outputs, &city_weights).unwrap();
 
-        // Sum of proportions should be ~100% (with tolerance for rounding)
+        // Sum of proportions should be ~1.0 (with tolerance for rounding)
         let total_proportion: f64 = result.values().map(|v| v.proportion).sum();
-        assert!((total_proportion - 100.0).abs() < 0.01);
+        assert!((total_proportion - 1.0).abs() < 0.01);
     }
 }

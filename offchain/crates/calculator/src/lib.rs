@@ -1,8 +1,11 @@
 pub mod csv_exporter;
+pub mod data_prep;
+pub mod input;
 pub mod keypair_loader;
+pub mod ledger_operations;
 pub mod orchestrator;
+pub mod proof;
 pub mod recorder;
-pub mod settings;
 pub mod shapley_aggregator;
 pub mod shapley_handler;
 pub mod util;

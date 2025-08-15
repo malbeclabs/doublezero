@@ -1,39 +1,32 @@
 use crate::{
     csv_exporter,
+    data_prep::PreparedData,
+    input::RewardInput,
     keypair_loader::load_keypair,
-    recorder::{make_record_key, try_create_record, write_record_chunks},
-    settings::Settings,
+    ledger_operations::{self, WriteSummary, write_and_track, write_shapley_output},
+    proof::{ContributorRewardsMerkleTree, ShapleyOutputStorage},
     shapley_aggregator::aggregate_shapley_outputs,
-    shapley_handler::{build_demands, build_devices, build_private_links, build_public_links},
-    util::{print_demands, print_devices, print_private_links, print_public_links},
+    util::print_demands,
 };
-use anyhow::{Result, bail};
-use backon::{ExponentialBuilder, Retryable};
-use doublezero_record::state::RecordData;
+use anyhow::Result;
 use ingestor::fetcher::Fetcher;
-use itertools::Itertools;
 use network_shapley::{shapley::ShapleyInput, types::Demand};
-use processor::{
-    internet::{InternetTelemetryProcessor, InternetTelemetryStatMap, print_internet_stats},
-    telemetry::{DZDTelemetryProcessor, DZDTelemetryStatMap, print_telemetry_stats},
-};
-use solana_client::client_error::ClientError as SolanaClientError;
-use solana_sdk::commitment_config::CommitmentConfig;
-use std::{collections::HashMap, mem::size_of, path::PathBuf, time::Duration};
+use rayon::prelude::*;
+use settings::Settings;
+use solana_sdk::pubkey::Pubkey;
+use std::{collections::HashMap, path::PathBuf, time::Instant};
 use tabled::{builder::Builder as TableBuilder, settings::Style};
 use tracing::info;
 
 #[derive(Debug)]
 pub struct Orchestrator {
     settings: Settings,
-    cfg_path: Option<PathBuf>,
 }
 
 impl Orchestrator {
-    pub fn new(settings: &Settings, cfg_path: &Option<PathBuf>) -> Self {
+    pub fn new(settings: &Settings) -> Self {
         Self {
             settings: settings.clone(),
-            cfg_path: cfg_path.clone(),
         }
     }
 
@@ -44,186 +37,114 @@ impl Orchestrator {
         keypair_path: Option<PathBuf>,
         dry_run: bool,
     ) -> Result<()> {
-        let ingestor_settings = ingestor::settings::Settings::new(self.cfg_path.clone())?;
-        let fetcher = Fetcher::new(&ingestor_settings)?;
+        let fetcher = Fetcher::from_settings(&self.settings)?;
 
-        // Fetch data based on filter mode
-        let (fetch_epoch, fetch_data) = match epoch {
-            None => fetcher.fetch().await?,
-            Some(epoch_num) => fetcher.with_epoch(epoch_num).await?,
-        };
+        // Prepare all data
+        let prep_data = PreparedData::new(&fetcher, epoch).await?;
+        let fetch_epoch = prep_data.epoch;
+        let device_telemetry = prep_data.device_telemetry;
+        let internet_telemetry = prep_data.internet_telemetry;
+        let shapley_inputs = prep_data.shapley_inputs;
 
-        // At this point FetchData should contain everything necessary
-        // to transform and build shapley inputs
-
-        // Process and aggregate telemetry
-        let stat_map = DZDTelemetryProcessor::process(&fetch_data)?;
-        info!(
-            "Device Telemetry Aggregates: \n{}",
-            print_telemetry_stats(&stat_map)
+        let input_config = RewardInput::new(
+            fetch_epoch,
+            self.settings.shapley.clone(),
+            &shapley_inputs,
+            &borsh::to_vec(&device_telemetry)?,
+            &borsh::to_vec(&internet_telemetry)?,
         );
-
-        // Record device telemetry aggregates to ledger
-        if !dry_run {
-            let payer_signer = load_keypair(&keypair_path)?;
-            let ser_dzd_telem = borsh::to_vec(&stat_map)?;
-            let prefix = self.settings.get_device_telemetry_prefix(dry_run)?;
-            let prefix_str = std::str::from_utf8(&prefix)?;
-            info!("Writing device telemetry: prefix={prefix_str}, epoch={fetch_epoch}");
-
-            let record_key = try_create_record(
-                &fetcher.rpc_client,
-                &payer_signer,
-                &[&prefix, &fetch_epoch.to_le_bytes()],
-                ser_dzd_telem.len(),
-            )
-            .await?;
-
-            write_record_chunks(
-                &fetcher.rpc_client,
-                &payer_signer,
-                &record_key,
-                ser_dzd_telem.as_ref(),
-            )
-            .await?;
-        } else {
-            info!(
-                "DRY-RUN: Would write {} bytes of device telemetry aggregates for epoch {}",
-                borsh::to_vec(&stat_map)?.len(),
-                fetch_epoch
-            );
-        }
-
-        // Build internet stats
-        let internet_stat_map = InternetTelemetryProcessor::process(&fetch_data)?;
-        info!(
-            "Internet Telemetry Aggregates: \n{}",
-            print_internet_stats(&internet_stat_map)
-        );
-
-        // Record internet telemetry aggregates to ledger
-        if !dry_run {
-            let payer_signer = load_keypair(&keypair_path)?;
-            let ser_inet_telem = borsh::to_vec(&internet_stat_map)?;
-            let prefix = self.settings.get_internet_telemetry_prefix(dry_run)?;
-            let prefix_str = std::str::from_utf8(&prefix)?;
-            info!("Writing internet telemetry: prefix={prefix_str}, epoch={fetch_epoch}");
-
-            let record_key = try_create_record(
-                &fetcher.rpc_client,
-                &payer_signer,
-                &[&prefix, &fetch_epoch.to_le_bytes()],
-                ser_inet_telem.len(),
-            )
-            .await?;
-
-            write_record_chunks(
-                &fetcher.rpc_client,
-                &payer_signer,
-                &record_key,
-                ser_inet_telem.as_ref(),
-            )
-            .await?;
-        } else {
-            info!(
-                "DRY-RUN: Would write {} bytes of internet telemetry aggregates for epoch {}",
-                borsh::to_vec(&internet_stat_map)?.len(),
-                fetch_epoch
-            );
-        }
-
-        // Build devices
-        let devices = build_devices(&fetch_data)?;
-        info!("Devices:\n{}", print_devices(&devices));
-
-        // Build pvt links
-        let private_links = build_private_links(&fetch_data, &stat_map);
-        info!("Private Links:\n{}", print_private_links(&private_links));
-
-        // Build public links
-        let public_links = build_public_links(&internet_stat_map)?;
-        info!("Public Links:\n{}", print_public_links(&public_links));
-
-        // Build demand and get city stats
-        let (demands, city_stats) = build_demands(&fetcher, &fetch_data).await?;
 
         // Optionally write CSVs
         if let Some(ref output_dir) = output_dir {
             info!("Writing CSV files to {}", output_dir.display());
             csv_exporter::export_to_csv(
                 output_dir,
-                &devices,
-                &private_links,
-                &public_links,
-                &city_stats,
+                &shapley_inputs.devices,
+                &shapley_inputs.private_links,
+                &shapley_inputs.public_links,
+                &shapley_inputs.city_stats,
             )?;
             info!("Exported CSV files successfully!");
         }
 
         // Group demands by start city
-        let demand_groups: Vec<(String, Vec<Demand>)> = demands
-            .into_iter()
-            .chunk_by(|d| d.start.clone())
-            .into_iter()
-            .map(|(start, group)| (start, group.collect()))
+        let mut demands_by_city: HashMap<String, Vec<Demand>> = HashMap::new();
+        for demand in shapley_inputs.demands.clone() {
+            demands_by_city
+                .entry(demand.start.clone())
+                .or_default()
+                .push(demand);
+        }
+        let demand_groups: Vec<(String, Vec<Demand>)> = demands_by_city.into_iter().collect();
+
+        // Collect per-city Shapley outputs in parallel
+        let start_time = Instant::now();
+        let per_city_shapley_outputs: HashMap<String, Vec<(String, f64)>> = demand_groups
+            .par_iter()
+            .map(|(city, demands)| {
+                info!(
+                    "City: {city}, Demand: \n{}",
+                    print_demands(demands, 1_000_000)
+                );
+
+                // Optionally write demands per city
+                if let Some(ref output_dir) = output_dir {
+                    csv_exporter::write_demands_csv(output_dir, city, demands)
+                        .expect("Failed to write demands CSV");
+                }
+
+                // Build shapley inputs
+                let input = ShapleyInput {
+                    private_links: shapley_inputs.private_links.clone(),
+                    devices: shapley_inputs.devices.clone(),
+                    demands: demands.clone(),
+                    public_links: shapley_inputs.public_links.clone(),
+                    operator_uptime: self.settings.shapley.operator_uptime,
+                    contiguity_bonus: self.settings.shapley.contiguity_bonus,
+                    demand_multiplier: self.settings.shapley.demand_multiplier,
+                };
+
+                // Shapley output
+                let output = input.compute().expect("Failed to compute Shapley values");
+
+                // Print per-city table
+                let table = TableBuilder::from(output.clone())
+                    .build()
+                    .with(Style::psql().remove_horizontals())
+                    .to_string();
+                info!("Shapley Output for {city}:\n{}", table);
+
+                // Store raw values for aggregation
+                let city_values: Vec<(String, f64)> = output
+                    .into_iter()
+                    .map(|(operator, shapley_value)| (operator, shapley_value.value))
+                    .collect();
+
+                (city.clone(), city_values)
+            })
             .collect();
 
-        // Collect per-city Shapley outputs
-        let mut per_city_shapley_outputs = HashMap::new();
-
-        for (city, demands) in demand_groups {
-            info!(
-                "City: {city}, Demand:\n{}",
-                print_demands(&demands, 1_000_000)
-            );
-
-            // Optionally write demands per city
-            if let Some(ref output_dir) = output_dir {
-                csv_exporter::write_demands_csv(output_dir, &city, &demands)?;
-            }
-
-            // Build shapley inputs
-            let input = ShapleyInput {
-                private_links: private_links.clone(),
-                devices: devices.clone(),
-                demands,
-                public_links: public_links.clone(),
-                operator_uptime: self.settings.shapley.operator_uptime,
-                contiguity_bonus: self.settings.shapley.contiguity_bonus,
-                demand_multiplier: self.settings.shapley.demand_multiplier,
-            };
-
-            // Shapley output
-            let output = input.compute()?;
-
-            // Print per-city table
-            let table = TableBuilder::from(output.clone())
-                .build()
-                .with(Style::psql().remove_horizontals())
-                .to_string();
-            info!("Shapley Output for {city}:\n{}", table);
-
-            // Store raw values for aggregation
-            let city_values: Vec<(String, f64)> = output
-                .into_iter()
-                .map(|(operator, shapley_value)| (operator, shapley_value.value))
-                .collect();
-            per_city_shapley_outputs.insert(city.clone(), city_values);
-        }
+        let elapsed = start_time.elapsed();
+        info!(
+            "Shapley computation completed in {:.2?} for {} cities",
+            elapsed,
+            per_city_shapley_outputs.len()
+        );
 
         // Aggregate consolidated Shapley output
         if !per_city_shapley_outputs.is_empty() {
-            let consolidated = aggregate_shapley_outputs(&per_city_shapley_outputs, &city_stats)?;
+            let shapley_output =
+                aggregate_shapley_outputs(&per_city_shapley_outputs, &shapley_inputs.city_weights)?;
 
-            // Print consolidated table
+            // Print shapley_output table
             let mut table_builder = TableBuilder::default();
             table_builder.push_record(["Operator", "Value", "Proportion (%)"]);
 
-            for (operator, val) in consolidated.iter() {
+            for (operator, val) in shapley_output.iter() {
                 table_builder.push_record([
                     operator,
                     &val.value.to_string(),
-                    &val.proportion.to_string(),
+                    &format!("{:.2}", val.proportion * 100.0),
                 ]);
             }
 
@@ -231,87 +152,152 @@ impl Orchestrator {
                 .build()
                 .with(Style::psql().remove_horizontals())
                 .to_string();
-            info!("Consolidated Shapley Output:\n{}", table);
+            info!("Shapley Output:\n{}", table);
 
-            // Write consolidated CSV if output directory is specified
+            // Write shapley output CSV if output directory is specified
             if let Some(ref output_dir) = output_dir {
-                csv_exporter::write_consolidated_shapley_csv(output_dir, &consolidated)?;
+                csv_exporter::write_consolidated_shapley_csv(output_dir, &shapley_output)?;
+            }
+
+            // Construct merkle tree
+            let merkle_tree = ContributorRewardsMerkleTree::new(fetch_epoch, &shapley_output)?;
+            let merkle_root = merkle_tree.compute_root()?;
+            info!("merkle_root: {:#?}", merkle_root);
+
+            // Perform batch writes to ledger
+            if !dry_run {
+                let payer_signer = load_keypair(&keypair_path)?;
+                let mut summary = WriteSummary::default();
+
+                // Write device telemetry
+                let device_prefix = self.settings.prefixes.device_telemetry.as_bytes();
+                write_and_track(
+                    &fetcher.rpc_client,
+                    &payer_signer,
+                    &[device_prefix, &fetch_epoch.to_le_bytes()],
+                    &device_telemetry,
+                    "device telemetry aggregates",
+                    &mut summary,
+                    self.settings.rpc.rps_limit,
+                )
+                .await;
+
+                // Write internet telemetry
+                let internet_prefix = self.settings.prefixes.internet_telemetry.as_bytes();
+                write_and_track(
+                    &fetcher.rpc_client,
+                    &payer_signer,
+                    &[internet_prefix, &fetch_epoch.to_le_bytes()],
+                    &internet_telemetry,
+                    "internet telemetry aggregates",
+                    &mut summary,
+                    self.settings.rpc.rps_limit,
+                )
+                .await;
+
+                // Write reward input
+                let reward_prefix = self.settings.prefixes.reward_input.as_bytes();
+                write_and_track(
+                    &fetcher.rpc_client,
+                    &payer_signer,
+                    &[reward_prefix, &fetch_epoch.to_le_bytes()],
+                    &input_config,
+                    "reward calculation input",
+                    &mut summary,
+                    self.settings.rpc.rps_limit,
+                )
+                .await;
+
+                // Write shapley output storage instead of individual proofs
+                let shapley_storage = ShapleyOutputStorage {
+                    epoch: fetch_epoch,
+                    rewards: merkle_tree.rewards().to_vec(),
+                    total_proportions: merkle_tree.rewards().iter().map(|r| r.proportion).sum(),
+                };
+
+                write_shapley_output(
+                    &fetcher.rpc_client,
+                    &payer_signer,
+                    fetch_epoch,
+                    &shapley_storage,
+                    &self.settings,
+                )
+                .await?;
+
+                summary.add_success("shapley output storage".to_string());
+
+                // Note: Merkle root will be posted to Solana chain separately
+                // For now, just log it
+                info!(
+                    "Merkle root for epoch {}: {:?} (will be posted to Solana)",
+                    fetch_epoch, merkle_root
+                );
+
+                // Log final summary
+                info!("{}", summary);
+
+                // Return error if not all successful
+                if !summary.all_successful() {
+                    anyhow::bail!(
+                        "Some writes failed: {}/{} successful",
+                        summary.successful_count(),
+                        summary.total_count()
+                    );
+                }
+            } else {
+                info!(
+                    "DRY-RUN: Would perform batch writes for epoch {}",
+                    fetch_epoch
+                );
+                info!(
+                    "  - Device telemetry: {} bytes",
+                    borsh::to_vec(&device_telemetry)?.len()
+                );
+                info!(
+                    "  - Internet telemetry: {} bytes",
+                    borsh::to_vec(&internet_telemetry)?.len()
+                );
+                info!(
+                    "  - Reward input: {} bytes",
+                    borsh::to_vec(&input_config)?.len()
+                );
+                let shapley_storage = ShapleyOutputStorage {
+                    epoch: fetch_epoch,
+                    rewards: merkle_tree.rewards().to_vec(),
+                    total_proportions: merkle_tree.rewards().iter().map(|r| r.proportion).sum(),
+                };
+                info!(
+                    "  - Shapley output storage: {} bytes ({} contributors)",
+                    borsh::to_vec(&shapley_storage)?.len(),
+                    merkle_tree.len()
+                );
+                info!("  - Merkle root (for Solana): {:?}", merkle_root);
             }
         }
 
         Ok(())
     }
 
-    pub async fn read_telemetry_aggregates(
+    pub async fn read_telemetry_aggregates(&self, epoch: u64, payer_pubkey: &Pubkey) -> Result<()> {
+        ledger_operations::read_telemetry_aggregates(&self.settings, epoch, payer_pubkey).await
+    }
+
+    pub async fn check_contributor_reward(
         &self,
+        contributor: &str,
         epoch: u64,
-        keypair_path: Option<PathBuf>,
+        payer_pubkey: &Pubkey,
     ) -> Result<()> {
-        // Create fetcher
-        let ingestor_settings = ingestor::settings::Settings::new(self.cfg_path.clone())?;
-        let fetcher = Fetcher::new(&ingestor_settings)?;
-        let payer_signer = load_keypair(&keypair_path)?;
+        ledger_operations::check_contributor_reward(
+            &self.settings,
+            contributor,
+            epoch,
+            payer_pubkey,
+        )
+        .await
+    }
 
-        {
-            let prefix = self.settings.get_device_telemetry_prefix(false)?;
-            let epoch_bytes = epoch.to_le_bytes();
-            let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-            let record_key = make_record_key(&payer_signer, seeds)?;
-
-            info!("Re-created record_key: {record_key}");
-
-            let maybe_account = (|| async {
-                fetcher
-                    .rpc_client
-                    .get_account_with_commitment(&record_key, CommitmentConfig::confirmed())
-                    .await
-            })
-            .retry(&ExponentialBuilder::default().with_jitter())
-            .notify(|err: &SolanaClientError, dur: Duration| {
-                info!("retrying error: {:?} with sleeping {:?}", err, dur)
-            })
-            .await?;
-
-            match maybe_account.value {
-                None => bail!("account {record_key} has no data!"),
-                Some(acc) => {
-                    let stats: DZDTelemetryStatMap =
-                        borsh::from_slice(&acc.data[size_of::<RecordData>()..])?;
-                    info!("\n{}", print_telemetry_stats(&stats));
-                }
-            }
-        }
-
-        {
-            let prefix = self.settings.get_internet_telemetry_prefix(false)?;
-            let epoch_bytes = epoch.to_le_bytes();
-            let seeds: &[&[u8]] = &[&prefix, &epoch_bytes];
-            let record_key = make_record_key(&payer_signer, seeds)?;
-
-            info!("Re-created record_key: {record_key}");
-
-            let maybe_account = (|| async {
-                fetcher
-                    .rpc_client
-                    .get_account_with_commitment(&record_key, CommitmentConfig::confirmed())
-                    .await
-            })
-            .retry(&ExponentialBuilder::default().with_jitter())
-            .notify(|err: &SolanaClientError, dur: Duration| {
-                info!("retrying error: {:?} with sleeping {:?}", err, dur)
-            })
-            .await?;
-
-            match maybe_account.value {
-                None => bail!("account {record_key} has no data!"),
-                Some(acc) => {
-                    let stats: InternetTelemetryStatMap =
-                        borsh::from_slice(&acc.data[size_of::<RecordData>()..])?;
-                    info!("\n{}", print_internet_stats(&stats));
-                }
-            }
-        }
-
-        Ok(())
+    pub async fn read_reward_input(&self, epoch: u64, payer_pubkey: &Pubkey) -> Result<()> {
+        ledger_operations::read_reward_input(&self.settings, epoch, payer_pubkey).await
     }
 }

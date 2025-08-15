@@ -1,9 +1,8 @@
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
-    use calculator::{keypair_loader::load_keypair, settings::Settings};
-    use std::fs;
-    use std::path::PathBuf;
+    use calculator::keypair_loader::load_keypair;
+    use std::{fs, path::PathBuf};
     use tempfile::TempDir;
 
     #[test]
@@ -108,111 +107,6 @@ mod tests {
         assert!(err.to_string().contains("Invalid keypair format"));
 
         Ok(())
-    }
-
-    #[test]
-    fn test_prefix_from_env() -> Result<()> {
-        // Set prefix env vars and shapley settings
-        unsafe {
-            std::env::set_var("CALCULATOR__DEVICE_TELEMETRY_PREFIX", "test_device_prefix");
-            std::env::set_var(
-                "CALCULATOR__INTERNET_TELEMETRY_PREFIX",
-                "test_internet_prefix",
-            );
-            // Set required shapley settings
-            std::env::set_var("CALCULATOR__SHAPLEY__OPERATOR_UPTIME", "0.98");
-            std::env::set_var("CALCULATOR__SHAPLEY__CONTIGUITY_BONUS", "5.0");
-            std::env::set_var("CALCULATOR__SHAPLEY__DEMAND_MULTIPLIER", "1.2");
-        }
-
-        // Create settings (this would normally load from env)
-        let settings = Settings::new::<PathBuf>(None)?;
-
-        // Test that prefixes are loaded correctly
-        let device_prefix = settings.get_device_telemetry_prefix(false)?;
-        assert_eq!(device_prefix, b"test_device_prefix");
-
-        let internet_prefix = settings.get_internet_telemetry_prefix(false)?;
-        assert_eq!(internet_prefix, b"test_internet_prefix");
-
-        // Clean up
-        unsafe {
-            std::env::remove_var("CALCULATOR__DEVICE_TELEMETRY_PREFIX");
-            std::env::remove_var("CALCULATOR__INTERNET_TELEMETRY_PREFIX");
-            std::env::remove_var("CALCULATOR__SHAPLEY__OPERATOR_UPTIME");
-            std::env::remove_var("CALCULATOR__SHAPLEY__CONTIGUITY_BONUS");
-            std::env::remove_var("CALCULATOR__SHAPLEY__DEMAND_MULTIPLIER");
-        }
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_prefix_required_in_non_dry_run() {
-        // Ensure no prefix env vars are set but set required shapley settings
-        unsafe {
-            std::env::remove_var("CALCULATOR__DEVICE_TELEMETRY_PREFIX");
-            std::env::remove_var("CALCULATOR__INTERNET_TELEMETRY_PREFIX");
-            // Set required shapley settings
-            std::env::set_var("CALCULATOR__SHAPLEY__OPERATOR_UPTIME", "0.98");
-            std::env::set_var("CALCULATOR__SHAPLEY__CONTIGUITY_BONUS", "5.0");
-            std::env::set_var("CALCULATOR__SHAPLEY__DEMAND_MULTIPLIER", "1.2");
-        }
-
-        // Create settings without prefixes
-        let settings = Settings::new::<PathBuf>(None).unwrap();
-
-        // Should fail when not in dry-run mode
-        let device_result = settings.get_device_telemetry_prefix(false);
-        assert!(device_result.is_err());
-
-        let internet_result = settings.get_internet_telemetry_prefix(false);
-        assert!(internet_result.is_err());
-
-        // Clean up shapley env vars
-        unsafe {
-            std::env::remove_var("CALCULATOR__SHAPLEY__OPERATOR_UPTIME");
-            std::env::remove_var("CALCULATOR__SHAPLEY__CONTIGUITY_BONUS");
-            std::env::remove_var("CALCULATOR__SHAPLEY__DEMAND_MULTIPLIER");
-        }
-    }
-
-    #[test]
-    fn test_prefix_optional_in_dry_run() {
-        // Ensure no prefix env vars are set but set required shapley settings
-        unsafe {
-            std::env::remove_var("CALCULATOR__DEVICE_TELEMETRY_PREFIX");
-            std::env::remove_var("CALCULATOR__INTERNET_TELEMETRY_PREFIX");
-            // Set required shapley settings
-            std::env::set_var("CALCULATOR__SHAPLEY__OPERATOR_UPTIME", "0.98");
-            std::env::set_var("CALCULATOR__SHAPLEY__CONTIGUITY_BONUS", "5.0");
-            std::env::set_var("CALCULATOR__SHAPLEY__DEMAND_MULTIPLIER", "1.2");
-        }
-
-        // Create settings without prefixes
-        let settings = Settings::new::<PathBuf>(None).unwrap();
-
-        // Should provide defaults in dry-run mode
-        let device_result = settings.get_device_telemetry_prefix(true);
-        assert!(device_result.is_ok());
-        assert_eq!(
-            device_result.unwrap(),
-            b"doublezero_device_telemetry_aggregate_test1"
-        );
-
-        let internet_result = settings.get_internet_telemetry_prefix(true);
-        assert!(internet_result.is_ok());
-        assert_eq!(
-            internet_result.unwrap(),
-            b"doublezero_internet_telemetry_aggregate_test1"
-        );
-
-        // Clean up shapley env vars
-        unsafe {
-            std::env::remove_var("CALCULATOR__SHAPLEY__OPERATOR_UPTIME");
-            std::env::remove_var("CALCULATOR__SHAPLEY__CONTIGUITY_BONUS");
-            std::env::remove_var("CALCULATOR__SHAPLEY__DEMAND_MULTIPLIER");
-        }
     }
 
     #[test]

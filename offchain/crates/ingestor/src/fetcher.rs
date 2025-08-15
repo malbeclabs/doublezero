@@ -1,6 +1,7 @@
-use crate::{internet, serviceability, settings::Settings, telemetry, types::FetchData};
+use crate::{internet, serviceability, telemetry, types::FetchData};
 use anyhow::Result;
 use chrono::Utc;
+use settings::Settings;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::commitment_config::CommitmentConfig;
 use std::sync::Arc;
@@ -15,9 +16,9 @@ pub struct Fetcher {
 }
 
 impl Fetcher {
-    pub fn new(settings: &Settings) -> Result<Self> {
+    pub fn from_settings(settings: &Settings) -> Result<Self> {
         let rpc_client = RpcClient::new_with_commitment(
-            settings.rpc.url.to_string(),
+            settings.rpc.dz_url.to_string(),
             CommitmentConfig::finalized(),
         );
         let solana_client = RpcClient::new_with_commitment(

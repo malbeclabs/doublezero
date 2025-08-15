@@ -22,7 +22,7 @@ impl InitializeRecordInstructions {
         let total_space = size_of::<RecordData>().saturating_add(space);
 
         let seed_str = create_record_seed_string(seeds);
-        let record_key = Pubkey::create_with_seed(&payer_key, &seed_str, &ID).unwrap();
+        let record_key = Pubkey::create_with_seed(payer_key, &seed_str, &ID).unwrap();
 
         // Instead of calling the create-account-with-seed instruction, we will
         // make the account creation robust by calling each of:
@@ -37,16 +37,16 @@ impl InitializeRecordInstructions {
         // Ledger since priority fees are not required to land transactions).
         let allocate_ix = system_instruction::allocate_with_seed(
             &record_key,
-            &payer_key,
+            payer_key,
             &seed_str,
             total_space as u64,
             &ID,
         );
 
         let assign_ix =
-            system_instruction::assign_with_seed(&record_key, &payer_key, &seed_str, &ID);
+            system_instruction::assign_with_seed(&record_key, payer_key, &seed_str, &ID);
 
-        let initialize_ix = record_instruction::initialize(&record_key, &payer_key);
+        let initialize_ix = record_instruction::initialize(&record_key, payer_key);
 
         InitializeRecordInstructions {
             allocate: allocate_ix,

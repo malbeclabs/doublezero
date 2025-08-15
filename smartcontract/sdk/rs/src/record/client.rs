@@ -85,6 +85,7 @@ impl RecordWriteChunk {
     }
 }
 
+#[allow(clippy::result_large_err)]
 fn new_transaction(
     recent_blockhash: Hash,
     instructions: &[Instruction],

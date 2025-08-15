@@ -21,7 +21,7 @@ pub fn create_record_key(payer_key: &Pubkey, seeds: &[&[u8]]) -> Pubkey {
 
     // This operation is safe to unwrap because the seed string above is
     // guaranteed to be 32 bytes.
-    Pubkey::create_with_seed(&payer_key, &seed_str, &doublezero_record::ID).unwrap()
+    Pubkey::create_with_seed(payer_key, &seed_str, &doublezero_record::ID).unwrap()
 }
 
 #[cfg(test)]

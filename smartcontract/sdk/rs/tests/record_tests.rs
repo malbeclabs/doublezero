@@ -1,8 +1,11 @@
-//#![cfg(feature = "local-validator-test")]
+#![cfg(feature = "local-validator-test")]
 
 use std::time::Duration;
 
-use doublezero_sdk::record::{self, state::RecordData};
+use doublezero_sdk::record::{
+    self,
+    state::{read_record_data, RecordData},
+};
 use solana_client::{nonblocking::rpc_client::RpcClient, rpc_config::RpcSendTransactionConfig};
 use solana_sdk::{commitment_config::CommitmentConfig, signature::Keypair, signer::Signer};
 
@@ -99,9 +102,7 @@ async fn test_record_client() {
         .value
         .unwrap();
 
-    let record_header = bytemuck::from_bytes::<RecordData>(
-        &record_account_info.data[..RecordData::WRITABLE_START_INDEX],
-    );
+    let (record_header, record_body) = read_record_data(&record_account_info.data).unwrap();
     assert_eq!(
         record_header,
         &RecordData {
@@ -109,10 +110,7 @@ async fn test_record_client() {
             version: RecordData::CURRENT_VERSION,
         }
     );
-    assert_eq!(
-        &record_account_info.data[RecordData::WRITABLE_START_INDEX..],
-        record_data
-    );
+    assert_eq!(record_body, record_data);
 
     // Write moar.
     const LARGE_RECORD_DATA_SIZE: usize = 2_048;
@@ -176,9 +174,7 @@ async fn test_record_client() {
         .value
         .unwrap();
 
-    let record_header = bytemuck::from_bytes::<RecordData>(
-        &record_account_info.data[..RecordData::WRITABLE_START_INDEX],
-    );
+    let (record_header, record_body) = read_record_data(&record_account_info.data).unwrap();
     assert_eq!(
         record_header,
         &RecordData {
@@ -186,8 +182,5 @@ async fn test_record_client() {
             version: RecordData::CURRENT_VERSION,
         }
     );
-    assert_eq!(
-        &record_account_info.data[RecordData::WRITABLE_START_INDEX..],
-        large_record_data
-    );
+    assert_eq!(record_body, large_record_data);
 }

@@ -91,6 +91,13 @@ doublezero = { path = "client/doublezero" }
 doublezero_admin = { path = "controlplane/doublezero-admin" }
 doublezero-config = { path = "config" }
 doublezero_cli = { path = "smartcontract/cli" }
-doublezero_sdk = { path = "smartcontract/sdk/rs" }
-doublezero-serviceability = { path = "smartcontract/programs/doublezero-serviceability" }
 doublezero-program-common = { path = "smartcontract/program-common" }
+doublezero_sdk = { path = "smartcontract/sdk/rs" }
+
+[workspace.dependencies.doublezero-record]
+path = "smartcontract/programs/doublezero-record"
+features = ["no-entrypoint"]
+
+[workspace.dependencies.doublezero-serviceability]
+path = "smartcontract/programs/doublezero-serviceability"
+features = ["no-entrypoint"]

@@ -18,9 +18,7 @@ serde = { workspace = true, optional = true }
 serde_bytes = { workspace = true, optional = true }
 solana-program.workspace = true
 doublezero-program-common.workspace = true
-doublezero-serviceability = { path = "../doublezero-serviceability", features = [
-    "no-entrypoint",
-] }
+doublezero-serviceability.workspace = true
 
 [dev-dependencies]
 bincode.workspace = true

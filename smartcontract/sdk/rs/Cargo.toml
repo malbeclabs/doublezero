@@ -20,6 +20,7 @@ directories-next.workspace = true
 dirs-next.workspace = true
 doublezero-config.workspace = true
 doublezero-program-common.workspace = true
+doublezero-record.workspace = true
 doublezero-serviceability.workspace = true
 eyre.workspace = true
 futures.workspace = true
@@ -40,3 +41,9 @@ tempfile.workspace = true
 tokio.workspace = true
 solana-system-interface.workspace = true
 log.workspace = true
+
+[dev-dependencies]
+bytemuck.workspace = true
+
+[features]
+local-validator-test = []

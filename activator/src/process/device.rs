@@ -1,14 +1,8 @@
-use crate::{idallocator::IDAllocator, ipblockallocator::IPBlockAllocator};
+use crate::{idallocator::IDAllocator, ipblockallocator::IPBlockAllocator, process::utils::*};
 use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::{
-    commands::device::{
-        activate::ActivateDeviceCommand,
-        closeaccount::CloseAccountDeviceCommand,
-        interface::{
-            activate::ActivateDeviceInterfaceCommand, remove::RemoveDeviceInterfaceCommand,
-        },
-    },
-    Device, DeviceStatus, DoubleZeroClient, InterfaceType, LoopbackType,
+    commands::device::{activate::ActivateDeviceCommand, closeaccount::CloseAccountDeviceCommand},
+    Device, DeviceStatus, DoubleZeroClient, InterfaceStatus, InterfaceType, LoopbackType,
 };
 use log::{error, info};
 use solana_sdk::pubkey::Pubkey;
@@ -56,16 +50,19 @@ pub fn process_device_event(
             }
             info!("{log_msg}");
         }
-        DeviceStatus::Activated => match devices.entry(*pubkey) {
-            Entry::Occupied(mut entry) => entry.get_mut().update(device),
-            Entry::Vacant(entry) => {
-                info!(
-                    "Add Device: {} public_ip: {} dz_prefixes: {} ",
-                    device.code, &device.public_ip, &device.dz_prefixes,
-                );
-                entry.insert(DeviceState::new(device));
+        DeviceStatus::Activated => {
+            process_device_interfaces(client, pubkey, device, segment_routing_ids, link_ips);
+            match devices.entry(*pubkey) {
+                Entry::Occupied(mut entry) => entry.get_mut().update(device),
+                Entry::Vacant(entry) => {
+                    info!(
+                        "Add Device: {} public_ip: {} dz_prefixes: {} ",
+                        device.code, &device.public_ip, &device.dz_prefixes,
+                    );
+                    entry.insert(DeviceState::new(device));
+                }
             }
-        },
+        }
         DeviceStatus::Deleting => {
             let mut log_msg = String::new();
             write!(
@@ -94,83 +91,84 @@ pub fn process_device_event(
         }
         _ => {}
     }
+}
 
-    if device.status == DeviceStatus::Deleting || device.status == DeviceStatus::Rejected {
-        return;
-    }
-
+fn process_device_interfaces(
+    client: &dyn DoubleZeroClient,
+    device_pubkey: &Pubkey,
+    device: &Device,
+    segment_routing_ids: &mut IDAllocator,
+    link_ips: &mut IPBlockAllocator,
+) {
     for interface in device.interfaces.iter() {
         let mut iface = interface.into_current_version();
-        if iface.status == doublezero_sdk::InterfaceStatus::Pending
-            && iface.interface_type == InterfaceType::Loopback
-        {
-            if iface.node_segment_idx == 0 && iface.loopback_type == LoopbackType::Vpnv4 {
-                let id = segment_routing_ids.next_available();
-                info!(
-                    "Assigning segment routing ID {} to device {} interface {}",
-                    id, device.code, iface.name
-                );
-                iface.node_segment_idx = id;
-            }
-            if iface.ip_net == NetworkV4::default() {
-                // Assign a loopback IP if not already set
-                iface.ip_net = link_ips
-                    .next_available_block(1, 1)
-                    .unwrap_or_else(|| {
-                        error!(
-                            "No available loopback IP block for device {} interface {}",
-                            device.code, iface.name
+        match iface.status {
+            InterfaceStatus::Pending => {
+                match iface.interface_type {
+                    InterfaceType::Loopback => {
+                        if iface.node_segment_idx == 0 && iface.loopback_type == LoopbackType::Vpnv4
+                        {
+                            let id = segment_routing_ids.next_available();
+                            info!(
+                                "Assigning segment routing ID {} to device {} interface {}",
+                                id, device.code, iface.name
+                            );
+                            iface.node_segment_idx = id;
+                        }
+                        if iface.ip_net == NetworkV4::default() {
+                            // Assign a loopback IP if not already set
+                            iface.ip_net = link_ips
+                                .next_available_block(1, 1)
+                                .unwrap_or_else(|| {
+                                    reject_interface(
+                                        client,
+                                        device_pubkey,
+                                        device.code.as_str(),
+                                        &iface.name,
+                                    );
+                                    error!(
+                                        "No available loopback IP block for device {} interface {}",
+                                        device.code, iface.name
+                                    );
+                                    "0.0.0.0/0".parse().unwrap()
+                                })
+                                .into();
+                            info!(
+                                "Assigning IP {} to device {} interface {}",
+                                iface.ip_net, device.code, iface.name
+                            );
+                        }
+                        activate_interface(
+                            client,
+                            device_pubkey,
+                            device.code.as_str(),
+                            &iface.name,
+                            &iface.ip_net,
+                            iface.node_segment_idx,
                         );
-                        "0.0.0.0/0".parse().unwrap()
-                    })
-                    .into();
-                info!(
-                    "Assigning IP {} to device {} interface {}",
-                    iface.ip_net, device.code, iface.name
-                );
+                    }
+                    InterfaceType::Physical => {
+                        unlink_interface(client, device_pubkey, device.code.as_str(), &iface.name);
+                    }
+                    _ => {
+                        error!(
+                            "Unsupported interface type {:?} for device {} interface {}",
+                            iface.interface_type, device.code, iface.name
+                        );
+                    }
+                }
             }
+            InterfaceStatus::Deleting => {
+                if iface.ip_net != NetworkV4::default() {
+                    link_ips.unassign_block(iface.ip_net.into());
+                }
+                if iface.node_segment_idx != 0 {
+                    segment_routing_ids.unassign(iface.node_segment_idx);
+                }
 
-            let activate = ActivateDeviceInterfaceCommand {
-                pubkey: *pubkey,
-                name: iface.name.clone(),
-                ip_net: iface.ip_net,
-                node_segment_idx: iface.node_segment_idx,
-            };
-
-            if let Err(e) = activate.execute(client) {
-                error!(
-                    "Failed to activate interface {} on device {}: {}",
-                    iface.name, device.code, e
-                );
+                remove_interface(client, device_pubkey, device.code.as_str(), &iface.name);
             }
-        } else if iface.status == doublezero_sdk::InterfaceStatus::Deleting {
-            if iface.node_segment_idx != 0 {
-                info!(
-                    "Releasing segment routing ID {} from device {} interface {}",
-                    iface.node_segment_idx, device.code, iface.name
-                );
-                segment_routing_ids.unassign(iface.node_segment_idx);
-            }
-
-            if iface.ip_net != NetworkV4::default() {
-                info!(
-                    "Releasing IP {} from device {} interface {}",
-                    iface.node_segment_idx, device.code, iface.name
-                );
-                link_ips.unassign_block(iface.ip_net.into());
-            }
-
-            let removecmd = RemoveDeviceInterfaceCommand {
-                pubkey: *pubkey,
-                name: iface.name.clone(),
-            };
-
-            if let Err(e) = removecmd.execute(client) {
-                error!(
-                    "Failed to remove interface {} on device {}: {}",
-                    iface.name, device.code, e
-                );
-            }
+            _ => {}
         }
     }
 }
@@ -186,8 +184,9 @@ mod tests {
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
         processors::device::{
-            activate::DeviceActivateArgs, closeaccount::DeviceCloseAccountArgs,
-            interface::activate::DeviceInterfaceActivateArgs,
+            activate::DeviceActivateArgs,
+            closeaccount::DeviceCloseAccountArgs,
+            interface::{activate::DeviceInterfaceActivateArgs, unlink::DeviceInterfaceUnlinkArgs},
         },
     };
     use mockall::{predicate, Sequence};
@@ -256,6 +255,35 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
+        let mut ip_block_allocator = IPBlockAllocator::new("1.1.1.0/24".parse().unwrap());
+
+        process_device_event(
+            &client,
+            &device_pubkey,
+            &mut devices,
+            &device,
+            &mut state_transitions,
+            &mut segment_ids,
+            &mut ip_block_allocator,
+        );
+
+        assert!(devices.contains_key(&device_pubkey));
+        assert_eq!(devices.get(&device_pubkey).unwrap().device, device);
+
+        client
+            .expect_execute_transaction()
+            .times(1)
+            .in_sequence(&mut seq)
+            .with(
+                predicate::eq(DoubleZeroInstruction::UnlinkDeviceInterface(
+                    DeviceInterfaceUnlinkArgs {
+                        name: "Ethernet0".to_string(),
+                    },
+                )),
+                predicate::always(),
+            )
+            .returning(|_, _| Ok(Signature::new_unique()));
+
         client
             .expect_execute_transaction()
             .times(1)
@@ -272,7 +300,8 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        let mut ip_block_allocator = IPBlockAllocator::new("1.1.1.0/24".parse().unwrap());
+        // interfaces get checked on activated devices
+        device.status = DeviceStatus::Activated;
 
         process_device_event(
             &client,
@@ -283,9 +312,6 @@ mod tests {
             &mut segment_ids,
             &mut ip_block_allocator,
         );
-
-        assert!(devices.contains_key(&device_pubkey));
-        assert_eq!(devices.get(&device_pubkey).unwrap().device, device);
 
         device.status = DeviceStatus::Deleting;
 
@@ -382,6 +408,19 @@ mod tests {
             .expect_execute_transaction()
             .times(1)
             .with(
+                predicate::eq(DoubleZeroInstruction::UnlinkDeviceInterface(
+                    DeviceInterfaceUnlinkArgs {
+                        name: "Ethernet0".to_string(),
+                    },
+                )),
+                predicate::always(),
+            )
+            .returning(|_, _| Ok(Signature::new_unique()));
+
+        client
+            .expect_execute_transaction()
+            .times(1)
+            .with(
                 predicate::eq(DoubleZeroInstruction::ActivateDeviceInterface(
                     DeviceInterfaceActivateArgs {
                         name: "Loopback0".to_string(),
@@ -413,6 +452,7 @@ mod tests {
             device.interfaces[1].into_current_version().clone(),
         ];
 
+        expected_interfaces[0].status = InterfaceStatus::Unlinked;
         expected_interfaces[1].status = InterfaceStatus::Activated;
         expected_interfaces[1].ip_net = "1.1.1.1/32".parse().unwrap();
         expected_interfaces[1].node_segment_idx = 1;

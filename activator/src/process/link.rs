@@ -1,20 +1,17 @@
-use crate::{idallocator::IDAllocator, ipblockallocator::IPBlockAllocator};
+use crate::{idallocator::IDAllocator, ipblockallocator::IPBlockAllocator, process::utils::*};
 use doublezero_sdk::{
-    commands::{
-        device::interface::activate::ActivateDeviceInterfaceCommand,
-        link::{
-            activate::ActivateLinkCommand, closeaccount::CloseAccountLinkCommand,
-            reject::RejectLinkCommand,
-        },
+    commands::link::{
+        activate::ActivateLinkCommand, closeaccount::CloseAccountLinkCommand,
+        reject::RejectLinkCommand,
     },
     DoubleZeroClient, Link, LinkStatus,
 };
 use ipnetwork::Ipv4Network;
 use log::info;
-use solana_sdk::{pubkey::Pubkey, signature::Signature};
+use solana_sdk::pubkey::Pubkey;
 use std::{collections::HashMap, fmt::Write};
 
-pub fn process_tunnel_event(
+pub fn process_link_event(
     client: &dyn DoubleZeroClient,
     pubkey: &Pubkey,
     link_ips: &mut IPBlockAllocator,
@@ -61,27 +58,23 @@ pub fn process_tunnel_event(
                                 Ipv4Network::new(tunnel_net.nth(1).unwrap(), tunnel_net.prefix())
                                     .unwrap();
 
-                            if let Err(e) = assign_ip_to_dev_interface(
+                            activate_interface(
                                 client,
-                                side_a_ip,
                                 &link.side_a_pk,
+                                format!("link:{} side A", link.code).as_str(),
                                 &link.side_a_iface_name,
-                            ) {
-                                write!(&mut log_msg, " Error assigning side A IP: {e}").unwrap();
-                            } else {
-                                write!(&mut log_msg, " Assigned side A IP: {side_a_ip}").unwrap();
-                            }
+                                &side_a_ip.into(),
+                                0,
+                            );
 
-                            if let Err(e) = assign_ip_to_dev_interface(
+                            activate_interface(
                                 client,
-                                side_z_ip,
                                 &link.side_z_pk,
+                                format!("link:{} side Z", link.code).as_str(),
                                 &link.side_z_iface_name,
-                            ) {
-                                write!(&mut log_msg, " Error assigning side Z IP: {e}").unwrap();
-                            } else {
-                                write!(&mut log_msg, " Assigned side Z IP: {side_z_ip}").unwrap();
-                            }
+                                &side_z_ip.into(),
+                                0,
+                            );
                         }
                         Err(e) => write!(&mut log_msg, " Error {e}").unwrap(),
                     }
@@ -131,31 +124,22 @@ pub fn process_tunnel_event(
                     link_ids.unassign(link.tunnel_id);
                     link_ips.unassign_block(link.tunnel_net.into());
 
+                    unlink_interface(
+                        client,
+                        &link.side_a_pk,
+                        format!("link:{} side A", link.code).as_str(),
+                        &link.side_a_iface_name,
+                    );
+                    unlink_interface(
+                        client,
+                        &link.side_z_pk,
+                        format!("link:{} side A", link.code).as_str(),
+                        &link.side_z_iface_name,
+                    );
+
                     *state_transitions
                         .entry("tunnel-deleting-to-deactivated")
                         .or_insert(0) += 1;
-
-                    let zero_ip = "0.0.0.0/0".parse().unwrap();
-
-                    if let Err(e) = assign_ip_to_dev_interface(
-                        client,
-                        zero_ip,
-                        &link.side_a_pk,
-                        &link.side_a_iface_name,
-                    ) {
-                        write!(&mut log_msg, " Error assigning side A IP to {zero_ip}: {e}")
-                            .unwrap();
-                    }
-
-                    if let Err(e) = assign_ip_to_dev_interface(
-                        client,
-                        zero_ip,
-                        &link.side_z_pk,
-                        &link.side_z_iface_name,
-                    ) {
-                        write!(&mut log_msg, " Error assigning side Z IP to {zero_ip}: {e}")
-                            .unwrap();
-                    }
                 }
                 Err(e) => write!(&mut log_msg, " Error {e}").unwrap(),
             }
@@ -164,27 +148,12 @@ pub fn process_tunnel_event(
     }
 }
 
-fn assign_ip_to_dev_interface(
-    client: &dyn DoubleZeroClient,
-    ip_net: Ipv4Network,
-    dev: &Pubkey,
-    iface_name: &str,
-) -> eyre::Result<Signature> {
-    ActivateDeviceInterfaceCommand {
-        pubkey: *dev,
-        name: iface_name.to_string(),
-        ip_net: ip_net.into(),
-        node_segment_idx: 0,
-    }
-    .execute(client)
-}
-
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::{
         idallocator::IDAllocator,
         ipblockallocator::IPBlockAllocator,
-        process::link::process_tunnel_event,
         tests::utils::{create_test_client, get_tunnel_bump_seed},
     };
     use doublezero_program_common::types::NetworkV4;
@@ -192,7 +161,9 @@ mod tests {
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
         processors::{
-            device::interface::activate::DeviceInterfaceActivateArgs,
+            device::interface::{
+                activate::DeviceInterfaceActivateArgs, unlink::DeviceInterfaceUnlinkArgs,
+            },
             link::{
                 activate::LinkActivateArgs, closeaccount::LinkCloseAccountArgs,
                 reject::LinkRejectArgs,
@@ -204,7 +175,7 @@ mod tests {
     use std::collections::HashMap;
 
     #[test]
-    fn test_process_tunnel_event_pending_to_deleted() {
+    fn test_process_link_event_pending_to_deleted() {
         let mut link_ips = IPBlockAllocator::new("10.0.0.0/16".parse().unwrap());
         let mut link_ids = IDAllocator::new(500, vec![500, 501, 503]);
         let mut client = create_test_client();
@@ -286,7 +257,7 @@ mod tests {
 
         let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
 
-        process_tunnel_event(
+        process_link_event(
             &client,
             &tunnel_pubkey,
             &mut link_ips,
@@ -324,11 +295,9 @@ mod tests {
         client
             .expect_execute_transaction()
             .with(
-                predicate::eq(DoubleZeroInstruction::ActivateDeviceInterface(
-                    DeviceInterfaceActivateArgs {
+                predicate::eq(DoubleZeroInstruction::UnlinkDeviceInterface(
+                    DeviceInterfaceUnlinkArgs {
                         name: "Ethernet0".to_string(),
-                        ip_net: "0.0.0.0/0".parse().unwrap(),
-                        node_segment_idx: 0,
                     },
                 )),
                 predicate::always(),
@@ -339,11 +308,9 @@ mod tests {
         client
             .expect_execute_transaction()
             .with(
-                predicate::eq(DoubleZeroInstruction::ActivateDeviceInterface(
-                    DeviceInterfaceActivateArgs {
+                predicate::eq(DoubleZeroInstruction::UnlinkDeviceInterface(
+                    DeviceInterfaceUnlinkArgs {
                         name: "Ethernet1".to_string(),
-                        ip_net: "0.0.0.0/0".parse().unwrap(),
-                        node_segment_idx: 0,
                     },
                 )),
                 predicate::always(),
@@ -353,7 +320,7 @@ mod tests {
 
         let assigned_ips = link_ips.assigned_ips.clone();
 
-        process_tunnel_event(
+        process_link_event(
             &client,
             &tunnel_pubkey,
             &mut link_ips,
@@ -371,7 +338,7 @@ mod tests {
     }
 
     #[test]
-    fn test_process_tunnel_event_rejected() {
+    fn test_process_link_event_rejected() {
         let mut seq = Sequence::new();
         let mut link_ips = IPBlockAllocator::new("10.0.0.0/32".parse().unwrap());
         let mut link_ids = IDAllocator::new(500, vec![500, 501, 503]);
@@ -415,7 +382,7 @@ mod tests {
 
         let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
 
-        process_tunnel_event(
+        process_link_event(
             &client,
             &tunnel_pubkey,
             &mut link_ips,

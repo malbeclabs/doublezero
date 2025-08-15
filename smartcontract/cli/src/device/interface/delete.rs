@@ -1,13 +1,13 @@
 use crate::{
     doublezerocommand::CliCommand,
-    poll_for_activation::poll_for_device_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::validate_pubkey_or_code,
 };
 use clap::Args;
 use doublezero_program_common::validate_iface;
-use doublezero_sdk::commands::device::{
-    get::GetDeviceCommand, interface::delete::DeleteDeviceInterfaceCommand,
+use doublezero_sdk::{
+    commands::device::{get::GetDeviceCommand, interface::delete::DeleteDeviceInterfaceCommand},
+    InterfaceStatus, InterfaceType,
 };
 use std::io::Write;
 
@@ -19,9 +19,6 @@ pub struct DeleteDeviceInterfaceCliCommand {
     /// Interface name
     #[arg(value_parser = validate_iface, required = true)]
     pub name: String,
-    /// Wait for the device to be activated
-    #[arg(short, long, default_value_t = false)]
-    pub wait: bool,
 }
 
 impl DeleteDeviceInterfaceCliCommand {
@@ -35,11 +32,20 @@ impl DeleteDeviceInterfaceCliCommand {
             })
             .map_err(|_| eyre::eyre!("Device not found"))?;
 
-        device
-            .interfaces
-            .iter()
-            .find(|i| i.into_current_version().name.to_lowercase() == self.name.to_lowercase())
-            .ok_or_else(|| eyre::eyre!("Interface '{}' not found", self.name))?;
+        let (_, iface) = device
+            .find_interface(&self.name)
+            .map_err(|err| eyre::eyre!(err))?;
+
+        // if a physical interface is Activated, it's part of a link and shouldn't be deleted.
+        if iface.interface_type == InterfaceType::Physical
+            && iface.status == InterfaceStatus::Activated
+        {
+            return Err(eyre::eyre!(
+                "Cannot delete physical interface '{}' with status {}",
+                iface.name,
+                iface.status
+            ));
+        }
 
         let signature = client.delete_device_interface(DeleteDeviceInterfaceCommand {
             pubkey,
@@ -47,11 +53,6 @@ impl DeleteDeviceInterfaceCliCommand {
         })?;
 
         writeln!(out, "Signature: {signature}",)?;
-
-        if self.wait {
-            let device = poll_for_device_activated(client, &pubkey)?;
-            writeln!(out, "Status: {0}", device.status)?;
-        }
 
         Ok(())
     }
@@ -94,7 +95,7 @@ mod tests {
             mgmt_vrf: "default".to_string(),
             interfaces: vec![
                 Interface::V1(CurrentInterfaceVersion {
-                    status: InterfaceStatus::Activated,
+                    status: InterfaceStatus::Unlinked,
                     name: "Ethernet0".to_string(),
                     interface_type: InterfaceType::Physical,
                     loopback_type: LoopbackType::None,
@@ -142,10 +143,9 @@ mod tests {
         let res = DeleteDeviceInterfaceCliCommand {
             device: device_pk.to_string(),
             name: "Ethernet0".to_string(),
-            wait: false,
         }
         .execute(&client, &mut output);
-        assert!(res.is_ok());
+        assert!(res.is_ok(), "Error: {}", res.unwrap_err());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, format!("Signature: {signature}\n"));
     }

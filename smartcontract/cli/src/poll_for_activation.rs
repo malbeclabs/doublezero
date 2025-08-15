@@ -3,7 +3,8 @@ use doublezero_sdk::{
         device::get::GetDeviceCommand, link::get::GetLinkCommand,
         multicastgroup::get::GetMulticastGroupCommand, user::get::GetUserCommand,
     },
-    Device, DeviceStatus, Link, LinkStatus, MulticastGroup, MulticastGroupStatus, User, UserStatus,
+    CurrentInterfaceVersion, Device, DeviceStatus, InterfaceStatus, Link, LinkStatus,
+    MulticastGroup, MulticastGroupStatus, User, UserStatus,
 };
 use solana_sdk::pubkey::Pubkey;
 
@@ -47,6 +48,62 @@ pub fn poll_for_device_activated(
                 // Device not found or some other error, continue polling
                 // It may take some time for the device to be visible onchain after the creation
                 // transaction is confirmed, so we need to poll here until is is.
+                last_error = Some(e);
+            }
+        }
+
+        std::thread::sleep(poll_interval);
+    }
+}
+
+pub fn poll_for_device_interface_activated(
+    client: &dyn CliCommand,
+    device_pubkey: &Pubkey,
+    interface_name: &str,
+) -> eyre::Result<CurrentInterfaceVersion> {
+    let start_time = std::time::Instant::now();
+    let timeout = std::time::Duration::from_secs(20);
+    let poll_interval = std::time::Duration::from_secs(1);
+    let mut last_error: Option<eyre::Error> = None;
+
+    loop {
+        if start_time.elapsed() >= timeout {
+            return Err(match last_error {
+                Some(e) => eyre::eyre!(
+                    "Timeout waiting for device activation after 20 seconds. Last error: {}",
+                    e
+                ),
+                None => eyre::eyre!("Timeout waiting for device activation after 20 seconds"),
+            });
+        }
+
+        match client.get_device(GetDeviceCommand {
+            pubkey_or_code: device_pubkey.to_string(),
+        }) {
+            Ok((_, device)) => {
+                if let Some(iface) = device.interfaces.iter().find(|iface| {
+                    iface.into_current_version().name.to_lowercase()
+                        == interface_name.to_lowercase()
+                }) {
+                    let current = iface.into_current_version();
+                    if current.status != InterfaceStatus::Pending {
+                        return Ok(current);
+                    } else {
+                        last_error = Some(eyre::eyre!(
+                            "Interface '{}' found but not activated (status: {:?})",
+                            interface_name,
+                            current.status
+                        ));
+                    }
+                } else {
+                    last_error = Some(eyre::eyre!(
+                        "Interface '{}' not found on device '{}'",
+                        interface_name,
+                        device_pubkey
+                    ));
+                }
+            }
+            Err(e) => {
                 last_error = Some(e);
             }
         }

@@ -1,7 +1,7 @@
 use crate::{
     device::interface::types,
     doublezerocommand::CliCommand,
-    poll_for_activation::poll_for_device_activated,
+    poll_for_activation::poll_for_device_interface_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::validate_pubkey_or_code,
 };
@@ -70,7 +70,7 @@ impl CreateDeviceInterfaceCliCommand {
 
         let (signature, _) = client.create_device_interface(CreateDeviceInterfaceCommand {
             pubkey: device_pk,
-            name: self.name,
+            name: self.name.clone(),
             loopback_type: self.loopback_type.into(),
             vlan_id: self.vlan_id,
             user_tunnel_endpoint: self.user_tunnel_endpoint,
@@ -78,8 +78,8 @@ impl CreateDeviceInterfaceCliCommand {
         writeln!(out, "Signature: {signature}")?;
 
         if self.wait {
-            let device = poll_for_device_activated(client, &device_pk)?;
-            writeln!(out, "Status: {0}", device.status)?;
+            let interface = poll_for_device_interface_activated(client, &device_pk, &self.name)?;
+            writeln!(out, "Status: {0}", interface.status)?;
         }
 
         Ok(())

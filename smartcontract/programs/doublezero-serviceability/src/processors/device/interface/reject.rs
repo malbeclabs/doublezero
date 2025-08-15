@@ -2,7 +2,6 @@ use core::fmt;
 
 use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::device::*};
 use borsh::{BorshDeserialize, BorshSerialize};
-use doublezero_program_common::types::NetworkV4;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -13,26 +12,20 @@ use solana_program::{
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct DeviceInterfaceActivateArgs {
+pub struct DeviceInterfaceRejectArgs {
     pub name: String,
-    pub ip_net: NetworkV4,
-    pub node_segment_idx: u16,
 }
 
-impl fmt::Debug for DeviceInterfaceActivateArgs {
+impl fmt::Debug for DeviceInterfaceRejectArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}, ip_net: {}, node_segment_idx: {}",
-            self.name, self.ip_net, self.node_segment_idx
-        )
+        write!(f, "{}", self.name)
     }
 }
 
-pub fn process_activate_device_interface(
+pub fn process_reject_device_interface(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &DeviceInterfaceActivateArgs,
+    value: &DeviceInterfaceRejectArgs,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -42,7 +35,7 @@ pub fn process_activate_device_interface(
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_activate_device_interface()");
+    msg!("process_reject_device_interface()");
 
     if device_account.owner != program_id {
         return Err(ProgramError::IncorrectProgramId);
@@ -58,29 +51,17 @@ pub fn process_activate_device_interface(
 
     let mut device: Device = Device::try_from(device_account)?;
 
-    let (idx, iface) = device
-        .interfaces
-        .iter()
-        .map(|i| i.into_current_version())
-        .enumerate()
-        .find(|(_, i)| i.name == value.name)
-        .ok_or(DoubleZeroError::InterfaceNotFound)?;
+    let (idx, mut iface) = device
+        .find_interface(&value.name)
+        .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
 
-    if iface.status == InterfaceStatus::Deleting {
-        return Err(DoubleZeroError::InvalidStatus.into());
-    }
-
-    let mut updated_iface = iface.clone();
-    updated_iface.status = InterfaceStatus::Activated;
-    updated_iface.ip_net = value.ip_net;
-    updated_iface.node_segment_idx = value.node_segment_idx;
-
-    device.interfaces[idx] = Interface::V1(updated_iface);
+    iface.status = InterfaceStatus::Rejected;
+    device.interfaces[idx] = Interface::V1(iface);
 
     account_write(device_account, &device, payer_account, system_program)?;
 
     #[cfg(test)]
-    msg!("Activated: {:?}", device);
+    msg!("Rejected: {:?}", device);
 
     Ok(())
 }

@@ -58,10 +58,10 @@ pub fn validate_parse_delay_ms(val: &str) -> Result<f64, String> {
 
 pub fn validate_parse_jitter_ms(val: &str) -> Result<f64, String> {
     if let Ok(jitter) = val.parse::<f64>() {
-        if (1.0..=1000.0).contains(&jitter) {
+        if (0.01..=1000.0).contains(&jitter) {
             Ok(jitter)
         } else {
-            Err(String::from("Jitter must be between 1 and 1000 ms"))
+            Err(String::from("Jitter must be between 0.01 and 1000 ms"))
         }
     } else {
         Err(String::from("invalid jitter format"))

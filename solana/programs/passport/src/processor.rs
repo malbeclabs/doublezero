@@ -247,6 +247,8 @@ fn try_request_access(accounts: &[AccountInfo], access_mode: AccessMode) -> Prog
     access_request.service_key = service_key;
     access_request.rent_beneficiary_key = *payer_info.key;
 
+    // The sentinel service uses this log statement to filter txn logs to
+    // successfully submitted access requests when subscribing to the logs socket
     msg!("Initialized user access request {}", service_key);
 
     Ok(())

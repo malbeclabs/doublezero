@@ -4,8 +4,8 @@ edition.workspace = true
 homepage.workspace = true
 license.workspace = true
 repository.workspace = true
-rust-version.workspace = true
 version.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 borsh = { workspace = true, features = ["derive"] }

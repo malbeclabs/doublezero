@@ -20,15 +20,15 @@ func TestTelemetry_Data_Internet_Provider_GetCircuits(t *testing.T) {
 	t.Run("basic forward and reverse circuits", func(t *testing.T) {
 		t.Parallel()
 
-		locA := serviceability.Location{Code: "A", PubKey: solana.NewWallet().PublicKey()}
-		locB := serviceability.Location{Code: "B", PubKey: solana.NewWallet().PublicKey()}
-		locC := serviceability.Location{Code: "C", PubKey: solana.NewWallet().PublicKey()}
-		locD := serviceability.Location{Code: "D", PubKey: solana.NewWallet().PublicKey()}
+		exA := serviceability.Exchange{Code: "A", PubKey: solana.NewWallet().PublicKey()}
+		exB := serviceability.Exchange{Code: "B", PubKey: solana.NewWallet().PublicKey()}
+		exC := serviceability.Exchange{Code: "C", PubKey: solana.NewWallet().PublicKey()}
+		exD := serviceability.Exchange{Code: "D", PubKey: solana.NewWallet().PublicKey()}
 
 		client := &mockServiceabilityClient{
 			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 				return &serviceability.ProgramData{
-					Locations: []serviceability.Location{locA, locB, locC, locD},
+					Exchanges: []serviceability.Exchange{exA, exB, exC, exD},
 				}, nil
 			},
 		}
@@ -50,12 +50,12 @@ func TestTelemetry_Data_Internet_Provider_GetCircuits(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, circuits, 6)
 
-		circuitABCode := circuitKey(locA.Code, locB.Code)
-		circuitACCode := circuitKey(locA.Code, locC.Code)
-		circuitADCode := circuitKey(locA.Code, locD.Code)
-		circuitBCCode := circuitKey(locB.Code, locC.Code)
-		circuitBDCode := circuitKey(locB.Code, locD.Code)
-		circuitCDCode := circuitKey(locC.Code, locD.Code)
+		circuitABCode := circuitKey(exA.Code, exB.Code)
+		circuitACCode := circuitKey(exA.Code, exC.Code)
+		circuitADCode := circuitKey(exA.Code, exD.Code)
+		circuitBCCode := circuitKey(exB.Code, exC.Code)
+		circuitBDCode := circuitKey(exB.Code, exD.Code)
+		circuitCDCode := circuitKey(exC.Code, exD.Code)
 
 		expected := map[string]struct{}{
 			circuitABCode: {},
@@ -103,8 +103,8 @@ func TestTelemetry_Data_Internet_Provider_GetCircuits(t *testing.T) {
 		walletA := solana.NewWallet()
 		walletB := solana.NewWallet()
 
-		locA := serviceability.Location{Code: "A", PubKey: toPubKeyBytes(walletA.PublicKey())}
-		locB := serviceability.Location{Code: "B", PubKey: toPubKeyBytes(walletB.PublicKey())}
+		exA := serviceability.Exchange{Code: "A", PubKey: toPubKeyBytes(walletA.PublicKey())}
+		exB := serviceability.Exchange{Code: "B", PubKey: toPubKeyBytes(walletB.PublicKey())}
 
 		client := &mockServiceabilityClient{
 			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
@@ -113,9 +113,9 @@ func TestTelemetry_Data_Internet_Provider_GetCircuits(t *testing.T) {
 				}
 				called++
 				return &serviceability.ProgramData{
-					Locations: []serviceability.Location{
-						locA,
-						locB,
+					Exchanges: []serviceability.Exchange{
+						exA,
+						exB,
 					},
 				}, nil
 			},
@@ -152,7 +152,7 @@ func TestTelemetry_Data_Internet_Provider_GetCircuits(t *testing.T) {
 			ServiceabilityClient: &mockServiceabilityClient{
 				GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 					return &serviceability.ProgramData{
-						Locations: []serviceability.Location{
+						Exchanges: []serviceability.Exchange{
 							{PubKey: toPubKeyBytes(solana.NewWallet().PublicKey())},
 						},
 					}, nil
@@ -191,13 +191,13 @@ func TestTelemetry_Data_Internet_Provider_GetCircuits(t *testing.T) {
 	t.Run("circuit code unique with duplicate link code", func(t *testing.T) {
 		t.Parallel()
 
-		locA := serviceability.Location{Code: "A", PubKey: toPubKeyBytes(solana.NewWallet().PublicKey())}
-		locB := serviceability.Location{Code: "B", PubKey: toPubKeyBytes(solana.NewWallet().PublicKey())}
+		exA := serviceability.Exchange{Code: "A", PubKey: toPubKeyBytes(solana.NewWallet().PublicKey())}
+		exB := serviceability.Exchange{Code: "B", PubKey: toPubKeyBytes(solana.NewWallet().PublicKey())}
 
 		client := &mockServiceabilityClient{
 			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 				return &serviceability.ProgramData{
-					Locations: []serviceability.Location{locA, locB},
+					Exchanges: []serviceability.Exchange{exA, exB},
 				}, nil
 			},
 		}

@@ -1,7 +1,6 @@
 use crate::fee_payment_calculator::ValidatorRewards;
 use anyhow::{bail, Result};
 use futures::{stream, StreamExt, TryStreamExt};
-use solana_client::rpc_config::RpcBlockConfig;
 use solana_sdk::{clock::DEFAULT_SLOTS_PER_EPOCH, reward_type::RewardType::Fee};
 
 use std::collections::HashMap;
@@ -15,7 +14,6 @@ pub async fn get_block_rewards<T: ValidatorRewards>(
     api_provider: &T,
     validator_ids: &[String],
     epoch: u64,
-    config: RpcBlockConfig,
 ) -> Result<HashMap<String, (u64, u64)>> {
     let first_slot = get_first_slot_for_epoch(epoch);
 
@@ -44,7 +42,7 @@ pub async fn get_block_rewards<T: ValidatorRewards>(
         },
     ))
     .map(|(validator_id, slot)| async move {
-        match api_provider.get_block_with_config(slot, config).await {
+        match api_provider.get_block_with_config(slot).await {
             Ok(block) => {
                 let mut signature_lamports: u64 = 0;
                 if let Some(sigs) = &block.signatures {
@@ -85,10 +83,7 @@ pub async fn get_block_rewards<T: ValidatorRewards>(
 mod tests {
     use super::*;
     use crate::fee_payment_calculator::MockValidatorRewards;
-    use solana_sdk::commitment_config::CommitmentConfig;
-    use solana_transaction_status_client_types::{
-        Reward, TransactionDetails, UiConfirmedBlock, UiTransactionEncoding,
-    };
+    use solana_transaction_status_client_types::{Reward, UiConfirmedBlock};
 
     #[tokio::test]
     async fn test_get_block_rewards() {
@@ -131,21 +126,13 @@ mod tests {
             block_height: None,
         };
 
-        let rpc_block_config = solana_client::rpc_config::RpcBlockConfig {
-            encoding: UiTransactionEncoding::Base58.into(),
-            transaction_details: TransactionDetails::Signatures.into(),
-            rewards: Some(true),
-            commitment: CommitmentConfig::finalized().into(),
-            max_supported_transaction_version: Some(0),
-        };
-
         mock_api_provider
             .expect_get_block_with_config()
-            .withf(move |s, _| *s == slot)
+            .withf(move |s| *s == slot)
             .times(1)
-            .returning(move |_, _| Ok(mock_block.clone()));
+            .returning(move |_| Ok(mock_block.clone()));
 
-        let rewards = get_block_rewards(&mock_api_provider, validator_ids, epoch, rpc_block_config)
+        let rewards = get_block_rewards(&mock_api_provider, validator_ids, epoch)
             .await
             .unwrap();
 

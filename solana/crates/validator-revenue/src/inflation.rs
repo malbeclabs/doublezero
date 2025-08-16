@@ -1,6 +1,5 @@
 use crate::fee_payment_calculator::ValidatorRewards;
 use anyhow::{anyhow, Result};
-use solana_client::rpc_config::RpcGetVoteAccountsConfig;
 use solana_sdk::pubkey::Pubkey;
 use std::{collections::HashMap, str::FromStr};
 
@@ -8,12 +7,11 @@ pub async fn get_inflation_rewards<T: ValidatorRewards + ?Sized>(
     fee_payment_calculator: &T,
     validator_ids: &[String],
     epoch: u64,
-    rpc_get_vote_accounts_config: RpcGetVoteAccountsConfig,
 ) -> Result<HashMap<String, u64>> {
     let mut vote_keys: Vec<Pubkey> = Vec::with_capacity(validator_ids.len());
 
     let vote_accounts = fee_payment_calculator
-        .get_vote_accounts_with_config(rpc_get_vote_accounts_config)
+        .get_vote_accounts_with_config()
         .await?;
 
     // this can be cleaned up i'm sure
@@ -58,11 +56,9 @@ pub async fn get_inflation_rewards<T: ValidatorRewards + ?Sized>(
 mod tests {
     use super::*;
     use crate::fee_payment_calculator::MockValidatorRewards;
-    use solana_client::{
-        rpc_config::RpcGetVoteAccountsConfig,
-        rpc_response::{RpcInflationReward, RpcVoteAccountInfo, RpcVoteAccountStatus},
+    use solana_client::rpc_response::{
+        RpcInflationReward, RpcVoteAccountInfo, RpcVoteAccountStatus,
     };
-    use solana_sdk::commitment_config::CommitmentConfig;
 
     #[tokio::test]
     async fn test_get_inflation_rewards() {
@@ -85,9 +81,9 @@ mod tests {
         };
         mock_fee_payment_calculator
             .expect_get_vote_accounts_with_config()
-            .withf(move |_| true)
+            .withf(move || true)
             .times(1)
-            .returning(move |_| Ok(mock_rpc_vote_account_status.clone()));
+            .returning(move || Ok(mock_rpc_vote_account_status.clone()));
 
         let mock_rpc_inflation_reward = vec![Some(RpcInflationReward {
             epoch: 812,
@@ -97,27 +93,15 @@ mod tests {
             commission: Some(1),
         })];
 
-        let rpc_get_vote_account_configs = RpcGetVoteAccountsConfig {
-            vote_pubkey: Some("vote pubkey".to_string()),
-            commitment: Some(CommitmentConfig::finalized()),
-            keep_unstaked_delinquents: Some(false),
-            delinquent_slot_distance: Some(100_000),
-        };
-
         mock_fee_payment_calculator
             .expect_get_inflation_reward()
             .times(1)
             .returning(move |_, _| Ok(mock_rpc_inflation_reward.clone()));
 
         let inflation_reward: u64 = 2500;
-        let rewards = get_inflation_rewards(
-            &mock_fee_payment_calculator,
-            validator_ids,
-            epoch,
-            rpc_get_vote_account_configs,
-        )
-        .await
-        .unwrap();
+        let rewards = get_inflation_rewards(&mock_fee_payment_calculator, validator_ids, epoch)
+            .await
+            .unwrap();
         assert_eq!(rewards.get(&validator_id), Some(&(inflation_reward)));
     }
 }

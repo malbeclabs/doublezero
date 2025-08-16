@@ -162,8 +162,10 @@ mod tests {
     #[test]
     fn test_validate_jitter_ms() {
         assert!(validate_parse_jitter_ms("1").is_ok());
+        assert!(validate_parse_jitter_ms("0.5").is_ok());
         assert!(validate_parse_jitter_ms("1000").is_ok());
-        assert!(validate_parse_jitter_ms("0.5").is_err());
+        assert!(validate_parse_jitter_ms("0").is_err());
+        assert!(validate_parse_jitter_ms("0.0001").is_err());
         assert!(validate_parse_jitter_ms("1001").is_err());
         assert!(validate_parse_jitter_ms("not_a_number").is_err());
     }

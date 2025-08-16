@@ -75,9 +75,8 @@ impl ListLinkCliCommand {
         if self.dzx {
             links.retain(|(_, link)| link.link_type == LinkLinkType::DZX);
         }
-        links.sort_by(|(_, a), (_, b)| a.owner.cmp(&b.owner).then(a.tunnel_id.cmp(&b.tunnel_id)));
 
-        let tunnel_displays: Vec<LinkDisplay> = links
+        let mut tunnel_displays: Vec<LinkDisplay> = links
             .into_iter()
             .map(|(pubkey, link)| {
                 let contributor_code = match contributors.get(&link.contributor_pk) {
@@ -115,6 +114,13 @@ impl ListLinkCliCommand {
                 }
             })
             .collect();
+
+        tunnel_displays.sort_by(|a, b| {
+            a.side_a_name
+                .cmp(&b.side_a_name)
+                .then(a.side_z_name.cmp(&b.side_z_name))
+                .then(a.code.cmp(&b.code))
+        });
 
         let res = if self.json {
             serde_json::to_string_pretty(&tunnel_displays)?

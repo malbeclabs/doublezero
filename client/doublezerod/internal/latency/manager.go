@@ -10,48 +10,33 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gagliardetto/solana-go"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/config"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
-	"github.com/mr-tron/base58"
-	probing "github.com/prometheus-community/pro-bing"
 )
 
-type ProberFunc func(context.Context, serviceability.Device) LatencyResult
+const (
+	defaultProbeInterval        = 30 * time.Second
+	defaultDevicesFetchInterval = 30 * time.Second
+	defaultFetchTimeout         = 10 * time.Second
+	defaultProbeTimeout         = 5 * time.Second
+	defaultConcurrency          = 64
+)
 
-func UdpPing(ctx context.Context, d serviceability.Device) LatencyResult {
-	addr := net.IP(d.PublicIp[:])
-	pinger, err := probing.NewPinger(addr.String())
-	if err != nil {
-		slog.Error("latency: error creating pinger for device", "device address", addr, "error", err)
-		return LatencyResult{Device: d, Reachable: false}
-	}
-
-	pinger.Count = 3
-	pinger.Timeout = 10 * time.Second
-	pinger.SetPrivileged(true)
-
-	if err := pinger.Run(); err != nil {
-		slog.Error("latency: error while probing", "address", addr, "error", err)
-		return LatencyResult{Device: d, Reachable: false}
-	}
-	stats := pinger.Statistics()
-	results := LatencyResult{Device: d}
-
-	results.Reachable = true
-	if stats.PacketLoss == 100 {
-		results.Reachable = false
-	}
-	results.Avg = int64(stats.AvgRtt)
-	results.Min = int64(stats.MinRtt)
-	results.Max = int64(stats.MaxRtt)
-	results.Loss = stats.PacketLoss
-	return results
+type ServiceabilityClient interface {
+	GetProgramData(context.Context) (*serviceability.ProgramData, error)
 }
 
-type SmartContractorFunc func(context.Context, string, string) (*ContractData, error)
-
-type DeviceCache struct {
-	Devices []serviceability.Device
-	Lock    sync.Mutex
+type Config struct {
+	Logger                      *slog.Logger
+	Config                      *config.Config
+	NewServiceabilityClientFunc func(rpcURL string, programID solana.PublicKey) ServiceabilityClient
+	PingFunc                    func(context.Context, *slog.Logger, serviceability.Device) LatencyResult
+	ProbeInterval               time.Duration
+	DevicesFetchInterval        time.Duration
+	FetchTimeout                time.Duration
+	ProbeTimeout                time.Duration
+	Concurrency                 int
 }
 
 type LatencyResult struct {
@@ -66,154 +51,238 @@ type LatencyResult struct {
 func (l *LatencyResult) MarshalJSON() ([]byte, error) {
 	type Alias LatencyResult
 	return json.Marshal(&struct {
-		DevicePk   string `json:"device_pk"`
+		DevicePK   string `json:"device_pk"`
 		DeviceIP   string `json:"device_ip"`
 		DeviceCode string `json:"device_code"`
 		*Alias
 	}{
 		DeviceIP:   net.IP(l.Device.PublicIp[:]).String(),
-		DevicePk:   base58.Encode(l.Device.PubKey[:]),
+		DevicePK:   solana.PublicKeyFromBytes(l.Device.PubKey[:]).String(),
 		DeviceCode: l.Device.Code,
 		Alias:      (*Alias)(l),
 	})
 }
 
-type LatencyResults struct {
-	Results []LatencyResult
-	Lock    sync.RWMutex `json:"-"`
+type Manager struct {
+	log *slog.Logger
+	cfg Config
+
+	mu             sync.RWMutex
+	serviceability ServiceabilityClient
+	devices        []serviceability.Device
+	results        []LatencyResult
 }
 
-func (l *LatencyResults) MarshalJSON() ([]byte, error) {
-	l.Lock.RLock()
-	defer l.Lock.RUnlock()
-	return json.Marshal(l.Results)
+func NewManager(cfg Config) (*Manager, error) {
+	if cfg.Logger == nil {
+		return nil, fmt.Errorf("logger required")
+	}
+	if cfg.Config == nil {
+		return nil, fmt.Errorf("config required")
+	}
+	if cfg.NewServiceabilityClientFunc == nil {
+		return nil, fmt.Errorf("NewServiceabilityClientFunc required")
+	}
+	if cfg.ProbeInterval == 0 {
+		cfg.ProbeInterval = defaultProbeInterval
+	}
+	if cfg.DevicesFetchInterval == 0 {
+		cfg.DevicesFetchInterval = defaultDevicesFetchInterval
+	}
+	if cfg.FetchTimeout == 0 {
+		cfg.FetchTimeout = defaultFetchTimeout
+	}
+	if cfg.ProbeTimeout == 0 {
+		cfg.ProbeTimeout = defaultProbeTimeout
+	}
+	if cfg.Concurrency <= 0 {
+		cfg.Concurrency = defaultConcurrency
+	}
+	if cfg.PingFunc == nil {
+		cfg.PingFunc = udpPing
+	}
+	return &Manager{
+		log: cfg.Logger.With("component", "latency"),
+		cfg: cfg,
+	}, nil
 }
 
-type LatencyManager struct {
-	SmartContractFunc SmartContractorFunc
-	ProberFunc        ProberFunc
-	DeviceCache       *DeviceCache
-	ResultsCache      *LatencyResults
-}
+func (m *Manager) Start(ctx context.Context) error {
+	m.log.Info("starting latency manager",
+		"probe_interval", m.cfg.ProbeInterval.String(),
+		"devices_fetch_interval", m.cfg.DevicesFetchInterval.String(),
+		"fetch_timeout", m.cfg.FetchTimeout.String(),
+		"probe_timeout", m.cfg.ProbeTimeout.String(),
+		"concurrency", m.cfg.Concurrency,
+	)
 
-func NewLatencyManager(s SmartContractorFunc, p ProberFunc) *LatencyManager {
-	return &LatencyManager{
-		SmartContractFunc: s,
-		ProberFunc:        p,
-		DeviceCache:       &DeviceCache{Devices: []serviceability.Device{}, Lock: sync.Mutex{}},
-		ResultsCache:      &LatencyResults{Results: []LatencyResult{}, Lock: sync.RWMutex{}},
+	// Initial prime
+	m.recreateServiceabilityClient()
+	m.refreshDevices(ctx)
+	m.probeDevices(ctx)
+
+	devicesTicker := time.NewTicker(m.cfg.DevicesFetchInterval)
+	probeTicker := time.NewTicker(m.cfg.ProbeInterval)
+	defer func() { devicesTicker.Stop(); probeTicker.Stop() }()
+
+	for {
+		select {
+		case <-ctx.Done():
+			m.log.Info("shutting down")
+			return nil
+
+		case <-m.cfg.Config.Changed():
+			if err := m.handleConfigChange(ctx); err != nil {
+				m.log.Error("failed to handle config change", "err", err)
+			}
+
+		case <-devicesTicker.C:
+			m.refreshDevices(ctx)
+
+		case <-probeTicker.C:
+			m.probeDevices(ctx)
+		}
 	}
 }
 
-func (l *LatencyManager) Start(ctx context.Context, programId string, rpcEndpoint string, probeInterval, cacheUpdateInterval int) error {
+func (m *Manager) ServeLatency(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+	case http.MethodHead:
+		w.WriteHeader(http.StatusOK)
+		return
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
 
-	// start goroutine for fetching smartcontract devices
-	go func() {
-		fetch := func() {
-			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			defer cancel()
-			contractData, err := l.SmartContractFunc(ctx, programId, rpcEndpoint)
-			if err != nil {
-				slog.Error("latency: error fetching smart contract data", "error", err)
-				return
-			}
+	m.mu.RLock()
+	results := append([]LatencyResult(nil), m.results...)
+	m.mu.RUnlock()
+	if results == nil {
+		results = []LatencyResult{}
+	}
 
-			if len(contractData.Devices) == 0 {
-				slog.Warn("latency: smartcontract data contained 0 devices")
-				return
-			}
-			slog.Debug("latency: updating cache", "number of devices updated", len(contractData.Devices))
-			l.DeviceCache.Lock.Lock()
-			l.DeviceCache.Devices = contractData.Devices
-			l.DeviceCache.Lock.Unlock()
-		}
-		// don't wait for first tick and populate cache
-		fetch()
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(results); err != nil {
+		m.log.Error("encode response failed", "err", err, "remote", r.RemoteAddr)
+		http.Error(w, fmt.Sprintf("error generating response: %v", err), http.StatusInternalServerError)
+	}
+}
 
-		ticker := time.NewTicker(time.Duration(cacheUpdateInterval) * time.Second)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				fetch()
-			}
-		}
-	}()
-
-	// TODO: insert ticker here to repeat probing on a clock tick
-	go func() {
-		probe := func() {
-			resultsCache := []LatencyResult{}
-			wg := sync.WaitGroup{}
-			resultsChan := make(chan LatencyResult)
-
-			l.DeviceCache.Lock.Lock()
-			devices := l.DeviceCache.Devices
-			l.DeviceCache.Lock.Unlock()
-
-			for _, device := range devices {
-				wg.Add(1)
-				go func() {
-					resultsChan <- l.ProberFunc(ctx, device)
-					wg.Done()
-				}()
-			}
-			go func() {
-				wg.Wait()
-				close(resultsChan)
-			}()
-
-			for result := range resultsChan {
-				resultsCache = append(resultsCache, result)
-			}
-
-			l.ResultsCache.Lock.Lock()
-			l.ResultsCache.Results = resultsCache
-			l.ResultsCache.Lock.Unlock()
-		}
-
-		// don't wait for first tick to ping stuff
-		probe()
-
-		ticker := time.NewTicker(time.Duration(probeInterval) * time.Second)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				probe()
-			}
-		}
-	}()
-	<-ctx.Done()
-	slog.Info("latency: closing manager")
-
+func (m *Manager) handleConfigChange(ctx context.Context) error {
+	m.log.Info("config changed; recreating client")
+	m.recreateServiceabilityClient()
+	m.refreshDevices(ctx)
+	m.probeDevices(ctx)
 	return nil
 }
 
-func (l *LatencyManager) ServeLatency(w http.ResponseWriter, r *http.Request) {
-	data, err := json.Marshal(l.ResultsCache)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(fmt.Sprintf("error generating latency: %v", err)))
+// recreateServiceabilityClient always rebuilds the client from the current config.
+// It clears devices/results to avoid serving stale data.
+// Returns an error if the program id is invalid.
+func (m *Manager) recreateServiceabilityClient() {
+	rpc := m.cfg.Config.RPCURL()
+	programID := m.cfg.Config.ProgramID()
+
+	m.log.Info("creating serviceability client", "rpc", rpc, "program_id", programID)
+	svc := m.cfg.NewServiceabilityClientFunc(rpc, programID)
+
+	m.mu.Lock()
+	m.serviceability = svc
+	m.devices = nil
+	m.results = nil
+	m.mu.Unlock()
+}
+
+func (m *Manager) refreshDevices(ctx context.Context) {
+	m.mu.RLock()
+	svc := m.serviceability
+	timeout := m.cfg.FetchTimeout
+	m.mu.RUnlock()
+
+	if svc == nil {
+		m.log.Warn("serviceability not set; skipping device fetch")
 		return
 	}
-	_, _ = w.Write(data)
+
+	m.log.Debug("fetching devices", "timeout", timeout.String())
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	pd, err := svc.GetProgramData(ctx)
+	if err != nil {
+		m.log.Error("failed to fetch program data", "err", err)
+		return
+	}
+	if len(pd.Devices) == 0 {
+		m.log.Warn("no devices found")
+		return
+	}
+
+	m.mu.Lock()
+	m.devices = append([]serviceability.Device(nil), pd.Devices...)
+	m.mu.Unlock()
 }
 
-func (l *LatencyManager) GetDeviceCache() []serviceability.Device {
-	l.DeviceCache.Lock.Lock()
-	defer l.DeviceCache.Lock.Unlock()
-	devices := make([]serviceability.Device, len(l.DeviceCache.Devices))
-	copy(devices, l.DeviceCache.Devices)
-	return devices
+func (m *Manager) probeDevices(ctx context.Context) {
+	m.mu.RLock()
+	devs := append([]serviceability.Device(nil), m.devices...)
+	timeout := m.cfg.ProbeTimeout
+	workers := m.cfg.Concurrency
+	m.mu.RUnlock()
+
+	if len(devs) == 0 {
+		m.mu.Lock()
+		m.results = nil
+		m.mu.Unlock()
+		return
+	}
+
+	if workers < 1 {
+		workers = 1
+	}
+	if workers > len(devs) {
+		workers = len(devs)
+	}
+
+	local := make([]LatencyResult, len(devs))
+	jobs := make(chan int, len(devs))
+	var wg sync.WaitGroup
+
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range jobs {
+				if ctx.Err() != nil {
+					return
+				}
+				probeDevice(ctx, m, devs, i, local, timeout)
+			}
+		}()
+	}
+
+	for i := range devs {
+		jobs <- i
+	}
+	close(jobs)
+	wg.Wait()
+
+	m.mu.Lock()
+	m.results = local
+	m.mu.Unlock()
 }
 
-func (l *LatencyManager) GetResultsCache() []LatencyResult {
-	l.ResultsCache.Lock.RLock()
-	defer l.ResultsCache.Lock.RUnlock()
-	results := make([]LatencyResult, len(l.ResultsCache.Results))
-	copy(results, l.ResultsCache.Results)
-	return results
+func probeDevice(ctx context.Context, m *Manager, devs []serviceability.Device, i int, local []LatencyResult, timeout time.Duration) {
+	defer func() {
+		if r := recover(); r != nil {
+			m.log.Error("panic in ping", "err", r)
+		}
+	}()
+	subCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	m.log.Debug("probing device", "device", devs[i].Code)
+	local[i] = m.cfg.PingFunc(subCtx, m.log, devs[i])
 }

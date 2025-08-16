@@ -1524,6 +1524,7 @@ version = "0.5.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
+ "bytes",
  "chrono",
  "clap",
  "clap_complete",
@@ -1546,11 +1547,13 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "serial_test",
  "solana-client",
  "solana-program",
  "solana-pubsub-client",
  "solana-sdk",
  "tabled",
+ "temp-env",
  "tempfile",
  "tokio",
 ]
@@ -1681,6 +1684,7 @@ dependencies = [
  "chrono",
  "clap",
  "console",
+ "doublezero-config",
  "doublezero-program-common",
  "doublezero-serviceability",
  "doublezero_sdk",
@@ -1695,11 +1699,14 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "serial_test",
  "solana-client",
  "solana-program",
  "solana-pubsub-client",
  "solana-sdk",
  "tabled",
+ "temp-env",
+ "tempfile",
  "tokio",
 ]
 
@@ -8499,6 +8506,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba323866e5d033818e3240feeb9f7db2c4296674e4d9e16b97b7bf8f490434e8"
 dependencies = [
  "pin-utils",
+]
+
+[[package]]
+name = "temp-env"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96374855068f47402c3121c6eed88d29cb1de8f3ab27090e273e420bdabcf050"
+dependencies = [
+ "parking_lot 0.12.4",
 ]
 
 [[package]]

@@ -5,7 +5,6 @@ pub mod utils {
     };
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
-    use std::env;
     use tempfile::TempDir;
 
     use crate::{
@@ -40,15 +39,13 @@ pub mod utils {
         client
     }
 
-    pub fn create_temp_config() -> eyre::Result<TempDir> {
-        let tmpdir = TempDir::with_prefix("doublezero-tests-")?;
-        env::set_var("DOUBLEZERO_CONFIG_FILE", tmpdir.path().join("config.yaml"));
+    pub fn create_temp_config(dir: &TempDir) -> eyre::Result<()> {
         let client_cfg = ClientConfig {
-            keypair_path: tmpdir.path().join("id.json"),
+            keypair_path: dir.path().join("id.json"),
             ..Default::default()
         };
         write_doublezero_config(&client_cfg)?;
         create_new_pubkey_user(false, None)?;
-        Ok(tmpdir)
+        Ok(())
     }
 }

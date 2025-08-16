@@ -656,21 +656,12 @@ mod tests {
         multicastgroup::{MulticastGroup, MulticastGroupStatus},
     };
     use mockall::predicate;
+    use serial_test::serial;
     use solana_sdk::signature::Signature;
-    use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::OnceLock};
+    use std::{cell::RefCell, collections::HashMap, rc::Rc};
     use tempfile::TempDir;
 
-    static TMPDIR: OnceLock<TempDir> = OnceLock::new();
-
-    fn get_temp_dir() -> &'static TempDir {
-        TMPDIR.get_or_init(|| create_temp_config().expect("Failed to create temp config"))
-    }
-
-    #[ctor::ctor]
-    fn setup() {
-        let temp_dir = get_temp_dir();
-        println!("Using TMPDIR = {}", temp_dir.path().display());
-    }
+    const CONFIG_FILE_ENV_VAR: &str = "DOUBLEZERO_CONFIG_FILE";
 
     struct TestFixture {
         pub global_cfg: GlobalConfig,
@@ -683,7 +674,8 @@ mod tests {
     }
 
     impl TestFixture {
-        pub fn new() -> Self {
+        pub fn new(tmp_dir: &TempDir) -> Self {
+            create_temp_config(tmp_dir).expect("Failed to create temp config");
             let mut fixture = Self {
                 global_cfg: GlobalConfig {
                     account_type: AccountType::Config,
@@ -962,203 +954,249 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_connect_command_ibrl() {
-        let mut fixture = TestFixture::new();
+        let tmp_dir = TempDir::new().unwrap();
+        let config_path = tmp_dir.path().join("config.yaml");
 
-        let (device1_pk, device1) = fixture.add_device(100, true);
-        let user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
-        fixture.expect_create_user(Pubkey::new_unique(), &user);
-        fixture.expected_provisioning_request(
-            UserType::IBRL,
-            user.client_ip.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
-            None,
-            None,
-        );
+        temp_env::with_var(
+            CONFIG_FILE_ENV_VAR,
+            Some(config_path.to_str().unwrap()),
+            async || {
+                let mut fixture = TestFixture::new(&tmp_dir);
 
-        let command = ProvisioningCliCommand {
-            dz_mode: DzMode::IBRL {
-                allocate_addr: false,
+                let (device1_pk, device1) = fixture.add_device(100, true);
+                let user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
+                fixture.expect_create_user(Pubkey::new_unique(), &user);
+                fixture.expected_provisioning_request(
+                    UserType::IBRL,
+                    user.client_ip.to_string().as_str(),
+                    device1.public_ip.to_string().as_str(),
+                    None,
+                    None,
+                );
+
+                let command = ProvisioningCliCommand {
+                    dz_mode: DzMode::IBRL {
+                        allocate_addr: false,
+                    },
+                    client_ip: Some(user.client_ip.to_string()),
+                    device: None,
+                    verbose: false,
+                };
+
+                command
+                    .execute_with_service_controller(&fixture.client, &fixture.controller)
+                    .await
+                    .unwrap();
+
+                println!("Test that adding an IBRL tunnel with an existing multicast fails");
+                // Test that adding an IBRL tunnel with an existing multicast fails
+                (_, _) = fixture.add_multicast_group("test-group", "239.0.0.1");
+
+                let command = ProvisioningCliCommand {
+                    dz_mode: DzMode::Multicast {
+                        mode: MulticastMode::Publisher,
+                        multicast_group: "test-group".to_string(),
+                    },
+                    client_ip: Some(user.client_ip.to_string()),
+                    device: None,
+                    verbose: false,
+                };
+
+                let result = command
+                    .execute_with_service_controller(&fixture.client, &fixture.controller)
+                    .await;
+                assert!(result.is_err());
+                assert!(result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("Only one tunnel currently supported"));
             },
-            client_ip: Some(user.client_ip.to_string()),
-            device: None,
-            verbose: false,
-        };
-
-        let result = command
-            .execute_with_service_controller(&fixture.client, &fixture.controller)
-            .await;
-        assert!(result.is_ok());
-
-        println!("Test that adding an IBRL tunnel with an existing multicast fails");
-        // Test that adding an IBRL tunnel with an existing multicast fails
-        (_, _) = fixture.add_multicast_group("test-group", "239.0.0.1");
-
-        let command = ProvisioningCliCommand {
-            dz_mode: DzMode::Multicast {
-                mode: MulticastMode::Publisher,
-                multicast_group: "test-group".to_string(),
-            },
-            client_ip: Some(user.client_ip.to_string()),
-            device: None,
-            verbose: false,
-        };
-
-        let result = command
-            .execute_with_service_controller(&fixture.client, &fixture.controller)
-            .await;
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Only one tunnel currently supported"));
+        )
+        .await;
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_connect_command_ibrl_allocate() {
-        let mut fixture = TestFixture::new();
+        let tmp_dir = TempDir::new().unwrap();
+        let config_path = tmp_dir.path().join("config.yaml");
 
-        let (device1_pk, device1) = fixture.add_device(100, true);
-        let user = fixture.create_user(UserType::IBRLWithAllocatedIP, device1_pk, "1.2.3.4");
-        fixture.expect_create_user(Pubkey::new_unique(), &user);
-        fixture.expected_provisioning_request(
-            UserType::IBRLWithAllocatedIP,
-            user.client_ip.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
-            None,
-            None,
-        );
+        temp_env::with_var(
+            CONFIG_FILE_ENV_VAR,
+            Some(config_path.to_str().unwrap()),
+            async || {
+                let mut fixture = TestFixture::new(&tmp_dir);
 
-        let command = ProvisioningCliCommand {
-            dz_mode: DzMode::IBRL {
-                allocate_addr: true,
+                let (device1_pk, device1) = fixture.add_device(100, true);
+                let user =
+                    fixture.create_user(UserType::IBRLWithAllocatedIP, device1_pk, "1.2.3.4");
+                fixture.expect_create_user(Pubkey::new_unique(), &user);
+                fixture.expected_provisioning_request(
+                    UserType::IBRLWithAllocatedIP,
+                    user.client_ip.to_string().as_str(),
+                    device1.public_ip.to_string().as_str(),
+                    None,
+                    None,
+                );
+
+                let command = ProvisioningCliCommand {
+                    dz_mode: DzMode::IBRL {
+                        allocate_addr: true,
+                    },
+                    client_ip: Some(user.client_ip.to_string()),
+                    device: None,
+                    verbose: false,
+                };
+
+                command
+                    .execute_with_service_controller(&fixture.client, &fixture.controller)
+                    .await
+                    .unwrap();
             },
-            client_ip: Some(user.client_ip.to_string()),
-            device: None,
-            verbose: false,
-        };
-
-        let result = command
-            .execute_with_service_controller(&fixture.client, &fixture.controller)
-            .await;
-        assert!(result.is_ok());
+        )
+        .await;
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_connect_command_multicast_producer() {
-        let mut fixture = TestFixture::new();
+        let tmp_dir = TempDir::new().unwrap();
+        let config_path = tmp_dir.path().join("config.yaml");
 
-        let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
-        let (device1_pk, device1) = fixture.add_device(100, true);
-        let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
-        fixture.expect_create_subscribe_user(
-            Pubkey::new_unique(),
-            &user,
-            mcast_group_pk,
-            true,
-            false,
-        );
-        fixture.expected_provisioning_request(
-            UserType::Multicast,
-            user.client_ip.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
-            Some(vec![mcast_group.multicast_ip.to_string()]),
-            Some(vec![]),
-        );
+        temp_env::with_var(
+            CONFIG_FILE_ENV_VAR,
+            Some(config_path.to_str().unwrap()),
+            async || {
+                let mut fixture = TestFixture::new(&tmp_dir);
+                let (mcast_group_pk, mcast_group) =
+                    fixture.add_multicast_group("test-group", "239.0.0.1");
+                let (device1_pk, device1) = fixture.add_device(100, true);
+                let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+                fixture.expect_create_subscribe_user(
+                    Pubkey::new_unique(),
+                    &user,
+                    mcast_group_pk,
+                    true,
+                    false,
+                );
+                fixture.expected_provisioning_request(
+                    UserType::Multicast,
+                    user.client_ip.to_string().as_str(),
+                    device1.public_ip.to_string().as_str(),
+                    Some(vec![mcast_group.multicast_ip.to_string()]),
+                    Some(vec![]),
+                );
 
-        let command = ProvisioningCliCommand {
-            dz_mode: DzMode::Multicast {
-                mode: MulticastMode::Publisher,
-                multicast_group: "test-group".to_string(),
+                let command = ProvisioningCliCommand {
+                    dz_mode: DzMode::Multicast {
+                        mode: MulticastMode::Publisher,
+                        multicast_group: "test-group".to_string(),
+                    },
+                    client_ip: Some(user.client_ip.to_string()),
+                    device: None,
+                    verbose: false,
+                };
+
+                let result = command
+                    .execute_with_service_controller(&fixture.client, &fixture.controller)
+                    .await;
+                assert!(result.is_ok());
             },
-            client_ip: Some(user.client_ip.to_string()),
-            device: None,
-            verbose: false,
-        };
-
-        let result = command
-            .execute_with_service_controller(&fixture.client, &fixture.controller)
-            .await;
-        assert!(result.is_ok());
+        )
+        .await;
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_connect_command_multicast_subscribe() {
-        let mut fixture = TestFixture::new();
+        let tmp_dir = TempDir::new().unwrap();
+        let config_path = tmp_dir.path().join("config.yaml");
 
-        let (mcast_group_pk, mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
-        (_, _) = fixture.add_multicast_group("test-group2", "239.0.0.2");
-        let (device1_pk, device1) = fixture.add_device(100, true);
-        let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
-        fixture.expect_create_subscribe_user(
-            Pubkey::new_unique(),
-            &user,
-            mcast_group_pk,
-            false,
-            true,
-        );
-        fixture.expected_provisioning_request(
-            UserType::Multicast,
-            user.client_ip.to_string().as_str(),
-            device1.public_ip.to_string().as_str(),
-            Some(vec![]),
-            Some(vec![mcast_group.multicast_ip.to_string()]),
-        );
+        temp_env::with_var(
+            CONFIG_FILE_ENV_VAR,
+            Some(config_path.to_str().unwrap()),
+            async || {
+                let mut fixture = TestFixture::new(&tmp_dir);
 
-        let command = ProvisioningCliCommand {
-            dz_mode: DzMode::Multicast {
-                mode: MulticastMode::Subscriber,
-                multicast_group: "test-group".to_string(),
+                let (mcast_group_pk, mcast_group) =
+                    fixture.add_multicast_group("test-group", "239.0.0.1");
+                (_, _) = fixture.add_multicast_group("test-group2", "239.0.0.2");
+                let (device1_pk, device1) = fixture.add_device(100, true);
+                let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+                fixture.expect_create_subscribe_user(
+                    Pubkey::new_unique(),
+                    &user,
+                    mcast_group_pk,
+                    false,
+                    true,
+                );
+                fixture.expected_provisioning_request(
+                    UserType::Multicast,
+                    user.client_ip.to_string().as_str(),
+                    device1.public_ip.to_string().as_str(),
+                    Some(vec![]),
+                    Some(vec![mcast_group.multicast_ip.to_string()]),
+                );
+
+                let command = ProvisioningCliCommand {
+                    dz_mode: DzMode::Multicast {
+                        mode: MulticastMode::Subscriber,
+                        multicast_group: "test-group".to_string(),
+                    },
+                    client_ip: Some(user.client_ip.to_string()),
+                    device: None,
+                    verbose: false,
+                };
+
+                let result = command
+                    .execute_with_service_controller(&fixture.client, &fixture.controller)
+                    .await;
+                assert!(result.is_ok());
+
+                println!("Test that adding a second subscriber fails");
+                // Test that adding a second subscriber fails
+                let command = ProvisioningCliCommand {
+                    dz_mode: DzMode::Multicast {
+                        mode: MulticastMode::Subscriber,
+                        multicast_group: "test-group2".to_string(),
+                    },
+                    client_ip: Some(user.client_ip.to_string()),
+                    device: None,
+                    verbose: false,
+                };
+
+                let result = command
+                    .execute_with_service_controller(&fixture.client, &fixture.controller)
+                    .await;
+                assert!(result.is_err());
+                assert!(result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("Multicast user already exists for IP: 1.2.3.4"));
+
+                println!("Test that adding an IBRL tunnel with an existing multicast fails");
+                // Test that adding an IBRL tunnel with an existing multicast fails
+                let command = ProvisioningCliCommand {
+                    dz_mode: DzMode::IBRL {
+                        allocate_addr: false,
+                    },
+                    client_ip: Some(user.client_ip.to_string()),
+                    device: None,
+                    verbose: false,
+                };
+
+                let result = command
+                    .execute_with_service_controller(&fixture.client, &fixture.controller)
+                    .await;
+                assert!(result.is_err());
+                assert!(result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("Only one tunnel currently supported"));
             },
-            client_ip: Some(user.client_ip.to_string()),
-            device: None,
-            verbose: false,
-        };
-
-        let result = command
-            .execute_with_service_controller(&fixture.client, &fixture.controller)
-            .await;
-        assert!(result.is_ok());
-
-        println!("Test that adding a second subscriber fails");
-        // Test that adding a second subscriber fails
-        let command = ProvisioningCliCommand {
-            dz_mode: DzMode::Multicast {
-                mode: MulticastMode::Subscriber,
-                multicast_group: "test-group2".to_string(),
-            },
-            client_ip: Some(user.client_ip.to_string()),
-            device: None,
-            verbose: false,
-        };
-
-        let result = command
-            .execute_with_service_controller(&fixture.client, &fixture.controller)
-            .await;
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Multicast user already exists for IP: 1.2.3.4"));
-
-        println!("Test that adding an IBRL tunnel with an existing multicast fails");
-        // Test that adding an IBRL tunnel with an existing multicast fails
-        let command = ProvisioningCliCommand {
-            dz_mode: DzMode::IBRL {
-                allocate_addr: false,
-            },
-            client_ip: Some(user.client_ip.to_string()),
-            device: None,
-            verbose: false,
-        };
-
-        let result = command
-            .execute_with_service_controller(&fixture.client, &fixture.controller)
-            .await;
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Only one tunnel currently supported"));
+        )
+        .await;
     }
 }

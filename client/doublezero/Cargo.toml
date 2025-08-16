@@ -45,5 +45,8 @@ doublezero-serviceability.workspace = true
 
 [dev-dependencies]
 assert_cmd.workspace = true
+bytes.workspace = true
 ctor.workspace = true
+serial_test.workspace = true
 tempfile.workspace = true
+temp-env.workspace = true

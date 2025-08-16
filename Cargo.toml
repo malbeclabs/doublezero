@@ -36,6 +36,7 @@ bitvec = "1"
 borsh = "1"
 bytemuck = { version = "1", features = ["derive"] }
 byteorder = "1"
+bytes = "1"
 chrono = "0"
 clap = { version = "4", features = ["derive"] }
 clap_complete = { version = "4", features = ["unstable-dynamic"] }
@@ -49,9 +50,9 @@ futures = "0"
 futures-util = "0"
 http = "1"
 http-body-util = "0"
-hyper = "1"
-hyper-util = "0"
-hyperlocal = { version = "0" }
+hyper = { version = "1", features = ["server"] }
+hyper-util = { version = "0", features = ["server"] }
+hyperlocal = { version = "0", features = ["server"] }
 indexmap = "2"
 indicatif = "0"
 influxdb2 = "0"
@@ -79,6 +80,7 @@ solana-system-interface = "1.0.0"
 solana-transaction-status = "2.2.7"
 solana-transaction-status-client-types = "2.2.7"
 tabled = "0"
+temp-env = "0"
 tempfile = "3"
 thiserror = "2"
 tokio = { version = "1", default-features = false, features = [

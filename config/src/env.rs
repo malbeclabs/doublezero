@@ -1,3 +1,5 @@
+use std::fmt;
+
 use solana_sdk::pubkey::Pubkey;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,6 +18,16 @@ impl std::str::FromStr for Environment {
             "testnet" => Ok(Environment::Testnet),
             "devnet" => Ok(Environment::Devnet),
             _ => Err(eyre::eyre!("Invalid environment: {}", s)),
+        }
+    }
+}
+
+impl fmt::Display for Environment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Environment::Mainnet => write!(f, "mainnet"),
+            Environment::Testnet => write!(f, "testnet"),
+            Environment::Devnet => write!(f, "devnet"),
         }
     }
 }

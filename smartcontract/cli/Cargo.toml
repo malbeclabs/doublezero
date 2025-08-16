@@ -36,6 +36,12 @@ tabled.workspace = true
 tokio.workspace = true
 
 # Dependencies from this workspace
+doublezero-config.workspace = true
 doublezero-program-common.workspace = true
 doublezero_sdk.workspace = true
-doublezero-serviceability = { workspace = true, features = [ "serde" ] }
+doublezero-serviceability = { workspace = true, features = ["serde"] }
+
+[dev-dependencies]
+serial_test.workspace = true
+temp-env.workspace = true
+tempfile.workspace = true

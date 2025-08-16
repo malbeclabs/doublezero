@@ -43,6 +43,9 @@ struct App {
     /// Path to the keypair file
     #[arg(long, value_name = "KEYPAIR", global = true)]
     keypair: Option<PathBuf>,
+    /// Path to the doublezero socket
+    #[arg(long, value_name = "SOCKET_PATH", global = true)]
+    socket_path: Option<String>,
 }
 
 #[tokio::main]
@@ -82,7 +85,7 @@ async fn main() -> eyre::Result<()> {
         Command::Init(args) => args.execute(&client, &mut handle),
         Command::Config(command) => match command.command {
             ConfigCommands::Get(args) => args.execute(&client, &mut handle),
-            ConfigCommands::Set(args) => args.execute(&client, &mut handle),
+            ConfigCommands::Set(args) => args.execute(&client, &mut handle, app.socket_path).await,
         },
         Command::GlobalConfig(command) => match command.command {
             GlobalConfigCommands::Set(args) => args.execute(&client, &mut handle),

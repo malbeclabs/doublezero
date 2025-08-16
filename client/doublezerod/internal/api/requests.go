@@ -157,3 +157,18 @@ type StatusResponse struct {
 	DoubleZeroStatus bgp.Session `json:"doublezero_status"`
 	UserType         UserType    `json:"user_type"`
 }
+
+type SetConfigRequest struct {
+	LedgerRPCURL string `json:"ledger_rpc_url"`
+	ProgramID    string `json:"program_id"`
+}
+
+func (r *SetConfigRequest) Validate() error {
+	if r.LedgerRPCURL == "" {
+		return fmt.Errorf("ledger_rpc_url is required")
+	}
+	if r.ProgramID == "" {
+		return fmt.Errorf("program_id is required")
+	}
+	return nil
+}

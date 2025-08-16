@@ -13,4 +13,4 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - run: go test -v e2e/qa_test.go -run TestConnectivityUnicast --args -hosts=nyc-tn-qa01,sfo-tn-qa01,fra-tn-qa01,sgp-tn-qa01 -env testnet
+      - run: go test -v e2e/qa_test.go --args -hosts=sfo-tn-qa01,nyc-tn-qa01,fra-tn-qa01,sgp-tn-qa01 -env testnet -use-group mg01

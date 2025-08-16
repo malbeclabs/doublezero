@@ -23,7 +23,6 @@ import (
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
-	dzsdk "github.com/malbeclabs/doublezero/smartcontract/sdk/go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/mr-tron/base58"
 	"github.com/stretchr/testify/require"
@@ -34,6 +33,7 @@ var (
 	port           = flag.String("port", "7009", "port to connect to on each host")
 	env            = flag.String("env", "", "environment to run in (devnet, testnet, mainnet)")
 	forcePublisher = flag.String("force-publisher", "", "host to force as publisher for multicast tests (optional)")
+	useGroup       = flag.String("use-group", "", "use existing multicast group by code (optional)")
 
 	serviceabilityClient *serviceability.Client
 
@@ -194,8 +194,13 @@ func TestConnectivityUnicast(t *testing.T) {
 
 func TestConnectivityMulticast(t *testing.T) {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	suffix := r.Intn(1000000)
-	code := fmt.Sprintf("qa-test-group-%06d", suffix)
+
+	code := *useGroup
+	if code == "" {
+		suffix := r.Intn(1000000)
+		code = fmt.Sprintf("qa-test-group-%06d", suffix)
+		t.Logf("No multicast group code specified, using generated code: %s", code)
+	}
 
 	var publisher string
 	if *forcePublisher != "" {
@@ -224,7 +229,13 @@ func TestConnectivityMulticast(t *testing.T) {
 	subscribers = append(subscribers, hostList[publisherIndex+1:]...)
 	require.Greater(t, len(subscribers), 0, "Not enough hosts to test multicast, need at least one subscriber")
 
-	cleanup := multicastCleanupFunc(t, hostList, publisher, code)
+	cleanup := func() {
+		disconnectUsers(t, hostList)
+		// If using an existing group, we don't want to clean it up
+		if *useGroup == "" {
+			removeMulticastGroup(t, code, publisher)
+		}
+	}
 	defer cleanup()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -232,6 +243,9 @@ func TestConnectivityMulticast(t *testing.T) {
 
 	t.Logf("Using publisher: %s, subscribers: %v, hosts: %v", publisher, subscribers, hostList)
 	if !t.Run("create_multicast_group", func(t *testing.T) {
+		if *useGroup != "" {
+			t.Skipf("Using existing multicast group: %s", *useGroup)
+		}
 		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 		client, err := getQAClient(publisher)
@@ -279,6 +293,9 @@ func TestConnectivityMulticast(t *testing.T) {
 	t.Logf("Multicast group created with pubkey: %s address: %s owner: %s status: %d", pubKey, groupAddr, ownerPubKey, status)
 
 	if !t.Run("update_multicast_allow_list", func(t *testing.T) {
+		if *useGroup != "" {
+			t.Skipf("Using existing multicast group: %s", *useGroup)
+		}
 		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 		client, err := getQAClient(publisher)
@@ -434,17 +451,10 @@ func unicastCleanupFunc(t *testing.T, hosts []string) func() {
 	}
 }
 
-func multicastCleanupFunc(t *testing.T, hosts []string, publisher, code string) func() {
-	return func() {
-		disconnectUsers(t, hosts)
-		removeMulticastGroup(t, code, publisher)
-	}
-}
-
 func disconnectUsers(t *testing.T, hosts []string) {
 	for _, host := range hosts {
 		t.Run("disconnect_from_"+host, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
 			client, err := getQAClient(host)
@@ -482,17 +492,10 @@ func removeMulticastGroup(t *testing.T, code, publisher string) {
 }
 
 func findMulticastGroupByCode(ctx context.Context, code string) (group serviceability.MulticastGroup, ok bool, err error) {
-	opts := []dzsdk.Option{}
-	opts = append(opts, dzsdk.WithServiceabilityProgramID(config.DevnetServiceabilityProgramID))
-
-	ledger, err := dzsdk.New(nil, config.DevnetLedgerPublicRPCURL, opts...)
-	if err != nil {
-		return serviceability.MulticastGroup{}, false, err
-	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	data, err := ledger.Serviceability.GetProgramData(ctx)
+	data, err := serviceabilityClient.GetProgramData(ctx)
 	if err != nil {
 		return serviceability.MulticastGroup{}, false, err
 	}

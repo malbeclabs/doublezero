@@ -1,0 +1,107 @@
+package worker
+
+import (
+	"context"
+	"io"
+	"log/slog"
+	"testing"
+	"time"
+
+	"github.com/gagliardetto/solana-go"
+	solanarpc "github.com/gagliardetto/solana-go/rpc"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	"github.com/stretchr/testify/require"
+)
+
+func TestMonitor_Worker_Config(t *testing.T) {
+	t.Parallel()
+
+	valid := &Config{
+		Logger: newTestLogger(t),
+		LedgerRPCClient: &mockLedgerRPC{
+			GetEpochInfoFunc: func(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+				return &solanarpc.GetEpochInfoResult{Epoch: 1}, nil
+			},
+		},
+		Serviceability: &mockServiceabilityClient{
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				return &serviceability.ProgramData{}, nil
+			},
+		},
+		Telemetry: &mockTelemetryProgramClient{
+			GetDeviceLatencySamplesFunc: func(ctx context.Context, o, t, l solana.PublicKey, e uint64) (*telemetry.DeviceLatencySamples, error) {
+				return &telemetry.DeviceLatencySamples{}, nil
+			},
+		},
+		Interval: 50 * time.Millisecond,
+	}
+
+	t.Run("valid config passes", func(t *testing.T) {
+		t.Parallel()
+		require.NoError(t, valid.Validate())
+	})
+
+	t.Run("missing logger fails", func(t *testing.T) {
+		t.Parallel()
+		c := *valid
+		c.Logger = nil
+		require.Error(t, c.Validate())
+	})
+
+	t.Run("missing ledger rpc fails", func(t *testing.T) {
+		t.Parallel()
+		c := *valid
+		c.LedgerRPCClient = nil
+		require.Error(t, c.Validate())
+	})
+
+	t.Run("missing serviceability fails", func(t *testing.T) {
+		t.Parallel()
+		c := *valid
+		c.Serviceability = nil
+		require.Error(t, c.Validate())
+	})
+
+	t.Run("missing telemetry fails", func(t *testing.T) {
+		t.Parallel()
+		c := *valid
+		c.Telemetry = nil
+		require.Error(t, c.Validate())
+	})
+
+	t.Run("non-positive interval fails", func(t *testing.T) {
+		t.Parallel()
+		c := *valid
+		c.Interval = 0
+		require.Error(t, c.Validate())
+	})
+}
+
+func newTestLogger(t *testing.T) *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelInfo})).With("test", t.Name())
+}
+
+type mockLedgerRPC struct {
+	GetEpochInfoFunc func(context.Context, solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error)
+}
+
+func (m *mockLedgerRPC) GetEpochInfo(ctx context.Context, c solanarpc.CommitmentType) (*solanarpc.GetEpochInfoResult, error) {
+	return m.GetEpochInfoFunc(ctx, c)
+}
+
+type mockServiceabilityClient struct {
+	GetProgramDataFunc func(context.Context) (*serviceability.ProgramData, error)
+}
+
+func (m *mockServiceabilityClient) GetProgramData(ctx context.Context) (*serviceability.ProgramData, error) {
+	return m.GetProgramDataFunc(ctx)
+}
+
+type mockTelemetryProgramClient struct {
+	GetDeviceLatencySamplesFunc func(context.Context, solana.PublicKey, solana.PublicKey, solana.PublicKey, uint64) (*telemetry.DeviceLatencySamples, error)
+}
+
+func (m *mockTelemetryProgramClient) GetDeviceLatencySamples(ctx context.Context, o, t, l solana.PublicKey, e uint64) (*telemetry.DeviceLatencySamples, error) {
+	return m.GetDeviceLatencySamplesFunc(ctx, o, t, l, e)
+}

@@ -39,15 +39,8 @@ pub enum PassportAdminSubCommand {
 
     /// Configure the program.
     Configure {
-        // Flags.
-        //
-        /// Whether to pause the program. Cannot be used with --unpause.
-        #[arg(long)]
-        pause: bool,
-
-        /// Whether to unpause the program. Cannot be used with --pause.
-        #[arg(long)]
-        unpause: bool,
+        #[command(flatten)]
+        configure_options: ConfigurePassportOptions,
 
         #[command(flatten)]
         solana_payer_options: SolanaPayerOptions,
@@ -65,16 +58,40 @@ impl PassportAdminSubCommand {
                 solana_payer_options,
             } => execute_set_admin(admin_key, solana_payer_options).await,
             PassportAdminSubCommand::Configure {
-                pause,
-                unpause,
+                configure_options,
                 solana_payer_options,
-            } => execute_configure_program(pause, unpause, solana_payer_options).await,
+            } => execute_configure_program(configure_options, solana_payer_options).await,
         }
     }
 }
 
+#[derive(Debug, Args)]
+pub struct ConfigurePassportOptions {
+    // Flags.
+    //
+    /// Whether to pause the program. Cannot be used with --unpause.
+    #[arg(long)]
+    pause: bool,
+
+    /// Whether to unpause the program. Cannot be used with --pause.
+    #[arg(long)]
+    unpause: bool,
+
+    /// Set the DoubleZero Ledger sentinel key.
+    #[arg(long, value_name = "PUBKEY")]
+    sentinel: Option<Pubkey>,
+
+    /// Set the access request deposit lamports.
+    #[arg(long, value_name = "LAMPORTS")]
+    access_request_deposit: Option<u64>,
+
+    /// Set the access request fee lamports.
+    #[arg(long, value_name = "LAMPORTS")]
+    access_fee: Option<u64>,
+}
+
 //
-// AdminSubCommand::Initialize.
+// PassportAdminSubCommand::Initialize.
 //
 
 pub async fn execute_initialize_program(solana_payer_options: SolanaPayerOptions) -> Result<()> {
@@ -127,7 +144,7 @@ pub async fn execute_initialize_program(solana_payer_options: SolanaPayerOptions
 }
 
 //
-// AdminSubCommand::SetAdmin.
+// PassportAdminSubCommand::SetAdmin.
 //
 
 pub async fn execute_set_admin(
@@ -170,14 +187,21 @@ pub async fn execute_set_admin(
 }
 
 //
-// AdminConfigureSubCommand::Passport.
+// PassportAdminSubCommand::Configure.
 //
 
 pub async fn execute_configure_program(
-    pause: bool,
-    unpause: bool,
+    configure_options: ConfigurePassportOptions,
     solana_payer_options: SolanaPayerOptions,
 ) -> Result<()> {
+    let ConfigurePassportOptions {
+        pause,
+        unpause,
+        sentinel,
+        access_request_deposit,
+        access_fee,
+    } = configure_options;
+
     let wallet = Wallet::try_from(solana_payer_options)?;
     let wallet_key = wallet.pubkey();
 
@@ -205,6 +229,34 @@ pub async fn execute_configure_program(
             compute_unit_limit += 2_000;
         }
         (false, false) => {}
+    }
+
+    if let Some(sentinel_key) = sentinel {
+        let configure_program_ix = try_build_configure_program_instruction(
+            &wallet_key,
+            ProgramConfiguration::DoubleZeroLedgerSentinel(sentinel_key),
+        )?;
+        instructions.push(configure_program_ix);
+        compute_unit_limit += 2_500;
+    }
+
+    // Both access need to be specified.
+    match (access_request_deposit, access_fee) {
+        (Some(request_deposit_lamports), Some(request_fee_lamports)) => {
+            let configure_program_ix = try_build_configure_program_instruction(
+                &wallet_key,
+                ProgramConfiguration::AccessRequestDeposit {
+                    request_deposit_lamports,
+                    request_fee_lamports,
+                },
+            )?;
+            instructions.push(configure_program_ix);
+            compute_unit_limit += 2_000;
+        }
+        (None, None) => {}
+        _ => {
+            bail!("Access request deposit and access fee must be specified");
+        }
     }
 
     instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(

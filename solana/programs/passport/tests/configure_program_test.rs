@@ -42,7 +42,7 @@ async fn test_configure_program() {
         .configure_program(
             [
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(should_pause)),
-                ProgramConfiguration::Sentinel(sentinel_key),
+                ProgramConfiguration::DoubleZeroLedgerSentinel(sentinel_key),
                 ProgramConfiguration::AccessRequestDeposit {
                     request_deposit_lamports: required_deposit_lamports,
                     request_fee_lamports: fee_lamports,

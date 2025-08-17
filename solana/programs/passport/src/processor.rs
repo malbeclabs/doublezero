@@ -147,7 +147,7 @@ fn try_configure_program(accounts: &[AccountInfo], setting: ProgramConfiguration
                 }
             };
         }
-        ProgramConfiguration::Sentinel(sentinel_key) => {
+        ProgramConfiguration::DoubleZeroLedgerSentinel(sentinel_key) => {
             msg!("Set sentinel_key: {}", sentinel_key);
             program_config.sentinel_key = sentinel_key;
         }

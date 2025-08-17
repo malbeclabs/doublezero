@@ -41,7 +41,7 @@ async fn test_deny_access() {
         .configure_program(
             [
                 ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(false)),
-                ProgramConfiguration::Sentinel(sentinel_signer.pubkey()),
+                ProgramConfiguration::DoubleZeroLedgerSentinel(sentinel_signer.pubkey()),
                 ProgramConfiguration::AccessRequestDeposit {
                     request_deposit_lamports: access_deposit,
                     request_fee_lamports: access_fee,

@@ -4,12 +4,13 @@ use doublezero_program_tools::{get_program_data_address, instruction::try_build_
 use doublezero_revenue_distribution::{
     instruction::{
         account::{
-            ConfigureProgramAccounts, InitializeJournalAccounts, InitializeProgramAccounts,
-            MigrateProgramAccounts, SetAdminAccounts,
+            ConfigureProgramAccounts, InitializeContributorRewardsAccounts,
+            InitializeJournalAccounts, InitializeProgramAccounts, MigrateProgramAccounts,
+            SetAdminAccounts, SetRewardsManagerAccounts,
         },
         ProgramConfiguration, ProgramFlagConfiguration, RevenueDistributionInstructionData,
     },
-    state::{find_2z_token_pda_address, Journal, ProgramConfig},
+    state::{find_2z_token_pda_address, ContributorRewards, Journal, ProgramConfig},
     ID,
 };
 use solana_sdk::{
@@ -49,6 +50,20 @@ pub enum RevenueDistributionAdminSubCommand {
         solana_payer_options: SolanaPayerOptions,
     },
 
+    /// Initialize contributor rewards account for a contributor's service key.
+    SetRewardsManager {
+        service_key: Pubkey,
+
+        rewards_manager_key: Pubkey,
+
+        /// Initialize contributor rewards account if it does not exist.
+        #[arg(long)]
+        initialize_contributor_rewards: bool,
+
+        #[command(flatten)]
+        solana_payer_options: SolanaPayerOptions,
+    },
+
     /// Migrate program accounts.
     MigrateProgramAccounts {
         #[command(flatten)]
@@ -70,6 +85,20 @@ impl RevenueDistributionAdminSubCommand {
                 configure_options,
                 solana_payer_options,
             } => execute_configure_program(configure_options, solana_payer_options).await,
+            RevenueDistributionAdminSubCommand::SetRewardsManager {
+                service_key,
+                rewards_manager_key,
+                initialize_contributor_rewards,
+                solana_payer_options,
+            } => {
+                execute_set_rewards_manager(
+                    service_key,
+                    rewards_manager_key,
+                    initialize_contributor_rewards,
+                    solana_payer_options,
+                )
+                .await
+            }
             RevenueDistributionAdminSubCommand::MigrateProgramAccounts {
                 solana_payer_options,
             } => execute_migrate_program_accounts(solana_payer_options).await,
@@ -98,6 +127,14 @@ pub struct ConfigureRevenueDistributionOptions {
     /// Set the rewards accountant key.
     #[arg(long, value_name = "PUBKEY")]
     pub rewards_accountant: Option<Pubkey>,
+
+    /// Set the contributor manager key.
+    #[arg(long, value_name = "PUBKEY")]
+    pub contributor_manager: Option<Pubkey>,
+
+    /// Set the DoubleZero Ledger sentinel key.
+    #[arg(long, value_name = "PUBKEY")]
+    pub sentinel: Option<Pubkey>,
 
     /// Set the SOL/2Z Swap program ID.
     #[arg(long, value_name = "PUBKEY")]
@@ -151,7 +188,7 @@ pub struct ConfigureRevenueDistributionOptions {
 }
 
 //
-// AdminSubCommand::Initialize.
+// RevenueDistributionAdminSubCommand::Initialize.
 //
 
 pub async fn execute_initialize_program(solana_payer_options: SolanaPayerOptions) -> Result<()> {
@@ -227,7 +264,7 @@ pub async fn execute_initialize_program(solana_payer_options: SolanaPayerOptions
 }
 
 //
-// AdminSubCommand::MigrateProgramAccounts.
+// RevenueDistributionAdminSubCommand::MigrateProgramAccounts.
 //
 
 pub async fn execute_migrate_program_accounts(
@@ -266,7 +303,7 @@ pub async fn execute_migrate_program_accounts(
 }
 
 //
-// AdminSubCommand::SetAdmin.
+// RevenueDistributionAdminSubCommand::SetAdmin.
 //
 
 pub async fn execute_set_admin(
@@ -308,7 +345,7 @@ pub async fn execute_set_admin(
 }
 
 //
-// AdminConfigureSubCommand::RevenueDistribution.
+// RevenueDistributionAdminSubCommand::Configure.
 //
 
 pub async fn execute_configure_program(
@@ -320,6 +357,8 @@ pub async fn execute_configure_program(
         unpause,
         payments_accountant,
         rewards_accountant,
+        contributor_manager,
+        sentinel,
         sol_2z_swap_program,
         solana_validator_base_block_rewards_fee,
         solana_validator_priority_block_rewards_fee,
@@ -377,6 +416,24 @@ pub async fn execute_configure_program(
         let configure_program_ix = try_build_configure_program_instruction(
             &wallet_key,
             ProgramConfiguration::RewardsAccountant(rewards_accountant_key),
+        )?;
+        instructions.push(configure_program_ix);
+        compute_unit_limit += 2_500;
+    }
+
+    if let Some(contributor_manager_key) = contributor_manager {
+        let configure_program_ix = try_build_configure_program_instruction(
+            &wallet_key,
+            ProgramConfiguration::ContributorManager(contributor_manager_key),
+        )?;
+        instructions.push(configure_program_ix);
+        compute_unit_limit += 2_500;
+    }
+
+    if let Some(sentinel_key) = sentinel {
+        let configure_program_ix = try_build_configure_program_instruction(
+            &wallet_key,
+            ProgramConfiguration::DoubleZeroLedgerSentinel(sentinel_key),
         )?;
         instructions.push(configure_program_ix);
         compute_unit_limit += 2_500;
@@ -508,6 +565,60 @@ pub async fn execute_configure_program(
 }
 
 //
+// RevenueDistributionAdminSubCommand::SetRewardsManager.
+//
+
+pub async fn execute_set_rewards_manager(
+    service_key: Pubkey,
+    rewards_manager_key: Pubkey,
+    initialize_contributor_rewards: bool,
+    solana_payer_options: SolanaPayerOptions,
+) -> Result<()> {
+    let wallet = Wallet::try_from(solana_payer_options)?;
+    let wallet_key = wallet.pubkey();
+
+    let mut instructions = Vec::new();
+    let mut compute_unit_limit = 10_000;
+
+    if initialize_contributor_rewards {
+        let initialize_contributor_rewards_ix = try_build_instruction(
+            &ID,
+            InitializeContributorRewardsAccounts::new(&wallet_key, &service_key),
+            &RevenueDistributionInstructionData::InitializeContributorRewards(service_key),
+        )?;
+        instructions.push(initialize_contributor_rewards_ix);
+        compute_unit_limit += 10_000;
+
+        let (_, bump) = ContributorRewards::find_address(&service_key);
+        compute_unit_limit += Wallet::compute_units_for_bump_seed(bump);
+    }
+
+    let set_rewards_manager_ix = try_build_instruction(
+        &ID,
+        SetRewardsManagerAccounts::new(&wallet_key, &service_key),
+        &RevenueDistributionInstructionData::SetRewardsManager(rewards_manager_key),
+    )?;
+    instructions.push(set_rewards_manager_ix);
+
+    instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(
+        compute_unit_limit,
+    ));
+
+    if let Some(ref compute_unit_price_ix) = wallet.compute_unit_price_ix {
+        instructions.push(compute_unit_price_ix.clone());
+    }
+
+    let transaction = wallet.new_transaction(&instructions).await?;
+    let tx_sig = wallet.send_or_simulate_transaction(&transaction).await?;
+
+    if let Some(tx_sig) = tx_sig {
+        println!("Set rewards manager: {tx_sig}");
+
+        wallet.print_verbose_output(&[tx_sig]).await?;
+    }
+
+    Ok(())
+}
 
 fn try_build_configure_program_instruction(
     admin_key: &Pubkey,

@@ -1,13 +1,17 @@
 mod admin;
 mod ata;
 mod contributor;
+mod passport;
 mod prepaid;
+mod revenue_distribution;
 mod validator;
 
 pub use admin::*;
 pub use ata::*;
 pub use contributor::*;
+pub use passport::*;
 pub use prepaid::*;
+pub use revenue_distribution::*;
 pub use validator::*;
 
 //
@@ -20,6 +24,12 @@ pub enum DoubleZero2zSolanaCommand {
     /// Admin commands.
     #[command(hide = true)]
     Admin(AdminCliCommand),
+
+    /// Passport programcommands.
+    Passport(PassportCliCommand),
+
+    /// Revenue distribution program commands.
+    RevenueDistribution(RevenueDistributionCliCommand),
 
     /// Associated Token Account commands.
     Ata(AtaCliCommand),
@@ -38,6 +48,12 @@ impl DoubleZero2zSolanaCommand {
     pub async fn try_into_execute(self) -> Result<()> {
         match self {
             DoubleZero2zSolanaCommand::Admin(admin) => admin.command.try_into_execute().await,
+            DoubleZero2zSolanaCommand::Passport(passport) => {
+                passport.command.try_into_execute().await
+            }
+            DoubleZero2zSolanaCommand::RevenueDistribution(revenue_distribution) => {
+                revenue_distribution.command.try_into_execute().await
+            }
             DoubleZero2zSolanaCommand::Ata(ata) => ata.command.try_into_execute().await,
             DoubleZero2zSolanaCommand::Contributor(contributor) => {
                 contributor.command.try_into_execute().await

@@ -11,7 +11,7 @@ use solana_pubkey::Pubkey;
 #[derive(Debug, BorshDeserialize, BorshSerialize, Clone, PartialEq, Eq)]
 pub enum ProgramConfiguration {
     Flag(ProgramFlagConfiguration),
-    Sentinel(Pubkey),
+    DoubleZeroLedgerSentinel(Pubkey),
     AccessRequestDeposit {
         request_deposit_lamports: u64,
         request_fee_lamports: u64,

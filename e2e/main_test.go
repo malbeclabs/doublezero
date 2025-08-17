@@ -234,6 +234,10 @@ func (dn *TestDevnet) Start(t *testing.T) (*devnet.Device, *devnet.Client) {
 	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", "doublezero user allowlist add --pubkey " + client.Pubkey})
 	require.NoError(t, err)
 
+	// Set access pass for the client.
+	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", "doublezero access-pass set --accesspass-type Prepaid --client-ip " + client.CYOANetworkIP + " --payer me --last-access-epoch 99999"})
+	require.NoError(t, err)
+
 	// Add null routes to test latency selection to ny5-dz01.
 	_, err = client.Exec(ctx, []string{"bash", "-c", `
 		echo "==> Adding null routes to test latency selection to ny5-dz01."

@@ -1,3 +1,4 @@
+pub mod accesspass;
 pub mod allowlist;
 pub mod contributor;
 pub mod device;

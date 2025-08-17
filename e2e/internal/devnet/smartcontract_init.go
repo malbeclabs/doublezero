@@ -85,6 +85,9 @@ func (dn *Devnet) InitSmartContract(ctx context.Context) error {
 		doublezero --version
 		doublezero init
 		echo
+		
+		doublezero global-config authority set --activator-authority me --sentinel-authority me
+		echo
 
 		# Populate global configuration onchain.
 		echo "==> Populating global configuration onchain"
@@ -93,6 +96,8 @@ func (dn *Devnet) InitSmartContract(ctx context.Context) error {
 		echo "--> Global configuration onchain:"
 		doublezero global-config get
 		echo
+
+		doublezero global-config authority set --activator-authority me --sentinel-authority me		
 
 		# Populate location information onchain.
 		echo "==> Populating location information onchain"

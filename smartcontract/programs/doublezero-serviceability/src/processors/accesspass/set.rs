@@ -1,0 +1,150 @@
+use core::fmt;
+use std::net::Ipv4Addr;
+
+use crate::{
+    error::DoubleZeroError,
+    globalstate::globalstate_get,
+    pda::*,
+    seeds::{SEED_ACCESS_PASS, SEED_PREFIX},
+    state::{
+        accesspass::{AccessPass, AccessPassStatus, AccessPassType},
+        accounttype::{AccountType, AccountTypeInfo},
+    },
+};
+use borsh::{BorshDeserialize, BorshSerialize};
+use doublezero_program_common::try_create_account;
+use solana_program::{
+    account_info::{next_account_info, AccountInfo},
+    clock::Clock,
+    entrypoint::ProgramResult,
+    msg,
+    pubkey::Pubkey,
+    sysvar::Sysvar,
+};
+
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
+pub struct SetAccessPassArgs {
+    pub accesspass_type: AccessPassType, // 1
+    pub client_ip: Ipv4Addr,             // 4
+    pub payer: Pubkey,                   // 32
+    pub last_access_epoch: u64,          // 8
+}
+
+impl fmt::Debug for SetAccessPassArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "accesspass_type: {}, ip: {}, payer: {}, last_access_epoch: {}",
+            self.accesspass_type, self.client_ip, self.payer, self.last_access_epoch
+        )
+    }
+}
+
+pub fn process_set_accesspass(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    value: &SetAccessPassArgs,
+) -> ProgramResult {
+    let accounts_iter = &mut accounts.iter();
+
+    let accesspass_account = next_account_info(accounts_iter)?;
+    let globalstate_account = next_account_info(accounts_iter)?;
+    let payer_account = next_account_info(accounts_iter)?;
+    let system_program = next_account_info(accounts_iter)?;
+
+    #[cfg(test)]
+    msg!("process_set_accesspass({:?})", value);
+
+    // Check the owner of the accounts
+    assert_eq!(
+        *globalstate_account.owner,
+        program_id.clone(),
+        "Invalid GlobalState Account Owner"
+    );
+    assert_eq!(
+        *system_program.unsigned_key(),
+        solana_program::system_program::id(),
+        "Invalid System Program Account Owner"
+    );
+    // Check if the account is writable
+    assert!(
+        accesspass_account.is_writable,
+        "PDA Account is not writable"
+    );
+
+    let (expected_pda_account, bump_seed) = get_accesspass_pda(program_id, value.client_ip);
+    assert_eq!(
+        accesspass_account.key, &expected_pda_account,
+        "Invalid AccessPass PubKey"
+    );
+
+    // Parse the global state account & check if the payer is in the allowlist
+    let globalstate = globalstate_get(globalstate_account)?;
+    if globalstate.sentinel_authority_pk != *payer_account.key
+        && !globalstate.foundation_allowlist.contains(payer_account.key)
+    {
+        msg!(
+            "sentinel_authority_pk: {} payer: {} foundation_allowlist: {:?}",
+            globalstate.sentinel_authority_pk,
+            payer_account.key,
+            globalstate.foundation_allowlist
+        );
+        return Err(DoubleZeroError::NotAllowed.into());
+    }
+
+    let clock = Clock::get()?;
+    let current_epoch = clock.epoch;
+
+    if value.last_access_epoch > 0 && value.last_access_epoch < current_epoch {
+        return Err(DoubleZeroError::InvalidLastAccessEpoch.into());
+    }
+
+    if accesspass_account.data_is_empty() {
+        let accesspass = AccessPass {
+            account_type: AccountType::AccessPass,
+            owner: value.payer,
+            bump_seed,
+            accesspass_type: value.accesspass_type,
+            client_ip: value.client_ip,
+            payer: value.payer,
+            last_access_epoch: value.last_access_epoch,
+            status: AccessPassStatus::Requested,
+        };
+
+        try_create_account(
+            payer_account.key,             // Account paying for the new account
+            accesspass_account.key,        // Account to be created
+            accesspass_account.lamports(), // Current amount of lamports on the new account
+            accesspass.size(),             // Size in bytes to allocate for the data field
+            program_id,                    // Set program owner to our program
+            accounts,
+            &[
+                SEED_PREFIX,
+                SEED_ACCESS_PASS,
+                &value.client_ip.octets(),
+                &[bump_seed],
+            ],
+        )?;
+
+        accesspass.try_serialize(accesspass_account)?;
+
+        #[cfg(test)]
+        msg!("Created: {:?}", accesspass);
+    } else {
+        assert_eq!(
+            accesspass_account.owner, program_id,
+            "Invalid PDA Account Owner"
+        );
+
+        let mut accesspass = AccessPass::try_from(accesspass_account)?;
+
+        accesspass.accesspass_type = value.accesspass_type;
+        accesspass.last_access_epoch = value.last_access_epoch;
+        accesspass.try_serialize(accesspass_account)?;
+
+        #[cfg(test)]
+        msg!("Updated: {:?}", accesspass);
+    }
+
+    Ok(())
+}

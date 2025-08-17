@@ -53,7 +53,7 @@ pub fn process_activate_link(
     assert!(link_account.is_writable, "PDA Account is not writable");
 
     let globalstate = globalstate_get(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
+    if globalstate.activator_authority_pk != *payer_account.key {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 

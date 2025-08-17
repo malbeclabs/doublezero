@@ -1,7 +1,6 @@
-use std::path::PathBuf;
-
 use clap::{CommandFactory, Parser};
 use clap_complete::generate;
+use std::path::PathBuf;
 mod cli;
 mod command;
 use doublezero_config::Environment;
@@ -12,7 +11,7 @@ use crate::cli::{
     config::ConfigCommands,
     device::{DeviceAllowlistCommands, DeviceCommands, InterfaceCommands},
     exchange::ExchangeCommands,
-    globalconfig::{FoundationAllowlistCommands, GlobalConfigCommands},
+    globalconfig::{AuthorityCommands, FoundationAllowlistCommands, GlobalConfigCommands},
     link::LinkCommands,
     location::LocationCommands,
     user::{UserAllowlistCommands, UserCommands},
@@ -87,6 +86,10 @@ async fn main() -> eyre::Result<()> {
         Command::GlobalConfig(command) => match command.command {
             GlobalConfigCommands::Set(args) => args.execute(&client, &mut handle),
             GlobalConfigCommands::Get(args) => args.execute(&client, &mut handle),
+            GlobalConfigCommands::Authority(command) => match command.command {
+                AuthorityCommands::Set(args) => args.execute(&client, &mut handle),
+                AuthorityCommands::Get(args) => args.execute(&client, &mut handle),
+            },
             GlobalConfigCommands::Allowlist(command) => match command.command {
                 FoundationAllowlistCommands::List(args) => args.execute(&client, &mut handle),
                 FoundationAllowlistCommands::Add(args) => args.execute(&client, &mut handle),
@@ -153,6 +156,10 @@ async fn main() -> eyre::Result<()> {
             LinkCommands::List(args) => args.execute(&client, &mut handle),
             LinkCommands::Get(args) => args.execute(&client, &mut handle),
             LinkCommands::Delete(args) => args.execute(&client, &mut handle),
+        },
+        Command::AccessPass(command) => match command.command {
+            cli::accesspass::AccessPassCommands::Set(args) => args.execute(&client, &mut handle),
+            cli::accesspass::AccessPassCommands::List(args) => args.execute(&client, &mut handle),
         },
         Command::User(command) => match command.command {
             UserCommands::Create(args) => args.execute(&client, &mut handle),

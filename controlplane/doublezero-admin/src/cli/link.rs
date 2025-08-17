@@ -1,7 +1,8 @@
 use clap::{Args, Subcommand};
 
 use doublezero_cli::link::{
-    delete::*, dzx_create::CreateDZXLinkCliCommand, get::*, list::*, update::*, wan_create::*,
+    accept::AcceptLinkCliCommand, delete::*, dzx_create::CreateDZXLinkCliCommand, get::*, list::*,
+    update::*, wan_create::*,
 };
 
 #[derive(Args, Debug)]
@@ -31,6 +32,9 @@ pub enum LinkCommands {
     /// Create a new link
     #[clap()]
     Create(CreateLinkCommand),
+    /// Accept a link
+    #[clap()]
+    Accept(AcceptLinkCliCommand),
     /// Update an existing link
     #[clap()]
     Update(UpdateLinkCliCommand),

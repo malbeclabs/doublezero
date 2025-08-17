@@ -5,11 +5,45 @@ use doublezero_cli::{
         remove::RemoveDeviceAllowlistCliCommand,
     },
     device::{
-        create::CreateDeviceCliCommand, delete::DeleteDeviceCliCommand, get::GetDeviceCliCommand,
-        list::ListDeviceCliCommand, resume::ResumeDeviceCliCommand,
-        suspend::SuspendDeviceCliCommand, update::UpdateDeviceCliCommand,
+        create::CreateDeviceCliCommand,
+        delete::DeleteDeviceCliCommand,
+        get::GetDeviceCliCommand,
+        interface::{
+            create::CreateDeviceInterfaceCliCommand, delete::DeleteDeviceInterfaceCliCommand,
+            get::GetDeviceInterfaceCliCommand, list::ListDeviceInterfaceCliCommand,
+            update::UpdateDeviceInterfaceCliCommand,
+        },
+        list::ListDeviceCliCommand,
+        resume::ResumeDeviceCliCommand,
+        suspend::SuspendDeviceCliCommand,
+        update::UpdateDeviceCliCommand,
     },
 };
+
+#[derive(Debug, Subcommand)]
+pub enum InterfaceCommands {
+    /// Create a new device interface
+    #[clap()]
+    Create(CreateDeviceInterfaceCliCommand),
+    /// Update an existing device interface
+    #[clap()]
+    Update(UpdateDeviceInterfaceCliCommand),
+    /// List all device interfaces for a given device
+    #[clap()]
+    List(ListDeviceInterfaceCliCommand),
+    /// Get details for a specific device interface
+    #[clap()]
+    Get(GetDeviceInterfaceCliCommand),
+    /// Delete a device interface
+    #[clap()]
+    Delete(DeleteDeviceInterfaceCliCommand),
+}
+
+#[derive(Args, Debug)]
+pub struct InterfaceCliCommand {
+    #[command(subcommand)]
+    pub command: InterfaceCommands,
+}
 
 #[derive(Args, Debug)]
 pub struct DeviceCliCommand {
@@ -43,6 +77,9 @@ pub enum DeviceCommands {
     /// Manage device allowlist
     #[clap()]
     Allowlist(DeviceAllowlistCliCommand),
+    /// Interface commands
+    #[clap()]
+    Interface(InterfaceCliCommand),
 }
 
 #[derive(Args, Debug)]

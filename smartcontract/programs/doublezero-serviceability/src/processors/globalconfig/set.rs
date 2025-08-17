@@ -108,6 +108,7 @@ pub fn process_set_globalconfig(
             bump_seed,
         );
     }
+
     #[cfg(test)]
     msg!("SetGlobalConfig: {:?}", data);
 

@@ -1,13 +1,12 @@
+use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    pda::get_user_pda,
+    pda::{get_accesspass_pda, get_user_pda},
     processors::user::create::UserCreateArgs,
     state::user::{UserCYOA, UserType},
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 use std::net::Ipv4Addr;
-
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CreateUserCommand {
@@ -23,6 +22,7 @@ impl CreateUserCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
+        let (accesspass_pk, _) = get_accesspass_pda(&client.get_program_id(), self.client_ip);
         let (pda_pubkey, _) = get_user_pda(&client.get_program_id(), globalstate.account_index + 1);
         client
             .execute_transaction(
@@ -34,6 +34,7 @@ impl CreateUserCommand {
                 vec![
                     AccountMeta::new(pda_pubkey, false),
                     AccountMeta::new(self.device_pk, false),
+                    AccountMeta::new(accesspass_pk, false),
                     AccountMeta::new(globalstate_pubkey, false),
                 ],
             )

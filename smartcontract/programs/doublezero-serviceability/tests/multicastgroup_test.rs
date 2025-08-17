@@ -3,8 +3,8 @@ use doublezero_serviceability::{
     instructions::*,
     pda::*,
     processors::multicastgroup::{
-        activate::MulticastGroupActivateArgs, create::*, deactivate::MulticastGroupDeactivateArgs,
-        delete::*, reactivate::*, suspend::*, update::*,
+        activate::MulticastGroupActivateArgs, closeaccount::MulticastGroupDeactivateArgs,
+        create::*, delete::*, reactivate::*, suspend::*, update::*,
     },
     state::{accounttype::AccountType, multicastgroup::*},
 };

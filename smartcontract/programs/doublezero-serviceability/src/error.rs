@@ -45,6 +45,10 @@ pub enum DoubleZeroError {
     InvalidAccountCode, // variant 19
     #[error("Max users exceeded")]
     MaxUsersExceeded, // variant 20
+    #[error("Invalid last access epoch")]
+    InvalidLastAccessEpoch, // variant 21
+    #[error("Unauthorized")]
+    Unauthorized, // variant 22
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -71,6 +75,8 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::DeviceNotSet => ProgramError::Custom(18),
             DoubleZeroError::InvalidAccountCode => ProgramError::Custom(19),
             DoubleZeroError::MaxUsersExceeded => ProgramError::Custom(20),
+            DoubleZeroError::InvalidLastAccessEpoch => ProgramError::Custom(21),
+            DoubleZeroError::Unauthorized => ProgramError::Custom(22),
         }
     }
 }
@@ -98,6 +104,8 @@ impl From<u32> for DoubleZeroError {
             18 => DoubleZeroError::DeviceNotSet,
             19 => DoubleZeroError::InvalidAccountCode,
             20 => DoubleZeroError::MaxUsersExceeded,
+            21 => DoubleZeroError::InvalidLastAccessEpoch,
+            22 => DoubleZeroError::Unauthorized,
 
             _ => DoubleZeroError::Custom(e),
         }
@@ -128,6 +136,8 @@ impl From<ProgramError> for DoubleZeroError {
                 18 => DoubleZeroError::DeviceNotSet,
                 19 => DoubleZeroError::InvalidAccountCode,
                 20 => DoubleZeroError::MaxUsersExceeded,
+                21 => DoubleZeroError::InvalidLastAccessEpoch,
+                22 => DoubleZeroError::Unauthorized,
 
                 _ => DoubleZeroError::Custom(e),
             },

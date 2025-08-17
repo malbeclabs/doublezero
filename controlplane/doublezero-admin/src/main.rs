@@ -1,20 +1,19 @@
-use std::path::PathBuf;
-
 use clap::{CommandFactory, Parser};
 use clap_complete::generate;
-use cli::{
+use std::path::PathBuf;
+mod cli;
+use crate::cli::{
     command::Command,
     config::ConfigCommands,
-    device::{DeviceAllowlistCommands, DeviceCommands},
+    device::{DeviceAllowlistCommands, DeviceCommands, InterfaceCommands},
     exchange::ExchangeCommands,
-    globalconfig::{FoundationAllowlistCommands, GlobalConfigCommands},
+    globalconfig::{AuthorityCommands, FoundationAllowlistCommands, GlobalConfigCommands},
     link::LinkCommands,
     location::LocationCommands,
     user::{UserAllowlistCommands, UserCommands},
 };
 use doublezero_cli::{checkversion::check_version, doublezerocommand::CliCommandImpl};
 use doublezero_sdk::{DZClient, ProgramVersion};
-mod cli;
 
 #[derive(Parser, Debug)]
 #[command(term_width = 0)]
@@ -66,6 +65,10 @@ async fn main() -> eyre::Result<()> {
         Command::GlobalConfig(command) => match command.command {
             GlobalConfigCommands::Set(args) => args.execute(&client, &mut handle),
             GlobalConfigCommands::Get(args) => args.execute(&client, &mut handle),
+            GlobalConfigCommands::Authority(command) => match command.command {
+                AuthorityCommands::Set(args) => args.execute(&client, &mut handle),
+                AuthorityCommands::Get(args) => args.execute(&client, &mut handle),
+            },
             GlobalConfigCommands::Allowlist(command) => match command.command {
                 FoundationAllowlistCommands::List(args) => args.execute(&client, &mut handle),
                 FoundationAllowlistCommands::Add(args) => args.execute(&client, &mut handle),
@@ -114,16 +117,28 @@ async fn main() -> eyre::Result<()> {
                 DeviceAllowlistCommands::Add(args) => args.execute(&client, &mut handle),
                 DeviceAllowlistCommands::Remove(args) => args.execute(&client, &mut handle),
             },
+            DeviceCommands::Interface(command) => match command.command {
+                InterfaceCommands::Create(args) => args.execute(&client, &mut handle),
+                InterfaceCommands::Update(args) => args.execute(&client, &mut handle),
+                InterfaceCommands::List(args) => args.execute(&client, &mut handle),
+                InterfaceCommands::Get(args) => args.execute(&client, &mut handle),
+                InterfaceCommands::Delete(args) => args.execute(&client, &mut handle),
+            },
         },
         Command::Link(command) => match command.command {
             LinkCommands::Create(args) => match args.command {
-                cli::link::CreateLinkCommands::Dzx(args) => args.execute(&client, &mut handle),
                 cli::link::CreateLinkCommands::Wan(args) => args.execute(&client, &mut handle),
+                cli::link::CreateLinkCommands::Dzx(args) => args.execute(&client, &mut handle),
             },
+            LinkCommands::Accept(args) => args.execute(&client, &mut handle),
             LinkCommands::Update(args) => args.execute(&client, &mut handle),
             LinkCommands::List(args) => args.execute(&client, &mut handle),
             LinkCommands::Get(args) => args.execute(&client, &mut handle),
             LinkCommands::Delete(args) => args.execute(&client, &mut handle),
+        },
+        Command::AccessPass(command) => match command.command {
+            cli::accesspass::AccessPassCommands::Set(args) => args.execute(&client, &mut handle),
+            cli::accesspass::AccessPassCommands::List(args) => args.execute(&client, &mut handle),
         },
         Command::User(command) => match command.command {
             UserCommands::Create(args) => args.execute(&client, &mut handle),

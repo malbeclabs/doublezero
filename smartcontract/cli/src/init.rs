@@ -13,7 +13,7 @@ impl InitCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let signature = client.init_global_state(InitGlobalStateCommand)?;
+        let signature = client.init_globalstate(InitGlobalStateCommand)?;
         writeln!(out, "Signature: {signature}",)?;
 
         Ok(())

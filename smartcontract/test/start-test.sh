@@ -46,11 +46,14 @@ solana logs >./logs/instruction.log 2>&1 &
 ./target/doublezero init
 
 ### Configure global setting
-./target/doublezero global-config set --local-asn 65100 --remote-asn 65001 --device-tunnel-block 172.16.0.0/16 --user-tunnel-block 169.254.0.0/16 --multicastgroup-block 223.0.0.0/4
+./target/doublezero global-config set --local-asn 65100 --remote-asn 65001 --device-tunnel-block 172.16.0.0/16 --user-tunnel-block 169.254.0.0/16 \
+    --multicastgroup-block 223.0.0.0/4 
+
+./target/doublezero global-config authority set --activator-authority me --sentinel-authority me
 
 # Build the activator
 echo "Start the activator"
-RUST_LOG=debug ./target/doublezero-activator --program-id 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX --rpc http://127.0.0.1:8899 --ws ws://127.0.0.1:8900 --keypair ./keypair.json >./logs/activator.log 2>&1 &
+RUST_LOG=debug ./target/doublezero-activator --program-id 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX --rpc http://127.0.0.1:8899 --ws ws://127.0.0.1:8900 --keypair ~/.config/doublezero/id.json >./logs/activator.log 2>&1 &
 
 echo "Add allowlist"
 ./target/doublezero global-config allowlist add --pubkey 7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX
@@ -143,11 +146,21 @@ echo "Creating device interfaces"
 
 ### Initialize links
 echo "Creating external links"
-./target/doublezero link create dzx --code "la2-dz02-la2-dz01" --contributor co02 --side-a la2-dz02 --side-a-interface Switch1/1/1 --side-z la2-dz01 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3 -w
+./target/doublezero link create dzx --code "la2-dz02-la2-dz01" --contributor co02 --side-a la2-dz02 --side-a-interface Switch1/1/1 --side-z la2-dz01 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 3
 
 ### Initialize links
 echo "Accepting external link"
 ./target/doublezero link accept --code "la2-dz02-la2-dz01" --side-z-interface Switch1/1/1 -w
+
+
+# create access pass
+echo "Create AccessPass for users"
+./target/doublezero access-pass set --accesspass-type PrePaid --client-ip 177.54.159.95 --payer me --last-access-epoch 99999
+./target/doublezero access-pass set --accesspass-type PrePaid --client-ip 147.28.171.51 --payer me --last-access-epoch 99999
+./target/doublezero access-pass set --accesspass-type PrePaid --client-ip 100.100.100.100 --payer me --last-access-epoch 99999
+./target/doublezero access-pass set --accesspass-type PrePaid --client-ip 200.200.200.200 --payer me --last-access-epoch 99999
+./target/doublezero access-pass set --accesspass-type PrePaid --client-ip 100.0.0.5 --payer me --last-access-epoch 99999
+./target/doublezero access-pass set --accesspass-type PrePaid --client-ip 100.0.0.6 --payer me --last-access-epoch 99999
 
 # create a user
 echo "Creating users"

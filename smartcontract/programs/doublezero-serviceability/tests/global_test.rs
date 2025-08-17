@@ -3,6 +3,7 @@ use doublezero_serviceability::{
     instructions::*,
     pda::*,
     processors::{
+        accesspass::set::SetAccessPassArgs,
         contributor::create::ContributorCreateArgs,
         device::{activate::DeviceActivateArgs, create::*},
         exchange::create::*,
@@ -12,7 +13,12 @@ use doublezero_serviceability::{
         user::{activate::*, create::*},
     },
     state::{
-        accounttype::AccountType, contributor::ContributorStatus, device::*, link::*, location::*,
+        accesspass::{AccessPassStatus, AccessPassType},
+        accounttype::AccountType,
+        contributor::ContributorStatus,
+        device::*,
+        link::*,
+        location::*,
         user::*,
     },
     types::*,
@@ -517,6 +523,39 @@ async fn test_doublezero_program() {
 
     println!("Start Users...");
     /***********************************************************************************************************************************/
+    let user_ip = "100.0.0.1".parse().unwrap();
+
+    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, user_ip);
+
+    println!("Testing AccessPass User1 initialization...");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: user_ip,
+            payer: payer.pubkey(),
+            last_access_epoch: 9999,
+        }),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Check account data
+    let user1 = get_account_data(&mut banks_client, accesspass_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_accesspass()
+        .unwrap();
+    assert_eq!(user1.account_type, AccountType::AccessPass);
+    assert_eq!(user1.status, AccessPassStatus::Requested);
+
+    /***********************************************************************************************************************************/
 
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     assert_eq!(globalstate_account.account_index, 8);
@@ -538,6 +577,7 @@ async fn test_doublezero_program() {
         vec![
             AccountMeta::new(user1_pubkey, false),
             AccountMeta::new(device_la_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,

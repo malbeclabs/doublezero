@@ -1,6 +1,7 @@
 use crate::{
     instructions::*,
     processors::{
+        accesspass::set::process_set_accesspass,
         allowlist::{
             device::{
                 add::process_add_device_allowlist_globalconfig,
@@ -29,7 +30,7 @@ use crate::{
             suspend::process_suspend_exchange, update::process_update_exchange,
         },
         globalconfig::set::process_set_globalconfig,
-        globalstate::initialize::initialize_global_state,
+        globalstate::{initialize::initialize_global_state, setauthority::process_set_authority},
         link::{
             accept::process_accept_link, activate::process_activate_link,
             closeaccount::process_closeaccount_link, create::process_create_link,
@@ -53,8 +54,8 @@ use crate::{
                     remove::process_remove_multicast_sub_allowlist,
                 },
             },
+            closeaccount::process_deactivate_multicastgroup,
             create::process_create_multicastgroup,
-            deactivate::process_deactivate_multicastgroup,
             delete::process_delete_multicastgroup,
             reactivate::process_reactivate_multicastgroup,
             reject::process_reject_multicastgroup,
@@ -92,7 +93,9 @@ pub fn process_instruction(
     match instruction {
         DoubleZeroInstruction::None() => {}
         DoubleZeroInstruction::InitGlobalState() => initialize_global_state(program_id, accounts)?,
-        DoubleZeroInstruction::Reserved() => {}
+        DoubleZeroInstruction::SetAuthority(value) => {
+            process_set_authority(program_id, accounts, &value)?
+        }
         DoubleZeroInstruction::SetGlobalConfig(value) => {
             process_set_globalconfig(program_id, accounts, &value)?
         }
@@ -282,6 +285,9 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::AcceptLink(value) => {
             process_accept_link(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::SetAccessPass(value) => {
+            process_set_accesspass(program_id, accounts, &value)?
         }
     };
     Ok(())

@@ -1,3 +1,4 @@
+pub mod accesspass;
 pub mod accountdata;
 pub mod accounttype;
 pub mod contributor;

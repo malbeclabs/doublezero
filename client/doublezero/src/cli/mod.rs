@@ -1,3 +1,4 @@
+pub mod accesspass;
 pub mod command;
 pub mod config;
 pub mod contributor;

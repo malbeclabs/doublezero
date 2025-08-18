@@ -41,6 +41,9 @@ pub struct Distribution {
 
     pub solana_validator_payments_merkle_root: Hash,
 
+    pub total_validators: u32,
+    pub num_validators_paid: u32,
+
     pub total_solana_validator_payments_owed: u64,
     pub collected_solana_validator_payments: u64,
 
@@ -69,7 +72,7 @@ pub struct Distribution {
     /// total amount owed to the system.
     pub uncollectible_sol_amount: u64,
 
-    _storage_gap: StorageGap<4>,
+    _storage_gap: StorageGap<8>,
 }
 
 impl PrecomputedDiscriminator for Distribution {
@@ -114,6 +117,6 @@ impl Distribution {
 //
 
 const _: () = assert!(
-    size_of::<Distribution>() == 304,
+    size_of::<Distribution>() == 440,
     "`Distribution` size changed"
 );

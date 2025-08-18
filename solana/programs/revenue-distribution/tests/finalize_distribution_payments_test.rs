@@ -2,23 +2,31 @@ mod common;
 
 //
 
+use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_revenue_distribution::{
     instruction::{
+        account::{ConfigureDistributionPaymentsAccounts, FinalizeDistributionPaymentsAccounts},
         DistributionPaymentsConfiguration, ProgramConfiguration, ProgramFlagConfiguration,
+        RevenueDistributionInstructionData,
     },
     state::{self, Distribution},
     types::{BurnRate, DoubleZeroEpoch, ValidatorFee},
+    ID,
 };
 use solana_program_test::tokio;
-use solana_sdk::signature::{Keypair, Signer};
+use solana_sdk::{
+    instruction::InstructionError,
+    signature::{Keypair, Signer},
+    transaction::TransactionError,
+};
 use svm_hash::sha2::Hash;
 
 //
-// Configure distribution payments.
+// Finalize distribution payments.
 //
 
 #[tokio::test]
-async fn test_configure_distribution_payments() {
+async fn test_finalize_distribution_payments() {
     let mut test_setup = common::start_test().await;
 
     let admin_signer = Keypair::new();
@@ -35,6 +43,15 @@ async fn test_configure_distribution_payments() {
 
     // Relay settings.
     let contributor_reward_claim_relay_lamports = 10_000;
+
+    // Distribution payments.
+
+    let dz_epoch = DoubleZeroEpoch::new(1);
+
+    let total_validators = 2;
+    let total_solana_validator_payments_owed = 100 * u64::pow(10, 9);
+    let solana_validator_payments_merkle_root = Hash::new_unique();
+    let uncollectible_sol_amount = 10 * u64::pow(10, 9);
 
     test_setup
         .initialize_program()
@@ -77,41 +94,34 @@ async fn test_configure_distribution_payments() {
         .unwrap()
         .initialize_distribution(&payments_accountant_signer)
         .await
-        .unwrap();
-
-    // Test inputs.
-
-    let dz_epoch = DoubleZeroEpoch::new(1);
-
-    let total_solana_validator_payments_owed = 100 * u64::pow(10, 9);
-    let solana_validator_payments_merkle_root = Hash::new_unique();
-    let uncollectible_sol_amount = 10 * u64::pow(10, 9);
-
-    test_setup
+        .unwrap()
         .configure_distribution_payments(
             dz_epoch,
             &payments_accountant_signer,
             [
                 DistributionPaymentsConfiguration::UpdateSolanaValidatorPayments {
-                    total_validators: 3,
-                    total_lamports_owed: total_solana_validator_payments_owed + 1,
-                    merkle_root: solana_validator_payments_merkle_root,
-                },
-                DistributionPaymentsConfiguration::UpdateSolanaValidatorPayments {
-                    total_validators: 2,
+                    total_validators,
                     total_lamports_owed: total_solana_validator_payments_owed,
                     merkle_root: solana_validator_payments_merkle_root,
                 },
-                DistributionPaymentsConfiguration::UpdateUncollectibleSol(69),
                 DistributionPaymentsConfiguration::UpdateUncollectibleSol(uncollectible_sol_amount),
             ],
         )
         .await
         .unwrap();
 
-    let (distribution_key, distribution, _, _, _) = test_setup.fetch_distribution(dz_epoch).await;
+    //
+
+    test_setup
+        .finalize_distribution_payments(dz_epoch, &payments_accountant_signer)
+        .await
+        .unwrap();
+
+    let (distribution_key, distribution, remaining_distribution_data, _, _) =
+        test_setup.fetch_distribution(dz_epoch).await;
 
     let mut expected_distribution = Distribution::default();
+    expected_distribution.set_are_payments_finalized(true);
     expected_distribution.bump_seed = Distribution::find_address(dz_epoch).1;
     expected_distribution.token_2z_pda_bump_seed =
         state::find_2z_token_pda_address(&distribution_key).1;
@@ -120,11 +130,84 @@ async fn test_configure_distribution_payments() {
     expected_distribution
         .solana_validator_fee_parameters
         .base_block_rewards = ValidatorFee::new(solana_validator_base_block_rewards_fee).unwrap();
-    expected_distribution.total_validators = 2;
+    expected_distribution.total_validators = total_validators;
     expected_distribution.total_solana_validator_payments_owed =
         total_solana_validator_payments_owed;
     expected_distribution.solana_validator_payments_merkle_root =
         solana_validator_payments_merkle_root;
     expected_distribution.uncollectible_sol_amount = uncollectible_sol_amount;
     assert_eq!(distribution, expected_distribution);
+
+    let expected_remaining_distribution_data_len = 1;
+    assert_eq!(
+        expected_remaining_distribution_data_len,
+        total_validators as usize / 8 + 1
+    );
+    assert_eq!(
+        remaining_distribution_data,
+        vec![0; expected_remaining_distribution_data_len]
+    );
+
+    // Clone payer signer to avoid borrowing issue.
+    let payer_signer = test_setup.payer_signer.insecure_clone();
+
+    // Cannot configure distribution payments after they are finalized.
+
+    let configure_distribution_rewards_ix = try_build_instruction(
+        &ID,
+        ConfigureDistributionPaymentsAccounts::new(&payments_accountant_signer.pubkey(), dz_epoch),
+        &RevenueDistributionInstructionData::ConfigureDistributionPayments(
+            DistributionPaymentsConfiguration::UpdateSolanaValidatorPayments {
+                total_validators: 3,
+                total_lamports_owed: 1,
+                merkle_root: Hash::new_unique(),
+            },
+        ),
+    )
+    .unwrap();
+
+    let (tx_err, program_logs) = test_setup
+        .unwrap_simulation_error(
+            &[configure_distribution_rewards_ix],
+            &[&payments_accountant_signer],
+        )
+        .await;
+    assert_eq!(
+        tx_err,
+        TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
+    );
+    assert_eq!(
+        program_logs.get(2).unwrap(),
+        "Program log: Distribution payments have already been finalized"
+    );
+
+    // Cannot finalize again.
+
+    let payer_key = payer_signer.pubkey();
+
+    let finalize_distribution_rewards_ix = try_build_instruction(
+        &ID,
+        FinalizeDistributionPaymentsAccounts::new(
+            &payments_accountant_signer.pubkey(),
+            dz_epoch,
+            &payer_key,
+        ),
+        &RevenueDistributionInstructionData::FinalizeDistributionPayments,
+    )
+    .unwrap();
+
+    let (tx_err, program_logs) = test_setup
+        .unwrap_simulation_error(
+            &[finalize_distribution_rewards_ix],
+            &[&payments_accountant_signer],
+        )
+        .await;
+    assert_eq!(
+        tx_err,
+        TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
+    );
+    assert_eq!(
+        program_logs.get(2).unwrap(),
+        "Program log: Distribution payments have already been finalized"
+    );
 }

@@ -106,6 +106,7 @@ async fn test_verify_distribution_merkle_root() {
             &payments_accountant_signer,
             [
                 DistributionPaymentsConfiguration::UpdateSolanaValidatorPayments {
+                    total_validators: payments_data.len() as u32,
                     total_lamports_owed,
                     merkle_root,
                 },

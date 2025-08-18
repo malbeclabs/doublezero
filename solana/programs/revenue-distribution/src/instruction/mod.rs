@@ -56,10 +56,10 @@ pub enum ProgramFlagConfiguration {
 #[derive(Debug, BorshDeserialize, BorshSerialize, Clone, PartialEq, Eq)]
 pub enum DistributionPaymentsConfiguration {
     UpdateSolanaValidatorPayments {
+        total_validators: u32,
         total_lamports_owed: u64,
         merkle_root: Hash,
     },
-    FinalizePayments,
     UpdateUncollectibleSol(u64),
 }
 
@@ -86,6 +86,7 @@ pub enum RevenueDistributionInstructionData {
     ConfigureJournal(JournalConfiguration),
     InitializeDistribution,
     ConfigureDistributionPayments(DistributionPaymentsConfiguration),
+    FinalizeDistributionPayments,
     ConfigureDistributionRewards {
         total_contributors: u32,
         merkle_root: Hash,
@@ -128,6 +129,8 @@ impl RevenueDistributionInstructionData {
         Discriminator::new_sha2(b"dz::ix::initialize_distribution");
     pub const CONFIGURE_DISTRIBUTION_PAYMENTS: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::configure_distribution_payments");
+    pub const FINALIZE_DISTRIBUTION_PAYMENTS: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::finalize_distribution_payments");
     pub const CONFIGURE_DISTRIBUTION_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::configure_distribution_rewards");
     pub const FINALIZE_DISTRIBUTION_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
@@ -170,6 +173,7 @@ impl BorshDeserialize for RevenueDistributionInstructionData {
                 DistributionPaymentsConfiguration::deserialize_reader(reader)
                     .map(Self::ConfigureDistributionPayments)
             }
+            Self::FINALIZE_DISTRIBUTION_PAYMENTS => Ok(Self::FinalizeDistributionPayments),
             Self::CONFIGURE_DISTRIBUTION_REWARDS => {
                 let total_contributors = BorshDeserialize::deserialize_reader(reader)?;
                 let merkle_root = BorshDeserialize::deserialize_reader(reader)?;
@@ -244,6 +248,9 @@ impl BorshSerialize for RevenueDistributionInstructionData {
             Self::ConfigureDistributionPayments(setting) => {
                 Self::CONFIGURE_DISTRIBUTION_PAYMENTS.serialize(writer)?;
                 setting.serialize(writer)
+            }
+            Self::FinalizeDistributionPayments => {
+                Self::FINALIZE_DISTRIBUTION_PAYMENTS.serialize(writer)
             }
             Self::ConfigureDistributionRewards {
                 total_contributors,

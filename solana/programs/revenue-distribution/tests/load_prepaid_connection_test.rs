@@ -436,7 +436,7 @@ async fn test_load_prepaid_connection() {
 
     let expected_transfer_amount = u64::from(expected_journal_entry_amount) * u64::pow(10, 8);
 
-    let (_, _, _, distribution_2z_token_pda) =
+    let (_, _, _, _, distribution_2z_token_pda) =
         test_setup.fetch_distribution(DoubleZeroEpoch::new(0)).await;
     assert_eq!(distribution_2z_token_pda.amount, expected_transfer_amount);
 
@@ -538,7 +538,7 @@ async fn test_load_prepaid_connection() {
 
     let expected_transfer_amount = u64::from(expected_journal_entry_amount) * u64::pow(10, 8);
 
-    let (_, _, _, distribution_2z_token_pda) =
+    let (_, _, _, _, distribution_2z_token_pda) =
         test_setup.fetch_distribution(DoubleZeroEpoch::new(1)).await;
     assert_eq!(distribution_2z_token_pda.amount, expected_transfer_amount);
 

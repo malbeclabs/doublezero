@@ -318,6 +318,48 @@ impl From<ConfigureDistributionPaymentsAccounts> for Vec<AccountMeta> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FinalizeDistributionPaymentsAccounts {
+    pub program_config_key: Pubkey,
+    pub payments_accountant_key: Pubkey,
+    pub distribution_key: Pubkey,
+    pub payer_key: Pubkey,
+}
+
+impl FinalizeDistributionPaymentsAccounts {
+    pub fn new(
+        payments_accountant_key: &Pubkey,
+        dz_epoch: DoubleZeroEpoch,
+        payer_key: &Pubkey,
+    ) -> Self {
+        Self {
+            program_config_key: ProgramConfig::find_address().0,
+            payments_accountant_key: *payments_accountant_key,
+            distribution_key: Distribution::find_address(dz_epoch).0,
+            payer_key: *payer_key,
+        }
+    }
+}
+
+impl From<FinalizeDistributionPaymentsAccounts> for Vec<AccountMeta> {
+    fn from(accounts: FinalizeDistributionPaymentsAccounts) -> Self {
+        let FinalizeDistributionPaymentsAccounts {
+            program_config_key,
+            payments_accountant_key,
+            distribution_key,
+            payer_key,
+        } = accounts;
+
+        vec![
+            AccountMeta::new_readonly(program_config_key, false),
+            AccountMeta::new_readonly(payments_accountant_key, true),
+            AccountMeta::new(distribution_key, false),
+            AccountMeta::new(payer_key, true),
+            AccountMeta::new_readonly(system_program::ID, false),
+        ]
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfigureDistributionRewardsAccounts {
     pub program_config_key: Pubkey,
     pub accountant_key: Pubkey,

@@ -73,6 +73,9 @@ fn try_process_instruction(
         RevenueDistributionInstructionData::ConfigureDistributionPayments(setting) => {
             try_configure_distribution_payments(accounts, setting)
         }
+        RevenueDistributionInstructionData::FinalizeDistributionPayments => {
+            try_finalize_distribution_payments(accounts)
+        }
         RevenueDistributionInstructionData::ConfigureDistributionRewards {
             total_contributors,
             merkle_root,
@@ -862,13 +865,14 @@ fn try_configure_distribution_payments(
 
     match setting {
         DistributionPaymentsConfiguration::UpdateSolanaValidatorPayments {
+            total_validators,
             total_lamports_owed,
             merkle_root,
         } => {
-            if distribution.are_payments_finalized() {
-                msg!("Payments have already been finalized");
-                return Err(ProgramError::InvalidAccountData);
-            }
+            try_require_unfinalized_distribution_payments(&distribution)?;
+
+            msg!("Set total_validators: {}", total_validators);
+            distribution.total_validators = total_validators;
 
             msg!(
                 "Set total_solana_validator_payments_owed: {}",
@@ -878,15 +882,6 @@ fn try_configure_distribution_payments(
 
             msg!("Set solana_validator_payments_merkle_root: {}", merkle_root);
             distribution.solana_validator_payments_merkle_root = merkle_root;
-        }
-        DistributionPaymentsConfiguration::FinalizePayments => {
-            if distribution.are_payments_finalized() {
-                msg!("Payments have already been finalized");
-                return Err(ProgramError::InvalidAccountData);
-            }
-
-            msg!("Finalized payments");
-            distribution.set_are_payments_finalized(true);
         }
         DistributionPaymentsConfiguration::UpdateUncollectibleSol(amount) => {
             // TODO: We will not want to allow this to be updated after we sweep the 2Z swapped from
@@ -899,6 +894,74 @@ fn try_configure_distribution_payments(
             distribution.uncollectible_sol_amount = amount;
         }
     }
+
+    Ok(())
+}
+
+fn try_finalize_distribution_payments(accounts: &[AccountInfo]) -> ProgramResult {
+    msg!("Finalize distribution payments");
+
+    // We expect the following accounts for this instruction:
+    // - 0: Program config.
+    // - 1: Payments accountant.
+    // - 2: Distribution.
+    // - 3: Payer (funder of realloc lamports).
+    // - 4: System program.
+    let mut accounts_iter = accounts.iter().enumerate();
+
+    // Account 0 must be the program config.
+    // Account 1 must be the payments accountant.
+    //
+    // This method verifies that account 1 is the payments accountant and is a signer.
+    let authorized_use = VerifiedProgramAuthority::try_next_accounts(
+        &mut accounts_iter,
+        Authority::PaymentsAccountant,
+    )?;
+
+    // Make sure the program is not paused.
+    try_require_unpaused(&authorized_use.program_config)?;
+
+    // Account 2 must be the distribution.
+    let mut distribution =
+        ZeroCopyMutAccount::<Distribution>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    try_require_unfinalized_distribution_payments(&distribution)?;
+
+    distribution.set_are_payments_finalized(true);
+
+    // We need to realloc the distribution account to add the number of bits
+    // needed to store whether a Solana validator has paid.
+    let additional_data_len = distribution.total_validators / 8 + 1;
+
+    // Avoid borrowing while in mutable borrow state.
+    let distribution_info = distribution.info;
+    drop(distribution);
+
+    let new_data_len = distribution_info
+        .data_len()
+        .saturating_add(additional_data_len as usize);
+    distribution_info.resize(new_data_len)?;
+
+    let additional_lamports_for_resize = Rent::get()
+        .unwrap()
+        .minimum_balance(new_data_len)
+        .saturating_sub(distribution_info.lamports());
+
+    let (_, payer_info) = try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+
+    let transfer_ix = system_instruction::transfer(
+        payer_info.key,
+        distribution_info.key,
+        additional_lamports_for_resize,
+    );
+
+    invoke_signed_unchecked(&transfer_ix, accounts, &[])?;
+
+    msg!(
+        "Increase distribution account size by {} byte{}",
+        additional_data_len,
+        if additional_data_len == 1 { "" } else { "s" }
+    );
 
     Ok(())
 }
@@ -1005,24 +1068,51 @@ fn try_finalize_distribution_rewards(accounts: &[AccountInfo]) -> ProgramResult 
         return Err(ProgramError::InvalidAccountData);
     }
 
+    // We need to realloc the distribution account to add the number of bits
+    // needed to store whether a contributor has claimed rewards.
+    let total_contributors = distribution.total_contributors;
+    let additional_data_len = total_contributors / 8 + 1;
+
+    // Avoid borrowing while in mutable borrow state.
+    let distribution_info = distribution.info;
+    drop(distribution);
+
+    let new_data_len = distribution_info
+        .data_len()
+        .saturating_add(additional_data_len as usize);
+    distribution_info.resize(new_data_len)?;
+
+    let additional_lamports_for_resize = Rent::get()
+        .unwrap()
+        .minimum_balance(new_data_len)
+        .saturating_sub(distribution_info.lamports());
+
+    msg!(
+        "Increase distribution account size by {} byte{}",
+        additional_data_len,
+        if additional_data_len == 1 { "" } else { "s" }
+    );
+
     // The rewards accountant can pay with another account. But most likely this account
     // will be the same as the payments accountant. This account will need to be writable
     // in order to transfer lamports to the payer (but we do not need to check this because
     // the transfer CPI call will fail if this account is not writable).
     let (_, payer_info) = try_next_enumerated_account(&mut accounts_iter, Default::default())?;
 
-    let total_contributors = distribution.total_contributors;
-    let transfer_amount =
+    let additional_lamports_for_claims =
         contributor_reward_claim_lamports.saturating_mul(total_contributors.into());
 
-    let transfer_ix =
-        system_instruction::transfer(payer_info.key, distribution.info.key, transfer_amount);
+    let transfer_ix = system_instruction::transfer(
+        payer_info.key,
+        distribution_info.key,
+        additional_lamports_for_claims.saturating_add(additional_lamports_for_resize),
+    );
 
     invoke_signed_unchecked(&transfer_ix, accounts, &[])?;
 
     msg!(
         "Transferred {} lamports to distribution for {} contributor claims",
-        transfer_amount,
+        additional_lamports_for_claims,
         total_contributors
     );
 
@@ -1978,6 +2068,15 @@ fn try_serialize_journal_entries(
 fn try_require_unpaused(program_config: &ProgramConfig) -> ProgramResult {
     if program_config.is_paused() {
         msg!("Program is paused");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    Ok(())
+}
+
+fn try_require_unfinalized_distribution_payments(distribution: &Distribution) -> ProgramResult {
+    if distribution.are_payments_finalized() {
+        msg!("Distribution payments have already been finalized");
         return Err(ProgramError::InvalidAccountData);
     }
 

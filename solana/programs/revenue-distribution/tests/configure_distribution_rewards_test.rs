@@ -94,7 +94,7 @@ async fn test_configure_distribution_rewards() {
         .await
         .unwrap();
 
-    let (distribution_key, distribution, _, _) = test_setup.fetch_distribution(dz_epoch).await;
+    let (distribution_key, distribution, _, _, _) = test_setup.fetch_distribution(dz_epoch).await;
 
     let mut expected_distribution = Distribution::default();
     expected_distribution.bump_seed = Distribution::find_address(dz_epoch).1;

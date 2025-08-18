@@ -9,12 +9,12 @@ use doublezero_revenue_distribution::{
             ConfigureContributorRewardsAccounts, ConfigureDistributionPaymentsAccounts,
             ConfigureDistributionRewardsAccounts, ConfigureJournalAccounts,
             ConfigureProgramAccounts, DenyPrepaidConnectionAccessAccounts,
-            FinalizeDistributionRewardsAccounts, GrantPrepaidConnectionAccessAccounts,
-            InitializeContributorRewardsAccounts, InitializeDistributionAccounts,
-            InitializeJournalAccounts, InitializePrepaidConnectionAccounts,
-            InitializeProgramAccounts, LoadPrepaidConnectionAccounts, SetAdminAccounts,
-            SetRewardsManagerAccounts, TerminatePrepaidConnectionAccounts,
-            VerifyDistributionMerkleRootAccounts,
+            FinalizeDistributionPaymentsAccounts, FinalizeDistributionRewardsAccounts,
+            GrantPrepaidConnectionAccessAccounts, InitializeContributorRewardsAccounts,
+            InitializeDistributionAccounts, InitializeJournalAccounts,
+            InitializePrepaidConnectionAccounts, InitializeProgramAccounts,
+            LoadPrepaidConnectionAccounts, SetAdminAccounts, SetRewardsManagerAccounts,
+            TerminatePrepaidConnectionAccounts, VerifyDistributionMerkleRootAccounts,
         },
         ContributorRewardsConfiguration, DistributionMerkleRootKind,
         DistributionPaymentsConfiguration, JournalConfiguration, ProgramConfiguration,
@@ -459,6 +459,35 @@ impl ProgramTestWithOwner {
         Ok(self)
     }
 
+    pub async fn finalize_distribution_payments(
+        &mut self,
+        dz_epoch: DoubleZeroEpoch,
+        payments_accountant_signer: &Keypair,
+    ) -> Result<&mut Self, BanksClientError> {
+        let payer_signer = &self.payer_signer;
+
+        let finalize_distribution_payments_ix = try_build_instruction(
+            &ID,
+            FinalizeDistributionPaymentsAccounts::new(
+                &payments_accountant_signer.pubkey(),
+                dz_epoch,
+                &payer_signer.pubkey(),
+            ),
+            &RevenueDistributionInstructionData::FinalizeDistributionPayments,
+        )
+        .unwrap();
+
+        self.cached_blockhash = process_instructions_for_test(
+            &mut self.banks_client,
+            &self.cached_blockhash,
+            &[finalize_distribution_payments_ix],
+            &[payer_signer, payments_accountant_signer],
+        )
+        .await?;
+
+        Ok(self)
+    }
+
     pub async fn configure_distribution_rewards(
         &mut self,
         dz_epoch: DoubleZeroEpoch,
@@ -874,7 +903,7 @@ impl ProgramTestWithOwner {
     pub async fn fetch_distribution(
         &self,
         dz_epoch: DoubleZeroEpoch,
-    ) -> (Pubkey, Distribution, u64, TokenAccount) {
+    ) -> (Pubkey, Distribution, Vec<u8>, u64, TokenAccount) {
         let distribution_key = Distribution::find_address(dz_epoch).0;
 
         let distribution_account_info = self
@@ -884,9 +913,8 @@ impl ProgramTestWithOwner {
             .unwrap()
             .unwrap();
 
-        let distribution = *checked_from_bytes_with_discriminator(&distribution_account_info.data)
-            .unwrap()
-            .0;
+        let (distribution, distribution_remaining_data) =
+            checked_from_bytes_with_discriminator(&distribution_account_info.data).unwrap();
 
         let token_pda_key = state::find_2z_token_pda_address(&distribution_key).0;
         let distribution_2z_token_pda_data = self
@@ -901,7 +929,8 @@ impl ProgramTestWithOwner {
 
         (
             distribution_key,
-            distribution,
+            *distribution,
+            distribution_remaining_data.to_vec(),
             distribution_account_info.lamports,
             token_pda,
         )

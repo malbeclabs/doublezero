@@ -23,7 +23,7 @@ mod test_helpers;
 use test_helpers::*;
 
 #[tokio::test]
-async fn test_link() {
+async fn test_wan_link() {
     let program_id = Pubkey::new_unique();
     let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
         "doublezero_serviceability",
@@ -298,7 +298,7 @@ async fn test_link() {
     /***********************************************************************************************************************************/
     /***********************************************************************************************************************************/
     // Link _la
-    println!("🟢 7. Create Link...");
+    println!("🟢 7. Create WAN Link...");
 
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 

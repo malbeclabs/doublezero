@@ -2,7 +2,6 @@ use core::fmt;
 
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get,
     helper::*,
     state::{accounttype::AccountType, device::Device, link::*},
 };
@@ -60,12 +59,8 @@ pub fn process_accept_link(
     // Check if the account is writable
     assert!(link_account.is_writable, "PDA Account is not writable");
 
-    let globalstate = globalstate_get(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
-
     let mut link: Link = Link::try_from(link_account)?;
+    assert_eq!(link.account_type, AccountType::Link);
 
     if link.status != LinkStatus::Requested {
         return Err(DoubleZeroError::InvalidStatus.into());
@@ -74,7 +69,7 @@ pub fn process_accept_link(
     let side_z_dev = Device::try_from(side_z_account)?;
     assert_eq!(side_z_dev.account_type, AccountType::Device);
     if side_z_dev.contributor_pk != *contributor_account.key {
-        return Err(DoubleZeroError::InvalidContributor.into());
+        return Err(DoubleZeroError::NotAllowed.into());
     }
 
     if !side_z_dev

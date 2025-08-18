@@ -82,6 +82,26 @@ pub async fn execute_transaction(
     println!("✅")
 }
 
+#[allow(dead_code)]
+pub async fn try_execute_transaction(
+    banks_client: &mut BanksClient,
+    recent_blockhash: solana_program::hash::Hash,
+    program_id: Pubkey,
+    instruction: DoubleZeroInstruction,
+    accounts: Vec<AccountMeta>,
+    payer: &Keypair,
+) -> Result<(), BanksClientError> {
+    print!("➡️  Transaction {instruction:?} ");
+
+    let mut transaction = create_transaction(program_id, instruction, accounts, payer);
+    transaction.sign(&[&payer], recent_blockhash);
+    banks_client.process_transaction(transaction).await?;
+
+    println!("✅");
+
+    Ok(())
+}
+
 pub fn create_transaction(
     program_id: Pubkey,
     instruction: DoubleZeroInstruction,

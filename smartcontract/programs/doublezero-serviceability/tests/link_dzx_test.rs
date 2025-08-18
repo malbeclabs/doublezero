@@ -402,9 +402,9 @@ async fn test_dzx_link() {
         .unwrap();
     assert_eq!(device_z.reference_count, 1);
 
-    println!("✅ Link initialized successfully",);
+    println!("✅ Link initialized successfully");
     /*****************************************************************************************************************************************************/
-    println!("🟢 9. Trye to Accept Link byt Cont1...");
+    println!("🟢 9. Try to Accept Link by Cont1...");
 
     let res = try_execute_transaction(
         &mut banks_client,

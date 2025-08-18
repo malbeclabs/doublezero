@@ -2,7 +2,6 @@ use core::fmt;
 
 use crate::{
     error::DoubleZeroError,
-    globalstate::globalstate_get,
     helper::*,
     state::{accounttype::AccountType, device::Device, link::*},
 };
@@ -70,7 +69,7 @@ pub fn process_accept_link(
     let side_z_dev = Device::try_from(side_z_account)?;
     assert_eq!(side_z_dev.account_type, AccountType::Device);
     if side_z_dev.contributor_pk != *contributor_account.key {
-        return Err(DoubleZeroError::InvalidContributor.into());
+        return Err(DoubleZeroError::NotAllowed.into());
     }
 
     if !side_z_dev

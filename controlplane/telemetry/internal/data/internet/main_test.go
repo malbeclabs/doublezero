@@ -49,11 +49,11 @@ func (m *mockServiceabilityClient) GetProgramData(ctx context.Context) (*service
 }
 
 type mockTelemetryClient struct {
-	GetInternetLatencySamplesFunc func(ctx context.Context, dataProvider string, originLocationPK, targetLocationPK, collectorPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error)
+	GetInternetLatencySamplesFunc func(ctx context.Context, dataProvider string, originExchangePK, targetExchangePK, collectorPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error)
 }
 
-func (m *mockTelemetryClient) GetInternetLatencySamples(ctx context.Context, dataProvider string, originLocationPK, targetLocationPK, collectorPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error) {
-	return m.GetInternetLatencySamplesFunc(ctx, dataProvider, originLocationPK, targetLocationPK, collectorPK, epoch)
+func (m *mockTelemetryClient) GetInternetLatencySamples(ctx context.Context, dataProvider string, originExchangePK, targetExchangePK, collectorPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error) {
+	return m.GetInternetLatencySamplesFunc(ctx, dataProvider, originExchangePK, targetExchangePK, collectorPK, epoch)
 }
 
 type mockProvider struct {

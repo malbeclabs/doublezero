@@ -95,7 +95,7 @@ func (p *provider) GetCircuitLatenciesForEpoch(ctx context.Context, circuitCode 
 		return nil, fmt.Errorf("circuit not found: %s", circuitCode)
 	}
 
-	account, err := p.cfg.TelemetryClient.GetInternetLatencySamples(ctx, dataProvider, circuit.OriginLocation.PK, circuit.TargetLocation.PK, p.cfg.AgentPK, epoch)
+	account, err := p.cfg.TelemetryClient.GetInternetLatencySamples(ctx, dataProvider, circuit.OriginExchange.PK, circuit.TargetExchange.PK, p.cfg.AgentPK, epoch)
 	if err != nil {
 		if errors.Is(err, telemetry.ErrAccountNotFound) {
 			// If the account is not found, cache an empty array for the epoch for a short time.

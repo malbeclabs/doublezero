@@ -86,6 +86,11 @@ func (c *InternetCmd) Command() *cobra.Command {
 			if dataProvider == "" {
 				dataProvider = internetdata.DataProviderNameWheresitup
 			}
+			switch dataProvider {
+			case internetdata.DataProviderNameRIPEAtlas, internetdata.DataProviderNameWheresitup:
+			default:
+				return fmt.Errorf("invalid data provider: %s", dataProvider)
+			}
 
 			log := newLogger(verbose)
 

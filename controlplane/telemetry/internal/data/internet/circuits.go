@@ -9,19 +9,18 @@ import (
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
-type Location struct {
+type Exchange struct {
 	PK        solana.PublicKey `json:"pk"`
 	Code      string           `json:"code"`
 	Name      string           `json:"name"`
-	Country   string           `json:"country"`
 	Latitude  float64          `json:"latitude"`
 	Longitude float64          `json:"longitude"`
 }
 
 type Circuit struct {
 	Code           string   `json:"code"`
-	OriginLocation Location `json:"origin_location"`
-	TargetLocation Location `json:"target_location"`
+	OriginExchange Exchange `json:"origin_exchange"`
+	TargetExchange Exchange `json:"target_exchange"`
 }
 
 func (p *provider) GetCircuits(ctx context.Context) ([]Circuit, error) {
@@ -38,17 +37,17 @@ func (p *provider) GetCircuits(ctx context.Context) ([]Circuit, error) {
 	circuits := make([]Circuit, 0, 2*len(data.Links))
 	circuitsByCode := make(map[string]struct{})
 
-	for _, originLocation := range data.Locations {
-		for _, targetLocation := range data.Locations {
-			if originLocation.Code == targetLocation.Code {
+	for _, originExchange := range data.Exchanges {
+		for _, targetExchange := range data.Exchanges {
+			if originExchange.Code == targetExchange.Code {
 				continue
 			}
 
-			var origin, target serviceability.Location
-			if originLocation.Code < targetLocation.Code {
-				origin, target = originLocation, targetLocation
+			var origin, target serviceability.Exchange
+			if originExchange.Code < targetExchange.Code {
+				origin, target = originExchange, targetExchange
 			} else {
-				origin, target = targetLocation, originLocation
+				origin, target = targetExchange, originExchange
 			}
 
 			key := circuitKey(origin.Code, target.Code)
@@ -59,19 +58,17 @@ func (p *provider) GetCircuits(ctx context.Context) ([]Circuit, error) {
 			circuitsByCode[key] = struct{}{}
 			circuits = append(circuits, Circuit{
 				Code: key,
-				OriginLocation: Location{
+				OriginExchange: Exchange{
 					PK:        origin.PubKey,
 					Code:      origin.Code,
 					Name:      origin.Name,
-					Country:   origin.Country,
 					Latitude:  origin.Lat,
 					Longitude: origin.Lng,
 				},
-				TargetLocation: Location{
+				TargetExchange: Exchange{
 					PK:        target.PubKey,
 					Code:      target.Code,
 					Name:      target.Name,
-					Country:   target.Country,
 					Latitude:  target.Lat,
 					Longitude: target.Lng,
 				},

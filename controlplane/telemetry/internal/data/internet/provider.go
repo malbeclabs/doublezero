@@ -135,5 +135,5 @@ type ServiceabilityClient interface {
 }
 
 type TelemetryClient interface {
-	GetInternetLatencySamples(ctx context.Context, dataProvider string, originLocationPK, targetLocationPK solana.PublicKey, agentPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error)
+	GetInternetLatencySamples(ctx context.Context, dataProvider string, originExchangePK, targetExchangePK solana.PublicKey, agentPK solana.PublicKey, epoch uint64) (*telemetry.InternetLatencySamples, error)
 }

@@ -60,12 +60,8 @@ pub fn process_accept_link(
     // Check if the account is writable
     assert!(link_account.is_writable, "PDA Account is not writable");
 
-    let globalstate = globalstate_get(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
-
     let mut link: Link = Link::try_from(link_account)?;
+    assert_eq!(link.account_type, AccountType::Link);
 
     if link.status != LinkStatus::Requested {
         return Err(DoubleZeroError::InvalidStatus.into());

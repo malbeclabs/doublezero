@@ -82,7 +82,6 @@ pub async fn execute_transaction(
     println!("✅")
 }
 
-
 #[allow(dead_code)]
 pub async fn try_execute_transaction(
     banks_client: &mut BanksClient,

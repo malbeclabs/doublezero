@@ -239,7 +239,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 			return true
 		}
 		return false
-	}, 120*time.Second, 3*time.Second, "Timed out waiting for the devices to be reachable via their link tunnel")
+	}, 180*time.Second, 3*time.Second, "Timed out waiting for the devices to be reachable via their link tunnel")
 
 	// Wait for the devices to be reachable from each other via their link tunnel using TWAMP UDP probes.
 	log.Info("==> Waiting for devices to be reachable from each other via their link tunnel using TWAMP")

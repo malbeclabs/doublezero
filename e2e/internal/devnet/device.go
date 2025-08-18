@@ -61,6 +61,12 @@ type DeviceSpec struct {
 
 	// Additional docker networks to attach the device to.
 	AdditionalNetworks []string
+
+	// Interfaces is a map of interface names to types.
+	Interfaces map[string]string
+
+	// LoopbackInterfaces is a map of interface names to loopback types.
+	LoopbackInterfaces map[string]string
 }
 
 type DeviceTelemetrySpec struct {
@@ -130,6 +136,14 @@ func (s *DeviceSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
 		if err := s.Telemetry.Validate(); err != nil {
 			return fmt.Errorf("telemetry: %w", err)
 		}
+	}
+
+	if s.Interfaces == nil {
+		s.Interfaces = map[string]string{}
+	}
+
+	if s.LoopbackInterfaces == nil {
+		s.LoopbackInterfaces = map[string]string{}
 	}
 
 	return nil
@@ -257,6 +271,26 @@ func (d *Device) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to create device %s onchain: %w", spec.Code, err)
 	}
 	d.log.Info("--> Created device onchain", "code", spec.Code, "cyoaNetworkIP", cyoaNetworkIP, "onchainID", onchainID)
+
+	// Create interfaces onchain.
+	for name, ifaceType := range spec.Interfaces {
+		_, err := d.dn.Manager.Exec(ctx, []string{
+			"doublezero", "device", "interface", "create", spec.Code, name, ifaceType,
+		})
+		d.log.Info("--> Created interface onchain", "code", spec.Code, "name", name, "ifaceType", ifaceType)
+		if err != nil {
+			return fmt.Errorf("failed to create interface %s for device %s: %w", name, spec.Code, err)
+		}
+	}
+
+	// Create loopback interfaces onchain.
+	for name, loopbackType := range spec.LoopbackInterfaces {
+		err = d.dn.CreateDeviceLoopbackInterface(ctx, spec.Code, name, loopbackType)
+		if err != nil {
+			return fmt.Errorf("failed to create loopback interface %s for device %s: %w", name, spec.Code, err)
+		}
+		d.log.Info("--> Created loopback interface onchain", "code", spec.Code, "name", name, "loopbackType", loopbackType)
+	}
 
 	controllerAddr := net.JoinHostPort(d.dn.Controller.DefaultNetworkIP, fmt.Sprintf("%d", internalControllerPort))
 

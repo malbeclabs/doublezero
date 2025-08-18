@@ -51,16 +51,14 @@ func TestE2E_MultiClient(t *testing.T) {
 		// .8/29 has network address .8, allocatable up to .14, and broadcast .15
 		CYOANetworkIPHostID:          8,
 		CYOANetworkAllocatablePrefix: 29,
+		LoopbackInterfaces: map[string]string{
+			"Loopback255": "vpnv4",
+			"Loopback256": "ipv4",
+		},
 	})
 	require.NoError(t, err)
 	devicePK := device.ID
 	log.Info("--> Device added", "deviceCode", deviceCode, "devicePK", devicePK)
-
-	err = dn.CreateDeviceLoopbackInterface(t.Context(), deviceCode, "Loopback255", "vpnv4")
-	require.NoError(t, err, "failed to create VPNv4 loopback interface for device %s: %w", deviceCode, err)
-
-	err = dn.CreateDeviceLoopbackInterface(t.Context(), deviceCode, "Loopback256", "ipv4")
-	require.NoError(t, err, "failed to create IPv4 loopback interface for device %s: %w", deviceCode, err)
 
 	// Wait for device to exist onchain.
 	log.Info("==> Waiting for device to exist onchain")

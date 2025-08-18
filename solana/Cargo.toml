@@ -3,7 +3,6 @@ exclude = []
 members = [
     "crates/2z-cli",
     "crates/program-tools",
-    "crates/sentinel",
     "crates/validator-revenue",
     "programs/passport",
     "programs/revenue-distribution",

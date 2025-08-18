@@ -41,6 +41,13 @@ func (c *AddDeviceCmd) Command() *cobra.Command {
 					ManagementNS: "ns-management",
 					Verbose:      true,
 				},
+				Interfaces: map[string]string{
+					"Ethernet2": "physical",
+				},
+				LoopbackInterfaces: map[string]string{
+					"Loopback255": "vpnv4",
+					"Loopback256": "ipv4",
+				},
 			})
 			if err != nil {
 				return fmt.Errorf("failed to add device: %w", err)

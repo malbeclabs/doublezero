@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.6.0](https://github.com/malbeclabs/doublezero/compare/client/v0.5.0...client/v0.6.0) – 2025-08-19
+
+- **CLI & UX Improvements**
+	- Improve sorting of device, exchange, link, location, and user displays
+	- New installation package for the admin CLI for contributors based on controller/doublezero-admin
+	- Do not allow users to connect to a device with zero available tunnel slots remaining
+	- Improve handling of interface names for `doublezero device interface` commands
+
+- **Serviceability Model Improvements**
+	- funder: configure recipients as flag
+	- sdk/rs: add record program handling
+	- config: use ledger RPC LB endpoint
+	- Validate account codes and replace whitespace
+	- config: add ability to override DZ ledger RPC url; update URLs
+	- remove old CloseAccount instruction from both the smart contract and SDK client code
+
+- **Network Controller Improvements**
+	- Increase user tunnel slots per device from 64 to 128
+	- Add flag controlling whether interfaces and peers are rendered to assist with testnet migration
+
+- **Device and Internet Latency Telemetry**
+	- internet latency samples in data CLI and dashboard API
+	- internet-latency-collector - test between exchanges, not locations
+	- internet-latency-collector: add ripeatlas credit metric
+
+- **End-to-End Tooling**
+	- New doublezero QA agent improves quality by thoroughly testing the software stack end-to-end in each doublezero environment (devnet, testnet, mainnet) after each release.
+
 ## [v0.5.0](https://github.com/malbeclabs/doublezero/compare/client/v0.4.0...client/v0.5.0) – 2025-08-11
 
 - **CLI & UX Improvements**

@@ -109,6 +109,7 @@ pub fn process_set_accesspass(
             client_ip: value.client_ip,
             payer: value.payer,
             last_access_epoch: value.last_access_epoch,
+            connection_count: 0,
             status: AccessPassStatus::Requested,
         };
 

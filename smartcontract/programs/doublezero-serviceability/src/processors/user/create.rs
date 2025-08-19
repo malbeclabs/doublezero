@@ -117,6 +117,7 @@ pub fn process_create_user(
         return Err(DoubleZeroError::Unauthorized.into());
     }
 
+    accesspass.connection_count += 1;
     accesspass.status = AccessPassStatus::Connected;
 
     let mut device = Device::try_from(device_account)?;

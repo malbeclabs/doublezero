@@ -88,6 +88,7 @@ pub struct AccessPass {
     pub client_ip: Ipv4Addr,             // 4
     pub payer: Pubkey,                   // 32
     pub last_access_epoch: u64,          // 8 / 0-Rejected / u64::MAX unlimited
+    pub connection_count: u16,           // 2
     pub status: AccessPassStatus,        // 1
 }
 
@@ -106,7 +107,7 @@ impl AccountTypeInfo for AccessPass {
         crate::seeds::SEED_ACCESS_PASS
     }
     fn size(&self) -> usize {
-        1 + 32 + 1 + 1 + 4 + 32 + 8 + 1
+        1 + 32 + 1 + 1 + 4 + 32 + 8 + 2 + 1
     }
     fn bump_seed(&self) -> u8 {
         self.bump_seed
@@ -131,6 +132,7 @@ impl From<&[u8]> for AccessPass {
             client_ip: parser.read_ipv4(),
             payer: parser.read_pubkey(),
             last_access_epoch: parser.read_u64(),
+            connection_count: parser.read_u16(),
             status: parser.read_enum(),
         };
 
@@ -176,6 +178,7 @@ mod tests {
             client_ip: [1, 2, 3, 4].into(),
             payer: Pubkey::new_unique(),
             last_access_epoch: 0,
+            connection_count: 0,
             status: AccessPassStatus::Connected,
         };
 
@@ -189,6 +192,7 @@ mod tests {
         assert_eq!(val.client_ip, val2.client_ip);
         assert_eq!(val.payer, val2.payer);
         assert_eq!(val.last_access_epoch, val2.last_access_epoch);
+        assert_eq!(val.connection_count, val2.connection_count);
         assert_eq!(val.status, val2.status);
         assert_eq!(data.len(), val.size(), "Invalid Size");
     }

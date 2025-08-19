@@ -109,6 +109,7 @@ pub fn process_create_subscribe_user(
         return Err(DoubleZeroError::Unauthorized.into());
     }
 
+    accesspass.connection_count += 1;
     accesspass.status = AccessPassStatus::Connected;
 
     let mut mgroup: MulticastGroup = MulticastGroup::try_from(mgroup_account)?;

@@ -15,6 +15,10 @@ import (
 	probing "github.com/prometheus-community/pro-bing"
 )
 
+const (
+	serviceabilityProgramDataFetchTimeout = 20 * time.Second
+)
+
 type ProberFunc func(context.Context, serviceability.Device) LatencyResult
 
 func UdpPing(ctx context.Context, d serviceability.Device) LatencyResult {
@@ -110,7 +114,7 @@ func (l *LatencyManager) Start(ctx context.Context, programId string, rpcEndpoin
 	// start goroutine for fetching smartcontract devices
 	go func() {
 		fetch := func() {
-			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			ctx, cancel := context.WithTimeout(ctx, serviceabilityProgramDataFetchTimeout)
 			defer cancel()
 			contractData, err := l.SmartContractFunc(ctx, programId, rpcEndpoint)
 			if err != nil {

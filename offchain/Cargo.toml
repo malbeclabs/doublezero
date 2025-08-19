@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/contributor-rewards",
+    "crates/sentinel",
 ]
 resolver = "2"
 
@@ -18,36 +19,46 @@ homepage = "https://github.com/doublezerofoundation/doublezero-offchain"
 anyhow = "1"
 backon = "1"
 base64 = "0"
+bincode = "1.3"
 borsh = "1"
 chrono = { version = "0", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }
 config = "0"
 csv = "1"
-doublezero-revenue-distribution = { git = "ssh://git@github.com/doublezerofoundation/doublezero-solana", features = ["no-entrypoint"] }
+doublezero-passport = { git = "ssh://git@github.com/doublezerofoundation/doublezero-solana" }
+doublezero-program-tools = { git = "ssh://git@github.com/doublezerofoundation/doublezero-solana" }
+doublezero-revenue-distribution = { git = "ssh://git@github.com/doublezerofoundation/doublezero-solana" }
+futures = "0"
 futures-util = "0"
+governor = "0"
 itertools = "0"
+metrics = "0"
+metrics-exporter-prometheus = "0"
 network-shapley = { git = "https://github.com/doublezerofoundation/network-shapley-rs", features = ["serde", "borsh"] }
 rand = "0"
-governor = "0"
 rayon = "1"
-rust_decimal = { version = "1", features = ["serde", "macros"] }
 reqwest = { version = "0", features = [ "json" ] }
+rust_decimal = { version = "1", features = ["serde", "macros"] }
 sha2 = "0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-solana-client = "2.2.7"
-solana-account-decoder = "2.2.7"
-solana-sdk = "2.2.2"
+solana-account-decoder = "2"
+solana-account-decoder-client-types = "2"
+solana-client = "2"
+solana-commitment-config = "2"
 solana-epoch-info = "3"
+solana-sdk = "2"
 solana-system-interface = "1"
+solana-transaction-status-client-types = "2"
 svm-hash = { version = "0.1.0-beta.1", features = [ "bytemuck", "borsh" ] }
 tabled = { version = "0", features = [ "std", "derive" ]}
 thiserror = "2"
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "signal"] }
 tokio-util = { version = "0" }
 toml = "0"
 tracing = "0"
-tracing-subscriber = { version = "0", features = ["env-filter"] }
+tracing-subscriber = { version = "0", default-features = true, features = ["env-filter", "fmt", "registry"] }
+url = "2"
 
 
 # FIXME: Temporarily pinning doublezero rev to an older sha

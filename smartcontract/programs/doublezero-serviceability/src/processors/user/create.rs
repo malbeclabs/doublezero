@@ -89,12 +89,20 @@ pub fn process_create_user(
 
     // Invalid Access Pass
     if accesspass_account.data_is_empty() {
+        msg!("Invalid Access Pass");
         return Err(DoubleZeroError::Unauthorized.into());
     }
 
     // Read Access Pass
     let mut accesspass = AccessPass::try_from(accesspass_account)?;
     if accesspass.owner != *payer_account.key || accesspass.client_ip != value.client_ip {
+        msg!(
+            "Invalid payer or client_ip accesspass.{{owner: {} client_ip: {}}} = payer: {} client_ip: {}",
+            accesspass.owner,
+            payer_account.key,
+            accesspass.client_ip,
+            value.client_ip
+        );
         return Err(DoubleZeroError::Unauthorized.into());
     }
 
@@ -102,6 +110,10 @@ pub fn process_create_user(
     let clock = Clock::get()?;
     let current_epoch = clock.epoch;
     if accesspass.last_access_epoch > 0 && accesspass.last_access_epoch < current_epoch {
+        msg!(
+            "Invalid epoch current_epoch: {current_epoch} < last_access_epoch: {}",
+            accesspass.last_access_epoch
+        );
         return Err(DoubleZeroError::Unauthorized.into());
     }
 

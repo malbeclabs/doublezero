@@ -39,7 +39,7 @@ pub fn process_activate_device(program_id: &Pubkey, accounts: &[AccountInfo]) ->
     }
 
     let globalstate = globalstate_get(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
+    if globalstate.activator_authority_pk != *payer_account.key {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 

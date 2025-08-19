@@ -1,5 +1,6 @@
 pub const SEED_PREFIX: &[u8] = b"doublezero";
 pub const SEED_GLOBALSTATE: &[u8] = b"globalstate";
+pub const SEED_ACCESS_PASS: &[u8] = b"accesspass";
 pub const SEED_PROGRAM_CONFIG: &[u8] = b"programconfig";
 pub const SEED_CONFIG: &[u8] = b"config";
 pub const SEED_LOCATION: &[u8] = b"location";

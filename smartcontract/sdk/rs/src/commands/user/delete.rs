@@ -6,7 +6,8 @@ use crate::{
     DoubleZeroClient,
 };
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, processors::user::delete::UserDeleteArgs,
+    instructions::DoubleZeroInstruction, pda::get_accesspass_pda,
+    processors::user::delete::UserDeleteArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -37,10 +38,12 @@ impl DeleteUserCommand {
             .execute(client)?;
         }
 
+        let (accesspass_pk, _) = get_accesspass_pda(&client.get_program_id(), user.client_ip);
         client.execute_transaction(
             DoubleZeroInstruction::DeleteUser(UserDeleteArgs {}),
             vec![
                 AccountMeta::new(self.pubkey, false),
+                AccountMeta::new(accesspass_pk, false),
                 AccountMeta::new(globalstate_pubkey, false),
             ],
         )

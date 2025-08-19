@@ -1,5 +1,6 @@
 use doublezero_sdk::{
     commands::{
+        accesspass::{list::ListAccessPassCommand, set::SetAccessPassCommand},
         allowlist::{
             device::{
                 add::AddDeviceAllowlistCommand, list::ListDeviceAllowlistCommand,
@@ -32,7 +33,7 @@ use doublezero_sdk::{
             update::UpdateExchangeCommand,
         },
         globalconfig::set::SetGlobalConfigCommand,
-        globalstate::init::InitGlobalStateCommand,
+        globalstate::{init::InitGlobalStateCommand, setauthority::SetAuthorityCommand},
         link::{
             accept::AcceptLinkCommand, activate::ActivateLinkCommand,
             closeaccount::CloseAccountLinkCommand, create::CreateLinkCommand,
@@ -73,10 +74,12 @@ use doublezero_sdk::{
             requestban::RequestBanUserCommand, update::UpdateUserCommand,
         },
     },
-    DZClient, Device, DoubleZeroClient, Exchange, GetGlobalConfigCommand, GlobalConfig, Link,
-    Location, MulticastGroup, User,
+    DZClient, Device, DoubleZeroClient, Exchange, GetGlobalConfigCommand, GetGlobalStateCommand,
+    GlobalConfig, GlobalState, Link, Location, MulticastGroup, User,
 };
-use doublezero_serviceability::state::{contributor::Contributor, programconfig::ProgramConfig};
+use doublezero_serviceability::state::{
+    accesspass::AccessPass, contributor::Contributor, programconfig::ProgramConfig,
+};
 use mockall::automock;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 use std::collections::HashMap;
@@ -95,9 +98,11 @@ pub trait CliCommand {
     fn get_balance(&self) -> eyre::Result<u64>;
     fn get_logs(&self, pubkey: &Pubkey) -> eyre::Result<Vec<String>>;
 
-    fn init_global_state(&self, cmd: InitGlobalStateCommand) -> eyre::Result<Signature>;
+    fn init_globalstate(&self, cmd: InitGlobalStateCommand) -> eyre::Result<Signature>;
+    fn get_globalstate(&self, cmd: GetGlobalStateCommand) -> eyre::Result<(Pubkey, GlobalState)>;
     fn get_globalconfig(&self, cmd: GetGlobalConfigCommand)
         -> eyre::Result<(Pubkey, GlobalConfig)>;
+    fn set_authority(&self, cmd: SetAuthorityCommand) -> eyre::Result<Signature>;
     fn set_globalconfig(&self, cmd: SetGlobalConfigCommand) -> eyre::Result<Signature>;
 
     fn create_location(&self, cmd: CreateLocationCommand) -> eyre::Result<(Signature, Pubkey)>;
@@ -231,6 +236,12 @@ pub trait CliCommand {
         &self,
         cmd: ListMulticastGroupSubAllowlistCommand,
     ) -> eyre::Result<Vec<Pubkey>>;
+
+    fn set_accesspass(&self, cmd: SetAccessPassCommand) -> eyre::Result<Signature>;
+    fn list_accesspass(
+        &self,
+        cmd: ListAccessPassCommand,
+    ) -> eyre::Result<HashMap<Pubkey, AccessPass>>;
 }
 
 pub struct CliCommandImpl<'a> {
@@ -268,14 +279,19 @@ impl CliCommand for CliCommandImpl<'_> {
         self.client.get_logs(pubkey)
     }
 
-    fn init_global_state(&self, cmd: InitGlobalStateCommand) -> eyre::Result<Signature> {
+    fn init_globalstate(&self, cmd: InitGlobalStateCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
-
+    fn get_globalstate(&self, cmd: GetGlobalStateCommand) -> eyre::Result<(Pubkey, GlobalState)> {
+        cmd.execute(self.client)
+    }
     fn get_globalconfig(
         &self,
         cmd: GetGlobalConfigCommand,
     ) -> eyre::Result<(Pubkey, GlobalConfig)> {
+        cmd.execute(self.client)
+    }
+    fn set_authority(&self, cmd: SetAuthorityCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
     fn set_globalconfig(&self, cmd: SetGlobalConfigCommand) -> eyre::Result<Signature> {
@@ -542,6 +558,15 @@ impl CliCommand for CliCommandImpl<'_> {
         &self,
         cmd: ListMulticastGroupSubAllowlistCommand,
     ) -> eyre::Result<Vec<Pubkey>> {
+        cmd.execute(self.client)
+    }
+    fn set_accesspass(&self, cmd: SetAccessPassCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn list_accesspass(
+        &self,
+        cmd: ListAccessPassCommand,
+    ) -> eyre::Result<HashMap<Pubkey, AccessPass>> {
         cmd.execute(self.client)
     }
 }

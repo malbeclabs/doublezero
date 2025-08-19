@@ -11,6 +11,8 @@ pub mod utils {
     pub fn create_test_client() -> MockDoubleZeroClient {
         let mut client = MockDoubleZeroClient::new();
 
+        let payer = Pubkey::new_unique();
+
         // Program ID
         let program_id = Pubkey::new_unique();
         client.expect_get_program_id().returning(move || program_id);
@@ -21,18 +23,19 @@ pub mod utils {
             account_type: AccountType::GlobalState,
             bump_seed: 0,
             account_index: 0,
-            foundation_allowlist: vec![],
-            device_allowlist: vec![],
-            user_allowlist: vec![],
+            foundation_allowlist: vec![payer],
+            device_allowlist: vec![payer],
+            user_allowlist: vec![payer],
+            activator_authority_pk: payer,
+            sentinel_authority_pk: payer,
         };
+
+        client.expect_get_payer().returning(move || payer);
 
         client
             .expect_get()
             .with(predicate::eq(globalstate_pubkey))
             .returning(move |_| Ok(AccountData::GlobalState(globalstate.clone())));
-
-        let payer = Pubkey::new_unique();
-        client.expect_get_payer().returning(move || payer);
 
         client
     }

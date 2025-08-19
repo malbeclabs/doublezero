@@ -15,12 +15,12 @@ pub enum ExchangeCommands {
     /// Create a new exchange
     #[clap()]
     Create(CreateExchangeCliCommand),
-    /// Set devices for an exchange
-    #[clap()]
-    SetDevice(SetDeviceExchangeCliCommand),
     /// Update an existing exchange
     #[clap()]
     Update(UpdateExchangeCliCommand),
+    /// Set devices for an exchange
+    #[clap()]
+    SetDevice(SetDeviceExchangeCliCommand),
     /// List all exchanges
     #[clap()]
     List(ListExchangeCliCommand),

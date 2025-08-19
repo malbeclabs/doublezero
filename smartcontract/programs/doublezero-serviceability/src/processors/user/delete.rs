@@ -2,7 +2,11 @@ use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get,
     helper::*,
-    state::{accounttype::AccountType, user::*},
+    state::{
+        accesspass::{AccessPass, AccessPassStatus},
+        accounttype::AccountType,
+        user::*,
+    },
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
@@ -31,6 +35,7 @@ pub fn process_delete_user(
     let accounts_iter = &mut accounts.iter();
 
     let user_account = next_account_info(accounts_iter)?;
+    let accesspass_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -43,6 +48,10 @@ pub fn process_delete_user(
     assert_eq!(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"
+    );
+    assert_eq!(
+        accesspass_account.owner, program_id,
+        "Invalid AccessPass Account Owner"
     );
     assert_eq!(
         *system_program.unsigned_key(),
@@ -60,6 +69,12 @@ pub fn process_delete_user(
         && user.owner != *payer_account.key
     {
         return Err(DoubleZeroError::NotAllowed.into());
+    }
+
+    if !accesspass_account.data_is_empty() {
+        let mut accesspass = AccessPass::try_from(accesspass_account)?;
+        accesspass.status = AccessPassStatus::Disconnected;
+        accesspass.try_serialize(accesspass_account)?;
     }
 
     user.status = UserStatus::Deleting;

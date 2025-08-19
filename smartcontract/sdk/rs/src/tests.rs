@@ -32,6 +32,8 @@ pub mod utils {
             foundation_allowlist: vec![],
             device_allowlist: vec![],
             user_allowlist: vec![],
+            activator_authority_pk: Pubkey::new_unique(),
+            sentinel_authority_pk: Pubkey::new_unique(),
         };
         client
             .expect_get()

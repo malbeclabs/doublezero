@@ -3,11 +3,13 @@ use doublezero_serviceability::{
     instructions::*,
     pda::*,
     processors::{
+        accesspass::set::SetAccessPassArgs,
         contributor::create::ContributorCreateArgs,
         user::{activate::*, create::*, delete::*, resume::*, suspend::*, update::*},
         *,
     },
     state::{
+        accesspass::{AccessPassStatus, AccessPassType},
         accounttype::AccountType,
         contributor::ContributorStatus,
         device::*,
@@ -233,8 +235,41 @@ async fn test_user() {
 
     println!("✅ Device activated successfully");
     /***********************************************************************************************************************************/
+    println!("🟢 6. Testing Access Pass creation...");
+
+    let user_ip = [10, 0, 0, 1].into();
+    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, user_ip);
+
+    println!("Testing AccessPass User1 initialization...");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: user_ip,
+            payer: payer.pubkey(),
+            last_access_epoch: 9999,
+        }),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Check account data
+    let user1 = get_account_data(&mut banks_client, accesspass_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_accesspass()
+        .unwrap();
+    assert_eq!(user1.account_type, AccountType::AccessPass);
+    assert_eq!(user1.status, AccessPassStatus::Requested);
+    /***********************************************************************************************************************************/
     // Device _la
-    println!("🟢 6. Testing User creation...");
+    println!("🟢 7. Testing User creation...");
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     assert_eq!(globalstate_account.account_index, 4);
 
@@ -245,13 +280,14 @@ async fn test_user() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateUser(UserCreateArgs {
-            client_ip: [100, 0, 0, 1].into(),
+            client_ip: user_ip,
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
@@ -264,13 +300,13 @@ async fn test_user() {
         .get_user()
         .unwrap();
     assert_eq!(user.account_type, AccountType::User);
-    assert_eq!(user.client_ip.to_string(), "100.0.0.1");
+    assert_eq!(user.client_ip.to_string(), "10.0.0.1");
     assert_eq!(user.device_pk, device_pubkey);
     assert_eq!(user.status, UserStatus::Pending);
 
     println!("✅ User created successfully",);
     /***********************************************************************************************************************************/
-    println!("🟢 7. Testing User activation...");
+    println!("🟢 8. Testing User activation...");
 
     execute_transaction(
         &mut banks_client,
@@ -303,7 +339,7 @@ async fn test_user() {
 
     println!("✅ User created successfully",);
     /*****************************************************************************************************************************************************/
-    println!("🟢 8. Testing user suspend...");
+    println!("🟢 9. Testing user suspend...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -324,7 +360,7 @@ async fn test_user() {
 
     println!("✅ User suspended");
     /*****************************************************************************************************************************************************/
-    println!("🟢 9. Testing User resumed...");
+    println!("🟢 10. Testing User resumed...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -345,7 +381,7 @@ async fn test_user() {
 
     println!("✅ User resumed");
     /*****************************************************************************************************************************************************/
-    println!("🟢 10. Testing User update...");
+    println!("🟢 11. Testing User update...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -378,7 +414,7 @@ async fn test_user() {
 
     println!("✅ User updated");
     /*****************************************************************************************************************************************************/
-    println!("🟢 11. Testing User deletion...");
+    println!("🟢 12. Testing User deletion...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -386,6 +422,7 @@ async fn test_user() {
         DoubleZeroInstruction::DeleteUser(UserDeleteArgs {}),
         vec![
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
@@ -405,7 +442,7 @@ async fn test_user() {
     println!("✅ Link deleting");
 
     /*****************************************************************************************************************************************************/
-    println!("🟢 12. Testing User deactivation...");
+    println!("🟢 13. Testing User deactivation...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,

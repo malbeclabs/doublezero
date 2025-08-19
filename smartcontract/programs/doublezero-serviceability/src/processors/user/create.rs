@@ -2,8 +2,9 @@ use crate::{
     error::DoubleZeroError,
     globalstate::{globalstate_get_next, globalstate_write},
     helper::*,
-    pda::get_user_pda,
+    pda::{get_accesspass_pda, get_user_pda},
     state::{
+        accesspass::{AccessPass, AccessPassStatus},
         accounttype::AccountType,
         device::{Device, DeviceStatus},
         user::*,
@@ -14,10 +15,12 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
+    clock::Clock,
     entrypoint::ProgramResult,
     msg,
     program_error::ProgramError,
     pubkey::Pubkey,
+    sysvar::Sysvar,
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
@@ -46,6 +49,7 @@ pub fn process_create_user(
 
     let pda_account = next_account_info(accounts_iter)?;
     let device_account = next_account_info(accounts_iter)?;
+    let accesspass_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -60,9 +64,6 @@ pub fn process_create_user(
         return Err(ProgramError::UninitializedAccount);
     }
     let globalstate = globalstate_get_next(globalstate_account)?;
-    if !globalstate.user_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
 
     let (expected_pda_account, bump_seed) = get_user_pda(program_id, globalstate.account_index);
     assert_eq!(
@@ -79,6 +80,44 @@ pub fn process_create_user(
     if device_account.owner != program_id {
         return Err(ProgramError::IncorrectProgramId);
     }
+
+    let (accesspass_pda, _) = get_accesspass_pda(program_id, value.client_ip);
+    assert_eq!(
+        accesspass_account.key, &accesspass_pda,
+        "Invalid AccessPass PDA"
+    );
+
+    // Invalid Access Pass
+    if accesspass_account.data_is_empty() {
+        msg!("Invalid Access Pass");
+        return Err(DoubleZeroError::Unauthorized.into());
+    }
+
+    // Read Access Pass
+    let mut accesspass = AccessPass::try_from(accesspass_account)?;
+    if accesspass.owner != *payer_account.key || accesspass.client_ip != value.client_ip {
+        msg!(
+            "Invalid payer or client_ip accesspass.{{owner: {} client_ip: {}}} = payer: {} client_ip: {}",
+            accesspass.owner,
+            payer_account.key,
+            accesspass.client_ip,
+            value.client_ip
+        );
+        return Err(DoubleZeroError::Unauthorized.into());
+    }
+
+    // Check Initial epoch
+    let clock = Clock::get()?;
+    let current_epoch = clock.epoch;
+    if accesspass.last_access_epoch > 0 && accesspass.last_access_epoch < current_epoch {
+        msg!(
+            "Invalid epoch current_epoch: {current_epoch} < last_access_epoch: {}",
+            accesspass.last_access_epoch
+        );
+        return Err(DoubleZeroError::Unauthorized.into());
+    }
+
+    accesspass.status = AccessPassStatus::Connected;
 
     let mut device = Device::try_from(device_account)?;
     assert_eq!(device.account_type, AccountType::Device);
@@ -129,6 +168,7 @@ pub fn process_create_user(
     )?;
     account_write(device_account, &device, payer_account, system_program)?;
     globalstate_write(globalstate_account, &globalstate)?;
+    accesspass.try_serialize(accesspass_account)?;
 
     Ok(())
 }

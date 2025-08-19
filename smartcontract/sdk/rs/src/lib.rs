@@ -19,6 +19,7 @@ pub use doublezero_serviceability::{
         },
         exchange::{Exchange, ExchangeStatus},
         globalconfig::GlobalConfig,
+        globalstate::GlobalState,
         link::{Link, LinkLinkType, LinkStatus},
         location::{Location, LocationStatus},
         multicastgroup::{MulticastGroup, MulticastGroupStatus},

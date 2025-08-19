@@ -11,14 +11,28 @@ pub struct GlobalState {
     pub foundation_allowlist: Vec<Pubkey>, // 4 + 32 * len
     pub device_allowlist: Vec<Pubkey>,     // 4 + 32 * len
     pub user_allowlist: Vec<Pubkey>,       // 4 + 32 * len
+    pub activator_authority_pk: Pubkey,    // 32
+    pub sentinel_authority_pk: Pubkey,     // 32
 }
 
 impl fmt::Display for GlobalState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, account_index: {}, foundation_allowlist: {:?}, device_allowlist: {:?}, user_allowlist: {:?}",
-            self.account_type, self.account_index, self.foundation_allowlist, self.device_allowlist, self.user_allowlist
+            "account_type: {}, \
+account_index: {}, \
+foundation_allowlist: {:?}, \
+device_allowlist: {:?}, \
+user_allowlist: {:?}, \
+activator_authority_pk: {:?}, \
+sentinel_authority_pk: {:?}",
+            self.account_type,
+            self.account_index,
+            self.foundation_allowlist,
+            self.device_allowlist,
+            self.user_allowlist,
+            self.activator_authority_pk,
+            self.sentinel_authority_pk
         )
     }
 }
@@ -33,6 +47,8 @@ impl GlobalState {
             + (self.device_allowlist.len() * 32)
             + 4
             + (self.user_allowlist.len() * 32)
+            + 32
+            + 32
     }
 }
 
@@ -47,6 +63,8 @@ impl From<&[u8]> for GlobalState {
             foundation_allowlist: parser.read_pubkey_vec(),
             device_allowlist: parser.read_pubkey_vec(),
             user_allowlist: parser.read_pubkey_vec(),
+            activator_authority_pk: parser.read_pubkey(),
+            sentinel_authority_pk: parser.read_pubkey(),
         }
     }
 }
@@ -73,6 +91,8 @@ mod tests {
             foundation_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             device_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             user_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            activator_authority_pk: Pubkey::new_unique(),
+            sentinel_authority_pk: Pubkey::new_unique(),
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -83,6 +103,8 @@ mod tests {
         assert_eq!(val.foundation_allowlist, val2.foundation_allowlist);
         assert_eq!(val.device_allowlist, val2.device_allowlist);
         assert_eq!(val.user_allowlist, val2.user_allowlist);
+        assert_eq!(val.activator_authority_pk, val2.activator_authority_pk);
+        assert_eq!(val.sentinel_authority_pk, val2.sentinel_authority_pk);
         assert_eq!(data.len(), val.size(), "Invalid Size");
     }
 }

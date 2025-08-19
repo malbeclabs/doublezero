@@ -53,17 +53,12 @@ pub fn process_ban_user(
     assert!(user_account.is_writable, "PDA Account is not writable");
 
     let globalstate = globalstate_get(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
+    if globalstate.activator_authority_pk != *payer_account.key {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
     let mut user: User = User::try_from(user_account)?;
     assert_eq!(user.account_type, AccountType::User, "Invalid Account Type");
-    if user.owner != *payer_account.key {
-        #[cfg(test)]
-        msg!("{:?}", user);
-        return Err(solana_program::program_error::ProgramError::Custom(0));
-    }
 
     user.status = UserStatus::Banned;
 

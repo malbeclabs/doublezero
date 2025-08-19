@@ -32,6 +32,10 @@ func TestE2E_Multicast_Publisher(t *testing.T) {
 
 		dn.CreateMulticastGroupOnchain(t, client, "mg02")
 
+		// Set access pass for the client.
+		_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type Prepaid --client-ip " + client.CYOANetworkIP + " --payer " + client.Pubkey + " --last-access-epoch 99999"})
+		require.NoError(t, err)
+
 		output, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect multicast publisher mg02 --client-ip " + client.CYOANetworkIP})
 		require.Error(t, err)
 		require.Contains(t, string(output), "Multicast supports only one subscription at this time")
@@ -202,6 +206,10 @@ func checkMulticastPublisherPostConnect(t *testing.T, dn *TestDevnet, device *de
 		}
 
 		if !t.Run("only_one_tunnel_allowed", func(t *testing.T) {
+			// Set access pass for the client.
+			_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type Prepaid --client-ip " + client.CYOANetworkIP + " --payer " + client.Pubkey + " --last-access-epoch 99999"})
+			require.NoError(t, err)
+
 			_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect ibrl --client-ip " + client.CYOANetworkIP})
 			require.Error(t, err, "User with different type already exists. Only one tunnel currently supported")
 		}) {

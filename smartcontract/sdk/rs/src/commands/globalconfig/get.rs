@@ -15,8 +15,8 @@ impl GetGlobalConfigCommand {
         let (pubkey, _) = get_globalconfig_pda(&client.get_program_id());
 
         match client.get(pubkey)? {
-            AccountData::GlobalConfig(globalstate) => Ok((pubkey, globalstate)),
-            _ => Err(eyre!("Invalid global state")),
+            AccountData::GlobalConfig(globalconfig) => Ok((pubkey, globalconfig)),
+            _ => Err(eyre!("Invalid global config")),
         }
     }
 }

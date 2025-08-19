@@ -1,4 +1,5 @@
 use crate::processors::{
+    accesspass::set::SetAccessPassArgs,
     allowlist::{
         device::{add::AddDeviceAllowlistArgs, remove::RemoveDeviceAllowlistArgs},
         foundation::{add::AddFoundationAllowlistArgs, remove::RemoveFoundationAllowlistArgs},
@@ -19,6 +20,7 @@ use crate::processors::{
         setdevice::ExchangeSetDeviceArgs, suspend::ExchangeSuspendArgs, update::ExchangeUpdateArgs,
     },
     globalconfig::set::SetGlobalConfigArgs,
+    globalstate::setauthority::SetAuthorityArgs,
     link::{
         accept::LinkAcceptArgs, activate::LinkActivateArgs, closeaccount::LinkCloseAccountArgs,
         create::LinkCreateArgs, delete::LinkDeleteArgs, reject::LinkRejectArgs,
@@ -40,8 +42,8 @@ use crate::processors::{
                 remove::RemoveMulticastGroupSubAllowlistArgs,
             },
         },
+        closeaccount::MulticastGroupDeactivateArgs,
         create::MulticastGroupCreateArgs,
-        deactivate::MulticastGroupDeactivateArgs,
         delete::MulticastGroupDeleteArgs,
         reactivate::MulticastGroupReactivateArgs,
         reject::MulticastGroupRejectArgs,
@@ -65,7 +67,7 @@ use std::cmp::PartialEq;
 pub enum DoubleZeroInstruction {
     None(),                               // variant 0
     InitGlobalState(),                    // variant 1
-    Reserved(),                           // variant 2
+    SetAuthority(SetAuthorityArgs),       // variant 2
     SetGlobalConfig(SetGlobalConfigArgs), // variant 3
 
     AddFoundationAllowlist(AddFoundationAllowlistArgs), // variant 4
@@ -141,6 +143,7 @@ pub enum DoubleZeroInstruction {
 
     SetDeviceExchange(ExchangeSetDeviceArgs), // variant 65
     AcceptLink(LinkAcceptArgs),               // variant 66
+    SetAccessPass(SetAccessPassArgs),         // variant 67
 }
 
 impl DoubleZeroInstruction {
@@ -155,6 +158,7 @@ impl DoubleZeroInstruction {
 
         match instruction {
             1 => Ok(Self::InitGlobalState()),
+            2 => Ok(Self::SetAuthority(from_slice::<SetAuthorityArgs>(rest).unwrap())),
             3 => Ok(Self::SetGlobalConfig(from_slice::<SetGlobalConfigArgs>(rest).unwrap())),
 
             4 => Ok(Self::AddFoundationAllowlist(from_slice::<AddFoundationAllowlistArgs>(rest).unwrap())),
@@ -230,6 +234,7 @@ impl DoubleZeroInstruction {
 
             65 => Ok(Self::SetDeviceExchange(from_slice::<ExchangeSetDeviceArgs>(rest).unwrap())),
             66 => Ok(Self::AcceptLink(from_slice::<LinkAcceptArgs>(rest).unwrap())),
+            67 => Ok(Self::SetAccessPass(from_slice::<SetAccessPassArgs>(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -239,7 +244,7 @@ impl DoubleZeroInstruction {
         match self {
             Self::None() => "None".to_string(), // variant 0
             Self::InitGlobalState() => "InitGlobalState".to_string(), // variant 1
-            Self::Reserved() => "Reserved".to_string(), // variant 2
+            Self::SetAuthority(_) => "SetAuthority".to_string(), // variant 2
             Self::SetGlobalConfig(_) => "SetGlobalConfig".to_string(), // variant 3
 
             Self::AddFoundationAllowlist(_) => "AddFoundationAllowlist".to_string(), // variant 4
@@ -320,6 +325,7 @@ impl DoubleZeroInstruction {
 
             Self::SetDeviceExchange(_) => "SetDeviceExchange".to_string(), // variant 65
             Self::AcceptLink(_) => "AcceptLink".to_string(),               // variant 66
+            Self::SetAccessPass(_) => "SetAccessPass".to_string(),         // variant 67
         }
     }
 
@@ -327,7 +333,7 @@ impl DoubleZeroInstruction {
         match self {
             Self::None() => "".to_string(),                     // variant 0
             Self::InitGlobalState() => "".to_string(),          // variant 1
-            Self::Reserved() => "".to_string(),                 // variant 2
+            Self::SetAuthority(args) => format!("{args:?}"),    // variant 2
             Self::SetGlobalConfig(args) => format!("{args:?}"), // variant 3
 
             Self::AddFoundationAllowlist(args) => format!("{args:?}"), // variant 4
@@ -402,16 +408,20 @@ impl DoubleZeroInstruction {
 
             Self::SetDeviceExchange(args) => format!("{args:?}"), // variant 65
             Self::AcceptLink(args) => format!("{args:?}"),        // variant 66
+            Self::SetAccessPass(args) => format!("{args:?}"),     // variant 67
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::state::{
-        device::DeviceType,
-        link::LinkLinkType,
-        user::{UserCYOA, UserType},
+    use crate::{
+        processors::exchange::setdevice::SetDeviceOption,
+        state::{
+            device::DeviceType,
+            link::LinkLinkType,
+            user::{UserCYOA, UserType},
+        },
     };
     use solana_program::pubkey::Pubkey;
 
@@ -837,6 +847,22 @@ mod tests {
                 side_z_iface_name: "AcceptLink".to_string(),
             }),
             "AcceptLink",
+        );
+        test_instruction(
+            DoubleZeroInstruction::SetDeviceExchange(ExchangeSetDeviceArgs {
+                index: 1,
+                set: SetDeviceOption::Set,
+            }),
+            "SetDeviceExchange",
+        );
+        test_instruction(
+            DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+                accesspass_type: crate::state::accesspass::AccessPassType::SolanaValidator,
+                client_ip: [1, 2, 3, 4].into(),
+                payer: Pubkey::new_unique(),
+                last_access_epoch: 123,
+            }),
+            "SetAccessPass",
         );
     }
 }

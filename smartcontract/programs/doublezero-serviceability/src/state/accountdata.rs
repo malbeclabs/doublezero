@@ -1,9 +1,10 @@
 use crate::{
     error::DoubleZeroError,
     state::{
-        accounttype::AccountType, contributor::Contributor, device::Device, exchange::Exchange,
-        globalconfig::GlobalConfig, globalstate::GlobalState, link::Link, location::Location,
-        multicastgroup::MulticastGroup, programconfig::ProgramConfig, user::User,
+        accesspass::AccessPass, accounttype::AccountType, contributor::Contributor, device::Device,
+        exchange::Exchange, globalconfig::GlobalConfig, globalstate::GlobalState, link::Link,
+        location::Location, multicastgroup::MulticastGroup, programconfig::ProgramConfig,
+        user::User,
     },
 };
 
@@ -20,6 +21,7 @@ pub enum AccountData {
     MulticastGroup(MulticastGroup),
     ProgramConfig(ProgramConfig),
     Contributor(Contributor),
+    AccessPass(AccessPass),
 }
 
 impl AccountData {
@@ -36,6 +38,7 @@ impl AccountData {
             AccountData::MulticastGroup(_) => "MulticastGroup",
             AccountData::ProgramConfig(_) => "ProgramConfig",
             AccountData::Contributor(_) => "Contributor",
+            AccountData::AccessPass(_) => "AccessPass",
         }
     }
 
@@ -52,6 +55,7 @@ impl AccountData {
             AccountData::MulticastGroup(multicast_group) => multicast_group.to_string(),
             AccountData::ProgramConfig(program_config) => program_config.to_string(),
             AccountData::Contributor(contributor) => contributor.to_string(),
+            AccountData::AccessPass(access_pass) => access_pass.to_string(),
         }
     }
 
@@ -134,6 +138,14 @@ impl AccountData {
             Err(DoubleZeroError::InvalidAccountType)
         }
     }
+
+    pub fn get_accesspass(&self) -> Result<AccessPass, DoubleZeroError> {
+        if let AccountData::AccessPass(accesspass) = self {
+            Ok(accesspass.clone())
+        } else {
+            Err(DoubleZeroError::InvalidAccountType)
+        }
+    }
 }
 
 impl From<&[u8]> for AccountData {
@@ -150,6 +162,7 @@ impl From<&[u8]> for AccountData {
             AccountType::MulticastGroup => AccountData::MulticastGroup(MulticastGroup::from(bytes)),
             AccountType::ProgramConfig => AccountData::ProgramConfig(ProgramConfig::from(bytes)),
             AccountType::Contributor => AccountData::Contributor(Contributor::from(bytes)),
+            AccountType::AccessPass => AccountData::AccessPass(AccessPass::from(bytes)),
         }
     }
 }

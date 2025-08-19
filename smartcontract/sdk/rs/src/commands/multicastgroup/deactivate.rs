@@ -1,7 +1,7 @@
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    processors::multicastgroup::deactivate::MulticastGroupDeactivateArgs,
+    processors::multicastgroup::closeaccount::MulticastGroupDeactivateArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -37,7 +37,7 @@ mod tests {
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
         pda::{get_globalstate_pda, get_location_pda},
-        processors::multicastgroup::deactivate::MulticastGroupDeactivateArgs,
+        processors::multicastgroup::closeaccount::MulticastGroupDeactivateArgs,
     };
     use mockall::predicate;
     use solana_sdk::{instruction::AccountMeta, signature::Signature};

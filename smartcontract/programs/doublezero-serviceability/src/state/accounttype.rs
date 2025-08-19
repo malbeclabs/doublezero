@@ -18,6 +18,7 @@ pub enum AccountType {
     MulticastGroup = 8,
     ProgramConfig = 9,
     Contributor = 10,
+    AccessPass = 11,
 }
 
 pub trait AccountTypeInfo {
@@ -41,6 +42,7 @@ impl From<u8> for AccountType {
             8 => AccountType::MulticastGroup,
             9 => AccountType::ProgramConfig,
             10 => AccountType::Contributor,
+            11 => AccountType::AccessPass,
             _ => AccountType::None,
         }
     }
@@ -60,6 +62,7 @@ impl fmt::Display for AccountType {
             AccountType::MulticastGroup => write!(f, "multicastgroup"),
             AccountType::ProgramConfig => write!(f, "programconfig"),
             AccountType::Contributor => write!(f, "contributor"),
+            AccountType::AccessPass => write!(f, "accesspass"),
         }
     }
 }

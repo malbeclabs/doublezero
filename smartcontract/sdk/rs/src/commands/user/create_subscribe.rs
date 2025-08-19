@@ -1,6 +1,6 @@
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    pda::get_user_pda,
+    pda::{get_accesspass_pda, get_user_pda},
     processors::user::create_subscribe::UserCreateSubscribeArgs,
     state::{
         multicastgroup::MulticastGroupStatus,
@@ -50,6 +50,7 @@ impl CreateSubscribeUserCommand {
             eyre::bail!("Subscriber not allowed");
         }
 
+        let (accesspass_pk, _) = get_accesspass_pda(&client.get_program_id(), self.client_ip);
         let (pda_pubkey, _) = get_user_pda(&client.get_program_id(), globalstate.account_index + 1);
         client
             .execute_transaction(
@@ -64,6 +65,7 @@ impl CreateSubscribeUserCommand {
                     AccountMeta::new(pda_pubkey, false),
                     AccountMeta::new(self.device_pk, false),
                     AccountMeta::new(self.mgroup_pk, false),
+                    AccountMeta::new(accesspass_pk, false),
                     AccountMeta::new(globalstate_pubkey, false),
                 ],
             )

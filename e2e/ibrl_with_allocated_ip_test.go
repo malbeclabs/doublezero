@@ -48,7 +48,23 @@ func TestE2E_IBRL_WithAllocatedIP(t *testing.T) {
 func createMultipleIBRLUsersOnSameDeviceWithAllocatedIPs(t *testing.T, dn *TestDevnet, client *devnet.Client) {
 	dn.log.Info("==> Creating multiple IBRL users on a single device with allocated IP addresses")
 
-	_, err := client.Exec(t.Context(), []string{"bash", "-c", `
+	// Set access pass for the client.
+	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type Prepaid --client-ip 1.2.3.4 --payer " + client.Pubkey + " --last-access-epoch 99999"})
+	require.NoError(t, err)
+	// Set access pass for the client.
+	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type Prepaid --client-ip 2.3.4.5 --payer " + client.Pubkey + " --last-access-epoch 99999"})
+	require.NoError(t, err)
+	// Set access pass for the client.
+	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type Prepaid --client-ip 3.4.5.6 --payer " + client.Pubkey + " --last-access-epoch 99999"})
+	require.NoError(t, err)
+	// Set access pass for the client.
+	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type Prepaid --client-ip 4.5.6.7 --payer " + client.Pubkey + " --last-access-epoch 99999"})
+	require.NoError(t, err)
+	// Set access pass for the client.
+	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type Prepaid --client-ip 5.6.7.8 --payer " + client.Pubkey + " --last-access-epoch 99999"})
+	require.NoError(t, err)
+
+	_, err = client.Exec(t.Context(), []string{"bash", "-c", `
 		doublezero user create --device la2-dz01 --client-ip 1.2.3.4
 		doublezero user create --device la2-dz01 --client-ip 2.3.4.5
 		doublezero user create --device la2-dz01 --client-ip 3.4.5.6

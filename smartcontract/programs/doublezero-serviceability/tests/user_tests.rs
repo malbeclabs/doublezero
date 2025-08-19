@@ -422,6 +422,7 @@ async fn test_user() {
         DoubleZeroInstruction::DeleteUser(UserDeleteArgs {}),
         vec![
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,

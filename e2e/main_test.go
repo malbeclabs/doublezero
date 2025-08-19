@@ -346,7 +346,11 @@ func (dn *TestDevnet) WaitForUserActivation(t *testing.T) error {
 func (dn *TestDevnet) ConnectIBRLUserTunnel(t *testing.T, client *devnet.Client) {
 	dn.log.Info("==> Connecting IBRL user tunnel")
 
-	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect ibrl --client-ip " + client.CYOANetworkIP})
+	// Set access pass for the client.
+	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type Prepaid --client-ip " + client.CYOANetworkIP + " --payer me --last-access-epoch 99999"})
+	require.NoError(t, err)
+
+	_, err = client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect ibrl --client-ip " + client.CYOANetworkIP})
 	require.NoError(t, err)
 
 	dn.log.Info("--> IBRL user tunnel connected")
@@ -356,7 +360,11 @@ func (dn *TestDevnet) ConnectIBRLUserTunnel(t *testing.T, client *devnet.Client)
 func (dn *TestDevnet) ConnectUserTunnelWithAllocatedIP(t *testing.T, client *devnet.Client) {
 	dn.log.Info("==> Connecting user tunnel with allocated IP")
 
-	_, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect ibrl --client-ip " + client.CYOANetworkIP + " --allocate-addr"})
+	// Set access pass for the client.
+	_, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type Prepaid --client-ip " + client.CYOANetworkIP + " --payer me --last-access-epoch 99999"})
+	require.NoError(t, err)
+
+	_, err = client.Exec(t.Context(), []string{"bash", "-c", "doublezero connect ibrl --client-ip " + client.CYOANetworkIP + " --allocate-addr"})
 	require.NoError(t, err)
 
 	dn.log.Info("--> User tunnel with allocated IP connected")

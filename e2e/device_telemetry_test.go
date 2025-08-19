@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -15,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aristanetworks/goeapi/module"
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
@@ -216,30 +216,61 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 		`})
 	require.NoError(t, err)
 
-	la2ToNY5LinkTunnelLA2IP := "192.168.99.18" // expected to be allocated to this link by the activator
-	la2ToNY5LinkTunnelNY5IP := "192.168.99.19" // expected to be allocated to this link by the activator
-
+	var la2ToNY5LinkTunnelLA2IP, la2ToNY5LinkTunnelNY5IP string
 	log.Info("==> Waiting for interfaces to be created on the devices")
 	require.Eventually(t, func() bool {
 		la2Device := dn.Devices["la2-dz01"]
 		ny5Device := dn.Devices["ny5-dz01"]
 
-		la2Client, err := la2Device.GetEAPIHTTPClient()
+		client, err := dn.Ledger.GetServiceabilityClient()
 		require.NoError(t, err)
-		resp, err := module.IPInterface(la2Client).Get("Ethernet2")
-		require.NoError(t, err)
-		la2Addr := resp.Address()
 
-		ny5Client, err := ny5Device.GetEAPIHTTPClient()
-		resp, err = module.IPInterface(ny5Client).Get("Ethernet2")
+		data, err := client.GetProgramData(t.Context())
 		require.NoError(t, err)
-		ny5Addr := resp.Address()
 
-		if la2Addr == la2ToNY5LinkTunnelLA2IP+"/31" && ny5Addr == la2ToNY5LinkTunnelNY5IP+"/31" {
-			return true
+		devices := make(map[string]*serviceability.Device)
+		for _, device := range data.Devices {
+			devices[device.Code] = &device
 		}
-		return false
-	}, 180*time.Second, 3*time.Second, "Timed out waiting for the devices to be reachable via their link tunnel")
+		if _, ok := devices[la2Device.Spec.Code]; !ok {
+			log.Debug("Waiting for la2-dz01 device to be found in program data", "la2DeviceCode", la2Device.Spec.Code)
+			return false
+		}
+		if _, ok := devices[ny5Device.Spec.Code]; !ok {
+			log.Debug("Waiting for ny5-dz01 device to be found in program data", "ny5DeviceCode", ny5Device.Spec.Code)
+			return false
+		}
+
+		la2Interfaces := make(map[string]serviceability.Interface)
+		for _, iface := range devices[la2Device.Spec.Code].Interfaces {
+			la2Interfaces[iface.Name] = iface
+		}
+		ny5Interfaces := make(map[string]serviceability.Interface)
+		for _, iface := range devices[ny5Device.Spec.Code].Interfaces {
+			ny5Interfaces[iface.Name] = iface
+		}
+
+		if _, ok := la2Interfaces["Ethernet2"]; !ok {
+			log.Debug("Waiting for la2-dz01 to have an Ethernet2 interface", "la2Interfaces", la2Interfaces)
+			return false
+		}
+		if _, ok := ny5Interfaces["Ethernet2"]; !ok {
+			log.Debug("Waiting for ny5-dz01 to have an Ethernet2 interface", "ny5Interfaces", ny5Interfaces)
+			return false
+		}
+		if la2Interfaces["Ethernet2"].IpNet == [5]uint8{} {
+			log.Debug("Waiting for la2-dz01 to have an Ethernet2 interface with an IP", "la2Interfaces", la2Interfaces)
+			return false
+		}
+		if ny5Interfaces["Ethernet2"].IpNet == [5]uint8{} {
+			log.Debug("Waiting for ny5-dz01 to have an Ethernet2 interface with an IP", "ny5Interfaces", ny5Interfaces)
+			return false
+		}
+		la2ToNY5LinkTunnelLA2IP = bytesToIP4Net(la2Interfaces["Ethernet2"].IpNet).IP.String()
+		la2ToNY5LinkTunnelNY5IP = bytesToIP4Net(ny5Interfaces["Ethernet2"].IpNet).IP.String()
+
+		return true
+	}, 120*time.Second, 3*time.Second, "Timed out waiting for the devices to be reachable via their link tunnel")
 
 	// Wait for the devices to be reachable from each other via their link tunnel using TWAMP UDP probes.
 	log.Info("==> Waiting for devices to be reachable from each other via their link tunnel using TWAMP")
@@ -516,4 +547,10 @@ func waitForDevicesAndLinks(t *testing.T, dn *devnet.Devnet, expectedDevices, ex
 	}
 
 	return devices, links, time.Since(start)
+}
+
+func bytesToIP4Net(b [5]byte) *net.IPNet {
+	ip := net.IPv4(b[0], b[1], b[2], b[3])
+	mask := net.CIDRMask(int(b[4]), 32)
+	return &net.IPNet{IP: ip.To4(), Mask: mask}
 }

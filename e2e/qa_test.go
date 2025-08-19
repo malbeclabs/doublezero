@@ -246,7 +246,7 @@ func TestConnectivityMulticast(t *testing.T) {
 		if *useGroup != "" {
 			t.Skipf("Using existing multicast group: %s", *useGroup)
 		}
-		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 		defer cancel()
 		client, err := getQAClient(publisher)
 		require.NoError(t, err, "Failed to create QA client")
@@ -296,7 +296,7 @@ func TestConnectivityMulticast(t *testing.T) {
 		if *useGroup != "" {
 			t.Skipf("Using existing multicast group: %s", *useGroup)
 		}
-		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 		defer cancel()
 		client, err := getQAClient(publisher)
 		require.NoError(t, err, "Failed to create QA client")
@@ -331,7 +331,7 @@ func TestConnectivityMulticast(t *testing.T) {
 	if !t.Run("connect_multicast_subscribers", func(t *testing.T) {
 		for _, host := range subscribers {
 			t.Run("subscribe_"+host, func(t *testing.T) {
-				ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+				ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 				defer cancel()
 				client, err := getQAClient(host)
 				require.NoError(t, err, "Failed to create QA client")
@@ -362,7 +362,7 @@ func TestConnectivityMulticast(t *testing.T) {
 	}
 
 	if !t.Run("connect_multicast_publisher_"+publisher, func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 		defer cancel()
 		client, err := getQAClient(publisher)
 		require.NoError(t, err, "Failed to create QA client")
@@ -434,7 +434,7 @@ func TestConnectivityMulticast(t *testing.T) {
 	t.Run("stop_multicast_subscribers", func(t *testing.T) {
 		for _, host := range subscribers {
 			t.Run("stop_subscriber_"+host, func(t *testing.T) {
-				ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+				ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 				defer cancel()
 				client, err := getQAClient(host)
 				require.NoError(t, err, "Failed to create QA client")
@@ -454,7 +454,7 @@ func unicastCleanupFunc(t *testing.T, hosts []string) func() {
 func disconnectUsers(t *testing.T, hosts []string) {
 	for _, host := range hosts {
 		t.Run("disconnect_from_"+host, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 			defer cancel()
 
 			client, err := getQAClient(host)

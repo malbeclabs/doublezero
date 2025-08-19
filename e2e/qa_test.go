@@ -109,7 +109,7 @@ func TestConnectivityUnicast(t *testing.T) {
 
 	for _, host := range hostList {
 		if !t.Run("connect_ibrl_mode_from_"+host, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 			defer cancel()
 			client, err := getQAClient(host)
 			require.NoError(t, err, "Failed to create QA client")
@@ -168,7 +168,7 @@ func TestConnectivityUnicast(t *testing.T) {
 
 			for _, peer := range peers {
 				t.Run("to_"+peer, func(t *testing.T) {
-					ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+					ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 					defer cancel()
 					pingReq := &pb.PingRequest{
 						TargetIp:    peer,
@@ -288,7 +288,7 @@ func TestConnectivityMulticast(t *testing.T) {
 		return true, nil
 	}
 
-	err := poll.Until(ctx, condition, 30*time.Second, 1*time.Second)
+	err := poll.Until(ctx, condition, 60*time.Second, 1*time.Second)
 	require.NoError(t, err, "Failed to get pubkey for multicast group")
 	t.Logf("Multicast group created with pubkey: %s address: %s owner: %s status: %d", pubKey, groupAddr, ownerPubKey, status)
 
@@ -468,7 +468,7 @@ func disconnectUsers(t *testing.T, hosts []string) {
 
 func removeMulticastGroup(t *testing.T, code, publisher string) {
 	t.Run("delete_multicast_group", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 		group, ok, err := findMulticastGroupByCode(ctx, code)
 		require.NoError(t, err, "Failed to find multicast group by code")

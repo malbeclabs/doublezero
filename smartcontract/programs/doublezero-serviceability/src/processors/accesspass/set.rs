@@ -123,6 +123,7 @@ pub fn process_set_accesspass(
                 SEED_PREFIX,
                 SEED_ACCESS_PASS,
                 &value.client_ip.octets(),
+                &value.payer.to_bytes(),
                 &[bump_seed],
             ],
         )?;

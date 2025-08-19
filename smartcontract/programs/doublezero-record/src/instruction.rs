@@ -1,5 +1,7 @@
 //! Program instructions
 
+use std::mem::size_of;
+
 use solana_program::{
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,

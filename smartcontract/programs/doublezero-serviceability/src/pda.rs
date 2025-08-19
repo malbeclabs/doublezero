@@ -62,9 +62,14 @@ pub fn get_contributor_pda(program_id: &Pubkey, index: u128) -> (Pubkey, u8) {
     )
 }
 
-pub fn get_accesspass_pda(program_id: &Pubkey, client_ip: Ipv4Addr) -> (Pubkey, u8) {
+pub fn get_accesspass_pda(program_id: &Pubkey, client_ip: Ipv4Addr, payer: Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(
-        &[SEED_PREFIX, SEED_ACCESS_PASS, &client_ip.octets()],
+        &[
+            SEED_PREFIX,
+            SEED_ACCESS_PASS,
+            &client_ip.octets(),
+            &payer.to_bytes(),
+        ],
         program_id,
     )
 }

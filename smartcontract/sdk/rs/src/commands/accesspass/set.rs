@@ -22,7 +22,8 @@ impl SetAccessPassCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, _) = get_accesspass_pda(&client.get_program_id(), self.client_ip);
+        let (pda_pubkey, _) =
+            get_accesspass_pda(&client.get_program_id(), self.client_ip, self.payer);
 
         client.execute_transaction(
             DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
@@ -62,7 +63,7 @@ mod tests {
         let payer = Pubkey::new_unique();
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, _) = get_accesspass_pda(&client.get_program_id(), client_ip);
+        let (pda_pubkey, _) = get_accesspass_pda(&client.get_program_id(), client_ip, payer);
 
         client
             .expect_execute_transaction()

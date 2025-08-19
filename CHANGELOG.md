@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [v0.6.0](https://github.com/malbeclabs/doublezero/compare/client/v0.5.0...client/v0.6.0) – 2025-08-19
+## [v0.5.3](https://github.com/malbeclabs/doublezero/compare/client/v0.5.0...client/v0.5.3) – 2025-08-19
 
 - **CLI & UX Improvements**
 	- Improve sorting of device, exchange, link, location, and user displays
@@ -21,7 +21,7 @@ All notable changes to this project will be documented in this file.
 	- Add flag controlling whether interfaces and peers are rendered to assist with testnet migration
 - **Device and Internet Latency Telemetry**
 	- Internet latency samples in data CLI and dashboard API
-	- internet-latency-collector: test between exchanges, not locations
+	- internet-latency-collector, telemetry data api/cli: collect internet latency between exchanges, not locations
 	- internet-latency-collector: add ripeatlas credit metric
 - **End-to-End Tooling**
 	- New doublezero QA agent improves quality by thoroughly testing the software stack end-to-end in each doublezero environment (devnet, testnet, mainnet) after each release.

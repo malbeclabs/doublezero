@@ -59,7 +59,8 @@ pub struct InternetLatencySamplesHeader {
     #[cfg_attr(
         feature = "serde",
         serde(
-            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
         )
     )]
     pub oracle_agent_pk: Pubkey, // 32
@@ -67,7 +68,8 @@ pub struct InternetLatencySamplesHeader {
     #[cfg_attr(
         feature = "serde",
         serde(
-            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
         )
     )]
     pub origin_exchange_pk: Pubkey, // 32
@@ -75,7 +77,8 @@ pub struct InternetLatencySamplesHeader {
     #[cfg_attr(
         feature = "serde",
         serde(
-            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
         )
     )]
     pub target_exchange_pk: Pubkey, // 32

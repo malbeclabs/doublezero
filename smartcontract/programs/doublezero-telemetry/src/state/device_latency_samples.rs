@@ -55,7 +55,8 @@ pub struct DeviceLatencySamplesHeader {
     #[cfg_attr(
         feature = "serde",
         serde(
-            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
         )
     )]
     pub origin_device_agent_pk: Pubkey, // 32
@@ -64,7 +65,8 @@ pub struct DeviceLatencySamplesHeader {
     #[cfg_attr(
         feature = "serde",
         serde(
-            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
         )
     )]
     pub origin_device_pk: Pubkey, // 32
@@ -73,7 +75,8 @@ pub struct DeviceLatencySamplesHeader {
     #[cfg_attr(
         feature = "serde",
         serde(
-            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
         )
     )]
     pub target_device_pk: Pubkey, // 32
@@ -82,7 +85,8 @@ pub struct DeviceLatencySamplesHeader {
     #[cfg_attr(
         feature = "serde",
         serde(
-            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
         )
     )]
     pub origin_device_location_pk: Pubkey, // 32
@@ -91,7 +95,8 @@ pub struct DeviceLatencySamplesHeader {
     #[cfg_attr(
         feature = "serde",
         serde(
-            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
         )
     )]
     pub target_device_location_pk: Pubkey, // 32
@@ -100,7 +105,8 @@ pub struct DeviceLatencySamplesHeader {
     #[cfg_attr(
         feature = "serde",
         serde(
-            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
         )
     )]
     pub link_pk: Pubkey, // 32

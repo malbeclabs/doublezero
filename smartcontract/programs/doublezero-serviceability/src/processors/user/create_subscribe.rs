@@ -102,7 +102,7 @@ pub fn process_create_subscribe_user(
             payer_account.key,
             accesspass.client_ip,
             value.client_ip
-        );        
+        );
         return Err(DoubleZeroError::Unauthorized.into());
     }
 

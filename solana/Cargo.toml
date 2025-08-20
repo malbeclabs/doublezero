@@ -3,7 +3,6 @@ exclude = []
 members = [
     "crates/2z-cli",
     "crates/program-tools",
-    "crates/validator-revenue",
     "programs/passport",
     "programs/revenue-distribution",
 ]
@@ -19,7 +18,6 @@ version = "0.1.0"
 
 [workspace.dependencies]
 anyhow = "1"
-async-trait = "0.1"
 base64 = "0.22"
 bincode = "1.3"
 borsh = "1.5"
@@ -27,7 +25,6 @@ bytemuck = "1.23"
 chrono = "0.4"
 clap = { version = "4", features = ["derive"] }
 futures = "0.3"
-mockall = "0.13"
 reqwest = { version = "0.12", features = ["json"] }
 ruint = { version = "1", features = ["bytemuck"] }
 serde = "1"

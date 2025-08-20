@@ -37,3 +37,4 @@ test-data/
 *.duckdb
 *.sql
 *.gz
+.DS_Store

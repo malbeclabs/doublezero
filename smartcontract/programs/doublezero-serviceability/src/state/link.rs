@@ -2,9 +2,9 @@ use crate::{
     bytereader::ByteReader,
     seeds::SEED_LINK,
     state::accounttype::{AccountType, AccountTypeInfo},
-    types::*,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
+use doublezero_program_common::types::NetworkV4;
 use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
 use std::{fmt, str::FromStr};
 
@@ -92,11 +92,29 @@ impl fmt::Display for LinkStatus {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Link {
     pub account_type: AccountType, // 1
-    pub owner: Pubkey,             // 32
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
+    pub owner: Pubkey, // 32
     pub index: u128,               // 16
     pub bump_seed: u8,             // 1
-    pub side_a_pk: Pubkey,         // 32
-    pub side_z_pk: Pubkey,         // 32
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
+    pub side_a_pk: Pubkey, // 32
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
+    pub side_z_pk: Pubkey, // 32
     pub link_type: LinkLinkType,   // 1
     pub bandwidth: u64,            // 8
     pub mtu: u32,                  // 4
@@ -106,7 +124,13 @@ pub struct Link {
     pub tunnel_net: NetworkV4,     // 5 (IP(4 x u8) + Prefix (u8) CIDR)
     pub status: LinkStatus,        // 1
     pub code: String,              // 4 + len
-    pub contributor_pk: Pubkey,    // 32
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
+    pub contributor_pk: Pubkey, // 32
     pub side_a_iface_name: String, // 4 + len
     pub side_z_iface_name: String, // 4 + len
 }

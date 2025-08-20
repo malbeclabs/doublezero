@@ -1,9 +1,3 @@
-pub mod network_v4;
-pub mod network_v4_list;
-
-pub type NetworkV4 = network_v4::NetworkV4;
-pub type NetworkV4List = network_v4_list::NetworkV4List;
-
 pub fn bandwidth_parse(str: &str) -> Result<u64, String> {
     let str = str.to_lowercase().replace(" ", "");
     let str = str.replace("gbps", "g");

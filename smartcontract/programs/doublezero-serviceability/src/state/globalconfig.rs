@@ -1,5 +1,6 @@
-use crate::{bytereader::ByteReader, state::accounttype::AccountType, types::NetworkV4};
+use crate::{bytereader::ByteReader, state::accounttype::AccountType};
 use borsh::{BorshDeserialize, BorshSerialize};
+use doublezero_program_common::types::NetworkV4;
 use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
 use std::fmt;
 

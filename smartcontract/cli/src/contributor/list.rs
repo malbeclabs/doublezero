@@ -1,7 +1,8 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_program_common::serializer;
 use doublezero_sdk::{
-    commands::contributor::list::ListContributorCommand, serializer, Contributor, ContributorStatus,
+    commands::contributor::list::ListContributorCommand, Contributor, ContributorStatus,
 };
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;

@@ -72,13 +72,13 @@ mod tests {
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
         tests::utils::create_test_client,
     };
+    use doublezero_program_common::types::NetworkV4List;
     use doublezero_sdk::{
         commands::device::{get::GetDeviceCommand, update::UpdateDeviceCommand},
         AccountType, CurrentInterfaceVersion, Device, DeviceStatus,
     };
-    use doublezero_serviceability::{
-        state::device::{Interface, InterfaceStatus, InterfaceType, LoopbackType},
-        types::NetworkV4List,
+    use doublezero_serviceability::state::device::{
+        Interface, InterfaceStatus, InterfaceType, LoopbackType,
     };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};

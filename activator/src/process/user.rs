@@ -2,6 +2,7 @@ use crate::{
     activator::DeviceMap, idallocator::IDAllocator, ipblockallocator::IPBlockAllocator,
     states::devicestate::DeviceState,
 };
+use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::{
     commands::{
         device::get::GetDeviceCommand,
@@ -10,7 +11,7 @@ use doublezero_sdk::{
             closeaccount::CloseAccountUserCommand, reject::RejectUserCommand,
         },
     },
-    DoubleZeroClient, NetworkV4, User, UserStatus, UserType,
+    DoubleZeroClient, User, UserStatus, UserType,
 };
 use log::{info, warn};
 use solana_client::rpc_response::RpcContactInfo;
@@ -429,6 +430,7 @@ mod tests {
         states::devicestate::DeviceState,
         tests::utils::{create_test_client, get_device_bump_seed, get_user_bump_seed},
     };
+    use doublezero_program_common::types::NetworkV4;
     use doublezero_sdk::{
         AccountData, AccountType, Device, DeviceStatus, DeviceType, MockDoubleZeroClient, User,
         UserCYOA, UserStatus, UserType,
@@ -439,7 +441,6 @@ mod tests {
             activate::UserActivateArgs, ban::UserBanArgs, closeaccount::UserCloseAccountArgs,
             reject::UserRejectArgs,
         },
-        types::NetworkV4,
     };
     use mockall::{predicate, Sequence};
     use solana_client::rpc_response::RpcContactInfo;

@@ -2,9 +2,9 @@ use crate::{
     bytereader::ByteReader,
     seeds::SEED_USER,
     state::accounttype::{AccountType, AccountTypeInfo},
-    types::*,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
+use doublezero_program_common::types::NetworkV4;
 use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
 use std::{fmt, net::Ipv4Addr};
 
@@ -132,21 +132,57 @@ impl fmt::Display for UserStatus {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct User {
     pub account_type: AccountType, // 1
-    pub owner: Pubkey,             // 32
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
+    pub owner: Pubkey, // 32
     pub index: u128,               // 16
     pub bump_seed: u8,             // 1
     pub user_type: UserType,       // 1
-    pub tenant_pk: Pubkey,         // 32
-    pub device_pk: Pubkey,         // 32
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
+    pub tenant_pk: Pubkey, // 32
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
+    pub device_pk: Pubkey, // 32
     pub cyoa_type: UserCYOA,       // 1
     pub client_ip: Ipv4Addr,       // 4
     pub dz_ip: Ipv4Addr,           // 4
     pub tunnel_id: u16,            // 2
     pub tunnel_net: NetworkV4,     // 5
     pub status: UserStatus,        // 1
-    pub publishers: Vec<Pubkey>,   // 4 + 32 * len
-    pub subscribers: Vec<Pubkey>,  // 4 + 32 * len
-    pub validator_pubkey: Pubkey,  // 32
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkeylist_as_string"
+        )
+    )]
+    pub publishers: Vec<Pubkey>, // 4 + 32 * len
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkeylist_as_string"
+        )
+    )]
+    pub subscribers: Vec<Pubkey>, // 4 + 32 * len
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
+    pub validator_pubkey: Pubkey, // 32
 }
 
 impl fmt::Display for User {

@@ -52,21 +52,57 @@ pub struct DeviceLatencySamplesHeader {
     pub epoch: u64, // 8
 
     // Agent authorized to write RTT samples (must match signer)
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
     pub origin_device_agent_pk: Pubkey, // 32
 
     // Device initiating sampling
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
     pub origin_device_pk: Pubkey, // 32
 
     // Destination device in RTT path
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
     pub target_device_pk: Pubkey, // 32
 
     // Cached location of origin device for query/UI optimization
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
     pub origin_device_location_pk: Pubkey, // 32
 
     // Cached location of target device
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
     pub target_device_location_pk: Pubkey, // 32
 
     // Link over which the RTT samples were taken
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
     pub link_pk: Pubkey, // 32
 
     // Sampling interval configured by the agent (in microseconds)

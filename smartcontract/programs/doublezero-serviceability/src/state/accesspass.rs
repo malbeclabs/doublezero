@@ -81,15 +81,27 @@ impl fmt::Display for AccessPassStatus {
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AccessPass {
-    pub account_type: AccountType,       // 1
-    pub owner: Pubkey,                   // 32
-    pub bump_seed: u8,                   // 1
+    pub account_type: AccountType, // 1
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
+    pub owner: Pubkey, // 32
+    pub bump_seed: u8,             // 1
     pub accesspass_type: AccessPassType, // 1
-    pub client_ip: Ipv4Addr,             // 4
-    pub payer: Pubkey,                   // 32
-    pub last_access_epoch: u64,          // 8 / 0-Rejected / u64::MAX unlimited
-    pub connection_count: u16,           // 2
-    pub status: AccessPassStatus,        // 1
+    pub client_ip: Ipv4Addr,       // 4
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
+    pub payer: Pubkey, // 32
+    pub last_access_epoch: u64,    // 8 / 0-Rejected / u64::MAX unlimited
+    pub connection_count: u16,     // 2
+    pub status: AccessPassStatus,  // 1
 }
 
 impl fmt::Display for AccessPass {

@@ -1,10 +1,8 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
+use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::commands::device::get::GetDeviceCommand;
-use doublezero_serviceability::{
-    state::device::{InterfaceType, LoopbackType},
-    types::NetworkV4,
-};
+use doublezero_serviceability::state::device::{InterfaceType, LoopbackType};
 use serde::Serialize;
 use std::io::Write;
 use tabled::{settings::Style, Table, Tabled};

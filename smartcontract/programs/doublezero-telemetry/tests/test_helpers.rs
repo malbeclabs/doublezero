@@ -4,6 +4,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use doublezero_program_common::types::{NetworkV4, NetworkV4List};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     pda::{
@@ -26,7 +27,6 @@ use doublezero_serviceability::{
         link::{Link, LinkLinkType},
         location::Location,
     },
-    types::{NetworkV4, NetworkV4List},
 };
 use doublezero_telemetry::{
     entrypoint::process_instruction as telemetry_process_instruction,

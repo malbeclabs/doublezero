@@ -1,6 +1,7 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_sdk::{commands::accesspass::list::ListAccessPassCommand, serializer};
+use doublezero_program_common::serializer;
+use doublezero_sdk::commands::accesspass::list::ListAccessPassCommand;
 use doublezero_serviceability::state::accesspass::AccessPassStatus;
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;

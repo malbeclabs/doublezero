@@ -1,11 +1,10 @@
+use crate::{DoubleZeroClient, GetGlobalConfigCommand, GetGlobalStateCommand};
+use doublezero_program_common::types::NetworkV4;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, pda::get_globalconfig_pda,
     processors::globalconfig::set::SetGlobalConfigArgs, state::globalconfig::GlobalConfig,
-    types::NetworkV4,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
-
-use crate::{DoubleZeroClient, GetGlobalConfigCommand, GetGlobalStateCommand};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SetGlobalConfigCommand {

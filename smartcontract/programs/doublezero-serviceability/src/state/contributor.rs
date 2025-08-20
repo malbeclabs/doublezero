@@ -70,7 +70,13 @@ impl fmt::Display for ContributorStatus {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Contributor {
     pub account_type: AccountType, // 1
-    pub owner: Pubkey,             // 32
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
+    pub owner: Pubkey, // 32
     pub index: u128,               // 16
     pub bump_seed: u8,             // 1
     pub status: ContributorStatus, // 1

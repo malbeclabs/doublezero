@@ -14,4 +14,3 @@ pub mod processors;
 pub mod programversion;
 pub mod seeds;
 pub mod state;
-pub mod types;

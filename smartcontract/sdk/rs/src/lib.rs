@@ -25,7 +25,6 @@ pub use doublezero_serviceability::{
         multicastgroup::{MulticastGroup, MulticastGroupStatus},
         user::{User, UserCYOA, UserStatus, UserType},
     },
-    types::*,
 };
 
 mod client;
@@ -37,7 +36,6 @@ mod errors;
 
 pub mod commands;
 pub mod record;
-pub mod serializer;
 pub mod tests;
 pub mod utils;
 

@@ -2,12 +2,11 @@ use crate::{
     commands::{device::get::GetDeviceCommand, globalstate::get::GetGlobalStateCommand},
     DoubleZeroClient,
 };
-use doublezero_program_common::validate_account_code;
+use doublezero_program_common::{types::NetworkV4List, validate_account_code};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     processors::device::update::DeviceUpdateArgs,
     state::device::{DeviceType, Interface},
-    types::NetworkV4List,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 use std::net::Ipv4Addr;

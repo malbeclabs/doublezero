@@ -6,11 +6,12 @@ use crate::{
     validators::{validate_iface, validate_pubkey_or_code},
 };
 use clap::Args;
+use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::{
     commands::device::{get::GetDeviceCommand, update::UpdateDeviceCommand},
     CurrentInterfaceVersion,
 };
-use doublezero_serviceability::{state::device, types::NetworkV4};
+use doublezero_serviceability::state::device;
 use std::io::Write;
 
 #[derive(Args, Debug)]

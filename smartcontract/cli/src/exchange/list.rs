@@ -1,8 +1,9 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_program_common::serializer;
 use doublezero_sdk::{
     commands::{device::list::ListDeviceCommand, exchange::list::ListExchangeCommand},
-    serializer, ExchangeStatus,
+    ExchangeStatus,
 };
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;

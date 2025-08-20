@@ -1,5 +1,4 @@
-use crate::bandwidth_to_string;
-use doublezero_serviceability::types::NetworkV4List;
+use crate::types::{parse_utils::bandwidth_to_string, NetworkV4List};
 use solana_program::pubkey::Pubkey;
 
 pub fn serialize_pubkey_as_string<S>(pubkey: &Pubkey, serializer: S) -> Result<S::Ok, S::Error>

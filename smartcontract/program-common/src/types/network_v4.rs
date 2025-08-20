@@ -1,13 +1,11 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use ipnetwork::{IpNetworkError, Ipv4Network};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::{
     fmt::{Display, Formatter},
     net::Ipv4Addr,
     str::FromStr,
 };
-
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Deserializer, Serialize};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NetworkV4(Ipv4Network);
@@ -88,7 +86,6 @@ impl BorshSerialize for NetworkV4 {
     }
 }
 
-#[cfg(feature = "serde")]
 impl<'de> Deserialize<'de> for NetworkV4 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -99,7 +96,6 @@ impl<'de> Deserialize<'de> for NetworkV4 {
     }
 }
 
-#[cfg(feature = "serde")]
 impl Serialize for NetworkV4 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where

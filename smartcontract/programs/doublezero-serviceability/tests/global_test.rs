@@ -1,3 +1,4 @@
+use doublezero_program_common::types::{NetworkV4, NetworkV4List};
 use doublezero_serviceability::{
     entrypoint::*,
     instructions::*,
@@ -21,7 +22,6 @@ use doublezero_serviceability::{
         location::*,
         user::*,
     },
-    types::*,
 };
 use solana_program_test::*;
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signer};

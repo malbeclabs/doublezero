@@ -1,9 +1,7 @@
-use core::fmt;
-
-use crate::{
-    error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::link::*, types::*,
-};
+use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::link::*};
 use borsh::{BorshDeserialize, BorshSerialize};
+use core::fmt;
+use doublezero_program_common::types::NetworkV4;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{

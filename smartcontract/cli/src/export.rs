@@ -1,12 +1,9 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_sdk::{
-    commands::{
-        device::list::ListDeviceCommand, exchange::list::ListExchangeCommand,
-        link::list::ListLinkCommand, location::list::ListLocationCommand,
-        user::list::ListUserCommand,
-    },
-    *,
+use doublezero_program_common::types::parse_utils::bandwidth_to_string;
+use doublezero_sdk::commands::{
+    device::list::ListDeviceCommand, exchange::list::ListExchangeCommand,
+    link::list::ListLinkCommand, location::list::ListLocationCommand, user::list::ListUserCommand,
 };
 use serde::{Deserialize, Serialize};
 use std::{fs, io::Write};

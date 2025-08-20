@@ -56,10 +56,28 @@ pub struct InternetLatencySamplesHeader {
     // Name of the third-party provider of the sampling probes
     pub data_provider_name: String, // 32 bytes
     // Agent authorized to write RTT samples (must match the signer)
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
     pub oracle_agent_pk: Pubkey, // 32
     // Cached exchange of the probe origin for query/UI optimization
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
     pub origin_exchange_pk: Pubkey, // 32
     // Cached exchange of the probe target
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
     pub target_exchange_pk: Pubkey, // 32
     // Sampling interval configured by the agent (in microseconds)
     pub sampling_interval_microseconds: u64, // 8

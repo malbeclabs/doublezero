@@ -72,6 +72,7 @@ mod tests {
         commands::multicastgroup::subscribe::SubscribeMulticastGroupCommand,
         tests::utils::create_test_client, DoubleZeroClient,
     };
+    use doublezero_program_common::types::NetworkV4;
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
         pda::{get_globalstate_pda, get_location_pda},
@@ -82,7 +83,6 @@ mod tests {
             multicastgroup::{MulticastGroup, MulticastGroupStatus},
             user::{User, UserCYOA, UserStatus, UserType},
         },
-        types::NetworkV4,
     };
     use mockall::predicate;
     use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};

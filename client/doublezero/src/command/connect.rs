@@ -9,6 +9,7 @@ use doublezero_cli::{
     helpers::init_command,
     requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON, CHECK_USER_ALLOWLIST},
 };
+use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::{
     commands::{
         device::{get::GetDeviceCommand, list::ListDeviceCommand},
@@ -19,7 +20,7 @@ use doublezero_sdk::{
             get::GetUserCommand, list::ListUserCommand,
         },
     },
-    Device, DeviceStatus, NetworkV4, User, UserCYOA, UserStatus, UserType,
+    Device, DeviceStatus, User, UserCYOA, UserStatus, UserType,
 };
 use eyre;
 use indicatif::ProgressBar;

@@ -3,11 +3,10 @@ use crate::{
     globalstate::globalstate_get,
     helper::account_write,
     state::user::{User, UserStatus},
-    types::NetworkV4,
 };
-use core::fmt;
-
 use borsh::{BorshDeserialize, BorshSerialize};
+use core::fmt;
+use doublezero_program_common::types::NetworkV4;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{

@@ -253,7 +253,6 @@ ip access-list SEC-USER-501-IN
 !
 no ip access-list SEC-USER-502-IN
 no ip access-list SEC-USER-503-IN
-!
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-500-OUT
 ip access-list standard SEC-USER-MCAST-BOUNDARY-500-OUT
    counters per-entry

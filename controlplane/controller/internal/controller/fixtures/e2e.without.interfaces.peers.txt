@@ -1236,7 +1236,6 @@ no ip access-list SEC-USER-624-IN
 no ip access-list SEC-USER-625-IN
 no ip access-list SEC-USER-626-IN
 no ip access-list SEC-USER-627-IN
-!
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-500-OUT
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-501-OUT
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-502-OUT

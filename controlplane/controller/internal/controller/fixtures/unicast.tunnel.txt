@@ -245,7 +245,6 @@ ip access-list SEC-USER-502-IN
   permit ip 100.0.0.2/32 any
   deny ip any any
 !
-!
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-500-OUT
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-501-OUT
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-502-OUT

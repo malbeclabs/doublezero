@@ -53,7 +53,7 @@ Examples:
 * MINOR: `feat(agent): #561 some description`
 * MAJOR: `feat(doublezerod)!: #456 some description of a breaking change`
 
-Reverts can be handled with the `revert` type but we should optimize for rolling forward rather than rolling backwards. There are, however, always exceptions to the rule. Since we don't control the appliances where the software is run, we need to have a playbook or some agreed upon process with network contributors to coordinate a rollback. It feels like that should be dealt with in a different RFC - perhaps under the `mainnet network contributor builds` milestone.
+Reverts can be handled with the `revert` type but we should optimize for rolling forward rather than rolling backwards. There are, however, always exceptions to the rule. Since we don't control the appliances where the software is run, we need to have a playbook or some agreed upon process with network contributors to coordinate a rollback. It feels like that should be dealt with in a different RFC - perhaps under the `mainnet-beta network contributor builds` milestone.
 
 ### Feature Flags
 
@@ -82,7 +82,7 @@ If a rollback must be made, well-defined compatibility windows should reduce fri
 
 ## Impact
 
-This RFC should have a positive impact on DoubleZero through more frequent deploys, more predictable changes, and defined compatibility windows. This RFC encourages getting code into main as quickly as possible; feature flags enable incompatible or incomplete features to be merged and hidden until they're ready. This process should also encourage more frequent releases with daily devnet releases, weekly testnet releases, and TBR mainnet releases.
+This RFC should have a positive impact on DoubleZero through more frequent deploys, more predictable changes, and defined compatibility windows. This RFC encourages getting code into main as quickly as possible; feature flags enable incompatible or incomplete features to be merged and hidden until they're ready. This process should also encourage more frequent releases with daily devnet releases, weekly testnet releases, and TBR mainnet-beta releases.
 
 ## Security Considerations
 
@@ -93,11 +93,11 @@ Security posture should largely remain the same as there aren't any changes to h
 There are no backwards compatibility requirements for this RFC. Future compatibility requirements are outlined in the `Compatibility` section.
 
 ## Open Questions
-* How frequently do we deploy to mainnet? (We don't need the answer for this rev of the RFC)
+* How frequently do we deploy to mainnet-beta? (We don't need the answer for this rev of the RFC)
 * Do we need a minimum timeframe after a major release before a subsequent minor release cuts off compatibility? IE, if 3.x.x is released, and 3.1.x is ready to be released, must it wait some defined window of time to allow users time to upgrade safely?
 * Do we assign persons to monitor a deploy until we have confidence that our tests are sufficient? (rotating group, not a single person)
 * What processes do we need to put in place with network contributors to make sure they upgrade within a reasonable amount of time? Do we slash rewards for lagging contributors? Jeff, Rahul have some experience with this at helium
-* Do we need a minimum percentage of adoption in testnet before rolling out a new mainnet release?
+* Do we need a minimum percentage of adoption in testnet before rolling out a new mainnet-beta release?
   * Do we provide higher rewards for early upgraders / testers?
 
 

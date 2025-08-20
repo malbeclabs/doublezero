@@ -20,7 +20,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-const DEFAULT_MAX_USERS: u16 = 256;
+const DEFAULT_MAX_USERS: u16 = 128;
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct DeviceCreateArgs {

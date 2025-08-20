@@ -15,7 +15,7 @@ use doublezero_program_tools::{
     instruction::try_build_instruction, zero_copy::checked_from_bytes_with_discriminator,
 };
 use solana_loader_v3_interface::{get_program_data_address, state::UpgradeableLoaderState};
-use solana_program_test::{BanksClient, BanksClientError, ProgramTest};
+use solana_program_test::{BanksClient, BanksClientError, ProgramTest, ProgramTestBanksClientExt};
 use solana_pubkey::Pubkey;
 use solana_sdk::{
     account::Account,
@@ -23,7 +23,7 @@ use solana_sdk::{
     instruction::Instruction,
     message::{v0::Message, VersionedMessage},
     signature::{Keypair, Signer},
-    transaction::VersionedTransaction,
+    transaction::{TransactionError, VersionedTransaction},
 };
 
 pub struct TestAccount {
@@ -34,7 +34,7 @@ pub struct TestAccount {
 pub struct ProgramTestWithOwner {
     pub banks_client: BanksClient,
     pub payer_signer: Keypair,
-    pub recent_blockhash: Hash,
+    pub cached_blockhash: Hash,
     pub owner_signer: Keypair,
 }
 
@@ -44,7 +44,7 @@ pub async fn start_test_with_accounts(accounts: Vec<TestAccount>) -> ProgramTest
 
     let owner_signer = Keypair::new();
 
-    // Fake the BPF Upgradeable Program's program data account for the Revenue Distribution Program.
+    // Fake the BPF Upgradeable Program's program data account for the Passport Program.
     let program_data_acct = Account {
         lamports: 69,
         data: bincode::serialize(&UpgradeableLoaderState::ProgramData {
@@ -54,18 +54,18 @@ pub async fn start_test_with_accounts(accounts: Vec<TestAccount>) -> ProgramTest
         .unwrap(),
         ..Default::default()
     };
-    program_test.add_account(program_data_key(), program_data_acct);
+    program_test.add_account(get_program_data_address(&ID), program_data_acct);
 
     for TestAccount { key, info } in accounts.into_iter() {
         program_test.add_account(key, info);
     }
 
-    let (banks_client, payer_signer, recent_blockhash) = program_test.start().await;
+    let (banks_client, payer_signer, cached_blockhash) = program_test.start().await;
 
     ProgramTestWithOwner {
         banks_client,
         payer_signer,
-        recent_blockhash,
+        cached_blockhash,
         owner_signer,
     }
 }
@@ -74,11 +74,14 @@ pub async fn start_test() -> ProgramTestWithOwner {
     start_test_with_accounts(Default::default()).await
 }
 
-pub fn program_data_key() -> Pubkey {
-    get_program_data_address(&ID)
-}
-
 impl ProgramTestWithOwner {
+    pub async fn get_latest_blockhash(&mut self) -> Result<Hash, BanksClientError> {
+        self.banks_client
+            .get_new_latest_blockhash(&self.cached_blockhash)
+            .await
+            .map_err(Into::into)
+    }
+
     pub async fn transfer_lamports(
         &mut self,
         dst_key: &Pubkey,
@@ -89,17 +92,41 @@ impl ProgramTestWithOwner {
         let transfer_ix =
             solana_system_interface::instruction::transfer(&payer_signer.pubkey(), dst_key, amount);
 
-        let new_blockhash = process_instructions_for_test(
-            &self.banks_client,
-            self.recent_blockhash,
+        self.cached_blockhash = process_instructions_for_test(
+            &mut self.banks_client,
+            &self.cached_blockhash,
             &[transfer_ix],
             &[payer_signer],
         )
         .await?;
 
-        self.recent_blockhash = new_blockhash;
-
         Ok(self)
+    }
+
+    pub async fn unwrap_simulation_error(
+        &mut self,
+        instructions: &[Instruction],
+        signers: &[&Keypair],
+    ) -> (TransactionError, Vec<String>) {
+        let recent_blockhash = self.get_latest_blockhash().await.unwrap();
+        let payer_signer = &self.payer_signer;
+
+        let mut tx_signers = vec![payer_signer];
+        tx_signers.extend_from_slice(signers);
+
+        let transaction = new_transaction(instructions, &tx_signers, recent_blockhash);
+
+        let simulated_tx = self
+            .banks_client
+            .simulate_transaction(transaction)
+            .await
+            .unwrap();
+
+        let tx_err = simulated_tx.result.unwrap().unwrap_err();
+
+        self.cached_blockhash = recent_blockhash;
+
+        (tx_err, simulated_tx.simulation_details.unwrap().logs)
     }
 
     pub async fn initialize_program(&mut self) -> Result<&mut Self, BanksClientError> {
@@ -120,15 +147,13 @@ impl ProgramTestWithOwner {
             1,
         );
 
-        let new_blockhash = process_instructions_for_test(
-            &self.banks_client,
-            self.recent_blockhash,
+        self.cached_blockhash = process_instructions_for_test(
+            &mut self.banks_client,
+            &self.cached_blockhash,
             &[remove_me_ix, initialize_program_ix],
             &[payer_signer],
         )
         .await?;
-
-        self.recent_blockhash = new_blockhash;
 
         Ok(self)
     }
@@ -144,15 +169,13 @@ impl ProgramTestWithOwner {
         )
         .unwrap();
 
-        let new_blockhash = process_instructions_for_test(
-            &self.banks_client,
-            self.recent_blockhash,
+        self.cached_blockhash = process_instructions_for_test(
+            &mut self.banks_client,
+            &self.cached_blockhash,
             &[set_admin_ix],
             &[payer_signer, owner_signer],
         )
         .await?;
-
-        self.recent_blockhash = new_blockhash;
 
         Ok(self)
     }
@@ -176,15 +199,13 @@ impl ProgramTestWithOwner {
             })
             .collect::<Vec<_>>();
 
-        let new_blockhash = process_instructions_for_test(
-            &self.banks_client,
-            self.recent_blockhash,
+        self.cached_blockhash = process_instructions_for_test(
+            &mut self.banks_client,
+            &self.cached_blockhash,
             &configure_program_ixs,
             &[payer_signer, admin_signer],
         )
         .await?;
-
-        self.recent_blockhash = new_blockhash;
 
         Ok(self)
     }
@@ -208,15 +229,13 @@ impl ProgramTestWithOwner {
         )
         .unwrap();
 
-        let new_blockhash = process_instructions_for_test(
-            &self.banks_client,
-            self.recent_blockhash,
+        self.cached_blockhash = process_instructions_for_test(
+            &mut self.banks_client,
+            &self.cached_blockhash,
             &[request_access_ix],
             &[payer_signer],
         )
         .await?;
-
-        self.recent_blockhash = new_blockhash;
 
         Ok(self)
     }
@@ -240,15 +259,13 @@ impl ProgramTestWithOwner {
         )
         .unwrap();
 
-        let new_blockhash = process_instructions_for_test(
-            &self.banks_client,
-            self.recent_blockhash,
+        self.cached_blockhash = process_instructions_for_test(
+            &mut self.banks_client,
+            &self.cached_blockhash,
             &[grant_access_ix],
             &[payer_signer, dz_ledger_sentinel],
         )
         .await?;
-
-        self.recent_blockhash = new_blockhash;
 
         Ok(self)
     }
@@ -267,15 +284,13 @@ impl ProgramTestWithOwner {
         )
         .unwrap();
 
-        let new_blockhash = process_instructions_for_test(
-            &self.banks_client,
-            self.recent_blockhash,
+        self.cached_blockhash = process_instructions_for_test(
+            &mut self.banks_client,
+            &self.cached_blockhash,
             &[deny_access_ix],
             &[payer_signer, dz_ledger_sentinel],
         )
         .await?;
-
-        self.recent_blockhash = new_blockhash;
 
         Ok(self)
     }
@@ -324,18 +339,30 @@ impl ProgramTestWithOwner {
 }
 
 pub async fn process_instructions_for_test(
-    banks_client: &BanksClient,
-    recent_blockhash: Hash,
+    banks_client: &mut BanksClient,
+    cached_blockhash: &Hash,
     instructions: &[Instruction],
     signers: &[&Keypair],
 ) -> Result<Hash, BanksClientError> {
-    let message =
-        Message::try_compile(&signers[0].pubkey(), instructions, &[], recent_blockhash).unwrap();
+    let recent_blockhash = banks_client
+        .get_new_latest_blockhash(cached_blockhash)
+        .await
+        .map_err(|_| BanksClientError::ClientError("failed to get new blockhash"))?;
 
-    let transaction =
-        VersionedTransaction::try_new(VersionedMessage::V0(message), signers).unwrap();
+    let transaction = new_transaction(instructions, signers, recent_blockhash);
 
     banks_client.process_transaction(transaction).await?;
 
-    banks_client.get_latest_blockhash().await
+    Ok(recent_blockhash)
+}
+
+fn new_transaction(
+    instructions: &[Instruction],
+    signers: &[&Keypair],
+    recent_blockhash: Hash,
+) -> VersionedTransaction {
+    let message =
+        Message::try_compile(&signers[0].pubkey(), instructions, &[], recent_blockhash).unwrap();
+
+    VersionedTransaction::try_new(VersionedMessage::V0(message), signers).unwrap()
 }

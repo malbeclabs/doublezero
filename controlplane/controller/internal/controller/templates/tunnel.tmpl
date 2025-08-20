@@ -305,7 +305,6 @@ ip access-list SEC-USER-{{ .Id }}-IN
 !
 {{- end }}
 {{- end }}
-!
 {{- range .Device.Tunnels }}
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-{{ .Id }}-OUT
 {{- if and .Allocated .IsMulticast }}

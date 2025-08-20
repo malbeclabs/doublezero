@@ -214,7 +214,6 @@ ip prefix-list PL-USER-502 seq 10 permit 100.0.0.2/32
 no ip access-list SEC-USER-500-IN
 no ip access-list SEC-USER-501-IN
 no ip access-list SEC-USER-502-IN
-!
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-500-OUT
 ip access-list standard SEC-USER-MCAST-BOUNDARY-500-OUT
    counters per-entry

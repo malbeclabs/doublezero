@@ -25,6 +25,15 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 			},
 		},
 		{
+			env: config.EnvMainnetBeta,
+			want: &config.NetworkConfig{
+				LedgerPublicRPCURL:         config.MainnetLedgerPublicRPCURL,
+				ServiceabilityProgramID:    solana.MustPublicKeyFromBase58(config.MainnetServiceabilityProgramID),
+				TelemetryProgramID:         solana.MustPublicKeyFromBase58(config.MainnetTelemetryProgramID),
+				InternetLatencyCollectorPK: solana.MustPublicKeyFromBase58(config.MainnetInternetLatencyCollectorPK),
+			},
+		},
+		{
 			env: config.EnvTestnet,
 			want: &config.NetworkConfig{
 				LedgerPublicRPCURL:         config.TestnetLedgerPublicRPCURL,

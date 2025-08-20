@@ -1844,6 +1844,8 @@ dependencies = [
  "async-trait",
  "borsh 1.5.7",
  "chrono",
+ "doublezero-record",
+ "doublezero_sdk",
  "futures",
  "mockall",
  "reqwest",

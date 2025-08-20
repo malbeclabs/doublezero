@@ -25,8 +25,8 @@ pub struct RecordResult {
     pub computed_payments: Option<ComputedSolanaValidatorPayments>,
 }
 
-pub async fn write_payments(
-    fee_payment_calculator: &impl ValidatorRewards,
+pub async fn write_payments<T: ValidatorRewards>(
+    fee_payment_calculator: &T,
     validator_ids: Vec<String>,
 ) -> Result<RecordResult> {
     let fetched_epoch_info = fee_payment_calculator.get_epoch_info().await?;
@@ -55,12 +55,15 @@ pub async fn write_payments(
     )
     .await?;
 
+    // TODO: post rewards to ledger
+
     // gather rewards into payments
     let computed_solana_validator_payment_vec: Vec<SolanaValidatorPayment> = validator_rewards
+        .rewards
         .iter()
         .map(|reward| SolanaValidatorPayment {
-            node_id: Pubkey::from_str(reward.0).unwrap(),
-            amount: reward.1.total,
+            node_id: Pubkey::from_str(&reward.validator_id).unwrap(),
+            amount: reward.total,
         })
         .collect();
 
@@ -69,14 +72,12 @@ pub async fn write_payments(
         payments: computed_solana_validator_payment_vec,
     };
 
-    let root = computed_solana_validator_payments.merkle_root();
-
-    // TODO: submit root to rev distribution program
+    let data = computed_solana_validator_payments.merkle_root();
 
     record_result = RecordResult {
         last_written_epoch: Some(fake_fetched_epoch),
         last_check: Some(now),
-        data_written: root,
+        data_written: data,
         computed_payments: Some(computed_solana_validator_payments),
     };
     Ok(record_result)
@@ -88,9 +89,11 @@ mod tests {
     use crate::block;
     use crate::fee_payment_calculator::MockValidatorRewards;
     use crate::jito::{JitoReward, JitoRewards};
+    use solana_client::nonblocking::rpc_client::RpcClient;
     use solana_client::rpc_response::{
         RpcInflationReward, RpcVoteAccountInfo, RpcVoteAccountStatus,
     };
+    use solana_sdk::commitment_config::CommitmentConfig;
     use solana_sdk::{epoch_info::EpochInfo, reward_type::RewardType::Fee};
     use solana_transaction_status_client_types::UiConfirmedBlock;
     use std::collections::HashMap;
@@ -98,7 +101,9 @@ mod tests {
     #[tokio::test]
     async fn test_execute_worker() -> Result<()> {
         let mut mock_fee_payment_calculator = MockValidatorRewards::new();
-        let validator_id = "6WgdYhhGE53WrZ7ywJA15hBVkw7CRbQ8yDBBTwmBtAHN";
+        let commitment_config = CommitmentConfig::processed();
+
+        let validator_id = "devgM7SXHvoHH6jPXRsjn97gygPUo58XEnc9bqY1jpj";
         let validator_ids: Vec<String> = vec![String::from(validator_id)];
         let epoch = 819;
         let fake_fetched_epoch = 820;
@@ -108,7 +113,7 @@ mod tests {
 
         let mock_rpc_vote_account_status = RpcVoteAccountStatus {
             current: vec![RpcVoteAccountInfo {
-                vote_pubkey: "6WgdYhhGE53WrZ7ywJA15hBVkw7CRbQ8yDBBTwmBtABB".to_string(),
+                vote_pubkey: "devgM7SXHvoHH6jPXRsjn97gygPUo58XEnc9bqY1jpj".to_string(),
                 node_pubkey: validator_id.to_string(),
                 activated_stake: 4_200_000_000_000,
                 epoch_vote_account: true,
@@ -119,6 +124,13 @@ mod tests {
             }],
             delinquent: vec![],
         };
+
+        mock_fee_payment_calculator
+            .expect_rpc_client()
+            .return_const(RpcClient::new_with_commitment(
+                "http://localhost:8899".to_string(),
+                commitment_config,
+            ));
 
         mock_fee_payment_calculator
             .expect_get_vote_accounts_with_config()

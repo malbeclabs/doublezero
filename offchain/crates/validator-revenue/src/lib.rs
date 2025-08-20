@@ -7,6 +7,7 @@ pub mod block;
 pub mod fee_payment_calculator;
 pub mod inflation;
 pub mod jito;
+pub mod ledger;
 pub mod rewards;
 pub mod validator_payment;
 pub mod worker;

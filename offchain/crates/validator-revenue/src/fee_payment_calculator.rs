@@ -15,6 +15,7 @@ use solana_transaction_status_client_types::UiConfirmedBlock;
 #[automock]
 #[async_trait]
 pub trait ValidatorRewards {
+    fn rpc_client(&self) -> &RpcClient;
     async fn get_epoch_info(&self) -> Result<EpochInfo, solana_client::client_error::ClientError>;
     async fn get_leader_schedule(&self) -> Result<HashMap<String, Vec<usize>>>;
     async fn get_block_with_config(
@@ -63,6 +64,9 @@ impl FeePaymentCalculator {
 
 #[async_trait]
 impl ValidatorRewards for FeePaymentCalculator {
+    fn rpc_client(&self) -> &RpcClient {
+        &self.rpc_client
+    }
     async fn get_epoch_info(&self) -> Result<EpochInfo, solana_client::client_error::ClientError> {
         self.rpc_client.get_epoch_info().await
     }

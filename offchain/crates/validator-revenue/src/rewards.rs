@@ -10,6 +10,7 @@ use crate::inflation;
 use crate::jito;
 
 use anyhow::{Result, anyhow};
+use borsh::{BorshDeserialize, BorshSerialize};
 use serde::Deserialize;
 use solana_sdk::clock::DEFAULT_SLOTS_PER_EPOCH;
 use std::collections::HashMap;
@@ -18,7 +19,13 @@ use crate::fee_payment_calculator::ValidatorRewards;
 
 const SLOT_TIME_DURATION_SECONDS: f64 = 0.4;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, BorshDeserialize, BorshSerialize)]
+pub struct EpochRewards {
+    pub epoch: u64,
+    pub rewards: Vec<Reward>,
+}
+
+#[derive(Deserialize, Debug, BorshDeserialize, BorshSerialize)]
 pub struct Reward {
     pub epoch: u64,
     pub validator_id: String,
@@ -34,8 +41,8 @@ pub async fn get_rewards_between_timestamps(
     start_timestamp: u64,
     end_timestamp: u64,
     validator_ids: &[String],
-) -> Result<HashMap<u64, HashMap<String, Reward>>> {
-    let mut rewards: HashMap<u64, HashMap<String, Reward>> = HashMap::new();
+) -> Result<HashMap<u64, Vec<Reward>>> {
+    let mut rewards: HashMap<u64, Vec<Reward>> = HashMap::new();
     let current_slot = fee_payment_calculator.get_slot().await?;
     let block_time = fee_payment_calculator.get_block_time(current_slot).await?;
     let block_time: u64 = block_time as u64;
@@ -44,7 +51,7 @@ pub async fn get_rewards_between_timestamps(
     let end_epoch = epoch_from_timestamp(block_time, current_slot, end_timestamp)?;
     for epoch in start_epoch..=end_epoch {
         let reward = get_total_rewards(fee_payment_calculator, validator_ids, epoch).await?;
-        rewards.insert(epoch, reward);
+        rewards.insert(epoch, reward.rewards);
     }
     Ok(rewards)
 }
@@ -54,7 +61,7 @@ pub async fn get_total_rewards(
     fee_payment_calculator: &impl ValidatorRewards,
     validator_ids: &[String],
     epoch: u64,
-) -> Result<HashMap<String, Reward>> {
+) -> Result<EpochRewards> {
     let mut validator_rewards: Vec<Reward> = Vec::with_capacity(validator_ids.len());
 
     let (inflation_rewards, jito_rewards, block_rewards) = tokio::join!(
@@ -89,11 +96,11 @@ pub async fn get_total_rewards(
         };
         validator_rewards.push(rewards);
     }
-    let rewards: HashMap<String, Reward> = validator_ids
-        .iter()
-        .cloned()
-        .zip(validator_rewards)
-        .collect();
+
+    let rewards = EpochRewards {
+        epoch,
+        rewards: validator_rewards,
+    };
     Ok(rewards)
 }
 
@@ -262,7 +269,10 @@ mod tests {
         .unwrap();
 
         let epoch_rewards = rewards.get(&epoch).unwrap();
-        let reward = epoch_rewards.get(validator_id).unwrap();
+        let reward = epoch_rewards
+            .iter()
+            .find(|reward| reward.validator_id == validator_id)
+            .unwrap();
         let priority_base = block_reward - base_fees;
         assert_eq!(reward.epoch, epoch);
         assert_eq!(reward.block_base, base_fees);
@@ -376,7 +386,11 @@ mod tests {
             .unwrap();
 
         // Verify that the function produced the correct results.
-        let reward = rewards.get(validator_id).unwrap();
+        let reward = rewards
+            .rewards
+            .iter()
+            .find(|&reward| reward.validator_id == validator_id)
+            .unwrap();
 
         assert_eq!(reward.epoch, epoch);
         assert_eq!(reward.block_base, block_reward);

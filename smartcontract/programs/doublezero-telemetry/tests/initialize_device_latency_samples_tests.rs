@@ -1,4 +1,5 @@
 use borsh::BorshSerialize;
+use doublezero_program_common::types::{NetworkV4, NetworkV4List};
 use doublezero_serviceability::{
     processors::{
         device::create::DeviceCreateArgs, exchange::create::ExchangeCreateArgs,
@@ -9,7 +10,6 @@ use doublezero_serviceability::{
         device::{CurrentInterfaceVersion, Device, DeviceStatus, DeviceType, Interface},
         link::{Link, LinkLinkType, LinkStatus},
     },
-    types::{NetworkV4, NetworkV4List},
 };
 use doublezero_telemetry::{
     error::TelemetryError, instructions::TelemetryInstruction,

@@ -88,6 +88,12 @@ pub struct DeviceLatencySamplesHeader {
     pub origin_device_location_pk: Pubkey, // 32
 
     // Cached location of target device
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
     pub target_device_location_pk: Pubkey, // 32
 
     // Link over which the RTT samples were taken

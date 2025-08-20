@@ -497,7 +497,7 @@ Disconnect and connect again!"#,
     ) -> eyre::Result<User> {
         spinner.set_message("Waiting for user activation...");
         let start_time = std::time::Instant::now();
-        let timeout = std::time::Duration::from_secs(20);
+        let timeout = std::time::Duration::from_secs(60);
         let poll_interval = std::time::Duration::from_secs(1);
         let mut last_error: Option<eyre::Error> = None;
 
@@ -505,10 +505,10 @@ Disconnect and connect again!"#,
             if start_time.elapsed() >= timeout {
                 return Err(match last_error {
                     Some(e) => eyre::eyre!(
-                        "Timeout waiting for user activation after 20 seconds. Last error: {}",
+                        "Timeout waiting for user activation after 60 seconds. Last error: {}",
                         e
                     ),
-                    None => eyre::eyre!("Timeout waiting for user activation after 20 seconds"),
+                    None => eyre::eyre!("Timeout waiting for user activation after 60 seconds"),
                 });
             }
 

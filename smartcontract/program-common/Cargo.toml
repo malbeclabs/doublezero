@@ -15,3 +15,6 @@ borsh.workspace = true
 byteorder.workspace = true
 ipnetwork.workspace = true
 solana-program.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

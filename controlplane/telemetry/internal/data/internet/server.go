@@ -45,7 +45,7 @@ func NewServer(log *slog.Logger, mainnetProvider, testnetProvider, devnetProvide
 
 func (s *Server) provider(env string) (Provider, error) {
 	switch env {
-	case config.EnvMainnet:
+	case config.EnvMainnetBeta:
 		return s.mainnet, nil
 	case config.EnvTestnet:
 		return s.testnet, nil

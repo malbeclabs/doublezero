@@ -1,10 +1,7 @@
 use core::fmt;
 
 use crate::{
-    error::DoubleZeroError,
-    globalstate::globalstate_get,
-    helper::*,
-    state::{accounttype::AccountType, contributor::*},
+    error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::contributor::*,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
@@ -64,11 +61,6 @@ pub fn process_resume_contributor(
     }
 
     let mut contributor: Contributor = Contributor::try_from(contributor_account)?;
-    assert_eq!(
-        contributor.account_type,
-        AccountType::Contributor,
-        "Invalid Account Type"
-    );
     contributor.status = ContributorStatus::Activated;
 
     account_write(

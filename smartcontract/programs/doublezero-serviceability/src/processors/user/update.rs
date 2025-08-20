@@ -1,9 +1,5 @@
 use crate::{
-    error::DoubleZeroError,
-    format_option,
-    globalstate::globalstate_get,
-    helper::*,
-    state::{accounttype::AccountType, user::*},
+    error::DoubleZeroError, format_option, globalstate::globalstate_get, helper::*, state::user::*,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_program_common::types::NetworkV4;
@@ -76,7 +72,6 @@ pub fn process_update_user(
     }
 
     let mut user: User = User::try_from(user_account)?;
-    assert_eq!(user.account_type, AccountType::User, "Invalid Account Type");
 
     user.dz_ip = value.dz_ip.unwrap_or(std::net::Ipv4Addr::UNSPECIFIED);
     if let Some(value) = value.tunnel_id {

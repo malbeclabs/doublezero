@@ -1,10 +1,7 @@
 use core::fmt;
 
 use crate::{
-    error::DoubleZeroError,
-    globalstate::globalstate_get,
-    helper::*,
-    state::{accounttype::AccountType, multicastgroup::*},
+    error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::multicastgroup::*,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
@@ -65,11 +62,7 @@ pub fn process_delete_multicastgroup(
     }
 
     let mut multicastgroup: MulticastGroup = MulticastGroup::try_from(multicastgroup_account)?;
-    assert_eq!(
-        multicastgroup.account_type,
-        AccountType::MulticastGroup,
-        "Invalid Account Type"
-    );
+
     if multicastgroup.status != MulticastGroupStatus::Activated {
         return Err(DoubleZeroError::InvalidStatus.into());
     }

@@ -358,7 +358,7 @@ impl From<&[u8]> for Device {
     fn from(data: &[u8]) -> Self {
         let mut parser = ByteReader::new(data);
 
-        Self {
+        let out = Self {
             account_type: parser.read_enum(),
             owner: parser.read_pubkey(),
             index: parser.read_u128(),
@@ -377,7 +377,15 @@ impl From<&[u8]> for Device {
             reference_count: parser.read_u32(),
             users_count: parser.read_u16(),
             max_users: parser.read_u16(),
-        }
+        };
+
+        assert_eq!(
+            out.account_type,
+            AccountType::Device,
+            "Invalid Device Account Type"
+        );
+
+        out
     }
 }
 

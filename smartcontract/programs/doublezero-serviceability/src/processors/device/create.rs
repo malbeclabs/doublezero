@@ -57,7 +57,7 @@ pub fn process_create_device(
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
-    let pda_account = next_account_info(accounts_iter)?;
+    let device_account = next_account_info(accounts_iter)?;
     let contributor_account = next_account_info(accounts_iter)?;
     let location_account = next_account_info(accounts_iter)?;
     let exchange_account = next_account_info(accounts_iter)?;
@@ -89,17 +89,14 @@ pub fn process_create_device(
         "Invalid GlobalState Account Owner"
     );
 
-    if !pda_account.data.borrow().is_empty() {
+    if !device_account.data.borrow().is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);
-    }
-    if globalstate_account.data.borrow().is_empty() {
-        return Err(ProgramError::UninitializedAccount);
     }
     let globalstate = globalstate_get_next(globalstate_account)?;
     assert_eq!(globalstate.account_type, AccountType::GlobalState);
 
     let mut contributor = Contributor::try_from(contributor_account)?;
-    assert_eq!(contributor.account_type, AccountType::Contributor);
+
     if contributor.owner != *payer_account.key
         && !globalstate.foundation_allowlist.contains(payer_account.key)
     {
@@ -108,14 +105,12 @@ pub fn process_create_device(
 
     let (expected_pda_account, bump_seed) = get_device_pda(program_id, globalstate.account_index);
     assert_eq!(
-        pda_account.key, &expected_pda_account,
+        device_account.key, &expected_pda_account,
         "Invalid Device PubKey"
     );
 
     let mut location = Location::try_from(location_account)?;
-    assert_eq!(location.account_type, AccountType::Location);
     let mut exchange = Exchange::try_from(exchange_account)?;
-    assert_eq!(exchange.account_type, AccountType::Exchange);
 
     contributor.reference_count += 1;
     location.reference_count += 1;
@@ -143,7 +138,7 @@ pub fn process_create_device(
     };
 
     account_create(
-        pda_account,
+        device_account,
         &device,
         payer_account,
         system_program,

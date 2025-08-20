@@ -2,7 +2,7 @@ use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get,
     helper::*,
-    state::{accounttype::AccountType, device::Device, exchange::*},
+    state::{device::Device, exchange::*},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
@@ -77,18 +77,7 @@ pub fn process_setdevice_exchange(
     }
 
     let mut exchange: Exchange = Exchange::try_from(exchange_account)?;
-    assert_eq!(
-        exchange.account_type,
-        AccountType::Exchange,
-        "Invalid Account Type"
-    );
-
     let mut device: Device = Device::try_from(device_account)?;
-    assert_eq!(
-        device.account_type,
-        AccountType::Device,
-        "Invalid Account Type"
-    );
 
     if value.set == SetDeviceOption::Set {
         if value.index == 1 {

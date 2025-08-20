@@ -1,9 +1,4 @@
-use crate::{
-    error::DoubleZeroError,
-    globalstate::globalstate_get,
-    helper::*,
-    state::{accounttype::AccountType, link::*},
-};
+use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::link::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_program_common::types::NetworkV4;
 use solana_program::{
@@ -59,7 +54,6 @@ pub fn process_reject_link(
     }
 
     let mut link: Link = Link::try_from(link_account)?;
-    assert_eq!(link.account_type, AccountType::Link, "Invalid Account Type");
 
     if link.status != LinkStatus::Pending {
         return Err(DoubleZeroError::InvalidStatus.into());

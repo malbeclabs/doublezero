@@ -1,11 +1,6 @@
 use core::fmt;
 
-use crate::{
-    error::DoubleZeroError,
-    globalstate::globalstate_get,
-    helper::*,
-    state::{accounttype::AccountType, exchange::*},
-};
+use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::exchange::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_program_common::validate_account_code;
 #[cfg(test)]
@@ -73,11 +68,6 @@ pub fn process_update_exchange(
     }
 
     let mut exchange: Exchange = Exchange::try_from(exchange_account)?;
-    assert_eq!(
-        exchange.account_type,
-        AccountType::Exchange,
-        "Invalid Account Type"
-    );
 
     if let Some(ref code) = value.code {
         exchange.code =

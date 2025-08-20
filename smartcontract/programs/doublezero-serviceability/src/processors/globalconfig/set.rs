@@ -55,11 +55,7 @@ pub fn process_set_globalconfig(
     #[cfg(test)]
     msg!("process_set_global_config({:?})", value);
 
-    if globalstate_account.data.borrow().is_empty() {
-        return Err(ProgramError::UninitializedAccount);
-    }
     let globalstate = globalstate_get(globalstate_account)?;
-
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(DoubleZeroError::NotAllowed.into());
     }

@@ -1,9 +1,4 @@
-use crate::{
-    error::DoubleZeroError,
-    globalstate::globalstate_get,
-    helper::*,
-    state::{accounttype::AccountType, exchange::*},
-};
+use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::exchange::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
 #[cfg(test)]
@@ -61,11 +56,7 @@ pub fn process_suspend_exchange(
     }
 
     let mut exchange: Exchange = Exchange::try_from(exchange_account)?;
-    assert_eq!(
-        exchange.account_type,
-        AccountType::Exchange,
-        "Invalid Account Type"
-    );
+
     if exchange.owner != *payer_account.key {
         return Err(solana_program::program_error::ProgramError::Custom(0));
     }

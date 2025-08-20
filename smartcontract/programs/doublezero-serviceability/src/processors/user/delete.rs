@@ -4,7 +4,6 @@ use crate::{
     helper::*,
     state::{
         accesspass::{AccessPass, AccessPassStatus},
-        accounttype::AccountType,
         user::*,
     },
 };
@@ -62,7 +61,6 @@ pub fn process_delete_user(
     assert!(user_account.is_writable, "PDA Account is not writable");
 
     let mut user: User = User::try_from(user_account)?;
-    assert_eq!(user.account_type, AccountType::User, "Invalid Account Type");
 
     let globalstate = globalstate_get(globalstate_account)?;
     if !globalstate.foundation_allowlist.contains(payer_account.key)

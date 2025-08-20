@@ -46,7 +46,7 @@ pub fn process_create_link(
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
-    let pda_account = next_account_info(accounts_iter)?;
+    let link_account = next_account_info(accounts_iter)?;
     let contributor_account = next_account_info(accounts_iter)?;
     let side_a_account = next_account_info(accounts_iter)?;
     let side_z_account = next_account_info(accounts_iter)?;
@@ -78,17 +78,13 @@ pub fn process_create_link(
         "Invalid GlobalState Account Owner"
     );
 
-    if !pda_account.data.borrow().is_empty() {
+    if !link_account.data.borrow().is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);
     }
-    if globalstate_account.data.borrow().is_empty() {
-        return Err(ProgramError::UninitializedAccount);
-    }
-    let globalstate = globalstate_get_next(globalstate_account)?;
-    assert_eq!(globalstate.account_type, AccountType::GlobalState);
 
+    let globalstate = globalstate_get_next(globalstate_account)?;
     let mut contributor = Contributor::try_from(contributor_account)?;
-    assert_eq!(contributor.account_type, AccountType::Contributor);
+
     if contributor.owner != *payer_account.key
         && !globalstate.foundation_allowlist.contains(payer_account.key)
     {
@@ -97,18 +93,18 @@ pub fn process_create_link(
 
     let (expected_pda_account, bump_seed) = get_link_pda(program_id, globalstate.account_index);
     assert_eq!(
-        pda_account.key, &expected_pda_account,
+        link_account.key, &expected_pda_account,
         "Invalid Link PubKey"
     );
 
     let mut side_a_dev = Device::try_from(side_a_account)?;
-    assert_eq!(side_a_dev.account_type, AccountType::Device);
+
     if side_a_dev.contributor_pk != *contributor_account.key {
         return Err(DoubleZeroError::InvalidContributor.into());
     }
 
     let mut side_z_dev = Device::try_from(side_z_account)?;
-    assert_eq!(side_z_dev.account_type, AccountType::Device);
+
     if value.link_type != LinkLinkType::DZX && side_z_dev.contributor_pk != *contributor_account.key
     {
         return Err(DoubleZeroError::InvalidContributor.into());
@@ -172,7 +168,7 @@ pub fn process_create_link(
     };
 
     account_create(
-        pda_account,
+        link_account,
         &tunnel,
         payer_account,
         system_program,

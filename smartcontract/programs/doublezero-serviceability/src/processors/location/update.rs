@@ -1,9 +1,4 @@
-use crate::{
-    error::DoubleZeroError,
-    globalstate::globalstate_get,
-    helper::*,
-    state::{accounttype::AccountType, location::*},
-};
+use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::location::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_program_common::validate_account_code;
 #[cfg(test)]
@@ -72,11 +67,6 @@ pub fn process_update_location(
 
     // Parse the location account
     let mut location: Location = Location::try_from(location_account)?;
-    assert_eq!(
-        location.account_type,
-        AccountType::Location,
-        "Invalid Account Type"
-    );
 
     if let Some(ref code) = value.code {
         location.code =

@@ -146,7 +146,7 @@ impl From<&[u8]> for MulticastGroup {
     fn from(data: &[u8]) -> Self {
         let mut parser = ByteReader::new(data);
 
-        Self {
+        let out = Self {
             account_type: parser.read_enum(),
             owner: parser.read_pubkey(),
             index: parser.read_u128(),
@@ -160,7 +160,15 @@ impl From<&[u8]> for MulticastGroup {
             sub_allowlist: parser.read_pubkey_vec(),
             publishers: parser.read_pubkey_vec(),
             subscribers: parser.read_pubkey_vec(),
-        }
+        };
+
+        assert_eq!(
+            out.account_type,
+            AccountType::MulticastGroup,
+            "Invalid MulticastGroup Account Type"
+        );
+
+        out
     }
 }
 
@@ -178,7 +186,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_state_location_serialization() {
+    fn test_state_multicastgroup_serialization() {
         let val = MulticastGroup {
             account_type: AccountType::MulticastGroup,
             owner: Pubkey::new_unique(),

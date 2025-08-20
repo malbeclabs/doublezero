@@ -1,8 +1,5 @@
 use crate::{
-    error::DoubleZeroError,
-    globalstate::globalstate_get,
-    helper::*,
-    state::{accounttype::AccountType, multicastgroup::*},
+    error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::multicastgroup::*,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
@@ -66,11 +63,6 @@ pub fn process_deactivate_multicastgroup(
     }
 
     let multicastgroup = MulticastGroup::try_from(multicastgroup_account)?;
-    assert_eq!(
-        multicastgroup.account_type,
-        AccountType::MulticastGroup,
-        "Invalid Account Type"
-    );
 
     if multicastgroup.owner != *owner_account.key {
         return Err(ProgramError::InvalidAccountData);

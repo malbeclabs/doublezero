@@ -2,7 +2,6 @@ use crate::{
     error::DoubleZeroError,
     helper::account_write,
     state::{
-        accounttype::AccountType,
         multicastgroup::{MulticastGroup, MulticastGroupStatus},
         user::{User, UserStatus},
     },
@@ -73,7 +72,7 @@ pub fn process_subscribe_multicastgroup(
 
     // Parse accounts
     let mut mgroup: MulticastGroup = MulticastGroup::try_from(multicastgroup_account)?;
-    assert_eq!(mgroup.account_type, AccountType::MulticastGroup);
+
     if mgroup.status != MulticastGroupStatus::Activated {
         #[cfg(test)]
         msg!("MulticastGroupStatus: {:?}", mgroup.status);
@@ -82,7 +81,7 @@ pub fn process_subscribe_multicastgroup(
     }
 
     let mut user: User = User::try_from(user_account)?;
-    assert_eq!(user.account_type, AccountType::User);
+
     if user.status != UserStatus::Activated && user.status != UserStatus::Updating {
         #[cfg(test)]
         msg!("UserStatus: {:?}", user.status);

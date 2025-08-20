@@ -47,7 +47,7 @@ pub fn process_create_user(
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
-    let pda_account = next_account_info(accounts_iter)?;
+    let user_account = next_account_info(accounts_iter)?;
     let device_account = next_account_info(accounts_iter)?;
     let accesspass_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
@@ -57,17 +57,14 @@ pub fn process_create_user(
     #[cfg(test)]
     msg!("process_create_user({:?})", value);
 
-    if !pda_account.data.borrow().is_empty() {
+    if !user_account.data.borrow().is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);
-    }
-    if globalstate_account.data.borrow().is_empty() {
-        return Err(ProgramError::UninitializedAccount);
     }
     let globalstate = globalstate_get_next(globalstate_account)?;
 
     let (expected_pda_account, bump_seed) = get_user_pda(program_id, globalstate.account_index);
     assert_eq!(
-        pda_account.key, &expected_pda_account,
+        user_account.key, &expected_pda_account,
         "Invalid User PubKey"
     );
 
@@ -121,7 +118,6 @@ pub fn process_create_user(
     accesspass.status = AccessPassStatus::Connected;
 
     let mut device = Device::try_from(device_account)?;
-    assert_eq!(device.account_type, AccountType::Device);
 
     if device.status == DeviceStatus::Suspended {
         if !globalstate.foundation_allowlist.contains(payer_account.key) {
@@ -161,7 +157,7 @@ pub fn process_create_user(
     };
 
     account_create(
-        pda_account,
+        user_account,
         &user,
         payer_account,
         system_program,

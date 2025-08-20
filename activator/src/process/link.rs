@@ -214,10 +214,10 @@ mod tests {
         process::link::process_tunnel_event,
         tests::utils::{create_test_client, get_device_bump_seed, get_tunnel_bump_seed},
     };
+    use doublezero_program_common::types::{NetworkV4, NetworkV4List};
     use doublezero_sdk::{
         AccountData, AccountType, CurrentInterfaceVersion, Device, DeviceStatus, DeviceType,
         Interface, InterfaceStatus, InterfaceType, Link, LinkLinkType, LinkStatus, LoopbackType,
-        NetworkV4, NetworkV4List,
     };
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,

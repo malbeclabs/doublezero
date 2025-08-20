@@ -3,17 +3,16 @@ use crate::{
     globalstate::globalstate_get,
     helper::*,
     state::{accounttype::AccountType, link::*},
-    types::NetworkV4,
 };
-use std::fmt;
-
 use borsh::{BorshDeserialize, BorshSerialize};
+use doublezero_program_common::types::NetworkV4;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     msg,
     pubkey::Pubkey,
 };
+use std::fmt;
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct LinkRejectArgs {

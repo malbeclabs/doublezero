@@ -7,11 +7,10 @@ use crate::{
         accounttype::AccountType, contributor::Contributor, device::*, exchange::Exchange,
         location::Location,
     },
-    types::*,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
-use doublezero_program_common::validate_account_code;
+use doublezero_program_common::{types::NetworkV4List, validate_account_code};
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{

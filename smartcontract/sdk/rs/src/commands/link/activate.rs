@@ -1,13 +1,13 @@
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, processors::link::activate::LinkActivateArgs,
-    state::link::LinkStatus, types::NetworkV4,
-};
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
-
 use crate::{
     commands::{globalstate::get::GetGlobalStateCommand, link::get::GetLinkCommand},
     DoubleZeroClient,
 };
+use doublezero_program_common::types::NetworkV4;
+use doublezero_serviceability::{
+    instructions::DoubleZeroInstruction, processors::link::activate::LinkActivateArgs,
+    state::link::LinkStatus,
+};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ActivateLinkCommand {

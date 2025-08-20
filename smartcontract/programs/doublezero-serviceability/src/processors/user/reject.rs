@@ -3,9 +3,9 @@ use crate::{
     globalstate::globalstate_get,
     helper::*,
     state::{accounttype::AccountType, user::*},
-    types::NetworkV4,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
+use doublezero_program_common::types::NetworkV4;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,

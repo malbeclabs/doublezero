@@ -5,6 +5,7 @@ use crate::{
     validators::{validate_code, validate_pubkey, validate_pubkey_or_code},
 };
 use clap::Args;
+use doublezero_program_common::types::NetworkV4List;
 use doublezero_sdk::{
     commands::device::{
         get::GetDeviceCommand, list::ListDeviceCommand, update::UpdateDeviceCommand,

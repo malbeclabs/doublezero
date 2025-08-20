@@ -4,7 +4,8 @@ use crate::{
     validators::validate_pubkey,
 };
 use clap::Args;
-use doublezero_sdk::{commands::user::update::UpdateUserCommand, *};
+use doublezero_program_common::types::NetworkV4;
+use doublezero_sdk::commands::user::update::UpdateUserCommand;
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, net::Ipv4Addr, str::FromStr};
 

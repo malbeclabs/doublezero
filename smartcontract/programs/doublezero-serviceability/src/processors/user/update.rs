@@ -4,9 +4,9 @@ use crate::{
     globalstate::globalstate_get,
     helper::*,
     state::{accounttype::AccountType, user::*},
-    types::*,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
+use doublezero_program_common::types::NetworkV4;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{

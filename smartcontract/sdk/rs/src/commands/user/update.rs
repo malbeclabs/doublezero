@@ -1,9 +1,9 @@
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
+use doublezero_program_common::types::NetworkV4;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     processors::user::update::UserUpdateArgs,
     state::user::{UserCYOA, UserType},
-    types::NetworkV4,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 use std::net::Ipv4Addr;

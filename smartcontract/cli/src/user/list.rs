@@ -1,11 +1,12 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_program_common::{serializer, types::NetworkV4};
 use doublezero_sdk::{
     commands::{
         device::list::ListDeviceCommand, location::list::ListLocationCommand,
         multicastgroup::list::ListMulticastGroupCommand, user::list::ListUserCommand,
     },
-    serializer, MulticastGroup, NetworkV4, User, UserCYOA, UserStatus, UserType,
+    MulticastGroup, User, UserCYOA, UserStatus, UserType,
 };
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;

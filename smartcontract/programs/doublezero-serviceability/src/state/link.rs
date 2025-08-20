@@ -2,9 +2,9 @@ use crate::{
     bytereader::ByteReader,
     seeds::SEED_LINK,
     state::accounttype::{AccountType, AccountTypeInfo},
-    types::*,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
+use doublezero_program_common::types::NetworkV4;
 use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
 use std::{fmt, str::FromStr};
 

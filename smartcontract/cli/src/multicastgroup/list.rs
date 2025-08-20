@@ -1,8 +1,8 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_program_common::serializer;
 use doublezero_sdk::{
-    commands::multicastgroup::list::ListMulticastGroupCommand, serializer, MulticastGroup,
-    MulticastGroupStatus,
+    commands::multicastgroup::list::ListMulticastGroupCommand, MulticastGroup, MulticastGroupStatus,
 };
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
@@ -26,7 +26,7 @@ pub struct MulticastGroupDisplay {
     pub code: String,
     pub multicast_ip: Ipv4Addr,
     #[serde(serialize_with = "serializer::serialize_bandwidth_as_string")]
-    #[tabled(display = "doublezero_serviceability::types::bandwidth_to_string")]
+    #[tabled(display = "doublezero_program_common::types::parse_utils::bandwidth_to_string")]
     pub max_bandwidth: u64,
     #[serde(serialize_with = "serializer::serialize_pubkeylist_as_string")]
     #[tabled(display = "crate::util::display_count")]

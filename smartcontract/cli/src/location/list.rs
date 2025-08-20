@@ -1,6 +1,7 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_sdk::{commands::location::list::ListLocationCommand, serializer, LocationStatus};
+use doublezero_program_common::serializer;
+use doublezero_sdk::{commands::location::list::ListLocationCommand, LocationStatus};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;

@@ -1,7 +1,7 @@
-use doublezero_program_common::validate_account_code;
+use doublezero_program_common::{types::NetworkV4List, validate_account_code};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, pda::get_device_pda,
-    processors::device::create::DeviceCreateArgs, state::device::DeviceType, types::NetworkV4List,
+    processors::device::create::DeviceCreateArgs, state::device::DeviceType,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 use std::net::Ipv4Addr;

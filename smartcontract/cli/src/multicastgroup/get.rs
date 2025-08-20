@@ -1,11 +1,9 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
-use doublezero_sdk::{
-    commands::{
-        device::list::ListDeviceCommand, location::list::ListLocationCommand,
-        multicastgroup::get::GetMulticastGroupCommand, user::list::ListUserCommand,
-    },
-    *,
+use doublezero_program_common::types::parse_utils::bandwidth_to_string;
+use doublezero_sdk::commands::{
+    device::list::ListDeviceCommand, location::list::ListLocationCommand,
+    multicastgroup::get::GetMulticastGroupCommand, user::list::ListUserCommand,
 };
 use std::io::Write;
 use tabled::{builder::Builder, settings::Style};

@@ -40,6 +40,7 @@ mod tests {
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
         tests::utils::create_test_client,
     };
+    use doublezero_program_common::types::NetworkV4List;
     use doublezero_sdk::{
         commands::{
             device::{delete::DeleteDeviceCommand, get::GetDeviceCommand},
@@ -48,7 +49,6 @@ mod tests {
         get_device_pda, AccountType, Device, DeviceStatus, Exchange, ExchangeStatus,
         GetLocationCommand, Location, LocationStatus,
     };
-    use doublezero_serviceability::types::NetworkV4List;
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 

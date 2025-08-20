@@ -1,4 +1,4 @@
-use crate::types::{NetworkV4, NetworkV4List};
+use doublezero_program_common::types::{NetworkV4, NetworkV4List};
 use solana_program::pubkey::Pubkey;
 use std::mem::size_of;
 

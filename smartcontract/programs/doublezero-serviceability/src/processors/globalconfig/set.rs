@@ -1,15 +1,12 @@
-use std::fmt;
-
 use crate::{
     error::DoubleZeroError,
     globalstate::{globalconfig_write_with_realloc, globalstate_get},
     pda::*,
     seeds::{SEED_CONFIG, SEED_PREFIX},
     state::{accounttype::AccountType, globalconfig::GlobalConfig},
-    types::NetworkV4,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use doublezero_program_common::create_account::try_create_account;
+use doublezero_program_common::{create_account::try_create_account, types::NetworkV4};
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
@@ -18,6 +15,7 @@ use solana_program::{
     program_error::ProgramError,
     pubkey::Pubkey,
 };
+use std::fmt;
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct SetGlobalConfigArgs {

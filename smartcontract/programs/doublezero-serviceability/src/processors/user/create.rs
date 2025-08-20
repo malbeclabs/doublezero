@@ -9,10 +9,10 @@ use crate::{
         device::{Device, DeviceStatus},
         user::*,
     },
-    types::*,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
+use doublezero_program_common::types::NetworkV4;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::Clock,

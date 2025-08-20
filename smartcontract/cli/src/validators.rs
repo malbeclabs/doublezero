@@ -1,5 +1,4 @@
-use doublezero_program_common::validate_account_code;
-use doublezero_sdk::bandwidth_parse;
+use doublezero_program_common::{types::parse_utils::bandwidth_parse, validate_account_code};
 use regex::Regex;
 use solana_sdk::pubkey::Pubkey;
 use std::sync::LazyLock;

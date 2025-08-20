@@ -33,9 +33,4 @@ doublezero-config.workspace = true
 doublezero_sdk.workspace = true
 doublezero_cli.workspace = true
 doublezero-serviceability.workspace = true
-
-
-[dev-dependencies]
-
-# Dependencies from this workspace
-doublezero-serviceability.workspace = true
+doublezero-program-common.workspace = true

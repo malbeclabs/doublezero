@@ -1,7 +1,8 @@
 use crate::doublezerocommand::CliCommand;
-use ::serde::Serialize;
 use clap::Args;
-use doublezero_sdk::{serializer, GetGlobalStateCommand};
+use doublezero_program_common::serializer;
+use doublezero_sdk::GetGlobalStateCommand;
+use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 use tabled::{settings::Style, Table, Tabled};

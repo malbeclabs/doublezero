@@ -1,12 +1,15 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_program_common::{
+    serializer,
+    types::{parse_utils::bandwidth_to_string, NetworkV4},
+};
 use doublezero_sdk::{
-    bandwidth_to_string,
     commands::{
         contributor::list::ListContributorCommand, device::list::ListDeviceCommand,
         link::list::ListLinkCommand,
     },
-    serializer, Link, LinkLinkType, LinkStatus, NetworkV4,
+    Link, LinkLinkType, LinkStatus,
 };
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;

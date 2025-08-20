@@ -3,7 +3,8 @@ use crate::{
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
 };
 use clap::Args;
-use doublezero_sdk::{commands::globalconfig::set::SetGlobalConfigCommand, *};
+use doublezero_program_common::types::NetworkV4;
+use doublezero_sdk::commands::globalconfig::set::SetGlobalConfigCommand;
 use std::io::Write;
 
 #[derive(Args, Debug)]

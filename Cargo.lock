@@ -1530,6 +1530,7 @@ dependencies = [
  "console",
  "ctor",
  "doublezero-config",
+ "doublezero-program-common",
  "doublezero-serviceability",
  "doublezero_cli",
  "doublezero_sdk",
@@ -1563,6 +1564,7 @@ dependencies = [
  "chrono",
  "clap",
  "doublezero-config",
+ "doublezero-program-common",
  "doublezero-serviceability",
  "doublezero_cli",
  "doublezero_sdk",
@@ -1624,6 +1626,10 @@ dependencies = [
 name = "doublezero-program-common"
 version = "0.5.3"
 dependencies = [
+ "borsh 1.5.7",
+ "byteorder",
+ "ipnetwork",
+ "serde",
  "solana-program",
 ]
 
@@ -1644,7 +1650,6 @@ name = "doublezero-serviceability"
 version = "0.5.3"
 dependencies = [
  "borsh 1.5.7",
- "byteorder",
  "doublezero-program-common",
  "ipnetwork",
  "serde",

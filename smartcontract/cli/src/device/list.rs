@@ -1,11 +1,12 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_program_common::{serializer, types::NetworkV4List};
 use doublezero_sdk::{
     commands::{
         contributor::list::ListContributorCommand, device::list::ListDeviceCommand,
         exchange::list::ListExchangeCommand, location::list::ListLocationCommand,
     },
-    serializer, DeviceStatus, DeviceType, NetworkV4List,
+    DeviceStatus, DeviceType,
 };
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
@@ -47,7 +48,7 @@ pub struct DeviceDisplay {
     pub exchange_name: String,
     pub device_type: DeviceType,
     pub public_ip: Ipv4Addr,
-    #[tabled(display = "doublezero_serviceability::types::NetworkV4List::to_string")]
+    #[tabled(display = "doublezero_program_common::types::NetworkV4List::to_string")]
     #[serde(serialize_with = "serializer::serialize_networkv4list_as_string")]
     pub dz_prefixes: NetworkV4List,
     pub users: u16,

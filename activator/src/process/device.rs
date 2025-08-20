@@ -1,10 +1,11 @@
 use crate::{idallocator::IDAllocator, ipblockallocator::IPBlockAllocator};
+use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::{
     commands::device::{
         activate::ActivateDeviceCommand, closeaccount::CloseAccountDeviceCommand,
         update::UpdateDeviceCommand,
     },
-    Device, DeviceStatus, DoubleZeroClient, Interface, InterfaceType, LoopbackType, NetworkV4,
+    Device, DeviceStatus, DoubleZeroClient, Interface, InterfaceType, LoopbackType,
 };
 use log::{error, info};
 use solana_sdk::pubkey::Pubkey;

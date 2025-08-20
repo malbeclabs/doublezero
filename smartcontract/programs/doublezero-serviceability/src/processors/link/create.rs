@@ -4,11 +4,10 @@ use crate::{
     helper::*,
     pda::get_link_pda,
     state::{accounttype::AccountType, contributor::Contributor, device::Device, link::*},
-    types::NetworkV4,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
-use doublezero_program_common::validate_account_code;
+use doublezero_program_common::{types::NetworkV4, validate_account_code};
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{

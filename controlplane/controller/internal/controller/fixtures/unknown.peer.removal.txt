@@ -73,6 +73,7 @@ mpls ip
 default interface Tunnel500
 interface Tunnel500
    description USER-UCAST-500
+   ip access-group SEC-USER-500-IN in
    vrf vrf1
    mtu 9216
    ip address 169.254.0.0/31
@@ -86,6 +87,7 @@ interface Tunnel500
 default interface Tunnel501
 interface Tunnel501
    description USER-UCAST-501
+   ip access-group SEC-USER-501-IN in
    vrf vrf1
    mtu 9216
    ip address 169.254.0.2/31
@@ -99,6 +101,7 @@ interface Tunnel501
 default interface Tunnel502
 interface Tunnel502
    description USER-UCAST-502
+   ip access-group SEC-USER-502-IN in
    vrf vrf1
    mtu 9216
    ip address 169.254.0.4/31
@@ -199,6 +202,51 @@ ip prefix-list PL-USER-501 seq 10 permit 100.0.0.1/32
 !
 no ip prefix-list PL-USER-502
 ip prefix-list PL-USER-502 seq 10 permit 100.0.0.2/32
+!
+no ip access-list SEC-USER-500-IN
+ip access-list SEC-USER-500-IN
+  counters per-entry
+  !ICMP
+  permit icmp 169.254.0.1/32 any
+  !TRACEROUTE
+  permit udp 169.254.0.1/32 any range 33434 33534
+  !Allow TTL Exceeded for traceroute return packets
+  permit icmp 169.254.0.1/32 any time-exceeded
+  !PERMIT BGP
+  permit tcp 169.254.0.1/32 169.254.0.0/32 eq 179
+  !PERMIT USER DZ_IP as a source only
+  permit ip 100.0.0.0/32 any
+  deny ip any any
+!
+no ip access-list SEC-USER-501-IN
+ip access-list SEC-USER-501-IN
+  counters per-entry
+  !ICMP
+  permit icmp 169.254.0.3/32 any
+  !TRACEROUTE
+  permit udp 169.254.0.3/32 any range 33434 33534
+  !Allow TTL Exceeded for traceroute return packets
+  permit icmp 169.254.0.3/32 any time-exceeded
+  !PERMIT BGP
+  permit tcp 169.254.0.3/32 169.254.0.2/32 eq 179
+  !PERMIT USER DZ_IP as a source only
+  permit ip 100.0.0.1/32 any
+  deny ip any any
+!
+no ip access-list SEC-USER-502-IN
+ip access-list SEC-USER-502-IN
+  counters per-entry
+  !ICMP
+  permit icmp 169.254.0.5/32 any
+  !TRACEROUTE
+  permit udp 169.254.0.5/32 any range 33434 33534
+  !Allow TTL Exceeded for traceroute return packets
+  permit icmp 169.254.0.5/32 any time-exceeded
+  !PERMIT BGP
+  permit tcp 169.254.0.5/32 169.254.0.4/32 eq 179
+  !PERMIT USER DZ_IP as a source only
+  permit ip 100.0.0.2/32 any
+  deny ip any any
 !
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-500-OUT
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-501-OUT

@@ -297,10 +297,12 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		tunnel.UnderlayDstIP = net.IP(user.ClientIp[:])
 		tunnel.UnderlaySrcIP = cache.Devices[devicePubKey].PublicIP
 
+		// OverlaySrcIP is the device/link side of the tunnel.
 		var overlaySrc [4]byte
 		copy(overlaySrc[:], user.TunnelNet[:4])
 		tunnel.OverlaySrcIP = net.IP(overlaySrc[:])
 
+		// OverlayDstIP is the client side of the tunnel.
 		var overlayDst [4]byte
 		copy(overlayDst[:], user.TunnelNet[:4])
 		tunnel.OverlayDstIP = net.IP(overlayDst[:])

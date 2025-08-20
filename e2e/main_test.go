@@ -20,6 +20,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/google/go-cmp/cmp"
 	"github.com/lmittmann/tint"
+	controller "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
@@ -310,8 +311,10 @@ func (dn *TestDevnet) CreateMulticastGroupOnchain(t *testing.T, client *devnet.C
 func (dn *TestDevnet) WaitForAgentConfigMatchViaController(t *testing.T, deviceAgentPubkey string, config string) error {
 	deadline := time.Now().Add(30 * time.Second)
 	var diff string
+	var got *controller.ConfigResponse
 	for time.Now().Before(deadline) {
-		got, err := dn.Controller.GetAgentConfig(t.Context(), deviceAgentPubkey)
+		var err error
+		got, err = dn.Controller.GetAgentConfig(t.Context(), deviceAgentPubkey)
 		if err != nil {
 			return fmt.Errorf("error while fetching config: %w", err)
 		}
@@ -321,6 +324,7 @@ func (dn *TestDevnet) WaitForAgentConfigMatchViaController(t *testing.T, deviceA
 		}
 		time.Sleep(2 * time.Second)
 	}
+	fmt.Println(got.Config)
 	return fmt.Errorf("output mismatch: +(want), -(got): %s", diff)
 }
 

@@ -137,6 +137,9 @@ interface Tunnel{{ .Id }}
    pim ipv4 dr-priority 4294967295
    {{- else }}
    description USER-UCAST-{{ .Id }}
+   {{- if not $.NoHardware }}
+   ip access-group SEC-USER-{{ .Id }}-IN in
+   {{- end }}
    vrf vrf1
    {{- end }}
    mtu 9216
@@ -282,6 +285,25 @@ ip prefix-list PL-USER-{{ .Id }} seq 10 permit {{ .DzIp }}/32
 {{- end }}
 {{- end }}
 !
+{{- end }}
+{{- range .Device.Tunnels }}
+no ip access-list SEC-USER-{{ .Id }}-IN
+{{- if and .Allocated (not .IsMulticast) }}
+ip access-list SEC-USER-{{ .Id }}-IN
+  counters per-entry
+  !ICMP
+  permit icmp {{ .OverlayDstIP }}/32 any
+  !TRACEROUTE
+  permit udp {{ .OverlayDstIP }}/32 any range 33434 33534
+  !Allow TTL Exceeded for traceroute return packets
+  permit icmp {{ .OverlayDstIP }}/32 any time-exceeded
+  !PERMIT BGP
+  permit tcp {{ .OverlayDstIP }}/32 {{ .OverlaySrcIP }}/32 eq 179
+  !PERMIT USER DZ_IP as a source only
+  permit ip {{ .DzIp }}/32 any
+  deny ip any any
+!
+{{- end }}
 {{- end }}
 {{- range .Device.Tunnels }}
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-{{ .Id }}-OUT

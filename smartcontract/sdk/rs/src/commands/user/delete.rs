@@ -39,7 +39,7 @@ impl DeleteUserCommand {
         }
 
         let (accesspass_pk, _) =
-            get_accesspass_pda(&client.get_program_id(), user.client_ip, user.owner);
+            get_accesspass_pda(&client.get_program_id(), &user.client_ip, &user.owner);
         client.execute_transaction(
             DoubleZeroInstruction::DeleteUser(UserDeleteArgs {}),
             vec![

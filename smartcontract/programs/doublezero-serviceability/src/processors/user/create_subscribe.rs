@@ -85,7 +85,7 @@ pub fn process_create_subscribe_user(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let (accesspass_pda, _) = get_accesspass_pda(program_id, value.client_ip, *payer_account.key);
+    let (accesspass_pda, _) = get_accesspass_pda(program_id, &value.client_ip, payer_account.key);
     assert_eq!(
         accesspass_account.key, &accesspass_pda,
         "Invalid AccessPass PDA"

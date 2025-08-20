@@ -73,7 +73,7 @@ pub fn process_set_accesspass(
     );
 
     let (expected_pda_account, bump_seed) =
-        get_accesspass_pda(program_id, value.client_ip, value.payer);
+        get_accesspass_pda(program_id, &value.client_ip, &value.payer);
     assert_eq!(
         accesspass_account.key, &expected_pda_account,
         "Invalid AccessPass PubKey"

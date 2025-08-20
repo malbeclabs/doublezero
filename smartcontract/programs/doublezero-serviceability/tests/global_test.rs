@@ -525,7 +525,7 @@ async fn test_doublezero_program() {
     /***********************************************************************************************************************************/
     let user_ip = "100.0.0.1".parse().unwrap();
 
-    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, user_ip, payer.pubkey());
+    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &user_ip, &payer.pubkey());
 
     println!("Testing AccessPass User1 initialization...");
     execute_transaction(

@@ -70,7 +70,7 @@ mod tests {
         let payer = Pubkey::new_unique();
 
         let (_pda_pubkey, _bump_seed) =
-            get_accesspass_pda(&client.get_program_id(), client_ip, payer);
+            get_accesspass_pda(&client.get_program_id(), &client_ip, &payer);
         let signature = Signature::from([
             120, 138, 162, 185, 59, 209, 241, 157, 71, 157, 74, 131, 4, 87, 54, 28, 38, 180, 222,
             82, 64, 62, 61, 62, 22, 46, 17, 203, 187, 136, 62, 43, 11, 38, 235, 17, 239, 82, 240,

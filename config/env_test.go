@@ -63,7 +63,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 
 func TestConfig_NetworkConfigForEnv_RPCURLOverrideFromEnvVars(t *testing.T) {
 	os.Setenv("DZ_LEDGER_RPC_URL", "https://other-rpc-url.com")
-	os.Setenv("DZ_LEDGER_WS_RPC_URL", "wss://other-ws-rpc-url.com/whirligig")
+	os.Setenv("DZ_LEDGER_WS_RPC_URL", "wss://other-ws-rpc-url.com")
 	got, err := config.NetworkConfigForEnv(config.EnvMainnet)
 	require.NoError(t, err)
 	require.Equal(t, "https://other-rpc-url.com", got.LedgerPublicRPCURL)

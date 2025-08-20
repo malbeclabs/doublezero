@@ -39,7 +39,13 @@ impl fmt::Display for ExchangeStatus {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Exchange {
     pub account_type: AccountType, // 1
-    pub owner: Pubkey,             // 32
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
+    pub owner: Pubkey, // 32
     pub index: u128,               // 16
     pub bump_seed: u8,             // 1
     pub lat: f64,                  // 8
@@ -49,8 +55,20 @@ pub struct Exchange {
     pub code: String,              // 4 + len
     pub name: String,              // 4 + len
     pub reference_count: u32,      // 4
-    pub device1_pk: Pubkey,        // 32
-    pub device2_pk: Pubkey,        // 32
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
+    pub device1_pk: Pubkey, // 32
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
+    pub device2_pk: Pubkey, // 32
 }
 
 impl fmt::Display for Exchange {

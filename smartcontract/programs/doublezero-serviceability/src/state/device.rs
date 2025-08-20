@@ -248,24 +248,54 @@ impl From<&mut ByteReader<'_>> for Interface {
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Device {
-    pub account_type: AccountType,    // 1
-    pub owner: Pubkey,                // 32
-    pub index: u128,                  // 16
-    pub bump_seed: u8,                // 1
-    pub location_pk: Pubkey,          // 32
-    pub exchange_pk: Pubkey,          // 32
-    pub device_type: DeviceType,      // 1
-    pub public_ip: Ipv4Addr,          // 4
-    pub status: DeviceStatus,         // 1
-    pub code: String,                 // 4 + len
-    pub dz_prefixes: NetworkV4List,   // 4 + 5 * len
+    pub account_type: AccountType, // 1
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
+    pub owner: Pubkey, // 32
+    pub index: u128,               // 16
+    pub bump_seed: u8,             // 1
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
+    pub location_pk: Pubkey, // 32
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
+    pub exchange_pk: Pubkey, // 32
+    pub device_type: DeviceType,   // 1
+    pub public_ip: Ipv4Addr,       // 4
+    pub status: DeviceStatus,      // 1
+    pub code: String,              // 4 + len
+    pub dz_prefixes: NetworkV4List, // 4 + 5 * len
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
     pub metrics_publisher_pk: Pubkey, // 32
-    pub contributor_pk: Pubkey,       // 32
-    pub mgmt_vrf: String,             // 4 + len
-    pub interfaces: Vec<Interface>,   // 4 + (14 + len(name)) * len
-    pub reference_count: u32,         // 4
-    pub users_count: u16,             // 2
-    pub max_users: u16,               // 2
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
+    pub contributor_pk: Pubkey, // 32
+    pub mgmt_vrf: String,          // 4 + len
+    pub interfaces: Vec<Interface>, // 4 + (14 + len(name)) * len
+    pub reference_count: u32,      // 4
+    pub users_count: u16,          // 2
+    pub max_users: u16,            // 2
 }
 
 impl fmt::Display for Device {

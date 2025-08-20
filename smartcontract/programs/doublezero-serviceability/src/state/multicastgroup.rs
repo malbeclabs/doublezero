@@ -47,19 +47,55 @@ impl fmt::Display for MulticastGroupStatus {
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MulticastGroup {
-    pub account_type: AccountType,    // 1
-    pub owner: Pubkey,                // 32
-    pub index: u128,                  // 16
-    pub bump_seed: u8,                // 1
-    pub tenant_pk: Pubkey,            // 32
-    pub multicast_ip: Ipv4Addr,       // 4
-    pub max_bandwidth: u64,           // 8
+    pub account_type: AccountType, // 1
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
+    pub owner: Pubkey, // 32
+    pub index: u128,               // 16
+    pub bump_seed: u8,             // 1
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+        )
+    )]
+    pub tenant_pk: Pubkey, // 32
+    pub multicast_ip: Ipv4Addr,    // 4
+    pub max_bandwidth: u64,        // 8
     pub status: MulticastGroupStatus, // 1
-    pub code: String,                 // 4 + len
-    pub pub_allowlist: Vec<Pubkey>,   // 4 + 32 * len
-    pub sub_allowlist: Vec<Pubkey>,   // 4 + 32 * len
-    pub publishers: Vec<Pubkey>,      // 4 + 32 * len
-    pub subscribers: Vec<Pubkey>,     // 4 + 32 * len
+    pub code: String,              // 4 + len
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkeylist_as_string"
+        )
+    )]
+    pub pub_allowlist: Vec<Pubkey>, // 4 + 32 * len
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkeylist_as_string"
+        )
+    )]
+    pub sub_allowlist: Vec<Pubkey>, // 4 + 32 * len
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkeylist_as_string"
+        )
+    )]
+    pub publishers: Vec<Pubkey>, // 4 + 32 * len
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkeylist_as_string"
+        )
+    )]
+    pub subscribers: Vec<Pubkey>, // 4 + 32 * len
 }
 
 impl fmt::Display for MulticastGroup {

@@ -10,7 +10,7 @@ use solana_program::{
 };
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
-pub struct ExchangeSuspendArgs {}
+pub struct ExchangeSuspendArgs;
 
 impl fmt::Debug for ExchangeSuspendArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

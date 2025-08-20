@@ -25,7 +25,7 @@ impl Environment {
         let mut config = match self {
             Environment::Mainnet => NetworkConfig {
                 ledger_public_rpc_url: "https://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab".to_string(),
-                ledger_public_ws_rpc_url: "wss://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab/whirligig".to_string(),
+                ledger_public_ws_rpc_url: "wss://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab".to_string(),
                 serviceability_program_id: "ser2VaTMAcYTaauMrTSfSrxBaUDq7BLNs2xfUugTAGv".parse()?,
                 telemetry_program_id: "tE1exJ5VMyoC9ByZeSmgtNzJCFF74G9JAv338sJiqkC".parse()?,
                 internet_latency_collector_pk: "8xHn4r7oQuqNZ5cLYwL5YZcDy1JjDQcpVkyoA8Dw5uXH".parse()?,
@@ -100,7 +100,10 @@ mod tests {
             config.ledger_public_rpc_url,
             "https://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab"
         );
-        assert_eq!(config.ledger_public_ws_rpc_url, "wss://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab/whirligig");
+        assert_eq!(
+            config.ledger_public_ws_rpc_url,
+            "wss://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab"
+        );
         assert_eq!(
             config.serviceability_program_id.to_string(),
             "ser2VaTMAcYTaauMrTSfSrxBaUDq7BLNs2xfUugTAGv"
@@ -171,15 +174,12 @@ mod tests {
     #[serial]
     fn test_network_config_rpc_url_env_override() {
         std::env::set_var("DZ_LEDGER_RPC_URL", "https://other-rpc-url.com");
-        std::env::set_var(
-            "DZ_LEDGER_WS_RPC_URL",
-            "wss://other-ws-rpc-url.com/whirligig",
-        );
+        std::env::set_var("DZ_LEDGER_WS_RPC_URL", "wss://other-ws-rpc-url.com");
         let config = Environment::Mainnet.config().unwrap();
         assert_eq!(config.ledger_public_rpc_url, "https://other-rpc-url.com");
         assert_eq!(
             config.ledger_public_ws_rpc_url,
-            "wss://other-ws-rpc-url.com/whirligig"
+            "wss://other-ws-rpc-url.com"
         );
 
         // reset the values in the environment when complete

@@ -51,7 +51,8 @@ pub struct MulticastGroup {
     #[cfg_attr(
         feature = "serde",
         serde(
-            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
         )
     )]
     pub owner: Pubkey, // 32
@@ -60,7 +61,8 @@ pub struct MulticastGroup {
     #[cfg_attr(
         feature = "serde",
         serde(
-            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
         )
     )]
     pub tenant_pk: Pubkey, // 32
@@ -71,28 +73,32 @@ pub struct MulticastGroup {
     #[cfg_attr(
         feature = "serde",
         serde(
-            serialize_with = "doublezero_program_common::serializer::serialize_pubkeylist_as_string"
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkeylist_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkeylist_from_string"
         )
     )]
     pub pub_allowlist: Vec<Pubkey>, // 4 + 32 * len
     #[cfg_attr(
         feature = "serde",
         serde(
-            serialize_with = "doublezero_program_common::serializer::serialize_pubkeylist_as_string"
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkeylist_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkeylist_from_string"
         )
     )]
     pub sub_allowlist: Vec<Pubkey>, // 4 + 32 * len
     #[cfg_attr(
         feature = "serde",
         serde(
-            serialize_with = "doublezero_program_common::serializer::serialize_pubkeylist_as_string"
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkeylist_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkeylist_from_string"
         )
     )]
     pub publishers: Vec<Pubkey>, // 4 + 32 * len
     #[cfg_attr(
         feature = "serde",
         serde(
-            serialize_with = "doublezero_program_common::serializer::serialize_pubkeylist_as_string"
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkeylist_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkeylist_from_string"
         )
     )]
     pub subscribers: Vec<Pubkey>, // 4 + 32 * len

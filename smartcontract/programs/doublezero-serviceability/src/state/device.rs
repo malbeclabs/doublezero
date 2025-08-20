@@ -252,7 +252,8 @@ pub struct Device {
     #[cfg_attr(
         feature = "serde",
         serde(
-            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
         )
     )]
     pub owner: Pubkey, // 32
@@ -261,14 +262,16 @@ pub struct Device {
     #[cfg_attr(
         feature = "serde",
         serde(
-            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
         )
     )]
     pub location_pk: Pubkey, // 32
     #[cfg_attr(
         feature = "serde",
         serde(
-            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
         )
     )]
     pub exchange_pk: Pubkey, // 32
@@ -280,14 +283,16 @@ pub struct Device {
     #[cfg_attr(
         feature = "serde",
         serde(
-            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
         )
     )]
     pub metrics_publisher_pk: Pubkey, // 32
     #[cfg_attr(
         feature = "serde",
         serde(
-            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
         )
     )]
     pub contributor_pk: Pubkey, // 32

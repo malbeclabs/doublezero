@@ -71,10 +71,11 @@ where
         return Ok(Vec::new());
     }
 
-    s.split(", ")
+    s.split(',')
         .map(|pubkey_str| {
-            Pubkey::from_str(pubkey_str.trim()).map_err(|e| {
-                serde::de::Error::custom(format!("Invalid pubkey '{}': {}", pubkey_str, e))
+            let trimmed = pubkey_str.trim();
+            Pubkey::from_str(trimmed).map_err(|e| {
+                serde::de::Error::custom(format!("Invalid pubkey '{}': {}", trimmed, e))
             })
         })
         .collect()
@@ -231,13 +232,14 @@ mod tests {
 
     #[test]
     fn test_single_pubkey_in_list() {
-        let pubkey = Pubkey::new_unique();
+        let pk1 = Pubkey::new_unique();
+        let pk2 = Pubkey::new_unique();
         let original = TestPubkeyList {
-            pubkeys: vec![pubkey],
+            pubkeys: vec![pk1, pk2],
         };
 
         let json = serde_json::to_string(&original).unwrap();
-        let expected = format!("{{\"pubkeys\":\"{}\"}}", pubkey);
+        let expected = format!("{{\"pubkeys\":\"{}, {}\"}}", pk1, pk2);
         assert_eq!(json, expected);
 
         let deserialized: TestPubkeyList = serde_json::from_str(&json).unwrap();

@@ -73,7 +73,8 @@ pub struct Contributor {
     #[cfg_attr(
         feature = "serde",
         serde(
-            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
         )
     )]
     pub owner: Pubkey, // 32

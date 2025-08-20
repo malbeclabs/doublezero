@@ -1,8 +1,4 @@
-use crate::{
-    error::DoubleZeroError,
-    helper::*,
-    state::{accounttype::AccountType, user::*},
-};
+use crate::{error::DoubleZeroError, helper::*, state::user::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
 use solana_program::msg;
@@ -47,7 +43,6 @@ pub fn process_suspend_user(
     assert!(user_account.is_writable, "PDA Account is not writable");
 
     let mut user: User = User::try_from(user_account)?;
-    assert_eq!(user.account_type, AccountType::User, "Invalid Account Type");
 
     if user.owner != *payer_account.key {
         return Err(DoubleZeroError::NotAllowed.into());

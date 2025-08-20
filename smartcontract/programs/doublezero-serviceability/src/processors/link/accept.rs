@@ -3,7 +3,7 @@ use core::fmt;
 use crate::{
     error::DoubleZeroError,
     helper::*,
-    state::{accounttype::AccountType, device::Device, link::*},
+    state::{device::Device, link::*},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
@@ -60,14 +60,13 @@ pub fn process_accept_link(
     assert!(link_account.is_writable, "PDA Account is not writable");
 
     let mut link: Link = Link::try_from(link_account)?;
-    assert_eq!(link.account_type, AccountType::Link);
 
     if link.status != LinkStatus::Requested {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
     let side_z_dev = Device::try_from(side_z_account)?;
-    assert_eq!(side_z_dev.account_type, AccountType::Device);
+
     if side_z_dev.contributor_pk != *contributor_account.key {
         return Err(DoubleZeroError::NotAllowed.into());
     }

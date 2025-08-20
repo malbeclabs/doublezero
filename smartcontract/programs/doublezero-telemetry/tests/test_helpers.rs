@@ -16,13 +16,14 @@ use doublezero_serviceability::{
         device::{
             activate::DeviceActivateArgs, create::DeviceCreateArgs, suspend::DeviceSuspendArgs,
         },
-        exchange::create::ExchangeCreateArgs,
+        exchange::{create::ExchangeCreateArgs, suspend::ExchangeSuspendArgs},
         globalconfig::set::SetGlobalConfigArgs,
         link::{activate::LinkActivateArgs, create::LinkCreateArgs, suspend::LinkSuspendArgs},
         location::{create::LocationCreateArgs, suspend::LocationSuspendArgs},
     },
     state::{
         device::{CurrentInterfaceVersion, Device, DeviceType, Interface},
+        exchange::Exchange,
         globalstate::GlobalState,
         link::{Link, LinkLinkType},
         location::Location,
@@ -386,29 +387,27 @@ impl LedgerHelper {
         ))
     }
 
-    pub async fn seed_with_two_locations(
+    pub async fn seed_with_two_exchanges(
         &mut self,
     ) -> Result<(Keypair, Pubkey, Pubkey), BanksClientError> {
-        // create locations
-        let location1_pk = self
+        // create exchanges
+        let exchange1_pk = self
             .serviceability
-            .create_location(LocationCreateArgs {
-                code: "LOC1".to_string(),
-                name: "Test Location1".to_string(),
-                country: "US".to_string(),
+            .create_exchange(ExchangeCreateArgs {
+                code: "EX1".to_string(),
+                name: "Test Exchange1".to_string(),
                 loc_id: 1,
-                ..LocationCreateArgs::default()
+                ..ExchangeCreateArgs::default()
             })
             .await?;
 
-        let location2_pk = self
+        let exchange2_pk = self
             .serviceability
-            .create_location(LocationCreateArgs {
-                code: "LOC2".to_string(),
-                name: "Test Location2".to_string(),
-                country: "UK".to_string(),
+            .create_exchange(ExchangeCreateArgs {
+                code: "EX2".to_string(),
+                name: "Test Exchange2".to_string(),
                 loc_id: 2,
-                ..LocationCreateArgs::default()
+                ..ExchangeCreateArgs::default()
             })
             .await?;
 
@@ -417,7 +416,7 @@ impl LedgerHelper {
         let oracle_agent_pk = oracle_agent.pubkey();
         self.fund_account(&oracle_agent_pk, 10_000_000_000).await?;
 
-        Ok((oracle_agent, location1_pk, location2_pk))
+        Ok((oracle_agent, exchange1_pk, exchange2_pk))
     }
 }
 
@@ -970,6 +969,26 @@ impl ServiceabilityProgramHelper {
     pub async fn suspend_location(&mut self, pubkey: Pubkey) -> Result<(), BanksClientError> {
         self.execute_transaction(
             DoubleZeroInstruction::SuspendLocation(LocationSuspendArgs),
+            vec![
+                AccountMeta::new(pubkey, false),
+                AccountMeta::new(self.global_state_pubkey, false),
+            ],
+        )
+        .await
+    }
+
+    pub async fn get_exchange(&mut self, pubkey: Pubkey) -> Result<Exchange, BanksClientError> {
+        let banks_client = {
+            let context = self.context.lock().unwrap();
+            context.banks_client.clone()
+        };
+        let exchange = banks_client.get_account(pubkey).await.unwrap().unwrap();
+        Ok(Exchange::from(&exchange.data[..]))
+    }
+
+    pub async fn suspend_exchange(&mut self, pubkey: Pubkey) -> Result<(), BanksClientError> {
+        self.execute_transaction(
+            DoubleZeroInstruction::SuspendExchange(ExchangeSuspendArgs),
             vec![
                 AccountMeta::new(pubkey, false),
                 AccountMeta::new(self.global_state_pubkey, false),

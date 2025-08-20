@@ -33,7 +33,7 @@ impl From<&[u8]> for GlobalConfig {
     fn from(data: &[u8]) -> Self {
         let mut parser = ByteReader::new(data);
 
-        Self {
+        let out = Self {
             account_type: parser.read_enum(),
             owner: parser.read_pubkey(),
             bump_seed: parser.read_u8(),
@@ -42,7 +42,15 @@ impl From<&[u8]> for GlobalConfig {
             device_tunnel_block: parser.read_networkv4(),
             user_tunnel_block: parser.read_networkv4(),
             multicastgroup_block: parser.read_networkv4(),
-        }
+        };
+
+        assert_eq!(
+            out.account_type,
+            AccountType::Config,
+            "Invalid GlobalConfig Account Type"
+        );
+
+        out
     }
 }
 
@@ -66,7 +74,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_state_location_serialization() {
+    fn test_state_globalconfig_serialization() {
         let val = GlobalConfig {
             account_type: AccountType::Config,
             owner: Pubkey::new_unique(),

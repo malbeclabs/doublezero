@@ -30,7 +30,7 @@ async fn test_write_internet_latency_samples_success() {
 
     // Seed ledger with two locations and a funded sample collector oracle
     let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
-        ledger.seed_with_two_locations().await.unwrap();
+        ledger.seed_with_two_exchanges().await.unwrap();
 
     // Wait for a new blockhash before proceeding
     ledger.wait_for_new_blockhash().await.unwrap();
@@ -170,7 +170,7 @@ async fn test_write_internet_latency_samples_fail_unauthorized_agent() {
 
     // Set up a valid latency samples account with a specific oracle agent
     let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
-        ledger.seed_with_two_locations().await.unwrap();
+        ledger.seed_with_two_exchanges().await.unwrap();
 
     ledger.wait_for_new_blockhash().await.unwrap();
 
@@ -220,7 +220,7 @@ async fn test_write_internet_latency_samples_fail_account_full() {
 
     // Set up latency samples account with a funded oracle agent
     let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
-        ledger.seed_with_two_locations().await.unwrap();
+        ledger.seed_with_two_exchanges().await.unwrap();
 
     ledger.wait_for_new_blockhash().await.unwrap();
 
@@ -279,7 +279,7 @@ async fn test_write_internet_latency_samples_fail_agent_not_signer() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 
     let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
-        ledger.seed_with_two_locations().await.unwrap();
+        ledger.seed_with_two_exchanges().await.unwrap();
     ledger.wait_for_new_blockhash().await.unwrap();
 
     let provider_name = "RIPE Atlas".to_string();
@@ -349,7 +349,7 @@ async fn test_write_internet_latency_samples_fail_on_empty_samples() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 
     let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
-        ledger.seed_with_two_locations().await.unwrap();
+        ledger.seed_with_two_exchanges().await.unwrap();
     ledger.wait_for_new_blockhash().await.unwrap();
 
     let provider_name = "RIPE Atlas".to_string();
@@ -451,7 +451,7 @@ async fn test_write_internet_latency_samples_next_sample_index_correct() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 
     let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
-        ledger.seed_with_two_locations().await.unwrap();
+        ledger.seed_with_two_exchanges().await.unwrap();
     ledger.wait_for_new_blockhash().await.unwrap();
 
     let provider_name = "RIPE Atlas".to_string();
@@ -504,7 +504,7 @@ async fn test_write_internet_latency_samples_fail_wrong_agent_but_valid_signer()
 
     // Seed the latency samples with a valid oracle agent
     let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
-        ledger.seed_with_two_locations().await.unwrap();
+        ledger.seed_with_two_exchanges().await.unwrap();
 
     let provider_name = "RIPE Atlas".to_string();
 
@@ -554,7 +554,7 @@ async fn test_write_internet_latency_samples_to_max_samples() {
     let mut ledger = LedgerHelper::new().await.unwrap();
 
     let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
-        ledger.seed_with_two_locations().await.unwrap();
+        ledger.seed_with_two_exchanges().await.unwrap();
     ledger.wait_for_new_blockhash().await.unwrap();
 
     let provider_name = "RIPE Atlas".to_string();
@@ -626,7 +626,7 @@ async fn test_write_internet_latency_samples_fail_samples_batch_too_large() {
 
     // Seed the ledger with two locations and a valid oracle agent
     let (oracle_agent, origin_exchange_pk, target_exchange_pk) =
-        ledger.seed_with_two_locations().await.unwrap();
+        ledger.seed_with_two_exchanges().await.unwrap();
 
     // Wait for a new blockhash before moving on
     ledger.wait_for_new_blockhash().await.unwrap();

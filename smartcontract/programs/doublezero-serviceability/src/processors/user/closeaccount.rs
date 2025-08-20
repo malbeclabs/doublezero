@@ -2,7 +2,7 @@ use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get,
     helper::*,
-    state::{accounttype::AccountType, device::Device, user::*},
+    state::{device::Device, user::*},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
@@ -64,7 +64,6 @@ pub fn process_closeaccount_user(
     }
 
     let user = User::try_from(user_account)?;
-    assert_eq!(user.account_type, AccountType::User, "Invalid Account Type");
 
     if user.owner != *owner_account.key {
         return Err(ProgramError::InvalidAccountData);

@@ -44,7 +44,7 @@ pub fn process_create_multicastgroup(
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
-    let pda_account = next_account_info(accounts_iter)?;
+    let mgroup_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -67,11 +67,11 @@ pub fn process_create_multicastgroup(
         "Invalid System Program Account Owner"
     );
     // Check if the account is writable
-    assert!(pda_account.is_writable, "PDA Account is not writable");
+    assert!(mgroup_account.is_writable, "PDA Account is not writable");
     // get the PDA pubkey and bump seed for the account multicastgroup & check if it matches the account
     let (expected_pda_account, bump_seed) = get_multicastgroup_pda(program_id, value.index);
     assert_eq!(
-        pda_account.key, &expected_pda_account,
+        mgroup_account.key, &expected_pda_account,
         "Invalid MulticastGroup Pubkey"
     );
     assert_eq!(
@@ -85,7 +85,7 @@ pub fn process_create_multicastgroup(
     }
 
     // Check if the account is already initialized
-    if !pda_account.data.borrow().is_empty() {
+    if !mgroup_account.data.borrow().is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);
     }
 
@@ -106,7 +106,7 @@ pub fn process_create_multicastgroup(
     };
 
     account_create(
-        pda_account,
+        mgroup_account,
         &multicastgroup,
         payer_account,
         system_program,

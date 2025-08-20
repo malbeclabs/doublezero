@@ -46,7 +46,7 @@ impl From<&[u8]> for ProgramConfig {
     fn from(data: &[u8]) -> Self {
         let mut parser = ByteReader::new(data);
 
-        Self {
+        let out = Self {
             account_type: parser.read_enum(),
             bump_seed: parser.read_u8(),
             version: ProgramVersion {
@@ -54,7 +54,15 @@ impl From<&[u8]> for ProgramConfig {
                 minor: parser.read_u32(),
                 patch: parser.read_u32(),
             },
-        }
+        };
+
+        assert_eq!(
+            out.account_type,
+            AccountType::ProgramConfig,
+            "Invalid ProgramConfig Account Type"
+        );
+
+        out
     }
 }
 
@@ -72,9 +80,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_state_location_serialization() {
+    fn test_state_programconfig_serialization() {
         let val = ProgramConfig {
-            account_type: AccountType::GlobalState,
+            account_type: AccountType::ProgramConfig,
             bump_seed: 1,
             version: ProgramVersion {
                 major: 1,

@@ -2,7 +2,7 @@ use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get,
     helper::*,
-    state::{accounttype::AccountType, contributor::Contributor, link::*},
+    state::{contributor::Contributor, link::*},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
@@ -47,10 +47,8 @@ pub fn process_resume_link(
     );
 
     let globalstate = globalstate_get(globalstate_account)?;
-    assert_eq!(globalstate.account_type, AccountType::GlobalState);
-
     let contributor = Contributor::try_from(contributor_account)?;
-    assert_eq!(contributor.account_type, AccountType::Contributor);
+
     if contributor.owner != *payer_account.key
         && !globalstate.foundation_allowlist.contains(payer_account.key)
     {
@@ -58,7 +56,6 @@ pub fn process_resume_link(
     }
 
     let mut link: Link = Link::try_from(link_account)?;
-    assert_eq!(link.account_type, AccountType::Link, "Invalid Account Type");
 
     if link.status != LinkStatus::Suspended {
         return Err(DoubleZeroError::InvalidStatus.into());

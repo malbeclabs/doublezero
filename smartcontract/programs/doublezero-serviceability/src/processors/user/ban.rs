@@ -1,9 +1,4 @@
-use crate::{
-    error::DoubleZeroError,
-    globalstate::globalstate_get,
-    helper::*,
-    state::{accounttype::AccountType, user::*},
-};
+use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::user::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
 #[cfg(test)]
@@ -58,8 +53,6 @@ pub fn process_ban_user(
     }
 
     let mut user: User = User::try_from(user_account)?;
-    assert_eq!(user.account_type, AccountType::User, "Invalid Account Type");
-
     user.status = UserStatus::Banned;
 
     account_write(user_account, &user, payer_account, system_program)?;

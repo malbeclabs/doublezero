@@ -2,10 +2,7 @@ use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get,
     helper::*,
-    state::{
-        accounttype::AccountType, contributor::Contributor, device::*, exchange::Exchange,
-        location::Location,
-    },
+    state::{contributor::Contributor, device::*, exchange::Exchange, location::Location},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt;
@@ -71,11 +68,7 @@ pub fn process_closeaccount_device(
     }
 
     let device = Device::try_from(device_account)?;
-    assert_eq!(
-        device.account_type,
-        AccountType::Device,
-        "Invalid Device Account Type"
-    );
+
     if device.status != DeviceStatus::Deleting {
         #[cfg(test)]
         msg!("{:?}", device);

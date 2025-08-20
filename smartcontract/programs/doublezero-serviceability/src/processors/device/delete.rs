@@ -63,7 +63,7 @@ pub fn process_delete_device(
     assert_eq!(globalstate.account_type, AccountType::GlobalState);
 
     let contributor = Contributor::try_from(contributor_account)?;
-    assert_eq!(contributor.account_type, AccountType::Contributor);
+
     if contributor.owner != *payer_account.key
         && !globalstate.foundation_allowlist.contains(payer_account.key)
     {
@@ -71,11 +71,6 @@ pub fn process_delete_device(
     }
 
     let mut device: Device = Device::try_from(device_account)?;
-    assert_eq!(
-        device.account_type,
-        AccountType::Device,
-        "Invalid Device Account Type"
-    );
 
     if device.reference_count > 0 {
         return Err(DoubleZeroError::ReferenceCountNotZero.into());

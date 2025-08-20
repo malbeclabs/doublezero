@@ -56,7 +56,7 @@ impl From<&[u8]> for GlobalState {
     fn from(data: &[u8]) -> Self {
         let mut parser = ByteReader::new(data);
 
-        Self {
+        let out = Self {
             account_type: parser.read_enum(),
             bump_seed: parser.read_u8(),
             account_index: parser.read_u128(),
@@ -65,7 +65,15 @@ impl From<&[u8]> for GlobalState {
             user_allowlist: parser.read_pubkey_vec(),
             activator_authority_pk: parser.read_pubkey(),
             sentinel_authority_pk: parser.read_pubkey(),
-        }
+        };
+
+        assert_eq!(
+            out.account_type,
+            AccountType::GlobalState,
+            "Invalid GlobalState Account Type"
+        );
+
+        out
     }
 }
 
@@ -83,7 +91,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_state_location_serialization() {
+    fn test_state_globalstate_serialization() {
         let val = GlobalState {
             account_type: AccountType::GlobalState,
             bump_seed: 1,

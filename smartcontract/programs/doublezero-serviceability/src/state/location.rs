@@ -102,7 +102,7 @@ impl From<&[u8]> for Location {
     fn from(data: &[u8]) -> Self {
         let mut parser = ByteReader::new(data);
 
-        Self {
+        let out = Self {
             account_type: parser.read_enum(),
             owner: parser.read_pubkey(),
             index: parser.read_u128(),
@@ -115,7 +115,15 @@ impl From<&[u8]> for Location {
             name: parser.read_string(),
             country: parser.read_string(),
             reference_count: parser.read_u32(),
-        }
+        };
+
+        assert_eq!(
+            out.account_type,
+            AccountType::Location,
+            "Invalid Location Account Type"
+        );
+
+        out
     }
 }
 

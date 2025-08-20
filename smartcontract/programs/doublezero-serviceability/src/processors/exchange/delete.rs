@@ -1,10 +1,7 @@
 use core::fmt;
 
 use crate::{
-    error::DoubleZeroError,
-    globalstate::globalstate_get,
-    helper::*,
-    state::{accounttype::AccountType, exchange::Exchange},
+    error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::exchange::Exchange,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
@@ -62,11 +59,7 @@ pub fn process_delete_exchange(
     }
 
     let exchange = Exchange::try_from(exchange_account)?;
-    assert_eq!(
-        exchange.account_type,
-        AccountType::Exchange,
-        "Invalid Account Type"
-    );
+
     if exchange.reference_count > 0 {
         return Err(DoubleZeroError::ReferenceCountNotZero.into());
     }

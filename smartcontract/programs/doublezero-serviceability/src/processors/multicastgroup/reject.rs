@@ -1,8 +1,5 @@
 use crate::{
-    error::DoubleZeroError,
-    globalstate::globalstate_get,
-    helper::*,
-    state::{accounttype::AccountType, multicastgroup::*},
+    error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::multicastgroup::*,
 };
 use std::fmt;
 
@@ -65,11 +62,7 @@ pub fn process_reject_multicastgroup(
     }
 
     let mut multicastgroup: MulticastGroup = MulticastGroup::try_from(multicastgroup_account)?;
-    assert_eq!(
-        multicastgroup.account_type,
-        AccountType::MulticastGroup,
-        "Invalid Account Type"
-    );
+
     if multicastgroup.status != MulticastGroupStatus::Pending {
         return Err(DoubleZeroError::InvalidStatus.into());
     }

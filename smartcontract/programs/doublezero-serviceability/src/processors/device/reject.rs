@@ -1,11 +1,6 @@
 use core::fmt;
 
-use crate::{
-    error::DoubleZeroError,
-    globalstate::globalstate_get,
-    helper::*,
-    state::{accounttype::AccountType, device::*},
-};
+use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::device::*};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
@@ -63,11 +58,6 @@ pub fn process_reject_device(
     }
 
     let mut device: Device = Device::try_from(device_account)?;
-    assert_eq!(
-        device.account_type,
-        AccountType::Device,
-        "Invalid Device Account Type"
-    );
 
     if device.status != DeviceStatus::Pending {
         return Err(DoubleZeroError::InvalidStatus.into());

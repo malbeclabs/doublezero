@@ -64,7 +64,7 @@ pub fn process_suspend_device(
     assert_eq!(globalstate.account_type, AccountType::GlobalState);
 
     let contributor = Contributor::try_from(contributor_account)?;
-    assert_eq!(contributor.account_type, AccountType::Contributor);
+
     if contributor.owner != *payer_account.key
         && !globalstate.foundation_allowlist.contains(payer_account.key)
     {
@@ -72,12 +72,6 @@ pub fn process_suspend_device(
     }
 
     let mut device: Device = Device::try_from(device_account)?;
-    assert_eq!(
-        device.account_type,
-        AccountType::Device,
-        "Invalid Device Account Type"
-    );
-
     device.status = DeviceStatus::Suspended;
 
     account_write(device_account, &device, payer_account, system_program)?;

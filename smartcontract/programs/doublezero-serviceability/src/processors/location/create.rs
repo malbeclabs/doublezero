@@ -54,7 +54,7 @@ pub fn process_create_location(
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
-    let pda_account = next_account_info(accounts_iter)?;
+    let location_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -77,7 +77,7 @@ pub fn process_create_location(
         "Invalid System Program Account Owner"
     );
     // Check if the account is writable
-    assert!(pda_account.is_writable, "PDA Account is not writable");
+    assert!(location_account.is_writable, "PDA Account is not writable");
 
     // Parse the global state account & check if the payer is in the allowlist
     let globalstate = globalstate_get_next(globalstate_account)?;
@@ -87,12 +87,12 @@ pub fn process_create_location(
     // get the PDA pubkey and bump seed for the account location & check if it matches the account
     let (expected_pda_account, bump_seed) = get_location_pda(program_id, globalstate.account_index);
     assert_eq!(
-        pda_account.key, &expected_pda_account,
+        location_account.key, &expected_pda_account,
         "Invalid Location PubKey"
     );
 
     // Check if the account is already initialized
-    if !pda_account.data.borrow().is_empty() {
+    if !location_account.data.borrow().is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);
     }
 
@@ -112,7 +112,7 @@ pub fn process_create_location(
     };
 
     account_create(
-        pda_account,
+        location_account,
         &location,
         payer_account,
         system_program,

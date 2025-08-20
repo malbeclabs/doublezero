@@ -4,10 +4,7 @@ use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get,
     helper::account_write,
-    state::{
-        accounttype::AccountType,
-        exchange::{Exchange, ExchangeStatus},
-    },
+    state::exchange::{Exchange, ExchangeStatus},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
@@ -65,11 +62,7 @@ pub fn process_resume_exchange(
     }
 
     let mut exchange: Exchange = Exchange::try_from(exchange_account)?;
-    assert_eq!(
-        exchange.account_type,
-        AccountType::Exchange,
-        "Invalid Account Type"
-    );
+
     if exchange.owner != *payer_account.key {
         return Err(solana_program::program_error::ProgramError::Custom(0));
     }

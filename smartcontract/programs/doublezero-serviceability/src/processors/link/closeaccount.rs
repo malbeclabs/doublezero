@@ -2,7 +2,7 @@ use crate::{
     error::DoubleZeroError,
     globalstate::globalstate_get,
     helper::*,
-    state::{accounttype::AccountType, contributor::Contributor, device::Device, link::*},
+    state::{contributor::Contributor, device::Device, link::*},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
@@ -75,14 +75,9 @@ pub fn process_closeaccount_link(
     }
 
     let mut contributor = Contributor::try_from(contributor_account)?;
-    assert_eq!(contributor.account_type, AccountType::Contributor);
     let mut side_a_dev = Device::try_from(side_a_account)?;
-    assert_eq!(side_a_dev.account_type, AccountType::Device);
     let mut side_z_dev = Device::try_from(side_z_account)?;
-    assert_eq!(side_z_dev.account_type, AccountType::Device);
-
     let link: Link = Link::try_from(link_account)?;
-    assert_eq!(link.account_type, AccountType::Link, "Invalid Account Type");
 
     if link.owner != *owner_account.key {
         return Err(ProgramError::InvalidAccountData);

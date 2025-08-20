@@ -1,11 +1,6 @@
 use core::fmt;
 
-use crate::{
-    error::DoubleZeroError,
-    globalstate::globalstate_get,
-    helper::*,
-    state::{accounttype::AccountType, location::*},
-};
+use crate::{error::DoubleZeroError, globalstate::globalstate_get, helper::*, state::location::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
 use solana_program::msg;
@@ -62,11 +57,6 @@ pub fn process_suspend_location(
     }
 
     let mut location: Location = Location::try_from(location_account)?;
-    assert_eq!(
-        location.account_type,
-        AccountType::Location,
-        "Invalid Account Type"
-    );
 
     location.status = LocationStatus::Suspended;
 

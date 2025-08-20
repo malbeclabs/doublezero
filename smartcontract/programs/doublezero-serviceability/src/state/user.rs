@@ -243,7 +243,7 @@ impl From<&[u8]> for User {
     fn from(data: &[u8]) -> Self {
         let mut parser = ByteReader::new(data);
 
-        Self {
+        let out = Self {
             account_type: parser.read_enum(),
             owner: parser.read_pubkey(),
             index: parser.read_u128(),
@@ -260,7 +260,15 @@ impl From<&[u8]> for User {
             publishers: parser.read_pubkey_vec(),
             subscribers: parser.read_pubkey_vec(),
             validator_pubkey: parser.read_pubkey(),
-        }
+        };
+
+        assert_eq!(
+            out.account_type,
+            AccountType::User,
+            "Invalid User Account Type"
+        );
+
+        out
     }
 }
 

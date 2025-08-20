@@ -50,7 +50,11 @@ impl CreateSubscribeUserCommand {
             eyre::bail!("Subscriber not allowed");
         }
 
-        let (accesspass_pk, _) = get_accesspass_pda(&client.get_program_id(), self.client_ip);
+        let (accesspass_pk, _) = get_accesspass_pda(
+            &client.get_program_id(),
+            &self.client_ip,
+            &client.get_payer(),
+        );
         let (pda_pubkey, _) = get_user_pda(&client.get_program_id(), globalstate.account_index + 1);
         client
             .execute_transaction(

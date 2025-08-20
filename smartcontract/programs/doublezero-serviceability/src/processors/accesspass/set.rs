@@ -72,7 +72,8 @@ pub fn process_set_accesspass(
         "PDA Account is not writable"
     );
 
-    let (expected_pda_account, bump_seed) = get_accesspass_pda(program_id, value.client_ip);
+    let (expected_pda_account, bump_seed) =
+        get_accesspass_pda(program_id, &value.client_ip, &value.payer);
     assert_eq!(
         accesspass_account.key, &expected_pda_account,
         "Invalid AccessPass PubKey"
@@ -108,6 +109,7 @@ pub fn process_set_accesspass(
             client_ip: value.client_ip,
             payer: value.payer,
             last_access_epoch: value.last_access_epoch,
+            connection_count: 0,
             status: AccessPassStatus::Requested,
         };
 
@@ -122,6 +124,7 @@ pub fn process_set_accesspass(
                 SEED_PREFIX,
                 SEED_ACCESS_PASS,
                 &value.client_ip.octets(),
+                &value.payer.to_bytes(),
                 &[bump_seed],
             ],
         )?;

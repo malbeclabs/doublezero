@@ -238,7 +238,7 @@ async fn test_user() {
     println!("🟢 6. Testing Access Pass creation...");
 
     let user_ip = [10, 0, 0, 1].into();
-    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, user_ip);
+    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &user_ip, &payer.pubkey());
 
     println!("Testing AccessPass User1 initialization...");
     execute_transaction(

@@ -73,7 +73,12 @@ pub fn process_delete_user(
 
     if !accesspass_account.data_is_empty() {
         let mut accesspass = AccessPass::try_from(accesspass_account)?;
-        accesspass.status = AccessPassStatus::Disconnected;
+        accesspass.connection_count = accesspass.connection_count.saturating_sub(1);
+        accesspass.status = if accesspass.connection_count > 0 {
+            AccessPassStatus::Connected
+        } else {
+            AccessPassStatus::Disconnected
+        };
         accesspass.try_serialize(accesspass_account)?;
     }
 

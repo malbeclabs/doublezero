@@ -81,7 +81,7 @@ pub fn process_create_user(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let (accesspass_pda, _) = get_accesspass_pda(program_id, value.client_ip);
+    let (accesspass_pda, _) = get_accesspass_pda(program_id, &value.client_ip, payer_account.key);
     assert_eq!(
         accesspass_account.key, &accesspass_pda,
         "Invalid AccessPass PDA"
@@ -117,6 +117,7 @@ pub fn process_create_user(
         return Err(DoubleZeroError::Unauthorized.into());
     }
 
+    accesspass.connection_count += 1;
     accesspass.status = AccessPassStatus::Connected;
 
     let mut device = Device::try_from(device_account)?;

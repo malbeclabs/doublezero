@@ -98,7 +98,7 @@ pub struct AccessPass {
             serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string"
         )
     )]
-    pub payer: Pubkey, // 32
+    pub user_payer: Pubkey, // 32
     pub last_access_epoch: u64,    // 8 / 0-Rejected / u64::MAX unlimited
     pub connection_count: u16,     // 2
     pub status: AccessPassStatus,  // 1
@@ -108,8 +108,8 @@ impl fmt::Display for AccessPass {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, ip: {}, bump_seed: {}, accesspass_type: {}, payer: {}, last_access_epoch: {}, status: {}",
-            self.account_type, self.owner, self.client_ip, self.bump_seed, self.accesspass_type, self.payer, self.last_access_epoch, self.status
+            "account_type: {}, owner: {}, ip: {}, bump_seed: {}, accesspass_type: {}, user_payer: {}, last_access_epoch: {}, status: {}",
+            self.account_type, self.owner, self.client_ip, self.bump_seed, self.accesspass_type, self.user_payer, self.last_access_epoch, self.status
         )
     }
 }
@@ -142,7 +142,7 @@ impl From<&[u8]> for AccessPass {
             bump_seed: parser.read_u8(),
             accesspass_type: parser.read_enum(),
             client_ip: parser.read_ipv4(),
-            payer: parser.read_pubkey(),
+            user_payer: parser.read_pubkey(),
             last_access_epoch: parser.read_u64(),
             connection_count: parser.read_u16(),
             status: parser.read_enum(),
@@ -188,7 +188,7 @@ mod tests {
             bump_seed: 1,
             accesspass_type: AccessPassType::Prepaid,
             client_ip: [1, 2, 3, 4].into(),
-            payer: Pubkey::new_unique(),
+            user_payer: Pubkey::new_unique(),
             last_access_epoch: 0,
             connection_count: 0,
             status: AccessPassStatus::Connected,
@@ -202,7 +202,7 @@ mod tests {
         assert_eq!(val.bump_seed, val2.bump_seed);
         assert_eq!(val.accesspass_type, val2.accesspass_type);
         assert_eq!(val.client_ip, val2.client_ip);
-        assert_eq!(val.payer, val2.payer);
+        assert_eq!(val.user_payer, val2.user_payer);
         assert_eq!(val.last_access_epoch, val2.last_access_epoch);
         assert_eq!(val.connection_count, val2.connection_count);
         assert_eq!(val.status, val2.status);

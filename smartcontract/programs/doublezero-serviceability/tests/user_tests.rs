@@ -248,7 +248,7 @@ async fn test_user() {
         DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
             accesspass_type: AccessPassType::Prepaid,
             client_ip: user_ip,
-            payer: payer.pubkey(),
+            user_payer: payer.pubkey(),
             last_access_epoch: 9999,
         }),
         vec![

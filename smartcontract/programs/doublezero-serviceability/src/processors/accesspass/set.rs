@@ -26,7 +26,7 @@ use solana_program::{
 pub struct SetAccessPassArgs {
     pub accesspass_type: AccessPassType, // 1
     pub client_ip: Ipv4Addr,             // 4
-    pub payer: Pubkey,                   // 32
+    pub user_payer: Pubkey,              // 32
     pub last_access_epoch: u64,          // 8
 }
 
@@ -34,8 +34,8 @@ impl fmt::Debug for SetAccessPassArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "accesspass_type: {}, ip: {}, payer: {}, last_access_epoch: {}",
-            self.accesspass_type, self.client_ip, self.payer, self.last_access_epoch
+            "accesspass_type: {}, ip: {}, user_payer: {}, last_access_epoch: {}",
+            self.accesspass_type, self.client_ip, self.user_payer, self.last_access_epoch
         )
     }
 }
@@ -73,7 +73,7 @@ pub fn process_set_accesspass(
     );
 
     let (expected_pda_account, bump_seed) =
-        get_accesspass_pda(program_id, &value.client_ip, &value.payer);
+        get_accesspass_pda(program_id, &value.client_ip, &value.user_payer);
     assert_eq!(
         accesspass_account.key, &expected_pda_account,
         "Invalid AccessPass PubKey"
@@ -106,7 +106,7 @@ pub fn process_set_accesspass(
             bump_seed,
             accesspass_type: value.accesspass_type,
             client_ip: value.client_ip,
-            payer: value.payer,
+            user_payer: value.user_payer,
             last_access_epoch: value.last_access_epoch,
             connection_count: 0,
             status: AccessPassStatus::Requested,
@@ -124,7 +124,7 @@ pub fn process_set_accesspass(
                 SEED_PREFIX,
                 SEED_ACCESS_PASS,
                 &value.client_ip.octets(),
-                &value.payer.to_bytes(),
+                &value.user_payer.to_bytes(),
                 &[bump_seed],
             ],
         )?;
@@ -140,7 +140,6 @@ pub fn process_set_accesspass(
         );
 
         let mut accesspass = AccessPass::try_from(accesspass_account)?;
-
         accesspass.accesspass_type = value.accesspass_type;
         accesspass.last_access_epoch = value.last_access_epoch;
         accesspass.try_serialize(accesspass_account)?;

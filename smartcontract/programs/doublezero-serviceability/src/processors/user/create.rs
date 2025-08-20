@@ -94,8 +94,8 @@ pub fn process_create_user(
     let mut accesspass = AccessPass::try_from(accesspass_account)?;
     if accesspass.payer != *payer_account.key || accesspass.client_ip != value.client_ip {
         msg!(
-            "Invalid payer or client_ip accesspass.{{owner: {} client_ip: {}}} = payer: {} client_ip: {}",
-            accesspass.owner,
+            "Invalid payer or client_ip accesspass.{{payer: {} client_ip: {}}} = {{ payer: {} client_ip: {} }}",
+            accesspass.payer,
             payer_account.key,
             accesspass.client_ip,
             value.client_ip

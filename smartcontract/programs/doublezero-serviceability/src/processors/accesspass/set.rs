@@ -103,7 +103,6 @@ pub fn process_set_accesspass(
     if accesspass_account.data_is_empty() {
         let accesspass = AccessPass {
             account_type: AccountType::AccessPass,
-            owner: value.payer,
             bump_seed,
             accesspass_type: value.accesspass_type,
             client_ip: value.client_ip,
@@ -111,6 +110,7 @@ pub fn process_set_accesspass(
             last_access_epoch: value.last_access_epoch,
             connection_count: 0,
             status: AccessPassStatus::Requested,
+            owner: *payer_account.key,
         };
 
         try_create_account(

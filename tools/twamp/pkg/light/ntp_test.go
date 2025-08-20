@@ -52,7 +52,7 @@ func TestTWAMP_NTPTimestamp(t *testing.T) {
 		{
 			name:      "Max nanoseconds (999,999,999)",
 			inputTime: time.Date(2023, 1, 1, 0, 0, 0, 999999999, time.UTC),
-			// Expected frac: (999999999 * 2^32) / 1e9 = 4294967291.705032704 -> 4294967291
+			// Expected frac: (MAX9999 * 2^32) / 1e9 = 4294967291.705032704 -> 4294967291
 			expectedSec:  uint32(time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC).Unix()) + ntpEpochOffset,
 			expectedFrac: uint32((uint64(999999999) * (1 << 32)) / 1e9),
 			deltaFrac:    0, // No delta needed as it's exact calculation

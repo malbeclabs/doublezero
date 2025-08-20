@@ -23,6 +23,7 @@ mod process;
 mod states;
 mod tenants;
 pub mod tests;
+mod user_monitor;
 mod utils;
 
 #[derive(Parser, Debug)]
@@ -104,10 +105,10 @@ async fn main() -> eyre::Result<()> {
         .ok_or_else(|| eyre::eyre!("Keypair is required"))?;
 
     let mut activator = activator::Activator::new(
-        Some(rpc_url),
-        Some(ws_url),
-        Some(program_id),
-        Some(keypair),
+        Some(rpc_url.clone()),
+        Some(ws_url.clone()),
+        Some(program_id.clone()),
+        Some(keypair.clone()),
         metrics_service,
     )
     .await?;
@@ -115,6 +116,7 @@ async fn main() -> eyre::Result<()> {
     info!("Activator started");
     let shutdown = Arc::new(AtomicBool::new(false));
     let shutdown_clone = shutdown.clone();
+    let shutdown_clone2 = shutdown.clone();
 
     activator.init().await?;
 
@@ -123,7 +125,21 @@ async fn main() -> eyre::Result<()> {
     // run on the tokio blocking thread pool so we can continue to run the metrics submitter in this async task
     let activator_handle = tokio::task::spawn_blocking(move || {
         info!("Activator thread started");
-        activator.run(shutdown_clone).unwrap_or_default()
+        activator
+            .process_events_thread(shutdown_clone)
+            .unwrap_or_default()
+    });
+
+    let user_monitor_handle = tokio::task::spawn_blocking(move || {
+        info!("User monitor thread started");
+        user_monitor::process_user_monitor_thread(
+            rpc_url,
+            ws_url,
+            program_id,
+            keypair,
+            shutdown_clone2,
+        )
+        .unwrap_or_default()
     });
 
     info!("Activator metrics submitter started");
@@ -136,6 +152,11 @@ async fn main() -> eyre::Result<()> {
         activator_res = activator_handle => {
             if let Err(err) = activator_res {
                 error!("Activator thread exited unexpectedly with reason: {err:?}");
+            }
+        }
+        user_monitor_res = user_monitor_handle => {
+            if let Err(err) = user_monitor_res {
+                error!("User monitor thread exited unexpectedly with reason: {err:?}");
             }
         }
         _ = metrics_submitter.run(shutdown.clone()) => {}

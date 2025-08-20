@@ -19,7 +19,7 @@ pub struct SetAccessPassCliCommand {
     /// Specifies the payer of the access pass.
     #[arg(long)]
     pub user_payer: String,
-    /// Specifies the last access epoch of the access pass.
+    /// Specifies the last access epoch of the access pass or MAX.
     #[arg(long)]
     pub last_access_epoch: u64,
     /// Specifies the amount of lamports to airdrop for operating transaction
@@ -38,6 +38,11 @@ impl SetAccessPassCliCommand {
             } else {
                 Pubkey::from_str(&self.user_payer)?
             }
+        };
+
+        let last_access_epoch = match self.last_access_epoch.to_ascii_lowercase().as_str() {
+            "max" => u64::MAX,
+            _ => self.last_access_epoch.parse()?,
         };
 
         let signature = client.set_accesspass(SetAccessPassCommand {

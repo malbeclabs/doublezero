@@ -111,6 +111,13 @@ impl DZClient {
             .map_err(|e| eyre!(e))
     }
 
+    pub fn get_epoch(&self) -> eyre::Result<u64> {
+        self.client
+            .get_epoch_info()
+            .map_err(|e| eyre!(e))
+            .map(|info| info.epoch)
+    }
+
     /******************************************************************************************************************************************/
 
     fn get_all(&self) -> eyre::Result<HashMap<Pubkey, AccountData>> {
@@ -255,6 +262,13 @@ impl DoubleZeroClient for DZClient {
         self.client
             .get_balance(&self.get_payer())
             .map_err(|e| eyre!(e))
+    }
+
+    fn get_epoch(&self) -> eyre::Result<u64> {
+        self.client
+            .get_epoch_info()
+            .map_err(|e| eyre!(e))
+            .map(|info| info.epoch)
     }
 
     fn execute_transaction(

@@ -96,6 +96,7 @@ pub trait CliCommand {
     fn get_program_id(&self) -> Pubkey;
     fn get_payer(&self) -> Pubkey;
     fn get_balance(&self) -> eyre::Result<u64>;
+    fn get_epoch(&self) -> eyre::Result<u64>;
     fn get_logs(&self, pubkey: &Pubkey) -> eyre::Result<Vec<String>>;
 
     fn init_globalstate(&self, cmd: InitGlobalStateCommand) -> eyre::Result<Signature>;
@@ -274,6 +275,9 @@ impl CliCommand for CliCommandImpl<'_> {
     }
     fn get_balance(&self) -> eyre::Result<u64> {
         self.client.get_balance()
+    }
+    fn get_epoch(&self) -> eyre::Result<u64> {
+        self.client.get_epoch()
     }
     fn get_logs(&self, pubkey: &Pubkey) -> eyre::Result<Vec<String>> {
         self.client.get_logs(pubkey)

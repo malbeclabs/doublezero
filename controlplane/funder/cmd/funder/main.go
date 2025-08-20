@@ -28,7 +28,7 @@ const (
 )
 
 var (
-	env                     = flag.String("env", "", "the environment to run the funder in (devnet, testnet, mainnet)")
+	env                     = flag.String("env", "", "the environment to run the funder in (devnet, testnet, mainnet-beta)")
 	ledgerRPCURL            = flag.String("ledger-rpc-url", "", "the url of the ledger rpc")
 	serviceabilityProgramID = flag.String("serviceability-program-id", "", "the id of the serviceability program")
 	keypairPath             = flag.String("keypair", "", "the path to the metrics publisher keypair")

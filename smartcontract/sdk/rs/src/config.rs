@@ -98,7 +98,7 @@ pub fn convert_url_moniker(url: String) -> String {
         "localhost" => crate::consts::LOCALHOST_URL.to_string(),
         "devnet" => crate::consts::DEVNET_URL.to_string(),
         "testnet" => crate::consts::TESTNET_URL.to_string(),
-        "mainnet" => crate::consts::MAINNET_BETA_URL.to_string(),
+        "mainnet-beta" => crate::consts::MAINNET_BETA_URL.to_string(),
         _ => url,
     }
 }
@@ -114,7 +114,7 @@ pub fn convert_ws_moniker(url: String) -> String {
         "localhost" => crate::consts::LOCALHOST_WS.to_string(),
         "devnet" => crate::consts::DEVNET_WS.to_string(),
         "testnet" => crate::consts::TESTNET_WS.to_string(),
-        "mainnet" => crate::consts::MAINNET_BETA_WS.to_string(),
+        "mainnet-beta" => crate::consts::MAINNET_BETA_WS.to_string(),
         _ => url,
     }
 }

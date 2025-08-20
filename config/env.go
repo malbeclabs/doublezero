@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	EnvMainnet = "mainnet"
+	EnvMainnet = "mainnet-beta"
 	EnvTestnet = "testnet"
 	EnvDevnet  = "devnet"
 )

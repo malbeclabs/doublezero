@@ -31,7 +31,7 @@ import (
 var (
 	hosts          = flag.String("hosts", "", "comma separated list of hosts to run tests against")
 	port           = flag.String("port", "7009", "port to connect to on each host")
-	env            = flag.String("env", "", "environment to run in (devnet, testnet, mainnet)")
+	env            = flag.String("env", "", "environment to run in (devnet, testnet, mainnet-beta)")
 	forcePublisher = flag.String("force-publisher", "", "host to force as publisher for multicast tests (optional)")
 	useGroup       = flag.String("use-group", "", "use existing multicast group by code (optional)")
 
@@ -46,11 +46,11 @@ var (
 func TestMain(m *testing.M) {
 	flag.Parse()
 	switch *env {
-	case "devnet", "testnet", "mainnet":
+	case "devnet", "testnet", "mainnet-beta":
 	case "":
-		log.Fatal("The -env flag is required. Must be one of: devnet, testnet, mainnet")
+		log.Fatal("The -env flag is required. Must be one of: devnet, testnet, mainnet-beta")
 	default:
-		log.Fatalf("Invalid value for -env flag: %q. Must be one of: devnet, testnet, mainnet", *env)
+		log.Fatalf("Invalid value for -env flag: %q. Must be one of: devnet, testnet, mainnet-beta", *env)
 	}
 
 	networkConfig, err := config.NetworkConfigForEnv(*env)

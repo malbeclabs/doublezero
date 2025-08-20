@@ -12,7 +12,7 @@ impl std::str::FromStr for Environment {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "mainnet" => Ok(Environment::Mainnet),
+            "mainnet-beta" => Ok(Environment::Mainnet),
             "testnet" => Ok(Environment::Testnet),
             "devnet" => Ok(Environment::Devnet),
             _ => Err(eyre::eyre!("Invalid environment: {}", s)),

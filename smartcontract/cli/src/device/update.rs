@@ -38,6 +38,9 @@ pub struct UpdateDeviceCliCommand {
     /// Management VRF name (optional)
     #[arg(long)]
     pub mgmt_vrf: Option<String>,
+    /// Maximum number of users for the device (optional)
+    #[arg(long)]
+    pub max_users: Option<u16>,
     /// Wait for the device to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -109,7 +112,7 @@ impl UpdateDeviceCliCommand {
             contributor_pk: contributor,
             mgmt_vrf: self.mgmt_vrf,
             interfaces: None,
-            max_users: None,
+            max_users: self.max_users,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -253,7 +256,7 @@ mod tests {
                 )),
                 mgmt_vrf: Some("default".to_string()),
                 interfaces: None,
-                max_users: None,
+                max_users: Some(1025),
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -268,6 +271,7 @@ mod tests {
             metrics_publisher: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
             contributor: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
             mgmt_vrf: Some("default".to_string()),
+            max_users: Some(1025),
             wait: false,
         }
         .execute(&client, &mut output);
@@ -349,6 +353,7 @@ mod tests {
             metrics_publisher: None,
             contributor: None,
             mgmt_vrf: None,
+            max_users: Some(255),
             wait: false,
         }
         .execute(&client, &mut output);
@@ -386,7 +391,7 @@ mod tests {
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            max_users: 255,
+            max_users: 1024,
             users_count: 0,
         };
         let device2 = Device {
@@ -406,7 +411,7 @@ mod tests {
             owner: other_pubkey,
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            max_users: 255,
+            max_users: 1024,
             users_count: 0,
         };
         let device_list = HashMap::from([(pda_pubkey, device1.clone()), (other_pubkey, device2)]);
@@ -430,6 +435,7 @@ mod tests {
             metrics_publisher: None,
             contributor: None,
             mgmt_vrf: None,
+            max_users: None,
             wait: false,
         }
         .execute(&client, &mut output);

@@ -25,7 +25,7 @@ pub struct AccessPassDisplay {
     pub accesspass_type: String,
     pub ip: Ipv4Addr,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
-    pub payer: Pubkey,
+    pub user_payer: Pubkey,
     pub last_access_epoch: u64,
     pub connections: u16,
     pub status: AccessPassStatus,
@@ -43,7 +43,7 @@ impl ListAccessPassCliCommand {
                 account: pubkey,
                 accesspass_type: access_pass.accesspass_type.to_string(),
                 ip: access_pass.client_ip,
-                payer: access_pass.payer,
+                user_payer: access_pass.user_payer,
                 last_access_epoch: access_pass.last_access_epoch,
                 connections: access_pass.connection_count,
                 status: access_pass.status,
@@ -89,7 +89,7 @@ mod tests {
             bump_seed: 2,
             client_ip: Ipv4Addr::new(1, 2, 3, 4),
             accesspass_type: AccessPassType::SolanaValidator,
-            payer: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
+            user_payer: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
             last_access_epoch: 123,
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
             connection_count: 0,
@@ -110,7 +110,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | accesspass_type | ip      | payer                                     | last_access_epoch | connections | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | solanavalidator | 1.2.3.4 | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | 123               | 0           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
+        assert_eq!(output_str, " account                                   | accesspass_type | ip      | user_payer                                | last_access_epoch | connections | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | solanavalidator | 1.2.3.4 | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | 123               | 0           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
 
         let mut output = Vec::new();
         let res = ListAccessPassCliCommand {
@@ -120,6 +120,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"accesspass_type\":\"solanavalidator\",\"ip\":\"1.2.3.4\",\"payer\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"last_access_epoch\":123,\"connections\":0,\"status\":\"Connected\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"accesspass_type\":\"solanavalidator\",\"ip\":\"1.2.3.4\",\"user_payer\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"last_access_epoch\":123,\"connections\":0,\"status\":\"Connected\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
     }
 }

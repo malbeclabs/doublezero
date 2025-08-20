@@ -18,7 +18,7 @@ pub struct SetAccessPassCliCommand {
     pub client_ip: Ipv4Addr,
     /// Specifies the payer of the access pass.
     #[arg(long)]
-    pub payer: String,
+    pub user_payer: String,
     /// Specifies the last access epoch of the access pass.
     #[arg(long)]
     pub last_access_epoch: u64,
@@ -29,18 +29,18 @@ impl SetAccessPassCliCommand {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let payer = {
-            if self.payer.eq_ignore_ascii_case("me") {
+        let user_payer = {
+            if self.user_payer.eq_ignore_ascii_case("me") {
                 client.get_payer()
             } else {
-                Pubkey::from_str(&self.payer)?
+                Pubkey::from_str(&self.user_payer)?
             }
         };
 
         let signature = client.set_accesspass(SetAccessPassCommand {
             accesspass_type: self.accesspass_type,
             client_ip: self.client_ip,
-            payer,
+            user_payer,
             last_access_epoch: self.last_access_epoch,
         })?;
         writeln!(out, "Signature: {signature}")?;
@@ -87,7 +87,7 @@ mod tests {
             .with(predicate::eq(SetAccessPassCommand {
                 accesspass_type: AccessPassType::SolanaValidator,
                 client_ip,
-                payer,
+                user_payer: payer,
                 last_access_epoch: 0,
             }))
             .returning(move |_| Ok(signature));
@@ -96,7 +96,7 @@ mod tests {
         let res = SetAccessPassCliCommand {
             accesspass_type: AccessPassType::SolanaValidator,
             client_ip,
-            payer: payer.to_string(),
+            user_payer: payer.to_string(),
             last_access_epoch: 0,
         }
         .execute(&client, &mut output);

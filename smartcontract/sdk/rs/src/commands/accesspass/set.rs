@@ -12,7 +12,7 @@ use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient}
 pub struct SetAccessPassCommand {
     pub accesspass_type: AccessPassType,
     pub client_ip: Ipv4Addr,
-    pub payer: Pubkey,
+    pub user_payer: Pubkey,
     pub last_access_epoch: u64,
 }
 
@@ -23,13 +23,13 @@ impl SetAccessPassCommand {
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
         let (pda_pubkey, _) =
-            get_accesspass_pda(&client.get_program_id(), &self.client_ip, &self.payer);
+            get_accesspass_pda(&client.get_program_id(), &self.client_ip, &self.user_payer);
 
         client.execute_transaction(
             DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
                 accesspass_type: self.accesspass_type,
                 client_ip: self.client_ip,
-                payer: self.payer,
+                user_payer: self.user_payer,
                 last_access_epoch: self.last_access_epoch,
             }),
             vec![
@@ -71,7 +71,7 @@ mod tests {
                 predicate::eq(DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
                     accesspass_type: AccessPassType::Prepaid,
                     client_ip,
-                    payer,
+                    user_payer: payer,
                     last_access_epoch: 0,
                 })),
                 predicate::eq(vec![
@@ -84,7 +84,7 @@ mod tests {
         let res = SetAccessPassCommand {
             accesspass_type: AccessPassType::Prepaid,
             client_ip,
-            payer,
+            user_payer: payer,
             last_access_epoch: 0,
         }
         .execute(&client);

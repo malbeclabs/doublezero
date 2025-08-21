@@ -1,0 +1,93 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema-pro.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 2
+
+project_name: doublezero-monitor
+
+monorepo:
+  tag_prefix: monitor/
+  dir: controlplane/monitor
+
+builds:
+  - id: doublezero-monitor
+    main: cmd/monitor/main.go
+    binary: doublezero-monitor
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      -X main.version={{.Version}} -X main.commit={{.ShortCommit}} -X main.date={{.Date}}
+    goos:
+      - linux
+    goarch:
+      - amd64
+
+archives:
+  - id: monitor_archive
+    formats: ['tar.gz']
+    ids: [doublezero-monitor]
+    # this name template makes the OS and Arch compatible with the results of `uname`.
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+
+nfpms:
+  - id: doublezero-monitor
+    package_name: doublezero-monitor
+    ids: [doublezero-monitor]
+    vendor: doublezero
+    homepage: doublezero.xyz
+    maintainer: dev <dev@malbeclabs.com>
+    description: |-
+      DoubleZero Monitor
+    license: Apache 2.0
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/local/bin
+    release: "1"
+    section: default
+    contents:
+      - src: release/packaging/systemd/doublezero-monitor.service
+        dst: /lib/systemd/system/doublezero-monitor.service
+        type: config
+    overrides:
+      rpm:
+        contents:
+          - src: release/packaging/systemd/doublezero-monitor.service
+            dst: /usr/lib/systemd/system/doublezero-monitor.service
+            type: config
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  github:
+    owner: malbeclabs
+    name: doublezero
+  draft: false
+  replace_existing_artifacts: true
+
+announce:
+  slack:
+    enabled: true
+    message_template: "DoubleZero Monitor {{.Tag}} has been released! Check it out at {{ .ReleaseURL }}"
+    channel: "#bots"
+
+git:
+  ignore_tags:
+    - monitor/daily
+
+nightly:
+  publish_release: true
+  keep_single_release: true
+  version_template: '{{ incpatch .Version }}~git{{ .Env.BUILD_DATE }}.{{ .ShortCommit }}'
+  tag_name: 'monitor/daily'

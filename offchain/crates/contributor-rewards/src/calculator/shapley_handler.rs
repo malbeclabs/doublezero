@@ -10,6 +10,7 @@ use network_shapley::types::{
     Demands, Device, Devices, PrivateLink, PrivateLinks, PublicLink, PublicLinks,
 };
 use std::collections::HashMap;
+use tracing::debug;
 
 // (city1_code, city2_code)
 type CityPair = (String, String);
@@ -48,16 +49,68 @@ pub async fn build_demands(
     Ok((result.demands, result.city_stats))
 }
 
-pub fn build_public_links(internet_stats: &InternetTelemetryStatMap) -> Result<PublicLinks> {
+pub fn build_public_links(
+    internet_stats: &InternetTelemetryStatMap,
+    fetch_data: &FetchData,
+) -> Result<PublicLinks> {
+    // Build exchange to location mapping via devices
+    // exchange_pk -> device -> location_pk -> location_code
+    let mut exchange_to_location: HashMap<String, String> = HashMap::new();
+
+    for device in fetch_data.dz_serviceability.devices.values() {
+        // Find the exchange for this device
+        if let Some(exchange) = fetch_data
+            .dz_serviceability
+            .exchanges
+            .get(&device.exchange_pk)
+        {
+            // Find the location for this device
+            if let Some(location) = fetch_data
+                .dz_serviceability
+                .locations
+                .get(&device.location_pk)
+            {
+                // Map exchange code to location code
+                exchange_to_location.insert(exchange.code.clone(), location.code.clone());
+            }
+        }
+    }
+
     // Group latencies by normalized city pairs
     let mut city_pair_latencies = CityPairLatencies::new();
 
     for stats in internet_stats.values() {
+        // Map exchange codes to location codes
+        // Since we're now only processing valid exchange codes in the processor,
+        // we should always have a mapping. If not, skip this entry.
+        // Skipping is safer than defaults.
+        let origin_location = match exchange_to_location.get(&stats.origin_exchange_code) {
+            Some(loc) => loc.clone(),
+            None => {
+                debug!(
+                    "No location mapping for exchange: {} (missing device mapping)",
+                    stats.origin_exchange_code
+                );
+                continue;
+            }
+        };
+
+        let target_location = match exchange_to_location.get(&stats.target_exchange_code) {
+            Some(loc) => loc.clone(),
+            None => {
+                debug!(
+                    "No location mapping for exchange: {} (missing device mapping)",
+                    stats.target_exchange_code
+                );
+                continue;
+            }
+        };
+
         // Normalize city pair (alphabetical order)
-        let (city1, city2) = if stats.origin_code <= stats.target_code {
-            (stats.origin_code.clone(), stats.target_code.clone())
+        let (city1, city2) = if origin_location <= target_location {
+            (origin_location, target_location)
         } else {
-            (stats.target_code.clone(), stats.origin_code.clone())
+            (target_location, origin_location)
         };
 
         // Convert p95 RTT from microseconds to milliseconds

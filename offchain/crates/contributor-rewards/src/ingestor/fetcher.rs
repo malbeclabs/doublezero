@@ -55,8 +55,7 @@ impl Fetcher {
             self.settings.programs.telemetry_program_id
         );
 
-        // Fetch serviceability data
-        // Fetch telemetry data
+        // Fetch all data in parallel
         let (serviceability_data, telemetry_data, internet_data) = tokio::try_join!(
             serviceability::fetch(&self.rpc_client, &self.settings),
             telemetry::fetch(&self.rpc_client, &self.settings, epoch),

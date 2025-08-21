@@ -23,7 +23,7 @@ clippy:
 
 # Run tests
 test:
-    cargo nextest run --release
+    cargo nextest run
 
 # Clean
 clean:

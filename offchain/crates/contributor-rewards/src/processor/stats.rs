@@ -104,6 +104,6 @@ pub fn get_device_grouping_key(sample: &DZDeviceLatencySamples) -> String {
 pub fn get_internet_grouping_key(sample: &DZInternetLatencySamples) -> String {
     format!(
         "{}:{}:{}",
-        sample.origin_location_pk, sample.target_location_pk, sample.data_provider_name
+        sample.origin_exchange_pk, sample.target_exchange_pk, sample.data_provider_name
     )
 }

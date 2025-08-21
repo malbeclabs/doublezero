@@ -1,6 +1,6 @@
 use anyhow::{Result, bail};
 use chrono::{DateTime, Utc};
-use doublezero_sdk::serializer;
+use doublezero_program_common::serializer;
 use doublezero_serviceability::state::{
     contributor::Contributor as DZContributor, device::Device as DZDevice,
     exchange::Exchange as DZExchange, link::Link as DZLink, location::Location as DZLocation,
@@ -9,14 +9,14 @@ use doublezero_serviceability::state::{
 use doublezero_telemetry::state::{
     device_latency_samples::DeviceLatencySamples, internet_latency_samples::InternetLatencySamples,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use solana_sdk::pubkey::Pubkey;
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter},
 };
 
-#[derive(Debug, Default, Clone, Serialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct FetchData {
     pub dz_serviceability: DZServiceabilityData,
     pub dz_telemetry: DZDTelemetryData,
@@ -76,33 +76,83 @@ impl FetchData {
 }
 
 /// Struct for all network data
-#[derive(Debug, Default, Clone, Serialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct DZServiceabilityData {
+    #[serde(
+        serialize_with = "serializer::serialize_pubkey_map",
+        deserialize_with = "serializer::deserialize_pubkey_map"
+    )]
     pub locations: HashMap<Pubkey, DZLocation>,
+    #[serde(
+        serialize_with = "serializer::serialize_pubkey_map",
+        deserialize_with = "serializer::deserialize_pubkey_map"
+    )]
     pub exchanges: HashMap<Pubkey, DZExchange>,
+    #[serde(
+        serialize_with = "serializer::serialize_pubkey_map",
+        deserialize_with = "serializer::deserialize_pubkey_map"
+    )]
     pub devices: HashMap<Pubkey, DZDevice>,
+    #[serde(
+        serialize_with = "serializer::serialize_pubkey_map",
+        deserialize_with = "serializer::deserialize_pubkey_map"
+    )]
     pub links: HashMap<Pubkey, DZLink>,
+    #[serde(
+        serialize_with = "serializer::serialize_pubkey_map",
+        deserialize_with = "serializer::deserialize_pubkey_map"
+    )]
     pub users: HashMap<Pubkey, DZUser>,
+    #[serde(
+        serialize_with = "serializer::serialize_pubkey_map",
+        deserialize_with = "serializer::deserialize_pubkey_map"
+    )]
     pub multicast_groups: HashMap<Pubkey, DZMulticastGroup>,
+    #[serde(
+        serialize_with = "serializer::serialize_pubkey_map",
+        deserialize_with = "serializer::deserialize_pubkey_map"
+    )]
     pub contributors: HashMap<Pubkey, DZContributor>,
 }
 
 /// DB representation of DeviceLatencySamples
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DZDeviceLatencySamples {
-    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    #[serde(
+        serialize_with = "serializer::serialize_pubkey_as_string",
+        deserialize_with = "serializer::deserialize_pubkey_from_string"
+    )]
     pub pubkey: Pubkey,
     pub epoch: u64,
-    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    #[serde(
+        serialize_with = "serializer::serialize_pubkey_as_string",
+        deserialize_with = "serializer::deserialize_pubkey_from_string"
+    )]
     pub origin_device_pk: Pubkey,
-    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    #[serde(
+        serialize_with = "serializer::serialize_pubkey_as_string",
+        deserialize_with = "serializer::deserialize_pubkey_from_string"
+    )]
     pub target_device_pk: Pubkey,
-    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    #[serde(
+        serialize_with = "serializer::serialize_pubkey_as_string",
+        deserialize_with = "serializer::deserialize_pubkey_from_string"
+    )]
     pub link_pk: Pubkey,
+    #[serde(
+        serialize_with = "serializer::serialize_pubkey_as_string",
+        deserialize_with = "serializer::deserialize_pubkey_from_string"
+    )]
     pub origin_device_location_pk: Pubkey,
-    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    #[serde(
+        serialize_with = "serializer::serialize_pubkey_as_string",
+        deserialize_with = "serializer::deserialize_pubkey_from_string"
+    )]
     pub target_device_location_pk: Pubkey,
-    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    #[serde(
+        serialize_with = "serializer::serialize_pubkey_as_string",
+        deserialize_with = "serializer::deserialize_pubkey_from_string"
+    )]
     pub origin_device_agent_pk: Pubkey,
     pub sampling_interval_us: u64,
     pub start_timestamp_us: u64,
@@ -130,7 +180,7 @@ impl DZDeviceLatencySamples {
 }
 
 /// Telemetry data container
-#[derive(Debug, Default, Clone, Serialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct DZDTelemetryData {
     pub device_latency_samples: Vec<DZDeviceLatencySamples>,
 }
@@ -158,21 +208,32 @@ impl DZDTelemetryData {
 }
 
 /// Representation of InternetLatencySamples
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DZInternetLatencySamples {
-    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    #[serde(
+        serialize_with = "serializer::serialize_pubkey_as_string",
+        deserialize_with = "serializer::deserialize_pubkey_from_string"
+    )]
     pub pubkey: Pubkey,
     pub epoch: u64,
     pub data_provider_name: String,
-    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    #[serde(
+        serialize_with = "serializer::serialize_pubkey_as_string",
+        deserialize_with = "serializer::deserialize_pubkey_from_string"
+    )]
     pub oracle_agent_pk: Pubkey,
-    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
-    pub origin_location_pk: Pubkey,
-    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
-    pub target_location_pk: Pubkey,
+    #[serde(
+        serialize_with = "serializer::serialize_pubkey_as_string",
+        deserialize_with = "serializer::deserialize_pubkey_from_string"
+    )]
+    pub origin_exchange_pk: Pubkey,
+    #[serde(
+        serialize_with = "serializer::serialize_pubkey_as_string",
+        deserialize_with = "serializer::deserialize_pubkey_from_string"
+    )]
+    pub target_exchange_pk: Pubkey,
     pub sampling_interval_us: u64,
     pub start_timestamp_us: u64,
-    #[serde(skip)]
     pub samples: Vec<u32>,
     pub sample_count: u32,
 }
@@ -184,8 +245,8 @@ impl DZInternetLatencySamples {
             epoch: samples.header.epoch,
             data_provider_name: samples.header.data_provider_name.to_string(),
             oracle_agent_pk: samples.header.oracle_agent_pk,
-            origin_location_pk: samples.header.origin_location_pk,
-            target_location_pk: samples.header.target_location_pk,
+            origin_exchange_pk: samples.header.origin_exchange_pk,
+            target_exchange_pk: samples.header.target_exchange_pk,
             sampling_interval_us: samples.header.sampling_interval_microseconds,
             start_timestamp_us: samples.header.start_timestamp_microseconds,
             samples: samples.samples.clone(),
@@ -195,7 +256,7 @@ impl DZInternetLatencySamples {
 }
 
 /// Telemetry data container
-#[derive(Debug, Default, Clone, Serialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct DZInternetData {
     pub internet_latency_samples: Vec<DZInternetLatencySamples>,
 }

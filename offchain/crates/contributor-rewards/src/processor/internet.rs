@@ -4,8 +4,8 @@ use crate::{
 };
 use anyhow::Result;
 use borsh::{BorshDeserialize, BorshSerialize};
-use doublezero_sdk::serializer;
-use serde::Serialize;
+use doublezero_program_common::serializer;
+use serde::{Deserialize, Serialize};
 use solana_sdk::pubkey::Pubkey;
 use std::collections::HashMap;
 use tabled::{Table, Tabled, settings::Style};
@@ -14,24 +14,33 @@ use tracing::{debug, warn};
 // Key format: "{origin_code} → {target_code} ({data_provider})"
 pub type InternetTelemetryStatMap = HashMap<String, InternetTelemetryStats>;
 
-#[derive(Debug, Clone, Tabled, Serialize, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, Tabled, Serialize, BorshSerialize, BorshDeserialize, Deserialize)]
 pub struct InternetTelemetryStats {
     pub circuit: String,
     #[tabled(skip)]
-    pub origin_code: String,
+    pub origin_exchange_code: String,
     #[tabled(skip)]
-    pub target_code: String,
+    pub target_exchange_code: String,
     #[tabled(skip)]
     pub data_provider_name: String,
     #[tabled(skip)]
-    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    #[serde(
+        serialize_with = "serializer::serialize_pubkey_as_string",
+        deserialize_with = "serializer::deserialize_pubkey_from_string"
+    )]
     pub oracle_agent_pk: Pubkey,
     #[tabled(skip)]
-    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
-    pub origin_location_pk: Pubkey,
+    #[serde(
+        serialize_with = "serializer::serialize_pubkey_as_string",
+        deserialize_with = "serializer::deserialize_pubkey_from_string"
+    )]
+    pub origin_exchange_pk: Pubkey,
     #[tabled(skip)]
-    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
-    pub target_location_pk: Pubkey,
+    #[serde(
+        serialize_with = "serializer::serialize_pubkey_as_string",
+        deserialize_with = "serializer::deserialize_pubkey_from_string"
+    )]
+    pub target_exchange_pk: Pubkey,
     #[tabled(display = "display_us_as_ms", rename = "rtt_mean(ms)")]
     pub rtt_mean_us: f64,
     #[tabled(display = "display_us_as_ms", rename = "rtt_median(ms)")]
@@ -65,12 +74,12 @@ pub fn print_internet_stats(map: &InternetTelemetryStatMap) -> String {
 
 impl InternetTelemetryProcessor {
     pub fn process(fetch_data: &FetchData) -> Result<InternetTelemetryStatMap> {
-        // Build location PK to code mapping
-        let location_pk_to_code: HashMap<Pubkey, String> = fetch_data
+        // Build exchange PK to xchange code mapping (internet telemetry uses exchange PKs)
+        let exchange_pk_to_code: HashMap<Pubkey, String> = fetch_data
             .dz_serviceability
-            .locations
+            .exchanges
             .iter()
-            .map(|(pubkey, loc)| (*pubkey, loc.code.to_string()))
+            .map(|(pubkey, exch)| (*pubkey, exch.code.to_string()))
             .collect();
 
         // Process internet telemetry samples
@@ -93,7 +102,7 @@ impl InternetTelemetryProcessor {
         for sample in &fetch_data.dz_internet.internet_latency_samples {
             let key = format!(
                 "{}:{}:{}",
-                sample.origin_location_pk, sample.target_location_pk, sample.data_provider_name
+                sample.origin_exchange_pk, sample.target_exchange_pk, sample.data_provider_name
             );
             sample_by_key.entry(key).or_insert(sample);
         }
@@ -105,28 +114,35 @@ impl InternetTelemetryProcessor {
                 continue;
             }
 
-            let origin_location_pk = parts[0].parse::<Pubkey>().ok();
-            let target_location_pk = parts[1].parse::<Pubkey>().ok();
+            let origin_exchange_pk = parts[0].parse::<Pubkey>().ok();
+            let target_exchange_pk = parts[1].parse::<Pubkey>().ok();
             let data_provider_name = parts[2].to_string();
 
-            if let (Some(origin_pk), Some(target_pk)) = (origin_location_pk, target_location_pk) {
-                // Get location codes
-                let origin_code =
-                    location_pk_to_code
-                        .get(&origin_pk)
-                        .cloned()
-                        .unwrap_or_else(|| {
-                            warn!("Missing location code for origin PK: {}", origin_pk);
-                            format!("LOC-{}", &origin_pk)
-                        });
-                let target_code =
-                    location_pk_to_code
-                        .get(&target_pk)
-                        .cloned()
-                        .unwrap_or_else(|| {
-                            warn!("Missing location code for target PK: {}", target_pk);
-                            format!("LOC-{}", &target_pk)
-                        });
+            if let (Some(origin_pk), Some(target_pk)) = (origin_exchange_pk, target_exchange_pk) {
+                // Check if these PKs are actually exchanges (not deprecated location PKs)
+                // Skip samples using the old location PK format
+                // This is holdover fix for mixed telem data (but should be safe to keep regardless)
+                let origin_exchange_code = match exchange_pk_to_code.get(&origin_pk) {
+                    Some(code) => code.clone(),
+                    None => {
+                        debug!(
+                            "Skipping telemetry sample with non-exchange origin PK: {} (likely using deprecated location PK)",
+                            origin_pk
+                        );
+                        continue;
+                    }
+                };
+
+                let target_exchange_code = match exchange_pk_to_code.get(&target_pk) {
+                    Some(code) => code.clone(),
+                    None => {
+                        debug!(
+                            "Skipping telemetry sample with non-exchange target PK: {} (likely using deprecated location PK)",
+                            target_pk
+                        );
+                        continue;
+                    }
+                };
 
                 // Get oracle agent from sample
                 let oracle_agent_pk = sample_by_key
@@ -138,13 +154,15 @@ impl InternetTelemetryProcessor {
                     });
 
                 let internet_stats = InternetTelemetryStats {
-                    circuit: format!("{origin_code} → {target_code} ({data_provider_name})"),
-                    origin_code: origin_code.to_string(),
-                    target_code: target_code.to_string(),
+                    circuit: format!(
+                        "{origin_exchange_code} → {target_exchange_code} ({data_provider_name})"
+                    ),
+                    origin_exchange_code: origin_exchange_code.to_string(),
+                    target_exchange_code: target_exchange_code.to_string(),
                     data_provider_name: data_provider_name.to_string(),
                     oracle_agent_pk,
-                    origin_location_pk: origin_pk,
-                    target_location_pk: target_pk,
+                    origin_exchange_pk: origin_pk,
+                    target_exchange_pk: target_pk,
                     rtt_mean_us: stats.rtt_mean_us,
                     rtt_median_us: stats.rtt_median_us,
                     rtt_min_us: stats.rtt_min_us,

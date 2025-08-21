@@ -27,6 +27,11 @@ chrono = { version = "0", features = ["serde"] }
 clap = { version = "4", features = ["derive"] }
 config = "0"
 csv = "1"
+doublezero-serviceability = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint", "serde"] }
+doublezero-telemetry = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint", "serde" ] }
+doublezero-program-common = { git = "ssh://git@github.com/malbeclabs/doublezero" }
+doublezero-record = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint" ] }
+doublezero_sdk = { git = "ssh://git@github.com/malbeclabs/doublezero" }
 doublezero-passport = { git = "ssh://git@github.com/doublezerofoundation/doublezero-solana" }
 doublezero-program-tools = { git = "ssh://git@github.com/doublezerofoundation/doublezero-solana" }
 doublezero-revenue-distribution = { git = "ssh://git@github.com/doublezerofoundation/doublezero-solana" }
@@ -37,7 +42,7 @@ itertools = "0"
 metrics = "0"
 metrics-exporter-prometheus = "0"
 mockall = "0.13"
-network-shapley = { git = "https://github.com/doublezerofoundation/network-shapley-rs", features = ["serde", "borsh"] }
+network-shapley = { git = "https://github.com/doublezerofoundation/network-shapley-rs", features = ["serde", "borsh"], tag = "v0.2.1" }
 rand = "0"
 rayon = "1"
 reqwest = { version = "0", features = [ "json" ] }
@@ -53,8 +58,9 @@ solana-epoch-info = "3"
 solana-sdk = "2"
 solana-system-interface = "1"
 solana-transaction-status-client-types = "2"
-svm-hash = { version = "0.1.0-beta.1", features = [ "bytemuck", "borsh" ] }
+svm-hash = { version = "0.1.0-beta.6", features = [ "bytemuck", "borsh" ] }
 tabled = { version = "0", features = [ "std", "derive" ]}
+tempfile = "3"
 thiserror = "2"
 tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "signal"] }
 tokio-util = { version = "0" }
@@ -62,15 +68,6 @@ toml = "0"
 tracing = "0"
 tracing-subscriber = { version = "0", default-features = true, features = ["env-filter", "fmt", "registry"] }
 url = "2"
-
-
-# FIXME: Temporarily pinning doublezero rev to an older sha
-# Will be bumped in a follow up PR which would address the change of exchange pk in InternetLatencySamples
-doublezero-serviceability = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint", "serde"] , rev = "115c447f526c6f14bb98903d076030c191c4f7f9"}
-doublezero-telemetry = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint", "serde" ] , rev = "115c447f526c6f14bb98903d076030c191c4f7f9"}
-doublezero_sdk = { git = "ssh://git@github.com/malbeclabs/doublezero" , rev = "115c447f526c6f14bb98903d076030c191c4f7f9"}
-doublezero-record = { git = "ssh://git@github.com/malbeclabs/doublezero", features = [ "no-entrypoint" ] , rev = "115c447f526c6f14bb98903d076030c191c4f7f9"}
-
 
 [profile.release]
 lto = true

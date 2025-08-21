@@ -107,7 +107,7 @@ impl ContributorRewardsMerkleTree {
             ));
         }
 
-        MerkleProof::from_byte_ref_leaves(&self.leaves, contributor_index, Some(LEAF_PREFIX))
+        MerkleProof::from_byte_ref_leaves(&self.leaves, contributor_index as u32, Some(LEAF_PREFIX))
             .ok_or_else(|| {
                 anyhow!(
                     "Failed to generate proof for contributor {} at epoch {}",
@@ -175,8 +175,8 @@ pub fn generate_proof_from_shapley(
         .collect::<Result<Vec<_>>>()?;
 
     // Generate the proof
-    let proof =
-        MerkleProof::from_byte_ref_leaves(&leaves, index, Some(LEAF_PREFIX)).ok_or_else(|| {
+    let proof = MerkleProof::from_byte_ref_leaves(&leaves, index as u32, Some(LEAF_PREFIX))
+        .ok_or_else(|| {
             anyhow!(
                 "Failed to generate proof for contributor at index {}",
                 index

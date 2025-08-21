@@ -44,7 +44,7 @@ impl PreparedData {
         let private_links = build_and_log_private_links(&fetch_data, &device_telemetry);
 
         // Build public links
-        let public_links = build_and_log_public_links(&internet_telemetry)?;
+        let public_links = build_and_log_public_links(&internet_telemetry, &fetch_data)?;
 
         // Build demands and city stats
         let (demands, city_stats) = build_and_log_demands(fetcher, &fetch_data).await?;
@@ -109,8 +109,11 @@ fn build_and_log_private_links(
 }
 
 /// Build public links and log output
-fn build_and_log_public_links(internet_stat_map: &InternetTelemetryStatMap) -> Result<PublicLinks> {
-    let public_links = build_public_links(internet_stat_map)?;
+fn build_and_log_public_links(
+    internet_stat_map: &InternetTelemetryStatMap,
+    fetch_data: &FetchData,
+) -> Result<PublicLinks> {
+    let public_links = build_public_links(internet_stat_map, fetch_data)?;
     info!("Public Links:\n{}", print_public_links(&public_links));
     Ok(public_links)
 }

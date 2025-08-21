@@ -24,7 +24,7 @@ impl ComputedSolanaValidatorPayments {
 
         let proof = MerkleProof::from_byte_ref_leaves(
             &leaves,
-            index,
+            index as u32,
             Some(SolanaValidatorPayment::LEAF_PREFIX),
         )?;
         Some((solana_validator_payment_entry, proof))

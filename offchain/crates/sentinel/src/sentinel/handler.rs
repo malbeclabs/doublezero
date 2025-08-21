@@ -80,10 +80,7 @@ impl Sentinel {
         let AccessMode::SolanaValidator { service_key, .. } = access_ids.mode;
         if let Some(validator_ip) = self.verify_qualifiers(&access_ids.mode).await? {
             self.dz_rpc_client
-                .fund_authorized_user(&service_key, self.onboarding_lamports)
-                .await?;
-            self.dz_rpc_client
-                .issue_access_pass(&service_key, &validator_ip)
+                .issue_access_pass(&service_key, &validator_ip, self.onboarding_lamports)
                 .await?;
             let signature = self
                 .sol_rpc_client

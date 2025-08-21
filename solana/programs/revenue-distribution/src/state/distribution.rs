@@ -44,7 +44,7 @@ pub struct Distribution {
     pub total_validators: u32,
     pub num_validators_paid: u32,
 
-    pub total_solana_validator_payments_owed: u64,
+    pub total_solana_validator_debt: u64,
     pub collected_solana_validator_payments: u64,
 
     pub rewards_merkle_root: Hash,
@@ -70,7 +70,7 @@ pub struct Distribution {
     /// accountant can configure this amount to alleviate the system from
     /// carrying bad debt perpetually. This amount is subtracted from the
     /// total amount owed to the system.
-    pub uncollectible_sol_amount: u64,
+    pub uncollectible_sol_debt: u64,
 
     _storage_gap: StorageGap<8>,
 }
@@ -108,9 +108,14 @@ impl Distribution {
             .set_bit(Self::FLAG_ARE_REWARDS_FINALIZED_BIT, should_finalize);
     }
 
-    pub fn checked_total_sol_owed(&self) -> Option<u64> {
-        self.total_solana_validator_payments_owed
-            .checked_sub(self.uncollectible_sol_amount)
+    pub fn checked_total_sol_debt(&self) -> Option<u64> {
+        self.total_solana_validator_debt
+            .checked_sub(self.uncollectible_sol_debt)
+    }
+
+    pub fn checked_remaining_sol_debt(&self) -> Option<u64> {
+        self.checked_total_sol_debt()?
+            .checked_sub(self.collected_solana_validator_payments)
     }
 }
 

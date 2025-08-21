@@ -1463,6 +1463,7 @@ dependencies = [
  "borsh 1.5.7",
  "bytemuck",
  "doublezero-program-tools",
+ "ruint",
  "solana-account-info",
  "solana-cpi",
  "solana-instruction",
@@ -7470,9 +7471,9 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "svm-hash"
-version = "0.1.0-beta.3"
+version = "0.1.0-beta.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57618ddee24520985de605b829605fc17e9b75132c3d1ca2dbbc2a414d3b48dd"
+checksum = "1b9a4ef0ba6d8fc68b413f11165379ee6c1f58454e2233deeac3ebf33936e674"
 dependencies = [
  "borsh 1.5.7",
  "bytemuck",

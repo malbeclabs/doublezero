@@ -83,7 +83,7 @@ async fn test_configure_distribution_payments() {
 
     let dz_epoch = DoubleZeroEpoch::new(1);
 
-    let total_solana_validator_payments_owed = 100 * u64::pow(10, 9);
+    let total_solana_validator_debt = 100 * u64::pow(10, 9);
     let solana_validator_payments_merkle_root = Hash::new_unique();
     let uncollectible_sol_amount = 10 * u64::pow(10, 9);
 
@@ -94,12 +94,12 @@ async fn test_configure_distribution_payments() {
             [
                 DistributionPaymentsConfiguration::UpdateSolanaValidatorPayments {
                     total_validators: 3,
-                    total_lamports_owed: total_solana_validator_payments_owed + 1,
+                    total_debt: total_solana_validator_debt + 1,
                     merkle_root: solana_validator_payments_merkle_root,
                 },
                 DistributionPaymentsConfiguration::UpdateSolanaValidatorPayments {
                     total_validators: 2,
-                    total_lamports_owed: total_solana_validator_payments_owed,
+                    total_debt: total_solana_validator_debt,
                     merkle_root: solana_validator_payments_merkle_root,
                 },
                 DistributionPaymentsConfiguration::UpdateUncollectibleSol(69),
@@ -121,10 +121,9 @@ async fn test_configure_distribution_payments() {
         .solana_validator_fee_parameters
         .base_block_rewards = ValidatorFee::new(solana_validator_base_block_rewards_fee).unwrap();
     expected_distribution.total_validators = 2;
-    expected_distribution.total_solana_validator_payments_owed =
-        total_solana_validator_payments_owed;
+    expected_distribution.total_solana_validator_debt = total_solana_validator_debt;
     expected_distribution.solana_validator_payments_merkle_root =
         solana_validator_payments_merkle_root;
-    expected_distribution.uncollectible_sol_amount = uncollectible_sol_amount;
+    expected_distribution.uncollectible_sol_debt = uncollectible_sol_amount;
     assert_eq!(distribution, expected_distribution);
 }

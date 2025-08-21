@@ -111,7 +111,7 @@ async fn test_finalize_distribution_rewards() {
     );
     assert_eq!(
         program_logs.get(2).unwrap(),
-        "Program log: Payments must be finalized before rewards can be finalized"
+        "Program log: Distribution payments are not finalized yet"
     );
 
     test_setup

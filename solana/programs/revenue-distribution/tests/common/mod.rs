@@ -13,7 +13,8 @@ use doublezero_revenue_distribution::{
             GrantPrepaidConnectionAccessAccounts, InitializeContributorRewardsAccounts,
             InitializeDistributionAccounts, InitializeJournalAccounts,
             InitializePrepaidConnectionAccounts, InitializeProgramAccounts,
-            LoadPrepaidConnectionAccounts, SetAdminAccounts, SetRewardsManagerAccounts,
+            InitializeSolanaValidatorDepositAccounts, LoadPrepaidConnectionAccounts,
+            PaySolanaValidatorDebtAccounts, SetAdminAccounts, SetRewardsManagerAccounts,
             TerminatePrepaidConnectionAccounts, VerifyDistributionMerkleRootAccounts,
         },
         ContributorRewardsConfiguration, DistributionMerkleRootKind,
@@ -22,7 +23,7 @@ use doublezero_revenue_distribution::{
     },
     state::{
         self, ContributorRewards, Distribution, Journal, JournalEntries, PrepaidConnection,
-        ProgramConfig,
+        ProgramConfig, SolanaValidatorDeposit,
     },
     types::DoubleZeroEpoch,
     DOUBLEZERO_MINT_KEY, ID,
@@ -820,6 +821,57 @@ impl ProgramTestWithOwner {
         Ok(self)
     }
 
+    pub async fn initialize_solana_validator_deposit(
+        &mut self,
+        node_id: &Pubkey,
+    ) -> Result<&mut Self, BanksClientError> {
+        let payer_signer = &self.payer_signer;
+
+        let initialize_solana_validator_deposit_ix = try_build_instruction(
+            &ID,
+            InitializeSolanaValidatorDepositAccounts::new(&payer_signer.pubkey(), node_id),
+            &RevenueDistributionInstructionData::InitializeSolanaValidatorDeposit(*node_id),
+        )
+        .unwrap();
+
+        self.cached_blockhash = process_instructions_for_test(
+            &mut self.banks_client,
+            &self.cached_blockhash,
+            &[initialize_solana_validator_deposit_ix],
+            &[payer_signer],
+        )
+        .await?;
+
+        Ok(self)
+    }
+
+    pub async fn pay_solana_validator_debt(
+        &mut self,
+        dz_epoch: DoubleZeroEpoch,
+        node_id: &Pubkey,
+        amount: u64,
+        proof: MerkleProof,
+    ) -> Result<&mut Self, BanksClientError> {
+        let payer_signer = &self.payer_signer;
+
+        let pay_solana_validator_debt_ix = try_build_instruction(
+            &ID,
+            PaySolanaValidatorDebtAccounts::new(dz_epoch, node_id),
+            &RevenueDistributionInstructionData::PaySolanaValidatorDebt { amount, proof },
+        )
+        .unwrap();
+
+        self.cached_blockhash = process_instructions_for_test(
+            &mut self.banks_client,
+            &self.cached_blockhash,
+            &[pay_solana_validator_debt_ix],
+            &[payer_signer],
+        )
+        .await?;
+
+        Ok(self)
+    }
+
     //
     // Account fetchers.
     //
@@ -975,6 +1027,28 @@ impl ProgramTestWithOwner {
                 .0;
 
         (contributor_rewards_key, contributor_rewards)
+    }
+
+    pub async fn fetch_solana_validator_deposit(
+        &self,
+        node_id: &Pubkey,
+    ) -> (Pubkey, SolanaValidatorDeposit) {
+        let solana_validator_deposit_key = SolanaValidatorDeposit::find_address(node_id).0;
+
+        let solana_validator_deposit_account_data = self
+            .banks_client
+            .get_account(solana_validator_deposit_key)
+            .await
+            .unwrap()
+            .unwrap()
+            .data;
+
+        (
+            solana_validator_deposit_key,
+            *checked_from_bytes_with_discriminator(&solana_validator_deposit_account_data)
+                .unwrap()
+                .0,
+        )
     }
 }
 

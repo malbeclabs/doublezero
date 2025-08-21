@@ -48,7 +48,7 @@ solana-system-interface = "1"
 solana-sysvar = "2"
 solana-transaction-status-client-types = "2"
 spl-token = { version = "8", features = ["no-entrypoint"] }
-svm-hash = "0.1.0-beta.3"
+svm-hash = "0.1.0-beta.6"
 thiserror = "2"
 tokio = "1"
 url = "2"
@@ -58,11 +58,11 @@ sha2-const-stable = "=0.1.0"
 solana-program-test = "=2.3.7"
 solana-sdk = "=2.3"
 
+[workspace.dependencies.doublezero-passport]
+path = "programs/passport"
+
 [workspace.dependencies.doublezero-program-tools]
 path = "crates/program-tools"
 
 [workspace.dependencies.doublezero-revenue-distribution]
 path = "programs/revenue-distribution"
-
-[workspace.dependencies.doublezero-passport]
-path = "programs/passport"

@@ -30,9 +30,11 @@ use crate::{
     state::{
         self, CommunityBurnRateParameters, ContributorRewards, Distribution, Journal,
         JournalEntries, PrepaidConnection, ProgramConfig, RecipientShares, RelayParameters,
-        TOKEN_2Z_PDA_SEED_PREFIX,
+        SolanaValidatorDeposit, TOKEN_2Z_PDA_SEED_PREFIX,
     },
-    types::{BurnRate, DoubleZeroEpoch, ValidatorFee},
+    types::{
+        BurnRate, DoubleZeroEpoch, ReplayProtectionByte, SolanaValidatorPayment, ValidatorFee,
+    },
     DOUBLEZERO_MINT_DECIMALS, DOUBLEZERO_MINT_KEY, ID,
 };
 
@@ -110,6 +112,12 @@ fn try_process_instruction(
         }
         RevenueDistributionInstructionData::VerifyDistributionMerkleRoot { kind, proof } => {
             try_verify_distribution_merkle_root(accounts, kind, proof)
+        }
+        RevenueDistributionInstructionData::InitializeSolanaValidatorDeposit(node_id) => {
+            try_initialize_solana_validator_deposit(accounts, node_id)
+        }
+        RevenueDistributionInstructionData::PaySolanaValidatorDebt { amount, proof } => {
+            try_pay_solana_validator_debt(accounts, amount, proof)
         }
     }
 }
@@ -866,7 +874,7 @@ fn try_configure_distribution_payments(
     match setting {
         DistributionPaymentsConfiguration::UpdateSolanaValidatorPayments {
             total_validators,
-            total_lamports_owed,
+            total_debt,
             merkle_root,
         } => {
             try_require_unfinalized_distribution_payments(&distribution)?;
@@ -874,11 +882,8 @@ fn try_configure_distribution_payments(
             msg!("Set total_validators: {}", total_validators);
             distribution.total_validators = total_validators;
 
-            msg!(
-                "Set total_solana_validator_payments_owed: {}",
-                total_lamports_owed
-            );
-            distribution.total_solana_validator_payments_owed = total_lamports_owed;
+            msg!("Set total_solana_validator_debt: {}", total_debt);
+            distribution.total_solana_validator_debt = total_debt;
 
             msg!("Set solana_validator_payments_merkle_root: {}", merkle_root);
             distribution.solana_validator_payments_merkle_root = merkle_root;
@@ -891,7 +896,7 @@ fn try_configure_distribution_payments(
             // setting will require that the flag has not been set yet.
 
             msg!("Set uncollectible_sol_amount: {}", amount);
-            distribution.uncollectible_sol_amount = amount;
+            distribution.uncollectible_sol_debt = amount;
         }
     }
 
@@ -931,7 +936,11 @@ fn try_finalize_distribution_payments(accounts: &[AccountInfo]) -> ProgramResult
 
     // We need to realloc the distribution account to add the number of bits
     // needed to store whether a Solana validator has paid.
-    let additional_data_len = distribution.total_validators / 8 + 1;
+    let additional_data_len = if distribution.total_validators % 8 == 0 {
+        distribution.total_validators / 8
+    } else {
+        distribution.total_validators / 8 + 1
+    };
 
     // Avoid borrowing while in mutable borrow state.
     let distribution_info = distribution.info;
@@ -1045,10 +1054,7 @@ fn try_finalize_distribution_rewards(accounts: &[AccountInfo]) -> ProgramResult 
     distribution.set_are_rewards_finalized(true);
 
     // Payments must have been finalized before rewards can be finalized.
-    if !distribution.are_payments_finalized() {
-        msg!("Payments must be finalized before rewards can be finalized");
-        return Err(ProgramError::InvalidAccountData);
-    }
+    try_require_finalized_distribution_payments(&distribution)?;
 
     // The distribution must have been created at least the minimum number of epochs ago.
     let minimum_dz_epoch_to_finalize = program_config
@@ -1071,7 +1077,11 @@ fn try_finalize_distribution_rewards(accounts: &[AccountInfo]) -> ProgramResult 
     // We need to realloc the distribution account to add the number of bits
     // needed to store whether a contributor has claimed rewards.
     let total_contributors = distribution.total_contributors;
-    let additional_data_len = total_contributors / 8 + 1;
+    let additional_data_len = if total_contributors % 8 == 0 {
+        total_contributors / 8
+    } else {
+        total_contributors / 8 + 1
+    };
 
     // Avoid borrowing while in mutable borrow state.
     let distribution_info = distribution.info;
@@ -1846,28 +1856,225 @@ fn try_verify_distribution_merkle_root(
 ) -> ProgramResult {
     msg!("Verify distribution payment");
 
+    // Enforce that the merkle proof uses an indexed tree.
+    if !proof.is_indexed() {
+        msg!("Merkle proof must use an indexed tree");
+        return Err(ProgramError::InvalidInstructionData);
+    }
+
     // We expect only the distribution account for this instruction.
     let mut accounts_iter = accounts.iter().enumerate();
     let distribution =
         ZeroCopyAccount::<Distribution>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
 
     match kind {
-        DistributionMerkleRootKind::SolanaValidatorPayment(payment_owed) => {
-            let merkle_root = payment_owed.merkle_root(proof);
+        DistributionMerkleRootKind::SolanaValidatorPayment(payment) => {
+            let leaf_index = proof.leaf_index.unwrap();
+            let computed_merkle_root =
+                proof.root_from_pod_leaf(&payment, Some(SolanaValidatorPayment::LEAF_PREFIX));
 
-            if merkle_root != distribution.solana_validator_payments_merkle_root {
-                msg!("Invalid merkle root: {}", merkle_root);
+            if computed_merkle_root != distribution.solana_validator_payments_merkle_root {
+                msg!("Invalid computed merkle root: {}", computed_merkle_root);
                 return Err(ProgramError::InvalidInstructionData);
             }
 
-            msg!("Solana validator");
-            msg!("  node_id: {}", payment_owed.node_id);
-            msg!("  amount: {}", payment_owed.amount);
+            msg!("Solana validator {}", leaf_index);
+            msg!("  node_id: {}", payment.node_id);
+            msg!("  amount: {}", payment.amount);
         }
         DistributionMerkleRootKind::RewardShare() => {
             todo!()
         }
     }
+    Ok(())
+}
+
+fn try_initialize_solana_validator_deposit(
+    accounts: &[AccountInfo],
+    node_id: Pubkey,
+) -> ProgramResult {
+    msg!("Initialize Solana validator deposit");
+
+    // We expect the following accounts for this instruction:
+    // - 0: Solana validator deposit.
+    // - 1: Payer (funder for new account).
+    // - 2: System program.
+    let mut accounts_iter = accounts.iter().enumerate();
+
+    // Account 0 must be the new Solana validator deposit.
+    let (account_index, new_solana_validator_deposit_info) =
+        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+
+    let (expected_solana_validator_deposit_key, solana_validator_deposit_bump) =
+        SolanaValidatorDeposit::find_address(&node_id);
+
+    // Enforce this account location.
+    if new_solana_validator_deposit_info.key != &expected_solana_validator_deposit_key {
+        msg!(
+            "Invalid address for Solana validator deposit (account {})",
+            account_index
+        );
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Account 1 must be the payer.
+    let (_, payer_info) = try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+
+    try_create_account(
+        Invoker::Signer(payer_info.key),
+        Invoker::Pda {
+            key: &expected_solana_validator_deposit_key,
+            signer_seeds: &[
+                SolanaValidatorDeposit::SEED_PREFIX,
+                node_id.as_ref(),
+                &[solana_validator_deposit_bump],
+            ],
+        },
+        new_solana_validator_deposit_info.lamports(),
+        zero_copy::data_end::<SolanaValidatorDeposit>(),
+        &ID,
+        accounts,
+        Default::default(),
+    )?;
+
+    // Finally, initialize the solana validator deposit with the node id.
+    let (mut solana_validator_deposit, _) = zero_copy::try_initialize::<SolanaValidatorDeposit>(
+        new_solana_validator_deposit_info,
+        None,
+    )?;
+    solana_validator_deposit.node_id = node_id;
+
+    Ok(())
+}
+
+fn try_pay_solana_validator_debt(
+    accounts: &[AccountInfo],
+    amount: u64,
+    proof: MerkleProof,
+) -> ProgramResult {
+    msg!("Pay Solana validator debt");
+
+    if amount == 0 {
+        msg!("No debt to pay");
+        return Err(ProgramError::InvalidInstructionData);
+    }
+
+    if !proof.is_indexed() {
+        msg!("Merkle proof must use an indexed tree");
+        return Err(ProgramError::InvalidInstructionData);
+    }
+
+    // We expect the following accounts for this instruction:
+    // - 0: Program config.
+    // - 1: Distribution.
+    // - 2: Solana validator deposit.
+    // - 3: Journal.
+    let mut accounts_iter = accounts.iter().enumerate();
+
+    // Account 0 must be the program config.
+    let program_config =
+        ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    // Make sure the program is not paused.
+    try_require_unpaused(&program_config)?;
+
+    // Account 1 must be the distribution.
+    let mut distribution =
+        ZeroCopyMutAccount::<Distribution>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    // We cannot pay Solana validator debt until the payments accountant has
+    // finalized the payments.
+    try_require_finalized_distribution_payments(&distribution)?;
+
+    // Update the collected payments amount now to avoid a borrow issue later
+    // in this instruction.
+    distribution.collected_solana_validator_payments += amount;
+
+    // This merkle root will be used to verify the payment after we determine
+    // the debt has not already been paid.
+    let expected_merkle_root = distribution.solana_validator_payments_merkle_root;
+
+    let leaf_index = proof.leaf_index.unwrap();
+
+    // Bits indicating whether debt has been paid for specific leaf indices are
+    // stored in the distribution's remaining data.
+    let mut remaining_data = distribution.remaining_data;
+
+    let leaf_byte_index = leaf_index as usize / 8;
+
+    // First, we have to grab the relevant byte from the remaining data.
+    let mut leaf_byte = remaining_data
+        .get(leaf_byte_index)
+        .copied()
+        .map(ReplayProtectionByte::from)
+        .ok_or_else(|| {
+            msg!("Invalid leaf index");
+            ProgramError::InvalidInstructionData
+        })?;
+
+    // Then, we have to grab the relevant bit from the byte and check whether
+    // it is set already.
+    let leaf_bit = leaf_index as usize % 8;
+
+    if leaf_byte.bit(leaf_bit) {
+        msg!(
+            "Debt already paid for Solana validator index {}",
+            leaf_index
+        );
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Set the bit to true to indicate that the debt has been paid.
+    leaf_byte.set_bit(leaf_bit, true);
+    remaining_data[leaf_byte_index] = leaf_byte.to_le_bytes::<1>()[0];
+
+    // Account 2 must be the Solana validator deposit.
+    let solana_validator_deposit = ZeroCopyMutAccount::<SolanaValidatorDeposit>::try_next_accounts(
+        &mut accounts_iter,
+        Some(&ID),
+    )?;
+
+    let payment = SolanaValidatorPayment {
+        node_id: solana_validator_deposit.node_id,
+        amount,
+    };
+
+    let computed_merkle_root =
+        proof.root_from_pod_leaf(&payment, Some(SolanaValidatorPayment::LEAF_PREFIX));
+
+    if computed_merkle_root != expected_merkle_root {
+        msg!("Invalid computed merkle root: {}", computed_merkle_root);
+        return Err(ProgramError::InvalidInstructionData);
+    }
+
+    // Finally, move lamports from the Solana validator deposit to the
+    // Journal. The journal's lamports will be withdrawn from the registered
+    // swap program in exchange for 2Z tokens.
+    let mut solana_validator_deposit_lamports = solana_validator_deposit.info.lamports.borrow_mut();
+
+    // We cannot remove more lamports than the rent exemption.
+    let rent_exemption_lamports = Rent::get()
+        .unwrap()
+        .minimum_balance(zero_copy::data_end::<SolanaValidatorDeposit>());
+
+    if solana_validator_deposit_lamports.saturating_sub(rent_exemption_lamports) < amount {
+        msg!("Insufficient funds in Solana validator deposit to pay debt");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Account 3 must be the journal.
+    let mut journal =
+        ZeroCopyMutAccount::<Journal>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    **solana_validator_deposit_lamports -= amount;
+    **journal.info.lamports.borrow_mut() += amount;
+
+    journal.total_sol_balance += amount;
+    msg!(
+        "Updated journal's SOL balance to {}",
+        journal.total_sol_balance
+    );
+
     Ok(())
 }
 
@@ -1943,6 +2150,7 @@ struct VerifiedProgramAuthority<'a, 'b> {
 }
 
 impl<'a, 'b> TryNextAccounts<'a, 'b, Authority> for VerifiedProgramAuthority<'a, 'b> {
+    #[inline(always)]
     fn try_next_accounts(
         accounts_iter: &mut EnumeratedAccountInfoIter<'a, 'b>,
         authority: Authority,
@@ -1967,6 +2175,7 @@ struct VerifiedProgramAuthorityMut<'a, 'b> {
 }
 
 impl<'a, 'b> TryNextAccounts<'a, 'b, Authority> for VerifiedProgramAuthorityMut<'a, 'b> {
+    #[inline(always)]
     fn try_next_accounts(
         accounts_iter: &mut EnumeratedAccountInfoIter<'a, 'b>,
         authority: Authority,
@@ -1985,6 +2194,7 @@ impl<'a, 'b> TryNextAccounts<'a, 'b, Authority> for VerifiedProgramAuthorityMut<
     }
 }
 
+#[inline(always)]
 fn try_next_2z_mint_info(
     accounts_iter: &mut EnumeratedAccountInfoIter,
 ) -> Result<(), ProgramError> {
@@ -2000,6 +2210,7 @@ fn try_next_2z_mint_info(
     Ok(())
 }
 
+#[inline(always)]
 fn try_next_2z_token_pda_info<'a, 'b>(
     accounts_iter: &mut EnumeratedAccountInfoIter<'a, 'b>,
     token_owner: &Pubkey,
@@ -2039,6 +2250,7 @@ fn try_next_2z_token_pda_info<'a, 'b>(
     Ok((account_index, token_pda_info, token_pda_bump))
 }
 
+#[inline(always)]
 fn try_next_token_program_info(accounts_iter: &mut EnumeratedAccountInfoIter) -> ProgramResult {
     let (account_index, token_program_info) =
         try_next_enumerated_account(accounts_iter, Default::default())?;
@@ -2055,6 +2267,7 @@ fn try_next_token_program_info(accounts_iter: &mut EnumeratedAccountInfoIter) ->
     Ok(())
 }
 
+#[inline(always)]
 fn try_serialize_journal_entries(
     journal_entries: &JournalEntries,
     journal: &mut ZeroCopyMutAccount<Journal>,
@@ -2065,6 +2278,7 @@ fn try_serialize_journal_entries(
     })
 }
 
+#[inline(always)]
 fn try_require_unpaused(program_config: &ProgramConfig) -> ProgramResult {
     if program_config.is_paused() {
         msg!("Program is paused");
@@ -2074,6 +2288,7 @@ fn try_require_unpaused(program_config: &ProgramConfig) -> ProgramResult {
     Ok(())
 }
 
+#[inline(always)]
 fn try_require_unfinalized_distribution_payments(distribution: &Distribution) -> ProgramResult {
     if distribution.are_payments_finalized() {
         msg!("Distribution payments have already been finalized");
@@ -2083,6 +2298,17 @@ fn try_require_unfinalized_distribution_payments(distribution: &Distribution) ->
     Ok(())
 }
 
+#[inline(always)]
+fn try_require_finalized_distribution_payments(distribution: &Distribution) -> ProgramResult {
+    if !distribution.are_payments_finalized() {
+        msg!("Distribution payments are not finalized yet");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    Ok(())
+}
+
+#[inline(always)]
 fn try_require_unfinalized_distribution_rewards(distribution: &Distribution) -> ProgramResult {
     if distribution.are_rewards_finalized() {
         msg!("Distribution rewards have already been finalized");

@@ -6,7 +6,7 @@ use solana_system_interface::program as system_program;
 use crate::{
     state::{
         find_2z_token_pda_address, ContributorRewards, Distribution, Journal, PrepaidConnection,
-        ProgramConfig,
+        ProgramConfig, SolanaValidatorDeposit,
     },
     types::DoubleZeroEpoch,
 };
@@ -789,5 +789,72 @@ impl From<VerifyDistributionMerkleRootAccounts> for Vec<AccountMeta> {
         let VerifyDistributionMerkleRootAccounts { distribution_key } = accounts;
 
         vec![AccountMeta::new_readonly(distribution_key, false)]
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InitializeSolanaValidatorDepositAccounts {
+    pub new_solana_validator_deposit_key: Pubkey,
+    pub payer_key: Pubkey,
+}
+
+impl InitializeSolanaValidatorDepositAccounts {
+    pub fn new(payer_key: &Pubkey, node_id: &Pubkey) -> Self {
+        Self {
+            new_solana_validator_deposit_key: SolanaValidatorDeposit::find_address(node_id).0,
+            payer_key: *payer_key,
+        }
+    }
+}
+
+impl From<InitializeSolanaValidatorDepositAccounts> for Vec<AccountMeta> {
+    fn from(accounts: InitializeSolanaValidatorDepositAccounts) -> Self {
+        let InitializeSolanaValidatorDepositAccounts {
+            new_solana_validator_deposit_key,
+            payer_key,
+        } = accounts;
+
+        vec![
+            AccountMeta::new(new_solana_validator_deposit_key, false),
+            AccountMeta::new(payer_key, true),
+            AccountMeta::new_readonly(system_program::ID, false),
+        ]
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PaySolanaValidatorDebtAccounts {
+    pub program_config_key: Pubkey,
+    pub distribution_key: Pubkey,
+    pub solana_validator_deposit_key: Pubkey,
+    pub journal_key: Pubkey,
+}
+
+impl PaySolanaValidatorDebtAccounts {
+    pub fn new(dz_epoch: DoubleZeroEpoch, node_id: &Pubkey) -> Self {
+        Self {
+            program_config_key: ProgramConfig::find_address().0,
+            distribution_key: Distribution::find_address(dz_epoch).0,
+            solana_validator_deposit_key: SolanaValidatorDeposit::find_address(node_id).0,
+            journal_key: Journal::find_address().0,
+        }
+    }
+}
+
+impl From<PaySolanaValidatorDebtAccounts> for Vec<AccountMeta> {
+    fn from(accounts: PaySolanaValidatorDebtAccounts) -> Self {
+        let PaySolanaValidatorDebtAccounts {
+            program_config_key,
+            distribution_key,
+            solana_validator_deposit_key,
+            journal_key,
+        } = accounts;
+
+        vec![
+            AccountMeta::new_readonly(program_config_key, false),
+            AccountMeta::new(distribution_key, false),
+            AccountMeta::new(solana_validator_deposit_key, false),
+            AccountMeta::new(journal_key, false),
+        ]
     }
 }

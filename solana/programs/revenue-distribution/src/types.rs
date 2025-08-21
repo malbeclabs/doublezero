@@ -3,7 +3,6 @@ use std::fmt::Display;
 use borsh::{BorshDeserialize, BorshSerialize};
 use bytemuck::{Pod, Zeroable};
 use solana_pubkey::Pubkey;
-use svm_hash::{merkle::MerkleProof, sha2::Hash};
 
 #[derive(
     Debug,
@@ -159,7 +158,10 @@ impl_unit_share!(
 
 // TODO: Remove this once validator-payments incorporates computing merkle
 // roots.
-#[derive(Debug, BorshDeserialize, BorshSerialize, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(
+    Debug, BorshDeserialize, BorshSerialize, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable,
+)]
+#[repr(C)]
 pub struct SolanaValidatorPayment {
     pub node_id: Pubkey,
     pub amount: u64,
@@ -167,16 +169,11 @@ pub struct SolanaValidatorPayment {
 
 impl SolanaValidatorPayment {
     pub const LEAF_PREFIX: &'static [u8] = b"solana_validator_payment";
-
-    pub fn merkle_root(&self, proof: MerkleProof) -> Hash {
-        let mut leaf = [0; 40];
-
-        // This is infallible because we know the size of the struct.
-        borsh::to_writer(&mut leaf[..], &self).unwrap();
-
-        proof.root_from_leaf(&leaf, Some(Self::LEAF_PREFIX))
-    }
 }
+
+/// A byte used to prevent replay attacks. Each bit set to 1 indicates that the
+/// corresponding leaf has been processed.
+pub type ReplayProtectionByte = ruint::aliases::U8;
 
 #[cfg(test)]
 mod tests {

@@ -2,17 +2,24 @@ mod common;
 
 //
 
+use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_revenue_distribution::{
     instruction::{
-        DistributionMerkleRootKind, DistributionPaymentsConfiguration, ProgramConfiguration,
-        ProgramFlagConfiguration,
+        account::VerifyDistributionMerkleRootAccounts, DistributionMerkleRootKind,
+        DistributionPaymentsConfiguration, ProgramConfiguration, ProgramFlagConfiguration,
+        RevenueDistributionInstructionData,
     },
     types::{DoubleZeroEpoch, SolanaValidatorPayment},
+    ID,
 };
 use solana_program_test::tokio;
 use solana_pubkey::Pubkey;
-use solana_sdk::signature::{Keypair, Signer};
-use svm_hash::merkle::{merkle_root_from_byte_ref_leaves, MerkleProof};
+use solana_sdk::{
+    instruction::InstructionError,
+    signature::{Keypair, Signer},
+    transaction::TransactionError,
+};
+use svm_hash::merkle::{merkle_root_from_indexed_pod_leaves, MerkleProof};
 
 //
 // Verify distribution merkle root.
@@ -41,23 +48,22 @@ async fn test_verify_distribution_merkle_root() {
 
     let dz_epoch = DoubleZeroEpoch::new(1);
 
-    let payments_data = (0..69)
+    // Odd-leaf merkle tree.
+    let mut payments_data = (0..511)
         .map(|i| SolanaValidatorPayment {
             node_id: Pubkey::new_unique(),
             amount: 100_000_000_000 * (i + 1),
         })
         .collect::<Vec<_>>();
+    assert_eq!(payments_data.len() % 2, 1);
 
-    let leaves = payments_data
-        .iter()
-        .map(|payment| borsh::to_vec(&payment).unwrap())
-        .collect::<Vec<_>>();
+    let merkle_root = merkle_root_from_indexed_pod_leaves(
+        &payments_data,
+        Some(SolanaValidatorPayment::LEAF_PREFIX),
+    )
+    .unwrap();
 
-    let merkle_root =
-        merkle_root_from_byte_ref_leaves(&leaves, Some(SolanaValidatorPayment::LEAF_PREFIX))
-            .unwrap();
-
-    let total_lamports_owed = payments_data.iter().map(|payment| payment.amount).sum();
+    let total_debt = payments_data.iter().map(|payment| payment.amount).sum();
 
     test_setup
         .initialize_program()
@@ -107,7 +113,7 @@ async fn test_verify_distribution_merkle_root() {
             [
                 DistributionPaymentsConfiguration::UpdateSolanaValidatorPayments {
                     total_validators: payments_data.len() as u32,
-                    total_lamports_owed,
+                    total_debt,
                     merkle_root,
                 },
             ],
@@ -115,29 +121,68 @@ async fn test_verify_distribution_merkle_root() {
         .await
         .unwrap();
 
-    let kinds_and_proofs = payments_data
-        .iter()
-        .copied()
-        .enumerate()
-        .map(|(i, payment_owed)| {
-            let proof = MerkleProof::from_byte_ref_leaves(
-                &leaves,
-                i,
-                Some(SolanaValidatorPayment::LEAF_PREFIX),
-            )
-            .unwrap();
+    // Chunk into 64 instructions.
+    let mut chunk = Vec::with_capacity(64);
+    let last_index = payments_data.len() - 1;
 
-            (
-                DistributionMerkleRootKind::SolanaValidatorPayment(payment_owed),
-                proof,
-            )
-        })
-        .collect::<Vec<_>>();
+    for (i, payment) in payments_data.iter().copied().enumerate() {
+        let kind = DistributionMerkleRootKind::SolanaValidatorPayment(payment);
+        let proof = MerkleProof::from_indexed_pod_leaves(
+            &payments_data,
+            i.try_into().unwrap(),
+            Some(SolanaValidatorPayment::LEAF_PREFIX),
+        )
+        .unwrap();
 
-    for chunk in kinds_and_proofs.chunks(64) {
-        test_setup
-            .verify_distribution_merkle_root(dz_epoch, chunk.to_vec())
-            .await
-            .unwrap();
+        chunk.push((kind, proof));
+
+        if chunk.len() == 64 || i == last_index {
+            test_setup
+                .verify_distribution_merkle_root(dz_epoch, chunk.clone())
+                .await
+                .unwrap();
+            chunk.clear();
+        }
     }
+
+    // Attempt to spoof a replay attack with the last leaf of the odd-leaf
+    // Merkle tree by duplicating the last leaf.
+    let last_leaf = *payments_data.last().unwrap();
+    payments_data.push(last_leaf);
+
+    let invalid_merkle_root = merkle_root_from_indexed_pod_leaves(
+        &payments_data,
+        Some(SolanaValidatorPayment::LEAF_PREFIX),
+    )
+    .unwrap();
+    assert_ne!(merkle_root, invalid_merkle_root);
+
+    let spoofed_proof = MerkleProof::from_indexed_pod_leaves(
+        &payments_data,
+        payments_data.len() as u32 - 1,
+        Some(SolanaValidatorPayment::LEAF_PREFIX),
+    )
+    .unwrap();
+
+    let verify_distribution_merkle_root_ix = try_build_instruction(
+        &ID,
+        VerifyDistributionMerkleRootAccounts::new(dz_epoch),
+        &RevenueDistributionInstructionData::VerifyDistributionMerkleRoot {
+            kind: DistributionMerkleRootKind::SolanaValidatorPayment(last_leaf),
+            proof: spoofed_proof,
+        },
+    )
+    .unwrap();
+
+    let (tx_err, program_logs) = test_setup
+        .unwrap_simulation_error(&[verify_distribution_merkle_root_ix], &[])
+        .await;
+    assert_eq!(
+        tx_err,
+        TransactionError::InstructionError(0, InstructionError::InvalidInstructionData)
+    );
+    assert_eq!(
+        program_logs.get(2).unwrap(),
+        &format!("Program log: Invalid computed merkle root: {invalid_merkle_root}")
+    );
 }

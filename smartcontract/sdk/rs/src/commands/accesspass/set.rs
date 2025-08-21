@@ -14,6 +14,7 @@ pub struct SetAccessPassCommand {
     pub client_ip: Ipv4Addr,
     pub user_payer: Pubkey,
     pub last_access_epoch: u64,
+    pub airdrop_lamports: u64,
 }
 
 impl SetAccessPassCommand {
@@ -29,12 +30,13 @@ impl SetAccessPassCommand {
             DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
                 accesspass_type: self.accesspass_type,
                 client_ip: self.client_ip,
-                user_payer: self.user_payer,
                 last_access_epoch: self.last_access_epoch,
+                airdrop_lamports: self.airdrop_lamports,
             }),
             vec![
                 AccountMeta::new(pda_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
+                AccountMeta::new(self.user_payer, false),
             ],
         )
     }
@@ -73,6 +75,7 @@ mod tests {
                     client_ip,
                     user_payer: payer,
                     last_access_epoch: 0,
+                    airdrop_lamports: 40_000,
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),
@@ -86,6 +89,7 @@ mod tests {
             client_ip,
             user_payer: payer,
             last_access_epoch: 0,
+            airdrop_lamports: 40_000,
         }
         .execute(&client);
         assert!(res.is_ok());

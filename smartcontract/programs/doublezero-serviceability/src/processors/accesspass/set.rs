@@ -18,24 +18,30 @@ use solana_program::{
     clock::Clock,
     entrypoint::ProgramResult,
     msg,
+    program::invoke_signed_unchecked,
     pubkey::Pubkey,
+    system_instruction,
     sysvar::Sysvar,
 };
+
+// Value to rent exempt two `User` accounts + configurable amount for connect/disconnect txns
+// `User` account size assumes a single publisher and subscriber pubkey registered
+const AIRDROP_USER_RENT_LAMPORTS: u64 = 236 * 2;
 
 #[derive(BorshSerialize, BorshDeserialize, PartialEq, Clone)]
 pub struct SetAccessPassArgs {
     pub accesspass_type: AccessPassType, // 1
     pub client_ip: Ipv4Addr,             // 4
-    pub user_payer: Pubkey,              // 32
     pub last_access_epoch: u64,          // 8
+    pub airdrop_lamports: u64,           // 8
 }
 
 impl fmt::Debug for SetAccessPassArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "accesspass_type: {}, ip: {}, user_payer: {}, last_access_epoch: {}",
-            self.accesspass_type, self.client_ip, self.user_payer, self.last_access_epoch
+            "accesspass_type: {}, ip: {}, last_access_epoch: {}, airdrop_lamports: {}",
+            self.accesspass_type, self.client_ip, self.last_access_epoch, self.airdrop_lamports,
         )
     }
 }
@@ -49,6 +55,7 @@ pub fn process_set_accesspass(
 
     let accesspass_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
+    let user_payer = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -73,7 +80,7 @@ pub fn process_set_accesspass(
     );
 
     let (expected_pda_account, bump_seed) =
-        get_accesspass_pda(program_id, &value.client_ip, &value.user_payer);
+        get_accesspass_pda(program_id, &value.client_ip, &user_payer.key);
     assert_eq!(
         accesspass_account.key, &expected_pda_account,
         "Invalid AccessPass PubKey"
@@ -106,7 +113,7 @@ pub fn process_set_accesspass(
             bump_seed,
             accesspass_type: value.accesspass_type,
             client_ip: value.client_ip,
-            user_payer: value.user_payer,
+            user_payer: *user_payer.key,
             last_access_epoch: value.last_access_epoch,
             connection_count: 0,
             status: AccessPassStatus::Requested,
@@ -124,7 +131,7 @@ pub fn process_set_accesspass(
                 SEED_PREFIX,
                 SEED_ACCESS_PASS,
                 &value.client_ip.octets(),
-                &value.user_payer.to_bytes(),
+                &user_payer.key.to_bytes(),
                 &[bump_seed],
             ],
         )?;
@@ -146,6 +153,21 @@ pub fn process_set_accesspass(
 
         #[cfg(test)]
         msg!("Updated: {:?}", accesspass);
+    }
+
+    let deposit = AIRDROP_USER_RENT_LAMPORTS
+        .saturating_add(value.airdrop_lamports)
+        .saturating_sub(user_payer.lamports());
+    if deposit != 0 {
+        invoke_signed_unchecked(
+            &system_instruction::transfer(payer_account.key, user_payer.key, deposit),
+            &[
+                payer_account.clone(),
+                user_payer.clone(),
+                system_program.clone(),
+            ],
+            &[],
+        )?;
     }
 
     Ok(())

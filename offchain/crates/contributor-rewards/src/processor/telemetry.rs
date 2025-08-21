@@ -43,15 +43,26 @@ pub struct DZDTelemetryStats {
     pub rtt_min_us: f64,
     #[tabled(display = "display_us_as_ms", rename = "rtt_max(ms)")]
     pub rtt_max_us: f64,
+    #[tabled(display = "display_us_as_ms", rename = "rtt_p90(ms)")]
+    pub rtt_p90_us: f64,
     #[tabled(display = "display_us_as_ms", rename = "rtt_p95(ms)")]
     pub rtt_p95_us: f64,
     #[tabled(display = "display_us_as_ms", rename = "rtt_p99(ms)")]
     pub rtt_p99_us: f64,
+    #[tabled(display = "display_us_as_ms", rename = "rtt_stddev(ms)")]
+    pub rtt_stddev_us: f64,
     #[tabled(display = "display_us_as_ms", rename = "avg_jitter(ms)")]
     pub avg_jitter_us: f64,
+    #[tabled(display = "display_us_as_ms", rename = "ewma_jitter(ms)")]
+    pub jitter_ewma_us: f64,
     #[tabled(display = "display_us_as_ms", rename = "max_jitter(ms)")]
     pub max_jitter_us: f64,
+    #[tabled(rename = "loss_rate")]
     pub packet_loss: f64,
+    #[tabled(rename = "loss_count")]
+    pub loss_count: u64,
+    #[tabled(rename = "success_count")]
+    pub success_count: u64,
     #[tabled(rename = "samples")]
     pub total_samples: usize,
 }
@@ -130,11 +141,16 @@ impl DZDTelemetryProcessor {
                     rtt_median_us: stats.rtt_median_us,
                     rtt_min_us: stats.rtt_min_us,
                     rtt_max_us: stats.rtt_max_us,
+                    rtt_p90_us: stats.rtt_p90_us,
                     rtt_p95_us: stats.rtt_p95_us,
                     rtt_p99_us: stats.rtt_p99_us,
+                    rtt_stddev_us: stats.rtt_stddev_us,
                     avg_jitter_us: stats.avg_jitter_us,
+                    jitter_ewma_us: stats.ewma_jitter_us,
                     max_jitter_us: stats.max_jitter_us,
                     packet_loss: stats.packet_loss,
+                    loss_count: stats.loss_count,
+                    success_count: stats.success_count,
                     total_samples: stats.total_samples,
                 };
 

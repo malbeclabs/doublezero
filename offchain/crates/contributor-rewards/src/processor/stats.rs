@@ -5,15 +5,30 @@ use crate::ingestor::types::{DZDeviceLatencySamples, DZInternetLatencySamples};
 pub struct TelemetryStatistics {
     pub circuit: String,
     pub circuit_metadata: CircuitMetadata,
+    // RTT metrics
     pub rtt_mean_us: f64,
     pub rtt_median_us: f64,
     pub rtt_min_us: f64,
     pub rtt_max_us: f64,
+    pub rtt_p90_us: f64,
     pub rtt_p95_us: f64,
     pub rtt_p99_us: f64,
+    pub rtt_stddev_us: f64,
+    pub rtt_variance_us: f64,
+    pub rtt_mad_us: f64,
+    // Jitter metrics
     pub avg_jitter_us: f64,
     pub max_jitter_us: f64,
+    pub ewma_jitter_us: f64,
+    pub jitter_delta_stddev_us: f64,
+    pub jitter_peak_to_peak_us: f64,
+    // Packet loss metrics
     pub packet_loss: f64,
+    pub success_count: u64,
+    pub loss_count: u64,
+    pub success_rate: f64,
+    pub loss_rate: f64,
+    // Total samples
     pub total_samples: usize,
 }
 

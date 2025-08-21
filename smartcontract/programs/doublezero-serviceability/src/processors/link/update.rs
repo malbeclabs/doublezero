@@ -76,10 +76,6 @@ pub fn process_update_link(
 
     let mut link: Link = Link::try_from(link_account)?;
 
-    if link.owner != *payer_account.key {
-        return Err(solana_program::program_error::ProgramError::Custom(0));
-    }
-
     if let Some(ref code) = value.code {
         link.code = validate_account_code(code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
     }

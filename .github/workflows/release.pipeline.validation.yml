@@ -27,6 +27,8 @@ jobs:
             languages: ["go"]
           - release: funder
             languages: ["go"]
+          - release: monitor
+            languages: ["go"]
           - release: qa-agent
             languages: ["go"]
     name: release-validation-${{ matrix.release }}

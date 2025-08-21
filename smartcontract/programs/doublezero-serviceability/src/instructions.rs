@@ -859,8 +859,8 @@ mod tests {
             DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
                 accesspass_type: crate::state::accesspass::AccessPassType::SolanaValidator,
                 client_ip: [1, 2, 3, 4].into(),
-                user_payer: Pubkey::new_unique(),
                 last_access_epoch: 123,
+                airdrop_lamports: 10_000,
             }),
             "SetAccessPass",
         );

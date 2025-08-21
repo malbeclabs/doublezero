@@ -70,7 +70,7 @@ interface Loopback1000
 !
 mpls ip
 !
-{{- range $i := seq 500 627}}
+{{- range $i := seq .StartTunnel .EndTunnel}}
 default interface Tunnel{{$i}}
 !
 {{- end}}
@@ -88,22 +88,22 @@ router bgp 65342
 ip community-list COMM-ALL_USERS permit 21682:1200
 ip community-list COMM-ALL_MCAST_USERS permit 21682:1300
 !
-{{- range $i := seq 500 627}}
+{{- range $i := seq .StartTunnel .EndTunnel}}
 no route-map RM-USER-{{$i}}-OUT
 !
 {{- end}}
-{{- range $i := seq 500 627}}
+{{- range $i := seq .StartTunnel .EndTunnel}}
 no route-map RM-USER-{{$i}}-IN
 !
 {{- end}}
-{{- range $i := seq 500 627}}
+{{- range $i := seq .StartTunnel .EndTunnel}}
 no ip prefix-list PL-USER-{{$i}}
 !
 {{- end}}
-{{- range $i := seq 500 627}}
+{{- range $i := seq .StartTunnel .EndTunnel}}
 no ip access-list SEC-USER-{{$i}}-IN
 {{- end}}
-{{- range $i := seq 500 627}}
+{{- range $i := seq .StartTunnel .EndTunnel}}
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-{{$i}}-OUT
 {{- end}}
 no ip access-list SEC-USER-PUB-MCAST-IN

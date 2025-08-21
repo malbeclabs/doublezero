@@ -2,8 +2,11 @@ package fixtures
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"text/template"
+
+	e2e "github.com/malbeclabs/doublezero/e2e"
 )
 
 // seq generates a sequence of integers from start to end (inclusive)
@@ -18,8 +21,14 @@ func seq(start, end int) []int {
 	return result
 }
 
+// add returns the sum of two integers
+func add(a, b int) int {
+	return a + b
+}
+
 var templateFuncs = template.FuncMap{
 	"seq": seq,
+	"add": add,
 }
 
 // RenderTemplate renders a template string with the given data
@@ -44,4 +53,13 @@ func RenderFile(filepath string, data any) (string, error) {
 		return "", err
 	}
 	return RenderTemplate(string(content), data)
+}
+
+// Render reads a fixture from the embedded filesystem and renders it as a template
+func Render(fixturePath string, data any) (string, error) {
+	fixture, err := e2e.FS.ReadFile(fixturePath)
+	if err != nil {
+		return "", fmt.Errorf("error reading fixture: %w", err)
+	}
+	return RenderTemplate(string(fixture), data)
 }

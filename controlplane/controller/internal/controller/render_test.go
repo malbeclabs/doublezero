@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/malbeclabs/doublezero/pkg/fixtures"
+	"github.com/malbeclabs/doublezero/e2e/fixtures"
 )
 
 func TestRenderConfig(t *testing.T) {
@@ -524,7 +524,11 @@ func TestRenderConfig(t *testing.T) {
 			}
 			var want []byte
 			if strings.HasSuffix(test.Want, ".tmpl") {
-				rendered, err := fixtures.RenderFile(test.Want, nil)
+				templateData := map[string]int{
+					"StartTunnel": StartUserTunnelNum,
+					"EndTunnel":   StartUserTunnelNum + MaxTunnelSlots - 1,
+				}
+				rendered, err := fixtures.RenderFile(test.Want, templateData)
 				if err != nil {
 					t.Fatalf("error rendering test fixture %s: %v", test.Want, err)
 				}

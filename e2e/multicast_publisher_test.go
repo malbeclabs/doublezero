@@ -8,10 +8,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/e2e/internal/arista"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
-	"github.com/malbeclabs/doublezero/e2e/internal/fixtures"
+	"github.com/malbeclabs/doublezero/e2e/fixtures"
+	internalfixtures "github.com/malbeclabs/doublezero/e2e/internal/fixtures"
 	"github.com/stretchr/testify/require"
 )
 
@@ -65,10 +67,12 @@ func checkMulticastPublisherPostConnect(t *testing.T, dn *TestDevnet, device *de
 		require.NoError(t, err)
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
-			config, err := fixtures.Render("fixtures/multicast_publisher/doublezero_agent_config_user_added.tmpl", map[string]string{
+			config, err := fixtures.Render("fixtures/multicast_publisher/doublezero_agent_config_user_added.tmpl", map[string]any{
 				"ClientIP":                  client.CYOANetworkIP,
 				"DeviceIP":                  device.CYOANetworkIP,
 				"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
+				"StartTunnel":               config.StartUserTunnelNum,
+				"EndTunnel":                 config.EndUserTunnelNum,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
 			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
@@ -80,13 +84,13 @@ func checkMulticastPublisherPostConnect(t *testing.T, dn *TestDevnet, device *de
 		tests := []struct {
 			name        string
 			fixturePath string
-			data        map[string]string
+			data        map[string]any
 			cmd         []string
 		}{
 			{
 				name:        "doublezero_multicast_group_list",
 				fixturePath: "fixtures/multicast_publisher/doublezero_multicast_group_list.tmpl",
-				data: map[string]string{
+				data: map[string]any{
 					"ManagerPubkey": dn.Manager.Pubkey,
 				},
 				cmd: []string{"doublezero", "multicast", "group", "list"},
@@ -94,7 +98,7 @@ func checkMulticastPublisherPostConnect(t *testing.T, dn *TestDevnet, device *de
 			{
 				name:        "doublezero_status",
 				fixturePath: "fixtures/multicast_publisher/doublezero_status_connected.tmpl",
-				data: map[string]string{
+				data: map[string]any{
 					"ClientIP":                  client.CYOANetworkIP,
 					"DeviceIP":                  device.CYOANetworkIP,
 					"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
@@ -113,7 +117,7 @@ func checkMulticastPublisherPostConnect(t *testing.T, dn *TestDevnet, device *de
 				want, err := fixtures.Render(test.fixturePath, test.data)
 				require.NoError(t, err, "error reading fixture")
 
-				diff := fixtures.DiffCLITable(got, []byte(want))
+				diff := internalfixtures.DiffCLITable(got, []byte(want))
 				if diff != "" {
 					fmt.Println(string(got))
 					t.Fatalf("output mismatch: -(want), +(got):%s", diff)
@@ -229,8 +233,10 @@ func checkMulticastPublisherPostDisconnect(t *testing.T, dn *TestDevnet, device 
 		dn.log.Info("==> Checking multicast publisher post-disconnect requirements")
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
-			config, err := fixtures.Render("fixtures/multicast_publisher/doublezero_agent_config_user_removed.tmpl", map[string]string{
-				"DeviceIP": device.CYOANetworkIP,
+			config, err := fixtures.Render("fixtures/multicast_publisher/doublezero_agent_config_user_removed.tmpl", map[string]any{
+				"DeviceIP":    device.CYOANetworkIP,
+				"StartTunnel": config.StartUserTunnelNum,
+				"EndTunnel":   config.EndUserTunnelNum,
 			})
 			require.NoError(t, err, "error reading agent configuration fixture")
 			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
@@ -242,13 +248,13 @@ func checkMulticastPublisherPostDisconnect(t *testing.T, dn *TestDevnet, device 
 		tests := []struct {
 			name        string
 			fixturePath string
-			data        map[string]string
+			data        map[string]any
 			cmd         []string
 		}{
 			{
 				name:        "doublezero_status",
 				fixturePath: "fixtures/multicast_publisher/doublezero_status_disconnected.txt",
-				data:        map[string]string{},
+				data:        map[string]any{},
 				cmd:         []string{"doublezero", "status"},
 			},
 		}
@@ -263,7 +269,7 @@ func checkMulticastPublisherPostDisconnect(t *testing.T, dn *TestDevnet, device 
 				want, err := fixtures.Render(test.fixturePath, test.data)
 				require.NoError(t, err, "error reading fixture")
 
-				diff := fixtures.DiffCLITable(got, []byte(want))
+				diff := internalfixtures.DiffCLITable(got, []byte(want))
 				if diff != "" {
 					fmt.Println(string(got))
 					t.Fatalf("output mismatch: -(want), +(got):%s", diff)

@@ -8,13 +8,14 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
 var (
 	// maximum number of tunnels to provision on a given device
-	maxTunnelSlots     = 128
-	startUserTunnelNum = 500
+	MaxTunnelSlots     = config.MaxTunnelSlots
+	StartUserTunnelNum = config.StartUserTunnelNum
 )
 
 type InterfaceType uint8
@@ -189,8 +190,8 @@ type Device struct {
 
 func NewDevice(ip net.IP, publicKey string) *Device {
 	tunnels := []*Tunnel{}
-	for i := 0; i < maxTunnelSlots; i++ {
-		id := startUserTunnelNum + i
+	for i := 0; i < MaxTunnelSlots; i++ {
+		id := StartUserTunnelNum + i
 		tunnel := &Tunnel{
 			Id:        id,
 			Allocated: false,
@@ -201,7 +202,7 @@ func NewDevice(ip net.IP, publicKey string) *Device {
 		PublicIP:    ip,
 		PubKey:      publicKey,
 		Tunnels:     tunnels,
-		TunnelSlots: maxTunnelSlots,
+		TunnelSlots: MaxTunnelSlots,
 	}
 }
 

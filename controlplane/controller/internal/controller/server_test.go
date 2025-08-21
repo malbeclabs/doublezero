@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
+	"github.com/malbeclabs/doublezero/pkg/fixtures"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
@@ -77,7 +79,7 @@ func TestGetConfig(t *testing.T) {
 				},
 			},
 			Pubkey: "abc123",
-			Want:   "fixtures/unicast.tunnel.txt",
+			Want:   "fixtures/unicast.tunnel.tmpl",
 		},
 		{
 			Name:               "render_multicast_config_successfully",
@@ -159,7 +161,7 @@ func TestGetConfig(t *testing.T) {
 				},
 			},
 			Pubkey: "abc123",
-			Want:   "fixtures/multicast.tunnel.txt",
+			Want:   "fixtures/multicast.tunnel.tmpl",
 		},
 		{
 			Name:               "get_config_mixed_tunnels_successfully",
@@ -251,7 +253,7 @@ func TestGetConfig(t *testing.T) {
 				},
 			},
 			Pubkey: "abc123",
-			Want:   "fixtures/mixed.tunnel.txt",
+			Want:   "fixtures/mixed.tunnel.tmpl",
 		},
 		{
 			Name:               "get_config_nohardware_tunnels_successfully",
@@ -344,7 +346,7 @@ func TestGetConfig(t *testing.T) {
 				},
 			},
 			Pubkey: "abc123",
-			Want:   "fixtures/nohardware.tunnel.txt",
+			Want:   "fixtures/nohardware.tunnel.tmpl",
 		},
 		{
 			Name:               "render_base_config_successfully",
@@ -492,9 +494,19 @@ func TestGetConfig(t *testing.T) {
 			controller.swapCache(test.StateCache)
 
 			// grab the test fixture for the expected rendered config
-			want, err := os.ReadFile(test.Want)
-			if err != nil {
-				t.Fatalf("error reading test fixture %s: %v", test.Want, err)
+			var want []byte
+			if strings.HasSuffix(test.Want, ".tmpl") {
+				rendered, err := fixtures.RenderFile(test.Want, nil)
+				if err != nil {
+					t.Fatalf("error rendering test fixture %s: %v", test.Want, err)
+				}
+				want = []byte(rendered)
+			} else {
+				var err error
+				want, err = os.ReadFile(test.Want)
+				if err != nil {
+					t.Fatalf("error reading test fixture %s: %v", test.Want, err)
+				}
 			}
 
 			// get fetch the rendered config for the device's pubkey
@@ -503,7 +515,7 @@ func TestGetConfig(t *testing.T) {
 				t.Errorf("error while fetching config: %v", err)
 			}
 			if diff := cmp.Diff(string(want), got.GetConfig()); diff != "" {
-				t.Errorf("GetConfig mismatch (-want +got): %s\n", diff)
+				t.Errorf("GetConfig mismatch in fixture %s (-want +got): %s\n", test.Want, diff)
 			}
 		})
 	}
@@ -1031,7 +1043,7 @@ func TestEndToEnd(t *testing.T) {
 				Pubkey:   "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
 				BgpPeers: []string{},
 			},
-			Want: "fixtures/e2e.txt",
+			Want: "fixtures/e2e.tmpl",
 		},
 		{
 			Name: "remove_unknown_peers_successfully",
@@ -1156,7 +1168,7 @@ func TestEndToEnd(t *testing.T) {
 					"169.254.0.3", // In UserTunnelBlock, but associated with a user - should not be flagged for removal
 				},
 			},
-			Want: "fixtures/e2e.peer.removal.txt",
+			Want: "fixtures/e2e.peer.removal.tmpl",
 		},
 		{
 			Name: "base_config_without_interfaces_and_peers",
@@ -1238,7 +1250,7 @@ func TestEndToEnd(t *testing.T) {
 				Pubkey:   "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
 				BgpPeers: []string{},
 			},
-			Want: "fixtures/e2e.without.interfaces.peers.txt",
+			Want: "fixtures/e2e.without.interfaces.peers.tmpl",
 		},
 		{
 			Name: "remove_last_user_from_device",
@@ -1285,7 +1297,7 @@ func TestEndToEnd(t *testing.T) {
 					"169.254.0.13",
 				},
 			},
-			Want: "fixtures/e2e.last.user.txt",
+			Want: "fixtures/e2e.last.user.tmpl",
 		},
 	}
 	for _, test := range tests {
@@ -1355,9 +1367,19 @@ func TestEndToEnd(t *testing.T) {
 				t.Fatalf("timed out waiting for state cache update")
 			}
 
-			want, err := os.ReadFile(test.Want)
-			if err != nil {
-				t.Fatalf("error reading test fixture %s: %v", test.Want, err)
+			var want []byte
+			if strings.HasSuffix(test.Want, ".tmpl") {
+				rendered, err := fixtures.RenderFile(test.Want, nil)
+				if err != nil {
+					t.Fatalf("error rendering test fixture %s: %v", test.Want, err)
+				}
+				want = []byte(rendered)
+			} else {
+				var err error
+				want, err = os.ReadFile(test.Want)
+				if err != nil {
+					t.Fatalf("error reading test fixture %s: %v", test.Want, err)
+				}
 			}
 
 			got, err := agent.GetConfig(ctx, test.AgentRequest)
@@ -1365,7 +1387,7 @@ func TestEndToEnd(t *testing.T) {
 				t.Fatalf("error while fetching config: %v", err)
 			}
 			if diff := cmp.Diff(string(want), got.Config); diff != "" {
-				t.Errorf("Config mismatch (-want +got): %s\n", diff)
+				t.Errorf("Config mismatch in fixture %s (-want +got):\n%s", test.Want, diff)
 			}
 		})
 	}

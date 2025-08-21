@@ -4,9 +4,11 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/malbeclabs/doublezero/pkg/fixtures"
 )
 
 func TestRenderConfig(t *testing.T) {
@@ -60,7 +62,7 @@ func TestRenderConfig(t *testing.T) {
 				},
 				UnknownBgpPeers: nil,
 			},
-			Want: "fixtures/unicast.tunnel.txt",
+			Want: "fixtures/unicast.tunnel.tmpl",
 		},
 		{
 			Name:        "render_peer_removal_successfully",
@@ -108,7 +110,7 @@ func TestRenderConfig(t *testing.T) {
 					{169, 254, 0, 7},
 				},
 			},
-			Want: "fixtures/unknown.peer.removal.txt",
+			Want: "fixtures/unknown.peer.removal.tmpl",
 		},
 		{
 			Name:        "render_multicast_tunnel_successfully",
@@ -187,7 +189,7 @@ func TestRenderConfig(t *testing.T) {
 				},
 				UnknownBgpPeers: []net.IP{},
 			},
-			Want: "fixtures/multicast.tunnel.txt",
+			Want: "fixtures/multicast.tunnel.tmpl",
 		},
 		{
 			Name:        "render_mixed_tunnels_successfully",
@@ -277,7 +279,7 @@ func TestRenderConfig(t *testing.T) {
 				},
 				UnknownBgpPeers: []net.IP{},
 			},
-			Want: "fixtures/mixed.tunnel.txt",
+			Want: "fixtures/mixed.tunnel.tmpl",
 		},
 		{
 			Name:        "render_nohardware_tunnels_successfully",
@@ -368,7 +370,7 @@ func TestRenderConfig(t *testing.T) {
 				},
 				UnknownBgpPeers: []net.IP{},
 			},
-			Want: "fixtures/nohardware.tunnel.txt",
+			Want: "fixtures/nohardware.tunnel.tmpl",
 		},
 		{
 			Name:        "render_interfaces_successfully",
@@ -471,12 +473,22 @@ func TestRenderConfig(t *testing.T) {
 			if err != nil {
 				t.Fatalf("error rendering template: %v", err)
 			}
-			want, err := os.ReadFile(test.Want)
-			if err != nil {
-				t.Fatalf("error reading test fixture %s: %v", test.Want, err)
+			var want []byte
+			if strings.HasSuffix(test.Want, ".tmpl") {
+				rendered, err := fixtures.RenderFile(test.Want, nil)
+				if err != nil {
+					t.Fatalf("error rendering test fixture %s: %v", test.Want, err)
+				}
+				want = []byte(rendered)
+			} else {
+				var err error
+				want, err = os.ReadFile(test.Want)
+				if err != nil {
+					t.Fatalf("error reading test fixture %s: %v", test.Want, err)
+				}
 			}
 			if diff := cmp.Diff(string(want), got); diff != "" {
-				t.Errorf("renderTunnels mismatch (-want +got):\n%s", diff)
+				t.Errorf("renderTunnels mismatch in fixture %s (-want +got):\n%s", test.Want, diff)
 			}
 		})
 	}

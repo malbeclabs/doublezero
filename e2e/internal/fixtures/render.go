@@ -1,40 +1,27 @@
 package fixtures
 
 import (
-	"bytes"
 	"fmt"
-	"text/template"
 
 	e2e "github.com/malbeclabs/doublezero/e2e"
+	"github.com/malbeclabs/doublezero/pkg/fixtures"
 )
 
-func seq(start, end int) []int {
-	if start > end {
-		return []int{}
-	}
-	result := make([]int, end-start+1)
-	for i := range result {
-		result[i] = start + i
-	}
-	return result
+// RenderTemplate is a wrapper around the shared fixtures package
+func RenderTemplate(templateContent string, data any) (string, error) {
+	return fixtures.RenderTemplate(templateContent, data)
 }
 
-var templateFuncs = template.FuncMap{
-	"seq": seq,
+// RenderFile is a wrapper around the shared fixtures package
+func RenderFile(filepath string, data any) (string, error) {
+	return fixtures.RenderFile(filepath, data)
 }
 
+// Render reads a fixture from the embedded filesystem and renders it as a template
 func Render(fixturePath string, data any) (string, error) {
 	fixture, err := e2e.FS.ReadFile(fixturePath)
 	if err != nil {
 		return "", fmt.Errorf("error reading fixture: %w", err)
 	}
-
-	var buf bytes.Buffer
-	tmpl := template.New("").Funcs(templateFuncs)
-	err = template.Must(tmpl.Parse(string(fixture))).Execute(&buf, data)
-	if err != nil {
-		return "", fmt.Errorf("error executing template: %w", err)
-	}
-
-	return buf.String(), nil
+	return fixtures.RenderTemplate(string(fixture), data)
 }

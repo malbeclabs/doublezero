@@ -112,20 +112,20 @@ func TestE2E_MultiClient(t *testing.T) {
 
 	// Run IBRL workflow test.
 	if !t.Run("ibrl", func(t *testing.T) {
-		runMultiClientIBRLWorkflowTest(t, log, client1, client2)
+		runMultiClientIBRLWorkflowTest(t, log, dn, client1, client2)
 	}) {
 		t.Fail()
 	}
 
 	// Run IBRL with allocated IP workflow test.
 	if !t.Run("ibrl_with_allocated_ip", func(t *testing.T) {
-		runMultiClientIBRLWithAllocatedIPWorkflowTest(t, log, client1, client2)
+		runMultiClientIBRLWithAllocatedIPWorkflowTest(t, log, dn, client1, client2)
 	}) {
 		t.Fail()
 	}
 }
 
-func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.Client, client2 *devnet.Client) {
+func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.Devnet, client1 *devnet.Client, client2 *devnet.Client) {
 	// Check that the clients are disconnected and do not have a DZ IP allocated.
 	log.Info("==> Checking that the clients are disconnected and do not have a DZ IP allocated")
 	status, err := client1.GetTunnelStatus(t.Context())
@@ -190,6 +190,17 @@ func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *dev
 	require.NoError(t, err)
 	log.Info("--> Client2 disconnected from IBRL")
 
+	// Wait for users to be deleted onchain.
+	log.Info("==> Waiting for users to be deleted onchain")
+	serviceabilityClient, err := dn.Ledger.GetServiceabilityClient()
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		data, err := serviceabilityClient.GetProgramData(t.Context())
+		require.NoError(t, err)
+		return len(data.Users) == 0
+	}, 30*time.Second, 1*time.Second)
+	log.Info("--> Users deleted onchain")
+
 	// Check that the clients are eventually disconnected and do not have a DZ IP allocated.
 	log.Info("==> Checking that the clients are eventually disconnected and do not have a DZ IP allocated")
 	err = client1.WaitForTunnelDisconnected(t.Context(), 60*time.Second)
@@ -207,7 +218,7 @@ func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *dev
 	log.Info("--> Confirmed clients are disconnected and do not have a DZ IP allocated")
 }
 
-func runMultiClientIBRLWithAllocatedIPWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.Client, client2 *devnet.Client) {
+func runMultiClientIBRLWithAllocatedIPWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.Devnet, client1 *devnet.Client, client2 *devnet.Client) {
 	// Check that the clients are disconnected and do not have a DZ IP allocated.
 	log.Info("==> Checking that the clients are disconnected and do not have a DZ IP allocated")
 	status, err := client1.GetTunnelStatus(t.Context())
@@ -271,6 +282,17 @@ func runMultiClientIBRLWithAllocatedIPWorkflowTest(t *testing.T, log *slog.Logge
 	_, err = client2.Exec(t.Context(), []string{"doublezero", "disconnect", "--client-ip", client2.CYOANetworkIP})
 	require.NoError(t, err)
 	log.Info("--> Client2 disconnected from IBRL with allocated IP")
+
+	// Wait for users to be deleted onchain.
+	log.Info("==> Waiting for users to be deleted onchain")
+	serviceabilityClient, err := dn.Ledger.GetServiceabilityClient()
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		data, err := serviceabilityClient.GetProgramData(t.Context())
+		require.NoError(t, err)
+		return len(data.Users) == 0
+	}, 30*time.Second, 1*time.Second)
+	log.Info("--> Users deleted onchain")
 
 	// Check that the clients are eventually disconnected and do not have a DZ IP allocated.
 	log.Info("==> Checking that the clients are eventually disconnected and do not have a DZ IP allocated")

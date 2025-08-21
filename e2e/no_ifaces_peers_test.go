@@ -114,7 +114,7 @@ func TestE2E_Controller_NoIfacesAndPeers(t *testing.T) {
 
 	// Run IBRL with allocated IP workflow test.
 	if !t.Run("ibrl_with_allocated_ip", func(t *testing.T) {
-		runMultiClientIBRLWithAllocatedIPWorkflowTest(t, log, client1, client2)
+		runMultiClientIBRLWithAllocatedIPWorkflowTest(t, log, dn, client1, client2)
 	}) {
 		t.Fail()
 	}

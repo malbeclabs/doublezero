@@ -19,6 +19,7 @@ import (
 	dockercontainer "github.com/docker/docker/api/types/container"
 	dockerfilters "github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
+	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
@@ -266,21 +267,48 @@ func (d *Device) Start(ctx context.Context) error {
 	cyoaNetworkIP := ip.To4().String()
 
 	// Create the device onchain.
-	onchainID, err := d.dn.GetOrCreateDeviceOnchain(ctx, spec.Code, spec.Location, spec.Exchange, spec.MetricsPublisherPK, cyoaNetworkIP, []string{cyoaNetworkIP + "/" + strconv.Itoa(int(spec.CYOANetworkAllocatablePrefix))}, "mgmt")
+	devicePK, err := d.dn.GetOrCreateDeviceOnchain(ctx, spec.Code, spec.Location, spec.Exchange, spec.MetricsPublisherPK, cyoaNetworkIP, []string{cyoaNetworkIP + "/" + strconv.Itoa(int(spec.CYOANetworkAllocatablePrefix))}, "mgmt")
 	if err != nil {
 		return fmt.Errorf("failed to create device %s onchain: %w", spec.Code, err)
 	}
-	d.log.Info("--> Created device onchain", "code", spec.Code, "cyoaNetworkIP", cyoaNetworkIP, "onchainID", onchainID)
+	d.log.Info("--> Created device onchain", "code", spec.Code, "cyoaNetworkIP", cyoaNetworkIP, "devicePK", devicePK)
 
 	// Create interfaces onchain.
 	for name, ifaceType := range spec.Interfaces {
 		_, err := d.dn.Manager.Exec(ctx, []string{
 			"doublezero", "device", "interface", "create", spec.Code, name, ifaceType,
 		})
-		d.log.Info("--> Created interface onchain", "code", spec.Code, "name", name, "ifaceType", ifaceType)
 		if err != nil {
 			return fmt.Errorf("failed to create interface %s for device %s: %w", name, spec.Code, err)
 		}
+
+		// Wait for the interface to exist onchain.
+		serviceabilityClient, err := d.dn.Ledger.GetServiceabilityClient()
+		if err != nil {
+			return fmt.Errorf("failed to get serviceability client: %w", err)
+		}
+		err = poll.Until(ctx, func() (bool, error) {
+			data, err := serviceabilityClient.GetProgramData(ctx)
+			if err != nil {
+				return false, fmt.Errorf("failed to get program data: %w", err)
+			}
+			for _, device := range data.Devices {
+				pk := solana.PublicKeyFromBytes(device.PubKey[:])
+				if pk.String() == devicePK {
+					for _, iface := range device.Interfaces {
+						if iface.Name == name {
+							return true, nil
+						}
+					}
+				}
+			}
+			return false, nil
+		}, 30*time.Second, 1*time.Second)
+		if err != nil {
+			return fmt.Errorf("failed to wait for interface %s to exist onchain: %w", name, err)
+		}
+
+		d.log.Info("--> Created interface onchain", "code", spec.Code, "name", name, "ifaceType", ifaceType)
 	}
 
 	// Create loopback interfaces onchain.
@@ -289,6 +317,33 @@ func (d *Device) Start(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("failed to create loopback interface %s for device %s: %w", name, spec.Code, err)
 		}
+
+		// Wait for the loopback interface to exist onchain.
+		serviceabilityClient, err := d.dn.Ledger.GetServiceabilityClient()
+		if err != nil {
+			return fmt.Errorf("failed to get serviceability client: %w", err)
+		}
+		err = poll.Until(ctx, func() (bool, error) {
+			data, err := serviceabilityClient.GetProgramData(ctx)
+			if err != nil {
+				return false, fmt.Errorf("failed to get serviceability client: %w", err)
+			}
+			for _, device := range data.Devices {
+				pk := solana.PublicKeyFromBytes(device.PubKey[:])
+				if pk.String() == devicePK {
+					for _, iface := range device.Interfaces {
+						if iface.Name == name {
+							return true, nil
+						}
+					}
+				}
+			}
+			return false, nil
+		}, 30*time.Second, 1*time.Second)
+		if err != nil {
+			return fmt.Errorf("failed to wait for loopback interface %s to exist onchain: %w", name, err)
+		}
+
 		d.log.Info("--> Created loopback interface onchain", "code", spec.Code, "name", name, "loopbackType", loopbackType)
 	}
 
@@ -296,7 +351,7 @@ func (d *Device) Start(ctx context.Context) error {
 
 	commandArgs := []string{
 		"-controller", controllerAddr,
-		"-pubkey", onchainID,
+		"-pubkey", devicePK,
 	}
 
 	// Configure telemetry/metrics publisher keypair if set.
@@ -387,7 +442,7 @@ func (d *Device) Start(ctx context.Context) error {
 		"-serviceability-program-id", d.dn.Ledger.dn.Manager.ServiceabilityProgramID,
 		"-telemetry-program-id", d.dn.Ledger.dn.Manager.TelemetryProgramID,
 		"-keypair", containerTelemetryKeypairPath,
-		"-local-device-pubkey", onchainID,
+		"-local-device-pubkey", devicePK,
 	}
 	if spec.Telemetry.MetricsEnable {
 		telemetryCommandArgs = append(telemetryCommandArgs, "-metrics-enable")
@@ -475,7 +530,7 @@ func (d *Device) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to set device state: %w", err)
 	}
 
-	d.log.Info("--> Device started", "container", d.ContainerID, "cyoaNetworkIP", cyoaNetworkIP, "defaultNetworkIP", defaultNetworkIP, "onchainID", onchainID)
+	d.log.Info("--> Device started", "container", d.ContainerID, "cyoaNetworkIP", cyoaNetworkIP, "defaultNetworkIP", defaultNetworkIP, "devicePK", devicePK)
 	return nil
 }
 

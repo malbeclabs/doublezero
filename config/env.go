@@ -14,10 +14,6 @@ const (
 	EnvDevnet      = "devnet"
 )
 
-var (
-	ErrInvalidEnvironment = fmt.Errorf("invalid environment")
-)
-
 type NetworkConfig struct {
 	LedgerPublicRPCURL         string
 	ServiceabilityProgramID    solana.PublicKey
@@ -86,7 +82,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			InternetLatencyCollectorPK: internetLatencyCollectorPK,
 		}
 	default:
-		return nil, ErrInvalidEnvironment
+		return nil, fmt.Errorf("invalid environment %q, must be one of: %s, %s, %s", env, EnvMainnetBeta, EnvTestnet, EnvDevnet)
 	}
 
 	ledgerRPCURL := os.Getenv("DZ_LEDGER_RPC_URL")

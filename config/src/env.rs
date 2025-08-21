@@ -15,7 +15,10 @@ impl std::str::FromStr for Environment {
             "mainnet-beta" => Ok(Environment::Mainnet),
             "testnet" => Ok(Environment::Testnet),
             "devnet" => Ok(Environment::Devnet),
-            _ => Err(eyre::eyre!("Invalid environment: {}", s)),
+            _ => Err(eyre::eyre!(
+                "Invalid environment {}, must be one of: mainnet-beta, testnet, devnet",
+                s
+            )),
         }
     }
 }

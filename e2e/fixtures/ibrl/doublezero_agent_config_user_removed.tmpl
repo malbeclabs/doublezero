@@ -98,9 +98,7 @@ mpls ip
 mpls icmp ttl-exceeded tunneling
 mpls icmp ip source-interface Loopback255
 !
-default interface Tunnel500
-!
-{{- range $i := seq 501 627}}
+{{- range $i := seq 500 627}}
 default interface Tunnel{{$i}}
 !
 {{- end}}
@@ -248,21 +246,15 @@ router isis 1
 ip community-list COMM-ALL_USERS permit 21682:1200
 ip community-list COMM-ALL_MCAST_USERS permit 21682:1300
 !
-no route-map RM-USER-500-OUT
-!
-{{- range $i := seq 501 627}}
+{{- range $i := seq 500 627}}
 no route-map RM-USER-{{$i}}-OUT
 !
 {{- end}}
-no route-map RM-USER-500-IN
-!
-{{- range $i := seq 501 627}}
+{{- range $i := seq 500 627}}
 no route-map RM-USER-{{$i}}-IN
 !
 {{- end}}
-no ip prefix-list PL-USER-500
-!
-{{- range $i := seq 501 627}}
+{{- range $i := seq 500 627}}
 no ip prefix-list PL-USER-{{$i}}
 !
 {{- end}}

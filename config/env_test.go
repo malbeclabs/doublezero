@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -17,6 +18,15 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 	}{
 		{
 			env: config.EnvMainnet,
+			want: &config.NetworkConfig{
+				LedgerPublicRPCURL:         config.MainnetLedgerPublicRPCURL,
+				ServiceabilityProgramID:    solana.MustPublicKeyFromBase58(config.MainnetServiceabilityProgramID),
+				TelemetryProgramID:         solana.MustPublicKeyFromBase58(config.MainnetTelemetryProgramID),
+				InternetLatencyCollectorPK: solana.MustPublicKeyFromBase58(config.MainnetInternetLatencyCollectorPK),
+			},
+		},
+		{
+			env: config.EnvMainnetBeta,
 			want: &config.NetworkConfig{
 				LedgerPublicRPCURL:         config.MainnetLedgerPublicRPCURL,
 				ServiceabilityProgramID:    solana.MustPublicKeyFromBase58(config.MainnetServiceabilityProgramID),
@@ -45,7 +55,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 		{
 			env:     "invalid",
 			want:    nil,
-			wantErr: config.ErrInvalidEnvironment,
+			wantErr: fmt.Errorf("invalid environment %q, must be one of: %s, %s, %s", "invalid", config.EnvMainnetBeta, config.EnvTestnet, config.EnvDevnet),
 		},
 	}
 
@@ -53,7 +63,7 @@ func TestConfig_NetworkConfigForEnv(t *testing.T) {
 		t.Run(test.env, func(t *testing.T) {
 			got, err := config.NetworkConfigForEnv(test.env)
 			if test.wantErr != nil {
-				require.ErrorIs(t, err, test.wantErr)
+				require.Equal(t, test.wantErr.Error(), err.Error())
 				return
 			}
 			require.Equal(t, test.want, got)

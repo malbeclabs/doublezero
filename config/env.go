@@ -8,13 +8,10 @@ import (
 )
 
 const (
-	EnvMainnet = "mainnet"
-	EnvTestnet = "testnet"
-	EnvDevnet  = "devnet"
-)
-
-var (
-	ErrInvalidEnvironment = fmt.Errorf("invalid environment")
+	EnvMainnetBeta = "mainnet-beta"
+	EnvMainnet     = "mainnet"
+	EnvTestnet     = "testnet"
+	EnvDevnet      = "devnet"
 )
 
 type NetworkConfig struct {
@@ -27,7 +24,7 @@ type NetworkConfig struct {
 func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 	var config *NetworkConfig
 	switch env {
-	case EnvMainnet:
+	case EnvMainnetBeta, EnvMainnet:
 		serviceabilityProgramID, err := solana.PublicKeyFromBase58(MainnetServiceabilityProgramID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse serviceability program ID: %w", err)
@@ -85,7 +82,7 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			InternetLatencyCollectorPK: internetLatencyCollectorPK,
 		}
 	default:
-		return nil, ErrInvalidEnvironment
+		return nil, fmt.Errorf("invalid environment %q, must be one of: %s, %s, %s", env, EnvMainnetBeta, EnvTestnet, EnvDevnet)
 	}
 
 	ledgerRPCURL := os.Getenv("DZ_LEDGER_RPC_URL")

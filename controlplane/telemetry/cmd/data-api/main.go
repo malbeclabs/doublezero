@@ -29,7 +29,7 @@ func main() {
 
 	log := newLogger(*verbose)
 
-	mainnetDeviceProvider, err := newDeviceProvider(log, config.EnvMainnet)
+	mainnetDeviceProvider, err := newDeviceProvider(log, config.EnvMainnetBeta)
 	if err != nil {
 		log.Error("failed to create mainnet provider", "error", err)
 		os.Exit(1)
@@ -47,7 +47,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	mainnetInternetProvider, err := newInternetProvider(log, config.EnvMainnet)
+	mainnetInternetProvider, err := newInternetProvider(log, config.EnvMainnetBeta)
 	if err != nil {
 		log.Error("failed to create mainnet internet provider", "error", err)
 		os.Exit(1)

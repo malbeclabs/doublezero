@@ -50,5 +50,5 @@ func TestServer_envs(t *testing.T) {
 
 	var envs []string
 	require.NoError(t, json.NewDecoder(res.Body).Decode(&envs))
-	assert.ElementsMatch(t, []string{config.EnvMainnet, config.EnvTestnet, config.EnvDevnet}, envs)
+	assert.ElementsMatch(t, []string{config.EnvMainnetBeta, config.EnvTestnet, config.EnvDevnet}, envs)
 }

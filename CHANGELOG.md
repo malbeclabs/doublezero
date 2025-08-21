@@ -24,7 +24,7 @@ All notable changes to this project will be documented in this file.
 	- internet-latency-collector, telemetry data api/cli: collect internet latency between exchanges, not locations
 	- internet-latency-collector: add ripeatlas credit metric
 - **End-to-End Tooling**
-	- New doublezero QA agent improves quality by thoroughly testing the software stack end-to-end in each doublezero environment (devnet, testnet, mainnet) after each release.
+	- New doublezero QA agent improves quality by thoroughly testing the software stack end-to-end in each doublezero environment (devnet, testnet, mainnet-beta) after each release.
 
 ## [v0.5.0](https://github.com/malbeclabs/doublezero/compare/client/v0.4.0...client/v0.5.0) – 2025-08-11
 
@@ -38,7 +38,7 @@ All notable changes to this project will be documented in this file.
     - Backpressure support to avoid continual buffer growth in error conditions
     - Link pubkey used for circuit uniqueness
 - **Internet Latency Telemetry**
-    - Adds the environement (devnet/testnet/mainnet) to the ripeatlas measurement description.
+    - Adds the environement (devnet/testnet/mainnet-beta) to the ripeatlas measurement description.
     - Now funded by the funder
 - **Serviceability Model Improvements**
     - Device extended to add DZD metadata (including Interfaces)

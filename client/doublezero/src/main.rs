@@ -27,7 +27,7 @@ use doublezero_sdk::{DZClient, ProgramVersion};
 struct App {
     #[command(subcommand)]
     command: Command,
-    /// DZ env (testnet, devnet, or mainnet)
+    /// DZ env (testnet, devnet, or mainnet-beta)
     #[arg(long, value_name = "ENV", global = true)]
     env: Option<String>,
     /// DZ ledger RPC URL

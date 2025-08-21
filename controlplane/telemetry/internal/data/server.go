@@ -86,7 +86,7 @@ func NewServer(cfg *ServerConfig) (*Server, error) {
 func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 	combinedMux := http.NewServeMux()
 	combinedMux.HandleFunc("/envs", func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewEncoder(w).Encode([]string{config.EnvMainnet, config.EnvTestnet, config.EnvDevnet}); err != nil {
+		if err := json.NewEncoder(w).Encode([]string{config.EnvMainnetBeta, config.EnvTestnet, config.EnvDevnet}); err != nil {
 			s.log.Error("failed to encode envs", "error", err)
 			http.Error(w, fmt.Sprintf("failed to encode envs: %v", err), http.StatusInternalServerError)
 			return

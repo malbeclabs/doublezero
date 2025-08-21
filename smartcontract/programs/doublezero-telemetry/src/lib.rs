@@ -31,7 +31,7 @@ pub fn serviceability_program_id() -> Pubkey {
         "local" => LOCAL_SERVICEABILITY_PROGRAM_ID,
         "devnet" => DEVNET_SERVICEABILITY_PROGRAM_ID,
         "testnet" => TESTNET_SERVICEABILITY_PROGRAM_ID,
-        "mainnet" => MAINNET_SERVICEABILITY_PROGRAM_ID,
+        "mainnet-beta" => MAINNET_SERVICEABILITY_PROGRAM_ID,
         other => other,
     };
 

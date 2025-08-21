@@ -54,8 +54,8 @@ graph LR
 ```
 
 1. **Inventory Registration:** The Serviceability Program maintains an on-chain registry of Devices and Links, representing the network inventory.
-2. **DZ Latency Measurement:** An agent running on each switch (DZD) uses the on-chain inventory to identify peer devices and links. For each link, the agent periodically measures round-trip time (RTT) to other DZDs), collecting latency samples for every active link. 
-3. **Internet Latency Measurement:** Combine data from an agent run on each DZD with data from 3rd party providers to create an approximate view of global internet performance between cities where DZ operates. 
+2. **DZ Latency Measurement:** An agent running on each switch (DZD) uses the on-chain inventory to identify peer devices and links. For each link, the agent periodically measures round-trip time (RTT) to other DZDs), collecting latency samples for every active link.
+3. **Internet Latency Measurement:** Combine data from an agent run on each DZD with data from 3rd party providers to create an approximate view of global internet performance between cities where DZ operates.
 4. **Data Accumulation:** The agent accumulates RTT measurements for each (device_pk, link_pk) pair.
 5. **Periodic Submission:** At defined intervals (every 60 seconds), the agent submits a batch instruction to the Telemetry Program smart contract, reporting the accumulated RTT samples for each (device_pk, link_pk, epoch) tuple.
 6. **On-Chain Storage:** The smart contract creates or updates a telemetry account for each (device_pk, link_pk, epoch), appending the new samples to the account's data.
@@ -78,9 +78,9 @@ Note: Timestamps have at least microsecond resolution (the standard in the high-
         - Not the device pubkey, which does not have a private key
         - Used to validate authority to write to this account
     - sampling_interval_microseconds: u64
-        
-        Note: Time measurements are all in stored microseconds for consistency, but due to the Solana account size limit of 10 MB, the sampling interval can never be lower than about 67ms. 
-        
+
+        Note: Time measurements are all in stored microseconds for consistency, but due to the Solana account size limit of 10 MB, the sampling interval can never be lower than about 67ms.
+
         - 10,280,000 / (4 * 60 * 60 * 24 * 2) =14.873 max samples per second… lowest sampling interval = 1000ms / 14.873 = roughly 67ms
     - start_timestamp_microseconds: u64
     - next_sample_index: u32
@@ -172,7 +172,7 @@ Selected approach: roll our own TWAMP Light. A new Arista telemtery collector, t
 1. Providers must provide the geographic location of each probe. Latitude and longitude are ideal,but city name may work.
 1. Providers must have an API that supports all needed functionality
 ### Design - Location-to-location internet latency (controlplane/internet-latency-collector)
-This component collects internet latencdy data from 3rd party providers and publishes it to the `ThirdPartyLatencySamples` data structure described above. This component performs two primary tasks. 
+This component collects internet latencdy data from 3rd party providers and publishes it to the `ThirdPartyLatencySamples` data structure described above. This component performs two primary tasks.
 
 **1. Configuration.** (Frequency: daily) First, it collects a list of DZ locations with active DZDs from the Serviceability program. Using that list, it configures each 3rd party provider to collect measurements between each pair of locations.
 
@@ -182,7 +182,7 @@ In order to select the probes to use, the collector uses the location's latitude
 
 We considered the following 3rd party providers (sorted alphabetically by name).
 | **Source** | **Pros** | **Cons** | **Status** |
-| --- | --- | --- | --- | 
+| --- | --- | --- | --- |
 | GlobalPing | - Free | - No probe-to-probe measurements (3rd party requirement #4) | ❌ Disqualified
 | Catchpoint | | - No probe-to-probe measurements (3rd party requirement #4)  | Pending disqualification
 | RIPE Atlas | | - Users must operate probes to earn credits to use Atlas | ✅ Qualified |
@@ -201,7 +201,7 @@ sequenceDiagram
 		    Collector->>3rdparty: Get current configuration
 			3rdparty->>Collector: current config
 			Collector->>Collector: Generate diff of current vs desired config
-			Collector->>3rdparty: CRUD operations based on diff	    
+			Collector->>3rdparty: CRUD operations based on diff
 	    end
 	end
 ```
@@ -247,7 +247,7 @@ gantt
     - Develop the Telemetry Program smart contract to receive and accumulate RTT samples submitted by agents.
 4. **Agent-Smart Contract Integration:** https://github.com/malbeclabs/doublezero/issues/519
     - Update the agent to send RTT samples directly to the Telemetry Program smart contract. Also record data in a local file in case of agent restart.
-5. **Agent signing key:** 
+5. **Agent signing key:**
     - Update serviceability program to add a signing key that the agent will use to sign telemetry data. (Generate a private key for each device, or potentially allow the contributor to provide a key.)
 6. **3rd Party Collector:**
     - Collect latency data from 3rd party providers and write it to `ThirdPartyLatencySamples`
@@ -302,5 +302,5 @@ gantt
     - The contributor (owner of the DZD) will self-attest to the performance for the first version of this implementation
 - Should telemetry data be pruned or archived off-chain after a certain period?
     - No, all data will be retained on the DZ Serviceability indefinitely. Based on the current design, the scale of the DZ telemetry data is not large enough to require an off-chain archival solution. (A 30-node network, at 10KB per node pair per epoch, with measurements in both directions, will need roughly 18MB in storage per epoch. 10KB * 30^2 * 2 = 18MB.)
-- For mainnet, do we need a way to prevent contributors from tampering with the metrics produced by their DZDs?
-    - No, for mainnet we will not be permissionless, we will be working with trusted contributor partners.
+- For mainnet-beta, do we need a way to prevent contributors from tampering with the metrics produced by their DZDs?
+    - No, for mainnet-beta we will not be permissionless, we will be working with trusted contributor partners.

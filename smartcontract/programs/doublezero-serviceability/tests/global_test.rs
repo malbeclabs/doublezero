@@ -535,12 +535,13 @@ async fn test_doublezero_program() {
         DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
             accesspass_type: AccessPassType::Prepaid,
             client_ip: user_ip,
-            user_payer: payer.pubkey(),
             last_access_epoch: 9999,
+            airdrop_lamports: 40_000,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
         ],
         &payer,
     )

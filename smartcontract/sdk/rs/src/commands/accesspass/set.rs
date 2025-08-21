@@ -73,13 +73,13 @@ mod tests {
                 predicate::eq(DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
                     accesspass_type: AccessPassType::Prepaid,
                     client_ip,
-                    user_payer: payer,
                     last_access_epoch: 0,
                     airdrop_lamports: 40_000,
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),
+                    AccountMeta::new(payer, false),
                 ]),
             )
             .returning(|_, _| Ok(Signature::new_unique()));

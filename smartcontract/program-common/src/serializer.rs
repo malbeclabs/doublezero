@@ -74,9 +74,8 @@ where
     s.split(',')
         .map(|pubkey_str| {
             let trimmed = pubkey_str.trim();
-            Pubkey::from_str(trimmed).map_err(|e| {
-                serde::de::Error::custom(format!("Invalid pubkey '{}': {}", trimmed, e))
-            })
+            Pubkey::from_str(trimmed)
+                .map_err(|e| serde::de::Error::custom(format!("Invalid pubkey '{trimmed}': {e}")))
         })
         .collect()
 }
@@ -135,7 +134,7 @@ where
         .map(|(k, v)| {
             Pubkey::from_str(&k)
                 .map(|pubkey| (pubkey, v))
-                .map_err(|e| serde::de::Error::custom(format!("Invalid pubkey key '{}': {}", k, e)))
+                .map_err(|e| serde::de::Error::custom(format!("Invalid pubkey key '{k}': {e}")))
         })
         .collect()
 }
@@ -198,7 +197,7 @@ mod tests {
         let test = TestPubkey { pubkey };
 
         let json = serde_json::to_string(&test).unwrap();
-        let expected = format!("{{\"pubkey\":\"{}\"}}", pubkey);
+        let expected = format!("{{\"pubkey\":\"{pubkey}\"}}");
 
         assert_eq!(json, expected);
     }
@@ -239,7 +238,7 @@ mod tests {
         };
 
         let json = serde_json::to_string(&original).unwrap();
-        let expected = format!("{{\"pubkeys\":\"{}, {}\"}}", pk1, pk2);
+        let expected = format!("{{\"pubkeys\":\"{pk1}, {pk2}\"}}");
         assert_eq!(json, expected);
 
         let deserialized: TestPubkeyList = serde_json::from_str(&json).unwrap();

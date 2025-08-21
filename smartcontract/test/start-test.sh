@@ -109,22 +109,22 @@ echo "Creating devices"
 
 ### Initialize device interfaces
 echo "Creating device interfaces"
-./target/doublezero device interface create la2-dz01 "Switch1/1/1" physical -w
-./target/doublezero device interface create la2-dz01 "Switch1/1/2" physical -w
-./target/doublezero device interface create ny5-dz01 "Switch1/1/1" physical -w
-./target/doublezero device interface create ny5-dz01 "Switch1/1/2" physical -w
-./target/doublezero device interface create ld4-dz01 "Switch1/1/1" physical -w
-./target/doublezero device interface create ld4-dz01 "Switch1/1/2" physical -w
-./target/doublezero device interface create frk-dz01 "Switch1/1/1" physical -w
-./target/doublezero device interface create frk-dz01 "Switch1/1/2" physical -w
-./target/doublezero device interface create sg1-dz01 "Switch1/1/1" physical -w
-./target/doublezero device interface create sg1-dz01 "Switch1/1/2" physical -w
-./target/doublezero device interface create ty2-dz01 "Switch1/1/1" physical -w
-./target/doublezero device interface create ty2-dz01 "Switch1/1/2" physical -w
-./target/doublezero device interface create pit-dzd01 "Switch1/1/1" physical -w
-./target/doublezero device interface create pit-dzd01 "Switch1/1/2" physical -w
-./target/doublezero device interface create ams-dz001 "Switch1/1/1" physical -w
-./target/doublezero device interface create ams-dz001 "Switch1/1/2" physical -w
+./target/doublezero device interface create la2-dz01 "Switch1/1/1" -w
+./target/doublezero device interface create la2-dz01 "Switch1/1/2" -w
+./target/doublezero device interface create ny5-dz01 "Switch1/1/1" -w
+./target/doublezero device interface create ny5-dz01 "Switch1/1/2" -w
+./target/doublezero device interface create ld4-dz01 "Switch1/1/1" -w
+./target/doublezero device interface create ld4-dz01 "Switch1/1/2" -w
+./target/doublezero device interface create frk-dz01 "Switch1/1/1" -w
+./target/doublezero device interface create frk-dz01 "Switch1/1/2" -w
+./target/doublezero device interface create sg1-dz01 "Switch1/1/1" -w
+./target/doublezero device interface create sg1-dz01 "Switch1/1/2" -w
+./target/doublezero device interface create ty2-dz01 "Switch1/1/1" -w
+./target/doublezero device interface create ty2-dz01 "Switch1/1/2" -w
+./target/doublezero device interface create pit-dzd01 "Switch1/1/1" -w
+./target/doublezero device interface create pit-dzd01 "Switch1/1/2" -w
+./target/doublezero device interface create ams-dz001 "Switch1/1/1" -w
+./target/doublezero device interface create ams-dz001 "Switch1/1/2" -w
 
 ### Initialize links
 echo "Creating internal links"
@@ -134,7 +134,6 @@ echo "Creating internal links"
 ./target/doublezero link create wan --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Switch1/1/1 --side-z sg1-dz01 --side-z-interface Switch1/1/2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 120 --jitter-ms 9 -w
 ./target/doublezero link create wan --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-a-interface Switch1/1/1 --side-z ty2-dz01 --side-z-interface Switch1/1/2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 40 --jitter-ms 7 -w
 ./target/doublezero link create wan --code "ty2-dz01:la2-dz01" --contributor co01 --side-a ty2-dz01 --side-a-interface Switch1/1/1 --side-z la2-dz01 --side-z-interface Switch1/1/2 --bandwidth "10 Gbps" --mtu 9000 --delay-ms 30 --jitter-ms 10 -w
-
 
 ### Initialize contributor
 echo "Creating contributor two"
@@ -146,7 +145,7 @@ echo "Creating devices"
 
 ### Initialize device interfaces
 echo "Creating device interfaces"
-./target/doublezero device interface create la2-dz02 "Switch1/1/1" physical -w
+./target/doublezero device interface create la2-dz02 "Switch1/1/1" -w
 
 ### Initialize links
 echo "Creating external links"

@@ -2,10 +2,13 @@ use crate::{
     doublezerocommand::CliCommand,
     poll_for_activation::poll_for_device_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-    validators::{validate_iface, validate_pubkey_or_code},
+    validators::validate_pubkey_or_code,
 };
 use clap::Args;
-use doublezero_sdk::commands::device::{get::GetDeviceCommand, update::UpdateDeviceCommand};
+use doublezero_program_common::validate_iface;
+use doublezero_sdk::commands::device::{
+    get::GetDeviceCommand, interface::delete::DeleteDeviceInterfaceCommand,
+};
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -26,34 +29,23 @@ impl DeleteDeviceInterfaceCliCommand {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let (pubkey, mut device) = client
+        let (pubkey, device) = client
             .get_device(GetDeviceCommand {
                 pubkey_or_code: self.device,
             })
             .map_err(|_| eyre::eyre!("Device not found"))?;
 
-        let len_before = device.interfaces.len();
         device
             .interfaces
-            .retain(|i| i.into_current_version().name.to_lowercase() != self.name.to_lowercase());
-        let len_after = device.interfaces.len();
+            .iter()
+            .find(|i| i.into_current_version().name.to_lowercase() == self.name.to_lowercase())
+            .ok_or_else(|| eyre::eyre!("Interface '{}' not found", self.name))?;
 
-        if len_before == len_after {
-            return Err(eyre::eyre!("Interface '{}' not found", self.name));
-        }
-
-        let signature = client.update_device(UpdateDeviceCommand {
+        let signature = client.delete_device_interface(DeleteDeviceInterfaceCommand {
             pubkey,
-            code: None,
-            device_type: None,
-            public_ip: None,
-            dz_prefixes: None,
-            metrics_publisher: None,
-            contributor_pk: None,
-            mgmt_vrf: None,
-            interfaces: Some(device.interfaces),
-            max_users: None,
+            name: self.name,
         })?;
+
         writeln!(out, "Signature: {signature}",)?;
 
         if self.wait {
@@ -67,16 +59,10 @@ impl DeleteDeviceInterfaceCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        device::interface::delete::DeleteDeviceInterfaceCliCommand,
-        requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-        tests::utils::create_test_client,
-    };
+    use super::*;
+    use crate::tests::utils::create_test_client;
     use doublezero_program_common::types::NetworkV4List;
-    use doublezero_sdk::{
-        commands::device::{get::GetDeviceCommand, update::UpdateDeviceCommand},
-        AccountType, CurrentInterfaceVersion, Device, DeviceStatus,
-    };
+    use doublezero_sdk::{AccountType, CurrentInterfaceVersion, Device, DeviceStatus};
     use doublezero_serviceability::state::device::{
         Interface, InterfaceStatus, InterfaceType, LoopbackType,
     };
@@ -109,7 +95,7 @@ mod tests {
             interfaces: vec![
                 Interface::V1(CurrentInterfaceVersion {
                     status: InterfaceStatus::Activated,
-                    name: "eth0".to_string(),
+                    name: "Ethernet0".to_string(),
                     interface_type: InterfaceType::Physical,
                     loopback_type: LoopbackType::None,
                     vlan_id: 0,
@@ -119,7 +105,7 @@ mod tests {
                 }),
                 Interface::V1(CurrentInterfaceVersion {
                     status: InterfaceStatus::Activated,
-                    name: "lo0".to_string(),
+                    name: "Loopback0".to_string(),
                     interface_type: InterfaceType::Loopback,
                     loopback_type: LoopbackType::Vpnv4,
                     vlan_id: 16,
@@ -144,27 +130,10 @@ mod tests {
             .returning(move |_| Ok((device_pk, device.clone())));
 
         client
-            .expect_update_device()
-            .with(predicate::eq(UpdateDeviceCommand {
+            .expect_delete_device_interface()
+            .with(predicate::eq(DeleteDeviceInterfaceCommand {
                 pubkey: device_pk,
-                code: None,
-                device_type: None,
-                public_ip: None,
-                dz_prefixes: None,
-                metrics_publisher: None,
-                contributor_pk: None,
-                mgmt_vrf: None,
-                interfaces: Some(vec![Interface::V1(CurrentInterfaceVersion {
-                    status: InterfaceStatus::Activated,
-                    name: "lo0".to_string(),
-                    interface_type: InterfaceType::Loopback,
-                    loopback_type: LoopbackType::Vpnv4,
-                    vlan_id: 16,
-                    ip_net: "10.0.1.1/24".parse().unwrap(),
-                    node_segment_idx: 13,
-                    user_tunnel_endpoint: false,
-                })]),
-                max_users: None,
+                name: "Ethernet0".to_string(),
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -172,7 +141,7 @@ mod tests {
         let mut output = Vec::new();
         let res = DeleteDeviceInterfaceCliCommand {
             device: device_pk.to_string(),
-            name: "Eth0".to_string(),
+            name: "Ethernet0".to_string(),
             wait: false,
         }
         .execute(&client, &mut output);

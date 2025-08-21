@@ -181,7 +181,6 @@ async fn test_device() {
             dz_prefixes: "10.1.0.0/23".parse().unwrap(),
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
-            interfaces: vec![],
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -316,7 +315,6 @@ async fn test_device() {
             dz_prefixes: Some("10.1.0.0/23".parse().unwrap()),
             metrics_publisher_pk: Some(Pubkey::default()),
             mgmt_vrf: Some("mgmt".to_string()),
-            interfaces: None,
             max_users: None,
         }),
         vec![
@@ -443,7 +441,6 @@ async fn test_device_update_metrics_publisher_by_foundation_allowlist_account() 
             dz_prefixes: "10.1.0.0/23".parse().unwrap(),
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
-            interfaces: vec![],
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -478,7 +475,6 @@ async fn test_device_update_metrics_publisher_by_foundation_allowlist_account() 
             dz_prefixes: None,
             metrics_publisher_pk: Some(metrics_publisher_pk),
             mgmt_vrf: None,
-            interfaces: None,
             max_users: None,
         }),
         vec![

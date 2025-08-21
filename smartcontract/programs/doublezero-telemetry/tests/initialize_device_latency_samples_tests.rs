@@ -7,7 +7,7 @@ use doublezero_serviceability::{
     },
     state::{
         accounttype::AccountType,
-        device::{CurrentInterfaceVersion, Device, DeviceStatus, DeviceType, Interface},
+        device::{Device, DeviceStatus, DeviceType},
         link::{Link, LinkLinkType, LinkStatus},
     },
 };
@@ -571,8 +571,8 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_owner() {
         mtu: 0,
         tunnel_id: 0,
         tunnel_net: NetworkV4::default(),
-        side_a_iface_name: "eth0".to_string(),
-        side_z_iface_name: "eth1".to_string(),
+        side_a_iface_name: "Ethernet0".to_string(),
+        side_z_iface_name: "Ethernet1".to_string(),
     };
 
     let mut data = Vec::new();
@@ -666,16 +666,18 @@ async fn test_initialize_device_latency_samples_fail_origin_device_not_activated
                 device_type: DeviceType::Switch,
                 public_ip: [1, 2, 3, 4].into(),
                 metrics_publisher_pk: agent.pubkey(),
-                interfaces: vec![Interface::V1(CurrentInterfaceVersion {
-                    name: "eth0".to_string(),
-                    ..CurrentInterfaceVersion::default()
-                })],
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
             location_pk,
             exchange_pk,
         )
+        .await
+        .unwrap();
+
+    ledger
+        .serviceability
+        .create_interface(origin_device_pk, contributor_pk, "Ethernet0".to_string())
         .await
         .unwrap();
 
@@ -688,16 +690,18 @@ async fn test_initialize_device_latency_samples_fail_origin_device_not_activated
                 device_type: DeviceType::Switch,
                 public_ip: [5, 6, 7, 8].into(),
                 metrics_publisher_pk: agent.pubkey(),
-                interfaces: vec![Interface::V1(CurrentInterfaceVersion {
-                    name: "eth1".to_string(),
-                    ..CurrentInterfaceVersion::default()
-                })],
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
             location_pk,
             exchange_pk,
         )
+        .await
+        .unwrap();
+
+    ledger
+        .serviceability
+        .create_interface(target_device_pk, contributor_pk, "Ethernet1".to_string())
         .await
         .unwrap();
 
@@ -712,8 +716,8 @@ async fn test_initialize_device_latency_samples_fail_origin_device_not_activated
                 mtu: 1500,
                 delay_ns: 10,
                 jitter_ns: 1,
-                side_a_iface_name: "eth0".to_string(),
-                side_z_iface_name: Some("eth1".to_string()),
+                side_a_iface_name: "Ethernet0".to_string(),
+                side_z_iface_name: Some("Ethernet1".to_string()),
             },
             contributor_pk,
             origin_device_pk,
@@ -796,16 +800,18 @@ async fn test_initialize_device_latency_samples_fail_target_device_not_activated
                 device_type: DeviceType::Switch,
                 public_ip: [1, 2, 3, 4].into(),
                 metrics_publisher_pk: agent.pubkey(),
-                interfaces: vec![Interface::V1(CurrentInterfaceVersion {
-                    name: "eth0".to_string(),
-                    ..CurrentInterfaceVersion::default()
-                })],
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
             location_pk,
             exchange_pk,
         )
+        .await
+        .unwrap();
+
+    ledger
+        .serviceability
+        .create_interface(origin_device_pk, contributor_pk, "Ethernet0".to_string())
         .await
         .unwrap();
 
@@ -818,16 +824,18 @@ async fn test_initialize_device_latency_samples_fail_target_device_not_activated
                 device_type: DeviceType::Switch,
                 public_ip: [5, 6, 7, 8].into(),
                 metrics_publisher_pk: agent.pubkey(),
-                interfaces: vec![Interface::V1(CurrentInterfaceVersion {
-                    name: "eth1".to_string(),
-                    ..CurrentInterfaceVersion::default()
-                })],
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
             location_pk,
             exchange_pk,
         )
+        .await
+        .unwrap();
+
+    ledger
+        .serviceability
+        .create_interface(target_device_pk, contributor_pk, "Ethernet1".to_string())
         .await
         .unwrap();
 
@@ -842,8 +850,8 @@ async fn test_initialize_device_latency_samples_fail_target_device_not_activated
                 mtu: 1500,
                 delay_ns: 10,
                 jitter_ns: 1,
-                side_a_iface_name: "eth0".to_string(),
-                side_z_iface_name: Some("eth1".to_string()),
+                side_a_iface_name: "Ethernet0".to_string(),
+                side_z_iface_name: Some("Ethernet1".to_string()),
             },
             contributor_pk,
             origin_device_pk,
@@ -925,16 +933,18 @@ async fn test_initialize_device_latency_samples_fail_link_not_activated() {
                 device_type: DeviceType::Switch,
                 public_ip: [1, 2, 3, 4].into(),
                 metrics_publisher_pk: agent.pubkey(),
-                interfaces: vec![Interface::V1(CurrentInterfaceVersion {
-                    name: "eth0".to_string(),
-                    ..CurrentInterfaceVersion::default()
-                })],
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
             location_pk,
             exchange_pk,
         )
+        .await
+        .unwrap();
+
+    ledger
+        .serviceability
+        .create_interface(origin_device_pk, contributor_pk, "Ethernet0".to_string())
         .await
         .unwrap();
 
@@ -946,16 +956,18 @@ async fn test_initialize_device_latency_samples_fail_link_not_activated() {
                 device_type: DeviceType::Switch,
                 public_ip: [5, 6, 7, 8].into(),
                 metrics_publisher_pk: agent.pubkey(),
-                interfaces: vec![Interface::V1(CurrentInterfaceVersion {
-                    name: "eth1".to_string(),
-                    ..CurrentInterfaceVersion::default()
-                })],
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
             location_pk,
             exchange_pk,
         )
+        .await
+        .unwrap();
+
+    ledger
+        .serviceability
+        .create_interface(target_device_pk, contributor_pk, "Ethernet1".to_string())
         .await
         .unwrap();
 
@@ -970,8 +982,8 @@ async fn test_initialize_device_latency_samples_fail_link_not_activated() {
                 mtu: 1500,
                 delay_ns: 10,
                 jitter_ns: 1,
-                side_a_iface_name: "eth0".to_string(),
-                side_z_iface_name: Some("eth1".to_string()),
+                side_a_iface_name: "Ethernet0".to_string(),
+                side_z_iface_name: Some("Ethernet1".to_string()),
             },
             contributor_pk,
             origin_device_pk,
@@ -1051,10 +1063,6 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
                 device_type: DeviceType::Switch,
                 public_ip: [1, 1, 1, 1].into(),
                 metrics_publisher_pk: agent.pubkey(),
-                interfaces: vec![Interface::V1(CurrentInterfaceVersion {
-                    name: "eth0".to_string(),
-                    ..CurrentInterfaceVersion::default()
-                })],
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
@@ -1072,10 +1080,6 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
                 device_type: DeviceType::Switch,
                 public_ip: [2, 2, 2, 2].into(),
                 metrics_publisher_pk: agent.pubkey(),
-                interfaces: vec![Interface::V1(CurrentInterfaceVersion {
-                    name: "eth1".to_string(),
-                    ..CurrentInterfaceVersion::default()
-                })],
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
@@ -1094,16 +1098,18 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
                 device_type: DeviceType::Switch,
                 public_ip: [3, 3, 3, 3].into(),
                 metrics_publisher_pk: agent.pubkey(),
-                interfaces: vec![Interface::V1(CurrentInterfaceVersion {
-                    name: "eth0".to_string(),
-                    ..CurrentInterfaceVersion::default()
-                })],
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
             location_pk,
             exchange_pk,
         )
+        .await
+        .unwrap();
+
+    ledger
+        .serviceability
+        .create_interface(device_x_pk, contributor_pk, "Ethernet0".to_string())
         .await
         .unwrap();
 
@@ -1115,16 +1121,18 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
                 device_type: DeviceType::Switch,
                 public_ip: [4, 4, 4, 4].into(),
                 metrics_publisher_pk: agent.pubkey(),
-                interfaces: vec![Interface::V1(CurrentInterfaceVersion {
-                    name: "eth1".to_string(),
-                    ..CurrentInterfaceVersion::default()
-                })],
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
             location_pk,
             exchange_pk,
         )
+        .await
+        .unwrap();
+
+    ledger
+        .serviceability
+        .create_interface(device_y_pk, contributor_pk, "Ethernet1".to_string())
         .await
         .unwrap();
 
@@ -1139,8 +1147,8 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
                 mtu: 1500,
                 delay_ns: 10,
                 jitter_ns: 1,
-                side_a_iface_name: "eth0".to_string(),
-                side_z_iface_name: Some("eth1".to_string()),
+                side_a_iface_name: "Ethernet0".to_string(),
+                side_z_iface_name: Some("Ethernet1".to_string()),
             },
             contributor_pk,
             device_x_pk,
@@ -1222,16 +1230,18 @@ async fn test_initialize_device_latency_samples_succeeds_with_reversed_link_side
                 device_type: DeviceType::Switch,
                 public_ip: [10, 0, 0, 1].into(),
                 metrics_publisher_pk: agent.pubkey(),
-                interfaces: vec![Interface::V1(CurrentInterfaceVersion {
-                    name: "eth0".to_string(),
-                    ..CurrentInterfaceVersion::default()
-                })],
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
             location_pk,
             exchange_pk,
         )
+        .await
+        .unwrap();
+
+    ledger
+        .serviceability
+        .create_interface(origin_device_pk, contributor_pk, "Ethernet0".to_string())
         .await
         .unwrap();
 
@@ -1243,16 +1253,18 @@ async fn test_initialize_device_latency_samples_succeeds_with_reversed_link_side
                 device_type: DeviceType::Switch,
                 public_ip: [10, 0, 0, 2].into(),
                 metrics_publisher_pk: agent.pubkey(),
-                interfaces: vec![Interface::V1(CurrentInterfaceVersion {
-                    name: "eth1".to_string(),
-                    ..CurrentInterfaceVersion::default()
-                })],
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
             location_pk,
             exchange_pk,
         )
+        .await
+        .unwrap();
+
+    ledger
+        .serviceability
+        .create_interface(target_device_pk, contributor_pk, "Ethernet1".to_string())
         .await
         .unwrap();
 
@@ -1267,8 +1279,8 @@ async fn test_initialize_device_latency_samples_succeeds_with_reversed_link_side
                 mtu: 1500,
                 delay_ns: 1,
                 jitter_ns: 1,
-                side_a_iface_name: "eth1".to_string(),
-                side_z_iface_name: Some("eth0".to_string()),
+                side_a_iface_name: "Ethernet1".to_string(),
+                side_z_iface_name: Some("Ethernet0".to_string()),
             },
             contributor_pk,
             target_device_pk,
@@ -1487,16 +1499,18 @@ async fn test_initialize_device_latency_samples_fail_agent_not_owner_of_origin_d
                 device_type: DeviceType::Switch,
                 public_ip: [1, 1, 1, 1].into(),
                 metrics_publisher_pk: owner_agent.pubkey(),
-                interfaces: vec![Interface::V1(CurrentInterfaceVersion {
-                    name: "eth0".to_string(),
-                    ..CurrentInterfaceVersion::default()
-                })],
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
             location_pk,
             exchange_pk,
         )
+        .await
+        .unwrap();
+
+    ledger
+        .serviceability
+        .create_interface(origin_device_pk, contributor_pk, "Ethernet0".to_string())
         .await
         .unwrap();
 
@@ -1509,16 +1523,18 @@ async fn test_initialize_device_latency_samples_fail_agent_not_owner_of_origin_d
                 device_type: DeviceType::Switch,
                 public_ip: [2, 2, 2, 2].into(),
                 metrics_publisher_pk: unauthorized_agent.pubkey(),
-                interfaces: vec![Interface::V1(CurrentInterfaceVersion {
-                    name: "eth1".to_string(),
-                    ..CurrentInterfaceVersion::default()
-                })],
                 ..DeviceCreateArgs::default()
             },
             contributor_pk,
             location_pk,
             exchange_pk,
         )
+        .await
+        .unwrap();
+
+    ledger
+        .serviceability
+        .create_interface(target_device_pk, contributor_pk, "Ethernet1".to_string())
         .await
         .unwrap();
 
@@ -1532,8 +1548,8 @@ async fn test_initialize_device_latency_samples_fail_agent_not_owner_of_origin_d
                 mtu: 1500,
                 delay_ns: 10,
                 jitter_ns: 1,
-                side_a_iface_name: "eth0".to_string(),
-                side_z_iface_name: Some("eth1".to_string()),
+                side_a_iface_name: "Ethernet0".to_string(),
+                side_z_iface_name: Some("Ethernet1".to_string()),
             },
             contributor_pk,
             origin_device_pk,

@@ -25,10 +25,21 @@ use doublezero_sdk::{
             update::UpdateContributorCommand,
         },
         device::{
-            activate::ActivateDeviceCommand, closeaccount::CloseAccountDeviceCommand,
-            create::CreateDeviceCommand, delete::DeleteDeviceCommand, get::GetDeviceCommand,
-            list::ListDeviceCommand, reject::RejectDeviceCommand, resume::ResumeDeviceCommand,
-            suspend::SuspendDeviceCommand, update::UpdateDeviceCommand,
+            activate::ActivateDeviceCommand,
+            closeaccount::CloseAccountDeviceCommand,
+            create::CreateDeviceCommand,
+            delete::DeleteDeviceCommand,
+            get::GetDeviceCommand,
+            interface::{
+                activate::ActivateDeviceInterfaceCommand, create::CreateDeviceInterfaceCommand,
+                delete::DeleteDeviceInterfaceCommand, remove::RemoveDeviceInterfaceCommand,
+                update::UpdateDeviceInterfaceCommand,
+            },
+            list::ListDeviceCommand,
+            reject::RejectDeviceCommand,
+            resume::ResumeDeviceCommand,
+            suspend::SuspendDeviceCommand,
+            update::UpdateDeviceCommand,
         },
         exchange::{
             create::CreateExchangeCommand, delete::DeleteExchangeCommand, get::GetExchangeCommand,
@@ -151,6 +162,21 @@ pub trait CliCommand {
     fn activate_device(&self, cmd: ActivateDeviceCommand) -> eyre::Result<Signature>;
     fn reject_device(&self, cmd: RejectDeviceCommand) -> eyre::Result<Signature>;
     fn closeaccount_device(&self, cmd: CloseAccountDeviceCommand) -> eyre::Result<Signature>;
+
+    fn activate_device_interface(
+        &self,
+        cmd: ActivateDeviceInterfaceCommand,
+    ) -> eyre::Result<Signature>;
+    fn create_device_interface(
+        &self,
+        cmd: CreateDeviceInterfaceCommand,
+    ) -> eyre::Result<(Signature, Pubkey)>;
+    fn delete_device_interface(&self, cmd: DeleteDeviceInterfaceCommand)
+        -> eyre::Result<Signature>;
+    fn remove_device_interface(&self, cmd: RemoveDeviceInterfaceCommand)
+        -> eyre::Result<Signature>;
+    fn update_device_interface(&self, cmd: UpdateDeviceInterfaceCommand)
+        -> eyre::Result<Signature>;
 
     fn create_link(&self, cmd: CreateLinkCommand) -> eyre::Result<(Signature, Pubkey)>;
     fn accept_link(&self, cmd: AcceptLinkCommand) -> eyre::Result<Signature>;
@@ -403,6 +429,36 @@ impl CliCommand for CliCommandImpl<'_> {
         cmd.execute(self.client)
     }
     fn closeaccount_device(&self, cmd: CloseAccountDeviceCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn activate_device_interface(
+        &self,
+        cmd: ActivateDeviceInterfaceCommand,
+    ) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn create_device_interface(
+        &self,
+        cmd: CreateDeviceInterfaceCommand,
+    ) -> eyre::Result<(Signature, Pubkey)> {
+        cmd.execute(self.client)
+    }
+    fn delete_device_interface(
+        &self,
+        cmd: DeleteDeviceInterfaceCommand,
+    ) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn remove_device_interface(
+        &self,
+        cmd: RemoveDeviceInterfaceCommand,
+    ) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn update_device_interface(
+        &self,
+        cmd: UpdateDeviceInterfaceCommand,
+    ) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
     fn create_link(&self, cmd: CreateLinkCommand) -> eyre::Result<(Signature, Pubkey)> {

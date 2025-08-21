@@ -187,7 +187,6 @@ async fn test_user() {
             dz_prefixes: "10.1.0.0/23".parse().unwrap(),
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
-            interfaces: vec![],
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

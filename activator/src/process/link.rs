@@ -1,13 +1,13 @@
 use crate::{idallocator::IDAllocator, ipblockallocator::IPBlockAllocator};
 use doublezero_sdk::{
     commands::{
-        device::{get::GetDeviceCommand, update::UpdateDeviceCommand},
+        device::interface::activate::ActivateDeviceInterfaceCommand,
         link::{
             activate::ActivateLinkCommand, closeaccount::CloseAccountLinkCommand,
             reject::RejectLinkCommand,
         },
     },
-    DoubleZeroClient, Interface, Link, LinkStatus,
+    DoubleZeroClient, Link, LinkStatus,
 };
 use ipnetwork::Ipv4Network;
 use log::info;
@@ -170,38 +170,11 @@ fn assign_ip_to_dev_interface(
     dev: &Pubkey,
     iface_name: &str,
 ) -> eyre::Result<Signature> {
-    let (pubkey, device) = GetDeviceCommand {
-        pubkey_or_code: dev.to_string(),
-    }
-    .execute(client)?;
-
-    let mut interfaces = device.interfaces.clone();
-    if let Some(iface) = interfaces
-        .iter_mut()
-        .find(|i| i.into_current_version().name == iface_name)
-    {
-        let mut interface = iface.into_current_version();
-        interface.ip_net = ip_net.into();
-        *iface = Interface::V1(interface);
-    } else {
-        return Err(eyre::eyre!(
-            "Interface {} not found on device {}",
-            iface_name,
-            pubkey
-        ));
-    }
-
-    UpdateDeviceCommand {
+    ActivateDeviceInterfaceCommand {
         pubkey: *dev,
-        code: None,
-        device_type: None,
-        public_ip: None,
-        dz_prefixes: None,
-        metrics_publisher: None,
-        contributor_pk: None,
-        mgmt_vrf: None,
-        interfaces: Some(interfaces),
-        max_users: None,
+        name: iface_name.to_string(),
+        ip_net: ip_net.into(),
+        node_segment_idx: 0,
     }
     .execute(client)
 }
@@ -212,17 +185,14 @@ mod tests {
         idallocator::IDAllocator,
         ipblockallocator::IPBlockAllocator,
         process::link::process_tunnel_event,
-        tests::utils::{create_test_client, get_device_bump_seed, get_tunnel_bump_seed},
+        tests::utils::{create_test_client, get_tunnel_bump_seed},
     };
-    use doublezero_program_common::types::{NetworkV4, NetworkV4List};
-    use doublezero_sdk::{
-        AccountData, AccountType, CurrentInterfaceVersion, Device, DeviceStatus, DeviceType,
-        Interface, InterfaceStatus, InterfaceType, Link, LinkLinkType, LinkStatus, LoopbackType,
-    };
+    use doublezero_program_common::types::NetworkV4;
+    use doublezero_sdk::{AccountData, AccountType, Link, LinkLinkType, LinkStatus};
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
         processors::{
-            device::update::DeviceUpdateArgs,
+            device::interface::activate::DeviceInterfaceActivateArgs,
             link::{
                 activate::LinkActivateArgs, closeaccount::LinkCloseAccountArgs,
                 reject::LinkRejectArgs,
@@ -261,124 +231,15 @@ mod tests {
             tunnel_net: NetworkV4::default(),
             status: LinkStatus::Pending,
             code: "TestLink".to_string(),
-            side_a_iface_name: "eth0".to_string(),
-            side_z_iface_name: "eth1".to_string(),
+            side_a_iface_name: "Ethernet0".to_string(),
+            side_z_iface_name: "Ethernet1".to_string(),
         };
-
-        let device1 = Device {
-            account_type: AccountType::Device,
-            owner: owner_pubkey,
-            index: 0,
-            bump_seed: get_device_bump_seed(&client),
-            location_pk: Pubkey::new_unique(),
-            exchange_pk: Pubkey::new_unique(),
-            device_type: DeviceType::Switch,
-            public_ip: "1.2.3.4".parse().unwrap(),
-            status: DeviceStatus::Activated,
-            code: "Device1".to_string(),
-            dz_prefixes: NetworkV4List::default(),
-            metrics_publisher_pk: Pubkey::new_unique(),
-            contributor_pk: tunnel.contributor_pk,
-            mgmt_vrf: "mgmt".to_string(),
-            interfaces: vec![
-                Interface::V1(CurrentInterfaceVersion {
-                    status: InterfaceStatus::Activated,
-                    name: tunnel.side_a_iface_name.clone(),
-                    interface_type: InterfaceType::Physical,
-                    loopback_type: LoopbackType::None,
-                    vlan_id: 0,
-                    ip_net: NetworkV4::default(),
-                    node_segment_idx: 0,
-                    user_tunnel_endpoint: false,
-                }),
-                Interface::V1(CurrentInterfaceVersion {
-                    status: InterfaceStatus::Activated,
-                    name: "lo0".to_string(),
-                    interface_type: InterfaceType::Loopback,
-                    loopback_type: LoopbackType::Vpnv4,
-                    vlan_id: 0,
-                    ip_net: NetworkV4::default(),
-                    node_segment_idx: 0,
-                    user_tunnel_endpoint: false,
-                }),
-            ],
-            reference_count: 0,
-            max_users: 255,
-            users_count: 0,
-        };
-
-        let device2 = Device {
-            account_type: AccountType::Device,
-            owner: owner_pubkey,
-            index: 0,
-            bump_seed: get_device_bump_seed(&client),
-            location_pk: Pubkey::new_unique(),
-            exchange_pk: Pubkey::new_unique(),
-            device_type: DeviceType::Switch,
-            public_ip: "1.2.3.5".parse().unwrap(),
-            status: DeviceStatus::Activated,
-            code: "Device2".to_string(),
-            dz_prefixes: NetworkV4List::default(),
-            metrics_publisher_pk: Pubkey::new_unique(),
-            contributor_pk: tunnel.contributor_pk,
-            mgmt_vrf: "mgmt".to_string(),
-            interfaces: vec![
-                Interface::V1(CurrentInterfaceVersion {
-                    status: InterfaceStatus::Pending,
-                    name: tunnel.side_z_iface_name.clone(),
-                    interface_type: InterfaceType::Physical,
-                    loopback_type: LoopbackType::None,
-                    vlan_id: 0,
-                    ip_net: NetworkV4::default(),
-                    node_segment_idx: 0,
-                    user_tunnel_endpoint: false,
-                }),
-                Interface::V1(CurrentInterfaceVersion {
-                    status: InterfaceStatus::Pending,
-                    name: "lo0".to_string(),
-                    interface_type: InterfaceType::Loopback,
-                    loopback_type: LoopbackType::Vpnv4,
-                    vlan_id: 0,
-                    ip_net: NetworkV4::default(),
-                    node_segment_idx: 0,
-                    user_tunnel_endpoint: false,
-                }),
-            ],
-            reference_count: 0,
-            max_users: 255,
-            users_count: 0,
-        };
-
-        let expected_interfaces1 = device1
-            .interfaces
-            .iter()
-            .enumerate()
-            .map(|(i, iface)| {
-                let mut iface = iface.into_current_version();
-                if i == 0 {
-                    iface.ip_net = "10.0.0.0/31".parse().unwrap();
-                }
-                Interface::V1(iface)
-            })
-            .collect::<Vec<Interface>>();
-
-        let expected_interfaces2 = device2
-            .interfaces
-            .iter()
-            .enumerate()
-            .map(|(i, iface)| {
-                let mut iface = iface.into_current_version();
-                if i == 0 {
-                    iface.ip_net = "10.0.0.1/31".parse().unwrap();
-                }
-                Interface::V1(iface)
-            })
-            .collect::<Vec<Interface>>();
 
         let tunnel_cloned = tunnel.clone();
         client
             .expect_get()
             .with(predicate::eq(tunnel_pubkey))
+            .times(1)
             .returning(move |_| Ok(AccountData::Link(tunnel_cloned.clone())));
 
         client
@@ -390,54 +251,37 @@ mod tests {
                 })),
                 predicate::always(),
             )
+            .times(1)
             .returning(|_, _| Ok(Signature::new_unique()));
-
-        let dev1 = device1.clone();
-        client
-            .expect_get()
-            .with(predicate::eq(tunnel.side_a_pk))
-            .returning(move |_| Ok(AccountData::Device(dev1.clone())));
 
         client
             .expect_execute_transaction()
             .with(
-                predicate::eq(DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-                    code: None,
-                    device_type: None,
-                    public_ip: None,
-                    dz_prefixes: None,
-                    metrics_publisher_pk: None,
-                    contributor_pk: None,
-                    mgmt_vrf: None,
-                    interfaces: Some(expected_interfaces1.clone()),
-                    max_users: None,
-                })),
+                predicate::eq(DoubleZeroInstruction::ActivateDeviceInterface(
+                    DeviceInterfaceActivateArgs {
+                        name: "Ethernet0".to_string(),
+                        ip_net: "10.0.0.0/31".parse().unwrap(),
+                        node_segment_idx: 0,
+                    },
+                )),
                 predicate::always(),
             )
+            .times(1)
             .returning(|_, _| Ok(Signature::new_unique()));
-
-        let dev2 = device2.clone();
-        client
-            .expect_get()
-            .with(predicate::eq(tunnel.side_z_pk))
-            .returning(move |_| Ok(AccountData::Device(dev2.clone())));
 
         client
             .expect_execute_transaction()
             .with(
-                predicate::eq(DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-                    code: None,
-                    device_type: None,
-                    public_ip: None,
-                    dz_prefixes: None,
-                    metrics_publisher_pk: None,
-                    contributor_pk: None,
-                    mgmt_vrf: None,
-                    interfaces: Some(expected_interfaces2.clone()),
-                    max_users: None,
-                })),
+                predicate::eq(DoubleZeroInstruction::ActivateDeviceInterface(
+                    DeviceInterfaceActivateArgs {
+                        name: "Ethernet1".to_string(),
+                        ip_net: "10.0.0.1/31".parse().unwrap(),
+                        node_segment_idx: 0,
+                    },
+                )),
                 predicate::always(),
             )
+            .times(1)
             .returning(|_, _| Ok(Signature::new_unique()));
 
         let mut state_transitions: HashMap<&'static str, usize> = HashMap::new();
@@ -463,6 +307,7 @@ mod tests {
         client
             .expect_get()
             .withf(move |pk| *pk == tunnel_pubkey)
+            .times(1)
             .returning(move |_| Ok(AccountData::Link(tunnel2.clone())));
 
         client
@@ -473,78 +318,37 @@ mod tests {
                 )),
                 predicate::always(),
             )
+            .times(1)
             .returning(|_, _| Ok(Signature::new_unique()));
-
-        let expected_interfaces1 = expected_interfaces1
-            .iter()
-            .enumerate()
-            .map(|(i, iface)| {
-                let mut iface = iface.into_current_version();
-                if i == 0 {
-                    iface.ip_net = "0.0.0.0/0".parse().unwrap();
-                }
-                Interface::V1(iface)
-            })
-            .collect::<Vec<Interface>>();
-
-        let expected_interfaces2 = expected_interfaces2
-            .iter()
-            .enumerate()
-            .map(|(i, iface)| {
-                let mut iface = iface.into_current_version();
-                if i == 0 {
-                    iface.ip_net = "0.0.0.0/0".parse().unwrap();
-                }
-                Interface::V1(iface)
-            })
-            .collect::<Vec<Interface>>();
-
-        let dev1 = device1.clone();
-        client
-            .expect_get()
-            .with(predicate::eq(tunnel.side_a_pk))
-            .returning(move |_| Ok(AccountData::Device(dev1.clone())));
 
         client
             .expect_execute_transaction()
             .with(
-                predicate::eq(DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-                    code: None,
-                    device_type: None,
-                    public_ip: None,
-                    dz_prefixes: None,
-                    metrics_publisher_pk: None,
-                    contributor_pk: None,
-                    mgmt_vrf: None,
-                    interfaces: Some(expected_interfaces1.clone()),
-                    max_users: None,
-                })),
+                predicate::eq(DoubleZeroInstruction::ActivateDeviceInterface(
+                    DeviceInterfaceActivateArgs {
+                        name: "Ethernet0".to_string(),
+                        ip_net: "0.0.0.0/0".parse().unwrap(),
+                        node_segment_idx: 0,
+                    },
+                )),
                 predicate::always(),
             )
+            .times(1)
             .returning(|_, _| Ok(Signature::new_unique()));
-
-        let dev2 = device2.clone();
-        client
-            .expect_get()
-            .with(predicate::eq(tunnel.side_z_pk))
-            .returning(move |_| Ok(AccountData::Device(dev2.clone())));
 
         client
             .expect_execute_transaction()
             .with(
-                predicate::eq(DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-                    code: None,
-                    device_type: None,
-                    public_ip: None,
-                    dz_prefixes: None,
-                    metrics_publisher_pk: None,
-                    contributor_pk: None,
-                    mgmt_vrf: None,
-                    interfaces: Some(expected_interfaces2.clone()),
-                    max_users: None,
-                })),
+                predicate::eq(DoubleZeroInstruction::ActivateDeviceInterface(
+                    DeviceInterfaceActivateArgs {
+                        name: "Ethernet1".to_string(),
+                        ip_net: "0.0.0.0/0".parse().unwrap(),
+                        node_segment_idx: 0,
+                    },
+                )),
                 predicate::always(),
             )
+            .times(1)
             .returning(|_, _| Ok(Signature::new_unique()));
 
         let assigned_ips = link_ips.assigned_ips.clone();
@@ -591,8 +395,8 @@ mod tests {
             tunnel_net: NetworkV4::default(),
             status: LinkStatus::Pending,
             code: "TestLink".to_string(),
-            side_a_iface_name: "eth0".to_string(),
-            side_z_iface_name: "eth1".to_string(),
+            side_a_iface_name: "Ethernet0".to_string(),
+            side_z_iface_name: "Ethernet1".to_string(),
         };
 
         let _ = link_ips.next_available_block(0, 2);

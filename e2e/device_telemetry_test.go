@@ -178,29 +178,29 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 			doublezero device create --code pit-dzd01 --contributor co01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "204.16.243.243/32" --mgmt-vrf mgmt
 			doublezero device create --code ams-dz001 --contributor co01 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "195.219.138.56/29" --mgmt-vrf mgmt
 
-			doublezero device interface create ld4-dz01 "Ethernet2" physical
-			doublezero device interface create ld4-dz01 "Ethernet3" physical
-			doublezero device interface create ld4-dz01 "Ethernet4" physical
-			doublezero device interface create frk-dz01 "Ethernet2" physical
-			doublezero device interface create sg1-dz01 "Ethernet2" physical
-			doublezero device interface create sg1-dz01 "Ethernet3" physical
-			doublezero device interface create ty2-dz01 "Ethernet2" physical
-			doublezero device interface create pit-dzd01 "Ethernet2" physical
-			doublezero device interface create ams-dz001 "Ethernet2" physical
+			doublezero device interface create ld4-dz01 "Ethernet2"
+			doublezero device interface create ld4-dz01 "Ethernet3"
+			doublezero device interface create ld4-dz01 "Ethernet4"
+			doublezero device interface create frk-dz01 "Ethernet2"
+			doublezero device interface create sg1-dz01 "Ethernet2"
+			doublezero device interface create sg1-dz01 "Ethernet3"
+			doublezero device interface create ty2-dz01 "Ethernet2"
+			doublezero device interface create pit-dzd01 "Ethernet2"
+			doublezero device interface create ams-dz001 "Ethernet2"
 
-			doublezero device interface create ld4-dz01 "Loopback255" loopback --loopback-type vpnv4
-			doublezero device interface create frk-dz01 "Loopback255" loopback --loopback-type vpnv4
-			doublezero device interface create sg1-dz01 "Loopback255" loopback --loopback-type vpnv4
-			doublezero device interface create ty2-dz01 "Loopback255" loopback --loopback-type vpnv4
-			doublezero device interface create pit-dzd01 "Loopback255" loopback --loopback-type vpnv4
-			doublezero device interface create ams-dz001 "Loopback255" loopback --loopback-type vpnv4
+			doublezero device interface create ld4-dz01 "Loopback255" --loopback-type vpnv4
+			doublezero device interface create frk-dz01 "Loopback255" --loopback-type vpnv4
+			doublezero device interface create sg1-dz01 "Loopback255" --loopback-type vpnv4
+			doublezero device interface create ty2-dz01 "Loopback255" --loopback-type vpnv4
+			doublezero device interface create pit-dzd01 "Loopback255" --loopback-type vpnv4
+			doublezero device interface create ams-dz001 "Loopback255" --loopback-type vpnv4
 
-			doublezero device interface create ld4-dz01 "Loopback256" loopback --loopback-type ipv4
-			doublezero device interface create frk-dz01 "Loopback256" loopback --loopback-type ipv4
-			doublezero device interface create sg1-dz01 "Loopback256" loopback --loopback-type ipv4
-			doublezero device interface create ty2-dz01 "Loopback256" loopback --loopback-type ipv4
-			doublezero device interface create pit-dzd01 "Loopback256" loopback --loopback-type ipv4
-			doublezero device interface create ams-dz001 "Loopback256" loopback --loopback-type ipv4
+			doublezero device interface create ld4-dz01 "Loopback256" --loopback-type ipv4
+			doublezero device interface create frk-dz01 "Loopback256" --loopback-type ipv4
+			doublezero device interface create sg1-dz01 "Loopback256" --loopback-type ipv4
+			doublezero device interface create ty2-dz01 "Loopback256" --loopback-type ipv4
+			doublezero device interface create pit-dzd01 "Loopback256" --loopback-type ipv4
+			doublezero device interface create ams-dz001 "Loopback256" --loopback-type ipv4
 	`})
 	require.NoError(t, err)
 

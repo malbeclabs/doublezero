@@ -52,7 +52,6 @@ impl UpdateDeviceCommand {
                 dz_prefixes: self.dz_prefixes.clone(),
                 metrics_publisher_pk: self.metrics_publisher,
                 mgmt_vrf: self.mgmt_vrf.clone(),
-                interfaces: self.interfaces.clone(),
                 max_users: self.max_users,
             }),
             vec![
@@ -125,7 +124,6 @@ mod tests {
                     dz_prefixes: Some("10.0.0.0/8".parse().unwrap()),
                     metrics_publisher_pk: None,
                     mgmt_vrf: Some("mgmt".to_string()),
-                    interfaces: None,
                     contributor_pk: None,
                     max_users: None,
                 })),

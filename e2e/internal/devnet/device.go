@@ -276,7 +276,7 @@ func (d *Device) Start(ctx context.Context) error {
 	// Create interfaces onchain.
 	for name, ifaceType := range spec.Interfaces {
 		_, err := d.dn.Manager.Exec(ctx, []string{
-			"doublezero", "device", "interface", "create", spec.Code, name, ifaceType,
+			"doublezero", "device", "interface", "create", spec.Code, name,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to create interface %s for device %s: %w", name, spec.Code, err)

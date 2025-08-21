@@ -30,7 +30,6 @@ pub struct DeviceCreateArgs {
     pub dz_prefixes: NetworkV4List,
     pub metrics_publisher_pk: Pubkey,
     pub mgmt_vrf: String,
-    pub interfaces: Vec<Interface>,
 }
 
 impl fmt::Debug for DeviceCreateArgs {
@@ -38,14 +37,13 @@ impl fmt::Debug for DeviceCreateArgs {
         write!(
             f,
             "code: {}, device_type: {:?}, public_ip: {}, dz_prefixes: {}, \
-metrics_publisher_pk: {}, mgmt_vrf: {}, interfaces: {:?}",
+metrics_publisher_pk: {}, mgmt_vrf: {}",
             self.code,
             self.device_type,
             self.public_ip,
             self.dz_prefixes,
             self.metrics_publisher_pk,
             self.mgmt_vrf,
-            self.interfaces,
         )
     }
 }
@@ -132,7 +130,7 @@ pub fn process_create_device(
         metrics_publisher_pk: value.metrics_publisher_pk,
         status: DeviceStatus::Pending,
         mgmt_vrf: value.mgmt_vrf.clone(),
-        interfaces: value.interfaces.clone(),
+        interfaces: vec![],
         users_count: 0,
         max_users: DEFAULT_MAX_USERS,
     };

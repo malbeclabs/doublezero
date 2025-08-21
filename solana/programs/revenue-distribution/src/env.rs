@@ -1,6 +1,6 @@
 pub mod mainnet {
     pub const DOUBLEZERO_MINT_KEY: solana_pubkey::Pubkey =
-        solana_pubkey::pubkey!("F9m4F8TK8tXHnfaCV42mT9bDrC2EsxwUsKiWtjkUDZ2z");
+        solana_pubkey::pubkey!("J6pQQ3FAcJQeWPPGppWRb4nM8jU3wLyYbRrLh7feMfvd");
 }
 
 pub mod development {

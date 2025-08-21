@@ -39,7 +39,7 @@ impl ReqListener {
                 }
                 req = request_stream.next() => {
                     if let Some(log_event) = req
-                        && log_event.value.logs.iter().any(|log| log.contains("Initialized user AccessRequest")) {
+                        && log_event.value.logs.iter().any(|log| log.contains("Initialized user access request")) {
                             let signature: Signature = log_event.value.signature.parse()?;
                             self.tx.send(signature)?;
                             metrics::counter!("doublezero_sentinel_access_request_received").increment(1);

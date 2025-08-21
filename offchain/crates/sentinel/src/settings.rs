@@ -1,11 +1,13 @@
 use clap::Parser;
 use config::{Config, Environment, File};
+use doublezero_serviceability::addresses::{devnet, mainnet, testnet};
 use serde::{Deserialize, Serialize};
-use solana_sdk::signer::keypair::Keypair;
+use solana_sdk::{pubkey::Pubkey, signer::keypair::Keypair};
 use std::{
     fs,
     net::SocketAddr,
     path::{Path, PathBuf},
+    str::FromStr,
     sync::Arc,
 };
 use url::Url;
@@ -27,6 +29,9 @@ pub struct Settings {
     /// Log level
     #[serde(default = "default_log")]
     pub log: String,
+
+    /// The DZ ledger environment with which to interface
+    pub env: String,
 
     /// Connection URIs for the DZ ledger RPC endpoint
     dz_rpc: String,
@@ -118,6 +123,18 @@ impl Settings {
         self.metrics_addr
             .parse()
             .expect("invalid metrics network address and port")
+    }
+
+    pub fn serviceability_program_id(
+        &self,
+    ) -> Result<Pubkey, solana_sdk::pubkey::ParsePubkeyError> {
+        match self.env.to_lowercase().as_str() {
+            "local" => Pubkey::from_str("7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX"),
+            "devnet" => Ok(devnet::program_id::id()),
+            "testnet" => Ok(testnet::program_id::id()),
+            "mainnet" => Ok(mainnet::program_id::id()),
+            other => Pubkey::from_str(other),
+        }
     }
 }
 

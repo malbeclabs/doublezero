@@ -33,7 +33,10 @@ use solana_sdk::{
 use solana_transaction_status_client_types::{
     EncodedTransaction, TransactionBinaryEncoding, UiTransactionEncoding,
 };
-use std::sync::Arc;
+use std::{
+    net::{Ipv4Addr, SocketAddr},
+    sync::Arc,
+};
 use url::Url;
 
 pub struct SolRpcClient {
@@ -170,6 +173,21 @@ impl SolRpcClient {
         }
 
         Ok(false)
+    }
+
+    pub async fn get_validator_ip(&self, validator_id: &Pubkey) -> Result<Option<Ipv4Addr>> {
+        let address = self
+            .client
+            .get_cluster_nodes()
+            .await?
+            .iter()
+            .find(|contact| contact.pubkey == validator_id.to_string())
+            .and_then(|contact| contact.gossip)
+            .and_then(|addr| match addr {
+                SocketAddr::V4(addr_v4) => Some(*addr_v4.ip()),
+                SocketAddr::V6(addr_v6) => addr_v6.ip().to_ipv4_mapped(),
+            });
+        Ok(address)
     }
 }
 

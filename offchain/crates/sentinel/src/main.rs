@@ -44,6 +44,7 @@ async fn main() -> anyhow::Result<()> {
         dz_rpc,
         sol_rpc,
         keypair,
+        settings.serviceability_program_id()?,
         rx,
         settings.onboarding_lamports(),
         settings.previous_leader_epochs(),

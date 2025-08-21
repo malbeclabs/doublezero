@@ -2,7 +2,8 @@
 members = [
     "crates/contributor-rewards",
     "crates/sentinel",
-    "crates/validator-revenue"
+    "crates/validator-revenue",
+    "crates/2z-cli"
 ]
 resolver = "2"
 

@@ -64,15 +64,81 @@ ip access-list MAIN-CONTROL-PLANE-ACL
 system control-plane
    ip access-group MAIN-CONTROL-PLANE-ACL in
 !
+interface Loopback255
+   ip address 14.14.14.14/32
+   node-segment ipv4 index 101
+   isis enable 1
+!
+interface Loopback256
+   ip address 12.12.12.12/32
+   isis enable 1
+!
+interface Switch1/1/1
+   mtu 2048
+   no switchport
+   ip address 172.16.0.0/31
+   pim ipv4 sparse-mode
+   isis enable 1
+   isis circuit-type level-2
+   isis hello-interval 1
+   isis metric 400000
+   isis hello padding
+   isis network point-to-point
+!
+interface Switch1/1/2
+   mtu 2048
+   no switchport
+!
+interface Switch1/1/2.100
+   mtu 2048
+   encapsulation dot1q vlan 100
+   ip address 172.16.0.2/31
+   pim ipv4 sparse-mode
+   isis enable 1
+   isis circuit-type level-2
+   isis hello-interval 1
+   isis metric 1
+   isis hello padding
+   isis network point-to-point
+!
 interface Loopback1000
    description RP Address
    ip address 10.0.0.0/32
 !
 mpls ip
 !
+mpls icmp ttl-exceeded tunneling
+mpls icmp ip source-interface Loopback255
+!
 default interface Tunnel500
+interface Tunnel500
+   description USER-UCAST-500
+   ip access-group SEC-USER-500-IN in
+   vrf vrf1
+   mtu 9216
+   ip address 169.254.0.0/31
+   tunnel mode gre
+   tunnel source 2.2.2.2
+   tunnel destination 1.1.1.1
+   tunnel path-mtu-discovery
+   tunnel ttl 32
+   no shutdown
 !
 default interface Tunnel501
+interface Tunnel501
+   description USER-MCAST-501
+   ip access-group SEC-USER-SUB-MCAST-IN in
+   multicast ipv4 boundary SEC-USER-MCAST-BOUNDARY-501-OUT out
+   pim ipv4 sparse-mode
+   pim ipv4 dr-priority 4294967295
+   mtu 9216
+   ip address 169.254.0.2/31
+   tunnel mode gre
+   tunnel source 2.2.2.2
+   tunnel destination 3.3.3.3
+   tunnel path-mtu-discovery
+   tunnel ttl 32
+   no shutdown
 !
 default interface Tunnel502
 !
@@ -327,7 +393,18 @@ default interface Tunnel626
 default interface Tunnel627
 !
 router bgp 65342
+   router-id 14.14.14.14
+   no neighbor 169.254.0.3
+   neighbor 169.254.0.3 remote-as 65000
+   neighbor 169.254.0.3 local-as 65342 no-prepend replace-as
+   neighbor 169.254.0.3 passive
+   neighbor 169.254.0.3 description USER-501
+   neighbor 169.254.0.3 route-map RM-USER-501-IN in
+   neighbor 169.254.0.3 route-map RM-USER-501-OUT out
+   neighbor 169.254.0.3 maximum-routes 1
+   neighbor 169.254.0.3 maximum-accepted-routes 1
    address-family ipv4
+      neighbor 169.254.0.3 activate
    !
    address-family vpn-ipv4
    !
@@ -336,13 +413,36 @@ router bgp 65342
       route-target import vpn-ipv4 65342:1
       route-target export vpn-ipv4 65342:1
       router-id 2.2.2.2
+      no neighbor 169.254.0.1
+      neighbor 169.254.0.1 remote-as 65000
+      neighbor 169.254.0.1 local-as 65342 no-prepend replace-as
+      neighbor 169.254.0.1 passive
+      neighbor 169.254.0.1 description USER-500
+      neighbor 169.254.0.1 route-map RM-USER-500-IN in
+      neighbor 169.254.0.1 route-map RM-USER-500-OUT out
+      neighbor 169.254.0.1 maximum-routes 1
+      neighbor 169.254.0.1 maximum-accepted-routes 1
+!
+router isis 1
+   net 49.0000.0e0e.0e0e.0000.00
+   router-id ipv4 14.14.14.14
+   log-adjacency-changes
+   !
+   address-family ipv4 unicast
+   !
+   segment-routing mpls
+      no shutdown
 !
 ip community-list COMM-ALL_USERS permit 21682:1200
 ip community-list COMM-ALL_MCAST_USERS permit 21682:1300
 !
 no route-map RM-USER-500-OUT
+route-map RM-USER-500-OUT permit 10
+   match community COMM-ALL_USERS
 !
 no route-map RM-USER-501-OUT
+route-map RM-USER-501-OUT permit 10
+   match community COMM-ALL_MCAST_USERS
 !
 no route-map RM-USER-502-OUT
 !
@@ -597,8 +697,16 @@ no route-map RM-USER-626-OUT
 no route-map RM-USER-627-OUT
 !
 no route-map RM-USER-500-IN
+route-map RM-USER-500-IN permit 10
+   match ip address prefix-list PL-USER-500
+   match as-path length = 1
+   set community 21682:1200
 !
 no route-map RM-USER-501-IN
+route-map RM-USER-501-IN permit 10
+   match ip address prefix-list PL-USER-501
+   match as-path length = 1
+   set community 21682:1300
 !
 no route-map RM-USER-502-IN
 !
@@ -853,8 +961,10 @@ no route-map RM-USER-626-IN
 no route-map RM-USER-627-IN
 !
 no ip prefix-list PL-USER-500
+ip prefix-list PL-USER-500 seq 10 permit 100.100.100.100/32
 !
 no ip prefix-list PL-USER-501
+ip prefix-list PL-USER-501 seq 10 deny 0.0.0.0/0 le 32
 !
 no ip prefix-list PL-USER-502
 !
@@ -1109,261 +1219,33 @@ no ip prefix-list PL-USER-626
 no ip prefix-list PL-USER-627
 !
 no ip access-list SEC-USER-500-IN
-no ip access-list SEC-USER-501-IN
-no ip access-list SEC-USER-502-IN
-no ip access-list SEC-USER-503-IN
-no ip access-list SEC-USER-504-IN
-no ip access-list SEC-USER-505-IN
-no ip access-list SEC-USER-506-IN
-no ip access-list SEC-USER-507-IN
-no ip access-list SEC-USER-508-IN
-no ip access-list SEC-USER-509-IN
-no ip access-list SEC-USER-510-IN
-no ip access-list SEC-USER-511-IN
-no ip access-list SEC-USER-512-IN
-no ip access-list SEC-USER-513-IN
-no ip access-list SEC-USER-514-IN
-no ip access-list SEC-USER-515-IN
-no ip access-list SEC-USER-516-IN
-no ip access-list SEC-USER-517-IN
-no ip access-list SEC-USER-518-IN
-no ip access-list SEC-USER-519-IN
-no ip access-list SEC-USER-520-IN
-no ip access-list SEC-USER-521-IN
-no ip access-list SEC-USER-522-IN
-no ip access-list SEC-USER-523-IN
-no ip access-list SEC-USER-524-IN
-no ip access-list SEC-USER-525-IN
-no ip access-list SEC-USER-526-IN
-no ip access-list SEC-USER-527-IN
-no ip access-list SEC-USER-528-IN
-no ip access-list SEC-USER-529-IN
-no ip access-list SEC-USER-530-IN
-no ip access-list SEC-USER-531-IN
-no ip access-list SEC-USER-532-IN
-no ip access-list SEC-USER-533-IN
-no ip access-list SEC-USER-534-IN
-no ip access-list SEC-USER-535-IN
-no ip access-list SEC-USER-536-IN
-no ip access-list SEC-USER-537-IN
-no ip access-list SEC-USER-538-IN
-no ip access-list SEC-USER-539-IN
-no ip access-list SEC-USER-540-IN
-no ip access-list SEC-USER-541-IN
-no ip access-list SEC-USER-542-IN
-no ip access-list SEC-USER-543-IN
-no ip access-list SEC-USER-544-IN
-no ip access-list SEC-USER-545-IN
-no ip access-list SEC-USER-546-IN
-no ip access-list SEC-USER-547-IN
-no ip access-list SEC-USER-548-IN
-no ip access-list SEC-USER-549-IN
-no ip access-list SEC-USER-550-IN
-no ip access-list SEC-USER-551-IN
-no ip access-list SEC-USER-552-IN
-no ip access-list SEC-USER-553-IN
-no ip access-list SEC-USER-554-IN
-no ip access-list SEC-USER-555-IN
-no ip access-list SEC-USER-556-IN
-no ip access-list SEC-USER-557-IN
-no ip access-list SEC-USER-558-IN
-no ip access-list SEC-USER-559-IN
-no ip access-list SEC-USER-560-IN
-no ip access-list SEC-USER-561-IN
-no ip access-list SEC-USER-562-IN
-no ip access-list SEC-USER-563-IN
-no ip access-list SEC-USER-564-IN
-no ip access-list SEC-USER-565-IN
-no ip access-list SEC-USER-566-IN
-no ip access-list SEC-USER-567-IN
-no ip access-list SEC-USER-568-IN
-no ip access-list SEC-USER-569-IN
-no ip access-list SEC-USER-570-IN
-no ip access-list SEC-USER-571-IN
-no ip access-list SEC-USER-572-IN
-no ip access-list SEC-USER-573-IN
-no ip access-list SEC-USER-574-IN
-no ip access-list SEC-USER-575-IN
-no ip access-list SEC-USER-576-IN
-no ip access-list SEC-USER-577-IN
-no ip access-list SEC-USER-578-IN
-no ip access-list SEC-USER-579-IN
-no ip access-list SEC-USER-580-IN
-no ip access-list SEC-USER-581-IN
-no ip access-list SEC-USER-582-IN
-no ip access-list SEC-USER-583-IN
-no ip access-list SEC-USER-584-IN
-no ip access-list SEC-USER-585-IN
-no ip access-list SEC-USER-586-IN
-no ip access-list SEC-USER-587-IN
-no ip access-list SEC-USER-588-IN
-no ip access-list SEC-USER-589-IN
-no ip access-list SEC-USER-590-IN
-no ip access-list SEC-USER-591-IN
-no ip access-list SEC-USER-592-IN
-no ip access-list SEC-USER-593-IN
-no ip access-list SEC-USER-594-IN
-no ip access-list SEC-USER-595-IN
-no ip access-list SEC-USER-596-IN
-no ip access-list SEC-USER-597-IN
-no ip access-list SEC-USER-598-IN
-no ip access-list SEC-USER-599-IN
-no ip access-list SEC-USER-600-IN
-no ip access-list SEC-USER-601-IN
-no ip access-list SEC-USER-602-IN
-no ip access-list SEC-USER-603-IN
-no ip access-list SEC-USER-604-IN
-no ip access-list SEC-USER-605-IN
-no ip access-list SEC-USER-606-IN
-no ip access-list SEC-USER-607-IN
-no ip access-list SEC-USER-608-IN
-no ip access-list SEC-USER-609-IN
-no ip access-list SEC-USER-610-IN
-no ip access-list SEC-USER-611-IN
-no ip access-list SEC-USER-612-IN
-no ip access-list SEC-USER-613-IN
-no ip access-list SEC-USER-614-IN
-no ip access-list SEC-USER-615-IN
-no ip access-list SEC-USER-616-IN
-no ip access-list SEC-USER-617-IN
-no ip access-list SEC-USER-618-IN
-no ip access-list SEC-USER-619-IN
-no ip access-list SEC-USER-620-IN
-no ip access-list SEC-USER-621-IN
-no ip access-list SEC-USER-622-IN
-no ip access-list SEC-USER-623-IN
-no ip access-list SEC-USER-624-IN
-no ip access-list SEC-USER-625-IN
-no ip access-list SEC-USER-626-IN
-no ip access-list SEC-USER-627-IN
+ip access-list SEC-USER-500-IN
+   counters per-entry
+   !ICMP
+   permit icmp 169.254.0.1/32 any
+   !TRACEROUTE
+   permit udp 169.254.0.1/32 any range 33434 33534
+   !Allow TTL Exceeded for traceroute return packets
+   permit icmp 169.254.0.1/32 any time-exceeded
+   !PERMIT BGP
+   permit tcp 169.254.0.1/32 169.254.0.0/32 eq 179
+   !PERMIT USER DZ_IP as a source only
+   permit ip 100.100.100.100/32 any
+   deny ip any any
+!
+{{- range $i := seq 501 627}}
+no ip access-list SEC-USER-{{$i}}-IN
+{{- end}}
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-500-OUT
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-501-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-502-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-503-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-504-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-505-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-506-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-507-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-508-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-509-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-510-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-511-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-512-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-513-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-514-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-515-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-516-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-517-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-518-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-519-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-520-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-521-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-522-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-523-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-524-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-525-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-526-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-527-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-528-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-529-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-530-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-531-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-532-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-533-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-534-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-535-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-536-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-537-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-538-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-539-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-540-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-541-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-542-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-543-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-544-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-545-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-546-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-547-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-548-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-549-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-550-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-551-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-552-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-553-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-554-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-555-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-556-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-557-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-558-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-559-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-560-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-561-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-562-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-563-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-564-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-565-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-566-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-567-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-568-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-569-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-570-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-571-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-572-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-573-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-574-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-575-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-576-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-577-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-578-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-579-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-580-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-581-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-582-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-583-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-584-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-585-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-586-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-587-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-588-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-589-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-590-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-591-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-592-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-593-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-594-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-595-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-596-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-597-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-598-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-599-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-600-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-601-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-602-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-603-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-604-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-605-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-606-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-607-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-608-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-609-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-610-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-611-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-612-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-613-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-614-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-615-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-616-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-617-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-618-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-619-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-620-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-621-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-622-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-623-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-624-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-625-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-626-OUT
-no ip access-list standard SEC-USER-MCAST-BOUNDARY-627-OUT
+ip access-list standard SEC-USER-MCAST-BOUNDARY-501-OUT
+   counters per-entry
+   permit host 239.0.0.1
+   deny 224.0.0.0/4
+!
+{{- range $i := seq 502 627}}
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-{{$i}}-OUT
+{{- end}}
 no ip access-list SEC-USER-PUB-MCAST-IN
 ip access-list SEC-USER-PUB-MCAST-IN
    counters per-entry

@@ -375,6 +375,7 @@ struct VerifiedProgramAuthority<'a, 'b> {
 }
 
 impl<'a, 'b> TryNextAccounts<'a, 'b, Authority> for VerifiedProgramAuthority<'a, 'b> {
+    #[inline(always)]
     fn try_next_accounts(
         accounts_iter: &mut EnumeratedAccountInfoIter<'a, 'b>,
         authority: Authority,
@@ -399,6 +400,7 @@ struct VerifiedProgramAuthorityMut<'a, 'b> {
 }
 
 impl<'a, 'b> TryNextAccounts<'a, 'b, Authority> for VerifiedProgramAuthorityMut<'a, 'b> {
+    #[inline(always)]
     fn try_next_accounts(
         accounts_iter: &mut EnumeratedAccountInfoIter<'a, 'b>,
         authority: Authority,
@@ -417,6 +419,7 @@ impl<'a, 'b> TryNextAccounts<'a, 'b, Authority> for VerifiedProgramAuthorityMut<
     }
 }
 
+#[inline(always)]
 fn try_require_unpaused(program_config: &ProgramConfig) -> ProgramResult {
     if program_config.is_paused() {
         msg!("Program is paused");

@@ -205,48 +205,48 @@ ip prefix-list PL-USER-502 seq 10 permit 100.0.0.2/32
 !
 no ip access-list SEC-USER-500-IN
 ip access-list SEC-USER-500-IN
-  counters per-entry
-  !ICMP
-  permit icmp 169.254.0.1/32 any
-  !TRACEROUTE
-  permit udp 169.254.0.1/32 any range 33434 33534
-  !Allow TTL Exceeded for traceroute return packets
-  permit icmp 169.254.0.1/32 any time-exceeded
-  !PERMIT BGP
-  permit tcp 169.254.0.1/32 169.254.0.0/32 eq 179
-  !PERMIT USER DZ_IP as a source only
-  permit ip 100.0.0.0/32 any
-  deny ip any any
+   counters per-entry
+   !ICMP
+   permit icmp 169.254.0.1/32 any
+   !TRACEROUTE
+   permit udp 169.254.0.1/32 any range 33434 33534
+   !Allow TTL Exceeded for traceroute return packets
+   permit icmp 169.254.0.1/32 any time-exceeded
+   !PERMIT BGP
+   permit tcp 169.254.0.1/32 169.254.0.0/32 eq 179
+   !PERMIT USER DZ_IP as a source only
+   permit ip 100.0.0.0/32 any
+   deny ip any any
 !
 no ip access-list SEC-USER-501-IN
 ip access-list SEC-USER-501-IN
-  counters per-entry
-  !ICMP
-  permit icmp 169.254.0.3/32 any
-  !TRACEROUTE
-  permit udp 169.254.0.3/32 any range 33434 33534
-  !Allow TTL Exceeded for traceroute return packets
-  permit icmp 169.254.0.3/32 any time-exceeded
-  !PERMIT BGP
-  permit tcp 169.254.0.3/32 169.254.0.2/32 eq 179
-  !PERMIT USER DZ_IP as a source only
-  permit ip 100.0.0.1/32 any
-  deny ip any any
+   counters per-entry
+   !ICMP
+   permit icmp 169.254.0.3/32 any
+   !TRACEROUTE
+   permit udp 169.254.0.3/32 any range 33434 33534
+   !Allow TTL Exceeded for traceroute return packets
+   permit icmp 169.254.0.3/32 any time-exceeded
+   !PERMIT BGP
+   permit tcp 169.254.0.3/32 169.254.0.2/32 eq 179
+   !PERMIT USER DZ_IP as a source only
+   permit ip 100.0.0.1/32 any
+   deny ip any any
 !
 no ip access-list SEC-USER-502-IN
 ip access-list SEC-USER-502-IN
-  counters per-entry
-  !ICMP
-  permit icmp 169.254.0.5/32 any
-  !TRACEROUTE
-  permit udp 169.254.0.5/32 any range 33434 33534
-  !Allow TTL Exceeded for traceroute return packets
-  permit icmp 169.254.0.5/32 any time-exceeded
-  !PERMIT BGP
-  permit tcp 169.254.0.5/32 169.254.0.4/32 eq 179
-  !PERMIT USER DZ_IP as a source only
-  permit ip 100.0.0.2/32 any
-  deny ip any any
+   counters per-entry
+   !ICMP
+   permit icmp 169.254.0.5/32 any
+   !TRACEROUTE
+   permit udp 169.254.0.5/32 any range 33434 33534
+   !Allow TTL Exceeded for traceroute return packets
+   permit icmp 169.254.0.5/32 any time-exceeded
+   !PERMIT BGP
+   permit tcp 169.254.0.5/32 169.254.0.4/32 eq 179
+   !PERMIT USER DZ_IP as a source only
+   permit ip 100.0.0.2/32 any
+   deny ip any any
 !
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-500-OUT
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-501-OUT

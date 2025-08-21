@@ -15,6 +15,7 @@ use tokio::signal;
 
 mod activator;
 mod activator_metrics;
+mod constants;
 mod idallocator;
 mod influxdb_metrics_service;
 mod ipblockallocator;

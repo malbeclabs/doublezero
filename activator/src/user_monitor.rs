@@ -64,7 +64,7 @@ pub fn process_user_monitor_thread(
         }
 
         // Sleep for a while before the next iteration
-        thread::sleep(Duration::from_secs(10));
+        thread::sleep(Duration::from_secs(crate::constants::SLEEP_DURATION_SECS));
     }
 
     Ok(())

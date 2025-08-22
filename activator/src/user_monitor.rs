@@ -28,12 +28,12 @@ pub fn process_user_monitor_thread(
 ) -> eyre::Result<()> {
     info!("User monitor thread started");
 
-	let client = DZClient::new(
+    let client = DZClient::new(
         Some(rpc_url.clone()),
         Some(websocket_url.clone()),
         Some(program_id.clone()),
         Some(keypair.clone()),
-	)?;
+    )?;
 
     while !stop_signal.load(Ordering::Relaxed) {
         // Monitor users and perform necessary actions

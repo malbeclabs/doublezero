@@ -47,9 +47,6 @@ pub struct Settings {
     /// The number of previous epochs to search for appearance in the leader schedule
     previous_leader_epochs: u8,
 
-    /// The amount of lamports to fund a new account authorized on the DZ network
-    onboarding_lamports: u64,
-
     /// metrics listening endpoint
     #[serde(default = "default_metrics_addr")]
     metrics_addr: String,
@@ -109,10 +106,6 @@ impl Settings {
 
     pub fn dz_rpc(&self) -> Url {
         Url::parse(&self.dz_rpc).expect("invalid dz_rpc url")
-    }
-
-    pub fn onboarding_lamports(&self) -> u64 {
-        self.onboarding_lamports
     }
 
     pub fn previous_leader_epochs(&self) -> u8 {

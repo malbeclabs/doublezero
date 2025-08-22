@@ -20,7 +20,6 @@ pub struct Sentinel {
     dz_rpc_client: DzRpcClient,
     sol_rpc_client: SolRpcClient,
     rx: UnboundedReceiver<Signature>,
-    onboarding_lamports: u64,
     previous_leader_epochs: u8,
 }
 
@@ -31,14 +30,12 @@ impl Sentinel {
         keypair: Arc<Keypair>,
         serviceability_id: Pubkey,
         rx: UnboundedReceiver<Signature>,
-        onboarding_lamports: u64,
         previous_leader_epochs: u8,
     ) -> Result<Self> {
         Ok(Self {
             dz_rpc_client: DzRpcClient::new(dz_rpc, keypair.clone(), serviceability_id),
             sol_rpc_client: SolRpcClient::new(sol_rpc, keypair),
             rx,
-            onboarding_lamports,
             previous_leader_epochs,
         })
     }
@@ -80,7 +77,7 @@ impl Sentinel {
         let AccessMode::SolanaValidator { service_key, .. } = access_ids.mode;
         if let Some(validator_ip) = self.verify_qualifiers(&access_ids.mode).await? {
             self.dz_rpc_client
-                .issue_access_pass(&service_key, &validator_ip, self.onboarding_lamports)
+                .issue_access_pass(&service_key, &validator_ip)
                 .await?;
             let signature = self
                 .sol_rpc_client

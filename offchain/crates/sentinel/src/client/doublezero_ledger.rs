@@ -40,7 +40,6 @@ impl DzRpcClient {
         &self,
         service_key: &Pubkey,
         client_ip: &Ipv4Addr,
-        airdrop_lamports: u64,
     ) -> Result<Signature> {
         let (globalstate_pk, _) = get_globalstate_pda(&self.serviceability_id);
         let (pass_pk, _) = get_accesspass_pda(&self.serviceability_id, client_ip, service_key);
@@ -48,7 +47,6 @@ impl DzRpcClient {
             accesspass_type: AccessPassType::SolanaValidator,
             client_ip: *client_ip,
             last_access_epoch: u64::MAX,
-            airdrop_lamports,
         };
         let accounts = vec![
             AccountMeta::new(pass_pk, false),

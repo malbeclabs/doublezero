@@ -1744,7 +1744,7 @@ dependencies = [
 [[package]]
 name = "doublezero-config"
 version = "0.5.3"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#8497d92b4b6e5a7aa50286ff72e32ff097b942bd"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#b9042933656dd431732177f15c327ed960905556"
 dependencies = [
  "eyre",
  "solana-sdk",
@@ -1804,7 +1804,7 @@ dependencies = [
 [[package]]
 name = "doublezero-program-common"
 version = "0.5.3"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#8497d92b4b6e5a7aa50286ff72e32ff097b942bd"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#b9042933656dd431732177f15c327ed960905556"
 dependencies = [
  "borsh 1.5.7",
  "byteorder",
@@ -1838,7 +1838,7 @@ dependencies = [
 [[package]]
 name = "doublezero-record"
 version = "0.5.3"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#8497d92b4b6e5a7aa50286ff72e32ff097b942bd"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#b9042933656dd431732177f15c327ed960905556"
 dependencies = [
  "bytemuck",
  "solana-program",
@@ -1872,7 +1872,7 @@ dependencies = [
 [[package]]
 name = "doublezero-serviceability"
 version = "0.5.3"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#8497d92b4b6e5a7aa50286ff72e32ff097b942bd"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#b9042933656dd431732177f15c327ed960905556"
 dependencies = [
  "borsh 1.5.7",
  "doublezero-program-common",
@@ -1907,7 +1907,7 @@ dependencies = [
 [[package]]
 name = "doublezero-telemetry"
 version = "0.5.3"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#8497d92b4b6e5a7aa50286ff72e32ff097b942bd"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#b9042933656dd431732177f15c327ed960905556"
 dependencies = [
  "borsh 1.5.7",
  "doublezero-program-common",
@@ -1920,7 +1920,7 @@ dependencies = [
 [[package]]
 name = "doublezero_sdk"
 version = "0.5.3"
-source = "git+ssh://git@github.com/malbeclabs/doublezero#8497d92b4b6e5a7aa50286ff72e32ff097b942bd"
+source = "git+ssh://git@github.com/malbeclabs/doublezero#b9042933656dd431732177f15c327ed960905556"
 dependencies = [
  "base64 0.22.1",
  "bincode 2.0.1",

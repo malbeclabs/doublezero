@@ -46,7 +46,6 @@ async fn main() -> anyhow::Result<()> {
         keypair,
         settings.serviceability_program_id()?,
         rx,
-        settings.onboarding_lamports(),
         settings.previous_leader_epochs(),
     )
     .await?;

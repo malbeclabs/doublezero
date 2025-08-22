@@ -20,6 +20,7 @@ func main() {
 	localAddr := flag.String("local-addr", "", "Source address (host:port)")
 	remoteAddr := flag.String("remote-addr", "", "Remote address (host:port)")
 	timeout := flag.Duration("timeout", 10*time.Second, "Timeout")
+	verbose := flag.Bool("v", false, "Verbose logging")
 	flag.Parse()
 
 	if *remoteAddr == "" {
@@ -27,10 +28,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Use null logger if quiet mode
+	// Use null logger if quiet mode, otherwise use verbose logging
 	var log *slog.Logger
 	if *quiet {
 		log = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+	} else if *verbose {
+		log = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	} else {
 		log = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	}

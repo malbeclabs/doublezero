@@ -18,7 +18,7 @@ type Sender interface {
 }
 
 func NewSender(ctx context.Context, log *slog.Logger, iface string, localAddr, remoteAddr *net.UDPAddr) (Sender, error) {
-	sender, err := NewLinuxSender(ctx, iface, localAddr, remoteAddr)
+	sender, err := NewLinuxSender(ctx, log, iface, localAddr, remoteAddr)
 	if err == ErrPlatformNotSupported {
 		return NewBasicSender(ctx, log, iface, localAddr, remoteAddr)
 	}

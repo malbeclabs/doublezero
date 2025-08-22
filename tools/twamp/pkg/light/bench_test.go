@@ -26,20 +26,26 @@ func BenchmarkTWAMP_Linux(b *testing.B) {
 	}
 
 	b.Run("linux sender and linux reflector", func(b *testing.B) {
+		log := slog.New(slog.NewTextHandler(io.Discard, nil))
+
 		runBench(b, func(iface string, localAddr, remoteAddr *net.UDPAddr) (twamplight.Sender, error) {
-			return twamplight.NewLinuxSender(b.Context(), iface, localAddr, remoteAddr)
+			return twamplight.NewLinuxSender(b.Context(), log, iface, localAddr, remoteAddr)
 		}, startLinuxReflector)
 	})
 
 	b.Run("linux sender and basic reflector", func(b *testing.B) {
+		log := slog.New(slog.NewTextHandler(io.Discard, nil))
+
 		runBench(b, func(iface string, localAddr, remoteAddr *net.UDPAddr) (twamplight.Sender, error) {
-			return twamplight.NewLinuxSender(b.Context(), iface, localAddr, remoteAddr)
+			return twamplight.NewLinuxSender(b.Context(), log, iface, localAddr, remoteAddr)
 		}, startBasicReflector)
 	})
 
 	b.Run("linux sender and container reflector", func(b *testing.B) {
+		log := slog.New(slog.NewTextHandler(io.Discard, nil))
+
 		runBench(b, func(iface string, localAddr, remoteAddr *net.UDPAddr) (twamplight.Sender, error) {
-			return twamplight.NewLinuxSender(b.Context(), iface, localAddr, remoteAddr)
+			return twamplight.NewLinuxSender(b.Context(), log, iface, localAddr, remoteAddr)
 		}, startContainerReflector)
 	})
 }
@@ -54,6 +60,8 @@ func BenchmarkTWAMP_Basic(b *testing.B) {
 	})
 
 	b.Run("basic sender and container reflector", func(b *testing.B) {
+		log := slog.New(slog.NewTextHandler(io.Discard, nil))
+
 		runBench(b, func(iface string, localAddr, remoteAddr *net.UDPAddr) (twamplight.Sender, error) {
 			return twamplight.NewBasicSender(b.Context(), log, iface, localAddr, remoteAddr)
 		}, startContainerReflector)

@@ -3,6 +3,7 @@ package twamplight
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"runtime"
 	"sync"
@@ -14,6 +15,7 @@ import (
 )
 
 type LinuxSender struct {
+	log        *slog.Logger
 	fd         int
 	epfd       int
 	seq        uint32
@@ -25,7 +27,7 @@ type LinuxSender struct {
 	receivedMu sync.Mutex
 }
 
-func NewLinuxSender(ctx context.Context, iface string, local *net.UDPAddr, remote *net.UDPAddr) (*LinuxSender, error) {
+func NewLinuxSender(ctx context.Context, log *slog.Logger, iface string, local *net.UDPAddr, remote *net.UDPAddr) (*LinuxSender, error) {
 	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM|unix.SOCK_NONBLOCK, unix.IPPROTO_UDP)
 	if err != nil {
 		return nil, fmt.Errorf("socket: %w", err)
@@ -64,10 +66,17 @@ func NewLinuxSender(ctx context.Context, iface string, local *net.UDPAddr, remot
 		return nil, fmt.Errorf("epoll_ctl: %w", err)
 	}
 
-	if err := unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_TIMESTAMPNS, 1); err != nil {
-		unix.Close(fd)
-		unix.Close(epfd)
-		return nil, fmt.Errorf("SO_TIMESTAMPNS: %w", err)
+	if err := unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_TIMESTAMPNS_NEW, 1); err != nil {
+		if err != unix.ENOPROTOOPT && err != unix.EINVAL {
+			unix.Close(fd)
+			unix.Close(epfd)
+			return nil, fmt.Errorf("SO_TIMESTAMPNS_NEW: %w", err)
+		}
+		if err := unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_TIMESTAMPNS, 1); err != nil {
+			unix.Close(fd)
+			unix.Close(epfd)
+			return nil, fmt.Errorf("SO_TIMESTAMPNS: %w", err)
+		}
 	}
 
 	ip4 := remote.IP.To4()
@@ -78,6 +87,7 @@ func NewLinuxSender(ctx context.Context, iface string, local *net.UDPAddr, remot
 	copy(raddr.Addr[:], ip4)
 
 	s := &LinuxSender{
+		log:      log.With("iface", iface, "local", local, "remote", remote),
 		fd:       fd,
 		epfd:     epfd,
 		remote:   raddr,
@@ -110,6 +120,7 @@ func (s *LinuxSender) Probe(ctx context.Context) (time.Duration, error) {
 
 	// Send the packet.
 	sendTime := time.Now()
+	s.log.Debug("Sending packet", "send_time", fmt.Sprintf("%.9f", float64(sendTime.UnixNano())/1e9), "seq", s.seq)
 	if err := unix.Sendto(s.fd, s.buf[:PacketSize], 0, s.remote); err != nil {
 		return 0, fmt.Errorf("sendto: %w", err)
 	}
@@ -184,11 +195,19 @@ func (s *LinuxSender) Probe(ctx context.Context) (time.Duration, error) {
 
 		// Parse timestamp from control message.
 		for _, cmsg := range cmsgs {
-			if cmsg.Header.Level == syscall.SOL_SOCKET && cmsg.Header.Type == syscall.SO_TIMESTAMPNS {
+			if cmsg.Header.Level != syscall.SOL_SOCKET {
+				continue
+			}
+
+			switch cmsg.Header.Type {
+			case unix.SO_TIMESTAMPNS, unix.SO_TIMESTAMPNS_NEW:
 				if len(cmsg.Data) < int(unsafe.Sizeof(syscall.Timespec{})) {
+					s.log.Debug("Got SCM_TIMESTAMPNS data too short", "cmsg_type", cmsg.Header.Type, "cmsg_len", len(cmsg.Data))
 					continue
 				}
 				ts := *(*syscall.Timespec)(unsafe.Pointer(&cmsg.Data[0]))
+				s.log.Debug("Got SCM_TIMESTAMPNS", "cmsg_type", cmsg.Header.Type, "cmsg_len", len(cmsg.Data), "ts", fmt.Sprintf("%d.%09d", ts.Sec, ts.Nsec))
+
 				rtt := time.Unix(int64(ts.Sec), int64(ts.Nsec)).Sub(sendTime)
 
 				// The send timestamp is captured in user space using CLOCK_REALTIME, while the receive
@@ -199,6 +218,9 @@ func (s *LinuxSender) Probe(ctx context.Context) (time.Duration, error) {
 				rtt = max(rtt, 0)
 
 				return rtt, nil
+
+			default:
+				s.log.Debug("Saw SOL_SOCKET cmsg", "cmsg_type", cmsg.Header.Type, "cmsg_len", len(cmsg.Data))
 			}
 		}
 		return 0, fmt.Errorf("no timestamp in control message")

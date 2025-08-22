@@ -5,11 +5,12 @@ package twamplight
 
 import (
 	"context"
+	"log/slog"
 	"net"
 	"time"
 )
 
-func NewLinuxSender(ctx context.Context, iface string, localAddr, remoteAddr *net.UDPAddr) (Sender, error) {
+func NewLinuxSender(ctx context.Context, log *slog.Logger, iface string, localAddr, remoteAddr *net.UDPAddr) (Sender, error) {
 	return nil, ErrPlatformNotSupported
 }
 

@@ -17,8 +17,10 @@ func TestTWAMP_Sender_Linux(t *testing.T) {
 		t.Skip("Linux-specific test")
 	}
 
+	log := log.With("test", t.Name())
+
 	runSenderTests(t, func(iface string, localAddr, remoteAddr *net.UDPAddr) (twamplight.Sender, error) {
-		return twamplight.NewLinuxSender(t.Context(), iface, localAddr, remoteAddr)
+		return twamplight.NewLinuxSender(t.Context(), log, iface, localAddr, remoteAddr)
 	}, func(addr string) (twamplight.Reflector, error) {
 		return twamplight.NewLinuxReflector(addr, 100*time.Millisecond)
 	})

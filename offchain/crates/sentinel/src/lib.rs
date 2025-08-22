@@ -33,7 +33,7 @@ pub fn verify_access_request(
     let message = AccessRequest::access_request_message(&service_key);
     let signature: Signature = ed25519_signature.into();
 
-    if !signature.verify(validator_id.as_array(), &message) {
+    if !signature.verify(validator_id.as_array(), message.as_bytes()) {
         return Err(Error::SignatureVerify);
     }
 
@@ -62,7 +62,7 @@ mod tests {
         let validator_id = Keypair::new();
 
         let message = AccessRequest::access_request_message(&service_key);
-        let signature_bytes: [u8; 64] = validator_id.sign_message(&message).into();
+        let signature_bytes: [u8; 64] = validator_id.sign_message(message.as_bytes()).into();
 
         let access_mode = AccessMode::SolanaValidator {
             validator_id: validator_id.pubkey(),

@@ -2,7 +2,7 @@ use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient}
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, processors::globalstate::setairdrop::SetAirdropArgs,
 };
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use solana_sdk::{instruction::AccountMeta, signature::Signature};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SetAirdropCommand {
@@ -37,7 +37,7 @@ mod tests {
         processors::globalstate::setairdrop::SetAirdropArgs,
     };
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{instruction::AccountMeta, signature::Signature};
 
     #[test]
     fn test_commands_setairdrop_command() {
@@ -45,8 +45,8 @@ mod tests {
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
 
-        let contributor_airdrop = Some(1_000_000_000);
-        let user_airdrop = Some(40_000);
+        let contributor_airdrop_lamports = Some(1_000_000_000);
+        let user_airdrop_lamports = Some(40_000);
 
         client
             .expect_execute_transaction()

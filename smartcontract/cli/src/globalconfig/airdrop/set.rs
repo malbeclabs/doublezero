@@ -64,16 +64,16 @@ mod tests {
         client
             .expect_set_airdrop()
             .with(predicate::eq(SetAirdropCommand {
-                contributor_airdrop_lamports,
-                user_airdrop_lamports,
+                contributor_airdrop_lamports: Some(contributor_airdrop_lamports),
+                user_airdrop_lamports: Some(user_airdrop_lamports),
             }))
             .returning(move |_| Ok(signature));
 
         // Set all global config; reflects initializing globla config or updating all values
         let mut output = Vec::new();
         let res = SetAirdropCliCommand {
-            contributor_airdrop_lamports: 1_000_000_000,
-            user_airdrop_lamports: 40_000,
+            contributor_airdrop_lamports: Some(1_000_000_000),
+            user_airdrop_lamports: Some(40_000),
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

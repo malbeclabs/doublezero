@@ -13,8 +13,8 @@ pub struct GlobalState {
     pub user_allowlist: Vec<Pubkey>,       // 4 + 32 * len
     pub activator_authority_pk: Pubkey,    // 32
     pub sentinel_authority_pk: Pubkey,     // 32
-    pub contributor_airdrop_lamports: u64, // 4
-    pub user_airdrop_lamports: u64,        // 4
+    pub contributor_airdrop_lamports: u64, // 8
+    pub user_airdrop_lamports: u64,        // 8
 }
 
 impl fmt::Display for GlobalState {
@@ -55,8 +55,8 @@ impl GlobalState {
             + (self.user_allowlist.len() * 32)
             + 32
             + 32
-            + 4
-            + 4
+            + 8
+            + 8
     }
 }
 

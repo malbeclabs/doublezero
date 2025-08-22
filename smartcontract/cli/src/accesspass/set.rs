@@ -19,9 +19,9 @@ pub struct SetAccessPassCliCommand {
     /// Specifies the payer of the access pass.
     #[arg(long)]
     pub user_payer: String,
-    /// Specifies the last access epoch of the access pass.
+    /// Specifies the last access epoch of the access pass or MAX.
     #[arg(long)]
-    pub last_access_epoch: u64,
+    pub last_access_epoch: String,
     /// Specifies the amount of lamports to airdrop for operating transaction
     #[arg(long)]
     pub airdrop_lamports: u64,
@@ -40,11 +40,16 @@ impl SetAccessPassCliCommand {
             }
         };
 
+        let last_access_epoch = match self.last_access_epoch.to_ascii_lowercase().as_str() {
+            "max" => u64::MAX,
+            _ => self.last_access_epoch.parse()?,
+        };
+
         let signature = client.set_accesspass(SetAccessPassCommand {
             accesspass_type: self.accesspass_type,
             client_ip: self.client_ip,
             user_payer,
-            last_access_epoch: self.last_access_epoch,
+            last_access_epoch,
             airdrop_lamports: self.airdrop_lamports,
         })?;
         writeln!(out, "Signature: {signature}")?;
@@ -102,7 +107,7 @@ mod tests {
             accesspass_type: AccessPassType::SolanaValidator,
             client_ip,
             user_payer: payer.to_string(),
-            last_access_epoch: 0,
+            last_access_epoch: "0".into(),
             airdrop_lamports: 40_000,
         }
         .execute(&client, &mut output);

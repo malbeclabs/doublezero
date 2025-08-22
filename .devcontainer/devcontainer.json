@@ -16,7 +16,7 @@
         "ghcr.io/devcontainers/features/rust:1": {},
         "ghcr.io/devcontainers/features/docker-in-docker:2": {}
     },
-    "postCreateCommand": "rustup component add --toolchain nightly rustfmt",
+    "postCreateCommand": "rustup component add --toolchain stable rustfmt",
     "customizations": {
         "vscode": {
             "extensions": [

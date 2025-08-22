@@ -177,7 +177,7 @@ impl Activator {
             .or_insert_with(|| DeviceState::new(device));
     }
 
-    pub fn run(&mut self, stop_signal: Arc<AtomicBool>) -> eyre::Result<()> {
+    pub fn process_events_thread(&mut self, stop_signal: Arc<AtomicBool>) -> eyre::Result<()> {
         self.metrics.record_metrics(
             &self.devices,
             &self.locations,

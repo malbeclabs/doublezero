@@ -26,7 +26,8 @@ pub struct AccessPassDisplay {
     pub ip: Ipv4Addr,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub user_payer: Pubkey,
-    pub last_access_epoch: u64,
+    pub last_access_epoch: String,
+    pub remaining_epoch: String,
     pub connections: u16,
     pub status: AccessPassStatus,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
@@ -35,6 +36,8 @@ pub struct AccessPassDisplay {
 
 impl ListAccessPassCliCommand {
     pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+        let epoch = client.get_epoch()?;
+
         let access_passes = client.list_accesspass(ListAccessPassCommand)?;
 
         let mut access_pass_displays: Vec<AccessPassDisplay> = access_passes
@@ -44,7 +47,19 @@ impl ListAccessPassCliCommand {
                 accesspass_type: access_pass.accesspass_type.to_string(),
                 ip: access_pass.client_ip,
                 user_payer: access_pass.user_payer,
-                last_access_epoch: access_pass.last_access_epoch,
+                last_access_epoch: if access_pass.last_access_epoch == u64::MAX {
+                    "MAX".to_string()
+                } else {
+                    access_pass.last_access_epoch.to_string()
+                },
+                remaining_epoch: if access_pass.last_access_epoch == u64::MAX {
+                    "MAX".to_string()
+                } else {
+                    access_pass
+                        .last_access_epoch
+                        .saturating_sub(epoch)
+                        .to_string()
+                },
                 connections: access_pass.connection_count,
                 status: access_pass.status,
                 owner: access_pass.owner,
@@ -96,6 +111,7 @@ mod tests {
             status: AccessPassStatus::Connected,
         };
 
+        client.expect_get_epoch().returning(move || Ok(123));
         client.expect_list_accesspass().returning(move |_| {
             let mut access_passes = HashMap::new();
             access_passes.insert(access1_pubkey, access1.clone());
@@ -110,7 +126,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | accesspass_type | ip      | user_payer                                | last_access_epoch | connections | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | solanavalidator | 1.2.3.4 | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | 123               | 0           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
+        assert_eq!(output_str, " account                                   | accesspass_type | ip      | user_payer                                | last_access_epoch | remaining_epoch | connections | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | solanavalidator | 1.2.3.4 | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | 123               | 0               | 0           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
 
         let mut output = Vec::new();
         let res = ListAccessPassCliCommand {
@@ -120,6 +136,6 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"accesspass_type\":\"solanavalidator\",\"ip\":\"1.2.3.4\",\"user_payer\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"last_access_epoch\":123,\"connections\":0,\"status\":\"Connected\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"accesspass_type\":\"solanavalidator\",\"ip\":\"1.2.3.4\",\"user_payer\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"0\",\"connections\":0,\"status\":\"Connected\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
     }
 }

@@ -23,6 +23,17 @@ impl SetAccessPassCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
+        if self.last_access_epoch > 0 && self.last_access_epoch != u64::MAX {
+            let epoch = client.get_epoch()?;
+            if self.last_access_epoch < epoch {
+                return Err(eyre::eyre!(
+                    "last_access_epoch {} cannot be in the past (current epoch is {})",
+                    self.last_access_epoch,
+                    epoch
+                ));
+            }
+        }
+
         let (pda_pubkey, _) =
             get_accesspass_pda(&client.get_program_id(), &self.client_ip, &self.user_payer);
 

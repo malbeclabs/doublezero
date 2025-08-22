@@ -20,11 +20,8 @@ impl AccessRequest {
         Pubkey::find_program_address(&[Self::SEED_PREFIX, service_key.as_ref()], &crate::ID)
     }
 
-    pub fn access_request_message(service_key: &Pubkey) -> [u8; 48] {
-        let mut buf = [0u8; 48];
-        buf[..16].copy_from_slice(b"solana_validator");
-        buf[16..].copy_from_slice(service_key.as_ref());
-        buf
+    pub fn access_request_message(service_key: &Pubkey) -> String {
+        format!("service_key={service_key}")
     }
 }
 
